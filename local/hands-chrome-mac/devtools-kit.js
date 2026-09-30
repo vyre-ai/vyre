@@ -70,3 +70,23 @@ export function request(/** @type {ReturnType<typeof makeCtx>} */ k, tab = 1, /*
   push("Network.dataReceived", { requestId: id, dataLength: r.size || 120 });
   push("Network.loadingFinished", { requestId: id, timestamp: 100.25, encodedDataLength: 80 });
 }
+
+/**
+ * Page.getFrameTree the way Chrome answers it: each session lists only the frames of ITS process. The top session's tree leaves out every
+ * cross-origin iframe (a frame with a session in `kids`) and what is inside it; a child session's tree is rooted at its own frame.
+ * @param {any} tree the whole logical tree {frame, childFrames} @param {Array<{ sessionId: string, targetId: string }>} kids the child sessions
+ */
+export function realisticFrameTree(tree, kids) {
+  const isSession = (/** @type {string} */ id) => kids.some(k => k.targetId === id);
+  /** @param {any} n @param {boolean} root */
+  const prune = (n, root) => ({ frame: n.frame, childFrames: (n.childFrames || []).filter((/** @type {any} */ c) => !isSession(c.frame.id)).map((/** @type {any} */ c) => prune(c, false)) });
+  /** @param {any} n @param {string} id */
+  const find = (n, id) => n.frame.id === id ? n : (n.childFrames || []).map((/** @type {any} */ c) => find(c, id)).find(Boolean);
+  return (/** @type {any} */ _p, /** @type {number} */ _tab, /** @type {string|undefined} */ session) => {
+    if (!session) return { frameTree: prune(tree, true) };
+    const k = kids.find(x => x.sessionId === session);
+    const n = k && find(tree, k.targetId);
+    if (!n) throw new Error("Session with given id not found.");
+    return { frameTree: prune(n, true) };
+  };
+}

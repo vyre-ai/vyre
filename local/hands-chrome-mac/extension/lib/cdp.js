@@ -52,7 +52,7 @@ export function createCdp({ chrome, emit = () => {} }) {
     // Keep the table of child sessions: they appear and go as the page's frames do.
     if (method === "Target.attachedToTarget" && params && params.sessionId && params.targetInfo) {
       const m = kids.get(tabId) || new Map();
-      m.set(params.sessionId, { targetId: params.targetInfo.targetId, type: params.targetInfo.type, url: params.targetInfo.url || "" });
+      m.set(params.sessionId, { targetId: params.targetInfo.targetId, type: params.targetInfo.type, url: params.targetInfo.url || "", ...(params.targetInfo.parentFrameId ? { parentFrameId: params.targetInfo.parentFrameId } : {}) });
       kids.set(tabId, m);
       void watchChildren(tabId, params.sessionId);
     } else if (method === "Target.detachedFromTarget" && params && params.sessionId) {

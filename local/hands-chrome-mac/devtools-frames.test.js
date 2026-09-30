@@ -7,7 +7,7 @@ import net from "./extension/caps/net.js";
 import dev from "./extension/caps/devtools.js";
 import api from "./extension/caps/api.js";
 import { createFrames } from "./extension/lib/frames.js";
-import { makeCtx, request } from "./devtools-kit.js";
+import { makeCtx, request, realisticFrameTree } from "./devtools-kit.js";
 import { guardInstall, guardCollect } from "./extension/shared/outbound.js";
 
 const SHELL = "https://shell.harlow.example";
@@ -26,7 +26,7 @@ const KIDS = [
 
 /** @param {any} [extra] respond overrides */
 function world(extra = {}) {
-  const k = makeCtx({ active: 1, tabUrl: SHELL + "/", respond: { "Page.getFrameTree": { frameTree: tree }, ...extra } });
+  const k = makeCtx({ active: 1, tabUrl: SHELL + "/", respond: { "Page.getFrameTree": realisticFrameTree(tree, KIDS), ...extra } });
   for (const c of KIDS) k.children.push(c);
   /** @type {any} */ (k.ctx).frames = createFrames({ cdp: /** @type {any} */ (k.ctx.cdp) });
   const st = new Map();
@@ -159,6 +159,7 @@ test("egress guard: a fetch to a fresh origin from inside a child is held, its o
     const x = String(p.expression);
     if (x === guardInstall) return { result: { value: true } };
     if (x === guardCollect) return { result: { value: [] } };
+    if (x.includes("querySelectorAll('iframe, frame')")) return { result: { value: [] } };
     if (x.includes("getEntriesByType")) return { result: { value: session === "S-APP" ? [APP_API + "/known"] : [] } };
     if (x.includes("visible")) return { result: { value: false } };
     seen.ran = true;

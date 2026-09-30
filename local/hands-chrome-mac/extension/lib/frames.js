@@ -25,49 +25,88 @@ const originOf = f => { const o = String((f && f.securityOrigin) || ""); if (o &
  * @param {{ cdp: any }} o
  */
 export function createFrames({ cdp }) {
-  /** Execution contexts of same-process frames, by tab and frame id. @type {Map<number, Map<string, number>>} */
+  /** Execution contexts of same-process frames, by tab, hosting session ("" is the top page's own) and frame id. @type {Map<number, Map<string, Map<string, number>>>} */
   const contexts = new Map();
-  /** @type {Set<number>} tabs whose main session has Runtime enabled for us */
+  /** @type {Set<string>} "<tab>:<session>" pairs whose Runtime is enabled for us */
   const runtimeOn = new Set();
 
   cdp.on((/** @type {number} */ tabId, /** @type {string} */ method, /** @type {any} */ p, /** @type {string|undefined} */ sessionId) => {
-    if (sessionId) return; // a child session's own contexts are its main world: reached without a context id
+    const key = sessionId || "";
     if (method === "Runtime.executionContextCreated" && p && p.context && p.context.auxData && p.context.auxData.isDefault && p.context.auxData.frameId) {
-      const m = contexts.get(tabId) || new Map(); m.set(String(p.context.auxData.frameId), p.context.id); contexts.set(tabId, m);
+      const tab = contexts.get(tabId) || new Map(); const bySession = tab.get(key) || new Map();
+      bySession.set(String(p.context.auxData.frameId), p.context.id); tab.set(key, bySession); contexts.set(tabId, tab);
     } else if (method === "Runtime.executionContextDestroyed" && p) {
-      for (const m of contexts.values()) for (const [f, id] of m) if (id === p.executionContextId) m.delete(f);
-    } else if (method === "Runtime.executionContextsCleared") contexts.delete(tabId);
+      for (const bySession of contexts.get(tabId)?.values() || []) for (const [f, id] of bySession) if (id === p.executionContextId) bySession.delete(f);
+    } else if (method === "Runtime.executionContextsCleared") contexts.get(tabId)?.delete(key);
   });
 
-  /** @param {number} tabId */
-  async function ensureRuntime(tabId) {
-    if (runtimeOn.has(tabId)) return;
-    runtimeOn.add(tabId);
-    try { await cdp.send(tabId, "Runtime.enable", {}); } catch { runtimeOn.delete(tabId); }
+  /** @param {number} tabId @param {string} [sessionId] */
+  async function ensureRuntime(tabId, sessionId) {
+    const k = `${tabId}:${sessionId || ""}`;
+    if (runtimeOn.has(k)) return;
+    runtimeOn.add(k);
+    try { await cdp.send(tabId, "Runtime.enable", {}, sessionId); } catch { runtimeOn.delete(k); }
   }
+
+  /** The iframe elements a document holds, so an iframe that never became a frame we can reach is still reported. */
+  const IFRAMES = "(() => [...document.querySelectorAll('iframe, frame')].slice(0, 60).map(f => { let o = ''; try { o = new URL(f.getAttribute('src') || 'about:blank', location.href).origin; } catch (e) {} const r = f.getBoundingClientRect(); return { src: (f.getAttribute('src') || '').slice(0, 200), origin: o, sandbox: f.hasAttribute('sandbox'), w: Math.round(r.width), h: Math.round(r.height) }; }))()";
 
   /** @param {number} tabId @returns {Promise<Frame[]>} */
   async function list(tabId) {
     await ensureRuntime(tabId);
     const t = await cdp.send(tabId, "Page.getFrameTree", {});
-    const kids = /** @type {Array<{ sessionId: string, targetId: string, type: string, url: string }>} */ (cdp.children(tabId));
-    const bySession = new Map(kids.filter(k => k.type === "iframe" || k.type === "page").map(k => [k.targetId, k.sessionId]));
+    const kids = /** @type {Array<{ sessionId: string, targetId: string, type: string, url: string, parentFrameId?: string }>} */ (cdp.children(tabId)).filter(k => k.type === "iframe" || k.type === "page");
+    // Chrome's top session lists only the frames in its own process. A cross-origin iframe is its own process with its own session and
+    // its own tree (whose root is the iframe's frame): read each and graft it under the frame that owns it.
+    /** @type {Array<{ session: string|null, tree: any }>} */
+    const trees = [{ session: null, tree: t && t.frameTree }];
+    await Promise.all(kids.map(async k => {
+      await ensureRuntime(tabId, k.sessionId);
+      try { const r = await cdp.send(tabId, "Page.getFrameTree", {}, k.sessionId); if (r && r.frameTree) trees.push({ session: k.sessionId, tree: r.frameTree }); } catch { /* the session went away */ }
+    }));
+    /** @type {Map<string, { node: any, session: string|null, parentId: string|null }>} */ const all = new Map();
+    /** @param {any} node @param {string|null} session @param {string|null} parentId */
+    const collect = (node, session, parentId) => { const f = node.frame || {}; all.set(String(f.id), { node, session, parentId: parentId ?? (f.parentId ? String(f.parentId) : null) }); for (const c of node.childFrames || []) collect(c, session, String(f.id)); };
+    collect(/** @type {any} */ (trees[0].tree), null, null);
+    for (const tr of trees.slice(1)) {
+      const root = tr.tree.frame || {};
+      const k = kids.find(x => x.sessionId === tr.session);
+      const parent = root.parentId ? String(root.parentId) : k && k.parentFrameId ? String(k.parentFrameId) : null;
+      collect(tr.tree, tr.session, parent);
+    }
+    // Build one ordered tree: children by parent id; a subtree whose parent is not known hangs under the top page (never dropped).
+    const topId = String(trees[0].tree && trees[0].tree.frame && trees[0].tree.frame.id);
+    /** @type {Map<string, string[]>} */ const byParent = new Map();
+    for (const [id, v] of all) { if (id === topId) continue; const p = v.parentId && all.has(v.parentId) ? v.parentId : topId; byParent.set(p, [...(byParent.get(p) || []), id]); }
     /** @type {Frame[]} */ const out = [];
-    /** @param {any} node @param {string|null} parentId @param {number} depth */
-    const walk = (node, parentId, depth) => {
-      const f = node.frame || {};
-      const id = String(f.id);
-      const session = depth === 0 ? null : bySession.get(id) || null;
-      const ctx = contexts.get(tabId)?.get(id);
+    /** @param {string} id @param {string|null} parentId @param {number} depth */
+    const walk = (id, parentId, depth) => {
+      const v = /** @type {any} */ (all.get(id)); const f = v.node.frame || {};
+      const isChildRoot = v.session !== null && !!kids.find(k => k.sessionId === v.session && k.targetId === id);
+      const ctx = contexts.get(tabId)?.get(v.session || "")?.get(id);
       /** @type {Frame["how"]} */ let how = "none"; let readable = false; /** @type {string|undefined} */ let why;
       if (depth === 0) { how = "top"; readable = true; }
-      else if (session) { how = "session"; readable = true; }
+      else if (isChildRoot) { how = "session"; readable = true; }
       else if (ctx !== undefined) { how = "context"; readable = true; }
-      else { why = "no way into this frame yet: it is in another process and Chrome has not handed over its session (still loading, or it never attached)"; }
-      out.push({ index: out.length, frameId: id, parentId, depth, url: String(f.url || ""), origin: originOf(f), name: String(f.name || ""), session, how, readable, ...(why ? { why } : {}) });
-      for (const c of node.childFrames || []) walk(c, id, depth + 1);
+      else { why = "no way into this frame yet: Chrome has not given a script context for it (still loading, or it never attached)"; }
+      out.push({ index: out.length, frameId: id, parentId, depth, url: String(f.url || ""), origin: originOf(f), name: String(f.name || ""), session: v.session, how, readable, ...(why ? { why } : {}) });
+      for (const c of byParent.get(id) || []) walk(c, id, depth + 1);
     };
-    if (t && t.frameTree) walk(t.frameTree, null, 0);
+    walk(topId, null, 0);
+    // An iframe ELEMENT in a readable frame that matches no frame we found is an iframe we cannot reach: say so, never leave it out.
+    const known = out.slice();
+    for (const f of known) {
+      if (!f.readable) continue;
+      let els = /** @type {any[]} */ ([]);
+      try { const r = await evalIn(tabId, f, IFRAMES, { returnByValue: true }); const v = r && r.result && r.result.value; els = Array.isArray(v) ? v : []; } catch { continue; }
+      const mine = known.filter(x => x.parentId === f.frameId);
+      const used = new Set();
+      for (const el of els) {
+        const hit = mine.find(x => !used.has(x.frameId) && (x.origin === el.origin || (el.origin === "null" && x.origin === "null") || (el.sandbox && x.origin === "null")));
+        if (hit) { used.add(hit.frameId); continue; }
+        out.push({ index: out.length, frameId: `element:${f.frameId}:${out.length}`, parentId: f.frameId, depth: f.depth + 1, url: el.src || "", origin: el.origin || "", name: "", session: null, how: "none", readable: false, why: `an iframe (${el.origin || "no address"}${el.sandbox ? ", sandboxed" : ""}, ${el.w}x${el.h}) is on the page but Chrome has given no frame or session for it` });
+      }
+    }
     return out;
   }
 
@@ -91,14 +130,14 @@ export function createFrames({ cdp }) {
     if (!frame || frame.how === "top") return cdp.send(tabId, "Runtime.evaluate", { expression, ...extra });
     if (frame.how === "session" && frame.session) return cdp.send(tabId, "Runtime.evaluate", { expression, ...extra }, frame.session);
     if (frame.how === "context") {
-      const id = contexts.get(tabId)?.get(frame.frameId);
-      if (id !== undefined) return cdp.send(tabId, "Runtime.evaluate", { expression, contextId: id, ...extra });
+      const id = contexts.get(tabId)?.get(frame.session || "")?.get(frame.frameId);
+      if (id !== undefined) return cdp.send(tabId, "Runtime.evaluate", { expression, contextId: id, ...extra }, frame.session || undefined);
     }
     throw err("not_found", `frame ${frame.index} (${frame.origin || frame.url || "?"}) is not readable: ${frame.why || "it has gone"}`);
   }
 
   /** The session that owns a frame's own document: the top page's, or a child's. @param {Frame} f */
-  const sessionOf = f => (f.how === "session" ? f.session : undefined);
+  const sessionOf = f => f.session || undefined;
 
   /**
    * Where a frame's viewport starts inside the top page's viewport (CSS pixels): the sum, up the chain, of each iframe element's content box

@@ -87,7 +87,7 @@ test("snapshot: a frame that is not readable is said, in the fields and in the t
   const s = await snap(w.ctx);
   assert.equal(s.notReadable.length, 1);
   assert.deepEqual([s.notReadable[0].index, s.notReadable[0].origin], [2, PAY]);
-  assert.match(s.notReadable[0].why, /Chrome has not handed over its session/);
+  assert.match(s.notReadable[0].why, /on the page but Chrome has given no frame or session for it/);
   assert.equal(s.notReadable[0].coversViewport, 80);
   assert.match(s.text, /^1 frame not readable: https:\/\/pay\.northwind\.example\./);
   assert.match(s.text, /Frame 2 \(https:\/\/pay\.northwind\.example\) covers about 80% of the viewport and is not readable/);
@@ -104,8 +104,9 @@ test("snapshot: nested and same-process frames are read too, in tree order", asy
     { id: "SAME", origin: SHELL, url: `${SHELL}/widget`, box: { x: 0, y: 700, w: 300, h: 50 }, via: "context", model: mk("Widget") },
   ] });
   const s = await snap(w.ctx);
-  assert.deepEqual(s.frames.map((/** @type {any} */ f) => [f.index, f.depth, f.parent, f.origin]), [[0, 0, undefined, SHELL], [1, 1, 0, APP], [2, 2, 1, PAY], [3, 1, 0, SHELL]]);
-  assert.deepEqual(s.controls.filter((/** @type {any} */ c) => c.frame > 0).map((/** @type {any} */ c) => [c.name, c.frame]), [["Inner save", 1], ["Pay", 2], ["Widget", 3]]);
+  // Frames in the top process come first (Chrome lists one process per tree), then each cross-origin subtree under its owner.
+  assert.deepEqual(s.frames.map((/** @type {any} */ f) => [f.index, f.depth, f.parent, f.origin]), [[0, 0, undefined, SHELL], [1, 1, 0, SHELL], [2, 1, 0, APP], [3, 2, 2, PAY]]);
+  assert.deepEqual(s.controls.filter((/** @type {any} */ c) => c.frame > 0).map((/** @type {any} */ c) => [c.name, c.frame]), [["Widget", 1], ["Inner save", 2], ["Pay", 3]]);
 });
 
 test("budget: each frame gets its own share of the limit with a floor, and main content and dialogs beat navigation chrome", async () => {

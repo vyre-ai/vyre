@@ -199,8 +199,11 @@ export function createFakeFrames(chrome, spec, o = {}) {
   for (const f of spec.frames || []) add(f);
 
   const kids = (/** @type {string} */ id) => frames.filter(f => f.parent === id);
-  const node = (/** @type {string} */ id, /** @type {any} */ f) => ({ frame: { id, ...(f ? { parentId: f.parent, url: f.url, securityOrigin: f.origin } : { url: spec.top.url, securityOrigin: new URL(spec.top.url).origin }) }, childFrames: kids(id).map(k => node(k.id, k)) });
-  const tree = () => node("TOP", null);
+  /** The session that hosts a frame's document: its own if it is a cross-process frame (via "session"), else the nearest ancestor's, else the top page. */
+  const host = (/** @type {any} */ f) => { for (let cur = f, g = 0; cur && g < 20; g++) { if (cur.via === "session") return cur.id; cur = frames.find(k => k.id === cur.parent); } return "TOP"; };
+  // Chrome's Page.getFrameTree lists only the frames of ONE process: the top session's tree leaves a cross-origin iframe out, and each child session's tree is rooted at its own frame.
+  const node = (/** @type {string} */ id, /** @type {any} */ f, /** @type {string} */ hostId) => ({ frame: { id, ...(f ? { parentId: f.parent, url: f.url, securityOrigin: f.origin } : { url: spec.top.url, securityOrigin: new URL(spec.top.url).origin }) }, childFrames: kids(id).filter(k => k.via !== "none" && host(k) === hostId).map(k => node(k.id, k, hostId)) });
+  const tree = (/** @type {string|undefined} */ sessionId) => { if (!sessionId) return node("TOP", null, "TOP"); const r = frames.find(f => f.session === sessionId); return r ? node(r.id, r, r.id) : null; };
   const absolute = (/** @type {any} */ f) => { let x = 0, y = 0, cur = f; for (let g = 0; cur && g < 20; g++) { x += cur.box.x; y += cur.box.y; cur = frames.find(k => k.id === cur.parent); } return { x, y, w: f.box.w, h: f.box.h }; };
   const bySession = (/** @type {string} */ s) => frames.find(f => f.session === s);
   const byCtx = (/** @type {number} */ c) => frames.find(f => f.ctxId === c);
@@ -214,7 +217,8 @@ export function createFakeFrames(chrome, spec, o = {}) {
       fire(parent && parent.session ? { tabId: TAB, sessionId: parent.session } : { tabId: TAB }, "Target.attachedToTarget", { sessionId: f.session, targetInfo: { targetId: f.id, type: "iframe", url: f.url }, waitingForDebugger: false });
     } else if (f.via === "context") {
       f.ctxId = ++ctxSeq;
-      fire({ tabId: TAB }, "Runtime.executionContextCreated", { context: { id: f.ctxId, auxData: { isDefault: true, frameId: f.id } } });
+      const hs = host(f);
+      fire(hs === "TOP" ? { tabId: TAB } : { tabId: TAB, sessionId: "S-" + hs }, "Runtime.executionContextCreated", { context: { id: f.ctxId, auxData: { isDefault: true, frameId: f.id } } });
     }
   };
   const retract = (/** @type {any} */ f) => {
@@ -225,7 +229,13 @@ export function createFakeFrames(chrome, spec, o = {}) {
 
   const raw = { clicks: /** @type {any[]} */ ([]), keys: /** @type {any[]} */ ([]), mouse: /** @type {any[]} */ ([]) };
   chrome._.cdp = (/** @type {number} */ tabId, /** @type {string} */ method, /** @type {any} */ params, /** @type {string|undefined} */ sessionId) => {
-    if (method === "Page.getFrameTree") return { frameTree: tree() };
+    if (method === "Page.getFrameTree") { const t = tree(sessionId); if (!t) throw new Error("Session with given id not found."); return { frameTree: t }; }
+    if (method === "Runtime.evaluate" && String(params.expression).includes("querySelectorAll('iframe, frame')")) {
+      let id = "TOP";
+      if (sessionId) { const f = bySession(sessionId); if (!f) throw new Error("Session with given id not found."); id = f.id; }
+      else if (params.contextId !== undefined) { const f = byCtx(params.contextId); if (!f) throw new Error("Cannot find context with specified id"); id = f.id; }
+      return { result: { value: kids(id).map(k => ({ src: k.url, origin: k.origin, sandbox: !!k.sandbox, w: k.box.w, h: k.box.h })) } };
+    }
     if (method === "DOM.getFrameOwner") return { backendNodeId: owner(params.frameId) };
     if (method === "DOM.getBoxModel") { const f = frames[params.backendNodeId - 1000]; if (!f) throw new Error("Could not find node with given id"); const b = f.box; return { model: { content: [b.x, b.y, b.x + b.w, b.y, b.x + b.w, b.y + b.h, b.x, b.y + b.h] } }; }
     if (method === "Input.dispatchMouseEvent") {
