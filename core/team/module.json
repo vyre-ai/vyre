@@ -4,8 +4,8 @@
   "description": "Project teammates (ADR 0031): a named, persistent agent per role per project, a notes file that is its memory of record, and a serial inbox any session in the project summons it through.",
   "roles": ["box", "local"],
   "requires": ["threads", "projects", "sessions"],
-  "does": { "tools": ["team.add", "team.list", "team.ask", "team.status", "team.cancel", "team.done", "team.fail", "team.merge", "team.notes", "team.default.get", "team.default.set", "team.project-has-any", "team.project-append"] },
-  "watches": { "emits": ["teammate.created", "summon.queued", "summon.started", "summon.finished", "summon.cancelled", "teammate.default-changed"] },
+  "does": { "tools": ["team.add", "team.retire", "team.charter.get", "team.charter.set", "team.charter.history", "team.charter.diff", "team.charter.revert", "team.charter.draft", "team.role.fill", "team.duties.create", "team.duties.list", "team.duties.update", "team.duties.delete", "team.duties.run-now", "team.list", "team.ask", "team.status", "team.cancel", "team.done", "team.fail", "team.merge", "team.notes", "team.default.get", "team.default.set", "team.project-has-any", "team.project-append"] },
+  "watches": { "emits": ["teammate.created", "teammate.retired", "teammate.charter-changed", "team.role-changed", "teammate.duty-changed", "summon.queued", "summon.started", "summon.finished", "summon.cancelled", "teammate.default-changed"] },
   "shows": { "cli": ["team"] },
   "needs": {},
   "settings": [
