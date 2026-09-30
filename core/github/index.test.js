@@ -526,3 +526,38 @@ test("github.project.local-init: an empty or plain folder becomes a repo whose s
   assert.equal((await w2.as("deck")("github.project.local-init", { project: "sub" })).error.code, "nested_repo");
   assert.equal((await w.as("module:evil")("github.project.local-init", { project: "plain" })).error.code, "denied");
 });
+
+test("github.session.undo / redo / history: undo takes a session's commits off but keeps them, redo puts them back, dirty is refused, the default branch is never touched", async t => {
+  const home = makeRepo(t);
+  const w = await world(t, { projectsRows: [{ slug: "p", name: "p", home }] });
+  const sess = w.as("module:sessions", { firstParty: true });
+  const wt = (await sess("github.session.worktree", { project: "p", session: "s1" })).data;
+  const commit = (f, msg) => { fs.writeFileSync(path.join(wt.path, f), f); plainGit(wt.path, ["add", f]); plainGit(wt.path, ["-c", "user.email=a@example.com", "-c", "user.name=a", "commit", "-q", "-m", msg]); };
+  commit("a.txt", "one"); commit("b.txt", "two"); commit("c.txt", "three");
+  const person = w.as("deck");
+  const h = (await person("github.session.history", { project: "p", session: "s1" })).data;
+  assert.deepEqual(h.commits.map(c => c.subject), ["three", "two", "one"]);
+  // dirty refuses
+  fs.writeFileSync(path.join(wt.path, "d.txt"), "wip");
+  assert.equal((await person("github.session.undo", { project: "p", session: "s1" })).error.code, "dirty");
+  fs.rmSync(path.join(wt.path, "d.txt"));
+  // undo from "two" on: two and three come off
+  const u = await person("github.session.undo", { project: "p", session: "s1", to: h.commits[1].sha });
+  assert.equal(u.error, undefined);
+  assert.equal(u.data.undone, 2);
+  assert.equal(fs.existsSync(path.join(wt.path, "b.txt")), false);
+  assert.equal(fs.existsSync(path.join(wt.path, "a.txt")), true);
+  assert.equal(plainGit(home, ["rev-parse", "main"]).trim(), plainGit(home, ["rev-list", "--max-parents=0", "main"]).trim(), "main untouched");
+  assert.equal(plainGit(home, ["rev-parse", u.data.saved_as]).trim(), h.commits[0].sha, "the old tip is kept");
+  // a commit that isn't on the branch is refused
+  assert.equal((await person("github.session.undo", { project: "p", session: "s1", to: "deadbeef" })).error.code, "bad_input");
+  // redo puts them back
+  const r = await person("github.session.redo", { project: "p", session: "s1" });
+  assert.equal(r.data.head, h.commits[0].sha);
+  assert.equal(fs.existsSync(path.join(wt.path, "c.txt")), true);
+  // redo after the branch moved on is refused, nothing lost
+  await person("github.session.undo", { project: "p", session: "s1" });
+  commit("z.txt", "new");
+  assert.equal((await person("github.session.redo", { project: "p", session: "s1" })).error.code, "diverged");
+  assert.equal((await w.as("module:evil")("github.session.undo", { project: "p", session: "s1" })).error.code, "denied");
+});

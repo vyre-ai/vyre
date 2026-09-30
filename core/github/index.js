@@ -12,7 +12,7 @@
 import { connector } from "./connect.js";
 import { MIGRATIONS, store, projectStore, forOne } from "./accounts.js";
 import { prView, prMerge, prReview } from "./pr.js";
-import { cloneRepo, worktreeAdd, worktreeRemove, originFullName, folderGitState, sanitizeRemoteUrl, defaultBranchOf, pushSession, localInit } from "./git.js";
+import { cloneRepo, worktreeAdd, worktreeRemove, originFullName, folderGitState, sanitizeRemoteUrl, defaultBranchOf, pushSession, localInit, sessionHistory, sessionUndo, sessionRedo } from "./git.js";
 
 const str = { type: "string" };
 const obj = (properties, required = []) => ({ type: "object", properties, required });
@@ -489,6 +489,43 @@ export default {
         const out = await localInit(row.home);
         if (!out.already) ctx.events.emit("github.local-init", { project, branch: out.branch });
         return out;
+      },
+    });
+    ctx.tool("github.session.history", {
+      description: "A session's own commits (newest first, { sha, subject }) and how many uncommitted changes its worktree has: what Undo can go back over. Read only. Works for GitHub and local-only projects alike.",
+      input: obj({ project: str, session: str }, ["project", "session"]),
+      callers: [...PEOPLE_AND_AGENTS, "module"],
+      run: async ({ project, session }, meta = {}) => {
+        checkModuleCaller("github.session.history", meta, SESSION_ONLY);
+        const repo = await repoOf(project);
+        if (!repo) throw fail(`${project} has no git repo`, "not_found");
+        return sessionHistory({ repoDir: repo.home, session, defaultBranch: repo.defaultBranch });
+      },
+    });
+
+    ctx.tool("github.session.undo", {
+      description: "Undo a session's commits: back to `to` (a commit id from github.session.history; that commit and everything after it come off) or, without `to`, all the way to where the session started. Nothing is deleted: the tip is saved first and github.session.redo puts it back. Refuses while the worktree has uncommitted changes. Never touches the default branch, never a remote.",
+      input: obj({ project: str, session: str, to: str }, ["project", "session"]),
+      callers: [...PEOPLE_AND_AGENTS, "module"],
+      run: async ({ project, session, to }, meta = {}) => {
+        checkModuleCaller("github.session.undo", meta, SESSION_ONLY);
+        const repo = await repoOf(project);
+        if (!repo) throw fail(`${project} has no git repo`, "not_found");
+        const out = await sessionUndo({ repoDir: repo.home, session, defaultBranch: repo.defaultBranch, to: named(to) });
+        ctx.events.emit("github.session.undone", { project, session, undone: out.undone });
+        return out;
+      },
+    });
+
+    ctx.tool("github.session.redo", {
+      description: "Put back what the latest (or numbered) github.session.undo took off. Only when the session has not moved on since; otherwise refused and the saved commits stay kept.",
+      input: obj({ project: str, session: str, n: { type: "integer" } }, ["project", "session"]),
+      callers: [...PEOPLE_AND_AGENTS, "module"],
+      run: async ({ project, session, n }, meta = {}) => {
+        checkModuleCaller("github.session.redo", meta, SESSION_ONLY);
+        const repo = await repoOf(project);
+        if (!repo) throw fail(`${project} has no git repo`, "not_found");
+        return sessionRedo({ repoDir: repo.home, session, n });
       },
     });
 

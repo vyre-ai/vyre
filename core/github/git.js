@@ -346,3 +346,75 @@ export async function localInit(dir) {
   const left_out = ig.ok ? ig.stdout.split("\n").filter(Boolean).filter(f => !f.startsWith(".sessions/")).slice(0, 50) : [];
   return { already: false, branch: "main", left_out };
 }
+
+const wtPath = (repoDir, session) => path.join(repoDir, ".sessions", safeSegment(session, "session id"));
+const isSha = s => typeof s === "string" && /^[0-9a-f]{7,40}$/i.test(s);
+
+/**
+ * A session branch's own commits, newest first: `[{ sha, subject }]`, everything on it that is not
+ * on the default branch. Read only. `dirty` is whether the worktree has uncommitted changes.
+ * @param {{ repoDir: string, session: string, defaultBranch: string }} p
+ */
+export async function sessionHistory({ repoDir, session, defaultBranch }) {
+  const dest = wtPath(repoDir, session);
+  if (!fs.existsSync(dest)) throw fail(`no worktree for session ${session}`, "not_found");
+  const log = await gitAsync(dest, ["log", "--format=%H%x09%s", `refs/heads/${defaultBranch}..HEAD`]);
+  if (!log.ok) throw fail(`git log failed: ${log.stderr.trim().slice(0, 300)}`, "failed");
+  const commits = log.stdout.split("\n").filter(Boolean).map(l => { const [sha, ...s] = l.split("\t"); return { sha, subject: s.join("\t") }; });
+  const st = await gitAsync(dest, ["status", "--porcelain"]);
+  return { commits, dirty: st.ok ? st.stdout.split("\n").filter(Boolean).length : 0 };
+}
+
+/**
+ * Undo a session's commits back to `to` (a commit already on the session branch, default: where the
+ * session started, the default branch's tip it was cut from). Nothing is deleted: the current tip is
+ * first saved as refs/vyre/undone/<session>/<n>, and `sessionRedo` puts it back. Refuses with
+ * uncommitted changes in the worktree (nothing here stashes or discards them).
+ * @param {{ repoDir: string, session: string, defaultBranch: string, to?: string }} p
+ */
+export async function sessionUndo({ repoDir, session, defaultBranch, to }) {
+  const dest = wtPath(repoDir, session);
+  const id = safeSegment(session, "session id");
+  const h = await sessionHistory({ repoDir, session, defaultBranch });
+  if (h.dirty) throw fail(`the session has ${h.dirty} uncommitted change(s); commit them first, so nothing is lost`, "dirty");
+  if (!h.commits.length) throw fail("this session has no commits to undo", "nothing_to_undo");
+  let target, undone = h.commits.length;
+  if (to != null) {
+    if (!isSha(to)) throw fail("to must be a commit id from the session's history", "bad_input");
+    const inList = h.commits.find(c => c.sha.startsWith(to.toLowerCase()));
+    if (!inList) throw fail("that commit is not on this session's branch", "bad_input");
+    target = `${inList.sha}^`;
+    undone = h.commits.indexOf(inList) + 1;
+  } else {
+    target = `${h.commits[h.commits.length - 1].sha}^`;
+  }
+  const head = (await gitAsync(dest, ["rev-parse", "HEAD"])).stdout.trim();
+  const n = (await gitAsync(repoDir, ["for-each-ref", "--format=%(refname)", `refs/vyre/undone/${id}/`])).stdout.split("\n").filter(Boolean).length + 1;
+  const ref = `refs/vyre/undone/${id}/${n}`;
+  const save = await gitAsync(repoDir, ["update-ref", ref, head]);
+  if (!save.ok) throw fail(`could not save the current state first, so nothing was undone: ${save.stderr.trim().slice(0, 200)}`, "failed");
+  const reset = await gitAsync(dest, ["reset", "--hard", "-q", target]);
+  if (!reset.ok) throw fail(`git reset failed: ${reset.stderr.trim().slice(0, 300)}`, "failed");
+  const now = (await gitAsync(dest, ["rev-parse", "HEAD"])).stdout.trim();
+  return { undone, saved_as: ref, n, head: now };
+}
+
+/**
+ * Put back what the latest (or numbered) undo took off: fast-forwards the session branch to the saved
+ * tip, only when the branch has not moved on since (else refused, nothing changes).
+ * @param {{ repoDir: string, session: string, n?: number }} p
+ */
+export async function sessionRedo({ repoDir, session, n }) {
+  const dest = wtPath(repoDir, session);
+  const id = safeSegment(session, "session id");
+  if (!fs.existsSync(dest)) throw fail(`no worktree for session ${session}`, "not_found");
+  const refs = (await gitAsync(repoDir, ["for-each-ref", "--format=%(refname)", `refs/vyre/undone/${id}/`])).stdout.split("\n").filter(Boolean);
+  const nums = refs.map(r => Number(r.split("/").pop())).sort((a, b) => a - b);
+  const pick = n ?? nums[nums.length - 1];
+  if (!pick || !nums.includes(pick)) throw fail("nothing to redo", "nothing_to_redo");
+  const st = await gitAsync(dest, ["status", "--porcelain"]);
+  if (st.ok && st.stdout.trim()) throw fail("the session has uncommitted changes; commit them first", "dirty");
+  const m = await gitAsync(dest, ["merge", "--ff-only", "-q", `refs/vyre/undone/${id}/${pick}`]);
+  if (!m.ok) throw fail("the session has moved on since that undo, so it cannot be put back cleanly; its saved commits are still kept", "diverged");
+  return { redone: pick, head: (await gitAsync(dest, ["rev-parse", "HEAD"])).stdout.trim() };
+}
