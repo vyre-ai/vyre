@@ -1,7 +1,7 @@
 {
   "generated": "scripts/gen-docs-reference",
   "about": "Every Vyre command, tool, event, config key, environment variable, screen and concept, where the code defines it, the docs page that explains it, and every page, line and heading anchor that mentions it.",
-  "counts": {"command":329,"tool":712,"event":299,"config":231,"env":152,"screen":17,"concept":43},
+  "counts": {"command":329,"tool":714,"event":300,"config":231,"env":152,"screen":17,"concept":43},
   "things": [
     {"kind":"screen","name":"/a/:id","definedIn":"deck/views/artifact.js","page":"using/deck.md#what-is-on-each-view","label":"Artifact","routes":["/a/:id"],"mentions":[]},
     {"kind":"tool","name":"about.text","definedIn":"core/about/index.js","page":"reference/tools.md#abouttext","module":"about","mentions":[]},
@@ -363,7 +363,10 @@
     {"kind":"config","name":"hands.now","definedIn":"local/hands-mac/index.js","page":null,"mentions":[]},
     {"kind":"tool","name":"hands.observe","definedIn":"local/hands-mac/index.js","page":"reference/tools.md#handsobserve","module":"hands","mentions":[]},
     {"kind":"config","name":"hands.overlay","definedIn":"local/hands-mac/index.js","page":null,"mentions":[]},
+    {"kind":"tool","name":"hands.pause","definedIn":"local/hands-mac/index.js","page":"reference/tools.md#handspause","module":"hands","mentions":[]},
+    {"kind":"event","name":"hands.paused","definedIn":"local/hands-mac/index.js","page":"reference/events.md#hands","module":"hands","mentions":[]},
     {"kind":"tool","name":"hands.release","definedIn":"local/hands-mac/index.js","page":"reference/tools.md#handsrelease","module":"hands","mentions":[]},
+    {"kind":"tool","name":"hands.resume","definedIn":"local/hands-mac/index.js","page":"reference/tools.md#handsresume","module":"hands","mentions":[]},
     {"kind":"event","name":"hands.resumed","definedIn":"local/hands-mac/hands.js","page":"reference/events.md#hands","module":"hands","mentions":[]},
     {"kind":"config","name":"hands.runner","definedIn":"local/hands-mac/index.js","page":null,"mentions":[]},
     {"kind":"config","name":"hands.sleep","definedIn":"local/hands-mac/index.js","page":null,"mentions":[]},
