@@ -5,9 +5,24 @@
 // processes that outlive the script: a test must never leave one behind (82 were left on a person's
 // Mac on 30 Sep), so every test reaps in t.after, and a final check fails the file if any survive.
 import { execFileSync } from "node:child_process";
+import os from "node:os";
+import path from "node:path";
+
+/**
+ * A marker must name a folder a test made: absolute, long enough to be unique, under the temp folder. An
+ * empty or short marker would match, and so kill, everything.
+ * @param {string} marker
+ */
+function checkMarker(marker) {
+  const tmp = os.tmpdir();
+  if (typeof marker !== "string" || !path.isAbsolute(marker) || marker.length < 12 || !(marker === tmp || marker.startsWith(tmp + path.sep)) || marker === tmp || marker === tmp + path.sep) {
+    throw new Error(`reap: refusing the marker ${JSON.stringify(marker)}; it must be an absolute path of at least 12 characters under ${tmp}`);
+  }
+}
 
 /** @param {string} marker @returns {{ pid: number, pgid: number, command: string }[]} */
 export function processesWith(marker) {
+  checkMarker(marker);
   let out = "";
   try { out = execFileSync("/bin/ps", ["-axo", "pid=,pgid=,command="], { encoding: "utf8", env: {} }); } catch { return []; }
   const found = [];
@@ -23,6 +38,7 @@ export function processesWith(marker) {
 
 /** Kill everything with the marker: its group (when the group is not ours), then the process. @returns {number} how many were found */
 export function reap(/** @type {string} */ marker) {
+  checkMarker(marker);
   const mine = (() => { try { return Number(execFileSync("/bin/ps", ["-o", "pgid=", "-p", String(process.pid)], { encoding: "utf8" }).trim()); } catch { return -1; } })();
   let n = 0;
   for (let round = 0; round < 3; round++) {
