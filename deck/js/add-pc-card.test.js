@@ -1,7 +1,7 @@
 // @ts-check
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { addPc, seedProblem, seedFromHash } from "./add-pc-card.js";
+import { addPc, seedProblem } from "./add-pc-card.js";
 import { seedToWords, seedQrText, newSeed } from "../../relay/client/seedwords.js";
 import { nodeCrypto } from "../../relay/client/nodecrypto.js";
 import { base64url } from "../../relay/client/bytes.js";
@@ -38,9 +38,4 @@ test("Add a Windows PC: a wrong code never reaches the box, and each failure say
   assert.match(String(/** @type {any} */ (busy).message), /already waiting/);
   assert.match(seedProblem({ code: "unavailable" }), /relay did not answer/);
   assert.equal(seedProblem(null), "Could not add the computer.");
-});
-
-test("Add a Windows PC: a code a native app hands over rides in the fragment, is read only in that exact shape", () => {
-  assert.equal(seedFromHash("#add-pc=AAAAAAAAAAAAAAAAAAAAAA"), "AAAAAAAAAAAAAAAAAAAAAA");
-  for (const bad of ["", "#add-pc=short", "#add-pc=AAAAAAAAAAAAAAAAAAAAAA&x=1", "#other=AAAAAAAAAAAAAAAAAAAAAA", "?add-pc=AAAAAAAAAAAAAAAAAAAAAA", "#add-pc=AAAAAAAAAAAAAAAAAAAAA!"]) assert.equal(seedFromHash(bad), null, bad);
 });

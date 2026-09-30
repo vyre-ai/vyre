@@ -26,18 +26,6 @@ export function seedProblem(e) {
 }
 
 /**
- * A code handed over in the Deck's address (a native app that opened a `vyre-pc:` QR, or any link): it rides in the
- * fragment as `#add-pc=<22 characters>` (a fragment is never sent to a server). Read once, then cleared
- * from the address; it is shown as its 13 words to compare with the PC's own screen, never filled in quietly (a link can come from anyone).
- * @param {string} hash location.hash
- * @returns {string | null}
- */
-export function seedFromHash(hash) {
-  const m = /^#add-pc=([A-Za-z0-9_-]{22})$/.exec(String(hash || ""));
-  return m ? m[1] : null;
-}
-
-/**
  * The whole action, without any DOM: parse what was typed or scanned, and have the box register it.
  * Resolves { ok: true, expiresAt } or { ok: false, message }.
  * @param {string} text
@@ -64,24 +52,11 @@ export function buildAddPcCard({ attempt, cleanup, alive = () => true }) {
   let stream = /** @type {MediaStream | null} */ (null), timer = /** @type {any} */ (null);
   const stopScan = () => { if (timer) clearInterval(timer); timer = null; if (stream) for (const t of stream.getTracks()) t.stop(); stream = null; video.hidden = true; };
   cleanup(stopScan);
-  // A link (or a native app) can hand a code over in the address, and a link can come from anyone: so
-  // it is never filled in quietly. The 13 words it stands for are shown read-only, and the person
-  // compares them with their own PC's screen before tapping Add.
-  const handed = seedFromHash(globalThis.location && globalThis.location.hash);
-  if (handed) {
-    try { history.replaceState(null, "", globalThis.location.pathname + globalThis.location.search); } catch {}
-    parseSeedText(handed, crypto).then(bytes => seedToWords(bytes, crypto)).then(list => {
-      if (!alive()) return;
-      words.value = list.join(" ");
-      words.readOnly = true;
-      put(status, "This code came from a link, not from you. Add it only if these are exactly the words on your PC's screen right now. If not, close this page.");
-    }).catch(() => {});
-  }
   cleanup(() => { words.value = ""; });
 
-  const run = async (/** @type {string} */ text) => {
+  const run = async (/** @type {string} */ text, /** @type {string} */ lead = "") => {
     add.disabled = true;
-    put(status, "Waiting for your approval…");
+    put(status, lead + "Waiting for your approval…");
     const r = await addPc(text, attempt);
     if (!alive()) return;
     add.disabled = false;
@@ -89,6 +64,14 @@ export function buildAddPcCard({ attempt, cleanup, alive = () => true }) {
     else put(status, r.message);
   };
   add.addEventListener("click", () => run(words.value));
+  // After a scan the first four words are shown while the approval prompt is up, so the person can
+  // glance at their PC: the scan itself was the deliberate act, so there is no extra tap.
+  const scanned = async (/** @type {string} */ text) => {
+    let first = "";
+    try { first = (await seedToWords(await parseSeedText(text, crypto), crypto)).slice(0, 4).join(" "); } catch {}
+    words.value = "";
+    await run(text, first ? `Code read: ${first} … Check these are the first words on your PC. ` : "");
+  };
 
   // A QR code is read by the browser's own detector where there is one, else by the vendored pure-JS
   // decoder (deck/vendor/jsqr, Safari and Firefox), loaded only when the person taps scan. Either way
@@ -123,7 +106,7 @@ export function buildAddPcCard({ attempt, cleanup, alive = () => true }) {
         busy = true;
         const text = await read(video).catch(() => null);
         busy = false;
-        if (text && String(text).startsWith(QR_PREFIX)) { stopScan(); run(String(text)); }
+        if (text && String(text).startsWith(QR_PREFIX)) { stopScan(); scanned(String(text)); }
       }, 350);
     } catch { stopScan(); put(status, "The camera is not available. Type the words instead."); }
   });
