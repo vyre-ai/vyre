@@ -37,5 +37,6 @@ test("owner-only: the SDDL check looks at trustees, in any language", () => {
   assert.equal(sddlIsOwnerOnly("D:PAI(A;OICI;FA;;;WD)"), false);
   assert.equal(sddlIsOwnerOnly("D:PAI(A;OICI;FA;;;AU)"), false);
   assert.equal(sddlIsOwnerOnly("D:PAI(A;OICI;FA;;;S-1-5-32-545)"), false);
+  for (const t of ["IU", "NU", "BG", "S-1-5-4", "S-1-5-2", "S-1-5-32-546"]) assert.equal(sddlIsOwnerOnly(`D:PAI(A;OICI;FA;;;${t})`), false, t);
   assert.equal(sddlIsOwnerOnly("D:PAI(D;OICI;FA;;;WD)(A;OICI;FA;;;SY)"), true, "a deny for Everyone does not open the folder");
 });
