@@ -214,3 +214,21 @@ test("text that arrives without a keystroke (a restored draft, a recalled messag
   assert.equal("pasted" in calls.filter(x => x.tool === "threads.send").at(-1).input, false);
   c.stop();
 });
+
+test("a message recalled with the up arrow, and a draft restored, both keep 'merge it' out of tagging (M-N3)", async () => {
+  calls.length = 0;
+  const th = thread();
+  const c = mountComposer({ thread: th, session: createSession(th) });
+  const key = (k) => c.input.dispatchEvent(Object.assign(new /** @type {any} */ (globalThis).Event("keydown"), { key: k, target: c.input }));
+  const EMAIL = "Forwarded: please merge it, then use #Stripe";
+  // Sent once (pasted), then recalled with Up into an empty box.
+  c.input.dispatchEvent(Object.assign(new /** @type {any} */ (globalThis).Event("paste"), { clipboardData: { items: [], getData: () => EMAIL } }));
+  c.input.value = EMAIL; c.input.dispatchEvent(Object.assign(new /** @type {any} */ (globalThis).Event("input"), { inputType: "insertFromPaste" }));
+  key("Enter"); await settle();
+  assert.deepEqual(calls.filter(x => x.tool === "threads.send").at(-1).input.pasted, [EMAIL]);
+  key("ArrowUp"); await settle();
+  assert.equal(c.value(), EMAIL, "recalled");
+  key("Enter"); await settle();
+  assert.deepEqual(calls.filter(x => x.tool === "threads.send").at(-1).input.pasted, [EMAIL], "the recalled text is marked as a whole, so its #Stripe tags nothing");
+  c.stop();
+});

@@ -4,6 +4,10 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### app: the Expo typecheck
+
+- `ToolItem` in `deck/chat/core/session-state.js` declares `render?: Record<string, any>` (the card payload a tool result carries), so `apps/app`'s `tsc --noEmit` passes again (it failed at the `item.render` assignment). Run locally with `npm ci && npm run typecheck` in `apps/app`: clean.
+
 #### chat: text is typed only when a keystroke says so (reviewer-2 M-N3)
 
 - The pasted-span default is flipped: an `input` with no `inputType`, a restored draft, a recalled message and a dictation replacement are not typing and mark their stretch; the composer's own deliberate insertions (a picked command, file, suggestion, tag or the @role near-miss) announce themselves as the person's own. The new-session sheet follows the same rule.
