@@ -4,6 +4,8 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+- module-sdk: toolEntries leaves target, projectArg and cwdArg out of an entry unless the manifest sets them, so the v1 entry shape is unchanged.
+
 - A daemon-level test that no module does work after vyred stops: the full registry starts, stops (after its startup work, at once, mid-startup, and with agents missing), then runs two seconds more with the store closed; any `database is not open`, unhandled rejection or uncaught exception fails it and names the module from its stack path. A control module that writes after stop proves the check catches and names it (`test/stop-quiet.test.js`). It found no other module on this machine's config.
 - The projects module's `stop()` now ends the access auto-seed's retries and waits (two seconds at most) for the step it is in; before, the seed kept running and writing after the registry stopped and its database closed ("database is not open"), which a test worked around with a sleep (`core/projects/index.js`).
 - A folder an agent names (cwdArg) is judged on its real path and the tool runs on it: `projects.of` answers the canonical `folder` (symlinks and `..` resolved), and the registry replaces the checked field with it. A `..` path or a symlink into another project is refused (`core/projects/index.js`, `core/modules/index.js`, `core/projects/cwd-grant.test.js`; reviewer-2).
