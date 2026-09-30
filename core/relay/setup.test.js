@@ -506,13 +506,14 @@ test("route key: only a name-directory message for this box's own route is signe
   }
 });
 
-test("setup boot: a code with a stamp over an hour old is ignored, a fresh or unstamped one starts", async t => {
+test("setup boot: a code starts only with a stamp from the last hour; missing, garbage, future and stale ones are refused", async t => {
   const saved = { ...process.env };
   t.after(() => { for (const k of Object.keys(process.env)) if (!(k in saved)) delete process.env[k]; });
   const { code } = await newCode();
-  for (const [at, expect] of [[String(Math.floor(Date.now() / 1000) - 3700), "none"], [String(Math.floor(Date.now() / 1000) - 60), "waiting"], [undefined, "waiting"], [String(Date.now() - 3_700_000), "none"]]) {
+  const sec = Math.floor(Date.now() / 1000);
+  for (const [at, expect] of [[String(sec - 3700), "none"], [String(sec - 60), "waiting"], [String(Date.now() - 60_000), "waiting"], [undefined, "none"], ["abc", "none"], ["99999999999", "none"], [String(9e15), "none"], [String(Date.now() - 3_700_000), "none"], ["", "none"]]) {
     process.env.VYRE_SETUP_CODE = code;
-    if (at) process.env.VYRE_SETUP_CODE_AT = at; else delete process.env.VYRE_SETUP_CODE_AT;
+    if (at !== undefined) process.env.VYRE_SETUP_CODE_AT = at; else delete process.env.VYRE_SETUP_CODE_AT;
     const w = await world(t);
     await settle(150);
     const st = (await w.d.registry.call("relay.setup.status", {}, "cli")).data;

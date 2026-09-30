@@ -40,6 +40,7 @@ test("setup handoff: the name install-box.sh writes into vyre.env is the name th
   assert.ok(lines.includes("CLOUDFLARE_VYRE_TOKEN=keep"), "the person's lines stay");
   const names = lines.filter(l => !l.startsWith("#") && /code/i.test(l.split("=")[0])).map(l => l.split("=")[0]);
   assert.deepEqual(names.filter(n => n !== "VYRE_SETUP_CODE_AT"), ["VYRE_SETUP_CODE"], "the box's name for the code, and only that");
+  assert.ok(names.includes("VYRE_SETUP_CODE_AT"), "and the stamp the relay needs to accept it (epoch seconds)");
 
   // What compose does with env_file: every KEY=VALUE becomes the container's environment. The relay
   // boots on it and starts a setup session.

@@ -46,7 +46,7 @@ test("tailscale: login answers the link, watches until connected, and the link i
   w.s = status("Running");
   await w.timers[0]();
   assert.equal(w.timers.length, 0, "the watcher ends at connected");
-  assert.deepEqual(w.emitted, [{ t: "tailscale.changed", p: { state: "connected", login: "alex@gmail.com", tailnetKind: "personal", ip: "100.64.1.2" } }]);
+  assert.deepEqual(w.emitted, [{ t: "tailscale.changed", p: { state: "connected", tailnetKind: "personal" } }]);
   assert.ok(![...w.emitted.map(e => JSON.stringify(e)), ...w.logs].some(x => x.includes("abc123")), "the link is in no event and no log");
   assert.deepEqual(await call("network.tailscale.login"), { loginUrl: null, state: "connected" });
   svc.stop();
@@ -61,14 +61,48 @@ test("tailscale: needs-approval and peers of the same login", async () => {
   assert.deepEqual(p.peers.map(x => [x.node, x.mine, x.online]), [["laptop.tail1.ts.net", true, true], ["kit", false, false]]);
 });
 
-test("tailscale: a guest, an agent or an anonymous caller gets nothing; a missing Tailscale is a state, not a throw", async () => {
+test("tailscale: only the person's surfaces, devices, onboard and own session; every other caller is refused", async () => {
   const { call } = world(status("Running"));
+  const good = ["cli", "local", "deck", "capsule", "device:abcdefghijklmnop", "module:onboard", "mcp:thread:t_123"];
+  const bad = ["tailnet-guest:sam@harlow.example", "anonymous", "mcp", "hook", "onboard", "module:sneaky", "mcp:agent:kit", "cli:agent:kit", "device:abcdefghijklmnop:agent:kit", "mcp:thread:t_1:agent:kit", "tailnet:agent:kit", "harness:agent:kit", "", "sessions"];
   for (const tool of ["network.tailscale.status", "network.tailscale.login", "network.tailscale.peers"]) {
-    for (const caller of ["tailnet-guest:sam@harlow.example", "anonymous", "mcp"]) await assert.rejects(call(tool, { caller }), /denied|guest|owner/, `${tool} ${caller}`);
+    for (const caller of good) await call(tool, { caller }).then(() => {}, e => assert.fail(`${tool} refused ${caller}: ${e.message}`));
+    for (const caller of bad) await assert.rejects(call(tool, { caller }), /owner's/, `${tool} ${caller}`);
+    await assert.rejects(call(tool, { caller: "cli", agent: "kit" }), /owner's/, `${tool} meta.agent`);
   }
   const ctx2 = { log() {}, events: { emit() {} }, tool: (n, d) => { ctx2.t[n] = d; }, t: /** @type {any} */ ({}) };
   startTailscale(ctx2, { run: async () => ({ code: 127, out: "", err: "" }) });
   const v = await ctx2.t["network.tailscale.status"].run({}, { caller: "cli" });
   assert.equal(v.state, "off");
   assert.match(v.why, /not installed/);
+});
+
+test("tailscale: one `up` however many clicks, one 15-minute watch that more clicks do not extend, and the event says only the state", async () => {
+  let clock = 1000, resolveUp;
+  const w = { s: status("NeedsLogin"), ups: 0, emitted: /** @type {any[]} */ ([]), timers: /** @type {Function[]} */ ([]) };
+  const tools = new Map();
+  const ctx = { log() {}, events: { emit: (t, p) => w.emitted.push({ t, p }) }, tool: (n, d) => tools.set(n, d) };
+  const run = async () => ({ code: 0, out: JSON.stringify(w.s), err: "" });
+  const up = () => { w.ups++; return new Promise(r => { resolveUp = r; }); };
+  startTailscale(ctx, { run, up, setTimer: fn => { w.timers.push(fn); return { unref() {} }; }, clearTimer: () => { w.timers.length = 0; }, now: () => clock });
+  const login = () => tools.get("network.tailscale.login").run({}, { caller: "cli" });
+  const a = login(), b = login();
+  await new Promise(r => setImmediate(r));
+  assert.equal(w.ups, 1, "two clicks, one tailscale up");
+  resolveUp({ loginUrl: URL_, exited: false });
+  assert.equal((await a).loginUrl, URL_); assert.equal((await b).loginUrl, URL_);
+  // after the first click 14 minutes pass, and another click does not extend the watch
+  w.s = { ...status("NeedsLogin"), AuthURL: URL_ };
+  clock += 14 * 60_000; await login();
+  clock += 2 * 60_000;
+  await w.timers[0]();
+  assert.equal(w.timers.length, 0, "15 minutes from the first click, the watch is over");
+  await login();
+  assert.equal(w.timers.length, 0, "a click just after a finished watch starts no new one");
+  clock += 61_000; await login();
+  assert.equal(w.timers.length, 1, "a minute later a click can watch again");
+  w.s = status("Running"); await w.timers[0]();
+  const ev = w.emitted.filter(e => e.t === "tailscale.changed");
+  assert.ok(ev.length >= 1);
+  for (const e of ev) assert.deepEqual(Object.keys(e.p).sort(), ["state", "tailnetKind"], "no login, no address on the bus");
 });

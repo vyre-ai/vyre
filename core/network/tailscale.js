@@ -10,12 +10,13 @@
 //                             and it is fetched again on every click.
 //   network.tailscale.peers   other nodes of the same login (a new computer or phone signing in).
 //
-// `tailscale.changed { state, login, tailnetKind, ip }` fires on every state change, so the page
+// `tailscale.changed { state, tailnetKind }` fires (the login and address are read with status: every module reads events) on every state change, so the page
 // never polls. The box learns of a change only by looking, so while a sign-in is pending (after
-// login, until connected, at most 15 minutes) it looks every 3 seconds; otherwise nothing runs.
+// login, until connected, at most 15 minutes from the first click) it looks every 3 seconds;
+// otherwise nothing runs. A recorded exception to the 60 s floor: a person waits, on the box, for a bounded time.
 
 import * as ts from "../names/tailscale.js";
-import { agentClaim } from "../modules/index.js";
+import { ownerDevice } from "../modules/index.js";
 
 const PENDING_MS = 3000;
 const PENDING_MAX = 15 * 60_000;
@@ -56,12 +57,17 @@ export function shape(s) {
  * @param {{ run?: typeof ts.run, up?: typeof ts.up, setTimer?: typeof setInterval, clearTimer?: typeof clearInterval, now?: () => number }} [seam] tests pass a fake tailscale
  */
 export function startTailscale(ctx, { run = ts.run, up = ts.up, setTimer = setInterval, clearTimer = clearInterval, now = Date.now } = {}) {
-  /** Not a guest, not an agent: the owner, or the setup channel (a device before the owner exists). */
+  /**
+   * Positive list. The person's own surfaces (cli, local, deck, capsule), their owner devices (which
+   * is also the setup channel's caller), the onboard module, and the person's own model session
+   * (mcp:thread:<id>, which the person's chat and assistant run as). Everything else is refused:
+   * a guest, another agent, an added module, a bare mcp or anonymous label. The sign-in link that a
+   * session may receive is kept out of the recall index (core/recall/indexer.js redactLinks).
+   */
   const allowed = (/** @type {any} */ caller, /** @type {any} */ meta, /** @type {string} */ what) => {
     const c = String(caller || "");
-    if (c.startsWith("tailnet-guest:")) throw fail("denied", `a guest cannot use ${what}`);
-    if ((meta && meta.agent) || agentClaim(c)) throw fail("denied", `"${c}" is an agent; ${what} is the owner's`);
-    if (["anonymous", "hook", "mcp"].includes(c)) throw fail("denied", `${what} is the owner's`);
+    const ok = !(meta && meta.agent) && ((ownerDevice(c) && !/(^|[\s:])agent:/.test(c)) || ["cli", "local", "deck", "capsule"].includes(c) || c === "module:onboard" || /^mcp:thread:[^\s:]+$/.test(c));
+    if (!ok) throw fail("denied", `${what} is the owner's: from their own surfaces, their devices or their own session`);
   };
 
   async function read() {
@@ -74,24 +80,27 @@ export function startTailscale(ctx, { run = ts.run, up = ts.up, setTimer = setIn
 
   /** @type {string|null} */ let last = null;
   const announce = (/** @type {any} */ v) => {
-    const key = [v.state, v.login, v.tailnetKind, v.ip].join("|");
+    const key = [v.state, v.login, v.tailnetKind, v.ip].join("|");   // any change counts, but the event says only the state
     if (key === last) return;
     const first = last === null;
     last = key;
     if (first) return;
-    try { ctx.events.emit("tailscale.changed", { state: v.state, login: v.login, tailnetKind: v.tailnetKind, ip: v.ip }); } catch {}
+    try { ctx.events.emit("tailscale.changed", { state: v.state, tailnetKind: v.tailnetKind }); } catch {}
   };
 
+  /** @type {Promise<any>|null} */ let upFlight = null;   // one `tailscale up` at a time, however many clicks
   /** @type {any} */ let timer = null;
   let pendingSince = 0;
-  const stopWatching = () => { if (timer) { clearTimer(timer); timer = null; } };
+  const stopWatching = (cool = false) => { if (timer) { clearTimer(timer); timer = null; if (cool) coolUntil = now() + 60_000; } };
+  let coolUntil = 0;
   const watch = () => {
+    // 15 minutes from the first click: more clicks do not extend it, and a finished watch rests a minute.
+    if (timer || now() < coolUntil) return;
     pendingSince = now();
-    if (timer) return;
     timer = setTimer(async () => {
       try {
         const v = await read(); announce(v);
-        if (v.state === "connected" || now() - pendingSince > PENDING_MAX) stopWatching();
+        if (v.state === "connected") stopWatching(); else if (now() - pendingSince > PENDING_MAX) stopWatching(true);
       } catch {}
     }, PENDING_MS);
     if (timer && typeof timer.unref === "function") timer.unref();
@@ -118,7 +127,8 @@ export function startTailscale(ctx, { run = ts.run, up = ts.up, setTimer = setIn
       // A pending login has its own link in the status; a stopped one needs `up` to make one.
       let loginUrl = v.raw && v.raw.AuthURL ? String(v.raw.AuthURL) : null;
       if (!loginUrl) {
-        const r = await up({ wait: 10_000 });
+        upFlight = upFlight || up({ wait: 10_000 }).finally(() => { upFlight = null; });
+        const r = await upFlight;
         loginUrl = r.loginUrl;
         v = await read();
       }
