@@ -101,9 +101,10 @@ in the child, credentials only via `net` (parent-attached, scrubbed in body/logs
 `net` means no network. Skill, use-the-vault line and docs/using/watchers.md updated. module.test.js edited to
 the net shape but not run here (daemon: runner only).
 
-ask(): runner verb + run.js handler + runtime.askModel (per-watcher daily budget in watchers_spend, until
-core/spend lands), watcher.json `ask: {dailyUsd}`; needs threads.quick (on work/sessions-02, not stage yet) or
-ctx.ask; tests use a fake. Push duties run on vault.push (f9ab6614). resume is person-only (e79f6571).
+ask(): runner verb + run.js handler + runtime.askModel; budget in core/spend under `watcher:<name>` (check for the
+provider cap, summary rows for this watcher's day, record after); watcher.json `ask: {dailyUsd}`; model via
+threads.quick (on work/sessions-02, not stage yet). UNVERIFIED: whether threads.quick's own thread.finished also
+lands in the ledger, which would count a quick twice; check when sessions-02 is merged. Tests use fakes.
 
 ## Next
 

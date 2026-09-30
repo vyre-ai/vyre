@@ -16,7 +16,7 @@ import { tempHome } from "../../test/helpers.js";
 const HOME_FOLDERS = ["/work/harlow-legal", "/work/harlow-site"];
 
 /** A runtime in a temp home. `vault` maps names to values; `now` is the clock, moved by hand. */
-function setup(t, { vault = {}, ask } = {}) {
+function setup(t, { vault = {}, ask, spend } = {}) {
   const root = tempHome(t);
   const db = open(path.join(root, "vyre.db"));
   t.after(() => db.close());
@@ -26,7 +26,7 @@ function setup(t, { vault = {}, ask } = {}) {
   const clock = { now: new Date("2026-03-02T10:07:00").getTime() };
   const events = [], taught = [], fetched = [];
   const rt = new Runtime({
-    db, dir, now: () => clock.now, log: () => {}, ask, netOptions: () => testHooks.net,
+    db, dir, now: () => clock.now, log: () => {}, ask, spend, netOptions: () => testHooks.net,
     emit: (type, payload) => events.push({ type, ...payload }),
     call: async tool => tool === "projects.list"
       ? { data: { projects: [{ slug: "harlow-legal", name: "Harlow Legal", home: HOME_FOLDERS[0], workspaces: HOME_FOLDERS }] } }
@@ -414,8 +414,9 @@ test("watchers: a push duty runs on vault.push for its connection and project on
 });
 
 test("watchers: ask is a model judgment inside a declared daily budget, with no secrets in and a capped refusal out", async t => {
-  const asked = [];
-  const { rt, write } = setup(t, { ask: async (prompt, o) => { asked.push({ prompt, ...o }); return { text: /bakery/i.test(prompt.split("? ")[1]) ? "yes, relevant" : "no", usd: 0.06 }; } });
+  const asked = [], ledger = [];
+  const spend = { check: async () => ({ ok: true }), used: async p => ledger.filter(e => e.purpose === p).reduce((n, e) => n + e.usd, 0), record: async e => { ledger.push(e); } };
+  const { rt, write } = setup(t, { spend, ask: async (prompt, o) => { asked.push({ prompt, ...o }); return { text: /bakery/i.test(prompt.split("? ")[1]) ? "yes, relevant" : "no", usd: 0.06 }; } });
   const code = `export default async function watch({ ask, emit, log }) {
     for (const title of ["Northwind Bakery opens", "Weather"]) {
       let verdict; try { verdict = await ask("Is this relevant to a bakery client? " + title); } catch (e) { log("ask refused:", e.message); continue; }
@@ -429,7 +430,8 @@ test("watchers: ask is a model judgment inside a declared daily budget, with no 
   const r = await rt.test("judge");
   assert.deepEqual(r.items.map(i => i.id), ["Northwind Bakery opens"]);
   assert.equal(asked.length, 2);
-  assert.match(asked[0].purpose, /^watcher\/judge$/);
+  assert.equal(asked[0].purpose, "watcher:judge");
+  assert.deepEqual(ledger.map(e => [e.purpose, e.usd]), [["watcher:judge", 0.06], ["watcher:judge", 0.06]], "spend goes in core/spend under watcher:<name>");
   // $0.12 is spent against a $0.10 day: the next run's first ask is refused, not sent.
   const again = await rt.test("judge");
   assert.match(again.logs.join(), /daily model budget of \$0.1/);
@@ -441,4 +443,10 @@ test("watchers: ask is a model judgment inside a declared daily budget, with no 
   const { rt: bare, write: w2 } = setup(t);
   w2("noask", code, { ask: { dailyUsd: 1 } });
   assert.match((await bare.test("noask")).logs.join(), /no model is available/);
+  const { rt: nospend, write: w3 } = setup(t, { ask: async () => ({ text: "yes" }) });
+  w3("nospend", code, { ask: { dailyUsd: 1 } });
+  assert.match((await nospend.test("nospend")).logs.join(), /spend ledger is off/);
+  const { rt: capped, write: w4 } = setup(t, { ask: async () => ({ text: "yes" }), spend: { ...spend, check: async () => ({ ok: false, line: "Claude is at its cap for today" }) } });
+  w4("capped", code, { ask: { dailyUsd: 1 } });
+  assert.match((await capped.test("capped")).logs.join(), /Claude is at its cap/);
 });

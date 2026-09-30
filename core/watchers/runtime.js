@@ -78,8 +78,6 @@ export const MIGRATIONS = [`
     logs TEXT
   );
   CREATE INDEX watchers_runs_watcher ON watchers_runs(watcher, id);
-`, `
-  CREATE TABLE watchers_spend (watcher TEXT NOT NULL, day TEXT NOT NULL, usd REAL NOT NULL DEFAULT 0, calls INTEGER NOT NULL DEFAULT 0, PRIMARY KEY (watcher, day));
 `];
 
 /**
@@ -486,19 +484,21 @@ export class Runtime {
 
   /**
    * A watcher's one way to a model: a judgment fed back into its own code (is this relevant, which
-   * of these). No tools, no vault values, never a decision to send. The spend cap is per watcher and
-   * per day, from watcher.json's ask.dailyUsd; a capped watcher's ask is refused, not queued.
+   * of these). No tools, no vault values, never a decision to send. Spend is core/spend's, one
+   * ledger with everything else: the row's purpose is `watcher:<name>`, the provider's own daily cap
+   * applies (spend.check), and watcher.json's ask.dailyUsd caps this watcher's rows for the day.
    */
   async askModel(spec, prompt) {
+    const sp = this.d.spend;
     if (typeof this.d.ask !== "function") throw new Error("no model is available to a watcher on this machine yet");
-    const day = new Date(this.now()).toISOString().slice(0, 10);
-    const row = /** @type {any} */ (this.db.prepare("SELECT usd FROM watchers_spend WHERE watcher = ? AND day = ?").get(spec.name, day));
-    const cap = spec.ask ? spec.ask.dailyUsd : 0;
-    if (Number(row?.usd || 0) >= cap) throw new Error(`${spec.name} reached its daily model budget of $${cap}`);
-    const r = await this.d.ask(prompt, { purpose: `watcher/${spec.name}`, maxUsd: Math.max(0.001, cap - Number(row?.usd || 0)) });
-    const usd = Number(r && r.usd) || 0;
-    this.db.prepare(`INSERT INTO watchers_spend (watcher, day, usd, calls) VALUES (?,?,?,1)
-      ON CONFLICT(watcher, day) DO UPDATE SET usd = usd + excluded.usd, calls = calls + 1`).run(spec.name, day, usd);
+    if (!sp) throw new Error("a watcher cannot ask a model while the spend ledger is off");
+    const purpose = `watcher:${spec.name}`, cap = spec.ask ? spec.ask.dailyUsd : 0;
+    const standing = await sp.check();
+    if (standing && standing.ok === false) throw new Error(standing.line || "today's model budget is reached");
+    const used = await sp.used(purpose);
+    if (used >= cap) throw new Error(`${spec.name} reached its daily model budget of $${cap}`);
+    const r = await this.d.ask(prompt, { purpose, maxUsd: Math.max(0.001, cap - used) });
+    await sp.record({ provider: (r && r.provider) || "claude", purpose, usd: Number(r && r.usd) || 0 });
     return String((r && r.text) || "");
   }
 
