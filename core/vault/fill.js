@@ -25,6 +25,7 @@ import http from "node:http";
 import { canonical, same } from "./crypto.js";
 import { totp } from "./totp.js";
 import { otpRoute, saveRoute } from "./fill-save.js";
+import { saveKeyRoute } from "./fill-key.js";
 import * as passkeys from "./fill-passkey.js";
 import * as cards from "./fill-cards.js";
 
@@ -135,11 +136,14 @@ const ok = data => ({ status: 200, body: { data } });
 
 export class Fill {
   /**
-   * @param {{ vault: import("./vault.js").Vault, verifyVaultPassphrase?: (p: string) => Promise<boolean>, now?: () => number, config?: any, extensions?: string[] }} deps
+   * @param {{ vault: import("./vault.js").Vault, verifyVaultPassphrase?: (p: string) => Promise<boolean>, now?: () => number, config?: any, extensions?: string[],
+   *   connect?: (k: { item: string, kind: string, provider: string }) => Promise<{ module: string }|null> }} deps
    *   config: the whole config.json, for `vault.fill.window`. extensions: the extension origins
-   *   that may pair (vault.fill.extensions); empty means any.
+   *   that may pair (vault.fill.extensions); empty means any. connect: called after a page's API
+   *   key is saved (fill-key.js) so it can be granted to a module whose need names its provider.
    */
-  constructor({ vault, verifyVaultPassphrase, now = Date.now, config = null, extensions = [] }) {
+  constructor({ vault, verifyVaultPassphrase, now = Date.now, config = null, extensions = [], connect }) {
+    this.connect = typeof connect === "function" ? connect : null;
     this.extensions = new Set(extensions.map(String));
     /** Signed-request nonces seen, with when each can be forgotten. @type {Map<string, number>} */
     this.proofNonces = new Map();
@@ -277,6 +281,7 @@ export class Fill {
       case "GET status": return this.status(h);
       case "POST otp": return otpRoute(this, b, h);
       case "POST save": return saveRoute(this, b, h);
+      case "POST save-key": return saveKeyRoute(this, b, h);
       case "POST identities": return cards.identitiesRoute(this, b, h);
       case "POST passkeys": return passkeys.listRoute(this, b, h);
       case "POST passkey.create": return passkeys.createRoute(this, b, h);
@@ -637,7 +642,7 @@ export class Fill {
 
 // ---- the listener -----------------------------------------------------------------------
 
-const ROUTES = { pair: "POST", unlock: "POST", challenge: "POST", lock: "POST", match: "POST", fill: "POST", status: "GET", otp: "POST", save: "POST",
+const ROUTES = { pair: "POST", unlock: "POST", challenge: "POST", lock: "POST", match: "POST", fill: "POST", status: "GET", otp: "POST", save: "POST", "save-key": "POST",
   identities: "POST", passkeys: "POST", "passkey.create": "POST", "passkey.get": "POST", "passkey.assert": "POST", "passkey.register": "POST", cards: "POST", "card.fill": "POST", "address.fill": "POST" };
 
 class HttpError extends Error {
@@ -702,7 +707,7 @@ export async function serveFill({ host = "127.0.0.1", port = 0, fill, names = []
         if (req.headers["access-control-request-private-network"]) cors["access-control-allow-private-network"] = "true";
       }
       const path = new URL(req.url || "/", "http://fill").pathname;
-      const m = /^\/v1\/fill\/([a-z]+(?:\.[a-z]+)?)$/.exec(path);
+      const m = /^\/v1\/fill\/([a-z]+(?:[.-][a-z]+)?)$/.exec(path);
       const name = m ? m[1] : "";
       if (!Object.hasOwn(ROUTES, name)) return reply(404, { error: { code: "not_found", message: `${req.method} ${path}` } });
       if (req.method === "OPTIONS") { res.writeHead(204, { ...cors, "content-length": "0" }); return res.end(); }

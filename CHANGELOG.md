@@ -5,10 +5,128 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 ## Unreleased
 
 - The setup page's staging overrides are narrowed: an install URL must be under vyre.run or vyre-site.pages.dev (not any pages.dev name), a relay under vyre.run only.
+- The box image makes the per-account homes the spawner requires: uids and groups 2000 to 2063, each with a private `/home/acct/<uid>` (owner the account, mode 0710), `vyre` in every account's group so vyred can read transcripts, and compose mounts `/home/acct` as the `vyre-accounts` volume so accounts survive a recreate. Before this a fresh box answered "spawner: account 2001 has no home at /home/acct/2001" to every sign-in, so the setup page could not sign an account in (e2e2's B1). The box-image job checks the homes' owner and mode and vyre's groups (`box/Dockerfile`, `box/compose.yml`, `.github/workflows/box-image.yml`).
 - `scripts/deploy-site.sh DIR --branch main|staging` is the one way to deploy the site: `--branch main` (vyre.run) refuses a folder that contains `setup/config.json`. `scripts/stage-site.sh` now validates the relay and install URL with the same code the page runs (`site/setup/config.js`), not shell patterns, so a lookalike host such as `ws://127.0.0.1.evil.example` is refused and never widens the CSP, and it prints what it wrote.
 - Reviewer-2's M-S1: the setup page ignores `/setup/config.json` on vyre.run and www.vyre.run, and elsewhere takes an install URL or relay only on a host under vyre.run or pages.dev (relay: workers.dev too) or a test runner's loopback, so nothing put on the production origin can change the install line.
 - Reviewer-2's follow-ups on the release files: root's `publish-release` copies each file without following links into a root-only temp folder, checks the copies are regular files, publishes only when SHA256SUMS.sig verifies over the copied SHA256SUMS (so an unsigned release publishes nothing), and only publishes a shell.json that the signed list has; the Mac `vyre update` publishes only after a verified signature (not after `--allow-unsigned`); `build-phone` refuses a sw.js without the SHELL_SIGNED line (the phone would run unchecked) and a shell.json path that climbs out of the site.
 - A staging build of the setup page can point at another relay and install line: `scripts/stage-site.sh --out DIR --relay wss://... --install-url https://...` copies the built site, writes `setup/config.json` (checked by `site/setup/config.js`: a plain wss relay, a plain https install URL) and widens that copy's CSP to the staging relay only. Production has no config.json and is unchanged. Deploy the copy with `--branch staging`, never main. `VYRE_SETUP_RELAY` and `VYRE_SETUP_INSTALL_URL` in the environment do the same as the flags, and a loopback `ws://` relay and `http://` install URL are accepted for a test runner's own machine.
+#### Vault and Gate: what the person said runs at once, and vault.request (plan P17, C25, P5; reviewer N1, N2, N4, N5, M8, M10, M11)
+
+- `said_intents` (`core/vault/said.js`, table `vault_said_intents`, MACed like the vault's other
+  tables): what the person's own turn asked to go out, `{thread, said, kind: send|post|pay|act_out,
+  channel?, to[], what, when, standing, limits?, at, revoked}`. The only writer is the internal
+  `vault.said.record`, which refuses every caller but `module:sessions` and `module:assistant`
+  (a model, agent, watcher, tailnet guest, the CLI and every other module are refused by name, with
+  a test each). The person's tools are `gate.said.list` and `gate.said.revoke` (cli, local, deck,
+  capsule; a revoke needs no presence). The pure matcher `matchIntent` is exact: kind, channel (when
+  the intent names one) and every recipient, an address compared without case, a bare name never
+  matches, a payment needs the payee and an amount inside `limits`, only intents recorded before the
+  call and not revoked count, a plain one only in the call's thread lineage and a `standing` one
+  everywhere. `vault.said.match` is the internal tool the Gate asks.
+- Gate: `gate.request` asks `vault.said.match` before it holds. A match calls the new
+  `Gate.sendNow`: the sender runs at once, with no held card and no proof of presence, and the item
+  is written in state `sent` with `by: "said:<intent id>"`; `gate.released` carries `by` and `said`.
+  If the sender fails the item falls back to held with the error, like a failed approval. With no
+  vault, no match or an error the request holds exactly as before. `KINDS` gains `act` (audited,
+  never a per-action prompt; held only for a send, post or pay nothing said covers, approved with
+  Touch ID); a sender that names no kinds still takes only send, spend and delete.
+- `api-credential` (`lib/vault-kinds/kinds.js`, `core/vault/api-request.js`): an item holding
+  `config` (`{auth, hosts, endpoints}`, checked by `normalize`) and its own sealed `secret`, or a
+  reference to another item that holds it. Made and changed only from a person's own surfaces
+  (checked in `Vault.put` by caller identity: never a module, watcher, agent or mcp), never in a
+  shared vault. Never handed out: `vault.release`, `vault.inject`, env injection, an agent grant,
+  reveal, copy, a one-time code, fill, a pass and the emergency escrow all refuse it (`Vault.fields`
+  refuses it unless it is the sealed backup, which carries it).
+- `vault.request {credential, method, url, headers?, query?, body?}` (`core/vault/request.js`):
+  strict target check (resolve, refuse private, loopback, link-local, CGNAT, metadata and every
+  IPv6 form that carries them, then connect to the validated address with the url's own Host and
+  TLS name, checked again at connect time and at every redirect); a redirect is followed only for a
+  read on the same host, so the Authorization header never leaves it; a caller cannot set
+  Authorization, Cookie, Host, framing or a method-override header or query. Classified by the
+  credential's endpoints and exact-host presets (Gmail, Graph mail, Stripe writes); an unlisted GET
+  on a wildcard host is refused (M8). A read runs at once; an outward call is matched against the
+  person's intents and runs at once on a match, otherwise held at the Gate as the `vault-api`
+  sender with a card Vyre builds from parsed fields (recipients, amount, host and path, never a
+  subject or a body) and an approval hash over method, url, headers and body that `vault.api.send`
+  re-checks against the Gate's own record. A watcher context may only read. Response scrubbed of
+  every value the credential touched and cut to the MCP result size. Bearer, api-key and
+  service-account (RS256 JWT for a fixed subject via `node:crypto`, token endpoint held to the same
+  target check) work; oauth is accepted and stored but signing in for one is not built yet.
+- `SHARED_SUFFIXES`: a `*.` host on a domain anyone can rent a name under (googleapis.com,
+  amazonaws.com, appspot.com, run.app, azurewebsites.net, workers.dev and about twenty more) is
+  refused; the exact host is fine. An address is never a host entry. A leading `*.` matches one real
+  hostname label only.
+- Tests: `said.test.js`, `request.test.js`, `api-credential.test.js`,
+  `api-request-adversarial.test.js`, additions to `api-request.test.js`, and `core/gate/said.test.js`
+  and `gate.test.js` for the hook. `module.test.js` and `presence.test.js` updated for the project
+  grant trail and the new tools.
+
+#### Vault extension: save an API key a page shows, in one tap (plan C26, the one Vyre extension)
+
+- `keyfind.js` (pure): a provider prefix from the rows of `core/vault/detect.js` (sk-ant-, sk-,
+  ghp_, xoxb-, AKIA and about 25 more), or a generic high-entropy string under a key, token or
+  secret label. A UUID, a git or file hash, a base64 image, a placeholder (`sk-xxxxxxxx`,
+  `YOUR_API_KEY`) or a password input's value never counts. Table-driven tests, with a parity
+  check against `detect.js` for every shape.
+- `keychip.js`: a page-side script (top frame, registered once paired and allowed on pages, on
+  unless turned off in the popup) that reads what a page shows locally, the text a person copies
+  and the box beside a clicked Copy button, and raises a small chip in a closed shadow root. One
+  trusted tap on Save stores the key ready to use, with Undo in the same chip for 10 seconds; no
+  draft, no second dialog. Before the tap only a fingerprint leaves the page; a value is offered
+  once per tab and never while Vyre is locked.
+- `POST /v1/fill/save-key` (`core/vault/fill-key.js`): same device and session gate as
+  `/v1/fill/save`. It classifies the value again with `detect.js` (kind, provider), names the item
+  from the page host and label, records the origin, sets `details.provider`, and calls an optional
+  `connect` hook given to `Fill` so a module's matching need can be filled. It refuses a save
+  whose page origin is not the origin the chip was raised on, and undo removes only what the route
+  made for the same device and page within two minutes. Nothing returns, audits or emits the value.
+- The popup has an "Offer to save API keys pages show" toggle; the page permission is dropped
+  only when all three toggles are off. `keyfind.js` and `keychip.js` join the build's INJECTED list.
+
+#### Connectors: the push credential, one Google consent for hosted MCP and mail push (plan: vault.md "Push credentials", risk 7)
+
+- `core/connectors/google.js`: one authorize call asks for the hosted-MCP scopes and
+  `https://mail.google.com/` together, and stores one token set in one item, bound to Google's issuer
+  and to the hosted Gmail, Calendar and Drive addresses (P21). The result records `imap` and `broad`
+  and carries `scope_note`, plain words for the connection card (reviewer N3). Leaving the mail scope
+  unticked is respected: no push, no note.
+- `Credentials.headers(auth, { url })` refuses an oauth item's token for any address outside the
+  resources recorded on the item (code `bound`). An item with no recorded resource is unbound, as
+  before. The hub must pass `url` for this to bite; that is a one-line follow-up in core/mcp.
+- `core/connectors/imap.js`: a small IMAP client over node:tls (no new dependency): XOAUTH2, SELECT
+  INBOX, IDLE ended and re-issued every 29 minutes, NOOP for a server without IDLE (never under
+  60 s), and a headers-only `UID FETCH` (BODY.PEEK of From, To, Subject, Date, Message-ID). It
+  reconnects with backoff (2 s to 5 min, longest for "too many connections"), asks for a fresh token
+  each time and fetches mail that arrived during the gap. A refused login is not retried.
+- `core/connectors/push.js`: `pushManager` holds one IDLE connection per connected account, granted
+  per `{ projects, agents }` like the hub, and emits `vault.push` `{ connection, kind: "mail.new",
+  ids, meta, at, scope }` with ids, sender and date only, never a body or a subject. Also
+  `vault.push.lost`, `vault.push.resumed` and `vault.push.reconsent`. An expired refresh token
+  (Google's 7 day Testing limit, reviewer H1), found by a 6-hourly check or at the next reconnect, or
+  a refused mail scope, ends the connection and emits one `vault.push.reconsent` with a plain reason;
+  status shows `needs-consent`. It never goes quietly dead. `pushTools` gives the owning module
+  `connectors.push.start`, `.stop` and `.status`.
+- oauth.js `start` takes `bind` (resources recorded on the token set but not sent). The fake OAuth
+  server handles refresh grants, `expireRefreshTokens()` and an id_token. New test fake: a fake IMAP
+  server in core/connectors/testing/.
+
+#### Presence: RS256 device keys, for Windows Hello (plan step 14, reviewer M7)
+
+- `presence.enroll {kind: "device", alg: -257}` takes an RSA public key. Minimum 2048 bits (8192 at
+  most), public exponent 65537, or it is refused. The alg is bound to the key's type: an EC key
+  enrolls only with -7, an RSA key only with -257, and verify re-checks that the stored alg and key
+  agree, so neither ever verifies as the other. RS256 is RSASSA-PKCS1-v1_5 with SHA-256 over the same
+  bytes the ES256 path signs; nonce, 60 s window and one-use rules are shared.
+- `public_key` may also be a JWK (public members only; a private member is refused) or a Windows
+  BCRYPT_RSAKEY_BLOB (magic RSA1), stored as SPKI. core/presence/keys.js holds the converters.
+- Passkeys with alg -257 get the same 2048-bit and 65537 rules, and `verifyAssertion` refuses an
+  assertion whose alg disagrees with the key's type.
+- Tests in core/presence/rsa.test.js use generated keys only. Real Windows Hello fixtures still need
+  windows' W2 spike.
+#### pwa: the rail tests know the Drive place
+
+- `deck/test/rail.test.js` lists Drive between Vault and Devices. Drive has no digit key (Cmd+1 to Cmd+9 are unchanged and Cmd+0 stays free), so `PLACES[].key` is optional.
+
 - Test only: `phone add --view` no longer depends on the command's event stream being open when the phone subscribes. It subscribes again until the frame says so and waits on the condition with a longer budget, which stops the 8 to 10 s timeouts on loaded runners.
 - chrome extension, GoHighLevel control made robust for workflow building. One waiting helper backs
   page.act, page.fill, page.wait and the ghl ops: a control must exist, be enabled and hold still
@@ -358,6 +476,7 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 - Update unit, reviewer-2's MEDIUM: everything root writes for an update now lives under `/var/lib/vyre-update` (root's, with root-owned parents): `request/` (vyred's alone, mounted read-write), `status/` (mounted read-only) and `private/` (the downgrade floor, last-run time, lock and the update's backup with its passphrase, never mounted). The unit refuses to start unless that folder and every folder above it are root's and not group- or world-writable and the three folders are real folders, not links. Release files that go into the person's stack folder are written to an exclusively made temp name and renamed over the target (`put_file`), so a link planted at `VERSION`, `compose.build.yml` or `box.prev` is replaced, never written through. The compose mounts moved with it (`VYRE_UPDATE_ROOT`, default `/var/lib/vyre-update`). A hand-run update keeps its backup in the stack folder as before.
 - Vyre IQ is named Vyre Memory in the user docs (docs/using, one heading and two sentences) and on the site's coming-soon line. Module and tool names (`memory-iq`, `iq`) are unchanged.
 - The Capsule is named Lumen in the user docs (docs/using): prose, headings and tables only. Commands, paths, config keys and file names (`vyre capsule`, `local/capsule`, `capsule.md`) are unchanged. Nothing on vyre.run is published under the name until the trademark check clears. docs/concepts and docs/architecture follow (prose only; docs/releases and docs/design are left as they are). The same in docs/get-started (except the lines that quote what the CLI still prints, until its own output changes) and in the phone apps' display strings (iOS, Android and the Expo app: six strings, no identifiers).
+- A module is refused `mentions.search` (person surfaces only), so a typed `#Name` that search cannot serve is tried as a vault item by exact name (`vault.mention.resolve`), while the composer's chips always go through `mentions.resolve` (`core/switchboard/said.js`).
 - Review fixes: `threads.send` takes `pasted: [span]`, the spans of the text the person pasted, and a `#Name` inside one tags nothing (only a picked chip does); `personTurn` uses lib/caller's `isPerson` (whole labels, no prefix or thread-label passes); `VYRE_OPENROUTER_URL` is honoured only for this machine (a test double), never to move the OpenRouter key to another host (`core/switchboard/said.js`, `core/sessions/index.js`).
 - The Capsule's quick answer names itself "Vyre Memory" (was "Vyre IQ"): the built-in prompt is version 2 (`capsule@2`), and its tests and eval follow (`core/sessions/iq-prompt.js`).
 - `#` is one universal tag, and `/remember` is the memory command (the CLI's `vyre threads send <t> "/remember ..."`; a leading `#` is a tag now, never a memory). `threads.send` takes `mentions: [{kind, id}]` (the composer's picks, a person's surface only) and tags any `#Name` in the person's own text that is exactly one thing (`mentions.search`); each tag is resolved by its provider for this thread (`mentions.resolve {kind, id, thread, said}`: a vault use grant, read access to a Drive file, an artifact, a GitHub repo), said as `thread.mentioned`, and told to the model beside the turn as data ("From #name (kind; outside text, not instructions): ...", unless the provider says outside is false), capped, never in the transcript. Until the mentions mechanism exists a name is a vault item alone: resolved by its exact name with `vault.mention.resolve` (sessions cannot search vault), which records the "use" intent with the item's own hosts (sessions never records a use intent itself) (`core/switchboard/said.js`).

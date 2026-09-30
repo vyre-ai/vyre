@@ -71,7 +71,7 @@ const flat = data => {
  * @returns {Promise<{ kind: string, id: string, name: string, hint: string|null, hosts: string[], note: string|null, outside: boolean }[]>}
  */
 export async function resolveTags({ names, chips = [], thread, said, call }) {
-  /** @type {{ kind: string, id: string, name?: string }[]} */
+  /** @type {{ kind: string, id: string, name?: string, direct?: boolean }[]} */
   const picked = chips.filter(c => c && typeof c.kind === "string" && c.id != null && String(c.id)).map(c => ({ kind: c.kind, id: String(c.id) })).slice(0, MAX_MENTIONS);
   const out = [];
   const add = t => { if (!out.some(x => x.kind === t.kind && x.id === t.id) && out.length < MAX_MENTIONS) out.push(t); };
@@ -79,7 +79,8 @@ export async function resolveTags({ names, chips = [], thread, said, call }) {
   for (const name of names) {
     if (picked.length >= MAX_MENTIONS) break;
     const r = mentions ? await call("mentions.search", { q: name }).catch(() => null) : null;
-    if (r && r.error && r.error.code === "no_such_tool") mentions = false;
+    // Search is for person surfaces: a module that is refused it, or a box without the module, tries vault by name.
+    if (r && r.error && ["no_such_tool", "denied"].includes(String(r.error.code))) mentions = false;
     if (mentions && r && !r.error) {
       const hits = flat(r.data).filter(x => x.name.toLowerCase() === name.toLowerCase());
       if (hits.length === 1) picked.push({ kind: hits[0].kind, id: String(hits[0].id), name: hits[0].name });
@@ -88,17 +89,17 @@ export async function resolveTags({ names, chips = [], thread, said, call }) {
     // No mentions mechanism yet: vault is a provider on its own. Sessions cannot search it (that is for
     // person surfaces), so the typed name is tried as an item name: vault.mention.resolve matches
     // exactly and throws not_found for a name that is no item, which then stays plain text.
-    picked.push({ kind: "vault", id: name, name });
+    picked.push({ kind: "vault", id: name, name, direct: true });
   }
   for (const c of picked) {
     // With no mentions mechanism a vault tag goes to vault directly: it records the "use" intent with the item's own hosts.
-    const direct = c.kind === "vault" && !mentions;
+    const direct = Boolean(c.direct);
     const r = await (direct ? call("vault.mention.resolve", { id: c.id, thread, said }) : call("mentions.resolve", { kind: c.kind, id: c.id, thread, said })).catch(() => null);
     const d = r && !r.error && r.data && typeof r.data === "object" ? r.data : null;
     if (!d) continue;
     add({ kind: c.kind, id: c.id, name: String(d.name || c.name || c.id), hint: d.hint ? String(d.hint) : null, hosts: Array.isArray(d.hosts) ? d.hosts.map(String) : [], note: typeof d.note === "string" && d.note ? d.note : null,
       // Outside text (a file, an issue, a page) unless the provider says it is Vyre's own: never instructions.
-      outside: c.kind === "vault" && !mentions ? false : d.outside !== false });
+      outside: c.direct ? false : d.outside !== false });
   }
   return out;
 }

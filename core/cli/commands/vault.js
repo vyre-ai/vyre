@@ -535,24 +535,24 @@ async function put(args) {
 // ------------------------------------------------------------ grants
 
 async function grant(args) {
-  const f = flags(args, { string: ["watcher"] });
+  const f = flags(args, { string: ["watcher", "project"] });
   const [name, module] = f._;
-  if (!name || !module || f._.length > 2) return oops("vyre vault grant <name> <module> [--watcher w]");
-  const r = await tool("vault.grant", { name, module, ...(f.watcher ? { watcher: f.watcher } : {}) });
+  if (!name || !module || f._.length > 2) return oops("vyre vault grant <name> <module> [--watcher w] [--project p]");
+  const r = await tool("vault.grant", { name, module, ...(f.watcher ? { watcher: f.watcher } : {}), ...(f.project ? { project: f.project } : {}) });
   if (r.error) return fail(r);
   const g = r.data.grant;
   if (g.status === "pending") say(`  ${beacon("waiting for approval")} ${dim(`· vyre vault approve ${g.id}`)}`);
-  else say(`  ${signal("granted")} ${bold(g.name)} to ${grantText(g)}`);
+  else say(`  ${signal("granted")} ${bold(g.name)} to ${grantText(g)}${g.project ? dim(` · ${g.project} only`) : ""}`);
   return 0;
 }
 
 async function revoke(args) {
-  const f = flags(args, { string: ["watcher"] });
+  const f = flags(args, { string: ["watcher", "project"] });
   const [name, module] = f._;
-  if (!name || !module || f._.length > 2) return oops("vyre vault revoke <name> <module> [--watcher w]");
-  const r = await tool("vault.revoke", { name, module, ...(f.watcher ? { watcher: f.watcher } : {}) });
+  if (!name || !module || f._.length > 2) return oops("vyre vault revoke <name> <module> [--watcher w] [--project p]");
+  const r = await tool("vault.revoke", { name, module, ...(f.watcher ? { watcher: f.watcher } : {}), ...(f.project ? { project: f.project } : {}) });
   if (r.error) return fail(r);
-  say(r.data.revoked ? `  ${signal("revoked")} ${bold(name)} from ${module}${f.watcher ? "/" + f.watcher : ""}` : dim(`  ${module} had no grant of ${name}`));
+  say(r.data.revoked ? `  ${signal("revoked")} ${bold(name)} from ${module}${f.watcher ? "/" + f.watcher : ""}${f.project ? dim(` · ${f.project} only`) : ""}` : dim(`  ${module} had no grant of ${name}`));
   return 0;
 }
 
