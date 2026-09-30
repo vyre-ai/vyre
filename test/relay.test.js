@@ -213,7 +213,7 @@ test("relay: removing a device closes its connection at once with 4401 'device r
   await assert.rejects(phone(url, { keys: keyPair(), pair: false }), /box closed the connection/, "a stranger's key just gets the relay's generic close");
 });
 
-test("relay: the shared client stops for good when the owner removes its device, in a 'removed' state, and does not redial", async t => {
+test("relay: the shared client stops for good when the owner removes its device, in a 'relay_removed' state (the relay's word, not the box's), and does not redial", async t => {
   const { d } = await world(t);
   const status = (await d.registry.call("relay.status", {}, "cli", PROOF)).data;
   const keyStore = fileKeyStore(path.join(tempHome(t), "k.json"));
@@ -227,11 +227,11 @@ test("relay: the shared client stops for good when the owner removes its device,
   for (let i = 0; i < 100 && !conn.open; i++) await new Promise(r => setTimeout(r, 20));
   assert.equal(conn.open, true);
   await d.registry.call("relay.devices.remove", { id: paired.device }, "cli", PROOF);
-  for (let i = 0; i < 100 && states.at(-1) !== "removed"; i++) await new Promise(r => setTimeout(r, 20));
-  assert.equal(states.at(-1), "removed", states.join(","));
+  for (let i = 0; i < 100 && states.at(-1) !== "relay_removed"; i++) await new Promise(r => setTimeout(r, 20));
+  assert.equal(states.at(-1), "relay_removed", states.join(","));
   const n = states.length;
   await new Promise(r => setTimeout(r, 300));
-  assert.equal(states.length, n, "no redial after removed");
+  assert.equal(states.length, n, "no redial after relay_removed");
   void status;
 });
 

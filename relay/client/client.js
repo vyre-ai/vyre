@@ -58,7 +58,7 @@ export function defaultVisibility() {
   };
 }
 
-/** What the relay passes on, exactly, when the owner has removed this device (close code 4401). */
+/** What the relay passes on, exactly, when the box says it removed this device (close code 4401). It is the relay's claim, not proof. */
 export const REMOVED = "device removed";
 
 /** The device's static key from the store, made and stored on first use. */
@@ -320,9 +320,9 @@ export class Connection {
     this.max = o.backoff?.max ?? BACKOFF.max;
     this.random = o.random || Math.random;
     this.visibility = o.visibility || defaultVisibility();
-    /** @type {"connecting"|"open"|"offline"|"removed"} */
+    /** @type {"connecting"|"open"|"offline"|"relay_removed"} */
     this.state = "connecting";
-    /** @type {(state: "connecting"|"open"|"offline"|"removed") => void} */
+    /** @type {(state: "connecting"|"open"|"offline"|"relay_removed") => void} */
     this.onstate = () => {};
     this.closed = false;
     /** @type {import("./channel.js").Channel | null} */
@@ -397,7 +397,12 @@ export class Connection {
     this.retry();
   }
 
-  /** The owner removed this device: the box said so on 4401 ("device removed"), so no retry can work. The state is final. */
+  /**
+   * The relay passed on 4401 "device removed". That is the RELAY's word, never the box's own answer: a
+   * compromised relay can say it, so nothing here may wipe anything on it. The state is final for this
+   * relay path (no retry can work if it is true), and the app must ask the box directly over a path the
+   * relay does not control (the tailnet address, or a fresh pairing check) before it acts on it.
+   */
   removed() {
     if (this.closed) return;
     this.closed = true;
@@ -406,9 +411,9 @@ export class Connection {
     this.offVisible();
     this.offOnline();
     for (const f of [...this.follows]) f.close();
-    for (const w of this.waiters.splice(0)) w.reject(Object.assign(new Error(REMOVED), { code: "device_removed" }));
+    for (const w of this.waiters.splice(0)) w.reject(Object.assign(new Error(REMOVED), { code: "relay_removed" }));
     this.channel = null;
-    this.setState("removed");
+    this.setState("relay_removed");
   }
 
   retry() {
