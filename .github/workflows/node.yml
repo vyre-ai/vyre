@@ -35,15 +35,16 @@ jobs:
       - run: npm test
       - run: npm run eval:answer
       - run: npm run perf-check
-  # Windows support (ADR 0037): the same suite on windows-latest, to catch path and shell
-  # assumptions before any Windows-specific code lands. Not yet green; non-blocking on purpose
-  # while docs/work/windows.md tracks the fixes it finds. Skips eval:answer and perf-check, which
-  # assume a Linux/Mac process model for their CPU/RSS budget, not what this job is proving.
+  # Windows support (ADR 0037): the Windows-relevant tests on windows-latest (`npm run test:windows`,
+  # only files that pass there), so a red result means something. Non-blocking for stage landings
+  # on purpose. No eval:answer or perf-check, which assume a Linux/Mac process model.
   test-windows:
     runs-on: windows-latest
     # The full suite took over 30 minutes here and held up stage landings. This runs the tests
     # that can differ on Windows (config, CLI kit and commands, voice, boundaries, docs, the relay
-    # client, release verification), each bounded, and must finish inside 10 minutes.
+    # client), each bounded, and must finish inside 10 minutes. It lists only files that pass on
+    # Windows, so a red result means something; the files left out, each with its reason, are in
+    # docs/work/windows.md ("Known Windows gaps").
     timeout-minutes: 10
     continue-on-error: true
     env:
@@ -55,13 +56,6 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci --no-audit --no-fund
-      - name: TEMPORARY why each failing file fails (removed in the next commit)
-        shell: pwsh
-        run: |
-          foreach ($f in "core/config/claude-home.test.js","core/config/config.test.js","core/cli/commands/box.test.js","core/cli/commands/connect.test.js","core/cli/commands/up.test.js","local/voice/talk.test.js","local/voice/voice.test.js","test/docs-check.test.js","test/docs-index.test.js","relay/client/e2e.test.js","relay/client/nodecrypto.test.js","core/vyre-core/release.test.js") {
-            "=== $f"
-            node --test --test-force-exit --test-timeout=60000 --test-reporter=tap $f 2>&1 | Select-String -Pattern "^\s+(error|code|expected|actual|message): " | Select-Object -First 4 | ForEach-Object { $_.Line.Trim().Substring(0, [Math]::Min(150, $_.Line.Trim().Length)) }
-          }
       - run: npm run test:windows
   # Windows LOW (security review, ADR 0037): the local vyred socket's privacy, verified on a real
   # windows-latest runner rather than hardware. Not continue-on-error: the lead's call was that

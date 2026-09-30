@@ -58,6 +58,40 @@ when pairing ends. (c) Hidden `link` window keeps the box channel; tray "Open Vy
 shared folder via files.drive.address. UNVERIFIED: the Tauri event listen from the page, and the shape
 of files.drive.candidates' answer; both need a real PC run.
 
+## Known Windows gaps (files left out of `npm run test:windows`, with the reason)
+
+The set lists only files that pass on windows-latest, so red means something. Left out, by file:
+- `core/config/claude-home.test.js`: asserts POSIX paths (`/opt/cc`, gets `D:\opt\cc`).
+- `core/config/config.test.js`: POSIX file modes (0600/0700) and the unix-socket path tests. (Its machine
+  default assertion is fixed for win32, which now defaults to `device`.)
+- `core/cli/commands/connect.test.js`, `relay/client/e2e.test.js`: EBUSY, the test cannot delete `vyre.db`
+  while vyred still holds it open (Windows refuses to unlink an open file).
+- `core/vyre-core/release.test.js`: needs `/usr/bin/tar` (the Mac and Linux install path, not used on Windows).
+- `relay/client/nodecrypto.test.js`: a size assertion differs on Windows (438, not 448), not yet traced.
+- `core/cli/commands/box.test.js`, `core/cli/commands/up.test.js`, `local/voice/talk.test.js`,
+  `local/voice/voice.test.js`, `test/docs-check.test.js`, `test/docs-index.test.js`: fail on Windows and are
+  NOT yet diagnosed (box, up and voice drive fake POSIX binaries and a local server; the docs pair is
+  probably line endings or path separators). Owner: windows, to diagnose.
+- Anything needing vyred's peer identity (for example "vault cli: account create") is not in the set at all,
+  see the next section.
+
+## Windows peer identity (what vyred can and cannot tell on Windows)
+
+vyred decides "the person" versus "an agent" by asking the kernel which process is on the other end of the
+socket and walking its ancestry (core/daemon/peer.js). That read exists for macOS and Linux only. On Windows
+the local socket is a named pipe, and there is NO process-ancestry read: vyred gets no pid, so
+`fromClaude` answers "vyred cannot tell which process is calling" and refuses. The 0.1.2 pipe work adds an
+owner-SID check (the pipe is the signed-in user's), which proves WHICH USER, not whether a model or the person
+is behind the process.
+
+For 0.2 this does not block the Windows app: it runs no local vyred at all. Presence there is the passkey on
+the person's server (Windows Hello), the shell talks to the box over the paired Noise channel, and person-only
+actions are decided on the box. What it DOES block: a Windows PC acting as its own server (Solo or Tier B
+without WSL2). There, vyred could not tell the person from an agent on the same PC, so every person-only tool
+(vault reveal, presence proof, approvals, `vault account create`) would be refused for the person too. Options
+if that is wanted later: run vyred inside WSL2 (Linux peer read works, the Linux path), or build a Windows
+peer read (`GetNamedPipeClientProcessId` plus a process-tree walk) with its own review. Neither is 0.2 scope.
+
 **RESUMED 2026-09-30 (relaunch).** Merged origin/work/stage-0.2 into work/windows (a merge, not a
 rebase: 32 old commits, six conflicts, all union-resolved; win32 fresh default is role local,
 machine device). Docs and config tests pass locally. Scaffolded the Tauri shell in

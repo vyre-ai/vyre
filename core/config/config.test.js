@@ -71,7 +71,7 @@ test("config: with no config.json, machine defaults the same way role's OS guess
   const root = tempHome(t);
   const c = config.load(root);
   assert.ok(["solo", "server", "device"].includes(c.machine));
-  assert.equal(c.machine, process.platform === "darwin" ? "solo" : "server");
+  assert.equal(c.machine, process.platform === "darwin" ? "solo" : process.platform === "win32" ? "device" : "server");
 });
 
 // Reviewer's HOLD on 80fd866e, 28 Sep: a fresh (or existing, unconfigured) Mac must behave
