@@ -181,6 +181,8 @@ export function checkManifestFull(m, { firstParty = false, contract } = {}) {
     for (const t of TYPES.object(m.needs) && Array.isArray(m.needs.tools) ? m.needs.tools : []) {
       if (typeof t === "string" && t.endsWith(".*")) out.push(`needs.tools "${t}": an added module names each tool it calls; a module.* wildcard is for Vyre's own modules`);
     }
+    // The setup channel's allowlist is Vyre's to grow: an added module can't put a tool on it.
+    if (m.setupTools !== undefined) out.push(`setupTools is built in only; an added module can't put a tool on the setup channel`);
     // H2: in 0.2 the allowlist of modules an added module may replace is empty.
     if (m.replaces !== undefined) out.push(`replaces: an added module can't replace one of Vyre's modules; the 0.2 allowlist of replaceable modules is empty`);
     if (Array.isArray(m.roles) && m.roles.length && m.roles.every((/** @type {string} */ r) => r === "windows")) out.push(`roles ["windows"] loads nowhere in 0.2: only the Mac has a local node yet; add "mac" or "box"`);
@@ -227,6 +229,11 @@ export function checkManifestFull(m, { firstParty = false, contract } = {}) {
     if (!t || typeof t.id !== "string") continue;
     if (tipIds.has(t.id)) out.push(`tip "${t.id}" is declared twice`);
     tipIds.add(t.id);
+  }
+  // setupTools names this module's own tools, so the relay never allowlists a tool that is not there.
+  if (Array.isArray(m.setupTools)) {
+    const own = new Set(toolEntries(m).map(t => t.name));
+    for (const t of m.setupTools) if (typeof t === "string" && !own.has(t)) out.push(`setupTools "${t}" is not a tool this module declares in does.tools`);
   }
   // A replacement registers the original's tools, so it carries the original's name; replaces
   // says so out loud, since a duplicate name without it is refused.

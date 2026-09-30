@@ -4,6 +4,8 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+- `module.json` gains an optional `setupTools` list (v1, additive): built in modules name the tools the
+  setup channel may call before sign-in. An added module that declares it fails to load.
 - An added module can no longer emit the gate, push, presence, said, memory, thread, tailscale or
   artifact-links event families; each is reserved for its built-in owner.
 - vyred logs the stack and exits non-zero on an uncaught exception or unhandled rejection, so the

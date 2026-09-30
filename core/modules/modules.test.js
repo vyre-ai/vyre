@@ -749,6 +749,12 @@ test("modules v1: default-deny, an added caller reaches only a declared reach, a
 test("modules v1: an added module may not replace one of Vyre's, and reserved events key on first-party identity", () => {
   assert.match(validate({ ...good, replaces: "notes" }).join(), /the 0\.2 allowlist of replaceable modules is empty/);
   assert.deepEqual(validate({ ...good, replaces: "notes" }, { firstParty: true }), []);
+  // setupTools (the setup channel's allowlist) is built in only, and names the module's own tools.
+  const withSetup = { ...good, does: { tools: [{ name: "notes.add", reach: "person" }] }, setupTools: ["notes.add"] };
+  assert.match(validate(withSetup).join(), /setupTools is built in only/);
+  assert.deepEqual(validate(withSetup, { firstParty: true }), []);
+  assert.match(validate({ ...withSetup, setupTools: ["notes.other"] }, { firstParty: true }).join(), /setupTools "notes.other" is not a tool this module declares/);
+  assert.match(validate({ ...withSetup, setupTools: "notes.add" }, { firstParty: true }).join(), /setupTools/);
   // An added module named like sync's owner, replacing it, still can't emit sync.*: the owner is
   // the first-party module, never the name.
   const impostor = validate({ ...good, name: "sync", does: {}, replaces: "sync", watches: { emits: ["sync.deleted"] } });

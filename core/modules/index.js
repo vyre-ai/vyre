@@ -200,6 +200,12 @@ export function validate(m, { firstParty = false } = {}) {
   const providers = m.does && m.does.providers;
   if (providers !== undefined && (!Array.isArray(providers) || providers.some(p => !NAME.test(String(p))))) out.push("does.providers must be a list of lowercase names");
   out.push(...checkCredentials(m.needs && m.needs.credentials));
+  // setupTools: this module's own tools the setup channel may call (built in only, see addedCheck).
+  if (m.setupTools !== undefined) {
+    const own = new Set(toolEntries(m).map(t => t.name));
+    if (!Array.isArray(m.setupTools) || m.setupTools.some(/** @param {any} t */ t => typeof t !== "string")) out.push("setupTools must be a list of tool names");
+    else for (const t of m.setupTools) if (!own.has(t)) out.push(`setupTools "${t}" is not a tool this module declares in does.tools`);
+  }
   // ADR 0047, reviews/platform.md H2: an added module replaces nothing in 0.2.
   if (!firstParty && m.replaces !== undefined) out.push("replaces: an added module can't replace one of Vyre's modules; the 0.2 allowlist of replaceable modules is empty");
   return out;
