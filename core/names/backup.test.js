@@ -226,3 +226,32 @@ test("restore: rejects an archive that carries a symlink, even sealed under the 
   await assert.rejects(restore({ root, file, passphrase: PASSPHRASE, alive: dead }), /link/);
   assert.ok(!fs.existsSync(path.join(root, "vault")));
 });
+
+test("backup: a new account's sign-in (named in sessions_accounts) is left out, and its value is not in the file's free pages", async t => {
+  const home = tempHome(t);
+  const root = path.join(home, "box"); fs.mkdirSync(root);
+  const scratch = path.join(home, "scratch"); fs.mkdirSync(scratch);
+  const before = process.env.VYRE_TMPDIR;
+  process.env.VYRE_TMPDIR = scratch;
+  t.after(() => { if (before === undefined) delete process.env.VYRE_TMPDIR; else process.env.VYRE_TMPDIR = before; });
+  seed(root);
+  const db = new DatabaseSync(path.join(root, "vyre.db"));
+  db.exec("CREATE TABLE sessions_accounts (id TEXT PRIMARY KEY, provider TEXT NOT NULL, label TEXT NOT NULL, kind TEXT NOT NULL, vault_item TEXT)");
+  db.prepare("INSERT INTO sessions_accounts (id, provider, label, kind, vault_item) VALUES (?,?,?,?,?)").run("a1", "codex", "Work", "api-key", "codex-work-key");
+  db.prepare("INSERT INTO vault_items (id, name, kind, fields, created, updated) VALUES (?,?,?,?,?,?)")
+    .run("item9", "codex-work-key", "pat", JSON.stringify(["SECRET-CODEX-VALUE-1234567890"]), Date.now(), Date.now());
+  db.prepare("INSERT INTO vault_items (id, name, kind, fields, created, updated) VALUES (?,?,?,?,?,?)")
+    .run("item10", "a-normal-login", "pat", "[]", Date.now(), Date.now());
+  db.close();
+  fs.writeFileSync(path.join(root, "vault", "items", "item9.json"), JSON.stringify({ sealed: "fake" }));
+  const file = path.join(home, "acct.tar.gz");
+  const r = await backup({ root, file, passphrase: PASSPHRASE });
+  assert.deepEqual(r.excludedLogins, ["codex-work-key"]);
+  const dir = path.join(home, "check"); fs.mkdirSync(dir);
+  execFileSync("tar", ["-xzf", unpack(t, home, file), "-C", dir]);
+  const raw = fs.readFileSync(path.join(dir, "vyre.db"));
+  assert.ok(!raw.includes("SECRET-CODEX-VALUE"), "the deleted row's content is not recoverable from the staged db file");
+  assert.ok(!fs.existsSync(path.join(dir, "vault", "items", "item9.json")));
+  assert.deepEqual(fs.readdirSync(scratch), [], "no staging or plain archive is left behind");
+  assert.deepEqual(fs.readdirSync(home).filter(n => n.includes(".plain")), [], "no plain archive beside the destination");
+});

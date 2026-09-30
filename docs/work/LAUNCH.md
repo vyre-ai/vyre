@@ -43,6 +43,7 @@ lead's 0.2 BUILD GO.
 
 ## Doing
 
+- Reviewer-2's HOLD and 4 MEDIUMs on fbff6d47/fc2723cf fixed; awaiting recheck.
 - Install script v2 core is built and tested (10 new tests, look tests green): see the CHANGELOG entry.
   Still open in it: the terminal's own check code (B3) waits for tailnet's definition of the check
   code; the Mac path and Windows are anywhere's and windows' scripts.

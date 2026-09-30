@@ -130,15 +130,54 @@ test("install-box.sh v2: a compose.yml that does not pin the digest release.json
   const b = box(t);
   const r = run({ ...b.env, VYRE_BOX_URL: site(b.base, { pin: false }) }, ["--yes"]);
   assert.notEqual(r.status, 0);
-  assert.match(r.stderr, /compose\.yml does not pin/);
+  assert.match(r.stderr, /not pinned by digest/);
   assert.ok(!b.calls().includes(" verify "));
 });
 
-test("install-box.sh v2: a release with no digests still installs the old way, by tag or vyre.tgz", t => {
-  const b = box(t, { docker: 'case "$1 $2" in "compose version") echo 2.29.1 ;; "manifest inspect") exit 0 ;; esac; exit 0' });
-  const r = run({ ...b.env, VYRE_BOX_URL: site(b.base, { images: false, pin: false }) }, ["--yes"]);
+test("install-box.sh v2: a release with no digests, or no release.json at all, fails closed", t => {
+  const noImages = box(t);
+  let r = run({ ...noImages.env, VYRE_BOX_URL: site(noImages.base, { images: false, pin: false }) }, ["--yes"]);
+  assert.notEqual(r.status, 0);
+  assert.match(r.stderr, /names no image digest/);
+  assert.ok(!fs.existsSync(noImages.dir), "nothing laid out");
+
+  const noFile = box(t);
+  const url = site(noFile.base);
+  const dir = url.replace("file://", "");
+  fs.unlinkSync(path.join(dir, "release.json"));
+  fs.writeFileSync(path.join(dir, "SHA256SUMS"), fs.readFileSync(path.join(dir, "SHA256SUMS"), "utf8").split("\n").filter(l => !l.includes("release.json")).join("\n"));
+  r = run({ ...noFile.env, VYRE_BOX_URL: url }, ["--yes"]);
+  assert.notEqual(r.status, 0);
+  assert.match(r.stderr, /no release\.json in its SHA256SUMS/);
+  assert.ok(!noFile.calls().includes("docker pull"), "no tag is pulled instead");
+});
+
+test("install-box.sh v2: every image the released compose.yml starts must be pinned by digest", t => {
+  const b = box(t);
+  const url = site(b.base);
+  const file = path.join(url.replace("file://", ""), "compose.yml");
+  const text = fs.readFileSync(file, "utf8") + "  ts:\n    image: tailscale/tailscale:stable\n";
+  fs.writeFileSync(file, text);
+  const sumsFile = path.join(path.dirname(file), "SHA256SUMS");
+  const h = crypto.createHash("sha256").update(text).digest("hex");
+  fs.writeFileSync(sumsFile, fs.readFileSync(sumsFile, "utf8").replace(/^[0-9a-f]{64}(  compose\.yml)$/m, `${h}$1`));
+  const r = run({ ...b.env, VYRE_BOX_URL: url }, ["--yes"]);
+  assert.notEqual(r.status, 0);
+  assert.match(r.stderr, /not pinned by digest \(tailscale\/tailscale:stable\)/);
+});
+
+test("install-box.sh v2: the install line as shown (curl | VYRE_CODE=... sh) hands sh the code", t => {
+  const b = box(t);
+  fs.mkdirSync(b.dir, { recursive: true });
+  const r = spawnSync("sh", ["-c", `cat '${SCRIPT}' | VYRE_CODE='${CODE}' sh -s -- --yes --from '${REPO}'`], { encoding: "utf8", env: b.env });
   assert.equal(r.status, 0, r.stdout + r.stderr);
-  assert.ok(!b.calls().includes(" verify "));
+  assert.ok(fs.readFileSync(path.join(b.dir, "vyre.env"), "utf8").includes(`VYRE_SETUP_CODE=${CODE}`), "sh saw the variable");
+  // And the placement the reviewer caught: on the reader, it never reaches the script.
+  const b2 = box(t);
+  fs.mkdirSync(b2.dir, { recursive: true });
+  const wrong = spawnSync("sh", ["-c", `VYRE_CODE='${CODE}' cat '${SCRIPT}' | sh -s -- --yes --from '${REPO}'`], { encoding: "utf8", env: b2.env });
+  assert.equal(wrong.status, 0);
+  assert.ok(!fs.existsSync(path.join(b2.dir, "vyre.env")), "the variable on curl's side is not the script's");
 });
 
 test("install-box.sh v2: a running install is updated, never replaced", t => {

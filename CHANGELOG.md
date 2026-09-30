@@ -4,6 +4,12 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+- Review fixes on install-box.sh v2 and the sealed backup (reviewer-2): the install line is `curl -fsSL https://vyre.run/i | VYRE_CODE=... sh`
+  (the variable goes on sh; on curl it never reaches the script), with a test that pipes the script into sh both ways. A missing
+  release.json, or one with no box digest, now stops the install (only VYRE_BUILD=tgz builds from source), and every `image:` in the
+  released compose.yml must be pinned by digest. The plain archive `vyre backup` makes before sealing lives in its own 0700 folder,
+  created 0600, and is removed after. New accounts' sign-ins (vault items named in sessions_accounts) are left out of a backup by
+  default, and the deleted vault rows are zeroed (secure_delete) and vacuumed so they are not in the file's free pages.
 - Import from other agents (PLAN step 13): `core/import/formats/` reads OpenAI Codex CLI
   (`sessions/YYYY/MM/DD/rollout-*.jsonl`, both the `session_meta`/`response_item` layout and the older bare-record
   one) and Gemini CLI (`tmp/<projectHash>/chats/session-*.jsonl` and legacy `.json`, with replaced, `$set` and
