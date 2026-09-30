@@ -8,8 +8,11 @@
 // What says "this phone was removed":
 //   presence.removed { id }  whose id is this phone's passkey (localStorage "vyre.passkey"),
 //   device.removed { id }    whose id is this phone's push device or relay device,
-//   device_removed           the box's answer to any call from a removed device (api.js onDeviceRemoved;
-//                            the relay closes such a device with 4401; one code, nowhere else),
+//   device_removed           the box's own answer, inside an authenticated API response over https to its
+//                            address (api.js onDeviceRemoved). A relay close (4401) is NEVER a wipe trigger: a
+//                            relay is not the box, so a hostile one must not be able to wipe phones. If this
+//                            app ever rides the relay client, its "removed" state only means: ask the box,
+//                            and wipe only if the box answers device_removed itself.
 //   a launch check          the phone has a passkey note but presence.keys no longer lists it
 //                           (it was removed while the phone was away), asked once per launch.
 // Nothing polls. A box that cannot be asked (offline, unreachable) wipes nothing.
