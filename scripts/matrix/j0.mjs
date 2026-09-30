@@ -18,13 +18,16 @@ const hide = s => String(s).replace(/([?&]t=)[^&\s]+/g, "$1...");
 const t0 = Date.now();
 let page;
 try {
-  page = await connect(cdp, native ? {} : mobile ? { width: 390, height: 844, mobile: true, scale: 2 } : { width: 1280, height: 900 });
+  page = await connect(cdp, native ? { reuse: true } : mobile ? { width: 390, height: 844, mobile: true, scale: 2 } : { width: 1280, height: 900 });
   const status = await page.open(link);
   r.step("open", status === 200, { ms: Date.now() - t0, why: status === 200 ? undefined : `HTTP ${status}` });
   const text = await page.waitText(/\S{3,}/);
   const title = String(await page.evaluate("document.title"));
   r.step("page", title === "Set up Vyre" && text.length > 20, { why: `title "${title}", ${text.length} characters` });
-  const hits = fixtureHits(text);
+  // Text a person sees that innerText leaves out: placeholders, labels, titles, alt text, values.
+  const attrs = String(await page.evaluate(`[...document.querySelectorAll("[placeholder],[aria-label],[title],[alt],input[value]")]
+    .map(e => [e.getAttribute("placeholder"), e.getAttribute("aria-label"), e.getAttribute("title"), e.getAttribute("alt"), e.value].filter(Boolean).join(" ")).join(" ") + " " + document.title`));
+  const hits = fixtureHits(text + " " + attrs);
   r.step("no-fixture-names", hits.length === 0, hits.length ? { why: "shows " + hits.join(", ") } : {});
   const errors = page.logs.filter(l => /^(exception|error|console\.error)/.test(l));
   r.step("no-errors", errors.length === 0, errors.length ? { why: hide(errors.slice(0, 3).join(" | ")) } : {});

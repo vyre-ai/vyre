@@ -109,8 +109,27 @@ jobs:
         if: always()
         with: { name: results-android, path: results, retention-days: 14 }
 
+  windows:
+    needs: build
+    if: contains(github.event.inputs.on || 'all', 'all') || contains(github.event.inputs.on, 'windows')
+    runs-on: ubuntu-24.04
+    timeout-minutes: 75
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22 }
+      - uses: actions/download-artifact@v4
+        with: { name: box, path: box }
+      - name: Install a box with the real installer
+        run: sh scripts/matrix/box-up.sh box link.txt
+      - name: J0 in Chrome on Windows 11 (installs Windows first, about 15 minutes)
+        run: sh scripts/matrix/windows-j0.sh
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with: { name: results-windows, path: results, retention-days: 14 }
+
   report:
-    needs: [linux, android]
+    needs: [linux, android, windows]
     if: always()
     runs-on: ubuntu-24.04
     steps:

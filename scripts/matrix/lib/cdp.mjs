@@ -4,7 +4,8 @@
 
 /**
  * @param {string} base the DevTools HTTP endpoint, for example http://127.0.0.1:9222
- * @param {{ width?: number, height?: number, mobile?: boolean, scale?: number }} [view]
+ * @param {{ width?: number, height?: number, mobile?: boolean, scale?: number, reuse?: boolean }} [view] reuse: drive the
+ *   tab already on screen (a phone), not a new one, so the device's own screen shows the page.
  */
 export async function connect(base, view = {}) {
   const version = await (await fetch(base + "/json/version")).json();
@@ -29,7 +30,8 @@ export async function connect(base, view = {}) {
     wait.set(i, { resolve, reject, method });
     ws.send(JSON.stringify({ id: i, method, params, ...(sessionId ? { sessionId } : {}) }));
   });
-  const { targetId } = await send("Target.createTarget", { url: "about:blank" });
+  const pages = view.reuse ? (await send("Target.getTargets")).targetInfos.filter(t => t.type === "page") : [];
+  const { targetId } = pages.length ? pages[0] : await send("Target.createTarget", { url: "about:blank" });
   const { sessionId } = await send("Target.attachToTarget", { targetId, flatten: true });
   const s = (method, params) => send(method, params, sessionId);
   await s("Page.enable"); await s("Runtime.enable"); await s("Log.enable");
@@ -72,6 +74,6 @@ export async function connect(base, view = {}) {
     },
     /** A PNG of the viewport, as a Buffer. */
     async shot() { return Buffer.from((await s("Page.captureScreenshot", { format: "png" })).data, "base64"); },
-    async close() { try { await send("Target.closeTarget", { targetId }); } catch {} ws.close(); },
+    async close() { if (!view.reuse) { try { await send("Target.closeTarget", { targetId }); } catch {} } ws.close(); },
   };
 }

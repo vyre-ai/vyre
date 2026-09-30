@@ -6,6 +6,7 @@ set -u
 adb reverse tcp:7300 tcp:7300
 adb shell 'echo "_ --disable-fre --no-default-browser-check --no-first-run" > /data/local/tmp/chrome-command-line'
 adb shell am set-debug-app --persistent com.android.chrome >/dev/null
+adb shell pm grant com.android.chrome android.permission.POST_NOTIFICATIONS 2>/dev/null || true
 adb shell am force-stop com.android.chrome
 adb shell am start -a android.intent.action.VIEW -d about:blank com.android.chrome >/dev/null
 adb forward tcp:9223 localabstract:chrome_devtools_remote
