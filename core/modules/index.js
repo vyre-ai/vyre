@@ -47,7 +47,8 @@ export const firstParty = dir => {
  * @type {Record<string, string[]>}
  */
 // settings passes a person's change on to the module that keeps the value, as that person.
-const CALL_AS = { link: ["link:box"], settings: ["cli", "local", "deck", "capsule"] };
+// connectors makes a person's api-credential as that person (a vault api-credential is written only from a person's own surface).
+const CALL_AS = { link: ["link:box"], settings: ["cli", "local", "deck", "capsule"], connectors: ["cli", "local", "deck", "capsule"] };
 const TOOL = /^[a-z][a-z0-9-]*\.[a-z][a-z0-9.-]*$/;
 const VERBS = ["does", "watches", "shows", "needs", "teaches"];
 /** Use counts reach vyre.db at most this often; nothing is written while nothing was used. */
@@ -415,6 +416,8 @@ export class Registry {
         // settings relays a person only to the tools first-party modules declared as their own
         // settings' getters and setters, never to any other tool (e2e review, HIGH 2).
         if (m.name === "settings" && !this.settingTools().has(tool)) throw new Error(`settings may not call ${tool} as ${as}: no first-party setting names it`);
+        // connectors relays a person to one thing only: writing an api-credential the person just asked it to make.
+        if (m.name === "connectors" && !(tool === "vault.put" && input && input.kind === "api-credential")) throw new Error(`connectors may not call ${tool} as ${as}: it may only make an api-credential for the person`);
         return this.call(tool, input, String(as));
       },
       // A long-lived connection (a WebSocket) at /v1/streams/<module>/<name>, for what a tool call

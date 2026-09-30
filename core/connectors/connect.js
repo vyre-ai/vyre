@@ -18,7 +18,7 @@
 //   fake MCP servers and never a real vendor.
 
 import { connector } from "./oauth.js";
-import { makeCatalog, connectionName, itemName, originsOf, SHIPPED_DATA } from "../../lib/connector-presets/index.js";
+import { makeCatalog, connectionName, itemName, originsOf, hostsOf, SHIPPED_DATA } from "../../lib/connector-presets/index.js";
 
 export const MIGRATIONS = [
   `CREATE TABLE connectors_connections (
@@ -56,6 +56,9 @@ export function resolveGuide(guide, redirect) {
  *   testServer: (name: string) => Promise<any>,
  *   hasServer: (name: string) => Promise<boolean>,
  *   removeServer: (name: string) => Promise<void>,
+ *   putCredential?: (name: string, credential: { config: Record<string, unknown>, secret?: string, description: string }, as: string) => Promise<void>,
+ *   storeTokens?: (name: string, tokens: Record<string, unknown>) => Promise<void>,
+ *   grantThread?: (server: string, thread: string) => Promise<void>,
  *   emit: (type: string, payload: Record<string, unknown>) => void,
  *   log?: (message: string, fields?: Record<string, unknown>) => void,
  *   fetch?: typeof fetch, now?: () => number, expiresMs?: number,
@@ -93,6 +96,16 @@ export function connections(deps) {
       pendingFor.delete(flow.id);
       const p = preset(pending.preset);
       if (!p) throw fail("that connector is no longer in the catalog", "not_found");
+      if (p.target === "api") {
+        // Not a hub server: the person-written api-credential (made as the person who started this),
+        // then the sign-in sealed into it by the vault, which checks the token endpoint.
+        const o = p.oauth;
+        await putApi(p, pending.name, { auth: { type: "oauth", client: { item: `${pending.name}-app` }, authorize_uri: o.server.authorize_uri, token_uri: o.server.token_uri, scopes: o.scopes || [] } }, undefined, pending.as);
+        await deps.storeTokens(pending.name, { access_token: tokens.access_token, ...(tokens.refresh_token ? { refresh_token: tokens.refresh_token } : {}),
+          ...(tokens.expires_in ? { expires_in: tokens.expires_in } : {}), token_uri: tokens.token_uri });
+        record(p, pending.name, pending.name, "oauth", pending.label);
+        return { name: pending.name, ...useOf(p, pending.name) };
+      }
       const item = itemName(pending.name);
       /** @type {Record<string, string>} */
       const fields = { client_id: tokens.client_id, token_uri: tokens.token_uri, issuer: tokens.issuer,
@@ -108,8 +121,21 @@ export function connections(deps) {
       return { name: pending.name, item, ...out };
     },
   });
-  /** @type {Map<string, { preset: string, name: string, label?: string }>} */
+  /** @type {Map<string, { preset: string, name: string, label?: string, as?: string }>} */
   const pendingFor = new Map();
+
+  /** What the agent is told to use once an api connection exists. */
+  const useOf = (p, name) => ({ use: { tool: "vault.request", credential: name, hosts: p.api.hosts, ...(p.api.use ? { how: p.api.use } : {}) } });
+
+  const record = (p, name, item, mode, label) => db.prepare("INSERT OR REPLACE INTO connectors_connections (name, preset, item, mode, label, created) VALUES (?,?,?,?,?,?)")
+    .run(name, p.id, item, mode, label || null, now());
+
+  /** Make (or replace) the person's api-credential. Only a person's own surface may write one, so this is relayed as the caller that asked. */
+  async function putApi(p, name, config, secret, as) {
+    if (!deps.putCredential) throw fail("this box has no vault api-credential support", "config");
+    const full = { ...config, hosts: p.api.hosts, ...(p.api.endpoints ? { endpoints: p.api.endpoints } : {}) };
+    await deps.putCredential(name, { config: full, ...(secret ? { secret } : {}), description: `${p.label} (made by Vyre)` }, String(as || ""));
+  }
 
   /** Add or refresh the hub row, remember the connection, and try the server once. */
   async function bind(p, name, item, mode, label, auth, headers) {
@@ -143,6 +169,7 @@ export function connections(deps) {
       const mine = db.prepare("SELECT name, preset, mode, label, created FROM connectors_connections ORDER BY name").all();
       const list = presets().filter(p => !input.group || p.group === input.group).map(p => ({
         id: p.id, label: p.label, group: p.group, who: p.who, evidence: p.evidence,
+        target: p.target || "mcp",
         modes: [p.oauth ? "oauth" : null, p.token ? "token" : null].filter(Boolean),
         prefer: p.prefer || (p.oauth ? "oauth" : "token"),
         // what the person must bring: nothing, their own app, or a token
@@ -154,6 +181,52 @@ export function connections(deps) {
       // An app another module signs in to (GitHub) shows the accounts that module holds.
       if (deps.external) for (const p of list) if (p.via) { try { p.connected = (await deps.external(p.id)).map(c => ({ name: c.name, mode: "via", ...(c.label ? { label: c.label } : {}) })); } catch { /* the other module is not running */ } }
       return { checked: checked(), presets: list, ...(input.all ? { unavailable: unavailable() } : {}) };
+    },
+
+    /**
+     * The # picker's connector kind: the connections that exist, then one "Connect <name>" row for each
+     * app that is not connected yet (its id starts with connect:, and the surface opens the connect flow).
+     * @param {{ q?: string, limit?: number }} [input]
+     */
+    mentionSearch(input = {}) {
+      const q = String(input.q || "").trim().toLowerCase();
+      const limit = Math.min(Math.max(Number(input.limit) || 30, 1), 60);
+      const hit = (...texts) => !q || texts.some(t => String(t).toLowerCase().includes(q));
+      const mine = db.prepare("SELECT name, preset, mode, label FROM connectors_connections ORDER BY name").all();
+      /** @type {any[]} */ const out = [];
+      for (const c of mine) {
+        const p = preset(c.preset);
+        if (!p || !hit(c.name, p.label)) continue;
+        out.push({ kind: "connector", id: c.name, name: c.label ? `${p.label} (${c.label})` : p.label, hint: "Connected", icon: "plug" });
+      }
+      const have = new Set(mine.map(c => c.preset));
+      for (const p of presets()) {
+        if (out.length >= limit) break;
+        if (have.has(p.id) || p.via || !hit(p.id, p.label)) continue;
+        out.push({ kind: "connector", id: `connect:${p.id}`, name: `Connect ${p.label}`, hint: "Not connected", icon: "plug" });
+      }
+      return out.slice(0, limit);
+    },
+
+    /**
+     * What tagging a connection means for one thread: its hub server's tools are usable there (reads run,
+     * anything outward follows the Gate). An api connection is used through vault.request, which the
+     * person's own words already cover, so it only gets a note.
+     * @param {{ id: string, thread: string }} input
+     */
+    async mentionResolve(input) {
+      const id = String(input.id || "");
+      const c = /^connect:/.test(id) ? null : rowOf(id);
+      if (!c) throw fail(`no connection ${id.slice(0, 40)}`, "not_found");
+      const p = preset(c.preset);
+      if (!p) throw fail("that connector is no longer in the catalog", "not_found");
+      const name = c.label ? `${p.label} (${c.label})` : p.label;
+      if (p.target === "api") {
+        return { name, hint: "Connected", hosts: p.api.hosts, note: `${name} is used through vault.request with the credential ${c.name}. ${p.api.use || ""}`.trim() };
+      }
+      if (deps.grantThread) await deps.grantThread(c.name, String(input.thread || ""));
+      return { name, hint: "Connected", hosts: hostsOf(p), grant: { use: true, hosts: hostsOf(p) },
+        note: `${name} is connected. Its tools are named ${c.name}__<tool> in the tool list. Reads run at once; anything that sends or changes something follows the Gate.` };
     },
 
     /** The connections this box has made. */
@@ -169,7 +242,7 @@ export function connections(deps) {
      * { step: "connected", name, tools } (a token was stored and the server answered).
      * `token` is accepted only when the caller says it is a person's own surface.
      * @param {{ preset: string, label?: string, name?: string, mode?: string, client?: string, app?: { client_id: string, client_secret?: string }, token?: string, extra?: Record<string, string>, replace?: boolean }} input
-     * @param {{ person: boolean }} who
+     * @param {{ person: boolean, as?: string }} who
      */
     async start(input, who) {
       const wanted = String(input.preset || "");
@@ -196,6 +269,13 @@ export function connections(deps) {
           const v = input.extra && input.extra[x.name] !== undefined ? String(input.extra[x.name]).trim() : "";
           if (!v && x.required !== false) throw fail(`${x.label} is needed`);
           if (v) { if (/[\r\n]/.test(v) || v.length > 200) throw fail(`${x.label} must be one short line`); headers[x.header] = v; }
+        }
+        if (p.target === "api") {
+          await putApi(p, name, { auth: { type: "bearer", ...(t.header ? { header: String(t.header).toLowerCase() } : {}), ...(t.format ? { format: t.format } : {}) } }, value, who.as);
+          record(p, name, name, "token", input.label);
+          deps.emit("connectors.connected", { name, preset: p.id, mode });
+          log("connector connected", { name, preset: p.id, mode });
+          return { step: "connected", name, ...useOf(p, name) };
         }
         const item = itemName(name);
         await deps.save(item, { value }, { kind: "api-key", description: `${p.label} token (made by Vyre)`, hosts: originsOf(p) });
@@ -237,7 +317,7 @@ export function connections(deps) {
       try {
         // A vendor whose authorize call takes no `resource` (Google) names its endpoints; the token
         // is still recorded as minted for the server's own address.
-        started = await oauth.start({ name, ...(o.server ? { server: o.server, bind: [p.url] } : { resource: p.url }),
+        started = await oauth.start({ name, ...(o.server ? { server: o.server, bind: [p.target === "api" ? `https://${p.api.hosts[0]}/` : p.url] } : { resource: p.url }),
           scopes: o.scopes || [], offline: Boolean(o.offline),
           ...(o.port ? { port: o.port } : {}), ...(client ? { client } : {}),
           ...(o.redirect ? { redirect: o.redirect } : {}), ...(o.basic ? { basic: true } : {}) });
@@ -252,7 +332,7 @@ export function connections(deps) {
         }
         throw e;
       }
-      pendingFor.set(started.id, { preset: p.id, name, ...(input.label ? { label: input.label } : {}) });
+      pendingFor.set(started.id, { preset: p.id, name, ...(input.label ? { label: input.label } : {}), ...(who.as ? { as: who.as } : {}) });
       log("connector sign-in started", { name, preset: p.id });
       return { step: "open", id: started.id, url: started.url, redirect: started.redirect, name, preset: p.id };
     },
@@ -277,7 +357,8 @@ export function connections(deps) {
     async disconnect(input) {
       const name = String(input.name || "");
       if (!rowOf(name)) throw fail(`no connection ${name.slice(0, 40)}`, "not_found");
-      if (await deps.hasServer(name)) await deps.removeServer(name);
+      const pr = preset(rowOf(name).preset);
+      if (!(pr && pr.target === "api") && await deps.hasServer(name)) await deps.removeServer(name);
       db.prepare("DELETE FROM connectors_connections WHERE name = ?").run(name);
       deps.emit("connectors.disconnected", { name });
       return { name, removed: true };

@@ -124,10 +124,25 @@ There are three ways an app signs in, and Vyre picks the one the vendor offers:
 - **A token.** Some apps also take a personal token or API key (monday.com prefers it). You type it at
   a hidden prompt; it goes straight into the vault and is never shown again.
 
-Each connection is a hub server, so what you read above applies: reads run, and anything that sends or
+Each connection to an app that has a hosted server is a hub server, so what you read above applies: reads run, and anything that sends or
 changes something waits at the Gate. `vyre connect remove <name>` disconnects it and leaves the vault
 item where it is. A vendor that was checked and cannot be connected by a person (Slack, Dropbox, Figma
 and a few more) is listed by `vyre connect apps --all` with the reason, not hidden.
+
+Some apps have no hosted server an individual can use, or none that takes a person's own login
+(Microsoft mail and calendar, personal Gmail, Slack's Web API). Those connect as a **vault
+credential** instead: Vyre walks you through making a small app in your own account, signs in, and
+stores the result in the vault. Your agent then calls the vendor's API through `vault.request`, which
+adds the sign-in, runs reads at once, and holds anything that sends or changes something at the Gate
+(unless you asked for that exact thing). `vyre connect apps` marks these.
+
+Slack, Zoom, Microsoft and Google each print a numbered guide with the links and the exact settings.
+For Slack the link fills in a private app's settings for you. When a vendor requires an https redirect
+(Slack) or `localhost` (Microsoft), your browser ends on a page that cannot load: copy the full
+address from the browser bar and paste it into the terminal.
+
+For Google, publish the app you make (its status is In production) or Google ends the sign-in every
+7 days; the app stays unverified, which for one person only means a warning screen to click through.
 
 GoHighLevel signs in once for every sub-account you approve. Use the generic `services.leadconnectorhq.com/mcp/`
 address that Vyre uses; HighLevel's Claude-only address refuses any other app.

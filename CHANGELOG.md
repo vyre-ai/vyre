@@ -4,6 +4,29 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### Connectors: guided own-app sign-ins, Slack and Zoom, Microsoft and Google personal through the vault, the # connector kind
+
+- Presets: `slack` (own internal app, prefilled manifest link, https redirect pasted back; a `xoxp-`
+  token mode), `zoom` (own General app, hosted MCP, Basic client secret), `microsoft` (Graph mail and
+  calendar, public client, `localhost` redirect), `google-personal` (Gmail, Calendar, Drive REST with the
+  publish-to-production guidance), `slack-web` (token fallback). `target: "api"` presets are vault
+  api-credentials, not hub servers. Guides are data: `oauth.guide` (steps, links, a manifest link with
+  `{redirect}` filled in), `oauth.redirect` (scheme, host, path), `oauth.port`, `oauth.basic`,
+  `oauth.public`.
+- `connectors.connect` answers `needs: client` with the guide and the two fields, and takes them back as
+  `app { client_id, client_secret? }` from a person's surface; they go to the vault as `<name>-app`.
+- `vault`: an oauth `api-credential` now signs in. `vault.credential.tokens` (internal, connectors only,
+  refused unless the token endpoint is the one the person's config names) seals the sign-in into the
+  credential; `vault.request` uses the stored access token, then refreshes at the config's own token
+  endpoint (target-checked) and seals a rotated refresh token before going on. `Vault.setApiSecret`.
+- `core/modules`: `connectors` may call `vault.put` for an `api-credential` as the person who asked
+  (`CALL_AS`), and nothing else.
+- `mcp`: `mcp.grant` (internal, connectors only): a `#tag` lets one thread, and the threads it came
+  from, use a server whatever its scope says, until vyred restarts.
+- `connectors.mention.search` and `connectors.mention.resolve` and a `mentions` manifest entry for the
+  `#` picker's `connector` kind: connected apps, then a `Connect <name>` row per app not connected.
+- `vyre connect add app` prints the guide, asks for the client ID and a hidden secret, and waits.
+
 #### Connectors: a catalog of vendor-hosted apps and one connect flow (charter minimum 9)
 
 - `lib/connector-presets` (`presets.json`, `index.js`): 45 presets, each a vendor's own hosted MCP

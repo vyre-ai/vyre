@@ -117,3 +117,42 @@ test("connectors: a rotated refresh token is saved back into the item", async t 
   const kept = await w.d.registry.call("vault.release", { name: "fakevendor-auth", field: "client_id" }, "module:mcp");
   assert.ok(kept.data.value, "the other fields survived");
 });
+
+test("connectors: an api preset with a token makes a real api-credential in the vault, as the person who asked", async t => {
+  const w = await world(t, url => [fakevendor(url), { id: "webapi", label: "Web API", group: "work", target: "api", who: "Anyone.", evidence: "docs",
+    api: { hosts: ["api.example.test"], use: "Use vault.request." }, token: { label: "Token", help: "Made up." } }]);
+  const need = await w.cli("connectors.connect", { preset: "webapi" });
+  assert.equal(need.data.needs, "token");
+  const done = await w.cli("connectors.connect", { preset: "webapi", token: "pasted-api-token-value-9876" });
+  assert.equal(done.data?.step, "connected", JSON.stringify(done));
+  assert.equal(done.data.use.credential, "webapi");
+  const item = (await w.cli("vault.list", { filter: "webapi" })).data.items.find(x => x.name === "webapi");
+  assert.equal(item.kind, "api-credential");
+  // the credential is never handed out, and a model cannot make one
+  assert.match((await w.cli("vault.reveal", { name: "webapi" })).error?.message || "", /api-credential|never handed out/);
+  assert.equal((await w.mcpCall("connectors.connect", { preset: "webapi", token: "x".repeat(20), replace: true })).error.code, "denied");
+  assert.equal((await w.cli("mcp.servers", {})).data.some(x => x.name === "webapi"), false);
+  noLeak(w, ["pasted-api-token-value-9876"]);
+});
+
+test("connectors: a #tag lets one thread use a server its scope would hide, and only sessions may resolve it", async t => {
+  const w = await world(t, url => [fakevendor(url)]);
+  const s = await w.cli("connectors.connect", { preset: "fakevendor" });
+  await w.cli("connectors.connect.finish", { id: s.data.id, url: w.auth.consent(s.data.url) });
+  assert.ok((await w.cli("mcp.update", { name: "fakevendor", scope: { projects: ["only-this-project"] } })).data, "scoped to a project");
+  const visible = async thread => (await w.d.registry.call("mcp.servers", {}, "mcp", { thread })).data.some(x => x.name === "fakevendor");
+  assert.equal(await visible("t-tagged"), false, "outside its scope the thread does not see it");
+
+  const found = await w.cli("connectors.mention.search", { q: "fake" });
+  assert.deepEqual(found.data.map(x => x.id), ["fakevendor"]);
+  assert.equal((await w.mcpCall("connectors.mention.search", {})).error.code, "denied", "a model cannot search the picker");
+  for (const who of ["cli", "mcp", "module:mcp", "module:watchers"]) {
+    const r = await w.d.registry.call("connectors.mention.resolve", { id: "fakevendor", thread: "t-tagged" }, who);
+    assert.ok(r.error, `${who} may not resolve`);
+  }
+  const ok = await w.d.registry.call("connectors.mention.resolve", { id: "fakevendor", thread: "t-tagged", said: "s1" }, "module:sessions");
+  assert.deepEqual(ok.data.grant.use, true, JSON.stringify(ok));
+  assert.equal(await visible("t-tagged"), true, "tagged: the thread now sees the server");
+  assert.equal(await visible("t-other"), false, "only that thread");
+  assert.equal((await w.d.registry.call("mcp.grant", { server: "fakevendor", thread: "t-x" }, "cli")).error?.code === undefined, false, "mcp.grant is internal");
+});

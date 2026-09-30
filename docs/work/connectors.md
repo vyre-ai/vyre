@@ -2,6 +2,12 @@
 
 Branch: work/connectors-0.2 (off work/vault-next; the old work/connectors is 0.1 history) · Worktree: ../vyre-connectors-02 · ADR: 0016
 
+## 0.2 status, round 2 (30 Sep, the user's must-haves)
+
+Built in the user's order: Railway (proved plain DCR), GitHub wired into the catalog (`via: github`, accounts from the github module), GoHighLevel, Slack (own internal app from a prefilled manifest link; https redirect pasted back; `slack-web` token fallback), Zoom (hosted MCP exists, guided own General app), Google (Workspace BYO presets kept with DWD untouched; personal Gmail decided: OAuth Desktop client published In production, through vault.request), Microsoft (Entra guide, public client, Graph through the vault). All against fakes. What no fake can settle, and needs one real run by the person: Slack's https-loopback redirect and MCP manifest switch, Zoom's loopback in a development-mode app, Microsoft with a bare personal account. Also `#` connector kind (search, resolve, `mcp.grant`) and `connect: ` rows.
+Contract note for platform: `CALL_AS.connectors` (vault.put for an api-credential only) conflicts textually with work/platform-contract's `CALL_AS` shape (functions); resolve on rebase. The `mentions` manifest entry is already in `core/connectors/module.json`; it is inert on this base.
+New shared-code hunks for vault to review: `core/vault/request.js` (oauthToken, forget, `vault.credential.tokens`), `core/vault/vault.js` (`setApiSecret`), `core/vault/api-oauth.test.js`.
+
 ## 0.2 status (updated 2026-09-30)
 
 Owner of the catalog and the connect flows; vault keeps the vault, the Gate, the `#` provider for vault items and the asked-send handshake. Facts: `team/0.2/connectors-catalog.md` (45 vendors probed; 35 of 41 anonymous loopback registrations accepted).

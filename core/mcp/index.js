@@ -74,6 +74,11 @@ export default {
       idle: Number.isInteger(opts.idle) ? opts.idle : undefined,
       httpHosts: Array.isArray(opts.httpHosts) ? opts.httpHosts.map(String) : [],
       boundFor: catalogFrom(ctx.config).boundFor,
+      lineage: async thread => {
+        const r = await ctx.call("threads.lineage", { thread });
+        const d = r && r.data;
+        return Array.isArray(d) ? d.map(x => String(x && x.thread || x)) : Array.isArray(d && d.ancestors) ? d.ancestors.map(x => String(x && x.thread || x)) : [];
+      },
     });
 
     for (const r of hub.rows()) await offer(r.name);
@@ -131,6 +136,16 @@ export default {
       description: "Call a tool on an MCP server: { server, tool, arguments } or { name: \"<server>__<tool>\", arguments }. A read runs and returns the server's result. Anything else is held at the Gate and returns { held, message }: nothing reaches the server until the user approves it, so do not try it another way.",
       input: obj({ server: str, tool: str, name: str, arguments: { type: "object" } }),
       run: (input, meta) => hub.call(input, who(meta)),
+    });
+
+    ctx.tool("mcp.grant", {
+      internal: true,
+      description: "The connectors module lets one thread use a server after the person tagged it (#Slack) in their own turn.",
+      input: obj({ server: str, thread: str }, ["server", "thread"]),
+      run: (input, { caller }) => {
+        if (caller !== "module:connectors") throw Object.assign(new Error("only the connectors module grants a thread"), { code: "denied" });
+        return hub.grantThread(input);
+      },
     });
 
     ctx.tool("mcp.release", {

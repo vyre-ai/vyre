@@ -44,6 +44,13 @@ export default {
         return (Array.isArray(list) ? list : list.servers || []).some(s => s.name === name);
       },
       removeServer: async name => { data(await ctx.call("mcp.remove", { name })); },
+      // An api-credential is made only from a person's own surface, so this is relayed as the person who asked.
+      putCredential: async (name, { config, secret, description }, as) => {
+        const r = await ctx.call("vault.put", { name, kind: "api-credential", description, fields: { config: JSON.stringify(config), ...(secret ? { secret } : {}) } }, { as });
+        if (r.error) throw fail(`could not save the credential in the vault: ${r.error.message}`, r.error.code || "vault");
+      },
+      grantThread: async (server, thread) => { data(await ctx.call("mcp.grant", { server, thread })); },
+      storeTokens: async (name, tokens) => { data(await ctx.call("vault.credential.tokens", { name, tokens })); },
       // GitHub signs in through the github module; the catalog shows the accounts it holds.
       external: async id => {
         if (id !== "github") return [];
@@ -71,7 +78,7 @@ export default {
       description: "Connect an app from the catalog. { preset, label? } starts the sign-in. It answers { step: \"open\", id, url }: open the address in a browser and the sign-in finishes when the vendor sends the browser back (connectors.connect.finish takes the address for a browser on another device). Or { step: \"needs\", needs: \"token\" | \"client\", ... }: ask the person for a token (pass it as `token`, with `extra` for any extra fields) or for their own OAuth app: the answer carries a `guide` (steps and links, with a prefilled app link where the vendor has one) and the two `fields` to ask for; pass them as `app` { client_id, client_secret }, or name a vault item holding them as `client`. `label` makes a second account of the same app. `mode` picks oauth or token when both exist.",
       input: obj({ preset: str, label: str, name: str, mode: { type: "string", enum: ["oauth", "token"] }, client: str, app: { type: "object" }, token: str, extra: { type: "object" }, replace: { type: "boolean" } }, ["preset"]),
       callers: PEOPLE,
-      run: input => conn.start(input, { person: true }),
+      run: (input, meta) => conn.start(input, { person: true, as: String(meta && meta.caller || "") }),
     });
 
     ctx.tool("connectors.connect.finish", {
@@ -93,6 +100,25 @@ export default {
       input: obj({ name: str }, ["name"]),
       callers: PEOPLE,
       run: input => conn.disconnect(input),
+    });
+
+    // The # picker's connector kind (platform's core/mentions calls these two: search as the asking person,
+    // resolve as sessions or the assistant on the person's own turn). The manifest's `mentions` entry names them.
+    ctx.tool("connectors.mention.search", {
+      description: "The # picker's connectors: connected apps by name, then a \"Connect <name>\" row for each app not yet connected. { q?, limit? } -> [{ kind, id, name, hint, icon }]. A connect: id means open the connect flow (connectors.connect), not a tag.",
+      input: obj({ q: str, limit: { type: "integer" } }),
+      callers: PEOPLE,
+      run: input => conn.mentionSearch(input),
+    });
+
+    ctx.tool("connectors.mention.resolve", {
+      internal: true,
+      description: "What a #tag on a connected app means for one thread: its tools are usable there. { id, thread, said } -> { name, hint, hosts, note, grant }.",
+      input: obj({ id: str, thread: str, said: str }, ["id"]),
+      run: (input, { caller }) => {
+        if (!["module:sessions", "module:assistant", "module:mentions"].includes(String(caller))) throw fail("only sessions and the assistant resolve a tag", "denied");
+        return conn.mentionResolve(input);
+      },
     });
 
     ctx.tool("connectors.persist", {

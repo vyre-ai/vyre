@@ -369,7 +369,7 @@ const PEOPLE = ["cli", "local", "deck", "capsule", "module"];
  *   item?: (id: string) => Promise<any>,
  *   agentProjects?: (agent: string) => Promise<"*"|string[]>,
  *   threadProject?: (thread: string) => Promise<string|null>,
- *   idle?: number, httpHosts?: string[], boundFor?: (item: string) => ({ prefix: string, hosts: string[] } | null), maxResult?: number, timeout?: number }} HubDeps
+ *   idle?: number, httpHosts?: string[], boundFor?: (item: string) => ({ prefix: string, hosts: string[] } | null), lineage?: (thread: string) => Promise<string[]>, maxResult?: number, timeout?: number }} HubDeps
  */
 
 /** Who is calling, from the registry's caller and what vyred verified. @returns {Who} */
@@ -384,6 +384,8 @@ export class Hub {
   /** @param {HubDeps} deps */
   constructor(deps) {
     this.deps = deps;
+    /** @type {Map<string, Set<string>>} */
+    this.threadGrants = new Map();
     this.db = deps.db;
     this.creds = deps.creds;
     this.now = deps.now || Date.now;
@@ -431,6 +433,21 @@ export class Hub {
   }
 
   // ---- management ----
+
+  /**
+   * Let one thread (and the threads that come from it) use a server whatever its scope, until vyred
+   * restarts. Held in memory: it is the person's tag on one conversation, not a setting.
+   * @param {{ server: string, thread: string }} input
+   */
+  grantThread({ server, thread }) {
+    this.must(server);
+    if (typeof thread !== "string" || !thread || thread.length > 200) throw fail("bad_input", "thread must be a thread id");
+    let set = this.threadGrants.get(server);
+    if (!set) { set = new Set(); this.threadGrants.set(server, set); }
+    if (set.size >= 2000) set.delete(set.values().next().value);
+    set.add(thread);
+    return { granted: true };
+  }
 
   async add(input) {
     const n = normalize(input, { httpHosts: this.deps.httpHosts, boundFor: this.deps.boundFor });
@@ -534,6 +551,15 @@ export class Hub {
    */
   async inScope(r, who, memo) {
     if (who.person) return true;
+    // A #tag in the person's own turn: this thread (or one it came from) may use this server, whatever its scope says.
+    if (who.thread && this.threadGrants.has(r.name)) {
+      const set = /** @type {Set<string>} */ (this.threadGrants.get(r.name));
+      if (set.has(who.thread)) return true;
+      if (this.deps.lineage) {
+        if (memo.lineage === undefined || memo.lineage.thread !== who.thread) memo.lineage = { thread: who.thread, ancestors: await this.deps.lineage(who.thread).catch(() => []) };
+        if (memo.lineage.ancestors.some(a => set.has(a))) return true;
+      }
+    }
     const { projects, agents } = r.scope;
     if (who.agent) {
       if (agents !== "*" && !agents.includes(who.agent)) return false;

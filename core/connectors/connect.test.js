@@ -40,6 +40,8 @@ function rig(t, fake, opts = {}) {
   const items = new Map();
   const saved = [];
   const servers = new Map();
+  const credentials = [];
+  const stored = [];
   const events = [];
   const lines = [];
   const out = [];
@@ -52,6 +54,8 @@ function rig(t, fake, opts = {}) {
     testServer: async name => ({ ok: true, tools: 3, name }),
     hasServer: async name => servers.has(name),
     removeServer: async name => { servers.delete(name); },
+    putCredential: async (name, cred, as) => { credentials.push({ name, ...cred, as }); },
+    storeTokens: async (name, tokens) => { stored.push({ name, tokens }); },
     emit: (type, payload) => events.push({ type, payload }),
     log: (m, x) => lines.push(`${m} ${JSON.stringify(x || {})}`),
     ...opts,
@@ -62,7 +66,7 @@ function rig(t, fake, opts = {}) {
     const everything = JSON.stringify([out, events, lines, db.prepare("SELECT * FROM connectors_connections").all()]);
     for (const v of [...fake.tokens.keys(), TOKEN, ...extra]) assert.ok(!everything.includes(v), `a value leaked: ${v.slice(0, 10)}...`);
   };
-  return { c, db, items, saved, servers, events, lines, out, keep, leak };
+  return { c, db, items, saved, servers, credentials, stored, events, lines, out, keep, leak };
 }
 
 const PERSON = { person: true };
@@ -254,4 +258,71 @@ test("a localhost redirect with the root path, for a vendor that matches only th
   assert.match(s.redirect, /^http:\/\/localhost:\d+\/$/);
   await r.c.finish({ id: s.id, url: fake.consent(s.url) });
   assert.equal(r.saved.at(-1).fields.client_secret, undefined, "a public client has no secret");
+});
+
+test("an api preset with a token makes a person-written api-credential, as the caller who asked, and no hub server", async t => {
+  const fake = await startFakeAuthServer(t, { dcr: false });
+  const extra = [{ id: "webapi", label: "Web API", group: "work", target: "api", who: "Anyone.", evidence: "docs", api: { hosts: ["api.example.test"], use: "Use vault.request." },
+    token: { label: "Token", help: "Somewhere." } }];
+  const r = rig(t, fake, { catalog: catalogFor(fake.origin, extra) });
+  assert.equal((await r.c.start({ preset: "webapi" }, { person: true, as: "cli" })).needs, "token");
+  const done = await r.keep(r.c.start({ preset: "webapi", token: TOKEN }, { person: true, as: "deck" }));
+  assert.deepEqual(done.use, { tool: "vault.request", credential: "webapi", hosts: ["api.example.test"], how: "Use vault.request." });
+  assert.deepEqual(r.credentials, [{ name: "webapi", config: { auth: { type: "bearer" }, hosts: ["api.example.test"] }, secret: TOKEN, description: "Web API (made by Vyre)", as: "deck" }]);
+  assert.equal(r.servers.size, 0, "an api connection is not a hub server");
+  assert.equal(r.saved.length, 0, "and it is not a plain vault item either");
+  assert.equal((await r.c.catalog()).presets.find(p => p.id === "webapi").target, "api");
+  await r.c.disconnect({ name: "webapi" });
+  assert.equal(r.c.list().length, 0);
+  r.leak([]);
+});
+
+test("an api preset with an own-app sign-in: the credential is made without a secret, then the sign-in is sealed into it", async t => {
+  const fake = await startFakeAuthServer(t, { dcr: false });
+  const extra = [{ id: "graphish", label: "Graphish", group: "work", target: "api", who: "Anyone.", evidence: "docs", api: { hosts: ["graph.example.test"] },
+    oauth: { client: "byo", public: true, redirect: { host: "localhost", path: "/" }, scopes: ["Mail.ReadWrite", "offline_access"], help: "Register an app.",
+      server: { issuer: fake.origin, authorize_uri: `${fake.origin}/authorize`, token_uri: `${fake.origin}/token` } } }];
+  const r = rig(t, fake, { catalog: catalogFor(fake.origin, extra) });
+  const need = await r.c.start({ preset: "graphish" }, { person: true, as: "cli" });
+  assert.equal(need.needs, "client");
+  assert.equal(need.fields.find(f => f.name === "client_secret").required, false, "a public client needs no secret");
+  const client = fake.registerClient(null);
+  const s = await r.keep(r.c.start({ preset: "graphish", app: { client_id: client.client_id } }, { person: true, as: "capsule" }));
+  assert.match(s.redirect, /^http:\/\/localhost:\d+\/$/);
+  assert.equal(new URL(s.url).searchParams.get("scope"), "Mail.ReadWrite offline_access");
+  const done = await r.keep(r.c.finish({ id: s.id, url: fake.consent(s.url) }));
+  assert.equal(done.step, "connected");
+  assert.equal(done.use.credential, "graphish");
+  assert.equal(r.saved[0].item, "graphish-app");
+  assert.deepEqual(r.credentials[0].config, { auth: { type: "oauth", client: { item: "graphish-app" }, authorize_uri: `${fake.origin}/authorize`, token_uri: `${fake.origin}/token`, scopes: ["Mail.ReadWrite", "offline_access"] }, hosts: ["graph.example.test"] });
+  assert.equal(r.credentials[0].secret, undefined);
+  assert.equal(r.credentials[0].as, "capsule", "written as the person who started the sign-in");
+  assert.equal(r.stored[0].name, "graphish");
+  assert.equal(r.stored[0].tokens.token_uri, `${fake.origin}/token`);
+  assert.ok(r.stored[0].tokens.refresh_token && r.stored[0].tokens.access_token);
+  assert.equal(r.servers.size, 0);
+  assert.equal(r.c.list()[0].name, "graphish");
+});
+
+test("the # picker: connected apps first, then a Connect row for each app not connected; a tag grants the thread", async t => {
+  const fake = await startFakeAuthServer(t, { dcr: true });
+  const granted = [];
+  const r = rig(t, fake, { grantThread: async (server, thread) => { granted.push([server, thread]); } });
+  assert.deepEqual(r.c.mentionSearch({ q: "notion" }), [{ kind: "connector", id: "connect:notion", name: "Connect Notion", hint: "Not connected", icon: "plug" }]);
+  const s = await r.c.start({ preset: "notion", label: "Work" }, PERSON);
+  await r.c.finish({ id: s.id, url: fake.consent(s.url) });
+  const all = r.c.mentionSearch({});
+  assert.deepEqual(all[0], { kind: "connector", id: "notion-work", name: "Notion (Work)", hint: "Connected", icon: "plug" });
+  assert.ok(all.slice(1).every(x => x.id.startsWith("connect:") && x.name.startsWith("Connect ")));
+  assert.ok(!all.some(x => x.id === "connect:notion"), "a connected app has no Connect row");
+  assert.equal(r.c.mentionSearch({ q: "zzz" }).length, 0);
+  assert.equal(r.c.mentionSearch({ limit: 2 }).length, 2);
+
+  const res = await r.c.mentionResolve({ id: "notion-work", thread: "t-9" });
+  assert.deepEqual(granted, [["notion-work", "t-9"]]);
+  assert.deepEqual(res.grant, { use: true, hosts: ["127.0.0.1"] });
+  assert.match(res.note, /notion-work__<tool>/);
+  await assert.rejects(r.c.mentionResolve({ id: "connect:asana", thread: "t-9" }), /no connection/);
+  await assert.rejects(r.c.mentionResolve({ id: "nothing", thread: "t-9" }), /no connection/);
+  r.leak([]);
 });

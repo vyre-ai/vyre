@@ -966,6 +966,187 @@
     "label": "Meta access token",
     "help": "In Meta for Developers: Tools, Graph API Explorer or a System User token with ads_management."
    }
+  },
+  {
+   "id": "microsoft",
+   "label": "Microsoft 365 mail and calendar",
+   "group": "work",
+   "target": "api",
+   "who": "Anyone with an Outlook.com, Hotmail, work or school account. You register one small app in Microsoft Entra first; it takes a few minutes.",
+   "evidence": "docs",
+   "api": {
+    "hosts": [
+     "graph.microsoft.com"
+    ],
+    "use": "Ask your agent to use vault.request with the credential microsoft against https://graph.microsoft.com/v1.0: GET /me/messages, POST /me/sendMail, GET /me/calendarView, POST /me/events. Reads run; sending mail waits for your approval unless you asked for it."
+   },
+   "oauth": {
+    "client": "byo",
+    "public": true,
+    "redirect": {
+     "host": "localhost",
+     "path": "/"
+    },
+    "scopes": [
+     "Mail.ReadWrite",
+     "Mail.Send",
+     "Calendars.ReadWrite",
+     "User.Read",
+     "offline_access"
+    ],
+    "server": {
+     "issuer": "https://login.microsoftonline.com/common/v2.0",
+     "authorize_uri": "https://login.microsoftonline.com/common/oauth2/v2.0/authorize",
+     "token_uri": "https://login.microsoftonline.com/common/oauth2/v2.0/token"
+    },
+    "help": "Microsoft has no hosted server for mail an individual can use, so Vyre signs in with an app you register yourself. No client secret is needed.",
+    "guide": {
+     "links": [
+      {
+       "label": "Microsoft Entra: App registrations",
+       "url": "https://entra.microsoft.com/#view/Microsoft_AAD_RegisteredApps/ApplicationsListBlade"
+      }
+     ],
+     "steps": [
+      "Open the link and sign in. Click New registration.",
+      "Name it Vyre. Under Supported account types choose Any Entra ID Tenant + Personal Microsoft accounts. Under Redirect URI choose Mobile and desktop applications and enter http://localhost . Click Register.",
+      "Copy the Application (client) ID from the page that opens. Enter it here. Leave the secret empty.",
+      "Still in the app, open Authentication, then Advanced settings, set Allow public client flows to Yes, and Save.",
+      "Open API permissions, click Add a permission, choose Microsoft Graph, then Delegated permissions, and add Mail.ReadWrite, Mail.Send, Calendars.ReadWrite, offline_access and User.Read.",
+      "Vyre prints a Microsoft address. Open it, sign in and click Accept. Your browser then shows a page that cannot load; copy the full address from the browser bar and paste it here."
+     ]
+    }
+   },
+   "note": "A personal Microsoft account with no Azure sign-up may need a free Azure account before the Entra portal opens (unconfirmed)."
+  },
+  {
+   "id": "google-personal",
+   "label": "Google personal (Gmail, Calendar, Drive)",
+   "group": "google",
+   "target": "api",
+   "who": "Anyone with a Google account, including personal Gmail. You make a Google Cloud OAuth client first.",
+   "evidence": "docs",
+   "api": {
+    "hosts": [
+     "gmail.googleapis.com",
+     "www.googleapis.com"
+    ],
+    "use": "Ask your agent to use vault.request with the credential google-personal: GET https://gmail.googleapis.com/gmail/v1/users/me/messages, GET https://www.googleapis.com/calendar/v3/calendars/primary/events, GET https://www.googleapis.com/drive/v3/files. Reads run; sending mail waits for your approval unless you asked for it."
+   },
+   "oauth": {
+    "client": "byo",
+    "offline": true,
+    "scopes": [
+     "https://www.googleapis.com/auth/gmail.readonly",
+     "https://www.googleapis.com/auth/gmail.compose",
+     "https://www.googleapis.com/auth/gmail.send",
+     "https://www.googleapis.com/auth/calendar",
+     "https://www.googleapis.com/auth/drive.readonly"
+    ],
+    "server": {
+     "issuer": "https://accounts.google.com",
+     "authorize_uri": "https://accounts.google.com/o/oauth2/v2/auth",
+     "token_uri": "https://oauth2.googleapis.com/token"
+    },
+    "help": "Google's hosted Workspace server does not take personal accounts, so Vyre signs in with an OAuth client you make in your own Google Cloud project.",
+    "guide": {
+     "links": [
+      {
+       "label": "Create a Google Cloud project",
+       "url": "https://console.cloud.google.com/projectcreate"
+      },
+      {
+       "label": "Turn on the Gmail API",
+       "url": "https://console.cloud.google.com/apis/library/gmail.googleapis.com"
+      },
+      {
+       "label": "Turn on the Google Calendar API",
+       "url": "https://console.cloud.google.com/apis/library/calendar-json.googleapis.com"
+      },
+      {
+       "label": "Turn on the Google Drive API",
+       "url": "https://console.cloud.google.com/apis/library/drive.googleapis.com"
+      },
+      {
+       "label": "OAuth consent screen",
+       "url": "https://console.cloud.google.com/apis/credentials/consent"
+      },
+      {
+       "label": "Make the OAuth client",
+       "url": "https://console.cloud.google.com/apis/credentials"
+      }
+     ],
+     "steps": [
+      "Make a Cloud project and turn on the three APIs with the links.",
+      "Set up the OAuth consent screen as External, and add your own address as a test user.",
+      "Publish the app: on the consent screen click Publish app, so its status is In production. Do this, or Google ends your sign-in every 7 days. Unverified is fine for one person; Google shows a warning you click through.",
+      "Open Credentials, click Create credentials, OAuth client ID, and choose Desktop app.",
+      "Copy the Client ID and Client Secret and enter them here.",
+      "Vyre prints a Google address. Open it, choose your account, click Advanced and Go to Vyre if Google warns, then Allow."
+     ]
+    }
+   },
+   "note": "In Testing status Google ends a sign-in after 7 days for these scopes. In production (unverified) it does not, and a sign-in lasts until you revoke it, change your password, or leave it unused six months."
+  },
+  {
+   "id": "slack-web",
+   "label": "Slack (Web API, without the hosted server)",
+   "group": "work",
+   "target": "api",
+   "who": "You, as an admin of your own workspace. The fallback if Slack's hosted server refuses your app.",
+   "evidence": "docs",
+   "api": {
+    "hosts": [
+     "slack.com"
+    ],
+    "use": "Ask your agent to use vault.request with the credential slack-web: GET https://slack.com/api/conversations.history?channel=..., GET https://slack.com/api/search.messages?query=..., POST https://slack.com/api/chat.postMessage. Reads run; posting waits for your approval unless you asked for it."
+   },
+   "token": {
+    "label": "User OAuth token",
+    "help": "Make the app with the first link, install it to your workspace, and copy the User OAuth Token (xoxp-).",
+    "guide": {
+     "manifest": {
+      "label": "Make your Slack app with its settings filled in",
+      "link": "https://api.slack.com/apps?new_app=1&manifest_json=",
+      "json": {
+       "display_information": {
+        "name": "Vyre",
+        "description": "Lets your Vyre box read and post in Slack as you."
+       },
+       "oauth_config": {
+        "scopes": {
+         "user": [
+          "search:read",
+          "channels:history",
+          "groups:history",
+          "mpim:history",
+          "im:history",
+          "channels:read",
+          "groups:read",
+          "im:read",
+          "mpim:read",
+          "chat:write",
+          "users:read",
+          "users:read.email",
+          "files:read",
+          "reactions:read"
+         ]
+        }
+       },
+       "settings": {
+        "org_deploy_enabled": false,
+        "socket_mode_enabled": false,
+        "token_rotation_enabled": false
+       }
+      }
+     },
+     "steps": [
+      "Open the link. Pick your workspace and click Create.",
+      "Open OAuth & Permissions, click Install to Workspace and allow it.",
+      "Copy the User OAuth Token (it starts with xoxp-) and enter it here."
+     ]
+    }
+   }
   }
  ],
  "unavailable": [
@@ -998,12 +1179,6 @@
    "label": "WordPress.com",
    "status": "unavailable",
    "reason": "WordPress.com refused a sign-in from a local address on 30 Sep 2026, and needs a paid plan."
-  },
-  {
-   "id": "microsoft",
-   "label": "Microsoft 365",
-   "status": "unavailable",
-   "reason": "Microsoft's servers need a work tenant and an administrator. Use an API credential in the vault instead."
   }
  ]
 }

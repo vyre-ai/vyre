@@ -103,7 +103,8 @@ function showGuide(g) {
 /** @param {any} a */
 function connected(a) {
   if (json()) { emit(a); return 0; }
-  out(`  ${signal("connected")} ${bold(a.name)} ${dim(a.tools === undefined ? "" : `${a.tools} tools`)}`);
+  out(`  ${signal("connected")} ${bold(a.name)} ${dim(a.tools === undefined ? (a.use ? "used through vault.request" : "") : `${a.tools} tools`)}`);
+  if (a.use && a.use.how) out(dim(`  ${a.use.how}`));
   if (a.warning) out(beacon(`  ${a.warning}`));
   return 0;
 }
@@ -161,6 +162,11 @@ async function waitForBrowser(a) {
   }
   if (landed) return connected(landed);
   // The browser came back to the loopback: the module finished the connection on its own.
+  const c = await call("connectors.list");
+  const made = c.data && c.data.find(x => x.name === a.name);
+  const cat = await call("connectors.catalog");
+  const pr = cat.data && cat.data.presets.find(x => x.id === (made && made.preset));
+  if (pr && pr.target === "api") return connected({ name: a.name, use: { tool: "vault.request", credential: a.name } });
   const t = await call("mcp.test", { name: a.name }, { timeout: 60_000 });
   return connected({ name: a.name, ...(t.data && Array.isArray(t.data.tools) ? { tools: t.data.tools.length } : {}), ...(t.data && t.data.ok === false ? { warning: t.data.error } : {}) });
 }

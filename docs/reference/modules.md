@@ -25,7 +25,7 @@ A module runs on the `box` (the always-on server), on `local` (the Mac), or on b
 | [`chrome`](#chrome) | `modules/hands-chrome` | `box` | 5 | 1 | cli, deck |
 | [`commands`](#commands) | `core/commands` | `box`, `local` | 1 | 0 | none |
 | [`computers`](#computers) | `core/computers` | `box` | 23 | 15 | cli, deck |
-| [`connectors`](#connectors) | `core/connectors` | `box`, `local` | 7 | 3 | cli, deck |
+| [`connectors`](#connectors) | `core/connectors` | `box`, `local` | 9 | 3 | cli, deck |
 | [`context`](#context) | `core/context` | `box`, `local` | 2 | 1 | cli |
 | [`events`](#events) | `core/event-catalog` | `box`, `local` | 1 | 0 | none |
 | [`files`](#files) | `core/files` | `box`, `local` | 17 | 3 | capsule, cli, deck |
@@ -38,7 +38,7 @@ A module runs on the `box` (the always-on server), on `local` (the Mac), or on b
 | [`hooks`](#hooks) | `core/hooks` | `box` | 6 | 3 | capsule, cli, deck |
 | [`learn`](#learn) | `core/learn` | `box`, `local` | 15 | 13 | capsule, cli, deck |
 | [`link`](#link) | `core/link` | `box`, `local` | 21 | 14 | capsule, cli, deck |
-| [`mcp`](#mcp) | `core/mcp` | `box`, `local` | 9 | 9 | cli, deck |
+| [`mcp`](#mcp) | `core/mcp` | `box`, `local` | 10 | 9 | cli, deck |
 | [`memory`](#memory) | `core/memory` | `box`, `local` | 23 | 6 | capsule, cli, deck |
 | [`names`](#names) | `core/names` | `box` | 8 | 6 | cli |
 | [`network`](#network) | `core/network` | `box` | 5 | 2 | capsule, cli, deck |
@@ -61,7 +61,7 @@ A module runs on the `box` (the always-on server), on `local` (the Mac), or on b
 | [`term`](#term) | `core/term` | `box`, `local` | 4 | 2 | none |
 | [`threads`](#threads) | `core/switchboard` | `box`, `local` | 42 | 27 | cli |
 | [`tips`](#tips) | `core/tips` | `box`, `local` | 7 | 1 | cli |
-| [`vault`](#vault) | `core/vault` | `box`, `local` | 116 | 42 | capsule, cli, deck |
+| [`vault`](#vault) | `core/vault` | `box`, `local` | 117 | 42 | capsule, cli, deck |
 | [`voice`](#voice) | `local/voice` | `local` | 3 | 0 | capsule |
 | [`waiting`](#waiting) | `core/waiting` | `box`, `local` | 2 | 1 | cli |
 | [`watchers`](#watchers) | `core/watchers` | `box`, `local` | 8 | 5 | capsule, cli, deck |
@@ -160,7 +160,7 @@ Every CLI verb the running modules declare, in one list any surface can draw.
 - Folder: `core/connectors`, version 0.2.0
 - Runs on: `box`, `local`
 - Requires: `vault`, `mcp`
-- Tools: [7](tools.md#connectors), 1 of them only for other modules
+- Tools: [9](tools.md#connectors), 2 of them only for other modules
 - Emits: [3 events](events.md#connectors)
 - Shows on: cli, deck
 - Needs vault: `per-connection`
@@ -304,7 +304,7 @@ Makes the Mac and the box one system: pairing, box tools from the Mac, box event
 - Folder: `core/mcp`, version 0.1.0
 - Runs on: `box`, `local`
 - Requires: `vault`, `gate`
-- Tools: [9](tools.md#mcp), 1 of them only for other modules
+- Tools: [10](tools.md#mcp), 2 of them only for other modules
 - Emits: [9 events](events.md#mcp)
 - Shows on: cli, deck
 - Needs vault: `per-connection`
@@ -557,7 +557,7 @@ One short tip at a time about the part of Vyre you are using, the parts you have
 - Folder: `core/vault`, version 0.1.0
 - Runs on: `box`, `local`
 - Requires: none
-- Tools: [116](tools.md#vault), 7 of them only for other modules
+- Tools: [117](tools.md#vault), 8 of them only for other modules
 - Emits: [42 events](events.md#vault)
 - Shows on: capsule, cli, deck
 - Teaches tips: `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`
