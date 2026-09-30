@@ -324,7 +324,7 @@ export function register(ctx, { denied }) {
       let accepted = 0, skipped = 0; const refused = [];
       /** @type {any[]} */ const cleaned = [];
       for (const r of (Array.isArray(i.push) ? i.push : []).slice(0, 100)) {
-        const clean = sanitize(r, { now: now() });
+        const clean = sanitize(r, { now: now(), replica: true });
         if (!clean.ok) { refused.push({ key: String(r && r.key || "").slice(0, 100), refused: clean.refused }); if (clean.refused.length && keyOk(r && r.key)) event(r.key, "refused", clean.refused.map(x => x.path).join(",").slice(0, 120), null); continue; }
         cleaned.push(clean.record);
       }
