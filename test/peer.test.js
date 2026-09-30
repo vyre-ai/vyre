@@ -11,7 +11,7 @@ import { tempHome, writeModule } from "./helpers.js";
 import { start } from "../core/daemon/index.js";
 import { SURFACE_LABELS } from "../core/modules/index.js";
 import { above } from "../core/daemon/index.js";
-import { ancestry, insideClaude, controllingTty, exePath, processUid, loginOf, tmuxClients,
+import { setPeerHosting, peerHosting, ancestry, insideClaude, controllingTty, exePath, processUid, loginOf, tmuxClients,
   verifiedCapsule, parseCodesign, signatureOf } from "../core/daemon/peer.js";
 
 const tree = {
@@ -44,9 +44,9 @@ test("peer: the ancestry walks up to init, and says when it could not", () => {
 
 test("peer: under a claude, or under a thread vyred runs, is inside; a terminal, ssh, tmux and vyred's own parents are not", () => {
   // Production rules: a test hosting vyred in its own process is a seam (VYRE_TEST_HOSTED), off here.
-  const hostedWas = process.env.VYRE_TEST_HOSTED;
-  delete process.env.VYRE_TEST_HOSTED;
-  try { productionRules(); } finally { if (hostedWas !== undefined) process.env.VYRE_TEST_HOSTED = hostedWas; }
+  const hostedWas = peerHosting();
+  setPeerHosting(false);
+  try { productionRules(); } finally { setPeerHosting(hostedWas); }
 });
 
 /** The person is the one who is proven: a login leader the kernel names, or a server they proved once. */
@@ -94,8 +94,8 @@ function productionRules() {
 }
 
 test("peer: positive proof of the person: readable links up to a trusted login, vyred's own terminal shared, and every other shape is a model's", () => {
-  const hostedWas = process.env.VYRE_TEST_HOSTED;
-  delete process.env.VYRE_TEST_HOSTED;
+  const hostedWas = peerHosting();
+  setPeerHosting(false);
   try {
     const me = process.getuid();
     const rows = {
@@ -122,12 +122,12 @@ test("peer: positive proof of the person: readable links up to a trusted login, 
     // Parentheses inside a real command line are not an exited process.
     rows[40].args = "node app.js (x)";
     assert.deepEqual(insideClaude(40, o), { inside: false });
-  } finally { if (hostedWas !== undefined) process.env.VYRE_TEST_HOSTED = hostedWas; }
+  } finally { setPeerHosting(hostedWas); }
 });
 
 test("peer: every real person surface still reads as the person (or as a server they prove once)", async () => {
-  const hostedWas = process.env.VYRE_TEST_HOSTED;
-  delete process.env.VYRE_TEST_HOSTED;
+  const hostedWas = peerHosting();
+  setPeerHosting(false);
   try {
     const me = process.getuid();
     const row = (ppid, args, extra = {}) => ({ ppid, pgid: ppid, uid: me, start: 100, args, ...extra });
@@ -144,9 +144,13 @@ test("peer: every real person surface still reads as the person (or as a server 
     // The same shape with a login on the kernel list (Linux console or a tty login), as a platform-neutral proof of the root link in the middle.
     const console_ = { look: pid => terminal[pid] || null, threads: [], self: 200, exe: pid => (pid === 10 ? "/usr/bin/login" : null), started: () => "t", uid: () => me };
     if (fs.existsSync("/usr/bin/login")) assert.deepEqual(insideClaude(13, console_), { inside: false }, "a console login with root's login in the middle");
-    // iTerm2 (and Ghostty, VS Code, Warp): a GUI app off the kernel list, so a server the person proves once, never a model.
-    const iterm = { ...trusted, exe: pid => (pid === 10 ? "/Applications/iTerm.app/Contents/MacOS/iTerm2" : null) };
-    assert.deepEqual(insideClaude(13, iterm), { inside: false, unknown: true, server: { exe: "/Applications/iTerm.app/Contents/MacOS/iTerm2", pid: 10, started: "t" } }, "vyre typed in iTerm: named as a server");
+    // iTerm2 runs /usr/bin/login too, so it reads as the person exactly like Terminal.app, whatever app hosts it.
+    const iterm = { ...trusted, exe: pid => (pid === 10 ? "/Applications/iTerm.app/Contents/MacOS/iTerm2" : pid === 11 ? "/usr/bin/login" : null) };
+    if (fs.existsSync("/usr/bin/login")) assert.deepEqual(insideClaude(13, iterm), { inside: false }, "vyre typed in iTerm: the login in its chain anchors it");
+    // Ghostty, VS Code, Warp and any app that starts the shell itself, with no login: a server the person proves once, never a model.
+    const direct = { ...terminal, 11: undefined, 12: { ppid: 10, pgid: 12, uid: me, start: 102, args: "-zsh" } };
+    const vscode = { look: pid => direct[pid] || null, threads: [], self: 200, exe: pid => (pid === 10 ? "/Applications/Visual Studio Code.app/Contents/MacOS/Electron" : null), started: () => "t", uid: () => me };
+    assert.deepEqual(insideClaude(13, vscode), { inside: false, unknown: true, server: { exe: "/Applications/Visual Studio Code.app/Contents/MacOS/Electron", pid: 10, started: "t" } }, "an app that starts the shell itself: named as a server");
     // A Mac server (vyred under launchd), the person over ssh: sshd's listener (root, launchd's child) -> sshd [priv] (root) -> sshd (person) -> -zsh -> vyre.
     const ssh = {
       300: { ppid: 1, pgid: 300, uid: 0, start: 10, args: "/usr/sbin/sshd -D" }, 301: { ppid: 300, pgid: 301, uid: 0, start: 100, args: "sshd: alex [priv]" },
@@ -163,7 +167,34 @@ test("peer: every real person surface still reads as the person (or as a server 
     assert.deepEqual(await via("capsule"), { inside: false }, "Capsule.app itself, pinned build");
     assert.equal((await via("capsule", { capsuleSeam: { ...seam, cdhash: () => "b".repeat(40) } })).inside, true, "a different binary claiming the capsule label is a model's");
     assert.equal((await via("cli")).inside, true, "the Capsule's own ambiguous shape under any other label proves nothing");
-  } finally { if (hostedWas !== undefined) process.env.VYRE_TEST_HOSTED = hostedWas; }
+    // A `vyre` the Capsule spawns by argv: the Capsule is the top of its chain, proved by the same pin, no prompt.
+    capsule[30] = row(20, "vyre call notes.list", { pgid: 30 });
+    capsule[20] = { ...capsule[20], pgid: 20 };
+    const child = (pin) => above({}, registry, "cli", { peerPid: async () => 30, alive: () => true, delayMs: 1, capsuleSeam: { started: () => "t1", cdhash: () => pin },
+      processTable: () => pid => capsule[pid] || null, insideClaude: (pid, o) => insideClaude(pid, { ...o, exe: p => (p === 20 ? "/Applications/Vyre.app/Contents/MacOS/Vyre" : null), started: () => "t1", uid: () => me, self: 200 }) });
+    assert.deepEqual(await child("a".repeat(40)), { inside: false }, "a vyre the pinned Capsule spawned");
+    const other = await child("c".repeat(40));
+    assert.deepEqual([other.inside, other.unknown, Boolean(other.server)], [false, true, true], "another build at the top stays a named server");
+  } finally { setPeerHosting(hostedWas); }
+});
+
+test("peer: hosting is off unless a test turns it on; the env fallback needs node's test runner", () => {
+  const was = { set: peerHosting(), env: process.env.VYRE_TEST_HOSTED, ctx: process.env.NODE_TEST_CONTEXT };
+  try {
+    setPeerHosting(null);
+    process.env.VYRE_TEST_HOSTED = "1";
+    delete process.env.NODE_TEST_CONTEXT;
+    assert.equal(peerHosting(), false, "the env alone, outside a test runner (a shell a model wrote an rc file for)");
+    delete process.env.VYRE_TEST_HOSTED;
+    process.env.NODE_TEST_CONTEXT = "child-v8";
+    assert.equal(peerHosting(), false, "the runner alone");
+    setPeerHosting(true);
+    assert.equal(peerHosting(), true, "a test turning it on in its own process");
+  } finally {
+    if (was.env === undefined) delete process.env.VYRE_TEST_HOSTED; else process.env.VYRE_TEST_HOSTED = was.env;
+    if (was.ctx === undefined) delete process.env.NODE_TEST_CONTEXT; else process.env.NODE_TEST_CONTEXT = was.ctx;
+    setPeerHosting(was.set);
+  }
 });
 
 /** A client run as `node <client.mjs>`, optionally under a fake `claude`. It prints the tool's answer. */

@@ -12,11 +12,11 @@ import path from "node:path";
 import { spawn } from "node:child_process";
 import { tempHome, writeModule } from "./helpers.js";
 import { start, above, asTaken } from "../core/daemon/index.js";
-import { processTable, readPeerPid, insideClaude } from "../core/daemon/peer.js";
+import { processTable, readPeerPid, insideClaude, setPeerHosting } from "../core/daemon/peer.js";
 
 // These prove the production rules: vyred hosted in the test process is not the person's anchor here
-// (VYRE_TEST_HOSTED is set by the helpers for the other tests' own clients; the control below sets it).
-delete process.env.VYRE_TEST_HOSTED;
+// (setPeerHosting(true) is called by the helpers for the other tests' own clients; the control below sets it).
+setPeerHosting(false);
 
 /** A macOS-shaped snapshot: pid -> row. */
 const rows = obj => new Map(Object.entries(obj).map(([k, v]) => [Number(k), { pgid: Number(k), ...v }]));
@@ -157,9 +157,9 @@ test("peer race: a peer that is vyred itself is a misread and a model's; only a 
   const r = await above({}, registry, "cli", deps);
   assert.equal(r.inside, true);
   assert.equal(r.self, true);
-  process.env.VYRE_TEST_HOSTED = "1";
+  setPeerHosting(true);
   try { assert.equal((await above({}, registry, "cli", deps)).inside, false, "a test hosting vyred lets its own client through"); }
-  finally { delete process.env.VYRE_TEST_HOSTED; }
+  finally { setPeerHosting(false); }
 });
 
 test("peer race: a chain through an exited, unreaped process (no command line) is unreadable, so a model's", async () => {
@@ -222,9 +222,9 @@ test("peer race: 200 forgers under a claude, in bursts, never reach a person's t
 const req = http.request({ socketPath: ${JSON.stringify(d.paths.socket)}, path: "/v1/tools/probe.mine", method: "POST", headers: { "content-type": "application/json", "content-length": 2, "x-vyre-caller": "cli" } }, res => { res.resume(); res.on("end", () => process.exit(0)); });
 req.end("{}");`);
   // The person's own client is this test's child: a test hosting vyred is the one seam that lets it through.
-  process.env.VYRE_TEST_HOSTED = "1";
+  setPeerHosting(true);
   try { await new Promise(r => spawn(process.execPath, [js], { stdio: "ignore" }).on("close", r)); }
-  finally { delete process.env.VYRE_TEST_HOSTED; }
+  finally { setPeerHosting(false); }
   assert.equal(globalThis.__probeMineRan, 1, "the person's own cli still runs the tool");
 });
 

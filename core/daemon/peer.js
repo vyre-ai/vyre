@@ -275,6 +275,8 @@ export function processUid(pid) {
  * fallback as everything else not on this list (Ghostty, iTerm2, VS Code's terminal, Warp, tmux,
  * screen, ssh -- named servers, never a flat refusal: see insideClaude's `server` case below).
  */
+/** The system's own login: root-owned, and what every terminal app runs to hand the person a shell. */
+const LOGIN_PATHS = new Set(["/usr/bin/login", "/bin/login"]);
 const TRUSTED_PATHS = new Set(["/usr/bin/login", "/bin/login",
   "/System/Applications/Utilities/Terminal.app/Contents/MacOS/Terminal"]);
 
@@ -323,11 +325,23 @@ function agentHost(args) {
 
 /**
  * Test hosting only: a test starts vyred inside its own process and runs the person's client as
- * that process's child (or in it). With this set, reaching vyred's own process or one of its
- * ancestors ends the walk as it always did. A real vyred never has it: it is the environment of
- * the process that started vyred, which a caller cannot change.
+ * that process's child (or in it). With this on, reaching vyred's own process or one of its
+ * ancestors ends the walk as it always did. Shipped code never turns it on: `setPeerHosting` is
+ * called by test/helpers.js, and a vyred a test starts as a child process (`vyre up` in a temp
+ * home) takes it from VYRE_TEST_HOSTED only under node's test runner (NODE_TEST_CONTEXT) and with
+ * a live parent that is not init, launchd or systemd, which the person's own vyred never has.
+ * @type {boolean | null}
  */
-const hosted = () => process.env.VYRE_TEST_HOSTED === "1";
+let hostingSet = null;
+/** @param {boolean | null} on */
+export function setPeerHosting(on) { hostingSet = on; }
+export function peerHosting() {
+  if (hostingSet !== null) return hostingSet;
+  if (process.env.VYRE_TEST_HOSTED !== "1" || !process.env.NODE_TEST_CONTEXT || !(process.ppid > 1)) return false;
+  const parent = processTable({ fresh: true })(process.ppid);
+  return Boolean(parent && !/(^|\/)(systemd|launchd|init)(\s|$)/.test(parent.args));
+}
+const hosted = peerHosting;
 
 /** A link that cannot be relied on: no command line (an exited, unreaped process shows "(node)" in ps, nothing in /proc). @param {{ args: string }} p */
 const blank = p => !p.args || /^\(.*\)$/.test(p.args);
@@ -391,6 +405,16 @@ export function insideClaude(pid, { threads = [], look = processTable(), exe = e
   const { chain, complete, docker } = ancestry(pid, look, p => shared.has(p));
   for (const p of chain) if (threads.includes(p.pid) || claudeCommand(p.args) || agentHost(p.args)) return { inside: true, by: p.pid };
   if (!testHosted && chain.some(p => p.pid === self)) return { inside: true, by: self };
+  // A root-owned /usr/bin/login in the chain is the system's own hand-off of a terminal to the person
+  // (Terminal.app, iTerm2 and console logins all run it): a model cannot make a root process, and
+  // nothing but a login the person opened runs under one. It anchors the chain, whatever app hosts it,
+  // as long as every link below it is readable.
+  for (let i = 0; i < chain.length; i++) {
+    const row = look(chain[i].pid);
+    if (row && row.uid === 0 && LOGIN_PATHS.has(exe(chain[i].pid) || "") && rootOwnedPath(exe(chain[i].pid) || "")) {
+      return readable(chain.slice(0, i + 1), look) ? { inside: false } : bad;
+    }
+  }
   // A link that cannot be read (a pid missing from a fresh table, a peer that already exited, an
   // empty or timed-out `ps`, an exited process not yet reaped) is `unreadable`: a model's. Only a
   // process entered from outside a container (docker exec) says nothing about who is above.

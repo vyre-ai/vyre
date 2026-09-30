@@ -21,7 +21,7 @@ import { build, swWithBuild } from "./build.js";
 import { serveApp } from "./app.js";
 import { acquire } from "./lock.js";
 import { Presence, PERSON_ONLY, HUMAN_ONLY, SESSIONABLE, personOnly, fingerprint, parse as parsePresence } from "../presence/index.js";
-import { peerPid, insideClaude, processTable, loginOf, tmuxClients, controllingTty, canReadPeers, verifiedCapsule, signatureOf } from "./peer.js";
+import { peerPid, peerHosting, insideClaude, processTable, loginOf, tmuxClients, controllingTty, canReadPeers, verifiedCapsule, signatureOf } from "./peer.js";
 import { PersonSessions, COOKIE, MAX as PERSON_MAX, carried } from "../presence/person.js";
 import { allowedTools } from "../names/guests.js";
 import { registryRules } from "../harness/rules.js";
@@ -311,9 +311,9 @@ export async function above(socket, registry, caller, deps = {}) {
   const pid = await (deps.peerPid || peerPid)(socket);
   if (!pid) return { inside: false, nopid: true };
   // vyred never connects to its own socket: a peer that is vyred itself is a misread (a recycled
-  // descriptor), never the person. Only a test hosting vyred in its own process (VYRE_TEST_HOSTED)
+  // descriptor), never the person. Only a test hosting vyred in its own process (peerHosting)
   // is let through.
-  if (process.env.VYRE_TEST_HOSTED !== "1" && pid === process.pid) return { inside: true, by: pid, self: true };
+  if (!peerHosting() && pid === process.pid) return { inside: true, by: pid, self: true };
   const r = await registry.call("threads.pids", {}, "module:vyred");
   // The processes vyred runs threads in, their process groups and sessions (core/sessions/spawn.js
   // keeps a group listed until its last process is gone, so an orphan is still caught).
@@ -330,6 +330,10 @@ export async function above(socket, registry, caller, deps = {}) {
   // the terminal list) is the one positive proof besides the walk's own.
   if (result.unknown && caller === "capsule" && registry.deps.presence
     && await verifiedCapsule(socket, pid, registry.deps.presence.capsulePin(), deps.capsuleSeam)) return { inside: false };
+  // A `vyre` the Capsule spawned by argv: its top is the Capsule itself, named as a server. The pinned
+  // cdhash proves that top too (every link below it passed the walk's own checks), so no prompt.
+  if (result.server && registry.deps.presence
+    && await verifiedCapsule({}, result.server.pid, registry.deps.presence.capsulePin(), deps.capsuleSeam)) return { inside: false };
   // Still unreadable and the caller is gone: it connected, sent and exited before the walk (a
   // forger's fire-and-forget). A real CLI waits for its answer, so it is alive here. Gone counts
   // as a model's, never as the person's.
