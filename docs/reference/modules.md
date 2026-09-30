@@ -31,11 +31,11 @@ A module runs on the `box` (the always-on server), on `local` (the Mac), or on b
 | [`events`](#events) | `core/event-catalog` | `box`, `local` | 1 | 0 | none |
 | [`files`](#files) | `core/files` | `box`, `local` | 28 | 3 | capsule, cli, deck |
 | [`gate`](#gate) | `core/gate` | `box`, `local` | 10 | 6 | capsule, cli, deck |
-| [`github`](#github) | `core/github` | `box`, `local` | 11 | 6 | cli, deck |
+| [`github`](#github) | `core/github` | `box`, `local` | 22 | 8 | cli, deck |
 | [`glass`](#glass) | `core/glass` | `box` | 13 | 8 | capsule, cli, deck |
 | [`goals`](#goals) | `core/goals` | `box`, `local` | 5 | 5 | capsule, cli, deck |
 | [`google`](#google) | `core/google` | `box`, `local` | 19 | 7 | capsule, cli, deck |
-| [`hands`](#hands) | `local/hands-mac` | `local` | 10 | 3 | none |
+| [`hands`](#hands) | `local/hands-mac` | `local` | 12 | 4 | none |
 | [`hands-desktop`](#hands-desktop) | `modules/hands-desktop` | `box` | 4 | 1 | capsule, cli, deck |
 | [`harness`](#harness) | `core/harness` | `box`, `local` | 6 | 4 | cli |
 | [`hooks`](#hooks) | `core/hooks` | `box` | 6 | 3 | capsule, cli, deck |
@@ -242,8 +242,8 @@ Find, look at and bring over files on this machine and the box, inside the folde
 - Folder: `core/github`, version 0.1.0
 - Runs on: `box`, `local`
 - Requires: `vault`
-- Tools: [11](tools.md#github), 2 of them only for other modules
-- Emits: [6 events](events.md#github)
+- Tools: [22](tools.md#github), 2 of them only for other modules
+- Emits: [8 events](events.md#github)
 - Shows on: cli, deck
 - Needs vault: `per-connection`
 - Teaches tips: `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`
@@ -287,8 +287,8 @@ Computer use on macOS through the accessibility tree: observe an app, act on one
 - Folder: `local/hands-mac`, version 0.3.0
 - Runs on: `local`
 - Requires: none
-- Tools: [10](tools.md#hands), 1 of them only for other modules
-- Emits: [3 events](events.md#hands)
+- Tools: [12](tools.md#hands), 1 of them only for other modules
+- Emits: [4 events](events.md#hands)
 - Shows on: no surface
 - Teaches tips: `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`
 

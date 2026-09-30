@@ -15,8 +15,43 @@
 //
 // Colours come from style.js only.
 
+import { spawn } from "node:child_process";
 import { out, dim, beacon } from "./style.js";
 import { frame } from "./view.js";
+
+/**
+ * Spawn this device's "open a URL in the browser" command, detached, its errors swallowed (a
+ * missing browser command is never worth failing a run over). Only `http:`/`https:` URLs are
+ * opened, on every platform: this opens URLs vyre did not create (an OAuth consent page, a
+ * paired server's link), so a `file:`/`javascript:` scheme is refused rather than handed to
+ * `open`/`xdg-open` to interpret. On win32 the URL never touches a shell at all: `cmd /c start`
+ * would let a query string's `&`, `|`, `^`, `<`, `>` (every OAuth URL has a `&`) run as command
+ * operators after it, which is a real vulnerability, not a theoretical one, so this uses
+ * `rundll32`'s `FileProtocolHandler` (the same path Explorer opens a link through) with the URL
+ * as one argv entry instead. `VYRE_OPEN_BIN` (env) always wins, for tests and for a person's own
+ * override, but the http(s)-only check still applies to it. What is actually spawned is
+ * `parsed.href`, not the raw `url` string: `new URL()` trims the leading/trailing whitespace and
+ * control characters a raw string could still carry, so nothing unparsed reaches a child process.
+ * @param {string} url
+ * @param {{ env?: NodeJS.ProcessEnv, platform?: string, spawn?: typeof spawn }} [opts] `spawn` is
+ *   for a test to capture the argv without launching anything real.
+ */
+export function openInBrowser(url, { env = process.env, platform = process.platform, spawn: spawnImpl = spawn } = {}) {
+  let parsed;
+  try { parsed = new URL(url); } catch { return; }
+  if (parsed.protocol !== "http:" && parsed.protocol !== "https:") return;
+  const href = parsed.href;
+  const custom = env.VYRE_OPEN_BIN;
+  const [cmd, args] = custom ? [custom, [href]]
+    : platform === "darwin" ? ["open", [href]]
+    : platform === "win32" ? ["rundll32", ["url.dll,FileProtocolHandler", href]]
+    : ["xdg-open", [href]];
+  try {
+    const p = spawnImpl(cmd, args, { stdio: "ignore", detached: true, windowsHide: true });
+    p.on("error", () => {});
+    p.unref();
+  } catch {}
+}
 
 export const EXIT = Object.freeze({ OK: 0, FAILED: 1, USAGE: 2, PRESENCE: 3, LOCKED: 4, UNREACHABLE: 5 });
 

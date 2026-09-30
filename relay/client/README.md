@@ -22,6 +22,7 @@ The Noise handshake runs on an async provider:
 | Web (browser, the web build) | `webCrypto()` on `crypto.subtle` (X25519, AES-GCM, SHA-256, HMAC) | a `CryptoKey` made **non-extractable**: page code can use it, never read it |
 | iOS and Android (Hermes has no WebCrypto X25519) | `nobleCrypto({ x25519, sha256, hmac, gcm, randomBytes })` with `@noble/curves`, `@noble/hashes` and `@noble/ciphers` injected by the app | raw 32 bytes, kept in `expo-secure-store` |
 | Node 22+ (tests) | `webCrypto()` | as on the web |
+| A desktop shell (the Windows app) | `shellDeviceKey(invoke)` from `shellkey.js`: `{ crypto, keyStore }` | held by the shell's native side (DPAPI); the page gets a marker and `dh` calls `device_key_dh`, `get` calls `device_key_pub`. Neither command returns the private key, and only bundled local pages may call them (Tauri capabilities granted to the bundled window that runs the client, never the main panel; a 32-byte remote; an all-zero secret refused; no command resets or exports the key). DPAPI CurrentUser protects the key at rest and from other users, not from code running as the same user on that PC, so sensitive operations stay behind the presence proof, which does not rest on this key |
 
 The repo does not depend on @noble; see the top of `noble.js` for the imports.
 

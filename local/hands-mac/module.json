@@ -4,8 +4,8 @@
   "description": "Computer use on macOS through the accessibility tree: observe an app, act on one control and verify by observing again, inside the floor, with a visible indicator and a stop key. An outward act (a send, post or pay) holds at the Gate; a named agent needs the one grant before it may drive this Mac at all.",
   "roles": ["local"],
   "requires": [],
-  "does": { "tools": ["hands.observe", "hands.find", "hands.act", "hands.commit", "hands.release", "hands.stop", "hands.indicator", "hands.grant.list", "hands.grant.add", "hands.grant.remove"] },
-  "watches": { "emits": ["hands.acted", "hands.stopped", "hands.resumed"] },
+  "does": { "tools": ["hands.observe", "hands.find", "hands.act", "hands.commit", "hands.release", "hands.stop", "hands.pause", "hands.resume", "hands.indicator", "hands.grant.list", "hands.grant.add", "hands.grant.remove"] },
+  "watches": { "emits": ["hands.acted", "hands.stopped", "hands.resumed", "hands.paused"] },
   "shows": {},
   "needs": {},
   "teaches": {

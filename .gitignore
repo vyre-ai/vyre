@@ -14,6 +14,9 @@ modules/vault-extension/dist/
 # Old Electron-era helper builds (hotkey, local, vyre-launcher); never committed.
 local/capsule/bin/
 app-out/
+local/hands-chrome-mac/native-host/node-path
+local/hands-chrome-mac/native-host/sock-path
+deck/release/
 site/setup/relay/
 site/setup/tokens.css
 site/setup/fonts/

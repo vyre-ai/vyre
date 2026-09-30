@@ -77,6 +77,20 @@ async function main() {
     const browsers = flag(args, "browsers");
     const r = nativeHost.install({ vyreHome: dataDir, hostDir: hostDirNow, extensionId: id, ...(browsers ? { browsers: /** @type {any} */ (browsers.split(",")) } : {}) });
     if (appDir !== PKG) lock(appDir);
+    // The launcher: put `vyre-chrome` on the person's PATH (~/.local/bin), since a login shell often has no node on PATH at all.
+    const launcher = ["vyre-chrome", path.join("standalone", "vyre-chrome")].map(f => path.join(appDir, f)).find(f => fs.existsSync(f));
+    let linked = null;
+    if (launcher && process.platform !== "win32") {
+      try {
+        const bin = path.join(os.homedir(), ".local", "bin");
+        fs.mkdirSync(bin, { recursive: true });
+        const link = path.join(bin, "vyre-chrome");
+        let mine = true;
+        try { const st = fs.lstatSync(link); mine = st.isSymbolicLink() && /vyre-chrome/.test(fs.readlinkSync(link)); } catch { /* not there */ }
+        if (mine) { try { fs.unlinkSync(link); } catch { /* not there */ } fs.symlinkSync(launcher, link); linked = { link, onPath: String(process.env.PATH || "").split(path.delimiter).includes(bin) }; }
+        else linked = { link, foreign: true };
+      } catch { /* a read-only home: the printed steps below still work */ }
+    }
     out(`Vyre for Chrome is installed. Registered the connector for: ${r.written.map((/** @type {any} */ w) => w.browser).join(", ")}`);
     out();
     out(guide(extDirNow, id, r.written.map((/** @type {any} */ w) => w.browser)).split("\n").slice(1, 5).join("\n"));
@@ -86,6 +100,10 @@ async function main() {
     out();
     out("Never put chrome_send or chrome_resume in a Claude Code allow list: they are where you approve. If your Claude Code can show a question from a tool, the server asks you itself before a send, and before it carries on after you pressed Esc. `vyre-chrome config confirm-sends off` turns those questions off.");
     out(`A trace of every session is written to ${path.join(dataDir, "logs")} on this computer only. "vyre-chrome logs off" turns it off.`);
+    if (linked && !linked.foreign) {
+      out(`The command is now ${linked.link}.`);
+      if (!linked.onPath) { out(`~/.local/bin is not on your PATH yet. Add it once: echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.zshrc   (then open a new terminal)`); }
+    } else if (launcher) out(`Run it any time as: ${launcher}`);
     out("To update, unpack the new release and run its install again.");
     return;
   }
@@ -110,6 +128,7 @@ async function main() {
     const hostDirU = process.env.VYRE_CHROME_HOST_DIR || (fs.existsSync(appDirU) ? path.join(appDirU, "native-host") : hostDir);
     const r = nativeHost.uninstall({ vyreHome: dataDir });
     for (const f of ["sock-path", "node-path"]) { try { fs.unlinkSync(path.join(hostDirU, f)); } catch { /* read-only copy or not there */ } }
+    try { const link = path.join(os.homedir(), ".local", "bin", "vyre-chrome"); if (fs.lstatSync(link).isSymbolicLink() && /vyre-chrome/.test(fs.readlinkSync(link))) fs.unlinkSync(link); } catch { /* none */ }
     unlock(appDirU); fs.rmSync(appDirU, { recursive: true, force: true });
     out(`Removed the connector (${(r.removed || []).map((/** @type {any} */ x) => x.browser).join(", ") || "nothing was registered"}).`);
     out("Remove it from Claude Code with: claude mcp remove vyre-chrome");

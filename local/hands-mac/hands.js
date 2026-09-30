@@ -144,6 +144,16 @@ export class Hands {
     this.fireHalt = fire;
   }
 
+  /** The person carries on from the panel (not the agent's own resume: true). Idempotent. */
+  resumeByPerson() {
+    if (!this.stopped) return { ok: true, already: true };
+    const was = this.stopped.app;
+    this.stopped = null;
+    this.newHalt();
+    this.emit("hands.resumed", { app: was, by: "person" });
+    return { ok: true, already: false };
+  }
+
   /**
    * Stop controlling the Mac: from the person's keys (by "person") or from hands.stop (by "tool").
    * Idempotent, so Escape pressed twice is one stop.

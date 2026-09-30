@@ -101,8 +101,10 @@ export default {
     const emit = (/** @type {string} */ type, /** @type {any} */ payload) => {
       const m = /** @type {any} */ (via.getStore()) || {};
       const agent = agentClaim(m.caller);
+      // `run` is the thread the panel's pills use, else the agent: every hands event carries it, like the chrome ones.
       const where = { ...(m.thread ? { thread: String(m.thread) } : {}), ...(m.call ? { call: String(m.call) } : {}), ...(agent ? { agent } : {}) };
-      return ctx.events.emit(type, { ...payload, ...where }, where.thread ? { thread: where.thread } : {});
+      const run = m.thread ? String(m.thread) : agent || "";
+      return ctx.events.emit(type, { ...payload, ...where, ...(run ? { run } : {}) }, where.thread ? { thread: where.thread } : {});
     };
     // The Gate is how an unasked outward act reaches a person (PLAN.md C4): hands offers one
     // sender, hands:mac, and holds through it exactly like google or any other module does.
@@ -234,6 +236,20 @@ export default {
       description: "Stop controlling the Mac now, as Escape does: the act in flight is cut short and later acts are refused until one passes resume: true.",
       input: { type: "object", properties: {} },
       run: gated(async () => { runs.clear(); return hands.halt("tool"); }),
+    });
+
+    // The panel's controls, the person's own (never a model): pause holds like Esc, resume lets the run carry on.
+    ctx.tool("hands.pause", {
+      description: "Pause Vyre's control of the Mac now, as the person from the panel. It holds like Escape until the person resumes.",
+      input: { type: "object", properties: { run: str } },
+      callers: PEOPLE,
+      run: wrap(async (_input, _meta) => { runs.clear(); const r = await hands.halt("tool"); emit("hands.paused", {}); return { ok: true, paused: true, ...(r && typeof r === "object" ? {} : {}) }; }),
+    });
+    ctx.tool("hands.resume", {
+      description: "Let Vyre carry on controlling the Mac after a stop or a pause, as the person from the panel.",
+      input: { type: "object", properties: { run: str } },
+      callers: PEOPLE,
+      run: wrap(async () => { runs.clear(); return hands.resumeByPerson(); }),
     });
 
     ctx.tool("hands.indicator", {

@@ -13,7 +13,7 @@ const SRC = path.resolve(HERE, "..");
 
 /** Files and folders of local/hands-chrome-mac that the standalone needs, relative to it. */
 const KEEP = ["index.js", "bridge.js", "oversight.js", "floor-url.js", "caller.js", "extension", "native-host",
-  "standalone/cli.mjs", "standalone/runtime.js", "standalone/mcp.js", "standalone/trace.js", "standalone/GHL-PLAYBOOK.md"];
+  "standalone/cli.mjs", "standalone/vyre-chrome", "standalone/vyre-chrome.cmd", "standalone/runtime.js", "standalone/mcp.js", "standalone/trace.js", "standalone/GHL-PLAYBOOK.md"];
 const SKIP = /(\.test\.js|node-path|sock-path)$/;
 
 /** @param {string} from @param {string} to */
@@ -32,8 +32,11 @@ export function build({ out }) {
   fs.rmSync(dir, { recursive: true, force: true });
   for (const k of KEEP) copy(path.join(SRC, k), path.join(dir, k));
   fs.copyFileSync(path.join(SRC, "standalone", "README.md"), path.join(dir, "README.md"));
-  fs.writeFileSync(path.join(dir, "package.json"), JSON.stringify({ name: "vyre-chrome", version, private: true, type: "module", description: "Vyre for Chrome: control your own Chrome from Claude Code. No server.", engines: { node: ">=22" }, bin: { "vyre-chrome": "standalone/cli.mjs" } }, null, 2) + "\n");
+  fs.writeFileSync(path.join(dir, "package.json"), JSON.stringify({ name: "vyre-chrome", version, private: true, type: "module", description: "Vyre for Chrome: control your own Chrome from Claude Code. No server.", engines: { node: ">=22" }, bin: { "vyre-chrome": "vyre-chrome" } }, null, 2) + "\n");
   fs.chmodSync(path.join(dir, "standalone", "cli.mjs"), 0o755);
+  // The launcher sits at the top of the package, where a person looks first: `./vyre-chrome install`.
+  for (const f of ["vyre-chrome", "vyre-chrome.cmd"]) fs.copyFileSync(path.join(dir, "standalone", f), path.join(dir, f));
+  fs.chmodSync(path.join(dir, "vyre-chrome"), 0o755);
   const tar = path.join(out, `vyre-chrome-${version}.tar.gz`);
   const r = spawnSync("tar", [...(process.platform === "win32" ? ["--force-local"] : []), "-czf", tar, "-C", out, "vyre-chrome"], { encoding: "utf8" });
   if (r.status !== 0) throw new Error(`tar failed: ${r.stderr}`);

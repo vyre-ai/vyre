@@ -148,6 +148,11 @@ steps 1-3 first (outward classifier, Gate wiring, the one grant), then deep Chro
   needs a push of work/capsule-sight (runs chrome-spike.yml and chrome-standalone.yml).
 - Release: node local/hands-chrome-mac/standalone/build-release.mjs --out dist (also the `package` job's artifact).
 
+### Real-use findings (the user's own install)
+1. 30 Sep: `zsh: command not found: node`. Node is under nvm and a login shell has no node on PATH. Fixed: a `vyre-chrome` launcher script
+   (and vyre-chrome.cmd) at the top of the package finds Node 22+ itself (PATH, nvm, Volta, fnm, asdf, Homebrew, /usr/local); install puts
+   it in ~/.local/bin (symlink) and prints how to add that to PATH; the README leads with `./vyre-chrome install`. Tested with PATH=/usr/bin:/bin.
+
 ### Doing
 - Waiting on a push of work/capsule-sight to run chrome-spike.yml on the runners (now includes spike/harness/real.mjs: the real extension + host + bridge, the bench, stop-halts-batch and blind-refused checks).
 - Esc: hands.indicator (new hands tool) raises the shared pill before every Chrome act, and the hands overlay's stop (Esc or double Control) stops Chrome control through oversight.
