@@ -357,7 +357,7 @@ export default {
     // What the person's own turns asked to go out (P17): stored here, matched by the Gate.
     /** A tool only other modules can call, as vault.release is. */
     const internal = (name, description, input, run) => ctx.tool(name, { internal: true, description, input, run });
-    const said = saidTools.register({ vault, internal });
+    const said = saidTools.register({ vault, internal, tool, emit: (t, p) => ctx.events.emit(t, p) });
     // A vendor API call with an api-credential: reads run, asked-for sends run, the rest hold at the Gate.
     const requests = requestTools.register({ vault, tool, internal, said, call: ctx.call ? (name, input) => ctx.call(name, input) : undefined, log: ctx.log });
 

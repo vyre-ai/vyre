@@ -359,6 +359,12 @@ export class ApiRequests {
     try { plan = await this.plan(input, name); }
     catch (e) { audit(false, printable(/** @type {Error} */ (e).message, 160)); throw e; }
 
+    // A thread the person tagged with #<this credential> uses it by right: note it quietly (vault.used), and the hosts the item has now must be the ones it had at the tag.
+    if (meta.thread && this.deps.said && this.deps.call) {
+      const use = await this.deps.said.match({ kind: "use", to: [name], hosts: plan.config.hosts }, { thread: meta.thread }).catch(() => null);
+      if (use) this.deps.call("vault.use.note", { item: name, thread: meta.thread, via: "vault.request" }).catch(() => {});
+    }
+
     if (plan.kind === "read") return { ...(await this.execute(plan, { who: watcher ? `${caller}/${watcher}` : caller })), kind: "read" };
 
     // A watcher has no card to wait behind: it runs reads and is refused anything outward.

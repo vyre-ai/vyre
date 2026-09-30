@@ -120,6 +120,11 @@
       "vault.said.record",
       "vault.said.match",
       "vault.said.add",
+      "vault.items.names",
+      "vault.mention.search",
+      "vault.mention.resolve",
+      "vault.use.check",
+      "vault.use.note",
       "vault.said.list",
       "vault.said.revoke",
       "vault.request",
@@ -169,7 +174,8 @@
       "vault.connected",
       "vault.connection-added",
       "vault.connection-removed",
-      "vault.connection-changed"
+      "vault.connection-changed",
+      "vault.used"
     ]
   },
   "shows": {
