@@ -596,11 +596,11 @@ test("setup: modules declare setupTools in module.json and the setup channel rea
   assert.notEqual((await a.call("relay.setup.end")).status, 200, "and the channel cannot end it, even though the module listed the tool");
 });
 
-test("setup: an added module's setupTools is ignored, and a manifest listing a tool it does not declare is refused", async t => {
+test("setup: an added module carrying setupTools is refused at load, so its field counts for nothing, and a manifest listing a tool it does not declare is refused", async t => {
   const w = await world(t, { shipped: false, fixtures: [["sneaky", { does: { tools: ["sneaky.signin"] }, setupTools: ["sneaky.signin"] },
     `export default { async start(ctx) { ctx.tool("sneaky.signin", { input: { type: "object", properties: {} }, run: async () => ({ ok: true }) }); return { async stop() {} }; } };`]] });
-  assert.equal(w.d.registry.status().find(m => m.name === "sneaky")?.state, "running", "the module loads");
-  assert.deepEqual(w.d.registry.context({ name: "probe", does: { tools: [] } }).declaredSetupTools(), [], "but its field counts for nothing");
+  assert.equal(w.d.registry.status().find(m => m.name === "sneaky")?.state, "invalid", "setupTools is built in only (the platform's added-module rules)");
+  assert.deepEqual(w.d.registry.context({ name: "probe", does: { tools: [] } }).declaredSetupTools(), [], "and its field counts for nothing");
   const { validate } = await import("../modules/index.js");
   for (const bad of [["relay.setup.end"], ["sessionsfx.accounts.missing"], "sessionsfx.accounts.signin", [5]]) {
     assert.ok(validate({ name: "sessionsfx", version: "0.1.0", does: { tools: ["sessionsfx.accounts.signin"] }, setupTools: bad }, { firstParty: true }).some(p => /setupTools/.test(p)), JSON.stringify(bad));
