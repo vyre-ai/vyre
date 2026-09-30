@@ -31,7 +31,7 @@
 // connection's tailnet node into the peer it is, since sync owns no pairing of its own.
 
 import crypto from "node:crypto";
-import { createHealth, unknown } from "./health.js";
+import { createHealth, unknown, shaped, sinceTracker } from "./health.js";
 import { ALLOW, WRITE, FOLLOWED, ASKS } from "./allow.js";
 import { boxKey, signAnswer } from "./assert.js";
 
@@ -237,23 +237,41 @@ export function boxSide(ctx, { now = Date.now, hold = HOLD, allow = ALLOW, healt
     return !owner || login === owner;
   };
 
+  const reachSince = sinceTracker(now);
+
   ctx.tool("link.health", {
-    description: "How this box reaches a node right now: direct or relayed, latency, last handshake. By default the calling device; node: a paired Mac's node id. Checked at most once a minute per node.",
+    description: "How this box reaches the device that asks, in one shape: reach (direct over the tailnet, or relay), why, fix, since and the tailnet path and latency; the older path, latencyMs and lastHandshake stay. A device over the relay is \"relay\"; only the browser knows \"none\". By default the calling device; node: a paired Mac's node id. Checked at most once a minute per node.",
     input: { type: "object", properties: { node: { type: "string" } } },
     run: async ({ node }, meta) => {
       // Modules and the owner only (lead's decision, 27 Sep 2026). A guest from another tailnet
       // or an agent's own node learns nothing about how this box's links run, and neither does a
       // tailnet login that is not the owner the names module serves.
-      if (!healthCaller(String(meta.caller))) throw new Error("link.health answers the box's owner and its modules only");
+      const caller = String(meta.caller);
+      // A paired device over the relay channel is on the relay by definition. The start of that
+      // path is the channel's own when the bridge says (meta.since), else the first time it asked.
+      if (caller.startsWith("device:") && !/\s/.test(caller)) {
+        const at = Number.isFinite(meta.since) ? meta.since : reachSince.at(caller, "relay");
+        return { path: "unknown", relay: null, latencyMs: null, lastHandshake: null, online: true, checkedAt: now(), cached: false,
+          reach: "relay", why: "Connected through Vyre's relay.", since: at };
+      }
+      if (!healthCaller(caller)) throw new Error("link.health answers the box's owner and its modules only");
       const own = peerOf(meta);
       const asked = node ? String(node) : own && own.stableId ? String(own.stableId) : null;
-      if (!asked) return unknown("say which node: a paired Mac's node id (vyre link peers)", now());
+      if (!asked) return shaped(unknown("say which node: a paired Mac's node id (vyre link peers)", now()), reachSince, "none");
       // Any caller may ask about itself or a paired Mac. A module may name any node: Glass asks
       // about the viewer the tailnet listener identified, which may be a phone rather than a Mac.
       const mayName = String(meta.caller).startsWith("module:") || (own && own.stableId === asked)
         || db.prepare("SELECT 1 FROM link_peers WHERE stable_id = ?").get(asked);
       if (!mayName) throw new Error("that node is not a paired Mac");
-      return health.check({ stableId: asked });
+      const h = shaped(await health.check({ stableId: asked }), reachSince, asked);
+      // The caller came in over the tailnet listener, so for itself the answer is direct even when
+      // the box's own ping of it fails (a phone asleep between requests); the detail is still
+      // whatever Tailscale said.
+      if (tailnetLogin(caller) && own && own.stableId === asked && h.reach === "none") {
+        const { fix, ...rest } = h;
+        return { ...rest, reach: "direct", why: "Connected over your Tailscale network.", since: reachSince.at(asked, "direct") };
+      }
+      return h;
     },
   });
 

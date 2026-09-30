@@ -15,7 +15,7 @@ import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { migrate } from "../store/index.js";
 import { Idempotency } from "./idempotency.js";
-import { PERSON_ONLY, machineSelf } from "../presence/index.js";
+import { PERSON_ONLY, machineSelf, core as coreHolder, format as formatProof } from "../presence/index.js";
 import { validateDecls } from "../config/settings.js";
 import * as config from "../config/index.js";
 import { toolEntries, checkManifestFull } from "../../packages/module-sdk/manifest.js";
@@ -430,7 +430,7 @@ export class Registry {
    *           rules?: (call: { tool: string, input: any, caller: string }) => Promise<{ allow: boolean, reason?: string }>,
    *           handler?: (policy: any) => (req: any, res: any, caller: string) => Promise<void>, paths?: any,
    *           upgrader?: (policy: any) => (req: any, socket: any, head: any, caller: string) => void,
-   *           presence?: import("../presence/index.js").Presence }} deps
+   *           presence?: import("../presence/index.js").Presence, coreKeys?: any }} deps
    */
   constructor(deps) {
     this.deps = deps;
@@ -708,6 +708,12 @@ export class Registry {
       declaredSettings: () => [...this.modules.entries()].filter(([, r]) => r.state === "running" && r.manifest && Array.isArray(r.manifest.settings))
         // module and firstParty come from the loader, after the declaration, so a manifest can't claim them.
         .flatMap(([name, r]) => r.manifest.settings.map(d => ({ ...d, module: name, firstParty: this.isFirstParty(r.dir) }))),
+      // The tools shipped modules put on the pre-claim setup channel (module.json "setupTools"),
+      // for the relay to build its allowlist from. Only a shipped module's field counts, only for a
+      // tool it declares and owns, and never a relay, presence or vault tool: an added module's field is ignored.
+      declaredSetupTools: () => [...this.modules.entries()]
+        .filter(([, r]) => r.state === "running" && r.manifest && Array.isArray(r.manifest.setupTools) && this.isFirstParty(r.dir))
+        .flatMap(([name, r]) => r.manifest.setupTools.filter((/** @type {any} */ t) => typeof t === "string" && t.startsWith(name + ".") && toolEntries(r.manifest).some(e => e.name === t) && !/^(relay|presence|vault)\./.test(t))),
       // Every running module's teaches.tips, for the tips module to choose from (core/tips). Tips
       // are plain text a module chose to show; the tips module checks them, never this loader.
       // firstParty: shipped in the repo, so its tips follow Vyre's version, not the module's own.
@@ -798,7 +804,9 @@ export class Registry {
         if (!as && rec && !fp && !declared.has(tool) && !((m.needs && m.needs.tools) || []).includes(tool)) {
           return Promise.reject(Object.assign(new Error(`${m.name} called ${tool}, which needs.tools does not list`), { code: "undeclared" }));
         }
-        if (!as) return this.call(tool, input, `module:${m.name}`, { firstParty: fp });
+        // opts.onPartial: a tool that streams (threads.quick with stream: true) hands its partial text to
+        // this function, on this call only. Never the events bus, and never over a connection.
+        if (!as) return this.call(tool, input, `module:${m.name}`, { firstParty: fp, ...(opts && typeof opts.onPartial === "function" ? { partial: opts.onPartial } : {}) });
         // The capsule module sits in local/capsule (the Mac app's), and is first party there.
         const core = Boolean(rec && (path.resolve(rec.dir).startsWith(CORE_DIR + path.sep) || (m.name === "capsule" && fp)));
         const allowed = /** @type {any} */ (CALL_AS)[m.name];
@@ -833,6 +841,9 @@ export class Registry {
         // what a surface can run (commands.list), never for deciding a call: the registry does that.
         tools: caller => structuredClone(this.listTools(caller ? String(caller) : undefined)),
       },
+      // The box's keys held by vyre-core (lib/vyre-core-keys.js), for the relay module alone: its dh
+      // and signature would let any module that held them speak as the box. Null where core has none.
+      coreKeys: m.name === "relay" && firstParty(String((this.modules.get(m.name) || {}).dir || "")) ? this.deps.coreKeys || null : null,
       handler: policy => { if (!this.deps.handler) throw new Error("this vyred has no router to hand out"); return this.deps.handler(policy); },
       // The same for WebSocket upgrades (/v1/streams/...): (req, socket, head, caller). Without it
       // a module's listener cannot carry a stream, and Glass over the tailnet never connected.
@@ -884,6 +895,9 @@ export class Registry {
         // tool is refused to, and left out of the listing for, any other. Omitted means all.
         // hook: reachable only as vyred's webhook route POST /v1/<module>/<name>/hook (caller
         // "hook"), and left out of every listing. The tool checks its own secret.
+        // core: vyre-core answers it on this Mac and checks its proof itself (ADR 0040 phase 2);
+        // only a first-party module may say so, since it turns vyred's own presence check off.
+        if (def.core && !firstParty(m.dir)) throw new Error(`${m.name} is not one of Vyre's own modules, so ${name} can't be a vyre-core tool`);
         // A declared reach (ADR 0047) sets the same checks: modules is internal, hook is the webhook
         // route, and person is the person's own surfaces and devices only. anyone and asked stay
         // open here; the asked check and outward routing are later build steps (plans/platform.md).
@@ -891,7 +905,7 @@ export class Registry {
         this.tools.set(name, { module: m.name, description: def.description || "", input: def.input || { type: "object" }, run: def.run,
           internal: Boolean(def.internal) || reach === "modules",
           callers: reach === "person" ? [...PERSON_CALLERS] : Array.isArray(def.callers) ? def.callers : null,
-          hook: Boolean(def.hook) || reach === "hook", presence: def.presence || false,
+          hook: Boolean(def.hook) || reach === "hook", presence: def.presence || false, core: Boolean(def.core),
           reach, outward: (e && e.outward) || null, declaredReach: objectForm.has(name) });
       },
     };
@@ -910,7 +924,9 @@ export class Registry {
    *   the request carried, checked here and not passed on. `call` is the chat's id for this
    *   tool call (X-Vyre-Call-Id, only on a session's own paths): an unverified claim a tool may
    *   keep to link what it shows (a Glass step) to the chat's tool row, and never use for any
-   *   decision. Any other key a caller of this method adds reaches the tool the same way.
+   *   decision. `granted` (with `agentKind`) is the verified agent's stored project grant, "*" or
+   *   slugs, read by vyred from the agents module; a tool that scopes by project trusts it, never an
+   *   input filter. Any other key a caller of this method adds reaches the tool the same way.
    */
   async call(tool, input = {}, caller = "unknown", { proof = null, keep = false, terminal = null, idempotencyKey = undefined, door = false, ...meta } = {}) {
     const def = this.tools.get(tool);
@@ -962,7 +978,12 @@ export class Registry {
     // A human-only tool needs a proof that a person is there, whatever the caller claims
     // (docs/adr/0004-presence.md). Only modules are exempt: only the loader makes those callers.
     const presence = this.deps.presence;
-    if (presence && callerKind(caller) !== "module" && presence.required(tool, def, input)) {
+    // A tool vyre-core answers on this Mac (def.core, ADR 0040 phase 2): core checks the proof
+    // itself, over the exact input, so vyred passes it through untouched rather than checking (and
+    // spending) it first. Only when core is linked; everywhere else the floor below applies.
+    if (def.core && coreHolder.link) {
+      meta = { ...meta, coreProof: proof ? formatProof(proof) : undefined };
+    } else if (presence && callerKind(caller) !== "module" && presence.required(tool, def, input)) {
       const v = await presence.verify({ tool, input, caller, proof, def, peer: meta.peer || null, terminal: typeof terminal === "string" || (terminal && typeof terminal === "object") ? terminal : null });
       if (!v.ok) return { error: { code: v.code === "no_dialog" ? "no_dialog" : "presence_required", message: v.message, methods: v.methods } };
       // The tool learns how the person proved it (and with which enrolled key), never the proof.

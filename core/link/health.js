@@ -152,3 +152,74 @@ export function describe(h) {
   if (h.path === "peer-relay") return `peer relay${ms}`;
   return h.why === "the node is offline" ? "offline" : "unknown";
 }
+
+/**
+ * The one reachability shape every surface reads (plans/tailnet.md 3.9, C5):
+ *   reach   "direct" (over the tailnet, whatever path Tailscale took inside, DERP included),
+ *           "relay" (through Vyre's relay) or "none"
+ *   why     a plain sentence
+ *   fix     { action, label }, when one click could help
+ *   since   ms, when the current reach began
+ *   tailnet { path, latencyMs }, Tailscale's own detail, under its own key so "relay" never
+ *           means two things
+ * @typedef {{ reach: "direct"|"relay"|"none", why: string, fix?: { action: string, label: string }, since: number,
+ *   tailnet?: { path: Path, latencyMs: number|null } }} Reach
+ */
+
+/** The click that would help, from what went wrong. Null when nothing a person can do. */
+function fixFor(why) {
+  const w = String(why || "");
+  if (/not installed/.test(w)) return { action: "install-tailscale", label: "Install Tailscale" };
+  if (/^Tailscale is /.test(w)) return { action: "open-tailscale", label: "Open Tailscale" };
+  if (/not paired|pair again|no longer knows/.test(w)) return { action: "pair", label: "Pair with your server" };
+  if (/say which node/.test(w)) return null;
+  return { action: "retry", label: "Check again" };
+}
+
+/**
+ * A tailnet check reduced to the shape. `since` is when this reach began, from `sinceTracker`.
+ * @param {Partial<Health>} h @param {number} since @returns {Reach}
+ */
+export function toReach(h, since) {
+  const up = Boolean(h.online) && (h.path === "direct" || h.path === "relay" || h.path === "peer-relay") && typeof h.latencyMs === "number";
+  if (up) {
+    const p = /** @type {Path} */ (h.path);
+    return { reach: "direct", why: `Connected over your Tailscale network (${describe(h)}).`, since,
+      tailnet: { path: p, latencyMs: /** @type {number} */ (h.latencyMs) } };
+  }
+  const why = h.why || "Your server does not answer over Tailscale.";
+  const fix = fixFor(why);
+  return { reach: "none", why, ...(fix ? { fix } : {}), since,
+    ...(h.path && h.path !== "unknown" ? { tailnet: { path: h.path, latencyMs: h.latencyMs ?? null } } : {}) };
+}
+
+/**
+ * Remembers when each key's reach last changed, so `since` is the start of the current reach and
+ * not of the latest check. No timers.
+ * @param {() => number} [now]
+ */
+export function sinceTracker(now = Date.now) {
+  /** @type {Map<string, { reach: string, at: number }>} */
+  const seen = new Map();
+  return {
+    /** @param {string} key @param {string} reach @returns {number} */
+    at(key, reach) {
+      const s = seen.get(key);
+      if (s && s.reach === reach) return s.at;
+      const at = now();
+      seen.set(key, { reach, at });
+      return at;
+    },
+  };
+}
+
+/**
+ * A tailnet check, shaped: the old fields stay (Deck, Glass, Chat and the CLI read them) and the
+ * contract's ride beside them. The old `why` was only ever set on a failure; the sentence now
+ * always is, and on a failure it is the same text.
+ * @param {Health} h @param {ReturnType<typeof sinceTracker>} tracker @param {string} key
+ */
+export function shaped(h, tracker, key) {
+  const r = toReach(h, 0);
+  return { ...h, ...toReach(h, tracker.at(key, r.reach)) };
+}

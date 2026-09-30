@@ -28,12 +28,15 @@ import { isMac, machineChip } from "./machine.js";
 import { capsule, assistantName } from "./capsule.js";
 import { openSheet } from "./sheet.js";
 import { installPersonHandler } from "./person.js";
-import { rail, placeForKey, macKeys } from "./rail.js";
+import { rail, placeForKey } from "./rail.js";
 import { fillPlaces, readPin } from "./places.js";
 import { watchHealth, linkLine } from "./health.js";
 import { followTheme, deviceId } from "./theme-live.js";
 import { installAvatars, setIdentity, personAvatar } from "./avatars.js";
+import { checkBuild } from "./build-check.js";
+import { installed, kbd, mac } from "./platform.js";
 import { reportContext } from "./context-report.js";
+import { homePath } from "./home.js";
 
 /** Routes, most specific first. The name is the file in deck/views/. */
 const ROUTES = [
@@ -58,6 +61,8 @@ const ROUTES = [
   ["/settings", "settings"],
   ["/ask", "ask"],
   ["/find", "find"],
+  // An artifact an agent made, full screen (views/artifact.js).
+  ["/a/:id", "artifact"],
   ["/planner", "planner"],
   // A planner push notification opens /planner/<firing> (ADR 0025).
   ["/planner/:firing", "planner"],
@@ -156,7 +161,7 @@ put(deck,
     h("div", { class: "stage" },
       h("header", { class: "top" },
         address,
-        h("label", { class: "search" }, icon("search", 14), searchIn, h("span", { class: "kbd" }, "⌘K"), pop),
+        h("label", { class: "search" }, icon("search", 14), searchIn, h("span", { class: "kbd" }, kbd("K")), pop),
         h("div", { style: { flexGrow: "1" } }),
         fixtureNote,
         needsPill),
@@ -271,9 +276,10 @@ document.addEventListener("click", e => { if (!(/** @type {Element} */ (e.target
 document.addEventListener("keydown", e => { if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") { e.preventDefault(); searchIn.focus(); searchIn.select(); } });
 // Cmd+1 to Cmd+9 (Ctrl off a Mac): the rail's places in order, never while typing in a field. The
 // phone has no rail, so no rail keys.
-const MAC = macKeys();
+const MAC = mac();
 document.addEventListener("keydown", e => {
-  if (phone()) return;
+  // In a browser tab these chords switch the browser's own tabs; only an installed window takes them.
+  if (phone() || !installed()) return;
   const href = placeForKey(e, MAC);
   if (!href) return;
   e.preventDefault();
@@ -407,8 +413,8 @@ function leave(/** @type {string} */ key, /** @type {{ page: HTMLElement, name: 
 }
 
 async function route() {
-  // One address per page: "/" is Now, and the header's "+" asks Agents for its form by event.
-  if (location.pathname === "/") history.replaceState(history.state, "", "/now" + location.search + location.hash);
+  // "/" is the assistant's current thread (js/home.js), else Now; the header's "+" asks Agents for its form by event.
+  if (location.pathname === "/") history.replaceState(history.state, "", (await homePath(attempt)) + location.search + location.hash);
   let newAgent = false;
   if (phone() && location.pathname === "/agents" && new URLSearchParams(location.search).get("new") === "1") {
     history.replaceState(history.state, "", "/agents" + location.hash);
@@ -818,6 +824,23 @@ document.addEventListener("visibilitychange", () => {
   hiddenAt = 0;
 });
 
+// Whether the person has touched this page yet: a reload for a new build never lands under their finger.
+let touched = false;
+{
+  const touch = () => { touched = true; };
+  addEventListener("pointerdown", touch, { once: true, passive: true });
+  addEventListener("keydown", touch, { once: true, passive: true });
+}
+// Each time the stream comes back (the box may have been updated meanwhile): this page is never
+// older than its box. Invisible: deck/js/build-check.js.
+onResume(async () => {
+  const r = await attempt("system.info");
+  const reg = "serviceWorker" in navigator ? await navigator.serviceWorker.getRegistration().catch(() => undefined) : undefined;
+  checkBuild({ page: document.querySelector('meta[name="vyre-build"]')?.getAttribute("content") || null, info: r.data,
+    sw: reg || null, reload: () => location.reload(), untouched: () => !touched || document.visibilityState === "hidden",
+    onHidden: fn => document.addEventListener("visibilitychange", () => { if (document.visibilityState === "hidden") fn(); }) });
+});
+
 if ("serviceWorker" in navigator) {
   // updateViaCache none: the browser asks the box for sw.js on every launch, so a release (a new
   // BUILD in it) installs now. When that new worker takes over a page that already had one, the
@@ -825,10 +848,6 @@ if ("serviceWorker" in navigator) {
   // so a release never mixes old and new modules under someone's finger.
   const hadController = Boolean(navigator.serviceWorker.controller);
   navigator.serviceWorker.register("/sw.js", { updateViaCache: "none" }).catch(() => {});
-  let touched = false;
-  const touch = () => { touched = true; };
-  addEventListener("pointerdown", touch, { once: true, passive: true });
-  addEventListener("keydown", touch, { once: true, passive: true });
   navigator.serviceWorker.addEventListener("controllerchange", () => {
     if (!hadController) return;
     if (!touched || document.visibilityState === "hidden") { location.reload(); return; }

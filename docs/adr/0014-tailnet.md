@@ -312,6 +312,19 @@ internet.
   routes Funnel does not serve and paths Vyre has no route for, and prints the exact commands.
   Vyre never runs `tailscale funnel`.
 
+**Amendment, 30 Sep 2026.** Vyre runs `tailscale funnel` for the paths the person turned on in
+Settings, and only for those: asking is approving. Today that is one path, `/s/` on port 8443, for
+public artifact share links (`core/network/funnel.js`). It always names the path (`--set-path`),
+turns exactly that path off with the toggle, and never runs `funnel reset` or an off with no path,
+so `/hooks/<name>` on the same port is never touched. The first time can need Tailscale's consent
+link (the funnel node attribute, HTTPS certificates); `network.funnel.status` shows it and Vyre
+runs again once the person has followed it. Hook paths stay the person's own to publish.
+
+**Amendment to part 4, 30 Sep 2026.** `link.health` also answers in one shape for every surface:
+`{ reach: "direct"|"relay"|"none", why, fix?, since, tailnet?: { path, latencyMs } }`. `direct`
+means over the tailnet, whatever path Tailscale took inside; `relay` means through Vyre's relay.
+The fields above stay beside it.
+
 ## Consequences
 
 - The box stack grows: tailscaled sees `/work` (read-only by default), and an optional egress
