@@ -272,7 +272,10 @@ extension CapsuleModel {
         guard !words.isEmpty, vyred.has("voice.speak") else { return }
         let socket = vyred.socket
         Task { @MainActor in
-            let r = await vyred.call("voice.speak", ["text": words], presence: false)
+            // `reply: true` has vyred make the written reply speakable (markdown to words, code and tables dropped,
+            // a link said as "a link", cut at a sentence) before it is spoken. Only a turn that came from the mic
+            // is spoken; a typed question gets text only. speak_off and no_key are silent.
+            let r = await vyred.call("voice.speak", ["text": words, "reply": true], presence: false)
             guard let d = r.data as? [String: Any], let url = VJ.nonEmpty(d["url"]) else { return }
             let got = await withCheckedContinuation { (k: CheckedContinuation<Data?, Never>) in
                 DispatchQueue.global(qos: .userInitiated).async {
