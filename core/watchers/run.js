@@ -14,6 +14,7 @@ import { fork } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
+import { mediatedFetch, sandboxIdentity } from "../../lib/sandbox/index.js";
 
 const RUNNER = fileURLToPath(new URL("./runner.js", import.meta.url));
 // The permission model is `--permission` from Node 22.13 and 23.5, and `--experimental-permission`
@@ -31,10 +32,12 @@ export const LIMITS = { items: 1000, itemBytes: 4000, logLines: 200, lineChars: 
 /**
  * Run a watcher once.
  * @param {{ dir: string, needs: string[], since: any, hook?: any, timeoutMs: number,
- *   fetch: (name: string, field?: string) => Promise<string>, signal?: AbortSignal }} opts
+ *   fetch: (name: string, field?: string) => Promise<string>, signal?: AbortSignal,
+ *   hosts?: string[]|null, netAuth?: (url: URL) => Promise<{ host: string, header: string, value: string }|undefined>,
+ *   netOptions?: object, identity?: ReturnType<typeof sandboxIdentity> }} opts
  * @returns {Promise<Result>}
  */
-export function runOnce({ dir, needs, since, hook = null, timeoutMs, fetch, signal }) {
+export function runOnce({ dir, needs, since, hook = null, timeoutMs, fetch, signal, hosts = null, netAuth, netOptions = {}, identity = sandboxIdentity() }) {
   const started = Date.now();
   const real = fs.realpathSync(dir);
   const runner = fs.realpathSync(RUNNER);
@@ -50,7 +53,7 @@ export function runOnce({ dir, needs, since, hook = null, timeoutMs, fetch, sign
   };
 
   return new Promise(resolve => {
-    const child = fork(runner, [], { execArgv, env: {}, cwd: real, stdio: ["ignore", "pipe", "pipe", "ipc"], serialization: "json" });
+    const child = fork(runner, [], { execArgv, env: {}, cwd: real, ...(identity.uid != null ? { uid: identity.uid, gid: identity.gid ?? identity.uid } : {}), stdio: ["ignore", "pipe", "pipe", "ipc"], serialization: "json" });
     let stderr = "";
     child.stdout?.on("data", c => String(c).split("\n").filter(Boolean).forEach(logLine));
     child.stderr?.on("data", c => { stderr = (stderr + c).slice(-4000); });
@@ -73,6 +76,17 @@ export function runOnce({ dir, needs, since, hook = null, timeoutMs, fetch, sign
           released.push(value);
           child.connected && child.send({ t: "vault", id: m.id, value });
         } catch (e) { child.connected && child.send({ t: "vault", id: m.id, error: /** @type {Error} */ (e).message }); }
+      } else if (m.t === "fetch") {
+        // The child has no network of its own; this is its only way out (lib/sandbox/fetch.js).
+        const reply = body => child.connected && child.send({ t: "fetch", id: m.id, ...body });
+        try {
+          const url = new URL(String(m.url));
+          if (hosts && !hosts.some(h => url.hostname === h || url.hostname.endsWith("." + h))) throw new Error(`${url.hostname} is not one of this watcher's declared hosts`);
+          const auth = netAuth ? await netAuth(url) : undefined;
+          const r = await mediatedFetch(url.href, m.init || {}, { ...netOptions, ...(auth ? { auth } : {}) });
+          if (auth) { const raw = auth.value.replace(/^\S+ /, ""); r.body = r.body.split(raw).join("[vault value]"); }
+          reply({ result: r });
+        } catch (e) { reply({ error: /** @type {Error} */ (e).message }); }
       } else if (m.t === "done") { finished = true; cursor = m.cursor; }
       else if (m.t === "error") { finished = true; fail(m.message); }
     });

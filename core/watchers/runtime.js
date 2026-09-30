@@ -383,7 +383,14 @@ export class Runtime {
 
   /** Run in a child and check the items; a bad item is the run's error. */
   async exec(dir, spec, since, hook) {
-    const res = await runOnce({ dir, needs: spec.needs, since, hook, timeoutMs: spec.timeout * 1000, fetch: (n, field) => this.d.fetch(n, spec.name, field), signal: this.abort.signal });
+    const res = await runOnce({ dir, needs: spec.needs, since, hook, timeoutMs: spec.timeout * 1000, fetch: (n, field) => this.d.fetch(n, spec.name, field), signal: this.abort.signal, hosts: spec.net ? Object.keys(spec.net) : null,
+      netAuth: spec.net ? async url => {
+        const key = Object.keys(spec.net).find(h => url.hostname === h || url.hostname.endsWith("." + h));
+        const rule = key && spec.net[key];
+        if (!rule || !rule.vault) return undefined;
+        const value = await this.d.fetch(rule.vault, spec.name, rule.field);
+        return { host: url.hostname, header: rule.header, value: rule.scheme ? `${rule.scheme} ${value}` : String(value) };
+      } : undefined, netOptions: typeof this.d.netOptions === "function" ? this.d.netOptions() : this.d.netOptions });
     if (res.error) return res;
     try { return { ...res, items: normalize(res.items) }; }
     catch (e) { return { ...res, items: [], error: /** @type {Error} */ (e).message }; }

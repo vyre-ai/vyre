@@ -6,6 +6,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import http from "node:http";
+import { testHooks } from "../../lib/sandbox/index.js";
 import path from "node:path";
 import { start } from "../daemon/index.js";
 import { request, call } from "../daemon/client.js";
@@ -33,6 +34,8 @@ async function boot(t) {
   t.after(() => server.close());
   const port = /** @type {any} */ (server.address()).port;
 
+  testHooks.net = { lookup: async () => ["127.0.0.1"], allowAddress: ip => ip === "127.0.0.1", allowPort: () => true };
+  t.after(() => { testHooks.net = {}; });
   const d = await start({ root, presence: present, log: () => {} });
   t.after(() => d.stop());
   const made = await call("projects.create", { name: "Harlow Legal", home }, { root });
@@ -51,9 +54,9 @@ function writeWatcher(p, name, spec, code) {
 
 test("watchers module: dry run, create, filing into the project, and the items in memory.facts for its folders", async t => {
   const { root, p, home, port } = await boot(t);
-  writeWatcher(p, "harlow-sqlite", { schedule: "*/15 * * * *", needs: ["feed-key"], emits: "post.seen" }, `
-    export default async function watch({ vault, emit }) {
-      const res = await fetch("http://127.0.0.1:${port}/", { headers: { authorization: "Bearer " + await vault.fetch("feed-key") } });
+  writeWatcher(p, "harlow-sqlite", { schedule: "*/15 * * * *", net: { "feed.test": { vault: "feed-key" } }, emits: "post.seen" }, `
+    export default async function watch({ emit }) {
+      const res = await fetch("http://feed.test:${port}/");
       if (!res.ok) throw new Error("feed answered " + res.status);
       for (const s of await res.json()) if (/sqlite/i.test(s.title)) emit({ id: s.id, title: s.title, url: s.url });
     }`);

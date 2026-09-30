@@ -3,7 +3,7 @@
 // permission model where the Node version has it, so a watcher can read only its own folder,
 // write nothing, start no processes and see no environment.
 //
-// Everything a watcher can do goes through the four things it is handed, and each is a message
+// Everything a watcher can do goes through the things it is handed (and `fetch`, which is the parent's), and each is a message
 // to the parent: vault.fetch asks (the parent checks the watcher's own `needs`), emit and log
 // report. The parent validates, dedupes and files; this side only runs the function.
 
@@ -17,7 +17,26 @@ const text = a => a.map(x => typeof x === "string" ? x : (() => { try { return J
 // console.* from a watcher is its log, not vyred's stdout.
 for (const k of ["log", "info", "warn", "error", "debug"]) console[k] = (...a) => { send({ t: "log", line: text(a) }); };
 
+// The child has no network of its own. fetch(url, { method?, headers? }) asks the parent, which
+// resolves the name, refuses non-public addresses and runs a GET or HEAD. It answers a small
+// Response-like object: ok, status, url, headers, text(), json().
+let fetched = 0;
+const hostFetch = (url, init = {}) => new Promise((resolve, reject) => {
+  const id = ++fetched;
+  waiting.set(id, { resolve, reject });
+  send({ t: "fetch", id, url: String(url && url.href || url), init: { method: init.method, headers: init.headers } });
+});
+const wrap = r => ({ ok: r.status >= 200 && r.status < 300, status: r.status, url: r.url, truncated: r.truncated, headers: { get: k => r.headers[String(k).toLowerCase()] ?? null },
+  text: async () => r.body, json: async () => JSON.parse(r.body) });
+globalThis.fetch = async (url, init) => wrap(await hostFetch(url, init));
+
 process.on("message", async (/** @type {any} */ msg) => {
+  if (msg.t === "fetch") {
+    const w = waiting.get(msg.id);
+    waiting.delete(msg.id);
+    if (w) msg.error ? w.reject(new Error(msg.error)) : w.resolve(msg.result);
+    return;
+  }
   if (msg.t === "vault") {
     const w = waiting.get(msg.id);
     waiting.delete(msg.id);

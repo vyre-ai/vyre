@@ -51,7 +51,9 @@ your reply. A public source needs nothing: leave `needs` out. Otherwise:
 
 1. `vault_list` (names only) to find the item. If it is missing, tell the user the exact name to
    add with `vyre vault put <name>` and stop there. Never ask them to paste a value.
-2. List the item's name under `needs` in `watcher.json`.
+2. For an HTTP API, name the host and the item under `net` in `watcher.json`; Vyre attaches the
+   credential to requests for that host and no other, and your code never sees it. (`needs` is
+   for a value the code must hold itself, which a plain API call does not.)
 3. Before the dry run, give the user the exact command that lets this one watcher use it, and
    wait for them to run it:
 
@@ -68,7 +70,12 @@ your reply. A public source needs nothing: leave `needs` out. Otherwise:
 4. Until they have run it, the dry run fails with "<item> is not granted to watchers/<name>".
    That is expected, not a bug in the watcher: remind them of the command, then dry-run again.
 
-In `watch.js`, `await vault.fetch("<item>")` returns the value (`value`, a login's `password`, a
+A watcher has no network of its own: `fetch(url)` in `watch.js` is run by Vyre, GET and HEAD
+only, on ports 80 and 443, to public hosts only (never localhost, a private or tailnet address).
+With `net`, only the hosts it lists (and their subdomains) are reachable. A redirect to another
+host drops the credential.
+
+When the code must hold a value itself, `await vault.fetch("<item>")` returns the value (`value`, a login's `password`, a
 card's `number`, a note's `text`). Pass `{ field: "username" }` for another field; an env set
 always needs a field. You never see or handle the value yourself.
 
@@ -87,7 +94,7 @@ moves with `VYRE_HOME`, so never guess it. Name the watcher `<project>-<thing>`,
   "name": "harlow-invoices",
   "project": "harlow-legal",
   "schedule": "*/15 * * * *",
-  "needs": ["billing-inbox"],
+  "net": { "mail.example": { "vault": "billing-inbox", "header": "Authorization", "scheme": "Bearer" } },
   "emits": "invoice.seen"
 }
 ```
@@ -99,11 +106,8 @@ moves with `VYRE_HOME`, so never guess it. Name the watcher `<project>-<thing>`,
 
 ```js
 // Watches the billing inbox for new invoices and files each one into Harlow Legal.
-export default async function watch({ vault, since, emit, log }) {
-  const token = await vault.fetch("billing-inbox");        // the runtime releases it; never log it
-  const res = await fetch(`https://mail.example/api/messages?after=${since ?? 0}`, {
-    headers: { authorization: `Bearer ${token}` },
-  });
+export default async function watch({ since, emit, log }) {
+  const res = await fetch(`https://mail.example/api/messages?after=${since ?? 0}`);   // Vyre adds the credential
   if (!res.ok) throw new Error(`inbox answered ${res.status}`);   // the runtime retries with backoff
   for (const m of await res.json()) {
     if (!/invoice/i.test(m.subject)) continue;

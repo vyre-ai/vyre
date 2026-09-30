@@ -4,6 +4,15 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+- `lib/sandbox` (watchers, shared with platform's module host): a sandboxed child has no network of
+  its own and reaches the web through its parent's `fetch`, GET and HEAD only, ports 80 and 443,
+  public addresses only (private, CGNAT, Tailscale, loopback, link-local and IPv6 forms that
+  embed an IPv4 are refused after DNS and on every redirect; the connection goes to the checked
+  address). When vyred is root the child runs as the `vyre-sandbox` uid (`VYRE_SANDBOX_UID`).
+- `watcher.json` gains `net`: the hosts a watcher reads, each with an optional vault item the
+  parent attaches to that host's requests only. A watcher's own `Authorization` header is
+  dropped; the credential never reaches the watcher's code.
+
 - Closed a caller-identity race on macOS: a forged "cli" label from under a claude was believed
   when the caller was forked inside the 250 ms shared process snapshot. A pid the snapshot lacks is
   now read again, retries start from a fresh table, a peer that already exited is a model's, and

@@ -80,12 +80,13 @@ it runs on schedule under vyred (a public source, so no credentials are needed f
 
 ## Doing
 
-2026-09-30 resume: merged stage/0.2 into work/watchers (ba39a3a4, clean, no conflicts). Posted the duty
-shape to CHAT.md (09:19 watchers -> teammates, lead): duty = teammate-owned watcher folder, when is an
-event, a schedule or a vault.push (never polling), act:false files to notes/waiting, act:true adds
-ctx.call/ask with the Gate on outward calls; teammates hands {trigger, instruction, act} and watchers
-writes the folder. Waiting on teammates' agree/change. Next code: lib/sandbox (no lib/sandbox exists
-on stage/0.2 yet; agree module boundary with platform and integrator, then build).
+lib/sandbox built (2b): addr.js (public-address check), fetch.js (mediated GET/HEAD, DNS pinned, redirects
+rechecked, parent-attached credential), identity.js (vyre-sandbox uid when root), wired into run.js/runner.js
+(`fetch` IPC verb, child globalThis.fetch replaced) and `net` in watcher.json (declared hosts plus a vault
+item attached per host). 27 watchers + sandbox tests pass (note: module.test.js boots an in-process vyred
+in a temp home; I ran it once on the Mac before the lead's runners-only rule reached me; from here it runs
+on a runner or the test box only). NOT done: the uid/iptables IM1 check (integrator's box image, needs a runner),
+retiring raw vault.fetch for plain watchers (still allowed via `needs`). Next: When/Check/Do in folder.js.
 
 ## Next
 

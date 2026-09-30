@@ -25,7 +25,8 @@ export const DEFAULT_TIMEOUT_S = 60;
  * A watcher's spec. `on` and `where` are for schedule "event": the event type it runs on, and the
  * payload fields that must match for it to run (hook.received needs a route).
  * @typedef {{ name: string, project: string, schedule: string, needs: string[], emits: string, timeout: number,
- *   on: string|null, where: Record<string, string|number|boolean>|null }} Spec
+ *   on: string|null, where: Record<string, string|number|boolean>|null,
+ *   net: Record<string, { vault?: string, field?: string, header: string, scheme: string }>|null }} Spec
  */
 
 /**
@@ -77,10 +78,43 @@ function check(raw, name, problems) {
   if (raw.emits !== undefined && (typeof raw.emits !== "string" || !KIND.test(raw.emits))) problems.push(`emits "${raw.emits}" must look like noun.past-verb, like invoice.seen`);
   const timeout = raw.timeout === undefined ? DEFAULT_TIMEOUT_S : raw.timeout;
   if (!Number.isFinite(timeout) || timeout <= 0 || timeout > MAX_TIMEOUT_S) problems.push(`timeout is seconds, at most ${MAX_TIMEOUT_S}`);
-  const extra = Object.keys(raw).filter(k => !["name", "project", "schedule", "needs", "emits", "timeout", "description", "on", "where"].includes(k));
+  const net = checkNet(raw.net, problems);
+  const extra = Object.keys(raw).filter(k => !["name", "project", "schedule", "needs", "emits", "timeout", "description", "on", "where", "net"].includes(k));
   if (extra.length) problems.push(`watcher.json has keys the runtime does not read: ${extra.join(", ")}. Credentials go in the vault and are named under needs`);
-  return { name, project: String(raw.project || "").trim(), schedule, needs: Array.isArray(needs) ? [...new Set(needs)] : [], emits: raw.emits || "watcher.item", timeout: Number(timeout),
+  // A vault item named by net is fetched by the parent and attached to that host's requests only,
+  // so it counts as a need: the same per-watcher grant covers it.
+  const needed = new Set(Array.isArray(needs) ? needs : []);
+  for (const h of Object.values(net || {})) if (h.vault) needed.add(h.vault);
+  return { name, project: String(raw.project || "").trim(), schedule, needs: [...needed], net, emits: raw.emits || "watcher.item", timeout: Number(timeout),
     on: typeof on === "string" ? on : null, where };
+}
+
+const HOST = /^(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,24}$/;
+const HEADER = /^[A-Za-z][A-Za-z0-9-]{0,40}$/;
+
+/**
+ * `net`: the hosts a watcher reads, each optionally with the vault item the parent attaches to
+ * requests for that host only: { "api.harlow.example": { "vault": "harlow-feed", "header":
+ * "Authorization", "scheme": "Bearer" } }. With net, a watcher reaches those hosts (and their
+ * subdomains) and no others; without it, any public host, anonymously. The watcher's own code
+ * never handles the value.
+ * @returns {Spec["net"]}
+ */
+function checkNet(net, problems) {
+  if (net === undefined) return null;
+  if (!net || typeof net !== "object" || Array.isArray(net) || !Object.keys(net).length) { problems.push('net must be an object of hosts, like { "api.example.com": {} }'); return null; }
+  const out = {};
+  for (const [host, v] of Object.entries(net)) {
+    const h = /** @type {any} */ (v);
+    if (!HOST.test(host)) { problems.push(`net host "${host}" must be a plain host name like api.example.com`); continue; }
+    if (!h || typeof h !== "object" || Array.isArray(h)) { problems.push(`net.${host} must be an object, {} for no credential`); continue; }
+    if (h.vault !== undefined && (typeof h.vault !== "string" || !VAULT_NAME.test(h.vault))) { problems.push(`net.${host}.vault must be a vault item name`); continue; }
+    if (h.header !== undefined && (typeof h.header !== "string" || !HEADER.test(h.header))) { problems.push(`net.${host}.header must be a header name like Authorization`); continue; }
+    const bad = Object.keys(h).filter(k => !["vault", "field", "header", "scheme"].includes(k));
+    if (bad.length) { problems.push(`net.${host} has keys the runtime does not read: ${bad.join(", ")}`); continue; }
+    out[host] = { ...(h.vault ? { vault: h.vault } : {}), ...(h.field ? { field: String(h.field) } : {}), header: h.header || "Authorization", scheme: h.scheme === undefined ? "Bearer" : String(h.scheme) };
+  }
+  return out;
 }
 
 /**

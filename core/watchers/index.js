@@ -7,6 +7,7 @@
 // run with "the vault is not running", and filed items wait for Memory rather than being lost.
 // Each fetch names the watcher, and the vault releases only against a grant for that watcher.
 
+import { testHooks } from "../../lib/sandbox/index.js";
 import { Runtime, MIGRATIONS } from "./runtime.js";
 
 /**
@@ -28,7 +29,7 @@ export default {
       emit: (type, payload, where) => ctx.events.emit(type, payload, where),
       call: ctx.call, fetch: (name, watcher, field) => ctx.vault.fetch(name, { watcher, ...(field ? { field } : {}) }),
       teach: (kind, fact) => ctx.memory.teach(kind, fact),
-      log: ctx.log,
+      log: ctx.log, netOptions: () => testHooks.net,
       listen: (type, fn) => ctx.events.on(type, fn),
     });
     rt.subscribe();

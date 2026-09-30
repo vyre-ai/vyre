@@ -6,6 +6,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import http from "node:http";
+import { testHooks } from "../../lib/sandbox/index.js";
 import path from "node:path";
 import { open } from "../store/index.js";
 import { migrate } from "../store/index.js";
@@ -25,7 +26,7 @@ function setup(t, { vault = {} } = {}) {
   const clock = { now: new Date("2026-03-02T10:07:00").getTime() };
   const events = [], taught = [], fetched = [];
   const rt = new Runtime({
-    db, dir, now: () => clock.now, log: () => {},
+    db, dir, now: () => clock.now, log: () => {}, netOptions: () => testHooks.net,
     emit: (type, payload) => events.push({ type, ...payload }),
     call: async tool => tool === "projects.list"
       ? { data: { projects: [{ slug: "harlow-legal", name: "Harlow Legal", home: HOME_FOLDERS[0], workspaces: HOME_FOLDERS }] } }
@@ -256,6 +257,13 @@ test("watchers: the network is reachable, and a webhook watcher gets the body an
   t.after(() => server.close());
   const port = /** @type {any} */ (server.address()).port;
   const { rt, write } = setup(t);
+  // Without the test hook a watcher cannot reach loopback at all: the parent refuses it.
+  write("inside", `export default async function watch() { await fetch("http://127.0.0.1:${port}/"); }`);
+  assert.match((await rt.test("inside")).error, /port \d+ is not allowed/);
+  write("inside80", `export default async function watch() { await fetch("http://127.0.0.1/"); }`);
+  assert.match((await rt.test("inside80")).error, /not a public address/);
+  testHooks.net = { allowAddress: ip => ip === "127.0.0.1", allowPort: () => true };
+  t.after(() => { testHooks.net = {}; });
   write("feed", `export default async function watch({ emit }) {
     const res = await fetch("http://127.0.0.1:${port}/");
     for (const s of await res.json()) emit(s);
@@ -316,4 +324,14 @@ test("watchers: an event watcher names its event and where; hook.received must n
   assert.equal(rt.logs("northwind-orders")[0].trigger, "event");
   await rt.stop();
   assert.equal(listeners.size, 0, "stop left a listener behind");
+});
+
+test("watchers: net declares the hosts a watcher may reach, and a bad net is refused with a fix", async t => {
+  const { rt, write } = setup(t);
+  write("bad-net", `export default async function watch() {}`, { net: { "localhost": {}, "a.example.com": { vault: "x", bogus: 1 } } });
+  const r = await rt.test("bad-net");
+  assert.equal(r.ok, false);
+  assert.ok(r.problems.some(p => /net host "localhost"/.test(p)) && r.problems.some(p => /net.a.example.com has keys/.test(p)), JSON.stringify(r.problems));
+  write("hosts", `export default async function watch() { await fetch("https://other.example.org/"); }`, { net: { "api.example.com": {} } });
+  assert.match((await rt.test("hosts")).error, /not one of this watcher's declared hosts/);
 });
