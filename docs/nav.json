@@ -10,7 +10,7 @@
       "get-started/without-docker.md",
       "get-started/troubleshooting.md"
     ]},
-    {"title": "Releases", "pages": ["releases/0.1.0.md"]}, { "title": "Using Vyre", "pages": [
+    {"title": "Releases", "pages": ["releases/0.1.0.md", "releases/checklist.md"]}, { "title": "Using Vyre", "pages": [
       "using/capsule.md",
       "using/deck.md",
       "using/chat.md",
@@ -28,6 +28,7 @@
       "using/connectors.md",
       "using/tailscale.md",
       "using/mobile.md",
+      "using/windows.md",
       "using/box-care.md", "using/tips.md"
     ]},
     { "title": "Concepts", "pages": [
@@ -100,7 +101,8 @@
       "adr/0047-module-contract-v1.md",
       "adr/0049-deep-chrome-control.md",
       "adr/0041-github-everywhere.md",
-      "adr/0042-move-engine.md"
+      "adr/0042-move-engine.md",
+      "adr/0037-windows.md"
     ]},
     { "title": "Security", "pages": ["security/index.md"] },
     { "title": "Contributing", "pages": [
@@ -127,7 +129,8 @@
       "design/agent-browsers.md",
       "design/teammates.md",
       "design/tailscale-plan.md",
-      "design/vitals.md"
+      "design/vitals.md",
+      "design/windows-plan.md"
     ]},
     { "title": "Design system", "pages": [
       "design/system/README.md",

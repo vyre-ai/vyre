@@ -21,6 +21,7 @@ A module runs on the `box` (the always-on server), on `local` (the Mac), or on b
 | [`agents`](#agents) | `core/agents` | `box`, `local` | 11 | 0 | cli |
 | [`appearance`](#appearance) | `core/appearance` | `box`, `local` | 3 | 1 | cli |
 | [`apps`](#apps) | `local/apps` | `local` | 6 | 2 | none |
+| [`artifacts`](#artifacts) | `core/artifacts` | `box` | 21 | 10 | capsule, cli, deck |
 | [`capsule`](#capsule) | `local/capsule` | `local` | 6 | 2 | capsule, cli |
 | [`chrome`](#chrome) | `local/hands-chrome-mac` | `local` | 28 | 12 | none |
 | [`chrome`](#chrome) | `modules/hands-chrome` | `box` | 5 | 1 | cli, deck |
@@ -30,7 +31,7 @@ A module runs on the `box` (the always-on server), on `local` (the Mac), or on b
 | [`events`](#events) | `core/event-catalog` | `box`, `local` | 1 | 0 | none |
 | [`files`](#files) | `core/files` | `box`, `local` | 28 | 3 | capsule, cli, deck |
 | [`gate`](#gate) | `core/gate` | `box`, `local` | 10 | 6 | capsule, cli, deck |
-| [`github`](#github) | `core/github` | `box`, `local` | 11 | 6 | cli, deck |
+| [`github`](#github) | `core/github` | `box`, `local` | 22 | 8 | cli, deck |
 | [`glass`](#glass) | `core/glass` | `box` | 13 | 8 | capsule, cli, deck |
 | [`goals`](#goals) | `core/goals` | `box`, `local` | 5 | 5 | capsule, cli, deck |
 | [`google`](#google) | `core/google` | `box`, `local` | 19 | 7 | capsule, cli, deck |
@@ -69,6 +70,7 @@ A module runs on the `box` (the always-on server), on `local` (the Mac), or on b
 | [`term`](#term) | `core/term` | `box`, `local` | 4 | 2 | none |
 | [`threads`](#threads) | `core/switchboard` | `box`, `local` | 51 | 35 | cli |
 | [`tips`](#tips) | `core/tips` | `box`, `local` | 7 | 1 | cli |
+| [`update`](#update) | `core/update` | `box`, `local` | 3 | 2 | cli |
 | [`vault`](#vault) | `core/vault` | `box`, `local` | 110 | 42 | capsule, cli, deck |
 | [`vitals`](#vitals) | `core/vitals` | `box`, `local` | 5 | 2 | capsule, cli, deck |
 | [`voice`](#voice) | `local/voice` | `local` | 4 | 0 | capsule |
@@ -119,6 +121,19 @@ Drive the Mac's apps from the Capsule, the CLI and the phone: Clock timers and a
 - Emits: [2 events](events.md#apps)
 - Shows on: no surface
 - Teaches tips: `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`
+
+## artifacts
+
+Documents, reports, pages, dashboards, diagrams, decks and small apps your agents make, kept on your server with every version, private unless you share one.
+
+- Folder: `core/artifacts`, version 0.2.0
+- Runs on: `box`
+- Requires: none
+- Tools: [21](tools.md#artifacts)
+- Emits: [10 events](events.md#artifacts)
+- Listens for: `floor.wrote`, `thread.deleted`
+- Shows on: capsule, cli, deck
+- Needs tools: `threads.get`, `agents.list`
 
 ## capsule
 
@@ -227,8 +242,8 @@ Find, look at and bring over files on this machine and the box, inside the folde
 - Folder: `core/github`, version 0.1.0
 - Runs on: `box`, `local`
 - Requires: `vault`
-- Tools: [11](tools.md#github), 2 of them only for other modules
-- Emits: [6 events](events.md#github)
+- Tools: [22](tools.md#github), 2 of them only for other modules
+- Emits: [8 events](events.md#github)
 - Shows on: cli, deck
 - Needs vault: `per-connection`
 - Teaches tips: `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`
@@ -654,6 +669,17 @@ One short tip at a time about the part of Vyre you are using, the parts you have
 - Emits: [1 events](events.md#tips)
 - Shows on: cli
 - Teaches tips: `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`
+
+## update
+
+Is a newer Vyre out: one daily look at the releases, one answer every surface draws its Update card from.
+
+- Folder: `core/update`, version 0.1.0
+- Runs on: `box`, `local`
+- Requires: none
+- Tools: [3](tools.md#update)
+- Emits: [2 events](events.md#update)
+- Shows on: cli
 
 ## vault
 

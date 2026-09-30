@@ -30,6 +30,7 @@
 // the four most recent sessions. The layout is picked at render and redrawn when the width
 // crosses 760 px; the desktop column is unchanged.
 
+import { looksLikeQuestion, ask as askMemory } from "../js/memory-ask.js";
 import { h, put, link, empty, go, back, PHONE_QUERY } from "../js/dom.js";
 import { attempt, queued } from "../js/api.js";
 import { icon } from "../js/icons.js";
@@ -458,6 +459,25 @@ export default async function find(ctx) {
       h("span", { class: "fd-main" }, h("span", { class: "fd-rt" }, hl(it.act, q)), h("span", { class: "fd-cmd" }, it.line))))));
   }
 
+  /** Ask Vyre Memory: one row, and its answer under it. Kept per question so a redraw does not lose it. @type {Map<string, any>} */
+  const memAsked = new Map();
+  function phoneMemoryAsk(q) {
+    const st = memAsked.get(q);
+    const row = prow({ cls: "fd-askrow", label: `Ask Vyre Memory: ${q}`, onclick: () => {
+      if (st) return;
+      memAsked.set(q, { busy: true });
+      drawPhone();
+      askMemory(attempt, q).then(r => { memAsked.set(q, r); if (cur.q === q) drawPhone(); });
+    } }, h("span", { class: "fd-glyph", "aria-hidden": "true" }, icon("memory", 20)),
+      h("span", { class: "fd-main" }, h("span", { class: "fd-rt" }, "Ask Vyre Memory"), h("span", { class: "fd-r2" }, asQuestion(q))), chev());
+    const card = h("div", { class: "fd-card" }, row);
+    if (st?.busy) card.append(h("p", { class: "fd-pnote", role: "status" }, "Thinking..."));
+    else if (st?.error) card.append(h("p", { class: "fd-pnote", role: "status" }, st.error));
+    else if (st) card.append(h("div", { class: "fd-pnote", role: "status" }, h("p", null, st.text), st.note ? h("p", { class: "muted" }, st.note) : null,
+      st.sources.length ? h("p", { class: "small muted" }, "From " + st.sources.join(", ")) : null));
+    return card;
+  }
+
   function phoneMemory(q) {
     const facts = (Array.isArray(cur.memory?.data) ? cur.memory.data : []).filter(f => f && f.text);
     if (!facts.length) return null;
@@ -507,6 +527,7 @@ export default async function find(ctx) {
       all ? phoneAsk(q) : null,
       all || scope === "run" ? phoneRun(q) : null,
       long && (all || scope === "memory") ? phoneMemory(q) : null,
+      long && (scope === "memory" || (all && looksLikeQuestion(q))) ? phoneMemoryAsk(q) : null,
       long && (all || scope === "chats") ? phoneChats(q) : null,
       long && (all || scope === "files") ? phoneFiles() : null,
     ].filter(Boolean);

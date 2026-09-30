@@ -67,6 +67,7 @@ Claim the next number here before writing the ADR, so two workstreams never take
 | 0034 | memory-iq | Vyre IQ: cited answers from every session, fact and the graph |
 | 0035 | native-core | The settings hub: one file, four levels, read live by every surface |
 | 0036 | cohesion | One system |
+| 0037 | windows | Windows support: tiers and plan |
 | 0039 | anywhere | Vyre anywhere: role as a choice, moving to a server |
 | 0040 | e2e | vyre-core, a trusted root split from vyred |
 | 0045 | tailnet | Scan-to-pair (Wink): relay.pair.ticket, a signed pairing ticket the Vyre code can carry (renumbered from this table's stale "0037"; the live registry is team/ADR-NUMBERS.md, outside git) |

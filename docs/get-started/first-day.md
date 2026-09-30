@@ -1,6 +1,6 @@
 ---
 title: Your first day
-summary: What to do on your first day after onboarding: open the Capsule, start a thread in a project, launch an agent, store a secret, and find something from last week.
+summary: What to do on your first day after onboarding: open Lumen, start a thread in a project, launch an agent, store a secret, and find something from last week.
 audience: users
 owner: e2e
 status: draft
@@ -27,21 +27,21 @@ vyre link
 
 `vyre status` says whether `vyred` is running and how many modules started (a failed one is named with `vyre modules`). `vyre link` says whether this Mac is paired with your box and whether the box answers. If either is wrong, see [Troubleshooting](troubleshooting.md).
 
-## Open the Capsule
+## Open Lumen
 
-Press Control twice, in any app. The Capsule opens over what you are doing, with the caret in its box. Press Escape to put it away.
+Press Control twice, in any app. Lumen opens over what you are doing, with the caret in its box. Press Escape to put it away.
 
-- Type a question and press Return. It goes to your assistant, which can see every project and every session. The Capsule shows where a message goes before you send it.
+- Type a question and press Return. It goes to your assistant, which can see every project and every session. Lumen shows where a message goes before you send it.
 - Type `@` to pick who hears it: an agent (`@kit`), a project, or a thread. Talking to a thread types into that session directly.
 - Anything that came from memory rather than a model shows in gold, with its source.
-- Anything waiting on you (a permission question from a thread, a message held before sending) shows in the Capsule and can be answered there.
+- Anything waiting on you (a permission question from a thread, a message held before sending) shows in Lumen and can be answered there.
 
 > [!SNAG] Control twice does nothing
-> Click the Capsule's menu bar icon. If a line there starts `Double-Control is off:`, it says why.
+> Click Lumen's menu bar icon. If a line there starts `Double-Control is off:`, it says why.
 > Grant Input Monitoring in System Settings, Privacy & Security, then run `vyre capsule` to open
 > it wired to this Mac's `vyred`. Option-Space opens it meanwhile.
 
-More in [The Capsule](../using/capsule.md).
+More in [Lumen](../using/capsule.md).
 
 ## Start a thread in a project
 
@@ -127,17 +127,17 @@ Until the search model is on this machine, recall matches keywords, and says so 
 
 Recall has no date filter; it ranks by match. To browse by time instead, open the project in the Deck: its threads are listed newest first.
 
-You can also ask for it in words. In the Capsule, ask your assistant ("what did we decide about the Northwind Bakery invoice last week?"); the answer comes from memory, marked in gold, with the turns it came from. From the terminal, `vyre why <fact>` shows the turns a fact came from. More in [Memory](../using/memory.md).
+You can also ask for it in words. In Lumen, ask your assistant ("what did we decide about the Northwind Bakery invoice last week?"); the answer comes from memory, marked in gold, with the turns it came from. From the terminal, `vyre why <fact>` shows the turns a fact came from. More in [Memory](../using/memory.md).
 
 ## What is not here yet
 
 - A date filter for recall, as above.
 - A native phone app. On the phone, open your address in Safari and add it to the Home Screen: it runs full screen, with notifications. See [On your phone](../using/mobile.md).
-- Replying to a Mac session from the box. The Deck shows the Mac's sessions read-only, with "Open it there to continue."; reply in the Mac's terminal or its Capsule.
+- Replying to a Mac session from the box. The Deck shows the Mac's sessions read-only, with "Open it there to continue."; reply in the Mac's terminal or its Lumen.
 - Automatic updates. On the box run `vyre update`; on the Mac run the install line again. See [Looking after the box](../using/box-care.md).
 
 ## Where to go next
 
-- [The Capsule](../using/capsule.md), [The Deck](../using/deck.md), [Chat](../using/chat.md)
+- [Lumen](../using/capsule.md), [The Deck](../using/deck.md), [Chat](../using/chat.md)
 - [Watchers](../using/watchers.md), for work that should happen while you are away
 - [Troubleshooting](troubleshooting.md)

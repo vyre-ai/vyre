@@ -12,7 +12,7 @@ Onboarding is the browser half of setting up a box: six screens that name you an
 assistant, sign the box in to Claude and Tailscale, give it an HTTPS address, read your Claude
 Code history and put Vyre on your other devices. It opens by itself when `vyre up` or
 `vyre box add` gets the server ready. The terminal side (installing the `vyre` command, choosing
-the server, approving your Mac, the Capsule) is in [Install](install.md); this page is the
+the server, approving your Mac, Lumen) is in [Install](install.md); this page is the
 reference for the screens.
 
 ::: demo onboarding
@@ -198,7 +198,7 @@ screen and stacked on a narrow one.
    passkey. The card counts down the request's ten minutes.
 
 When it is done the card says "Mac paired:" and the name, and "Press Control twice to open the
-Capsule." The Capsule itself is in [Install, step 14](install.md#14-open-the-capsule).
+Lumen." Lumen itself is in [Install, step 14](install.md#14-open-lumen).
 
 > [!SNAG] "The Mac that is asking cannot approve itself. Open Vyre on your phone and approve it there."
 > You are on the Mac you are pairing. The box takes the approval only from another of your

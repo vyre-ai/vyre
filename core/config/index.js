@@ -50,14 +50,51 @@ export function paths(root = home()) {
  * per-user folder under /tmp, named by a hash of the home. /tmp is shared, so the folder must
  * be ours and closed to everyone else; otherwise another user could plant a socket there and
  * pose as vyred. `privateSocketDir` checks that before anything uses it.
+ *
+ * On `win32` this is a literal named pipe name, never a filesystem path, and deliberately not
+ * one: a bound socket *file* on Windows is implemented as an NTFS reparse point, which needs
+ * `SeCreateSymbolicLinkPrivilege` to create, a privilege most Windows accounts don't hold
+ * (proven in CI, ADR 0037's Windows LOW: a from-scratch bind attempt failed with EACCES on a
+ * brand-new folder with no ACL applied at all, `whoami /priv` showed the privilege Disabled, and
+ * a literal `\\.\pipe\` bind in the same process succeeded immediately). A named pipe needs no
+ * privilege and no folder to protect: Node gives it a current-user-only security descriptor by
+ * default (the same restriction `chmod 0600` gives the POSIX socket), unless
+ * `readableAll`/`writableAll` is passed to `listen()`, which nothing here does.
+ *
+ * The name itself is never just a hash of `root`: `root` is normally a predictable path
+ * (`~/.vyre`), so another local account that can guess or enumerate it could compute the same
+ * pipe name and pre-create it before the real `vyred` starts (reviewer, ADR 0037's Windows LOW,
+ * section 7a point 2 - a squatter who owns the name receives the CLI's requests, including
+ * presence proof headers). `pipeToken` folds in a random component nothing outside this home can
+ * derive, generated once and persisted so the name is stable across restarts, the same as the
+ * hash-only name was.
+ * @param {string} root @param {{ platform?: string }} [opts] `platform` is for a test on any OS.
  */
-export function socketPath(root) {
+export function socketPath(root, { platform = process.platform } = {}) {
   // The real folder, so a home reached through a symlink has the same socket as its target.
   const real = realFolder(root);
+  const hash = crypto.createHash("sha256").update(real).digest("hex").slice(0, 16);
+  if (platform === "win32") return `\\\\.\\pipe\\vyre-${hash}-${pipeToken(root)}`;
   const near = path.join(real, "vyred.sock");
   if (Buffer.byteLength(near) <= 100) return near;
-  const hash = crypto.createHash("sha256").update(real).digest("hex").slice(0, 16);
   return path.join(sharedSocketDir(), `${hash}.sock`);
+}
+
+/**
+ * A random component for `win32`'s pipe name, unguessable from `root` alone, generated once and
+ * kept at `<root>/pipe-token` (a sibling of `config.json`, inside the home's own folder, never a
+ * shared location like `/tmp`'s POSIX fallback). Read if it exists; created (and `root` made, if
+ * it isn't there yet) on first use. Every call for the same `root` returns the same token, the
+ * same idempotence `socketPath`'s hash-only name had before this.
+ * @param {string} root
+ */
+function pipeToken(root) {
+  const file = path.join(root, "pipe-token");
+  try { return fs.readFileSync(file, "utf8").trim(); } catch {}
+  fs.mkdirSync(root, { recursive: true });
+  const token = crypto.randomBytes(16).toString("hex");
+  fs.writeFileSync(file, token, { mode: 0o600 });
+  return token;
 }
 
 /** A folder's real path; for one not made yet, its nearest existing parent's real path plus the rest. */
@@ -190,14 +227,16 @@ function accountTranscripts() {
 function defaults(root, platform = process.platform) {
   const claude = claudeHome(root);
   return {
-    role: platform === "darwin" ? "local" : "box",
+    // A fresh install on a Mac or a Windows PC is someone's own device; only a bare Linux install
+    // defaults to being the server.
+    role: platform === "darwin" || platform === "win32" ? "local" : "box",
     // The person's explicit choice (ADR 0039), defaulted the same way `role` always was until
     // they say otherwise: alone on a Mac is Solo, and stays exactly today's local role (no
     // box-only module, no server-side presence) until they choose "server" themselves; a
     // provisioned box is already a server, since there was never a solo mode for one. Reviewer's
     // HOLD on 80fd866e: a first pass made solo BOTH a server and a device, which put the eight
     // box-only modules on every existing Mac with no choice made -- fixed in isServer(), above.
-    machine: platform === "darwin" ? "solo" : "server",
+    machine: platform === "darwin" ? "solo" : platform === "win32" ? "device" : "server",
     projectsDir: path.join(os.homedir(), "Vyre", "projects"),
     roots: [],
     me: { domains: [], emails: [] },
@@ -343,6 +382,9 @@ export function fingerprint8(id) {
 export function ensure(root = home()) {
   const p = paths(root);
   for (const dir of [p.root, p.vault, p.modules, p.watchers, p.logs]) fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
-  if (path.dirname(p.socket) !== p.root) privateSocketDir();
+  // POSIX: the socket's own shared folder is mode-checked before anything binds inside it, never
+  // after: vyred's listener runs later, in core/daemon/index.js. Nothing to do on win32: a named
+  // pipe (socketPath's win32 branch) has no filesystem folder to create or protect.
+  if (process.platform !== "win32" && path.dirname(p.socket) !== p.root) privateSocketDir();
   return p;
 }
