@@ -882,6 +882,7 @@ A PNG of the agent's current page, base64-encoded.
 What Vyre for Chrome has learned about a site, from this device: the frame layout, stable controls, the site's own API endpoints, login signals. Structure only: never a value, token or personal data. Give a tab (default: the current one) or an origin.
 
 - Input:
+  - `action` "card" or "flush": flush: send what was learned now instead of in 10 seconds.
   - `origin` string
   - `tab` integer: Tab id from chrome.tabs. Default: the tab Vyre is working in.
 - Callers: any caller
