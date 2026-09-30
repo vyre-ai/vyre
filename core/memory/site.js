@@ -10,7 +10,7 @@
 // does (Chrome's own tools read it on the person's behalf). Two settings, both on by default: memory.site.learn
 // (learn at all) and memory.site.sync (take what standalone Vyre for Chrome learned on its own).
 
-import { answerSite } from "./site-answer.js";
+import { answerSite, neededKeys } from "./site-answer.js";
 import {
   sanitize, emptyRecord, mergeRecord, mergeFamily, union, arrivalCard, heal, itemId, keyOk, isFamilyKey, isQuarantined, readConf, LIMITS,
 } from "../../lib/site-knowledge.js";
@@ -36,10 +36,12 @@ export function register(ctx, { denied }) {
   const q = {
     get: db.prepare("SELECT key, kind, rev, record, card, updated FROM memory_site WHERE key = ?"),
     cardOf: db.prepare("SELECT card, rev FROM memory_site WHERE key = ?"),
-    put: db.prepare(`INSERT INTO memory_site (key, kind, rev, record, card, updated) VALUES (?,?,?,?,?,?)
-      ON CONFLICT (key) DO UPDATE SET rev = excluded.rev, record = excluded.record, card = excluded.card, updated = excluded.updated`),
+    put: db.prepare(`INSERT INTO memory_site (key, kind, rev, record, card, updated, names, family) VALUES (?,?,?,?,?,?,?,?)
+      ON CONFLICT (key) DO UPDATE SET rev = excluded.rev, record = excluded.record, card = excluded.card, updated = excluded.updated, names = excluded.names, family = excluded.family`),
     del: db.prepare("DELETE FROM memory_site WHERE key = ?"),
     all: db.prepare("SELECT key, kind, rev, record, updated FROM memory_site ORDER BY updated DESC"),
+    index: db.prepare("SELECT key, names, family FROM memory_site"),
+    byKeys: (/** @type {number} */ n) => db.prepare(`SELECT record FROM memory_site WHERE key IN (${Array(n).fill("?").join(",")})`),
     ev: db.prepare("INSERT INTO memory_site_events (key, at, kind, item, outcome) VALUES (?,?,?,?,?)"),
     trim: db.prepare("DELETE FROM memory_site_events WHERE key = ? AND id NOT IN (SELECT id FROM memory_site_events WHERE key = ? ORDER BY id DESC LIMIT ?)"),
     forgot: db.prepare("INSERT INTO memory_site_forgotten (key, record, at) VALUES (?,?,?) ON CONFLICT (key) DO UPDATE SET record = excluded.record, at = excluded.at"),
@@ -81,7 +83,7 @@ export function register(ctx, { denied }) {
   const load = (/** @type {string} */ key) => { const r = /** @type {any} */ (q.get.get(key)); return r ? JSON.parse(r.record) : null; };
   const save = (/** @type {any} */ rec) => {
     const card = arrivalCard(rec, { now: now() });
-    q.put.run(rec.key, isFamilyKey(rec.key) ? "family" : "origin", rec.rev, JSON.stringify(rec), JSON.stringify(card), now());
+    q.put.run(rec.key, isFamilyKey(rec.key) ? "family" : "origin", rec.rev, JSON.stringify(rec), JSON.stringify(card), now(), (rec.names || []).join("|").toLowerCase(), rec.family || null);
     return card;
   };
   const event = (/** @type {string} */ key, /** @type {string} */ kind, item = null, outcome = null) => { q.ev.run(key, now(), kind, item, outcome); q.trim.run(key, key, EVENTS_PER_KEY); };
@@ -324,7 +326,14 @@ export function register(ctx, { denied }) {
   return {
     isPerson,
     /** memory.ask's step: what Vyre for Chrome knows about a site the question names, or null. */
-    answer: (/** @type {string} */ question) => answerSite(question, /** @type {any[]} */ (q.all.all()).map(r => JSON.parse(r.record)), { now: now() }),
+    answer: (/** @type {string} */ question) => {
+      // Match the question against an index of names, families and hosts first; only the matched sites' records are parsed.
+      const index = /** @type {any[]} */ (q.index.all()).map(r => ({ key: String(r.key), names: String(r.names || "").split("|").filter(Boolean), family: r.family ? String(r.family) : null }));
+      const keys = neededKeys(question, index);
+      if (!keys.length) return null;
+      const records = /** @type {any[]} */ (q.byKeys(keys.length).all(...keys)).map(r => JSON.parse(r.record));
+      return answerSite(question, records, { now: now() });
+    },
     forgetKey, restoreKey,
     /** The record keys whose forgetting a correction of an answer caused, for undoing it. */
     forgottenBy: (/** @type {number} */ fix) => /** @type {any[]} */ (db.prepare("SELECT key FROM memory_site_events WHERE kind = 'forgot-by-answer' AND item = ?").all(String(fix))).map(r => String(r.key)),

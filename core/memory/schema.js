@@ -279,7 +279,7 @@ export const MIGRATIONS = [
   // What Vyre for Chrome learned about each site (lib/site-knowledge.js, team/0.2/chrome-learning-plan.md): one row per
   // origin and per family, the whole record as JSON plus the small card Chrome reads on every arrival, a bounded
   // ring of events for "what changed", and a 24-hour undo for a forgotten record. Structure only, never a value.
-  `CREATE TABLE memory_site (key TEXT PRIMARY KEY, kind TEXT NOT NULL CHECK (kind IN ('origin','family')), rev INTEGER NOT NULL, record TEXT NOT NULL, card TEXT NOT NULL, updated INTEGER NOT NULL) WITHOUT ROWID;
+  `CREATE TABLE memory_site (key TEXT PRIMARY KEY, kind TEXT NOT NULL CHECK (kind IN ('origin','family')), rev INTEGER NOT NULL, record TEXT NOT NULL, card TEXT NOT NULL, updated INTEGER NOT NULL, names TEXT NOT NULL DEFAULT '', family TEXT) WITHOUT ROWID;
   CREATE TABLE memory_site_events (id INTEGER PRIMARY KEY, key TEXT NOT NULL, at INTEGER NOT NULL, kind TEXT NOT NULL, item TEXT, outcome TEXT);
   CREATE INDEX memory_site_events_key ON memory_site_events (key, at);
   CREATE TABLE memory_site_forgotten (key TEXT PRIMARY KEY, record TEXT NOT NULL, at INTEGER NOT NULL) WITHOUT ROWID;

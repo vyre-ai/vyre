@@ -362,3 +362,23 @@ test("S2 forgetting a site forgets what was said about it: the answers log and a
   assert.equal(/** @type {any} */ (w.db.prepare("SELECT old FROM memory_iq_fixes WHERE answer = ?").get(a.answer_id)).old, "[forgotten]");
   assert.ok(!JSON.stringify(w.db.prepare("SELECT * FROM memory_iq_answers").all()).includes("learned: GoHighLevel"));
 });
+
+test("T3 a site is matched by a whole name, family or host, never by a fragment such as a host's core word", async t => {
+  const w = await world(t);
+  await w.call("memory.site.put", { origin: "https://accounts.google.example", patch: { names: ["Google Accounts"], family: "googleacct", controls: [{ id: "c1", page: "/login", role: "button", selector: { strategy: "identifier", identifier: "go" } }] } });
+  const via = async q => (await w.call("memory.ask", { question: q }, "deck")).data.via;
+  assert.notEqual(await via("what do you know about google"), "site", "a bare core word does not match");
+  assert.notEqual(await via("tell me about accounts"), "site");
+  assert.equal(await via("what do you know about google accounts"), "site", "the whole name does");
+  assert.equal(await via("what do you know about accounts.google.example"), "site", "the whole host does");
+  assert.equal(await via("what do you know about googleacct"), "site", "the family id does");
+});
+
+test("T4 a question names its site from the index; other records are never parsed", async t => {
+  const w = await world(t);
+  await w.call("memory.site.put", { origin: ORIGIN, patch: patch() });
+  // A second site whose stored record is unreadable: if answering parsed every record, this would throw or lose the answer.
+  w.db.prepare("INSERT INTO memory_site (key, kind, rev, record, card, updated, names, family) VALUES (?,?,?,?,?,?,?,?)").run("https://broken.example", "origin", 1, "{not json", "{}", NOW, "broken", null);
+  assert.equal((await w.call("memory.ask", { question: Q }, "deck")).data.via, "site");
+  assert.notEqual((await w.call("memory.ask", { question: "what is the capital of France" }, "deck")).data.via, "site", "a question that names no site parses nothing");
+});
