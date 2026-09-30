@@ -4,6 +4,10 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+- `watchers.resume {name, hash?}` takes the card's hash and refuses with "changed after its card
+  was shown" when the code moved; with no hash it still resumes unchanged code (a code change
+  since it was turned on is refused either way).
+
 - Mail preset: `watchers.preset {kind: "mail", project, credential}` writes a watcher (fixed code)
   that runs on `vault.push`, reads each pushed message's sender, subject and first lines through
   `vault.request` with the person's Google api-credential (a read, through the vault, scoped to

@@ -529,3 +529,18 @@ test("watchers: the mail preset is written off with a card, the vault makes the 
   assert.match(stored.url, /mail\.google\.com.*g1$/);
   assert.ok(!JSON.stringify(items).includes("sale"), "the newsletter was not filed");
 });
+
+test("watchers: resume takes the card's hash and refuses code that changed since the card", async t => {
+  const { rt, dir, write } = setup(t);
+  write("harlow-invoices", FROM_FILE);
+  feed(dir, "harlow-invoices", { items: [{ id: "a1" }] });
+  await rt.test("harlow-invoices");
+  await rt.create("harlow-invoices");
+  await rt.settle();
+  const shown = rt.card("harlow-invoices").hash;
+  rt.pause("harlow-invoices");
+  assert.equal(rt.resume("harlow-invoices", { hash: shown }).state, "on");
+  rt.pause("harlow-invoices");
+  assert.throws(() => rt.resume("harlow-invoices", { hash: "0".repeat(32) }), /changed after its card was shown/);
+  assert.equal(rt.resume("harlow-invoices").state, "on", "no hash still resumes unchanged code");
+});

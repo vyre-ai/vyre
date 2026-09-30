@@ -346,10 +346,11 @@ export class Runtime {
     return { name, state: "paused", why };
   }
 
-  resume(name) {
+  resume(name, { hash: shown = null } = {}) {
     const r = this.row(name);
     if (!r || !r.enabled) throw new Error(`${name} is not turned on; dry-run it with watchers.test, then watchers.create`);
     const { hash } = this.spec(name);
+    if (shown && shown !== hash) throw new Error(`${name} changed after its card was shown; show the card again, then turn it on`);
     if (hash !== r.hash) throw new Error(`${name} changed since it was turned on; run watchers.test and watchers.create again`);
     const next = PUSHED.has(r.schedule) ? null : cron.next(cron.parse(r.schedule), this.now());
     this.db.prepare("UPDATE watchers_watchers SET paused = 0, paused_why = NULL, failures = 0, next_at = ? WHERE name = ?").run(next, name);
