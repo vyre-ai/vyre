@@ -40,6 +40,7 @@
 // opts.onQueue hears how many wait and for whom (the Mac's lease line).
 
 import { h, put, link } from "../js/dom.js";
+import { kbd } from "../js/platform.js";
 import { attempt, queued as viaOutbox, on } from "../js/api.js";
 import { icon } from "../js/icons.js";
 import {
@@ -243,7 +244,7 @@ export function mountComposer(opts) {
             h("button", { type: "button", "aria-label": "Remove " + m, onclick: () => { goal?.milestones.splice(i, 1); drawChips(); ta.focus(); } }, "×")))) : null,
         h("button", { class: "btn btn-ghost btn-sm", type: "button", disabled: !goal.title,
           title: goal.title ? "Send the goal and its milestones" : "Type a goal first", onclick: () => finishGoal() },
-          "Set goal", h("span", { class: "kbd" }, "⌘⏎")),
+          "Set goal", h("span", { class: "kbd" }, kbd("Enter"))),
         h("button", { class: "btn btn-ghost btn-sm", type: "button", onclick: () => cancelGoal() }, "Cancel", h("span", { class: "kbd" }, "Esc")),
       );
       chipSig = "";

@@ -116,7 +116,10 @@ for (const dev of DEVICES) {
       if (s.term) {
         await tab.go(`${base}/chat`, 1500);
         const term = await tab.run(`const m = await import("/chat/term.js"); const r = await m.openTerminal(${JSON.stringify(cwd)}); return r.term || JSON.stringify(r.error);`);
-        await tab.go(`${base}/chat?term=${encodeURIComponent(term)}`, 2500);
+        // A terminal reached by URL waits for a click (deck/chat/lib/opened-here.js): press it.
+        await tab.go(`${base}/chat?term=${encodeURIComponent(term)}`, 1500);
+        await tab.run(`[...document.querySelectorAll("button")].find(b => b.textContent === "Open the terminal")?.click(); return true;`);
+        await sleep(1000);
       } else {
         await tab.go(`${base}/chat/thread/${encodeURIComponent(/** @type {string} */ (s.thread))}`, 2500);
       }

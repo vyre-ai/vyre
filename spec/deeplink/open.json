@@ -1,0 +1,136 @@
+{
+ "v": 1,
+ "about": "vyre://open/... links: the in-app path the app opens, or null. lib/deeplink/index.js is the reference; every desktop app tests against these.",
+ "cases": [
+  {
+   "input": "vyre://open/chat",
+   "expect": "/chat",
+   "why": "a route"
+  },
+  {
+   "input": "vyre://open/chat/thread/1f2e3d4c-aaaa-4bbb-8ccc-0123456789ab",
+   "expect": "/chat/thread/1f2e3d4c-aaaa-4bbb-8ccc-0123456789ab",
+   "why": "a session"
+  },
+  {
+   "input": "vyre://open/projects/harbour-site?tab=files",
+   "expect": "/projects/harbour-site?tab=files",
+   "why": "a route with a query"
+  },
+  {
+   "input": "vyre://open/settings",
+   "expect": "/settings",
+   "why": "settings"
+  },
+  {
+   "input": "vyre://open/a/art_123",
+   "expect": "/a/art_123",
+   "why": "an artifact"
+  },
+  {
+   "input": "vyre://open/quick",
+   "expect": "/quick",
+   "why": "the hotkey panel"
+  },
+  {
+   "input": "vyre://open/projects/caf%C3%A9",
+   "expect": "/projects/café",
+   "why": "decoded once"
+  },
+  {
+   "input": "vyre://open/",
+   "expect": null,
+   "why": "no route"
+  },
+  {
+   "input": "vyre://open",
+   "expect": null,
+   "why": "no path at all"
+  },
+  {
+   "input": "vyre://pair/abc",
+   "expect": null,
+   "why": "pairing is a different verb with its own parser"
+  },
+  {
+   "input": "VYRE://open/chat",
+   "expect": null,
+   "why": "lower case only"
+  },
+  {
+   "input": "vyre://opener/chat",
+   "expect": null,
+   "why": "the verb is exactly open"
+  },
+  {
+   "input": "vyre://open/chatroom",
+   "expect": null,
+   "why": "a route prefix must end at a segment"
+  },
+  {
+   "input": "vyre://open/admin",
+   "expect": null,
+   "why": "not an in-app route"
+  },
+  {
+   "input": "vyre://open//evil.example/chat",
+   "expect": null,
+   "why": "a double slash"
+  },
+  {
+   "input": "vyre://open/chat/../settings",
+   "expect": null,
+   "why": "dot dot"
+  },
+  {
+   "input": "vyre://open/chat/..%2f..%2fsettings",
+   "expect": null,
+   "why": "an encoded slash"
+  },
+  {
+   "input": "vyre://open/chat%2F..",
+   "expect": null,
+   "why": "an encoded slash, upper case"
+  },
+  {
+   "input": "vyre://open/chat%252f",
+   "expect": null,
+   "why": "an encoded percent"
+  },
+  {
+   "input": "vyre://open/chat\\\\evil",
+   "expect": null,
+   "why": "a backslash"
+  },
+  {
+   "input": "vyre://open/https://evil.example",
+   "expect": null,
+   "why": "a URL"
+  },
+  {
+   "input": "vyre://open/javascript:alert(1)",
+   "expect": null,
+   "why": "a colon"
+  },
+  {
+   "input": "vyre://open/chat#frag",
+   "expect": null,
+   "why": "a fragment"
+  },
+  {
+   "input": "vyre://open/chat%20x",
+   "expect": null,
+   "why": "a space"
+  },
+  {
+   "input": "vyre://open/chat%E0%A4%A",
+   "expect": null,
+   "why": "broken percent-encoding"
+  },
+  {
+   "input": "vyre://open/chat/xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+   "expect": null,
+   "why": "longer than 512 characters"
+  }
+ ]
+}

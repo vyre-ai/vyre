@@ -28,12 +28,13 @@ import { isMac, machineChip } from "./machine.js";
 import { capsule, assistantName } from "./capsule.js";
 import { openSheet } from "./sheet.js";
 import { installPersonHandler } from "./person.js";
-import { rail, placeForKey, macKeys } from "./rail.js";
+import { rail, placeForKey } from "./rail.js";
 import { fillPlaces, readPin } from "./places.js";
 import { watchHealth, linkLine } from "./health.js";
 import { followTheme, deviceId } from "./theme-live.js";
 import { installAvatars, setIdentity, personAvatar } from "./avatars.js";
 import { checkBuild } from "./build-check.js";
+import { installed, kbd, mac } from "./platform.js";
 import { reportContext } from "./context-report.js";
 
 /** Routes, most specific first. The name is the file in deck/views/. */
@@ -157,7 +158,7 @@ put(deck,
     h("div", { class: "stage" },
       h("header", { class: "top" },
         address,
-        h("label", { class: "search" }, icon("search", 14), searchIn, h("span", { class: "kbd" }, "⌘K"), pop),
+        h("label", { class: "search" }, icon("search", 14), searchIn, h("span", { class: "kbd" }, kbd("K")), pop),
         h("div", { style: { flexGrow: "1" } }),
         fixtureNote,
         needsPill),
@@ -272,9 +273,10 @@ document.addEventListener("click", e => { if (!(/** @type {Element} */ (e.target
 document.addEventListener("keydown", e => { if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") { e.preventDefault(); searchIn.focus(); searchIn.select(); } });
 // Cmd+1 to Cmd+9 (Ctrl off a Mac): the rail's places in order, never while typing in a field. The
 // phone has no rail, so no rail keys.
-const MAC = macKeys();
+const MAC = mac();
 document.addEventListener("keydown", e => {
-  if (phone()) return;
+  // In a browser tab these chords switch the browser's own tabs; only an installed window takes them.
+  if (phone() || !installed()) return;
   const href = placeForKey(e, MAC);
   if (!href) return;
   e.preventDefault();

@@ -4,6 +4,17 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### The desktop shell contract, hardened (PLAN.md C22, reviewer-2 H4)
+
+- deck/js/platform.js: the Windows or Mac app is detected only by a value its host injects
+  (`window.__vyreShell`), never a query or a header, and it only changes presentation. Key hints
+  follow the platform ("Ctrl+K" off a Mac, "⌘K" on one), and the rail's Cmd/Ctrl+1 to 9 work only
+  in an installed window, where they don't fight the browser's tab keys.
+- lib/deeplink parses `vyre://open/...` links to an in-app route or nothing (no pairing verb, no
+  URL, no path tricks), with golden vectors in spec/deeplink/open.json for the desktop apps.
+- A terminal URL reached by a link shows "Open the terminal" instead of attaching on load; the app's
+  own opening still attaches at once (deck/chat/lib/opened-here.js).
+
 #### deck: a page is never older than its box, and nobody is asked
 
 - vyred stamps its build id into the Deck page (`<meta name="vyre-build">`, core/daemon/build.js
