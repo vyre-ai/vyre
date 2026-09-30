@@ -24,6 +24,16 @@ container, so the composer and cards fit inside a split pane.
 
 The list hides before the detail drops under 480. Settings content caps at 720.
 
+**Panel width, one named exception (30 Sep, artifacts team's AR3 ask).** `panel:<name>` (ADR
+0033's slot grammar) stays fixed at 340 by default - todos, changed files, a teammate's thread,
+every ordinary use. An artifact panel showing a page or a deck (the two kinds that genuinely don't
+fit at 340: a rendered HTML page, a slide) may offer one widen control that steps the panel to 50%
+of the window's width and back, never a freeform drag-resize and never a remembered arbitrary
+width. Every other artifact kind (doc, report, diagram, dashboard) and every other panel use stays
+at 340 - this is a control on the artifact panel's own chrome (next to the version bar), not a
+general capability every `panel:<name>` gains. On the phone the panel is already a full-screen
+sheet, so the control doesn't apply there.
+
 ## Desktop and tablet
 
 - [Rail](components/rail.md): 72 px of icons with 12 px labels. Order: Now, Chat, Agents,
