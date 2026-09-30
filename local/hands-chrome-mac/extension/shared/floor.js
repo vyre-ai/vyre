@@ -88,6 +88,8 @@ export function classify(url, op, cfg = {}) {
   if (raw === "about:blank") return done("open", null);
   let u;
   try { u = new URL(raw); } catch { return done("blind", "the address cannot be parsed"); }
+  // Chrome's own page for a site that did not load (no network, a bad address, a refused connection): say that, not "a browser page".
+  if (u.protocol === "chrome-error:") return done("blind", "the page did not load (Chrome is showing its own error page)");
   // view-source:, javascript:, chrome:, about:, data: and the rest are not pages Vyre drives.
   if (!OPEN_SCHEMES.has(u.protocol)) return done("blind", "a browser page, not a website");
   const host = u.hostname.toLowerCase().replace(/\.$/, "");

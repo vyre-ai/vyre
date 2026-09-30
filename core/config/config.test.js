@@ -156,6 +156,8 @@ test("config: a home too long for a unix socket puts the socket in a private per
 test("config: on win32, the socket is a named pipe, never a filesystem path", t => {
   const root = tempHome(t);
   const p1 = config.socketPath(root, { platform: "win32" });
+  // socketPath makes the home it is asked about (for its pipe-token), so this sibling is ours to remove.
+  t.after(() => fs.rmSync(root + "y", { recursive: true, force: true }));
   const p2 = config.socketPath(root + "y", { platform: "win32" });
   assert.match(p1, /^\\\\\.\\pipe\\vyre-/);
   assert.notEqual(p1, p2, "two homes never share a pipe name");
