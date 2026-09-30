@@ -66,6 +66,7 @@ function itemsOf(s) {
 }
 const scopeText = sc => {
   if (!sc) return "";
+  if (sc.assistant && Array.isArray(sc.agents) && !sc.agents.length) return "you and the assistant only";
   const p = sc.projects === "*" ? "every project" : `projects ${sc.projects.join(", ")}`;
   const a = sc.agents === "*" ? "every agent" : `agents ${sc.agents.join(", ")}`;
   return `${p} · ${a}`;

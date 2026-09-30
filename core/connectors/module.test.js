@@ -202,13 +202,13 @@ test("connectors: who may use a connection is shown in the catalog and changed o
   assert.deepEqual((await w.cli("connectors.scope", { name: "fakevendor", scope: { projects: "*", agents: ["kit", "juno"] } })).data.scope, { projects: "*", agents: ["kit", "juno"] });
   assert.deepEqual(await scopeNow(), { projects: "*", agents: ["kit", "juno"] });
   await w.cli("connectors.scope", { name: "fakevendor", scope: null });
-  assert.deepEqual(await scopeNow(), { projects: "*", agents: "*" });
+  assert.deepEqual(await scopeNow(), { projects: "*", agents: [], assistant: true }, "null is the default: you and the assistant only");
   assert.equal((await w.cli("connectors.catalog", {})).data.presets.find(p => p.id === "fakevendor").connected[0].scope, null);
   // a model cannot change it
   for (const who of ["mcp", "mcp:agent:kit", "module:sessions", "module:watchers", "hook"]) {
     assert.equal((await w.d.registry.call("connectors.scope", { name: "fakevendor", scope: { projects: "*", agents: "*" } }, who)).error?.code, "denied", who);
   }
-  assert.equal(await scopeNow().then(x => JSON.stringify(x)), JSON.stringify({ projects: "*", agents: "*" }), "unchanged");
+  assert.deepEqual(await scopeNow(), { projects: "*", agents: [], assistant: true }, "unchanged");
   assert.equal((await w.cli("connectors.scope", { name: "no-such-connection", scope: null })).error?.code, "not_found");
   assert.match((await w.cli("connectors.scope", { name: "fakevendor", scope: "everyone" })).error.message, /scope is/);
 });

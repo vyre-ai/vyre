@@ -4,6 +4,11 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### One meaning of "no scope": you and the assistant only
+
+- `mcp`: a server added without a scope is for you, your own unnamed sessions and the assistant (recognised by what vyred says the agent is, `agents.list` kind, never by name). The stored shape is `{ projects: "*", agents: [], assistant: true }`; a named agent needs a scope that names it (`scope: { agents: ["kit"] }`) or a `#tag` on its thread. An explicit `{ projects: "*", agents: "*" }` is open as before. `mcp.update` with `scope: null` puts a server back on the default. One migration writes an explicit open scope on any existing row that had none (the old default was already written out on every row, so nothing that worked breaks), and another does the same for the connector connections made before, except the apps that are vault credentials, which never had a scope. `vyre connect list` says "you and the assistant only".
+- Tests: `core/mcp/hub.test.js` (default, open stays open, a written scope untouched, assistant by kind, a scope or a tag gives access on top), `lib/connectors/connect.test.js` (the connections migration); the daemon tests that have named agents use a server now give it an explicit open scope.
+
 #### Connections carry who may use them
 
 - `connectors.connect` takes `scope { projects, agents }` (the shape a hub server carries; `vyre connect add app` takes `--project` and `--agent`). A hub server gets it on its row; an api-credential (Microsoft, personal Google, Slack Web) gets it in its config, where vault reads it for model and agent reads through `vault.request`. Left out, a server is open as before and a credential is for the person and the assistant only. A bad scope is refused before anything is made. `connectors.catalog` returns `scope` on each connected entry (null is the default), and `connectors.scope { name, scope }` (people only, `scope: null` resets) updates the hub row or rebuilds the credential from its preset without its secret; the connection table keeps the scope (`connectors.scope-changed`).
