@@ -4,6 +4,7 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+- A thread's provider is switched by one call at a time (`Switchboard.switchProvider`): a second while one runs is `busy` when a person asked and ignored when it was the router's, and the router's limit fallback takes its lock before it asks for the next entry. Two rate-limit lines for one turn used to start two processes for one thread and lose the first, which then ran on after vyred stopped and kept the Node test process from exiting on hosted runners (the 30-minute node hang). A switch in flight is waited for at shutdown (`core/switchboard/index.js`).
 - A session's `stop()` in the switchboard runner no longer waits forever for a child that never exits: it ends the process group, then destroys the child's pipes, and always resolves within a ceiling. This was the Node 24 runner hang that cancelled the node job at 30 minutes (`core/switchboard/runner.js`).
 #### tests: hands-chrome waits 30 s for Chrome's DevTools port
 

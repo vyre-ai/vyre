@@ -305,6 +305,8 @@ export class Switchboard {
     this.groups = new Map();
     /** Spare quick sessions being started (threads.quick), which a stop waits for; and whether vyred is stopping. */
     this.starting = new Set();
+    /** @type {Set<string>} threads whose provider is being switched right now */
+    this.switches = new Set();
     this.closing = false;
     /** @type {Map<string, { path: string, close: () => Promise<void> }>} each live thread's own socket to vyred (deps.threadSocket) */
     this.socks = new Map();
@@ -1060,7 +1062,25 @@ export class Switchboard {
    * transcript. A limit's fallback is this, triggered by the limit instead of a person.
    * @param {string} id @param {{ provider: string, account?: string|null, model?: string|null, reason?: "asked"|"limit", text?: string|null }} o
    */
-  async switchProvider(id, { provider, account = null, model = null, reason = "asked", text = null }) {
+  /**
+   * Switch a thread's provider. One switch per thread at a time: a second while one runs (two
+   * rate-limit lines for one turn) is refused when a person asked and ignored when it is the router's,
+   * never a second process for the same thread. A switch in flight is waited for at shutdown.
+   * @param {string} id @param {{ provider: string, account?: string|null, model?: string|null, reason?: string, text?: string|null }} o
+   */
+  switchProvider(id, o) {
+    if (this.switches.has(id)) {
+      if ((o.reason || "asked") === "asked") return Promise.reject(Object.assign(new Error("this thread is already switching provider"), { code: "busy" }));
+      return Promise.resolve({ thread: id, provider: String(o.provider || ""), account: null, resumed: false, already: true });
+    }
+    this.switches.add(id);
+    const p = this.doSwitchProvider(id, o).finally(() => { this.switches.delete(id); this.starting.delete(tracked); });
+    const tracked = p.catch(() => {});
+    this.starting.add(tracked);
+    return p;
+  }
+
+  async doSwitchProvider(id, { provider, account = null, model = null, reason = "asked", text = null }) {
     const rec = this.must(id);
     provider = String(provider || "");
     if (provider !== "claude" && !(this.deps.providers && this.deps.providers.get(provider))) throw Object.assign(new Error(`no session provider ${provider}`), { code: "bad_input" });
@@ -1099,11 +1119,14 @@ export class Switchboard {
    * @param {string} id @param {any} st
    */
   async routeFallback(id, st) {
+    // One at a time: a second limit line for the same turn arrives before the first has set `switching`.
+    if (st.routing) return false;
+    st.routing = true;
     const rec = this.must(id);
     st.tried = st.tried || new Set();
-    const r = await this.deps.call("sessions.routes.next", { provider: rec.provider || "claude", ...(rec.account ? { account: rec.account } : {}), ...(rec.agent ? { agent: rec.agent } : {}), ...(rec.project ? { project: rec.project } : {}), tried: [...st.tried] });
+    const r = await this.deps.call("sessions.routes.next", { provider: rec.provider || "claude", ...(rec.account ? { account: rec.account } : {}), ...(rec.agent ? { agent: rec.agent } : {}), ...(rec.project ? { project: rec.project } : {}), tried: [...st.tried] }).catch(() => ({}));
     const hit = r.data && r.data.entry;
-    if (!hit) return false;
+    if (!hit) { st.routing = false; return false; }
     const last = st.lastPrompt || null;
     const tried = new Set([...st.tried, `${rec.provider || "claude"}:${rec.account || ""}`]);
     st.switching = true;

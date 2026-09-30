@@ -436,6 +436,20 @@ for (const driver of ["cli", "sdk"]) {
     assert.equal((await w.tool("threads.switch", { thread: th.id, provider: "gemini" })).error.code, "bad_input");
   });
 
+  test(`${driver}: two switches of one thread at once make one process: the second is busy`, { skip }, async t => {
+    const w = await boot(t, { driver });
+    withGrok(t, w);
+    assert.equal((await w.tool("sessions.accounts.add", { provider: "grok", label: "Grok", kind: "login" })).error, undefined);
+    const th = (await w.tool("threads.start", { cwd: w.work, prompt: "hello", surface: "deck" })).data;
+    await w.finished(th.id);
+    const [a, b] = await Promise.all([w.tool("threads.switch", { thread: th.id, provider: "grok" }), w.tool("threads.switch", { thread: th.id, provider: "grok" })]);
+    assert.equal([a, b].filter(x => !x.error).length, 1, JSON.stringify([a, b]));
+    assert.equal([a, b].find(x => x.error).error.code, "busy");
+    await w.finished(th.id, 2);
+    const both = await Promise.all([1, 2].map(() => w.d.registry.call("threads.switch", { thread: th.id, provider: "claude" }, "deck")));
+    assert.equal(both.filter(x => !x.error).length, 1);
+  });
+
   test(`${driver}: routing: a limit moves the thread to the next entry of its list, and says why`, { skip }, async t => {
     const w = await boot(t, { driver, sessions: { auth: "setup-token" }, vault: { "claude-setup-token": "fake-setup-value" } });
     withGrok(t, w);
