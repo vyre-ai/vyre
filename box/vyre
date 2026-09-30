@@ -77,8 +77,18 @@ state() {
   mv -f "$UPD_STATE/status.json.new" "$UPD_STATE/status.json" || true
 }
 stage() { UPD_STAGE=$1; state running "$1"; }
-# put_clear DEST: a link at DEST is removed (the link, never what it points at), and a folder there is refused. mv would
-# otherwise move the new file INTO a folder a link points at, rather than over the link.
+# rename_over SRC DEST: rename(2), which never follows a link at DEST: the new file replaces the link itself. GNU mv does this
+# with -T (probed once); elsewhere perl's rename does (perl is on the box image and on macOS). A plain `mv -f` would move
+# SRC INTO a folder that DEST links to, if the person's account planted one between the check and the move.
+rename_over() {
+  if [ -z "${MV_T:-}" ]; then
+    pt_=$(mktemp) || return 1
+    if mv -fT "$pt_" "$pt_.probe" 2>/dev/null; then MV_T=1; rm -f "$pt_.probe"; else MV_T=0; rm -f "$pt_"; fi
+  fi
+  if [ "$MV_T" = 1 ]; then mv -fT "$1" "$2"; else perl -e 'rename($ARGV[0],$ARGV[1]) or exit 1' "$1" "$2"; fi
+}
+# put_clear DEST: the friendly early refusal: a link at DEST is removed (the link, never what it points at), and a folder
+# there is refused. The safety itself is rename_over, which does not depend on what DEST is at the moment of the move.
 put_clear() {
   if [ -L "$1" ]; then rm -f "$1"; fi
   if [ -d "$1" ]; then echo "vyre: $1 is a folder, not a file; left alone" >&2; return 1; fi
@@ -89,14 +99,14 @@ put_clear() {
 put_file() {
   put_clear "$2" || return 1
   pf=$(mktemp "$2.XXXXXX") || return 1
-  if cat "$1" >"$pf" && chmod "${3:-0644}" "$pf" && mv -f "$pf" "$2"; then return 0; fi
+  if cat "$1" >"$pf" && chmod "${3:-0644}" "$pf" && rename_over "$pf" "$2"; then return 0; fi
   rm -f "$pf"; return 1
 }
 # put_text TEXT DEST [MODE]: the same, from a string.
 put_text() {
   put_clear "$2" || return 1
   pt=$(mktemp "$2.XXXXXX") || return 1
-  if printf '%s\n' "$1" >"$pt" && chmod "${3:-0644}" "$pt" && mv -f "$pt" "$2"; then return 0; fi
+  if printf '%s\n' "$1" >"$pt" && chmod "${3:-0644}" "$pt" && rename_over "$pt" "$2"; then return 0; fi
   rm -f "$pt"; return 1
 }
 # BK: where an update's backup and its key are kept: root's own folder under the path unit, the stack folder for a person.
