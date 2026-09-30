@@ -456,8 +456,12 @@ export default {
     // now seeded too, one row per project, the same as a named-projects agent, just for every
     // project instead of a named few (reviewer's follow-up on d897210d: without this, a wildcard
     // agent read nothing until someone granted it by hand, project by project).
+    // Set by stop(): nothing below touches the database once the module has been stopped.
+    let stopped = false;
     const seedFromAgents = async () => {
+      if (stopped) return { error: { code: "stopped", message: "projects stopped" } };
       const r = await ctx.call("agents.list", {});
+      if (stopped) return { error: { code: "stopped", message: "projects stopped" } };
       if (r.error) return { error: r.error };
       const list = Array.isArray(r.data) ? r.data : r.data?.agents || [];
       let seeded = 0;
@@ -512,14 +516,24 @@ export default {
     // and core/recall/index.js use, never in production.
     const RETRY_MS = process.env.NODE_TEST_CONTEXT ? 5 : 500;
     const autoSeed = db.prepare("SELECT 1 FROM projects_access_seeded").get() ? Promise.resolve() : (async () => {
-      for (let i = 0; i < 6; i++) {
+      for (let i = 0; i < 6 && !stopped; i++) {
         const r = await seedFromAgents();
+        if (stopped) return;
         if (!r.error) { db.prepare("INSERT OR IGNORE INTO projects_access_seeded (id, at) VALUES (1, ?)").run(Date.now()); return; }
         await new Promise(res => setTimeout(res, RETRY_MS));
       }
-      ctx.log("projects.access: could not auto-seed from agents.projects after 6 tries; run projects.access.migrate by hand once agents is up");
+      if (!stopped) ctx.log("projects.access: could not auto-seed from agents.projects after 6 tries; run projects.access.migrate by hand once agents is up");
     })();
 
-    return { async stop() {}, seeded: autoSeed };
+    return {
+      // Stops the auto-seed and waits (two seconds at most) for the step it is in, so nothing writes after the database closes.
+      async stop() {
+        stopped = true;
+        let timer;
+        await Promise.race([autoSeed.catch(() => {}), new Promise(res => { timer = setTimeout(res, 2000); if (timer.unref) timer.unref(); })]);
+        clearTimeout(timer);
+      },
+      seeded: autoSeed,
+    };
   },
 };

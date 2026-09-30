@@ -17,7 +17,7 @@ const CORE = path.resolve(import.meta.dirname, "..");
 async function world(t) {
   // Registered first, so the registry stops and its database closes before the temp home is removed.
   /** @type {any} */ let reg = null, db = null;
-  t.after(async () => { if (reg) await reg.stop(); await new Promise(r => setTimeout(r, 100)); if (db) db.close(); });
+  t.after(async () => { if (reg) await reg.stop(); if (db) db.close(); });
   const root = fs.realpathSync(tempHome(t));
   const north = path.join(root, "work", "northwind"), harlow = path.join(root, "work", "harlow");
   fs.mkdirSync(path.join(north, "src"), { recursive: true });
