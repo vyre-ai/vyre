@@ -75,7 +75,8 @@ public struct Waiting: Sendable, Equatable {
     public var quiet: Bool
 
     public var key: String { "\(source.rawValue):\(id)" }
-    public func age(now: Double = vyNowMs()) -> String { Route.age(at, now: now) }
+    /// "just now" under a minute (copy.md), "" with no time.
+    public func age(now: Double = vyNowMs()) -> String { let a = Route.age(at, now: now); return a == "now" ? "just now" : a }
 }
 
 public typealias SlugName = (String) -> String

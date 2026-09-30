@@ -19,7 +19,9 @@ jobs:
       fail-fast: false
       matrix:
         node: [22, 24]
-    runs-on: ubuntu-latest
+    # Team branches (work/* except the stage mirror) run on the self-hosted runners; stage and
+    # pull requests keep the hosted runner, so the gate that decides a landing stays clean.
+    runs-on: ${{ (startsWith(github.ref_name, 'work/') && github.ref_name != 'work/stage-0.2') && fromJSON('["self-hosted","linux-heavy"]') || 'ubuntu-latest' }}
     timeout-minutes: 30
     env:
       VYRE_NO_DIALOGS: "1"

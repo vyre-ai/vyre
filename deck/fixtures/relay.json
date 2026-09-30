@@ -1,0 +1,19 @@
+{
+  "relay.join": {
+    "relay": true,
+    "route": "relay",
+    "box": { "name": "kit" },
+    "name": "alex-mac",
+    "device": { "id": "dev_1" },
+    "presence": { "enrolled": false }
+  },
+  "relay.pair.ticket": {
+    "$seq": [
+      { "_comment": "expiresAt is a fixed far-future epoch ms, not $ago (which only goes backward): a fixture ticket never needs to look freshly minted, only never-expired. Four distinct tickets, one per mint in this page load (Deck settings-browser.js: tap, Refresh, Add another device after Remove, Add another device from connected), so a stale-ring regression (the reviewer's MEDIUM on wink-card.js, 28 Sep) shows up as the SAME ring redrawn twice, not just as a ring existing. Real base64url shapes (8 random bytes each, deck/js/phone-code.js's ticketToBytes decodes this), not English words with a shared prefix: an earlier version of these four shared a long common prefix, which decoded to the SAME first 8 bytes for all of them (ticketToBytes only reads the first 8 decoded bytes) and made every ring look identical regardless of which ticket was live, masking the very regression this fixture exists to catch.",
+        "ticket": "__MWuHh92Zs", "expiresAt": 1893456000000, "connected": false },
+      { "ticket": "CyyFHajLSzA", "expiresAt": 1893456000000, "connected": false },
+      { "ticket": "EDM8We5VcFs", "expiresAt": 1893456000000, "connected": false },
+      { "ticket": "m9LUiUKzJkg", "expiresAt": 1893456000000, "connected": false }
+    ]
+  }
+}

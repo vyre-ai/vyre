@@ -20,6 +20,7 @@ import { fileURLToPath } from "node:url";
 import { openTab } from "../cdp.js";
 import { PAGE_SCRIPT } from "./page.js";
 import { p95, percentile, streamGate, frameStats, thresholdP95 } from "./stats.js";
+import { CHROME_SAFE } from "../../../lib/chrome-flags/index.js";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const args = process.argv.slice(2);
@@ -82,7 +83,7 @@ let CDP = process.env.CDP || "";
 if (!CDP) {
   const bin = process.env.CHROME || path.join(os.homedir(), "vyre-ci/pwa-chrome/chrome-headless-shell/linux-154.0.8037.57/chrome-headless-shell-linux64/chrome-headless-shell");
   const cdpPort = 9431 + Math.floor(Math.random() * 400);
-  const chrome = spawn("nice", ["-n", "15", bin, `--remote-debugging-port=${cdpPort}`, "--remote-debugging-address=127.0.0.1", `--user-data-dir=${scratch}`,
+  const chrome = spawn("nice", ["-n", "15", bin, `--remote-debugging-port=${cdpPort}`, "--remote-debugging-address=127.0.0.1", ...CHROME_SAFE, `--user-data-dir=${scratch}`,
     "--no-sandbox", "--no-first-run", "--no-default-browser-check", "--window-size=1280,860", "about:blank"], { stdio: "ignore" });
   started.push(chrome);
   CDP = `http://127.0.0.1:${cdpPort}`;
@@ -404,30 +405,48 @@ async function sendBudget(/** @type {string} */ thread) {
   if (!has) return na("9", "send, Enter to user row painted (ms)", "< 50 ms, no flicker or re-order", `no composer textarea (${composerSel})`);
   const text = `note from alex ${Date.now() % 100000}`;
   await B(`const ta = document.querySelector(${JSON.stringify(composerSel)}); ta.focus(); ta.value = ${JSON.stringify(text)}; ta.dispatchEvent(new Event("input", { bubbles: true }));
-    const W = B.send = { t0: null, first: null, frames: [], stop: false };
+    const W = B.send = { t0: null, first: null, frames: [], stop: false, userRow: null, anchor: null, anchorText: null };
     document.addEventListener("keydown", e => { if (e.key === "Enter" && W.t0 == null) W.t0 = e.timeStamp; }, { capture: true, once: true });
+    // Node identity, not position: a steer/queue marker inserting itself right above the user
+    // row (session-state.js) is expected and moves what "previousElementSibling" reads without
+    // touching either node's own text. The only real flicker/re-order is the SAME already-seen
+    // node (the user row itself, or the row that was above it before anything else arrived)
+    // changing its own textContent, or the user row's node identity being swapped out.
     const tick = () => { if (W.stop) return;
       const m = [...document.querySelectorAll(".thread-view .cv-user")].filter(u => (u.querySelector(".cv-user-text") || u).textContent.trim() === ${JSON.stringify(text)});
       const at = performance.now();
-      if (m.length && W.first == null && W.t0 != null) W.first = at;
-      const prev = m[0] && m[0].previousElementSibling ? (m[0].previousElementSibling.textContent || "").slice(0, 60) : null;
-      if (W.t0 != null) W.frames.push({ n: m.length, prev });
+      if (m.length && W.first == null && W.t0 != null) { W.first = at; W.userRow = m[0]; W.anchor = m[0].previousElementSibling; W.anchorText = W.anchor ? W.anchor.textContent : null; }
+      // A swapped userRow node with the same matched text (m.length still 1) is the window-view
+      // recycling DOM nodes on its per-frame remeasure (budget 6's own open finding), never a
+      // visible change: matching by content already proves the right words are on screen, so
+      // node-identity churn on the user's own row isn't counted. The anchor (the row above) is
+      // watched two ways (reviewer-2, 2026-09-28): while it's still the node we first saw, a real
+      // re-order/flicker is THAT node's own text changing, not a new sibling (a steer marker)
+      // landing beside it (still connected, untouched). If window-view recycles the anchor away
+      // (disconnects it, same as the user row above), a benign recycle puts an equal-text node
+      // back in the same slot; only different text there is a real, visible re-order.
+      let anchorMutated = false, anchorNow = null;
+      if (W.anchor) {
+        if (W.anchor.isConnected) { anchorNow = W.anchor.textContent; anchorMutated = anchorNow !== W.anchorText; }
+        else if (m.length) { const cur = m[0].previousElementSibling; anchorNow = cur ? cur.textContent : null; anchorMutated = anchorNow !== W.anchorText; }
+      }
+      if (W.t0 != null) W.frames.push({ n: m.length, anchorMutated, anchorNow });
       requestAnimationFrame(tick); };
     requestAnimationFrame(tick); return true;`);
   await key("Enter", { text: "\r", code: "Enter", vk: 13 });
   await sleep(4000);
-  const r = await B(`const W = B.send; W.stop = true; return { t0: W.t0, first: W.first, frames: W.frames };`);
+  const r = await B(`const W = B.send; W.stop = true; return { t0: W.t0, first: W.first, frames: W.frames, anchorFrom: W.anchorText, anchorTo: W.anchor ? W.anchor.textContent : null };`);
   if (r.first == null) return report("9", "send, Enter to user row painted (ms)", "timeout", "< 50 ms, no flicker or re-order", false, "no user row with the sent words within 4 s");
-  let seen = false, flicker = 0, dup = 0, reorder = 0, prev = null;
-  /** @type {string[]} */ const changes = [];
+  let seen = false, flicker = 0, dup = 0, reorder = 0, lastMutated = /** @type {any} */ (null);
   for (const f of r.frames) {
-    if (f.n > 0) { if (seen && prev != null && f.prev !== prev) { reorder++; changes.push(`"${String(prev).slice(0, 30)}" to "${String(f.prev).slice(0, 30)}"`); } prev = f.prev; seen = true; }
+    if (f.n > 0) seen = true;
     if (seen && f.n === 0) flicker++;
     if (f.n > 1) dup++;
+    if (seen && f.anchorMutated) { reorder++; lastMutated = f; }
   }
   const ms = r.first - r.t0;
   report("9", "send, Enter to user row painted (ms)", ms, "< 50 ms, no flicker or re-order", ms < 50 && !flicker && !dup && !reorder,
-    `over ${r.frames.length} frames after Enter: ${flicker} frames without the row, ${dup} frames with two, the row above it changed ${reorder}x${changes.length ? ` (${changes.slice(0, 2).join("; ")})` : ""}`);
+    `over ${r.frames.length} frames after Enter: ${flicker} frames without the row, ${dup} frames with two, the row above it (by node identity, not position, and past a recycle) changed ${reorder}x${reorder ? ` (from ${JSON.stringify(r.anchorFrom)} to ${JSON.stringify(lastMutated.anchorNow)})` : ""}`);
   await waitEvent(thread, "thread.finished", 0, 10_000);
   await sleep(1500);
 }

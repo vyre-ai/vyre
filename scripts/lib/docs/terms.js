@@ -342,7 +342,7 @@ export function known(root) {
   const settings = new Set();
   for (const { manifest: m } of mods) for (const d of Array.isArray(m.settings) ? m.settings : []) if (d && typeof d.key === "string") settings.add(d.key);
   for (const { dir, manifest: m } of mods) {
-    for (const t of new Set(m.does?.tools || [])) if (!tools.has(t)) tools.set(t, { module: m.name, file: firstFile(root, dir, t, `${dir}/module.json`) });
+    for (const t of new Set((m.does?.tools || []).map(t => typeof t === "string" ? t : t.name))) if (!tools.has(t)) tools.set(t, { module: m.name, file: firstFile(root, dir, t, `${dir}/module.json`) });
     for (const e of new Set(m.watches?.emits || [])) if (!events.has(e)) events.set(e, { module: m.name, file: firstFile(root, dir, e, `${dir}/module.json`) });
   }
   const config = configKeys(root);

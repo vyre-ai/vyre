@@ -14,6 +14,7 @@ import fs from "node:fs";
 import { execFile } from "node:child_process";
 import { migrate } from "../store/index.js";
 import { dialogsAllowed, NO_DIALOG } from "../config/dialogs.js";
+import { isServer } from "../config/index.js";
 
 /**
  * The floor's list. These need presence whatever their owners declare; a module can add to the
@@ -45,6 +46,10 @@ export const HUMAN_ONLY = new Set([
   "network.guests.add", "network.guests.remove", "network.guests.enable",
   "hooks.enable", "hooks.open", "hooks.close",
   "computers.tailnet.set", "computers.egress.set",
+  // Letting an agent reach a project's data at all (Vyre Drive step 3, federation): the same
+  // weight a vault grant to an agent carries. Taking it away (projects.access.revoke) is
+  // PERSON_ONLY below, instant, so revoking is never held up behind a prompt.
+  "projects.access.grant",
 ]);
 
 /**
@@ -63,7 +68,31 @@ export const HUMAN_ONLY = new Set([
  */
 export const PERSON_ONLY = new Set(["threads.answer", "term.open", "term.attach", "gate.revise", "gate.reject",
   "agents.create", "agents.update", "agents.resume",
-  "computers.takeover", "computers.giveback", "glass.take", "glass.release", "files.drive.access", "projects.move",
+  // A teammate is made by a person (ADR 0031 section 4); a session or another teammate never can.
+  // The rest of core/team's "a person may also..." branches (an explicit project, reading every
+  // project's teammates, checking or cancelling a request that is not the caller's own, editing a
+  // teammate's notes) trust the same caller label, and were first fixed here per-tool (e2e
+  // review, HIGH 1, f8cbc882); the lead moved that fix into the daemon instead, for every tool at
+  // once, so it is not repeated per module (2026-09-28). See core/daemon/index.js.
+  "team.add",
+  "computers.takeover", "computers.giveback", "glass.take", "glass.release", "files.drive.access", "files.receive", "projects.move",
+  // Who watches a project's Needs without running a session in it: the owner's own list to edit.
+  "projects.watchers.add", "projects.watchers.remove",
+  // Taking an agent's project access away (Vyre Drive step 3): instant, no presence, so the owner
+  // is never held up behind a prompt to shut a door. Granting it (projects.access.grant) is
+  // HUMAN_ONLY above.
+  "projects.access.revoke",
+  // Attaching an existing folder to an existing project (Vyre Drive step 4): a placement
+  // decision, the same weight a pick carries, but instant, no presence, so confirming
+  // sync.consent's proposed mapping is never held up behind a Touch ID prompt.
+  "projects.add-workspace",
+  // A shared computer's own membership (agent-browsers.md level 2): who is on it, rotating a
+  // member's token, and deleting one's browser context (its cookies and logins) -- the reviewer
+  // and the lead's own call (28 Sep), the same floor computers.takeover already stands behind.
+  // dispose is called only after the person has previewed what it removes -- a Deck-level
+  // guarantee this floor does not itself prove, the same way computers.takeover asks no proof
+  // beyond being the person.
+  "computers.member.add", "computers.member.remove", "computers.member.rotate", "computers.member.dispose",
   // The user's own lessons: accepting, relaxing and retiring (the no-nag rule).
   "learn.accept", "learn.retire", "learn.relax",
   // What every session is told and runs on (ADR 0030): a model never edits a system prompt, a
@@ -73,7 +102,93 @@ export const PERSON_ONLY = new Set(["threads.answer", "term.open", "term.attach"
   "presence.person.revoke",
   // Every setting is the person's own: a model never changes one, and settings relays the
   // person to the owning module's setter (e2e review, HIGH 1).
-  "settings.set", "settings.reset"]);
+  "settings.set", "settings.reset",
+  // ADR 0039: which of the eight box-only modules load is the person's own choice, never an
+  // agent's ancestry-forged one (reviewer's HOLD on 041f87f0/efbf7a2a).
+  "onboard.machine",
+  // core/link/mac.js's link.call carries a named tool to the box (`inner`, checked only by name
+  // in core/daemon/index.js's floor: the Mac has no local def for a box tool to derive from). These
+  // are the tools personOnly() would derive on the box itself but this Mac-side pre-check cannot,
+  // named explicitly so a model's shell forwarding through link.call is refused just as early as a
+  // direct call would be (reviewer's LOW, 28 Sep). voice.speak and capsule.report join them too.
+  // link.unpair is here, so a model's shell on the box cannot forget a Mac by id; the one
+  // machine-to-machine call it must still take, a paired Mac unpairing itself, is MACHINE_SELF
+  // below (the reviewer's LOW for 0.1.1).
+  "link.pair", "link.unpair", "vault.device.join", "vault.device.revoke", "vault.vaults.create",
+  "files.drive.mount", "files.drive.unmount", "files.drive.open", "files.send", "agents.delete",
+  "memory.correct", "memory.merge", "memory.split",
+  // A model's shell making Vyre speak out loud is a social-engineering channel ("approve the
+  // Touch ID prompt now"); a diagnostic bundle (paths, device names, logs) is not the model's to
+  // read (reviewer, 28 Sep).
+  "voice.speak", "capsule.report",
+  // Ends this Mac's own person session; cheap to protect, and a model signing the person out
+  // mid-task is a real annoyance (reviewer, 28 Sep).
+  "link.signout",
+  // core/goals: an agent may propose a goal (goals.set, state pending), but only a person's tap
+  // turns it into a real one - the same shape as team_propose needing a person's team.add.
+  "goals.accept"]);
+
+
+/**
+ * The person's own surfaces: a real terminal, the Deck, Capsule. Never `module`, `mcp`, `tailnet`,
+ * `hook` or a guest kind — those already keep a model, an agent or another box's peer out on
+ * their own, so a tool naming one of them is not "person-only" by its callers alone.
+ */
+export const PERSON_SURFACES = new Set(["cli", "local", "deck", "capsule"]);
+
+/**
+ * A tool whose callers are person-only surfaces reads as person-only, but until now only
+ * PERSON_ONLY's own hand-kept list got the floor's own-process check (core/daemon/peer.js): a
+ * model's shell can claim "cli" exactly as a real terminal would, so anything left off that list
+ * had nothing stopping it (e2e review, 28 Sep: files.receive was the latest instance; a sweep of
+ * every module found dozens more). PERSON_ONLY is derived from the manifests now: it is default-
+ * deny, and OPT_OUT is the only way off it — a short, explicit, reviewed list of tools that are
+ * harmless even if a model's own shell spoofs "cli", one line of reason each. It may only shrink
+ * (test/person-only-guard.test.js freezes it); nothing on the reviewer's protect list (link.pair,
+ * link.unpair, vault.device.join, vault.device.revoke, vault.vaults.create, files.drive.mount,
+ * files.drive.unmount, files.drive.open, files.send, agents.delete, memory.correct, memory.merge,
+ * memory.split, and anything else that sends, pairs, joins or changes what is remembered) belongs
+ * here.
+ */
+export const OPT_OUT = new Set([
+  // A tip list nudge: read, mark seen, dismiss, reset. Nothing sent, paid, paired or revealed.
+  "tips.next", "tips.seen", "tips.used", "tips.dismiss", "tips.whatsnew", "tips.reset",
+  // Dismissing a suggested skill install, the same shape as tips.dismiss.
+  "learn.skill-dismiss",
+  // Local voice output settings: read them, or change which voice/volume. No data leaves this
+  // machine. voice.speak stays off this list (reviewer, 28 Sep): a model making Vyre say
+  // something out loud is a social-engineering channel ("approve the Touch ID prompt now").
+  "voice.status", "voice.settings",
+  // A read-only tailnet probe for candidate boxes (`vyre up`'s own search); pairing itself
+  // (link.pair) is not opted out.
+  "link.find",
+]);
+
+/**
+ * The only person-only calls an owner's device may make with no person session: a paired Mac
+ * unpairing ITSELF, by its own link key and nothing else (core/link/mac.js sends exactly
+ * `{ key }`). The box's link.unpair then finds the row by that key AND the calling node's
+ * stableId (core/link/box.js byKey), so this can never forget a different Mac. By id stays the
+ * person's. Adding to this needs the same review as PERSON_ONLY.
+ * @param {string} tool @param {any} input
+ */
+export function machineSelf(tool, input) {
+  return tool === "link.unpair" && Boolean(input) && typeof input.key === "string" && input.key.length > 0
+    && Object.keys(input).every(k => k === "key");
+}
+
+/**
+ * Is `name` a person-only tool: PERSON_ONLY's own list, or (unless explicitly opted out) a tool
+ * whose declared callers are person-only surfaces alone. `def` is the live tool definition (its
+ * `callers`), when the caller has it; a remote tool forwarded blind (link.call's `inner`) has none,
+ * so it is checked by name against PERSON_ONLY and HUMAN_ONLY only, same as before.
+ * @param {string} name @param {{ callers?: string[] }} [def]
+ */
+export function personOnly(name, def) {
+  if (PERSON_ONLY.has(name)) return true;
+  if (OPT_OUT.has(name)) return false;
+  return Boolean(def) && Array.isArray(def.callers) && def.callers.length > 0 && def.callers.every(c => PERSON_SURFACES.has(c));
+}
 
 export const METHODS = ["touchid", "tty", "capsule", "device", "passkey", "code", "session"];
 
@@ -186,6 +301,30 @@ export const MIGRATIONS = [`
     device TEXT NOT NULL,
     origin TEXT NOT NULL
   );
+`, `
+  -- A single row: the Capsule build most recently pinned by \`vyre capsule install\`. A DB row
+  -- through the normal presence tool floor (capsule.pin, presence-required), never a bystander
+  -- file: a flat JSON file under root was the first version of this and the reviewer broke it in
+  -- one line -- writable by the same uid vyred runs as, which is also a model's shell's, so
+  -- nothing stopped it writing its own build's cdhash there directly, no tool call needed at all
+  -- (28 Sep). A row here is exactly as protected as any other presence key: only vyred's own tool
+  -- handler, gated the same way presence.enroll already is, ever writes one.
+  CREATE TABLE presence_capsule_pin (
+    id INTEGER PRIMARY KEY CHECK (id = 1),
+    cdhash TEXT NOT NULL,
+    pinned_at INTEGER NOT NULL
+  );
+`, `
+  -- A key that signs a call itself (capsule, device) always stores its kind: ES256, alg -7. Device
+  -- keys were always enrolled that way; fill any row that isn't, then refuse one that would not be.
+  -- An old Ed25519 capsule row keeps its -8, so it is refused at proof time rather than rewritten.
+  UPDATE presence_keys SET alg = -7 WHERE kind = 'device' AND alg IS NULL;
+  CREATE TRIGGER presence_keys_signer_alg BEFORE INSERT ON presence_keys
+    WHEN NEW.kind IN ('capsule', 'device') AND (NEW.alg IS NULL OR NEW.alg <> -7)
+    BEGIN SELECT RAISE(ABORT, 'a capsule or device key must store alg -7'); END;
+  CREATE TRIGGER presence_keys_signer_alg_update BEFORE UPDATE OF kind, alg, public_key ON presence_keys
+    WHEN NEW.kind IN ('capsule', 'device') AND (NEW.alg IS NULL OR NEW.alg <> -7)
+    BEGIN SELECT RAISE(ABORT, 'a capsule or device key must store alg -7'); END;
 `];
 
 const CHALLENGE_TTL = 120_000;
@@ -253,14 +392,20 @@ const spki = b64 => crypto.createPublicKey({ key: Buffer.from(String(b64), "base
 /** A signing key's id is its fingerprint, so one key cannot be enrolled twice. */
 export const fingerprint = b64 => crypto.createHash("sha256").update(Buffer.from(String(b64), "base64url")).digest("base64url").slice(0, 22);
 /**
- * The keys that sign a call themselves, the same message and rules for each: the Capsule's
- * Ed25519 key, and a phone's P-256 key held in its Secure Enclave or StrongBox (ADR 0018).
- * `check` is crypto.verify's algorithm and key for that kind.
+ * The keys that sign a call themselves, the same message and rules for each, both ES256 (P-256,
+ * DER signatures): the Capsule's key in the Mac's Secure Enclave, which asks for a live Touch ID
+ * on every signature (biometryCurrentSet), and a phone's key in its Secure Enclave or StrongBox
+ * (ADR 0018). Each is checked only against the public key enrolled for its id, never a key the
+ * proof carries. `check` is crypto.verify's algorithm and key for that kind.
  */
+const ES256 = pub => ["sha256", { key: spki(pub), dsaEncoding: /** @type {const} */ ("der") }];
 const SIGNERS = {
-  capsule: { label: "Capsule", check: pub => [null, spki(pub)] },
-  device: { label: "device", check: pub => ["sha256", { key: spki(pub), dsaEncoding: /** @type {const} */ ("der") }] },
+  capsule: { label: "Capsule", check: ES256, stale: "that Capsule key is an old kind Vyre no longer accepts; re-enroll the Capsule's key" },
+  device: { label: "device", check: ES256, stale: "that phone's key is not a P-256 key Vyre accepts; pair the phone again" },
 };
+
+/** EC P-256 and nothing else: what a Secure Enclave or StrongBox holds. @param {crypto.KeyObject} key */
+const isP256 = key => key.asymmetricKeyType === "ec" && /** @type {any} */ (key.asymmetricKeyDetails || {}).namedCurve === "prime256v1";
 
 /** Load one of the helper modules lazily. Another file may not exist yet; a failed import is "unavailable". */
 async function lazy(spec, name) {
@@ -288,14 +433,35 @@ function writeTty(file, text) {
   try { fs.writeSync(fd, text); } finally { fs.closeSync(fd); }
 }
 
+/**
+ * On a Mac with vyre-core installed (ADR 0040), the trust anchors are core's, not vyred's: vyred's
+ * own presence_keys can be written by a model's shell (same uid). vyred's daemon sets `core.link`
+ * at start when a root-owned core.json names core (lib/vyre-core-client.js), and every Presence
+ * then asks core to check a signature, passkey or code proof, and refuses to enroll or remove a
+ * key itself: those go from the person's own client straight to core. Touch ID, the terminal
+ * code and sessions stay vyred's own, and advisory on a Mac, as ADR 0040 section 3 says of every
+ * vyred-side control. Linux never sets it.
+ * @typedef {{ verify(tool: string, input: any, header: string): Promise<{ ok: boolean, method?: string, keyId?: string|null, message?: string }>,
+ *   keys(): Promise<any[]>, challenge(tool: string, input: any): Promise<any>,
+ *   call?(tool: string, input: any, header?: string): Promise<{ data?: any, error?: any }> }} CoreLink
+ */
+export const core = { link: /** @type {CoreLink|null} */ (null) };
+/** The proofs vyre-core checks in vyred's place. */
+export const CORE_CHECKED = new Set(["capsule", "device", "passkey", "code"]);
+/** A parsed proof back into its header, fields in their own order. @param {Record<string, string>} proof */
+export const format = proof => [proof.method, ...Object.entries(proof).filter(([k]) => k !== "method").map(([k, v]) => `${k}=${v}`)].join(" ");
+const coreOwned = what => Object.assign(new Error(`on this Mac, ${what} in vyre-core: do it from your own terminal or the Capsule, which talk to vyre-core directly`), { code: "core_owned" });
+
 export class Presence {
   /**
    * @param {{ db: import("node:sqlite").DatabaseSync, events?: any, log?: (m: string) => void, platform?: string,
    *           role?: string, network?: () => { owner?: string, address?: string }, who?: () => Promise<string[]>, writeTty?: (file: string, text: string) => void, statTty?: (file: string) => any,
-   *           touchid?: any, webauthn?: any, now?: () => number, env?: NodeJS.ProcessEnv }} opts
+   *           touchid?: any, webauthn?: any, now?: () => number, env?: NodeJS.ProcessEnv, core?: CoreLink|null }} opts
    */
-  constructor({ db, events = null, log = () => {}, platform = process.platform, role = "local", network = () => ({}), who: whoFn, writeTty: write, statTty, touchid, webauthn, now, env = process.env }) {
+  constructor({ db, events = null, log = () => {}, platform = process.platform, role = "local", network = () => ({}), who: whoFn, writeTty: write, statTty, touchid, webauthn, now, env = process.env, core: coreOpt }) {
     this.db = db;
+    /** A test's own link, or null for none; undefined reads the daemon's (core.link). */
+    this.coreOpt = coreOpt;
     this.role = role;
     this.network = network;
     this.events = events;
@@ -325,6 +491,9 @@ export class Presence {
     /** @type {Map<string, number>} */
     this.terminals = new Map();
   }
+
+  /** vyre-core, when it holds this Mac's trust anchors. @returns {CoreLink|null} */
+  get coreLink() { return this.coreOpt !== undefined ? this.coreOpt : core.link; }
 
   /**
    * One line on the terminal a window was used from, so a command someone else typed into it
@@ -402,7 +571,11 @@ export class Presence {
       try { if (t && await Promise.race([t.available(), within])) out.push("touchid"); } catch {}
     }
     if (this.ttyAllowed() && !this.noTtyWrites) out.push("tty");
-    const kinds = new Set(this.db.prepare("SELECT DISTINCT kind FROM presence_keys").all().map(r => String(r.kind)));
+    const link = this.coreLink;
+    let rows = [];
+    if (link) { try { rows = await link.keys(); } catch {} }
+    else rows = this.db.prepare("SELECT DISTINCT kind FROM presence_keys").all();
+    const kinds = new Set(rows.map(r => String(r.kind)));
     if (kinds.has("capsule")) out.push("capsule");
     if (kinds.has("device")) out.push("device");
     if (kinds.has("passkey")) out.push("passkey");
@@ -425,7 +598,7 @@ export class Presence {
    * @param {string} [tool]
    */
   ttyAllowed(tool) {
-    return this.role !== "box";
+    return !isServer(this.role);
   }
 
   /**
@@ -457,6 +630,8 @@ export class Presence {
       this.challenges.set(id, { tool, hash, method, code, tries: 0, expires });
       return { challenge: id };
     }
+    // A passkey answers a challenge, and on a Mac with vyre-core only core's own challenge counts.
+    if (method === "passkey" && this.coreLink && !(peer && peer.kind === "device")) return this.coreLink.challenge(tool, input);
     if (method === "passkey") {
       // A browser paired over the relay (ADR 0032 part 2b) uses only the passkey enrolled for its
       // own device id; every other caller uses only the passkeys bound to no device.
@@ -512,6 +687,16 @@ export class Presence {
       return { ok: /** @type {true} */ (true), method, keyId };
     };
 
+    // On a Mac with vyre-core, a key-based proof is core's to check, against core's own keys;
+    // vyred's own presence_keys are never read for it.
+    const link = this.coreLink;
+    if (link && CORE_CHECKED.has(method)) {
+      let r;
+      try { r = await link.verify(tool, input, format(proof)); }
+      catch (e) { r = { ok: false, message: `vyre-core could not be asked: ${/** @type {Error} */ (e).message}` }; }
+      return r && r.ok ? proved(r.keyId ?? null) : refuse(r && r.message ? r.message : "vyre-core did not accept that proof");
+    }
+
     if (method === "touchid") {
       if (this.platform !== "darwin") return refuse("Touch ID is only on a Mac");
       if (this.noDialogs) {
@@ -550,10 +735,16 @@ export class Presence {
     }
 
     if (method === "capsule" || method === "device") {
-      const { label, check } = SIGNERS[method];
+      const { label, check, stale } = SIGNERS[method];
       const { key, ts, nonce, sig } = proof;
-      const row = /** @type {any} */ (this.db.prepare("SELECT id, public_key FROM presence_keys WHERE id = ? AND kind = ?").get(String(key || ""), method));
+      const row = /** @type {any} */ (this.db.prepare("SELECT id, public_key, alg FROM presence_keys WHERE id = ? AND kind = ?").get(String(key || ""), method));
       if (!row) return refuse(`that ${label} key is not enrolled`);
+      // A Capsule key from before the Secure Enclave (Ed25519 in the login keychain, which any
+      // program running as the same user could use): never a proof again, whatever it signed.
+      // The stored key itself must be P-256 too, so the check never rests on the alg column alone.
+      let stored = null;
+      try { stored = spki(row.public_key); } catch { /* unreadable: refused below */ }
+      if (Number(row.alg) !== -7 || !stored || !isP256(stored)) return refuse(stale);
       if (!/^\d{1,16}$/.test(String(ts || "")) || Math.abs(this.now() - Number(ts)) > CAPSULE_SKEW) return refuse(`the ${label} signature is too old or from the future`);
       if (!/^[A-Za-z0-9_-]{8,128}$/.test(String(nonce || ""))) return refuse(`the ${label} nonce is missing or malformed`);
       // One set for both kinds: a nonce is spent whichever key signed with it.
@@ -616,13 +807,11 @@ export class Presence {
       if (tool !== "presence.enroll") return refuse("a one-time code only enrolls a passkey or a device key");
       // On the box, Claude's sessions share vyred's socket and can ask onboarding for a fresh code.
       // So the code counts only from the owner's own device over the tailnet, where they cannot be.
-      if (this.role === "box") {
+      if (isServer(this.role)) {
         const owner = String((this.network() || {}).owner || "").toLowerCase();
         if (!owner || String(caller || "").toLowerCase() !== `tailnet:${owner}`) return refuse("on the box, a passkey is enrolled from the owner's own device, over the tailnet");
       }
-      const r = this.db.prepare("UPDATE presence_codes SET used = ? WHERE hash = ? AND used IS NULL AND expires > ?")
-        .run(this.now(), sha(normal(proof.code)).toString("hex"), this.now());
-      if (Number(r.changes) !== 1) return refuse("that code is wrong, used or expired");
+      if (!this.useCode(proof.code)) return refuse("that code is wrong, used or expired");
       return proved();
     }
 
@@ -649,14 +838,31 @@ export class Presence {
     return Number(this.db.prepare("DELETE FROM presence_sessions WHERE id = ?").run(String(id)).changes) > 0;
   }
 
-  /** A one-time code for presence.enroll: 8 characters, stored hashed, valid 10 minutes. */
-  mintCode() {
+  /**
+   * A one-time code for presence.enroll: 8 characters, stored hashed, valid 10 minutes. vyre-core's
+   * installer code is shorter lived and shorter to type (length 6, ttl 2 minutes).
+   * @param {{ ttl?: number, length?: number }} [o]
+   */
+  mintCode({ ttl = CODE_TTL, length = 8 } = {}) {
+    if (this.coreLink) throw coreOwned("one-time enrollment codes are made");
     const now = this.now();
-    const code = randomCode(8);
-    const expires = now + CODE_TTL;
+    if (!(length >= 6 && length <= 16) || !(ttl > 0 && ttl <= CODE_TTL)) throw new Error("a code is 6 to 16 characters and lasts at most 10 minutes");
+    const code = randomCode(length);
+    const expires = now + ttl;
     this.db.prepare("DELETE FROM presence_codes WHERE expires < ?").run(now - 24 * 3600_000);
     this.db.prepare("INSERT INTO presence_codes (hash, expires, used) VALUES (?,?,NULL)").run(sha(code).toString("hex"), expires);
     return { code, expires };
+  }
+
+  /**
+   * Spend a one-time code: true once for a right, unused, unexpired code, false otherwise.
+   * Synchronous, so a caller can spend it and enroll in one transaction (vyre-core does).
+   * @param {unknown} code
+   */
+  useCode(code) {
+    const r = this.db.prepare("UPDATE presence_codes SET used = ? WHERE hash = ? AND used IS NULL AND expires > ?")
+      .run(this.now(), sha(normal(code)).toString("hex"), this.now());
+    return Number(r.changes) === 1;
   }
 
   /** Enrolled keys, never their public keys: a list is for recognising and removing them. */
@@ -665,21 +871,46 @@ export class Presence {
   }
 
   /**
-   * Enroll a Capsule key (Ed25519), a phone's device key (P-256) or a passkey. Public keys only, as base64url SPKI DER.
+   * The Capsule build `vyre capsule install` most recently pinned, or null.
+   * @returns {{ cdhash: string, pinnedAt: number } | null}
+   */
+  capsulePin() {
+    const row = /** @type {any} */ (this.db.prepare("SELECT cdhash, pinned_at FROM presence_capsule_pin WHERE id = 1").get());
+    return row ? { cdhash: row.cdhash, pinnedAt: Number(row.pinned_at) } : null;
+  }
+
+  /**
+   * Pins a Capsule build. Only capsule.pin (presence-required, same floor as presence.enroll)
+   * calls this -- never a bare file, which the same uid a model's shell runs as could write to
+   * directly (the reviewer's HIGH, 28 Sep).
+   * @param {string} cdhash
+   */
+  pinCapsule(cdhash) {
+    if (!/^[0-9a-f]{40,}$/.test(cdhash)) throw Object.assign(new Error("not a cdhash"), { code: "bad_input" });
+    this.db.prepare("INSERT INTO presence_capsule_pin (id, cdhash, pinned_at) VALUES (1, ?, ?) ON CONFLICT (id) DO UPDATE SET cdhash = excluded.cdhash, pinned_at = excluded.pinned_at")
+      .run(cdhash, this.now());
+    return { pinned: true };
+  }
+
+  /**
+   * Enroll a Capsule key or a phone's device key (both P-256), or a passkey. Public keys only, as base64url SPKI DER.
    * @param {{ kind: string, name?: string, public_key: string, alg?: number, rp_id?: string, credential_id?: string }} k
    */
   enroll({ kind, name, public_key, alg, rp_id, credential_id, device = null, origin = null }) {
+    if (this.coreLink) throw coreOwned("presence keys are enrolled");
     if (kind !== "capsule" && kind !== "passkey" && kind !== "device") throw new Error("kind must be capsule, passkey or device");
     let key;
     try { key = spki(public_key); } catch { throw new Error("public_key must be a base64url SPKI DER public key"); }
     let id;
     if (kind === "capsule") {
-      if (key.asymmetricKeyType !== "ed25519") throw new Error("a Capsule key must be Ed25519");
-      alg = -8; rp_id = undefined;
+      // The Capsule's Secure Enclave key: ES256 on P-256, nothing else (ADR 0040).
+      if (!isP256(key)) throw new Error("a Capsule key must be an EC P-256 key from the Secure Enclave");
+      if (alg !== undefined && alg !== -7) throw new Error("a Capsule key's alg must be -7 (ES256)");
+      alg = -7; rp_id = undefined;
       id = fingerprint(public_key);
     } else if (kind === "device") {
       // What a phone's hardware can hold: ES256 on P-256, nothing else (ADR 0018).
-      if (key.asymmetricKeyType !== "ec" || /** @type {any} */ (key.asymmetricKeyDetails || {}).namedCurve !== "prime256v1") throw new Error("a device key must be an EC P-256 key");
+      if (!isP256(key)) throw new Error("a device key must be an EC P-256 key");
       if (alg !== -7) throw new Error("a device key's alg must be -7 (ES256)");
       rp_id = undefined;
       id = fingerprint(public_key);
@@ -702,6 +933,7 @@ export class Presence {
 
   /** Remove an enrolled key. Returns whether one was removed. */
   remove(id) {
+    if (this.coreLink) throw coreOwned("presence keys are removed");
     this.db.prepare("DELETE FROM presence_key_devices WHERE key = ?").run(String(id));
     return Number(this.db.prepare("DELETE FROM presence_keys WHERE id = ?").run(String(id)).changes) === 1;
   }

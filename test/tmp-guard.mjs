@@ -91,6 +91,20 @@ if (strays.length) {
   console.error(`tmp-guard: ${plural(strays.length)} appeared bare in ${os.tmpdir()} during this test run, outside SCRATCH:`);
   for (const n of strays) console.error("  " + path.join(os.tmpdir(), n));
 }
+
+// A leak this run made is still this run's to clean up: sweep every one away (killing any vyred
+// still alive inside it first) so it never sits in $TMPDIR until someone notices hundreds of them
+// by hand, the way this file's own history says happened before it existed. This never hides the
+// leak: it is reported and the run still fails below, whether or not the sweep finds anything to
+// kill or remove.
+function reap(dir) {
+  let pid = 0;
+  try { pid = Number(fs.readFileSync(path.join(dir, "vyred.pid"), "utf8")); } catch {}
+  if (pid && pid !== process.pid) { try { process.kill(pid, "SIGKILL"); } catch {} }
+  try { fs.rmSync(dir, { recursive: true, force: true }); } catch (e) { console.error(`tmp-guard: could not remove ${dir}: ${e.message}`); }
+}
+for (const n of added) reap(path.join(SCRATCH, n));
+for (const n of strays) reap(path.join(os.tmpdir(), n));
 if (added.length || strays.length) {
   console.error("Find the test that created it (grep for mkdtemp/SCRATCH), make it under SCRATCH, and clean it up in t.after/finally.");
   process.exit(1);

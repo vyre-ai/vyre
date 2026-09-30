@@ -24,9 +24,12 @@ const THREADS_PER_NODE = 2;
 /**
  * @typedef {{ slug: string, name: string, folders: string[], threads?: string[] }} Project
  * @param {import("./graph.js").Graph} g
- * @param {{ project_cwds?: string[], room?: string, around?: string, depth?: number, limit?: number, since?: number, projects?: Project[] }} input
+ * @param {{ project_cwds?: string[], room?: string, around?: string, depth?: number, limit?: number, since?: number, projects?: Project[], excludeUnfiled?: boolean }} input
+ *   excludeUnfiled: the assistant rule (2026-09-28): the assistant reads every mapped project's
+ *   room, but never the unfiled room (raw content from an unmapped folder). Only meaningful on
+ *   the unscoped (main) view; a scoped call for room "unfiled" is refused before this runs.
  */
-export function floorPlan(g, { project_cwds = [], room, around, depth = 1, limit = 150, since, projects = [] } = {}) {
+export function floorPlan(g, { project_cwds = [], room, around, depth = 1, limit = 150, since, projects = [], excludeUnfiled = false } = {}) {
   const db = g.db;
   const updated = g.curator.updated();
   // A poll that has nothing new costs one read.
@@ -205,13 +208,21 @@ export function floorPlan(g, { project_cwds = [], room, around, depth = 1, limit
     if (c) c.facts++;
   }
   const factsInView = edges.filter(e => e.rel !== "mentioned_in" && e.until === null).length;
+  let outRooms = rooms.map(r => ({ ...r, ...count.get(r.id) })).filter(r => r.kind === "project" || r.nodes > 0);
+  let outNodes = [...picked.values()], outEdges = out;
+  if (excludeUnfiled && !sc) {
+    outRooms = outRooms.filter(r => r.id !== "unfiled");
+    const keep = new Set(outNodes.filter(n => n.room !== "unfiled").map(n => n.id));
+    outNodes = outNodes.filter(n => keep.has(n.id));
+    outEdges = outEdges.filter(e => keep.has(e.src) && keep.has(e.dst));
+  }
   return {
     updated,
     scope: sc ? "project" : "main",
-    rooms: rooms.map(r => ({ ...r, ...count.get(r.id) })).filter(r => r.kind === "project" || r.nodes > 0),
-    nodes: [...picked.values()],
-    edges: out,
-    counts: { nodes: ent.size, facts: factsInView, drawn: picked.size },
+    rooms: outRooms,
+    nodes: outNodes,
+    edges: outEdges,
+    counts: { nodes: ent.size, facts: factsInView, drawn: outNodes.length },
     truncated: ranked.length > Math.ceil(cap * 0.6) || picked.size >= cap || dropped,
   };
 }

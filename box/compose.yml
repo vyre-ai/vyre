@@ -137,6 +137,11 @@ services:
       - vyre-work:/work
       # The CLI in this image talks to tailscaled through this socket.
       - tailscale-sock:/var/run/tailscale
+      # docker-api's bearer (core/dockerproxy/bearer.js): vyred (uid vyre, 1000) generates it
+      # here on first use and reads it back on every computers.docker request. Shared with the
+      # docker-api service below, mode 0400 -- unreadable to vyre-agent (uid 1001), which shares
+      # this container's filesystem and network but never this volume's file.
+      - docker-api-bearer:/var/lib/vyre-secrets
     healthcheck:
       test: ["CMD", "vyre", "status"]
       interval: 30s
@@ -174,8 +179,15 @@ services:
       - VYRE_COMPUTERS_IMAGE=${VYRE_COMPUTERS_IMAGE:-vyre/computer:0.1}
       - VYRE_COMPUTERS_LABEL_PREFIX=${VYRE_COMPUTERS_LABEL_PREFIX:-run.vyre.computers}
       - VYRE_COMPUTERS_CAP_ADD=${VYRE_COMPUTERS_CAP_ADD:-}
+      # Required (core/dockerproxy/main.js refuses to start without it): every request must
+      # carry this bearer, so being on the docker-api network is not enough on its own -- a
+      # session sharing vyred's container and network cannot reach this proxy just by being on
+      # it. vyred writes the file this points at (core/computers/index.js, bearer.ensure); this
+      # container only ever reads it, and retries for a while on a first-boot race.
+      - DOCKER_PROXY_BEARER_FILE=/var/lib/vyre-secrets/docker-api-bearer
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
+      - docker-api-bearer:/var/lib/vyre-secrets:ro
     networks:
       - docker-api
 
@@ -193,6 +205,9 @@ volumes:
     labels:
       run.vyre: "1"
   vyre-agent-home:
+    labels:
+      run.vyre: "1"
+  docker-api-bearer:
     labels:
       run.vyre: "1"
 

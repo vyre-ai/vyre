@@ -20,22 +20,39 @@ import { Keyboard, isSurface, idleMsOf, IDLE_CHOICES, IDLE_WARN_MS } from "./key
 import { FakeDriver } from "./driver/fake.js";
 import { DockerDriver } from "./driver/docker.js";
 import { Shield } from "./shield.js";
+import { Fills } from "./fill.js";
 import { helper, tellComputerd } from "./helper.js";
 import * as egress from "./egress.js";
 import * as tailnet from "./tailnet.js";
 import * as config from "../config/index.js";
+import { ensure as ensureBearer } from "../../lib/bearer/index.js";
+import { agentClaim } from "../modules/index.js";
 
 const str = { type: "string" };
 const obj = (properties, required = []) => ({ type: "object", properties, required });
 const AGENT = /^[a-z][a-z0-9-]{0,40}$/;
 
+/** The vault item a shared computer's member tokens are derived from (pool.js's memberToken()) --
+ * declared in module.json's needs.vault, the same shape tailnet's own authkey item is. Never
+ * generated here: like every other vault item, a person puts it in (vault.put, HUMAN_ONLY)
+ * before the first computers.member.add that needs it; fetched fresh each time, never cached, so
+ * a person rotating it in the vault directly takes effect on the very next add/rotate/reseed. */
+const MEMBER_TOKEN_ITEM = "vyre-shared-computer-member-key";
+
+/** The default path for the docker-api bearer, in a volume box/compose.yml shares between the
+ * vyre and docker-api services only -- never vyre-agent's home, and never either process's Env. */
+const DEFAULT_BEARER_FILE = "/var/lib/vyre-secrets/docker-api-bearer";
+
 /**
  * The driver config asks for: the Docker proxy when `computers.docker` is set, the fake when
  * `computers.driver` is "fake", else none. There is deliberately no fallback to the raw socket.
+ * vyred owns the bearer file (bearer.ensure): it generates one on first boot if the box's setup
+ * has not already, so a fresh install still gets the file before docker-api needs it to answer.
  * @returns {import("./driver/index.js").Driver|null}
  */
 export function pickDriver(cfg, key) {
-  if (cfg.docker) return new DockerDriver({ url: String(cfg.docker), labelPrefix: cfg.labelPrefix, network: cfg.network, capAdd: cfg.capAdd });
+  if (cfg.docker) return new DockerDriver({ url: String(cfg.docker), bearer: ensureBearer(cfg.dockerBearerFile || DEFAULT_BEARER_FILE),
+    labelPrefix: cfg.labelPrefix, network: cfg.network, capAdd: cfg.capAdd });
   if (cfg.driver === "fake") return FakeDriver.for(key, cfg.local ? { local: cfg.local } : {});
   return null;
 }
@@ -53,11 +70,13 @@ export default {
     // a computer starts with the switch on, and goes straight to that computer, nowhere else.
     const tailnetCfg = () => (ctx.config && ctx.config.computers && ctx.config.computers.tailnet) || undefined;
     const pool = new Pool({ db: ctx.store.db, driver, call: ctx.call, emit, log: ctx.log, config: cfg, egress: egressCfg,
-      tailnet: { setting: () => tailnet.setting(tailnetCfg()), key: () => ctx.vault.fetch(tailnet.ITEM) } });
+      tailnet: { setting: () => tailnet.setting(tailnetCfg()), key: () => ctx.vault.fetch(tailnet.ITEM) },
+      memberTokenKey: () => ctx.vault.fetch(MEMBER_TOKEN_ITEM) });
     // Live too: computers.handback.set changes the idle hand-back for a take-over already running.
     const idleMin = () => ctx.config && ctx.config.computers ? ctx.config.computers.handbackIdleMin : undefined;
     const keyboard = new Keyboard({ pool, call: ctx.call, emit, on: ctx.events.on, log: ctx.log, idleMs: () => idleMsOf(idleMin()) });
-    const shield = new Shield({ pool, emit, on: ctx.events.on, log: ctx.log, tell: (agent, on) => tellComputerd(pool, agent, on) });
+    const shield = new Shield({ pool, emit, on: ctx.events.on, log: ctx.log, tell: (agent, on, o) => tellComputerd(pool, agent, on, o) });
+    const fills = new Fills({ pool, shield, keyboard, emit, on: ctx.events.on, log: ctx.log, helper: agent => helper(pool, agent) });
 
     if (!driver) ctx.log("no computer driver configured (computers.docker is not set); computers cannot start");
     else {
@@ -112,12 +131,17 @@ export default {
       return a ? String(a.kind) : null;
     };
 
-    /** Whose computer this call is about. */
+    /**
+     * Whose computer this call is about. `agentClaim` (core/modules) finds the agent behind any
+     * transport shape, not only "mcp:agent:<name>" - a caller vouched under another surface
+     * ("cli agent:<name>", what a person's own CLI gets when an agent runs inside it) gets the
+     * same self-or-assistant rule as an agent's own MCP hands (hands-desktop's resolveAgent had
+     * the same narrower gap, e2e review 2026-09-28).
+     */
     const resolve = async (input, caller) => {
-      const m = /^mcp:agent:(.+)$/.exec(String(caller || ""));
+      const self = agentClaim(caller);
       let agent;
-      if (m) {
-        const self = m[1];
+      if (self) {
         if (!input.agent || input.agent === self) agent = self;
         else if ((await kindOf(self)) === "assistant") agent = input.agent;
         else throw new Error(`${self} can only use its own computer, not ${input.agent}'s`);
@@ -134,9 +158,6 @@ export default {
       return String(input.surface);
     };
 
-    /** A caller claiming to be an agent, in any of the forms vyred recognizes: "mcp:agent:kit", "harness:agent:kit". */
-    const AGENT_CLAIM = /(?:^|[\s:])agent:([A-Za-z0-9_-]*)/;
-
     /**
      * A surface, refused when the caller is an agent that is not the assistant. `surface` names
      * a person's screen; an ordinary agent is not a person, and take-over/giveback/watch are
@@ -150,12 +171,18 @@ export default {
      * surface, but it cannot tell "deck:laptop" from an impersonator on the same trusted channel
      * (cli, local, a module, or the assistant) — that needs the caller-identity-matches-claimed-
      * surface check the Rules layer does for HUMAN_ONLY tools (asked of security 26 Sep, open).
+     *
+     * It also cannot see past a module that relabels the caller: sight.watch calls this tool as
+     * "module:sight" (core/modules/index.js's call wrapper), so an agent proxied through sight
+     * would clear this check no matter who it really is. core/sight/index.js's agentCaller runs
+     * the same test against sight.watch's own meta.caller before it ever forwards, so the floor
+     * holds end to end; a future proxy path needs the same guard on its own side.
      */
     const ownSurface = async (input, caller) => {
       const surface = surfaceOf(input);
       const who = String(caller || "");
-      const claim = AGENT_CLAIM.exec(who);
-      if (claim && (await kindOf(claim[1])) !== "assistant") throw new Error(`"${who}" is an agent, not a person's screen; ${surface} speaks for itself`);
+      const claim = agentClaim(who);
+      if (claim && (await kindOf(claim)) !== "assistant") throw new Error(`"${who}" is an agent, not a person's screen; ${surface} speaks for itself`);
       return surface;
     };
 
@@ -166,8 +193,8 @@ export default {
         const names = new Set(pool.rows().map(r => String(r.agent)));
         const r = await ctx.call("agents.list", {});
         if (!r.error) for (const a of r.data || []) if (a && a.computer === true) names.add(String(a.name));
-        const m = /^mcp:agent:(.+)$/.exec(String(caller || ""));
-        const mine = m && (await kindOf(m[1])) !== "assistant" ? m[1] : null;
+        const claim = agentClaim(caller);
+        const mine = claim && (await kindOf(claim)) !== "assistant" ? claim : null;
         const computers = [...names].filter(n => !mine || n === mine).sort().map(n => pool.view(n));
         return { driver: driver ? driver.name : "none", screens: pool.opts.screens, computers };
       });
@@ -201,11 +228,20 @@ export default {
     tool("computers.limits", `Set an agent's processor cores (cpus, ${LIMITS.cpus.min} to ${LIMITS.cpus.max}) and memory (memory_gb, ${LIMITS.memoryGb.min} to ${LIMITS.memoryGb.max}). They apply at the next restart. A person's or the assistant's to set, never an agent's own.`,
       obj({ agent: str, cpus: { type: "number" }, memory_gb: { type: "number" } }), async (i, { caller }) => {
         const agent = await resolve(i, caller);
-        const claim = AGENT_CLAIM.exec(String(caller || ""));
-        if (claim && (await kindOf(claim[1])) !== "assistant") throw new Error(`${claim[1]} cannot change a computer's limits; the user sets them`);
+        const claim = agentClaim(caller);
+        if (claim && (await kindOf(claim)) !== "assistant") throw new Error(`${claim} cannot change a computer's limits; the user sets them`);
         await pool.allowed(agent);
         return pool.limits(agent, { cpus: i.cpus, memory_gb: i.memory_gb });
       });
+
+    tool("computers.stats", "One CPU/RAM/network sample for an agent's computer (docker stats, one buffered request, never a streaming connection). Every field null when the computer is not running or this machine has no driver. Internal: vitals reads this, not the Deck.", obj({ agent: str }),
+      async (i, { caller }) => {
+        const agent = await resolve(i, caller);
+        if (!driver || typeof driver.stats !== "function") return { cpu: null, ram: null, ramLimit: null, netRx: null, netTx: null };
+        const row = pool.row(agent);
+        if (!row || !row.container || String(row.state) !== "running") return { cpu: null, ram: null, ramLimit: null, netRx: null, netTx: null };
+        return driver.stats(row.container);
+      }, { internal: true });
 
     tool("computers.pause", "Pause an agent's hands: its input actions are refused until resumed. The computer keeps running.", obj({ agent: str }),
       async (i, { caller }) => pool.pause(await resolve(i, caller), true));
@@ -217,7 +253,10 @@ export default {
       obj({ agent: str, surface: str }, ["surface"]), async (i, { caller }) => {
         const agent = await resolve(i, caller);
         if (!driver) throw new Error(NO_DRIVER);
-        return keyboard.takeover(agent, await ownSurface(i, caller), caller);
+        const surface = await ownSurface(i, caller);
+        // Nobody types into a computer the Vault is signing in on; the fill ends in seconds.
+        if (fills.has(agent)) throw Object.assign(new Error(`${agent}'s computer is busy: a sign-in is being filled; try again in a few seconds`), { code: "busy" });
+        return keyboard.takeover(agent, surface, caller);
       });
 
     tool("computers.giveback", "Hand the keyboard back to the agent.", obj({ agent: str, surface: str }, ["surface"]),
@@ -252,7 +291,50 @@ export default {
       obj({ agent: str }), async (i, { caller }) => helper(pool, await resolve(i, caller)), { internal: true });
 
     tool("computers.shield", "Shield an agent's computer while a person signs in: its hands refuse reads as well as input.",
-      obj({ agent: str, on: { type: "boolean" } }, ["on"]), async (i, { caller }) => shield.set(await resolve(i, caller), i.on === true), { internal: true });
+      obj({ agent: str, on: { type: "boolean" } }, ["on"]), async (i, { caller }) => shield.set(await resolve(i, caller), i.on === true, { reason: "person" }), { internal: true });
+
+    // ---- fill: the Vault signs an agent in without the agent seeing the login (fill.js) -------
+
+    const vaultOnly = caller => {
+      if (String(caller || "") !== "module:vault") throw Object.assign(new Error("only the vault fills a login into an agent's computer"), { code: "denied" });
+    };
+
+    tool("computers.fill.begin", "Shield an agent's computer for a Vault fill: the agent's hands and CDP sockets are cut, and the vault gets a CDP address and a token for this fill only, good for 60 s.",
+      obj({ agent: str, origin: str }, ["agent", "origin"]), async (i, { caller }) => {
+        vaultOnly(caller);
+        if (!AGENT.test(String(i.agent || ""))) throw new Error(`"${i.agent}" is not an agent name`);
+        return fills.begin(String(i.agent), String(i.origin || ""));
+      }, { internal: true });
+
+    tool("computers.fill.end", "End a Vault fill: its token and socket are dropped and the agent's computer is unshielded. target: the tab signed in, for the agent's hands.",
+      obj({ agent: str, fill: str, target: str }, ["agent", "fill"]), async (i, { caller }) => {
+        vaultOnly(caller);
+        return fills.end(String(i.agent), String(i.fill || ""), { target: i.target, why: "done" });
+      }, { internal: true });
+
+    // ---- shared (browser-kind) computers: membership (agent-browsers.md level 2) -------------
+    //
+    // The owner's own tools, never an agent's or a model's -- PERSON_ONLY (core/presence/index.js)
+    // refuses any other caller before these handlers ever run, the same floor computers.takeover
+    // and computers.giveback already stand behind. computer/agent are pool.js's own synthetic
+    // computer id and agent id, never real names a client sends unchecked -- see pool.js's own
+    // AGENT-shaped validation on both.
+
+    tool("computers.member.add", "Add an agent to a shared computer, making the computer first if the id names none yet. Both this and computers.member.remove reload computerd's own identity file, so the change takes effect immediately. The owner's own action.",
+      obj({ computer: str, agent: str, name: str }, ["computer", "agent", "name"]),
+      async i => pool.addAgent(String(i.computer), String(i.agent), String(i.name)));
+
+    tool("computers.member.remove", "Remove an agent from a shared computer. If it was the last one, the computer stops -- its volume and every member's profile stay; deleting one is computers.member.dispose, a separate action.",
+      obj({ computer: str, agent: str }, ["computer", "agent"]),
+      async i => pool.removeAgent(String(i.computer), String(i.agent)));
+
+    tool("computers.member.rotate", "Rotate one member's own CDP token without taking it off the computer -- for a leaked token, or routine hygiene. The old token stops working at once; membership itself is unchanged.",
+      obj({ computer: str, agent: str }, ["computer", "agent"]),
+      async i => pool.rotateAgent(String(i.computer), String(i.agent)));
+
+    tool("computers.member.dispose", "Delete one member's own browser context on a shared computer -- its cookies and logins. Refuses while the agent is still a member; computers.member.remove it first. Call this only after showing the person what it removes; it is never a side effect of computers.member.remove. Does not itself close a live client.",
+      obj({ computer: str, agent: str }, ["computer", "agent"]),
+      async i => ({ disposed: await pool.disposeContext(String(i.computer), String(i.agent)) }));
 
     // ---- egress: the listed sites through the user's Mac (egress.js) -------------------------
 
@@ -275,7 +357,7 @@ export default {
     tool("computers.egress.set", "Turn the Mac egress on or off, or replace its site list (hostnames, optionally *.hostname). The owner's to change, never an agent's; it applies to computers started afterwards.",
       obj({ enabled: { type: "boolean" }, sites: { type: "array", items: str } }), async (i, { caller }) => {
         const who = String(caller || "");
-        if (AGENT_CLAIM.test(who)) throw new Error(`"${who}" is an agent; where an agent's browser goes out is the owner's to change`);
+        if (agentClaim(who)) throw new Error(`"${who}" is an agent; where an agent's browser goes out is the owner's to change`);
         const now = egress.setting(egressCfg());
         const next = { enabled: i.enabled === undefined ? now.enabled : i.enabled === true, sites: i.sites === undefined ? now.sites : egress.checkSites(i.sites) };
         if (!ctx.paths) throw new Error("this vyred has no home to save config in");
@@ -289,7 +371,7 @@ export default {
     const JOINS = "applies to computers that start or thaw after the change; one already running keeps what it has until computers.stop, and turning it off never logs a running node out early";
     const notAgent = (caller, what) => {
       const who = String(caller || "");
-      if (AGENT_CLAIM.test(who)) throw new Error(`"${who}" is an agent; ${what} is the owner's`);
+      if (agentClaim(who)) throw new Error(`"${who}" is an agent; ${what} is the owner's`);
       return who;
     };
 
@@ -362,11 +444,12 @@ export default {
       }, { internal: true });
 
     return {
-      pool, keyboard, shield, driver, sweep,
+      pool, keyboard, shield, fills, driver, sweep,
       async stop() {
         if (timer) clearTimeout(timer);
         keyboard.stop();
         shield.stop();
+        fills.stop();
         pool.wake();
         if (glass && typeof glass.stop === "function") { try { await glass.stop(); } catch {} }
       },

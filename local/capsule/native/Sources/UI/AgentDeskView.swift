@@ -162,24 +162,33 @@ struct AgentButton: ButtonStyle {
 
     /// Above the rows in the area: offline, then the conversation.
     @ViewBuilder static func above(_ m: CapsuleModel) -> some View {
-        if m.offline { OfflineBanner(); Rule() }
-        if directShown(m) { DirectView(direct: m.direct, desk: m.desk); Rule() }
+        if m.offline { OfflineBanner(model: m); Rule() }
+        if directShown(m) { DirectView(direct: m.direct, desk: m.desk, who: m.identities, assistant: m.catalog.assistant?.name); Rule() }
     }
 
     /// Under the bar in the compact panel: offline, then what waits (compactHeight).
     @ViewBuilder static func compact(_ m: CapsuleModel) -> some View {
-        if m.offline { OfflineBanner() }
+        if m.offline { OfflineBanner(model: m) }
         if hintShown(m) { WaitingList(desk: m.desk, limit: compactRows) }
     }
 }
 
-/// vyred is not running: nothing can be sent, and results here are from this Mac.
+/// vyred is not running: nothing can be sent, and results here are from this Mac. The line is
+/// the way out: "Start Vyre" (Return on an empty box, or a click) runs `vyre up` from here.
 struct OfflineBanner: View {
+    @ObservedObject var model: CapsuleModel
     var body: some View {
         HStack(spacing: 8) {
             Text("Offline").font(Theme.label).foregroundColor(Theme.ash)
-            Text("vyred is not running on this Mac. Start it with vyre up. Results here are from this Mac.").font(Theme.subtitle).foregroundColor(Theme.bone).lineLimit(1)
+            Text(model.startingVyre ? "Starting Vyre on this Mac…" : "vyred is not running on this Mac. Results here are from this Mac.")
+                .font(Theme.subtitle).foregroundColor(Theme.bone).lineLimit(1)
             Spacer()
+            if model.startingVyre {
+                ProgressView().controlSize(.small).scaleEffect(0.7)
+            } else {
+                Button { model.startVyre() } label: { KeyHint(title: "Start Vyre", keys: ["⏎"]) }
+                    .buttonStyle(.plain)
+            }
         }
         .padding(.horizontal, Theme.inset).frame(height: OfflineBanner.height)
     }

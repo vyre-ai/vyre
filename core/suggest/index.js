@@ -341,6 +341,8 @@ export default {
       run: async (/** @type {any} */ input) => picked(input),
     });
 
+    // Modules that started first offer their sources again now (memory's names, for one).
+    ctx.events.emit("suggest.ready", {});
     return {
       async stop() {
         stopped = true; off();

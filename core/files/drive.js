@@ -37,6 +37,7 @@ import { execFile } from "node:child_process";
 import { run as tailscale } from "../names/tailscale.js";
 import * as config from "../config/index.js";
 import { looksLikeKey, secretName, HOME_DENIED } from "./safety.js";
+import { reach, within } from "./access.js";
 
 /**
  * Test seams, keyed by the VYRE_HOME a registry runs with: { mount(url, dir, opts), unmount(dir),
@@ -421,9 +422,15 @@ export function drive(ctx, { role, guard: g, roots }) {
     }
 
     ctx.tool("files.drive.status", {
-      description: "VyreDrive (built on Tailscale's Taildrive) on the box: whether this box may share folders with the paired Mac, the shares it offers (config files.drive.shares), and what is shared now.",
+      description: "VyreDrive (built on Tailscale's Taildrive) on the box: whether this box may share folders with the paired Mac, the shares it offers (config files.drive.shares), and what is shared now. A named agent (Vyre Drive step 5) sees only the shares whose folder falls inside one of its own granted projects; a share outside that is simply left off the list, the same as an ungranted project elsewhere.",
       input: { type: "object", properties: {} },
-      run: driveStatus,
+      run: async (input, meta = {}) => {
+        const st = await driveStatus();
+        const scope = await reach(ctx, meta && meta.caller);
+        if (scope.all) return st;
+        const mine = p => within(p, scope.folders);
+        return { ...st, shares: st.shares.filter(s => mine(s.path)), list: st.list.filter(s => mine(s.path)) };
+      },
     });
 
     ctx.tool("files.drive.share", {
@@ -472,9 +479,12 @@ export function drive(ctx, { role, guard: g, roots }) {
     });
 
     ctx.tool("files.drive.audit", {
-      description: "Check the tailnet policy from the box's side: every online node the policy lets into this box's VyreDrive shares that is not a paired Mac is a finding.",
+      description: "Check the tailnet policy from the box's side: every online node the policy lets into this box's VyreDrive shares that is not a paired Mac is a finding. A tailnet-wide security report, not a per-folder read: never an agent (Vyre Drive step 5), same as share/unshare/access above.",
       input: { type: "object", properties: {} },
-      run: audit,
+      run: async (input, meta = {}) => {
+        if (!(await reach(ctx, meta && meta.caller)).all) throw refuse("an agent cannot audit VyreDrive's tailnet policy; that is for the owner");
+        return audit();
+      },
     });
   }
 

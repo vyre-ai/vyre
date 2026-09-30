@@ -24,6 +24,15 @@ import catalogue, { parse, up, resume } from "./projects.js";
 import { editText, toolError, PURPOSES } from "./sessions.js";
 import { json, emit, fail as kitFail, usage, viewing, EXIT } from "../kit.js";
 import { prompt } from "../view.js";
+import { threadStatus } from "../../../lib/thread-status.js";
+
+/** t.status as this CLI should say it to a person, not switchboard's raw internal word (cohesion
+ * found this printing the raw word directly: raw "waiting" is an open ask, which a person calls
+ * "asking", and raw "idle" is what a person calls "waiting" — this CLI had them backwards). Only
+ * the printed word changes; comparisons against the raw status (styling, `=== "stopped"` checks)
+ * are unchanged, since they already key off what the raw word actually means internally.
+ * @param {{ status?: string, stopped_reason?: string|null }} t */
+const statusWord = t => threadStatus(String(t && t.status || ""), t && t.stopped_reason || null);
 
 const SURFACE = "cli:" + process.pid;
 export const SUBS = ["start", "send", "list", "ls", "get", "show", "watch", "lease", "release", "asks", "answer", "stop",
@@ -101,18 +110,22 @@ const tail = (s, n) => { const t = String(s || ""); return t.length > n ? "…" 
 
 // ------------------------------------------------------------ how --view draws them (core/cli/view.js)
 
-/** A thread's status as a card's state. */
-const stateOf = st => (st === "idle" ? "ok" : st === "stopped" ? "unknown" : st === "failed" ? "failed" : "wait");
+/** The canonical status (lib/thread-status.js) as one of view.js's 4 card states. "paused" reads
+ * as "ok": an idle timeout, a restart or a rewind are resumable, nothing wrong happened, unlike a
+ * person deliberately stopping the thread ("stopped") or it dying on its own ("failed"). */
+const CARD_STATE = { starting: "wait", working: "wait", asking: "wait", waiting: "ok", paused: "ok", stopped: "unknown", finished: "ok", failed: "failed" };
+/** A thread's status as a card's state. @param {{status?: string, stopped_reason?: string|null}} t */
+const stateOf = t => CARD_STATE[statusWord(t)] || "wait";
 /** threads.list's rows as a table: the columns a person reads, the id kept to act on. @param {any[]} ts */
 export const threadTable = ts => ({ kind: "table", title: "Threads", empty: "No headless threads in the last day",
   columns: [{ key: "name", label: "Thread" }, { key: "status", label: "Status" }, { key: "holder", label: "Keyboard" }, { key: "agent", label: "Agent" }, { key: "asks", label: "Asks" }, { key: "id", label: "Id" }],
-  rows: ts.map(t => ({ id: t.id, name: t.name || tail(t.cwd, 40), status: t.status, holder: t.holder || "", agent: t.agent || "", asks: t.asks || 0 })) });
+  rows: ts.map(t => ({ id: t.id, name: t.name || tail(t.cwd, 40), status: statusWord(t), holder: t.holder || "", agent: t.agent || "", asks: t.asks || 0 })) });
 /** threads.get's answer as a card: the record, with how many events and asks came with it. @param {any} g */
 export const threadCard = g => {
   const t = g.thread || {};
   const last = (g.events || []).at(-1);
-  return { kind: "card", title: t.name || tail(t.cwd, 40), state: stateOf(t.status), fields: [
-    { label: "Id", value: t.id }, { label: "Status", value: t.status || "" }, { label: "Model", value: t.model || "" },
+  return { kind: "card", title: t.name || tail(t.cwd, 40), state: stateOf(t), fields: [
+    { label: "Id", value: t.id }, { label: "Status", value: t.status ? statusWord(t) : "" }, { label: "Model", value: t.model || "" },
     { label: "Keyboard", value: t.holder || "free" }, { label: "Agent", value: t.agent || "" }, { label: "Folder", value: t.cwd || "" },
     { label: "Events", value: `${(g.events || []).length}${last ? ", the last " + last.id : ""}` }, { label: "Open asks", value: String((g.asks || []).length) }] };
 };
@@ -588,7 +601,7 @@ async function watch(id) {
   process.off("SIGINT", early);
   if (!g) return 1;
   const t = g.thread;
-  out(`  ${bold(t.name || tail(t.cwd, 40))}  ${dim([id8(t.id), t.status, t.holder ? "keyboard: " + t.holder : "", t.agent || ""].filter(Boolean).join(" · "))}`);
+  out(`  ${bold(t.name || tail(t.cwd, 40))}  ${dim([id8(t.id), statusWord(t), t.holder ? "keyboard: " + t.holder : "", t.agent || ""].filter(Boolean).join(" · "))}`);
   const streamed = new Set();
   let midline = false;
   const show = e => {
@@ -647,7 +660,8 @@ async function watch(id) {
 
 function row(t) {
   const label = t.name ? cut(t.name, 36) : tail(t.cwd, 36);
-  const status = t.status === "waiting" ? beacon(t.status.padEnd(8)) : t.status === "working" ? signal(t.status.padEnd(8)) : dim(String(t.status).padEnd(8));
+  const word = statusWord(t);
+  const status = t.status === "waiting" || word === "failed" ? beacon(word.padEnd(8)) : t.status === "working" ? signal(word.padEnd(8)) : dim(word.padEnd(8));
   const asks = t.asks ? beacon(`  ${t.asks} ask${t.asks === 1 ? "" : "s"}`) : "";
   out(`  ${dim(id8(t.id))}  ${status} ${dim(String(t.holder || "-").padEnd(14))} ${label.padEnd(36)} ${dim(t.agent || "")}${asks}`);
 }
@@ -753,7 +767,7 @@ const run = {
     // --json: { thread, asks: [ask], events: [{ id, type, at, payload }] }
     if (json()) { emit(g, threadCard(g)); return 0; }
     const t = g.thread;
-    out(`  ${bold(t.name || tail(t.cwd, 40))}  ${dim([id8(t.id), t.status, t.model, t.holder ? "keyboard: " + t.holder : "", t.agent || ""].filter(Boolean).join(" · "))}`);
+    out(`  ${bold(t.name || tail(t.cwd, 40))}  ${dim([id8(t.id), statusWord(t), t.model, t.holder ? "keyboard: " + t.holder : "", t.agent || ""].filter(Boolean).join(" · "))}`);
     const streamed = new Set();
     let midline = false;
     for (const e of g.events || []) {

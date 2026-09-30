@@ -6,6 +6,11 @@
 // is still starting (a container stopped right after a restart) waits for start to settle and
 // then drains like any other stop, instead of the signal killing it half started (ADR 0029, R7).
 
+import { installCrashHandler } from "./crash.js";
+
+// An uncaught error or rejection: log the stack, exit non-zero, and let the supervisor restart us.
+installCrashHandler();
+
 /** @type {{ stop(): Promise<void> } | null} */
 let d = null;
 let stopping = false;

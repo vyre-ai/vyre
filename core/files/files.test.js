@@ -15,7 +15,8 @@ import { Events } from "../events/index.js";
 import * as config from "../config/index.js";
 import { writeModule } from "../../test/helpers.js";
 import { SCRATCH } from "../../test/scratch.mjs";
-import { seams, merge } from "./index.js";
+import { installFakeReach, clearFakeReach } from "../../test/fixtures/fake-reach.js";
+import { seams, merge, openReal, openChecked } from "./index.js";
 import { guard } from "./safety.js";
 
 const CORE = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
@@ -78,12 +79,20 @@ function fakeRg(args) {
 
 /**
  * A Registry with the files module (and optionally a fake link) running, the way vyred would
- * start it, but without the rest of vyred.
+ * start it, but without the rest of vyred. Always installs the fake-reach fixture (agents.list,
+ * projects.list, projects.access.check, projects.reach): access.js's reach() asks projects.reach
+ * even to decide who the OWNER is, so a test that never mentions an agent still needs it there.
+ * @param {{ role: string, files: any, home?: string, seam?: any, link?: any,
+ *   agents?: any[], projects?: any[], access?: Record<string, boolean> }} opts
+ *   agents/projects: the shapes agents.list/projects.list answer with.
+ *   access: "<project>:<agent>" -> granted, for a fake projects.access.check; anything not
+ *   listed answers granted: false (deny by default, matching the real module).
  */
-async function registry(t, { role, files, home, seam = undefined, link = undefined }) {
+async function registry(t, { role, files, home, seam = undefined, link = undefined, agents = undefined, projects = undefined, access = undefined }) {
   const root = home || tmp(t, "vyre-test-");
   const p = config.ensure(root);
   if (seam) { seams.set(root, seam); t.after(() => seams.delete(root)); }
+  const fp = [];
   const found = discover([CORE]).filter(f => f.manifest && f.manifest.name === "files");
   if (link) {
     const mods = tmp(t, "vyre-mods-");
@@ -95,10 +104,18 @@ async function registry(t, { role, files, home, seam = undefined, link = undefin
         ctx.tool("link.remote", { run: async ({ tool, input }) => ({ result: await globalThis.__filesLinks.get(ctx.paths.root)(tool, input) }) });
         return { async stop() {} };
       } };`);
-    found.push(...discover([mods]));
+    fp.push(mods);
+    found.push(...discover([mods], { firstPartyRoots: [mods] }));
+  }
+  {
+    const mods = tmp(t, "vyre-fake-agents-");
+    installFakeReach(mods, root, { agents: agents || [], projects: projects || [], access: access || {} });
+    t.after(() => clearFakeReach(root));
+    fp.push(mods);
+    found.push(...discover([mods], { firstPartyRoots: [mods] }));
   }
   const db = open(p.db);
-  const reg = new Registry({ db, events: new Events(db), config: { role, files }, paths: p, log: () => {} });
+  const reg = new Registry({ db, events: new Events(db), config: { role, files }, paths: p, log: () => {}, firstPartyRoots: fp });
   await reg.start(found, { role });
   t.after(async () => { await reg.stop(); db.close(); });
   assert.equal(reg.modules.get("files").state, "running", reg.modules.get("files").error);
@@ -115,12 +132,25 @@ const refused = async (reg, tool, input, msg = /not available/) => {
   assert.ok(r.error, `${tool} ${JSON.stringify(input)} should have been refused`);
   assert.match(r.error.message, msg);
 };
+/** Like call/refused, but as a named agent's own caller ("mcp:agent:<name>"). */
+const callAs = async (reg, agent, tool, input) => {
+  const r = await reg.call(tool, input, `mcp:agent:${agent}`);
+  if (r.error) throw new Error(r.error.message);
+  return r.data;
+};
+const refusedAs = async (reg, agent, tool, input, msg = /not available/) => {
+  const r = await reg.call(tool, input, `mcp:agent:${agent}`);
+  assert.ok(r.error, `${tool} ${JSON.stringify(input)} as ${agent} should have been refused`);
+  assert.match(r.error.message, msg);
+};
 
 test("files: the manifest loads and offers its four tools to every caller", async t => {
   const { work, vyreHome } = workspace(t);
   const reg = await registry(t, { role: "box", files: { roots: [work] }, home: vyreHome, seam: { rg: fakeRg } });
-  // VyreDrive's tools (files.drive.*) have their own tests in drive.test.js.
-  const names = reg.listTools("mcp").map(x => x.name).filter(n => !n.startsWith("files.drive.")).sort();
+  // VyreDrive's tools (files.drive.*) have their own tests in drive.test.js. agents.list,
+  // projects.list and projects.access.check are the always-installed fake-reach fixture
+  // (test/fixtures/fake-reach.js), not one of the files module's own tools.
+  const names = reg.listTools("mcp").map(x => x.name).filter(n => n.startsWith("files.") && !n.startsWith("files.drive.")).sort();
   assert.deepEqual(names, ["files.dirs", "files.fetch", "files.preview", "files.recent", "files.search", "files.stat"]);
 });
 
@@ -404,9 +434,9 @@ test("files: a Keynote package named *.key is reachable; key files are refused b
   // Keynote saves a document as a folder named *.key.
   put(path.join(work, "talks", "Budget.key", "Index.zip"), "zip");
   put(path.join(work, "talks", "Budget.key", "preview.jpg"), "jpg");
-  const pkg = await reg.call("files.stat", { path: path.join(work, "talks", "Budget.key") });
+  const pkg = await reg.call("files.stat", { path: path.join(work, "talks", "Budget.key") }, "cli");
   assert.equal(pkg.data.dir, true);
-  assert.ok(!(await reg.call("files.stat", { path: path.join(work, "talks", "Budget.key", "Index.zip") })).error);
+  assert.ok(!(await reg.call("files.stat", { path: path.join(work, "talks", "Budget.key", "Index.zip") }, "cli")).error);
   // A private key is a key whatever it is called.
   put(path.join(work, "notes", "server.key"), "budget\n");
   // Put together at run time, so the source itself never looks like it carries a key.
@@ -418,7 +448,7 @@ test("files: a Keynote package named *.key is reachable; key files are refused b
     await refused(reg, "files.preview", { path: path.join(work, "notes", p) });
     await refused(reg, "files.fetch", { path: path.join(work, "notes", p) });
   }
-  const found = (await reg.call("files.search", { q: "budget" })).data.results.map(r => r.name);
+  const found = (await reg.call("files.search", { q: "budget" }, "cli")).data.results.map(r => r.name);
   assert.ok(found.includes("Budget.key"));
   assert.ok(!found.some(n => ["server.key", "budget-deploy.txt", "budget-tls"].includes(n)), found.join());
 });
@@ -433,7 +463,160 @@ test("files: a browser's cookies and saved logins, and a secrets folder, are nev
     await refused(reg, "files.stat", { path: f });
     await refused(reg, "files.fetch", { path: f });
   }
-  assert.ok(!(await reg.call("files.stat", { path: path.join(profile, "Bookmarks") })).error);
-  const found = (await reg.call("files.search", { q: "budget" })).data.results.map(r => r.path);
+  assert.ok(!(await reg.call("files.stat", { path: path.join(profile, "Bookmarks") }, "cli")).error);
+  const found = (await reg.call("files.search", { q: "budget" }, "cli")).data.results.map(r => r.path);
   assert.ok(!found.some(p => /Cookies|Login Data|Web Data|secrets/.test(p)), found.join());
+});
+
+// ---- Vyre Drive step 5: files.search/stat/preview/fetch scoped by projects.access for agents
+
+/** A workspace split into two projects' folders, each with one file naming it. */
+function twoProjects(t) {
+  const base = tmp(t);
+  const work = path.join(base, "work");
+  const harlow = path.join(work, "harlow-site"), northwind = path.join(work, "northwind");
+  put(path.join(harlow, "brief.md"), "Harlow Legal engagement notes\n");
+  put(path.join(northwind, "brief.md"), "Northwind Bakery engagement notes\n");
+  return { base, work, harlow, northwind, vyreHome: path.join(work, "vh") };
+}
+
+test("files: a named agent reads only its own granted project's folder, deny by default", async t => {
+  const { work, harlow, northwind, vyreHome } = twoProjects(t);
+  const reg = await registry(t, { role: "box", files: { roots: [work] }, home: vyreHome, seam: { rg: fakeRg },
+    agents: [{ name: "kit", kind: "agent", projects: ["harlow"] }],
+    projects: [{ slug: "harlow", name: "Harlow Legal", home: harlow, workspaces: [] }, { slug: "northwind", name: "Northwind", home: northwind, workspaces: [] }],
+    access: { "harlow:kit": true } }); // northwind left out: deny by default, same as the real module
+
+  const own = await callAs(reg, "kit", "files.stat", { path: path.join(harlow, "brief.md") });
+  assert.equal(own.name, "brief.md");
+  await refusedAs(reg, "kit", "files.stat", { path: path.join(northwind, "brief.md") });
+  await refusedAs(reg, "kit", "files.preview", { path: path.join(northwind, "brief.md") });
+  await refusedAs(reg, "kit", "files.fetch", { path: path.join(northwind, "brief.md") });
+
+  // Search never even reads northwind for kit, and never offers it in results.
+  const found = (await callAs(reg, "kit", "files.search", { q: "engagement" })).results.map(r => r.path);
+  assert.deepEqual(found, [path.join(harlow, "brief.md")]);
+
+  // The user's own surfaces and a bare session are unaffected: both projects are visible.
+  const all = (await call(reg, "files.search", { q: "engagement" })).results.map(r => r.path).sort();
+  assert.deepEqual(all, [harlow, northwind].map(d => path.join(d, "brief.md")).sort());
+});
+
+test("files: the assistant reads every mapped project, unconditional, but files are raw content so it is not literally unrestricted (reviewer's M1 on 450c34b6)", async t => {
+  const { work, harlow, northwind, vyreHome } = twoProjects(t);
+  const reg = await registry(t, { role: "box", files: { roots: [work] }, home: vyreHome, seam: { rg: fakeRg },
+    agents: [{ name: "juno", kind: "assistant", projects: "*" }],
+    projects: [{ slug: "harlow", name: "Harlow Legal", home: harlow, workspaces: [] }, { slug: "northwind", name: "Northwind", home: northwind, workspaces: [] }],
+    access: {} }); // no grants at all: the assistant reaches both anyway, never checked against projects.access
+  const s = await callAs(reg, "juno", "files.stat", { path: path.join(harlow, "brief.md") });
+  assert.equal(s.name, "brief.md");
+  assert.equal((await callAs(reg, "juno", "files.stat", { path: path.join(northwind, "brief.md") })).name, "brief.md");
+  // A folder outside every mapped project is still refused: not truly all:true.
+  const outside = path.join(work, "elsewhere");
+  fs.mkdirSync(outside, { recursive: true });
+  fs.writeFileSync(path.join(outside, "notes.md"), "unmapped\n");
+  await refusedAs(reg, "juno", "files.stat", { path: path.join(outside, "notes.md") });
+});
+
+test("files: an unrecognised caller (a tailnet guest, say) reads with no projects at all, never as the owner (reviewer's M2 on 450c34b6)", async t => {
+  const { work, harlow, vyreHome } = twoProjects(t);
+  const reg = await registry(t, { role: "box", files: { roots: [work] }, home: vyreHome, seam: { rg: fakeRg } });
+  for (const caller of ["unknown", "tailnet-guest:eve@example.com", "hook"]) {
+    const r = await reg.call("files.stat", { path: path.join(harlow, "brief.md") }, caller);
+    assert.ok(r.error, `${caller} should not read as the owner`);
+  }
+  // The owner's own surfaces, by contrast, still do.
+  assert.ok(!(await reg.call("files.stat", { path: path.join(harlow, "brief.md") }, "cli")).error);
+});
+
+test("files: a projects.access revoke narrows a wildcard agent immediately, same as a named one", async t => {
+  const { work, harlow, northwind, vyreHome } = twoProjects(t);
+  const reg = await registry(t, { role: "box", files: { roots: [work] }, home: vyreHome, seam: { rg: fakeRg },
+    agents: [{ name: "wilma", kind: "agent", projects: "*" }],
+    projects: [{ slug: "harlow", name: "Harlow Legal", home: harlow, workspaces: [] }, { slug: "northwind", name: "Northwind", home: northwind, workspaces: [] }],
+    access: { "harlow:wilma": true } }); // northwind never granted
+  assert.equal((await callAs(reg, "wilma", "files.stat", { path: path.join(harlow, "brief.md") })).name, "brief.md");
+  await refusedAs(reg, "wilma", "files.stat", { path: path.join(northwind, "brief.md") });
+});
+
+test("files: a restricted agent never reaches the other machine, whatever it asks for", async t => {
+  const { work, harlow, vyreHome } = twoProjects(t);
+  // No link fixture needed: the refusal happens before this ever tries to reach the box.
+  const reg = await registry(t, { role: "local", files: { roots: [work] }, home: vyreHome, seam: { rg: fakeRg },
+    agents: [{ name: "kit", kind: "agent", projects: ["harlow"] }],
+    projects: [{ slug: "harlow", name: "Harlow Legal", home: harlow, workspaces: [] }], access: { "harlow:kit": true } });
+  await refusedAs(reg, "kit", "files.stat", { path: path.join(harlow, "brief.md"), source: "box" }, /agent reads this machine only/);
+  await refusedAs(reg, "kit", "files.preview", { path: path.join(harlow, "brief.md"), source: "box" }, /agent reads this machine only/);
+  await refusedAs(reg, "kit", "files.fetch", { path: "/work/whatever", source: "box" }, /agent reads this machine only/);
+  // search still works locally (this role's own label is "mac"), just never crosses to the box.
+  const r = await callAs(reg, "kit", "files.search", { q: "engagement", where: "all" });
+  assert.deepEqual(r.sources.map(s => s.source), ["mac"]);
+});
+
+test("files: openReal refuses a symlink outright, closing the check-then-open gap between describe() and the actual read (reviewer's LOW on 450c34b6)", async t => {
+  const base = tmp(t);
+  const secret = path.join(base, "outside", "id_rsa"); // deliberately outside anything a real path would ever resolve into
+  put(secret, "not a real key, just outside\n");
+  const real = path.join(base, "real.txt");
+  put(real, "hello\n");
+  const link = path.join(base, "link.txt");
+  fs.symlinkSync(secret, link);
+  // The ordinary case: a real file opens fine.
+  const fd = openReal(real);
+  fs.closeSync(fd);
+  // describe() resolved a real path once; if the final component were swapped for a symlink in
+  // the gap before this actually opens it, O_NOFOLLOW must refuse rather than follow it to
+  // wherever the symlink now points, in or out of the granted folder.
+  assert.throws(() => openReal(link), /not available/);
+});
+
+test("files: openChecked refuses a parent-directory swap between describe()'s stat and the open (e2e's follow-up on e8560b79)", async t => {
+  const base = tmp(t);
+  const real = path.join(base, "dir", "notes.txt");
+  put(real, "hello\n");
+  const before = fs.statSync(real);
+  // The ordinary case: describe()'s own dev/ino still match what is actually opened.
+  const okFd = openChecked({ real, dev: before.dev, ino: before.ino });
+  fs.closeSync(okFd);
+  // The residual O_NOFOLLOW alone does not close: the final component (notes.txt) never became
+  // a symlink, but its parent directory was renamed out and a new one dropped in its place in
+  // the gap between describe()'s stat and the actual open — the path string still resolves,
+  // through the swapped-in parent, to a different real file (same name, different inode), which
+  // was never checked against scope or the guard.
+  fs.renameSync(path.join(base, "dir"), path.join(base, "dir-old"));
+  fs.mkdirSync(path.join(base, "dir"));
+  put(real, "a different file the swap dropped in the same place\n");
+  assert.throws(() => openChecked({ real, dev: before.dev, ino: before.ino }), /not available/);
+  // Describing it fresh (as a caller would after the swap, not reusing the stale stat) agrees:
+  // it opens fine on its own dev/ino, since only the comparison against the STALE stat refuses.
+  const after = fs.statSync(real);
+  const freshFd = openChecked({ real, dev: after.dev, ino: after.ino });
+  fs.closeSync(freshFd);
+});
+
+test("files: chunk()'s inline dev/ino check closes the fd on a mismatch too, not just openChecked (reviewer's LOW on c6cda1aa)", async t => {
+  const base = tmp(t);
+  const work = path.join(base, "work");
+  const real = path.join(work, "notes.txt");
+  put(real, "hello\n");
+  const reg = await registry(t, { role: "box", files: { roots: [work] } });
+  // The actual race (an ancestor directory swapped out from under a still-open path between
+  // describe()'s stat and chunk()'s own fstat) cannot be forced from outside a single-threaded
+  // synchronous function with no await between the two calls, so this fakes the fstat chunk()
+  // takes to look like the file changed underneath it instead, and watches whether the fd it
+  // opened gets closed either way. chunk() folds this compare into the SAME fstat it already
+  // took for size/mtime (not a second one through openChecked, reviewer's own note on c6cda1aa),
+  // so faking that one call's return is the exact seam the real mismatch would hit.
+  const realFstat = fs.fstatSync, realClose = fs.closeSync;
+  let closedFd = null;
+  t.mock.method(fs, "fstatSync", fd => {
+    const st = realFstat(fd);
+    return Object.create(st, { dev: { value: st.dev + 1 }, ino: { value: st.ino } });
+  });
+  t.mock.method(fs, "closeSync", fd => { closedFd = fd; return realClose(fd); });
+  await refused(reg, "files.fetch", { path: real });
+  assert.ok(closedFd !== null, "chunk() must close the fd on its own dev/ino mismatch, the same as openChecked does on its");
+  t.mock.restoreAll();
+  // No fd leaked from the refusal above: the same file reads fine right after, unmocked.
+  assert.equal(Buffer.from((await call(reg, "files.fetch", { path: real })).base64, "base64").toString(), "hello\n");
 });

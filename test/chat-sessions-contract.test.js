@@ -117,7 +117,7 @@ test("the payload fields chat keys on are the ones the server sends", () => {
   assert.match(st, /"canceled"/, "chat draws canceled tools");
   assert.match(st, /"failed"/, "chat draws the failed state");
   // Rewind in place: the answer's text comes back to the composer.
-  assert.match(sb, /rewound: true, thread: id, uuid, text/, "threads.rewind answers { rewound, thread, uuid, text }");
+  assert.match(sb, /rewound: true, id, thread: id, uuid, text/, "threads.rewind answers { rewound, id, thread, uuid, text }");
   // Asks anchor to their tool row.
   assert.match(sb + tr, /tool_use_id/, "ask.raised carries tool_use_id");
   // Per-turn cost, never the running total, on a turn.

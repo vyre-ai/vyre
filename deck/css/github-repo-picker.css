@@ -1,0 +1,12 @@
+/* The GitHub repo picker sheet (deck/js/github-repo-picker.js): search, a scrollable list, a
+   private badge, "Show more". Built from sheet.css's own body/rows, no colour of its own. */
+
+.gh-pick { display: flex; flex-direction: column; gap: 12px; min-height: 0; }
+.gh-pick-list { max-height: 50vh; overflow-y: auto; }
+.gh-pick-row { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; width: 100%; text-align: left;
+  padding: 10px 12px; border: 1px solid var(--rule); border-radius: var(--radius-card); background: none; cursor: pointer; }
+.gh-pick-row:hover { background: var(--hover); }
+.gh-pick-row + .gh-pick-row { margin-top: 6px; }
+.gh-pick-name { display: flex; align-items: center; gap: 8px; font-size: 14px; color: var(--text); font-family: var(--mono); }
+.gh-pick-private { display: inline-flex; align-items: center; gap: 4px; }
+.gh-pick-more { display: flex; justify-content: center; }

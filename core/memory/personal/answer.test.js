@@ -9,6 +9,7 @@ import { open } from "../../store/index.js";
 import { seedRecall } from "../../../test/fixtures/corpus.js";
 import { tempHome } from "../../../test/helpers.js";
 import { search } from "../../recall/search.js";
+import { fakeReachCall } from "../../../test/fixtures/fake-reach.js";
 import { parse, normalize, answerer } from "./answer.js";
 import { Personal } from "./store.js";
 import memory from "../index.js";
@@ -61,9 +62,7 @@ async function world(t, life = LIFE) {
     events: { on: () => () => {}, emit: () => {}, since: () => [], prune: () => 0 },
     call: async (tool, input) => {
       if (tool === "recall.search") return { data: (await search(db, input, null, null)).hits };
-      if (tool === "projects.list") return { data: { projects: PROJECTS } };
-      if (tool === "agents.list") return { data: AGENTS };
-      return { error: { code: "no_such_tool", message: tool } };
+      return fakeReachCall(tool, input, { agents: AGENTS, projects: PROJECTS });
     },
     tool: (name, def) => tools.set(name, def),
   };
@@ -185,16 +184,21 @@ test("answer: never a confident wrong answer; unknowns come back null, rivals as
   assert.match(gym.sources[0].quote, /Ironworks/);
 });
 
-test("answer: the user's surfaces, their devices, modules and all-projects agents ask; a project's agent is refused", async t => {
+test("answer: the user's surfaces, their devices, modules and the assistant ask; any named agent is refused", async t => {
   const { call, tools } = await world(t);
-  // Bare "mcp" is the user's own Claude Code session, in whatever folder it runs.
-  for (const [caller, input] of [["cli"], ["deck"], ["capsule"], ["local"], ["module:watch"], ["tailnet:alex@example.com"], ["mcp:agent:juno"], ["harness:agent:hal"],
+  // Bare "mcp" is the user's own Claude Code session, in whatever folder it runs. Only "juno",
+  // the true assistant, is a named agent here: a projects: "*" agent ("hal") no longer reads
+  // personal facts either, narrowed by the user's decision, 2026-09-28, from
+  // docs/adr/0007-intelligence.md decision 1 (which this test itself used to record, before the
+  // narrowing, as an all-projects agent asking successfully alongside the assistant).
+  for (const [caller, input] of [["cli"], ["deck"], ["capsule"], ["local"], ["module:watch"], ["tailnet:alex@example.com"], ["mcp:agent:juno"],
     ["mcp"], ["mcp", { project_cwds: ["/home/alex/Work/harlow-site"] }], ["mcp:thread:t_42"]]) {
     const r = await call("memory.answer", { q: "who is my wife", ...input }, caller);
     assert.ok(!r.error, `${caller}: ${r.error}`);
     assert.equal(r.data.answer, "Your wife is Jordan.");
   }
-  for (const [caller, input] of [["mcp:agent:kit", {}], ["mcp", { agent: "kit" }], ["tailnet:agent:kit", {}], ["cli", { agent: "kit" }], ["harness", {}], ["mcp:agent:nobody", {}], ["mcp:thread:t_42 agent:kit", {}], ["mcp:thread:", {}]]) {
+  for (const [caller, input] of [["mcp:agent:kit", {}], ["mcp", { agent: "kit" }], ["tailnet:agent:kit", {}], ["cli", { agent: "kit" }], ["harness", {}], ["mcp:agent:nobody", {}],
+    ["mcp:thread:t_42 agent:kit", {}], ["mcp:thread:", {}], ["harness:agent:hal", {}]]) {
     const r = await call("memory.answer", { q: "who is my wife", ...input }, caller);
     assert.equal(r.code, "denied", `${caller} ${JSON.stringify(input)}: ${JSON.stringify(r)}`);
   }

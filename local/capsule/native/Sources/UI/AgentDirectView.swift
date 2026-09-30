@@ -7,6 +7,10 @@ import SwiftUI
 struct DirectView: View {
     @ObservedObject var direct: Direct
     @ObservedObject var desk: Desk
+    /// Who is who, for the marks beside each line: the person, and the agent's blob (the
+    /// assistant's creature when the agent is the assistant).
+    var who = Identities()
+    var assistant: String? = nil
 
     var body: some View {
         if let d = direct.dm {
@@ -45,14 +49,22 @@ struct DirectView: View {
 
     @ViewBuilder private func message(_ m: DmMessage, agent: String) -> some View {
         VStack(alignment: .leading, spacing: 3) {
-            Text(m.role == .user ? (m.surface.map { "You · \($0)" } ?? "You") : agent)
-                .font(Theme.label).foregroundColor(m.role == .agent ? Theme.signal : Theme.ash)
+            HStack(spacing: 6) {
+                AvatarView(m.role == .user ? who.person : DirectView.mark(agent, who: who, assistant: assistant), size: 14)
+                Text(m.role == .user ? (m.surface.map { "You · \($0)" } ?? "You") : agent)
+                    .font(Theme.label).foregroundColor(m.role == .agent ? Theme.signal : Theme.ash)
+            }
             if let tools = m.tools, !tools.isEmpty { ToolRows(tools: tools) }
             Text(DirectView.markdown(m.text + (m.role == .agent && m.done != true && m.error == nil ? " …" : "")))
                 .font(Theme.reply).foregroundColor(Theme.bone).textSelection(.enabled)
             if let e = m.error { Label("Failed. \(e)", systemImage: "xmark.circle").font(Theme.subtitle).foregroundColor(Theme.stone) }
         }
         .opacity(m.pending ? 0.6 : 1)
+    }
+
+    /// An agent's mark: its blob, or the assistant's creature when it is the assistant.
+    static func mark(_ agent: String, who: Identities, assistant: String?) -> AvatarKind {
+        agent == assistant || agent == who.assistantName ? who.assistant(assistant) : .agent(agent)
     }
 
     static func state(_ d: Dm) -> String {

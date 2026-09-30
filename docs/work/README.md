@@ -58,6 +58,7 @@ Claim the next number here before writing the ADR, so two workstreams never take
 | 0025 | planner | The planner: time, alarms, reminders, todos, notes and a calendar on the box |
 | 0026 | relay | End-to-end encrypted relay with QR pairing |
 | 0027 | mobile | One app: the phone, the box's web app and app.vyre.run from one Expo codebase |
+| 0028 | vault-next | Vault: import, agent logins, rotation and autofill on every device |
 | 0029 | resilience | The resilience contract: every surface survives network outages |
 | 0030 | sessions | Vyre-owned sessions and the provider router |
 | 0031 | teammates | Project teammates |
@@ -67,3 +68,9 @@ Claim the next number here before writing the ADR, so two workstreams never take
 | 0035 | native-core | The settings hub: one file, four levels, read live by every surface |
 | 0036 | cohesion | One system |
 | 0037 | windows | Windows support: tiers and plan |
+| 0039 | anywhere | Vyre anywhere: role as a choice, moving to a server |
+| 0040 | e2e | vyre-core, a trusted root split from vyred |
+| 0045 | tailnet | Scan-to-pair (Wink): relay.pair.ticket, a signed pairing ticket the Vyre code can carry (renumbered from this table's stale "0037"; the live registry is team/ADR-NUMBERS.md, outside git) |
+| 0046 | tailnet | The relay introduces, Tailscale carries: auth-key auto-join (renumbered from this table's stale "0038", which was relay-first-everywhere, now shelved) |
+| 0042 | federation | The move engine (0041 collided with work/github's "GitHub everywhere", per the reviewer; renumbered) |
+| 0041 | github | GitHub everywhere: device-flow sign-in, repos, projects from a repo, a worktree and branch per session |

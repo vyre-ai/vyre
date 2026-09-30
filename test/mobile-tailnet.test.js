@@ -49,11 +49,11 @@ async function world(t) {
   };
 
   // The mail credential and a held draft, set up by alex at the Mac with a signed Capsule call.
-  const cap = crypto.generateKeyPairSync("ed25519");
-  const capKey = d.registry.deps.presence.enroll({ kind: "capsule", name: "Capsule", public_key: cap.publicKey.export({ format: "der", type: "spki" }).toString("base64url") });
+  const cap = crypto.generateKeyPairSync("ec", { namedCurve: "P-256" });
+  const capKey = d.registry.deps.presence.enroll({ kind: "capsule", name: "Capsule", public_key: cap.publicKey.export({ format: "der", type: "spki" }).toString("base64url"), alg: -7 });
   const person = (tool, input) => {
     const ts = String(Date.now()), nonce = crypto.randomBytes(12).toString("base64url");
-    const sig = crypto.sign(null, Buffer.from(`vyre-presence-v1\n${tool}\n${inputHash(input)}\n${ts}\n${nonce}`), cap.privateKey).toString("base64url");
+    const sig = crypto.sign("sha256", Buffer.from(`vyre-presence-v1\n${tool}\n${inputHash(input)}\n${ts}\n${nonce}`), { key: cap.privateKey, dsaEncoding: "der" }).toString("base64url");
     return d.registry.call(tool, input, "cli", { proof: { method: "capsule", key: capKey.id, ts, nonce, sig } });
   };
   const put = await person("vault.put", { name: "mail-token", kind: "api-key", fields: { value: "fixture-" + crypto.randomBytes(8).toString("hex") } });

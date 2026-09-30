@@ -56,7 +56,7 @@ export function timeWindow(q, now) {
  * @param {{ search: (q: any) => Promise<any[]>, personal?: any, graph?: any, askDir?: string|null, quickDir?: string|null, now?: () => number }} deps
  *   search: recall.search's hits for a query; personal and graph: what widens a question.
  */
-export function retriever({ search, personal = null, graph = null, askDir = null, quickDir = null, now = () => Date.now() }) {
+export function retriever({ search, personal = null, graph = null, askDir = null, quickDir = null, now = () => Date.now(), next = null, picks = null }) {
   /**
    * Names memory knows that the question names: "my wife" -> "Noor", "northwind" -> "Northwind
    * Bakery". Personal names only for a caller that may see personal facts.
@@ -92,16 +92,47 @@ export function retriever({ search, personal = null, graph = null, askDir = null
   };
 
   /**
-   * @param {{ question: string, project_cwds?: string[], k?: number, personal?: boolean,
-   *   expand?: boolean, when?: boolean, recency?: boolean, hybrid?: boolean, thread?: string|null, knobs?: any }} input
-   *   thread: the thread asked from; its turns are favoured, never the only ones
-   * @returns {Promise<{ passages: { id: string, session: string, seq: number, role: string, ts: number, text: string, name: string|null, cwd: string|null, score: number, via: string[] }[], expanded: string[], window: [number, number]|null }>}
+   * Names the graph knows that appear on the person's screen ("the email I'm looking at" names its
+   * sender), for the search only: what a screen says is never evidence (memory.ask). Never
+   * personal names, and an address as written.
+   * @param {string} hint @param {{ project_cwds: string[] }} o
    */
-  return async function retrieve({ question, project_cwds = [], k = 8, personal: seesPersonal = false, expand = true, when = true, recency = true, hybrid = true, thread = null, knobs = {} }) {
+  const onScreen = (hint, o) => {
+    const out = [];
+    const t = String(hint || "").toLowerCase().slice(0, 4000);
+    if (!t) return out;
+    for (const m of t.matchAll(/[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}/g)) out.push(m[0]);
+    if (graph) {
+      try {
+        const { phrases, longest } = graph.phrases("*");
+        const ws = t.match(/[\p{L}\p{N}][\p{L}\p{N}'._@/-]*/gu)?.map(w => w.replace(/'s$/, "")) || [];
+        for (let i = 0; i < ws.length && out.length < MAX_EXPAND * 2; i++) for (let n = Math.min(longest, ws.length - i); n >= 1; n--) {
+          const list = phrases.get(ws.slice(i, i + n).join(" "));
+          if (!list) continue;
+          for (const x of list) { const node = graph.node(x.node, graph.view(o.project_cwds)); if (node && node.label) out.push(String(node.label)); }
+          i += n - 1;
+          break;
+        }
+      } catch { /* the graph not built yet */ }
+    }
+    return [...new Set(out)].slice(0, MAX_EXPAND);
+  };
+
+  /**
+   * @param {{ question: string, project_cwds?: string[], k?: number, personal?: boolean,
+   *   expand?: boolean, when?: boolean, recency?: boolean, hybrid?: boolean, replies?: boolean, thread?: string|null, hint?: string, knobs?: any }} input
+   *   replies: a user turn carries the assistant turn that followed it (reply)
+   *   thread: the thread asked from; its turns are favoured, never the only ones
+   * @returns {Promise<{ passages: { id: string, session: string, seq: number, role: string, ts: number, text: string, name: string|null, cwd: string|null, score: number, via: string[], reply?: { seq: number, text: string } }[], expanded: string[], window: [number, number]|null }>}
+   */
+  return async function retrieve({ question, project_cwds = [], k = 8, personal: seesPersonal = false, expand = true, when = true, recency = true, hybrid = true, replies = true, thread = null, hint = "", knobs = {} }) {
     const words = contentWords(question);
     const base = words.length ? words.join(" ") : String(question);
-    const scope = project_cwds.length ? { project_cwds } : {};
-    const extra = expand ? expansions(question, { personal: seesPersonal, project_cwds }) : [];
+    // A project is its folders and the sessions attached to it from elsewhere (picked threads).
+    const attached = project_cwds.length && picks ? picks(project_cwds) : [];
+    const scope = project_cwds.length ? { project_cwds, ...(attached.length ? { sessions: attached } : {}) } : {};
+    const seen = expand && hint ? onScreen(hint, { project_cwds }) : [];
+    const extra = [...new Set([...(expand ? expansions(question, { personal: seesPersonal, project_cwds }) : []), ...seen])].slice(0, MAX_EXPAND + seen.length);
     const queries = [{ q: base, limit: PER_SEARCH, via: "question" }, ...extra.map(x => ({ q: `${x} ${base}`, limit: PER_EXPANSION, via: `expand:${x}` }))];
     const lists = await Promise.all(queries.map(async x => ({ via: x.via, hits: await search({ q: x.q, limit: x.limit, per_session: 3, ...scope, ...(hybrid ? {} : { hybrid: false }), ...knobs }) })));
     const win = when ? timeWindow(question, now()) : null;
@@ -129,6 +160,13 @@ export function retriever({ search, personal = null, graph = null, askDir = null
     // Ties break on session and seq, so the same question over the same index reads the same passages.
     const passages = [...pool.values()].sort((a, b) => b.score - a.score || a.session.localeCompare(b.session) || a.seq - b.seq).slice(0, k)
       .map(p => ({ ...p, score: Math.round(p.score * 1e5) / 1e5 }));
+    // A question asked in a session is usually answered by the turn after it: a user turn carries
+    // the reply that followed, so "what caused it" finds the cause, not only the question.
+    if (next && replies) await Promise.all(passages.map(async p => {
+      if (p.role !== "user") return;
+      const r = await next(p.session, p.seq).catch(() => null);
+      if (r && r.role === "assistant" && String(r.text || "").trim()) p.reply = { seq: Number(r.seq), text: String(r.text) };
+    }));
     return { passages, expanded: extra, window: win };
   };
 }

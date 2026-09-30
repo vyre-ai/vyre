@@ -11,10 +11,11 @@ import os from "node:os";
 import path from "node:path";
 import { start } from "../core/daemon/index.js";
 import { call } from "../core/daemon/client.js";
-import { tempHome } from "./helpers.js";
+import { tempHome, present } from "./helpers.js";
 import { bindAddress } from "../core/onboard/loopback.js";
 import { execFileSync } from "node:child_process";
 import { ptyCommand } from "../core/onboard/setup-token.js";
+import { canRelayJoin, defaultOnboardPort } from "../core/onboard/index.js";
 
 /** A fake executable that prints `out` for any arguments. */
 function fakeBin(dir, name, out) {
@@ -23,7 +24,7 @@ function fakeBin(dir, name, out) {
   return p;
 }
 
-async function box(t, extra = {}) {
+async function box(t, extra = {}, presence = undefined) {
   const root = tempHome(t);
   const bins = fs.mkdtempSync(path.join(root, "bin-"));
   const env = { VYRE_TAILSCALE_BIN: process.env.VYRE_TAILSCALE_BIN, VYRE_CLAUDE_BIN: process.env.VYRE_CLAUDE_BIN, CLOUDFLARE_VYRE_TOKEN: process.env.CLOUDFLARE_VYRE_TOKEN };
@@ -34,7 +35,7 @@ async function box(t, extra = {}) {
   delete process.env.CLOUDFLARE_VYRE_TOKEN;
   // Port 0: the first free port, so parallel test files never collide on 7300.
   fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ role: "box", transcripts: [], network: { onboardPort: 0 }, ...extra }));
-  const d = await start({ root, log: () => {} });
+  const d = await start({ root, ...(presence ? { presence } : {}), log: () => {} });
   t.after(async () => {
     await d.stop();
     for (const [k, v] of Object.entries(env)) if (v === undefined) delete process.env[k]; else process.env[k] = v;
@@ -262,6 +263,142 @@ test("onboard: step 1 saves your name and the assistant's; a name that fits beco
   assert.equal(s.current, "claude");
 });
 
+// ADR 0039: onboard.machine records the person's own solo/server choice; device is never sent
+// directly (it's set by onboard.join once a connection to another server is confirmed).
+test("onboard: onboard.machine records solo or server, rejects a bad value, and onboard.status reports it", async t => {
+  const { root } = await box(t);
+  const { url, port } = (await call("onboard.link", {}, { root })).data;
+  const base = `http://127.0.0.1:${port}`;
+  const { session } = await redeem(url);
+  const saved = () => JSON.parse(fs.readFileSync(path.join(root, "config.json"), "utf8"));
+
+  const bad = await (await tool(base, session, "onboard.machine", { machine: "container" })).json();
+  assert.match(bad.error.message, /solo.*server.*device|enum/i);
+
+  const solo = await (await tool(base, session, "onboard.machine", { machine: "solo" })).json();
+  assert.equal(solo.data.machine, "solo");
+  assert.equal(saved().machine, "solo");
+
+  const server = await (await tool(base, session, "onboard.machine", { machine: "server" })).json();
+  assert.equal(server.data.machine, "server");
+  assert.equal(saved().machine, "server", "the later choice replaces the earlier one");
+
+  const s = (await (await tool(base, session, "onboard.status")).json()).data;
+  assert.equal(s.machine, "server");
+  assert.equal(s.role, "box", "role is untouched by this tool");
+  assert.equal(s.platform, process.platform, "status reports the real os.platform()");
+  assert.deepEqual(s.can, canRelayJoin(process.platform), "status.can matches the pure helper");
+});
+
+// relay.join is not shippable on a Mac until vyre-core exists (reviewer/team-lead, 28 Sep); launch
+// reads onboard.status.can.relayJoin to hide the code-pairing card rather than offer a dead path.
+test("onboard: canRelayJoin is false with a reason on darwin, true elsewhere", () => {
+  assert.deepEqual(canRelayJoin("darwin"), { relayJoin: false, reason: canRelayJoin("darwin").reason });
+  assert.match(canRelayJoin("darwin").reason, /vyre-core/);
+  assert.deepEqual(canRelayJoin("linux"), { relayJoin: true, reason: null });
+  assert.deepEqual(canRelayJoin("win32"), { relayJoin: true, reason: null });
+});
+
+// Reviewer's LOW, 28 Sep round 2: a Mac chosen as server must never even attempt port 7300,
+// which a real Mac's own onboarding tunnel binds -- not "next free port if taken" (ADR 0002),
+// an outright different default.
+test("onboard: defaultOnboardPort is 7301 on darwin (never 7300), 7300 (ADR 0002) elsewhere", () => {
+  assert.equal(defaultOnboardPort("darwin"), 7301);
+  assert.equal(defaultOnboardPort("linux"), 7300);
+  assert.equal(defaultOnboardPort("win32"), 7300);
+});
+
+// Reviewer, 28 Sep: onboard.machine changes which modules load, so it must be the person's own
+// action, never an agent's, and moving TO server (once an owner exists) needs a presence proof.
+test("onboard: onboard.machine refuses an agent caller outright", async t => {
+  const { root, d } = await box(t);
+  const r = await d.registry.call("onboard.machine", { machine: "server" }, "mcp:agent:kit");
+  assert.equal(r.error.code, "denied");
+  assert.match(r.error.message, /not available to mcp callers/);
+});
+
+test("onboard: moving to server needs no proof during first-time setup (no owner yet)", async t => {
+  const { d } = await box(t);
+  // Matches onboarding's own passkey-enrollment exemption -- there is no passkey to prove
+  // presence with yet either, and the caller is already proven by the one-time link.
+  const r = await d.registry.call("onboard.machine", { machine: "server" }, "cli");
+  assert.equal(r.data.machine, "server");
+});
+
+test("onboard: moving to server needs a presence proof once an owner already exists", async t => {
+  const root = tempHome(t);
+  fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ role: "box", transcripts: [],
+    network: { onboardPort: 0, ownerSeen: new Date().toISOString(), owner: "alex@example.com" }, machine: "solo" }));
+  const d = await start({ root, log: () => {} });
+  t.after(() => d.stop());
+  const later = await d.registry.call("onboard.machine", { machine: "server" }, "cli");
+  assert.equal(later.error.code, "presence_required");
+  // solo never needs it, even with an owner established.
+  const solo = await d.registry.call("onboard.machine", { machine: "solo" }, "cli");
+  assert.equal(solo.data.machine, "solo");
+});
+
+// Reviewer's HIGH, round 2: the first version exempted "no owner seen", which is permanently
+// true for every Solo Mac (role is never "box"), so a Mac was proof-free forever -- the opposite
+// of the fix. A Mac must always prove presence to become a server, with or without an owner.
+test("onboard: a Solo Mac always needs a presence proof to become a server, even with no owner ever seen", async t => {
+  const root = tempHome(t);
+  fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ role: "local", transcripts: [],
+    network: { onboardPort: 0 }, machine: "solo" }));
+  const d = await start({ root, log: () => {} });
+  t.after(() => d.stop());
+  const r = await d.registry.call("onboard.machine", { machine: "server" }, "cli");
+  assert.equal(r.error.code, "presence_required");
+});
+
+// Reviewer, round 2: "device" is set internally, once onboard.join/relay.join have already
+// confirmed a real connection; a person, an agent, or any other module must never set it, and no
+// module may set solo/server on someone's behalf either.
+test("onboard: device is set only by module:onboard or module:relay; nobody else may set it, and no module may choose solo or server", async t => {
+  const { d } = await box(t);
+  const asDevice = raw => d.registry.call("onboard.machine", { machine: "device" }, raw);
+  assert.equal((await asDevice("module:onboard")).data.machine, "device");
+  assert.equal((await asDevice("module:relay")).data.machine, "device");
+  assert.equal((await asDevice("cli")).error.code, "denied");
+  assert.equal((await asDevice("module:notes")).error.code, "denied");
+  assert.equal((await asDevice("mcp:agent:kit")).error.code, "denied");
+  const asServer = await d.registry.call("onboard.machine", { machine: "server" }, "module:onboard");
+  assert.equal(asServer.error.code, "denied");
+});
+
+// Reviewer's HIGH, round 2: onboard now loads on Solo too, so start() can no longer resume the
+// loopback listener unconditionally -- on a Mac that would bind the setup listener, which
+// RULES.md forbids outright on port 7300 (the user's real onboarding tunnel to the box), with
+// nothing to onboard into.
+test("onboard: the setup listener never binds on a machine that is not a server", async t => {
+  const root = tempHome(t);
+  const port = 17300 + Math.floor(Math.random() * 1000);
+  fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ role: "local", transcripts: [],
+    network: { onboardPort: port }, machine: "solo" }));
+  const d = await start({ root, log: () => {} });
+  t.after(() => d.stop());
+  await assert.rejects(fetch(`http://127.0.0.1:${port}/`), /fetch failed|ECONNREFUSED/);
+});
+
+// Reviewer, 28 Sep: onboard now loads on a Solo machine too (so onboard.machine can), but its old
+// box wizard tools must stay refused there -- only onboard.machine (and, separately, tailnet's
+// onboard.join) are exempt.
+test("onboard: the box wizard's tools refuse on a machine that isn't a server", async t => {
+  const root = tempHome(t);
+  fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ machine: "solo", transcripts: [], network: { onboardPort: 0 } }));
+  const d = await start({ root, log: () => {} });
+  t.after(() => d.stop());
+  for (const [tool, input] of [["onboard.you", { name: "alex" }], ["onboard.name", { name: "alex" }], ["onboard.claude", {}],
+    ["onboard.tailscale", {}], ["onboard.history", {}], ["onboard.skip", { step: "you" }], ["onboard.passkey", {}],
+    ["onboard.finish", {}], ["onboard.link", {}]]) {
+    const r = await d.registry.call(tool, input, "cli");
+    assert.equal(r.error?.code, "not_a_server", `${tool} should refuse on solo`);
+  }
+  // status and machine, the two exceptions, still work.
+  assert.equal((await d.registry.call("onboard.status", {}, "cli")).data.machine, "solo");
+  assert.equal((await d.registry.call("onboard.machine", { machine: "solo" }, "cli")).data.machine, "solo");
+});
+
 test("onboard: reserve goes to ts.net without a zone token and says so when the tailnet has HTTPS off; with a token it is vyre.run", async t => {
   const { root } = await box(t);
   process.env.VYRE_TAILSCALE_BIN = fakeBin(fs.mkdtempSync(path.join(root, "ts-")), "tailscale", JSON.stringify({ BackendState: "Running", TUN: true,
@@ -326,6 +463,35 @@ test("onboard: when tailscale cert itself refuses because HTTPS is off, the addr
   assert.equal(r.state, "blocked");
   assert.equal(r.code, "https_off", r.why);
   assert.equal(r.adminUrl, "https://login.tailscale.com/admin/dns");
+});
+
+test("onboard: a zone token that appears after a blocked ts.net attempt is offered again; one that already serves is not (e2e review)", async t => {
+  // Not yet committed: an earlier attempt left "ts.net" as the last thing via() computed, but
+  // nothing ever actually served (no address on record) — a token that shows up afterward is
+  // offered, exactly like a box that never tried at all.
+  const blocked = await box(t, { network: { onboardPort: 0, via: "ts.net" } });
+  {
+    const { url, port } = (await call("onboard.link", {}, { root: blocked.root })).data;
+    const before = (await (await tool(`http://127.0.0.1:${port}`, (await redeem(url)).session, "onboard.status")).json()).data;
+    assert.equal(before.detail.name.via, "ts.net", "no token yet: still ts.net");
+  }
+  await freeZone(t);
+  {
+    const { url, port } = (await call("onboard.link", {}, { root: blocked.root })).data;
+    const after = (await (await tool(`http://127.0.0.1:${port}`, (await redeem(url)).session, "onboard.status")).json()).data;
+    assert.equal(after.detail.name.via, "vyre.run", "a token that shows up now is offered, not stuck behind an old blocked attempt");
+  }
+});
+
+test("onboard: a box already serving on ts.net keeps saying so once a zone token appears (e2e review)", async t => {
+  // Committed: this box has an address on record, so it already serves under ts.net for real.
+  // A zone token appearing later does not pull the rug out from under a working address.
+  const serving = await box(t, { network: { onboardPort: 0, via: "ts.net", address: "https://box.tail1.ts.net" } });
+  await freeZone(t);
+  const { url, port } = (await call("onboard.link", {}, { root: serving.root })).data;
+  const status = (await (await tool(`http://127.0.0.1:${port}`, (await redeem(url)).session, "onboard.status")).json()).data;
+  assert.equal(status.detail.name.via, "ts.net", "already serving: a later token does not change what is live");
+  assert.equal(status.detail.name.address, "https://box.tail1.ts.net");
 });
 
 /** Can this machine run claude under a pty the way onboard.claude does? */
@@ -456,4 +622,116 @@ test("onboard: tailscale lock reads Tailnet Lock and hands back this box's key a
   assert.equal(r.data.commands.init, `tailscale lock init --gen-disablements 2 --gen-disablement-for-support <mac key> ${key}`);
   const lockCalls = fs.readFileSync(log, "utf8").split("\n").filter(l => l.startsWith("lock"));
   assert.deepEqual([...new Set(lockCalls)], ["lock status --json"], "Vyre never runs lock init or sign");
+});
+
+test("onboard: tailscale policy merges Taildrive, Taildrop and SSH into one snippet, using real names it already knows", async t => {
+  const { root } = await box(t, { network: { onboardPort: 0, owner: "alex@example.com" } });
+  const dir = fs.mkdtempSync(path.join(root, "ts-"));
+  const bin = path.join(dir, "tailscale");
+  const self = { HostName: "alex-box", DNSName: "alex-box.tail0000.ts.net.", TailscaleIPs: ["100.64.0.5", "fd7a::5"], ID: "n1", Tags: [] };
+  // OperatorUser: on Linux, operator() (core/names/tailscale.js) actually checks `debug prefs`'s
+  // answer against the real OS user; darwin skips the check entirely, which is why this fixture's
+  // missing field went unnoticed until it ran on testbox (Linux) and ready came back false.
+  fs.writeFileSync(bin, `#!/bin/sh\necho '${JSON.stringify({ BackendState: "Running", TUN: true, Self: self, User: {}, OperatorUser: os.userInfo().username })}'\n`, { mode: 0o755 });
+  process.env.VYRE_TAILSCALE_BIN = bin;
+  const r = await call("onboard.tailscale", { action: "policy" }, { root });
+  assert.ok(r.data, JSON.stringify(r.error));
+  assert.equal(r.data.ready, true);
+  assert.deepEqual(r.data.policy.hosts, { "alex-box": "100.64.0.5" });
+  assert.deepEqual(r.data.policy.nodeAttrs, [
+    { target: ["alex-box"], attr: ["drive:share"] },
+    { target: ["alex@example.com"], attr: ["drive:access"] },
+  ]);
+  const [drive, taildrop] = r.data.policy.grants;
+  assert.deepEqual(drive, { src: ["[your Mac's name]"], dst: ["alex-box"], app: { "tailscale.com/cap/drive": [{ shares: ["projects"], access: "ro" }] } });
+  assert.deepEqual(taildrop, { src: ["alex@example.com"], dst: ["alex-box"], app: { "https://tailscale.com/cap/file-sharing-target": [{}] } });
+  assert.deepEqual(r.data.policy.ssh, [{ action: "check", src: ["alex@example.com"], dst: ["alex-box"], users: ["[the admin account you set up this server with]"] }]);
+  assert.equal(r.data.policy.tagOwners["tag:vyre-egress"], undefined, "egress is off by default, so no tag:vyre-egress block");
+  // ADR 0046: a Linux box hands paired desktops tag:vyre-device keys, which reach its port and nothing else.
+  assert.deepEqual(r.data.policy.tagOwners, { "tag:vyre-device": ["alex@example.com"] });
+  assert.deepEqual(r.data.policy.grants.filter(g => g.src.includes("tag:vyre-device")), [{ src: ["tag:vyre-device"], dst: ["alex-box"], ip: ["tcp:443"] }]);
+  assert.ok(!r.data.policy.grants.some(g => g.dst.includes("tag:vyre-device")), "no grant ever lets anything reach a paired desktop's node");
+  assert.ok(r.data.notes.some(n => /tailscale-mint-oauth/.test(n)));
+});
+
+test("onboard: tailscale policy refuses before Tailscale is connected", async t => {
+  const { root } = await box(t);
+  const r = await call("onboard.tailscale", { action: "policy" }, { root });
+  assert.ok(r.data, JSON.stringify(r.error));
+  assert.equal(r.data.ready, false);
+  assert.equal(r.data.policy, null);
+  assert.match(r.data.why, /connect Tailscale/);
+});
+
+// ---- onboard.join: a second device or a server joining, not the first-run wizard (28 Sep 2026) ----
+
+test("onboard: join status merges Tailscale's own state with whether the relay is ready to pair", async t => {
+  const { root } = await box(t, { relay: { url: "ws://127.0.0.1:1" } });
+  const s = await call("onboard.join", { action: "status" }, { root });
+  assert.equal(s.error, undefined, JSON.stringify(s.error));
+  assert.equal(s.data.tailscale.state, "needs-login");
+  assert.equal(s.data.tailscale.loginUrl, "https://login.tailscale.com/a/fake");
+  assert.deepEqual(s.data.relay, { available: true, enabled: false, connected: false, pairing: null });
+});
+
+test("onboard: join tailscale is onboard.tailscale's own logic, callable any time", async t => {
+  const { root } = await box(t, {}, present);
+  const status = await call("onboard.join", { action: "tailscale", step: "status" }, { root });
+  assert.equal(status.data.state, "needs-login");
+  const connect = await call("onboard.join", { action: "tailscale", step: "connect" }, { root });
+  assert.equal(connect.error, undefined, JSON.stringify(connect.error));
+  assert.ok(connect.data.loginUrl, "the sign-in link is still handed back");
+});
+
+test("onboard: join verify forwards to link.health, unknown without a node to name, and never flips machine unless asked", async t => {
+  const { root } = await box(t);
+  const v = await call("onboard.join", { action: "verify" }, { root });
+  assert.equal(v.error, undefined, JSON.stringify(v.error));
+  assert.equal(v.data.online, false);
+  assert.match(v.data.why, /say which node/);
+  // becomeDevice is a no-op here: link.health said not online, and onboard.machine is not even
+  // running in this test world, so nothing throws either way.
+  const notOnline = await call("onboard.join", { action: "verify", becomeDevice: true }, { root });
+  assert.equal(notOnline.error, undefined, JSON.stringify(notOnline.error));
+});
+
+test("onboard: join relay mints a pairing code without needing to reach the relay first", async t => {
+  const { root } = await box(t, { relay: { url: "ws://127.0.0.1:1" } }, present);
+  const r = await call("onboard.join", { action: "relay" }, { root });
+  assert.equal(r.error, undefined, JSON.stringify(r.error));
+  assert.match(r.data.url, /^https:\/\/vyre\.run\/pair#/);
+  assert.equal(r.data.connected, false, "the dead-port relay never answers, and mint() says so rather than hanging");
+  assert.ok(r.data.expiresAt > Date.now());
+});
+
+test("onboard: join is the owner's alone — an agent with a valid presence proof is still refused, not just ungated", async t => {
+  const { root } = await box(t, { relay: { url: "ws://127.0.0.1:1" } }, present);
+  // `present` satisfies presence for anyone; onboard.join must refuse the agent itself, the same
+  // way relay.pair.start already does, whatever proof rides along (reviewer's HOLD on af604cf8).
+  for (const caller of ["mcp:agent:kit", "harness:agent:kit", "tailnet-guest:sam@example.com", "hook", "anonymous"]) {
+    const relay = await call("onboard.join", { action: "relay" }, { root, caller });
+    assert.equal(relay.error?.code, "denied", `relay via ${caller}`);
+    const connect = await call("onboard.join", { action: "tailscale", step: "connect" }, { root, caller });
+    assert.equal(connect.error?.code, "denied", `tailscale connect via ${caller}`);
+  }
+  // The owner's own surfaces still work.
+  assert.equal((await call("onboard.join", { action: "relay" }, { root, caller: "deck" })).error, undefined);
+});
+
+test("onboard: join status and verify never need presence; tailscale connect and relay always do", async t => {
+  // The registry's own decision (core/presence's `required(tool, def, input)`), pure — no daemon,
+  // dialog or fake tailscale needed.
+  const { Presence } = await import("../core/presence/index.js");
+  const { open } = await import("../core/store/index.js");
+  const home = tempHome(t);
+  const db = open(path.join(home, "vyre.db"));
+  t.after(() => db.close());
+  const p = new Presence({ db, platform: "linux", touchid: null, webauthn: null, who: async () => [], statTty: () => null, writeTty: () => {} });
+  const def = { presence: { when: i => i && (i.action === "relay" || (i.action === "tailscale" && i.step === "connect")) } };
+  assert.equal(p.required("onboard.join", def, { action: "status" }), false);
+  assert.equal(p.required("onboard.join", def, { action: "verify" }), false);
+  assert.equal(p.required("onboard.join", def, { action: "tailscale", step: "status" }), false, "reading Tailscale's state needs no proof");
+  assert.equal(p.required("onboard.join", def, { action: "tailscale", step: "policy" }), false, "the paste-only policy snippet needs no proof either");
+  assert.equal(p.required("onboard.join", def, { action: "tailscale", step: "connect" }), true, "starting tailscale up does");
+  assert.equal(p.required("onboard.join", def, { action: "relay" }), true, "pairing a new device always does");
 });

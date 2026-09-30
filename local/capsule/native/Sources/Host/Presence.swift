@@ -1,17 +1,29 @@
 // Presence: proving a person is at the Mac before a human-only call (ADR 0004, method "capsule").
 //
-// The Capsule holds one Ed25519 key per Vyre home, in the login keychain, readable only by the
-// Capsule. Before each signature the panel shows the words being approved and asks for Touch ID
-// inside itself (LAAuthenticationView, no system dialog); only a proven LAContext lets the
-// Capsule read the key and sign
+// The Capsule holds one P-256 key per Vyre home, made in this Mac's Secure Enclave with
+// kSecAccessControlBiometryCurrentSet: the private key never leaves the enclave, and every use of
+// it demands a live Touch ID from the enclave itself, not merely an app-level gate. (An earlier
+// Ed25519 key sat in the login keychain as ordinary bytes: any program running as the same uid --
+// a model's own shell, in the ordinary case, not an escape -- could read and reuse it, which is
+// what made method-capsule proofs forgeable; e2e2's server-side fix, 9bfc452e, refuses that old
+// kind outright.) The panel shows the words being approved and asks for Touch ID inside itself
+// (LAAuthenticationView, no system dialog): evaluatePolicy() runs on a fresh LAContext per proof,
+// and that same already-authenticated context is then handed to the Secure Enclave for the
+// signature itself, so the one Touch ID the person sees is also the one the hardware requires --
+// never a second, separate system prompt, and never a reused authentication from an earlier call.
+//
+// The signed message is unchanged from the Ed25519 scheme:
 //
 //     vyre-presence-v1\n<tool>\n<base64url sha256 of the canonical input>\n<ts>\n<nonce>
 //
-// which vyred checks against the enrolled public key. The key is enrolled once, with vyred's own
-// Touch ID dialog (x-vyre-presence: touchid), the first time a proof is needed.
+// which vyred checks (ES256, DER) against the enrolled public key. The key is enrolled once, with
+// vyred's own Touch ID dialog (x-vyre-presence: touchid), the first time a proof is needed; if the
+// keychain holds a handle this Mac's enclave no longer recognises -- foreign, or the old
+// raw-bytes Ed25519 shape -- proof() deletes it and enrolls again, once, quietly, since the
+// person already proved presence for the very call that found it missing.
 //
-// Nothing here runs under tests except through fakes: no keychain, no Touch ID, no dialog unless
-// dialogsAllowed() says a person may be asked.
+// Nothing here runs under tests except through fakes: no keychain, no Secure Enclave, no Touch
+// ID, no dialog unless dialogsAllowed() says a person may be asked.
 
 import AppKit
 import CryptoKit
@@ -74,35 +86,36 @@ public enum PresenceCanonical {
 // MARK: where the key is kept
 
 public protocol PresenceKeyStore: AnyObject {
-    /// The private key, read with `context` (an authenticated LAContext), or nil if there is none.
-    func load(context: LAContext?) -> Curve25519.Signing.PrivateKey?
-    func save(_ key: Curve25519.Signing.PrivateKey) -> Bool
+    /// The Secure Enclave key's opaque handle (SecureEnclave.P256.Signing.PrivateKey's
+    /// dataRepresentation) -- useless anywhere but this Mac's own enclave, and even there it
+    /// signs nothing without a live Touch ID -- or nil if there is none.
+    func loadHandle() -> Data?
+    func save(_ handle: Data) -> Bool
     func delete()
 }
 
-/// The login keychain. One item per Vyre home, readable without a prompt only by the app that
-/// made it (the item's access list names the Capsule alone, so another process reading it gets
-/// the keychain's own password prompt). The person's proof is the Touch ID in the panel, asked
-/// before each signature; the keychain keeps the key from other programs. (Presence-gated items
-/// need the data protection keychain, which a locally signed app cannot use.)
+/// The login keychain. One item per Vyre home, holding only the Secure Enclave's own opaque
+/// handle for the key, not key material -- reading this item without Touch ID gets you nothing
+/// signable. (The keychain item's own ACL naming the Capsule alone is still worth having, same as
+/// before, but it is no longer what makes the key safe: the enclave's per-use biometry is.)
 final class KeychainKeyStore: PresenceKeyStore {
     let account: String
     static let service = "sh.vyre.capsule.presence"
     init(home: String) { account = PresenceCanonical.b64url(Data(SHA256.hash(data: Data(home.utf8)))).prefix(22).description }
 
-    func load(context: LAContext?) -> Curve25519.Signing.PrivateKey? {
+    func loadHandle() -> Data? {
         let q: [String: Any] = [kSecClass as String: kSecClassGenericPassword, kSecAttrService as String: Self.service,
                                 kSecAttrAccount as String: account, kSecReturnData as String: true, kSecMatchLimit as String: kSecMatchLimitOne]
         var out: CFTypeRef?
         guard SecItemCopyMatching(q as CFDictionary, &out) == errSecSuccess, let d = out as? Data else { return nil }
-        return try? Curve25519.Signing.PrivateKey(rawRepresentation: d)
+        return d
     }
 
-    func save(_ key: Curve25519.Signing.PrivateKey) -> Bool {
+    func save(_ handle: Data) -> Bool {
         delete()
         let q: [String: Any] = [kSecClass as String: kSecClassGenericPassword, kSecAttrService as String: Self.service,
                                 kSecAttrAccount as String: account, kSecAttrLabel as String: "Vyre Capsule presence key",
-                                kSecValueData as String: key.rawRepresentation]
+                                kSecValueData as String: handle]
         return SecItemAdd(q as CFDictionary, nil) == errSecSuccess
     }
 
@@ -137,6 +150,19 @@ public final class PresenceAsk: ObservableObject, Identifiable {
     }
 }
 
+// MARK: signing, abstracted over where the key lives
+
+/// What header()/proof() need from a P-256 signing key -- true of both the real Secure Enclave
+/// key production code makes and an ordinary in-memory P256.Signing.PrivateKey, which needs no
+/// hardware or Touch ID and so is what tests construct to check the signed header's shape and a
+/// verifier's happy path without ever touching the keychain or the enclave.
+protocol CapsuleSigningKey {
+    var publicKey: P256.Signing.PublicKey { get }
+    func signature(for data: Data) throws -> P256.Signing.ECDSASignature
+}
+extension SecureEnclave.P256.Signing.PrivateKey: CapsuleSigningKey {}
+extension P256.Signing.PrivateKey: CapsuleSigningKey {}
+
 @MainActor
 public final class CapsulePresence {
     let home: String
@@ -147,6 +173,16 @@ public final class CapsulePresence {
     var ask: ((PresenceAsk) async -> Bool)?
     /// Makes the LAContext (a fake in tests).
     var makeContext: () -> LAContext = { LAContext() }
+    /// CapsulePin.swift's pinSelf(): the cdhash last successfully pinned with vyred, in memory
+    /// only, so a reconnect for the same build never re-signs or re-asks Touch ID.
+    var pinnedCdhash: String?
+    /// The cdhash vyred refused to pin (or the person declined), in memory for this process, so a
+    /// reconnect never asks Touch ID again for a pin that cannot or will not happen.
+    var pinRefused: String?
+    /// This process's own signature for pinSelf's preflight (a fake in tests).
+    var ownSignature: () -> CapsuleSignature? = { CapsulePresence.readOwnSignature() }
+    /// The proof pinSelf asks for; nil is proof(tool:input:summary:) (tests give a fake).
+    var pinProof: ((String, [String: Any], String) async -> Result<String, VyredFailure>)?
 
     struct Enrolled: Codable { var id: String; var publicKey: String }
 
@@ -164,6 +200,15 @@ public final class CapsulePresence {
         return try? JSONDecoder().decode(Enrolled.self, from: d)
     }
 
+    /// The key behind `handle`, unlocked with `context` -- an already-authenticated LAContext
+    /// satisfies the Secure Enclave's biometryCurrentSet with no second prompt; an
+    /// unauthenticated one raises the system Touch ID sheet in its place. nil for a missing,
+    /// foreign, or pre-Secure-Enclave (Ed25519, wrong byte shape) handle.
+    private func loadPrivate(context: LAContext) -> CapsuleSigningKey? {
+        guard let handle = store.loadHandle() else { return nil }
+        return try? SecureEnclave.P256.Signing.PrivateKey(dataRepresentation: handle, authenticationContext: context)
+    }
+
     /// The header for one call, signed with the key after the person proved it in the panel.
     func proof(tool: String, input: [String: Any], summary: String? = nil) async -> Result<String, VyredFailure> {
         guard dialogsAllowed() else { return .failure(VyredFailure("Proving you are here is off under tests.")) }
@@ -171,22 +216,50 @@ public final class CapsulePresence {
         guard let key = enrolled else { return .failure(VyredFailure("The Capsule's key is not enrolled.")) }
         let context = makeContext()
         context.localizedCancelTitle = "Not now"
+        // The reviewer's nit on a4e3e171: one Touch ID must never be usable for a third signature.
+        // Every signing use of this context (the main header, and the re-enroll branch's own
+        // best-effort presence.remove header) happens synchronously below, before this function
+        // returns, so invalidating here on every exit closes the window right after.
+        defer { context.invalidate() }
         let words = summary ?? Self.defaultSummary(tool, input)
         let a = PresenceAsk(tool: tool, summary: words, context: context)
         guard let ask, await ask(a) else { return .failure(VyredFailure("Not approved. Nothing was done.")) }
-        guard let priv = store.load(context: context) else {
-            return .failure(VyredFailure("The Capsule's key could not be read from the keychain. Remove it in Settings and enroll again."))
+        if let priv = loadPrivate(context: context), let header = Self.header(tool: tool, input: input, key: priv, keyId: key.id, ts: now()) {
+            return .success(header)
         }
-        return .success(Self.header(tool: tool, input: input, key: priv, keyId: key.id, ts: now()))
+        // Either the keychain handle is missing or foreign (an old Ed25519-era one included, the
+        // wrong byte shape for a Secure Enclave handle), or the key would not sign: the person
+        // just proved presence for this very call, so re-enroll once, quietly, rather than asking
+        // again for the same click. A signing failure with a live handle is unexpected (the enclave
+        // itself refusing after the panel's own Touch ID succeeded), so re-enrolling is also the
+        // only thing left to try, not a special case.
+        let oldId = key.id
+        store.delete()
+        if let why = await enroll() { return .failure(VyredFailure(why)) }
+        guard let key2 = enrolled, let priv2 = loadPrivate(context: context), let header2 = Self.header(tool: tool, input: input, key: priv2, keyId: key2.id, ts: now()) else {
+            return .failure(VyredFailure("The Capsule's key could not be made on this Mac. Remove it in Settings and enroll again."))
+        }
+        // Best-effort cleanup, never blocking this call's result: drop the dead row so
+        // presence_keys does not pile up one entry per broken key (the reviewer's LOW, 28 Sep).
+        // Signed with the just-made key2/priv2, reusing the same already-authenticated context --
+        // never a second Touch ID just to tidy up.
+        if oldId != key2.id, let removeHeader = Self.header(tool: "presence.remove", input: ["id": oldId], key: priv2, keyId: key2.id, ts: now()) {
+            let vyred = self.vyred
+            Task { _ = await vyred.call("presence.remove", ["id": oldId], timeout: 30, headers: ["x-vyre-presence": removeHeader]) }
+        }
+        return .success(header2)
     }
 
-    /// `capsule key=<id> ts=<ms> nonce=<n> sig=<s>` over the bound message.
-    nonisolated static func header(tool: String, input: [String: Any], key: Curve25519.Signing.PrivateKey, keyId: String, ts: Double, nonce: String? = nil) -> String {
+    /// `capsule key=<id> ts=<ms> nonce=<n> sig=<s>` over the bound message: an ES256 (P-256) DER
+    /// signature, which vyred checks with crypto.verify's default sha256 digest and dsaEncoding
+    /// "der". nil, never a header with an empty sig, if the key would not sign (e2e2's ask,
+    /// 28 Sep) -- an empty sig is not "no proof", it is a malformed one vyred still has to parse.
+    nonisolated static func header(tool: String, input: [String: Any], key: CapsuleSigningKey, keyId: String, ts: Double, nonce: String? = nil) -> String? {
         let n = nonce ?? PresenceCanonical.b64url(Data((0..<18).map { _ in UInt8.random(in: 0...255) }))
         let t = String(format: "%.0f", ts)
         let msg = "vyre-presence-v1\n\(tool)\n\(PresenceCanonical.hash(input))\n\(t)\n\(n)"
-        let sig = (try? key.signature(for: Data(msg.utf8))).map { PresenceCanonical.b64url($0) } ?? ""
-        return "capsule key=\(keyId) ts=\(t) nonce=\(n) sig=\(sig)"
+        guard let sig = try? key.signature(for: Data(msg.utf8)) else { return nil }
+        return "capsule key=\(keyId) ts=\(t) nonce=\(n) sig=\(PresenceCanonical.b64url(sig.derRepresentation))"
     }
 
     /// A tool's name and a short form of its input, when the caller has no words of its own.
@@ -194,18 +267,29 @@ public final class CapsulePresence {
         String("\(tool) \(PresenceCanonical.encode(input))".prefix(160))
     }
 
-    /// SPKI DER for an Ed25519 public key: the fixed 12-byte prefix, then the 32 raw bytes.
-    nonisolated static func spki(_ pub: Curve25519.Signing.PublicKey) -> Data {
-        Data([0x30, 0x2a, 0x30, 0x05, 0x06, 0x03, 0x2b, 0x65, 0x70, 0x03, 0x21, 0x00]) + pub.rawRepresentation
-    }
-
-    /// Make the key, keep it behind presence, and enroll its public half with vyred, which shows
-    /// its own Touch ID dialog for this one call. Returns why not, or nil when enrolled.
+    /// Make the key in this Mac's Secure Enclave (P-256, alg -7) behind a live Touch ID on every
+    /// use (kSecAccessControlBiometryCurrentSet -- invalidated too if the enrolled fingerprints
+    /// change, so a stolen unlocked Mac still cannot sign with someone else's finger), keep its
+    /// opaque handle, and enroll the public half with vyred, which shows its own Touch ID dialog
+    /// for this one call. Returns why not, or nil when enrolled.
     func enroll() async -> String? {
-        let key = Curve25519.Signing.PrivateKey()
-        guard store.save(key) else { return "The Capsule could not keep its key in your keychain." }
-        let pub = PresenceCanonical.b64url(Self.spki(key.publicKey))
-        let r = await vyred.call("presence.enroll", ["kind": "capsule", "name": "Capsule on \(Host.current().localizedName ?? "this Mac")", "public_key": pub],
+        guard SecureEnclave.isAvailable else { return "This Mac has no Secure Enclave, so the Capsule cannot make a presence key." }
+        // biometryCurrentSet demands a live fingerprint on every single use; a key made without
+        // one enrolled would never sign again (e2e2's ask, 28 Sep: never offer the capsule method
+        // at all on a Mac with no Touch ID, rather than make a key doomed to fail every proof).
+        guard makeContext().canEvaluatePolicy(.deviceOwnerAuthenticationWithBiometrics, error: nil) else {
+            return "This Mac has no Touch ID enrolled, so the Capsule cannot prove you are here. Use a passkey or a paired phone instead."
+        }
+        var cfError: Unmanaged<CFError>?
+        guard let access = SecAccessControlCreateWithFlags(nil, kSecAttrAccessibleWhenUnlockedThisDeviceOnly, [.privateKeyUsage, .biometryCurrentSet], &cfError) else {
+            return "The Capsule could not set up a Touch ID key on this Mac."
+        }
+        guard let key = try? SecureEnclave.P256.Signing.PrivateKey(accessControl: access) else {
+            return "The Capsule could not make a Secure Enclave key on this Mac."
+        }
+        guard store.save(key.dataRepresentation) else { return "The Capsule could not keep its key in your keychain." }
+        let pub = PresenceCanonical.b64url(key.publicKey.derRepresentation)
+        let r = await vyred.call("presence.enroll", ["kind": "capsule", "name": "Capsule on \(Host.current().localizedName ?? "this Mac")", "public_key": pub, "alg": -7],
                                  timeout: 120, headers: ["x-vyre-presence": "touchid"])
         guard let d = r.data as? [String: Any], let id = VJ.nonEmpty(d["id"]) else {
             store.delete()

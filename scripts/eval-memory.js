@@ -22,6 +22,7 @@ import { fileURLToPath } from "node:url";
 import { DatabaseSync } from "node:sqlite";
 import { open } from "../core/store/index.js";
 import { seedRecall } from "../test/fixtures/corpus.js";
+import { fakeReachCall } from "../test/fixtures/fake-reach.js";
 import { EVAL_SESSIONS, PROJECTS, ME, NOW, foldersOf } from "../test/fixtures/memory-world.js";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
@@ -95,6 +96,8 @@ async function startMemory(db, { me, projects, relations }) {
     vault: { fetch: async () => { throw new Error("no vault in the evaluation"); } },
     call: async (tool, input) => {
       if (tool === "projects.list") return { data: projects };
+      // memory's reach() asks projects.reach even for the owner case (dcd97809).
+      if (tool === "projects.reach") return fakeReachCall(tool, input, { projects });
       if (tool === "projects.of") {
         const cwd = String(input?.cwd || "");
         const p = projects.find(p => foldersOf(p).some(f => cwd === f || cwd.startsWith(f + "/")));
