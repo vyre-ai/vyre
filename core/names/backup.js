@@ -6,6 +6,15 @@
 // copy of a WAL database mid-write is not a database. Models and logs are left out (models are
 // re-downloaded, logs are not worth keeping), as are the socket and pid file, which only mean
 // something to a running vyred.
+//
+// PLAN.md R8 (plans/launch.md's Review response, BLOCKER 3): the file this writes is always
+// sealed under a passphrase (core/names/seal.js), never plain. There is no unencrypted option.
+// Provider sign-ins (Claude, Codex, Gemini... whatever core/sessions/config.js's CREDENTIALS
+// names) are left OUT of the vault items carried by default, since they are re-made on restore
+// by signing in again, not carried; `includeProviderLogins: true` opts back in for a person who
+// wants a truly identical copy. The Tailscale node key is never in here at all: it lives in the
+// tailscale container's own volume, outside `config.home()` entirely (box/compose.yml), so this
+// module never has a chance to include it.
 
 import crypto from "node:crypto";
 import fs from "node:fs";
@@ -14,9 +23,23 @@ import os from "node:os";
 import path from "node:path";
 import { spawn } from "node:child_process";
 import * as config from "../config/index.js";
+import { seal, open as unseal, checkPassphrase, inspect } from "./seal.js";
+// Re-exported so a caller outside core/names (up.js) needs only this file's own frozen boundary
+// entry (test/boundaries.test.js), not a second one for seal.js.
+export { inspect };
 
 /** What goes in a backup, in order. Everything else under the root stays out. */
 export const INCLUDE = ["config.json", "hub.json", "vyre.db", "vault", "watchers", "modules", "certs", "names"];
+
+/**
+ * Vault item names a provider sign-in lives under. Kept as a plain local constant, not an
+ * import of core/sessions/config.js's own CREDENTIALS map: test/boundaries.test.js freezes
+ * core/names' allowed cross-part edges, and core/names -> core/sessions is not one of them (a
+ * new edge needs the lead's OK). Flagged in CHAT.md: a provider sign-in's vault item name added
+ * in core/sessions/config.js's CREDENTIALS needs adding here too, by hand, until there is a
+ * shared kernel-level list either side can import.
+ */
+const PROVIDER_LOGIN_NAMES = () => ["claude-setup-token", "anthropic-api-key"];
 
 /** Run a command in argv form and collect its output; reject on a non-zero exit. */
 function run(argv, opts = {}) {
@@ -40,18 +63,25 @@ function copyTree(from, to) {
 }
 
 /**
- * Write a backup of `root` to `file` (a .tar.gz, mode 0600).
- * @param {{ root?: string, file: string, db?: import("node:sqlite").DatabaseSync }} o
- * @returns {Promise<{ file: string, bytes: number, included: string[] }>}
+ * Write a backup of `root` to `file` (sealed under a passphrase, mode 0600. R8: never plain).
+ * @param {{ root?: string, file: string, db?: import("node:sqlite").DatabaseSync, passphrase: string,
+ *   includeProviderLogins?: boolean }} o
+ * @returns {Promise<{ file: string, bytes: number, included: string[], excludedLogins: string[] }>}
  */
-export async function backup({ root = config.home(), file, db }) {
+export async function backup({ root = config.home(), file, db, passphrase, includeProviderLogins = false }) {
   if (!file) throw new Error("backup needs a file to write");
+  checkPassphrase(passphrase);
   // VYRE_TMPDIR moves the staging folder (the tests point it at their own scratch folder).
   const staging = fs.mkdtempSync(path.join(process.env.VYRE_TMPDIR || os.tmpdir(), "vyre-backup-"));
   const target = path.resolve(file);
   const tmp = `${target}.${process.pid}.${crypto.randomBytes(4).toString("hex")}.tmp`;
+  // Outside staging: tar reads staging's own contents, and a plain-tar output file sitting
+  // inside the folder being tarred would try to include itself mid-write.
+  const plain = `${tmp}.plain.tar.gz`;
+  let excludedLogins = [];
   try {
     const included = [];
+    let excludedIds = [];
     for (const name of INCLUDE) {
       const src = path.join(root, name);
       if (name === "vyre.db") {
@@ -65,25 +95,47 @@ export async function backup({ root = config.home(), file, db }) {
           own = new DatabaseSync(src);
         }
         try { (db || own).exec(`VACUUM INTO '${out}'`); } finally { own?.close(); }
+        if (!includeProviderLogins) {
+          const { DatabaseSync } = await import("node:sqlite");
+          const staged = new DatabaseSync(out);
+          try {
+            const names = PROVIDER_LOGIN_NAMES();
+            // vault_items may not exist yet (a store older than the vault module, or a test
+            // fixture with no vault table at all); nothing to exclude either way.
+            const hasTable = staged.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name='vault_items'").get();
+            if (names.length && hasTable) {
+              const rows = /** @type {any[]} */ (staged.prepare(`SELECT id, name FROM vault_items WHERE name IN (${names.map(() => "?").join(",")})`).all(...names));
+              excludedIds = rows.map(r => r.id);
+              excludedLogins = rows.map(r => r.name);
+              if (excludedIds.length) staged.prepare(`DELETE FROM vault_items WHERE id IN (${excludedIds.map(() => "?").join(",")})`).run(...excludedIds);
+            }
+          } finally { staged.close(); }
+        }
         included.push(name);
         continue;
       }
       let st;
       try { st = fs.lstatSync(src); } catch { continue; }
-      if (st.isFile()) fs.copyFileSync(src, path.join(staging, name));
+      if (name === "vault" && st.isDirectory() && excludedIds.length) {
+        copyTree(src, path.join(staging, name));
+        for (const id of excludedIds) fs.rmSync(path.join(staging, name, "items", id + ".json"), { force: true });
+      } else if (st.isFile()) fs.copyFileSync(src, path.join(staging, name));
       else if (st.isDirectory()) copyTree(src, path.join(staging, name));
       else continue;
       included.push(name);
     }
     fs.mkdirSync(path.dirname(target), { recursive: true });
-    // Created 0600 before tar writes into it, so the vault is never readable even for a moment.
+    await run(["tar", "-czf", plain, "-C", staging, "."]);
+    const sealed = seal(fs.readFileSync(plain), passphrase);
+    // Created 0600 before the sealed bytes land, so the file is never readable, sealed or not, for a moment.
     fs.closeSync(fs.openSync(tmp, "wx", 0o600));
-    await run(["tar", "-czf", tmp, "-C", staging, "."]);
+    fs.writeFileSync(tmp, sealed);
     fs.chmodSync(tmp, 0o600);
     fs.renameSync(tmp, target);
-    return { file: target, bytes: fs.statSync(target).size, included };
+    return { file: target, bytes: fs.statSync(target).size, included, excludedLogins };
   } finally {
     fs.rmSync(tmp, { force: true });
+    fs.rmSync(plain, { force: true });
     fs.rmSync(staging, { recursive: true, force: true });
   }
 }
@@ -130,11 +182,11 @@ function refuseLinks(dir) {
 /**
  * Put a backup back into `root`. vyred must be stopped, and an existing store is only replaced
  * with force.
- * @param {{ root?: string, file: string, force?: boolean,
+ * @param {{ root?: string, file: string, passphrase: string, force?: boolean,
  *   alive?: (o: { pid: number, socket: string }) => boolean | Promise<boolean> }} o
  * @returns {Promise<{ restored: string[] }>}
  */
-export async function restore({ root = config.home(), file, force = false, alive = defaultAlive }) {
+export async function restore({ root = config.home(), file, passphrase, force = false, alive = defaultAlive }) {
   const p = config.paths(root);
   let pid = 0;
   try { pid = Number(fs.readFileSync(p.pid, "utf8").trim()) || 0; } catch {}
@@ -143,13 +195,18 @@ export async function restore({ root = config.home(), file, force = false, alive
   }
   if (fs.existsSync(p.db) && !force) throw new Error(`${p.db} already exists; pass force to replace it`);
 
-  checkEntries(String(await run(["tar", "-tzf", path.resolve(file)])));
+  const sealed = fs.readFileSync(path.resolve(file));
+  const plainBytes = unseal(sealed, passphrase);
 
   fs.mkdirSync(root, { recursive: true, mode: 0o700 });
   // Staging inside the root, so each piece moves into place with a rename on the same disk.
   const staging = fs.mkdtempSync(path.join(root, ".restore-"));
+  const plainFile = path.join(staging, ".plain.tar.gz");
   try {
-    await run(["tar", "-xzpf", path.resolve(file), "-C", staging]);
+    fs.writeFileSync(plainFile, plainBytes);
+    checkEntries(String(await run(["tar", "-tzf", plainFile])));
+    await run(["tar", "-xzpf", plainFile, "-C", staging]);
+    fs.rmSync(plainFile, { force: true });
     refuseLinks(staging);
     const restored = [];
     for (const name of INCLUDE) {
