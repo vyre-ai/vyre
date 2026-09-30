@@ -73,7 +73,7 @@ test("Turn on sends watchers.create {name, hash} with the card's own hash, then 
   click($(c, "[data-act=off]")); await settle();
   assert.deepEqual(calls.find(x => x.tool === "watchers.pause")?.input, { name: "Client follow-ups" });
   click($(c, "[data-act=resume]")); await settle();
-  assert.deepEqual(calls.find(x => x.tool === "watchers.resume")?.input, { name: "Client follow-ups" });
+  assert.deepEqual(calls.find(x => x.tool === "watchers.resume")?.input, { name: "Client follow-ups", hash: "h1" }, "back on carries the hash that was read");
 });
 
 test("a changed hash is refused: the card says so, offers Show the new card, and never turns on the other version", async () => {
@@ -103,4 +103,13 @@ test("read only (from another source): the card reads, with no buttons; a duty p
   click($(c, "[data-act=on]")); await settle();
   assert.deepEqual(seen, ["h1"]);
   assert.equal(calls.filter(x => x.tool === "watchers.create").length, 0, "a duty starts through its own call, not watchers.create");
+});
+
+test("a watcher whose code changed while paused is not resumed: the card offers the new card", async () => {
+  vyred({ "watchers.card": { ...CARD, state: "paused" }, "watchers.resume": { $error: { code: "conflict", message: "Client follow-ups changed after its card was shown" } } });
+  const c = watcherCard({ name: "Client follow-ups" });
+  await settle();
+  click($(c, "[data-act=resume]")); await settle();
+  assert.match(text(c), /code changed since you read it, so it was not turned on/);
+  assert.ok($(c, "[data-act=reload]"));
 });

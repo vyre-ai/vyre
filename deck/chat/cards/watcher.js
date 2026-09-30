@@ -65,9 +65,11 @@ export function watcherCard(data, ctx = {}) {
   async function toggle(/** @type {"pause"|"resume"} */ verb) {
     if (!card || st.busy) return;
     st.busy = true; st.error = null; draw();
-    const r = await attempt("watchers." + verb, { name: card.name });
+    // Back on carries the hash of the card that was read, like Turn on: a paused watcher whose code changed never restarts on unseen code.
+    const r = await attempt("watchers." + verb, verb === "resume" ? { name: card.name, hash: card.hash } : { name: card.name });
     st.busy = false;
-    if (r.error) st.error = r.error; else card = { ...card, state: verb === "pause" ? "paused" : "on" };
+    if (r.error) { if (/changed after its card was shown/i.test(String(r.error.message || ""))) st.changed = true; else st.error = r.error; }
+    else card = { ...card, state: verb === "pause" ? "paused" : "on" };
     draw();
   }
 
