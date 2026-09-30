@@ -797,7 +797,8 @@ test("modules v1: an asked tool with a target binds the person's yes to what the
   const ghSrc = `export default { async start(ctx) {
     ctx.tool("gh.merge", { input: { type: "object", required: ["pr"], properties: { pr: { type: "string" } } }, run: async i => ({ merged: i.pr }) });
     ctx.tool("gh.plain", { input: { type: "object" }, run: async () => ({ ran: true }) });
-    ctx.tool("gh.merge.target", { internal: true, input: { type: "object" }, run: async ({ tool: tool_, input }) => {
+    ctx.tool("gh.merge.target", { internal: true, input: { type: "object" }, run: async ({ tool: tool_, input }, meta) => {
+      globalThis.__said2.granted = meta.granted;
       if (input.pr === "boom") throw new Error("no repo");
       if (input.pr === "none") return { to: [] };
       if (input.pr === "slow") { await new Promise(r => { setTimeout(r, 10_000).unref(); }); return { to: [tool_ + ":acme/site#12"] }; }
@@ -810,7 +811,8 @@ test("modules v1: an asked tool with a target binds the person's yes to what the
   // A call that is refused before it runs never spends the ask: bad input here.
   assert.equal((await ask("gh.merge", {})).error.code, "bad_input");
   assert.equal(globalThis.__spent, undefined, "an invalid call did not use the ask up");
-  assert.deepEqual((await ask("gh.merge", { pr: "12" })).data, { merged: "12" }, "the PR the person said yes to");
+  assert.deepEqual((await reg.call("gh.merge", { pr: "12" }, "mcp:agent:kit", { thread: "t-1", granted: ["acme"] })).data, { merged: "12" }, "the PR the person said yes to");
+  assert.deepEqual(globalThis.__said2.granted, ["acme"], "the target sees the asking agent's grant in its meta");
   assert.equal((await ask("gh.merge", { pr: "12" })).error.code, "not_asked", "one ask, one act: a second merge of the same PR is refused");
   assert.deepEqual(globalThis.__said2.at(-1).to, ["gh.merge:acme/site#12"], "the match is the target's whole answer");
   assert.equal((await ask("gh.merge", { pr: "40" })).error.code, "not_asked", "a different PR is refused");
@@ -884,6 +886,8 @@ test("modules v1: a tool's projectArg refuses an agent's call for a project it i
   const bare = await registry(t, [["notes", notes, notesSrc]], { builtIn: true });
   assert.equal((await bare.call("notes.read", { project: "harlow" }, "mcp:agent:kit")).error.code, "not_found");
   assert.equal((await bare.call("notes.read", { project: "harlow" }, "cli")).data.ok, true);
+  await bare.call("notes.read", {}, "mcp:agent:kit");
+  assert.deepEqual(globalThis.__ran.at(-1)[2], { all: false, projects: [] }, "an agent with no answer on its grant lists nothing, never everything");
   // The manifest: a field name, or a list of them.
   const base = { name: "notes", version: "0.1.0", apiVersion: 1, description: "x", roles: ["local"] };
   assert.match(validate({ ...base, does: { tools: [{ name: "notes.read", summary: "r", projectArg: "not a name" }] } }).join(), /projectArg must be an input field name/);

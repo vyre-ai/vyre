@@ -4,6 +4,7 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+- Project grants, fail closed (lead, github): an agent with no recorded grant, or one projects.reach cannot answer for, is refused any named project and gets an empty `meta.reach`, never the whole list (the daemon already gives a named agent with no row `granted: []`, never `*`); `projectArg` is also declared on watchers.items and harness.enrich; the asked gate's target call gets the agent's `granted` in its meta (`core/modules/index.js`). A `needs` frame from a Capsule view or action now carries `need: { kind: "credential", need | item, module?, label? }` from the tool's needs_credential detail, so Lumen opens "Add your key" directly (`local/capsule/views.js`).
 - Project grants enforced once, in the registry: a tool entry may name `projectArg` (an input field, or a list of them), and an
   agent's call for a project it is not granted is refused with `not_found` before the tool runs, through `projects.reach` (the owner's
   revokes included); the tool gets `meta.reach` for listings. Declared on the agent-callable tools that take a project: goals.list and

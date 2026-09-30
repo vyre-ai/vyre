@@ -946,7 +946,7 @@ export class Registry {
       /** @type {string[]} */ let to = [tool];
       if (def && def.target) {
         // The target is a module's own code answering for a call that may not be the person's: late is no.
-        const t = await withinMs(this.call(def.target, { tool, input }, "module:vyred", { door: true }), TARGET_MS);
+        const t = await withinMs(this.call(def.target, { tool, input }, "module:vyred", { door: true, ...(/** @type {any} */ (meta).granted !== undefined ? { granted: /** @type {any} */ (meta).granted } : {}) }), TARGET_MS);
         if (!t) return false;
         const extra = t && t.data && Array.isArray(t.data.to) ? t.data.to.filter((/** @type {any} */ x) => typeof x === "string" && x) : [];
         if (!extra.length) return false;
@@ -1031,9 +1031,12 @@ export class Registry {
       });
       const r = await withinMs(this.call("projects.reach", { caller: String(caller), kind: "content" }, "module:vyred", { door: true }), TARGET_MS);
       const reach = r && r.data && typeof r.data === "object" ? r.data : null;
-      // A project named and no answer on who may reach what: no (fail closed). Nothing named: the tool lists within meta.reach when it has one.
-      if (!reach) { if (named.length) return { error: { code: "not_found", message: "no such project" } }; }
-      else {
+      // No answer on who may reach what (an agent with no recorded grant, or projects not running): no (fail closed). A project
+      // named is refused; nothing named, the tool gets an empty meta.reach, never the whole list.
+      if (!reach) {
+        if (named.length) return { error: { code: "not_found", message: "no such project" } };
+        meta = { ...meta, reach: { all: false, projects: [] } };
+      } else {
         const slugs = reach.all ? null : (Array.isArray(reach.projects) ? reach.projects : []).flatMap((/** @type {any} */ p) => [p && p.slug, p && p.name]).filter(Boolean);
         if (slugs && named.some((/** @type {any} */ one) => !slugs.includes(String(one)))) return { error: { code: "not_found", message: "no such project" } };
         meta = { ...meta, reach: reach.all ? { all: true } : { all: false, projects: (Array.isArray(reach.projects) ? reach.projects : []).map((/** @type {any} */ p) => p && p.slug).filter(Boolean) } };
