@@ -75,15 +75,14 @@ export default {
     const accounts = store(ctx.store.db);
     const projects = projectStore(ctx.store.db);
     const now = () => Date.now();
-    // GitHub CLI's own public client id (0.2, lead ruling 30 Sep - "the user asked for GitHub's
-    // own managed app"): declared safe to embed in GitHub CLI's own source, the same id every
-    // `gh auth login` uses. No app of Vyre's, no secret to hold, and no verification question,
-    // since it's GitHub's own first-party app, not ours. A fine-grained personal access token,
-    // pasted instead of signing in, is the narrower alternative (github.connect's own docs).
-    const clientId = process.env.VYRE_GITHUB_OAUTH_CLIENT_ID || "178c6fc778ccc68e1d6a";
+    // Sign-in runs the real GitHub CLI (`gh auth login`, `gh auth token`) in a private folder
+    // (0.2, lead ruling 1 Oct: Vyre never runs the device flow under gh's client id itself). The
+    // box image and Mac servers carry gh. A fine-grained personal access token, pasted instead of
+    // signing in, is the narrower alternative and needs no gh.
+    const ghBin = (ctx.config && ctx.config.gh) || process.env.VYRE_GH_BIN || "gh";
 
     const signIn = connector({
-      clientId,
+      gh: ghBin,
       taken: name => Boolean(accounts.get(name)),
       // The item a sign-in will make must be free, or one this module made before.
       blocked: async item => {
@@ -104,7 +103,7 @@ export default {
     });
 
     ctx.tool("github.connect", {
-      description: `Start "Sign in with GitHub": a device-flow code. Returns { id, user_code, verification_uri, verification_uri_complete?, expires_in, interval }: show the code and open verification_uri (or verification_uri_complete on a phone). Vyre polls on its own until the person finishes or it expires; nothing else to call. Asks for the "repo" scope (full read/write on every repo the account can reach): GitHub's device flow has no narrower option; a later release moves to a GitHub App with per-repo access.`,
+      description: `Start "Sign in with GitHub": runs GitHub's own CLI (gh auth login) on this machine and returns { id, user_code, verification_uri, expires_in, interval }: show the code and open verification_uri. Vyre waits on its own until the person finishes or it expires; nothing else to call. Needs gh installed here (error code gh_missing otherwise; a pasted fine-grained token works without it). Asks for the "repo" scope (full read/write on every repo the account can reach): GitHub's device flow has no narrower option; a later release moves to a GitHub App with per-repo access.`,
       input: obj({ name: str }, ["name"]),
       callers: PEOPLE,
       run: input => signIn.start(input),
@@ -125,7 +124,7 @@ export default {
     });
 
     ctx.tool("github.remove", {
-      description: "Disconnect a GitHub account: removes Vyre's own vault item and account row. Never revokes the token at GitHub (0.2, lead ruling 30 Sep): the sign-in shares GitHub CLI's own client id with every real `gh` install, so revoking it would sign the person's own gh out on every other machine and CI runner too. The token itself, and whether it still works elsewhere, stays the person's own business, at github.com/settings/applications if they ever want it gone entirely.",
+      description: "Disconnect a GitHub account: removes Vyre's own vault item and account row. Never revokes the token at GitHub (0.2, lead ruling 30 Sep): the token belongs to GitHub CLI's own app grant, shared with every real `gh` install, so revoking it would sign the person's own gh out on every other machine and CI runner too. The token itself, and whether it still works elsewhere, stays the person's own business, at github.com/settings/applications if they ever want it gone entirely.",
       input: obj({ name: str }, ["name"]),
       callers: PEOPLE,
       run: async ({ name }) => {

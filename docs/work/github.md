@@ -562,3 +562,13 @@ mcp.connect/oauth.js status have posted (both block the Next list below).
   Found on the rebase: the registry allows only two-part event names, so github.session.undone made
   vyred skip the whole module (switchboard ADR 0041 test caught it). Renamed to github.undone; added a
   test that runs module.json through the registry's validator. 100/100 on core/github + switchboard + modules.
+
+## 2026-10-01 sign-in runs the real gh (lead ruling)
+- connect.js no longer runs the device flow under gh's client id. It spawns `gh auth login --web
+  --scopes repo --skip-ssh-key --insecure-storage` in a private folder (HOME + GH_CONFIG_DIR inside,
+  minimal env, no GH_TOKEN), parses the code and address from gh's stderr, waits for a clean exit,
+  reads `gh auth token` once, files it in the vault item github-<name>, deletes the folder.
+  Verified the real gh's output shape once (code + URL on stderr, killed at once, no account used).
+- No gh: error code gh_missing; PAT paste stays the fallback. Binary from ctx.config.gh, VYRE_GH_BIN or PATH.
+- Tests: connect.test.js rewritten against a fake gh binary (9 tests). ADR 0041 decision 2 has a revision note.
+- Needs: integrator adds gh to the box image and the Mac server installer (told). Vault agreed in CHAT.

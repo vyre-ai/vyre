@@ -20,8 +20,8 @@
   "needs": { "vault": ["per-connection"] },
   "teaches": {
     "tips": [
-      {"id": "sign-in", "text": "Connect a GitHub account with a short code at github.com/login/device, no token to paste.", "surfaces": ["cli", "deck"], "level": "first-use", "trigger": "on-use", "since": "0.1.0", "docs": "reference/tools.md#github"},
-      {"id": "scope", "text": "GitHub's device flow asks for repo (full read/write on every repo the account reaches). Prefer a fine-grained personal access token, pasted instead of signing in, for narrower access.", "surfaces": ["deck", "cli"], "level": "first-use", "trigger": "on-use", "since": "0.1.0", "docs": "reference/tools.md#github"},
+      {"id": "sign-in", "text": "Connect a GitHub account with a short code at github.com/login/device, no token to paste (uses GitHub's own CLI, gh, on this machine).", "surfaces": ["cli", "deck"], "level": "first-use", "trigger": "on-use", "since": "0.1.0", "docs": "reference/tools.md#github"},
+      {"id": "scope", "text": "GitHub's sign-in asks for repo (full read/write on every repo the account reaches). Prefer a fine-grained personal access token, pasted instead of signing in, for narrower access.", "surfaces": ["deck", "cli"], "level": "first-use", "trigger": "on-use", "since": "0.1.0", "docs": "reference/tools.md#github"},
       {"id": "worktree", "text": "Each session in a GitHub project works on its own worktree and branch, so two sessions never fight over the same working tree.", "surfaces": ["chat", "deck"], "level": "discovery", "trigger": "on-use", "since": "0.1.0", "docs": "reference/tools.md#github"},
       {"id": "fine-grained", "text": "Prefer a narrower token? Add a fine-grained personal access token by hand instead of signing in.", "surfaces": ["cli", "deck"], "level": "power", "trigger": "idle", "since": "0.1.0", "docs": "reference/tools.md#github"}
     ]

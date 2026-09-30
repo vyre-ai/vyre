@@ -908,7 +908,7 @@ The GitHub accounts Vyre can use: name, login and avatar, never a token.
 
 ### `github.connect`
 
-Start "Sign in with GitHub": a device-flow code. Returns { id, user_code, verification_uri, verification_uri_complete?, expires_in, interval }: show the code and open verification_uri (or verification_uri_complete on a phone). Vyre polls on its own until the person finishes or it expires; nothing else to call. Asks for the "repo" scope (full read/write on every repo the account can reach): GitHub's device flow has no narrower option; a later release moves to a GitHub App with per-repo access.
+Start "Sign in with GitHub": runs GitHub's own CLI (gh auth login) on this machine and returns { id, user_code, verification_uri, expires_in, interval }: show the code and open verification_uri. Vyre waits on its own until the person finishes or it expires; nothing else to call. Needs gh installed here (error code gh_missing otherwise; a pasted fine-grained token works without it). Asks for the "repo" scope (full read/write on every repo the account can reach): GitHub's device flow has no narrower option; a later release moves to a GitHub App with per-repo access.
 
 - Input:
   - `name` string, required
@@ -1003,7 +1003,7 @@ Review a pull request on the project's primary repo: event APPROVE, REQUEST_CHAN
 
 ### `github.remove`
 
-Disconnect a GitHub account: removes Vyre's own vault item and account row. Never revokes the token at GitHub (0.2, lead ruling 30 Sep): the sign-in shares GitHub CLI's own client id with every real `gh` install, so revoking it would sign the person's own gh out on every other machine and CI runner too. The token itself, and whether it still works elsewhere, stays the person's own business, at github.com/settings/applications if they ever want it gone entirely.
+Disconnect a GitHub account: removes Vyre's own vault item and account row. Never revokes the token at GitHub (0.2, lead ruling 30 Sep): the token belongs to GitHub CLI's own app grant, shared with every real `gh` install, so revoking it would sign the person's own gh out on every other machine and CI runner too. The token itself, and whether it still works elsewhere, stays the person's own business, at github.com/settings/applications if they ever want it gone entirely.
 
 - Input:
   - `name` string, required
