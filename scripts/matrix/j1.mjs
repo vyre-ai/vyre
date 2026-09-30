@@ -62,7 +62,7 @@ try {
   r.step("1.3b-terminal-words", Boolean(words.words), { why: words.words ? undefined : "the terminal printed no four check words" });
 
   // 1.4 the page finds the box
-  const found = await sees(/Found your server/, 90000);
+  const found = await sees(/Found your server/i, 90000);
   r.step("1.4-page-found-box", found, { shot: await shot("setup-found") });
   if (!found) throw new Error("box not found");
   const onPage = String(await page.evaluate(`[...document.querySelectorAll('ol[aria-label="Check words"] li')].map(l => l.textContent.trim()).join(" ")`));
@@ -70,6 +70,15 @@ try {
   await click("These match my server's terminal");
   const form = await sees(/Choose its address/, 60000);
   r.step("1.6-channel-ready", form, { shot: await shot("setup-naming") });
+  if (!form) throw new Error("no naming form");
+
+  // 1.7 choose the address and claim it (the name directory here is the real Worker code over a fake DNS)
+  await page.evaluate(`(() => { const i = document.querySelector('input[name="address"]'); i.focus(); i.value = "marlow-finch"; i.dispatchEvent(new Event("input", { bubbles: true })); })()`);
+  const hint = await page.waitText(/available|taken|not available|is yours/i, 20000);
+  r.step("1.7a-name-checked", /available/i.test(hint) && !/not available/i.test(hint), { shot: await shot("setup-name-check"), why: hide(String(await page.evaluate(`(document.querySelector('[data-role="hint"]')||{}).textContent||""`))) });
+  await click("Claim this address");
+  const claimed = await sees(/recovery code/i, 60000);
+  r.step("1.7b-name-claimed", claimed, { shot: await shot("setup-claimed") });
 } catch (e) {
   r.step("run", false, { why: hide(e.message).slice(0, 300) });
   try { await shot("failure"); } catch {}
