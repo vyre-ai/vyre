@@ -79,3 +79,14 @@ test("a provider that is not a plain name gets the line and no Raise it; the amo
     assert.equal(calls.length, 0, bad);
   }
 });
+
+test("the cap over every provider: provider all raises with provider all", async () => {
+  vyred({ "spend.raise": { provider: "all", cap: 40 } });
+  const el = spendCapped({ ...EVENT, provider: "all", thread: undefined });
+  click($(el, "[data-act=raise]"));
+  $(el, ".cv-spend-amount").value = "40";
+  $(el, "form").dispatchEvent(new /** @type {any} */ (globalThis).Event("submit"));
+  await settle();
+  assert.deepEqual(calls[0].input, { provider: "all", to: 40 });
+  assert.match(text($(el, ".cv-spend-line")), /The daily cap over every provider is \$40\.00/);
+});

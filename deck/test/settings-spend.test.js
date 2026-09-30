@@ -57,3 +57,13 @@ test("no spend module: one plain line", async () => {
   await m.run();
   assert.match(text(m.el), /Spend is not tracked on this box yet/);
 });
+
+test("the cap over every provider is its own row, changed through spend.raise with provider all", async () => {
+  const m = mount({ "spend.summary": { ...SUMMARY, all: { spent: 5.42, cap: 20, left: 14.58, capped: false } }, "spend.raise": { cap: 30 } });
+  await m.run();
+  assert.match(text($(m.el, "[data-provider=all]")), /All providers together.*\$5\.42 of \$20\.00 today/);
+  click($(m.el, "[data-provider=all] [data-act=edit]"));
+  $(m.el, "[data-provider=all] input").value = "30";
+  $(m.el, "[data-provider=all]").dispatchEvent(new /** @type {any} */ (globalThis).Event("submit")); await settle();
+  assert.deepEqual(m.calls.find(c => c.tool === "spend.raise")?.input, { provider: "all", to: 30 });
+});

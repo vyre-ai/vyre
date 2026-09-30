@@ -4,6 +4,10 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### settings: hidden keys, and the cap over every provider
+
+- The generic Settings groups skip a key its module marks `hidden: true` (iq hides every `spend.*` key: Settings, Spend is their one screen). Settings, Spend and the spend-cap line also handle provider `all`, the cap over every provider together (`spend.summary`'s `all`, `spend.raise {provider: "all"}`).
+
 #### chat and settings: the spend cap
 
 - `deck/chat/cards/spend-capped.js`: when iq's `spend.capped` event is for this thread, a quiet row under the paused thread shows the box's line and a Raise it button that opens one amount field (prefilled with the suggested cap). Raise calls `spend.raise {provider, to}` (or `{provider, off: true}` for No cap); the provider comes from the event, the amount from the field, and the tool is fixed, never the one the event names.

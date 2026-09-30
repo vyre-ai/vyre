@@ -12,7 +12,8 @@ export const EVENTS = ["spend.capped", "spend.raised"];
 
 /** @param {any} d spend.summary's answer @returns {{ provider: string, spent: number, cap: number|null, capped: boolean, calls: number, estimated: boolean }[]} */
 export function providersOf(d) {
-  return (Array.isArray(d?.providers) ? d.providers : []).filter((/** @type {any} */ p) => p && typeof p.provider === "string").map((/** @type {any} */ p) => ({
+  const all = d?.all && typeof d.all === "object" ? [{ provider: "all", spent: d.all.spent, cap: d.all.cap, capped: d.all.capped, calls: 0, estimated: false }] : [];
+  return [...all, ...(Array.isArray(d?.providers) ? d.providers : [])].filter((/** @type {any} */ p) => p && typeof p.provider === "string").map((/** @type {any} */ p) => ({
     provider: String(p.provider), spent: Number(p.spent) || 0, cap: typeof p.cap === "number" && p.cap > 0 ? p.cap : null, capped: p.capped === true, calls: Number(p.calls) || 0, estimated: p.estimated === true }));
 }
 
@@ -40,7 +41,7 @@ export async function drawSpend(el, ctx, deps = {}) {
   }
 
   function row(/** @type {ReturnType<typeof providersOf>[number]} */ p) {
-    const name = p.provider[0].toUpperCase() + p.provider.slice(1);
+    const name = p.provider === "all" ? "All providers together" : p.provider[0].toUpperCase() + p.provider.slice(1);
     const words = p.cap == null ? `${usd(p.spent)} today, no cap` : `${usd(p.spent)} of ${usd(p.cap)} today${p.capped ? ", paused" : ""}`;
     if (st.editing === p.provider) {
       const amount = /** @type {HTMLInputElement} */ (h("input", { class: "input", inputmode: "decimal", autocomplete: "off", "aria-label": `${name} daily cap in dollars`, value: p.cap == null ? "" : String(p.cap), placeholder: "Dollars a day" }));

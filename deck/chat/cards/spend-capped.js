@@ -36,7 +36,10 @@ export function spendCapped(data, ctx = {}) {
   }
 
   function draw() {
-    const line = st.raised !== undefined ? (st.raised === null ? `${provider[0].toUpperCase()}${provider.slice(1)} has no daily cap now.` : `${provider[0].toUpperCase()}${provider.slice(1)} daily cap is ${usd(st.raised)}. Resume the thread to go on.`) : String(data?.line || "This thread is paused: the daily spend cap was reached.");
+    const name = provider === "all" || !provider ? "" : provider[0].toUpperCase() + provider.slice(1);
+    const capWords = st.raised === null ? (name ? `${name} has no daily cap now.` : "There is no daily cap over every provider now.")
+      : (name ? `${name} daily cap is ${usd(/** @type {number} */ (st.raised))}. Resume the thread to go on.` : `The daily cap over every provider is ${usd(/** @type {number} */ (st.raised))}. Resume to go on.`);
+    const line = st.raised !== undefined ? capWords : String(data?.line || "This thread is paused: the daily spend cap was reached.");
     const amount = /** @type {HTMLInputElement} */ (h("input", { class: "input cv-spend-amount", inputmode: "decimal", autocomplete: "off", "aria-label": "New daily cap in dollars", value: String(suggested) }));
     put(el,
       h("div", { class: "cv-spend-row" },
