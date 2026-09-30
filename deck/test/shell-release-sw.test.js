@@ -97,3 +97,23 @@ test("swWithBuild sets SHELL_SIGNED only when the release files are there", () =
   fs.writeFileSync(path.join(repo, "deck", "release", "SHA256SUMS.sig"), "x");
   assert.match(swWithBuild(SW_SRC, /** @type {any} */ (b), repo), /const SHELL_SIGNED = true;/);
 });
+
+// launch's shared vector (box-update.test.js VECTOR, CHAT 10:00): Ed25519 is deterministic, so the box updater,
+// the Mac installer, sign-manifest and this worker all have to agree on these exact bytes.
+test("launch's shared vector: sw.js verifies it, and refuses the same signature without the domain prefix", async () => {
+  const pub = "MCowBQYDK2VwAyEA6kpsY+KcUgq+9VB7Ey7F+ZVHdq6+vnuSQh7qaRRG0iw=";
+  const sig = "X+aWDX+6p5YDh32E4tUXAHKEvCwi36rUm4I889QLs2I6b4hlP0J05o8PNtuyZnsCaqMkiv2MWmqJ3fllTLIzDA==";
+  const shell = Buffer.from(JSON.stringify({ v: 1, files: [] }));
+  // The vector's own SHA256SUMS does not list shell.json, so the chain stops at that link: that is
+  // "not the signed one", which means the signature step itself passed.
+  const sums = Buffer.from(`${"a".repeat(64)}  manifest.json\n${"b".repeat(64)}  vyre.tgz\n`);
+  const served = { SHA256SUMS: sums, "SHA256SUMS.sig": Buffer.from(sig + "\n"), "shell.json": shell };
+  const ok = await load({ pub, served })([]);
+  assert.match(ok.why, /not the signed one/, "signature verified; only the shell.json link fails");
+  // A signature made over the bare SHA256SUMS (no prefix) must fail at the signature step.
+  const { privateKey } = crypto.generateKeyPairSync("ed25519");
+  const bare = crypto.sign(null, sums, privateKey).toString("base64");
+  const pub2 = crypto.createPublicKey(privateKey).export({ type: "spki", format: "der" }).toString("base64");
+  const r = await load({ pub: pub2, served: { ...served, "SHA256SUMS.sig": Buffer.from(bare) } })([]);
+  assert.equal(r.why, "bad signature");
+});
