@@ -16,7 +16,7 @@
 # install line `curl -fsSL https://vyre.run/i | VYRE_CODE=... sh` (the variable goes on sh, the reader
 # of the script: on curl it would never reach it, and sudo drops it, so run it as yourself). The code is never a command-line
 # argument (a process list shows arguments); without one, and on a terminal, it is asked for and
-# Enter skips it. It goes only into $VYRE_DIR/vyre.env (0600) as VYRE_CODE, which the box reads once
+# Enter skips it. It goes only into $VYRE_DIR/vyre.env (0600) as VYRE_SETUP_CODE (VYRE_CODE stays the host-side pipe), which the box reads once
 # at start, and is never printed. With a code, each step is also sent, sealed under a key only the
 # browser's setup page can derive from the code, to the relay's progress mailbox (VYRE_RELAY, default
 # https://relay.vyre.run) so the page shows the install as it happens. That needs curl and openssl; without
@@ -605,7 +605,7 @@ intake_code() {
     || die "that setup code does not look right. Copy the install line from your browser again."
 }
 
-# write_code: VYRE_CODE into DIR/vyre.env (0600), which the vyre service already reads, with the time it
+# write_code: VYRE_SETUP_CODE into DIR/vyre.env (0600), which the vyre service already reads, with the time it
 # was written so `vyre` can remove both lines once the hour is over (the box reads the code once, at
 # start, and never keeps it). The rest of the file is kept as it is, and put installs from a temp file
 # so the code is never an argument.
@@ -616,12 +616,12 @@ write_code() {
   : >"$TMP/vyre.env"
   if [ -e "$DIR/vyre.env" ]; then
     # shellcheck disable=SC2024
-    if [ -r "$DIR/vyre.env" ] || [ -z "$SUDO" ]; then grep -v -e '^VYRE_CODE=' -e '^# vyre-code-at=' "$DIR/vyre.env" >"$TMP/vyre.env" || true
-    else sudo cat "$DIR/vyre.env" | grep -v -e '^VYRE_CODE=' -e '^# vyre-code-at=' >"$TMP/vyre.env" || true
+    if [ -r "$DIR/vyre.env" ] || [ -z "$SUDO" ]; then grep -v -e '^VYRE_SETUP_CODE=' -e '^# vyre-code-at=' "$DIR/vyre.env" >"$TMP/vyre.env" || true
+    else sudo cat "$DIR/vyre.env" | grep -v -e '^VYRE_SETUP_CODE=' -e '^# vyre-code-at=' >"$TMP/vyre.env" || true
     fi
   fi
   chmod 600 "$TMP/vyre.env"
-  printf '# vyre-code-at=%s\nVYRE_CODE=%s\n' "$(date +%s)" "$CODE" >>"$TMP/vyre.env"
+  printf '# vyre-code-at=%s\nVYRE_SETUP_CODE=%s\n' "$(date +%s)" "$CODE" >>"$TMP/vyre.env"
   put "$TMP/vyre.env" "$DIR/vyre.env" 0600
 }
 

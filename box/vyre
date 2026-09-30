@@ -509,7 +509,7 @@ uninstall() {
   say "One thing is left in your own hands: this server still shows in your Tailscale machines list. Remove it there."
 }
 
-# expire_code: the setup code install-box.sh left in vyre.env (VYRE_CODE, with the time it was written)
+# expire_code: the setup code install-box.sh left in vyre.env (VYRE_SETUP_CODE, with the time it was written)
 # is good for an hour and the box reads it once at start; past the hour both lines go, so a restart never
 # arms an old code again.
 expire_code() {
@@ -518,7 +518,7 @@ expire_code() {
   at=$(sed -n 's/^# vyre-code-at=\([0-9][0-9]*\)$/\1/p' "$f" 2>/dev/null | head -n 1)
   [ -n "$at" ] || return 0
   [ $(( $(date +%s) - at )) -gt 3600 ] || return 0
-  grep -v -e '^VYRE_CODE=' -e '^# vyre-code-at=' "$f" >"$f.new" || true
+  grep -v -e '^VYRE_SETUP_CODE=' -e '^# vyre-code-at=' "$f" >"$f.new" || true
   cat "$f.new" >"$f"
   rm -f "$f.new"
 }
