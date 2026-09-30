@@ -624,6 +624,9 @@ test("update-from-request: a link planted in the person's stack folder or in roo
   // The stack folder is the person's: links where root will write.
   fs.symlinkSync(victim, path.join(b.DIR, "VERSION"));
   fs.symlinkSync(victimDir, path.join(b.DIR, "box.prev"));
+  // A link to a FOLDER where a box file goes: mv would drop the new file into that folder, so it is removed first.
+  fs.rmSync(path.join(b.DIR, "vyre.env.example"), { force: true });
+  fs.symlinkSync(victimDir, path.join(b.DIR, "vyre.env.example"));
   fs.rmSync(path.join(b.DIR, "compose.build.yml"), { force: true });
   fs.symlinkSync(victim, path.join(b.DIR, "compose.build.yml"));
   ask(b);
@@ -633,7 +636,7 @@ test("update-from-request: a link planted in the person's stack folder or in roo
   assert.equal(fs.readFileSync(victim, "utf8"), "keep me\n", "nothing was written through a link");
   assert.equal(fs.readFileSync(path.join(victimDir, "inside.txt"), "utf8"), "keep me too\n");
   assert.deepEqual(fs.readdirSync(victimDir), ["inside.txt"], "no box file was copied into a folder a link pointed at");
-  for (const f of [path.join(b.DIR, "VERSION"), path.join(b.DIR, "compose.build.yml"), path.join(b.U, "private", "floor")]) assert.ok(fs.lstatSync(f).isFile(), `${f} is a real file now`);
+  for (const f of [path.join(b.DIR, "vyre.env.example"), path.join(b.DIR, "VERSION"), path.join(b.DIR, "compose.build.yml"), path.join(b.U, "private", "floor")]) assert.ok(fs.lstatSync(f).isFile(), `${f} is a real file now`);
   assert.equal(b.read(path.join(b.DIR, "VERSION")).trim(), "0.2.0");
   assert.equal(b.read(path.join(b.U, "private", "floor")).trim(), "0.2.0");
   assert.ok(!fs.readdirSync(b.DIR).some(n => /\.[A-Za-z0-9]{6}$/.test(n)), "no temp file left behind: " + fs.readdirSync(b.DIR).join(" "));

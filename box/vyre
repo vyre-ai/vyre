@@ -77,16 +77,24 @@ state() {
   mv -f "$UPD_STATE/status.json.new" "$UPD_STATE/status.json" || true
 }
 stage() { UPD_STAGE=$1; state running "$1"; }
+# put_clear DEST: a link at DEST is removed (the link, never what it points at), and a folder there is refused. mv would
+# otherwise move the new file INTO a folder a link points at, rather than over the link.
+put_clear() {
+  if [ -L "$1" ]; then rm -f "$1"; fi
+  if [ -d "$1" ]; then echo "vyre: $1 is a folder, not a file; left alone" >&2; return 1; fi
+}
 # put_file SRC DEST [MODE]: write DEST from SRC through a new file made in DEST's own folder (mktemp makes it exclusively, so a
 # name someone planted is never reused) and a rename over DEST. The rename replaces a link at DEST rather than following it,
 # and nothing is ever written through an existing path: this is how root puts files into the person's stack folder.
 put_file() {
+  put_clear "$2" || return 1
   pf=$(mktemp "$2.XXXXXX") || return 1
   if cat "$1" >"$pf" && chmod "${3:-0644}" "$pf" && mv -f "$pf" "$2"; then return 0; fi
   rm -f "$pf"; return 1
 }
 # put_text TEXT DEST [MODE]: the same, from a string.
 put_text() {
+  put_clear "$2" || return 1
   pt=$(mktemp "$2.XXXXXX") || return 1
   if printf '%s\n' "$1" >"$pt" && chmod "${3:-0644}" "$pt" && mv -f "$pt" "$2"; then return 0; fi
   rm -f "$pt"; return 1
