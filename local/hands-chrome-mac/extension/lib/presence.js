@@ -13,8 +13,8 @@
 const STEP = /^(page\.(act|fill)|tabs\.(open|navigate|use)|api\.call|dev\.console\.eval|ghl\.section)/;
 /** Ops that say nothing about work in progress. */
 const QUIET = /^(caps|status|hello|presence|tabs\.(list|query)|frames\.list|dev\.state)/;
-/** A run is over this long after its last op. */
-export const IDLE_MS = 8000;
+/** A run is over this long after its last op, or at once when the module says it is done (a plan finished, a summary asked for). A model can think for a while between steps. */
+export const IDLE_MS = 30_000;
 /** The tab pill is redrawn this often while work continues, so a navigation that replaced the document gets it back. */
 export const BEAT_MS = 2000;
 /** An open question is raised again after this long. */
@@ -51,6 +51,37 @@ export const pillScript = (text, waiting) => `(() => {
   document.addEventListener("keydown", e => { if (e.key === "Escape" && window.__vyrePill && window.__vyrePill.host.isConnected && typeof window.vyreStop === "function") window.vyreStop("esc"); }, true);
   (document.body || document.documentElement).appendChild(host);
   window.__vyrePill = { host, set };
+  return true;
+})()`;
+
+/** The card a run leaves behind: what changed, where to open it, how to undo. A closed shadow root like the pill; its links and Dismiss take clicks, nothing else does. @param {{ counts: Record<string, number>, items: { what: string, url?: string }[], steps: number }} d */
+export const cardScript = d => `(() => {
+  const D = ${JSON.stringify({ counts: d.counts, items: d.items.slice(0, 12).map(i => ({ what: String(i.what).slice(0, 100), url: /^https?:\/\//.test(String(i.url || "")) ? String(i.url).slice(0, 300) : "" })), steps: d.steps })};
+  const old = document.querySelector("vyre-card"); if (old) old.remove();
+  const host = document.createElement("vyre-card");
+  host.setAttribute("data-vyre", "card");
+  host.style.cssText = "all:initial;position:fixed;right:16px;bottom:16px;z-index:2147483647;pointer-events:none;";
+  const root = host.attachShadow({ mode: "closed" });
+  const box = document.createElement("div");
+  box.style.cssText = "pointer-events:auto;font:13px/1.4 -apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;color:#202124;background:#fff;border:1px solid #dadce0;border-left:4px solid #1a73e8;border-radius:8px;padding:12px 14px;width:min(340px,80vw);box-shadow:0 4px 18px rgba(0,0,0,.25);";
+  const head = document.createElement("div");
+  head.style.cssText = "font-weight:600;margin-bottom:6px;";
+  const parts = Object.entries(D.counts).filter(([, n]) => n > 0).map(([k, n]) => n + " " + (k === "create" ? "created" : k === "edit" ? "edited" : k === "delete" ? "deleted" : k));
+  head.textContent = "Vyre finished" + (parts.length ? " · " + parts.join(", ") : " · " + D.steps + " steps");
+  box.append(head);
+  for (const it of D.items) {
+    const row = document.createElement("div"); row.style.cssText = "display:flex;justify-content:space-between;gap:8px;margin:2px 0;";
+    const t = document.createElement("span"); t.textContent = it.what; row.append(t);
+    if (it.url) { const a = document.createElement("a"); a.href = it.url; a.target = "_self"; a.textContent = "Open"; a.style.cssText = "color:#1a73e8;text-decoration:none;flex:none;"; row.append(a); }
+    box.append(row);
+  }
+  const foot = document.createElement("div"); foot.style.cssText = "margin-top:8px;color:#5f6368;font-size:12px;";
+  foot.textContent = D.counts.create ? "To undo the drafts, tell Vyre: undo what you created." : "";
+  const x = document.createElement("button"); x.type = "button"; x.textContent = "Dismiss"; x.style.cssText = "margin-top:8px;font:inherit;color:#1a73e8;background:none;border:0;cursor:pointer;padding:0;display:block;";
+  x.addEventListener("click", () => host.remove());
+  box.append(foot, x); root.append(box);
+  (document.body || document.documentElement).appendChild(host);
+  setTimeout(() => { try { host.remove(); } catch (e) {} }, 60000);
   return true;
 })()`;
 
@@ -175,6 +206,13 @@ export function createPresence({ chrome, cdp, onStop = () => {}, now = Date.now,
     await stopPulse();
     await paintBadge();
     for (const t of done.tabs) await unpill(t);
+    // What the run changed stays on screen as a card, in the last tab it worked in, until the person dismisses it.
+    if (done.changes.length && cdp && done.tabs.size) {
+      const last = [...done.tabs].pop();
+      /** @type {Record<string, number>} */ const counts = {};
+      for (const c of done.changes) counts[c.kind || "change"] = (counts[c.kind || "change"] || 0) + 1;
+      if (last !== undefined && cdp.attached().includes(last)) await safe(() => cdp.send(last, "Runtime.evaluate", { expression: cardScript({ counts, items: done.changes, steps: done.steps }), returnByValue: true }));
+    }
     if (chrome && chrome.tabGroups && chrome.tabGroups.update) for (const gid of groups.values()) await safe(() => chrome.tabGroups.update(gid, { collapsed: true }));
     try { onFinish({ steps: done.steps, of: done.of, startedAt: done.startedAt, endedAt: now(), tabs: [...done.tabs], changes: done.changes, failed: done.failed }); } catch { /* the card must not break the shell */ }
   }
@@ -233,6 +271,7 @@ export function createPresence({ chrome, cdp, onStop = () => {}, now = Date.now,
         remind = weak(setT(() => { if (run && run.waiting && asked === at) notify({ title: "Still waiting for you", message: n.message }); }, REMIND_MS));
       }
       if (s.waiting === null && remind) { clearT(remind); remind = null; }
+      if (s.change && typeof s.change === "object") run.changes.push({ what: String(s.change.what || "").slice(0, 160), kind: String(s.change.kind || ""), url: s.change.url ? String(s.change.url).slice(0, 300) : "", at: now() });
       if (typeof s.of === "number" && s.of > 0) run.of = s.of;
       if (typeof s.label === "string") run.label = s.label.slice(0, 120);
       if (s.waiting !== undefined) { run.waiting = s.waiting ? String(s.waiting).slice(0, 100) : null; if (run.waiting) { if (idle) { clearT(idle); idle = null; } } else arm(); }

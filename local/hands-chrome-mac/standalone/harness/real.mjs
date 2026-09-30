@@ -283,7 +283,15 @@ async function main() {
         const a = await write("plan probe 1"); const b = await write("plan probe 2"); const c = await write("plan probe 3");
         if (a.held || b.held || (a.status !== 201 && a.status !== 200)) throw new Error("the two covered writes did not go through: " + JSON.stringify({ a, b }).slice(0, 400));
         if (!c.held) throw new Error("the third write, beyond the plan, was not held: " + JSON.stringify(c).slice(0, 300));
-        return { entry: entry.id, unplanned: "held", covered: [a.status, b.status], beyondPlan: "held" };
+        // The finish: a summary in words, and the same as a card in the page the run worked in.
+        const sum = await mcp.call("chrome_summary", {});
+        if (!sum.counts || sum.counts.create !== 2 || !Array.isArray(sum.lines) || !/2 created/.test(sum.lines[0])) throw new Error("the summary is wrong: " + JSON.stringify(sum).slice(0, 400));
+        let card = false;
+        for (let i = 0; i < 20 && !card; i++) { const r = await mcp.call("chrome_eval", { tab: gt, expression: "!!document.querySelector('vyre-card')" }); card = (r.value ?? r.result) === true; if (!card) await sleep(250); }
+        if (!card) throw new Error("no finish card in the page");
+        const snap = await mcp.call("chrome_snapshot", { tab: gt });
+        if (/vyre-card|Vyre finished|Dismiss/.test(JSON.stringify(snap))) throw new Error("the snapshot shows the finish card");
+        return { entry: entry.id, unplanned: "held", covered: [a.status, b.status], beyondPlan: "held", summary: sum.lines[0], card };
       });
 
       // The sign-in handoff: a step on a login page answers login_required, the tab comes to the front, and Vyre carries on once the person is in.

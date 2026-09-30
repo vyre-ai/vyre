@@ -260,7 +260,7 @@ export default {
             const g = /** @type {NonNullable<typeof grant>} */ (grant);
             g.left[String(res.kind)]--; g.used++;
             res = screen(await bridge.call(op, { ...args, writeOk: true }, { timeoutMs: args.timeoutMs }));
-            changes.push({ at: Date.now(), kind: String(res && res.method ? (/** @type {any} */ ({ POST: "create", PUT: "edit", PATCH: "edit", DELETE: "delete" }))[String(res.method).toUpperCase()] || "edit" : "edit"), what: scrub(summary), covered: true });
+            recordChange(res, summary, true);
             showPresence({ of: g.total, label: g.title });
           }
           if (isObj(res) && res.held === true) res = await hold(op, args, res, meta, summary);
@@ -304,6 +304,20 @@ export default {
     };
     /** Tell the extension what to show: a step count, a waiting state, a notification. @param {any} s */
     const showPresence = s => { try { void bridge.push({ event: "presence", ...s }); } catch { /* no extension connected */ } };
+    /** A change the run made with the page's login, for the summary and the card. @param {any} res @param {string} summary @param {boolean} covered */
+    const recordChange = (res, summary, covered) => {
+      if (!isObj(res) || res.ok === false || res.held) return;
+      const method = String(res.method || "").toUpperCase();
+      if (!method || /^(GET|HEAD|OPTIONS)$/.test(method)) return;
+      const kind = /** @type {any} */ ({ POST: "create", PUT: "edit", PATCH: "edit", DELETE: "delete" })[method] || "edit";
+      let id = "";
+      try { const b = JSON.parse(String(res.responseBody || "null")); const d = b && (b.data || b); id = String((d && (d.id || d._id)) || "").slice(0, 80); } catch { /* not JSON */ }
+      const where = originOf(String(res.url || "")) || "";
+      let path = ""; try { path = new URL(String(res.url || "")).pathname; } catch { /* no url */ }
+      const c = { at: Date.now(), kind, method, what: scrub(`${kind} ${path || summary}${id ? ` (${id})` : ""}`).slice(0, 160), ...(id ? { id } : {}), ...(where ? { origin: where } : {}), ...(path ? { path } : {}), ...(res.status ? { status: res.status } : {}), covered };
+      changes.push(c); while (changes.length > 200) changes.shift();
+      showPresence({ change: { kind, what: c.what } });
+    };
     // The person pressing stop ends the plan: what they approved was for a run they have now halted.
     const offStop = ctx.events.on("chrome.stopped", () => { grant = null; });
 
@@ -433,6 +447,25 @@ export default {
         return isObj(h) && h.held && h.id ? { ...h, plan: { title, total, items: items.length }, why: `This plan waits for the person's approval. To start it, call ${cfg.sendTool || "the Gate"} with this id; the person approves that call. Publishing, messaging and payments stay one-at-a-time whatever the plan says.` } : h;
       });
 
+    tool("chrome.summary", "Finish a job: what this run changed in the person's Chrome, in words they can read, with what can be undone. Call it when the job is done and show the person the lines. It also puts the same card on their screen. clear (default true) starts the next job's list empty.",
+      obj({ clear: bool }),
+      async (i, meta) => {
+        const counts = { create: 0, edit: 0, delete: 0 };
+        for (const c of changes) if (c.kind in counts) /** @type {any} */ (counts)[c.kind]++;
+        const list = changes.map(c => ({ kind: c.kind, what: c.what, ...(c.id ? { id: c.id } : {}), covered: c.covered,
+          undo: c.kind === "create" && c.id ? `delete ${c.id}` : c.kind === "create" ? "delete it by hand (its id was not returned)" : c.kind === "edit" ? "no automatic undo: Vyre did not keep the old value" : "cannot be undone" }));
+        const lines = [
+          list.length ? `${list.length} change${list.length === 1 ? "" : "s"} made: ${counts.create} created, ${counts.edit} edited, ${counts.delete} deleted.` : "Nothing was changed with the page's login.",
+          ...list.map(c => `- ${c.what}${c.undo && !/^cannot/.test(c.undo) ? ` (undo: ${c.undo})` : ""}`),
+          heldActs.size ? `${heldActs.size} action${heldActs.size === 1 ? " is" : "s are"} still waiting for the person's approval.` : "",
+          grant ? `Plan "${grant.title}": ${grant.used} of ${grant.total} used.` : "",
+        ].filter(Boolean);
+        const out = { changes: list, counts, pendingApprovals: heldActs.size, plan: grant ? { title: grant.title, used: grant.used, total: grant.total } : null, lines };
+        showPresence({ done: true });
+        if (i.clear !== false) { changes.length = 0; }
+        return out;
+      });
+
     tool("chrome.plan", "Post what you are about to do in the person's Chrome, as a short list of steps ({id, text, risk?}), before your first action: they see it and can interject or stop. Then report each step with step and status (running, done, failed), and finish when the run is over.",
       obj({ title: str, steps: { type: "array", items: obj({ id: str, text: str, risk: str }, ["text"]) }, step: str, status: { type: "string", enum: ["running", "done", "failed"] }, why: str, finish: bool, agent: str }),
       async (i, meta) => {
@@ -441,7 +474,7 @@ export default {
         const name = agent || (i.agent ? String(i.agent) : "you");
         return via.run(meta, async () => {
           if (Array.isArray(i.steps)) return oversight.plan(name, i.steps, { thread: meta.thread, title: i.title });
-          if (i.finish) return oversight.finish(name);
+          if (i.finish) { showPresence({ done: true }); return oversight.finish(name); }
           if (i.step) return i.status === "done" ? oversight.stepDone(i.step) : i.status === "failed" ? oversight.stepFailed(i.step, i.why) : oversight.stepStarted(i.step);
           throw Object.assign(new Error("bad_request: give steps to post a plan, or step and status to report one"), { code: "bad_request" });
         }).catch(e => { throw wrapErr(e); });
@@ -495,6 +528,7 @@ export default {
             if (on) floor(on, String(c.op));
             const res = screen(await bridge.call(String(c.op), { ...(c.args || {}), asked: true, release: { sig: c.signature, signature: c.signature } }, { timeoutMs: (c.args || {}).timeoutMs }));
             acted(meta, null, String(c.op), true, undefined, `released ${summary}`);
+            if (String(c.op) === "api.call") recordChange(res, summary, false);
             return res;
           } catch (e) {
             const x = /** @type {any} */ (e);

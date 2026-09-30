@@ -2,7 +2,7 @@
 // presence: the tab group, the step badge, the pill and the way out, against a fake chrome.
 import test from "node:test";
 import assert from "node:assert/strict";
-import { createPresence, pillScript, pillGone, IDLE_MS, GROUP_TITLE } from "./extension/lib/presence.js";
+import { createPresence, pillScript, pillGone, cardScript, IDLE_MS, GROUP_TITLE } from "./extension/lib/presence.js";
 
 function world(o = {}) {
   /** @type {any[]} */ const log = [];
@@ -160,4 +160,28 @@ test("an approval waiting raises a notification at once and again after two minu
   await w2.p.state({ waiting: null });
   await w2.advance(120_000 + 10);
   assert.equal(notes.length, 2, "no reminder once answered");
+});
+
+test("the run's changes come back as a card in the last tab: counts, an Open link per item, and how to undo; the snapshot skips it", async () => {
+  const w = world();
+  const evals = /** @type {string[]} */ ([]);
+  const cdp2 = { attached: () => [1], send: async (/** @type {number} */ _t, /** @type {string} */ m, /** @type {any} */ p) => { if (m === "Runtime.evaluate") evals.push(String(p.expression)); return {}; }, on: () => () => {} };
+  const w2 = world({ cdp: cdp2 });
+  await w2.p.around("page.act", { tabId: 1 }, async () => ({ ok: true }));
+  await w2.p.state({ change: { kind: "create", what: "create /workflow (wf_1)", url: "https://app.example/v2/location/L/automation/workflows" } });
+  await w2.p.state({ change: { kind: "create", what: "create /workflow (wf_2)" } });
+  await w2.p.state({ done: true });
+  const card = evals.find(e => e.includes("vyre-card"));
+  assert.ok(card, "a card was put in the tab");
+  assert.match(card, /"create":2/);
+  assert.match(card, /automation\/workflows/);
+  assert.match(card, /attachShadow\(\{ mode: "closed" \}\)/);
+  assert.match(card, /undo what you created/);
+  assert.match(card, /Dismiss/);
+  void w;
+});
+
+test("the card takes only http links, so a page cannot be told to run code through it", () => {
+  const s = cardScript({ counts: { create: 1 }, items: [{ what: "x", url: "javascript:alert(1)" }], steps: 1 });
+  assert.match(s, /"url":""/);
 });

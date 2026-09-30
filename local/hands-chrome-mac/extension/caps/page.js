@@ -412,7 +412,7 @@ const domOutline = (/** @type {string|undefined} */ path) => script("dom", { pat
   ${PRELUDE}
   const KEEP = ["id", "data-testid", "role", "aria-label", "placeholder", "name", "type", "disabled", "aria-disabled", "aria-busy", "aria-modal", "aria-checked", "title"];
   const SECRET = /pass|secret|token|card|cvv|cvc|ssn|otp|pin/i;
-  const SKIP = new Set(["SCRIPT", "STYLE", "SVG", "NOSCRIPT", "PATH", "IMG", "LINK", "META", "IFRAME", "HEAD", "VYRE-PILL"]);
+  const SKIP = new Set(["SCRIPT", "STYLE", "SVG", "NOSCRIPT", "PATH", "IMG", "LINK", "META", "IFRAME", "HEAD", "VYRE-PILL", "VYRE-CARD"]);
   const BARE = new Set(["DIV", "SPAN", "SECTION", "P"]);
   let root = ARGS.path ? find(ARGS.path) : null;
   if (root) root = root.closest('[role="dialog"],[role="alertdialog"],form,[class*="drawer"],[class*="modal"]') || root.parentElement || root;

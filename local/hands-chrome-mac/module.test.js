@@ -492,3 +492,30 @@ test("module: stopping Vyre ends the plan, and a plan needs real items", async t
   assert.equal(r.data.held, true, "the plan did not survive the stop");
   assert.equal(x.ops("api.call").filter((/** @type {any} */ o) => o.args.writeOk === true).length, 0);
 });
+
+test("module: the summary says what a plan's writes changed, what can be undone, and what still waits; it clears for the next job", async t => {
+  const { reg, gate, connect } = await rig(t);
+  let n = 0;
+  await connect({ "api.call": (/** @type {any} */ a) => (a.writeOk || a.asked)
+    ? { ok: true, status: 201, method: "POST", url: "https://api.example/workflow/abc", responseBody: JSON.stringify({ data: { id: `wf_${++n}` } }) }
+    : { ok: false, held: true, write: true, kind: "create", method: "POST", control: { role: "request", name: "POST https://api.example/workflow/abc" }, fields: [], sig: "s", url: "https://app.example/w" } });
+  await reg.call("hands.grant.add", { agent: "kit" }, "cli");
+  await reg.call("chrome.plan", PLAN, KIT);
+  const empty = await reg.call("chrome.summary", {}, KIT);
+  assert.match(empty.data.lines[0], /Nothing was changed/);
+  const p = await reg.call("chrome.approve", { title: "Two drafts", items: [{ kind: "create", what: "draft", count: 2 }], tab: 1 }, KIT);
+  await reg.call("chrome.release", { id: p.data.id, content: gate().requests[gate().requests.length - 1].content }, "module:gate");
+  await reg.call("chrome.api", { action: "call", entry: "a", tab: 1 }, KIT);
+  await reg.call("chrome.api", { action: "call", entry: "a", tab: 1 }, KIT);
+  await reg.call("chrome.api", { action: "call", entry: "a", tab: 1 }, KIT); // a third: held, and it is pending
+  const s = await reg.call("chrome.summary", {}, KIT);
+  assert.equal(s.error, undefined, JSON.stringify(s));
+  assert.deepEqual(s.data.counts, { create: 2, edit: 0, delete: 0 });
+  assert.deepEqual(s.data.changes.map((/** @type {any} */ c) => c.id), ["wf_1", "wf_2"]);
+  assert.match(s.data.changes[0].undo, /^delete wf_1$/);
+  assert.match(s.data.lines[0], /2 changes made: 2 created/);
+  assert.ok(s.data.lines.some((/** @type {string} */ l) => /1 action is still waiting/.test(l)));
+  assert.ok(s.data.lines.some((/** @type {string} */ l) => /2 of 2 used/.test(l)));
+  const again = await reg.call("chrome.summary", {}, KIT);
+  assert.equal(again.data.changes.length, 0, "cleared for the next job");
+});
