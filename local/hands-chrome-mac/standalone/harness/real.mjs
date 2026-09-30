@@ -18,6 +18,9 @@ import { fileURLToPath } from "node:url";
 import { hostManifest, launchChrome, parseArgs, prepareExtension, registerHost, resolveChrome, sleep, stats, stepSummary, stopProcess } from "../../spike/harness/lib.mjs";
 import { startFixtureServer } from "../../bench/fixtures/server.mjs";
 import { WORKFLOW_STEPS, GHL_ROBUST, CHECKOUT_FIELDS } from "../../bench/scenarios.mjs";
+import { createSiteStore } from "../sitestore.js";
+import { writeConfig } from "../trace.js";
+import { controlId, pageTemplate } from "../../extension/lib/observe.js";
 import { build } from "../build-release.mjs";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
@@ -262,6 +265,46 @@ async function main() {
         const replayMs = Math.round(performance.now() - t1);
         if (run.ok === false || run.done !== steps.length) throw new Error("the replay did not do every step: " + JSON.stringify(run).slice(0, 400));
         return { steps: steps.length, params: first.recipe.params.length, firstMs, replayMs, oneCall: true };
+      });
+
+      // Learning, verified and healed on the fixture (learning is on for this stage only, with a 1.2 s "visit"): a button is learned, moved (its identifier changes), found by its
+      // label, re-learned under the SAME id with the new selector, then moved where nothing finds it: repeated misses quarantine it and the card stops offering it.
+      await stage("site_heal", async () => {
+        writeConfig(data, { learn: true, learnVisitMinutes: 0.02 });
+        const store = createSiteStore({ dataDir: data });
+        const origin = new URL(fixture.url).origin;
+        const url = `${fixture.url}/checkout?heal=1`;
+        const hn = await mcp.call("chrome_tabs", { action: "use", url, openIfMissing: true }); const ht = hn.id ?? (hn.tab && hn.tab.id);
+        await mcp.call("chrome_tabs", { action: "navigate", tab: ht, url }); await sleep(600);
+        const ask = { identifier: "apply-promo", name: "Apply promo" };
+        const go = (/** @type {number} */ waitMs = 4000) => mcp.call("chrome_act", { tab: ht, selector: ask, kind: "click", wait: { timeoutMs: waitMs } });
+        const flush = () => mcp.call("chrome_site", { action: "flush", tab: ht });
+        const id = controlId(pageTemplate(url), ask);
+        const rec = () => (store.record(origin) || { controls: [] }).controls.find((/** @type {any} */ c) => c.id === id);
+        // learn: two visits (two 1.2 s windows) of the same identifier
+        await go(); await sleep(1500); await go(); await sleep(1500); await go(); await flush(); await sleep(600);
+        const learned = rec();
+        if (!learned || learned.selector.identifier !== "apply-promo") throw new Error("the button was not learned by its identifier: " + JSON.stringify(store.record(origin) && store.record(origin).controls).slice(0, 300));
+        // the card now reaches the device (the next arrival asks for it)
+        await mcp.call("chrome_tabs", { action: "navigate", tab: ht, url }); await sleep(800); await go(); await sleep(800);
+        // move 1: the identifier changes, the label does not; the fallback finds it
+        await mcp.call("chrome_eval", { tab: ht, expression: "(() => { document.getElementById('apply-promo').id = 'apply-promo-v2'; return true; })()" });
+        const viaFallback = await go();
+        if (viaFallback.ok === false || !(viaFallback.trace && (viaFallback.trace.fallback === true || viaFallback.trace.strategy !== "identifier"))) throw new Error("the fallback did not find the moved button: " + JSON.stringify(viaFallback).slice(0, 300));
+        await sleep(1500); await go(); await sleep(1500); await go(); await flush(); await sleep(600);
+        const healed = rec();
+        if (!healed || healed.selector.identifier !== "apply-promo-v2") throw new Error("the stored control did not take the new selector under its old id: " + JSON.stringify(healed).slice(0, 300));
+        // move 2: nothing finds it; each failed step is one miss for the stored fact
+        await mcp.call("chrome_tabs", { action: "navigate", tab: ht, url }); await sleep(800); await go().catch(() => {}); await sleep(800);
+        await mcp.call("chrome_eval", { tab: ht, expression: "(() => { const b = document.getElementById('apply-promo') || document.getElementById('apply-promo-v2'); if (b) { b.id = 'gone'; b.textContent = 'Removed'; } return true; })()" });
+        for (let i = 0; i < 4; i++) { let failed = false; try { await go(300); } catch { failed = true; } if (!failed) throw new Error("a button that is gone was found"); await flush(); await sleep(400); }
+        const after = rec();
+        if (!after || !after.qAt) throw new Error("repeated misses did not quarantine the control: " + JSON.stringify(after).slice(0, 300));
+        const card = store.get({ origin }).data;
+        if (card.origin && card.origin.controls.some((/** @type {any} */ c) => c.id === id)) throw new Error("the arrival card still offers a quarantined control");
+        writeConfig(data, { learn: false });
+        await mcp.call("chrome_site", { tab: ht }); // the next call tells the extension learning is off
+        return { id, learned: learned.selector.identifier, healedTo: healed.selector.identifier, conf: after.conf, misses: after.misses, quarantined: true };
       });
 
       // A script cannot write with the page's login by submitting a form either.

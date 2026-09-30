@@ -120,8 +120,13 @@ export default {
 
     /** Learning what each site looks like is OFF until the person turns it on (config learn, or the memory.site.learn setting), while the store's privacy review is open. */
     const learnOn = () => (typeof cfg.learn === "function" ? cfg.learn() : cfg.learn) === true;
+    /** How long a "visit" is, for the two-visit evidence: 30 minutes unless the person's config says otherwise (a test knob; a shorter window only makes "seen twice" come sooner). */
+    const visitMs = () => { const v = typeof cfg.learnVisitMs === "function" ? cfg.learnVisitMs() : cfg.learnVisitMs; return Number.isFinite(v) && v >= 1000 ? Math.round(v) : 30 * 60_000; };
+    let lastSiteConfig = "";
+    /** The extension learns only while the person's switch is on: tell it whenever the switch (or the window) changes, at its hello and at the next call after. */
+    const syncSiteConfig = () => { const c = JSON.stringify({ learn: learnOn(), visitMs: visitMs() }); if (c === lastSiteConfig) return; lastSiteConfig = c; void bridge.push({ event: "site.config", ...JSON.parse(c) }); };
     const off = bridge.on(e => {
-      if (e.event === "hello") { emit("chrome.connected", { version: e.version || null, browser: e.browser || null }); void bridge.push({ event: "site.config", learn: learnOn() }); }
+      if (e.event === "hello") { emit("chrome.connected", { version: e.version || null, browser: e.browser || null }); lastSiteConfig = ""; syncSiteConfig(); }
       else if (e.event === "disconnected") emit("chrome.disconnected", {});
       // A second connection took over from the live extension. A quiet notice for the panel to show
       // if it wants to, never a prompt: the person may simply have restarted Chrome.
@@ -261,6 +266,7 @@ export default {
         // Approvals never ride in args, at any depth (a batch step, a recipe, a flow): they are the host's, set below from the real caller.
         { const bad = trustKeyIn(args); if (bad) throw denied("bad_request", `arguments may not carry "${bad}": approvals come from the host, not from arguments`); }
         /** @type {any} */ const trust = {};
+        syncSiteConfig();
         const summary = summarize(op, input);
         /** @type {any} */
         let carry = {};
@@ -490,8 +496,8 @@ export default {
       obj({ action: { type: "string", enum: Object.keys(GHL_OPS) }, tab, section: str, locationId: str, landmark: str, via: { ...str, description: "For section: nav (default, click the left nav) or url." }, expect: { type: "object", description: "For save: {toast, listItem, status} to check besides the built-in evidence." }, name: str, identifier: str, flow: str, params: { type: "object" }, steps: { type: "array", items: { type: "object" } }, timeoutMs: timeout }, ["action"]),
       (i, m) => { const { action, ...rest } = i; return dispatch(/** @type {Record<string,string>} */ (GHL_OPS)[action], { ...rest, action }, m); });
     tool("chrome.site", "What Vyre for Chrome has learned about a site, from this device: the frame layout, stable controls, the site's own API endpoints, login signals. Structure only: never a value, token or personal data. Give a tab (default: the current one) or an origin.",
-      obj({ tab, origin: str }),
-      (i, m) => dispatch("site.card", { ...(i.tab !== undefined ? { tab: i.tab } : {}), ...(i.origin ? { origin: i.origin } : {}) }, m));
+      obj({ action: { type: "string", enum: ["card", "flush"], description: "flush: send what was learned now instead of in 10 seconds." }, tab, origin: str }),
+      (i, m) => dispatch(i.action === "flush" ? "site.flush" : "site.card", { ...(i.tab !== undefined ? { tab: i.tab } : {}), ...(i.origin ? { origin: i.origin } : {}) }, m));
     tool("chrome.recipe", "Replay a flow that already worked on this site as ONE call: no model turn between steps. list: the recipes for this tab's site (name, steps, parameters, runs, what they write). run: name the recipe and give its parameters; it runs as a normal batch (the stop switch, the URL floor, the send-hold and any plan approval all apply). A recipe is saved when chrome_batch is given saveAs and every step worked; what a person typed is never kept, only {parameters}. Recipes last until the browser closes unless learning is on.",
       obj({ action: { type: "string", enum: ["list", "run", "forget"] }, tab, name: str, params: { type: "object", description: "For run: a value for each parameter the recipe lists." }, timeoutMs: timeout }, ["action"]),
       (i, m) => dispatch(i.action === "run" ? "recipe.run" : i.action === "forget" ? "recipe.forget" : "recipe.list", { ...(i.tab !== undefined ? { tab: i.tab } : {}), ...(i.name ? { name: i.name } : {}), ...(i.params ? { params: i.params } : {}), timeoutMs: i.timeoutMs }, m));

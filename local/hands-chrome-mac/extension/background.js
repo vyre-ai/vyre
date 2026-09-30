@@ -131,7 +131,7 @@ export function start(chrome, opts = {}) {
       if (msg.event === "stop") { ctx.setStopped(true); void presence.state({ stopped: msg.via === "pause" ? "pause" : "stop" }); }
       else if (msg.event === "resume") { ctx.setStopped(false); void presence.state({ stopped: false }); }
       else if (msg.event === "presence") { await presence.state(msg); return; }
-      else if (msg.event === "site.config") { sites.setEnabled(msg.learn === true); return; }
+      else if (msg.event === "site.config") { sites.setEnabled(msg.learn === true); sites.setVisitMs(Number(msg.visitMs)); return; }
       else if (msg.event === "site.card") { await sites.setCard(String(msg.origin || ""), msg.card, Number(msg.rev)); return; }
       await deliver(msg, ctx);
       return;
