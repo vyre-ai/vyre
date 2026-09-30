@@ -56,6 +56,14 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci --no-audit --no-fund
+      - name: TEMPORARY triage of the excluded files (removed next commit)
+        shell: pwsh
+        continue-on-error: true
+        run: |
+          foreach ($f in "core/config/claude-home.test.js","core/config/config.test.js","core/vyre-core/release.test.js","relay/client/nodecrypto.test.js","core/cli/commands/up.test.js","local/voice/talk.test.js","local/voice/voice.test.js","test/docs-check.test.js","test/docs-index.test.js","core/cli/commands/box.test.js") {
+            "=== $f"
+            node --test --test-force-exit --test-timeout=60000 --test-reporter=tap $f 2>&1 | Select-String -Pattern "^\s*not ok |^\s+(error|expected|actual): " | ForEach-Object { $t=$_.Line.Trim(); "  " + $t.Substring(0,[Math]::Min(170,$t.Length)) }
+          }
       - run: npm run test:windows
   # Windows LOW (security review, ADR 0037): the local vyred socket's privacy, verified on a real
   # windows-latest runner rather than hardware. Not continue-on-error: the lead's call was that
