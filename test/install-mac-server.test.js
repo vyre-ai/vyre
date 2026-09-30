@@ -4,7 +4,7 @@
 // caffeinate with the env file's lines exported, and uninstall leaves the person's data. The default
 // (system service) mode runs the root installer under one fake sudo. All against a
 // fake launchctl, caffeinate, brew and colima in a temp home: no real service, no Homebrew, no root.
-import { test } from "node:test";
+import { test, after } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import os from "node:os";
@@ -12,17 +12,25 @@ import path from "node:path";
 import crypto from "node:crypto";
 import { spawnSync, execFileSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
+import { reap, processesWith } from "./reap.mjs";
 
 const REPO = fileURLToPath(new URL("..", import.meta.url));
 const SCRIPT = path.join(REPO, "scripts", "install-mac-server.sh");
 const CODE = "A".repeat(20) + "b-_" + "Z".repeat(20);
 
+/** Every temp folder this run made: the final check looks only for processes naming one of these, never another run's. */
+const BASES = /** @type {string[]} */ ([]);
+
 /** A temp home with stub launchctl (runs the wrapper for real, like launchd), caffeinate, brew and colima, and a tiny fake vyred to install. */
 function mac(/** @type {import("node:test").TestContext} */ t) {
   const base = fs.mkdtempSync(path.join(os.tmpdir(), "vyre-mac-"));
   const pids = path.join(base, "pids");
+  BASES.push(base);
   t.after(() => {
     try { for (const p of fs.readFileSync(pids, "utf8").split("\n").filter(Boolean)) { try { process.kill(Number(p)); } catch {} } } catch {}
+    // Whatever else the fake launchctl, the fake root installer or the script started: anything whose
+    // command line names this test's own folder, by group and by pid, on success, failure and timeout.
+    reap(base);
     fs.rmSync(base, { recursive: true, force: true });
   });
   const bin = path.join(base, "bin"), log = path.join(base, "calls.log"), home = path.join(base, "home");
@@ -527,5 +535,14 @@ test("install-mac-server.sh: the enrolment code never reaches this script; the r
     assert.equal(r.status, 0, r.stderr + r.stdout);
     assert.match(r.stdout, re, status);
     assert.ok(!/VYRE_CORE_/.test(r.stdout), "the status line is consumed, not echoed");
+  }
+});
+
+// The file's last word: no process of any test in it may survive (a leaked daemon is a failure, not a chore).
+after(() => {
+  const left = BASES.flatMap(b => processesWith(b));
+  if (left.length) {
+    for (const b of BASES) reap(b);
+    assert.fail(`${left.length} process(es) from these tests were still running: ${left.map(p => p.pid).join(", ")}`);
   }
 });
