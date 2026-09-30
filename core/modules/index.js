@@ -525,7 +525,7 @@ export class Registry {
       }
       if (f.problems.length) {
         const error = f.problems.join("; ");
-        // An invalid copy never takes the row of a module already loaded under its name (a first party one, on or off).
+        // An invalid copy never takes the row of a module already loaded under its name, and one that shares a shipped module's name never gets here in any order (the shipped-names rule above).
         this.modules.set(name && !this.modules.has(name) ? name : name ? `${name}@${f.dir}` : f.dir, { manifest: f.manifest, dir: f.dir, state: "invalid", error });
         this.deps.log(`warn: module ${name || f.dir} invalid: ${error}`);
         continue;

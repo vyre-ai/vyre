@@ -739,6 +739,21 @@ test("modules: an added module can never take the name of a first party module, 
   assert.equal(reg2.modules.get("names").state, "off", "the imposter found first still does not take the name");
 });
 
+test("modules: an invalid added copy found first never stops the first party module of that name from loading", async t => {
+  const home = tempHome(t);
+  const own = path.join(home, "own"), added = path.join(home, "added");
+  writeModule(own, "gate", { version: "0.1.0", roles: ["local"], does: { tools: ["gate.ping"] } }, `export default { async start(ctx) { ctx.tool("gate.ping", { run: async () => "first party" }); return {}; } };`);
+  // Broken on purpose: a setting that does not carry the module's name.
+  writeModule(added, "gate", { name: "gate", version: "0.1.0", roles: ["local"], does: { tools: ["gate.ping"] }, settings: [{ key: "bakery.target", label: "x", type: "int", default: 1, levels: ["account"], apply: "live" }] }, `export default { async start() { return {}; } };`);
+  const db = open(path.join(home, "vyre.db"));
+  t.after(() => db.close());
+  const reg = new Registry({ db, events: new Events(db), config: { role: "local" }, log: () => {}, firstPartyRoots: [own] });
+  await reg.start([...discover([added]), ...discover([own], { firstPartyRoots: [own] })], { role: "local" });
+  assert.equal(reg.modules.get("gate").state, "running", reg.modules.get("gate").error);
+  assert.equal((await reg.call("gate.ping", {}, "cli")).data, "first party");
+  assert.ok([...reg.modules.keys()].some(k => k.startsWith("gate@")), "the broken copy is reported under name@dir");
+});
+
 test("modules v1: a required module below the range keeps the module from starting", async t => {
   const reg = await registry(t, [["bakery", { ...bakeryV1(), requires: { notes: ">=0.2.0" } }, bakerySrc], ["notes", good, notesSrc]]);
   assert.equal(reg.modules.get("bakery").state, "failed");
