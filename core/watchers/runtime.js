@@ -90,6 +90,11 @@ export const MIGRATIONS = [`
  *   listen?: (type: string, fn: (event: any) => void) => (() => void) }} Deps
  */
 
+/** A watcher name is checked before it is ever joined into a path or looked up. */
+function mustName(name) {
+  if (!folder.NAME.test(String(name || "")) || String(name).length > 60) throw Object.assign(new Error(`"${String(name).slice(0, 60)}" is not a watcher name`), { code: "bad_input" });
+}
+
 export class Runtime {
   /** @param {Deps} deps */
   constructor(deps) {
@@ -218,6 +223,7 @@ export class Runtime {
 
   /** Change a duty's trigger, words or act flag. It keeps its cursor and whether it is on or paused. */
   async updateDuty(d) {
+    mustName(d.name);
     const r = this.row(d.name);
     const cur = this.spec(d.name).spec;
     if (!r || !cur.owner) throw Object.assign(new Error(`${d.name} is not a duty`), { code: "not_found" });
@@ -230,6 +236,11 @@ export class Runtime {
   }
 
   writeDuty(d) {
+    mustName(d.name);
+    const bad = [];
+    folder.checkOwner(d.owner, bad);
+    if (bad.length) throw new Error(bad.join("; "));
+    if (typeof d.project !== "string" || !d.project.trim()) throw new Error("a duty needs project");
     const cur = d.current || {};
     const when = String(d.when === undefined ? cur.when : d.when);
     const t = parseWhen(when);
@@ -244,6 +255,7 @@ export class Runtime {
 
   /** Stop and forget a watcher. A duty's folder goes too; its filed items stay, as history. */
   remove(name) {
+    mustName(name);
     const r = this.row(name);
     const f = folder.read(this.d.dir, name);
     if (!r && !f.hash) throw Object.assign(new Error(`no watcher ${name}`), { code: "not_found" });
@@ -255,6 +267,7 @@ export class Runtime {
 
   /** Run a turned-on watcher now and say what happened. */
   async run(name) {
+    mustName(name);
     const r = this.row(name);
     if (!r || !r.enabled || r.paused) throw Object.assign(new Error(`${name} is not on`), { code: "denied" });
     await this.kick(name, "run");

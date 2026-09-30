@@ -95,7 +95,7 @@ function check(raw, name, problems) {
 }
 
 /** @returns {Spec["owner"]} */
-function checkOwner(owner, problems) {
+export function checkOwner(owner, problems) {
   if (owner === undefined) return null;
   const o = /** @type {any} */ (owner);
   if (!o || o.kind !== "teammate" || typeof o.teammate !== "string" || !/^[a-z][a-z0-9-]{0,80}$/.test(o.teammate) || Object.keys(o).some(k => k !== "kind" && k !== "teammate")) {

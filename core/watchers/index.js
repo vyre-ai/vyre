@@ -21,6 +21,12 @@ const TICK_MS = 60_000;
 
 const str = { type: "string" };
 
+/** Deleting or running a watcher on demand: a duty by teammates' module or the person, any other only by the person. */
+function owned(name, caller) {
+  if (DUTY_NAME.test(String(name))) return dutyCaller(caller);
+  if (!isPerson(caller)) throw Object.assign(new Error("deleting or running a watcher on demand is the person's; an agent asks them"), { code: "denied" });
+}
+
 /** Duties are made and changed by teammates' module, for a person who turned them on, or by the person. */
 function dutyCaller(caller) {
   if (caller === "module:team" || isPerson(caller)) return;
@@ -72,8 +78,8 @@ export default {
       input: { type: "object", required: ["name"], properties: { name: str, when: str, instruction: str, act: { type: "boolean" } } },
       run: async (i, { caller } = {}) => { dutyCaller(caller); return rt.updateDuty(i); },
     });
-    ctx.tool("watchers.delete", { description: "Stop and forget a watcher; a duty's folder goes too and its filed items stay.", input: named, run: async ({ name }, { caller } = {}) => { if (DUTY_NAME.test(name)) dutyCaller(caller); return rt.remove(name); } });
-    ctx.tool("watchers.run", { description: "Run a turned-on watcher now and return what happened.", input: named, run: async ({ name }) => rt.run(name) });
+    ctx.tool("watchers.delete", { description: "Stop and forget a watcher; a duty's folder goes too and its filed items stay.", input: named, run: async ({ name }, { caller } = {}) => { owned(name, caller); return rt.remove(name); } });
+    ctx.tool("watchers.run", { description: "Run a turned-on watcher now and return what happened.", input: named, run: async ({ name }, { caller } = {}) => { owned(name, caller); return rt.run(name); } });
     ctx.tool("watchers.pause", { description: "Stop a watcher running until it is resumed.", input: named, run: async ({ name }) => rt.pause(name) });
     ctx.tool("watchers.resume", { description: "Resume a paused watcher, clearing its failure count.", input: named, run: async ({ name }) => rt.resume(name) });
     ctx.tool("watchers.logs", {

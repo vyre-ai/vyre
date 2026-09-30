@@ -384,3 +384,14 @@ test("watchers: a duty is a teammate-owned watcher folder written from plain wor
   await assert.rejects(rt.createDuty({ name: "duty-r-bad", project: "harlow-legal", owner: { kind: "teammate", teammate: "r-p" }, when: "whenever", instruction: "x" }), /trigger/);
   assert.equal(fs.existsSync(path.join(dir, "duty-r-bad")), false, "a trigger that cannot be read leaves no folder behind");
 });
+
+test("watchers: names are checked before any path is built, and a bad owner leaves no folder", async t => {
+  const { rt, dir } = setup(t);
+  for (const bad of ["../x", "a/b", "", "Duty-X"]) {
+    await assert.rejects(rt.updateDuty({ name: bad, when: "hourly", instruction: "x" }), /not a watcher name/);
+    assert.throws(() => rt.remove(bad), /not a watcher name/);
+    await assert.rejects(rt.run(bad), /not a watcher name/);
+  }
+  await assert.rejects(rt.createDuty({ name: "duty-r-x", project: "harlow-legal", owner: { kind: "person" }, when: "hourly", instruction: "x" }), /owner is/);
+  assert.equal(fs.existsSync(path.join(dir, "duty-r-x")), false);
+});
