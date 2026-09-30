@@ -46,7 +46,7 @@ function world(t, { rows = null, tty = false, answers = [], restart = { ok: true
 
 /** A module folder outside the home, from the sample world. */
 function bakery(root, manifest = {}, source = "export default { async start(ctx) { return { async stop() {} }; } };\n") {
-  const dir = writeModule(root, "bakery", { apiVersion: 1, does: { tools: ["bakery.orders"] }, watches: { emits: ["bakery.ordered"] }, ...manifest }, source);
+  const dir = writeModule(root, "bakery", { apiVersion: 1, description: "Northwind Bakery's orders.", does: { tools: [{ name: "bakery.orders", summary: "list today's orders" }] }, watches: { emits: ["bakery.ordered"] }, ...manifest }, source);
   fs.writeFileSync(path.join(dir, "package.json"), JSON.stringify({ type: "module" }));
   return dir;
 }
@@ -95,7 +95,7 @@ test("new writes the files, they pass check, and their own test passes", async t
   for (const f of ["module.json", "index.js", "bake.test.js", "README.md", "package.json"]) assert.ok(fs.existsSync(path.join(dir, f)), f);
   const m = JSON.parse(fs.readFileSync(path.join(dir, "module.json"), "utf8"));
   assert.deepEqual({ name: m.name, version: m.version, apiVersion: m.apiVersion, roles: m.roles, does: m.does, watches: m.watches },
-    { name: "bake", version: "0.1.0", apiVersion: 1, roles: ["box", "local"], does: { tools: ["bake.hello"] }, watches: { emits: ["bake.said"] } });
+    { name: "bake", version: "0.1.0", apiVersion: 1, roles: ["box", "local"], does: { tools: [{ name: "bake.hello", summary: "say hello", reach: "anyone" }] }, watches: { emits: ["bake.said"] } });
   assert.match(text(c), /vyre module check/);
   assert.match(text(c), /vyre down && vyre up/);
   assert.match(text(c), /vyre call bake\.hello/);
@@ -217,7 +217,7 @@ test("check --json is { ok, module, problems } with exit 0 clean and 1 with prob
 test("add from a folder: checks, copies without .git, restarts once, reports the state", async t => {
   const w = world(t, { rows: () => [{ name: "bakery", version: "0.1.0", state: "running" }] });
   const c = capture(t);
-  const src = bakery(path.join(w.home, "src"), { needs: { vault: ["bakery-api"], network: ["orders.example.com"] } });
+  const src = bakery(path.join(w.home, "src"), { needs: { credentials: [{ id: "supplier", kind: "api-credential", provider: "flourco", purpose: "place flour orders" }], network: ["orders.example.com"] } });
   fs.mkdirSync(path.join(src, ".git"));
   fs.writeFileSync(path.join(src, ".git", "HEAD"), "ref: refs/heads/main\n");
   fs.symlinkSync("/etc", path.join(src, "elsewhere"));
@@ -229,7 +229,7 @@ test("add from a folder: checks, copies without .git, restarts once, reports the
   assert.ok(!fs.lstatSync(dest).isSymbolicLink(), "a copy, not a link");
   assert.equal(w.calls.restart, 1);
   assert.match(text(c), /Tools\s+bakery\.orders/);
-  assert.match(text(c), /Vault items\s+bakery-api/);
+  assert.match(text(c), /Credentials\s+supplier \(place flour orders\)/);
   assert.match(text(c), /Network\s+orders\.example\.com/);
   assert.match(text(c), /add only code you trust/);
   assert.match(text(c), /running/);
@@ -290,10 +290,10 @@ test("add refuses a failing module, a name that is there, a shipped name, and as
   assert.equal(tty.calls.restart, 1, "restarted only for the one that went in");
 
   // A shipped name: refused without replaces, and replaces needs --yes.
-  const shipped = writeModule(path.join(w.home, "shipped"), "commands", { apiVersion: 1, does: { tools: ["commands.list"] } }, "export default {};\n");
+  const shipped = writeModule(path.join(w.home, "shipped"), "commands", { apiVersion: 1, description: "A stand-in for commands.", does: { tools: [{ name: "commands.list" }] } }, "export default {};\n");
   assert.equal(await moduleCommand(["add", shipped, "--yes"], w.deps), EXIT.FAILED);
   assert.match(text(c), /one of Vyre's own modules/);
-  const replacing = writeModule(path.join(w.home, "replacing"), "commands", { apiVersion: 1, replaces: "commands", does: { tools: ["commands.list"] } }, "export default {};\n");
+  const replacing = writeModule(path.join(w.home, "replacing"), "commands", { apiVersion: 1, description: "A stand-in for commands.", replaces: "commands", does: { tools: [{ name: "commands.list" }] } }, "export default {};\n");
   assert.equal(await moduleCommand(["add", replacing], w.deps), EXIT.USAGE);
   assert.match(text(c), /needs your explicit yes/);
   assert.equal(await moduleCommand(["add", replacing, "--yes"], w.deps), EXIT.OK);

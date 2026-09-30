@@ -1,16 +1,28 @@
 // @ts-check
-// Check a module.json against the module API (ADR 0033), with no dependencies.
+// Check a module.json against module API 1 (ADR 0033, frozen by ADR 0047), with no dependencies.
 //
 // manifest.schema.json is the one definition of the manifest. checkSchema() is a small JSON Schema
 // checker for the parts that schema uses (type, enum, pattern, properties, $ref and a few more),
 // so a module author, `vyre module check` and the loader all give the same answer without pulling
 // in a validator. checkManifest() adds the rules a schema can't say: a module's tools, settings,
-// hooks and commands carry its own name.
+// hooks and commands carry its own name, and an added module (one from outside the repo) keeps
+// to the stricter half of ADR 0047: object tool entries, no person reach, no built in only keys.
+//
+// toolEntries(), capabilities() and widened() read what a module may do from the manifest alone,
+// so the install card, the capability manifest and the loader can't disagree (ADR 0047 section 2:
+// there is no hand-written capabilities key).
 
 import fs from "node:fs";
 
 /** The module API majors this Vyre loads. */
 export const API_VERSIONS = [1];
+
+/** Who may call a tool (ADR 0047 section 2). anyone is the default. */
+export const REACHES = ["anyone", "asked", "person", "modules", "hook"];
+/** The reaches an outward tool may have: only a person or an asking agent can start one. */
+const OUTWARD_REACH = ["anyone", "asked"];
+/** Manifest keys only Vyre's own modules may use in 0.2, each with where it lives. */
+const BUILT_IN_ONLY = [["does", "providers"], ["shows", "streams"], ["needs", "vault"]];
 
 /** @type {any} */
 export const SCHEMA = JSON.parse(fs.readFileSync(new URL("./manifest.schema.json", import.meta.url), "utf8"));
@@ -44,7 +56,10 @@ export function checkSchema(schema, value, where = "manifest", root = schema) {
   if (schema.anyOf) {
     const tries = schema.anyOf.map((/** @type {any} */ s) => checkSchema(s, value, where, root));
     if (tries.some((/** @type {string[]} */ t) => t.length === 0)) return [];
-    return tries.reduce((/** @type {string[]} */ a, /** @type {string[]} */ b) => (b.length < a.length ? b : a));
+    // A branch of the value's own type says more than "must be string": an object tool entry
+    // missing its name should say so, not that it isn't a name.
+    const typed = tries.filter((/** @type {string[]} */ t) => !(t.length === 1 && t[0].startsWith(`${where} must be `) && /must be (object|array|string|number|integer|boolean|null)( or \w+)*$/.test(t[0])));
+    return (typed.length ? typed : tries).reduce((/** @type {string[]} */ a, /** @type {string[]} */ b) => (b.length < a.length ? b : a));
   }
   if (schema.type) {
     const types = Array.isArray(schema.type) ? schema.type : [schema.type];
@@ -101,8 +116,33 @@ export function checkManifest(m, { firstParty = false } = {}) {
   if (!TYPES.object(m) || typeof m.name !== "string") return out;
   const own = (/** @type {string} */ t) => t.startsWith(m.name + ".");
   const does = TYPES.object(m.does) ? m.does : {};
-  const tools = Array.isArray(does.tools) ? does.tools : [];
-  for (const t of tools) if (typeof t === "string" && !own(t)) out.push(`tool "${t}" must start with "${m.name}."`);
+  const entries = Array.isArray(does.tools) ? does.tools : [];
+  /** Every tool name, from either form: what the rest of the manifest may map to. */
+  const tools = [];
+  for (const t of entries) {
+    const name = typeof t === "string" ? t : TYPES.object(t) && typeof t.name === "string" ? t.name : null;
+    if (name === null) continue;
+    if (!own(name)) out.push(`tool "${name}" must start with "${m.name}."`);
+    else if (tools.includes(name)) out.push(`tool "${name}" is declared twice`);
+    tools.push(name);
+  }
+  // An added module (ADR 0047): everything the install card shows is declared, and nothing reaches
+  // past what a sandboxed host can offer in 0.2.
+  if (!firstParty) {
+    if (m.apiVersion === undefined) out.push(`apiVersion is required outside Vyre's own modules; add "apiVersion": ${API_VERSIONS[API_VERSIONS.length - 1]}`);
+    if (m.description === undefined) out.push("description is required outside Vyre's own modules: one plain sentence for the install card");
+    for (const t of entries) {
+      if (typeof t === "string") { out.push(`tool "${t}" must be an object like { "name": "${t}", "summary": "...", "reach": "anyone" } in an added module`); continue; }
+      if (!TYPES.object(t) || typeof t.name !== "string") continue;
+      if (t.reach === "person") out.push(`tool "${t.name}": reach "person" is kept for Vyre's own tools; use "asked", which an agent reaches only when the person's own words asked for it`);
+      if (t.outward !== undefined && !OUTWARD_REACH.includes(t.reach || "anyone")) out.push(`tool "${t.name}": an outward tool must have reach "anyone" or "asked", not "${t.reach}"`);
+    }
+    for (const [block, key] of BUILT_IN_ONLY) {
+      const v = TYPES.object(m[block]) ? m[block][key] : undefined;
+      if (Array.isArray(v) ? v.length : v !== undefined) out.push(`${block}.${key} is built in only in 0.2; an added module can't use it`);
+    }
+    if (Array.isArray(m.roles) && m.roles.length && m.roles.every((/** @type {string} */ r) => r === "windows")) out.push(`roles ["windows"] loads nowhere in 0.2: only the Mac has a local node yet; add "mac" or "box"`);
+  }
   // Everything a manifest maps to a tool must be one this module registers itself.
   /** @type {[string, any][]} */
   const mapped = [
@@ -149,5 +189,82 @@ export function checkManifest(m, { firstParty = false } = {}) {
   // A replacement registers the original's tools, so it carries the original's name; replaces
   // says so out loud, since a duplicate name without it is refused.
   if (typeof m.replaces === "string" && m.replaces !== m.name) out.push(`replaces is "${m.replaces}" but the module is named "${m.name}"; a replacement takes the name of the module it replaces`);
+  return out;
+}
+
+// ---------------------------------------------------------------------------------------------
+// What a module may do, read from its manifest alone (ADR 0047 sections 2, 4 and 6)
+
+/**
+ * Every tool entry in one shape. A string entry is the built in grace form, so its reach is
+ * anyone and it acts as no one outside.
+ * @param {any} m
+ * @returns {{ name: string, summary: string, reach: string, outward: string | null, cost: string | null }[]}
+ */
+export function toolEntries(m) {
+  const list = TYPES.object(m) && TYPES.object(m.does) && Array.isArray(m.does.tools) ? m.does.tools : [];
+  return list.flatMap((/** @type {any} */ t) => {
+    if (typeof t === "string") return [{ name: t, summary: "", reach: "anyone", outward: null, cost: null }];
+    if (!TYPES.object(t) || typeof t.name !== "string") return [];
+    return [{ name: t.name, summary: typeof t.summary === "string" ? t.summary : "", reach: t.reach || "anyone", outward: t.outward || null, cost: t.cost || null }];
+  });
+}
+
+/**
+ * The install card's summary, computed from the manifest: never from a module's own words about
+ * itself. Outward tools are listed apart, since those are the ones that act as the person.
+ * @param {any} m
+ */
+export function capabilities(m) {
+  const does = TYPES.object(m && m.does) ? m.does : {};
+  const needs = TYPES.object(m && m.needs) ? m.needs : {};
+  const shows = TYPES.object(m && m.shows) ? m.shows : {};
+  const teaches = TYPES.object(m && m.teaches) ? m.teaches : {};
+  const list = (/** @type {any} */ v) => (Array.isArray(v) ? v : []);
+  /** @type {Record<string, { tool: string, summary: string, cost?: string }[]>} */
+  const tools = Object.fromEntries(REACHES.map(r => [r, []]));
+  /** @type {{ tool: string, kind: string, summary: string, reach: string, cost?: string }[]} */
+  const outward = [];
+  for (const t of toolEntries(m)) {
+    const cost = t.cost ? { cost: t.cost } : {};
+    if (t.outward) outward.push({ tool: t.name, kind: t.outward, summary: t.summary, reach: t.reach, ...cost });
+    else (tools[t.reach] || (tools[t.reach] = [])).push({ tool: t.name, summary: t.summary, ...cost });
+  }
+  const called = list(needs.tools);
+  return {
+    tools, outward,
+    hosts: [...list(needs.network)],
+    credentials: list(needs.credentials).filter(TYPES.object).map((/** @type {any} */ c) => ({ id: c.id, kind: c.kind, provider: c.provider, purpose: c.purpose })),
+    connections: list(needs.connections).filter(TYPES.object).map((/** @type {any} */ c) => ({ provider: c.provider, purpose: c.purpose })),
+    spend: TYPES.object(needs.spend) && TYPES.number(needs.spend.dailyUsd) ? { dailyUsd: needs.spend.dailyUsd } : null,
+    slots: [...list(shows.deck), ...list(does.commands).filter(TYPES.object).map((/** @type {any} */ c) => `command:${c.verb}`)],
+    memory: { kinds: [...list(teaches.memory)], writes: called.includes("memory.write") || called.includes("memory.*") },
+    runs: Array.isArray(m && m.roles) && m.roles.length ? [...m.roles] : ["box"],
+  };
+}
+
+/**
+ * What an update adds that the person hasn't granted: a new outward tool, host, credential,
+ * connection or asked tool, or a higher spend cap. Empty means it installs quietly (ADR 0047
+ * section 6); anything else shows the card again with only these lines.
+ * @param {ReturnType<typeof capabilities>} before
+ * @param {ReturnType<typeof capabilities>} after
+ * @returns {{ kind: "outward" | "host" | "credential" | "connection" | "asked" | "spend", what: string, from?: number | null, to?: number }[]}
+ */
+export function widened(before, after) {
+  /** @type {ReturnType<typeof widened>} */
+  const out = [];
+  const had = (/** @type {string[]} */ xs, /** @type {string} */ x) => xs.includes(x);
+  const outBefore = before.outward.map(o => `${o.tool}:${o.kind}`);
+  for (const o of after.outward) if (!had(outBefore, `${o.tool}:${o.kind}`)) out.push({ kind: "outward", what: `${o.tool} (${o.kind})` });
+  for (const h of after.hosts) if (!had(before.hosts, h)) out.push({ kind: "host", what: h });
+  const credBefore = before.credentials.map(c => `${c.id}:${c.provider}`);
+  for (const c of after.credentials) if (!had(credBefore, `${c.id}:${c.provider}`)) out.push({ kind: "credential", what: `${c.id} (${c.provider})` });
+  const connBefore = before.connections.map(c => c.provider);
+  for (const c of after.connections) if (!had(connBefore, c.provider)) out.push({ kind: "connection", what: c.provider });
+  const askedBefore = (before.tools.asked || []).map(t => t.tool);
+  for (const t of after.tools.asked || []) if (!had(askedBefore, t.tool)) out.push({ kind: "asked", what: t.tool });
+  const from = before.spend ? before.spend.dailyUsd : null, to = after.spend ? after.spend.dailyUsd : null;
+  if (to !== null && (from === null || to > from)) out.push({ kind: "spend", what: `up to $${to.toFixed(2)} a day`, from, to });
   return out;
 }

@@ -28,7 +28,7 @@ import * as config from "../../config/index.js";
 import { REPO } from "../../daemon/index.js";
 import { request } from "../../daemon/client.js";
 import { discover, validate } from "../../modules/index.js";
-import { checkManifest, API_VERSIONS, SCHEMA } from "../../../packages/module-sdk/manifest.js";
+import { checkManifest, SCHEMA, toolEntries } from "../../../packages/module-sdk/manifest.js";
 import { stop, ensureUp } from "../daemonctl.js";
 import { health, waitFor, terminal } from "./up.js";
 import { out, dim, bold, signal, beacon } from "../style.js";
@@ -111,6 +111,9 @@ const firstPartyDir = (repo, dir) => SHIPPED.some(d => path.resolve(dir).startsW
 // ---------------------------------------------------------------------------------------------
 // check
 
+/** The manifest with does.tools as names, the shape core/modules validate() reads. @param {any} m */
+const namesOnly = m => (m && m.does && Array.isArray(m.does.tools) ? { ...m, does: { ...m.does, tools: toolEntries(m).map(t => t.name) } } : m);
+
 /** `node --check <file>`: resolves to the first line that says what is wrong, or "" when it reads. */
 function syntaxOf(node, file) {
   return new Promise(resolve => {
@@ -143,11 +146,10 @@ export async function checkModule(dir, { repo, node, firstParty = firstPartyDir(
   }
   const name = m && typeof m.name === "string" ? m.name : null;
   if (m) {
-    const schema = checkManifest(m, { firstParty });
-    // ADR 0033: a module from outside Vyre says which module API it is written for.
-    if (!firstParty && m.apiVersion === undefined) schema.push(`apiVersion is required outside Vyre's own modules; add "apiVersion": ${API_VERSIONS[API_VERSIONS.length - 1]}`);
-    add("schema", "matches the module API schema", schema);
-    add("loader", "passes the loader's rules", validate(m, { firstParty }));
+    // The SDK's checker holds an added module to ADR 0047 (apiVersion, object tool entries, reach).
+    add("schema", "matches the module API schema", checkManifest(m, { firstParty }));
+    // The loader reads tool names; an object entry (module API 1, ADR 0047) is its name to it.
+    add("loader", "passes the loader's rules", validate(namesOnly(m), { firstParty }));
     const main = typeof m.main === "string" && m.main ? m.main : "index.js";
     const entry = path.resolve(dir, main);
     const inside = entry.startsWith(path.resolve(dir) + path.sep);
@@ -204,7 +206,7 @@ export function scaffold(name) {
     name, version: "0.1.0", apiVersion: 1,
     description: `A module made with vyre module new. It says hello.`,
     roles: ["box", "local"],
-    does: { tools: [tool] },
+    does: { tools: [{ name: tool, summary: "say hello", reach: "anyone" }] },
     watches: { emits: [event] },
   };
   return {
@@ -393,7 +395,7 @@ function summary(m) {
   const creds = Array.isArray(needs.credentials) ? needs.credentials.map(c => `${c.id} (${c.purpose})`) : [];
   return [
     { label: "Module", value: `${m.name} ${m.version}` },
-    { label: "Tools", value: list(m.does && m.does.tools) },
+    { label: "Tools", value: list(toolEntries(m).map(t => t.name)) },
     { label: "Emits", value: list(m.watches && m.watches.emits) },
     { label: "Vault items", value: list(needs.vault) },
     { label: "Network", value: list(needs.network) },

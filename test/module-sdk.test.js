@@ -24,7 +24,7 @@ const manifests = () => ["core", "local", "modules"].flatMap(root => {
 
 /** A module that uses every key in module API 1, from the sample world. */
 const full = () => ({
-  $schema: "https://docs.vyre.run/schema/module.json",
+  $schema: "https://vyre.run/schema/module-1.json",
   name: "bakery", version: "0.1.0", apiVersion: 1, description: "Northwind Bakery's orders.", main: "index.js",
   roles: ["box"], requires: { projects: ">=0.1" },
   does: {
@@ -65,13 +65,15 @@ test("module sdk: the schema and the loader agree on the repo's manifests", () =
   for (const { file, m } of manifests()) assert.deepEqual(validate(m, { firstParty: true }), [], file);
 });
 
-test("module sdk: a manifest using every module API 1 key passes", () => {
-  assert.deepEqual(checkManifest(full()), []);
+test("module sdk: a manifest using every module API 1 key passes as one of Vyre's own", () => {
+  // providers, streams, needs.vault and string tool entries are built in only (ADR 0047);
+  // test/module-sdk-v1.test.js holds an added module to the rest.
+  assert.deepEqual(checkManifest(full(), { firstParty: true }), []);
   assert.deepEqual(API_VERSIONS, [1]);
 });
 
 test("module sdk: the checker refuses with a reason a person can act on", () => {
-  const bad = (/** @type {(m: any) => void} */ edit) => { const m = full(); edit(m); return checkManifest(m); };
+  const bad = (/** @type {(m: any) => void} */ edit, firstParty = true) => { const m = full(); edit(m); return checkManifest(m, { firstParty }); };
   const has = (/** @type {string[]} */ problems, /** @type {RegExp} */ re) => assert.ok(problems.some(p => re.test(p)), `${re} not in ${JSON.stringify(problems)}`);
 
   has(bad(m => { m.name = "Bakery"; }), /manifest\.name must be lowercase letters, digits and dashes/);
@@ -97,9 +99,9 @@ test("module sdk: the checker refuses with a reason a person can act on", () => 
   has(bad(m => { m.settings[1].store = { config: "a", claude: "b" }; }), /store/);
   has(bad(m => { m.settings[2].store.tool.set = {}; }), /set\.tool is required/);
   has(bad(m => { m.settings[0].security = "tightens"; }), /security must be one of loosens/);
-  has(bad(m => { m.settings[3].store = { claude: "permissions.allow" }; }), /only Vyre's own modules may keep a setting in Claude Code's files/);
-  has(bad(m => { m.settings[1].store = { config: "gate.approvers" }; }), /a config\.json path must start with "bakery\."/);
-  has(bad(m => { m.settings[2].store.tool.set.tool = "threads.answer"; }), /store\.tool\.set must be one of this module's own tools/);
+  has(bad(m => { m.settings[3].store = { claude: "permissions.allow" }; }, false), /only Vyre's own modules may keep a setting in Claude Code's files/);
+  has(bad(m => { m.settings[1].store = { config: "gate.approvers" }; }, false), /a config\.json path must start with "bakery\."/);
+  has(bad(m => { m.settings[2].store.tool.set.tool = "threads.answer"; }, false), /store\.tool\.set must be one of this module's own tools/);
   assert.deepEqual(checkManifest({ ...full(), settings: [{ key: "bakery.model", label: "Model", type: "model", levels: ["account"], apply: "session", store: { claude: "model" } }] }, { firstParty: true }), []);
   has(bad(m => { m.settings[0].apply = "never"; }), /apply must be one of live, session, restart/);
   has(bad(m => { m.replaces = "memory"; }), /a replacement takes the name of the module it replaces/);
@@ -124,7 +126,7 @@ test("module sdk: the checker refuses with a reason a person can act on", () => 
   has(bad(m => { m.teaches.tips[0].since = "soon"; }), /must be a version like 0\.1\.0/);
   has(bad(m => { delete m.teaches.tips[0].level; }), /tips\[0\]\.level is required/);
   has(bad(m => { m.teaches.tips.push({ ...m.teaches.tips[0] }); }), /tip "orders-today" is declared twice/);
-  has(bad(m => { m.roles = ["cloud"]; }), /roles\[0\] must be one of box, local/);
+  has(bad(m => { m.roles = ["cloud"]; }), /roles\[0\] must be one of box, local, mac, windows/);
   has(bad(m => { m.requires = "projects"; }), /requires must be/);
   assert.deepEqual(bad(m => { m.name = "memory"; m.replaces = "memory"; m.does = { tools: ["memory.answer"] }; m.settings = []; }), []);
 });
@@ -166,5 +168,5 @@ test("module sdk: the package ships only what it names, and its schema is the on
   const pkg = JSON.parse(fs.readFileSync(path.join(SDK, "package.json"), "utf8"));
   for (const f of pkg.files) assert.ok(fs.existsSync(path.join(SDK, f)), f);
   assert.equal(pkg.types, "index.d.ts");
-  assert.equal(SCHEMA.$id, "https://docs.vyre.run/schema/module.json");
+  assert.equal(SCHEMA.$id, "https://vyre.run/schema/module-1.json");
 });
