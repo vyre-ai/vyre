@@ -145,3 +145,13 @@ test("learning is off until the server says on: nothing is read, asked, queued, 
   c.setEnabled(false);
   assert.equal(c.card("https://app.gohighlevel.com"), null, "memory is cleared when it is turned off");
 });
+
+test("page paths and API paths are canonical before any lookup or send: only route words survive, a slug or a name is {id}", () => {
+  assert.equal(pageTemplate("https://crm.example.com/clients/jane-doe/notes"), "/clients/{id}/notes");
+  assert.equal(pageTemplate("https://crm.example.com/clients/robin-ellis/notes?x=1#y"), "/clients/{id}/notes", "a different person, the same template");
+  assert.equal(pageTemplate(GHL), "/v2/location/{id}/automation/workflows");
+  const e = { id: "e1", method: "GET", origin: "https://backend.leadconnectorhq.com", pathTemplate: "/contacts/jane-doe/tags", query: {}, authKind: "bearer", statuses: [200], count: 1 };
+  const a = observeOp({ op: "api.learn", tabUrl: GHL, result: { entries: [e, { ...e, id: "e2", pathTemplate: "not a path" }] } });
+  assert.equal(a && a.patch.api.length, 1);
+  assert.equal(a && a.patch.api[0].pathTemplate, "/contacts/{id}/tags");
+});

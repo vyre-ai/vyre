@@ -7,6 +7,7 @@
 // team/0.2/chrome-learning-plan.md, section 3 and 10.2.
 
 import { isGhlHost } from "../shared/ghlhosts.js";
+import { canonTemplate } from "../shared/sk/site-knowledge.js";
 
 /** Roles whose label is a fixed UI string, not a person's data. A link's label is not (a link can be "Robin Ellis"). */
 export const FIXED_UI_ROLES = new Set(["button", "tab", "menuitem", "checkbox", "radio", "switch", "menuitemcheckbox", "menuitemradio"]);
@@ -19,17 +20,15 @@ export function hash(s) {
   return (h >>> 0).toString(16).padStart(8, "0");
 }
 
-/** The shape of an id-like path segment: numeric, uuid, hex, or a long mixed token. @param {string} s */
-const looksLikeId = s => /^\d+$/.test(s) || /^[0-9a-f]{8}-?[0-9a-f]{4}-?[0-9a-f]{4}-?[0-9a-f]{4}-?[0-9a-f]{12}$/i.test(s) || /^[0-9a-f]{12,}$/i.test(s)
-  || (/^[A-Za-z0-9_-]{16,}$/.test(s) && !/^[a-z]+([-_][a-z]+)+$/.test(s) && (/\d/.test(s) || (/[a-z]/.test(s) && /[A-Z]/.test(s))));
-
-/** A page's path as a template: ids become {id}, no query, no fragment. "/v2/location/ab12.../automation/workflows/x" -> "/v2/location/{id}/automation/workflows/{id}". @param {string} url */
+/**
+ * A page's path as the store's own canonical template (canonTemplate): only known route words survive, every other segment (an id, a slug, a name) is {id}, {id2}, ...
+ * No query, no fragment. The same function runs on both sides, so a lookup and a stored page always agree. "/" when the path cannot be made one.
+ * @param {string} url
+ */
 export function pageTemplate(url) {
   let p = "/";
   try { p = new URL(url).pathname || "/"; } catch { return "/"; }
-  const segs = p.split("/").map(s => (!s ? s : looksLikeId(s) ? "{id}" : /^[A-Za-z0-9_.~:@=,+-]{1,48}$/.test(s) ? s : "{id}"));
-  const t = segs.join("/") || "/";
-  return t.length > 200 ? "/" : t;
+  return canonTemplate(p) || "/";
 }
 
 /** @param {string} url @returns {string} the origin, or "" for a page that is not http(s) */
@@ -87,7 +86,8 @@ export function observeOp(o) {
   }
 
   if (o.op === "api.learn" && Array.isArray(r.entries)) {
-    patch.api = r.entries.slice(0, 100).map((/** @type {any} */ e) => ({ ...e, outcome: "ok" }));
+    patch.api = r.entries.slice(0, 100).map((/** @type {any} */ e) => { const pt = canonTemplate(String(e && e.pathTemplate || "")); return pt ? { ...e, pathTemplate: pt, outcome: "ok" } : null; }).filter(Boolean);
+    if (!patch.api.length) delete patch.api;
   }
 
   if ((o.op === "frames.list" || o.op === "frames.probe") && Array.isArray(r.frames ?? r)) {
