@@ -12,7 +12,7 @@
       "github.project.pr.get", "github.project.pr.merge", "github.project.pr.review", "github.project.local-init"
     ]
   },
-  "watches": { "emits": ["github.added", "github.removed", "github.connected", "github.connect-failed", "github.cleanup-needed", "github.local-init", "github.session.undone", "github.token-invalid"] },
+  "watches": { "emits": ["github.added", "github.removed", "github.connected", "github.connect-failed", "github.cleanup-needed", "github.local-init", "github.undone", "github.token-invalid"] },
   "shows": {
     "deck": ["settings:connections"],
     "cli": ["connect"]

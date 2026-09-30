@@ -525,7 +525,7 @@ export default {
           }
         }
         const out = await sessionUndo({ repoDir: repo.home, session, defaultBranch: repo.defaultBranch, to: named(to) });
-        ctx.events.emit("github.session.undone", { project, session, undone: out.undone });
+        ctx.events.emit("github.undone", { project, session, undone: out.undone });
         return out;
       },
     });

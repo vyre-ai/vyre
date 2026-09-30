@@ -611,3 +611,9 @@ test("github.session.cleanup {deleted: true}: a deleted chat's commits and unsav
   assert.equal(r3.data.needsConfirm, true);
   assert.equal(fs.existsSync(path.join(wt3.path, ".env")), true);
 });
+
+test("module.json passes the registry's own validator as a first-party module (an event name it rejects makes vyred skip the whole module)", async () => {
+  const { validate } = await import("../modules/index.js");
+  const m = JSON.parse(fs.readFileSync(new URL("./module.json", import.meta.url), "utf8"));
+  assert.deepEqual(validate(m, { firstParty: true }), []);
+});

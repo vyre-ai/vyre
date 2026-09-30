@@ -903,134 +903,180 @@ An approved item whose send failed with its answer lost, found to have gone out 
 
 The GitHub accounts Vyre can use: name, login and avatar, never a token.
 
-- Input: not known. The module did not register this tool when started without a live box, so its schema could not be read.
-- Callers: any caller
+- Input: none
+- Callers: `capsule`, `cli`, `deck`, `local`
 
 ### `github.connect`
 
-No description.
+Start "Sign in with GitHub": a device-flow code. Returns { id, user_code, verification_uri, verification_uri_complete?, expires_in, interval }: show the code and open verification_uri (or verification_uri_complete on a phone). Vyre polls on its own until the person finishes or it expires; nothing else to call. Asks for the "repo" scope (full read/write on every repo the account can reach): GitHub's device flow has no narrower option; a later release moves to a GitHub App with per-repo access.
 
-- Input: not known. The module did not register this tool when started without a live box, so its schema could not be read.
-- Callers: any caller
+- Input:
+  - `name` string, required
+- Callers: `capsule`, `cli`, `deck`, `local`
 
 ### `github.connect.cancel`
 
 Cancel an open sign-in.
 
-- Input: not known. The module did not register this tool when started without a live box, so its schema could not be read.
-- Callers: any caller
+- Input:
+  - `id` string, required
+- Callers: `capsule`, `cli`, `deck`, `local`
 
 ### `github.project`
 
-No description.
+Make a BRAND-NEW project from a repo: clones it and creates the project, recording the repo as the project's primary GitHub repo (what a session's worktree is made from, ADR 0041 section 5). `repo` is owner/name or a full GitHub URL. `from_thread?` is an existing chat's id (a UUID, checked for shape and existence before anything is cloned), passed straight through to `projects.create` (which validates and normalises it again on its own side): the new project's avatar_seed becomes that chat's id and the chat is filed into it, so starting a GitHub project from a loose chat keeps its tile instead of getting a fresh one. If `projects.create` still fails after the clone, the clone is left exactly as it is (the user's binding no-auto-delete rule) and its path is in the error, for a person to use or remove by hand. To add a repo to a project that already exists instead, use github.project.add-repo.
 
-- Input: not known. The module did not register this tool when started without a live box, so its schema could not be read.
-- Callers: any caller
+- Input:
+  - `repo` string, required
+  - `account` string
+  - `from_thread` string
+  - `name` string
+- Callers: `capsule`, `cli`, `deck`, `local`
 
 ### `github.project.add-repo`
 
-No description.
+Add a GitHub repo to an EXISTING project as a brand-new workspace folder: clones it fresh under the projects folder and registers it through projects.add-workspace. Never touches the project's other folders. `repo` is owner/name or a full GitHub URL; `folder?` names the new folder (defaults to the repo's own name, a `-2`/`-3` suffix if that name is already taken). If `projects.add-workspace` fails after the clone, the clone is left exactly as it is (the user's binding no-auto-delete rule) and its path is in the error. This repo does not become the project's primary GitHub repo (that's set once, by github.project or the project's own first repo) - a session's worktree is still made from the primary repo; a worktree for an added repo is 0.1.2. People only, never a model.
 
-- Input: not known. The module did not register this tool when started without a live box, so its schema could not be read.
-- Callers: any caller
+- Input:
+  - `project` string, required
+  - `repo` string, required
+  - `account` string
+  - `folder` string
+- Callers: `capsule`, `cli`, `deck`, `local`
 
 ### `github.project.detect`
 
 Per workspace: for each folder a project owns (its home plus every workspace it was given), whether it's a git repo, its remotes, and for any remote that's a GitHub URL, owner/repo plus whether one of the connected accounts can reach it. Read-only: local-only git reads (no network git call, no token used for git), plus one GitHub REST call per distinct repo found across every remote, cached so the same repo is never checked twice. Changes nothing, needed whichever way the project/repo model lands.
 
-- Input: not known. The module did not register this tool when started without a live box, so its schema could not be read.
-- Callers: any caller
+- Input:
+  - `project` string, required
+- Callers: `capsule`, `cli`, `deck`, `local`
 
 ### `github.project.local-init`
 
-No description.
+Give a project undo and per-session isolation with no GitHub: make its folder a git repo (main, one starting commit, no remote) so each session gets its own worktree and branch. A folder that already has commits is left exactly as it is. Secret-looking files (.env, keys) are kept out of the starting commit and listed in left_out. Refuses a folder that sits inside another repo. People, their agents, and projects/sessions when they create one.
 
-- Input: not known. The module did not register this tool when started without a live box, so its schema could not be read.
-- Callers: any caller
+- Input:
+  - `project` string, required
+- Callers: `capsule`, `cli`, `deck`, `local`, `mcp`, `module`
 
 ### `github.project.of`
 
-No description.
+Which GitHub account and repo a project came from, or null.
 
-- Input: not known. The module did not register this tool when started without a live box, so its schema could not be read.
-- Callers: any caller
+- Input:
+  - `project` string, required
+- Callers: `capsule`, `cli`, `deck`, `local`, `module`
 
 ### `github.project.pr.get`
 
 A pull request on the project's primary repo, shaped for the Deck's PR review card (title, branch, checks, files with patches, comments). Comments and the body are outside text. Read only.
 
-- Input: not known. The module did not register this tool when started without a live box, so its schema could not be read.
-- Callers: any caller
+- Input:
+  - `pr` integer, required
+  - `project` string, required
+- Callers: `capsule`, `cli`, `deck`, `local`, `mcp`
 
 ### `github.project.pr.merge`
 
 Merge a pull request on the project's primary repo (merge, squash or rebase; default merge). Never deletes the branch. Outward: a person's own click runs it; an agent's call runs only when the person asked for it.
 
-- Input: not known. The module did not register this tool when started without a live box, so its schema could not be read.
-- Callers: any caller
+- Input:
+  - `pr` integer, required
+  - `project` string, required
+  - `method` string
+  - `thread` string
+- Callers: `capsule`, `cli`, `deck`, `local`, `mcp`
 
 ### `github.project.pr.review`
 
 Review a pull request on the project's primary repo: event APPROVE, REQUEST_CHANGES or COMMENT with a body, or a reply to one review comment (in_reply_to). Outward: a person's own click runs it; an agent's call runs only when the person asked for it.
 
-- Input: not known. The module did not register this tool when started without a live box, so its schema could not be read.
-- Callers: any caller
+- Input:
+  - `event` string, required
+  - `pr` integer, required
+  - `project` string, required
+  - `body` string
+  - `in_reply_to` integer
+  - `thread` string
+- Callers: `capsule`, `cli`, `deck`, `local`, `mcp`
 
 ### `github.remove`
 
 Disconnect a GitHub account: removes Vyre's own vault item and account row. Never revokes the token at GitHub (0.2, lead ruling 30 Sep): the sign-in shares GitHub CLI's own client id with every real `gh` install, so revoking it would sign the person's own gh out on every other machine and CI runner too. The token itself, and whether it still works elsewhere, stays the person's own business, at github.com/settings/applications if they ever want it gone entirely.
 
-- Input: not known. The module did not register this tool when started without a live box, so its schema could not be read.
-- Callers: any caller
+- Input:
+  - `name` string, required
+- Callers: `capsule`, `cli`, `deck`, `local`
 
 ### `github.repos`
 
-No description.
+The account's repos, for a picker: { repos: [{ full_name, name, owner, private, default_branch, description, updated_at, html_url }], page, limit, more }, never a clone URL with a token in it. Without q, page is GitHub's own paging (page 1, 2, ... at limit per page, newest-updated first). With q (matched against full_name and description), page/limit paginate the matches instead, since GitHub's own listing has no text search.
 
-- Input: not known. The module did not register this tool when started without a live box, so its schema could not be read.
-- Callers: any caller
+- Input:
+  - `account` string
+  - `limit` integer
+  - `page` integer
+  - `q` string
+- Callers: `capsule`, `cli`, `deck`, `local`, `module`
 
 ### `github.session.cleanup`
 
-No description.
+Sessions only: remove a session's worktree, but ONLY when nothing would be lost (with deleted: true, for a deleted chat, its commits and uncommitted changes are first kept under the undo ref, so only ignored files such as .env can stop it) (no uncommitted change, no untracked file, no commit missing from the default branch and every remote). Otherwise nothing is removed and github.cleanup-needed is emitted with what's at stake, for a person to decide by hand.
 
-- Input: not known. The module did not register this tool when started without a live box, so its schema could not be read.
-- Callers: any caller
+- Input:
+  - `project` string, required
+  - `session` string, required
+  - `deleted` boolean
+- Callers: other modules only (internal: `vyre call` answers no_such_tool)
 
 ### `github.session.history`
 
 A session's own commits (newest first, { sha, subject }) and how many uncommitted changes its worktree has: what Undo can go back over. Read only. Works for GitHub and local-only projects alike.
 
-- Input: not known. The module did not register this tool when started without a live box, so its schema could not be read.
-- Callers: any caller
+- Input:
+  - `project` string, required
+  - `session` string, required
+- Callers: `capsule`, `cli`, `deck`, `local`, `mcp`, `module`
 
 ### `github.session.push`
 
-No description.
+Push a session's own branch, and only that branch, to the same name on the project's primary GitHub repo (github_projects, not a workspace repo - only the account recorded there is ever used, never `.git/config`, which an agent's own shell can edit). Never force, refuses a non-fast-forward remote rather than overwrite it, and scans the outgoing commits for a known secret shape first, refusing with the file and line on a hit; pass allow_secret: true (the person's own "push it anyway") to push past that specific check once. People and their agents; a model caller pushes only its own session, never another one.
 
-- Input: not known. The module did not register this tool when started without a live box, so its schema could not be read.
-- Callers: any caller
+- Input:
+  - `project` string, required
+  - `session` string, required
+  - `allow_secret` boolean
+- Callers: `capsule`, `cli`, `deck`, `local`, `mcp`
 
 ### `github.session.redo`
 
 Put back what the latest (or numbered) github.session.undo took off. Only when the session has not moved on since; otherwise refused and the saved commits stay kept.
 
-- Input: not known. The module did not register this tool when started without a live box, so its schema could not be read.
-- Callers: any caller
+- Input:
+  - `project` string, required
+  - `session` string, required
+  - `n` integer
+- Callers: `capsule`, `cli`, `deck`, `local`, `mcp`, `module`
 
 ### `github.session.undo`
 
 Undo a session's commits: back to `to` (a commit id from github.session.history; that commit and everything after it come off) or, without `to`, all the way to where the session started. Nothing is deleted: the tip is saved first and github.session.redo puts it back. Uncommitted changes are kept first as one marked commit under the saved ref, so redo brings everything back; no refusal. Never touches the default branch, never a remote.
 
-- Input: not known. The module did not register this tool when started without a live box, so its schema could not be read.
-- Callers: any caller
+- Input:
+  - `project` string, required
+  - `session` string, required
+  - `to` string
+- Callers: `capsule`, `cli`, `deck`, `local`, `mcp`, `module`
 
 ### `github.session.worktree`
 
-No description.
+Sessions only: a worktree and branch for a session in any project whose home is a git repo (GitHub's or local-only), or null when the project has no repo yet.
 
-- Input: not known. The module did not register this tool when started without a live box, so its schema could not be read.
-- Callers: any caller
+- Input:
+  - `project` string, required
+  - `session` string, required
+- Callers: other modules only (internal: `vyre call` answers no_such_tool)
 
 ## glass
 

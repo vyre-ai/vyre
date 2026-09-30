@@ -212,7 +212,7 @@ Find, look at and bring over files on this machine and the box, inside the folde
 - Folder: `core/github`, version 0.1.0
 - Runs on: `box`, `local`
 - Requires: `vault`
-- Tools: [19](tools.md#github)
+- Tools: [19](tools.md#github), 2 of them only for other modules
 - Emits: [8 events](events.md#github)
 - Shows on: cli, deck
 - Needs vault: `per-connection`

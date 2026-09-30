@@ -101,8 +101,8 @@ See [tools and events](../build/tools-and-events.md) for how to listen.
 | `github.connected` | `id`, `login`, `name` |
 | `github.local-init` | `branch`, `project` |
 | `github.removed` | `name` |
-| `github.session.undone` | not found in the source (the type is built at run time) |
 | `github.token-invalid` | `name` |
+| `github.undone` | `project`, `session`, `undone` |
 
 ## glass
 
