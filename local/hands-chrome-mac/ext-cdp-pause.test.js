@@ -27,3 +27,26 @@ test("setPause re-asks auto-attach with waitForDebuggerOnStart on the tab and on
   await cdp.setPause(1, false);
   assert.ok(asked.every(a => a[1] === false));
 });
+
+test("a waiting child is never released by the fallback while pausing is on; turning pausing off releases the tab's waiting children at once, and a failing ask is retried once", async () => {
+  const chrome = createFakeChrome([{ url: "https://a.example/", active: true }, { url: "https://b.example/" }]);
+  const cdp = createCdp({ chrome });
+  await cdp.attach(1);
+  /** @type {any[]} */ const resumes = [];
+  let failAsks = 0;
+  const real = chrome.debugger.sendCommand.bind(chrome.debugger);
+  chrome.debugger.sendCommand = async (/** @type {any} */ target, /** @type {string} */ method, /** @type {any} */ params) => {
+    if (method === "Runtime.runIfWaitingForDebugger") resumes.push(target.sessionId);
+    if (method === "Target.setAutoAttach" && params.waitForDebuggerOnStart === false && failAsks > 0) { failAsks--; throw new Error("Timed out"); }
+    return real(target, method, params);
+  };
+  await cdp.setPause(1, true);
+  chrome._.onEvent.fire({ tabId: 1 }, "Target.attachedToTarget", { sessionId: "S-W", waitingForDebugger: true, targetInfo: { targetId: "W", type: "iframe", url: "https://c.example/" } });
+  chrome._.onEvent.fire({ tabId: 2 }, "Target.attachedToTarget", { sessionId: "S-OTHER", waitingForDebugger: true, targetInfo: { targetId: "O", type: "iframe", url: "https://d.example/" } });
+  await new Promise(r => setTimeout(r, 20));
+  assert.deepEqual(resumes, ["S-OTHER"], "the tab with pausing on keeps its child waiting; a child on a tab we are not pausing is resumed at once");
+  failAsks = 1; // the first turn-off ask fails: it is asked again
+  assert.equal(await cdp.setPause(1, false), true);
+  assert.ok(resumes.includes("S-W"), "released at once when pausing goes off");
+  assert.equal(resumes.filter(x => x === "S-OTHER").length, 1, "another tab's child is not touched again by this tab's turn-off");
+});

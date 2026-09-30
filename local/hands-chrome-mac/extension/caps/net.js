@@ -133,6 +133,12 @@ const isFrameTarget = k => k && (k.type === "iframe" || k.type === "page");
 /** Every child target the guard must cover: frames and dedicated workers (a worker has its own network that the page's fetch shim never sees). @param {any} k */
 const isGuardTarget = k => isFrameTarget(k) || (k && (k.type === "worker" || k.type === "shared_worker" || k.type === "service_worker"));
 
+/** Stop a running script: terminate execution on the tab's own session and on every child session. @param {any} ctx @param {TabNet} t */
+async function abortScript(ctx, t) {
+  const eg = /** @type {any} */ (t).egress; if (eg) eg.aborted = true;
+  await Promise.all([ctx.cdp.send(t.tab, "Runtime.terminateExecution", {}), ...[...t.sessions].map(k => ctx.cdp.send(t.tab, "Runtime.terminateExecution", {}, k))].map(p => Promise.resolve(p).catch(() => {})));
+}
+
 /** Turn capture (and interception, if it is up) on for one child session. @param {any} ctx @param {TabNet} t @param {string} session */
 async function enableSession(ctx, t, session) {
   try {
@@ -197,9 +203,12 @@ function handle(ctx, t, method, p, session) {
       t.sessions.add(p.sessionId);
       void (async () => {
         const ok = await enableSession(ctx, t, p.sessionId);
-        // A child that started paused is resumed AFTER interception is on (or, if that failed, anyway, so no page hangs on us); a failure while a script runs is reported with its result.
-        if (!ok && /** @type {any} */ (t).egress) /** @type {any} */ (t).egress.failed = (/** @type {any} */ (t).egress.failed || 0) + 1;
-        if (p.waitingForDebugger) {
+        const eg = /** @type {any} */ (t).egress;
+        if (!ok && eg) {
+          // A child that could not be guarded stays PAUSED while the script runs (that is the window it could leak in); the script is stopped now, and the child is released only after the guard is down.
+          eg.failed = (eg.failed || 0) + 1; eg.unguarded = true;
+          await abortScript(ctx, t);
+        } else if (p.waitingForDebugger) {
           try { await ctx.cdp.send(t.tab, "Runtime.runIfWaitingForDebugger", {}, p.sessionId); } catch { /* gone */ }
           if (ctx.cdp.resumed) ctx.cdp.resumed(p.sessionId);
         }
@@ -396,6 +405,7 @@ async function paused(ctx, t, p, session) {
     if (eg) {
       let o = "";
       try { const x = new URL(p.request?.url || ""); if (!["data:", "blob:", "about:", "chrome-extension:"].includes(x.protocol)) o = x.origin; } catch { /* not a URL */ }
+      (eg.decisions || (eg.decisions = [])).length < 40 && eg.decisions.push({ origin: o, type: String(p.resourceType || ""), ...(session ? { session: "child" } : {}), decision: o && !eg.allowed.has(o) ? "block" : "allow" });
       if (o && !eg.allowed.has(o)) {
         // JUDGED BLOCKED: from here nothing may let this request go. failRequest, once more if it fails, then a fulfilled 403 with an empty body (the page gets an answer, the
         // origin gets nothing). If every attempt fails the request is left paused and the script's eval says a request MAY have been sent: it is never continued.
@@ -462,19 +472,22 @@ export async function egressGuard(ctx, tab) {
   const eg = t.egress || (t.egress = { depth: 0, allowed: new Set(), blocked: [] });
   /** Origins this guard has ever judged blocked on this tab: they can never become "allowed" by being observed. @type {Set<string>} */
   const denied = /** @type {any} */ (t).denied || (/** @type {any} */ (t).denied = new Set());
-  const add = (/** @type {string} */ u) => { try { const x = new URL(String(u)); if (x.origin && x.origin !== "null" && !denied.has(x.origin)) eg.allowed.add(x.origin); } catch { /* skip */ } };
-  try { const tb = await ctx.tabs.get(tab); add(tb && (tb.url || tb.pendingUrl)); } catch { /* the tab went away */ }
-  for (const r of t.recs.values()) { if (/** @type {any} */ (r).guarded) continue; add(r.url); if (r.frame) add(r.frame); }
+  /** Where each allowed origin came from, for the diagnostics of a leak. @type {Record<string, string>} */
+  const prov = eg.prov || (eg.prov = {});
+  const add = (/** @type {string} */ u, /** @type {string} */ why = "?") => { try { const x = new URL(String(u)); if (x.origin && x.origin !== "null" && !denied.has(x.origin)) { eg.allowed.add(x.origin); if (!prov[x.origin]) prov[x.origin] = why; } } catch { /* skip */ } };
+  try { const tb = await ctx.tabs.get(tab); add(tb && (tb.url || tb.pendingUrl), "tab"); } catch { /* the tab went away */ }
+  // Only requests that COMPLETED with a response and were not made under a guard say "the page talks to this origin".
+  for (const r of t.recs.values()) { if (/** @type {any} */ (r).guarded || !(/** @type {any} */ (r).status)) continue; add(r.url, "capture"); if (r.frame) add(r.frame, "capture-frame"); }
   const timing = "[...new Set(performance.getEntriesByType('resource').map(e => e.name).concat(location.href))].slice(0, 1000)";
   /** @type {any[]} */ let frames = [];
   try { frames = ctx.frames && typeof ctx.frames.list === "function" ? await ctx.frames.list(tab) : []; } catch { frames = []; }
-  for (const f of frames) { add(f.origin); add(f.url); }
+  for (const f of frames) { add(f.origin, "frame"); add(f.url, "frame"); }
   const readable = frames.filter(f => f.readable);
   if (!readable.length) readable.push(null);
   for (const f of readable) {
     try {
       const rt = await runIn(ctx, tab, f, timing, { returnByValue: true });
-      for (const u of (rt && rt.result && rt.result.value) || []) add(u);
+      for (const u of (rt && rt.result && rt.result.value) || []) add(u, "timing");
     } catch { /* the guard still stands with what it has */ }
   }
   if (eg.depth === 0 && ctx.dnr) {
@@ -495,6 +508,7 @@ export async function egressGuard(ctx, tab) {
   // New children start PAUSED while the guard is up: interception goes on before they run a line. If the tab would not accept that, the guard says so (a frame could start unpaused).
   if (eg.depth === 1 && ctx.cdp && typeof ctx.cdp.setPause === "function") { const okPause = await ctx.cdp.setPause(tab, true); if (!okPause) eg.pauseWhy = "a new frame could start before the guard reached it"; }
   const failed = await syncFetch(ctx, t);
+  eg.failedSessions = failed || [];
   // A child frame that would not take the interception is a way out: the script does not run, and the guard is taken down again.
   if (failed && failed.length) {
     if (--eg.depth <= 0) { const rule = eg.rule; t.egress = null; if (ctx.dnr) await ctx.dnr.unblock(rule ?? null); await syncFetch(ctx, t); }
@@ -506,13 +520,16 @@ export async function egressGuard(ctx, tab) {
     contained: eg.contained || (ctx.dnr ? "full" : "partial"), why: eg.containedWhy,
     /** The origins the script may reach: for the page-level shim, a second layer beside the browser-level guard. */
     allowed: [...eg.allowed],
+    /** Everything needed to prove the path of a leak: where each allowed origin came from, every request the guard judged, and which child sessions took the interception. */
+    diag: () => ({ allowed: { ...prov }, decisions: (eg.decisions || []).slice(0, 40), sessions: [...t.sessions].map(k => ({ session: String(k).slice(-6), fetch: !(eg.failedSessions || []).includes(k) })), denied: [...denied] }),
     async stop() {
       if (done) return [];
       done = true;
       const blocked = eg.blocked.splice(0);
       // A frame or worker that started during the script and could not be guarded is reported like a leak: it MAY have sent requests.
-      if (eg.failed) blocked.push({ method: "GUARD", origin: `${eg.failed} frame or worker that started during the script and could not be guarded`, leaked: true });
+      if (eg.failed) blocked.push({ method: "GUARD", origin: "stopped: a frame could not be guarded", stopped: true });
       if (eg.pauseWhy && !blocked.length) blocked.push({ method: "GUARD", origin: eg.pauseWhy, leaked: true });
+      if (eg.depth <= 1) { for (const [key, r] of [...t.recs]) { if ((/** @type {any} */ (t).denied || new Set()).has(docOrigin(r.url))) t.recs.delete(key); } }
       if (--eg.depth <= 0) { const rule = eg.rule; t.egress = null; if (ctx.cdp && typeof ctx.cdp.setPause === "function") await ctx.cdp.setPause(tab, false).catch(() => {}); if (ctx.dnr) await ctx.dnr.unblock(rule ?? null); await syncFetch(ctx, t); }
       return blocked;
     },

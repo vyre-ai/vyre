@@ -366,7 +366,7 @@ test("egress guard refuses to run a script when a child frame will not take the 
   await assert.rejects(egressGuard(k.ctx, 1), { code: "blocked" });
 });
 
-test("egress guard: children start PAUSED while it is up; a child that arrives waiting gets Fetch BEFORE it is resumed, and is resumed even if Fetch failed", async () => {
+test("egress guard: children start PAUSED while it is up; Fetch goes on BEFORE a child is resumed; a child that could not be guarded stays paused, the script is terminated, and it is released only after the guard is down", async () => {
   const k = makeCtx({ active: 1 });
   const pauses = /** @type {boolean[]} */ ([]);
   /** @type {any} */ (k.ctx.cdp).setPause = async (/** @type {number} */ _t, /** @type {boolean} */ on) => { pauses.push(on); return true; };
@@ -378,15 +378,30 @@ test("egress guard: children start PAUSED while it is up; a child that arrives w
   await new Promise(r => setTimeout(r, 5));
   const order = k.sent.filter(s => s.session === "S-W1").map(s => s.method);
   assert.ok(order.indexOf("Fetch.enable") >= 0 && order.indexOf("Runtime.runIfWaitingForDebugger") > order.indexOf("Fetch.enable"), `Fetch before resume: ${order.join(",")}`);
-  // a child whose Fetch.enable fails is still resumed (a page never hangs on us) and the script's result says it MAY have sent
+  // a child whose Fetch.enable fails: NOT resumed while the script runs, the script is terminated
   k.respond["Fetch.enable"] = (/** @type {any} */ _p, /** @type {number} */ _t, /** @type {string|undefined} */ session) => { if (session === "S-F2") throw new Error("Timed out"); return {}; };
   k.push(1, "Target.attachedToTarget", { sessionId: "S-F2", waitingForDebugger: true, targetInfo: { targetId: "F2", type: "iframe", url: "https://b.example/x" } });
   await new Promise(r => setTimeout(r, 5));
-  assert.ok(k.sent.some(s => s.session === "S-F2" && s.method === "Runtime.runIfWaitingForDebugger"), "resumed anyway");
+  assert.equal(k.sent.some(s => s.session === "S-F2" && s.method === "Runtime.runIfWaitingForDebugger"), false, "an unguarded child is never resumed mid-script");
+  assert.ok(k.sent.some(s => s.method === "Runtime.terminateExecution"), "the script is stopped");
   const out = await eg.stop();
-  assert.ok(out.some((/** @type {any} */ o) => o.method === "GUARD" && o.leaked), "an unguarded child is reported like a leak");
-  assert.equal(pauses[pauses.length - 1], false, "pausing is off again when the guard goes");
+  assert.ok(out.some((/** @type {any} */ o) => o.method === "GUARD" && o.stopped && /could not be guarded/.test(o.origin)), "the result says it was stopped");
+  assert.equal(pauses[pauses.length - 1], false, "pausing is off again when the guard goes, which is what releases the waiting child");
 });
+
+test("egress guard: the diagnostics name where each allowed origin came from, what the guard judged, and which sessions took Fetch; only completed unguarded requests count as 'the page talks to it'", async () => {
+  const k = makeCtx({ active: 1 });
+  await net.ops["net.start"]({ tab: 1 }, k.ctx);
+  k.push(1, "Network.requestWillBeSent", { requestId: "a1", type: "XHR", documentURL: "https://app.example/", request: { url: "https://api.example/x", method: "GET", headers: {} } });
+  k.push(1, "Network.responseReceived", { requestId: "a1", type: "XHR", response: { url: "https://api.example/x", status: 200, headers: {}, mimeType: "application/json" } });
+  k.push(1, "Network.requestWillBeSent", { requestId: "a2", type: "XHR", documentURL: "https://app.example/", request: { url: "https://unanswered.example/x", method: "GET", headers: {} } });
+  const eg = await egressGuard(k.ctx, 1);
+  const d = /** @type {any} */ (eg).diag();
+  assert.ok(d.allowed["https://api.example"] === "capture", JSON.stringify(d.allowed));
+  assert.equal(d.allowed["https://unanswered.example"], undefined, "a request that never got an answer is not evidence");
+  await eg.stop();
+});
+
 
 test("egress guard: what the guard blocked never becomes allowed by being observed: the next guard still blocks it", async () => {
   const k = makeCtx({ active: 1 });
