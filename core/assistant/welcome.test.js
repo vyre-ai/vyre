@@ -19,5 +19,11 @@ test("welcome: nothing open, or status unreadable, still greets", () => {
 test("welcome: running import shows progress, tailscale shows its link", () => {
   const w = welcomeOf({ detail: { history: { state: "working", running: true, indexed: 12 }, tailscale: { state: "working", loginUrl: "https://login.example/x" } } });
   assert.deepEqual(w.cards.map(c => c.id), ["tailscale", "import"]);
-  assert.equal(w.cards[0].action.href, "https://login.example/x");
+  assert.equal(w.cards[0].href, "https://login.example/x");
+});
+
+test("welcome: no card names a tool", () => {
+  const w = welcomeOf({ detail: { claude: { installed: true }, history: { state: "todo" }, devices: { state: "todo" } } });
+  assert.ok(w.cards.length >= 3);
+  for (const c of w.cards) assert.ok(!("action" in c) && !("tool" in c));
 });

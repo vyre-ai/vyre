@@ -146,7 +146,7 @@ export default {
     });
 
     ctx.tool("assistant.welcome", {
-      description: "The first message in the chat after setup: {text, cards:[{id, title, body, action:{tool,input}|{href}}]}. Built from onboard.status with no model call; a card appears only when its step is still open.",
+      description: "The first message in the chat after setup: {text, cards:[{id, title, body, href?}]}; the id is the contract, a card never names a tool. Built from onboard.status with no model call; a card appears only when its step is still open.",
       input: { type: "object", properties: {} },
       run: async (_, meta = {}) => {
         await gate(meta);

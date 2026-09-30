@@ -54,3 +54,4 @@ Branch: work/assistant · Worktree: ../vyre-assistant · Owner session: assistan
   are not counted; loud alarms ring through. Over budget: no push, push.capped emitted, the item stays
   in waiting and the glance. Quiet hours were already there. Changed contract: core/push.
 - assistant.welcome {text, cards:[{id,title,body,action:{tool,input}|{href}}]} built from onboard.status (core/assistant/welcome.js), shape final per native-core's ask. Caller identity: the assistant runs as agent kind "assistant" (meta.agentKind), answered in CHAT.md.
+- welcome cards carry ids (the contract) and href only; no action/tool (lead, reviewer-2 BLOCKER).
