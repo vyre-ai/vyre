@@ -214,7 +214,7 @@ const lenient = {
 };
 
 /** A real vyred with the relay module, a Node relay, and this machine posing as Linux (a Mac refuses the relay's tickets until vyre-core). */
-async function world(t, { fixtures = null, disable = ["names", "onboard"], shipped = true } = {}) {
+async function world(t, { fixtures = null, disable = ["names", "onboard"], shipped = true, directory = null } = {}) {
   const real = Object.getOwnPropertyDescriptor(process, "platform");
   Object.defineProperty(process, "platform", { value: "linux", configurable: true });
   t.after(() => Object.defineProperty(process, "platform", /** @type {any} */ (real)));
@@ -223,7 +223,7 @@ async function world(t, { fixtures = null, disable = ["names", "onboard"], shipp
   t.after(() => relay.close());
   const root = tempHome(t);
   fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ role: "box", name: "alex", transcripts: [],
-    network: { name: "alex" }, relay: { enabled: false, url: base }, modules: { disable } }));
+    network: { name: "alex", ...(directory ? { directory } : {}) }, relay: { enabled: false, url: base }, modules: { disable } }));
   lenient.enrolled.length = 0;
   if (fixtures) for (const [name, m, src] of fixtures) writeModule(path.join(root, "modules"), name, m, src);
   const d = await start({ presence: lenient, root, log: () => {}, ...(fixtures && shipped ? { firstPartyRoots: [path.join(root, "modules")] } : {}) });
@@ -528,6 +528,33 @@ test("web deny: an untrusted paired browser cannot ask for the Tailscale sign-in
 
 // ---- the setup channel, one session, end to end ----
 
+/** A local stand-in for names.vyre.run: checks each request's route signature and remembers claims. */
+async function fakeDirectory(t) {
+  const http = await import("node:http");
+  const { authMessage } = await import("../names/directory.js");
+  const out = { claims: /** @type {any[]} */ ([]), unsigned: 0, url: "" };
+  const srv = http.createServer((req, res) => {
+    let body = "";
+    req.on("data", c => { body += c; });
+    req.on("end", () => {
+      const h = req.headers, url = new URL(req.url || "/", "http://x");
+      const send = data => { res.writeHead(200, { "content-type": "application/json" }); res.end(JSON.stringify({ data })); };
+      try {
+        const pub = crypto.createPublicKey({ key: Buffer.concat([Buffer.from("302a300506032b6570032100", "hex"), Buffer.from(String(h["x-vyre-pub"]), "base64url")]), format: "der", type: "spki" });
+        const msg = authMessage({ route: String(h["x-vyre-route"]), ts: String(h["x-vyre-ts"]), nonce: String(h["x-vyre-nonce"]), method: String(req.method), target: url.pathname + url.search, bodyHash: crypto.createHash("sha256").update(body).digest("hex") });
+        if (!crypto.verify(null, msg, pub, Buffer.from(String(h["x-vyre-sig"]), "base64url"))) throw new Error("bad signature");
+      } catch { out.unsigned++; res.writeHead(401, { "content-type": "application/json" }); return res.end(JSON.stringify({ error: { code: "denied", message: "unsigned" } })); }
+      if (url.pathname === "/v1/names/claim") { const first = out.claims.length === 0; out.claims.push(JSON.parse(body)); return send({ name: JSON.parse(body).name, mine: true, code: first ? "abcd-efgh-ijkl-mnop-qrst-uv" : null }); }
+      if (url.pathname === "/v1/names/mine") return send({ name: "alex", state: "live", pointed: false, ips: {}, pending: null, notices: [] });
+      res.writeHead(404, { "content-type": "application/json" }); res.end(JSON.stringify({ error: { code: "not_found", message: url.pathname } }));
+    });
+  });
+  await new Promise(r => srv.listen(0, "127.0.0.1", r));
+  t.after(() => new Promise(r => srv.close(r)));
+  out.url = `http://127.0.0.1:${/** @type {any} */ (srv.address()).port}`;
+  return out;
+}
+
 const SIGNIN_FIXTURE = `export default { async start(ctx) {
   ctx.tool("sessionsfx.accounts.signin", { input: { type: "object", properties: {} }, run: async () => ({ started: true }) });
   ctx.tool("sessionsfx.accounts.other", { input: { type: "object", properties: {} }, run: async () => ({ other: true }) });
@@ -535,7 +562,8 @@ const SIGNIN_FIXTURE = `export default { async start(ctx) {
 } };`;
 
 test("setup: modules declare setupTools in module.json and the setup channel reaches exactly those; one session survives a call, sign-in, Tailscale and a second call", async t => {
-  const w = await world(t, { disable: ["names", "onboard"], fixtures: [
+  const dirFake = await fakeDirectory(t);
+  const w = await world(t, { disable: ["onboard"], directory: dirFake.url, fixtures: [
     ["sessionsfx", { does: { tools: ["sessionsfx.accounts.signin", "sessionsfx.accounts.other"] }, setupTools: ["sessionsfx.accounts.signin"] }, SIGNIN_FIXTURE],
   ] });
   // the registry's list: the tool the module owns and declared
@@ -545,16 +573,23 @@ test("setup: modules declare setupTools in module.json and the setup channel rea
   const p = await page(w);
   await p.begin();
   const a = await p.connect();
-  // names.claim itself needs the hosted directory, which no test may call: system.info, also on the list, stands in for the two claims.
-  const claim = async () => (await a.call("system.info"));
-  const c1 = await claim(); assert.equal(c1.status, 200, JSON.stringify(c1));
+  const claim = async () => (await a.call("names.claim", { name: "alex" }));
+  const c1 = await claim();
+  assert.equal(c1.status, 200, JSON.stringify(c1));
+  assert.equal(c1.data.recoveryCode, "abcd-efgh-ijkl-mnop-qrst-uv", "the first claim shows the one-time code");
+  await settle(200);
+  assert.equal((await w.d.registry.call("names.status", {}, "cli")).data.phase, "named", "with no tailnet yet it waits at Found and named");
   assert.equal((await a.call("sessionsfx.accounts.signin")).data.started, true, "the module's declared tool is reachable");
   assert.notEqual((await a.call("sessionsfx.accounts.other")).status, 200, "a tool the module did not list is not");
   const ts = await a.call("network.tailscale.status");
   assert.ok(ts.data && ts.data.state, "Tailscale status answers on the setup channel");
   const login = await a.call("network.tailscale.login");
   assert.ok(login.data && "state" in login.data, "so does login");
-  assert.equal((await claim()).status, 200, "a second call on the same channel still answers");
+  const c2 = await claim();
+  assert.equal(c2.status, 200, JSON.stringify(c2));
+  assert.equal(c2.data.recoveryCode, null, "the code is shown once");
+  assert.equal(dirFake.claims.length, 2, "both claims went to the fake directory");
+  assert.equal(dirFake.unsigned, 0, "each signed by the box's route key");
   assert.equal((await w.d.registry.call("relay.setup.status", {}, "cli")).data.state, "paired", "the session survived all of it");
   assert.notEqual((await a.call("relay.setup.end")).status, 200, "and the channel cannot end it, even though the module listed the tool");
 });

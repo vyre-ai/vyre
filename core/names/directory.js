@@ -12,6 +12,7 @@ import crypto from "node:crypto";
 
 export const AUTH_TAG = "vyre-names-v1";
 export const DEFAULT_BASE = "https://names.vyre.run";
+const LOOPBACK = new Set(["127.0.0.1", "localhost", "[::1]", "::1"]);
 
 /** The bytes the box signs. names/worker/index.js authMessage builds the same. @param {{ route: string, ts: number|string, nonce: string, method: string, target: string, bodyHash: string }} m */
 export const authMessage = m => Buffer.from(`${AUTH_TAG}\n${m.route}\n${m.ts}\n${m.nonce}\n${m.method}\n${m.target}\n${m.bodyHash}`);
@@ -23,6 +24,12 @@ export const authMessage = m => Buffer.from(`${AUTH_TAG}\n${m.route}\n${m.ts}\n$
 export function directory({ base = DEFAULT_BASE, signer, fetch = globalThis.fetch, now = Date.now, timeoutMs = 20_000 }) {
   const root = String(base).replace(/\/+$/, "");
   if (!/^https?:\/\//.test(root)) throw new Error("the directory address must be http(s)");
+  // A test can never reach the hosted directory (a real claim there is permanent): under a test
+  // runner, or VYRE_TEST, the real fetch refuses any host but loopback. A test passes a fake URL
+  // on 127.0.0.1, or its own `fetch`.
+  if ((process.env.NODE_TEST_CONTEXT || process.env.VYRE_TEST) && fetch === globalThis.fetch && !LOOPBACK.has(new URL(root).hostname)) {
+    throw Object.assign(new Error(`tests never call the hosted name directory (${new URL(root).hostname}); pass a fake URL on 127.0.0.1 or your own fetch`), { code: "test_guard" });
+  }
 
   /** @param {string} method @param {string} target path and query @param {object} [body] @param {boolean} [sign] */
   async function call(method, target, body, sign = true) {
