@@ -28,6 +28,7 @@ export const CODES = Object.freeze({
   changed: "the page changed since it was held",
   modal: "a dialog is blocking the page",
   not_saved: "the save could not be confirmed",
+  login_required: "the page is asking the person to sign in",
 });
 
 /** @param {string} code @param {string} [detail] */
@@ -43,4 +44,4 @@ export const validOp = op => /^[a-z][a-z0-9]*(\.[a-z][a-z0-9-]*){1,3}$/.test(Str
 export const ACTING = new Set(["page.act", "page.fill", "page.eval", "dev.console.eval", "page.submit", "tabs.navigate", "net.intercept", "net.on", "net.replay", "api.call", "ghl.run", "ghl.section", "ghl.save", "batch.run", "frames.clicktest"]);
 
 /** Ops that only read. */
-export const READING = new Set(["tabs.presence", "tabs.list", "tabs.find", "page.snapshot", "page.screenshot", "dev.inspect", "dev.sources.list", "dev.sources.get", "dev.sources.search", "dev.console.read", "net.list", "net.get", "api.learn", "api.catalog", "frames.list", "frames.probe"]);
+export const READING = new Set(["login.check", "tabs.presence", "tabs.list", "tabs.find", "page.snapshot", "page.screenshot", "dev.inspect", "dev.sources.list", "dev.sources.get", "dev.sources.search", "dev.console.read", "net.list", "net.get", "api.learn", "api.catalog", "frames.list", "frames.probe"]);

@@ -23,7 +23,7 @@ A module runs on the `box` (the always-on server), on `local` (the Mac), or on b
 | [`apps`](#apps) | `local/apps` | `local` | 6 | 2 | none |
 | [`artifacts`](#artifacts) | `core/artifacts` | `box` | 21 | 10 | capsule, cli, deck |
 | [`capsule`](#capsule) | `local/capsule` | `local` | 6 | 2 | capsule, cli |
-| [`chrome`](#chrome) | `local/hands-chrome-mac` | `local` | 29 | 12 | none |
+| [`chrome`](#chrome) | `local/hands-chrome-mac` | `local` | 30 | 14 | none |
 | [`chrome`](#chrome) | `modules/hands-chrome` | `box` | 5 | 1 | cli, deck |
 | [`commands`](#commands) | `core/commands` | `box`, `local` | 1 | 0 | none |
 | [`computers`](#computers) | `core/computers` | `box` | 30 | 20 | cli, deck |
@@ -154,8 +154,8 @@ Deep control of your own Chrome through the Vyre extension: read a page in one c
 - Folder: `local/hands-chrome-mac`, version 0.1.0
 - Runs on: `local`
 - Requires: none
-- Tools: [29](tools.md#chrome), 1 of them only for other modules
-- Emits: [12 events](events.md#chrome)
+- Tools: [30](tools.md#chrome), 1 of them only for other modules
+- Emits: [14 events](events.md#chrome)
 - Shows on: no surface
 - Teaches tips: `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`
 

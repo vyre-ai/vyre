@@ -1,7 +1,7 @@
 {
   "generated": "scripts/gen-docs-reference",
   "about": "Every Vyre command, tool, event, config key, environment variable, screen and concept, where the code defines it, the docs page that explains it, and every page, line and heading anchor that mentions it.",
-  "counts": {"command":332,"tool":750,"event":314,"config":235,"env":170,"screen":18,"concept":43},
+  "counts": {"command":332,"tool":751,"event":316,"config":235,"env":170,"screen":18,"concept":43},
   "things": [
     {"kind":"screen","name":"/a/:id","definedIn":"deck/views/artifact.js","page":"using/deck.md#what-is-on-each-view","label":"Artifact","routes":["/a/:id"],"mentions":[]},
     {"kind":"tool","name":"about.text","definedIn":"core/about/index.js","page":"reference/tools.md#abouttext","module":"about","mentions":[]},
@@ -113,6 +113,7 @@
     {"kind":"tool","name":"chrome.install","definedIn":"local/hands-chrome-mac/index.js","page":"reference/tools.md#chromeinstall","module":"chrome","mentions":[]},
     {"kind":"tool","name":"chrome.interject","definedIn":"local/hands-chrome-mac/index.js","page":"reference/tools.md#chromeinterject","module":"chrome","mentions":[{"page":"adr/0049-deep-chrome-control.md","line":96,"anchor":"oversight"}]},
     {"kind":"event","name":"chrome.interjected","definedIn":"local/hands-chrome-mac/oversight.js","page":"reference/events.md#chrome","module":"chrome","mentions":[]},
+    {"kind":"tool","name":"chrome.login","definedIn":"local/hands-chrome-mac/index.js","page":"reference/tools.md#chromelogin","module":"chrome","mentions":[]},
     {"kind":"config","name":"chrome.nativeHost","definedIn":"local/hands-chrome-mac/index.js","page":null,"mentions":[]},
     {"kind":"tool","name":"chrome.net","definedIn":"local/hands-chrome-mac/index.js","page":"reference/tools.md#chromenet","module":"chrome","mentions":[]},
     {"kind":"tool","name":"chrome.open","definedIn":"local/hands-chrome-mac/index.js","page":"reference/tools.md#chromeopen","module":"chrome","mentions":[{"page":"design/cohesion.md","line":93,"anchor":"1-one-screen-service-on-both-sides"},{"page":"design/agent-browsers.md","line":67,"anchor":"2-shared-browser"},{"page":"design/agent-browsers.md","line":152,"anchor":"the-reach-ladder"}]},
@@ -130,6 +131,8 @@
     {"kind":"event","name":"chrome.resumed","definedIn":"local/hands-chrome-mac/oversight.js","page":"reference/events.md#chrome","module":"chrome","mentions":[]},
     {"kind":"tool","name":"chrome.screenshot","definedIn":"local/hands-chrome-mac/index.js","page":"reference/tools.md#chromescreenshot","module":"chrome","mentions":[{"page":"design/agent-browsers.md","line":20,"anchor":"why-this-replaces-one-computer-per-agent"},{"page":"design/agent-browsers.md","line":67,"anchor":"2-shared-browser"},{"page":"design/agent-browsers.md","line":160,"anchor":"the-reach-ladder"},{"page":"design/agent-browsers.md","line":377,"anchor":"build-list-once-the-rest-of-this-design-is-approved"}]},
     {"kind":"config","name":"chrome.sendTool","definedIn":"local/hands-chrome-mac/index.js","page":null,"mentions":[]},
+    {"kind":"event","name":"chrome.signin-asked","definedIn":"local/hands-chrome-mac/index.js","page":"reference/events.md#chrome","module":"chrome","mentions":[]},
+    {"kind":"event","name":"chrome.signin-done","definedIn":"local/hands-chrome-mac/index.js","page":"reference/events.md#chrome","module":"chrome","mentions":[]},
     {"kind":"tool","name":"chrome.snapshot","definedIn":"local/hands-chrome-mac/index.js","page":"reference/tools.md#chromesnapshot","module":"chrome","mentions":[{"page":"adr/0036-one-system.md","line":41,"anchor":"1-sight-one-screen-service-on-both-sides"},{"page":"design/cohesion.md","line":72,"anchor":"1-one-screen-service-on-both-sides"},{"page":"design/agent-browsers.md","line":19,"anchor":"why-this-replaces-one-computer-per-agent"},{"page":"design/agent-browsers.md","line":67,"anchor":"2-shared-browser"},{"page":"design/agent-browsers.md","line":157,"anchor":"the-reach-ladder"},{"page":"design/agent-browsers.md","line":377,"anchor":"build-list-once-the-rest-of-this-design-is-approved"}]},
     {"kind":"config","name":"chrome.sockPath","definedIn":"local/hands-chrome-mac/index.js","page":null,"mentions":[]},
     {"kind":"tool","name":"chrome.sources","definedIn":"local/hands-chrome-mac/index.js","page":"reference/tools.md#chromesources","module":"chrome","mentions":[]},

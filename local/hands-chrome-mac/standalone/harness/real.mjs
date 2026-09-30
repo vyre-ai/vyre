@@ -261,6 +261,30 @@ async function main() {
         return { label: st.label, group: st.group, pill: st.pill, haltedByPill: halted };
       });
 
+      // The sign-in handoff: a step on a login page answers login_required, the tab comes to the front, and Vyre carries on once the person is in.
+      await stage("login_handoff", async () => {
+        const l = await mcp.call("chrome_tabs", { action: "use", url: `${fixture.url}/login`, openIfMissing: true }); const lt = l.id ?? (l.tab && l.tab.id);
+        await mcp.call("chrome_tabs", { action: "navigate", tab: lt, url: `${fixture.url}/login` });
+        let err = /** @type {any} */ (null);
+        try { await mcp.call("chrome_act", { tab: lt, selector: { identifier: "apply-promo" }, kind: "click", wait: { timeoutMs: 500 } }); } catch (e) { err = e; }
+        const msg = String(err && /** @type {any} */ (err).message || "");
+        if (!/login_required|sign in/i.test(msg)) throw new Error("a step on a login page did not answer login_required: " + msg.slice(0, 300));
+        const chk = await mcp.call("chrome_login", { action: "check", tab: lt });
+        if (!chk.wall || chk.kind !== "password" || !chk.waitingForPerson) throw new Error("the login check says " + JSON.stringify(chk));
+        const list = await mcp.call("chrome_tabs", { action: "list" });
+        const mine = (list.tabs || []).find((/** @type {any} */ t) => t.id === lt);
+        if (mine && mine.active === false) throw new Error("the login tab was not brought to the front");
+        // The person signs in (here: the harness plays them and moves the tab on), and the wait ends by itself.
+        const waiting = mcp.call("chrome_login", { action: "wait", tab: lt, timeoutMs: 30_000 }, 60_000).then(r => ({ r }), e => ({ e }));
+        await sleep(2500);
+        await mcp.call("chrome_tabs", { action: "navigate", tab: lt, url: `${fixture.url}/dashboard` });
+        const res = /** @type {any} */ (await waiting);
+        if (!res.r || res.r.signedIn !== true) throw new Error("the wait did not end when the person was in: " + JSON.stringify(res).slice(0, 300));
+        const after = await mcp.call("chrome_act", { tab: lt, selector: { identifier: "apply-promo" }, kind: "click" });
+        if (after.ok === false) throw new Error("the step did not run after sign-in: " + JSON.stringify(after).slice(0, 200));
+        return { walled: chk.kind, waitedMs: res.r.waitedMs, resumed: true };
+      });
+
       await stage("trace_and_report", async () => {
         const logs = path.join(data, "logs");
         const files = fs.readdirSync(logs).filter(f => f.endsWith(".jsonl"));

@@ -23,6 +23,7 @@ import devtools from "./devtools.js";
 import net from "./net.js";
 import api from "./api.js";
 import ghl from "./ghl.js";
+import login from "./login.js";
 
 export const OPTIONAL = ["devtools", "net", "api", "ghl"];
 
@@ -80,7 +81,7 @@ export async function loadOptional(importer = async name => ({ default: /** @typ
   }
 }
 
-for (const c of [tabs, page, batch, frames]) register(c);
+for (const c of [tabs, page, batch, frames, login]) register(c);
 
 /** Resolves when the optional capabilities have been tried. dispatch waits for it. */
 export let ready = loadOptional();

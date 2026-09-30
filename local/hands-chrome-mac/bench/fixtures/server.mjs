@@ -64,6 +64,15 @@ export async function startFixtureServer({ port = 0, host = "127.0.0.1" } = {}) 
       res.writeHead(200, { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-store" });
       return void res.end(page("checkout.html"));
     }
+    // A sign-in wall and what the person gets after it: for the login handoff proof. The password field is never filled by Vyre.
+    if (req.method === "GET" && p === "/login") {
+      res.writeHead(200, { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-store" });
+      return void res.end('<!doctype html><title>Sign in</title><body><h1>Sign in to Harlow</h1><form id="f"><label>Email <input name="email" id="email"></label><label>Password <input type="password" name="pw" id="pw"></label><button type="button" id="signin">Sign in</button></form></body>');
+    }
+    if (req.method === "GET" && p === "/dashboard") {
+      res.writeHead(200, { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-store" });
+      return void res.end('<!doctype html><title>Dashboard</title><body><h1>Dashboard</h1><button type="button" id="apply-promo" data-testid="apply-promo">Apply</button></body>');
+    }
     if (req.method === "GET" && (p === "/ghl" || p === "/ghl/")) {
       res.writeHead(200, { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-store", "Set-Cookie": `sid=${SESSION}; Path=/; HttpOnly; SameSite=Lax` });
       return void res.end(page("ghl.html"));

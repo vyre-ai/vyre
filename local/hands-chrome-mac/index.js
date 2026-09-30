@@ -125,6 +125,9 @@ export default {
       else if (e.event === "replaced") emit("chrome.replaced", {});
       // The extension saw the person stop Vyre in the browser itself.
       else if (e.event === "stop") oversight.stop({ by: "esc" });
+      // The page asked the person to sign in: one line for the chat, and one when they are in.
+      else if (e.event === "login.wall") emit("chrome.signin-asked", { tab: e.tab, app: e.app || null, kind: e.kind || null, message: scrub(String(e.message || "")) });
+      else if (e.event === "login.done") emit("chrome.signin-done", { tab: e.tab, app: e.app || null });
     });
 
     // Esc and a double Control are heard by the hands overlay, which Chrome control shares: one pill,
@@ -251,7 +254,7 @@ export default {
           // Scripts, API calls, replays and automations are hands-free after the grant. The extension
           // holds only a request that SENDS something as the person (a message, a post, a payment)
           // when `asked` is false, judged by method and endpoint (extension/shared/outbound.js).
-          let res = screen(await bridge.call(op, args, { timeoutMs: args.timeoutMs }));
+          let res = screen(await bridge.call(op, args, { timeoutMs: op === "login.wait" ? Math.min(Number(args.timeoutMs) || 120_000, 600_000) + 15_000 : args.timeoutMs }));
           if (isObj(res) && res.held === true) res = await hold(op, args, res, meta, summary);
           else if (op === "batch.run" && isObj(res) && isObj(res.held) && res.held.held === true) {
             // The batch stopped at a held step: the card is for that step, released on its own.
@@ -356,6 +359,9 @@ export default {
     tool("chrome.ghl", "GoHighLevel in the person's own Chrome. context: which sub-account and section the open tab is on. section: go to Contacts, Workflows, Conversations and so on in the tab already open (it never opens another). flows: the ready-made automations. run: do one end to end, either a named flow with params or your own steps, as ONE batch inside the browser, and get back how long it took. save: press Save and verify it saved (toast, disabled Save, URL change or list item); a save that cannot be confirmed is an error. Every result carries a trace, and a failure's error carries the page's host and path and a small masked snippet of the page.",
       obj({ action: { type: "string", enum: Object.keys(GHL_OPS) }, tab, section: str, locationId: str, landmark: str, via: { ...str, description: "For section: nav (default, click the left nav) or url." }, expect: { type: "object", description: "For save: {toast, listItem, status} to check besides the built-in evidence." }, name: str, identifier: str, flow: str, params: { type: "object" }, steps: { type: "array", items: { type: "object" } }, timeoutMs: timeout }, ["action"]),
       (i, m) => { const { action, ...rest } = i; return dispatch(/** @type {Record<string,string>} */ (GHL_OPS)[action], { ...rest, action }, m); });
+    tool("chrome.login", "A page is asking the person to sign in (a password, a one-time code, or a sign-in page). check: is this tab at a login wall. wait: bring the tab to the front, outline the form, tell the person once, and wait until they are in (the wall gone for two looks), up to timeoutMs (default 2 minutes, at most 10); ask again to keep waiting. Vyre never types a password: the person does, or a vault fill with Touch ID. A failed step on a login page already does the handoff and answers login_required; call wait then.",
+      obj({ action: { type: "string", enum: ["check", "wait"] }, tab, timeoutMs: timeout }, ["action"]),
+      (i, m) => dispatch(i.action === "wait" ? "login.wait" : "login.check", { ...(i.tab !== undefined ? { tab: i.tab } : {}), ...(i.timeoutMs ? { timeoutMs: i.timeoutMs } : {}) }, m));
     pass("chrome.state", "dev.state", "What a page has stored, by name only: cookie names and flags, localStorage and sessionStorage keys. Values are never returned.", { what: { type: "array", items: { type: "string", enum: ["cookies", "local", "session"] } } });
 
     // The box's Chrome tools, same input shapes, so one prompt works against either target.

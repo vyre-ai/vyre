@@ -25,6 +25,7 @@ import { createCtx } from "./lib/ctx.js";
 import { dispatch, deliver, ready, loadReport, opNames } from "./caps/index.js";
 import { explain } from "./shared/diag.js";
 import { createPresence, iconDrawer } from "./lib/presence.js";
+import { onFailure as loginFailure } from "./caps/login.js";
 
 export const MIN_RETRY_MS = 2500;
 export const FAST_RETRY_MS = 3000;
@@ -133,8 +134,18 @@ export function start(chrome, opts = {}) {
     try {
       if (typeof msg.op !== "string") throw Object.assign(new Error(proto.CODES.bad_request), { code: "bad_request" });
       const result = await presence.around(msg.op, msg.args, () => dispatch(msg.op, msg.args, ctx));
+      // A batch or flow that stopped on a login page is the person's to fix, not the page's fault.
+      if (result && typeof result === "object" && result.ok === false && result.code && /^(batch|ghl)\./.test(msg.op)) {
+        const a = msg.args && typeof msg.args === "object" ? { ...msg.args, ...(typeof msg.args.tab === "number" && msg.args.tabId === undefined ? { tabId: msg.args.tab } : {}) } : {};
+        const lf = await loginFailure(msg.op, a, { code: result.code }, ctx).catch(() => null);
+        if (lf) { post({ id, ok: false, error: { ...proto.fail("login_required", lf.message), detail: lf.detail } }); return; }
+      }
       post({ id, ok: true, result: redactResult(result === undefined ? null : result) });
-    } catch (e) {
+    } catch (e0) {
+      let e = e0;
+      const a = msg.args && typeof msg.args === "object" ? { ...msg.args, ...(typeof msg.args.tab === "number" && msg.args.tabId === undefined ? { tabId: msg.args.tab } : {}) } : {};
+      const lf = await loginFailure(msg.op, a, /** @type {any} */ (e0), ctx).catch(() => null);
+      if (lf) e = Object.assign(new Error(lf.message), { code: "login_required", detail: lf.detail });
       const code = /** @type {any} */ (e)?.code;
       const known = typeof code === "string" && code in proto.CODES;
       // A capability's structured detail (a trace, a redacted page snippet) rides in error.detail; the bridge and the module pass it on.
