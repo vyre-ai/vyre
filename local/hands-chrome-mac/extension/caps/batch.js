@@ -68,7 +68,7 @@ export default {
           // look (a table that fills after its section opens). Set `wait` on a step, or `wait: false` on the batch, to change it.
           const wants = (step.op === "page.act" || step.op === "page.fill") && stepArgs.wait === undefined && args.wait !== false;
           // A batch that names a tab runs its steps on that tab, not on whichever is in front (the agent's tab need not be the active one).
-          const onTab = typeof args.tabId === "number" && stepArgs.tabId === undefined && stepArgs.tab === undefined && !/^(tabs|ghl)\./.test(step.op) ? { tabId: args.tabId, tab: args.tabId } : {};
+          const onTab = typeof args.tabId === "number" && stepArgs.tabId === undefined && stepArgs.tab === undefined && !/^(tabs\.|ghl\.section)/.test(step.op) ? { tabId: args.tabId, tab: args.tabId } : {};
           const result = await ctx.call(step.op, { ...onTab, ...(args.asked === true ? { asked: true } : {}), ...(wants ? { wait: args.wait && typeof args.wait === "object" ? args.wait : { timeoutMs: 3000 } } : {}), ...stepArgs });
           results.push(result);
           if (result && result.ok === false) {

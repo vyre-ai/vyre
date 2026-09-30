@@ -135,3 +135,12 @@ test("batch.run: a batch that names a tab runs its page steps on that tab, not t
   assert.equal(calls[1][1].tabId, 9, "a step that names its own tab keeps it");
   assert.equal(calls[2][1].tabId, undefined);
 });
+
+test("batch.run: ghl.save in a batch runs on the batch's tab (it read the active tab before and could not find Save); ghl.section still finds its own", async () => {
+  const calls = [];
+  const ctx = { stopped: () => false, call: async (op, a) => { calls.push([op, a]); return { ok: true }; } };
+  const { default: batch } = await import("./extension/caps/batch.js");
+  await batch.ops["batch.run"]({ tabId: 7, steps: [{ op: "ghl.save", args: { name: "Save" } }, { op: "ghl.section", args: { section: "workflows" } }] }, ctx);
+  assert.equal(calls[0][1].tabId, 7);
+  assert.equal(calls[1][1].tabId, undefined);
+});
