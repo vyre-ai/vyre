@@ -89,7 +89,7 @@ async function main() {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "vyre-ext-check-"));
   /** @type {(() => Promise<void>|void)[]} */
   const cleanup = [];
-  const teardown = async () => { for (const fn of cleanup.reverse()) { try { await fn(); } catch {} } fs.rmSync(tmp, { recursive: true, force: true }); };
+  const teardown = async () => { for (const fn of cleanup.reverse()) { try { await fn(); } catch {} } await sleep(500); try { fs.rmSync(tmp, { recursive: true, force: true, maxRetries: 10, retryDelay: 300 }); } catch {} };
   process.on("SIGINT", async () => { await teardown(); process.exit(130); });
 
   try {
