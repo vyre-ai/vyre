@@ -4615,7 +4615,8 @@ Make a QR code that pairs one more device with this box through the relay. The c
 
 Mint a one-time pairing ticket for the Vyre code (Wink): a phone that scans it resolves the box's identity from the relay, then pairs exactly as relay.pair.start's QR does. Works once, for 5 minutes; call again for a fresh one (an old, unused ticket is simply left to expire, unlike relay.pair.start's single live QR). Not available on a Mac yet: see vyre-core (ADR 0040).
 
-- Input: none
+- Input:
+  - `seed` string
 - Callers: any caller
 - Needs a person present.
 

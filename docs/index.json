@@ -1,7 +1,7 @@
 {
   "generated": "scripts/gen-docs-reference",
   "about": "Every Vyre command, tool, event, config key, environment variable, screen and concept, where the code defines it, the docs page that explains it, and every page, line and heading anchor that mentions it.",
-  "counts": {"command":332,"tool":749,"event":314,"config":233,"env":167,"screen":18,"concept":43},
+  "counts": {"command":332,"tool":749,"event":314,"config":235,"env":167,"screen":18,"concept":43},
   "things": [
     {"kind":"screen","name":"/a/:id","definedIn":"deck/views/artifact.js","page":"using/deck.md#what-is-on-each-view","label":"Artifact","routes":["/a/:id"],"mentions":[]},
     {"kind":"tool","name":"about.text","definedIn":"core/about/index.js","page":"reference/tools.md#abouttext","module":"about","mentions":[]},
@@ -650,11 +650,13 @@
     {"kind":"tool","name":"network.guests.remove","definedIn":"core/network/index.js","page":"reference/tools.md#networkguestsremove","module":"network","mentions":[{"page":"concepts/presence.md","line":34,"anchor":"which-tools-need-it"}]},
     {"kind":"config","name":"network.name","definedIn":"core/link/peers.js","page":null,"mentions":[]},
     {"kind":"config","name":"network.onboardPort","definedIn":"core/config/index.js","page":"reference/config.md#network","mentions":[]},
+    {"kind":"config","name":"network.origin","definedIn":"core/relay/index.js","page":null,"mentions":[]},
     {"kind":"config","name":"network.origins","definedIn":"core/config/index.js","page":"reference/config.md#network","mentions":[{"page":"using/tailscale.md","line":141,"anchor":"what-it-will-not-do"},{"page":"adr/0032-person-and-device.md","line":57,"anchor":"2-the-person-session-corepresencepersonjs"},{"page":"design/anywhere.md","line":25,"anchor":"the-capability-ladder"}]},
     {"kind":"config","name":"network.ownDomain","definedIn":"core/names/service.js","page":null,"mentions":[]},
     {"kind":"config","name":"network.owner","definedIn":"core/config/index.js","page":"reference/config.md#network","mentions":[{"page":"concepts/tailnet.md","line":40,"anchor":"identity-who-is-calling"},{"page":"concepts/tailnet.md","line":53,"anchor":"the-owner"},{"page":"adr/0002-network-and-identity.md","line":18,"anchor":"context"},{"page":"adr/0002-network-and-identity.md","line":71,"anchor":"listeners"},{"page":"adr/0002-network-and-identity.md","line":138,"anchor":"who-the-owner-is"},{"page":"adr/0004-presence.md","line":239,"anchor":"addendum-26-sep-2026-after-review-with-the-other-workstreams"},{"page":"adr/0008-install-journey.md","line":210,"anchor":"7-pairing-the-mac-and-the-box"},{"page":"adr/0014-tailnet.md","line":219,"anchor":"caller-classes-after-parts-7-to-9"},{"page":"adr/0046-relay-introduces-tailscale-carries.md","line":148,"anchor":"identity-once-a-desktop-is-on-the-tailnet"},{"page":"adr/0046-relay-introduces-tailscale-carries.md","line":153,"anchor":"identity-once-a-desktop-is-on-the-tailnet"}]},
     {"kind":"config","name":"network.ownerSeen","definedIn":"core/config/index.js","page":"reference/config.md#network","mentions":[{"page":"adr/0046-relay-introduces-tailscale-carries.md","line":154,"anchor":"identity-once-a-desktop-is-on-the-tailnet"}]},
     {"kind":"config","name":"network.port","definedIn":"core/config/index.js","page":"reference/config.md#network","mentions":[{"page":"get-started/without-docker.md","line":159,"anchor":"where-to-go-next"},{"page":"adr/0002-network-and-identity.md","line":65,"anchor":"listeners"}]},
+    {"kind":"config","name":"network.protocol","definedIn":"core/relay/index.js","page":null,"mentions":[]},
     {"kind":"config","name":"network.recovering","definedIn":"core/names/service.js","page":null,"mentions":[]},
     {"kind":"config","name":"network.tailscale","definedIn":"core/config/index.js","page":"reference/config.md#network","mentions":[]},
     {"kind":"tool","name":"network.tailscale.login","definedIn":"core/network/tailscale.js","page":"reference/tools.md#networktailscalelogin","module":"network","mentions":[]},
