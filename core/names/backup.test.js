@@ -5,8 +5,9 @@ import fs from "node:fs";
 import path from "node:path";
 import { execFileSync, spawn } from "node:child_process";
 import { DatabaseSync } from "node:sqlite";
-import { backup, restore, checkEntries } from "./backup.js";
+import { backup, restore, checkEntries, estimate } from "./backup.js";
 import { seal, open as unsealBytes, isSealed } from "./seal.js";
+import { readRecords, isStream } from "./sealstream.js";
 import { tempHome } from "../../test/helpers.js";
 
 const mode = p => fs.statSync(p).mode & 0o777;
@@ -45,7 +46,12 @@ function seedVaultItem(root, id, name) {
 /** Unpack a sealed backup file's plain tar.gz to a fresh folder, for assertions on its contents. */
 function unpack(t, home, file, passphrase = PASSPHRASE) {
   const plain = path.join(home, `unpacked-${Math.random().toString(36).slice(2)}.tar.gz`);
-  fs.writeFileSync(plain, unsealBytes(fs.readFileSync(file), passphrase));
+  // A v2 file: the box's own data is segment 1; a v1 file is one sealed blob.
+  if (isStream(fs.readFileSync(file).subarray(0, 32))) {
+    const parts = [];
+    for (const r of readRecords(file, passphrase)) if (r.seg === 1) parts.push(r.plain);
+    fs.writeFileSync(plain, Buffer.concat(parts));
+  } else fs.writeFileSync(plain, unsealBytes(fs.readFileSync(file), passphrase));
   t.after(() => fs.rmSync(plain, { force: true }));
   return plain;
 }
@@ -60,7 +66,7 @@ test("backup: is sealed under a passphrase, includes the state, leaves out model
   assert.equal(r.file, file);
   assert.equal(r.bytes, fs.statSync(file).size);
   assert.equal(mode(file), 0o600);
-  assert.ok(isSealed(fs.readFileSync(file)), "the file on disk is sealed, never a plain tar.gz");
+  assert.ok(isStream(fs.readFileSync(file).subarray(0, 32)), "the file on disk is sealed, never a plain tar.gz");
   const plain = unpack(t, home, file);
   const list = execFileSync("tar", ["-tzf", plain], { encoding: "utf8" });
   assert.match(list, /vault\/key/);
@@ -75,7 +81,7 @@ test("backup: refuses a short passphrase, and refuses to open with the wrong one
   const file = path.join(home, "b.tar.gz");
   await assert.rejects(backup({ root, file, passphrase: "short" }), /at least 12 characters/);
   await backup({ root, file, passphrase: PASSPHRASE });
-  assert.throws(() => unsealBytes(fs.readFileSync(file), "not the right passphrase"), /does not open/);
+  assert.throws(() => [...readRecords(file, "not the right passphrase")], /does not open/);
 });
 
 test("backup: uses an open database handle when given one", async t => {
@@ -254,4 +260,129 @@ test("backup: a new account's sign-in (named in sessions_accounts) is left out, 
   assert.ok(!fs.existsSync(path.join(dir, "vault", "items", "item9.json")));
   assert.deepEqual(fs.readdirSync(scratch), [], "no staging or plain archive is left behind");
   assert.deepEqual(fs.readdirSync(home).filter(n => n.includes(".plain")), [], "no plain archive beside the destination");
+});
+
+
+// --- project files: streamed, sized up front, skippable, resumable (lead's ruling, 30 Sep) ---
+
+import crypto from "node:crypto";
+const FAST = { sealParams: { N: 1024, r: 8, p: 1 }, chunk: 4096 };
+
+/** A /work with two projects, some random (incompressible) files, and a link that must not travel. */
+function seedWork(work) {
+  fs.mkdirSync(path.join(work, "harlow-intake", "docs"), { recursive: true });
+  fs.mkdirSync(path.join(work, "northwind-site"), { recursive: true });
+  fs.writeFileSync(path.join(work, "harlow-intake", "README.md"), "# Harlow intake\n");
+  for (let i = 0; i < 6; i++) fs.writeFileSync(path.join(work, "harlow-intake", "docs", `f${i}.bin`), crypto.randomBytes(50_000));
+  fs.writeFileSync(path.join(work, "northwind-site", "index.html"), "<h1>Northwind Bakery</h1>");
+  fs.symlinkSync("/etc/passwd", path.join(work, "northwind-site", "link"));
+}
+const tree = dir => {
+  const out = {};
+  const walk = (d, rel) => { for (const e of fs.readdirSync(d, { withFileTypes: true })) { const r = rel ? rel + "/" + e.name : e.name; if (e.isDirectory()) walk(path.join(d, e.name), r); else out[r] = crypto.createHash("sha256").update(fs.readFileSync(path.join(d, e.name))).digest("hex"); } };
+  walk(dir, ""); return out;
+};
+
+test("export: sizes are known up front, project files go by default, links stay out, and it restores to a chosen folder", async t => {
+  const home = tempHome(t);
+  const a = path.join(home, "a"), work = path.join(home, "work");
+  fs.mkdirSync(a); seed(a); fs.mkdirSync(work); seedWork(work);
+  const est = estimate({ root: a, workRoots: [work] });
+  assert.equal(est.work.length, 1);
+  assert.equal(est.work[0].files, 8, "eight files, the link not counted");
+  assert.equal(est.work[0].links, 1);
+  assert.ok(est.total >= est.work[0].bytes && est.work[0].bytes > 300_000);
+  const file = path.join(home, "all.vyre");
+  const seen = [];
+  const r = await backup({ root: a, file, passphrase: PASSPHRASE, work: { roots: [work] }, onProgress: p => seen.push(p), ...FAST });
+  assert.deepEqual(r.projects.map(p => p.name), ["work"]);
+  assert.ok(seen.some(p => p.phase === "projects" && p.total === est.work[0].bytes), "progress reports against the size shown up front");
+  assert.equal(mode(file), 0o600);
+  assert.ok(!fs.existsSync(file + ".partial"));
+  const b = path.join(home, "b"), back = path.join(home, "restored-work");
+  const out = await restore({ root: b, file, passphrase: PASSPHRASE, workTo: { work: back }, alive: dead });
+  assert.equal(out.projects[0].to, back);
+  const want = tree(work); delete want["northwind-site/link"];
+  assert.deepEqual(tree(back), want, "every project file, byte for byte, and no link");
+  assert.ok(fs.existsSync(path.join(b, "vyre.db")));
+  await assert.rejects(restore({ root: path.join(home, "c"), file, passphrase: PASSPHRASE, workTo: { work: back }, alive: dead }), /already exists; pass force/);
+});
+
+test("export: skipping project files leaves them out, and restore can skip them too", async t => {
+  const home = tempHome(t);
+  const a = path.join(home, "a"), work = path.join(home, "work");
+  fs.mkdirSync(a); seed(a); fs.mkdirSync(work); seedWork(work);
+  const file = path.join(home, "state.vyre");
+  const r = await backup({ root: a, file, passphrase: PASSPHRASE, work: { roots: [work], skip: true }, ...FAST });
+  assert.deepEqual(r.projects, []);
+  assert.ok(fs.statSync(file).size < 200_000);
+  const full = path.join(home, "full.vyre");
+  await backup({ root: a, file: full, passphrase: PASSPHRASE, work: { roots: [work] }, ...FAST });
+  const out = await restore({ root: path.join(home, "b"), file: full, passphrase: PASSPHRASE, skipProjects: true, alive: dead });
+  assert.deepEqual(out.projects, []);
+});
+
+test("export: a damaged, cut-short or reordered file is refused before anything is restored", async t => {
+  const home = tempHome(t);
+  const a = path.join(home, "a"), work = path.join(home, "work");
+  fs.mkdirSync(a); seed(a); fs.mkdirSync(work); seedWork(work);
+  const file = path.join(home, "all.vyre");
+  await backup({ root: a, file, passphrase: PASSPHRASE, work: { roots: [work] }, ...FAST });
+  const bytes = fs.readFileSync(file);
+  const tryRestore = async (name, buf, re) => {
+    const f = path.join(home, name); fs.writeFileSync(f, buf);
+    const b = path.join(home, "into-" + name); 
+    await assert.rejects(restore({ root: b, file: f, passphrase: PASSPHRASE, workTo: { work: path.join(home, "w-" + name) }, alive: dead }), re, name);
+    assert.ok(!fs.existsSync(path.join(b, "vyre.db")) && !fs.existsSync(path.join(home, "w-" + name)), `${name}: nothing was written`);
+  };
+  await tryRestore("cut", bytes.subarray(0, bytes.length - 40), /cut short|does not open/);
+  const flipped = Buffer.from(bytes); flipped[Math.floor(bytes.length / 2)] ^= 0xff;
+  await tryRestore("flip", flipped, /does not open/);
+  const noEnd = bytes.subarray(0, bytes.length - (6 + 16));
+  await tryRestore("noend", noEnd, /cut short|does not open/);
+});
+
+test("export: an interrupted export resumes where it stopped, and the result restores identically", async t => {
+  const home = tempHome(t);
+  const a = path.join(home, "a"), work = path.join(home, "work");
+  fs.mkdirSync(a); seed(a); fs.mkdirSync(work); seedWork(work);
+  const file = path.join(home, "all.vyre");
+  await assert.rejects(backup({ root: a, file, passphrase: PASSPHRASE, work: { roots: [work] }, ...FAST,
+    onProgress: p => { if (p.phase === "projects" && p.done > 150_000) throw new Error("power cut"); } }), /power cut/);
+  assert.ok(fs.existsSync(file + ".partial") && !fs.existsSync(file));
+  const partialSize = fs.statSync(file + ".partial").size;
+  const r = await backup({ root: a, file, passphrase: PASSPHRASE, work: { roots: [work] }, ...FAST });
+  assert.equal(r.resumed, true);
+  assert.deepEqual(r.warnings, []);
+  assert.ok(r.bytes > partialSize);
+  assert.ok(!fs.existsSync(file + ".partial"));
+  const back = path.join(home, "back");
+  await restore({ root: path.join(home, "b"), file, passphrase: PASSPHRASE, workTo: { work: back }, alive: dead });
+  const want = tree(work); delete want["northwind-site/link"];
+  assert.deepEqual(tree(back), want);
+});
+
+test("export: a resume with changed project files starts that project again and says so; the wrong passphrase starts over", async t => {
+  const home = tempHome(t);
+  const a = path.join(home, "a"), work = path.join(home, "work");
+  fs.mkdirSync(a); seed(a); fs.mkdirSync(work); seedWork(work);
+  const file = path.join(home, "all.vyre");
+  await assert.rejects(backup({ root: a, file, passphrase: PASSPHRASE, work: { roots: [work] }, ...FAST,
+    onProgress: p => { if (p.phase === "projects" && p.done > 150_000) throw new Error("power cut"); } }), /power cut/);
+  fs.writeFileSync(path.join(work, "harlow-intake", "README.md"), "# changed after the cut\n");
+  fs.writeFileSync(path.join(work, "harlow-intake", "docs", "f0.bin"), crypto.randomBytes(50_000));
+  const r = await backup({ root: a, file, passphrase: PASSPHRASE, work: { roots: [work] }, ...FAST });
+  assert.match(r.warnings.join(" "), /changed since the unfinished export/);
+  const back = path.join(home, "back");
+  await restore({ root: path.join(home, "b"), file, passphrase: PASSPHRASE, workTo: { work: back }, alive: dead });
+  const want = tree(work); delete want["northwind-site/link"];
+  assert.deepEqual(tree(back), want, "the new content, not a mix");
+
+  // A partial made under another passphrase cannot be continued: it is dropped and a full export made.
+  const f2 = path.join(home, "two.vyre");
+  await assert.rejects(backup({ root: a, file: f2, passphrase: "first passphrase here", work: { roots: [work] }, ...FAST,
+    onProgress: p => { if (p.phase === "projects" && p.done > 100_000) throw new Error("cut"); } }), /cut/);
+  const r2 = await backup({ root: a, file: f2, passphrase: "second passphrase here", work: { roots: [work] }, ...FAST });
+  assert.equal(r2.resumed, false);
+  await restore({ root: path.join(home, "b2"), file: f2, passphrase: "second passphrase here", workTo: { work: path.join(home, "back2") }, alive: dead });
 });

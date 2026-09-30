@@ -23,10 +23,17 @@ import os from "node:os";
 import path from "node:path";
 import { spawn } from "node:child_process";
 import * as config from "../config/index.js";
-import { seal, open as unseal, checkPassphrase, inspect } from "./seal.js";
+import zlib from "node:zlib";
+import { seal, open as unseal, checkPassphrase, inspect as inspectV1, isSealed } from "./seal.js";
+import { SealWriter, readRecords, scanPartial, isStream, inspectStream, CHUNK } from "./sealstream.js";
 // Re-exported so a caller outside core/names (up.js) needs only this file's own frozen boundary
-// entry (test/boundaries.test.js), not a second one for seal.js.
-export { inspect };
+// entry (test/boundaries.test.js), not a second one for seal.js. Reads either format's header.
+/** @param {Buffer} buf the file's first bytes (or all of a v1 file) */
+export function inspect(buf) {
+  if (isStream(buf)) { const { header } = inspectStream(buf); return { header: { ...header, bytes: null }, bodyStart: 0 }; }
+  return inspectV1(buf);
+}
+export { isSealed, isStream };
 
 /** What goes in a backup, in order. Everything else under the root stays out. */
 export const INCLUDE = ["config.json", "hub.json", "vyre.db", "vault", "watchers", "modules", "certs", "names"];
@@ -62,95 +69,231 @@ function copyTree(from, to) {
   });
 }
 
+/** Files and folders under a project root, links left out, in a fixed order (a resume regenerates the same stream). */
+export function walkWork(root) {
+  const list = [], out = { files: 0, bytes: 0, links: 0, unreadable: 0 };
+  const walk = (dir, rel) => {
+    let ents;
+    try { ents = fs.readdirSync(dir, { withFileTypes: true }); } catch { out.unreadable++; return; }
+    ents.sort((x, y) => (x.name < y.name ? -1 : x.name > y.name ? 1 : 0));
+    for (const e of ents) {
+      // A newline in a name cannot ride a tar file list; such a file is counted, not carried.
+      if (e.name.includes("\n") || e.name.includes("\0")) { out.unreadable++; continue; }
+      const r = rel ? `${rel}/${e.name}` : e.name, p = path.join(dir, e.name);
+      if (e.isSymbolicLink()) { out.links++; continue; }
+      if (e.isDirectory()) { list.push(r); walk(p, r); continue; }
+      if (!e.isFile()) continue;
+      try { out.bytes += fs.lstatSync(p).size; out.files++; list.push(r); } catch { out.unreadable++; }
+    }
+  };
+  walk(root, "");
+  return { list, ...out };
+}
+
+/** Bytes under a path, links not followed. */
+function sizeOf(p) {
+  let st;
+  try { st = fs.lstatSync(p); } catch { return 0; }
+  if (st.isFile()) return st.size;
+  if (!st.isDirectory()) return 0;
+  let n = 0;
+  for (const e of fs.readdirSync(p)) n += sizeOf(path.join(p, e));
+  return n;
+}
+
 /**
- * Write a backup of `root` to `file` (sealed under a passphrase, mode 0600. R8: never plain).
- * @param {{ root?: string, file: string, db?: import("node:sqlite").DatabaseSync, passphrase: string,
- *   includeProviderLogins?: boolean }} o
- * @returns {Promise<{ file: string, bytes: number, included: string[], excludedLogins: string[] }>}
+ * What an export would hold, to show before it starts: the box's own data and each project folder's
+ * size. @param {{ root?: string, workRoots?: string[] }} [o]
  */
-export async function backup({ root = config.home(), file, db, passphrase, includeProviderLogins = false }) {
+export function estimate({ root = config.home(), workRoots = [] } = {}) {
+  let state = 0;
+  for (const name of INCLUDE) state += sizeOf(path.join(root, name));
+  const work = workRoots.map(r => { const w = walkWork(r); return { path: r, files: w.files, bytes: w.bytes, links: w.links }; });
+  return { state, work, total: state + work.reduce((n, w) => n + w.bytes, 0) };
+}
+
+/** tar's output as a gzip stream we can iterate. Exit 1 (a file changed or vanished while read) is a warning. */
+async function* tarGz(args, warnings) {
+  const child = spawn("tar", args, { stdio: ["ignore", "pipe", "pipe"], env: { ...process.env, COPYFILE_DISABLE: "1" } });
+  let err = "";
+  child.stderr.on("data", d => { if (err.length < 4096) err += d; });
+  const closed = new Promise(res => child.on("close", code => res(code)));
+  const failed = new Promise((_, rej) => child.on("error", rej));
+  failed.catch(() => {});
+  const gz = child.stdout.pipe(zlib.createGzip({ level: 6 }));
+  try { for await (const part of gz) yield /** @type {Buffer} */ (part); }
+  finally { if (!child.killed && child.exitCode === null) child.kill(); }
+  const code = await Promise.race([closed, failed]);
+  if (code === 1) warnings.push("some files changed while they were being read");
+  else if (code !== 0) throw new Error(`tar exited ${code}: ${err.trim()}`);
+}
+
+/** Wrap a stream so its first `n` bytes must hash to `sha256` (a resume): throws "changed" if not. */
+async function* verifyPrefix(source, n, sha256) {
+  if (n === 0) { yield* source; return; }
+  const h = crypto.createHash("sha256");
+  let seen = 0, checked = false;
+  const changed = () => Object.assign(new Error("the project files changed since the unfinished export"), { changed: true });
+  for await (const part of source) {
+    if (!checked) {
+      h.update(part.subarray(0, Math.min(part.length, n - seen)));
+      seen += Math.min(part.length, n - seen);
+      // Checked before the part holding the boundary is passed on, so nothing new is written first.
+      if (seen === n) { if (h.digest("hex") !== sha256) throw changed(); checked = true; }
+    }
+    yield part;
+  }
+  if (!checked) throw changed();
+}
+
+/**
+ * Write a backup of `root` to `file`: one sealed file (mode 0600, R8: never plain) holding the box's
+ * data and, unless skipped, each project folder in `work.roots`. It is written as a stream, so no
+ * archive is ever whole in memory or in the clear on disk. An unfinished export (`<file>.partial`)
+ * is picked up where it stopped when the same passphrase opens it and the project files are unchanged.
+ * @param {{ root?: string, file: string, db?: import("node:sqlite").DatabaseSync, passphrase: string,
+ *   includeProviderLogins?: boolean, work?: { roots?: string[], skip?: boolean },
+ *   onProgress?: (p: { phase: string, done: number, total: number }) => void,
+ *   sealParams?: { N: number, r: number, p: number }, chunk?: number }} o
+ * @returns {Promise<{ file: string, bytes: number, included: string[], excludedLogins: string[],
+ *   projects: { name: string, files: number, bytes: number }[], resumed: boolean, warnings: string[] }>}
+ */
+export async function backup({ root = config.home(), file, db, passphrase, includeProviderLogins = false, work = {}, onProgress, sealParams, chunk = CHUNK }) {
   if (!file) throw new Error("backup needs a file to write");
   checkPassphrase(passphrase);
+  const roots = work.skip ? [] : (work.roots || []).filter(r => { try { return fs.statSync(r).isDirectory(); } catch { return false; } });
   // VYRE_TMPDIR moves the staging folder (the tests point it at their own scratch folder).
   const staging = fs.mkdtempSync(path.join(process.env.VYRE_TMPDIR || os.tmpdir(), "vyre-backup-"));
   const target = path.resolve(file);
-  const tmp = `${target}.${process.pid}.${crypto.randomBytes(4).toString("hex")}.tmp`;
-  // Outside staging: tar reads staging's own contents, and a plain-tar output file sitting
-  // inside the folder being tarred would try to include itself mid-write.
-  // In its own 0700 folder, and created 0600 before tar writes into it: the archive is the whole
-  // bundle in the clear, and must never sit at the process umask beside the destination.
-  const plainDir = fs.mkdtempSync(path.join(process.env.VYRE_TMPDIR || os.tmpdir(), "vyre-backup-plain-"));
-  const plain = path.join(plainDir, "backup.tar.gz");
-  fs.closeSync(fs.openSync(plain, "wx", 0o600));
-  let excludedLogins = [];
+  const partial = `${target}.partial`;
+  const warnings = [];
+  let excludedLogins = [], resumed = false;
+  /** @type {SealWriter|null} */ let writer = null;
   try {
-    const included = [];
-    let excludedIds = [];
-    for (const name of INCLUDE) {
-      const src = path.join(root, name);
-      if (name === "vyre.db") {
-        if (!db && !fs.existsSync(src)) continue;
-        const out = path.join(staging, "vyre.db");
-        // VACUUM INTO takes a string literal, not a parameter. Refuse quotes instead of escaping.
-        if (/['"\0]/.test(out)) throw new Error(`temp folder ${staging} has a quote in it; set VYRE_TMPDIR or TMPDIR elsewhere`);
-        let own = null;
-        if (!db) {
-          const { DatabaseSync } = await import("node:sqlite");
-          own = new DatabaseSync(src);
-        }
-        try { (db || own).exec(`VACUUM INTO '${out}'`); } finally { own?.close(); }
-        if (!includeProviderLogins) {
-          const { DatabaseSync } = await import("node:sqlite");
-          const staged = new DatabaseSync(out);
-          try {
-            const names = PROVIDER_LOGIN_NAMES();
-            // Accounts (core/sessions/accounts.js) name any vault item as their sign-in: Codex, Grok,
-            // a second Claude. Read the names from the staged copy, so no import across the boundary.
-            if (staged.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name='sessions_accounts'").get()) {
-              for (const r of /** @type {any[]} */ (staged.prepare("SELECT vault_item FROM sessions_accounts WHERE vault_item IS NOT NULL").all())) {
-                if (typeof r.vault_item === "string" && !names.includes(r.vault_item)) names.push(r.vault_item);
-              }
-            }
-            // vault_items may not exist yet (a store older than the vault module, or a test
-            // fixture with no vault table at all); nothing to exclude either way.
-            const hasTable = staged.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name='vault_items'").get();
-            if (names.length && hasTable) {
-              const rows = /** @type {any[]} */ (staged.prepare(`SELECT id, name FROM vault_items WHERE name IN (${names.map(() => "?").join(",")})`).all(...names));
-              excludedIds = rows.map(r => r.id);
-              excludedLogins = rows.map(r => r.name);
-              // secure_delete zeroes the freed pages, and the VACUUM below rewrites the file, so the
-              // excluded value is not left in free space to be read out of the sealed bytes later.
-              if (excludedIds.length) staged.exec("PRAGMA secure_delete = ON");
-              if (excludedIds.length) staged.prepare(`DELETE FROM vault_items WHERE id IN (${excludedIds.map(() => "?").join(",")})`).run(...excludedIds);
-            }
-            if (excludedIds.length) staged.exec("VACUUM");
-          } finally { staged.close(); }
-        }
-        included.push(name);
-        continue;
-      }
-      let st;
-      try { st = fs.lstatSync(src); } catch { continue; }
-      if (name === "vault" && st.isDirectory() && excludedIds.length) {
-        copyTree(src, path.join(staging, name));
-        for (const id of excludedIds) fs.rmSync(path.join(staging, name, "items", id + ".json"), { force: true });
-      } else if (st.isFile()) fs.copyFileSync(src, path.join(staging, name));
-      else if (st.isDirectory()) copyTree(src, path.join(staging, name));
-      else continue;
-      included.push(name);
-    }
     fs.mkdirSync(path.dirname(target), { recursive: true });
-    await run(["tar", "-czf", plain, "-C", staging, "."]);
-    const sealed = seal(fs.readFileSync(plain), passphrase);
-    // Created 0600 before the sealed bytes land, so the file is never readable, sealed or not, for a moment.
-    fs.closeSync(fs.openSync(tmp, "wx", 0o600));
-    fs.writeFileSync(tmp, sealed);
-    fs.chmodSync(tmp, 0o600);
-    fs.renameSync(tmp, target);
-    return { file: target, bytes: fs.statSync(target).size, included, excludedLogins };
+    // What is there to export, listed up front and in a fixed order.
+    const walks = roots.map(r => ({ path: r, name: path.basename(r) || "work", ...walkWork(r) }));
+    const names = new Set();
+    for (const w of walks) { let n = w.name, i = 2; while (names.has(n)) n = `${w.name}-${i++}`; w.name = n; names.add(n); }
+    const total = walks.reduce((n, w) => n + w.bytes, 0);
+    let done = 0;
+    const tick = phase => onProgress?.({ phase, done, total });
+
+    // Resume: the same passphrase must open the unfinished file.
+    let scanned = null;
+    if (fs.existsSync(partial)) {
+      try { scanned = scanPartial(partial, passphrase); } catch { scanned = null; }
+      if (!scanned || scanned.complete || scanned.header.chunk !== chunk) { fs.rmSync(partial, { force: true }); scanned = null; }
+    }
+    const seg = i => (scanned && scanned.segments[i]) || null;
+    const manifest = () => Buffer.from(JSON.stringify({ v: 2, at: Date.now(), projects: walks.map((w, i) => ({ seg: 2 + i, name: w.name, path: w.path, files: w.files, bytes: w.bytes, links: w.links })), skippedProjects: Boolean(work.skip) }));
+
+    if (scanned) {
+      // Whole segments already in the file stay; a half-written manifest or state is redone, and
+      // so is a project segment whose files have changed since.
+      const firstOpen = [0, 1, ...walks.map((_, i) => 2 + i)].find(i => !seg(i)?.done);
+      const open = scanned.open;
+      const keepOpen = open && open.seg >= 2 && firstOpen === open.seg;
+      writer = SealWriter.resume(partial, passphrase, keepOpen ? scanned : scanned.openAt);
+      resumed = true;
+    } else {
+      writer = SealWriter.create(partial, passphrase, { params: sealParams, chunk });
+    }
+    const w = writer;
+
+    const included = [];
+    if (!seg(0)?.done) { await w.segment(0, (async function* () { yield manifest(); })()); }
+
+    if (!seg(1)?.done) {
+      let excludedIds = [];
+      for (const name of INCLUDE) {
+        const src = path.join(root, name);
+        if (name === "vyre.db") {
+          if (!db && !fs.existsSync(src)) continue;
+          const out = path.join(staging, "vyre.db");
+          // VACUUM INTO takes a string literal, not a parameter. Refuse quotes instead of escaping.
+          if (/['"\0]/.test(out)) throw new Error(`temp folder ${staging} has a quote in it; set VYRE_TMPDIR or TMPDIR elsewhere`);
+          let own = null;
+          if (!db) {
+            const { DatabaseSync } = await import("node:sqlite");
+            own = new DatabaseSync(src);
+          }
+          try { (db || own).exec(`VACUUM INTO '${out}'`); } finally { own?.close(); }
+          if (!includeProviderLogins) {
+            const { DatabaseSync } = await import("node:sqlite");
+            const staged = new DatabaseSync(out);
+            try {
+              const names = PROVIDER_LOGIN_NAMES();
+              // Accounts (core/sessions/accounts.js) name any vault item as their sign-in: Codex, Grok,
+              // a second Claude. Read the names from the staged copy, so no import across the boundary.
+              if (staged.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name='sessions_accounts'").get()) {
+                for (const r of /** @type {any[]} */ (staged.prepare("SELECT vault_item FROM sessions_accounts WHERE vault_item IS NOT NULL").all())) {
+                  if (typeof r.vault_item === "string" && !names.includes(r.vault_item)) names.push(r.vault_item);
+                }
+              }
+              // vault_items may not exist yet (a store older than the vault module, or a test
+              // fixture with no vault table at all); nothing to exclude either way.
+              const hasTable = staged.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name='vault_items'").get();
+              if (names.length && hasTable) {
+                const rows = /** @type {any[]} */ (staged.prepare(`SELECT id, name FROM vault_items WHERE name IN (${names.map(() => "?").join(",")})`).all(...names));
+                excludedIds = rows.map(r => r.id);
+                excludedLogins = rows.map(r => r.name);
+                // secure_delete zeroes the freed pages, and the VACUUM below rewrites the file, so the
+                // excluded value is not left in free space to be read out of the sealed bytes later.
+                if (excludedIds.length) staged.exec("PRAGMA secure_delete = ON");
+                if (excludedIds.length) staged.prepare(`DELETE FROM vault_items WHERE id IN (${excludedIds.map(() => "?").join(",")})`).run(...excludedIds);
+              }
+              if (excludedIds.length) staged.exec("VACUUM");
+            } finally { staged.close(); }
+          }
+          included.push(name);
+          continue;
+        }
+        let st;
+        try { st = fs.lstatSync(src); } catch { continue; }
+        if (name === "vault" && st.isDirectory() && excludedIds.length) {
+          copyTree(src, path.join(staging, name));
+          for (const id of excludedIds) fs.rmSync(path.join(staging, name, "items", id + ".json"), { force: true });
+        } else if (st.isFile()) fs.copyFileSync(src, path.join(staging, name));
+        else if (st.isDirectory()) copyTree(src, path.join(staging, name));
+        else continue;
+        included.push(name);
+      }
+      tick("data");
+      await w.segment(1, tarGz(["-cf", "-", "-C", staging, "."], warnings));
+    } else {
+      for (const name of INCLUDE) if (fs.existsSync(path.join(root, name))) included.push(name);
+    }
+
+    for (let i = 0; i < walks.length; i++) {
+      const p = walks[i], n = 2 + i;
+      if (seg(n)?.done) { done += p.bytes; continue; }
+      const listFile = path.join(staging, `list-${i}`);
+      fs.writeFileSync(listFile, p.list.map(x => x + "\0").join(""), { mode: 0o600 });
+      const args = ["-cf", "-", "--no-recursion", "--null", "-C", p.path, "-T", listFile];
+      const open = scanned?.open;
+      const skipBytes = resumed && open && open.seg === n && w.counter === scanned.records ? open.bytes : 0;
+      const each = b => { done += b; tick("projects"); };
+      try {
+        await w.segment(n, verifyPrefix(tarGz(args, warnings), skipBytes, open?.sha256 || ""), { skipBytes, onBytes: each });
+      } catch (e) {
+        if (!/** @type {any} */ (e).changed) throw e;
+        // The files moved on since the unfinished run: that project starts over from its first byte.
+        w.rewind(scanned.openAt);
+        warnings.push(`${p.name}: changed since the unfinished export, so it was started again`);
+        await w.segment(n, tarGz(args, warnings), { onBytes: each });
+      }
+    }
+    w.end();
+    fs.chmodSync(partial, 0o600);
+    fs.renameSync(partial, target);
+    return { file: target, bytes: fs.statSync(target).size, included, excludedLogins,
+      projects: walks.map(p => ({ name: p.name, files: p.files, bytes: p.bytes })), resumed, warnings };
+  } catch (e) {
+    // The partial file stays: that is what a resume continues from.
+    writer?.close();
+    throw e;
   } finally {
-    fs.rmSync(tmp, { force: true });
-    fs.rmSync(plainDir, { recursive: true, force: true });
     fs.rmSync(staging, { recursive: true, force: true });
   }
 }
@@ -195,21 +338,12 @@ function refuseLinks(dir) {
 }
 
 /**
- * Put a backup back into `root`. vyred must be stopped, and an existing store is only replaced
- * with force.
+ * Put a v1 (whole-buffer) backup back into `root`.
  * @param {{ root?: string, file: string, passphrase: string, force?: boolean,
  *   alive?: (o: { pid: number, socket: string }) => boolean | Promise<boolean> }} o
  * @returns {Promise<{ restored: string[] }>}
  */
-export async function restore({ root = config.home(), file, passphrase, force = false, alive = defaultAlive }) {
-  const p = config.paths(root);
-  let pid = 0;
-  try { pid = Number(fs.readFileSync(p.pid, "utf8").trim()) || 0; } catch {}
-  if ((pid || fs.existsSync(p.socket)) && await alive({ pid, socket: p.socket })) {
-    throw new Error("vyred is running; stop it (vyre down, or systemctl stop vyre.service) before restoring");
-  }
-  if (fs.existsSync(p.db) && !force) throw new Error(`${p.db} already exists; pass force to replace it`);
-
+async function restoreV1({ root, file, passphrase }) {
   const sealed = fs.readFileSync(path.resolve(file));
   const plainBytes = unseal(sealed, passphrase);
 
@@ -238,4 +372,111 @@ export async function restore({ root = config.home(), file, passphrase, force = 
   } finally {
     fs.rmSync(staging, { recursive: true, force: true });
   }
+}
+
+/** Move an extracted folder's entries into `dest`, refusing links; existing names need force. */
+function moveInto(from, dest, force) {
+  refuseLinks(from);
+  fs.mkdirSync(dest, { recursive: true });
+  for (const name of fs.readdirSync(from)) {
+    const to = path.join(dest, name);
+    if (fs.existsSync(to)) fs.rmSync(to, { recursive: true, force: true });
+    fs.renameSync(path.join(from, name), to);
+  }
+}
+
+/**
+ * Put a v2 backup back: every segment is decrypted and checked to its end record before anything on
+ * disk changes, then the box's data goes into `root` and each project folder into its own place.
+ */
+async function restoreV2({ root, file, passphrase, force, workTo, skipProjects }) {
+  fs.mkdirSync(root, { recursive: true, mode: 0o700 });
+  // Staging inside the root, so the box's own pieces move into place with a rename on the same disk.
+  const staging = fs.mkdtempSync(path.join(root, ".restore-"));
+  try {
+    /** @type {Map<number, number>} */ const fds = new Map();
+    const segFile = n => path.join(staging, `seg-${n}.tar.gz`);
+    try {
+      for (const r of readRecords(path.resolve(file), passphrase)) {
+        if (r.seg !== 0 && skipProjects && r.seg >= 2) continue;
+        let fd = fds.get(r.seg);
+        if (fd === undefined) { fd = fs.openSync(r.seg === 0 ? path.join(staging, "manifest.json") : segFile(r.seg), "w", 0o600); fds.set(r.seg, fd); }
+        fs.writeSync(fd, r.plain);
+      }
+    } finally { for (const fd of fds.values()) fs.closeSync(fd); }
+    let manifest = { projects: [] };
+    try { manifest = JSON.parse(fs.readFileSync(path.join(staging, "manifest.json"), "utf8")); } catch { throw new Error("this backup has no readable manifest"); }
+    if (!fds.has(1)) throw new Error("this backup holds no box data");
+
+    // Plan and check everything before changing anything.
+    const projects = [];
+    for (const pr of manifest.projects || []) {
+      if (skipProjects || !fds.has(pr.seg)) continue;
+      const dest = (workTo && workTo[pr.name]) || pr.path;
+      if (typeof dest !== "string" || !path.isAbsolute(dest)) throw new Error(`no place to put the project files "${pr.name}": pass a folder for them`);
+      const list = String(await run(["tar", "-tzf", segFile(pr.seg)]));
+      const tops = new Set();
+      for (const raw of list.split("\n").map(x => x.replace(/\r$/, "")).filter(Boolean)) {
+        if (raw.startsWith("/") || raw.split("/").includes("..")) throw new Error(`refusing a backup with unsafe entries: ${raw}`);
+        const e = raw.replace(/^\.\//, "").replace(/\/$/, "");
+        if (e && e !== ".") tops.add(e.split("/")[0]);
+      }
+      const clash = [...tops].filter(t => fs.existsSync(path.join(dest, t)));
+      if (clash.length && !force) throw new Error(`${path.join(dest, clash[0])} already exists; pass force to replace it`);
+      projects.push({ ...pr, dest });
+    }
+    checkEntries(String(await run(["tar", "-tzf", segFile(1)])));
+
+    await run(["tar", "-xzpf", segFile(1), "-C", staging]);
+    fs.rmSync(segFile(1), { force: true });
+    const restored = [];
+    for (const pr of projects) {
+      // Inside the destination itself: it may be a mount point, whose parent is not ours to write.
+      fs.mkdirSync(pr.dest, { recursive: true });
+      const tmp = fs.mkdtempSync(path.join(pr.dest, ".vyre-restore-"));
+      try {
+        await run(["tar", "-xzpf", segFile(pr.seg), "-C", tmp]);
+        moveInto(tmp, pr.dest, force);
+      } finally { fs.rmSync(tmp, { recursive: true, force: true }); }
+    }
+    // The manifest and segment files are not part of the box's data.
+    for (const n of fs.readdirSync(staging)) if (/^seg-|^manifest\./.test(n)) fs.rmSync(path.join(staging, n), { force: true });
+    refuseLinks(staging);
+    for (const name of INCLUDE) {
+      const src = path.join(staging, name);
+      if (!fs.existsSync(src)) continue;
+      const dst = path.join(root, name);
+      fs.rmSync(dst, { recursive: true, force: true });
+      // A WAL left from the old store would be replayed onto the restored one and corrupt it.
+      if (name === "vyre.db") for (const x of ["-wal", "-shm"]) fs.rmSync(dst + x, { force: true });
+      fs.renameSync(src, dst);
+      restored.push(name);
+    }
+    return { restored, projects: projects.map(p => ({ name: p.name, to: p.dest, files: p.files, bytes: p.bytes })) };
+  } finally {
+    fs.rmSync(staging, { recursive: true, force: true });
+  }
+}
+
+/**
+ * Put a backup back into `root`. vyred must be stopped, and an existing store is only replaced
+ * with force. Reads the current format (a stream, with project files) and the first one.
+ * @param {{ root?: string, file: string, passphrase: string, force?: boolean, workTo?: Record<string,string>,
+ *   skipProjects?: boolean, alive?: (o: { pid: number, socket: string }) => boolean | Promise<boolean> }} o
+ * @returns {Promise<{ restored: string[], projects: { name: string, to: string, files: number, bytes: number }[] }>}
+ */
+export async function restore({ root = config.home(), file, passphrase, force = false, workTo, skipProjects = false, alive = defaultAlive }) {
+  const p = config.paths(root);
+  let pid = 0;
+  try { pid = Number(fs.readFileSync(p.pid, "utf8").trim()) || 0; } catch {}
+  if ((pid || fs.existsSync(p.socket)) && await alive({ pid, socket: p.socket })) {
+    throw new Error("vyred is running; stop it (vyre down, or systemctl stop vyre.service) before restoring");
+  }
+  if (fs.existsSync(p.db) && !force) throw new Error(`${p.db} already exists; pass force to replace it`);
+  const head = Buffer.alloc(8192);
+  const fd = fs.openSync(path.resolve(file), "r");
+  let n = 0;
+  try { n = fs.readSync(fd, head, 0, head.length, 0); } finally { fs.closeSync(fd); }
+  if (isStream(head.subarray(0, n))) return restoreV2({ root, file, passphrase, force, workTo, skipProjects });
+  return { ...(await restoreV1({ root, file, passphrase })), projects: [] };
 }

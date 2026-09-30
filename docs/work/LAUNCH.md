@@ -43,6 +43,7 @@ lead's 0.2 BUILD GO.
 
 ## Doing
 
+- Export v2 (project files by default, streamed, resumable, size up front, --skip-projects) built; see CHANGELOG. Open: a Mac has no /work, so its project folders need teammates/projects to name them (pass --work DIR for now); a Settings toggle for the skip flag belongs to the Settings card (step 10).
 - Reviewer-2's HOLD and 4 MEDIUMs on fbff6d47/fc2723cf fixed; awaiting recheck.
 - Install script v2 core is built and tested (10 new tests, look tests green): see the CHANGELOG entry.
   Still open in it: the terminal's own check code (B3) waits for tailnet's definition of the check

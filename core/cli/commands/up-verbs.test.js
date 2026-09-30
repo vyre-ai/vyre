@@ -258,3 +258,28 @@ test("up.js commands --view: up --dry-run is a card, name a card, name status th
   const b = frames((await run(root, ["backup", file, "--view"], {}, PASSPHRASE)).stdout);
   assert.deepEqual([b[0].cmd, b[0].view.kind, b[0].data.file], ["backup", "card", file]);
 });
+
+test("backup: shows the size of the project files up front, includes them by default, and --skip-projects leaves them out", async t => {
+  const from = seeded(t);
+  const work = path.join(tempHome(t), "work");
+  fs.mkdirSync(path.join(work, "harlow-intake"), { recursive: true });
+  fs.writeFileSync(path.join(work, "harlow-intake", "notes.md"), "Northwind Bakery intake notes");
+  const file = path.join(from, "..", `${path.basename(from)}-with-work.vyre`);
+  t.after(() => fs.rmSync(file, { force: true }));
+  const env = { VYRE_WORK_DIR: work };
+
+  const full = await run(from, ["backup", file], env, PASSPHRASE);
+  assert.equal(full.code, 0, full.out);
+  assert.match(full.out, new RegExp(`project files in ${work.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}: \\d+ KB \\(1 files\\)`), "the size comes before the passphrase prompt");
+  assert.match(full.out, /project files \(work\)/);
+
+  const skipped = await run(from, ["backup", file, "--skip-projects", "--json"], env, PASSPHRASE);
+  assert.equal(skipped.code, 0, skipped.out);
+  assert.deepEqual(JSON.parse(skipped.stdout).projects, []);
+
+  await run(from, ["backup", file], env, PASSPHRASE);
+  const to = tempHome(t), back = path.join(tempHome(t), "back");
+  const r = await run(to, ["restore", file, "--work-to", back], {}, PASSPHRASE);
+  assert.equal(r.code, 0, r.out);
+  assert.equal(fs.readFileSync(path.join(back, "work", "harlow-intake", "notes.md"), "utf8"), "Northwind Bakery intake notes");
+});
