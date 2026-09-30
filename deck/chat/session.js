@@ -69,11 +69,12 @@ import { askCard } from "./ask-item.js";
 import { questionCard } from "./question.js";
 import { askCardFor, defaultOpen } from "./cards/index.js";
 import { welcomeRow, loadWelcome } from "./cards/land.js";
+import { charterChanged, agentMade } from "./cards/charter-changed.js";
 import { macAnswersHeld } from "./presence.js";
 import { mountComposer } from "./composer.js";
 import { duration, elapsed, toolTitle, toolVerb } from "./lib/blocks.js";
 import { OURS, labelFor, isAssistant, readNames } from "./lib/names.js";
-import { threadAvatar, readTeammates, readProjects } from "../js/avatars.js";
+import { threadAvatar, readTeammates, readProjects, isTeammate } from "../js/avatars.js";
 import { threadHref } from "./lib/routes.js";
 import { isMac, machineChip } from "../js/machine.js";
 import { blockRow, headRow, userRow, liveTextRow, thinkingRow, toolCard, handoffCard, turnRow, rawView, outputEl, pictureThumb } from "./blocks.js";
@@ -1226,6 +1227,7 @@ export function mountSession(container, opts) {
     for (const e of r.data.events) onEvent(e, false);
     for (const a of r.data.asks) upsertAsk(a);
     if (!r.data.events.length) void showWelcome();
+    void charterNotice(null);
     booted = true;
     for (const e of early.splice(0)) onLive(e);
     toBottom();
@@ -1241,6 +1243,27 @@ export function mountSession(container, opts) {
     welcomeEl = welcomeRow(w, { open: defaultOpen });
     timeline.querySelector?.(".th-wait")?.remove?.();
     timeline.prepend(welcomeEl);
+  }
+  /** "Charter changed by <agent>" in a teammate's own thread: a quiet notice with the diff and a one-tap Revert, once per version
+   * and never for the person's own edit. `ev` is the teammate.charter-changed payload, or null to read the latest on open. */
+  let charterShown = 0;
+  async function charterNotice(/** @type {any} */ ev) {
+    const agent = record.current?.agent;
+    if (!agent || !isTeammate(agent)) return;
+    let d = ev;
+    if (!d) {
+      const r = await attempt("team.charter.history", { teammate: agent, limit: 2 });
+      const v = r.data?.versions || [];
+      if (r.error || !v.length || Date.now() - Number(v[0].at) > 864e5) return;
+      d = { agent, version: v[0].version, previous: v[1]?.version ?? null, by: v[0].by, note: v[0].note, at: v[0].at };
+    }
+    if (d.agent !== agent || !agentMade(d.by) || Number(d.version) <= charterShown || !timeline.isConnected) return;
+    const key = `vyre.charter.seen:${agent}`;
+    try { if (Number(localStorage.getItem(key)) >= Number(d.version)) return; } catch { /* no storage: show it */ }
+    charterShown = Number(d.version);
+    const row = charterChanged(d, { onDismiss: () => { try { localStorage.setItem(key, String(d.version)); } catch { /* not kept */ } } });
+    timeline.append(row);
+    if (stick.stuck) toBottom();
   }
   async function refreshWelcome() {
     if (!welcomeEl) return;
@@ -1612,6 +1635,7 @@ export function mountSession(container, opts) {
     // memory.curated carries no thread: refetch this open thread and let the id dedup filter it.
     on("memory.curated", () => fetchMemory()),
     on("onboard.stepped", () => { void refreshWelcome(); }),
+    on("teammate.charter-changed", e => { void charterNotice(e.payload); }),
     // Filed into a project (projects.add-threads, or made into one): the project's tile from now on.
     on("thread.picked", e => { if ((e.payload?.thread || e.thread) === thread) void refile(e.payload?.project); }),
     on("session.indexed", e => { if ((e.thread || e.payload?.session) !== thread) return; if (mode === "blocks") refresh(); else readMoreLegacy(); }),

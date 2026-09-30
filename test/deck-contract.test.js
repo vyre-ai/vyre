@@ -19,6 +19,9 @@ const REPO = path.join(path.dirname(fileURLToPath(import.meta.url)), "..");
  *  it is expected, not a bug this test should catch. A tool leaves this list the day every box
  *  registers it - it does not grow to paper over a call nothing answers by design. */
 const OPTIONAL = {
+  "team.charter.history": "teammates ships it in work/teammates-0.2 (core/team); the charter notice draws only after the event, and says so in a line when a call fails. Leaves this list when teammates merges.",
+  "team.charter.diff": "teammates ships it in work/teammates-0.2 (core/team); the charter notice draws only after the event, and says so in a line when a call fails. Leaves this list when teammates merges.",
+  "team.charter.revert": "teammates ships it in work/teammates-0.2 (core/team); the charter notice draws only after the event, and says so in a line when a call fails. Leaves this list when teammates merges.",
   "projects.rename": "teammates ships it in work/teammates-0.2 (core/projects); the Deck shows the action only when the call answers, and says so in a line when it does not. Leaves this list when teammates merges.",
   "projects.archive": "teammates ships it in work/teammates-0.2 (core/projects); the Deck shows the action only when the call answers, and says so in a line when it does not. Leaves this list when teammates merges.",
   "projects.history": "teammates ships it in work/teammates-0.2 (core/projects); the Deck shows the action only when the call answers, and says so in a line when it does not. Leaves this list when teammates merges.",

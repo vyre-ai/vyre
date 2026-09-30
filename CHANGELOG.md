@@ -4,6 +4,11 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### chat: "Charter changed by <agent>", a quiet notice with the diff and a one-tap Revert
+
+- `deck/chat/cards/charter-changed.js` (+ css): in a teammate's own thread, when an agent (not the person's own surface) wrote a new charter version, a quiet row says "Charter changed by <agent>" with the note. "Show changes" opens `team.charter.diff` inline; Revert calls `team.charter.revert` to the version before (itself a new version, so it can be undone the same way); a first version has no Revert. It is a notice, never a prompt, and Dismiss keeps it away for that version.
+- `session.js` draws it from the `teammate.charter-changed` event and, on open, from `team.charter.history` when the latest version is an agent's from the last day. Tests: `charter-changed.test.js` (6).
+
 #### chat cards: reviewer-2's two MEDIUMs
 
 - M1: a display card is actionable only when its tool block's name is a Vyre tool (`firstParty`: a registry name, or `mcp__vyre__*`; the name comes from the transcript, a model cannot set it). A result from Bash, a fetch, a read or another server draws the same card with no buttons (`ctx.readOnly`): no report actions or links, no merge or review on a pull request, no RSVP on an event. A report's buttons call only tools on `ACTION_TOOLS` in `report.js`, never a name taken from the payload.

@@ -80,6 +80,8 @@ deck/css/deck.css span.vy-av rules; deck/css/views/agents.css, settings.css.
 - (done by app-design d9f6e445) avatar.md and ADR 0043 should say renaming an agent changes its blob
   (seed = name), and name projectBytes() as the project-tile seed-to-bytes rule for other surfaces.
 
+## 2026-10-01 charter-changed notice built (cards/charter-changed.js, wired in session.js), local.
+
 ## 2026-10-01 reviewer-2's two MEDIUMs (fixed locally): M1 firstParty + readOnly cards + ACTION_TOOLS; M2 nonce in artifact-frame.js (client half; artifacts owns the route's script and x-vyre-frame-nonce header).
 
 ## 2026-10-01 resume (after a usage-limit restart)
