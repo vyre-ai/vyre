@@ -41,6 +41,7 @@ import { Shared, SHARED_MIGRATIONS } from "./shared.js";
 import { Devices, DEVICE_MIGRATIONS } from "./devices.js";
 import { AgentGrants, AGENT_GRANTS_MIGRATION, AUDIT_WHERE_MIGRATION, AGENT_GRANT_MACED } from "./agents.js";
 import { Emergency, EMERGENCY_MIGRATION, EMERGENCY_MACED } from "./emergency.js";
+import { SAID_MIGRATION, SAID_MACED } from "./said.js";
 import { CONNECTIONS_MIGRATION, CONNECTIONS_PICKER_MIGRATION, CONNECTION_MACED, DEFAULT_SUGGEST_MIGRATION } from "./connections.js";
 
 /**
@@ -133,6 +134,8 @@ export const MIGRATIONS = [
   // shared across two projects does not carry one client's credentials into the other's. Null
   // means every project, as every grant meant before this column existed.
   GRANT_PROJECT_MIGRATION,
+  // P17: what the person's own turn asked to go out, so the Gate can tell an asked-for send from an unasked one.
+  SAID_MIGRATION,
 ];
 
 /** The two classes of vault (ADR 0006 decision 1), and the key version each is on. */
@@ -162,6 +165,8 @@ export const MACED = {
   vault_emergency: EMERGENCY_MACED,
   // Which connection a row is, what it can do, and which surfaces may use it (ADR 0028, 9b).
   vault_connections: CONNECTION_MACED,
+  // What the person said to send, post or pay, and whether it still stands (said.js).
+  vault_said_intents: SAID_MACED,
 };
 /** The key column of each MACed table, where it is not `id`. */
 const KEY_COL = { vault_ssh_keys: "name", vault_marks: "name", vault_device_keys: "device" };

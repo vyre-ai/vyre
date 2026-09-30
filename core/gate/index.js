@@ -188,6 +188,29 @@ export default {
       run: (input, { caller }) => gate.offer(input, caller),
     });
 
+    // What the person's own words asked to go out (P17). The intents live in the vault; these are
+    // the person's two tools over them, so nothing here can record one. Taking one back needs no proof.
+    const asPerson = caller => { person(caller); return String(caller); };
+    const vaultCall = async (tool, input) => {
+      const r = await ctx.call(tool, input);
+      if (r.error) throw Object.assign(new Error(r.error.code === "no_such_tool" ? "the vault is not running on this machine" : r.error.message), { code: r.error.code });
+      return r.data;
+    };
+
+    ctx.tool("gate.said.list", {
+      description: "What you have asked to go out, by voice or in chat: each thing Vyre will send, post or pay without asking again, and standing permissions. Revoked ones with `all`.",
+      input: obj({ thread: str, all: { type: "boolean" } }),
+      callers: ["cli", "local", "deck", "capsule"],
+      run: (input, { caller }) => { asPerson(caller); return vaultCall("vault.said.list", input); },
+    });
+
+    ctx.tool("gate.said.revoke", {
+      description: "Take back something you asked to go out, or a standing permission. It stops covering sends at once. Needs no proof: taking permission away never does.",
+      input: obj({ id: str }, ["id"]),
+      callers: ["cli", "local", "deck", "capsule"],
+      run: (input, { caller }) => { asPerson(caller); return vaultCall("vault.said.revoke", input); },
+    });
+
     ctx.tool("gate.route", {
       internal: true,
       description: "harness.rules: whether a sending MCP tool should go through the Gate instead.",

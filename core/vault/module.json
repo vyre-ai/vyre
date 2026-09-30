@@ -116,7 +116,11 @@
       "vault.connections.sync",
       "vault.connections.register",
       "vault.connections.unregister",
-      "vault.connections.allowed"
+      "vault.connections.allowed",
+      "vault.said.record",
+      "vault.said.match",
+      "vault.said.list",
+      "vault.said.revoke"
     ]
   },
   "watches": {

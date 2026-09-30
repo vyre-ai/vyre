@@ -31,6 +31,7 @@ import * as historyTools from "./tools/history.js";
 import * as agentTools from "./tools/agents.js";
 import * as needsTools from "./tools/needs.js";
 import * as connectionTools from "./tools/connections.js";
+import * as saidTools from "./said.js";
 
 export { presence };
 import * as shareTools from "./tools/share.js";
@@ -350,6 +351,11 @@ export default {
     const conns = connectionTools.register({ ctx, vault, tool });
     // Google and mcp start after the vault, so their rows sync on first read and on their events.
     if (!vault.guarded) conns.connections.resync(["vault"]).catch(() => {});
+
+    // What the person's own turns asked to go out (P17): stored here, matched by the Gate.
+    /** A tool only other modules can call, as vault.release is. */
+    const internal = (name, description, input, run) => ctx.tool(name, { internal: true, description, input, run });
+    const said = saidTools.register({ vault, internal });
 
     tool("vault.offboard", [...SURFACES, "mcp"], "Someone left: revoke every pass they hold and list what must be rotated.",
       obj({ person: str }, ["person"]), (input, { caller }) => vault.offboard(input, caller),
