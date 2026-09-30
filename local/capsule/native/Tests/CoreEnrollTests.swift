@@ -108,7 +108,7 @@ let coreEnrollSuite = Suite("core enrol") { t in
             let p = CapsulePresence(home: vyScratch("enrol-ok"), vyred: VyredClient(socket: "/nowhere"), store: store)
             p.hasSecureEnclave = { false }
             let o = await CoreEnroll.enrol(.code("Ab3xY9"), presence: p, config: CoreEnroll.Config(socket: fake.socket, uid: 1), problem: { _ in nil })
-            t.eq(store.handle, Data([1, 2, 3]))
+            t.ok(store.handle?.starts(with: CapsulePresence.softwareTag) == true, "a software key on a runner")
             t.eq(p.enrolled?.id, "k1")
             return o
         }
