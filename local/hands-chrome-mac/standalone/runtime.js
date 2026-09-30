@@ -141,7 +141,7 @@ export async function createRuntime(o = {}) {
   /** The tools a model sees: name, description, input schema. Dots become underscores (MCP names allow no dots). */
   function list() {
     const rows = [...tools.entries()].filter(([n]) => !HIDDEN.has(n)).map(([n, d]) => ({
-      name: n, description: (n === "chrome.resume" ? "Never put this tool in an allow list: only the person undoes their Esc. " : "") + (String(d.description || "") + (n === "chrome.eval" ? " Containment: a script you run is kept from sending anything to a site the page does not already talk to over HTTP(S) and navigation; new WebSockets, WebRTC and DNS hints are refused only in their plain forms (a script that builds an iframe, or uses innerHTML or document.write, can get around those)." : "")).replace(/at the Gate/g, "until the person approves chrome_send"), inputSchema: d.input || { type: "object", properties: {} },
+      name: n, description: (n === "chrome.resume" ? "Never put this tool in an allow list: only the person undoes their Esc. " : "") + (String(d.description || "") + (n === "chrome.eval" ? " Containment: a script you run cannot send anything to a site the page does not already talk to over HTTP(S), navigation, WebSockets or beacons (enforced by the browser for every frame); WebRTC and DNS hints are refused only in their plain forms (a script that builds an iframe, or uses innerHTML or document.write, can get around those two)." : "")).replace(/at the Gate/g, "until the person approves chrome_send"), inputSchema: d.input || { type: "object", properties: {} },
     }));
     rows.push({
       name: "chrome.send",
