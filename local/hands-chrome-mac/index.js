@@ -237,7 +237,7 @@ export default {
       return via.run(meta || {}, async () => {
         const agent = agentOf(meta.caller);
         const args = { ...input };
-        delete args.agent; delete args.release; delete args.asked; delete args.action;
+        delete args.agent; delete args.release; delete args.asked; delete args.action; delete args.writeOk;
         const summary = summarize(op, input);
         /** @type {any} */
         let carry = {};
@@ -258,7 +258,8 @@ export default {
           // when `asked` is false, judged by method and endpoint (extension/shared/outbound.js).
           let res = screen(await bridge.call(op, args, { timeoutMs: op === "login.wait" ? Math.min(Number(args.timeoutMs) || 120_000, 600_000) + 15_000 : args.timeoutMs }));
           // A write with the page's login that the plan in force covers goes through; the rest wait for the person.
-          if (isObj(res) && res.held === true && res.write === true && covers(String(res.kind))) {
+          if (isObj(res) && res.held === true && res.write === true && covers(String(res.kind), res, args)) {
+            pinPlan(res, args);
             const g = /** @type {NonNullable<typeof grant>} */ (grant);
             g.left[String(res.kind)]--; g.used++;
             res = screen(await bridge.call(op, { ...args, writeOk: true }, { timeoutMs: args.timeoutMs }));
@@ -266,7 +267,8 @@ export default {
             showPresence({ of: g.total, label: g.title });
           }
           // A publish or activate is covered only when the person's own words asked for it and the plan card said "and publish": asking is approving.
-          else if (isObj(res) && res.held === true && res.write !== true && res.kind === "publish" && op === "api.call" && covers("publish")) {
+          else if (isObj(res) && res.held === true && res.write !== true && res.kind === "publish" && op === "api.call" && covers("publish", res, args)) {
+            pinPlan(res, args);
             const g = /** @type {NonNullable<typeof grant>} */ (grant);
             g.left.publish--; g.used++;
             res = screen(await bridge.call(op, { ...args, asked: true }, { timeoutMs: args.timeoutMs }));
@@ -303,15 +305,30 @@ export default {
     const PLAN_KINDS = ["create", "edit", "delete", "publish", "send"];
     // Covered by a plan: creates and edits, and a publish only when the person's own words asked for it. A delete and a send always ask, one at a time.
     const PLAN_TTL_MS = 60 * 60_000;
-    /** @type {null | { id: string, title: string, items: any[], left: Record<string, number>, total: number, used: number, expiresAt: number }} */
+    /** @type {null | { id: string, title: string, items: any[], left: Record<string, number>, total: number, used: number, expiresAt: number, tab?: number|null, tabOrigin?: string, apiOrigin?: string }} */
     let grant = null;
     /** What this run changed, for the finish card: one line each. @type {{ at: number, kind: string, what: string, covered: boolean }[]} */
     const changes = [];
     /** The kind of change this held write is, if the plan in force still covers one. @param {string} kind */
-    const covers = kind => {
+    const covers = (kind, res, args) => {
       if (!grant || oversight.state === "stopped") { grant = grant && oversight.state === "stopped" ? null : grant; return false; }
       if (Date.now() > grant.expiresAt) { grant = null; return false; }
-      return (grant.left[kind] || 0) > 0;
+      if ((grant.left[kind] || 0) <= 0) return false;
+      // A plan is for one site: the tab it was approved for, that tab's origin, and the one API origin its first write used. Any other is asked.
+      const tab = Number(args && args.tab);
+      const here = originOf(urls.get(tab) || "");
+      if (grant.tab != null && tab !== grant.tab) return false;
+      if (grant.tabOrigin && here && here !== grant.tabOrigin) return false;
+      const ro = isObj(res) && typeof res.origin === "string" ? res.origin : "";
+      if (grant.apiOrigin && ro && ro !== grant.apiOrigin) return false;
+      return true;
+    };
+    /** The first covered write fixes what the plan was for, when the approval did not name a tab. @param {any} res @param {any} args */
+    const pinPlan = (res, args) => {
+      if (!grant) return;
+      const tab = Number(args && args.tab);
+      if (grant.tab == null && Number.isInteger(tab)) { grant.tab = tab; grant.tabOrigin = originOf(urls.get(tab) || "") || undefined; }
+      if (!grant.apiOrigin && isObj(res) && typeof res.origin === "string") grant.apiOrigin = res.origin;
     };
     /** Tell the extension what to show: a step count, a waiting state, a notification. @param {any} s */
     const showPresence = s => { try { void bridge.push({ event: "presence", ...s }); } catch { /* no extension connected */ } };
@@ -337,7 +354,7 @@ export default {
       if (!method || /^(GET|HEAD|OPTIONS)$/.test(method)) return;
       const kind = /** @type {any} */ ({ POST: "create", PUT: "edit", PATCH: "edit", DELETE: "delete" })[method] || "edit";
       let id = "";
-      try { const b = JSON.parse(String(res.responseBody || "null")); const d = b && (b.data || b); id = String((d && (d.id || d._id)) || "").slice(0, 80); } catch { /* not JSON */ }
+      try { const b = JSON.parse(String(res.responseBody || "null")); const d = b && (b.data || b); id = String((d && (d.id || d._id)) || "").slice(0, 80); if (!/^[A-Za-z0-9_-]{4,64}$/.test(id)) id = ""; } catch { /* not JSON */ }
       const where = originOf(String(res.url || "")) || "";
       let path = ""; try { path = new URL(String(res.url || "")).pathname; } catch { /* no url */ }
       const open = openLink(tabUrl, path, id, method);
@@ -467,8 +484,8 @@ export default {
         const left = { create: 0, edit: 0, publish: 0 };
         for (const it of items) if (it.kind in left && (it.kind !== "publish" || it.asked)) /** @type {any} */ (left)[it.kind] += it.count;
         const total = items.reduce((/** @type {number} */ n, /** @type {any} */ it) => n + it.count, 0);
-        const plan = { id: crypto.randomBytes(6).toString("hex"), title, items, left, total };
         const tabId = Number.isInteger(i.tab) ? i.tab : undefined;
+        const plan = { id: crypto.randomBytes(6).toString("hex"), title, items, left, total, ...(tabId !== undefined ? { tab: tabId, tabOrigin: originOf(urls.get(tabId) || "") || undefined } : {}) };
         const res = { held: true, sig: "plan", plan, url: tabId !== undefined ? urls.get(tabId) : "", control: `Plan: ${title}`, fields: items.map((/** @type {any} */ it) => ({ name: it.kind === "publish" && it.asked ? `and publish x${it.count}` : `${it.kind} x${it.count}`, value: it.what })) };
         const h = await via.run(meta, async () => hold("chrome.approve", {}, res, meta, `approve plan: ${title}`, tabId));
         return isObj(h) && h.held && h.id ? { ...h, plan: { title, total, items: items.length }, why: `This plan waits for the person's approval. To start it, call ${cfg.sendTool || "the Gate"} with this id; the person approves that call. Deleting, messaging and payments stay one-at-a-time whatever the plan says, and so does publishing unless the plan says the person asked for it.` } : h;
@@ -541,7 +558,7 @@ export default {
         heldActs.delete(rkey);
         await requireGrant(c.key);
         if (c.plan) {
-          grant = { ...c.plan, used: 0, expiresAt: Date.now() + PLAN_TTL_MS };
+          grant = { ...c.plan, used: 0, expiresAt: Date.now() + PLAN_TTL_MS, tab: Number.isInteger(c.plan.tab) ? c.plan.tab : null, tabOrigin: c.plan.tabOrigin || undefined };
           showPresence({ of: c.plan.total, label: c.plan.title, waiting: null });
           return { ok: true, approved: true, title: c.plan.title, covers: { ...c.plan.left }, total: c.plan.total, expiresInMinutes: PLAN_TTL_MS / 60_000 };
         }

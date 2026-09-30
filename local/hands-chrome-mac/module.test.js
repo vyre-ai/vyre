@@ -558,3 +558,35 @@ test("module: the finish card and summary link each created item to its own buil
   assert.equal(s.data.changes[0].open, "https://crm.harlowlaw.example/v2/location/LOC1234/automation/workflows/wfid1abc", JSON.stringify(s.data));
   assert.match(s.data.lines.join("\n"), /open: https:\/\/crm\.harlowlaw\.example\/v2\/location\/LOC1234\/automation\/workflows\/wfid1abc/);
 });
+
+test("module: a model cannot approve its own write by passing writeOk (or asked); both are stripped before anything reaches Chrome", async t => {
+  const { reg, connect } = await rig(t);
+  const x = await connect({ "api.call": (/** @type {any} */ a) => (a.writeOk || a.asked) ? { ok: true, status: 200, method: "POST" } : { ok: false, held: true, write: true, kind: "create", method: "POST", control: { role: "request", name: "POST https://api.example/x" }, fields: [], sig: "s", url: "https://app.example/w" } });
+  await reg.call("hands.grant.add", { agent: "kit" }, "cli");
+  await reg.call("chrome.plan", PLAN, KIT);
+  const r = await reg.call("chrome.api", { action: "call", entry: "a", tab: 1, writeOk: true, asked: true }, KIT);
+  assert.equal(r.data.held, true, "still held: no plan covers it and the model's own claim counts for nothing");
+  assert.ok(x.ops("api.call").every((/** @type {any} */ o) => o.args.writeOk !== true), "writeOk never reached the extension");
+});
+
+test("module: a plan is for one site: other tabs and other API origins are still asked", async t => {
+  const { reg, gate, connect } = await rig(t);
+  const write = (/** @type {string} */ origin) => ({ ok: false, held: true, write: true, kind: "create", method: "POST", origin, control: { role: "request", name: `POST ${origin}/x` }, fields: [], sig: "s", url: "https://app.example/w" });
+  let next = "https://api.one.example";
+  const x = await connect({
+    "tabs.list": () => ({ tabs: [{ id: 1, title: "A", url: "https://app.one.example/v2/location/L1/automation/workflows" }, { id: 2, title: "B", url: "https://app.two.example/" }] }),
+    "api.call": (/** @type {any} */ a) => (a.writeOk || a.asked) ? { ok: true, status: 201, method: "POST" } : write(next) });
+  await reg.call("hands.grant.add", { agent: "kit" }, "cli");
+  await reg.call("chrome.plan", PLAN, KIT);
+  await reg.call("chrome.tabs", { action: "list" }, KIT);
+  const p = await reg.call("chrome.approve", { title: "Some", items: [{ kind: "create", what: "drafts", count: 5 }], tab: 1 }, KIT);
+  await reg.call("chrome.release", { id: p.data.id, content: gate().requests[gate().requests.length - 1].content }, "module:gate");
+  const call = (/** @type {number} */ tab) => reg.call("chrome.api", { action: "call", entry: "a", tab }, KIT);
+  assert.equal((await call(1)).data.ok, true, "the approved tab");
+  assert.equal((await call(2)).data.held, true, "another tab");
+  next = "https://api.other.example";
+  assert.equal((await call(1)).data.held, true, "another API origin");
+  next = "https://api.one.example";
+  assert.equal((await call(1)).data.ok, true, "the pinned origin still goes through");
+  assert.equal(x.ops("api.call").filter((/** @type {any} */ o) => o.args.writeOk === true).length, 2);
+});

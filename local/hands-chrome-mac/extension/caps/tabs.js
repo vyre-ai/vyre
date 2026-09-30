@@ -136,7 +136,7 @@ export default {
           out.exposedToPage = { vyreStop: v.stop !== "undefined", vyreLogin: v.login !== "undefined", pillState: v.state !== "undefined" };
         } catch { /* not attached */ }
         // A real mouse click on one of the pill's own buttons, to prove the button reaches the stop. The same as the person clicking it.
-        if (args.press && p && p.buttonPoint) {
+        if (args.press && ["Stop", "Pause"].includes(String(args.press)) && p && p.buttonPoint) {
           const pt = await p.buttonPoint(tabId, String(args.press));
           out.pressed = !!pt;
           if (pt) for (const type of ["mouseMoved", "mousePressed", "mouseReleased"]) await ctx.cdp.send(tabId, "Input.dispatchMouseEvent", { type, x: pt.x, y: pt.y, button: "left", clickCount: 1 });

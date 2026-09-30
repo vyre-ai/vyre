@@ -63,7 +63,8 @@ export function heldWrite(method, url, sigSource) {
   let path = url;
   try { const u = new URL(url); path = u.origin + u.pathname; } catch { /* raw */ }
   const m = String(method).toUpperCase();
-  return { ok: false, held: true, write: true, kind: writeKind(m), method: m, why: `This would ${m} ${path}, a change made with the person's login. Nothing was done. It waits for their approval, or for a plan they approved that covers it.`,
+  let origin = ""; try { origin = new URL(url).origin; } catch { /* raw */ }
+  return { ok: false, held: true, write: true, kind: writeKind(m), method: m, ...(origin ? { origin } : {}), why: `This would ${m} ${path}, a change made with the person's login. Nothing was done. It waits for their approval, or for a plan they approved that covers it.`,
     control: { role: "request", name: `${m} ${path}` }, fields: [], sig: digest(sigSource) };
 }
 
@@ -99,7 +100,8 @@ export const guardInstall = `(() => {
   const formWrite = f => { try { return writes && String(f.method || "get").toLowerCase() !== "get"; } catch { return writes; } };
   HTMLFormElement.prototype.submit = function () { if (formWrite(this)) { hold(String(this.method || "POST"), this.action || location.href, "form"); blocked[blocked.length - 1].write = true; return; } return fs.apply(this, arguments); };
   if (frs) HTMLFormElement.prototype.requestSubmit = function () { if (formWrite(this)) { hold(String(this.method || "POST"), this.action || location.href, "form"); blocked[blocked.length - 1].write = true; return; } return frs.apply(this, arguments); };
-  const onSubmit = e => { if (formWrite(e.target)) { e.preventDefault(); e.stopImmediatePropagation(); blocked.push({ method: String(e.target.method || "POST").toUpperCase(), url: String(e.target.action || location.href), why: "form", write: true }); } };
+  const subMethod = e => { try { const m = e.submitter && e.submitter.formMethod; return String(m || e.target.method || "get").toLowerCase(); } catch { return "post"; } };
+  const onSubmit = e => { if (writes && subMethod(e) !== "get") { e.preventDefault(); e.stopImmediatePropagation(); blocked.push({ method: subMethod(e).toUpperCase(), url: String((e.submitter && e.submitter.formAction) || e.target.action || location.href), why: "form", write: true }); } };
   if (writes) document.addEventListener("submit", onSubmit, true);
   // Channels the network layer does not always see: WebRTC (ICE resolves a hostname) and link hints that make the browser
   // resolve or connect (dns-prefetch, preconnect, prefetch). A cross-origin one made by the script is refused and reported.
