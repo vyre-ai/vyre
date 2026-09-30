@@ -261,7 +261,9 @@ Whether the Capsule can run on this machine: macOS, the native app's source, whe
 Do one thing to one control found by selector: click, type (with value), select an option, check a box, or press a key (value: the key). An act that sends something as the person (a real submit, a Send, Pay or Post control, decided from the page itself) is held for their approval at the Gate unless they asked for it directly: the answer has held: true.
 
 - Input:
+  - `fillable` boolean: True: match only form fields, by their label.
   - `kind` one of "click", "type", "select", "check", "press"
+  - `optional` boolean: True: if nothing matches, answer skipped instead of failing.
   - `selector` object: How to find one control: role, name (its label), identifier, container. Copy it from chrome.snapshot.
     - `container` string
     - `identifier` string
@@ -272,6 +274,10 @@ Do one thing to one control found by selector: click, type (with value), select 
   - `tab` integer: Tab id from chrome.tabs. Default: the tab Vyre is working in.
   - `timeoutMs` integer: Give up after this many ms. Default 30000.
   - `value` string: For type and select: the text or option. For press: the key, e.g. Enter.
+  - `wait` object
+    - `busyMs` integer: How long to wait for spinners before giving up on them.
+    - `stable` boolean
+    - `timeoutMs` integer: Keep looking for the control this long: it must exist, be enabled and (with stable) hold still, and loading spinners must clear. Default 0: one look.
 - Callers: any caller
 
 ### `chrome.api`
@@ -338,26 +344,38 @@ Set many form fields in one step: fields is a list of {selector, value}. Values 
 
 - Input:
   - `fields` list of object
-    - `selector` object, required: How to find one control: role, name (its label), identifier, container. Copy it from chrome.snapshot.
+    - `label` string: Instead of a selector: the field's visible label.
+    - `optional` boolean
+    - `selector` object: How to find one control: role, name (its label), identifier, container. Copy it from chrome.snapshot.
     - `value` string
+  - `partial` boolean: True: set the fields that are found and report the rest (notFound) instead of failing before setting any.
   - `submit` boolean
   - `tab` integer: Tab id from chrome.tabs. Default: the tab Vyre is working in.
   - `timeoutMs` integer: Give up after this many ms. Default 30000.
+  - `wait` object
+    - `busyMs` integer: How long to wait for spinners before giving up on them.
+    - `stable` boolean
+    - `timeoutMs` integer: Keep looking for the control this long: it must exist, be enabled and (with stable) hold still, and loading spinners must clear. Default 0: one look.
 - Callers: any caller
 
 ### `chrome.ghl`
 
-GoHighLevel in the person's own Chrome. context: which sub-account and section the open tab is on. section: go to Contacts, Workflows, Conversations and so on in the tab already open (it never opens another). flows: the ready-made automations. run: do one end to end, either a named flow with params or your own steps, as ONE batch inside the browser, and get back how long it took.
+GoHighLevel in the person's own Chrome. context: which sub-account and section the open tab is on. section: go to Contacts, Workflows, Conversations and so on in the tab already open (it never opens another). flows: the ready-made automations. run: do one end to end, either a named flow with params or your own steps, as ONE batch inside the browser, and get back how long it took. save: press Save and verify it saved (toast, disabled Save, URL change or list item); a save that cannot be confirmed is an error. Every result carries a trace, and a failure's error carries the page's host and path and a small masked snippet of the page.
 
 - Input:
-  - `action` one of "context", "section", "flows", "run", required
+  - `action` one of "context", "section", "flows", "run", "save", required
+  - `expect` object: For save: {toast, listItem, status} to check besides the built-in evidence.
   - `flow` string
+  - `identifier` string
+  - `landmark` string
   - `locationId` string
+  - `name` string
   - `params` object
   - `section` string
   - `steps` list of object
   - `tab` integer: Tab id from chrome.tabs. Default: the tab Vyre is working in.
   - `timeoutMs` integer: Give up after this many ms. Default 30000.
+  - `via` string: For section: nav (default, click the left nav) or url.
 - Callers: any caller
 
 ### `chrome.inspect`
@@ -543,8 +561,14 @@ Type text into a text field, chosen by role/name/identifier against a fresh look
 Wait for exactly one thing: a control (selector), the URL to contain some text (url), or the network to be quiet for idleMs, up to timeoutMs.
 
 - Input:
+  - `enabled` boolean
+  - `gone` boolean: With selector: wait until it is absent.
   - `idleMs` integer: Wait until the network has been quiet this long.
+  - `netQuietMs` integer
+  - `quietMs` integer
   - `selector` any: A selector object, or a CSS selector string.
+  - `settled` boolean: Wait until loading spinners are gone and the DOM and network are quiet.
+  - `stable` boolean
   - `tab` integer: Tab id from chrome.tabs. Default: the tab Vyre is working in.
   - `timeoutMs` integer: Give up after this many ms. Default 30000.
   - `url` string: Wait until the page URL contains this.
