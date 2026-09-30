@@ -22,10 +22,12 @@ const connect = socket => new Promise((resolve, reject) => {
 
 /**
  * Start argv as the agent. Resolves once the child runs, with its handle.
- * @param {string[]} argv @param {{ env?: Record<string, string|undefined>, cwd?: string, fd3?: string, socket?: string }} [o]
+ * @param {string[]} argv @param {{ env?: Record<string, string|undefined>, cwd?: string, fd3?: string, socket?: string, account?: number, shared?: boolean }} [o]
  *   fd3: written once to the child's fd 3 (an API key, CLAUDE_CODE_API_KEY_FILE_DESCRIPTOR=3)
+ *   account: run as that account's own uid (the spawner checks its range and its private HOME)
+ *   shared: with account, also join the /work group (project work needs it; nothing else does)
  */
-export async function spawnAsAgent(argv, { env = {}, cwd, fd3, socket = SOCKET } = {}) {
+export async function spawnAsAgent(argv, { env = {}, cwd, fd3, socket = SOCKET, account, shared } = {}) {
   const control = /** @type {net.Socket} */ (await connect(socket));
   const lines = [];
   /** @type {((l: any) => void) | null} */
@@ -48,7 +50,7 @@ export async function spawnAsAgent(argv, { env = {}, cwd, fd3, socket = SOCKET }
   const next = () => new Promise(r => { if (lines.length) r(lines.shift()); else waiting = r; });
   control.on("error", e => proc.emit("error", e));
 
-  control.write(JSON.stringify({ op: "spawn", argv, env, cwd, ...(typeof fd3 === "string" ? { fd3 } : {}) }) + "\n");
+  control.write(JSON.stringify({ op: "spawn", argv, env, cwd, ...(typeof fd3 === "string" ? { fd3 } : {}), ...(account !== undefined ? { account, ...(shared ? { shared: true } : {}) } : {}) }) + "\n");
   const first = await next();
   if (first.error || !first.id) { control.destroy(); throw new Error(`spawner: ${first.error || "no answer"}`); }
   const stdio = /** @type {net.Socket} */ (await connect(socket));
@@ -63,4 +65,24 @@ export async function spawnAsAgent(argv, { env = {}, cwd, fd3, socket = SOCKET }
   proc.stderr = stderr;
   proc.kill = (sig = "SIGTERM") => { proc.killed = true; try { control.write(JSON.stringify({ kill: String(sig) }) + "\n"); return true; } catch { return false; } };
   return proc;
+}
+
+/**
+ * Empty one account's HOME (its sign-ins, its caches) so its uid can go to a new account holding
+ * nothing of the last. The spawner refuses while a session of that account still runs.
+ * @param {number} account @param {{ socket?: string }} [o]
+ */
+export async function wipeAccount(account, { socket = SOCKET } = {}) {
+  const c = /** @type {net.Socket} */ (await connect(socket));
+  const answer = new Promise((resolve, reject) => {
+    let buf = "";
+    c.setEncoding("utf8");
+    c.on("data", d => { buf += d; });
+    c.on("end", () => { try { resolve(JSON.parse(buf.split("\n")[0])); } catch { reject(new Error("spawner: no answer")); } });
+    c.on("error", reject);
+  });
+  c.write(JSON.stringify({ op: "wipe", account }) + "\n");
+  const r = /** @type {any} */ (await answer);
+  if (r.error) throw new Error(`spawner: ${r.error}`);
+  return true;
 }

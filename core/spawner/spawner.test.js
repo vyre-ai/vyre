@@ -8,7 +8,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import { serve } from "./server.js";
-import { spawnAsAgent } from "./client.js";
+import { spawnAsAgent, wipeAccount } from "./client.js";
 import { SCRATCH } from "../../test/scratch.mjs";
 
 async function setup(t) {
@@ -62,4 +62,62 @@ test("spawner: kill ends the child's whole group, including what it left in the 
 test("spawner: its socket is the owner's alone", async t => {
   const { socket } = await setup(t);
   assert.equal(fs.statSync(socket).mode & 0o777, 0o600);
+});
+
+// ---- one uid per account (ADR 0030 phase 2, reviewer-2's B1)
+
+/** A spawner with account uids 2000-2063 and a HOME stat the test controls; wrap records who each child would run as. */
+async function withAccounts(t, homes) {
+  const dir = fs.mkdtempSync(path.join(SCRATCH, "vyre-spawner-"));
+  const work = path.join(dir, "work");
+  const acct = path.join(dir, "acct");
+  fs.mkdirSync(work, { recursive: true });
+  for (const uid of Object.keys(homes)) fs.mkdirSync(path.join(acct, uid), { recursive: true });
+  const socket = path.join(dir, "s.sock");
+  const ran = [], wiped = [];
+  const stat = d => { const uid = path.basename(d); const h = homes[uid]; return h ? { isDirectory: () => true, isSymbolicLink: () => Boolean(h.link), uid: h.uid, mode: 0o40000 | h.mode } : null; };
+  const srv = await serve({ socket, allow: ["/bin/sh"], work, agent: { uid: 1001, gid: 1001, groups: [1002] },
+    wrap: (argv, cwd, who) => { ran.push(who); return argv; },
+    accounts: { min: 2000, max: 2063, home: acct, shared: [1002], stat, wipe: (d, who) => wiped.push([d, who.uid]) } });
+  t.after(async () => { await srv.close(); fs.rmSync(dir, { recursive: true, force: true }); });
+  return { socket, work, acct, ran, wiped };
+}
+
+test("spawner accounts: a session for an account runs as that uid and gid, in its own HOME, in no group unless it is project work", async t => {
+  const { socket, work, acct, ran } = await withAccounts(t, { 2000: { uid: 2000, mode: 0o700 }, 2001: { uid: 2001, mode: 0o700 } });
+  const p = await spawnAsAgent(["/bin/sh", "-c", 'echo "$HOME $USER"'], { socket, cwd: path.join(acct, "2000"), account: 2000 });
+  assert.equal(await collect(p.stdout), `${path.join(acct, "2000")} acct2000\n`);
+  const q = await spawnAsAgent(["/bin/sh", "-c", "true"], { socket, cwd: work, account: 2001, shared: true });
+  await exited(q);
+  assert.deepEqual(ran.map(w => [w.uid, w.gid, w.groups]), [[2000, 2000, []], [2001, 2001, [1002]]]);
+  // Not the agent's own uid: the plain path is unchanged.
+  const a = await spawnAsAgent(["/bin/sh", "-c", "true"], { socket, cwd: work });
+  await exited(a);
+  assert.deepEqual([ran[2].uid, ran[2].gid, ran[2].groups], [1001, 1001, [1002]]);
+});
+
+test("spawner accounts: a uid outside the range, a missing or someone else's or group-readable or symlinked HOME is refused before anything starts", async t => {
+  const { socket, work, ran } = await withAccounts(t, { 2000: { uid: 2000, mode: 0o700 }, 2002: { uid: 2001, mode: 0o700 }, 2003: { uid: 2003, mode: 0o750 }, 2004: { uid: 2004, mode: 0o700, link: true } });
+  for (const [account, why] of [[1001, /account must be a uid from 2000 to 2063/], [0, /account must be a uid/], [2064, /account must be a uid/], [2010, /has no home/],
+    [2002, /not private to it/], [2003, /not private to it/], [2004, /has no home/]]) {
+    await assert.rejects(spawnAsAgent(["/bin/sh", "-c", "true"], { socket, cwd: work, account }), why, `account ${account}`);
+  }
+  await assert.rejects(spawnAsAgent(["/bin/sh", "-c", "true"], { socket, cwd: work, account: /** @type {any} */ ("2000") }), /account is a uid/);
+  // Another account's home is never a place this one may work in.
+  await assert.rejects(spawnAsAgent(["/bin/sh", "-c", "true"], { socket, cwd: path.join(path.dirname(work), "acct", "2003"), account: 2000 }), /cwd must be under/);
+  assert.deepEqual(ran, [], "nothing was ever started");
+});
+
+test("spawner accounts: a spawner with no account range refuses an account; wipe empties a HOME, and not while a session of it runs", async t => {
+  const { socket } = await setup(t);
+  await assert.rejects(spawnAsAgent(["/bin/sh", "-c", "true"], { socket, account: 2000 }), /account must be a uid/);
+  const w = await withAccounts(t, { 2000: { uid: 2000, mode: 0o700 } });
+  const busy = await spawnAsAgent(["/bin/sh", "-c", "sleep 30"], { socket: w.socket, cwd: w.work, account: 2000 });
+  await assert.rejects(wipeAccount(2000, { socket: w.socket }), /still has a session running/);
+  busy.kill("SIGKILL");
+  await exited(busy);
+  await new Promise(r => setTimeout(r, 100));
+  assert.equal(await wipeAccount(2000, { socket: w.socket }), true);
+  assert.deepEqual(w.wiped, [[path.join(w.acct, "2000"), 2000]]);
+  await assert.rejects(wipeAccount(2999, { socket: w.socket }), /account must be a uid/);
 });
