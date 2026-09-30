@@ -81,6 +81,7 @@ GH_VERSION=2.102.0
 GH_SHA256_ARM64=da922c20d1792e5b2cbf375593d7a658acf034c12c84e007e71c76ef959c337e
 GH_SHA256_AMD64=b245f24eb2bf5f75b426b4c26da3651a107f8d5b6f4fddfbfccc5679041378b3
 GH_BIN=""
+ENROL_CODE=""
 
 # The Node bundled for the system service: the official Node 22 LTS darwin tarball, pinned by version
 # and sha256. Both sums are the lines for node-v22.23.3-darwin-{arm64,x64}.tar.gz in
@@ -499,9 +500,8 @@ start_service() {
 }
 
 # system_install: the one sudo (ROOT_SH above). The root installer's stdout ends with VYRE_CORE_ENROL=<code>. It is
-# read into a shell variable that is never printed, written or passed on: the output is captured by
-# command substitution, every other line is shown, and the variable is dropped. The Capsule
-# enrolment consumes the code in a later step; nothing does yet.
+# read into a shell variable that is never printed or written: every other line is shown, and
+# launch_capsule hands the code to the Capsule on an inherited file descriptor, then it is dropped.
 # ROOT_SH is what runs as root, a fixed literal written here and never read from the download. It
 # gets the two expected sums as arguments, copies the release files and the Node tarball out of the
 # person's folders into a fresh root-owned 0700 folder, hashes the root-owned Node copy, and runs the
@@ -544,9 +544,29 @@ system_install() {
   out=${out%rc:*}
   [ "$rc" = 0 ] || { out=""; die "the root installer failed (exit $rc); its message is above"; }
   case "$out" in *VYRE_CORE_ENROL=*) ;; *) out=""; die "the root installer did not finish; nothing was enrolled" ;; esac
+  # The code is kept in this shell variable for launch_capsule and nothing else: never printed, never
+  # written, never an argument or in the environment.
+  ENROL_CODE=${out##*VYRE_CORE_ENROL=}
+  ENROL_CODE=$(printf '%s' "$ENROL_CODE" | tr -cd 'A-Za-z0-9')
   printf '%s\n' "$out" | grep -v '^VYRE_CORE_ENROL=' || true
   out=""
   step "the system service is installed"
+}
+
+# launch_capsule: the enrolment handoff. The Capsule in core's root-owned tree is started as the person
+# (this script's own account) with the one-time code on file descriptor 3: exactly the code's bytes,
+# then end of file. Never an argument, never the environment, never a file. It needs the person's screen
+# (an Aqua session); with none the code just expires, and the message says how to get another.
+launch_capsule() {
+  if [ "$DRY" = 1 ] || [ -z "$ENROL_CODE" ]; then return 0; fi
+  capsule=$CORE_BASE/current/Vyre.app/Contents/MacOS/Vyre
+  if [ ! -x "$capsule" ]; then ENROL_CODE=""; say "  note  this release has no Capsule app yet, so there is no Capsule to enrol"; return 0; fi
+  if [ "$("$LAUNCHCTL" managername 2>/dev/null || true)" != Aqua ]; then
+    ENROL_CODE=""; say "  note  nobody is signed in at this Mac's screen, so the Capsule was not opened; run this install line again from Terminal on the Mac for a fresh code"; return 0
+  fi
+  printf '%s' "$ENROL_CODE" | "$capsule" 3<&0 0</dev/null >/dev/null 2>&1 &
+  ENROL_CODE=""
+  step "the Capsule is opening to enrol this Mac"
 }
 
 # wait_system: vyred answers (its pid file, as in login-only) and vyre-core's socket file exists
@@ -634,6 +654,7 @@ main() {
   if [ "$SYSTEM" = 1 ]; then
     system_install
     wait_system
+    launch_capsule
     say "Vyre is running. Back in your browser, it will find this Mac."
     say "It starts when this Mac boots, with nobody signed in, and stays awake while it runs. Its command is $BIN/vyre"
   else

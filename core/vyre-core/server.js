@@ -30,6 +30,7 @@ import { readPeerCred } from "./peercred.js";
 import { procTable } from "./procs.js";
 import { openVault } from "./vault.js";
 import { openKeys } from "./keys.js";
+import { capsuleFromTree } from "./capsule-peer.js";
 
 export const PROTOCOL = 1;
 /** The proofs core can check itself. */
@@ -105,10 +106,11 @@ export async function startCore(o) {
   const judge = o.personOf || personOf;
   // Is this peer the Capsule core itself signed? The one check for the installer's code and for
   // every plain value (phase 4 brings the real one: the exe against core's DR, the audit token).
-  // Until then a Mac core says no to both, and so does Linux unless o.dev is set.
   // The Linux "yes" is for development only, and only when asked for on purpose (o.dev, which
   // main.js sets from VYRE_CORE_STRICT=0): a core started any other way says no.
-  const capsuleFrom = o.capsuleFrom || o.codeFrom || (async () => o.dev === true && process.platform !== "darwin");
+  // On a Mac: the connecting process runs the Vyre.app in core's own root-owned tree (capsule-peer.js).
+  const capsuleFrom = o.capsuleFrom || o.codeFrom
+    || (process.platform === "darwin" ? capsuleFromTree({ codeDir: path.resolve(path.dirname(new URL(import.meta.url).pathname), "..", "..") }) : async () => o.dev === true);
   const codeFrom = capsuleFrom;
   // Which process a session is bound to: its pid and start time, so a leaked session secret is
   // useless to any other process, a reused pid included.

@@ -7,7 +7,7 @@
 // account) can use it. The Capsule's Secure Enclave key binds to the signature's designated
 // requirement, which names THIS certificate, so a swapped or patched Capsule fails it.
 //
-// Only a Capsule.app taken from a release whose signature has just been verified is ever signed.
+// Only a Vyre.app (the Capsule) taken from a release whose signature has just been verified is ever signed.
 // Every command goes through an injected `run(cmd, args)` (installer.js's Run), so tests record them
 // and the macOS runner proof runs them for real.
 
@@ -16,7 +16,8 @@ import fs from "node:fs";
 import path from "node:path";
 
 export const IDENTITY = "Vyre Core Capsule";
-export const CAPSULE_ID = "run.vyre.capsule";
+export const CAPSULE_ID = "sh.vyre.capsule"; // the Capsule's bundle id (local/capsule/native/build.sh)
+export const CAPSULE_APP = "Vyre.app"; // the product name; the binary is Contents/MacOS/Vyre
 const OPENSSL = "/usr/bin/openssl";
 const SECURITY = "/usr/bin/security";
 const CODESIGN = "/usr/bin/codesign";
@@ -68,7 +69,7 @@ export function ensureIdentity({ dir, run, systemKeychain = SYSTEM_KEYCHAIN }) {
 }
 
 /**
- * Sign the Capsule.app at `app` with the identity, then check it. Returns the designated requirement
+ * Sign the Capsule (Vyre.app) at `app`, with the hardened runtime so a same-uid process can't inject a library, with the identity, then check it. Returns the designated requirement
  * (what the Capsule's keychain ACL and core's pin bind to) and the cdhash.
  * @param {{ app: string, dir: string, run: Run }} o
  * @returns {{ requirement: string, cdhash: string, sha1: string }}
@@ -77,7 +78,7 @@ export function signApp({ app, dir, run }) {
   const { sha1, keychain } = ensureIdentity({ dir, run });
   const pw = fs.readFileSync(path.join(dir, "pw"), "utf8").trim();
   run(SECURITY, ["unlock-keychain", "-p", pw, keychain]);
-  run(CODESIGN, ["--force", "--deep", "--keychain", keychain, "--sign", sha1, "--identifier", CAPSULE_ID, "--timestamp=none", app]);
+  run(CODESIGN, ["--force", "--deep", "--keychain", keychain, "--sign", sha1, "--identifier", CAPSULE_ID, "--options", "runtime", "--timestamp=none", app]);
   run(CODESIGN, ["--verify", "--strict", "--deep", app]);
   const req = run(CODESIGN, ["-d", "-r-", app]);
   const requirement = (String(req).match(/designated => (.*)/) || [])[1] || "";

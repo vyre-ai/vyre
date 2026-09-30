@@ -19,7 +19,7 @@ import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import { execFileSync } from "node:child_process";
-import { signApp, removeIdentity } from "./signing.js";
+import { signApp, removeIdentity, CAPSULE_APP } from "./signing.js";
 import { RELEASE_KEY, verifySums, checkManifest, checkFloor, compareVersions, readFloor, raiseFloor, checkTarball, extract } from "./release.js";
 
 export const ACCOUNT = "_vyre";
@@ -193,14 +193,14 @@ export function verifyRelease(files, { key, floorPath, strictFloor, version }) {
 // the code tree
 
 /**
- * Sign Capsule.app inside `dir`, when the release carries one, with vyre-core's own identity kept in
+ * Sign the Capsule (Vyre.app) inside `dir`, when the release carries one, with vyre-core's own identity kept in
  * root's signing folder (core/vyre-core/signing.js). Only ever called on a freshly extracted tree whose
- * release signature has just been verified. A release with no Capsule.app changes nothing.
+ * release signature has just been verified. A release with no Vyre.app changes nothing.
  * @param {string} dir the extracted tree @param {{ root: string, run: Run }} c
  * @returns {{ requirement: string, cdhash: string } | null}
  */
 export function signCapsule(dir, c) {
-  const app = path.join(dir, "Capsule.app");
+  const app = path.join(dir, CAPSULE_APP);
   if (!fs.existsSync(app)) return null;
   const r = signApp({ app, dir: paths(c.root).signing, run: c.run });
   return { requirement: r.requirement, cdhash: r.cdhash };

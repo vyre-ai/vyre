@@ -70,16 +70,16 @@ grep -q 'runatload' "$work/com.vyre.core.print" || grep -q 'RunAtLoad' /Library/
 grep -q 'RunAtLoad' /Library/LaunchDaemons/com.vyre.vyred.plist || bad "vyred does not start at load"
 ok "core, update, vyred and colima are LaunchDaemons in the system domain, started at load"
 
-# The Capsule.app in the release is signed by core's own identity, in a folder only root can read.
-app="$base/current/Capsule.app"
-codesign --verify --strict --deep "$app" || bad "Capsule.app does not verify"
+# The Vyre.app (the Capsule) in the release is signed by core's own identity, in a folder only root can read.
+app="$base/current/Vyre.app"
+codesign --verify --strict --deep "$app" || bad "Vyre.app does not verify"
 req=$(codesign -d -r- "$app" 2>&1 | grep 'designated =>' || true)
-echo "$req" | grep -q 'identifier "run.vyre.capsule"' || bad "the Capsule's designated requirement is not the expected identifier: $req"
+echo "$req" | grep -q 'identifier "sh.vyre.capsule"' || bad "the Capsule's designated requirement is not the expected identifier: $req"
 echo "$req" | grep -q 'certificate leaf' || bad "the Capsule's requirement does not name core's certificate: $req"
 codesign -dvvv "$app" 2>&1 | grep -q 'Authority=Vyre Core Capsule' || bad "the Capsule is not signed by core's identity"
 [ "$(stat -f %Su "$base/signing")" = root ] && [ "$(stat -f %Lp "$base/signing")" = 700 ] || bad "the signing folder is not root's 0700"
 if cat "$base/signing/pw" >/dev/null 2>&1; then bad "the owner can read core's signing keychain password"; fi
-ok "Capsule.app is signed by core's identity (requirement: $(echo "$req" | cut -c1-110)); its key folder is root-only"
+ok "Vyre.app is signed by core's identity (requirement: $(echo "$req" | cut -c1-110)); its key folder is root-only"
 
 # core answers.
 sock=$(node -p 'JSON.parse(require("fs").readFileSync(process.argv[1],"utf8")).socket' "$base/core.json")

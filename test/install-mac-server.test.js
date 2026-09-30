@@ -29,6 +29,7 @@ function mac(/** @type {import("node:test").TestContext} */ t) {
   fs.mkdirSync(bin); fs.mkdirSync(home);
   const stubs = {
     launchctl: `echo "launchctl $*" >>"${log}"
+[ "$1" = managername ] && echo "\${FAKE_MANAGER:-}"
 if [ "$1" = bootstrap ]; then
   P=$(sed -n 's|.*<string>\\(.*vyre-serve\\)</string>.*|\\1|p' "$3")
   if [ -n "$P" ]; then "$P" >>"${base}/serve.out" 2>&1 & echo $! >>"${pids}"; fi
@@ -519,4 +520,44 @@ test("install-mac-server.sh: the embedded release key is the one release.js comp
   const key = /^RELEASE_KEY=(.*)$/m.exec(fs.readFileSync(SCRIPT, "utf8"))?.[1];
   const rel = /export const RELEASE_KEY = "([^"]+)"/.exec(fs.readFileSync(path.join(REPO, "core", "vyre-core", "release.js"), "utf8"))?.[1];
   assert.equal(key, rel);
+});
+
+/** A Vyre.app in the fake current/ tree whose binary writes what it finds on fd 3, and its argv and environment, to files. */
+function fakeCapsule(/** @type {ReturnType<typeof sys>} */ m) {
+  const bin = path.join(m.core, "current", "Vyre.app", "Contents", "MacOS", "Vyre");
+  fs.mkdirSync(path.dirname(bin), { recursive: true });
+  fs.writeFileSync(bin, `#!/bin/sh\ncat <&3 >"${path.join(m.base, "fd3.txt")}"\necho "$*" >"${path.join(m.base, "argv.txt")}"\nenv >"${path.join(m.base, "env.txt")}"\n`, { mode: 0o755 });
+  return { fd3: path.join(m.base, "fd3.txt"), argv: path.join(m.base, "argv.txt"), env: path.join(m.base, "env.txt") };
+}
+const until = (/** @type {() => boolean} */ f) => { const t0 = Date.now(); while (!f() && Date.now() - t0 < 5000) spawnSync("sleep", ["0.1"]); };
+
+test("install-mac-server.sh: with a screen, the Capsule gets the enrolment code on fd 3 and nowhere else", t => {
+  const m = sys(t);
+  const c = fakeCapsule(m);
+  const r = run({ ...m.env, FAKE_MANAGER: "Aqua" }, ["--yes", "--system"]);
+  assert.equal(r.status, 0, r.stderr + r.stdout);
+  until(() => fs.existsSync(c.env) && fs.readFileSync(c.env, "utf8").length > 0);
+  assert.equal(fs.readFileSync(c.fd3, "utf8"), ENROL, "exactly the code's bytes, then end of file");
+  assert.equal(fs.readFileSync(c.argv, "utf8").trim(), "", "not an argument");
+  assert.ok(!fs.readFileSync(c.env, "utf8").includes(ENROL), "not in the environment");
+  assert.ok(!(r.stdout + r.stderr).includes(ENROL) && !m.calls().includes(ENROL));
+  assert.match(r.stdout, /Capsule is opening to enrol/);
+});
+
+test("install-mac-server.sh: with nobody at the screen the Capsule is not started and the code goes nowhere", t => {
+  const m = sys(t);
+  const c = fakeCapsule(m);
+  const r = run({ ...m.env, FAKE_MANAGER: "Background" }, ["--yes", "--system"]);
+  assert.equal(r.status, 0, r.stderr + r.stdout);
+  spawnSync("sleep", ["0.5"]);
+  assert.ok(!fs.existsSync(c.fd3), "the Capsule never ran");
+  assert.match(r.stdout, /nobody is signed in at this Mac's screen/);
+  assert.ok(!(r.stdout + r.stderr).includes(ENROL));
+});
+
+test("install-mac-server.sh: a release with no Capsule app says so and starts nothing", t => {
+  const m = sys(t);
+  const r = run({ ...m.env, FAKE_MANAGER: "Aqua" }, ["--yes", "--system"]);
+  assert.equal(r.status, 0, r.stderr + r.stdout);
+  assert.match(r.stdout, /no Capsule app yet/);
 });
