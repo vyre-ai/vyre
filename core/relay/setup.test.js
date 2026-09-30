@@ -523,6 +523,8 @@ test("setup boot: a code starts only with a stamp from the last hour; missing, g
 
 test("web deny: an untrusted paired browser cannot ask for the Tailscale sign-in link, and can still read the status", () => {
   assert.equal(WEB_DENY.test("network.tailscale.login"), true);
+  assert.equal(WEB_DENY.test("relay.setup.claim"), true);
+  assert.equal(WEB_DENY.test("relay.setup.claim-token"), false, "a different tool, the setup page's own");
   for (const ok of ["network.tailscale.status", "network.tailscale.peers", "link.health", "names.check"]) assert.equal(WEB_DENY.test(ok), false, ok);
 });
 
@@ -676,5 +678,5 @@ test("claim token: the page mints over its channel, the browser at the address c
 
   // a code holder with no page key cannot mint; the claim tools are not in reach of a module that is not the presence one
   assert.ok((await w.d.registry.call("relay.setup.claim-token", { host: "alex.vyre.run" }, "module:sneaky")).error);
-  assert.ok((await w.d.registry.call("presence.grant.mint", { peer: null }, "module:sneaky")).error, "only the relay module makes a grant");
+  assert.ok((await w.d.registry.call("presence.grant.mint", { peer: null, host: "alex.vyre.run" }, "module:sneaky")).error, "only the relay module makes a grant");
 });

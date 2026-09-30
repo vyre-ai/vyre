@@ -35,7 +35,7 @@ const PAIR_TTL = 10 * 60_000;
 const NAME = /^[^\u0000-\u001f\u007f]{1,64}$/;
 const DAY = 24 * 60 * 60_000;
 /** What an untrusted web device may not call: minting devices, trust, presence keys, secrets out. */
-export const WEB_DENY = /^(relay\.pair\.|relay\.devices\.trust$|relay\.enable$|relay\.web\.pin$|network\.tailscale\.login$|presence\.(enroll|code|remove)$|vault\.(reveal|copy|render|resolve|release|export|fill\.|session\.open$))/;
+export const WEB_DENY = /^(relay\.pair\.|relay\.devices\.trust$|relay\.enable$|relay\.web\.pin$|network\.tailscale\.login$|relay\.setup\.claim$|presence\.(enroll|code|remove)$|vault\.(reveal|copy|render|resolve|release|export|fill\.|session\.open$))/;
 const BUILD = /^[\w.+-]{1,64}$/;
 
 export const MIGRATIONS = [
@@ -886,7 +886,7 @@ export default {
         if (!(ownerDevice(c) && !agentClaim(c)) || (meta && meta.agent)) throw fail("denied", "a claim is made from the owner's own browser at the box's address");
         if (!setup) throw fail("denied", "that claim is not valid");
         const host = setup.takeClaim({ token: String(input.token || ""), spki: String(input.spki || ""), route: route(), origin: String((meta.peer && meta.peer.origin) || "") });
-        const r = /** @type {any} */ (await ctx.call("presence.grant.mint", { peer: meta.peer || null }));
+        const r = /** @type {any} */ (await ctx.call("presence.grant.mint", { peer: meta.peer || null, host }));
         if (!r || r.error || !r.data) throw fail("failed", "could not make the grant");
         return { grant: r.data.grant, expires: r.data.expires, rpId: host };
       },

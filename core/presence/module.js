@@ -105,10 +105,10 @@ export default {
     ctx.tool("presence.grant.mint", {
       internal: true,
       description: "The one-time, five-minute grant that lets one browser enroll the first owner passkey. Only the relay module's checked claim makes it.",
-      input: obj({ peer: { type: ["object", "null"] } }),
+      input: obj({ peer: { type: ["object", "null"] }, host: str }, ["host"]),
       run: async (input, meta = {}) => {
         if (String((meta && meta.caller) || "") !== "module:relay") throw new Error("only a checked claim makes a grant");
-        return presence.mintGrant(input.peer || null);
+        return presence.mintGrant(input.peer || null, String(input.host || ""));
       },
     });
 
