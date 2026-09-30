@@ -36,7 +36,8 @@ const UID_MAX = 399;
 const RT = Object.freeze({
   base: "/Library/Application Support/Vyre",
   daemons: "/Library/LaunchDaemons",
-  socketDir: "/var/run/vyre",
+  // Not /var/run: macOS clears it at boot, and _vyre cannot recreate a root folder.
+  socketDir: "/Library/Application Support/Vyre/run",
 });
 export const RUNTIME = Object.freeze({
   base: RT.base,
@@ -125,7 +126,7 @@ function paths(root) {
   const j = (rt) => path.join(root, rt);
   return {
     base: j(RUNTIME.base), versions: j(RUNTIME.versions), current: j(RUNTIME.current), currentNew: j(`${RUNTIME.current}.new`),
-    node: j(RUNTIME.node), data: j(RUNTIME.data), staging: j(RUNTIME.staging), floor: j(RUNTIME.floor), socketDir: j(RT.socketDir),
+    node: j(RUNTIME.node), data: j(RUNTIME.data), staging: j(RUNTIME.staging), floor: j(RUNTIME.floor), coreJson: j(`${RT.base}/core.json`), socketDir: j(RT.socketDir),
     plist: (label) => j(`${RT.daemons}/${label}.plist`), daemons: j(RT.daemons),
   };
 }
@@ -391,6 +392,14 @@ export function install(opts, seams = {}) {
   mkdirMode(p.data, 0o700); chown(run, owned, p.data);
   mkdirMode(p.staging, 0o700); chown(run, owned, p.staging);
   mkdirMode(p.socketDir, 0o755); chown(run, owned, p.socketDir);
+  // Where vyred finds core: root-owned core.json naming the socket and core's uid (readCoreConfig).
+  const coreUid = Number(((run(DSCL, [".", "-read", `/Users/${ACCOUNT}`, "UniqueID"]) || "").match(/(\d+)/) || [])[1]);
+  if (!Number.isInteger(coreUid) || coreUid <= 0) throw new Error(`could not read the ${ACCOUNT} user id`);
+  const cfgTmp = `${p.coreJson}.tmp-${rand()}`;
+  fs.writeFileSync(cfgTmp, JSON.stringify({ socket: `${RT.socketDir}/vyre-core.sock`, uid: coreUid }) + "\n", { mode: 0o644 });
+  fs.chmodSync(cfgTmp, 0o644);
+  chown(run, "root:wheel", cfgTmp);
+  fs.renameSync(cfgTmp, p.coreJson);
   done("dirs");
 
   // 5. Plists.
@@ -439,7 +448,7 @@ export function uninstall(opts = {}, seams = {}) {
     fs.rmSync(file, { force: true });
   }
   step("stopped and removed the LaunchDaemons");
-  for (const d of [p.versions, p.current, p.currentNew, p.node, `${p.node}.new`, p.socketDir, p.staging]) fs.rmSync(d, { recursive: true, force: true });
+  for (const d of [p.coreJson, p.versions, p.current, p.currentNew, p.node, `${p.node}.new`, p.socketDir, p.staging]) fs.rmSync(d, { recursive: true, force: true });
   step("removed the code, the bundled node and the socket folder");
   if (opts.purge) {
     fs.rmSync(p.data, { recursive: true, force: true });

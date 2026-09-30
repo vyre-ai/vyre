@@ -50,6 +50,8 @@ function fakeRun(state = {}) {
     calls.push({ cmd, args });
     const line = args.join(" ");
     if (cmd.endsWith("dscl")) {
+      if (args[1] === "-create" && args[2].startsWith("/Users/") && args[3] === "UniqueID") st.user = true;
+      if (args[1] === "-create" && args[2].startsWith("/Groups/") && args[3] === "PrimaryGroupID") st.group = true;
       if (args[1] === "-read" && args[2].startsWith("/Users/")) { if (!st.user) throw new Error("no such user"); return "UniqueID: 301\n"; }
       if (args[1] === "-read" && args[2].startsWith("/Groups/")) { if (!st.group) throw new Error("no such group"); return "PrimaryGroupID: 301\n"; }
       if (args[1] === "-list" && args[2] === "/Users") return "root 0\nalice 501\n_www 70\n_vyre_old 200\n";
@@ -206,7 +208,7 @@ test("the tree: root-owned modes, bundled node, folders, and no stray temp files
   assert.equal(fs.statSync(path.join(f.root, RUNTIME.socketDir)).mode & 0o777, 0o755);
   const v = path.join(base, "versions/1.0.0");
   for (const rel of fs.readdirSync(v, { recursive: true })) assert.equal(fs.lstatSync(path.join(v, String(rel))).mode & 0o022, 0, String(rel));
-  assert.deepEqual(fs.readdirSync(base).sort(), [".floor", "current", "data", "node", "staging", "versions"]);
+  assert.deepEqual(fs.readdirSync(base).sort(), [".floor", "core.json", "current", "data", "node", "run", "staging", "versions"]);
 });
 
 test("current flips atomically: written as current.new then renamed, never absent", (t) => {

@@ -5,7 +5,7 @@
 //   node main.js code [--typed]  print a one-time code that enrolls the first key (the installer runs this)
 //
 // Settings come from the environment launchd gives it, never from the person's files:
-//   VYRE_CORE_SOCKET  the socket (default /var/run/vyre/vyre-core.sock; /var/run/vyre is root-made, _vyre's, 0755)
+//   VYRE_CORE_SOCKET  the socket (default /Library/Application Support/Vyre/run/vyre-core.sock; that folder is root-made, _vyre's, 0755, and not under /var/run, which macOS clears at boot)
 //   VYRE_CORE_DATA    the data directory (default /Library/Application Support/Vyre/data)
 //   VYRE_CORE_OWNER   the owner's uid (required)
 //   VYRE_CORE_STRICT  "0" turns strict mode off (dev and Linux tests only); on by default on darwin
@@ -22,7 +22,7 @@ const KEEP = new Set(["VYRE_CORE_SOCKET", "VYRE_CORE_DATA", "VYRE_CORE_OWNER", "
 for (const k of Object.keys(process.env)) if ((k.startsWith("VYRE_") && !KEEP.has(k)) || /^(NODE_|PERL5|LD_|DYLD_)/.test(k)) delete process.env[k];
 process.env.PATH = "/usr/bin:/bin:/usr/sbin:/sbin";
 const env = process.env;
-const socket = env.VYRE_CORE_SOCKET || "/var/run/vyre/vyre-core.sock";
+const socket = env.VYRE_CORE_SOCKET || "/Library/Application Support/Vyre/run/vyre-core.sock";
 const dataDir = env.VYRE_CORE_DATA || "/Library/Application Support/Vyre/data";
 const owner = /^\d+$/.test(String(env.VYRE_CORE_OWNER || "")) ? Number(env.VYRE_CORE_OWNER) : null;
 const strict = env.VYRE_CORE_STRICT === undefined ? process.platform === "darwin" : env.VYRE_CORE_STRICT !== "0";
