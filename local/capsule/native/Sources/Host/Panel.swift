@@ -88,6 +88,7 @@ final class PanelController: NSObject, NSWindowDelegate {
 
     func show(front: FrontApp?) {
         warming = false
+        if model.warming { model.warming = false; model.text = "" }   // summoned during the warm-up
         // A second open within a moment of closing is the same gesture landing twice.
         if Date().timeIntervalSince(hiddenAt) > 30 { model.reset() }
         model.willShow(front: front)
@@ -127,6 +128,10 @@ final class PanelController: NSObject, NSWindowDelegate {
         warming = true
         let size = NSSize(width: Theme.width, height: height())
         host.frame = NSRect(origin: .zero, size: size)
+        // Draw real rows once: the first letter a person types was the slow one (first row views, first
+        // fonts, first icons). A search for "a", local rows only, then the box is emptied again.
+        model.warming = true
+        model.text = "a"
         host.layoutSubtreeIfNeeded()
         if let rep = host.bitmapImageRepForCachingDisplay(in: host.bounds) { host.cacheDisplay(in: host.bounds, to: rep) }
         // The window server makes its half of a translucent, shadowed window the first time it is put
@@ -142,6 +147,7 @@ final class PanelController: NSObject, NSWindowDelegate {
                 self.warming = false
                 self.panel.orderOut(nil)
                 self.panel.alphaValue = 1
+                if self.model.warming { self.model.warming = false; self.model.text = "" }
             }
         }
     }

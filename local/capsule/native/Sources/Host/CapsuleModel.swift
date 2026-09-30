@@ -110,6 +110,8 @@ public final class CapsuleModel: ObservableObject {
     /// The module command open in the box (ViewMode.swift), and where commands come from.
     @Published var viewSession: ViewSession?
     var viewProvider: ViewCommandsProvider?
+    /// True while the panel is warmed at launch with a search nobody typed: it draws local rows and asks nothing else.
+    var warming = false
     /// "#" tags (TagMode.swift): the last search, the ones picked, and the search in flight.
     var tagHits: [TagHit] = []
     @Published var pickedTags: [TagHit] = []
@@ -459,8 +461,8 @@ public final class CapsuleModel: ObservableObject {
             return
         }
         if commandRun?.running == false { commandRun = nil }
-        refreshAttachments(q.text, to: .ask)
-        recall(q.text, token: t)
+        // The warm-up search (Panel.prewarm) only draws local rows: no screen read, no memory lookup.
+        if !warming { refreshAttachments(q.text, to: .ask); recall(q.text, token: t) }
         if q.normalized.isEmpty { autoTask?.cancel(); if autoKey != nil { dropAuto() }; partial = [:]; groups = []; selected = 0; return }
         if let c = calcResult(q) { partial["calc"] = [withCopy(c)] }
         if let a = bindings?.aliasRow(q.normalized) { partial["alias"] = [a] }
@@ -488,7 +490,7 @@ public final class CapsuleModel: ObservableObject {
         }
         let pending = Set((providers + extensionProviders).filter { !($0 is ImmediateResults) }.map(\.id))
         stale = pending
-        scheduleAuto(q, token: t)
+        if !warming { scheduleAuto(q, token: t) }
         staleTimer?.invalidate()
         staleTimer = Timer.scheduledTimer(withTimeInterval: staleAfter, repeats: false) { [weak self] _ in
             MainActor.assumeIsolated {

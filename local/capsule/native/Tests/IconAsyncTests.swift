@@ -58,6 +58,11 @@ let iconAsyncSuite = Suite("icons off the main thread") { t in
             t.ok(!p.isShown, "the warm-up is not a shown Capsule")
             RunLoop.main.run(until: Date().addingTimeInterval(0.5))
             t.ok(!p.panel.isVisible, "and it is gone again"); t.eq(p.panel.alphaValue, 1)
+            t.eq(m.text, "", "the search that drew its rows is emptied"); t.ok(!m.warming)
+            // Summoned while warming: the words are cleared at once, nothing of the warm-up is left.
+            p.prewarm(); t.eq(m.text, "a")
+            p.show(front: nil)
+            t.eq(m.text, ""); t.ok(!m.warming); p.hide()
         }
     }
 }
