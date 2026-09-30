@@ -572,7 +572,9 @@ test("compaction: a teammate's own SessionStart (source compact) gets its notes 
 // --- step 4, slice A (2026-09-28): worktree lifecycle, the integrator, merge-before-dispatch ----
 
 test("isolation: worktree falls back to sharing the folder when the project's home is not a git repo, saying so", async t => {
-  const { tool, project } = await boot(t); // boot(), not bootGit(): a plain folder, no `git init`
+  const { tool, project } = await boot(t);
+  // projects.create now keeps a quiet local history in a new folder (acf46930); this test is about a folder that is not a repo.
+  fs.rmSync(path.join(project.home, ".git"), { recursive: true, force: true });
   const tm = await tool("team.add", { project: project.slug, role: "design", isolation: "worktree" });
   assert.equal(tm.isolation, "folder"); // never git init'd on the person's behalf: shares the folder instead
   assert.match(tm.notice, /isn't a git repo/);
