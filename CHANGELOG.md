@@ -13,6 +13,37 @@ Newest first. Every change to code lands here in the same commit. A new dependen
   key is held too. A named agent (box-side, the assistant, or an ACP provider) now needs one
   grant, made once on the Mac with presence, before it can drive this Mac's computer use at
   all (`hands.grant.add`/`.remove`/`.list`); the person's own direct session is unaffected.
+- Closed a caller-identity race on macOS: a forged "cli" label from under a claude was believed
+  when the caller was forked inside the 250 ms shared process snapshot. A pid the snapshot lacks is
+  now read again, retries start from a fresh table, a peer that already exited is a model's, and
+  only a definite answer is kept for a connection (`core/daemon/peer.js`, `core/daemon/index.js`).
+- `module.json` gains an optional `setupTools` list (v1, additive): built in modules name the tools the
+  setup channel may call before sign-in. An added module that declares it fails to load.
+- An added module can no longer emit the gate, push, presence, said, memory, thread, tailscale or
+  artifact-links event families; each is reserved for its built-in owner.
+- vyred logs the stack and exits non-zero on an uncaught exception or unhandled rejection, so the
+  supervisor restarts it (`core/daemon/crash.js`).
+- The floor refuses a model's shell on the Chrome bridge socket (`chrome.sock`), as on vyred's own.
+- The session MCP server answers JSON that is not a request object (null, a number, an array) with
+  an invalid-request error; it used to exit. Seeded fuzz tests cover the relay frames and the MCP
+  lines (`core/relay/fuzz.test.js`, `core/mcp/fuzz.test.js`).
+- Module contract v1 (ADR 0047), as a proof on the platform branch. `module.json` says for each
+  tool who may call it (`reach`) and whether it acts as you outside (`outward`). Each ctx member a
+  module uses has one declaration, and the install card is built from them.
+- `@vyre/module-sdk` gains `testing` (a fake registry and Gate over a temp home), `conform` (the
+  checks every module passes) and `updatePlan` (install, show the card, or wait).
+- `vyre module new` writes a v1 module with `AGENTS.md`, the brief for an agent writing it.
+  `vyre module test` runs the conformance checks, then the module's own tests.
+- `examples/modules/bakery` is the complete example. `docs/build/AGENT-BRIEF.md` is the text to hand
+  another agent.
+- The loader reads v1 manifests: tools with a reach, `mac` and `windows` roles, and `requires` with
+  version ranges. A module added from outside reaches only tools with a declared reach, and may not
+  replace one of Vyre's modules.
+- Modules keep working as the contract grows. A module names its contract in module.json
+  (`"vyre": "1"`), and inside a major Vyre only adds. Unknown keys and deprecated usages are
+  warnings, never failures. A module for a newer contract is never run: its row says which Vyre it
+  needs. `vyre module upgrade` moves a module onto the current form, and pinned fixtures in
+  `test/fixtures/modules/` hold every release to it.
 
 ## 0.1.1
 

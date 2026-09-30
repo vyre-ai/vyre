@@ -31,7 +31,9 @@ async function boot(t, vault = { keystore: "file", ssh: { socket: "ssh/agent.soc
   fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ name: "test-box", vault }));
   writeModule(path.join(root, "modules"), "probe", { does: { tools: ["probe.use"] }, needs: { vault: ["per-item"] } }, PROBE);
   const lines = [];
-  const d = await start({ presence: present, root, log: (m, x) => lines.push(m + (x ? " " + JSON.stringify(x) : "")) });
+  // The probe stands in for one of Vyre's own modules using the built in only vault.fetch
+  // (needs.vault, ADR 0047), so the home's modules folder loads as first party. Test only.
+  const d = await start({ presence: present, root, firstPartyRoots: [path.join(root, "modules")], log: (m, x) => lines.push(m + (x ? " " + JSON.stringify(x) : "")) });
   t.after(() => d.stop());
   const handle = /** @type {any} */ (d.registry).modules.get("vault").handle;
   return { root, d, lines, handle, as: caller => (tool, input = {}) => call(tool, input, { root, caller }) };

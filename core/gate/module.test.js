@@ -130,7 +130,9 @@ test("gate: a module offers a sender, and the user's edited approval reaches its
   fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ name: "test-box", vault: { keystore: "file" },
     gate: { senders: { mail: { type: "gmail", vault: "work-mail-token" } } } }));
   writeModule(path.join(root, "modules"), "courier", { requires: ["gate"], does: { tools: ["courier.release", "courier.got", "courier.spoof"] } }, COURIER);
-  const d = await start({ root, presence: present, log: () => {} });
+  // courier stands in for one of Vyre's own senders (gate.offer is for built in senders; an added
+  // module is its own sender with an outward tool, ADR 0047), so it loads as first party.
+  const d = await start({ root, presence: present, log: () => {}, firstPartyRoots: [path.join(root, "modules")] });
   t.after(() => d.stop());
   const local = (tool, input = {}) => call(tool, input, { root, caller: "local" });
   assert.equal(d.registry.status().find(m => m.name === "courier")?.state, "running");
