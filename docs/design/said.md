@@ -85,7 +85,11 @@ agents, repos) so that `change` and `post` targets can resolve the same way.
   None or several and the whole intent gets `to_ids: null` with the words in `unresolved`. No fuzzy
   matching, and no guessing which Sam.
 - A reply with no named recipient takes the ids the caller passes as `replyTo` (the sender of the
-  message the person is looking at), or stays unresolved.
+  message the person is looking at), or stays unresolved. `replyTo` must come from what the
+  person's own device reported at the time of the turn (the open message in the Capsule, the
+  phone or the Deck, through `context.report` from a person surface), captured with the `said`
+  row. Never from anything an agent passes or reads: an agent that could name the reply target
+  could name any recipient.
 
 `recipientId(address, contacts)` is the other half for the Gate: an outgoing address compares as
 the one contact that owns it, or as itself.
