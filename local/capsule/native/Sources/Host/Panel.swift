@@ -288,6 +288,7 @@ final class PanelController: NSObject, NSWindowDelegate {
             // after it stays (the user's spec, 28 Sep, matching chat's tap-to-talk).
             if extensions?.cancelTalking() == true { return true }
             if model.bindingEdit != nil { model.cancelBinding(); return true }
+            if model.vaultPassword != nil { model.cancelVaultPassword(); return true }
             if model.presenceAsk != nil { model.cancelPresence(); return true }
             if model.credentialAsk != nil { model.cancelCredential(); return true }
             if model.escCommand() { return true }
@@ -338,6 +339,7 @@ final class PanelController: NSObject, NSWindowDelegate {
             if model.viewRunDetailAction() { return true }
             // A key being added: ⏎ saves it (the field's own submit does the same).
             if model.credentialAsk != nil { Task { await model.saveCredential() }; return true }
+            if model.vaultPassword != nil { Task { await model.submitVaultPassword() }; return true }
             // Plain ⏎ while listening: stop the mic (keeping the words already heard) and send,
             // same as chat's tap-to-talk. ⌘⏎/⇧⏎ are left alone -- only a plain ⏎ means "send".
             if !shift, !cmd { _ = extensions?.stopTalking() }

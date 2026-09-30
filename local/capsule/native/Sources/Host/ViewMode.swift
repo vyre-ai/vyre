@@ -136,14 +136,21 @@ extension CapsuleModel {
 
 extension CapsuleModel {
     /// The vault said "locked". Show one row, "Unlock the vault on this Mac"; Return asks for the person's
-    /// proof (Touch ID) through vault.account.unlock, then repeats what failed. It never unlocks ahead of time,
-    /// and a live presence session covers the proof, so a person already proven at the Mac is not asked twice.
+    /// proof through vault.account.unlock (Touch ID, or the vault password where this Mac has no reader),
+    /// then repeats what failed. It never unlocks ahead of time, and a live presence session covers the
+    /// proof, so a person already proven at the Mac is not asked twice.
     func offerVaultUnlock(retry: @escaping @MainActor () async -> ActionOutcome?) {
-        let row = ResultItem(id: "vault-unlock", kind: "unlock", title: "Unlock the vault on this Mac", subtitle: "Touch ID, then it carries on",
+        let touch = biometricsAvailable()
+        let row = ResultItem(id: "vault-unlock", kind: "unlock", title: "Unlock the vault on this Mac",
+                             subtitle: touch ? "Touch ID, then it carries on" : "Your vault password, then it carries on",
                              icon: .symbol("lock.open"), section: .top, score: 1,
-                             actions: [ResultAction(id: "unlock", title: "Unlock", symbol: "touchid") { [weak self] _, _ in
+                             actions: [ResultAction(id: "unlock", title: "Unlock", symbol: touch ? "touchid" : "key") { [weak self] _, _ in
                                  guard let self else { return .failed("Not now.") }
-                                 if let why = await self.unlocker() { return .failed(why) }
+                                 if !touch {
+                                     await MainActor.run { self.vaultPassword = VaultPasswordAsk(retry: retry) }
+                                     return .said("")
+                                 }
+                                 if let why = await self.unlocker(nil) { return .failed(why) }
                                  await MainActor.run { self.groups = []; self.line = nil }
                                  if let out = await retry() { return out }
                                  return .said("Unlocked.")
@@ -152,13 +159,40 @@ extension CapsuleModel {
         selected = 0
         line = nil
     }
+
+    /// Send the password typed in the card, then clear it. The field is emptied before the call returns, whatever happened.
+    func submitVaultPassword() async {
+        guard let ask = vaultPassword, !ask.password.isEmpty, !ask.busy else { return }
+        let pw = ask.password
+        ask.password = ""
+        ask.busy = true; ask.error = nil
+        let why = await unlocker(pw)
+        ask.busy = false
+        if let why { ask.error = why; return }
+        vaultPassword = nil
+        groups = []; line = nil
+        if let out = await ask.retry() { handle(out) } else { flash("Unlocked") }
+    }
+
+    func cancelVaultPassword() { vaultPassword?.password = ""; vaultPassword = nil }
 }
 
-/// vault.account.unlock {method: "touchid"} as the person (their presence proof goes with the call). Nil on
-/// success, else the words. A Mac with no Touch ID reader has no path here yet: the vault is unlocked from the Deck.
+/// The vault password, typed in the panel on a Mac with no Touch ID reader. Lives only in the field and the one call.
+@MainActor final class VaultPasswordAsk: ObservableObject, Identifiable {
+    @Published var password = ""
+    @Published var busy = false
+    @Published var error: String?
+    let retry: @MainActor () async -> ActionOutcome?
+    init(retry: @escaping @MainActor () async -> ActionOutcome?) { self.retry = retry }
+}
+
+/// vault.account.unlock as the person (their presence proof goes with the call): Touch ID, or the vault password
+/// where there is no reader. Nil on success, else the words.
 @MainActor
-func unlockVaultAccount(_ vyred: VyredClient) async -> String? {
-    let r = await vyred.call("vault.account.unlock", ["method": "touchid"], presence: true, summary: "Unlock your vault on this Mac")
+func unlockVaultAccount(_ vyred: VyredClient, password: String?) async -> String? {
+    var input: [String: Any] = ["method": "touchid"]
+    if let password { input = ["password": password] }
+    let r = await vyred.call("vault.account.unlock", input, presence: true, summary: "Unlock your vault on this Mac")
     if let why = Bridge.explain(r) { return why }
     return nil
 }
