@@ -3,12 +3,12 @@ title: "ADR 0047: The module contract v1"
 summary: The frozen module API 1 for Vyre 0.2. It covers module.json with per-tool reach and outward marks, the ctx a module gets, the capability manifest every agent reads, added modules running in a sandboxed host, the install card, and the kit that lets an agent write a module that works the first time.
 audience: builders, agents
 owner: platform
-status: draft
+status: stable
 ---
 
 # ADR 0047: The module contract v1
 
-Status: draft for the person's approval, 30 Sep 2026 · Workstream: platform · Finalizes [ADR 0033](0033-hackable-vyre.md)
+Status: accepted, 30 Sep 2026 (approved by the lead for the person, with the person's compatibility rule in section 8) · Workstream: platform · Finalizes [ADR 0033](0033-hackable-vyre.md)
 section 1 and section 5 for Vyre 0.2. Binds to the 0.2 charter's rules (security without friction,
 asking is approving, agents can do everything the person can) and PLAN.md's contracts P5, P8, P14,
 P17, P20 and C25.
@@ -495,8 +495,10 @@ because added modules never had them in a release, so refusing them breaks nobod
 
 **6. Newer than this Vyre: a clear message, never a crash.** When a module's `vyre` is a newer
 minor, or a major this Vyre doesn't support, the loader never imports its code. Its row says, in
-the person's words, "bakery needs Vyre 0.4 or later (module contract 1.2); this Vyre has 1.0.
-Update Vyre, or ask the module's author for an older version." `vyre module add` says the same
+the person's words, "bakery needs a newer Vyre (module contract 1.2); this Vyre has 1.0. Update
+Vyre, or ask the module's author for an older version." It names the release ("needs Vyre 0.4 or
+later") when `contract.json` already knows it. A major this Vyre dropped suggests `vyre module
+upgrade` instead. `vyre module add` says the same
 before staging anything, and `vyre module check` reports it as the one problem.
 
 ### 9. What each 0.2 team does so its modules match v1

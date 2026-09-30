@@ -209,8 +209,8 @@ Your module keeps working when Vyre updates. The rules:
   tests it. It already exists and moves older manifests to today's shape.
 - **Every release tests old modules.** Pinned modules for every contract version and every example
   run against every supported version in CI, and a release that breaks one doesn't ship.
-- **Too new for this Vyre?** You get a plain message, "bakery needs Vyre 0.4 or later (module
-  contract 1.2); this Vyre has 1.0", and nothing crashes.
+- **Too new for this Vyre?** You get a plain message, "bakery needs a newer Vyre (module contract
+  1.2); this Vyre has 1.0", and nothing crashes.
 
 ## What's built in only, for now
 
