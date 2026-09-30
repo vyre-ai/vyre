@@ -110,6 +110,8 @@ public final class CapsuleModel: ObservableObject {
     /// The module command open in the box (ViewMode.swift), and where commands come from.
     @Published var viewSession: ViewSession?
     var viewProvider: ViewCommandsProvider?
+    /// How the vault is unlocked (a test gives its own): nil on success, else the words.
+    lazy var unlocker: () async -> String? = { [unowned self] in await unlockVaultAccount(self.vyred) }
     /// The searches of slow providers in flight for the words now in the box (cancelled by the next key).
     var searchTasks: [Task<Void, Never>] = []
     /// Text put in the box other than a key at a time (a paste, a drop, dictation, undo): tags typed inside

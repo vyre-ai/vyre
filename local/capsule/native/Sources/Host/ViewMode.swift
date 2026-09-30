@@ -21,6 +21,7 @@ extension CapsuleModel {
             self.enterView(c2)
         }
         s.onAsk = { [weak self] words in self?.prefill(words) }
+        s.onLocked = { [weak self] retry in self?.offerVaultUnlock(retry: retry) }
         s.onNeed = { [weak self, weak s] need in self?.askCredential(need) { s?.reload() } }
         viewSession = s
         line = nil
@@ -131,4 +132,33 @@ extension CapsuleModel {
             self.nextMeeting = [row.title, row.subtitle, row.accessory].compactMap { $0 }.joined(separator: " \u{00B7} ")
         }
     }
+}
+
+extension CapsuleModel {
+    /// The vault said "locked". Show one row, "Unlock the vault on this Mac"; Return asks for the person's
+    /// proof (Touch ID) through vault.account.unlock, then repeats what failed. It never unlocks ahead of time,
+    /// and a live presence session covers the proof, so a person already proven at the Mac is not asked twice.
+    func offerVaultUnlock(retry: @escaping @MainActor () async -> ActionOutcome?) {
+        let row = ResultItem(id: "vault-unlock", kind: "unlock", title: "Unlock the vault on this Mac", subtitle: "Touch ID, then it carries on",
+                             icon: .symbol("lock.open"), section: .top, score: 1,
+                             actions: [ResultAction(id: "unlock", title: "Unlock", symbol: "touchid") { [weak self] _, _ in
+                                 guard let self else { return .failed("Not now.") }
+                                 if let why = await self.unlocker() { return .failed(why) }
+                                 await MainActor.run { self.groups = []; self.line = nil }
+                                 if let out = await retry() { return out }
+                                 return .said("Unlocked.")
+                             }])
+        groups = [Group(section: .top, items: [row])]
+        selected = 0
+        line = nil
+    }
+}
+
+/// vault.account.unlock {method: "touchid"} as the person (their presence proof goes with the call). Nil on
+/// success, else the words. A Mac with no Touch ID reader has no path here yet: the vault is unlocked from the Deck.
+@MainActor
+func unlockVaultAccount(_ vyred: VyredClient) async -> String? {
+    let r = await vyred.call("vault.account.unlock", ["method": "touchid"], presence: true, summary: "Unlock your vault on this Mac")
+    if let why = Bridge.explain(r) { return why }
+    return nil
 }

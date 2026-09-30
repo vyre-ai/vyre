@@ -387,3 +387,49 @@ let nextMeetingSuite = Suite("next meeting line") { t in
         t.eq(r, ["Harlow Legal call · in 25 min", "again 0", "module google"])
     }
 }
+
+// capsule-suite: vaultUnlockSuite
+let vaultUnlockSuite = Suite("vault locked") { t in
+    t.test("a locked vault is offered as one row; Return unlocks (Touch ID, asked once) and the list that failed comes back") {
+        let v = FakeVyred(name: "vault-locked")
+        let unlocked = OvCounter()
+        v.tool("capsule.view") { _ in
+            unlocked.count == 0 ? ["v": 1, "kind": "error", "code": "locked", "message": "The vault is locked."]
+                                : list(["v1"])
+        }
+        t.ok(v.start()); defer { v.stop() }
+        let r: [String]? = t.wait { @MainActor () -> [String] in
+            let m = CapsuleModel(home: vyScratch("locked-\(UUID().uuidString.prefix(6))"), vyred: VyredClient(socket: v.socket), providers: [])
+            var asked = 0
+            m.unlocker = { asked += 1; unlocked.bump(); return nil }
+            let vault = ViewCommand(module: "vault", id: "vault-search", title: "Vault", keywords: [], alias: nil, icon: nil, root: true, argName: "q", argPlaceholder: nil, firstParty: true, hash: "h")
+            m.enterView(vault)
+            _ = await poll { m.flat.first?.kind == "unlock" }
+            var out = [m.flat.first?.title ?? "-", "asked \(asked)"]
+            let row = m.flat[0]
+            let res = await row.actions[0].run(row, ActionContext(query: Query("")))
+            out.append("\(res)"); out.append("asked \(asked)")
+            _ = await poll { m.flat.first?.kind == "view-row" }
+            out.append(m.flat.first?.id ?? "-")
+            return out
+        }
+        t.eq(r, ["Unlock the vault on this Mac", "asked 0", "said(\"Unlocked.\")", "asked 1", "view:vault/vault-search:v1"])
+    }
+
+    t.test("a refused unlock says why and keeps the row for another try") {
+        let v = FakeVyred(name: "vault-refused")
+        v.tool("capsule.view") { _ in ["v": 1, "kind": "error", "code": "locked", "message": "The vault is locked."] }
+        t.ok(v.start()); defer { v.stop() }
+        let r: [String]? = t.wait { @MainActor () -> [String] in
+            let m = CapsuleModel(home: vyScratch("locked2-\(UUID().uuidString.prefix(6))"), vyred: VyredClient(socket: v.socket), providers: [])
+            m.unlocker = { "That did not match." }
+            let vault = ViewCommand(module: "vault", id: "vault-search", title: "Vault", keywords: [], alias: nil, icon: nil, root: true, argName: "q", argPlaceholder: nil, firstParty: true, hash: "h")
+            m.enterView(vault)
+            _ = await poll { m.flat.first?.kind == "unlock" }
+            let row = m.flat[0]
+            let res = await row.actions[0].run(row, ActionContext(query: Query("")))
+            return ["\(res)", m.flat.first?.kind ?? "-"]
+        }
+        t.eq(r, ["failed(\"That did not match.\")", "unlock"])
+    }
+}
