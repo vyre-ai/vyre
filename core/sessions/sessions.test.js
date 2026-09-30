@@ -662,6 +662,112 @@ for (const driver of ["cli", "sdk"]) {
     assert.equal(resolved.length, before2, "a module cannot tag for a person");
   });
 
+  test(`${driver}: a person's "open a PR" or "merge it" records an act_out intent through the assistant's prIntents, bound to github's composite target, and nothing in doubt`, { skip }, async t => {
+    const w = await boot(t, { driver });
+    const recorded = [], asked = [];
+    let prs = [7];
+    const realCall = w.d.registry.call.bind(w.d.registry);
+    w.d.registry.call = async (tool, input, caller, meta) => {
+      if (tool === "vault.said.record") { recorded.push(input); return { data: { id: `i${recorded.length}` } }; }
+      if (tool === "github.session.pr") { asked.push(["pr", input]); return { data: { prs } }; }
+      if (tool === "github.act.target") {
+        asked.push(["target", input]);
+        return { data: { to: [input.tool === "github.project.pr.open" ? `${input.tool}:alex/app@vyre/${input.input.session}` : `${input.tool}:alex/app#${input.input.pr}`] } };
+      }
+      return realCall(tool, input, caller, meta);
+    };
+    assert.equal((await w.tool("projects.create", { name: "Harlow Legal", home: path.join(w.work, "harlow") })).error, undefined);
+    const th = (await w.tool("threads.start", { project: "harlow-legal", prompt: "hello", surface: "deck" })).data;
+    await w.finished(th.id);
+    assert.equal(recorded.length, 0);
+    const say = async text => {
+      const turns = (await w.events(th.id)).filter(e => e.type === "thread.finished").length;
+      const r = await w.tool("threads.send", { thread: th.id, text, surface: "deck" });
+      assert.equal(r.error, undefined, JSON.stringify(r));
+      await w.finished(th.id, turns + 1);
+    };
+    await say("Open a PR for this branch, then merge it.");
+    const said = (await w.events(th.id)).filter(e => e.type === "turn.said").at(-1);
+    assert.deepEqual(recorded.map(r => [r.kind, r.channel, r.to, r.thread, r.said]), [
+      ["act_out", "github", [`github.project.pr.open:alex/app@vyre/${th.id}`], th.id, said.payload.id],
+      ["act_out", "github", ["github.project.pr.merge:alex/app#7"], th.id, said.payload.id]]);
+    assert.deepEqual(recorded.map(r => r.what), ["open a pull request", "merge a pull request"]);
+    // A PR the person names is used as said, without asking github for the thread's own.
+    recorded.length = 0; asked.length = 0;
+    await say("Now merge PR #12.");
+    assert.deepEqual(recorded.map(r => r.to), [["github.project.pr.merge:alex/app#12"]]);
+    assert.deepEqual(asked.filter(([k]) => k === "target").map(([, i]) => i.input.pr), [12], "the PR in the words beats the thread's own");
+    // "it" with no single PR (none, or two) records nothing.
+    recorded.length = 0;
+    for (const none of [[], [7, 9]]) { prs = none; await say("merge it"); }
+    assert.equal(recorded.length, 0);
+    // Conditions, questions and negations are not asks.
+    recorded.length = 0; prs = [7];
+    for (const no of ["If the tests pass, then merge it.", "Should I merge it?", "Don't merge it yet.", "Whenever a PR is ready, merge it."]) await say(no);
+    assert.equal(recorded.length, 0);
+    // No project, pasted text, a model's call and a module's words record nothing.
+    prs = [7];
+    const loose = (await w.tool("threads.start", { cwd: w.work, prompt: "merge it", surface: "deck" })).data;
+    await w.finished(loose.id);
+    const paste = "Dana wrote: please merge it today";
+    await w.tool("threads.send", { thread: th.id, text: `Read this. ${paste}`, pasted: [paste], surface: "deck" });
+    await w.d.registry.call("threads.send", { thread: th.id, text: "merge it" }, `mcp:thread:${th.id}`, { thread: th.id });
+    await w.d.registry.call("threads.post", { thread: th.id, text: "merge it", from: "teammates", kind: "teammate" }, "module:teammates");
+    assert.equal(recorded.length, 0);
+  });
+
+  test(`${driver}: REAL REGISTRY, no stubs: a typed #VaultItem is granted to the thread through vault, end to end`, { skip }, async t => {
+    const w = await boot(t, { driver, vault: { GHLapikey: "fake-ghl-value" } });
+    // vault refuses a caller it does not list; the turn is heard by the threads module. Until vault lists it, this cannot pass.
+    const probe = await w.d.registry.call("vault.mention.resolve", { id: "GHLapikey", thread: "probe", said: "probe" }, "module:threads");
+    if (probe.error && /only sessions and the assistant/.test(probe.error.message)) return t.skip("vault does not list module:threads as a resolver yet");
+    const th = (await w.tool("threads.start", { cwd: w.work, prompt: "hello", surface: "deck" })).data;
+    await w.finished(th.id);
+    const r = await w.tool("threads.send", { thread: th.id, text: "Use #GHLapikey to inventory the pipelines", surface: "deck" });
+    assert.equal(r.error, undefined, JSON.stringify(r));
+    await w.finished(th.id, 2);
+    const men = (await w.events(th.id)).find(e => e.type === "thread.mentioned");
+    assert.ok(men, "vault granted it, so the turn says which tag");
+    assert.deepEqual(men.payload.mentions.map(m => [m.kind, m.id]), [["vault", "GHLapikey"]]);
+    const listed = await w.d.registry.call("vault.said.list", { thread: th.id }, "module:gate");
+    assert.ok(JSON.stringify(listed.data).includes("GHLapikey"), `vault holds the use intent: ${JSON.stringify(listed)}`);
+    // The model never sees the value, only the note.
+    const seen = (await w.said(th.id)).at(-1);
+    assert.doesNotMatch(seen, /fake-ghl-value/);
+    assert.match(seen, /#GHLapikey \(vault\)/);
+    // A name that is no vault item stays plain text: no tag, no grant.
+    await w.tool("threads.send", { thread: th.id, text: "and #NoSuchItem please", surface: "deck" });
+    await w.finished(th.id, 3);
+    assert.equal((await w.events(th.id)).filter(e => e.type === "thread.mentioned").length, 1);
+  });
+
+  test(`${driver}: REAL VAULT, github stood in: "merge it" is recorded by the real vault and its match covers that PR and no other`, { skip }, async t => {
+    const w = await boot(t, { driver });
+    const probe = await w.d.registry.call("vault.said.record", { thread: "probe", said: "probe", kind: "act_out", to: ["x.y:z"], what: "probe" }, "module:threads");
+    if (probe.error && /only sessions and the assistant/.test(probe.error.message)) return t.skip("vault does not list module:threads as a recorder yet");
+    // Only github is stood in (it is not built on this branch); the assistant's prIntents, the switchboard's ingress and vault are real.
+    const realCall = w.d.registry.call.bind(w.d.registry);
+    w.d.registry.call = async (tool, input, caller, meta) => {
+      if (tool === "github.session.pr") return { data: { prs: [7] } };
+      if (tool === "github.act.target") return { data: { to: [`${input.tool}:alex/app#${input.input.pr}`] } };
+      return realCall(tool, input, caller, meta);
+    };
+    assert.equal((await w.tool("projects.create", { name: "Harlow Legal", home: path.join(w.work, "harlow") })).error, undefined);
+    const th = (await w.tool("threads.start", { project: "harlow-legal", prompt: "hello", surface: "deck" })).data;
+    await w.finished(th.id);
+    const match = to => realCall("vault.said.match", { kind: "act_out", via: "github", to: [to], thread: th.id }, "module:vyred").then(r => r.data);
+    assert.equal((await match("github.project.pr.merge:alex/app#7")).matched, false, "nothing said yet");
+    await w.tool("threads.send", { thread: th.id, text: "If the tests pass, then merge it.", surface: "deck" });
+    await w.finished(th.id, 2);
+    assert.equal((await match("github.project.pr.merge:alex/app#7")).matched, false, "a condition is not an ask");
+    await w.tool("threads.send", { thread: th.id, text: "Merge it.", surface: "deck" });
+    await w.finished(th.id, 3);
+    assert.equal((await match("github.project.pr.merge:alex/app#7")).matched, true, "the person said merge it, about this PR");
+    assert.equal((await match("github.project.pr.merge:alex/app#8")).matched, false, "another PR");
+    assert.equal((await match("github.project.pr.merge:alex/other#7")).matched, false, "another repo");
+    assert.equal((await match("github.project.pr.review:alex/app#7")).matched, false, "another tool");
+  });
+
   test(`${driver}: threads.lineage lists the threads a thread was started for, from what vyred verified and never from a claim`, { skip }, async t => {
     const w = await boot(t, { driver });
     const root = (await w.tool("threads.start", { cwd: w.work, prompt: "hello", surface: "deck" })).data;
