@@ -912,7 +912,8 @@ export default {
           if (a.kind === "assistant") throw Object.assign(new Error("the assistant works across every project already; it does not fill a role"), { code: "bad_input" });
           const reaches = a.projects === "*" || (Array.isArray(a.projects) && a.projects.includes(tm.project));
           if (!reaches) {
-            if (!isPerson(meta.caller)) throw Object.assign(new Error(`${a.name} has no access to ${tm.project}; the person gives an agent a project`), { code: "denied" });
+            // The person, or the assistant acting on their words (TODO with the P17 gate: require gate.said.match for the assistant).
+            if (!isPerson(meta.caller) && !isAssistant(meta)) throw Object.assign(new Error(`${a.name} has no access to ${tm.project}; the person, or their assistant on their request, gives an agent a project`), { code: "denied" });
             const u = await ctx.call("agents.update", { name: a.name, projects: [...(Array.isArray(a.projects) ? a.projects : []), tm.project] });
             if (u.error) throw new Error(u.error.message);
           }
