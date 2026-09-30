@@ -17,7 +17,7 @@ rec() { # rec STEP ok|false [why]
 serve() { python3 -m http.server "$2" --bind 127.0.0.1 --directory "$1" >/dev/null 2>&1 & echo $! >>"$OUT/pids"; }
 version() { vyre version 2>/dev/null | tr -d ' \r\n'; }
 ready() { i=0; until vyre status 2>/dev/null | grep -q 'vyred running'; do i=$((i + 1)); [ $i -ge 120 ] && return 1; sleep 1; done; }
-upd() { VYRE_BOX_URL="http://127.0.0.1:$1/" VYRE_RELEASES_API="" VYRE_UPDATE_WAIT=180 vyre update --yes "${@:2}" </dev/null 2>&1; }
+upd() { VYRE_BOX_URL="http://127.0.0.1:$1/" VYRE_RELEASES_API="" VYRE_UPDATE_WAIT=180 vyre update "${@:2}" </dev/null 2>&1; }
 : >"$OUT/pids"
 serve "$OLD" 18081; serve "$NEW" 18082
 TAMPER=$(mktemp -d); cp -R "$NEW"/. "$TAMPER"/; printf 'tampered\n' >>"$TAMPER/vyre.tgz"; serve "$TAMPER" 18083
@@ -34,7 +34,7 @@ else rec 2.1-install-old false "install or start failed: $(tail -3 "$OUT/install
 vyre call memory.remember '{"text":"My wife is Robin"}' >"$OUT/seed-memory.json" 2>&1
 vyre call planner.add '{"kind":"note","text":"Marlow and Finch retainer draft"}' >"$OUT/seed-note.json" 2>&1
 seen() { vyre call planner.list '{}' 2>&1 | grep -q 'retainer draft' && vyre call memory.facts '{}' 2>&1 | grep -q 'Robin'; }
-seen && rec 2.2-seed ok || rec 2.2-seed false "seed not readable: $(head -c 200 "$OUT/seed-memory.json")"
+seen && rec 2.2-seed ok || rec 2.2-seed false "seed not readable. note: $(head -c 150 "$OUT/seed-note.json" | tr '\n' ' ') list: $(vyre call planner.list '{}' 2>&1 | head -c 200 | tr '\n' ' ')"
 
 # 2.3 update to the candidate
 out=$(upd 18082); rc=$?; ready
@@ -44,7 +44,7 @@ v=$(version)
 seen && rec 2.4-data-kept ok || rec 2.4-data-kept false "memory or note gone after the update"
 
 # 2.5 roll back with data, then update again
-out=$(upd 18082 --rollback --restore-data); rc=$?; ready; v=$(version)
+out=$(upd 18082 --rollback --restore-data --yes); rc=$?; ready; v=$(version)
 [ $rc -eq 0 ] && [ "$v" = "$OLDV" ] && rec 2.5a-rollback ok "$v" || rec 2.5a-rollback false "rc $rc, runs '$v': $(echo "$out" | tail -4)"
 seen && rec 2.5b-rollback-data ok || rec 2.5b-rollback-data false "data missing after rollback"
 out=$(upd 18082); rc=$?; ready; v=$(version)
