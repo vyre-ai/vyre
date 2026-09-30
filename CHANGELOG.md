@@ -4,6 +4,10 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### Red-team refusals for readers and connectors
+
+- `test/redteam/readers.test.js` (RT-A1a to RT-A1i): a reader module off its named paths, a write or send through a read-only reader (refused, never held), smuggling past the path (`%2f`, `%5c`, `%2e`, `;`, dot segments, double encoding), a non-reader module, a watcher and a claimed identity, a model or agent making itself a reader or replacing the key, a model's own write (held), a reader outliving its deleted credential, key replacement keeping readers, and another host. `test/redteam/connectors.test.js` (RT-C1 to RT-C8): config presets rewriting a host binding, hostile sign-in metadata past the pin, an added module's command or vault env in the hub, non-person connect, disconnect and token paste, the internal tools between connectors, mcp and vault, a #tag's thread scope, a same-named server takeover, and a connection given to another app. They run on runners and the test box, never on the Mac (start() refuses there).
+
 #### A test never boots a vyred on the person's Mac
 
 - `core/daemon/host-guard.js`, called first in `start()`: on darwin, a vyred that starts under a test (node:test, the helpers' VYRE_TEST_HOSTED marker, or a home under the temp folder) is refused with "daemon tests run on a runner or the test box, not on this Mac", unless CI is set, `VYRE_TEST_HOST=testbox`, or the host is a hosted runner (`runner*`, `fv-az*`). A person's own vyred (~/.vyre, or any home outside the temp folder with no test marker) is never touched, other OSes are unaffected, and unit tests that boot nothing never reach `start()`. Every in-process boot and every spawned `vyre up` or fixture vyred passes through `start()`, so this is the one guard. Test: `core/daemon/host-guard.test.js`.
