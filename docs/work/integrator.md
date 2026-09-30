@@ -52,6 +52,8 @@ Never the test box (now the user's real server) and never the user's Mac. Tests 
 - Held: launch (conflicts, rebase asked), capsule-sight, glass, artifacts, teammates (after sessions-02), sessions-02, platform newer head.
 - 30 Sep: stage = ab145ccf (+ sessions-02 e9a127f1 as 600c789a, tailnet b8bda0e1). CI: two setup.test.js failures (sessions now declares setupTools; tailnet fixing) and nondeterministic hangs (sessions.test.js under sessions-sdk at 120 s; Node runs cancelled at 30 min in two of three). platform's perf fix 3fd7f029 (recall_turns scan) works on Node 22 but platform-contract conflicts with stage in core/daemon/index.js and core/modules/index.js; platform merging.
 - Queue: artifacts 20ae471a, glass, teammates (after sessions-02), capsule-sight (rebasing), launch (rebasing), platform.
+- 1 Oct: stage/0.2 = 6731781b, fully green (node 22 and 24, test-windows, windows-socket-acl). Landed in order: platform-contract, tailnet, vyre-core, sessions (02, hang fix, start-mentions, heard-next, memory-person, acp-real), drive, native-core (cards, sites), github, connectors, vault, teammates, artifacts, assistant, windows, launch, capsule-sight through 9c537d35, iq-land and iq-s2 (site learning, ON by default), app-design (icons, shots), plus flake and CI fixes. Policies kept: two branches per run, touched tests before every push, no daemon tests on the Mac, fix forward or revert (no resets); the iq merge was reverted once (b88f1c6a) and re-landed.
+- Held: capsule-sight past 9c537d35 (egress fail-open fix 7174ee79 still fails real Chrome). Not started: release.yml v2 (superseded by anywhere's single Ed25519 signing design), box-image isolation checks beyond sessions' acct-home.
 
 ## Doing
 
