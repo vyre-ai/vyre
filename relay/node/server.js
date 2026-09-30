@@ -6,6 +6,9 @@
 //   GET /v1/box?route=<id>                  the box's control socket, after a signed challenge
 //   GET /v1/box?route=<id>&c=<conn>&t=<ticket>   the box's data socket for one device connection
 //   GET /v1/device?route=<id>               a device; the relay tells the box, then pipes frames
+//   POST /v1/pair                           resolve a Wink ticket's or a setup offer's locator
+//   POST /v1/setup/mbx                      append a line to a setup progress mailbox (the install script)
+//   GET /v1/setup/mbx                       read it, long poll, signed by the setup page's key
 //   GET /health
 //
 // The relay never reads a device frame. It learns addresses, timing, sizes and route ids.
@@ -13,7 +16,7 @@
 import http from "node:http";
 import crypto from "node:crypto";
 import { acceptKey, encodeFrame, FrameParser } from "../../core/computers/ws.js";
-import { LIMITS, CLOSE, ROUTE_RE, routeId, authMessage, verifyRoute, TICKET_TTL } from "../../core/relay/wire.js";
+import { LIMITS, CLOSE, ROUTE_RE, routeId, authMessage, verifyRoute, TICKET_TTL, SETUP_TTL, MBX_LINE_MAX, isP256Spki, setupFingerprint, verifyP256, mbxReadMessage } from "../../core/relay/wire.js";
 
 /** A fixed window per key (an IP, or the constant "*" for the global cap): true while under it. */
 function rateLimiter(max, windowMs) {
@@ -78,7 +81,7 @@ class Peer {
 }
 
 /**
- * @param {{ limits?: Partial<typeof LIMITS>, log?: (event: string, x?: any) => void }} [o]
+ * @param {{ limits?: Partial<typeof LIMITS>, setup?: { maxBoxes?: number, createPerIp?: number }, log?: (event: string, x?: any) => void }} [o]
  */
 export function createRelay(o = {}) {
   const limits = { ...LIMITS, ...(o.limits || {}) };
@@ -106,9 +109,38 @@ export function createRelay(o = {}) {
   // ticketSeal): anything that isn't opaque base64url, a plaintext JSON record included, is
   // refused, so this relay never holds a box's name, handle or key in the clear.
   const SEALED = /^[A-Za-z0-9_-]{22,2048}$/;
-  /** @type {Map<string, { record: string, mac: string, exp: number }>} */
+  /** @type {Map<string, { record: string, mac: string, exp: number, setup?: boolean, contested?: boolean }>} */
   const pairTickets = new Map();
   const sweepTickets = () => { const now = Date.now(); for (const [loc, t] of pairTickets) if (t.exp <= now) pairTickets.delete(loc); };
+  // First writer wins, for a Wink ticket and a setup offer alike (tailnet plan 3.6): a second
+  // register of a live locator with a different record or mac leaves the first in place, marks the
+  // locator contested and answers 409; the same record and mac again answers 200 (a reconnect
+  // re-sending). A contested locator answers 409 to resolve, append and read until it expires. A
+  // Wink ticket is single-use; a setup offer (`setup: true`) lives its hour and the same locator
+  // carries the setup mailbox.
+  /** @param {string} loc @param {{ record: string, mac: string, exp: number, setup?: boolean }} t @returns {200|409} */
+  const registerLoc = (loc, t) => {
+    sweepTickets();
+    const cur = pairTickets.get(loc);
+    if (!cur) { pairTickets.set(loc, t); return 200; }
+    if (cur.contested) return 409;
+    if (cur.record === t.record && cur.mac === t.mac) return 200;
+    cur.contested = true;
+    return 409;
+  };
+  const isContested = loc => { const t = pairTickets.get(loc); return Boolean(t && t.exp > Date.now() && t.contested); };
+  const contest = (loc, exp) => { const t = pairTickets.get(loc); if (t) t.contested = true; else pairTickets.set(loc, { record: "", mac: "", exp, contested: true }); };
+
+  // The setup mailbox (see relay/worker/index.js onSetupMbx for the whole contract).
+  /** @type {Map<string, { fp: string, wh: string, exp: number, lines: string[], bytes: number }>} */
+  const mailboxes = new Map();
+  const sweepMailboxes = () => { const now = Date.now(); for (const [k, m] of mailboxes) if (m.exp <= now) mailboxes.delete(k); };
+  const MBX_MAX_BOXES = o.setup?.maxBoxes ?? 1000, MBX_BYTES = 64 * 1024, MBX_BATCH = 64, MBX_SKEW = 120_000;
+  const mbxAppendLimit = rateLimiter(120, 60_000);
+  const mbxCreateLimit = rateLimiter(o.setup?.createPerIp ?? 10, 60 * 60_000);
+  const mbxReadLimit = rateLimiter(60, 60_000);
+  const sha256b64 = v => crypto.createHash("sha256").update(String(v)).digest("base64url");
+  const same = (a, b) => { const x = Buffer.from(String(a)), y = Buffer.from(String(b)); return x.length === y.length && x.length > 0 && crypto.timingSafeEqual(x, y); };
   const pairRegisterLimit = rateLimiter(60, 60_000);
   const pairResolveLimitByIp = rateLimiter(30, 60_000);
   const pairResolveLimitGlobal = rateLimiter(600, 60_000);
@@ -124,6 +156,13 @@ export function createRelay(o = {}) {
       return;
     }
     if (url.pathname === "/v1/pair" && req.method === "POST") { res.setHeader("access-control-allow-origin", "*"); onPairResolve(req, res); return; }
+    // The setup mailbox answers any origin too: the page reads it from vyre.run, and its safety is a signature and a sealed stream.
+    if (url.pathname === "/v1/setup/mbx" && req.method === "OPTIONS") {
+      res.writeHead(204, { "access-control-allow-origin": "*", "access-control-allow-methods": "GET, POST", "access-control-allow-headers": "content-type, x-vyre-setup-key, x-vyre-setup-ts, x-vyre-setup-sig", "access-control-max-age": "600" });
+      res.end();
+      return;
+    }
+    if (url.pathname === "/v1/setup/mbx" && (req.method === "POST" || req.method === "GET")) { res.setHeader("access-control-allow-origin", "*"); (req.method === "POST" ? onMbxAppend : onMbxRead)(req, res, url); return; }
     res.writeHead(url.pathname.startsWith("/v1/") ? 426 : 404);
     res.end();
   });
@@ -143,12 +182,87 @@ export function createRelay(o = {}) {
       const loc = String(m?.loc || "");
       sweepTickets();
       const t = pairTickets.get(loc);
-      if (t) pairTickets.delete(loc);
-      if (!t || t.exp <= Date.now()) { res.writeHead(404, { "content-type": "application/json" }); res.end('{"error":"this pairing code has expired or was already used"}'); return; }
+      if (t && t.contested) { res.writeHead(409, { "content-type": "application/json" }); res.end('{"error":"contested"}'); return; }
+      if (t && !t.setup) pairTickets.delete(loc);
+      if (!t || t.exp <= Date.now() || !t.record) { res.writeHead(404, { "content-type": "application/json" }); res.end('{"error":"this pairing code has expired or was already used"}'); return; }
       res.writeHead(200, { "content-type": "application/json" });
       res.end(JSON.stringify({ record: t.record, mac: t.mac }));
     });
     req.on("error", () => {});
+  }
+
+  const reply = (res, status, body) => { res.writeHead(status, { "content-type": "application/json" }); res.end(JSON.stringify(body)); };
+  const LOC = /^[A-Za-z0-9_-]{20,64}$/;
+
+  /** The install script's append: { loc, fp, wtok, line? }. First writer fixes fp and wtok. */
+  function onMbxAppend(req, res) {
+    const ip = String(req.socket.remoteAddress || "");
+    if (!mbxAppendLimit(ip)) return reply(res, 429, { error: "too many setup requests; wait a minute" });
+    let body = "";
+    let over = false;
+    req.on("data", c => { body += c; if (body.length > 8 * 1024) { over = true; reply(res, 413, { error: "too big" }); req.destroy(); } });
+    req.on("end", () => {
+      if (over) return;
+      let m;
+      try { m = JSON.parse(body); } catch { return reply(res, 400, { error: "bad request" }); }
+      const loc = String(m?.loc || "");
+      if (!LOC.test(loc) || !/^[A-Za-z0-9_-]{22}$/.test(String(m.fp || "")) || !/^[A-Za-z0-9_-]{43}$/.test(String(m.wtok || ""))) return reply(res, 400, { error: "bad request" });
+      sweepTickets();
+      sweepMailboxes();
+      if (isContested(loc)) return reply(res, 409, { error: "contested" });
+      const wh = sha256b64(m.wtok);
+      let box = mailboxes.get(loc);
+      if (box && !(same(box.fp, m.fp) && same(box.wh, wh))) { contest(loc, box.exp); return reply(res, 409, { error: "contested" }); }
+      const line = m.line === undefined || m.line === null ? null : String(m.line);
+      if (line !== null && !(/^[A-Za-z0-9_-]{64,}$/.test(line) && line.length <= Math.ceil(MBX_LINE_MAX * 4 / 3) + 100)) return reply(res, 400, { error: "bad line" });
+      if (!box) {
+        // Creating one is what costs: a per-address hourly cap and a global cap on live mailboxes.
+        if (!mbxCreateLimit(ip) || mailboxes.size >= MBX_MAX_BOXES) return reply(res, 429, { error: "too many setup requests; wait a minute" });
+        box = { fp: m.fp, wh, exp: Date.now() + SETUP_TTL, lines: [], bytes: 0 };
+        mailboxes.set(loc, box);
+      }
+      if (line !== null) {
+        if (box.bytes + line.length > MBX_BYTES) return reply(res, 413, { error: "mailbox full" });
+        box.lines.push(line);
+        box.bytes += line.length;
+      }
+      reply(res, 200, { n: box.lines.length });
+    });
+    req.on("error", () => {});
+  }
+
+  /** The page's read, a long poll signed with its key; see relay/worker/index.js onSetupMbx. The wait is a 250 ms look at memory, which costs nothing here. */
+  function onMbxRead(req, res, url) {
+    const ip = String(req.socket.remoteAddress || "");
+    if (!mbxReadLimit(ip)) return reply(res, 429, { error: "too many setup requests; wait a minute" });
+    const loc = url.searchParams.get("loc") || "";
+    const after = Number(url.searchParams.get("after") || 0);
+    const wait = Math.min(Math.max(Number(url.searchParams.get("wait") || 0), 0), 25);
+    if (!LOC.test(loc) || !Number.isInteger(after) || after < 0) return reply(res, 400, { error: "bad request" });
+    const key = String(req.headers["x-vyre-setup-key"] || ""), sig = String(req.headers["x-vyre-setup-sig"] || ""), ts = Number(req.headers["x-vyre-setup-ts"] || 0);
+    const deadline = Date.now() + wait * 1000;
+    let gone = false;
+    req.on("close", () => { gone = true; });
+    /** Answer now if there is something to say, or the wait is over: true when answered. */
+    const look = () => {
+      sweepTickets();
+      sweepMailboxes();
+      if (isContested(loc)) { reply(res, 409, { error: "contested" }); return true; }
+      const box = mailboxes.get(loc);
+      const last = Date.now() >= deadline;
+      if (!box) { if (last) reply(res, 200, { n: 0, lines: [], absent: true }); return last; }
+      const spki = Buffer.from(key, "base64url");
+      const ok = isP256Spki(spki) && same(setupFingerprint(spki).toString("base64url"), box.fp) && Number.isFinite(ts) && Math.abs(Date.now() - ts) <= MBX_SKEW
+        && verifyP256(spki, mbxReadMessage(loc, ts, after), Buffer.from(sig, "base64url"));
+      if (!ok) { reply(res, 401, { error: "not the setup page's key" }); return true; }
+      if (box.lines.length > after || last) {
+        reply(res, 200, { n: box.lines.length, lines: box.lines.slice(after, after + MBX_BATCH).map((line, k) => ({ i: after + k, line })) });
+        return true;
+      }
+      return false;
+    };
+    const poll = () => { if (gone || look()) return; setTimeout(poll, 250).unref(); };
+    poll();
   }
 
   server.on("upgrade", (req, socket, head) => {
@@ -199,13 +313,14 @@ export function createRelay(o = {}) {
         if (bin2 || !pairRegisterLimit(route)) return;
         let t;
         try { t = JSON.parse(d2.toString()); } catch { return; }
-        if (t?.t !== "ticket") return;
+        if (t?.t !== "ticket" && t?.t !== "setup") return;
+        const setup = t.t === "setup";
         const loc = String(t.loc || ""), record = String(t.record || ""), mac = String(t.mac || "");
         if (!/^[A-Za-z0-9_-]{20,64}$/.test(loc) || !/^[A-Za-z0-9_-]{20,64}$/.test(mac) || !SEALED.test(record)) return;
-        sweepTickets();
-        const exp = Math.min(Number(t.exp) || 0, Date.now() + TICKET_TTL);
+        const exp = Math.min(Number(t.exp) || 0, Date.now() + (setup ? SETUP_TTL : TICKET_TTL));
         if (exp <= Date.now()) return;
-        pairTickets.set(loc, { record, mac, exp });
+        // The box hears the outcome: 200, or 409 when another server registered this locator first.
+        peer.json({ t: "registered", loc, status: registerLoc(loc, { record, mac, exp, ...(setup ? { setup: true } : {}) }) });
       };
     };
     peer.onclose = () => {

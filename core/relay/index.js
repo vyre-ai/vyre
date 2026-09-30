@@ -16,7 +16,8 @@
 
 import crypto from "node:crypto";
 import * as config from "../config/index.js";
-import { routeId, base32, TICKET_BYTES, TICKET_TTL, ticketDerive, ticketMac, ticketSeal } from "./wire.js";
+import { routeId, base32, TICKET_BYTES, TICKET_TTL, ticketDerive, ticketMac, ticketSeal, SETUP_TTL } from "./wire.js";
+import { SetupSession, setupGate } from "./setup.js";
 import { relayLink } from "./link.js";
 import { bridge } from "./bridge.js";
 import { pairUrl, parsePairUrl } from "./pairing.js";
@@ -230,7 +231,7 @@ export default {
       }).catch(() => {});
     };
 
-    const active = () => /** @type {any[]} */ (db.prepare("SELECT id, name, pub, presence_key, paired_at, last_seen, kind, release, manifest, trusted, node_id, node_name, last_path, path_at, rtt FROM relay_devices WHERE removed_at IS NULL ORDER BY paired_at").all());
+    const active = () => /** @type {any[]} */ (db.prepare("SELECT id, name, pub, presence_key, paired_at, last_seen, kind, release, manifest, trusted, node_id, node_name, last_path, path_at, rtt FROM relay_devices WHERE removed_at IS NULL AND kind != 'setup' ORDER BY paired_at").all());
     const expired = d => d.kind === "web" && now() - (d.last_seen || d.paired_at) > Number(settings().web_expiry_days) * DAY;
     const personExists = () => active().length > 0 || Boolean(ctx.config.network && ctx.config.network.owner);
 
@@ -273,6 +274,10 @@ export default {
     /** Who may come in: a paired device, or a device holding the live pairing secret. */
     async function admit(pub, hello) {
       const id = deviceId(pub);
+      // The setup page (tailnet plan 3.6b) is its own path: a hello that says "setup", or a device
+      // the setup session already admitted, is checked against the setup code's key and nothing else.
+      const existing = /** @type {any} */ (db.prepare("SELECT kind FROM relay_devices WHERE id = ? AND removed_at IS NULL").get(id));
+      if ((hello && hello.setup && typeof hello.setup === "object") || (existing && existing.kind === "setup")) return admitSetup(pub, hello, id, existing);
       if (hello && typeof hello.pair === "string") {
         const match = takeLiveSecret(hello.pair);
         if (!match) throw new Error("this pairing code has expired or was already used; make a new one on the box");
@@ -317,6 +322,95 @@ export default {
       return { v: 1, box: { name: boxName() }, device: id };
     }
 
+    // ---- the setup session (tailnet plan 3.5, 3.6, 3.6b) ----
+
+    /** @type {SetupSession | null} */
+    let setup = null;
+    /** Drop every setup device: its row, its presence key, its open channels. Quiet: no notice, since no owner exists to read one. */
+    const dropSetupDevices = () => {
+      const rows = /** @type {any[]} */ (db.prepare("SELECT id, presence_key FROM relay_devices WHERE kind = 'setup' AND removed_at IS NULL").all());
+      for (const r of rows) {
+        db.prepare("UPDATE relay_devices SET removed_at = ? WHERE id = ?").run(now(), r.id);
+        for (const ch of live.get(r.id) || []) ch.close(4401, "setup ended");
+        live.delete(r.id);
+        if (r.presence_key) ctx.call("presence.remove", { id: r.presence_key }).catch(() => null);
+      }
+    };
+    /** relay.setup.end's whole job (internal): the claim, the hour, or a newer code ends the session and drops the device, its presence key and its channel. */
+    const endSetup = why => { const s = setup; if (!s) { dropSetupDevices(); return false; } return s.end(why); };
+    dropSetupDevices();   // a vyred that restarted mid-setup has no session to serve them
+
+    /** @param {Buffer} pub @param {any} hello @param {string} id @param {any} existing */
+    async function admitSetup(pub, hello, id, existing) {
+      const s = setup;
+      if (!s) throw new Error("this is not the setup page for this box");
+      if (existing && existing.kind !== "setup") throw new Error("this is not the setup page for this box");
+      const spki = s.checkHello({ route: route(), pub, hello });
+      // The setup page's powers end where an owner begins (H3): with one, this door is shut.
+      if (personExists()) throw new Error("this box already has an owner");
+      if (existing) {
+        // A reconnect of the device this session admitted: the same Noise key and, again, the page key's signature.
+        if (s.device !== id) throw new Error("this is not the setup page for this box");
+        return { v: 1, box: { name: boxName() }, device: id, setup: true };
+      }
+      if (s.device || !s.takeSecret(hello.pair)) throw new Error("this setup code was already used");
+      // The page key is this device's presence key, so relay.pair.ticket's prompt can be answered
+      // with it, for this session only: relay.setup.end removes it with the device.
+      const r = await ctx.call("presence.enroll", { kind: "device", name: "setup page", public_key: spki.toString("base64url"), alg: -7 });
+      const keyId = r && r.data && (r.data.keyId || r.data.id);
+      if (!keyId) { s.secUsed = false; throw new Error((r && r.error && r.error.message) || "presence would not enroll the setup key"); }
+      db.prepare(`INSERT INTO relay_devices (id, name, pub, presence_key, paired_at, last_seen, removed_at, kind, release, manifest, trusted, join_grant, join_mints, join_last) VALUES (?, ?, ?, ?, ?, ?, NULL, 'setup', NULL, NULL, 0, 0, 0, NULL)
+        ON CONFLICT(id) DO UPDATE SET name = excluded.name, pub = excluded.pub, presence_key = excluded.presence_key, paired_at = excluded.paired_at, last_seen = excluded.last_seen, removed_at = NULL, kind = 'setup'`)
+        .run(id, "setup page", pub.toString("base64url"), String(keyId), now(), now());
+      s.device = id;
+      s.state = "paired";
+      ctx.events.emit("setup.paired", { device: id });
+      return { v: 1, box: { name: boxName() }, device: id, paired: true, setup: true, presence: { enrolled: true, reason: "" } };
+    }
+
+    /**
+     * Start a setup session from the code on the install line (VYRE_CODE): discard any earlier
+     * unclaimed session and its device, register the sealed offer at the code's locator (first
+     * writer wins there; a 409 means another server used this code first), and start the hour.
+     * @param {string} code
+     */
+    async function beginSetup(code) {
+      const refusal = macCoreRefusal(platform);
+      if (refusal) throw refusal;
+      if (personExists()) throw fail("denied", "this box already has an owner; a setup code does nothing here");
+      const s = new SetupSession({ code, now, onEnd: why => {
+        if (setup === s) setup = null;
+        link?.dropSetup(s.loc);
+        dropSetupDevices();
+        ctx.events.emit("setup.ended", { why });
+      } });
+      if (setup) setup.end("replaced");
+      dropSetupDevices();
+      setup = s;
+      if (!settings().enabled) save({ enabled: true });
+      startLink();
+      await link?.ready();
+      const record = ticketSeal(s.secret, JSON.stringify({ v: 1, name: boxName(), handle: boxHandle(), identity: identityFingerprint(), relay: settings().url, route: route(), box: k().box.pub.toString("base64url"), exp: s.exp }));
+      const mac = ticketMac(s.secret, record);
+      const status = link ? await link.registerSetup({ loc: s.loc, record, mac: mac.toString("base64url"), exp: s.exp }) : null;
+      s.registered = status === 200;
+      if (status === 409 && setup === s) {
+        s.state = "contested";
+        dropSetupDevices();
+        ctx.events.emit("setup.contested", {});
+      }
+      return setupStatus();
+    }
+
+    const setupStatus = () => {
+      const s = setup;
+      if (!s || !s.live) return { state: "none" };
+      return { state: s.state, registered: s.registered, ticket: s.ticket === "minted", expiresAt: s.exp, ownerExists: personExists(),
+        words: s.words(k().box.pub).join(" ") };
+    };
+    const setupHandler = setupGate({ session: () => setup, ownerExists: personExists, handlerFor: policy => ctx.handler(policy),
+      mintTicket: async () => { const refusal = macCoreRefusal(platform); if (refusal) throw refusal; return mintTicket(); } });
+
     let handle = null, webHandle = null, upgrade = null;
     function onchannel(channel, { reply }) {
       const id = String(reply.device);
@@ -326,7 +420,7 @@ export default {
       if (!webHandle) webHandle = ctx.handler({ tool: name => !WEB_DENY.test(name) });
       const limited = row.kind === "web" && !row.trusted;
       const peer = { node: row.name, stableId: id, login: null, tags: [], caps: {}, kind: "device", ...(row.kind === "web" ? { web: true } : {}) };
-      const routed = limited ? webHandle : handle;
+      const routed = row.kind === "setup" ? setupHandler : limited ? webHandle : handle;
       // The tailnet key is answered here, before vyred's router ever sees the request, so it is
       // reachable only from inside this device's own Noise channel and never as a tool.
       const handler = (req, res, caller, p) => (req.method === "POST" && req.url === JOIN_PATH ? tailnetKey(id, res) : routed(req, res, caller, p));
@@ -742,6 +836,37 @@ export default {
       },
     });
 
-    return { async stop() { stopLink(); for (const set of live.values()) for (const ch of set) ch.close(1001, "box stopping"); live.clear(); } };
+    // The setup session's tools (tailnet plan 3.6b). begin and end are modules-only: the install's
+    // own boot (VYRE_CODE, below) and the claim (launch) call them, never a person, a model or a
+    // channel. status is the one a setup channel may call, and the install script reads it too.
+    ctx.tool("relay.setup.begin", {
+      internal: true,
+      description: "Start a setup session from the code on the install line: register the sealed offer at the relay, discard any earlier unclaimed setup session and its device, and start the hour. Modules only.",
+      input: obj({ code: str }, ["code"]),
+      run: async input => beginSetup(String(input.code || "")),
+    });
+
+    ctx.tool("relay.setup.end", {
+      internal: true,
+      description: "End the setup session: drop the setup device, its presence key and its channel. Called at the claim, and by the session itself when its hour runs out with no claim. Modules only, never callable through the setup channel.",
+      input: obj({ reason: str }),
+      run: async input => ({ ended: endSetup(String(input.reason || "claimed").slice(0, 40)) }),
+    });
+
+    ctx.tool("relay.setup.status", {
+      description: "Where the setup session is: none, waiting for the page, paired, or contested (another server used the code first), whether the relay holds the offer, whether the one pairing ticket is made, when the hour ends, and the four check words the page shows too.",
+      input: obj(),
+      run: async (_, meta = {}) => { owner(meta.caller, meta, "the setup status"); return setupStatus(); },
+    });
+
+    // The install line's own boot: the code arrives in VYRE_CODE (never argv), is taken once and
+    // removed from this process's environment so no child inherits it.
+    const bootCode = (seam.env || process.env).VYRE_CODE;
+    if (bootCode) {
+      if (!seam.env) delete process.env.VYRE_CODE;
+      beginSetup(String(bootCode)).catch(e => ctx.log(`relay: setup code not used: ${/** @type {Error} */ (e).message}`));
+    }
+
+    return { async stop() { stopLink(); if (setup) clearTimeout(setup.timer); for (const set of live.values()) for (const ch of set) ch.close(1001, "box stopping"); live.clear(); } };
   },
 };

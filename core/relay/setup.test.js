@@ -1,0 +1,447 @@
+// @ts-check
+// The setup session's box half (core/relay/setup.js and the setup path in core/relay/index.js):
+// the session's life, the allowlist gate, and end to end against a real vyred and the Node relay
+// with the setup page played by relay/client/setup.js. The six refusal checks of tailnet plan
+// 3.6b condition 6 are the ones named "refusal" below.
+import { test } from "node:test";
+import assert from "node:assert/strict";
+import fs from "node:fs";
+import path from "node:path";
+import crypto from "node:crypto";
+import { start } from "../daemon/index.js";
+import { createRelay } from "../../relay/node/server.js";
+import { keyPair } from "./noise.js";
+import { loadKeys } from "./keys.js";
+import { deviceSide } from "./channel.js";
+import * as wire from "./wire.js";
+import { SetupSession, setupGate, setupToolAllowed, registerSetupTool, setupExtensions, SETUP_TOOLS } from "./setup.js";
+import { createSetupKey, setupCode, setupHello, setupWords, resolveSetup, mailboxReader } from "../../relay/client/setup.js";
+import { pairTicket } from "../../relay/client/client.js";
+import { nodeCrypto, fileKeyStore } from "../../relay/client/nodecrypto.js";
+import { fromBase64url } from "../../relay/client/bytes.js";
+import { tempHome } from "../../test/helpers.js";
+
+// ---- SetupSession, alone ----
+
+/** A clock and a timer under the test's hand. */
+function clock() {
+  let t = 1_000_000;
+  /** @type {Array<{ at: number, fn: () => void }>} */
+  const timers = [];
+  return {
+    now: () => t,
+    setTimer: (fn, ms) => { const timer = { at: t + ms, fn, unref() {} }; timers.push(timer); return timer; },
+    clearTimer: timer => { const i = timers.indexOf(timer); if (i >= 0) timers.splice(i, 1); },
+    advance(ms) { t += ms; for (const x of timers.filter(y => y.at <= t)) { timers.splice(timers.indexOf(x), 1); x.fn(); } },
+    pending: () => timers.length,
+  };
+}
+
+const newCode = async () => {
+  const key = await createSetupKey();
+  const secret = crypto.randomBytes(16);
+  return { key, secret, code: await setupCode(secret, key.spki) };
+};
+
+test("setup session: a code makes a locator and a pairing secret, lives an hour and ends once", async () => {
+  const c = clock();
+  const { code, secret } = await newCode();
+  const ends = [];
+  const s = new SetupSession({ code, now: c.now, setTimer: /** @type {any} */ (c.setTimer), clearTimer: /** @type {any} */ (c.clearTimer), onEnd: why => ends.push(why) });
+  assert.equal(s.loc, wire.setupDerive("loc", secret).toString("base64url"));
+  assert.equal(s.exp, c.now() + wire.SETUP_TTL);
+  assert.equal(s.live, true);
+  c.advance(59 * 60_000);
+  assert.equal(s.live, true);
+  c.advance(60_000);
+  assert.deepEqual(ends, ["expired"], "the hour ends an unclaimed session, by itself");
+  assert.equal(s.live, false);
+  assert.equal(s.end("claimed"), false, "ending twice does nothing more");
+  assert.deepEqual(ends, ["expired"]);
+  const t = new SetupSession({ code, now: c.now, setTimer: /** @type {any} */ (c.setTimer), clearTimer: /** @type {any} */ (c.clearTimer), onEnd: why => ends.push(why) });
+  t.end("claimed");
+  assert.equal(c.pending(), 0, "ending clears the timer");
+  assert.deepEqual(ends, ["expired", "claimed"]);
+  assert.throws(() => new SetupSession({ code: "nope" }), { code: "bad_input" });
+});
+
+test("setup session: the pairing secret is burned once, and only by a hello that already passed", async () => {
+  const { code, key, secret } = await newCode();
+  const s = new SetupSession({ code });
+  const noise = crypto.randomBytes(32);
+  const hello = await setupHello({ ...key, route: "r".repeat(26), noiseStatic: noise, secret });
+  assert.ok(s.checkHello({ route: "r".repeat(26), pub: noise, hello }));
+  assert.equal(s.takeSecret("wrong"), false);
+  assert.equal(s.secUsed, false, "a wrong secret spends nothing");
+  assert.equal(s.takeSecret(hello.pair), true);
+  assert.equal(s.takeSecret(hello.pair), false, "single use");
+  s.end("claimed");
+  s.end("x");
+});
+
+test("setup session: the allowlist is exactly the plan's, and the extension point never takes pairing, presence or vault tools", () => {
+  for (const name of ["relay.pair.ticket", "relay.setup.status", "network.tailscale.login", "network.tailscale.status", "network.tailscale.peers", "names.check", "names.claim", "link.health", "system.info", "onboard.machine"]) {
+    assert.equal(setupToolAllowed(name), true, name);
+  }
+  for (const name of ["relay.setup.end", "relay.setup.begin", "relay.pair.start", "relay.pair.first", "relay.devices.list", "relay.devices.trust", "presence.enroll", "presence.person.start", "vault.reveal", "names.recover", "names.release", "network.tailscalex", "network.tailscale.", "network.other", "threads.send", "system.exec", ""]) {
+    assert.equal(setupToolAllowed(name), false, name);
+  }
+  assert.deepEqual([...SETUP_TOOLS].sort(), ["link.health", "names.check", "names.claim", "onboard.machine", "relay.pair.ticket", "relay.setup.status", "system.info"]);
+  assert.deepEqual(setupExtensions(), [], "empty until a module registers one");
+  const undo = registerSetupTool("sessions.signin");
+  assert.equal(setupToolAllowed("sessions.signin"), true);
+  assert.deepEqual(setupExtensions(), ["sessions.signin"]);
+  for (const bad of ["relay.pair.start", "presence.enroll", "vault.reveal", "nodot", "Sessions.signin", "a..b"]) assert.throws(() => registerSetupTool(bad), /cannot take/, bad);
+  undo();
+  assert.equal(setupToolAllowed("sessions.signin"), false);
+});
+
+/** A fake response that records what the gate answered. */
+function res() {
+  const r = { status: 0, body: /** @type {any} */ (null), headers: {}, ended: false,
+    writeHead(status, headers) { r.status = status; r.headers = headers; },
+    end(b) { r.body = b ? JSON.parse(b) : null; r.ended = true; } };
+  return r;
+}
+const request = (method, url) => ({ method, url, headers: {}, resume() {} });
+
+test("setup gate: the ticket works once and only while no owner exists; events and paths are the list and nothing else", async () => {
+  const { code } = await newCode();
+  const s = new SetupSession({ code });
+  const seen = [];
+  let owner = false, fail = false, minted = 0;
+  const gate = setupGate({ session: () => s, ownerExists: () => owner,
+    mintTicket: async () => { minted++; if (fail) throw Object.assign(new Error("relay down"), { code: "no_relay" }); return { ticket: "t" }; },
+    handlerFor: policy => (req, rs) => { seen.push({ url: req.url, tool: policy.tool, path: policy.path, eventType: policy.eventType }); rs.writeHead(200, {}); rs.end("{}"); } });
+  const call = async (method, url) => { const rs = res(); await gate(request(method, url), rs, "device:x", {}); await new Promise(r => setImmediate(r)); return rs; };
+
+  fail = true;
+  let r = await call("POST", "/v1/tools/relay.pair.ticket");
+  assert.equal(r.status, 502);
+  assert.equal(r.body.error.code, "no_relay");
+  assert.equal(s.ticket, "none", "a failed mint does not spend the one ticket");
+  fail = false;
+  r = await call("POST", "/v1/tools/relay.pair.ticket");
+  assert.equal(r.status, 200);
+  assert.deepEqual(r.body, { data: { ticket: "t" } });
+  for (const spelled of ["/v1/tools/relay.pair.ticket", "/v1/tools/relay%2Epair.ticket", "/v1/tools/relay.pair%2eticket"]) {
+    r = await call("POST", spelled);
+    assert.equal(r.status, 403, `refusal: a second relay.pair.ticket, spelled ${spelled}`);
+  }
+  assert.equal(minted, 2, "one failed try and one success; nothing after");
+
+  // the router's policy is a second layer: only the allowlist by name, and a fixed set of paths
+  await call("POST", "/v1/tools/names.check");
+  const p = seen.at(-1);
+  assert.equal(p.tool("names.check"), true);
+  assert.equal(p.tool("relay.devices.list"), false);
+  assert.equal(p.path("POST", "/v1/tools/names.check"), true);
+  assert.equal(p.path("GET", "/v1/tools"), true);
+  for (const [m, u] of [["GET", "/v1/events"], ["GET", "/v1/modules"], ["POST", "/v1/person/token"], ["GET", "/v1/health/x"], ["GET", "/deck/index.html"]]) assert.equal(p.path(m, u), false, `${m} ${u}`);
+
+  r = await call("GET", "/v1/events?type=network.tailscale.changed");
+  assert.equal(r.status, 200);
+  assert.equal(seen.at(-1).eventType, "network.tailscale.changed");
+  for (const type of ["device.paired", "vault.opened", "", "network.tailscale.changed,device.paired"]) {
+    r = await call("GET", `/v1/events?type=${encodeURIComponent(type)}`);
+    assert.equal(r.status, 404, `event ${type || "(none)"}`);
+  }
+
+  // an owner ends the ticket for good, before any spend
+  const { code: c2 } = await newCode();
+  const s2 = new SetupSession({ code: c2 });
+  const gate2 = setupGate({ session: () => s2, ownerExists: () => true, mintTicket: async () => ({}), handlerFor: () => () => {} });
+  const rs = res();
+  await gate2(request("POST", "/v1/tools/relay.pair.ticket"), rs, "device:x", {});
+  assert.equal(rs.status, 403);
+  assert.equal(s2.ticket, "none");
+  s2.end("claimed");
+  const over = res();
+  await gate2(request("POST", "/v1/tools/names.check"), over, "device:x", {});
+  assert.equal(over.status, 401, "an ended session answers nothing");
+  assert.equal(over.body.error.code, "setup_over");
+});
+
+// ---- end to end ----
+
+const lenient = {
+  required: () => false,
+  verify: async () => ({ ok: true, method: "passkey", keyId: "k1" }),
+  challenge: async () => ({ error: { code: "bad_input", message: "no challenges here" } }),
+  summary: async () => "",
+  covered: () => false,
+  coverage: () => ({ covered: false, since: null, expires: null }),
+  enrolled: /** @type {any[]} */ ([]),
+  removed: /** @type {any[]} */ ([]),
+  enroll(k) { this.enrolled.push(k); return { id: `kh${this.enrolled.length}`, kind: k.kind, name: k.name }; },
+};
+
+/** A real vyred with the relay module, a Node relay, and this machine posing as Linux (a Mac refuses the relay's tickets until vyre-core). */
+async function world(t) {
+  const real = Object.getOwnPropertyDescriptor(process, "platform");
+  Object.defineProperty(process, "platform", { value: "linux", configurable: true });
+  t.after(() => Object.defineProperty(process, "platform", /** @type {any} */ (real)));
+  const relay = createRelay();
+  const base = await relay.listen();
+  t.after(() => relay.close());
+  const root = tempHome(t);
+  fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ role: "box", name: "alex", transcripts: [],
+    network: { name: "alex" }, relay: { enabled: false, url: base }, modules: { disable: ["names", "onboard"] } }));
+  lenient.enrolled.length = 0;
+  const d = await start({ presence: lenient, root, log: () => {} });
+  t.after(() => d.stop());
+  return { d, relay, base, root };
+}
+
+/** The setup page: makes its key and code, and (with the box's relay) can begin a session, connect, and call the channel. */
+async function page(world) {
+  const { key, secret, code } = await newCode();
+  const begin = async () => (await world.d.registry.call("relay.setup.begin", { code }, "module:test")).data;
+  const offer = async () => resolveSetup(secret, { relay: world.base, crypto: nodeCrypto() });
+  /** @param {{ keys?: any, hello?: any, pair?: boolean, offer?: any, key?: any }} [o] */
+  const connect = async (o = {}) => {
+    const off = o.offer || (await offer()).offer;
+    const keys = o.keys || keyPair();
+    const hello = o.hello || await setupHello({ ...(o.key || key), route: off.route, noiseStatic: keys.pub, ...(o.pair === false ? {} : { secret }) });
+    const ws = new WebSocket(`${off.relay}/v1/device?route=${off.route}`);
+    ws.binaryType = "arraybuffer";
+    await new Promise((res, rej) => { ws.onopen = res; ws.onerror = rej; });
+    const side = deviceSide({ send: b => ws.send(b), close: (c, r) => ws.close(c === 1000 || (c >= 3000 && c < 5000) ? c : 4000, r) }, { s: keys, box: off.box, route: off.route, hello });
+    ws.onmessage = e => { if (typeof e.data !== "string") side.receive(Buffer.from(e.data)); };
+    ws.onclose = e => side.gone(e.reason || "closed");
+    const { channel, reply } = await side.ready;
+    const call = (tool, input = {}, headers = {}) => new Promise((resolve, reject) => {
+      const raw = JSON.stringify(input);
+      const s = channel.open({ method: "POST", path: `/v1/tools/${tool}`, headers: { "content-type": "application/json", ...headers } });
+      const parts = []; let head;
+      s.onhead = h => { head = h; };
+      s.ondata = c => parts.push(c);
+      s.onend = () => { const body = Buffer.concat(parts).toString(); resolve({ status: head.status, ...(body ? JSON.parse(body) : {}) }); };
+      s.onreset = reject;
+      s.write(Buffer.from(raw)); s.end();
+    });
+    return { ws, channel, reply, call, keys, hello };
+  };
+  return { key, secret, code, begin, offer, connect };
+}
+
+const settle = ms => new Promise(r => setTimeout(r, ms));
+
+test("setup: the page resolves the offer, sees the box's check words, and is admitted only with its own key", async t => {
+  const w = await world(t);
+  const p = await page(w);
+  const status = await p.begin();
+  assert.equal(status.state, "waiting");
+  assert.equal(status.registered, true, "the relay holds the offer");
+  const { offer, name } = await p.offer();
+  assert.equal(name, "alex");
+  const boxWords = (await setupWords(offer.box, p.secret)).join(" ");
+  assert.equal(status.words, boxWords, "the words the page shows are the ones the install script prints");
+  assert.equal(status.expiresAt <= Date.now() + wire.SETUP_TTL, true);
+
+  const a = await p.connect();
+  assert.equal(a.reply.paired, true);
+  assert.equal(a.reply.setup, true);
+  const enrolled = (await w.d.registry.call("relay.device.presence", { id: a.reply.device }, "module:test")).data.key;
+  assert.match(enrolled, /\S/, "the page key is enrolled as this device's presence key");
+  assert.equal((await w.d.registry.call("presence.keys", {}, "cli")).data.filter(k => k.id === enrolled && k.kind === "device").length, 1);
+  assert.equal((await w.d.registry.call("relay.setup.status", {}, "cli")).data.state, "paired");
+  // not a normal device: it is out of the owner's device list, so no notice, and no owner exists for it to count as
+  const list = (await w.d.registry.call("relay.devices.list", {}, "cli")).data.devices;
+  assert.deepEqual(list, []);
+  // and a reconnect of the same device, with the same signature and no pairing secret, comes back in
+  const again = await p.connect({ keys: a.keys, pair: false });
+  assert.equal(again.reply.device, a.reply.device);
+});
+
+test("setup refusal 1: a hello with the right fingerprint but no signature, or a wrong one, is refused", async t => {
+  const w = await world(t);
+  const p = await page(w);
+  await p.begin();
+  const { offer } = await p.offer();
+  const keys = keyPair();
+  const good = await setupHello({ ...p.key, route: offer.route, noiseStatic: keys.pub, secret: p.secret });
+  await assert.rejects(p.connect({ offer, keys, hello: { ...good, setup: { key: good.setup.key } } }), /closed/, "no signature");
+  await assert.rejects(p.connect({ offer, keys, hello: { ...good, setup: { key: good.setup.key, sig: "" } } }), /closed/, "an empty signature");
+  const forged = Buffer.from(good.setup.sig, "base64url"); forged[10] ^= 4;
+  await assert.rejects(p.connect({ offer, keys, hello: { ...good, setup: { key: good.setup.key, sig: forged.toString("base64url") } } }), /closed/, "a wrong signature");
+  const other = await createSetupKey();
+  const theirs = await setupHello({ ...other, route: offer.route, noiseStatic: keys.pub, secret: p.secret });
+  await assert.rejects(p.connect({ offer, keys, hello: theirs }), /closed/, "a key whose fingerprint is not in the code, even with the right pairing secret");
+  assert.equal((await w.d.registry.call("relay.setup.status", {}, "cli")).data.state, "waiting", "nothing above spent the code");
+  const ok = await p.connect({ offer, keys, hello: good });
+  assert.equal(ok.reply.paired, true, "the real page still gets in");
+});
+
+test("setup refusal 2: a hello replayed from another Noise key is refused", async t => {
+  const w = await world(t);
+  const p = await page(w);
+  await p.begin();
+  const { offer } = await p.offer();
+  const first = keyPair();
+  const captured = await setupHello({ ...p.key, route: offer.route, noiseStatic: first.pub, secret: p.secret });
+  // Someone who saw the whole hello off a wire replays it from their own Noise key.
+  await assert.rejects(p.connect({ offer, keys: keyPair(), hello: captured }), /closed/);
+  const ok = await p.connect({ offer, keys: first, hello: captured });
+  assert.equal(ok.reply.paired, true);
+});
+
+test("setup refusal 3: a second relay.pair.ticket from the setup key is refused, the first mints one a phone can use", async t => {
+  const w = await world(t);
+  const p = await page(w);
+  await p.begin();
+  const a = await p.connect();
+  const first = await a.call("relay.pair.ticket");
+  assert.equal(first.status, 200, JSON.stringify(first));
+  assert.ok(first.data.ticket);
+  const second = await a.call("relay.pair.ticket");
+  assert.equal(second.status, 403);
+  assert.match(second.error.message, /already made its one/);
+  assert.equal((await w.d.registry.call("relay.setup.status", {}, "cli")).data.ticket, true);
+  // the ticket is a real Wink ticket: a phone pairs with it and becomes the first trusted device
+  const paired = await pairTicket(fromBase64url(first.data.ticket), { relay: w.base, name: "Alex's iPhone", crypto: nodeCrypto(), keyStore: fileKeyStore(path.join(tempHome(t), "k.json")) });
+  assert.ok(paired.device);
+  const devices = (await w.d.registry.call("relay.devices.list", {}, "cli")).data.devices;
+  assert.deepEqual(devices.map(x => x.name), ["Alex's iPhone"]);
+});
+
+test("setup refusal 4: a second browser holding the code cannot pair or reach the setup channel", async t => {
+  const w = await world(t);
+  const p = await page(w);
+  await p.begin();
+  const { offer } = await p.offer();
+  // The code is (secret16 || fp), so the second browser knows the secret and the fingerprint, and can resolve the offer.
+  const second = await createSetupKey();
+  const keys = keyPair();
+  // A key of its own: fp does not match.
+  await assert.rejects(p.connect({ offer, keys, key: second }), /closed/);
+  // No setup hello at all, only the pairing secret, as an ordinary device would send it: it is not a device of this box.
+  const derived = base64UrlOf(wire.setupDerive("sec", p.secret));
+  const plain = { v: 1, name: "intruder", pair: derived };
+  await assert.rejects(p.connect({ offer, keys, hello: plain }), /closed/, "the setup secret is no ordinary pairing code");
+  assert.deepEqual((await w.d.registry.call("relay.devices.list", {}, "cli")).data.devices, [], "nothing became a device");
+  // The real page pairs; a later hello from the real page's key but a different Noise key (a second tab that lost its own) is refused too.
+  const a = await p.connect();
+  assert.equal(a.reply.paired, true);
+  await assert.rejects(p.connect({ offer, keys: keyPair() }), /closed/, "one setup device, and its pairing secret is spent");
+  await assert.rejects(p.connect({ offer, keys: keyPair(), pair: false }), /closed/, "and no reconnect from a device the session did not admit");
+});
+const base64UrlOf = b => Buffer.from(b).toString("base64url");
+
+test("setup: the channel reaches the allowlist and nothing else", async t => {
+  const w = await world(t);
+  const p = await page(w);
+  await p.begin();
+  const a = await p.connect();
+  assert.equal((await a.call("relay.setup.status")).status, 200);
+  assert.equal((await a.call("system.info")).status !== 404, true, "system.info is on the list");
+  for (const tool of ["relay.devices.list", "relay.devices.trust", "relay.pair.start", "relay.pair.first", "relay.enable", "relay.status", "presence.enroll", "presence.person.start", "vault.list", "threads.send", "onboard.claim"]) {
+    const r = await a.call(tool);
+    assert.equal(r.status, 404, `${tool} is not on the list: ${JSON.stringify(r)}`);
+  }
+  for (const internal of ["relay.setup.end", "relay.setup.begin", "relay.device.presence"]) {
+    const r = await a.call(internal, { code: "x" });
+    assert.equal(r.status, 404, `${internal} is not callable through the channel`);
+  }
+  assert.equal((await w.d.registry.call("relay.setup.status", {}, "cli")).data.state, "paired", "the attempts above ended nothing");
+});
+
+test("setup: relay.setup.end drops the device, its presence key and its channel, and the door shuts", async t => {
+  const w = await world(t);
+  const p = await page(w);
+  await p.begin();
+  const a = await p.connect();
+  const enrolled = (await w.d.registry.call("relay.device.presence", { id: a.reply.device }, "module:test")).data.key;
+  assert.match(enrolled, /\S/);
+  const ended = [];
+  w.d.events.on("setup.ended", e => ended.push(e.payload || e));
+  assert.equal((await a.call("relay.setup.status")).status, 200);
+  // Internal only: the CLI and a person cannot end it, a module (the claim) can.
+  assert.equal((await w.d.registry.call("relay.setup.end", {}, "cli")).error?.code, "no_such_tool");
+  const r = await w.d.registry.call("relay.setup.end", { reason: "claimed" }, "module:test");
+  assert.deepEqual(r.data, { ended: true });
+  await settle(100);
+  assert.equal(a.channel.closed, true, "the channel is closed");
+  assert.equal((await w.d.registry.call("relay.device.presence", { id: a.reply.device }, "module:test")).data.key, null, "the device row is gone");
+  assert.equal((await w.d.registry.call("presence.keys", {}, "cli")).data.filter(k => k.id === enrolled).length, 0, "and its presence key with it");
+  assert.equal((await w.d.registry.call("relay.setup.status", {}, "cli")).data.state, "none");
+  assert.deepEqual(ended.map(e => e.why), ["claimed"]);
+  await assert.rejects(p.connect({ keys: a.keys, pair: false }), /closed/, "the same key and the same page cannot come back");
+  assert.deepEqual((await w.d.registry.call("relay.setup.end", {}, "module:test")).data, { ended: false });
+});
+
+test("setup: a new install code discards the device of an earlier unclaimed session", async t => {
+  const w = await world(t);
+  const one = await page(w);
+  await one.begin();
+  const a = await one.connect();
+  assert.equal(a.reply.paired, true);
+  const two = await page(w);
+  const status = await two.begin();
+  assert.equal(status.state, "waiting");
+  await settle(100);
+  assert.equal(a.channel.closed, true, "the earlier session's channel was closed");
+  assert.equal((await w.d.registry.call("relay.device.presence", { id: a.reply.device }, "module:test")).data.key, null);
+  await assert.rejects(one.connect({ keys: a.keys, pair: false }), /closed/, "the old page is out");
+  const b = await two.connect();
+  assert.equal(b.reply.paired, true);
+  assert.notEqual(b.reply.device, a.reply.device);
+});
+
+test("setup: an owner on the box shuts the setup door, and a code does nothing on a box that has one", async t => {
+  const w = await world(t);
+  const p = await page(w);
+  await p.begin();
+  const a = await p.connect();
+  const ticket = await a.call("relay.pair.ticket");
+  await pairTicket(fromBase64url(ticket.data.ticket), { relay: w.base, name: "phone", crypto: nodeCrypto(), keyStore: fileKeyStore(path.join(tempHome(t), "k.json")) });
+  const status = (await a.call("relay.setup.status")).data;
+  assert.equal(status.ownerExists, true);
+  await assert.rejects(p.connect({ keys: keyPair(), pair: false }), /closed/, "no new setup device once there is a person");
+  const q = await page(w);
+  const r = await w.d.registry.call("relay.setup.begin", { code: q.code }, "module:test");
+  assert.equal(r.error?.code, "denied");
+});
+
+test("setup: a second server that used the same code first makes the offer contested for the box, the page and the mailbox", async t => {
+  const w = await world(t);
+  const p = await page(w);
+  // Another box registers this code's locator before ours does (a second server given the same code).
+  const other = wire.newRouteKey();
+  const route = wire.routeId(other.pub);
+  const ws = new WebSocket(`${w.base}/v1/box?route=${route}`);
+  const inbox = [];
+  ws.onmessage = e => inbox.push(JSON.parse(String(e.data)));
+  await new Promise((res, rej) => { ws.onopen = res; ws.onerror = rej; });
+  await settle(30);
+  ws.send(JSON.stringify({ t: "auth", pub: other.pub.toString("base64url"), sig: wire.signRoute(other.priv, wire.authMessage(route, Buffer.from(inbox[0].n, "base64url"))).toString("base64url") }));
+  await settle(30);
+  const loc = wire.setupDerive("loc", p.secret).toString("base64url");
+  const theirRecord = wire.ticketSeal(p.secret, JSON.stringify({ v: 1, name: "impostor" }));
+  ws.send(JSON.stringify({ t: "setup", loc, record: theirRecord, mac: wire.ticketMac(p.secret, theirRecord).toString("base64url"), exp: Date.now() + 3_600_000 }));
+  await settle(30);
+  assert.equal(inbox.at(-1).status, 200, "they got there first");
+  const status = await p.begin();
+  assert.equal(status.state, "contested", "our box hears 409 and says so, for the install script to print");
+  assert.equal((await w.d.registry.call("relay.setup.status", {}, "cli")).data.state, "contested");
+  await assert.rejects(p.offer(), { code: "contested" });
+  await assert.rejects(p.connect({ offer: { relay: w.base, route: "a".repeat(26), box: Buffer.alloc(32) } }), /./);
+  const reader = await mailboxReader({ relay: w.base, secret: p.secret, key: p.key });
+  await assert.rejects(reader.next(0), { code: "contested" });
+  ws.close();
+});
+
+test("setup: a hello for a box with no setup session is refused, and so is a plain code the box never made", async t => {
+  const w = await world(t);
+  const p = await page(w);
+  await w.d.registry.call("relay.enable", {}, "module:test");
+  await settle(100);
+  const status = (await w.d.registry.call("relay.status", {}, "cli")).data;
+  assert.equal((await w.d.registry.call("relay.setup.status", {}, "cli")).data.state, "none");
+  // The relay is up but no setup was begun; nothing is registered for this code, so the page finds no offer at all.
+  await assert.rejects(p.offer(), { code: "ticket_gone" });
+  // And a device that dials the route with a setup hello anyway is closed without a word.
+  const k = loadKeys(w.root);
+  const off = { relay: w.base, route: status.route, box: k.box.pub };
+  await assert.rejects(p.connect({ offer: off }), /closed/);
+});
