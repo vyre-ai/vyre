@@ -166,10 +166,10 @@ questions) are still added after your text.
 Only you can edit a system prompt. No agent, model or tool call from inside a session can, its own
 least of all.
 
-### Lumen's quick answer (Vyre IQ)
+### Lumen's quick answer (Vyre Memory)
 
 A question you ask in Lumen runs as a small session on the fast model with its own prompt:
-it is Vyre IQ, it answers only from the facts Lumen showed you for the same words, cites
+it is Vyre Memory, it answers only from the facts Lumen showed you for the same words, cites
 them by number (`[1]`), and says "I don't know yet." in one line when none of them answers. It
 never talks about its access or tools, answers in one to three sentences, and fixes your typos
 without saying so. Thinking is off, so the same words get the same answer. The prompt is
