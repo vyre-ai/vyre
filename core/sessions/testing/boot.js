@@ -60,13 +60,9 @@ export async function boot(t, { driver = "cli", sessions = {}, vault = {}, role 
     // claude "installed": these suites run the fake claude (VYRE_CLAUDE_BIN), so the SDK needs
     // only its JS, never the bundled binary a box's default asks for (CI installs --omit=optional).
     sessions: { install: false, ...(driver === "sdk" ? { claude: "installed" } : {}), ...sessions }, ...(Object.keys(vault).length ? { vault: { keystore: "file" } } : {}) }));
-  // Internal tools answer only modules: a module that asks threads.pids for the test.
-  writeModule(path.join(root, "modules"), "probe", { does: { tools: ["probe.pids", "probe.post"] } }, `
-    export default { async start(ctx) {
-      ctx.tool("probe.pids", { input: { type: "object" }, run: async () => (await ctx.call("threads.pids", {})).data });
-      ctx.tool("probe.post", { input: { type: "object" }, run: async i => ctx.call("threads.post", i) });
-      return { async stop() {} };
-    } };`);
+  // Internal tools answer only modules, and a module in a temp home is an added one (contract v1
+  // keeps those out of internal tools). `internal` calls as vyred's own module label, which the
+  // loader treats as Vyre's, the way a first-party module would.
   for (const m of modules) writeModule(path.join(root, "modules"), m.name, m.manifest, m.source);
   // The probe and any modules given here stand in for Vyre's own (internal tools, session
   // providers), so the home's modules folder loads as first party (ADR 0047). Test only.
@@ -85,7 +81,8 @@ export async function boot(t, { driver = "cli", sessions = {}, vault = {}, role 
   const events = async id => (await tool("threads.get", { thread: id, limit: 500 })).data.events;
   const finished = async (id, n = 1) => until(async () => (await events(id)).filter(e => e.type === "thread.finished").length >= n, `turn ${n} of ${id.slice(0, 8)}`);
   const said = async id => (await events(id)).filter(e => e.type === "thread.text" && e.payload.done && !e.payload.notice).map(e => e.payload.text);
-  return { root, d, work, tool, launches, events, finished, said, transcripts };
+  const internal = (name, input = {}) => d.registry.call(name, input, "module:vyred");
+  return { root, d, work, tool, internal, launches, events, finished, said, transcripts };
 }
 
 /**

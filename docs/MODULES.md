@@ -110,6 +110,17 @@ A module you add can't use it: pick `asked`. An agent that calls an `asked` tool
 A module never asks for Touch ID. Vyre asks for it only when pairing a device, revealing a vault
 secret, or sending something you didn't ask for.
 
+An asked tool of Vyre's own may carry `target`, the name of one internal tool of the same module that answers
+`{ to: [...] }`: what this one call acts on, each entry a key of the tool and the thing (a pull request, a recipient).
+That answer is what your yes is matched against, so it binds that thing and not the whole tool, so "merge it" about one pull request never lets an agent merge another.
+
+A tool that takes a project names the input field in `projectArg` (a name, or a list of names). The registry then
+refuses an agent's call for a project the agent is not granted, with `not_found` (so a refusal never says whether the
+project exists), before the tool runs, for every module alike. It asks `projects.reach`, so the owner's revokes count.
+`cwdArg` does the same for a folder: it is mapped to its project, and a folder in no project is refused for an agent with an explicit project list. A named project is rewritten to the canonical slug that was authorized.
+The tool also gets `meta.reach`, `{ all: true }` or `{ all: false, projects: [slug] }`, to keep a listing inside the
+grant when no project is named.
+
 ## Acting as you outside: `outward`
 
 Mark a tool `"outward": "send" | "post" | "pay" | "delete"` when it reaches the world as you: an
@@ -214,6 +225,62 @@ Your module keeps working when Vyre updates. The rules:
 
 ## What's built in only, for now
 
-Session providers (`does.providers`), streams (`shows.streams`), raw HTTP routes and raw vault
-values stay with Vyre's own modules in 0.2, because each needs a process, a socket or a secret that
+Session providers (`does.providers`), streams (`shows.streams`), raw HTTP routes, raw vault
+values and the `#` picker's kinds (`mentions`) stay with Vyre's own modules in 0.2, because each needs a process, a socket or a secret that
 the sandbox withholds. `vyre module check` says so if you use them.
+
+## The `#` tag: `mentions`
+
+Typing `#` in a chat opens one picker over everything the person may mention. A built in module
+offers a kind of thing with one entry in `mentions`, and `mentions.search` asks every module that
+does at once.
+
+```json
+"mentions": [{ "kind": "vault", "label": "Vault", "icon": "key", "search": "vault.mentions.search", "resolve": "vault.mentions.resolve" }]
+```
+
+`search` and `resolve` are tools of the same module. Search takes `{ q, limit }` and answers
+`{ items: [{ id, name, hint?, icon? }] }`: names only, never a value, and it runs as the person who
+is typing. Resolve takes `{ id, thread, said }`, runs as sessions or the assistant (never a model), and answers what the tag means for a thread: a `grant` (a use, a
+read) and a `context` (a title, a summary), decided from the person's own turn and never from a
+model. A kind has one provider; a second module that claims it fails to load.
+
+## The Capsule: `view:` entries
+
+A module adds commands to the Capsule by declaring them under `shows.capsule`. The Capsule draws
+them natively; nothing from a module runs inside it.
+
+```json
+"shows": { "capsule": {
+  "view:orders": {
+    "title": "Orders", "keywords": ["bakery"], "icon": "tray", "root": true,
+    "arg": { "name": "q", "placeholder": "customer" },
+    "list": {
+      "tool": "bakery.orders", "input": { "q": "{q}", "limit": 20 },
+      "map": { "rows": "orders", "id": "ref", "title": "name", "subtitle": "note", "url": "link" },
+      "actions": [
+        { "id": "open", "title": "Open", "do": { "open": "{url}" } },
+        { "id": "reply", "title": "Reply", "form": "reply" }
+      ]
+    },
+    "forms": { "reply": { "title": "Reply to {title}", "fields": [{ "name": "body", "label": "Your reply", "type": "multiline", "required": true }],
+      "submit": { "title": "Send", "tool": "bakery.reply", "input": { "ref": "{id}", "body": "{body}" }, "outward": true } } }
+  }
+} }
+```
+
+A view is a `list` (with an optional `detail` and its `actions`) or a `form`. `map` names fields in the
+tool's JSON by plain dotted path: no expressions, no code. Templates fill `{q}`, `{id}`, `{title}`,
+`{subtitle}`, `{accessory}`, `{url}`, a form's field names, and `{front.app}` and `{front.selection}` only
+when the module declares `needs.slots: ["front"]`; any other name is empty. An action ends in `do`
+(`open`, `copy`, `say`, `ask` or `push`), a `tool` of the module's own, or a `form`. An added module opens
+only https and mailto links (a `vyre:` link can act, so it is Vyre's own), pushes only to its own commands,
+and may name only its own tools and the ones in `needs.tools`. Its
+tools run as the module, never as you, and its rows say "from" the module. An `outward` action shows the
+exact words first, and a second Enter sends; the preview carries a token good for two minutes that the
+second call must return. Icons are system symbol names from a fixed list, or
+`app:<bundle id>`.
+
+The Capsule reads `capsule.commands` for the list of commands, `capsule.view` for a frame and
+`capsule.act` for an action. It sends ids, never tool names. The older `results:<tool>` and
+`action:<tool>` keys keep working and appear as one command.

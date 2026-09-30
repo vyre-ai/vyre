@@ -44,8 +44,24 @@ export function label(/** @type {Build} */ b) {
   return b.commit ? `${b.version} · ${b.commit.slice(0, 7)}${b.dirty ? "+dirty" : ""}` : b.version;
 }
 
-/** deck/sw.js with BUILD set to this build: the commit (12 characters, "-dirty" when dirty), else "v" and the version. */
-export function swWithBuild(/** @type {string} */ src, b = build()) {
+/** The id every surface compares: the commit (12 characters, "-dirty" when dirty), else "v" and
+ * the version. deck/js/build-check.js computes the same from system.info. */
+export function buildId(/** @type {Build} */ b = build()) {
   const id = b.commit ? b.commit.slice(0, 12) + (b.dirty ? "-dirty" : "") : "v" + b.version;
-  return src.replace('const BUILD = "dev";', `const BUILD = ${JSON.stringify(id.replace(/[^\w.-]/g, ""))};`);
+  return id.replace(/[^\w.-]/g, "");
+}
+
+/** deck/sw.js with BUILD set to this build's id. Also sets SHELL_SIGNED true when deck/release/SHA256SUMS.sig
+ * exists (put there by the release: vyre update, the phone.vyre.run deploy), so the worker checks a new
+ * shell against the signed release (reviewer's N-H1). No such file (every dev checkout and testbox) leaves it false. @param {string} repo */
+export function swWithBuild(/** @type {string} */ src, b = build(), repo = REPO) {
+  let out = src.replace('const BUILD = "dev";', `const BUILD = ${JSON.stringify(buildId(b))};`);
+  if (fs.existsSync(path.join(repo, "deck", "release", "SHA256SUMS.sig"))) out = out.replace("const SHELL_SIGNED = false;", "const SHELL_SIGNED = true;");
+  return out;
+}
+
+/** deck/index.html with its vyre-build meta set to this build's id, so a page cached by an older
+ * service worker knows it is older than the box it talks to (deck/js/build-check.js). */
+export function htmlWithBuild(/** @type {string} */ src, b = build()) {
+  return src.replace('<meta name="vyre-build" content="dev">', `<meta name="vyre-build" content="${buildId(b)}">`);
 }

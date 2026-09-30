@@ -40,6 +40,7 @@ import { withPresence, PresenceError } from "./memory-presence.js";
 import { showToast } from "../js/toast.js";
 import { since, plural } from "../js/fmt.js";
 import { statusMark, statusOf } from "../js/status-mark.js";
+import { drawCatalog } from "./connectors.js";
 
 /** Vault kinds that make sense for each way of using an item (ADR 0016, decision 2). */
 export const ITEM_KINDS = {
@@ -228,11 +229,13 @@ export async function drawConnections(el, ctx, deps = {}) {
 
   const top = h("div");
   const cardsBox = h("div", { class: "cn-cards" });
+  const catalogBox = h("div", { class: "cn-group" });
   const mcpBox = h("div", { class: "cn-group" });
   const googleBox = h("div", { class: "cn-group" });
   const githubBox = h("div", { class: "cn-group" });
   const formBox = h("div");
-  put(el, top, cardsBox, mcpBox, googleBox, githubBox, formBox);
+  put(el, top, cardsBox, catalogBox, mcpBox, googleBox, githubBox, formBox);
+  void drawCatalog(catalogBox, ctx, { attempt });
 
   async function load() {
     const [s, g, c, gh] = await Promise.all([attempt("mcp.servers"), attempt("google.accounts"), attempt("vault.connections.list"), attempt("github.accounts")]);
@@ -289,7 +292,7 @@ export async function drawConnections(el, ctx, deps = {}) {
   // anything else the catalog names.
   const GROUP_ICON = { google: "globe", mail: "mail", mcp: "agents", other: "key" };
   /** Surface name to the chip's label and icon, in the order the board draws them. */
-  const SURFACE_META = { capsule: { label: "Capsule", icon: "capsule" }, chat: { label: "Chat", icon: "chat" },
+  const SURFACE_META = { capsule: { label: "Lumen", icon: "capsule" }, chat: { label: "Chat", icon: "chat" },
     agents: { label: "Agents", icon: "agents" }, phone: { label: "Phone", icon: "phone" } };
 
   function drawCards() {
@@ -775,7 +778,7 @@ export async function drawConnections(el, ctx, deps = {}) {
     let transport = "stdio";
     const name = /** @type {HTMLInputElement} */ (h("input", { class: "input", id: "cn-name", autocomplete: "off", spellcheck: "false", placeholder: "tracker" }));
     const command = /** @type {HTMLInputElement} */ (h("input", { class: "input", id: "cn-command", autocomplete: "off", spellcheck: "false", placeholder: "npx" }));
-    const args = /** @type {HTMLInputElement} */ (h("input", { class: "input", id: "cn-args", autocomplete: "off", spellcheck: "false", placeholder: "-y @northwind/tracker-mcp" }));
+    const args = /** @type {HTMLInputElement} */ (h("input", { class: "input", id: "cn-args", autocomplete: "off", spellcheck: "false", placeholder: "Arguments, if any" }));
     const url = /** @type {HTMLInputElement} */ (h("input", { class: "input", id: "cn-url", autocomplete: "off", spellcheck: "false", placeholder: "https://mcp.example.com/mcp" }));
     const auth = /** @type {HTMLSelectElement} */ (h("select", { class: "input set-select", id: "cn-auth", "aria-label": "Auth" }));
     const itemBox = h("div", { class: "set-v" });
@@ -898,7 +901,7 @@ export async function drawConnections(el, ctx, deps = {}) {
   function googleForm(vaultErr) {
     let type = "signin";
     const name = /** @type {HTMLInputElement} */ (h("input", { class: "input", id: "cg-name", autocomplete: "off", spellcheck: "false", placeholder: "work" }));
-    const email = /** @type {HTMLInputElement} */ (h("input", { class: "input", id: "cg-email", type: "email", autocomplete: "off", spellcheck: "false", placeholder: "alex@harlowlegal.com" }));
+    const email = /** @type {HTMLInputElement} */ (h("input", { class: "input", id: "cg-email", type: "email", autocomplete: "off", spellcheck: "false", placeholder: "Your email address" }));
     const subject = /** @type {HTMLInputElement} */ (h("input", { class: "input", id: "cg-subject", type: "email", autocomplete: "off", spellcheck: "false", placeholder: "The address above" }));
     const seg = h("div", { class: "seg cn-seg", role: "group", "aria-label": "How it signs in" });
     const rest = h("div", { class: "rows" });

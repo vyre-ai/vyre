@@ -846,6 +846,51 @@ Targeted rerun: test/boundaries.test.js, core/daemon/*.test.js, test/daemon.test
 deck/views/pair-scan.test.js, test/docs-check.test.js - 71/71 pass. Sent to reviewer and the
 integrator.
 
+## 0.2 (30 Sep 2026 onward)
+
+Phase 1 (planning) plan is at `team/0.2/plans/pwa.md`, reviewed and cleared (reviews/pwa.md: 1
+BLOCKER, 6 HIGH, 5 MEDIUM, 3 LOW, all fixed; one re-review HOLD on the shell-integrity fix,
+cleared). Section 1 there is the honest state as of 0.1.x's end, worth reading before touching
+this file's older entries above - it corrects one thing those entries assumed at the time
+(Wink's "redirect to `<handle>.vyre.run`" success step - reviewer P-H0a found this breaks under
+0.2's origin model, since a relay-only phone and a Tailscale-reachable one are different origins
+with different storage; 0.2 replaces the redirect with a re-pair, see plans/pwa.md section 3).
+
+**Operational note, binding as of today:** `team/RULES.md` now says outright that the test box is
+the same host as the user's real, live Vyre server, and NOTHING runs there any more (no spikes,
+no containers, no test runs). This whole file's own
+history above, and this session's earlier live-relay verification work, ran real commands against
+that box under the OLD rule (it was a shared testbox at the time). That's no longer allowed. Every
+test now runs on GitHub Actions (`.github/workflows/node.yml` on push/PR/workflow_dispatch, or
+`gh workflow run <name>.yml --ref work/pwa` for the Mac/iOS/Android-specific ones) - checked this
+before running anything further today, and confirmed by watching a real run rather than assuming.
+
+## Doing (N-H1 rebuilt on the release key, 2026-09-30)
+
+Rebased onto origin/work/stage-0.2 (943 behind; the earlier relay and Deck commits were already on
+stage, so only the two N-H1 commits remained). The first N-H1 attempt (own P-256 key and manifest)
+is replaced by the lead's spec: the service worker verifies against the ONE release signature.
+
+- `deck/sw.js` `verifyShell`: fetches `/release/SHA256SUMS`, `/release/SHA256SUMS.sig`,
+  `/release/shell.json`; checks the Ed25519 signature (pinned `RELEASE_KEY`, over
+  "vyre-release-sums\n" + SHA256SUMS), then the SUMS line for shell.json, then the shell.json
+  hash of each fetched file. Refuses the new shell (cache dropped, no skipWaiting) on any miss when
+  `SHELL_SIGNED` is true. Browser without Ed25519 installs unchecked with a console line.
+- `core/daemon/build.js` `swWithBuild` sets `SHELL_SIGNED = true` when `deck/release/SHA256SUMS.sig`
+  exists; a dev checkout or testbox has none and behaves as before. The daemon serves the three
+  files from `deck/release/` and answers 404 (not the shell) when one is absent.
+- `scripts/shell-hashes.mjs DIR` writes `DIR/shell.json` (every SHELL file except sw.js, which is
+  stamped per build). The release runs it before `scripts/sign-manifest.mjs`.
+- Tests: `deck/test/shell-release-sw.test.js` runs sw.js's own source against a real release made
+  by sign-manifest.mjs with a throwaway key (match, tampered file, wrong key, swapped shell.json,
+  missing file, unsigned build), and checks sw.js's key equals release.js's RELEASE_KEY.
+- Honest limit: sw.js comes from the same origin, so this catches a shell that differs from the
+  release, not an origin that also swaps the worker.
+
+**Needs from others (asked in CHAT.md):** launch/anywhere: add `node scripts/shell-hashes.mjs dist`
+to release.yml before the SHA256SUMS step, and have `vyre update` and the phone.vyre.run deploy
+copy SHA256SUMS, SHA256SUMS.sig and shell.json into `<install>/deck/release/`.
+
 ## Next
 - No test coverage of scan.js/scan-worker.js's own lifecycle (the busy flag, the transferred
   buffer, worker.terminate() on stop) - reviewer-2 hand-verified fa619b4a and confirmed it's
@@ -1009,3 +1054,46 @@ chat/term.js (`term-dot`), chat/chat.css (`.cv-state-*`, `.rail-sub .count`), vi
   continuous 0-360deg x 9-scale rotation/perspective search). Flagged as a follow-up in "Next":
   move it to a Worker and add a cheap localization pre-pass before this is a live-scan-speed
   feature; it functions today, it just isn't fast.
+
+## Doing (Files view, 2026-09-30)
+
+`deck/views/files.js` (+ `deck/css/views/files.css`, `deck/js/drive-browse.js`, route `/files` and
+`/files/:share?p=`, all in sw.js SHELL). Built against work/drive's real shapes (files.drive.list
+`{entries:[{name,dir,kind,mime,size,mtime}],total,next}`, files.drive.read 1 MiB base64 chunks with
+`done`), not on stage yet, so on a box without the tools it says "does not have the Files tools".
+Read-only: preview for image/text/pdf up to 8 MB (svg is a download), Save link, else a plain line.
+Refusals are one line (not_available covers unknown, ungranted and hidden). Unit tests pass with a
+fake chunking box; the DOM itself is a browser check. Open: no Places tile (app-design's 3x2 grid);
+needs their placement, and a real-phone check once drive lands.
+
+## Doing (no passkey chore, 2026-09-30)
+
+Setup card = install + notifications; removed the passkey step and the two Now passkey reminders
+(deck/js/phone-setup.js, now-phone.js). Send/approve on the phone already uses `presence: true`,
+which proves a passkey only when the box answers presence_required, so the box's Gate decides
+(asking is approving). Open with vault: where a phone enrolls a Face ID key for a vault reveal
+without `vyre presence code` (a paired owner device should be able to enroll itself).
+Open with native-core: Lumen/Memory display strings in the Deck are theirs per the lead's owner
+list; pwa touches none until they say which files are left.
+
+Drive tile added to Places and the rail (app-design's answer: /files, glyph drive, 3x3 grid with two free slots). Screen title Drive.
+
+reviewer-2 on 390f4b8b, all four fixed: revalidation only caches listed-hash bytes (hash list kept in the cache at install), completeness (withheld or unlisted required file refused), rollback floor (shell.json version, VERSION_CACHE), Blob type forced in the Files view. Tests in deck/test/shell-release-sw.test.js (needs vyre-core's sign-manifest and release.js, so red on stage until it re-lands; 13/13 with them).
+
+Enrol at pairing built against tailnet's 14b6bcc1: pairOffer({enroll:true}) -> reply.enroll {grant, expires, rpId} (validated in relay/client/client.js enrollOf, a small change to tailnet's file, listed under Changed contracts) -> redirect https://<rpId>/#enroll=<grant> -> js/enroll-grant.js takes and clears the fragment, one sheet, enrollPasskey({grant}). Untested end to end (needs a box with 14b6bcc1 and a real phone); unit-tested pieces only.
+
+reviewer-2 MEDIUM (coverage) fixed: shell.json lists all served deck code (256 files today); a signed worker serves a code path only if listed and hash-matching, refuses an unlisted one. Note: a poisoned version floor (a bad but signed high version accepted once) is cleared by clearing the site's data; the floor lives in the vyre-deck-shell-version cache. (Superseded below: /onboard and /person are now covered.)
+
+/onboard and /person: were outside the worker because they are their own pages that must load fresh and before any worker exists. Now listed in shell.json (folder addresses too) and, on a signed build, fetched and hash-checked by the worker, never cached. Gap that remains: the FIRST load of a box's address has no worker; that load is the box's own release files (CSP + vyred), not protected by this worker. Open with reviewer-2: should vyred also refuse to serve a deck file whose bytes differ from deck/release/shell.json at serve time (needs the signature check in vyred, which core/vyre-core/release.js has)?
+
+Old-Safari brick risk (reviewer-2) fixed: unsupported Ed25519 refuses the install when a worker is active, else runs unchecked; the fetch handler enforces only when the install stored the hash list (test with a fake browser lacking Ed25519). /onboard and /person are covered (see above), not merely documented.
+
+Decision (reviewer-2, team-lead): no serve-time check in vyred. First-load trust is stated plainly: the first load of a hosted origin has no worker (trust on first use); the worker protects every later load. New daemon test proves all 273 listed addresses are byte-static on a real box.
+
+Step 9 done in a plain form: Find > Memory 'Ask Vyre Memory' row over memory.ask (non-streaming, one call per tap; memory.thinking events unused). app-design has not styled it (reuses the fd-askrow row). Step 11 (assistant.glance) not started: the tool is not on stage.
+
+## SAVE / PAUSED (2026-09-30, work/pwa 5554b085 pushed, base stage e1a061cc)
+
+Done and pushed: N-H1 (release-signed shell, hash-gated caching, complete list of 273 served addresses incl. /onboard and /person, version floor, no-Ed25519 safe path), Files view (Drive tile), no passkey chore, enrol-at-pairing client (js/enroll-grant.js, relay/client enroll), Ask Vyre Memory in Find.
+Waiting on: vyre-core re-landing on stage (deck/test/shell-release-sw.test.js is red until then; needs scripts/sign-manifest.mjs and core/vyre-core/release.js; 15/15 with them), native-core's composer (# picker, phone check), assistant.glance (step 11), a box with tailnet 14b6bcc1 plus a real phone (enrol-at-pairing end to end), launch serving /release/ on phone.vyre.run, anywhere's release.yml push.
+Resume: rebase on origin/work/stage-0.2 (cherry-pick if stage was rewound; backup branches backup/pwa-old-tip, backup/pwa-76f39091), get CI green, then the real-device matrix.

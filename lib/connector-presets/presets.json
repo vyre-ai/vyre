@@ -1,0 +1,1333 @@
+{
+ "checked": "2026-09-30",
+ "presets": [
+  {
+   "id": "ghl",
+   "label": "GoHighLevel",
+   "group": "crm",
+   "url": "https://services.leadconnectorhq.com/mcp/",
+   "transport": "http",
+   "who": "Any HighLevel account; you pick the sub-accounts at sign-in.",
+   "evidence": "dcr-registered",
+   "oauth": {
+    "client": "dcr",
+    "as": [
+     "https://services.leadconnectorhq.com"
+    ]
+   },
+   "token": {
+    "label": "Private Integration Token",
+    "help": "In HighLevel: Settings, Private Integrations, create a token. Untested against HighLevel's server, so try the sign-in first.",
+    "extra": [
+     {
+      "name": "locationId",
+      "header": "locationId",
+      "label": "Location ID",
+      "required": false
+     }
+    ]
+   },
+   "note": "Works across many sub-accounts at once. Do not use the /mcp/anthropic address: it accepts only Claude."
+  },
+  {
+   "id": "slack",
+   "label": "Slack",
+   "group": "work",
+   "url": "https://mcp.slack.com/mcp",
+   "transport": "http",
+   "who": "You, as an admin of your own workspace. You make a small private Slack app first; the settings are filled in for you.",
+   "evidence": "docs",
+   "oauth": {
+    "client": "byo",
+    "port": 53682,
+    "redirect": {
+     "scheme": "https",
+     "host": "127.0.0.1",
+     "path": "/connect/callback"
+    },
+    "scopes": [
+     "search:read.public",
+     "search:read.private",
+     "search:read.mpim",
+     "search:read.im",
+     "search:read.files",
+     "search:read.users",
+     "channels:history",
+     "groups:history",
+     "mpim:history",
+     "im:history",
+     "channels:read",
+     "groups:read",
+     "im:read",
+     "mpim:read",
+     "chat:write",
+     "users:read",
+     "users:read.email",
+     "files:read",
+     "files:write",
+     "canvases:read",
+     "canvases:write",
+     "reactions:read",
+     "reactions:write",
+     "lists:read",
+     "lists:write",
+     "emoji:read"
+    ],
+    "help": "Slack's hosted server takes only an app you own. Vyre fills in its settings.",
+    "guide": {
+     "manifest": {
+      "label": "Make your Slack app with its settings filled in",
+      "link": "https://api.slack.com/apps?new_app=1&manifest_json=",
+      "json": {
+       "display_information": {
+        "name": "Vyre",
+        "description": "Lets your Vyre box read and post in Slack as you."
+       },
+       "oauth_config": {
+        "redirect_urls": [
+         "{redirect}"
+        ],
+        "scopes": {
+         "user": [
+          "search:read.public",
+          "search:read.private",
+          "search:read.mpim",
+          "search:read.im",
+          "search:read.files",
+          "search:read.users",
+          "channels:history",
+          "groups:history",
+          "mpim:history",
+          "im:history",
+          "channels:read",
+          "groups:read",
+          "im:read",
+          "mpim:read",
+          "chat:write",
+          "users:read",
+          "users:read.email",
+          "files:read",
+          "files:write",
+          "canvases:read",
+          "canvases:write",
+          "reactions:read",
+          "reactions:write",
+          "lists:read",
+          "lists:write",
+          "emoji:read"
+         ]
+        }
+       },
+       "settings": {
+        "is_mcp_enabled": true,
+        "org_deploy_enabled": false,
+        "socket_mode_enabled": false,
+        "token_rotation_enabled": false
+       }
+      }
+     },
+     "steps": [
+      "Open the first link. Pick your workspace and click Create.",
+      "In the new app, if a Model Context Protocol (MCP) switch is off, turn it on. It is under Agents & AI Apps.",
+      "Open Basic Information and copy the Client ID and Client Secret. Enter them here.",
+      "Vyre then prints a Slack address. Open it and click Allow. Slack sends your browser to a page that cannot load; that is expected. Copy the full address from the browser bar and paste it here."
+     ]
+    },
+    "as": [
+     "https://mcp.slack.com",
+     "https://slack.com"
+    ]
+   },
+   "token": {
+    "label": "User OAuth token",
+    "help": "Make the app with the first link, install it to your workspace, and copy the User OAuth Token that starts with xoxp-. Untested against Slack's server: use the sign-in first.",
+    "guide": {
+     "manifest": {
+      "label": "Make your Slack app with its settings filled in",
+      "link": "https://api.slack.com/apps?new_app=1&manifest_json=",
+      "json": {
+       "display_information": {
+        "name": "Vyre",
+        "description": "Lets your Vyre box read and post in Slack as you."
+       },
+       "oauth_config": {
+        "redirect_urls": [
+         "{redirect}"
+        ],
+        "scopes": {
+         "user": [
+          "search:read.public",
+          "search:read.private",
+          "search:read.mpim",
+          "search:read.im",
+          "search:read.files",
+          "search:read.users",
+          "channels:history",
+          "groups:history",
+          "mpim:history",
+          "im:history",
+          "channels:read",
+          "groups:read",
+          "im:read",
+          "mpim:read",
+          "chat:write",
+          "users:read",
+          "users:read.email",
+          "files:read",
+          "files:write",
+          "canvases:read",
+          "canvases:write",
+          "reactions:read",
+          "reactions:write",
+          "lists:read",
+          "lists:write",
+          "emoji:read"
+         ]
+        }
+       },
+       "settings": {
+        "is_mcp_enabled": true,
+        "org_deploy_enabled": false,
+        "socket_mode_enabled": false,
+        "token_rotation_enabled": false
+       }
+      }
+     },
+     "steps": [
+      "Open the link. Pick your workspace and click Create.",
+      "Open OAuth & Permissions, click Install to Workspace and allow it.",
+      "Copy the User OAuth Token (it starts with xoxp-) and enter it here."
+     ]
+    }
+   },
+   "note": "Two things are unconfirmed until one real run: that Slack accepts this redirect address, and that the MCP switch is set by the settings link."
+  },
+  {
+   "id": "zoom",
+   "label": "Zoom",
+   "group": "work",
+   "url": "https://mcp.zoom.us/mcp/zoom/streamable",
+   "transport": "http",
+   "who": "Zoom accounts that can make apps (an account admin or a developer role). You make one small app first.",
+   "evidence": "docs",
+   "oauth": {
+    "client": "byo",
+    "port": 53682,
+    "scopes": [
+     "meeting:read:search",
+     "meeting:read:assets",
+     "meeting:write:meeting",
+     "meeting:update:meeting",
+     "cloud_recording:read:list_user_recordings",
+     "cloud_recording:read:content"
+    ],
+    "help": "Zoom's own hosted server takes only an app you make in your Zoom account.",
+    "guide": {
+     "links": [
+      {
+       "label": "Zoom App Marketplace",
+       "url": "https://marketplace.zoom.us/"
+      }
+     ],
+     "steps": [
+      "Sign in at marketplace.zoom.us. Click Develop, then Build App, choose General App, and click Create.",
+      "On Basic Information, keep the management type User-managed. Under OAuth, set the OAuth redirect URL and the OAuth allow list to {redirect} .",
+      "Copy the development Client ID and Client Secret shown on that page. Enter them here.",
+      "On the Scopes page click Add Scopes and add: meeting:read:search, meeting:read:assets, meeting:write:meeting, meeting:update:meeting, cloud_recording:read:list_user_recordings, cloud_recording:read:content.",
+      "Open Local Test and click Add App Now to allow it on your own account. Then finish the sign-in here."
+     ]
+    },
+    "as": [
+     "https://zoom.us"
+    ]
+   },
+   "note": "Zoom's docs say loopback redirects work for PKCE apps; a real run confirms it for a development-mode app."
+  },
+  {
+   "id": "notion",
+   "label": "Notion",
+   "group": "work",
+   "url": "https://mcp.notion.com/mcp",
+   "transport": "http",
+   "who": "Anyone with a Notion account.",
+   "evidence": "dcr-registered",
+   "oauth": {
+    "client": "dcr",
+    "as": [
+     "https://mcp.notion.com"
+    ]
+   }
+  },
+  {
+   "id": "linear",
+   "label": "Linear",
+   "group": "work",
+   "url": "https://mcp.linear.app/mcp",
+   "transport": "http",
+   "who": "Anyone with a Linear account.",
+   "evidence": "dcr-registered",
+   "oauth": {
+    "client": "dcr",
+    "as": [
+     "https://mcp.linear.app"
+    ]
+   },
+   "token": {
+    "label": "Linear API key",
+    "help": "In Linear: Settings, Security and access, Personal API keys."
+   }
+  },
+  {
+   "id": "atlassian",
+   "label": "Atlassian (Jira, Confluence)",
+   "group": "work",
+   "url": "https://mcp.atlassian.com/v2/mcp",
+   "transport": "http",
+   "who": "Anyone with an Atlassian cloud site.",
+   "evidence": "dcr-registered",
+   "oauth": {
+    "client": "dcr",
+    "offline": true,
+    "as": [
+     "https://auth.atlassian.com"
+    ]
+   }
+  },
+  {
+   "id": "asana",
+   "label": "Asana",
+   "group": "work",
+   "url": "https://mcp.asana.com/v2/mcp",
+   "transport": "http",
+   "who": "Anyone with an Asana account; you make one small app first.",
+   "evidence": "docs",
+   "oauth": {
+    "client": "byo",
+    "help": "In Asana open app.asana.com/0/my-apps, make an MCP app, copy its client ID and secret into a vault item, and add http://127.0.0.1:53682/connect/callback as its redirect address.",
+    "port": 53682,
+    "guide": {
+     "links": [
+      {
+       "label": "Asana developer console",
+       "url": "https://app.asana.com/0/my-apps"
+      }
+     ],
+     "steps": [
+      "Open the link and click Create new app. Choose MCP app.",
+      "Under OAuth, add {redirect} as the redirect URL.",
+      "Copy the Client ID and Client Secret and enter them here."
+     ]
+    },
+    "as": [
+     "https://app.asana.com"
+    ]
+   },
+   "note": "Asana's discovery names a server with no registration, so this uses your own app."
+  },
+  {
+   "id": "clickup",
+   "label": "ClickUp",
+   "group": "work",
+   "url": "https://mcp.clickup.com/mcp",
+   "transport": "http",
+   "who": "Anyone with a ClickUp account. The free plan allows 50 calls a day.",
+   "evidence": "dcr-registered",
+   "oauth": {
+    "client": "dcr",
+    "as": [
+     "https://mcp.clickup.com"
+    ]
+   }
+  },
+  {
+   "id": "monday",
+   "label": "monday.com",
+   "group": "work",
+   "url": "https://mcp.monday.com/mcp",
+   "transport": "http",
+   "who": "Anyone with a monday.com account.",
+   "evidence": "docs",
+   "oauth": {
+    "client": "dcr",
+    "as": [
+     "https://auth.monday.com"
+    ]
+   },
+   "token": {
+    "label": "Personal API token",
+    "help": "In monday.com: profile picture, Developers, My access tokens."
+   },
+   "prefer": "token",
+   "note": "monday reserves its sign-in for marketplace partners, so a personal token is the sure way."
+  },
+  {
+   "id": "airtable",
+   "label": "Airtable",
+   "group": "work",
+   "url": "https://mcp.airtable.com/mcp",
+   "transport": "http",
+   "who": "Any plan.",
+   "evidence": "dcr-registered",
+   "oauth": {
+    "client": "dcr",
+    "as": [
+     "https://airtable.com"
+    ]
+   }
+  },
+  {
+   "id": "todoist",
+   "label": "Todoist",
+   "group": "work",
+   "url": "https://ai.todoist.net/mcp",
+   "transport": "http",
+   "who": "Anyone with a Todoist account.",
+   "evidence": "dcr-registered",
+   "oauth": {
+    "client": "dcr",
+    "as": [
+     "https://todoist.com"
+    ]
+   }
+  },
+  {
+   "id": "trello",
+   "label": "Trello",
+   "group": "work",
+   "url": "https://mcp.trello.com/v1",
+   "transport": "http",
+   "who": "Anyone with a Trello account. Comments and attachments are not covered.",
+   "evidence": "dcr-advertised",
+   "oauth": {
+    "client": "dcr",
+    "as": [
+     "https://auth.atlassian.com"
+    ]
+   }
+  },
+  {
+   "id": "miro",
+   "label": "Miro",
+   "group": "work",
+   "url": "https://mcp.miro.com",
+   "transport": "http",
+   "who": "Any plan.",
+   "evidence": "dcr-registered",
+   "oauth": {
+    "client": "dcr",
+    "as": [
+     "https://mcp.miro.com"
+    ]
+   }
+  },
+  {
+   "id": "canva",
+   "label": "Canva",
+   "group": "work",
+   "url": "https://mcp.canva.com/mcp",
+   "transport": "http",
+   "who": "Anyone with a Canva account; brand kits need Pro.",
+   "evidence": "dcr-registered",
+   "oauth": {
+    "client": "dcr",
+    "as": [
+     "https://mcp.canva.com"
+    ]
+   }
+  },
+  {
+   "id": "fathom",
+   "label": "Fathom",
+   "group": "work",
+   "url": "https://api.fathom.ai/mcp",
+   "transport": "http",
+   "who": "Fathom accounts on a plan that includes it.",
+   "evidence": "dcr-registered",
+   "oauth": {
+    "client": "dcr",
+    "as": [
+     "https://api.fathom.ai",
+     "https://fathom.video"
+    ]
+   }
+  },
+  {
+   "id": "fireflies",
+   "label": "Fireflies",
+   "group": "work",
+   "url": "https://api.fireflies.ai/mcp",
+   "transport": "http",
+   "who": "Anyone with a Fireflies account.",
+   "evidence": "dcr-registered",
+   "oauth": {
+    "client": "dcr",
+    "as": [
+     "https://api.fireflies.ai"
+    ]
+   },
+   "token": {
+    "label": "Fireflies API key",
+    "help": "In Fireflies: Integrations, Fireflies API."
+   }
+  },
+  {
+   "id": "github",
+   "label": "GitHub",
+   "group": "dev",
+   "url": "https://api.githubcopilot.com/mcp/",
+   "transport": "http",
+   "who": "Anyone with a GitHub account.",
+   "evidence": "docs",
+   "token": {
+    "label": "Personal access token",
+    "help": "In GitHub: Settings, Developer settings, Fine-grained tokens."
+   },
+   "note": "Signing in goes through GitHub's own login on the GitHub card. A pasted token works too.",
+   "via": "github"
+  },
+  {
+   "id": "sentry",
+   "label": "Sentry",
+   "group": "dev",
+   "url": "https://mcp.sentry.dev/mcp",
+   "transport": "http",
+   "who": "Anyone with a Sentry account.",
+   "evidence": "dcr-registered",
+   "oauth": {
+    "client": "dcr",
+    "as": [
+     "https://mcp.sentry.dev"
+    ]
+   }
+  },
+  {
+   "id": "vercel",
+   "label": "Vercel",
+   "group": "dev",
+   "url": "https://mcp.vercel.com",
+   "transport": "http",
+   "who": "Anyone with a Vercel account. Vercel lists the apps it allows, so sign-in may refuse Vyre.",
+   "evidence": "dcr-registered",
+   "oauth": {
+    "client": "dcr",
+    "as": [
+     "https://api.vercel.com",
+     "https://vercel.com"
+    ]
+   }
+  },
+  {
+   "id": "supabase",
+   "label": "Supabase",
+   "group": "dev",
+   "url": "https://mcp.supabase.com/mcp",
+   "transport": "http",
+   "who": "Anyone with a Supabase account.",
+   "evidence": "dcr-registered",
+   "oauth": {
+    "client": "dcr",
+    "as": [
+     "https://api.supabase.com"
+    ]
+   },
+   "token": {
+    "label": "Personal access token",
+    "help": "In Supabase: Account, Access tokens."
+   }
+  },
+  {
+   "id": "neon",
+   "label": "Neon",
+   "group": "dev",
+   "url": "https://mcp.neon.tech/mcp",
+   "transport": "http",
+   "who": "Anyone with a Neon account.",
+   "evidence": "dcr-registered",
+   "oauth": {
+    "client": "dcr",
+    "as": [
+     "https://mcp.neon.tech"
+    ]
+   },
+   "token": {
+    "label": "Neon API key",
+    "help": "In Neon: Account settings, API keys."
+   }
+  },
+  {
+   "id": "railway",
+   "label": "Railway",
+   "group": "dev",
+   "url": "https://mcp.railway.com",
+   "transport": "http",
+   "who": "Anyone with a Railway account.",
+   "evidence": "dcr-registered",
+   "oauth": {
+    "client": "dcr",
+    "as": [
+     "https://backboard.railway.com"
+    ]
+   }
+  },
+  {
+   "id": "planetscale",
+   "label": "PlanetScale",
+   "group": "dev",
+   "url": "https://mcp.pscale.dev/mcp/planetscale",
+   "transport": "http",
+   "who": "Anyone with a PlanetScale account.",
+   "evidence": "dcr-advertised",
+   "oauth": {
+    "client": "dcr",
+    "as": [
+     "https://api.planetscale.com",
+     "https://app.planetscale.com",
+     "https://auth.planetscale.com"
+    ]
+   }
+  },
+  {
+   "id": "cloudflare",
+   "label": "Cloudflare",
+   "group": "dev",
+   "url": "https://mcp.cloudflare.com/mcp",
+   "transport": "http",
+   "who": "Anyone with a Cloudflare account.",
+   "evidence": "dcr-registered",
+   "oauth": {
+    "client": "dcr",
+    "offline": true,
+    "as": [
+     "https://mcp.cloudflare.com"
+    ]
+   },
+   "token": {
+    "label": "Cloudflare API token",
+    "help": "In Cloudflare: My Profile, API Tokens."
+   }
+  },
+  {
+   "id": "posthog",
+   "label": "PostHog",
+   "group": "dev",
+   "url": "https://mcp.posthog.com/mcp",
+   "transport": "http",
+   "who": "Anyone with a PostHog account.",
+   "evidence": "dcr-registered",
+   "oauth": {
+    "client": "dcr",
+    "as": [
+     "https://oauth.posthog.com"
+    ]
+   },
+   "token": {
+    "label": "Personal API key",
+    "help": "In PostHog: Account settings, Personal API keys."
+   }
+  },
+  {
+   "id": "mixpanel",
+   "label": "Mixpanel (US)",
+   "group": "dev",
+   "url": "https://mcp.mixpanel.com/mcp",
+   "transport": "http",
+   "who": "Accounts made after 1 Aug 2026; older ones need an org admin to turn it on.",
+   "evidence": "dcr-registered",
+   "oauth": {
+    "client": "dcr",
+    "as": [
+     "https://mcp.mixpanel.com",
+     "https://mixpanel.com"
+    ]
+   }
+  },
+  {
+   "id": "amplitude",
+   "label": "Amplitude (US)",
+   "group": "dev",
+   "url": "https://mcp.amplitude.com/mcp",
+   "transport": "http",
+   "who": "Anyone with an Amplitude account; an admin can restrict it.",
+   "evidence": "dcr-registered",
+   "oauth": {
+    "client": "dcr",
+    "as": [
+     "https://mcp.amplitude.com"
+    ]
+   }
+  },
+  {
+   "id": "apify",
+   "label": "Apify",
+   "group": "dev",
+   "url": "https://mcp.apify.com",
+   "transport": "http",
+   "who": "Anyone with an Apify account.",
+   "evidence": "dcr-advertised",
+   "oauth": {
+    "client": "dcr",
+    "as": [
+     "https://console-backend.apify.com",
+     "https://console.apify.com"
+    ]
+   },
+   "token": {
+    "label": "Apify API token",
+    "help": "In Apify: Settings, API and Integrations."
+   }
+  },
+  {
+   "id": "webflow",
+   "label": "Webflow",
+   "group": "marketing",
+   "url": "https://mcp.webflow.com/sse",
+   "transport": "sse",
+   "who": "Site owners and admins.",
+   "evidence": "dcr-registered",
+   "oauth": {
+    "client": "dcr",
+    "as": [
+     "https://mcp.webflow.com"
+    ]
+   }
+  },
+  {
+   "id": "klaviyo",
+   "label": "Klaviyo",
+   "group": "marketing",
+   "url": "https://mcp.klaviyo.com/mcp",
+   "transport": "http",
+   "who": "Owners, Admins and Managers.",
+   "evidence": "dcr-registered",
+   "oauth": {
+    "client": "dcr",
+    "as": [
+     "https://mcp.klaviyo.com"
+    ]
+   }
+  },
+  {
+   "id": "resend",
+   "label": "Resend",
+   "group": "marketing",
+   "url": "https://mcp.resend.com/mcp",
+   "transport": "http",
+   "who": "Anyone with a Resend account.",
+   "evidence": "dcr-registered",
+   "oauth": {
+    "client": "dcr",
+    "as": [
+     "https://api.resend.com"
+    ]
+   }
+  },
+  {
+   "id": "wix",
+   "label": "Wix",
+   "group": "marketing",
+   "url": "https://mcp.wix.com/mcp",
+   "transport": "http",
+   "who": "Anyone with a Wix account.",
+   "evidence": "dcr-registered",
+   "oauth": {
+    "client": "dcr",
+    "as": [
+     "https://mcp.wix.com"
+    ]
+   }
+  },
+  {
+   "id": "intercom",
+   "label": "Intercom (US)",
+   "group": "marketing",
+   "url": "https://mcp.intercom.com/mcp",
+   "transport": "http",
+   "who": "Anyone with an Intercom workspace hosted in the US.",
+   "evidence": "dcr-registered",
+   "oauth": {
+    "client": "dcr",
+    "as": [
+     "https://mcp.intercom.com"
+    ]
+   },
+   "token": {
+    "label": "Intercom access token",
+    "help": "In Intercom: Settings, Developers, your app's access token."
+   }
+  },
+  {
+   "id": "intercom-eu",
+   "label": "Intercom (EU)",
+   "group": "marketing",
+   "url": "https://mcp.eu.intercom.com/mcp",
+   "transport": "http",
+   "who": "Anyone with an Intercom workspace hosted in the EU.",
+   "evidence": "dcr-registered",
+   "oauth": {
+    "client": "dcr",
+    "as": [
+     "https://mcp.eu.intercom.com"
+    ]
+   },
+   "token": {
+    "label": "Intercom access token",
+    "help": "In Intercom: Settings, Developers, your app's access token."
+   }
+  },
+  {
+   "id": "attio",
+   "label": "Attio",
+   "group": "crm",
+   "url": "https://mcp.attio.com/mcp",
+   "transport": "http",
+   "who": "Any active Attio workspace.",
+   "evidence": "dcr-registered",
+   "oauth": {
+    "client": "dcr",
+    "as": [
+     "https://app.attio.com"
+    ]
+   }
+  },
+  {
+   "id": "hubspot",
+   "label": "HubSpot",
+   "group": "crm",
+   "url": "https://mcp.hubspot.com",
+   "transport": "http",
+   "who": "HubSpot account admins; you make one small app first.",
+   "evidence": "docs",
+   "oauth": {
+    "client": "byo",
+    "help": "In HubSpot open Development, create an app with a user-level install, copy its client ID and secret into a vault item, and add http://127.0.0.1:53682/connect/callback as its redirect address.",
+    "port": 53682,
+    "guide": {
+     "links": [
+      {
+       "label": "HubSpot developer home",
+       "url": "https://developers.hubspot.com/"
+      }
+     ],
+     "steps": [
+      "Open the link and sign in with the account you want to connect. Create an app on the developer platform.",
+      "Under Auth, add {redirect} as the redirect URL and choose a user-level install.",
+      "Copy the Client ID and Client Secret and enter them here."
+     ]
+    },
+    "as": [
+     "https://mcp.hubspot.com"
+    ]
+   },
+   "note": "HubSpot's server has no automatic registration."
+  },
+  {
+   "id": "stripe",
+   "label": "Stripe",
+   "group": "finance",
+   "url": "https://mcp.stripe.com",
+   "transport": "http",
+   "who": "Anyone with a Stripe account.",
+   "evidence": "dcr-registered",
+   "oauth": {
+    "client": "dcr",
+    "as": [
+     "https://access.stripe.com"
+    ]
+   },
+   "token": {
+    "label": "Agent API key",
+    "help": "In Stripe: Developers, API keys, make a key with the Agent tag."
+   }
+  },
+  {
+   "id": "paypal",
+   "label": "PayPal",
+   "group": "finance",
+   "url": "https://mcp.paypal.com/http",
+   "transport": "http",
+   "who": "PayPal business accounts.",
+   "evidence": "dcr-registered",
+   "oauth": {
+    "client": "dcr",
+    "as": [
+     "https://mcp.paypal.com"
+    ]
+   }
+  },
+  {
+   "id": "square",
+   "label": "Square",
+   "group": "finance",
+   "url": "https://mcp.squareup.com/mcp",
+   "transport": "http",
+   "who": "Square accounts. Square lists the apps it allows, so sign-in may refuse Vyre.",
+   "evidence": "dcr-registered",
+   "oauth": {
+    "client": "dcr",
+    "as": [
+     "https://mcp.squareup.com"
+    ]
+   }
+  },
+  {
+   "id": "zapier",
+   "label": "Zapier",
+   "group": "work",
+   "url": "https://mcp.zapier.com/api/v1/connect",
+   "transport": "http",
+   "who": "Zapier plans with tasks; each call costs 2 tasks.",
+   "evidence": "dcr-registered",
+   "oauth": {
+    "client": "dcr",
+    "as": [
+     "https://mcp.zapier.com"
+    ]
+   },
+   "token": {
+    "label": "Connection token",
+    "help": "In Zapier: mcp.zapier.com, make a server, copy its token."
+   }
+  },
+  {
+   "id": "perplexity",
+   "label": "Perplexity",
+   "group": "search",
+   "url": "https://api.perplexity.ai/mcp",
+   "transport": "http",
+   "who": "Anyone with a Perplexity account.",
+   "evidence": "dcr-registered",
+   "oauth": {
+    "client": "dcr",
+    "as": [
+     "https://api.perplexity.ai"
+    ]
+   },
+   "token": {
+    "label": "Perplexity API key",
+    "help": "In Perplexity: Settings, API keys."
+   }
+  },
+  {
+   "id": "exa",
+   "label": "Exa",
+   "group": "search",
+   "url": "https://mcp.exa.ai/mcp",
+   "transport": "http",
+   "who": "Anyone; the free tier needs no account.",
+   "evidence": "dcr-registered",
+   "oauth": {
+    "client": "dcr",
+    "as": [
+     "https://auth.exa.ai"
+    ]
+   },
+   "token": {
+    "label": "Exa API key",
+    "help": "In Exa: dashboard, API keys.",
+    "header": "x-api-key",
+    "format": "{value}"
+   }
+  },
+  {
+   "id": "context7",
+   "label": "Context7",
+   "group": "search",
+   "url": "https://mcp.context7.com/mcp",
+   "transport": "http",
+   "who": "Anyone; the free tier needs no account.",
+   "evidence": "docs",
+   "oauth": {
+    "client": "dcr",
+    "as": [
+     "https://clerk.context7.com"
+    ]
+   },
+   "token": {
+    "label": "Context7 API key",
+    "help": "In Context7: dashboard, API keys."
+   }
+  },
+  {
+   "id": "google-gmail",
+   "label": "Google Mail",
+   "group": "google",
+   "url": "https://gmailmcp.googleapis.com/mcp/v1",
+   "transport": "http",
+   "who": "Google Workspace accounts in Google's Developer Preview only. Personal Gmail is not supported by Google's server.",
+   "evidence": "docs",
+   "oauth": {
+    "client": "byo",
+    "offline": true,
+    "scopes": [
+     "https://www.googleapis.com/auth/gmail.readonly",
+     "https://www.googleapis.com/auth/gmail.compose"
+    ],
+    "help": "In Google Cloud make a Desktop OAuth client, copy its client ID and secret into a vault item, then sign in.",
+    "server": {
+     "issuer": "https://accounts.google.com",
+     "authorize_uri": "https://accounts.google.com/o/oauth2/v2/auth",
+     "token_uri": "https://oauth2.googleapis.com/token"
+    },
+    "guide": {
+     "links": [
+      {
+       "label": "Create a Google Cloud project",
+       "url": "https://console.cloud.google.com/projectcreate"
+      },
+      {
+       "label": "Turn on the Google Mail MCP API",
+       "url": "https://console.cloud.google.com/apis/library/gmailmcp.googleapis.com"
+      },
+      {
+       "label": "Make the OAuth client",
+       "url": "https://console.cloud.google.com/apis/credentials"
+      }
+     ],
+     "steps": [
+      "Your Google Workspace account must be in Google's Workspace Developer Preview Program. Personal Gmail cannot use this server.",
+      "Make a Cloud project and turn on the API in the second link.",
+      "Set up the OAuth consent screen (Internal is simplest for a Workspace). Then in Credentials click Create credentials, OAuth client ID, and choose Desktop app.",
+      "Copy the Client ID and Client Secret and enter them here.",
+      "If the consent screen stays in Testing and is External, Google ends the sign-in after 7 days. Set it to Internal, or publish it."
+     ]
+    }
+   },
+   "note": "Google's server has no send tool: it drafts."
+  },
+  {
+   "id": "google-calendar",
+   "label": "Google Calendar",
+   "group": "google",
+   "url": "https://calendarmcp.googleapis.com/mcp/v1",
+   "transport": "http",
+   "who": "Google Workspace accounts in Google's Developer Preview only.",
+   "evidence": "docs",
+   "oauth": {
+    "client": "byo",
+    "offline": true,
+    "scopes": [
+     "https://www.googleapis.com/auth/calendar.calendarlist.readonly",
+     "https://www.googleapis.com/auth/calendar.events.freebusy",
+     "https://www.googleapis.com/auth/calendar.events.readonly"
+    ],
+    "help": "In Google Cloud make a Desktop OAuth client, copy its client ID and secret into a vault item, then sign in.",
+    "server": {
+     "issuer": "https://accounts.google.com",
+     "authorize_uri": "https://accounts.google.com/o/oauth2/v2/auth",
+     "token_uri": "https://oauth2.googleapis.com/token"
+    },
+    "guide": {
+     "links": [
+      {
+       "label": "Create a Google Cloud project",
+       "url": "https://console.cloud.google.com/projectcreate"
+      },
+      {
+       "label": "Turn on the Google Calendar MCP API",
+       "url": "https://console.cloud.google.com/apis/library/calendarmcp.googleapis.com"
+      },
+      {
+       "label": "Make the OAuth client",
+       "url": "https://console.cloud.google.com/apis/credentials"
+      }
+     ],
+     "steps": [
+      "Your Google Workspace account must be in Google's Workspace Developer Preview Program. Personal Gmail cannot use this server.",
+      "Make a Cloud project and turn on the API in the second link.",
+      "Set up the OAuth consent screen (Internal is simplest for a Workspace). Then in Credentials click Create credentials, OAuth client ID, and choose Desktop app.",
+      "Copy the Client ID and Client Secret and enter them here.",
+      "If the consent screen stays in Testing and is External, Google ends the sign-in after 7 days. Set it to Internal, or publish it."
+     ]
+    }
+   }
+  },
+  {
+   "id": "google-drive",
+   "label": "Google Drive",
+   "group": "google",
+   "url": "https://drivemcp.googleapis.com/mcp/v1",
+   "transport": "http",
+   "who": "Google Workspace accounts in Google's Developer Preview only.",
+   "evidence": "docs",
+   "oauth": {
+    "client": "byo",
+    "offline": true,
+    "scopes": [
+     "https://www.googleapis.com/auth/drive.readonly",
+     "https://www.googleapis.com/auth/drive.file"
+    ],
+    "help": "In Google Cloud make a Desktop OAuth client, copy its client ID and secret into a vault item, then sign in.",
+    "server": {
+     "issuer": "https://accounts.google.com",
+     "authorize_uri": "https://accounts.google.com/o/oauth2/v2/auth",
+     "token_uri": "https://oauth2.googleapis.com/token"
+    },
+    "guide": {
+     "links": [
+      {
+       "label": "Create a Google Cloud project",
+       "url": "https://console.cloud.google.com/projectcreate"
+      },
+      {
+       "label": "Turn on the Google Drive MCP API",
+       "url": "https://console.cloud.google.com/apis/library/drivemcp.googleapis.com"
+      },
+      {
+       "label": "Make the OAuth client",
+       "url": "https://console.cloud.google.com/apis/credentials"
+      }
+     ],
+     "steps": [
+      "Your Google Workspace account must be in Google's Workspace Developer Preview Program. Personal Gmail cannot use this server.",
+      "Make a Cloud project and turn on the API in the second link.",
+      "Set up the OAuth consent screen (Internal is simplest for a Workspace). Then in Credentials click Create credentials, OAuth client ID, and choose Desktop app.",
+      "Copy the Client ID and Client Secret and enter them here.",
+      "If the consent screen stays in Testing and is External, Google ends the sign-in after 7 days. Set it to Internal, or publish it."
+     ]
+    }
+   }
+  },
+  {
+   "id": "meta-ads",
+   "label": "Meta Ads",
+   "group": "marketing",
+   "url": "https://mcp.facebook.com/ads",
+   "transport": "http",
+   "who": "Anyone with access to an ad account.",
+   "evidence": "docs",
+   "token": {
+    "label": "Meta access token",
+    "help": "In Meta for Developers: Tools, Graph API Explorer or a System User token with ads_management."
+   }
+  },
+  {
+   "id": "microsoft",
+   "label": "Microsoft 365 mail and calendar",
+   "group": "work",
+   "target": "api",
+   "who": "Anyone with an Outlook.com, Hotmail, work or school account. You register one small app in Microsoft Entra first; it takes a few minutes.",
+   "evidence": "docs",
+   "api": {
+    "hosts": [
+     "graph.microsoft.com"
+    ],
+    "use": "Ask your agent to use vault.request with the credential microsoft against https://graph.microsoft.com/v1.0: GET /me/messages, POST /me/sendMail, GET /me/calendarView, POST /me/events. Reads run; sending mail waits for your approval unless you asked for it.",
+    "readers": [
+     {
+      "module": "connectors",
+      "paths": [
+       "/v1.0/me/calendarView"
+      ]
+     }
+    ]
+   },
+   "oauth": {
+    "client": "byo",
+    "public": true,
+    "redirect": {
+     "host": "localhost",
+     "path": "/"
+    },
+    "scopes": [
+     "Mail.ReadWrite",
+     "Mail.Send",
+     "Calendars.ReadWrite",
+     "User.Read",
+     "offline_access"
+    ],
+    "server": {
+     "issuer": "https://login.microsoftonline.com/common/v2.0",
+     "authorize_uri": "https://login.microsoftonline.com/common/oauth2/v2.0/authorize",
+     "token_uri": "https://login.microsoftonline.com/common/oauth2/v2.0/token"
+    },
+    "help": "Microsoft has no hosted server for mail an individual can use, so Vyre signs in with an app you register yourself. No client secret is needed.",
+    "guide": {
+     "links": [
+      {
+       "label": "Microsoft Entra: App registrations",
+       "url": "https://entra.microsoft.com/#view/Microsoft_AAD_RegisteredApps/ApplicationsListBlade"
+      }
+     ],
+     "steps": [
+      "Open the link and sign in. Click New registration.",
+      "Name it Vyre. Under Supported account types choose Any Entra ID Tenant + Personal Microsoft accounts. Under Redirect URI choose Mobile and desktop applications and enter http://localhost . Click Register.",
+      "Copy the Application (client) ID from the page that opens. Enter it here. Leave the secret empty.",
+      "Still in the app, open Authentication, then Advanced settings, set Allow public client flows to Yes, and Save.",
+      "Open API permissions, click Add a permission, choose Microsoft Graph, then Delegated permissions, and add Mail.ReadWrite, Mail.Send, Calendars.ReadWrite, offline_access and User.Read.",
+      "Vyre prints a Microsoft address. Open it, sign in and click Accept. Your browser then shows a page that cannot load; copy the full address from the browser bar and paste it here."
+     ]
+    }
+   },
+   "note": "A personal Microsoft account with no Azure sign-up may need a free Azure account before the Entra portal opens (unconfirmed)."
+  },
+  {
+   "id": "google-personal",
+   "label": "Google personal (Gmail, Calendar, Drive)",
+   "group": "google",
+   "target": "api",
+   "who": "Anyone with a Google account, including personal Gmail. You make a Google Cloud OAuth client first.",
+   "evidence": "docs",
+   "api": {
+    "hosts": [
+     "gmail.googleapis.com",
+     "www.googleapis.com"
+    ],
+    "use": "Ask your agent to use vault.request with the credential google-personal: GET https://gmail.googleapis.com/gmail/v1/users/me/messages, GET https://www.googleapis.com/calendar/v3/calendars/primary/events, GET https://www.googleapis.com/drive/v3/files. Reads run; sending mail waits for your approval unless you asked for it.",
+    "readers": [
+     {
+      "module": "connectors",
+      "paths": [
+       "/calendar/v3/calendars/primary/events"
+      ]
+     }
+    ]
+   },
+   "oauth": {
+    "client": "byo",
+    "offline": true,
+    "scopes": [
+     "https://www.googleapis.com/auth/gmail.readonly",
+     "https://www.googleapis.com/auth/gmail.compose",
+     "https://www.googleapis.com/auth/gmail.send",
+     "https://www.googleapis.com/auth/calendar",
+     "https://www.googleapis.com/auth/drive.readonly"
+    ],
+    "server": {
+     "issuer": "https://accounts.google.com",
+     "authorize_uri": "https://accounts.google.com/o/oauth2/v2/auth",
+     "token_uri": "https://oauth2.googleapis.com/token"
+    },
+    "help": "Google's hosted Workspace server does not take personal accounts, so Vyre signs in with an OAuth client you make in your own Google Cloud project.",
+    "guide": {
+     "links": [
+      {
+       "label": "Create a Google Cloud project",
+       "url": "https://console.cloud.google.com/projectcreate"
+      },
+      {
+       "label": "Turn on the Gmail API",
+       "url": "https://console.cloud.google.com/apis/library/gmail.googleapis.com"
+      },
+      {
+       "label": "Turn on the Google Calendar API",
+       "url": "https://console.cloud.google.com/apis/library/calendar-json.googleapis.com"
+      },
+      {
+       "label": "Turn on the Google Drive API",
+       "url": "https://console.cloud.google.com/apis/library/drive.googleapis.com"
+      },
+      {
+       "label": "OAuth consent screen",
+       "url": "https://console.cloud.google.com/apis/credentials/consent"
+      },
+      {
+       "label": "Make the OAuth client",
+       "url": "https://console.cloud.google.com/apis/credentials"
+      }
+     ],
+     "steps": [
+      "Make a Cloud project and turn on the three APIs with the links.",
+      "Set up the OAuth consent screen as External, and add your own address as a test user.",
+      "Publish the app: on the consent screen click Publish app, so its status is In production. Do this, or Google ends your sign-in every 7 days. It stays unverified, which for you alone means Google shows its unverified app screen once when you allow it; click Advanced, then Go to Vyre.",
+      "Open Credentials, click Create credentials, OAuth client ID, and choose Desktop app.",
+      "Copy the Client ID and Client Secret and enter them here.",
+      "Vyre prints a Google address. Open it, choose your account, click Advanced and Go to Vyre on the unverified app screen, then Allow."
+     ]
+    }
+   },
+   "note": "In Testing status Google ends a sign-in after 7 days for these scopes. In production (unverified) it does not, and a sign-in lasts until you revoke it, change your password, or leave it unused six months."
+  },
+  {
+   "id": "slack-web",
+   "label": "Slack (Web API, without the hosted server)",
+   "group": "work",
+   "target": "api",
+   "who": "You, as an admin of your own workspace. The fallback if Slack's hosted server refuses your app.",
+   "evidence": "docs",
+   "api": {
+    "hosts": [
+     "slack.com"
+    ],
+    "use": "Ask your agent to use vault.request with the credential slack-web: GET https://slack.com/api/conversations.history?channel=..., GET https://slack.com/api/search.messages?query=..., POST https://slack.com/api/chat.postMessage. Reads run; posting waits for your approval unless you asked for it."
+   },
+   "token": {
+    "label": "User OAuth token",
+    "help": "Make the app with the first link, install it to your workspace, and copy the User OAuth Token (xoxp-).",
+    "guide": {
+     "manifest": {
+      "label": "Make your Slack app with its settings filled in",
+      "link": "https://api.slack.com/apps?new_app=1&manifest_json=",
+      "json": {
+       "display_information": {
+        "name": "Vyre",
+        "description": "Lets your Vyre box read and post in Slack as you."
+       },
+       "oauth_config": {
+        "scopes": {
+         "user": [
+          "search:read",
+          "channels:history",
+          "groups:history",
+          "mpim:history",
+          "im:history",
+          "channels:read",
+          "groups:read",
+          "im:read",
+          "mpim:read",
+          "chat:write",
+          "users:read",
+          "users:read.email",
+          "files:read",
+          "reactions:read"
+         ]
+        }
+       },
+       "settings": {
+        "org_deploy_enabled": false,
+        "socket_mode_enabled": false,
+        "token_rotation_enabled": false
+       }
+      }
+     },
+     "steps": [
+      "Open the link. Pick your workspace and click Create.",
+      "Open OAuth & Permissions, click Install to Workspace and allow it.",
+      "Copy the User OAuth Token (it starts with xoxp-) and enter it here."
+     ]
+    }
+   }
+  }
+ ],
+ "unavailable": [
+  {
+   "id": "dropbox",
+   "label": "Dropbox",
+   "status": "unavailable",
+   "reason": "Dropbox allows only its trusted partners to register."
+  },
+  {
+   "id": "figma",
+   "label": "Figma",
+   "status": "unavailable",
+   "reason": "Figma limits its server to apps in its own catalog."
+  },
+  {
+   "id": "box",
+   "label": "Box",
+   "status": "unavailable",
+   "reason": "Box needs an administrator to switch its server on."
+  },
+  {
+   "id": "calendly",
+   "label": "Calendly",
+   "status": "unavailable",
+   "reason": "Calendly refused a sign-in from a local address on 30 Sep 2026 with no reason given."
+  },
+  {
+   "id": "wordpress-com",
+   "label": "WordPress.com",
+   "status": "unavailable",
+   "reason": "WordPress.com refused a sign-in from a local address on 30 Sep 2026, and needs a paid plan."
+  }
+ ]
+}

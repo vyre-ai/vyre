@@ -21,11 +21,11 @@ final class FixedRows: ResultProvider, ImmediateResults, @unchecked Sendable {
                  providers: [FixedRows(id: "fixed", rows: rows)])
 }
 
-@MainActor func snapshot(_ model: CapsuleModel, _ name: String, dir: String?) -> Bool {
+@MainActor func snapshot(_ model: CapsuleModel, _ name: String, dir: String?, appearance: NSAppearance.Name = .darkAqua) -> Bool {
     let view = CapsuleView(model: model, focus: FocusTicket(), snapshot: true)
     let host = NSHostingView(rootView: view)
     host.frame = NSRect(x: 0, y: 0, width: Theme.width, height: CapsuleLayout.panelHeight(model))
-    host.appearance = NSAppearance(named: .darkAqua)
+    host.appearance = NSAppearance(named: appearance)
     host.layoutSubtreeIfNeeded()
     guard let rep = host.bitmapImageRepForCachingDisplay(in: host.bounds) else { return false }
     host.cacheDisplay(in: host.bounds, to: rep)

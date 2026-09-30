@@ -181,15 +181,14 @@ public final class ClipboardProvider: ResultProvider, @unchecked Sendable {
         let id = "clip:" + c.h
         let store = self.store, watcher = self.watcher
         return ResultItem(id: id, kind: "clip", title: ClipText.label(c), subtitle: c.app.map { "\($0) · \(when)" } ?? when, icon: icon,
-                          section: .clipboard, score: hit.score, actions: [
-                            ResultAction(id: "copy", title: "Copy", symbol: "doc.on.clipboard", shortcut: KeyShortcut("return")) { _, _ in
+                          section: .clipboard, score: hit.score, actions: Paster.actions(noun: c.kind == .files ? "files" : c.kind == .image ? "image" : "clip") {
                                 await MainActor.run {
                                     switch store.pick(id, write: { watcher.write($0) }) {
-                                    case .success(let note): return .close(note)
-                                    case .failure(let e): return .failed(e.message)
+                                    case .success: return nil
+                                    case .failure(let e): return e.message
                                     }
                                 }
-                            },
+                            } + [
                             ResultAction(id: "forget", title: "Forget this clip", symbol: "minus.circle",
                                          shortcut: KeyShortcut("delete", command: true)) { _, _ in
                                 store.remove(id) ? .said("Forgotten") : .failed("That clip is gone.")

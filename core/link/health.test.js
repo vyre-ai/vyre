@@ -121,3 +121,39 @@ test("health: offline, unknown, timed out and no tailscale all answer in the con
   assert.deepEqual(Object.keys(none).sort(), keys);
   assert.match(String(none.why), /not installed/);
 });
+
+test("health: the one reach shape, direct with its tailnet detail, and none with a reason and a fix", async () => {
+  const { toReach, shaped, sinceTracker } = await import("./health.js");
+  const ok = { path: "relay", relay: "fra", latencyMs: 81, lastHandshake: null, online: true, checkedAt: 1, cached: false };
+  assert.deepEqual(toReach(ok, 500), { reach: "direct", why: "Connected over your Tailscale network (relayed via fra 81 ms).", since: 500,
+    tailnet: { path: "relay", latencyMs: 81 } });
+  const down = (why, extra = {}) => ({ path: "unknown", relay: null, latencyMs: null, lastHandshake: null, online: false, checkedAt: 1, cached: false, why, ...extra });
+  assert.deepEqual(toReach(down("this Mac is not paired with a box"), 7),
+    { reach: "none", why: "this Mac is not paired with a box", fix: { action: "pair", label: "Pair with your server" }, since: 7 });
+  assert.equal(toReach(down("Tailscale is not installed here"), 7).fix?.action, "install-tailscale");
+  assert.equal(toReach(down("Tailscale is Stopped here"), 7).fix?.action, "open-tailscale");
+  assert.equal(toReach(down("the node is offline"), 7).fix?.action, "retry");
+  assert.equal(toReach(down("say which node: a paired Mac's node id"), 7).fix, undefined);
+  // The path is known but the ping went unanswered: not reachable, and the detail says what status saw.
+  const quiet = toReach({ ...ok, path: "direct", latencyMs: null, why: "no answer to a ping in 3 s" }, 9);
+  assert.equal(quiet.reach, "none");
+  assert.deepEqual(quiet.tailnet, { path: "direct", latencyMs: null });
+
+  // since is the start of the current reach, not of the latest check.
+  const clock = { t: 100 };
+  const tr = sinceTracker(() => clock.t);
+  assert.equal(tr.at("box", "direct"), 100);
+  clock.t = 900;
+  assert.equal(tr.at("box", "direct"), 100);
+  assert.equal(tr.at("box", "none"), 900);
+  clock.t = 1500;
+  assert.equal(tr.at("box", "direct"), 1500);
+  assert.equal(tr.at("other", "direct"), 1500);
+
+  // shaped keeps every old field beside the new ones.
+  const s = shaped(ok, sinceTracker(() => 42), "k");
+  assert.equal(s.path, "relay");
+  assert.equal(s.latencyMs, 81);
+  assert.equal(s.reach, "direct");
+  assert.equal(s.since, 42);
+});

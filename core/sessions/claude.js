@@ -17,6 +17,9 @@
 
 import { spawnSession, killGroup } from "./spawn.js";
 
+/** The permission modes Claude Code knows. "bypassPermissions" is here because a person may choose it (threads.mode, person only); no other bypass-shaped name is. */
+const CLAUDE_MODES = new Set(["default", "acceptEdits", "plan", "bypassPermissions", "dontAsk", "auto"]);
+
 /** A push queue the SDK reads user messages from, for the life of the session. */
 function inbox() {
   /** @type {any[]} */ const items = [];
@@ -105,7 +108,7 @@ export function run(sdk, o) {
     stderr: (/** @type {string} */ c) => { err = (err + c).slice(-2000); },
     // Own the spawn: the pid is Vyre's to know, and a stop takes the whole tree.
     spawnClaudeCodeProcess: (/** @type {any} */ sp) => {
-      const c = spawnSession(sp.command, sp.args, { cwd: sp.cwd, env: sp.env, signal: sp.signal, subreaper: o.subreaper, uid: o.uid, gid: o.gid, onSpawn: o.onSpawn });
+      const c = spawnSession(sp.command, sp.args, { cwd: sp.cwd, env: sp.env, signal: sp.signal, subreaper: o.subreaper, uid: o.uid, gid: o.gid, account: o.account, onSpawn: o.onSpawn });
       child = c;
       c.on("exit", (cd, s) => { code = cd; sig = s; died = true; done(); });
       c.on("error", e => { err = e.message; died = true; done(); });
@@ -162,7 +165,11 @@ export function run(sdk, o) {
       throw new Error(`no ${subtype} on the Agent SDK driver`);
     },
     /** A permission mode a person chose (the Switchboard checks which). */
-    async setMode(/** @type {string} */ mode) { if (!exited) await q.setPermissionMode(mode); },
+    /** Only the modes Claude Code has; anything else, a bypass-shaped name above all, is refused here (conform's fixed set). */
+    async setMode(/** @type {string} */ mode) {
+      if (!CLAUDE_MODES.has(String(mode))) throw Object.assign(new Error(`${mode} is not a permission mode`), { code: "denied" });
+      if (!exited) await q.setPermissionMode(mode);
+    },
     /** Stop the current turn; the session stays. */
     async interrupt() { if (!exited) await q.interrupt().catch(() => {}); },
     /** End it: close the input (Claude Code finishes and exits), then TERM, then KILL, the whole tree. */

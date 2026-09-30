@@ -13,6 +13,8 @@ import { boxProjectsDir, oldProjectsDir, workDir, home as vyreHome } from "../co
 import { wantsMacs, askMacs, mergeRows, sourcesOf, boxLabel, macLabel } from "../modules/federate.js";
 import { isProjectId } from "../../lib/project-id.js";
 import { ownerDevice } from "../modules/index.js";
+import { real } from "./markers.js";
+import { within } from "../../lib/within.js";
 
 const str = { type: "string" };
 const strs = { type: "array", items: str };
@@ -57,6 +59,8 @@ export async function withLive(ctx, cat) {
 }
 /** The person's own surfaces. The loader refuses every other caller (agents' MCP, models' harness, guests, modules). */
 const OWNER = ["cli", "local", "capsule", "deck"];
+/** The person's own surfaces and modules acting for them: never a model (an agent or a session is mcp). */
+const PERSON_ONLY = [...OWNER, "module"];
 // Reviewer's MEDIUM 2 on f8330ccc: callers: ["module"] alone lets ANY module reach these three,
 // third-party ones installed into the modules folder included — modules skip presence entirely,
 // so an installed module could grant an agent any project, or clear a person's explicit revokes
@@ -101,17 +105,18 @@ export default {
       db: ctx.store.db, config: ctx.config, call: ctx.call,
       emit: (type, payload, where) => ctx.events.emit(type, payload, where),
     });
+    const setHistory = (project, state) => ctx.store.db.prepare("INSERT INTO projects_history (project, state, at) VALUES (?,?,?) ON CONFLICT(project) DO UPDATE SET state = excluded.state, at = excluded.at").run(project, state, Date.now());
     // Only markers already known are read at start. Walking the roots waits for the first list
     // or create, so starting vyred never crawls the user's folders unasked.
     try { P.refresh(); } catch (e) { ctx.log("could not read project markers: " + /** @type {Error} */ (e).message); }
 
     ctx.tool("projects.list", {
       description: "Every project: name, home, folders, people, avatar_seed (what its tile is drawn from), how many threads are in it (picked or by folder), the picked thread ids (picks), newest activity first.",
-      input: { type: "object", properties: { machines } },
+      input: { type: "object", properties: { machines, archived: { type: "boolean" } } },
       run: async (input, { caller } = {}) => {
-        if (!wantsMacs(ctx, input, caller)) return P.list();
+        if (!wantsMacs(ctx, input, caller)) return P.list({ archived: Boolean(input.archived) });
         // On the box, for the person: the box's projects, then each Mac's, every one labelled.
-        const [own, answers] = await Promise.all([P.list(), askMacs(ctx, "projects.list", {})]);
+        const [own, answers] = await Promise.all([P.list({ archived: Boolean(input.archived) }), askMacs(ctx, "projects.list", { archived: Boolean(input.archived) })]);
         return { ...own, projects: mergeRows(ctx, own.projects, answers, { rows: d => d && d.projects }),
           problems: mergeRows(ctx, own.problems, answers, { rows: d => d && d.problems }), sources: sourcesOf(ctx, answers) };
       },
@@ -134,6 +139,7 @@ export default {
             if (t.error || !t.data?.thread) throw Object.assign(new Error(`there is no chat ${id} to make a project from`), { code: "not_found" });
           }
         }
+        const before = P.previewHome(input);
         const created = P.create(input);
         const r = await ctx.call("agents.list", {});
         if (!r.error) {
@@ -147,8 +153,55 @@ export default {
             if (g.error) throw new Error(`${created.slug} was created, but could not grant ${a.name} access to it: ${g.error.message}`);
           }
         }
-        return created;
+        // Version history with no GitHub needed (charter): a new folder gets it quietly; an
+        // existing folder that is not a repo gets one quiet offer, once. A module caller (sync,
+        // github) maps folders it made itself and is never asked or offered anything.
+        if (String((meta && meta.caller) || "").startsWith("module:") || before.isRepo) return created;
+        if (before.fresh) {
+          const g = await ctx.call("github.project.local-init", { project: created.slug }).catch(e => ({ error: { message: String(e && e.message || e) } }));
+          if (!g.error) setHistory(created.slug, "kept");
+          else ctx.log?.(`projects: no local history for ${created.slug}: ${g.error.message}`);
+          return created;
+        }
+        setHistory(created.slug, "offered");
+        return { ...created, offer: { kind: "history", question: "Keep version history for this folder?", tool: "projects.history", input: { project: created.slug } } };
       },
+    });
+    ctx.tool("projects.history", {
+      description: "Answer the one question about version history for a project's folder: keep: true makes the folder a local git repo (no GitHub, no remote) so each session gets its own copy, branch and Undo; keep: false says no and it is never asked again. A folder that already has a history is left as it is. The person, or their agent on their request.",
+      input: { type: "object", required: ["project", "keep"], properties: { project: str, keep: { type: "boolean" } } },
+      callers: [...OWNER, "mcp"],
+      run: async ({ project, keep }, meta = {}) => {
+        const p = P.resolve(project);
+        await ownOrSession(meta, p.slug);
+        if (!keep) { setHistory(p.slug, "declined"); return { project: p.slug, state: "declined" }; }
+        const g = await ctx.call("github.project.local-init", { project: p.slug }).catch(e => ({ error: { code: "unavailable", message: String(e && e.message || e) } }));
+        if (g.error) throw Object.assign(new Error(g.error.message), { code: g.error.code });
+        setHistory(p.slug, "kept");
+        return { project: p.slug, state: "kept", ...g.data };
+      },
+    });
+    // Rename and archive are the person's, and their agent's on their behalf: a session in that project.
+    const ownOrSession = async (meta, slug) => {
+      // The person's assistant acts for them across every project (vyred's verified identity, meta.agentKind).
+      // TODO(P17): also require the person's own words asked for it (gate.said.match) once the Gate lands.
+      if (meta.agentKind === "assistant") return;
+      if (OWNER.includes(String(meta.caller || "").split(":")[0]) && !isAgent(meta.caller)) return;
+      const t = meta.thread && await ctx.call("threads.get", { thread: meta.thread }).catch(() => null);
+      if (isAgent(meta.caller) || !(t && t.data && t.data.thread && t.data.thread.project === slug))
+        throw refuse("this is the person's, or a session in that project acting on their request", "denied");
+    };
+    ctx.tool("projects.rename", {
+      description: "Rename a project. The slug, folder, threads, teammates and tile stay exactly as they were; only the name changes. Person-only: a model (agent or session) is refused.",
+      input: { type: "object", required: ["project", "name"], properties: { project: str, name: str } },
+      callers: PERSON_ONLY,
+      run: async ({ project, name }) => P.rename(P.resolve(project).slug, name),
+    });
+    ctx.tool("projects.archive", {
+      description: "Archive a project: it leaves the project list, and its folder, threads, teammates and history are untouched. archived: false brings it back. projects.list {archived: true} includes archived projects. Person-only: a model (agent or session) is refused.",
+      input: { type: "object", required: ["project"], properties: { project: str, archived: { type: "boolean" } } },
+      callers: PERSON_ONLY,
+      run: async ({ project, archived = true }) => P.archive(P.resolve(project).slug, archived),
     });
     ctx.tool("projects.add-threads", {
       description: "Pick threads (Claude Code session ids) into a project. A thread can be in several projects.",
@@ -201,7 +254,8 @@ export default {
     ctx.tool("projects.of", {
       description: "The project that owns a folder or any folder under it, or null. slug is what the other tools take.",
       input: { type: "object", required: ["cwd"], properties: { cwd: str } },
-      run: async ({ cwd }) => { const p = P.of(cwd); return p ? { slug: p.slug, name: p.name, home: p.home, folders: p.workspaces } : null; },
+      // folder: the real path the answer was judged on (symlinks and `..` resolved), which the registry puts back in an agent's call so the tool runs on what was checked.
+      run: async ({ cwd }) => { const p = P.of(cwd); return p ? { slug: p.slug, name: p.name, home: p.home, folders: p.workspaces, folder: real(cwd) } : null; },
     });
     ctx.tool("projects.threads", {
       description: "The threads in a project, newest first, each saying whether it was picked or ran in the project's folders.",
@@ -405,8 +459,12 @@ export default {
     // now seeded too, one row per project, the same as a named-projects agent, just for every
     // project instead of a named few (reviewer's follow-up on d897210d: without this, a wildcard
     // agent read nothing until someone granted it by hand, project by project).
+    // Set by stop(): nothing below touches the database once the module has been stopped.
+    let stopped = false;
     const seedFromAgents = async () => {
+      if (stopped) return { error: { code: "stopped", message: "projects stopped" } };
       const r = await ctx.call("agents.list", {});
+      if (stopped) return { error: { code: "stopped", message: "projects stopped" } };
       if (r.error) return { error: r.error };
       const list = Array.isArray(r.data) ? r.data : r.data?.agents || [];
       let seeded = 0;
@@ -461,14 +519,22 @@ export default {
     // and core/recall/index.js use, never in production.
     const RETRY_MS = process.env.NODE_TEST_CONTEXT ? 5 : 500;
     const autoSeed = db.prepare("SELECT 1 FROM projects_access_seeded").get() ? Promise.resolve() : (async () => {
-      for (let i = 0; i < 6; i++) {
+      for (let i = 0; i < 6 && !stopped; i++) {
         const r = await seedFromAgents();
+        if (stopped) return;
         if (!r.error) { db.prepare("INSERT OR IGNORE INTO projects_access_seeded (id, at) VALUES (1, ?)").run(Date.now()); return; }
         await new Promise(res => setTimeout(res, RETRY_MS));
       }
-      ctx.log("projects.access: could not auto-seed from agents.projects after 6 tries; run projects.access.migrate by hand once agents is up");
+      if (!stopped) ctx.log("projects.access: could not auto-seed from agents.projects after 6 tries; run projects.access.migrate by hand once agents is up");
     })();
 
-    return { async stop() {}, seeded: autoSeed };
+    return {
+      // Stops the auto-seed and waits (two seconds at most) for the step it is in, so nothing writes after the database closes.
+      async stop() {
+        stopped = true;
+        await within(autoSeed.catch(() => {}), 2000);
+      },
+      seeded: autoSeed,
+    };
   },
 };

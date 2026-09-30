@@ -185,6 +185,7 @@ const list = (v, what) => {
 /**
  * The sender types. `content` is what the tool listing tells Claude each takes.
  * @type {Record<string, { kinds: string[], content: Record<string, string>,
+ *   recipients?: (to: string[], content: any) => string[],
  *   check: (to: string[], content: any, s: SenderConfig) => void, summary: (to: string[], content: any) => string,
  *   send: (to: string[], content: any, s: SenderConfig, deps: SendDeps) => Promise<any> }>}
  */
@@ -201,6 +202,8 @@ export const TYPES = {
       if (c.in_reply_to !== undefined) { if (!isStr(c.in_reply_to)) throw new Error("in_reply_to must be a Message-ID"); noBreak(c.in_reply_to, "in_reply_to"); }
     },
     summary: (to, c) => cut(String(c.subject || "(no subject)"), 120),
+    // Every real destination, so what the person said covers all of them: cc and bcc go out too.
+    recipients: (to, c) => [...to, ...list(c.cc, "cc"), ...list(c.bcc, "bcc")],
     async send(to, c, s, deps) {
       const raw = Buffer.from(rfc822({ from: s.from, to, cc: list(c.cc, "cc"), bcc: list(c.bcc, "bcc"), subject: c.subject, body: c.body, in_reply_to: c.in_reply_to }), "utf8").toString("base64url");
       const base = String(s.base || "https://gmail.googleapis.com").replace(/\/+$/, "");

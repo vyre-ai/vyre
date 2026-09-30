@@ -9,15 +9,15 @@ status: draft
 # Key hint
 
 A small boxed key ("⌘K", "A", "⇧Tab", "Esc") that teaches the shortcut where it is used: in the
-command bar, next to row actions, in popover headers, in the Capsule's footer. Inside a button the
+command bar, next to row actions, in popover headers, in Lumen's footer. Inside a button the
 key is plain text, not this chip (see button). Drawn on most desktop boards, e.g. "Needs you,
-phone and desktop", "Plan approval and modes" and "The Mac Capsule and the CLI".
+phone and desktop", "Plan approval and modes" and "The Mac Lumen and the CLI".
 
 | Surface | Implementing file | Status |
 |---|---|---|
 | Deck | `deck/css/deck.css` `.kbd` (main) | partial |
 | App | none (work/mobile) | not built |
-| Capsule | `local/capsule/native/Sources/UI/CapsuleView.swift` `KeyHint` `KeyCap` (work/capsule-pro) | partial |
+| Lumen | `local/capsule/native/Sources/UI/CapsuleView.swift` `KeyHint` `KeyCap` (work/capsule-pro) | partial |
 
 ## Anatomy
 
@@ -77,6 +77,6 @@ Keys as printed on the Mac keyboard. The word after a chip is a lower-case verb 
 - [ ] Deck (work/pwa): ask hints read "⏎" and "esc" where the design keys are A and D; lower-case
   "esc" should be "Esc".
 - [ ] App: no key hints; add them for iPad and web builds with a hardware keyboard.
-- [ ] Capsule: `KeyCap` uses SF Rounded 10.5 semibold in `Theme.stone`, 17 square, filled
+- [ ] Lumen: `KeyCap` uses SF Rounded 10.5 semibold in `Theme.stone`, 17 square, filled
   `Theme.raised`; use JetBrains Mono 12, 20 tall, no fill, `Tokens` label ink.
 - [ ] System: the "Settings · account and project scopes" board draws ↵; use ⏎.

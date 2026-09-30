@@ -452,7 +452,10 @@ the change survives every resync and re-register. `use` is a map from capability
   default per capability; `vault.connections.update {id, default_for}`, a person's surfaces only,
   no presence since it changes no access), and `last_used`, set when `allowed` says yes, at most
   once a minute per row. Both only rank rows and sit outside the MAC. With a capability, `list`
-  adds `is_default` and sorts default first, then most recently used, then by label.
+  adds `is_default` and sorts default first, then most recently used, then by label. The first
+  time a capability has two or more ready connections and no default, that same call answers
+  `suggest_default: true` too - once ever for that capability (`vault_default_asked`), not once
+  per surface, so the Capsule, the Deck and chat never each ask their own copy of the question.
 - Events: `vault.connection-added {id, source, provider, account}`,
   `vault.connection-removed {id}`, `vault.connection-changed {id, fields}`.
 - A need may take several accounts: `multiple: true` in `needs.credentials`, and `vault.connect`

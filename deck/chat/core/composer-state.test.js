@@ -15,12 +15,12 @@ import { scorePath, compareScores } from "./match.js";
 test("the draft's mode is its first character; its body drops the character", () => {
   assert.equal(draftKind("/compact"), "command");
   assert.equal(draftKind("!git status --short"), "shell");
-  assert.equal(draftKind("# Harlow letters write dates as 27 September 2026"), "memory");
+  assert.equal(draftKind("/remember Harlow letters write dates as 27 September 2026"), "memory");
   assert.equal(draftKind("Use Estate intake v2"), "message");
   assert.equal(draftKind(" /not a command"), "message", "only the very first character");
   assert.equal(draftKind(""), "message");
   assert.equal(draftBody("!  npm run lint "), "npm run lint");
-  assert.equal(draftBody("#probate needs the executor"), "probate needs the executor");
+  assert.equal(draftBody("/remember probate needs the executor"), "probate needs the executor");
   assert.equal(draftBody("/compact keep todos"), "/compact keep todos", "a command keeps its slash");
   assert.equal(kindLabel("shell"), "Shell");
   assert.equal(kindLabel("memory"), "Memory");
@@ -137,7 +137,7 @@ test("Enter: idle sends; running steers by default and queues with Alt, the togg
   assert.deepEqual(enterAction({ text: msg, running: false, alt: true }), { do: "send", kind: "message", mode: null }, "nothing to queue behind");
   assert.deepEqual(enterAction({ text: "/compact", running: true }), { do: "send", kind: "command", mode: "queue" }, "a command waits for the turn");
   assert.deepEqual(enterAction({ text: "!git status", running: true }), { do: "send", kind: "shell", mode: null });
-  assert.deepEqual(enterAction({ text: "#dates as 27 September 2026", running: false }), { do: "send", kind: "memory", mode: null });
+  assert.deepEqual(enterAction({ text: "/remember dates as 27 September 2026", running: false }), { do: "send", kind: "memory", mode: null });
   assert.deepEqual(enterAction({ text: "!", running: false }), { do: "none" }, "a mode character alone");
   assert.deepEqual(enterAction({ text: "@design make it calmer", running: true }), { do: "send", kind: "teammate", mode: null },
     "a teammate's own turn, never this session's - not steer/queue, even mid-turn");
@@ -161,7 +161,7 @@ test("Esc: stops a turn, twice rewinds (empty) or clears (words), closes a picke
   assert.equal(escape(st, { now: 9000, running: false, text: "", pickerOpen: true }), "close");
   assert.equal(escape(st, { now: 9100, running: false, text: "" }), "none", "the picker's press does not count toward two");
   assert.equal(escape(createEsc(), { now: 1, running: false, text: "!npm run lint" }), "leave-mode");
-  assert.equal(escape(createEsc(), { now: 1, running: false, text: "#remember this" }), "leave-mode");
+  assert.equal(escape(createEsc(), { now: 1, running: false, text: "/remember this" }), "leave-mode");
   assert.equal(escape(createEsc(), { now: 1, running: false, text: "@design make it calmer" }), "leave-mode");
   assert.equal(escape(createEsc(), { now: 1, running: false, text: "Use v2", recalled: true }), "clear");
 });

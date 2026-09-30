@@ -418,7 +418,7 @@ export function claudeOnce(o = {}) {
 
 /**
  * @param {{ db: import("node:sqlite").DatabaseSync, personal: import("./store.js").Personal, now?: () => number,
- *   call?: (tool: string, input: any) => Promise<any>, log?: (m: string) => void, config?: any,
+ *   capped?: () => boolean, call?: (tool: string, input: any) => Promise<any>, log?: (m: string) => void, config?: any,
  *   runner?: ((r: { system: string, prompt: string, model: string, maxUsd: number }) => Promise<{ text: string, usd: number, tokens_in?: number, tokens_out?: number }>)|null }} deps
  *   config: the Vyre config, or a function returning it. runner: null means reads are only ever
  *   applied from what is kept (the evaluation's replay); nothing is sent.
@@ -445,17 +445,35 @@ export function createReader(deps) {
   };
   const day = t => { const d = new Date(t); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`; };
   const spentOn = k => /** @type {any} */ (db.prepare("SELECT usd, calls FROM memory_me_budget WHERE day = ?").get(k)) || { usd: 0, calls: 0 };
-  const charge = (k, usd) => db.prepare(`INSERT INTO memory_me_budget (day, usd, calls) VALUES (?, ?, 1)
-    ON CONFLICT (day) DO UPDATE SET usd = round(usd + excluded.usd, 6), calls = calls + 1`).run(k, usd);
-  // Recall's table may not exist yet when memory starts (Recall starts later, or not at all):
-  // prepared on first use, and no turn at all until it does.
-  let turnStmt = null;
-  const turnQ = { get: (session, seq) => {
-    if (!turnStmt) { try { turnStmt = db.prepare("SELECT text, role FROM recall_turns WHERE session = ? AND seq = ?"); } catch { return undefined; } }
-    // The reader sees only the person's own words: no harness blocks (personal/trust.js).
-    const r = /** @type {any} */ (turnStmt.get(session, seq));
-    return r && r.role === "user" ? { ...r, text: userWords(String(r.text)) } : r;
-  } };
+  const charge = (k, usd) => {
+    db.prepare(`INSERT INTO memory_me_budget (day, usd, calls) VALUES (?, ?, 1)
+      ON CONFLICT (day) DO UPDATE SET usd = round(usd + excluded.usd, 6), calls = calls + 1`).run(k, usd);
+    // The one ledger (core/spend): where the reader's dollars show up beside every other spend.
+    if (usd > 0 && deps.call) Promise.resolve(deps.call("spend.record", { provider: "claude", purpose: "memory.read", usd, calls: 1 })).catch(() => {});
+  };
+  /**
+   * Turns of the given sessions, by session and seq, read in ONE pass. recall_turns is an FTS5 table
+   * whose session and seq are unindexed columns, so every lookup by (session, seq) scans the whole
+   * table (about 20,000 rows on a real history): one lookup per queued turn, and two per turn for a
+   * reading batch, cost half a second or more of CPU a minute (30 Sep, perf-check on Node 22).
+   * @param {string[]} sessions @returns {Map<string, any>}
+   */
+  const loadTurns = sessions => {
+    /** @type {Map<string, any>} */ const out = new Map();
+    const ids = [...new Set(sessions.map(String))];
+    try {
+      for (let i = 0; i < ids.length; i += 400) {
+        const part = ids.slice(i, i + 400);
+        for (const t of /** @type {any[]} */ (db.prepare(`SELECT session, seq, role, text FROM recall_turns WHERE session IN (${part.map(() => "?").join(",")})`).all(...part))) out.set(`${t.session}\u0000${t.seq}`, t);
+      }
+    } catch { /* no recall table yet: no turn at all until it exists */ }
+    return out;
+  };
+  /** A loaded turn as the reader may see it: the person's own words only (personal/trust.js). @param {Map<string, any>} turns @param {string} session @param {number} seq */
+  const seen = (turns, session, seq) => {
+    const t = turns.get(`${session}\u0000${seq}`);
+    return t && t.role === "user" ? { role: t.role, text: userWords(String(t.text)) } : t;
+  };
   let timer = null, running = false, stopped = false, waiting = null;
 
   /** The people memory knows: first name, lower case -> role (spouse, daughter, dog, friend). */
@@ -493,8 +511,9 @@ export function createReader(deps) {
     if (!rows.length) return 0;
     let n = 0;
     const del = db.prepare("DELETE FROM memory_me_queue WHERE session = ? AND seq = ?");
+    const turns = loadTurns(rows.map(r => String(r.session)));
     for (const r of rows) {
-      const t = /** @type {any} */ (turnQ.get(r.session, r.seq));
+      const t = /** @type {any} */ (seen(turns, r.session, r.seq));
       if (t && t.role === "user") {
         const own = ownOf(String(t.text), known);
         const claims = [];
@@ -530,6 +549,8 @@ export function createReader(deps) {
     if (!cfg.on) return why("off");
     applyKept();
     if (!deps.runner) return why("no model");
+    // The provider's daily cap (core/spend) is reached: no model run until it is raised or the day turns.
+    if (deps.capped && deps.capped()) return why("spend cap");
     const list = unread(cfg.batch);
     if (!list.length) return why("nothing waiting");
     const t = now();
@@ -546,10 +567,11 @@ export function createReader(deps) {
       }
     }
     const turns = [];
+    const loaded = loadTurns(list.map(r => String(r.session)));
     for (const r of list) {
-      const x = /** @type {any} */ (turnQ.get(r.session, r.seq));
+      const x = /** @type {any} */ (seen(loaded, r.session, r.seq));
       if (!x || !readable(x.text)) { db.prepare("DELETE FROM memory_me_queue WHERE hash = ?").run(r.hash); continue; }
-      const before = /** @type {any} */ (turnQ.get(r.session, Number(r.seq) - 1));
+      const before = /** @type {any} */ (seen(loaded, r.session, Number(r.seq) - 1));
       turns.push({ hash: r.hash, text: String(x.text), before: before && before.role === "assistant" ? String(before.text) : null });
     }
     if (!turns.length) return why("nothing waiting");

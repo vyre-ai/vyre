@@ -1,0 +1,15 @@
+{
+  "name": "update",
+  "version": "0.1.0",
+  "description": "Is a newer Vyre out: one daily look at the releases, one answer every surface draws its Update card from.",
+  "roles": ["box", "local"],
+  "requires": [],
+  "does": { "tools": ["update.status", "update.check", "update.apply"] },
+  "watches": { "emits": ["update.available", "update.requested"] },
+  "shows": { "cli": [] },
+  "needs": {},
+  "teaches": {},
+  "settings": [
+    {"key": "update.auto_install", "group": "updates", "label": "Update automatically", "help": "Off by default. When on, Vyre installs a new release by itself between 2 and 5 in the morning, this server's time: only one signed by Vyre's release key, and it puts the old version back if the new one does not start.", "type": "bool", "default": false, "levels": ["account"], "apply": "live", "store": {"config": "update.install"}}
+  ]
+}

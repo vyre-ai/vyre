@@ -24,6 +24,14 @@
       ]
     },
     "replaces": { "$ref": "#/$defs/moduleName", "x-status": "planned", "description": "Set to this module's own name to stand in for the first-party module of that name. It must register every tool the original declares." },
+    "mentions": { "type": "array", "items": { "type": "object", "additionalProperties": false, "required": ["kind", "label", "search", "resolve"],
+      "properties": {
+        "kind": { "type": "string", "pattern": "^[a-z][a-z0-9-]{1,24}$", "x-message": "must be lowercase letters, digits and dashes, 2 to 25 characters" },
+        "label": { "type": "string", "minLength": 1, "maxLength": 40 },
+        "icon": { "type": "string", "pattern": "^[a-z][a-z0-9-]{0,24}$" },
+        "search": { "type": "string", "pattern": "^[a-z][a-z0-9-]*\\.[a-z][a-z0-9_.-]*$", "x-message": "must be one of this module's own tools, like \"vault.mentions.search\"" },
+        "resolve": { "type": "string", "pattern": "^[a-z][a-z0-9-]*\\.[a-z][a-z0-9_.-]*$", "x-message": "must be one of this module's own tools, like \"vault.mentions.resolve\"" }
+      } }, "description": "What this module offers the # tag picker (built in only): a kind of thing the person can mention, with the tool that searches names and the tool that resolves one pick for a thread. Names only, never a value." },
     "setupTools": { "type": "array", "items": { "type": "string", "pattern": "^[a-z][a-z0-9-]*\\.[a-z][a-z0-9_.-]*$" }, "x-message": "must be a list of tool names like \"relay.setup\"", "description": "Tools of this module the setup channel may call before the person has signed in. Built in only: an added module that declares it fails to load. The relay reads it to build the setup-channel allowlist." },
     "does": {
       "type": "object",
@@ -180,7 +188,10 @@
         "summary": { "type": "string", "minLength": 1, "maxLength": 140, "pattern": "^[^\\u2014\\u00a7]*$", "x-message": "must be 1 to 140 characters with no em dash or section sign" },
         "reach": { "enum": ["anyone", "asked", "person", "modules", "hook"], "description": "anyone (default), asked (an agent only when the person's own turn asked), person (reserved for Vyre), modules (other modules only), hook (the webhook route only)." },
         "outward": { "enum": ["send", "post", "pay", "delete"], "description": "It acts as the person outside. The registry runs it from the person's own surface and files every other call at the Gate." },
-        "cost": { "const": "paid", "description": "It spends money through the module's own model or API use." }
+        "cost": { "const": "paid", "description": "It spends money through the module's own model or API use." },
+        "projectArg": { "anyOf": [{ "type": "string", "pattern": "^[a-zA-Z][a-zA-Z0-9_]{0,30}$" }, { "type": "array", "items": { "type": "string", "pattern": "^[a-zA-Z][a-zA-Z0-9_]{0,30}$" }, "minItems": 1 }], "description": "The input field (or fields) that hold a project. An agent calling this tool for a project it is not granted is refused with not_found before the tool runs, and the tool gets meta.reach (which projects the caller may reach) for listings." },
+        "cwdArg": { "anyOf": [{ "type": "string", "pattern": "^[a-zA-Z][a-zA-Z0-9_]{0,30}$" }, { "type": "array", "items": { "type": "string", "pattern": "^[a-zA-Z][a-zA-Z0-9_]{0,30}$" }, "minItems": 1 }], "description": "The input field (or fields) that hold a folder. An agent calling this tool for a folder in a project it is not granted, or in no project, is refused with not_found before the tool runs." },
+        "target": { "$ref": "#/$defs/tool", "description": "For an asked tool (built in only): an internal tool of this module that answers what one call acts on, so the person's yes binds that thing and not the whole tool." }
       }
     },
     "toolRef": { "type": "object", "required": ["tool"], "x-unknown": "warn", "properties": { "tool": { "$ref": "#/$defs/tool" } } },

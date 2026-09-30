@@ -1,0 +1,325 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Workflows | Harlow Legal</title>
+<style>
+  body { font: 14px system-ui, sans-serif; margin: 0; padding: 12px 16px; }
+  table { border-collapse: collapse; width: 100%; }
+  td, th { border-bottom: 1px solid #ddd; padding: 4px 8px; text-align: left; }
+  .hidden { display: none !important; }
+  .dropdown, .panel { border: 1px solid #999; padding: 8px; margin: 8px 0; background: #fafafa; }
+  #drawer { position: fixed; right: 8px; top: 8px; width: 340px; max-height: 92vh; overflow: auto; background: #fff; border: 2px solid #333; padding: 12px; z-index: 10; }
+  #drawer .row { margin: 6px 0; }
+  #chooser { position: fixed; left: 20%; top: 20%; width: 320px; background: #fff; border: 2px solid #333; padding: 16px; z-index: 12; }
+  #toasts { position: fixed; right: 16px; bottom: 16px; z-index: 30; }
+  #toasts .toast { background: #222; color: #fff; padding: 8px 12px; margin-top: 6px; border-radius: 4px; }
+  .skeleton { height: 18px; margin: 8px 0; background: linear-gradient(90deg, #eee, #ddd, #eee); }
+  #backdrop { position: fixed; inset: 0; background: rgba(0,0,0,.4); z-index: 40; }
+  .layer { position: fixed; left: 20%; top: 25%; width: 340px; background: #fff; border: 2px solid #333; padding: 16px; z-index: 50; }
+  #editor-panel { margin-top: 16px; border-top: 1px solid #ccc; padding-top: 8px; }
+  #editor { width: 100%; height: 130px; border: 1px solid #999; }
+</style>
+</head>
+<body>
+<!-- The APP on SITE B. It renders nothing until the shell (its parent, on another site) posts
+     {type:"auth", token}; opened as a top-level page it stays on "Waiting for parent". After auth it draws
+     the Workflows list and builder and calls its OWN API (this origin, /api/...) with the token as a bearer
+     header, so the network traffic belongs to this frame. Flags on the URL (passed through by the shell):
+     ?slow=600 &whatsnew=1 &guard=1 &stale=1 &toast=2500 -->
+<div id="root"><p id="waiting" role="status">Waiting for parent</p></div>
+<script>
+  (function () {
+    var SHELL_ORIGIN = "{{SHELL}}";
+    var C_ORIGIN = "{{C}}";
+    var booted = false;
+    var TOKEN = null;
+    window.__auth = function () { return TOKEN ? "ready" : "waiting"; };
+    window.addEventListener("message", function (e) {
+      if (e.source !== window.parent || e.origin !== SHELL_ORIGIN) return;
+      var d = e.data;
+      if (!d || d.type !== "auth" || typeof d.token !== "string") return;
+      TOKEN = d.token;
+      if (!booted) { booted = true; boot(); }
+    });
+    if (window.parent === window) document.getElementById("waiting").textContent = "Waiting for parent";
+    else window.parent.postMessage({ type: "ready" }, SHELL_ORIGIN);
+
+    function $(id) { return document.getElementById(id); }
+    function hide(id, h) { $(id).classList.toggle("hidden", h); }
+    function api(method, path, body) {
+      return fetch(path, {
+        method: method,
+        headers: Object.assign({ "Authorization": "Bearer " + TOKEN, "Accept": "application/json" }, body ? { "Content-Type": "application/json" } : {}),
+        body: body ? JSON.stringify(body) : undefined
+      }).then(function (r) { return r.json().then(function (j) { return { status: r.status, body: j }; }); });
+    }
+    window.__api = api;
+
+    var VIEW_WORKFLOWS = [
+      '<section id="workflows-view">',
+      '  <h1>Workflows</h1>',
+      '  <div id="skeleton" class="hidden" aria-busy="true"><div class="skeleton"></div><div class="skeleton"></div><div class="skeleton"></div></div>',
+      '  <div id="automation-body">',
+      '    <button type="button" data-testid="create-workflow" id="create-workflow">Create Workflow</button>',
+      '    <p><label>Search workflows <input id="workflow-search" data-testid="workflow-search" placeholder="Search workflows"></label></p>',
+      '    <table data-testid="workflow-table"><thead><tr><th>Name</th><th>Status</th></tr></thead><tbody id="workflow-list" data-testid="workflow-list"></tbody></table>',
+      '    <div id="builder" class="panel hidden">',
+      '      <button type="button" data-testid="back-to-workflows" id="back-to-workflows">Back to workflows</button>',
+      '      <p><label>Workflow name <input id="workflow-name" data-testid="workflow-name"></label></p>',
+      '      <label><input type="checkbox" role="switch" id="publish-toggle" data-testid="publish-toggle"> Publish</label>',
+      '      <div>',
+      '        <button type="button" data-testid="trigger-picker" id="trigger-picker">Add New Workflow Trigger</button>',
+      '        <span id="trigger-label" data-testid="trigger-label">none</span>',
+      '        <div id="trigger-list" class="dropdown hidden" role="listbox" aria-label="Triggers">',
+      '          <input id="trigger-search" data-testid="trigger-search" aria-label="Search triggers" placeholder="Search triggers">',
+      '          <button type="button" data-testid="trigger-contact-created" data-trigger="Contact Created">Contact Created</button>',
+      '          <button type="button" data-testid="trigger-tag-added" data-trigger="Tag Added">Tag Added</button>',
+      '          <button type="button" data-testid="trigger-form-submitted" data-trigger="Form Submitted">Form Submitted</button>',
+      '          <button type="button" data-testid="trigger-appointment-booked" data-trigger="Appointment Booked">Appointment Booked</button>',
+      '          <button type="button" data-testid="trigger-opportunity-created" data-trigger="Opportunity Created">Opportunity Created</button>',
+      '        </div>',
+      '        <div id="trigger-config" class="panel hidden" aria-label="Trigger settings"><b id="trigger-config-name"></b> <button type="button" data-testid="trigger-confirm" id="trigger-confirm">Save Trigger</button></div>',
+      '      </div>',
+      '      <ol id="steps" data-testid="steps"></ol>',
+      '      <div id="toolbar"><button type="button" id="add-action" data-testid="add-action">Add Action</button><button type="button" id="save-workflow" data-testid="save-workflow">Save</button></div>',
+      '    </div>',
+      '  </div>',
+      '</section>'
+    ].join("\n");
+
+    var VIEW_CONTACTS = [
+      '<section id="contacts-view">',
+      '  <h1>Contacts</h1>',
+      '  <button type="button" data-testid="add-contact" id="add-contact">Add Contact</button>',
+      '  <table data-testid="contacts-table"><thead><tr><th>Name</th><th>Email</th></tr></thead><tbody id="contacts-body"></tbody></table>',
+      '</section>'
+    ].join("\n");
+
+    var OVERLAYS = [
+      '<div id="chooser" class="hidden" role="dialog" aria-label="Create workflow">',
+      '  <h3>Create workflow</h3>',
+      '  <button type="button" data-testid="start-from-scratch" id="start-from-scratch">Start from Scratch</button>',
+      '  <button type="button" data-testid="use-recipe" id="use-recipe">Use a recipe</button>',
+      '  <button type="button" data-testid="chooser-cancel" id="chooser-cancel">Cancel</button>',
+      '</div>',
+      '<div id="drawer" class="hidden" role="dialog" aria-label="Pick an action">',
+      '  <h3>Pick an action</h3>',
+      '  <input id="action-search" data-testid="action-search" aria-label="Search actions" placeholder="Search actions">',
+      '  <div id="action-buttons">',
+      '    <button type="button" data-testid="action-send-email" data-action="Send Email">Send Email</button>',
+      '    <button type="button" data-testid="action-send-sms" data-action="Send SMS">Send SMS</button>',
+      '    <button type="button" data-testid="action-wait" data-action="Wait">Wait</button>',
+      '    <button type="button" data-testid="action-add-tag" data-action="Add Tag">Add Tag</button>',
+      '    <button type="button" data-testid="action-remove-tag" data-action="Remove Tag">Remove Tag</button>',
+      '    <button type="button" data-testid="action-webhook" data-action="Webhook">Webhook</button>',
+      '  </div>',
+      '  <div id="fields-send-email" class="fields hidden">',
+      '    <div class="row"><label for="f-subject">Subject</label> <input id="f-subject" data-field="subject"></div>',
+      '    <div class="row"><label for="f-body">Message body</label> <input id="f-body" data-field="body"></div>',
+      '    <form id="test-send" class="row">',
+      '      <label for="f-test-to">Test recipient</label> <input id="f-test-to" data-testid="test-recipient" value="alex@example.com">',
+      '      <button type="submit" data-testid="test-send" id="test-send-button">Send</button>',
+      '    </form>',
+      '  </div>',
+      '  <div id="fields-send-sms" class="fields hidden">',
+      '    <div class="row"><span>SMS text</span> <input id="f-sms" data-field="sms"></div>',
+      '  </div>',
+      '  <div id="fields-wait" class="fields hidden">',
+      '    <div class="row"><label for="f-duration">Duration</label> <input id="f-duration" data-field="duration"></div>',
+      '    <div class="row"><input id="f-unit" data-field="unit" placeholder="Unit (minutes, hours)"></div>',
+      '  </div>',
+      '  <div id="fields-add-tag" class="fields hidden">',
+      '    <div class="row"><input id="f-tag" data-field="tag" aria-label="Tag name"></div>',
+      '  </div>',
+      '  <div id="fields-remove-tag" class="fields hidden">',
+      '    <div class="row"><input id="f-rtag" data-field="tag" aria-label="Tag to remove"></div>',
+      '  </div>',
+      '  <div id="fields-webhook" class="fields hidden">',
+      '    <div class="row"><label for="f-url">Webhook URL</label> <input id="f-url" data-field="url"></div>',
+      '  </div>',
+      '  <p><label>Action configuration <input id="action-config" data-testid="action-config"></label></p>',
+      '  <button type="button" data-testid="action-confirm" id="action-confirm">Save Action</button>',
+      '</div>',
+      '<div id="backdrop" class="hidden"></div>',
+      '<div id="whatsnew" class="layer hidden" role="dialog" aria-modal="true" aria-label="What\'s new">',
+      '  <h3>What\'s new in Harlow CRM</h3>',
+      '  <p>Try the new workflow templates and a quick tour.</p>',
+      '  <button type="button" data-testid="whatsnew-tour">Take a tour</button>',
+      '  <button type="button" data-testid="whatsnew-close" id="whatsnew-close">Close</button>',
+      '</div>',
+      '<div id="unsaved" class="layer hidden" role="alertdialog" aria-modal="true" aria-label="Unsaved changes">',
+      '  <h3>Unsaved changes</h3>',
+      '  <p>You have unsaved changes. If you leave, they will be lost.</p>',
+      '  <button type="button" data-testid="unsaved-stay" id="unsaved-stay">Stay</button>',
+      '  <button type="button" data-testid="unsaved-discard" id="unsaved-discard">Discard changes</button>',
+      '</div>',
+      '<div id="toasts" role="status" aria-live="polite"></div>'
+    ].join("\n");
+
+    function boot() {
+      var Q = new URLSearchParams(location.search);
+      var FX = { slow: Number(Q.get("slow")) || 0, whatsnew: Q.get("whatsnew") === "1", guard: Q.get("guard") === "1", stale: Q.get("stale") === "1", toast: Number(Q.get("toast")) || 2500 };
+      var onContacts = /^\/contacts/.test(location.pathname);
+      window.__state = { saved: false, steps: [], trigger: null, chosen: null, editId: null, dirty: false, discarded: 0, whatsnewClosed: 0, sentTests: 0 };
+      window.__fx = FX;
+      document.getElementById("root").innerHTML = (onContacts ? VIEW_CONTACTS : VIEW_WORKFLOWS) +
+        '<section id="editor-panel"><h2>Email template</h2><iframe id="editor" title="Email editor" src="' + C_ORIGIN + '/email-editor"></iframe></section>' + OVERLAYS;
+      if (onContacts) return bootContacts();
+      bootWorkflows(FX);
+    }
+
+    function toast(text, ms) {
+      var t = document.createElement("div");
+      t.className = "toast"; t.textContent = text;
+      $("toasts").appendChild(t);
+      setTimeout(function () { t.remove(); }, ms);
+    }
+
+    function bootContacts() {
+      api("GET", "/api/contacts?limit=10").then(function (r) {
+        var tb = $("contacts-body");
+        (r.body.data || []).forEach(function (c, i) {
+          var tr = document.createElement("tr");
+          tr.innerHTML = "<td><button type=\"button\"></button></td><td></td>";
+          tr.children[0].firstChild.textContent = c.name; tr.children[0].firstChild.setAttribute("data-testid", "contact-row-" + i);
+          tr.children[1].textContent = c.email;
+          tb.appendChild(tr);
+        });
+      });
+    }
+
+    function bootWorkflows(FX) {
+      var known = [];
+      var S = window.__state;
+      function renderList() {
+        var q = ($("workflow-search").value || "").toLowerCase();
+        var box = $("workflow-list");
+        box.innerHTML = "";
+        known.forEach(function (w, i) {
+          if (q && w.name.toLowerCase().indexOf(q) < 0) return;
+          var tr = document.createElement("tr");
+          tr.innerHTML = "<td><button type=\"button\"></button></td><td></td>";
+          var b = tr.children[0].firstChild;
+          b.setAttribute("data-testid", "workflow-open-" + i); b.textContent = w.name;
+          tr.children[1].textContent = w.status;
+          b.addEventListener("click", function () { openBuilder(w); });
+          box.appendChild(tr);
+        });
+      }
+      function loadList() { return api("GET", "/api/workflows").then(function (r) { known = r.body.data || []; renderList(); }); }
+      loadList();
+      $("workflow-search").addEventListener("input", renderList);
+
+      // A slow route shows a skeleton first.
+      if (FX.slow) { hide("skeleton", false); hide("automation-body", true); setTimeout(function () { hide("skeleton", true); hide("automation-body", false); }, FX.slow); }
+
+      // The "what's new" popup blocks the page until closed.
+      if (FX.whatsnew) { hide("backdrop", false); hide("whatsnew", false); }
+      $("whatsnew-close").addEventListener("click", function () { hide("whatsnew", true); hide("backdrop", true); S.whatsnewClosed++; });
+
+      function leave() {
+        if (FX.guard && S.dirty) { hide("backdrop", false); hide("unsaved", false); return; }
+        closeBuilder();
+      }
+      $("unsaved-stay").addEventListener("click", function () { hide("unsaved", true); hide("backdrop", true); });
+      $("unsaved-discard").addEventListener("click", function () { S.dirty = false; S.discarded++; hide("unsaved", true); hide("backdrop", true); closeBuilder(); });
+      $("back-to-workflows").addEventListener("click", leave);
+
+      function closeBuilder() { hide("builder", true); hide("create-workflow", false); $("workflow-search").parentNode.classList.remove("hidden"); document.querySelector("[data-testid=workflow-table]").classList.remove("hidden"); loadList(); }
+      function openBuilder(w) {
+        // The list is another page in the real app: hide it so the builder is the only thing with "Search" fields.
+        hide("builder", false); hide("create-workflow", true); $("workflow-search").parentNode.classList.add("hidden"); document.querySelector("[data-testid=workflow-table]").classList.add("hidden");
+        S.editId = w ? w.id : null; S.trigger = w ? w.trigger : null; S.steps = w ? (w.actions || []).slice() : [];
+        $("workflow-name").value = w ? w.name : ""; $("trigger-label").textContent = S.trigger || "none";
+        $("publish-toggle").checked = !!(w && w.status === "published");
+        $("steps").innerHTML = ""; S.steps.forEach(function (a) { var li = document.createElement("li"); li.textContent = a.type + ": " + (a.config || ""); $("steps").appendChild(li); });
+        S.dirty = false;
+      }
+      // Create Workflow opens a chooser; Start from Scratch opens the builder.
+      $("create-workflow").addEventListener("click", function () { hide("chooser", false); });
+      $("chooser-cancel").addEventListener("click", function () { hide("chooser", true); });
+      $("use-recipe").addEventListener("click", function () { hide("chooser", true); });
+      $("start-from-scratch").addEventListener("click", function () { hide("chooser", true); openBuilder(null); });
+
+      ["workflow-name", "publish-toggle"].forEach(function (id) { $(id).addEventListener("input", function () { S.dirty = true; }); $(id).addEventListener("change", function () { S.dirty = true; }); });
+      $("trigger-picker").addEventListener("click", function () { $("trigger-search").value = ""; filterTriggers(); hide("trigger-list", false); });
+      function filterTriggers() {
+        var q = $("trigger-search").value.toLowerCase();
+        document.querySelectorAll("[data-trigger]").forEach(function (b) { b.classList.toggle("hidden", !!q && b.textContent.toLowerCase().indexOf(q) < 0); });
+      }
+      $("trigger-search").addEventListener("input", filterTriggers);
+      document.querySelectorAll("[data-trigger]").forEach(function (b) {
+        b.addEventListener("click", function () {
+          S.trigger = b.getAttribute("data-trigger"); S.dirty = true;
+          $("trigger-label").textContent = S.trigger; $("trigger-config-name").textContent = S.trigger;
+          hide("trigger-list", true); hide("trigger-config", false);
+        });
+      });
+      $("trigger-confirm").addEventListener("click", function () { hide("trigger-config", true); });
+
+      // The toolbar is static markup at load; renderToolbar rebuilds it (new nodes) the way a single-page app re-renders.
+      function renderToolbar() {
+        var tb = $("toolbar");
+        tb.innerHTML = "";
+        var add = document.createElement("button"); add.type = "button"; add.id = "add-action"; add.setAttribute("data-testid", "add-action"); add.textContent = "Add Action";
+        var save = document.createElement("button"); save.type = "button"; save.id = "save-workflow"; save.setAttribute("data-testid", "save-workflow"); save.textContent = "Save";
+        add.addEventListener("click", onAdd); save.addEventListener("click", onSave);
+        tb.appendChild(add); tb.appendChild(save);
+      }
+      function onAdd() {
+        S.chosen = null; $("action-config").value = ""; $("action-search").value = ""; filterActions();
+        document.querySelectorAll("#drawer input").forEach(function (i) { if (i.id !== "f-test-to") i.value = ""; });
+        document.querySelectorAll(".fields").forEach(function (f) { f.classList.add("hidden"); });
+        hide("drawer", false);
+        if (FX.stale) setTimeout(function () { renderToolbar(); var p = document.createElement("p"); p.textContent = "Autosave is on"; $("builder").insertBefore(p, $("toolbar")); }, 80);
+      }
+      function filterActions() {
+        var q = $("action-search").value.toLowerCase();
+        document.querySelectorAll("[data-action]").forEach(function (b) { b.classList.toggle("hidden", !!q && b.textContent.toLowerCase().indexOf(q) < 0); });
+      }
+      $("action-search").addEventListener("input", filterActions);
+      // A tile only picks the action and shows its form: nothing is sent by it.
+      document.querySelectorAll("[data-action]").forEach(function (b) {
+        b.addEventListener("click", function () {
+          S.chosen = b.getAttribute("data-action");
+          document.querySelectorAll(".fields").forEach(function (f) { f.classList.add("hidden"); });
+          var f = $("fields-" + S.chosen.toLowerCase().replace(/ /g, "-"));
+          if (f) f.classList.remove("hidden");
+        });
+      });
+      // A real Send: posts the test message through the app's API (the server counts it).
+      $("test-send").addEventListener("submit", function (ev) {
+        ev.preventDefault();
+        api("POST", "/api/conversations/messages", { to: $("f-test-to").value, subject: $("f-subject").value, body: $("f-body").value }).then(function (r) {
+          if (r.status === 201) { S.sentTests++; toast("Test email sent", FX.toast); }
+        });
+      });
+      $("action-confirm").addEventListener("click", function () {
+        if (!S.chosen) return;
+        var fields = {};
+        document.querySelectorAll("#drawer .fields:not(.hidden) [data-field]").forEach(function (i) { fields[i.getAttribute("data-field")] = i.value; });
+        var config = $("action-config").value;
+        S.steps.push({ type: S.chosen, config: config, fields: fields });
+        S.dirty = true;
+        var li = document.createElement("li");
+        li.textContent = S.chosen + ": " + (config || Object.keys(fields).map(function (k) { return k + "=" + fields[k]; }).join(", "));
+        $("steps").appendChild(li);
+        hide("drawer", true);
+      });
+      function onSave() {
+        var body = { name: $("workflow-name").value, trigger: S.trigger, actions: S.steps, status: $("publish-toggle").checked ? "published" : "draft" };
+        var id = S.editId;
+        api(id ? "PUT" : "POST", id ? "/api/workflows/" + id : "/api/workflows", body).then(function (r) {
+          S.saved = r.status === 201 || r.status === 200;
+          if (S.saved) { S.dirty = false; S.editId = r.body.data.id; }
+          toast(S.saved ? "Workflow saved successfully" : "Could not save the workflow", FX.toast);
+        });
+      }
+      $("add-action").addEventListener("click", onAdd); $("save-workflow").addEventListener("click", onSave);
+    }
+  })();
+</script>
+</body>
+</html>

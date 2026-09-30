@@ -553,11 +553,11 @@ test("background: the passkey scripts follow pairing, page access and the popup 
   assert.deepEqual(page.matches, ["https://*/*", "http://*/*"]);
 
   assert.deepEqual((await b.send({ type: "passkeys-disable" }, b.popup)).data.passkeys, false);
-  assert.equal(b.registered.length, 0);
+  assert.equal(b.registered.filter(s => s.id.startsWith("vyre-passkey")).length, 0, "the key offer script is its own choice");
   assert.equal(b.local.passkeys, false);
   assert.deepEqual(await b.send({ type: "passkey-list", options: {} }, b.frame("https://harlow.test/")), { fallback: true }, "off: pages that have not reloaded get the browser's own");
   assert.equal((await b.send({ type: "passkeys-enable" }, b.popup)).data.passkeys, true);
-  assert.equal(b.registered.length, 2);
+  assert.equal(b.registered.filter(s => s.id.startsWith("vyre-passkey")).length, 2);
   await b.send({ type: "forget" }, b.popup);
   assert.equal(b.registered.length, 0, "unpaired: gone");
 

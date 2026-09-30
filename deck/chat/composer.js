@@ -13,7 +13,8 @@
 // - The first character picks the mode and the composer names it: "/" commands (a picker with
 //   the session's own list, threads.commands, else a static one; /model and /rewind open their
 //   pickers here), "!" runs a shell command in the session's folder (threads.shell, the output as
-//   a row), "#" saves a memory (threads.remember, to this project or about you). "@" anywhere
+//   a row), "/remember" saves a memory (threads.remember, to this project or about you), and "#" anywhere
+//   tags a vault item, file, artifact, repo or project (mentions.search). "@" anywhere
 //   opens files in the session's folder (files.search, ranked by core/match.js).
 // - Esc stops the turn; Esc Esc with nothing typed opens the rewind picker; Esc leaves the shell
 //   or memory mode and closes a picker. Shift+Tab cycles the permission mode (the chip under the
@@ -40,10 +41,11 @@
 // opts.onQueue hears how many wait and for whom (the Mac's lease line).
 
 import { h, put, link } from "../js/dom.js";
+import { kbd } from "../js/platform.js";
 import { attempt, queued as viaOutbox, on } from "../js/api.js";
 import { icon } from "../js/icons.js";
 import {
-  draftKind, draftBody, teammateRole, kindLabel, findMention, applyMention, rankFiles, historyStore, remember, recall, recalling, stopRecall,
+  draftKind, draftBody, teammateRole, kindLabel, findMention, applyMention, findVaultMention, rankFiles, historyStore, remember, recall, recalling, stopRecall,
   upAction, enterAction, createEsc, escape, nextMode, modeLabel, actionFor, addImage, removeImage, sendImages, newUuid, IMAGE_TYPES,
   modelChoices, shortModel,
 } from "./core/composer-state.js";
@@ -52,7 +54,10 @@ import { scorePath, compareScores } from "./core/match.js";
 import { queryInput, suggestRows, applySuggestion, pickedInput, tokenBefore } from "./core/suggest.js";
 import { CAPS, NEEDS_UPDATE, SEND_IMAGES } from "./core/caps.js";
 import { localSend, dropLocal, localShell, confirmSend } from "./core/session-state.js";
+import { markMade, nearRole } from "./core/made.js";
 import { listMenu, keysLine } from "./pickers.js";
+import { pasteTracker, NOT_TYPED } from "./core/paste-spans.js";
+import { tagPicker } from "./tag-picker.js";
 import { voiceStatus, listen as listenVoice } from "./core/voice.js";
 import { ago, agoLong } from "../js/need-rows.js";
 
@@ -152,9 +157,20 @@ export function mountComposer(opts) {
   function flushDraft() { clearTimeout(draftTimer); draftTimer = null; const v = ta.value; if (v) setDraft(thread, v); else clearDraft(thread); }
   const scheduleDraftSave = () => { clearTimeout(draftTimer); draftTimer = setTimeout(flushDraft, 200); draftTimer.unref?.(); };
 
+  // Which stretches of the draft were pasted: sent as `pasted` so a #Name inside one never tags (reviewer-2 M-P2).
+  const pastes = pasteTracker();
+  let prevValue = "", pendingPaste = false;
+  /**
+   * Text counts as typed only when a keystroke's own `inputType` says so: a missing one is a programmatic edit (a draft
+   * restored, an earlier message recalled) and paste, drop, undo, redo and replacement text are never typing. The code's
+   * own deliberate insertions (a picked command, file or tag) announce themselves with `own` (reviewer-2 M-N3).
+   * @param {string} [inputType] @param {boolean} [own]
+   */
+  const trackValue = (inputType, own = false) => { if (ta.value !== prevValue) { pastes.edit(prevValue, ta.value, own ? false : pendingPaste || !inputType || NOT_TYPED.has(inputType)); prevValue = ta.value; pendingPaste = false; } };
+
   const ta = /** @type {HTMLTextAreaElement} */ (h("textarea", {
     rows: 1, placeholder: "Message this session", "aria-label": "Message", enterkeyhint: "send",
-    oninput: () => { grow(); maybeLease(); if (recalling(hist)) stopRecall(hist); suggest(); drawChips(); scheduleDraftSave(); scheduleHint(); },
+    oninput: (/** @type {any} */ e) => { trackValue(e?.inputType); grow(); maybeLease(); if (recalling(hist)) stopRecall(hist); suggest(); drawChips(); scheduleDraftSave(); scheduleHint(); scheduleNear(); },
     onkeydown: onKey, onkeyup: (/** @type {KeyboardEvent} */ e) => { if (keyUp(e)) e.preventDefault(); }, onpaste: onPaste,
   }));
   const thumbs = h("div", { class: "composer-images", hidden: true });
@@ -188,7 +204,7 @@ export function mountComposer(opts) {
   const note = h("div", { class: "composer-note", role: "status" });
   // The tip sits on the left of the hint line, the key hints stay on the right (tip.md; chat's tip-line.js fills it).
   const tipSlot = h("div", { class: "composer-tip", hidden: true });
-  const hint = h("div", { class: "composer-hint" }, tipSlot, h("span", { class: "composer-keys" }, keysLine(["Enter", "to send"], ["Shift+Enter", "new line"], ["/", "commands"], ["@", "files"], ["!", "shell"], ["#", "memory"])));
+  const hint = h("div", { class: "composer-hint" }, tipSlot, h("span", { class: "composer-keys" }, keysLine(["Enter", "to send"], ["Shift+Enter", "new line"], ["/", "commands"], ["@", "files"], ["!", "shell"], ["#", "tag"])));
   const root = h("div", { class: "composer" }, note, thumbs, hintBox, voicePill, wrap, chips, hint);
 
   // The box fits its text. Where CSS can size it (field-sizing, chat.css) nothing runs per key.
@@ -208,11 +224,13 @@ export function mountComposer(opts) {
     });
   }
   const caret = () => (typeof ta.selectionStart === "number" ? ta.selectionStart : ta.value.length);
-  const setValue = (/** @type {string} */ v, at = v.length) => {
-    ta.value = v; try { ta.setSelectionRange?.(at, at); } catch {} grow(); drawChips(); flushDraft();
+  const setValue = (/** @type {string} */ v, at = v.length, own = false) => {
+    ta.value = v; try { ta.setSelectionRange?.(at, at); } catch {} trackValue(undefined, own); grow(); drawChips(); flushDraft();
     // An empty box is a fresh compose: the next message gets its own hint, not the last one's "not now".
     if (!v) { clearTimeout(hintTimer); hintDismissed = false; hideHints(); }
   };
+  // "#": one universal tag (chat/tag-picker.js, shared with the new-session sheet).
+  const tagUI = tagPicker({ ta, menu, caret, setValue: (v, at) => setValue(v, at, true), attempt, use: (tool, fn) => CAPS.use(tool, fn) });
   const say = (/** @type {any} */ what, soft = true) => { note.classList.toggle("soft", soft); put(note, what); };
 
   function maybeLease() {
@@ -243,7 +261,7 @@ export function mountComposer(opts) {
             h("button", { type: "button", "aria-label": "Remove " + m, onclick: () => { goal?.milestones.splice(i, 1); drawChips(); ta.focus(); } }, "×")))) : null,
         h("button", { class: "btn btn-ghost btn-sm", type: "button", disabled: !goal.title,
           title: goal.title ? "Send the goal and its milestones" : "Type a goal first", onclick: () => finishGoal() },
-          "Set goal", h("span", { class: "kbd" }, "⌘⏎")),
+          "Set goal", h("span", { class: "kbd" }, kbd("Enter"))),
         h("button", { class: "btn btn-ghost btn-sm", type: "button", onclick: () => cancelGoal() }, "Cancel", h("span", { class: "kbd" }, "Esc")),
       );
       chipSig = "";
@@ -257,7 +275,8 @@ export function mountComposer(opts) {
     chips.hidden = false;
     const s = /** @type {import("./core/session-state.js").Session} */ (S);
     // Called on every keystroke: rebuilt only when something it shows changed.
-    const sig = JSON.stringify([kind, busy, queueToggle, scope, s.mode, s.model, s.thinking,
+    const vts = tagUI.chips();
+    const sig = JSON.stringify([vts.map(t => t.name), kind, busy, queueToggle, scope, s.mode, s.model, s.thinking,
       ["threads.model", "threads.mode", "threads.thinking", "threads.shell"].map(off), kind === "shell" ? opts.cwd?.() : null]);
     if (sig === chipSig) return;
     chipSig = sig;
@@ -268,6 +287,7 @@ export function mountComposer(opts) {
       chip("composer-model", "threads.model", "Switch the model", () => openModels(), shortModel(s.model) || "Model"),
       chip("composer-mode", "threads.mode", "Next mode (Shift+Tab)", () => cycleMode(), modeLabel(s.mode), h("span", { class: "kbd" }, "⇧Tab")),
       chip("composer-thinking", "threads.thinking", "Thinking on or off (Alt+T)", () => toggleThinking(), s.thinking === true ? "Thinking on" : s.thinking === false ? "Thinking off" : "Thinking"),
+      tagUI.chipsEl(),
       label && kind !== "command" ? h("span", { class: "composer-kind" }, label,
         kind === "shell" ? h("span", { class: "faint" }, " · runs in " + shortDir(opts.cwd?.() || "") + (off("threads.shell") ? " · " + NEEDS_UPDATE : "")) : null) : null,
       kind === "memory" ? h("span", { class: "composer-scopes", role: "radiogroup", "aria-label": "Save this to" },
@@ -358,7 +378,9 @@ export function mountComposer(opts) {
     if (cmd) { showCommands(cmd); return; }
     const men = findMention(text, at);
     if (men && !machine) { showFiles(men); return; }
-    if (menu.kind === "command" || menu.kind === "mention") menu.close();
+    const vm = findVaultMention(text, at);
+    if (vm && !machine && !draftKind(text).startsWith("shell")) { tagUI.show(vm); return; }
+    if (menu.kind === "command" || menu.kind === "mention" || menu.kind === "vault") menu.close();
   }
 
   async function showCommands(/** @type {import("./core/commands.js").CommandRange} */ range) {
@@ -377,7 +399,7 @@ export function mountComposer(opts) {
     if (c.local && !complete) { setValue(""); runLocal(c.local); return; }
     const range = findCommand(ta.value, caret()) || { start: 0, end: ta.value.indexOf(" ") < 0 ? ta.value.length : ta.value.indexOf(" "), query: "" };
     const r = applyCommand(ta.value, range, c.name);
-    setValue(r.text, r.caret);
+    setValue(r.text, r.caret, true);
     ta.focus();
   }
   function runLocal(/** @type {string} */ what, query = "") {
@@ -685,7 +707,7 @@ export function mountComposer(opts) {
   function pickSuggestion(/** @type {ReturnType<typeof suggestRows>[number]} */ row) {
     menu.close();
     const r = applySuggestion(ta.value, caret(), row);
-    setValue(r.text, r.caret);
+    setValue(r.text, r.caret, true);
     void CAPS.use("suggest.picked", () => attempt("suggest.picked", pickedInput(row)));
     ta.focus();
   }
@@ -710,15 +732,16 @@ export function mountComposer(opts) {
     menu.close();
     if (!range) return;
     const r = applyMention(ta.value, range, rel);
-    setValue(r.text, r.caret);
+    setValue(r.text, r.caret, true);
     ta.focus();
   }
 
   // ---- images ---------------------------------------------------------------------------------
 
   function onPaste(/** @type {ClipboardEvent} */ e) {
+    // The next input event's new text is pasted (its inputType says so too, where the browser gives one).
     const items = [...(e.clipboardData?.items || [])].filter(it => it.kind === "file" && IMAGE_TYPES.includes(it.type));
-    if (!items.length || machine) return;
+    if (!items.length || machine) { pendingPaste = true; setTimeout(() => { pendingPaste = false; }, 0); return; }
     e.preventDefault();
     takeFiles(items.map(it => it.getAsFile()));
   }
@@ -794,9 +817,30 @@ export function mountComposer(opts) {
     sendMessage(ta.value.trim(), a.mode);
   }
 
+  /** What each sent message carried, by its words: the pasted spans and the tags. A failed send or a queued message taken back
+   * puts the words in the box again with this map, so what the person typed (#tags, asks) survives and what was pasted stays marked.
+   * A draft restored across a reload has no map and stays all not-typed. @type {Map<string, { pasted: string[], mentions: any[] }>} */
+  const sentMeta = new Map();
+  /** The words back in the box, with the pasted map and tags they were sent with when known. @param {string} text */
+  function restoreWords(text) {
+    const m = sentMeta.get(text);
+    if (!m) { setValue(text); return; }
+    setValue(text, text.length, true);
+    pastes.reset();
+    let from = 0;
+    for (const span of m.pasted) { const i = text.indexOf(span, from); if (i >= 0) { pastes.mark(i, i + span.length); from = i + span.length; } }
+    tagUI.restore(m.mentions);
+    drawChips();
+  }
+
   /** @param {string} text @param {"steer"|"queue"|null} mode */
   async function sendMessage(text, mode) {
     sending = true;
+    // The tags still in the words go with the turn as {kind, id, name}; the text keeps its #tokens.
+    const mentions = tagUI.take();
+    const pasted = [...new Set(pastes.of(ta.value).map(x => x.trim()).filter(x => x && text.includes(x)))];
+    sentMeta.set(text, { pasted, mentions });
+    if (sentMeta.size > 50) sentMeta.delete(/** @type {string} */ (sentMeta.keys().next().value));
     const uuid = newUuid();
     const imgs = images;
     images = []; drawImages();
@@ -813,7 +857,7 @@ export function mountComposer(opts) {
     if (drawn) patch(localSend(/** @type {any} */ (S), { uuid, text, mode: mode || "send", at: Date.now(), ...(imgs.length ? { images: imgs } : {}) }));
     /** @type {Record<string, any>} */
     const input = machine ? { thread, text, surface: "deck", machine }
-      : { thread, text, surface: "deck", uuid, ...(mode ? { mode } : {}), ...(imgs.length && CAPS.has(SEND_IMAGES) === true ? { images: sendImages(imgs) } : {}) };
+      : { thread, text, surface: "deck", uuid, ...(mode ? { mode } : {}), ...(mentions.length ? { mentions } : {}), ...(pasted.length ? { pasted } : {}), ...(imgs.length && CAPS.has(SEND_IMAGES) === true ? { images: sendImages(imgs) } : {}) };
     // Through the outbox (ADR 0029): a box out of reach keeps the words on this device and sends
     // them, once, when it is back. Meanwhile the note says so and the composer takes the next one.
     let waited = false;
@@ -828,7 +872,7 @@ export function mountComposer(opts) {
     drawChips();
     const back = () => {
       if (drawn) patch(dropLocal(/** @type {any} */ (S), uuid));
-      if (!ta.value) setValue(text);
+      if (!ta.value) restoreWords(text);
       if (!images.length && imgs.length) { images = imgs; drawImages(); }
     };
     // One note, replaced each time, and the words go back in the box so nothing typed is lost.
@@ -914,7 +958,47 @@ export function mountComposer(opts) {
 
   // ---- "@role": a project teammate's own turn (teammates.md section 2) ----------------------
 
-  /** @param {string|null} role @param {string} text @param {string} raw the whole draft, "@role" and all - "answer here" (below) sends this, not just the stripped body, so declining creation never silently edits what was typed */
+  /** The project's roles, read when asked and kept a minute (nothing polls). */
+  let rolesAt = 0, rolesList = /** @type {string[]} */ ([]);
+  async function knownRoles(fresh = false) {
+    const project = opts.project?.();
+    if (!project) return [];
+    if (!fresh && Date.now() - rolesAt < 60_000) return rolesList;
+    const r = await attempt("team.list", { project });
+    rolesAt = Date.now();
+    rolesList = r.error || !Array.isArray(r.data) ? [] : /** @type {any[]} */ (r.data).map(x => String(x.role || "")).filter(Boolean);
+    return rolesList;
+  }
+
+  /** "Did you mean @design?" while the person types a name one slip from a role this project has. Tab or a tap takes it; sending as typed still works. */
+  let nearTimer = /** @type {any} */ (null), nearSeq = 0, nearFor = /** @type {string|null} */ (null);
+  function scheduleNear() {
+    clearTimeout(nearTimer);
+    const role = draftKind(ta.value) === "teammate" && !/\s/.test(ta.value) ? teammateRole(ta.value) : null;
+    if (!role || !opts.project?.() || machine) { if (nearFor) { nearFor = null; put(note); note.classList.remove("soft"); } return; }
+    const seq = ++nearSeq;
+    nearTimer = setTimeout(async () => {
+      const roles = await knownRoles();
+      if (seq !== nearSeq) return;
+      const near = nearRole(role, roles);
+      if (!near) { if (nearFor) { nearFor = null; put(note); note.classList.remove("soft"); } return; }
+      nearFor = near;
+      say([h("span", null, "Did you mean "), h("button", { class: "btn btn-ghost btn-sm cv-near", type: "button", onclick: () => takeNear() }, "@" + near),
+        h("span", null, "? "), keysLine(["Tab", "takes it"])]);
+    }, 250);
+    nearTimer.unref?.();
+  }
+  /** Put the near role in place of the typed one. Returns whether it did. */
+  function takeNear() {
+    if (!nearFor) return false;
+    const rest = ta.value.replace(/^@[A-Za-z][A-Za-z0-9-]{0,40}/, "");
+    setValue("@" + nearFor + (rest || " "), undefined, true);
+    nearFor = null; put(note); note.classList.remove("soft");
+    ta.focus();
+    return true;
+  }
+
+  /** @param {string|null} role @param {string} text @param {string} raw the whole draft, "@role" and all */
   async function askTeammate(role, text, raw) {
     if (!role || !text || sending) return;
     sending = true; send.disabled = true;
@@ -925,31 +1009,34 @@ export function mountComposer(opts) {
     // same distinction session.js's own recall.transcript not_found already makes.
     const r = await attempt("team.ask", { to: role, text, surface: "deck" });
     sending = false; send.disabled = false;
-    if (!r.error) { setValue(""); put(note); note.classList.remove("soft"); return; }
+    if (!r.error) { setValue(""); put(note); note.classList.remove("soft"); nearFor = null; return; }
     if (r.error.missing && r.error.code !== "not_found") { say(NEEDS_UPDATE); return; }
-    // Any project's teammates match on the role slug only (never fuzzy): a typo or a role that
-    // does not exist yet both read as not_found - the offer to create is exactly where that gets
-    // caught, per teammates.md section 2.
     if (r.error.code !== "not_found") { say(`Could not reach ${role}: ${r.error.message || r.error.code}`); return; }
+    // No role of that name: the person's own agent by that name (its own chat, anywhere), else a
+    // new role made at once (native-core.md section 9: no confirm card). A role beats an agent of
+    // the same name here; the two are never merged.
+    const mine = await attempt("agents.list", {});
+    const agent = Array.isArray(/** @type {any} */ (mine.data)) ? /** @type {any[]} */ (mine.data).find(a => String(a.name || "").toLowerCase() === role) : null;
+    if (agent) { await askAgent(String(agent.name), text); return; }
     const project = opts.project?.();
     if (!project) { say(`There's no ${role} teammate here.`); return; }
     const d = await attempt("team.default.get", { project });
     if (d.error || !/** @type {any} */ (d.data)?.enabled) {
-      say(`There's no ${role} teammate in this project. Add one in Setup, or turn Teammates on for this project.`);
+      const to = `/settings?project=${encodeURIComponent(project)}#teammates`;
+      say([h("span", null, `Teammates are off for this project, so there's no ${role} here. `), link(to, null, "Turn them on in Settings")]);
       return;
     }
-    confirmCreate(role, text, project, raw);
+    await createAndAsk(role, text, project, raw);
   }
 
-  /** The inline confirm before team.add on @role's first use: one tap creates and sends, the
-   * other answers here instead - never a form, per teammates.md section 2. */
-  function confirmCreate(/** @type {string} */ role, /** @type {string} */ text, /** @type {string} */ project, /** @type {string} */ raw) {
-    put(note); note.classList.remove("soft");
-    say([
-      h("span", null, `There's no ${role} teammate yet. I'll create one and send it your message.`), " ",
-      h("button", { class: "btn btn-primary btn-sm", type: "button", onclick: () => createAndAsk(role, text, project, raw) }, "Create and send"),
-      h("button", { class: "btn btn-ghost btn-sm", type: "button", onclick: () => { put(note); note.classList.remove("soft"); sendMessage(raw, null); } }, "Don't create, answer here"),
-    ]);
+  /** "@kit ...": the person's own agent, a personal chat that works anywhere. Sent without waiting for the reply; it opens in the agent's own chat. */
+  async function askAgent(/** @type {string} */ name, /** @type {string} */ text) {
+    sending = true; send.disabled = true;
+    const r = await attempt("agents.ask", { agent: name, text, surface: "deck", wait: false });
+    sending = false; send.disabled = false;
+    if (r.error) { say(r.error.missing ? NEEDS_UPDATE : `Could not reach ${name}: ${r.error.message || r.error.code}`); return; }
+    setValue("");
+    say([h("span", null, `Sent to ${name}. `), link(`/agents/${encodeURIComponent(name)}`, null, `Open ${name}'s chat`)]);
   }
 
   /** The middle tier of the box's own model list (sessions.models.get's aliases, its one list:
@@ -963,23 +1050,23 @@ export function mountComposer(opts) {
     return typeof id === "string" ? id : null;
   }
 
-  /** @param {string} role @param {string} text @param {string} project @param {string} raw the
-   *  whole draft, passed through so a not_found right after team.add still has it (createAndAsk
-   *  calls askTeammate again, which needs raw for its own possible confirmCreate). */
+  /** @param {string} role @param {string} text @param {string} project @param {string} raw */
   async function createAndAsk(role, text, project, raw) {
     sending = true; send.disabled = true;
-    // A generic template on a guess (teammates.md section 2): no role-specific brief guessed from
-    // the name (guessing wrong is worse than asking), never worktree isolation (a deliberate,
-    // person-made choice, not a side effect of typing a word with an @ in front of it), the box's
-    // own middle-tier model (not the ADR's Opus default for a person-made teammate, read from
-    // sessions.models.get rather than named here) since it exists on a guess and should not spend
-    // Opus turns proving out a role nobody has scoped yet.
+    // A generic template on a guess: no role-specific brief guessed from the name (guessing wrong is
+    // worse than asking; the role's charter is drafted by an agent from the project, teammates' side),
+    // never worktree isolation, and the box's own middle-tier model (read from sessions.models.get,
+    // not named here) since it exists on a guess and should not spend Opus turns proving out a role
+    // nobody has scoped yet.
     const model = await guessModel();
     const r = await attempt("team.add", { project, role, brief: "Ask me about anything; I'll figure out the role from what you send me.",
       isolation: "folder", tools: ["files", "web"], ...(model ? { model } : {}) });
-    if (r.error) { sending = false; send.disabled = false; say(`Could not add ${role}: ${r.error.message || r.error.code}`); return; }
     sending = false; send.disabled = false;
-    askTeammate(role, text, raw);
+    if (r.error) { say(`Could not add ${role}: ${r.error.message || r.error.code}`); return; }
+    rolesAt = 0;
+    const d = /** @type {any} */ (r.data) || {};
+    markMade(project, role, typeof d.agent === "string" ? d.agent : typeof d.id === "string" ? d.id : null);
+    await askTeammate(role, text, raw);
   }
 
   /** A queued message back in the box: Enter saves the new words (threads.edit), Esc lets it be. */
@@ -988,7 +1075,7 @@ export function mountComposer(opts) {
     if (off("threads.edit")) { say(NEEDS_UPDATE); return; }
     if (q.queued == null) { say("Still queueing; edit it in a moment."); return; }
     editing = { uuid: q.uuid, queued: q.queued };
-    setValue(q.text);
+    restoreWords(q.text);
     say([h("span", { class: "lbl" }, "Editing a queued message"), " ", keysLine(["⏎", "saves"], ["Esc", "leaves it as it was"])]);
     ta.focus();
   }
@@ -996,7 +1083,11 @@ export function mountComposer(opts) {
     const e = editing;
     if (!e) return;
     const text = ta.value.trim();
-    const r = await CAPS.use("threads.edit", () => attempt("threads.edit", { thread, queued: e.queued, text }));
+    // The edited words go with the same pasted spans and tags a send carries, so an edit cannot turn pasted text into a tag. `pasted` is
+    // always sent, [] when nothing was pasted: sessions hears an edited queued message only when the key is an array (an absent key = all not typed).
+    const pasted = [...new Set(pastes.of(ta.value).map(x => x.trim()).filter(x => x && text.includes(x)))];
+    const mentions = tagUI.chips().map(t => ({ kind: t.kind, id: t.id, name: t.name }));
+    const r = await CAPS.use("threads.edit", () => attempt("threads.edit", { thread, queued: e.queued, text, ...(mentions.length ? { mentions } : {}), pasted }));
     if (r.error) { say(r.missing ? NEEDS_UPDATE : "Could not change it: " + r.error.message); return; }
     // thread.queued comes back with the same id and the new words; the row shows them now.
     const q = S?.queued.find(x => x.queued === e.queued);
@@ -1059,6 +1150,8 @@ export function mountComposer(opts) {
       if ((e.key === "Enter" && !e.shiftKey) || (e.key === "Tab" && !e.shiftKey)) { if (menu.pick()) { e.preventDefault(); return; } }
     }
     if (e.key === "Escape") { if (onEscape()) e.preventDefault(); return; }
+    // Tab takes "Did you mean @design?".
+    if (e.key === "Tab" && !e.shiftKey && !e.altKey && !e.metaKey && !e.ctrlKey && nearFor && takeNear()) { e.preventDefault(); return; }
     // Tab on a word: suggest's completions (the box's names, entities and phrases).
     if (e.key === "Tab" && !e.shiftKey && !e.altKey && !e.metaKey && !e.ctrlKey && !menu.isOpen() && rich()) {
       const { token } = tokenBefore(ta.value, caret());

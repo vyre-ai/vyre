@@ -16,7 +16,7 @@ their own. Drawn on "States · every list, every size".
 |---|---|---|
 | Deck | `.empty` and `.reach` in `deck/css/deck.css` (main); `deck/js/empty-actions.js`, the skeleton in `deck/js/now-phone.js` (work/pwa) | partial |
 | App | `Empty` in `apps/app/src/ui/Screen.tsx` (work/mobile) | partial |
-| Capsule | `OfflineBanner` in `local/capsule/native/Sources/UI/AgentDeskView.swift` (work/capsule-pro) | partial |
+| Lumen | `OfflineBanner` in `local/capsule/native/Sources/UI/AgentDeskView.swift` (work/capsule-pro) | partial |
 
 ## Empty
 
@@ -123,5 +123,5 @@ Deck (main, work/pwa)
 App (work/mobile)
 - [ ] `Empty` only: no skeleton, no offline pill (`useConnection` is unused), no decided state.
 
-Capsule (work/capsule-pro)
+Lumen (work/capsule-pro)
 - [ ] Offline banner reads "OFFLINE" in caps; no queued count; no skeleton.

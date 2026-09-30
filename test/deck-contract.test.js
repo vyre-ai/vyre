@@ -19,6 +19,23 @@ const REPO = path.join(path.dirname(fileURLToPath(import.meta.url)), "..");
  *  it is expected, not a bug this test should catch. A tool leaves this list the day every box
  *  registers it - it does not grow to paper over a call nothing answers by design. */
 const OPTIONAL = {
+  "spend.raise": "iq ships it (work/iq 90eb2f4f); the spend cap line and the Settings Spend section say so in a line when the box has no spend module. Leaves this list when iq merges.",
+  "spend.summary": "iq ships it (work/iq 90eb2f4f); the spend cap line and the Settings Spend section say so in a line when the box has no spend module. Leaves this list when iq merges.",
+  "connectors.catalog": "connectors ships it in work/connectors-0.2 (CHAT.md 11:40); the Add a service list checks the answer and says so in a line when the box has no connectors module. Leaves this list when connectors merges.",
+  "connectors.connect": "connectors ships it in work/connectors-0.2 (CHAT.md 11:40); the Add a service list checks the answer and says so in a line when the box has no connectors module. Leaves this list when connectors merges.",
+  "connectors.connect.finish": "connectors ships it in work/connectors-0.2 (CHAT.md 11:40); the Add a service list checks the answer and says so in a line when the box has no connectors module. Leaves this list when connectors merges.",
+  "connectors.connect.cancel": "connectors ships it in work/connectors-0.2 (CHAT.md 11:40); the Add a service list checks the answer and says so in a line when the box has no connectors module. Leaves this list when connectors merges.",
+  "connectors.disconnect": "connectors ships it in work/connectors-0.2 (CHAT.md 11:40); the Add a service list checks the answer and says so in a line when the box has no connectors module. Leaves this list when connectors merges.",
+  "mentions.search": "platform ships it (the # tag picker, CHAT.md); the composer checks CAPS and offers nothing when the box has no such tool. Leaves this list when platform merges.",
+  "assistant.daily": "assistant ships it in work/assistant; homePath() falls back to the assistant's own thread, then Now. Leaves this list when assistant merges.",
+  "team.charter.history": "teammates ships it in work/teammates-0.2 (core/team); the charter notice draws only after the event, and says so in a line when a call fails. Leaves this list when teammates merges.",
+  "team.charter.diff": "teammates ships it in work/teammates-0.2 (core/team); the charter notice draws only after the event, and says so in a line when a call fails. Leaves this list when teammates merges.",
+  "team.charter.revert": "teammates ships it in work/teammates-0.2 (core/team); the charter notice draws only after the event, and says so in a line when a call fails. Leaves this list when teammates merges.",
+  "projects.rename": "teammates ships it in work/teammates-0.2 (core/projects); the Deck shows the action only when the call answers, and says so in a line when it does not. Leaves this list when teammates merges.",
+  "projects.archive": "teammates ships it in work/teammates-0.2 (core/projects); the Deck shows the action only when the call answers, and says so in a line when it does not. Leaves this list when teammates merges.",
+  "projects.history": "teammates ships it in work/teammates-0.2 (core/projects); the Deck shows the action only when the call answers, and says so in a line when it does not. Leaves this list when teammates merges.",
+  "assistant.welcome": "assistant ships it in work/assistant (core/assistant/welcome.js); loadWelcome() treats a missing answer as no welcome row. Leaves this list when assistant merges.",
+  "team.retire": "teammates ships it in work/teammates-0.2 (e344434f); the handoff Undo falls back to a plain retire when it is missing or refuses. Leaves this list when teammates merges.",
   "vault.usage": "lives on another machine or module not on every box; falls back when missing.",
   "voice.status": "local/voice is a Mac-local module (deck/chat/core/voice.js); voiceStatus() already treats a missing answer as \"no key\", never assumed present on a box.",
   "voice.listen": "local/voice is a Mac-local module (deck/chat/core/voice.js); listen() already turns a missing answer into \"cannot use voice yet\", never assumed present on a box.",

@@ -69,11 +69,12 @@ In the order `vyre help` lists them.
 | [`vyre apps`](#vyre-apps) | drive the Mac's apps: timer 10 min, note: buy milk, weather tomorrow |
 | [`vyre team`](#vyre-team) | Project teammates: add one, send it work, read what came back |
 | [`vyre sideview`](#vyre-sideview) | this session on the left, Chrome filling the rest |
+| [`vyre spend`](#vyre-spend) | today's spend per provider and its daily cap |
 | [`vyre statusline`](#vyre-statusline) | Vyre's line under every Claude Code session |
 | [`vyre voice`](#vyre-voice) | push-to-talk from the terminal (Enter to talk), status, and the speech key |
 | [`vyre mcp`](#vyre-mcp) | the Vyre MCP server on stdio, for plain claude |
 | [`vyre update`](#vyre-update) | install the newest release after a backup, and roll back if it does not come up |
-| [`vyre backup`](#vyre-backup) | copy config, store, vault, watchers and certificates into one file |
+| [`vyre backup`](#vyre-backup) | seal your data, project files and session transcripts into one passphrase-locked file (an unfinished one resumes) |
 | [`vyre presence`](#vyre-presence) | the keys that prove you are here, and a code to enroll a passkey |
 | [`vyre tips`](#vyre-tips) | short tips on using each part of Vyre |
 | [`vyre module`](#vyre-module) | make, check, test and add a module of your own |
@@ -211,7 +212,7 @@ Running a session vyred owns:
   vyre threads send <thread> --queue <text>         hold it until the turn ends (a terminal session always does)
   vyre threads send <thread> --steer <text>         join the running turn at its next step
   vyre threads send <thread> --image F [text]       with a picture (.png .jpg .gif .webp, 5 MB, 5 at most)
-  vyre threads send <thread> "!ls"                  a leading ! runs it (shell), # remembers it; --raw sends as typed
+  vyre threads send <thread> "!ls"                  a leading ! runs it (shell), /remember saves it; --raw sends as typed
   vyre threads send <thread> /compact               a slash command; vyre threads commands <thread> lists them
   vyre threads list [--all] [--agent A]             the headless threads of the last day (ls)
   vyre threads queue <thread>                       what is queued and not yet handed over
@@ -230,7 +231,7 @@ Running a session vyred owns:
   vyre threads rewind <thread> <n|uuid> [--restore conversation|code|both]
                                                     back to a message (double Esc); its words come back
   vyre threads shell <thread> <command...>          run it in the thread's folder (! mode); Claude sees it next
-  vyre threads remember <thread> <text> [--scope project|user|local]   a line for CLAUDE.md (# mode)
+  vyre threads remember <thread> <text> [--scope project|user|local]   a line for CLAUDE.md (/remember)
   vyre threads tasks <thread>                       its background tasks (shells, subagents)
   vyre threads kill-task <thread> <task>            stop one
   vyre threads commands <thread>                    the slash commands the running session offers
@@ -394,7 +395,7 @@ vyre memory [about [<thing...>]|ask <question...>|fix [<answer id> <fix>]|correc
 Read it:
   vyre memory [about] [<thing>] [--project <slug>]   what it holds, or everything about one thing
 Ask it:
-  vyre memory ask "<question>" [--sources]   Vyre IQ: an answer from your past sessions and what you have said, with where it came from
+  vyre memory ask "<question>" [--sources]   Vyre Memory: an answer from your past sessions and what you have said, with where it came from
   vyre memory fix <answer id> wrong | forget | "<the right answer>"   correct an answer; remembered next time
   vyre memory fix [undo <n>]   what you corrected this week, or undo one
 Change what it holds:
@@ -558,7 +559,7 @@ vyre watchers [list|test|create|pause|resume|logs|items] [name] [--json]
 MCP servers and Google accounts Vyre can reach for you.
 
 ```
-vyre connect list|add|remove|rm|test|help [--json]
+vyre connect list|apps|add|remove|rm|test|help [--json]
 ```
 
 ### vyre run
@@ -671,6 +672,22 @@ This session on the left, Chrome filling the rest.
 vyre sideview [open|close|status] [--glass [name]] [--url U] [--ratio R] [--terminal] [--json]
 ```
 
+### vyre spend
+
+Today's spend per provider and its daily cap.
+
+```
+vyre spend [raise <provider> <usd|+usd|off>] [--json]
+```
+
+Read it:
+  vyre spend                          today's spend (UTC) per provider against its cap
+Change a cap:
+  vyre spend raise <provider> <usd>   set the cap in dollars (provider all: every provider together)
+  vyre spend raise <provider> +<usd>  add to it
+  vyre spend raise <provider> off     no cap
+At a cap the spending thread pauses with one line, and Vyre Memory answers from facts and search.
+
 ### vyre statusline
 
 Vyre's line under every Claude Code session.
@@ -700,7 +717,7 @@ vyre mcp [serve | install [--yes]] [--json]
 Install the newest release after a backup, and roll back if it does not come up.
 
 ```
-vyre update [--check] [--channel stable|beta] [--to <version>] [--yes] [--rollback [--restore-data]] [--json]
+vyre update [--check] [--channel stable|beta] [--to <version>] [--yes] [--allow-unsigned] [--rollback [--restore-data]] [--json]
 ```
 
 --check          say whether a newer release is out; exit 0 when current, 1 when one waits
@@ -715,10 +732,10 @@ vyre update does this; from a checkout, update with git.
 
 ### vyre backup
 
-Copy config, store, vault, watchers and certificates into one file.
+Seal your data, project files and session transcripts into one passphrase-locked file (an unfinished one resumes).
 
 ```
-vyre backup [file]
+vyre backup [file] [--skip-projects] [--skip-transcripts] [--work DIR] [--with-provider-logins]
 ```
 
 ### vyre presence
@@ -853,7 +870,7 @@ vyre home
 Put a backup back (vyred must be stopped).
 
 ```
-vyre restore <file> [--force]
+vyre restore <file> [--force] [--skip-projects] [--skip-transcripts] [--work-to DIR]
 ```
 
 ### vyre uninstall

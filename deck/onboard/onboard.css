@@ -195,7 +195,7 @@
 .need { border: 1px solid var(--rule); border-radius: var(--radius-card, 12px); padding: 13px 15px; font-size: 14px; line-height: 20px; }
 .need .lbl { margin-bottom: 6px; }
 
-/* Look only (launch). The bar and ticks use --focus: the signal lime on dark, a readable green on paper.
+/* Look only (launch). The bar and ticks use --focus: the signal bone on dark, a readable green on paper.
    The step bar, the spoken step, the finish burst and the mark's easter egg. */
 .ob-say { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
 .ob-col > .ob-stepbar { margin-bottom: 20px; display: flex; flex-direction: column; gap: 10px; }

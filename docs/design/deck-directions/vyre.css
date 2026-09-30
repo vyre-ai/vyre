@@ -1,25 +1,25 @@
 /* Vyre Deck, Direction B second pass. The reduced system:
    2 families (Instrument Sans for everything, JetBrains Mono for code, commands, paths and IDs),
    5 sizes (12/16, 13/18, 15/22, 20/26, 28/34), 2 weights (400, 600),
-   8 neutrals per theme, lime as the one accent (primary action, focus, running), violet for
+   8 neutrals per theme, bone as the one accent (primary action, focus, running), violet for
    "needs you" as a dot and a label only. No other hue. Values match core/config/palette.js. */
 
 .t-dark {
   --bg: #0E0D0C; --panel: #161513; --hover: #1E1C1A; --rule: #2B2926; --rule-strong: #3A3733;
   --text: #F1EEE6; --text-2: #B3AEA4; --label: #8C877D;
-  --primary-bg: #C6F36B; --primary-hover: #D4F88A; --primary-ink: #0E0D0C;
-  --focus: #C6F36B; --signal-wash: rgba(198,243,107,0.12); --del-wash: rgba(140,135,125,0.14);
+  --primary-bg: #F1EEE6; --primary-hover: #FFFFFF; --primary-ink: #0E0D0C;
+  --focus: #F1EEE6; --signal-wash: rgba(241,238,230,0.12); --del-wash: rgba(140,135,125,0.14);
   --beacon-ink: #B8A4FF; --beacon-dot: #B8A4FF;
   --code-bg: #121110; --scrim: rgba(0,0,0,0.6);
   --popover: 0 16px 40px -12px rgba(0,0,0,0.7), 0 0 0 1px var(--rule-strong);
-  --mark-wire: #F1EEE6; --mark-dot: #C6F36B;
+  --mark-wire: #F1EEE6; --mark-dot: #F1EEE6;
   color-scheme: dark;
 }
 .t-light {
   --bg: #F4F1EA; --panel: #FBFAF6; --hover: #EEEAE2; --rule: #DCD7CC; --rule-strong: #C9C3B7;
   --text: #141311; --text-2: #4A463F; --label: #6B665D;
   --primary-bg: #141311; --primary-hover: #4A463F; --primary-ink: #F4F1EA;
-  --focus: #46700C; --signal-wash: rgba(70,112,12,0.10); --del-wash: rgba(107,102,93,0.10);
+  --focus: #141311; --signal-wash: rgba(20,19,17,0.10); --del-wash: rgba(107,102,93,0.10);
   --beacon-ink: #5B3FC4; --beacon-dot: #5B3FC4;
   --code-bg: #F0EDE5; --scrim: rgba(20,19,17,0.3);
   --popover: 0 16px 40px -12px rgba(20,19,17,0.25), 0 0 0 1px var(--rule-strong);
@@ -63,7 +63,7 @@
 .mk-w { stroke: var(--mark-wire); }
 .mk-d { fill: var(--mark-dot); }
 
-/* Buttons: sentence case, 13/600. Primary is lime (paper: ink). One primary per surface. */
+/* Buttons: sentence case, 13/600. Primary is bone (paper: ink). One primary per surface. */
 .vy .btn { display: inline-flex; align-items: center; justify-content: center; gap: 8px; height: 32px; padding: 0 12px;
   border-radius: 8px; border: 1px solid var(--rule-strong); background: transparent; color: var(--text);
   font-size: 13px; line-height: 18px; font-weight: 600; white-space: nowrap; cursor: pointer; transition: background 120ms ease-out; }

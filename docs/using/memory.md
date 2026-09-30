@@ -22,7 +22,7 @@ from a model's words: a matched quote in search results, a fact, a fact's source
 correction. When text is gold you can ask where it came from, and Vyre can show you the turn.
 This is floor rule 7: anything Vyre tells you, it can show the source of. The gold appears in the
 terminal (`vyre recall`, `vyre memory`, `vyre why`), in the Deck's Memory view and Now page, in
-Chat next to a thread, and in the Capsule when memory answers.
+Chat next to a thread, and in Lumen when memory answers.
 
 ## Search past sessions
 
@@ -77,7 +77,7 @@ With no query, `vyre recall` says how much is indexed and whether search can ran
 Elsewhere:
 
 - **Deck**: the search box in the header searches every session; a hit opens the thread.
-- **Capsule**: press Control twice and ask; when memory can answer, the answer shows in gold with
+- **Lumen**: press Control twice and ask; when memory can answer, the answer shows in gold with
   its sources.
 - **Claude**: `/vyre recall <query>` inside a session, or the `recall.search` and `recall.thread`
   tools. An agent's search is held to its own projects' folders.
@@ -130,13 +130,13 @@ Memory is kept in **rooms**: one per project, and `unfiled` for sessions in no p
 facts come only from its own sessions and what its watchers taught. A project's brief and a
 session in that project draw only on that room, so nothing from one client's project reaches
 another's. The main graph, across every room, is visible only to you on your own surfaces (the
-terminal, the Deck, the Capsule), to the assistant, and to an agent granted every project.
+terminal, the Deck, Lumen), to the assistant, and to an agent granted every project.
 `--project <slug>` reads one room; `--project unfiled` reads the room of no project.
 
 ## Correct a fact
 
 You are the only one who can change memory: correcting, merging and splitting are open to your
-own surfaces (the CLI, the Deck, the Capsule) and ask nothing more. A session's tools and an
+own surfaces (the CLI, the Deck, Lumen) and ask nothing more. A session's tools and an
 agent never write memory: they are refused.
 
 ```
@@ -172,7 +172,7 @@ is known.
 
 ## Which surface does what
 
-| Task | Terminal | Deck | Capsule | Claude |
+| Task | Terminal | Deck | Lumen | Claude |
 | --- | --- | --- | --- | --- |
 | Search sessions | `vyre recall` | header search | ask | `/vyre recall`, `recall.search` |
 | Read one session | `vyre resume` | open the thread | | `recall.thread` |

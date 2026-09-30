@@ -161,7 +161,7 @@ export async function drawPlanner(el, ctx, deps = {}) {
     if (!ctx.alive()) return;
     const status = h("p", { class: "small pl-status", role: "status" });
     const input = /** @type {HTMLInputElement} */ (h("input", { class: "input", name: "text", autocomplete: "off",
-      placeholder: "alarm 7am, timer 10 min, remind me to call kit at 6", "aria-label": "Add to the planner" }));
+      placeholder: "alarm 7am, timer 10 min, remind me to call the bank at 6", "aria-label": "Add to the planner" }));
     const addForm = h("form", { class: "pl-add", onsubmit: async (/** @type {Event} */ e) => {
       e.preventDefault();
       const text = input.value.trim();

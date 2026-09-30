@@ -1,0 +1,56 @@
+# The vault's macOS-only tests: real keychain keystores, clipboard, native fill and the SSH
+# agent's signing all need a real macOS keychain (`security`) and are skipped everywhere else
+# (`{ skip: process.platform !== "darwin" }`, core/vault/keys.js's defaultKind). node.yml's
+# ubuntu-latest run never exercises them. This job runs them on a throwaway GitHub-hosted Mac, the
+# same "never on the person's own account, never on the real server" pattern capsule-mac.yml
+# already uses for its own keychain-signing step: a fresh per-run keychain, never the runner's
+# login one, and the whole VM is discarded after the job either way.
+name: vault-mac
+on:
+  push:
+    paths: ["core/vault/**", "lib/connectors/**", "core/mcp/**", "core/google/**", "core/modules/**",
+      "core/cli/commands/vault*.js", "core/cli/commands/connect.js", "local/voice/**", "test/docs-*.js",
+      "test/hygiene*.js", ".github/workflows/vault-mac.yml"]
+  pull_request:
+    paths: ["core/vault/**", "lib/connectors/**", "core/mcp/**", "core/google/**", "core/modules/**",
+      "core/cli/commands/vault*.js", "core/cli/commands/connect.js", "local/voice/**", "test/docs-*.js",
+      "test/hygiene*.js"]
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: vault-mac-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  test:
+    runs-on: macos-latest
+    timeout-minutes: 60
+    env:
+      VYRE_NO_DIALOGS: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci --no-audit --no-fund
+      - name: The targeted set (vault, its connectors, the modules and CLI it touches)
+        # One file at a time with its own 8-minute alarm and a per-test timeout, so a single hung
+        # file is named and fails instead of stalling the whole job until it is cancelled.
+        shell: bash
+        run: |
+          fail=0
+          # Files known to hang on a macOS runner without output, run and reported but not failing the
+          # job. Empty now: the five that hung on 30 Sep pass after the merge with stage (each under 15 s).
+          known=""
+          files=$(ls core/vault/*.test.js core/vault/**/*.test.js lib/connectors/*.test.js core/mcp/*.test.js core/google/*.test.js core/modules/*.test.js core/cli/commands/*.test.js local/voice/*.test.js test/docs-*.test.js test/hygiene*.test.js 2>/dev/null | sort -u)
+          for f in $files; do
+            start=$(date +%s)
+            if perl -e 'alarm 480; exec @ARGV' node --test --test-timeout=240000 --test-force-exit --test-reporter=spec "$f" > /tmp/one.log 2>&1; then
+              echo "ok   $f ($(( $(date +%s) - start ))s)"
+            else
+              echo "FAIL $f ($(( $(date +%s) - start ))s)"; sed -n '/failing tests:/,$p' /tmp/one.log | grep -vE "^\s+at " | head -70
+              case " $known " in *" $f "*) echo "     (known hang, not failing the job)";; *) fail=1;; esac
+            fi
+          done
+          exit $fail
