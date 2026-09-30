@@ -7,6 +7,7 @@ import assert from "node:assert/strict";
 import api from "./extension/caps/api.js";
 import net from "./extension/caps/net.js";
 import { makeCtx, request } from "./devtools-kit.js";
+import { T } from "./test-support/trust.js";
 
 const JWT = "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJhbGV4In0.c2lnbmF0dXJlMTIzNDU";
 const LOC = "Xq3RtYuIoPaSdFgHjKlZ";
@@ -23,7 +24,7 @@ async function world(extra = {}) {
   const st = storage();
   const k = makeCtx({ respond: { "Runtime.evaluate": { result: { value: { status: 200, mime: "application/json", headers: { "content-type": "application/json" }, body: JSON.stringify({ contact: { id: 1, phone: "+15551230000", access_token: "LEAKEDTOKEN1234567890" } }) } } }, ...extra } });
   /** @type {any} */ (k.ctx).storage = st;
-  await net.ops["net.start"]({ tab: 1 }, k.ctx);
+  await T(net.ops["net.start"])({ tab: 1 }, k.ctx);
   request(k, 1, { id: "c1", url: `${GHL}/contacts/${CONTACT}?locationId=${LOC}`, headers: { Authorization: `Bearer ${JWT}` }, type: "XHR" });
   request(k, 1, { id: "c2", method: "PUT", url: `${GHL}/contacts/${CONTACT}`, headers: { Authorization: `Bearer ${JWT}`, "Content-Type": "application/json" }, postData: JSON.stringify({ firstName: "Alex", apiKey: "KEYVALUEabcdef123456" }), type: "XHR" });
   request(k, 1, { id: "c3", url: "https://services.gohighlevel.example/workflows/3f2b8c1e-9a47-4d55-b0c1-7e6d5a4c3b2a/status", headers: {}, extra: { Cookie: "sid=COOKIEVALUE123456" }, type: "Fetch" });
@@ -32,7 +33,7 @@ async function world(extra = {}) {
 
 test("api.learn builds a catalog from the net buffer and stores it by origin", async () => {
   const { k, st } = await world();
-  const r = await api.ops["api.learn"]({ tab: 1 }, k.ctx);
+  const r = await T(api.ops["api.learn"])({ tab: 1 }, k.ctx);
   assert.equal(r.seen, 3);
   assert.equal(r.learned, 3);
   assert.deepEqual(r.origins, [GHL]);
@@ -42,29 +43,29 @@ test("api.learn builds a catalog from the net buffer and stores it by origin", a
   const stored = st.m.get("api.catalog");
   assert.equal(Object.keys(stored)[0], GHL);
   assert.ok(!ser(stored).includes(JWT));
-  const cat = await api.ops["api.catalog"]({ tab: 1 }, k.ctx);
+  const cat = await T(api.ops["api.catalog"])({ tab: 1 }, k.ctx);
   assert.equal(cat.entries.length, 3);
-  const other = await api.ops["api.catalog"]({ origin: "https://nope.example" }, k.ctx);
+  const other = await T(api.ops["api.catalog"])({ origin: "https://nope.example" }, k.ctx);
   assert.equal(other.entries.length, 0);
 });
 
 test("api.learn honors since and the catalog is bounded by origin count", async () => {
   const { k, st } = await world();
-  const none = await api.ops["api.learn"]({ tab: 1, since: Date.now() + 60_000 }, k.ctx);
+  const none = await T(api.ops["api.learn"])({ tab: 1, since: Date.now() + 60_000 }, k.ctx);
   assert.equal(none.learned, 0);
   const many = {};
   for (let i = 0; i < 25; i++) many["https://o" + i + ".example"] = { updated: i, entries: [] };
   await st.session.set({ "api.catalog": many });
-  await api.ops["api.learn"]({ tab: 1 }, k.ctx);
+  await T(api.ops["api.learn"])({ tab: 1 }, k.ctx);
   assert.ok(Object.keys(st.m.get("api.catalog")).length <= 20);
 });
 
 test("api.call GET runs in the page with the captured bearer, returns a redacted response", async () => {
   const { k } = await world();
-  const { entries } = await api.ops["api.learn"]({ tab: 1 }, k.ctx);
+  const { entries } = await T(api.ops["api.learn"])({ tab: 1 }, k.ctx);
   const get = entries.find(e => e.method === "GET" && e.pathTemplate === "/contacts/{id}");
   const before = k.calls("Runtime.evaluate").length;
-  const out = await api.ops["api.call"]({ tab: 1, entryId: get.id, params: { path: { id: CONTACT }, query: { locationId: LOC } } }, k.ctx);
+  const out = await T(api.ops["api.call"])({ tab: 1, entryId: get.id, params: { path: { id: CONTACT }, query: { locationId: LOC } } }, k.ctx);
   const ev = k.calls("Runtime.evaluate");
   assert.equal(ev.length, before + 1);
   const payload = JSON.parse(ev.at(-1).params.expression.match(/\}\)\((\{.*\})\)$/s)[1]);
@@ -80,25 +81,25 @@ test("api.call GET runs in the page with the captured bearer, returns a redacted
 
 test("api.call for a write is acting: stop and floor refuse it; a GET is not", async () => {
   const { k } = await world();
-  const { entries } = await api.ops["api.learn"]({ tab: 1 }, k.ctx);
+  const { entries } = await T(api.ops["api.learn"])({ tab: 1 }, k.ctx);
   const put = entries.find(e => e.method === "PUT");
   const get = entries.find(e => e.pathTemplate === "/contacts/{id}" && e.method === "GET");
   k.state.stopped = () => true;
-  await assert.rejects(api.ops["api.call"]({ tab: 1, entryId: put.id, params: { path: { id: CONTACT }, body: { firstName: "Sam" } } }, k.ctx), e => e.code === "stopped");
-  assert.equal((await api.ops["api.call"]({ tab: 1, entryId: get.id, params: { path: { id: CONTACT } } }, k.ctx)).status, 200);
+  await assert.rejects(T(api.ops["api.call"])({ tab: 1, entryId: put.id, params: { path: { id: CONTACT }, body: { firstName: "Sam" } } }, k.ctx), e => e.code === "stopped");
+  assert.equal((await T(api.ops["api.call"])({ tab: 1, entryId: get.id, params: { path: { id: CONTACT } } }, k.ctx)).status, 200);
   k.state.stopped = () => false;
   const seen = [];
   k.state.floor = (t, o) => { seen.push(o); return { allow: false, why: "hands-only" }; };
-  await assert.rejects(api.ops["api.call"]({ tab: 1, entryId: put.id, params: { path: { id: CONTACT } } }, k.ctx), e => e.code === "blocked");
+  await assert.rejects(T(api.ops["api.call"])({ tab: 1, entryId: put.id, params: { path: { id: CONTACT } } }, k.ctx), e => e.code === "blocked");
   assert.deepEqual(seen, ["api.call"]);
   k.state.floor = () => ({ allow: true });
   // A write with the page's login is held until the person said yes (asked) or a plan they approved covers it (writeOk).
-  const heldW = await api.ops["api.call"]({ tab: 1, entryId: put.id, params: { path: { id: CONTACT }, body: { firstName: "Sam" } } }, k.ctx);
+  const heldW = await T(api.ops["api.call"])({ tab: 1, entryId: put.id, params: { path: { id: CONTACT }, body: { firstName: "Sam" } } }, k.ctx);
   assert.equal(heldW.held, true);
   assert.equal(heldW.write, true);
   assert.equal(heldW.kind, "edit");
   assert.equal(k.calls("Runtime.evaluate").filter(s => String(s.params.expression).includes("firstName")).length, 0, "nothing was sent");
-  const ok = await api.ops["api.call"]({ tab: 1, entryId: put.id, writeOk: true, params: { path: { id: CONTACT }, body: { firstName: "Sam" } } }, k.ctx);
+  const ok = await T(api.ops["api.call"])({ tab: 1, entryId: put.id, writeOk: true, params: { path: { id: CONTACT }, body: { firstName: "Sam" } } }, k.ctx);
   assert.equal(ok.method, "PUT");
   const payload = JSON.parse(k.calls("Runtime.evaluate").at(-1).params.expression.match(/\}\)\((\{.*\})\)$/s)[1]);
   assert.equal(payload.init.body, '{"firstName":"Sam"}');
@@ -106,15 +107,15 @@ test("api.call for a write is acting: stop and floor refuse it; a GET is not", a
 
 test("api.call errors: unknown entry, missing path parameter, moved tab, no captured credential", async () => {
   const { k } = await world();
-  const { entries } = await api.ops["api.learn"]({ tab: 1 }, k.ctx);
+  const { entries } = await T(api.ops["api.learn"])({ tab: 1 }, k.ctx);
   const get = entries.find(e => e.pathTemplate === "/contacts/{id}" && e.method === "GET");
-  await assert.rejects(api.ops["api.call"]({ tab: 1, entryId: "e_nope" }, k.ctx), e => e.code === "not_found");
-  await assert.rejects(api.ops["api.call"]({ tab: 1, entryId: get.id, params: {} }, k.ctx), e => e.code === "bad_request" && /id/.test(e.message));
+  await assert.rejects(T(api.ops["api.call"])({ tab: 1, entryId: "e_nope" }, k.ctx), e => e.code === "not_found");
+  await assert.rejects(T(api.ops["api.call"])({ tab: 1, entryId: get.id, params: {} }, k.ctx), e => e.code === "bad_request" && /id/.test(e.message));
   k.respond["Runtime.evaluate"] = { result: { value: { originMismatch: "https://other.example" } } };
-  await assert.rejects(api.ops["api.call"]({ tab: 1, entryId: get.id, params: { path: { id: CONTACT } } }, k.ctx), e => e.code === "bad_request");
+  await assert.rejects(T(api.ops["api.call"])({ tab: 1, entryId: get.id, params: { path: { id: CONTACT } } }, k.ctx), e => e.code === "bad_request");
   net.onEvent({ event: "tabs.removed", tab: 1 }, k.ctx);
   k.respond["Runtime.evaluate"] = { result: { value: { status: 401, headers: {}, body: "no" } } };
-  const out = await api.ops["api.call"]({ tab: 1, entryId: get.id, params: { path: { id: CONTACT } } }, k.ctx);
+  const out = await T(api.ops["api.call"])({ tab: 1, entryId: get.id, params: { path: { id: CONTACT } } }, k.ctx);
   assert.match(out.authNote, /no captured request/);
   assert.equal(out.status, 401);
 });
@@ -122,6 +123,6 @@ test("api.call errors: unknown entry, missing path parameter, moved tab, no capt
 test("floor refusal blocks api.learn and api.catalog with a tab", async () => {
   const { k } = await world();
   k.state.floor = () => ({ allow: false, why: "blind" });
-  await assert.rejects(api.ops["api.learn"]({ tab: 1 }, k.ctx), e => e.code === "blocked");
-  await assert.rejects(api.ops["api.catalog"]({ tab: 1 }, k.ctx), e => e.code === "blocked");
+  await assert.rejects(T(api.ops["api.learn"])({ tab: 1 }, k.ctx), e => e.code === "blocked");
+  await assert.rejects(T(api.ops["api.catalog"])({ tab: 1 }, k.ctx), e => e.code === "blocked");
 });

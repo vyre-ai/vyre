@@ -348,7 +348,7 @@ export default {
       return { tab: t && t.id, ...info, ...(builderFrame ? { builderFrame, ...(info.isGhl ? {} : { isGhl: true, viaFrame: true }) } : {}), trace: traceOf({ strategy: "tab", waitedMs: 0 }) };
     },
 
-    "ghl.section": async (args, ctx) => {
+    "ghl.section": async (args, ctx, trust = {}) => {
       const section = String(args.section);
       const path = SECTIONS[/** @type {keyof typeof SECTIONS} */ (section)];
       if (!path) throw err("bad_request", `unknown section ${JSON.stringify(args.section)}; one of ${Object.keys(SECTIONS).join(", ")}`);
@@ -365,7 +365,7 @@ export default {
       if (found) tabId = found.id;
       else {
         // Nothing to reuse: open one tab, once (tabs.use reuses by origin and path first, so a second call never opens another).
-        const u = await ctx.call("tabs.use", { url, openIfMissing: true, focus: false, asked: args.asked === true });
+        const u = await ctx.call("tabs.use", { url, openIfMissing: true, focus: false }, { asked: trust.asked === true });
         tabId = u.id; newTab = u.reused === false;
       }
       const landmarks = args.landmark ? [typeof args.landmark === "string" ? { name: args.landmark } : args.landmark] : (/** @type {any} */ (LANDMARKS)[section] || []);
@@ -383,14 +383,14 @@ export default {
           // frame; the app itself is an iframe), so it is looked for there and nowhere else. It is a static list: no need to wait for
           // it to hold still, the click's own hit test refuses a moving target and the step retries.
           try {
-            const r = await ctx.call("page.act", { tabId, selector: { ...sel(navName, navId), frame: 0 }, kind: "click", wait: { timeoutMs: 1500 }, optional: true, asked: args.asked === true });
+            const r = await ctx.call("page.act", { tabId, selector: { ...sel(navName, navId), frame: 0 }, kind: "click", wait: { timeoutMs: 1500 }, optional: true }, { asked: trust.asked === true });
             if (r && r.ok && !r.skipped) via = "nav";
           } catch (e) {
             if (/** @type {any} */ (e)?.code === "stopped" || /** @type {any} */ (e)?.code === "modal") throw e;
           }
           fallback = via !== "nav";
         }
-        if (via === "url") await ctx.call("tabs.navigate", { tabId, url, asked: args.asked === true });
+        if (via === "url") await ctx.call("tabs.navigate", { tabId, url }, { asked: trust.asked === true });
       }
       const r = await loaded(ctx, tabId, section === "automation" ? "workflows" : section, landmarks, !!args.landmark, timeoutMs, hosts);
       return { ok: true, tab: tabId, section, via, loaded: true, landmark: r.landmark, ...(r.landmarkFrame ? { landmarkFrame: r.landmarkFrame } : {}), ...(r.landmark === false ? { warning: "the section settled but its usual landmark control was not found; the app's labels may differ" } : {}), url: url.replace(/^https:\/\//, ""), ms: Date.now() - t0, trace: traceOf({ strategy: via, fallback, waitedMs: r.waitedMs, retries: 0, newTab, ...(r.landmarkFrame || {}), ...r.flags }) };
@@ -398,7 +398,7 @@ export default {
 
     "ghl.flows": async () => ({ flows: Object.entries(FLOWS).map(([name, f]) => ({ name, about: f.about, params: f.params })), actions: Object.entries(ACTIONS).map(([id, a]) => ({ id, label: a.label })) }),
 
-    "ghl.save": async (args, ctx) => {
+    "ghl.save": async (args, ctx, trust = {}) => {
       const tab = await tabOf(ctx, args);
       if (!tab) throw err("no_tab");
       const tabId = tab.id;
@@ -409,7 +409,7 @@ export default {
       const before = await ctx.call("page.snapshot", { tabId });
       const seen = new Set(((before.state && before.state.toasts) || []).map((/** @type {any} */ x) => x.text));
       const wasEnabled = (() => { const c = bindSelector(target, before).control; return c ? c.enabled !== false : false; })();
-      const act = await ctx.call("page.act", { tabId, selector: target, kind: "click", wait: STEP_WAIT, asked: args.asked === true });
+      const act = await ctx.call("page.act", { tabId, selector: target, kind: "click", wait: STEP_WAIT }, { asked: trust.asked === true });
       if (act && act.held) return act;
       const tClick = Date.now();
       const trace = (/** @type {any} */ x) => traceOf({ ...(act && act.trace ? act.trace : {}), waitedMs: Date.now() - t0, ...(x || {}) });
@@ -446,7 +446,7 @@ export default {
       return { ok: true, saved: true, evidence, waitedMs: Date.now() - t0, ...(expect.status ? { status: String(expect.status) } : {}), trace: trace({ evidence: evidence.kind }) };
     },
 
-    "ghl.run": async (args, ctx) => {
+    "ghl.run": async (args, ctx, trust = {}) => {
       let steps;
       let name = "inline";
       if (Array.isArray(args.steps)) {
@@ -461,7 +461,7 @@ export default {
       }
       if (!steps.length) throw err("bad_request", "the flow has no steps");
       const t0 = Date.now();
-      const r = await ctx.call("batch.run", { steps, stopOnError: true, asked: args.asked === true, ...(args.writeBudget ? { writeBudget: args.writeBudget } : {}), ...(typeof args.tabId === "number" ? { tabId: args.tabId } : {}) });
+      const r = await ctx.call("batch.run", { steps, stopOnError: true, ...(typeof args.tabId === "number" ? { tabId: args.tabId } : {}) }, trust);
       const ms = Date.now() - t0;
       const traces = (Array.isArray(r.results) ? r.results : []).map((/** @type {any} */ x) => x && x.trace).filter(Boolean);
       const trace = traceOf({ strategy: "batch", fallback: traces.some((/** @type {any} */ x) => x.fallback), waitedMs: traces.reduce((/** @type {number} */ a, /** @type {any} */ x) => a + (x.waitedMs || 0), 0), retries: traces.reduce((/** @type {number} */ a, /** @type {any} */ x) => a + (x.retries || 0), 0), newTab: traces.some((/** @type {any} */ x) => x.newTab) });

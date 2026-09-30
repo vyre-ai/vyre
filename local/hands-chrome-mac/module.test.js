@@ -64,8 +64,9 @@ async function rig(/** @type {any} */ t, { gate = true, nativeHost = /** @type {
 
 /** A fake extension with tabs and a snapshot, recording every op. */
 const ext = (/** @type {string} */ sockPath, /** @type {any} */ over = {}) => fakeExtension(sockPath, {
-  handler: (op, args) => {
-    if (over[op]) return over[op](args);
+  handler: (op, args, frame) => {
+    // The fakes below read approvals the way the old wire carried them; they now arrive in frame.trust, so show them together.
+    if (over[op]) return over[op]({ ...args, ...(frame && frame.trust ? frame.trust : {}) });
     if (op === "tabs.list") return { tabs: [
       { id: 1, url: "https://harlow.example/intake?token=abcdefghijklmnop", title: "Intake", attached: true },
       { id: 2, url: "https://chase.com/accounts", title: "Chase" },
@@ -220,15 +221,17 @@ test("module: a held outward act becomes a Gate card with the fields and origin,
   assert.deepEqual(req.content.fields, [{ name: "Email", value: "alex@example.com" }]);
   assert.equal(req.content.control, "button Send inquiry");
   assert.deepEqual([req.content.op, req.content.args, req.content.signature], [undefined, undefined, undefined], "what to replay never rides on the card");
-  assert.equal(x.ops("page.act")[0].args.asked, false, "an agent's own act was not asked for by the person");
+  assert.equal(x.ops("page.act")[0].trust.asked, false, "an agent's own act was not asked for by the person");
 
   // Only the Gate releases.
   assert.equal((await reg.call("chrome.release", { id: "held-1", content: req.content }, "cli")).error.code, "no_such_tool");
   const rel = await reg.call("chrome.release", { id: "held-1", content: req.content }, "module:gate");
   assert.equal(rel.error, undefined, JSON.stringify(rel));
   assert.equal(rel.data.ok, true);
-  const sent = x.ops("page.act")[1].args;
-  assert.equal(sent.release.sig, "sig-1");
+  const sentFrame = x.ops("page.act")[1];
+  const sent = sentFrame.args;
+  assert.equal(sentFrame.trust.release.sig, "sig-1", "the approval rides in trust");
+  assert.equal(sent.release, undefined, "and never in args");
   assert.equal(sent.selector.name, "Send inquiry");
   assert.ok(events("chrome.acted").some((/** @type {any} */ e) => /released/.test(e.payload.summary)));
 });
@@ -243,7 +246,7 @@ test("module: a send the person's words or a standing permission cover is releas
   const r = await reg.call("chrome.act", { selector: { role: "button", name: "Send inquiry" }, kind: "click", tab: 1 }, "cli");
   assert.equal(r.error, undefined, JSON.stringify(r));
   assert.equal(r.data.sent, true, "the act went out and its result came back");
-  assert.equal(x.ops("page.act")[1].args.release.sig, "sig-9", "release replayed what was held, found by its ref");
+  assert.equal(x.ops("page.act")[1].trust.release.sig, "sig-9", "release replayed what was held, found by its ref");
   // The ref is single-use: replaying it later finds nothing.
   const again = await reg.call("chrome.release", { id: "sent-1", content: gate().requests.at(-1).content }, "module:gate");
   assert.equal(again.error.code, "denied");
@@ -361,7 +364,7 @@ test("module: an agent's own Gate card releases nothing, and a script or API cal
   assert.equal((await reg.call("chrome.eval", { expression: "send()", tab: 1 }, "cli")).data.value, 2);
   const rel = await reg.call("chrome.release", { id: held.data.id, content: {} }, "module:gate");
   assert.equal(rel.error, undefined, JSON.stringify(rel));
-  assert.equal(x.ops("page.eval").at(-1).args.asked, true);
+  assert.equal(x.ops("page.eval").at(-1).trust.asked, true);
   assert.equal((await reg.call("chrome.release", { id: held.data.id, content: {} }, "module:gate")).error.code, "denied");
 });
 
@@ -469,12 +472,12 @@ test("module: an approved plan covers that many creates; a kind it does not list
   const before = x.ops("api.call").length;
   assert.equal((await call("c1")).data.ok, true, "the first create goes through");
   assert.equal((await call("c2")).data.ok, true, "and the second");
-  assert.equal(x.ops("api.call").filter((/** @type {any} */ o) => o.args.writeOk === true).length, 2);
+  assert.equal(x.ops("api.call").filter((/** @type {any} */ o) => (o.trust || {}).writeOk === true).length, 2);
   assert.equal(x.ops("api.call").length - before, 4, "each covered write was tried, held, then sent once with writeOk");
   assert.equal((await call("c3")).data.held, true, "a third create is not in the plan");
   assert.equal((await call("del")).data.held, true, "a delete is not in the plan");
   assert.equal((await call("pub")).data.held, true, "a publish is never covered");
-  assert.equal(x.ops("api.call").filter((/** @type {any} */ o) => o.args.writeOk === true).length, 2, "nothing else was sent");
+  assert.equal(x.ops("api.call").filter((/** @type {any} */ o) => (o.trust || {}).writeOk === true).length, 2, "nothing else was sent");
 });
 
 test("module: stopping Vyre ends the plan, and a plan needs real items", async t => {
@@ -490,7 +493,7 @@ test("module: stopping Vyre ends the plan, and a plan needs real items", async t
   await reg.call("chrome.resume", { answer: "ok" }, "capsule");
   const r = await reg.call("chrome.api", { action: "call", entry: "c1", tab: 1 }, KIT);
   assert.equal(r.data.held, true, "the plan did not survive the stop");
-  assert.equal(x.ops("api.call").filter((/** @type {any} */ o) => o.args.writeOk === true).length, 0);
+  assert.equal(x.ops("api.call").filter((/** @type {any} */ o) => (o.trust || {}).writeOk === true).length, 0);
 });
 
 test("module: the summary says what a plan's writes changed, what can be undone, and what still waits; it clears for the next job", async t => {
@@ -537,7 +540,7 @@ test("module: a publish is covered only when the plan says the person's own word
   assert.deepEqual(card.content.fields.map((/** @type {any} */ f) => f.name), ["and publish x1"]);
   assert.equal((await reg.call("chrome.api", { action: "call", entry: "pub", tab: 1 }, KIT)).data.ok, true);
   assert.equal((await reg.call("chrome.api", { action: "call", entry: "pub", tab: 1 }, KIT)).data.held, true, "only as many as the plan said");
-  assert.equal(x.ops("api.call").filter((/** @type {any} */ o) => o.args.asked === true).length, 1);
+  assert.equal(x.ops("api.call").filter((/** @type {any} */ o) => o.trust.asked === true).length, 1);
 });
 
 test("module: the finish card and summary link each created item to its own builder page on the person's own host", async t => {
@@ -566,7 +569,7 @@ test("module: a model cannot approve its own write by passing writeOk (or asked)
   await reg.call("chrome.plan", PLAN, KIT);
   const r = await reg.call("chrome.api", { action: "call", entry: "a", tab: 1, writeOk: true, asked: true }, KIT);
   assert.equal(r.data.held, true, "still held: no plan covers it and the model's own claim counts for nothing");
-  assert.ok(x.ops("api.call").every((/** @type {any} */ o) => o.args.writeOk !== true), "writeOk never reached the extension");
+  assert.ok(x.ops("api.call").every((/** @type {any} */ o) => (o.trust || {}).writeOk !== true), "writeOk never reached the extension");
 });
 
 test("module: a plan is for one site: other tabs and other API origins are still asked", async t => {
@@ -588,7 +591,7 @@ test("module: a plan is for one site: other tabs and other API origins are still
   assert.equal((await call(1)).data.held, true, "another API origin");
   next = "https://api.one.example";
   assert.equal((await call(1)).data.ok, true, "the pinned origin still goes through");
-  assert.equal(x.ops("api.call").filter((/** @type {any} */ o) => o.args.writeOk === true).length, 2);
+  assert.equal(x.ops("api.call").filter((/** @type {any} */ o) => (o.trust || {}).writeOk === true).length, 2);
 });
 
 test("module: a batch or recipe may make the writes an approved plan covers without stopping at each; the budget is the module's alone", async t => {

@@ -24,6 +24,7 @@ import { createBridge } from "./bridge.js";
 import { createOversight } from "./oversight.js";
 import { diagnoseConnection } from "./diagnose.js";
 import { classify, originOf } from "./floor-url.js";
+import { trustKeyIn } from "./extension/shared/trust.js";
 import { ACTING } from "./extension/shared/proto.js";
 import * as nativeHost from "./native-host/install.js";
 import { extensionIdFromKey, extensionIdFromPath } from "./native-host/install.js";
@@ -254,6 +255,9 @@ export default {
         const agent = agentOf(meta.caller);
         const args = { ...input };
         delete args.agent; delete args.release; delete args.asked; delete args.action; delete args.writeOk; delete args.writeBudget;
+        // Approvals never ride in args, at any depth (a batch step, a recipe, a flow): they are the host's, set below from the real caller.
+        { const bad = trustKeyIn(args); if (bad) throw denied("bad_request", `arguments may not carry "${bad}": approvals come from the host, not from arguments`); }
+        /** @type {any} */ const trust = {};
         const summary = summarize(op, input);
         /** @type {any} */
         let carry = {};
@@ -268,7 +272,7 @@ export default {
           // agent's, or the model's in a Claude session, may not: the extension holds those.
           // The person's own list of white-label GoHighLevel hosts (standalone: `config ghl-host`); always sent, so removing one takes effect.
           if (cfg.ghlHosts !== undefined) args.ghlHosts = typeof cfg.ghlHosts === "function" ? cfg.ghlHosts() : cfg.ghlHosts;
-          args.asked = PEOPLE.includes(callerKind(meta.caller)) && !agent;
+          trust.asked = PEOPLE.includes(callerKind(meta.caller)) && !agent;
           // Scripts, API calls, replays and automations are hands-free after the grant. The extension
           // holds only a request that SENDS something as the person (a message, a post, a payment)
           // when `asked` is false, judged by method and endpoint (extension/shared/outbound.js).
@@ -276,9 +280,9 @@ export default {
           if (/^(batch\.run|recipe\.run|ghl\.run)$/.test(op) && grant && covers("", { origin: grant.apiOrigin }, args) && oversight.state !== "stopped") {
             const b = /** @type {any} */ ({ create: grant.left.create, edit: grant.left.edit });
             if (grant.apiOrigin) b.origin = grant.apiOrigin;
-            if (b.create > 0 || b.edit > 0) args.writeBudget = b;
+            if (b.create > 0 || b.edit > 0) trust.writeBudget = b;
           }
-          let res = screen(await bridge.call(op, args, { timeoutMs: op === "login.wait" ? Math.min(Number(args.timeoutMs) || 120_000, 600_000) + 15_000 : args.timeoutMs }));
+          let res = screen(await bridge.call(op, args, { trust, timeoutMs: op === "login.wait" ? Math.min(Number(args.timeoutMs) || 120_000, 600_000) + 15_000 : args.timeoutMs }));
           // What the batch covered on its own: count it against the plan and keep it for the summary.
           if (isObj(res) && Array.isArray(res.covered) && grant) {
             for (const c of res.covered) {
@@ -296,7 +300,7 @@ export default {
             pinPlan(res, args);
             const g = /** @type {NonNullable<typeof grant>} */ (grant);
             g.left[String(res.kind)]--; g.used++;
-            res = screen(await bridge.call(op, { ...args, writeOk: true }, { timeoutMs: args.timeoutMs }));
+            res = screen(await bridge.call(op, args, { trust: { writeOk: true }, timeoutMs: args.timeoutMs }));
             recordChange(res, summary, true, urls.get(Number(args.tab)) || "");
             showPresence({ of: g.total, label: g.title });
           }
@@ -305,7 +309,7 @@ export default {
             pinPlan(res, args);
             const g = /** @type {NonNullable<typeof grant>} */ (grant);
             g.left.publish--; g.used++;
-            res = screen(await bridge.call(op, { ...args, asked: true }, { timeoutMs: args.timeoutMs }));
+            res = screen(await bridge.call(op, args, { trust: { asked: true }, timeoutMs: args.timeoutMs }));
             recordChange(res, summary, true, urls.get(Number(args.tab)) || "");
             showPresence({ of: g.total, label: g.title });
           }
@@ -610,7 +614,7 @@ export default {
             const { goes, on } = targets(c.args || {});
             for (const u of goes) floor(u, undefined);
             if (on) floor(on, String(c.op));
-            const res = screen(await bridge.call(String(c.op), { ...(c.args || {}), asked: true, release: { sig: c.signature, signature: c.signature } }, { timeoutMs: (c.args || {}).timeoutMs }));
+            const res = screen(await bridge.call(String(c.op), { ...(c.args || {}) }, { trust: { asked: true, release: { sig: c.signature, signature: c.signature } }, timeoutMs: (c.args || {}).timeoutMs }));
             acted(meta, null, String(c.op), true, undefined, `released ${summary}`);
             if (String(c.op) === "api.call") recordChange(res, summary, false, urls.get(Number((c.args || {}).tab)) || "");
             return res;

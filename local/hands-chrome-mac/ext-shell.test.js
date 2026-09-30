@@ -10,6 +10,7 @@ import { register, dispatch, loadOptional, loadReport, opNames, ready } from "./
 import { createCtx } from "./extension/lib/ctx.js";
 import { createFakeChrome, createFakePage, samplePage } from "./test-support/fake-chrome.js";
 import { proto } from "./extension/lib/shared.js";
+import { dispatchT } from "./test-support/trust.js";
 
 const tick = () => new Promise(r => setImmediate(r));
 const until = async f => { for (let i = 0; i < 50 && !f(); i++) await tick(); };
@@ -252,7 +253,7 @@ test("registry: validates names, refuses duplicates, unknown_op, and survives mi
   assert.throws(() => register({ name: "y", ops: { "tabs.list": async () => 1 } }), /already registered/);
   assert.throws(() => register({ name: "z" }), /needs a name/);
   const ctx = createCtx({ chrome: createFakeChrome() });
-  await assert.rejects(dispatch("no.such", {}, ctx), { code: "unknown_op" });
+  await assert.rejects(dispatchT("no.such", {}, ctx), { code: "unknown_op" });
   await assert.rejects(dispatch("tabs.list", [], ctx), { code: "bad_request" });
   await ready;
   const rep = loadReport();
@@ -275,7 +276,7 @@ test("registry: optional capabilities load through an importer; a broken one is 
   assert.ok(rep.optional.failed.some(f => f.name === "zz-broken" && /Unexpected token/.test(f.error)));
   assert.ok(rep.optional.missing.includes("zz-gone"));
   const ctx = createCtx({ chrome: createFakeChrome() });
-  assert.deepEqual(await dispatch("probe2.ping", {}, ctx), { ok: true });
+  assert.deepEqual(await dispatchT("probe2.ping", {}, ctx), { ok: true });
 });
 
 test("caps receive module events through onEvent; one throwing does not silence the rest", async () => {

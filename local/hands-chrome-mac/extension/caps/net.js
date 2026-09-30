@@ -661,7 +661,7 @@ const ops = {
     return { removed: r.id };
   },
 
-  async "net.replay"(args, ctx) {
+  async "net.replay"(args, ctx, trust = {}) {
     const tab0 = args?.tab;
     // The method decides the floor op: a GET replay reads, anything else is acting.
     const t0 = tab0 == null ? null : root(ctx).tabs.get(tab0);
@@ -681,9 +681,9 @@ const ops = {
     const body = o.body !== undefined ? (typeof o.body === "string" ? o.body : JSON.stringify(o.body)) : r.postData;
     // A replay that SENDS something as the person waits at the Gate unless the person asked (P17).
     const ob = classifySend(m, url, typeof body === "string" ? body : "");
-    if (ob.send && args?.asked !== true) return held(m, url, ob.why, `${m} ${url} ${typeof body === "string" ? body : ""}`);
+    if (ob.send && trust.asked !== true) return held(m, url, ob.why, `${m} ${url} ${typeof body === "string" ? body : ""}`);
     // Any other write is a change made with the person's login: the one write gate decides (asked, or a plan the module says covers it).
-    const gate = writeGate(m, url, typeof body === "string" ? body : "", args);
+    const gate = writeGate(m, url, typeof body === "string" ? body : "", trust);
     if (gate.held) return gate.held;
     // A request a child frame made is replayed inside that frame: its own cookies and origin sign it.
     const frame = r.session || r.frame ? await frameOfRec(ctx, tab, r) : null;

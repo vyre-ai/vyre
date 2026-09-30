@@ -27,6 +27,10 @@ import login from "./login.js";
 import site from "./site.js";
 import recipe from "./recipe.js";
 
+import { TRUST_KEYS, cleanTrust, trustKeyIn } from "../shared/trust.js";
+export { TRUST_KEYS, cleanTrust, trustKeyIn };
+/** @typedef {import("../shared/trust.js").Trust} Trust */
+
 export const OPTIONAL = ["devtools", "net", "api", "ghl"];
 
 /** @type {Map<string, { cap: any, handler: (args: any, ctx: any) => Promise<any> }>} */
@@ -97,15 +101,20 @@ export const opNames = () => [...ops.keys()].sort();
 /**
  * Run one op. Throws VyreError (with a proto code) on refusal; the shell turns that into
  * {ok:false, error}. Callers inside the worker (batch) get the same guard rails as the module.
- * @param {string} op @param {any} args @param {any} ctx
+ * TRUST. What the person has approved (asked, writeOk, a release signature, the module's write budget) is never in `args`: it arrives in `trust`, set only by
+ * the host from the real caller, and every op reads it from there. An args object that carries one of those keys, at any depth, is refused outright, so a
+ * model's text (a batch step, a recipe, a flow) cannot approve itself.
+ * @param {string} op @param {any} args @param {any} ctx @param {Trust} [trust]
  */
-export async function dispatch(op, args, ctx) {
+export async function dispatch(op, args, ctx, trust = {}) {
   await ready;
   if (!proto.validOp(op)) throw err("bad_request", `bad op name ${JSON.stringify(op)}`);
   const entry = ops.get(op);
   if (!entry) throw err("unknown_op", `no such operation: ${op}`);
   if (args == null) args = {};
   if (typeof args !== "object" || Array.isArray(args)) throw err("bad_request", "args must be an object");
+  { const bad = trustKeyIn(args); if (bad) throw err("bad_request", `arguments may not carry "${bad}": approvals come from the host, not from arguments`); }
+  const t = cleanTrust(trust);
   // The wire calls the tab `tab`; the page and tabs capabilities read `tabId`. Accept either and
   // give every capability both, so no file has to know which spelling a caller used.
   if (typeof args.tab === "number" && args.tabId === undefined) args = { ...args, tabId: args.tab };
@@ -123,7 +132,7 @@ export async function dispatch(op, args, ctx) {
       throw err("blocked", `${where}${v.why} (${v.tier})`);
     }
   }
-  return entry.handler(args, ctx);
+  return entry.handler(args, ctx, t);
 }
 
 /** Tell every capability about an event from the module (stop, resume, ...). @param {any} evt @param {any} ctx */

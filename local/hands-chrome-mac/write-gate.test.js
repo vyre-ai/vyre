@@ -64,3 +64,26 @@ test("pageFetch itself refuses a write with no pass, even if a caller forgets th
   await assert.rejects(pageFetch(/** @type {any} */ (ctx), 1, { url: "https://a.example/x", method: "DELETE" }), { code: "blocked" });
   await assert.rejects(pageFetch(/** @type {any} */ (ctx), 1, { url: "https://a.example/x", method: "POST" }, { gate: /** @type {any} */ ({ pass: Symbol("forged") }) }), { code: "blocked" });
 });
+
+test("no op reads an approval from args: asked, writeOk, release, writeBudget and agent are read from trust only", () => {
+  const bad = [];
+  for (const f of all) {
+    for (const m of f.src.matchAll(/\b(args|a|stepArgs|input)\??\.(asked|writeOk|release|writeBudget|agent)\b/g)) {
+      const line = f.src.slice(0, m.index).split("\n").length;
+      // allowed: comments and the trust helpers themselves
+      const text = f.src.split("\n")[line - 1].trim();
+      if (text.startsWith("//") || text.startsWith("*") || f.rel === "shared/trust.js" || f.rel === "caps/index.js") continue;
+      bad.push(`${f.rel}:${line}: ${text.slice(0, 80)}`);
+    }
+  }
+  assert.deepEqual(bad, [], "an op reads an approval from args");
+});
+
+test("dispatch refuses approval keys in args at any depth and hands ops only the cleaned trust", async () => {
+  const { dispatch, trustKeyIn, cleanTrust } = await import("./extension/caps/index.js");
+  assert.equal(trustKeyIn({ a: [{ b: { writeOk: true } }] }), "writeOk");
+  assert.equal(trustKeyIn({ selector: { name: "release" } }), "", "a VALUE named release is not a key");
+  assert.deepEqual(cleanTrust({ asked: "yes", writeOk: 1, release: { sig: "s", evil: 1 }, writeBudget: { create: 2.9, edit: -4, origin: "https://a.example", x: 1 }, extra: true }), { release: { sig: "s" }, writeBudget: { create: 2, edit: 0, origin: "https://a.example" } });
+  const ctx = { stopped: () => false, floorAllows: async () => ({ allow: true }) };
+  await assert.rejects(dispatch("tabs.list", { asked: true }, /** @type {any} */ (ctx)), { code: "bad_request" });
+});

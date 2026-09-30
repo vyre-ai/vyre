@@ -129,8 +129,8 @@ export function createCtx({ chrome, emit = () => {} }) {
     async floorTier() { const cfg = await floorConfig(); return (/** @type {string} */ url) => floor.tierOf(url, cfg).tier; },
     /** @param {string} url @param {string} op */
     async floorUrl(url, op) { return floor.decide(url, op, await floorConfig()); },
-    /** @param {string} op @param {any} [args] */
-    call: (op, args) => dispatch(op, args || {}, ctx),
+    /** @param {string} op @param {any} [args] @param {any} [trust] what the caller was approved for; never inside args */
+    call: (op, args, trust) => dispatch(op, args || {}, ctx, trust),
   };
   return ctx;
 }

@@ -71,8 +71,8 @@ test("mcp: a call reaches the extension, the answer is redacted, and the trace r
 
 test("mcp: a send is held with an id, chrome_send does it once, and only what this session held", async t => {
   let released = 0;
-  const { call, ext } = await rig(t, (/** @type {string} */ op, /** @type {any} */ a) => {
-    if (op === "page.act" && a.release) { released++; return { ok: true, sent: true }; }
+  const { call, ext } = await rig(t, (/** @type {string} */ op, /** @type {any} */ a, /** @type {any} */ m) => {
+    if (op === "page.act" && m && m.trust && m.trust.release) { released++; return { ok: true, sent: true }; }
     if (op === "page.act") return { ok: false, held: true, control: { role: "button", name: "Send inquiry" }, fields: [{ name: "Email", value: "alex@example.com" }], sig: "s1", url: "https://harlow.example/intake" };
     return { ok: true };
   });
@@ -83,7 +83,7 @@ test("mcp: a send is held with an id, chrome_send does it once, and only what th
   const sent = await call("chrome_send", { id: held.id });
   assert.equal(sent.isError, undefined, JSON.stringify(sent));
   assert.equal(released, 1);
-  assert.equal(ext.ops("page.act").at(-1).args.release.sig, "s1");
+  assert.equal(ext.ops("page.act").at(-1).trust.release.sig, "s1");
   const again = await call("chrome_send", { id: held.id });
   assert.equal(again.isError, true);
   assert.match(again.content[0].text, /not_found|already sent/);
@@ -306,8 +306,8 @@ test("privacy: typed values are logged as lengths off GoHighLevel builder pages,
 
 test("send approval: a client that can ask (MCP elicitation) is asked by the server, and a no means nothing is sent", async t => {
   let released = 0;
-  const handler = (/** @type {string} */ op, /** @type {any} */ a) => {
-    if (op === "page.act" && a.release) { released++; return { ok: true }; }
+  const handler = (/** @type {string} */ op, /** @type {any} */ a, /** @type {any} */ m) => {
+    if (op === "page.act" && m && m.trust && m.trust.release) { released++; return { ok: true }; }
     if (op === "page.act") return { ok: false, held: true, control: { role: "button", name: "Send" }, fields: [{ name: "Email", value: "alex@example.com" }], sig: "s", url: "https://harlow.example/x" };
     return { ok: true };
   };

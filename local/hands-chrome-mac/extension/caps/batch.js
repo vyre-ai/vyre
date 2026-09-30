@@ -47,13 +47,13 @@ function subst(v, results, depth = 0) {
 export default {
   name: "batch",
   ops: {
-    "batch.run": async (args, ctx) => {
+    "batch.run": async (args, ctx, trust = {}) => {
       const steps = args.steps;
       if (!Array.isArray(steps) || !steps.length) throw err("bad_request", "batch.run needs steps: [{op, args}]");
       if (steps.length > MAX_STEPS) throw err("bad_request", `batch.run takes at most ${MAX_STEPS} steps`);
       const stopOnError = args.stopOnError !== false;
       /** What the module's approved plan still covers, set only by the module. @type {any} */
-      const wb = args.writeBudget && typeof args.writeBudget === "object" ? { ...args.writeBudget } : null;
+      const wb = trust.writeBudget ? { ...trust.writeBudget } : null;
       /** @type {{ kind: string, res: any }[]} */ const covered = [];
       /** @type {any[]} */
       const results = [];
@@ -70,18 +70,16 @@ export default {
         if (step.op === "batch.run") { halt("a batch cannot contain a batch", "bad_request"); if (stopOnError) break; continue; }
         try {
           const stepArgs = subst(step.args || {}, results);
-          // A step is the model's text. The approvals (asked, writeOk, release, the module's write budget) come from the batch's own caller, never from a step.
-          for (const k of ["asked", "writeOk", "release", "writeBudget"]) delete stepArgs[k];
           // A page acts on whatever a person's last click just caused: look for the control for a moment instead of failing on the first
           // look (a table that fills after its section opens). Set `wait` on a step, or `wait: false` on the batch, to change it.
           const wants = (step.op === "page.act" || step.op === "page.fill") && stepArgs.wait === undefined && args.wait !== false;
           // A batch that names a tab runs its steps on that tab, not on whichever is in front (the agent's tab need not be the active one).
           const onTab = typeof args.tabId === "number" && stepArgs.tabId === undefined && stepArgs.tab === undefined && !/^(tabs\.|ghl\.section)/.test(step.op) ? { tabId: args.tabId, tab: args.tabId } : {};
-          let result = await ctx.call(step.op, { ...onTab, ...(args.asked === true ? { asked: true } : {}), ...(wants ? { wait: args.wait && typeof args.wait === "object" ? args.wait : { timeoutMs: 3000 } } : {}), ...stepArgs });
+          let result = await ctx.call(step.op, { ...onTab, ...(wants ? { wait: args.wait && typeof args.wait === "object" ? args.wait : { timeoutMs: 3000 } } : {}), ...stepArgs }, { asked: trust.asked === true });
           // A write the module's approved plan covers (it sent a budget; a model's input cannot): run it again with writeOk, up to the budget, on the one API origin.
           if (wb && result && typeof result === "object" && result.held === true && result.write === true && (wb[result.kind] || 0) > 0 && (!wb.origin || result.origin === wb.origin)) {
             wb[result.kind]--; if (!wb.origin && result.origin) wb.origin = result.origin;
-            const again = await ctx.call(step.op, { ...onTab, ...stepArgs, writeOk: true });
+            const again = await ctx.call(step.op, { ...onTab, ...stepArgs }, { writeOk: true });
             covered.push({ kind: result.kind, res: again });
             result = again;
           }
@@ -109,9 +107,9 @@ export default {
           const name = args.saveAs.toLowerCase().replace(/[^a-z0-9._-]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 60);
           const t = typeof args.tabId === "number" && ctx.tabs ? await ctx.tabs.get(args.tabId) : null;
           const origin = originOf(String((t && (t.pendingUrl || t.url)) || ""));
-          const saved = origin && name ? await remember(ctx, origin, toRecipe(name, steps, results)) : null;
+          const saved = origin && name ? await remember(ctx, origin, toRecipe(name, steps, results)) : null; // toRecipe refuses a step it cannot make into parameters
           if (saved) /** @type {any} */ (out).recipe = { name: saved.name, steps: saved.steps.length, params: saved.params.map((/** @type {any} */ p) => p.name) };
-        } catch { /* a recipe that cannot be kept is not a failed batch */ }
+        } catch (e) { /** @type {any} */ (out).recipe = { saved: false, why: String(/** @type {any} */ (e)?.message || e).slice(0, 200) }; /* a recipe that cannot be kept is not a failed batch */ }
       }
       return out;
     },

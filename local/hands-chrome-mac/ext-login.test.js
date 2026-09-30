@@ -3,6 +3,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import login, { check, onFailure, appName, highlightScript } from "./extension/caps/login.js";
+import { T } from "./test-support/trust.js";
 
 /** @param {{ url?: string, wall?: string|null }} [o] */
 function world(o = {}) {
@@ -66,9 +67,9 @@ test("a failure on an ordinary page is left alone, and so are codes that are not
 
 test("login.wait resumes by itself: the wall must be gone for two looks, then the outline and the waiting state are cleared and the person is not asked again", async () => {
   const w = world({ wall: "password" });
-  await login.ops["login.handoff"]({ tabId: 6 }, w.ctx);
+  await T(login.ops["login.handoff"])({ tabId: 6 }, w.ctx);
   setTimeout(() => { w.st.wall = null; }, 30);
-  const r = await login.ops["login.wait"]({ tabId: 6, timeoutMs: 5000, pollMs: 20 }, w.ctx);
+  const r = await T(login.ops["login.wait"])({ tabId: 6, timeoutMs: 5000, pollMs: 20 }, w.ctx);
   assert.equal(r.ok, true);
   assert.equal(r.signedIn, true);
   assert.equal(w.st.events.filter(e => e.event === "login.done").length, 1);
@@ -78,12 +79,12 @@ test("login.wait resumes by itself: the wall must be gone for two looks, then th
 
 test("login.wait times out honestly and stops when the person presses stop; it never types", async () => {
   const w = world({ wall: "code" });
-  const r = await login.ops["login.wait"]({ tabId: 7, timeoutMs: 1000, pollMs: 10 }, w.ctx);
+  const r = await T(login.ops["login.wait"])({ tabId: 7, timeoutMs: 1000, pollMs: 10 }, w.ctx);
   assert.equal(r.ok, false);
   assert.match(String(r.why), /still waiting/);
   const s = world({ wall: "password" });
   s.st.stopped = true;
-  await assert.rejects(login.ops["login.wait"]({ tabId: 8, timeoutMs: 3000, pollMs: 10 }, s.ctx), { code: "stopped" });
+  await assert.rejects(T(login.ops["login.wait"])({ tabId: 8, timeoutMs: 3000, pollMs: 10 }, s.ctx), { code: "stopped" });
   for (const m of [w, s]) assert.ok(!m.st.sent.some(x => /Input\.|insertText|\.value\s*=/.test(x)));
   assert.ok(!/\.value\s*=|insertText|dispatchKeyEvent/.test(highlightScript(true)), "the highlight script types nothing");
 });
@@ -92,11 +93,11 @@ test("the pill's Continue re-checks at once and Skip gives up; neither can make 
   const { signal } = await import("./extension/caps/login.js");
   const w = world({ wall: "password" });
   setTimeout(() => signal(11, "continue"), 20);
-  const r = await login.ops["login.wait"]({ tabId: 11, timeoutMs: 400, pollMs: 100000 }, w.ctx);
+  const r = await T(login.ops["login.wait"])({ tabId: 11, timeoutMs: 400, pollMs: 100000 }, w.ctx);
   assert.equal(r.signedIn, false, "Continue with the wall still up is not signed in");
   const k = world({ wall: "password" });
   setTimeout(() => signal(12, "skip"), 20);
-  const sk = await login.ops["login.wait"]({ tabId: 12, timeoutMs: 5000, pollMs: 100000 }, k.ctx);
+  const sk = await T(login.ops["login.wait"])({ tabId: 12, timeoutMs: 5000, pollMs: 100000 }, k.ctx);
   assert.equal(sk.skipped, true);
   assert.deepEqual(k.st.presence[k.st.presence.length - 1], { waiting: null });
 });

@@ -4,8 +4,9 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { createCtx } from "./extension/lib/ctx.js";
-import { dispatch, register } from "./extension/caps/index.js";
+import { dispatch, register  } from "./extension/caps/index.js";
 import { createFakeChrome, createFakePage, samplePage } from "./test-support/fake-chrome.js";
+import { dispatchT, T } from "./test-support/trust.js";
 
 const calls = [];
 register({
@@ -28,14 +29,14 @@ const world = () => {
 
 test("runs steps in order with no host round trip and returns every result", async () => {
   const { ctx } = world();
-  const r = await dispatch("batch.run", { steps: [{ op: "probe.echo", args: { n: 1 } }, { op: "probe.echo", args: { n: 2 } }, { op: "probe.echo", args: { n: 3 } }] }, ctx);
+  const r = await dispatchT("batch.run", { steps: [{ op: "probe.echo", args: { n: 1 } }, { op: "probe.echo", args: { n: 2 } }, { op: "probe.echo", args: { n: 3 } }] }, ctx);
   assert.deepEqual([r.ok, r.done, r.results.length], [true, 3, 3]);
   assert.deepEqual(calls.map(c => c.n), [1, 2, 3]);
 });
 
 test("$N.path references an earlier result; nothing else is interpreted", async () => {
   const { ctx } = world();
-  const r = await dispatch("batch.run", { steps: [
+  const r = await dispatchT("batch.run", { steps: [
     { op: "probe.echo", args: { a: 1 } },
     { op: "probe.echo", args: { id: "$0.nested.id", list: ["$0.nested.list", "$0.nested.list.1"], text: "$0 stays text", expr: "$0.value.a + 1", deep: { x: "$0.value.a" } } },
   ] }, ctx);
@@ -46,7 +47,7 @@ test("$N.path references an earlier result; nothing else is interpreted", async 
 test("a reference that does not resolve, or reaches a prototype, fails that step", async () => {
   const { ctx } = world();
   for (const bad of ["$0.nope", "$5.x", "$0.constructor", "$0.__proto__"]) {
-    const r = await dispatch("batch.run", { steps: [{ op: "probe.echo", args: {} }, { op: "probe.echo", args: { v: bad } }] }, ctx);
+    const r = await dispatchT("batch.run", { steps: [{ op: "probe.echo", args: {} }, { op: "probe.echo", args: { v: bad } }] }, ctx);
     assert.deepEqual([r.ok, r.failedAt, r.code], [false, 1, "bad_request"], bad);
   }
   assert.equal(calls.filter(c => c.v).length, 0);
@@ -54,36 +55,36 @@ test("a reference that does not resolve, or reaches a prototype, fails that step
 
 test("halts at the first failure and says which step", async () => {
   const { ctx } = world();
-  const r = await dispatch("batch.run", { steps: [{ op: "probe.echo", args: { n: 1 } }, { op: "probe.fail" }, { op: "probe.echo", args: { n: 3 } }] }, ctx);
+  const r = await dispatchT("batch.run", { steps: [{ op: "probe.echo", args: { n: 1 } }, { op: "probe.fail" }, { op: "probe.echo", args: { n: 3 } }] }, ctx);
   assert.deepEqual([r.ok, r.done, r.failedAt, r.why, r.results.length], [false, 1, 1, "nope", 2]);
   assert.equal(calls.length, 1);
-  const t = await dispatch("batch.run", { steps: [{ op: "probe.throw" }, { op: "probe.echo", args: {} }] }, ctx);
+  const t = await dispatchT("batch.run", { steps: [{ op: "probe.throw" }, { op: "probe.echo", args: {} }] }, ctx);
   assert.deepEqual([t.ok, t.failedAt, t.code, t.why], [false, 0, "error", "boom"]);
-  const u = await dispatch("batch.run", { steps: [{ op: "nothing.here" }] }, ctx);
+  const u = await dispatchT("batch.run", { steps: [{ op: "nothing.here" }] }, ctx);
   assert.deepEqual([u.failedAt, u.code], [0, "unknown_op"]);
 });
 
 test("stopOnError:false keeps going", async () => {
   const { ctx } = world();
-  const r = await dispatch("batch.run", { stopOnError: false, steps: [{ op: "probe.fail" }, { op: "probe.echo", args: { n: 2 } }] }, ctx);
+  const r = await dispatchT("batch.run", { stopOnError: false, steps: [{ op: "probe.fail" }, { op: "probe.echo", args: { n: 2 } }] }, ctx);
   assert.deepEqual([r.ok, r.done, r.failedAt, r.results.length], [false, 1, 0, 2]);
 });
 
 test("stop is checked before every step: the person's Esc halts mid-batch", async () => {
   const { ctx } = world();
   register({ name: "stopper", ops: { "stopper.press": async () => { ctx.setStopped(true); return { ok: true }; } } });
-  const r = await dispatch("batch.run", { steps: [{ op: "probe.echo", args: { n: 1 } }, { op: "stopper.press" }, { op: "probe.echo", args: { n: 3 } }] }, ctx);
+  const r = await dispatchT("batch.run", { steps: [{ op: "probe.echo", args: { n: 1 } }, { op: "stopper.press" }, { op: "probe.echo", args: { n: 3 } }] }, ctx);
   assert.deepEqual([r.ok, r.done, r.failedAt, r.code], [false, 2, 2, "stopped"]);
   assert.deepEqual(calls.map(c => c.n), [1]);
   // and while stopped, batch.run itself (an acting op) is refused outright
-  await assert.rejects(dispatch("batch.run", { steps: [{ op: "probe.echo" }] }, ctx), { code: "stopped" });
+  await assert.rejects(dispatchT("batch.run", { steps: [{ op: "probe.echo" }] }, ctx), { code: "stopped" });
   ctx.setStopped(false);
-  assert.equal((await dispatch("batch.run", { steps: [{ op: "probe.echo", args: {} }] }, ctx)).ok, true);
+  assert.equal((await dispatchT("batch.run", { steps: [{ op: "probe.echo", args: {} }] }, ctx)).ok, true);
 });
 
 test("the floor is checked before every step", async () => {
   const { ctx } = world();
-  const r = await dispatch("batch.run", { steps: [
+  const r = await dispatchT("batch.run", { steps: [
     { op: "page.snapshot", args: { tabId: 1 } },
     { op: "page.snapshot", args: { tabId: 2 } },
     { op: "page.snapshot", args: { tabId: 1 } },
@@ -93,7 +94,7 @@ test("the floor is checked before every step", async () => {
 
 test("a held step halts the batch and hands the hold back", async () => {
   const { ctx, fake } = world();
-  const r = await dispatch("batch.run", { steps: [
+  const r = await dispatchT("batch.run", { steps: [
     { op: "page.fill", args: { tabId: 1, fields: [{ selector: { name: "Email" }, value: "alex@harlow.example" }] } },
     { op: "page.act", args: { tabId: 1, selector: { name: "Save contact" }, kind: "click" } },
     { op: "page.act", args: { tabId: 1, selector: { name: "Cancel" }, kind: "click" } },
@@ -106,12 +107,12 @@ test("a held step halts the batch and hands the hold back", async () => {
 
 test("malformed batches are refused; a batch cannot contain a batch", async () => {
   const { ctx } = world();
-  await assert.rejects(dispatch("batch.run", {}, ctx), { code: "bad_request" });
-  await assert.rejects(dispatch("batch.run", { steps: [] }, ctx), { code: "bad_request" });
-  await assert.rejects(dispatch("batch.run", { steps: new Array(201).fill({ op: "probe.echo" }) }, ctx), { code: "bad_request" });
-  const r = await dispatch("batch.run", { steps: [{ op: "batch.run", args: { steps: [{ op: "probe.echo" }] } }] }, ctx);
+  await assert.rejects(dispatchT("batch.run", {}, ctx), { code: "bad_request" });
+  await assert.rejects(dispatchT("batch.run", { steps: [] }, ctx), { code: "bad_request" });
+  await assert.rejects(dispatchT("batch.run", { steps: new Array(201).fill({ op: "probe.echo" }) }, ctx), { code: "bad_request" });
+  const r = await dispatchT("batch.run", { steps: [{ op: "batch.run", args: { steps: [{ op: "probe.echo" }] } }] }, ctx);
   assert.deepEqual([r.ok, r.code], [false, "bad_request"]);
-  const s = await dispatch("batch.run", { steps: [{ args: {} }] }, ctx);
+  const s = await dispatchT("batch.run", { steps: [{ args: {} }] }, ctx);
   assert.equal(s.ok, false);
 });
 
@@ -119,10 +120,10 @@ test("page.act and page.fill steps look for their control for a moment by defaul
   const { ctx } = world();
   const seen = /** @type {any[]} */ ([]);
   ctx.call = async (/** @type {string} */ _op, /** @type {any} */ a) => { seen.push(a); return { ok: true }; };
-  await dispatch("batch.run", { steps: [{ op: "page.act", args: { selector: { name: "A" } } }, { op: "page.fill", args: { fields: [] } }, { op: "page.act", args: { selector: { name: "B" }, wait: { timeoutMs: 50 } } }] }, ctx);
+  await dispatchT("batch.run", { steps: [{ op: "page.act", args: { selector: { name: "A" } } }, { op: "page.fill", args: { fields: [] } }, { op: "page.act", args: { selector: { name: "B" }, wait: { timeoutMs: 50 } } }] }, ctx);
   assert.deepEqual(seen.map(a => a.wait), [{ timeoutMs: 3000 }, { timeoutMs: 3000 }, { timeoutMs: 50 }]);
   seen.length = 0;
-  await dispatch("batch.run", { wait: false, steps: [{ op: "page.act", args: { selector: { name: "A" } } }] }, ctx);
+  await dispatchT("batch.run", { wait: false, steps: [{ op: "page.act", args: { selector: { name: "A" } } }] }, ctx);
   assert.equal(seen[0].wait, undefined);
 });
 
@@ -130,7 +131,7 @@ test("batch.run: a batch that names a tab runs its page steps on that tab, not t
   const calls = [];
   const ctx = { stopped: () => false, call: async (op, a) => { calls.push([op, a]); return { ok: true }; } };
   const { default: batch } = await import("./extension/caps/batch.js");
-  await batch.ops["batch.run"]({ tabId: 7, steps: [{ op: "page.act", args: { selector: { name: "x" } } }, { op: "page.act", args: { tabId: 9, selector: { name: "y" } } }, { op: "tabs.use", args: { url: "https://a.example" } }] }, ctx);
+  await T(batch.ops["batch.run"])({ tabId: 7, steps: [{ op: "page.act", args: { selector: { name: "x" } } }, { op: "page.act", args: { tabId: 9, selector: { name: "y" } } }, { op: "tabs.use", args: { url: "https://a.example" } }] }, ctx);
   assert.equal(calls[0][1].tabId, 7);
   assert.equal(calls[1][1].tabId, 9, "a step that names its own tab keeps it");
   assert.equal(calls[2][1].tabId, undefined);
@@ -140,38 +141,39 @@ test("batch.run: ghl.save in a batch runs on the batch's tab (it read the active
   const calls = [];
   const ctx = { stopped: () => false, call: async (op, a) => { calls.push([op, a]); return { ok: true }; } };
   const { default: batch } = await import("./extension/caps/batch.js");
-  await batch.ops["batch.run"]({ tabId: 7, steps: [{ op: "ghl.save", args: { name: "Save" } }, { op: "ghl.section", args: { section: "workflows" } }] }, ctx);
+  await T(batch.ops["batch.run"])({ tabId: 7, steps: [{ op: "ghl.save", args: { name: "Save" } }, { op: "ghl.section", args: { section: "workflows" } }] }, ctx);
   assert.equal(calls[0][1].tabId, 7);
   assert.equal(calls[1][1].tabId, undefined);
 });
 
-test("batch.run: a step cannot carry its own approval (asked, writeOk, release, writeBudget): those come only from the batch's caller", async () => {
-  const calls = [];
-  const ctx = { stopped: () => false, call: async (op, a) => { calls.push([op, a]); return { ok: true }; } };
-  const { default: batch } = await import("./extension/caps/batch.js");
-  await batch.ops["batch.run"]({ tabId: 7, steps: [{ op: "api.call", args: { entry: "e", asked: true, writeOk: true, release: { sig: "x" }, writeBudget: { create: 99 } } }] }, ctx);
-  const a = calls[0][1];
-  assert.equal(a.asked, undefined);
-  assert.equal(a.writeOk, undefined);
-  assert.equal(a.release, undefined);
-  assert.equal(a.writeBudget, undefined);
+test("trust never travels in args: a step (or any nested arg) that carries asked, writeOk, release or writeBudget is refused outright; only the batch's own trust applies", async () => {
+  const calls = /** @type {any[]} */ ([]);
+  const ctx = { stopped: () => false, floorAllows: async () => ({ allow: true }), tabs: { get: async () => ({}) }, call: async (/** @type {string} */ op, /** @type {any} */ a, /** @type {any} */ tr) => { calls.push([op, a, tr]); return { ok: true }; } };
+  for (const key of ["asked", "writeOk", "release", "writeBudget", "agent"]) {
+    await assert.rejects(dispatchT("batch.run", { tabId: 7, steps: [{ op: "api.call", args: { entry: "e", [key]: key === "release" ? { sig: "x" } : true } }] }, ctx), { code: "bad_request" }, key);
+    await assert.rejects(dispatchT("batch.run", { tabId: 7, steps: [{ op: "api.call", args: { entry: "e", deep: [{ nest: { [key]: true } }] } }] }, ctx), { code: "bad_request" }, `${key} nested`);
+  }
+  assert.equal(calls.length, 0, "nothing ran");
+  await dispatchT("batch.run", { tabId: 7, asked: true, steps: [{ op: "api.call", args: { entry: "e" } }] }, ctx);
+  assert.equal(calls[0][1].asked, undefined, "not in args");
+  assert.equal(calls[0][2].asked, true, "the batch's own trust passes down beside the args");
   calls.length = 0;
-  await batch.ops["batch.run"]({ tabId: 7, asked: true, steps: [{ op: "api.call", args: { entry: "e" } }] }, ctx);
-  assert.equal(calls[0][1].asked, true, "the batch's own asked (set by the module from the caller) still applies");
+  await dispatchT("batch.run", { tabId: 7, steps: [{ op: "api.call", args: { entry: "e" } }] }, ctx);
+  assert.notEqual(calls[0][2].asked, true);
 });
 
 test("batch.run: a held write the module's budget covers is run again with writeOk, up to the budget and on one API origin; the step result is the real one", async () => {
   const calls = [];
   const heldW = origin => ({ ok: false, held: true, write: true, kind: "create", method: "POST", origin });
-  const ctx = { stopped: () => false, call: async (op, a) => { calls.push([op, a]); return a.writeOk ? { ok: true, status: 201, method: "POST" } : heldW(a.entry === "other" ? "https://other.example" : "https://api.one.example"); } };
+  const ctx = { stopped: () => false, call: async (op, a, tr) => { calls.push([op, a, tr]); return tr && tr.writeOk ? { ok: true, status: 201, method: "POST" } : heldW(a.entry === "other" ? "https://other.example" : "https://api.one.example"); } };
   const { default: batch } = await import("./extension/caps/batch.js");
   const steps = [{ op: "api.call", args: { entry: "a" } }, { op: "api.call", args: { entry: "a" } }, { op: "api.call", args: { entry: "a" } }];
-  const r = await batch.ops["batch.run"]({ tabId: 7, writeBudget: { create: 2, edit: 0 }, steps, stopOnError: false }, ctx);
+  const r = await T(batch.ops["batch.run"])({ tabId: 7, writeBudget: { create: 2, edit: 0 }, steps, stopOnError: false }, ctx);
   assert.equal(r.covered.length, 2);
   assert.equal(r.results[2].held, true, "the third is beyond the budget");
-  assert.equal(calls.filter(c => c[1].writeOk === true).length, 2);
-  const o = await batch.ops["batch.run"]({ tabId: 7, writeBudget: { create: 5, edit: 0 }, steps: [{ op: "api.call", args: { entry: "a" } }, { op: "api.call", args: { entry: "other" } }], stopOnError: false }, ctx);
+  assert.equal(calls.filter(c => c[2] && c[2].writeOk === true).length, 2);
+  const o = await T(batch.ops["batch.run"])({ tabId: 7, writeBudget: { create: 5, edit: 0 }, steps: [{ op: "api.call", args: { entry: "a" } }, { op: "api.call", args: { entry: "other" } }], stopOnError: false }, ctx);
   assert.equal(o.covered.length, 1, "the first write pins the origin; another origin is not covered");
-  const none = await batch.ops["batch.run"]({ tabId: 7, steps, stopOnError: false }, ctx);
+  const none = await T(batch.ops["batch.run"])({ tabId: 7, steps, stopOnError: false }, ctx);
   assert.equal(none.covered, undefined);
 });

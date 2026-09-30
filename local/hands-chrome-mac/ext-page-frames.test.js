@@ -11,6 +11,7 @@ import { topBlocker } from "./extension/lib/ui.js";
 import { passwordFieldScript } from "./extension/shared/guards.js";
 import { guardInstall, guardInstallWrites, guardCollect } from "./extension/shared/outbound.js";
 import { createFakeChrome, createFakeFrames } from "./test-support/fake-chrome.js";
+import { dispatchT } from "./test-support/trust.js";
 
 const SHELL = "https://crm.harlow.example";
 const APP = "https://client-app-automation-workflows.leadconnectorhq.com";
@@ -42,8 +43,8 @@ async function world(o = {}) {
   await fx.attach(ctx);
   return { chrome, ctx, fx, nav, contacts, create, name, top, app };
 }
-const snap = (/** @type {any} */ ctx, /** @type {any} */ args = {}) => dispatch("page.snapshot", { tabId: 1, ...args }, ctx);
-const act = (/** @type {any} */ ctx, /** @type {any} */ args) => dispatch("page.act", { tabId: 1, ...args }, ctx);
+const snap = (/** @type {any} */ ctx, /** @type {any} */ args = {}) => dispatchT("page.snapshot", { tabId: 1, ...args }, ctx);
+const act = (/** @type {any} */ ctx, /** @type {any} */ args) => dispatchT("page.act", { tabId: 1, ...args }, ctx);
 
 test("the snapshot script (with frame extras) is still valid JavaScript", () => { new vm.Script(EXPRESSION); });
 
@@ -72,7 +73,7 @@ test("a control's selector in the snapshot carries its frame, and pins it", asyn
   const w = await world();
   const s = await snap(w.ctx);
   const c = s.controls.find((/** @type {any} */ x) => x.name === "Workflow Name");
-  const r = await dispatch("page.fill", { tabId: 1, fields: [{ selector: { name: c.name, path: c.path, frame: c.frame }, value: "Welcome" }] }, w.ctx);
+  const r = await dispatchT("page.fill", { tabId: 1, fields: [{ selector: { name: c.name, path: c.path, frame: c.frame }, value: "Welcome" }] }, w.ctx);
   assert.equal(r.ok, true);
   assert.equal(r.trace.frame, 1);
   assert.equal(r.trace.frameOrigin, APP);
@@ -214,14 +215,14 @@ test("fill: fields are grouped by frame, one script per frame; values never come
   const a = ctl("textbox", "Subject");
   const b = ctl("textbox", "Body");
   const w = await world({ top: { controls: [shellEmail] }, frames: [{ id: "APP", origin: APP, url: `${APP}/b`, box: { x: 200, y: 80, w: 900, h: 600 }, model: { url: "x", title: "", text: "", controls: [a, b] } }] });
-  const r = await dispatch("page.fill", { tabId: 1, fields: [{ label: "Subject", value: "Hello kit" }, { label: "Search", value: "juno" }, { label: "Body", value: "Northwind Bakery news" }] }, w.ctx);
+  const r = await dispatchT("page.fill", { tabId: 1, fields: [{ label: "Subject", value: "Hello kit" }, { label: "Search", value: "juno" }, { label: "Body", value: "Northwind Bakery news" }] }, w.ctx);
   assert.deepEqual([r.ok, r.filled], [true, 3]);
   assert.deepEqual([w.fx.page("APP").applies, w.fx.page("TOP").applies], [1, 1], "one apply per frame");
   assert.deepEqual([a.value, b.value, shellEmail.value], ["Hello kit", "Northwind Bakery news", "juno"]);
   assert.ok(!JSON.stringify(r).includes("Northwind Bakery news") && !JSON.stringify(r).includes("Hello kit"));
   assert.ok(r.trace.frames === undefined || Array.isArray(r.trace.frames));
   // a label pinned to a frame
-  await assert.rejects(dispatch("page.fill", { tabId: 1, fields: [{ label: "Search", frame: 1, value: "x" }] }, w.ctx), { code: "not_found" });
+  await assert.rejects(dispatchT("page.fill", { tabId: 1, fields: [{ label: "Search", frame: 1, value: "x" }] }, w.ctx), { code: "not_found" });
 });
 
 test("wait: a selector is found in any frame; one that appears late in a child frame is picked up", async () => {
@@ -229,18 +230,18 @@ test("wait: a selector is found in any frame; one that appears late in a child f
   const later = ctl("button", "Add Action");
   setTimeout(() => w.fx.page("APP").model.controls.push(later), 120);
   const t0 = Date.now();
-  const r = await dispatch("page.wait", { tabId: 1, selector: { name: "Add Action" }, timeoutMs: 3000 }, w.ctx);
+  const r = await dispatchT("page.wait", { tabId: 1, selector: { name: "Add Action" }, timeoutMs: 3000 }, w.ctx);
   assert.equal(r.ok, true);
   assert.ok(Date.now() - t0 >= 100);
   assert.equal(r.trace.frame, 1);
   // gone, across frames
   setTimeout(() => { w.fx.page("APP").model.controls.length = 0; }, 100);
-  assert.equal((await dispatch("page.wait", { tabId: 1, selector: { name: "Add Action" }, gone: true, timeoutMs: 3000 }, w.ctx)).ok, true);
+  assert.equal((await dispatchT("page.wait", { tabId: 1, selector: { name: "Add Action" }, gone: true, timeoutMs: 3000 }, w.ctx)).ok, true);
   // a CSS selector, in any frame, or in the one `frame` names
   w.fx.page("APP").model.css = "#builder";
-  const css = await dispatch("page.wait", { tabId: 1, selector: "#builder", timeoutMs: 500 }, w.ctx);
+  const css = await dispatchT("page.wait", { tabId: 1, selector: "#builder", timeoutMs: 500 }, w.ctx);
   assert.equal(css.trace.frame, 1);
-  await assert.rejects(dispatch("page.wait", { tabId: 1, selector: "#builder", frame: "top", timeoutMs: 150 }, w.ctx), (/** @type {any} */ e) => e.code === "timeout" && /frame "top"/.test(e.message) && e.detail.frame === 0);
+  await assert.rejects(dispatchT("page.wait", { tabId: 1, selector: "#builder", frame: "top", timeoutMs: 150 }, w.ctx), (/** @type {any} */ e) => e.code === "timeout" && /frame "top"/.test(e.message) && e.detail.frame === 0);
 });
 
 test("wait: a frame that appears late is picked up (a new frame, and the same one after it navigates and gets a new id)", async () => {
@@ -248,7 +249,7 @@ test("wait: a frame that appears late is picked up (a new frame, and the same on
   const target = ctl("button", "Next step");
   setTimeout(() => w.fx.addFrame({ id: "LATE", origin: APP, url: `${APP}/late`, box: { x: 0, y: 0, w: 300, h: 300 }, model: { url: "x", title: "", text: "", controls: [] } }), 60);
   setTimeout(() => { w.fx.navigate("LATE", { id: "LATE2", url: `${APP}/late2` }); w.fx.page("LATE2").model.controls.push(target); }, 160);
-  const r = await dispatch("page.wait", { tabId: 1, selector: { name: "Next step" }, timeoutMs: 3000 }, w.ctx);
+  const r = await dispatchT("page.wait", { tabId: 1, selector: { name: "Next step" }, timeoutMs: 3000 }, w.ctx);
   assert.equal(r.ok, true);
   assert.equal(r.trace.frame, 1);
   const c = await act(w.ctx, { selector: { name: "Next step" }, kind: "click", asked: true });
@@ -262,7 +263,7 @@ test("wait settled: looks in every readable frame, so a spinner in the iframe ho
   app.model.state = quiet({ busy: 2, busySample: ["div.spinner"] });
   const t0 = Date.now();
   app.onSnapshot = () => { if (Date.now() - t0 > 300) app.model.state.busy = 0; };
-  const r = await dispatch("page.wait", { tabId: 1, settled: true, timeoutMs: 5000 }, w.ctx);
+  const r = await dispatchT("page.wait", { tabId: 1, settled: true, timeoutMs: 5000 }, w.ctx);
   assert.equal(r.ok, true);
   assert.ok(Date.now() - t0 >= 290, "not settled while the iframe's skeleton was on screen");
   assert.equal(r.trace.busyIgnored, undefined);
@@ -270,20 +271,20 @@ test("wait settled: looks in every readable frame, so a spinner in the iframe ho
   app.model.state = quiet({ netPending: 1, netQuietMs: 0 });
   const t1 = Date.now();
   app.onSnapshot = () => { if (Date.now() - t1 > 200) { app.model.state.netPending = 0; app.model.state.netQuietMs = 300; } };
-  const r2 = await dispatch("page.wait", { tabId: 1, settled: true, timeoutMs: 5000 }, w.ctx);
+  const r2 = await dispatchT("page.wait", { tabId: 1, settled: true, timeoutMs: 5000 }, w.ctx);
   assert.equal(r2.ok, true);
   assert.ok(Date.now() - t1 >= 190);
 });
 
 test("wait url and idle look across frames", async () => {
   const w = await world();
-  const r = await dispatch("page.wait", { tabId: 1, url: "/builder", timeoutMs: 500 }, w.ctx);
+  const r = await dispatchT("page.wait", { tabId: 1, url: "/builder", timeoutMs: 500 }, w.ctx);
   assert.deepEqual([r.ok, r.trace.frame], [true, 1]);
-  await assert.rejects(dispatch("page.wait", { tabId: 1, url: "/builder", frame: "top", timeoutMs: 150 }, w.ctx), { code: "timeout" });
+  await assert.rejects(dispatchT("page.wait", { tabId: 1, url: "/builder", frame: "top", timeoutMs: 150 }, w.ctx), { code: "timeout" });
   w.fx.page("APP").quietMs = 0;
-  await assert.rejects(dispatch("page.wait", { tabId: 1, idleMs: 200, timeoutMs: 150 }, w.ctx), { code: "timeout" });
+  await assert.rejects(dispatchT("page.wait", { tabId: 1, idleMs: 200, timeoutMs: 150 }, w.ctx), { code: "timeout" });
   w.fx.page("APP").quietMs = 10_000;
-  assert.equal((await dispatch("page.wait", { tabId: 1, idleMs: 200, timeoutMs: 500 }, w.ctx)).ok, true);
+  assert.equal((await dispatchT("page.wait", { tabId: 1, idleMs: 200, timeoutMs: 500 }, w.ctx)).ok, true);
 });
 
 test("a step that runs while its frame navigates re-resolves the frame and retries within the retry budget", async () => {
@@ -299,7 +300,7 @@ test("a step that runs while its frame navigates re-resolves the frame and retri
     }
     return inner(tab, method, p, session);
   };
-  const r = await dispatch("batch.run", { steps: [{ op: "page.act", args: { tabId: 1, selector: { name: "Create Workflow" }, kind: "click", asked: true } }, { op: "page.fill", args: { tabId: 1, fields: [{ label: "Workflow Name", value: "Welcome" }] } }] }, w.ctx);
+  const r = await dispatchT("batch.run", { asked: true, steps: [{ op: "page.act", args: { tabId: 1, selector: { name: "Create Workflow" }, kind: "click"} }, { op: "page.fill", args: { tabId: 1, fields: [{ label: "Workflow Name", value: "Welcome" }] } }] }, w.ctx);
   assert.equal(r.ok, true, JSON.stringify(r.detail || r.why));
   assert.equal(r.results[0].trace.retries, 1);
   assert.equal(r.results[0].trace.frame, 1);
@@ -371,19 +372,19 @@ test("eval: `frame` picks where the script runs (index, id or a piece of the ori
     if (expr === guardCollect) return { result: { type: "object", value: [] } };
     return { result: { type: "string", value: "ran in " + id } };
   } });
-  const r = await dispatch("page.eval", { tabId: 1, expression: "document.title", frame: "leadconnectorhq" }, w.ctx);
+  const r = await dispatchT("page.eval", { tabId: 1, expression: "document.title", frame: "leadconnectorhq" }, w.ctx);
   assert.deepEqual([r.ok, r.value, r.frame, r.frameOrigin], [true, "ran in APP", 1, APP]);
   const mine = seen.filter(x => x[1] === "install" || x[1] === "collect" || x[1] === "document.title");
   assert.deepEqual(mine, [["APP", "install"], ["APP", "document.title"], ["APP", "collect"]], "install, run and collect all happen in the frame the script runs in");
   // default is the top page, and the shape is unchanged
   seen.length = 0;
-  const t = await dispatch("page.eval", { tabId: 1, expression: "document.title" }, w.ctx);
+  const t = await dispatchT("page.eval", { tabId: 1, expression: "document.title" }, w.ctx);
   assert.equal(t.value, "ran in TOP");
   assert.deepEqual(seen.filter(x => x[1] === "install" || x[1] === "collect").map(x => x[0]), ["TOP", "TOP"]);
   // by index and by id
-  assert.equal((await dispatch("page.eval", { tabId: 1, expression: "1", frame: 1, asked: true }, w.ctx)).value, "ran in APP");
-  assert.equal((await dispatch("page.eval", { tabId: 1, expression: "1", frame: "APP", asked: true }, w.ctx)).frame, 1);
-  await assert.rejects(dispatch("page.eval", { tabId: 1, expression: "1", frame: "nowhere" }, w.ctx), { code: "not_found" });
+  assert.equal((await dispatchT("page.eval", { tabId: 1, expression: "1", frame: 1, asked: true }, w.ctx)).value, "ran in APP");
+  assert.equal((await dispatchT("page.eval", { tabId: 1, expression: "1", frame: "APP", asked: true }, w.ctx)).frame, 1);
+  await assert.rejects(dispatchT("page.eval", { tabId: 1, expression: "1", frame: "nowhere" }, w.ctx), { code: "not_found" });
 });
 
 test("eval: a password field in ANY readable frame makes the script refuse, wherever it would have run", async () => {
@@ -393,11 +394,11 @@ test("eval: a password field in ANY readable frame makes the script refuse, wher
     { id: "HIDDEN", origin: "https://ads.northwind.example", url: "https://ads.northwind.example/", box: { x: 0, y: 0, w: 1, h: 1 }, via: "none" },
   ], userEval: (/** @type {string} */ id, /** @type {string} */ expr) => (expr === passwordFieldScript ? { result: { type: "boolean", value: id === "LOGIN" } } : { result: { type: "string", value: "ran in " + id } }) });
   for (const frame of [undefined, 1, "LOGIN"]) {
-    await assert.rejects(dispatch("page.eval", { tabId: 1, expression: "1", asked: true, ...(frame !== undefined ? { frame } : {}) }, w.ctx), (/** @type {any} */ e) => e.code === "blocked" && /frame 2 \(https:\/\/pay\.northwind\.example\) has a password field/.test(e.message), `frame ${frame}`);
+    await assert.rejects(dispatchT("page.eval", { tabId: 1, expression: "1", asked: true, ...(frame !== undefined ? { frame } : {}) }, w.ctx), (/** @type {any} */ e) => e.code === "blocked" && /frame 2 \(https:\/\/pay\.northwind\.example\) has a password field/.test(e.message), `frame ${frame}`);
   }
   // without the login form: it runs, and says a frame it could not read was not scanned
   w.fx.removeFrame("LOGIN");
-  const ok = await dispatch("page.eval", { tabId: 1, expression: "1", asked: true }, w.ctx);
+  const ok = await dispatchT("page.eval", { tabId: 1, expression: "1", asked: true }, w.ctx);
   assert.equal(ok.ok, true);
   assert.deepEqual(ok.notScanned, [{ index: 2, origin: "https://ads.northwind.example" }]);
 });
@@ -454,11 +455,11 @@ test("page.eval (the op chrome_eval calls): a script's write with the page's log
     if (expr === guardCollect) return { result: { type: "object", value: [{ method: "POST", url: "https://backend.example.com/workflow/w1?token=SECRETSECRETSECRET12", why: "write", write: true }] } };
     return { result: { type: "string", value: "done" } };
   } });
-  await assert.rejects(dispatch("page.eval", { tabId: 1, expression: "fetch('https://backend.example.com/workflow/w1',{method:'POST'})" }, w.ctx), (/** @type {any} */ e) => e.code === "blocked" && /POST/.test(e.message) && /api\.call/.test(e.message) && !/SECRETSECRET/.test(e.message));
+  await assert.rejects(dispatchT("page.eval", { tabId: 1, expression: "fetch('https://backend.example.com/workflow/w1',{method:'POST'})" }, w.ctx), (/** @type {any} */ e) => e.code === "blocked" && /POST/.test(e.message) && /api\.call/.test(e.message) && !/SECRETSECRET/.test(e.message));
   assert.ok(ran.includes(guardInstallWrites), "the write guard is what was installed");
   ran.length = 0;
   for (const expression of ["indexedDB.open('firebaseLocalStorageDb')", "x.stsTokenManager.accessToken", "document.cookie"]) {
-    await assert.rejects(dispatch("page.eval", { tabId: 1, expression }, w.ctx), (/** @type {any} */ e) => e.code === "blocked" && /chrome_api/.test(e.message), expression);
+    await assert.rejects(dispatchT("page.eval", { tabId: 1, expression }, w.ctx), (/** @type {any} */ e) => e.code === "blocked" && /chrome_api/.test(e.message), expression);
   }
   assert.ok(!ran.some(e => /firebaseLocalStorageDb|stsTokenManager|document\.cookie/.test(e)), "a script that opens the stored login is refused before it runs");
   assert.ok(!ran.includes(guardInstallWrites), "and before the guard is even installed");

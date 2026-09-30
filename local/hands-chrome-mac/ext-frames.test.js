@@ -6,6 +6,7 @@ import { createCtx } from "./extension/lib/ctx.js";
 import { dispatch } from "./extension/caps/index.js";
 import { createFakeChrome } from "./test-support/fake-chrome.js";
 import { realisticFrameTree } from "./devtools-kit.js";
+import { dispatchT } from "./test-support/trust.js";
 
 /** A tab whose page has a shell, a cross-origin app (own session), a nested cross-origin frame (own session) and a same-process frame. */
 function world() {
@@ -56,7 +57,7 @@ test("frames.list: every frame, in tree order, with origin, how it is reached, a
   ev({ tabId: 1, sessionId: "S-APP" }, "Target.attachedToTarget", { sessionId: "S-INNER", targetInfo: { targetId: "INNER", type: "iframe", url: "https://pay.harlow.example/" } });
   // A same-process frame has an execution context on the top session.
   ev({ tabId: 1 }, "Runtime.executionContextCreated", { context: { id: 77, auxData: { isDefault: true, frameId: "SAME" } } });
-  const r = await dispatch("frames.list", { tabId: 1 }, ctx);
+  const r = await dispatchT("frames.list", { tabId: 1 }, ctx);
   assert.equal(r.count, 5);
   assert.deepEqual(r.frames.map((/** @type {any} */ f) => [f.index, f.depth, f.origin, f.readable, f.via]), [
     [0, 0, "https://shell.harlow.example", true, "top"],

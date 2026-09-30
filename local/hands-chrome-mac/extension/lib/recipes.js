@@ -15,11 +15,18 @@ const PARAM = /\{([a-z][a-z0-9_]*)\}/g;
  * @returns {{ name: string, params: { name: string, type: string }[], steps: any[], expects: any[] }}
  */
 export function toRecipe(name, steps, results = []) {
+  /** Steps a recipe will not keep: a script's text cannot be made into parameters, and a network replay is a captured request with its credentials. */
+  const refuse = steps.find(s => /^(page\.eval|dev\.console\.eval|net\.|dev\.)/.test(String(s.op)));
+  if (refuse) throw Object.assign(new Error(`a recipe cannot hold a ${refuse.op} step (a script's text or a captured request is not a parameter)`), { code: "not_recordable" });
   /** @type {Map<string, { name: string, type: string }>} */ const params = new Map();
   const claim = (/** @type {string} */ want) => { let n = slug(want), i = 2; while (params.has(n)) n = `${slug(want)}_${i++}`; params.set(n, { name: n, type: "string" }); return `{${n}}`; };
   const out = steps.map((s, i) => {
     const args = JSON.parse(JSON.stringify(s.args || {}));
-    delete args.tabId; delete args.tab; delete args.asked; delete args.release; delete args.writeOk;
+    delete args.tabId; delete args.tab;
+    // A clicked control found only by its label is a person's data if the label is a row's name: the label becomes a parameter.
+    if (s.op === "page.act" && args.selector && typeof args.selector === "object" && args.selector.name && !args.selector.identifier) args.selector = { ...args.selector, name: claim("target") };
+    // A page address with an id or a slug in it is a parameter too.
+    if (/^tabs\.(navigate|open|use)$/.test(String(s.op)) && typeof args.url === "string") { try { const u = new URL(args.url); if (u.search || u.hash || u.pathname.split("/").some((/** @type {string} */ seg) => seg && /[0-9]|[A-Z]|-.*-/.test(seg))) args.url = claim("url"); } catch { args.url = claim("url"); } }
     if (s.op === "page.fill" && Array.isArray(args.fields)) args.fields = args.fields.map((/** @type {any} */ f) => ({ ...f, value: claim(f.label || (f.selector && (f.selector.identifier || f.selector.name)) || "field") }));
     if (s.op === "page.act" && (args.kind === "type" || args.kind === "select") && args.value !== undefined) args.value = claim((args.selector && (args.selector.identifier || args.selector.name)) || "value");
     if (s.op === "api.call" && args.args && typeof args.args === "object") {

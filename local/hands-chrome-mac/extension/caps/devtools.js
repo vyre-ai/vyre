@@ -418,7 +418,7 @@ const ops = {
     return { count: rows.length, last: st.seq, entries: rows };
   },
 
-  async "dev.console.eval"(args, ctx) {
+  async "dev.console.eval"(args, ctx, trust = {}) {
     const tab = await target(ctx, args, "dev.console.eval", true);
     if (typeof args?.expression !== "string" || !args.expression) throw refuse("bad_request", "expression is required");
     await ensure(ctx, tab, "console");
@@ -433,7 +433,7 @@ const ops = {
       if (pw && pw.result && pw.result.value === true) throw refuse("blocked", !f || f.index === 0 ? "this page has a password field, so a script is not run on it" : `frame ${f.index} (${f.origin || "?"}) has a password field, so a script is not run on this page`);
     }
     if (CREDENTIAL_STORE.test(String(args.expression))) throw refuse("blocked", "the script reads the page's stored login (IndexedDB or storage auth tokens). Vyre does not hand a login to a script, and a script should not hold one. Use chrome_api (action \"call\"): it signs the request with the page's own login inside the page, and the token is never in your hands. Prefer api.call over eval-fetch.");
-    const guarded = args.asked !== true;
+    const guarded = trust.asked !== true;
     const egress = guarded ? await egressGuard(ctx, tab) : null;
     // The send-hold shim goes into the SAME frame as the script, and is read back from there.
     if (guarded) await runIn(ctx, tab, frame, guardInstallWrites, { returnByValue: true });

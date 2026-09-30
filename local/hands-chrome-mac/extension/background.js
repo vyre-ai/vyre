@@ -143,7 +143,7 @@ export function start(chrome, opts = {}) {
       const tabArg = msg.args && typeof msg.args === "object" ? (typeof msg.args.tabId === "number" ? msg.args.tabId : typeof msg.args.tab === "number" ? msg.args.tab : undefined) : undefined;
       // Arriving on a site: its card is read from this device at once (no wait), and asked of the server in the background when there is none.
       if (tabArg !== undefined && !/^(site|caps|status)/.test(msg.op)) void ctx.tabs.get(tabArg).then((/** @type {any} */ t) => sites.arrive(String(t && (t.pendingUrl || t.url) || ""))).catch(() => {});
-      const result = await presence.around(msg.op, msg.args, () => dispatch(msg.op, msg.args, ctx));
+      const result = await presence.around(msg.op, msg.args, () => dispatch(msg.op, msg.args, ctx, msg.trust));
       if (tabArg !== undefined && result && typeof result === "object" && /^(page\.(act|fill)|api\.learn|frames\.(list|probe))/.test(msg.op)) void ctx.tabs.get(tabArg).then((/** @type {any} */ t) => sites.learn({ op: msg.op, args: msg.args, result, tabUrl: String(t && (t.pendingUrl || t.url) || "") })).catch(() => {});
       // A batch or flow that stopped on a login page is the person's to fix, not the page's fault.
       if (result && typeof result === "object" && result.ok === false && result.code && /^(batch|ghl)\./.test(msg.op)) {

@@ -24,7 +24,7 @@ async function save(ctx, all) {
 }
 /** @param {any} ctx @param {any} args */
 async function originFor(ctx, args) {
-  if (typeof args.origin === "string" && originOf(args.origin)) return originOf(args.origin);
+  // The tab's own origin, never one a caller names.
   if (typeof args.tabId === "number") { const t = await ctx.tabs.get(args.tabId); return originOf(String(t && (t.pendingUrl || t.url) || "")); }
   return "";
 }
@@ -54,7 +54,7 @@ export default {
       return { origin, recipes: Object.values(mine).map((/** @type {any} */ r) => ({ name: r.name, steps: r.steps.length, params: r.params, runs: r.runs, fails: r.fails, conf: r.conf, writes: r.steps.filter((/** @type {any} */ s) => s.write).map((/** @type {any} */ s) => s.write) })) };
     },
     /** Replay: the model names the recipe and gives the parameters; everything else is one batch. */
-    "recipe.run": async (args, ctx) => {
+    "recipe.run": async (args, ctx, trust = {}) => {
       const origin = await originFor(ctx, args);
       const all = await load(ctx);
       const r = origin && all[origin] ? all[origin][String(args.name)] : null;
@@ -62,7 +62,7 @@ export default {
       let steps;
       try { steps = fill(r, args.params && typeof args.params === "object" ? args.params : {}); } catch (e) { throw err("bad_request", String(/** @type {any} */ (e).message)); }
       const t0 = Date.now();
-      const res = await ctx.call("batch.run", { steps, stopOnError: true, asked: args.asked === true, ...(args.writeBudget ? { writeBudget: args.writeBudget } : {}), ...(typeof args.tabId === "number" ? { tabId: args.tabId } : {}) });
+      const res = await ctx.call("batch.run", { steps, stopOnError: true, ...(typeof args.tabId === "number" ? { tabId: args.tabId } : {}) }, trust);
       const ok = res && res.ok !== false;
       r.runs++; if (!ok) r.fails++;
       r.conf = ok ? Math.min(1, r.conf + 0.1) : r.conf * 0.6;

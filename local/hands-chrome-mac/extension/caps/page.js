@@ -1264,7 +1264,7 @@ export default {
       return { ...s, controls: s.controls.map((/** @type {any} */ { fields, form, ...c }) => c) };
     },
 
-    "page.act": async (args, ctx) => {
+    "page.act": async (args, ctx, trust = {}) => {
       const tabId = await tabOf(args, ctx, "page.act");
       const kind = String(args.kind || "click");
       if (!["click", "type", "select", "check", "press"].includes(kind)) throw err("bad_request", `unknown kind ${JSON.stringify(kind)}`);
@@ -1283,7 +1283,7 @@ export default {
           throw await notFoundError(ctx, tabId, sel, b, got, trace);
         }
         try {
-          const r = await doAct(ctx, tabId, got.snap, b.control, kind, args.value, args.release, args.asked === true);
+          const r = await doAct(ctx, tabId, got.snap, b.control, kind, args.value, trust.release, trust.asked === true);
           if (r.ok === false && /gone|disappeared/.test(String(r.why))) throw err("not_found", "the control disappeared");
           if (r.ok === false && !r.held) return { ...r, trace: traceOf(trace), ...(await failDetail(ctx, tabId, { path: b.control.path, frame: b.control.frame ?? 0, frameOrigin: b.control.frameOrigin, snap: got.snap })) };
           return { ...r, trace: traceOf(trace) };
@@ -1295,7 +1295,7 @@ export default {
       }
     },
 
-    "page.fill": async (args, ctx) => {
+    "page.fill": async (args, ctx, trust = {}) => {
       const tabId = await tabOf(args, ctx, "page.fill");
       if (!Array.isArray(args.fields) || !args.fields.length) throw err("bad_request", "page.fill needs fields: [{selector | label, value}]");
       if (args.fields.length > 100) throw err("bad_request", "page.fill takes at most 100 fields");
@@ -1346,12 +1346,12 @@ export default {
         const formFrame = got.bound.find((/** @type {Bound} */ b) => b.control)?.control.frame;
         const btn = after.controls.find((/** @type {any} */ c) => c.submit && c.form === form && sameFrame(c, { frame: formFrame })) || after.controls.find((/** @type {any} */ c) => c.submit && sameFrame(c, { frame: formFrame })) || after.controls.find((/** @type {any} */ c) => c.submit);
         if (!btn) return { ok: true, filled, fields: summary, submitted: false, why: "no submit control found", trace: traceOf(trace) };
-        const r = await doAct(ctx, tabId, after, btn, "click", undefined, args.release, args.asked === true);
+        const r = await doAct(ctx, tabId, after, btn, "click", undefined, trust.release, trust.asked === true);
         return { ...r, filled, trace: traceOf(trace), ...(r.ok ? { submitted: true } : {}) };
       }
     },
 
-    "page.eval": async (args, ctx) => {
+    "page.eval": async (args, ctx, trust = {}) => {
       if (typeof args.expression !== "string" || !args.expression.trim()) throw err("bad_request", "page.eval needs an expression");
       const tabId = await tabOf(args, ctx, "page.eval");
       // The frame the script runs in: the top page unless `frame` names one (an index, a frame id, or a piece of its origin or URL).
@@ -1375,7 +1375,7 @@ export default {
       // script runs in, and is read back from there.
       // A script that opens the page's stored login is refused, and one that WRITES with it (fetch, XHR, beacon, form submit) is refused: nothing is sent.
       if (CREDENTIAL_STORE.test(String(args.expression))) throw err("blocked", "the script reads the page's stored login (IndexedDB or storage auth tokens, cookies). Vyre does not hand a login to a script, and a script should not hold one. Use chrome_api (action \"call\"): it signs the request with the page's own login inside the page, and the token is never in your hands. Prefer api.call over eval-fetch.");
-      const guarded = args.asked !== true;
+      const guarded = trust.asked !== true;
       const egress = guarded ? await egressGuard(ctx, tabId) : null;
       if (guarded) await run(frame, guardInstallWrites, {});
       /** @type {any} */ let r;

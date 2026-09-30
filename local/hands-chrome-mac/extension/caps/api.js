@@ -87,7 +87,7 @@ const ops = {
     return { origins, entries: origins.flatMap(o => all[o].entries) };
   },
 
-  async "api.call"(args, ctx) {
+  async "api.call"(args, ctx, trust = {}) {
     const all = await store(ctx).load();
     const entry = Object.values(all).flatMap(o => o.entries).find(e => e.id === (args?.entryId ?? args?.entry));
     if (!entry) throw refuse("not_found", "no catalog entry with that id (run api.learn first)");
@@ -109,9 +109,9 @@ const ops = {
     // Hands-free after the grant, except a request that SENDS something as the person (a message,
     // a post, a payment) when nobody asked: that waits at the Gate. Judged by method and endpoint.
     const ob = classifySend(built.method, built.url, typeof built.body === "string" ? built.body : "");
-    if (ob.send && args?.asked !== true) return held(built.method, built.url, ob.why, `${built.method} ${built.url} ${typeof built.body === "string" ? built.body : ""}`);
+    if (ob.send && trust.asked !== true) return held(built.method, built.url, ob.why, `${built.method} ${built.url} ${typeof built.body === "string" ? built.body : ""}`);
     // Every other write is a change made with the person's login: the one write gate decides (asked, or a plan the module says covers it).
-    const gate = writeGate(built.method, built.url, typeof built.body === "string" ? built.body : "", args);
+    const gate = writeGate(built.method, built.url, typeof built.body === "string" ? built.body : "", trust);
     if (gate.held) return gate.held;
     // Which frame runs it: the one asked for, else the one the entry was learned in, else the top page.
     const frames = await frameList(ctx, tab);

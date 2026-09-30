@@ -75,13 +75,13 @@ export const PASS = Symbol("vyre.write-passed");
  * THE write gate. Every request Vyre issues with the page's credentials (api.call, net.replay, anything later) asks here first; pageFetch() will not
  * send a write without the pass this returns. A read passes. A write passes only when the person asked for this very call (asked) or the module
  * says a plan they approved covers it (writeOk, which the module sets and a model's input cannot). Anything else comes back as a held write.
- * @param {string} method @param {string} url @param {string} body @param {{ asked?: boolean, writeOk?: boolean }} [args]
+ * @param {string} method @param {string} url @param {string} body @param {{ asked?: boolean, writeOk?: boolean }} [trust] what the host approved (never the caller's args)
  * @returns {{ pass: symbol, held?: undefined } | { held: any, pass?: undefined }}
  */
-export function writeGate(method, url, body, args = {}) {
+export function writeGate(method, url, body, trust = {}) {
   const m = String(method || "GET").toUpperCase();
   if (/^(GET|HEAD|OPTIONS)$/.test(m)) return { pass: PASS };
-  if (args && (args.asked === true || args.writeOk === true)) return { pass: PASS };
+  if (trust && (trust.asked === true || trust.writeOk === true)) return { pass: PASS };
   return { held: heldWrite(m, url, `${m} ${url} ${body || ""}`) };
 }
 
