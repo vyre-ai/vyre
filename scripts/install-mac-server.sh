@@ -4,22 +4,31 @@
 #
 #   --dry-run          print every change, make none (read-only checks still run)
 #   --yes              answer yes to every prompt
-#   --from DIR         use a local checkout DIR instead of downloading vyre.tgz
+#   --login-only       the old mode: a LaunchAgent in your own account, no password, starts when you sign in
+#   --from DIR         use a local checkout DIR instead of downloading a release (needs --login-only:
+#                      a checkout has no signed release for the system service to verify)
 #   --uninstall        stop and remove the service, the wrapper and the app; ~/.vyre stays
-#   --purge            with --uninstall: also delete ~/.vyre, after asking
+#   --purge            with --uninstall: also delete ~/.vyre and Vyre's system data, after asking
 #
 # Environment: VYRE_CODE (the setup code from the install line: never an argument), VYRE_BOX_URL
 # (default https://vyre.run/box/), VYRE_HOME (default ~/.vyre, where vyre.env lives).
 #
-# What it does, in order: checks the Mac and Node; downloads vyre.tgz and checks it against
-# SHA256SUMS from the same place; installs it under ~/.vyre-server/app; installs Colima (Homebrew, or pinned
-# checksummed binaries without it) for agents' computers, and starts it; puts the setup code and its time in vyre.env (0600) as
-# VYRE_SETUP_CODE and VYRE_SETUP_CODE_AT; installs one LaunchAgent that runs vyred under
-# `caffeinate` (the Mac stays awake while vyred runs, and nothing system-wide changes, so there is
-# nothing to restore); waits for vyred to answer.
+# DEFAULT (system service, ADR 0040 section 5): Vyre starts at boot with nobody signed in. This
+# script never runs as root. It downloads vyre.tgz, manifest.json and manifest.sig and checks each
+# against SHA256SUMS (a download-integrity check only), fetches a pinned standalone Node 22 to
+# bundle (Homebrew's node is not used for that: its libraries are person-writable), installs Colima
+# for agents' computers, writes vyre.env (0600) and the vyred wrapper, then runs the root installer
+# (core/vyre-core/install-main.js) under ONE sudo. The root installer checks the release's signature;
+# it creates vyre-core, and the LaunchDaemons for vyre-core, vyred and Colima (vyred and Colima run
+# as your account). The script then waits for vyred and for vyre-core's socket file to exist.
 #
-# Never root: everything is in the person's own account, and it asks for no password. The system
-# service (a root vyre-core, starting with nobody signed in) is ADR 0040's, not built here.
+# --login-only: checks Node 22.5+, downloads vyre.tgz (or copies --from), installs Colima, writes
+# vyre.env, and installs one LaunchAgent that runs vyred under `caffeinate`. Nothing system-wide changes.
+#
+# Test seams: VYRE_SUDO (default sudo), VYRE_INSTALL_MAIN (the root installer's path; default the
+# extracted app for install, the installed tree for uninstall), VYRE_CORE_BASE (default
+# /Library/Application Support/Vyre, where core.json lives), VYRE_NODE_URL / VYRE_NODE_SHA256, the
+# Colima ones below, VYRE_UNAME_S / _M, VYRE_LAUNCHCTL, VYRE_CAFFEINATE, VYRE_SERVER_DIR, VYRE_LAUNCHAGENTS.
 # Everything lives inside main(), called on the last line, so a piped script is read whole first.
 
 set -eu
@@ -29,6 +38,7 @@ YES=0
 FROM=""
 UNINSTALL=0
 PURGE=0
+SYSTEM=1
 TMP=""
 CODE=${VYRE_CODE:-}
 BASE=${VYRE_BOX_URL:-https://vyre.run/box/}
@@ -36,6 +46,8 @@ BASE=${VYRE_BOX_URL:-https://vyre.run/box/}
 UNAME_S=${VYRE_UNAME_S:-$(uname -s)}
 UNAME_M=${VYRE_UNAME_M:-$(uname -m)}
 LAUNCHCTL=${VYRE_LAUNCHCTL:-launchctl}
+SUDO=${VYRE_SUDO:-sudo}
+CORE_BASE=${VYRE_CORE_BASE:-/Library/Application Support/Vyre}
 VHOME=${VYRE_HOME:-$HOME/.vyre}
 SERVER_DIR=${VYRE_SERVER_DIR:-$HOME/.vyre-server}
 AGENTS_DIR=${VYRE_LAUNCHAGENTS:-$HOME/Library/LaunchAgents}
@@ -44,6 +56,8 @@ COLIMA_LABEL=run.vyre.colima
 CAFF=${VYRE_CAFFEINATE:-/usr/bin/caffeinate}
 APP=$SERVER_DIR/app
 BIN=$SERVER_DIR/bin
+NODE_DIST=$SERVER_DIR/node-dist
+COLIMA_ARGS=""
 
 # Pinned release binaries for the no-Homebrew Colima install. Each sum was read from the release
 # itself and checked against a second source: Colima's colima-Darwin-*.sha256sum files (v0.10.3) and
@@ -60,6 +74,14 @@ LIMA_SHA256_AMD64=0d6f99c19f6e4bc3c92730c4c29d929e6927f0cb0a0ba1a84383367135a8ff
 DOCKER_VERSION=29.8.1
 DOCKER_SHA256_ARM64=5a8f5604d7673202b2af925229d15eb4bbb86f7f542e4ac8cd7aa3f14cfa0f8b
 DOCKER_SHA256_AMD64=de42b6bb38d0ea08333cdddc18b054d61d4c9f003b3616ae55d85ccea72c47c9
+
+# The Node bundled for the system service: the official Node 22 LTS darwin tarball, pinned by version
+# and sha256. Both sums are the lines for node-v22.23.3-darwin-{arm64,x64}.tar.gz in
+# https://nodejs.org/dist/v22.23.3/SHASUMS256.txt, read with curl on 2026-09-30.
+# VYRE_NODE_URL / VYRE_NODE_SHA256 override, for tests (file:// is fine).
+NODE_VERSION=v22.23.3
+NODE_SHA256_ARM64=23b25245dcfb9af7262f8ff142e9e2e0af025368117329e7a7458a51e5922f53
+NODE_SHA256_X64=8a677b0219178efd6eb0e475457c4afb452b521a92f6e67845a73bd85727f2a8
 
 say() { printf '%s\n' "$*"; }
 die() { printf 'vyre: %s\n' "$*" >&2; exit 1; }
@@ -94,10 +116,42 @@ node_ok() {
   [ "$major" -gt 22 ] || { [ "$major" -eq 22 ] && [ "$minor" -ge 5 ]; }
 }
 
+# fetch_node: the pinned Node into NODE_DIST (person-side, root copies it into its own tree). A bad
+# download installs nothing.
+fetch_node() {
+  case "$UNAME_M" in
+    arm64|aarch64) na=arm64; ns=$NODE_SHA256_ARM64 ;;
+    x86_64|amd64) na=x64; ns=$NODE_SHA256_X64 ;;
+    *) die "no pinned Node for this Mac ($UNAME_M)" ;;
+  esac
+  ns=${VYRE_NODE_SHA256-$ns}
+  nu=${VYRE_NODE_URL:-https://nodejs.org/dist/$NODE_VERSION/node-$NODE_VERSION-darwin-$na.tar.gz}
+  [ -n "$ns" ] || die "no pinned Node checksum for this release; nothing was installed"
+  if [ "$DRY" = 1 ]; then say "would download Node $NODE_VERSION from $nu into $NODE_DIST"; return 0; fi
+  say "Downloading Node $NODE_VERSION (checked against its pinned checksum)..."
+  curl -fsSL --retry 2 -o "$TMP/node.tgz" "$nu" || die "could not download $nu"
+  [ "$(sha256 "$TMP/node.tgz")" = "$ns" ] || die "the Node download does not match its pinned checksum; nothing was installed"
+  rm -rf "$TMP/node-x"; mkdir -p "$TMP/node-x"
+  tar -xzf "$TMP/node.tgz" -C "$TMP/node-x" --strip-components=1 || die "the Node download did not unpack"
+  [ -f "$TMP/node-x/bin/node" ] || die "the Node download has no bin/node in it; nothing was installed"
+  chmod 755 "$TMP/node-x/bin/node"
+  mkdir -p "$SERVER_DIR"
+  rm -rf "$NODE_DIST.new" "$NODE_DIST"
+  mv "$TMP/node-x" "$NODE_DIST.new"; mv "$NODE_DIST.new" "$NODE_DIST"
+  step "Node $NODE_VERSION is in $NODE_DIST"
+}
+
+# wrapper_node: the node vyred runs on. Login-only: yours. System: yours if it is 22.5+, else the bundled one.
+wrapper_node() {
+  if [ "$SYSTEM" = 0 ] || node_ok; then command -v node; else printf '%s' "$NODE_DIST/bin/node"; fi
+}
+
 preflight() {
   [ "$UNAME_S" = Darwin ] || die "this installer is for a Mac; on Linux use the Docker install line"
   [ "$(id -u)" != 0 ] || die "run this as your own account, not root: Vyre never runs as root here"
-  if ! node_ok; then
+  if [ "$SYSTEM" = 1 ]; then
+    fetch_node
+  elif ! node_ok; then
     if command -v brew >/dev/null 2>&1; then
       if [ "$DRY" = 1 ]; then say "would install Node 22 with Homebrew"
       else say "Installing Node 22 with Homebrew..."; brew install node@22 >/dev/null 2>&1 || die "brew could not install node@22"
@@ -109,15 +163,30 @@ preflight() {
     printf '%s' "$CODE" | grep -Eq '^[A-Za-z0-9_-]{43}$' \
       || die "that setup code does not look right. Copy the install line from your browser again."
   fi
-  step "this Mac is ready (Node $(node -p 'process.versions.node' 2>/dev/null || echo 22))"
+  if [ "$SYSTEM" = 1 ]; then step "this Mac is ready"
+  else step "this Mac is ready (Node $(node -p 'process.versions.node' 2>/dev/null || echo 22))"; fi
 }
 
 install_app() {
-  if [ "$DRY" = 1 ]; then say "would install Vyre into $APP"; return 0; fi
+  if [ "$DRY" = 1 ]; then
+    if [ "$SYSTEM" = 1 ]; then say "would download vyre.tgz, manifest.json and manifest.sig from $BASE and check them against SHA256SUMS"; fi
+    say "would install Vyre into $APP"; return 0
+  fi
   mkdir -p "$SERVER_DIR"
   rm -rf "$APP.new"
   mkdir -p "$APP.new"
-  if [ -n "$FROM" ]; then
+  if [ "$SYSTEM" = 1 ]; then
+    fetch SHA256SUMS "$TMP/SHA256SUMS"
+    if [ ! -s "$TMP/SHA256SUMS" ] || grep -vqE '^[0-9a-f]{64} [ *][^ ]+$' "$TMP/SHA256SUMS"; then
+      die "$BASE""SHA256SUMS is not a checksum list; is VYRE_BOX_URL right?"
+    fi
+    # SHA256SUMS comes from the same place as the files, so it only catches a broken download. The
+    # signature on manifest.json is checked by the root installer, against a key it carries itself.
+    get vyre.tgz; get manifest.json; get manifest.sig
+    mkdir -p "$TMP/release"
+    mv "$TMP/vyre.tgz" "$TMP/manifest.json" "$TMP/manifest.sig" "$TMP/release/"
+    tar -xzf "$TMP/release/vyre.tgz" -C "$APP.new" --strip-components=1 || die "vyre.tgz did not unpack"
+  elif [ -n "$FROM" ]; then
     (cd "$FROM" && tar --exclude .git --exclude node_modules -cf - .) | (cd "$APP.new" && tar -xf -)
   else
     fetch SHA256SUMS "$TMP/SHA256SUMS"
@@ -128,6 +197,7 @@ install_app() {
     tar -xzf "$TMP/vyre.tgz" -C "$APP.new" --strip-components=1 || die "vyre.tgz did not unpack"
   fi
   [ -f "$APP.new/core/daemon/main.js" ] || die "the download has no vyred in it; nothing was installed"
+  [ "$SYSTEM" = 0 ] || [ -f "$APP.new/core/vyre-core/install-main.js" ] || die "the download has no root installer in it; nothing was installed"
   rm -rf "$APP.old"
   [ ! -d "$APP" ] || mv "$APP" "$APP.old"
   mv "$APP.new" "$APP"
@@ -207,18 +277,45 @@ EOF
   chmod 644 "$p"
 }
 
+# colima_system_args: the start command for the root installer's Colima LaunchDaemon (it runs as
+# your account). A launchd job has no PATH worth the name, so it goes through /usr/bin/env with the
+# pinned dirs (and the directories of the colima and docker found) in front.
+colima_system_args() {
+  cbin=$(command -v colima 2>/dev/null || true)
+  [ -n "$cbin" ] || cbin=$BIN/colima
+  dbin=$(command -v docker 2>/dev/null || true)
+  cpath=$BIN:$SERVER_DIR/lima/bin:$(dirname "$cbin")
+  [ -z "$dbin" ] || cpath=$cpath:$(dirname "$dbin")
+  cpath=$cpath:/usr/bin:/bin:/usr/sbin:/sbin
+  COLIMA_ARGS="/usr/bin/env
+PATH=$cpath
+HOME=$HOME
+$cbin
+start
+--foreground
+--vm-type
+vz
+--cpu
+2
+--memory
+4
+--disk
+40"
+}
+
 # setup_colima: agents' computers run in Colima (open source, headless), never Docker Desktop. An
 # existing Docker Desktop is left alone and unused. With Homebrew it installs Colima there; without,
 # it downloads pinned, checksummed binaries into SERVER_DIR and keeps Colima up with its own
 # LaunchAgent. If neither works it says so and goes on: the server works, agents get no computer.
 setup_colima() {
-  if [ "$DRY" = 1 ]; then say "would install and start Colima (agents' computers)"; return 0; fi
+  if [ "$DRY" = 1 ]; then say "would install Colima (agents' computers) and $([ "$SYSTEM" = 1 ] && echo 'hand its start command to the root installer' || echo start it)"; return 0; fi
   if ! command -v colima >/dev/null 2>&1; then
     if command -v brew >/dev/null 2>&1; then
       say "Installing Colima with Homebrew..."
       brew install colima docker >/dev/null 2>&1 || { say "  note  Colima did not install; agents get no computer until it does (brew install colima docker)"; return 0; }
     else
       colima_fallback || return 0
+      if [ "$SYSTEM" = 1 ]; then colima_system_args; step "Colima is installed; it starts at boot"; return 0; fi
       write_colima_plist
       uid=$(id -u)
       "$LAUNCHCTL" bootout "gui/$uid/$COLIMA_LABEL" >/dev/null 2>&1 || true
@@ -227,6 +324,7 @@ setup_colima() {
       return 0
     fi
   fi
+  if [ "$SYSTEM" = 1 ]; then colima_system_args; step "Colima is installed; it starts at boot"; return 0; fi
   colima start --cpu 2 --memory 4 --disk 40 >/dev/null 2>&1 || { say "  note  Colima did not start; run: colima start"; return 0; }
   brew services start colima >/dev/null 2>&1 || true
   step "Colima is running"
@@ -253,6 +351,7 @@ write_env() {
 write_wrapper() {
   if [ "$DRY" = 1 ]; then say "would write $BIN/vyre-serve and $BIN/vyre"; return 0; fi
   mkdir -p "$BIN"
+  WNODE=$(wrapper_node)
   cat >"$BIN/vyre-serve" <<EOF
 #!/bin/sh
 # vyre on a Mac server: written by install-mac-server.sh
@@ -268,13 +367,13 @@ if [ -f "\$ENVF" ]; then
   done <"\$ENVF"
 fi
 export VYRE_HOME="$VHOME"
-exec "$CAFF" -ims "$(command -v node)" "$APP/core/daemon/main.js"
+exec "$CAFF" -ims "$WNODE" "$APP/core/daemon/main.js"
 EOF
   cat >"$BIN/vyre" <<EOF
 #!/bin/sh
 # vyre on a Mac server: written by install-mac-server.sh
 export VYRE_HOME="$VHOME"
-exec "$(command -v node)" "$APP/bin/vyre" "\$@"
+exec "$WNODE" "$APP/bin/vyre" "\$@"
 EOF
   chmod 755 "$BIN/vyre-serve" "$BIN/vyre"
   step "the service wrapper is in $BIN"
@@ -313,15 +412,80 @@ start_service() {
   die "vyred did not start; its output is in $VHOME/logs/vyred.out"
 }
 
+# system_install: the one sudo. The root installer's stdout ends with VYRE_CORE_ENROL=<code>. It is
+# read into a shell variable that is never printed, written or passed on: the output is captured by
+# command substitution, every other line is shown, and the variable is dropped. The Capsule
+# enrolment consumes the code in a later step; nothing does yet.
+system_install() {
+  im=${VYRE_INSTALL_MAIN:-$APP/core/vyre-core/install-main.js}
+  if [ "$DRY" = 1 ]; then say "would run, under one sudo: node $im install (the root installer; it asks for your password)"; return 0; fi
+  set -- install --owner-uid "$(id -u)" --owner-name "$(id -un)" --owner-home "$HOME" \
+    --release-dir "$TMP/release" --node "$NODE_DIST/bin/node" --vyred-wrapper "$BIN/vyre-serve"
+  if [ -n "$COLIMA_ARGS" ]; then
+    oldifs=$IFS; IFS='
+'
+    for a in $COLIMA_ARGS; do set -- "$@" --colima-program "$a"; done
+    IFS=$oldifs
+  fi
+  say "Vyre now asks for your Mac password once, to install its system service."
+  out=$("$SUDO" "$NODE_DIST/bin/node" "$im" "$@"; printf 'rc:%s' "$?")
+  rc=${out##*rc:}
+  out=${out%rc:*}
+  [ "$rc" = 0 ] || { out=""; die "the root installer failed (exit $rc); its message is above"; }
+  case "$out" in *VYRE_CORE_ENROL=*) ;; *) out=""; die "the root installer did not finish; nothing was enrolled" ;; esac
+  printf '%s\n' "$out" | grep -v '^VYRE_CORE_ENROL=' || true
+  out=""
+  step "the system service is installed"
+}
+
+# wait_system: vyred answers (its pid file, as in login-only) and vyre-core's socket file exists
+# (the path is in core.json; it is checked, never connected to).
+wait_system() {
+  if [ "$DRY" = 1 ]; then say "would wait for vyred and for vyre-core's socket named in $CORE_BASE/core.json"; return 0; fi
+  i=0; pid_ok=0; sock_ok=0
+  while [ "$i" -lt 90 ]; do
+    if [ "$pid_ok" = 0 ] && [ -f "$VHOME/vyred.pid" ] && kill -0 "$(cat "$VHOME/vyred.pid" 2>/dev/null)" 2>/dev/null; then pid_ok=1; step "vyred is running"; fi
+    if [ "$sock_ok" = 0 ] && [ -f "$CORE_BASE/core.json" ]; then
+      sock=$(sed -n 's/.*"socket" *: *"\([^"]*\)".*/\1/p' "$CORE_BASE/core.json" | head -n 1)
+      if [ -n "$sock" ] && [ -e "$sock" ]; then sock_ok=1; step "vyre-core is up"; fi
+    fi
+    [ "$pid_ok" = 1 ] && [ "$sock_ok" = 1 ] && return 0
+    sleep 1; i=$((i + 1))
+  done
+  [ "$pid_ok" = 1 ] || die "vyred did not start; its output is in $VHOME/logs"
+  die "vyre-core did not come up: its socket named in $CORE_BASE/core.json is missing"
+}
+
+# system_uninstall: the root installer from the installed tree, with its own node.
+system_uninstall() {
+  im=${VYRE_INSTALL_MAIN:-$CORE_BASE/current/core/vyre-core/install-main.js}
+  if [ ! -f "$im" ]; then say "  note  no system service is installed here"; return 0; fi
+  rn=$CORE_BASE/node
+  [ -x "$rn" ] || rn=$NODE_DIST/bin/node
+  [ -x "$rn" ] || rn=$(command -v node || true)
+  [ -n "$rn" ] || die "no Node to run the root installer with"
+  say "Vyre now asks for your Mac password once, to remove its system service."
+  if [ "$1" = 1 ]; then "$SUDO" "$rn" "$im" uninstall --purge || die "the root uninstaller failed"
+  else "$SUDO" "$rn" "$im" uninstall || die "the root uninstaller failed"; fi
+  step "the system service is removed"
+}
+
 uninstall() {
-  if [ "$DRY" = 1 ]; then say "would stop the service and remove $AGENTS_DIR/$LABEL.plist, $SERVER_DIR"; [ "$PURGE" = 0 ] || say "and, asking first, $VHOME"; return 0; fi
+  if [ "$DRY" = 1 ]; then
+    [ "$SYSTEM" = 0 ] || say "would run the root uninstaller under one sudo"
+    say "would stop the service and remove $AGENTS_DIR/$LABEL.plist, $SERVER_DIR"; [ "$PURGE" = 0 ] || say "and, asking first, $VHOME"; return 0
+  fi
+  ok=0
+  if [ "$PURGE" = 1 ]; then
+    ok=$YES
+    if [ "$ok" = 0 ]; then printf 'Delete %s, your Vyre data%s? Type delete: ' "$VHOME" "$([ "$SYSTEM" = 1 ] && echo ' and Vyre'"'"'s system data')"; read -r a </dev/tty || a=""; [ "$a" = delete ] && ok=1; fi
+  fi
+  [ "$SYSTEM" = 0 ] || system_uninstall "$ok"
   "$LAUNCHCTL" bootout "gui/$(id -u)/$LABEL" >/dev/null 2>&1 || true
   "$LAUNCHCTL" bootout "gui/$(id -u)/$COLIMA_LABEL" >/dev/null 2>&1 || true
   rm -f "$AGENTS_DIR/$LABEL.plist" "$AGENTS_DIR/$COLIMA_LABEL.plist"
   rm -rf "$SERVER_DIR"
   if [ "$PURGE" = 1 ]; then
-    ok=$YES
-    if [ "$ok" = 0 ]; then printf 'Delete %s, your Vyre data? Type delete: ' "$VHOME"; read -r a </dev/tty || a=""; [ "$a" = delete ] && ok=1; fi
     if [ "$ok" = 1 ]; then rm -rf "$VHOME"; say "your data is deleted"; else say "your data is kept in $VHOME"; fi
   else say "your data is kept in $VHOME"; fi
   say "Vyre is off this Mac. Colima and Node were left as they are: brew services stop colima, if you want it off too."
@@ -332,6 +496,7 @@ main() {
     case "$1" in
       --dry-run) DRY=1 ;;
       --yes) YES=1 ;;
+      --login-only) SYSTEM=0 ;;
       --from) shift; FROM=${1:-}; [ -d "$FROM" ] || die "--from needs a folder" ;;
       --uninstall) UNINSTALL=1 ;;
       --purge) PURGE=1 ;;
@@ -344,6 +509,7 @@ main() {
   [ "$PURGE" = 0 ] || [ "$UNINSTALL" = 1 ] || die "--purge goes with --uninstall"
   [ "$UNAME_S" = Darwin ] || die "this installer is for a Mac; on Linux use the Docker install line"
   [ "$(id -u)" != 0 ] || die "run this as your own account, not root: Vyre never runs as root here"
+  [ -z "$FROM" ] || [ "$SYSTEM" = 0 ] || [ "$UNINSTALL" = 1 ] || die "--from installs a checkout, which has no signed release for the system service to verify; add --login-only to install it for your own account"
   TMP=$(mktemp -d)
   trap cleanup EXIT
   if [ "$UNINSTALL" = 1 ]; then uninstall; return 0; fi
@@ -353,10 +519,17 @@ main() {
   setup_colima
   write_env
   write_wrapper
-  write_plist
-  start_service
-  say "Vyre is running. Back in your browser, it will find this Mac."
-  say "It starts when you sign in to this Mac and stays awake while it runs. Its command is $BIN/vyre"
+  if [ "$SYSTEM" = 1 ]; then
+    system_install
+    wait_system
+    say "Vyre is running. Back in your browser, it will find this Mac."
+    say "It starts when this Mac boots, with nobody signed in, and stays awake while it runs. Its command is $BIN/vyre"
+  else
+    write_plist
+    start_service
+    say "Vyre is running. Back in your browser, it will find this Mac."
+    say "It starts when you sign in to this Mac and stays awake while it runs. Its command is $BIN/vyre"
+  fi
 }
 
 main "$@"
