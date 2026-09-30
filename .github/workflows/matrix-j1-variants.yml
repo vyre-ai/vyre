@@ -27,7 +27,7 @@ jobs:
           - { variant: slow, runner: ubuntu-24.04 }
           - { variant: twice, runner: ubuntu-24.04 }
           - { variant: plain, runner: ubuntu-24.04 }
-          - { variant: plain2, runner: ubuntu-24.04 }
+          - { variant: pwchrome, runner: ubuntu-24.04, chrome: playwright }
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -44,7 +44,7 @@ jobs:
         run: sh scripts/build-site.sh
       - name: J1 (${{ matrix.variant }})
         env:
-          J1_VARIANT: ${{ (matrix.variant == 'arm64' || startsWith(matrix.variant, 'plain')) && '' || matrix.variant }}
+          J1_VARIANT: ${{ (matrix.variant == 'arm64' || matrix.variant == 'plain' || matrix.variant == 'pwchrome') && '' || matrix.variant }}
         run: sh scripts/matrix/j1.sh results
       - name: Diagnostics
         if: failure()
