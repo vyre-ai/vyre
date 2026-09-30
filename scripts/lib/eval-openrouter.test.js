@@ -107,3 +107,24 @@ test("in a run the key's own usage counts: stops before a call that could pass $
   await openrouterOnce({ key: "k", budget: plain, fetch: reply("ok", 1.5) })({ system: "s", prompt: "p", model: "m", maxUsd: 1 });
   assert.equal(plain.stopped, false);
 });
+
+test("the key base is refreshed every N calls: spend by something else on the same key is seen mid-run, and a failed refresh stops", async t => {
+  const b = new Budget({ file: path.join(tempHome(t), "spend.json"), limit: 15, margin: 0.05 });
+  b.setKeyBase(2);
+  let chat = 0, usage = 2;
+  const f = async (url, init) => url.endsWith("/key") ? usageReply(usage)(url, init) : (chat++, reply("ok", 0.1)(url, init));
+  const run = openrouterOnce({ key: KEY, budget: b, fetch: f, refreshEvery: 5 });
+  for (let i = 0; i < 5; i++) await run({ system: "s", prompt: "p", model: "m", maxUsd: 1 });
+  usage = 14.98;                                  // another workflow spent on the key
+  await assert.rejects(run({ system: "s", prompt: "p", model: "m", maxUsd: 1 }), e => e instanceof BudgetStop);
+  assert.equal(chat, 5, "no sixth call: the refresh saw the key near its limit");
+  // A refresh that cannot be read stops the run too.
+  const c = new Budget({ file: path.join(tempHome(t), "s2.json"), limit: 15, margin: 0.05 });
+  c.setKeyBase(2);
+  let n = 0;
+  const g = async (url, init) => url.endsWith("/key") ? { ok: false, status: 500, json: async () => ({}) } : (n++, reply("ok", 0.1)(url, init));
+  const run2 = openrouterOnce({ key: KEY, budget: c, fetch: g, refreshEvery: 2 });
+  await run2({ system: "s", prompt: "p", model: "m", maxUsd: 1 }); await run2({ system: "s", prompt: "p", model: "m", maxUsd: 1 });
+  await assert.rejects(run2({ system: "s", prompt: "p", model: "m", maxUsd: 1 }), e => e instanceof BudgetStop);
+  assert.equal(n, 2);
+});
