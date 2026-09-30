@@ -88,6 +88,14 @@ in a temp home; I ran it once on the Mac before the lead's runners-only rule rea
 on a runner or the test box only). NOT done: the uid/iptables IM1 check (integrator's box image, needs a runner),
 retiring raw vault.fetch for plain watchers (still allowed via `needs`). Next: When/Check/Do in folder.js.
 
+Duties (teammates' exact calls, CHAT 09:21): watchers.create with owner/when/instruction/act writes a
+duty folder from a fixed template (core/watchers/duty.js), when.js reads the trigger words,
+watchers.update/delete/run added, callers limited to module:team or the person. Tests in
+runtime.test.js and when.test.js pass; the tool-level caller check is in index.js and is NOT covered
+by a test yet (module.test.js boots a daemon: runner only). Still open: ask() for model judgment
+(threads.quick), `vault.push` (vault must emit it), filing to the teammate's notes (team.notes refuses
+module callers; items go to watchers.items for now, teammates can read them into its brief).
+
 ## Next
 
 Build order agreed with the lead (GO message): lib/sandbox first, jointly with platform and the

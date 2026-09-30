@@ -26,7 +26,8 @@ export const DEFAULT_TIMEOUT_S = 60;
  * payload fields that must match for it to run (hook.received needs a route).
  * @typedef {{ name: string, project: string, schedule: string, needs: string[], emits: string, timeout: number,
  *   on: string|null, where: Record<string, string|number|boolean>|null,
- *   net: Record<string, { vault?: string, field?: string, header: string, scheme: string }>|null }} Spec
+ *   net: Record<string, { vault?: string, field?: string, header: string, scheme: string }>|null,
+ *   owner: { kind: "teammate", teammate: string }|null, instruction: string|null, act: boolean, when: string|null }} Spec
  */
 
 /**
@@ -79,14 +80,29 @@ function check(raw, name, problems) {
   const timeout = raw.timeout === undefined ? DEFAULT_TIMEOUT_S : raw.timeout;
   if (!Number.isFinite(timeout) || timeout <= 0 || timeout > MAX_TIMEOUT_S) problems.push(`timeout is seconds, at most ${MAX_TIMEOUT_S}`);
   const net = checkNet(raw.net, problems);
-  const extra = Object.keys(raw).filter(k => !["name", "project", "schedule", "needs", "emits", "timeout", "description", "on", "where", "net"].includes(k));
+  const owner = checkOwner(raw.owner, problems);
+  if (raw.instruction !== undefined && (typeof raw.instruction !== "string" || !raw.instruction.trim() || raw.instruction.length > 2000)) problems.push("instruction is plain words, at most 2000 characters");
+  if (raw.act !== undefined && typeof raw.act !== "boolean") problems.push("act is true or false");
+  if ((raw.instruction !== undefined || raw.act !== undefined) && !owner) problems.push("instruction and act are for a teammate's duty: they need owner");
+  const extra = Object.keys(raw).filter(k => !["name", "project", "schedule", "needs", "emits", "timeout", "description", "on", "where", "net", "owner", "instruction", "act", "when"].includes(k));
   if (extra.length) problems.push(`watcher.json has keys the runtime does not read: ${extra.join(", ")}. Credentials go in the vault and are named under needs`);
   // A vault item named by net is fetched by the parent and attached to that host's requests only,
   // so it counts as a need: the same per-watcher grant covers it.
   const needed = new Set(Array.isArray(needs) ? needs : []);
   for (const h of Object.values(net || {})) if (h.vault) needed.add(h.vault);
-  return { name, project: String(raw.project || "").trim(), schedule, needs: [...needed], net, emits: raw.emits || "watcher.item", timeout: Number(timeout),
+  return { name, project: String(raw.project || "").trim(), schedule, needs: [...needed], net, owner, when: typeof raw.when === "string" ? raw.when.slice(0, 200) : null, instruction: typeof raw.instruction === "string" ? raw.instruction.trim() : null, act: raw.act === true, emits: raw.emits || "watcher.item", timeout: Number(timeout),
     on: typeof on === "string" ? on : null, where };
+}
+
+/** @returns {Spec["owner"]} */
+function checkOwner(owner, problems) {
+  if (owner === undefined) return null;
+  const o = /** @type {any} */ (owner);
+  if (!o || o.kind !== "teammate" || typeof o.teammate !== "string" || !/^[a-z][a-z0-9-]{0,80}$/.test(o.teammate) || Object.keys(o).some(k => k !== "kind" && k !== "teammate")) {
+    problems.push('owner is { "kind": "teammate", "teammate": "<role>-<project>" }');
+    return null;
+  }
+  return { kind: "teammate", teammate: o.teammate };
 }
 
 const HOST = /^(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,24}$/;

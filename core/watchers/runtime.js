@@ -17,9 +17,13 @@
 // Time comes from `now()` and runs are started by `tick()`, so tests drive the clock by hand.
 
 import crypto from "node:crypto";
+import fs from "node:fs";
+import path from "node:path";
 import * as cron from "./cron.js";
 import * as folder from "./folder.js";
 import { runOnce, normalize } from "./run.js";
+import { parseWhen } from "./when.js";
+import { DUTY_NAME, DUTY_WATCH_JS } from "./duty.js";
 
 /** Schedules that are not cron: nothing is due on a clock. */
 const PUSHED = new Set(["webhook", "event"]);
@@ -193,6 +197,68 @@ export class Runtime {
     if (spec.schedule === "event") this.subscribe();
     return { name, project: project.slug, schedule: spec.schedule, every: spec.schedule === "event" ? describeOn(spec) : cron.describe(spec.schedule), state: "on",
       ...(hook ? { hook: { method: "POST", path: `/v1/watchers/${name}/hook`, header: "x-vyre-token", token } } : {}) };
+  }
+
+  /**
+   * A teammate's duty: the folder is written here from plain words (the code is the fixed template
+   * in duty.js), marked as dry-run, and turned on. The person's own ask already covered it, so there
+   * is no separate dry-run step; teammates makes no call until a person turned the duty on.
+   * @param {{ name: string, project: string, owner: { kind: string, teammate: string }, when: string, instruction: string, act?: boolean }} d
+   */
+  async createDuty(d) {
+    if (!DUTY_NAME.test(String(d.name || ""))) throw new Error(`a duty's name starts with duty-, like duty-reviewer-1a2b3c4d`);
+    if (this.row(d.name)?.enabled) throw new Error(`${d.name} already exists; use watchers.update`);
+    this.writeDuty(d);
+    const { hash, spec } = this.spec(d.name);
+    this.db.prepare(`INSERT INTO watchers_watchers (name, project, schedule, tested_hash, tested_at) VALUES (?,?,?,?,?)
+      ON CONFLICT(name) DO UPDATE SET tested_hash = excluded.tested_hash, tested_at = excluded.tested_at`).run(d.name, spec.project, spec.schedule, hash, this.now());
+    try { return await this.create(d.name); }
+    catch (e) { fs.rmSync(path.join(this.d.dir, d.name), { recursive: true, force: true }); this.db.prepare("DELETE FROM watchers_watchers WHERE name = ? AND enabled = 0").run(d.name); throw e; }
+  }
+
+  /** Change a duty's trigger, words or act flag. It keeps its cursor and whether it is on or paused. */
+  async updateDuty(d) {
+    const r = this.row(d.name);
+    const cur = this.spec(d.name).spec;
+    if (!r || !cur.owner) throw Object.assign(new Error(`${d.name} is not a duty`), { code: "not_found" });
+    this.writeDuty({ project: cur.project, owner: cur.owner, when: d.when, instruction: d.instruction, act: d.act, name: d.name, current: cur });
+    const { hash, spec } = this.spec(d.name);
+    const next = PUSHED.has(spec.schedule) ? null : cron.next(cron.parse(spec.schedule), this.now());
+    this.db.prepare("UPDATE watchers_watchers SET tested_hash = ?, tested_at = ?, hash = ?, schedule = ?, next_at = ? WHERE name = ?").run(hash, this.now(), hash, spec.schedule, r.paused ? null : next, d.name);
+    if (spec.schedule === "event") this.subscribe();
+    return { name: d.name, state: r.paused ? "paused" : "on", schedule: spec.schedule };
+  }
+
+  writeDuty(d) {
+    const cur = d.current || {};
+    const when = String(d.when === undefined ? cur.when : d.when);
+    const t = parseWhen(when);
+    const dir = path.join(this.d.dir, d.name);
+    fs.mkdirSync(dir, { recursive: true });
+    const json = { name: d.name, project: d.project, when, ...(t.on ? { on: t.on, ...(t.where ? { where: t.where } : {}) } : { schedule: t.schedule }),
+      owner: { kind: "teammate", teammate: d.owner.teammate }, instruction: d.instruction === undefined ? cur.instruction : d.instruction,
+      act: d.act === undefined ? cur.act === true : Boolean(d.act), emits: "duty.fired", timeout: 60 };
+    fs.writeFileSync(path.join(dir, "watcher.json"), JSON.stringify(json, null, 2));
+    fs.writeFileSync(path.join(dir, "watch.js"), DUTY_WATCH_JS);
+  }
+
+  /** Stop and forget a watcher. A duty's folder goes too; its filed items stay, as history. */
+  remove(name) {
+    const r = this.row(name);
+    const f = folder.read(this.d.dir, name);
+    if (!r && !f.hash) throw Object.assign(new Error(`no watcher ${name}`), { code: "not_found" });
+    this.db.prepare("DELETE FROM watchers_watchers WHERE name = ?").run(name);
+    if (DUTY_NAME.test(name)) fs.rmSync(path.join(this.d.dir, name), { recursive: true, force: true });
+    this.d.emit("watcher.deleted", { name }, { project: r?.project || f.spec?.project });
+    return { name, deleted: true };
+  }
+
+  /** Run a turned-on watcher now and say what happened. */
+  async run(name) {
+    const r = this.row(name);
+    if (!r || !r.enabled || r.paused) throw Object.assign(new Error(`${name} is not on`), { code: "denied" });
+    await this.kick(name, "run");
+    return this.logs(name, 1);
   }
 
   pause(name, why = "paused by the user") {

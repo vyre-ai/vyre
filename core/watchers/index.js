@@ -7,6 +7,8 @@
 // run with "the vault is not running", and filed items wait for Memory rather than being lost.
 // Each fetch names the watcher, and the vault releases only against a grant for that watcher.
 
+import { isPerson } from "../../lib/caller.js";
+import { DUTY_NAME } from "./duty.js";
 import { testHooks } from "../../lib/sandbox/index.js";
 import { Runtime, MIGRATIONS } from "./runtime.js";
 
@@ -18,6 +20,12 @@ import { Runtime, MIGRATIONS } from "./runtime.js";
 const TICK_MS = 60_000;
 
 const str = { type: "string" };
+
+/** Duties are made and changed by teammates' module, for a person who turned them on, or by the person. */
+function dutyCaller(caller) {
+  if (caller === "module:team" || isPerson(caller)) return;
+  throw Object.assign(new Error("a duty is created and changed by the teammates module or the person, not by an agent or a model session"), { code: "denied" });
+}
 const named = { type: "object", required: ["name"], properties: { name: str } };
 
 /** @type {{ start(ctx: any): Promise<{ stop(): Promise<void> }> }} */
@@ -50,10 +58,22 @@ export default {
       },
     });
     ctx.tool("watchers.create", {
-      description: "Turn on a watcher exactly as it was last dry-run. Runs once now, then on its schedule. Only after the user has seen the dry run's items and agreed.",
-      input: named,
-      run: async ({ name }) => rt.create(name),
+      description: "Turn on a watcher exactly as it was last dry-run. Runs once now, then on its schedule. Only after the user has seen the dry run's items and agreed. With owner, when and instruction it creates a teammate's standing duty instead (teammates' call only): when is an event like thread.finished, a schedule like daily 07:00, or push gmail.",
+      input: { type: "object", required: ["name"], properties: { name: str, project: str, owner: { type: "object" }, when: str, instruction: str, act: { type: "boolean" } } },
+      run: async (i, { caller } = {}) => {
+        if (i.owner === undefined && i.when === undefined && i.instruction === undefined) return rt.create(i.name);
+        dutyCaller(caller);
+        for (const k of ["project", "owner", "when", "instruction"]) if (i[k] === undefined) throw new Error(`a duty needs ${k}`);
+        return rt.createDuty(i);
+      },
     });
+    ctx.tool("watchers.update", {
+      description: "Change a teammate's duty: when, instruction or act. It keeps its cursor and stays on or paused as it was. Teammates' call only.",
+      input: { type: "object", required: ["name"], properties: { name: str, when: str, instruction: str, act: { type: "boolean" } } },
+      run: async (i, { caller } = {}) => { dutyCaller(caller); return rt.updateDuty(i); },
+    });
+    ctx.tool("watchers.delete", { description: "Stop and forget a watcher; a duty's folder goes too and its filed items stay.", input: named, run: async ({ name }, { caller } = {}) => { if (DUTY_NAME.test(name)) dutyCaller(caller); return rt.remove(name); } });
+    ctx.tool("watchers.run", { description: "Run a turned-on watcher now and return what happened.", input: named, run: async ({ name }) => rt.run(name) });
     ctx.tool("watchers.pause", { description: "Stop a watcher running until it is resumed.", input: named, run: async ({ name }) => rt.pause(name) });
     ctx.tool("watchers.resume", { description: "Resume a paused watcher, clearing its failure count.", input: named, run: async ({ name }) => rt.resume(name) });
     ctx.tool("watchers.logs", {

@@ -335,3 +335,35 @@ test("watchers: net declares the hosts a watcher may reach, and a bad net is ref
   write("hosts", `export default async function watch() { await fetch("https://other.example.org/"); }`, { net: { "api.example.com": {} } });
   assert.match((await rt.test("hosts")).error, /not one of this watcher's declared hosts/);
 });
+
+test("watchers: a duty is a teammate-owned watcher folder written from plain words, turned on, changed, run and deleted", async t => {
+  const { rt, dir, events } = setup(t);
+  const made = await rt.createDuty({ name: "duty-reviewer-1a2b", project: "harlow-legal", owner: { kind: "teammate", teammate: "reviewer-harlow-legal" }, when: "thread.finished", instruction: "Review each finished session for decisions worth remembering.\nBe brief.", act: false });
+  assert.equal(made.state, "on");
+  const json = JSON.parse(fs.readFileSync(path.join(dir, "duty-reviewer-1a2b", "watcher.json"), "utf8"));
+  assert.deepEqual([json.on, json.owner.teammate, json.act, json.when], ["thread.finished", "reviewer-harlow-legal", false, "thread.finished"]);
+
+  await rt.onEvent({ type: "thread.finished", payload: { thread: "t-9" } });
+  await rt.settle();
+  const items = rt.items({ name: "duty-reviewer-1a2b" });
+  assert.equal(items.length, 1);
+  assert.match(items[0].title, /^Review each finished session/);
+
+  // Editing keeps it on and keeps its place; the new trigger applies.
+  const up = await rt.updateDuty({ name: "duty-reviewer-1a2b", when: "daily 07:00", instruction: "Summarize yesterday.", act: true });
+  assert.equal(up.schedule, "0 7 * * *");
+  assert.equal(rt.list().watchers.find(w => w.name === "duty-reviewer-1a2b").state, "on");
+  const ran = await rt.run("duty-reviewer-1a2b");
+  assert.equal(ran[0].ok, true);
+
+  rt.pause("duty-reviewer-1a2b");
+  assert.equal((await rt.updateDuty({ name: "duty-reviewer-1a2b", when: "hourly", instruction: "x", act: false })).state, "paused");
+  await assert.rejects(rt.run("duty-reviewer-1a2b"), /not on/);
+  assert.equal(rt.remove("duty-reviewer-1a2b").deleted, true);
+  assert.equal(fs.existsSync(path.join(dir, "duty-reviewer-1a2b")), false);
+  assert.ok(events.some(e => e.type === "watcher.deleted"));
+
+  await assert.rejects(rt.createDuty({ name: "harlow-x", project: "harlow-legal", owner: { kind: "teammate", teammate: "r-p" }, when: "hourly", instruction: "x" }), /starts with duty-/);
+  await assert.rejects(rt.createDuty({ name: "duty-r-bad", project: "harlow-legal", owner: { kind: "teammate", teammate: "r-p" }, when: "whenever", instruction: "x" }), /trigger/);
+  assert.equal(fs.existsSync(path.join(dir, "duty-r-bad")), false, "a trigger that cannot be read leaves no folder behind");
+});

@@ -4,6 +4,16 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+- Duties on the watchers runtime: `watchers.create {name: "duty-<role>-<id>", project, owner:
+  {kind: "teammate", teammate}, when, instruction, act}` writes a watcher folder from plain words
+  (fixed template code, never model-written), turns it on and files one item per firing.
+  `watchers.update`, `watchers.delete` and `watchers.run` complete the set; duty calls are refused
+  unless they come from the teammates module or the person. `when` reads an event
+  (`thread.finished`, with optional `where k=v`), a schedule (`daily 07:00`, `weekdays 09:30`,
+  `hourly`, `every 30 minutes`, cron; never faster than 5 minutes) or `push <connection>` (runs on
+  the `vault.push` event, which vault has yet to emit). `watcher.json` gains `owner`, `instruction`,
+  `act` and `when`; `watcher.deleted` is a new event.
+
 - `lib/sandbox` (watchers, shared with platform's module host): a sandboxed child has no network of
   its own and reaches the web through its parent's `fetch`, GET and HEAD only, ports 80 and 443,
   public addresses only (private, CGNAT, Tailscale, loopback, link-local and IPv6 forms that
