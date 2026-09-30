@@ -1,7 +1,7 @@
 {
   "generated": "scripts/gen-docs-reference",
   "about": "Every Vyre command, tool, event, config key, environment variable, screen and concept, where the code defines it, the docs page that explains it, and every page, line and heading anchor that mentions it.",
-  "counts": {"command":334,"tool":822,"event":332,"config":240,"env":179,"screen":19,"concept":43},
+  "counts": {"command":334,"tool":823,"event":333,"config":240,"env":179,"screen":19,"concept":43},
   "things": [
     {"kind":"screen","name":"/a/:id","definedIn":"deck/views/artifact.js","page":"using/deck.md#what-is-on-each-view","label":"Artifact","routes":["/a/:id"],"mentions":[]},
     {"kind":"tool","name":"about.text","definedIn":"core/about/index.js","page":"reference/tools.md#abouttext","module":"about","mentions":[]},
@@ -246,6 +246,8 @@
     {"kind":"tool","name":"connectors.mention.resolve","definedIn":"core/connectors/index.js","page":"reference/tools.md#connectorsmentionresolve","module":"connectors","mentions":[]},
     {"kind":"tool","name":"connectors.mention.search","definedIn":"core/connectors/index.js","page":"reference/tools.md#connectorsmentionsearch","module":"connectors","mentions":[]},
     {"kind":"tool","name":"connectors.persist","definedIn":"core/connectors/index.js","page":"reference/tools.md#connectorspersist","module":"connectors","mentions":[]},
+    {"kind":"tool","name":"connectors.scope","definedIn":"core/connectors/index.js","page":"reference/tools.md#connectorsscope","module":"connectors","mentions":[]},
+    {"kind":"event","name":"connectors.scope-changed","definedIn":"core/connectors/module.json","page":"reference/events.md#connectors","module":"connectors","mentions":[]},
     {"kind":"config","name":"context","definedIn":"core/context/index.js","page":null,"mentions":[]},
     {"kind":"event","name":"context.changed","definedIn":"core/context/index.js","page":"reference/events.md#context","module":"context","mentions":[{"page":"adr/0036-one-system.md","line":67,"anchor":"2-context-where-the-user-is-now"},{"page":"design/cohesion.md","line":102,"anchor":"2-context-now"},{"page":"design/cohesion.md","line":333,"anchor":"cross-cutting-contracts"},{"page":"design/interaction.md","line":47,"anchor":"2-live-updates-without-polling-events-not-refresh"},{"page":"design/interaction.md","line":141,"anchor":"top-3-upgrades-by-team"},{"page":"design/windows-plan.md","line":17,"anchor":"windows-support-tiers-and-plan"}]},
     {"kind":"config","name":"context.intervalMs","definedIn":"core/context/index.js","page":null,"mentions":[]},

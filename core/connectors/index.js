@@ -44,6 +44,7 @@ export default {
         const list = data(await ctx.call("mcp.servers", {}));
         return (Array.isArray(list) ? list : list.servers || []).find(s => s.name === name) || null;
       },
+      updateServer: async input => { data(await ctx.call("mcp.update", input)); },
       removeServer: async name => { data(await ctx.call("mcp.remove", { name })); },
       // An api-credential is made only from a person's own surface, so this is relayed as the person who asked.
       putCredential: async (name, { config, secret, description }, as) => {
@@ -94,6 +95,13 @@ export default {
       input: obj({ id: str }, ["id"]),
       callers: PEOPLE,
       run: input => conn.cancel(input),
+    });
+
+    ctx.tool("connectors.scope", {
+      description: "Change who may use a connection: { name, scope } where scope is { projects: \"*\" | [ids], agents: \"*\" | [names] }, or null for the default (a hub server open to every project and agent, an api credential for you and the assistant only). Rewrites the hub row or the credential's config; the credential's stored sign-in is kept.",
+      input: obj({ name: str, scope: { type: ["object", "null"] } }, ["name"]),
+      callers: PEOPLE,
+      run: (input, meta) => conn.setScope(input, { as: String(meta && meta.caller || "") }),
     });
 
     ctx.tool("connectors.disconnect", {
