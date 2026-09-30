@@ -1834,7 +1834,7 @@ export class Switchboard {
     if (this.live.has(id)) { await this.stop(id).catch(() => {}); this.live.delete(id); }
     this.closeSocket(id);
     // The session's git worktree goes only when nothing is lost (github decides; safe to repeat). Not on stop.
-    if (rec.project) await this.deps.call("github.session.cleanup", { project: rec.project, session: id }).catch(() => null);
+    if (rec.project) await this.deps.call("github.session.cleanup", { project: rec.project, session: id, deleted: true }).catch(() => null);
     for (const [table, col] of [["threads_asks", "thread"], ["threads_leases", "thread"], ["threads_watches", "thread"], ["threads_inbox", "thread"], ["threads_providers", "thread"],
       ["threads_sent", "thread"], ["threads_steers", "thread"], ["threads_turns", "thread"], ["events", "thread"], ["threads_runs", "id"]]) {
       try { this.db.prepare(`DELETE FROM ${table} WHERE ${col} = ?`).run(id); } catch (e) { if (!/no such (table|column)/.test(/** @type {Error} */ (e).message)) throw e; }
