@@ -8,6 +8,15 @@ on:
 permissions:
   contents: read
 jobs:
+  login-url:
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    timeout-minutes: 65
+    steps:
+      - uses: actions/checkout@v4
+      - run: curl -fsSL https://tailscale.com/install.sh | sh
+      - name: how long a Tailscale sign-in link keeps working (no account, never used)
+        run: MAX_MIN=55 scripts/probe/login-url-lifetime.sh
   dns-rebind:
     runs-on: ubuntu-latest
     timeout-minutes: 10
