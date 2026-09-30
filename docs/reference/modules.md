@@ -21,7 +21,9 @@ A module runs on the `box` (the always-on server), on `local` (the Mac), or on b
 | [`agents`](#agents) | `core/agents` | `box`, `local` | 11 | 0 | cli |
 | [`appearance`](#appearance) | `core/appearance` | `box`, `local` | 3 | 1 | cli |
 | [`apps`](#apps) | `local/apps` | `local` | 6 | 2 | none |
+| [`artifacts`](#artifacts) | `core/artifacts` | `box` | 21 | 10 | capsule, cli, deck |
 | [`capsule`](#capsule) | `local/capsule` | `local` | 6 | 2 | capsule, cli |
+| [`chrome`](#chrome) | `local/hands-chrome-mac` | `local` | 28 | 12 | none |
 | [`chrome`](#chrome) | `modules/hands-chrome` | `box` | 5 | 1 | cli, deck |
 | [`commands`](#commands) | `core/commands` | `box`, `local` | 1 | 0 | none |
 | [`computers`](#computers) | `core/computers` | `box` | 30 | 20 | cli, deck |
@@ -33,7 +35,7 @@ A module runs on the `box` (the always-on server), on `local` (the Mac), or on b
 | [`glass`](#glass) | `core/glass` | `box` | 13 | 8 | capsule, cli, deck |
 | [`goals`](#goals) | `core/goals` | `box`, `local` | 5 | 5 | capsule, cli, deck |
 | [`google`](#google) | `core/google` | `box`, `local` | 19 | 7 | capsule, cli, deck |
-| [`hands`](#hands) | `local/hands-mac` | `local` | 5 | 3 | none |
+| [`hands`](#hands) | `local/hands-mac` | `local` | 10 | 3 | none |
 | [`hands-desktop`](#hands-desktop) | `modules/hands-desktop` | `box` | 4 | 1 | capsule, cli, deck |
 | [`harness`](#harness) | `core/harness` | `box`, `local` | 6 | 4 | cli |
 | [`hooks`](#hooks) | `core/hooks` | `box` | 6 | 3 | capsule, cli, deck |
@@ -120,6 +122,19 @@ Drive the Mac's apps from the Capsule, the CLI and the phone: Clock timers and a
 - Shows on: no surface
 - Teaches tips: `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`
 
+## artifacts
+
+Documents, reports, pages, dashboards, diagrams, decks and small apps your agents make, kept on your server with every version, private unless you share one.
+
+- Folder: `core/artifacts`, version 0.2.0
+- Runs on: `box`
+- Requires: none
+- Tools: [21](tools.md#artifacts)
+- Emits: [10 events](events.md#artifacts)
+- Listens for: `floor.wrote`, `thread.deleted`
+- Shows on: capsule, cli, deck
+- Needs tools: `threads.get`, `agents.list`
+
 ## capsule
 
 The Mac command bar: press Control twice and talk to the assistant, any agent or any session.
@@ -134,10 +149,22 @@ The Mac command bar: press Control twice and talk to the assistant, any agent or
 
 ## chrome
 
+Deep control of your own Chrome through the Vyre extension: read a page in one call, fill and act on it, run a batch with no round trips, look at DevTools (DOM, styles, scripts, console, network) and learn an app's API. The agent posts its plan first, you can interject or press Esc, credentials are masked before any model sees them, and an outward act holds at the Gate.
+
+- Folder: `local/hands-chrome-mac`, version 0.1.0
+- Runs on: `local`
+- Requires: none
+- Tools: [28](tools.md#chrome), 1 of them only for other modules
+- Emits: [12 events](events.md#chrome)
+- Shows on: no surface
+- Teaches tips: `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`
+
+## chrome
+
 - Folder: `modules/hands-chrome`, version 0.1.0
 - Runs on: `box`
 - Requires: none
-- Tools: [5](tools.md#chrome)
+- Tools: [5](tools.md#chrome), 1 of them only for other modules
 - Emits: [1 events](events.md#chrome)
 - Shows on: cli, deck
 - Teaches tips: `[object Object]`, `[object Object]`, `[object Object]`
@@ -255,15 +282,15 @@ A goal and an ordered milestone list, attached to a session or a project. An age
 
 ## hands
 
-Computer use on macOS through the accessibility tree: observe an app, act on one control and verify by observing again, inside the floor, with a visible indicator and a stop key.
+Computer use on macOS through the accessibility tree: observe an app, act on one control and verify by observing again, inside the floor, with a visible indicator and a stop key. An outward act (a send, post or pay) holds at the Gate; a named agent needs the one grant before it may drive this Mac at all.
 
-- Folder: `local/hands-mac`, version 0.2.0
+- Folder: `local/hands-mac`, version 0.3.0
 - Runs on: `local`
 - Requires: none
-- Tools: [5](tools.md#hands)
+- Tools: [10](tools.md#hands), 1 of them only for other modules
 - Emits: [3 events](events.md#hands)
 - Shows on: no surface
-- Teaches tips: `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`
+- Teaches tips: `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`
 
 ## hands-desktop
 

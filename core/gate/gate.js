@@ -41,7 +41,10 @@ export const MIGRATIONS = [
    ALTER TABLE gate_items ADD COLUMN event INTEGER;`,
 ];
 
-export const KINDS = ["send", "spend", "delete"];
+// "act" (PLAN.md C4, 30 Sep): computer use pressing a control that sends, posts or pays as the
+// person: hands-mac's own outward hold, folded into the same one held-card path as everything
+// else, rather than the bespoke hold-and-commit path it used before.
+export const KINDS = ["send", "spend", "delete", "act"];
 /** Words in an MCP tool's own name that mean it sends something as the user (as core/harness/rules.js). */
 const SENDS = /(^|[_-])(send|post|reply|forward|publish|share|invite|tweet|dm|comment)([_-]|$)/i;
 const READS = /(^|_)(draft|list|get|search|read)(_|$)/i;

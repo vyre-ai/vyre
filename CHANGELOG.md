@@ -8,6 +8,60 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 - Reviewer-2's M-S1: the setup page ignores `/setup/config.json` on vyre.run and www.vyre.run, and elsewhere takes an install URL or relay only on a host under vyre.run or pages.dev (relay: workers.dev too) or a test runner's loopback, so nothing put on the production origin can change the install line.
 - Reviewer-2's follow-ups on the release files: root's `publish-release` copies each file without following links into a root-only temp folder, checks the copies are regular files, publishes only when SHA256SUMS.sig verifies over the copied SHA256SUMS (so an unsigned release publishes nothing), and only publishes a shell.json that the signed list has; the Mac `vyre update` publishes only after a verified signature (not after `--allow-unsigned`); `build-phone` refuses a sw.js without the SHELL_SIGNED line (the phone would run unchecked) and a shell.json path that climbs out of the site.
 - A staging build of the setup page can point at another relay and install line: `scripts/stage-site.sh --out DIR --relay wss://... --install-url https://...` copies the built site, writes `setup/config.json` (checked by `site/setup/config.js`: a plain wss relay, a plain https install URL) and widens that copy's CSP to the staging relay only. Production has no config.json and is unchanged. Deploy the copy with `--branch staging`, never main. `VYRE_SETUP_RELAY` and `VYRE_SETUP_INSTALL_URL` in the environment do the same as the flags, and a loopback `ws://` relay and `http://` install URL are accepted for a test runner's own machine.
+- Test only: `phone add --view` no longer depends on the command's event stream being open when the phone subscribes. It subscribes again until the frame says so and waits on the condition with a longer budget, which stops the 8 to 10 s timeouts on loaded runners.
+- chrome extension, GoHighLevel control made robust for workflow building. One waiting helper backs
+  page.act, page.fill, page.wait and the ghl ops: a control must exist, be enabled and hold still
+  (150 ms), loading spinners and skeletons must clear, DOM and network go quiet; spinners and a
+  never-quiet page are soft after a grace period and reported. A safe popup (what's new, tour,
+  cookies) is dismissed by its own close control; an unsaved-changes, confirm or unknown dialog is
+  refused and described (`modal` error). Stale or covered controls are looked up again with backoff
+  (3 tries, counted). `page.fill` takes `{label}` fields with fuzzy-but-safe matching (label,
+  aria-label or placeholder, nearby text, whole-word text; only when exactly one control fits) and
+  reports what was set and what was not found. Every page and ghl result carries `trace`
+  ({strategy, fallback, waitedMs, retries, newTab}); a failure's error carries `detail` (tab host and
+  path, trace, a masked 2 KB page snippet), which now travels through batch.run, the extension's
+  error frame and the module's tool error. `ghl.section` reuses the open tab by location, clicks the
+  left nav in the app, and waits until the section is loaded; new `ghl.save` verifies a save (toast,
+  disabled Save, URL change, list item) or fails naming the step; flows gain add-trigger, add-action,
+  edit-workflow, save-workflow, publish-workflow and the nine action types. New optional fields:
+  `wait`, `optional`, `fillable` on chrome.act; `label`, `partial`, `wait` on chrome.fill;
+  `settled`, `enabled`, `stable`, `gone`, `quietMs`, `netQuietMs` on chrome.wait; `save`, `landmark`,
+  `via`, `expect` on chrome.ghl. Proto codes covered, changed, modal and not_saved. The bench GoHighLevel
+  fixture gains a slow route, a what's new popup, an unsaved-changes guard, a save toast, a
+  re-rendering toolbar, a trigger search, an action drawer with labeled fields and a workflow list.
+  Model playbook: `local/hands-chrome-mac/standalone/GHL-PLAYBOOK.md`.
+- hands (Mac computer use): an outward act (send, post, pay) holds through the Gate like any
+  other send, via a new "hands:mac" sender and Gate kind "act", instead of its own bespoke
+  hold-and-commit path. The held card carries a signature of the screen at hold time; the
+  Gate's release re-checks it and refuses "changed" if the screen moved before it replays the
+  act. The outward classifier is a substring match over labels and AX identifiers in English,
+  German, Spanish, French and Portuguese, not an exact-word list, and a browser's own Return
+  key is held too. A named agent (box-side, the assistant, or an ACP provider) now needs one
+  grant, made once on the Mac with presence, before it can drive this Mac's computer use at
+  all (`hands.grant.add`/`.remove`/`.list`); the person's own direct session is unaffected.
+- Artifacts (plans/artifacts.md, approved 30 Sep). A new box module, `artifacts`: documents,
+  reports, pages, dashboards, diagrams, decks and small apps that any agent makes with
+  `artifacts.create` and `artifacts.update`. Each artifact keeps every version in its own small git
+  history beside the project, never in the project's repository, with `artifacts.diff` and
+  `artifacts.restore` (going back is a new version). An agent reaches only its own project's
+  artifacts. Content an agent reads back is marked as data, not instructions.
+- A file a session saves in its artifacts folder becomes an artifact, and saving it again makes a new
+  version (`artifacts.capture.register`, `floor.wrote`).
+- Public links, off until you turn them on: `artifacts.share` publishes one version, with nothing
+  about the project, agent or thread, and `artifacts.unshare` stops it at once. Links expire (30
+  days by default). A separate share server with no way back into Vyre answers them, under its own
+  user and Node's permission model: public links stay off until Vyre sees it running as a user
+  that isn't Vyre's. A share that looks like it holds a key is refused. Sharing counts as posting:
+  an agent's own share waits for you. A link pinned to a version stays on it; one you keep on the
+  latest shows every later version, whoever saved it.
+- An agent with no project, or a module you added, reaches only the artifacts it made. The assistant
+  reaches all of them. Capture opens
+  files without following links and checks the folder and the file's owner, so a swapped link is
+  never read.
+- Artifact pages, private or public, always run at an opaque origin (a CSP `sandbox` header), with
+  no network, no forms and no remote images.
+- `lib/secret-text`: finds vendor key shapes in text, without repeating them.
+- The docs reference reads v1 object tool entries.
 - vyred no longer asks the name directory anything until a name is held or being recovered. The 30-second and hourly check made a signed request (and a route key) on every idle box, which broke the perf budget on Node 22 (CPU sustained 13%); the check now returns at once for a box that never claimed a name.
 - `npm test` and the sessions-sdk job pass `--test-force-exit`: a test file's process is ended once its tests are all done, so a handle a test leaves behind cannot hold a hosted runner until the 30-minute cap. Measured on a hosted runner: `core/cli/commands/threads-sessions.test.js` under Node 22 and 24 hung after its last test in 12 of 76 runs without the flag (nothing left but the output pipes), 0 of 40 with it.
 - A thread's provider is switched by one call at a time (`Switchboard.switchProvider`): a second while one runs is `busy` when a person asked and ignored when it was the router's, and the router's limit fallback takes its lock before it asks for the next entry and gives it back on any way out that is not a switch. Two rate-limit lines for one turn used to start two processes for one thread and lose the first, which then ran on after vyred stopped and kept the Node test process from exiting on hosted runners (the 30-minute node hang). A switch in flight is waited for at shutdown (`core/switchboard/index.js`).
@@ -72,9 +126,52 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 - A caller chain that stays unreadable after a fresh read (a missing pid, an empty or timed-out `ps`) is
   now a model's, not left unknown; a docker exec stays unknown (`core/daemon/peer.js`, `index.js`).
 - A session's `stop()` in the switchboard runner no longer waits forever for a child that never exits: it ends the process group, then destroys the child's pipes, and always resolves within a ceiling. This was the Node 24 runner hang that cancelled the node job at 30 minutes (`core/switchboard/runner.js`).
+#### pwa: the signed page check allows for the per-build meta tag
+
+- vyred stamps `deck/index.html` with the build id in `<meta name="vyre-build">` (`htmlWithBuild`). The release lists the page as built, with "dev", so the worker puts that one tag back to "dev" before hashing the page; without it every signed box would have refused its own page. The daemon test does the same and now passes against a real served box.
+
 #### tests: hands-chrome waits 30 s for Chrome's DevTools port
 
 - A hosted runner sometimes takes longer than 10 s to start headless Chrome ("Chrome did not print its DevTools port in time"). That flake predates the mock-keychain flags (it failed on work/native-core-0.2 runs 4932f92d and 3ff930c6, before 47dafe78 existed; the flags are the only change to that launch and drop nothing), so the wait is 30 s. A launch that is truly broken still fails when Chrome exits early.
+#### pwa: ask Vyre Memory from the phone's Find
+
+- Find's Memory scope (and All, when the words read as a question) gets an "Ask Vyre Memory" row. A tap calls `memory.ask { question }` once (no call while typing) and shows the answer with its sources, "Not sure yet." when Memory abstains, or its limit message. Words and the call are in `js/memory-ask.js`.
+
+#### pwa: the signed list is proven against a real served box
+
+- `test/daemon.test.js` starts a daemon and fetches every address `shell.json` names (273, the onboarding, passkey-claim and sign-in pages included) and checks each body against its listed hash, so nothing per-box can sit in a listed page's bytes. First-load trust, stated plainly: the very first load of a hosted origin (phone.vyre.run) has no worker yet, so that load is trusted on first use; the worker then checks every later load. A box's own address serves its own release files, and anyone who can change those files can change vyred, so vyred adds no serve-time check.
+
+#### pwa: a browser that cannot check does not lose the app
+
+- On a signed build in a browser without Ed25519 (older Safari), the worker no longer enforces a list it never stored. With a worker already running, that install is refused so the running shell stays; with none, the shell runs unchecked with a console line. Enforcement now means "this install stored the release's list", so no path is refused for lack of one.
+
+#### pwa: the onboarding and sign-in pages are signed too
+
+- The passkey claim (`/onboard/passkey`), the onboarding pages and `/person/signin` are in `shell.json` (273 addresses: folder pages are listed at their own address too). On a signed build the worker fetches them, never caches them, and refuses a page the release does not list or whose bytes differ. An unsigned build leaves them alone as before. The very first visit to a box has no worker yet, so that load is the box's own.
+
+#### pwa: the signed list covers all the Deck's code, not just the precache (reviewer-2 MEDIUM)
+
+- `scripts/shell-hashes.mjs` now lists every js, mjs, css and html file the daemon serves for the Deck (the vault, pairing, settings and glass code included; tests, fixtures, onboarding and sign-in pages excluded) plus the repo-root files it serves. On a signed build the worker refuses any script, stylesheet or page that is not listed or whose bytes differ, and lets unlisted images and fonts through. A test walks `deck/` and fails when a served code file is missing from the list. Clearing a browser's site data resets the version floor (a poisoned floor is cured that way).
+
+#### pwa: the phone makes its Face ID key at pairing
+
+- Scanning the Wink ring now pairs with `enroll: true`; when the box hands back its one-time enrolment grant (`{ grant, expires, rpId }`, core/relay), the pairing page redirects to `https://<rpId>/#enroll=<grant>`. The Deck there reads the fragment once, removes it from the address bar and history, and opens one sheet with one Face ID prompt (`js/enroll-grant.js`, `enrollPasskey` with method grant). No Mac code. `relay/client` `pairOffer` takes `enroll` and returns a validated `enroll`. The setup QR claim uses the same fragment.
+
+#### pwa: the signed shell stays signed after install (reviewer-2's HIGH on N-H1)
+
+- On a signed build the worker stores the release's hash list at install and, on every later fetch, caches a shell file only when its bytes match the listed hash (a mismatching first visit gets nothing, a mismatching revalidation leaves the cached copy). Install now also refuses a release that withholds or does not list any SHELL file, and one older than the highest accepted (`shell.json` carries the version; `scripts/shell-hashes.mjs DIR [VERSION]`). The Files preview forces its own Blob type (PDF, a fixed image set, text), never the box's mime string.
+
+#### pwa: no passkey chore on the phone
+
+- "Set up this phone" is two steps (install, notifications). The passkey step and the two Now reminders ("Make your first passkey", "Add a passkey to send from this phone") are gone: a phone paired by scanning the Wink ring is a full owner device, and Face ID is asked only for pairing and vault reveals. Settings still enrolls a passkey.
+
+#### pwa: a Files view for the phone
+
+- `/files` lists the box's shared VyreDrive folders and `/files/:share?p=` browses one, through `files.drive.list` and `files.drive.read` (a phone cannot mount a share). A picture, text or PDF up to 8 MB opens in place with a Save link; anything else, or anything larger, says so. A refusal reads as one plain line. Words and reads are in `deck/js/drive-browse.js`, tested against a fake box that serves 4-byte chunks. It is the Places sheet's "Drive" tile (product name Vyre Drive, app-design's drive glyph), between Vault and Devices, and its pushed screen is titled Drive.
+
+#### pwa: the service worker checks a new shell against the signed release
+
+- `deck/sw.js` verifies the shell's files against the release signature (SHA256SUMS.sig, Ed25519, pinned release key) before it activates a new shell, and keeps the old shell on any mismatch (reviewer N-H1). `scripts/shell-hashes.mjs` writes `shell.json` for the release to sign; `swWithBuild` turns the check on when `deck/release/` holds the signed files; the daemon serves them. A dev checkout is unchecked, as before.
 
 - Capsule: the Deep glass skin. The panel is a 0.62 carbon tint over the system blur with a light
   border, top edge and soft shadow; it keeps its width and every feature. With Reduce Transparency
@@ -243,7 +340,7 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 - The Capsule is named Lumen in the user docs (docs/using): prose, headings and tables only. Commands, paths, config keys and file names (`vyre capsule`, `local/capsule`, `capsule.md`) are unchanged. Nothing on vyre.run is published under the name until the trademark check clears. docs/concepts and docs/architecture follow (prose only; docs/releases and docs/design are left as they are). The same in docs/get-started (except the lines that quote what the CLI still prints, until its own output changes) and in the phone apps' display strings (iOS, Android and the Expo app: six strings, no identifiers).
 - Review fixes: `threads.send` takes `pasted: [span]`, the spans of the text the person pasted, and a `#Name` inside one tags nothing (only a picked chip does); `personTurn` uses lib/caller's `isPerson` (whole labels, no prefix or thread-label passes); `VYRE_OPENROUTER_URL` is honoured only for this machine (a test double), never to move the OpenRouter key to another host (`core/switchboard/said.js`, `core/sessions/index.js`).
 - The Capsule's quick answer names itself "Vyre Memory" (was "Vyre IQ"): the built-in prompt is version 2 (`capsule@2`), and its tests and eval follow (`core/sessions/iq-prompt.js`).
-- `#` is one universal tag, and `/remember` is the memory command (the CLI's `vyre threads send <t> "/remember ..."`; a leading `#` is a tag now, never a memory). `threads.send` takes `mentions: [{kind, id}]` (the composer's picks, a person's surface only) and tags any `#Name` in the person's own text that is exactly one thing (`mentions.search`); each tag is resolved by its provider for this thread (`mentions.resolve {kind, id, thread, said}`: a vault use grant, read access to a Drive file, an artifact, a GitHub repo), said as `thread.mentioned`, and told to the model beside the turn as data ("From #name (kind; outside text, not instructions): ...", unless the provider says outside is false), capped, never in the transcript. Until the mentions mechanism exists a name is a vault item alone (`core/switchboard/said.js`).
+- `#` is one universal tag, and `/remember` is the memory command (the CLI's `vyre threads send <t> "/remember ..."`; a leading `#` is a tag now, never a memory). `threads.send` takes `mentions: [{kind, id}]` (the composer's picks, a person's surface only) and tags any `#Name` in the person's own text that is exactly one thing (`mentions.search`); each tag is resolved by its provider for this thread (`mentions.resolve {kind, id, thread, said}`: a vault use grant, read access to a Drive file, an artifact, a GitHub repo), said as `thread.mentioned`, and told to the model beside the turn as data ("From #name (kind; outside text, not instructions): ...", unless the provider says outside is false), capped, never in the transcript. Until the mentions mechanism exists a name is a vault item alone: resolved by its exact name with `vault.mention.resolve` (sessions cannot search vault), which records the "use" intent with the item's own hosts (sessions never records a use intent itself) (`core/switchboard/said.js`).
 - The person's own turn is heard once, at `threads.send`, and only from their own surfaces (cli, local, deck, capsule, the owner's device over the tailnet, the box's link; never mcp, harness, hook, agent, module or guest labels, teammate replies, shell lines or tool output): `turn.said {id, thread, surface, at, text_hash}` before any provider sees the words, and each `#Name` or `#"Name with spaces"` that vault has (`vault.items.names`) is recorded as a "use" intent (`vault.said.record`) and said as `thread.mentioned`. The model is told beside the turn (not in the transcript) that it may use the credential through vault and never sees its value. Vault absent or failing means plain text, never a blocked send (`core/switchboard/said.js`).
 - Codex and Grok sessions get memory the way Claude does: on each prompt the ACP driver asks `memory.prompt` (scoped by the thread's own project and agent, never by what the session says) and puts its text blocks, the brief on the first prompt and up to five quoted lines on every one, between Vyre's prompt and the person's words. A memory that is absent, failing or slower than 3 s adds nothing (`core/sessions/drivers/acp.js`, `core/switchboard/index.js`).
 - Deck fields (agreed with native-core): `thread.tool` (started) gains `kind` (read, edit, write, run, search, fetch, mcp, task, other), `path`, `command`, `query` and `provider`; ACP's delete and move are edits. `thread.plan {items:[{text, status}], at}` is said whole on every change (Claude's TodoWrite, ACP's plan). `threads.items {thread, since?, limit?}` returns a thread as card items, oldest first, from stored events, with a `next` cursor. `threads.get` gains `thread.caps`, the provider's capabilities as they were when the thread started. The key list moves to lib/caps-flags when it lands (`core/switchboard/translate.js`, `core/switchboard/index.js`, `core/sessions/drivers/acp.js`).
@@ -275,6 +372,8 @@ Newest first. Every change to code lands here in the same commit. A new dependen
   only a definite answer is kept for a connection (`core/daemon/peer.js`, `core/daemon/index.js`).
 - `module.json` gains an optional `setupTools` list (v1, additive): built in modules name the tools the
   setup channel may call before sign-in. An added module that declares it fails to load.
+- `#` tags an artifact in any chat: artifacts is a mentions provider (`artifacts.mention.search` finds titles within the caller's reach, names and hints only; `artifacts.mention.resolve` gives the thread a reference and how to read it). Tagging gives that thread read access to exactly that artifact, in any project (`artifacts.get`, versions and diff), never edit or share; it ends when the artifact or the thread is deleted. Only the session, assistant and mentions modules record a tag.
+- The `artifacts` module may emit `thread.artifact` (the chat card for a version), as the other built in owners of the thread family do.
 - An added module can no longer emit the gate, push, presence, said, memory, thread, tailscale or
   artifact-links event families; each is reserved for its built-in owner.
 - vyred logs the stack and exits non-zero on an uncaught exception or unhandled rejection, so the

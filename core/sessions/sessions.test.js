@@ -551,8 +551,7 @@ for (const driver of ["cli", "sdk"]) {
     const calls = [];
     const realCall = w.d.registry.call.bind(w.d.registry);
     w.d.registry.call = async (tool, input, caller, meta) => {
-      if (tool === "vault.items.names") return { data: { names: [{ name: "GHLapikey", kind: "token", hosts: ["services.leadconnectorhq.com"] }].filter(x => x.name.toLowerCase() === String(input.query).toLowerCase()) } };
-      if (tool === "vault.said.record") { calls.push([input, caller]); return { data: { id: "i1" } }; }
+      if (tool === "vault.mention.resolve") { if (String(input.id).toLowerCase() !== "ghlapikey") return { error: { code: "not_found" } }; calls.push([input, caller]); return { data: { name: "GHLapikey", hint: "token", hosts: ["services.leadconnectorhq.com"], note: "use it through vault.request; you never see its value" } }; }
       return realCall(tool, input, caller, meta);
     };
     const th = (await w.tool("threads.start", { cwd: w.work, prompt: "hello", surface: "deck" })).data;
@@ -567,12 +566,12 @@ for (const driver of ["cli", "sdk"]) {
     assert.match(rows.at(-1).payload.text_hash, /^[0-9a-f]{64}$/);
     assert.equal(rows.at(-1).payload.text, undefined, "a hash, never the words");
     assert.equal(calls.length, 1, "only the item vault has");
-    assert.deepEqual(calls[0][0], { thread: th.id, said: rows.at(-1).payload.id, kind: "use", to: ["GHLapikey"], what: "use #GHLapikey" });
+    assert.deepEqual(calls[0][0], { id: "GHLapikey", thread: th.id, said: rows.at(-1).payload.id });
     const men = (await w.events(th.id)).find(e => e.type === "thread.mentioned");
     assert.deepEqual(men.payload.mentions, [{ kind: "vault", id: "GHLapikey", name: "GHLapikey", hint: "token", hosts: ["services.leadconnectorhq.com"], outside: false }]);
     const said2 = (await w.said(th.id)).at(-1);
     assert.match(said2, /Use #GHLapikey and #Nothing to inventory pipelines/);
-    assert.match(said2, /#GHLapikey \(vault\): let you use on services\.leadconnectorhq\.com only/, "the model is told, with no value");
+    assert.match(said2, /#GHLapikey \(vault\): use it through vault\.request; you never see its value/, "the model is told, with no value");
     const turn = (await w.events(th.id)).filter(e => e.type === "thread.turn").at(-1);
     assert.doesNotMatch(turn.payload.text, /Vyre tags/, "the transcript keeps the person's words only");
     // Words that are not the person's: nothing said, nothing granted.

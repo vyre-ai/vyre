@@ -87,7 +87,8 @@ async function harvest(role) {
       try { await Promise.race([handle?.stop?.(), new Promise(r => setTimeout(r, 1000))]); } catch {}
     } catch (e) { error = /** @type {Error} */ (e).message; }
     finally { clearTimeout(timer); }
-    out[m.name] = { tools, error };
+    // Two modules may share a name when they run on different roles (the box's chrome and the Mac's): keep both tools lists.
+    out[m.name] = { tools: [...(out[m.name]?.tools || []), ...tools], error: error || out[m.name]?.error || null };
   }
   return out;
 }

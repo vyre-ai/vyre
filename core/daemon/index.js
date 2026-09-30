@@ -895,6 +895,8 @@ function serveDeck(res, pathname, cfg) {
   // the directory happens to carry its own index.html: a bare 404 there would be surprising, since
   // nothing about the URL said "this is a module", only that a browser asked for a page.
   let wantsShell = false;
+  // The release's signed files (deck/sw.js verifyShell): a missing one is a plain 404, never the shell.
+  if (/^\/release\/(SHA256SUMS|SHA256SUMS\.sig|shell\.json)$/.test(pathname) && !fs.existsSync(file)) return send(res, 404, { error: { code: "not_found", message: pathname } });
   try { if (fs.statSync(file).isDirectory()) { file = path.join(file, "index.html"); wantsShell = true; } }
   catch { file = shell; wantsShell = true; }
   let buf;

@@ -54,21 +54,25 @@ test("floor: the Deck in a browser is off limits by the box's origin, which come
   assert.equal((await other.observe({})).blind, undefined, "an ordinary page was blinded");
 });
 
-test("floor: the module asks link.status for the box, and no link module means no box", async () => {
+test("floor: the module asks link.status for the box, and no link module means no box", async t => {
+  const home = tempHome(t);
+  const db = open(path.join(home, "vyre.db"));
+  t.after(() => db.close());
   const tools = new Map();
   /** @type {any[]} */ const asked = [];
   const f = fakeApp(composer({ bundle: "com.apple.Safari", origin: "https://box.tailnet-juno.ts.net" }));
   const ctx = (/** @type {any} */ answer) => ({
     config: { hands: { runner: f.run, sleep: nosleep } }, events: { emit() {} },
+    store: { db, migrate: () => {} }, log: () => {},
     tool: (/** @type {string} */ n, /** @type {any} */ d) => tools.set(n, d),
-    call: async (/** @type {string} */ tool) => { asked.push(tool); return answer; },
+    call: async (/** @type {string} */ tool) => { asked.push(tool); return tool === "link.status" ? answer : { error: { code: "no_such_tool", message: `no tool ${tool}` } }; },
   });
   await mod.start(ctx({ data: { linked: true, box: { address: "https://box.tailnet-juno.ts.net" } } }));
-  assert.equal((await tools.get("hands.observe").run({})).blind, "a Vyre surface in the browser");
-  assert.deepEqual(asked, ["link.status"]);
+  assert.equal((await tools.get("hands.observe").run({}, { caller: "cli" })).blind, "a Vyre surface in the browser");
+  assert.deepEqual(asked.filter(t => t === "link.status"), ["link.status"]);
   tools.clear();
   await mod.start(ctx({ error: { code: "no_such_tool", message: "no tool link.status" } }));
-  assert.equal((await tools.get("hands.observe").run({})).blind, undefined);
+  assert.equal((await tools.get("hands.observe").run({}, { caller: "cli" })).blind, undefined);
 });
 
 test("floor: a window that turns guarded between the two looks is refused on what was read", async () => {
@@ -89,6 +93,15 @@ test("secure: a password field is refused for every kind, pointing at vault.fill
 });
 
 // ---------------------------------------------------------------- outward acts are held
+
+test("outward: a send the Gate already released (the person's words covered it) returns the released act's result and holds nothing", async () => {
+  const f = fakeApp(composer(), () => ({ acted: true }));
+  const released = { acted: true, verified: true, reason: "released" };
+  const h = new Hands({ run: f.run, sleep: nosleep, overlay: fakeOverlay(), hold: async () => ({ sent: true, id: "g1", result: released }) });
+  const r = await h.act({ selector: { role: "AXButton", name: "Send" }, kind: "press" });
+  assert.deepEqual(r, released);
+  assert.equal(counts(f.calls, "act"), 0, "hands did not press it a second time");
+});
 
 test("outward: Send is held, not pressed, and the answer says to use hands.commit", async () => {
   const events = [];
@@ -392,12 +405,12 @@ test("find: hands.find through the Registry returns only the matches, and the fl
   const f = fakeApp(chats());
   const reg = new Registry({ db, events: new Events(db), log: () => {}, config: { role: "local", hands: { runner: f.run, sleep: nosleep } } });
   await reg.start(discover([path.dirname(HERE)]).filter(m => m.dir === HERE), { role: "local" });
-  const r = await reg.call("hands.find", { app: "net.whatsapp.WhatsApp", role: "AXTextArea" }, "module");
+  const r = await reg.call("hands.find", { app: "net.whatsapp.WhatsApp", role: "AXTextArea" }, "cli");
   assert.ifError(r.error);
   assert.deepEqual(r.data.elements.map(e => e.selector.name), ["Compose message"]);
   assert.equal(r.data.texts, undefined);
   f.state.bundle = "com.1password.1password"; f.state.app = "1Password";
-  const b = await reg.call("hands.find", { role: "AXTextArea" }, "module");
+  const b = await reg.call("hands.find", { role: "AXTextArea" }, "cli");
   assert.ok(b.data.blind);
   assert.deepEqual(b.data.elements, []);
 });
