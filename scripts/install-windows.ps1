@@ -10,8 +10,7 @@
 # Env: VYRE_CODE (the single-use setup ticket, plans/windows.md section 3 "Pairing" -- read from
 # the environment or a prompt, NEVER written to a file or passed as an argv token per reviewer
 # N-M5), VYRE_INSTALL_DIR (default $env:LOCALAPPDATA\Vyre), VYRE_RELEASE_BASE (default
-# https://github.com/vyre-ai/vyre/releases/latest/download), VYRE_SKIP_SIGCHECK (test-only, never
-# set by a real install -- see the guard at the bottom).
+# https://github.com/vyre-ai/vyre/releases/latest/download).
 #
 #   -Uninstall     stop the app, remove the tray/autostart/protocol-key registration and the
 #                  install dir (reviewer W-M5/N-L3: also revokes this device's session on the box
@@ -62,10 +61,6 @@ function Verify-Sha256 {
 function Get-VerifiedInstaller {
     param([string]$ReleaseBase, [string]$Dest)
 
-    if ($env:VYRE_SKIP_SIGCHECK -eq "1") {
-        Write-Host "VYRE_SKIP_SIGCHECK=1: verification skipped. NEVER set this for a real install." -ForegroundColor Red
-    }
-
     Write-Host "Windows may say it does not recognize this app. Choose More info, then Run anyway."
 
     $exeUrl  = "$ReleaseBase/VyreSetup.exe"
@@ -77,12 +72,10 @@ function Get-VerifiedInstaller {
     Invoke-WebRequest -Uri $exeUrl -OutFile $exePath -UseBasicParsing
     Invoke-WebRequest -Uri $sumsUrl -OutFile $sumsPath -UseBasicParsing
 
-    if ($env:VYRE_SKIP_SIGCHECK -ne "1") {
-        $line = Get-Content $sumsPath | Where-Object { $_ -match "VyreSetup\.exe$" }
-        if (-not $line) { throw "VyreSetup.exe has no line in SHA256SUMS; refusing to run it." }
-        $expected = ($line -split '\s+')[0]
-        Verify-Sha256 -Path $exePath -ExpectedHex $expected
-    }
+    $lines = @(Get-Content $sumsPath | Where-Object { $_ -match '^[0-9a-fA-F]{64}\s+\*?VyreSetup\.exe$' })
+    if ($lines.Count -ne 1) { throw "SHA256SUMS must list VyreSetup.exe exactly once; refusing to run it." }
+    $expected = ($lines[0] -split '\s+')[0]
+    Verify-Sha256 -Path $exePath -ExpectedHex $expected
 
     # Refuse a downgrade (W-B1 fix, mirrors the updater's own rule in plans/windows.md 6.4/9): a
     # release manifest carries its version in SHA256SUMS' own header line, TODO once that format
@@ -151,12 +144,15 @@ $releaseBase = $env:VYRE_RELEASE_BASE
 if (-not $releaseBase) { $releaseBase = "https://github.com/vyre-ai/vyre/releases/latest/download" }
 
 $exe = Get-VerifiedInstaller -ReleaseBase $releaseBase -Dest $InstallDir
-Register-VyreAutostart -ExePath $exe
+# Run the installer quietly (per-user, no elevation), then start the installed app.
+Start-Process -FilePath $exe -ArgumentList "/S" -Wait
+$app = Join-Path $env:LOCALAPPDATA "Vyre\Vyre.exe"
+if (-not (Test-Path $app)) { throw "The installer finished but $app is not there." }
+Register-VyreAutostart -ExePath $app
 
-# The code is handed to the app by environment variable, not a file or an argv token (N-M5); the
-# app's own first-run reads VYRE_SETUP_CODE from its own process environment at launch.
-$env:VYRE_SETUP_CODE = $code
-Start-Process -FilePath $exe
+# The setup code is not handed to the app yet: how the app claims with it is launch's contract,
+# still open. Until then the app starts at its own first-run screen, and $code stays in memory only.
+Start-Process -FilePath $app
 
 Write-Host ""
 Write-Host "Vyre is starting. A window will open to finish setup."

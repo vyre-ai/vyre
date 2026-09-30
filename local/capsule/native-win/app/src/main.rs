@@ -28,7 +28,7 @@ struct Live {
     hotkey: Mutex<String>,
     /// The nonce this app issued for an "Add this computer" the person started (C7). Only a
     /// `vyre://pair` link carrying it is honored.
-    nonce: Mutex<Option<String>>,
+    nonce: Mutex<Option<(String, std::time::Instant)>>,
     /// A ticket that resolved and awaits the person's yes, with the address it would pin.
     pending: Mutex<Option<(wink::Offer, String)>>,
 }
@@ -200,8 +200,13 @@ fn check_update(app: &AppHandle) -> Result<Option<String>, String> {
     let Some((name, version)) = update::newer_installer(&listed, env!("CARGO_PKG_VERSION")) else { return Ok(None) };
     let bytes = fetch(&format!("{RELEASE_BASE}/{name}"), 300 << 20)?;
     update::check_file(&listed, &name, &bytes)?;
-    let path = std::env::temp_dir().join(&name);
+    // Written to the app's own data dir (not the shared temp dir), then re-hashed from disk so
+    // what runs is what was checked.
+    let dir = app.path().app_data_dir().map_err(|e| e.to_string())?.join("updates");
+    std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+    let path = dir.join(&name);
     std::fs::write(&path, &bytes).map_err(|e| e.to_string())?;
+    update::check_file(&listed, &name, &std::fs::read(&path).map_err(|e| e.to_string())?)?;
     std::process::Command::new(&path).arg("/S").spawn().map_err(|e| e.to_string())?;
     let _ = app.notification().builder().title("Vyre").body(format!("Updating to {version}.")).show();
     app.exit(0);
@@ -255,7 +260,7 @@ fn begin_pair(live: State<Live>) -> String {
     let mut b = [0u8; 16];
     rand::thread_rng().fill_bytes(&mut b);
     let n = base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(b);
-    *live.nonce.lock().unwrap() = Some(n.clone());
+    *live.nonce.lock().unwrap() = Some((n.clone(), std::time::Instant::now()));
     n
 }
 
@@ -289,7 +294,9 @@ fn handle_link(app: &AppHandle, link: &str) {
         show_panel(app, &path);
         return;
     }
-    let Some(nonce) = live.nonce.lock().unwrap().clone() else { return };
+    // The nonce lives 10 minutes, and a link is ignored while an offer already awaits a yes.
+    let Some((nonce, at)) = live.nonce.lock().unwrap().clone() else { return };
+    if at.elapsed() > std::time::Duration::from_secs(600) || live.pending.lock().unwrap().is_some() { return; }
     if !shell::pair_matches(link, &nonce) { return; }
     let ticket = url_param(link, "ticket").and_then(|t| {
         use base64::Engine;

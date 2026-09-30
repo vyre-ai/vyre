@@ -28,3 +28,12 @@ test("windows wink vector: the box-side code opens what the Rust reader is teste
   assert.equal(ticketMac(ticket, w.record).toString("base64url"), w.mac);
   assert.equal(JSON.parse(ticketOpen(ticket, w.record)).handle, w.handle);
 });
+
+test("windows updater's shared vector is launch's, verified by verifySums too", () => {
+  const key = "MCowBQYDK2VwAyEA6kpsY+KcUgq+9VB7Ey7F+ZVHdq6+vnuSQh7qaRRG0iw=";
+  const sums = "a".repeat(64) + "  manifest.json\n" + "b".repeat(64) + "  vyre.tgz\n";
+  const sig = "X+aWDX+6p5YDh32E4tUXAHKEvCwi36rUm4I889QLs2I6b4hlP0J05o8PNtuyZnsCaqMkiv2MWmqJ3fllTLIzDA==";
+  assert.equal(verifySums(sums, sig, { key }).get("vyre.tgz"), "b".repeat(64));
+  const rs = fs.readFileSync(new URL("../local/capsule/native-win/src/update.rs", import.meta.url), "utf8");
+  assert.ok(rs.includes(key) && rs.includes(sig), "update.rs carries the same shared vector");
+});

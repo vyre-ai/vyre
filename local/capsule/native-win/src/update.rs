@@ -91,6 +91,19 @@ mod tests {
         assert_eq!(m["Vyre_0.2.0_x64-setup.exe"], "aa".repeat(32));
     }
 
+    /// The one shared vector (launch's test/box-update.test.js, also in anywhere's tests), so
+    /// every verifier agrees: seed 0x07 x32, the prefix, these exact bytes.
+    const SHARED_KEY: &str = "MCowBQYDK2VwAyEA6kpsY+KcUgq+9VB7Ey7F+ZVHdq6+vnuSQh7qaRRG0iw=";
+    const SHARED_SUMS: &str = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa  manifest.json\nbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb  vyre.tgz\n";
+    const SHARED_SIG: &str = "X+aWDX+6p5YDh32E4tUXAHKEvCwi36rUm4I889QLs2I6b4hlP0J05o8PNtuyZnsCaqMkiv2MWmqJ3fllTLIzDA==";
+
+    #[test]
+    fn the_shared_vector_verifies_and_one_more_byte_does_not() {
+        let m = verify_sums(SHARED_SUMS.as_bytes(), SHARED_SIG, SHARED_KEY).unwrap();
+        assert_eq!(m["vyre.tgz"], "b".repeat(64));
+        assert!(verify_sums(format!("{SHARED_SUMS}x").as_bytes(), SHARED_SIG, SHARED_KEY).is_err());
+    }
+
     #[test]
     fn unsigned_changed_or_wrong_key_is_refused() {
         let v = vector();

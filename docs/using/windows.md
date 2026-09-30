@@ -79,3 +79,18 @@ A native Windows Capsule (a Tauri shell, most likely, see the plan) with its own
 context through Windows UI Automation, computer use, voice, and Windows Credential
 Manager/Windows Hello standing in for the Keychain/Touch ID. None of this exists yet. Track it
 under `windows` in `docs/work/`.
+
+## The Windows app
+
+The Windows app is not signed with a Windows certificate yet, so Windows may say it does not
+recognize the app. Choose More info, then Run anyway.
+
+The first install checks the installer against the release's `SHA256SUMS`, both fetched over
+https. Every update after that is checked by the app itself: it installs a newer version only
+when the Vyre release key signed the list of hashes, and it refuses anything unsigned, unlisted
+or older.
+
+Vyre Drive appears as a network drive. Windows maps it through its WebClient service, which
+refuses files over 50 MB by default. Larger files fail to open until you raise the limit: set
+`FileSizeLimitInBytes` under `HKLM\SYSTEM\CurrentControlSet\Services\WebClient\Parameters` and
+restart the WebClient service (this needs an administrator, so Vyre does not do it for you).
