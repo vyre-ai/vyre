@@ -31,8 +31,10 @@ export function codexProvider(o = {}) {
     // MEASURED on codex-acp 2.0.1 (proof-wire): `-c key=value` flags do not reach Codex through the adapter (a model_provider
     // override was never used, and the start mode is "agent" with or without them), so none are passed. What keeps a session
     // asking is the adapter's own mode: it starts in "agent" (approval and sandbox preset), "agent-full-access" is filtered
-    // as bypass-shaped (acp.js BYPASS_MODE), and a start mode that is one is moved or the session does not run.
+    // not allowed (acp.js ALLOWED_MODES is an allowlist, narrowed here to read-only and agent), and a start mode not allowed is moved or the session does not run.
     args: () => [],
+    // Only the modes where Codex asks or cannot write: "workspace-write" is not listed until measured, "agent-full-access" never.
+    allowModes: /^(read-only|agent)$/i,
     // HOME is the account's (the spawner sets it on a box, the Switchboard on a Mac); the sign-in lives under it.
     env: run => { const home = run.env && run.env.HOME; return home ? { CODEX_HOME: path.join(String(home), ".codex") } : {}; },
     secretEnv: () => ["OPENAI_API_KEY", ...(o.custom ? [o.custom.envKey] : [])],

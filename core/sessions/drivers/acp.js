@@ -46,6 +46,12 @@ import { within } from "../../../lib/within.js";
 const MEMORY_MS = 3000;
 
 /** A mode name that would let the agent stop asking. Never offered, never set. */
+/**
+ * The modes Vyre permits by name: the ones where the agent keeps asking (or cannot write). Anything else an agent reports is
+ * refused, never listed and never entered, including a mode a later release adds: an allowlist, because a denylist of bypass
+ * words let Codex's "agent-full-access" through once. An entry may narrow it (`allowModes`), never widen it past BYPASS_MODE.
+ */
+export const ALLOWED_MODES = /^(default|ask|untrusted|on-request|read-?only|plan|agent)$/i;
 export const BYPASS_MODE = /bypass|yolo|dangerous|never.?ask|full.?auto|full.?access|auto.?approve|accept.?all|skip.?perm/i;
 
 /** ACP tool kind -> the Claude tool name the floor's rules know (rules.js is Claude-tool-name shaped until build step 8). */
@@ -88,6 +94,7 @@ const remembered = new Map();
 /**
  * @param {{ id: string, bin: string, askMode?: RegExp, seed?: Record<string, string> | ((o: any) => Record<string, string>), secretEnv?: string[] | ((o: any) => string[]), args?: string[] | ((o: any) => string[]), env?: Record<string, string> | ((o: any) => Record<string, string>),
  *   capabilities?: Record<string, any>, floor?: (call: { tool: string, input: any, cwd?: string }) => { decision: "deny"|"ask"|null, reason?: string },
+ *   allowModes?: RegExp,
  *   authMethod?: (methods: { id: string, name?: string }[], run: any) => string|null, authTimeoutMs?: number,
  *   authFirst?: boolean, clientCapabilities?: Record<string, any>, authParams?: (methodId: string, run: any) => Record<string, any>,
  *   sessions?: { get(id: string): string|undefined, set(id: string, agent: string): void } }} entry
@@ -382,18 +389,19 @@ function runAcp(entry, known, o) {
     if (!sid) throw new Error("the agent gave no session id");
     known.set(o.id, sid);
     const m = r.modes || {};
-    modes = (Array.isArray(m.availableModes) ? m.availableModes : []).filter(x => x && typeof x.id === "string" && !BYPASS_MODE.test(x.id + " " + (x.name || "")));
-    mode = typeof m.currentModeId === "string" && !BYPASS_MODE.test(m.currentModeId) ? m.currentModeId : null;
-    // Fail closed: an agent that starts in a mode that approves everything (its own config file,
-    // which the agent can edit, may say so) is moved to an ask mode, or the session does not run.
+    const allow = entry.allowModes || ALLOWED_MODES;
+    const permitted = x => Boolean(x) && typeof x.id === "string" && allow.test(x.id) && !BYPASS_MODE.test(x.id + " " + (x.name || ""));
+    modes = (Array.isArray(m.availableModes) ? m.availableModes : []).filter(permitted);
+    mode = typeof m.currentModeId === "string" && modes.some(x => x.id === m.currentModeId) ? m.currentModeId : null;
+    // Fail closed: an agent that starts in a mode Vyre does not list (one that approves everything, a mode a new release added, or
+    // one its own config file, which the agent can edit, chose) is moved to an ask mode, or the session does not run.
     const rawMode = String(m.currentModeId || "");
-    const current = (Array.isArray(m.availableModes) ? m.availableModes : []).find(x => x && x.id === rawMode);
-    if (rawMode && BYPASS_MODE.test(rawMode + " " + (current && current.name || ""))) {
-      const ask = entry.askMode || /^(default|ask|untrusted|on-request|read-?only|plan)$/i;
+    if (rawMode && !modes.some(x => x.id === rawMode)) {
+      const ask = entry.askMode || /^(default|ask|untrusted|on-request|read-?only|plan|agent)$/i;
       const to = modes.find(x => ask.test(x.id));
       let ok = false;
       if (to) { try { await request("session/set_mode", { sessionId: sid, modeId: to.id }); mode = to.id; ok = true; } catch {} }
-      if (!ok) throw new Error(`${entry.id[0].toUpperCase() + entry.id.slice(1)} is set to approve everything; Vyre did not start it`);
+      if (!ok) throw new Error(`${entry.id[0].toUpperCase() + entry.id.slice(1)} starts in a mode Vyre does not permit (${rawMode}) and could not be moved to one it does; Vyre did not start it`);
     }
     const model = r.models && r.models.currentModelId || o.model || null;
     ready = true;
@@ -451,7 +459,7 @@ function runAcp(entry, known, o) {
     /** Change the agent's mode. A bypass-shaped or unknown one is refused, whatever asked. */
     async setMode(id) {
       const want = String(id || "");
-      if (BYPASS_MODE.test(want) || !modes.some(x => x.id === want)) throw Object.assign(new Error(`mode ${want} is not available here`), { code: "denied" });
+      if (!modes.some(x => x.id === want)) throw Object.assign(new Error(`mode ${want} is not available here`), { code: "denied" });
       await request("session/set_mode", { sessionId: sid, modeId: want });
       mode = want;
       return { mode };

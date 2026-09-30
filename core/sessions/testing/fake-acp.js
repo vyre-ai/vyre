@@ -26,7 +26,7 @@ const waits = new Map();
 const call = (method, params) => new Promise((resolve, reject) => { const id = nextId++; waits.set(id, { resolve, reject }); out({ id, method, params }); });
 const say = t => out({ method: "session/update", params: { sessionId: session, update: { sessionUpdate: "agent_message_chunk", content: { type: "text", text: t } } } });
 let authed = false;
-const MODES = { availableModes: [{ id: "default", name: "Default" }, { id: "plan", name: "Plan" }, { id: "bypassPermissions", name: "Bypass permissions" }, { id: "agent-full-access", name: "Full access" }] };
+const MODES = { availableModes: [{ id: "default", name: "Default" }, { id: "plan", name: "Plan" }, { id: "bypassPermissions", name: "Bypass permissions" }, { id: "agent-full-access", name: "Full access" }, ...(process.env.FAKE_ACP_EXTRA_MODE ? [{ id: process.env.FAKE_ACP_EXTRA_MODE, name: process.env.FAKE_ACP_EXTRA_MODE }] : [])] };
 
 async function prompt(id, blocks) {
   const t = blocks.map(b => b.text || "").join("");

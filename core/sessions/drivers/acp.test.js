@@ -224,7 +224,7 @@ test("acp: an agent that starts in a bypass-shaped mode is moved to an ask mode,
   const b = open({ ...w, env: { ...w.env, FAKE_ACP_START_MODE: "bypassPermissions", FAKE_ACP_NO_SETMODE: "1" } });
   t.after(() => b.proc.stop(1000));
   const r = await b.until(m => m.type === "result" && m.is_error, "the refusal");
-  assert.match(r.result, /is set to approve everything; Vyre did not start it/);
+  assert.match(r.result, /starts in a mode Vyre does not permit \(bypassPermissions\) and could not be moved to one it does; Vyre did not start it/);
 });
 
 test("acp: fs write and read never follow a link the agent put at the target after the check", async t => {
@@ -311,7 +311,7 @@ test("codex entry: a custom endpoint goes through the gateway method, authentica
   const w = world(t);
   const provider = codexProvider({ bin: FAKE, custom: { id: "mockmodel", baseUrl: "http://127.0.0.1:9/v1", envKey: "MOCK_MODEL_KEY", model: "m" } });
   const got = [];
-  const proc = provider.run({ id: crypto.randomUUID(), resume: false, cwd: w.cwd, env: { ...w.env, HOME: path.join(w.store, "h"), MOCK_MODEL_KEY: "sekret-value", FAKE_ACP_AUTH: "ok" }, onSpawn() {}, onMessage: m => got.push(m), onExit() {} });
+  const proc = provider.run({ id: crypto.randomUUID(), resume: false, cwd: w.cwd, env: { ...w.env, HOME: path.join(w.store, "h"), MOCK_MODEL_KEY: "sekret-value", FAKE_ACP_AUTH: "ok", FAKE_ACP_EXTRA_MODE: "agent", FAKE_ACP_START_MODE: "agent" }, onSpawn() {}, onMessage: m => got.push(m), onExit() {} });
   for (let i = 0; i < 200 && !got.find(m => m.type === "system"); i++) await new Promise(r => setTimeout(r, 30));
   assert.ok(got.find(m => m.type === "system" && m.subtype === "init"), JSON.stringify(got.slice(0, 2)));
   const launches = w.launches();
@@ -329,10 +329,45 @@ test("codex entry: without a custom endpoint the API key method is used when a k
     const w = world(t);
     const p = codexProvider({ bin: FAKE });
     const got = [];
-    const proc = p.run({ id: crypto.randomUUID(), resume: false, cwd: w.cwd, env: { ...w.env, HOME: path.join(w.store, "h"), FAKE_ACP_AUTH: "ok", OPENAI_API_KEY: "", CODEX_API_KEY: "", ...env }, onSpawn() {}, onMessage: m => got.push(m), onExit() {} });
+    const proc = p.run({ id: crypto.randomUUID(), resume: false, cwd: w.cwd, env: { ...w.env, HOME: path.join(w.store, "h"), FAKE_ACP_AUTH: "ok", FAKE_ACP_EXTRA_MODE: "agent", FAKE_ACP_START_MODE: "agent", OPENAI_API_KEY: "", CODEX_API_KEY: "", ...env }, onSpawn() {}, onMessage: m => got.push(m), onExit() {} });
     for (let i = 0; i < 200 && !got.find(m => m.type === "system"); i++) await new Promise(r => setTimeout(r, 30));
     assert.deepEqual(w.launches().filter(l => l.authenticate).map(l => l.authenticate), [want], JSON.stringify(env));
     assert.equal(w.launches()[0].clientCaps.auth, undefined, "no gateway capability when there is no custom endpoint");
     await proc.stop(500);
   }
+});
+
+test("acp: modes are an allowlist: an unknown mode (a new release's) is never listed, never entered, and a start in one is moved or refused", async t => {
+  const w = world(t);
+  const s = open(w, { env: { ...w.env, FAKE_ACP_EXTRA_MODE: "turbo" } });
+  const init = await s.until(m => m.type === "system" && m.subtype === "init", "init");
+  assert.deepEqual(init.modes.sort(), ["default", "plan"], "only the permitted modes, not turbo, not bypass, not full access");
+  await assert.rejects(() => s.proc.setMode("turbo"), /not available/);
+  await assert.rejects(() => s.proc.setMode("agent-full-access"), /not available/);
+  await s.proc.stop(500);
+  // Starting in an unknown mode: moved to an ask mode.
+  const w2 = world(t);
+  const s2 = open(w2, { env: { ...w2.env, FAKE_ACP_EXTRA_MODE: "turbo", FAKE_ACP_START_MODE: "turbo" } });
+  await s2.until(m => m.type === "system" && m.subtype === "init", "init");
+  assert.ok(w2.launches().some(l => l.set_mode === "default"), "moved off turbo to default");
+  await s2.proc.stop(500);
+  // ...and refused when it cannot be moved.
+  const w3 = world(t);
+  const s3 = open(w3, { env: { ...w3.env, FAKE_ACP_EXTRA_MODE: "turbo", FAKE_ACP_START_MODE: "turbo", FAKE_ACP_NO_SETMODE: "1" } });
+  assert.match((await s3.until(m => m.type === "result", "refused")).result, /starts in a mode Vyre does not permit \(turbo\) and could not be moved to one it does; Vyre did not start it/);
+  // An entry can narrow the list.
+  const w4 = world(t, { allowModes: /^plan$/ });
+  const s4 = open(w4);
+  assert.deepEqual((await s4.until(m => m.type === "system" && m.subtype === "init", "init")).modes, ["plan"]);
+  await s4.proc.stop(500);
+});
+
+test("codex entry: only read-only and agent are permitted; workspace-write is not until measured, and a default start outside them is refused", async t => {
+  const w = world(t);
+  const p = codexProvider({ bin: FAKE });
+  const got = [];
+  const proc = p.run({ id: crypto.randomUUID(), resume: false, cwd: w.cwd, env: { ...w.env, HOME: path.join(w.store, "h"), FAKE_ACP_AUTH: "ok", OPENAI_API_KEY: "sk-fake", FAKE_ACP_EXTRA_MODE: "workspace-write", FAKE_ACP_START_MODE: "workspace-write" }, onSpawn() {}, onMessage: m => got.push(m), onExit() {} });
+  for (let i = 0; i < 200 && !got.find(m => m.type === "result"); i++) await new Promise(r => setTimeout(r, 30));
+  assert.match(got.find(m => m.type === "result").result, /Codex starts in a mode Vyre does not permit \(workspace-write\)/, "no ask-shaped mode to move to: refused");
+  await proc.stop(500);
 });
