@@ -868,3 +868,40 @@ account + device and drop the tokens tool store. Then polish passes over the spe
   same one-row pattern banner.md already uses elsewhere).
 - Re-screenshotted section by section after each fix (ImageMagick crops of a 900x9600 headless
   render) rather than trusting the first pass.
+
+## Now (30 Sep, user approved Deep glass; save and pause for a usage-limit restart)
+
+- User approved Option B, "Deep glass," for the Capsule, condition: the Capsule stays exactly
+  what it is today. Same 680px width (Theme.width, Spotlight-sized), same bar height, every
+  existing feature (app search and launch, files, contacts, dictionary, settings, clipboard
+  history and snippets, calculator, commands) unchanged - Glass is a new skin on the launcher,
+  not a redesign of it.
+- Already done (section 11, capsule-02.html, committed c2e92cd2, before this pause): the
+  computer-use oversight panel (plan/prompt/voice/pause/resume/stop), the 6-moment collaborative
+  flow, the compact collapsed state, Chrome's "being debugged" bar coexisting, and the three vault
+  moments (save login, API key detected, autofill). The lead's pause note listed these as "still
+  due" - they are not; flagging here so the next session doesn't redo them, only verifies.
+
+## Next
+
+- **Still due, not started:** the main Capsule search at 680px in Deep glass, showing the
+  existing launcher doing what it already does - app search and launch, file results, a command
+  result, contacts/dictionary/calculator where they fit naturally in the result list, keyboard
+  selection (the focused row), and the clipboard history view. This is the condition the user's
+  approval came with (same width, same features, glass is only the skin) - the mockup has to
+  actually show the familiar Capsule, not a new layout, or it doesn't prove the condition was met.
+- **Still due, not started:** the primary CTA colour. Today's lime (#C6F36B) was chosen for the
+  opaque panel; the user wants it reconsidered against the Deep glass backdrop specifically (it
+  may read too flat/poster-like sitting on a blurred, vibrant surface) and wants 2-3 options shown
+  before picking one - not a unilateral swap. Approach for next session: render the existing lime
+  primary button on the Deep glass panel over 2-3 of the same sampled wallpapers already used for
+  the theme itself, alongside 2 alternatives (candidates to consider: a warmer, less saturated
+  lime that reads less "sticker" against blur/saturation; a neutral light-on-dark pill matching
+  the panel's own vibrancy instead of an accent colour; a desaturated version of the existing
+  lime) - compute real contrast for each against the glass panel's own effective background the
+  same way the three glass alpha options were verified (worst case across sampled wallpapers, not
+  eyeballed), and keep the lime exactly as-is everywhere else in the product (chat, setup, every
+  non-Capsule surface) - this is scoped to the Capsule's Deep glass skin only unless the user says
+  otherwise.
+- Both items go into capsule-02.html alongside what's already there; screenshot headlessly,
+  section by section, before sending.
