@@ -22,10 +22,10 @@ jobs:
     timeout-minutes: 40
     env:
       VYRE_NO_DIALOGS: "1"
-      KC: ${{ runner.temp }}/vyre-ci.keychain-db
-      T: ${{ runner.temp }}/mb
     steps:
       - uses: actions/checkout@v4
+      - name: Paths
+        run: printf 'T=%s/mb\nKC=%s/vyre-ci.keychain-db\n' "$RUNNER_TEMP" "$RUNNER_TEMP" >> "$GITHUB_ENV"
       - uses: actions/setup-node@v4
         with:
           node-version: 22
@@ -185,9 +185,10 @@ jobs:
     timeout-minutes: 20
     env:
       VYRE_NO_DIALOGS: "1"
-      T: ${{ runner.temp }}/mb
     steps:
       - uses: actions/checkout@v4
+      - name: Paths
+        run: printf 'T=%s/mb\n' "$RUNNER_TEMP" >> "$GITHUB_ENV"
       - uses: actions/download-artifact@v4
         with:
           name: s1-builds-${{ github.sha }}
