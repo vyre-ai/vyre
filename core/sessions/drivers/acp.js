@@ -40,6 +40,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { execFileSync } from "node:child_process";
 import { spawnSession, killGroup } from "../spawn.js";
+import { within } from "../../../lib/within.js";
 
 /** How long a turn waits for memory before it goes without. */
 const MEMORY_MS = 3000;
@@ -384,7 +385,7 @@ function runAcp(entry, known, o) {
     // Memory, as Claude gets it: the brief on the first prompt and up to 5 quoted lines on every one,
     // ahead of the person's words, scoped by vyred to this thread's own agent and project (the
     // caller passes memory(); a slow or failing memory adds nothing and never holds the turn).
-    const memory = o.memory ? Promise.race([Promise.resolve().then(() => o.memory({ prompt: words, first })), new Promise(r => setTimeout(() => r([]), MEMORY_MS).unref())]).catch(() => []) : Promise.resolve([]);
+    const memory = o.memory ? within(Promise.resolve().then(() => o.memory({ prompt: words, first })), MEMORY_MS, []).catch(() => []) : Promise.resolve([]);
     memory.then(extra => request("session/prompt", { sessionId: sid, prompt: [...sys, ...(Array.isArray(extra) ? extra : []), ...blocks] })).then(r => r, e => ({ error: e })).then(r => {
       withdrawAsks();
       if (turnText) say({ type: "assistant", message: { id: `acp-turn-${Date.now()}`, content: [{ type: "text", text: turnText }] } });

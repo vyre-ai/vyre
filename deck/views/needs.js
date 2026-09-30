@@ -32,7 +32,7 @@ export default async function view(ctx) {
   await needs.load();
   if (!ctx.alive()) return;
   draw();
-  // Answered elsewhere (another screen, the Capsule): this page says so rather than acting twice.
+  // Answered elsewhere (another screen, Lumen): this page says so rather than acting twice.
   ctx.cleanup(needs.watch(() => { if (!answering) draw(); }));
 }
 

@@ -264,7 +264,7 @@ test("toast: 4 s, polite, one at a time; Undo and Cmd+Z undo, and hover pauses",
   }
 });
 
-test("toast: the look follows the spec (float shadow, 480 max, 44 tall, 24 above the Capsule)", () => {
+test("toast: the look follows the spec (float shadow, 480 max, 44 tall, 24 above Lumen)", () => {
   const css = read("css/toast.css");
   decl(css, ".toast-float", /max-width: min\(480px, calc\(100vw - 32px\)\); min-height: var\(--control-touch, 44px\)/);
   decl(css, ".toast-float", /border-radius: var\(--radius-card, 12px\); box-shadow: var\(--float\)/);

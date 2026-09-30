@@ -28,7 +28,7 @@ import { artifactFrame } from "./artifact-frame.js";
 /** Every artifacts tool the viewer calls, and the render route, in one place. */
 export const TOOLS = { get: "artifacts.get", versions: "artifacts.versions", share: "artifacts.share" };
 /** Where the box serves an artifact version's rendered page (opaque origin, its own CSP). @param {string} id @param {number} v */
-export const renderSrc = (id, v) => `/artifacts/${encodeURIComponent(id)}/v${v}/render`;
+export const renderSrc = (id, v) => `/v1/artifacts/content?id=${encodeURIComponent(id)}&v=${encodeURIComponent(String(v))}`;
 
 /** Kinds drawn natively as Markdown; everything else goes to the frame. */
 const TEXT_KINDS = new Set(["doc", "report", "markdown", "note"]);
