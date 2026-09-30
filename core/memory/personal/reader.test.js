@@ -17,9 +17,9 @@ const DAY = 86_400_000;
 /**
  * A store seeded with sessions (one user turn each, then an assistant line), a fake runner that
  * answers from `answers` (text -> facts) and a clock.
- * @param {any} t @param {{ turns: string[], config?: any, threads?: any[], usd?: number, answers?: Record<string, any[]>, runner?: any, capped?: () => boolean }} o
+ * @param {any} t @param {{ turns: string[], config?: any, threads?: any[], usd?: number, answers?: Record<string, any[]>, runner?: any }} o
  */
-async function world(t, { turns, config = {}, threads = [], usd = 0.002, answers = {}, runner, capped } = /** @type {any} */ ({})) {
+async function world(t, { turns, config = {}, threads = [], usd = 0.002, answers = {}, runner } = /** @type {any} */ ({})) {
   const db = open(path.join(tempHome(t), "vyre.db"));
   t.after(() => db.close());
   seedRecall(db, turns.map((x, i) => ({ id: `s-${i}`, cwd: "/home/alex/work", start: T0 + i * DAY, turns: [{ role: "user", text: x }, { role: "assistant", text: "Done." }] })));
@@ -34,15 +34,14 @@ async function world(t, { turns, config = {}, threads = [], usd = 0.002, answers
     const reads = blocks.map((b, i) => ({ t: i, facts: Object.entries(answers).filter(([k]) => b.includes(k)).flatMap(([, f]) => f) })).filter(x => x.facts.length);
     return { text: JSON.stringify({ reads }), usd, tokens_in: 1000, tokens_out: 50 };
   };
-  const recorded = [];
-  const call = async (tool, input) => { if (tool === "spend.record") recorded.push(input); return tool === "threads.list" ? { data: threads } : { error: { code: "no_such_tool" } }; };
+  const call = async tool => (tool === "threads.list" ? { data: threads } : { error: { code: "no_such_tool" } });
   // One reading per batch unless a test says otherwise: the counts below are per reading.
   const cfg = { ...config, memory: { ...(config.memory || {}), model: { passes: 1, ...(config.memory?.model || {}) } } };
-  const reader = createReader({ db, personal, now: () => clock.t, call, config: cfg, runner: runner === undefined ? fake : runner, ...(capped ? { capped } : {}) });
+  const reader = createReader({ db, personal, now: () => clock.t, call, config: cfg, runner: runner === undefined ? fake : runner });
   t.after(() => reader.stop());
   await personal.pass({});
   personal.derive();
-  return { db, personal, reader, sent, recorded, clock, fact: (subj, rel) => personal.lookup({ subj, rel }).filter(f => f.current).map(f => f.object) };
+  return { db, personal, reader, sent, clock, fact: (subj, rel) => personal.lookup({ subj, rel }).filter(f => f.current).map(f => f.object) };
 }
 
 test("reader: which turns are sent", () => {
@@ -263,19 +262,4 @@ test("reader: the person's plan share sets the daily cap; an explicit figure in 
   assert.equal(await cap({ memory: { model: { share: "small" } } }), 0.1);
   assert.equal(await cap({ memory: { model: { share: "large" } } }), 1);
   assert.equal(await cap({ memory: { model: { share: "large", dailyUsd: 0.3 } } }), 0.3);
-});
-
-test("reader: its dollars go to the one ledger, and it waits while the provider's cap is reached", async t => {
-  let capped = false;
-  const w = await world(t, { turns: ["my wife dani just got off nights, shes a nurse"], usd: 0.003, capped: () => capped,
-    answers: { "shes a nurse": [{ subj: "kin:spouse", rel: "role", obj: "lit:nurse", q: "shes a nurse", conf: 0.9 }] } });
-  capped = true;
-  const held = await w.reader.drain();
-  assert.equal(held.runs, 0, "no model run at the cap");
-  assert.equal(w.sent.length, 0);
-  capped = false;
-  const r = await w.reader.drain();
-  assert.equal(r.runs, 1);
-  assert.ok(w.recorded.length >= 1);
-  assert.deepEqual([w.recorded[0].provider, w.recorded[0].purpose, w.recorded[0].usd], ["claude", "memory.read", 0.003]);
 });

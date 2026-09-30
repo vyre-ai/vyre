@@ -12,7 +12,6 @@ import { fileURLToPath } from "node:url";
 import { start } from "../daemon/index.js";
 import { request, call } from "../daemon/client.js";
 import { useEmbedder, readable } from "./index.js";
-import { realHome } from "../config/dialogs.js";
 import { fakeEmbedder } from "./testing.js";
 import { SESSIONS, writeTranscripts } from "../../test/fixtures/corpus.js";
 import { tempHome } from "../../test/helpers.js";
@@ -102,10 +101,9 @@ test("recall module: a temp, dev or trial home never reads the person's ~/.claud
   const named = path.join(os.homedir(), ".claude", "projects", "fixture-only");
   assert.deepEqual(readable([named, real], dev, { VYRE_CLAUDE_HOME: path.dirname(path.dirname(named)) }), [named, real]);
   // The person's own ~/.vyre reads their own conversations.
-  // (The person's home is realHome(), not $HOME: under a temp HOME this must still hold.)
-  assert.deepEqual(readable([real], realHome(), {}), [real]);
+  assert.deepEqual(readable([real], path.join(os.homedir(), ".vyre"), {}), [real]);
   // Under node --test nothing real, even for ~/.vyre or with the opt-in.
-  assert.deepEqual(readable([real], realHome(), { NODE_TEST_CONTEXT: "child", VYRE_ALLOW_REAL_TRANSCRIPTS: "1" }), []);
+  assert.deepEqual(readable([real], path.join(os.homedir(), ".vyre"), { NODE_TEST_CONTEXT: "child", VYRE_ALLOW_REAL_TRANSCRIPTS: "1" }), []);
 });
 
 const BIN = path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "..", "bin", "vyre");

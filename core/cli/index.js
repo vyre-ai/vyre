@@ -47,7 +47,7 @@ export const GROUPS = [
   ["Start and connect", ["up", "status", "down", "box", "name", "link", "phone", "capsule"]],
   ["Projects and sessions", ["projects", "new", "open", "threads", "sessions", "resume", "start", "context", "pick", "unpick"]],
   ["Waiting on you", ["needs", "gate"]],
-  ["Agents and watchers", ["agents", "watchers", "spend"]],
+  ["Agents and watchers", ["agents", "watchers"]],
   ["Time and lists", ["agenda", "alarm", "timer", "remind", "snooze", "ringing", "dismiss", "todo", "notes"]],
   ["Memory", ["recall", "index", "memory", "why", "learn"]],
   ["Vault and presence", ["vault", "presence"]],

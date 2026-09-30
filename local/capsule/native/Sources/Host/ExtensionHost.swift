@@ -23,6 +23,7 @@ final class ExtensionHost: CapsuleHost {
     /// The extension whose own panel is shown (host.showPanel), until hidePanel or the next hide.
     private(set) var shownPanel: String?
     private var window: CapsuleSessionWindow?
+    private var floating: CapsuleSessionWindow?
 
     init(model: CapsuleModel) { self.model = model }
 
@@ -191,6 +192,13 @@ final class ExtensionHost: CapsuleHost {
         window = w
         return w
     }
+
+    func floatingWindow(owner: String) -> SessionWindow {
+        if let w = floating { return w }
+        let w = CapsuleSessionWindow(floating: true)
+        floating = w
+        return w
+    }
 }
 
 /// The session panel: a borderless, non-activating panel at normal window level on the user's
@@ -203,16 +211,37 @@ final class CapsuleSessionWindow: SessionWindow {
         override var canBecomeMain: Bool { false }
     }
     private var panel: Panel?
+    private let floating: Bool
+    /// True while the app itself moves the window, so it is not taken for the person's drag.
+    private var moving = false
+    private var moveToken: NSObjectProtocol?
+    var onMoved: ((NSRect) -> Void)?
+
+    init(floating: Bool = false) { self.floating = floating }
+
+    deinit { if let moveToken { NotificationCenter.default.removeObserver(moveToken) } }
 
     var isOpen: Bool { panel?.isVisible ?? false }
     var frame: NSRect { panel?.frame ?? .zero }
 
     func show(_ content: AnyView, frame: NSRect) {
         let p = panel ?? {
-            let p = Panel(contentRect: frame, styleMask: [.borderless, .nonactivatingPanel, .resizable, .fullSizeContentView],
+            let p = Panel(contentRect: frame, styleMask: floating ? [.borderless, .nonactivatingPanel, .fullSizeContentView]
+                                                                   : [.borderless, .nonactivatingPanel, .resizable, .fullSizeContentView],
                           backing: .buffered, defer: true)
-            p.level = .normal
-            p.collectionBehavior = [.moveToActiveSpace, .fullScreenAuxiliary]
+            p.level = floating ? .floating : .normal
+            p.collectionBehavior = floating ? [.moveToActiveSpace, .fullScreenAuxiliary, .ignoresCycle] : [.moveToActiveSpace, .fullScreenAuxiliary]
+            if floating {
+                // Draggable by any part that is not a control, and only the person's own drag
+                // reports a new place (the app's own setFrame does not).
+                p.isMovableByWindowBackground = true
+                moveToken = NotificationCenter.default.addObserver(forName: NSWindow.didMoveNotification, object: p, queue: .main) { [weak self] n in
+                    MainActor.assumeIsolated {
+                        guard let self, let w = n.object as? NSWindow, !self.moving else { return }
+                        self.onMoved?(w.frame)
+                    }
+                }
+            }
             p.isOpaque = false
             p.backgroundColor = .clear
             p.hasShadow = true
@@ -225,7 +254,9 @@ final class CapsuleSessionWindow: SessionWindow {
         p.contentView = NSHostingView(rootView: content
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .clipShape(RoundedRectangle(cornerRadius: Theme.radius, style: .continuous)))
+        moving = true
         p.setFrame(frame, display: true)
+        moving = false
         p.orderFrontRegardless()
     }
 
@@ -233,6 +264,8 @@ final class CapsuleSessionWindow: SessionWindow {
 
     func setFrame(_ frame: NSRect, duration: TimeInterval, curve: SessionWindowCurve) {
         guard let p = panel else { return }
+        moving = true
+        defer { moving = false }
         if duration <= 0 { p.setFrame(frame, display: true); return }
         let name: CAMediaTimingFunctionName = switch curve {
         case .easeInOut: .easeInEaseOut

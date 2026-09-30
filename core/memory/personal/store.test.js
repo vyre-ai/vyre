@@ -373,25 +373,3 @@ test("personal store: a relative's job and home, a pet's breed, and the user's d
   assert.equal(diet?.object, "vegan");
   assert.equal(diet?.current, true);
 });
-
-test("personal store: a correction said in chat wins its slot; the old value is history, and plain talk corrects nothing", async t => {
-  const { db, me } = world(t, [
-    S(["biscuit (my beagle) needs the vet on friday.", "Biscuit is my beagle, he snores."], { start: T0 }),
-    S(["I drive a Honda Jazz to the office."], { start: T0 + DAY }),
-    S(["no, biscuit's a corgi not a beagle, fix the notes."], { start: T0 + 10 * DAY }),
-    S(["actually I drive a Kia Niro, not the Jazz."], { start: T0 + 11 * DAY }),
-    S(["our cat is a siamese.", "actually it's a ragdoll"], { start: T0 + 12 * DAY }),
-    S(["I live in Denver, not far from Boulder."], { start: T0 + 13 * DAY }),
-  ]);
-  await all(me);
-  const breed = me.lookup({ subj: "Biscuit", rel: "breed" });
-  const now = breed.find(f => f.current), was = breed.find(f => !f.current);
-  assert.equal(now?.object, "corgi");
-  assert.equal(was?.object, "beagle", "the old value is kept, as history");
-  assert.ok(Number(now?.confidence) >= 0.5, String(now?.confidence));
-  assert.equal(me.lookup({ subj: "me", rel: "drives" }).find(f => f.current)?.object, "Kia Niro");
-  assert.equal(me.lookup({ subj: "kin:cat", rel: "breed" }).find(f => f.current)?.object, "ragdoll");
-  // "not far from" names no rival value: a plain statement, not a correction.
-  const kinds = db.prepare("SELECT rel, obj, method FROM memory_me_claims WHERE obj = 'place:Denver'").all();
-  assert.deepEqual(kinds.map(r => String(r.method)), ["rule"]);
-});

@@ -18,6 +18,18 @@ Owns `local/capsule/` (now native Swift, `local/capsule/native/`) and `local/han
    Calendar, browser tabs/history/bookmarks, windows, system commands, Shortcuts, snippets and
    user commands, paste into the front app, vault inline, currency, time zones, emoji, colour
    picker, media keys. Each permission asked for on first use.
+   STATUS (2026-09-30, checked in code): wired and in use today are apps, files, contacts, the
+   dictionary, settings, clipboard history, the calculator with units, system commands, and (since
+   Providers/LocalAnswers.swift) emoji, colours, time zones, money with rates from open.er-api.com,
+   snippets, quicklinks and user commands from <home>/capsule/snippets.json. Aliases and per-command hotkeys (Core/Bindings.swift, Host/CommandBindings.swift,
+   <home>/capsule/bindings.json; native-core's settings hub keys can replace the file later). Window
+   layouts (Core/WindowLayout.swift, Providers/WindowsProvider.swift) and Return-pastes
+   (Host/Paste.swift; Accessibility asked once) are in. `view:` commands (Core/ViewFrames.swift,
+   Host/ViewSession.swift, Host/ViewMode.swift, Providers/ViewCommandsProvider.swift, UI/ViewLevelView.swift)
+   draw platform's capsule.commands/view/act frames; needs a vyred with those tools (platform-follow 39a3886e).
+   Not built: needs-a-credential (host.askCredential) from a `needs` frame, groups within a list, the
+   settings hub overrides (native-core). The list above is scope,
+   not what works.
 3. The Capsule gaps from the gallery (brief item 6) and the Capsule items moved here from
    polish-surfaces (items 2, the Capsule half of 3, and 5).
 
@@ -107,7 +119,37 @@ Worktree ../vyre-capsule-02-iq, based on main 9381ab15. Landed:
   (https://github.com/vyre-ai/vyre/actions/runs/36658983627).
 - No restyling: the draft reuses Theme.reply/stone/ash; app-design's glass theme will restyle it.
 
-## Doing (session 8, 2026-09-30, 0.2, work/capsule-02-glass off work/capsule-02-iq2 7b366c9b)
+## Speed proof (0.2 item 1)
+On CI (macos-latest, every run): scripts/capsule-native-check.mjs types real words a letter at a time
+(apps, files, the calculator answer in one frame) and reports the median and 95th percentile from
+key to rows against one frame (16 ms), and 10 hide-and-show cycles against 50 ms wake, plus the
+hidden footprint (60 MB) and CPU (0.1%). Numbers land in the job summary ("Capsule speed"). A miss
+prints OVER and does not fail the run; it is a number to fix.
+By hand on the real Mac, only in the separate test account, never the person's own, when the lead says the Mac is
+free: log in to the test account, build with `sh local/capsule/native/build.sh app` under the build lock,
+then `node scripts/capsule-native-check.mjs local/capsule/native/.build/Vyre.app` for the same numbers
+on real hardware and a real display. What a runner cannot show and a person must: (1) the hot key opens
+it with no visible lag, (2) typing a word draws rows as fast as you type, (3) holding a key does not
+stutter, (4) nothing flickers between keystrokes, (5) hiding and reopening is instant.
+
+## Doing (session 9, 2026-09-30, work/capsule-02-oversight off work/capsule-02-glass 62645bee)
+Computer-use oversight panel (capsule-02.html section 11), built against my proposed hands.* contract
+(CHAT.md, capsule-pro -> capsule-sight; capsule-sight has not answered yet). Sources/Extensions/oversight/:
+OversightModel (folds hands.plan/step/voice/paused/resumed/stopped by run, taps -> hands.pause/resume/stop/
+plan.edit/steer, presence:false), OversightView (Bone tokens, Backdrop glass, grip, 6-step window, edit in
+place for todo steps, voice line, steer field, Esc stops, small mode), OversightExtension (opens on hands.plan,
+closes on stop or after a 4 s linger when all done, remembers the dragged top-left). Seam additions:
+CapsuleHost.floatingWindow(owner:) and SessionWindow.onMoved (defaults keep every fake host compiling);
+CapsuleSessionWindow(floating: true) is level .floating, movable by background, non-activating.
+Controls whose tool the vyred lacks (pause, edit, steer) are not drawn. Typechecked with swiftc (build lock);
+tests in Tests/Oversight run on CI only.
+Enrolment handoff (anywhere, ADR 0040 s4-5): Host/CoreEnroll.swift reads the code from fd 3 first thing in main.swift (6 chars A-Za-z0-9 then EOF, else failed; a closed or non-pipe fd 3 is an ordinary launch), core.json under the readCoreConfig rule, socketProblem before any proof, then CapsulePresence.enroll(client:header:) with `code code=<code>`; fingerprint = sha256(SPKI) 16 hex. Tests/CoreEnrollTests.swift with a fake core. Needs the real-Mac run from anywhere's installer.
+`#` tags (Core/TagPicker.swift, Host/TagMode.swift): mentions.search {q, limit} as the contract says; the chips ride in threads.send as `mentions:[{kind,id,name}]` only (threads.start and agents.ask carry the #Name token in the text).
+Lumen icon and motion: Lumen.icns from docs/design/brand/export (build.sh copies it, CFBundleIconFile), LumenMark in the bar and menu bar, summon arrival in Panel.show, first-launch open in Host/LumenOpen.swift.
+Next: CI result, then reviewer-2; adjust to capsule-sight's answer on the contract; Chrome "being debugged"
+coexistence needs a real-Mac look (panel opens top right, below the menu bar).
+
+## Earlier (session 8, 2026-09-30, 0.2, work/capsule-02-glass off work/capsule-02-iq2 7b366c9b)
 Handed: IQ streaming (work/capsule-02-iq2 7b366c9b, CI green 393/393) to reviewer-2 (unreachable at handoff, notified integrator).
 1. Deep glass skin (Sources/UI/Glass.swift, glassSuite): 0.62 tint, border, reduce-transparency fallback. CI run pending.
    Light variant done: Theme colours are dynamic (dark/paper tokens by system appearance), IconCache keys carry the scheme, backdrop material .popover + paper tint 0.66. 395/395 on CI.

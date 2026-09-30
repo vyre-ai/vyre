@@ -131,14 +131,6 @@ const OWN_STOP = new Set("lot few couple bit piece share copy license licence li
 const HYPO = /\b(?:if|suppose|supposing|imagine|imagined|pretend|pretending|hypothetically|assume|assuming|wish|unless|whether|e\.g\.|for example|for instance|let's say|lets say|say that|what if|as though|roleplay|role-play|role play)\b/i;
 const NEG_BEFORE = /(?:\bnot|\bnever|\bno|n't|\bnor|\bwithout)\s+(?:\w+\s+){0,1}$/i;
 const QUESTION_START = /^(?:what|who|whose|which|where|how)\b|^(?:do|does|did|can|could|would|will|is|are|am)\s+(?:you|i|my|we|it|there|your)\b/i;
-/** A sentence that corrects what was said before: "no, biscuit's a corgi", "actually we live in Leeds". */
-const CORRECT_OPEN = /^\s*(?:no+|nope|nah|actually|correction|wait|sorry|oops|my\s+bad|scratch\s+that|i\s+meant?|to\s+be\s+clear|not\s+quite|wrong)\b\s*(?:[,:;!.-]+|\s)/i;
-/** Words after "not" that do not name a rival value: "not far from", "not sure", "not yet". */
-const NOT_FILLER = "far|sure|really|just|only|yet|bad|much|quite|too|so|very|that|this|always|even|exactly|entirely|anymore|now|again|to|for|because|since|until|when|if|all|every|many|going|being|like|as|the\\s+(?:same|point|case)|one|ever|once";
-/** "a corgi, not a beagle", "Denver not Boulder", "not the Civic, the Mazda", "instead of Globex", "rather than the Civic". */
-const CORRECT_CONTRAST = new RegExp(`(?:[,;]\\s*|\\s)not\\s+(?!(?:${NOT_FILLER})\\b)(?:(?:a|an|the|in|at|from|with|for)\\s+)?[\\w'-]+(?:\\s+[\\w'-]+){0,2}\\s*(?:[.!,;)]|$)|^\\s*not\\s+(?!(?:${NOT_FILLER})\\b)(?:(?:a|an|the|in|at|from|with|for)\\s+)?[\\w'-]+(?:\\s+[\\w'-]+){0,2}\\s*[,;:]|\\b(?:instead\\s+of|rather\\s+than)\\s+\\S`, "i");
-/** Is this sentence a correction of an earlier value? */
-const correcting = s => CORRECT_OPEN.test(s) || CORRECT_CONTRAST.test(s);
 const CUE = /\b(?:wife|husband|spouse|partner|girlfriend|boyfriend|fianc\w*|mom|mum|mother|dad|father|sister|brother|son|daughter|kids?|children|dog|cat|car|truck|live|lives|lived|moved|moving|birthday|born|anniversary|drive|drives|married|home|house|apartment|pet|friend|buddy|bestie|vegetarian|vegan|diet|breed|puppy|job)\b/i;
 const FIRST_PERSON = /\b(?:I|I'm|I've|I'd|my|we|our|me|us)\b/;
 const SECOND_PERSON = /\b(?:you|your|you're|you've)\b/i;
@@ -371,9 +363,6 @@ const PET_MY = new RegExp(`(?<![\\w'])(?:my|our)\\s+(?:(?:${PET_MOD})\\s+)*(?<b>
 const PET_HAVE = new RegExp(`\\b(?:have|got|adopted|rescued|own)\\s+(?:a|an)\\s+(?:(?:${PET_MOD})\\s+)*(?<b>${BREEDW}|dog|cat|puppy|kitten)${PET_TAIL},?\\s+(?:called|named)\\s+(?<n>[a-z][a-z-]+)`, "gd");
 /** "the dog's a corgi", "our cat is a ragdoll", "biscuit is a beagle". */
 const PET_IS = new RegExp(`(?:(?<![\\w'])(?<own>my|our|the)\\s+(?<k>dog|cat|puppy|pup|kitten)|(?<![\\w'])(?<n>[a-z][a-z-]+))(?:'s|\\s+is)\\s+(?:a|an)\\s+(?:(?:${PET_MOD}|full|pure|purebred|pedigree)\\s+)*(?<b>${BREEDW})\\b(?!'s|-)`, "gd");
-
-/** "it's a corgi", "it is a ragdoll": the pet in focus. */
-const IT_IS_BREED = new RegExp(`(?<![\\w'])it(?:'s|\\s+is)\\s+(?:a|an)\\s+(?:(?:${PET_MOD}|full|pure|purebred|pedigree)\\s+)*(?<b>${BREEDW})\\b(?!'s|-)`);
 
 /** Diets, lower case -> the value kept. */
 const DIETS = /** @type {Record<string, string>} */ ({ vegetarian: "vegetarian", veggie: "vegetarian", vegan: "vegan", pescatarian: "pescatarian",
@@ -935,19 +924,12 @@ export function extractPersonal(text, { role = "user", prev = null } = {}) {
       const known = names.get(n) || (prevF?.name === n ? { ref: prevF.ref } : null);
       breed(known ? known.ref : `name:${n}`, m.groups.b, indirect);
     }
-    // "actually it's a corgi": the pet this turn or the last was about.
-    if (bits & G.breed && /\bit(?:'s|\s+is)\s/.test(ls)) {
-      const pet = [...cands].reverse().find(c => c.ref === "kin:dog" || c.ref === "kin:cat") || (prevF && (prevF.ref === "kin:dog" || prevF.ref === "kin:cat") ? prevF : null);
-      const m = pet && IT_IS_BREED.exec(ls);
-      if (m && !unsure(sentence, m.index)) breed(pet.ref, m.groups.b, indirect);
-    }
   };
 
   const sentences = readable(text, who);
   for (let si = 0; si < sentences.length; si++) {
     let sentence = sentences[si];
     const before = claims.size;
-    const had = assistant ? null : new Map(claims);
     if (/\?\s*["')]*$/.test(sentence) && !QUESTION_START.test(sentence)) {
       // "my partner robin says the logo looks too corporate, thoughts?": a statement with a short
       // question tagged on. The statement still counts.
@@ -1084,12 +1066,6 @@ export function extractPersonal(text, { role = "user", prev = null } = {}) {
     }
     if (!assistant) personalLower(sentence, ls, si, bits);
 
-    // A correction ("no, biscuit's a corgi not a beagle", "actually we live in Leeds"): what this
-    // sentence says of a one-value slot replaces what was said before it (the store's corrected).
-    if (had && correcting(sentence)) for (const [k, c] of claims) {
-      if (had.get(k) === c || !SINGLE_VALUED.has(c.rel) || SINGULAR.has(c.rel) || (c.method !== "rule" && c.method !== "indirect")) continue;
-      c.method = "correct";
-    }
     if (!assistant && claims.size === before && cues.length < 5 && CUE.test(sentence) && FIRST_PERSON.test(sentence)) cues.push(sentence.slice(0, 300));
   }
 

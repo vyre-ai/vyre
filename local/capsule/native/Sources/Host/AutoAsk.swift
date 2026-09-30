@@ -43,6 +43,7 @@ extension CapsuleModel {
     /// Called by search() on every change of the words, plain search only.
     func scheduleAuto(_ q: Query, token t: Int) {
         autoTask?.cancel()
+        if q.text == prefilled { return }
         let key = Self.autoKey(q.text)
         // The answer on screen was for other words: typing on lets it go.
         if let k = autoKey, k != key { dropAuto() }

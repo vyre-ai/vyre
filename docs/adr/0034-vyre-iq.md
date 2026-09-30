@@ -1,12 +1,12 @@
 ---
-title: "ADR 0034: Vyre Memory"
+title: "ADR 0034: Vyre IQ"
 summary: One question in, one cited answer out, from every session the user has had, their personal facts and the people and projects graph, in one to three seconds, and "not sure, here's what I know" rather than a wrong answer.
 audience: builders, agents
 owner: memory-iq
 status: stable
 ---
 
-# ADR 0034: Vyre Memory
+# ADR 0034: Vyre IQ
 
 Status: approved with amendments, 27 Sep 2026 · Workstream: memory-iq (module `memory`, `core/memory`) · Builds on
 ADR 0007 (intelligence), ADR 0023 (personal facts, written into this one) and ADR 0030 (sessions)
@@ -26,7 +26,7 @@ sources, or an honest "not sure" with what memory does know.
 
 ## Decision
 
-Vyre Memory is the user-facing name for question answering over everything memory holds. It is one
+Vyre IQ is the user-facing name for question answering over everything memory holds. It is one
 tool on the memory module:
 
 ```
@@ -42,7 +42,7 @@ and the phone call it; app-design owns how it looks. memory.answer stays as the 
 contract cc-plugin already uses. Internal names (memory, personal, reader) stay.
 
 A module's tools start with its own name (core/modules validate()), so the tool is `memory.ask`
-and its retrieval `memory.retrieve`; "Vyre Memory" stays the name people see. context.project scopes
+and its retrieval `memory.retrieve`; "Vyre IQ" stays the name people see. context.project scopes
 the question like project_cwds; context.thread favours that thread's turns and never filters.
 
 ## Amendments (lead, 27 Sep 2026)

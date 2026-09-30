@@ -67,16 +67,9 @@ function fixWord(w) {
   if (!w || VOCAB.has(w) || STOP.has(w)) return w;
   if (w.endsWith("s") && KIN[w.slice(0, -1)]) return w.slice(0, -1);
   if (w.length < 4) return w;
-  for (const v of VOCAB) if (v.length >= 4 && typo(w, v)) return v;
-  if (w.endsWith("s")) { const b = w.slice(0, -1); for (const v of Object.keys(KIN)) if (v.length >= 4 && typo(b, v)) return v; }
+  for (const v of VOCAB) if (v.length >= 4 && near(w, v)) return v;
+  if (w.endsWith("s")) { const b = w.slice(0, -1); for (const v of Object.keys(KIN)) if (v.length >= 4 && near(b, v)) return v; }
   return w;
-}
-
-/** A typo of v: one edit, but for a short word only two letters swapped ("wfie"). One edit turns a
- * four-letter word into too many other words: "rate" is not "mate", "wifi" is not "wife". */
-function typo(w, v) {
-  if (!near(w, v)) return false;
-  return v.length > 4 || (w.length === v.length && [...w].sort().join("") === [...v].sort().join(""));
 }
 
 /**
@@ -242,52 +235,14 @@ const content = s => String(s || "").split(/\s+/).filter(w => w && !STOP.has(w))
 export function parse(q) {
   const t = normalize(q);
   if (!t) return null;
-  const p = parseShape(t);
-  return p && aboutLife(t, p) ? p : null;
-}
-
-/** Words that make a question about work, a project or a system, not the user's life: "the pickup
- * slot hours", "the deploy target", "the invoice template path", "harlow's hourly rate". */
-const WORK = new RegExp(`\\b(?:${`hours? slots? shifts? deploy(?:s|ed|ment|ments)? target staging production prod files? path paths folders? director(?:y|ies) dir repo repos
-  branch(?:es)? commits? prs? pull request prices? pricing costs? rates? fees? quotes? invoices? endpoints? apis? bugs? builds? servers? database databases db
-  tables? schemas? migrations? tests? tickets? issues? releases? versions? configs? config settings? domains? dns pages? site sites website routes? functions?
-  ports? env cron queues? orders? menus? features? code templates? scripts? components? modules? packages? dependenc(?:y|ies) librar(?:y|ies) errors? logs?
-  timezones? webhooks? hosting backups? tokens? keys? url urls links? sheets? spreadsheets? docs? pdfs? reports? dashboards? contracts? projects? tasks?
-  sprints? wifi password passwords? login logins? account accounts? plan plans conversion traffic ads? campaigns? leads? emails? newsletters? inbox calls?
-  meetings? schedule deadline launch`.trim().split(/\s+/).join("|")})\\b`);
-/** The user in the question: "i", "my", "we". */
-const FIRST_P = /\b(?:i|me|my|mine|myself|we|us|our|ours)\b/;
-/** Question kinds about the user themselves: they need the user in the question. */
-const SELF = new Set(["car", "lives", "work", "job", "born", "owns", "uses", "prefers", "diet", "myname"]);
-
-/**
- * Is a parsed question really about the user's life? A question with a work word ("pickup slot
- * hours", "the invoice template path") is a work question whatever else it shares with a personal
- * one; one about the user's own things names the user. Unsure: no, so no fact answers it and
- * memory.ask goes on to retrieval.
- * @param {string} t @param {Parsed} p
- */
-function aboutLife(t, p) {
-  // Software people name by its category ("which api client do i use") keeps its own words.
-  if ((p.kind === "uses" || p.kind === "prefers") && FIRST_P.test(t)) return true;
-  // "who is owen price": a name answers only when memory knows someone by exactly that name.
-  if (p.kind === "who" && p.name.split(" ").length <= 3 && !/\b(?:for|of|at|in|on|to|with|from|the|a|an)\b/.test(p.name)) return true;
-  if (WORK.test(t)) return false;
-  if (SELF.has(p.kind) && !FIRST_P.test(t)) return false;
-  return true;
-}
-
-/** @param {string} t  the normalized question @returns {Parsed|null} */
-function parseShape(t) {
   const kin = KIN_RE.exec(t)?.[1] || (m0 => m0 && (m0[1] || m0[2]))(FRIEND_RE.exec(t)) || null;
   const role = kin ? roleOf(kin) : null;
   let m;
 
   // Someone at an organisation: "who is my contact at Harlow Legal".
-  if (/^(?:who|what is|what are|which|name|list)\b/.test(t) && (m = /\b(?:contact|person|people|who works?|who do i (?:deal|work|talk) with)\s+(?:at|from|in)\s+(.+?)(?: now| currently| these days| again)?$/.exec(t))) return { kind: "contact", org: m[1].trim() };
+  if ((m = /\b(?:contact|person|people|who works?|who do i (?:deal|work|talk) with)\s+(?:at|from|in)\s+(.+)$/.exec(t))) return { kind: "contact", org: m[1].trim() };
   // A "db client" or "email client" is software, not a customer.
-  if (/\bclients?\b/.test(t) && !kin && !/\b(?:db|database|sql|email|mail|git|ftp|api|http|rest) clients?\b/.test(t)
-    && /^(?:(?:who|what|which) (?:are|is|were|was) (?:my|our|the) (?:\w+ )?clients?|(?:what|which|how many) clients? do (?:i|we) (?:have|work (?:for|with))|(?:list |name )?(?:my|our) clients?|who do (?:i|we) work for)$/.test(t)) return { kind: "clients" };
+  if (/\bclients?\b/.test(t) && !kin && !/\b(?:db|database|sql|email|mail|git|ftp|api|http|rest) clients?\b/.test(t)) return { kind: "clients" };
   if (/\b(?:birthday|bday)\b/.test(t) || /\bwhen (?:is|was) .*\bborn\b/.test(t)) return { kind: "birthday", who: whoOf(t, kin) };
   if (!kin && /^(?:what (?:are|is) my (?:hobby|hobbies)|my (?:hobby|hobbies)|what do i do for fun|what do i (?:like|love|enjoy) doing|what do i do in my (?:free|spare) time)$/.test(t)) return { kind: "of", who: { me: true }, rel: "hobby" };
   // Someone else's relative: "whats rhodri's wife called" (normalized "rhodri wife") is not the user's wife.
@@ -322,7 +277,7 @@ function parseShape(t) {
   // "what electric car do i drive": a kind of car memory cannot check is asked of the car's own words.
   if (CAR_RE.test(t)) {
     const qual = before ? null : /\b(electric|ev|hybrid|diesel|petrol|gas|sports?|convertible|classic|vintage|work)\b/.exec(t)?.[1]
-      || /\b(van|suv|motorbike|motorcycle|bike|truck|pickup|minivan|scooter|moped|boat)\b/.exec(t)?.[1] || MAKE_Q.exec(t)?.[1];
+      || /\b(van|suv|motorbike|motorcycle|bike|truck|pickup|minivan)\b/.exec(t)?.[1] || MAKE_Q.exec(t)?.[1];
     return { kind: "car", before, color: /\bcolou?r\b/.test(t), ...(qual ? { qual } : {}) };
   }
   // A job question before a place: "what do i do for a living" is not where the user lives.

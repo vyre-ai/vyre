@@ -1,5 +1,5 @@
 // @ts-check
-// iq/retrieve: the passages Vyre Memory reads to answer a question (ADR 0034, pipeline steps 2 and 3).
+// iq/retrieve: the passages Vyre IQ reads to answer a question (ADR 0034, pipeline steps 2 and 3).
 //
 // No model. The question's words go to Recall (BM25, and meaning when Recall has vectors). People
 // and things memory knows widen it: "my wife" also searches her name, "the northwind app" also
