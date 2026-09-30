@@ -93,7 +93,8 @@ test("vault: put, list, grant, fetch through a real module, revoke", async t => 
   assert.match((await cli("probe.use", { name: "api-token" })).error.message, /not granted/);
 
   const trail = (await cli("vault.audit", { name: "api-token" })).data.entries.map(e => `${e.action}:${e.ok}`);
-  assert.deepEqual(trail.reverse(), ["add:true", "release:false", "grant:true", "release:true", "release:false", "revoke:true", "release:false"]);
+  assert.deepEqual(trail.reverse(), ["add:true", "release:false", "grant:true", "release:true", "release:false",
+    "grant:true", "release:true", "release:false", "release:true", "revoke:true", "revoke:true", "release:false"]);
   const types = d.events.since(0, { limit: 1000 }).map(e => e.type);
   for (const ty of ["vault.item-added", "vault.granted", "vault.released", "vault.revoked"]) assert.ok(types.includes(ty), `no ${ty}`);
 });

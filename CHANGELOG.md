@@ -4,6 +4,57 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### Vault and Gate: what the person said runs at once, and vault.request (plan P17, C25, P5; reviewer N1, N2, N4, N5, M8, M10, M11)
+
+- `said_intents` (`core/vault/said.js`, table `vault_said_intents`, MACed like the vault's other
+  tables): what the person's own turn asked to go out, `{thread, said, kind: send|post|pay|act_out,
+  channel?, to[], what, when, standing, limits?, at, revoked}`. The only writer is the internal
+  `vault.said.record`, which refuses every caller but `module:sessions` and `module:assistant`
+  (a model, agent, watcher, tailnet guest, the CLI and every other module are refused by name, with
+  a test each). The person's tools are `gate.said.list` and `gate.said.revoke` (cli, local, deck,
+  capsule; a revoke needs no presence). The pure matcher `matchIntent` is exact: kind, channel (when
+  the intent names one) and every recipient, an address compared without case, a bare name never
+  matches, a payment needs the payee and an amount inside `limits`, only intents recorded before the
+  call and not revoked count, a plain one only in the call's thread lineage and a `standing` one
+  everywhere. `vault.said.match` is the internal tool the Gate asks.
+- Gate: `gate.request` asks `vault.said.match` before it holds. A match calls the new
+  `Gate.sendNow`: the sender runs at once, with no held card and no proof of presence, and the item
+  is written in state `sent` with `by: "said:<intent id>"`; `gate.released` carries `by` and `said`.
+  If the sender fails the item falls back to held with the error, like a failed approval. With no
+  vault, no match or an error the request holds exactly as before. `KINDS` gains `act` (audited,
+  never a per-action prompt; held only for a send, post or pay nothing said covers, approved with
+  Touch ID); a sender that names no kinds still takes only send, spend and delete.
+- `api-credential` (`lib/vault-kinds/kinds.js`, `core/vault/api-request.js`): an item holding
+  `config` (`{auth, hosts, endpoints}`, checked by `normalize`) and its own sealed `secret`, or a
+  reference to another item that holds it. Made and changed only from a person's own surfaces
+  (checked in `Vault.put` by caller identity: never a module, watcher, agent or mcp), never in a
+  shared vault. Never handed out: `vault.release`, `vault.inject`, env injection, an agent grant,
+  reveal, copy, a one-time code, fill, a pass and the emergency escrow all refuse it (`Vault.fields`
+  refuses it unless it is the sealed backup, which carries it).
+- `vault.request {credential, method, url, headers?, query?, body?}` (`core/vault/request.js`):
+  strict target check (resolve, refuse private, loopback, link-local, CGNAT, metadata and every
+  IPv6 form that carries them, then connect to the validated address with the url's own Host and
+  TLS name, checked again at connect time and at every redirect); a redirect is followed only for a
+  read on the same host, so the Authorization header never leaves it; a caller cannot set
+  Authorization, Cookie, Host, framing or a method-override header or query. Classified by the
+  credential's endpoints and exact-host presets (Gmail, Graph mail, Stripe writes); an unlisted GET
+  on a wildcard host is refused (M8). A read runs at once; an outward call is matched against the
+  person's intents and runs at once on a match, otherwise held at the Gate as the `vault-api`
+  sender with a card Vyre builds from parsed fields (recipients, amount, host and path, never a
+  subject or a body) and an approval hash over method, url, headers and body that `vault.api.send`
+  re-checks against the Gate's own record. A watcher context may only read. Response scrubbed of
+  every value the credential touched and cut to the MCP result size. Bearer, api-key and
+  service-account (RS256 JWT for a fixed subject via `node:crypto`, token endpoint held to the same
+  target check) work; oauth is accepted and stored but signing in for one is not built yet.
+- `SHARED_SUFFIXES`: a `*.` host on a domain anyone can rent a name under (googleapis.com,
+  amazonaws.com, appspot.com, run.app, azurewebsites.net, workers.dev and about twenty more) is
+  refused; the exact host is fine. An address is never a host entry. A leading `*.` matches one real
+  hostname label only.
+- Tests: `said.test.js`, `request.test.js`, `api-credential.test.js`,
+  `api-request-adversarial.test.js`, additions to `api-request.test.js`, and `core/gate/said.test.js`
+  and `gate.test.js` for the hook. `module.test.js` and `presence.test.js` updated for the project
+  grant trail and the new tools.
+
 #### Vault extension: save an API key a page shows, in one tap (plan C26, the one Vyre extension)
 
 - `keyfind.js` (pure): a provider prefix from the rows of `core/vault/detect.js` (sk-ant-, sk-,
