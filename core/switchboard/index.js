@@ -1812,6 +1812,22 @@ export const fromLink = caller => /^link:/.test(String(caller || ""));
  * the Harness, or anything speaking as an agent, an agent's own tailnet node included.
  * @param {string} [caller]
  */
+/**
+ * The provider's daily cap (core/spend): an agent, a module or an automation does not start or feed a
+ * thread on a provider that is at its cap; the answer is the cap line, which says how to raise it. The
+ * person's own surfaces are never held, so nothing ever prompts. No spend module, or no answer from it,
+ * means no cap.
+ * @param {{ call: (tool: string, input: any) => Promise<any> }} ctx @param {unknown} caller @param {unknown} [provider]
+ */
+export async function spendCheck(ctx, caller, provider) {
+  const c = String(caller || "");
+  if (!(/^(module|mcp|harness|hook)/.test(c) || /(^|[\s:])agent:/.test(c))) return;
+  let r = null;
+  try { r = await ctx.call("spend.check", { provider: String(provider || "claude") }); } catch { return; }
+  const d = r && (r.data || r);
+  if (d && d.capped === true) throw Object.assign(new Error(String(d.line || "the daily spend cap for this provider is reached")), { code: "spend_capped" });
+}
+
 export const queuesFor = caller => {
   const c = String(caller || "");
   if (fromLink(c)) return true;
@@ -1908,13 +1924,15 @@ export default {
     };
     const tool = (name, description, input, run, callers, extra = {}) => ctx.tool(name, { description, input, run, callers, ...extra });
 
+    const spendGate = (caller, provider) => spendCheck(ctx, caller, provider);
+
     tool("threads.start", "Start a headless Claude Code session in a folder or a project's home, owned by vyred so it outlives every surface. The calling surface gets the keyboard. Returns the thread; its id is the Claude Code session id.",
       { type: "object", properties: { project: str, cwd: str, prompt: str, name: str, model: str, surface: str, append: str,
         purpose: { type: "string", enum: ["chat", "agent", "project", "teammate", "capsule", "job", "memory", "planner", "learn", "helper"], description: "What kind of session: picks its model (sessions.models.get). Default: chat, or project in a project." },
         provider: { type: "string", description: "The session provider: claude (the default), or one a module added." },
         effort: { type: "string", enum: EFFORTS, description: "Reasoning effort, as /effort: low, medium, high, xhigh or max. Default: the model's own." },
         lean: { type: "boolean", description: "A one-question thread: no Vyre plugin, no tools, no MCP servers, none of the user's settings. Cheap to start." } } },
-      async (i, { caller }) => { guard(caller, "start sessions"); return sb.launch({ ...i, surface: surfaceOf(i, caller) }); });
+      async (i, { caller }) => { guard(caller, "start sessions"); await spendGate(caller, i.provider); return sb.launch({ ...i, surface: surfaceOf(i, caller) }); });
 
     /**
      * On the box, the person's words for a thread the box does not have go to the paired Mac that
@@ -2023,6 +2041,7 @@ export default {
       // Only a person's words are queued for a session open in a terminal: a model's are refused.
       async (i, { caller, idempotencyKey }) => {
         guard(caller, "type into sessions");
+        { const rec = sb.record(i.thread); await spendGate(caller, rec && rec.provider); }
         // Only the person's own callers reach a Mac; agents, MCP, guests and modules get the box's answer.
         if (wantsMacs(ctx, {}, caller) && !sb.knows(i.thread)) {
           const mac = await sendToMac(i, caller);

@@ -105,3 +105,27 @@ test("spend: only Vyre's own modules record, bad input is refused, nothing spend
   assert.equal((await w.call("spend.summary")).data.providers.length, 0);
   assert.equal(w.halted.length, 0);
 });
+
+test("spend: a provider with no setting of its own shares the other-providers cap", async t => {
+  const w = await world(t, { other: 1 });
+  await w.call("spend.record", { provider: "openrouter", purpose: "x", usd: 0.4 }, "module:memory", FP);
+  assert.equal((await w.call("spend.check", { provider: "openrouter" })).data.cap, 1);
+  await w.call("spend.record", { provider: "openrouter", purpose: "x", thread: "t1", usd: 0.7 }, "module:memory", FP);
+  assert.equal(w.halted.length, 1);
+  assert.equal((await w.call("spend.check", { provider: "claude" })).data.cap, null, "claude has its own setting, unset");
+  assert.equal((await w.call("spend.raise", { provider: "openrouter", to: 5 })).data.cap, 5);
+  assert.equal(w.settings.other, 5);
+});
+
+test("spend: an agent, module or automation is held at a provider's cap before a thread starts or takes a send; the person never is", async () => {
+  const { spendCheck } = await import("../switchboard/index.js");
+  const capped = { call: async () => ({ data: { capped: true, line: "Claude spend today reached $5.00 of the $5.00 daily cap, so this is paused. Raise it: vyre spend raise claude <dollars>" } }) };
+  const open_ = { call: async () => ({ data: { capped: false } }) };
+  for (const who of ["mcp", "mcp:agent:juno", "module:agents", "module:planner", "harness:agent:kit", "hook"]) {
+    await assert.rejects(() => spendCheck(capped, who, "claude"), e => e.code === "spend_capped" && /Raise it/.test(e.message), who);
+    await spendCheck(open_, who, "claude");
+  }
+  for (const who of ["cli", "deck", "capsule", "local", "tailnet:phone"]) await spendCheck(capped, who, "claude");
+  await spendCheck({ call: async () => { throw new Error("no spend module"); } }, "module:agents", "claude");
+  await spendCheck({ call: async () => ({ error: { code: "no_such_tool" } }) }, "module:agents", "claude");
+});

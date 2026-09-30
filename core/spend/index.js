@@ -58,15 +58,17 @@ export default {
     };
     const spentToday = (/** @type {string} */ p, t = now()) => num(/** @type {any} */ (q.day.get(dayUtc(t), p)).usd);
 
+    // The five providers have a setting each; any other provider name (openrouter, a module's) shares spend.other.daily_usd, a cap for each of them.
+    const keyOf = (/** @type {string} */ p) => `spend.${PROVIDERS.includes(p) ? p : "other"}.daily_usd`;
     /** The provider's daily cap in USD, or null for none: the setting, else config. @param {string} p */
     const capOf = async p => {
       try {
-        const r = await ctx.call("settings.get", { key: `spend.${p}.daily_usd` });
+        const r = await ctx.call("settings.get", { key: keyOf(p) });
         const v = r && (r.value !== undefined ? r.value : r.effective);
         if (typeof v === "number" && v > 0) return v;
         if (v === 0) return null;
       } catch { /* no settings hub: config below */ }
-      const c = ctx.config && ctx.config.spend && ctx.config.spend[p];
+      const c = ctx.config && ctx.config.spend && (ctx.config.spend[p] || (!PROVIDERS.includes(p) ? ctx.config.spend.other : null));
       const v = c && (c.dailyUsd ?? c.daily_usd);
       return typeof v === "number" && v > 0 ? v : null;
     };
@@ -174,7 +176,7 @@ export default {
         else throw bad("say to, by or off");
         if (next != null && !(next > 0)) throw bad("a cap is more than zero; off: true removes it");
         // Kept by the hub as this module's own setting (settings.write, modules only); no value clears it.
-        await ctx.call("settings.write", next == null ? { key: `spend.${p}.daily_usd` } : { key: `spend.${p}.daily_usd`, value: Math.round(next * 100) / 100 });
+        await ctx.call("settings.write", next == null ? { key: keyOf(p) } : { key: keyOf(p), value: Math.round(next * 100) / 100 });
         // A cap that is now above what is spent may say again if it is reached again today.
         if (next == null || spentToday(p) < next) q.forget.run(dayUtc(now()), p);
         ctx.events.emit("spend.raised", { provider: p, cap: next, was });

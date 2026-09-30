@@ -12,6 +12,7 @@
     {"key": "spend.codex.daily_usd", "group": "spend", "label": "Daily spend cap for Codex (USD)", "help": "Everything on Codex together, each UTC day. Empty means no cap.", "type": "number", "min": 0, "levels": ["account"], "apply": "live"},
     {"key": "spend.gemini.daily_usd", "group": "spend", "label": "Daily spend cap for Gemini (USD)", "help": "Everything on Gemini together, each UTC day. Empty means no cap.", "type": "number", "min": 0, "levels": ["account"], "apply": "live"},
     {"key": "spend.grok.daily_usd", "group": "spend", "label": "Daily spend cap for Grok (USD)", "help": "Everything on Grok together, each UTC day. Empty means no cap.", "type": "number", "min": 0, "levels": ["account"], "apply": "live"},
+    {"key": "spend.other.daily_usd", "group": "spend", "label": "Daily spend cap for any other provider (USD)", "help": "A cap for each provider that has no setting of its own (OpenRouter, say), each UTC day. Empty means no cap.", "type": "number", "min": 0, "levels": ["account"], "apply": "live"},
     {"key": "spend.kimi.daily_usd", "group": "spend", "label": "Daily spend cap for Kimi (USD)", "help": "Everything on Kimi together, each UTC day. Empty means no cap.", "type": "number", "min": 0, "levels": ["account"], "apply": "live"}
   ],
   "needs": {},
