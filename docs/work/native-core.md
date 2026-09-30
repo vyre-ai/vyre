@@ -80,6 +80,8 @@ deck/css/deck.css span.vy-av rules; deck/css/views/agents.css, settings.css.
 - (done by app-design d9f6e445) avatar.md and ADR 0043 should say renaming an agent changes its blob
   (seed = name), and name projectBytes() as the project-tile seed-to-bytes rule for other surfaces.
 
+## 2026-10-01 # vault picker built (composer-state findVaultMention etc, composer.js showVault, cards/vault-used.js); shapes proposed in CHAT 02:40, waiting on vault's confirm and lead's # first-char ruling.
+
 ## 2026-10-01 "/" = assistant's thread (js/home.js); reviewer-2 on 01b46eb8: hub-form MCP names not first party, nonce removed, origin line above the artifact frame.
 
 ## 2026-10-01 charter-changed notice built (cards/charter-changed.js, wired in session.js), local.

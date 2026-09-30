@@ -4,6 +4,11 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### chat: "#" picks a vault item by name
+
+- Typing `#` after a space or bracket in the composer opens a picker of vault item names (`vault.items.names`, name, kind and bound hosts only, never a value), filtered as you type; picking inserts `#Name` (quoted when it has spaces) and shows a chip under the box with a way to take it out. A `#` as the very first character is still the save-a-memory mode. The picker offers nothing when the box has no vault tool.
+- A `vault.used` event for the thread draws a quiet "using #name" line (name and host) in the transcript (`cards/vault-used.js`). Tests: `composer-vault.test.js` (7), `vault-used.test.js`. Proposed shapes are in CHAT.md (02:40); `vault.items.names` is optional in the deck contract test until vault merges.
+
 #### chat: "/" opens the assistant's thread; card review follow-ups
 
 - `deck/js/home.js`: "/" goes to the assistant's current thread (`assistant.daily`, else the assistant's own thread from `agents.list`), else Now. The welcome cards are the first thing after setup.
