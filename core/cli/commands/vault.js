@@ -242,6 +242,18 @@ async function edit(args) {
     input.fields = fields;
   }
   if (Object.keys(input).length === 1) return oops("nothing to change · see vyre vault help");
+  // An API credential is never read back, so it cannot be edited: its key is replaced, and its hosts and readers stay.
+  const item = await tool("vault.item", { name });
+  if (!item.error && item.data && item.data.item && item.data.item.kind === "api-credential") {
+    const others = Object.keys(input).filter(k => k !== "name" && k !== "fields");
+    const keyField = input.fields ? Object.keys(input.fields) : [];
+    if (others.length || keyField.length !== 1 || !["secret", "key", "value"].includes(keyField[0])) return oops(`${name} is an API credential: it cannot be edited, only its key replaced · vyre vault edit ${name} --field secret`);
+    const r2 = await tool("vault.put", { name, kind: "api-credential", fields: { secret: input.fields[keyField[0]] } });
+    input.fields[keyField[0]] = "";
+    if (r2.error) return fail(r2);
+    say(`  ${signal("updated")} ${bold(name)}${dim(" · key replaced, hosts and readers unchanged")}`);
+    return 0;
+  }
   const r = await tool("vault.edit", input);
   if (input.fields) for (const k of Object.keys(input.fields)) input.fields[k] = "";
   if (r.error) return fail(r);
