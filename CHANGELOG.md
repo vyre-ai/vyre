@@ -4,6 +4,13 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+- `vyre backup`/`vyre restore` now seal the file under a passphrase (PLAN.md R8): no unencrypted
+  backup is ever written. Provider sign-ins (Claude, Codex, Gemini) are left out of the vault items
+  a backup carries by default (re-made by signing in again after a restore), with
+  `--with-provider-logins` to opt back in. `vyre update`'s own automatic pre-update backup and
+  rollback stay fully unattended: they use a random passphrase generated for that run, kept beside
+  the file as `<file>.key`, never shown to the person. New `core/names/seal.js` (same scrypt/AES-256-GCM
+  shape as `core/vault/backup.js`'s own passphrase seal, over raw bytes instead of a JSON payload).
 - Module contract v1 (ADR 0047), as a proof on the platform branch. `module.json` says for each
   tool who may call it (`reach`) and whether it acts as you outside (`outward`). Each ctx member a
   module uses has one declaration, and the install card is built from them.
