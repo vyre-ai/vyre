@@ -71,16 +71,16 @@ test("ADR 0035 levels and hooks: device never with confirm or security, session 
   assert.deepEqual(validateDecls("bakery", [{ ...base, check: { tool: "bakery.check" }, choicesFrom: { tool: "bakery.get" } }], { tools: ["bakery.check", "bakery.get"] }), []);
 });
 
-test("env and plugins ask first; taking an entry off deny or ask asks first, adding one does not", { timeout: 30_000 }, async t => {
+test("the person's own changes ask nothing (C25): env, plugins and taking an entry off deny just apply; a preview still says what it widens", { timeout: 30_000 }, async t => {
   const { c, claudeDir } = await world(t);
-  assert.equal((await c("settings.set", { key: "sessions.env", value: { LOG_LEVEL: "debug" } })).error.code, "confirm_required");
-  assert.equal((await c("settings.set", { key: "sessions.plugins", value: { "bakery@market": true } })).error.code, "confirm_required");
+  assert.ok(!(await c("settings.set", { key: "sessions.env", value: { LOG_LEVEL: "debug" } })).error);
+  assert.ok(!(await c("settings.set", { key: "sessions.plugins", value: { "bakery@market": true } })).error);
   assert.ok(!(await c("settings.set", { key: "sessions.deny", value: ["Bash(rm:*)", "WebFetch"] })).error, "adding to deny is stricter");
-  let r = await c("settings.set", { key: "sessions.deny", value: ["Bash(rm:*)"] });
-  assert.equal(r.error.code, "confirm_required", "dropping WebFetch lets it run");
   assert.equal((await c("settings.set", { key: "sessions.deny", value: ["Bash(rm:*)"], preview: true })).data.confirm, "Claude will no longer be refused what you take off this list.");
-  assert.equal((await c("settings.reset", { key: "sessions.deny" })).error.code, "confirm_required", "a reset drops them all");
-  assert.ok(!(await c("settings.reset", { key: "sessions.deny", confirm: true })).error);
+  const r = await c("settings.set", { key: "sessions.deny", value: ["Bash(rm:*)"] });
+  assert.ok(!r.error, "dropping WebFetch applies at once; the log and Undo are the safety");
+  assert.equal((await c("settings.changes", { key: "sessions.deny" })).data[0].by, "cli");
+  assert.ok(!(await c("settings.reset", { key: "sessions.deny" })).error, "a reset drops them all, no confirm");
   assert.equal(JSON.parse(fs.readFileSync(path.join(claudeDir, "settings.json"), "utf8")).permissions?.deny, undefined);
   assert.ok(!(await c("settings.reset", { key: "sessions.ask" })).error, "nothing to drop, nothing to ask");
 });
@@ -220,19 +220,20 @@ test("a module switched off takes its settings with it", { timeout: 30_000 }, as
   assert.ok(root);
 });
 
-test("widening what Claude may do needs confirm; loosening security needs a proof; a preview writes nothing", { timeout: 30_000 }, async t => {
+test("widening what Claude may do and loosening security need no confirm and no proof from the person (C25); a preview writes nothing; Undo puts it back", { timeout: 30_000 }, async t => {
   const { c, claudeDir } = await world(t);
-  let r = await c("settings.set", { key: "sessions.allow", value: ["Bash(*)"] });
-  assert.equal(r.error.code, "confirm_required");
-  r = await c("settings.set", { key: "sessions.mode", value: "bypassPermissions" });
-  assert.equal(r.error.code, "confirm_required");
-  assert.ok(!(await c("settings.set", { key: "sessions.mode", value: "plan" })).error, "a mode that asks more needs nothing");
-  r = await c("settings.set", { key: "sessions.allow", value: ["Bash(*)"], preview: true });
-  assert.deepEqual([r.data.before, r.data.after, typeof r.data.confirm], [undefined, ["Bash(*)"], "string"]);
+  let r = await c("settings.set", { key: "sessions.allow", value: ["Bash(*)"], preview: true });
+  assert.deepEqual([r.data.before, r.data.after, typeof r.data.confirm], [undefined, ["Bash(*)"], "string"], "a preview still names what it widens");
   assert.ok(r.data.where.includes("settings.json"));
   assert.ok(!fs.existsSync(path.join(claudeDir, "settings.json")), "a preview writes nothing");
+  assert.ok(!(await c("settings.set", { key: "sessions.allow", value: ["Bash(*)"] })).error);
+  assert.ok(!(await c("settings.set", { key: "sessions.mode", value: "plan" })).error);
   r = await c("settings.set", { key: "vault.lock_idle", value: "8h" });
-  assert.equal(r.error.code, "presence_required");
+  assert.ok(!r.error, "a security setting: no Touch ID, no confirm");
+  const log = (await c("settings.changes", { key: "vault.lock_idle" })).data;
+  assert.equal(log.length, 1);
+  assert.ok(!(await c("settings.undo", { change: log[0].id })).error, "and Undo, with no prompt either");
+  assert.notEqual((await c("settings.get", { key: "vault.lock_idle" })).data.value, "8h");
 });
 
 test("the first write to a Claude Code file keeps a backup of it", { timeout: 30_000 }, async t => {

@@ -6,6 +6,12 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 #### settings: an agent changes a setting only when you asked, and every change can be undone (PLAN.md C25)
 
+- The person's own changes ask nothing now (the charter's "security without friction", lead's
+  decision 30 Sep): `settings.set` and `settings.reset` need no `confirm: true` and no presence
+  proof, security settings included. A preview still names what a change widens or loosens. The
+  Deck's confirm sheet comes out with the 0.2 UI work. A hand edit of hub.json that loosens
+  security still waits for the person, since any program can write that file.
+
 - `settings.request` (agents, inside a conversation): changes or resets a setting only when the
   person's own words in this conversation asked for it, as vault's `gate.said.match` answers for
   the calling thread (P17). No match, or no gate yet: refused, with words the agent passes on.

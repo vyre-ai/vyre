@@ -7,10 +7,10 @@
 // project's value beats the account's, which beats the default. A session's own chips (model,
 // effort, mode) beat all three, but those live with the session, not here.
 //
-// A person changes settings on their own surfaces. A key that loosens security (security: "loosens")
-// also needs a fresh presence proof; one that widens what Claude may do without asking (confirm)
-// needs the caller to pass confirm: true after showing the person what changes. Agents may read
-// settings, and settings.resolve hands a starting session its Vyre-owned values. An agent changes
+// A person changes settings on their own surfaces, with no confirm step and no presence proof, security
+// settings included (the charter's "security without friction", PLAN.md C25): every change is logged
+// and can be undone instead. A preview still says what a change loosens or widens, so a surface can
+// show it. Agents may read settings, and settings.resolve hands a starting session its Vyre-owned values. An agent changes
 // one only through settings.request, and only when the person asked for that change in their own
 // words in this conversation (PLAN.md C25 and P17: vault's gate.said.match); otherwise never.
 // Every change is logged, and settings.undo reverses one with no prompt.
@@ -461,10 +461,6 @@ export default {
       // What would change, for the person to see first. Nothing is written.
       if (i.preview) return { key: d.key, level: lv, ...tag, where: whereTo, before: before.value, after: value,
         ...(needsConfirm(d, value, before.value) ? { confirm: d.loosens || `This lets Claude do more without asking: ${d.label}.` } : {}) };
-      // Asking is approving (C25): the person's own words already said yes to this change.
-      if (!asked && needsConfirm(d, value, before.value) && i.confirm !== true) {
-        throw Object.assign(new Error(`${d.loosens || `This lets Claude do more without asking: ${d.label}.`} Show the person and send confirm: true.`), { code: "confirm_required" });
-      }
       await checked(d, value, lv, target);
       // A change the person asked an agent for is still the person's: stores that call a module's
       // setter call it as vyred acting for them ("local"), and the log names the agent.
@@ -485,18 +481,13 @@ export default {
       return id;
     };
 
-    // A fresh proof only for keys that loosen security; everything else is a person's plain act.
-    const presence = {
-      when: (/** @type {any} */ i) => { try { return declOf(String(i && i.key)).security === "loosens" && !(i && i.preview); } catch { return false; } },
-      summary: (/** @type {any} */ i) => `Change ${i && i.key}`,
-    };
     const LEVEL = { type: "string", enum: ["account", "project", "device", "session"] };
 
     ctx.tool("settings.set", {
-      description: "Change a setting at account level, or for one project, device or session (give it). The value is checked against the setting's type, and by its module when it names a check. preview: true returns what would change and writes nothing. A key that widens what Claude may do needs confirm: true; one that loosens security needs a presence proof. Returns the value now in effect.",
+      description: "Change a setting at account level, or for one project, device or session (give it). The value is checked against the setting's type, and by its module when it names a check. preview: true returns what would change and writes nothing, with confirm naming what it widens or loosens. No confirm step and no proof: every change is logged (settings.changes) and can be undone (settings.undo). Returns the value now in effect.",
       input: { type: "object", required: ["key", "value"], properties: { key: str, value: {}, level: LEVEL, ...where,
         preview: { type: "boolean" }, confirm: { type: "boolean" } } },
-      callers: PEOPLE, presence,
+      callers: PEOPLE,
       run: async (i, meta) => {
         if (i.value === null) throw Object.assign(new Error("use settings.reset to remove a value"), { code: "bad_input" });
         return change(i, meta, i.value);
@@ -504,9 +495,9 @@ export default {
     });
 
     ctx.tool("settings.reset", {
-      description: "Remove a setting's value at one level, so the next level down (then the default) applies again. Removing entries from a list that keeps Claude asking or refusing (sessions.deny, sessions.ask) needs confirm: true.",
+      description: "Remove a setting's value at one level, so the next level down (then the default) applies again. Logged and undoable like settings.set.",
       input: { type: "object", required: ["key"], properties: { key: str, level: LEVEL, ...where, preview: { type: "boolean" }, confirm: { type: "boolean" } } },
-      callers: PEOPLE, presence,
+      callers: PEOPLE,
       run: async (i, meta) => change(i, meta, undefined),
     });
 

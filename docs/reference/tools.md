@@ -3990,7 +3990,7 @@ Change or reset a setting because the person asked you to in this conversation (
 
 ### `settings.reset`
 
-Remove a setting's value at one level, so the next level down (then the default) applies again. Removing entries from a list that keeps Claude asking or refusing (sessions.deny, sessions.ask) needs confirm: true.
+Remove a setting's value at one level, so the next level down (then the default) applies again. Logged and undoable like settings.set.
 
 - Input:
   - `key` string, required
@@ -4001,7 +4001,6 @@ Remove a setting's value at one level, so the next level down (then the default)
   - `project` string
   - `session` string
 - Callers: `capsule`, `cli`, `deck`, `local`
-- Needs a person present.
 
 ### `settings.resolve`
 
@@ -4020,7 +4019,7 @@ Every setting the running modules declare: key, owning module, group, label, typ
 
 ### `settings.set`
 
-Change a setting at account level, or for one project, device or session (give it). The value is checked against the setting's type, and by its module when it names a check. preview: true returns what would change and writes nothing. A key that widens what Claude may do needs confirm: true; one that loosens security needs a presence proof. Returns the value now in effect.
+Change a setting at account level, or for one project, device or session (give it). The value is checked against the setting's type, and by its module when it names a check. preview: true returns what would change and writes nothing, with confirm naming what it widens or loosens. No confirm step and no proof: every change is logged (settings.changes) and can be undone (settings.undo). Returns the value now in effect.
 
 - Input:
   - `key` string, required
@@ -4032,7 +4031,6 @@ Change a setting at account level, or for one project, device or session (give i
   - `project` string
   - `session` string
 - Callers: `capsule`, `cli`, `deck`, `local`
-- Needs a person present.
 
 ### `settings.snapshot`
 
