@@ -20,7 +20,7 @@ def lockup_svg(p,theme):
 def main():
     jobs=[]
     for p,(name,_) in PROD.items():
-        if p=='chrome': continue
+        if p in ('chrome','vyre'): continue
         R=os.path.join(OUT,p)
         # icns
         sh('iconutil','-c','icns',os.path.join(R,'macos',f'{name}.iconset'),'-o',os.path.join(R,'macos',f'{name}.icns'))
@@ -63,4 +63,15 @@ def post_chrome():
     shutil.copy(f'{R}/chrome-small.svg',f'{R}/web/favicon.svg')
     from concurrent.futures import ThreadPoolExecutor
     with ThreadPoolExecutor(4) as ex: list(ex.map(lambda j: render_png(*j),jobs))
-if __name__=='__main__': (post_chrome if len(sys.argv)>2 and sys.argv[2]=='chrome' else main)()
+def post_vyre():
+    p='vyre'; R=os.path.join(OUT,p); A=f'{R}/android'; Wb=f'{R}/web'
+    sh('magick',*[f'{Wb}/favicon-{s}.png' for s in (16,32,48)],f'{Wb}/favicon.ico'); shutil.copy(f'{R}/vyre-small.svg',f'{Wb}/favicon.svg')
+    open(f'{Wb}/vyre-glyph.svg','w').write(f'<svg {E.NS} viewBox="0 0 1024 1024" width="24" height="24" fill="currentColor">{E.template(p,"currentColor")}</svg>')
+    open(f'{R}/ios/Contents.json','w').write(json.dumps({"images":[{"filename":"AppIcon-1024.png","idiom":"universal","platform":"ios","size":"1024x1024"}],"info":{"author":"xcode","version":1}},indent=2))
+    ns=f'{E.TMP}/vyre-sqns.png'; render_png(E.art_svg(full_sq(p,sig=False,clip=False),256),256,256,ns)
+    for d,l in {'mdpi':48,'hdpi':72,'xhdpi':96,'xxhdpi':144,'xxxhdpi':192}.items():
+        sh('magick',ns,'-resize',f'{l}x{l}','(','-size',f'{l}x{l}','xc:black','-fill','white','-draw',f'circle {l/2},{l/2} {l/2},0',')','-alpha','off','-compose','CopyOpacity','-composite',f'{A}/mipmap-{d}/ic_launcher_round.png')
+    os.makedirs(f'{A}/mipmap-anydpi-v26',exist_ok=True)
+    open(f'{A}/mipmap-anydpi-v26/ic_launcher.xml','w').write('<?xml version="1.0" encoding="utf-8"?>\n<adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android">\n    <background android:drawable="@drawable/ic_launcher_background"/>\n    <foreground android:drawable="@mipmap/ic_launcher_foreground"/>\n    <monochrome android:drawable="@mipmap/ic_launcher_monochrome"/>\n</adaptive-icon>\n')
+
+if __name__=='__main__': {'chrome':post_chrome,'vyre':post_vyre}.get(sys.argv[2] if len(sys.argv)>2 else '',main)()

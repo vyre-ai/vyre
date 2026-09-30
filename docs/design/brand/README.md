@@ -18,6 +18,7 @@ these internal until the lead confirms.
 | Vyre Vault | Keyhole | An arched slab with a keyhole that lets a little light through onto the floor. |
 | Vyre Memory | Pearls | Glass pearls on a lit thread, the largest holding a glow. What Vyre keeps, and how it connects. |
 
+| Vyre (the phone app and master) | Wire and light | The Vyre wire drawn as a glass tube ending in a bead of light. The master mark stays as it is; this is its glass form. |
 | Vyre for Chrome | Window | A glass browser window with a bead of light waiting in its address bar. Bone glow only: never Chrome's logo or colours ("for Chrome" is the permitted form). |
 
 Four silhouettes that stay apart at a glance: circle, cube, arch, diagonal necklace. The Chrome
@@ -41,7 +42,7 @@ extension adds a fifth, a window with a tab.
 
 ## Where things are
 
-Everything is under `export/<product>/` where product is `lumen`, `drive`, `vault`, `memory` or `chrome`. `chrome` has only the extension set: `extension/icon-16|32|48|128.png` (128 has the 16 px transparent padding Chrome asks for), `toolbar-19|38.png`, `store-512.png`, the master, glyph and lockups, and a favicon.
+Everything is under `export/<product>/` where product is `lumen`, `drive`, `vault`, `memory` or `chrome`. `chrome` has only the extension set: `extension/icon-16|32|48|128.png` (16 is a hand-tuned pixel grid from `tools/chrome16.py`, 32 is its exact 2x, 128 has the 16 px transparent padding Chrome asks for), `store-512.png`, the master, glyph and lockups, and a favicon.
 
 | Path | What |
 |---|---|
@@ -92,7 +93,8 @@ Two moments, quiet, in the same glass. No glow pulse, no bounce, nothing loops. 
 - **launch (setup page, site, phone apps):** favicons and lockups from `lumen/web/` and
   `lumen/lockup/`; iOS and Android sets are in each product folder, to be wired into the phone apps
   through launch. The phone app itself keeps the Vyre master icon; these are the product icons.
-- **capsule-sight (Vyre for Chrome):** `export/chrome/extension/` goes into the manifest `icons` (16, 32, 48, 128) and `action.default_icon` (`toolbar-19`, `toolbar-38`). The 16 px icon is hand-simplified but still small; if it reads poorly in the real toolbar, send the screenshot.
+- **capsule-sight (Vyre for Chrome):** `export/chrome/extension/` goes into the manifest `icons` (16, 32, 48, 128) and `action.default_icon` (16 and 32). The 16 px icon is a hand-tuned pixel grid: a window with a tab and a white bead in its address bar, on a dark tile with transparent corners. If it reads poorly in the real toolbar, send the screenshot.
+- **phone apps (via launch):** the Vyre app icon is `export/vyre/`: `ios/` (single 1024 plus legacy sizes), `android/` (adaptive, legacy, round, monochrome), `web/` (favicons, apple-touch, PWA and maskable). It carries no signature (it is the signature). Drive, Vault, Memory phone icons are in their own folders.
 - **drive, vault, iq (now Memory):** your own surface takes `export/drive/`, `export/vault/`,
   `export/memory/`; product name on screen is "Vyre Drive", "Vyre Vault", "Vyre Memory".
 
