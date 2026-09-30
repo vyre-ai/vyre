@@ -1378,7 +1378,8 @@ export class Switchboard {
     };
     const { intents } = await prIntents(typed, where, target).catch(() => ({ intents: [] }));
     for (const it of intents) {
-      await this.deps.call("vault.said.record", { thread: id, said: uuid, kind: "act_out", channel: "github", to: it.to, what: it.what, standing: false }).catch(() => null);
+      await this.deps.call("vault.said.record", { thread: id, said: uuid, kind: "act_out", channel: "github", to: it.to, what: it.what, standing: false,
+        ...(it.when && Number.isInteger(it.when.window_minutes) ? { window_minutes: it.when.window_minutes } : {}) }).catch(() => null);
     }
   }
 

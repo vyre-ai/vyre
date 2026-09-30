@@ -719,8 +719,9 @@ for (const driver of ["cli", "sdk"]) {
   test(`${driver}: REAL REGISTRY, no stubs: a typed #VaultItem is granted to the thread through vault, end to end`, { skip }, async t => {
     const w = await boot(t, { driver, vault: { GHLapikey: "fake-ghl-value" } });
     // vault refuses a caller it does not list; the turn is heard by the threads module. Until vault lists it, this cannot pass.
+    // A hard test: vault lists module:threads as a resolver, and this fails loudly if that ever regresses.
     const probe = await w.d.registry.call("vault.mention.resolve", { id: "GHLapikey", thread: "probe", said: "probe" }, "module:threads");
-    if (probe.error && /only sessions and the assistant/.test(probe.error.message)) return t.skip("vault does not list module:threads as a resolver yet");
+    assert.equal(probe.error, undefined, `vault must let the threads module resolve a # tag: ${JSON.stringify(probe.error)}`);
     const th = (await w.tool("threads.start", { cwd: w.work, prompt: "hello", surface: "deck" })).data;
     await w.finished(th.id);
     const r = await w.tool("threads.send", { thread: th.id, text: "Use #GHLapikey to inventory the pipelines", surface: "deck" });
@@ -743,8 +744,9 @@ for (const driver of ["cli", "sdk"]) {
 
   test(`${driver}: REAL VAULT, github stood in: "merge it" is recorded by the real vault and its match covers that PR and no other`, { skip }, async t => {
     const w = await boot(t, { driver });
+    // A hard test: vault lists module:threads as a recorder, and this fails loudly if that ever regresses.
     const probe = await w.d.registry.call("vault.said.record", { thread: "probe", said: "probe", kind: "act_out", to: ["x.y:z"], what: "probe" }, "module:threads");
-    if (probe.error && /only sessions and the assistant/.test(probe.error.message)) return t.skip("vault does not list module:threads as a recorder yet");
+    assert.equal(probe.error, undefined, `vault must let the threads module record what the person said: ${JSON.stringify(probe.error)}`);
     // Only github is stood in (it is not built on this branch); the assistant's prIntents, the switchboard's ingress and vault are real.
     const realCall = w.d.registry.call.bind(w.d.registry);
     w.d.registry.call = async (tool, input, caller, meta) => {
@@ -763,6 +765,10 @@ for (const driver of ["cli", "sdk"]) {
     await w.tool("threads.send", { thread: th.id, text: "Merge it.", surface: "deck" });
     await w.finished(th.id, 3);
     assert.equal((await match("github.project.pr.merge:alex/app#7")).matched, true, "the person said merge it, about this PR");
+    const held = (await realCall("vault.said.list", { thread: th.id }, "module:gate")).data.intents.find(x => x.kind === "act_out");
+    assert.equal(held.limits.window_minutes, 15, "prIntents' window is vault's expiry");
+    const later = at => realCall("vault.said.match", { kind: "act_out", via: "github", to: ["github.project.pr.merge:alex/app#7"], thread: th.id, at }, "module:vyred").then(r => r.data.matched);
+    assert.equal(await later(Date.now() + 20 * 60_000), false, "a spoken merge it lapses after its window");
     assert.equal((await match("github.project.pr.merge:alex/app#8")).matched, false, "another PR");
     assert.equal((await match("github.project.pr.merge:alex/other#7")).matched, false, "another repo");
     assert.equal((await match("github.project.pr.review:alex/app#7")).matched, false, "another tool");
