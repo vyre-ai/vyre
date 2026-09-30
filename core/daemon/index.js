@@ -125,10 +125,14 @@ async function startLocked(opts, root, p, release) {
   const upgrader = () => (req, socket, head, caller) => upgrade(req, socket, head, caller);
   // Every call passes the floor's rules (SPEC 5.3), whoever makes it; a test may pass its own.
   const rules = opts.rules || registryRules({ home: root });
-  registry = new Registry({ db, events, config: cfg, paths: p, log, rules, handler, upgrader, presence });
+  // firstPartyRoots: in-process tests whose fixture modules stand in for Vyre's own. Only a caller
+  // of this function can pass it; vyred's own start (main.js) passes nothing, and it is never read
+  // from config.json, the environment or the command line.
+  const firstPartyRoots = Array.isArray(opts.firstPartyRoots) ? opts.firstPartyRoots.filter(r => typeof r === "string" && path.isAbsolute(r)) : [];
+  registry = new Registry({ db, events, config: cfg, paths: p, log, rules, handler, upgrader, presence, firstPartyRoots });
   // The eight box-only modules gate on cfg.machine (ADR 0039: solo/server/device), not the
   // legacy cfg.role -- that's what lets a Mac chosen as the server run them.
-  await registry.start(discover(moduleRoots(root)), { role: cfg.machine, ...cfg.modules });
+  await registry.start(discover(moduleRoots(root), { firstPartyRoots }), { role: cfg.machine, ...cfg.modules });
 
   // A stale socket from a crash would make listen() fail with EADDRINUSE. If nothing answers on
   // it, it is safe to remove; if something does, another vyred is running and this one stops.

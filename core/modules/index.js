@@ -229,8 +229,21 @@ export const credentialItems = m => (Array.isArray(m && m.needs && m.needs.crede
 export const multipleItem = (m, name) => (Array.isArray(m && m.needs && m.needs.credentials) ? m.needs.credentials : [])
   .some(c => c && c.multiple === true) && String(name).startsWith(`${m.name}-`);
 
-/** Every folder under the given roots that holds a module.json. */
-export function discover(roots) {
+/**
+ * Whether a module folder sits directly in one of the given roots: the firstPartyRoots an
+ * in-process caller (a test standing in for Vyre's own modules) hands discover() and the Registry.
+ * @param {string} dir @param {string[] | undefined} roots
+ */
+const inRoots = (dir, roots) => Array.isArray(roots) && roots.some(r => typeof r === "string" && path.isAbsolute(r) && path.dirname(path.resolve(dir)) === path.resolve(r));
+
+/**
+ * Every folder under the given roots that holds a module.json. firstPartyRoots: folders whose
+ * modules count as Vyre's own, for tests whose fixtures stand in for a built in module. Only
+ * in-process code passes it (core/daemon start's own option); config.json, the environment and
+ * the command line never reach it, and vyred's own start passes none.
+ * @param {string[]} roots @param {{ firstPartyRoots?: string[] }} [o]
+ */
+export function discover(roots, { firstPartyRoots = [] } = {}) {
   const found = [];
   for (const root of roots) {
     let entries = [];
@@ -243,7 +256,7 @@ export function discover(roots) {
       let manifest = null, problems = [], warnings = [];
       try {
         manifest = JSON.parse(fs.readFileSync(file, "utf8"));
-        const fp = firstParty(dir);
+        const fp = firstParty(dir) || inRoots(dir, firstPartyRoots);
         problems = validate(manifest, { firstParty: fp });
         if (!fp && !problems.length) warnings = addedCheck(manifest).warnings;
       } catch (err) { problems = ["module.json unreadable: " + /** @type {Error} */ (err).message]; }
@@ -386,6 +399,8 @@ export class Registry {
    */
   constructor(deps) {
     this.deps = deps;
+    /** Folders an in-process caller says hold Vyre's own modules (discover's firstPartyRoots). */
+    this.firstPartyRoots = Array.isArray(deps && deps.firstPartyRoots) ? deps.firstPartyRoots.filter(r => typeof r === "string" && path.isAbsolute(r)) : [];
     /** @type {Map<string, { module: string, description: string, input: any, run: Function }>} */
     this.tools = new Map();
     /** @type {Map<string, { manifest: any, dir: string, state: string, error?: string, handle?: any }>} */
@@ -416,6 +431,11 @@ export class Registry {
         }
       } catch (e) { deps.log && deps.log(`module use counts unavailable: ${/** @type {Error} */ (e).message}`); }
     }
+  }
+
+  /** Vyre's own: shipped in the repo, or in a firstPartyRoots folder an in-process caller named. @param {string} dir */
+  isFirstParty(dir) {
+    return firstParty(dir) || inRoots(dir, this.firstPartyRoots);
   }
 
   /**
@@ -522,7 +542,7 @@ export class Registry {
     const needs = m.needs || {};
     /** A door used without its one declaration (ADR 0047 section 3). @param {string} why */
     const undeclared = why => Object.assign(new Error(`${m.name}: ${why}`), { code: "undeclared" });
-    const firstPartyRec = () => { const r = this.modules.get(m.name); return Boolean(r && firstParty(r.dir)); };
+    const firstPartyRec = () => { const r = this.modules.get(m.name); return Boolean(r && this.isFirstParty(r.dir)); };
     /**
      * A ctx door onto its owning tool, as module:<name>. The door has checked its own declaration,
      * so default-deny doesn't apply. When the owner isn't running on this Vyre, the answer is
@@ -631,7 +651,7 @@ export class Registry {
       // module to serve. Manifests are public; a module switched off takes its settings with it.
       declaredSettings: () => [...this.modules.entries()].filter(([, r]) => r.state === "running" && r.manifest && Array.isArray(r.manifest.settings))
         // module and firstParty come from the loader, after the declaration, so a manifest can't claim them.
-        .flatMap(([name, r]) => r.manifest.settings.map(d => ({ ...d, module: name, firstParty: firstParty(r.dir) }))),
+        .flatMap(([name, r]) => r.manifest.settings.map(d => ({ ...d, module: name, firstParty: this.isFirstParty(r.dir) }))),
       // Every running module's teaches.tips, for the tips module to choose from (core/tips). Tips
       // are plain text a module chose to show; the tips module checks them, never this loader.
       // firstParty: shipped in the repo, so its tips follow Vyre's version, not the module's own.
@@ -714,7 +734,7 @@ export class Registry {
         // firstParty: the loader's word that this module ships in the repo, for a tool that must
         // trust a first-party caller only (a home module could take a free name). Same mechanism
         // as memory-iq's 2ecf79ba (reviewer-cleared, 0.1.1 batch) — kept identical, not a second one.
-        const fp = Boolean(rec && firstParty(rec.dir));
+        const fp = Boolean(rec && this.isFirstParty(rec.dir));
         // An added module calls only what needs.tools names, one by one: module.* is for Vyre's
         // own. Its own tools need no entry (reviews/platform.md CR-H2, as testing.js does).
         // A context with no registry row (the docs harvest builds one to read tool schemas) is no
@@ -839,7 +859,7 @@ export class Registry {
     if (!door && String(caller).startsWith("module:")) {
       const from = this.modules.get(String(caller).slice(7));
       // A module's own tools are its own business, in either form.
-      if (from && from.dir && def.module !== from.manifest?.name && !firstParty(from.dir) && (!def.declaredReach || def.reach === "modules")) {
+      if (from && from.dir && def.module !== from.manifest?.name && !this.isFirstParty(from.dir) && (!def.declaredReach || def.reach === "modules")) {
         return { error: { code: "not_declared", message: `${tool} is not open to added modules` } };
       }
     }
@@ -896,7 +916,7 @@ export class Registry {
     // meta.firstParty: the caller is one of Vyre's own modules, by the loader's one rule
     // (firstParty above). Set here, over anything a caller passed, so no module can claim it.
     const rec = String(caller).startsWith("module:") ? this.modules.get(String(caller).slice(7)) : null;
-    const fp = Boolean(rec && rec.dir && firstParty(rec.dir));
+    const fp = Boolean(rec && rec.dir && this.isFirstParty(rec.dir));
     const run = async () => {
       try { return await this.run(def, input, { ...meta, caller, firstParty: fp, ...(idempotencyKey ? { idempotencyKey } : {}) }); }
       finally { if (counted) this.countUse(def.module); }
@@ -930,7 +950,7 @@ export class Registry {
   settingTools() {
     const out = new Set();
     for (const r of this.modules.values()) {
-      if (r.state !== "running" || !r.manifest || !Array.isArray(r.manifest.settings) || !firstParty(r.dir)) continue;
+      if (r.state !== "running" || !r.manifest || !Array.isArray(r.manifest.settings) || !this.isFirstParty(r.dir)) continue;
       for (const d of r.manifest.settings) {
         const t = d && d.store && d.store.tool;
         if (t && t.get && t.get.tool) out.add(String(t.get.tool));

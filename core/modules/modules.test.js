@@ -792,3 +792,20 @@ test("modules CR-H3: a module placed in the home by hand is held to the added-mo
     assert.equal(logs.filter(l => re.test(l)).length, 1, `${re} in ${logs.join("\n")}`);
   }
 });
+
+test("modules: firstPartyRoots, an in-process test's own option, loads a stand-in for a built in module as first party", async t => {
+  const home = tempHome(t);
+  const root = path.join(home, "modules");
+  writeModule(root, "roster", { does: { tools: ["roster.fetch"] }, needs: { vault: ["per-agent"] } }, `export default { async start(ctx) { ctx.tool("roster.fetch", { run: async () => 1 }); return {}; } };`);
+  assert.match(discover([root])[0].problems.join(), /needs\.vault is built in only/, "without it, the added-module rules");
+  assert.deepEqual(discover([root], { firstPartyRoots: [root] })[0].problems, []);
+  assert.match(discover([root], { firstPartyRoots: ["modules"] })[0].problems.join(), /built in only/, "a relative root is ignored");
+  const db = open(path.join(home, "vyre.db"));
+  t.after(() => db.close());
+  const reg = new Registry({ db, events: new Events(db), config: {}, log: () => {}, firstPartyRoots: [root, "relative"] });
+  assert.deepEqual(reg.firstPartyRoots, [root]);
+  assert.equal(reg.isFirstParty(path.join(root, "roster")), true);
+  assert.equal(reg.isFirstParty(path.join(home, "elsewhere", "roster")), false);
+  await reg.start(discover([root], { firstPartyRoots: [root] }), { role: "box" });
+  assert.equal(reg.modules.get("roster").state, "running");
+});
