@@ -242,6 +242,15 @@ export default {
       if (m && get(m[1])?.kind !== "assistant") throw new Error(`only the assistant can ${what}; ${m[1]} is an agent`);
     };
 
+    // For vyred only: the stored grant of an agent vyred has already verified (its thread's own
+    // socket, or a vouched key), attached to meta so a tool that scopes by project reads what the
+    // agent is really granted, never a filter the caller's own input or env carries.
+    ctx.tool("agents.scope", {
+      description: "The kind and stored project grant (\"*\" or a list of slugs) of one agent, for vyred to put on the meta of that agent's calls.", internal: true,
+      input: { type: "object", required: ["name"], properties: { name: { type: "string" } } },
+      run: async i => { const a = get(String(i.name)); return a ? { kind: a.kind, projects: a.kind === "assistant" ? "*" : a.projects } : null; },
+    });
+
     ctx.tool("agents.list", {
       description: "Every agent, the assistant first, with what each is doing now.",
       input: { type: "object", properties: {} },

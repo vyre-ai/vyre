@@ -865,7 +865,9 @@ export class Registry {
    *   the request carried, checked here and not passed on. `call` is the chat's id for this
    *   tool call (X-Vyre-Call-Id, only on a session's own paths): an unverified claim a tool may
    *   keep to link what it shows (a Glass step) to the chat's tool row, and never use for any
-   *   decision. Any other key a caller of this method adds reaches the tool the same way.
+   *   decision. `granted` (with `agentKind`) is the verified agent's stored project grant, "*" or
+   *   slugs, read by vyred from the agents module; a tool that scopes by project trusts it, never an
+   *   input filter. Any other key a caller of this method adds reaches the tool the same way.
    */
   async call(tool, input = {}, caller = "unknown", { proof = null, keep = false, terminal = null, idempotencyKey = undefined, door = false, ...meta } = {}) {
     const def = this.tools.get(tool);

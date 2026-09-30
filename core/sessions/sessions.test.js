@@ -476,6 +476,26 @@ for (const driver of ["cli", "sdk"]) {
     assert.equal(w2.launches().at(-1).socket, null);
   });
 
+  test(`${driver}: an agent's calls carry the grant vyred stored for it, whatever the session's own env or input says`, { skip }, async t => {
+    const whoami = { name: "whoami", manifest: { does: { tools: ["whoami.me"] } }, source: `
+      export default { async start(ctx) {
+        ctx.tool("whoami.me", { input: { type: "object" }, run: async (i, meta) => ({ agent: meta.agent || null, granted: meta.granted ?? null, kind: meta.agentKind ?? null, said: i.projects ?? null }) });
+        return { async stop() {} };
+      } };` };
+    const w = await boot(t, { driver, sessions: { thread_socket: "on" }, modules: [whoami] });
+    assert.equal((await w.tool("projects.create", { name: "Harlow Legal", home: path.join(w.work, "harlow") })).error, undefined);
+    assert.equal((await w.tool("agents.create", { name: "kit", projects: ["harlow-legal"] })).error, undefined);
+    const th = (await w.tool("threads.start", { cwd: w.work, agent: "kit", prompt: 'vyre-sock whoami.me {"projects":"*"}', surface: "deck" })).data;
+    await w.finished(th.id);
+    // The input said "*"; the daemon says what agents_agents holds.
+    assert.deepEqual(JSON.parse((await w.said(th.id)).at(-1)).data, { agent: "kit", granted: ["harlow-legal"], kind: "agent", said: "*" });
+    // Widening the stored grant changes the next thread's meta, nothing else can.
+    assert.equal((await w.tool("agents.update", { name: "kit", projects: "*" })).error, undefined);
+    await w.tool("threads.send", { thread: th.id, text: "vyre-sock whoami.me {}", surface: "deck" });
+    await w.finished(th.id, 2);
+    assert.equal(JSON.parse((await w.said(th.id)).at(-1)).data.granted, "*");
+  });
+
   test(`${driver}: the Capsule's quick answer is Vyre IQ: the whole prompt, its facts numbered, thinking off, the version on the chip`, { skip }, async t => {
     const w = await boot(t, { driver });
     // What an older Capsule sends: its own instruction lines around the facts (dropped).
