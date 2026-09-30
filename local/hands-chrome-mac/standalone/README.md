@@ -40,7 +40,7 @@ There is no Gate here. Claude Code's own permissions are the approval.
 - `chrome_resume` (carry on after you pressed Esc) also belongs on "ask", and the server asks you itself before it carries on. `node ~/.vyre-chrome/app/standalone/cli.mjs config confirm-sends off` turns those questions off.
 - Esc in Chrome stops everything at once, and it waits until you answer.
 
-Always on, whatever you allow: passwords, cookies, tokens and session ids are masked before Claude sees them; banks, password managers and sign-in pages are never read or touched; a page with a visible password field never runs a script; and a script that runs without you asking cannot send anything to a site the page does not already talk to (it is held and reported).
+Always on, whatever you allow: passwords, cookies, tokens and session ids are masked before Claude sees them; banks, password managers and sign-in pages are never read or touched; a page with a visible password field never runs a script; and a script that runs without you asking cannot send anything to a site the page does not already talk to (it is held and reported). That containment holds for HTTP(S), navigation and new WebSockets (the run in CI shows what a real Chrome does). WebRTC and DNS hints are only blocked in their plain forms: a script that builds an iframe, uses `innerHTML` or `document.write` can get around those two.
 
 ## The tools
 

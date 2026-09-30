@@ -277,4 +277,6 @@ test("holdFor: a workflow builder's action tiles (Send Email, Remove Tag) are no
   const wl = (/** @type {boolean} */ ghlApi) => ({ url: "https://crm.agency.example/v2/location/abcdefghij12/automation/workflows/wf1", controls: [], state: { ghlApi } });
   assert.equal(holdFor(wl(true), tile("Send Email"), "click", undefined).held, false, "white-label host whose traffic goes to services.leadconnectorhq.com");
   assert.equal(holdFor(wl(false), tile("Send Email"), "click", undefined).held, true, "no GoHighLevel traffic, so not one");
+  // A page that only embeds a GoHighLevel widget has the API hosts in its timing but not the workflow URL shape.
+  assert.equal(holdFor({ url: "https://example.test/workflows/1", controls: [], state: { ghlApi: true } }, tile("Send Email"), "click", undefined).held, true, "spoofed by a widget");
 });

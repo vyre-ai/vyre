@@ -525,7 +525,9 @@ export function builderTile(snap, ctl) {
   let path = "", host = "";
   try { const u = new URL(String(snap && snap.url)); path = u.pathname; host = u.hostname; } catch { return false; }
   // Only GoHighLevel (a workflow page on some other site is not one), and the local fixture's /ghl.
-  const ghlApi = Boolean(snap && snap.state && snap.state.ghlApi === true);
+  // A white-label domain counts only with BOTH: its own traffic reaches GoHighLevel's API hosts (a widget on
+  // any page could cause that alone) AND the URL has GoHighLevel's real workflow shape.
+  const ghlApi = Boolean(snap && snap.state && snap.state.ghlApi === true) && /^\/(v2\/)?location\/[A-Za-z0-9]{10,40}\/automation\/workflows(\/|$)/.test(path);
   if (!/(^|\.)(gohighlevel\.com|leadconnectorhq\.com)$/i.test(host) && !ghlApi && !(/^(127\.0\.0\.1|localhost)$/.test(host) && /^\/ghl(\/|$)/.test(path))) return false;
   if (!/\/automation\/workflows|\/workflows?(\/|$)|^\/ghl(\/|$)/i.test(path)) return false;
   const name = String(ctl.name || "").trim();
