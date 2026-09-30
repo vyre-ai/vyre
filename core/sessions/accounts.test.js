@@ -111,3 +111,10 @@ test("accounts: a removed account's uid goes to a new one only after its HOME is
   assert.deepEqual(wiped, [2005]);
   assert.equal((await a.add({ provider: "codex", label: "again", kind: "login" })).uid, 2009);
 });
+
+test("accounts: adds landing together never share a uid", async () => {
+  const a = fresh({ wipe: async () => { await new Promise(r => setTimeout(r, 5)); } });
+  const rows = await Promise.all(Array.from({ length: 20 }, (_, n) => a.add({ provider: "grok", label: `p${n}`, kind: "login" })));
+  assert.equal(new Set(rows.map(r => r.uid)).size, 20);
+  assert.throws(() => a.db.prepare("INSERT INTO sessions_accounts (id, provider, label, scope_projects, scope_agents, uid, added, updated) VALUES ('x','grok','x','\"*\"','\"*\"',2000,0,0)").run(), /UNIQUE/);
+});

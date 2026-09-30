@@ -31,7 +31,7 @@ import path from "node:path";
 import { spawn, execFileSync } from "node:child_process";
 
 /** Environment keys a session child may get. Anything else (LD_PRELOAD, NODE_OPTIONS ...) is dropped. */
-const ENV_KEYS = /^(HOME|PATH|LANG|LC_[A-Z]+|TERM|TZ|USER|SHELL|TMPDIR|NO_COLOR|FORCE_COLOR|VYRE_[A-Z0-9_]+|CLAUDE_CODE_[A-Z0-9_]+|CLAUDE_CONFIG_DIR|ANTHROPIC_API_KEY|ANTHROPIC_BASE_URL|DISABLE_[A-Z0-9_]+|MCP_[A-Z0-9_]+)$/;
+const ENV_KEYS = /^(HOME|PATH|LANG|LC_[A-Z]+|TERM|TZ|USER|SHELL|TMPDIR|NO_COLOR|FORCE_COLOR|VYRE_[A-Z0-9_]+|CLAUDE_CODE_[A-Z0-9_]+|CLAUDE_CONFIG_DIR|ANTHROPIC_API_KEY|ANTHROPIC_BASE_URL|OPENAI_API_KEY|OPENAI_BASE_URL|XAI_API_KEY|XAI_BASE_URL|CODEX_HOME|DISABLE_[A-Z0-9_]+|MCP_[A-Z0-9_]+)$/;
 const SIGNALS = new Set(["SIGTERM", "SIGKILL", "SIGINT", "SIGHUP"]);
 const ATTACH_MS = 10_000;
 const MAX_LIVE = 16;
@@ -120,6 +120,11 @@ export async function serve(o) {
     if (!w.who) { try { s.control.end(JSON.stringify({ error: w.why }) + "\n"); } catch {} end(id, w.why || "refused"); return; }
     const who = w.who;
     if (who.home) { env.HOME = who.home; env.USER = who.account !== undefined ? `acct${who.account}` : "vyre-agent"; }
+    // An account's scratch space is inside its HOME, so a wipe of the HOME leaves nothing of it in /tmp.
+    if (who.account !== undefined && who.home) {
+      env.TMPDIR = path.join(who.home, ".tmp");
+      if (o.makeDir) { try { o.makeDir(env.TMPDIR, who); } catch (e) { log(`spawner: cannot make ${env.TMPDIR}: ${/** @type {Error} */ (e).message}`); } }
+    }
     const cwd = path.resolve(String(s.req.cwd || work));
     const argv = wrap(s.req.argv, cwd, who);
     // A folder in the runner's home is made as that user, which owns that home (mkdir -p: root
@@ -205,8 +210,13 @@ export async function serve(o) {
       for (const s of live.values()) if (s.req.account === uid) { sock.end(JSON.stringify({ error: `account ${uid} still has a session running` }) + "\n"); return; }
       try {
         if (acc.wipe) acc.wipe(/** @type {string} */ (w.who.home), w.who);
-        else execFileSync("/usr/bin/setpriv", [`--reuid=${w.who.uid}`, `--regid=${w.who.gid}`, "--clear-groups", "--inh-caps=-all", "--",
-          "/usr/bin/find", /** @type {string} */ (w.who.home), "-mindepth", "1", "-delete"], { stdio: "ignore" });
+        else {
+          const as = (...argv) => execFileSync("/usr/bin/setpriv", [`--reuid=${w.who.uid}`, `--regid=${w.who.gid}`, "--clear-groups", "--inh-caps=-all", "--", ...argv], { stdio: "ignore" });
+          // Anything of that uid still running (a process that left its session) goes first; then its files.
+          try { as("/bin/sh", "-c", "kill -KILL -1"); } catch {}
+          as("/usr/bin/find", /** @type {string} */ (w.who.home), "-mindepth", "1", "-delete");
+          try { as("/usr/bin/find", "/tmp", "/var/tmp", "-mindepth", "1", "-user", String(w.who.uid), "-delete"); } catch {}
+        }
         sock.end(JSON.stringify({ wiped: true }) + "\n");
       } catch (e) { sock.end(JSON.stringify({ error: `cannot empty account ${uid}'s home: ${/** @type {Error} */ (e).message}` }) + "\n"); }
       return;

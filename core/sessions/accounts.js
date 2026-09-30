@@ -24,7 +24,8 @@ export const ACCOUNTS_MIGRATION = `CREATE TABLE IF NOT EXISTS sessions_accounts 
   scope_projects TEXT NOT NULL, scope_agents TEXT NOT NULL, is_default INTEGER NOT NULL DEFAULT 0,
   uid INTEGER, added INTEGER NOT NULL, updated INTEGER NOT NULL
 );
-CREATE TABLE IF NOT EXISTS sessions_uids_dirty (uid INTEGER PRIMARY KEY);`;
+CREATE TABLE IF NOT EXISTS sessions_uids_dirty (uid INTEGER PRIMARY KEY);
+CREATE UNIQUE INDEX IF NOT EXISTS sessions_accounts_uid ON sessions_accounts(uid);`;
 
 /** The box image's account uids (integrator's Wave A0 image): 2000-2063, gid = uid. */
 export const UID_MIN = 2000;
@@ -61,7 +62,7 @@ export class Accounts {
    *   wipe op). A uid whose account was removed is handed to a new account only after this
    *   succeeds, so nothing of the last account's sign-in is ever there for the next.
    */
-  constructor(db, o = {}) { this.db = db; this.wipe = o.wipe || null; }
+  constructor(db, o = {}) { this.db = db; this.wipe = o.wipe || null; /** @type {Promise<any>} */ this.lock = Promise.resolve(); }
 
   row(id) {
     const r = /** @type {any} */ (this.db.prepare("SELECT * FROM sessions_accounts WHERE id = ?").get(String(id)));
@@ -114,7 +115,16 @@ export class Accounts {
    * picking WHICH already-added account a project uses is not (see resolve/bind).
    * @param {{ provider: string, label: string, kind?: string, vault_item?: string, scope?: any, is_default?: boolean }} i
    */
-  async add(i) {
+  add(i) {
+    // Allocate and insert run one at a time: two adds landing together must never take one uid
+    // (two accounts on one uid can read each other's sign-in). The unique index is the backstop.
+    const run = this.lock.then(() => this.addNow(i));
+    this.lock = run.catch(() => {});
+    return run;
+  }
+
+  /** @param {any} i */
+  async addNow(i) {
     const provider = String(i.provider || "");
     if (!PROVIDER.test(provider)) throw bad("provider must be a lowercase name like claude, codex or grok");
     const label = String(i.label || "").trim();

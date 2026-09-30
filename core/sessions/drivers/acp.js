@@ -80,7 +80,7 @@ const alive = pid => { try { process.kill(pid, 0); return true; } catch (e) { re
 const remembered = new Map();
 
 /**
- * @param {{ id: string, bin: string, args?: string[] | ((o: any) => string[]), env?: Record<string, string> | ((o: any) => Record<string, string>),
+ * @param {{ id: string, bin: string, askMode?: RegExp, args?: string[] | ((o: any) => string[]), env?: Record<string, string> | ((o: any) => Record<string, string>),
  *   capabilities?: Record<string, any>, floor?: (call: { tool: string, input: any, cwd?: string }) => { decision: "deny"|"ask"|null, reason?: string },
  *   sessions?: { get(id: string): string|undefined, set(id: string, agent: string): void } }} entry
  */
@@ -253,17 +253,45 @@ function runAcp(entry, known, o) {
     return real;
   }
 
+  /**
+   * Open a confined path without racing the check: O_NOFOLLOW, then the open file itself is asked
+   * where it is (Linux: /proc/self/fd; elsewhere its dev and inode must equal the path's and the
+   * folder must still resolve inside the session's folder). The agent owns the folder and can swap
+   * a file or a parent for a link between the check and the open; these methods run as vyred.
+   * @param {string} real @param {number} flags
+   */
+  function openConfined(real, flags) {
+    const root = fs.realpathSync(cwd);
+    const inside = q => q === root || q.startsWith(root + path.sep);
+    const fd = fs.openSync(real, flags | fs.constants.O_NOFOLLOW, 0o644);
+    try {
+      const st = fs.fstatSync(fd);
+      if (!st.isFile()) throw Object.assign(new Error("not a regular file"), { code: -32003 });
+      let where = null;
+      try { where = fs.realpathSync(`/proc/self/fd/${fd}`); } catch {}
+      if (where !== null) { if (!inside(where)) throw Object.assign(new Error("outside this session's folder"), { code: -32003 }); }
+      else {
+        const l = fs.lstatSync(real);
+        if (l.dev !== st.dev || l.ino !== st.ino || !inside(path.join(fs.realpathSync(path.dirname(real)), path.basename(real)))) throw Object.assign(new Error("the file changed while it was opened"), { code: -32003 });
+      }
+      return fd;
+    } catch (e) { try { fs.closeSync(fd); } catch {} throw e; }
+  }
+
   async function fsRead(m) {
     const p = m.params || {};
     const real = await gate("Read", { file_path: p.path }, p.path);
-    let c = fs.readFileSync(/** @type {string} */ (real), "utf8");
+    let c;
+    { const fd = openConfined(/** @type {string} */ (real), fs.constants.O_RDONLY); try { c = fs.readFileSync(fd, "utf8"); } finally { fs.closeSync(fd); } }
     if (p.line || p.limit) { const ls = c.split("\n"); const s = Math.max(0, (Number(p.line) || 1) - 1); c = ls.slice(s, p.limit ? s + Number(p.limit) : undefined).join("\n"); }
     respond(m.id, { content: c });
   }
   async function fsWrite(m) {
     const p = m.params || {};
     const real = await gate("Write", { file_path: p.path, content: String(p.content ?? "") }, p.path);
-    fs.writeFileSync(/** @type {string} */ (real), String(p.content ?? ""));
+    // Not truncated until the open file has been checked.
+    const fd = openConfined(/** @type {string} */ (real), fs.constants.O_WRONLY | fs.constants.O_CREAT);
+    try { fs.ftruncateSync(fd, 0); fs.writeSync(fd, String(p.content ?? "")); } finally { fs.closeSync(fd); }
     respond(m.id, null);
   }
 
@@ -313,6 +341,17 @@ function runAcp(entry, known, o) {
     const m = r.modes || {};
     modes = (Array.isArray(m.availableModes) ? m.availableModes : []).filter(x => x && typeof x.id === "string" && !BYPASS_MODE.test(x.id + " " + (x.name || "")));
     mode = typeof m.currentModeId === "string" && !BYPASS_MODE.test(m.currentModeId) ? m.currentModeId : null;
+    // Fail closed: an agent that starts in a mode that approves everything (its own config file,
+    // which the agent can edit, may say so) is moved to an ask mode, or the session does not run.
+    const rawMode = String(m.currentModeId || "");
+    const current = (Array.isArray(m.availableModes) ? m.availableModes : []).find(x => x && x.id === rawMode);
+    if (rawMode && BYPASS_MODE.test(rawMode + " " + (current && current.name || ""))) {
+      const ask = entry.askMode || /^(default|ask|untrusted|on-request|read-?only|plan)$/i;
+      const to = modes.find(x => ask.test(x.id));
+      let ok = false;
+      if (to) { try { await request("session/set_mode", { sessionId: sid, modeId: to.id }); mode = to.id; ok = true; } catch {} }
+      if (!ok) throw new Error(`${entry.id[0].toUpperCase() + entry.id.slice(1)} is set to approve everything; Vyre did not start it`);
+    }
     const model = r.models && r.models.currentModelId || o.model || null;
     ready = true;
     say({ type: "system", subtype: "init", session_id: o.id, agent_session_id: sid, model, modes: modes.map(x => x.id), resumed: loaded });

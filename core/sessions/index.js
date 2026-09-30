@@ -54,6 +54,8 @@ export default {
     const db = ctx.store.db;
     // A uid handed to a new account first has its HOME emptied: by the spawner on a box, by
     // removing the account's folder on a machine without one (there the uid only numbers it).
+    /** Does the vault hold an item by this name? null when the vault cannot say (not running, locked). Never its value. */
+    const vaultHas = async name => { try { const r = await ctx.call("vault.list", {}); const items = r && r.data && (Array.isArray(r.data) ? r.data : r.data.items); return Array.isArray(items) ? items.some(x => x && x.name === name) : null; } catch { return null; } };
     const accounts = new Accounts(db, { wipe: async uid => { if (usesSpawner()) await wipeAccount(uid); } });
     const override = scope => { const r = /** @type {any} */ (db.prepare("SELECT model FROM sessions_models WHERE scope = ?").get(scope)); return r ? String(r.model) : null; };
     /**
@@ -180,10 +182,10 @@ export default {
     ctx.tool("sessions.providers.snapshot", {
       description: "Every session provider this module speaks for (claude, codex, grok), each with its own accounts and the models it offers. For providers.list (core/providers) to assemble; not a public name itself.", internal: true,
       input: { type: "object", properties: {} },
-      run: async () => PROVIDERS.map(p => ({ ...p,
-        accounts: accounts.list(p.id).map(a => ({ id: a.id, label: a.label, kind: a.kind, signed_in: true, default: a.is_default })),
+      run: async () => Promise.all(PROVIDERS.map(async p => ({ ...p,
+        accounts: await Promise.all(accounts.list(p.id).map(async a => ({ id: a.id, label: a.label, kind: a.kind, signed_in: a.kind === "login" || !a.vault_item ? true : (await vaultHas(a.vault_item)) !== false, default: a.is_default }))),
         models: p.id === "claude" ? MODEL_ALIASES : [],
-        capabilities: p.id === "claude" ? { streaming: true, resume: true, interrupt: true, modes: true, questions: true, transcripts: true } : /** @type {any} */ (drivers)[p.id].capabilities })),
+        capabilities: p.id === "claude" ? { streaming: true, resume: true, interrupt: true, modes: true, questions: true, transcripts: true } : /** @type {any} */ (drivers)[p.id].capabilities }))),
     });
 
     // ---- routing and fallback order (plans/sessions.md 9.4)
@@ -214,20 +216,25 @@ export default {
 
     tool("sessions.accounts.list", "Every account on a provider, or every account on every provider. Each names a vault item (never a value) and its scope: which projects and agents it is granted to.",
       { type: "object", properties: { provider: str } },
-      async i => accounts.list(i.provider ? String(i.provider) : undefined));
+      async (i, meta) => {
+        const rows = accounts.list(i.provider ? String(i.provider) : undefined);
+        // Vault item names go to people, modules and the assistant; another agent sees the accounts without them.
+        const seesItems = !meta || !meta.agent || /** @type {any} */ (meta).agentKind === "assistant";
+        return seesItems ? rows : rows.map(({ vault_item, ...r }) => r);
+      });
 
     tool("sessions.accounts.add", `Add an account: a label, its kind, and for an api-key or setup-token the vault item that already holds its credential (add it in the Vault first and grant it to threads; this never touches its value). kind login has no vault item: the provider's own sign-in fills that account's private home. scope is { projects: "*"|[slugs], agents: "*"|[names] }, default "*" (every project and agent may use it until it is bound narrower). is_default makes it the provider's pick when nothing else resolves. Each account runs as its own user on a server, so one account's sign-in is unreadable from another's.`,
       { type: "object", required: ["provider", "label"], properties: { provider: str, label: str, kind: { type: "string", enum: ACCOUNT_KINDS }, vault_item: str,
         scope: { type: "object", properties: { projects: {}, agents: {} } }, is_default: { type: "boolean" } } },
-      async i => accounts.add(i), PEOPLE);
+      async i => { if (i.kind !== "login" && i.vault_item && (await vaultHas(String(i.vault_item))) === false) throw Object.assign(new Error(`the vault has no item ${i.vault_item}; add the credential there first`), { code: "bad_input" }); return accounts.add(i); });
 
     tool("sessions.accounts.remove", "Remove an account. Threads already resumed on it keep running; the next resume on that thread asks for another (a removed account is never a silent fallback).",
       { type: "object", required: ["id"], properties: { id: str } },
-      async i => accounts.remove(i.id), PEOPLE);
+      async i => accounts.remove(i.id));
 
     tool("sessions.accounts.bind", "Grant an account to one more project or agent (added to its scope, others it already has kept), or make it its provider's default.",
       { type: "object", required: ["id"], properties: { id: str, project: str, agent: str, is_default: { type: "boolean" } } },
-      async i => accounts.bind(i), PEOPLE);
+      async i => accounts.bind(i));
 
     ctx.tool("sessions.accounts.resolve", {
       description: "Which account a session on this provider uses, for a project/agent/explicit choice, scope-checked either way.", internal: true,

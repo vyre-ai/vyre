@@ -188,3 +188,27 @@ test("grok: the entry starts `grok agent stdio` without auto-update or always-ap
   assert.ok(!l.launch.includes("--always-approve"));
   assert.equal(l.home, "/acct/2000");
 });
+
+test("acp: an agent that starts in a bypass-shaped mode is moved to an ask mode, or the session does not run", async t => {
+  const w = world(t);
+  const a = open({ ...w, env: { ...w.env, FAKE_ACP_START_MODE: "bypassPermissions" } });
+  t.after(() => a.proc.stop(1000));
+  assert.match(await a.say("mode"), /default/, "it answers once pinned, in the ask mode");
+  assert.ok(w.launches().some(l => l.set_mode === "default"), "set_mode to the ask mode was sent");
+  const b = open({ ...w, env: { ...w.env, FAKE_ACP_START_MODE: "bypassPermissions", FAKE_ACP_NO_SETMODE: "1" } });
+  t.after(() => b.proc.stop(1000));
+  const r = await b.until(m => m.type === "result" && m.is_error, "the refusal");
+  assert.match(r.result, /is set to approve everything; Vyre did not start it/);
+});
+
+test("acp: fs write and read never follow a link the agent put at the target after the check", async t => {
+  const w = world(t);
+  const outside = path.join(w.home, "vault", "secret.txt");
+  fs.symlinkSync(outside, path.join(w.cwd, "link.txt"));
+  const s = open(w);
+  t.after(() => s.proc.stop(1000));
+  const out = await s.say(`readfile ${path.join(w.cwd, "link.txt")}`);
+  assert.doesNotMatch(out, /the vault value/);
+  await s.say(`writefile ${path.join(w.cwd, "link.txt")} overwritten`);
+  assert.equal(fs.readFileSync(outside, "utf8"), "the vault value", "the write did not go through the link");
+});

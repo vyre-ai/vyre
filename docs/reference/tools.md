@@ -3780,7 +3780,7 @@ Add an account: a label, its kind, and for an api-key or setup-token the vault i
     - `agents` any
     - `projects` any
   - `vault_item` string
-- Callers: `capsule`, `cli`, `deck`, `local`
+- Callers: any caller
 
 ### `sessions.accounts.bind`
 
@@ -3791,7 +3791,7 @@ Grant an account to one more project or agent (added to its scope, others it alr
   - `agent` string
   - `is_default` boolean
   - `project` string
-- Callers: `capsule`, `cli`, `deck`, `local`
+- Callers: any caller
 
 ### `sessions.accounts.list`
 
@@ -3807,7 +3807,7 @@ Remove an account. Threads already resumed on it keep running; the next resume o
 
 - Input:
   - `id` string, required
-- Callers: `capsule`, `cli`, `deck`, `local`
+- Callers: any caller
 
 ### `sessions.accounts.resolve`
 

@@ -21,7 +21,7 @@ import { spawn } from "node:child_process";
 const store = process.env.FAKE_ACP_STORE || "";
 const log = o => { if (process.env.FAKE_ACP_LOG) fs.appendFileSync(process.env.FAKE_ACP_LOG, JSON.stringify(o) + "\n"); };
 const out = o => process.stdout.write(JSON.stringify({ jsonrpc: "2.0", ...o }) + "\n");
-let nextId = 1000, session = "", mode = "default", cancelled = false, clientCaps = /** @type {any} */ ({});
+let nextId = 1000, session = "", mode = process.env.FAKE_ACP_START_MODE || "default", cancelled = false, clientCaps = /** @type {any} */ ({});
 const waits = new Map();
 const call = (method, params) => new Promise((resolve, reject) => { const id = nextId++; waits.set(id, { resolve, reject }); out({ id, method, params }); });
 const say = t => out({ method: "session/update", params: { sessionId: session, update: { sessionUpdate: "agent_message_chunk", content: { type: "text", text: t } } } });
@@ -81,7 +81,7 @@ readline.createInterface({ input: process.stdin }).on("line", async line => {
     session = m.params.sessionId;
     return out({ id: m.id, result: { modes: { ...MODES, currentModeId: mode } } });
   }
-  if (m.method === "session/set_mode") { log({ set_mode: m.params.modeId }); mode = m.params.modeId; return out({ id: m.id, result: {} }); }
+  if (m.method === "session/set_mode") { log({ set_mode: m.params.modeId }); if (process.env.FAKE_ACP_NO_SETMODE) return out({ id: m.id, error: { code: -32601, message: "no" } }); mode = m.params.modeId; return out({ id: m.id, result: {} }); }
   if (m.method === "session/prompt") return prompt(m.id, m.params.prompt || []);
   if (m.method === "session/cancel") { cancelled = true; return; }
   if (m.id !== undefined) out({ id: m.id, error: { code: -32601, message: "no such method" } });
