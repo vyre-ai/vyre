@@ -18,6 +18,23 @@ export const SEARCH_MS = 400;
 const DEFAULT_LIMIT = 6, MAX_LIMIT = 20;
 /** The most a resolved tag's context may carry. */
 const CONTEXT_MAX = 8000;
+/** Kinds whose text is Vyre's own (a vault item's name and hosts); any other kind's text is outside text, third-party words sessions frames as data. */
+const INSIDE = new Set(["vault"]);
+
+/**
+ * A grant cut to the shape sessions understands: { use, hosts, read, access }, small.
+ * @param {any} g @returns {Record<string, any> | null}
+ */
+export function cleanGrant(g) {
+  if (!g || typeof g !== "object" || Array.isArray(g)) return null;
+  /** @type {Record<string, any>} */ const out = {};
+  if (typeof g.use === "boolean") out.use = g.use;
+  if (Array.isArray(g.hosts)) out.hosts = g.hosts.filter((/** @type {any} */ h) => typeof h === "string").slice(0, 20).map((/** @type {string} */ h) => h.slice(0, 200));
+  if (typeof g.read === "string") out.read = g.read.slice(0, 200);
+  if (typeof g.access === "string") out.access = g.access.slice(0, 20);
+  return Object.keys(out).length && JSON.stringify(out).length <= 2000 ? out : null;
+}
+
 /** Modules that may resolve a tag: the person's own turn is theirs to read. */
 const RESOLVERS = ["module:sessions", "module:assistant"];
 
@@ -105,11 +122,11 @@ export default {
         const bad = !r || r.error || (r.data && r.data.error);
         if (bad) throw fail(((r && r.error) || (r && r.data && r.data.error) || {}).code === "not_found" ? "not_found" : "unavailable", `${p.kind} could not resolve that`);
         const d = r.data !== undefined ? r.data : r;
-        let context = d.context;
+        let context = d.context !== undefined ? d.context : d.text;
         if (context !== undefined && typeof context !== "string") { try { context = JSON.stringify(context); } catch { context = undefined; } }
         const hosts = Array.isArray(d.hosts) ? d.hosts.filter((/** @type {any} */ h) => typeof h === "string").slice(0, 20) : undefined;
         return { kind: p.kind, id: String(input.id), name: text(d.name, 120) || String(input.id), ...(text(d.hint, 120) ? { hint: text(d.hint, 120) } : {}), ...(hosts && hosts.length ? { hosts } : {}),
-          ...(text(d.note, 6000) ? { note: text(d.note, 6000) } : {}), ...(context ? { context: String(context).slice(0, CONTEXT_MAX) } : {}), ...(d.grant && typeof d.grant === "object" ? { grant: d.grant } : {}) };
+          ...(text(d.note, 6000) ? { note: text(d.note, 6000) } : {}), ...(context ? { context: String(context).slice(0, CONTEXT_MAX), outside: d.outside !== undefined ? Boolean(d.outside) : !INSIDE.has(p.kind) } : {}), ...(cleanGrant(d.grant) ? { grant: cleanGrant(d.grant) } : {}) };
       },
     });
     return { async stop() {} };

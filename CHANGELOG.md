@@ -4,6 +4,7 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+- `mentions.resolve` reads a provider's `text` as its context, forwards an `outside` mark (true unless the kind is vault, so sessions frames third-party text as data), and keeps a grant only in the shape sessions understands (`core/mentions/index.js`).
 - Each MCP hub server gets a Tools command in the Capsule (`capsule.commands`/`view`/`act`): its tools listed,
   a form built from a tool's input schema (text, number, bool, choice, JSON), a read runs as the person, and a
   write previews then is held at the Gate by the hub (`core/capsule/views.js`). The install card
