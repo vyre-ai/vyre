@@ -17,7 +17,7 @@ This page is the whole Lumen for capsule-pro (work/capsule-pro, `local/capsule/n
 builds on [Lumen on the Mac](components/capsule-mac.md), which still holds the waiting list, the
 confirm send card and the presence rules. Where the two disagree, this page wins.
 
-Boards: "Capsule · search, the first keystroke" (CapsuleSearch), "Capsule · Vyre Memory answers"
+Boards: "Capsule · search, the first keystroke" (CapsuleSearch), "Capsule · Vyre IQ answers"
 (CapsuleIQ), "Capsule · a long answer grows, then scrolls" (CapsuleLong) and "Capsule · voice and
 computer use" (CapsuleDo), each with a paper board.
 
