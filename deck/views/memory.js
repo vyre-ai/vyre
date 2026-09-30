@@ -6,13 +6,13 @@
 // Everything here came from memory, so facts and sources are --text-2 (no gold). Signal marks
 // only focus (the selected node's ring). Tools: memory.graph (one call, with the `since` cursor),
 // memory.facts, memory.why, memory.pin, memory.mute, memory.correct, memory.uncorrect,
-// projects.list; the Lessons tab is memory-lessons.js.
+// projects.list; the Lessons tab is memory-lessons.js and the Sites tab memory-sites.js.
 //
 // Light (SPEC principle 8): no timers. A memory.curated event whose `updated` is what is drawn
 // does nothing; while the tab is hidden it only marks the view dirty, and the one fetch waits for
 // visibilitychange.
 //
-// Address: /memory?tab=lessons | ?project=<slug>&view=list&about=<fact or node id>&around=<node id>
+// Address: /memory?tab=lessons | ?tab=sites | ?project=<slug>&view=list&about=<fact or node id>&around=<node id>
 
 import { h, put, link, go, empty, isPhone } from "../js/dom.js";
 import { attempt, call } from "../js/api.js";
@@ -39,7 +39,7 @@ function dateTime(t) {
 export default async function memory(ctx) {
   const q = ctx.query;
   const st = {
-    tab: q.get("tab") === "lessons" ? "lessons" : "facts",
+    tab: q.get("tab") === "lessons" ? "lessons" : q.get("tab") === "sites" ? "sites" : "facts",
     mode: q.get("view") === "list" ? "list" : "map",
     today: false,
     project: q.get("project") || "",
@@ -70,10 +70,11 @@ export default async function memory(ctx) {
   const tabs = h("div", { class: "mem-tabs", role: "tablist", "aria-label": "Memory",
     onkeydown: (/** @type {KeyboardEvent} */ e) => {
       if (e.key !== "ArrowRight" && e.key !== "ArrowLeft") return;
-      const next = st.tab === "facts" ? "lessons" : "facts";
+      const order = ["facts", "lessons", "sites"], at = order.indexOf(st.tab);
+      const next = order[(at + (e.key === "ArrowRight" ? 1 : order.length - 1)) % order.length];
       switchTab(next); /** @type {HTMLElement} */ (tabs.querySelector("#mem-tab-" + next))?.focus();
     } },
-    tabBtn("facts", "Memory"), tabBtn("lessons", "Lessons", beacon));
+    tabBtn("facts", "Memory"), tabBtn("lessons", "Lessons", beacon), tabBtn("sites", "Sites"));
   const seg = h("div", { class: "seg mem-seg", role: "group", "aria-label": "View" },
     ["map", "list"].map(m => h("button", { type: "button", "data-mode": m, "aria-pressed": String(st.mode === m),
       onclick: () => { st.mode = /** @type {any} */ (m); remember(); drawBody(); drawSeg(); } }, m === "map" ? "Map" : "List")));
@@ -96,7 +97,7 @@ export default async function memory(ctx) {
 
   function remember() {
     const u = new URLSearchParams();
-    if (st.tab === "lessons") u.set("tab", "lessons");
+    if (st.tab === "lessons" || st.tab === "sites") u.set("tab", st.tab);
     else {
       if (st.project) u.set("project", st.project);
       if (st.mode === "list") u.set("view", "list");
@@ -108,19 +109,29 @@ export default async function memory(ctx) {
   }
 
   // ---- tabs ----------------------------------------------------------------------------------
-  let lessonsView = null;
+  let lessonsView = null, sitesView = null;
   async function switchTab(tab) {
-    if (tab === st.tab && (tab === "facts" ? !lessonsView : lessonsView)) return;
+    if (tab === st.tab && (tab === "facts" ? !lessonsView && !sitesView : tab === "sites" ? sitesView : lessonsView)) return;
     st.tab = tab;
-    for (const id of ["facts", "lessons"]) {
+    for (const id of ["facts", "lessons", "sites"]) {
       const b = /** @type {HTMLElement} */ (tabs.querySelector("#mem-tab-" + id));
       b.setAttribute("aria-selected", String(id === tab));
       b.setAttribute("tabindex", id === tab ? "0" : "-1");
     }
     main.setAttribute("aria-labelledby", "mem-tab-" + tab);
-    ctx.root.querySelector(".mem")?.classList.toggle("is-lessons", tab === "lessons");
+    ctx.root.querySelector(".mem")?.classList.toggle("is-lessons", tab === "lessons" || tab === "sites");
     remember();
-    if (tab === "lessons") {
+    lessonsView?.stop?.(); lessonsView = null;
+    sitesView?.stop?.(); sitesView = null;
+    if (tab === "sites") {
+      closeSide(false);
+      controls.hidden = true; put(counts); crumbs.hidden = true; put(foot);
+      put(body, h("div", { class: "mem-pad small faint" }, "Reading sites…"));
+      for (const href of ["/css/views/memory-lessons.css", "/css/views/memory-sites.css"]) if (!document.querySelector(`link[href="${href}"]`)) document.head.append(h("link", { rel: "stylesheet", href }));
+      const mod = await import("./memory-sites.js");
+      if (!ctx.alive() || st.tab !== "sites") return;
+      sitesView = await mod.default(body, ctx);
+    } else if (tab === "lessons") {
       closeSide(false);
       controls.hidden = true; put(counts); crumbs.hidden = true; put(foot);
       put(body, h("div", { class: "mem-pad small faint" }, "Reading lessons…"));
@@ -128,8 +139,6 @@ export default async function memory(ctx) {
       if (!ctx.alive() || st.tab !== "lessons") return;
       lessonsView = await mod.default(body, ctx, { onCount: drawBeacon, names: () => new Map(data.projects.map(p => [p.slug, p.name])) });
     } else {
-      lessonsView?.stop?.();
-      lessonsView = null;
       controls.hidden = false;
       if (data.graph) { drawCounts(); drawBody(); } else { put(body, h("div", { class: "mem-pad small faint" }, "Reading memory…")); refetch(true); }
     }
@@ -674,7 +683,7 @@ export default async function memory(ctx) {
   data.projects = projectsFrom(pl.data?.projects || null, null);
   drawSelect();
   countProposed();
-  if (st.tab === "lessons") { st.tab = "facts"; await switchTab("lessons"); return; }
+  if (st.tab === "lessons" || st.tab === "sites") { const want = st.tab; st.tab = "facts"; await switchTab(want); return; }
   controls.hidden = false;
   put(body, h("div", { class: "mem-pad small faint" }, "Reading memory…"));
   // The map measures its labels, so a draw before the fonts land is redone once when they do.
