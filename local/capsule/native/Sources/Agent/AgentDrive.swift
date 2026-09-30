@@ -83,6 +83,13 @@ enum Drive {
             return
         }
         if VJ.truthy(c["probe"]) { say(probe(a)); return }
+        if VJ.truthy(c["views"]) {
+            // What the server gave this Lumen: which tools it has, the module commands it read, the next meeting.
+            let tools = ["mentions.search", "capsule.commands", "capsule.view", "capsule.act"]
+            say(["tools": Dictionary(uniqueKeysWithValues: tools.map { ($0, a.vyred.has($0)) }), "up": a.vyred.isUp,
+                 "commands": a.viewCommands.commands.map { "\($0.module)/\($0.id)" }, "nextMeeting": m.nextMeeting ?? NSNull(),
+                 "hash": m.hashToken != nil]); return
+        }
         if VJ.truthy(c["timings"]) {
             // "All rows": when the last publish of this keystroke's rows landed (Spotlight and the like append).
             let out: [[String: Any]] = timings.map { e in
