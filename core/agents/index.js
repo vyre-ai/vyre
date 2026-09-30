@@ -380,6 +380,19 @@ export default {
       },
     });
 
+    ctx.tool("agents.rollover", {
+      description: "Start a fresh thread for an agent (the assistant's daily thread) and make it the agent's current one, optionally seeded with a first message. The old thread is left as it is, and work in it goes on. Refused while the current thread is working or holds a question.",
+      input: { type: "object", required: ["agent"], properties: { agent: { type: "string" }, seed: { type: "string" } } },
+      run: async (i, { caller }) => {
+        if (!/^(module:assistant|cli|local|deck|capsule)$/.test(String(caller || ""))) throw Object.assign(new Error("only the assistant module or the person rolls a thread"), { code: "denied" });
+        const a = must(i.agent);
+        const st = await status(a);
+        if (st.doing === "working" || st.doing === "waiting on your answer") throw Object.assign(new Error(`${a.name} is ${st.doing}; roll the thread when it is idle`), { code: "busy" });
+        const t = await launch(a, i.seed ? { prompt: i.seed } : {});
+        return { agent: a.name, thread: t.id, previous: a.thread };
+      },
+    });
+
     ctx.tool("agents.threads", {
       description: "An agent's threads, newest first.",
       input: { type: "object", required: ["agent"], properties: { agent: { type: "string" } } },

@@ -18,10 +18,11 @@ A module runs on the `box` (the always-on server), on `local` (the Mac), or on b
 | Module | Folder | Runs on | Tools | Events | Shows on |
 | --- | --- | --- | --- | --- | --- |
 | [`about`](#about) | `core/about` | `box`, `local` | 1 | 0 | cli |
-| [`agents`](#agents) | `core/agents` | `box`, `local` | 11 | 0 | cli |
+| [`agents`](#agents) | `core/agents` | `box`, `local` | 12 | 0 | cli |
 | [`appearance`](#appearance) | `core/appearance` | `box`, `local` | 3 | 1 | cli |
 | [`apps`](#apps) | `local/apps` | `local` | 6 | 2 | none |
 | [`artifacts`](#artifacts) | `core/artifacts` | `box` | 21 | 10 | capsule, cli, deck |
+| [`assistant`](#assistant) | `core/assistant` | `box`, `local` | 8 | 3 | cli |
 | [`capsule`](#capsule) | `local/capsule` | `local` | 6 | 2 | capsule, cli |
 | [`chrome`](#chrome) | `local/hands-chrome-mac` | `local` | 28 | 12 | none |
 | [`chrome`](#chrome) | `modules/hands-chrome` | `box` | 5 | 1 | cli, deck |
@@ -54,7 +55,7 @@ A module runs on the `box` (the always-on server), on `local` (the Mac), or on b
 | [`presence`](#presence) | `core/presence` | `box`, `local` | 13 | 6 | capsule, cli, deck |
 | [`projects`](#projects) | `core/projects` | `box`, `local` | 22 | 5 | cli |
 | [`providers`](#providers) | `core/providers` | `box`, `local` | 1 | 0 | cli |
-| [`push`](#push) | `core/push` | `box`, `local` | 8 | 3 | capsule, cli, deck |
+| [`push`](#push) | `core/push` | `box`, `local` | 8 | 4 | capsule, cli, deck |
 | [`recall`](#recall) | `core/recall` | `box`, `local` | 12 | 4 | cli |
 | [`relay`](#relay) | `core/relay` | `box`, `local` | 26 | 12 | capsule, cli, deck |
 | [`releases`](#releases) | `core/apps` | `box` | 2 | 0 | cli |
@@ -72,6 +73,7 @@ A module runs on the `box` (the always-on server), on `local` (the Mac), or on b
 | [`term`](#term) | `core/term` | `box`, `local` | 4 | 2 | none |
 | [`threads`](#threads) | `core/switchboard` | `box`, `local` | 51 | 35 | cli |
 | [`tips`](#tips) | `core/tips` | `box`, `local` | 7 | 1 | cli |
+| [`undo`](#undo) | `core/undo` | `box`, `local` | 3 | 3 | cli |
 | [`update`](#update) | `core/update` | `box`, `local` | 3 | 2 | cli |
 | [`vault`](#vault) | `core/vault` | `box`, `local` | 123 | 43 | capsule, cli, deck |
 | [`vitals`](#vitals) | `core/vitals` | `box`, `local` | 5 | 2 | capsule, cli, deck |
@@ -95,7 +97,7 @@ A few lines on who the user is, cached for every Claude Code session to start wi
 - Folder: `core/agents`, version 0.1.0
 - Runs on: `box`, `local`
 - Requires: `threads`
-- Tools: [11](tools.md#agents), 1 of them only for other modules
+- Tools: [12](tools.md#agents), 1 of them only for other modules
 - Emits: no events
 - Shows on: cli
 - Needs vault: `per-agent`
@@ -136,6 +138,17 @@ Documents, reports, pages, dashboards, diagrams, decks and small apps your agent
 - Listens for: `floor.wrote`, `thread.deleted`
 - Shows on: capsule, cli, deck
 - Needs tools: `threads.get`, `agents.list`
+
+## assistant
+
+The one assistant's own tools: a daily digest and triage from waiting.list and agents.list, and read-only pattern-noticing from what memory already surfaces about corrections and conflicts. Off by default; the person turns the digest on.
+
+- Folder: `core/assistant`, version 0.1.0
+- Runs on: `box`, `local`
+- Requires: none
+- Tools: [8](tools.md#assistant)
+- Emits: [3 events](events.md#assistant)
+- Shows on: cli
 
 ## capsule
 
@@ -494,7 +507,7 @@ providers.list: every session provider on this machine, each with its own accoun
 - Runs on: `box`, `local`
 - Requires: none
 - Tools: [8](tools.md#push)
-- Emits: [3 events](events.md#push)
+- Emits: [4 events](events.md#push)
 - Shows on: capsule, cli, deck
 - Needs vault: `push-vapid`
 
@@ -692,6 +705,17 @@ One short tip at a time about the part of Vyre you are using, the parts you have
 - Emits: [1 events](events.md#tips)
 - Shows on: cli
 - Teaches tips: `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`
+
+## undo
+
+The shared acted-log: what agents, the assistant, watchers and modules did for the person, each with the inverse its own module declared, so one tap undoes it.
+
+- Folder: `core/undo`, version 0.1.0
+- Runs on: `box`, `local`
+- Requires: none
+- Tools: [3](tools.md#undo)
+- Emits: [3 events](events.md#undo)
+- Shows on: cli
 
 ## update
 

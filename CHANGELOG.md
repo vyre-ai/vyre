@@ -62,9 +62,28 @@ Newest first. Every change to code lands here in the same commit. A new dependen
   turns, system blocks, emails and limited writers never make a decision. On the open 0.2 world
   (replayed reads, no model): decision questions 0 to 33 of 50, history 0 to 18 of 25, confident-wrong
   and unanswerable unchanged at 0 and 50 of 50.
+- module-sdk: toolEntries leaves target, projectArg and cwdArg out of an entry unless the manifest sets them, so the v1 entry shape is unchanged.
+
+- A daemon-level test that no module does work after vyred stops: the full registry starts, stops (after its startup work, at once, mid-startup, and with agents missing), then runs two seconds more with the store closed; any `database is not open`, unhandled rejection or uncaught exception fails it and names the module from its stack path. A control module that writes after stop proves the check catches and names it (`test/stop-quiet.test.js`). It found no other module on this machine's config.
+- The projects module's `stop()` now ends the access auto-seed's retries and waits (two seconds at most) for the step it is in; before, the seed kept running and writing after the registry stopped and its database closed ("database is not open"), which a test worked around with a sleep (`core/projects/index.js`).
+- A folder an agent names (cwdArg) is judged on its real path and the tool runs on it: `projects.of` answers the canonical `folder` (symlinks and `..` resolved), and the registry replaces the checked field with it. A `..` path or a symlink into another project is refused (`core/projects/index.js`, `core/modules/index.js`, `core/projects/cwd-grant.test.js`; reviewer-2).
+- Project grants, round two (reviewer-2): a tool entry's `cwdArg` names the input field holding a folder; for an agent the registry maps it to its project (`projects.of`) and refuses a project it is not granted, and a folder in no project for an agent with an explicit project list (a wildcard agent and the assistant are not scoped to project folders). A named project is now rewritten to the canonical slug that was authorized (a display name that equals another project's slug can no longer pass the check and resolve to the other project). `cwdArg` declared on harness.brief, enrich, rules, learn and stop, learn.check, projects.of and context, recall.sessions and threads.start (and `projectArg` on threads.start and appearance.resolve). A hygiene test fails when an agent-reachable tool with a project, projects or cwd input declares neither (`core/modules/index.js`, `test/project-arg.test.js`).
+- Project grants, fail closed (lead, github): an agent with no recorded grant, or one projects.reach cannot answer for, is refused any named project and gets an empty `meta.reach`, never the whole list (the daemon already gives a named agent with no row `granted: []`, never `*`); `projectArg` is also declared on watchers.items and harness.enrich; the asked gate's target call gets the agent's `granted` in its meta (`core/modules/index.js`). A `needs` frame from a Capsule view or action now carries `need: { kind: "credential", need | item, module?, label? }` from the tool's needs_credential detail, so Lumen opens "Add your key" directly (`local/capsule/views.js`).
+- Project grants enforced once, in the registry: a tool entry may name `projectArg` (an input field, or a list of them), and an
+  agent's call for a project it is not granted is refused with `not_found` before the tool runs, through `projects.reach` (the owner's
+  revokes included); the tool gets `meta.reach` for listings. Declared on the agent-callable tools that take a project: goals.list and
+  set, planner.list, add, update and calendar.create, projects.threads, add-threads, remove-threads and context, team.ask and list,
+  sessions.limits.get, mode.get and prompt.preview, settings.get, snapshot and request, harness.brief, gate.held and request, and the memory
+  tools (`core/modules/index.js`, the manifest schema and checker, the module.json files). Found by the github audit (reviewer-2).
+- The asked-tool check now sits inside the once-per-Idempotency-Key run, so a retry that only replays a stored answer never asks vault or spends an ask; a `not_asked` answer is not stored, so the retry after the person's yes runs (`core/modules/index.js`, `core/modules/idempotency.js`).
+- The asked-tool check (reviewer-2): the match now passes `consume: true`, so one "yes" is spent by one act; the check is the last gate before the tool runs (after input validation, the rules and presence), so a call refused earlier never spends the ask; the target and thread-lineage calls get two seconds each and late is `not_asked` (`core/modules/index.js`).
+- An asked tool may carry `target` (built in only): an internal tool of its module that answers what one call acts on. The registry asks it before `vault.said.match` and passes its answer as the whole `to` of the match (github answers `github.project.pr.merge:alex/app#7`), so the person's yes binds one pull request, not the whole tool; an error, an empty answer or one later than two seconds is `not_asked` (`core/modules/index.js`, the manifest checker and schema; github's ask).
 - An agent limited to certain projects can no longer read or act on another project's GitHub repo by naming it; the project reads as if it did not exist.
 
 - A person's own "open a PR", "merge it" or "review this PR" becomes an `act_out` intent at `threads.send` and on `threads.start`'s first prompt, through the assistant's `prIntents` (`lib/said/pr.js`, copied here identically until assistant lands): it keeps only real asks (no questions, conditions, negations or standing permissions), binds each to github's composite key (`github.act.target`: `github.project.pr.merge:alex/app#7`) for the thread's project and one PR, and the switchboard records it as the person with `vault.said.record`. The thread's own PR is `github.session.pr`'s answer, used only when it is exactly one; pasted spans are removed first (`core/switchboard/index.js` `hearActs`). Two tests use the real vault and skip until vault lists `module:threads` as a recorder and resolver.
+- said: `prIntents` records act_out intents for "open a PR", "merge it" and "review this PR", bound to the exact key github.act.target answers with. Nothing is recorded when the PR or branch is ambiguous or the sentence carries a condition (if, when, once, unless, after, before, until, only, as long as, provided, assuming). A plain ask covers 15 minutes.
+
+- `assistant.welcome`: the first chat message after setup, {text, cards}, built from onboard.status with no model call. A card shows only while its step is open, and carries an id (and href for links), never a tool.
 - `#` tags on `threads.start` and `agents.ask`, with `threads.send`'s trust: `mentions: [{kind, id, name}]` and `pasted: [span]` are honoured only from a person's own surface. `threads.start` hears the first prompt as any person's turn (said row, tags resolved for the new thread, the notes beside the prompt for the model only); from a model, a module or a guest the tags are dropped. `agents.ask` from a person with tags sends the words on as that person (`core/modules` `CALL_AS.agents`: person labels only, and only to `threads.send`), so threads.send hears them; any other caller's tags are dropped (`core/switchboard/index.js`, `core/agents/index.js`, `core/modules/index.js`).
 - GitHub reads for you and your agents: where a pull request stands (checks, reviews, ready to merge), its comments, and a project's issues. Text written by others is marked as theirs.
 
@@ -388,6 +407,9 @@ Newest first. Every change to code lands here in the same commit. A new dependen
   stdout pipe), which named vyred itself, read as "vyred itself, not a caller" and ran a person's tool
   once in about 200 runs. The fd is now read afresh per attempt, no helper starts on a closed socket,
   and an answer from a socket that closed meanwhile is discarded (`core/daemon/peer.js`).
+- A tool with reach "asked" now runs for a model, the harness or a module when `vault.said.match` says the
+  person's own words (or a standing permission) asked for it, in that call's thread and its lineage. It
+  fails closed: no vault, a locked vault, an error or no thread is `not_asked` (`core/modules/index.js`).
 - The home lock is held only by vyred's real command line (node on core/daemon/main.js, or `vyre daemon`),
   not by any live process with "vyre" somewhere in its arguments (`core/daemon/lock.js`).
 - A caller chain that stays unreadable after a fresh read (a missing pid, an empty or timed-out `ps`) is
@@ -811,6 +833,11 @@ Newest first. Every change to code lands here in the same commit. A new dependen
   warnings, never failures. A module for a newer contract is never run: its row says which Vyre it
   needs. `vyre module upgrade` moves a module onto the current form, and pinned fixtures in
   `test/fixtures/modules/` hold every release to it.
+- Undo for what acts on your behalf (core/undo, PLAN P14). When an agent, the assistant, a watcher
+  or a module does something reversible for you, the module that did it records the inverse, and
+  one tap runs it. A model never supplies an inverse, and nothing that sends, posts, pays, deletes
+  outside or is your own action gets one. An agent can undo only its own actions. The log works
+  with the assistant switched off and keeps 30 days. `docs/design/undo.md` explains it.
 - A Mac can be the server: `scripts/install-mac-server.sh` installs Vyre in your own account (no root, no password), starts Colima for agents' computers, writes the setup code into `vyre.env`, and runs vyred as one LaunchAgent under `caffeinate` so the Mac stays awake while it runs. It starts when you sign in to that Mac; starting with nobody signed in waits for the system service. `--uninstall` keeps your data.
 - `link.health` answers in one shape everywhere (`reach`, `why`, `fix`, `since`, `tailnet`) on the
   Mac, the box and the relay client, with the older fields kept beside it. Vyre publishes the

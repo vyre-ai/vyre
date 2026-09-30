@@ -70,7 +70,7 @@ test("clean: refuses text, selection and value, and a bad surface or cwd", () =>
 
 test("report and now: fields merge per surface, the newest value of each field wins across surfaces", async t => {
   const { call } = await world(t);
-  assert.deepEqual((await call("context.now")).data, { project: null, cwd: null, thread: null, view: null, surface: null, device: null, app: null, window: null, url: null, at: null, surfaces: [] });
+  assert.deepEqual((await call("context.now")).data, { project: null, cwd: null, thread: null, view: null, surface: null, device: null, app: null, window: null, url: null, tz: null, localTime: null, day: null, at: null, surfaces: [] });
 
   const r1 = await call("context.report", { surface: "capsule", device: "alex-mac", app: "Safari", window: "Menu", url: "https://northwind.example/menu?session=abc#top" }, "capsule");
   assert.deepEqual(r1.data.changed.sort(), ["app", "url", "window"]);
@@ -96,6 +96,39 @@ test("report and now: fields merge per surface, the newest value of each field w
   assert.equal((await call("context.now")).data.url, null);
   // Same values again change nothing.
   assert.deepEqual((await call("context.report", { surface: "capsule", device: "alex-mac", app: "Terminal" }, "capsule")).data.changed, []);
+});
+
+test("tz, localTime and day: the reporting device's own clock, never the server's, newest device wins", async t => {
+  const { call } = await world(t);
+  assert.equal((await call("context.now")).data.tz, null);
+  assert.equal((await call("context.now")).data.day, null);
+
+  await call("context.report", { surface: "phone", device: "alex-phone", tz: "America/Los_Angeles", localTime: "2026-09-28T07:15:00-07:00" }, "tailnet:alex");
+  let now = (await call("context.now")).data;
+  assert.equal(now.tz, "America/Los_Angeles");
+  assert.equal(now.localTime, "2026-09-28T07:15:00-07:00");
+  assert.equal(now.day, "2026-09-28");
+
+  // A second device reports later: its clock wins, not the first device's, and not the server's.
+  await wait(5);
+  await call("context.report", { surface: "capsule", device: "alex-mac", tz: "Asia/Karachi", localTime: "2026-09-28T20:16:00+05:00" }, "capsule");
+  now = (await call("context.now")).data;
+  assert.equal(now.tz, "Asia/Karachi");
+  assert.equal(now.day, "2026-09-28");
+
+  // null clears it for that device; like every other field, the newest report wins even when it
+  // is a clear, so the answer goes null rather than falling back to an older device's value.
+  await call("context.report", { surface: "capsule", device: "alex-mac", tz: null, localTime: null }, "capsule");
+  now = (await call("context.now")).data;
+  assert.equal(now.tz, null);
+  assert.equal(now.day, null);
+});
+
+test("clean: refuses a tz or localTime that is not the device's own clock format", () => {
+  assert.throws(() => clean({ surface: "phone", tz: "not a zone!" }), /tz must be an IANA zone/);
+  assert.throws(() => clean({ surface: "phone", localTime: "2026-09-28 07:15" }), /localTime must be an ISO 8601/);
+  assert.throws(() => clean({ surface: "phone", localTime: "2026-09-28T07:15:00" }), /offset/, "no bare timestamp with no offset");
+  assert.deepEqual(clean({ surface: "phone", tz: "UTC", localTime: "2026-09-28T07:15:00Z" }).fields, { tz: "UTC", localTime: "2026-09-28T07:15:00Z" });
 });
 
 test("report: screen text and selection are refused with bad_input, and nothing is stored", async t => {

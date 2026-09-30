@@ -44,7 +44,7 @@ const str = { type: "string" };
 export const GROUPS = [
   ["models", "Models and thinking"], ["permissions", "Permissions"], ["sessions", "Sessions"], ["teammates", "Teammates"],
   ["notifications", "Notifications"], ["tips", "Tips"], ["appearance", "Appearance"], ["planner", "Planner"], ["memory", "Memory"], ["vault", "Vault"], ["files", "Files and terminal"],
-  ["tools", "Tools"], ["updates", "Updates"], ["devices", "Devices"],
+  ["tools", "Tools"], ["updates", "Updates"], ["devices", "Devices"], ["assistant", "Assistant"],
 ];
 
 /** What a secret setting's value reads as to anyone but the person. */

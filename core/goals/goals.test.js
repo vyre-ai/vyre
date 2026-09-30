@@ -6,6 +6,7 @@ import { discover, Registry } from "../modules/index.js";
 import { open } from "../store/index.js";
 import { Events } from "../events/index.js";
 import { tempHome, writeModule } from "../../test/helpers.js";
+import { installFakeReach } from "../../test/fixtures/fake-reach.js";
 
 /** A vyred in a temp home with core/goals and a fake threads module for scope checks. */
 async function boot(t) {
@@ -17,6 +18,8 @@ async function boot(t) {
       ctx.tool("threads.get", { run: async ({ thread }) => ({ thread: { id: thread, project: thread === "s1" ? "harlow-legal" : thread === "s2" ? "northwind" : null } }) });
       return {};
     } };`);
+  // Who may reach what (projects.reach): agent kit is granted harlow-legal only. The registry asks it for every agent call that names a project.
+  installFakeReach(root, home, { agents: [{ name: "kit", kind: "agent", projects: ["harlow-legal"] }], projects: [{ slug: "harlow-legal", name: "Harlow Legal" }, { slug: "northwind", name: "Northwind" }], access: { "harlow-legal:kit": true } });
   const db = open(path.join(home, "vyre.db"));
   const events = new Events(db);
   const reg = new Registry({ db, events, config: { role: "local" }, paths: { root: home }, log: () => {} });
@@ -109,7 +112,7 @@ test("goals: an agent cannot list another project's goals, and gets only its own
   await reg.call("goals.set", { project: "harlow-legal", goal: "Harlow's", milestones: ["a"] }, "deck");
   await reg.call("goals.set", { project: "northwind", goal: "Northwind's", milestones: ["a"] }, "deck");
   const asKitInS1 = input => reg.call("goals.list", input, "mcp:agent:kit", { thread: "s1" }); // s1 is in harlow-legal
-  assert.equal((await asKitInS1({ project: "northwind" })).error.code, "denied");
+  assert.equal((await asKitInS1({ project: "northwind" })).error.code, "not_found"); // the registry refuses a project the agent is not granted (projectArg), before goals does
   assert.deepEqual((await asKitInS1({})).data.map(g => g.goal), ["Harlow's"], "neither given: its own project by default, never every one");
   assert.deepEqual((await asKitInS1({ project: "harlow-legal" })).data.map(g => g.goal), ["Harlow's"]);
   // No thread at all (a bare module, no session context): nothing is its own.
@@ -121,7 +124,7 @@ test("goals: reviewer's LOW 2 - naming both a thread and a project checks both, 
   const asKitInS1 = (name, input) => reg.call(name, input, "mcp:agent:kit", { thread: "s1" }); // s1 is harlow-legal's
   // kit's own thread (s1), tagged with a project that is NOT s1's real one (northwind, s2's) -
   // used to pass on the thread check alone; both must hold now.
-  assert.equal((await asKitInS1("goals.set", { thread: "s1", project: "northwind", goal: "Mislabeled", milestones: ["a"] })).error.code, "denied");
+  assert.equal((await asKitInS1("goals.set", { thread: "s1", project: "northwind", goal: "Mislabeled", milestones: ["a"] })).error.code, "not_found"); // the registry refuses a project the agent is not granted (projectArg), before goals does
   // Its own thread with its own real project: still fine.
   const g = (await asKitInS1("goals.set", { thread: "s1", project: "harlow-legal", goal: "Correctly labeled", milestones: ["a"] })).data;
   assert.equal(g.state, "pending");

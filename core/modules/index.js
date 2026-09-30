@@ -53,12 +53,24 @@ export const firstParty = dir => {
  * @type {Record<string, string[]>}
  */
 // settings passes a person's change on to the module that keeps the value, as that person.
+/** How long an asked tool's target (and the thread lineage) may take to answer before the call is not_asked. */
+const TARGET_MS = 2000;
+/**
+ * A promise's answer, or null when it is later than `ms` (the timer never keeps the process alive).
+ * @template T @param {Promise<T>} p @param {number} ms @returns {Promise<T | null>}
+ */
+function withinMs(p, ms) {
+  let timer;
+  const late = new Promise(res => { timer = setTimeout(() => res(null), ms); if (timer.unref) timer.unref(); });
+  return Promise.race([p, late]).finally(() => clearTimeout(timer));
+}
 /** The one tool the agents module may call as the asking person: agents.ask's words and tags, heard by threads.send. @param {string} tool */
 export const agentsMayRelay = tool => tool === "threads.send";
 /** The per-call check on the agents module's relay: throws for any tool but threads.send. @param {string} tool @param {string} as */
 export function checkAgentsRelay(tool, as) {
   if (!agentsMayRelay(tool)) throw new Error(`agents may not call ${tool} as ${as}: it relays a person to threads.send only`);
 }
+/** @type {Record<string, any>} */
 const CALL_AS = { agents: (/** @type {string} */ as) => isPerson(as), link: ["link:box"], settings: ["cli", "local", "deck", "capsule"], mentions: (/** @type {string} */ as) => isPerson(as) || as === "module:sessions" || as === "module:assistant",
   // capsule runs a view's declared tool as the asking person (first party modules) or as the added module itself, never as anyone else.
   capsule: (/** @type {string} */ as) => isPerson(as) || /^module:[a-z][a-z0-9-]*$/.test(as),
@@ -215,6 +227,14 @@ export function validate(m, { firstParty = false } = {}) {
     const own = new Set(toolEntries(m).map(t => t.name));
     if (!Array.isArray(m.setupTools) || m.setupTools.some(/** @param {any} t */ t => typeof t !== "string")) out.push("setupTools must be a list of tool names");
     else for (const t of m.setupTools) if (!own.has(t)) out.push(`setupTools "${t}" is not a tool this module declares in does.tools`);
+  }
+  // An asked tool's target: one internal tool of this module, answering what one call acts on (built in only, see addedCheck).
+  for (const e of toolEntries(m)) {
+    if (!e.target) continue;
+    const own = toolEntries(m).find(x => x.name === e.target);
+    if (e.reach !== "asked") out.push(`tool "${e.name}": target is for an asked tool`);
+    else if (!own || !String(e.target).startsWith(String(m.name) + ".")) out.push(`tool "${e.name}": target "${e.target}" is not a tool this module declares in does.tools`);
+    else if (own.reach !== "modules") out.push(`tool "${e.name}": target "${e.target}" must be reach modules, an internal tool`);
   }
   // mentions: the # picker's kinds, each naming this module's own search and resolve tools (built in only, see addedCheck).
   if (Array.isArray(m.mentions)) {
@@ -936,9 +956,42 @@ export class Registry {
           internal: Boolean(def.internal) || reach === "modules",
           callers: reach === "person" ? [...PERSON_CALLERS] : Array.isArray(def.callers) ? def.callers : null,
           hook: Boolean(def.hook) || reach === "hook", presence: def.presence || false, core: Boolean(def.core),
-          reach, outward: (e && e.outward) || null, declaredReach: objectForm.has(name) });
+          reach, outward: (e && e.outward) || null, target: (e && e.target) || null, projectArg: (e && e.projectArg) || null, cwdArg: (e && e.cwdArg) || null, declaredReach: objectForm.has(name) });
       },
     };
+  }
+
+  /**
+   * Did the person's own words ask for this tool (reach "asked")? Asks vault.said.match, which
+   * matches the person's turn in this thread or its lineage, or a standing permission, and uses a
+   * plain ask up. Fails closed: no vault, a locked vault, an error or no thread answers no.
+   * A tool with a `target` (an internal tool of its own module) binds the yes to what the call acts on: the target
+   * answers { to: [string] } for this call's input, and that answer is the whole `to` of the match (each entry a
+   * composite key of the tool and the thing it acts on). An error or an empty answer is no.
+   * @param {string} tool @param {{ thread?: string, agent?: string }} meta @param {any} [def] @param {any} [input]
+   */
+  async saidMatch(tool, meta, def, input) {
+    if (!this.tools.has("vault.said.match")) return false;
+    try {
+      /** @type {string[]} */ let to = [tool];
+      if (def && def.target) {
+        // The target is a module's own code answering for a call that may not be the person's: late is no.
+        const t = await withinMs(this.call(def.target, { tool, input }, "module:vyred", { door: true, ...(/** @type {any} */ (meta).granted !== undefined ? { granted: /** @type {any} */ (meta).granted } : {}) }), TARGET_MS);
+        if (!t) return false;
+        const extra = t && t.data && Array.isArray(t.data.to) ? t.data.to.filter((/** @type {any} */ x) => typeof x === "string" && x) : [];
+        if (!extra.length) return false;
+        to = extra;
+      }
+      const thread = typeof meta.thread === "string" ? meta.thread : undefined;
+      let lineage;
+      if (thread && this.tools.has("threads.lineage")) {
+        const l = await withinMs(this.call("threads.lineage", { thread }, "module:vyred", { door: true }), TARGET_MS);
+        if (!l) return false;
+        if (l.data && Array.isArray(l.data.lineage)) lineage = l.data.lineage;
+      }
+      const r = await this.call("vault.said.match", { kind: "act_out", via: tool.split(".")[0], to, consume: true, ...(thread ? { thread } : {}), ...(lineage ? { lineage } : {}), ...(meta.agent ? { agent: meta.agent } : {}) }, "module:vyred", { door: true });
+      return Boolean(r.data && r.data.matched === true);
+    } catch { return false; }
   }
 
   /**
@@ -978,9 +1031,6 @@ export class Registry {
     if (def.outward && !isPerson(caller)) {
       return { error: { code: "held_unavailable", message: `${tool} acts as you outside. A call from anyone but you is held at the Gate, and that routing lands with the Gate wiring; until then it runs only from your own surface.` } };
     }
-    if (def.reach === "asked" && (["mcp", "harness", "module"].includes(callerKind(caller)) || agentClaim(caller) !== null)) {
-      return { error: { code: "not_asked", message: `${tool} runs for an agent only when your own words asked for it; tell the person what you would do` } };
-    }
     if (def.internal && !String(caller).startsWith("module:")) return { error: { code: "no_such_tool", message: `no tool ${tool}` } };
     if (Boolean(def.hook) !== (caller === "hook")) return { error: { code: "no_such_tool", message: `no tool ${tool}` } };
     if (!callerAllowed(def.callers, caller)) return { error: { code: "denied", message: `${tool} is not available to ${callerKind(caller)} callers` } };
@@ -1001,6 +1051,72 @@ export class Registry {
     }
     const problems = checkInput(def.input, input);
     if (problems.length) return { error: { code: "bad_input", message: problems.join("; ") } };
+    // A tool that takes a project declares projectArg, and one that takes a folder declares cwdArg. An agent's call for a
+    // project it is not granted (or a folder in one) is refused here, once, for every module alike: the one door is
+    // projects.reach (owner's revokes and the assistant's rule included). not_found, so a refusal never says whether the
+    // project exists. What was checked is what runs: a named project is rewritten to the canonical slug that was authorized.
+    // The tool gets meta.reach for what it lists; with no answer on the agent's grant it gets nothing (fail closed).
+    if ((def.projectArg || def.cwdArg) && agentClaim(caller) !== null) {
+      const fields = (/** @type {any} */ spec) => (spec ? (Array.isArray(spec) ? spec : [spec]) : []);
+      const valuesOf = (/** @type {string} */ arg) => {
+        const v = input && typeof input === "object" ? input[arg] : undefined;
+        return v === undefined || v === null || v === "" ? [] : Array.isArray(v) ? v : [v];
+      };
+      const refuse = { error: { code: "not_found", message: "no such project" } };
+      const named = fields(def.projectArg).flatMap(valuesOf);
+      const folders = fields(def.cwdArg).flatMap(valuesOf);
+      const r = await withinMs(this.call("projects.reach", { caller: String(caller), kind: "content" }, "module:vyred", { door: true }), TARGET_MS);
+      const reach = r && r.data && typeof r.data === "object" ? r.data : null;
+      if (!reach) {
+        if (named.length || folders.length) return refuse;
+        meta = { ...meta, reach: { all: false, projects: [] } };
+      } else {
+        const granted = reach.all ? null : (Array.isArray(reach.projects) ? reach.projects : []).filter((/** @type {any} */ p) => p && typeof p.slug === "string");
+        if (granted) {
+          // A name or a slug, exactly; a slug first. Anything else (an object, a number) is no.
+          const canon = (/** @type {any} */ v) => typeof v !== "string" ? null : (granted.find((/** @type {any} */ p) => p.slug === v) || granted.find((/** @type {any} */ p) => p.name === v) || {}).slug || null;
+          if (named.some(v => canon(v) === null)) return refuse;
+          let rewritten = input;
+          for (const arg of fields(def.projectArg)) {
+            const v = input && typeof input === "object" ? input[arg] : undefined;
+            if (v === undefined || v === null || v === "") continue;
+            rewritten = { ...rewritten, [arg]: Array.isArray(v) ? v.map(canon) : canon(v) };
+          }
+          input = rewritten;
+          // A folder belongs to the project that owns it; one in no project is refused for an agent with an explicit list.
+          if (folders.length) {
+            let scoped = null;
+            /** @type {Map<string, string>} the folder as given -> the real folder projects.of judged */
+            const canonical = new Map();
+            for (const cwd of folders) {
+              const o = typeof cwd === "string" ? await withinMs(this.call("projects.of", { cwd }, "module:vyred", { door: true }), TARGET_MS) : null;
+              const slug = o && o.data && typeof o.data.slug === "string" ? o.data.slug : null;
+              if (slug) {
+                if (!granted.some((/** @type {any} */ p) => p.slug === slug)) return refuse;
+                // What was judged is what runs: the tool gets the real folder (no `..`, no symlink), not the string it was sent.
+                if (typeof o.data.folder === "string" && o.data.folder) canonical.set(cwd, o.data.folder);
+                continue;
+              }
+              if (scoped === null) {
+                const sc = await withinMs(this.call("agents.scope", { name: String(agentClaim(caller)) }, "module:vyred", { door: true }), TARGET_MS);
+                const who = sc && sc.data ? sc.data : null;
+                scoped = !who || (who.kind !== "assistant" && who.projects !== "*");
+              }
+              if (scoped) return refuse;
+            }
+            if (canonical.size) {
+              const swap = (/** @type {any} */ v) => (typeof v === "string" && canonical.has(v) ? canonical.get(v) : v);
+              for (const arg of fields(def.cwdArg)) {
+                const v = input && typeof input === "object" ? input[arg] : undefined;
+                if (v === undefined || v === null) continue;
+                input = { ...input, [arg]: Array.isArray(v) ? v.map(swap) : swap(v) };
+              }
+            }
+          }
+        }
+        meta = { ...meta, reach: reach.all ? { all: true } : { all: false, projects: (Array.isArray(reach.projects) ? reach.projects : []).map((/** @type {any} */ p) => p && p.slug).filter(Boolean) } };
+      }
+    }
     if (this.deps.rules) {
       const verdict = await this.deps.rules({ tool, input, caller });
       if (!verdict.allow) return { error: { code: "denied", message: verdict.reason || "denied by rules" } };
@@ -1030,7 +1146,14 @@ export class Registry {
     // (firstParty above). Set here, over anything a caller passed, so no module can claim it.
     const rec = String(caller).startsWith("module:") ? this.modules.get(String(caller).slice(7)) : null;
     const fp = Boolean(rec && rec.dir && this.isFirstParty(rec.dir));
+    // An asked tool runs for a model, the harness or a module only when the person's own words asked for it. This is the
+    // LAST gate before the tool runs, and inside the once-per-key run: the match uses the ask up (consume), so a call
+    // refused above (bad input, a rule, a proof) and a retry that only replays the stored answer must never spend it.
+    const askedGate = def.reach === "asked" && (["mcp", "harness", "module"].includes(callerKind(caller)) || agentClaim(caller) !== null);
     const run = async () => {
+      if (askedGate && !(await this.saidMatch(tool, meta, def, input))) {
+        return { error: { code: "not_asked", message: `${tool} runs for an agent only when your own words asked for it; tell the person what you would do` } };
+      }
       try { return await this.run(def, input, { ...meta, caller, firstParty: fp, ...(idempotencyKey ? { idempotencyKey } : {}) }); }
       finally { if (counted) this.countUse(def.module); }
     };

@@ -1,0 +1,18 @@
+{
+  "name": "undo",
+  "version": "0.1.0",
+  "description": "The shared acted-log: what agents, the assistant, watchers and modules did for the person, each with the inverse its own module declared, so one tap undoes it.",
+  "roles": ["box", "local"],
+  "requires": [],
+  "does": {
+    "tools": [
+      { "name": "undo.record", "summary": "record an action with the inverse its module declared", "reach": "modules" },
+      { "name": "undo.list", "summary": "list what was done on the person's behalf, newest first", "reach": "anyone" },
+      { "name": "undo.run", "summary": "undo one recorded action by running its stored inverse", "reach": "anyone" }
+    ]
+  },
+  "watches": { "emits": ["undo.recorded", "undo.done", "undo.failed"] },
+  "shows": { "cli": [] },
+  "needs": {},
+  "teaches": {}
+}

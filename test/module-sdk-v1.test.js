@@ -102,6 +102,9 @@ test("v1: toolEntries gives every entry one shape", () => {
   assert.deepEqual(rows.find(r => r.name === "bakery.legacy"), { name: "bakery.legacy", summary: "", reach: "anyone", outward: null, cost: null });
   assert.deepEqual(rows.find(r => r.name === "bakery.flour"), { name: "bakery.flour", summary: "order flour from the supplier", reach: "anyone", outward: "pay", cost: null });
   assert.deepEqual(toolEntries({}), []);
+  // target, projectArg and cwdArg are additive: present only when the manifest sets them.
+  m.does.tools.push({ name: "bakery.scoped", summary: "s", projectArg: "project", cwdArg: ["cwd"], target: "bakery.flour" });
+  assert.deepEqual(toolEntries(m).find(r => r.name === "bakery.scoped"), { name: "bakery.scoped", summary: "s", reach: "anyone", outward: null, cost: null, target: "bakery.flour", projectArg: "project", cwdArg: ["cwd"] });
 });
 
 test("v1: capabilities are the install card, from the manifest alone", () => {
