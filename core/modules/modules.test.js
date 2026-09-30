@@ -832,6 +832,27 @@ test("modules v1: an asked tool with a target binds the person's yes to what the
   assert.match(bad([{ name: "gh.merge", summary: "m", reach: "asked", target: "gh.t" }, { name: "gh.t", summary: "t", reach: "modules" }]), /target is built in only/);
 });
 
+test("modules v1: an asked tool's retry with the same Idempotency-Key returns the stored answer and never spends a second ask, and a not_asked is not kept", async t => {
+  /** @type {any} */ (globalThis).__g = { allow: false, matches: 0 };
+  t.after(() => { delete /** @type {any} */ (globalThis).__g; });
+  const vault = `export default { async start(ctx) {
+    ctx.tool("vault.said.match", { internal: true, run: async input => { const g = globalThis.__g; g.matches++; const hit = g.allow; if (hit && input.consume === true) g.allow = false; return { matched: hit }; } });
+    return {};
+  } };`;
+  const gh = { version: "0.1.0", roles: ["local"], does: { tools: [{ name: "gh.merge", summary: "merge a PR", reach: "asked" }] } };
+  const ghSrc = `export default { async start(ctx) { ctx.tool("gh.merge", { input: { type: "object" }, run: async i => ({ merged: i.pr }) }); return {}; } };`;
+  const reg = await registry(t, [["gh", gh, ghSrc], ["vault", { version: "0.1.0", does: { tools: ["vault.said.match"] } }, vault]], { builtIn: true });
+  const g = () => /** @type {any} */ (globalThis).__g;
+  const call = () => reg.call("gh.merge", { pr: "12" }, "mcp:agent:kit", { thread: "t-1", idempotencyKey: "k1" });
+  assert.equal((await call()).error.code, "not_asked", "no ask yet");
+  g().allow = true; // the person says yes
+  assert.deepEqual((await call()).data, { merged: "12" }, "the retry is not stuck with the stored refusal");
+  assert.equal(g().matches, 2);
+  const again = await call();
+  assert.deepEqual([again.data, again.replayed], [{ merged: "12" }, true], "a replay returns the stored answer");
+  assert.equal(g().matches, 2, "and never asked vault, so it spent nothing");
+});
+
 test("modules v1: a required module below the range keeps the module from starting", async t => {
   const reg = await registry(t, [["bakery", { ...bakeryV1(), requires: { notes: ">=0.2.0" } }, bakerySrc], ["notes", good, notesSrc]]);
   assert.equal(reg.modules.get("bakery").state, "failed");

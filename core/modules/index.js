@@ -1039,14 +1039,6 @@ export class Registry {
       // The tool learns how the person proved it (and with which enrolled key), never the proof.
       meta = { ...meta, presence: { method: v.method, keyId: v.keyId ?? null, ...(v.where ? { where: v.where } : {}) } };
     }
-    // An asked tool runs for a model, the harness or a module only when the person's own words asked for it. This is the
-    // LAST gate before the tool runs, because the match uses the ask up (consume): a call refused above (bad input, a
-    // rule, a proof) must never have spent it.
-    if (def.reach === "asked" && (["mcp", "harness", "module"].includes(callerKind(caller)) || agentClaim(caller) !== null)) {
-      if (!(await this.saidMatch(tool, meta, def, input))) {
-        return { error: { code: "not_asked", message: `${tool} runs for an agent only when your own words asked for it; tell the person what you would do` } };
-      }
-    }
     // A call that carries an Idempotency-Key runs once per key; a retry gets the first answer.
     // The key reaches the tool too, so a tool that hands work on can carry it (threads.send uses
     // it as the Agent SDK message uuid, ADR 0030), and a retry after a restart is still one turn.
@@ -1058,7 +1050,14 @@ export class Registry {
     // (firstParty above). Set here, over anything a caller passed, so no module can claim it.
     const rec = String(caller).startsWith("module:") ? this.modules.get(String(caller).slice(7)) : null;
     const fp = Boolean(rec && rec.dir && this.isFirstParty(rec.dir));
+    // An asked tool runs for a model, the harness or a module only when the person's own words asked for it. This is the
+    // LAST gate before the tool runs, and inside the once-per-key run: the match uses the ask up (consume), so a call
+    // refused above (bad input, a rule, a proof) and a retry that only replays the stored answer must never spend it.
+    const askedGate = def.reach === "asked" && (["mcp", "harness", "module"].includes(callerKind(caller)) || agentClaim(caller) !== null);
     const run = async () => {
+      if (askedGate && !(await this.saidMatch(tool, meta, def, input))) {
+        return { error: { code: "not_asked", message: `${tool} runs for an agent only when your own words asked for it; tell the person what you would do` } };
+      }
       try { return await this.run(def, input, { ...meta, caller, firstParty: fp, ...(idempotencyKey ? { idempotencyKey } : {}) }); }
       finally { if (counted) this.countUse(def.module); }
     };
