@@ -141,8 +141,15 @@ const MODULE_STOP_MS = 5_000;
  * module shipped with Vyre; a module from anywhere else is held to more (its settings' stores).
  * @param {any} m @param {{ firstParty?: boolean }} [opts]
  */
-/** Event families only their first-party owners may declare: device sync is federation's. */
-export const RESERVED_EVENTS = { sync: ["sync"] };
+/**
+ * Event families only their first-party owners may declare: device sync is federation's, and the
+ * Gate, push, presence, said and memory families make other modules act on the person's data or
+ * trust, so an added module can't emit push.proactive, gate.held and the like.
+ */
+export const RESERVED_EVENTS = {
+  sync: ["sync"], gate: ["gate"], push: ["push", "assistant"], presence: ["presence"],
+  said: ["assistant"], memory: ["memory"],
+};
 
 export function validate(m, { firstParty = false } = {}) {
   const out = [];

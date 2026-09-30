@@ -51,6 +51,9 @@ test("modules: the five verbs must be objects", () => {
   assert.match(validate({ ...good, name: "sync", does: {}, watches: { emits: ["sync.deleted"] } }).join(), /reserved/, "a home module named sync is not first-party");
   assert.deepEqual(validate({ ...good, name: "sync", does: {}, watches: { emits: ["sync.deleted"] } }, { firstParty: true }), []);
   assert.match(validate({ ...good, name: "link", does: {}, watches: { emits: ["sync.deleted"] } }, { firstParty: true }).join(), /reserved for sync/, "only core/sync");
+  for (const e of ["push.proactive", "gate.held", "presence.proved", "said.aloud", "memory.updated"]) {
+    assert.match(validate({ ...good, watches: { emits: [e] } }).join(), new RegExp(`event "${e}" is reserved`), `added module refused ${e}`);
+  }
 });
 
 test("modules: dependencies start first; cycles and missing ones are named", () => {
