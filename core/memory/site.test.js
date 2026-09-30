@@ -16,12 +16,13 @@ const HOUR = 3_600_000;
 const KEY = "sk-ant-" + "a1b2c3d4e5".repeat(4);
 const AGENTS = [{ name: "juno", kind: "agent", projects: [] }];
 
-async function world(t, settings = {}) {
-  const db = open(path.join(tempHome(t), "vyre.db"));
+async function world(t, settings = {}, homeOverride = null) {
+  const home = tempHome(t);
+  const db = open(path.join(home, "vyre.db"));
   t.after(() => db.close());
   const tools = new Map(), emitted = [], clock = { now: NOW }, set = { ...settings };
   const ctx = {
-    name: "memory", config: { me: { domains: [] } }, paths: {}, store: { db, migrate: () => {} }, log: () => {}, now: () => clock.now,
+    name: "memory", config: { me: { domains: [] } }, paths: { root: homeOverride || home }, store: { db, migrate: () => {} }, log: () => {}, now: () => clock.now,
     events: { on: () => () => {}, emit: (type, payload) => emitted.push({ type, payload }), since: () => [], prune: () => 0 },
     call: async (tool, input) => tool === "settings.get" ? (set.__fail ? { error: { code: "failed", message: "hub down" } } : { data: { value: set[input.key] } }) : tool === "recall.search" ? { data: [] } : tool === "recall.thread" ? { data: { turns: [] } } : fakeReachCall(tool, input, { agents: AGENTS, projects: [] }),
     tool: (name, def) => tools.set(name, def),
@@ -480,4 +481,38 @@ test("memory.site.list returns what was forgotten in the last 24 hours and can b
   w.clock.now += 25 * HOUR;
   assert.deepEqual((await w.call("memory.site.list", {}, "deck")).data.forgotten, []);
   assert.equal((await w.call("memory.site.list", {}, "mcp:agent:juno")).code, "denied");
+});
+
+test("the docs world's sample site (deck/test/site-sample.js) is kept whole: a family, three controls, a flow that has run, one thing that used to work", async t => {
+  const { seedSites, SAMPLE_ORIGIN } = await import("../../deck/test/site-sample.js");
+  const w = await world(t);
+  await seedSites({ cli: (tool, input) => w.call(tool, input, "cli").then(r => { assert.ok(!r.error, `${tool}: ${r.error}`); return r.data; }), at: ms => { w.clock.now = ms; }, now: NOW });
+  const origin = (await w.call("memory.site.detail", { key: SAMPLE_ORIGIN }, "deck")).data;
+  assert.deepEqual(origin.names, ["Harlow CRM"]);
+  assert.equal(origin.family, "harlowcrm");
+  assert.deepEqual(origin.parts.controls.map(c => [c.id, c.label, c.quarantined]), [["c1", "Add contact on /contacts", false], ["c2", "Pipeline on /contacts", false], ["c3", "Export on /settings", true]]);
+  assert.equal(origin.used_to_work, 1);
+  assert.ok(origin.parts.controls.filter(c => !c.quarantined).every(c => Date.parse(c.verified) > NOW - 3 * HOUR), "the working controls were verified lately");
+  const fam = (await w.call("memory.site.detail", { key: "family:harlowcrm" }, "deck")).data;
+  assert.equal(fam.parts.api.length, 2);
+  assert.deepEqual([fam.parts.flows[0].label, fam.parts.flows[0].runs, fam.parts.flows[0].fails], ["Add a lead", 6, 1]);
+  const a = (await w.call("memory.ask", { question: "what do you know about Harlow CRM" }, "deck")).data;
+  assert.equal(a.via, "site");
+  assert.match(a.answer, /2 controls known on 1 page/);
+  assert.match(a.answer, /add-lead \(learned, 6 runs, 1 failed\)|Add a lead|add-lead/);
+  assert.match(a.answer, /used to work and were set aside/);
+});
+
+test("the test clock is honoured only when the store's home is under the OS temp directory", async t => {
+  const fs = await import("node:fs");
+  const os = await import("node:os");
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "siteclock-"));
+  const file = path.join(dir, "now");
+  fs.writeFileSync(file, new Date(NOW + 20 * DAY).toISOString());
+  const saved = { VYRE_SITE_TEST_CLOCK: process.env.VYRE_SITE_TEST_CLOCK, VYRE_CHROME_TEST: process.env.VYRE_CHROME_TEST };
+  t.after(() => { for (const [k, v] of Object.entries(saved)) { if (v === undefined) delete process.env[k]; else process.env[k] = v; } });
+  process.env.VYRE_SITE_TEST_CLOCK = file; process.env.VYRE_CHROME_TEST = "1";
+  const at = async home => { const w = await world(t, {}, home); await w.call("memory.site.put", { origin: ORIGIN, patch: patch() }); return (await w.call("memory.site.list", {}, "deck")).data.sites[0].updated; };
+  assert.equal(await at(null), NOW + 20 * DAY, "a temp home takes the test clock");
+  assert.equal(await at("/Users/alex/.vyre"), NOW, "a real home ignores it, so a forged clock cannot move its purge or undo windows");
 });

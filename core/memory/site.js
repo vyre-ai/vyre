@@ -11,6 +11,8 @@
 // (learn at all) and memory.site.sync (take what standalone Vyre for Chrome learned on its own).
 
 import fs from "node:fs";
+import os from "node:os";
+import nodePath from "node:path";
 import { answerSite, neededKeys } from "./site-answer.js";
 import {
   sanitize, testNow, emptyRecord, mergeRecord, mergeFamily, union, arrivalCard, heal, itemId, keyOk, isFamilyKey, isQuarantined, readConf, LIMITS,
@@ -32,8 +34,11 @@ export const SITE_TABLES = Object.freeze(["memory_site", "memory_site_events", "
  */
 export function register(ctx, { denied }) {
   const db = ctx.store.db;
-  // The store's one clock: the miss window and the two-day quarantine read it. Under a test flag a harness may set it (VYRE_SITE_TEST_CLOCK).
-  const now = () => testNow(process.env, p => fs.readFileSync(p, "utf8")) ?? (ctx.now ? ctx.now() : Date.now());
+  // The store's one clock: the miss window, the 24-hour undo and the two-day quarantine read it. Under a test flag, and only in a home under the OS
+  // temp directory, a harness may set it (VYRE_SITE_TEST_CLOCK).
+  const real = (/** @type {string|undefined} */ p) => { if (!p) return null; try { return fs.realpathSync(p); } catch { return nodePath.resolve(p); } };
+  const where = { home: real(ctx.paths && ctx.paths.root), tmp: real(os.tmpdir()) };
+  const now = () => testNow(process.env, p => fs.readFileSync(p, "utf8"), where) ?? (ctx.now ? ctx.now() : Date.now());
   const bad = (/** @type {string} */ m, code = "bad_input") => Object.assign(new Error(m), { code });
   const q = {
     get: db.prepare("SELECT key, kind, rev, record, card, updated FROM memory_site WHERE key = ?"),
