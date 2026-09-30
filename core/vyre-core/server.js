@@ -18,7 +18,7 @@
 //     presence.verify {tool, input, proof} read: does this proof (a header string) prove that call?
 //     presence.enroll / presence.remove    write: needs a proof over this exact input
 //     presence.session.open                write: after a capsule, device or passkey proof only
-//     keys.exists/ensure/box.pub/box.dh/route.pub/route.sign   the relay's keys (phase 5), never a private half
+//     keys.exists/ensure/box.pub/box.dh/route.pub/route.sign, keys.device.exists/ensure/pub/dh   the relay's keys (phase 5), never a private half
 
 import fs from "node:fs";
 import http from "node:http";
@@ -142,6 +142,10 @@ export async function startCore(o) {
     "keys.box.dh": async input => ({ secret: keys.boxDh(input.remote) }),
     "keys.route.pub": async () => ({ pub: keys.routePub() }),
     "keys.route.sign": async input => ({ sig: keys.routeSign(input.message) }),
+    "keys.device.exists": async () => ({ exists: keys.deviceExists() }),
+    "keys.device.ensure": async () => keys.deviceEnsure(),
+    "keys.device.pub": async () => ({ pub: keys.devicePub() }),
+    "keys.device.dh": async input => ({ secret: keys.deviceDh(input.remote) }),
   };
   const notModel = o.notModel || (pid => notModelOf(pid));
 
@@ -278,7 +282,7 @@ export async function startCore(o) {
         // Audited: ancestry cannot tell vyred from a process that detached itself, so the use of the
         // box's key is counted and shown (vyred prints core's events), where misuse would show.
         const data = await KEYS[tool](input);
-        if (tool === "keys.box.dh" || tool === "keys.route.sign") {
+        if (tool === "keys.box.dh" || tool === "keys.route.sign" || tool === "keys.device.dh") {
           keyUses += 1;
           log(`vyre-core: ${tool} by pid ${c.pid} (use ${keyUses} since core started)`);
           emit("keys.used", { tool, uses: keyUses, pid: c.pid });

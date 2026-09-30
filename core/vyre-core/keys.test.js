@@ -139,3 +139,31 @@ test("keys: notModelOf refuses a claude ancestor and an unreadable chain, and al
   assert.equal(notModelOf(11, { look }), true, "a launchd job's own child");
   assert.equal(notModelOf(30, { look }), false, "a chain that can't be read to the top");
 });
+
+test("keys: the device key is a separate X25519 key, made once, used through core, and refused to a model", async t => {
+  const c = await core(t);
+  const keys = createCoreKeys({ socket: c.socket, coreUid: uid });
+  assert.equal(await keys.deviceExists(), false);
+  await assert.rejects(() => keys.devicePub(), /device key yet/);
+  assert.equal(await keys.deviceEnsure(), true);
+  assert.equal(await keys.deviceEnsure(), false);
+  assert.equal(await keys.deviceExists(), true);
+  await keys.ensure();
+  const dpub = await keys.devicePub();
+  assert.notDeepEqual(dpub, await keys.boxPub(), "not the box's key");
+  const peer = peerKeys();
+  const s = await keys.deviceDh(rawPub(peer.publicKey));
+  const theirs = crypto.diffieHellman({ privateKey: peer.privateKey, publicKey: crypto.createPublicKey({ key: Buffer.concat([Buffer.from("302a300506032b656e032100", "hex"), dpub]), format: "der", type: "spki" }) });
+  assert.deepEqual(s, Buffer.from(theirs));
+  assert.equal(fs.statSync(path.join(c.dataDir, "device-key.json")).mode & 0o777, 0o600);
+  assert.ok(!(await coreTool("keys.device.pub", {}, { socket: c.socket })).data.pub.includes(JSON.parse(fs.readFileSync(path.join(c.dataDir, "device-key.json"), "utf8")).device));
+  const uses = (await coreCallEvents(c.socket)).filter(e => e.type === "keys.used").map(e => e.payload.tool);
+  assert.deepEqual(uses, ["keys.device.dh"], "the device DH is counted like the box's");
+  const m = await core(t, { notModel: () => false });
+  for (const tool of ["keys.device.exists", "keys.device.ensure", "keys.device.pub", "keys.device.dh"]) assert.equal((await coreTool(tool, { remote: "AA" }, { socket: m.socket })).status, 403, tool);
+  const f = fakeCoreKeys("alex");
+  assert.equal(await f.deviceEnsure(), true);
+  assert.equal((await f.devicePub()).length, 32);
+  assert.notDeepEqual(await f.devicePub(), await f.boxPub());
+  assert.equal((await f.deviceDh(rawPub(peer.publicKey))).length, 32);
+});

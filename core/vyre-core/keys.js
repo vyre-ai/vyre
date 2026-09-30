@@ -35,7 +35,42 @@ export function openKeys(dataDir) {
     if (!k) throw Object.assign(new Error("core has no relay keys yet: call keys.ensure first"), { code: "no_keys" });
     return k;
   };
+  // The device key: this Mac as a device of ANOTHER box (relay.join's Noise initiator identity), a
+  // separate X25519 key in its own file, so the box key and the device key never share a fate.
+  const dfile = path.join(dataDir, "device-key.json");
+  /** @type {Buffer | null} */
+  let dcache = null;
+  const dread = () => {
+    if (dcache) return dcache;
+    let j;
+    try { j = JSON.parse(fs.readFileSync(dfile, "utf8")); } catch (e) {
+      if (/** @type {any} */ (e).code === "ENOENT") return null;
+      throw new Error(`core's device key is unreadable (${dfile}): ${/** @type {Error} */ (e).message}`);
+    }
+    dcache = raw(j.device, "device-key.json device");
+    return dcache;
+  };
+  const dneed = () => {
+    const k = dread();
+    if (!k) throw Object.assign(new Error("core has no device key yet: call keys.device.ensure first"), { code: "no_keys" });
+    return k;
+  };
   return {
+    deviceExists: () => Boolean(dread()),
+    deviceEnsure() {
+      if (dread()) return { created: false };
+      fs.mkdirSync(dataDir, { recursive: true, mode: 0o700 });
+      const priv = crypto.generateKeyPairSync("x25519").privateKey.export({ format: "der", type: "pkcs8" }).subarray(-32);
+      const tmp = `${dfile}.${process.pid}.${crypto.randomBytes(4).toString("hex")}.tmp`;
+      fs.writeFileSync(tmp, JSON.stringify({ v: 1, device: b64(Buffer.from(priv)) }) + "\n", { mode: 0o600 });
+      try { fs.linkSync(tmp, dfile); } catch (e) { if (/** @type {any} */ (e).code !== "EEXIST") throw e; } finally { fs.rmSync(tmp, { force: true }); }
+      dcache = null;
+      dread();
+      return { created: true };
+    },
+    devicePub: () => b64(pubRaw(xPrivateKey(dneed()))),
+    /** @param {string} remote */
+    deviceDh: remote => dhB64(dneed(), remote),
     exists: () => Boolean(read()),
     /** Make both keys if there are none. @returns {{ created: boolean }} */
     ensure() {
