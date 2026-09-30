@@ -94,7 +94,7 @@ Two moments, quiet, in the same glass. No glow pulse, no bounce, nothing loops. 
   `lumen/lockup/`; iOS and Android sets are in each product folder, to be wired into the phone apps
   through launch. The phone app itself keeps the Vyre master icon; these are the product icons.
 - **capsule-sight (Vyre for Chrome):** `export/chrome/extension/` goes into the manifest `icons` (16, 32, 48, 128) and `action.default_icon` (16 and 32). The 16 px icon is a hand-tuned pixel grid: a window with a tab and a white bead in its address bar, on a dark tile with transparent corners. If it reads poorly in the real toolbar, send the screenshot.
-- **phone apps (via launch):** the Vyre app icon is `export/vyre/`: `ios/` (single 1024 plus legacy sizes), `android/` (adaptive, legacy, round, monochrome), `web/` (favicons, apple-touch, PWA and maskable). It carries no signature (it is the signature). Drive, Vault, Memory phone icons are in their own folders.
+- **phone apps (via launch):** the Vyre app icon is `export/vyre/`: `ios/` (single 1024 plus legacy sizes), `android/` (adaptive, legacy, round, monochrome), `web/` (favicons, apple-touch, PWA and maskable), `expo/` (native 1024 px `adaptive-foreground-1024.png`, `adaptive-background-1024.png`, `adaptive-monochrome-1024.png`, drawn at 1024, not scaled). It carries no signature (it is the signature). Drive, Vault, Memory phone icons are in their own folders.
 - **drive, vault, iq (now Memory):** your own surface takes `export/drive/`, `export/vault/`,
   `export/memory/`; product name on screen is "Vyre Drive", "Vyre Vault", "Vyre Memory".
 
