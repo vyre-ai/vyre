@@ -12,8 +12,8 @@
 # (default https://vyre.run/box/), VYRE_HOME (default ~/.vyre, where vyre.env lives).
 #
 # What it does, in order: checks the Mac and Node; downloads vyre.tgz and checks it against
-# SHA256SUMS from the same place; installs it under ~/.vyre-server/app; installs Colima (Homebrew)
-# for agents' computers, and starts it; puts the setup code and its time in vyre.env (0600) as
+# SHA256SUMS from the same place; installs it under ~/.vyre-server/app; installs Colima (Homebrew, or pinned
+# checksummed binaries without it) for agents' computers, and starts it; puts the setup code and its time in vyre.env (0600) as
 # VYRE_SETUP_CODE and VYRE_SETUP_CODE_AT; installs one LaunchAgent that runs vyred under
 # `caffeinate` (the Mac stays awake while vyred runs, and nothing system-wide changes, so there is
 # nothing to restore); waits for vyred to answer.
@@ -34,14 +34,32 @@ CODE=${VYRE_CODE:-}
 BASE=${VYRE_BOX_URL:-https://vyre.run/box/}
 # Overridable for tests only.
 UNAME_S=${VYRE_UNAME_S:-$(uname -s)}
+UNAME_M=${VYRE_UNAME_M:-$(uname -m)}
 LAUNCHCTL=${VYRE_LAUNCHCTL:-launchctl}
 VHOME=${VYRE_HOME:-$HOME/.vyre}
 SERVER_DIR=${VYRE_SERVER_DIR:-$HOME/.vyre-server}
 AGENTS_DIR=${VYRE_LAUNCHAGENTS:-$HOME/Library/LaunchAgents}
 LABEL=run.vyre.server
+COLIMA_LABEL=run.vyre.colima
 CAFF=${VYRE_CAFFEINATE:-/usr/bin/caffeinate}
 APP=$SERVER_DIR/app
 BIN=$SERVER_DIR/bin
+
+# Pinned release binaries for the no-Homebrew Colima install. Each sum was read from the release
+# itself and checked against a second source: Colima's colima-Darwin-*.sha256sum files (v0.10.3) and
+# Lima's signed-release SHA256SUMS (v2.2.0). Docker publishes no sums file: the two Docker sums below
+# were computed by downloading each docker-29.8.1.tgz once into a temp dir and running shasum -a 256.
+# An empty sum means "no pinned build for this release": the fallback refuses rather than run unverified.
+# VYRE_COLIMA_URL / _SHA256, VYRE_LIMA_URL / _SHA256 and VYRE_DOCKER_URL / _SHA256 override, for tests.
+COLIMA_VERSION=v0.10.3
+COLIMA_SHA256_ARM64=980ad8bf61a4ca370243f4cb41401a61276dcd2c2502bee7b9b86f9250169f34
+COLIMA_SHA256_AMD64=3082737fe8a98afda11cba7d9a20b6e56fe80c6153464beda04bec630758770b
+LIMA_VERSION=2.2.0
+LIMA_SHA256_ARM64=bbdef91774885a0d05f7b048c4eb89ae2bcf3a0c252ae7ca7934e63df76d93c3
+LIMA_SHA256_AMD64=0d6f99c19f6e4bc3c92730c4c29d929e6927f0cb0a0ba1a84383367135a8ff31
+DOCKER_VERSION=29.8.1
+DOCKER_SHA256_ARM64=5a8f5604d7673202b2af925229d15eb4bbb86f7f542e4ac8cd7aa3f14cfa0f8b
+DOCKER_SHA256_AMD64=de42b6bb38d0ea08333cdddc18b054d61d4c9f003b3616ae55d85ccea72c47c9
 
 say() { printf '%s\n' "$*"; }
 die() { printf 'vyre: %s\n' "$*" >&2; exit 1; }
@@ -117,9 +135,82 @@ install_app() {
   step "Vyre is in $APP"
 }
 
+# colima_fallback: no Homebrew. Downloads pinned Colima, Lima and (if there is no docker yet) the
+# static docker client into TMP, checks every one against its pinned sha256, and only then installs
+# them under SERVER_DIR, so a bad download installs nothing. Returns 1 with a plain note if it cannot.
+colima_fallback() {
+  case "$UNAME_M" in
+    arm64|aarch64) ca=arm64; da=aarch64; cs=$COLIMA_SHA256_ARM64; ls=$LIMA_SHA256_ARM64; ds=$DOCKER_SHA256_ARM64 ;;
+    x86_64|amd64) ca=x86_64; da=x86_64; cs=$COLIMA_SHA256_AMD64; ls=$LIMA_SHA256_AMD64; ds=$DOCKER_SHA256_AMD64 ;;
+    *) say "  note  no pinned Colima for this release ($UNAME_M); agents get no computer until Colima is installed"; return 1 ;;
+  esac
+  cs=${VYRE_COLIMA_SHA256-$cs}; ls=${VYRE_LIMA_SHA256-$ls}; ds=${VYRE_DOCKER_SHA256-$ds}
+  cu=${VYRE_COLIMA_URL:-https://github.com/abiosoft/colima/releases/download/$COLIMA_VERSION/colima-Darwin-$ca}
+  lu=${VYRE_LIMA_URL:-https://github.com/lima-vm/lima/releases/download/v$LIMA_VERSION/lima-$LIMA_VERSION-Darwin-$ca.tar.gz}
+  du=${VYRE_DOCKER_URL:-https://download.docker.com/mac/static/stable/$da/docker-$DOCKER_VERSION.tgz}
+  need_docker=1
+  ! command -v docker >/dev/null 2>&1 || need_docker=0
+  if [ -z "$cs" ] || [ -z "$ls" ] || { [ "$need_docker" = 1 ] && [ -z "$ds" ]; }; then
+    say "  note  no pinned Colima for this release; agents get no computer until Colima is installed"
+    return 1
+  fi
+  say "Downloading Colima and Lima (checked against pinned checksums)..."
+  mkdir -p "$TMP/cl"
+  curl -fsSL --retry 2 -o "$TMP/cl/colima" "$cu" || { say "  note  could not download Colima"; return 1; }
+  curl -fsSL --retry 2 -o "$TMP/cl/lima.tgz" "$lu" || { say "  note  could not download Lima"; return 1; }
+  [ "$need_docker" = 0 ] || curl -fsSL --retry 2 -o "$TMP/cl/docker.tgz" "$du" || { say "  note  could not download the docker client"; return 1; }
+  [ "$(sha256 "$TMP/cl/colima")" = "$cs" ] || { say "  note  the Colima download does not match its pinned checksum; nothing was installed"; return 1; }
+  [ "$(sha256 "$TMP/cl/lima.tgz")" = "$ls" ] || { say "  note  the Lima download does not match its pinned checksum; nothing was installed"; return 1; }
+  if [ "$need_docker" = 1 ]; then
+    [ "$(sha256 "$TMP/cl/docker.tgz")" = "$ds" ] || { say "  note  the docker client download does not match its pinned checksum; nothing was installed"; return 1; }
+  fi
+  mkdir -p "$TMP/cl/lima" "$TMP/cl/docker"
+  tar -xzf "$TMP/cl/lima.tgz" -C "$TMP/cl/lima" || { say "  note  the Lima download did not unpack; nothing was installed"; return 1; }
+  [ -f "$TMP/cl/lima/bin/limactl" ] || { say "  note  the Lima download has no limactl in it; nothing was installed"; return 1; }
+  if [ "$need_docker" = 1 ]; then
+    tar -xzf "$TMP/cl/docker.tgz" -C "$TMP/cl/docker" || { say "  note  the docker client did not unpack; nothing was installed"; return 1; }
+    [ -f "$TMP/cl/docker/docker/docker" ] || { say "  note  the docker download has no client in it; nothing was installed"; return 1; }
+  fi
+  mkdir -p "$BIN"
+  cp "$TMP/cl/colima" "$BIN/colima"; chmod 755 "$BIN/colima"
+  rm -rf "$SERVER_DIR/lima"; cp -R "$TMP/cl/lima" "$SERVER_DIR/lima"
+  [ "$need_docker" = 0 ] || { cp "$TMP/cl/docker/docker/docker" "$BIN/docker"; chmod 755 "$BIN/docker"; }
+  PATH="$BIN:$SERVER_DIR/lima/bin:$PATH"; export PATH
+  step "Colima $COLIMA_VERSION and Lima $LIMA_VERSION are in $SERVER_DIR"
+}
+
+# write_colima_plist: without brew services, a second LaunchAgent keeps Colima up (vz needs only Lima).
+write_colima_plist() {
+  p=$AGENTS_DIR/$COLIMA_LABEL.plist
+  mkdir -p "$AGENTS_DIR" "$VHOME/logs"
+  cat >"$p" <<EOF
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0"><dict>
+  <key>Label</key><string>$COLIMA_LABEL</string>
+  <key>ProgramArguments</key><array>
+    <string>$BIN/colima</string><string>start</string><string>--foreground</string>
+    <string>--vm-type</string><string>vz</string>
+    <string>--cpu</string><string>2</string><string>--memory</string><string>4</string><string>--disk</string><string>40</string>
+  </array>
+  <key>EnvironmentVariables</key><dict>
+    <key>PATH</key><string>$BIN:$SERVER_DIR/lima/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
+    <key>HOME</key><string>$HOME</string>
+  </dict>
+  <key>RunAtLoad</key><true/>
+  <key>KeepAlive</key><true/>
+  <key>ProcessType</key><string>Background</string>
+  <key>StandardOutPath</key><string>$VHOME/logs/colima.out</string>
+  <key>StandardErrorPath</key><string>$VHOME/logs/colima.out</string>
+</dict></plist>
+EOF
+  chmod 644 "$p"
+}
+
 # setup_colima: agents' computers run in Colima (open source, headless), never Docker Desktop. An
-# existing Docker Desktop is left alone and unused. Without Homebrew this says so and goes on: the
-# server works, agents get no computer until Colima is there.
+# existing Docker Desktop is left alone and unused. With Homebrew it installs Colima there; without,
+# it downloads pinned, checksummed binaries into SERVER_DIR and keeps Colima up with its own
+# LaunchAgent. If neither works it says so and goes on: the server works, agents get no computer.
 setup_colima() {
   if [ "$DRY" = 1 ]; then say "would install and start Colima (agents' computers)"; return 0; fi
   if ! command -v colima >/dev/null 2>&1; then
@@ -127,7 +218,12 @@ setup_colima() {
       say "Installing Colima with Homebrew..."
       brew install colima docker >/dev/null 2>&1 || { say "  note  Colima did not install; agents get no computer until it does (brew install colima docker)"; return 0; }
     else
-      say "  note  Colima needs Homebrew (https://brew.sh); agents get no computer until it is there"
+      colima_fallback || return 0
+      write_colima_plist
+      uid=$(id -u)
+      "$LAUNCHCTL" bootout "gui/$uid/$COLIMA_LABEL" >/dev/null 2>&1 || true
+      "$LAUNCHCTL" bootstrap "gui/$uid" "$AGENTS_DIR/$COLIMA_LABEL.plist" || { say "  note  launchctl could not start Colima; run: $BIN/colima start"; return 0; }
+      step "Colima is starting (its first start downloads a small Linux image)"
       return 0
     fi
   fi
@@ -220,7 +316,8 @@ start_service() {
 uninstall() {
   if [ "$DRY" = 1 ]; then say "would stop the service and remove $AGENTS_DIR/$LABEL.plist, $SERVER_DIR"; [ "$PURGE" = 0 ] || say "and, asking first, $VHOME"; return 0; fi
   "$LAUNCHCTL" bootout "gui/$(id -u)/$LABEL" >/dev/null 2>&1 || true
-  rm -f "$AGENTS_DIR/$LABEL.plist"
+  "$LAUNCHCTL" bootout "gui/$(id -u)/$COLIMA_LABEL" >/dev/null 2>&1 || true
+  rm -f "$AGENTS_DIR/$LABEL.plist" "$AGENTS_DIR/$COLIMA_LABEL.plist"
   rm -rf "$SERVER_DIR"
   if [ "$PURGE" = 1 ]; then
     ok=$YES

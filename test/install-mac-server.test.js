@@ -30,8 +30,7 @@ function mac(/** @type {import("node:test").TestContext} */ t) {
     launchctl: `echo "launchctl $*" >>"${log}"
 if [ "$1" = bootstrap ]; then
   P=$(sed -n 's|.*<string>\\(.*vyre-serve\\)</string>.*|\\1|p' "$3")
-  "$P" >>"${base}/serve.out" 2>&1 &
-  echo $! >>"${pids}"
+  if [ -n "$P" ]; then "$P" >>"${base}/serve.out" 2>&1 & echo $! >>"${pids}"; fi
 fi
 exit 0`,
     caffeinate: `echo "caffeinate $*" >>"${log}"\nshift\nexec "$@"`,
@@ -173,4 +172,104 @@ test("install-mac-server.sh: uninstall stops the service and removes the app, an
   assert.match(m.calls(), /launchctl bootout/);
   assert.equal(run(m.env, ["--uninstall", "--purge", "--yes"]).status, 0);
   assert.ok(!fs.existsSync(m.env.VYRE_HOME), "--purge --yes deletes it");
+});
+
+const sha = (/** @type {Buffer|string} */ b) => crypto.createHash("sha256").update(b).digest("hex");
+
+/** A Mac with no Homebrew and no colima: PATH holds only launchctl, caffeinate, node, and system dirs. Fake release files are served from file:// URLs. */
+function noBrew(/** @type {import("node:test").TestContext} */ t, /** @type {{ docker?: boolean }} */ opts = {}) {
+  const m = mac(t);
+  const bin = path.join(m.base, "bin"), tools = path.join(m.base, "tools"), rel = path.join(m.base, "rel");
+  fs.mkdirSync(tools); fs.mkdirSync(rel);
+  for (const n of ["launchctl", "caffeinate"]) fs.copyFileSync(path.join(bin, n), path.join(tools, n));
+  if (opts.docker) fs.writeFileSync(path.join(tools, "docker"), "#!/bin/sh\necho docker-desktop\n", { mode: 0o755 });
+  fs.symlinkSync(process.execPath, path.join(tools, "node"));
+  const colima = "#!/bin/sh\necho fake-colima\n";
+  fs.writeFileSync(path.join(rel, "colima"), colima);
+  const pk = (/** @type {string} */ name, /** @type {string} */ file, /** @type {string} */ body) => {
+    const d = path.join(m.base, "pk-" + name); fs.mkdirSync(path.join(d, path.dirname(file)), { recursive: true });
+    fs.writeFileSync(path.join(d, file), body, { mode: 0o755 });
+    execFileSync("tar", ["-czf", path.join(rel, name + ".tgz"), "-C", d, file.split("/")[0]]);
+    return sha(fs.readFileSync(path.join(rel, name + ".tgz")));
+  };
+  const limaSum = pk("lima", "bin/limactl", "#!/bin/sh\n");
+  const dockerSum = pk("docker", "docker/docker", "#!/bin/sh\necho docker-static\n");
+  const env = {
+    ...m.env, PATH: `${tools}:/usr/bin:/bin`, VYRE_UNAME_M: "arm64",
+    VYRE_COLIMA_URL: `file://${rel}/colima`, VYRE_COLIMA_SHA256: sha(colima),
+    VYRE_LIMA_URL: `file://${rel}/lima.tgz`, VYRE_LIMA_SHA256: limaSum,
+    VYRE_DOCKER_URL: `file://${rel}/docker.tgz`, VYRE_DOCKER_SHA256: dockerSum,
+  };
+  const installed = (/** @type {string} */ f) => fs.existsSync(path.join(m.env.VYRE_SERVER_DIR, f));
+  return { ...m, env, rel, installed, colimaPlist: path.join(m.env.VYRE_LAUNCHAGENTS, "run.vyre.colima.plist") };
+}
+
+test("install-mac-server.sh: without Homebrew, pinned Colima and Lima that match are installed with their own LaunchAgent", t => {
+  const m = noBrew(t);
+  const r = run(m.env, ["--yes", "--from", m.src]);
+  assert.equal(r.status, 0, r.stderr + r.stdout);
+  assert.ok(m.installed("bin/colima") && m.installed("lima/bin/limactl") && m.installed("bin/docker"));
+  assert.equal(fs.statSync(path.join(m.env.VYRE_SERVER_DIR, "bin", "colima")).mode & 0o111, 0o111);
+  const plist = fs.readFileSync(m.colimaPlist, "utf8");
+  assert.match(plist, /<string>--foreground<\/string>/);
+  assert.ok(plist.includes(`<string>${m.env.VYRE_SERVER_DIR}/bin/colima</string>`));
+  assert.match(plist, /<key>PATH<\/key><string>[^<]*\.vyre-server\/bin:/);
+  assert.match(plist, /<key>RunAtLoad<\/key><true\/>/);
+  assert.match(plist, /<key>KeepAlive<\/key><true\/>/);
+  assert.match(m.calls(), /launchctl bootstrap gui\/\d+ .*run\.vyre\.colima\.plist/);
+  assert.match(m.calls(), /launchctl bootstrap gui\/\d+ .*run\.vyre\.server\.plist/);
+});
+
+test("install-mac-server.sh: a Colima download that does not match its pinned sum installs nothing", t => {
+  const m = noBrew(t);
+  const r = run({ ...m.env, VYRE_COLIMA_SHA256: sha("something else") }, ["--yes", "--from", m.src]);
+  assert.equal(r.status, 0, "the server itself still installs");
+  assert.match(r.stdout, /does not match its pinned checksum; nothing was installed/);
+  assert.ok(!m.installed("bin/colima") && !m.installed("lima") && !m.installed("bin/docker"));
+  assert.ok(!fs.existsSync(m.colimaPlist));
+  assert.ok(!/run\.vyre\.colima/.test(m.calls()));
+});
+
+test("install-mac-server.sh: a Lima download that does not match refuses too, and Colima is not left behind", t => {
+  const m = noBrew(t);
+  const r = run({ ...m.env, VYRE_LIMA_SHA256: sha("nope") }, ["--yes", "--from", m.src]);
+  assert.match(r.stdout, /Lima download does not match/);
+  assert.ok(!m.installed("bin/colima") && !fs.existsSync(m.colimaPlist));
+});
+
+test("install-mac-server.sh: an empty pinned sum refuses with 'no pinned Colima for this release'", t => {
+  const m = noBrew(t);
+  const r = run({ ...m.env, VYRE_COLIMA_SHA256: "" }, ["--yes", "--from", m.src]);
+  assert.equal(r.status, 0, r.stderr);
+  assert.match(r.stdout, /no pinned Colima for this release/);
+  assert.ok(!m.installed("bin/colima") && !fs.existsSync(m.colimaPlist));
+});
+
+test("install-mac-server.sh: the fallback is taken only when brew is absent and colima is missing", t => {
+  // brew present: brew installs, no download, no colima LaunchAgent.
+  const a = mac(t);
+  const ra = run({ ...a.env, VYRE_COLIMA_URL: "file:///nonexistent" }, ["--yes", "--from", a.src]);
+  assert.equal(ra.status, 0, ra.stderr);
+  assert.ok(!fs.existsSync(path.join(a.env.VYRE_LAUNCHAGENTS, "run.vyre.colima.plist")));
+  assert.ok(!fs.existsSync(path.join(a.env.VYRE_SERVER_DIR, "bin", "colima")));
+  // colima already on PATH and no brew: left alone.
+  const b = noBrew(t);
+  fs.copyFileSync(path.join(a.base, "bin", "colima"), path.join(b.base, "tools", "colima"));
+  fs.chmodSync(path.join(b.base, "tools", "colima"), 0o755);
+  const rb = run(b.env, ["--yes", "--from", b.src]);
+  assert.equal(rb.status, 0, rb.stderr);
+  assert.ok(!b.installed("bin/colima") && !fs.existsSync(b.colimaPlist));
+});
+
+test("install-mac-server.sh: a Docker Desktop already there is untouched and no docker client is downloaded", t => {
+  const m = noBrew(t, { docker: true });
+  const app = path.join(m.base, "Docker.app"); fs.mkdirSync(app);
+  fs.writeFileSync(path.join(app, "Info.plist"), "docker desktop");
+  const before = fs.readFileSync(path.join(m.base, "tools", "docker"), "utf8");
+  const r = run({ ...m.env, VYRE_DOCKER_URL: "file:///nonexistent", VYRE_DOCKER_SHA256: "" }, ["--yes", "--from", m.src]);
+  assert.equal(r.status, 0, r.stderr + r.stdout);
+  assert.ok(m.installed("bin/colima"), "Colima still installs");
+  assert.ok(!m.installed("bin/docker"), "the existing docker is used, not replaced");
+  assert.equal(fs.readFileSync(path.join(m.base, "tools", "docker"), "utf8"), before);
+  assert.equal(fs.readFileSync(path.join(app, "Info.plist"), "utf8"), "docker desktop");
 });
