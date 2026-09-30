@@ -115,6 +115,7 @@ test("site.report: a success raises trust, misses cut it and quarantine it, an u
   assert.equal((await rep("miss")).data.conf, 0.36);
   w.clock.now += 3 * 24 * HOUR;
   await rep("miss");
+  w.clock.now += HOUR;
   const last = await rep("miss");
   assert.equal(last.data.quarantined, true);
   assert.equal((await w.call("memory.site.report", { origin: ORIGIN, part: "controls", id: "nope", outcome: "ok" })).data.conf, null);
@@ -304,7 +305,7 @@ test("memory.ask: a family answers for all its origins, and what used to work is
   // Three misses over two days set a control aside.
   const miss = () => w.call("memory.site.report", { origin: ORIGIN, part: "controls", id: "c1", outcome: "miss" });
   await w.call("memory.site.put", { origin: ORIGIN, patch: patch() });
-  await miss(); w.clock.now += 3 * 24 * HOUR; await miss(); await miss();
+  await miss(); w.clock.now += 3 * 24 * HOUR; await miss(); w.clock.now += HOUR; await miss();
   assert.match((await w.call("memory.ask", { question: Q }, "deck")).data.answer, /used to work and were set aside/);
 });
 
@@ -355,7 +356,7 @@ test("S2 forgetting a site forgets what was said about it: the answers log and a
   const w = await world(t);
   await w.call("memory.site.put", { origin: ORIGIN, patch: patch() });
   const a = (await w.call("memory.ask", { question: Q }, "deck")).data;
-  assert.ok(/** @type {any} */ (w.db.prepare("SELECT answer FROM memory_iq_answers WHERE id = ?").get(a.answer_id)).answer.includes("GoHighLevel"));
+  assert.match(/** @type {any} */ (w.db.prepare("SELECT answer FROM memory_iq_answers WHERE id = ?").get(a.answer_id)).answer, /^site answer: https:\/\/app\.ghl\.example$/, "a site answer is logged by its site, not its text");
   await w.call("memory.correct", { answer: a.answer_id, action: "wrong" }, "deck");
   await w.call("memory.site.forget", { key: ORIGIN }, "deck");
   assert.equal(/** @type {any} */ (w.db.prepare("SELECT answer FROM memory_iq_answers WHERE id = ?").get(a.answer_id)).answer, "[forgotten]");
@@ -381,4 +382,52 @@ test("T4 a question names its site from the index; other records are never parse
   w.db.prepare("INSERT INTO memory_site (key, kind, rev, record, card, updated, names, family) VALUES (?,?,?,?,?,?,?,?)").run("https://broken.example", "origin", 1, "{not json", "{}", NOW, "broken", null);
   assert.equal((await w.call("memory.ask", { question: Q }, "deck")).data.via, "site");
   assert.notEqual((await w.call("memory.ask", { question: "what is the capital of France" }, "deck")).data.via, "site", "a question that names no site parses nothing");
+});
+
+test("quarantine: three misses in 30 seconds are one miss and set nothing aside; it takes misses across two days", async t => {
+  const w = await world(t);
+  await w.call("memory.site.put", { origin: ORIGIN, patch: patch() });
+  const miss = () => w.call("memory.site.report", { origin: ORIGIN, part: "controls", id: "c1", outcome: "miss" });
+  const first = (await miss()).data;
+  for (let i = 0; i < 5; i++) { w.clock.now += 6000; await miss(); }
+  const after = (await miss()).data;
+  assert.equal(after.conf, first.conf, "a flood of misses inside one visit is one miss");
+  assert.equal(after.quarantined, false);
+  const d = (await w.call("memory.site.detail", { key: ORIGIN }, "deck")).data;
+  assert.equal(d.used_to_work, 0);
+  // Separate visits on the same day still do not: it needs the misses to span two days.
+  w.clock.now += 2 * HOUR; await miss(); w.clock.now += 2 * HOUR;
+  assert.equal((await miss()).data.quarantined, false);
+  w.clock.now += 2 * 24 * HOUR;
+  assert.equal((await miss()).data.quarantined, true);
+});
+
+test("a forgotten row can be brought back for 24 hours, like a whole site", async t => {
+  const w = await world(t);
+  await w.call("memory.site.put", { origin: ORIGIN, patch: patch() });
+  await w.call("memory.site.report", { origin: ORIGIN, part: "controls", id: "c1", outcome: "ok" });
+  assert.equal((await w.call("memory.site.forget", { key: ORIGIN, part: "controls", id: "c1" }, "deck")).data.forgotten, 1);
+  assert.equal((await w.call("memory.site.get", { origin: ORIGIN, parts: ["controls"] })).data.origin.controls.length, 0);
+  assert.equal((await w.call("memory.site.restore", { key: ORIGIN, part: "controls", id: "c1" }, "deck")).data.restored, 1);
+  const back = (await w.call("memory.site.get", { origin: ORIGIN, parts: ["controls"] })).data.origin.controls;
+  assert.deepEqual([back.length, back[0].conf], [1, 0.6], "it returns with the trust it had");
+  // A row can be forgotten again after a restore; after 24 hours it cannot be brought back.
+  await w.call("memory.site.forget", { key: ORIGIN, part: "controls", id: "c1" }, "deck");
+  w.clock.now += 25 * HOUR;
+  assert.equal((await w.call("memory.site.restore", { key: ORIGIN, part: "controls", id: "c1" }, "deck")).data.restored, 0);
+  assert.equal(/** @type {any} */ (w.db.prepare("SELECT COUNT(*) n FROM memory_site_forgotten_items").get()).n, 0, "purged");
+  assert.equal((await w.call("memory.site.restore", { key: ORIGIN, part: "controls", id: "nope" }, "deck")).data.restored, 0);
+  assert.equal((await w.call("memory.site.restore", { key: ORIGIN, part: "controls", id: "c1" }, "mcp:agent:juno")).code, "denied");
+});
+
+test("Wrong? on a site answer is remembered by the question and the site, so the same summary with new counts does not come back", async t => {
+  const w = await world(t);
+  await w.call("memory.site.put", { origin: ORIGIN, patch: patch() });
+  const a = (await w.call("memory.ask", { question: Q }, "deck")).data;
+  assert.equal(a.via, "site");
+  await w.call("memory.correct", { answer: a.answer_id, action: "wrong" }, "deck");
+  await w.call("memory.site.put", { origin: ORIGIN, patch: { controls: [{ id: "c2", page: "/contacts", role: "tab", selector: { strategy: "identifier", identifier: "tab-two" } }] } });
+  const again = (await w.call("memory.ask", { question: Q }, "deck")).data;
+  assert.equal(again.via, "corrected", "the summary changed (two controls now), and it is still refused");
+  assert.equal((await w.call("memory.ask", { question: "what do you know about ghl" }, "deck")).data.via, "site", "another question is not affected");
 });

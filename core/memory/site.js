@@ -23,7 +23,7 @@ const EVENTS_PER_KEY = 200;
 const PARTS = ["frames", "controls", "api", "flows", "notes", "ready", "wall", "signedIn"];
 
 /** Tables this part of memory owns, for memory.wipe and memory.export when they land. */
-export const SITE_TABLES = Object.freeze(["memory_site", "memory_site_events", "memory_site_forgotten", "memory_site_gone"]);
+export const SITE_TABLES = Object.freeze(["memory_site", "memory_site_events", "memory_site_forgotten", "memory_site_gone", "memory_site_forgotten_items"]);
 
 /**
  * @param {any} ctx
@@ -48,6 +48,10 @@ export function register(ctx, { denied }) {
     unforget: db.prepare("SELECT record, at FROM memory_site_forgotten WHERE key = ?"),
     unforgot: db.prepare("DELETE FROM memory_site_forgotten WHERE key = ?"),
     purge: db.prepare("DELETE FROM memory_site_forgotten WHERE at < ?"),
+    itemForgot: db.prepare("INSERT INTO memory_site_forgotten_items (key, part, id, item, at) VALUES (?,?,?,?,?) ON CONFLICT (key, part, id) DO UPDATE SET item = excluded.item, at = excluded.at"),
+    itemGet: db.prepare("SELECT item, at FROM memory_site_forgotten_items WHERE key = ? AND part = ? AND id = ?"),
+    itemDel: db.prepare("DELETE FROM memory_site_forgotten_items WHERE key = ? AND part = ? AND id = ?"),
+    itemPurge: db.prepare("DELETE FROM memory_site_forgotten_items WHERE at < ?"),
     gone: db.prepare("INSERT INTO memory_site_gone (key, at) VALUES (?,?) ON CONFLICT (key) DO UPDATE SET at = excluded.at"),
     goneGet: db.prepare("SELECT at FROM memory_site_gone WHERE key = ?"),
     goneDel: db.prepare("DELETE FROM memory_site_gone WHERE key = ?"),
@@ -91,7 +95,7 @@ export function register(ctx, { denied }) {
   const familyKey = (/** @type {string} */ id) => `family:${id}`;
   const cardFor = (/** @type {string} */ key) => { const r = /** @type {any} */ (q.cardOf.get(key)); return r ? { card: JSON.parse(r.card), rev: Number(r.rev) } : null; };
   /** Forgotten records leave the disk after 24 hours, whenever the store is used, not only at start. */
-  const purge = () => { q.purge.run(now() - UNDO_MS); q.gonePurge.run(now() - GONE_MS); };
+  const purge = () => { q.purge.run(now() - UNDO_MS); q.itemPurge.run(now() - UNDO_MS); q.gonePurge.run(now() - GONE_MS); };
   purge();
 
   /** Forget a whole record: kept for 24 hours for an undo, and remembered as forgotten so a replica cannot bring it back. @param {string} key @param {any} [rec] @param {string} [why] @param {string|null} [item] */
@@ -210,14 +214,14 @@ export function register(ctx, { denied }) {
   });
 
   ctx.tool("memory.site.forget", {
-    description: "Forget one item of a site ({ key, part, id }) or a whole record ({ key }, an origin or family:<id>); all: true forgets every site. A whole record can be brought back for 24 hours with site.restore. The person's own surfaces only.",
+    description: "Forget one item of a site ({ key, part, id }) or a whole record ({ key }, an origin or family:<id>); all: true forgets every site. Either can be brought back for 24 hours with memory.site.restore ({ key } or { key, part, id }). The person's own surfaces only.",
     input: { type: "object", properties: { key: { type: "string" }, part: { type: "string", enum: PARTS }, id: { type: "string" }, all: { type: "boolean" } } },
     run: async (i, { caller } = {}) => {
       personOnly(caller, "forgetting a site");
       purge();
       if (i.all === true) {
         const rows = /** @type {any[]} */ (q.all.all());
-        for (const r of rows) { q.forgot.run(r.key, r.record, now()); q.gone.run(r.key, now()); q.del.run(r.key); event(r.key, "forgot", null, null); }
+        for (const r of rows) forgetKey(r.key, JSON.parse(r.record));
         return { forgotten: rows.length, undo_ms: UNDO_MS };
       }
       if (!keyOk(i.key)) throw bad("key is an origin or family:<id>");
@@ -228,6 +232,7 @@ export function register(ctx, { denied }) {
         if (!Array.isArray(list)) throw bad("unknown part");
         const at = list.findIndex((/** @type {any} */ x) => itemId(i.part, x) === String(i.id));
         if (at < 0) return { forgotten: 0 };
+        q.itemForgot.run(i.key, String(i.part), String(i.id).slice(0, 200), JSON.stringify(list[at]), now());
         list.splice(at, 1);
         rec.tombstones = [{ part: i.part, id: String(i.id).slice(0, 200), at: new Date(now()).toISOString() }, ...rec.tombstones].slice(0, LIMITS.tombstones);
         rec.rev += 1; rec.updated = new Date(now()).toISOString();
@@ -239,11 +244,27 @@ export function register(ctx, { denied }) {
     },
   });
 
+  /** Bring back one forgotten item within 24 hours: it returns with the trust it had, and its tombstone is lifted. @param {string} key @param {string} part @param {string} id */
+  const restoreItem = (key, part, id) => {
+    purge();
+    const r = /** @type {any} */ (q.itemGet.get(key, part, id));
+    const rec = load(key);
+    if (!r || !rec || now() - Number(r.at) > UNDO_MS) return 0;
+    const list = part === "wall" ? rec.login.wall : part === "signedIn" ? rec.login.signedIn : rec[part];
+    if (!Array.isArray(list)) return 0;
+    if (!list.some((/** @type {any} */ x) => itemId(part, x) === id)) list.push(JSON.parse(r.item));
+    rec.tombstones = rec.tombstones.filter((/** @type {any} */ t) => !(t.part === part && t.id === id));
+    rec.rev += 1; rec.updated = new Date(now()).toISOString();
+    save(rec); q.itemDel.run(key, part, id); event(key, "restored", `${part}:${id.slice(0, 60)}`, null);
+    return 1;
+  };
+
   ctx.tool("memory.site.restore", {
-    description: "Bring back a site forgotten in the last 24 hours: { key } -> { restored }. The person's own surfaces only.",
-    input: { type: "object", required: ["key"], properties: { key: { type: "string" } } },
+    description: "Bring back what was forgotten in the last 24 hours: a whole site ({ key }) or one row of it ({ key, part, id }) -> { restored }. The person's own surfaces only.",
+    input: { type: "object", required: ["key"], properties: { key: { type: "string" }, part: { type: "string", enum: PARTS }, id: { type: "string" } } },
     run: async (i, { caller } = {}) => {
       personOnly(caller, "restoring a site");
+      if (i.part && i.id != null) return { restored: restoreItem(String(i.key), String(i.part), String(i.id)) };
       return { restored: restoreKey(String(i.key)) };
     },
   });

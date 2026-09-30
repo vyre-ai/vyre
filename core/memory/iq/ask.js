@@ -156,6 +156,9 @@ export function drafter(draft, used) {
   };
 }
 
+/** What a site answer is remembered by in a correction: the sites it is about, never its text. @param {any[]} sources */
+const siteMark = sources => `site answer: ${[...new Set((sources || []).map(x => x && x.site).filter(Boolean))].sort().join(", ")}`;
+
 export function asker({ db, answer, retrieve, site = null, runner = null, model = () => "haiku", budget = { allow: () => true, charge: () => {} }, fixes = null, personalQ = () => false, trusted = () => true, decide = null }) {
   const get = db.prepare("SELECT reply FROM memory_iq_asks WHERE hash = ?");
   const put = db.prepare("INSERT OR REPLACE INTO memory_iq_asks (hash, v, at, reply, usd) VALUES (?,?,?,?,?)");
@@ -180,12 +183,13 @@ export function asker({ db, answer, retrieve, site = null, runner = null, model 
       if (siteAns && siteAns.answer && out.via !== "corrected") {
         // What the normal answer finds answers alone; the site summary speaks only when nothing else did.
         if (!(out.answer && !out.abstained)) { const { limited, message, why, ...rest } = out; out = { ...rest, answer: siteAns.answer, confidence: siteAns.confidence, abstained: false, known: [], sources: siteAns.sources, via: "site" }; }
-        // Said to be wrong: the site summary is never given again for this question either.
-        if (fix && fix.action === "wrong" && out.answer === fix.old) out = { answer: null, confidence: 0, abstained: true, known: [`You said "${fix.old}" is wrong.`], sources: [], via: "corrected", why: "corrected", cost_usd: 0, latency_ms: out.latency_ms };
+        // Said to be wrong: the site summary is never given again for this question. It is remembered by the question and the site, not
+        // by its text, which changes with every count and date.
+        if (fix && fix.action === "wrong" && out.via === "site" && fix.old === siteMark(out.sources)) out = { answer: null, confidence: 0, abstained: true, known: [`You said "${fix.old}" is wrong.`], sources: [], via: "corrected", why: "corrected", cost_usd: 0, latency_ms: out.latency_ms };
       }
       // An answer the person can correct where it appears, by this id.
       // A "not sure" has one too: the person can type the answer IQ did not have.
-      if (fixes && q && out.via !== "corrected" && !out.limited) out.answer_id = fixes.issue({ question: q, answer: out.answer || "", via: out.via, facts: r.facts || [], sources: out.sources });
+      if (fixes && q && out.via !== "corrected" && !out.limited) out.answer_id = fixes.issue({ question: q, answer: out.via === "site" ? siteMark(out.sources) : out.answer || "", via: out.via, facts: r.facts || [], sources: out.sources });
       delete out.facts;
       return out;
     };

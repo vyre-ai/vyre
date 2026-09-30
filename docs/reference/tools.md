@@ -3708,7 +3708,7 @@ One site in full, for the Sites list: { key, kind, names, family, related, rev, 
 
 ### `memory.site.forget`
 
-Forget one item of a site ({ key, part, id }) or a whole record ({ key }, an origin or family:<id>); all: true forgets every site. A whole record can be brought back for 24 hours with site.restore. The person's own surfaces only.
+Forget one item of a site ({ key, part, id }) or a whole record ({ key }, an origin or family:<id>); all: true forgets every site. Either can be brought back for 24 hours with memory.site.restore ({ key } or { key, part, id }). The person's own surfaces only.
 
 - Input:
   - `all` boolean
@@ -3762,10 +3762,12 @@ One outcome for one item Chrome already holds: { origin, target?, part, id, outc
 
 ### `memory.site.restore`
 
-Bring back a site forgotten in the last 24 hours: { key } -> { restored }. The person's own surfaces only.
+Bring back what was forgotten in the last 24 hours: a whole site ({ key }) or one row of it ({ key, part, id }) -> { restored }. The person's own surfaces only.
 
 - Input:
   - `key` string, required
+  - `id` string
+  - `part` one of "frames", "controls", "api", "flows", "notes", "ready", "wall", "signedIn"
 - Callers: any caller
 
 ### `memory.site.sync`

@@ -283,5 +283,6 @@ export const MIGRATIONS = [
   CREATE TABLE memory_site_events (id INTEGER PRIMARY KEY, key TEXT NOT NULL, at INTEGER NOT NULL, kind TEXT NOT NULL, item TEXT, outcome TEXT);
   CREATE INDEX memory_site_events_key ON memory_site_events (key, at);
   CREATE TABLE memory_site_forgotten (key TEXT PRIMARY KEY, record TEXT NOT NULL, at INTEGER NOT NULL) WITHOUT ROWID;
-  CREATE TABLE memory_site_gone (key TEXT PRIMARY KEY, at INTEGER NOT NULL) WITHOUT ROWID;`,
+  CREATE TABLE memory_site_gone (key TEXT PRIMARY KEY, at INTEGER NOT NULL) WITHOUT ROWID;
+  CREATE TABLE memory_site_forgotten_items (key TEXT NOT NULL, part TEXT NOT NULL, id TEXT NOT NULL, item TEXT NOT NULL, at INTEGER NOT NULL, PRIMARY KEY (key, part, id)) WITHOUT ROWID;`,
 ];
