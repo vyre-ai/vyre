@@ -164,7 +164,10 @@ export class Cdp {
     await this.connect();
     if (this.sessionId) return this.sessionId;
     const { targetInfos } = await this.send("Target.getTargets");
-    let target = (targetInfos || []).find(t => t.type === "page" && !t.url.startsWith("devtools://"));
+    // A real web page, not one of Chrome's own (chrome://omnibox-popup, devtools://, chrome-untrusted://): those are also
+    // type "page", often sort first, and the hands would then read a popup and answer "nothing matches" (found by the
+    // end-to-end proof on the test server, scripts/computers-proof).
+    let target = (targetInfos || []).find(t => t.type === "page" && /^(https?:|about:|data:)/i.test(String(t.url || "")));
     if (!target) {
       const { targetId } = await this.send("Target.createTarget", { url: "about:blank" });
       target = { targetId };

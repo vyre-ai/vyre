@@ -39,17 +39,22 @@ export const BROWSERS = {
   chromium: { mac: "Chromium", linux: "chromium", win: "Chromium" },
   brave: { mac: "BraveSoftware/Brave-Browser", linux: "BraveSoftware/Brave-Browser", win: "BraveSoftware\\Brave-Browser" },
   edge: { mac: "Microsoft Edge", linux: "microsoft-edge", win: "Microsoft\\Edge" },
+  // Chromium browsers that keep their profile under "<name>/User Data" on macOS. Their native hosts live there, not under Google/Chrome.
+  dia: { mac: "Dia/User Data" },
+  arc: { mac: "Arc/User Data" },
 };
+/** Whether a browser has a known place for native hosts on this platform (Dia and Arc: macOS only, for now). @param {Browser} b @param {string} platform */
+export const available = (b, platform) => Boolean(BROWSERS[b] && (platform === "darwin" ? BROWSERS[b].mac : platform === "win32" ? BROWSERS[b].win : BROWSERS[b].linux));
 /** @typedef {keyof typeof BROWSERS} Browser */
 
 /** @param {string} home @param {string} platform @param {Browser} b */
-function manifestDir(home, platform, b) {
+export function manifestDir(home, platform, b) {
   const name = BROWSERS[b];
-  if (platform === "darwin") return path.join(home, "Library", "Application Support", name.mac, "NativeMessagingHosts");
-  return path.join(home, ".config", name.linux, "NativeMessagingHosts");
+  if (platform === "darwin") return path.join(home, "Library", "Application Support", /** @type {string} */ (name.mac), "NativeMessagingHosts");
+  return path.join(home, ".config", /** @type {string} */ (name.linux), "NativeMessagingHosts");
 }
 /** @param {Browser} b */
-const regKey = b => `HKCU\\Software\\${BROWSERS[b].win}\\NativeMessagingHosts\\${HOST_NAME}`;
+const regKey = b => `HKCU\\Software\\${/** @type {any} */ (BROWSERS[b]).win}\\NativeMessagingHosts\\${HOST_NAME}`;
 
 /** @param {{ home?: string, platform?: string, vyreHome?: string }} o */
 function place(o) {
@@ -83,7 +88,7 @@ export const launcherOf = (hostDir, windows) => path.join(hostDir, windows ? "ru
  */
 function detect(p) {
   if (p.windows) return /** @type {Browser[]} */ (["chrome"]);
-  return /** @type {Browser[]} */ (Object.keys(BROWSERS)).filter(b => b === "chrome" || fs.existsSync(path.dirname(manifestDir(p.home, p.platform, b))));
+  return /** @type {Browser[]} */ (Object.keys(BROWSERS)).filter(b => available(b, p.platform) && (b === "chrome" || fs.existsSync(path.dirname(manifestDir(p.home, p.platform, b)))));
 }
 
 /**
@@ -112,8 +117,11 @@ export function install(o) {
   const registry = o.registry || realRegistry;
   /** @type {{ browser: Browser, file: string, key?: string }[]} */
   const written = [];
+  /** @type {Browser[]} browsers asked for but with no known place for native hosts on this platform */
+  const skipped = [];
   for (const b of browsers) {
     if (!BROWSERS[b]) throw new Error(`unknown browser "${b}"`);
+    if (!available(b, p.platform)) { skipped.push(b); continue; }
     if (p.windows) {
       fs.mkdirSync(path.dirname(p.winManifest), { recursive: true });
       fs.writeFileSync(p.winManifest, body);
@@ -127,7 +135,7 @@ export function install(o) {
       written.push({ browser: b, file });
     }
   }
-  return { ok: true, extensionId: o.extensionId, launcher, written, manifest };
+  return { ok: true, extensionId: o.extensionId, launcher, written, ...(skipped.length ? { skipped } : {}), manifest };
 }
 
 /** Remove what install wrote, for the given browsers (default: all we know). @param {{ home?: string, platform?: string, vyreHome?: string, browsers?: Browser[], registry?: (key: string, valuePath?: string|null) => any }} [o] */
@@ -138,6 +146,7 @@ export function uninstall(o = {}) {
   /** @type {{ browser: Browser, file: string }[]} */
   const removed = [];
   for (const b of browsers) {
+    if (!available(b, p.platform)) continue;
     if (p.windows) {
       registry(regKey(b), null);
       if (fs.existsSync(p.winManifest)) { fs.rmSync(p.winManifest, { force: true }); removed.push({ browser: b, file: p.winManifest }); }
@@ -166,6 +175,7 @@ export function status(o = {}) {
   /** @type {{ browser: Browser, file: string, extensionId: string|null, pointsAtLauncher: boolean }[]} */
   const installed = [];
   for (const b of browsers) {
+    if (!available(b, p.platform)) continue;
     let file = p.windows ? p.winManifest : path.join(manifestDir(p.home, p.platform, b), `${HOST_NAME}.json`);
     if (p.windows) {
       const reg = (o.registry || realRegistry)(regKey(b));

@@ -116,7 +116,9 @@ export default {
     /** @type {Map<string, { input: any, hash: string, key: string|null }>} */
     const heldActs = new Map();
     const hold = async ({ content, thread }) => {
-      const to = (content && content.app) || "the Mac";
+      // The real destination, as the Gate matches it: the app and the window (a conversation, a document), which is as close to
+      // "who or what does this go to" as a screen gives. It has a ":" so it can be named exactly; a plain word never matches.
+      const to = `${(content && content.app) || "the Mac"}: ${(content && content.window) || "window"}`.slice(0, 200);
       const { input, hash, ...shown } = content || {};
       const meta = /** @type {any} */ (via.getStore() || {});
       const caller = meta.caller;
@@ -137,7 +139,7 @@ export default {
     };
     const hands = new Hands({ run, emit, sleep: opts.sleep, overlay, known, hold });
     const offer = async () => {
-      const r = await ctx.call("gate.offer", { name: "hands:mac", tool: "hands.release", kinds: ["act"],
+      const r = await ctx.call("gate.offer", { name: "hands:mac", tool: "hands.release", kinds: ["act"], recipients: "to",
         content: { app: "string", window: "string?", control: "string (what will be pressed, typed or sent)", value: "string? (clipped)" } });
       if (r.error) ctx.log(`could not offer the hands:mac sender: ${r.error.message}`);
     };

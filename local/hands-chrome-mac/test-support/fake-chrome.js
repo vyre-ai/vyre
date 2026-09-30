@@ -10,7 +10,7 @@
 /** @param {any[]} [seed] */
 export function createFakeChrome(seed = []) {
   /** @type {any[]} */
-  const tabs = seed.map((t, i) => ({ id: i + 1, windowId: 1, active: false, title: "", ...t }));
+  const tabs = seed.map((t, i) => ({ id: i + 1, windowId: 1, active: false, title: "", status: "complete", ...t }));
   let nextId = 100;
   const listeners = () => { const fns = new Set(); return { fns, addListener: (/** @type {any} */ f) => fns.add(f), removeListener: (/** @type {any} */ f) => fns.delete(f), fire: (/** @type {any[]} */ ...a) => { for (const f of [...fns]) f(...a); } }; };
   const counts = { create: 0, update: 0, remove: 0, attach: 0, detach: 0, sendCommand: 0, connectNative: 0 };
@@ -63,7 +63,7 @@ export function createFakeChrome(seed = []) {
       async create(/** @type {any} */ p) {
         counts.create++;
         created.push(p);
-        const t = { id: nextId++, windowId: 1, active: !!p.active, title: "", url: p.url };
+        const t = { id: nextId++, windowId: 1, active: !!p.active, title: "", url: p.url, status: "complete" };
         tabs.push(t);
         return { ...t };
       },
