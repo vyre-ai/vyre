@@ -10,9 +10,10 @@
 // does (Chrome's own tools read it on the person's behalf). Two settings, both on by default: memory.site.learn
 // (learn at all) and memory.site.sync (take what standalone Vyre for Chrome learned on its own).
 
+import fs from "node:fs";
 import { answerSite, neededKeys } from "./site-answer.js";
 import {
-  sanitize, emptyRecord, mergeRecord, mergeFamily, union, arrivalCard, heal, itemId, keyOk, isFamilyKey, isQuarantined, readConf, LIMITS,
+  sanitize, testNow, emptyRecord, mergeRecord, mergeFamily, union, arrivalCard, heal, itemId, keyOk, isFamilyKey, isQuarantined, readConf, LIMITS,
 } from "../../lib/site-knowledge.js";
 
 const PERSON = new Set(["deck", "cli", "local", "capsule"]);
@@ -31,7 +32,8 @@ export const SITE_TABLES = Object.freeze(["memory_site", "memory_site_events", "
  */
 export function register(ctx, { denied }) {
   const db = ctx.store.db;
-  const now = () => (ctx.now ? ctx.now() : Date.now());
+  // The store's one clock: the miss window and the two-day quarantine read it. Under a test flag a harness may set it (VYRE_SITE_TEST_CLOCK).
+  const now = () => testNow(process.env, p => fs.readFileSync(p, "utf8")) ?? (ctx.now ? ctx.now() : Date.now());
   const bad = (/** @type {string} */ m, code = "bad_input") => Object.assign(new Error(m), { code });
   const q = {
     get: db.prepare("SELECT key, kind, rev, record, card, updated FROM memory_site WHERE key = ?"),

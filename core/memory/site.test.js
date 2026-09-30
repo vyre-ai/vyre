@@ -431,3 +431,26 @@ test("Wrong? on a site answer is remembered by the question and the site, so the
   assert.equal(again.via, "corrected", "the summary changed (two controls now), and it is still refused");
   assert.equal((await w.call("memory.ask", { question: "what do you know about ghl" }, "deck")).data.via, "site", "another question is not affected");
 });
+
+test("the test clock: under a test flag a harness can put misses on two days; without the flag the variable does nothing", async t => {
+  const fs = await import("node:fs");
+  const os = await import("node:os");
+  const file = path.join(fs.mkdtempSync(path.join(os.tmpdir(), "siteclock-")), "now");
+  const at = ms => fs.writeFileSync(file, new Date(ms).toISOString());
+  const saved = { NODE_ENV: process.env.NODE_ENV, VYRE_SITE_TEST_CLOCK: process.env.VYRE_SITE_TEST_CLOCK, VYRE_CHROME_TEST: process.env.VYRE_CHROME_TEST };
+  t.after(() => { for (const [k, v] of Object.entries(saved)) { if (v === undefined) delete process.env[k]; else process.env[k] = v; } });
+  const w = await world(t);
+  await w.call("memory.site.put", { origin: ORIGIN, patch: patch() });
+  const miss = () => w.call("memory.site.report", { origin: ORIGIN, part: "controls", id: "c1", outcome: "miss" });
+  process.env.VYRE_SITE_TEST_CLOCK = file;
+  delete process.env.NODE_ENV; delete process.env.VYRE_CHROME_TEST;
+  at(NOW + 10 * DAY);
+  await miss();
+  assert.notEqual((await w.call("memory.site.detail", { key: ORIGIN }, "deck")).data.events.find(e => e.kind === "report").at, NOW + 10 * DAY, "no test flag: the file is ignored");
+  process.env.VYRE_CHROME_TEST = "1";
+  for (const [day, hours] of [[1, 0], [1, 2], [1, 4]]) { at(NOW + day * DAY + hours * HOUR); await miss(); }
+  const day1 = (await miss()).data;
+  assert.equal(day1.quarantined, false, "three misses on one day");
+  at(NOW + 3 * DAY + 6 * HOUR);
+  assert.equal((await miss()).data.quarantined, true, "a miss on a second day, two days after the first, sets it aside");
+});
