@@ -723,3 +723,20 @@ test("modules v1: an added module may not replace one of Vyre's, and reserved ev
   const impostor = validate({ ...good, name: "sync", does: {}, replaces: "sync", watches: { emits: ["sync.deleted"] } });
   assert.ok(impostor.some(p => /reserved for sync/.test(p)) && impostor.some(p => /allowlist/.test(p)), impostor.join("; "));
 });
+
+test("modules v1: the loader speaks the current contract, and apiVersion warns once per start", async t => {
+  const home = tempHome(t);
+  const root = path.join(home, "mods");
+  writeModule(root, "notes", { ...good, apiVersion: 1 }, `export default { async start(ctx) {
+    ctx.tool("notes.add", { run: async () => ({ api: ctx.api.version, has: ctx.api.has("modules.status"), later: ctx.api.has("later.thing"), version: ctx.version }) });
+    return {};
+  } };`);
+  const db = open(path.join(home, "vyre.db"));
+  t.after(() => db.close());
+  const logs = [];
+  const reg = new Registry({ db, events: new Events(db), config: {}, log: m => logs.push(m) });
+  await reg.start(discover([root]), { role: "local" });
+  assert.deepEqual((await reg.call("notes.add", {}, "cli")).data, { api: "1.0", has: true, later: false, version: "0.1.0" });
+  assert.equal(logs.filter(l => /notes uses apiVersion, which is deprecated; use "vyre": "1"/.test(l)).length, 1);
+  assert.equal(reg.modules.get("notes").contract, "1");
+});

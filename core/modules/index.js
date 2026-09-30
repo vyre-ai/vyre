@@ -19,6 +19,10 @@ import { PERSON_ONLY, machineSelf } from "../presence/index.js";
 import { validateDecls } from "../config/settings.js";
 import * as config from "../config/index.js";
 import { toolEntries } from "../../packages/module-sdk/manifest.js";
+import { CONTRACT, supports, moduleContract, adapterFor } from "../../packages/module-sdk/contract.js";
+
+/** Features ctx.api.has() answers true for in this loader, inside the running contract. */
+const LOADER_FEATURES = ["modules.status"];
 
 /** Tools a tailnet device reaches without a person session: signing in, and the first passkey. */
 const PERSON_FREE = new Set(["presence.person.start", "presence.enroll"]);
@@ -122,6 +126,10 @@ export const RESERVED_EVENTS = { sync: ["sync"] };
 export function validate(m, { firstParty = false } = {}) {
   const out = [];
   if (!m || typeof m !== "object") return ["module.json is not an object"];
+  // A contract this Vyre doesn't speak is the one problem, and the module's code is never imported
+  // (ADR 0047 section 8). Naming none reads as "1"; unknown keys are ignored, never a problem.
+  const speaks = supports(moduleContract(m), { name: typeof m.name === "string" ? m.name : "this module" });
+  if (!speaks.ok) return [speaks.message];
   if (!NAME.test(String(m.name || ""))) out.push(`name "${m.name}" must be lowercase letters, digits and dashes`);
   if (!/^\d+\.\d+\.\d+/.test(String(m.version || ""))) out.push(`version "${m.version}" must be semver`);
   if (m.roles && (!Array.isArray(m.roles) || m.roles.some(r => !["box", "local", "mac", "windows"].includes(r)))) out.push("roles must be a list of box, local, mac and windows");
@@ -453,9 +461,14 @@ export class Registry {
     if (failedDep) { Object.assign(rec, { state: "failed", error: `requires "${failedDep}", which is not running` }); return; }
     try {
       const entry = path.join(f.dir, m.main || "index.js");
+      // Every module goes through the adapter for the contract it names (compat/v<major>.js, the
+      // identity for contract 1 today), so a later major can keep it running unchanged.
+      rec.contract = moduleContract(m);
+      const adapter = adapterFor(rec.contract);
+      if (m.apiVersion !== undefined) this.deps.log(`warn: module ${m.name} uses apiVersion, which is deprecated; use "vyre": "${m.apiVersion}"`);
       const mod = (await import(pathToFileURL(entry).href)).default;
       if (!mod || typeof mod.start !== "function") throw new Error("entry file must export default { start(ctx) }");
-      rec.handle = await mod.start(this.context(m));
+      rec.handle = await mod.start(adapter.context(this.context(adapter.manifest(m))));
       rec.state = "running";
       this.deps.log(`module ${m.name} ${m.version} running`);
     } catch (e) {
@@ -475,7 +488,9 @@ export class Registry {
     const objectForm = new Set(((m.does && m.does.tools) || []).filter(e => e && typeof e === "object").map(e => e.name));
     const declared = new Set(entries.keys());
     return {
-      name: m.name, config, paths,
+      name: m.name, version: m.version, config, paths,
+      // The contract this Vyre speaks, and feature tests for additions inside the major.
+      api: { version: CONTRACT.current, has: (/** @type {string} */ f) => LOADER_FEATURES.includes(String(f)) },
       // Every running module's declared settings (module.json "settings"), for the settings
       // module to serve. Manifests are public; a module switched off takes its settings with it.
       declaredSettings: () => [...this.modules.entries()].filter(([, r]) => r.state === "running" && r.manifest && Array.isArray(r.manifest.settings))
