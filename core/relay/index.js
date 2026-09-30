@@ -130,6 +130,11 @@ export default {
       const h = ctx.config.name;
       return typeof h === "string" && /^[a-z0-9](?:[a-z0-9-]{0,30}[a-z0-9])?$/i.test(h) ? h.slice(0, 32) : null;
     };
+    // The host of the box's own address (https://<handle>.vyre.run, or its own domain): where a phone
+    // enrolls its passkey, and so the rp_id every enrolment grant is bound to.
+    const addressHost = () => {
+      try { return new URL(String((ctx.config.network || {}).address || "")).hostname.toLowerCase() || null; } catch { return null; }
+    };
     // The person's avatar seed (the lead's ruling, 28 Sep), from the one shared formula in
     // lib/identity.js so the box, system.info and the phone never disagree. A missing or malformed
     // owner.id gives null (no avatar), never a fabricated value.
@@ -313,7 +318,18 @@ export default {
         // pairing, so a Deck showing "Add your phone" reacts to its own flow and not to someone
         // pairing a different device with the classic QR at the same time.
         if (match.ticket) ctx.events.emit("relay.paired", { device: id, name, fingerprint: keyFingerprint(pub) });
-        return { v: 1, box: { name: boxName() }, device: id, paired: true, presence };
+        // A device that asks (hello.enroll) is handed the one-time grant to enroll its passkey at the
+        // box's own address: the same grant, and the same {grant, expires, rpId}, as relay.setup.claim
+        // gives the setup QR's phone. Not bound to a peer: at the address the phone is a tailnet node
+        // this pairing cannot know; the owner-login rule, the rp_id, five minutes and one use bind it.
+        // It rides only inside this device's own Noise channel.
+        let enroll = null;
+        const host = hello.enroll === true ? addressHost() : null;
+        if (host) {
+          const m = /** @type {any} */ (await ctx.call("presence.grant.mint", { peer: null, host }));
+          if (m && m.data && m.data.grant) enroll = { grant: m.data.grant, expires: m.data.expires, rpId: host };
+        }
+        return { v: 1, box: { name: boxName() }, device: id, paired: true, presence, ...(enroll ? { enroll } : {}) };
       }
       const row = /** @type {any} */ (db.prepare("SELECT id, pub, kind, paired_at, last_seen FROM relay_devices WHERE id = ? AND removed_at IS NULL").get(id));
       if (!row || !crypto.timingSafeEqual(Buffer.from(row.pub, "base64url"), pub)) throw new Error("not a paired device");

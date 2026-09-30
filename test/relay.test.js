@@ -135,6 +135,24 @@ test("relay: the first device pairs during onboarding and reaches the box's rout
   assert.equal(events.connected, true);
 });
 
+test("relay: a pairing that asks for it is handed the one-time enrolment grant for the box's address, the same {grant, expires, rpId} as the setup claim", async t => {
+  const { d } = await world(t);
+  // No address yet: nothing to enroll at, so no grant, whatever the hello says.
+  const bare = await phone(await firstPairing(d), { hello: { enroll: true } });
+  assert.equal(bare.reply.enroll, undefined);
+  bare.ws.close();
+  d.registry.deps.config.network = { ...(d.registry.deps.config.network || {}), address: "https://alex.vyre.run:8443" };
+  const minted = await d.registry.call("relay.pair.start", {}, "cli", PROOF);
+  const asked = await phone(minted.data.url, { hello: { enroll: true }, presence: false });
+  const e = asked.reply.enroll;
+  assert.equal(e.rpId, "alex.vyre.run", "the host of the address, no port");
+  assert.match(e.grant, /^[A-Za-z0-9_-]{40,}$/);
+  assert.ok(e.expires > Date.now() && e.expires <= Date.now() + 5 * 60_000 + 1000);
+  const plain = await phone((await d.registry.call("relay.pair.start", {}, "cli", PROOF)).data.url, { presence: false });
+  assert.equal(plain.reply.enroll, undefined, "a pairing that did not ask gets none");
+  asked.ws.close(); plain.ws.close();
+});
+
 test("relay: a relayed device is a device; a person's action needs its person session, then presence", async t => {
   const { d } = await world(t);
   const p = await phone(await firstPairing(d));
