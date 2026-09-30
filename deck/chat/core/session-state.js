@@ -826,6 +826,7 @@ function onTool(s, p, at, out) {
   // after a reopen. Never overwrites input that already arrived (a later live event, or the
   // transcript read patching it in).
   if (p.input !== undefined && item.input === undefined) item.input = p.input;
+  if (p.render && typeof p.render === "object") item.render = p.render;
   out.add(key);
   guess(s, "working");
 }
@@ -1240,6 +1241,8 @@ function fieldsOf(b) {
       if (output !== null) f.status = b.error ? "failed" : "completed";
       if (b.error) f.error = true;
       if (b.patch) f.patch = b.patch;
+      // A result a card draws (cards/index.js renderOf): pr_review, email_thread, calendar_event, diff, report, artifact.
+      if (b.render && typeof b.render === "object") f.render = b.render;
       // A tool's own picture (cohesion item 18): the caps are already applied by transcripts.blocks.
       if (Array.isArray(b.images) && b.images.length) f.images = b.images;
       return f;

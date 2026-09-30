@@ -20,6 +20,7 @@ import { highlight } from "./lib/highlight.js";
 import { clip, commandText, duration, elapsed, langOf, rawLines, shortPath, toolState, toolTitle, toolVerb, turnParts } from "./lib/blocks.js";
 import { dataUrl, humanSize, inlineable, tooLarge, THUMB } from "./core/images.js";
 import { openLightbox } from "./lightbox.js";
+import { toolDisplay } from "./cards/index.js";
 
 const OUTPUT_LINES = 12;
 /** Bash shows this much of what it printed before "show all". */
@@ -355,6 +356,9 @@ export function handoffCard(b) {
  * @returns {HTMLElement & { update: (b: any) => void, tick: (now?: number) => void }}
  */
 export function toolCard(b) {
+  // A result that carries a render payload (a PR, a thread, an event, a diff, an artifact) is that card, not a generic tool row.
+  const shown = toolDisplay(b);
+  if (shown) return shown;
   const el = /** @type {any} */ (tag(h("div", { class: "cv-row cv-tool" }), "assistant", b.ts));
   let open = null;
   /** @type {any} */ let timeEl = null;
