@@ -6,7 +6,10 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 - Capsule: the Deep glass skin. The panel is a 0.62 carbon tint over the system blur with a light
   border, top edge and soft shadow; it keeps its width and every feature. With Reduce Transparency
-  on, the ground is the plain opaque panel. The call-to-action colour still comes from the tokens.
+  on, the ground is the plain opaque panel, and it changes live. Increase Contrast draws a heavier,
+  stronger border. An answer and its draft sit on a denser plate that clears WCAG AA over a white or
+  black wallpaper; the draft is drawn in the softer text colour instead of a 60% fade. The
+  call-to-action colour still comes from the tokens. It follows the system appearance (light and dark).
 - Capsule: Vyre IQ answers stream. While it works, the answer card names each step in a word
   (Understanding, Searching your sessions, Reading, Writing, Checking) and shows the draft
   dimmed under "Checking" until the checked answer replaces it; an answer that ends "Not sure

@@ -21,6 +21,8 @@ struct CapsuleView: View {
     var snapshot = false
     @FocusState private var boxFocused: Bool
     @Environment(\.colorScheme) private var scheme
+    /// Reduce Transparency and Increase Contrast, live.
+    @ObservedObject private var display = DisplayPrefs.shared
 
     var body: some View {
         let open = CapsuleLayout.isOpen(model)
@@ -79,9 +81,9 @@ struct CapsuleView: View {
             }
         }
         .frame(width: Theme.width, height: CapsuleLayout.panelHeight(model), alignment: .top)
-        .background { if snapshot { Theme.carbon } else { Backdrop() } }
+        .background { if snapshot { Theme.carbon } else { Backdrop(reduced: display.reduceTransparency) } }
         .clipShape(RoundedRectangle(cornerRadius: Theme.radius, style: .continuous))
-        .overlay(RoundedRectangle(cornerRadius: Theme.radius, style: .continuous).strokeBorder(DeepGlass.border(dark: scheme == .dark), lineWidth: 1))
+        .overlay(RoundedRectangle(cornerRadius: Theme.radius, style: .continuous).strokeBorder(DeepGlass.border(dark: scheme == .dark), lineWidth: DeepGlass.borderWidth))
         .overlay(alignment: .top) {
             // A hairline of light along the top edge, as on the Mac's own panels.
             RoundedRectangle(cornerRadius: Theme.radius, style: .continuous)
@@ -219,14 +221,14 @@ struct CapsuleView: View {
             // Vyre IQ's draft (C13, the draft lines of memory.ask): dimmed, with "Checking", until the answer replaces it.
             if model.pending, model.replyText.isEmpty, let draft = model.iqDraft {
                 VStack(alignment: .leading, spacing: 4) {
-                    Text("Checking").font(Theme.subtitle).foregroundColor(Theme.ash)
+                    Text("Checking").font(Theme.subtitle).foregroundColor(Theme.stone)
                     Text(draft)
                         .font(Theme.reply).foregroundColor(Theme.stone)
                         .lineSpacing(Theme.lineGap(Tokens.TypeScale.read))
                         .fixedSize(horizontal: false, vertical: true)
                         .frame(maxWidth: .infinity, alignment: .leading)
                 }
-                .opacity(0.6)
+                .answerPlate()
                 .accessibilityLabel("Checking: \(draft)")
             }
             if !model.replyText.isEmpty {
@@ -236,6 +238,7 @@ struct CapsuleView: View {
                     .textSelection(.enabled)
                     .fixedSize(horizontal: false, vertical: true)
                     .frame(maxWidth: .infinity, alignment: .leading)
+                    .answerPlate()
             }
             if let m = model.askedMemory, !model.replyText.isEmpty, !m.sources.isEmpty || m.corrected {
                 MemorySources(memory: m, expanded: $model.memoryExpanded, who: model.identities, assistant: model.assistantName, openSource: { model.openSource($0) })

@@ -63,4 +63,36 @@ let deepGlassSuite = Suite("glass skin") { t in
             t.ok(ok, "renders in \(name.rawValue)")
         }
     }
+
+    t.test("answer text and the dimmed draft clear AA (4.5:1) on the plate over a white or black wallpaper, both schemes") {
+        func c(_ x: Color) -> [Double] {
+            let n = NSColor(x).usingColorSpace(.sRGB) ?? NSColor(x)
+            return [Double(n.redComponent), Double(n.greenComponent), Double(n.blueComponent)]
+        }
+        for (name, tok) in [("dark", Tokens.dark), ("light", Tokens.paper)] {
+            for (bgName, bg) in [("white", [1.0, 1.0, 1.0]), ("black", [0.0, 0.0, 0.0])] {
+                let a = Double(DeepGlass.plateAlpha), tint = c(tok.panel)
+                let ground = (0..<3).map { tint[$0] * a + bg[$0] * (1 - a) }
+                let answer = DeepGlass.contrast(c(tok.text), ground)
+                let draft = DeepGlass.contrast(c(tok.text2), ground)
+                t.ok(answer >= 4.5, "\(name) answer over \(bgName): \(answer)")
+                t.ok(draft >= 4.5, "\(name) draft and Checking over \(bgName): \(draft)")
+            }
+        }
+    }
+
+    t.test("Increase Contrast draws a heavier, stronger border; Reduce Transparency makes the plate opaque; both read live") {
+        DeepGlass.increaseContrastOverride = false; DeepGlass.reduceTransparencyOverride = false
+        let calm = MainActor.assumeIsolated { () -> (Bool, Bool) in DisplayPrefs.shared.refresh(); return (DisplayPrefs.shared.increaseContrast, DisplayPrefs.shared.reduceTransparency) }
+        t.ok(!calm.0 && !calm.1)
+        t.eq(DeepGlass.borderWidth, 1)
+        DeepGlass.increaseContrastOverride = true; DeepGlass.reduceTransparencyOverride = true
+        let loud = MainActor.assumeIsolated { () -> (Bool, Bool) in DisplayPrefs.shared.refresh(); return (DisplayPrefs.shared.increaseContrast, DisplayPrefs.shared.reduceTransparency) }
+        t.ok(loud.0 && loud.1, "the published values follow the setting on refresh")
+        t.eq(DeepGlass.borderWidth, 2)
+        t.ok(DeepGlass.border(dark: true) == Theme.bone.opacity(0.7))
+        t.eq(DeepGlass.plateGroundAlpha, 1.0)
+        DeepGlass.increaseContrastOverride = nil; DeepGlass.reduceTransparencyOverride = nil
+        MainActor.assumeIsolated { DisplayPrefs.shared.refresh() }
+    }
 }
