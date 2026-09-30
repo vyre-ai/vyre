@@ -56,12 +56,14 @@ export const firstParty = dir => {
 /** How long an asked tool's target (and the thread lineage) may take to answer before the call is not_asked. */
 const TARGET_MS = 2000;
 /**
- * A promise's answer, or null when it is later than `ms` (the timer never keeps the process alive).
+ * A promise's answer, or null when it is later than `ms`. The timer is held until the answer or the
+ * limit, then cleared: a call waiting on it is live work, and an unref'd one let a macOS event loop
+ * drain with the call still pending.
  * @template T @param {Promise<T>} p @param {number} ms @returns {Promise<T | null>}
  */
 function withinMs(p, ms) {
   let timer;
-  const late = new Promise(res => { timer = setTimeout(() => res(null), ms); if (timer.unref) timer.unref(); });
+  const late = new Promise(res => { timer = setTimeout(() => res(null), ms); });
   return Promise.race([p, late]).finally(() => clearTimeout(timer));
 }
 /** The one tool the agents module may call as the asking person: agents.ask's words and tags, heard by threads.send. @param {string} tool */

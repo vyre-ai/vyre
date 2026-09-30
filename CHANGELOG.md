@@ -4,6 +4,8 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+- modules: the timer behind a call's bounded wait (target, lineage, project and scope lookups) is no longer unref'd, so a pending wait keeps the event loop alive; on macOS the loop drained with the call unanswered and the test runner cancelled the rest of the file.
+
 - module-sdk: toolEntries leaves target, projectArg and cwdArg out of an entry unless the manifest sets them, so the v1 entry shape is unchanged.
 
 - A daemon-level test that no module does work after vyred stops: the full registry starts, stops (after its startup work, at once, mid-startup, and with agents missing), then runs two seconds more with the store closed; any `database is not open`, unhandled rejection or uncaught exception fails it and names the module from its stack path. A control module that writes after stop proves the check catches and names it (`test/stop-quiet.test.js`). It found no other module on this machine's config.
