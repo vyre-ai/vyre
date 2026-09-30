@@ -122,11 +122,19 @@ export function createSiteCache({ chrome, emit = () => {}, now = Date.now, setT 
         const s = sanitize(patch);
         stats.dropped += s.dropped.length;
         if (!s.ok) { stats.refused++; continue; } // a secret-shaped field: nothing of this observation leaves the browser
-        emit({ event: "site.put", origin, patch: s.record });
+        // What goes on the wire is the observation's own items that the allowlist KEPT, with the evidence they carry (two visits, container, siblings): the store cleans them again,
+        // and it needs that evidence to keep a label or an identifier. (The cleaned record itself has the evidence stripped, so it cannot be sent.)
+        const kept = { key: patch.key, ...(patch.family ? { family: patch.family } : {}), ...(patch.names ? { names: patch.names } : {}), ...(patch.related ? { related: patch.related } : {}) };
+        for (const part of ["controls", "api", "frames"]) {
+          const ids = new Set((s.record[part] || []).map((/** @type {any} */ x) => x.id));
+          const raw = (Array.isArray(patch[part]) ? patch[part] : []).filter((/** @type {any} */ x) => ids.has(x.id));
+          if (raw.length) /** @type {any} */ (kept)[part] = raw;
+        }
+        emit({ event: "site.put", origin, patch: kept });
         // What this device just taught the store makes its copy of the card out of date: the next arrival asks again (at once, not after the usual wait).
         asked.delete(origin); { const cc = cards.get(origin); if (cc) cc.at = 0; }
         stats.sent++;
-        out.push({ origin, patch: s.record });
+        out.push({ origin, patch: kept });
       }
       return out;
     },

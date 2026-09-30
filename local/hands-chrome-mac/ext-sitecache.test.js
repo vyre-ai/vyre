@@ -299,3 +299,26 @@ test("generated ids always have the shape the store accepts, even when the hash 
   assert.ok(noDigitHashes > 0, "the sample includes hashes with no digit, which is the case being guarded");
   assert.ok(ids.size > 19990, "ids stay distinct");
 });
+
+test("end to end: what a device sends after two visits is kept by the store (the evidence travels with the item), and a label needs its evidence too", async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "sk-"));
+  try {
+    let t = 1_000_000;
+    const sent = /** @type {any[]} */ ([]);
+    const c = createSiteCache({ emit: e => sent.push(e), now: () => t, setT: () => 1, clearT: () => {} });
+    c.setEnabled(true); c.setVisitMs(1200);
+    const url = "http://127.0.0.1:5555/checkout?heal=1";
+    const res = { ...act({ role: "button", name: "Apply promo", identifier: "apply-promo" }), evidence: { container: "none", siblings: 1 } };
+    for (let i = 0; i < 3; i++) { c.learn({ op: "page.act", args: { selector: { identifier: "apply-promo", name: "Apply promo" } }, result: res, tabUrl: url }); t += 1500; }
+    const out = await c.flush();
+    assert.equal(out.length, 1);
+    const item = out[0].patch.controls[0];
+    assert.ok(Array.isArray(item.identifierVisits) && item.identifierVisits.length >= 2, "the evidence is on the wire");
+    const st = createSiteStore({ dataDir: dir });
+    assert.equal(st.put({ origin: out[0].origin, patch: out[0].patch }).data.accepted, true);
+    const stored = st.record(out[0].origin).controls;
+    assert.equal(stored.length, 1, "the store keeps it");
+    assert.equal(stored[0].selector.identifier, "apply-promo");
+    assert.equal(stored[0].name, "Apply promo", "a fixed-UI label with container, siblings and two visits is kept");
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
