@@ -848,3 +848,23 @@ account + device and drop the tokens tool store. Then polish passes over the spe
   placeholders like "A. Chen", "Q3 renewal numbers" instead), no em dashes anywhere including in
   the HTML copy itself (caught and fixed 10 instances of the &mdash; entity before review).
 - Sent to the lead: both file paths, ready for review.
+
+## Now (30 Sep, computer-use oversight panel added to capsule-02.html)
+
+- Added section 11 to capsule-02.html: the draggable computer-use oversight panel (plan with
+  current-step highlight and in-place editing, a course-correct prompt, a live voice transcript,
+  pause/resume/stop), the full 6-moment collaborative flow for a "build a GoHighLevel automation"
+  job (agent drafts -> person tweaks -> runs step by step -> voice interjection mid-way -> plan
+  updates -> continues), a compact collapsed state, Chrome's native "being debugged" bar
+  coexisting with the panel (drawn as Chrome itself draws it, never restyled - restyling it would
+  misrepresent what's actually in control), and the three vault extension moments (save login,
+  API key detected, autofill), all in the Glass theme. Reuses plan-card.md's numbered step list
+  rather than inventing a new one.
+- Caught and fixed two real bugs before sending, not after: the flow captions were unreadable
+  directly on some wallpaper gradients (fixed: white text + shadow instead of the plain --label
+  grey, which assumed a near-black backdrop that isn't true mid-wallpaper); the vault moment
+  bars had their action buttons in a separate div that visually overlapped the bar's wrapped text
+  (fixed: buttons moved inside the same flex row as the bar, wrapping below on a narrow card,
+  same one-row pattern banner.md already uses elsewhere).
+- Re-screenshotted section by section after each fix (ImageMagick crops of a 900x9600 headless
+  render) rather than trusting the first pass.
