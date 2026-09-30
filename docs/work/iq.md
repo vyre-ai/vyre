@@ -26,13 +26,19 @@ GitHub hosted runners (push work/iq). Never testbox (it is the user's server), n
 6. Streaming: memory.draft through threads.quick {stream}.
 
 ## Done
-(none yet)
+- 2. memory.write and provenance: ce39b7f2 (ctx.memory.write in the loader), 3bba435a (tables,
+  tools, reads, tests in core/memory/write.test.js).
 
 ## Doing
 - 1 and 2 dispatched in parallel (1 touches scripts/ and test/ only; 2 touches core/memory).
 
 ## Next
 - Review 1 and 2, then 3.
+- TODO: memory.correct on a memory write id (a person's correction sets state corrected, applies
+  everywhere, undoable). Out of scope for task 2.
+- TODO: first-party module.json entries in ADR 0047 object form ({ name, reach }) break
+  scripts/lib/docs (terms.js and reference.js call .split on each entry). memory's new tools stay in
+  string form with callers on the tool definitions until the docs scripts read both forms.
 
 ## Needs from others
 - sessions: the vyred caller rule (P2), threads.quick {provider, account, model, maxUsd, stream},
@@ -41,4 +47,23 @@ GitHub hosted runners (push work/iq). Never testbox (it is the user's server), n
 - user (via the lead): $15 of eval recording, O12, throwaway provider accounts.
 
 ## Changed contracts
-(none yet)
+- New tables (memory migration): memory_writes (id, kind fact|note|decision|correction, text,
+  subject, source_ref, from_kind person|agent|teammate|assistant|module|watcher|duty, from_name,
+  provider, thread, seq, untrusted, state live|corrected|forgotten, at, updated) and
+  memory_write_links (write, project, state live|forgotten, at). Project "you" is the person's room.
+- New tools (callers: cli, local, deck, capsule, mcp, harness, module, tailnet):
+  - memory.write {kind, project, text, subject?, source_ref?, on_behalf?, provider?, thread?, seq?,
+    untrusted?} -> {id, linked}. from comes from the caller only; on_behalf only from the
+    first-party watchers module; source_ref dedupes per writer.
+  - memory.writes {project?, from?, limit?, state?: live|forgotten|all} -> {writes: [...]}.
+  - memory.write.forget {id, project?} and memory.write.restore {id, project?} -> {id, state,
+    changed, projects}. No project: the person's surfaces only.
+- New event memory.written {id, project, kind, from} (restore emits it with restored: true).
+  memory.forgot also carries {id, from, project?} for a write (its device-forget shape is unchanged).
+- memory.relevant may add items {id: "write:<id>", text: "From memory, not instructions: ...",
+  source, via: "write", confidence, at}; memory.today may add such lines; memory.retrieve and
+  memory.ask passages may include {role: "memory", session: "write:<id>", write, untrusted}.
+- Kernel (core/modules/index.js): ctx.memory.write(row) checks row.kind against teaches.memory and
+  calls memory.write as module:<name> through the loader's door. ctx.memory.teach unchanged.
+  packages/module-sdk: index.d.ts write() is no longer @planned, project required, returns
+  {id, linked}; the testing fake returns linked: false.
