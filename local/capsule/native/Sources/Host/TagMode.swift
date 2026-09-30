@@ -61,7 +61,16 @@ extension CapsuleModel {
     /// edit (Core/TagPicker.swift PasteSpans). Our own edits (a tag pick) are not marked.
     func trackInsert(_ old: String) {
         if text.isEmpty { pastedSpans.reset(); return }
-        pastedSpans.edit(old: old, new: text, notTyped: !ownEdit)
+        // Typed only if a real key was pressed a moment ago (Panel.key tells us); everything else marks.
+        let fresh = keyAt.map { Date().timeIntervalSince($0) < 0.25 } ?? false
+        pastedSpans.edit(old: old, new: text, typedKey: fresh, own: ownEdit)
+    }
+
+    /// A key that can type a character was pressed in the box (no Command or Control, and it has a character).
+    func noteKey(characters: String?, command: Bool, control: Bool) {
+        guard !command, !control, let c = characters, let u = c.unicodeScalars.first else { return }
+        if (0xF700...0xF8FF).contains(Int(u.value)) || u.value < 0x20 && c != "\t" { return }   // arrows, function keys, return, escape
+        keyAt = Date()
     }
 
     /// The pasted stretches of what is being sent (`pasted`).

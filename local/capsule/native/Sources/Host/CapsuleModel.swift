@@ -116,6 +116,8 @@ public final class CapsuleModel: ObservableObject {
     /// it tag nothing (TagMode.swift).
     var pastedSpans = PasteSpans()
     var ownEdit = false
+    /// When a typing key was last pressed in the box (TagMode.swift noteKey).
+    var keyAt: Date?
     /// "Harlow Legal call · in 25 min": the next meeting, under the empty box (ViewMode.swift).
     @Published var nextMeeting: String?
     var nextMeetingAt: Date?

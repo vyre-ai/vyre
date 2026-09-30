@@ -267,6 +267,8 @@ final class PanelController: NSObject, NSWindowDelegate {
     /// One key while shown. Internal so the driven mode (Agent/AgentDrive.swift) can press keys in this
     /// window alone, never system-wide.
     func key(_ e: NSEvent) -> Bool {
+        // A key that may type a character: what comes into the box next within a moment is typed, nothing else is.
+        model.noteKey(characters: e.characters, command: e.modifierFlags.contains(.command), control: e.modifierFlags.contains(.control))
         // Setting a hotkey: the shortcut pressed is the answer (Esc leaves).
         if model.bindingEdit?.field == .hotkey {
             let f = e.modifierFlags

@@ -104,9 +104,8 @@ public enum TagResults {
 }
 
 
-/// PasteSpans: which stretches of the box did not come from typing. A paste, a drop, undo, redo, an
-/// autocorrect or dictation replacement: anything put in more than one character at a time, which is
-/// all a key can do. A `#Name` inside such a stretch tags nothing (sessions' rule; only a picked chip can).
+/// PasteSpans: which stretches of the box did not come from typing. The default is "not typed": only a
+/// key press that brought in one character counts as typing. A `#Name` inside such a stretch tags nothing (sessions' rule; only a picked chip can).
 ///
 /// It tracks offsets, not strings, through every later edit (the same rules as the Deck's
 /// deck/chat/core/paste-spans.js): typing before a span moves it, typing inside it keeps the whole
@@ -119,9 +118,12 @@ public struct PasteSpans: Equatable, Sendable {
 
     public mutating func reset() { ranges = [] }
 
-    /// The box went from `old` to `new`. `notTyped` is false for an edit the Capsule made itself (a tag
-    /// pick): its text is not marked, but the spans around it still move.
-    public mutating func edit(old: String, new: String, notTyped: Bool = true) {
+    /// The box went from `old` to `new`. Text is typed only when a key positively said so (`typedKey`: a
+    /// real key press just before, and one character came in); anything else that came in is marked: a
+    /// paste, a drop, undo, redo, an autocorrect, dictation, a restored draft, or an edit nobody announced.
+    /// `own` is for the Capsule's own insertion of the person's words (a tag pick): not marked, but the
+    /// spans around it still move.
+    public mutating func edit(old: String, new: String, typedKey: Bool = false, own: Bool = false) {
         let a = Array(old), b = Array(new)
         var p = 0
         while p < a.count, p < b.count, a[p] == b[p] { p += 1 }
@@ -140,7 +142,7 @@ public struct PasteSpans: Equatable, Sendable {
             if r.lowerBound < p { out.append(r.lowerBound..<p) }                               // what is left before the removal
             if r.upperBound > remEnd { out.append((p + insLen)..<(r.upperBound + delta)) }     // what is left after it
         }
-        if notTyped, insLen > 1 { out.append(p..<(p + insLen)) }
+        if !own, insLen > 0, !(typedKey && insLen == 1) { out.append(p..<(p + insLen)) }
         ranges = Self.merged(out.filter { !$0.isEmpty })
     }
 

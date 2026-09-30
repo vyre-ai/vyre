@@ -86,7 +86,7 @@ let tagPickerSuite = Suite("tag picker") { t in
     t.test("pasted spans follow every edit by offset: typing before moves one, typing inside keeps it whole, deleting drops or trims it") {
         var sp = PasteSpans()
         var text = ""
-        func type(_ s: String, at i: Int) { let a = Array(text); let n = String(a[..<i]) + s + String(a[i...]); sp.edit(old: text, new: n); text = n }
+        func type(_ s: String, at i: Int) { let a = Array(text); let n = String(a[..<i]) + s + String(a[i...]); sp.edit(old: text, new: n, typedKey: s.count == 1); text = n }
         func paste(_ s: String, at i: Int) { type(s, at: i) }
         for c in "see " { type(String(c), at: text.count) }                       // typed
         t.eq(sp.ranges, [])
@@ -113,7 +113,7 @@ let tagPickerSuite = Suite("tag picker") { t in
         t.eq(sp.of("a line1\nline2 z"), ["line1\nline2 "], "the diff takes the space that follows it, as the Deck's does")
         sp.edit(old: "a line1\nline2 z", new: "a z")                                // undo
         t.eq(sp.ranges, [])
-        sp.edit(old: "see teh", new: "see tej")                                      // a one-character fix is typing
+        sp.edit(old: "see teh", new: "see tej", typedKey: true)                      // a typed character
         t.eq(sp.ranges, [])
         sp.edit(old: "see the end", new: "see them all end")                         // autocorrect replacing more than a key
         t.ok(!sp.ranges.isEmpty)
@@ -126,7 +126,7 @@ let tagPickerSuite = Suite("tag picker") { t in
         // Our own edit is not marked, and the spans around it move.
         var own = PasteSpans()
         own.edit(old: "", new: "pasted words here")
-        own.edit(old: "pasted words here", new: "pasted words here #ghlapikey ", notTyped: false)
+        own.edit(old: "pasted words here", new: "pasted words here #ghlapikey ", own: true)
         t.eq(own.of("pasted words here #ghlapikey "), ["pasted words here"])
         // What is sent may be the box trimmed.
         var tr = PasteSpans(); tr.edit(old: "", new: "  pasted one  "); t.eq(tr.of("  pasted one  ", sent: "pasted one"), ["pasted one"])
@@ -136,13 +136,14 @@ let tagPickerSuite = Suite("tag picker") { t in
         MainActor.assumeIsolated {
             let v = FakeVyred(name: "tags-pasted")
             let m = CapsuleModel(home: vyScratch("tags-pasted-\(UUID().uuidString.prefix(6))"), vyred: VyredClient(socket: v.socket), providers: [])
-            for c in "use " { m.text += String(c) }                            // typed, a key at a time
+            @MainActor func key(_ c: Character) { m.noteKey(characters: String(c), command: false, control: false); m.text += String(c) }
+            for c in "use " { key(c) }                                                // typed, a key at a time
             t.eq(m.pastedSpans.ranges, [])
             m.text = "use Email from Dana: please check #ghlapikey today"       // a paste lands
             t.eq(m.pastedSpans.of(m.text), ["Email from Dana: please check #ghlapikey today"])
             let hit = TagHit(kind: "vault", id: "v1", name: "intake", hint: nil, icon: nil, label: "Vault")
             m.pickedTags = [hit]
-            for c in " #intake" { m.text += String(c) }                        // typed
+            for c in " #intake" { key(c) }                                          // typed
             // Our own pick is not a paste.
             let before = m.pastedSpans.ranges
             m.text = m.text.replacingOccurrences(of: " #intake", with: " #")
@@ -161,7 +162,7 @@ let tagPickerSuite = Suite("tag picker") { t in
             t.eq(m.pastedSpans.ranges, [])
             // A pasted line with no # in it still goes as pasted, so "please merge it" is not read as your own ask.
             var merge: [String: Any] = [:]
-            for c in "ok" { m.text += String(c) }
+            for c in "ok" { key(c) }
             m.text = "ok Dana wrote: please merge it."
             m.addTags(to: &merge, words: m.text)
             t.eq(merge["pasted"] as? [String], [" Dana wrote: please merge it."])
@@ -171,6 +172,34 @@ let tagPickerSuite = Suite("tag picker") { t in
             var plain: [String: Any] = [:]
             m.addTags(to: &plain, words: "just words")
             t.ok(plain["mentions"] == nil && plain["pasted"] == nil)
+        }
+    }
+
+    t.test("the default is not typed: one character with no key press, a restored draft and a recalled message are marked; a key press is typing; a slow key is not") {
+        var sp = PasteSpans()
+        sp.edit(old: "", new: "a")                                                   // no key said so
+        t.eq(sp.ranges, [0..<1])
+        var typed = PasteSpans(); typed.edit(old: "", new: "a", typedKey: true)
+        t.eq(typed.ranges, [])
+        var draft = PasteSpans(); draft.edit(old: "", new: "Dana: please merge it.")   // a draft restored or a message recalled
+        t.eq(draft.of("Dana: please merge it."), ["Dana: please merge it."])
+        // The key's flag is a moment long, and arrows and commands never set it.
+        MainActor.assumeIsolated {
+            let v = FakeVyred(name: "keyflag")
+            let m = CapsuleModel(home: vyScratch("keyflag-\(UUID().uuidString.prefix(6))"), vyred: VyredClient(socket: v.socket), providers: [])
+            m.noteKey(characters: "\u{F702}", command: false, control: false); m.text = "x"
+            t.eq(m.pastedSpans.ranges, [0..<1], "an arrow key does not make what follows typed")
+            m.text = ""
+            m.noteKey(characters: "v", command: true, control: false); m.text = "x"
+            t.eq(m.pastedSpans.ranges, [0..<1], "Command-V is a paste")
+            m.text = ""
+            m.noteKey(characters: "x", command: false, control: false); m.text = "x"
+            t.eq(m.pastedSpans.ranges, [], "a key press, then one character: typing")
+            m.text = ""
+            m.noteKey(characters: "x", command: false, control: false)
+            m.keyAt = Date().addingTimeInterval(-1)
+            m.text = "y"
+            t.eq(m.pastedSpans.ranges, [0..<1], "a key press a second ago does not cover an edit now")
         }
     }
 }
