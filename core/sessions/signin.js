@@ -55,6 +55,7 @@ export class Signins {
     for (const [id, f] of this.flows) if (f.account === account.id && !f.ended) { f.proc.kill("SIGKILL"); this.flows.delete(id); }
     const flow = crypto.randomBytes(9).toString("hex");
     const proc = this.deps.spawn(how.bin, how.args, { account });
+    if (proc && proc.stdin && typeof proc.stdin.on === "function") proc.stdin.on("error", () => {}); // a pasted code written after the CLI exited must not crash vyred
     /** @type {any} */
     const f = { id: flow, provider, account: account.id, proc, text: "", url: null, code: null, ended: false, ok: false, exit: null, wantsPaste: Boolean(how.wantsPaste), at: (this.deps.now || Date.now)(), waiters: [] };
     this.flows.set(flow, f);

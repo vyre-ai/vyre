@@ -412,6 +412,7 @@ export function claudeOnce(o = {}) {
           tokens_in: Number(u.input_tokens || 0) + Number(u.cache_read_input_tokens || 0) + Number(u.cache_creation_input_tokens || 0), tokens_out: Number(u.output_tokens || 0) });
       } catch { reject(new Error((err || out || `exit ${code}`).slice(0, 200))); }
     });
+    p.stdin.on("error", () => {}); // a binary that exits before it reads its prompt: the close handler rejects with its exit code
     p.stdin.end(prompt);
   });
 }

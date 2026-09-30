@@ -336,6 +336,7 @@ function run(cmd, args, { input, timeout = 15_000, binary = false } = {}) {
       if (code !== 0) return reject(new Error(stderr || `${cmd} exited ${code}`));
       resolve(binary ? stdout : stdout.toString("utf8"));
     });
+    child.stdin.on("error", () => {}); // a child that exits before it reads its input is reported by its exit code
     if (input !== undefined) child.stdin.end(input);
     else child.stdin.end();
   });
