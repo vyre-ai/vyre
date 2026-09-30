@@ -17,6 +17,14 @@ bundled pages. OPEN: the remote panel has no IPC, so how the box's files.drive.a
 shell needs a decision with drive/native-core (the shell calling the box itself needs the pairing
 session, which is the next step). Unverified on real Windows: WebClient service, 50 MB limit.
 
+**Pairing (CI green):** `src/wink.rs` reads a Wink ticket (locator, MAC, AES-GCM seal, fingerprint)
+against a fixture made by core/relay/wire.js; the app registers `vyre://`, honors `pair` only with
+the nonce `begin_pair` issued, resolves at relay.vyre.run, shows a confirm window (name + key
+fingerprint), then pins https://<handle>.vyre.run. Lead ruled: the shell holds the paired session
+and calls the box itself (files.drive.address etc.); the panel stays IPC-free. OPEN: how the Deck
+learns the app's nonce; what the shell presents to the box as its session after pairing (needs
+tailnet: the shell has no Noise channel yet); own-domain boxes (record has only a handle).
+
 **RESUMED 2026-09-30 (relaunch).** Merged origin/work/stage-0.2 into work/windows (a merge, not a
 rebase: 32 old commits, six conflicts, all union-resolved; win32 fresh default is role local,
 machine device). Docs and config tests pass locally. Scaffolded the Tauri shell in
