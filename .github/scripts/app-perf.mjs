@@ -151,7 +151,7 @@ function compare(report, base) {
 async function main() {
   const world = await startWorld();
   const server = await serve();
-  const browser = await chromium.launch();
+  const browser = await chromium.launch({ args: ["--use-mock-keychain", "--password-store=basic"] });
   try {
     const context = await browser.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 3, isMobile: true, hasTouch: true });
     const page = await context.newPage();

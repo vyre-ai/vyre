@@ -21,10 +21,11 @@ export const SIZE = Object.freeze({ w: 1440, h: 900 });
  * @typedef {object} CreateSpec
  * @property {string} agent
  * @property {string} image
- * @property {Record<string, string>} env      VNC_PASSWORD, COMPUTERD_TOKEN, SCREEN; never logged
+ * @property {Record<string, string>} env      SCREEN and the egress PAC; never a secret (those go by seed)
  * @property {Record<string, string>} labels   `<prefix>.computer=<agent>` and `<prefix>.managed=true`
  * @property {string} [network]
  * @property {string} volume                   the agent's home volume, mounted at /home/agent
+ * @property {string} [browserVolume]          computerd's and Chrome's own volume, mounted at /var/lib/vyre
  * @property {number} [cpus]
  * @property {number} [memoryMb]
  * @property {{ w: number, h: number }} [size]
@@ -41,6 +42,12 @@ export const SIZE = Object.freeze({ w: 1440, h: 900 });
  * @typedef {object} Driver
  * @property {string} name
  * @property {(spec: CreateSpec) => Promise<{ id: string }>} create
+ * @property {(id: string, secrets: { computerd_token: string, vnc_password: string }) => Promise<void>} seed
+ *   put the computer's secrets in its volume as /var/lib/vyre/.boot (policy.js bootTar), before start
+ * @property {(id: string, agents: Array<{ name: string, token: string }>) => Promise<void>} seedAgentTokens
+ *   a shared (browser-kind) computer's per-agent identity, as /var/lib/vyre/.agent-tokens (policy.js
+ *   agentTokensTar) -- computerd reads it once at start; changing it on a running computer does
+ *   not by itself make computerd notice (see the revocation note in docs/work/glass.md)
  * @property {(id: string) => Promise<void>} start
  * @property {(id: string) => Promise<void>} pause
  * @property {(id: string) => Promise<void>} unpause

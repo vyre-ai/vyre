@@ -80,6 +80,15 @@ public protocol CapsuleExtension: AnyObject {
     func handle(chord: KeyShortcut, query: Query) -> Bool
     /// A key came up while the Capsule is key (Return, for hold-to-talk). True if it was yours.
     func handleUp(key: String) -> Bool
+    /// An ordinary ⏎ (no chord) is about to submit the box while you may be listening: stop the
+    /// mic first (keeping whatever words already landed), same as a tap-to-stop, so ⏎ both stops
+    /// and sends. True if you were listening and stopped. The default (an extension with no
+    /// voice of its own) does nothing.
+    func stopTalking() -> Bool
+    /// Esc, before anything else the box does with it: if you are listening, stop the mic AND
+    /// remove exactly what this dictation added -- never a general clear. True if you were
+    /// listening. The default does nothing.
+    func cancelTalking() -> Bool
 
     /// The words in the box or the chip changed (a key, a pick, a chip dropped). Forget anything
     /// that was waiting for a second Enter on the old ones. The default does nothing.
@@ -111,6 +120,8 @@ public extension CapsuleExtension {
     }
     func handle(chord: KeyShortcut, query: Query) -> Bool { false }
     func handleUp(key: String) -> Bool { false }
+    func stopTalking() -> Bool { false }
+    func cancelTalking() -> Bool { false }
     func boxChanged() {}
     func capsuleWillShow(front: FrontApp?) {}
     func capsuleDidHide() {}
@@ -162,7 +173,12 @@ public struct SendAttachment: Sendable, Equatable {
     public var icon: IconSpec?
     /// Appended to the words on send, already redacted and trimmed by the extension.
     public var body: String
-    public init(id: String, chip: String, icon: IconSpec? = nil, body: String) { self.id = id; self.chip = chip; self.icon = icon; self.body = body }
+    /// The words are about this attachment (they point at the screen, or text is selected): a
+    /// question goes to a model that reads it, never to memory.ask, which cannot.
+    public var aboutIt: Bool
+    public init(id: String, chip: String, icon: IconSpec? = nil, body: String, aboutIt: Bool = false) {
+        self.id = id; self.chip = chip; self.icon = icon; self.body = body; self.aboutIt = aboutIt
+    }
 }
 
 /// Where the words are headed: an agent, a session, a project's new thread, or a quick Ask.
@@ -174,6 +190,13 @@ public enum SendTargetKind: Sendable { case agent, thread, project, ask }
 @MainActor
 public protocol SendAttaching: AnyObject {
     func attachment(for words: String, to: SendTargetKind) async -> SendAttachment?
+    /// At once, with no reads: could these words' attachment be about them (`aboutIt`)? False lets
+    /// a quick question go to memory.ask without waiting for the chip.
+    func mayBeAbout(_ words: String) -> Bool
+}
+
+extension SendAttaching {
+    public func mayBeAbout(_ words: String) -> Bool { false }
 }
 
 /// Something `@` can name that an extension sends to: an app, a service, a person in it.
@@ -296,9 +319,22 @@ public protocol CapsuleHost: AnyObject {
     func hidePanel()
     /// Put the text in the box, as if the user typed it.
     func setQuery(_ text: String)
-    /// Words being spoken into the box. While `final` is false nothing is asked on its own; the
-    /// final words are then submitted as ⏎ would (a question answers, a follow-up continues).
+    /// The box's own words right now, for an extension that needs to remember them before it
+    /// starts changing the box itself (voice's dictation baseline). The default answers "".
+    func currentQuery() -> String
+    /// Words being spoken into the box. While `final` is false they are shown as they come and
+    /// ask nothing; `final: true` ends the dictation with the words left in the box to edit --
+    /// nothing is submitted on its own (tap-to-stop keeps the words; only submitDictation() or an
+    /// ordinary ⏎ actually asks).
     func dictate(_ text: String, final: Bool)
+    /// ⏎ pressed while still listening, or the "send it" command word: submit the box's current
+    /// words right now, as ⏎ would (a question answers, a follow-up continues). The default does
+    /// nothing (a test's fake host has no box to submit from).
+    func submitDictation()
+    /// Esc while listening: the dictation is cancelled and the box goes back to exactly `restore`
+    /// (what it held before this utterance started) -- never a general clear, and nothing typed
+    /// before or after the dictation is touched. The default falls back to setQuery.
+    func cancelDictation(_ restore: String)
     /// A line under the box, for a moment ("Copied", "No window in front").
     func say(_ line: String)
     /// Hide the Capsule and wait until `front` is frontmost again (up to 800 ms). True if it is.
@@ -310,6 +346,9 @@ public protocol CapsuleHost: AnyObject {
     /// id; a second owner gets the same window and the first is told nothing, so take it only
     /// from a command the user ran.
     func sessionWindow(owner: String) -> SessionWindow
+    /// The session window now shows this session (nil: it closed). The Capsule takes that
+    /// session's project as the current one (memory.ask's context, the project chip).
+    func sessionShown(thread: String?, project: String?)
     /// Your `commands` (or `providers`) changed while the Capsule is open, for example a session
     /// started: the Capsule reads them again and redraws the list.
     func commandsChanged()
@@ -349,7 +388,11 @@ public struct CredentialNeed: Sendable, Equatable {
 public extension CapsuleHost {
     /// A host with no windows (a test's fake host) hands out one that shows nothing.
     func sessionWindow(owner: String) -> SessionWindow { NoSessionWindow() }
+    func sessionShown(thread: String?, project: String?) {}
+    func currentQuery() -> String { "" }
     func dictate(_ text: String, final: Bool) { setQuery(text) }
+    func submitDictation() {}
+    func cancelDictation(_ restore: String) { setQuery(restore) }
     func prove(tool: String, input: [String: Any], summary: String) async -> VyredResult {
         await vyred.call(tool, input, presence: true, summary: summary)
     }

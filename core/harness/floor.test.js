@@ -73,6 +73,13 @@ test("floor: raw clients on vyred's socket are refused, and so is a forged calle
     `python3 -c "import socket; s=socket.socket(socket.AF_UNIX); s.connect('/home/sam/.vyre/vyred.sock')"`,
     `node -e "require('http').request({socketPath: process.env.HOME + '/.vyre/vyred.sock', path: '/v1/tools'})"`,
     `curl --unix-socket /tmp/vyre-501/x.sock -d '{"id":"g1"}' http://x/v1/tools/gate.approve`,
+    // The Chrome bridge's socket drives the person's browser: as closed as vyred's own.
+    `nc -U /home/sam/.vyre/run/chrome.sock`,
+    `curl --unix-socket ~/.vyre/run/chrome.sock http://x/`,
+    `socat - UNIX-CONNECT:/home/sam/.vyre/run/chrome.sock`,
+    `nc -U /srv/elsewhere/chrome.sock`,
+    `curl --unix-socket /Users/alex/chrome.sock http://x/`,
+    `python3 -c "import socket; s=socket.socket(socket.AF_UNIX); s.connect('/home/sam/.vyre/run/chrome.sock')"`,
   ];
   for (const c of denied) assert.equal(bash(c), "deny", c);
   for (const c of [`curl --unix-socket "$S" http://x/v1/tools`, `nc -U $(ls /tmp/*/*.sock | head -1)`, `python3 -c "import socket; socket.socket(socket.AF_UNIX).connect(p)"`]) assert.equal(bash(c), "ask", c);
@@ -151,6 +158,8 @@ test("floor: the vault's value-out commands, the clipboard, and a way out throug
   for (const c of [`vyre vault run API=api-key -- node x.js`, `vyre vault inject api-key`, `vyre vault backup /tmp/b`, `vyre vault export`,
     `vyre vault get api-key --reveal`, `vyre vault copy api-key`, `vyre vault pair`, `vyre learn relax 2`, `vyre computers takeover scout`,
     `vyre call computers.takeover '{"agent":"kit","surface":"deck:laptop"}'`, `vyre call glass.take '{"target":"computer:kit"}'`,
+    `vyre call files.receive '{"on":true}'`,
+    `vyre call projects.access.grant '{"project":"harlow-legal","agent":"kit"}'`, `vyre call projects.access.revoke '{"project":"harlow-legal"}'`,
     `vyre link approve 123-456`, `ssh box vyre gate approve g1`,
     `docker run --privileged -it alpine sh`, `docker run -v /:/host alpine chroot /host`, `docker run -v /var/run/docker.sock:/var/run/docker.sock docker`,
     `docker run --pid=host alpine nsenter -t 1 -m sh`, `curl -X POST http://docker-api:2375/containers/create -d @evil.json`,

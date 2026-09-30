@@ -4,6 +4,7 @@
 // namespace joins. Not a vyred module: there is no module.json here, on purpose.
 
 import { createProxy, loadPolicy } from "./proxy.js";
+import { read as readBearer } from "../../lib/bearer/index.js";
 
 const env = process.env;
 const config = {
@@ -15,10 +16,18 @@ const config = {
 const socket = env.DOCKER_SOCKET || "/var/run/docker.sock";
 const port = Number(env.VYRE_DOCKER_PROXY_PORT || 2375);
 
+// vyred generates this (bearer.js's ensure()) in a volume only the two of them share; retry a
+// while in case this container is up before vyred's first boot has written it.
+const bearerFile = env.DOCKER_PROXY_BEARER_FILE;
+if (!bearerFile) throw new Error("DOCKER_PROXY_BEARER_FILE is not set -- refusing to run with no bearer");
+// Patient: a fresh install has no bearer until computers are set up; wait quietly, never crash-loop.
+const bearer = await readBearer(bearerFile, { patient: true,
+  onWait: () => process.stderr.write(JSON.stringify({ at: new Date().toISOString(), waiting: "no bearer yet: computers are not set up; checking once a minute" }) + "\n") });
+
 const policy = await loadPolicy();
 // Refusals only, and never a body: a create body carries the computer's passwords.
 const log = entry => process.stderr.write(JSON.stringify({ at: new Date().toISOString(), refused: true, ...entry }) + "\n");
-const server = createProxy({ socket, policy, config, log });
+const server = createProxy({ socket, policy, config, bearer, log });
 server.listen(port, "0.0.0.0", () => {
   process.stderr.write(JSON.stringify({ at: new Date().toISOString(), listening: port, socket, ...config }) + "\n");
 });

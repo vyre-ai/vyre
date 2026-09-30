@@ -1,0 +1,68 @@
+{
+  "name": "mail",
+  "version": "0.1.0",
+  "roles": [
+    "box",
+    "local"
+  ],
+  "requires": [
+    "vault",
+    "gate"
+  ],
+  "does": {
+    "tools": [
+      "mail.accounts",
+      "mail.map",
+      "mail.test",
+      "mail.send",
+      "mail.search",
+      "mail.read",
+      "mail.find",
+      "mail.compose",
+      "mail.release"
+    ]
+  },
+  "watches": {
+    "emits": [
+      "mail.mapped",
+      "mail.held",
+      "mail.sent",
+      "mail.needs-credential"
+    ]
+  },
+  "shows": {
+    "deck": [
+      "settings:connections"
+    ],
+    "capsule": {
+      "results:mail.find": {
+        "title": "Mail"
+      },
+      "action:mail.compose": {
+        "title": "Write it"
+      }
+    }
+  },
+  "needs": {
+    "vault": [
+      "per-connection"
+    ],
+    "credentials": [
+      {
+        "id": "imap",
+        "kind": "env-set",
+        "provider": "imap-smtp",
+        "purpose": "Read and send mail over IMAP and SMTP",
+        "multiple": true
+      },
+      {
+        "id": "apps-script",
+        "kind": "env-set",
+        "provider": "google-apps-script",
+        "purpose": "Read and send Gmail through your own Apps Script web app",
+        "multiple": true
+      }
+    ]
+  },
+  "teaches": {}
+}

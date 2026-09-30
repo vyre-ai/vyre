@@ -1,23 +1,34 @@
 // @ts-check
-// drop: send a file from the Mac to the box with Taildrop, and take it in on the box.
+// drop: send a file between the Mac and the box with Taildrop, and take it in at the other end.
 //
 // files.fetch brings a box file down through the link, a chunk at a time. Going the other way,
 // Tailscale already moves whole files between a person's own devices (Taildrop), peer to peer and
-// fast, so the Mac hands the file to `tailscale file cp` and the box collects it. Only what the
-// files guard passes may leave the Mac: a key or an .env is refused before Tailscale sees it.
+// fast, so the sending machine hands the file to `tailscale file cp` and the other collects it.
+// Only what the files guard passes may leave a machine: a key or an .env is refused before
+// Tailscale sees it.
 //
-// On the box one child process, `tailscale file get --wait --loop`, moves each arriving file into
-// the inbox. It blocks inside tailscaled until a file comes, so an idle box spends nothing on it.
-// A received file is someone else's bytes: the event names it, and nothing here opens or runs it.
+// Mac to box (files.send) is the original direction. Box to a paired Mac (files.deliver, ADR
+// 0021 "Mac and box as one") is the reverse: the box looks up the Mac's tailnet peer id from
+// link.macs (its stableId, not its name, since a name can be reused) rather than a single
+// link.status the way the Mac finds its one paired box.
+//
+// On the receiving side, one child process, `tailscale file get --wait --loop`, moves each
+// arriving file into that machine's inbox (the box's /work/inbox, or a Mac's ~/Vyre/inbox). It
+// blocks inside tailscaled until a file comes, so an idle machine spends nothing on it. A
+// received file is someone else's bytes: the event names it, and nothing here opens or runs it.
 
 import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import { spawn } from "node:child_process";
 import { run as tailscale } from "../names/tailscale.js";
 import { tailscaleBin } from "../link/transport.js";
+import * as config from "../config/index.js";
 
 /** The box's inbox when config files.inbox is not set: inside /work, the box's default root. */
 export const INBOX = "/work/inbox";
+/** A Mac's inbox when config files.inbox is not set: inside its home, a Mac's default root. */
+export const macInbox = () => path.join(os.homedir(), "Vyre", "inbox");
 /** How long one send may take. Taildrop is peer to peer; a large file on a slow uplink is slow. */
 const SEND_TIMEOUT = 60 * 60_000;
 /** The floor for recurring timers (SPEC principle 8): how often the box looks at Tailscale again. */
@@ -59,31 +70,71 @@ export function unavailable(peer) {
 /**
  * The file a --verbose `tailscale file get` line reports, or null. It prints
  * `wrote <name> as <path> (<n> bytes)`, where path is inside the directory it was given. The
- * directory is looked for, so a name with " as " in it still parses.
+ * directory is looked for, so a name with " as " in it still parses. `orig` is the name Tailscale
+ * was originally handed, before `--conflict=rename` (Drive: it renames rather than overwriting a
+ * same-named file already there) may have changed it — the one signal that tells the two apart
+ * without guessing from the name's shape.
  * @param {string} line @param {string} dir the inbox as it was passed to the child
- * @returns {{ file: string, bytes: number } | null}
+ * @returns {{ file: string, bytes: number, orig: string | null } | null}
  */
 export function parseWrote(line, dir) {
   const m = /\((\d+) bytes\)\s*$/.exec(line);
   if (!m || !/\bwrote /.test(line)) return null;
   const head = line.slice(0, m.index).trimEnd();
   const at = head.lastIndexOf(" as " + dir + path.sep);
-  const file = at >= 0 ? head.slice(at + 4) : null;
+  if (at < 0) return null;
+  const file = head.slice(at + 4);
   if (!file) return null;
-  return { file, bytes: Number(m[1]) };
+  const before = head.slice(0, at);
+  const wroteAt = before.indexOf("wrote ");
+  const orig = wroteAt >= 0 ? before.slice(wroteAt + 6) : null;
+  return { file, bytes: Number(m[1]), orig };
 }
 
 const inside = (p, dir) => p === dir || p.startsWith(dir.endsWith(path.sep) ? dir : dir + path.sep);
 
 /**
- * Register files.send (on the Mac) and run the receiver (on the box).
+ * Register both tools and the inbox receiver for this machine's role: on the Mac, files.send
+ * always, and an inbox for what the box delivers only when files.receive is on (e2e review of
+ * 0c645473, MEDIUM: without a switch, every Mac would take over the user's whole Tailscale file
+ * flow — every device's Taildrop, not only the box's deliveries — the moment it upgrades, with no
+ * choice in it). On the box, files.deliver and its existing inbox for what a Mac sends.
  * @param {any} ctx the files module's context
  * @param {{ role: "box"|"local", g: ReturnType<typeof import("./safety.js").guard>, cfg: any }} opts
  * @returns {{ stop(): Promise<void> }}
  */
 export function drop(ctx, { role, g, cfg }) {
-  if (role === "local") { sender(ctx, g); return { async stop() {} }; }
-  return receiver(ctx, g, cfg);
+  if (role === "local") {
+    sender(ctx, g);
+    // Exactly true, not merely truthy: a config value read back as the string "false" (a shell
+    // export, a stray env override) must not switch the receiver on (e2e review of aa9cb40c).
+    // `running` holds the receiver currently in effect, or null; files.receive (Vyre Drive's
+    // switch) starts or stops it live, no restart needed, and remembers the choice.
+    let running = cfg.receive === true ? receiver(ctx, g, cfg, macInbox()) : null;
+
+    ctx.tool("files.receive", {
+      description: "Turn on or off whether this Mac takes in files the box delivers with files.deliver (Vyre Drive's receive switch). Off by default: pairing a Mac never changes what Tailscale's own file flow does on it. Takes effect immediately and is remembered across restarts.",
+      input: { type: "object", required: ["on"], properties: { on: { type: "boolean" } } },
+      callers: ["cli", "local", "deck", "capsule"],
+      run: async ({ on }) => {
+        const next = on === true;
+        if (next === Boolean(running)) return { on: next, changed: false };
+        // Saved before anything starts or stops (reviewer's LOW): if this throws, nothing has
+        // changed yet, rather than a receiver running (or stopped) that config.json disagrees with.
+        if (!ctx.paths) throw new Error("this vyred has no home to save config in");
+        config.save({ files: { receive: next } }, ctx.paths.root, ctx.config);
+        cfg.receive = next; // this closure's own cfg, mutated in place: config.save's live mirror replaces ctx.config.files' object, not this one
+        if (next) running = receiver(ctx, g, cfg, macInbox());
+        else { const r = running; running = null; await r.stop(); }
+        ctx.log(`files.receive ${next ? "on" : "off"}`);
+        return { on: next, changed: true };
+      },
+    });
+
+    return { async stop() { if (running) { const r = running; running = null; await r.stop(); } } };
+  }
+  boxSender(ctx, g);
+  return receiver(ctx, g, cfg, INBOX);
 }
 
 /** The Mac's half: one tool that hands a checked file to `tailscale file cp`. */
@@ -127,8 +178,54 @@ function sender(ctx, g) {
   });
 }
 
-/** The box's half: one long-lived `tailscale file get --loop`, while Tailscale is running. */
-function receiver(ctx, g, cfg) {
+/**
+ * The box's half of the reverse direction: hand a checked file to `tailscale file cp` at one
+ * paired Mac's tailnet address. Unlike the Mac's sender, which has exactly one paired box
+ * (link.status), a box may have several paired Macs, so the caller names one (mac: its id or
+ * name, as link.macs lists it).
+ */
+function boxSender(ctx, g) {
+  const unable = message => Object.assign(new Error(message), { code: "taildrop_unavailable" });
+
+  ctx.tool("files.deliver", {
+    description: "Send a file from the box to a paired Mac with Taildrop. It lands in the Mac's inbox folder (~/Vyre/inbox) only once that Mac has turned files.receive on; otherwise Tailscale holds it unclaimed. A Mac paired without its node known (no_link) needs pairing again. Secrets and dotfiles are refused.",
+    input: { type: "object", required: ["path", "mac"], properties: { path: { type: "string" }, mac: { type: "string", description: "A paired Mac's id or name (link.macs, vyre link)." } } },
+    // No "module": a home module has no first-party need to push box files onto the user's Mac,
+    // and it is the person's own choice each time (e2e review of 0c645473, LOW).
+    callers: ["cli", "local", "deck", "capsule"],
+    run: async ({ path: p, mac: which }) => {
+      const safe = g.resolveSafe(p);
+      const st = fs.statSync(safe.real);
+      if (!st.isFile()) throw new Error("only a file can be sent, not a folder");
+      const macs = await ctx.call("link.macs", {});
+      const row = (macs.data || []).find(/** @param {any} m */ m => m.mac === which || m.name === which);
+      if (!row) throw Object.assign(new Error(`no paired Mac named "${which}" (vyre link)`), { code: "no_link" });
+      // stableId is set once the Mac's node is known (pairing saves it); a Mac paired before that
+      // has none, the same gap link.macs.call's Mac-forwarded writes hit (core/link/box.js).
+      if (!row.stableId) throw Object.assign(new Error(`"${row.name}" paired without its node known; pair it again to send it files`), { code: "no_link" });
+      const s = await tailscale(["status", "--json"]);
+      if (s.code === 127) throw unable("Tailscale is not installed on this box");
+      let status;
+      try { status = JSON.parse(s.out); } catch { throw unable((s.err || s.out).trim().split("\n")[0] || "tailscale status failed"); }
+      if (status.BackendState !== "Running") throw unable(`Tailscale on this box is ${status.BackendState === "NeedsLogin" ? "signed out" : status.BackendState || "not running"}`);
+      const peer = Object.values(status.Peer || {}).find(/** @param {any} x */ x => String(x.ID || "") === row.stableId);
+      if (!peer) throw unable(`"${row.name}" is not among this box's tailnet peers`);
+      const why = unavailable(peer);
+      if (why) throw unable(why);
+      const ip = (peer.TailscaleIPs || []).find(/** @param {string} a */ a => !String(a).includes(":")) || (peer.TailscaleIPs || [])[0];
+      if (!ip) throw unable(`"${row.name}" has no tailnet address`);
+      const node = String(peer.DNSName || "").replace(/\.$/, "") || row.node || String(peer.HostName || "");
+      const r = await tailscale(["file", "cp", safe.real, `${ip}:`], { timeout: SEND_TIMEOUT });
+      if (r.code !== 0) throw Object.assign(new Error((r.err || r.out).trim().split("\n").slice(-1)[0] || "tailscale file cp failed"), { code: "send_failed" });
+      const name = path.basename(safe.real);
+      try { ctx.events.emit("files.sent", { name, bytes: st.size, to: node, mac: row.mac }); } catch {}
+      return { sent: name, bytes: st.size, to: node, mac: row.mac };
+    },
+  });
+}
+
+/** Either machine's half: one long-lived `tailscale file get --loop`, while Tailscale is running. */
+function receiver(ctx, g, cfg, defaultInbox) {
   const log = (m, x) => { if (ctx.log) ctx.log(m, x); };
   let stopped = false;
   /** @type {import("node:child_process").ChildProcess|null} */
@@ -138,7 +235,7 @@ function receiver(ctx, g, cfg) {
   /** @type {Promise<void>|null} */
   let exited = null;
 
-  const inbox = path.resolve(String(cfg.inbox || INBOX));
+  const inbox = path.resolve(String(cfg.inbox || defaultInbox));
 
   /**
    * The inbox, made if missing, or null when it cannot be one. It must sit inside a files root and
@@ -218,10 +315,17 @@ function receiver(ctx, g, cfg) {
     if (!inside(full, dir) || full === dir) return;
     let bytes = w.bytes;
     try { bytes = fs.lstatSync(full).size; } catch {}
+    const name = path.basename(full);
+    // Tailscale's own line says both the name it was handed and the name it wrote: when
+    // --conflict=rename changed the latter, a same-named file was already here, and both are now
+    // kept (Drive's "kept both copies" note), not one silently overwriting the other.
+    const conflict = w.orig != null && path.basename(String(w.orig)) !== name;
     // The name is the sender's choice. One the event log turns away (it looks like a secret) must
     // not take vyred down from inside a stream handler; the file is in the inbox all the same.
-    try { ctx.events.emit("files.received", { name: path.basename(full), path: path.relative(dir, full), bytes }); }
-    catch (e) { log(`a received file was not announced: ${/** @type {Error} */ (e).message}`); }
+    try {
+      ctx.events.emit("files.received", { name, path: path.relative(dir, full), bytes,
+        ...(conflict ? { conflict: true, note: `kept both copies: a file already named "${w.orig}" was here, so this one landed as "${name}" instead` } : {}) });
+    } catch (e) { log(`a received file was not announced: ${/** @type {Error} */ (e).message}`); }
   }
 
   begin().catch(e => log(`the Taildrop inbox did not start: ${/** @type {Error} */ (e).message}`));

@@ -13,7 +13,21 @@
 import http from "node:http";
 import crypto from "node:crypto";
 import { acceptKey, encodeFrame, FrameParser } from "../../core/computers/ws.js";
-import { LIMITS, CLOSE, ROUTE_RE, routeId, authMessage, verifyRoute } from "../../core/relay/wire.js";
+import { LIMITS, CLOSE, ROUTE_RE, routeId, authMessage, verifyRoute, TICKET_TTL } from "../../core/relay/wire.js";
+
+/** A fixed window per key (an IP, or the constant "*" for the global cap): true while under it. */
+function rateLimiter(max, windowMs) {
+  /** @type {Map<string, { n: number, resetAt: number }>} */
+  const hits = new Map();
+  return key => {
+    const now = Date.now();
+    let h = hits.get(key);
+    if (!h || h.resetAt <= now) { h = { n: 0, resetAt: now + windowMs }; hits.set(key, h); }
+    h.n++;
+    if (hits.size > 10_000) for (const [k, v] of hits) if (v.resetAt <= now) hits.delete(k);
+    return h.n <= max;
+  };
+}
 
 /** One accepted WebSocket on a raw socket. */
 class Peer {
@@ -81,12 +95,61 @@ export function createRelay(o = {}) {
     if (r && !r.control && r.conns.size === 0) routes.delete(id);
   };
 
+  // Pairing tickets (ADR 0045): a box's control socket registers a locator -> a signed-by-the-
+  // box's-own-ticket record, never the pairing secret itself (core/relay/wire.js ticketDerive).
+  // Single-use (deleted on the one resolve that finds it) and short-lived; a sweep on insert
+  // keeps the map from growing on tickets nobody ever resolves. Resolve is rate-limited per IP
+  // and globally: unlike a device connection, this endpoint answers with no proof at all, so it
+  // is the one place worth defending against a plain guessing loop even though 64 random bits in
+  // 5 minutes is already out of reach.
+  // The record is ciphertext the box sealed under a key only the ticket gives (wire.js
+  // ticketSeal): anything that isn't opaque base64url, a plaintext JSON record included, is
+  // refused, so this relay never holds a box's name, handle or key in the clear.
+  const SEALED = /^[A-Za-z0-9_-]{22,2048}$/;
+  /** @type {Map<string, { record: string, mac: string, exp: number }>} */
+  const pairTickets = new Map();
+  const sweepTickets = () => { const now = Date.now(); for (const [loc, t] of pairTickets) if (t.exp <= now) pairTickets.delete(loc); };
+  const pairRegisterLimit = rateLimiter(60, 60_000);
+  const pairResolveLimitByIp = rateLimiter(30, 60_000);
+  const pairResolveLimitGlobal = rateLimiter(600, 60_000);
+
   const server = http.createServer((req, res) => {
     const url = new URL(req.url || "/", "http://relay");
     if (url.pathname === "/health") { res.writeHead(200, { "content-type": "application/json" }); res.end('{"ok":true}'); return; }
+    // /v1/pair alone answers any origin, with no credentials (ADR 0045; relay/worker/index.js
+    // does the same): its safety is the ticket, never the caller's origin.
+    if (url.pathname === "/v1/pair" && req.method === "OPTIONS") {
+      res.writeHead(204, { "access-control-allow-origin": "*", "access-control-allow-methods": "POST", "access-control-allow-headers": "content-type", "access-control-max-age": "600" });
+      res.end();
+      return;
+    }
+    if (url.pathname === "/v1/pair" && req.method === "POST") { res.setHeader("access-control-allow-origin", "*"); onPairResolve(req, res); return; }
     res.writeHead(url.pathname.startsWith("/v1/") ? 426 : 404);
     res.end();
   });
+
+  /** GET-by-POST on purpose (ADR 0045): the locator never sits in a URL, so it never lands in an
+   * access log. Single-use: found or not, the entry is gone either way after this call. */
+  function onPairResolve(req, res) {
+    const ip = String(req.socket.remoteAddress || "");
+    if (!pairResolveLimitByIp(ip) || !pairResolveLimitGlobal("*")) { res.writeHead(429, { "content-type": "application/json" }); res.end('{"error":"too many pairing attempts; wait a minute"}'); return; }
+    let body = "";
+    let over = false;
+    req.on("data", c => { body += c; if (body.length > 1024) { over = true; req.destroy(); } });
+    req.on("end", () => {
+      if (over) return;
+      let m;
+      try { m = JSON.parse(body); } catch { res.writeHead(400, { "content-type": "application/json" }); res.end('{"error":"bad request"}'); return; }
+      const loc = String(m?.loc || "");
+      sweepTickets();
+      const t = pairTickets.get(loc);
+      if (t) pairTickets.delete(loc);
+      if (!t || t.exp <= Date.now()) { res.writeHead(404, { "content-type": "application/json" }); res.end('{"error":"this pairing code has expired or was already used"}'); return; }
+      res.writeHead(200, { "content-type": "application/json" });
+      res.end(JSON.stringify({ record: t.record, mac: t.mac }));
+    });
+    req.on("error", () => {});
+  }
 
   server.on("upgrade", (req, socket, head) => {
     const url = new URL(req.url || "/", "http://relay");
@@ -128,7 +191,22 @@ export function createRelay(o = {}) {
       r.ticket = crypto.randomBytes(18).toString("base64url");
       peer.json({ t: "ready", ticket: r.ticket, waiting: [...r.conns].filter(([, x]) => !x.box).map(([c]) => c) });
       log("box.connected", { route });
-      peer.onmessage = () => {};
+      // The only thing a control socket sends after auth: registering a pairing ticket's locator
+      // (ADR 0045). Everything here is the box's own word about its own route, so this is not a
+      // trust boundary the way the HTTP resolve side is; the size caps and the register-side
+      // rate limit are just hygiene against a runaway or compromised box, not the real defence.
+      peer.onmessage = (d2, bin2) => {
+        if (bin2 || !pairRegisterLimit(route)) return;
+        let t;
+        try { t = JSON.parse(d2.toString()); } catch { return; }
+        if (t?.t !== "ticket") return;
+        const loc = String(t.loc || ""), record = String(t.record || ""), mac = String(t.mac || "");
+        if (!/^[A-Za-z0-9_-]{20,64}$/.test(loc) || !/^[A-Za-z0-9_-]{20,64}$/.test(mac) || !SEALED.test(record)) return;
+        sweepTickets();
+        const exp = Math.min(Number(t.exp) || 0, Date.now() + TICKET_TTL);
+        if (exp <= Date.now()) return;
+        pairTickets.set(loc, { record, mac, exp });
+      };
     };
     peer.onclose = () => {
       const r = routes.get(route);

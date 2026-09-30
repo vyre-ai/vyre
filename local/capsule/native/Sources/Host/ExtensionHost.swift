@@ -161,12 +161,21 @@ final class ExtensionHost: CapsuleHost {
     func showPanel(_ extensionID: String) { shownPanel = extensionID; model.panelTick += 1 }
     func hidePanel() { shownPanel = nil; model.panelTick += 1 }
     func setQuery(_ text: String) { model.text = text }
+    func currentQuery() -> String { model.text }
     func dictate(_ text: String, final: Bool) { model.dictate(text, final: final) }
+    func submitDictation() { model.submitDictated() }
+    func cancelDictation(_ restore: String) { model.cancelDictation(restore) }
 
     /// A key came up: the first extension that wants it (hold-to-talk).
     func handleUp(key: String) -> Bool { extensions.contains { $0.handleUp(key: key) } }
+    /// An ordinary ⏎ about to submit: stop whichever extension was listening first (there is at
+    /// most one at a time in practice), so ⏎ both stops the mic and sends.
+    func stopTalking() -> Bool { extensions.contains { $0.stopTalking() } }
+    /// Esc, before the box's own clear: cancel whichever extension was listening.
+    func cancelTalking() -> Bool { extensions.contains { $0.cancelTalking() } }
     func say(_ line: String) { model.line = line }
     func stepAside() async -> Bool { await panel?.stepAside() ?? false }
+    func sessionShown(thread: String?, project: String?) { model.sessionShown(thread: thread, project: project) }
 
     func notify(title: String, body: String) {
         if isShown { say(body) } else { Notifier.shared.post(title: title, body: body) }

@@ -5,8 +5,11 @@
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import crypto from "node:crypto";
 import { SESSIONS } from "./fixtures/corpus.js";
 import { OWNER, MAC, wait, until, pair } from "./link-harness.js";
+
+const sha = s => crypto.createHash("sha256").update(s).digest("hex");
 
 /** link.macs.call as a module on the box would make it. */
 const ask = (s, tool, input = {}, extra = {}) => s.box.registry.call("link.macs.call", { tool, input, ...extra }, "module:test");
@@ -136,6 +139,57 @@ test("link federation: unpairing on the box stops the Mac's loop and empties lin
   // And it stays stopped: a heartbeat later, nothing is polling.
   await wait(300);
   assert.equal((await s.macCall("link.status")).data.serving, false);
+  assert.deepEqual((await s.boxCall("link.macs")).data, []);
+});
+
+test("link federation: a Mac's machine-to-machine unpair reaches the box (the rc.2 find, 28 Sep): a device may unpair itself, never another device", async t => {
+  const s = await pair(t);
+  await polling(s);
+  // A second, fake paired Mac's row, planted directly (its own real key_hash is a plain sha256,
+  // no pepper -- core/link/box.js's own `sha`, reproduced here). A different stable_id: some
+  // other device on the tailnet, never this one.
+  const otherKey = "other-macs-real-key";
+  s.box.registry.deps.db.prepare("INSERT INTO link_peers (id, name, login, node, stable_id, key_hash, paired_at) VALUES (?,?,?,?,?,?,?)")
+    .run("other-mac-id", "someone else's Mac", OWNER, "other-node", "nOTHER", sha(otherKey), Date.now());
+  // This Mac's own tailnet identity (MAC.stableId, "nMAC"), asking to unpair the OTHER row by
+  // its key: refused -- byKey's stable_id check is what stops a device impersonating a different
+  // one, and this proves it still runs (it's the box's own tool logic, unaffected by whether the
+  // floor's ancestry gate applies to this tool at all).
+  const other = await s.boxCall("link.unpair", { key: otherKey }, `tailnet:${OWNER}`, { peer: { stableId: MAC.stableId } });
+  assert.equal(other.error?.message, "no such paired Mac", JSON.stringify(other));
+  assert.equal((await s.boxCall("link.macs")).data.length, 2, "the other Mac's row is untouched");
+
+  // The same machine-to-machine path, unpairing ITSELF (mac.js's boxCall("link.unpair", {key:
+  // saved.key}), exactly what a real Mac sends): allowed. Before the personOnly fix this was
+  // refused outright by the floor before ever reaching byKey -- link-federation.test.js's own
+  // next test is the end-to-end version of this through the real Mac.
+  const u = await s.macCall("link.unpair");
+  assert.equal(u.data.unpaired, true);
+  await until(async () => (await s.macCall("link.status")).data.serving === false);
+  assert.deepEqual((await s.boxCall("link.macs")).data.map(m => m.mac), ["other-mac-id"], "only this Mac was forgotten, not the other one");
+  s.box.registry.deps.db.prepare("DELETE FROM link_peers WHERE id = ?").run("other-mac-id");
+});
+
+test("link federation: link.unpair is the person's; only a paired Mac unpairing itself by its own key passes without a person session", async t => {
+  const { PERSON_ONLY, machineSelf } = await import("../core/presence/index.js");
+  assert.ok(PERSON_ONLY.has("link.unpair"), "a model's shell on the box cannot forget a Mac by id");
+  assert.equal(machineSelf("link.unpair", { key: "k" }), true);
+  for (const input of [{ id: "m1" }, { key: "k", id: "m1" }, { key: "" }, {}, null]) assert.equal(machineSelf("link.unpair", input), false, JSON.stringify(input));
+  assert.equal(machineSelf("link.pair", { key: "k" }), false);
+
+  const s = await pair(t);
+  const [m] = await polling(s);
+  // Another of the owner's devices (the phone, no person session): by id is refused, since that
+  // is the person forgetting a Mac, not a Mac forgetting itself.
+  const phone = { login: OWNER, node: "test-phone", stableId: "nPHONE" };
+  const byId = await s.boxCall("link.unpair", { id: m.mac }, `tailnet:${OWNER}`, { peer: phone });
+  assert.equal(byId.error?.code, "person_session_required", JSON.stringify(byId));
+  const mixed = await s.boxCall("link.unpair", { id: m.mac, key: "x" }, `tailnet:${OWNER}`, { peer: phone });
+  assert.equal(mixed.error?.code, "person_session_required", JSON.stringify(mixed));
+  assert.equal((await s.boxCall("link.macs")).data.length, 1, "still paired");
+  // The Mac itself, by its own key: allowed (the next tests run it end to end through mac.js).
+  const u = await s.macCall("link.unpair");
+  assert.equal(u.data.unpaired, true, JSON.stringify(u));
   assert.deepEqual((await s.boxCall("link.macs")).data, []);
 });
 

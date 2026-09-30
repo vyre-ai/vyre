@@ -99,7 +99,7 @@ test("keyboard: take-over stops the agent's hands, names the holder, and givebac
   assert.equal(kb.canType("kit", "glass:laptop"), false);
   assert.equal(leases.has("th-kit-2"), false);
   assert.deepEqual(leaseCalls, [["lease", "th-kit-2", "glass:laptop"], ["release", "th-kit-2", "glass:laptop"]]);
-  assert.deepEqual(events.filter(e => e.type === "computer.handed-back").map(e => e.payload), [{ agent: "kit", surface: "glass:laptop", why: "gave back" }]);
+  assert.deepEqual(events.filter(e => e.type === "computer.handed-back").map(e => e.payload), [{ agent: "kit", surface: "glass:laptop", why: "gave back", by: "owner", device: "glass", reason: "gave back" }]);
   assert.deepEqual(changes, [{ agent: "kit", surface: "glass:laptop" }, { agent: "kit", surface: null }]);
 });
 
@@ -141,7 +141,7 @@ test("keyboard: a take-over nobody renews ends when the lease expires", async t 
   clock.t += 1;
   kb.sweep();
   assert.deepEqual(kb.mayAct("kit"), { ok: true });
-  assert.deepEqual(events.at(-1)?.payload, { agent: "kit", surface: "glass:laptop", why: "lease expired" });
+  assert.deepEqual(events.at(-1)?.payload, { agent: "kit", surface: "glass:laptop", why: "lease expired", by: "owner", device: "glass", reason: "expired" });
 });
 
 test("keyboard: chatting with the agent moves the lease but never pauses its hands", async t => {
@@ -173,7 +173,7 @@ test("keyboard: the lease released or moved to something that is not a screen en
   a.leases.delete("th-kit-2");
   a.kb.onLease({ thread: "th-kit-2", payload: { holder: null, previous: "glass:laptop" } });
   assert.deepEqual(a.kb.mayAct("kit"), { ok: true });
-  assert.deepEqual(a.events.at(-1)?.payload, { agent: "kit", surface: "glass:laptop", why: "lease released" });
+  assert.deepEqual(a.events.at(-1)?.payload, { agent: "kit", surface: "glass:laptop", why: "lease released", by: "owner", device: "glass", reason: "released" });
 });
 
 test("keyboard: another person's screen taking over replaces the first", async t => {
@@ -245,7 +245,7 @@ test("keyboard: a take-over with no input is warned 10 s before and handed back 
   pass(IDLE_WARN_MS);
   assert.deepEqual(kb.mayAct("kit"), { ok: true });
   assert.deepEqual(events.filter(e => e.type === "computer.handed-back").map(e => e.payload),
-    [{ agent: "kit", surface: "glass:laptop", why: "idle", idle_ms: 300_000 }]);
+    [{ agent: "kit", surface: "glass:laptop", why: "idle", by: "owner", device: "glass", reason: "idle", idle_ms: 300_000 }]);
   await new Promise(r => setImmediate(r));
   assert.deepEqual(sent, [{ thread: "th-kit-2", text: "Handed back to kit after 5 min idle" }]);
   assert.equal(leases.has("th-kit-2"), false, "the thread's lease was not released");
@@ -299,4 +299,16 @@ test("keyboard: an idle hand-back needs no thread", async t => {
   pass(300_000);
   assert.equal(events.at(-1)?.payload.why, "idle");
   assert.deepEqual(sent, []);
+});
+
+test("keyboard: a take-over the thread's lease ends tells the agent's thread how", async t => {
+  const { kb, chat, sent } = setup(t);
+  await kb.takeover("kit", "glass:laptop");
+  chat("th-kit-2", "cli");
+  await new Promise(r => setImmediate(r));
+  assert.deepEqual(sent, [{ thread: "th-kit-2", text: "The owner's take-over (from glass) ended when the thread moved to chat" }]);
+  await kb.takeover("kit", "deck:laptop");
+  kb.onLease({ thread: "th-kit-2", payload: { holder: null, previous: "deck:laptop" } });
+  await new Promise(r => setImmediate(r));
+  assert.equal(sent.at(-1)?.text, "The owner's take-over (from deck) ended when the thread's lease was released");
 });

@@ -6,6 +6,54 @@
 .cn-group + .cn-group { margin-top: 28px; }
 .cn-empty { padding-top: 16px; }
 
+/* Connections cards (mcp-native gap 2): one card per vault.connections.list row, whatever the
+   source. Built from card.md's "Connections card" variant and chip.md's surface-grant filter
+   chip (both finished by app-design, f65d51e5), not the board's own preview-only class names;
+   app-design reviews the built result (its own call: it specs, it does not ship Deck CSS). */
+.cn-cards { margin-bottom: 8px; }
+.cn-card-list { display: flex; flex-direction: column; gap: 10px; margin-top: 10px; }
+
+/* card.md anatomy: --panel, 1px --rule, --radius-card, overflow hidden; no gap between the three
+   parts (top row, Granted to, footer) since each carries its own padding and only the footer
+   gets a rule (the Connections variant, not the generic "rows separated by a rule" body). */
+.cn-card { background: var(--panel); border: 1px solid var(--rule); border-radius: var(--radius-card); overflow: hidden; }
+.cn-card-problem { display: flex; align-items: center; gap: 12px; padding: 14px 16px; }
+.cn-card-top { display: flex; align-items: center; gap: 12px; padding: 14px 16px; }
+.cn-card-t, .cn-add-t { display: flex; flex-direction: column; gap: 2px; min-width: 0; flex: 1 1 auto; }
+.cn-name { font-size: 15px; line-height: 20px; color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cn-avatar { width: 32px; height: 32px; border-radius: 8px; flex-shrink: 0; display: inline-flex; align-items: center; justify-content: center; background: var(--hover); color: var(--text-2); }
+.cn-trailing { flex-shrink: 0; font-size: 12px; line-height: 16px; color: var(--label); }
+/* account-row.md's meta line: label · provider, 12/16 --label. */
+.cn-meta { font-size: 12px; line-height: 16px; color: var(--label); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* card.md's Granted-to part: padding 0 16 12, wrapped. */
+.cn-granted { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; padding: 0 16px 12px; }
+.cn-granted-l { font-size: 12px; line-height: 16px; color: var(--label); margin-right: 2px; }
+
+/* card.md's footer: --rule top border, padding 12 16. */
+.cn-card-f { display: flex; align-items: center; gap: 8px; padding: 12px 16px; border-top: 1px solid var(--rule); }
+.cn-connected { margin-left: auto; font-size: 12px; line-height: 16px; color: var(--label); }
+.cn-steplink { color: var(--text-2); font-size: 13px; line-height: 18px; cursor: pointer; text-decoration: underline; text-decoration-color: var(--rule-strong); background: none; border: none; padding: 0; }
+.cn-steplink:hover { color: var(--text); }
+
+/* account-row.md's "Connect another" row. */
+.cn-add { display: flex; align-items: center; gap: 12px; padding: 12px 16px; border: 1px dashed var(--rule-strong); border-radius: var(--radius-card); cursor: pointer; }
+.cn-add:hover { background: var(--hover); }
+
+/* The surface-grant filter chip (chip.md's Filter chip anatomy: 28 tall, radius-full, 1px
+   --rule-strong, ink --text-2, gap 6; On is --focus border + --signal-wash fill + --text ink,
+   lime never violet). Its own class, not deck.css's shared .chip (26 tall, no on state, and
+   already carries settings-keys.js's differently-sized source chip), so this is correct without
+   touching that shared rule; chip.md's own Gap already names the shared .chip fix as separate
+   work. */
+.cn-chip { display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 10px; border-radius: var(--radius-full); border: 1px solid var(--rule-strong); background: none; font-size: 13px; line-height: 18px; color: var(--text-2); cursor: pointer; }
+.cn-chip:hover { background: var(--hover); color: var(--text); }
+.cn-chip-on { border-color: var(--focus); background: var(--signal-wash); color: var(--text); }
+.cn-chip:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+/* Asking (chip.md States): the Agents chip mid Touch ID/passkey, Off until it resolves. */
+.cn-chip[aria-busy="true"] { color: var(--label); cursor: wait; }
+.cn-chip .cn-chip-shield { color: var(--label); }
+
 .cn-row { padding: 14px 0; display: flex; flex-direction: column; gap: 8px; }
 .cn-head { display: flex; align-items: center; flex-wrap: wrap; gap: 8px 12px; }
 .cn-name { font-size: 14px; line-height: 20px; color: var(--text); }
@@ -48,6 +96,12 @@
 .cn-paste .input { flex: 1 1 auto; min-width: 0; font-family: var(--mono); font-size: 13px; }
 .cn-paste .btn { flex-shrink: 0; }
 
+/* Sign in with GitHub: a round avatar next to a Google-style .cn-row, and the device code's
+   large, mono, letter-spaced display (github.com's own device page shows it the same way). */
+.cn-avatar-img { width: 20px; height: 20px; border-radius: 6px; flex-shrink: 0; }
+.cn-gh-code-row { display: flex; align-items: center; gap: 12px; margin: 4px 0; }
+.cn-gh-code { font-family: var(--mono); font-size: 32px; line-height: 40px; letter-spacing: 0.08em; color: var(--text); user-select: all; }
+
 /* A service account's admin console values, each with Copy. */
 .cn-admin { border-left: 1px solid var(--rule-strong); padding: 4px 0 4px 14px; display: flex; flex-direction: column; gap: 8px; max-width: 720px; }
 .cn-copies { display: flex; flex-direction: column; gap: 6px; }
@@ -62,4 +116,5 @@
   .cn-copy { grid-template-columns: minmax(0, 1fr) auto; gap: 4px 8px; }
   .cn-copy .cn-k { grid-column: 1 / -1; }
   .cn-paste { flex-wrap: wrap; }
+  .cn-gh-code { font-size: 24px; line-height: 30px; }
 }

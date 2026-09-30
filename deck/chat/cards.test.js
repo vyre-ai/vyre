@@ -186,11 +186,16 @@ test("tool cards: the checklist, a short diff and a run open on their own; a rea
   assert.equal(open(bash), true);
   assert.equal(text($(bash, ".cv-out")).split("\n").length, 6);
   assert.match(text(bash), /show all \(7 lines\)/);
-  assert.equal(text(personAv("you", "alex")), "A");
-  assert.ok($(personAv("you", null), ".cv-dot"));
-  assert.equal(text(personAv("capsule")), "C");
+  // ADR 0043's families: the person's circle on every message of theirs (named in its title), the
+  // assistant's creature, an agent's blob.
+  assert.equal(personAv("you", "alex").getAttribute("data-family"), "person");
+  assert.equal(personAv("you", "alex").getAttribute("title"), "alex");
+  assert.equal(personAv("capsule").getAttribute("title"), "capsule");
+  assert.ok($(personAv("you", null), "svg"), "drawn even before the owner's name is known");
+  assert.equal(agentAv("Vyre").getAttribute("data-family"), "assistant");
   assert.ok($(agentAv("Vyre"), "svg"));
-  assert.equal(text(agentAv("juno")), "ju");
+  assert.equal(agentAv("kit", false).getAttribute("data-family"), "agent");
+  assert.equal(agentAv("juno").getAttribute("data-family"), "agent", "an agent: its blob, not two letters");
 });
 
 test("permission card: the diff summary, totals first, a row per file on a tap, binary and 'and N more'", async () => {
@@ -275,7 +280,8 @@ test("permission card: a neutral header with the dot, Permission and who; A allo
   assert.equal(text($(card, ".cv-ask-kind")), "Permission");
   assert.match(text($(card, ".cv-ask-meta")), /^kit · \d\d:\d\d$/);
   assert.equal(text($(card, ".ask-title")), "kit wants to run a command");
-  // Allow once A (primary), Always (outline, not ghost), Deny D (ghost); the keys as plain text, hidden from readers.
+  // Allow once A (primary), Always (outline, not ghost), Deny D (ghost); the keys as the shared
+  // kbd chip (key-hint.md, app-design's review - was plain text), hidden from readers.
   const allow = act(card, "allow"), always = act(card, "always"), deny = act(card, "deny");
   assert.match(allow.className, /btn-primary/);
   assert.doesNotMatch(always.className, /btn-ghost|btn-primary/, "Always is an outline button");
@@ -285,7 +291,7 @@ test("permission card: a neutral header with the dot, Permission and who; A allo
   assert.equal(text($(allow, ".cv-ask-key")), "A");
   assert.equal(text($(deny, ".cv-ask-key")), "D");
   assert.equal($(allow, ".cv-ask-key").getAttribute("aria-hidden"), "true");
-  assert.equal($(card, ".gate-actions .kbd"), null, "no boxed chip inside a button");
+  assert.ok($(card, ".gate-actions .kbd"), "the real key-hint chip, not plain text");
   assert.equal(card.onKey(key("a")), true);
   await settle();
   assert.deepEqual(api.of("threads.answer")[0].input, { ask: "ask_k1", decision: "allow", surface: "deck" });
@@ -538,6 +544,35 @@ test("the rewind sheet: Claude Code's three restores, code off on a box that res
   sheet.key(/** @type {any} */ ({ key: "Enter" }));
   await new Promise(r => setTimeout(r, 0));
   assert.deepEqual(chose, [["u1", "code"]]);
+});
+
+test("the rewind sheet: 'Fork from here' is the fourth item only when onFork is given, and it does not call onChoose", async () => {
+  const { rewindSheet } = await import("./pickers.js");
+  const barren = rewindSheet({ points: [{ uuid: "u1", text: "Read the intake folder", at: null }],
+    can: () => true, onChoose: async () => null, onClose: () => {} });
+  assert.deepEqual($$(barren.el, ".cv-rw-opt").map(b => text(b)), ["Restore code and conversation", "Restore conversation", "Restore code"], "no onFork: three items, as before");
+  /** @type {any[]} */
+  const chose = [];
+  /** @type {any[]} */
+  const forked = [];
+  let forkOk = /** @type {boolean|null} */ (null);
+  const sheet = rewindSheet({ points: [{ uuid: "u2", text: "Rebuild the Estate intake", at: null }, { uuid: "u1", text: "Read the intake folder", at: null }],
+    can: () => true, codeOk: () => true, canFork: () => forkOk,
+    onChoose: async (p, r) => { chose.push([p.uuid, r]); return null; },
+    onFork: async p => { forked.push(p.uuid); return null; }, onClose: () => {} });
+  const opts = () => $$(sheet.el, ".cv-rw-opt");
+  assert.deepEqual(opts().map(b => text(b)), ["Restore code and conversation", "Restore conversation", "Restore code", "Fork from here"]);
+  assert.equal(opts()[3].disabled, true, "canFork null: waits, off");
+  forkOk = true;
+  sheet.refresh();
+  assert.equal(opts()[3].disabled, false);
+  sheet.key(/** @type {any} */ ({ key: "ArrowLeft" }));
+  assert.equal(sheet.restore(), "fork", "left from the default (both) wraps to the last item");
+  assert.equal(text($(sheet.el, ".cv-rw-go")).replace("⏎", "").trim(), "Fork here");
+  sheet.key(/** @type {any} */ ({ key: "Enter" }));
+  await new Promise(r => setTimeout(r, 0));
+  assert.deepEqual(forked, ["u2"]);
+  assert.deepEqual(chose, [], "fork never calls onChoose");
 });
 
 test("tool row (tool-row.md): a verb, the path relative to the session's folder, no 'done' word; waiting on you has no clock; failed says so", async () => {

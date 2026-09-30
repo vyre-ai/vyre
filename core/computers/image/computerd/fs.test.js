@@ -186,10 +186,16 @@ async function freePort() {
 test("computerd: /fs is behind the bearer token, and the shield answers 423 on its eyes and hands", async t => {
   const dir = home(t);
   const port = await freePort();
+  // computerd starts Chrome itself: give it the fake one (testing/fake-chrome.js), never a real one.
+  const side = fs.mkdtempSync(path.join(SCRATCH, "computerd-chrome-"));
+  fs.mkdirSync(path.join(side, "profile"));
+  const chrome = path.join(side, "fake-chromium");
+  fs.writeFileSync(chrome, `#!/bin/sh\nexec "${process.execPath}" "${path.join(HERE, "testing", "fake-chrome.js")}" "$@"\n`);
+  fs.chmodSync(chrome, 0o755);
   const child = spawn(process.execPath, [path.join(HERE, "index.js")], {
-    env: { ...process.env, COMPUTERD_TOKEN: TOKEN, COMPUTERD_PORT: String(port), COMPUTERD_FS_ROOT: dir }, stdio: ["ignore", "pipe", "pipe"],
+    env: { ...process.env, HOME: side, CHROME_BIN: chrome, CHROME_PROFILE: path.join(side, "profile"), COMPUTERD_TOKEN: TOKEN, COMPUTERD_PORT: String(port), COMPUTERD_FS_ROOT: dir }, stdio: ["ignore", "pipe", "pipe"],
   });
-  t.after(() => { child.kill("SIGKILL"); });
+  t.after(() => { child.kill("SIGKILL"); fs.rmSync(side, { recursive: true, force: true }); });
   await new Promise((resolve, reject) => {
     child.stdout.on("data", d => { if (/listening/.test(String(d))) resolve(undefined); });
     child.once("exit", code => reject(new Error(`computerd exited ${code}`)));
@@ -200,7 +206,7 @@ test("computerd: /fs is behind the bearer token, and the shield answers 423 on i
   assert.ok(!anon.body.toString().includes(TOKEN));
   assert.equal((await req(base, "GET", "/fs/read?path=todo.txt")).body.toString(), "0123456789");
 
-  assert.deepEqual((await req(base, "POST", "/shield", { body: { on: true } })).json, { shielded: true });
+  assert.deepEqual((await req(base, "POST", "/shield", { body: { on: true } })).json, { shielded: true, frozen: false });
   for (const [m, r] of [["GET", "/tree"], ["GET", "/screenshot"], ["POST", "/act"], ["POST", "/input"]]) {
     const res = await req(base, m, r, { body: m === "POST" ? {} : undefined });
     assert.equal(res.status, 423, `${m} ${r}`);
@@ -208,6 +214,6 @@ test("computerd: /fs is behind the bearer token, and the shield answers 423 on i
   }
   assert.equal((await req(base, "GET", "/fs/stat?path=todo.txt")).status, 200, "files are Glass's, and stay open to it");
   assert.equal((await req(base, "POST", "/shield", { headers: { authorization: "Bearer wrong" }, body: { on: false } })).status, 401);
-  assert.deepEqual((await req(base, "POST", "/shield", { body: { on: false } })).json, { shielded: false });
+  assert.deepEqual((await req(base, "POST", "/shield", { body: { on: false } })).json, { shielded: false, frozen: false });
   assert.notEqual((await req(base, "POST", "/act", { body: {} })).status, 423);
 });

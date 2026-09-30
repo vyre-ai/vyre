@@ -6,7 +6,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import path from "node:path";
-import { clean, tally } from "./index.js";
+import { clean, tally, fromPending } from "./index.js";
 import { discover, Registry } from "../modules/index.js";
 import { open } from "../store/index.js";
 import { Events } from "../events/index.js";
@@ -78,8 +78,18 @@ test("waiting.list: each kind says which owner tool answers it and what the pers
   assert.equal(by["planner:f1"].title, "Call alex about the bakery lease");
   assert.equal(by["planner:f1"].at, T + 2000, "a ring is dated by when it was due");
   assert.equal(by["link:p1"].title, `Pair the Mac "alex's MacBook"`);
-  assert.equal(by["link:p1"].at, T, "a pairing is dated by when it was asked, its expiry less the box's ten minutes");
+  assert.equal(by["link:p1"].at, T, "no created field yet: falls back to its expiry less the box's ten minutes");
   assert.ok(!JSON.stringify(by["link:p1"]).includes("code\":\""), "never a code");
+});
+
+test("fromPending: a box's real created time wins over the expiry-minus-TTL guess", () => {
+  // core/link/box.js now sends `created`, so the exact request time shows even when it does not
+  // land exactly ten minutes before `expires` (a clock skew, a future TTL change on the box).
+  const withCreated = fromPending([{ id: "p2", name: "alex's iMac", login: "alex@example.com", node: "alex-imac", created: T + 500, expires: T + 900_000 }]);
+  assert.equal(withCreated[0].at, T + 500);
+  // An older box that has not shipped `created` yet still falls back to the ten-minute guess.
+  const withoutCreated = fromPending([{ id: "p3", name: "alex's iPad", login: "alex@example.com", node: "alex-ipad", expires: T + 600_000 }]);
+  assert.equal(withoutCreated[0].at, T);
 });
 
 test("waiting.list: a failing, refused or missing source leaves its name in partial and the rest still show", async t => {
@@ -164,14 +174,6 @@ test("waiting.changed: after the owners' events, coalesced, and only when the co
   assert.equal(w.said.length, 5);
 });
 
-test("waiting.list on a Mac leaves out the planner, which is the box's over the link", async t => {
-  const w = await world(t, ALL, { ringing: [RING], pending: [PAIR] }, "local");
-  const r = (await w.call("waiting.list")).data;
-  assert.ok(!r.rows.some(x => x.source === "planner"));
-  assert.ok(r.rows.some(x => x.source === "link"));
-  assert.equal(w.calls["planner.ringing"] || 0, 0, "a Mac's vyred never asks the box's planner on its own");
-});
-
 test("fromAsks: an ask from a session on the paired Mac names its machine and is answered there", async () => {
   const { fromAsks } = await import("./index.js");
   const [mac, box] = fromAsks([
@@ -183,4 +185,12 @@ test("fromAsks: an ask from a session on the paired Mac names its machine and is
   assert.equal(fromAsks([{ id: "a3", kind: "question", source: "mac", at: 3 }])[0].answer.on, "your Mac");
   assert.equal(box.machine, undefined);
   assert.deepEqual(box.answer.input, { ask: "a2" });
+});
+
+test("waiting.list on a Mac leaves out the planner, which is the box's over the link", async t => {
+  const w = await world(t, ALL, { ringing: [RING], pending: [PAIR] }, "local");
+  const r = (await w.call("waiting.list")).data;
+  assert.ok(!r.rows.some(x => x.source === "planner"));
+  assert.ok(r.rows.some(x => x.source === "link"));
+  assert.equal(w.calls["planner.ringing"] || 0, 0, "a Mac's vyred never asks the box's planner on its own");
 });

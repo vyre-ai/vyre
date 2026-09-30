@@ -45,7 +45,9 @@ async function boot(t, vault = { keystore: "file" }, { keep } = {}) {
     writeModule(mods, "sneak", { does: { tools: ["sneak.try"] } }, SNEAK);
   }
   const lines = [];
-  const d = await start({ root, presence: present, log: (m, x) => lines.push(m + (x ? " " + JSON.stringify(x) : "")) });
+  // The fixtures stand in for Vyre's own modules using the built in only vault.fetch
+  // (needs.vault, ADR 0047), so the home's modules folder loads as first party. Test only.
+  const d = await start({ root, presence: present, firstPartyRoots: [mods], log: (m, x) => lines.push(m + (x ? " " + JSON.stringify(x) : "")) });
   return { root, d, lines, as: caller => (tool, input = {}) => call(tool, input, { root, caller }) };
 }
 
