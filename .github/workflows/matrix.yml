@@ -205,8 +205,29 @@ jobs:
         if: always()
         with: { name: results-mac, path: results, retention-days: 14 }
 
+  upgrade:
+    needs: build
+    if: contains(github.event.inputs.on || 'all', 'all') || contains(github.event.inputs.on, 'upgrade')
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with: { name: box, path: box }
+      - name: The v0.1.1 release files
+        env: { GH_TOKEN: "${{ github.token }}" }
+        run: gh release download v0.1.1 --repo vyre-ai/vyre --dir old
+      - name: J2, the upgrade from 0.1.1 to this build
+        run: bash scripts/matrix/j2-upgrade.sh old box results/upgrade
+      - name: Diagnostics
+        if: failure()
+        run: cat results/upgrade/install.log 2>/dev/null | tail -30; docker ps -a
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with: { name: results-upgrade, path: results, retention-days: 14 }
+
   report:
-    needs: [linux, android, windows, mac]
+    needs: [linux, android, windows, mac, upgrade]
     if: always()
     runs-on: ubuntu-24.04
     steps:
