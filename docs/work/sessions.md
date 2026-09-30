@@ -66,7 +66,11 @@ Capsule quick asks to the box assistant, Mac project folders Mac-owned.
   locations are UNVERIFIED until a real account runs on a hosted runner (needs a pay-per-use test
   key from the lead). (c) 11 Mac-only failures in core/sessions tests (/proc pid, subreaper, socket
   peer) predate this work; Linux CI is the judge. (d) sessions.accounts.signin (device-code flow)
-  not built; login accounts need it. (e) No mid-session switch or routing/fallback yet.
+  not built; login accounts need it. (e) The handoff brief's older half is a plain cut, not iq's summary yet; an agent thread's own auth (agents auth.vault) is dropped on a switch, so a switch needs an account.
+  5. 0f58e2ce threads.switch (between turns, brief, thread.provider event, notice) and
+     sessions.routes.get/set/next with switchboard routeFallback on a limit; same-provider lists need
+     acknowledge:true; an agent sets only its own list or a granted project (uses meta.granted).
+  Next: sessions.accounts.signin (device code per provider), OpenRouter driver, rooms deferred to 0.2.x, real-account proofs on a runner once keys exist, review fixes.
 
 - 0.1.1 test-fix queue from team-lead (branch work/sessions-011 off stage/0.1.1 d9b916d4, both
   failures predate today, also seen on 029756bc): fixed.
