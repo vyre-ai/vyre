@@ -33,26 +33,29 @@ else rec 2.1-install-old false "install or start failed: $(tail -3 "$OUT/install
 # 2.2 fill it with a made-up world and read it back
 vyre call memory.remember '{"text":"My wife is Robin"}' >"$OUT/seed-memory.json" 2>&1
 vyre call planner.add '{"kind":"note","text":"Marlow and Finch retainer draft"}' >"$OUT/seed-note.json" 2>&1
-seen() { vyre call planner.list '{}' 2>&1 | grep -q 'retainer draft' && vyre call memory.facts '{}' 2>&1 | grep -q 'Robin'; }
+seen() { vyre call planner.list '{}' 2>&1 | grep -q 'retainer draft'; }
+mem() { vyre call memory.facts '{}' 2>&1 | tee "$OUT/facts-${1:-x}.json" | grep -q 'Robin'; }
 seen && rec 2.2-seed ok || rec 2.2-seed false "seed not readable. note: $(head -c 150 "$OUT/seed-note.json" | tr '\n' ' ') list: $(vyre call planner.list '{}' 2>&1 | head -c 200 | tr '\n' ' ')"
+
+mem before && rec 2.2b-memory-seed ok || rec 2.2b-memory-seed false "memory.facts does not show the fact: $(head -c 200 "$OUT/facts-before.json" | tr '\n' ' ')"
 
 # 2.3 update to the candidate
 out=$(upd 18082); rc=$?; ready
 v=$(version)
 [ $rc -eq 0 ] && [ "$v" = "$CAND" ] && rec 2.3-update ok "$OLDV to $v" || rec 2.3-update false "rc $rc, runs '$v', want $CAND: $(echo "$out" | tail -4)"
 # 2.4 nothing lost
-seen && rec 2.4-data-kept ok || rec 2.4-data-kept false "memory or note gone after the update"
+seen && mem after-update && rec 2.4-data-kept ok || rec 2.4-data-kept false "note or memory gone after the update"
 
 # 2.5 roll back with data, then update again
 out=$(upd 18082 --rollback --restore-data --yes); rc=$?; ready; v=$(version)
 [ $rc -eq 0 ] && [ "$v" = "$OLDV" ] && rec 2.5a-rollback ok "$v" || rec 2.5a-rollback false "rc $rc, runs '$v': $(echo "$out" | tail -4)"
-seen && rec 2.5b-rollback-data ok || rec 2.5b-rollback-data false "data missing after rollback"
+seen && mem after-rollback && rec 2.5b-rollback-data ok || rec 2.5b-rollback-data false "data missing after rollback"
 out=$(upd 18082); rc=$?; ready; v=$(version)
 [ $rc -eq 0 ] && [ "$v" = "$CAND" ] && rec 2.5c-update-again ok "$v" || rec 2.5c-update-again false "rc $rc, runs '$v': $(echo "$out" | tail -4)"
 
 # 2.6 a tampered release is refused and the box stays as it was
 out=$(upd 18083); rc=$?; ready; v=$(version)
-if [ $rc -ne 0 ] && [ "$v" = "$CAND" ] && seen; then rec 2.6-tamper-refused ok "$(echo "$out" | tail -1)"
+if [ $rc -ne 0 ] && [ "$v" = "$CAND" ] && seen && mem after-tamper; then rec 2.6-tamper-refused ok "$(echo "$out" | tail -1)"
 else rec 2.6-tamper-refused false "rc $rc, runs '$v': $(echo "$out" | tail -3)"; fi
 
 while read -r p; do kill "$p" 2>/dev/null; done <"$OUT/pids"
