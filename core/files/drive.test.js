@@ -23,7 +23,25 @@ import { seams, parseDriveList, driveCap, driveUrl, shareMap, shareSpecs, mountS
 const CORE = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const MAC_ID = "nMAC1CNTRL", PHONE_ID = "nPHONE1CNTRL", BOX_ID = "nBOX1CNTRL";
 
+/**
+ * The registries a test started, stopped once, in order, BEFORE any temp dir is removed. After-hooks run in the order they
+ * were added, and a test builds its fake tailscale (whose dir the registry's files module keeps writing calls.log into)
+ * before the registry: a removal that ran first raced that late write (ENOTEMPTY on a busy runner, 30 Sep).
+ * @type {WeakMap<object, { stop: () => Promise<void>, items: { reg: any, db: any }[], hooked: boolean }>}
+ */
+const running = new WeakMap();
+function stoppers(t) {
+  let r = running.get(t);
+  if (!r) {
+    r = { items: [], hooked: false, async stop() { const all = r.items.splice(0); for (const { reg, db } of all) { try { await reg.stop(); } catch {} try { db.close(); } catch {} } } };
+    running.set(t, r);
+  }
+  if (!r.hooked) { r.hooked = true; t.after(() => r.stop()); }
+  return r;
+}
+
 function tmp(t, prefix = "vyre-drive-") {
+  stoppers(t);
   const dir = fs.mkdtempSync(path.join(SCRATCH, prefix));
   t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
   return dir;
@@ -54,6 +72,7 @@ const LIST = "name        path     as\n--------    -----    ----\nprojects    /w
  * calls.log. It never runs the real binary.
  */
 function fakeTailscale(t, state) {
+  stoppers(t); // before tempHome's own removal hook, so the registry has stopped by then
   const dir = tempHome(t);
   const bin = path.join(dir, "tailscale");
   fs.writeFileSync(path.join(dir, "state.json"), JSON.stringify(state));
@@ -78,10 +97,7 @@ process.stderr.write("unexpected"); process.exit(2);
 
 /** A registry with the files module, and on the Mac a fake link module (status and remote). */
 async function registry(t, { role, cfg = {}, link = undefined, seam = undefined, peers = [], presence = undefined, agents = undefined, projects = undefined, access = undefined }) {
-  // Registered FIRST: after-hooks run in the order they were added, so the registry must stop and its database close
-  // before tmp() below removes the home they write into (ENOTEMPTY when a module's late write lands mid-removal).
   /** @type {any} */ let reg = null, db = null;
-  t.after(async () => { if (reg) await reg.stop(); if (db) db.close(); });
   const root = tmp(t, "vyre-home-");
   const p = config.ensure(root);
   if (seam) { seams.set(root, seam); t.after(() => seams.delete(root)); }
@@ -117,6 +133,7 @@ async function registry(t, { role, cfg = {}, link = undefined, seam = undefined,
   }
   const events = new Events(db);
   reg = new Registry({ db, events, config: { role, ...cfg }, paths: p, log: () => {}, ...(presence ? { presence } : {}) });
+  stoppers(t).items.push({ reg, db });
   await reg.start(found, { role });
   assert.equal(reg.modules.get("files").state, "running", reg.modules.get("files").error);
   return { reg, events, root };
