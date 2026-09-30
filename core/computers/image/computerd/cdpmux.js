@@ -773,6 +773,10 @@ export class CdpMux {
       c.queue.push(text);
       return;
     }
+    // Every fence below reads `c.agentId && c.browserContextId`, so an agent client with no context would run unfenced.
+    // `ready` is only set once the context exists, so this cannot fire today: it makes any future path that skips the
+    // gate a dropped client instead of a call in the shared context.
+    if (c.agentId && !c.browserContextId) { this.log(`cdp: dropped an agent client that had no browser context`); this._drop(c); return; }
     let m;
     try { m = JSON.parse(text); } catch { this.log(`cdp: ${c.kind} client sent something that is not JSON`); return; }
     if (!m || typeof m !== "object" || typeof m.id !== "number") return;
