@@ -10,14 +10,15 @@ import { recorder, fixtureHits } from "./lib/results.mjs";
 const arg = (name, def) => { const i = process.argv.indexOf("--" + name); return i < 0 ? def : process.argv[i + 1]; };
 const cdp = arg("cdp", "http://127.0.0.1:9222"), device = arg("device", "chrome"), out = arg("out", "results");
 const link = arg("link") || (arg("link-file") && fs.readFileSync(arg("link-file"), "utf8").trim());
-const mobile = process.argv.includes("--mobile");
+const mobile = process.argv.includes("--mobile"), native = process.argv.includes("--native");
 if (!link) { console.error("j0: --link or --link-file is required"); process.exit(2); }
 
 const r = recorder(out, "J0", device);
+const hide = s => String(s).replace(/([?&]t=)[^&\s]+/g, "$1...");
 const t0 = Date.now();
 let page;
 try {
-  page = await connect(cdp, mobile ? { width: 390, height: 844, mobile: true, scale: 2 } : { width: 1280, height: 900 });
+  page = await connect(cdp, native ? {} : mobile ? { width: 390, height: 844, mobile: true, scale: 2 } : { width: 1280, height: 900 });
   const status = await page.open(link);
   r.step("open", status === 200, { ms: Date.now() - t0, why: status === 200 ? undefined : `HTTP ${status}` });
   const text = await page.waitText(/\S{3,}/);
@@ -26,10 +27,10 @@ try {
   const hits = fixtureHits(text);
   r.step("no-fixture-names", hits.length === 0, hits.length ? { why: "shows " + hits.join(", ") } : {});
   const errors = page.logs.filter(l => /^(exception|error|console\.error)/.test(l));
-  r.step("no-errors", errors.length === 0, errors.length ? { why: errors.slice(0, 3).join(" | ") } : {});
+  r.step("no-errors", errors.length === 0, errors.length ? { why: hide(errors.slice(0, 3).join(" | ")) } : {});
   r.step("screenshot", true, { shot: r.saveShot("setup", 1, await page.shot()) });
 } catch (e) {
-  r.step("run", false, { why: /** @type {Error} */ (e).message.slice(0, 300) });
+  r.step("run", false, { why: hide(/** @type {Error} */ (e).message).slice(0, 300) });
 } finally {
   if (page) await page.close();
 }

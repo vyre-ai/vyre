@@ -72,14 +72,45 @@ jobs:
         run: |
           google-chrome --headless=new --remote-debugging-port=9222 --user-data-dir="$RUNNER_TEMP/chrome" --no-first-run about:blank >/dev/null 2>&1 &
           for i in $(seq 1 50); do curl -fs http://127.0.0.1:9222/json/version >/dev/null && break; sleep 0.2; done
-          node scripts/matrix/j0.mjs --link-file link.txt --device linux-chrome --out results/linux
-          node scripts/matrix/j0.mjs --link-file link.txt --device linux-chrome-phone --out results/linux --mobile || true
+          node scripts/matrix/j0.mjs --link-file link.txt --device linux-chrome --out results/linux; rc=$?
+          sh scripts/matrix/new-link.sh link2.txt
+          node scripts/matrix/j0.mjs --link-file link2.txt --device linux-chrome-390 --out results/linux --mobile || rc=1
+          exit $rc
       - uses: actions/upload-artifact@v4
         if: always()
         with: { name: results-linux, path: results, retention-days: 14 }
 
+  android:
+    needs: build
+    if: contains(github.event.inputs.on || 'all', 'all') || contains(github.event.inputs.on, 'android')
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22 }
+      - uses: actions/download-artifact@v4
+        with: { name: box, path: box }
+      - name: Install a box with the real installer
+        run: sh scripts/matrix/box-up.sh box link.txt
+      - name: KVM for the emulator
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules && sudo udevadm trigger --name-match=kvm
+      - name: J0 in Chrome on Android 15
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 35
+          target: google_apis_playstore
+          arch: x86_64
+          disable-animations: true
+          script: sh scripts/matrix/android-j0.sh
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with: { name: results-android, path: results, retention-days: 14 }
+
   report:
-    needs: [linux]
+    needs: [linux, android]
     if: always()
     runs-on: ubuntu-24.04
     steps:
