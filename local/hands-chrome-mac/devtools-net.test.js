@@ -447,8 +447,8 @@ test("egress guard: what the guard blocked never becomes allowed by being observ
 
 
 /** A world with a page on app.example that has talked to api.example (and, optionally, more), then a guard. */
-async function guardedWorld(extra = async (/** @type {any} */ _k) => {}) {
-  const k = makeCtx({ active: 1 });
+async function guardedWorld(extra = async (/** @type {any} */ _k) => {}, opts = {}) {
+  const k = makeCtx({ active: 1, ...opts });
   k.ctx.tabs = { ...k.ctx.tabs, get: async () => ({ id: 1, url: "https://app.example/w" }) };
   await net.ops["net.start"]({ tab: 1 }, k.ctx);
   const seen = (/** @type {string} */ id, /** @type {string} */ url) => { k.push(1, "Network.requestWillBeSent", { requestId: id, type: "XHR", documentURL: "https://app.example/w", request: { url, method: "GET", headers: {} } }); k.push(1, "Network.responseReceived", { requestId: id, type: "XHR", response: { url, status: 200, headers: {}, mimeType: "application/json" } }); };
@@ -575,4 +575,81 @@ test("egress guard: a worker target has no Fetch domain in Chrome; that one erro
   assert.equal(k.sent.some(s => s.method === "Runtime.terminateExecution"), false, "the script is not stopped for it");
   const out = await eg.stop();
   assert.equal(out.some((/** @type {any} */ o) => o.method === "GUARD"), false);
+});
+
+/** A page a service worker controls: the XHR probe is paused, the Image probe is answered by the worker (the browser says so in Network.responseReceived) and never paused. */
+function swPage(/** @type {any} */ k) {
+  k.respond["Runtime.evaluate"] = (/** @type {any} */ p) => {
+    const m = /__vyre_probe_([a-z0-9]+_\d+)/.exec(String(p.expression || ""));
+    if (m) {
+      const url = "https://app.example/__vyre_probe_" + m[1];
+      k.push(1, "Fetch.requestPaused", { requestId: "px" + m[1], resourceType: "Fetch", request: { url, method: "GET", headers: {} } });
+      k.push(1, "Network.requestWillBeSent", { requestId: "pi" + m[1], type: "Image", request: { url, method: "GET", headers: {} } });
+      k.push(1, "Network.responseReceived", { requestId: "pi" + m[1], type: "Image", response: { url, status: 200, headers: {}, mimeType: "text/plain", fromServiceWorker: true } });
+      return { result: { value: 1 } };
+    }
+    return { result: { value: [] } };
+  };
+}
+
+test("egress guard: a service-worker-controlled frame (the BROWSER says so) is covered by the DNR rules narrowed to the first party, and is refused where the rules cannot be tested", async () => {
+  const a = await guardedWorld(async () => {}, { blindProbe: true });
+  swPage(a.k);
+  a.k.ctx.frames = { list: async () => [{ index: 0, frameId: "TOP", how: "top", readable: true, origin: "https://app.example", url: "https://app.example/w" }] };
+  await assert.rejects(egressGuard(a.k.ctx, 1), /cannot test the network rules/, "an untested browser is refused on a SW page");
+  const b = await guardedWorld(async () => {}, { blindProbe: true });
+  swPage(b.k);
+  b.k.ctx.frames = { list: async () => [{ index: 0, frameId: "TOP", how: "top", readable: true, origin: "https://app.example", url: "https://app.example/w" }] };
+  /** @type {any} */ (b.k.ctx).dnr.tested = true;
+  const eg = await egressGuard(b.k.ctx, 1);
+  const rules = /** @type {any} */ (b.k.ctx).dnr.rules;
+  assert.ok(rules.length >= 2, "the wide rule, then the narrowed one");
+  assert.deepEqual(rules[rules.length - 1].allowOrigins, ["https://app.example"], "first party only");
+  assert.deepEqual(eg.allowed, ["https://app.example"]);
+  await eg.stop();
+  // a page that merely CLAIMS a service worker (nothing from the browser) is not covered
+  const c = await guardedWorld(async () => {}, { blindProbe: true });
+  c.k.ctx.frames = { list: async () => [{ index: 0, frameId: "TOP", how: "top", readable: true, origin: "https://app.example", url: "https://app.example/w" }] };
+  c.k.respond["Runtime.evaluate"] = (/** @type {any} */ p) => { const m = /__vyre_probe_([a-z0-9]+_\d+)/.exec(String(p.expression || "")); if (m) return { result: { value: 1, sw: true } }; return { result: { value: [] } }; };
+  await assert.rejects(egressGuard(c.k.ctx, 1), /could not be confirmed live/);
+});
+
+test("egress guard: a probe the BROWSER reports blocked by the page's CSP (Network.loadingFailed blockedReason csp) counts as covered; a page event or a different reason does not", async () => {
+  const run = async (/** @type {string} */ reason) => {
+    const { k } = await guardedWorld(async () => {}, { blindProbe: true });
+    k.ctx.frames = { list: async () => [{ index: 0, frameId: "TOP", how: "top", readable: true, origin: "https://app.example", url: "https://app.example/w" }] };
+    k.respond["Runtime.evaluate"] = (/** @type {any} */ p) => {
+      const m = /__vyre_probe_([a-z0-9]+_\d+)/.exec(String(p.expression || ""));
+      if (!m) return { result: { value: [] } };
+      for (const type of ["Image", "XHR"]) {
+        k.push(1, "Network.requestWillBeSent", { requestId: "c" + type + m[1], type, request: { url: "https://app.example/__vyre_probe_" + m[1], method: "GET", headers: {} } });
+        k.push(1, "Network.loadingFailed", { requestId: "c" + type + m[1], type, errorText: "net::ERR_BLOCKED_BY_CSP", blockedReason: reason });
+      }
+      return { result: { value: 1 } };
+    };
+    return egressGuard(k.ctx, 1);
+  };
+  const eg = await run("csp");
+  await eg.stop();
+  await assert.rejects(run("inspector"), /could not be confirmed live/);
+});
+
+test("egress guard: a frame that claims a service worker controller (page JS) and whose probe is not fully paused gets the narrowed rules; with nothing claimed it is refused", async () => {
+  const mk = async (/** @type {number} */ claim) => {
+    const w = await guardedWorld(async () => {}, { blindProbe: true });
+    w.k.ctx.frames = { list: async () => [{ index: 0, frameId: "TOP", how: "top", readable: true, origin: "https://app.example", url: "https://app.example/w" }] };
+    /** @type {any} */ (w.k.ctx).dnr.tested = true;
+    w.k.respond["Runtime.evaluate"] = (/** @type {any} */ p) => {
+      const m = /__vyre_probe_([a-z0-9]+_\d+)/.exec(String(p.expression || ""));
+      if (!m) return { result: { value: [] } };
+      w.k.push(1, "Fetch.requestPaused", { requestId: "px" + m[1], resourceType: "Fetch", request: { url: "https://app.example/__vyre_probe_" + m[1], method: "GET", headers: {} } });
+      return { result: { value: 1 + claim } };
+    };
+    return w;
+  };
+  const a = await mk(1);
+  const eg = await egressGuard(a.k.ctx, 1);
+  assert.deepEqual(/** @type {any} */ (a.k.ctx).dnr.rules.at(-1).allowOrigins, ["https://app.example"], "narrowed to the first party");
+  await eg.stop();
+  await assert.rejects(egressGuard((await mk(0)).k.ctx, 1), /could not be confirmed live/);
 });
