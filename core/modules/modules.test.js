@@ -732,7 +732,11 @@ test("modules: an added module can never take the name of a first party module, 
   await reg.start([...discover([own], { firstPartyRoots: [own] }), ...discover([added]), ...discover([path.join(home, "added2")])], { role: "local" });
   assert.equal(reg.modules.get("names").state, "off", "the first party copy stays, off on a Mac: " + reg.modules.get("names").error);
   assert.equal(reg.tools.has("names.list"), false, "and the added one answers nothing under its name");
-  assert.ok([...reg.modules.entries()].some(([k, r]) => k.startsWith("names@") && r.state === "invalid" && /already loaded/.test(r.error)), "the imposter is reported");
+  assert.equal([...reg.modules.entries()].filter(([k, r]) => k.startsWith("names@") && r.state === "invalid" && /belongs to a module shipped with Vyre/.test(r.error)).length, 2, "both imposters are reported by the shipped-names rule, valid or not");
+  // Whatever order they are found in.
+  const reg2 = new Registry({ db, events: new Events(db), config: { role: "local" }, log: () => {}, firstPartyRoots: [own] });
+  await reg2.start([...discover([added]), ...discover([own], { firstPartyRoots: [own] })], { role: "local" });
+  assert.equal(reg2.modules.get("names").state, "off", "the imposter found first still does not take the name");
 });
 
 test("modules v1: a required module below the range keeps the module from starting", async t => {

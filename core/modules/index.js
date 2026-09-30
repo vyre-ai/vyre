@@ -505,6 +505,9 @@ export class Registry {
   async start(found, { role, enable = [], disable = [], platform = process.platform }) {
     /** @type {Map<string, string>} the # kinds offered so far, by module */
     const mentionKinds = new Map();
+    // The names of the modules shipped with Vyre in this start, on or off on this machine: an added module can
+    // never load under one, so it can't answer another module's tools (names.*, network.*) from first party code.
+    const shipped = new Set(found.filter(x => x && x.manifest && typeof x.manifest.name === "string" && this.isFirstParty(x.dir)).map(x => x.manifest.name));
     for (const f of found) {
       const name = f.manifest && f.manifest.name;
       // A module with a problem never starts, but it never disappears without a word either: it
@@ -514,6 +517,12 @@ export class Registry {
       // status() (vyre modules, /v1/modules) already carries the same reason for later.
       // Warnings (unknown keys, deprecated usages) are said once per start and never stop a load.
       for (const w of f.warnings || []) this.deps.log(`warn: module ${name || f.dir}: ${w}`);
+      if (name && shipped.has(name) && !this.isFirstParty(f.dir)) {
+        const error = `name "${name}" belongs to a module shipped with Vyre; an added module can't load under it, on or off`;
+        this.modules.set(`${name}@${f.dir}`, { manifest: f.manifest, dir: f.dir, state: "invalid", error });
+        this.deps.log(`warn: module ${name}@${f.dir} invalid: ${error}`);
+        continue;
+      }
       if (f.problems.length) {
         const error = f.problems.join("; ");
         // An invalid copy never takes the row of a module already loaded under its name (a first party one, on or off).
