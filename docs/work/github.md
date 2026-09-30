@@ -541,3 +541,6 @@ mcp.connect/oauth.js status have posted (both block the Next list below).
 - `core/github/git.js` gains `defaultBranchOf(repoDir)`, `scanOutgoing({ repoDir, branch,
   defaultBranch })`, `pushSession({ repoDir, session, defaultBranch, token, allowSecret? })` (all
   new exports, additive).
+
+## 2026-10-01 restart
+- Answered native-core's PR review and multi-file diff card field names in CHAT.md (09:10 github -> native-core): tools are github.project.pr.merge/.review keyed by {project, pr}, payload shape listed there. pr.get/.merge/.review added to the PR step (not built yet).
