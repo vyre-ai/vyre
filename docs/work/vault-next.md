@@ -137,11 +137,15 @@ mobile and the Capsule (through their owners).
     read-only tokens...` in core/google/module.test.js, confirmed unrelated - it fails the same way
     on an unmodified checkout, an event-ordering tie-break flake, not caused by anything in this
     session). The full core/vault suite (keychain-backed) was started locally by mistake and
-    stopped before it did anything: per RULES.md that suite belongs on the test box, not the
-    person's own computer, since it creates real (if isolated) keychain state. Whoever resumes: run
-    the full targeted set (core/vault, core/modules, core/cli/commands, local/voice, core/mcp,
-    core/google, core/connectors, test/docs-*, test/hygiene) on the test box before this lands
-    anywhere, per RULES.md's testing section - it has not been run there yet this session.
+    stopped before it did anything. CORRECTED per the lead: there is no separate "test box" -
+    testbox IS the user's real server, so keychain tests never belong there either. They run on a
+    GitHub-hosted macos-latest runner instead, a throwaway VM discarded after the job (same "never
+    on the person's own account, never on the real server" rule, same pattern capsule-mac.yml
+    already uses for its own keychain-signing step). Added `.github/workflows/vault-mac.yml`: the
+    full targeted set (core/vault, core/connectors, core/mcp, core/google, core/modules,
+    core/cli/commands, local/voice, test/docs-*, test/hygiene) on macos-latest, triggered on a push
+    or PR touching those paths, or by hand (`gh workflow run vault-mac.yml --ref work/vault-next`).
+    Not yet observed green - push the branch and check the run before this lands anywhere.
 - SAVED 27 Sep (restart). Branch head = this commit on work/vault-next (pushed). 9b built: connections
   (4d43906e..6cf9a99f), picker default/last_used (0539a392), thread origin -> surface (d7f09589), merge main
   53cd1326 (9450f5e1), ctx.modules.status() rename for platform b7bbf5d8 (5d7cbd07).
