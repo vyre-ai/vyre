@@ -450,10 +450,12 @@ export function createFlow(o) {
     set({ claim: { ...state.claim, phase: "minting", error: null } });
     try {
       const host = `${state.named.name}.vyre.run`;
-      const r = await chan.call("relay.setup.claim-token", { name: state.named.name });
-      const token = await o.signClaim({ privateKey: sess.key.privateKey, route: sess.route, challenge: String(r.challenge), host });
+      const r = await chan.call("relay.setup.claim-token", { host });
+      const token = await o.signClaim({ privateKey: sess.key.privateKey, route: String(r.route || sess.route), challenge: String(r.challenge), host });
       if (mine !== run) return;
-      set({ claim: { phase: "ready", url: `https://${host}/#claim=${token}`, expiresAt: Number(r.exp) || now() + 120_000, error: null } });
+      // Fragment only: the token and the page key's public half, which the box's page hands to relay.setup.claim.
+      const spki = btoa(String.fromCharCode(...sess.key.spki)).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+      set({ claim: { phase: "ready", url: `https://${host}/#claim=${token}&spki=${spki}`, expiresAt: Number(r.exp) || now() + 120_000, error: null } });
       // The two minutes run out; the link stops being shown then.
       (async () => { while (mine === run && state.claim.phase === "ready") { const left = state.claim.expiresAt - now(); if (left <= 0) return set({ claim: { ...state.claim, phase: "expired", url: null } }); await sleep(Math.min(left, 5000)); } })();
     } catch (e) { if (mine === run) set({ claim: { ...state.claim, phase: "failed", url: null, error: String(/** @type {Error} */ (e).message).slice(0, 200) } }); }

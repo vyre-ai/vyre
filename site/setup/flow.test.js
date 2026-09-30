@@ -342,7 +342,7 @@ function stepsBox(script = {}) {
       f.polls++;
       return f.provider === "claude" ? { step: f.done ? "done" : "url" } : { step: f.polls >= 2 ? "done" : "code" };
     }
-    if (tool === "relay.setup.claim-token") { box.calls.push([tool, input]); if (st.claimFails) throw new Error("this setup session has ended"); return { challenge: crypto.randomBytes(32).toString("base64url"), exp: Date.now() + (st.claimMs ?? 120_000) }; }
+    if (tool === "relay.setup.claim-token") { box.calls.push([tool, input]); if (st.claimFails) throw new Error("this setup session has ended"); return { challenge: crypto.randomBytes(32).toString("base64url"), exp: Date.now() + (st.claimMs ?? 120_000), route: "r".repeat(26) }; }
     if (tool === "relay.pair.ticket") { box.calls.push([tool, input]); if (st.ticketMade) throw Object.assign(new Error("the setup page has already made its one pairing ticket"), { code: "denied" }); st.ticketMade = true; return { ticket: "AAECAwQFBgc", expiresAt: Date.now() + (st.ticketMs ?? 300_000), connected: true }; }
     return base(tool, input);
   };
@@ -641,8 +641,8 @@ test("claim: a fresh link carries the signed token in the fragment only, runs ou
   const u = new URL(flow.state.claim.url);
   assert.equal(u.origin, "https://harlow-legal-server.vyre.run");
   assert.equal(u.search, "", "nothing in the query, where a server would log it");
-  assert.match(u.hash, /^#claim=[A-Za-z0-9_-]{128}$/, "the token is in the fragment");
-  assert.deepEqual(box.calls.filter(c => c[0] === "relay.setup.claim-token").map(c => c[1]), [{ name: "harlow-legal-server" }]);
+  assert.match(u.hash, /^#claim=[A-Za-z0-9_-]{128}&spki=[A-Za-z0-9_-]{122}$/, "the token and the page key are in the fragment");
+  assert.deepEqual(box.calls.filter(c => c[0] === "relay.setup.claim-token").map(c => c[1]), [{ host: "harlow-legal-server.vyre.run" }]);
   await until(() => flow.state.claim.phase === "expired", 3000);
   assert.equal(flow.state.claim.url, null, "an expired link is no longer shown");
   await flow.mintClaim();
