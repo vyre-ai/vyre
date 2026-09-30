@@ -51,6 +51,20 @@ export const MAX_RESULT = 256 * 1024;
 const STDERR_LINES = 20;
 
 export const TRANSPORTS = ["stdio", "http", "sse"];
+/**
+ * A vendor's own credential goes only to that vendor's hosted MCP server (PLAN.md P21, the invisible
+ * allowlist on credentials). An item named <prefix>... can be put in a row only when the row's url
+ * host is one of `hosts`, so a model or a mistake cannot send the GitHub token, or a Google one, to
+ * another server by adding a row that names the item.
+ */
+export const BOUND_ITEMS = [
+  { prefix: "github-", hosts: ["api.githubcopilot.com"], url: "https://api.githubcopilot.com/mcp/" },
+  { prefix: "google-", hosts: ["gmailmcp.googleapis.com", "calendarmcp.googleapis.com", "drivemcp.googleapis.com"] },
+];
+
+/** The row a person's GitHub connection needs: GitHub's own hosted MCP, the token from their vault item. @param {string} login */
+export const githubServer = login => ({ name: "github", transport: "http", url: BOUND_ITEMS[0].url, auth: { type: "bearer", item: `github-${login}`, field: "token" } });
+
 export const AUTH_TYPES = ["none", "bearer", "env", "oauth", "service-account"];
 const MODES = ["read", "write", "off"];
 
@@ -276,6 +290,10 @@ export function normalize(i, opts = {}) {
     }
   }
   out.auth = normalizeAuth(i.auth, out);
+  if (out.url && out.auth.item) {
+    const bound = BOUND_ITEMS.find(b => String(out.auth.item).startsWith(b.prefix));
+    if (bound && !bound.hosts.includes(new URL(out.url).hostname)) throw bad(`${String(out.auth.item).slice(0, 60)} is a ${bound.prefix.replace(/-$/, "")} credential: it goes only to ${bound.hosts.join(", ")}`);
+  }
   for (const k of [...Object.keys(out.env), ...Object.keys(out.vars)]) if (/^VYRE_/.test(k)) throw bad(`${k.slice(0, 40)}: VYRE_ settings belong to Vyre, not a server`);
   out.scope = normalizeScope(i.scope);
   out.tools = normalizePolicy(i.tools);

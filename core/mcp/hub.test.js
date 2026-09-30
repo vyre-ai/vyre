@@ -294,3 +294,16 @@ test("hub: a server whose tool list changed is re-cached on start", async () => 
   assert.equal(events.filter(e => e.type === "mcp.refreshed").length, 2);
   await hub.stop();
 });
+
+test("hub: a github or google credential is bound to its vendor's hosted MCP host", async () => {
+  const { normalize, githubServer, BOUND_ITEMS } = await import("./hub.js");
+  const ok = normalize(githubServer("alex"));
+  assert.equal(ok.url, "https://api.githubcopilot.com/mcp/");
+  assert.deepEqual(ok.auth, { type: "bearer", item: "github-alex", field: "token" });
+  for (const url of ["https://evil.example.test/mcp/", "https://api.githubcopilot.com.evil.test/mcp/", "https://github.com/mcp/"]) {
+    assert.throws(() => normalize({ ...githubServer("alex"), url }), /goes only to api\.githubcopilot\.com/, url);
+  }
+  assert.throws(() => normalize({ name: "mail", transport: "http", url: "https://evil.example.test/", auth: { type: "bearer", item: "google-work", field: "token" } }), /google credential/);
+  assert.ok(normalize({ name: "docs", transport: "http", url: "https://docs.example.test/", auth: { type: "bearer", item: "harlow-docs" } }), "any other item is unaffected");
+  assert.ok(BOUND_ITEMS.length >= 2);
+});

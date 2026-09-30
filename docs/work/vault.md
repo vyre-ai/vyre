@@ -66,6 +66,8 @@ action. The goal beyond that is that the user can cancel 1Password (spec section
 
 ## Doing
 
+- 2026-09-30 (later): reviewer-2 M1 fixed (Gate matches EVERY real destination: email to+cc+bcc via sender `recipients`; http and module senders name none so nothing covers them). Lead rulings built: plain ask single-use (`consume` on vault.said.match, `used` column), standing persists; `agents` field on intents (named agents only, none = any); lineage passed from `threads.lineage {thread}` (OWED by sessions, fails soft to []); pay needs currency on both sides (cap/single-use for pay covered by consume). Person-only Settings tools: gate.said.add / list / revoke; assistant may list and may revoke only with a recorded `revoke` intent naming the id in the same thread lineage. GitHub connector: hub BOUND_ITEMS binds `github-*` items to api.githubcopilot.com (and `google-*` to Google's hosted hosts); `githubServer(login)` gives the mcp.add row. Known flake: core/google module.test.js DWD event order (pre-existing).
+
 - 2026-09-30 relaunch: Gate (asked via said_intents, gate.said.*) is built and on work/vault-next 1b01a6f8. Added intent kind
   "setting" (`to: [key]`) so native-core's C25 check is `vault.said.match {kind:"setting", to:[key], thread}` (internal, module
   callers). CI on 1b01a6f8: node job fails only on shellcheck of scripts/install-box.sh (launch's file, not mine); vault-mac still
