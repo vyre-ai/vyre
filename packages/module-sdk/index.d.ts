@@ -112,6 +112,8 @@ export interface Manifest {
   requires?: string[] | Record<string, string>;
   /** @planned Set to this module's own name to replace the first-party module of that name. */
   replaces?: string;
+  /** Built in only: this module's tools the setup channel may call before sign-in. An added module that declares it fails to load. */
+  setupTools?: string[];
   does?: {
     /** A name is the built in grace form (reach anyone). Added modules use ToolEntry. */
     tools?: (ToolName | ToolEntry)[];

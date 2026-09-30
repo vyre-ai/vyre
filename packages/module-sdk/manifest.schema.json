@@ -24,6 +24,7 @@
       ]
     },
     "replaces": { "$ref": "#/$defs/moduleName", "x-status": "planned", "description": "Set to this module's own name to stand in for the first-party module of that name. It must register every tool the original declares." },
+    "setupTools": { "type": "array", "items": { "type": "string", "pattern": "^[a-z][a-z0-9-]*\\.[a-z][a-z0-9_.-]*$" }, "x-message": "must be a list of tool names like \"relay.setup\"", "description": "Tools of this module the setup channel may call before the person has signed in. Built in only: an added module that declares it fails to load. The relay reads it to build the setup-channel allowlist." },
     "does": {
       "type": "object",
       "x-unknown": "warn",

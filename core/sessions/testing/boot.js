@@ -68,7 +68,9 @@ export async function boot(t, { driver = "cli", sessions = {}, vault = {}, role 
       return { async stop() {} };
     } };`);
   for (const m of modules) writeModule(path.join(root, "modules"), m.name, m.manifest, m.source);
-  const d = await start({ root, presence: present, log: () => {} });
+  // The probe and any modules given here stand in for Vyre's own (internal tools, session
+  // providers), so the home's modules folder loads as first party (ADR 0047). Test only.
+  const d = await start({ root, presence: present, log: () => {}, firstPartyRoots: [path.join(root, "modules")] });
   daemon = d;
   // The work folder is outside the home: the security floor treats everything in VYRE_HOME as
   // Vyre's own state, as it does on a real machine.

@@ -667,12 +667,10 @@ async function install(args, flags, o, deps) {
     const m = r.manifest, name = m.name, dest = path.join(modules, name);
     if (from === path.join(fs.realpathSync(modules), name)) return o.refuse(`${name} is already in ${modules}`, { code: "exists", next: "vyre down && vyre up loads it" });
     if (fs.existsSync(dest)) return o.refuse(`${dest} is already there`, { code: "exists", next: `remove ${dest} first to add this one in its place` });
-    const replacing = shippedNames(repo).has(name);
-    if (replacing && m.replaces !== name) {
+    // A name Vyre ships is refused outright: in 0.2 an added module replaces nothing, and
+    // checkModule already refused "replaces" (reviews/platform.md CR-L2: no --yes path here).
+    if (shippedNames(repo).has(name)) {
       return o.refuse(`${name} is one of Vyre's own modules`, { code: "name_taken", next: "pick another name; in 0.2 an added module replaces none of Vyre's" });
-    }
-    if (replacing && !flags.yes) {
-      return o.refuse(`${name} replaces Vyre's own ${name}; that needs your explicit yes`, { code: "needs_yes", exit: EXIT.USAGE, next: `vyre module add ${src} --yes` });
     }
 
     const fields = summary(m);
