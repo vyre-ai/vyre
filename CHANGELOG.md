@@ -5,6 +5,7 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 ## Unreleased
 
 - test: federation-reads grants the harness agent juno its project (an agent with no grant is refused), and asserts the refusal for one with none.
+- modules: the timer behind a call's bounded wait (target, lineage, project and scope lookups) is no longer unref'd, so a pending wait keeps the event loop alive; on macOS the loop drained with the call unanswered and the test runner cancelled the rest of the file.
 
 - module-sdk: toolEntries leaves target, projectArg and cwdArg out of an entry unless the manifest sets them, so the v1 entry shape is unchanged.
 
