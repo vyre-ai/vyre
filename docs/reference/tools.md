@@ -1757,7 +1757,7 @@ Exactly what an import of these folders would take: { plan, sessions, bytes, fol
 
 ### `import.scan`
 
-The Claude Code sessions on this device, by source and by the folder each ran in: counts, sizes, dates, the project each folder belongs to, and which are suggested for import (Vyre's own sessions and temporary folders are not). Work on Vyre itself, folders the person excluded, and credential folders (~/.ssh and the like) are left out before anything is listed (left_out counts them). Reads file names, sizes, times and each session's folder only, within caps (capped says one was hit); nothing leaves the device. claude_keeps_days: how long Claude Code keeps sessions here. folders: more folders to look in (absolute paths).
+The coding-agent sessions on this device (Claude Code, Codex, Gemini CLI; each source is tagged with its agent), by source and by the folder each ran in: counts, sizes, dates, the project each folder belongs to, and which are suggested for import (Vyre's own sessions and temporary folders are not). Work on Vyre itself, folders the person excluded, and credential folders (~/.ssh and the like) are left out before anything is listed (left_out counts them). Reads file names, sizes, times and each session's folder only, within caps (capped says one was hit); nothing leaves the device. claude_keeps_days: how long Claude Code keeps sessions here. folders: more folders to look in (absolute paths).
 
 - Input:
   - `folders` list of string
