@@ -167,6 +167,16 @@ A watcher runs when something happens, on a schedule, or when a source pushes:
 - **A push** (a connected Gmail account) arrives by itself from the Vault's connection, with no polling. A watcher sees only that message ids arrived, never the sender or subject, and only for the projects that connection is granted to.
 - **A schedule** (`daily 07:00`, `every 30 minutes`, cron) never runs faster than every five minutes.
 
+## Important mail into memory
+
+If you connected Google in the Vault, `watchers.preset {kind: "mail", project, credential}` sets up a
+watcher for a project. When Gmail says new mail arrived, it reads only the sender, subject and first
+lines, a model answers yes or no on whether it matters by your rule (by default: clients, courts and
+agencies, anything with a deadline; not newsletters or receipts), and each yes becomes a short quoted
+note in that project's memory, marked as from outside so it is never treated as an instruction. It
+sends and changes nothing. It starts off: you see its card, run the one grant command it shows, and
+turn it on.
+
 ## The card before you turn it on
 
 Before anything runs on its own, you see a card: when it runs, what it checks, what it does, the

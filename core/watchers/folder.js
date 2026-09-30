@@ -26,7 +26,7 @@ export const DEFAULT_TIMEOUT_S = 60;
  * payload fields that must match for it to run (hook.received needs a route).
  * @typedef {{ name: string, project: string, schedule: string, needs: string[], emits: string, timeout: number,
  *   on: string|null, where: Record<string, string|number|boolean>|null,
- *   net: Record<string, { vault?: string, field?: string, header: string, scheme: string }>|null,
+ *   net: Record<string, { vault?: string, credential?: string, field?: string, header: string, scheme: string }>|null,
  *   ask: { dailyUsd: number }|null, summary: { when: string, check?: string, do: string }|null,
  *   owner: { kind: "teammate", teammate: string }|null, instruction: string|null, act: boolean, when: string|null }} Spec
  */
@@ -91,13 +91,13 @@ function check(raw, name, problems) {
   }
   if (raw.instruction !== undefined && (typeof raw.instruction !== "string" || !raw.instruction.trim() || raw.instruction.length > 2000)) problems.push("instruction is plain words, at most 2000 characters");
   if (raw.act !== undefined && typeof raw.act !== "boolean") problems.push("act is true or false");
-  if ((raw.instruction !== undefined || raw.act !== undefined) && !owner) problems.push("instruction and act are for a teammate's duty: they need owner");
+  if (raw.act !== undefined && !owner) problems.push("act is for a teammate's duty: it needs owner");
   const extra = Object.keys(raw).filter(k => !["name", "project", "schedule", "needs", "emits", "timeout", "description", "on", "where", "net", "owner", "instruction", "act", "when", "ask", "summary"].includes(k));
   if (extra.length) problems.push(`watcher.json has keys the runtime does not read: ${extra.join(", ")}. Credentials go in the vault and are named under needs`);
   // A vault item named by net is fetched by the parent and attached to that host's requests only,
   // so it counts as a need: the same per-watcher grant covers it.
   const needed = new Set(Array.isArray(needs) ? needs : []);
-  for (const h of Object.values(net || {})) if (h.vault) needed.add(h.vault);
+  for (const h of Object.values(net || {})) { if (h.vault) needed.add(h.vault); if (h.credential) needed.add(h.credential); }
   return { name, project: String(raw.project || "").trim(), schedule, needs: [...needed], net, ask, summary, owner, when: typeof raw.when === "string" ? raw.when.slice(0, 200) : null, instruction: typeof raw.instruction === "string" ? raw.instruction.trim() : null, act: raw.act === true, emits: raw.emits || "watcher.item", timeout: Number(timeout),
     on: typeof on === "string" ? on : null, where };
 }
@@ -134,7 +134,8 @@ const HEADER = /^[A-Za-z][A-Za-z0-9-]{0,40}$/;
 /**
  * `net`: the hosts a watcher reads, each optionally with the vault item the parent attaches to
  * requests for that host only: { "api.harlow.example": { "vault": "harlow-feed", "header":
- * "Authorization", "scheme": "Bearer" } }. With net, a watcher reaches those hosts
+ * "Authorization", "scheme": "Bearer" } }, or an api-credential the vault calls the API with
+ * itself, reads only: { "gmail.googleapis.com": { "credential": "google-personal" } }. With net, a watcher reaches those hosts
  * exact host names) and no others; without it, no network at all. The watcher's own code
  * never handles the value.
  * @returns {Spec["net"]}
@@ -149,9 +150,10 @@ function checkNet(net, problems) {
     if (!h || typeof h !== "object" || Array.isArray(h)) { problems.push(`net.${host} must be an object, {} for no credential`); continue; }
     if (h.vault !== undefined && (typeof h.vault !== "string" || !VAULT_NAME.test(h.vault))) { problems.push(`net.${host}.vault must be a vault item name`); continue; }
     if (h.header !== undefined && (typeof h.header !== "string" || !HEADER.test(h.header))) { problems.push(`net.${host}.header must be a header name like Authorization`); continue; }
-    const bad = Object.keys(h).filter(k => !["vault", "field", "header", "scheme"].includes(k));
+    if (h.credential !== undefined && (typeof h.credential !== "string" || !VAULT_NAME.test(h.credential) || h.vault !== undefined)) { problems.push(`net.${host}.credential must be the name of an api-credential, and not together with vault`); continue; }
+    const bad = Object.keys(h).filter(k => !["vault", "credential", "field", "header", "scheme"].includes(k));
     if (bad.length) { problems.push(`net.${host} has keys the runtime does not read: ${bad.join(", ")}`); continue; }
-    out[host] = { ...(h.vault ? { vault: h.vault } : {}), ...(h.field ? { field: String(h.field) } : {}), header: h.header || "Authorization", scheme: h.scheme === undefined ? "Bearer" : String(h.scheme) };
+    out[host] = { ...(h.vault ? { vault: h.vault } : {}), ...(h.credential ? { credential: h.credential } : {}), ...(h.field ? { field: String(h.field) } : {}), header: h.header || "Authorization", scheme: h.scheme === undefined ? "Bearer" : String(h.scheme) };
   }
   return out;
 }

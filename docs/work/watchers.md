@@ -111,6 +111,11 @@ take a purpose for a quick (asked of iq/lead). Real-tool test of ask() still to 
 Card (3.1c): `summary` in watcher.json, runtime.card + watchers.card, create pinned to the shown hash. The
 structured when/check/do PRESETS (mail and the rest, step 6b/9) are not built; the card reads `summary` or derives.
 
+Mail preset (core/watchers/presets.js, watchers.preset, createPreset): runs on vault.push, reads through
+vault.request via `net.<host>.credential` (viaRequest in run.js/runtime.js), ask() yes/no, files quoted notes.
+Tested against fakes (36 pass). NOT verified against the real vault.request or Gmail: needs a runner with a
+throwaway Google account (plan G1). Asked vault to add `gmailId` to vault.push meta rows (saves a search call).
+
 ## Next
 
 Build order agreed with the lead (GO message): lib/sandbox first, jointly with platform and the

@@ -4,6 +4,16 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+- Mail preset: `watchers.preset {kind: "mail", project, credential}` writes a watcher (fixed code)
+  that runs on `vault.push`, reads each pushed message's sender, subject and first lines through
+  `vault.request` with the person's Google api-credential (a read, through the vault, scoped to
+  that watcher by its grant), asks a model for a yes or no against the person's own words on what
+  counts as important, and files only the important ones as short quoted notes marked as from
+  outside. It is left off with its card and the exact grant command; `watchers.create {name, hash}`
+  turns it on. `net.<host>.credential` names an api-credential the vault calls with itself (reads
+  only), beside `net.<host>.vault` for a plain item Vyre attaches. A filed item's `quote` goes into
+  the taught fact in quotation marks.
+
 - `watchers.card {name}`: what the person sees before turning a watcher on. Three plain lines
   (when, check, do) from the author's `summary` in `watcher.json` (or derived for a duty and for a
   summary-less watcher), plus facts Vyre works out from the folder itself and never from the

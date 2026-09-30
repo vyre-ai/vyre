@@ -23,6 +23,7 @@ import * as cron from "./cron.js";
 import * as folder from "./folder.js";
 import { runOnce, normalize } from "./run.js";
 import { parseWhen } from "./when.js";
+import { mailPreset } from "./presets.js";
 import { DUTY_NAME, DUTY_WATCH_JS } from "./duty.js";
 
 /** Schedules that are not cron: nothing is due on a clock. */
@@ -212,7 +213,7 @@ export class Runtime {
       facts: {
         reads: spec.net ? Object.keys(spec.net) : [],
         readsText: spec.net ? `Reads ${Object.keys(spec.net).join(", ")}` : "Reads nothing from the web",
-        credentials: spec.net ? Object.entries(spec.net).filter(([, v]) => v.vault).map(([h, v]) => ({ host: h, item: v.vault })) : [],
+        credentials: spec.net ? Object.entries(spec.net).filter(([, v]) => v.vault || v.credential).map(([h, v]) => ({ host: h, item: v.vault || v.credential, how: v.credential ? "the vault calls it, read only" : "Vyre adds it to requests" })) : [],
         acts: duty && spec.act ? "May take actions for its teammate; anything outward that you did not ask for holds for you" : "Never acts: it reads and files",
         cost: spec.ask ? `Asks a model, at most $${spec.ask.dailyUsd} a day` : "No model cost",
         schedule: when,
@@ -258,6 +259,29 @@ export class Runtime {
       ON CONFLICT(name) DO UPDATE SET tested_hash = excluded.tested_hash, tested_at = excluded.tested_at`).run(d.name, spec.project, spec.schedule, hash, this.now());
     try { return await this.create(d.name); }
     catch (e) { fs.rmSync(path.join(this.d.dir, d.name), { recursive: true, force: true }); this.db.prepare("DELETE FROM watchers_watchers WHERE name = ? AND enabled = 0").run(d.name); throw e; }
+  }
+
+  /**
+   * A preset watcher, from a few plain fields: written, hashed as dry-run (there is no live fetch to
+   * try), and left OFF with its card, so one tap turns it on. The grant the vault needs comes back
+   * as the exact command, since a module's use of an api-credential is the person's to allow.
+   * @param {{ kind: string, project: string, credential: string, connection?: string, instruction?: string, dailyUsd?: number }} o
+   */
+  async createPreset(o) {
+    if (o.kind !== "mail") throw new Error(`no preset "${o.kind}"; there is mail`);
+    if (typeof o.credential !== "string" || !o.credential) throw new Error("a mail preset needs credential: the name of the Google api-credential in the vault");
+    const p = mailPreset({ project: String(o.project || ""), credential: o.credential, connection: o.connection, instruction: o.instruction, dailyUsd: o.dailyUsd });
+    if (!(await this.project(o.project))) throw new Error(`no project "${o.project}"; vyre projects lists them`);
+    if (this.row(p.name)?.enabled) throw new Error(`${p.name} already exists; use watchers.card to see it`);
+    const dir = path.join(this.d.dir, p.name);
+    fs.mkdirSync(dir, { recursive: true });
+    fs.writeFileSync(path.join(dir, "watcher.json"), JSON.stringify(p.json, null, 2));
+    fs.writeFileSync(path.join(dir, "watch.js"), p.code);
+    const f = folder.read(this.d.dir, p.name);
+    if (f.problems.length) { fs.rmSync(dir, { recursive: true, force: true }); throw new Error(f.problems.join("; ")); }
+    this.db.prepare(`INSERT INTO watchers_watchers (name, project, schedule, tested_hash, tested_at) VALUES (?,?,?,?,?)
+      ON CONFLICT(name) DO UPDATE SET tested_hash = excluded.tested_hash, tested_at = excluded.tested_at`).run(p.name, p.json.project, "event", f.hash, this.now());
+    return { ...this.card(p.name), grant: `vyre vault grant ${o.credential} watchers --watcher ${p.name}` };
   }
 
   /** Change a duty's trigger, words or act flag. It keeps its cursor and whether it is on or paused. */
@@ -477,7 +501,7 @@ export class Runtime {
       for (const item of fresh) {
         await this.d.teach("watcher.item", {
           subject: { name: typeof item.about === "string" && item.about.trim() ? item.about.trim().slice(0, 120) : name },
-          text: [item.title || String(item.id), item.url].filter(Boolean).join(" · ").slice(0, 400),
+          text: [item.title || String(item.id), typeof item.quote === "string" && item.quote ? `"${item.quote.slice(0, 200)}"` : null, item.url].filter(Boolean).join(" · ").slice(0, 500),
           at: item.at || undefined, key: `${name}/${item.id}`, project_cwds: project.folders,
         }).catch(() => false);
       }
@@ -503,7 +527,16 @@ export class Runtime {
 
   /** Run in a child and check the items; a bad item is the run's error. */
   async exec(dir, spec, since, hook) {
-    const res = await runOnce({ dir, needs: spec.needs, since, hook, timeoutMs: spec.timeout * 1000, fetch: (n, field) => this.d.fetch(n, spec.name, field), signal: this.abort.signal, askFn: spec.ask ? (prompt => this.askModel(spec, prompt)) : null, hosts: spec.net ? Object.keys(spec.net) : null,
+    const res = await runOnce({ dir, needs: spec.needs, since, hook, timeoutMs: spec.timeout * 1000, fetch: (n, field) => this.d.fetch(n, spec.name, field), signal: this.abort.signal, viaRequest: spec.net ? async (url, init) => {
+        const rule = spec.net[url.hostname];
+        if (!rule || !rule.credential) return undefined;
+        const method = String((init && init.method) || "GET").toUpperCase();
+        if (method !== "GET" && method !== "HEAD") throw new Error(`${method} is not allowed from a watcher; only GET and HEAD`);
+        if (typeof this.d.request !== "function") throw new Error("the vault is not running on this machine");
+        const r = await this.d.request({ credential: rule.credential, method, url: url.href, watcher: spec.name });
+        return { status: Number(r.status), url: url.href, headers: Object.fromEntries(Object.entries(r.headers || {}).map(([k, v]) => [String(k).toLowerCase(), String(v)])), body: typeof r.body === "string" ? r.body : JSON.stringify(r.body ?? ""), truncated: false };
+      } : null,
+      askFn: spec.ask ? (prompt => this.askModel(spec, prompt)) : null, hosts: spec.net ? Object.keys(spec.net) : null,
       netAuth: spec.net ? async url => {
         const rule = spec.net[url.hostname];   // the exact declared host, never a subdomain
         if (!rule || !rule.vault) return undefined;

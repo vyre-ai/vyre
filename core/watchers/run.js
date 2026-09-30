@@ -34,10 +34,10 @@ export const LIMITS = { asks: 20, askChars: 8000, askReply: 4000, items: 1000, i
  * @param {{ dir: string, needs: string[], since: any, hook?: any, timeoutMs: number,
  *   fetch: (name: string, field?: string) => Promise<string>, signal?: AbortSignal,
  *   hosts?: string[]|null, netAuth?: (url: URL) => Promise<{ host: string, header: string, value: string }|undefined>,
- *   askFn?: ((prompt: string) => Promise<string>)|null, netOptions?: object, identity?: ReturnType<typeof sandboxIdentity> }} opts
+ *   askFn?: ((prompt: string) => Promise<string>)|null, viaRequest?: ((url: URL, init: any) => Promise<any>)|null, netOptions?: object, identity?: ReturnType<typeof sandboxIdentity> }} opts
  * @returns {Promise<Result>}
  */
-export function runOnce({ dir, needs, since, hook = null, timeoutMs, fetch, signal, hosts = null, netAuth, askFn = null, netOptions = {}, identity = sandboxIdentity() }) {
+export function runOnce({ dir, needs, since, hook = null, timeoutMs, fetch, signal, hosts = null, netAuth, askFn = null, viaRequest = null, netOptions = {}, identity = sandboxIdentity() }) {
   const started = Date.now();
   const real = fs.realpathSync(dir);
   const runner = fs.realpathSync(RUNNER);
@@ -88,6 +88,9 @@ export function runOnce({ dir, needs, since, hook = null, timeoutMs, fetch, sign
           const url = new URL(String(m.url));
           if (!hosts || !hosts.length) throw new Error("this watcher declares no hosts; list each host it reads under net in watcher.json, like { \"api.example.com\": {} }");
           if (!hosts.includes(url.hostname)) throw new Error(`${url.hostname} is not one of this watcher's declared hosts`);
+          // An api-credential host: the vault makes the call itself (a read, scoped to this watcher's grant).
+          const viaVault = viaRequest ? await viaRequest(url, m.init || {}) : undefined;
+          if (viaVault) { viaVault.body = scrub(String(viaVault.body ?? "")); for (const k of Object.keys(viaVault.headers || {})) viaVault.headers[k] = scrub(viaVault.headers[k]); reply({ result: viaVault }); return; }
           const auth = netAuth ? await netAuth(url) : undefined;
           if (auth) released.push(...forms(auth.value), ...forms(auth.value.replace(/^\S+ /, "")));
           const r = await mediatedFetch(url.href, m.init || {}, { ...netOptions, allowHost: u => hosts.includes(u.hostname), ...(auth ? { auth } : {}) });

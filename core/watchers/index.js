@@ -49,6 +49,7 @@ export default {
         if (r.error || !r.data || r.data.ok === false) throw new Error((r.error && r.error.message) || "no model answered");
         return { text: String(r.data.text || ""), usd: Number(r.data.cost_usd) || 0, provider: r.data.provider };
       },
+      request: async input => { const r = await ctx.call("vault.request", input); if (r.error) throw new Error(r.error.message || r.error.code || "the vault refused the request"); return r.data; },
       spend: { check: async () => { const r = await ctx.call("spend.check", {}); return r.error ? { ok: false, line: "the spend ledger is not answering" } : r.data; } },
       log: ctx.log, netOptions: () => (process.env.NODE_TEST_CONTEXT ? testHooks.net : {}),
       listen: (type, fn) => ctx.events.on(type, fn),
@@ -91,6 +92,14 @@ export default {
       description: "What to show before a watcher is turned on: its three lines (when, check, do), what it reads, whether it can act and what it costs, worked out from the folder itself, plus the hash to pass back to watchers.create so the tap turns on exactly this code. No network, no model.",
       input: named,
       run: async ({ name }) => rt.card(name),
+    });
+    ctx.tool("watchers.preset", {
+      description: "Write a watcher for a common source from a few fields, left off with its card. kind \"mail\": project, credential (the Google api-credential in the vault), connection (default gmail), instruction (what counts as important, optional). Files short quoted notes for the important mail a Gmail push announces; sends nothing. The answer carries the grant command the person runs once, then watchers.create {name, hash} turns it on.",
+      input: { type: "object", required: ["kind", "project"], properties: { kind: str, project: str, credential: str, connection: str, instruction: str, dailyUsd: { type: "number" } } },
+      run: async (i, { caller } = {}) => {
+        if (!isPerson(caller) && !String(caller || "").startsWith("module:")) throw Object.assign(new Error("a preset watcher is set up by the person or a Vyre module"), { code: "denied" });
+        return rt.createPreset(i);
+      },
     });
     ctx.tool("watchers.pause", { description: "Stop a watcher running until it is resumed.", input: named, run: async ({ name }) => rt.pause(name) });
     ctx.tool("watchers.resume", { description: "Resume a paused watcher, clearing its failure count. The person's (or teammates' for a duty): an agent cannot undo a pause the person made.", input: named, run: async ({ name }, { caller } = {}) => { owned(name, caller); return rt.resume(name); } });
