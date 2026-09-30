@@ -60,3 +60,12 @@ test("recall: stored turns are cleaned once per redaction version, and their vec
   const tk = "AbCdEfGhIjKlMnOpQrStUvWxYz0123456789_-AbCdEf".slice(0, 43);
   assert.ok(!redact(`the wink ticket is ${tk} ok`).includes(tk));
 });
+
+test("recall: a key in a URL's query or fragment is removed, the URL stays", async () => {
+  const { redact } = await import("./indexer.js");
+  const key = "sk-ant-" + "a1b2c3d4e5".repeat(4);
+  const r = redact(`curl https://api.northwind.example/v1/orders?page=2&api_key=${key}&x=1 and https://harlow.example/app#token=${key}.`);
+  assert.ok(!r.includes("a1b2c3d4"), r);
+  assert.match(r, /https:\/\/api\.northwind\.example\/v1\/orders\?page=2&api_key=\[anthropic api-key removed\]&x=1/);
+  assert.equal(redact("see https://harlow.example/docs/getting-started-with-the-order-form-2026"), "see https://harlow.example/docs/getting-started-with-the-order-form-2026");
+});

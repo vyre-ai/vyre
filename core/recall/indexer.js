@@ -63,11 +63,17 @@ export const REDACT_VERSION = "3";
 // "looks random" fallback is left alone, since a commit hash or an id is not a secret.
 const KNOWN = new Set(["api-key", "pat", "oauth", "cloud", "jwt", "webhook", "private-key", "db-url"]);
 const TOKEN = /[^\s"'`<>()\[\]{},;]{16,512}/g;
-const tokens = (/** @type {string} */ text) => text.replace(TOKEN, w => {
-  if (w[0] === "/" || w[0] === "." || w.startsWith("http")) return w;
+/** One bare word: removed when it is a named secret shape (trailing punctuation kept). @param {string} w */
+const word = w => {
   const tail = /[.:!?-]+$/.exec(w)?.[0] || "";
   const c = classify("", tail ? w.slice(0, -tail.length) : w);
   return c.secret && KNOWN.has(c.type) ? `[${c.provider || c.type} ${c.type} removed]${tail}` : w;
+};
+const tokens = (/** @type {string} */ text) => text.replace(TOKEN, w => {
+  if (w[0] === "/" || w[0] === ".") return w;
+  // A URL keeps its shape; each value in its query or fragment (`?api_key=sk-...`) is read as a word.
+  if (/^https?:\/\//i.test(w)) return w.replace(/([?&#;=])([^?&#;=]{16,})/g, (_, d, v) => d + word(v));
+  return word(w);
 });
 
 /** @param {string} text */
