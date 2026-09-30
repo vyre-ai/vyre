@@ -248,10 +248,12 @@ const SYSTEM = {
  * The Windows commands: net use maps the share as a drive letter (drive-windows.js), and Explorer
  * opens it. Explorer answers exit code 1 even when it worked, so its exit is ignored.
  */
+/** A drive letter and nothing else: a `*` from a state file would unmap every drive. */
+const letterOk = l => { if (!/^[A-Z]:$/.test(String(l))) throw refuse("not a drive letter", "bad_input"); };
 const SYSTEM_WIN = {
   letter: async () => freeLetter(parseNetUse(await exec("net.exe", ["use"])).used),
-  mount: async (url, letter) => { try { await exec("net.exe", mapArgs(letter, uncFor(url))); } catch (e) { throw new Error(explainNetUse(/** @type {Error} */ (e).message)); } },
-  unmount: letter => exec("net.exe", unmapArgs(letter)),
+  mount: async (url, letter) => { letterOk(letter); try { await exec("net.exe", mapArgs(letter, uncFor(url))); } catch (e) { throw new Error(explainNetUse(/** @type {Error} */ (e).message)); } },
+  unmount: letter => { letterOk(letter); return exec("net.exe", unmapArgs(letter)); },
   open: target => exec("explorer.exe", [target], true),
   mounts: async () => parseNetUse(await exec("net.exe", ["use"])).vyre.map(x => x.letter),
 };
@@ -641,7 +643,7 @@ export function drive(ctx, { role, guard: g, roots }) {
      */
     const dirOf = share => {
       if (!NAME.test(String(share))) throw refuse(`"${share}" is not a share name`, "bad_input");
-      if (win) { const rec = load()[share]; return rec && rec.dir ? String(rec.dir) : null; }
+      if (win) { const rec = load()[share]; return rec && /^[A-Z]:$/.test(String(rec.dir)) ? String(rec.dir) : null; }
       return path.join(base, share);
     };
     const isMounted = async dir => { try { return Boolean(dir) && (await fx.mounts()).map(String).includes(String(dir)); } catch { return false; } };

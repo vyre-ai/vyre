@@ -4,6 +4,9 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+- VyreDrive browse and picker check a granted folder by its real path, so a link inside a granted
+  folder to another project in the same share is refused (`withinReal` in `core/files/access.js`).
+  Only a drive letter is ever mapped or unmapped on Windows.
 - VyreDrive browse for the phone: `files.drive.list` and `files.drive.read` list a folder of an
   offered share and read a file in 1 MiB chunks through the box, since a phone cannot mount a
   share. Same guard as sharing (no secret, dot folder or link leading out), and a named agent

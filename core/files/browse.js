@@ -10,7 +10,7 @@
 
 import fs from "node:fs";
 import path from "node:path";
-import { reach, within } from "./access.js";
+import { reach, within, withinReal } from "./access.js";
 import { classify } from "./kinds.js";
 
 const MIB = 1024 * 1024;
@@ -45,7 +45,10 @@ export function browse(ctx, { g, folder, shares }) {
     const rs = { live: [{ given: top, real: top }] };
     let safe;
     try { safe = g.resolveSafe(path.join(top, rel), rs); } catch { throw nope(); }
-    return { top, rs, safe };
+    // The grant is text, and a link inside a granted folder can point at another project in the
+    // same share: the real path has to sit inside the real grant too.
+    if (!scope.all && !withinReal(safe.real, scope.folders)) throw nope();
+    return { top, rs, safe, scope };
   }
 
   const describe = (rs, p) => {
@@ -60,13 +63,17 @@ export function browse(ctx, { g, folder, shares }) {
     description: "What is inside a folder of one of the box's VyreDrive shares: name, kind, size and date for each entry, folders first, a page at a time. The phone's Files view uses it, since a phone cannot mount a share. Only a folder the box offers as a share; secrets, dot folders and links leading out never appear. A named agent sees only what its own granted projects reach.",
     input: { type: "object", required: ["share"], properties: { share: { type: "string" }, path: { type: "string" }, limit: { type: "integer" }, offset: { type: "integer" } } },
     run: async ({ share, path: rel = "", limit = PAGE, offset = 0 }, meta = {}) => {
-      const { rs, safe } = await resolve(share, rel, meta);
+      const { rs, safe, scope } = await resolve(share, rel, meta);
       if (!fs.statSync(safe.real).isDirectory()) throw refuse("that is a file; read it with files.drive.read", "bad_input");
       limit = clamp(Number(limit) || PAGE, 1, PAGE_MAX);
       offset = Math.max(0, Number(offset) || 0);
       const entries = [];
       for (const name of fs.readdirSync(safe.real)) {
-        try { entries.push(describe(rs, path.join(safe.path, name))); } catch { /* the guard or a race hid it */ }
+        try {
+          const p = path.join(safe.path, name);
+          if (!scope.all && !withinReal(p, scope.folders)) continue;
+          entries.push(describe(rs, p));
+        } catch { /* the guard or a race hid it */ }
       }
       entries.sort((a, b) => Number(b.dir) - Number(a.dir) || a.name.localeCompare(b.name));
       const page = entries.slice(offset, offset + limit);

@@ -946,3 +946,20 @@ test("drive browse: a named agent lists and reads only inside its own granted fo
   await no(reg, "files.drive.list", { share: "work" }, "mcp:agent:kit", "not_available"); // the share's top is not the grant
   assert.deepEqual((await ok(reg, "files.drive.list", { share: "work", path: "b" })).entries.map(e => e.name), ["two.txt"]);
 });
+
+test("drive browse: a link inside a granted folder to another project is not a way in (reviewer M1)", async t => {
+  fakeTailscale(t, { status: statusJson({ selfCaps: { "drive:share": null } }), list: "" });
+  const { work } = boxWorld(t);
+  const a = path.join(work, "a"), b = path.join(work, "b");
+  for (const d of [a, b]) fs.mkdirSync(d, { recursive: true });
+  fs.writeFileSync(path.join(a, "one.txt"), "1"); fs.writeFileSync(path.join(b, "two.txt"), "2");
+  fs.symlinkSync("../b", path.join(a, "link"));
+  const { reg } = await registry(t, { role: "box",
+    agents: [{ name: "kit", kind: "agent", projects: ["a"] }],
+    projects: [{ slug: "a", name: "A", home: a, workspaces: [] }, { slug: "b", name: "B", home: b, workspaces: [] }], access: { "a:kit": true },
+    cfg: { files: { roots: [work], drive: { shares: { work } } } } });
+  assert.deepEqual((await ok(reg, "files.drive.list", { share: "work", path: "a" }, "mcp:agent:kit")).entries.map(e => e.name), ["one.txt"]);
+  await no(reg, "files.drive.list", { share: "work", path: "a/link" }, "mcp:agent:kit", "not_available");
+  await no(reg, "files.drive.read", { share: "work", path: "a/link/two.txt" }, "mcp:agent:kit", "not_available");
+  assert.equal((await ok(reg, "files.drive.measure", { path: path.join(a, "link") }, "mcp:agent:kit")).why, "not available");
+});

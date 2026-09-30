@@ -15,7 +15,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import * as config from "../config/index.js";
-import { reach, within } from "./access.js";
+import { reach, within, withinReal } from "./access.js";
 
 const NAME = /^[a-z0-9][a-z0-9_-]{0,63}$/;
 const refuse = (message, code = "denied") => Object.assign(new Error(message), { code });
@@ -47,7 +47,7 @@ export function picker(ctx, { g, roots, folder, scan, specs, shares, owner, shar
   /** A scoped caller may look only inside its own granted folders; the owner sees all. */
   async function scopeOf(meta) {
     const s = await reach(ctx, meta && meta.caller);
-    return { ...s, may: p => s.all || within(p, s.folders) };
+    return { ...s, may: p => s.all || (within(p, s.folders) && withinReal(p, s.folders)) };
   }
 
   ctx.tool("files.drive.candidates", {
@@ -155,7 +155,7 @@ export function picker(ctx, { g, roots, folder, scan, specs, shares, owner, shar
       const given = drv.shares && typeof drv.shares === "object" && !Array.isArray(drv.shares) ? drv.shares : {};
       config.save({ files: { drive: { ...drv, shares: { ...given, [share]: { path: at, access } } } } }, ctx.paths.root, ctx.config);
       try {
-        return { ...(await shareOne(share)), name: share };
+        return { ...(await shareOne(share)), name: share, note: "Checked for secrets now. One added to this folder later is not scanned until the next audit." };
       } catch (e) {
         config.save({ files: { drive: { ...drv, shares: given } } }, ctx.paths.root, ctx.config);
         throw e;
