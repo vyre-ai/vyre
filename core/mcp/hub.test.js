@@ -262,6 +262,27 @@ test("hub: an update that changes the connection stops the server and drops its 
   await hub.stop();
 });
 
+test("hub: a repointed url or transport invalidates the old cached token; scope/args alone do not (P21)", async () => {
+  const { hub } = fakeHub({ values: { at: "oauth-item" } });
+  let calls = 0;
+  const orig = hub.creds.invalidate.bind(hub.creds);
+  hub.creds.invalidate = (...a) => { calls++; return orig(...a); };
+  await hub.add({ name: "svc", transport: "http", url: "https://example.test/mcp", auth: { type: "oauth", item: "at" } });
+
+  await hub.update({ name: "svc", scope: { agents: ["juno"] } });
+  assert.equal(calls, 0, "a scope change alone never touches the cached token");
+
+  await hub.update({ name: "svc", args: [] }); // no-op field for an http row, does not change url/transport
+  assert.equal(calls, 0);
+
+  await hub.update({ name: "svc", url: "https://example.test/mcp/v2" });
+  assert.equal(calls, 1, "a url change invalidates the old row's cached token");
+
+  await hub.update({ name: "svc", transport: "sse", url: "https://example.test/mcp/v2" });
+  assert.equal(calls, 2, "a transport change invalidates it too");
+  await hub.stop();
+});
+
 test("hub: a server whose tool list changed is re-cached on start", async () => {
   let v = 0;
   const { hub, events } = fakeHub({ behave: { tools: () => (v === 0 ? [{ name: "list_issues" }] : [{ name: "list_issues" }, { name: "get_issue" }]) } });

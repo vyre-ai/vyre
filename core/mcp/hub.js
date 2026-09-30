@@ -444,7 +444,14 @@ export class Hub {
       JSON.stringify(n.headers), JSON.stringify(n.env), JSON.stringify(n.vars), JSON.stringify(n.auth), JSON.stringify(n.scope), JSON.stringify(n.tools), n.idle, this.now(), n.name);
     // A new command, url or credential is a different connection: the running one stops, and the
     // old tool list is dropped, since it may not be the same server any more.
-    if (reconnect) { await this.stopServer(n.name, "updated"); const s = this.state(n.name); s.crashes = []; s.error = null; s.state = "stopped"; }
+    if (reconnect) {
+      await this.stopServer(n.name, "updated");
+      const s = this.state(n.name); s.crashes = []; s.error = null; s.state = "stopped";
+      // A repointed url or transport must never reuse a cached token minted for the old target
+      // (PLAN.md P21, reviewer P2-B2): drop any in-memory access token this row's old auth held,
+      // so the next call mints fresh rather than carrying a token across to a different server.
+      if (n.url !== r.url || n.transport !== r.transport) this.creds.invalidate(r.auth, r.auth.scopes);
+    }
     else { const s = this.live.get(n.name); if (s && s.client) this.arm(n.name); }
     this.deps.emit("mcp.updated", { name: n.name, fields: changed });
     return this.view(this.must(n.name));
