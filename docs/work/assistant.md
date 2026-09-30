@@ -8,15 +8,20 @@ Branch: work/assistant · Worktree: ../vyre-assistant · Owner session: assistan
   list, provenance/taint tied to memory-iq's heard.js pattern, Undo + log, vault specifics), and
   6 open decisions with recommendations for the user.
 
-## Doing
-- 0.2 Phase 1 (planning, no product code): plan written at <team-dir>/0.2/plans/assistant.md;
-  interface asks posted to <team-dir>/0.2/CHAT.md for sessions, teammates, iq, vault,
-  capsule-pro, capsule-sight and tailnet. Waiting on replies and reviewer-2's review.
+## Doing (0.2 build, backend; plan: <team-dir>/0.2/plans/assistant.md)
+- Branch merged with main at c1d4828d (module contract v1 is in). Pre-0.2 work kept at
+  backup/assistant-pre02.
+- B1 (Wave A0) P17 extractor: lib/said/ (extract, resolve, match helper for vault's Gate), the
+  S9 eval scripts/eval-said.js with record/replay reads and a dev set; deterministic guards
+  (recipients must appear in the person's own unquoted words; quoted/pasted blocks stripped first).
+- B2 core/undo: the shared acted-log (P14, PL-M9): undo.record (modules), undo.list, undo.run.
+- B3 core/assistant v1: assistant.glance, assistant.capabilities (tools via modules.capabilities
+  when platform lands it), assistant.log (= undo.list for the assistant), settings.
+- B4 the daily assistant thread with memory.digest (when iq lands it).
 
 ## Next
-- Answer CHAT replies and fold them into the plan. Build starts only after the lead brings
-  PLAN.md to the user. First build step: rebase this branch on main (1036 commits behind; the
-  pre-0.2 digest and context work is saved as wip 9e6780c4).
+- B1 first, then B2 to B4. Surface UI waits for app-design.
+- Land via the integrator onto stage/0.2 after reviewer-2 clears.
 
 ## Needs from others
 - vault (work/vault-next): the real session-credentials contract once designed, to cite by name
