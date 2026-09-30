@@ -1,0 +1,36 @@
+# Retake the docs screenshots (scripts/docs-shots) on a clean runner and upload them as an artifact.
+# Run it from a push to a work/*-shots branch, or by hand. The screenshots come from the sample world
+# only (alex, Harlow Legal, Northwind Bakery, juno, kit) and never from anyone's real data.
+name: docs-shots
+on:
+  push:
+    branches: ["work/*-shots"]
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: docs-shots-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  shots:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - run: npm ci --ignore-scripts || npm i --ignore-scripts
+      - run: npm i --prefix "$RUNNER_TEMP/sharp" sharp
+      - run: node scripts/docs-shots
+        env:
+          CHROME: /usr/bin/google-chrome
+          DOCS_SHOTS_SHARP: ${{ runner.temp }}/sharp
+      - run: node scripts/docs-check
+        continue-on-error: true
+      - uses: actions/upload-artifact@v4
+        with:
+          name: docs-shots
+          path: |
+            docs/**/shots/*.png
+            docs/shots.json
