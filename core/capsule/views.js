@@ -62,6 +62,42 @@ const hashOf = decl => crypto.createHash("sha256").update(JSON.stringify(decl)).
 /** The tool an action or view runs. @param {any} cmd */
 function listOf(cmd) { return cmd.decl.list && typeof cmd.decl.list === "object" ? cmd.decl.list : null; }
 
+/** The MCP hub's tools as a Capsule command per server (Part 2, step 11): a list of the server's tools and a form built from a tool's input schema. */
+/** @param {any} name */
+const serverId = name => `server-${name}`;
+
+/** A form's fields from a JSON Schema's top-level properties: text, number, bool, choice, or JSON in a multiline box. @param {any} schema */
+export function fieldsFromSchema(schema) {
+  const props = schema && typeof schema === "object" && schema.properties && typeof schema.properties === "object" ? schema.properties : {};
+  const required = new Set(Array.isArray(schema && schema.required) ? schema.required : []);
+  return Object.entries(props).slice(0, LIMITS.fields).map(([name, p0]) => {
+    const p = /** @type {any} */ (p0) || {};
+    const type = Array.isArray(p.enum) && p.enum.length && p.enum.length <= 30 ? "choice" : p.type === "integer" || p.type === "number" ? "number" : p.type === "boolean" ? "bool" : p.type === "array" || p.type === "object" ? "multiline" : "text";
+    return { name: name.replace(/[^A-Za-z0-9_]/g, "_").slice(0, 30), source: name, label: clip(p.title || name, 60) + (p.type === "array" || p.type === "object" ? " (JSON)" : ""), type, ...(required.has(name) ? { required: true } : {}), ...(type === "choice" ? { choices: p.enum.map(String) } : {}), json: p.type === "array" || p.type === "object", numeric: p.type };
+  });
+}
+
+/** Form values back into the tool's arguments. @param {any[]} defs @param {Record<string, any>} values */
+function argsFromFields(defs, values) {
+  /** @type {Record<string, any>} */ const out = {};
+  for (const d of defs) {
+    const v = values[d.name];
+    if (v === undefined || v === "") continue;
+    if (d.type === "number") { const n = Number(v); if (!Number.isFinite(n)) return { error: `${d.label} must be a number.` }; out[d.source] = d.numeric === "integer" ? Math.trunc(n) : n; }
+    else if (d.type === "bool") out[d.source] = v === true || v === "true" || v === "1" || v === "yes";
+    else if (d.json) { try { out[d.source] = JSON.parse(String(v)); } catch { return { error: `${d.label} is not valid JSON.` }; } }
+    else out[d.source] = String(v);
+  }
+  return { args: out };
+}
+
+/** The text of an MCP tool's answer. @param {any} d */
+function textOf(d) {
+  if (d && Array.isArray(d.content)) return d.content.map((/** @type {any} */ c) => (c && typeof c.text === "string" ? c.text : "")).filter(Boolean).join("\n");
+  if (typeof d === "string") return d;
+  try { return JSON.stringify(d, null, 2); } catch { return ""; }
+}
+
 /**
  * Register the view tools on the capsule module's ctx (local/capsule).
  * @param {any} ctx
@@ -72,10 +108,43 @@ export function registerViews(ctx) {
     const rowCache = new Map();
     const rowsOf = (/** @type {string} */ key) => { const c = rowCache.get(key); return c && Date.now() - c.at < ROW_MS ? c.rows : new Map(); };
 
-    const find = (/** @type {any} */ input) => {
-      const cmd = commandsOf(ctx.modules.status()).get(`${input.module}/${input.command}`);
+    /** The declared commands, and a "tools" command for each MCP hub server the person may use. */
+    const allCommands = async (/** @type {string} */ caller) => {
+      const out = commandsOf(ctx.modules.status());
+      if (ctx.modules.status().some((/** @type {any} */ m) => m.name === "mcp" && m.state === "running")) {
+        try {
+          const r = await ctx.call("mcp.servers", {}, { as: caller });
+          for (const sv of (Array.isArray(dataOf(r)) ? dataOf(r) : (dataOf(r) && dataOf(r).servers) || [])) {
+            if (!sv || typeof sv.name !== "string") continue;
+            out.set(`mcp/${serverId(sv.name)}`, { module: "mcp", id: serverId(sv.name), firstParty: true, server: sv.name, needsSlots: [], needsTools: [],
+              decl: { title: `${clip(sv.name, 40)} tools`, keywords: [sv.name, "mcp", "tools"], icon: "wrench", arg: { name: "q", placeholder: "tool" } } });
+          }
+        } catch { /* no hub, no server commands */ }
+      }
+      return out;
+    };
+    const find = async (/** @type {any} */ input, /** @type {string} */ caller) => {
+      const cmd = (await allCommands(caller)).get(`${input.module}/${input.command}`);
       if (!cmd) throw Object.assign(new Error(`no command ${input.module}/${input.command}`), { code: "not_found" });
       return cmd;
+    };
+
+    /** A hub server's tools, filtered by the typed words, as one list frame. @param {any} cmd @param {string} q @param {string} caller */
+    const serverList = async (cmd, q, caller) => {
+      const r = await run(cmd, "mcp.tools", {}, caller, null);
+      const bad = problem(r);
+      if (bad) return bad;
+      const words = q.toLowerCase().split(/\s+/).filter(Boolean);
+      const tools = (Array.isArray(dataOf(r)) ? dataOf(r) : []).filter((/** @type {any} */ t) => t && t.server === cmd.server
+        && words.every(w => `${t.tool} ${t.description || ""}`.toLowerCase().includes(w)));
+      const rows = tools.slice(0, LIMITS.rows).map((/** @type {any} */ t) => ({ id: clip(t.tool, 200), title: clip(t.tool, 120), ...(t.description ? { subtitle: clip(t.description, 200) } : {}), accessory: t.outward ? "held" : "read",
+        actions: [{ id: "run", title: t.outward ? "Fill in and send" : "Run", outward: Boolean(t.outward) }] }));
+      return { v: 1, kind: "list", title: clip(cmd.decl.title, 60), rows, ...(tools.length > LIMITS.rows ? { more: true } : {}), ...(rows.length ? {} : { empty: "No tool matches that." }) };
+    };
+    /** @param {any} cmd @param {string} tool @param {string} caller */
+    const serverTool = async (cmd, tool, caller) => {
+      const r = await run(cmd, "mcp.tools", {}, caller, null);
+      return (Array.isArray(dataOf(r)) ? dataOf(r) : []).find((/** @type {any} */ t) => t && t.server === cmd.server && t.tool === tool) || null;
     };
 
     /**
@@ -103,15 +172,39 @@ export function registerViews(ctx) {
       return null;
     };
 
+    /** An action on a hub server's tool: open its form, or run it (an outward tool previews first, then the hub holds it at the Gate). */
+    const serverAct = async (/** @type {any} */ cmd, /** @type {any} */ input, /** @type {string} */ caller) => {
+      const tool = String(input.id || (input.form && String(input.form).startsWith("tool:") ? String(input.form).slice(5) : ""));
+      const t = await serverTool(cmd, tool, caller);
+      if (!t) return error("not_found", "That tool is gone.");
+      const defs = fieldsFromSchema(t.input);
+      if (input.action === "run") return { v: 1, kind: "view", frame: { v: 1, kind: "form", id: `tool:${t.tool}`, title: clip(t.tool, 100), fields: defs.map(({ name, label, type, required, choices }) => ({ name, label, type, ...(required ? { required } : {}), ...(choices ? { choices } : {}) })), submit: { title: t.outward ? "Send" : "Run", ...(t.outward ? { outward: true } : {}) } } };
+      if (input.action !== "submit") return error("not_found", "That action is gone.");
+      const values = input.fields && typeof input.fields === "object" ? input.fields : {};
+      for (const d of defs) if (d.required && !String(values[d.name] ?? "").trim()) return error("missing", `${d.label} is needed.`);
+      const parsed = argsFromFields(defs, values);
+      if ("error" in parsed) return error("bad_input", String(parsed.error));
+      if (t.outward) {
+        const hash = askedHash("mcp", `${cmd.server}__${t.tool}`, parsed.args);
+        const asked = input.asked && typeof input.asked === "object" ? input.asked : null;
+        if (!asked || asked.hash !== hash) return { v: 1, kind: "preview", title: clip(`${cmd.server}: ${t.tool}`, 60), words: Object.entries(parsed.args).slice(0, 12).map(([k, v]) => ({ label: clip(k, 40), value: clip(typeof v === "string" ? v : JSON.stringify(v), 2000) })), hash };
+      }
+      const r = await run(cmd, "mcp.call", { server: cmd.server, tool: t.tool, arguments: parsed.args }, caller, null);
+      const bad = problem(r);
+      if (bad) return bad;
+      const text = textOf(dataOf(r));
+      return text.length > 300 || text.includes("\n") ? { v: 1, kind: "view", frame: { v: 1, kind: "detail", title: clip(`${cmd.server}: ${t.tool}`, 120), body: clip(text, LIMITS.body), fields: [], actions: [] } } : { v: 1, kind: "done", said: clip(text || "Done.", 300) };
+    };
+
     ctx.tool("capsule.commands", {
       callers: PERSON,
       description: "Every command the running modules declare for the Capsule, titles and keywords only: [{ module, id, title, keywords, alias, icon, root, arg, taggable, firstParty, hash }]. Sorted by title. An added module's commands carry firstParty false, and the Capsule marks its rows \"from <module>\"; its root is off until the person turns it on.",
       input: { type: "object", properties: {} },
-      run: async () => ({
-        commands: [...commandsOf(ctx.modules.status()).values()].map(c => ({
+      run: async (_input, meta) => ({
+        commands: [...(await allCommands(String(meta.caller))).values()].map(c => ({
           module: c.module, id: c.id, title: clip(c.decl.title, 60), keywords: Array.isArray(c.decl.keywords) ? c.decl.keywords : [], ...(c.decl.alias ? { alias: c.decl.alias } : {}),
           ...(c.decl.icon ? { icon: c.decl.icon } : {}), root: c.firstParty && Boolean(c.decl.root), ...(c.decl.arg ? { arg: c.decl.arg } : {}),
-          taggable: false, firstParty: c.firstParty, hash: hashOf(c.decl),
+          taggable: false, firstParty: c.firstParty, hash: hashOf({ ...c.decl, server: c.server }),
         })).sort((a, b) => a.title.localeCompare(b.title) || a.module.localeCompare(b.module)),
       }),
     });
@@ -121,9 +214,17 @@ export function registerViews(ctx) {
       description: "One frame for a command: { v: 1, kind: \"list\" | \"detail\" | \"form\" | \"error\" | \"needs\" | \"held\", ... }. `view` is list (default), detail (with id) or form (with form). Rows carry action ids, never tool names; text is data.",
       input: { type: "object", required: ["module", "command"], properties: { module: { type: "string" }, command: { type: "string" }, view: { type: "string", enum: ["list", "detail", "form"] }, q: { type: "string", maxLength: 500 }, id: { type: "string", maxLength: 200 }, form: { type: "string" }, cursor: { type: "string" } } },
       run: async (input, meta) => {
-        const cmd = find(input), key = `${cmd.module}/${cmd.id}`, decl = cmd.decl, list = listOf(cmd);
+        const cmd = await find(input, String(meta.caller)), key = `${cmd.module}/${cmd.id}`, decl = cmd.decl, list = listOf(cmd);
         const front = cmd.needsSlots.includes("front");
         const q = String(input.q || "");
+        if (cmd.server) {
+          if (input.view === "form") {
+            const t = await serverTool(cmd, String(input.id || ""), String(meta.caller));
+            if (!t) return error("not_found", "That tool is gone.");
+            return { v: 1, kind: "form", id: `tool:${t.tool}`, title: clip(t.tool, 100), fields: fieldsFromSchema(t.input).map(({ name, label, type, required, choices }) => ({ name, label, type, ...(required ? { required } : {}), ...(choices ? { choices } : {}) })), submit: { title: t.outward ? "Send" : "Run", ...(t.outward ? { outward: true } : {}) } };
+          }
+          return serverList(cmd, q, String(meta.caller));
+        }
         if (input.view === "form" || decl.form) {
           const name = String(input.form || decl.form || "");
           const form = decl.forms && decl.forms[name];
@@ -152,8 +253,9 @@ export function registerViews(ctx) {
       description: "What an action does: { v: 1, kind: \"done\" | \"held\" | \"needs\" | \"error\" | \"view\" | \"preview\" | \"push\", ... }. A `do` effect (open, copy, say, ask) is returned for the Capsule to carry out; a tool action calls the module's own tool. An outward action first answers a preview with the exact words and a hash; the same call with `asked: { hash }` sends. Nothing is sent until the person's second Enter.",
       input: { type: "object", required: ["module", "command", "action"], properties: { module: { type: "string" }, command: { type: "string" }, action: { type: "string" }, id: { type: "string", maxLength: 200 }, q: { type: "string", maxLength: 500 }, form: { type: "string" }, fields: { type: "object" }, front: { type: "object" }, asked: { type: "object" } } },
       run: async (input, meta) => {
-        const cmd = find(input), key = `${cmd.module}/${cmd.id}`, decl = cmd.decl, list = listOf(cmd);
+        const cmd = await find(input, String(meta.caller)), key = `${cmd.module}/${cmd.id}`, decl = cmd.decl, list = listOf(cmd);
         const front = cmd.needsSlots.includes("front");
+        if (cmd.server) return serverAct(cmd, input, String(meta.caller));
         const row = rowsOf(key).get(String(input.id || "")) || { id: String(input.id || "") };
         const fields = Object.fromEntries(Object.entries(input.fields && typeof input.fields === "object" ? input.fields : {}).slice(0, LIMITS.fields).map(([k, v]) => [k, clip(v, 8000)]));
         const vars = { ...row, q: String(input.q || ""), ...fields,

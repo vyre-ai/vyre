@@ -6,6 +6,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import { discover, Registry, validate } from "../modules/index.js";
+import { capabilities, widened } from "../../packages/module-sdk/manifest.js";
 import { open } from "../store/index.js";
 import { Events } from "../events/index.js";
 import { tempHome, writeModule } from "../../test/helpers.js";
@@ -200,4 +201,50 @@ test("capsule: an added module's view names its own tools, a person can never be
   assert.equal(reg.capsuleMayCall("module:kit", "kit.list"), true);
   assert.equal(reg.capsuleMayCall("module:kit", "north.orders"), false, "an added module reaches only its own declared tools");
   assert.equal(reg.capsuleMayCall("module:north", "kit.list"), false);
+});
+
+test("capsule: each MCP hub server gets a Tools command: its tools listed, a form from the input schema, a read runs, a write previews then the hub holds it", async t => {
+  const stub = ["mcp", { version: "0.1.0", roles: ["local"], does: { tools: ["mcp.servers", "mcp.tools", "mcp.call"] } }, `export default { async start(ctx) {
+    ctx.tool("mcp.servers", { input: { type: "object" }, run: async () => [{ name: "harlow-docs", state: "stopped" }] });
+    ctx.tool("mcp.tools", { input: { type: "object" }, run: async () => [
+      { name: "harlow-docs__search", server: "harlow-docs", tool: "search", description: "Search the docs", outward: false, input: { type: "object", required: ["q"], properties: { q: { type: "string" }, limit: { type: "integer" }, exact: { type: "boolean" }, kind: { enum: ["memo", "brief"] }, tags: { type: "array" } } } },
+      { name: "harlow-docs__post", server: "harlow-docs", tool: "post", description: "Post a note", outward: true, input: { type: "object", required: ["body"], properties: { body: { type: "string" } } } },
+      { name: "other__x", server: "other", tool: "x", description: "not this server", outward: false, input: { type: "object" } }] });
+    ctx.tool("mcp.call", { input: { type: "object" }, run: async (i, meta) => { globalThis.__cap.push({ tool: "mcp.call", input: i, caller: meta.caller }); return i.tool === "post" ? { held: true, id: "g9" } : { content: [{ type: "text", text: "Found 2 memos" }] }; } });
+    return {};
+  } };`];
+  const reg = await registry(t, [stub]);
+  const cmds = (await reg.call("capsule.commands", {}, "capsule")).data.commands;
+  const c = cmds.find(x => x.module === "mcp");
+  assert.deepEqual([c.id, c.title, c.firstParty, c.root], ["server-harlow-docs", "harlow-docs tools", true, false]);
+  const list = (await reg.call("capsule.view", { module: "mcp", command: "server-harlow-docs", q: "" }, "capsule")).data;
+  assert.deepEqual(list.rows.map(r => [r.id, r.accessory]), [["search", "read"], ["post", "held"]], "only this server's tools, held ones marked");
+  assert.equal((await reg.call("capsule.view", { module: "mcp", command: "server-harlow-docs", q: "post" }, "capsule")).data.rows.length, 1);
+  const form = (await reg.call("capsule.act", { module: "mcp", command: "server-harlow-docs", action: "run", id: "search" }, "capsule")).data.frame;
+  assert.deepEqual(form.fields.map(f => [f.name, f.type, Boolean(f.required)]), [["q", "text", true], ["limit", "number", false], ["exact", "bool", false], ["kind", "choice", false], ["tags", "multiline", false]]);
+  const run = (tool, fields, extra = {}) => reg.call("capsule.act", { module: "mcp", command: "server-harlow-docs", action: "submit", id: tool, fields, ...extra }, "capsule").then(r => r.data);
+  assert.equal((await run("search", {})).code, "missing");
+  assert.equal((await run("search", { q: "x", limit: "abc" })).code, "bad_input");
+  const ok = await run("search", { q: "memo", limit: "5", exact: "true", tags: "[\"a\"]" });
+  assert.deepEqual([ok.kind, ok.said], ["done", "Found 2 memos"]);
+  const call = globalThis.__cap.find(c => c.tool === "mcp.call");
+  assert.deepEqual([call.input, call.caller], [{ server: "harlow-docs", tool: "search", arguments: { q: "memo", limit: 5, exact: true, tags: ["a"] } }, "capsule"]);
+  const pv = await run("post", { body: "Hello" });
+  assert.equal(pv.kind, "preview");
+  assert.equal(globalThis.__cap.filter(c => c.tool === "mcp.call").length, 1, "a preview calls nothing");
+  const held = await run("post", { body: "Hello" }, { asked: { hash: pv.hash } });
+  assert.equal(held.kind, "held", "the hub holds a write at the Gate; the Capsule never says sent");
+  assert.equal(reg.capsuleMayCall("module:kit", "mcp.call"), false, "an added module can never reach the hub through a view");
+});
+
+test("capsule: the install card lists the commands, the tools they call and the front slot; a new command or slot asks again", () => {
+  const m = kit();
+  const card = capabilities(m);
+  assert.deepEqual(card.capsule, { commands: [{ id: "things", title: "Things", root: true }], tools: ["kit.list", "kit.send"], front: false });
+  const wider = JSON.parse(JSON.stringify(m));
+  wider.shows.capsule["view:more"] = { title: "More", list: { tool: "kit.list", input: {} } };
+  wider.needs = { slots: ["front"] };
+  assert.deepEqual(widened(card, capabilities(wider)).map(w => [w.kind, w.what]), [["command", "More"], ["slot", "what is in front of the Capsule"]]);
+  assert.deepEqual(widened(card, card), [], "nothing new installs quietly");
+  assert.equal(capabilities({ name: "plain", version: "0.1.0" }).capsule, undefined, "a module with no view: entries has no capsule line");
 });

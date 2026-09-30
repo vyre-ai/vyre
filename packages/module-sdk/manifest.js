@@ -301,8 +301,20 @@ export function capabilities(m) {
     if (t.outward) outward.push({ tool: t.name, kind: t.outward, summary: t.summary, reach: t.reach, ...cost });
     else (tools[t.reach] || (tools[t.reach] = [])).push({ tool: t.name, summary: t.summary, ...cost });
   }
+  // The Capsule commands it adds, the tools those views call, and whether it wants what is in front (Part 2, step 12).
+  const capsuleView = TYPES.object(shows.capsule) ? Object.entries(shows.capsule).filter(([k]) => k.startsWith("view:")) : [];
+  const capsule = capsuleView.length ? {
+    commands: capsuleView.map(([k, v]) => ({ id: k.slice(5), title: TYPES.object(v) && typeof v.title === "string" ? v.title : k.slice(5), root: Boolean(TYPES.object(v) && v.root) })),
+    tools: [...new Set(capsuleView.flatMap(([, v]) => {
+      const e = /** @type {any} */ (v), l = TYPES.object(e) && TYPES.object(e.list) ? e.list : {};
+      return [l.tool, TYPES.object(l.detail) ? l.detail.tool : undefined, ...list(l.actions).map((/** @type {any} */ a) => a && a.tool),
+        ...Object.values(TYPES.object(e) && TYPES.object(e.forms) ? e.forms : {}).map((/** @type {any} */ f) => f && TYPES.object(f.submit) ? f.submit.tool : undefined)].filter((/** @type {any} */ t) => typeof t === "string");
+    }))],
+    front: list(needs.slots).includes("front"),
+  } : null;
   return {
     tools, outward,
+    ...(capsule ? { capsule } : {}),
     hosts: [...list(needs.network)],
     credentials: list(needs.credentials).filter(TYPES.object).map((/** @type {any} */ c) => ({ id: c.id, kind: c.kind, provider: c.provider, purpose: c.purpose })),
     connections: list(needs.connections).filter(TYPES.object).map((/** @type {any} */ c) => ({ provider: c.provider, purpose: c.purpose })),
@@ -323,7 +335,7 @@ export function capabilities(m) {
  * section 6); anything else shows the card again with only these lines.
  * @param {ReturnType<typeof capabilities>} before
  * @param {ReturnType<typeof capabilities>} after
- * @returns {{ kind: "outward" | "host" | "credential" | "connection" | "asked" | "tool" | "spend", what: string, from?: number | null, to?: number }[]}
+ * @returns {{ kind: "outward" | "host" | "credential" | "connection" | "asked" | "tool" | "command" | "slot" | "spend", what: string, from?: number | null, to?: number }[]}
  */
 export function widened(before, after) {
   /** @type {ReturnType<typeof widened>} */
@@ -339,6 +351,10 @@ export function widened(before, after) {
   const askedBefore = (before.tools.asked || []).map(t => t.tool);
   for (const t of after.tools.asked || []) if (!had(askedBefore, t.tool)) out.push({ kind: "asked", what: t.tool });
   for (const t of after.calls || []) if (!had(before.calls || [], t)) out.push({ kind: "tool", what: t });
+  // A new Capsule command, or a first request for what is in front of the Capsule, needs the person's yes again.
+  const cmdBefore = ((before.capsule && before.capsule.commands) || []).map(c => c.id);
+  for (const c of (after.capsule && after.capsule.commands) || []) if (!had(cmdBefore, c.id)) out.push({ kind: "command", what: c.title });
+  if (after.capsule && after.capsule.front && !(before.capsule && before.capsule.front)) out.push({ kind: "slot", what: "what is in front of the Capsule" });
   const from = before.spend ? before.spend.dailyUsd : null, to = after.spend ? after.spend.dailyUsd : null;
   if (to !== null && (from === null || to > from)) out.push({ kind: "spend", what: `up to $${to.toFixed(2)} a day`, from, to });
   return out;

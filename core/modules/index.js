@@ -1004,6 +1004,8 @@ export class Registry {
    */
   capsuleMayCall(as, tool) {
     const named = as.startsWith("module:") ? as.slice(7) : null;
+    // The hub's own tools: the Capsule lists a server's tools and runs one as the person (a write is held at the Gate).
+    if (!named && ["mcp.servers", "mcp.tools", "mcp.call"].includes(tool)) return true;
     for (const [name, r] of this.modules.entries()) {
       if (r.state !== "running" || !r.manifest) continue;
       const cap = r.manifest.shows && r.manifest.shows.capsule;

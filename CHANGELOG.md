@@ -4,6 +4,11 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+- Each MCP hub server gets a Tools command in the Capsule (`capsule.commands`/`view`/`act`): its tools listed,
+  a form built from a tool's input schema (text, number, bool, choice, JSON), a read runs as the person, and a
+  write previews then is held at the Gate by the hub (`core/capsule/views.js`). The install card
+  (`capabilities()`) lists an added module's Capsule commands, the tools they call and the front slot, and
+  `widened()` asks again for a new command or a first request for the front slot.
 - The Capsule's view contract: `view:<id>` entries in shows.capsule (a list with a detail and actions, or a
   form; `map` by dotted path, a fixed template vocabulary, effects open/copy/say/ask/push, an icon
   allowlist), checked at load (`packages/module-sdk/capsule-view.js`), and three tools on the capsule module,
