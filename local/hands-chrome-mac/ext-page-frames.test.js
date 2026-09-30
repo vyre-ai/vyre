@@ -464,3 +464,13 @@ test("page.eval (the op chrome_eval calls): a script's write with the page's log
   assert.ok(!ran.some(e => /firebaseLocalStorageDb|stsTokenManager|document\.cookie/.test(e)), "a script that opens the stored login is refused before it runs");
   assert.ok(!ran.includes(guardInstallWrites), "and before the guard is even installed");
 });
+
+test("act: a mouseMoved is never awaited, on the top session either (a macOS runner never acknowledged it: 5005 ms)", async () => {
+  const w = await world();
+  const send = w.ctx.cdp.send.bind(w.ctx.cdp);
+  w.ctx.cdp.send = (tab, method, params, session) => (method === "Input.dispatchMouseEvent" && params.type === "mouseMoved" ? new Promise(() => {}) : send(tab, method, params, session));
+  const t0 = Date.now();
+  const r = await act(w.ctx, { selector: { name: "Contacts" }, kind: "click", asked: true });
+  assert.equal(r.ok, true);
+  assert.ok(Date.now() - t0 < 1500);
+});

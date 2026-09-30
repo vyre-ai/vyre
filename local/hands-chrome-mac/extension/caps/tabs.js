@@ -139,7 +139,7 @@ export default {
         if (args.press && ["Stop", "Pause"].includes(String(args.press)) && p && p.buttonPoint) {
           const pt = await p.buttonPoint(tabId, String(args.press));
           out.pressed = !!pt;
-          if (pt) for (const type of ["mouseMoved", "mousePressed", "mouseReleased"]) await ctx.cdp.send(tabId, "Input.dispatchMouseEvent", { type, x: pt.x, y: pt.y, button: "left", clickCount: 1 });
+          if (pt) for (const type of ["mousePressed", "mouseReleased"]) await ctx.cdp.send(tabId, "Input.dispatchMouseEvent", { type, x: pt.x, y: pt.y, button: "left", clickCount: 1 });
         }
       }
       return out;

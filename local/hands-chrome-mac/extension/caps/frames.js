@@ -62,7 +62,7 @@ export default {
       const count = async () => { const r = await ctx.frames.evalIn(tab, f, "window.__vyreClicks", { returnByValue: true }); return r && r.result ? r.result.value : null; };
       const off = await ctx.frames.offset(tab, f, frames);
       const press = async (/** @type {string|undefined} */ session, /** @type {number} */ x, /** @type {number} */ y) => {
-        for (const type of ["mouseMoved", "mousePressed", "mouseReleased"]) await ctx.cdp.send(tab, "Input.dispatchMouseEvent", { type, x, y, button: "left", clickCount: 1 }, session);
+        for (const type of ["mousePressed", "mouseReleased"]) await ctx.cdp.send(tab, "Input.dispatchMouseEvent", { type, x, y, button: "left", clickCount: 1 }, session);
       };
       await press(undefined, pt.x + off.dx, pt.y + off.dy);
       await new Promise(r => setTimeout(r, 150));
