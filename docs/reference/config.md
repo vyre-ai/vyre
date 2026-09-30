@@ -67,7 +67,7 @@ Vyre reads these when they are set. None is needed for normal use.
 
 | Variable | What it does | Read in |
 | --- | --- | --- |
-| `VYRE_ACCOUNTS_HOME` | Not described yet. | `core/sessions/spawn.js`, `core/spawner/main.js` |
+| `VYRE_ACCOUNTS_HOME` | Not described yet. | `core/config/index.js`, `core/sessions/spawn.js`, `core/spawner/main.js` |
 | `VYRE_ACCOUNT_UID_MAX` | Not described yet. | `core/spawner/main.js` |
 | `VYRE_ACCOUNT_UID_MIN` | Not described yet. | `core/spawner/main.js` |
 | `VYRE_ACME_DIRECTORY` | The ACME server certificates come from, in place of Let's Encrypt. With it set, Vyre does not wait for DNS. | `core/names/index.js` |

@@ -4825,6 +4825,7 @@ One question to a purpose's warm session (a lean one already started, so no star
   - `prompt` string, required
   - `purpose` one of "memory", "planner", "learn", "helper", "job", required
   - `model` string
+  - `stream` boolean: Hand partial text to the calling module as it arrives (ctx.call opts.onPartial); the answer still returns whole.
   - `system` string
   - `timeout_ms` integer
 - Callers: other modules only (internal: `vyre call` answers no_such_tool)

@@ -65,12 +65,16 @@ if (!process.getuid || process.getuid() !== 0) {
     "/bin/sh", "-c", 'umask 002; exec mkdir -p "$1"', "sh", dir], { stdio: "ignore" });
   // One uid per account, 2000-2063 in the image, each with a private HOME in the vyre-accounts volume.
   const accounts = { min: num(env.VYRE_ACCOUNT_UID_MIN, 2000), max: num(env.VYRE_ACCOUNT_UID_MAX, 2063), home: env.VYRE_ACCOUNTS_HOME || "/home/acct", shared: [SHARED] };
-  const srv = await serve({ socket: SOCKET, mode: 0o660, allow, work: WORK, agent: AGENT, home, makeDir, accounts, log });
+  const grantGroup = (dir, who) => execFileSync("/usr/bin/setpriv", [`--reuid=${who.uid}`, `--regid=${who.gid}`, "--clear-groups", "--inh-caps=-all", "--", "/bin/chmod", "710", dir], { stdio: "ignore" });
+  const srv = await serve({ socket: SOCKET, mode: 0o660, allow, work: WORK, agent: AGENT, home, makeDir, grantGroup, accounts, log });
 
   // The loop, and so vyred, as uid vyre, in the shared group, with no capabilities, and knowing
   // where to ask. Its umask is 002, so what it writes in /work the agent can change too; its own
   // files take group vyre, which the agent is not in, behind a home only vyre enters.
-  const child = runLoop(["/usr/bin/setpriv", `--reuid=${VYRE}`, `--regid=${VYRE}`, `--groups=${SHARED}`, "--inh-caps=-all", "--",
+  // vyred is in every account's group (gid = uid, 2000-2063), so it can read each account's
+  // transcripts through the group and no account can read another's.
+  const accountGids = []; for (let g = accounts.min; g <= accounts.max; g++) accountGids.push(g);
+  const child = runLoop(["/usr/bin/setpriv", `--reuid=${VYRE}`, `--regid=${VYRE}`, `--groups=${[SHARED, ...accountGids].join(",")}`, "--inh-caps=-all", "--",
     "/bin/sh", "-c", 'umask 002; exec "$@"', "sh", "/bin/sh", LOOP], { ...env, HOME: env.VYRE_USER_HOME || "/home/vyre", VYRE_SPAWNER_SOCKET: SOCKET });
   child.on("exit", async (code, signal) => { await srv.close(); process.exit(code ?? (signal ? 1 : 0)); });
 }

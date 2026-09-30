@@ -38,7 +38,8 @@ const MAX_LIVE = 16;
 
 /**
  * @param {{ socket: string, mode?: number, allow: string[], agent: { uid: number, gid: number, groups: number[] },
- *   work?: string, home?: string, wrap?: (argv: string[], cwd: string, who: Who) => string[], makeDir?: (dir: string, who: Who) => void, log?: (m: string) => void,
+ *   work?: string, home?: string, wrap?: (argv: string[], cwd: string, who: Who) => string[], makeDir?: (dir: string, who: Who) => void, grantGroup?: (home: string, who: Who) => void, log?: (m: string) => void,
+ *   grantGroup?: (home: string, who: Who) => void,
  *   accounts?: { min: number, max: number, home: string, shared?: number[], stat?: (dir: string) => import("node:fs").Stats|null, wipe?: (dir: string, who: Who) => void } }} o
  *   allow: programs argv[0] may name (absolute paths). wrap: how the child is started as its user;
  *   the default is setpriv plus umask 002 plus tini as a subreaper. A test passes identity.
@@ -66,8 +67,11 @@ export async function serve(o) {
     const home = accountHome(uid);
     const st = lstat(home);
     if (!st || !st.isDirectory() || st.isSymbolicLink()) return { who: null, why: `account ${uid} has no home at ${home}` };
-    // Owned by that uid alone and closed to everyone else, or the split means nothing.
-    if (st.uid !== uid || (st.mode & 0o077) !== 0) return { who: null, why: `account ${uid}'s home is not private to it (owner ${st.uid}, mode ${(st.mode & 0o777).toString(8)})` };
+    // Owned by that uid, closed to everyone else. Group execute (no read, no write) is allowed and
+    // only for the account's own group: vyred belongs to every account's group, so it can walk in
+    // to the account's transcripts, and no other account is in that group.
+    const gid = st.gid === undefined ? uid : st.gid;
+    if (st.uid !== uid || (st.mode & 0o077 & ~0o010) !== 0 || ((st.mode & 0o010) !== 0 && gid !== uid)) return { who: null, why: `account ${uid}'s home is not private to it (owner ${st.uid}, mode ${(st.mode & 0o777).toString(8)})` };
     return { who: /** @type {Who} */ ({ uid, gid: uid, groups: req.shared === true ? [...(acc.shared || [])] : [], home, account: uid }), why: null };
   }
   // Programs by their real path, so a symlink (/bin/sh to dash) is the program it names.
@@ -120,6 +124,8 @@ export async function serve(o) {
     if (!w.who) { try { s.control.end(JSON.stringify({ error: w.why }) + "\n"); } catch {} end(id, w.why || "refused"); return; }
     const who = w.who;
     if (who.home) { env.HOME = who.home; env.USER = who.account !== undefined ? `acct${who.account}` : "vyre-agent"; }
+    // The HOME's group can walk in (710): see whoFor. Done as that uid, which owns it.
+    if (who.account !== undefined && who.home && o.grantGroup) { try { o.grantGroup(who.home, who); } catch (e) { log(`spawner: cannot open ${who.home} to its group: ${/** @type {Error} */ (e).message}`); } }
     // An account's scratch space is inside its HOME, so a wipe of the HOME leaves nothing of it in /tmp.
     if (who.account !== undefined && who.home) {
       env.TMPDIR = path.join(who.home, ".tmp");

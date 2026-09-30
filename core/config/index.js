@@ -196,7 +196,7 @@ function defaults(root, platform = process.platform) {
     roots: [],
     me: { domains: [], emails: [] },
     // synced: sessions a paired device sent here with the person's consent (ADR 0008, amendment).
-    transcripts: [path.join(claude, "projects"), path.join(claude, "projects-archive"), path.join(root, "synced")],
+    transcripts: [path.join(claude, "projects"), path.join(claude, "projects-archive"), path.join(root, "synced"), path.join(process.env.VYRE_ACCOUNTS_HOME || "/home/acct", "*", ".claude", "projects")],
     modules: { enable: [], disable: [] },
     // Guests from another tailnet: off, nobody listed (ADR 0014 part 8, core/names/guests.js).
     network: { tailscale: false, guests: { enabled: false, people: {} } },

@@ -75,7 +75,7 @@ async function withAccounts(t, homes) {
   for (const uid of Object.keys(homes)) fs.mkdirSync(path.join(acct, uid), { recursive: true });
   const socket = path.join(dir, "s.sock");
   const ran = [], wiped = [];
-  const stat = d => { const uid = path.basename(d); const h = homes[uid]; return h ? { isDirectory: () => true, isSymbolicLink: () => Boolean(h.link), uid: h.uid, mode: 0o40000 | h.mode } : null; };
+  const stat = d => { const uid = path.basename(d); const h = homes[uid]; return h ? { isDirectory: () => true, isSymbolicLink: () => Boolean(h.link), uid: h.uid, ...(h.gid !== undefined ? { gid: h.gid } : {}), mode: 0o40000 | h.mode } : null; };
   const srv = await serve({ socket, allow: ["/bin/sh"], work, agent: { uid: 1001, gid: 1001, groups: [1002] },
     wrap: (argv, cwd, who) => { ran.push(who); return argv; },
     accounts: { min: 2000, max: 2063, home: acct, shared: [1002], stat, wipe: (d, who) => wiped.push([d, who.uid]) } });
@@ -120,4 +120,11 @@ test("spawner accounts: a spawner with no account range refuses an account; wipe
   assert.equal(await wipeAccount(2000, { socket: w.socket }), true);
   assert.deepEqual(w.wiped, [[path.join(w.acct, "2000"), 2000]]);
   await assert.rejects(wipeAccount(2999, { socket: w.socket }), /account must be a uid/);
+});
+
+test("spawner accounts: a HOME open to its own group for walking in (710) is fine; open to another group, or readable, is not", async t => {
+  const { socket, work } = await withAccounts(t, { 2000: { uid: 2000, gid: 2000, mode: 0o710 }, 2001: { uid: 2001, gid: 1000, mode: 0o710 }, 2002: { uid: 2002, gid: 2002, mode: 0o750 } });
+  await exited(await spawnAsAgent(["/bin/sh", "-c", "true"], { socket, cwd: work, account: 2000 }));
+  await assert.rejects(spawnAsAgent(["/bin/sh", "-c", "true"], { socket, cwd: work, account: 2001 }), /not private to it/);
+  await assert.rejects(spawnAsAgent(["/bin/sh", "-c", "true"], { socket, cwd: work, account: 2002 }), /not private to it/);
 });
