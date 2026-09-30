@@ -148,7 +148,7 @@ const MODULE_STOP_MS = 5_000;
  */
 export const RESERVED_EVENTS = {
   sync: ["sync"], gate: ["gate"], push: ["push", "assistant"], presence: ["presence"],
-  said: ["assistant"], memory: ["memory"],
+  said: ["assistant"], memory: ["memory"], "artifact-links": ["artifacts"],
 };
 
 export function validate(m, { firstParty = false } = {}) {
