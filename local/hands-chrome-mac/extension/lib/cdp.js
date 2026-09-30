@@ -36,10 +36,16 @@ export function createCdp({ chrome, emit = () => {} }) {
   /** Whether auto-attach to child frames worked for a tab, and why not if it did not. @type {Map<number, { ok: boolean, why?: string }>} */
   const autoAttach = new Map();
 
+  /** Tabs whose new children must start PAUSED (waitForDebuggerOnStart), so interception is on before they run a line (the eval guard turns this on for its window). @type {Set<number>} */
+  const pausing = new Set();
+  /** Sessions Chrome said are waiting for the debugger: a fallback resumes one nobody resumed in time, so a page can never hang on us. @type {Set<string>} */
+  const waiting = new Set();
+  const RESUME_AFTER_MS = 4000;
+
   /** Ask a session to auto-attach its own children too (a cross-origin iframe inside a cross-origin iframe). @param {number} tabId @param {string} [sessionId] */
   async function watchChildren(tabId, sessionId) {
     try {
-      await chrome.debugger.sendCommand(sessionId ? { tabId, sessionId } : { tabId }, "Target.setAutoAttach", { autoAttach: true, waitForDebuggerOnStart: false, flatten: true });
+      await chrome.debugger.sendCommand(sessionId ? { tabId, sessionId } : { tabId }, "Target.setAutoAttach", { autoAttach: true, waitForDebuggerOnStart: pausing.has(tabId), flatten: true });
       if (!sessionId) autoAttach.set(tabId, { ok: true });
     } catch (e) {
       if (!sessionId) autoAttach.set(tabId, { ok: false, why: String(/** @type {any} */ (e)?.message || e).slice(0, 200) });
@@ -50,6 +56,13 @@ export function createCdp({ chrome, emit = () => {} }) {
     if (typeof source?.tabId !== "number") return;
     const tabId = source.tabId;
     // Keep the table of child sessions: they appear and go as the page's frames do.
+    if (method === "Target.attachedToTarget" && params && params.sessionId && params.waitingForDebugger) {
+      // A child that starts paused. Whoever put interception on it resumes it; this is the fallback so it is never left waiting.
+      waiting.add(params.sessionId);
+      const sid = params.sessionId;
+      const timer = setTimeout(() => { if (waiting.delete(sid)) void Promise.resolve(chrome.debugger.sendCommand({ tabId, sessionId: sid }, "Runtime.runIfWaitingForDebugger", {})).catch(() => {}); }, RESUME_AFTER_MS);
+      /** @type {any} */ (timer).unref?.();
+    }
     if (method === "Target.attachedToTarget" && params && params.sessionId && params.targetInfo) {
       const m = kids.get(tabId) || new Map();
       m.set(params.sessionId, { targetId: params.targetInfo.targetId, type: params.targetInfo.type, url: params.targetInfo.url || "", ...(params.targetInfo.parentFrameId ? { parentFrameId: params.targetInfo.parentFrameId } : {}) });
@@ -67,7 +80,7 @@ export function createCdp({ chrome, emit = () => {} }) {
     const tabId = source?.tabId;
     if (typeof tabId !== "number") return;
     const was = attachedTabs.delete(tabId);
-    kids.delete(tabId); autoAttach.delete(tabId);
+    kids.delete(tabId); autoAttach.delete(tabId); pausing.delete(tabId);
     const pending = inflight.get(tabId);
     inflight.delete(tabId);
     if (pending) for (const reject of pending) reject(err("detached", `Chrome detached the debugger from that tab${reason ? ` (${reason})` : ""}`));
@@ -134,8 +147,26 @@ export function createCdp({ chrome, emit = () => {} }) {
     try { await chrome.debugger.detach({ tabId }); } catch { /* the tab may already be gone */ }
   }
 
+  /**
+   * Start (or stop) having every NEW child of the tab begin paused, on the tab's session and on each child session (nested frames). Existing children are unaffected.
+   * Resolves whether Chrome accepted it everywhere it could be asked; a false means a frame may start unpaused.
+   * @param {number} tabId @param {boolean} on
+   */
+  async function setPause(tabId, on) {
+    if (on) pausing.add(tabId); else pausing.delete(tabId);
+    let ok = true;
+    const ask = async (/** @type {string} [sessionId] */ sessionId) => {
+      try { await chrome.debugger.sendCommand(sessionId ? { tabId, sessionId } : { tabId }, "Target.setAutoAttach", { autoAttach: true, waitForDebuggerOnStart: on, flatten: true }); } catch (e) { if (!sessionId || !/not found|closed|detached|gone/i.test(String(/** @type {any} */ (e)?.message || e))) ok = false; }
+    };
+    await ask(undefined);
+    await Promise.all([...(kids.get(tabId) || new Map()).keys()].map(ask));
+    return ok;
+  }
+  /** A child that was waiting has been resumed (so the fallback does not send a second resume). @param {string} sessionId */
+  const resumed = sessionId => { waiting.delete(sessionId); };
+
   return {
-    attach, send, on, detach, attached: () => [...attachedTabs],
+    attach, send, on, detach, attached: () => [...attachedTabs], setPause, resumed,
     /** The child sessions of a tab now: [{ sessionId, targetId, type, url }]. @param {number} tabId */
     children: tabId => [...(kids.get(tabId) || new Map()).entries()].map(([sessionId, v]) => ({ sessionId, ...v })),
     /** Did Chrome accept auto-attach for the tab? (a wall would show here.) @param {number} tabId */

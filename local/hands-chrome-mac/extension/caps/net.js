@@ -130,6 +130,8 @@ const NETWORK_ARGS = { maxTotalBufferSize: 10_000_000, maxResourceBufferSize: 5_
 
 /** A child session worth capturing: a frame (a cross-origin iframe, nested too). @param {any} k */
 const isFrameTarget = k => k && (k.type === "iframe" || k.type === "page");
+/** Every child target the guard must cover: frames and dedicated workers (a worker has its own network that the page's fetch shim never sees). @param {any} k */
+const isGuardTarget = k => isFrameTarget(k) || (k && (k.type === "worker" || k.type === "shared_worker" || k.type === "service_worker"));
 
 /** Turn capture (and interception, if it is up) on for one child session. @param {any} ctx @param {TabNet} t @param {string} session */
 async function enableSession(ctx, t, session) {
@@ -137,13 +139,14 @@ async function enableSession(ctx, t, session) {
     // The guard first: a frame that attaches while a script runs must not have an unguarded moment between its capture and its interception.
     if (t.fetchOn && t.fetchPats) await ctx.cdp.send(t.tab, "Fetch.enable", { patterns: t.fetchPats.map(urlPattern => ({ urlPattern, requestStage: "Request" })) }, session);
     await ctx.cdp.send(t.tab, "Network.enable", NETWORK_ARGS, session);
-  } catch { t.sessions.delete(session); /* gone, or not ours to enable: tried again on the next start */ }
+    return true;
+  } catch { t.sessions.delete(session); /* gone, or not ours to enable: tried again on the next start */ return false; }
 }
 
 /** Every child session the tab has now gets capture. Cheap when nothing is new. @param {any} ctx @param {TabNet} t */
 export function syncSessions(ctx, t) {
   const kids = typeof ctx.cdp.children === "function" ? ctx.cdp.children(t.tab) : [];
-  const fresh = kids.filter((/** @type {any} */ k) => isFrameTarget(k) && !t.sessions.has(k.sessionId));
+  const fresh = kids.filter((/** @type {any} */ k) => isGuardTarget(k) && !t.sessions.has(k.sessionId));
   for (const k of fresh) t.sessions.add(k.sessionId);
   return Promise.all(fresh.map((/** @type {any} */ k) => enableSession(ctx, t, k.sessionId)));
 }
@@ -190,7 +193,21 @@ const docOrigin = u => { try { const o = new URL(String(u)).origin; return o ===
 /** @param {any} ctx @param {TabNet} t @param {string} method @param {any} p @param {string} [session] */
 function handle(ctx, t, method, p, session) {
   if (method === "Target.attachedToTarget") {
-    if (p.sessionId && isFrameTarget(p.targetInfo) && !t.sessions.has(p.sessionId)) { t.sessions.add(p.sessionId); void enableSession(ctx, t, p.sessionId); }
+    if (p.sessionId && isGuardTarget(p.targetInfo) && !t.sessions.has(p.sessionId)) {
+      t.sessions.add(p.sessionId);
+      void (async () => {
+        const ok = await enableSession(ctx, t, p.sessionId);
+        // A child that started paused is resumed AFTER interception is on (or, if that failed, anyway, so no page hangs on us); a failure while a script runs is reported with its result.
+        if (!ok && /** @type {any} */ (t).egress) /** @type {any} */ (t).egress.failed = (/** @type {any} */ (t).egress.failed || 0) + 1;
+        if (p.waitingForDebugger) {
+          try { await ctx.cdp.send(t.tab, "Runtime.runIfWaitingForDebugger", {}, p.sessionId); } catch { /* gone */ }
+          if (ctx.cdp.resumed) ctx.cdp.resumed(p.sessionId);
+        }
+      })();
+    } else if (p.sessionId && p.waitingForDebugger) {
+      // a paused child the capture does not cover: never leave it waiting
+      void (async () => { try { await ctx.cdp.send(t.tab, "Runtime.runIfWaitingForDebugger", {}, p.sessionId); } catch { /* gone */ } if (ctx.cdp.resumed) ctx.cdp.resumed(p.sessionId); })();
+    }
     return;
   }
   if (method === "Target.detachedFromTarget") { if (p.sessionId) t.sessions.delete(p.sessionId); return; }
@@ -461,13 +478,14 @@ export async function egressGuard(ctx, tab) {
     eg.rule = b && b.id != null ? b.id : null;
     eg.contained = b && b.ok ? "full" : "partial";
     eg.containedWhy = b && !b.ok ? b.why : undefined;
-    // The browser-level rule is half of the containment (websockets, beacons): if it could not be set, the script does not run.
-    if (!(b && b.ok)) { t.egress = null; throw refuse("blocked", `the browser-level network rule could not be set (${String(eg.containedWhy || "unknown").slice(0, 100)}), so a script is not run on this page`); }
+
   }
   eg.depth++;
   // The Fetch domain does not see a WebSocket handshake and Network.setBlockedURLs did not stop a new one in a real Chrome
   // (measured in CI). Two layers instead: a declarativeNetRequest session rule for this tab (every frame, no page cooperation,
   // set above) and the page shim in outbound.js for the plain forms, which also reports what it refused.
+  // New children start PAUSED while the guard is up: interception goes on before they run a line. If the tab would not accept that, the guard says so (a frame could start unpaused).
+  if (eg.depth === 1 && ctx.cdp && typeof ctx.cdp.setPause === "function") { const okPause = await ctx.cdp.setPause(tab, true); if (!okPause) eg.pauseWhy = "a new frame could start before the guard reached it"; }
   const failed = await syncFetch(ctx, t);
   // A child frame that would not take the interception is a way out: the script does not run, and the guard is taken down again.
   if (failed && failed.length) {
@@ -484,7 +502,10 @@ export async function egressGuard(ctx, tab) {
       if (done) return [];
       done = true;
       const blocked = eg.blocked.splice(0);
-      if (--eg.depth <= 0) { const rule = eg.rule; t.egress = null; if (ctx.dnr) await ctx.dnr.unblock(rule ?? null); await syncFetch(ctx, t); }
+      // A frame or worker that started during the script and could not be guarded is reported like a leak: it MAY have sent requests.
+      if (eg.failed) blocked.push({ method: "GUARD", origin: `${eg.failed} frame or worker that started during the script and could not be guarded`, leaked: true });
+      if (eg.pauseWhy && !blocked.length) blocked.push({ method: "GUARD", origin: eg.pauseWhy, leaked: true });
+      if (--eg.depth <= 0) { const rule = eg.rule; t.egress = null; if (ctx.cdp && typeof ctx.cdp.setPause === "function") await ctx.cdp.setPause(tab, false).catch(() => {}); if (ctx.dnr) await ctx.dnr.unblock(rule ?? null); await syncFetch(ctx, t); }
       return blocked;
     },
   };
@@ -518,7 +539,9 @@ async function syncFetch(ctx, t) {
   await send("Fetch.enable", arg);
   const kids = [...t.sessions];
   /** @type {string[]} */ const failed = [];
-  await Promise.all(kids.map(k => Promise.resolve(send("Fetch.enable", arg, k)).catch((/** @type {any} */ e) => { if (!/not found|no session|closed|detached|gone|target/i.test(String(e && e.message || e))) failed.push(k); })));
+  // A worker that was already running when the guard went up is the page's own and cannot be reached by the script (new ones are refused by the shim and paused at birth).
+  const workerSessions = new Set((typeof ctx.cdp.children === "function" ? ctx.cdp.children(t.tab) : []).filter((/** @type {any} */ c) => /worker/.test(String(c.type))).map((/** @type {any} */ c) => c.sessionId));
+  await Promise.all(kids.map(k => Promise.resolve(send("Fetch.enable", arg, k)).catch((/** @type {any} */ e) => { if (!/not found|no session|closed|detached|gone|target/i.test(String(e && e.message || e)) && !workerSessions.has(k)) failed.push(k); })));
   return failed;
 }
 

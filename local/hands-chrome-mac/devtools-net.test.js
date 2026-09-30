@@ -365,3 +365,25 @@ test("egress guard refuses to run a script when a child frame will not take the 
   k.respond["Fetch.enable"] = (/** @type {any} */ _p, /** @type {number} */ _t, /** @type {string|undefined} */ session) => { if (session === "S-STUCK") throw new Error("Timed out waiting for a response"); return {}; };
   await assert.rejects(egressGuard(k.ctx, 1), { code: "blocked" });
 });
+
+test("egress guard: children start PAUSED while it is up; a child that arrives waiting gets Fetch BEFORE it is resumed, and is resumed even if Fetch failed", async () => {
+  const k = makeCtx({ active: 1 });
+  const pauses = /** @type {boolean[]} */ ([]);
+  /** @type {any} */ (k.ctx.cdp).setPause = async (/** @type {number} */ _t, /** @type {boolean} */ on) => { pauses.push(on); return true; };
+  await net.ops["net.start"]({ tab: 1 }, k.ctx);
+  const eg = await egressGuard(k.ctx, 1);
+  assert.deepEqual(pauses, [true], "pausing on before the script");
+  // a dedicated worker the page starts while the guard is up: it attaches waiting
+  k.push(1, "Target.attachedToTarget", { sessionId: "S-W1", waitingForDebugger: true, targetInfo: { targetId: "W1", type: "worker", url: "blob:https://a.example/x" } });
+  await new Promise(r => setTimeout(r, 5));
+  const order = k.sent.filter(s => s.session === "S-W1").map(s => s.method);
+  assert.ok(order.indexOf("Fetch.enable") >= 0 && order.indexOf("Runtime.runIfWaitingForDebugger") > order.indexOf("Fetch.enable"), `Fetch before resume: ${order.join(",")}`);
+  // a child whose Fetch.enable fails is still resumed (a page never hangs on us) and the script's result says it MAY have sent
+  k.respond["Fetch.enable"] = (/** @type {any} */ _p, /** @type {number} */ _t, /** @type {string|undefined} */ session) => { if (session === "S-F2") throw new Error("Timed out"); return {}; };
+  k.push(1, "Target.attachedToTarget", { sessionId: "S-F2", waitingForDebugger: true, targetInfo: { targetId: "F2", type: "iframe", url: "https://b.example/x" } });
+  await new Promise(r => setTimeout(r, 5));
+  assert.ok(k.sent.some(s => s.session === "S-F2" && s.method === "Runtime.runIfWaitingForDebugger"), "resumed anyway");
+  const out = await eg.stop();
+  assert.ok(out.some((/** @type {any} */ o) => o.method === "GUARD" && o.leaked), "an unguarded child is reported like a leak");
+  assert.equal(pauses[pauses.length - 1], false, "pausing is off again when the guard goes");
+});

