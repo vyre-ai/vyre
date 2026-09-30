@@ -145,6 +145,11 @@ jobs:
           else
             echo "Android: no green app.yml run on $sha, released without the APK" | tee -a "$GITHUB_STEP_SUMMARY"
           fi
+      - name: shell.json, the phone shell's file hashes (pwa), so the one signature covers it
+        run: |
+          # scripts/shell-hashes.mjs lands with the pwa team's branch; until it is on this branch there is no shell.json.
+          if [ -f scripts/shell-hashes.mjs ]; then node scripts/shell-hashes.mjs dist; [ -f dist/shell.json ] || { echo "shell-hashes made no dist/shell.json"; exit 1; }
+          else echo "no scripts/shell-hashes.mjs on this branch yet: no shell.json" | tee -a "$GITHUB_STEP_SUMMARY"; fi
       - name: release.json and SHA256SUMS
         run: |
           node -e '
