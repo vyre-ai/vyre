@@ -100,7 +100,9 @@ try {
     spawnSync("docker", ["exec", "-u", "root", "vyre-vyre-1", "sh", "-c", `for u in $(seq ${uid} $((${uid} + 9))); do mkdir -p /home/acct/$u && chown $u:$u /home/acct/$u && chmod 700 /home/acct/$u; done`]);
     await click("Sign in with Claude");
     paste = await sees(/the sign-in page/i, 45000);
-    r.step("1.8a2-claude-signin-after-workaround", paste ? "fake" : false, { shot: await shot("setup-ai-link"), why: "home made by the harness, fake claude auth login" });
+    let why2 = "home made by the harness, fake claude auth login";
+    if (!paste) { const again = spawnSync("docker", ["exec", "-u", "vyre", "vyre-vyre-1", "vyre", "call", "sessions.accounts.signin", '{"provider":"claude","label":"diag2"}'], { encoding: "utf8" }); why2 = "the box said: " + (((again.stdout || "").match(/"message":\s*"([^"]+)"/) || [])[1] || (again.stdout || again.stderr || "").slice(0, 200)); }
+    r.step("1.8a2-claude-signin-after-workaround", paste ? "fake" : false, { shot: await shot("setup-ai-link"), why: why2 });
     if (!paste) throw new Error("no sign-in link even with the home made");
   } else r.step("1.8a-claude-signin-offered", "fake", { shot: await shot("setup-ai-link"), why: "fake claude auth login" });
   await page.evaluate(`(() => { const i = document.querySelector('input[name="code"]'); i.focus(); i.value = "good-code"; i.dispatchEvent(new Event("input", { bubbles: true })); })()`);
