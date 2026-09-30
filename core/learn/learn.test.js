@@ -109,7 +109,7 @@ test("weakens: retiring lessons, reaching the store and stopping vyred ask first
 async function learning(t, home = tempHome(t), extra = []) {
   const db = open(path.join(home, "vyre.db"));
   const events = new Events(db);
-  const reg = new Registry({ db, events, config: { role: "local" }, paths: { root: home }, log: () => {} });
+  const reg = new Registry({ db, events, config: { role: "local" }, paths: { root: home }, log: () => {}, firstPartyRoots: [path.join(home, "mods")] });
   const core = discover([path.join(path.dirname(new URL(import.meta.url).pathname), "..")]).filter(f => ["harness", "learn"].includes(f.manifest?.name));
   await reg.start([...core, ...extra], { role: "local" });
   t.after(() => db.close());
@@ -315,9 +315,9 @@ test("learn: a draft the user edited to take out every em dash proposes a remind
   writeModule(path.join(home, "mods"), "gate", { does: { tools: ["gate.get", "gate.fire"] }, watches: { emits: ["gate.released"] } }, gate);
   const db = open(path.join(home, "vyre.db"));
   const events = new Events(db);
-  const reg = new Registry({ db, events, config: { role: "local" }, paths: { root: home }, log: () => {} });
+  const reg = new Registry({ db, events, config: { role: "local" }, paths: { root: home }, log: () => {}, firstPartyRoots: [path.join(home, "mods")] });
   const core = discover([path.join(path.dirname(new URL(import.meta.url).pathname), "..")]).filter(f => ["harness", "learn"].includes(f.manifest?.name));
-  await reg.start([...core, ...discover([path.join(home, "mods")])], { role: "local" });
+  await reg.start([...core, ...discover([path.join(home, "mods")], { firstPartyRoots: [path.join(home, "mods")] })], { role: "local" });
   t.after(() => db.close());
 
   await reg.call("gate.fire", { id: 8 });
@@ -350,7 +350,7 @@ function fakeProjects(home) {
     return {};
   } };`;
   writeModule(path.join(home, "mods"), "projects", { does: { tools: ["projects.of", "projects.list"] } }, src);
-  return discover([path.join(home, "mods")]);
+  return discover([path.join(home, "mods")], { firstPartyRoots: [path.join(home, "mods")] });
 }
 
 test("learn: a project lesson applies in that project's folders and nowhere else; its scope holds the slug", async t => {

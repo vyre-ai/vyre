@@ -179,7 +179,7 @@ test("google: a DWD service account reads with read-only tokens, holds sends and
   assert.equal(fake.mail.sent.length, 1);
 
   // An event with no attendees is written at once, and nobody is told.
-  const quiet = await v.model("google.calendar.create", { title: "Focus: Northwind Bakery menu", start: "2026-10-01T09:00:00Z", end: "2026-10-01T10:00:00Z" });
+  const quiet = await v.model("google.calendar.create", { title: "Focus: Northwind Bakery menu", start: new Date(Date.now() + 5 * 86_400_000).toISOString(), end: new Date(Date.now() + 5 * 86_400_000 + 3_600_000).toISOString() });
   assert.ok(quiet.data.event.id, JSON.stringify(quiet));
   const quietEv = fake.calendar.events.find(e => e.id === quiet.data.event.id);
   assert.equal(quietEv._sendUpdates, "none");
@@ -190,7 +190,7 @@ test("google: a DWD service account reads with read-only tokens, holds sends and
 
   // An event with attendees is held; approval creates it with sendUpdates=all.
   const before = fake.calendar.events.length;
-  const invite = await v.model("google.calendar.create", { title: "Harlow Legal signing", start: "2026-10-02T15:00:00Z", where: "Zoom", attendees: ["dana@harlowlegal.com"] });
+  const invite = await v.model("google.calendar.create", { title: "Harlow Legal signing", start: new Date(Date.now() + 6 * 86_400_000).toISOString(), where: "Zoom", attendees: ["dana@harlowlegal.com"] });
   const inviteId = invite.data.held;
   assert.ok(inviteId, JSON.stringify(invite));
   assert.equal(fake.calendar.events.length, before);
