@@ -225,3 +225,7 @@ mobile and the Capsule (through their owners).
 
 - vault.import on a .env file now makes ONE env-set (named after the file's path), holding only
   secrets, instead of one secret per variable. vault.import/preview take a folder and `rewrite`.
+
+## Doing
+
+- Push credential (core/connectors/google.js, imap.js, push.js): one Google consent for hosted MCP and IMAP, one IDLE connection per account, `vault.push` with ids only, reconsent event on an expired token. Runner-tested only. Needs the owning module to wire pushTools and the four event types, and the hub to pass `url` to Credentials.headers for the P21 refusal.

@@ -4,6 +4,33 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### Connectors: the push credential, one Google consent for hosted MCP and mail push (plan: vault.md "Push credentials", risk 7)
+
+- `core/connectors/google.js`: one authorize call asks for the hosted-MCP scopes and
+  `https://mail.google.com/` together, and stores one token set in one item, bound to Google's issuer
+  and to the hosted Gmail, Calendar and Drive addresses (P21). The result records `imap` and `broad`
+  and carries `scope_note`, plain words for the connection card (reviewer N3). Leaving the mail scope
+  unticked is respected: no push, no note.
+- `Credentials.headers(auth, { url })` refuses an oauth item's token for any address outside the
+  resources recorded on the item (code `bound`). An item with no recorded resource is unbound, as
+  before. The hub must pass `url` for this to bite; that is a one-line follow-up in core/mcp.
+- `core/connectors/imap.js`: a small IMAP client over node:tls (no new dependency): XOAUTH2, SELECT
+  INBOX, IDLE ended and re-issued every 29 minutes, NOOP for a server without IDLE (never under
+  60 s), and a headers-only `UID FETCH` (BODY.PEEK of From, To, Subject, Date, Message-ID). It
+  reconnects with backoff (2 s to 5 min, longest for "too many connections"), asks for a fresh token
+  each time and fetches mail that arrived during the gap. A refused login is not retried.
+- `core/connectors/push.js`: `pushManager` holds one IDLE connection per connected account, granted
+  per `{ projects, agents }` like the hub, and emits `vault.push` `{ connection, kind: "mail.new",
+  ids, meta, at, scope }` with ids, sender and date only, never a body or a subject. Also
+  `vault.push.lost`, `vault.push.resumed` and `vault.push.reconsent`. An expired refresh token
+  (Google's 7 day Testing limit, reviewer H1), found by a 6-hourly check or at the next reconnect, or
+  a refused mail scope, ends the connection and emits one `vault.push.reconsent` with a plain reason;
+  status shows `needs-consent`. It never goes quietly dead. `pushTools` gives the owning module
+  `connectors.push.start`, `.stop` and `.status`.
+- oauth.js `start` takes `bind` (resources recorded on the token set but not sent). The fake OAuth
+  server handles refresh grants, `expireRefreshTokens()` and an id_token. New test fake: a fake IMAP
+  server in core/connectors/testing/.
+
 #### Presence: RS256 device keys, for Windows Hello (plan step 14, reviewer M7)
 
 - `presence.enroll {kind: "device", alg: -257}` takes an RSA public key. Minimum 2048 bits (8192 at

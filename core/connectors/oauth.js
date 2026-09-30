@@ -126,7 +126,7 @@ export async function registerClient(registrationEndpoint, redirectUri, f = glob
  *   id_token?: string, issuer: string, resource?: string, token_uri: string, client_id: string, obtained_at: number }} TokenSet
  * @typedef {{ id: string, name: string, state: string, verifier: string, redirect: string,
  *   server: AuthServer, resource?: string, client: { client_id: string, client_secret: string|null },
- *   scopes: string[], values: string[], timer: any }} Flow
+ *   scopes: string[], values: string[], bind?: string[], timer: any }} Flow
  * @typedef {{
  *   fetchItem?: (item: string, field?: string) => Promise<string>,
  *   complete: (flow: Flow, tokens: TokenSet) => Promise<any> | any,
@@ -255,7 +255,7 @@ export function connector(deps) {
     /** @type {TokenSet} */
     const tokens = { access_token: json.access_token, ...(json.refresh_token ? { refresh_token: json.refresh_token } : {}),
       ...(json.expires_in ? { expires_in: Number(json.expires_in) } : {}), ...(json.scope ? { scope: String(json.scope) } : {}),
-      ...(json.id_token ? { id_token: json.id_token } : {}), issuer: flow.server.issuer, ...(flow.resource ? { resource: flow.resource } : {}),
+      ...(json.id_token ? { id_token: json.id_token } : {}), issuer: flow.server.issuer, ...(flow.resource ? { resource: flow.resource } : flow.bind ? { resource: flow.bind.join(" ") } : {}),
       token_uri: flow.server.token_uri, client_id: c.client_id, obtained_at: Date.now() };
     const out = await deps.complete(flow, tokens);
     deps.emit("connect.connected", { id: flow.id, name: flow.name, issuer: flow.server.issuer });
@@ -280,9 +280,11 @@ export function connector(deps) {
      * for a vendor with no protected-resource document). Either way, when the target has no
      * registration_endpoint (or the caller passes `client` anyway), `client` names a vault item
      * with `client_id` and optionally `client_secret`, read through `fetchItem`.
-     * @param {{ name: string, resource?: string, server?: Partial<AuthServer>, client?: string, scopes: string[] }} input
+     * `bind` names the resource url(s) the token is minted for when the vendor's authorize call
+     * takes no `resource` parameter (Google): it is recorded on the token set (P21) and never sent.
+     * @param {{ name: string, resource?: string, server?: Partial<AuthServer>, client?: string, scopes: string[], bind?: string[] }} input
      */
-    start: guarded(async ({ name, resource, server, client, scopes }) => {
+    start: guarded(async ({ name, resource, server, client, scopes, bind }) => {
       if (!NAME.test(String(name || ""))) throw fail("name must be lowercase letters, digits and dashes, starting with a letter, at most 32");
       if (!Array.isArray(scopes) || !scopes.length || !scopes.every(s => typeof s === "string" && s)) throw fail("scopes must be a non-empty list of strings");
       if ([...flows.values()].some(x => x.name === name)) throw fail(`a sign-in for ${name} is already open; finish or cancel it first`, "exists");
@@ -327,7 +329,7 @@ export function connector(deps) {
       const p = await listen();
       const flow = /** @type {Flow} */ ({ id: `oa_${crypto.randomBytes(9).toString("base64url")}`, name, state: random(), verifier: random(),
         redirect: `http://127.0.0.1:${p}${CALLBACK}`, server: as, ...(discoveredResource ? { resource: discoveredResource } : {}),
-        client: { client_id: clientId, client_secret: clientSecret }, scopes, values, timer: null });
+        client: { client_id: clientId, client_secret: clientSecret }, scopes, values, ...(Array.isArray(bind) && bind.length ? { bind: bind.map(String) } : {}), timer: null });
       values.push(flow.verifier);
       const challenge = crypto.createHash("sha256").update(flow.verifier).digest("base64url");
       const url = new URL(as.authorize_uri);

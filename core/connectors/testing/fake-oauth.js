@@ -10,11 +10,13 @@
 import crypto from "node:crypto";
 import http from "node:http";
 
-/** @param {{ after: (fn: () => any) => void }} t @param {{ dcr?: boolean, resource?: string }} [opts] */
+/** @param {{ after: (fn: () => any) => void }} t @param {{ dcr?: boolean, resource?: string, email?: string }} [opts] */
 export async function startFakeAuthServer(t, opts = {}) {
   /** @type {Map<string, { client_secret: string|null }>} */ const clients = new Map();
   /** @type {Map<string, { client_id: string, redirect_uri: string, challenge: string, scope: string }>} */ const codes = new Map();
   /** @type {Map<string, { client_id: string, scope: string }>} */ const tokens = new Map();
+  /** @type {Map<string, string>} refresh token -> client_id */ const refreshes = new Map();
+  let refreshRevoked = false;
   const calls = [];
 
   const server = http.createServer((req, res) => { handle(req, res).catch(e => { res.writeHead(500); res.end(String(e)); }); });
@@ -40,6 +42,15 @@ export async function startFakeAuthServer(t, opts = {}) {
     }
     if (u.pathname === "/token" && req.method === "POST") {
       const body = await new Promise(resolve => { let s = ""; req.on("data", c => s += c); req.on("end", () => resolve(new URLSearchParams(s))); });
+      if (body.get("grant_type") === "refresh_token") {
+        const rt = body.get("refresh_token") || "";
+        if (refreshRevoked || !refreshes.has(rt)) return json(res, 400, { error: "invalid_grant", error_description: "Token has been expired or revoked." });
+        const c = clients.get(String(body.get("client_id")));
+        if (!c || refreshes.get(rt) !== body.get("client_id") || (c.client_secret && c.client_secret !== body.get("client_secret"))) return json(res, 400, { error: "invalid_client" });
+        const access = "at_" + crypto.randomBytes(12).toString("hex");
+        tokens.set(access, { client_id: String(body.get("client_id")), scope: "" });
+        return json(res, 200, { access_token: access, expires_in: 3600, token_type: "Bearer" });
+      }
       if (body.get("grant_type") !== "authorization_code") return json(res, 400, { error: "unsupported_grant_type" });
       const code = body.get("code") || "";
       const entry = codes.get(code);
@@ -54,7 +65,10 @@ export async function startFakeAuthServer(t, opts = {}) {
       const access = "at_" + crypto.randomBytes(12).toString("hex");
       const refresh = "rt_" + crypto.randomBytes(12).toString("hex");
       tokens.set(access, { client_id: entry.client_id, scope: entry.scope });
-      return json(res, 200, { access_token: access, refresh_token: refresh, expires_in: 3600, scope: entry.scope, token_type: "Bearer" });
+      refreshes.set(refresh, entry.client_id);
+      // An id_token carrying the address that signed in, the way Google's does.
+      const idToken = "h." + Buffer.from(JSON.stringify({ email: opts.email || "alex@harlowlegal.com" })).toString("base64url") + ".s";
+      return json(res, 200, { access_token: access, refresh_token: refresh, id_token: idToken, expires_in: 3600, scope: entry.scope, token_type: "Bearer" });
     }
     res.writeHead(404); res.end();
   }
@@ -64,6 +78,8 @@ export async function startFakeAuthServer(t, opts = {}) {
     port,
     calls,
     tokens,
+    /** From now on every refresh is refused invalid_grant, as after Google's 7 day Testing expiry. */
+    expireRefreshTokens() { refreshRevoked = true; },
     /** Pre-register a client the way a person pasting a pre-registered client_id would have. */
     registerClient(secret = null) { const id = "client_" + crypto.randomBytes(6).toString("hex"); clients.set(id, { client_secret: secret }); return { client_id: id, client_secret: secret }; },
     /** Register the client oauth.js's DCR path would have registered, so a test can pre-seed it directly. */
