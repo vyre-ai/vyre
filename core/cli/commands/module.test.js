@@ -210,10 +210,12 @@ test("check reports a schema problem, a loader problem, a missing entry and a sy
   assert.equal(by(schema, "loader").state, "ok");
   assert.ok(schema.problems.some(p => /colour is not a manifest key/.test(p)), schema.problems.join("; "));
 
-  // requires with ranges: module API 1 allows it, this loader does not read it yet.
-  const loader = await checkModule(bakery(path.join(root, "b"), { requires: { memory: ">=0.1" } }), { repo, node });
+  // requires with ranges is module API 1; a range the loader can't read is its problem.
+  const ranged = await checkModule(bakery(path.join(root, "b"), { requires: { memory: ">=0.1" } }), { repo, node });
+  assert.equal(by(ranged, "loader").state, "ok");
+  const loader = await checkModule(bakery(path.join(root, "b2"), { requires: { memory: "newest please" } }), { repo, node });
   assert.equal(by(loader, "loader").state, "failed");
-  assert.ok(loader.problems.includes("requires must be a list"));
+  assert.ok(loader.problems.includes(`requires "memory": "newest please" is not a version range`), loader.problems.join("; "));
 
   const noEntry = bakery(path.join(root, "c"));
   fs.rmSync(path.join(noEntry, "index.js"));

@@ -118,9 +118,6 @@ const firstPartyDir = (repo, dir) => SHIPPED.some(d => path.resolve(dir).startsW
 // ---------------------------------------------------------------------------------------------
 // check
 
-/** The manifest with does.tools as names, the shape core/modules validate() reads. @param {any} m */
-const namesOnly = m => (m && m.does && Array.isArray(m.does.tools) ? { ...m, does: { ...m.does, tools: toolEntries(m).map(t => t.name) } } : m);
-
 /** `node --check <file>`: resolves to the first line that says what is wrong, or "" when it reads. */
 function syntaxOf(node, file) {
   return new Promise(resolve => {
@@ -155,8 +152,7 @@ export async function checkModule(dir, { repo, node, firstParty = firstPartyDir(
   if (m) {
     // The SDK's checker holds an added module to ADR 0047 (apiVersion, object tool entries, reach).
     add("schema", "matches the module API schema", checkManifest(m, { firstParty }));
-    // The loader reads tool names; an object entry (module API 1, ADR 0047) is its name to it.
-    add("loader", "passes the loader's rules", validate(namesOnly(m), { firstParty }));
+    add("loader", "passes the loader's rules", validate(m, { firstParty }));
     const main = typeof m.main === "string" && m.main ? m.main : "index.js";
     const entry = path.resolve(dir, main);
     const inside = entry.startsWith(path.resolve(dir) + path.sep);

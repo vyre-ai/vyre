@@ -2,7 +2,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import path from "node:path";
-import { validate, discover, order, checkInput, Registry, callerKind, callerAllowed, agentClaim, roleBuckets, firstParty } from "./index.js";
+import { validate, discover, order, checkInput, Registry, callerKind, callerAllowed, agentClaim, roleBuckets, firstParty, satisfies } from "./index.js";
 import { fileURLToPath } from "node:url";
 import { open } from "../store/index.js";
 import { Events } from "../events/index.js";
@@ -586,4 +586,110 @@ test("modules: Registry.stop() does not hang forever on a module whose own stop(
   t.mock.timers.tick(5_000); // MODULE_STOP_MS, mocked: instant, nothing left dangling
   await done;
   assert.ok(logs.some(l => /^warn: module stuck did not stop within \d+ms/.test(l)), logs.join("\n"));
+});
+
+// ---------------------------------------------------------------------------------------------
+// Module API 1 (ADR 0047): object tool entries, mac and windows, requires with ranges, and reach
+
+/** A bakery-shaped v1 manifest, from the sample world. */
+const bakeryV1 = () => ({
+  name: "bakery", version: "0.1.0", apiVersion: 1, description: "Northwind Bakery's orders.",
+  roles: ["box", "local"], requires: { notes: ">=0.1.0" },
+  does: { tools: [
+    { name: "bakery.orders", summary: "list today's orders" },
+    { name: "bakery.target", summary: "change the daily target", reach: "asked" },
+    { name: "bakery.flour", summary: "order flour", outward: "pay" },
+    { name: "bakery.sync", summary: "for other modules", reach: "modules" },
+    { name: "bakery.hook", summary: "the till's webhook", reach: "hook" },
+    { name: "bakery.own", summary: "the person's own", reach: "person" },
+  ] },
+  watches: { emits: ["bakery.order-added"] },
+  settings: [{ key: "bakery.target", label: "Daily target", type: "int", default: 40, levels: ["account"], apply: "live" }],
+});
+const bakerySrc = `export default { async start(ctx) {
+  for (const name of ["bakery.orders", "bakery.target", "bakery.flour", "bakery.sync", "bakery.hook", "bakery.own"]) {
+    ctx.tool(name, { input: { type: "object" }, run: async (input, meta) => ({ ran: name, caller: meta.caller }) });
+  }
+  return { async stop() {} };
+} };`;
+const notesSrc = `export default { async start(ctx) { ctx.tool("notes.add", { run: async () => ({}) }); return { async stop() {} }; } };`;
+
+test("modules v1: validate accepts object tool entries, mac and windows, and requires with ranges", () => {
+  assert.deepEqual(validate(bakeryV1()), []);
+  assert.deepEqual(validate({ ...bakeryV1(), roles: ["mac", "windows"], requires: ["notes"] }), []);
+  const bad = validate({ ...bakeryV1(), roles: ["cloud"], requires: { Notes: "soon" },
+    does: { tools: [{ name: "oven.bake" }, { summary: "no name" }, { name: "bakery.x", reach: "everyone", outward: "email" }] } });
+  for (const re of [/roles must be a list of box, local, mac and windows/, /requires "Notes" must be a module name/, /"soon" is not a version range/,
+    /tool "oven\.bake" must start with "bakery\."/, /a tool entry must be a name or \{ name/, /reach must be one of anyone, asked, person, modules, hook/, /outward must be one of send, post, pay, delete/]) {
+    assert.ok(bad.some(p => re.test(p)), `${re} not in ${bad.join("; ")}`);
+  }
+  assert.match(validate({ ...bakeryV1(), requires: "notes" }).join(), /requires must be a list or \{ name: range \}/);
+});
+
+test("modules v1: version ranges", () => {
+  for (const [v, r] of [["0.1.0", ">=0.1.0"], ["0.2.3", ">=0.1 <0.3"], ["1.4.0", "^1.2.0"], ["0.1.9", "^0.1.2"], ["1.2.9", "~1.2.0"], ["2.0.0", "*"], ["0.1.0", "0.1.0"]]) assert.equal(satisfies(v, r), true, `${v} ${r}`);
+  for (const [v, r] of [["0.0.9", ">=0.1.0"], ["2.0.0", "^1.2.0"], ["0.2.0", "^0.1.2"], ["1.3.0", "~1.2.0"], ["0.3.0", ">=0.1 <0.3"]]) assert.equal(satisfies(v, r), false, `${v} ${r}`);
+  assert.equal(satisfies("0.1.0", "latest"), null);
+});
+
+test("modules v1: requires in object form orders by its keys, and a version out of range is a problem", () => {
+  const m = (name, version, requires) => ({ manifest: { name, version, requires } });
+  const { ordered, problems } = order([m("bakery", "0.1.0", { notes: ">=0.1.0" }), m("notes", "0.1.0", []), m("till", "0.1.0", { notes: ">=0.2.0" })]);
+  assert.deepEqual(ordered.map(o => o.manifest.name), ["notes", "bakery"]);
+  assert.equal(problems.get("till"), `requires "notes" >=0.2.0, but notes is 0.1.0`);
+});
+
+test("modules v1: roleBuckets maps mac and windows to local on that OS only", () => {
+  assert.deepEqual(roleBuckets("mac", "darwin"), ["local"]);
+  assert.deepEqual(roleBuckets("mac", "linux"), []);
+  assert.deepEqual(roleBuckets("windows", "win32"), ["local"]);
+  assert.deepEqual(roleBuckets("windows", "darwin"), []);
+});
+
+test("modules v1: a mac module runs on a Mac device and stays off elsewhere", async t => {
+  const home = tempHome(t);
+  const root = path.join(home, "mods");
+  writeModule(root, "notes", { ...good, roles: ["mac"] }, notesSrc);
+  const db = open(path.join(home, "vyre.db"));
+  t.after(() => db.close());
+  const mac = new Registry({ db, events: new Events(db), config: {}, log: () => {} });
+  await mac.start(discover([root]), { role: "device", platform: "darwin" });
+  assert.equal(mac.modules.get("notes").state, "running");
+  const linux = new Registry({ db, events: new Events(db), config: {}, log: () => {} });
+  await linux.start(discover([root]), { role: "device", platform: "linux" });
+  assert.equal(linux.modules.get("notes").state, "off");
+  await mac.stop(); await linux.stop();
+});
+
+test("modules v1: a bakery-shaped v1 module loads, its tools register, and reach sets who may call", async t => {
+  const reg = await registry(t, [["bakery", bakeryV1(), bakerySrc], ["notes", good, notesSrc]]);
+  assert.equal(reg.modules.get("bakery").state, "running", reg.modules.get("bakery").error);
+  for (const n of ["bakery.orders", "bakery.target", "bakery.flour", "bakery.sync", "bakery.hook", "bakery.own"]) assert.ok(reg.tools.has(n), n);
+  // anyone and asked stay open in the loader; outward routing and the asked check come later.
+  assert.deepEqual(await reg.call("bakery.orders", {}, "mcp"), { data: { ran: "bakery.orders", caller: "mcp" } });
+  assert.equal((await reg.call("bakery.target", {}, "mcp")).data.ran, "bakery.target");
+  // modules: internal, hidden from everyone but another module.
+  assert.equal((await reg.call("bakery.sync", {}, "cli")).error.code, "no_such_tool");
+  assert.equal((await reg.call("bakery.sync", {}, "module:notes")).data.ran, "bakery.sync");
+  // hook: the webhook route only.
+  assert.equal((await reg.call("bakery.hook", {}, "cli")).error.code, "no_such_tool");
+  assert.equal((await reg.call("bakery.hook", {}, "hook")).data.ran, "bakery.hook");
+  // person: the person's own surfaces and the owner's devices, never an agent or a module.
+  assert.equal((await reg.call("bakery.own", {}, "cli")).data.ran, "bakery.own");
+  assert.equal((await reg.call("bakery.own", {}, "tailnet:alex")).data.ran, "bakery.own");
+  assert.equal((await reg.call("bakery.own", {}, "mcp:agent:kit")).error.code, "denied");
+  assert.equal((await reg.call("bakery.own", {}, "module:notes")).error.code, "denied");
+  // The listing carries what an object entry declared; a string entry adds nothing.
+  const listed = Object.fromEntries(reg.listTools().map(x => [x.name, x]));
+  assert.deepEqual([listed["bakery.orders"].reach, listed["bakery.target"].reach, listed["bakery.flour"].outward], ["anyone", "asked", "pay"]);
+  assert.ok(!("bakery.sync" in listed) && !("bakery.hook" in listed));
+  assert.ok(!("reach" in listed["notes.add"]) && !("outward" in listed["notes.add"]));
+  assert.ok(!reg.listTools("mcp:agent:kit").some(x => x.name === "bakery.own"));
+});
+
+test("modules v1: a required module below the range keeps the module from starting", async t => {
+  const reg = await registry(t, [["bakery", { ...bakeryV1(), requires: { notes: ">=0.2.0" } }, bakerySrc], ["notes", good, notesSrc]]);
+  assert.equal(reg.modules.get("bakery").state, "failed");
+  assert.match(reg.modules.get("bakery").error, /requires "notes" >=0\.2\.0, but notes is 0\.1\.0/);
+  assert.equal(reg.modules.get("notes").state, "running");
 });

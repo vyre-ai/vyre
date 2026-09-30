@@ -18,6 +18,7 @@ import { Idempotency } from "./idempotency.js";
 import { PERSON_ONLY, machineSelf } from "../presence/index.js";
 import { validateDecls } from "../config/settings.js";
 import * as config from "../config/index.js";
+import { toolEntries } from "../../packages/module-sdk/manifest.js";
 
 /** Tools a tailnet device reaches without a person session: signing in, and the first passkey. */
 const PERSON_FREE = new Set(["presence.person.start", "presence.enroll"]);
@@ -58,6 +59,9 @@ const CALL_AS = { link: ["link:box"], settings: ["cli", "local", "deck", "capsul
  */
 export function roleBuckets(role, platform = process.platform) {
   if (role === "box" || role === "local") return [role];
+  // Module API 1 (ADR 0047): a manifest's "mac" or "windows" is "local" on that OS only.
+  if (role === "mac") return platform === "darwin" ? ["local"] : [];
+  if (role === "windows") return platform === "win32" ? ["local"] : [];
   const out = [];
   if (config.isServer(role)) out.push("box");
   // A Mac chosen as the server is still, often, someone's own desk: Capsule, voice and the
@@ -66,6 +70,39 @@ export function roleBuckets(role, platform = process.platform) {
   return out;
 }
 const TOOL = /^[a-z][a-z0-9-]*\.[a-z][a-z0-9.-]*$/;
+/** Who may call a tool (ADR 0047), and what an outward tool does as the person. */
+const REACHES = ["anyone", "asked", "person", "modules", "hook"];
+const OUTWARD = ["send", "post", "pay", "delete"];
+
+/** The modules a manifest requires: a list of names, or the keys of { name: range } (ADR 0047). @param {any} m */
+export const requiresOf = m => (Array.isArray(m && m.requires) ? m.requires : m && m.requires && typeof m.requires === "object" ? Object.keys(m.requires) : []);
+
+/** A version as [major, minor, patch], or null. @param {string} v */
+const semver = v => { const x = /^v?(\d+)(?:\.(\d+))?(?:\.(\d+))?/.exec(String(v).trim()); return x ? [Number(x[1]), Number(x[2] || 0), Number(x[3] || 0)] : null; };
+const cmp = (/** @type {number[]} */ a, /** @type {number[]} */ b) => a[0] - b[0] || a[1] - b[1] || a[2] - b[2];
+
+/**
+ * Whether a version meets a range: comparators (>=, >, <=, <, =, ^, ~, or a bare version) joined by
+ * spaces, all of which must hold, or * for any. null when the range can't be read.
+ * @param {string} version @param {string} range @returns {boolean | null}
+ */
+export function satisfies(version, range) {
+  const v = semver(version);
+  const parts = String(range).trim().split(/\s+/).filter(Boolean);
+  if (!v) return false;
+  let ok = true;
+  for (const part of parts) {
+    if (part === "*" || part === "x") continue;
+    const x = /^(>=|<=|>|<|=|\^|~)?(v?\d+(?:\.\d+){0,2})$/.exec(part);
+    if (!x) return null;
+    const want = /** @type {number[]} */ (semver(x[2])), c = cmp(v, want);
+    const op = x[1] || "=";
+    const upper = op === "^" ? (want[0] > 0 ? [want[0] + 1, 0, 0] : [0, want[1] + 1, 0]) : [want[0], want[1] + 1, 0];
+    const hold = op === ">=" ? c >= 0 : op === ">" ? c > 0 : op === "<=" ? c <= 0 : op === "<" ? c < 0 : op === "=" ? c === 0 : c >= 0 && cmp(v, upper) < 0;
+    ok = ok && hold;
+  }
+  return ok;
+}
 const VERBS = ["does", "watches", "shows", "needs", "teaches"];
 /** Use counts reach vyre.db at most this often; nothing is written while nothing was used. */
 const USE_FLUSH = 60_000;
@@ -87,12 +124,24 @@ export function validate(m, { firstParty = false } = {}) {
   if (!m || typeof m !== "object") return ["module.json is not an object"];
   if (!NAME.test(String(m.name || ""))) out.push(`name "${m.name}" must be lowercase letters, digits and dashes`);
   if (!/^\d+\.\d+\.\d+/.test(String(m.version || ""))) out.push(`version "${m.version}" must be semver`);
-  if (m.roles && (!Array.isArray(m.roles) || m.roles.some(r => !["box", "local"].includes(r)))) out.push("roles must be a list of box and local");
-  if (m.requires && !Array.isArray(m.requires)) out.push("requires must be a list");
+  if (m.roles && (!Array.isArray(m.roles) || m.roles.some(r => !["box", "local", "mac", "windows"].includes(r)))) out.push("roles must be a list of box, local, mac and windows");
+  if (m.requires && !Array.isArray(m.requires)) {
+    // Module API 1: { name: range }, each range checked against the dependency's version at start.
+    if (typeof m.requires !== "object") out.push("requires must be a list or { name: range }");
+    else for (const [n, r] of Object.entries(m.requires)) {
+      if (!NAME.test(n)) out.push(`requires "${n}" must be a module name`);
+      if (typeof r !== "string" || satisfies("0.0.0", r) === null) out.push(`requires "${n}": "${r}" is not a version range`);
+    }
+  }
   for (const v of VERBS) if (m[v] !== undefined && (typeof m[v] !== "object" || Array.isArray(m[v]))) out.push(`${v} must be an object`);
-  for (const t of (m.does && m.does.tools) || []) {
+  for (const e of (m.does && m.does.tools) || []) {
+    // A name, or the object form of module API 1 (ADR 0047): { name, summary?, reach?, outward?, cost? }.
+    const t = e && typeof e === "object" && !Array.isArray(e) ? e.name : e;
+    if (typeof t !== "string") { out.push("a tool entry must be a name or { name, reach?, outward? }"); continue; }
     if (!TOOL.test(t)) out.push(`tool "${t}" must look like module.verb`);
     else if (!t.startsWith(m.name + ".")) out.push(`tool "${t}" must start with "${m.name}."`);
+    if (typeof e === "object" && e.reach !== undefined && !REACHES.includes(e.reach)) out.push(`tool "${t}": reach must be one of ${REACHES.join(", ")}`);
+    if (typeof e === "object" && e.outward !== undefined && !OUTWARD.includes(e.outward)) out.push(`tool "${t}": outward must be one of ${OUTWARD.join(", ")}`);
   }
   for (const e of (m.watches && m.watches.emits) || []) {
     if (!/^[a-z][a-z0-9-]*\.[a-z][a-z0-9-]*$/.test(e)) out.push(`event "${e}" must look like noun.past-verb`);
@@ -101,7 +150,7 @@ export function validate(m, { firstParty = false } = {}) {
     const owners = RESERVED_EVENTS[e.split(".")[0]];
     if (owners && !(firstParty && owners.includes(String(m.name)))) out.push(`event "${e}" is reserved for ${owners.join(" or ")}`);
   }
-  out.push(...validateDecls(String(m.name), m.settings, { firstParty, tools: (m.does && m.does.tools) || [] }));
+  out.push(...validateDecls(String(m.name), m.settings, { firstParty, tools: toolEntries(m).map(t => t.name) }));
   // Session providers (ADR 0030): drivers the Switchboard can run a session on, besides Claude.
   const providers = m.does && m.does.providers;
   if (providers !== undefined && (!Array.isArray(providers) || providers.some(p => !NAME.test(String(p))))) out.push("does.providers must be a list of lowercase names");
@@ -173,9 +222,11 @@ export function order(mods) {
     if (seen.has(n)) return true;
     if (stack.has(n)) { problems.set(n, `requires a cycle: ${[...trail, n].join(" → ")}`); return false; }
     stack.add(n);
-    for (const dep of m.manifest.requires || []) {
+    for (const dep of requiresOf(m.manifest)) {
       const d = byName.get(dep);
       if (!d) { problems.set(n, `requires "${dep}", which is not available`); stack.delete(n); return false; }
+      const range = Array.isArray(m.manifest.requires) ? null : m.manifest.requires[dep];
+      if (range && !satisfies(d.manifest.version, range)) { problems.set(n, `requires "${dep}" ${range}, but ${dep} is ${d.manifest.version}`); stack.delete(n); return false; }
       if (!visit(d, [...trail, n])) { if (!problems.has(n)) problems.set(n, `requires "${dep}", which could not start`); stack.delete(n); return false; }
     }
     stack.delete(n); seen.add(n); out.push(m);
@@ -219,6 +270,9 @@ export function checkInput(schema, value, where = "input") {
  * (core/daemon asTaken), whether or not it is listed here.
  */
 export const SURFACE_LABELS = Object.freeze(["cli", "local", "deck", "capsule", "mobile"]);
+
+/** Who may call a reach "person" tool: the person's own surfaces, and the owner's own devices (callerAllowed). */
+const PERSON_CALLERS = Object.freeze([...SURFACE_LABELS, "tailnet"]);
 
 export const callerKind = caller => {
   const c = String(caller);
@@ -379,7 +433,9 @@ export class Registry {
         continue;
       }
       const roles = f.manifest.roles || ["box", "local"];
-      const on = !disable.includes(name) && (roles.some(r => roleBuckets(role, platform).includes(r)) || enable.includes(name));
+      // "mac" and "windows" are "local" on that OS only (roleBuckets); box and local are themselves.
+      const here = roleBuckets(role, platform);
+      const on = !disable.includes(name) && (roles.some(r => (r === "mac" || r === "windows" ? roleBuckets(r, platform) : [r]).some(b => here.includes(b))) || enable.includes(name));
       this.modules.set(name, { manifest: f.manifest, dir: f.dir, state: on ? "pending" : "off" });
     }
     const candidates = found.filter(f => { const r = this.modules.get(f.manifest && f.manifest.name); return r?.state === "pending" && r.dir === f.dir; });
@@ -391,7 +447,7 @@ export class Registry {
 
   async startOne(f) {
     const m = f.manifest, rec = this.modules.get(m.name);
-    const failedDep = (m.requires || []).find(d => this.modules.get(d)?.state !== "running");
+    const failedDep = requiresOf(m).find(d => this.modules.get(d)?.state !== "running");
     if (failedDep) { Object.assign(rec, { state: "failed", error: `requires "${failedDep}", which is not running` }); return; }
     try {
       const entry = path.join(f.dir, m.main || "index.js");
@@ -412,7 +468,10 @@ export class Registry {
   /** What a module gets. It sees only what its manifest declared. */
   context(m) {
     const { db, events, config, log, paths } = this.deps;
-    const declared = new Set((m.does && m.does.tools) || []);
+    // Tool names from either form of does.tools, with the reach and outward an object entry declares.
+    const entries = new Map(toolEntries(m).map(e => [e.name, e]));
+    const objectForm = new Set(((m.does && m.does.tools) || []).filter(e => e && typeof e === "object").map(e => e.name));
+    const declared = new Set(entries.keys());
     return {
       name: m.name, config, paths,
       // Every running module's declared settings (module.json "settings"), for the settings
@@ -566,8 +625,15 @@ export class Registry {
         // tool is refused to, and left out of the listing for, any other. Omitted means all.
         // hook: reachable only as vyred's webhook route POST /v1/<module>/<name>/hook (caller
         // "hook"), and left out of every listing. The tool checks its own secret.
-        this.tools.set(name, { module: m.name, description: def.description || "", input: def.input || { type: "object" }, run: def.run, internal: Boolean(def.internal),
-          callers: Array.isArray(def.callers) ? def.callers : null, hook: Boolean(def.hook), presence: def.presence || false });
+        // A declared reach (ADR 0047) sets the same checks: modules is internal, hook is the webhook
+        // route, and person is the person's own surfaces and devices only. anyone and asked stay
+        // open here; the asked check and outward routing are later build steps (plans/platform.md).
+        const e = entries.get(name), reach = e ? e.reach : "anyone";
+        this.tools.set(name, { module: m.name, description: def.description || "", input: def.input || { type: "object" }, run: def.run,
+          internal: Boolean(def.internal) || reach === "modules",
+          callers: reach === "person" ? [...PERSON_CALLERS] : Array.isArray(def.callers) ? def.callers : null,
+          hook: Boolean(def.hook) || reach === "hook", presence: def.presence || false,
+          reach, outward: (e && e.outward) || null, declaredReach: objectForm.has(name) });
       },
     };
   }
@@ -700,7 +766,9 @@ export class Registry {
   listTools(caller) {
     const needs = (name, d) => (this.deps.presence ? this.deps.presence.required(name, d) : Boolean(d.presence));
     return [...this.tools.entries()].filter(([, d]) => !d.internal && !d.hook && (!caller || callerAllowed(d.callers, caller)))
-      .map(([name, d]) => ({ name, module: d.module, description: d.description, input: d.input, ...(needs(name, d) ? { presence: true } : {}) }));
+      .map(([name, d]) => ({ name, module: d.module, description: d.description, input: d.input, ...(needs(name, d) ? { presence: true } : {}),
+        // Module API 1: what an object entry declared, for the capability manifest.
+        ...(d.declaredReach ? { reach: d.reach } : {}), ...(d.outward ? { outward: d.outward } : {}) }));
   }
 
   /** Start a presence proof that needs a challenge (tty, passkey) for one call of a tool. */
