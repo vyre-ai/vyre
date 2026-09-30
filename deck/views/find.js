@@ -1,5 +1,5 @@
 // @ts-check
-// Find: the phone's Capsule. One box at the top; as you type, what matches comes in below in a
+// Find: the phone's Lumen. One box at the top; as you type, what matches comes in below in a
 // fixed order: ask the assistant, sessions, files, agents, memory, projects. With an empty box,
 // the recent sessions and the agents. A pull-down from the top of any phone screen lands here
 // (js/pwa.js). On desktop the same thing as a centred column.
@@ -16,13 +16,13 @@
 // agents.list names it, else the one whose thread.sent carries this exact text from the deck.
 // Only the last message of the turn is kept, as ask.js does. Nothing polls.
 //
-// Commands (js/commands.js, the grammar the Mac Capsule and the native apps share): "@kit ..."
+// Commands (js/commands.js, the grammar the Mac Lumen and the native apps share): "@kit ..."
 // asks that agent (agents.ask, wait: false, then its thread opens); "tell <session> to ..." types
 // into a session (threads.send) and watches it; "watch <session>" and "tell me when <session> is
 // done" watch it (threads.watch, notify: "deck"). A line under the box says what Enter will do,
 // and the matching sessions are listed so a tap picks another one.
 //
-// On a phone (under 760 px, docs/design/phone.md section 7) this is the Capsule opened: the shell
+// On a phone (under 760 px, docs/design/phone.md section 7) this is Lumen opened: the shell
 // shows it as a full-height sheet, and this view draws its content. A top row with the box and
 // Done (back to where the sheet came from), a segmented scope (All, Chats, Files, Memory, Run),
 // then Ask, Run (the grammar above as plain-words rows, the command in mono under each), From
@@ -30,6 +30,7 @@
 // the four most recent sessions. The layout is picked at render and redrawn when the width
 // crosses 760 px; the desktop column is unchanged.
 
+import { looksLikeQuestion, ask as askMemory } from "../js/memory-ask.js";
 import { h, put, link, empty, go, back, PHONE_QUERY } from "../js/dom.js";
 import { attempt, queued } from "../js/api.js";
 import { icon } from "../js/icons.js";
@@ -390,7 +391,7 @@ export default async function find(ctx) {
     else put(body, h("div", { class: "small muted" }, d?.note ? `No preview: ${d.note}.` : "No preview for this file."));
   }
 
-  // ---- the phone: the Capsule, opened (docs/design/phone.md section 7) ------------------------
+  // ---- the phone: Lumen, opened (docs/design/phone.md section 7) ------------------------
   /** A card row: a button or a link, in the list's keyboard order. */
   function prow({ href, onclick, cls = "", label }, ...kids) {
     const props = { class: "fd-prow " + cls, "data-row": "", role: "option", "aria-selected": "false", ...(label ? { "aria-label": label } : {}) };
@@ -458,6 +459,25 @@ export default async function find(ctx) {
       h("span", { class: "fd-main" }, h("span", { class: "fd-rt" }, hl(it.act, q)), h("span", { class: "fd-cmd" }, it.line))))));
   }
 
+  /** Ask Vyre Memory: one row, and its answer under it. Kept per question so a redraw does not lose it. @type {Map<string, any>} */
+  const memAsked = new Map();
+  function phoneMemoryAsk(q) {
+    const st = memAsked.get(q);
+    const row = prow({ cls: "fd-askrow", label: `Ask Vyre Memory: ${q}`, onclick: () => {
+      if (st) return;
+      memAsked.set(q, { busy: true });
+      drawPhone();
+      askMemory(attempt, q).then(r => { memAsked.set(q, r); if (cur.q === q) drawPhone(); });
+    } }, h("span", { class: "fd-glyph", "aria-hidden": "true" }, icon("memory", 20)),
+      h("span", { class: "fd-main" }, h("span", { class: "fd-rt" }, "Ask Vyre Memory"), h("span", { class: "fd-r2" }, asQuestion(q))), chev());
+    const card = h("div", { class: "fd-card" }, row);
+    if (st?.busy) card.append(h("p", { class: "fd-pnote", role: "status" }, "Thinking..."));
+    else if (st?.error) card.append(h("p", { class: "fd-pnote", role: "status" }, st.error));
+    else if (st) card.append(h("div", { class: "fd-pnote", role: "status" }, h("p", null, st.text), st.note ? h("p", { class: "muted" }, st.note) : null,
+      st.sources.length ? h("p", { class: "small muted" }, "From " + st.sources.join(", ")) : null));
+    return card;
+  }
+
   function phoneMemory(q) {
     const facts = (Array.isArray(cur.memory?.data) ? cur.memory.data : []).filter(f => f && f.text);
     if (!facts.length) return null;
@@ -507,6 +527,7 @@ export default async function find(ctx) {
       all ? phoneAsk(q) : null,
       all || scope === "run" ? phoneRun(q) : null,
       long && (all || scope === "memory") ? phoneMemory(q) : null,
+      long && (scope === "memory" || (all && looksLikeQuestion(q))) ? phoneMemoryAsk(q) : null,
       long && (all || scope === "chats") ? phoneChats(q) : null,
       long && (all || scope === "files") ? phoneFiles() : null,
     ].filter(Boolean);

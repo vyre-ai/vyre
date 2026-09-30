@@ -488,9 +488,14 @@ test("peer: setsid, nohup, a double fork, and a fresh tty from script/pty/tmux a
     const curl = ["curl", "-s", "-o", out, "--unix-socket", socket, "-X", "POST", url,
       "-H", "content-type: application/json", "-H", "x-vyre-caller: cli", "-d", JSON.stringify({ name: "kit" })];
     await wrap(curl);
-    for (let n = 0; n < 50 && !fs.existsSync(out); n++) await new Promise(r => setTimeout(r, 100));
-    assert.ok(fs.existsSync(out), "the detached call never answered");
-    return JSON.parse(fs.readFileSync(out, "utf8"));
+    // The answer is the file's content, not the file: curl creates the output file before it writes the
+    // body, and a read in between saw an empty file (on a loaded runner, "Unexpected end of JSON input").
+    let body;
+    for (let n = 0; n < 100 && body === undefined; n++) {
+      try { body = JSON.parse(fs.readFileSync(out, "utf8")); } catch { await new Promise(r => setTimeout(r, 100)); }
+    }
+    assert.ok(body !== undefined, "the detached call never answered");
+    return body;
   }
 
   // `setsid -f`: one fork, `setsid()` in the child. No process above to blame, and no tty. Its own

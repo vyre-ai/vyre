@@ -217,3 +217,29 @@ test("sync.send: a file from a project the approved plan left out is refused, en
   const direct = await s.boxCall("sync.upload.start", { path: "projects/left-out/s1.jsonl", bytes: 14, hash: hash("left out text") }, "tailnet:owner", { peer: { stableId: "nMAC" } });
   assert.equal(direct.error?.code, "excluded");
 });
+
+test("sync.send: the import staging folder counts only as a real private directory of Vyre's own, never as a link planted before it exists (reviewer-2)", async t => {
+  const s = await pair(t, { router: true });
+  await s.boxCall("sync.consent", { machine: "test-mac", on: true }, "cli");
+  fakeSessions(s.macRoot);
+  const elsewhere = path.join(s.macWork, "elsewhere");
+  fs.mkdirSync(elsewhere);
+  const file = path.join(elsewhere, "a.jsonl");
+  fs.writeFileSync(file, "hi");
+  const send = () => s.macCall("sync.send", { files: [{ path: file, rel: "a.jsonl", bytes: 2, hash: hash("hi") }], mode: "once" }, "module:import", { firstParty: true });
+  const stage = path.join(s.macRoot, ".import-stage");
+  // A link where the folder will be: whatever it points at is not readable through it.
+  fs.symlinkSync(elsewhere, stage);
+  assert.equal((await send()).data.failed, 1, "a link is not the staging folder");
+  fs.rmSync(stage);
+  // A real folder that is open to others is refused too.
+  fs.mkdirSync(stage, { mode: 0o777 }); fs.chmodSync(stage, 0o777);
+  const inside = path.join(stage, "b.jsonl");
+  fs.writeFileSync(inside, "hi");
+  const r = await s.macCall("sync.send", { files: [{ path: inside, rel: "b.jsonl", bytes: 2, hash: hash("hi") }], mode: "once" }, "module:import", { firstParty: true });
+  assert.equal(r.data.failed, 1, "an open folder is not trusted");
+  // Private, real, this account's: accepted.
+  fs.chmodSync(stage, 0o700);
+  const ok = await s.macCall("sync.send", { files: [{ path: inside, rel: "b.jsonl", bytes: 2, hash: hash("hi") }], mode: "once" }, "module:import", { firstParty: true });
+  assert.equal(ok.data.sent, 1, JSON.stringify(ok));
+});

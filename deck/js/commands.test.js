@@ -1,5 +1,5 @@
 // @ts-check
-// Find's command grammar, which the Mac Capsule and the native apps share.
+// Find's command grammar, which the Mac Lumen and the native apps share.
 
 import test from "node:test";
 import assert from "node:assert/strict";

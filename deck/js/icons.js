@@ -4,6 +4,7 @@
 
 const P = {
   now: '<circle cx="8" cy="8" r="5.5"/><circle cx="8" cy="8" r="1.4" fill="currentColor" stroke="none"/>',
+  drive: '<path d="M3.8 7.2V11L8 13.5 12.2 11V7.2"/><path d="M8 8.9v4.6"/><path d="M8 2.7L12.2 5 8 7.4 3.8 5z"/>',
   projects: '<path d="M2 4.5h4.2l1.4 1.5H14v6.5H2z"/>',
   memory: '<circle cx="4" cy="11.5" r="1.9"/><circle cx="12" cy="4.5" r="1.9"/><circle cx="12.5" cy="12" r="1.3"/><path d="M5.5 10.3l5-4.6M5.9 11.7h5.3"/>',
   agents: '<rect x="2" y="2.5" width="12" height="8.5" rx="1.2"/><path d="M5.5 14h5M8 11v3"/>',
@@ -46,7 +47,7 @@ const P = {
   // Gate"), reused on the Connections card's Agents grant chip when off (chip.md's Asking state:
   // it needs Touch ID or a passkey to turn on).
   shield: '<path d="M8 1.5l5.5 2v4c0 3.5-2.4 6-5.5 7-3.1-1-5.5-3.5-5.5-7v-4z"/>',
-  // The Connections board's own Capsule surface glyph (docs/design/one-app/project/
+  // The Connections board's own Lumen surface glyph (docs/design/one-app/project/
   // Connections.dc.html): not yet in icons.md's table, added here so the chip has one.
   capsule: '<rect x="2" y="6" width="12" height="4" rx="2"/>',
 };

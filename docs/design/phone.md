@@ -57,18 +57,18 @@ docs/design/deck-directions/vyre.css), so a phone view and a Deck view read the 
 | `--text` | #F1EEE6 | #141311 | Primary text |
 | `--text-2` | #B3AEA4 | #4A463F | Secondary text |
 | `--label` | #8C877D | #6B665D | Labels, meta, placeholders. Smallest text colour allowed |
-| `--primary-bg` / `--primary-ink` | #C6F36B / #0E0D0C | #141311 / #F4F1EA | The one primary button per view; also the count on a `--beacon-dot` badge |
-| `--primary-hover` | #D4F88A | #4A463F | The primary while pressed |
-| `--focus` | #C6F36B | #46700C | Focus ring |
-| `--signal-wash` | rgba(198,243,107,0.12) | rgba(70,112,12,0.10) | The Ask row in Find, added diff lines |
-| `--match` (phone) | rgba(198,243,107,0.20) | rgba(70,112,12,0.16) | Search match highlight, the Open session flash |
+| `--primary-bg` / `--primary-ink` | #F1EEE6 / #0E0D0C | #141311 / #F4F1EA | The one primary button per view; also the count on a `--beacon-dot` badge |
+| `--primary-hover` | #FFFFFF | #4A463F | The primary while pressed |
+| `--focus` | #F1EEE6 | #141311 | Focus ring |
+| `--signal-wash` | rgba(241,238,230,0.12) | rgba(20,19,17,0.10) | The Ask row in Find, added diff lines |
+| `--match` (phone) | rgba(241,238,230,0.20) | rgba(20,19,17,0.16) | Search match highlight, the Open session flash |
 | `--beacon-ink` / `--beacon-dot` | #B8A4FF / #B8A4FF | #5B3FC4 / #5B3FC4 | Attention: needs you. A dot, a label or a count badge, nothing else |
 | `--del-wash` | rgba(140,135,125,0.14) | rgba(107,102,93,0.10) | Deleted diff lines, with `--text-2` text (`--label` is 4.49:1 there) |
 | `--code-bg` | #121110 | #F0EDE5 | Command blocks, the live console |
-| `--mark-wire` / `--mark-dot` | #F1EEE6 / #C6F36B | #141311 / #141311 | The mark |
+| `--mark-wire` / `--mark-dot` | #F1EEE6 / #F1EEE6 | #141311 / #141311 | The mark |
 | `--scrim` (phone) | rgba(0,0,0,0.62) | rgba(20,19,17,0.34) | Behind a sheet |
 
-The whole palette is neutrals, one accent (lime: primary actions, focus, running, added lines)
+The whole palette is neutrals, one accent (bone: primary actions, focus, running, added lines)
 and one attention colour. **No coral or red, no gold, no other hue** (the user's rules). The
 attention colour ("needs you") keeps the `--beacon-*` names and is violet; teal (#5FD4C4 dark,
 #0B6E66 paper) is the only alternative (honey is out). Swapping it is one line per theme: change
@@ -100,7 +100,7 @@ Errors and destructive actions carry no colour:
 
 Buttons, the same three kinds as the Deck:
 
-- **Primary**: `--primary-bg` with `--primary-ink` (ink on lime in dark, paper on ink in paper).
+- **Primary**: `--primary-bg` with `--primary-ink` (ink on bone in dark, paper on ink in paper).
   One per view.
 - **Secondary**: `--text` on `--hover`, `--rule-strong` border.
 - **Ghost** (text-only, like "Details" or "Open session"): full `--text`, 600, never `--text-2`.

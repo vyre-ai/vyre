@@ -268,6 +268,8 @@ test("federation reads: onboarding on the box counts the Mac's sessions and says
 test("federation reads: a Mac session picked into a box project resolves through the Mac, and only for the person", async t => {
   const s = await world(t);
   assert.ok(!(await s.boxCall("projects.create", { name: "Harlow Legal", home: path.join(s.boxWork, "harlow") })).error);
+  // juno is granted this project, so the registry lets it read it (an agent with no grant is refused).
+  assert.ok(!(await s.boxCall("agents.create", { name: "juno", projects: ["harlow-legal"] })).error);
   // The Mac's session as the Mac answers it by id, and the box's own picked alongside it.
   const [mac] = (await s.macCall("recall.sessions", { ids: [MAC_ID] })).data;
   assert.equal(mac.id, MAC_ID);
@@ -294,6 +296,8 @@ test("federation reads: a Mac session picked into a box project resolves through
     assert.deepEqual([m.missing, m.source, m.name], [true, undefined, null], caller);
     assert.ok(list.every(x => x.source === undefined), `${caller}: no row is labelled`);
   };
+  // An agent with no grant on the project is refused, not shown a missing pick.
+  assert.equal((await s.boxCall("projects.threads", { project: "harlow-legal" }, "harness:agent:nobody")).error?.code, "not_found");
   for (const caller of ["module:x", "mcp", "harness:agent:juno", "tailnet-guest:sam@harlow.example"]) await missing(caller);
   await missing("deck", { machines: "local" });
 

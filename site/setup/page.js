@@ -1,0 +1,82 @@
+// The setup page's entry: the real relay client from ./relay (build-site.sh copies relay/client here), the
+// flow, and the screen. No storage, no cookies, nothing in the URL: the code lives in this tab's memory.
+import * as client from "./relay/setup.js";
+import { openChannel, request } from "./relay/client.js";
+import { webCrypto } from "./relay/webcrypto.js";
+import { utf8 } from "./relay/bytes.js";
+import { connectSetup } from "./box.js";
+import { createFlow } from "./flow.js";
+import { render } from "./ui.js";
+import { ticketRingSvg } from "./deck/js/phone-code.js";
+import qrcode from "./deck/vendor/qrcode.js";
+import { signClaim } from "./claim.js";
+import { setupOverrides } from "./config.js";
+
+const RELAY = "wss://relay.vyre.run";
+const root = document.getElementById("setup");
+
+const actions = {
+  begin: () => flow.begin(),
+  setName: text => flow.setName(text),
+  claim: () => flow.claim(),
+  confirmWords: () => flow.confirmWords(),
+  denyWords: () => flow.denyWords(),
+  markSaved: () => flow.markSaved(),
+  openDomain: open => flow.openDomain(open),
+  setDomain: text => flow.setDomain(text),
+  checkDomain: () => flow.checkDomain(),
+  continueToAi: () => flow.continueToAi(),
+  continueToTailscale: () => flow.continueToTailscale(),
+  connectTailscale: () => flow.connectTailscale(),
+  startAi: p => flow.startAi(p),
+  submitAiCode: (id, code) => flow.submitAiCode(id, code),
+  continueToDevices: () => flow.continueToDevices(),
+  addPhone: () => flow.addPhone(),
+  continueToClaim: () => flow.continueToClaim(),
+  mintClaim: () => flow.mintClaim(),
+  // The claim link as a QR of plain SVG squares (the vendored encoder, drawn by hand: no innerHTML).
+  drawQr(slot, text) {
+    const q = qrcode(0, "M");
+    q.addData(String(text), "Byte");
+    q.make();
+    const n = q.getModuleCount(), NS = "http://www.w3.org/2000/svg", quiet = 3;
+    const svg = document.createElementNS(NS, "svg");
+    svg.setAttribute("viewBox", `0 0 ${n + quiet * 2} ${n + quiet * 2}`);
+    svg.setAttribute("shape-rendering", "crispEdges");
+    const bg = document.createElementNS(NS, "rect");
+    for (const [k, v] of Object.entries({ width: n + quiet * 2, height: n + quiet * 2, fill: "#fff" })) bg.setAttribute(k, String(v));
+    svg.appendChild(bg);
+    const path = document.createElementNS(NS, "path");
+    let d = "";
+    for (let y = 0; y < n; y++) for (let x = 0; x < n; x++) if (q.isDark(y, x)) d += `M${x + quiet} ${y + quiet}h1v1h-1z`;
+    path.setAttribute("d", d); path.setAttribute("fill", "#000");
+    svg.appendChild(path);
+    slot.replaceChildren(svg);
+  },
+  // The ring is drawn from the ticket as SVG shapes only; the ticket is never put in the page as text.
+  drawRing(slot) {
+    const t = flow.currentTicket();
+    if (!t) return;
+    const svg = new DOMParser().parseFromString(ticketRingSvg(t, { size: 280 }), "image/svg+xml").documentElement;
+    slot.replaceChildren(document.importNode(svg, true));
+  },
+  async copy(text, button) {
+    try { await navigator.clipboard.writeText(text); button.textContent = "Copied"; }
+    catch { button.textContent = "Select the text and copy it"; }
+    setTimeout(() => { button.textContent = "Copy"; }, 2500);
+  },
+};
+const connect = ({ offer, key, secret }) => connectSetup({ openChannel, request, setupHello: client.setupHello, webCrypto, utf8 }, { offer, key, secret });
+// The recovery code is shown once and only here: closing or reloading before "I saved it" asks first.
+let unsaved = false;
+addEventListener("beforeunload", e => { if (unsaved) { e.preventDefault(); e.returnValue = ""; } });
+// The hosts a provider's sign-in page may be on (lib/providers/signin-hosts.json, copied in by build-site.sh). No list yet: any plain https address.
+let signinHosts = null;
+try { const r = await fetch("/setup/signin-hosts.json", { cache: "no-store" }); if (r.ok) { const j = await r.json(); if (Array.isArray(j)) signinHosts = j.map(String); else if (j && Array.isArray(j.hosts)) signinHosts = j.hosts.map(String); } } catch { /* none */ }
+// A staging build points the relay and the install line elsewhere through /setup/config.json (scripts/stage-site.sh); the file is ignored on
+// vyre.run and www.vyre.run, and its hosts must be Vyre's own or a test runner's loopback (site/setup/config.js).
+let over = {};
+try { const r = await fetch("/setup/config.json", { cache: "no-store" }); if (r.ok) over = setupOverrides(await r.json(), location.hostname); } catch { /* none */ }
+const flow = createFlow({ client, relay: over.relay || RELAY, installUrl: over.installUrl, connect, signinHosts, signClaim, onChange: s => { unsaved = Boolean(s.named && s.named.recoveryCode && !s.named.saved); render(s, { doc: document, root, actions }); } });
+render(flow.state, { doc: document, root, actions });
+addEventListener("pagehide", () => flow.stop());

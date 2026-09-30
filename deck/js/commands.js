@@ -1,5 +1,5 @@
 // @ts-check
-// What Find's box does on Enter, read from the words: the same grammar as the Mac Capsule and the
+// What Find's box does on Enter, read from the words: the same grammar as the Mac Lumen and the
 // native apps (team mobile, apps/CONTRACT.md), tried in this order, ignoring case:
 //
 //   @<agent> <text>                                    ask that agent

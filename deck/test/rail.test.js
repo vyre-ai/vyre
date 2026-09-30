@@ -33,10 +33,10 @@ async function load() {
 
 test("rail: the places in the spec's order and words, the bottom group last, keys 1 to 9", async () => {
   const { PLACES } = await load();
-  assert.deepEqual(PLACES.map(p => p.label), ["Now", "Chat", "Agents", "Projects", "Planner", "Memory", "Vault", "Devices", "Settings"]);
-  assert.deepEqual(PLACES.map(p => p.key), ["1", "2", "3", "4", "5", "6", "7", "8", "9"]);
+  assert.deepEqual(PLACES.map(p => p.label), ["Now", "Chat", "Agents", "Projects", "Planner", "Memory", "Vault", "Drive", "Devices", "Settings"]);
+  assert.deepEqual(PLACES.map(p => p.key), ["1", "2", "3", "4", "5", "6", "7", undefined, "8", "9"], "Drive has no digit");
   assert.deepEqual(PLACES.filter(p => p.end).map(p => p.label), ["Devices", "Settings"]);
-  assert.deepEqual(PLACES.map(p => p.href), ["/now", "/chat", "/agents", "/projects", "/planner", "/memory", "/vault", "/settings#devices", "/settings"]);
+  assert.deepEqual(PLACES.map(p => p.href), ["/now", "/chat", "/agents", "/projects", "/planner", "/memory", "/vault", "/files", "/settings#devices", "/settings"]);
   for (const p of PLACES) assert.doesNotMatch(p.label, /^(Home|Inbox|Dashboard|Sessions|Threads)$|^[A-Z]{2,}$/);
 });
 
@@ -48,11 +48,11 @@ test("rail: nav named Vyre, the home mark to Now, links named by their labels, t
   assert.equal(r.home.getAttribute("href"), "/now");
   assert.equal(r.home.getAttribute("aria-label"), "Vyre home");
   const places = $$(r.el, "a.rail-place");
-  assert.deepEqual(places.map((/** @type {any} */ a) => $(a, ".rail-label").textContent), ["Now", "Chat", "Agents", "Projects", "Planner", "Memory", "Vault", "Devices", "Settings"]);
+  assert.deepEqual(places.map((/** @type {any} */ a) => $(a, ".rail-label").textContent), ["Now", "Chat", "Agents", "Projects", "Planner", "Memory", "Vault", "Drive", "Devices", "Settings"]);
   // The top group, then the bottom group with the avatar last.
   const groups = $$(r.el, ".rail-set");
   assert.equal(groups.length, 2);
-  assert.equal($$(groups[0], "a.rail-place").length, 7);
+  assert.equal($$(groups[0], "a.rail-place").length, 8);
   assert.ok(groups[1].className.includes("rail-end"));
   assert.equal(groups[1].childNodes.at(-1), r.avatar);
   assert.equal(r.avatar.getAttribute("href"), "/settings");
@@ -188,7 +188,7 @@ test("rail css: 72 wide, 60 by 50 places, 12/16 labels, the badge the only colou
   decl(css, ".rail-avatar", /background: var\(--hover\); color: var\(--text\)/);
   decl(css, ".rail-initial", /font-size: 13px; line-height: 16px; font-weight: 600/);
   assert.match(noComments(css), /@media \(prefers-reduced-motion: reduce\) \{ \.rail-home, \.rail-place \{ transition: none; \} \}/);
-  // No lime, violet, wash or left bar on a place: the badge (marks.css) is the only colour.
+  // No bone, violet, wash or left bar on a place: the badge (marks.css) is the only colour.
   for (const sel of [".rail", ".rail-place", ".rail-label", ".rail-avatar", ".rail-set"]) {
     for (const r of rules(css, sel)) {
       if (/focus-visible|rail-home/.test(r.sel)) continue;

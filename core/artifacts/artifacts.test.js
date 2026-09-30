@@ -81,7 +81,7 @@ test("artifacts: an agent works only in its own project, is recorded from the ca
   assert.equal(mine.untrusted, true, "agent-made content is untrusted until the turn's own signal says otherwise");
   assert.ok(events.since(0).some(e => e.type === "thread.artifact" && e.thread === "t1" && e.payload.artifact === mine.id), "the chat card's event");
   const theirs = await ok("artifacts.create", { project: "northwind", kind: "doc", content: "# Orders\n\n40 today." });
-  assert.equal((await call("artifacts.create", { project: "northwind", kind: "doc", content: "x" }, "mcp:agent:juno", { thread: "t1" })).error.code, "denied");
+  assert.equal((await call("artifacts.create", { project: "northwind", kind: "doc", content: "x" }, "mcp:agent:juno", { thread: "t1" })).error.code, "not_found"); // the registry refuses a project juno is not granted (projectArg), before artifacts does
   assert.equal((await call("artifacts.get", { id: theirs.id }, "mcp:agent:juno", { thread: "t1" })).error.code, "not_found", "another project's artifact does not exist for it");
   assert.equal((await call("artifacts.update", { id: theirs.id, content: "y" }, "mcp:agent:juno", { thread: "t1" })).error.code, "not_found");
   assert.deepEqual((await ok("artifacts.list", {}, "mcp:agent:juno", { thread: "t1" })).map(a => a.id), [mine.id]);

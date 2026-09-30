@@ -1,26 +1,12 @@
 #!/bin/sh
-# Renders the app icon from the 1024 SVG in docs/design/TOKENS.md ("App icon") to the asset
-# catalog's single 1024 PNG. Headless Chrome draws the SVG (ImageMagick's own SVG renderer gets
-# the transforms wrong); ImageMagick then flattens it onto carbon, because iOS wants an opaque
-# square and applies its own corner mask, which matches the tile's rx of 22.46 percent.
+# The iOS app icon is app-design's Vyre master (docs/design/brand/export/vyre/ios/AppIcon-1024.png, the brand sheet in
+# docs/design/brand/README.md), copied as it is: opaque, iOS applies its own corner mask, and it carries no signature.
+# It is no longer drawn from TOKENS.md. To refresh it after the brand export changes:
 #   apps/ios/scripts/render-icon.sh
 set -eu
 HERE=$(cd "$(dirname "$0")/.." && pwd)
-TOKENS="$HERE/../../docs/design/TOKENS.md"
+SRC="$HERE/../../docs/design/brand/export/vyre/ios/AppIcon-1024.png"
 OUT="$HERE/Vyre/Resources/Assets.xcassets/AppIcon.appiconset/AppIcon-1024.png"
-CHROME="/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
-TMP=$(mktemp -d "${TMPDIR:-/tmp}/vyre-icon.XXXXXX")
-trap 'rm -rf "$TMP"' EXIT
-
-SVG=$(awk '/^### App icon/{f=1;next} f&&/^<svg/{print;exit}' "$TOKENS")
-[ -n "$SVG" ] || { echo "no App icon SVG in $TOKENS" >&2; exit 1; }
-printf '<!doctype html><html><body style="margin:0;background:#161513">%s</body></html>' "$SVG" > "$TMP/icon.html"
-
-# perl's alarm is the timeout: a headless Chrome that hangs must not hang the build.
-nice -n 10 perl -e 'alarm 20; exec @ARGV' "$CHROME" --use-mock-keychain --password-store=basic --headless=new --disable-gpu --hide-scrollbars \
-  --user-data-dir="$TMP/profile" --window-size=1024,1024 --force-device-scale-factor=1 \
-  --screenshot="$TMP/icon.png" "file://$TMP/icon.html" >/dev/null 2>&1 || true
-[ -s "$TMP/icon.png" ] || { echo "Chrome did not render the icon" >&2; exit 1; }
-mkdir -p "$(dirname "$OUT")"
-magick "$TMP/icon.png" -crop 1024x1024+0+0 +repage -background '#161513' -alpha remove -alpha off "$OUT"
+[ -f "$SRC" ] || { echo "no $SRC (the brand export is on work/app-design until it lands)" >&2; exit 1; }
+cp "$SRC" "$OUT"
 echo "wrote $OUT"

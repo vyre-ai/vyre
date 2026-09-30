@@ -11,13 +11,14 @@ import { open } from "../../core/store/index.js";
 import { Events } from "../../core/events/index.js";
 import { tempHome, writeModule } from "../../test/helpers.js";
 import { fill, fillDeep, getPath, allowed, listFrame } from "./frames.js";
+import { needOf } from "./views.js";
 
 const LOCAL = import.meta.dirname;
 const self = () => ({ dir: LOCAL, manifest: JSON.parse(fs.readFileSync(path.join(LOCAL, "module.json"), "utf8")), problems: [] });
 
 const north = {
   version: "0.1.0", roles: ["local"], needs: { slots: ["front"] },
-  does: { tools: ["north.orders", "north.read", "north.send", "north.held", "north.locked", "north.big"] },
+  does: { tools: ["north.orders", "north.read", "north.send", "north.held", "north.locked", "north.needs", "north.big"] },
   shows: { capsule: {
     "view:orders": {
       title: "Orders", keywords: ["bakery"], alias: "ord", icon: "tray", root: true, arg: { name: "q", placeholder: "customer" },
@@ -32,6 +33,7 @@ const north = {
           { id: "reply", title: "Reply", form: "reply" },
           { id: "held", title: "Hold", tool: "north.held" },
           { id: "locked", title: "Locked", tool: "north.locked" },
+          { id: "needs", title: "Needs a key", tool: "north.needs" },
         ],
       },
       forms: { reply: { title: "Reply to {title}", fields: [{ name: "body", label: "Your reply", type: "multiline", required: true }],
@@ -49,6 +51,7 @@ const northSrc = `export default { async start(ctx) {
   reg("north.send", async (i, meta) => { globalThis.__cap.push({ tool: "north.send", input: i, caller: meta.caller, asked: meta.asked }); return { said: "Sent." }; });
   reg("north.held", async () => ({ state: "held", id: "g1" }));
   reg("north.locked", async () => { throw Object.assign(new Error("the vault is locked"), { code: "locked" }); });
+  reg("north.needs", async () => { throw Object.assign(new Error("Mail needs its key"), { code: "needs_credential", detail: { module: "mail", need: "imap", account: "a1", label: "Mail key" } }); });
   reg("north.big", async () => ({ items: Array.from({ length: 60 }, (_, n) => ({ id: "b" + n, t: "x".repeat(900) })) }));
   return {};
 } };`;
@@ -114,7 +117,7 @@ test("capsule: a list frame carries rows and action ids, runs the tool as the su
   const f = (await reg.call("capsule.view", { module: "north", command: "orders", q: "har" }, "capsule")).data;
   assert.equal(f.kind, "list");
   assert.deepEqual(f.rows[0], { id: "o1", title: "Harlow", subtitle: "Sourdough", accessory: "Mon", actions: f.rows[0].actions });
-  assert.deepEqual(f.rows[0].actions.map(a => a.id), ["open", "file", "copy", "reply", "held", "locked"]);
+  assert.deepEqual(f.rows[0].actions.map(a => a.id), ["open", "file", "copy", "reply", "held", "locked", "needs"]);
   assert.ok(!JSON.stringify(f).includes("north.held"), "no tool names in a frame");
   const call = globalThis.__cap.find(c => c.tool === "north.orders");
   assert.equal(call.caller, "capsule", "a first party view's tool runs as the person's surface");
@@ -184,6 +187,11 @@ test("capsule: held and needs come back as themselves, never as sent", async t =
   const act = a => reg.call("capsule.act", { module: "north", command: "orders", action: a, id: "o1" }, "capsule").then(r => r.data);
   assert.deepEqual([(await act("held")).kind, (await act("held")).id], ["held", "g1"]);
   assert.equal((await act("locked")).kind, "needs");
+  assert.equal((await act("locked")).need, undefined, "a plain locked vault names no credential");
+  const n = await act("needs");
+  assert.deepEqual([n.kind, n.code, n.need], ["needs", "needs_credential", { kind: "credential", need: "imap", module: "mail", label: "Mail key" }], "a needs frame names the credential so Lumen can open Add your key");
+  assert.deepEqual(needOf({ item: "ghl-api-key" }), { need: { kind: "credential", item: "ghl-api-key" } });
+  assert.deepEqual(needOf({}), {});
   assert.equal((await act("nope")).code, "not_found");
   assert.equal((await reg.call("capsule.view", { module: "north", command: "gone" }, "capsule")).error.code, "not_found");
 });

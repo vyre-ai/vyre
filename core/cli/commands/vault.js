@@ -21,7 +21,7 @@ import { finished } from "node:stream/promises";
 import os from "node:os";
 import { call } from "../../daemon/client.js";
 import { out, dim, bold, signal, beacon } from "../style.js";
-import { emit, viewing, nextFor, EXIT } from "../kit.js";
+import { emit, viewing, nextFor, EXIT, openInBrowser } from "../kit.js";
 import { derive, prompt } from "../view.js";
 import fs from "node:fs";
 import { hiddenPrompt, visiblePrompt, Scrubber, parseRunArgs, flags } from "../../vault/cli-io.js";
@@ -242,6 +242,18 @@ async function edit(args) {
     input.fields = fields;
   }
   if (Object.keys(input).length === 1) return oops("nothing to change · see vyre vault help");
+  // An API credential is never read back, so it cannot be edited: its key is replaced, and its hosts and readers stay.
+  const item = await tool("vault.item", { name });
+  if (!item.error && item.data && item.data.item && item.data.item.kind === "api-credential") {
+    const others = Object.keys(input).filter(k => k !== "name" && k !== "fields");
+    const keyField = input.fields ? Object.keys(input.fields) : [];
+    if (others.length || keyField.length !== 1 || !["secret", "key", "value"].includes(keyField[0])) return oops(`${name} is an API credential: it cannot be edited, only its key replaced · vyre vault edit ${name} --field secret`);
+    const r2 = await tool("vault.put", { name, kind: "api-credential", fields: { secret: input.fields[keyField[0]] } });
+    input.fields[keyField[0]] = "";
+    if (r2.error) return fail(r2);
+    say(`  ${signal("updated")} ${bold(name)}${dim(" · key replaced, hosts and readers unchanged")}`);
+    return 0;
+  }
   const r = await tool("vault.edit", input);
   if (input.fields) for (const k of Object.keys(input.fields)) input.fields[k] = "";
   if (r.error) return fail(r);
@@ -535,24 +547,24 @@ async function put(args) {
 // ------------------------------------------------------------ grants
 
 async function grant(args) {
-  const f = flags(args, { string: ["watcher"] });
+  const f = flags(args, { string: ["watcher", "project"] });
   const [name, module] = f._;
-  if (!name || !module || f._.length > 2) return oops("vyre vault grant <name> <module> [--watcher w]");
-  const r = await tool("vault.grant", { name, module, ...(f.watcher ? { watcher: f.watcher } : {}) });
+  if (!name || !module || f._.length > 2) return oops("vyre vault grant <name> <module> [--watcher w] [--project p]");
+  const r = await tool("vault.grant", { name, module, ...(f.watcher ? { watcher: f.watcher } : {}), ...(f.project ? { project: f.project } : {}) });
   if (r.error) return fail(r);
   const g = r.data.grant;
   if (g.status === "pending") say(`  ${beacon("waiting for approval")} ${dim(`· vyre vault approve ${g.id}`)}`);
-  else say(`  ${signal("granted")} ${bold(g.name)} to ${grantText(g)}`);
+  else say(`  ${signal("granted")} ${bold(g.name)} to ${grantText(g)}${g.project ? dim(` · ${g.project} only`) : ""}`);
   return 0;
 }
 
 async function revoke(args) {
-  const f = flags(args, { string: ["watcher"] });
+  const f = flags(args, { string: ["watcher", "project"] });
   const [name, module] = f._;
-  if (!name || !module || f._.length > 2) return oops("vyre vault revoke <name> <module> [--watcher w]");
-  const r = await tool("vault.revoke", { name, module, ...(f.watcher ? { watcher: f.watcher } : {}) });
+  if (!name || !module || f._.length > 2) return oops("vyre vault revoke <name> <module> [--watcher w] [--project p]");
+  const r = await tool("vault.revoke", { name, module, ...(f.watcher ? { watcher: f.watcher } : {}), ...(f.project ? { project: f.project } : {}) });
   if (r.error) return fail(r);
-  say(r.data.revoked ? `  ${signal("revoked")} ${bold(name)} from ${module}${f.watcher ? "/" + f.watcher : ""}` : dim(`  ${module} had no grant of ${name}`));
+  say(r.data.revoked ? `  ${signal("revoked")} ${bold(name)} from ${module}${f.watcher ? "/" + f.watcher : ""}${f.project ? dim(` · ${f.project} only`) : ""}` : dim(`  ${module} had no grant of ${name}`));
   return 0;
 }
 
@@ -1492,7 +1504,7 @@ async function kit() {
   say(`  ${r.data.url}`);
   say(dim("  print it, write your password on it by hand, keep it somewhere safe"));
   // Opened for a person at a terminal only; a script or a test gets the address and nothing else.
-  if (process.platform === "darwin" && process.stdout.isTTY && !viewing() && !process.env.VYRE_NO_OPEN && dialogsAllowed()) spawn("open", [r.data.url], { stdio: "ignore", detached: true }).unref();
+  if (process.stdout.isTTY && !viewing() && !process.env.VYRE_NO_OPEN && dialogsAllowed()) openInBrowser(r.data.url);
   return 0;
 }
 

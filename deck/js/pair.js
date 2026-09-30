@@ -87,7 +87,7 @@ export function pairCard(p, opts = {}) {
     left.remove();
     if (what === "approve") {
       el.classList.add("paired");
-      put(note, icon("check", 14), " ", h("b", null, p.name), " is paired. Its sessions and files show up here in a minute; press Control twice on it to open the Capsule.");
+      put(note, icon("check", 14), " ", h("b", null, p.name), " is paired. Its sessions and files show up here in a minute; press Control twice on it to open Lumen.");
       opts.onPaired?.({ name: p.name });
     } else {
       el.classList.add("denied");

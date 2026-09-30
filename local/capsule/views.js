@@ -20,6 +20,21 @@ const ROW_MS = 60_000;
 /** Answers a tool gives when a credential or a connection is missing. */
 const NEEDS = new Set(["needs", "needs_credential", "not_connected", "not_signed_in", "locked"]);
 
+/**
+ * The `need` of a needs frame, so Lumen can open "Add your key" directly: a tool that lacks a credential throws
+ * needs_credential with detail { module, need, account? } (core/modules/needs-credential.js), or names a vault item.
+ * { kind: "credential", need | item, module?, label? }; nothing when the detail says neither.
+ * @param {any} detail
+ */
+export function needOf(detail) {
+  if (!detail || typeof detail !== "object") return {};
+  const str = (/** @type {any} */ v, /** @type {number} */ n) => (typeof v === "string" && v ? v.slice(0, n) : "");
+  const need = str(detail.need, 80), item = str(detail.item, 120);
+  if (!need && !item) return {};
+  const module = str(detail.module, 60), label = str(detail.label || detail.vendor, 60);
+  return { need: { kind: "credential", ...(need ? { need } : { item }), ...(module ? { module } : {}), ...(label ? { label } : {}) } };
+}
+
 /** @param {string} tool */
 const commandId = tool => tool.replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
 
@@ -164,7 +179,7 @@ export function registerViews(ctx) {
       if (e) {
         const code = String(e.code || "failed");
         if (code === "held" || code === "held_unavailable") return { v: 1, kind: "held", message: clip(e.message || "Waiting for your OK.", 200) };
-        if (NEEDS.has(code)) return { v: 1, kind: "needs", code, message: clip(e.message || "A connection is missing.", 200) };
+        if (NEEDS.has(code)) return { v: 1, kind: "needs", code, message: clip(e.message || "A connection is missing.", 200), ...needOf(e.detail) };
         return error(code, e.message || "That did not work.");
       }
       const d = dataOf(r);

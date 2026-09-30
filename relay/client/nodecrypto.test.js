@@ -1,4 +1,5 @@
 // @ts-check
+import { isOwnerOnly } from "../../lib/owner-only.js";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
@@ -38,8 +39,8 @@ test("fileKeyStore: made on first use (0600/0700), and the same file loads the s
   assert.equal(await store.get(), null, "nothing yet");
   const kp = await nodeCrypto().generateKeyPair();
   await store.set(kp);
-  assert.equal(fs.statSync(path.dirname(file)).mode & 0o777, 0o700);
-  assert.equal(fs.statSync(file).mode & 0o777, 0o600);
+  if (process.platform === "win32") assert.ok(isOwnerOnly(path.dirname(file)) && isOwnerOnly(file), "the key folder is open to other users");
+  else { assert.equal(fs.statSync(path.dirname(file)).mode & 0o777, 0o700); assert.equal(fs.statSync(file).mode & 0o777, 0o600); }
   const again = await store.get();
   assert.deepEqual(Buffer.from(again.privateKey), Buffer.from(kp.privateKey));
   assert.deepEqual(Buffer.from(again.publicKey), Buffer.from(kp.publicKey));

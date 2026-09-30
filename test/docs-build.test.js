@@ -224,11 +224,11 @@ test("figures: an image alone is a figure with a caption, sized, with a dark sib
 });
 
 test("colors: a directive renders the palette as swatches, and as a Markdown table", () => {
-  const palette = { colors: { dark: { graphite: "#0E0D0C", "signal-wash": "rgba(198,243,107,0.12)", bad: "red;x:y" } }, use: { graphite: "Page ground." } };
+  const palette = { colors: { dark: { graphite: "#0E0D0C", "signal-wash": "rgba(241,238,230,0.12)", bad: "red;x:y" } }, use: { graphite: "Page ground." } };
   const html = md("<!-- colors: dark -->", { palette });
   assert.match(html, /<table class="swatches" data-colors="dark">/);
   assert.match(html, /<tr><td><span class="swatch" style="background:#0E0D0C" aria-hidden="true"><\/span><\/td><td><code>--graphite<\/code><\/td><td><code>#0E0D0C<\/code><\/td><td>Page ground\.<\/td><\/tr>/);
-  assert.match(html, /style="background:rgba\(198,243,107,0\.12\)"/);
+  assert.match(html, /style="background:rgba\(241,238,230,0\.12\)"/);
   assert.match(html, /<tr><td><\/td><td><code>--bad<\/code>/, "a value that is not a colour gets no style");
   assert.match(md("<!-- colors: light -->", { palette }), /class="swatch-none"/);
   assert.equal(md("```md\n<!-- colors: dark -->\n```", { palette }), "<pre><code class=\"language-md\">&lt;!-- colors: dark --&gt;\n</code></pre>\n");

@@ -223,7 +223,7 @@ struct CapsuleBar: View {
         }
         .padding(.horizontal, 12)
         .padding(.bottom, Space.xs)
-        .accessibilityLabel("Capsule. Ask \(app.assistantLabel), find, or run")
+        .accessibilityLabel("Lumen. Ask \(app.assistantLabel), find, or run")
     }
 
     private func showMicNote() {

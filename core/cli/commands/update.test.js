@@ -14,15 +14,20 @@ import { execFileSync } from "node:child_process";
 import { tempHome } from "../../../test/helpers.js";
 import { setJson } from "../kit.js";
 import * as config from "../../config/index.js";
-import { update, prune } from "./update.js";
+import { update, prune, publishRelease } from "./update.js";
 
 process.env.VYRE_NO_DIALOGS = "1";
 
 const sha = buf => crypto.createHash("sha256").update(buf).digest("hex");
+// A release key of the tests' own, given to `vyre update` as deps.key; every fixture release is signed with it unless a test says not.
+const KEYS = crypto.generateKeyPairSync("ed25519");
+const OTHER = crypto.generateKeyPairSync("ed25519");
+const spki = k => k.export({ type: "spki", format: "der" }).toString("base64");
+const signSums = (sums, key) => crypto.sign(null, Buffer.concat([Buffer.from("vyre-release-sums\n"), sums]), key).toString("base64") + "\n";
 const COMMIT = v => sha(v).slice(0, 40);
 
 /** A release's assets as the workflow makes them: a real tar.gz, release.json and SHA256SUMS. */
-function assets(root, version, { min_from = "0.1.0" } = {}) {
+function assets(root, version, { min_from = "0.1.0", sign = /** @type {any} */ (KEYS.privateKey) } = {}) {
   const dir = path.join(root, "src-" + version, "package");
   fs.mkdirSync(dir, { recursive: true });
   fs.writeFileSync(path.join(dir, "package.json"), JSON.stringify({ name: "vyre", version }));
@@ -35,6 +40,8 @@ function assets(root, version, { min_from = "0.1.0" } = {}) {
     "release.json": Buffer.from(JSON.stringify({ version, channel: /-/.test(version) ? "beta" : "stable", commit: COMMIT(version), date: "2026-09-01T00:00:00Z", min_from, notes: `what ${version} changed` })),
   };
   files.SHA256SUMS = Buffer.from(Object.keys(files).sort().map(n => `${sha(files[n])}  ${n}`).join("\n") + "\n");
+  // The signature is over SHA256SUMS, so it is not one of its lines.
+  if (sign) files["SHA256SUMS.sig"] = Buffer.from(signSums(files.SHA256SUMS, sign));
   return files;
 }
 
@@ -69,11 +76,11 @@ function capture(t) {
  * @param {{ current?: string, versions?: string[], minFrom?: Record<string, string>, serve?: (p: string) => string | Buffer | undefined,
  *   healthy?: boolean, tty?: boolean, answers?: string[], stamped?: boolean }} [o]
  */
-async function world(t, { current = "0.1.0", versions = ["0.1.0", "0.2.0"], minFrom = {}, serve = () => undefined, healthy = true, tty = false, answers = [], stamped = true, tips = null } = {}) {
+async function world(t, { sign = /** @type {any} */ (KEYS.privateKey), current = "0.1.0", versions = ["0.1.0", "0.2.0"], minFrom = {}, serve = () => undefined, healthy = true, tty = false, answers = [], stamped = true, tips = null } = {}) {
   const home = tempHome(t);
   config.save({ role: "local" });
   const fixtures = path.join(home, ".fixtures");
-  const byVersion = Object.fromEntries(versions.map(v => [v, assets(fixtures, v, { min_from: minFrom[v] })]));
+  const byVersion = Object.fromEntries(versions.map(v => [v, assets(fixtures, v, { min_from: minFrom[v], sign })]));
   const served = [];
   const server = http.createServer((req, res) => {
     const p = new URL(req.url || "/", "http://x").pathname;
@@ -117,7 +124,7 @@ async function world(t, { current = "0.1.0", versions = ["0.1.0", "0.2.0"], minF
     stop: async () => { calls.stop++; return { ok: true, wasRunning: true }; },
     call: async (tool, input) => { calls.tools.push({ tool, input }); return tips ? { data: { tips } } : { error: { code: "no_tool" } }; },
     io: { tty, ask: async q => { calls.asked.push(q); return answerQueue.shift() ?? ""; } },
-    window: 1000,
+    window: 1000, key: spki(KEYS.publicKey),
   };
   const installs = () => { try { return fs.readFileSync(npmLog, "utf8").trim().split("\n").filter(Boolean); } catch { return []; } };
   const text = () => lines.slice(from).join("\n");
@@ -277,6 +284,9 @@ test("update --rollback --restore-data says what it drops and needs a typed conf
     const file = path.join(w.home, "backups", "pre-0.2.0", "vyre-backup.tar.gz");
     fs.mkdirSync(path.dirname(file), { recursive: true });
     fs.writeFileSync(file, "backup");
+    // R8: a real backup always has its passphrase's key file beside it (update.js writes one at
+    // the same moment it makes the backup); rollback --restore-data reads it back.
+    fs.writeFileSync(file + ".key", "a-fake-key-for-this-test-fixture");
     fs.utimesSync(file, new Date("2026-09-20T08:30:00Z"), new Date("2026-09-20T08:30:00Z"));
     return { w, file };
   };
@@ -325,4 +335,53 @@ test("update: a checkout refuses and points at git; so does the box's container"
   assert.equal(await update(["--yes"], { ...box.deps, supervisor: "docker" }), 1);
   assert.match(box.text(), /the host's vyre update does this/);
   assert.deepEqual(box.served, [], "nothing was fetched");
+});
+
+test("update: after a healthy update the release's SHA256SUMS, signature and shell.json go into the installed package's deck/release, and never into a checkout", t => {
+  const home = tempHome(t);
+  const dir = path.join(home, "rel"), pkg = path.join(home, "pkg"), checkout = path.join(home, "co");
+  for (const d of [dir, pkg, checkout]) fs.mkdirSync(d, { recursive: true });
+  fs.mkdirSync(path.join(checkout, ".git"));
+  fs.writeFileSync(path.join(dir, "SHA256SUMS"), "sums\n");
+  fs.writeFileSync(path.join(dir, "SHA256SUMS.sig"), "sig\n");
+  publishRelease(dir, pkg);
+  const to = path.join(pkg, "deck", "release");
+  assert.deepEqual(fs.readdirSync(to).sort(), ["SHA256SUMS", "SHA256SUMS.sig"], "only what the release has, and no temp file");
+  assert.equal(fs.readFileSync(path.join(to, "SHA256SUMS.sig"), "utf8"), "sig\n");
+  publishRelease(dir, checkout);
+  assert.ok(!fs.existsSync(path.join(checkout, "deck")), "a git checkout is left alone");
+});
+
+test("update: an unsigned release, or one signed by another key, is refused before anything is downloaded; --allow-unsigned installs it with a warning", async t => {
+  const none = await world(t, { sign: null });
+  assert.equal(await update(["--yes"], none.deps), 1);
+  assert.match(none.text(), /this release is not signed; nothing was installed/);
+  assert.deepEqual(none.installs(), []);
+  assert.ok(!none.served.some(p => p.endsWith("/vyre.tgz")), "the tarball was never fetched");
+  const bad = await world(t, { sign: OTHER.privateKey });
+  assert.equal(await update(["--yes"], bad.deps), 1);
+  assert.match(bad.text(), /signature does not match Vyre's release key; nothing was installed/);
+  assert.deepEqual(bad.installs(), []);
+  // The override is explicit, and says what it means.
+  const over = await world(t, { sign: null });
+  assert.equal(await update(["--yes", "--allow-unsigned"], over.deps), 0, over.text());
+  assert.match(over.text(), /WARNING: this release is not signed\. Installing it anyway because you passed --allow-unsigned/);
+  assert.equal(over.installs().length, 1);
+  // A signed one shows the check.
+  const ok = await world(t);
+  assert.equal(await update(["--yes"], ok.deps), 0, ok.text());
+  assert.match(ok.text(), /signature checked against Vyre's release key/);
+});
+
+test("update: only a release whose signature verified is published for the phone's shell check; --allow-unsigned installs and stops there", async t => {
+  const signed = await world(t);
+  const pkg = path.join(signed.home, "pkg");
+  fs.mkdirSync(pkg);
+  assert.equal(await update(["--yes"], { ...signed.deps, pkg }), 0, signed.text());
+  assert.deepEqual(fs.readdirSync(path.join(pkg, "deck", "release")).sort(), ["SHA256SUMS", "SHA256SUMS.sig"]);
+  const unsigned = await world(t, { sign: null });
+  const pkg2 = path.join(unsigned.home, "pkg");
+  fs.mkdirSync(pkg2);
+  assert.equal(await update(["--yes", "--allow-unsigned"], { ...unsigned.deps, pkg: pkg2 }), 0, unsigned.text());
+  assert.ok(!fs.existsSync(path.join(pkg2, "deck")), "an unsigned release is installed but nothing of it is published");
 });

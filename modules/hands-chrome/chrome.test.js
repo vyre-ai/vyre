@@ -24,41 +24,63 @@ import { CHROME_SAFE } from "../../lib/chrome-flags/index.js";
 const CHROME_BIN = process.env.CHROME_BIN || "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome";
 const HAVE_CHROME = fs.existsSync(CHROME_BIN);
 
-/** One headless Chrome, its own temp profile, killed and removed on teardown. */
+/**
+ * One headless Chrome, its own temp profile, killed and removed on teardown. A hosted runner sometimes starts Chrome slowly or not at all (the DevTools port never
+ * appears), so a launch that shows no port within 20 s is killed and tried once more with a fresh profile; the port is read from Chrome's own DevToolsActivePort
+ * file first (it is written when the listener is up) and from its log line second. The error carries the end of Chrome's log.
+ */
 async function launchChrome(t) {
-  const dir = fs.mkdtempSync(path.join(SCRATCH, "vyre-chrome-test-"));
-  const logFile = path.join(dir, "chrome.log");
-  const log = fs.openSync(logFile, "a");
-  const child = spawn(CHROME_BIN, [
-    "--headless=new", "--remote-debugging-port=0", ...CHROME_SAFE, `--user-data-dir=${dir}`,
-    "--no-first-run", "--no-default-browser-check", "--disable-gpu", "--disable-extensions", "about:blank",
-  ], { stdio: ["ignore", log, log], detached: true });
-  // Chrome's own helpers outlive a SIGKILL to the browser and keep writing the profile, so the
-  // whole process group goes, and the removal retries and never throws: a throwing after hook
-  // skips the ones after it (vyred's stop), and on Node 22 the file then never exits.
-  t.after(async () => {
-    const gone = child.exitCode === null ? new Promise(r => { child.once("exit", r); setTimeout(r, 3000); }) : null;
-    try { process.kill(-(/** @type {number} */ (child.pid)), "SIGKILL"); } catch { try { child.kill("SIGKILL"); } catch {} }
-    await gone;
-    try { fs.closeSync(log); } catch {}
-    try { fs.rmSync(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 }); } catch {}
-  });
-  let port = null;
-  const deadline = Date.now() + 30_000;
-  while (Date.now() < deadline) {
-    const text = fs.readFileSync(logFile, "utf8");
-    const m = /ws:\/\/127\.0\.0\.1:(\d+)\//.exec(text);
-    if (m) { port = Number(m[1]); break; }
-    if (child.exitCode !== null) throw new Error(`Chrome exited early (${child.exitCode}): ${text.slice(0, 500)}`);
-    await new Promise(r => setTimeout(r, 50));
+  const tries = [];
+  for (let attempt = 1; attempt <= 2; attempt++) {
+    const dir = fs.mkdtempSync(path.join(SCRATCH, "vyre-chrome-test-"));
+    const logFile = path.join(dir, "chrome.log");
+    const log = fs.openSync(logFile, "a");
+    const child = spawn(CHROME_BIN, [
+      "--headless=new", "--remote-debugging-port=0", ...CHROME_SAFE, `--user-data-dir=${dir}`,
+      "--no-first-run", "--no-default-browser-check", "--disable-gpu", "--disable-extensions", "about:blank",
+    ], { stdio: ["ignore", log, log], detached: true });
+    // Chrome's own helpers outlive a SIGKILL to the browser and keep writing the profile, so the
+    // whole process group goes, and the removal retries and never throws: a throwing after hook
+    // skips the ones after it (vyred's stop), and on Node 22 the file then never exits.
+    const cleanup = async () => {
+      const gone = child.exitCode === null ? new Promise(r => { child.once("exit", r); setTimeout(r, 3000); }) : null;
+      try { process.kill(-(/** @type {number} */ (child.pid)), "SIGKILL"); } catch { try { child.kill("SIGKILL"); } catch {} }
+      await gone;
+      try { fs.closeSync(log); } catch {}
+      try { fs.rmSync(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 }); } catch {}
+    };
+    let port = null;
+    let exited = "";
+    const deadline = Date.now() + 20_000;
+    while (Date.now() < deadline) {
+      // Chrome writes <profile>/DevToolsActivePort ("port\n/devtools/browser/<id>") once the listener is up.
+      try { const first = fs.readFileSync(path.join(dir, "DevToolsActivePort"), "utf8").split("\n")[0]; if (/^\d+$/.test(first)) { port = Number(first); break; } } catch {}
+      let text = "";
+      try { text = fs.readFileSync(logFile, "utf8"); } catch {}
+      const m = /ws:\/\/127\.0\.0\.1:(\d+)\//.exec(text);
+      if (m) { port = Number(m[1]); break; }
+      if (child.exitCode !== null) { exited = `Chrome exited early (${child.exitCode})`; break; }
+      await new Promise(r => setTimeout(r, 50));
+    }
+    if (port) {
+      t.after(cleanup);
+      // /json/version answering is the real readiness signal; the file and the log line race it by a hair.
+      let ready = false;
+      for (let i = 0; i < 100 && !ready; i++) {
+        try { const r = await fetch(`http://127.0.0.1:${port}/json/version`); if (r.ok) ready = true; } catch {}
+        if (!ready) await new Promise(r => setTimeout(r, 50));
+      }
+      if (ready) return { port, dir };
+      tries.push(`attempt ${attempt}: port ${port} never answered /json/version`);
+      await cleanup();
+      continue;
+    }
+    let tail = "";
+    try { tail = fs.readFileSync(logFile, "utf8").slice(-400); } catch {}
+    tries.push(`attempt ${attempt}: ${exited || "no DevTools port in 20 s"}${tail ? ` (log: ${tail.replace(/\s+/g, " ")})` : ""}`);
+    await cleanup();
   }
-  if (!port) throw new Error("Chrome did not print its DevTools port in time");
-  // /json/version answering is the real readiness signal; the log line races it by a hair.
-  for (let i = 0; i < 50; i++) {
-    try { const r = await fetch(`http://127.0.0.1:${port}/json/version`); if (r.ok) break; } catch {}
-    await new Promise(r => setTimeout(r, 50));
-  }
-  return { port, dir };
+  throw new Error(`Chrome did not print its DevTools port: ${tries.join("; ")}`);
 }
 
 /**
@@ -186,10 +208,15 @@ test("hands-chrome: navigates, snapshots, clicks an observable control and sees 
 
   const opened = await s.kit("chrome.open", { url: PAGE });
   assert.equal(opened.error, undefined, opened.error && opened.error.message);
-  assert.equal(opened.data.title, "start");
-
-  const snap = await s.kit("chrome.snapshot", {});
-  const names = snap.data.controls.map(c => c.name).sort();
+  // Wait on the page's real condition (its controls are there), not on time: a slow runner can answer
+  // the open before the document has finished.
+  let snap, names = [];
+  for (const end = Date.now() + 10_000; Date.now() < end;) {
+    snap = await s.kit("chrome.snapshot", {});
+    names = snap.data && snap.data.controls ? snap.data.controls.map(c => c.name).sort() : [];
+    if (names.length >= 3) break;
+    await new Promise(r => setTimeout(r, 100));
+  }
   assert.deepEqual(names, ["Go", "Send message", "say something"]);
 
   const clicked = await s.kit("chrome.click", { selector: { role: "button", name: "Go" } });

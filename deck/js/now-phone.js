@@ -1,6 +1,6 @@
 // @ts-check
 // Now on a phone (docs/design/phone.md section 4), drawn by views/now.js under 760 px. The shell
-// (js/app.js) draws the header and the Capsule; this is the page between them:
+// (js/app.js) draws the header and Lumen; this is the page between them:
 //
 //   the setup reminder   one row when something is missing ("Add a passkey to send from this
 //                        phone"), which opens that step in a sheet (js/phone-setup.js,
@@ -26,8 +26,7 @@ import { attempt, on } from "./api.js";
 import { mountGlassMini } from "./glass-mini.js";
 import * as needs from "./needs.js";
 import { initial, base, since } from "./fmt.js";
-import { passkeyState, pushState, setupCard } from "./phone-setup.js";
-import { firstPasskeyCard } from "./first-passkey.js";
+import { pushState, setupCard } from "./phone-setup.js";
 import { standalone } from "./pwa.js";
 import { openSheet } from "./sheet.js";
 import { showToast, UNDO_MS } from "./toast.js";
@@ -44,7 +43,6 @@ const SWIPED_KEY = "vyre.needs.swiped";
 const reduced = () => typeof matchMedia === "function" && matchMedia("(prefers-reduced-motion: reduce)").matches;
 
 /** first-passkey.js's card is styled in pair.css, which pair.js loads only when it draws. */
-const pairStyles = () => { if (!document.head.querySelector('link[href="/css/pair.css"]')) document.head.append(h("link", { rel: "stylesheet", href: "/css/pair.css" })); };
 
 /** An item a push notification opened (/needs/:id): its sheet opens once Now has it. */
 let wanted = /** @type {string | null} */ (null);
@@ -67,15 +65,13 @@ export function phoneNow(ctx) {
   // ---- the setup reminder -----------------------------------------------------------------
 
   const drawRemind = async () => {
-    const [keys, p, k] = await Promise.all([attempt("presence.keys"), pushState().catch(() => null), passkeyState().catch(() => null)]);
+    const p = await pushState().catch(() => null);
     if (!ctx.alive()) return;
-    const boxHasNone = Array.isArray(keys.data) && !keys.data.some((/** @type {any} */ x) => x.kind === "passkey");
     const dismissed = !!getLocal("vyre.setup.dismissed");
     /** @type {{ text: string, open: () => void } | null} */
     let row = null;
-    if (boxHasNone) row = { text: "Make your first passkey", open: () => stepSheet("Your first passkey", el => { pairStyles(); const c = firstPasskeyCard(); el.append(c.el); return c.stop; }) };
-    else if (!dismissed && k && k.ok && !k.on) row = { text: "Add a passkey to send from this phone", open: setupSheet };
-    else if (!dismissed && !standalone()) row = { text: "Add Vyre to your Home Screen", open: setupSheet };
+    // No passkey reminders (no-nag, 0.2): Face ID is asked for pairing and vault reveals only.
+    if (!dismissed && !standalone()) row = { text: "Add Vyre to your Home Screen", open: setupSheet };
     else if (!dismissed && p && p.ok && !p.on && p.permission !== "denied") row = { text: "Turn on notifications for what needs you", open: setupSheet };
     put(remind, row ? h("button", { type: "button", class: "np-remind", onclick: row.open },
       h("span", { class: "np-remind-t" }, row.text), glyph("right", 16)) : null);
@@ -96,8 +92,6 @@ export function phoneNow(ctx) {
     return () => mo.disconnect();
   });
   drawRemind();
-  ctx.cleanup(on("presence.enrolled", drawRemind));
-  ctx.cleanup(on("presence.removed", drawRemind));
 
   // ---- Needs you ------------------------------------------------------------------------------
 

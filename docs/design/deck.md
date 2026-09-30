@@ -47,10 +47,10 @@ honey, no coral.
 | text | #F1EEE6 | #141311 |
 | text-2 | #B3AEA4 | #4A463F |
 | label | #8C877D | #6B665D |
-| primary-bg / primary-hover | #C6F36B / #D4F88A | #141311 / #4A463F |
+| primary-bg / primary-hover | #F1EEE6 / #FFFFFF | #141311 / #4A463F |
 | primary-ink | #0E0D0C | #F4F1EA |
-| focus | #C6F36B | #46700C |
-| signal-wash | rgba(198,243,107,0.12) | rgba(70,112,12,0.10) |
+| focus | #F1EEE6 | #141311 |
+| signal-wash | rgba(241,238,230,0.12) | rgba(20,19,17,0.10) |
 | del-wash (neutral) | rgba(140,135,125,0.14) | rgba(107,102,93,0.10) |
 | beacon-ink = beacon-dot (violet) | #B8A4FF | #5B3FC4 |
 | alternative attention (teal) | #5FD4C4 | #0B6E66 |
@@ -60,7 +60,7 @@ honey, no coral.
 - `beacon-wash` and `beacon-rule` are gone. The count on a badge is `primary-ink` on `beacon-dot`
   in both themes (9.1:1 dark, 6.3:1 paper); no separate badge ink is needed.
 - Code blocks: `code-bg` #121110 dark, #F0EDE5 paper.
-- Lime is the primary button, the focus ring, running and a selected row. Violet means "needs
+- Bone is the primary button, the focus ring, running and a selected row. Violet means "needs
   you" and appears only as a dot, a label or a count badge, never as a card fill, border or
   wash. Memory, success, info and errors are neutral text plus an icon.
 - Meta text on any wash steps up from `label` to `text-2`.

@@ -35,17 +35,17 @@ public enum Tokens {
         text: Color(.sRGB, red: 241 / 255, green: 238 / 255, blue: 230 / 255, opacity: 1),
         text2: Color(.sRGB, red: 179 / 255, green: 174 / 255, blue: 164 / 255, opacity: 1),
         label: Color(.sRGB, red: 140 / 255, green: 135 / 255, blue: 125 / 255, opacity: 1),
-        primaryBg: Color(.sRGB, red: 198 / 255, green: 243 / 255, blue: 107 / 255, opacity: 1),
-        primaryHover: Color(.sRGB, red: 212 / 255, green: 248 / 255, blue: 138 / 255, opacity: 1),
+        primaryBg: Color(.sRGB, red: 241 / 255, green: 238 / 255, blue: 230 / 255, opacity: 1),
+        primaryHover: Color(.sRGB, red: 255 / 255, green: 255 / 255, blue: 255 / 255, opacity: 1),
         primaryInk: Color(.sRGB, red: 14 / 255, green: 13 / 255, blue: 12 / 255, opacity: 1),
-        focus: Color(.sRGB, red: 198 / 255, green: 243 / 255, blue: 107 / 255, opacity: 1),
-        signalWash: Color(.sRGB, red: 198 / 255, green: 243 / 255, blue: 107 / 255, opacity: 0.12),
+        focus: Color(.sRGB, red: 241 / 255, green: 238 / 255, blue: 230 / 255, opacity: 1),
+        signalWash: Color(.sRGB, red: 241 / 255, green: 238 / 255, blue: 230 / 255, opacity: 0.12),
         delWash: Color(.sRGB, red: 140 / 255, green: 135 / 255, blue: 125 / 255, opacity: 0.14),
         beacon: Color(.sRGB, red: 184 / 255, green: 164 / 255, blue: 255 / 255, opacity: 1),
         codeBg: Color(.sRGB, red: 18 / 255, green: 17 / 255, blue: 16 / 255, opacity: 1),
         scrim: Color(.sRGB, red: 0 / 255, green: 0 / 255, blue: 0 / 255, opacity: 0.62),
         markWire: Color(.sRGB, red: 241 / 255, green: 238 / 255, blue: 230 / 255, opacity: 1),
-        markDot: Color(.sRGB, red: 198 / 255, green: 243 / 255, blue: 107 / 255, opacity: 1)
+        markDot: Color(.sRGB, red: 241 / 255, green: 238 / 255, blue: 230 / 255, opacity: 1)
     )
 
     public static let paper = Colors(
@@ -60,8 +60,8 @@ public enum Tokens {
         primaryBg: Color(.sRGB, red: 20 / 255, green: 19 / 255, blue: 17 / 255, opacity: 1),
         primaryHover: Color(.sRGB, red: 74 / 255, green: 70 / 255, blue: 63 / 255, opacity: 1),
         primaryInk: Color(.sRGB, red: 244 / 255, green: 241 / 255, blue: 234 / 255, opacity: 1),
-        focus: Color(.sRGB, red: 70 / 255, green: 112 / 255, blue: 12 / 255, opacity: 1),
-        signalWash: Color(.sRGB, red: 70 / 255, green: 112 / 255, blue: 12 / 255, opacity: 0.1),
+        focus: Color(.sRGB, red: 20 / 255, green: 19 / 255, blue: 17 / 255, opacity: 1),
+        signalWash: Color(.sRGB, red: 20 / 255, green: 19 / 255, blue: 17 / 255, opacity: 0.1),
         delWash: Color(.sRGB, red: 107 / 255, green: 102 / 255, blue: 93 / 255, opacity: 0.1),
         beacon: Color(.sRGB, red: 91 / 255, green: 63 / 255, blue: 196 / 255, opacity: 1),
         codeBg: Color(.sRGB, red: 240 / 255, green: 237 / 255, blue: 229 / 255, opacity: 1),
