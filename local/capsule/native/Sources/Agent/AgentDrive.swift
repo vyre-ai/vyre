@@ -59,12 +59,9 @@ enum Drive {
             m.text = t
             let setMs = ms(t0)
             let tok = m.token
-            // Lay the view out now and say how long that took, to tell the view's cost from the model's.
-            let l0 = DispatchTime.now()
-            a.panel.host.layoutSubtreeIfNeeded()
-            let layoutMs = ms(l0)
+            // No forced layout: the view updates as it does for a person typing, on the run loop.
             let idx = timings.count
-            timings.append(["kind": "results", "ms": -1.0, "set": setMs, "layout": layoutMs, "text": t, "token": tok, "t0": t0.uptimeNanoseconds])
+            timings.append(["kind": "results", "ms": -1.0, "set": setMs, "text": t, "token": tok, "t0": t0.uptimeNanoseconds])
             // "First rows": the local rows are in this turn's publish; this is when the turn has finished and
             // the run loop is about to sleep, after the view has been updated and committed.
             let obs = CFRunLoopObserverCreateWithHandler(nil, CFRunLoopActivity.beforeWaiting.rawValue, false, 3_000_000) { _, _ in
@@ -101,7 +98,8 @@ enum Drive {
                 e["t0"] = nil
                 return e
             }
-            say(["timings": out]); return
+            let from = (c["since"] as? Int) ?? 0
+            say(["timings": Array(out.dropFirst(max(0, from))), "count": out.count]); return
         }
         if VJ.truthy(c["memory"]) { say(["memory": memory()]); return }
         say(["error": "unknown command"])

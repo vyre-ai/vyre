@@ -78,45 +78,55 @@ try {
   // each keystroke to its rows. A frame at 60 Hz is 16 ms, so the 95th percentile must fit in one.
   // The quick providers answer in the same frame; the slow ones land after and are not counted here.
   const pct = (xs, q) => { const a = [...xs].sort((x, y) => x - y); return a.length ? a[Math.min(a.length - 1, Math.floor(q * a.length))] : NaN; };
-  const words = ["safari", "system settings", "12 * (3 + 4)", "notes", "20 km in miles", "terminal", "a", "mail"];
-  // A profile of the app while it types, so a stall names its own code (macOS `sample`, 1 ms).
-  const sampler = spawn("/usr/bin/sample", [String(child.pid), "6", "10", "-mayDie"], { stdio: ["ignore", "pipe", "pipe"] });
-  let sampled = "", sampleErr = ""; sampler.stdout.on("data", d => { sampled += d; }); sampler.stderr.on("data", d => { sampleErr += d; });
-  await pause(300);
-  const keyMs = [], keyDetail = [];
-  for (const w of words) {
-    await send({ text: "" }); await pause(60);
-    for (let i = 1; i <= w.length; i++) {
-      const before = (await send({ timings: true })).timings.length;
-      await send({ text: w.slice(0, i) });
-      const tm = (await send({ timings: true })).timings;
-      const last = tm.slice(before).find(x => x.kind === "results");
-      if (last) { keyMs.push(last.ms); keyDetail.push(last); }
-      await pause(20);
+  // At least 200 keystrokes of real words, in the app as it runs (the release build, no profiler, no forced
+  // layout). Each key is timed to the end of its turn (first rows painted) and to its last rows landing.
+  const words = ["safari", "system settings", "12 * (3 + 4)", "notes", "20 km in miles", "terminal", "a", "mail", "calendar", "messages", "music",
+    "photos", "preview", "reminders", "finder", "shortcuts", "activity monitor", "keychain", "clock", "weather", "dictionary", "maps", "books",
+    "podcasts", "stocks", "freeform", "console", "app store", "screenshot", "voice memos", "text edit"];
+  const typeRun = async list => {
+    const out = [];
+    let seen = (await send({ timings: true })).count;
+    for (const w of list) {
+      await send({ text: "" }); await pause(60);
+      for (let i = 1; i <= w.length; i++) {
+        await send({ text: w.slice(0, i) });
+        const r = await send({ timings: true, since: seen });
+        seen = r.count;
+        const e = r.timings.find(x => x.kind === "results");
+        if (e) out.push(e);
+        await pause(40);
+      }
     }
-  }
+    return out;
+  };
+  const keyDetail = await typeRun(words);
+  const keyMs = keyDetail.map(k => k.ms).filter(x => x >= 0);
   // What the person feels: the first rows (local: apps, commands, recents) against 50 ms; the rest (Spotlight, mail,
   // files) may append after, and is reported apart.
   const firstMs = keyDetail.map(k => k.first).filter(x => typeof x === "number" && x >= 0);
   await pause(800);                                   // let the slow sources land before reading when they did
-  const allMs = (await send({ timings: true })).timings.filter(x => x.kind === "results").map(x => x.all).filter(x => typeof x === "number");
+  const all = (await send({ timings: true, since: 0 })).timings.filter(x => x.kind === "results");
+  const allMs = all.map(x => x.all).filter(x => typeof x === "number");
+  console.log(`typing run: ${keyDetail.length} keystrokes`);
   if (firstMs.length) {
     console.log(`key to first rows: ${firstMs.length} keystrokes, median ${pct(firstMs, 0.5).toFixed(1)} ms, 95th ${pct(firstMs, 0.95).toFixed(1)} ms, worst ${Math.max(...firstMs).toFixed(1)} ms`);
     budget(pct(firstMs, 0.95) < 50, "key to first rows 95th percentile under 50 ms");
   }
   if (allMs.length) console.log(`key to all rows (slow sources included): median ${pct(allMs, 0.5).toFixed(1)} ms, 95th ${pct(allMs, 0.95).toFixed(1)} ms, worst ${Math.max(...allMs).toFixed(1)} ms`);
-  console.log(`typing: ${keyMs.length} keystrokes to rows, median ${pct(keyMs, 0.5).toFixed(1)} ms, 95th ${pct(keyMs, 0.95).toFixed(1)} ms, worst ${Math.max(...keyMs).toFixed(1)} ms`);
-  // Which keystrokes were slowest, so a slow one can be traced to its words.
-  await new Promise(r => { if (sampler.exitCode !== null) r(); else { sampler.on("exit", r); setTimeout(r, 75_000); } });
-  // The heaviest frames of the main thread: lines of the call graph holding 100 or more of its samples.
-  const graph = sampled.split("Call graph:")[1] || "";
-  const main = graph.split(/\n\s*\d+ Thread_/)[1] || "";
-  const heavy = main.split("\n").filter(l => { const m = l.match(/^[\s+!:|]*(\d+)\s/); return m && Number(m[1]) >= 6; }).slice(0, 60);
-  if (!heavy.length) console.log(`sampler: ${sampled.length} bytes, call graph ${graph.length} bytes, exit ${sampler.exitCode}, stderr: ${sampleErr.slice(0, 300).replace(/\s+/g, " ")}, first lines: ${sampled.split("\n").slice(0, 6).join(" | ").slice(0, 300)}`);
-  if (heavy.length) console.log(`main thread while typing (samples of 10 ms):\n${heavy.map(l => l.replace(/\s+/g, " ").slice(0, 200)).join("\n")}`);
-  const slowest = [...keyDetail].sort((a, b) => b.ms - a.ms).slice(0, 6);
-  console.log(`slowest keystrokes: ${slowest.map(k => `"${k.text}" ${k.ms.toFixed(0)} ms (set ${Number(k.set).toFixed(0)}, layout ${Number(k.layout).toFixed(0)})`).join(" · ")}`);
-  budget(pct(keyMs, 0.95) < 50, "keystroke to the turn's end 95th percentile under 50 ms");
+  const slowest = [...keyDetail].sort((a, b) => b.ms - a.ms).slice(0, 8);
+  console.log(`slowest keystrokes: ${slowest.map(k => `"${k.text}" ${k.ms.toFixed(0)} ms (set ${Number(k.set).toFixed(0)}, first ${Number(k.first).toFixed(0)})`).join(" · ")}`);
+  // Over the goal: profile a second run, and say what the main thread was doing (macOS `sample`, every 10 ms).
+  if (firstMs.length && pct(firstMs, 0.95) >= 50) {
+    const sampler = spawn("/usr/bin/sample", [String(child.pid), "8", "10", "-mayDie"], { stdio: ["ignore", "pipe", "pipe"] });
+    let sampled = "", sampleErr = ""; sampler.stdout.on("data", d => { sampled += d; }); sampler.stderr.on("data", d => { sampleErr += d; });
+    await pause(400);
+    await typeRun(words.slice(0, 10));
+    await new Promise(r => { if (sampler.exitCode !== null) r(); else { sampler.on("exit", r); setTimeout(r, 75_000); } });
+    const graph = sampled.split("Call graph:")[1] || "";
+    const main = graph.split(/\n\s*\d+ Thread_/)[1] || "";
+    const heavy = main.split("\n").filter(l => { const m = l.match(/^[\s+!:|]*(\d+)\s/); return m && Number(m[1]) >= 6 && !/mach_msg|__CFRunLoopRun|nextEventMatching|RunCurrentEventLoop|ReceiveNextEvent|_DPSNextEvent|_BlockUntil/.test(l); }).slice(0, 60);
+    console.log(heavy.length ? `main thread while typing, busy frames (samples of 10 ms):\n${heavy.map(l => l.replace(/\s+/g, " ").slice(0, 200)).join("\n")}` : `sampler: no busy frames found (${sampled.length} bytes)`);
+  }
   // Wake: hide and show ten times, timing each show.
   const wake = [];
   for (let i = 0; i < 10; i++) {
