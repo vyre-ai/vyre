@@ -766,7 +766,7 @@ for (const driver of ["cli", "sdk"]) {
     await w.finished(th.id, 3);
     assert.equal((await match("github.project.pr.merge:alex/app#7")).matched, true, "the person said merge it, about this PR");
     const held = (await realCall("vault.said.list", { thread: th.id }, "module:gate")).data.intents.find(x => x.kind === "act_out");
-    assert.equal(held.limits.window_minutes, 15, "prIntents' window is vault's expiry");
+    assert.equal(held.limits.window_ms, 15 * 60_000, "prIntents' window is vault's expiry");
     const later = at => realCall("vault.said.match", { kind: "act_out", via: "github", to: ["github.project.pr.merge:alex/app#7"], thread: th.id, at }, "module:vyred").then(r => r.data.matched);
     assert.equal(await later(Date.now() + 20 * 60_000), false, "a spoken merge it lapses after its window");
     assert.equal((await match("github.project.pr.merge:alex/app#8")).matched, false, "another PR");
