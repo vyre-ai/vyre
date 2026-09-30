@@ -88,7 +88,8 @@ export async function discoverAuthServer(issuer, f = globalThis.fetch) {
     if (doc && typeof doc.authorization_endpoint === "string" && typeof doc.token_endpoint === "string") {
       return { issuer: String(doc.issuer || issuer), authorize_uri: doc.authorization_endpoint, token_uri: doc.token_endpoint,
         registration_endpoint: typeof doc.registration_endpoint === "string" ? doc.registration_endpoint : null,
-        scopes_supported: Array.isArray(doc.scopes_supported) ? doc.scopes_supported.filter(x => typeof x === "string") : [] };
+        scopes_supported: Array.isArray(doc.scopes_supported) ? doc.scopes_supported.filter(x => typeof x === "string") : [],
+        token_auth_methods: Array.isArray(doc.token_endpoint_auth_methods_supported) ? doc.token_endpoint_auth_methods_supported.filter(x => typeof x === "string") : [] };
     }
   }
   throw fail(`${origin} does not publish authorization-server metadata (RFC 8414); its OAuth endpoints must be named directly`, "no_metadata");
@@ -122,10 +123,10 @@ export async function registerClient(registrationEndpoint, redirectUri, f = glob
 // ---- the loopback connect flow ----
 
 /**
- * @typedef {{ issuer: string, authorize_uri: string, token_uri: string, registration_endpoint?: string|null, scopes_supported?: string[] }} AuthServer
+ * @typedef {{ issuer: string, authorize_uri: string, token_uri: string, registration_endpoint?: string|null, scopes_supported?: string[], token_auth_methods?: string[] }} AuthServer
  * @typedef {{ access_token: string, refresh_token?: string, expires_in?: number, scope?: string,
- *   id_token?: string, issuer: string, resource?: string, token_uri: string, client_id: string, obtained_at: number }} TokenSet
- * @typedef {{ id: string, name: string, state: string, verifier: string, redirect: string,
+ *   id_token?: string, issuer: string, resource?: string, token_uri: string, client_id: string, token_auth?: "basic", obtained_at: number }} TokenSet
+ * @typedef {{ id: string, name: string, state: string, verifier: string, redirect: string, basic?: boolean,
  *   server: AuthServer, resource?: string, client: { client_id: string, client_secret: string|null },
  *   scopes: string[], values: string[], bind?: string[], timer: any }} Flow
  * @typedef {{
@@ -196,7 +197,7 @@ export function connector(deps) {
 
   async function onRequest(req, res) {
     const u = new URL(req.url || "/", "http://127.0.0.1");
-    if (req.method !== "GET" || u.pathname !== CALLBACK) { res.writeHead(404, { "content-type": "text/plain" }); res.end("Not found"); return; }
+    if (req.method !== "GET" || u.pathname !== CALLBACK && u.pathname !== "/") { res.writeHead(404, { "content-type": "text/plain" }); res.end("Not found"); return; }
     const out = await land(u.searchParams, null);
     answer(res, out.ok ? 200 : 400, out.ok ? "You can close this tab and go back to Vyre." : out.error);
   }
@@ -237,12 +238,14 @@ export function connector(deps) {
   async function complete(flow, code) {
     const c = flow.client;
     const body = new URLSearchParams({ grant_type: "authorization_code", code, redirect_uri: flow.redirect, client_id: c.client_id, code_verifier: flow.verifier });
-    if (c.client_secret) body.set("client_secret", c.client_secret);
+    // A vendor that takes the secret only in a Basic header (Zoom) gets it there and not in the body.
+    if (c.client_secret && !flow.basic) body.set("client_secret", c.client_secret);
     if (flow.resource) body.set("resource", flow.resource);
     let res;
     try {
       res = await f(flow.server.token_uri, { method: "POST", redirect: "manual", signal: AbortSignal.timeout(TIMEOUT_MS),
-        headers: { "content-type": "application/x-www-form-urlencoded", accept: "application/json" }, body: body.toString() });
+        headers: { "content-type": "application/x-www-form-urlencoded", accept: "application/json",
+          ...(flow.basic && c.client_secret ? { authorization: "Basic " + Buffer.from(`${c.client_id}:${c.client_secret}`).toString("base64") } : {}) }, body: body.toString() });
     } catch (e) {
       throw fail(`the token endpoint ${/** @type {any} */ (e)?.name === "TimeoutError" ? "did not answer in 30 s" : "could not be reached"}.`, "network");
     }
@@ -261,7 +264,7 @@ export function connector(deps) {
     const tokens = { access_token: json.access_token, ...(json.refresh_token ? { refresh_token: json.refresh_token } : {}),
       ...(json.expires_in ? { expires_in: Number(json.expires_in) } : {}), ...(json.scope ? { scope: String(json.scope) } : {}),
       ...(json.id_token ? { id_token: json.id_token } : {}), issuer: flow.server.issuer, ...(flow.resource ? { resource: flow.resource } : flow.bind ? { resource: flow.bind.join(" ") } : {}),
-      token_uri: flow.server.token_uri, client_id: c.client_id, obtained_at: Date.now() };
+      token_uri: flow.server.token_uri, client_id: c.client_id, ...(flow.basic ? { token_auth: "basic" } : {}), obtained_at: Date.now() };
     const out = await deps.complete(flow, tokens);
     deps.emit("connect.connected", { id: flow.id, name: flow.name, issuer: flow.server.issuer });
     log("connect sign-in connected", { id: flow.id, name: flow.name });
@@ -287,13 +290,23 @@ export function connector(deps) {
      * with `client_id` and optionally `client_secret`, read through `fetchItem`.
      * `bind` names the resource url(s) the token is minted for when the vendor's authorize call
      * takes no `resource` parameter (Google): it is recorded on the token set (P21) and never sent.
-     * @param {{ name: string, resource?: string, server?: Partial<AuthServer>, client?: string, scopes?: string[], bind?: string[], offline?: boolean, port?: number }} input
+     * @param {{ name: string, resource?: string, server?: Partial<AuthServer>, client?: string, scopes?: string[], bind?: string[], offline?: boolean, port?: number,
+     *   redirect?: { scheme?: "http" | "https", host?: string, path?: string }, basic?: boolean }} input
      */
-    start: guarded(async ({ name, resource, server, client, scopes: asked = [], bind, offline, port: fixedPort }) => {
+    start: guarded(async ({ name, resource, server, client, scopes: asked = [], bind, offline, port: fixedPort, redirect: redirectSpec, basic }) => {
       if (!NAME.test(String(name || ""))) throw fail("name must be lowercase letters, digits and dashes, starting with a letter, at most 32");
       if (!Array.isArray(asked) || !asked.every(s => typeof s === "string" && s)) throw fail("scopes must be a list of strings");
       if (fixedPort !== undefined && !(Number.isInteger(fixedPort) && fixedPort >= 1024 && fixedPort <= 65535)) throw fail("port must be from 1024 to 65535");
       const scopes = [...asked];
+      // Where the vendor sends the browser back. Loopback http on a free port by default; a vendor that
+      // wants https (Slack) or `localhost` (Microsoft) says so, and an https address has no listener:
+      // the browser cannot load it, and the person pastes the address it shows (finish).
+      const rs = redirectSpec || {};
+      const scheme = rs.scheme === "https" ? "https" : "http";
+      const rhost = rs.host === "localhost" ? "localhost" : "127.0.0.1";
+      const rpath = rs.path === "/" ? "/" : CALLBACK;
+      if (scheme === "https" && !fixedPort) throw fail("an https redirect needs a fixed port, so the address can be typed into the vendor ahead of time", "config");
+      const redirectFor = p => `${scheme}://${rhost}:${p}${rpath}`;
       if ([...flows.values()].some(x => x.name === name)) throw fail(`a sign-in for ${name} is already open; finish or cancel it first`, "exists");
       if (!resource && !(server && server.authorize_uri && server.token_uri)) throw fail("say either resource (a url to discover) or server (authorize_uri and token_uri)");
 
@@ -325,8 +338,8 @@ export function connector(deps) {
         clientId = await read("client_id", false);
         clientSecret = (await read("client_secret", true)) || null;
       } else if (as.registration_endpoint) {
-        const p = await listen(fixedPort);
-        const redirect = `http://127.0.0.1:${p}${CALLBACK}`;
+        const p = scheme === "https" ? fixedPort : await listen(fixedPort);
+        const redirect = redirectFor(p);
         const reg = await registerClient(as.registration_endpoint, redirect, f);
         clientId = reg.client_id;
         clientSecret = reg.client_secret;
@@ -335,9 +348,9 @@ export function connector(deps) {
       }
       if (clientSecret) values.push(clientSecret);
 
-      const p = await listen(fixedPort);
+      const p = scheme === "https" ? fixedPort : await listen(fixedPort);
       const flow = /** @type {Flow} */ ({ id: `oa_${crypto.randomBytes(9).toString("base64url")}`, name, state: random(), verifier: random(),
-        redirect: `http://127.0.0.1:${p}${CALLBACK}`, server: as, ...(discoveredResource ? { resource: discoveredResource } : {}),
+        redirect: redirectFor(p), ...(basic || (as.token_auth_methods && as.token_auth_methods.length && !as.token_auth_methods.some(m => m !== "client_secret_basic")) ? { basic: true } : {}), server: as, ...(discoveredResource ? { resource: discoveredResource } : {}),
         client: { client_id: clientId, client_secret: clientSecret }, scopes, values, ...(Array.isArray(bind) && bind.length ? { bind: bind.map(String) } : {}), timer: null });
       values.push(flow.verifier);
       const challenge = crypto.createHash("sha256").update(flow.verifier).digest("base64url");

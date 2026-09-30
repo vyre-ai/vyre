@@ -28,7 +28,7 @@ export const MIGRATIONS = [
 ];
 
 /** The item fields a sign-in keeps, so a rotation can rewrite them and a reader can find them. */
-export const TOKEN_FIELDS = ["client_id", "client_secret", "refresh_token", "access_token", "expires_at", "token_uri", "issuer", "resource", "scope"];
+export const TOKEN_FIELDS = ["client_id", "client_secret", "refresh_token", "access_token", "expires_at", "token_uri", "token_auth", "issuer", "resource", "scope"];
 
 const NAME = /^[a-z][a-z0-9-]{0,31}$/;
 const ITEM = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/;
@@ -37,11 +37,21 @@ const MAX_TOKEN = 4096;
 /** @param {string} msg @param {string} [code] */
 const fail = (msg, code = "bad_input") => Object.assign(new Error(msg), { code });
 
+/** Replace {redirect} in every string of a guide, and build the prefilled-app link from its manifest. @param {any} guide @param {string} redirect */
+export function resolveGuide(guide, redirect) {
+  if (!guide) return undefined;
+  const sub = x => typeof x === "string" ? x.split("{redirect}").join(redirect) : Array.isArray(x) ? x.map(sub) : x && typeof x === "object" ? Object.fromEntries(Object.entries(x).map(([k, v]) => [k, sub(v)])) : x;
+  const g = sub(guide);
+  const links = [...(g.links || [])];
+  if (g.manifest) links.unshift({ label: g.manifest.label || "Make the app with its settings filled in", url: g.manifest.link + encodeURIComponent(JSON.stringify(g.manifest.json)) });
+  return { steps: g.steps || [], links };
+}
+
 /**
  * @typedef {{
  *   db: import("node:sqlite").DatabaseSync,
  *   fetchItem: (item: string, field?: string) => Promise<string>,
- *   save: (item: string, fields: Record<string, string>, opts: { kind: string, description: string, hosts: string[] }) => Promise<void>,
+ *   save: (item: string, fields: Record<string, string>, opts: { kind: string, description: string, hosts: string[], grants?: string[] }) => Promise<void>,
  *   addServer: (input: Record<string, unknown>) => Promise<any>,
  *   testServer: (name: string) => Promise<any>,
  *   hasServer: (name: string) => Promise<boolean>,
@@ -50,8 +60,16 @@ const fail = (msg, code = "bad_input") => Object.assign(new Error(msg), { code }
  *   log?: (message: string, fields?: Record<string, unknown>) => void,
  *   fetch?: typeof fetch, now?: () => number, expiresMs?: number,
  *   catalog?: ReturnType<typeof makeCatalog>,
+ *   external?: (presetId: string) => Promise<{ name: string, label?: string }[]>,
  * }} ConnectDeps
  */
+
+/** The address the vendor sends the browser back to, as text for a guide (the port is a placeholder when it is free). @param {any} o */
+function redirectOf(o) {
+  if (!o) return "";
+  const r = o.redirect || {};
+  return `${r.scheme === "https" ? "https" : "http"}://${r.host === "localhost" ? "localhost" : "127.0.0.1"}:${o.port || "<port>"}${r.path === "/" ? "/" : "/connect/callback"}`;
+}
 
 /** @param {ConnectDeps} deps */
 export function connections(deps) {
@@ -84,6 +102,7 @@ export function connections(deps) {
       if (tokens.refresh_token) fields.refresh_token = tokens.refresh_token;
       if (tokens.expires_in) fields.expires_at = String(tokens.obtained_at + tokens.expires_in * 1000);
       if (tokens.scope) fields.scope = tokens.scope;
+      if (tokens.token_auth) fields.token_auth = tokens.token_auth;
       await deps.save(item, fields, { kind: "env-set", description: `${p.label} sign-in (made by Vyre)`, hosts: originsOf(p) });
       const out = await bind(p, pending.name, item, "oauth", pending.label, { type: "oauth", item }, {});
       return { name: pending.name, item, ...out };
@@ -120,7 +139,7 @@ export function connections(deps) {
      * vendors that were ruled out with the reason. Never a value.
      * @param {{ group?: string, all?: boolean }} [input]
      */
-    catalog(input = {}) {
+    async catalog(input = {}) {
       const mine = db.prepare("SELECT name, preset, mode, label, created FROM connectors_connections ORDER BY name").all();
       const list = presets().filter(p => !input.group || p.group === input.group).map(p => ({
         id: p.id, label: p.label, group: p.group, who: p.who, evidence: p.evidence,
@@ -128,9 +147,12 @@ export function connections(deps) {
         prefer: p.prefer || (p.oauth ? "oauth" : "token"),
         // what the person must bring: nothing, their own app, or a token
         setup: p.via ? "via" : (p.prefer === "token" || !p.oauth) ? "token" : p.oauth.client === "byo" ? "app" : "none",
+        ...(p.oauth && p.oauth.guide || p.token && p.token.guide ? { guided: true } : {}),
         ...(p.note ? { note: p.note } : {}), ...(p.via ? { via: p.via } : {}),
         connected: mine.filter(c => c.preset === p.id).map(c => ({ name: c.name, mode: c.mode, ...(c.label ? { label: c.label } : {}) })),
       }));
+      // An app another module signs in to (GitHub) shows the accounts that module holds.
+      if (deps.external) for (const p of list) if (p.via) { try { p.connected = (await deps.external(p.id)).map(c => ({ name: c.name, mode: "via", ...(c.label ? { label: c.label } : {}) })); } catch { /* the other module is not running */ } }
       return { checked: checked(), presets: list, ...(input.all ? { unavailable: unavailable() } : {}) };
     },
 
@@ -146,7 +168,7 @@ export function connections(deps) {
      * person for it and call again), { step: "via", via } (another module owns this sign-in), or
      * { step: "connected", name, tools } (a token was stored and the server answered).
      * `token` is accepted only when the caller says it is a person's own surface.
-     * @param {{ preset: string, label?: string, name?: string, mode?: string, client?: string, token?: string, extra?: Record<string, string>, replace?: boolean }} input
+     * @param {{ preset: string, label?: string, name?: string, mode?: string, client?: string, app?: { client_id: string, client_secret?: string }, token?: string, extra?: Record<string, string>, replace?: boolean }} input
      * @param {{ person: boolean }} who
      */
     async start(input, who) {
@@ -163,7 +185,7 @@ export function connections(deps) {
 
       if (mode === "token") {
         const t = p.token;
-        const need = { step: "needs", needs: "token", preset: p.id, name, label: t.label, help: t.help,
+        const need = { step: "needs", needs: "token", preset: p.id, name, label: t.label, help: t.help, ...(t.guide ? { guide: resolveGuide(t.guide, redirectOf(p.oauth)) } : {}),
           extra: (t.extra || []).map(x => ({ name: x.name, label: x.label, required: x.required !== false })) };
         if (input.token === undefined) return need;
         if (!who.person) throw fail("a token is pasted by the person, on their own screen", "denied");
@@ -188,24 +210,45 @@ export function connections(deps) {
 
       // oauth
       const o = p.oauth;
-      if (o.client === "byo" && !input.client) {
-        return { step: "needs", needs: "client", preset: p.id, name, help: o.help, ...(o.port ? { redirect: `http://127.0.0.1:${o.port}/connect/callback` } : {}) };
+      const redirectText = redirectOf(o);
+      let client = input.client ? String(input.client) : "";
+      if (o.client === "byo" && !client) {
+        const appItem = `${name}-app`;
+        if (input.app) {
+          // The person's own OAuth app, typed in on their own screen: it goes to the vault here, so
+          // there is no separate `vault put` for them to get wrong.
+          if (!who.person) throw fail("an app's client ID and secret are entered by the person, on their own screen", "denied");
+          const id = String(input.app.client_id || "").trim(), secret = String(input.app.client_secret || "").trim();
+          if (!id || id.length > 512 || /\s/.test(id)) throw fail("the client ID is needed, on one line");
+          if (secret.length > 1024 || /[\r\n]/.test(secret)) throw fail("the client secret must be one line");
+          await deps.save(appItem, { client_id: id, ...(secret ? { client_secret: secret } : {}) }, { kind: "env-set", description: `${p.label} OAuth app (made by Vyre)`, hosts: [], grants: ["connectors"] });
+          client = appItem;
+        } else {
+          try { if (await deps.fetchItem(appItem, "client_id")) client = appItem; } catch { /* not made yet */ }
+        }
+        if (!client) {
+          return { step: "needs", needs: "client", preset: p.id, name, help: o.help, ...(redirectText ? { redirect: redirectText } : {}),
+            ...(o.guide ? { guide: resolveGuide(o.guide, redirectText) } : {}),
+            fields: [{ name: "client_id", label: "Client ID", secret: false, required: true }, { name: "client_secret", label: "Client secret", secret: true, required: o.public !== true }] };
+        }
       }
-      if (input.client !== undefined && !ITEM.test(String(input.client))) throw fail("client names a vault item");
+      if (client && !ITEM.test(client)) throw fail("client names a vault item");
       /** @type {any} */ let started;
       try {
         // A vendor whose authorize call takes no `resource` (Google) names its endpoints; the token
         // is still recorded as minted for the server's own address.
         started = await oauth.start({ name, ...(o.server ? { server: o.server, bind: [p.url] } : { resource: p.url }),
           scopes: o.scopes || [], offline: Boolean(o.offline),
-          ...(o.port ? { port: o.port } : {}), ...(input.client ? { client: String(input.client) } : {}) });
+          ...(o.port ? { port: o.port } : {}), ...(client ? { client } : {}),
+          ...(o.redirect ? { redirect: o.redirect } : {}), ...(o.basic ? { basic: true } : {}) });
       } catch (e) {
         const err = /** @type {any} */ (e);
         // The vendor stopped offering automatic registration since the catalog was checked.
         if (err && err.code === "no_dcr") {
           if (p.token) return { step: "needs", needs: "token", preset: p.id, name, label: p.token.label, help: `${p.label} no longer registers apps automatically. ${p.token.help}`,
             extra: (p.token.extra || []).map(x => ({ name: x.name, label: x.label, required: x.required !== false })) };
-          return { step: "needs", needs: "client", preset: p.id, name, help: `${p.label} no longer registers apps automatically. Make an OAuth app in your ${p.label} account and put its client ID and secret in a vault item.` };
+          return { step: "needs", needs: "client", preset: p.id, name, help: `${p.label} no longer registers apps automatically. Make an OAuth app in your ${p.label} account and enter its client ID and secret.`,
+            fields: [{ name: "client_id", label: "Client ID", secret: false, required: true }, { name: "client_secret", label: "Client secret", secret: true, required: false }] };
         }
         throw e;
       }

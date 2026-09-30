@@ -31,10 +31,10 @@ export default {
       catalog: catalogFrom(ctx.config),
       fetchItem: (item, field) => ctx.vault.fetch(item, field ? { field } : {}),
       // The vault item is this module's own: one it did not make is never replaced.
-      save: async (item, fields, { kind, description, hosts }) => {
+      save: async (item, fields, { kind, description, hosts, grants }) => {
         const old = (await ctx.call("vault.list", { filter: item })).data?.items?.find(x => x.name === item);
         if (old && old.origin !== "module:connectors") throw fail(`the vault already has an item named ${item} that Vyre's connectors did not make; rename or delete it first`, "exists");
-        const r = await ctx.call("vault.put", { name: item, kind, description, fields, hosts, grants: ["mcp", "connectors"] });
+        const r = await ctx.call("vault.put", { name: item, kind, description, fields, hosts, grants: grants || ["mcp", "connectors"] });
         if (r.error) throw fail(`could not save the sign-in in the vault: ${r.error.message}`, r.error.code || "vault");
       },
       addServer: async input => data(await ctx.call("mcp.add", input)),
@@ -44,6 +44,13 @@ export default {
         return (Array.isArray(list) ? list : list.servers || []).some(s => s.name === name);
       },
       removeServer: async name => { data(await ctx.call("mcp.remove", { name })); },
+      // GitHub signs in through the github module; the catalog shows the accounts it holds.
+      external: async id => {
+        if (id !== "github") return [];
+        const r = await ctx.call("github.accounts", {});
+        const list = r.error ? [] : Array.isArray(r.data) ? r.data : Array.isArray(r.data && r.data.accounts) ? r.data.accounts : [];
+        return list.map(a => ({ name: String(a.login || a.name || a.account || "github") })).filter(a => a.name);
+      },
       emit: (type, payload) => ctx.events.emit(type, payload),
       log: (m, x) => ctx.log(m, x),
     });
@@ -61,8 +68,8 @@ export default {
     });
 
     ctx.tool("connectors.connect", {
-      description: "Connect an app from the catalog. { preset, label? } starts the sign-in. It answers { step: \"open\", id, url }: open the address in a browser and the sign-in finishes when the vendor sends the browser back (connectors.connect.finish takes the address for a browser on another device). Or { step: \"needs\", needs: \"token\" | \"client\", ... }: ask the person for a token (pass it as `token`, with `extra` for any extra fields) or for the vault item holding their own OAuth app (pass it as `client`). `label` makes a second account of the same app. `mode` picks oauth or token when both exist.",
-      input: obj({ preset: str, label: str, name: str, mode: { type: "string", enum: ["oauth", "token"] }, client: str, token: str, extra: { type: "object" }, replace: { type: "boolean" } }, ["preset"]),
+      description: "Connect an app from the catalog. { preset, label? } starts the sign-in. It answers { step: \"open\", id, url }: open the address in a browser and the sign-in finishes when the vendor sends the browser back (connectors.connect.finish takes the address for a browser on another device). Or { step: \"needs\", needs: \"token\" | \"client\", ... }: ask the person for a token (pass it as `token`, with `extra` for any extra fields) or for their own OAuth app: the answer carries a `guide` (steps and links, with a prefilled app link where the vendor has one) and the two `fields` to ask for; pass them as `app` { client_id, client_secret }, or name a vault item holding them as `client`. `label` makes a second account of the same app. `mode` picks oauth or token when both exist.",
+      input: obj({ preset: str, label: str, name: str, mode: { type: "string", enum: ["oauth", "token"] }, client: str, app: { type: "object" }, token: str, extra: { type: "object" }, replace: { type: "boolean" } }, ["preset"]),
       callers: PEOPLE,
       run: input => conn.start(input, { person: true }),
     });

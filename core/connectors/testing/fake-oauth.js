@@ -42,6 +42,9 @@ export async function startFakeAuthServer(t, opts = {}) {
     }
     if (u.pathname === "/token" && req.method === "POST") {
       const body = await new Promise(resolve => { let s = ""; req.on("data", c => s += c); req.on("end", () => resolve(new URLSearchParams(s))); });
+      // client_secret_basic: the secret in a Basic header instead of the body.
+      const basic = /^Basic (.+)$/.exec(String(req.headers.authorization || ""));
+      if (basic) { const [id, ...rest] = Buffer.from(basic[1], "base64").toString().split(":"); if (!body.get("client_id")) body.set("client_id", id); body.set("client_secret", rest.join(":")); calls.push({ method: "BASIC", path: "/token" }); }
       if (body.get("grant_type") === "refresh_token") {
         const rt = body.get("refresh_token") || "";
         if (refreshRevoked || !refreshes.has(rt)) return json(res, 400, { error: "invalid_grant", error_description: "Token has been expired or revoked." });

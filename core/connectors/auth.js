@@ -271,8 +271,12 @@ export class Credentials {
     }
     const uri = checkTokenUri(fields.token_uri, `vault item ${auth.item}`);
     const body = new URLSearchParams({ grant_type: "refresh_token", client_id: fields.client_id, refresh_token: fields.refresh_token });
-    if (fields.client_secret) body.set("client_secret", fields.client_secret);
-    const out = await this.#exchange(uri, body, { scopes, what: `vault item ${auth.item}` });
+    // A vendor that takes the client secret only in a Basic header says so at sign-in (token_auth).
+    const basic = fields.client_secret && (await this.#optional(auth.item, "token_auth")) === "basic";
+    if (fields.client_secret && !basic) body.set("client_secret", fields.client_secret);
+    if (basic) this.#remember(Buffer.from(`${fields.client_id}:${fields.client_secret}`).toString("base64"));
+    const out = await this.#exchange(uri, body, { scopes, what: `vault item ${auth.item}`,
+      ...(basic ? { headers: { authorization: "Basic " + Buffer.from(`${fields.client_id}:${fields.client_secret}`).toString("base64") } } : {}) });
     this.#stale.delete(auth.item);
     // Many vendors rotate the refresh token on every use, so the new one replaces the old or the
     // next refresh fails. A rotation that cannot be saved is an error, never silent.
@@ -323,11 +327,11 @@ export class Credentials {
   }
 
   /** POST to a token endpoint and read the access token, or throw a readable, scrubbed reason. */
-  async #exchange(uri, body, { scopes, subject, what }) {
+  async #exchange(uri, body, { scopes, subject, what, headers = {} }) {
     let res;
     try {
       res = await this.#fetch(uri, { method: "POST", redirect: "manual", signal: AbortSignal.timeout(TIMEOUT_MS),
-        headers: { "content-type": "application/x-www-form-urlencoded", accept: "application/json" }, body: body.toString() });
+        headers: { "content-type": "application/x-www-form-urlencoded", accept: "application/json", ...headers }, body: body.toString() });
     } catch (e) {
       const why = /** @type {any} */ (e)?.name === "TimeoutError" ? "did not answer in 30 s" : "could not be reached";
       throw new CredentialError(`the token endpoint for ${what} ${why}`, { code: "network" });

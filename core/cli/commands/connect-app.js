@@ -51,6 +51,7 @@ export async function addApp(preset, args) {
   if (a.step === "needs" && a.needs === "token") {
     if (json() || !process.stdin.isTTY) return usage(`${a.label} needs a token, typed at a hidden prompt`, `run vyre connect add app ${preset} in a terminal`);
     out(dim(`  ${a.help}`));
+    showGuide(a.guide);
     const token = await hiddenPrompt(`  ${a.label}: `);
     /** @type {Record<string, string>} */ const extra = {};
     for (const x of a.extra || []) {
@@ -63,20 +64,40 @@ export async function addApp(preset, args) {
   }
 
   if (a.step === "needs") {
-    // The person's own OAuth app: a vault item with client_id and client_secret, then the sign-in.
+    // The person's own OAuth app: the guide, then its client ID and secret typed here.
     out(beacon(`  ${preset} needs your own OAuth app first`));
     out(dim(`  ${a.help}`));
+    showGuide(a.guide);
     if (a.redirect) out(dim(`  Its redirect address is ${a.redirect}`));
-    out(dim(`  Then: vyre vault put <item> (client_id and client_secret), and vyre connect add app ${preset} --client <item>`));
-    return 1;
+    if (json() || !process.stdin.isTTY) {
+      out(dim(`  Run vyre connect add app ${preset} in a terminal to enter its client ID and secret.`));
+      return 1;
+    }
+    const id = (await visiblePrompt("  Client ID: ")).trim();
+    if (!id) return oops("no client ID entered; nothing stored");
+    const secret = await hiddenPrompt("  Client secret (Enter to skip if it has none): ");
+    r = await call("connectors.connect", { ...ask, app: { client_id: id, ...(secret ? { client_secret: secret } : {}) } }, { timeout: 60_000 });
+    if (r.error) return fail(r);
+    a = r.data;
+    if (a.step === "needs") return oops(a.help);
   }
   if (a.step === "via") { out(`  ${a.message}`); return 0; }
   if (a.step === "connected") return connected(a);
 
   // step "open": the sign-in address, then wait for the browser
   if (f.client && !(await grant([f.client], "connectors")).ok) { await call("connectors.connect.cancel", { id: a.id }); return 1; }
+  if (a.redirect && a.redirect.startsWith("https:")) out(dim("  Your browser will show a page that cannot load after you allow it. That is expected: copy the full address from the browser bar and paste it here."));
   if (json()) return usage(`vyre connect add app ${preset} is a conversation with a browser; run it in a terminal, without --json`, `vyre connect add app ${preset}`);
   return waitForBrowser(a);
+}
+
+/** Steps and links from a preset's guide, plain. @param {any} g */
+function showGuide(g) {
+  if (!g) return;
+  out("");
+  for (const [i, step] of (g.steps || []).entries()) out(`  ${i + 1}. ${step}`);
+  for (const l of g.links || []) out(`  ${dim(l.label + ":")} ${l.url}`);
+  out("");
 }
 
 /** @param {any} a */

@@ -27,6 +27,213 @@
    "note": "Works across many sub-accounts at once. Do not use the /mcp/anthropic address: it accepts only Claude."
   },
   {
+   "id": "slack",
+   "label": "Slack",
+   "group": "work",
+   "url": "https://mcp.slack.com/mcp",
+   "transport": "http",
+   "who": "You, as an admin of your own workspace. You make a small private Slack app first; the settings are filled in for you.",
+   "evidence": "docs",
+   "oauth": {
+    "client": "byo",
+    "port": 53682,
+    "redirect": {
+     "scheme": "https",
+     "host": "127.0.0.1",
+     "path": "/connect/callback"
+    },
+    "scopes": [
+     "search:read.public",
+     "search:read.private",
+     "search:read.mpim",
+     "search:read.im",
+     "search:read.files",
+     "search:read.users",
+     "channels:history",
+     "groups:history",
+     "mpim:history",
+     "im:history",
+     "channels:read",
+     "groups:read",
+     "im:read",
+     "mpim:read",
+     "chat:write",
+     "users:read",
+     "users:read.email",
+     "files:read",
+     "files:write",
+     "canvases:read",
+     "canvases:write",
+     "reactions:read",
+     "reactions:write",
+     "lists:read",
+     "lists:write",
+     "emoji:read"
+    ],
+    "help": "Slack's hosted server takes only an app you own. Vyre fills in its settings.",
+    "guide": {
+     "manifest": {
+      "label": "Make your Slack app with its settings filled in",
+      "link": "https://api.slack.com/apps?new_app=1&manifest_json=",
+      "json": {
+       "display_information": {
+        "name": "Vyre",
+        "description": "Lets your Vyre box read and post in Slack as you."
+       },
+       "oauth_config": {
+        "redirect_urls": [
+         "{redirect}"
+        ],
+        "scopes": {
+         "user": [
+          "search:read.public",
+          "search:read.private",
+          "search:read.mpim",
+          "search:read.im",
+          "search:read.files",
+          "search:read.users",
+          "channels:history",
+          "groups:history",
+          "mpim:history",
+          "im:history",
+          "channels:read",
+          "groups:read",
+          "im:read",
+          "mpim:read",
+          "chat:write",
+          "users:read",
+          "users:read.email",
+          "files:read",
+          "files:write",
+          "canvases:read",
+          "canvases:write",
+          "reactions:read",
+          "reactions:write",
+          "lists:read",
+          "lists:write",
+          "emoji:read"
+         ]
+        }
+       },
+       "settings": {
+        "is_mcp_enabled": true,
+        "org_deploy_enabled": false,
+        "socket_mode_enabled": false,
+        "token_rotation_enabled": false
+       }
+      }
+     },
+     "steps": [
+      "Open the first link. Pick your workspace and click Create.",
+      "In the new app, if a Model Context Protocol (MCP) switch is off, turn it on. It is under Agents & AI Apps.",
+      "Open Basic Information and copy the Client ID and Client Secret. Enter them here.",
+      "Vyre then prints a Slack address. Open it and click Allow. Slack sends your browser to a page that cannot load; that is expected. Copy the full address from the browser bar and paste it here."
+     ]
+    }
+   },
+   "token": {
+    "label": "User OAuth token",
+    "help": "Make the app with the first link, install it to your workspace, and copy the User OAuth Token that starts with xoxp-. Untested against Slack's server: use the sign-in first.",
+    "guide": {
+     "manifest": {
+      "label": "Make your Slack app with its settings filled in",
+      "link": "https://api.slack.com/apps?new_app=1&manifest_json=",
+      "json": {
+       "display_information": {
+        "name": "Vyre",
+        "description": "Lets your Vyre box read and post in Slack as you."
+       },
+       "oauth_config": {
+        "redirect_urls": [
+         "{redirect}"
+        ],
+        "scopes": {
+         "user": [
+          "search:read.public",
+          "search:read.private",
+          "search:read.mpim",
+          "search:read.im",
+          "search:read.files",
+          "search:read.users",
+          "channels:history",
+          "groups:history",
+          "mpim:history",
+          "im:history",
+          "channels:read",
+          "groups:read",
+          "im:read",
+          "mpim:read",
+          "chat:write",
+          "users:read",
+          "users:read.email",
+          "files:read",
+          "files:write",
+          "canvases:read",
+          "canvases:write",
+          "reactions:read",
+          "reactions:write",
+          "lists:read",
+          "lists:write",
+          "emoji:read"
+         ]
+        }
+       },
+       "settings": {
+        "is_mcp_enabled": true,
+        "org_deploy_enabled": false,
+        "socket_mode_enabled": false,
+        "token_rotation_enabled": false
+       }
+      }
+     },
+     "steps": [
+      "Open the link. Pick your workspace and click Create.",
+      "Open OAuth & Permissions, click Install to Workspace and allow it.",
+      "Copy the User OAuth Token (it starts with xoxp-) and enter it here."
+     ]
+    }
+   },
+   "note": "Two things are unconfirmed until one real run: that Slack accepts this redirect address, and that the MCP switch is set by the settings link."
+  },
+  {
+   "id": "zoom",
+   "label": "Zoom",
+   "group": "work",
+   "url": "https://mcp.zoom.us/mcp/zoom/streamable",
+   "transport": "http",
+   "who": "Zoom accounts that can make apps (an account admin or a developer role). You make one small app first.",
+   "evidence": "docs",
+   "oauth": {
+    "client": "byo",
+    "port": 53682,
+    "scopes": [
+     "meeting:read:search",
+     "meeting:read:assets",
+     "meeting:write:meeting",
+     "meeting:update:meeting",
+     "cloud_recording:read:list_user_recordings",
+     "cloud_recording:read:content"
+    ],
+    "help": "Zoom's own hosted server takes only an app you make in your Zoom account.",
+    "guide": {
+     "links": [
+      {
+       "label": "Zoom App Marketplace",
+       "url": "https://marketplace.zoom.us/"
+      }
+     ],
+     "steps": [
+      "Sign in at marketplace.zoom.us. Click Develop, then Build App, choose General App, and click Create.",
+      "On Basic Information, keep the management type User-managed. Under OAuth, set the OAuth redirect URL and the OAuth allow list to {redirect} .",
+      "Copy the development Client ID and Client Secret shown on that page. Enter them here.",
+      "On the Scopes page click Add Scopes and add: meeting:read:search, meeting:read:assets, meeting:write:meeting, meeting:update:meeting, cloud_recording:read:list_user_recordings, cloud_recording:read:content.",
+      "Open Local Test and click Add App Now to allow it on your own account. Then finish the sign-in here."
+     ]
+    }
+   },
+   "note": "Zoom's docs say loopback redirects work for PKCE apps; a real run confirms it for a development-mode app."
+  },
+  {
    "id": "notion",
    "label": "Notion",
    "group": "work",
@@ -78,7 +285,20 @@
    "oauth": {
     "client": "byo",
     "help": "In Asana open app.asana.com/0/my-apps, make an MCP app, copy its client ID and secret into a vault item, and add http://127.0.0.1:53682/connect/callback as its redirect address.",
-    "port": 53682
+    "port": 53682,
+    "guide": {
+     "links": [
+      {
+       "label": "Asana developer console",
+       "url": "https://app.asana.com/0/my-apps"
+      }
+     ],
+     "steps": [
+      "Open the link and click Create new app. Choose MCP app.",
+      "Under OAuth, add {redirect} as the redirect URL.",
+      "Copy the Client ID and Client Secret and enter them here."
+     ]
+    }
    },
    "note": "Asana's discovery names a server with no registration, so this uses your own app."
   },
@@ -471,7 +691,20 @@
    "oauth": {
     "client": "byo",
     "help": "In HubSpot open Development, create an app with a user-level install, copy its client ID and secret into a vault item, and add http://127.0.0.1:53682/connect/callback as its redirect address.",
-    "port": 53682
+    "port": 53682,
+    "guide": {
+     "links": [
+      {
+       "label": "HubSpot developer home",
+       "url": "https://developers.hubspot.com/"
+      }
+     ],
+     "steps": [
+      "Open the link and sign in with the account you want to connect. Create an app on the developer platform.",
+      "Under Auth, add {redirect} as the redirect URL and choose a user-level install.",
+      "Copy the Client ID and Client Secret and enter them here."
+     ]
+    }
    },
    "note": "HubSpot's server has no automatic registration."
   },
@@ -601,6 +834,29 @@
      "issuer": "https://accounts.google.com",
      "authorize_uri": "https://accounts.google.com/o/oauth2/v2/auth",
      "token_uri": "https://oauth2.googleapis.com/token"
+    },
+    "guide": {
+     "links": [
+      {
+       "label": "Create a Google Cloud project",
+       "url": "https://console.cloud.google.com/projectcreate"
+      },
+      {
+       "label": "Turn on the Google Mail MCP API",
+       "url": "https://console.cloud.google.com/apis/library/gmailmcp.googleapis.com"
+      },
+      {
+       "label": "Make the OAuth client",
+       "url": "https://console.cloud.google.com/apis/credentials"
+      }
+     ],
+     "steps": [
+      "Your Google Workspace account must be in Google's Workspace Developer Preview Program. Personal Gmail cannot use this server.",
+      "Make a Cloud project and turn on the API in the second link.",
+      "Set up the OAuth consent screen (Internal is simplest for a Workspace). Then in Credentials click Create credentials, OAuth client ID, and choose Desktop app.",
+      "Copy the Client ID and Client Secret and enter them here.",
+      "If the consent screen stays in Testing and is External, Google ends the sign-in after 7 days. Set it to Internal, or publish it."
+     ]
     }
    },
    "note": "Google's server has no send tool: it drafts."
@@ -626,6 +882,29 @@
      "issuer": "https://accounts.google.com",
      "authorize_uri": "https://accounts.google.com/o/oauth2/v2/auth",
      "token_uri": "https://oauth2.googleapis.com/token"
+    },
+    "guide": {
+     "links": [
+      {
+       "label": "Create a Google Cloud project",
+       "url": "https://console.cloud.google.com/projectcreate"
+      },
+      {
+       "label": "Turn on the Google Calendar MCP API",
+       "url": "https://console.cloud.google.com/apis/library/calendarmcp.googleapis.com"
+      },
+      {
+       "label": "Make the OAuth client",
+       "url": "https://console.cloud.google.com/apis/credentials"
+      }
+     ],
+     "steps": [
+      "Your Google Workspace account must be in Google's Workspace Developer Preview Program. Personal Gmail cannot use this server.",
+      "Make a Cloud project and turn on the API in the second link.",
+      "Set up the OAuth consent screen (Internal is simplest for a Workspace). Then in Credentials click Create credentials, OAuth client ID, and choose Desktop app.",
+      "Copy the Client ID and Client Secret and enter them here.",
+      "If the consent screen stays in Testing and is External, Google ends the sign-in after 7 days. Set it to Internal, or publish it."
+     ]
     }
    }
   },
@@ -649,6 +928,29 @@
      "issuer": "https://accounts.google.com",
      "authorize_uri": "https://accounts.google.com/o/oauth2/v2/auth",
      "token_uri": "https://oauth2.googleapis.com/token"
+    },
+    "guide": {
+     "links": [
+      {
+       "label": "Create a Google Cloud project",
+       "url": "https://console.cloud.google.com/projectcreate"
+      },
+      {
+       "label": "Turn on the Google Drive MCP API",
+       "url": "https://console.cloud.google.com/apis/library/drivemcp.googleapis.com"
+      },
+      {
+       "label": "Make the OAuth client",
+       "url": "https://console.cloud.google.com/apis/credentials"
+      }
+     ],
+     "steps": [
+      "Your Google Workspace account must be in Google's Workspace Developer Preview Program. Personal Gmail cannot use this server.",
+      "Make a Cloud project and turn on the API in the second link.",
+      "Set up the OAuth consent screen (Internal is simplest for a Workspace). Then in Credentials click Create credentials, OAuth client ID, and choose Desktop app.",
+      "Copy the Client ID and Client Secret and enter them here.",
+      "If the consent screen stays in Testing and is External, Google ends the sign-in after 7 days. Set it to Internal, or publish it."
+     ]
     }
    }
   },
@@ -667,12 +969,6 @@
   }
  ],
  "unavailable": [
-  {
-   "id": "slack",
-   "label": "Slack",
-   "status": "unavailable",
-   "reason": "Slack's server accepts only directory or internal apps that a workspace admin approves. It has no automatic registration."
-  },
   {
    "id": "dropbox",
    "label": "Dropbox",
