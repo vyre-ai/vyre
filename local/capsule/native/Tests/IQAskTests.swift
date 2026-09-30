@@ -243,6 +243,34 @@ let iqAskSuite = Suite("iq ask") { t in
         t.eq(r, ["true", "true", "no reply yet", "true", "You drive a blue Volvo XC40.", "no draft"])
     }
 
+    t.test("streaming: a draft is clipped to 4,000 characters, and the ndjson buffer is capped at 2 MB") {
+        let v = FakeVyred(); v.start(); defer { v.stop() }
+        let seen = Gate()
+        v.draftTool("memory.ask") { input, draft in
+            draft(VJ.s(input["id"]), String(repeating: "a", count: 5000))
+            seen.wait()
+            return ["answer": "ok", "answer_id": "a9", "confidence": 0.9, "abstained": false, "known": [Any](), "sources": [Any]()]
+        }
+        let n: Int? = t.wait(timeout: 40) {
+            let m = await MainActor.run { () -> CapsuleModel in let m = model(v); m.willShow(front: nil); return m }
+            _ = await until { m.vyred.isUp && m.vyred.has("memory.ask") }
+            await MainActor.run { m.text = "which car do I drive" }
+            _ = await MainActor.run { m.handleReturn(command: false) }
+            _ = await until { m.iqDraft != nil }
+            let n = await MainActor.run { m.iqDraft?.count ?? -1 }
+            seen.open()
+            _ = await until { m.reply?.finished == true }
+            await MainActor.run { m.didHide() }
+            return n
+        }
+        t.eq(n, 4000)
+        let s = NDJSONState()
+        t.eq(s.feed(Data("{\"draft\":1}\n{\"dr".utf8)).count, 1, "whole lines only")
+        t.eq(s.feed(Data(count: NDJSONState.limit + 1)).count, 0)
+        t.ok(s.overflowed, "a line past 2 MB with no newline stops the reader")
+        t.eq(s.feed(Data("{}\n".utf8)).count, 0, "and it stays stopped")
+    }
+
     t.test("streaming: a draft is removed when the answer abstains") {
         let v = FakeVyred(); v.start(); defer { v.stop() }
         let seen = Gate()

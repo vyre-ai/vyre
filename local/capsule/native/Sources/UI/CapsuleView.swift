@@ -221,24 +221,23 @@ struct CapsuleView: View {
             // Vyre IQ's draft (C13, the draft lines of memory.ask): dimmed, with "Checking", until the answer replaces it.
             if model.pending, model.replyText.isEmpty, let draft = model.iqDraft {
                 VStack(alignment: .leading, spacing: 4) {
-                    Text("Checking").font(Theme.subtitle).foregroundColor(Theme.stone)
+                    Text("Checking").font(Theme.subtitle).foregroundColor(DeepGlass.ink)
                     Text(draft)
-                        .font(Theme.reply).foregroundColor(Theme.stone)
+                        .font(Theme.reply).italic().foregroundColor(DeepGlass.ink)
                         .lineSpacing(Theme.lineGap(Tokens.TypeScale.read))
                         .fixedSize(horizontal: false, vertical: true)
                         .frame(maxWidth: .infinity, alignment: .leading)
                 }
-                .answerPlate()
+                .opacity(DeepGlass.draftOpacity)
                 .accessibilityLabel("Checking: \(draft)")
             }
             if !model.replyText.isEmpty {
                 Text(markdown(model.shownReplyText))
-                    .font(Theme.reply).foregroundColor(Theme.bone)
+                    .font(Theme.reply).foregroundColor(DeepGlass.ink)
                     .lineSpacing(Theme.lineGap(Tokens.TypeScale.read))
                     .textSelection(.enabled)
                     .fixedSize(horizontal: false, vertical: true)
                     .frame(maxWidth: .infinity, alignment: .leading)
-                    .answerPlate()
             }
             if let m = model.askedMemory, !model.replyText.isEmpty, !m.sources.isEmpty || m.corrected {
                 MemorySources(memory: m, expanded: $model.memoryExpanded, who: model.identities, assistant: model.assistantName, openSource: { model.openSource($0) })

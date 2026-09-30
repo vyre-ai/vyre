@@ -25,6 +25,8 @@ import Foundation
 
 /// memory.ask's answer as the Capsule shows it.
 public struct IQAnswer: Sendable, Equatable {
+    /// The most of a draft the card keeps.
+    public static let draftLimit = 4000
     /// The card's words.
     public var text: String
     /// The sources, for the chip under the answer (nil when there are none to show).
@@ -159,7 +161,7 @@ extension CapsuleModel {
         var r = await vyred.call("memory.ask", input, timeout: 30) { [weak self] did, text in
             Task { @MainActor [weak self] in
                 guard let self, did == id, self.pending, self.asked == words else { return }
-                self.iqDraft = VJ.nonEmpty(text)
+                self.iqDraft = VJ.nonEmpty(String(text.prefix(IQAnswer.draftLimit)))
             }
         }
         // An older vyred may not know stream/id: retry once, plain (ADR 0034, capsule-pro's brief).

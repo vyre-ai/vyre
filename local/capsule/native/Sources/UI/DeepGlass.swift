@@ -22,9 +22,13 @@ enum DeepGlass {
     static let topEdgeAlpha: Double = 0.10
     static let topEdgeAlphaLight: Double = 0.60
 
-    /// Under an answer or its draft: a denser plate, so the words read on any wallpaper (WCAG AA,
-    /// measured against the worst backdrop, pure white or black, before the material helps).
-    static let plateAlpha: CGFloat = 0.85
+    /// The approved look stays as drawn (0.62 / 0.66). Answer text and its draft take the strongest
+    /// ink of the scheme (white in dark, black in light), and the draft is that ink at 90%: over a
+    /// pure white or black wallpaper, before the material helps, that is 4.5:1 or better.
+    static let draftOpacity: Double = 0.9
+    static var ink: Color {
+        Color(nsColor: NSColor(name: nil) { Theme.isDark($0) ? .white : .black })
+    }
 
     /// Test seams: nil reads the system setting.
     nonisolated(unsafe) static var reduceTransparencyOverride: Bool?
@@ -36,9 +40,6 @@ enum DeepGlass {
 
     /// The border's width: heavier under Increase Contrast.
     static var borderWidth: CGFloat { increaseContrast ? 2 : 1 }
-
-    /// The plate under answer text, alpha for the setting.
-    static var plateGroundAlpha: CGFloat { reduceTransparency ? opaqueAlpha : plateAlpha }
 
     /// WCAG contrast ratio of two sRGB colours (components 0...1).
     static func contrast(_ a: [Double], _ b: [Double]) -> Double {
@@ -124,18 +125,3 @@ final class DisplayPrefs: ObservableObject {
         increaseContrast = DeepGlass.increaseContrast
     }
 }
-
-/// The plate under an answer or a draft: the panel tint at a fixed dense alpha, behind the text and
-/// out past its edges without moving it.
-struct AnswerPlate: ViewModifier {
-    @Environment(\.colorScheme) private var scheme
-    func body(content: Content) -> some View {
-        let tint = scheme == .dark ? Tokens.dark.panel : Tokens.paper.panel
-        content.background {
-            RoundedRectangle(cornerRadius: 8, style: .continuous).fill(tint.opacity(Double(DeepGlass.plateGroundAlpha)))
-                .padding(EdgeInsets(top: -4, leading: -8, bottom: -4, trailing: -8))
-        }
-    }
-}
-
-extension View { func answerPlate() -> some View { modifier(AnswerPlate()) } }

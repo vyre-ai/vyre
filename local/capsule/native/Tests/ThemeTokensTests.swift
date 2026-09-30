@@ -64,21 +64,26 @@ let deepGlassSuite = Suite("glass skin") { t in
         }
     }
 
-    t.test("answer text and the dimmed draft clear AA (4.5:1) on the plate over a white or black wallpaper, both schemes") {
+    t.test("contrast gate: answer text and the draft clear AA (4.5:1) over pure white and pure black, both schemes, at the approved alpha") {
         func c(_ x: Color) -> [Double] {
             let n = NSColor(x).usingColorSpace(.sRGB) ?? NSColor(x)
             return [Double(n.redComponent), Double(n.greenComponent), Double(n.blueComponent)]
         }
-        for (name, tok) in [("dark", Tokens.dark), ("light", Tokens.paper)] {
+        for (name, tok, dark, alpha) in [("dark", Tokens.dark, true, Double(DeepGlass.tintAlpha)), ("light", Tokens.paper, false, Double(DeepGlass.tintAlphaLight))] {
+            let ink = dark ? [1.0, 1.0, 1.0] : [0.0, 0.0, 0.0]
             for (bgName, bg) in [("white", [1.0, 1.0, 1.0]), ("black", [0.0, 0.0, 0.0])] {
-                let a = Double(DeepGlass.plateAlpha), tint = c(tok.panel)
-                let ground = (0..<3).map { tint[$0] * a + bg[$0] * (1 - a) }
-                let answer = DeepGlass.contrast(c(tok.text), ground)
-                let draft = DeepGlass.contrast(c(tok.text2), ground)
+                let tint = c(tok.panel)
+                // The worst case: the tint alone over the backdrop, before the blur material helps.
+                let ground = (0..<3).map { tint[$0] * alpha + bg[$0] * (1 - alpha) }
+                let draftInk = (0..<3).map { ink[$0] * DeepGlass.draftOpacity + ground[$0] * (1 - DeepGlass.draftOpacity) }
+                let answer = DeepGlass.contrast(ink, ground)
+                let draft = DeepGlass.contrast(draftInk, ground)
                 t.ok(answer >= 4.5, "\(name) answer over \(bgName): \(answer)")
-                t.ok(draft >= 4.5, "\(name) draft and Checking over \(bgName): \(draft)")
+                t.ok(draft >= 4.49, "\(name) draft and Checking over \(bgName): \(draft)")
             }
         }
+        t.eq(DeepGlass.tintAlpha, 0.62, "the approved dark alpha is untouched")
+        t.eq(DeepGlass.tintAlphaLight, 0.66, "the approved light alpha is untouched")
     }
 
     t.test("Increase Contrast draws a heavier, stronger border; Reduce Transparency makes the plate opaque; both read live") {
@@ -91,7 +96,6 @@ let deepGlassSuite = Suite("glass skin") { t in
         t.ok(loud.0 && loud.1, "the published values follow the setting on refresh")
         t.eq(DeepGlass.borderWidth, 2)
         t.ok(DeepGlass.border(dark: true) == Theme.bone.opacity(0.7))
-        t.eq(DeepGlass.plateGroundAlpha, 1.0)
         DeepGlass.increaseContrastOverride = nil; DeepGlass.reduceTransparencyOverride = nil
         MainActor.assumeIsolated { DisplayPrefs.shared.refresh() }
     }

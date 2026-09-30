@@ -381,6 +381,9 @@ public final class CapsuleModel: ObservableObject {
     /// Search again for the same words (an extension's commands changed).
     func refresh() { search() }
 
+    /// How long a slow provider's old rows stay before they are dropped (tests lengthen it).
+    var staleAfter: TimeInterval = 0.3
+
     func search() {
         token += 1
         let t = token
@@ -452,7 +455,7 @@ public final class CapsuleModel: ObservableObject {
         stale = pending
         scheduleAuto(q, token: t)
         staleTimer?.invalidate()
-        staleTimer = Timer.scheduledTimer(withTimeInterval: 0.3, repeats: false) { [weak self] _ in
+        staleTimer = Timer.scheduledTimer(withTimeInterval: staleAfter, repeats: false) { [weak self] _ in
             MainActor.assumeIsolated {
                 guard let self, t == self.token, !self.stale.isEmpty else { return }
                 for id in self.stale { self.partial[id] = nil }

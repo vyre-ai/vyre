@@ -180,10 +180,15 @@ struct ChunkDecoder {
 
 /// Splits an ndjson body arriving in pieces into whole lines.
 final class NDJSONState: @unchecked Sendable {
+    /// A line no longer than this; more with no newline means a broken or hostile stream.
+    static let limit = 2 << 20
     var isNDJSON = false
+    private(set) var overflowed = false
     private var buf = Data()
     func feed(_ d: Data) -> [Data] {
+        if overflowed { return [] }
         buf.append(d)
+        if buf.count > Self.limit && buf.firstIndex(of: 0x0A) == nil { overflowed = true; buf = Data(); return [] }
         var out: [Data] = []
         while let i = buf.firstIndex(of: 0x0A) {
             let line = Data(buf[buf.startIndex..<i])
