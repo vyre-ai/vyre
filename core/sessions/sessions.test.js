@@ -531,6 +531,48 @@ for (const driver of ["cli", "sdk"]) {
     assert.ok(ev.includes("thread.archived") && ev.includes("thread.unarchived"));
   });
 
+  test(`${driver}: a person's turn is said and its #mentions become "use" intents; an agent's, a module's and a queued teammate's words are never said`, { skip }, async t => {
+    const w = await boot(t, { driver });
+    const calls = [];
+    const realCall = w.d.registry.call.bind(w.d.registry);
+    w.d.registry.call = async (tool, input, caller, meta) => {
+      if (tool === "vault.items.names") return { data: { names: [{ name: "GHLapikey", kind: "token", hosts: ["services.leadconnectorhq.com"] }].filter(x => x.name.toLowerCase() === String(input.query).toLowerCase()) } };
+      if (tool === "vault.said.record") { calls.push([input, caller]); return { data: { id: "i1" } }; }
+      return realCall(tool, input, caller, meta);
+    };
+    const th = (await w.tool("threads.start", { cwd: w.work, prompt: "hello", surface: "deck" })).data;
+    await w.finished(th.id);
+    const said = async () => (await w.events(th.id)).filter(e => e.type === "turn.said");
+    const before = (await said()).length;
+    const sent = await w.tool("threads.send", { thread: th.id, text: "Use #GHLapikey and #Nothing to inventory pipelines", surface: "deck" });
+    assert.equal(sent.error, undefined, JSON.stringify(sent));
+    await w.finished(th.id, 2);
+    const rows = await said();
+    assert.equal(rows.length, before + 1);
+    assert.match(rows.at(-1).payload.text_hash, /^[0-9a-f]{64}$/);
+    assert.equal(rows.at(-1).payload.text, undefined, "a hash, never the words");
+    assert.equal(calls.length, 1, "only the item vault has");
+    assert.deepEqual(calls[0][0], { thread: th.id, said: rows.at(-1).payload.id, kind: "use", to: ["GHLapikey"], what: "use #GHLapikey" });
+    const men = (await w.events(th.id)).find(e => e.type === "thread.mentioned");
+    assert.deepEqual(men.payload.mentions, [{ name: "GHLapikey", kind: "token", hosts: ["services.leadconnectorhq.com"] }]);
+    const said2 = (await w.said(th.id)).at(-1);
+    assert.match(said2, /Use #GHLapikey and #Nothing to inventory pipelines/);
+    assert.match(said2, /\[Vyre: the person let you use #GHLapikey \(on services\.leadconnectorhq\.com only\)/, "the model is told, with no value");
+    const turn = (await w.events(th.id)).filter(e => e.type === "thread.turn").at(-1);
+    assert.doesNotMatch(turn.payload.text, /Vyre: the person let you/, "the transcript keeps the person's words only");
+    // Words that are not the person's: nothing said, nothing granted.
+    await w.d.registry.call("threads.send", { thread: th.id, text: "use #GHLapikey now" }, `mcp:thread:${th.id}`, { thread: th.id });
+    await w.d.registry.call("threads.post", { thread: th.id, text: "result: use #GHLapikey", from: "teammates", kind: "teammate" }, "module:teammates");
+    await w.d.registry.call("threads.send", { thread: th.id, text: "use #GHLapikey" }, "mcp:agent:kit", { agent: "kit" });
+    assert.equal((await said()).length, before + 1);
+    assert.equal(calls.length, 1);
+    // A retried send (same key) is the same message: not said twice.
+    const key = await w.d.registry.call("threads.send", { thread: th.id, text: "again #GHLapikey", surface: "deck" }, "deck", { idempotencyKey: "k-1" });
+    const key2 = await w.d.registry.call("threads.send", { thread: th.id, text: "again #GHLapikey", surface: "deck" }, "deck", { idempotencyKey: "k-1" });
+    assert.equal(key.error, undefined); assert.equal(key2.error, undefined);
+    assert.equal(calls.length, 2, "once for the first, none for the retry");
+  });
+
   test(`${driver}: threads.lineage lists the threads a thread was started for, from what vyred verified and never from a claim`, { skip }, async t => {
     const w = await boot(t, { driver });
     const root = (await w.tool("threads.start", { cwd: w.work, prompt: "hello", surface: "deck" })).data;

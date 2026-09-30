@@ -25,6 +25,7 @@ import { findSubreaper, groupAlive, usesSpawner } from "../sessions/spawn.js";
 import { openThreadSocket, DIR as THREAD_SOCKETS } from "../daemon/threadsock.js";
 import { keyUuid } from "../modules/idempotency.js";
 import { rules as floorRules } from "../harness/rules.js";
+import { personTurn, mentionsOf, matchItems, textHash, MENTION_NOTE } from "./said.js";
 import { threadStatus, LIVE_STATUSES } from "../../lib/thread-status.js";
 import { load as loadSdk, install as installSdk, installed as sdkInstalled, autoInstallAllowed, abortInstalls } from "../sessions/sdk.js";
 import { Leases } from "./lease.js";
@@ -1161,7 +1162,7 @@ export class Switchboard {
    * @param {string} id @param {string} text @param {{ uuid?: string, steer?: boolean }} [o]
    * @returns {{ uuid: string, turn: string|null }}
    */
-  write(id, text, { uuid = crypto.randomUUID(), steer = false, images = null } = {}) {
+  write(id, text, { uuid = crypto.randomUUID(), steer = false, images = null, note = "" } = {}) {
     const st = this.live.get(id);
     this.touch(id, st);
     this.db.prepare("INSERT OR IGNORE INTO threads_sent (uuid, thread, at) VALUES (?,?,?)").run(uuid, id, Date.now());
@@ -1169,7 +1170,7 @@ export class Switchboard {
     if (steer) {
       st.steers.set(uuid, String(text));
       this.db.prepare("INSERT OR REPLACE INTO threads_steers (uuid, thread, text, images, at) VALUES (?,?,?,?,?)").run(uuid, id, String(text), imagesJson(images), Date.now());
-      st.proc.write(userLine(text, id, { uuid, priority: "next", ...(images ? { images } : {}) }));
+      st.proc.write(userLine(note ? `${text}\n\n${note}` : text, id, { uuid, priority: "next", ...(images ? { images } : {}) }));
       return { uuid, turn: st.turn };
     }
     st.turn = `${id}:${++st.turnNo}`;
@@ -1178,7 +1179,7 @@ export class Switchboard {
     // `!` shell lines the person ran since the last message go with this one, as Claude Code does.
     const shells = this.shellContext.get(id);
     if (shells) this.shellContext.delete(id);
-    st.proc.write(userLine(shells ? `${shells.join("\n")}\n\n${text}` : text, id, { uuid, ...(images ? { images } : {}) }));
+    st.proc.write(userLine(`${shells ? `${shells.join("\n")}\n\n` : ""}${text}${note ? `\n\n${note}` : ""}`, id, { uuid, ...(images ? { images } : {}) }));
     this.set(id, { status: "working" });
     const rec = this.record(id);
     this.emit("thread.turn", { turn: st.turn, uuid, text: cut(text, 2000) }, id, rec ? rec.project : null);
@@ -1235,6 +1236,9 @@ export class Switchboard {
    * send could adopt? What threads.send on the box checks before it asks a Mac.
    * @param {string} id
    */
+  /** Whether a message uuid was already handed to a session (a retried send is the same message). @param {string} uuid */
+  sentBefore(uuid) { return Boolean(this.db.prepare("SELECT 1 FROM threads_sent WHERE uuid = ?").get(uuid) || this.db.prepare("SELECT 1 FROM threads_inbox WHERE uuid = ?").get(uuid)); }
+
   knows(id) {
     return this.live.has(id) || Boolean(this.record(id)) || Boolean(findSession(this.deps.transcripts || [], id));
   }
@@ -1289,7 +1293,29 @@ export class Switchboard {
    * `wait` (the person at the box, through the link) never takes the keyboard: while another
    * surface holds it, the words are queued as for a terminal.
    */
-  async send(id, text, surface, { queue = true, wait = false, mode = "steer", uuid = undefined, kind = undefined, images = null } = {}) {
+  /**
+   * A person's own turn, before any provider sees it: the said row (turn.said) and the vault items
+   * it mentions, each recorded as a "use" intent (vault.said.record) bound to this thread. Vault
+   * absent or failing means no mentions, never a blocked send. Only for a caller personTurn admits.
+   * @param {string} id @param {string} text @param {string} surface @param {string} uuid
+   */
+  async ingress(id, text, surface, uuid) {
+    // A terminal session Vyre has not adopted yet has no record; it is adopted by the send that follows.
+    const rec = this.record(id) || { project: null };
+    this.emit("turn.said", { id: uuid, surface, at: Date.now(), text_hash: textHash(text) }, id, rec.project);
+    const names = mentionsOf(text);
+    if (!names.length) return [];
+    const items = await matchItems(names, (tool, input) => this.deps.call(tool, input));
+    const granted = [];
+    for (const it of items) {
+      const r = await this.deps.call("vault.said.record", { thread: id, said: uuid, kind: "use", to: [it.name], what: `use #${it.name}` }).catch(() => null);
+      if (r && !r.error) granted.push(it);
+    }
+    if (granted.length) this.emit("thread.mentioned", { uuid, mentions: granted }, id, rec.project);
+    return granted;
+  }
+
+  async send(id, text, surface, { queue = true, wait = false, mode = "steer", uuid = undefined, kind = undefined, images = null, note = "" } = {}) {
     // The same message again (a retry whose first answer was lost): already handed over or queued.
     if (uuid) {
       const was = /** @type {any} */ (this.db.prepare("SELECT thread FROM threads_sent WHERE uuid = ?").get(uuid))
@@ -1321,11 +1347,11 @@ export class Switchboard {
     const busy = Boolean(st && st.turn) && ["working", "waiting"].includes(String(this.must(id).status));
     if (busy && mode === "queue") return this.queue(id, text, surface, null, { owned: true, uuid, kind, images });
     if (busy) {
-      const w = this.write(id, text, { steer: true, ...(uuid ? { uuid } : {}), images });
+      const w = this.write(id, text, { steer: true, ...(uuid ? { uuid } : {}), images, note });
       this.emit("thread.sent", { text: cut(text, 2000), surface, uuid: w.uuid, via: "steer" }, id, rec.project);
       return { sent: true, steered: true, thread: id, uuid: w.uuid, turn: w.turn };
     }
-    const w = this.write(id, text, { ...(uuid ? { uuid } : {}), images });
+    const w = this.write(id, text, { ...(uuid ? { uuid } : {}), images, note });
     this.emit("thread.sent", { text: cut(text, 2000), surface, uuid: w.uuid, ...(kind ? { kind } : {}), ...(images ? { images: images.length } : {}) }, id, rec.project);
     return { sent: true, thread: id };
   }
@@ -2368,8 +2394,11 @@ export default {
         const had = (i.model || i.effort) ? sb.record(i.thread) : null;
         if (i.model && had && had.model !== i.model) await sb.switchModel(i.thread, i.model);
         if (i.effort && had && had.effort !== i.effort) await sb.switchEffort(i.thread, i.effort);
-        return sb.send(i.thread, i.text, surfaceOf(i, caller), { queue: queuesFor(caller), wait: fromLink(caller), mode: i.mode === "queue" ? "queue" : "steer", images: imagesOf(i.images),
-          ...(idempotencyKey ? { uuid: keyUuid(String(caller || ""), String(idempotencyKey)) } : {}) });
+        const uuid = idempotencyKey ? keyUuid(String(caller || ""), String(idempotencyKey)) : crypto.randomUUID();
+        // The person's own words, and only theirs: said, and the credentials they let this thread use.
+        const heard = personTurn(caller) && sb.knows(i.thread) && !sb.sentBefore(uuid) ? await sb.ingress(i.thread, String(i.text), surfaceOf(i, caller), uuid) : [];
+        return sb.send(i.thread, i.text, surfaceOf(i, caller), { queue: queuesFor(caller), wait: fromLink(caller), mode: i.mode === "queue" ? "queue" : "steer", images: imagesOf(i.images), uuid,
+          ...(heard.length ? { note: MENTION_NOTE(heard) } : {}) });
       });
 
     tool("threads.list", "Headless threads: running ones and those active in the last day (all: every one), newest first, with who holds each, how many questions are open, and live (a terminal has it open now).",
