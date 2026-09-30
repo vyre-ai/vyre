@@ -15,11 +15,12 @@ export function h(doc, tag, attrs, ...kids) {
 }
 
 /** @typedef {{ begin: () => void, copy: (text: string, button: HTMLElement) => Promise<boolean>|boolean, setName: (text: string) => void, claim: () => void, confirmWords: () => void, denyWords: () => void, markSaved: () => void,
- *   continueToAi: () => void, continueToTailscale: () => void, connectTailscale: () => void, startAi: (provider: string) => void, submitAiCode: (id: string, code: string) => void }} Actions */
+ *   continueToAi: () => void, continueToTailscale: () => void, connectTailscale: () => void, startAi: (provider: string) => void, submitAiCode: (id: string, code: string) => void,
+ *   continueToDevices: () => void, addPhone: () => void, drawRing: (slot: HTMLElement) => void }} Actions */
 
 /** Per root: the region elements and the key each was last built for. @type {WeakMap<object, { regions: Record<string, any>, keys: Record<string, string>, stage: string|null }>} */
 const memory = new WeakMap();
-const REGIONS = ["head", "words", "naming", "ai", "tailscale", "log"];
+const REGIONS = ["head", "words", "naming", "ai", "tailscale", "devices", "log"];
 
 /**
  * @param {import("./flow.js").FlowState} s
@@ -77,6 +78,11 @@ export function render(s, ctx) {
       el("p", { class: "lbl" }, "Your AI"),
       el("h1", { tabindex: "-1" }, "Sign in to your AI"),
       el("p", { class: "lead" }, "Each one signs in with its own provider's page, on any browser. Vyre never sees your password. One is enough to go on; you can add more later."),
+    ];
+    if (s.stage === "devices") return [
+      el("p", { class: "lbl" }, "Devices"),
+      el("h1", { tabindex: "-1" }, "Add your phone"),
+      el("p", { class: "lead" }, "Your phone pairs by scanning a ring with the Vyre app's camera. The ring works once, for five minutes, and this page can make only one."),
     ];
     if (s.stage === "tailscale") return [
       el("p", { class: "lbl" }, "Tailscale"),
@@ -192,9 +198,30 @@ export function render(s, ctx) {
       kids.push(el("div", { class: "actions" }, button(t.busy ? "Getting the link" : "Connect my server", "primary", () => actions.connectTailscale())));
       if (t.loginUrl) kids.push(el("p", { class: "hint" }, "Open ", el("a", { href: t.loginUrl, target: "_blank", rel: "noopener noreferrer" }, "Tailscale's sign-in page"), " and sign in. This page notices when your server joins."));
     }
+    if (ts && ts.state === "connected" && t.address && t.address.phase === "serving") kids.push(el("div", { class: "actions" }, button("Continue", "primary", () => actions.continueToDevices())));
     if (t.error) kids.push(el("p", { class: "warn", role: "alert" }, t.error));
     return kids;
   });
+
+  // ---- devices: the phone's ring, drawn from a ticket that never reaches the DOM as text ----
+  const dv = s.devices;
+  const dvKey = s.stage === "devices" ? `d:${dv.phone}|${dv.error}|${dv.paired}` : "none";
+  const rebuiltDevices = region("devices", dvKey, () => {
+    if (s.stage !== "devices") return [];
+    const address = s.named && (s.named.address || s.named.name);
+    if (dv.phone === "idle" || dv.phone === "failed" || dv.phone === "minting") return [
+      el("div", { class: "actions" }, button(dv.phone === "minting" ? "Making the ring" : "Add my phone", "primary", () => actions.addPhone())),
+      dv.error ? el("p", { class: "warn", role: "alert" }, dv.error) : null,
+    ];
+    if (dv.phone === "showing") return [
+      el("div", { class: "ring-slot", "data-role": "ring", role: "img", "aria-label": "The ring to scan with the Vyre app on your phone" }),
+      el("p", { class: "status", role: "status" }, el("span", { class: "ring", "aria-hidden": "true" }), "Waiting for your phone"),
+      el("p", { class: "note" }, "Open the Vyre app on your phone and point its camera at the ring."),
+    ];
+    if (dv.phone === "paired") return [el("p", { class: "lead" }, `${dv.paired || "Your phone"} is connected.`), el("p", { class: "hint" }, `Finish on your phone at ${address}.`)];
+    return [el("p", { class: "warn", role: "alert" }, "The ring expired. You can add your phone from your server's own page once setup is done.")];
+  });
+  if (rebuiltDevices && dvKey.startsWith("d:showing")) { const slot = findByRole(m.regions.devices, "ring"); if (slot) actions.drawRing(slot); }
 
   // ---- log: the install as the server tells it, as plain text ----
   region("log", `${s.lines.length}|${s.lines[s.lines.length - 1] || ""}`, () => s.lines.length ? [

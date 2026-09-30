@@ -35,7 +35,7 @@ export function suggestName(text) {
 }
 
 /**
- * @typedef {{ stage: "start"|"install"|"found"|"named"|"tailscale"|"ai"|"stopped", installLine: string, code: string, lines: string[],
+ * @typedef {{ stage: "start"|"install"|"found"|"named"|"tailscale"|"ai"|"devices"|"stopped", installLine: string, code: string, lines: string[],
  *   box: null | { name: string, fingerprint: string, words: string[], handle: string|null },
  *   confirm: "none"|"pending"|"matched",
  *   channel: "none"|"connecting"|"ready"|"failed",
@@ -44,6 +44,7 @@ export function suggestName(text) {
  *   tailscale: { status: null | { state: string, login: string|null, tailnet: string|null, tailnetKind: string|null, ip: string|null }, loginUrl: string|null, busy: boolean, error: string|null,
  *     address: null | { phase: string, why: string|null } },
  *   ai: { accounts: { id: string, provider: string, flow: string|null, step: "starting"|"code"|"url"|"waiting"|"done"|"failed", url: string|null, code: string|null, paste: boolean, error: string|null }[] },
+ *   devices: { phone: "idle"|"minting"|"showing"|"paired"|"expired"|"failed", expiresAt: number, error: string|null, paired: string|null },
  *   error: null | { code: string, message: string }, expiresAt: number, listening: boolean }} FlowState
  * @typedef {{ createSetupKey: Function, setupCode: Function, resolveSetup: Function, setupWords: Function, mailboxReader: Function }} SetupClient
  * @typedef {{ call: (tool: string, input?: object) => Promise<any>, close: () => void }} BoxChannel
@@ -63,18 +64,21 @@ export function createFlow(o) {
   /** @type {FlowState} */
   const blankTs = () => ({ status: null, loginUrl: null, busy: false, error: null, address: null });
   const blankAi = () => ({ accounts: [] });
+  const blankDevices = () => ({ phone: "idle", expiresAt: 0, error: null, paired: null });
   const blankNaming = () => ({ input: "", check: null, checking: false, claiming: false, error: null });
-  let state = { stage: "start", installLine: "", code: "", lines: [], box: null, confirm: "none", channel: "none", naming: blankNaming(), named: null, tailscale: blankTs(), ai: blankAi(), error: null, expiresAt: 0, listening: false };
+  let state = { stage: "start", installLine: "", code: "", lines: [], box: null, confirm: "none", channel: "none", naming: blankNaming(), named: null, tailscale: blankTs(), ai: blankAi(), devices: blankDevices(), error: null, expiresAt: 0, listening: false };
   let run = 0;
   /** @type {BoxChannel|null} */
   let chan = null;
   /** What openBox needs once the person has compared the words. @type {null | { mine: number, offer: any, key: any, secret: Uint8Array, name: string }} */
   let pending = null;
   let checkSeq = 0;
+  /** The pairing ticket, held here only so the ring can be drawn from it: never in state, the DOM or a log. */
+  let ticket = null;
   const closeChan = () => { try { chan?.close(); } catch { /* gone */ } chan = null; };
   const emit = () => o.onChange?.(state);
   const set = patch => { state = { ...state, ...patch }; emit(); };
-  const fail = code => { run++; closeChan(); pending = null; set({ stage: "stopped", listening: false, error: { code, message: MESSAGES[code] || MESSAGES.relay } }); };
+  const fail = code => { run++; closeChan(); pending = null; ticket = null; set({ stage: "stopped", listening: false, error: { code, message: MESSAGES[code] || MESSAGES.relay } }); };
 
   /** The install line, exactly as it must be run: the variable goes on sh, the reader of the script. */
   const lineFor = code => `curl -fsSL ${installUrl} | VYRE_CODE=${code} sh`;
@@ -88,8 +92,8 @@ export function createFlow(o) {
       code = await o.client.setupCode(secret, key.spki);
     } catch { return fail("key"); }
     if (mine !== run) return;
-    closeChan(); checkSeq++; pending = null;
-    set({ stage: "install", installLine: lineFor(code), code, lines: [], box: null, confirm: "none", channel: "none", naming: blankNaming(), named: null, tailscale: blankTs(), ai: blankAi(), error: null, expiresAt: now() + TTL_MS, listening: true });
+    closeChan(); checkSeq++; pending = null; ticket = null;
+    set({ stage: "install", installLine: lineFor(code), code, lines: [], box: null, confirm: "none", channel: "none", naming: blankNaming(), named: null, tailscale: blankTs(), ai: blankAi(), devices: blankDevices(), error: null, expiresAt: now() + TTL_MS, listening: true });
     followMailbox(mine, key, secret);
     waitForBox(mine, key, secret);
     // The hour is the box's; the page stops listening when it is over.
@@ -328,9 +332,53 @@ export function createFlow(o) {
     } catch (e) { upd({ step: "failed", paste: false, error: String(/** @type {Error} */ (e).message).slice(0, 200) }); }
   }
 
+  // ---- Devices: a phone pairs by scanning a ring drawn from the one ticket this page may make ----
+
+  /** Once the address is live: on to devices. */
+  function continueToDevices() {
+    if (state.stage !== "tailscale" || !state.tailscale.address || state.tailscale.address.phase !== "serving") return;
+    set({ stage: "devices", devices: blankDevices() });
+  }
+
+  /** "Add my phone": make the ticket (the setup key may make exactly one, good for five minutes) and wait for a phone to pair with it. */
+  async function addPhone() {
+    if (!chan || state.stage !== "devices" || (state.devices.phone !== "idle" && state.devices.phone !== "failed")) return;
+    const mine = run;
+    set({ devices: { ...state.devices, phone: "minting", error: null } });
+    let baseline = 0;
+    try {
+      // Anything already on record does not count: only a pairing after this moment.
+      const before = await chan.events("relay.paired", 0);
+      baseline = before.reduce((n, e) => Math.max(n, e.id), 0);
+      const r = await chan.call("relay.pair.ticket");
+      if (mine !== run) return;
+      ticket = String(r.ticket);
+      set({ devices: { ...state.devices, phone: "showing", expiresAt: Number(r.expiresAt) || now() + 5 * 60_000 } });
+    } catch (e) { if (mine === run) set({ devices: { ...state.devices, phone: "failed", error: String(/** @type {Error} */ (e).message).slice(0, 200) } }); return; }
+    watchPairing(mine, baseline);
+  }
+
+  /** Follows the one ticket until a phone pairs with it or it runs out. */
+  async function watchPairing(mine, baseline) {
+    while (mine === run && state.stage === "devices" && state.devices.phone === "showing") {
+      if (now() >= state.devices.expiresAt) { ticket = null; return set({ devices: { ...state.devices, phone: "expired" } }); }
+      try {
+        const got = await chan.events("relay.paired", baseline);
+        if (mine !== run) return;
+        if (got.length) {
+          ticket = null;
+          const name = got[0].payload && got[0].payload.name ? String(got[0].payload.name).slice(0, 60) : null;
+          return set({ devices: { ...state.devices, phone: "paired", paired: name } });
+        }
+      } catch { /* a dropped poll: ask again */ }
+      await sleep(Math.min(pollMs, Math.max(50, state.devices.expiresAt - now())));
+    }
+  }
+
   return {
     get state() { return state; },
     setName, claim, confirmWords, denyWords, markSaved,
+    continueToDevices, addPhone, currentTicket: () => ticket,
     continueToAi, continueToTailscale, connectTailscale, startAi, submitAiCode,
     /** Start (or start again): a new key and a new code; the old one is forgotten. */
     begin,

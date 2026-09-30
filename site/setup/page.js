@@ -7,6 +7,7 @@ import { utf8 } from "./relay/bytes.js";
 import { connectSetup } from "./box.js";
 import { createFlow } from "./flow.js";
 import { render } from "./ui.js";
+import { ticketRingSvg } from "./deck/js/phone-code.js";
 
 const RELAY = "wss://relay.vyre.run";
 const root = document.getElementById("setup");
@@ -23,6 +24,15 @@ const actions = {
   connectTailscale: () => flow.connectTailscale(),
   startAi: p => flow.startAi(p),
   submitAiCode: (id, code) => flow.submitAiCode(id, code),
+  continueToDevices: () => flow.continueToDevices(),
+  addPhone: () => flow.addPhone(),
+  // The ring is drawn from the ticket as SVG shapes only; the ticket is never put in the page as text.
+  drawRing(slot) {
+    const t = flow.currentTicket();
+    if (!t) return;
+    const svg = new DOMParser().parseFromString(ticketRingSvg(t, { size: 280 }), "image/svg+xml").documentElement;
+    slot.replaceChildren(document.importNode(svg, true));
+  },
   async copy(text, button) {
     try { await navigator.clipboard.writeText(text); button.textContent = "Copied"; }
     catch { button.textContent = "Select the text and copy it"; }

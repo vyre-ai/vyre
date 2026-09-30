@@ -57,6 +57,8 @@ test("page connection: connectSetup is admitted with the page's key, calls the a
   const st = await box.call("relay.setup.status");
   assert.equal(st.state, "paired");
   assert.equal(st.words, (await client.setupWords(offer.box, secret)).join(" "), "the words the page computes are the ones the box holds");
+  assert.deepEqual(await box.events("relay.paired", 0), [], "an allowed event type answers (nothing has paired yet)");
+  await assert.rejects(box.events("vault.changed", 0), e => e.status === 404, "any other event type is refused");
   await assert.rejects(box.call("vault.list"), e => e.status >= 400);
   await assert.rejects(box.call("relay.setup.end"), e => e.status >= 400);
 

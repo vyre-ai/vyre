@@ -79,6 +79,12 @@ for f in "$src"/relay/client/*.js; do
   cp "$f" "$here/site/setup/relay/"
 done
 cp "$src/deck/css/tokens.css" "$here/site/setup/tokens.css"
+# The phone's ring (the same drawing the Deck uses for Wink) and the renderer it needs, kept in the folder shape
+# its own imports expect.
+rm -rf "$here/site/setup/deck"
+mkdir -p "$here/site/setup/deck/js" "$here/site/setup/deck/vendor/vyrecode"
+cp "$src/deck/js/phone-code.js" "$here/site/setup/deck/js/"
+cp "$src"/deck/vendor/vyrecode/*.js "$here/site/setup/deck/vendor/vyrecode/"
 # The two fonts, self-hosted so the page loads nothing from another origin.
 rm -rf "$here/site/setup/fonts"
 mkdir -p "$here/site/setup/fonts"
@@ -92,7 +98,7 @@ rm -f "$src/box/Vyre-mac.sha256"
 # build.json), so a clean checkout stamps clean however often this runs.
 if git -C "$src" rev-parse --verify HEAD >/dev/null 2>&1; then
   commit=$(git -C "$src" rev-parse HEAD)
-  if [ -n "$(git -C "$src" status --porcelain --untracked-files=no -- . ':!site/_redirects' ':!site/install.sh' ':!site/box' ':!site/setup/relay' ':!site/setup/tokens.css' ':!site/setup/fonts' ':!build.json' ':!box/Vyre-mac.sha256')" ]; then dirty=true; else dirty=false; fi
+  if [ -n "$(git -C "$src" status --porcelain --untracked-files=no -- . ':!site/_redirects' ':!site/install.sh' ':!site/box' ':!site/setup/relay' ':!site/setup/tokens.css' ':!site/setup/fonts' ':!site/setup/deck' ':!build.json' ':!box/Vyre-mac.sha256')" ]; then dirty=true; else dirty=false; fi
   printf '{"version":"%s","commit":"%s","dirty":%s}\n' \
     "$(node -p 'require(process.argv[1]).version' "$src/package.json")" "$commit" "$dirty" >"$src/build.json"
 else

@@ -341,8 +341,10 @@ function stepsBox(script = {}) {
       f.polls++;
       return f.provider === "claude" ? { step: f.done ? "done" : "url" } : { step: f.polls >= 2 ? "done" : "code" };
     }
+    if (tool === "relay.pair.ticket") { box.calls.push([tool, input]); if (st.ticketMade) throw Object.assign(new Error("the setup page has already made its one pairing ticket"), { code: "denied" }); st.ticketMade = true; return { ticket: "AAECAwQFBgc", expiresAt: Date.now() + (st.ticketMs ?? 300_000), connected: true }; }
     return base(tool, input);
   };
+  box.events = async (type, since) => { box.calls.push(["events", { type, since }]); return (st.paired || []).filter(e => e.type === type && e.id > since); };
   return box;
 }
 async function atNamed(t, box) {
@@ -464,6 +466,92 @@ test("steps: the screens render, links are real https anchors only where the box
   flow.stop();
 });
 
+async function atDevices(t, box, extra = {}) {
+  const flow = await atNamed(t, box);
+  flow.continueToAi(); flow.startAi("codex");
+  await until(() => flow.state.ai.accounts[0] && flow.state.ai.accounts[0].step === "done");
+  flow.continueToTailscale();
+  box.st.ts = "connected"; box.st.claimPhase = "serving";
+  await until(() => flow.state.tailscale.address && flow.state.tailscale.address.phase === "serving");
+  flow.continueToDevices();
+  return flow;
+}
+
+test("devices: one ticket, drawn but never written as text, and a pairing after it moves the page on", async t => {
+  const box = stepsBox();
+  const flow = await atDevices(t, box);
+  assert.equal(flow.state.stage, "devices");
+  assert.equal(flow.currentTicket(), null, "no ticket until the person asks");
+  await flow.addPhone();
+  assert.equal(flow.state.devices.phone, "showing");
+  assert.equal(flow.currentTicket(), "AAECAwQFBgc", "held only for drawing");
+  assert.ok(!JSON.stringify(flow.state).includes("AAECAwQFBgc"), "the ticket is not in the state the screen is built from");
+  // a phone pairs: an event after the moment the ticket was made
+  box.st.paired = [{ id: 7, type: "relay.paired", payload: { name: "Alex's iPhone", device: "d1" } }];
+  await until(() => flow.state.devices.phone === "paired");
+  assert.equal(flow.state.devices.paired, "Alex's iPhone");
+  assert.equal(flow.currentTicket(), null, "the ticket is dropped once it is spent");
+  await flow.addPhone();
+  assert.equal(box.calls.filter(c => c[0] === "relay.pair.ticket").length, 1, "only one ticket");
+  flow.stop();
+});
+
+test("devices: an earlier pairing does not count, and a ring that is not scanned in time says it expired", async t => {
+  const box = stepsBox({ ticketMs: 120, paired: [{ id: 3, type: "relay.paired", payload: { name: "old" } }] });
+  const flow = await atDevices(t, box);
+  await flow.addPhone();
+  await until(() => flow.state.devices.phone === "expired");
+  assert.equal(flow.currentTicket(), null);
+  assert.equal(flow.state.devices.paired, null, "the earlier event was not taken for this pairing");
+  flow.stop();
+
+  const failing = stepsBox({ ticketMade: true });
+  const f2 = await atDevices(t, failing);
+  await f2.addPhone();
+  assert.equal(f2.state.devices.phone, "failed");
+  assert.match(f2.state.devices.error, /already made its one pairing ticket/);
+  f2.stop();
+});
+
+test("devices: the screen draws the ring into its slot only while showing, and never prints the ticket", async t => {
+  const box = stepsBox();
+  const doc = new FakeDoc(), root = doc.createElement("main");
+  const drawn = [];
+  let flow;
+  const actions = { begin() {}, copy() {}, setName() {}, claim() {}, confirmWords: () => flow.confirmWords(), denyWords() {}, markSaved: () => flow.markSaved(),
+    continueToAi: () => flow.continueToAi(), continueToTailscale: () => flow.continueToTailscale(), connectTailscale() {}, startAi: p => flow.startAi(p), submitAiCode() {},
+    continueToDevices: () => flow.continueToDevices(), addPhone: () => flow.addPhone(), drawRing: slot => drawn.push(slot.attrs["data-role"]) };
+  const w = await world(t);
+  flow = createFlow({ client: clientWith(async () => offer()), relay: w.base, sleep: fastSleep, pollMs: 5, debounceMs: 1, connect: async () => box,
+    onChange: s => render(s, { doc: /** @type {any} */ (doc), root: /** @type {any} */ (root), actions }) });
+  await flow.begin();
+  await until(() => flow.state.stage === "found");
+  flow.confirmWords();
+  await until(() => flow.state.naming.check);
+  await flow.claim(); flow.markSaved(); flow.continueToAi(); flow.startAi("codex");
+  await until(() => flow.state.ai.accounts[0] && flow.state.ai.accounts[0].step === "done");
+  flow.continueToTailscale();
+  box.st.ts = "connected"; box.st.claimPhase = "serving";
+  await until(() => flow.state.tailscale.address && flow.state.tailscale.address.phase === "serving");
+  root.all().find(e => e.tag === "button" && e.children.some(c => c.value === "Continue")).listeners.click();
+  assert.equal(flow.state.stage, "devices");
+  assert.deepEqual(drawn, []);
+  root.all().find(e => e.tag === "button" && e.children.some(c => c.value === "Add my phone")).listeners.click();
+  await until(() => drawn.length === 1);
+  assert.deepEqual(drawn, ["ring"]);
+  assert.ok(!root.textContent.includes("AAECAwQFBgc"), "the ticket is not printed");
+  await new Promise(r => setTimeout(r, 40));
+  assert.equal(drawn.length, 1, "drawn once, not on every poll");
+  flow.stop();
+});
+
+test("site: the phone's ring is plain SVG shapes: no script, style, link or handler for the page's CSP to refuse", async () => {
+  const { ticketRingSvg } = await import("../../deck/js/phone-code.js");
+  const svg = ticketRingSvg("AAECAwQFBgc", { size: 280 });
+  assert.ok(svg.startsWith("<svg"));
+  assert.ok(!/<script|<style|style=|href=|xlink|on\w+=/i.test(svg));
+});
+
 // ---- a DOM just big enough to check what the screen makes ----
 class FakeEl {
   constructor(tag, doc) { this.tag = tag; this.doc = doc; this.attrs = {}; this.children = []; this.text = null; this.listeners = {}; }
@@ -499,7 +587,7 @@ test("site: the relay client copied the way build-site.sh does it loads on its o
   for (const name of ["createSetupKey", "setupCode", "resolveSetup", "setupWords", "mailboxReader"]) assert.equal(typeof m[name], "function", name);
   // and the page's own files import nothing at all except the client (page.js) and each other
   const page = fs.readFileSync(path.join(path.dirname(url.fileURLToPath(import.meta.url)), "page.js"), "utf8");
-  assert.deepEqual([...page.matchAll(/^import .* from "([^"]+)"/gm)].map(x => x[1]).sort(), ["./box.js", "./flow.js", "./relay/bytes.js", "./relay/client.js", "./relay/setup.js", "./relay/webcrypto.js", "./ui.js"]);
+  assert.deepEqual([...page.matchAll(/^import .* from "([^"]+)"/gm)].map(x => x[1]).sort(), ["./box.js", "./deck/js/phone-code.js", "./flow.js", "./relay/bytes.js", "./relay/client.js", "./relay/setup.js", "./relay/webcrypto.js", "./ui.js"]);
 });
 
 test("site: the setup page loads nothing from another origin, and its headers say so", async () => {
