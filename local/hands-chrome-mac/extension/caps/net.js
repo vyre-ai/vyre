@@ -220,7 +220,24 @@ async function neutralize(ctx, t, sessionId, type, eg) {
   }
   if (ctx.cdp.resumed) ctx.cdp.resumed(sessionId); // either way it is not the fallback's to resume
 }
+/** The browser's own reports about the guard's probe requests (see probeGuard): which frame's probe a request is, a CSP block, a service worker's answer. @param {any} eg */
+function probeNetwork(eg, method, p, session) {
+  if (!eg.probeReq) return;
+  if (/^Network\.(responseReceived|loadingFailed)$/.test(method) && (eg.netSeen || (eg.netSeen = [])).length < 12 && eg.probeReq.has(keyOf(session, p.requestId))) eg.netSeen.push({ m: method.slice(8), sw: p.response?.fromServiceWorker, br: p.blockedReason, et: p.errorText });
+  const key = keyOf(session, p.requestId);
+  if (method === "Network.requestWillBeSent") {
+    const url = String(p.request?.url || ""), at = url.indexOf(PROBE_PATH + eg.nonce + "_");
+    if (at < 0) return;
+    const n = /^\d+/.exec(url.slice(at + PROBE_PATH.length + eg.nonce.length + 1));
+    if (n) eg.probeReq.set(key, { n: Number(n[0]), type: p.type === "XHR" ? "Fetch" : String(p.type || "") });
+  } else if (method === "Network.responseReceived") {
+    const r = eg.probeReq.get(key); if (r && p.response && p.response.fromServiceWorker === true) eg.probeSw.add(r.n);
+  } else if (method === "Network.loadingFailed") {
+    const r = eg.probeReq.get(key); if (r && p.blockedReason === "csp") eg.probeSeen.add(`${r.n}:${r.type}`);
+  }
+}
 function handle(ctx, t, method, p, session) {
+  { const egP = /** @type {any} */ (t).egress; if (egP && egP.nonce && /^Network\.(requestWillBeSent|responseReceived|loadingFailed)$/.test(method)) probeNetwork(egP, method, p, session); }
   if (method === "Target.attachedToTarget") {
     { const eg0 = /** @type {any} */ (t).egress; if (eg0) (eg0.attached || (eg0.attached = [])).length < 12 && eg0.attached.push({ type: String(p.targetInfo?.type || ""), url: String(p.targetInfo?.url || "").slice(0, 60), wait: !!p.waitingForDebugger, guardTarget: isGuardTarget(p.targetInfo), known: t.sessions.has(p.sessionId), from: session ? "child" : "top" }); }
     if (p.sessionId && isGuardTarget(p.targetInfo) && !t.sessions.has(p.sessionId)) {
@@ -438,29 +455,33 @@ async function probeGuard(ctx, t, eg, frame) {
   for (const f of readable) if (targets[0] !== f && f.origin && eg.allowed.has(f.origin) && targets.length < 8) targets.push(f);
   eg.nonce = eg.nonce || Math.random().toString(36).slice(2, 10) + Date.now().toString(36);
   const expect = (/** @type {number} */ n) => [`${n}:Image`, `${n}:Fetch`];
+  eg.probeReq = new Map(); eg.probeSw = new Set(); eg.probeClaim = new Set();
   for (let attempt = 0; attempt < 2; attempt++) {
     eg.probeSeen = new Set();
     try {
-      // All frames at once: each waits ~120 ms for a CSP report, and a page with many frames must not pay that per frame.
+      // All frames at once, so a page with many frames does not pay the wait per frame.
       const results = await Promise.all(targets.map(async (f, n) => {
-        // A page's own Content-Security-Policy may stop the probe before the network layer sees it (img-src, connect-src): that request could not have left either, so a
-        // securitypolicyviolation for the probe's URL counts as that type being covered.
-        const fire = `(async () => { const o = location.origin; if (!/^https?:/.test(o)) return { ok: 0 }; const u = o + ${JSON.stringify(PROBE_PATH + eg.nonce + "_" + n)}; const csp = []; const on = e => { try { if (String(e.blockedURI || "").indexOf(u) === 0) csp.push(/^img/.test(e.effectiveDirective) ? "Image" : /^connect/.test(e.effectiveDirective) ? "Fetch" : e.effectiveDirective); } catch (x) {} }; document.addEventListener("securitypolicyviolation", on); try { new Image().src = u; } catch (e) {} try { fetch(u, { mode: "no-cors", cache: "no-store" }).catch(function () {}); } catch (e) {} await new Promise(function (r) { setTimeout(r, 120); }); document.removeEventListener("securitypolicyviolation", on); var sw = false; try { sw = !!(navigator.serviceWorker && navigator.serviceWorker.controller); } catch (x) {} return { ok: 1, csp: csp, sw: sw }; })()`;
-        const r = await runIn(ctx, t.tab, f, fire, { returnByValue: true, awaitPromise: true });
+        const fire = `(() => { const o = location.origin; if (!/^https?:/.test(o)) return 0; const u = o + ${JSON.stringify(PROBE_PATH + eg.nonce + "_" + n)}; try { new Image().src = u; } catch (e) {} try { fetch(u, { mode: "no-cors", cache: "no-store" }).catch(function () {}); } catch (e) {} let sw = 0; try { sw = navigator.serviceWorker && navigator.serviceWorker.controller ? 1 : 0; } catch (e) {} return 1 + sw; })()`;
+        const r = await runIn(ctx, t.tab, f, fire, { returnByValue: true });
         return r && r.result && r.result.value;
       }));
       for (const [n, v] of results.entries()) {
-        if (!(v === 1 || (v && v.ok === 1))) { if (n === 0) return false; eg.probeSkipped = (eg.probeSkipped || 0) + 1; targets[n] = null; continue; }
-        if (v && Array.isArray(v.csp)) for (const c of v.csp) eg.probeSeen.add(`${n}:${c}`);
-        // A frame a service worker controls: its requests go through the worker's own network, where Chrome offers no Fetch interception (measured: the page's Image is not paused). The browser-level
-        // rules, confirmed above, are what stop them (measured with Fetch off), so the frame counts as covered by those and the probe does not ask Fetch to see it.
-        if (v && v.sw === true) { for (const ty of ["Image", "Fetch"]) eg.probeSeen.add(`${n}:${ty}`); (eg.swFrames || (eg.swFrames = [])).push(n); }
+        if (v !== 1 && v !== 2) { if (n === 0) return false; eg.probeSkipped = (eg.probeSkipped || 0) + 1; targets[n] = null; } else if (v === 2) eg.probeClaim.add(n);
       }
     } catch { return false; /* a frame that cannot run the probe is not a frame the guard can vouch for */ }
-    const need = targets.flatMap((f, n) => (f ? expect(n) : []));
+    // What counts as live for a frame, all of it generated by the BROWSER (never by the page): both probe requests paused by Fetch; or a probe request the browser says its page's CSP blocked
+    // (Network.loadingFailed blockedReason "csp" for that type: it could not leave either); or a service worker answers the frame: the browser says so for a probe (Network.responseReceived
+    // fromServiceWorker) OR the frame CLAIMS a controller (page JS, spoofable, and the ServiceWorker CDP domain reports nothing through chrome.debugger in Chrome 154, measured). Such a frame has
+    // no Fetch interception to probe and rests on the browser-level rules alone, narrowed to the first party and required to be TESTED (see egressGuard), so a false claim only makes it stricter.
+    const swOf = (/** @type {number} */ n) => eg.probeSw.has(n) || eg.probeClaim.has(n);
+    const covered = (/** @type {number} */ n) => expect(n).every(k => eg.probeSeen.has(k)) || swOf(n);
     const end = Date.now() + (attempt ? 1000 : 400);
-    while (Date.now() < end && !need.every(k => eg.probeSeen.has(k))) await new Promise(r => setTimeout(r, 15));
-    if (need.every(k => eg.probeSeen.has(k))) return true;
+    const done = () => targets.every((f, n) => !f || covered(n));
+    while (Date.now() < end && !done()) await new Promise(r => setTimeout(r, 15));
+    if (done()) {
+      eg.swFrames = targets.map((f, n) => (f && swOf(n) && !expect(n).every(k => eg.probeSeen.has(k)) ? n : -1)).filter(n => n >= 0);
+      return true;
+    }
     if (attempt === 0) await syncFetch(ctx, t); // ask again once
   }
   return false;
@@ -625,6 +646,7 @@ export async function egressGuard(ctx, tab, frame = null, opts = {}) {
     const wsHosts = [...new Set([...eg.first].map(o => { try { return new URL(o).hostname; } catch { return ""; } }).filter(Boolean))];
     const b = await ctx.dnr.block({ tab, allowOrigins: [...eg.allowed], initiatorHosts: [...new Set(hosts)], wsHosts });
     eg.rule = b && b.ids && b.ids.length ? b.ids : b && b.id != null ? b.id : null;
+    eg.dnrTested = !!(b && b.tested); eg.dnrArgs = { initiatorHosts: [...new Set(hosts)], wsHosts };
     eg.contained = b && b.ok ? "full" : "partial";
     eg.containedWhy = b && !b.ok ? b.why : undefined;
     // UNTIL the stage has proved zero requests for a worker from a pristine iframe, a mid-script frame, window.open and a script rewriting its allow list, the browser-level rule is REQUIRED:
@@ -648,7 +670,24 @@ export async function egressGuard(ctx, tab, frame = null, opts = {}) {
   // PROOF OF LIFE: the interception is confirmed live in the frame the script will run in (an Image and a fetch to an unroutable host are paused) or the script does not run.
   if (!eg.noFetch && !(await probeGuard(ctx, t, eg, frame))) {
     if (--eg.depth <= 0) { const rule = eg.rule; t.egress = null; if (ctx.cdp && typeof ctx.cdp.setPause === "function") await ctx.cdp.setPause(tab, false).catch(() => {}); if (ctx.dnr) await ctx.dnr.unblock(rule ?? null); await syncFetch(ctx, t); }
-    throw refuse("blocked", "the network guard could not be confirmed live in this frame (a probe request was not intercepted), so a script is not run on it" + (opts && opts.diag ? ` [diag ${JSON.stringify({ paused: eg.pausedCount || 0, seen: [...(eg.probeSeen || [])], nonce: eg.nonce, skipped: eg.probeSkipped || 0, sessions: [...t.sessions].length, failed: eg.failedSessions || [], rule: eg.rule })}]` : ""));
+    throw refuse("blocked", "the network guard could not be confirmed live in this frame (a probe request was not intercepted), so a script is not run on it" + (opts && opts.diag ? ` [diag ${JSON.stringify({ paused: eg.pausedCount || 0, seen: [...(eg.probeSeen || [])], netSeen: eg.netSeen || [], sw: [...(eg.probeSw || [])], skipped: eg.probeSkipped || 0, sessions: [...t.sessions].length, failed: eg.failedSessions || [], rule: eg.rule })}]` : ""));
+  }
+  // A frame a service worker controls has no Fetch interception (so no size cap or third-party budget either): it rests on the browser-level rules alone. Those must have been proven by
+  // testMatchOutcome (tab and tab-less rule; only an unpacked extension has it, so on a packed one such a frame is refused), and for the guard's window the rules allow the FIRST PARTY only,
+  // so a script cannot send an unbounded amount to a third party on the page's list.
+  if (eg.swFrames && eg.swFrames.length && !eg.noFetch) {
+    const fail = async (/** @type {string} */ why) => {
+      if (--eg.depth <= 0) { const rule = eg.rule; t.egress = null; if (ctx.cdp && typeof ctx.cdp.setPause === "function") await ctx.cdp.setPause(tab, false).catch(() => {}); if (ctx.dnr) await ctx.dnr.unblock(rule ?? null); await syncFetch(ctx, t); }
+      throw refuse("blocked", why);
+    };
+    if (!eg.dnrTested) await fail("a service worker answers this page's requests and this browser cannot test the network rules against it, so a script is not run on it");
+    const a = eg.dnrArgs || { initiatorHosts: [], wsHosts: [] };
+    // The wide rules come off FIRST: two block rules of the same priority would hide the new one from testMatchOutcome (only one is reported), and the script has not started.
+    await ctx.dnr.unblock(eg.rule ?? null); eg.rule = null;
+    const narrow = await ctx.dnr.block({ tab, allowOrigins: [...eg.first], initiatorHosts: a.initiatorHosts, wsHosts: a.wsHosts });
+    if (!(narrow && narrow.ok && narrow.tested)) await fail("the network rules for a page with a service worker could not be confirmed, so a script is not run on it");
+    eg.rule = narrow.ids;
+    eg.allowed = new Set(eg.first);
   }
   let done = false;
   return {
