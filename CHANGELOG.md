@@ -4,6 +4,10 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+- Lumen: typing is lighter. The first paint of a search is a slice of 8 rows and the rest follow on
+  the next turn; one letter searches only what is already on this Mac (no Spotlight, mail or
+  document search) and shows at most 20 rows; and a newer key cancels the slow search an older one
+  started instead of letting it finish.
 - Lumen: a module's "needs" answer that names a credential (a need id, optionally the vendor) now opens
   "Add your ..." in the panel; once it is saved, the command asks again. One without a credential is
   shown as its words.

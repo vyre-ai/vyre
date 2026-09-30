@@ -110,6 +110,8 @@ public final class CapsuleModel: ObservableObject {
     /// The module command open in the box (ViewMode.swift), and where commands come from.
     @Published var viewSession: ViewSession?
     var viewProvider: ViewCommandsProvider?
+    /// The searches of slow providers in flight for the words now in the box (cancelled by the next key).
+    var searchTasks: [Task<Void, Never>] = []
     /// Text put in the box other than a key at a time (a paste, a drop, dictation, undo): tags typed inside
     /// it tag nothing (TagMode.swift).
     var pastedSpans = PasteSpans()
@@ -491,15 +493,28 @@ public final class CapsuleModel: ObservableObject {
         for p in providers + extensionProviders {
             if let now = p as? ImmediateResults { partial[p.id] = now.resultsNow(for: q) }
         }
-        publish()
-        for p in providers + extensionProviders where !(p is ImmediateResults) {
-            Task { @MainActor in
+        // The first paint is a slice of 8 rows; the rest follow on the next turn, so a wide search (one
+        // letter) puts its first rows up at once and does not make a keystroke wait for all of them.
+        publish(limit: Self.firstSlice)
+        DispatchQueue.main.async { [weak self] in
+            MainActor.assumeIsolated { if let self, t == self.token { self.publish() } }
+        }
+        // A newer key makes the older searches moot: they are cancelled, not left to finish.
+        searchTasks.forEach { $0.cancel() }
+        searchTasks = []
+        // One letter searches only what is already here: the quick, local providers. The slow ones
+        // (Spotlight, mail, documents) wait for a second letter.
+        let slow = providers + extensionProviders
+        let oneLetter = q.normalized.count < 2
+        for p in slow where !(p is ImmediateResults) {
+            if oneLetter { partial[p.id] = nil; continue }
+            searchTasks.append(Task { @MainActor in
                 let rows = await p.results(for: q)
-                guard t == self.token else { return }
+                guard !Task.isCancelled, t == self.token else { return }
                 self.partial[p.id] = rows
                 self.stale.remove(p.id)
                 self.publish()
-            }
+            })
         }
         let pending = Set((providers + extensionProviders).filter { !($0 is ImmediateResults) }.map(\.id))
         stale = pending
@@ -515,7 +530,12 @@ public final class CapsuleModel: ObservableObject {
         }
     }
 
-    func publish() {
+    /// How many rows the first paint of a search holds.
+    static let firstSlice = 8
+    /// The most rows a one-letter search shows.
+    static let oneLetterRows = 20
+
+    func publish(limit: Int? = nil) {
         let q = Query(text, front: front)
         var all = partial.values.flatMap { $0 }
         if let b = bindings { all = all.map { b.decorated($0, begin: { [weak self] e in await MainActor.run { self?.beginBinding(e) } }) } }
@@ -549,6 +569,17 @@ public final class CapsuleModel: ObservableObject {
         // One Vyre group: rows from Vyre's own providers (Glass, watch) join the destinations.
         if let i = out.firstIndex(where: { $0.section == .vyre }) { asks.items += out.remove(at: i).items }
         if asksFirst(q, top: best) { out.insert(asks, at: out.first?.section == .answer ? 1 : 0) } else { out.append(asks) }
+        // A slice, or the one-letter cap: rows past it are left for the next publish (or not shown at all).
+        let cap = limit ?? (q.normalized.count < 2 ? Self.oneLetterRows : nil)
+        if let cap {
+            var left = cap
+            out = out.compactMap { g in
+                var g = g
+                g.items = Array(g.items.prefix(max(0, left)))
+                left -= g.items.count
+                return g.items.isEmpty ? nil : g
+            }
+        }
         let keep = current?.id
         groups = out
         if let keep, let i = flat.firstIndex(where: { $0.id == keep }) { selected = i } else { selected = 0 }
