@@ -114,6 +114,12 @@ settings.request, ff7fceb6 no-friction settings, wip docs) are NOT pushed yet. O
 that run (gh run view <id> --log-failed); fix any failures; push once and wait for node.yml to end
 (pushing again cancels it); when green send the range 258c0ac6..HEAD to reviewer-2 and the
 integrator (onto stage/0.2 when cut). Background watcher task from the old session is gone.
+CI run 36658909399 FAILED on 4 tests (node 22 and 24): (a) daemon "a real directory under deck/ with
+no index.html of its own still gets the shell" (likely my htmlWithBuild on wantsShell, or the
+fixtures refusal: check first); (b) docs-check "the real docs tree is clean" and (c) terms "the
+committed index is what the code and the pages make" (probably the new lib files / spec folder
+need docs or a terms index regen: run the terms index script); (d) google DWD test (check whether it
+fails on origin/main too before touching it).
 Needs: assistant+vault the P17 intent kind "setting" and gate.said.match (CHAT.md 07:16).
 
 ## Done
