@@ -49,13 +49,15 @@ let iconAsyncSuite = Suite("icons off the main thread") { t in
         t.eq(r, ["true"])
     }
 
-    t.test("the panel can be drawn once while hidden and stays hidden") {
+    t.test("the panel is warmed once, far off screen, and is hidden again") {
         MainActor.assumeIsolated {
             let v = FakeVyred()
             let m = CapsuleModel(home: vyScratch("prewarm-\(UUID().uuidString.prefix(6))"), vyred: VyredClient(socket: v.socket), providers: [])
             let p = PanelController(model: m)
             p.prewarm()
-            t.ok(!p.isShown)
+            t.ok(!p.isShown, "the warm-up is not a shown Capsule")
+            RunLoop.main.run(until: Date().addingTimeInterval(0.5))
+            t.ok(!p.panel.isVisible, "and it is gone again"); t.eq(p.panel.alphaValue, 1)
         }
     }
 }

@@ -73,7 +73,9 @@ final class PanelController: NSObject, NSWindowDelegate {
         observe = model.objectWillChange.sink { [weak self] in DispatchQueue.main.async { self?.fit() } }
     }
 
-    var isShown: Bool { panel.isVisible }
+    /// True for the moment the prewarm has the panel on screen, far away and clear: not a shown Capsule.
+    private var warming = false
+    var isShown: Bool { panel.isVisible && !warming }
 
     func toggle(front: FrontApp? = nil) {
         if isShown { hide() } else { show(front: front ?? Self.frontApp()) }
@@ -85,6 +87,7 @@ final class PanelController: NSObject, NSWindowDelegate {
     }
 
     func show(front: FrontApp?) {
+        warming = false
         // A second open within a moment of closing is the same gesture landing twice.
         if Date().timeIntervalSince(hiddenAt) > 30 { model.reset() }
         model.willShow(front: front)
@@ -114,10 +117,26 @@ final class PanelController: NSObject, NSWindowDelegate {
     /// not pay for the first layout, first fonts and first render. Nothing is shown, no key is taken.
     func prewarm() {
         guard !panel.isVisible else { return }
+        warming = true
         let size = NSSize(width: Theme.width, height: height())
         host.frame = NSRect(origin: .zero, size: size)
         host.layoutSubtreeIfNeeded()
         if let rep = host.bitmapImageRepForCachingDisplay(in: host.bounds) { host.cacheDisplay(in: host.bounds, to: rep) }
+        // The window server makes its half of a translucent, shadowed window the first time it is put
+        // on screen, and that was most of a cold first summon. Do it once now: far off screen and
+        // fully clear, for a moment, taking no focus.
+        let offscreen = NSRect(x: -20_000, y: -20_000, width: size.width, height: size.height)
+        panel.alphaValue = 0
+        panel.setFrame(offscreen, display: false)
+        panel.orderFrontRegardless()
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) { [weak self] in
+            MainActor.assumeIsolated {
+                guard let self, self.warming else { return }                            // summoned meanwhile: leave it be
+                self.warming = false
+                self.panel.orderOut(nil)
+                self.panel.alphaValue = 1
+            }
+        }
     }
 
     /// For the typing check: shown far off screen, never key, no global monitors, so a test types
