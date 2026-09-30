@@ -103,7 +103,7 @@ folder. `context.changed` names what changed, at most once a second, and never c
 window or URL. Text and selection are refused. A model cannot report or read it.
 
 **Consumers.** The Capsule (default project, ask folder, screen), chat (a new thread lands in the
-right project), harness and Vyre IQ (scope and boost), push (ring the device in use), tips (item
+right project), harness and Vyre Memory (scope and boost), push (ring the device in use), tips (item
 11), suggest (ranking).
 
 ### 3. Connections for a capability
@@ -124,12 +124,12 @@ start; `suggest.picked` teaches ranking.
 
 **Owners' parts.** memory-iq offers personal entities and aliases ("my wife", graph labels) from
 memory already loaded, never a model call; the Capsule and the chat composer (chat-core, so the
-Deck, PWA and Expo all get it) call it per keystroke. Vyre IQ answers come on pause, not per key.
+Deck, PWA and Expo all get it) call it per keystroke. Vyre Memory answers come on pause, not per key.
 
 ### 5. One ask path
 
 The box decides question versus task and the model for every surface, and the memory answer comes
-from memory, then Vyre IQ. The Capsule retires Said.swift, its own question rules and its
+from memory, then Vyre Memory. The Capsule retires Said.swift, its own question rules and its
 hardcoded model names. Rides with the wife's-name fix: memory-iq and sessions own it, and
 memory-iq's source-trust rules apply.
 

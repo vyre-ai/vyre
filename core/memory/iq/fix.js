@@ -1,5 +1,5 @@
 // @ts-check
-// iq/fix: the person corrects a Vyre IQ answer where it appears, and IQ remembers.
+// iq/fix: the person corrects a Vyre Memory answer where it appears, and IQ remembers.
 //
 // Every answer memory.ask gives has an id (the same answer to the same question has the same id).
 // memory.correct { answer: <id>, action } keeps a fix here:

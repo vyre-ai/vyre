@@ -4,6 +4,7 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+- IQ is renamed Vyre Memory in what people read: memory tool descriptions, `vyre memory ask` help, the limit message, the Deck import screen, ADR 0034 and the memory and using docs. Code names, tool names and paths are unchanged.
 - memory.prompt: the text blocks an ACP session gets in a prompt, built from memory.brief (first prompt) and up to 5 memory.relevant lines (every prompt), each quoted as memory and never as instructions, scoped by the caller's own grant. The Switchboard's ACP driver sends them as resource blocks; the memory MCP tools already reach ACP sessions through the vyre server it passes in session/new.
 - recall: a redaction list (REDACTIONS, redact) runs on every turn before indexing, seeded with tailnet's Tailscale sign-in link rule; redactLinks stays as an alias.
 - recall: for a transcript under an account's folder (VYRE_ACCOUNTS_HOME), the indexer takes "a person started this" from the Switchboard's record (threads.origin) and never from the transcript; no record, an error or no switchboard is not human, so a forged transcript makes no decision and no personal claim. An unchanged file is read again when the record later vouches for it. Indexer.session() is now async. threads.origin itself lands with work/sessions-02 (eed82569 depends on its accounts commits, so it is not cherry-picked here).

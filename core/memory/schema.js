@@ -223,7 +223,7 @@ export const MIGRATIONS = [
   `CREATE TABLE memory_me_trust (session TEXT PRIMARY KEY, ok INTEGER NOT NULL, why TEXT, dev INTEGER NOT NULL DEFAULT 0, v INTEGER NOT NULL) WITHOUT ROWID;
   DELETE FROM memory_me_claims WHERE method NOT IN ('model', 'told');
   DELETE FROM memory_me_cues; DELETE FROM memory_me_cursor;`,
-  // Vyre IQ (core/memory/iq/ask.js): the model's reply to each exact answer prompt, kept by its
+  // Vyre Memory (core/memory/iq/ask.js): the model's reply to each exact answer prompt, kept by its
   // hash, so a question over the same passages is answered the same way and never paid twice.
   `CREATE TABLE memory_iq_asks (hash TEXT PRIMARY KEY, v INTEGER NOT NULL, at INTEGER NOT NULL, reply TEXT NOT NULL, usd REAL NOT NULL DEFAULT 0) WITHOUT ROWID;`,
   // Correcting IQ where it appears (core/memory/iq/fix.js): the answers given, by id, the person's

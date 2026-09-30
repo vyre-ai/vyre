@@ -394,7 +394,7 @@ vyre memory [about [<thing...>]|ask <question...>|fix [<answer id> <fix>]|correc
 Read it:
   vyre memory [about] [<thing>] [--project <slug>]   what it holds, or everything about one thing
 Ask it:
-  vyre memory ask "<question>" [--sources]   Vyre IQ: an answer from your past sessions and what you have said, with where it came from
+  vyre memory ask "<question>" [--sources]   Vyre Memory: an answer from your past sessions and what you have said, with where it came from
   vyre memory fix <answer id> wrong | forget | "<the right answer>"   correct an answer; remembered next time
   vyre memory fix [undo <n>]   what you corrected this week, or undo one
 Change what it holds:

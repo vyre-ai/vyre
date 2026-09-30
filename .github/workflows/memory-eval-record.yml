@@ -14,7 +14,7 @@ on:
   workflow_dispatch:
     inputs:
       model:
-        description: OpenRouter model for Vyre IQ's answers (haiku is the product's quick path)
+        description: OpenRouter model for Vyre Memory's answers (haiku is the product's quick path)
         type: choice
         default: anthropic/claude-haiku-4.5
         options:

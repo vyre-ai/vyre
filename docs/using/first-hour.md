@@ -82,7 +82,7 @@ vyre memory ask "what did I work on yesterday" --sources
 It prints the answer, how sure it is, and the lines from your sessions it rests on.
 
 > [!GAP]
-> Answers that appear on their own when you pause, and Vyre IQ's answers with sources right in
+> Answers that appear on their own when you pause, and Vyre Memory's answers with sources right in
 > the Capsule (ADR 0034), arrive with the next Capsule and memory releases.
 
 ## 5. Send one email (3 minutes)

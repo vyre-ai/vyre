@@ -22,7 +22,7 @@ export const SURE = 0.5;
 /** The default daily cap on questions, in USD (config.memory.model.askDailyUsd): about 150 a day. */
 export const ASK_DAILY_USD = 0.5;
 /** What a surface shows when the cap is reached: never a silent failure. */
-export const LIMIT_MESSAGE = "Vyre IQ has used today's share of your Claude plan. It answers again tomorrow, or give memory a bigger share in Settings.";
+export const LIMIT_MESSAGE = "Vyre Memory has used today's share of your Claude plan. It answers again tomorrow, or give memory a bigger share in Settings.";
 /** What one answer call may cost at most, in USD. */
 export const MAX_USD = 0.02;
 

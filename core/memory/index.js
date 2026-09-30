@@ -476,10 +476,10 @@ export default {
     // ---- the user's corrections (docs/adr/0007-intelligence.md, decision 4). Owner callers only:
     // a session never writes Memory; inside a turn Claude proposes a correction as a lesson.
     const OWNERS = ["deck", "cli", "local", "capsule"];
-    // The person's corrections to Vyre IQ's answers (core/memory/iq/fix.js), made where the answer is shown.
+    // The person's corrections to Vyre Memory's answers (core/memory/iq/fix.js), made where the answer is shown.
     const fixed = fixLog({ db: ctx.store.db });
     const fixAnswer = async (input, caller) => {
-      if (!["wrong", "replace", "forget"].includes(input.action)) throw Object.assign(new Error("an IQ answer is corrected with wrong, replace or forget"), { code: "bad_input" });
+      if (!["wrong", "replace", "forget"].includes(input.action)) throw Object.assign(new Error("a Vyre Memory answer is corrected with wrong, replace or forget"), { code: "bad_input" });
       const fix = fixed.add({ answer: input.answer, action: input.action, text: input.object ?? null, who: String(caller || "") });
       // A personal fact's right answer is the person's own words about their life: told to memory,
       // so every other question about it has it too (it outweighs what was said before).
@@ -664,7 +664,7 @@ export default {
 
     ctx.tool("memory.correct", {
       // No callers list: the person's device reaches it too, and ownerWrite decides.
-      description: "Correct a fact: wrong (never true), ended (stopped being true at `at`), replace (ended, and `object` is true instead), confirm (sure, no decay), add (a new fact). fact is src|rel|dst from memory.facts, or give subject, rel and object. room or project scopes it to one project; otherwise everywhere. Answers at once with the correction and pending: true, and memory.curated follows when the graph has it; wait: true answers after, with the fact as it now reads. Or correct a Vyre IQ answer where it is shown: answer is memory.ask's answer_id, and action is wrong (never give that answer to that question again), replace (object is the right answer: the same question gets it at once) or forget (the facts and turns behind it never ground an answer again); returns { fix }, and memory.uncorrect { fix } undoes it. An agent (Claude in a chat) may correct only when the person said so in its own thread: from_turn: { seq } names that turn of the person's, and the new value must be in their words. It is applied as theirs ({ applied: true, heard }); otherwise it waits as a suggestion for the person ({ applied: false, suggestion }). suggestion: <id> accepts one (the person only).",
+      description: "Correct a fact: wrong (never true), ended (stopped being true at `at`), replace (ended, and `object` is true instead), confirm (sure, no decay), add (a new fact). fact is src|rel|dst from memory.facts, or give subject, rel and object. room or project scopes it to one project; otherwise everywhere. Answers at once with the correction and pending: true, and memory.curated follows when the graph has it; wait: true answers after, with the fact as it now reads. Or correct a Vyre Memory answer where it is shown: answer is memory.ask's answer_id, and action is wrong (never give that answer to that question again), replace (object is the right answer: the same question gets it at once) or forget (the facts and turns behind it never ground an answer again); returns { fix }, and memory.uncorrect { fix } undoes it. An agent (Claude in a chat) may correct only when the person said so in its own thread: from_turn: { seq } names that turn of the person's, and the new value must be in their words. It is applied as theirs ({ applied: true, heard }); otherwise it waits as a suggestion for the person ({ applied: false, suggestion }). suggestion: <id> accepts one (the person only).",
       input: { type: "object", required: ["action"], properties: { fact: { type: "string" }, subject: { type: "string" }, rel: { type: "string" }, object: { type: "string" },
         answer: { type: "string", description: "memory.ask's answer_id" },
         from_turn: { type: "object", properties: { seq: { type: "integer" } }, description: "an agent's evidence: the person's turn in this thread that says it" },
@@ -681,7 +681,7 @@ export default {
     /** A correction as the person made it, or as they said it in a thread (who says which). */
     const applyCorrection = async (input, who) => {
         if (typeof input.answer === "string" && input.answer) return fixAnswer(input, who);
-        if (input.action === "forget") throw Object.assign(new Error("forget corrects an IQ answer: pass answer"), { code: "bad_input" });
+        if (input.action === "forget") throw Object.assign(new Error("forget corrects a Vyre Memory answer: pass answer"), { code: "bad_input" });
         const { scope, sc } = scopeOf(input);
         const t = graph.target(input, sc);
         const c = curator.correct({ action: input.action, src: t.src, rel: t.rel, dst: t.dst, object: t.object, at: when(input.at), scope, note: input.note ?? null, who });
@@ -725,7 +725,7 @@ export default {
     // No callers list: the registry compares the whole "tailnet:<login>" string, so readerOnly
     // checks the owner surfaces and tailnet callers itself.
     ctx.tool("memory.corrections", {
-      description: "What the user has corrected, merged or split, newest first. room or project: that project's and the ones for everywhere. all: include undone ones. answers: true lists the Vyre IQ answers they corrected instead, as { fixes, week: { corrected, by_kind } }; suggested: true lists agents' corrections waiting for them and the ones agents applied from their words this week, as { suggestions, heard: [{ thread, seq, at, by, summary, undo }] }.",
+      description: "What the user has corrected, merged or split, newest first. room or project: that project's and the ones for everywhere. all: include undone ones. answers: true lists the Vyre Memory answers they corrected instead, as { fixes, week: { corrected, by_kind } }; suggested: true lists agents' corrections waiting for them and the ones agents applied from their words this week, as { suggestions, heard: [{ thread, seq, at, by, summary, undo }] }.",
       input: { type: "object", properties: { all: { type: "boolean" }, answers: { type: "boolean" }, suggested: { type: "boolean" }, ...roomField } },
       run: readerOnly(async input => input.suggested === true ? { suggestions: suggestions({ all: Boolean(input.all) }), heard: heardList() }
         : input.answers === true ? { fixes: fixed.list({ all: Boolean(input.all) }), week: fixed.week() }
@@ -950,7 +950,7 @@ export default {
         return answer({ q: String(input.q ?? input.question ?? ""), project_cwds: effectiveCwds, sources: Boolean(input.sources) });
       },
     });
-    // Vyre IQ's retrieval (ADR 0034, core/memory/iq/retrieve.js): the passages a question's answer
+    // Vyre Memory's retrieval (ADR 0034, core/memory/iq/retrieve.js): the passages a question's answer
     // would be read from, fused from Recall's searches and widened by names memory knows. Personal
     // names widen it only for a caller that may see personal facts.
     const retrieve = retriever({ graph, personal, askDir, quickDir, now: () => Date.now(),
@@ -960,7 +960,7 @@ export default {
       next: async (session, seq) => { const r = await ctx.call("recall.thread", { session, from: seq + 1, limit: 1 }); return r?.error ? null : (r?.data?.turns || [])[0] || null; },
       search: async q => { const r = await ctx.call("recall.search", q); if (r?.error) throw new Error(r.error.message || "recall.search failed"); return Array.isArray(r?.data) ? r.data : r?.data?.hits || []; } });
     ctx.tool("memory.retrieve", {
-      description: "The turns Vyre IQ would read to answer a question: { passages: [{ id, session, seq, role, ts, text, name, cwd, score, via }], expanded, window }. No model. expand, when, recency and hybrid switch steps off, for the evaluation.",
+      description: "The turns Vyre Memory would read to answer a question: { passages: [{ id, session, seq, role, ts, text, name, cwd, score, via }], expanded, window }. No model. expand, when, recency and hybrid switch steps off, for the evaluation.",
       input: { type: "object", required: ["question"], properties: { question: { type: "string" }, project_cwds: cwds, k: { type: "integer", minimum: 1, maximum: 30 },
         expand: { type: "boolean" }, when: { type: "boolean" }, recency: { type: "boolean" }, hybrid: { type: "boolean" }, replies: { type: "boolean" },
         knobs: { type: "object", description: "evaluation only: passed to recall.search" }, ...agentField } },
@@ -976,7 +976,7 @@ export default {
           String(input.question || ""), scope);
       },
     });
-    // Vyre IQ's answer (ADR 0034, core/memory/iq/ask.js): a personal fact, else the fast model over
+    // Vyre Memory's answer (ADR 0034, core/memory/iq/ask.js): a personal fact, else the fast model over
     // the retrieved passages, checked by code. Questions have their own daily cap
     // (config.memory.model.askDailyUsd, $0.50, about 150 questions) in memory's budget table.
     const askDay = () => `ask:${new Date().toISOString().slice(0, 10)}`;
@@ -1015,7 +1015,7 @@ export default {
           ON CONFLICT (day) DO UPDATE SET usd = round(usd + excluded.usd, 6), calls = calls + 1`).run(askDay(), usd),
       } });
     ctx.tool("memory.ask", {
-      description: "Vyre IQ: answer a question about the user's own past work or life (a decision, a file, a bug, a date, who someone is, what was deployed) from every past session and personal fact, with its sources, or abstain. Ask it before saying you do not know or cannot remember something from earlier sessions, and name the session it cites. Returns { answer, answer_id, confidence, abstained, known, sources: [{ session, seq, name, quote, ts }], via: fact|retrieval|corrected|null, latency_ms, cost_usd }; the person corrects an answer where it is shown with memory.correct { answer: answer_id }. answer is null and abstained true when memory does not know yet; known lists what it does know that bears on it. At the day's cap (config.memory.model.askDailyUsd, $0.50) limited is true and message says so: show it, never nothing. stream: true emits memory.thinking { id, stage: understanding|searching|reading|checking } as each step starts, then memory.answered { id, abstained, limited }; id is the caller's (so it can match the events before the reply comes back), else a new one, and is in the reply.",
+      description: "Vyre Memory: answer a question about the user's own past work or life (a decision, a file, a bug, a date, who someone is, what was deployed) from every past session and personal fact, with its sources, or abstain. Ask it before saying you do not know or cannot remember something from earlier sessions, and name the session it cites. Returns { answer, answer_id, confidence, abstained, known, sources: [{ session, seq, name, quote, ts }], via: fact|retrieval|corrected|null, latency_ms, cost_usd }; the person corrects an answer where it is shown with memory.correct { answer: answer_id }. answer is null and abstained true when memory does not know yet; known lists what it does know that bears on it. At the day's cap (config.memory.model.askDailyUsd, $0.50) limited is true and message says so: show it, never nothing. stream: true emits memory.thinking { id, stage: understanding|searching|reading|checking } as each step starts, then memory.answered { id, abstained, limited }; id is the caller's (so it can match the events before the reply comes back), else a new one, and is in the reply.",
       input: { type: "object", required: ["question"], properties: { question: { type: "string" }, project_cwds: cwds,
         context: { type: "object", properties: { project: { type: "string" }, thread: { type: "string" } } }, stream: { type: "boolean" }, id: { type: "string", maxLength: 64 },
         screen: { type: "object", description: "what the person is looking at (the Capsule, floor-redacted): only to understand a question that points at it; never evidence, never a source", properties: { app: { type: "string" }, title: { type: "string" }, selection: { type: "string" }, text: { type: "string" } } }, ...agentField } },
@@ -1128,7 +1128,7 @@ export default {
     ctx.tool("memory.uncorrect", {
       // No callers list: the person's device reaches it too, and ownerWrite decides.
       description: "Undo a correction, merge or split by its id. It stays listed as undone.",
-      input: { type: "object", properties: { id: { type: "integer" }, fix: { type: "integer", description: "an IQ answer correction's id" }, suggestion: { type: "integer", description: "dismiss an agent's suggestion" } } },
+      input: { type: "object", properties: { id: { type: "integer" }, fix: { type: "integer", description: "a Vyre Memory answer correction's id" }, suggestion: { type: "integer", description: "dismiss an agent's suggestion" } } },
       run: ownerWrite(async ({ id, fix, suggestion }) => {
         if (Number.isInteger(suggestion)) { settleSuggestion(suggestion, "dismissed"); return { dismissed: suggestion }; }
         if (Number.isInteger(fix)) {
@@ -1141,7 +1141,7 @@ export default {
           personal.derive({ force: true });
           return { fix: f };
         }
-        if (!Number.isInteger(id)) throw Object.assign(new Error("uncorrect needs id (a correction) or fix (an IQ answer correction)"), { code: "bad_input" });
+        if (!Number.isInteger(id)) throw Object.assign(new Error("uncorrect needs id (a correction) or fix (a Vyre Memory answer correction)"), { code: "bad_input" });
         const c = curator.uncorrect(id); await settle(); return c;
       }),
     });
