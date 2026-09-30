@@ -12,7 +12,14 @@ import path from "node:path";
 import { spawn } from "node:child_process";
 import { tempHome, writeModule } from "./helpers.js";
 import { start, above, asTaken } from "../core/daemon/index.js";
-import { processTable } from "../core/daemon/peer.js";
+import { processTable, readPeerPid, insideClaude, setPeerHosting } from "../core/daemon/peer.js";
+
+// These prove the production rules: vyred hosted in the test process is not the person's anchor here
+// (setPeerHosting(true) is called by the helpers for the other tests' own clients; the control below sets it).
+setPeerHosting(false);
+
+/** The kernel-verified leader a chain may top out at on this platform (login is forgeable on macOS). */
+const LEADER = process.platform === "darwin" ? "/System/Applications/Utilities/Terminal.app/Contents/MacOS/Terminal" : "/usr/bin/login";
 
 /** A macOS-shaped snapshot: pid -> row. */
 const rows = obj => new Map(Object.entries(obj).map(([k, v]) => [Number(k), { pgid: Number(k), ...v }]));
@@ -80,6 +87,26 @@ test("peer race: an unreadable peer that already exited is a model's; a live one
   assert.equal(live.unknown, true);
 });
 
+test("peer race: fail closed, an empty ps read or a pid a fresh table lacks is a model's, a docker exec is not", async () => {
+  const one = read => above({}, registry, "cli", { peerPid: async () => 710, delayMs: 1, alive: () => true, processTable: o => processTable({ ...o, platform: "darwin", read, cache: { at: 0, rows: null } }) });
+  const empty = await one(() => new Map());
+  assert.equal(empty.inside, true, "an empty or timed-out read");
+  assert.equal(empty.unreadable ?? empty.exited, true);
+  const missing = await one(() => rows(BASE));
+  assert.equal(missing.inside, true, "a pid missing from a fresh table");
+  // A chain that is whole and holds no claude is read to the top, not failed closed.
+  const person = await above({}, registry, "cli", { peerPid: async () => 710, delayMs: 1, alive: () => true,
+    processTable: o => processTable({ ...o, platform: "darwin", read: () => rows({ ...BASE, 700: { ppid: 1, args: "/usr/bin/login -pf alex" }, 710: { ppid: 700, args: "vyre call probe.mine" } }), cache: { at: 0, rows: null } }),
+    insideClaude: (pid, o) => insideClaude(pid, { ...o, exe: () => LEADER, started: () => "t" }) });
+  assert.equal(person.inside, false, JSON.stringify(person));
+  assert.equal(person.unreadable, undefined, "a whole chain is not an unreadable one");
+  assert.equal(person.exited, undefined);
+  // A docker exec (a process whose parent is itself) says nothing about who is above: not taken as a model's on that alone.
+  const docker = await above({}, registry, "cli", { peerPid: async () => 5, alive: () => true, delayMs: 1, processTable: () => pid => (pid === 5 ? { ppid: 5, args: "vyre call x" } : null) });
+  assert.equal(docker.inside, false);
+  assert.equal(docker.unknown, true);
+});
+
 test("peer race: only a definite answer is kept for the connection", async () => {
   const socket = {};
   let n = 0;
@@ -95,6 +122,65 @@ test("peer race: only a definite answer is kept for the connection", async () =>
   await asTaken("cli", outside, registry, undefined, clean);
   const again = await asTaken("cli", outside, registry, undefined, { ...deps, insideClaude: () => ({ inside: true }) });
   assert.equal(again.model, false, "a definite outside answer is kept");
+  // An unreadable chain is a model's for that call, but not kept: a stalled ps must not brand the
+  // connection for life.
+  const flaky = {};
+  let reads = 0;
+  const fdeps = { ...deps, insideClaude: () => (++reads <= 3 ? { inside: false, unknown: true, unreadable: true } : { inside: false }) };
+  const one = await asTaken("cli", flaky, registry, undefined, fdeps);
+  assert.equal(one.model, true, "unreadable is a model's this time");
+  await new Promise(r => setImmediate(r));
+  const two = await asTaken("cli", flaky, registry, undefined, fdeps);
+  assert.deepEqual(two, { caller: "cli", model: false }, "and is asked again, not kept");
+});
+
+test("peer race: a named server keeps its label when the chain is unreadable", async () => {
+  const r = await above({}, registry, "cli", { peerPid: async () => 5, alive: () => true, delayMs: 1,
+    insideClaude: () => ({ inside: false, unknown: true, unreadable: true, server: { exe: "/usr/bin/sshd", pid: 9, started: "t" } }) });
+  assert.equal(r.inside, false);
+  assert.equal(r.unknown, true);
+});
+
+test("peer race: a socket that closed before or during the read gives no pid (its fd number may be another descriptor's)", { skip: process.platform === "win32" }, async t => {
+  const file = path.join(tempHome(t), "fd");
+  fs.writeFileSync(file, "");
+  const fd = fs.openSync(file, "r");
+  t.after(() => { try { fs.closeSync(fd); } catch {} });
+  const seam = { bin: "/bin/sh", args: ["-c", "sleep 0.2; echo 4242"] };
+  const open = { destroyed: false, _handle: { fd } };
+  assert.equal(await readPeerPid(/** @type {any} */ (open), seam), 4242, "an open socket is read");
+  assert.equal(await readPeerPid(/** @type {any} */ ({ destroyed: true, _handle: null }), seam), null, "destroyed before: no helper starts");
+  const closing = { destroyed: false, _handle: { fd } };
+  setTimeout(() => { closing.destroyed = true; closing._handle = /** @type {any} */ (null); }, 50);
+  assert.equal(await readPeerPid(/** @type {any} */ (closing), seam), null, "closed while the helper ran: its answer is thrown away");
+});
+
+test("peer race: a peer that is vyred itself is a misread and a model's; only a test hosting vyred lets it through", async () => {
+  const deps = { peerPid: async () => process.pid, delayMs: 1, alive: () => true, processTable: () => () => ({ ppid: 1, args: "node" }) };
+  const r = await above({}, registry, "cli", deps);
+  assert.equal(r.inside, true);
+  assert.equal(r.self, true);
+  setPeerHosting(true);
+  try { assert.equal((await above({}, registry, "cli", deps)).inside, false, "a test hosting vyred lets its own client through"); }
+  finally { setPeerHosting(false); }
+});
+
+test("peer race: a chain through an exited, unreaped process (no command line) is unreadable, so a model's", async () => {
+  // ps prints a zombie as "(node)", /proc as an empty cmdline; the fake claude above a forger that
+  // quit was one, and the walk read "no claude above" (fire-and-forget forger on a busy Mac, 30 Sep).
+  for (const args of ["(node)", ""]) {
+    const r = await above({}, registry, "cli", { peerPid: async () => 20, alive: () => true, delayMs: 1,
+      processTable: () => pid => ({ 20: { ppid: 10, args }, 10: { ppid: 1, args }, 1: { ppid: 0, args: "init" } }[pid] || null) });
+    assert.equal(r.inside, true, JSON.stringify(args));
+    assert.equal(r.unreadable, true);
+  }
+  // Parentheses in the middle of a real command line are not an unreaped process (reviewer-2).
+  const paren = insideClaude(20, { look: pid => ({ 20: { ppid: 10, args: "node app.js (x)" }, 10: { ppid: 1, pgid: 10, args: "/usr/bin/login -pf alex" } }[pid] || null), exe: () => LEADER, started: () => "t", uid: () => 501, self: 1 });
+  assert.notEqual(paren.unreadable, true, JSON.stringify(paren));
+  const live = await above({}, registry, "cli", { peerPid: async () => 20, alive: () => true, delayMs: 1,
+    processTable: () => pid => ({ 20: { ppid: 10, args: "vyre call x", pgid: 10 }, 10: { ppid: 1, args: "/usr/bin/login -pf alex", pgid: 10 } }[pid] || null),
+    insideClaude: (pid, o) => insideClaude(pid, { ...o, exe: () => LEADER, started: () => "t" }) });
+  assert.equal(live.unreadable, undefined, "readable args are not this case");
 });
 
 /** A forger: a node script run under a fake `claude`, saying it is the person's cli. */
@@ -133,6 +219,16 @@ test("peer race: 200 forgers under a claude, in bursts, never reach a person's t
   const { d, dir } = await vyredWithProbe(t);
   for (let batch = 0; batch < 8; batch++) await Promise.all(Array.from({ length: 25 }, (_, i) => forger(dir, d.paths.socket, batch * 25 + i)));
   assert.equal(globalThis.__probeMineRan, 0, "a forged cli label from under a claude ran a person's tool");
+  // The control: the same call from a plain process outside any claude is the person's and runs.
+  const js = path.join(dir, "person.mjs");
+  fs.writeFileSync(js, `import http from "node:http";
+const req = http.request({ socketPath: ${JSON.stringify(d.paths.socket)}, path: "/v1/tools/probe.mine", method: "POST", headers: { "content-type": "application/json", "content-length": 2, "x-vyre-caller": "cli" } }, res => { res.resume(); res.on("end", () => process.exit(0)); });
+req.end("{}");`);
+  // The person's own client is this test's child: a test hosting vyred is the one seam that lets it through.
+  setPeerHosting(true);
+  try { await new Promise(r => spawn(process.execPath, [js], { stdio: "ignore" }).on("close", r)); }
+  finally { setPeerHosting(false); }
+  assert.equal(globalThis.__probeMineRan, 1, "the person's own cli still runs the tool");
 });
 
 test("peer race: a forger that sends and exits before the check is a model's, not the person's", { timeout: 120_000, skip: process.platform === "win32" }, async t => {

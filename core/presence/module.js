@@ -23,11 +23,12 @@ export default {
     ctx.tool("presence.keys", {
       description: "The Capsule keys, device keys and passkeys enrolled for proving presence: id, kind, name, when enrolled and last used. Never the keys themselves.",
       input: obj({}),
-      run: async () => presence.keys(),
+      // On a Mac with vyre-core, the list is core's (a read vyred may proxy, ADR 0040 section 3).
+      run: async () => (presence.coreLink ? presence.coreLink.keys() : presence.keys()),
     });
 
     ctx.tool("presence.enroll", {
-      description: "Enroll a Capsule key (P-256 in the Secure Enclave, alg -7), a phone's device key (P-256, alg -7) or a passkey, by its public key as base64url SPKI DER. Needs presence.",
+      description: "Enroll a Capsule key (P-256 in the Secure Enclave, alg -7), a device key (P-256 with alg -7, or RSA of 2048 bits or more with alg -257, as Windows Hello makes) or a passkey, by its public key as base64url SPKI DER, a JWK or a Windows BCRYPT RSA blob. Needs presence.",
       presence: { summary: async input => `Enroll a ${input.kind === "passkey" ? "passkey" : input.kind === "device" ? "device key" : "Capsule key"} named "${String(input.name || input.kind)}"` },
       input: obj({ kind: { type: "string", enum: ["capsule", "passkey", "device"] }, name: str, public_key: str, alg: { type: "integer" }, rp_id: str, credential_id: str,
         device: str },
@@ -97,6 +98,18 @@ export default {
       presence: { summary: async () => "Make a one-time code to enroll a passkey" },
       input: obj({}),
       run: async () => presence.mintCode(),
+    });
+
+    // The relay module's claim (relay.setup.claim) makes this after checking a signed claim token.
+    // Nothing else may: a grant enrols a passkey with no other proof.
+    ctx.tool("presence.grant.mint", {
+      internal: true,
+      description: "The one-time, five-minute grant that lets one browser enroll the first owner passkey. Only the relay module's checked claim makes it.",
+      input: obj({ peer: { type: ["object", "null"] }, host: str }, ["host"]),
+      run: async (input, meta = {}) => {
+        if (String((meta && meta.caller) || "") !== "module:relay") throw new Error("only a checked claim makes a grant");
+        return presence.mintGrant(input.peer || null, String(input.host || ""));
+      },
     });
 
     ctx.tool("presence.session.open", {

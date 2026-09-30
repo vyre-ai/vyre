@@ -1,6 +1,6 @@
 ---
 title: Command bar
-summary: The one entry for jumping, finding and asking, as the ⌘K bar and palette on the desktop and as the phone Capsule opened into Find.
+summary: The one entry for jumping, finding and asking, as the ⌘K bar and palette on the desktop and as the phone Lumen opened into Find.
 audience: builders
 owner: app-design
 status: draft
@@ -10,15 +10,15 @@ status: draft
 
 One box that jumps to anything, finds anything, runs a command or asks the assistant. On the
 desktop it is the trigger in the top bar and the palette ⌘K opens; on the phone it is the
-floating Capsule, and pulling it up opens Find. Same words and same result order on both. Drawn
+floating Lumen, and pulling it up opens Find. Same words and same result order on both. Drawn
 on "Needs you (home)", "Layout" (the Places table) and every desktop board's top bar. The Mac
-Capsule is its own component (see capsule-mac).
+Lumen is its own component (see capsule-mac).
 
 | Surface | Implementing file | Status |
 |---|---|---|
 | Deck | `deck/views/find.js`, `deck/css/views/find.css`, `deck/js/capsule.js`, `deck/js/commands.js` (work/pwa); `.search` in `deck/js/app.js` (main) | partial |
 | App | none in `apps/app` (work/mobile) | not built |
-| Capsule | see capsule-mac | not used |
+| Lumen | see capsule-mac | not used |
 
 ## Anatomy
 
@@ -35,8 +35,8 @@ Capsule is its own component (see capsule-mac).
    saying what Enter will do ("Ask juno", "Open Harlow Legal / intake", "Run: tell kit to …").
 3. Results in list-row shape (44 tall), grouped under 12/600 `--label` headers.
 
-**Phone Find** (the Capsule opened):
-1. A sheet from the Capsule to 8 below the top safe area, `--panel`, top radius `--radius-sheet`
+**Phone Find** (Lumen opened):
+1. A sheet from Lumen to 8 below the top safe area, `--panel`, top radius `--radius-sheet`
    (14), shadow `--float`.
 2. Top row: the box (17/24, 44 tall) and "Done" (ghost, back to where the sheet came from).
 3. Scope, a segmented control: All, Chats, Files, Memory, Run.
@@ -68,7 +68,7 @@ Capsule is its own component (see capsule-mac).
 - ⌘K opens it from anywhere; ⌘K again or Esc closes and returns focus where it was.
 - ↑ ↓ move, ⏎ runs the selected row (the top row is selected on open), ⌘⏎ asks the assistant
   with the text as typed. Tab moves between scopes on the phone layout.
-- Phone: tap the Capsule to open; drag up to open following the finger; a pull-down from the top
+- Phone: tap Lumen to open; drag up to open following the finger; a pull-down from the top
   of any page also lands here. Holding the mic dictates into the box without sending.
 - "@kit …" targets that agent; "tell <session> to …" types into a session.
 
@@ -80,7 +80,7 @@ rises in the same tap (a hidden 16 px proxy input takes focus first). Reduced mo
 
 ## Copy
 
-- Placeholder, desktop: "Jump to anything, or ask juno". Phone Capsule: "Ask juno, find, or run".
+- Placeholder, desktop: "Jump to anything, or ask juno". Phone Lumen: "Ask juno, find, or run".
 - Section headers: Ask, Run, Sessions, Files, Agents, From memory, Projects, Recent.
 - Never "Search…", "Type a command", "AI", or "Copilot".
 
@@ -101,4 +101,4 @@ Deck (work/pwa)
 - [ ] Vault codes never show in Find; the Layout board places codes in Find on the phone.
 
 App (work/mobile)
-- [ ] No Find, no command bar, no Capsule.
+- [ ] No Find, no command bar, no Lumen.

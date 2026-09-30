@@ -18,7 +18,7 @@ import { badge } from "./status-mark.js";
 /**
  * The places, in rail order: `key` is the digit that opens it with Cmd (or Ctrl), `end` puts it
  * in the bottom group. `views` are the routes (deck/views) the place is current on.
- * @type {readonly { href: string, label: string, icon: string, views: string[], key: string, end?: boolean }[]}
+ * @type {readonly { href: string, label: string, icon: string, views: string[], key?: string, end?: boolean }[]}
  */
 export const PLACES = Object.freeze([
   { href: "/now", label: "Now", icon: "now", views: ["now", "needs"], key: "1" },
@@ -28,6 +28,7 @@ export const PLACES = Object.freeze([
   { href: "/planner", label: "Planner", icon: "planner", views: ["planner"], key: "5" },
   { href: "/memory", label: "Memory", icon: "memory", views: ["memory"], key: "6" },
   { href: "/vault", label: "Vault", icon: "vault", views: ["vault"], key: "7" },
+  { href: "/files", label: "Drive", icon: "drive", views: ["files"] }, // no digit: the keys stay 1 to 9
   { href: "/settings#devices", label: "Devices", icon: "devices", views: [], key: "8", end: true },
   { href: "/settings", label: "Settings", icon: "settings", views: ["settings"], key: "9", end: true },
 ]);

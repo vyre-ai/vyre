@@ -109,8 +109,8 @@
 /* ---- The phone: Lumen, opened (docs/design/phone.md section 7) ------------------------
    Drawn only under 760 px (find.js adds .fd-phone), inside the shell's full-height sheet.
    --match is the phone's search highlight, in both themes. */
-:root { --match: rgba(198,243,107,0.20); }
-:root[data-theme="paper"] { --match: rgba(70,112,12,0.16); }
+:root { --match: rgba(241,238,230,0.20); }
+:root[data-theme="paper"] { --match: rgba(20,19,17,0.16); }
 
 .fd-clear { display: none; }
 .fd-phone { width: auto; }

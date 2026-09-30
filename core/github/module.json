@@ -5,13 +5,19 @@
   "requires": ["vault"],
   "does": {
     "tools": [
-      "github.connect", "github.connect.cancel", "github.accounts", "github.remove",
+      "github.connect", "github.connect.cancel", "github.mcp.sync", "github.accounts", "github.remove",
       "github.repos", "github.project", "github.project.add-repo", "github.project.of",
       "github.project.detect",
-      "github.session.worktree", "github.session.cleanup"
+      "github.session.worktree", "github.session.cleanup", "github.session.pr", "github.session.push", "github.session.history", "github.session.undo", "github.session.redo",
+      "github.project.pr.get", "github.project.pr.status", "github.project.pr.comments", "github.project.issue.list", "github.project.issue.get", "github.project.local-init", "github.mentions.search", "github.mentions.resolve",
+      {"name": "github.act.target", "summary": "the destination an asked call must be said for", "reach": "modules"},
+      {"name": "github.project.pr.open", "summary": "open a pull request from a session branch", "reach": "asked", "target": "github.act.target"},
+      {"name": "github.project.pr.merge", "summary": "merge a pull request", "reach": "asked", "target": "github.act.target"},
+      {"name": "github.project.pr.review", "summary": "approve, request changes or comment on a pull request", "reach": "asked", "target": "github.act.target"}
     ]
   },
-  "watches": { "emits": ["github.added", "github.removed", "github.connected", "github.connect-failed", "github.cleanup-needed", "github.token-invalid"] },
+  "mentions": [{"kind": "github", "label": "GitHub", "search": "github.mentions.search", "resolve": "github.mentions.resolve"}],
+  "watches": { "emits": ["github.added", "github.removed", "github.connected", "github.connect-failed", "github.cleanup-needed", "github.local-init", "github.undone", "github.token-invalid"] },
   "shows": {
     "deck": ["settings:connections"],
     "cli": ["connect"]
@@ -19,8 +25,8 @@
   "needs": { "vault": ["per-connection"] },
   "teaches": {
     "tips": [
-      {"id": "sign-in", "text": "Connect a GitHub account with a short code at github.com/login/device, no token to paste.", "surfaces": ["cli", "deck"], "level": "first-use", "trigger": "on-use", "since": "0.1.0", "docs": "reference/tools.md#github"},
-      {"id": "scope", "text": "GitHub's device flow asks for repo (full read/write on every repo the account reaches). A later release narrows this per-repo.", "surfaces": ["deck", "cli"], "level": "first-use", "trigger": "on-use", "since": "0.1.0", "docs": "reference/tools.md#github"},
+      {"id": "sign-in", "text": "Connect a GitHub account with a short code at github.com/login/device, no token to paste (uses GitHub's own CLI, gh, on this machine).", "surfaces": ["cli", "deck"], "level": "first-use", "trigger": "on-use", "since": "0.1.0", "docs": "reference/tools.md#github"},
+      {"id": "scope", "text": "Sign-in grants full access to every repo the account reaches. A fine-grained token, pasted instead, can be narrower.", "surfaces": ["deck", "cli"], "level": "first-use", "trigger": "on-use", "since": "0.1.0", "docs": "reference/tools.md#github"},
       {"id": "worktree", "text": "Each session in a GitHub project works on its own worktree and branch, so two sessions never fight over the same working tree.", "surfaces": ["chat", "deck"], "level": "discovery", "trigger": "on-use", "since": "0.1.0", "docs": "reference/tools.md#github"},
       {"id": "fine-grained", "text": "Prefer a narrower token? Add a fine-grained personal access token by hand instead of signing in.", "surfaces": ["cli", "deck"], "level": "power", "trigger": "idle", "since": "0.1.0", "docs": "reference/tools.md#github"}
     ]

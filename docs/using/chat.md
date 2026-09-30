@@ -149,7 +149,7 @@ from the Deck's offline cache.
 ## What it will not do
 
 - It is not a separate chat server. Everything is a call to vyred, so a message typed here is the
-  same as one typed in the Capsule or with `vyre threads send`.
+  same as one typed in Lumen or with `vyre threads send`.
 - It never renders a session's text as HTML.
 - It does not type into a session on your paired Mac. The box's Chat shows those sessions
   read-only; sending to one from the box is not built yet.

@@ -75,9 +75,14 @@ included, started answering "no such tool"), and `node --check` says nothing abo
 a runtime manifest-validation rule, not a syntax error. Found by booting a real daemon with
 logging on and diffing `discover()`'s `problems` directly. Renamed to `team.project-has-any` /
 `team.project-append` / `teammate.default-changed`; fixed. 42/42 team tests green (3 new), 5/5
-boundaries, `npm run docs:ref` regenerated. `test/docs-check.test.js`'s em-dash/section-sign check
-on `reference/tools.md` fails on **main already** (confirmed with `git stash`), pre-existing and
-not touched here, flagged to the lead rather than fixed on this branch.
+boundaries, `npm run docs:ref` regenerated. **Correction, own error**: I told the lead and
+cohesion the em-dash-in-a-tool-description failure was pre-existing on main; `git stash` only
+went back to work/teammates dd6e15b5, not to main, so it was mine to begin with, `team.merge`'s
+own description, introduced at c0ec7600 (slice B), never on main/pre-rc/stage. Fixed at fd34fd06,
+along with docs/design/teammates.md itself (never run through docs-check before this: 21 em
+dashes, 3 stale mentions, a bad status value, a missing OWNERS entry, missing from nav.json).
+61/61 across team/boundaries/docs-check. Told cohesion the real source; sorry for the wasted
+lookup.
 
 **app-design ruling (2026-09-28), lead confirmed it stands: rewrote section 3.** Turned down the
 role-hashed accent colour I'd proposed (disc/border/dot/ANSI square) — the product's colour
@@ -93,6 +98,33 @@ also answers my own earlier open question about bubble styling. One kept excepti
 use a small fixed (~8), AA-tested ANSI 256 palette for a teammate's name, never an arbitrary hash,
 never a fill. Doc updated to match; nothing to build differently in core/team from this — section
 3 was always chat's and app-design's.
+
+**chat built section 2 (@role composer routing) at af29a073 on work/chat**: typing `@role` sends
+`team.ask` instead of spending the session's own turn, create-on-first-use gated on
+`team.default.get` with the inline confirm card, `team.add` with the Sonnet, not Opus, default
+per this doc. Built and tested against mocks plus the real tool schemas read from this worktree
+(`team.ask`/`team.default.get`/`team.add`'s input shapes), inert until `core/team` merges
+anywhere. Still FIFO-by-role for the handoff card's reply side until sessions' `threads.post`
+request-id field lands (see "Needs from others").
+
+**Reviewer LOW on sessions' e868f5e2 (relayed by sessions and the lead), fixed at (next sha):**
+`team.project-append` had no cap. A project with many teammates, or a long brief, would bloat
+every session's prompt. Now: at most 8 teammates listed (`APPEND_MAX_TEAMMATES`), each brief cut
+to 40 characters with an ellipsis, "and N more" past 8, and the whole string cut to 600
+characters (`APPEND_MAX`) as a last-resort backstop. Caught, while in there, that the
+empty-project line had an em dash of its own (`core/team/index.js`'s own `projectAppend`, never
+run through anything that would have flagged it, since it is data the function returns, not a
+tool description docs-check reads) — removed, and a regression test now asserts no em dash in
+either branch of `team.project-append`, since this text rides every project session's prompt and
+style's whole point is exactly this. 45/45 team tests, 5/5 boundaries, docs-check clean.
+
+**Request-id gap chat found (2bf8ceab) while wiring the handoff card's reply side, fixed at
+(next sha):** `finish()`'s `threads.post` call now passes `request: req.id` alongside the result
+tag. Forward-compatible only: `threads.post`'s schema has no field for it yet, and
+`checkInput` silently ignores an undeclared property, so nothing changes for chat until sessions
+extends `threads.post`/`sb.post`/`threads_inbox` to carry it through (asked, see "Needs from
+others"). `team.ask`'s own synchronous result already carries `request`; the gap was only the
+async delivery path.
 
 **Resume 8 brief: all 5 steps done, except step 4** (switch to sessions' lib/project-id.js slug
 regex), still blocked — work/projects (e87f63df) is still not on main as of this check. Nothing
@@ -502,6 +534,19 @@ Read-only state to show: the plan's usage per auth from `thread.limit` (status, 
 utilization, resets_at), the slot chip (per project), the waiting queue, "Resume anyway".
 
 ## Needs from others
+- sessions: a `request` field on `threads.post`'s own input, carried through `sb.post`'s
+  signature into `thread.sent`/`thread.queued` and into `threads_inbox`'s row shape (a new
+  column, alongside `kind`), for a teammate's async reply (chat, 2bf8ceab; found while wiring the
+  handoff card's reply side): today `kind: "teammate-result"` carries no request id anywhere in
+  that payload, so chat matches a reply to its ask FIFO by role name, which is exact for one open
+  ask per teammate but ambiguous the moment a person fires off two quick asks to the same
+  teammate. `core/team`'s `finish()` (core/team/index.js, the `threads.post` call in the
+  `req.reply_to` branch) already passes `request: req.id` in that call, forward-compatible and a
+  no-op today since `threads.post`'s `checkInput` ignores an undeclared property; the id is also
+  inside the `<vyre-teammate-result-...>` tag's own text, but that is untrusted, nonce'd text a
+  UI should never parse to correlate, which is why it needs its own structured field. Not
+  urgent-urgent, but real: `@role` (section 2) makes "two open asks to the same teammate" a
+  common case, not an edge one.
 - sessions: the slot ledger (`sessions.slots`, events `slot.taken|released|queued`), the Task-tool
   hold in canUseTool, SubagentStop release, per-auth usage state and pause from `thread.limit`.
   TAKEN by sessions (2026-09-27): builds it after batch 3a, plus purposes `teammate` (opus) and
@@ -551,19 +596,185 @@ utilization, resets_at), the slot chip (per project), the waiting queue, "Resume
   `core/team/git.js` itself no longer starts git directly — every call now goes through
   `gitAsync`, so `test/safe-git.test.js`'s tree-wide "nothing but lib/git-safe.js starts git" guard
   passes again (it started failing the moment safe-git 60b3673b landed on main, before this).
-- lib/caller.js swap (2026-09-28, cohesion, since teammates isn't running): core/team/index.js had
-  its own hand-rolled `PERSON = new Set(["cli", "local", "deck", "capsule"])`, the exact copy
-  cohesion's hygiene test freezes against. Two call shapes: `PERSON.has(callerKind(caller))` in
-  `projectOf` (line ~232) had the same agent-claim-stripping bug as goals/planner/hub did — an
-  agent whose caller string carried an owner-surface prefix (however it got there) could pass
-  `input.project` and get treated as the person choosing a project by slug; the other seven sites
-  used `PERSON.has(String(meta.caller))`, an exact match on the raw caller string, which was
-  already correct against that specific bug (an agent's caller string is never literally `"cli"`)
-  but never recognised an owner device (`tailnet:<login>`, `device:<id>`) the way `isPerson` does.
-  Swapped every site onto `lib/caller.js`'s `isPerson` (import replaces `callerKind` from
-  `core/modules/index.js`, no longer used elsewhere in the file): fixes the real bug in `projectOf`
-  and adds owner-device recognition everywhere else, same as the goals/planner/hub swap did.
-  work/cohesion-callerswap db48c3ba (off stage/0.1.1 9790c716, worktree ../vyre-cohesion-callerswap).
-  testbox: core/team 43/43, boundaries+hygiene 53/53 — the hygiene "no new PERSON_SURFACES copy"
-  test is green again. Sent to the reviewer with the goals/planner/hub swap for one behaviour-
-  identity check, and the final sha to the integrator.
+
+## Rate-limit hold (2026-09-30, saved before going idle)
+
+- Team-lead gave GO to build the 0.2 backend: role bindings with `filler` (agents vs teammates,
+  plan section 14), `team.role.fill`, role charters on sessions' `agent:<name>` prompt scope,
+  duties as watchers (with the watchers team), and quiet local git history for non-repo projects.
+  UI waits for app-design; land only via the integrator onto stage/0.2, after review.
+- Hit a server rate limit immediately after the GO, before any code was touched. Only ran `git
+  status`/`git log` in this worktree (clean, up to date with origin/work/teammates at 50502d5f).
+  **No implementation started yet** — nothing to lose, nothing half-written.
+- Since the plan was posted, several CHAT.md answers landed that change the build slightly from
+  what's in plans/teammates.md sections 9-14 as last written; fold these in before/while coding:
+  - **iq's memory-write model changed twice.** First rev (04:40): teammate writes are suggestions
+    until the person keeps them (P8), auto-keep on a same-thread yes. Then the lead corrected it
+    (superseding rev): agent/teammate memory writes land **at once** with provenance, quoted and
+    attributed, never as an instruction; no keep step, no suggestions queue; the person corrects
+    or forgets afterward. Section 12's H1 review-response text (which still says "a write by an
+    agent is a suggestion... not a fact until the person accepts it") is now stale against the
+    lead's correction and needs a rewrite to match "lands at once, quoted, attributed, forgettable
+    afterward" before this is presented as current.
+  - **native-core AGREED the @role create flow** (plans/native-core.md section 9, CHAT.md
+    05:26): `@role` creates the teammate at once and sends the ask in one step (no confirm card);
+    the handoff card reads "Made design, a new teammate" with Undo (removes the teammate and its
+    ask while nothing has run yet); the typo guard is a "Did you mean @design?" chip (edit
+    distance up to 2, plural/prefix), Tab accepts it, sending as typed still creates. **Ask to
+    teammates, still open**: drop the confirm requirement in `team.add` for the `@role` path (need
+    to check whether `team.add` even has one today — the confirm card was chat's own UI gate on
+    top of an already-uncomfirmed `team.add`, not necessarily a `team.add` input; verify before
+    changing anything), and add `projects.rename` and `projects.archive` (core/projects is also
+    teammates' to build; native-core's section 10 lists both as agent tools too).
+  - **assistant's three asks confirmed still open**: `team.ask {project, role, prompt}` accepting
+    an explicit `project` when the caller is the assistant, `team.list {all: true}`, `team.status
+    {summon}`, and the assistant follows `summon.finished` for one notification per handoff.
+  - **sessions 9.3 (07:06)**: teammate provider-binding needs nothing new beyond section 3.2 —
+    `sessions.accounts.bind {provider, account, agent}` already takes any provider for any
+    teammate. One test to add on our side: two teammates in one project, two different providers,
+    verified independent.
+  - **drive (06:08)**: proposing the per-folder access grant key is the project slug
+    (`lib/project-id.js`'s `isProjectId`) via `projects.access.check` (already built in
+    core/projects). Needs a one-line confirmation before drive wires its guard call — not
+    blocking, just needs an answer.
+  - **github/lead (23:41)**: settled — quiet local git history for a non-repo project belongs to
+    **teammates** (the projects owner), not github. Matches plan section 11's proposal; no
+    contract change needed, just confirmation this is ours to build.
+
+## Next (resume from here)
+
+1. Re-read plans/teammates.md sections 9-14 plus this note before writing any code — the iq
+   H1 correction above changes what "provenance" means in section 12 and section 3.2's project
+   memory description; fix that text first so the plan and the build agree.
+2. Build order for the backend GO, smallest/least-coupled first:
+   a. `team_teammates.filler` column + `team.role.fill` (section 14.4) — pure `core/team`, no
+      cross-team dependency to land the column and tool; the *behavior* (running as a real
+      `agents_agents` identity) depends on `core/agents` gaining a real personal-thread/own-memory
+      shape, which is a cross-team dependency (section 8) — build the schema/tool now, wire actual
+      agent-identity execution once that exists, don't block on it.
+   b. Role charters: `team_charters` table, `team.charter.draft/get/set/history`, appended via
+      sessions' `agent:<name>` prompt scope (check the real tool name/shape in core/sessions
+      before assuming `sessions.prompt.*` generalizes as written in section 9.1 — verify against
+      current code, not just the plan text).
+   c. `team.ask`/`team.list`/`team.status` changes for the assistant (explicit project, `all:true`,
+      `summon` lookup) — small, no cross-team blocker.
+   d. `projects.rename`, `projects.archive` in core/projects.
+   e. Quiet local git init for a non-repo project (extend `core/team`'s git-safe wrapper /
+      wherever `core/projects` creates a home folder) — check with drive/github first only if the
+      exact trigger point is ambiguous; otherwise just build it, it's uncontested.
+   f. Duties as watchers (section 9.2): this is real cross-team work — watchers' runtime doesn't
+      exist in this worktree yet (new team, new worktree `vyre-watchers` per the roster). Check
+      whether work/watchers has landed anywhere buildable before starting; if not, this step
+      waits, do the others first.
+3. Every step: tests in a temp home only (never the test box or the user's own machines, per the
+   GO's RULES), land only
+   through the integrator onto stage/0.2 after review, commit on work/teammates as WIP at each
+   meaningful point per the save-as-you-go rule.
+4. On resume, re-check CHAT.md from this timestamp forward for anything that moved again while on
+   hold.
+
+## Resume 2026-09-30 (after the restart)
+
+- Old work/teammates had diverged from stage (stage already carried 0.1.1 teammates). Saved the old
+  tip as branch backup/teammates-pre-stage-0930, reset work/teammates onto origin/work/stage-0.2 and
+  cherry-picked the one code commit stage lacked (1e3e9a4b, project-append cap).
+- Built `team.retire {teammate | project+role, reason?, undo?}` (native-core's Undo). `retired_at`
+  column; retired rows leave byRole/serving/list; team.add on the same role revives it. undo deletes the
+  row, queued asks and notes rows, only while nothing has run. Refused while a request runs. Callers:
+  person, or a session in that project (mcp with a thread); never a teammate. TODO when P17's
+  `gate.said.match` exists: require the person's own words for a non-person caller.
+- Flake found on stage itself (not mine): core/team test "HIGH 1 ... bare 'mcp' caller cannot claim
+  another project" fails about 1 run in 3 on a pristine stage tip. A forged `cli` label sometimes
+  survives the daemon's relabel to `mcp`, so the forged team.ask lands. Sent to reviewer-2 and lead.
+- Next: team.add widened to the assistant/chat (still checks project), @role create without confirm,
+  projects.rename/archive, team.list all:true, team.ask explicit project, filler/charters/duties.
+- Built the quiet local history wiring (team-lead's ask): projects.create calls github.project.local-init
+  for a new/empty folder, offers once for an existing non-repo folder (result carries `offer`),
+  `projects.history {project, keep}` answers it, state in projects_history. Needs github 63caf8e3 on
+  stage to do anything (without it create still works quietly). Tests: core/projects/history.test.js.
+- Built team.add for a session in the project (mcp + thread), projects.rename (pins slug), projects.archive
+  (archived_at in the marker; list hides it unless archived:true). team.add never had a confirm step, so
+  @role's create needs nothing removed there: native-core's card was the only gate. Still TODO: gate.said.match
+  provenance for non-person callers, team.list all:true, team.ask explicit project, charters, duties, filler.
+- Assistant allowed everywhere (team-lead): meta.agentKind === "assistant" (sessions' Wave A, vyred's stored
+  agent row) passes projects.rename/archive/history, team.add/retire, team.ask {project}, team.list {all}.
+  Teammates still refused. P17 gate.said.match check is a TODO on each. Not live-testable until sessions-02
+  lands meta.agentKind; unit-tested isAssistant only. Full core/team + core/projects + docs suites: only the
+  stage flake (platform fixing) fails.
+
+
+## Role charters (2026-09-30)
+
+- Built `team_charters` (versioned, appended, never edited), `team.charter.get/set/history/revert/draft`,
+  event `teammate.charter-changed`. Callers: person, assistant, or a session in the project; a teammate may only
+  read its own charter, never write one. Draft composes from the brief, projects.context and the teammate's notes
+  via threads.quick, falling back to a plain template when no model answers; saved as a new version.
+- Delivery: the charter rides in the teammate's preamble (the `append` on its first launch), after Vyre's own
+  rules, so it can never replace them. A new version rotates the live thread at the next request
+  (`thread_charter` records the version a thread started with). This uses core/team's own launch path, not
+  sessions' `agent:<name>` prompt scope, because a teammate's prompt is already composed here; nothing needed
+  from sessions.
+- Tests: 2 new in core/team/team.test.js (versions, unchanged, revert, bounds, draft, bare mcp refused); full
+  core/team suite 51/51.
+- Next: filler column + team.role.fill (real agent identity), then duties as watchers (waits on work/watchers).
+
+## Role filler (2026-09-30)
+
+- `team_teammates.filler` (null = project-only default helper, else an `agents_agents` name) and
+  `team.role.fill {teammate | project+role, agent?}`; `team.list` rows carry `filler {kind, agent?}`; event
+  `team.role-changed`. Callers as for charters (person, assistant, session in the project; never a teammate).
+- A filled role's first launch prompt carries the agent's own character, then the role's charter, and uses the
+  agent's model/effort. Changing the filler starts a fresh thread at the next request (notes, charter and results
+  stay with the binding). The assistant cannot fill a role. An agent without access to the project is given it only
+  when the person fills the role; an assistant or session gets "denied" (agents.update keeps project grants the person's).
+- Still to do for a true identity: the agent's credentials/account on the launch (agents' `credentials()` is private
+  to core/agents) and per-agent memory scope (iq contract, section 14.3). Both are cross-team; the launch runs in the
+  project thread as the role, never in kit's personal thread.
+- Test: 1 new (52/52 in core/team). Regenerated docs/reference and docs/index.json.
+
+## Reviewer-2 MEDIUM-low on charters (2026-09-30)
+
+- `teammate.charter-changed` now carries `previous`, `by` and `note`; new `team.charter.diff {teammate|project+role, version?}`
+  returns the version beside the one before it. Backend for the Deck/feed card "charter changed by <agent>" with a one-tap
+  `team.charter.revert`; the card itself waits on app-design. `by` stays in history.
+- Agreed the duty shape with watchers (CHAT.md): duties are teammate-owned watchers, built when watchers.* lands.
+
+## Standing duties (2026-09-30, built ahead of watchers per team-lead)
+
+- `core/team/duties.js` + `team_duties` (identity only: teammate, watcher name, trigger, instruction, act, enabled, started,
+  created_by). Tools `team.duties.create/list/update/delete/run-now`, event `teammate.duty-changed`. Everything runs through
+  `watchers.*` (create with owner {kind:"teammate"}, update, pause, resume, delete, run), injected as `call`, so tests use a fake.
+- A duty a teammate proposes for itself is off with NO watcher until a person or their assistant turns it on (update enabled:true);
+  a proposal can never run, spend or act. A teammate cannot update, delete or run a duty. Person, assistant, or a session in
+  the project on the person's request create one that starts at once. If watchers refuses, no row is left.
+- team.retire: plain retire turns the duties off; undo removes them and the charter too (undo previously left the charters behind).
+- Contract to confirm with watchers on landing: the input names (`when`, `instruction`, `act`, `owner`) and that
+  `watchers.update/delete/run` exist. The live watchers module in this tree is still the 0.1 shape, so a real create is refused
+  cleanly until theirs lands (covered by a test). Adapter is the one `watchers()` helper and `start()` in duties.js.
+- Tests: duties.test.js (5, fake watchers) plus 1 through the daemon; core/team 58/58.
+
+## Duties: non-person creates are proposals (reviewer-2 MEDIUM, 2026-09-30)
+
+- `team.duties.create` from anyone but the person's own surface (assistant, session, teammate) now stores a proposal: off, no
+  watcher. `team.duties.update` refuses non-person callers turning a duty on or changing a running one; they may pause it or edit a
+  proposal. One seam, `personAsked(meta)` in core/team/index.js, becomes `gate.said.match` (act_out, lineage-aware) with P17;
+  then an asked duty from the assistant or a session starts at once. On the P17 release list with charter, fill/grant and retire.
+- Note for team-lead: this supersedes "the assistant can turn a proposed duty on" until P17; the person's tap does it.
+- reviewer-2 (54c90229 cleared): with the P17 swap, an edited proposal must show "changed since you last saw it" or re-show its
+  instruction when turned on, so the approved text is the text that runs. On the release list (Deck card + an `expect` check on enable).
+
+## Stop cleanly (2026-09-30, platform's find)
+
+- core/team's dispatcher could outlive the daemon: a worktree teammate's queued merge (the integrator's dispatch and the
+  thread.finished listener behind it) kept running after stop and hit "database is not open". Now `stop()` sets a flag, drops the
+  waiting thread.finished listeners, and awaits every in-flight pump/turn-ended job (tracked), before the daemon closes the store;
+  pump does nothing once stopped. Test: stopping right after a worktree merge was queued (fails 3/3 without the fix, passes with it).
+- stop() waits at most STOP_WAIT_MS (10 s, core/team/bounded.js boundedWait), then logs and stops anyway (reviewer-2 LOW).
+
+## Person-only writes + projectArg (2026-09-30, team-lead)
+
+- projects.rename, projects.archive and team.charter.set are now person-only (callers cli, local, deck, capsule, module); a session or an agent
+  is refused by the registry (test in team.test.js; the old unit test that leaned on an in-module check is removed). team.charter.draft stays
+  open to agents: they draft, the person writes. Merged origin/work/platform-contract (67bd90da) for the projectArg registry rule, and declared
+  `projectArg: "project"` on every team.* and projects.* tool that takes a project (team.add/retire/list/ask/charter.*/role.fill/duties.create+list/
+  default.*/project-*, projects.history/rename/archive/add-threads/remove-threads).

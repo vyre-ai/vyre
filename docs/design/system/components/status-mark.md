@@ -9,14 +9,14 @@ status: draft
 # Status mark
 
 One status model, most urgent first, drawn the same way on rows, tabs, the rail, the favicon, the
-app badge, the Capsule's mark and the CLI. Drawn on "Vyre one app, the system" (Status, one
+app badge, Lumen's mark and the CLI. Drawn on "Vyre one app, the system" (Status, one
 model) and on every list board; the 99+ cap on "States, every list, every size".
 
 | Surface | Implementing file | Status |
 |---|---|---|
 | Deck | `deck/css/deck.css` `.dot.*` (main); `deck/chat/chat.css` `.cv-state-*` (work/chat) | partial |
 | App | `apps/app/src/ui/StatusMark.tsx` `StatusMark` (work/mobile) | partial |
-| Capsule | `local/capsule/native/Sources/UI/AgentDeskView.swift` WaitingRow, `UI/CapsuleView.swift` ToolRows and Pulse, `Host/MenuBarItem.swift` (work/capsule-pro) | partial |
+| Lumen | `local/capsule/native/Sources/UI/AgentDeskView.swift` WaitingRow, `UI/CapsuleView.swift` ToolRows and Pulse, `Host/MenuBarItem.swift` (work/capsule-pro) | partial |
 
 ## Anatomy
 
@@ -98,5 +98,5 @@ Failed never pushes a notification; it waits in the list.
 - [ ] Deck (work/pwa): the phone tab bar badge is 16 tall, 10 px text; use 18 and meta size.
 - [ ] App: `StatusMark` has no badge, count or status word; done uses a 1 px border (1.5); the
   failed mark is a slashed circle, not the cross; no elapsed time on running.
-- [ ] Capsule: waiting dot uses `Theme.attention` at 7 px; tool rows use SF Symbols; Pulse is a
-  lime 7 px dot, not the ring; no badge; relayed health is not neutral.
+- [ ] Lumen: waiting dot uses `Theme.attention` at 7 px; tool rows use SF Symbols; Pulse is a
+  bone 7 px dot, not the ring; no badge; relayed health is not neutral.

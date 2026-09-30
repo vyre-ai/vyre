@@ -1,6 +1,6 @@
 /* The one toast (Design A v1: docs/design/system/components/toast.md), built by js/toast.js.
    Two placements, one look: floating (bottom centre on the desktop, above Lumen on the
-   phone) and in place (in a collapsed row's slot). Undo is a ghost button, never lime. */
+   phone) and in place (in a collapsed row's slot). Undo is a ghost button, never bone. */
 
 .toast { display: flex; align-items: center; box-sizing: border-box; color: var(--text);
   font-size: var(--size-base, 13px); line-height: var(--line-base, 18px); }

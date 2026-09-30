@@ -20,7 +20,7 @@ vyre doctor
 
 It checks vyred, Tailscale on both ends (signed in, the same account, MagicDNS and HTTPS on), your
 phone on the tailnet, the box's address, a passkey for that address, pairing, Claude on the box and
-the Capsule, in under two seconds. Each line is a check that passed, failed (with the one thing to
+Lumen, in under two seconds. Each line is a check that passed, failed (with the one thing to
 do next under it), or could not be checked (with why). It only reads: it never signs in, pairs or
 opens anything. `vyre doctor --json` gives the same list to a script.
 
@@ -184,23 +184,23 @@ Type the code as the Mac shows it in `vyre up` or `vyre link`, such as `482-913`
 
 The Deck on the box lists the paired Mac's sessions while the Mac is awake and on the tailnet. When it is not, the Deck shows the box's own sessions and a chip such as "alex-mac offline". Wake the Mac, check Tailscale is connected, and run `vyre link` on it. See [The box and the Mac](../concepts/box-and-mac.md#the-box-reads-the-macs-sessions).
 
-## The Capsule
+## Lumen
 
 ### "The Capsule is built with Apple's Command Line Tools, which are not installed"
 
-`vyre capsule` builds the Capsule on this Mac. Run `xcode-select --install`, then `vyre capsule install`.
+`vyre capsule` builds Lumen on this Mac. Run `xcode-select --install`, then `vyre capsule install`.
 
 ### Permissions you grant do not stick
 
-A Capsule signed ad hoc is a new identity to macOS after each rebuild (an npm update that changes its source rebuilds it). `vyre capsule` offers once to make a local signing identity ("Vyre Local") in your login keychain; with it, grants survive rebuilds. Without it, turn Vyre off and on again under Input Monitoring after an update.
+Lumen signed ad hoc is a new identity to macOS after each rebuild (an npm update that changes its source rebuilds it). `vyre capsule` offers once to make a local signing identity ("Vyre Local") in your login keychain; with it, grants survive rebuilds. Without it, turn Vyre off and on again under Input Monitoring after an update.
 
 ### Control twice does nothing
 
-Click the Capsule's icon in the menu bar. A line starting `Double-Control is off:` says why. Grant Input Monitoring in System Settings, Privacy & Security, then run `vyre capsule` so it opens wired to this Mac's `vyred`. Option-Space opens it meanwhile; it needs no permission.
+Click Lumen's icon in the menu bar. A line starting `Double-Control is off:` says why. Grant Input Monitoring in System Settings, Privacy & Security, then run `vyre capsule` so it opens wired to this Mac's `vyred`. Option-Space opens it meanwhile; it needs no permission.
 
 ### "the Capsule is not installed: vyre capsule install"
 
-`vyre up` found no Capsule source to build on this Mac, or `vyre doctor` found no built app in `~/.vyre/capsule`. Run `vyre capsule install`.
+`vyre up` found no Lumen source to build on this Mac, or `vyre doctor` found no built app in `~/.vyre/capsule`. Run `vyre capsule install`.
 
 ## Everyday
 
@@ -232,7 +232,7 @@ vyre agents update kit --budget 40
 
 ### An agent is waiting on you
 
-A thread that needs permission stops and asks. `vyre agents` shows it as waiting. Answer with the line it printed, `vyre threads answer <id> allow` or `deny`, or answer it in the Capsule or the Deck.
+A thread that needs permission stops and asks. `vyre agents` shows it as waiting. Answer with the line it printed, `vyre threads answer <id> allow` or `deny`, or answer it in Lumen or the Deck.
 
 ## Where to go next
 

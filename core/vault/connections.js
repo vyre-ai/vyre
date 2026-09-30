@@ -43,6 +43,13 @@ export const CONNECTIONS_PICKER_MIGRATION = `ALTER TABLE vault_connections ADD C
 /** last_used is written at most this often per row. */
 export const LAST_USED_EVERY_MS = 60_000;
 
+/**
+ * A pick with two or more ready connections and no default suggests setting one, once per
+ * capability ever - not "once per session", so the Capsule, the Deck and chat never each ask
+ * their own copy of the same question.
+ */
+export const DEFAULT_SUGGEST_MIGRATION = `CREATE TABLE vault_default_asked (capability TEXT PRIMARY KEY, at INTEGER NOT NULL);`;
+
 /** The MACed columns: which connection it is, what it can do and who may use it. */
 export const CONNECTION_MACED = ["id", "source", "ref", "provider", "account", "auth", "capabilities", "surfaces"];
 
@@ -545,7 +552,15 @@ export class Connections {
     }
     // For a pick: the default first, then the most recently used, then by label.
     if (capability) out.sort((a, b) => Number(b.is_default) - Number(a.is_default) || (b.last_used || 0) - (a.last_used || 0) || a.label.localeCompare(b.label));
-    return { surface: eyes || "person", connections: out };
+    let suggestDefault = false;
+    if (capability && out.length > 1 && !out.some(r => r.is_default)) {
+      const asked = this.db.prepare("SELECT 1 FROM vault_default_asked WHERE capability = ?").get(capability);
+      if (!asked) {
+        this.db.prepare("INSERT OR IGNORE INTO vault_default_asked (capability, at) VALUES (?, ?)").run(capability, this.now());
+        suggestDefault = true;
+      }
+    }
+    return { surface: eyes || "person", connections: out, ...(capability ? { suggest_default: suggestDefault } : {}) };
   }
 
   /**

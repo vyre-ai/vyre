@@ -18,7 +18,7 @@ and desktop" and "Projects, phone and desktop" (defaults).
 |---|---|---|
 | Deck | `deck/chat/composer.js` `.composer-mode` `.composer-model`, `deck/chat/core/composer-state.js` `modeLabel` `nextMode` (work/chat) | partial |
 | App | `modeLabel` text in `apps/app/app/session/[id].tsx` (work/mobile) | partial |
-| Capsule | none (work/capsule-pro) | not built |
+| Lumen | none (work/capsule-pro) | not built |
 
 ## Anatomy
 
@@ -44,7 +44,7 @@ the menu row.
 A provider with no match for a mode shows that row disabled with "Not available with Codex".
 
 **Doesn't ask** is the inverse neutral chip: fill `--text`, ink `--bg`, border `--text`, the
-unlock icon in `--bg`. Calm and distinct; no violet, no lime, no warning colour, no banner, no
+unlock icon in `--bg`. Calm and distinct; no violet, no bone, no warning colour, no banner, no
 hold, no Face ID. Only the person switches into it: from this chip, the menu, ⇧Tab, or a
 project's "Trusted" default (new sessions there start in it). Agents, teammates and Claude's own
 sessions never can. Vyre's floor and the Gate still apply: sends, posts and payments are held for
@@ -116,5 +116,5 @@ and payments are still held for you, and protected files are still refused." Nev
   chip shows the model only, not provider and auth.
 - [ ] App: the mode is a text line under the composer and the header chip is "agent · provider ·
   model · project"; build both chips and the mode sheet.
-- [ ] Capsule: none; the session panel needs the provider chip at least.
+- [ ] Lumen: none; the session panel needs the provider chip at least.
 - [ ] System: the composer chip radius 6 is not a token; add one or use `--radius-button`.

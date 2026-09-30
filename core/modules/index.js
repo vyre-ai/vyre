@@ -15,7 +15,7 @@ import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { migrate } from "../store/index.js";
 import { Idempotency } from "./idempotency.js";
-import { PERSON_ONLY, machineSelf } from "../presence/index.js";
+import { PERSON_ONLY, machineSelf, core as coreHolder, format as formatProof } from "../presence/index.js";
 import { validateDecls } from "../config/settings.js";
 import * as config from "../config/index.js";
 import { toolEntries, checkManifestFull } from "../../packages/module-sdk/manifest.js";
@@ -53,7 +53,29 @@ export const firstParty = dir => {
  * @type {Record<string, string[]>}
  */
 // settings passes a person's change on to the module that keeps the value, as that person.
-const CALL_AS = { link: ["link:box"], settings: ["cli", "local", "deck", "capsule"] };
+/** How long an asked tool's target (and the thread lineage) may take to answer before the call is not_asked. */
+const TARGET_MS = 2000;
+/**
+ * A promise's answer, or null when it is later than `ms` (the timer never keeps the process alive).
+ * @template T @param {Promise<T>} p @param {number} ms @returns {Promise<T | null>}
+ */
+function withinMs(p, ms) {
+  let timer;
+  const late = new Promise(res => { timer = setTimeout(() => res(null), ms); if (timer.unref) timer.unref(); });
+  return Promise.race([p, late]).finally(() => clearTimeout(timer));
+}
+/** The one tool the agents module may call as the asking person: agents.ask's words and tags, heard by threads.send. @param {string} tool */
+export const agentsMayRelay = tool => tool === "threads.send";
+/** The per-call check on the agents module's relay: throws for any tool but threads.send. @param {string} tool @param {string} as */
+export function checkAgentsRelay(tool, as) {
+  if (!agentsMayRelay(tool)) throw new Error(`agents may not call ${tool} as ${as}: it relays a person to threads.send only`);
+}
+/** @type {Record<string, any>} */
+const CALL_AS = { agents: (/** @type {string} */ as) => isPerson(as), link: ["link:box"], settings: ["cli", "local", "deck", "capsule"], mentions: (/** @type {string} */ as) => isPerson(as) || as === "module:sessions" || as === "module:assistant",
+  // capsule runs a view's declared tool as the asking person (first party modules) or as the added module itself, never as anyone else.
+  capsule: (/** @type {string} */ as) => isPerson(as) || /^module:[a-z][a-z0-9-]*$/.test(as),
+  // connectors relays the person who asked to one thing: writing an api-credential (a module cannot write one on its own); checked per call below.
+  connectors: (/** @type {string} */ as) => isPerson(as) };
 /**
  * A manifest still says `"roles": ["box"]` or `["local"]` (forty-plus modules across every
  * team; ADR 0039 keeps that vocabulary rather than renaming it everywhere). `start()` is called
@@ -152,7 +174,7 @@ export const RESERVED_EVENTS = {
   // thread.deleted wipes a chat history: only the session modules that own threads emit thread.*.
   // tailscale.changed tells the setup page the tailnet is connected: only the network module says so.
   tailscale: ["network"],
-  thread: ["threads", "harness", "link", "projects", "sessions"],
+  thread: ["threads", "harness", "link", "projects", "sessions", "artifacts"],
 };
 
 export function validate(m, { firstParty = false } = {}) {
@@ -205,6 +227,28 @@ export function validate(m, { firstParty = false } = {}) {
     const own = new Set(toolEntries(m).map(t => t.name));
     if (!Array.isArray(m.setupTools) || m.setupTools.some(/** @param {any} t */ t => typeof t !== "string")) out.push("setupTools must be a list of tool names");
     else for (const t of m.setupTools) if (!own.has(t)) out.push(`setupTools "${t}" is not a tool this module declares in does.tools`);
+  }
+  // An asked tool's target: one internal tool of this module, answering what one call acts on (built in only, see addedCheck).
+  for (const e of toolEntries(m)) {
+    if (!e.target) continue;
+    const own = toolEntries(m).find(x => x.name === e.target);
+    if (e.reach !== "asked") out.push(`tool "${e.name}": target is for an asked tool`);
+    else if (!own || !String(e.target).startsWith(String(m.name) + ".")) out.push(`tool "${e.name}": target "${e.target}" is not a tool this module declares in does.tools`);
+    else if (own.reach !== "modules") out.push(`tool "${e.name}": target "${e.target}" must be reach modules, an internal tool`);
+  }
+  // mentions: the # picker's kinds, each naming this module's own search and resolve tools (built in only, see addedCheck).
+  if (Array.isArray(m.mentions)) {
+    const own = new Set(toolEntries(m).map(t => t.name));
+    const kinds = new Set();
+    for (const e of m.mentions) {
+      if (!e || typeof e !== "object") continue;
+      if (typeof e.kind !== "string" || !/^[a-z][a-z0-9-]{1,24}$/.test(e.kind)) out.push(`mentions kind ${JSON.stringify(e.kind)} must be lowercase letters, digits and dashes, 2 to 25 characters`);
+      if (typeof e.label !== "string" || !e.label || e.label.length > 40) out.push(`mentions "${e.kind}" needs a label of up to 40 characters`);
+      if (e.icon !== undefined && (typeof e.icon !== "string" || !/^[a-z][a-z0-9-]{0,24}$/.test(e.icon))) out.push(`mentions "${e.kind}" icon must be a short lowercase slug`);
+      if (kinds.has(e.kind)) out.push(`mentions kind "${e.kind}" is declared twice`);
+      kinds.add(e.kind);
+      for (const f of ["search", "resolve"]) if (typeof e[f] === "string" && !own.has(e[f])) out.push(`mentions "${e.kind}" ${f} "${e[f]}" is not a tool this module declares in does.tools`);
+    }
   }
   // ADR 0047, reviews/platform.md H2: an added module replaces nothing in 0.2.
   if (!firstParty && m.replaces !== undefined) out.push("replaces: an added module can't replace one of Vyre's modules; the 0.2 allowlist of replaceable modules is empty");
@@ -412,7 +456,7 @@ export class Registry {
    *           rules?: (call: { tool: string, input: any, caller: string }) => Promise<{ allow: boolean, reason?: string }>,
    *           handler?: (policy: any) => (req: any, res: any, caller: string) => Promise<void>, paths?: any,
    *           upgrader?: (policy: any) => (req: any, socket: any, head: any, caller: string) => void,
-   *           presence?: import("../presence/index.js").Presence }} deps
+   *           presence?: import("../presence/index.js").Presence, coreKeys?: any }} deps
    */
   constructor(deps) {
     this.deps = deps;
@@ -487,6 +531,11 @@ export class Registry {
    * injectable (default process.platform) so a test can cover the darwin server case on any CI
    * machine, same as roleBuckets() and core/config's defaults(). */
   async start(found, { role, enable = [], disable = [], platform = process.platform }) {
+    /** @type {Map<string, string>} the # kinds offered so far, by module */
+    const mentionKinds = new Map();
+    // The names of the modules shipped with Vyre in this start, on or off on this machine: an added module can
+    // never load under one, so it can't answer another module's tools (names.*, network.*) from first party code.
+    const shipped = new Set(found.filter(x => x && x.manifest && typeof x.manifest.name === "string" && this.isFirstParty(x.dir)).map(x => x.manifest.name));
     for (const f of found) {
       const name = f.manifest && f.manifest.name;
       // A module with a problem never starts, but it never disappears without a word either: it
@@ -496,25 +545,63 @@ export class Registry {
       // status() (vyre modules, /v1/modules) already carries the same reason for later.
       // Warnings (unknown keys, deprecated usages) are said once per start and never stop a load.
       for (const w of f.warnings || []) this.deps.log(`warn: module ${name || f.dir}: ${w}`);
-      if (f.problems.length) {
-        const error = f.problems.join("; ");
-        this.modules.set(name || f.dir, { manifest: f.manifest, dir: f.dir, state: "invalid", error });
-        this.deps.log(`warn: module ${name || f.dir} invalid: ${error}`);
-        continue;
-      }
-      // Two modules with one name: the first found wins (Vyre's own folders come before the
-      // user's), and the other is reported, never silently dropped. A user's module named like a
-      // core one once vanished without a word, and so did every tool it offered.
-      if (this.modules.has(name)) {
-        const error = `a module named ${name} is already loaded from ${this.modules.get(name).dir}; this one is ignored`;
+      if (name && shipped.has(name) && !this.isFirstParty(f.dir)) {
+        const error = `name "${name}" belongs to a module shipped with Vyre; an added module can't load under it, on or off`;
         this.modules.set(`${name}@${f.dir}`, { manifest: f.manifest, dir: f.dir, state: "invalid", error });
         this.deps.log(`warn: module ${name}@${f.dir} invalid: ${error}`);
+        continue;
+      }
+      if (f.problems.length) {
+        const error = f.problems.join("; ");
+        // An invalid copy never takes the row of a module already loaded under its name, and one that shares a shipped module's name never gets here in any order (the shipped-names rule above).
+        this.modules.set(name && !this.modules.has(name) ? name : name ? `${name}@${f.dir}` : f.dir, { manifest: f.manifest, dir: f.dir, state: "invalid", error });
+        this.deps.log(`warn: module ${name || f.dir} invalid: ${error}`);
         continue;
       }
       const roles = f.manifest.roles || ["box", "local"];
       // "mac" and "windows" are "local" on that OS only (roleBuckets); box and local are themselves.
       const here = roleBuckets(role, platform);
       const on = !disable.includes(name) && (roles.some(r => (r === "mac" || r === "windows" ? roleBuckets(r, platform) : [r]).some(b => here.includes(b))) || enable.includes(name));
+      // Two modules with one name: the first found wins (Vyre's own folders come before the
+      // user's), and the other is reported, never silently dropped. A user's module named like a
+      // core one once vanished without a word, and so did every tool it offered.
+      // The exception is a name two of Vyre's own modules share on purpose for different machines
+      // (the box's chrome and the Mac's chrome): a copy that is not on for this machine steps aside
+      // for one that is, and stays listed as off, so which one runs never depends on folder order.
+      if (this.modules.has(name)) {
+        const prev = this.modules.get(name);
+        const mine = this.isFirstParty(f.dir), theirs = this.isFirstParty(prev.dir);
+        /** @param {{ manifest: any, dir: string }} rec @param {string} error */
+        const reject = (rec, error) => { this.modules.set(`${name}@${rec.dir}`, { manifest: rec.manifest, dir: rec.dir, state: "invalid", error }); this.deps.log(`warn: module ${name}@${rec.dir} invalid: ${error}`); };
+        // The two "added vs Vyre" branches below cannot be reached today: the shipped-names check at the top of the loop already sends an added copy of a
+        // shipped name to `name@dir` as invalid, in either folder order. They stay as defence in depth; the invariant lives in that top check.
+        if (mine && !theirs) {
+          // Vyre's own module always owns its name, whatever the folder order: an added module found first steps aside.
+          reject(prev, `a Vyre module named ${name} owns that name; this one is ignored`);
+          this.modules.delete(name);
+        } else if (!mine && theirs) {
+          // An added module never takes or replaces a Vyre module's name, whether that one is on or off here.
+          reject({ manifest: f.manifest, dir: f.dir }, `a Vyre module named ${name} owns that name; this one is ignored`);
+          continue;
+        } else if (!on) {
+          this.modules.set(`${name}@${f.dir}`, { manifest: f.manifest, dir: f.dir, state: "off" });
+          continue;
+        } else if (mine && theirs && prev.state === "off") {
+          this.modules.set(`${name}@${prev.dir}`, prev);
+        } else {
+          reject({ manifest: f.manifest, dir: f.dir }, `a module named ${name} is already loaded from ${prev.dir}; this one is ignored`);
+          continue;
+        }
+      }
+      // One provider per # kind: the first module found keeps it, and a later one that claims it fails.
+      const taken = (Array.isArray(f.manifest.mentions) ? f.manifest.mentions : []).map(e => [e && e.kind, mentionKinds.get(e && e.kind)]).find(([, by]) => by && by !== name);
+      if (taken) {
+        const error = `mentions kind "${taken[0]}" is already offered by ${taken[1]}`;
+        this.modules.set(name, { manifest: f.manifest, dir: f.dir, state: "invalid", error });
+        this.deps.log(`warn: module ${name} invalid: ${error}`);
+        continue;
+      }
+      for (const e of Array.isArray(f.manifest.mentions) ? f.manifest.mentions : []) if (e && e.kind) mentionKinds.set(e.kind, name);
       this.modules.set(name, { manifest: f.manifest, dir: f.dir, state: on ? "pending" : "off" });
     }
     const candidates = found.filter(f => { const r = this.modules.get(f.manifest && f.manifest.name); return r?.state === "pending" && r.dir === f.dir; });
@@ -669,6 +756,12 @@ export class Registry {
       declaredSettings: () => [...this.modules.entries()].filter(([, r]) => r.state === "running" && r.manifest && Array.isArray(r.manifest.settings))
         // module and firstParty come from the loader, after the declaration, so a manifest can't claim them.
         .flatMap(([name, r]) => r.manifest.settings.map(d => ({ ...d, module: name, firstParty: this.isFirstParty(r.dir) }))),
+      // The tools shipped modules put on the pre-claim setup channel (module.json "setupTools"),
+      // for the relay to build its allowlist from. Only a shipped module's field counts, only for a
+      // tool it declares and owns, and never a relay, presence or vault tool: an added module's field is ignored.
+      declaredSetupTools: () => [...this.modules.entries()]
+        .filter(([, r]) => r.state === "running" && r.manifest && Array.isArray(r.manifest.setupTools) && this.isFirstParty(r.dir))
+        .flatMap(([name, r]) => r.manifest.setupTools.filter((/** @type {any} */ t) => typeof t === "string" && t.startsWith(name + ".") && toolEntries(r.manifest).some(e => e.name === t) && !/^(relay|presence|vault)\./.test(t))),
       // Every running module's teaches.tips, for the tips module to choose from (core/tips). Tips
       // are plain text a module chose to show; the tips module checks them, never this loader.
       // firstParty: shipped in the repo, so its tips follow Vyre's version, not the module's own.
@@ -759,13 +852,23 @@ export class Registry {
         if (!as && rec && !fp && !declared.has(tool) && !((m.needs && m.needs.tools) || []).includes(tool)) {
           return Promise.reject(Object.assign(new Error(`${m.name} called ${tool}, which needs.tools does not list`), { code: "undeclared" }));
         }
-        if (!as) return this.call(tool, input, `module:${m.name}`, { firstParty: fp });
-        const core = Boolean(rec && path.resolve(rec.dir).startsWith(CORE_DIR + path.sep));
-        if (!core || !(CALL_AS[m.name] || []).includes(String(as))) throw new Error(`${m.name} may not call ${tool} as ${as}`);
+        // opts.onPartial: a tool that streams (threads.quick with stream: true) hands its partial text to
+        // this function, on this call only. Never the events bus, and never over a connection.
+        if (!as) return this.call(tool, input, `module:${m.name}`, { firstParty: fp, ...(opts && typeof opts.onPartial === "function" ? { partial: opts.onPartial } : {}) });
+        // The capsule module sits in local/capsule (the Mac app's), and is first party there.
+        const core = Boolean(rec && (path.resolve(rec.dir).startsWith(CORE_DIR + path.sep) || (m.name === "capsule" && fp)));
+        const allowed = /** @type {any} */ (CALL_AS)[m.name];
+        if (!core || !(typeof allowed === "function" ? allowed(String(as)) : (allowed || []).includes(String(as)))) throw new Error(`${m.name} may not call ${tool} as ${as}`);
+        // mentions replays the asking person to a provider's search tool, never to any other tool.
+        if (m.name === "connectors" && !(tool === "vault.put" && input && typeof input === "object" && input.kind === "api-credential")) throw new Error(`connectors may not call ${tool} as ${as}: it relays a person to vault.put for an api-credential only`);
+        // agents relays the asking person to threads.send alone (agents.ask's tags), never to any other tool.
+        if (m.name === "agents") checkAgentsRelay(tool, String(as));
+        if (m.name === "capsule" && !this.capsuleMayCall(String(as), tool)) throw new Error(`capsule may not call ${tool} as ${as}: no Capsule view of that module declares it`);
+        if (m.name === "mentions" && !this.mentionTools(String(as).startsWith("module:") ? "resolve" : "search").has(tool)) throw new Error(`mentions may not call ${tool} as ${as}: no first-party provider names it`);
         // settings relays a person only to the tools first-party modules declared as their own
         // settings' getters and setters, never to any other tool (e2e review, HIGH 2).
         if (m.name === "settings" && !this.settingTools().has(tool)) throw new Error(`settings may not call ${tool} as ${as}: no first-party setting names it`);
-        return this.call(tool, input, String(as));
+        return this.call(tool, input, String(as), m.name === "capsule" && opts.asked && typeof opts.asked === "object" ? { asked: opts.asked } : {});
       },
       // A long-lived connection (a WebSocket) at /v1/streams/<module>/<name>, for what a tool call
       // cannot carry: Glass streams a screen this way. The name must be declared under
@@ -788,6 +891,9 @@ export class Registry {
         // what a surface can run (commands.list), never for deciding a call: the registry does that.
         tools: caller => structuredClone(this.listTools(caller ? String(caller) : undefined)),
       },
+      // The box's keys held by vyre-core (lib/vyre-core-keys.js), for the relay module alone: its dh
+      // and signature would let any module that held them speak as the box. Null where core has none.
+      coreKeys: m.name === "relay" && firstParty(String((this.modules.get(m.name) || {}).dir || "")) ? this.deps.coreKeys || null : null,
       handler: policy => { if (!this.deps.handler) throw new Error("this vyred has no router to hand out"); return this.deps.handler(policy); },
       // The same for WebSocket upgrades (/v1/streams/...): (req, socket, head, caller). Without it
       // a module's listener cannot carry a stream, and Glass over the tailnet never connected.
@@ -839,6 +945,9 @@ export class Registry {
         // tool is refused to, and left out of the listing for, any other. Omitted means all.
         // hook: reachable only as vyred's webhook route POST /v1/<module>/<name>/hook (caller
         // "hook"), and left out of every listing. The tool checks its own secret.
+        // core: vyre-core answers it on this Mac and checks its proof itself (ADR 0040 phase 2);
+        // only a first-party module may say so, since it turns vyred's own presence check off.
+        if (def.core && !firstParty(m.dir)) throw new Error(`${m.name} is not one of Vyre's own modules, so ${name} can't be a vyre-core tool`);
         // A declared reach (ADR 0047) sets the same checks: modules is internal, hook is the webhook
         // route, and person is the person's own surfaces and devices only. anyone and asked stay
         // open here; the asked check and outward routing are later build steps (plans/platform.md).
@@ -846,10 +955,43 @@ export class Registry {
         this.tools.set(name, { module: m.name, description: def.description || "", input: def.input || { type: "object" }, run: def.run,
           internal: Boolean(def.internal) || reach === "modules",
           callers: reach === "person" ? [...PERSON_CALLERS] : Array.isArray(def.callers) ? def.callers : null,
-          hook: Boolean(def.hook) || reach === "hook", presence: def.presence || false,
-          reach, outward: (e && e.outward) || null, declaredReach: objectForm.has(name) });
+          hook: Boolean(def.hook) || reach === "hook", presence: def.presence || false, core: Boolean(def.core),
+          reach, outward: (e && e.outward) || null, target: (e && e.target) || null, projectArg: (e && e.projectArg) || null, cwdArg: (e && e.cwdArg) || null, declaredReach: objectForm.has(name) });
       },
     };
+  }
+
+  /**
+   * Did the person's own words ask for this tool (reach "asked")? Asks vault.said.match, which
+   * matches the person's turn in this thread or its lineage, or a standing permission, and uses a
+   * plain ask up. Fails closed: no vault, a locked vault, an error or no thread answers no.
+   * A tool with a `target` (an internal tool of its own module) binds the yes to what the call acts on: the target
+   * answers { to: [string] } for this call's input, and that answer is the whole `to` of the match (each entry a
+   * composite key of the tool and the thing it acts on). An error or an empty answer is no.
+   * @param {string} tool @param {{ thread?: string, agent?: string }} meta @param {any} [def] @param {any} [input]
+   */
+  async saidMatch(tool, meta, def, input) {
+    if (!this.tools.has("vault.said.match")) return false;
+    try {
+      /** @type {string[]} */ let to = [tool];
+      if (def && def.target) {
+        // The target is a module's own code answering for a call that may not be the person's: late is no.
+        const t = await withinMs(this.call(def.target, { tool, input }, "module:vyred", { door: true, ...(/** @type {any} */ (meta).granted !== undefined ? { granted: /** @type {any} */ (meta).granted } : {}) }), TARGET_MS);
+        if (!t) return false;
+        const extra = t && t.data && Array.isArray(t.data.to) ? t.data.to.filter((/** @type {any} */ x) => typeof x === "string" && x) : [];
+        if (!extra.length) return false;
+        to = extra;
+      }
+      const thread = typeof meta.thread === "string" ? meta.thread : undefined;
+      let lineage;
+      if (thread && this.tools.has("threads.lineage")) {
+        const l = await withinMs(this.call("threads.lineage", { thread }, "module:vyred", { door: true }), TARGET_MS);
+        if (!l) return false;
+        if (l.data && Array.isArray(l.data.lineage)) lineage = l.data.lineage;
+      }
+      const r = await this.call("vault.said.match", { kind: "act_out", via: tool.split(".")[0], to, consume: true, ...(thread ? { thread } : {}), ...(lineage ? { lineage } : {}), ...(meta.agent ? { agent: meta.agent } : {}) }, "module:vyred", { door: true });
+      return Boolean(r.data && r.data.matched === true);
+    } catch { return false; }
   }
 
   /**
@@ -865,7 +1007,9 @@ export class Registry {
    *   the request carried, checked here and not passed on. `call` is the chat's id for this
    *   tool call (X-Vyre-Call-Id, only on a session's own paths): an unverified claim a tool may
    *   keep to link what it shows (a Glass step) to the chat's tool row, and never use for any
-   *   decision. Any other key a caller of this method adds reaches the tool the same way.
+   *   decision. `granted` (with `agentKind`) is the verified agent's stored project grant, "*" or
+   *   slugs, read by vyred from the agents module; a tool that scopes by project trusts it, never an
+   *   input filter. Any other key a caller of this method adds reaches the tool the same way.
    */
   async call(tool, input = {}, caller = "unknown", { proof = null, keep = false, terminal = null, idempotencyKey = undefined, door = false, ...meta } = {}) {
     const def = this.tools.get(tool);
@@ -887,9 +1031,6 @@ export class Registry {
     if (def.outward && !isPerson(caller)) {
       return { error: { code: "held_unavailable", message: `${tool} acts as you outside. A call from anyone but you is held at the Gate, and that routing lands with the Gate wiring; until then it runs only from your own surface.` } };
     }
-    if (def.reach === "asked" && (["mcp", "harness", "module"].includes(callerKind(caller)) || agentClaim(caller) !== null)) {
-      return { error: { code: "not_asked", message: `${tool} runs for an agent only when your own words asked for it; tell the person what you would do` } };
-    }
     if (def.internal && !String(caller).startsWith("module:")) return { error: { code: "no_such_tool", message: `no tool ${tool}` } };
     if (Boolean(def.hook) !== (caller === "hook")) return { error: { code: "no_such_tool", message: `no tool ${tool}` } };
     if (!callerAllowed(def.callers, caller)) return { error: { code: "denied", message: `${tool} is not available to ${callerKind(caller)} callers` } };
@@ -910,6 +1051,72 @@ export class Registry {
     }
     const problems = checkInput(def.input, input);
     if (problems.length) return { error: { code: "bad_input", message: problems.join("; ") } };
+    // A tool that takes a project declares projectArg, and one that takes a folder declares cwdArg. An agent's call for a
+    // project it is not granted (or a folder in one) is refused here, once, for every module alike: the one door is
+    // projects.reach (owner's revokes and the assistant's rule included). not_found, so a refusal never says whether the
+    // project exists. What was checked is what runs: a named project is rewritten to the canonical slug that was authorized.
+    // The tool gets meta.reach for what it lists; with no answer on the agent's grant it gets nothing (fail closed).
+    if ((def.projectArg || def.cwdArg) && agentClaim(caller) !== null) {
+      const fields = (/** @type {any} */ spec) => (spec ? (Array.isArray(spec) ? spec : [spec]) : []);
+      const valuesOf = (/** @type {string} */ arg) => {
+        const v = input && typeof input === "object" ? input[arg] : undefined;
+        return v === undefined || v === null || v === "" ? [] : Array.isArray(v) ? v : [v];
+      };
+      const refuse = { error: { code: "not_found", message: "no such project" } };
+      const named = fields(def.projectArg).flatMap(valuesOf);
+      const folders = fields(def.cwdArg).flatMap(valuesOf);
+      const r = await withinMs(this.call("projects.reach", { caller: String(caller), kind: "content" }, "module:vyred", { door: true }), TARGET_MS);
+      const reach = r && r.data && typeof r.data === "object" ? r.data : null;
+      if (!reach) {
+        if (named.length || folders.length) return refuse;
+        meta = { ...meta, reach: { all: false, projects: [] } };
+      } else {
+        const granted = reach.all ? null : (Array.isArray(reach.projects) ? reach.projects : []).filter((/** @type {any} */ p) => p && typeof p.slug === "string");
+        if (granted) {
+          // A name or a slug, exactly; a slug first. Anything else (an object, a number) is no.
+          const canon = (/** @type {any} */ v) => typeof v !== "string" ? null : (granted.find((/** @type {any} */ p) => p.slug === v) || granted.find((/** @type {any} */ p) => p.name === v) || {}).slug || null;
+          if (named.some(v => canon(v) === null)) return refuse;
+          let rewritten = input;
+          for (const arg of fields(def.projectArg)) {
+            const v = input && typeof input === "object" ? input[arg] : undefined;
+            if (v === undefined || v === null || v === "") continue;
+            rewritten = { ...rewritten, [arg]: Array.isArray(v) ? v.map(canon) : canon(v) };
+          }
+          input = rewritten;
+          // A folder belongs to the project that owns it; one in no project is refused for an agent with an explicit list.
+          if (folders.length) {
+            let scoped = null;
+            /** @type {Map<string, string>} the folder as given -> the real folder projects.of judged */
+            const canonical = new Map();
+            for (const cwd of folders) {
+              const o = typeof cwd === "string" ? await withinMs(this.call("projects.of", { cwd }, "module:vyred", { door: true }), TARGET_MS) : null;
+              const slug = o && o.data && typeof o.data.slug === "string" ? o.data.slug : null;
+              if (slug) {
+                if (!granted.some((/** @type {any} */ p) => p.slug === slug)) return refuse;
+                // What was judged is what runs: the tool gets the real folder (no `..`, no symlink), not the string it was sent.
+                if (typeof o.data.folder === "string" && o.data.folder) canonical.set(cwd, o.data.folder);
+                continue;
+              }
+              if (scoped === null) {
+                const sc = await withinMs(this.call("agents.scope", { name: String(agentClaim(caller)) }, "module:vyred", { door: true }), TARGET_MS);
+                const who = sc && sc.data ? sc.data : null;
+                scoped = !who || (who.kind !== "assistant" && who.projects !== "*");
+              }
+              if (scoped) return refuse;
+            }
+            if (canonical.size) {
+              const swap = (/** @type {any} */ v) => (typeof v === "string" && canonical.has(v) ? canonical.get(v) : v);
+              for (const arg of fields(def.cwdArg)) {
+                const v = input && typeof input === "object" ? input[arg] : undefined;
+                if (v === undefined || v === null) continue;
+                input = { ...input, [arg]: Array.isArray(v) ? v.map(swap) : swap(v) };
+              }
+            }
+          }
+        }
+        meta = { ...meta, reach: reach.all ? { all: true } : { all: false, projects: (Array.isArray(reach.projects) ? reach.projects : []).map((/** @type {any} */ p) => p && p.slug).filter(Boolean) } };
+      }
+    }
     if (this.deps.rules) {
       const verdict = await this.deps.rules({ tool, input, caller });
       if (!verdict.allow) return { error: { code: "denied", message: verdict.reason || "denied by rules" } };
@@ -917,7 +1124,12 @@ export class Registry {
     // A human-only tool needs a proof that a person is there, whatever the caller claims
     // (docs/adr/0004-presence.md). Only modules are exempt: only the loader makes those callers.
     const presence = this.deps.presence;
-    if (presence && callerKind(caller) !== "module" && presence.required(tool, def, input)) {
+    // A tool vyre-core answers on this Mac (def.core, ADR 0040 phase 2): core checks the proof
+    // itself, over the exact input, so vyred passes it through untouched rather than checking (and
+    // spending) it first. Only when core is linked; everywhere else the floor below applies.
+    if (def.core && coreHolder.link) {
+      meta = { ...meta, coreProof: proof ? formatProof(proof) : undefined };
+    } else if (presence && callerKind(caller) !== "module" && presence.required(tool, def, input)) {
       const v = await presence.verify({ tool, input, caller, proof, def, peer: meta.peer || null, terminal: typeof terminal === "string" || (terminal && typeof terminal === "object") ? terminal : null });
       if (!v.ok) return { error: { code: v.code === "no_dialog" ? "no_dialog" : "presence_required", message: v.message, methods: v.methods } };
       // The tool learns how the person proved it (and with which enrolled key), never the proof.
@@ -934,7 +1146,14 @@ export class Registry {
     // (firstParty above). Set here, over anything a caller passed, so no module can claim it.
     const rec = String(caller).startsWith("module:") ? this.modules.get(String(caller).slice(7)) : null;
     const fp = Boolean(rec && rec.dir && this.isFirstParty(rec.dir));
+    // An asked tool runs for a model, the harness or a module only when the person's own words asked for it. This is the
+    // LAST gate before the tool runs, and inside the once-per-key run: the match uses the ask up (consume), so a call
+    // refused above (bad input, a rule, a proof) and a retry that only replays the stored answer must never spend it.
+    const askedGate = def.reach === "asked" && (["mcp", "harness", "module"].includes(callerKind(caller)) || agentClaim(caller) !== null);
     const run = async () => {
+      if (askedGate && !(await this.saidMatch(tool, meta, def, input))) {
+        return { error: { code: "not_asked", message: `${tool} runs for an agent only when your own words asked for it; tell the person what you would do` } };
+      }
       try { return await this.run(def, input, { ...meta, caller, firstParty: fp, ...(idempotencyKey ? { idempotencyKey } : {}) }); }
       finally { if (counted) this.countUse(def.module); }
     };
@@ -963,6 +1182,53 @@ export class Registry {
     }
   }
 
+  /**
+   * May the capsule module call `tool` as `as`? Only a tool a running module's shows.capsule declares
+   * (a view's list, detail, action or form submit, or the older results: and action: keys). As the
+   * person's surface: a first party module's. As module:<name>: that module's own, and only its own
+   * tools or the ones it listed in needs.tools.
+   * @param {string} as @param {string} tool
+   */
+  capsuleMayCall(as, tool) {
+    const named = as.startsWith("module:") ? as.slice(7) : null;
+    // The hub's own tools: the Capsule lists a server's tools and runs one as the person (a write is held at the Gate).
+    if (!named && ["mcp.servers", "mcp.tools", "mcp.call"].includes(tool)) return true;
+    for (const [name, r] of this.modules.entries()) {
+      if (r.state !== "running" || !r.manifest) continue;
+      const cap = r.manifest.shows && r.manifest.shows.capsule;
+      if (!cap || typeof cap !== "object" || Array.isArray(cap)) continue;
+      const fp = this.isFirstParty(r.dir);
+      if (named ? named !== name : !fp) continue;
+      const declared = new Set();
+      for (const [key, v] of Object.entries(cap)) {
+        if (key.startsWith("results:")) declared.add(key.slice(8));
+        else if (key.startsWith("action:")) declared.add(key.slice(7).split("#")[0]);
+        else if (key.startsWith("view:") && v && typeof v === "object") {
+          const e = /** @type {any} */ (v), l = e.list || {};
+          if (l.tool) declared.add(l.tool);
+          if (l.detail && l.detail.tool) declared.add(l.detail.tool);
+          for (const a of Array.isArray(l.actions) ? l.actions : []) if (a && a.tool) declared.add(a.tool);
+          for (const f of Object.values(e.forms || {})) if (f && /** @type {any} */ (f).submit && /** @type {any} */ (f).submit.tool) declared.add(/** @type {any} */ (f).submit.tool);
+        }
+      }
+      if (!declared.has(tool)) continue;
+      if (!named) return true;
+      const needs = r.manifest.needs && Array.isArray(r.manifest.needs.tools) ? r.manifest.needs.tools : [];
+      if (tool.startsWith(name + ".") || needs.includes(tool)) return true;
+    }
+    return false;
+  }
+
+  /** The search (or resolve) tools running first-party modules offer the # picker: mentions calls search as the asking person and resolve as sessions or the assistant, nothing else. @param {"search" | "resolve"} [which] */
+  mentionTools(which = "search") {
+    const out = new Set();
+    for (const r of this.modules.values()) {
+      if (r.state !== "running" || !r.manifest || !Array.isArray(r.manifest.mentions) || !this.isFirstParty(r.dir)) continue;
+      for (const e of r.manifest.mentions) if (e && typeof e[which] === "string") out.add(e[which]);
+    }
+    return out;
+  }
+
   /** The getter and setter tools first-party modules name in their settings' tool stores. */
   settingTools() {
     const out = new Set();
@@ -989,6 +1255,10 @@ export class Registry {
         ...(m.does && m.does.commands ? { commands: m.does.commands } : {}),
         ...(m.does && m.does.connections ? { connections: m.does.connections } : {}),
         ...(m.does && m.does.suggest ? { suggest: m.does.suggest } : {}),
+        ...(Array.isArray(m.mentions) ? { mentions: m.mentions } : {}),
+        firstParty: this.isFirstParty(r.dir),
+        ...(m.needs && Array.isArray(m.needs.tools) ? { needsTools: m.needs.tools.filter((/** @type {any} */ t) => typeof t === "string") } : {}),
+        ...(m.needs && Array.isArray(m.needs.slots) ? { needsSlots: m.needs.slots.filter((/** @type {any} */ t) => typeof t === "string") } : {}),
         ...(m.shows && m.shows.notices ? { notices: m.shows.notices } : {}),
         ...(m.watches && m.watches.emits ? { emits: m.watches.emits } : {}),
         ...(m.needs && Array.isArray(m.needs.credentials) ? { credentials: m.needs.credentials } : {}),

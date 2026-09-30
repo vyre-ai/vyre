@@ -19,7 +19,9 @@ jobs:
       fail-fast: false
       matrix:
         node: [22, 24]
-    runs-on: ubuntu-latest
+    # Team branches (work/* except the stage mirror) run on the self-hosted runners; stage and
+    # pull requests keep the hosted runner, so the gate that decides a landing stays clean.
+    runs-on: ${{ (startsWith(github.ref_name, 'work/') && github.ref_name != 'work/stage-0.2') && fromJSON('["self-hosted","linux-heavy"]') || 'ubuntu-latest' }}
     timeout-minutes: 30
     env:
       VYRE_NO_DIALOGS: "1"
@@ -33,3 +35,126 @@ jobs:
       - run: npm test
       - run: npm run eval:answer
       - run: npm run perf-check
+  # Windows support (ADR 0037): the Windows-relevant tests on windows-latest (`npm run test:windows`,
+  # only files that pass there), so a red result means something, and it blocks: a regression cannot
+  # hide. It is bounded to 10 minutes so it cannot hold up stage. No eval:answer or perf-check, which assume a Linux/Mac process model.
+  test-windows:
+    runs-on: windows-latest
+    # The full suite took over 30 minutes here and held up stage landings. This runs the tests
+    # that can differ on Windows (config, CLI kit and commands, voice, boundaries, docs, the relay
+    # client), each bounded, and must finish inside 10 minutes. It lists only files that pass on
+    # Windows, so a red result means something; the files left out, each with its reason, are in
+    # docs/work/windows.md ("Known Windows gaps").
+    timeout-minutes: 10
+    env:
+      VYRE_NO_DIALOGS: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci --no-audit --no-fund
+      - run: npm run test:windows
+  # Windows LOW (security review, ADR 0037): the local vyred socket's privacy, verified on a real
+  # windows-latest runner rather than hardware. Not continue-on-error: the lead's call was that
+  # Tier A ships marked "preview" with the gap written down if this cannot be made to pass, not
+  # that it ships unverified and green. win32's socket is a named pipe (core/config/index.js's
+  # socketPath), which needs no folder or ACL - an earlier round of this job tried a filesystem-
+  # backed AF_UNIX socket with an explicit icacls grant, which failed with EACCES every time; a
+  # from-scratch bind with no ACL applied at all failed the same way, and whoami /priv showed
+  # SeCreateSymbolicLinkPrivilege (needed to create the reparse point a bound socket file is)
+  # Disabled for this token - not an ACL problem, a wrong choice of Windows primitive. This job
+  # proves the actual security property instead: a real vyred starts, its socket answers, the
+  # owner can connect, and a second local user's connection is refused.
+  windows-socket-acl:
+    runs-on: windows-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci --no-audit --no-fund
+      - name: Start vyred, then prove the socket's privacy, all in one step
+        id: start
+        shell: pwsh
+        # Split across step boundaries before this, vyred (started via Start-Process in an
+        # earlier step) was gone by the time a later step tried to connect: alive and logged "up"
+        # right after listen(), dead moments later, no error anywhere (stdout, stderr, vyred's own
+        # log). GitHub's windows-latest runners tear down a step's child processes when that step
+        # ends more readily than -WindowStyle Hidden alone protects against; every check that
+        # needs vyred alive now runs in the one step that started it.
+        run: |
+          $env:VYRE_HOME = "$env:RUNNER_TEMP\vyre-home"
+          $env:VYRE_NO_DIALOGS = "1"
+          New-Item -ItemType Directory -Force -Path $env:VYRE_HOME | Out-Null
+          $proc = Start-Process -FilePath node -ArgumentList "core/daemon/main.js" -PassThru `
+            -RedirectStandardOutput "$env:RUNNER_TEMP\vyred.out" -RedirectStandardError "$env:RUNNER_TEMP\vyred.err" -WindowStyle Hidden
+          "pid=$($proc.Id)" >> $env:GITHUB_OUTPUT
+          # win32's socket is a named pipe (core/config/index.js's socketPath), not a filesystem
+          # path; NPFS still answers Test-Path against \\.\pipe\<name>.
+          $sockPath = (node -e "import('./core/config/index.js').then(c => console.log(c.paths(process.env.VYRE_HOME).socket))").Trim()
+          "sock=$sockPath" >> $env:GITHUB_OUTPUT
+          $found = $false
+          for ($i = 0; $i -lt 100; $i++) {
+            if (Test-Path $sockPath) { $found = $true; break }
+            Start-Sleep -Milliseconds 200
+          }
+          if (-not $found) {
+            Write-Output "--- vyred.out ---"; Get-Content "$env:RUNNER_TEMP\vyred.out" -ErrorAction SilentlyContinue
+            Write-Output "--- vyred.err ---"; Get-Content "$env:RUNNER_TEMP\vyred.err" -ErrorAction SilentlyContinue
+            throw "vyred did not create its socket at $sockPath"
+          }
+
+          node scripts/win-connect-probe.mjs "$sockPath"
+          if ($LASTEXITCODE -ne 0) {
+            $alive = Get-Process -Id $proc.Id -ErrorAction SilentlyContinue
+            Write-Output "--- vyred process ($($proc.Id)) still running: $([bool]$alive) ---"
+            Write-Output "--- vyred.out ---"; Get-Content "$env:RUNNER_TEMP\vyred.out" -ErrorAction SilentlyContinue
+            Write-Output "--- vyred.err ---"; Get-Content "$env:RUNNER_TEMP\vyred.err" -ErrorAction SilentlyContinue
+            $log = Get-ChildItem "$env:RUNNER_TEMP\vyre-home\logs" -Filter *.log -ErrorAction SilentlyContinue | Select-Object -Last 1
+            if ($log) { Write-Output "--- $($log.FullName) ---"; Get-Content $log.FullName -ErrorAction SilentlyContinue }
+            throw "the owner could not connect to their own socket"
+          }
+
+          # Reviewer, section 7a point 2b: vyred must win the pipe's first instance and refuse
+          # rather than silently move to a different name on conflict. A second vyred against the
+          # SAME home must exit quickly and never bind a second time. (core/daemon/index.js's
+          # existsSync+ping pre-check should catch this generically; this proves it against a
+          # named pipe specifically, not assumed from the POSIX case.)
+          $second = Start-Process -FilePath node -ArgumentList "core/daemon/main.js" -PassThru -Wait `
+            -RedirectStandardOutput "$env:RUNNER_TEMP\vyred2.out" -RedirectStandardError "$env:RUNNER_TEMP\vyred2.err" -WindowStyle Hidden
+          if ($second.ExitCode -eq 0) {
+            Write-Output "--- vyred2.out ---"; Get-Content "$env:RUNNER_TEMP\vyred2.out" -ErrorAction SilentlyContinue
+            Write-Output "--- vyred2.err ---"; Get-Content "$env:RUNNER_TEMP\vyred2.err" -ErrorAction SilentlyContinue
+            throw "a second vyred against the same home exited 0 instead of refusing to start"
+          }
+          # And the first vyred must still be the one actually listening, not replaced.
+          $alive = Get-Process -Id $proc.Id -ErrorAction SilentlyContinue
+          if (-not $alive) { throw "the first vyred died while a second one tried to start against the same home" }
+          node scripts/win-connect-probe.mjs "$sockPath"
+          if ($LASTEXITCODE -ne 0) { throw "the original vyred stopped answering after a conflicting second start attempt" }
+
+          # net user warns interactively (and hangs, non-interactive) past 14 characters, the old
+          # pre-Windows-2000 LM-compat limit; keep this at or under it.
+          $pw = "Vy" + [guid]::NewGuid().ToString("N").Substring(0, 9) + "!1"
+          net user vyreacltest "$pw" /add
+          try {
+            $sec = ConvertTo-SecureString $pw -AsPlainText -Force
+            $cred = New-Object System.Management.Automation.PSCredential("vyreacltest", $sec)
+            $p2 = Start-Process -FilePath node -ArgumentList "scripts/win-connect-probe.mjs `"$sockPath`"" `
+              -Credential $cred -NoNewWindow -PassThru -Wait -WorkingDirectory "$PWD" `
+              -RedirectStandardOutput "$env:RUNNER_TEMP\probe.out" -RedirectStandardError "$env:RUNNER_TEMP\probe.err"
+            Get-Content "$env:RUNNER_TEMP\probe.out","$env:RUNNER_TEMP\probe.err" -ErrorAction SilentlyContinue
+            if ($p2.ExitCode -eq 0) { throw "a second local user connected to vyred's socket; it is not private" }
+          } finally {
+            net user vyreacltest /delete
+          }
+      - name: Stop vyred
+        if: always()
+        shell: pwsh
+        run: |
+          $p = "${{ steps.start.outputs.pid }}"
+          if ($p) { Stop-Process -Id $p -Force -ErrorAction SilentlyContinue }

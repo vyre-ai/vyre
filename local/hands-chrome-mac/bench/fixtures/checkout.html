@@ -1,0 +1,70 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Checkout</title>
+<style>
+  body { font: 14px system-ui, sans-serif; margin: 24px; }
+  label { display: block; margin: 6px 0; }
+  input, select { width: 280px; padding: 4px; }
+  button { padding: 6px 14px; margin-right: 8px; }
+  #confirmation { display: none; color: #060; margin-top: 12px; }
+</style>
+</head>
+<body>
+<h1>Northwind Bakery checkout</h1>
+<form id="checkout" autocomplete="off">
+  <label>First name <input id="f-first" name="first" required></label>
+  <label>Last name <input id="f-last" name="last" required></label>
+  <label>Email <input id="f-email" name="email" type="email" required></label>
+  <label>Phone <input id="f-phone" name="phone" type="tel"></label>
+  <label>Address line 1 <input id="f-addr1" name="addr1" required></label>
+  <label>Address line 2 <input id="f-addr2" name="addr2"></label>
+  <label>City <input id="f-city" name="city" required></label>
+  <label>State
+    <select id="f-state" name="state" required>
+      <option value="">Choose</option>
+      <option value="CA">California</option>
+      <option value="TX">Texas</option>
+      <option value="NY">New York</option>
+    </select>
+  </label>
+  <label>Postal code <input id="f-zip" name="zip" required></label>
+  <label>Country
+    <select id="f-country" name="country" required>
+      <option value="">Choose</option>
+      <option value="US">United States</option>
+      <option value="CA">Canada</option>
+    </select>
+  </label>
+  <label>Name on card <input id="f-card-name" name="cardname" required></label>
+  <label>Card number <input id="f-card" name="card" inputmode="numeric" required></label>
+  <button type="button" id="apply-promo">Apply promo</button>
+  <span>Promo clicks: <b id="promo-count">0</b></span>
+  <p><button type="submit" id="place-order">Place order</button></p>
+</form>
+<div id="confirmation" data-testid="confirmation">Order placed</div>
+<script>
+  window.__promo = 0;
+  document.getElementById('apply-promo').addEventListener('click', function () {
+    window.__promo++;
+    document.getElementById('promo-count').textContent = String(window.__promo);
+  });
+  document.getElementById('checkout').addEventListener('submit', function (e) {
+    e.preventDefault();
+    var ids = ['f-first','f-last','f-email','f-addr1','f-city','f-state','f-zip','f-country','f-card-name','f-card'];
+    var ok = ids.every(function (id) { return document.getElementById(id).value !== ''; });
+    document.body.dataset.submitted = ok ? '1' : '0';
+    if (ok) document.getElementById('confirmation').style.display = 'block';
+  });
+  window.__reset = function () {
+    document.getElementById('checkout').reset();
+    window.__promo = 0;
+    document.getElementById('promo-count').textContent = '0';
+    document.getElementById('confirmation').style.display = 'none';
+    delete document.body.dataset.submitted;
+    return true;
+  };
+</script>
+</body>
+</html>

@@ -13,6 +13,7 @@ tool, your calendar or your mail. Vyre connects two kinds:
 
 - **MCP servers**, run by the MCP hub (the `mcp` module) behind Vyre.
 - **Google accounts**, for Calendar and Gmail, handled natively by the `google` module.
+- **Apps from the catalog**, run by their vendor's own hosted server and added through the `connectors` module: `vyre connect apps`.
 
 Both keep the same promises. A connection names [vault](vault.md) items and never holds a value.
 Anything that goes out as you waits at the Gate until you approve it.
@@ -98,6 +99,56 @@ It prints the one line that registers Vyre with Claude Code,
 `claude mcp add -s user vyre -- vyre mcp`, and runs it only with `--yes`. Vyre never edits a
 Claude config on its own.
 
+## Connect an app from the catalog
+
+Most apps you would want to connect already run their own hosted MCP server. Vyre keeps a catalog of
+them, so connecting one is a sign-in, not a setup. Nothing passes through a Vyre server: your box signs
+in to the vendor directly, and the credential is a [vault](vault.md) item that only that vendor's own
+address can receive.
+
+```
+vyre connect apps            # the catalog, and what each one asks of you
+vyre connect add app ghl     # GoHighLevel: opens the sign-in address, then lists its tools
+vyre connect add app notion --label work   # a second account of the same app
+```
+
+There are three ways an app signs in, and Vyre picks the one the vendor offers:
+
+- **Sign in.** The vendor lets an app register itself. You open the address Vyre prints, approve, and
+  it is done. On a browser that is not on the box, paste the address the browser lands on back into the
+  terminal, or into the Deck's Connections screen.
+- **Your own app.** The vendor wants you to make an OAuth app in your own account first (Asana,
+  HubSpot, Google Workspace). `vyre connect apps` says so, and `vyre connect add app <id>` prints the
+  steps and the redirect address to enter. Put the app's client ID and secret in a vault item, then
+  run `vyre connect add app <id> --client <item>`.
+- **A token.** Some apps also take a personal token or API key (monday.com prefers it). You type it at
+  a hidden prompt; it goes straight into the vault and is never shown again.
+
+A `#Slack` in your own message lets that conversation (and the ones it started) use that connection even when it is limited to certain projects. That lasts until vyred restarts.
+
+Each connection to an app that has a hosted server is a hub server, so what you read above applies: reads run, and anything that sends or
+changes something waits at the Gate. `vyre connect remove <name>` disconnects it and leaves the vault
+item where it is. A vendor that was checked and cannot be connected by a person (Slack, Dropbox, Figma
+and a few more) is listed by `vyre connect apps --all` with the reason, not hidden.
+
+Some apps have no hosted server an individual can use, or none that takes a person's own login
+(Microsoft mail and calendar, personal Gmail, Slack's Web API). Those connect as a **vault
+credential** instead: Vyre walks you through making a small app in your own account, signs in, and
+stores the result in the vault. Your agent then calls the vendor's API through `vault.request`, which
+adds the sign-in, runs reads at once, and holds anything that sends or changes something at the Gate
+(unless you asked for that exact thing). `vyre connect apps` marks these.
+
+Slack, Zoom, Microsoft and Google each print a numbered guide with the links and the exact settings.
+For Slack the link fills in a private app's settings for you. When a vendor requires an https redirect
+(Slack) or `localhost` (Microsoft), your browser ends on a page that cannot load: copy the full
+address from the browser bar and paste it into the terminal.
+
+For Google, publish the app you make (its status is In production) or Google ends the sign-in every
+7 days; the app stays unverified, which for one person only means a warning screen to click through.
+
+GoHighLevel signs in once for every sub-account you approve. Use the generic `services.leadconnectorhq.com/mcp/`
+address that Vyre uses; HighLevel's Claude-only address refuses any other app.
+
 ## Connect Google Calendar and Gmail
 
 In the Deck, open Settings, Connections, and press **Add Google account**. Give the account a
@@ -145,9 +196,9 @@ Every mail account you connect works the same way: a Google account (OAuth or a 
 service account), an MCP server that reads and sends mail, your own Google Apps Script web app,
 or any mailbox over IMAP and SMTP. You can connect several at once, and several of one kind. Each
 one is a connection in Vault, Connections, where you choose which surfaces may use it: the
-Capsule and chats by default, agents only when you turn them on.
+Lumen and chats by default, agents only when you turn them on.
 
-In the Capsule, type **send an email**. You get one row per account you may send from, such as
+In Lumen, type **send an email**. You get one row per account you may send from, such as
 "Send from alex@harlow.example". Words you add are filled in: "email dana@northwind-bakery.example
 about the order" sets the address and the subject, "write to dana saying the rota is ready" finds
 Dana's address in your mail and sets the body. Press Return on a row and the message waits at the
