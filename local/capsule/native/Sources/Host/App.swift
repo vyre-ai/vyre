@@ -34,6 +34,7 @@ final class CapsuleApp: NSObject, NSApplicationDelegate {
         home = env["VYRE_HOME"].flatMap { $0.isEmpty ? nil : $0 } ?? (NSHomeDirectory() as NSString).appendingPathComponent(".vyre")
         vyred = VyredClient(socket: vyredSocketPath(env))
         wiring = AgentWiring(home: home, vyred: vyred)
+        Paster.prefsPath = (home as NSString).appendingPathComponent("capsule/prefs.json")
         local = LocalAnswersProvider(home: home)
         model = CapsuleModel(home: home, vyred: vyred, providers: [
             AppsProvider(), SettingsProvider(), FilesProvider(), DictionaryProvider(), local,

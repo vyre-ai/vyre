@@ -4,6 +4,11 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+- Capsule: Return now pastes clipboard history, snippets and emoji into the app you were in, instead
+  of only copying them. The first time, macOS asks once for Accessibility (until you allow it,
+  Return copies and says so). Type "paste" in the box and choose "Make Return copy instead of paste"
+  to switch back; Copy and Paste are always both in Command-K. Answers to a sum, a colour, a time or
+  a rate still copy.
 - Capsule: give any app, system command, snippet, quicklink or command of yours a short alias and a
   hotkey. Press Command-K on the row and choose "Set alias" (type a word, Return) or "Set hotkey"
   (press the shortcut). Typing the alias puts that row first. The hotkey runs the row from

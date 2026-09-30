@@ -46,7 +46,7 @@ private let USER_FILE = #"""
 """#
 
 let localAnswersSuite = Suite("local answers") { t in
-    t.test("a colour, a time and an emoji each give a row that copies") {
+    t.test("a colour, a time and an emoji each give a row: the first two copy, the emoji pastes") {
         let p = LocalAnswersProvider(home: home("basic"), fetch: RatesFetch { nil }, now: { NOW })
         p.use24h = false
         let c = rows(p, "#ff6347")
@@ -54,7 +54,7 @@ let localAnswersSuite = Suite("local answers") { t in
         let tm = rows(p, "time in tokyo")
         t.eq(tm.first?.kind, "time"); t.eq(tm.first?.actions.first?.id, "copy")
         let e = rows(p, ":tada")
-        t.ok(e.contains { $0.kind == "emoji" && $0.actions.first?.id == "copy" }, "emoji rows")
+        t.ok(e.contains { $0.kind == "emoji" && $0.actions.first?.id == "paste" && $0.actions.count == 2 }, "emoji rows paste, copy is second")
         t.eq(rows(p, "").count, 0)
         t.eq(rows(p, "zzqq nothing here").count, 0)
     }

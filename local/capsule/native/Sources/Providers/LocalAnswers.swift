@@ -5,7 +5,8 @@
 //   - your snippets, quicklinks and commands, from <home>/capsule/snippets.json (Core/Snippets.swift
 //     says the format). A bad entry is left out and named; the rest still work.
 //
-// Enter copies an answer. A snippet copies its text with {date}, {time}, {clipboard} filled in. A
+// Return copies an answer. A snippet or an emoji pastes (Host/Paste.swift), a snippet with {date},
+// {time} and {clipboard} filled in. A
 // quicklink opens its link with what you typed after its keyword. A command opens its link, or
 // runs its shell line after asking once.
 //
@@ -143,7 +144,8 @@ public final class LocalAnswersProvider: ResultProvider, ImmediateResults, @unch
         var out: [ResultItem] = []
         if let c = colourResult(q) { out.append(Self.copying(c)) }
         if let t = timeResult(q, now: now(), use24h: use24h) { out.append(Self.copying(t)) }
-        out += emojiResults(q).map(Self.copying)
+        out += emojiResults(q).map(Self.pasting)
+        if let p = Paster.settingRow(q) { out.append(p) }
         maybeFetch(for: text)
         if let r = currentRates, let m = currencyResult(q, rates: r, home: homeCurrency, now: now()) { out.append(Self.copying(m)) }
         reloadUser()
@@ -161,6 +163,14 @@ public final class LocalAnswersProvider: ResultProvider, ImmediateResults, @unch
         return x
     }
 
+    /// A text row Return pastes (or copies, by the setting).
+    static func pasting(_ r: ResultItem) -> ResultItem {
+        guard let text = r.copyText, !text.isEmpty else { return r }
+        var x = r
+        x.actions = Paster.actions(text: text)
+        return x
+    }
+
     static func copyAction(_ text: String) -> ResultAction {
         ResultAction(id: "copy", title: "Copy", symbol: "doc.on.doc") { _, _ in
             await MainActor.run {
@@ -174,15 +184,16 @@ public final class LocalAnswersProvider: ResultProvider, ImmediateResults, @unch
     func snippetRow(_ s: Snippet, score: Double) -> ResultItem {
         var r = snippetResult(s, score: score)
         let now = self.now
-        r.actions = [ResultAction(id: "copy", title: "Copy", symbol: "doc.on.doc") { _, _ in
+        r.actions = Paster.actions {
             let clip: String? = s.usesClipboard ? await MainActor.run { NSPasteboard.general.string(forType: .string) } : nil
             let text = UserSnippets.expand(s.text, now: now(), clipboard: clip).text
-            await MainActor.run {
+            return await MainActor.run {
                 CapsuleModel.replyBoard.clearContents()
-                CapsuleModel.replyBoard.setString(text, forType: .string)
+                let ok = CapsuleModel.replyBoard.setString(text, forType: .string)
+                CapsuleModel.replyBoard.setData(Data(), forType: ClipRead.ownType)
+                return ok ? nil : "The pasteboard refused it."
             }
-            return .close(nil)
-        }]
+        }
         return r
     }
 
