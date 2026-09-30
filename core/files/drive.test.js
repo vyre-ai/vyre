@@ -78,6 +78,10 @@ process.stderr.write("unexpected"); process.exit(2);
 
 /** A registry with the files module, and on the Mac a fake link module (status and remote). */
 async function registry(t, { role, cfg = {}, link = undefined, seam = undefined, peers = [], presence = undefined, agents = undefined, projects = undefined, access = undefined }) {
+  // Registered FIRST: after-hooks run in the order they were added, so the registry must stop and its database close
+  // before tmp() below removes the home they write into (ENOTEMPTY when a module's late write lands mid-removal).
+  /** @type {any} */ let reg = null, db = null;
+  t.after(async () => { if (reg) await reg.stop(); if (db) db.close(); });
   const root = tmp(t, "vyre-home-");
   const p = config.ensure(root);
   if (seam) { seams.set(root, seam); t.after(() => seams.delete(root)); }
@@ -105,16 +109,15 @@ async function registry(t, { role, cfg = {}, link = undefined, seam = undefined,
       } };`);
     found.push(...discover([mods]));
   }
-  const db = open(p.db);
+  db = open(p.db);
   // The link module's table on the box, with the paired Macs; files reads it, never writes it.
   if (role === "box") {
     db.exec("CREATE TABLE IF NOT EXISTS link_peers (id TEXT PRIMARY KEY, name TEXT NOT NULL, login TEXT, node TEXT, stable_id TEXT, key_hash TEXT NOT NULL UNIQUE, paired_at INTEGER NOT NULL, last_seen INTEGER)");
     for (const [i, id] of peers.entries()) db.prepare("INSERT INTO link_peers VALUES (?, ?, ?, ?, ?, ?, ?, NULL)").run(`p${i}`, "alex-mac", "alex@example.com", "alex-mac.tail0000.ts.net", id, `k${i}`, 1);
   }
   const events = new Events(db);
-  const reg = new Registry({ db, events, config: { role, ...cfg }, paths: p, log: () => {}, ...(presence ? { presence } : {}) });
+  reg = new Registry({ db, events, config: { role, ...cfg }, paths: p, log: () => {}, ...(presence ? { presence } : {}) });
   await reg.start(found, { role });
-  t.after(async () => { await reg.stop(); db.close(); });
   assert.equal(reg.modules.get("files").state, "running", reg.modules.get("files").error);
   return { reg, events, root };
 }

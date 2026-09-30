@@ -4,6 +4,7 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+- Test-only: the Vyre Drive tests stop the registry before their temp home is removed (an after-hook ordering race that surfaced as ENOTEMPTY).
 - The CDP mux drops an agent client that has an agent id but no browser context, so a future path that skips the ready gate fails closed instead of serving unfenced (`core/computers/image/computerd/cdpmux.js`, reviewer-2).
 - A real race in `vyre backup`: once tar's output ended, the export killed tar if its exit code was not in yet, so a clean
   exit became "tar exited null" and the backup failed (a loaded machine hit it now and then). tar is now only stopped when
