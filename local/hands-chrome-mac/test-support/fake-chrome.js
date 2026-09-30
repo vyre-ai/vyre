@@ -281,6 +281,11 @@ export function createFakeFrames(chrome, spec, o = {}) {
       announce(f);
       return f;
     },
+    /** A session that lingers for a frame (attached earlier, slow to go away): it is announced like any other, for tests of which session wins. */
+    announceExtra(/** @type {string} */ sessionId, /** @type {string} */ targetId) {
+      const f = frames.find(k => k.id === targetId);
+      fire({ tabId: TAB }, "Target.attachedToTarget", { sessionId, targetInfo: { targetId, type: "iframe", url: f ? f.url : "", parentFrameId: f ? f.parent : undefined } });
+    },
     removeFrame(/** @type {string} */ id) { const i = frames.findIndex(k => k.id === id); if (i < 0) return; retract(frames[i]); frames.splice(i, 1); pages.delete(id); },
     /** Make a frame that was "none" readable, as when Chrome finally hands over its session. */
     ready(/** @type {string} */ id, /** @type {"session"|"context"} */ via = "session") { const f = frames.find(k => k.id === id); if (!f) return; f.via = via; announce(f); },
