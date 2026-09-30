@@ -755,7 +755,7 @@ add <source>      a folder or a git URL (https://, git@, file://): check it, sho
   --yes           do not ask first (needed without a terminal, and with --json or --view)
 
 A module runs inside vyred, trusted like an npm package. A module named like one of Vyre's
-own is refused, unless its module.json says "replaces" with that name and you pass --yes.
+own is refused, and in 0.2 an added module may not say "replaces".
 In the box's container, the host restarts vyred: docker compose restart vyre.
 --view prints frames for the Capsule and the phone (docs/reference/cli-json.md).
 
