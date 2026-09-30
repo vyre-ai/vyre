@@ -15,6 +15,7 @@
 import { toRecipe } from "../lib/recipes.js";
 import { remember } from "./recipe.js";
 import { originOf } from "../lib/observe.js";
+import { records } from "./net.js";
 import { err } from "../lib/err.js";
 
 const MAX_STEPS = 200;
@@ -41,6 +42,24 @@ function subst(v, results, depth = 0) {
   if (Array.isArray(v)) return v.map(x => subst(x, results, depth + 1));
   if (v && typeof v === "object") return Object.fromEntries(Object.entries(v).map(([k, x]) => [k, subst(x, results, depth + 1)]));
   return v;
+}
+
+/**
+ * Is this write one the approved plan covers? It must be made on the plan's own tab, that tab must still be on the plan's site, and the request must go to an
+ * origin that tab's own traffic has talked to (the app's own API), never some other site the step names. A step's own tab wins over the batch's, so it is checked too.
+ * @param {any} ctx @param {any} wb the budget @param {any} tab the tab the step will run on @param {any} res the held write
+ */
+async function budgetFits(ctx, wb, tab, res) {
+  try {
+    if (typeof tab !== "number") return false;
+    if (wb.tab !== undefined && tab !== wb.tab) return false;
+    if (wb.tabOrigin) { const t = await ctx.tabs.get(tab); if (originOf(String((t && (t.pendingUrl || t.url)) || "")) !== wb.tabOrigin) return false; }
+    const ro = typeof res.origin === "string" ? res.origin : "";
+    if (!ro) return false;
+    if (wb.origin) return ro === wb.origin;
+    const seen = new Set((await records(ctx, tab)).map((/** @type {any} */ r) => { try { return new URL(r.url).origin; } catch { return ""; } }));
+    return seen.has(ro) || ro === wb.tabOrigin;
+  } catch { return false; }
 }
 
 /** @type {{ name: string, ops: Record<string, (args: any, ctx: any) => Promise<any>> }} */
@@ -77,7 +96,7 @@ export default {
           const onTab = typeof args.tabId === "number" && stepArgs.tabId === undefined && stepArgs.tab === undefined && !/^(tabs\.|ghl\.section)/.test(step.op) ? { tabId: args.tabId, tab: args.tabId } : {};
           let result = await ctx.call(step.op, { ...onTab, ...(wants ? { wait: args.wait && typeof args.wait === "object" ? args.wait : { timeoutMs: 3000 } } : {}), ...stepArgs }, { asked: trust.asked === true });
           // A write the module's approved plan covers (it sent a budget; a model's input cannot): run it again with writeOk, up to the budget, on the one API origin.
-          if (wb && result && typeof result === "object" && result.held === true && result.write === true && (wb[result.kind] || 0) > 0 && (!wb.origin || result.origin === wb.origin)) {
+          if (wb && result && typeof result === "object" && result.held === true && result.write === true && (wb[result.kind] || 0) > 0 && (!wb.origin || result.origin === wb.origin) && await budgetFits(ctx, wb, typeof stepArgs.tabId === "number" ? stepArgs.tabId : typeof stepArgs.tab === "number" ? stepArgs.tab : args.tabId, result)) {
             wb[result.kind]--; if (!wb.origin && result.origin) wb.origin = result.origin;
             const again = await ctx.call(step.op, { ...onTab, ...stepArgs }, { writeOk: true });
             covered.push({ kind: result.kind, res: again });

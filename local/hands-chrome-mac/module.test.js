@@ -617,10 +617,55 @@ test("module: a batch or recipe may make the writes an approved plan covers with
   const p = await reg.call("chrome.approve", { title: "Two", items: [{ kind: "create", what: "drafts", count: 2 }], tab: 1 }, KIT);
   await reg.call("chrome.release", { id: p.data.id, content: gate().requests[gate().requests.length - 1].content }, "module:gate");
   await reg.call("chrome.batch", { tab: 1, steps: [{ op: "page.act", args: {} }], writeBudget: { create: 99 } }, KIT);
-  assert.deepEqual(seen[1].writeBudget, { create: 2, edit: 0 }, "the plan's remaining count, not the model's");
+  assert.deepEqual(seen[1].writeBudget, { create: 2, edit: 0, tab: 1, tabOrigin: "https://app.one.example" }, "the plan's remaining count bound to its tab and site, not the model's");
   const s = await reg.call("chrome.summary", {}, KIT);
   assert.equal(s.data.counts.create, 2, "what the batch covered is counted and listed");
   // the budget is spent: the next batch gets none
   await reg.call("chrome.batch", { tab: 1, steps: [{ op: "page.act", args: {} }] }, KIT);
   assert.equal(seen[2].writeBudget, undefined);
+});
+
+
+test("module: the write budget is reserved when handed out: parallel batches cannot double it, unused writes come back, a lost reply counts as spent", async t => {
+  const { reg, gate, connect } = await rig(t);
+  /** @type {any[]} */ const seen = [];
+  /** @type {Function[]} */ const release = [];
+  const x = await connect({
+    "tabs.list": () => ({ tabs: [{ id: 1, title: "A", url: "https://app.one.example/w" }, { id: 2, title: "B", url: "https://app.two.example/" }] }),
+    "batch.run": (/** @type {any} */ a) => {
+      seen.push(a);
+      const covered = [];
+      const b = a.writeBudget ? { ...a.writeBudget } : { create: 0 };
+      // this batch only manages to make ONE write however much it was given
+      if (b.create > 0) covered.push({ kind: "create", res: { ok: true, status: 201, method: "POST", url: "https://api.one.example/x", origin: "https://api.one.example" } });
+      if (a.steps[0].op === "hang") return new Promise(() => {});
+      if (a.steps[0].op === "gate") return new Promise(r => release.push(() => r({ ok: true, done: 1, results: [], ...(covered.length ? { covered } : {}) })));
+      return { ok: true, done: covered.length, results: [], ...(covered.length ? { covered } : {}) };
+    } });
+  void x;
+  await reg.call("hands.grant.add", { agent: "kit" }, "cli");
+  await reg.call("chrome.plan", PLAN, KIT);
+  await reg.call("chrome.tabs", { action: "list" }, KIT);
+  const p = await reg.call("chrome.approve", { title: "Eight", items: [{ kind: "create", what: "drafts", count: 8 }], tab: 1 }, KIT);
+  await reg.call("chrome.release", { id: p.data.id, content: gate().requests[gate().requests.length - 1].content }, "module:gate");
+  // two batches at once: the first reserves all 8, the second gets nothing
+  const first = reg.call("chrome.batch", { tab: 1, steps: [{ op: "gate", args: {} }] }, KIT);
+  await until(() => seen.length >= 1);
+  const second = await reg.call("chrome.batch", { tab: 1, steps: [{ op: "page.act", args: {} }] }, KIT);
+  void second;
+  assert.equal(seen[0].writeBudget.create, 8);
+  assert.equal(seen[1].writeBudget, undefined, "the second batch cannot get the same writes again");
+  release.forEach(f => f());
+  await first;
+  // it made one write: the other 7 come back
+  await reg.call("chrome.batch", { tab: 1, steps: [{ op: "page.act", args: {} }] }, KIT);
+  assert.equal(seen[2].writeBudget.create, 7, "unused writes are returned, the used one is not");
+  // another tab gets no budget at all
+  await reg.call("chrome.batch", { tab: 2, steps: [{ op: "page.act", args: {} }] }, KIT);
+  assert.equal(seen[3].writeBudget, undefined, "a batch on another tab gets zero");
+  // a reply that never comes: the reservation is spent, not handed out again
+  const lost = reg.call("chrome.batch", { tab: 1, timeoutMs: 80, steps: [{ op: "hang", args: {} }] }, KIT);
+  await lost;
+  await reg.call("chrome.batch", { tab: 1, steps: [{ op: "page.act", args: {} }] }, KIT);
+  assert.equal(seen[seen.length - 1].writeBudget, undefined, "what a lost batch held is counted as spent");
 });

@@ -276,24 +276,26 @@ export default {
           // Scripts, API calls, replays and automations are hands-free after the grant. The extension
           // holds only a request that SENDS something as the person (a message, a post, a payment)
           // when `asked` is false, judged by method and endpoint (extension/shared/outbound.js).
-          // A batch, recipe or flow may make the writes the approved plan still covers without stopping at each one: the module hands it a budget, and only the module can.
-          if (/^(batch\.run|recipe\.run|ghl\.run)$/.test(op) && grant && covers("", { origin: grant.apiOrigin }, args) && oversight.state !== "stopped") {
-            const b = /** @type {any} */ ({ create: grant.left.create, edit: grant.left.edit });
-            if (grant.apiOrigin) b.origin = grant.apiOrigin;
-            if (b.create > 0 || b.edit > 0) trust.writeBudget = b;
+          // A batch, recipe or flow may make the writes the approved plan still covers without stopping at each one. The module hands it a budget, and only the module can:
+          // the count is RESERVED here, bound to the plan's tab and site, and the unused part comes back when the batch answers. A reply that never comes counts as spent.
+          /** @type {null | { g: NonNullable<typeof grant>, create: number, edit: number }} */ let reserved = null;
+          if (/^(batch\.run|recipe\.run|ghl\.run)$/.test(op) && grant && covers("", { origin: grant.apiOrigin }, args) && oversight.state !== "stopped" && grant.tab != null) {
+            const g = grant;
+            if (g.left.create > 0 || g.left.edit > 0) {
+              reserved = { g, create: g.left.create, edit: g.left.edit };
+              g.left.create = 0; g.left.edit = 0;
+              trust.writeBudget = { create: reserved.create, edit: reserved.edit, tab: g.tab, ...(g.tabOrigin ? { tabOrigin: g.tabOrigin } : {}), ...(g.apiOrigin ? { origin: g.apiOrigin } : {}) };
+            }
           }
           let res = screen(await bridge.call(op, args, { trust, timeoutMs: op === "login.wait" ? Math.min(Number(args.timeoutMs) || 120_000, 600_000) + 15_000 : args.timeoutMs }));
-          // What the batch covered on its own: count it against the plan and keep it for the summary.
-          if (isObj(res) && Array.isArray(res.covered) && grant) {
-            for (const c of res.covered) {
-              if (!isObj(c) || !isObj(c.res)) continue;
-              const g = grant; if (!g) break;
-              g.left[String(c.kind)] = Math.max(0, (g.left[String(c.kind)] || 0) - 1); g.used++;
-              pinPlan(c.res, args);
-              recordChange(c.res, summary, true, urls.get(Number(args.tab)) || "");
-            }
-            showPresence({ of: grant ? grant.total : undefined, label: grant ? grant.title : undefined });
-            res = { ...res, covered: res.covered.length };
+          // What the batch covered on its own: count it, give back what it did not use, and keep it for the summary.
+          if (reserved) {
+            const r = reserved, g = r.g;
+            const cov = isObj(res) && Array.isArray(res.covered) ? res.covered.filter((/** @type {any} */ c) => isObj(c) && isObj(c.res)) : [];
+            const used = { create: 0, edit: 0 };
+            for (const c of cov) { const k = String(c.kind); if (k in used) /** @type {any} */ (used)[k]++; g.used++; if (grant === g) pinPlan(c.res, args); recordChange(c.res, summary, true, urls.get(Number(args.tab)) || ""); }
+            g.left.create += Math.max(0, r.create - used.create); g.left.edit += Math.max(0, r.edit - used.edit);
+            if (cov.length) { showPresence({ of: g.total, label: g.title }); res = { ...res, covered: cov.length }; }
           }
           // A write with the page's login that the plan in force covers goes through; the rest wait for the person.
           if (isObj(res) && res.held === true && res.write === true && covers(String(res.kind), res, args)) {

@@ -79,11 +79,25 @@ test("no op reads an approval from args: asked, writeOk, release, writeBudget an
   assert.deepEqual(bad, [], "an op reads an approval from args");
 });
 
-test("dispatch refuses approval keys in args at any depth and hands ops only the cleaned trust", async () => {
+test("dispatch refuses approval keys where an op could read them (top-level args, each batch step's args) and only there", async () => {
   const { dispatch, trustKeyIn, cleanTrust } = await import("./extension/caps/index.js");
-  assert.equal(trustKeyIn({ a: [{ b: { writeOk: true } }] }), "writeOk");
+  assert.equal(trustKeyIn({ writeOk: true }), "writeOk");
+  assert.equal(trustKeyIn({ steps: [{ op: "api.call", args: { entry: "e", asked: true } }] }), "asked");
+  // opaque data sent to a site is never inspected: a real API may have fields called agent, release or asked
+  assert.equal(trustKeyIn({ entry: "e", args: { body: { agent: "x", release: "2.1", asked: "why", writeOk: 1, nested: [{ writeBudget: 1 }] } } }), "");
+  assert.equal(trustKeyIn({ steps: [{ op: "api.call", args: { entry: "e", args: { body: { agent: "x", release: "v2" } } } }] }), "");
   assert.equal(trustKeyIn({ selector: { name: "release" } }), "", "a VALUE named release is not a key");
-  assert.deepEqual(cleanTrust({ asked: "yes", writeOk: 1, release: { sig: "s", evil: 1 }, writeBudget: { create: 2.9, edit: -4, origin: "https://a.example", x: 1 }, extra: true }), { release: { sig: "s" }, writeBudget: { create: 2, edit: 0, origin: "https://a.example" } });
+  assert.deepEqual(cleanTrust({ asked: "yes", writeOk: 1, release: { sig: "s", evil: 1 }, writeBudget: { create: 2.9, edit: -4, origin: "https://a.example", tab: 3, tabOrigin: "https://b.example", x: 1 }, extra: true }), { release: { sig: "s" }, writeBudget: { create: 2, edit: 0, origin: "https://a.example", tab: 3, tabOrigin: "https://b.example" } });
   const ctx = { stopped: () => false, floorAllows: async () => ({ allow: true }) };
   await assert.rejects(dispatch("tabs.list", { asked: true }, /** @type {any} */ (ctx)), { code: "bad_request" });
+});
+
+test("an api.call whose body has fields named agent and release is not refused", async () => {
+  const { dispatch } = await import("./extension/caps/index.js");
+  const seen = /** @type {any[]} */ ([]);
+  const { register } = await import("./extension/caps/index.js");
+  register({ name: "probe", ops: { "probe.echo": async (/** @type {any} */ a) => { seen.push(a); return { ok: true }; } } });
+  const ctx = { stopped: () => false, floorAllows: async () => ({ allow: true }) };
+  await dispatch("probe.echo", { entry: "e", args: { body: { agent: "Jane", release: "2024-05", asked: "no", writeOk: "n/a" }, query: { release: "1" }, headers: { "x-agent": "kit" } } }, /** @type {any} */ (ctx));
+  assert.equal(seen[0].args.body.agent, "Jane");
 });

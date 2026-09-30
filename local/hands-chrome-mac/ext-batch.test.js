@@ -149,9 +149,8 @@ test("batch.run: ghl.save in a batch runs on the batch's tab (it read the active
 test("trust never travels in args: a step (or any nested arg) that carries asked, writeOk, release or writeBudget is refused outright; only the batch's own trust applies", async () => {
   const calls = /** @type {any[]} */ ([]);
   const ctx = { stopped: () => false, floorAllows: async () => ({ allow: true }), tabs: { get: async () => ({}) }, call: async (/** @type {string} */ op, /** @type {any} */ a, /** @type {any} */ tr) => { calls.push([op, a, tr]); return { ok: true }; } };
-  for (const key of ["asked", "writeOk", "release", "writeBudget", "agent"]) {
+  for (const key of ["asked", "writeOk", "release", "writeBudget"]) {
     await assert.rejects(dispatchT("batch.run", { tabId: 7, steps: [{ op: "api.call", args: { entry: "e", [key]: key === "release" ? { sig: "x" } : true } }] }, ctx), { code: "bad_request" }, key);
-    await assert.rejects(dispatchT("batch.run", { tabId: 7, steps: [{ op: "api.call", args: { entry: "e", deep: [{ nest: { [key]: true } }] } }] }, ctx), { code: "bad_request" }, `${key} nested`);
   }
   assert.equal(calls.length, 0, "nothing ran");
   await dispatchT("batch.run", { tabId: 7, asked: true, steps: [{ op: "api.call", args: { entry: "e" } }] }, ctx);
@@ -162,18 +161,29 @@ test("trust never travels in args: a step (or any nested arg) that carries asked
   assert.notEqual(calls[0][2].asked, true);
 });
 
-test("batch.run: a held write the module's budget covers is run again with writeOk, up to the budget and on one API origin; the step result is the real one", async () => {
+test("batch.run: a held write the module's budget covers is run again with writeOk, up to the budget, on the plan's own tab and site and its one API origin", async () => {
   const calls = [];
   const heldW = origin => ({ ok: false, held: true, write: true, kind: "create", method: "POST", origin });
-  const ctx = { stopped: () => false, call: async (op, a, tr) => { calls.push([op, a, tr]); return tr && tr.writeOk ? { ok: true, status: 201, method: "POST" } : heldW(a.entry === "other" ? "https://other.example" : "https://api.one.example"); } };
+  const ctx = { stopped: () => false, floorAllows: async () => ({ allow: true }), tabs: { get: async id => ({ id, url: id === 8 ? "https://evil.example/x" : "https://app.one.example/w" }) },
+    call: async (op, a, tr) => { calls.push([op, a, tr]); return tr && tr.writeOk ? { ok: true, status: 201, method: "POST" } : heldW(a.entry === "other" ? "https://other.example" : "https://api.one.example"); } };
   const { default: batch } = await import("./extension/caps/batch.js");
   const steps = [{ op: "api.call", args: { entry: "a" } }, { op: "api.call", args: { entry: "a" } }, { op: "api.call", args: { entry: "a" } }];
-  const r = await T(batch.ops["batch.run"])({ tabId: 7, writeBudget: { create: 2, edit: 0 }, steps, stopOnError: false }, ctx);
+  const budget = { create: 2, edit: 0, tab: 7, tabOrigin: "https://app.one.example", origin: "https://api.one.example" };
+  const r = await batch.ops["batch.run"]({ tabId: 7, steps, stopOnError: false }, ctx, { writeBudget: { ...budget } });
   assert.equal(r.covered.length, 2);
   assert.equal(r.results[2].held, true, "the third is beyond the budget");
   assert.equal(calls.filter(c => c[2] && c[2].writeOk === true).length, 2);
-  const o = await T(batch.ops["batch.run"])({ tabId: 7, writeBudget: { create: 5, edit: 0 }, steps: [{ op: "api.call", args: { entry: "a" } }, { op: "api.call", args: { entry: "other" } }], stopOnError: false }, ctx);
-  assert.equal(o.covered.length, 1, "the first write pins the origin; another origin is not covered");
-  const none = await T(batch.ops["batch.run"])({ tabId: 7, steps, stopOnError: false }, ctx);
+  // another API origin is not covered
+  const o = await batch.ops["batch.run"]({ tabId: 7, steps: [{ op: "api.call", args: { entry: "a" } }, { op: "api.call", args: { entry: "other" } }], stopOnError: false }, ctx, { writeBudget: { ...budget, create: 5 } });
+  assert.equal(o.covered.length, 1, "another origin is not covered");
+  // another tab gets nothing, whether the batch runs there or a step names it
+  const t1 = await batch.ops["batch.run"]({ tabId: 8, steps, stopOnError: false }, ctx, { writeBudget: { ...budget } });
+  assert.equal(t1.covered, undefined, "a batch on another tab covers nothing");
+  const t2 = await batch.ops["batch.run"]({ tabId: 7, steps: [{ op: "api.call", args: { entry: "a", tabId: 8 } }], stopOnError: false }, ctx, { writeBudget: { ...budget } });
+  assert.equal(t2.covered, undefined, "a step that names another tab covers nothing");
+  // the tab moved off the plan's site: nothing
+  const moved = { ...ctx, tabs: { get: async id => ({ id, url: "https://app.two.example/" }) } };
+  assert.equal((await batch.ops["batch.run"]({ tabId: 7, steps, stopOnError: false }, moved, { writeBudget: { ...budget } })).covered, undefined);
+  const none = await batch.ops["batch.run"]({ tabId: 7, steps, stopOnError: false }, ctx, {});
   assert.equal(none.covered, undefined);
 });
