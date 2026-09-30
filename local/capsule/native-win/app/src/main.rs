@@ -457,7 +457,38 @@ fn device_key_dh(app: AppHandle, remote: String) -> Result<String, String> {
     Ok(b64u(&devicekey::dh(&device_secret(&app)?, &r)?))
 }
 
+/// `Vyre.exe --selftest <file>` with VYRE_SELFTEST=1: checks the Windows-only pieces on a real PC
+/// (DPAPI round trip, the taskbar theme read, both tray icons decode, the pinned-path helper), writes
+/// one line per check to <file>, and exits. It opens no window and touches no pairing or key file.
+fn selftest(out: &str) {
+    let mut lines = Vec::new();
+    let mut check = |name: &str, r: Result<String, String>| lines.push(match r { Ok(d) => format!("pass {name} {d}"), Err(e) => format!("FAIL {name} {e}") });
+    check("dpapi-roundtrip", (|| {
+        let secret = [7u8; 32];
+        let sealed = protect(&secret, true)?;
+        if sealed == secret { return Err("the blob equals the secret".into()); }
+        let back = protect(&sealed, false)?;
+        if back == secret { Ok(format!("{} byte blob", sealed.len())) } else { Err("did not round-trip".into()) }
+    })());
+    check("taskbar-theme", Ok(if taskbar_is_light() { "light".into() } else { "dark".into() }));
+    check("tray-icons-decode", (|| {
+        for (n, b) in [("white", TRAY_DARK_TASKBAR), ("black", TRAY_LIGHT_TASKBAR)] {
+            tauri::image::Image::from_bytes(b).map_err(|e| format!("{n}: {e}"))?;
+        }
+        Ok("both".into())
+    })());
+    check("system-path", Ok(sys("System32\\icacls.exe")));
+    check("version", Ok(option_env!("VYRE_APP_VERSION").unwrap_or(env!("CARGO_PKG_VERSION")).to_string()));
+    let _ = std::fs::write(out, lines.join("\n") + "\n");
+}
+
 fn main() {
+    let args: Vec<String> = std::env::args().collect();
+    if std::env::var("VYRE_SELFTEST").as_deref() == Ok("1") {
+        if let Some(i) = args.iter().position(|a| a == "--selftest") {
+            if let Some(out) = args.get(i + 1) { selftest(out); return; }
+        }
+    }
     tauri::Builder::default()
         .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
             // A second launch (a vyre:// link) arrives through the deep-link plugin below.

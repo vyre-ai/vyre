@@ -8,4 +8,5 @@ if systemctl --user is-active --quiet vyre-win11.service; then
   systemctl --user stop vyre-win11.service 2>/dev/null || true
 fi
 systemctl --user stop vyre-win11-tpm.service 2>/dev/null || true
+sh "$ROOT/swap.sh" off
 echo stopped

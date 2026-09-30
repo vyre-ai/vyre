@@ -29,5 +29,5 @@ xorriso -as mkisofs -quiet -J -r -V UNATTEND -o "$ROOT/iso/unattend.iso" "$ROOT/
 
 [ -f "$ROOT/disk.qcow2" ] || qemu-img create -f qcow2 "$ROOT/disk.qcow2" 64G
 cp -n /usr/share/OVMF/OVMF_VARS_4M.fd "$ROOT/OVMF_VARS.fd" 2>/dev/null || cp -n /usr/share/OVMF/OVMF_VARS_4M.ms.fd "$ROOT/OVMF_VARS.fd"
-cp "$here/start.sh" "$here/stop.sh" "$ROOT/"; chmod +x "$ROOT/start.sh" "$ROOT/stop.sh"
+cp "$here/start.sh" "$here/stop.sh" "$here/swap.sh" "$ROOT/"; chmod +x "$ROOT/start.sh" "$ROOT/stop.sh" "$ROOT/swap.sh"
 echo "ready: $ROOT (start with: sh $ROOT/start.sh install   then   sh $ROOT/start.sh)"
