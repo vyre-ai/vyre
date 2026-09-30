@@ -15,6 +15,9 @@ const actions = {
   begin: () => flow.begin(),
   setName: text => flow.setName(text),
   claim: () => flow.claim(),
+  confirmWords: () => flow.confirmWords(),
+  denyWords: () => flow.denyWords(),
+  markSaved: () => flow.markSaved(),
   async copy(text, button) {
     try { await navigator.clipboard.writeText(text); button.textContent = "Copied"; }
     catch { button.textContent = "Select the text and copy it"; }
@@ -22,6 +25,9 @@ const actions = {
   },
 };
 const connect = ({ offer, key, secret }) => connectSetup({ openChannel, request, setupHello: client.setupHello, webCrypto, utf8 }, { offer, key, secret });
-const flow = createFlow({ client, relay: RELAY, connect, onChange: s => render(s, { doc: document, root, actions }) });
+// The recovery code is shown once and only here: closing or reloading before "I saved it" asks first.
+let unsaved = false;
+addEventListener("beforeunload", e => { if (unsaved) { e.preventDefault(); e.returnValue = ""; } });
+const flow = createFlow({ client, relay: RELAY, connect, onChange: s => { unsaved = Boolean(s.named && s.named.recoveryCode && !s.named.saved); render(s, { doc: document, root, actions }); } });
 render(flow.state, { doc: document, root, actions });
 addEventListener("pagehide", () => flow.stop());

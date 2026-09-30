@@ -100,6 +100,8 @@ test("install-box.sh v2: the code lands in vyre.env at 0600, keeps the person's 
   assert.equal(text.match(/^VYRE_SETUP_CODE=/gm)?.length, 1, "one code line, the stale one replaced");
   assert.ok(text.includes(`VYRE_SETUP_CODE=${CODE}`));
   assert.ok(!/^VYRE_CODE=/m.test(text), "VYRE_CODE is only the host-side pipe, never written into the box's env file");
+  const at = Number(text.match(/^VYRE_SETUP_CODE_AT=(\d+)$/m)?.[1]);
+  assert.ok(Math.abs(at - Date.now() / 1000) < 120, "the time it was written, as a real variable the box can read");
   assert.ok(!(r.stdout + r.stderr).includes(CODE), "never shown");
   assert.ok(!b.calls().includes(CODE), "never in a docker or sudo argument");
 });
@@ -339,11 +341,11 @@ test("vyre wrapper: a setup code older than an hour is removed from vyre.env at 
   const fn = fs.readFileSync(BOXVYRE, "utf8").match(/^expire_code\(\) \{[\s\S]*?^\}/m)[0];
   const call = () => spawnSync("sh", ["-c", `DIR='${b.dir}'\n${fn}\nexpire_code`], { encoding: "utf8", env: b.env });
   const now = Math.floor(Date.now() / 1000);
-  fs.writeFileSync(f, `CLOUDFLARE_VYRE_TOKEN=keep\n# vyre-setup-at=${now - 4000}\nVYRE_SETUP_CODE=${CODE}\n`, { mode: 0o600 });
+  fs.writeFileSync(f, `CLOUDFLARE_VYRE_TOKEN=keep\nVYRE_SETUP_CODE_AT=${now - 4000}\nVYRE_SETUP_CODE=${CODE}\n`, { mode: 0o600 });
   assert.equal(call().status, 0);
   assert.equal(fs.readFileSync(f, "utf8"), "CLOUDFLARE_VYRE_TOKEN=keep\n", "the expired code and its time are gone, the rest is kept");
   assert.equal(fs.statSync(f).mode & 0o777, 0o600);
-  fs.writeFileSync(f, `# vyre-setup-at=${now - 100}\nVYRE_SETUP_CODE=${CODE}\n`, { mode: 0o600 });
+  fs.writeFileSync(f, `VYRE_SETUP_CODE_AT=${now - 100}\nVYRE_SETUP_CODE=${CODE}\n`, { mode: 0o600 });
   call();
   assert.ok(fs.readFileSync(f, "utf8").includes(`VYRE_SETUP_CODE=${CODE}`), "a code inside its hour stays");
 });

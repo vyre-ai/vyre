@@ -25,6 +25,7 @@ export const MESSAGES = Object.freeze({
   key: "This browser could not make the key the setup needs. Try a current Chrome, Safari, Edge or Firefox.",
   relay: "This page could not reach Vyre's relay. Check your connection, then start again.",
   connect: "This page could not open a connection to your server. Start again.",
+  mismatch: "The four words did not match, so that was not your server. Close this page and start again.",
 });
 
 /** A first guess at an address from the server's own name: lower case letters, digits and hyphens. */
@@ -36,9 +37,10 @@ export function suggestName(text) {
 /**
  * @typedef {{ stage: "start"|"install"|"found"|"named"|"stopped", installLine: string, code: string, lines: string[],
  *   box: null | { name: string, fingerprint: string, words: string[], handle: string|null },
+ *   confirm: "none"|"pending"|"matched",
  *   channel: "none"|"connecting"|"ready"|"failed",
  *   naming: { input: string, check: null | { name: string, valid: boolean, available: boolean, why: string|null, address: string|null }, checking: boolean, claiming: boolean, error: string|null },
- *   named: null | { name: string, address: string|null, recoveryCode: string|null },
+ *   named: null | { name: string, address: string|null, recoveryCode: string|null, saved: boolean },
  *   error: null | { code: string, message: string }, expiresAt: number, listening: boolean }} FlowState
  * @typedef {{ createSetupKey: Function, setupCode: Function, resolveSetup: Function, setupWords: Function, mailboxReader: Function }} SetupClient
  * @typedef {{ call: (tool: string, input?: object) => Promise<any>, close: () => void }} BoxChannel
@@ -57,15 +59,17 @@ export function createFlow(o) {
   const debounceMs = o.debounceMs ?? 350;
   /** @type {FlowState} */
   const blankNaming = () => ({ input: "", check: null, checking: false, claiming: false, error: null });
-  let state = { stage: "start", installLine: "", code: "", lines: [], box: null, channel: "none", naming: blankNaming(), named: null, error: null, expiresAt: 0, listening: false };
+  let state = { stage: "start", installLine: "", code: "", lines: [], box: null, confirm: "none", channel: "none", naming: blankNaming(), named: null, error: null, expiresAt: 0, listening: false };
   let run = 0;
   /** @type {BoxChannel|null} */
   let chan = null;
+  /** What openBox needs once the person has compared the words. @type {null | { mine: number, offer: any, key: any, secret: Uint8Array, name: string }} */
+  let pending = null;
   let checkSeq = 0;
   const closeChan = () => { try { chan?.close(); } catch { /* gone */ } chan = null; };
   const emit = () => o.onChange?.(state);
   const set = patch => { state = { ...state, ...patch }; emit(); };
-  const fail = code => { run++; closeChan(); set({ stage: "stopped", listening: false, error: { code, message: MESSAGES[code] || MESSAGES.relay } }); };
+  const fail = code => { run++; closeChan(); pending = null; set({ stage: "stopped", listening: false, error: { code, message: MESSAGES[code] || MESSAGES.relay } }); };
 
   /** The install line, exactly as it must be run: the variable goes on sh, the reader of the script. */
   const lineFor = code => `curl -fsSL ${installUrl} | VYRE_CODE=${code} sh`;
@@ -79,8 +83,8 @@ export function createFlow(o) {
       code = await o.client.setupCode(secret, key.spki);
     } catch { return fail("key"); }
     if (mine !== run) return;
-    closeChan(); checkSeq++;
-    set({ stage: "install", installLine: lineFor(code), code, lines: [], box: null, channel: "none", naming: blankNaming(), named: null, error: null, expiresAt: now() + TTL_MS, listening: true });
+    closeChan(); checkSeq++; pending = null;
+    set({ stage: "install", installLine: lineFor(code), code, lines: [], box: null, confirm: "none", channel: "none", naming: blankNaming(), named: null, error: null, expiresAt: now() + TTL_MS, listening: true });
     followMailbox(mine, key, secret);
     waitForBox(mine, key, secret);
     // The hour is the box's; the page stops listening when it is over.
@@ -121,8 +125,10 @@ export function createFlow(o) {
         const r = await o.client.resolveSetup(secret, { relay: o.relay });
         if (mine !== run) return;
         const words = await o.client.setupWords(r.offer.box, secret);
-        set({ stage: "found", box: { name: r.name, fingerprint: r.fingerprint, words, handle: r.handle }, error: null });
-        return openBox(mine, r.offer, key, secret, r.name);
+        // Anyone who saw the code could have put a sealed offer here first, so the page goes no further
+        // (no connection, no name form) until the person says the four words match their own terminal.
+        pending = { mine, offer: r.offer, key, secret, name: r.name };
+        return set({ stage: "found", confirm: "pending", box: { name: r.name, fingerprint: r.fingerprint, words, handle: r.handle }, error: null });
       } catch (e) {
         const code = /** @type {any} */ (e).code;
         if (code === "contested" || code === "bad_record") return fail(code);
@@ -130,6 +136,21 @@ export function createFlow(o) {
         await sleep(code === "rate_limited" ? 15_000 : pollMs);
       }
     }
+  }
+
+  /** "These match my server's terminal": now, and only now, the connection opens. */
+  function confirmWords() {
+    const p = pending;
+    if (!p || p.mine !== run || state.stage !== "found" || state.confirm !== "pending") return;
+    pending = null;
+    set({ confirm: "matched" });
+    return openBox(p.mine, p.offer, p.key, p.secret, p.name);
+  }
+  /** "They don't match": not this server. Nothing was opened, nothing is kept. */
+  function denyWords() {
+    if (state.stage !== "found" || state.confirm !== "pending") return;
+    pending = null;
+    fail("mismatch");
   }
 
   /** Open the page's own connection to the server it found, then offer a first name. */
@@ -163,6 +184,11 @@ export function createFlow(o) {
     }
   }
 
+  /** "I saved it": the warning about closing the page before the code is safe goes away. */
+  function markSaved() {
+    if (state.named) set({ named: { ...state.named, saved: true } });
+  }
+
   /** Claim the name that was just checked as free. The recovery code comes back once and is kept only in this state. */
   async function claim() {
     const n = state.naming;
@@ -173,7 +199,7 @@ export function createFlow(o) {
       const r = await chan.call("names.claim", { name: n.check.name });
       if (mine !== run) return;
       if (r && r.phase === "failed") return set({ naming: { ...state.naming, claiming: false, error: String(r.why || "the name could not be claimed").slice(0, 200) } });
-      set({ stage: "named", naming: { ...state.naming, claiming: false }, named: { name: n.check.name, address: (r && r.address) || n.check.address, recoveryCode: r && r.recoveryCode ? String(r.recoveryCode) : null } });
+      set({ stage: "named", naming: { ...state.naming, claiming: false }, named: { name: n.check.name, address: (r && r.address) || n.check.address, recoveryCode: r && r.recoveryCode ? String(r.recoveryCode) : null, saved: false } });
     } catch (e) {
       if (mine !== run) return;
       set({ naming: { ...state.naming, claiming: false, error: String(/** @type {Error} */ (e).message).slice(0, 200) } });
@@ -182,7 +208,7 @@ export function createFlow(o) {
 
   return {
     get state() { return state; },
-    setName, claim,
+    setName, claim, confirmWords, denyWords, markSaved,
     /** Start (or start again): a new key and a new code; the old one is forgotten. */
     begin,
     /** Stop listening (the page is closing). */

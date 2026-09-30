@@ -616,12 +616,12 @@ write_code() {
   : >"$TMP/vyre.env"
   if [ -e "$DIR/vyre.env" ]; then
     # shellcheck disable=SC2024
-    if [ -r "$DIR/vyre.env" ] || [ -z "$SUDO" ]; then grep -v -e '^VYRE_SETUP_CODE=' -e '^# vyre-setup-at=' "$DIR/vyre.env" >"$TMP/vyre.env" || true
-    else sudo cat "$DIR/vyre.env" | grep -v -e '^VYRE_SETUP_CODE=' -e '^# vyre-setup-at=' >"$TMP/vyre.env" || true
+    if [ -r "$DIR/vyre.env" ] || [ -z "$SUDO" ]; then grep -v -e '^VYRE_SETUP_CODE=' -e '^VYRE_SETUP_CODE_AT=' "$DIR/vyre.env" >"$TMP/vyre.env" || true
+    else sudo cat "$DIR/vyre.env" | grep -v -e '^VYRE_SETUP_CODE=' -e '^VYRE_SETUP_CODE_AT=' >"$TMP/vyre.env" || true
     fi
   fi
   chmod 600 "$TMP/vyre.env"
-  printf '# vyre-setup-at=%s\nVYRE_SETUP_CODE=%s\n' "$(date +%s)" "$CODE" >>"$TMP/vyre.env"
+  printf 'VYRE_SETUP_CODE_AT=%s\nVYRE_SETUP_CODE=%s\n' "$(date +%s)" "$CODE" >>"$TMP/vyre.env"
   put "$TMP/vyre.env" "$DIR/vyre.env" 0600
 }
 
