@@ -43,6 +43,10 @@ Never the test box (now the user's real server) and never the user's Mac. Tests 
 
 - 30 Sep: LANDED platform work/platform-contract 12a09627 on stage/0.2 as merge 795a00b7 (CI run 36667526975: node 22 and 24, box-image, sessions-sdk, capsule-mac green; two single-test flakes, computerd CDP identity on 22 and upgrade.test.js on 24, each green on rerun, neither touches platform files). Next in the order: tailnet-02, sessions-02, launch-onboard-fix.
 - 30 Sep: tailnet-02 NOT landed. A test merge through 24fb61c2 plus c97dbf01 was red (15 failures), and the branch's own CI at c97dbf01 is red too (sdk types miss declaredSetupTools and coreKeys, tailnet.test.js:211, ten onboard tests). Stage reset to 795a00b7. Sent to tailnet; asked reviewer-2 about 34ccec9b, which has no clearance.
+- 30 Sep landings on stage/0.2 (mirror work/stage-0.2): keychain flags 47dafe78, capsule sight flake fix ff2471f0, node.yml routing team branches to the self-hosted linux-heavy runners (4059d2c4, green); drive b4684a4d as e1a061cc (green after flake reruns). native-core 154bb822 merged as 0d3c0dee, CI rerun pending (perf-check CPU 13% on Node 22 once).
+- Held, sent back: capsule-sight cce7f44e (15 failures after merge with stage), vyre-core 6de509a4 (one test, install-mac-server gh pinned download, fails on Ubuntu), tailnet-02 c97dbf01 (cleared, but red on its own CI).
+- Recurring flakes on hosted runners: hands-chrome "Chrome did not print its DevTools port in time", computerd CDP identity, upgrade.test.js, clipboard timing. Sent to native-core (started after 47dafe78).
+- Wrote team/0.1.5-ASSESSMENT.md (subagent draft): ship only as a beta prerelease.
 
 ## Doing
 
