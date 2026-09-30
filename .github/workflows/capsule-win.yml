@@ -1,3 +1,5 @@
+# The Windows app: Cargo.lock files are committed and every build is --locked, with the Rust toolchain
+# and tauri-cli pinned to exact versions, because the result is auto-installed on people's PCs.
 # The Windows Capsule shell (Tier C, docs/design/windows-plan.md section 9). Only
 # local/capsule/native-win exists so far: the global-hotkey decision logic (which binding to ask
 # for, the Alt+Space-vs-system-menu conflict), host-independent and unit-tested. The Tauri panel
@@ -34,7 +36,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@1.98.1
       - name: cargo test
-        run: cargo test --verbose
+        run: cargo test --locked --verbose
       - name: version, from the repo's package.json (the release checks it equals the tag)
         shell: bash
         run: |
@@ -56,7 +58,7 @@ jobs:
         working-directory: local/capsule/native-win/app
         run: |
           cargo install tauri-cli --version "=2.12.0" --locked
-          cargo tauri build --bundles nsis
+          cargo tauri build --bundles nsis -- --locked
       - name: the installer, named Vyre_<version>_x64-setup.exe, for release.yml
         shell: bash
         run: |
@@ -68,11 +70,3 @@ jobs:
           name: app-windows-${{ github.sha }}
           path: out/Vyre_*_x64-setup.exe
           if-no-files-found: error
-      - name: TEMPORARY, phase 1 of committing Cargo.lock (removed in the next commit)
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: cargo-locks
-          path: |
-            local/capsule/native-win/Cargo.lock
-            local/capsule/native-win/app/Cargo.lock
