@@ -498,6 +498,30 @@ for (const driver of ["cli", "sdk"]) {
     assert.match((await w.said(th.id)).at(-1), /^router: /);
   });
 
+  test(`${driver}: threads.delete removes the thread, its events and the OpenRouter conversation, and says thread.deleted`, { skip }, async t => {
+    const http = await import("node:http");
+    const srv = http.createServer((req, res) => { req.resume(); req.on("end", () => { res.writeHead(200, { "content-type": "text/event-stream" }); res.write(`data: ${JSON.stringify({ choices: [{ delta: { content: "kept" } }] })}\n\ndata: [DONE]\n\n`); res.end(); }); });
+    await new Promise(r => srv.listen(0, "127.0.0.1", () => r(undefined)));
+    t.after(() => { srv.closeAllConnections?.(); srv.close(); });
+    const saved = process.env.VYRE_OPENROUTER_URL;
+    process.env.VYRE_OPENROUTER_URL = `http://127.0.0.1:${srv.address().port}`;
+    t.after(() => { if (saved === undefined) delete process.env.VYRE_OPENROUTER_URL; else process.env.VYRE_OPENROUTER_URL = saved; });
+    const w = await boot(t, { driver, vault: { "or-key": "sk-or" } });
+    assert.equal((await w.tool("sessions.accounts.add", { provider: "openrouter", label: "Router", kind: "api-key", vault_item: "or-key" })).error, undefined);
+    const th = (await w.tool("threads.start", { cwd: w.work, provider: "openrouter", model: "x/y", prompt: "remember this", surface: "deck" })).data;
+    await w.finished(th.id);
+    const db = w.d.registry.deps.db;
+    const rows = table => db.prepare(`SELECT COUNT(*) AS n FROM ${table} WHERE thread = ?`).get(th.id).n;
+    assert.equal(rows("sessions_openrouter"), 1, "the conversation is kept while the thread lives");
+    const gone = await w.tool("threads.delete", { thread: th.id });
+    assert.equal(gone.error, undefined, JSON.stringify(gone));
+    assert.ok((await w.tool("threads.get", { thread: th.id })).error, "the thread is gone");
+    assert.equal(rows("sessions_openrouter"), 0, "its stored conversation went with it");
+    assert.equal(db.prepare("SELECT COUNT(*) AS n FROM events WHERE thread = ?").get(th.id).n, 0);
+    assert.ok(db.prepare("SELECT 1 FROM events WHERE type = 'thread.deleted'").get(), "thread.deleted was said");
+    assert.ok((await w.tool("threads.delete", { thread: th.id })).error, "a second delete finds nothing");
+  });
+
   test(`${driver}: accounts add/remove/bind are "asked": an ordinary agent is refused with no prompt, the assistant and the person are not`, { skip }, async t => {
     const w = await boot(t, { driver, sessions: { thread_socket: "on" }, vault: { "work-token": "fake-work-value" } });
     assert.equal((await w.tool("agents.create", { name: "kit", projects: [] })).error, undefined);

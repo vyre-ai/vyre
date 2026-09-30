@@ -72,7 +72,8 @@ function runChat(entry, store, o) {
       const it = /** @type {any} */ (res.body)[Symbol.asyncIterator]();
       for (;;) {
         // No data for a minute ends the turn; so does an answer past the cap.
-        const step = await Promise.race([it.next(), new Promise(r => setTimeout(() => r({ idle: true }), Number(entry.idleMs) || IDLE_MS).unref?.())]);
+        let timer;
+        const step = await Promise.race([it.next(), new Promise(r => { timer = setTimeout(() => r({ idle: true }), Number(entry.idleMs) || IDLE_MS); })]).finally(() => clearTimeout(timer));
         if (/** @type {any} */ (step).idle) { ac.abort(); throw new Error("OpenRouter stopped answering"); }
         if (/** @type {any} */ (step).done) break;
         const chunk = /** @type {any} */ (step).value;

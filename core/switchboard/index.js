@@ -1789,6 +1789,27 @@ export class Switchboard {
     return { thread: id, stopped: true };
   }
 
+  /**
+   * Delete a thread: stop it, remove its record, runs, questions, queue, steers and events, and say
+   * thread.deleted so whatever else keeps something of it (OpenRouter's stored conversation) lets go.
+   * What a provider's own program wrote to disk (Claude Code's transcript file) is that program's;
+   * Vyre does not reach into it.
+   * @param {string} id
+   */
+  async delete(id) {
+    const rec = this.must(id);
+    if (this.live.has(id)) { await this.stop(id).catch(() => {}); this.live.delete(id); }
+    this.closeSocket(id);
+    for (const [table, col] of [["threads_asks", "thread"], ["threads_leases", "thread"], ["threads_watches", "thread"], ["threads_inbox", "thread"], ["threads_providers", "thread"],
+      ["threads_sent", "thread"], ["threads_steers", "thread"], ["threads_turns", "thread"], ["events", "thread"], ["threads_runs", "id"]]) {
+      try { this.db.prepare(`DELETE FROM ${table} WHERE ${col} = ?`).run(id); } catch (e) { if (!/no such (table|column)/.test(/** @type {Error} */ (e).message)) throw e; }
+    }
+    this.states.delete(id);
+    // Not tied to the thread it names (its rows are gone): the payload carries the id.
+    this.deps.emit("thread.deleted", { thread: id, project: rec.project || null, agent: rec.agent || null }, { project: rec.project || undefined });
+    return { thread: id, deleted: true };
+  }
+
   list({ agent, all } = {}) {
     const rows = agent
       ? this.db.prepare("SELECT id FROM threads_runs WHERE agent = ? ORDER BY last_at DESC LIMIT 200").all(agent)
@@ -2411,6 +2432,19 @@ export default {
         return sb.mode(i.thread, i.mode);
       },
       ["cli", "local", "deck", "capsule"]);
+
+    tool("threads.delete", "Delete a thread for good: it stops, and its record, questions, queued words and events go, and thread.deleted is said so anything else that kept a copy (OpenRouter's stored conversation) lets go too. A provider's own transcript file is not touched. A person, the assistant, or an agent for its own threads and its own projects' threads.",
+      { type: "object", required: ["thread"], properties: { thread: str } },
+      async (i, meta) => {
+        guard(meta.caller, "delete sessions");
+        const rec = sb.must(i.thread);
+        const m = /** @type {any} */ (meta);
+        if (m.agent && m.agentKind !== "assistant") {
+          const own = rec.agent === m.agent, granted = m.granted === "*" || (Array.isArray(m.granted) && rec.project && m.granted.includes(rec.project));
+          if (!own && !granted) throw Object.assign(new Error("an agent deletes its own threads, or threads of a project it is granted"), { code: "denied" });
+        }
+        return sb.delete(i.thread);
+      });
 
     tool("threads.stop", "Stop a headless thread. Its transcript stays; threads.send resumes it.",
       { type: "object", required: ["thread"], properties: { thread: str } },

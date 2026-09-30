@@ -30,7 +30,10 @@ export const LOGIN_HOSTS = /** @type {Record<string, string[]>} */ ({
   grok: ["x.ai", "grok.com"],
   claude: ["claude.ai", "claude.com", "anthropic.com"],
 });
-const onHost = (url, hosts) => { try { const u = new URL(url); return u.protocol === "https:" && !u.username && !u.password && hosts.some(h => u.hostname === h || u.hostname.endsWith("." + h)); } catch { return false; } };
+const onHost = (url, hosts) => { try { if (/[\\@\s\u0000-\u001f]/.test(url)) return false; /* a backslash or @ reads differently in different clients */ const u = new URL(url); return u.protocol === "https:" && !u.username && !u.password && hosts.some(h => u.hostname === h || u.hostname.endsWith("." + h)); } catch { return false; } };
+
+/** Is this address one a provider's sign-in may show? (exported for its table test) */
+export const signinAddressOk = (provider, url) => onHost(url, LOGIN_HOSTS[provider] || []);
 
 const URL_RE = /https:\/\/[^\s"'<>)]+/;
 // A one-time device code: XXXX-XXXX (letters and digits), the shape RFC 8628 examples and the CLIs print.
@@ -61,7 +64,13 @@ export class Signins {
     const read = d => {
       f.text = (f.text + String(d)).slice(-8000);
       const clean = f.text.replace(/\x1b\[[0-9;]*[A-Za-z]/g, "");
-      if (!f.url) { for (const m of clean.matchAll(new RegExp(URL_RE, "g"))) { const u = m[0].replace(/[.,;]+$/, ""); if (onHost(u, (this.deps.hosts || LOGIN_HOSTS)[provider] || [])) { f.url = u; break; } } }
+      if (!f.code) {
+        // Every address on the provider's own host; the one whose path says device, login, auth or
+        // oauth is the sign-in page (a docs link may be printed first), else the last one.
+        const ok = [...clean.matchAll(new RegExp(URL_RE, "g"))].map(m => m[0].replace(/[.,;]+$/, "")).filter(u => onHost(u, (this.deps.hosts || LOGIN_HOSTS)[provider] || []));
+        const pick = ok.find(u => /device|login|auth/i.test(new URL(u).pathname)) || ok[ok.length - 1];
+        if (pick) f.url = pick;   // re-picked as more is printed, until the code shows and settles it
+      }
       if (!f.code) { const c = CODE_RE.exec(clean); if (c) f.code = c[1]; }
       if (f.url && (f.code || f.wantsPaste)) this.ping(f);
     };

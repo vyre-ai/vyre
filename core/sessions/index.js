@@ -216,12 +216,12 @@ export default {
 
     // ---- routing and fallback order (plans/sessions.md 9.4)
     // A conversation kept for OpenRouter goes with its thread: swept at start, and on thread.deleted.
-    const sweep = () => { try { db.exec("DELETE FROM sessions_openrouter WHERE thread NOT IN (SELECT id FROM threads_runs)"); } catch {} };
+    const sweep = () => { try { db.exec("DELETE FROM sessions_openrouter WHERE thread NOT IN (SELECT id FROM threads_runs); DELETE FROM sessions_acp WHERE thread NOT IN (SELECT id FROM threads_runs)"); } catch {} };
     sweep();
     // No thread is deleted anywhere in Vyre today (no such event or path exists), so this also runs hourly:
     // whichever path removes a threads_runs row later, its OpenRouter history goes within the hour.
     const sweeper = setInterval(sweep, 3_600_000); sweeper.unref?.();
-    try { ctx.events.on("thread.deleted", e => { const t = e && e.payload && e.payload.thread; if (t) db.prepare("DELETE FROM sessions_openrouter WHERE thread = ?").run(String(t)); }); } catch {}
+    try { ctx.events.on("thread.deleted", e => { const t = e && e.payload && e.payload.thread; if (t) { db.prepare("DELETE FROM sessions_openrouter WHERE thread = ?").run(String(t)); db.prepare("DELETE FROM sessions_acp WHERE thread = ?").run(String(t)); } }); } catch {}
     const routes = new Routes(db, name => PROVIDERS.some(p => p.id === name));
     // Every provider but Claude needs a real, in-scope account: a fallback never runs on a login or key that nobody set up.
     const usable = e => { try { const a = accounts.resolve({ provider: e.provider, ...(e.account ? { account: e.account } : {}) }); return e.provider === "claude" || Boolean(a && !a.synthetic); } catch { return false; } };

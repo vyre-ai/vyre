@@ -61,3 +61,30 @@ test("signin: an address on any host but the provider's own is never handed on",
   assert.notEqual(r.step, "code", "no address, no code shown");
   assert.ok(!r.url);
 });
+
+import { signinAddressOk } from "./signin.js";
+
+test("signin: hostile addresses are never on a provider's host, and its own are", () => {
+  const bad = [
+    "http://auth.openai.com/device", "https://auth.openai.com.evil.com/device", "https://evilopenai.com/device", "https://openai.com@evil.com/device",
+    "https://user:pw@auth.openai.com/device", "https://auth.openai.com\\@evil.com/", "https://evil.com/?https://openai.com", "//openai.com/device",
+    "javascript:alert(1)//openai.com", "data:text/html,https://openai.com", "https://openai.com.:443@evil.com/", "https://auth.openai.com:8443@evil.com/",
+    "https://openai.com.evil.com/", "https://0.0.0.0/", "https://[::1]/", "https://127.0.0.1/openai.com", "https://auth.openai.com%2f@evil.com/",
+    "https://notopenai.com/", "https://openai.com.cn/", "https://xn--openai-9d0b.com/", "ftp://auth.openai.com/device", "https:/\\auth.evil.com/", "https://evil.com#@openai.com/",
+    "https://evil.com/@openai.com", "https://openai.com\u0000.evil.com/", "https:// openai.com/", "not a url",
+  ];
+  for (const u of bad) assert.equal(signinAddressOk("codex", u), false, u);
+  for (const u of ["https://auth.openai.com/device", "https://chatgpt.com/auth/device", "https://openai.com/login"]) assert.equal(signinAddressOk("codex", u), true, u);
+  assert.equal(signinAddressOk("grok", "https://auth.openai.com/device"), false, "another provider's host is not grok's");
+  assert.equal(signinAddressOk("gemini", "https://auth.openai.com/device"), false, "no provider, no hosts");
+});
+
+test("signin: a docs link printed first is not the address; the one whose path says device, login or auth is", async t => {
+  const home = fs.mkdtempSync(path.join(SCRATCH, "login-home-"));
+  t.after(() => fs.rmSync(home, { recursive: true, force: true }));
+  const script = 'console.log("Docs: https://openai.com/docs/codex"); console.log("Open https://auth.openai.com/codex/device and enter ABCD-1234"); setTimeout(() => {}, 400)';
+  const s = new Signins({ spawn: () => spawn(process.execPath, ["-e", script], { stdio: ["pipe", "pipe", "pipe"] }) });
+  t.after(() => s.stop());
+  const r = await s.start({ provider: "codex", account: { id: "d" } });
+  assert.deepEqual([r.step, r.url, r.code], ["code", "https://auth.openai.com/codex/device", "ABCD-1234"]);
+});
