@@ -60,7 +60,7 @@ export async function createRuntime(o = {}) {
   }
 
   const ctx = {
-    config: { chrome: { sockPath: o.sockPath || sockPathOf(dataDir), vyreHome: dataDir, hostDir: o.hostDir || path.join(PKG, "native-host"), extensionDir: o.extensionDir || path.join(PKG, "extension"), sendTool: "chrome_send", ...(o.chrome || {}) } },
+    config: { chrome: { sockPath: o.sockPath || sockPathOf(dataDir), vyreHome: dataDir, hostDir: o.hostDir || path.join(PKG, "native-host"), extensionDir: o.extensionDir || path.join(PKG, "extension"), sendTool: "chrome_send", ghlHosts: () => { const h = trace.config().ghlHosts; return Array.isArray(h) ? h : []; }, ...(o.chrome || {}) } },
     log,
     events,
     call,

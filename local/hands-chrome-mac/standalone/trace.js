@@ -21,7 +21,7 @@ const PHONE = /(?<![\w.])\+?\d[\d ()\-.]{5,}\d(?![\w])/g;
 // values: which typed values a trace keeps. "builder" (default): only on GoHighLevel automation and workflow-builder
 // pages, where the values are workflow text; everywhere else a typed value is logged as its length. "all": every
 // value. "none": never.
-export const DEFAULTS = Object.freeze({ logs: "on", shots: false, maxMB: 100, fileMB: 10, values: "builder", confirmSends: true });
+export const DEFAULTS = Object.freeze({ logs: "on", shots: false, maxMB: 100, fileMB: 10, values: "builder", confirmSends: true, ghlHosts: [] });
 
 /**
  * The fallback ladder, one mechanism: which rung a tool call works on, and what to try when it fails.
@@ -184,7 +184,7 @@ export function createTrace({ dataDir, now = Date.now, pid = process.pid, versio
       if (meta.host && tabId !== undefined) hostByTab.set(tabId, { host: meta.host, path: meta.path || "" });
       const seen = meta.host ? { host: meta.host, path: meta.path || "" } : (tabId !== undefined ? hostByTab.get(tabId) : undefined);
       if (!meta.host && seen) { meta.host = seen.host; if (seen.path) meta.path = seen.path; }
-      const keep = mode === "all" || (mode !== "none" && seen && GHL_HOST.test(String(seen.host)) && BUILDER_PATH.test(String(seen.path)));
+      const keep = mode === "all" || (mode !== "none" && seen && (GHL_HOST.test(String(seen.host)) || (Array.isArray(cfgNow().ghlHosts) ? cfgNow().ghlHosts : []).some((/** @type {string} */ h) => String(seen.host) === h || String(seen.host).endsWith("." + h))) && BUILDER_PATH.test(String(seen.path)));
       const args = keep ? c.args : stripValues(c.args);
       const rung = rungOf(c.tool, c.args);
       return write({ kind: "call", tool: c.tool, ...(rung ? { rung, rungName: /** @type {any} */ (RUNGS)[rung] } : {}), args: safeArgs(args), queueMs: Math.round(c.queueMs), runMs: Math.round(c.runMs), ok: c.ok, ...meta });

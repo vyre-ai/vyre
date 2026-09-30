@@ -11,6 +11,7 @@ import { fileURLToPath } from "node:url";
 import { PKG, dataDirOf, sockPathOf, createRuntime } from "./runtime.js";
 import { serve } from "./mcp.js";
 import { readConfig, writeConfig, report } from "./trace.js";
+import readline from "node:readline";
 import * as nativeHost from "../native-host/install.js";
 import { extensionIdFromKey } from "../native-host/install.js";
 import { guide } from "../index.js";
@@ -25,12 +26,18 @@ const version = (() => { try { return JSON.parse(fs.readFileSync(path.join(PKG, 
 const out = (/** @type {string} */ s = "") => process.stdout.write(s + "\n");
 const flag = (/** @type {string[]} */ a, /** @type {string} */ n) => { const i = a.indexOf(`--${n}`); return i >= 0 ? (a[i + 1] && !a[i + 1].startsWith("--") ? a[i + 1] : "true") : undefined; };
 
+/** A hostname from whatever the person typed: a domain, or a URL. Null when it is not one. @param {string} raw */
+const hostOf = raw => { const h = String(raw || "").trim().toLowerCase().replace(/^[a-z]+:\/\//, "").replace(/[/?#].*$/, "").replace(/:\d+$/, ""); return /^[a-z0-9]([a-z0-9.-]*[a-z0-9])?\.[a-z]{2,}$/.test(h) ? h : null; };
+/** @param {string} q */
+const ask = q => new Promise(res => { const rl = readline.createInterface({ input: process.stdin, output: process.stdout }); rl.question(q, a => { rl.close(); res(a); }); });
+
 const HELP = `vyre-chrome ${version}: control your own Chrome from Claude Code
 
   vyre-chrome install [--browsers chrome,brave]   register the connector; prints what to do next
   vyre-chrome uninstall [--purge]                 remove the connector (--purge also deletes the logs)
   vyre-chrome status                              is it installed, is logging on
   vyre-chrome report [--last N] [--out FILE]      one redacted bundle of your last N sessions, with a summary
+  vyre-chrome config ghl-host <domain> [--remove]  your GoHighLevel domain, if it is not gohighlevel.com (several allowed)
   vyre-chrome config confirm-sends on|off         ask you before a send and before resuming after Esc (default on)
   vyre-chrome logs on|off|path                    turn the local trace on or off, or print where it is
   vyre-chrome logs values builder|all|none        which typed values a trace keeps (default builder: only on GoHighLevel automation pages)
@@ -70,6 +77,14 @@ async function main() {
     const browsers = flag(args, "browsers");
     const r = nativeHost.install({ vyreHome: dataDir, hostDir: hostDirNow, extensionId: id, ...(browsers ? { browsers: /** @type {any} */ (browsers.split(",")) } : {}) });
     if (appDir !== PKG) lock(appDir);
+    // GoHighLevel on the person's own domain: asked once, on a terminal; skipped when there is none or they press Enter.
+    let asked = flag(args, "ghl-host");
+    if (asked === undefined && process.stdin.isTTY && !flag(args, "no-prompt")) asked = await ask("Is your GoHighLevel on your own domain? Enter it, or press Enter to skip: ");
+    if (asked && asked !== "true") {
+      const h = hostOf(asked);
+      if (h) { const cur = readConfig(dataDir).ghlHosts || []; writeConfig(dataDir, { ghlHosts: [...new Set([...cur, h])] }); out(`Counting ${h} as GoHighLevel.`); }
+      else out(`"${asked}" is not a domain, so it was skipped. Add it later with: vyre-chrome config ghl-host your.domain.com`);
+    }
     out(`Registered the connector for: ${r.written.map((/** @type {any} */ w) => w.browser).join(", ")}`);
     out();
     out(guide(extDirNow, id, r.written.map((/** @type {any} */ w) => w.browser)).split("\n").slice(1, 5).join("\n"));
@@ -84,8 +99,18 @@ async function main() {
   }
 
   if (cmd === "config") {
+    if (args[0] === "ghl-host") {
+      const cur = readConfig(dataDir).ghlHosts || [];
+      if (!args[1]) { out(cur.length ? cur.join("\n") : "No extra GoHighLevel domains. gohighlevel.com and leadconnectorhq.com always count."); return; }
+      const h = hostOf(args[1]);
+      if (!h) throw new Error(`"${args[1]}" is not a domain`);
+      const next = flag(args, "remove") ? cur.filter((/** @type {string} */ x) => x !== h) : [...new Set([...cur, h])];
+      writeConfig(dataDir, { ghlHosts: next });
+      out(flag(args, "remove") ? `Removed ${h}.` : `Counting ${h} as GoHighLevel.`);
+      return;
+    }
     if (args[0] === "confirm-sends" && ["on", "off"].includes(args[1])) { writeConfig(dataDir, { confirmSends: args[1] === "on" }); out(`Asking you before a send or a resume is ${args[1]}.`); return; }
-    throw new Error("config: confirm-sends on|off");
+    throw new Error("config: confirm-sends on|off | ghl-host <domain> [--remove]");
   }
 
   if (cmd === "uninstall") {

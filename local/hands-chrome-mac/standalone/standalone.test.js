@@ -199,6 +199,13 @@ test("cli: install copies the package read-only under the data folder, registers
   if (process.platform === "darwin") assert.ok(fs.existsSync(path.join(home, "Library", "Application Support", "Google", "Chrome", "NativeMessagingHosts", "run.vyre.chrome.json")));
   assert.equal(runRel("logs", "off").status, 0);
   assert.equal(runRel("config", "confirm-sends", "off").status, 0);
+  assert.equal(runRel("config", "ghl-host", "https://Crm.Agency.example/login").status, 0);
+  assert.notEqual(runRel("config", "ghl-host", "not a host").status, 0);
+  assert.equal(runRel("config", "ghl-host").stdout.trim(), "crm.agency.example");
+  assert.equal(JSON.parse(fs.readFileSync(path.join(home, ".vyre-chrome", "config.json"), "utf8")).ghlHosts[0], "crm.agency.example");
+  assert.equal(runRel("config", "ghl-host", "crm.agency.example", "--remove").status, 0);
+  assert.match(runRel("config", "ghl-host").stdout, /always count/);
+  assert.match(runRel("install", "--browsers", "chrome", "--ghl-host", "agency.example").stdout, /Counting agency\.example as GoHighLevel/);
   const st = JSON.parse(runRel("status").stdout);
   assert.equal(st.logs, "off");
   // Installing again replaces the copy.
@@ -347,4 +354,18 @@ test("report: a shared bundle never carries a typed value, even from a page whos
   const { createTrace } = await import("./trace.js");
   const { bundle } = report(dataDir);
   assert.ok(!JSON.stringify(bundle).includes("Harlow Legal"));
+});
+
+
+test("ghl hosts: the configured white-label domain reaches the extension on every call", async t => {
+  const dataDir = tmp(t);
+  writeConfig(dataDir, { ghlHosts: ["agency.example"] });
+  const sockPath = path.join(dataDir, "run", "chrome.sock");
+  const runtime = await createRuntime({ dataDir, sockPath, log: () => {}, chrome: { extensionOrigin: null } });
+  t.after(() => runtime.stop());
+  const ext = await fakeExtension(sockPath, { handler: () => ({ tabs: [] }) });
+  t.after(() => ext.sock.destroy());
+  await until(async () => (await runtime.invoke("chrome.status", {})).result.connected);
+  await runtime.invoke("chrome.tabs", { action: "list" });
+  assert.deepEqual(ext.ops("tabs.list").at(-1).args.ghlHosts, ["agency.example"]);
 });

@@ -25,6 +25,7 @@
 // nothing says `skipped` in its result.
 
 import { err } from "../lib/err.js";
+import { getGhlHosts } from "../shared/ghlhosts.js";
 import { matchControl, norm, labelOf, describeBlocker, traceOf } from "../lib/ui.js";
 import { resolve, failDetail } from "./page.js";
 
@@ -241,7 +242,7 @@ function fillTemplate(v, params) {
 
 /** @param {any} ctx */
 async function hostsOf(ctx) {
-  try { const s = await ctx.storage.get("local", "ghl.hosts"); return Array.isArray(s) ? [...DEFAULT_HOSTS, ...s.map(String)] : DEFAULT_HOSTS; } catch { return DEFAULT_HOSTS; }
+  try { const s = await ctx.storage.get("local", "ghl.hosts"); return [...DEFAULT_HOSTS, ...(Array.isArray(s) ? s.map(String) : []), ...getGhlHosts()]; } catch { return [...DEFAULT_HOSTS, ...getGhlHosts()]; }
 }
 
 /** @param {any} ctx @param {any} args */

@@ -13,6 +13,7 @@
 
 import { proto } from "../lib/shared.js";
 import { err } from "../lib/err.js";
+import { setGhlHosts } from "../shared/ghlhosts.js";
 import tabs from "./tabs.js";
 import page from "./page.js";
 import batch from "./batch.js";
@@ -104,6 +105,8 @@ export async function dispatch(op, args, ctx) {
   // give every capability both, so no file has to know which spelling a caller used.
   if (typeof args.tab === "number" && args.tabId === undefined) args = { ...args, tabId: args.tab };
   else if (typeof args.tabId === "number" && args.tab === undefined) args = { ...args, tab: args.tabId };
+  // The person's white-label GoHighLevel hosts ride on every call from the module (their own configuration).
+  if (Array.isArray(args.ghlHosts)) setGhlHosts(args.ghlHosts);
   if (proto.ACTING.has(op) && ctx.stopped()) throw err("stopped");
   if (typeof args.tabId === "number") {
     const v = await ctx.floorAllows(args.tabId, op);

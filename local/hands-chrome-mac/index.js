@@ -236,6 +236,8 @@ export default {
           if (on) floor(on, op);
           // The person's own direct turn (their CLI, the Capsule) may run an outward act free; an
           // agent's, or the model's in a Claude session, may not: the extension holds those.
+          // The person's own list of white-label GoHighLevel hosts (standalone: `config ghl-host`); always sent, so removing one takes effect.
+          if (cfg.ghlHosts !== undefined) args.ghlHosts = typeof cfg.ghlHosts === "function" ? cfg.ghlHosts() : cfg.ghlHosts;
           args.asked = PEOPLE.includes(callerKind(meta.caller)) && !agent;
           // Scripts, API calls, replays and automations are hands-free after the grant. The extension
           // holds only a request that SENDS something as the person (a message, a post, a payment)
