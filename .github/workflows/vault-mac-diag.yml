@@ -1,0 +1,27 @@
+# Diagnostic for vault-mac: the files that hung, with a 20-second per-test timeout and full logs,
+# so the test that never finishes is named. Run by hand; remove once the hang is fixed.
+name: vault-mac-diag
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  test:
+    runs-on: macos-latest
+    timeout-minutes: 30
+    env:
+      VYRE_NO_DIALOGS: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci --no-audit --no-fund
+      - name: The five files, one at a time
+        shell: bash
+        run: |
+          for f in core/vault/module.test.js core/vault/surfaces.test.js core/vault/tools/cli.test.js core/cli/commands/home.test.js; do
+            echo "=== $f"
+            perl -e 'alarm 300; exec @ARGV' node --test --test-timeout=20000 --test-force-exit --test-reporter=spec "$f" 2>&1 | grep -vE "^\s*$" | head -80 || true
+          done
