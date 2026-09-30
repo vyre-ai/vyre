@@ -327,9 +327,9 @@ const offerBoard = gate => gate.offer({ name: "courier:board", tool: "courier.re
 
 test("gate: a module's sender is held, edited, approved and sent through the module's own tool", async () => {
   const { gate, calls } = withModule();
-  assert.deepEqual(offerBoard(gate), { name: "courier:board", kinds: ["send", "spend", "delete"] });
+  assert.deepEqual(offerBoard(gate), { name: "courier:board", kinds: ["send", "spend", "delete", "act"] });
   assert.deepEqual(gate.senders().find(s => s.name === "courier:board"),
-    { name: "courier:board", type: "module", module: "courier", kinds: ["send", "spend", "delete"], content: { summary: "string", text: "string" } });
+    { name: "courier:board", type: "module", module: "courier", kinds: ["send", "spend", "delete", "act"], content: { summary: "string", text: "string" } });
   const { id } = gate.request({ kind: "send", via: "courier:board", to: "#northwind", content: { summary: "Weekly update for Northwind Bakery", text: "Ovens are in." } }, { agent: "kit" });
   assert.equal(gate.held()[0].summary, "Weekly update for Northwind Bakery");
   assert.equal(calls.length, 0);

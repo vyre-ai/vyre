@@ -54,18 +54,22 @@ test("floor: the Deck in a browser is off limits by the box's origin, which come
   assert.equal((await other.observe({})).blind, undefined, "an ordinary page was blinded");
 });
 
-test("floor: the module asks link.status for the box, and no link module means no box", async () => {
+test("floor: the module asks link.status for the box, and no link module means no box", async t => {
+  const home = tempHome(t);
+  const db = open(path.join(home, "vyre.db"));
+  t.after(() => db.close());
   const tools = new Map();
   /** @type {any[]} */ const asked = [];
   const f = fakeApp(composer({ bundle: "com.apple.Safari", origin: "https://box.tailnet-juno.ts.net" }));
   const ctx = (/** @type {any} */ answer) => ({
     config: { hands: { runner: f.run, sleep: nosleep } }, events: { emit() {} },
+    store: { db, migrate: () => {} }, log: () => {},
     tool: (/** @type {string} */ n, /** @type {any} */ d) => tools.set(n, d),
-    call: async (/** @type {string} */ tool) => { asked.push(tool); return answer; },
+    call: async (/** @type {string} */ tool) => { asked.push(tool); return tool === "link.status" ? answer : { error: { code: "no_such_tool", message: `no tool ${tool}` } }; },
   });
   await mod.start(ctx({ data: { linked: true, box: { address: "https://box.tailnet-juno.ts.net" } } }));
   assert.equal((await tools.get("hands.observe").run({})).blind, "a Vyre surface in the browser");
-  assert.deepEqual(asked, ["link.status"]);
+  assert.deepEqual(asked.filter(t => t === "link.status"), ["link.status"]);
   tools.clear();
   await mod.start(ctx({ error: { code: "no_such_tool", message: "no tool link.status" } }));
   assert.equal((await tools.get("hands.observe").run({})).blind, undefined);

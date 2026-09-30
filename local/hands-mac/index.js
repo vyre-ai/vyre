@@ -16,6 +16,12 @@
 import { Hands, KINDS, ACTIONS } from "./hands.js";
 import { makeRunner, HandsError } from "./runner.js";
 import { makeOverlay, NO_OVERLAY } from "./overlay.js";
+import { MIGRATIONS, grants } from "./grant.js";
+
+const PEOPLE = ["cli", "local", "deck", "capsule"];
+/** An mcp caller inside a named agent's own thread: box-side, the assistant, or (once sessions
+ * ships them) an ACP provider; every one of them is "an agent" for the grant, alike. */
+const agentOf = caller => { const m = /^mcp:agent:(.+)$/.exec(String(caller || "")); return m ? m[1] : null; };
 
 const str = { type: "string" };
 const where = {
@@ -54,6 +60,8 @@ const isOverlay = (/** @type {any} */ o) => o && typeof o === "object" && ["cont
 /** @type {{ start(ctx: any): Promise<{ stop(): Promise<void> }> }} */
 export default {
   async start(ctx) {
+    ctx.store.migrate(MIGRATIONS);
+    const g = grants(ctx.store.db);
     const opts = (ctx.config && ctx.config.hands) || {};
     // A runner function in config is how tests drive the module without a screen; a bin path
     // points it at another build of the helper.
@@ -67,25 +75,54 @@ export default {
       const s = r && r.data;
       return { box: s && s.linked && s.box && typeof s.box.address === "string" ? s.box.address : null };
     };
-    const hands = new Hands({ run, emit: (type, payload) => ctx.events.emit(type, payload), sleep: opts.sleep, overlay, known });
+    // The Gate is how an unasked outward act reaches a person (PLAN.md C4): hands offers one
+    // sender, hands:mac, and holds through it exactly like google or any other module does.
+    // A call that comes before the Gate module has started (or fails for any reason) falls back
+    // to the old direct hands.commit path rather than silently acting; see hands.act's `use`.
+    const hold = async ({ content, thread }) => {
+      const to = (content && content.app) || "the Mac";
+      const r = await ctx.call("gate.request", { kind: "act", via: "hands:mac", to, content, ...(thread ? { thread } : {}) });
+      return r && !r.error && r.data ? r.data : null;
+    };
+    const hands = new Hands({ run, emit: (type, payload) => ctx.events.emit(type, payload), sleep: opts.sleep, overlay, known, hold });
+    const offer = async () => {
+      const r = await ctx.call("gate.offer", { name: "hands:mac", tool: "hands.release", kinds: ["act"],
+        content: { app: "string", window: "string?", control: "string (what will be pressed, typed or sent)", value: "string? (clipped)" } });
+      if (r.error) ctx.log(`could not offer the hands:mac sender: ${r.error.message}`);
+    };
+    await offer();
 
     /** Tool errors keep their code, so a caller can tell "not built" from "not granted" from "floor". */
-    const wrap = fn => async input => {
-      try { return await fn(input); }
+    const wrap = fn => async (input, meta) => {
+      try { return await fn(input, meta || {}); }
       catch (e) { throw e instanceof HandsError ? Object.assign(new Error(`${e.code}: ${e.message}`), { code: e.code }) : e; }
     };
+
+    /**
+     * The one grant (reviewer-2 H2): a named agent (box-side, the assistant, or an ACP provider,
+     * every one reaches vyred as mcp:agent:<name>) may drive this Mac only once a person has
+     * granted it here. The person's own direct session (no agent name) is not gated: that is the
+     * person driving their own Mac, which was never what the grant is for.
+     */
+    const gated = fn => wrap((input, meta) => {
+      const agent = agentOf(meta.caller);
+      if (agent && !g.has(agent)) {
+        throw Object.assign(new Error(`${agent} is not granted to drive this Mac. Grant it once with hands.grant.add (needs the person present on this Mac), or ask them to.`), { code: "denied" });
+      }
+      return fn(input, meta);
+    });
 
     ctx.tool("hands.observe", {
       description: "Read the accessibility tree of the frontmost app (or a named app or pid): its window title, a bounded list of controls, each with a selector to hand to hands.act, its value, enabled and focus state, frame and actions, and the text on screen. truncated says the list was capped. In a place Vyre may not look (its own surfaces, sign-in dialogs, password managers, security settings) it returns the app and window only, with blind saying why.",
       input: { type: "object", properties: { ...where, limit: { type: "integer", description: "Most controls to return, 1-500. Default 120." },
         match: { type: "object", properties: filter, description: "Return only the controls that match, read from up to 500 so a match past the default cap is still found." } } },
-      run: wrap(input => hands.observe(input)),
+      run: gated(input => hands.observe(input)),
     });
 
     ctx.tool("hands.find", {
       description: "Find controls in an app by role, label and nearness without reading the whole list: the same as hands.observe with match. Returns the app, window, whether it is in front (front), and the matching controls with selectors for hands.act, closest to near first. Works on an app in the background without raising it. The floor applies as in hands.observe.",
       input: { type: "object", properties: { ...where, ...filter } },
-      run: wrap(async input => {
+      run: gated(async input => {
         const { app, pid, window, role, name, near, limit } = input;
         const o = await hands.observe({ app, pid, window, match: { role, name, near, limit } });
         const { texts, ...rest } = o;
@@ -94,22 +131,54 @@ export default {
     });
 
     ctx.tool("hands.act", {
-      description: "Do one thing to one control, found by selector in a fresh observation: press it, set its value, focus it, perform one of its accessibility actions, type text into it, or send it a key. The app is never raised or activated: press, set, focus and type work on an app in the background, but a key needs the app in front and is refused with code needs_front otherwise (press the control instead). Then observe again and verify the effect. verified is true only when the re-observation shows it. An act that sends something as the person (a Send button, Return in a chat) is held, not done: the answer has held: true, and hands.commit with the same input does it once a person allows it. Refuses with code floor where Vyre may not act, secure on a password field (use vault.fill), stopped after the person stopped Vyre (pass resume: true only after asking them), and no_indicator when the on-screen indicator cannot be shown.",
+      description: "Do one thing to one control, found by selector in a fresh observation: press it, set its value, focus it, perform one of its accessibility actions, type text into it, or send it a key. The app is never raised or activated: press, set, focus and type work on an app in the background, but a key needs the app in front and is refused with code needs_front otherwise (press the control instead). Then observe again and verify the effect. verified is true only when the re-observation shows it. An act that sends something as the person (a Send button, Return in a chat) is held, not done: the answer has held: true and an id, and the person approves it at the Gate (gate.approve) like any other send; hands.commit with the same input is the older direct path, kept for a caller that wants to drive it itself. Refuses with code floor where Vyre may not act, secure on a password field (use vault.fill), stopped after the person stopped Vyre (pass resume: true only after asking them), and no_indicator when the on-screen indicator cannot be shown.",
       input: actInput,
-      run: wrap(input => hands.act(input)),
+      run: gated((input, meta) => hands.act(input, { thread: meta.thread })),
     });
 
     ctx.tool("hands.commit", {
-      description: "Do an act that hands.act held because it sends something as the person, with the same input. Needs a person's proof; they are shown what will be pressed or sent, in which app and window. The floor still applies: it never acts where hands.act may not.",
+      description: "Do an act that hands.act held because it sends something as the person, with the same input. Needs a person's proof; they are shown what will be pressed or sent, in which app and window. The floor still applies: it never acts where hands.act may not. Prefer letting the person approve the held item at the Gate (gate.held / gate.approve) instead: this tool exists for a caller that wants to drive the approval itself.",
       input: actInput,
       presence: { summary: input => hands.summary(input) },
-      run: wrap(input => hands.act(input, { commit: true })),
+      run: gated(input => hands.act(input, { commit: true })),
+    });
+
+    ctx.tool("hands.release", {
+      internal: true,
+      description: "The Gate's own call once a person approved a held act: re-checks the screen has not moved since it was held, then does exactly what was held. Never called directly.",
+      input: { type: "object", properties: { id: str, to: { type: "array", items: str }, content: { type: "object" } }, required: ["id", "content"] },
+      run: wrap((input, meta) => {
+        if (meta.caller !== "module:gate") throw Object.assign(new Error("only the Gate releases a held act"), { code: "denied" });
+        return hands.release(input.content || {});
+      }),
     });
 
     ctx.tool("hands.stop", {
       description: "Stop controlling the Mac now, as Escape does: the act in flight is cut short and later acts are refused until one passes resume: true.",
       input: { type: "object", properties: {} },
-      run: wrap(async () => hands.halt("tool")),
+      run: gated(async () => hands.halt("tool")),
+    });
+
+    ctx.tool("hands.grant.list", {
+      description: "Every agent granted to drive this Mac's computer use, and when.",
+      input: { type: "object", properties: {} },
+      callers: [...PEOPLE, "module"],
+      run: wrap(async () => g.list()),
+    });
+
+    ctx.tool("hands.grant.add", {
+      description: "Grant an agent (by name, from agents.list) to drive this Mac hands-free from then on: hands.observe/find/act/commit and screen.context reach it with no further prompt. This call itself is the one friction point, and it needs the person present on this Mac.",
+      input: { type: "object", properties: { agent: str }, required: ["agent"] },
+      callers: PEOPLE,
+      presence: { summary: input => `Let ${input.agent} drive this Mac's screen and computer use, hands-free from then on` },
+      run: wrap((input, meta) => g.add(String(input.agent), meta.caller || null, Date.now())),
+    });
+
+    ctx.tool("hands.grant.remove", {
+      description: "Revoke an agent's grant to drive this Mac. Takes effect at once; needs no proof, since taking access away is never what the no-nag rule protects against.",
+      input: { type: "object", properties: { agent: str }, required: ["agent"] },
+      callers: PEOPLE,
+      run: wrap(input => g.remove(String(input.agent))),
     });
 
     return {

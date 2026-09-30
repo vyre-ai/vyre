@@ -1,12 +1,12 @@
 {
   "name": "hands",
-  "version": "0.2.0",
-  "description": "Computer use on macOS through the accessibility tree: observe an app, act on one control and verify by observing again, inside the floor, with a visible indicator and a stop key.",
+  "version": "0.3.0",
+  "description": "Computer use on macOS through the accessibility tree: observe an app, act on one control and verify by observing again, inside the floor, with a visible indicator and a stop key. An outward act (a send, post or pay) holds at the Gate; a named agent needs the one grant before it may drive this Mac at all.",
   "roles": ["local"],
   "requires": [],
-  "does": { "tools": ["hands.observe", "hands.find", "hands.act", "hands.commit", "hands.stop"] },
+  "does": { "tools": ["hands.observe", "hands.find", "hands.act", "hands.commit", "hands.release", "hands.stop", "hands.grant.list", "hands.grant.add", "hands.grant.remove"] },
   "watches": { "emits": ["hands.acted", "hands.stopped", "hands.resumed"] },
   "shows": {},
-  "needs": {},
+  "needs": { "gate": ["hands:mac sender, offered if the gate module is present; degrades gracefully if not"] },
   "teaches": {}
 }

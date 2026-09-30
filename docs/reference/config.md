@@ -96,12 +96,15 @@ Vyre reads these when they are set. None is needed for normal use.
 | `VYRE_NO_UP` | `vyre box add` installs Vyre without starting it. | `core/cli/commands/box.js` |
 | `VYRE_ONBOARD_HOST` | The address onboarding listens on. Default `127.0.0.1`. | `core/onboard/loopback.js` |
 | `VYRE_OPEN_BIN` | The command that opens links. Tests point it at a fake. | `core/cli/commands/box.js`, `core/cli/commands/up.js` |
+| `VYRE_OVERLAY_BIN` | Not described yet. | `local/hands-mac/index.js` |
 | `VYRE_PACKAGE` | Not described yet. | `harness/lib/vyre.js` |
+| `VYRE_SCREEN_BIN` | Not described yet. | `local/screen-mac/index.js` |
 | `VYRE_SSH_BIN` | The `ssh` binary to run. | `core/cli/ssh.js` |
 | `VYRE_SUPERVISOR` | What runs vyred: `docker` inside the box container, which changes how `vyre up` restarts it. | `core/cli/commands/up.js`, `core/daemon/index.js` |
 | `VYRE_TAILSCALE_BIN` | The `tailscale` binary to run. A path that does not exist means no tailnet. | `core/cli/tailnet.js`, `core/link/mac.js`, `core/link/transport.js` |
 | `VYRE_TAILSCALE_UP_FLAGS` | Extra flags for `tailscale up`, space separated. | `core/names/tailscale.js` |
 | `VYRE_TEXT_PRUNE_MS` | How long a thread's streamed text events are kept before they are pruned. | `core/switchboard/index.js` |
+| `VYRE_TILE_BIN` | Not described yet. | `local/sideview/index.js` |
 | `VYRE_TMPDIR` | Not described yet. | `core/files/index.js`, `core/names/backup.js` |
 | `VYRE_WRAPPER` | Where `vyre box add` puts the `vyre` command on the server. Default `/usr/local/bin/vyre`. | `core/cli/commands/box.js` |
 
@@ -116,7 +119,7 @@ vyred sets these for the threads and helpers it starts, and the Harness reads th
 | `VYRE_AGENT_KIND` | `assistant` or `agent`. Only the assistant is offered the tools that drive other threads. | `core/switchboard/index.js`, `harness/hooks/hook.js`, `harness/mcp/server.js` |
 | `VYRE_CAPSULE_BIN` | The folder holding the Capsule's native helpers. | `local/capsule/app/main.js` |
 | `VYRE_HUB_CHILD` | Not described yet. | `harness/mcp/run.js`, `harness/mcp/server.js` |
-| `VYRE_NO_DIALOGS` | `1`: never raise anything on screen (Touch ID, a keychain prompt, a browser tab). | `core/config/dialogs.js`, `core/files/drive.js`, `local/capsule/lib/dialogs.js` |
+| `VYRE_NO_DIALOGS` | `1`: never raise anything on screen (Touch ID, a keychain prompt, a browser tab). | `core/config/dialogs.js`, `core/files/drive.js`, `local/capsule/lib/dialogs.js`, `local/screen-mac/screen.js` |
 | `VYRE_PROJECT` | The project a thread belongs to, for its brief. | `harness/hooks/hook.js` |
 | `VYRE_PROJECTS` | The projects an agent's thread is limited to, comma separated, or `*` for all of them. | `core/switchboard/index.js`, `harness/hooks/hook.js`, `harness/mcp/server.js` |
 | `VYRE_SCOPE_CWDS` | The folders an agent's `recall.search` is held to, as JSON. | `core/switchboard/index.js`, `harness/mcp/server.js` |
@@ -127,5 +130,5 @@ vyred sets these for the threads and helpers it starts, and the Harness reads th
 
 | Variable | What it does | Read in |
 | --- | --- | --- |
-| `VYRE_TEST_DIALOGS` | `1`: allow dialogs under tests, for a person at the machine running one test on purpose. | `core/config/dialogs.js`, `core/files/drive.js`, `local/capsule/lib/dialogs.js` |
+| `VYRE_TEST_DIALOGS` | `1`: allow dialogs under tests, for a person at the machine running one test on purpose. | `core/config/dialogs.js`, `core/files/drive.js`, `local/capsule/lib/dialogs.js`, `local/screen-mac/screen.js` |
 | `VYRE_TEST_REAL_TAILSCALE` | `1`: let a test use the real tailscale binary. | `core/link/transport.js` |
