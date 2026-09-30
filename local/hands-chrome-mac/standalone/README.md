@@ -1,4 +1,6 @@
-# vyre-chrome
+# Vyre for Chrome
+
+The package and the command are called `vyre-chrome`.
 
 Control your own Chrome from Claude Code. It reads a page in one call, fills forms, runs a whole workflow build in one batch, and reads DevTools (DOM, scripts, console, network). It uses the Chrome you already have open, signed in as you. No Vyre server is needed. It is the same code that ships inside Vyre 0.2.
 

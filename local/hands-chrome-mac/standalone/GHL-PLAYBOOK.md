@@ -1,4 +1,4 @@
-# GoHighLevel playbook for the chrome tools
+# Vyre for Chrome: GoHighLevel playbook
 
 In Claude Code every tool name has an underscore where this page writes a dot: `chrome.ghl` is `chrome_ghl`, `chrome.act` is `chrome_act`.
 

@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// vyre-chrome: control your own Chrome from Claude Code, with no Vyre server.
+// Vyre for Chrome (`vyre-chrome`): control your own Chrome from Claude Code, with no Vyre server.
 //   vyre-chrome install [--browsers chrome,brave]   register the native host, print the extension folder
 //   vyre-chrome uninstall [--purge]                 remove the host registration (--purge: also the logs)
 //   vyre-chrome mcp                                 the stdio MCP server Claude Code runs
@@ -31,7 +31,7 @@ const hostOf = raw => { const h = String(raw || "").trim().toLowerCase().replace
 /** @param {string} q */
 const ask = q => new Promise(res => { const rl = readline.createInterface({ input: process.stdin, output: process.stdout }); rl.question(q, a => { rl.close(); res(a); }); });
 
-const HELP = `vyre-chrome ${version}: control your own Chrome from Claude Code
+const HELP = `Vyre for Chrome ${version} (vyre-chrome): control your own Chrome from Claude Code
 
   vyre-chrome install [--browsers chrome,brave]   register the connector; prints what to do next
   vyre-chrome uninstall [--purge]                 remove the connector (--purge also deletes the logs)
@@ -77,7 +77,7 @@ async function main() {
     const browsers = flag(args, "browsers");
     const r = nativeHost.install({ vyreHome: dataDir, hostDir: hostDirNow, extensionId: id, ...(browsers ? { browsers: /** @type {any} */ (browsers.split(",")) } : {}) });
     if (appDir !== PKG) lock(appDir);
-    out(`Registered the connector for: ${r.written.map((/** @type {any} */ w) => w.browser).join(", ")}`);
+    out(`Vyre for Chrome is installed. Registered the connector for: ${r.written.map((/** @type {any} */ w) => w.browser).join(", ")}`);
     out();
     out(guide(extDirNow, id, r.written.map((/** @type {any} */ w) => w.browser)).split("\n").slice(1, 5).join("\n"));
     out();

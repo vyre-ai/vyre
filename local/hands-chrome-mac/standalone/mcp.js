@@ -60,7 +60,7 @@ export function serve({ runtime, stdin, stdout, name = "vyre-chrome", version = 
         const asked = params && params.protocolVersion;
         clientElicits = Boolean(params && params.capabilities && params.capabilities.elicitation);
         return reply(id, { protocolVersion: SUPPORTED.has(asked) ? asked : PROTOCOL, capabilities: { tools: { listChanged: false } }, serverInfo: { name, version },
-          instructions: "Control the person's own Chrome. Read with chrome_snapshot, act with chrome_act and chrome_fill. Reuse the open tab (chrome_tabs use); never open a tab per step. A send, post or payment is held and returns an id: call chrome_send with it, which the person approves. If the person presses Esc everything stops until they answer and you call chrome_resume." });
+          instructions: "Vyre for Chrome. Control the person's own Chrome. Read with chrome_snapshot, act with chrome_act and chrome_fill. Reuse the open tab (chrome_tabs use); never open a tab per step. A send, post or payment is held and returns an id: call chrome_send with it, which the person approves. If the person presses Esc everything stops until they answer and you call chrome_resume." });
       }
       case "ping": return isRequest ? reply(id, {}) : undefined;
       case "tools/list": return reply(id, { tools: runtime.list().map((/** @type {any} */ t) => ({ name: wireName(t.name), description: t.description, inputSchema: t.inputSchema })) });
