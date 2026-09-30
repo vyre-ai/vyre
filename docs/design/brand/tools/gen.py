@@ -13,7 +13,7 @@ def squircle(n=5.0, N=240):
     return 'M'+' L'.join(pts)+' Z'
 SQ=squircle()
 
-ACC={'lumen':'#FFDFA8','drive':'#BFDCF0','vault':'#F3A25E','memory':'#F4C4B4'}
+ACC={'lumen':'#FFDFA8','drive':'#BFDCF0','vault':'#F3A25E','memory':'#F4C4B4','chrome':'#EDE8DC'}
 def radials():
     o=''
     for k,c in ACC.items():
@@ -84,9 +84,11 @@ def L1():
     s+=glass(inner,beh,512,520,-1.5,edge=.34)
     s+=f'<path d="M436 650 A150 150 0 0 1 366 544" fill="none" stroke="{ACC[k]}" stroke-width="26" stroke-linecap="round" opacity=".85" filter="url(#b14)"/>'
     s+=f'<path d="M436 650 A150 150 0 0 1 366 544" fill="none" stroke="#fff" stroke-width="5" stroke-linecap="round" opacity=".8" filter="url(#b2)"/>'
+    s+='<g class="flare" style="transform-origin:688px 352px">'
     s+=f'<circle cx="688" cy="352" r="90" fill="url(#g_{k})"/>'
     s+=f'<rect x="588" y="349" width="200" height="6" fill="url(#flare)" transform="rotate(-38 688 352)"/><rect x="588" y="349" width="200" height="6" fill="url(#flare)" transform="rotate(52 688 352)" opacity=".7"/>'
     s+=f'<circle cx="688" cy="352" r="17" fill="#fff"/><circle cx="688" cy="352" r="34" fill="#fff" opacity=".5" filter="url(#b8)"/>'
+    s+='</g>'
     return s,k
 def L2():
     k='lumen'
@@ -217,6 +219,19 @@ def M3():
         s+=(core if core else '')+sphere(cx,cy,r,thb+(orb(cx,cy,r*.34,k) if r>100 else ''),1.3)
     return s,k
 
+def C1():
+    k='chrome'
+    sil="M190 430 V322 A62 62 0 0 1 252 260 H400 A62 62 0 0 1 462 322 V352 H772 A62 62 0 0 1 834 414 V716 A62 62 0 0 1 772 778 H252 A62 62 0 0 1 190 716 Z"
+    beh=f'<circle cx="330" cy="452" r="300" fill="url(#g_{k})"/><circle cx="330" cy="452" r="46" fill="#fff"/>'
+    s=f'<ellipse cx="512" cy="830" rx="340" ry="46" fill="url(#g_{k})" opacity=".5" filter="url(#b24)"/><circle cx="330" cy="452" r="360" fill="url(#g_{k})" opacity=".4"/>'
+    s+=glass(sil,beh,330,452,1.12,edge=.34,width=4)
+    bar=rr(256,392,520,80,40)
+    s+=f'<path d="{bar}" fill="#0a0908" opacity=".55"/><path d="{bar}" fill="none" stroke="url(#rim)" stroke-width="3" opacity=".8"/>'
+    s+=orb(322,432,20,k)
+    s+=f'<path d="M198 520 H826" stroke="#fff" stroke-opacity=".5" stroke-width="4" stroke-linecap="round"/>'
+    s+=f'<rect x="256" y="582" width="400" height="22" rx="11" fill="#fff" opacity=".24"/><rect x="256" y="636" width="300" height="22" rx="11" fill="#fff" opacity=".15"/><rect x="256" y="690" width="230" height="22" rx="11" fill="#fff" opacity=".1"/>'
+    return s,k
+
 CONCEPTS={
  'L1':('Lens',L1,'A glass lens catching one point of light on its rim. The core flips the image, as a real lens does.'),
  'L2':('Bar of light',L2,'The summoned bar as a glass pill with a bead of light waiting inside, ready to be asked.'),
@@ -229,9 +244,10 @@ CONCEPTS={
  'V3':('Keyhole',V3,'An arched slab with a keyhole that lets a little light through onto the floor.'),
  'M1':('Sheets and thread',M1,'Layers of glass pierced by one glowing thread. Every session, stitched together.'),
  'M2':('Strata',M2,'Bands of glass like sediment, with one luminous vein running through. Time, with a trace of what mattered.'),
+ 'C1':('Window',C1,'A glass browser window with a bead of light waiting in its address bar. Vyre, inside your Chrome.'),
  'M3':('Pearls',M3,'Glass pearls on a lit thread, the largest holding a glow. What Vyre keeps, and how it connects.'),
 }
-SC={'L1':(1.16,520),'L2':(1.3,512),'L3':(.84,512),'D1':(1.12,470),'D2':(1.2,560),'D3':(1.04,550),'V1':(1.14,515),'V2':(1.12,512),'V3':(.98,560),'M1':(1.0,540),'M2':(1.06,500),'M3':(1.02,540)}
+SC={'L1':(1.16,520),'L2':(1.3,512),'L3':(.84,512),'D1':(1.12,470),'D2':(1.2,560),'D3':(1.04,550),'V1':(1.14,515),'V2':(1.12,512),'V3':(.98,560),'M1':(1.0,540),'M2':(1.06,500),'M3':(1.02,540),'C1':(1.12,545)}
 SIG='<g transform="translate(482 916) scale(1.9)" fill="none" stroke="#F1EEE6" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round" opacity=".55"><path d="M8 10L15.5 22.5L19.81 15.31"/><circle cx="23" cy="10" r="3" fill="#F1EEE6" stroke="none"/></g>'
 def icon(key,size,sig=None,cls=''):
     body,k=CONCEPTS[key][1]()
@@ -301,5 +317,6 @@ def build():
         o.append(f'<div class="lockw d">{lockup(r,name,72,"dark")}</div><div class="lockw l">{lockup(r,name,72,"light")}</div>')
     o.append('</div></section></div></body></html>')
     return ''.join(o)
-import sys
-open(sys.argv[1] if len(sys.argv)>1 else 'brand-icons.html','w').write(build())
+if __name__=='__main__':
+    import sys
+    open(sys.argv[1] if len(sys.argv)>1 else 'brand-icons.html','w').write(build())
