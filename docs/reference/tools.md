@@ -7657,6 +7657,7 @@ Store what the person's own turn asked for. Only sessions and the assistant call
   - `standing` boolean
   - `to` list of string
   - `when` string
+  - `window_minutes` number
 - Callers: other modules only (internal: `vyre call` answers no_such_tool)
 
 ### `vault.said.revoke`
