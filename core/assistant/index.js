@@ -12,7 +12,13 @@
 // other modules' own tools, called as this module (never as a person, never as an agent): the
 // same path core/waiting already uses to read across four owners into one list.
 
+import { glance } from "./glance.js";
+import { capabilities, render } from "./manifest.js";
+
 const STATE_KEY = "last_digest_day";
+const DAILY_DAY = "daily_day";
+const DAILY_THREAD = "daily_thread";
+const SEED_HEAD = "Context from yesterday's conversation, for you alone. Do not reply to this; wait for the person.\n\n";
 const MIGRATIONS = [`CREATE TABLE assistant_state (k TEXT PRIMARY KEY, v TEXT NOT NULL)`];
 
 /** A caller allowed to ask for the digest or the patterns: the person's own surfaces, their own
@@ -58,6 +64,23 @@ export async function patterns(call, { limit = 100 } = {}) {
   return out;
 }
 
+/** A line diff of two prompt texts: {op: "same"|"add"|"del", line}. Longest-common-subsequence, texts are at most 20,000 chars. */
+export function diffLines(a, b) {
+  const x = String(a).split("\n"), y = String(b).split("\n");
+  const t = Array.from({ length: x.length + 1 }, () => new Array(y.length + 1).fill(0));
+  for (let i = x.length - 1; i >= 0; i--) for (let j = y.length - 1; j >= 0; j--) t[i][j] = x[i] === y[j] ? t[i + 1][j + 1] + 1 : Math.max(t[i + 1][j], t[i][j + 1]);
+  const out = [];
+  let i = 0, j = 0;
+  while (i < x.length && j < y.length) {
+    if (x[i] === y[j]) { out.push({ op: "same", line: x[i] }); i++; j++; }
+    else if (t[i + 1][j] >= t[i][j + 1]) out.push({ op: "del", line: x[i++] });
+    else out.push({ op: "add", line: y[j++] });
+  }
+  while (i < x.length) out.push({ op: "del", line: x[i++] });
+  while (j < y.length) out.push({ op: "add", line: y[j++] });
+  return out;
+}
+
 /** One paragraph, never a dashboard. @param {{ waiting: any, agentsBusy: number, patterns: any[] }} d */
 export function phrase(d) {
   const parts = [];
@@ -96,6 +119,82 @@ export default {
       return { text: phrase(d), waiting: d.waiting, agents_busy: d.agentsBusy, patterns: d.patterns, at: Date.now() };
     };
 
+
+    const asCall = (tool, input) => ctx.call(tool, input);
+    const gate = async meta => {
+      if (!(await allowed(meta.caller, asCall))) throw Object.assign(new Error("this is for the person and the assistant"), { code: "denied" });
+    };
+
+    ctx.tool("assistant.glance", {
+      description: "The morning glance: {day, waiting, running, finished, next, lines}. Lines are three at most. Built from reads alone, no model call. next is null until a calendar read exists.",
+      input: { type: "object", properties: {} },
+      run: async (_, meta = {}) => { await gate(meta); const g = await glance(asCall); ctx.events.emit("assistant.glanced", { day: g.day }); return g; },
+    });
+
+    ctx.tool("assistant.capabilities", {
+      description: "What the assistant can do on this install right now: tools, connectors, devices, agents and teammates, providers. Only working things; a missing one is listed under not_connected with what to say. area narrows it; compact: true returns the short text for the prompt.",
+      input: { type: "object", properties: { area: { type: "string", enum: ["tools", "connectors", "devices", "agents", "providers"] }, compact: { type: "boolean" } } },
+      run: async (i = {}, meta = {}) => {
+        await gate(meta);
+        const cap = await capabilities(asCall, i.area);
+        return i.compact ? { text: render(cap) } : cap;
+      },
+    });
+
+    ctx.tool("assistant.log", {
+      description: "Everything the assistant did on the person's behalf, newest first: {id, at, tool, summary, why, state, can_undo}. The same rows as undo.list for the assistant. To undo one, call undo.run with its id: the assistant may undo its own, the person any.",
+      input: { type: "object", properties: { since: { type: "number" }, limit: { type: "integer" } } },
+      run: async (i = {}, meta = {}) => {
+        await gate(meta);
+        const r = await ctx.call("undo.list", { actor_kind: "assistant", ...(i.since !== undefined ? { since: i.since } : {}), ...(i.limit !== undefined ? { limit: i.limit } : {}) });
+        if (r.error) throw new Error(r.error.message || "the log could not be read");
+        return r.data;
+      },
+    });
+
+    ctx.tool("assistant.prompt.diff", {
+      description: "What changed between two versions of the assistant's own prompt: line by line. from and to are version numbers; to defaults to the newest. Roll back with sessions.prompt.revert.",
+      input: { type: "object", required: ["from"], properties: { from: { type: "integer" }, to: { type: "integer" } } },
+      run: async (i, meta = {}) => {
+        await gate(meta);
+        const r = await ctx.call("sessions.prompt.history", { scope: "assistant" });
+        if (r.error) throw new Error(r.error.message || "no prompt history");
+        const rows = Array.isArray(r.data) ? r.data : (r.data && r.data.versions) || [];
+        const at = v => rows.find(x => x.version === v);
+        const to = i.to ?? Math.max(0, ...rows.map(x => x.version));
+        const a = at(i.from), b = at(to);
+        if (!a || !b) throw new Error(`no such version: the assistant prompt has versions ${rows.map(x => x.version).sort((p, q) => p - q).join(", ") || "none"}`);
+        return { from: a.version, to: b.version, mode: { from: a.mode, to: b.mode }, changes: diffLines(a.text, b.text) };
+      },
+    });
+
+    // The daily thread. Work stays with the thread that started it: a day that turns while the
+    // assistant is mid-turn, or holding a question, rolls at its next quiet moment, never over it.
+    const rollDay = async () => {
+      const now = await ctx.call("context.now", {});
+      const day = now.data && now.data.day;
+      if (now.error || !day) return { rolled: false, reason: "no day yet" };
+      if (getState(DAILY_DAY) === day) return { rolled: false, day, thread: getState(DAILY_THREAD) };
+      const list = await ctx.call("agents.list", {});
+      const juno = Array.isArray(list.data) ? list.data.find(a => a && a.kind === "assistant") : null;
+      if (!juno) return { rolled: false, reason: "no assistant" };
+      if (juno.doing === "working" || juno.doing === "waiting on your answer") return { rolled: false, day, deferred: true };
+      const dg = juno.thread ? await ctx.call("memory.digest", { thread: juno.thread }).catch(() => null) : null;
+      const text = dg && !dg.error && dg.data ? String(dg.data.text ?? dg.data.digest ?? "").trim() : "";
+      const r = await ctx.call("agents.rollover", { agent: juno.name, ...(text ? { seed: SEED_HEAD + text } : {}) });
+      if (r.error) throw new Error(r.error.message || "the day could not roll");
+      setState(DAILY_DAY, day);
+      setState(DAILY_THREAD, String(r.data.thread));
+      ctx.events.emit("assistant.rolled", { day, thread: r.data.thread, seeded: Boolean(text) });
+      return { rolled: true, day, thread: r.data.thread, seeded: Boolean(text) };
+    };
+
+    ctx.tool("assistant.daily", {
+      description: "Today's assistant thread. On the first call of the person's local day it starts a fresh thread seeded with memory's digest of yesterday's, so the conversation carries on with no seam; later calls return the same thread. Deferred while the assistant is mid-turn or waiting on an answer.",
+      input: { type: "object", properties: {} },
+      run: async (_, meta = {}) => { await gate(meta); return rollDay(); },
+    });
+
     ctx.tool("assistant.brief", {
       description: "One paragraph: what's waiting on you, how many agents are working, and any pattern memory noticed (a fact still in conflict, or corrected in the last week). Never a dashboard. Works whether or not the daily digest setting is on; that setting only controls whether this also fires once a day on its own.",
       input: { type: "object", properties: {} },
@@ -133,7 +232,10 @@ export default {
       } catch (e) { ctx.log(`assistant: could not run the daily digest: ${/** @type {Error} */ (e).message}`); }
     };
     const off = ctx.events.on("context.changed", e => {
-      if (Array.isArray(e && e.payload && e.payload.changed) && (e.payload.changed.includes("localTime") || e.payload.changed.includes("tz"))) maybeFire();
+      if (Array.isArray(e && e.payload && e.payload.changed) && (e.payload.changed.includes("localTime") || e.payload.changed.includes("tz"))) {
+        maybeFire();
+        rollDay().catch(err => ctx.log(`assistant: the daily thread did not roll: ${err.message}`));
+      }
     });
 
     return { async stop() { stopped = true; off(); } };

@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "roles": ["box", "local"],
   "requires": ["threads"],
-  "does": { "tools": ["agents.list", "agents.create", "agents.update", "agents.ask", "agents.threads", "agents.stop", "agents.resume", "agents.history", "agents.usage", "agents.delete"] },
+  "does": { "tools": ["agents.list", "agents.create", "agents.update", "agents.ask", "agents.rollover", "agents.threads", "agents.stop", "agents.resume", "agents.history", "agents.usage", "agents.delete"] },
   "watches": { "emits": [] },
   "shows": { "cli": ["agents"] },
   "needs": { "vault": ["per-agent"] },
