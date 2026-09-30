@@ -282,9 +282,10 @@ export default {
         if (upNext && upNext.key === key && at - upNext.at < 60_000) return upNext.value;
         const end = new Date(at); end.setHours(23, 59, 59, 999);
         const r = await cal.list(forRead(accts, undefined), { from: new Date(at).toISOString(), to: end.toISOString(), limit: 25 });
-        const events = r.events.filter(e => /T/.test(e.start) && Date.parse(e.end || e.start) > at).slice(0, n).map(e => {
-          const join = typeof e.where === "string" && /^https:\/\//.test(e.where) ? e.where : "";
-          return { id: e.id, account: e.account, title: e.title, start: e.start, end: e.end, when: relative(Date.parse(e.start), Date.parse(e.end || e.start), at), ...(join ? { join } : {}), link: join || e.url };
+        const events = r.events.filter(e => /T/.test(e.start) && !e.declined && Date.parse(e.end || e.start) > at).slice(0, n).map(e => {
+          const host = e.join ? (() => { try { return new URL(e.join).hostname; } catch { return ""; } })() : "";
+          return { id: e.id, account: e.account, title: e.title, start: e.start, end: e.end,
+            when: `${relative(Date.parse(e.start), Date.parse(e.end || e.start), at)}${host ? ` · ${host}` : ""}`, ...(e.join ? { join: e.join } : {}), link: e.join || e.url };
         });
         const value = { events };
         upNext = { key, at, value };

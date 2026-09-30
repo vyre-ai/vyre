@@ -460,6 +460,11 @@ test("google: google.calendar.today lists today's next meetings, with a join lin
   fake.calendar.events.push(
     { kind: "calendar#event", id: "evjoin1", status: "confirmed", summary: "Kit and Alex, menu call", hangoutLink: "https://meet.example.test/abc-defg-hij",
       start: { dateTime: new Date(at + 10 * 60_000).toISOString() }, end: { dateTime: new Date(at + 40 * 60_000).toISOString() } },
+    { kind: "calendar#event", id: "evphish1", status: "confirmed", summary: "Invoice review", location: "https://evil.example.test/login",
+      start: { dateTime: new Date(at + 20 * 60_000).toISOString() }, end: { dateTime: new Date(at + 50 * 60_000).toISOString() } },
+    { kind: "calendar#event", id: "evdecl1", status: "confirmed", summary: "Declined sync", hangoutLink: "https://meet.example.test/zzz",
+      attendees: [{ email: ME, self: true, responseStatus: "declined" }],
+      start: { dateTime: new Date(at + 15 * 60_000).toISOString() }, end: { dateTime: new Date(at + 45 * 60_000).toISOString() } },
     { kind: "calendar#event", id: "evallday1", status: "confirmed", summary: "Bakery closed", start: { date: new Date(at).toISOString().slice(0, 10) }, end: { date: new Date(at + 86_400_000).toISOString().slice(0, 10) } },
   );
   const local = new Date(at), endOfDay = new Date(at); endOfDay.setHours(23, 59, 59, 999);
@@ -468,14 +473,17 @@ test("google: google.calendar.today lists today's next meetings, with a join lin
 
   fake.calls.length = 0;
   const today = (await v.cli("google.calendar.today", {})).data;
-  assert.deepEqual(today.events.map(e => e.id), ["evjoin1", "evharlow1"], "the all-day event is left out and the rest are in order");
+  assert.deepEqual(today.events.map(e => e.id), ["evjoin1", "evphish1", "evharlow1"], "all-day and declined events are left out and the rest are in order");
   const first = today.events[0];
   assert.equal(first.title, "Kit and Alex, menu call");
   assert.equal(first.join, "https://meet.example.test/abc-defg-hij");
   assert.equal(first.link, first.join, "the link opens the meeting");
-  assert.match(first.when, /^in (9|10) min$/);
-  assert.equal(today.events[1].join, undefined, "a location that is not a link has no join");
-  assert.match(today.events[1].link, /^https:\/\/calendar\.google\.com\//, "it opens the event instead");
+  assert.match(first.when, /^in (9|10) min · meet\.example\.test$/, "the host the link goes to is shown");
+  const phish = today.events[1];
+  assert.equal(phish.join, undefined, "a link in the location that is not on a known meeting host is not a join link");
+  assert.doesNotMatch(phish.when, /evil/);
+  assert.match(phish.link, /^https:\/\/calendar\.google\.com\//, "it opens the event instead");
+  assert.equal(today.events[2].join, undefined, "a location that is not a link has no join");
 
   // Cached for a minute: the second ask does not call Calendar.
   const calls = fake.calls.length;
