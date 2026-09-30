@@ -422,6 +422,11 @@ async function main() {
         const shotOf = async () => { const r = /** @type {any} */ (await step("screenshot", () => mcp.call("chrome_screenshot", { tab, format: "jpeg", quality: 40 }))); need(r.shot && r.shot.id && r.shot.scale > 0, "point.shot", `the screenshot carries no shot (id, scale, viewport): ${short(Object.keys(r))}`); return r.shot; };
         const at = (/** @type {any} */ sh, /** @type {number} */ x, /** @type {number} */ y) => ({ x: Math.round(x * sh.scale), y: Math.round(y * sh.scale) });
         const point = (/** @type {any} */ sh, /** @type {number} */ x, /** @type {number} */ y, /** @type {any} */ o = {}) => mcp.call("chrome_point", { tab, shot: sh.id, ...at(sh, x, y), action: "click", ...o }).catch((/** @type {any} */ e) => ({ error: String(e && e.message || e) }));
+        // The ladder steps down by itself: the same unreachable target failing twice names chrome_point and hands over a picture.
+        const fails = [];
+        for (let i = 0; i < 2; i++) fails.push(await step(`act on the painted Go button by name, try ${i + 1}`, () => mcp.call("chrome_act", { tab, selector: { name: "Paint the Go button" }, kind: "click", wait: { timeoutMs: 200 } }).then(() => "no error").catch((/** @type {any} */ e) => String(e && (e.text || e.message) || e))));
+        need(!/chrome_point/.test(fails[0]), "point.ladder", "the first failure already named chrome_point");
+        need(/chrome_point/.test(fails[1]) && /shot [0-9a-f]{8}/.test(fails[1]), "point.ladder", `the second failure on the same target did not hand over a picture and name chrome_point: ${String(fails[1]).slice(-400)}`);
         let sh = await shotOf();
         // 1. Without a plan, every write on a drawn surface holds; the bare divs hold too.
         const goHeld = await point(sh, 100, 65);

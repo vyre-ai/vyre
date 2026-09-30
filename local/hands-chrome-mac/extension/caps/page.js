@@ -1444,7 +1444,18 @@ export default {
       const tabId = await tabOf(args, ctx, "page.screenshot");
       const format = args.format === "png" ? "png" : "jpeg";
       const quality = Math.min(Math.max(Math.round(Number(args.quality) || 60), 10), 100);
-      const r = await ctx.cdp.send(tabId, "Page.captureScreenshot", { format, ...(format === "jpeg" ? { quality } : {}) });
+      // A picture shows what is on screen: a password or one-time-code field in any frame of the page means no picture (the same rule chrome_eval applies before it runs).
+      for (const f of await framesOf(ctx, tabId)) {
+        if (f.readable === false) continue;
+        let pw = false;
+        try { pw = await evaluate(ctx, tabId, passwordFieldScript, {}, f); } catch { /* a frame that cannot be checked is not a frame the picture is taken of */ }
+        if (pw === true) throw err("blocked", "a password or one-time-code field is on this page, so Vyre does not take a picture of it");
+      }
+      /** @type {any} */ let m0 = null;
+      const maxWidth = Math.round(Number(args.maxWidth));
+      if (maxWidth >= 160) { try { m0 = await evaluate(ctx, tabId, METRICS); } catch { m0 = null; } }
+      const small = m0 && typeof m0 === "object" && m0.vw > maxWidth;
+      const r = await ctx.cdp.send(tabId, "Page.captureScreenshot", { format, ...(format === "jpeg" ? { quality } : {}), ...(small ? { clip: { x: m0.sx, y: m0.sy, width: m0.vw, height: m0.h, scale: maxWidth / m0.vw } } : {}) });
       const data = String((r && r.data) || "");
       // Chrome caps one native message at 1 MB toward the host; refuse rather than lose the frame.
       if (data.length > 900_000) throw err("bad_request", "the screenshot is too large for one message; use jpeg with a lower quality");
