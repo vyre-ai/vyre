@@ -10,3 +10,5 @@ Portions derived from Paseo, Copyright (c) 2025-present Mohamed Boudra, Apache L
 xterm.js 6.0.0 and @xterm/addon-fit 0.11.0 (deck/vendor/xterm), Copyright (c) the xterm.js
 authors, MIT License (deck/vendor/xterm/LICENSE,
 deck/vendor/xterm/LICENSE.addon-fit).
+
+jsQR 1.4.0, Copyright Cosmo Wolfe, Apache License 2.0 (deck/vendor/jsqr): the Deck's QR fallback for browsers without a barcode detector.

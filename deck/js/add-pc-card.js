@@ -7,7 +7,7 @@
 // URL, storage, a log or an event.
 import { h, put } from "./dom.js";
 import { webCrypto } from "../../relay/client/webcrypto.js";
-import { parseSeedText } from "../../relay/client/seedwords.js";
+import { parseSeedText, QR_PREFIX } from "../../relay/client/seedwords.js";
 import { base64url } from "../../relay/client/bytes.js";
 
 const crypto = webCrypto();
@@ -23,6 +23,18 @@ export function seedProblem(e) {
     case "unavailable": return "The relay did not answer. Try again in a moment.";
     default: return (e && e.message) || "Could not add the computer.";
   }
+}
+
+/**
+ * A code handed over by a native app that opened a `vyre-pc:` QR: the Deck's address carries it in the
+ * fragment as `#add-pc=<22 characters>` (a fragment is never sent to a server). Read once, then cleared
+ * from the address; it only fills the box, the person still taps Add.
+ * @param {string} hash location.hash
+ * @returns {string | null}
+ */
+export function seedFromHash(hash) {
+  const m = /^#add-pc=([A-Za-z0-9_-]{22})$/.exec(String(hash || ""));
+  return m ? m[1] : null;
 }
 
 /**
@@ -52,6 +64,12 @@ export function buildAddPcCard({ attempt, cleanup, alive = () => true }) {
   let stream = /** @type {MediaStream | null} */ (null), timer = /** @type {any} */ (null);
   const stopScan = () => { if (timer) clearInterval(timer); timer = null; if (stream) for (const t of stream.getTracks()) t.stop(); stream = null; video.hidden = true; };
   cleanup(stopScan);
+  const handed = seedFromHash(globalThis.location && globalThis.location.hash);
+  if (handed) {
+    words.value = handed;
+    try { history.replaceState(null, "", globalThis.location.pathname + globalThis.location.search); } catch {}
+    put(status, "The code from your camera is filled in. Tap Add this PC.");
+  }
   cleanup(() => { words.value = ""; });
 
   const run = async (/** @type {string} */ text) => {
@@ -65,19 +83,41 @@ export function buildAddPcCard({ attempt, cleanup, alive = () => true }) {
   };
   add.addEventListener("click", () => run(words.value));
 
-  // A QR code is read with the browser's own detector where there is one; otherwise the words are the way.
-  const Detector = /** @type {any} */ (globalThis).BarcodeDetector;
-  if (!Detector || !navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) scan.hidden = true;
+  // A QR code is read by the browser's own detector where there is one, else by the vendored pure-JS
+  // decoder (deck/vendor/jsqr, Safari and Firefox), loaded only when the person taps scan. Either way
+  // the frames stay on this device.
+  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) scan.hidden = true;
+  const canvas = document.createElement("canvas");
+  /** @returns {Promise<(v: HTMLVideoElement) => Promise<string | null>>} */
+  const makeReader = async () => {
+    const Detector = /** @type {any} */ (globalThis).BarcodeDetector;
+    if (Detector) { const det = new Detector({ formats: ["qr_code"] }); return async v => { const f = await det.detect(v).catch(() => []); return (f[0] && f[0].rawValue) || null; }; }
+    const jsQR = (await import("../vendor/jsqr/jsqr.js")).default;
+    const g = /** @type {CanvasRenderingContext2D} */ (canvas.getContext("2d", { willReadFrequently: true }));
+    return async v => {
+      const w = v.videoWidth, hgt = v.videoHeight;
+      if (!w || !hgt) return null;
+      const k = Math.min(1, 640 / Math.max(w, hgt));
+      canvas.width = Math.round(w * k); canvas.height = Math.round(hgt * k);
+      g.drawImage(v, 0, 0, canvas.width, canvas.height);
+      const img = g.getImageData(0, 0, canvas.width, canvas.height);
+      const r = jsQR(img.data, img.width, img.height, { inversionAttempts: "dontInvert" });
+      return r ? r.data : null;
+    };
+  };
   scan.addEventListener("click", async () => {
     try {
-      const det = new Detector({ formats: ["qr_code"] });
+      const read = await makeReader();
       stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: "environment" } }, audio: false });
       video.srcObject = stream; video.hidden = false; await video.play().catch(() => {});
+      let busy = false;
       timer = setInterval(async () => {
-        const found = await det.detect(video).catch(() => []);
-        const text = found[0] && found[0].rawValue;
-        if (text && String(text).startsWith("vyre-pc:")) { stopScan(); run(String(text)); }
-      }, 400);
+        if (busy) return;
+        busy = true;
+        const text = await read(video).catch(() => null);
+        busy = false;
+        if (text && String(text).startsWith(QR_PREFIX)) { stopScan(); run(String(text)); }
+      }, 350);
     } catch { stopScan(); put(status, "The camera is not available. Type the words instead."); }
   });
 
