@@ -1,4 +1,4 @@
-// Glass: the Capsule's Deep glass skin (team/0.2/capsule-02.html, Option B). It changes only the
+// DeepGlass: the Capsule's Deep glass skin (team/0.2/capsule-02.html, Option B). It changes only the
 // ground and the edge of the panel; the width, the rows and every feature are untouched, and the
 // colours of text and the call to action still come from Theme (the tokens).
 //
@@ -10,7 +10,7 @@
 import AppKit
 import SwiftUI
 
-enum Glass {
+enum DeepGlass {
     /// The tint laid over the blur. Fixed, so text contrast does not depend on the wallpaper.
     static let tintAlpha: CGFloat = 0.62
     /// The opaque tint of the fallback (today's `panel` token at 1.0).
@@ -52,10 +52,10 @@ struct Backdrop: NSViewRepresentable {
     func updateNSView(_ v: NSVisualEffectView, context: Context) { apply(v) }
 
     private func apply(_ v: NSVisualEffectView) {
-        let reduced = Glass.reduceTransparency
+        let reduced = DeepGlass.reduceTransparency
         v.state = reduced ? .inactive : .active
         v.isHidden = false
         v.subviews.first?.layer?.backgroundColor =
-            NSColor(srgbRed: 0x16 / 255, green: 0x15 / 255, blue: 0x13 / 255, alpha: Glass.groundAlpha).cgColor
+            NSColor(srgbRed: 0x16 / 255, green: 0x15 / 255, blue: 0x13 / 255, alpha: DeepGlass.groundAlpha).cgColor
     }
 }
