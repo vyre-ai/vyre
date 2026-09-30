@@ -558,3 +558,7 @@ mcp.connect/oauth.js status have posted (both block the Next list below).
   its commits) and returns an existing worktree unchanged. Test in git.test.js. Confirmed to sessions.
 - requireAsked stopgap stays until vault's Gate lands; then declare outward: asked and delete it.
 - pr.open and the hosted-MCP allowlist still wait on vault.
+- Rebased onto stage/0.2 (795a00b7) and pushed: work/github at 50ddcffb, range 795a00b7..50ddcffb (12 commits).
+  Found on the rebase: the registry allows only two-part event names, so github.session.undone made
+  vyred skip the whole module (switchboard ADR 0041 test caught it). Renamed to github.undone; added a
+  test that runs module.json through the registry's validator. 100/100 on core/github + switchboard + modules.
