@@ -232,6 +232,8 @@ function handle(ctx, t, method, p, session) {
     const frame = docOrigin(p.documentURL) || (session ? docOrigin(kidUrl(ctx, t, session)) : "");
     /** @type {Rec} */
     const r = { id: key, requestId: String(p.requestId), ...(session ? { session } : {}), ...(frame ? { frame } : {}), seq: ++t.seq, ts: p.wallTime ? Math.round(p.wallTime * 1000) : Date.now(), method: p.request?.method || "GET", url: p.request?.url || "", type: p.type || "Other", initiator: p.initiator || {}, reqHeaders: { ...(p.request?.headers || {}) }, resHeaders: {}, postData: p.request?.postData, size: 0 };
+    // A request made while the eval guard was up is not evidence that the page talks to that origin (it may be the very request the guard blocks): the guard never learns from it.
+    if (/** @type {any} */ (t).egress) /** @type {any} */ (r).guarded = true;
     r.size = weigh(r);
     t.recs.set(r.id, r);
     t.bytes += r.size;
@@ -399,7 +401,8 @@ async function paused(ctx, t, p, session) {
         // origin gets nothing). If every attempt fails the request is left paused and the script's eval says a request MAY have been sent: it is never continued.
         judged = true;
         const stopped = await stopRequest(send, id, "BlockedByClient");
-        if (eg.blocked.length < 20) eg.blocked.push({ method: String(p.request?.method || "GET"), origin: o, ...(stopped ? {} : { leaked: true }) });
+        try { (/** @type {any} */ (t).denied || (/** @type {any} */ (t).denied = new Set())).add(o); } catch { /* */ }
+        if (eg.blocked.length < 20) eg.blocked.push({ method: String(p.request?.method || "GET"), origin: o, type: String(p.resourceType || ""), ...(session ? { session } : {}), ...(stopped ? {} : { leaked: true }) });
         return;
       }
     }
@@ -457,9 +460,11 @@ async function paused(ctx, t, p, session) {
 export async function egressGuard(ctx, tab) {
   const t = /** @type {any} */ (await start(ctx, tab));
   const eg = t.egress || (t.egress = { depth: 0, allowed: new Set(), blocked: [] });
-  const add = (/** @type {string} */ u) => { try { const x = new URL(String(u)); if (x.origin && x.origin !== "null") eg.allowed.add(x.origin); } catch { /* skip */ } };
+  /** Origins this guard has ever judged blocked on this tab: they can never become "allowed" by being observed. @type {Set<string>} */
+  const denied = /** @type {any} */ (t).denied || (/** @type {any} */ (t).denied = new Set());
+  const add = (/** @type {string} */ u) => { try { const x = new URL(String(u)); if (x.origin && x.origin !== "null" && !denied.has(x.origin)) eg.allowed.add(x.origin); } catch { /* skip */ } };
   try { const tb = await ctx.tabs.get(tab); add(tb && (tb.url || tb.pendingUrl)); } catch { /* the tab went away */ }
-  for (const r of t.recs.values()) { add(r.url); if (r.frame) add(r.frame); }
+  for (const r of t.recs.values()) { if (/** @type {any} */ (r).guarded) continue; add(r.url); if (r.frame) add(r.frame); }
   const timing = "[...new Set(performance.getEntriesByType('resource').map(e => e.name).concat(location.href))].slice(0, 1000)";
   /** @type {any[]} */ let frames = [];
   try { frames = ctx.frames && typeof ctx.frames.list === "function" ? await ctx.frames.list(tab) : []; } catch { frames = []; }
@@ -478,6 +483,9 @@ export async function egressGuard(ctx, tab) {
     eg.rule = b && b.id != null ? b.id : null;
     eg.contained = b && b.ok ? "full" : "partial";
     eg.containedWhy = b && !b.ok ? b.why : undefined;
+    // UNTIL the stage has proved zero requests for a worker from a pristine iframe, a mid-script frame, window.open and a script rewriting its allow list, the browser-level rule is REQUIRED:
+    // if it could not be set the script does not run (it is the only layer for a new frame's first requests and for a worker's fetch).
+    if (!(b && b.ok)) { t.egress = null; throw refuse("blocked", `the browser-level network rule could not be set (${String(eg.containedWhy || "unknown").slice(0, 100)}), so a script is not run on this page`); }
 
   }
   eg.depth++;

@@ -312,7 +312,13 @@ async function main() {
           console.log("[frames-suite] EGRESS " + JSON.stringify({ n, held: leak.held, contained: leak.contained, why: String(leak.why || "").slice(0, 160) }));
           need(leak.held === true, "eval.frame.guard", `a script inside the iframe that sent storage to a fresh origin was not held (run ${n}): ${short(leak)} (the guard covers the top page only)`);
           await sleep(300);
-          need((await state()).collected.length === before, "eval.frame.guard", `the fresh origin received ${(await state()).collected.length - before} request(s) from the held script (run ${n}; contained ${leak.contained || "?"})`);
+          const got = (await state()).collected;
+          if (got.length !== before) {
+            // PROVE THE PATH: what reached the server, and what the tab's own network capture says about every request to that origin (session, frame, type, status).
+            console.log("[frames-suite] LEAKED " + JSON.stringify({ n, held: leak.held, contained: leak.contained, collected: got.slice(before).map((/** @type {any} */ c) => JSON.stringify(c).slice(0, 200)), held_why: String(leak.why || "").slice(0, 300) }));
+            try { const nl = await mcp.call("chrome_net", { action: "list", tab, limit: 60 }); console.log("[frames-suite] LEAKED NET " + JSON.stringify((nl.requests || []).filter((/** @type {any} */ r) => /d\.localhost|fresh/.test(String(r.url || ""))).map((/** @type {any} */ r) => ({ url: String(r.url).slice(0, 80), type: r.type, status: r.status, failed: r.failed || r.errorText, frame: r.frame, session: r.session ? "child" : "top" }))).slice(0, 900)); } catch (e) { console.log("[frames-suite] LEAKED NET list failed: " + String(e && e.message || e).slice(0, 200)); }
+          }
+          need(got.length === before, "eval.frame.guard", `the fresh origin received ${got.length - before} request(s) from the held script (run ${n}; contained ${leak.contained || "?"})`);
         }
         // Other ways out of a guarded script: a fresh same-origin iframe (its window has no shim), a Worker made from that iframe (its own network), a beacon from it, window.open.
         // None may reach the fresh origin; the browser-level guard (Fetch on every session, children paused at birth) is what stops them.

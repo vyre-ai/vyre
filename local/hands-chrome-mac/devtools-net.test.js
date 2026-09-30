@@ -387,3 +387,24 @@ test("egress guard: children start PAUSED while it is up; a child that arrives w
   assert.ok(out.some((/** @type {any} */ o) => o.method === "GUARD" && o.leaked), "an unguarded child is reported like a leak");
   assert.equal(pauses[pauses.length - 1], false, "pausing is off again when the guard goes");
 });
+
+test("egress guard: what the guard blocked never becomes allowed by being observed: the next guard still blocks it", async () => {
+  const k = makeCtx({ active: 1 });
+  await net.ops["net.start"]({ tab: 1 }, k.ctx);
+  const eg1 = await egressGuard(k.ctx, 1);
+  // the guarded script's request to a fresh origin is captured (Network sees the attempt) AND judged blocked
+  k.push(1, "Network.requestWillBeSent", { requestId: "n1", type: "Fetch", documentURL: "https://app.example/", request: { url: "https://collector.example/steal?d=1", method: "GET", headers: {} } });
+  k.push(1, "Fetch.requestPaused", { requestId: "p1", request: { url: "https://collector.example/steal?d=1", method: "GET" }, resourceType: "Fetch" });
+  await new Promise(r => setTimeout(r, 5));
+  const out1 = await eg1.stop();
+  assert.equal(out1.length, 1, "the first attempt was blocked");
+  // the second guard: the buffer holds that attempt, but it is not evidence that the page talks to that origin
+  const eg2 = await egressGuard(k.ctx, 1);
+  assert.ok(!eg2.allowed.includes("https://collector.example"), "the blocked origin did not become allowed");
+  k.push(1, "Fetch.requestPaused", { requestId: "p2", request: { url: "https://collector.example/steal?d=2", method: "GET" }, resourceType: "Fetch" });
+  await new Promise(r => setTimeout(r, 5));
+  assert.equal(k.calls("Fetch.failRequest").filter(s => s.params.requestId === "p2").length, 1, "and is blocked again");
+  const out2 = await eg2.stop();
+  assert.equal(out2.length, 1);
+  assert.equal(out2[0].type, "Fetch", "the blocked entry says what kind of request it was");
+});

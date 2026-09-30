@@ -123,13 +123,11 @@ test("egress guard: a browser-level rule blocks WebSockets and beacons of the ta
   assert.equal(/** @type {any} */ (k2.ctx).dnr.rules.length, 0, "no rule when the person asked");
 });
 
-test("egress guard: when the browser-level rule cannot be set, the script still runs (Fetch interception on every session is what contains it) but the result says the containment is partial", async () => {
+test("egress guard: when the browser-level rule cannot be set, the script does NOT run (it is required until the stage proves the other layers hold), and the guard is taken down again", async () => {
   const k = egressRig(async () => {});
   /** @type {any} */ (k.ctx).dnr.fail = true;
-  const r = await T(dt.ops["dev.console.eval"])({ tab: 3, expression: "/*vyre-test-script*/ 1" }, k.ctx);
-  assert.equal(r.ok, true);
-  assert.equal(r.contained, "partial");
-  assert.ok(r.containedWhy);
+  await assert.rejects(T(dt.ops["dev.console.eval"])({ tab: 3, expression: "/*vyre-test-script*/ 1" }, k.ctx), (/** @type {any} */ e) => e.code === "blocked" && /browser-level network rule/.test(e.message));
+  assert.equal(k.sent.some((/** @type {any} */ x) => x.params && x.params.expression === "/*vyre-test-script*/ 1"), false, "the script never ran");
   const k2 = egressRig(async () => {});
   assert.equal((await T(dt.ops["dev.console.eval"])({ tab: 3, expression: "/*vyre-test-script*/ 1" }, k2.ctx)).contained, undefined, "no flag when the rule holds");
 });
