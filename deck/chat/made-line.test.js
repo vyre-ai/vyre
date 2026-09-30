@@ -40,3 +40,20 @@ test("a role made a moment ago says so and undoes through team.retire; a reply e
   const done = /** @type {any} */ (handoffCard(block({ input: { to: "review", text: "check" }, reply: "Looks fine." })));
   assert.equal($(done, ".cv-made"), null, "a teammate that has replied has run: no Undo");
 });
+
+test("an Undo the box refuses because the teammate already ran falls back to a plain retire, and says Retired", async () => {
+  markMade("northwind", "qa", null);
+  const real = globalThis.fetch;
+  const seen = /** @type {any[]} */ ([]);
+  globalThis.fetch = /** @type {any} */ (async (url, o) => {
+    const input = JSON.parse(o.body); seen.push(input);
+    return input.undo ? { status: 409, statusText: "", json: async () => ({ error: { code: "denied", message: "it has already run" } }) }
+      : { status: 200, statusText: "", json: async () => ({ data: { retired: true } }) };
+  });
+  const el = /** @type {any} */ (handoffCard(block({ input: { to: "qa", text: "check" } })));
+  await $(el, ".cv-made-undo").click();
+  await new Promise(r => setTimeout(r, 10));
+  globalThis.fetch = real;
+  assert.deepEqual(seen, [{ project: "northwind", role: "qa", undo: true }, { project: "northwind", role: "qa" }]);
+  assert.match(text($(el, ".cv-made")), /Retired qa/);
+});
