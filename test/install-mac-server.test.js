@@ -55,7 +55,7 @@ exit 0`,
      const h = process.env.VYRE_HOME; fs.mkdirSync(h, { recursive: true });
      fs.writeFileSync(path.join(h, "vyred.pid"), String(process.pid));
      fs.writeFileSync(path.join(h, "saw.json"), JSON.stringify({ code: process.env.VYRE_SETUP_CODE ?? null, at: process.env.VYRE_SETUP_CODE_AT ?? null, docker: process.env.DOCKER_HOST ?? null }));
-     setInterval(() => {}, 1000);\n`);
+     // A fake vyred that never outlives its test: it ends when its VYRE_HOME is removed (the test's own cleanup).\n     setInterval(() => { if (!fs.existsSync(h)) process.exit(0); }, 500);\n`);
   const env = {
     PATH: `${bin}:${path.dirname(process.execPath)}:/usr/bin:/bin`, HOME: home, VYRE_UNAME_S: "Darwin", VYRE_GH_SHA256: "",
     VYRE_LAUNCHCTL: path.join(bin, "launchctl"), VYRE_CAFFEINATE: path.join(bin, "caffeinate"),
