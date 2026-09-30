@@ -19,6 +19,8 @@ const REPO = path.join(path.dirname(fileURLToPath(import.meta.url)), "..");
  *  it is expected, not a bug this test should catch. A tool leaves this list the day every box
  *  registers it - it does not grow to paper over a call nothing answers by design. */
 const OPTIONAL = {
+  "spend.raise": "iq ships it (work/iq 90eb2f4f); the spend cap line and the Settings Spend section say so in a line when the box has no spend module. Leaves this list when iq merges.",
+  "spend.summary": "iq ships it (work/iq 90eb2f4f); the spend cap line and the Settings Spend section say so in a line when the box has no spend module. Leaves this list when iq merges.",
   "connectors.catalog": "connectors ships it in work/connectors-0.2 (CHAT.md 11:40); the Add a service list checks the answer and says so in a line when the box has no connectors module. Leaves this list when connectors merges.",
   "connectors.connect": "connectors ships it in work/connectors-0.2 (CHAT.md 11:40); the Add a service list checks the answer and says so in a line when the box has no connectors module. Leaves this list when connectors merges.",
   "connectors.connect.finish": "connectors ships it in work/connectors-0.2 (CHAT.md 11:40); the Add a service list checks the answer and says so in a line when the box has no connectors module. Leaves this list when connectors merges.",

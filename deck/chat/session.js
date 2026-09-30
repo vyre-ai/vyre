@@ -71,6 +71,7 @@ import { askCardFor, defaultOpen } from "./cards/index.js";
 import { welcomeRow, loadWelcome } from "./cards/land.js";
 import { charterChanged, agentMade } from "./cards/charter-changed.js";
 import { vaultUsed } from "./cards/vault-used.js";
+import { spendCapped } from "./cards/spend-capped.js";
 import { macAnswersHeld } from "./presence.js";
 import { mountComposer } from "./composer.js";
 import { duration, elapsed, toolTitle, toolVerb } from "./lib/blocks.js";
@@ -1637,6 +1638,13 @@ export function mountSession(container, opts) {
     on("memory.curated", () => fetchMemory()),
     on("onboard.stepped", () => { void refreshWelcome(); }),
     on("teammate.charter-changed", e => { void charterNotice(e.payload); }),
+    // The thread this provider's daily cap paused: the box's line and a Raise it, right where the thread stopped.
+    on("spend.capped", e => {
+      const p = e.payload || {};
+      if ((p.thread || e.thread) !== thread || !timeline.isConnected) return;
+      timeline.append(spendCapped({ ...p, at: e.at }));
+      if (stick.stuck) toBottom();
+    }),
     // A use of a vault item this thread was granted: a quiet "using #name" line, the name and host only, never the value.
     on("vault.used", e => {
       const p = e.payload || {};

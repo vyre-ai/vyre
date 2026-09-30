@@ -37,6 +37,7 @@ const SECTIONS = [
   ["devices", "Your devices"],
   ["server", "Server"],
   ["history", "History and memory"],
+  ["spend", "Spend"],
   ["lessons", "Lessons"],
   ["notifications", "Notifications"],
   ["security", "Security"],
@@ -132,7 +133,9 @@ export default async function settings(ctx) {
       const after = jumpSel.querySelector(`option[value="claude"]`);
       if (after && after.nextSibling) jumpSel.insertBefore(og, after.nextSibling); else jumpSel.append(og);
     }).catch(e => put(keysBody, empty("Sessions and Claude settings did not load.", e))),
-    drawNetwork(body.network, ctx), drawDevices(body.devices, ctx), drawServer(body.server, ctx), drawHistory(body.history, ctx), drawLessons(body.lessons, ctx),
+    drawNetwork(body.network, ctx), drawDevices(body.devices, ctx), drawServer(body.server, ctx), drawHistory(body.history, ctx),
+    import("./settings-spend.js").then(m => m.drawSpend(body.spend, ctx)).catch(e => put(body.spend, empty("Spend did not load.", e))),
+    drawLessons(body.lessons, ctx),
     drawNotifications(body.notifications, ctx), drawSecurity(body.security, ctx), drawModules(body.modules),
     drawAppearance(body.appearance), drawMachine(body.machine),
   ];

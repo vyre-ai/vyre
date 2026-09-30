@@ -4,6 +4,11 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### chat and settings: the spend cap
+
+- `deck/chat/cards/spend-capped.js`: when iq's `spend.capped` event is for this thread, a quiet row under the paused thread shows the box's line and a Raise it button that opens one amount field (prefilled with the suggested cap). Raise calls `spend.raise {provider, to}` (or `{provider, off: true}` for No cap); the provider comes from the event, the amount from the field, and the tool is fixed, never the one the event names.
+- Settings, Spend (`deck/views/settings-spend.js`): today's spend (UTC) per provider against its daily cap from `spend.summary`, with Change cap (`spend.raise`). One plain line on a box with no spend module. `spend.summary` and `spend.raise` are optional in the deck contract test until iq merges.
+
 #### chat: a failed send or a queued message taken back keeps its own span map
 
 - The composer remembers, per sent message, the pasted spans and the tags it carried. A failed send, or a queued message taken back for editing, puts the words back with that map: the typed `#tags` (and their chips) survive, pasted text stays marked, and the edit (`threads.edit`) carries the same `pasted` and `mentions`. A draft restored across a reload has no map and stays all not-typed. `paste-spans` gains `mark(start, end)`; the tag picker gains `restore(list)`.
