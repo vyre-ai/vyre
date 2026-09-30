@@ -121,6 +121,10 @@ Newest first. Every change to code lands here in the same commit. A new dependen
   assertion whose alg disagrees with the key's type.
 - Tests in core/presence/rsa.test.js use generated keys only. Real Windows Hello fixtures still need
   windows' W2 spike.
+#### pwa: the rail tests know the Drive place
+
+- `deck/test/rail.test.js` lists Drive between Vault and Devices. Drive has no digit key (Cmd+1 to Cmd+9 are unchanged and Cmd+0 stays free), so `PLACES[].key` is optional.
+
 - Test only: `phone add --view` no longer depends on the command's event stream being open when the phone subscribes. It subscribes again until the frame says so and waits on the condition with a longer budget, which stops the 8 to 10 s timeouts on loaded runners.
 - chrome extension, GoHighLevel control made robust for workflow building. One waiting helper backs
   page.act, page.fill, page.wait and the ghl ops: a control must exist, be enabled and hold still
