@@ -50,6 +50,8 @@ Never the test box (now the user's real server) and never the user's Mac. Tests 
 - 30 Sep later: stage/0.2 = ae8a9aa0 (0d3c0dee + vyre-core 6b20be7c + hands-chrome 30 s wait + CI path filter 5885f777 + tailnet-02 0e3e3397 + sessions-node24 799e90e9 + native-core 0217a609 + drive 7c2bbf10). I reset stage once at 05:56 UTC without posting; posted in CHAT at 07:40 and will fix forward or revert from now on.
 - OPEN: since 0e3e3397, Node 22 hangs after threads-sessions.test.js (handle leak) and perf-check fails at 13.25% CPU. Sent to tailnet and platform. Node 24 passes tests.
 - Held: launch (conflicts, rebase asked), capsule-sight, glass, artifacts, teammates (after sessions-02), sessions-02, platform newer head.
+- 30 Sep: stage = ab145ccf (+ sessions-02 e9a127f1 as 600c789a, tailnet b8bda0e1). CI: two setup.test.js failures (sessions now declares setupTools; tailnet fixing) and nondeterministic hangs (sessions.test.js under sessions-sdk at 120 s; Node runs cancelled at 30 min in two of three). platform's perf fix 3fd7f029 (recall_turns scan) works on Node 22 but platform-contract conflicts with stage in core/daemon/index.js and core/modules/index.js; platform merging.
+- Queue: artifacts 20ae471a, glass, teammates (after sessions-02), capsule-sight (rebasing), launch (rebasing), platform.
 
 ## Doing
 
