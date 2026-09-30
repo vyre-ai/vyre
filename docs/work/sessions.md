@@ -70,6 +70,7 @@ Capsule quick asks to the box assistant, Mac project folders Mac-owned.
   5. 0f58e2ce threads.switch (between turns, brief, thread.provider event, notice) and
      sessions.routes.get/set/next with switchboard routeFallback on a limit; same-provider lists need
      acknowledge:true; an agent sets only its own list or a granted project (uses meta.granted).
+  6. Review round (to 0.2 head): uid allocation lock + unique index; provider keys via spawner env (fd 3 cannot serve env-reading CLIs; runner spike must check tool subprocesses); wipe kills uid procs and clears /tmp, TMPDIR in HOME; ACP fs O_NOFOLLOW + fd check; bypass start mode pinned or refuse; accounts add/remove/bind no longer person-only; signed_in from vault; threads.quick {stream} via ctx.call onPartial; account HOME 710 gid=uid with vyred in every account group, transcript glob per account, real-uid isolation test (accounts-isolation workflow, green on a hosted runner); codex custom endpoint flags for the OpenRouter proof.
   Next: sessions.accounts.signin (device code per provider), OpenRouter driver, rooms deferred to 0.2.x, real-account proofs on a runner once keys exist, review fixes.
 
 - 0.1.1 test-fix queue from team-lead (branch work/sessions-011 off stage/0.1.1 d9b916d4, both
