@@ -129,7 +129,7 @@ export default {
         return old && old.origin !== "module:github" ? `the vault already has an item named ${item} that Vyre's GitHub sign-in did not make; rename or delete it first` : null;
       },
       save: async (item, fields) => {
-        const r = await ctx.call("vault.put", { name: item, kind: "pat", description: "GitHub sign-in (made by Vyre)", fields, grants: ["github", "mcp"] });
+        const r = await ctx.call("vault.put", { name: item, kind: "pat", description: "GitHub sign-in (made by Vyre)", fields, grants: ["github"] });
         if (r.error) throw fail(`could not save the sign-in in the vault: ${r.error.message}`, r.error.code || "vault");
       },
       add: async acct => {
