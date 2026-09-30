@@ -48,3 +48,8 @@ Branch: work/assistant · Worktree: ../vyre-assistant · Owner session: assistan
   base tree too (terms.js n.split on a non-string name), not from this branch.
 - Next: vault's Gate consuming lib/said/match; wire the capabilities render into the append block once
   sessions lands the scope fix.
+- core/push (lead's assignment): the daily budget. Kinds draft, watch, lesson, goal and the new
+  proactive (event push.proactive {title, path, tag}, the one door for the assistant, watchers and
+  duties) share assistant.chattiness a day (default 3), counted in the person's day. Ask and planner
+  are not counted; loud alarms ring through. Over budget: no push, push.capped emitted, the item stays
+  in waiting and the glance. Quiet hours were already there. Changed contract: core/push.
