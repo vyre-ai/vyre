@@ -152,7 +152,12 @@ jobs:
           (./cloudflared tunnel --no-autoupdate --url http://127.0.0.1:7300 --http-host-header 127.0.0.1:7300 > cf.log 2>&1 &)
           for i in $(seq 1 60); do URL=$(grep -o 'https://[a-z0-9-]*\.trycloudflare\.com' cf.log | head -1); [ -n "$URL" ] && break; sleep 1; done
           mkdir rv; echo "$URL" > rv/url
-          for d in mac-chrome mac-safari ios-safari; do sh scripts/matrix/new-link.sh "rv/$d"; done
+          # Each new link replaces the last, so the Mac asks for its links one at a time, through a second tunnel.
+          SECRET=$(head -c 24 /dev/urandom | od -An -tx1 | tr -d ' \n'); echo "$SECRET" > rv/secret
+          (python3 scripts/matrix/link-server.py 18091 "$SECRET" &)
+          (./cloudflared tunnel --no-autoupdate --url http://127.0.0.1:18091 > cf2.log 2>&1 &)
+          for i in $(seq 1 60); do LURL=$(grep -o 'https://[a-z0-9-]*\.trycloudflare\.com' cf2.log | head -1); [ -n "$LURL" ] && break; sleep 1; done
+          echo "$LURL" > rv/linkurl
       - uses: actions/upload-artifact@v4
         with: { name: mac-rv, path: rv, retention-days: 1 }
       - name: Hold the box until the Mac is done, then delete the links
@@ -182,19 +187,23 @@ jobs:
           for i in $(seq 1 30); do curl -fs -o /dev/null http://127.0.0.1:7300/ -w '%{http_code}' 2>/dev/null | grep -q . && break; sleep 1; done
       - name: J0 in Chrome on the Mac
         run: |
+          sh scripts/matrix/fetch-link.sh "$RUNNER_TEMP/rv" mac-chrome
           "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" --headless=new --remote-debugging-port=9222 --user-data-dir="$RUNNER_TEMP/chrome" --no-first-run about:blank >/dev/null 2>&1 &
           for i in $(seq 1 50); do curl -fs http://127.0.0.1:9222/json/version >/dev/null && break; sleep 0.2; done
           node scripts/matrix/j0.mjs --link-file "$RUNNER_TEMP/rv/mac-chrome" --device mac-chrome --out results/mac
       - name: J0 in Safari on the Mac
         if: always()
         run: |
+          sh scripts/matrix/fetch-link.sh "$RUNNER_TEMP/rv" mac-safari
           sudo safaridriver --enable
           safaridriver -p 4444 >/dev/null 2>&1 &
           sleep 2
           node scripts/matrix/j0.mjs --webdriver http://127.0.0.1:4444 --link-file "$RUNNER_TEMP/rv/mac-safari" --device mac-safari --out results/mac
       - name: J0 in Safari on the iPhone simulator
         if: always()
-        run: sh scripts/matrix/ios-j0.sh "$RUNNER_TEMP/rv/ios-safari"
+        run: |
+          sh scripts/matrix/fetch-link.sh "$RUNNER_TEMP/rv" ios-safari
+          sh scripts/matrix/ios-j0.sh "$RUNNER_TEMP/rv/ios-safari"
       - name: Tell the box it can go
         if: always()
         run: mkdir -p done && date > done/at
