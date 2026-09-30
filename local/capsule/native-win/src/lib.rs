@@ -14,3 +14,5 @@
 //! `hotkey.rs` was first written).
 
 pub mod hotkey;
+
+pub mod shell;

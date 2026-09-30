@@ -6,6 +6,17 @@ this round; verification leans on windows-latest CI.
 
 ## 0.2 status (2026-09-30, current - read this section first)
 
+**RESUMED 2026-09-30 (relaunch).** Merged origin/work/stage-0.2 into work/windows (a merge, not a
+rebase: 32 old commits, six conflicts, all union-resolved; win32 fresh default is role local,
+machine device). Docs and config tests pass locally. Scaffolded the Tauri shell in
+`local/capsule/native-win/app/` (steps 2-6): bundled first-run page with the only capability,
+main panel with no capability + navigation allowlist + frozen `__VYRE_SHELL__`, tray, global
+hotkey via `hotkey.rs`, toast, schtasks autostart. Trust rules are pure and unit-tested in
+`src/shell.rs` (pinned origin, `vyre://open` path allowlist, `vyre://pair` nonce). No cargo here:
+capsule-win CI (windows-latest, now also `cargo build --release` of the app) is the proof.
+Placeholder icon until app-design exports the Lumen icon. Still open: passkey spike 6.1,
+pairing through the relay, `net use` Drive mapping, # tag picker, signing key custodian.
+
 Everything below "## Done" through "## Changed contracts" is 0.1.x history (named-pipe device
 transport, socket ACL work, the Tier C module-shape draft). **Read it as background, not as the
 current design.** The full current plan, with a real architecture pivot mid-session, is

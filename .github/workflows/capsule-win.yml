@@ -28,3 +28,6 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
       - name: cargo test
         run: cargo test --verbose
+      - name: build the app (release exe, no bundle)
+        working-directory: local/capsule/native-win/app
+        run: cargo build --release
