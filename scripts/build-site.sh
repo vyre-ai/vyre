@@ -42,6 +42,10 @@ for f in box/compose.yml box/compose.build.yml box/vyre.env.example box/vyre \
   [ -f "$src/$f" ] || { echo "build-site: $src has no $f (point --src at a checkout with box/ in it)" >&2; exit 1; }
 done
 
+# A build that would ship a signing key nobody vouched for stops here (VYRE_ALLOW_PLACEHOLDER_KEY=1
+# lets a dry run through; scripts/release.sh never passes it).
+if [ -f "$src/scripts/check-release-key.mjs" ]; then node "$src/scripts/check-release-key.mjs" "$src" || exit 1; fi
+
 out=$here/site/box
 sum() { if command -v sha256sum >/dev/null 2>&1; then sha256sum "$@"; else shasum -a 256 "$@"; fi; }
 rm -rf "$out"
@@ -52,6 +56,8 @@ cp "$src/box/compose.yml" "$src/box/compose.build.yml" \
 # Served without the leading dot: some hosts refuse dotfiles.
 [ -f "$src/.dockerignore" ] && cp "$src/.dockerignore" "$out/dockerignore"
 cp "$src/scripts/install-box.sh" "$out/install-box.sh"
+# The Mac server installer, served beside it and covered by SHA256SUMS.
+[ ! -f "$src/scripts/install-mac-server.sh" ] || cp "$src/scripts/install-mac-server.sh" "$out/install-mac-server.sh"
 cp "$src/scripts/install-box.sh" "$here/site/install.sh"
 
 {
@@ -87,6 +93,11 @@ node -e 'process.stdout.write(require(process.argv[1]).version + "\n")' "$src/pa
   cd "$out"
   find . -type f ! -name SHA256SUMS | sed 's|^\./||' | while read -r f; do sum "$f"; done | LC_ALL=C sort -k2 >SHA256SUMS
 )
+
+# A run that has the signing key (VYRE_SIGNING_KEY, only ever a publishing release's sign step) also
+# writes manifest.json and signs SHA256SUMS (SHA256SUMS.sig, ADR 0040 section 5); the release workflow's
+# build job never has it, its sign job runs scripts/sign-manifest.mjs on the finished files.
+if [ -n "${VYRE_SIGNING_KEY:-}" ]; then node "$src/scripts/sign-manifest.mjs" "$out" "$(cat "$out/VERSION")" "${VYRE_CHANNEL:-}" || exit 1; fi
 
 echo "site/box:"
 sed 's/^/  /' "$out/SHA256SUMS"

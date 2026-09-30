@@ -433,14 +433,35 @@ function writeTty(file, text) {
   try { fs.writeSync(fd, text); } finally { fs.closeSync(fd); }
 }
 
+/**
+ * On a Mac with vyre-core installed (ADR 0040), the trust anchors are core's, not vyred's: vyred's
+ * own presence_keys can be written by a model's shell (same uid). vyred's daemon sets `core.link`
+ * at start when a root-owned core.json names core (lib/vyre-core-client.js), and every Presence
+ * then asks core to check a signature, passkey or code proof, and refuses to enroll or remove a
+ * key itself: those go from the person's own client straight to core. Touch ID, the terminal
+ * code and sessions stay vyred's own, and advisory on a Mac, as ADR 0040 section 3 says of every
+ * vyred-side control. Linux never sets it.
+ * @typedef {{ verify(tool: string, input: any, header: string): Promise<{ ok: boolean, method?: string, keyId?: string|null, message?: string }>,
+ *   keys(): Promise<any[]>, challenge(tool: string, input: any): Promise<any>,
+ *   call?(tool: string, input: any, header?: string): Promise<{ data?: any, error?: any }> }} CoreLink
+ */
+export const core = { link: /** @type {CoreLink|null} */ (null) };
+/** The proofs vyre-core checks in vyred's place. */
+export const CORE_CHECKED = new Set(["capsule", "device", "passkey", "code"]);
+/** A parsed proof back into its header, fields in their own order. @param {Record<string, string>} proof */
+export const format = proof => [proof.method, ...Object.entries(proof).filter(([k]) => k !== "method").map(([k, v]) => `${k}=${v}`)].join(" ");
+const coreOwned = what => Object.assign(new Error(`on this Mac, ${what} in vyre-core: do it from your own terminal or the Capsule, which talk to vyre-core directly`), { code: "core_owned" });
+
 export class Presence {
   /**
    * @param {{ db: import("node:sqlite").DatabaseSync, events?: any, log?: (m: string) => void, platform?: string,
    *           role?: string, network?: () => { owner?: string, address?: string }, who?: () => Promise<string[]>, writeTty?: (file: string, text: string) => void, statTty?: (file: string) => any,
-   *           touchid?: any, webauthn?: any, now?: () => number, env?: NodeJS.ProcessEnv }} opts
+   *           touchid?: any, webauthn?: any, now?: () => number, env?: NodeJS.ProcessEnv, core?: CoreLink|null }} opts
    */
-  constructor({ db, events = null, log = () => {}, platform = process.platform, role = "local", network = () => ({}), who: whoFn, writeTty: write, statTty, touchid, webauthn, now, env = process.env }) {
+  constructor({ db, events = null, log = () => {}, platform = process.platform, role = "local", network = () => ({}), who: whoFn, writeTty: write, statTty, touchid, webauthn, now, env = process.env, core: coreOpt }) {
     this.db = db;
+    /** A test's own link, or null for none; undefined reads the daemon's (core.link). */
+    this.coreOpt = coreOpt;
     this.role = role;
     this.network = network;
     this.events = events;
@@ -470,6 +491,9 @@ export class Presence {
     /** @type {Map<string, number>} */
     this.terminals = new Map();
   }
+
+  /** vyre-core, when it holds this Mac's trust anchors. @returns {CoreLink|null} */
+  get coreLink() { return this.coreOpt !== undefined ? this.coreOpt : core.link; }
 
   /**
    * One line on the terminal a window was used from, so a command someone else typed into it
@@ -547,7 +571,11 @@ export class Presence {
       try { if (t && await Promise.race([t.available(), within])) out.push("touchid"); } catch {}
     }
     if (this.ttyAllowed() && !this.noTtyWrites) out.push("tty");
-    const kinds = new Set(this.db.prepare("SELECT DISTINCT kind FROM presence_keys").all().map(r => String(r.kind)));
+    const link = this.coreLink;
+    let rows = [];
+    if (link) { try { rows = await link.keys(); } catch {} }
+    else rows = this.db.prepare("SELECT DISTINCT kind FROM presence_keys").all();
+    const kinds = new Set(rows.map(r => String(r.kind)));
     if (kinds.has("capsule")) out.push("capsule");
     if (kinds.has("device")) out.push("device");
     if (kinds.has("passkey")) out.push("passkey");
@@ -602,6 +630,8 @@ export class Presence {
       this.challenges.set(id, { tool, hash, method, code, tries: 0, expires });
       return { challenge: id };
     }
+    // A passkey answers a challenge, and on a Mac with vyre-core only core's own challenge counts.
+    if (method === "passkey" && this.coreLink && !(peer && peer.kind === "device")) return this.coreLink.challenge(tool, input);
     if (method === "passkey") {
       // A browser paired over the relay (ADR 0032 part 2b) uses only the passkey enrolled for its
       // own device id; every other caller uses only the passkeys bound to no device.
@@ -656,6 +686,16 @@ export class Presence {
       this.emit("presence.proved", { tool, method, caller });
       return { ok: /** @type {true} */ (true), method, keyId };
     };
+
+    // On a Mac with vyre-core, a key-based proof is core's to check, against core's own keys;
+    // vyred's own presence_keys are never read for it.
+    const link = this.coreLink;
+    if (link && CORE_CHECKED.has(method)) {
+      let r;
+      try { r = await link.verify(tool, input, format(proof)); }
+      catch (e) { r = { ok: false, message: `vyre-core could not be asked: ${/** @type {Error} */ (e).message}` }; }
+      return r && r.ok ? proved(r.keyId ?? null) : refuse(r && r.message ? r.message : "vyre-core did not accept that proof");
+    }
 
     if (method === "touchid") {
       if (this.platform !== "darwin") return refuse("Touch ID is only on a Mac");
@@ -771,9 +811,7 @@ export class Presence {
         const owner = String((this.network() || {}).owner || "").toLowerCase();
         if (!owner || String(caller || "").toLowerCase() !== `tailnet:${owner}`) return refuse("on the box, a passkey is enrolled from the owner's own device, over the tailnet");
       }
-      const r = this.db.prepare("UPDATE presence_codes SET used = ? WHERE hash = ? AND used IS NULL AND expires > ?")
-        .run(this.now(), sha(normal(proof.code)).toString("hex"), this.now());
-      if (Number(r.changes) !== 1) return refuse("that code is wrong, used or expired");
+      if (!this.useCode(proof.code)) return refuse("that code is wrong, used or expired");
       return proved();
     }
 
@@ -800,14 +838,31 @@ export class Presence {
     return Number(this.db.prepare("DELETE FROM presence_sessions WHERE id = ?").run(String(id)).changes) > 0;
   }
 
-  /** A one-time code for presence.enroll: 8 characters, stored hashed, valid 10 minutes. */
-  mintCode() {
+  /**
+   * A one-time code for presence.enroll: 8 characters, stored hashed, valid 10 minutes. vyre-core's
+   * installer code is shorter lived and shorter to type (length 6, ttl 2 minutes).
+   * @param {{ ttl?: number, length?: number }} [o]
+   */
+  mintCode({ ttl = CODE_TTL, length = 8 } = {}) {
+    if (this.coreLink) throw coreOwned("one-time enrollment codes are made");
     const now = this.now();
-    const code = randomCode(8);
-    const expires = now + CODE_TTL;
+    if (!(length >= 6 && length <= 16) || !(ttl > 0 && ttl <= CODE_TTL)) throw new Error("a code is 6 to 16 characters and lasts at most 10 minutes");
+    const code = randomCode(length);
+    const expires = now + ttl;
     this.db.prepare("DELETE FROM presence_codes WHERE expires < ?").run(now - 24 * 3600_000);
     this.db.prepare("INSERT INTO presence_codes (hash, expires, used) VALUES (?,?,NULL)").run(sha(code).toString("hex"), expires);
     return { code, expires };
+  }
+
+  /**
+   * Spend a one-time code: true once for a right, unused, unexpired code, false otherwise.
+   * Synchronous, so a caller can spend it and enroll in one transaction (vyre-core does).
+   * @param {unknown} code
+   */
+  useCode(code) {
+    const r = this.db.prepare("UPDATE presence_codes SET used = ? WHERE hash = ? AND used IS NULL AND expires > ?")
+      .run(this.now(), sha(normal(code)).toString("hex"), this.now());
+    return Number(r.changes) === 1;
   }
 
   /** Enrolled keys, never their public keys: a list is for recognising and removing them. */
@@ -842,6 +897,7 @@ export class Presence {
    * @param {{ kind: string, name?: string, public_key: string, alg?: number, rp_id?: string, credential_id?: string }} k
    */
   enroll({ kind, name, public_key, alg, rp_id, credential_id, device = null, origin = null }) {
+    if (this.coreLink) throw coreOwned("presence keys are enrolled");
     if (kind !== "capsule" && kind !== "passkey" && kind !== "device") throw new Error("kind must be capsule, passkey or device");
     let key;
     try { key = spki(public_key); } catch { throw new Error("public_key must be a base64url SPKI DER public key"); }
@@ -877,6 +933,7 @@ export class Presence {
 
   /** Remove an enrolled key. Returns whether one was removed. */
   remove(id) {
+    if (this.coreLink) throw coreOwned("presence keys are removed");
     this.db.prepare("DELETE FROM presence_key_devices WHERE key = ?").run(String(id));
     return Number(this.db.prepare("DELETE FROM presence_keys WHERE id = ?").run(String(id)).changes) === 1;
   }

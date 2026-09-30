@@ -66,7 +66,7 @@ A module runs on the `box` (the always-on server), on `local` (the Mac), or on b
 | [`term`](#term) | `core/term` | `box`, `local` | 4 | 2 | none |
 | [`threads`](#threads) | `core/switchboard` | `box`, `local` | 42 | 28 | cli |
 | [`tips`](#tips) | `core/tips` | `box`, `local` | 7 | 1 | cli |
-| [`vault`](#vault) | `core/vault` | `box`, `local` | 109 | 42 | capsule, cli, deck |
+| [`vault`](#vault) | `core/vault` | `box`, `local` | 110 | 42 | capsule, cli, deck |
 | [`vitals`](#vitals) | `core/vitals` | `box`, `local` | 5 | 2 | capsule, cli, deck |
 | [`voice`](#voice) | `local/voice` | `local` | 4 | 0 | capsule |
 | [`waiting`](#waiting) | `core/waiting` | `box`, `local` | 2 | 1 | cli |
@@ -623,7 +623,7 @@ One short tip at a time about the part of Vyre you are using, the parts you have
 - Folder: `core/vault`, version 0.1.0
 - Runs on: `box`, `local`
 - Requires: none
-- Tools: [109](tools.md#vault), 1 of them only for other modules
+- Tools: [110](tools.md#vault), 1 of them only for other modules
 - Emits: [42 events](events.md#vault)
 - Shows on: capsule, cli, deck
 - Teaches tips: `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`
