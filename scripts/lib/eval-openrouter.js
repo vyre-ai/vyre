@@ -66,6 +66,8 @@ export class Budget {
     /** What the key had spent when this run started (from OpenRouter), and what this run has added since: the key's own cap. */
     this.keyBase = /** @type {number|null} */ (null);
     this.run = 0;
+    /** The call count at which the key's usage was last re-read. */
+    this.refreshedAt = 0;
     if (this.file && fs.existsSync(this.file)) {
       try { const j = JSON.parse(fs.readFileSync(this.file, "utf8")); this.total = Number(j.usd) || 0; this.calls = Number(j.calls) || 0; } catch { /* a bad file starts at zero, never higher than the truth is safe: fail closed below */ this.total = this.limit; }
     }
@@ -92,12 +94,19 @@ export class Budget {
 
 /**
  * A runner with claudeOnce's shape: ({ system, prompt, model, maxUsd }) -> { text, usd, tokens_in, tokens_out }.
- * @param {{ key: string, model?: string, budget: Budget, fetch?: typeof fetch, endpoint?: string }} o
+ * @param {{ key: string, model?: string, budget: Budget, fetch?: typeof fetch, endpoint?: string, refreshEvery?: number, keyEndpoint?: string }} o
+ *   refreshEvery: re-read the key's usage from OpenRouter every this many calls (default 20), so spend by anything else on the same key is seen.
  */
 export function openrouterOnce(o) {
   if (!o.key) throw new Error("OPENROUTER_EVAL_KEY is not set");
   const doFetch = o.fetch || fetch;
+  const every = o.refreshEvery ?? 20;
   return async ({ system, prompt, model }) => {
+    // A key base read once goes stale: something else can spend on the same key mid-run. Re-read it every N calls, and stop when it cannot be read.
+    if (o.budget.keyBase != null && every > 0 && o.budget.calls > 0 && o.budget.calls % every === 0 && o.budget.refreshedAt !== o.budget.calls) {
+      try { const u = await keyUsage({ key: o.key, fetch: doFetch, ...(o.keyEndpoint ? { endpoint: o.keyEndpoint } : {}) }); o.budget.setKeyBase(u.usage); o.budget.run = 0; o.budget.refreshedAt = o.budget.calls; }
+      catch { o.budget.stopped = true; throw new BudgetStop(o.budget.total, o.budget.limit); }
+    }
     o.budget.check();
     const res = await doFetch(o.endpoint || ENDPOINT, {
       method: "POST",
