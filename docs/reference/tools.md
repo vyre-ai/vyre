@@ -841,6 +841,7 @@ A module offers a sender of its own: `name` in its namespace (<module>, <module>
   - `tool` string, required
   - `content` object
   - `kinds` list of one of "send", "spend", "delete", "act"
+  - `recipients` "to"
 - Callers: other modules only (internal: `vyre call` answers no_such_tool)
 
 ### `gate.reject`
@@ -863,6 +864,7 @@ Ask for something to go out as the user: an email, a post, a payment, a deletion
   - `to` string or list of string, required
   - `via` string, required
   - `agent` string
+  - `asked` object: A person's own confirmation of exactly this send, from their surface: { surface, hash, at }. hash is inputHash({kind, via, to[], content}); valid 60 s; a mismatch always holds.
   - `project` string
   - `thread` string
   - `tool_use_id` string: The tool call this request comes from, when the caller knows it, so the user's surface can show it in the session.

@@ -139,3 +139,19 @@ test("gate: the assistant lists, and revokes only when the person's own words as
   const other = (await said({ said: "said-10", to: ["#deploys"], kind: "post", standing: true }, "module:assistant")).data.id;
   assert.ok((await reg("gate.said.revoke", { id: other, thread: "t-1" }, "module:assistant")).error);
 });
+
+test("gate: a person's own confirmation (asked {surface, hash, at}) clears a send for 60 s; a mismatch, a stale one and a model's always hold (D2)", async t => {
+  const { gmail, reg, agent } = await world(t);
+  const { inputHash } = await import("../presence/index.js");
+  const req = MAIL({ to: "dana@harlowlegal.com" });
+  const hash = inputHash({ kind: req.kind, via: req.via, to: [req.to], content: req.content });
+  const ask = (caller, asked, over = {}) => reg("gate.request", { ...req, ...over, asked }, caller);
+  assert.equal((await ask("capsule", { surface: "capsule", hash, at: Date.now() })).data.state, "sent");
+  assert.equal(gmail.got.length, 1);
+  assert.equal((await ask("capsule", { surface: "capsule", hash: "x" + hash, at: Date.now() })).data.state, "held", "a hash mismatch holds");
+  assert.equal((await ask("capsule", { surface: "capsule", hash, at: Date.now() - 61_000 })).data.state, "held", "stale");
+  assert.equal((await ask("deck", { surface: "capsule", hash, at: Date.now() })).data.state, "held", "the surface must be the caller");
+  assert.equal((await ask("capsule", { surface: "capsule", hash, at: Date.now() }, { content: { subject: "changed", body: "b" } })).data.state, "held", "edited after the person saw it");
+  assert.equal((await agent("juno", "t-1", "gate.request", { ...req, asked: { surface: "capsule", hash, at: Date.now() } })).data.state, "held", "a model cannot claim it");
+  assert.equal(gmail.got.length, 1);
+});

@@ -292,7 +292,7 @@ export function normalize(i, opts = {}) {
   }
   out.auth = normalizeAuth(i.auth, out);
   if (out.url && out.auth.item) {
-    const bound = BOUND_ITEMS.find(b => String(out.auth.item).startsWith(b.prefix));
+    const bound = BOUND_ITEMS.find(b => String(out.auth.item).toLowerCase().startsWith(b.prefix));
     if (bound && !bound.hosts.includes(new URL(out.url).hostname)) throw bad(`${String(out.auth.item).slice(0, 60)} is a ${bound.prefix.replace(/-$/, "")} credential: it goes only to ${bound.hosts.join(", ")}`);
   }
   for (const k of [...Object.keys(out.env), ...Object.keys(out.vars)]) if (/^VYRE_/.test(k)) throw bad(`${k.slice(0, 40)}: VYRE_ settings belong to Vyre, not a server`);

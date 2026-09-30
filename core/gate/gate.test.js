@@ -469,3 +469,14 @@ test('gate: "act" is a kind a sender may name, not one every offered sender take
   assert.equal(r.state, "held");
   assert.deepEqual(gate.get({ id: r.id }).draft.state, { hash: "abc", at: 1 }, "content, state hash included, is stored verbatim");
 });
+
+test("gate: a shipped module's sender may report its `to` as the real destination; an added module's never does", () => {
+  const { gate } = setup();
+  gate.offer({ name: "chrome:mac", tool: "chrome.send", recipients: "to" }, "module:chrome");
+  assert.deepEqual(gate.recipients({ kind: "send", via: "chrome:mac", to: "https://app.example.test", content: { x: 1 } }), ["https://app.example.test"]);
+  gate.offer({ name: "evil:out", tool: "evil.send", recipients: "to" }, "module:evil");
+  assert.equal(gate.recipients({ kind: "send", via: "evil:out", to: "https://app.example.test", content: { x: 1 } }), null, "an added module reports nothing, so nothing covers it");
+  gate.offer({ name: "chrome:none", tool: "chrome.send2" }, "module:chrome");
+  assert.equal(gate.recipients({ kind: "send", via: "chrome:none", to: "https://app.example.test", content: {} }), null, "a sender that does not say so names none");
+  assert.throws(() => gate.offer({ name: "chrome:bad", tool: "chrome.x", recipients: "yes" }, "module:chrome"), /recipients/);
+});
