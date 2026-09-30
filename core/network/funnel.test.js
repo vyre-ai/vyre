@@ -35,11 +35,13 @@ function fakeTailscale(o = {}) {
   return { w, cfg, calls, exec, changes: () => calls.filter(a => a[0] === "funnel" && a[1] !== "status") };
 }
 
-/** A fake module context: tools, events in and out, and a call log for artifacts.public.set. */
+/** A fake module context: tools, events in and out, and a call log for artifacts.public.base. */
 function fakeCtx(network = {}) {
   /** @type {Map<string, Function[]>} */ const on = new Map();
   /** @type {any[]} */ const emitted = [], told = [];
   const tools = new Map();
+  /** What artifacts.public.status answers: its own share server's port. */
+  const share = { available: true, on: true, port: 7311 };
   const ctx = {
     config: { network }, log: () => {},
     events: {
@@ -47,10 +49,10 @@ function fakeCtx(network = {}) {
       emit: (/** @type {string} */ type, /** @type {any} */ payload) => { emitted.push({ type, payload }); },
     },
     tool: (/** @type {string} */ name, /** @type {any} */ def) => tools.set(name, def),
-    call: async (/** @type {string} */ tool, /** @type {any} */ input) => { told.push({ tool, input }); return { ok: true }; },
+    call: async (/** @type {string} */ tool, /** @type {any} */ input) => { if (tool === "artifacts.public.status") return { ...share }; told.push({ tool, input }); return { ok: true }; },
   };
-  const hear = (/** @type {any} */ payload) => { for (const f of on.get("artifact-links.changed") || []) f({ type: "artifact-links.changed", payload }); };
-  return { ctx, emitted, told, tools, hear };
+  const hear = (/** @type {any} */ payload, source = "artifacts") => { for (const f of on.get("artifact-links.changed") || []) f({ type: "artifact-links.changed", source, payload }); };
+  return { ctx, emitted, told, tools, hear, share };
 }
 
 const HOOK = { Proxy: "http://127.0.0.1:7310/hooks/orders" };
@@ -78,17 +80,17 @@ test("funnel: on runs funnel for /s/ on 8443 only, off turns exactly that path o
   await f.stop();
 });
 
-test("funnel: the base URL is the node's DNS name on 8443, given to artifacts.public.set, and null when off", async () => {
+test("funnel: the base URL is the node's DNS name on 8443, given to artifacts.public.base, and null when off", async () => {
   const ts = fakeTailscale();
   const m = fakeCtx();
   const f = await startFunnel(m.ctx, { exec: ts.exec });
   m.hear({ on: true, port: 7311, path: "/s/" });
   await f.idle();
   assert.equal(f.state().base, `https://${HOST}:8443`, "no trailing dot");
-  assert.deepEqual(m.told, [{ tool: "artifacts.public.set", input: { base: `https://${HOST}:8443` } }]);
+  assert.deepEqual(m.told, [{ tool: "artifacts.public.base", input: { base: `https://${HOST}:8443` } }]);
   m.hear({ on: false, port: 7311, path: "/s/" });
   await f.idle();
-  assert.deepEqual(m.told[1], { tool: "artifacts.public.set", input: { base: null } });
+  assert.deepEqual(m.told[1], { tool: "artifacts.public.base", input: { base: null } });
   assert.equal(f.state().base, null);
   await f.stop();
 });
@@ -106,11 +108,34 @@ test("funnel: running it again changes nothing, and off when nothing is served r
   await f.idle();
   assert.equal(ts.changes().length, 1, "the second on found it already served");
   // A new port is a change, and replaces the target.
+  m.share.port = 7400;
   m.hear({ on: true, port: 7400, path: "/s/" });
   await f.idle();
   assert.equal(ts.changes().length, 2);
   assert.equal(ts.cfg.Web[HP].Handlers["/s/"].Proxy, "http://127.0.0.1:7400/s/");
   await f.stop();
+});
+
+test("funnel: another module's event changes nothing, and the port is artifacts', not the event's", async () => {
+  const ts = fakeTailscale();
+  const m = fakeCtx();
+  const f = await startFunnel(m.ctx, { exec: ts.exec });
+  m.hear({ on: true, port: 5432, path: "/s/" }, "sneaky");
+  await f.idle();
+  assert.deepEqual(ts.calls, [], "an event from another module is ignored");
+  m.hear({ on: true, port: 5432, path: "/s/" });
+  await f.idle();
+  assert.deepEqual(ts.changes(), [["funnel", "--bg", "--https=8443", "--set-path=/s/", "http://127.0.0.1:7311/s/"]], "the event names 5432; the share server's own port is used");
+  m.share.available = false;
+  m.hear({ on: true, port: 7311, path: "/s/" });
+  const g = fakeCtx(); g.share.available = false;
+  const ts2 = fakeTailscale();
+  const f2 = await startFunnel(g.ctx, { exec: ts2.exec });
+  g.hear({ on: true, path: "/s/" });
+  await f2.idle();
+  assert.equal(f2.state().state, "error");
+  assert.deepEqual(ts2.changes(), [], "no share server, nothing published");
+  await f.stop(); await f2.stop();
 });
 
 test("funnel: an event for another path is ignored", async () => {
@@ -134,8 +159,9 @@ test("funnel: consent needed shows the link as state and an event, and grants it
   const needs = f.state();
   assert.equal(needs.state, "needs-consent");
   assert.equal(needs.consentUrl, CONSENT);
+  assert.equal(consentUrl("Funnel is not enabled. To enable, visit https://evil.example/login"), null, "only a tailscale.com link is shown");
   assert.equal(needs.base, null);
-  assert.deepEqual(m.told.at(-1), { tool: "artifacts.public.set", input: { base: null } }, "no public base until it works");
+  assert.deepEqual(m.told.at(-1), { tool: "artifacts.public.base", input: { base: null } }, "no public base until it works");
   const ev = m.emitted.filter(e => e.type === "funnel.changed");
   assert.equal(ev.length, 1);
   assert.equal(ev[0].payload.state, "needs-consent");

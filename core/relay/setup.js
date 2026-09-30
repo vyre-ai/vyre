@@ -24,8 +24,8 @@ export const SETUP_TOOLS = Object.freeze(new Set([
   "relay.pair.ticket", "relay.setup.status",
   "names.check", "names.claim", "link.health", "system.info", "onboard.machine",
 ]));
-/** Whole families the channel may call: the Tailscale sign-in and status tools. */
-export const SETUP_TOOL_FAMILIES = Object.freeze([/^network\.tailscale\.[a-z][a-z0-9-]*(\.[a-z][a-z0-9-]*)*$/]);
+/** The Tailscale tools the channel may call, by exact name: a later tool (logout, an auth key) is not exposed by being added. */
+export const SETUP_TOOL_FAMILIES = Object.freeze([/^network\.tailscale\.(login|status|peers)$/]);
 /** The events the setup page may follow, one type per stream. */
 export const SETUP_EVENTS = Object.freeze(new Set(["network.tailscale.changed", "relay.paired", "name.claimed", "certificate.issued", "certificate.failed"]));
 
@@ -164,6 +164,27 @@ export function setupGate(o) {
       o.mintTicket().then(
         data => { s.ticket = "minted"; send(res, 200, { data }); },
         e => { s.ticket = "none"; send(res, 502, { error: { code: typeof e?.code === "string" ? e.code : "failed", message: String(e?.message || e).slice(0, 200) } }); });
+      return;
+    }
+    // N7: a reinstalled box has no owner yet, so the recovery code is its authority. The gate calls
+    // names.recover.code itself, as the module, once at a time and five times a session at most.
+    if (method === "POST" && tool === "names.recover") {
+      if (o.ownerExists()) return send(res, 403, { error: { code: "denied", message: "this box already has an owner" } });
+      if (!o.recoverCode) return send(res, 404, { error: { code: "not_found", message: `${method} ${url.pathname}` } });
+      if (s.recovering) return send(res, 429, { error: { code: "busy", message: "a recovery attempt is already running" } });
+      if ((s.recoverTries || 0) >= 5) return send(res, 429, { error: { code: "rate_limited", message: "too many recovery attempts in this setup" } });
+      let raw = "";
+      req.on("data", c => { if (raw.length < 4096) raw += c; });
+      req.on("end", () => {
+        let input;
+        try { input = JSON.parse(raw); } catch { return send(res, 400, { error: { code: "bad_input", message: "bad json" } }); }
+        if (!input || typeof input.name !== "string" || typeof input.code !== "string") return send(res, 400, { error: { code: "bad_input", message: "name and code are needed" } });
+        s.recovering = true; s.recoverTries = (s.recoverTries || 0) + 1;
+        Promise.resolve().then(() => o.recoverCode({ name: input.name, code: input.code })).then(
+          data => send(res, 200, { data }),
+          e => send(res, 400, { error: { code: typeof e?.code === "string" ? e.code : "failed", message: String(e?.message || e).slice(0, 200) } }),
+        ).finally(() => { s.recovering = false; });
+      });
       return;
     }
     return tools()(req, res, caller, peer);

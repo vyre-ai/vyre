@@ -83,6 +83,7 @@ test("setup session: the allowlist is exactly the plan's, and the extension poin
   for (const name of ["relay.pair.ticket", "relay.setup.status", "network.tailscale.login", "network.tailscale.status", "network.tailscale.peers", "names.check", "names.claim", "link.health", "system.info", "onboard.machine"]) {
     assert.equal(setupToolAllowed(name), true, name);
   }
+  for (const name of ["network.tailscale.logout", "network.tailscale.authkey", "network.tailscale"]) assert.equal(setupToolAllowed(name), false, name);
   for (const name of ["relay.setup.end", "relay.setup.begin", "relay.pair.start", "relay.pair.first", "relay.devices.list", "relay.devices.trust", "presence.enroll", "presence.person.start", "vault.reveal", "names.recover", "names.release", "network.tailscalex", "network.tailscale.", "network.other", "threads.send", "system.exec", ""]) {
     assert.equal(setupToolAllowed(name), false, name);
   }
@@ -162,6 +163,45 @@ test("setup gate: the ticket works once and only while no owner exists; events a
   assert.equal(over.body.error.code, "setup_over");
 });
 
+test("setup gate: names.recover runs from the setup channel with the code alone, one at a time, five at most, and never once an owner exists", async () => {
+  const { code } = await newCode();
+  const s = new SetupSession({ code });
+  let owner = false, hold = null; const got = [];
+  const gate = setupGate({ session: () => s, ownerExists: () => owner, mintTicket: async () => ({}), handlerFor: () => () => {},
+    recoverCode: async input => { got.push(input); if (hold) await hold; if (input.code === "bad") throw Object.assign(new Error("wrong code"), { code: "denied" }); return { name: input.name, pendingUntil: 1 }; } });
+  const post = async body => {
+    const rs = res(); const handlers = {};
+    const rq = { method: "POST", url: "/v1/tools/names.recover", headers: {}, resume() {}, on: (e, f) => { handlers[e] = f; } };
+    await gate(rq, rs, "device:x", {});
+    if (handlers.data) handlers.data(JSON.stringify(body)); if (handlers.end) handlers.end();
+    await new Promise(r => setTimeout(r, 20)); return rs;
+  };
+  let r = await post({ name: "alex", code: "good" });
+  assert.equal(r.status, 200);
+  assert.deepEqual(got[0], { name: "alex", code: "good" });
+  r = await post({ name: "alex" });
+  assert.equal(r.status, 400);
+  r = await post({ name: "alex", code: "bad" });
+  assert.equal(r.status, 400);
+  assert.equal(r.body.error.code, "denied");
+  // concurrent: the second is refused while the first runs
+  let release; hold = new Promise(res2 => { release = res2; });
+  const first = post({ name: "alex", code: "slow" });
+  await new Promise(x => setTimeout(x, 5));
+  r = await post({ name: "alex", code: "slow2" });
+  assert.equal(r.status, 429);
+  release(); await first; await new Promise(x => setTimeout(x, 20)); hold = null;
+  r = await post({ name: "alex", code: "again" });
+  assert.equal(r.status, 200);
+  r = await post({ name: "alex", code: "fifth" });
+  assert.equal(r.status, 200);
+  r = await post({ name: "alex", code: "sixth" });
+  assert.equal(r.status, 429, "five attempts a session");
+  owner = true;
+  r = await post({ name: "alex", code: "good" });
+  assert.equal(r.status, 403);
+});
+
 // ---- end to end ----
 
 const lenient = {
@@ -196,7 +236,7 @@ async function world(t) {
 /** The setup page: makes its key and code, and (with the box's relay) can begin a session, connect, and call the channel. */
 async function page(world) {
   const { key, secret, code } = await newCode();
-  const begin = async () => (await world.d.registry.call("relay.setup.begin", { code }, "module:test")).data;
+  const begin = async () => (await world.d.registry.call("relay.setup.begin", { code }, "module:onboard")).data;
   const offer = async () => resolveSetup(secret, { relay: world.base, crypto: nodeCrypto() });
   /** @param {{ keys?: any, hello?: any, pair?: boolean, offer?: any, key?: any }} [o] */
   const connect = async (o = {}) => {
@@ -358,7 +398,7 @@ test("setup: relay.setup.end drops the device, its presence key and its channel,
   assert.equal((await a.call("relay.setup.status")).status, 200);
   // Internal only: the CLI and a person cannot end it, a module (the claim) can.
   assert.equal((await w.d.registry.call("relay.setup.end", {}, "cli")).error?.code, "no_such_tool");
-  const r = await w.d.registry.call("relay.setup.end", { reason: "claimed" }, "module:test");
+  const r = await w.d.registry.call("relay.setup.end", { reason: "claimed" }, "module:onboard");
   assert.deepEqual(r.data, { ended: true });
   await settle(100);
   assert.equal(a.channel.closed, true, "the channel is closed");
@@ -367,7 +407,7 @@ test("setup: relay.setup.end drops the device, its presence key and its channel,
   assert.equal((await w.d.registry.call("relay.setup.status", {}, "cli")).data.state, "none");
   assert.deepEqual(ended.map(e => e.why), ["claimed"]);
   await assert.rejects(p.connect({ keys: a.keys, pair: false }), /closed/, "the same key and the same page cannot come back");
-  assert.deepEqual((await w.d.registry.call("relay.setup.end", {}, "module:test")).data, { ended: false });
+  assert.deepEqual((await w.d.registry.call("relay.setup.end", {}, "module:onboard")).data, { ended: false });
 });
 
 test("setup: a new install code discards the device of an earlier unclaimed session", async t => {
@@ -399,7 +439,7 @@ test("setup: an owner on the box shuts the setup door, and a code does nothing o
   assert.equal(status.ownerExists, true);
   await assert.rejects(p.connect({ keys: keyPair(), pair: false }), /closed/, "no new setup device once there is a person");
   const q = await page(w);
-  const r = await w.d.registry.call("relay.setup.begin", { code: q.code }, "module:test");
+  const r = await w.d.registry.call("relay.setup.begin", { code: q.code }, "module:onboard");
   assert.equal(r.error?.code, "denied");
 });
 
@@ -460,4 +500,8 @@ test("route key: only a name-directory message for this box's own route is signe
   }
   const person = await w.d.registry.call("relay.route.id", {}, "cli");
   assert.ok(person.error, "modules only");
+  for (const tool of ["relay.route.id", "relay.route.sign", "relay.setup.begin", "relay.setup.end"]) {
+    const r = await w.d.registry.call(tool, { message: good.toString("base64url"), code: "x", reason: "x" }, "module:sneaky");
+    assert.ok(r.error, `${tool} is refused to a module that is not on its list`);
+  }
 });

@@ -409,7 +409,8 @@ export default {
         words: s.words(k().box.pub).join(" ") };
     };
     const setupHandler = setupGate({ session: () => setup, ownerExists: personExists, handlerFor: policy => ctx.handler(policy),
-      mintTicket: async () => { const refusal = macCoreRefusal(platform); if (refusal) throw refusal; return mintTicket(); } });
+      mintTicket: async () => { const refusal = macCoreRefusal(platform); if (refusal) throw refusal; return mintTicket(); },
+      recoverCode: async input => { const r = /** @type {any} */ (await ctx.call("names.recover.code", input)); return r && r.data !== undefined ? r.data : r; } });
 
     let handle = null, webHandle = null, upgrade = null;
     function onchannel(channel, { reply }) {
@@ -839,18 +840,23 @@ export default {
     // The setup session's tools (tailnet plan 3.6b). begin and end are modules-only: the install's
     // own boot (VYRE_CODE, below) and the claim (launch) call them, never a person, a model or a
     // channel. status is the one a setup channel may call, and the install script reads it too.
+    // Internal is "a module", not "this module": name the modules that may call each one.
+    const only = (/** @type {any} */ meta, /** @type {string[]} */ names, /** @type {string} */ what) => {
+      if (!names.some(n => String((meta && meta.caller) || "") === `module:${n}`)) throw fail("denied", `${what} is not available to this caller`);
+    };
+
     ctx.tool("relay.setup.begin", {
       internal: true,
       description: "Start a setup session from the code on the install line: register the sealed offer at the relay, discard any earlier unclaimed setup session and its device, and start the hour. Modules only.",
       input: obj({ code: str }, ["code"]),
-      run: async input => beginSetup(String(input.code || "")),
+      run: async (input, meta) => { only(meta, ["onboard", "launch"], "starting a setup session"); return beginSetup(String(input.code || "")); },
     });
 
     ctx.tool("relay.setup.end", {
       internal: true,
       description: "End the setup session: drop the setup device, its presence key and its channel. Called at the claim, and by the session itself when its hour runs out with no claim. Modules only, never callable through the setup channel.",
       input: obj({ reason: str }),
-      run: async input => ({ ended: endSetup(String(input.reason || "claimed").slice(0, 40)) }),
+      run: async (input, meta) => { only(meta, ["onboard", "launch", "names"], "ending the setup session"); return { ended: endSetup(String(input.reason || "claimed").slice(0, 40)) }; },
     });
 
     ctx.tool("relay.setup.status", {
@@ -867,14 +873,15 @@ export default {
       internal: true,
       description: "This box's route id and route public key (base64url), for signing into the name directory. Modules only.",
       input: obj(),
-      run: async () => ({ route: route(), pub: Buffer.from(k().route.pub).toString("base64url") }),
+      run: async (_, meta) => { only(meta, ["names"], "the route id"); return { route: route(), pub: Buffer.from(k().route.pub).toString("base64url") }; },
     });
 
     ctx.tool("relay.route.sign", {
       internal: true,
       description: "Sign a name-directory request with the route key. Only a message that begins vyre-names-v1, a newline and this box's own route is signed. Modules only.",
       input: obj({ message: str }, ["message"]),
-      run: async input => {
+      run: async (input, meta) => {
+        only(meta, ["names"], "signing with the route key");
         const msg = Buffer.from(String(input.message || ""), "base64url");
         if (!msg.subarray(0, `vyre-names-v1\n${route()}\n`.length).equals(Buffer.from(`vyre-names-v1\n${route()}\n`))) throw fail("bad_input", "only a name-directory message for this box's own route is signed");
         const priv = crypto.createPrivateKey({ key: Buffer.concat([Buffer.from("302e020100300506032b657004220420", "hex"), Buffer.from(k().route.priv)]), format: "der", type: "pkcs8" });

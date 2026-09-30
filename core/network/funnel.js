@@ -62,8 +62,11 @@ export function parseShare(cfg) {
 export function consentUrl(text) {
   const t = String(text || "");
   if (!/not enabled|to enable|enable (it|funnel|https)/i.test(t)) return null;
-  const m = /https:\/\/[^\s"'<>]+/.exec(t);
-  return m ? m[0] : null;
+  // Only a Tailscale address is ever shown as a click target.
+  for (const m of t.matchAll(/https:\/\/[^\s"'<>]+/g)) {
+    try { const h = new URL(m[0]).hostname; if (h === "tailscale.com" || h.endsWith(".tailscale.com")) return m[0]; } catch {}
+  }
+  return null;
 }
 
 /** @param {number} port */
@@ -127,7 +130,7 @@ export async function startFunnel(ctx, { exec = tsRun, now = Date.now, guard = (
 
   /** Tell artifacts the public base, best effort: its links are never blocked on this. */
   async function tell(/** @type {string|null} */ base) {
-    try { await ctx.call("artifacts.public.set", { base }); }
+    try { await ctx.call("artifacts.public.base", { base }); }
     catch (e) { ctx.log(`funnel: artifacts.public.set failed (${String(/** @type {Error} */ (e).message).slice(0, 120)})`); }
   }
 
@@ -135,7 +138,16 @@ export async function startFunnel(ctx, { exec = tsRun, now = Date.now, guard = (
   async function apply() {
     const want = saved();
     lastTry = now();
-    const port = want.port;
+    // The port is artifacts' own answer (its pid-checked share server), never the event's.
+    let port = want.port;
+    if (want.on) {
+      let st = null;
+      try { st = /** @type {any} */ (await ctx.call("artifacts.public.status", {})); } catch {}
+      const p = st && st.available === true && Number.isInteger(st.port) && st.port > 0 && st.port < 65536 ? /** @type {number} */ (st.port) : null;
+      if (!p) { set({ state: "error", wanted: true, port: null, base: null, consentUrl: null, why: "the share server is not running on this box" }); return; }
+      port = p;
+      if (p !== want.port) persist({ on: true, port: p });
+    }
     const me = await self();
     if (!("dns" in me)) {
       // Turning off with Tailscale gone leaves nothing of ours to turn off.
@@ -183,13 +195,13 @@ export async function startFunnel(ctx, { exec = tsRun, now = Date.now, guard = (
   };
 
   const off = ctx.events.on("artifact-links.changed", (/** @type {any} */ ev) => {
-    const p = ev && ev.payload;
+    // Only the artifacts module may turn this on: any module could otherwise emit the event.
+    if (!ev || ev.source !== "artifacts") return;
+    const p = ev.payload;
     if (!p || typeof p.on !== "boolean") return;
     // Only the share path is ours; anything else this event might name is ignored.
     if (p.path !== undefined && p.path !== SHARE_PATH) return;
-    const port = Number.isInteger(p.port) && p.port > 0 && p.port < 65536 ? p.port : saved().port;
-    const w = { on: p.on, port };
-    persist(w);
+    persist({ on: p.on, port: saved().port });
     queue();
   });
 
