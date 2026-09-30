@@ -156,6 +156,8 @@ export function start(chrome, opts = {}) {
       let e = e0;
       const a = msg.args && typeof msg.args === "object" ? { ...msg.args, ...(typeof msg.args.tab === "number" && msg.args.tabId === undefined ? { tabId: msg.args.tab } : {}) } : {};
       const lf = await loginFailure(msg.op, a, /** @type {any} */ (e0), ctx).catch(() => null);
+      // A step that could not find a control this device knows is a miss for that stored fact (lib/sitecache.js).
+      if (a.tabId !== undefined && /^page\.(act|fill)$/.test(msg.op) && /** @type {any} */ (e0)?.code === "not_found") void ctx.tabs.get(a.tabId).then((/** @type {any} */ t) => sites.miss({ op: msg.op, args: a, error: e0, tabUrl: String(t && (t.pendingUrl || t.url) || "") })).catch(() => {});
       if (lf) e = Object.assign(new Error(lf.message), { code: "login_required", detail: lf.detail });
       const code = /** @type {any} */ (e)?.code;
       const known = typeof code === "string" && code in proto.CODES;

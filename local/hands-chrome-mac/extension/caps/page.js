@@ -356,6 +356,28 @@ const locate = (/** @type {string} */ path, focus = false) => script("locate", {
   return { found: true, x, y, hit, checked: el.checked === true || el.getAttribute("aria-checked") === "true" };
 `);
 
+/**
+ * The evidence the site store needs before it will keep a control's label (lib/sk): the ROLE of the nearest container ("none" when it has none) and how many
+ * controls of the same kind share it. Structure only, no text. Computed only when learning is on.
+ */
+const evidence = (/** @type {string} */ path) => script("evidence", { path }, `
+  ${PRELUDE}
+  const el = find(ARGS.path);
+  if (!el) return null;
+  const IMPLICIT = { TR: "row", TD: "cell", TH: "cell", LI: "listitem", FORM: "form", DIALOG: "dialog", TABLE: "table", UL: "list", OL: "list", NAV: "navigation", MENU: "menu", ASIDE: "complementary", HEADER: "banner", FOOTER: "contentinfo", FIELDSET: "group" };
+  const ROLES = new Set(["row", "cell", "gridcell", "listitem", "treeitem", "list", "listbox", "table", "grid", "tree", "rowgroup", "feed", "log", "form", "dialog", "alertdialog", "menu", "menubar", "radiogroup", "tablist", "toolbar", "navigation", "group", "region", "banner", "complementary", "contentinfo", "main", "tabpanel"]);
+  let cont = null, role = "none";
+  for (let a = el.parentElement; a; a = a.parentElement) {
+    const r = String(a.getAttribute("role") || "").toLowerCase();
+    if (r && ROLES.has(r)) { cont = a; role = r; break; }
+    if (!r && IMPLICIT[a.tagName]) { cont = a; role = IMPLICIT[a.tagName]; break; }
+  }
+  const tag = el.tagName, rl = el.getAttribute("role") || "";
+  let sib = 1;
+  if (cont) { sib = 0; for (const x of cont.querySelectorAll(tag.toLowerCase())) { if ((x.getAttribute("role") || "") === rl && x.getClientRects().length) sib++; } sib = Math.max(1, sib); }
+  return { container: role, siblings: sib };
+`);
+
 /** Set fields, all in one evaluate. kind is auto (decide from the element), type, select or check. */
 const apply = (/** @type {{path: string, kind: string, value: any}[]} */ items) => script("apply", { items }, `
   ${PRELUDE}
@@ -928,6 +950,11 @@ async function doAct(ctx, tabId, snap, ctl, kind, value, release, asked = false)
     if (signatureOf(snap, h.target) !== String(want)) throw err("changed", "the page changed since it was held, so nothing was done; look again and ask again");
   }
   /** @type {any} */ let point = null;
+  // The evidence a label needs, read before the click changes the page; only when learning is on (nothing is computed otherwise).
+  /** @type {any} */ let ev = null;
+  if (ctx.sites && typeof ctx.sites.enabled === "function" && ctx.sites.enabled() && ctl.path) {
+    try { const list = await framesOf(ctx, tabId); ev = await inFrame_(ctx, tabId, refindFrame(list, ctl, snap), evidence(ctl.path)); } catch { ev = null; }
+  }
   if (kind === "click") point = await mouseClick(ctx, tabId, ctl, snap);
   else if (kind === "press") await pressKey(ctx, tabId, ctl, String(value), snap);
   else if (kind === "check") {
@@ -939,7 +966,7 @@ async function doAct(ctx, tabId, snap, ctl, kind, value, release, asked = false)
     const r = await applyIn(ctx, tabId, snap, [{ ctl, kind, value }]);
     if (!r || !r[0] || !r[0].ok) return { ok: false, why: (r && r[0] && r[0].why) || "could not set the value", control: brief(ctl) };
   }
-  return { ok: true, did: kind, control: brief(ctl), ...(point && typeof point.x === "number" ? { point: { x: Math.round(point.x), y: Math.round(point.y), frame: point.frame ?? ctl.frame ?? 0, ownSession: !!point.session }, ...(point.ms ? { ms: point.ms } : {}) } : {}) };
+  return { ok: true, did: kind, control: brief(ctl), ...(ev && typeof ev === "object" && typeof ev.container === "string" ? { evidence: { container: ev.container, siblings: Number(ev.siblings) || 1 } } : {}), ...(point && typeof point.x === "number" ? { point: { x: Math.round(point.x), y: Math.round(point.y), frame: point.frame ?? ctl.frame ?? 0, ownSession: !!point.session }, ...(point.ms ? { ms: point.ms } : {}) } : {}) };
 }
 
 
