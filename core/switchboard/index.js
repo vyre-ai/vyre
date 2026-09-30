@@ -2208,18 +2208,25 @@ export const fromLink = caller => /^link:/.test(String(caller || ""));
 /**
  * The provider's daily cap (core/spend): an agent, a module or an automation does not start or feed a
  * thread on a provider that is at its cap; the answer is the cap line, which says how to raise it. The
- * person's own surfaces are never held, so nothing ever prompts. No spend module, or no answer from it,
- * means no cap.
- * @param {{ call: (tool: string, input: any) => Promise<any> }} ctx @param {unknown} caller @param {unknown} [provider]
+ * person's own surfaces are never held, nor is their own Claude session (an mcp or harness caller that
+ * carries no agent claim), so nothing ever prompts. No spend module, or no answer from it, means no cap,
+ * and says so once a day in the log so a broken ledger is visible.
+ * @param {{ call: (tool: string, input: any) => Promise<any>, log?: (m: string) => void }} ctx @param {unknown} caller @param {unknown} [provider]
  */
 export async function spendCheck(ctx, caller, provider) {
   const c = String(caller || "");
-  if (!(/^(module|mcp|harness|hook)/.test(c) || /(^|[\s:])agent:/.test(c))) return;
-  let r = null;
-  try { r = await ctx.call("spend.check", { provider: String(provider || "claude") }); } catch { return; }
+  if (!(/^(module|hook)/.test(c) || /(^|[\s:])agent:/.test(c))) return;
+  let r = null, why = "";
+  try { r = await ctx.call("spend.check", { provider: String(provider || "claude") }); } catch (e) { why = /** @type {Error} */ (e).message; }
   const d = r && (r.data || r);
+  if (r && r.error) why = String(r.error.message || r.error.code || "an error");
   if (d && d.capped === true) throw Object.assign(new Error(String(d.line || "the daily spend cap for this provider is reached")), { code: "spend_capped" });
+  if (why || !d || typeof d.capped !== "boolean") {
+    const day = new Date().toISOString().slice(0, 10);
+    if (spendDown.day !== day) { spendDown.day = day; try { ctx.log?.(`spend: the ledger did not answer (${why || "no answer"}); agents and automation are not held at a cap until it does`); } catch { /* a log never fails a send */ } }
+  }
 }
+const spendDown = { day: "" };
 
 export const queuesFor = caller => {
   const c = String(caller || "");

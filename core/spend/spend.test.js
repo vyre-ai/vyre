@@ -22,7 +22,7 @@ async function world(t, caps = { claude: 5 }) {
     name: "spend", config: {}, store: { db, migrate: m => migrate(db, "spend", m) }, now: () => clock.now,
     events: { on: (type, fn) => { handlers.push([type, fn]); return () => {}; }, emit: (type, payload) => emitted.push({ type, payload }) },
     call: async (tool, input) => {
-      if (tool === "settings.get") return { value: settings[String(input.key).split(".")[1]] };
+      if (tool === "settings.get") return { data: { value: settings[String(input.key).split(".")[1]] } };
       if (tool === "settings.write") { const p = String(input.key).split(".")[1]; if (input.value === undefined) delete settings[p]; else settings[p] = input.value; return {}; }
       if (tool === "threads.halt") { halted.push(input); return {}; }
       throw new Error(`no ${tool}`);
@@ -121,13 +121,20 @@ test("spend: an agent, module or automation is held at a provider's cap before a
   const { spendCheck } = await import("../switchboard/index.js");
   const capped = { call: async () => ({ data: { capped: true, line: "Claude spend today reached $5.00 of the $5.00 daily cap, so this is paused. Raise it: vyre spend raise claude <dollars>" } }) };
   const open_ = { call: async () => ({ data: { capped: false } }) };
-  for (const who of ["mcp", "mcp:agent:juno", "module:agents", "module:planner", "harness:agent:kit", "hook"]) {
+  for (const who of ["mcp:agent:juno", "module:agents", "module:planner", "harness:agent:kit", "hook", "tailnet:agent:kit"]) {
     await assert.rejects(() => spendCheck(capped, who, "claude"), e => e.code === "spend_capped" && /Raise it/.test(e.message), who);
     await spendCheck(open_, who, "claude");
   }
-  for (const who of ["cli", "deck", "capsule", "local", "tailnet:phone"]) await spendCheck(capped, who, "claude");
-  await spendCheck({ call: async () => { throw new Error("no spend module"); } }, "module:agents", "claude");
-  await spendCheck({ call: async () => ({ error: { code: "no_such_tool" } }) }, "module:agents", "claude");
+  // The person's own surfaces, and their own Claude session (an mcp or harness caller with no agent claim), are never held.
+  for (const who of ["cli", "deck", "capsule", "local", "tailnet:phone", "mcp", "mcp:thread:t_42", "harness"]) await spendCheck(capped, who, "claude");
+  // A ledger that is down lets work through, and says so once a day in the log.
+  const logged = [];
+  const down = { call: async () => { throw new Error("no spend module"); }, log: m => logged.push(m) };
+  await spendCheck(down, "module:agents", "claude");
+  await spendCheck(down, "module:agents", "claude");
+  await spendCheck({ call: async () => ({ error: { code: "no_such_tool", message: "no tool spend.check" } }), log: m => logged.push(m) }, "hook", "claude");
+  assert.equal(logged.length, 1, "once a day");
+  assert.match(logged[0], /spend: the ledger did not answer \(no spend module\)/);
 });
 
 test("spend: a cap across every provider pauses work on any of them, openrouter included, and shows first", async t => {
@@ -162,4 +169,9 @@ test("spend: the all-providers cap is the first setting in Settings, Spend", asy
   const m = JSON.parse(fs.readFileSync(new URL("./module.json", import.meta.url), "utf8"));
   assert.equal(m.settings[0].key, "spend.all.daily_usd");
   assert.ok(m.settings.every(x => x.group === "spend"));
+  // The Deck has its own Spend screen (today against each cap, Change cap): the keys stay settings, but are not drawn in the generic groups.
+  assert.ok(m.settings.every(x => x.hidden === true));
+  const { describe } = await import("../settings/index.js");
+  assert.equal(describe({ ...m.settings[0], module: "spend", levels: ["account"] }).hidden, true);
+  assert.equal(describe({ key: "x.y", module: "x", label: "y", type: "bool", levels: ["account"], apply: "live" }).hidden, undefined);
 });

@@ -69,7 +69,8 @@ export default {
     const capOf = async p => {
       try {
         const r = await ctx.call("settings.get", { key: keyOf(p) });
-        const v = r && (r.value !== undefined ? r.value : r.effective);
+        const d = r && r.data !== undefined ? r.data : r;
+        const v = d && d.value;
         if (typeof v === "number" && v > 0) return v;
         if (v === 0) return null;
       } catch { /* no settings hub: config below */ }
@@ -197,7 +198,8 @@ export default {
         else throw bad("say to, by or off");
         if (next != null && !(next > 0)) throw bad("a cap is more than zero; off: true removes it");
         // Kept by the hub as this module's own setting (settings.write, modules only); no value clears it.
-        await ctx.call("settings.write", next == null ? { key: keyOf(p) } : { key: keyOf(p), value: Math.round(next * 100) / 100 });
+        const w = await ctx.call("settings.write", next == null ? { key: keyOf(p) } : { key: keyOf(p), value: Math.round(next * 100) / 100 });
+        if (w && w.error) throw Object.assign(new Error(`could not set the cap: ${w.error.message || w.error.code}`), { code: w.error.code || "failed" });
         // A cap that is now above what is spent may say again if it is reached again today.
         if (next == null || spentToday(p) < next) q.forget.run(dayUtc(now()), p);
         ctx.events.emit("spend.raised", { provider: p, cap: next, was });

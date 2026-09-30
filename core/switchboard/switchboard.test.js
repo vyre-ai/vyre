@@ -1431,3 +1431,24 @@ test("describe: a Bash ask's summary is redacted, as it is shown on every device
   assert.match(d.summary, /^curl -H "Authorization: Bearer \[/);
   assert.equal(describe("Bash", { command: "npm   test" }).summary, "npm test");
 });
+
+test("spend cap, through the real daemon: at the cap an agent is held (agents.ask says how to raise the cap) and the person's own threads.send and unnamed mcp session go through", async t => {
+  const { tool, work } = await boot(t);
+  assert.equal((await tool("spend.raise", { provider: "all", to: 0.25 })).data.cap, 0.25);
+  const started = await tool("threads.start", { cwd: work, prompt: "spend 0.5" });
+  assert.ok(started.data, JSON.stringify(started.error));
+  const id = started.data.id || started.data.thread;
+  // The turn cost more than the cap: the ledger has seen it.
+  const at = await until(async () => { const c = (await tool("spend.check", {})).data; return c && c.capped ? c : null; }, "the ledger reaching the cap");
+  assert.equal(at.scope, "all");
+  assert.match(at.line, /vyre spend raise all/);
+  await tool("agents.create", { name: "scout", projects: [] });
+  // Asking an agent is the agent spending (the first-party agents module feeds its thread): held, and the answer says how to raise the cap.
+  const viaAgents = await tool("agents.ask", { agent: "scout", text: "hello" });
+  assert.match(viaAgents.error.message, /Raise it: vyre spend raise all/, JSON.stringify(viaAgents));
+  // The person's own surfaces and their own Claude session are never held.
+  for (const who of ["cli", "deck", "mcp"]) {
+    const r = await tool("threads.send", { thread: id, text: `from ${who}` }, who);
+    assert.notEqual(r.error && r.error.code, "spend_capped", `${who}: ${JSON.stringify(r.error)}`);
+  }
+});
