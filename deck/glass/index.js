@@ -125,7 +125,7 @@ function noBox(name, box, phone, offline) {
       h("div", { class: "lbl" }, "Glass"),
       h("h1", { class: "h3", id: "gl-nobox-h" }, offline ? "The box is not answering." : box ? "No box is paired yet." : `${name}'s computer runs on your box.`),
       offline
-        ? h("p", { class: "muted" }, "Glass opens once vyred answers again. Check the box with ", h("code", { class: "code" }, "vyre status"), ".")
+        ? h("p", { class: "muted" }, "Glass opens once the box answers again. Check it with ", h("code", { class: "code" }, "vyre status"), ".")
         : h("p", { class: "muted" }, box ? "Pair a server and its files show here." : `No box is paired with this machine, so there is no screen to watch.`,
           " Pair one from a terminal:"),
       offline ? null : h("pre", { class: "gl-nobox-cmd code" }, "vyre box add you@your-server"),

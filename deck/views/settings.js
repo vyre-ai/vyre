@@ -230,7 +230,7 @@ async function drawYou(el) {
 async function drawAssistant(el, ctx) {
   const r = await attempt("agents.list");
   if (!ctx.alive()) return;
-  if (r.error) { put(el, empty("The assistant is kept by the switchboard.", r.error)); return; }
+  if (r.error) { put(el, empty("The assistant could not be read from the box.", r.error)); return; }
   const a = (Array.isArray(r.data) ? r.data : r.data?.agents || []).find(x => x.kind === "assistant");
   if (!a) { put(el, h("div", { class: "empty" }, "There is no assistant yet. The setup makes one."), foot(toOnboard("you"))); return; }
   const show = () => put(el, h("div", { class: "rows" },
@@ -1191,12 +1191,12 @@ const STATE = { running: "running", failed: "failed", invalid: "failed", off: "d
 
 async function drawModules(el) {
   const list = await modules();
-  if (!list.length) { put(el, h("div", { class: "empty" }, "vyred did not list its modules.", h("span", { class: "code" }, "It may not be running. Start it with vyre up."))); return; }
+  if (!list.length) { put(el, h("div", { class: "empty" }, "The box did not list its modules.", h("span", { class: "code" }, "It may not be running. Start it with vyre up."))); return; }
   const order = { failed: 0, starting: 1, running: 2, disabled: 3 };
   const rows = [...list].sort((a, b) => (order[STATE[a.state] || "disabled"] - order[STATE[b.state] || "disabled"]) || a.name.localeCompare(b.name));
   const bad = rows.filter(m => STATE[m.state] === "failed").length;
   put(el,
-    note(`${plural(rows.filter(m => m.state === "running").length, "module")} running${bad ? `, ${bad} failed` : ""}. A module that fails is turned off and reported here; it never stops vyred.`),
+    note(`${plural(rows.filter(m => m.state === "running").length, "module")} running${bad ? `, ${bad} failed` : ""}. A module that fails is turned off and reported here; it never stops the box.`),
     h("table", { class: "set-table" },
       h("thead", null, h("tr", null, h("th", { class: "lbl", scope: "col" }, "Module"), h("th", { class: "lbl", scope: "col" }, "Version"), h("th", { class: "lbl", scope: "col" }, "State"))),
       h("tbody", null, rows.map(m => {
@@ -1237,7 +1237,7 @@ function drawAppearance(el) {
 
 async function drawMachine(el) {
   const r = await attempt("system.info");
-  if (r.error) { put(el, empty("vyred did not say what it runs on.", r.error)); return; }
+  if (r.error) { put(el, empty("The box did not say what it runs on.", r.error)); return; }
   const s = r.data || {};
   put(el, h("div", { class: "rows" },
     row("Host", mono(s.host || "")),

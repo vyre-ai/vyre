@@ -4,6 +4,10 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### deck: no internal words on any surface (PLAN.md minimum 11)
+
+- `test/no-internal-words.test.js` scans every string literal in the Deck's code for "vyred", "switchboard", "no such tool" and "as Claude Code does"; a literal that must carry one (a module id compared in code, never drawn) ends its line with `// internal-word: <why>`. About 45 strings were said in plain words: "The box did not answer", "Sessions are not available on this box", "could not be read from the box", "This box cannot copy yet", and the vault and passkey messages. The Capsule's Swift sources and the Expo app had none. `site/start/index.html` and `site/llms.txt` still say vyred (the site pages are launch's copy).
+
 - eval (reviewer-2 notes): the recording re-reads the key's usage from OpenRouter every 20 calls (spend by anything else on the key is seen, and a read that fails stops the run), and scripts/provider-proof.mjs applies the same start guard (refuses at $14 or more, or when the usage cannot be read) and prints the usage before and after.
 - eval: the recording harness guards the key's own spend. Before any call it reads the key's usage from OpenRouter (GET /api/v1/key) and refuses to start at $14 or more, or when it cannot read it (exit 3, nothing sent to the model); during a run it stops cleanly before a call that could pass $15 of the key's total (so spend that never reached the committed ledger counts), writing the partial results; it prints the key's usage before and after, never the key.
 - memory.site.list's `forgotten` entries also carry `until` (the same epoch ms as expires_at), and a row entry's `name` is the site's name when it has one.

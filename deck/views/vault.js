@@ -73,8 +73,8 @@ export default async function vault(ctx) {
     const s = sheet({ label: "Confirm it's you", title: summaryFor(ask.tool, ask.input, st.host), onClose: () => { if (!answered) { answered = true; resolve(false); } },
       body: [
         h("p", { class: "vt-sheet-p" }, can
-          ? "vyred asks for proof that a person is here. Your device will ask for Touch ID or its PIN. Nothing happens until you confirm."
-          : "vyred asks for proof that a person is here, and this browser cannot use a passkey on this address. Open the Deck on localhost or over https, or confirm from a terminal or Lumen."),
+          ? "Vyre asks for proof that a person is here. Your device will ask for Touch ID or its PIN. Nothing happens until you confirm."
+          : "Vyre asks for proof that a person is here, and this browser cannot use a passkey on this address. Open the Deck on localhost or over https, or confirm from a terminal or Lumen."),
         h("div", { class: "vt-sheet-meta" }, h("span", { class: "lbl" }, "Tool"), h("span", { class: "code" }, ask.tool)),
         h("div", { class: "vt-form-acts" },
           can ? h("button", { type: "button", class: "btn btn-primary", onclick: () => finish(true) }, icon("shield", 14), "Use passkey") : null,
@@ -300,7 +300,7 @@ export default async function vault(ctx) {
 
   async function copy(it, field, label = field) {
     if (!it) return;
-    if (!vc.has("vault.copy")) { toast({ text: "Copy needs vault.copy, which this vyred does not have yet." }); return; }
+    if (!vc.has("vault.copy")) { toast({ text: "This box cannot copy yet." }); return; }
     const r = await vc.call("vault.copy", { name: it.name, field });
     if (!ctx.alive()) return;
     if (r.error) { toast({ text: r.error.code === "presence_refused" || r.error.code === "cancelled" ? "Not copied." : errText({ ...r.error, tool: "vault.copy" }) }); return; }
