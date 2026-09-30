@@ -6,7 +6,7 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 #### deck: the Capsule is Lumen
 
-- Every user-facing mention of the Capsule in the Deck now says Lumen (settings, devices, pairing, onboarding, the surfaces list, asks answered from it, the sign-in line). Code identifiers (`capsule`, `capsule.js`, css classes, route and tool names) are unchanged.
+- Every user-facing mention of the Capsule in the Deck now says Lumen (settings, devices, pairing, onboarding, the surfaces list, asks answered from it, the sign-in line). Code identifiers (`capsule`, `capsule.js`, css classes, route and tool names) are unchanged. Vyre IQ is now Vyre Memory in the same places (the onboarding history step's question box and its limit line).
 
 #### chat: "#" is one universal tag; "/remember" saves a memory; artifacts render from /v1/artifacts/content
 
