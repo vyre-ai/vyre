@@ -379,3 +379,13 @@ test("module: the panel's controls (pause, plan.edit, voice) are the person's, n
   assert.equal(events("chrome.plan").at(-1).payload.steps[1].text, "Fill in only the name");
   assert.equal(events("chrome.plan").at(-1).payload.run, "kit");
 });
+
+test("module: chrome.open on a site that did not load says so (the tab and why), not a bare blind refusal", async t => {
+  const { reg, connect } = await rig(t);
+  await connect({ "tabs.use": () => ({ id: 7, windowId: 1, url: "chrome-error://chromewebdata/", title: "app.harlow.example", opened: true, loaded: false, failed: "the page did not load: Chrome is showing its own error page." }) });
+  const r = await reg.call("chrome.open", { url: "https://app.harlow.example/" }, "cli");
+  assert.equal(r.error, undefined, JSON.stringify(r));
+  assert.deepEqual([r.data.blind, r.data.tab, r.data.loaded], [true, 7, false]);
+  assert.match(r.data.failed, /did not load/);
+  assert.match(r.data.why, /did not load/);
+});

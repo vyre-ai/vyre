@@ -185,7 +185,7 @@ export default {
       const u = typeof r.url === "string" ? r.url : isObj(r.tab) && typeof r.tab.url === "string" ? r.tab.url : null;
       if (u) {
         const c = classify(u, undefined, floorCfg);
-        if (c.tier === "blind") return { blind: true, why: c.why, ...(r.tab !== undefined && isObj(r.tab) ? { tab: r.tab.id } : Number.isInteger(r.id) ? { tab: r.id } : {}) };
+        if (c.tier === "blind") return { blind: true, why: c.why, ...(r.tab !== undefined && isObj(r.tab) ? { tab: r.tab.id } : Number.isInteger(r.id) ? { tab: r.id } : {}), ...(typeof r.failed === "string" ? { loaded: false, failed: r.failed } : {}) };
       }
       return r;
     };
@@ -356,7 +356,7 @@ export default {
       obj({ agent: str, url: str }, ["url"]),
       (i, m) => {
         if (!/^https?:\/\//.test(String(i.url))) throw Object.assign(new Error(`bad_request: "${i.url}" is not an http(s) URL`), { code: "bad_request" });
-        return dispatch("tabs.use", { url: i.url, openIfMissing: true }, m, { map: r => { const t = isObj(r) && isObj(r.tab) ? r.tab : r; return isObj(t) && t.blind ? t : { ok: true, title: t && t.title, url: t && t.url, ...(isObj(r) && r.interjection ? { interjection: r.interjection } : {}) }; } });
+        return dispatch("tabs.use", { url: i.url, openIfMissing: true }, m, { map: r => { const t = isObj(r) && isObj(r.tab) ? r.tab : r; return isObj(t) && t.blind ? { ok: false, ...t } : { ok: true, title: t && t.title, url: t && t.url, ...(t && typeof t.loaded === "boolean" ? { loaded: t.loaded } : {}), ...(t && t.stillLoading ? { stillLoading: true } : {}), ...(isObj(r) && r.interjection ? { interjection: r.interjection } : {}) }; } });
       });
 
     // Oversight: the plan, the person's word, and stop.
