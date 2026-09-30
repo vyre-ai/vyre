@@ -582,6 +582,7 @@ export default {
         // firstParty flag); the tool is reach "modules", so the registry refuses an added module
         // before it gets here.
         if (meta.caller !== "module:vyred") checkModuleCaller("github.act.target", meta, MODULE_CALLERS["github.act.target"]);
+        inGrant(named(input && input.project), meta); // when the registry passes the asking agent's grant along
         const repo = projects.get(named(input && input.project));
         if (!repo) throw fail(`${named(input && input.project) || "that project"} has no primary GitHub repo`, "not_found");
         if (tool === "github.project.pr.merge" || tool === "github.project.pr.review") return { to: [`${tool}:${repo.full_name}#${prNumber(input.pr)}`] };

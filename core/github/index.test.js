@@ -566,6 +566,8 @@ test("github.act.target: the destination a person's yes must name - merge and re
   assert.deepEqual((await to("github.project.pr.open", { project: "app", session: "s1", title: "t" })).data, { to: ["github.project.pr.open:alex/app@vyre/s1"] });
   assert.deepEqual((await to("github.project.pr.open", { project: "app", head: "feature/x", title: "t" })).data, { to: ["github.project.pr.open:alex/app@feature/x"] });
   assert.equal((await to("github.project.pr.merge", { project: "nope", pr: 1 })).error.code, "not_found");
+  const scoped = w.as("module:vyred", { granted: ["other"] });
+  assert.equal((await scoped("github.act.target", { tool: "github.project.pr.merge", input: { project: "app", pr: 1 } })).error.code, "not_found", "an agent granted another project gets no key for this one");
   assert.equal((await to("github.project.pr.merge", { project: "app", pr: "x" })).error.code, "bad_input");
   assert.equal((await to("github.project.pr.open", { project: "app", title: "t" })).error.code, "bad_input");
   assert.equal((await to("github.project.pr.get", { project: "app", pr: 1 })).error.code, "bad_input", "not one of the asked tools");
