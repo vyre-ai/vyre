@@ -6,28 +6,34 @@
 // module's call never reach this file (the caller check is in personTurn).
 
 import crypto from "node:crypto";
+import { isPerson } from "../../lib/caller.js";
 
 /** Most mentions one turn can carry. */
 export const MAX_MENTIONS = 8;
 
 /**
- * A caller that is the person at their own surface: cli, local, deck, capsule, the owner's device
- * over the tailnet, or the box's link. Never mcp, harness, hook, an agent, a module or a guest.
+ * A caller that is the person at their own surface: lib/caller's isPerson (cli, local, deck,
+ * capsule, the owner's device over the tailnet; never an agent or thread label, a bare mcp,
+ * harness, hook or guest) or the box's link. Labels are matched whole, never by prefix.
  * @param {unknown} caller
  */
 export function personTurn(caller) {
   const c = String(caller || "");
-  if (/^(mcp|harness|hook|module|guest)/.test(c) || /(^|[\s:])agent:/.test(c) || c === "tailnet:" || c === "") return false;
-  return /^(cli|local|deck|capsule|tailnet:.+|link:.+)/.test(c);
+  if (isPerson(c)) return true;
+  return /^link:[^\s:]+$/.test(c);
 }
 
 /**
  * The names a turn mentions, in order, once each: `#Name` or `#"Name with spaces"`, only after the
- * start of the text, whitespace or "(". Fenced code, inline code and quoted (">") lines mention nothing.
- * @param {string} text @returns {string[]}
+ * start of the text, whitespace or "(". Fenced code, inline code, quoted (">") lines and any span the
+ * composer says was pasted mention nothing.
+ * @param {string} text @param {string[]} [pasted] @returns {string[]}
  */
-export function mentionsOf(text) {
-  const plain = String(text || "")
+export function mentionsOf(text, pasted = []) {
+  let body = String(text || "");
+  // Text the person pasted was written by someone else: it mentions nothing (only a chip can tag there).
+  for (const span of pasted) if (typeof span === "string" && span) body = body.split(span).join(" ");
+  const plain = body
     .replace(/```[\s\S]*?(```|$)/g, " ")
     .replace(/`[^`\n]*`/g, " ")
     .split("\n").filter(l => !/^\s*>/.test(l)).join("\n");

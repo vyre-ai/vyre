@@ -21,6 +21,7 @@ import { tempHome } from "../../test/helpers.js";
 import { SCRATCH } from "../../test/scratch.mjs";
 import { optionsFor } from "./claude.js";
 import { sessionsConfig } from "./config.js";
+import { testBase } from "./index.js";
 import { resume } from "../cli/commands/projects.js";
 import { safePermissions, MODES, PERSON_MODES, MIGRATIONS, purposeOf } from "../switchboard/index.js";
 import { conform } from "./conformance.js";
@@ -585,6 +586,10 @@ for (const driver of ["cli", "sdk"]) {
     const key2 = await w.d.registry.call("threads.send", { thread: th.id, text: "again #GHLapikey", surface: "deck" }, "deck", { idempotencyKey: "k-1" });
     assert.equal(key.error, undefined); assert.equal(key2.error, undefined);
     assert.equal(calls.length, 2, "once for the first, none for the retry");
+    // Pasted text tags nothing: an email that contains #GHLapikey is someone else's words.
+    const paste = "Dana wrote: please use #GHLapikey for this";
+    await w.tool("threads.send", { thread: th.id, text: `Answer this. ${paste}`, pasted: [paste], surface: "deck" });
+    assert.equal(calls.length, 2, "no grant from a pasted span");
   });
 
   test(`${driver}: a # tag of any kind is resolved by its provider for this thread, said as thread.mentioned, and told to the model as data`, { skip }, async t => {
@@ -611,6 +616,12 @@ for (const driver of ["cli", "sdk"]) {
     const before = resolved.length;
     await w.d.registry.call("threads.send", { thread: th.id, text: "x", mentions: [{ kind: "drive", id: "f1" }] }, "mcp:agent:kit", { agent: "kit" });
     assert.equal(resolved.length, before);
+  });
+
+  test(`${driver}: VYRE_OPENROUTER_URL moves the key only to this machine`, () => {
+    assert.equal(testBase("http://127.0.0.1:4010"), true);
+    assert.equal(testBase("http://localhost:4010"), true);
+    for (const u of ["https://evil.example/api", "http://evil.example", "http://127.0.0.1.evil.example", "", undefined, "not a url"]) assert.equal(testBase(u), false, String(u));
   });
 
   test(`${driver}: threads.lineage lists the threads a thread was started for, from what vyred verified and never from a claim`, { skip }, async t => {
@@ -901,7 +912,7 @@ for (const driver of ["cli", "sdk"]) {
     assert.equal(JSON.parse((await w.said(th.id)).at(-1)).data.granted, "*");
   });
 
-  test(`${driver}: the Capsule's quick answer is Vyre IQ: the whole prompt, its facts numbered, thinking off, the version on the chip`, { skip }, async t => {
+  test(`${driver}: the Capsule's quick answer is Vyre Memory: the whole prompt, its facts numbered, thinking off, the version on the chip`, { skip }, async t => {
     const w = await boot(t, { driver });
     // What an older Capsule sends: its own instruction lines around the facts (dropped).
     const append = "Answer briefly, in markdown. You have no tools here; if the question needs the user's files or accounts, say so in one line.\n\n"
@@ -912,13 +923,13 @@ for (const driver of ["cli", "sdk"]) {
     const l = w.launches().at(-1);
     assert.ok(!l.argv.includes("--append-system-prompt"), "nothing of Claude Code's own prompt is kept");
     const sys = l.argv[l.argv.indexOf("--system-prompt") + 1];
-    assert.match(sys, /^You are Vyre IQ/);
+    assert.match(sys, /^You are Vyre Memory/);
     assert.match(sys, /IQ facts:\n\[1\] Your partner is Sam \(noted 2 weeks ago\)\n\[2\] The user said, 3 days ago: "the bakery is Northwind"$/);
     assert.doesNotMatch(sys, /no tools here|in markdown|What the user's own notes say/, "the Capsule's old instructions are gone");
     assert.doesNotMatch(sys, /\u2014/, "no em dash in the prompt itself");
     assert.equal(l.max_thinking, "0", "thinking off");
     const started = (await w.events(q.id)).find(e => e.type === "thread.started").payload;
-    assert.equal(started.prompt, "capsule@1");
+    assert.equal(started.prompt, "capsule@2");
     assert.equal((await w.tool("threads.get", { thread: q.id })).data.thread.origin, "capsule", "the thread says the Capsule started it");
 
     // A person's own version at scope capsule, versioned; an agent never edits it.
@@ -927,13 +938,13 @@ for (const driver of ["cli", "sdk"]) {
     const r = (await w.tool("threads.start", { cwd: w.work, prompt: "who is my partner", lean: true, purpose: "capsule", surface: "capsule" })).data;
     await w.finished(r.id);
     const sys2 = w.launches().at(-1).argv[w.launches().at(-1).argv.indexOf("--system-prompt") + 1];
-    assert.match(sys2, /^You are Vyre IQ[\s\S]*Call alex by name\.\n\nIQ facts:\n\(none\)$/);
+    assert.match(sys2, /^You are Vyre Memory[\s\S]*Call alex by name\.\n\nIQ facts:\n\(none\)$/);
     assert.equal((await w.events(r.id)).find(e => e.type === "thread.started").payload.prompt, "capsule@own-1");
     const p = (await w.tool("sessions.prompt.preview", { purpose: "capsule" })).data;
-    assert.deepEqual(p.parts.map(x => [x.scope, x.version, x.builtin || false]), [["capsule", 1, true], ["capsule", 1, false]]);
+    assert.deepEqual(p.parts.map(x => [x.scope, x.version, x.builtin || false]), [["capsule", 2, true], ["capsule", 1, false]]);
     assert.equal(p.temperature, 0);
 
-    // A chat thread is untouched: Claude Code's own prompt, nothing of Vyre IQ.
+    // A chat thread is untouched: Claude Code's own prompt, nothing of Vyre Memory.
     const c = (await w.tool("threads.start", { cwd: w.work, prompt: "hello", surface: "deck", append: "Vyre's own words." })).data;
     await w.finished(c.id);
     const cl = w.launches().at(-1);
