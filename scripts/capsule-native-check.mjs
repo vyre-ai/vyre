@@ -80,7 +80,7 @@ try {
   const pct = (xs, q) => { const a = [...xs].sort((x, y) => x - y); return a.length ? a[Math.min(a.length - 1, Math.floor(q * a.length))] : NaN; };
   const words = ["safari", "system settings", "12 * (3 + 4)", "notes", "20 km in miles", "terminal", "a", "mail"];
   // A profile of the app while it types, so a stall names its own code (macOS `sample`, 1 ms).
-  const sampler = spawn("/usr/bin/sample", [String(child.pid), "6", "1", "-mayDie"], { stdio: ["ignore", "pipe", "pipe"] });
+  const sampler = spawn("/usr/bin/sample", [String(child.pid), "6", "10", "-mayDie"], { stdio: ["ignore", "pipe", "pipe"] });
   let sampled = "", sampleErr = ""; sampler.stdout.on("data", d => { sampled += d; }); sampler.stderr.on("data", d => { sampleErr += d; });
   await pause(300);
   const keyMs = [], keyDetail = [];
@@ -101,9 +101,9 @@ try {
   // The heaviest frames of the main thread: lines of the call graph holding 100 or more of its samples.
   const graph = sampled.split("Call graph:")[1] || "";
   const main = graph.split(/\n\s*\d+ Thread_/)[0] || "";
-  const heavy = main.split("\n").filter(l => { const m = l.match(/^[\s+!:|]*(\d+)\s/); return m && Number(m[1]) >= 40; }).slice(0, 60);
+  const heavy = main.split("\n").filter(l => { const m = l.match(/^[\s+!:|]*(\d+)\s/); return m && Number(m[1]) >= 6; }).slice(0, 60);
   if (!heavy.length) console.log(`sampler: ${sampled.length} bytes, call graph ${graph.length} bytes, exit ${sampler.exitCode}, stderr: ${sampleErr.slice(0, 300).replace(/\s+/g, " ")}, first lines: ${sampled.split("\n").slice(0, 6).join(" | ").slice(0, 300)}`);
-  if (heavy.length) console.log(`main thread while typing (samples of 1 ms):\n${heavy.map(l => l.replace(/\s+/g, " ").slice(0, 200)).join("\n")}`);
+  if (heavy.length) console.log(`main thread while typing (samples of 10 ms):\n${heavy.map(l => l.replace(/\s+/g, " ").slice(0, 200)).join("\n")}`);
   const slowest = [...keyDetail].sort((a, b) => b.ms - a.ms).slice(0, 6);
   console.log(`slowest keystrokes: ${slowest.map(k => `"${k.text}" ${k.ms.toFixed(0)} ms (set ${Number(k.set).toFixed(0)}, layout ${Number(k.layout).toFixed(0)})`).join(" · ")}`);
   budget(pct(keyMs, 0.95) < BUDGET.keyP95Ms, `keystroke to rows 95th percentile under ${BUDGET.keyP95Ms} ms (one frame)`);
