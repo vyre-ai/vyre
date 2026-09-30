@@ -10,6 +10,7 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 - Discovery is checked before anything is sent: the protected-resource document must be about the service asked (same origin, equal or parent path), the authorization-server document's issuer must be the one it was fetched for, every address it names goes through `checkHttpsUri` (https only for an https vendor), and each own-account preset pins the authorization-server origins it expects (`oauth.as`); anything else is refused before a registration or a code is sent. A path issuer (GitHub's shape) is fetched at its path-aware address. The `open` step reports the sign-in host.
 - `bind()` refuses a same-named server whose url or credential is not this connection's; `connectors.persist` takes only `refresh_token`, `access_token`, `expires_at` and `scope`.
 - `vault.request`: one OAuth refresh in flight per credential; concurrent callers wait and re-read the sealed tokens, so a rotating vendor never sees the same refresh token twice (vault review MEDIUM).
+- `mcp.add` and `mcp.update`: an added (not first-party) module may add an http or sse server but not a stdio command or an environment from the vault; a person and Vyre's own modules may (reviewer-2 M-G1).
 - Guide text for Google says plainly that the unverified app screen shows once.
 - The test-preset switch also needs `NODE_TEST_CONTEXT` (a node:test run), and a test preset's id may not equal or extend a shipped id, or be a prefix of one, so it cannot win a shipped vendor's longest-match binding (reviewer-2 LOW).
 
