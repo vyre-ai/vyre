@@ -34,7 +34,7 @@ public enum Theme {
     public static let bone = dyn(\.text)
     public static let signal = dyn(\.focus)
     /// Memory's colour. Design A retired the gold: memory is drawn in neutral text.
-    public static let recall = dyn(\.text2)
+    public static let recall = stone
     /// The "needs you" colour: beacon (violet), the same as the Deck and the phone.
     public static let attention = dyn(\.beacon)
 

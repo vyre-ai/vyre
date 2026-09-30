@@ -27,7 +27,9 @@ import UniformTypeIdentifiers
 @MainActor
 public final class IconCache {
     /// Drawn icons are rasterized, so they take the scheme at draw time, and it is part of their cache key.
-    static var dark: Bool { Theme.isDark(NSApp?.effectiveAppearance ?? NSAppearance.currentDrawing()) }
+    /// Test seam: nil reads the appearance.
+    nonisolated(unsafe) static var darkOverride: Bool?
+    static var dark: Bool { darkOverride ?? Theme.isDark(NSApp?.effectiveAppearance ?? NSAppearance.currentDrawing()) }
     static var scheme: String { dark ? "d" : "l" }
 
     /// A tint in the current scheme: the dark values, or paper's (the same tokens as Theme).
