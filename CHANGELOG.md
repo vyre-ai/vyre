@@ -8,6 +8,65 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 - `npm test` and the sessions-sdk job pass `--test-force-exit`: a test file's process is ended once its tests are all done, so a handle a test leaves behind cannot hold a hosted runner until the 30-minute cap. Measured on a hosted runner: `core/cli/commands/threads-sessions.test.js` under Node 22 and 24 hung after its last test in 12 of 76 runs without the flag (nothing left but the output pipes), 0 of 40 with it.
 - A thread's provider is switched by one call at a time (`Switchboard.switchProvider`): a second while one runs is `busy` when a person asked and ignored when it was the router's, and the router's limit fallback takes its lock before it asks for the next entry and gives it back on any way out that is not a switch. Two rate-limit lines for one turn used to start two processes for one thread and lose the first, which then ran on after vyred stopped and kept the Node test process from exiting on hosted runners (the 30-minute node hang). A switch in flight is waited for at shutdown (`core/switchboard/index.js`).
 - The setup tests follow the real allowlist: the shipped sessions module lists `sessions.accounts.signin`, an added module's `setupTools` still counts for nothing, and the one-channel test now calls the real sessions tool so its `askedOnly` gate is covered for the setup page's device.
+- Memory's personal reader no longer scans the whole `recall_turns` table once per turn: `recall_turns` is an FTS5
+  table whose session and seq are unindexed, so each lookup by (session, seq) was a scan of every turn (about 20,000
+  on a real history), which cost half a second of CPU a pass and, a batch a minute, failed perf-check's idle budget
+  on Node 22 (`core/memory/personal/reader.js`: one read per batch of sessions). perf-check also waits for vyred's
+  startup work to go quiet before it starts the idle window, and, like the embedder, keeps the paid model reader off
+  (`scripts/perf-check`).
+- The thread event family is also reserved for the artifacts module (it emits `thread.artifact`, the chat card per version) (`core/modules/index.js`).
+- The connectors module may relay the person who asked (isPerson label) to `vault.put` for an `api-credential`, and to no other tool (`CALL_AS.connectors` and a per-call check in `core/modules/index.js`; the sign-in for Microsoft, personal Google and Slack Web completes there).
+- An added module can never load under the name of a module shipped with Vyre in this start, on or off on this machine, whichever is found first, valid or not; and an invalid copy no longer overwrites the loaded module's registry row (`core/modules/index.js`, tests in modules.test.js). reviewer-2's note on the name-sharing change.
+- Capsule view effects (reviewer-2): an added module opens https and mailto only (a vyre: link can act) and
+  pushes only to its own commands; `ask` answers `prefill: true` (the Capsule only fills the box, never sends
+  or records it as the person's words) and `from` for an added module; a preview carries an HMAC token (two
+  minutes, bound to the caller and the exact words) that the second Enter must return
+  (`local/capsule/frames.js`, `views.js`).
+- `mentions.resolve` reads a provider's `text` as its context, forwards an `outside` mark (true unless the kind is vault, so sessions frames third-party text as data), and keeps a grant only in the shape sessions understands (`core/mentions/index.js`).
+- Each MCP hub server gets a Tools command in the Capsule (`capsule.commands`/`view`/`act`): its tools listed,
+  a form built from a tool's input schema (text, number, bool, choice, JSON), a read runs as the person, and a
+  write previews then is held at the Gate by the hub (`local/capsule/views.js`). The install card
+  (`capabilities()`) lists an added module's Capsule commands, the tools they call and the front slot, and
+  `widened()` asks again for a new command or a first request for the front slot.
+- The Capsule's view contract: `view:<id>` entries in shows.capsule (a list with a detail and actions, or a
+  form; `map` by dotted path, a fixed template vocabulary, effects open/copy/say/ask/push, an icon
+  allowlist), checked at load (`packages/module-sdk/capsule-view.js`), and three tools on the capsule module,
+  `capsule.commands`, `capsule.view` and `capsule.act`, that turn a declaration and a tool's answer into
+  small bounded frames (`local/capsule`, `local/capsule`). The Capsule sends ids, never tool names. A first
+  party view's tool runs as the person's surface, an added module's as itself, and only a tool a view of
+  that module declares (its own, or in needs.tools) can be called; an outward action previews the exact
+  words with a hash before a second Enter sends. Status rows gain firstParty, needsTools and needsSlots.
+- The `#` tag mechanism: an optional, built in only `mentions: [{ kind, label, icon?, search, resolve }]` in
+  module.json (schema, checker, docs), a new core module `mentions` with `mentions.kinds`, `mentions.search`
+  (fans out to every provider as the asking person, 400 ms each, fail-soft, names only, grouped by kind) and
+  `mentions.resolve` (sessions and the assistant only), one provider per kind (`core/mentions`,
+  `core/modules/index.js`, `packages/module-sdk`).
+- The caller check now counts a connection as the person on positive proof only (reviews/platform.md,
+  reviewer-2 and the lead, 30 Sep). Every link up to the top must be readable (a command line, vyred's uid,
+  no child older than its parent), none an agent host (claude, codex, gemini, grok, opencode, cursor-agent,
+  aider, goose, by name) or a thread vyred runs, and the top a root-owned login the kernel names, or a
+  strictly shared ancestor of a terminal-started vyred. Reaching vyred itself or a child of it is a model's
+  (an MCP child, a worker); reaching init proves nothing. Anything else is unreadable, a model's, never
+  cached; a named server (tmux, ssh, an app terminal) stays for the person to prove once. A person's own cron
+  or launchd job calling vyre now reads as a model, which is accepted. Root links are fine in the middle of a chain (login, sshd's privileged half), and on Linux a root-owned /usr/bin/login anchors the chain. On macOS login anchors nothing, at the top or mid-chain, since login -pfl $USER runs for any same-uid process with no password (reviewer-2's probe on a real Mac); the SIP Terminal binary is the trusted top, and iTerm2 and VS Code are named servers. A `vyre` the pinned Capsule spawns is proved by the same cdhash at the top of its chain. The test-hosting seam is `setPeerHosting()` (called by test/helpers.js), never read from the environment in shipped code except for a vyred a test starts as a child under node's test runner with a live non-init parent, over a home that is not ~/.vyre. Tests that host vyred in their own
+  process set VYRE_TEST_HOSTED (`core/daemon/peer.js`, `core/daemon/index.js`, `test/helpers.js`).
+- Closed a second fail-open in the caller check: a forger that sent and exited, and the process above it, were
+  exited but not yet reaped, so their command line read as "(node)" (or empty on Linux) and the walk found
+  no claude above. A chain through such a process is now unreadable, a model's (`core/daemon/peer.js`).
+  Found by a 250-run loop under load, which failed within four runs before this.
+- `vyre up` restarting a vyred waits for the old process to exit, not only for its socket to go quiet: the
+  old vyred still held its lock, and the new one refused to start (upgrade test on node 22 in CI)
+  (`core/cli/daemonctl.js`).
+- A peer pid equal to vyred's own is refused as a model's (defence in depth, reviewer-2); an in-process test client passes `deps.self` (`core/daemon/index.js`).
+- Closed a fail-open in the caller check under load: a peer that connected, sent and exited freed its
+  fd number, and the helper that reads the peer's pid could be handed another descriptor (its own
+  stdout pipe), which named vyred itself, read as "vyred itself, not a caller" and ran a person's tool
+  once in about 200 runs. The fd is now read afresh per attempt, no helper starts on a closed socket,
+  and an answer from a socket that closed meanwhile is discarded (`core/daemon/peer.js`).
+- The home lock is held only by vyred's real command line (node on core/daemon/main.js, or `vyre daemon`),
+  not by any live process with "vyre" somewhere in its arguments (`core/daemon/lock.js`).
+- A caller chain that stays unreadable after a fresh read (a missing pid, an empty or timed-out `ps`) is
+  now a model's, not left unknown; a docker exec stays unknown (`core/daemon/peer.js`, `index.js`).
 - A session's `stop()` in the switchboard runner no longer waits forever for a child that never exits: it ends the process group, then destroys the child's pipes, and always resolves within a ceiling. This was the Node 24 runner hang that cancelled the node job at 30 minutes (`core/switchboard/runner.js`).
 #### tests: hands-chrome waits 30 s for Chrome's DevTools port
 
