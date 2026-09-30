@@ -53,8 +53,17 @@ export const firstParty = dir => {
  * @type {Record<string, string[]>}
  */
 // settings passes a person's change on to the module that keeps the value, as that person.
-/** How long an asked tool's target may take to answer before the call is not_asked. */
+/** How long an asked tool's target (and the thread lineage) may take to answer before the call is not_asked. */
 const TARGET_MS = 2000;
+/**
+ * A promise's answer, or null when it is later than `ms` (the timer never keeps the process alive).
+ * @template T @param {Promise<T>} p @param {number} ms @returns {Promise<T | null>}
+ */
+function withinMs(p, ms) {
+  let timer;
+  const late = new Promise(res => { timer = setTimeout(() => res(null), ms); if (timer.unref) timer.unref(); });
+  return Promise.race([p, late]).finally(() => clearTimeout(timer));
+}
 /** @type {Record<string, any>} */
 const CALL_AS = { link: ["link:box"], settings: ["cli", "local", "deck", "capsule"], mentions: (/** @type {string} */ as) => isPerson(as) || as === "module:sessions" || as === "module:assistant",
   // capsule runs a view's declared tool as the asking person (first party modules) or as the added module itself, never as anyone else.
@@ -936,10 +945,8 @@ export class Registry {
     try {
       /** @type {string[]} */ let to = [tool];
       if (def && def.target) {
-        // The target is a module's own code answering for a call that may not be the person's: two seconds, and late is no.
-        let timer;
-        const late = new Promise(res => { timer = setTimeout(() => res(null), TARGET_MS); if (timer.unref) timer.unref(); });
-        const t = await Promise.race([this.call(def.target, { tool, input }, "module:vyred", { door: true }), late]).finally(() => clearTimeout(timer));
+        // The target is a module's own code answering for a call that may not be the person's: late is no.
+        const t = await withinMs(this.call(def.target, { tool, input }, "module:vyred", { door: true }), TARGET_MS);
         if (!t) return false;
         const extra = t && t.data && Array.isArray(t.data.to) ? t.data.to.filter((/** @type {any} */ x) => typeof x === "string" && x) : [];
         if (!extra.length) return false;
@@ -948,10 +955,11 @@ export class Registry {
       const thread = typeof meta.thread === "string" ? meta.thread : undefined;
       let lineage;
       if (thread && this.tools.has("threads.lineage")) {
-        const l = await this.call("threads.lineage", { thread }, "module:vyred", { door: true });
+        const l = await withinMs(this.call("threads.lineage", { thread }, "module:vyred", { door: true }), TARGET_MS);
+        if (!l) return false;
         if (l.data && Array.isArray(l.data.lineage)) lineage = l.data.lineage;
       }
-      const r = await this.call("vault.said.match", { kind: "act_out", via: tool.split(".")[0], to, ...(thread ? { thread } : {}), ...(lineage ? { lineage } : {}), ...(meta.agent ? { agent: meta.agent } : {}) }, "module:vyred", { door: true });
+      const r = await this.call("vault.said.match", { kind: "act_out", via: tool.split(".")[0], to, consume: true, ...(thread ? { thread } : {}), ...(lineage ? { lineage } : {}), ...(meta.agent ? { agent: meta.agent } : {}) }, "module:vyred", { door: true });
       return Boolean(r.data && r.data.matched === true);
     } catch { return false; }
   }
@@ -993,11 +1001,6 @@ export class Registry {
     if (def.outward && !isPerson(caller)) {
       return { error: { code: "held_unavailable", message: `${tool} acts as you outside. A call from anyone but you is held at the Gate, and that routing lands with the Gate wiring; until then it runs only from your own surface.` } };
     }
-    if (def.reach === "asked" && (["mcp", "harness", "module"].includes(callerKind(caller)) || agentClaim(caller) !== null)) {
-      if (!(await this.saidMatch(tool, meta, def, input))) {
-        return { error: { code: "not_asked", message: `${tool} runs for an agent only when your own words asked for it; tell the person what you would do` } };
-      }
-    }
     if (def.internal && !String(caller).startsWith("module:")) return { error: { code: "no_such_tool", message: `no tool ${tool}` } };
     if (Boolean(def.hook) !== (caller === "hook")) return { error: { code: "no_such_tool", message: `no tool ${tool}` } };
     if (!callerAllowed(def.callers, caller)) return { error: { code: "denied", message: `${tool} is not available to ${callerKind(caller)} callers` } };
@@ -1035,6 +1038,14 @@ export class Registry {
       if (!v.ok) return { error: { code: v.code === "no_dialog" ? "no_dialog" : "presence_required", message: v.message, methods: v.methods } };
       // The tool learns how the person proved it (and with which enrolled key), never the proof.
       meta = { ...meta, presence: { method: v.method, keyId: v.keyId ?? null, ...(v.where ? { where: v.where } : {}) } };
+    }
+    // An asked tool runs for a model, the harness or a module only when the person's own words asked for it. This is the
+    // LAST gate before the tool runs, because the match uses the ask up (consume): a call refused above (bad input, a
+    // rule, a proof) must never have spent it.
+    if (def.reach === "asked" && (["mcp", "harness", "module"].includes(callerKind(caller)) || agentClaim(caller) !== null)) {
+      if (!(await this.saidMatch(tool, meta, def, input))) {
+        return { error: { code: "not_asked", message: `${tool} runs for an agent only when your own words asked for it; tell the person what you would do` } };
+      }
     }
     // A call that carries an Idempotency-Key runs once per key; a retry gets the first answer.
     // The key reaches the tool too, so a tool that hands work on can carry it (threads.send uses

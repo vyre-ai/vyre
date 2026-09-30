@@ -766,7 +766,7 @@ test("modules v1: an asked tool runs for a model only when vault.said.match says
   const reg = await registry(t, mods, { builtIn: true });
   const asAgent = thread => reg.call("bakery.target", {}, "mcp:agent:kit", { thread });
   assert.equal((await asAgent("t-1")).data.ran, "bakery.target", "the person's words in this thread asked for it");
-  assert.deepEqual(globalThis.__said[0], { kind: "act_out", via: "bakery", to: ["bakery.target"], thread: "t-1" });
+  assert.deepEqual(globalThis.__said[0], { kind: "act_out", via: "bakery", to: ["bakery.target"], consume: true, thread: "t-1" });
   assert.equal((await asAgent("t-2")).error.code, "not_asked", "another thread");
   assert.equal((await reg.call("bakery.target", {}, "mcp")).error.code, "not_asked", "no thread");
   assert.equal((await asAgent("boom")).error.code, "not_asked", "a vault that errors (locked) fails closed");
@@ -778,10 +778,16 @@ test("modules v1: an asked tool runs for a model only when vault.said.match says
 
 test("modules v1: an asked tool with a target binds the person's yes to what the call acts on, and fails closed", async t => {
   /** @type {any} */ (globalThis).__said2 = [];
-  t.after(() => { delete /** @type {any} */ (globalThis).__said2; });
+  t.after(() => { delete /** @type {any} */ (globalThis).__said2; delete /** @type {any} */ (globalThis).__spent; });
   // A stand-in vault: it matches only "merge PR 12 of acme/site" in thread t-1, and with no intent at all it matches nothing.
   const vault = `export default { async start(ctx) {
-    ctx.tool("vault.said.match", { internal: true, run: async input => { globalThis.__said2.push(input); return { matched: input.thread === "t-1" && JSON.stringify(input.to) === JSON.stringify(["gh.merge:acme/site#12"]) }; } });
+    ctx.tool("vault.said.match", { internal: true, run: async input => {
+      globalThis.__said2.push(input);
+      const hit = input.thread === "t-1" && JSON.stringify(input.to) === JSON.stringify(["gh.merge:acme/site#12"]) && !globalThis.__spent;
+      // A plain ask is used up by the match that claims it (consume), as vault's own does.
+      if (hit && input.consume === true) globalThis.__spent = true;
+      return { matched: hit };
+    } });
     return {};
   } };`;
   const gh = { version: "0.1.0", roles: ["local"], does: { tools: [
@@ -789,7 +795,7 @@ test("modules v1: an asked tool with a target binds the person's yes to what the
     { name: "gh.merge.target", summary: "what a merge acts on", reach: "modules" },
     { name: "gh.plain", summary: "no target", reach: "asked" }] } };
   const ghSrc = `export default { async start(ctx) {
-    ctx.tool("gh.merge", { input: { type: "object" }, run: async i => ({ merged: i.pr }) });
+    ctx.tool("gh.merge", { input: { type: "object", required: ["pr"], properties: { pr: { type: "string" } } }, run: async i => ({ merged: i.pr }) });
     ctx.tool("gh.plain", { input: { type: "object" }, run: async () => ({ ran: true }) });
     ctx.tool("gh.merge.target", { internal: true, input: { type: "object" }, run: async ({ tool: tool_, input }) => {
       if (input.pr === "boom") throw new Error("no repo");
@@ -801,7 +807,11 @@ test("modules v1: an asked tool with a target binds the person's yes to what the
   } };`;
   const reg = await registry(t, [["gh", gh, ghSrc], ["vault", { version: "0.1.0", does: { tools: ["vault.said.match"] } }, vault]], { builtIn: true });
   const ask = (tool, input, thread = "t-1") => reg.call(tool, input, "mcp:agent:kit", { thread });
+  // A call that is refused before it runs never spends the ask: bad input here.
+  assert.equal((await ask("gh.merge", {})).error.code, "bad_input");
+  assert.equal(globalThis.__spent, undefined, "an invalid call did not use the ask up");
   assert.deepEqual((await ask("gh.merge", { pr: "12" })).data, { merged: "12" }, "the PR the person said yes to");
+  assert.equal((await ask("gh.merge", { pr: "12" })).error.code, "not_asked", "one ask, one act: a second merge of the same PR is refused");
   assert.deepEqual(globalThis.__said2.at(-1).to, ["gh.merge:acme/site#12"], "the match is the target's whole answer");
   assert.equal((await ask("gh.merge", { pr: "40" })).error.code, "not_asked", "a different PR is refused");
   assert.equal((await ask("gh.merge", { pr: "12" }, "t-2")).error.code, "not_asked", "another thread");
