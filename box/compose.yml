@@ -133,6 +133,8 @@ services:
       - vyre-home:/home/vyre
       # Vyre-owned sessions' own home (their ~/.claude and transcripts), readable by vyred's group.
       - vyre-agent-home:/home/vyre-agent
+      # Each signed-in account's own home (uids 2000 to 2063, made in the image, private to the account).
+      - vyre-accounts:/home/acct
       # Projects.
       - vyre-work:/work
       # The CLI in this image talks to tailscaled through this socket.
@@ -211,6 +213,9 @@ volumes:
     labels:
       run.vyre: "1"
   vyre-work:
+    labels:
+      run.vyre: "1"
+  vyre-accounts:
     labels:
       run.vyre: "1"
   vyre-agent-home:

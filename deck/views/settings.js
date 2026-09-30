@@ -26,6 +26,7 @@ import { shareAccess, accessWord, flip, perShare, unsafeLines, mountHint } from 
 import { fmtBytes, pieceLabel, pieceLine, totalBytes, piecePct, readyToConfirm, allReady, mergeEvent, destinationName, forgetGate } from "../js/server-rows.js";
 import { canRelayJoin } from "../js/join-caps.js";
 import { buildWinkCard } from "../js/wink-card.js";
+import { buildAddPcCard } from "../js/add-pc-card.js";
 
 const SECTIONS = [
   ["setup", "Setup"],
@@ -601,12 +602,19 @@ function winkCard(status, ctx) {
   });
 }
 
+/** "Add a Windows PC" (deck/js/add-pc-card.js): the code the PC's app shows, as words or a QR, has the box register its own ticket. Same gate as Wink. */
+function addPcCard(status, ctx) {
+  if (!canRelayJoin(status).allowed) return null;
+  return buildAddPcCard({ attempt, cleanup: ctx.cleanup, alive: ctx.alive });
+}
+
 /** The owner's devices on the tailnet (onboard.status detail.devices.peers) and the paired Macs (link.peers). */
 async function drawDevices(el, ctx) {
   const [st, macs] = await Promise.all([attempt("onboard.status"), attempt("link.peers")]);
   if (!ctx.alive()) return;
   if (st.error) { put(el, empty("Your devices are read by the box module.", st.error), foot(toOnboard("devices", "Open"))); return; }
   const wink = winkCard(st.data, ctx);
+  const addPc = addPcCard(st.data, ctx);
   const peers = st.data?.detail?.devices?.peers || [];
   const paired = Array.isArray(macs.data) ? macs.data : [];
   const same = (m, p) => (m.node && (m.node === p.dns || String(m.node).split(".")[0] === p.name)) || m.name === p.name;
@@ -627,6 +635,7 @@ async function drawDevices(el, ctx) {
   }
   put(el,
     wink,
+    addPc,
     rows.length ? h("div", { class: "rows" }, rows)
       : note("No other devices on your tailnet yet. The setup's last step adds your phone and pairs your Mac."),
     // Wink is the primary path now (relay.allowed); this link is the Advanced fallback the

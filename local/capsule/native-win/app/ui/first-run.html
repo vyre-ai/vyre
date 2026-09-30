@@ -16,10 +16,14 @@
 </style>
 <main>
   <h1>Connect this computer</h1>
-  <p>Enter your server's address, like alex.vyre.run.</p>
+  <p>Pair with your Vyre server from another device where you are signed in, or enter its address.</p>
+  <button id="pair">Pair from my other device</button>
+  <p id="seed" class="fine"></p>
+  <p>Or enter your server's address, like alex.vyre.run.</p>
   <input id="addr" placeholder="alex.vyre.run" autocomplete="off" autofocus>
   <button id="go">Connect</button>
   <div id="err" role="alert"></div>
   <p class="fine">If Windows said it did not recognize this app, choose More info, then Run anyway.</p>
 </main>
 <script src="first-run.js"></script>
+<script type="module" src="first-run-pair.js"></script>
