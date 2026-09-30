@@ -591,3 +591,21 @@ test("update-from-request: at least the minimum gap between updates, and only st
   assert.match(r.out, /not stable or beta; using stable/);
   assert.equal(b.read(path.join(b.DIR, "VERSION")).trim(), "0.2.0");
 });
+
+// One shared test vector for the release signature (also in anywhere's tests): a fixed key (seed 32 bytes of 0x07), a fixed
+// SHA256SUMS, and the signature over "vyre-release-sums\n" + those exact bytes. Ed25519 is deterministic, so it is a constant.
+const VECTOR = {
+  key: "MCowBQYDK2VwAyEA6kpsY+KcUgq+9VB7Ey7F+ZVHdq6+vnuSQh7qaRRG0iw=",
+  sums: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa  manifest.json\\nbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb  vyre.tgz\\n",
+  sig: "X+aWDX+6p5YDh32E4tUXAHKEvCwi36rUm4I889QLs2I6b4hlP0J05o8PNtuyZnsCaqMkiv2MWmqJ3fllTLIzDA==",
+};
+
+test("release signature: the box verifies the shared vector, and refuses the same signature over the bare bytes", () => {
+  const js = /-e '(const c=require\\("crypto"\\)[^']*)'/.exec(WRAPPER_SRC)?.[1];
+  assert.ok(js, "the wrapper's verifier is found");
+  const check = (/** @type {string} */ sums, /** @type {string} */ sig) => spawnSync("node", ["-e", /** @type {string} */ (js), VECTOR.key, sig], { input: sums, encoding: "utf8" }).stdout.trim();
+  assert.equal(check(VECTOR.sums, VECTOR.sig), "signed");
+  assert.equal(check(VECTOR.sums + "x", VECTOR.sig), "bad", "one more byte");
+  const bare = crypto.sign(null, Buffer.from(VECTOR.sums), crypto.createPrivateKey({ key: Buffer.concat([Buffer.from("302e020100300506032b657004220420", "hex"), Buffer.alloc(32, 7)]), format: "der", type: "pkcs8" })).toString("base64");
+  assert.equal(check(VECTOR.sums, bare), "bad", "a signature without the prefix is refused");
+});
