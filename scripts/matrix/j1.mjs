@@ -74,8 +74,8 @@ try {
 
   // 1.7 choose the address and claim it (the name directory here is the real Worker code over a fake DNS)
   await page.evaluate(`(() => { const i = document.querySelector('input[name="address"]'); i.focus(); i.value = "marlow-finch"; i.dispatchEvent(new Event("input", { bubbles: true })); })()`);
-  const hint = await page.waitText(/available|taken|not available|is yours/i, 20000);
-  r.step("1.7a-name-checked", /available/i.test(hint) && !/not available/i.test(hint), { shot: await shot("setup-name-check"), why: hide(String(await page.evaluate(`(document.querySelector('[data-role="hint"]')||{}).textContent||""`))) });
+  const hint = await page.waitText(/is free|is taken|is reserved|not allowed/i, 30000);
+  r.step("1.7a-name-checked", /is free/i.test(hint), { shot: await shot("setup-name-check"), why: hide(String(await page.evaluate(`(document.querySelector('[data-role="hint"]')||{}).textContent||""`))) });
   await click("Claim this address");
   const claimed = await sees(/recovery code/i, 60000);
   r.step("1.7b-name-claimed", claimed, { shot: await shot("setup-claimed") });
