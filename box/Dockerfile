@@ -16,6 +16,22 @@ RUN apt-get update \
 # through the shared socket at /var/run/tailscale/tailscaled.sock.
 COPY --from=tailscale/tailscale:stable /usr/local/bin/tailscale /usr/local/bin/tailscale
 
+# The GitHub CLI, for "Sign in with GitHub": vyred runs the real `gh auth login --web` (core/github), so gh is in the image at
+# /usr/local/bin/gh, where vyred finds it as plain `gh`. Pinned, and the release archive is checked against the sum in the release's
+# own gh_<version>_checksums.txt before it is unpacked: a moved release cannot change what the image runs. Bump the three ARGs together
+# (scripts/install-mac-server.sh pins the same GH_VERSION; test/box-gh.test.js keeps them equal).
+ARG GH_VERSION=2.102.0
+ARG GH_SHA256_AMD64=bb766f710eef8ede859c18578c72c327597cd4c8a85b06001b1f3843c6019386
+ARG GH_SHA256_ARM64=7862c86c72f43df3a2d93ddde6f473285b4e2af61b494849846827e513ef6484
+RUN arch=$(dpkg --print-architecture) \
+ && case "$arch" in amd64) sum=$GH_SHA256_AMD64 ;; arm64) sum=$GH_SHA256_ARM64 ;; *) echo "no pinned gh for $arch" >&2; exit 1 ;; esac \
+ && curl -fsSL --retry 3 -o /tmp/gh.tgz "https://github.com/cli/cli/releases/download/v${GH_VERSION}/gh_${GH_VERSION}_linux_${arch}.tar.gz" \
+ && echo "$sum  /tmp/gh.tgz" | sha256sum -c - \
+ && tar -xzf /tmp/gh.tgz -C /tmp \
+ && install -m 0755 "/tmp/gh_${GH_VERSION}_linux_${arch}/bin/gh" /usr/local/bin/gh \
+ && rm -rf /tmp/gh.tgz "/tmp/gh_${GH_VERSION}_linux_${arch}" \
+ && gh --version
+
 RUN npm install -g @anthropic-ai/claude-code@${CLAUDE_CODE_VERSION} \
  && npm cache clean --force
 
@@ -51,6 +67,18 @@ RUN groupadd -g 1002 vyre-work \
  && mkdir -p /run/vyre && chown 0:1000 /run/vyre && chmod 2750 /run/vyre \
  && mkdir -p /run/vyre-threads && chown 1000:1002 /run/vyre-threads && chmod 2710 /run/vyre-threads \
  && mkdir -p /var/lib/vyre-secrets && chown 1000:1000 /var/lib/vyre-secrets && chmod 700 /var/lib/vyre-secrets
+
+# One uid and group per signed-in account (sessions.accounts, ADR 0030 phase 2): 2000 to 2063, each
+# with a private HOME under /home/acct. The spawner (no chown capability) only checks these, so they
+# are made here, mode 0710 owned by the account: vyre is in every account's group and can walk in to
+# read the account's transcripts, and no other account is. compose mounts /home/acct as a volume,
+# which Docker fills from this directory the first time, ownership and modes kept.
+RUN mkdir -p /home/acct && chmod 755 /home/acct \
+ && for u in $(seq 2000 2063); do \
+      groupadd -g "$u" "vyre-acct-$u" \
+      && mkdir "/home/acct/$u" && chown "$u:$u" "/home/acct/$u" && chmod 710 "/home/acct/$u"; \
+    done \
+ && usermod -aG "$(seq 2000 2063 | sed 's/^/vyre-acct-/' | paste -sd, -)" vyre
 
 # Everything .dockerignore lets through: package files, bin, core, harness, docs, LICENSE,
 # README.md, and deck, modules and local when they exist.

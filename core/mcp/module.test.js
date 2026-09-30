@@ -397,3 +397,22 @@ test("mcp: a module installed into a home is refused on_behalf through its own c
   assert.ok(!it.thread && !it.agent);
   assert.deepEqual(calls(log), []);
 });
+
+test("an added module cannot put a command or a vault environment in the hub, but may add an http server; a person may add either", async t => {
+  const v = await vyred(t);
+  const http = await startFakeMcpHttp(t);
+  const added = (tool, input) => v.d.registry.call(tool, input, "module:some-added-module", {});
+  // stdio, an env from the vault, and env auth are refused
+  assert.equal((await added("mcp.add", { name: "proc", transport: "stdio", command: process.execPath, args: [FAKE, "--stdio"] })).error?.code, "denied");
+  assert.equal((await added("mcp.add", { name: "envy", transport: "stdio", command: process.execPath, args: [FAKE, "--stdio"], env: { TOKEN: "github-alex" } })).error?.code, "denied");
+  assert.equal((await added("mcp.add", { name: "envy2", transport: "http", url: http.url, env: { TOKEN: "github-alex" } })).error?.code, "denied");
+  // an http server is fine
+  const ok = await added("mcp.add", { name: "webby", transport: "http", url: http.url });
+  assert.ok(ok.data, JSON.stringify(ok));
+  // and update cannot turn things into a process either
+  assert.equal((await added("mcp.update", { name: "webby", command: process.execPath })).error?.code, "denied");
+  // a person adds a stdio server with an env
+  await v.secret("gh-token", "sample-token-value-12345");
+  const mine = await v.cli("mcp.add", { name: "mine", transport: "stdio", command: process.execPath, args: [FAKE, "--stdio"], env: { GH_TOKEN: "gh-token" } });
+  assert.ok(mine.data, JSON.stringify(mine));
+});

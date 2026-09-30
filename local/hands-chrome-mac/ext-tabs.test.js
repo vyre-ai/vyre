@@ -118,3 +118,44 @@ test("tabs.navigate and tabs.activate", async () => {
   assert.equal(chrome._.tabs.find(t => t.id === 3).active, true);
   await assert.rejects(dispatch("tabs.activate", { tabId: 5 }, ctx), { code: "blocked" });
 });
+
+// ---- the user's first session: chrome.open returned before the page had loaded, and the next snapshot then hit Chrome's error page.
+/** A world whose new tabs load for a while, then become `end`. */
+const slowWorld = (/** @type {number} */ ms, /** @type {(url: string) => any} */ end) => {
+  const w = world();
+  const create = w.chrome.tabs.create;
+  w.chrome.tabs.create = async (/** @type {any} */ p) => {
+    const t = await create({ ...p, status: "loading" });
+    const real = w.chrome._.tabs.find((/** @type {any} */ x) => x.id === t.id);
+    real.status = "loading"; real.url = ""; real.pendingUrl = p.url;
+    setTimeout(() => { Object.assign(real, { pendingUrl: undefined, status: "complete" }, end(p.url)); }, ms);
+    return { ...real };
+  };
+  return w;
+};
+
+test("tabs.open resolves only once the tab has committed and loaded, and says what it landed on", async () => {
+  const { ctx } = slowWorld(250, url => ({ url, title: "Harlow login" }));
+  const t0 = Date.now();
+  const r = await dispatch("tabs.open", { url: "https://app.harlow.example/login" }, ctx);
+  assert.ok(Date.now() - t0 >= 200, "it waited for the page");
+  assert.deepEqual([r.loaded, r.url, r.title], [true, "https://app.harlow.example/login", "Harlow login"]);
+  assert.equal(r.failed, undefined);
+});
+
+test("tabs.open on a site that did not load reports it, with the tab kept, instead of pretending it opened", async () => {
+  const { ctx } = slowWorld(100, () => ({ url: "chrome-error://chromewebdata/", title: "app.harlow.example" }));
+  const r = await dispatch("tabs.open", { url: "https://app.harlow.example/login" }, ctx);
+  assert.equal(r.loaded, false);
+  assert.match(r.failed, /did not load/);
+  assert.equal(typeof r.id, "number", "the tab id is still returned");
+  // The next call names the tab and the page, and says it is Chrome's error page, not "a browser page".
+  await assert.rejects(dispatch("page.snapshot", { tabId: r.id }, ctx), e => /tab \d+ is on chrome-error:\/\/chromewebdata\//.test(e.message) && /did not load/.test(e.message));
+});
+
+test("tabs.open returns after the timeout with stillLoading when a page is slow, without throwing", async () => {
+  const { ctx } = slowWorld(2000, url => ({ url }));
+  const r = await dispatch("tabs.open", { url: "https://app.harlow.example/slow", timeoutMs: 150 }, ctx);
+  assert.equal(r.loaded, false);
+  assert.equal(r.stillLoading, true);
+});

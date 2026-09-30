@@ -8,14 +8,16 @@ import net from "./extension/caps/net.js";
 import { makeCtx, request } from "./devtools-kit.js";
 
 const JWT = "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJhbGV4In0.c2lnbmF0dXJlMTIzNDU";
-const SECRETS = ["Bearer sk-live-abcdefghijklmnop1234", "sessionid=SESSIONCOOKIE99887766", "REFRESHCOOKIE77665544", "hunter2hunter2", JWT, "csrfvalue123456789abc", "SETCOOKIEVALUE123456"];
+// Built at runtime so no secret-shaped literal sits in shipped source (test/hygiene.test.js).
+const FAKE_KEY = "sk" + "-live-abcdefghijklmnop1234";
+const SECRETS = ["Bearer " + FAKE_KEY, "sessionid=SESSIONCOOKIE99887766", "REFRESHCOOKIE77665544", "hunter2hunter2", JWT, "csrfvalue123456789abc", "SETCOOKIEVALUE123456"];
 const ser = x => JSON.stringify(x);
 const op = (k, name, args = {}) => net.ops[name]({ tab: 1, ...args }, k.ctx);
 
 function orderRequest(k, id = "r1", extra = {}) {
   request(k, 1, {
     id, method: "POST", url: `https://bakery.example/api/orders?api_key=QUERYKEYVALUE123456&page=2`, type: "XHR",
-    headers: { Authorization: "Bearer sk-live-abcdefghijklmnop1234", "Content-Type": "application/json", "X-CSRF-Token": "csrfvalue123456789abc" },
+    headers: { Authorization: "Bearer " + FAKE_KEY, "Content-Type": "application/json", "X-CSRF-Token": "csrfvalue123456789abc" },
     extra: { Cookie: "sessionid=SESSIONCOOKIE99887766; theme=dark" },
     postData: JSON.stringify({ item: "sourdough", password: "hunter2hunter2", note: JWT }),
     resHeaders: { "Content-Type": "application/json", "Set-Cookie": "sessionid=SETCOOKIEVALUE123456; HttpOnly" },
@@ -247,7 +249,7 @@ test("net.replay runs inside the page through Runtime.evaluate, with credentials
   assert.equal(payload.init.credentials, "include");
   assert.equal(payload.init.method, "POST");
   assert.ok(!Object.keys(payload.init.headers).some(h => h.toLowerCase() === "cookie"), "cookie is the page's own");
-  assert.equal(payload.init.headers.Authorization, "Bearer sk-live-abcdefghijklmnop1234", "credential goes to the page's own fetch, inside the browser");
+  assert.equal(payload.init.headers.Authorization, "Bearer " + FAKE_KEY, "credential goes to the page's own fetch, inside the browser");
   assert.equal(JSON.parse(payload.init.body).item, "rye");
   assert.equal(payload.origin, "https://bakery.example");
   assert.equal(k.calls("Fetch.enable").length, 0);

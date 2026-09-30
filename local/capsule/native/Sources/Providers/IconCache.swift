@@ -39,7 +39,7 @@ public final class IconCache {
             case .bone: return rgb(0x141311)
             case .stone: return rgb(0x4A463F)
             case .ash: return rgb(0x6B665D)
-            case .signal: return rgb(0x46700C)
+            case .signal: return rgb(0x141311)
             case .recall: return rgb(0x4A463F)
             case .attention: return rgb(0x5B3FC4)
             }
@@ -48,7 +48,7 @@ public final class IconCache {
         case .bone: return rgb(0xF1EEE6)
         case .stone: return rgb(0xB3AEA4)
         case .ash: return rgb(0x8C877D)
-        case .signal: return rgb(0xC6F36B)
+        case .signal: return rgb(0xF1EEE6)
         case .recall: return rgb(0xB3AEA4) // Design A retired the gold: as stone
         case .attention: return rgb(0xB8A4FF)
         }

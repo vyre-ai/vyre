@@ -22,6 +22,7 @@ import { AsyncLocalStorage } from "node:async_hooks";
 import { fileURLToPath } from "node:url";
 import { createBridge } from "./bridge.js";
 import { createOversight } from "./oversight.js";
+import { diagnoseConnection } from "./diagnose.js";
 import { classify, originOf } from "./floor-url.js";
 import { ACTING } from "./extension/shared/proto.js";
 import * as nativeHost from "./native-host/install.js";
@@ -105,6 +106,14 @@ export default {
     let listenError = null;
     try { await bridge.listen(); } catch (e) { listenError = /** @type {Error} */ (e).message; ctx.log(`chrome bridge is not listening: ${listenError}`); }
 
+    /** Why there is no extension, and the one thing to do (diagnose.js). Null while connected. */
+    const diagnose = () => {
+      if (bridge.connected()) return null;
+      let hostRegistered = true;
+      try { const hs = host.status({ home: cfg.home, platform: cfg.platform, vyreHome: cfg.vyreHome, hostDir: cfg.hostDir, registry: cfg.registry }); hostRegistered = Boolean(hs && Array.isArray(hs.installed) && hs.installed.length && hs.launcherExists); } catch { /* unknown: do not blame the install */ }
+      return diagnoseConnection({ connected: false, listenError, hostRegistered, stats: bridge.stats() });
+    };
+
     /** @type {Map<number, string>} the last URL seen for each tab, so an op is judged before it is sent */
     const urls = new Map();
 
@@ -129,7 +138,7 @@ export default {
 
     let offered = false;
     const offer = async () => {
-      const r = await ctx.call("gate.offer", { name: "chrome:mac", tool: "chrome.release", kinds: ["act"],
+      const r = await ctx.call("gate.offer", { name: "chrome:mac", tool: "chrome.release", kinds: ["act"], recipients: "to",
         content: { app: "string", window: "string?", origin: "string (the page's origin)", control: "string (what will be pressed or sent)", fields: "object? (the values, clipped)" } });
       if (r && r.error) ctx.log(`could not offer the chrome:mac sender: ${r.error.message}`);
       else offered = true;
@@ -185,7 +194,7 @@ export default {
       const u = typeof r.url === "string" ? r.url : isObj(r.tab) && typeof r.tab.url === "string" ? r.tab.url : null;
       if (u) {
         const c = classify(u, undefined, floorCfg);
-        if (c.tier === "blind") return { blind: true, why: c.why, ...(r.tab !== undefined && isObj(r.tab) ? { tab: r.tab.id } : Number.isInteger(r.id) ? { tab: r.id } : {}) };
+        if (c.tier === "blind") return { blind: true, why: c.why, ...(r.tab !== undefined && isObj(r.tab) ? { tab: r.tab.id } : Number.isInteger(r.id) ? { tab: r.id } : {}), ...(typeof r.failed === "string" ? { loaded: false, failed: r.failed } : {}) };
       }
       return r;
     };
@@ -257,7 +266,7 @@ export default {
         } catch (e) {
           const x = /** @type {any} */ (e);
           // Another program already holds the socket (a second session): say that, not "not connected".
-          if (x && x.code === "no_extension" && listenError) x.message = `this session is not the one connected to Chrome (${listenError})`;
+          if (x && x.code === "no_extension") { const d = diagnose(); if (d) x.message = `${d.problem}. ${d.fix}`; }
           acted(meta, agent, op, false, x && x.message ? String(x.message).replace(/^[a-z_]+: /, "") : "failed", summary);
           if (carry && /** @type {any} */ (carry).interjection && x && typeof x === "object") x.interjection = /** @type {any} */ (carry).interjection;
           throw wrapErr(x);
@@ -356,7 +365,7 @@ export default {
       obj({ agent: str, url: str }, ["url"]),
       (i, m) => {
         if (!/^https?:\/\//.test(String(i.url))) throw Object.assign(new Error(`bad_request: "${i.url}" is not an http(s) URL`), { code: "bad_request" });
-        return dispatch("tabs.use", { url: i.url, openIfMissing: true }, m, { map: r => { const t = isObj(r) && isObj(r.tab) ? r.tab : r; return isObj(t) && t.blind ? t : { ok: true, title: t && t.title, url: t && t.url, ...(isObj(r) && r.interjection ? { interjection: r.interjection } : {}) }; } });
+        return dispatch("tabs.use", { url: i.url, openIfMissing: true }, m, { map: r => { const t = isObj(r) && isObj(r.tab) ? r.tab : r; return isObj(t) && t.blind ? { ok: false, ...t } : { ok: true, title: t && t.title, url: t && t.url, ...(t && typeof t.loaded === "boolean" ? { loaded: t.loaded } : {}), ...(t && t.stillLoading ? { stillLoading: true } : {}), ...(isObj(r) && r.interjection ? { interjection: r.interjection } : {}) }; } });
       });
 
     // Oversight: the plan, the person's word, and stop.
@@ -441,11 +450,12 @@ export default {
         let hostStatus = null;
         try { hostStatus = host.status({ home: cfg.home, platform: cfg.platform, vyreHome: cfg.vyreHome, hostDir: cfg.hostDir, registry: cfg.registry }); } catch (e) { hostStatus = { error: /** @type {Error} */ (e).message }; }
         const installed = Boolean(hostStatus && Array.isArray(hostStatus.installed) && hostStatus.installed.length && hostStatus.launcherExists);
-        return { connected: bridge.connected(), extension: bridge.info(), listening: !listenError, ...(listenError ? { listenError } : {}), hostInstalled: installed, host: hostStatus, tabs, attached, oversight: oversight.snapshot() };
+        const why = diagnose();
+        return { connected: bridge.connected(), extension: bridge.info(), listening: !listenError, ...(listenError ? { listenError } : {}), ...(why ? { problem: why.problem, fix: why.fix, stage: why.stage } : {}), socket: bridge.stats(), hostInstalled: installed, host: hostStatus, tabs, attached, oversight: oversight.snapshot() };
       });
 
     tool("chrome.install", "Set up the Vyre Chrome connector: registers the native host with Chrome (and the other Chromium browsers found), then returns the steps the person does in Chrome to load the extension.",
-      obj({ extensionId: str, browsers: { type: "array", items: { type: "string", enum: ["chrome", "chromium", "brave", "edge"] } }, extensionDir: str }),
+      obj({ extensionId: str, browsers: { type: "array", items: { type: "string", enum: ["chrome", "chromium", "brave", "edge", "dia", "arc"] } }, extensionDir: str }),
       async i => {
         const dir = String(i.extensionDir || cfg.extensionDir || path.join(HERE, "extension"));
         let id = i.extensionId ? String(i.extensionId) : null;

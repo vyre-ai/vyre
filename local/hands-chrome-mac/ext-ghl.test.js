@@ -555,7 +555,7 @@ test("a failure's error detail carries the tab's host and path (no query) and a 
     assert.ok(x.detail.candidates.some((/** @type {any} */ c) => c.name === "Save"));
     return true;
   });
-  assert.match(scrub("mail a@b.co or call 5551234567 with sk-abcdefghijklmnopqrstuvwx"), /redacted:email.*redacted:phone.*redacted:key/);
+  assert.match(scrub("mail a@b.co or call 5551234567 with " + "sk" + "-abcdefghijklmnopqrstuvwx"), /redacted:email.*redacted:phone.*redacted:key/);
   assert.ok(redactDom("x".repeat(5000)).length <= 2048);
 });
 

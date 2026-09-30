@@ -5,7 +5,7 @@
   "requires": ["vault"],
   "does": {
     "tools": [
-      "github.connect", "github.connect.cancel", "github.accounts", "github.remove",
+      "github.connect", "github.connect.cancel", "github.mcp.sync", "github.accounts", "github.remove",
       "github.repos", "github.project", "github.project.add-repo", "github.project.of",
       "github.project.detect",
       "github.session.worktree", "github.session.cleanup", "github.session.push", "github.session.history", "github.session.undo", "github.session.redo",

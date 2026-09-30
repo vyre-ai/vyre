@@ -17,7 +17,7 @@ wall. Drawn on "Presence, sign in once, prove it rarely" and "Needs you, phone a
 |---|---|---|
 | Deck | `deck/js/need-sheet.js` coverLine, `deck/chat/gate-item.js`, `deck/js/person.js` (work/pwa); `deck/views/memory-presence.js` | partial |
 | App | `apps/app/src/state/needs-model.ts` (logic only, work/mobile) | not built |
-| Capsule | `local/capsule/native/Sources/UI/PresenceView.swift` (work/capsule-pro) | partial |
+| Lumen | `local/capsule/native/Sources/UI/PresenceView.swift` (work/capsule-pro) | partial |
 
 ## Anatomy
 
@@ -52,7 +52,7 @@ through the outbox on the frame the proof returns.
 ## Variants
 
 The proof word follows the device: "Face ID" (iPhone), "Touch ID" (Mac), "fingerprint" (Android),
-"your passkey" (a browser without biometrics). The Capsule uses "Touch ID" and its own glyph.
+"your passkey" (a browser without biometrics). Lumen uses "Touch ID" and its own glyph.
 
 ## Sizes
 
@@ -101,8 +101,8 @@ Deck (work/pwa, work/chat)
 - [ ] work/chat gate card has no presence line.
 
 App (work/mobile)
-- [ ] Not built: coverage is computed, nothing is drawn; sends go to the Deck or the Capsule.
+- [ ] Not built: coverage is computed, nothing is drawn; sends go to the Deck or Lumen.
 
-Capsule (work/capsule-pro)
+Lumen (work/capsule-pro)
 - [ ] PresenceView is only the proof prompt ("Confirm it's you", "Touch ID to approve exactly
       this."); there is no covered line under Send and no lapsed "Send with Touch ID" label.

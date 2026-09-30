@@ -170,6 +170,8 @@ function stubs(dir, log, site, extra = {}) {
   "compose version") echo 2.29.1 ;;
   "volume ls") echo vyre_vyre-home; echo vyre_vyre-work; echo vyre_tailscale-state ;;
 esac
+# The update's signature check runs Node in the image: docker run ... --entrypoint node IMAGE -e CODE KEY SIG.
+if [ "$1" = run ]; then shift; while [ $# -gt 0 ] && [ "$1" != --entrypoint ]; do shift; done; shift 3; exec ${process.execPath} "$@"; fi
 exit 0`,
     // Serves https://vyre.run/box/<name> from the fake site folder; 22 is curl -f's 404.
     curl: `url=$2; out=$4; name=\${url#https://vyre.run/box/}; [ -f "${site}/$name" ] || exit 22; cp "${site}/$name" "$out"`,
@@ -490,8 +492,15 @@ function builtBox(t) {
   fs.writeFileSync(path.join(box.dir, "compose.yml"), "");
   fs.writeFileSync(path.join(box.dir, ".env"),
     `COMPOSE_PROJECT_NAME=vyre\nCOMPOSE_FILE=compose.yml:compose.build.yml\nVYRE_SOURCE=${box.dir}/src\n`);
-  const update = () => spawnSync("sh", [WRAPPER, "update"], { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"], env: box.env });
-  return { ...box, update };
+  // The release is signed, as a real one is: SHA256SUMS.sig over the domain line and SHA256SUMS, with a key of this test's own, which the
+  // wrapper is told is the release key (VYRE_RELEASE_KEY is for tests only).
+  const keys = crypto.generateKeyPairSync("ed25519");
+  const signSums = () => fs.writeFileSync(path.join(box.site, "SHA256SUMS.sig"),
+    crypto.sign(null, Buffer.concat([Buffer.from("vyre-release-sums\n"), fs.readFileSync(path.join(box.site, "SHA256SUMS"))]), keys.privateKey).toString("base64") + "\n");
+  signSums();
+  const env = { ...box.env, VYRE_RELEASE_KEY: keys.publicKey.export({ type: "spki", format: "der" }).toString("base64") };
+  const update = () => spawnSync("sh", [WRAPPER, "update"], { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"], env });
+  return { ...box, env, update };
 }
 
 test("box/vyre: update refetches a verified vyre.tgz into DIR/src, then builds", t => {

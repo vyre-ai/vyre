@@ -64,8 +64,14 @@ function withinMs(p, ms) {
   const late = new Promise(res => { timer = setTimeout(() => res(null), ms); if (timer.unref) timer.unref(); });
   return Promise.race([p, late]).finally(() => clearTimeout(timer));
 }
+/** The one tool the agents module may call as the asking person: agents.ask's words and tags, heard by threads.send. @param {string} tool */
+export const agentsMayRelay = tool => tool === "threads.send";
+/** The per-call check on the agents module's relay: throws for any tool but threads.send. @param {string} tool @param {string} as */
+export function checkAgentsRelay(tool, as) {
+  if (!agentsMayRelay(tool)) throw new Error(`agents may not call ${tool} as ${as}: it relays a person to threads.send only`);
+}
 /** @type {Record<string, any>} */
-const CALL_AS = { link: ["link:box"], settings: ["cli", "local", "deck", "capsule"], mentions: (/** @type {string} */ as) => isPerson(as) || as === "module:sessions" || as === "module:assistant",
+const CALL_AS = { agents: (/** @type {string} */ as) => isPerson(as), link: ["link:box"], settings: ["cli", "local", "deck", "capsule"], mentions: (/** @type {string} */ as) => isPerson(as) || as === "module:sessions" || as === "module:assistant",
   // capsule runs a view's declared tool as the asking person (first party modules) or as the added module itself, never as anyone else.
   capsule: (/** @type {string} */ as) => isPerson(as) || /^module:[a-z][a-z0-9-]*$/.test(as),
   // connectors relays the person who asked to one thing: writing an api-credential (a module cannot write one on its own); checked per call below.
@@ -855,6 +861,8 @@ export class Registry {
         if (!core || !(typeof allowed === "function" ? allowed(String(as)) : (allowed || []).includes(String(as)))) throw new Error(`${m.name} may not call ${tool} as ${as}`);
         // mentions replays the asking person to a provider's search tool, never to any other tool.
         if (m.name === "connectors" && !(tool === "vault.put" && input && typeof input === "object" && input.kind === "api-credential")) throw new Error(`connectors may not call ${tool} as ${as}: it relays a person to vault.put for an api-credential only`);
+        // agents relays the asking person to threads.send alone (agents.ask's tags), never to any other tool.
+        if (m.name === "agents") checkAgentsRelay(tool, String(as));
         if (m.name === "capsule" && !this.capsuleMayCall(String(as), tool)) throw new Error(`capsule may not call ${tool} as ${as}: no Capsule view of that module declares it`);
         if (m.name === "mentions" && !this.mentionTools(String(as).startsWith("module:") ? "resolve" : "search").has(tool)) throw new Error(`mentions may not call ${tool} as ${as}: no first-party provider names it`);
         // settings relays a person only to the tools first-party modules declared as their own
@@ -948,7 +956,7 @@ export class Registry {
           internal: Boolean(def.internal) || reach === "modules",
           callers: reach === "person" ? [...PERSON_CALLERS] : Array.isArray(def.callers) ? def.callers : null,
           hook: Boolean(def.hook) || reach === "hook", presence: def.presence || false, core: Boolean(def.core),
-          reach, outward: (e && e.outward) || null, target: (e && e.target) || null, projectArg: (e && e.projectArg) || null, declaredReach: objectForm.has(name) });
+          reach, outward: (e && e.outward) || null, target: (e && e.target) || null, projectArg: (e && e.projectArg) || null, cwdArg: (e && e.cwdArg) || null, declaredReach: objectForm.has(name) });
       },
     };
   }
@@ -1043,24 +1051,54 @@ export class Registry {
     }
     const problems = checkInput(def.input, input);
     if (problems.length) return { error: { code: "bad_input", message: problems.join("; ") } };
-    // A tool that takes a project declares projectArg, and an agent's call for a project it is not granted is refused
-    // here, once, for every module: the one door is projects.reach (owner's revokes and the assistant's rule included).
-    // not_found, so a refusal never says whether the project exists. The tool gets meta.reach for what it lists.
-    if (def.projectArg && agentClaim(caller) !== null) {
-      const named = (Array.isArray(def.projectArg) ? def.projectArg : [def.projectArg]).flatMap((/** @type {string} */ arg) => {
+    // A tool that takes a project declares projectArg, and one that takes a folder declares cwdArg. An agent's call for a
+    // project it is not granted (or a folder in one) is refused here, once, for every module alike: the one door is
+    // projects.reach (owner's revokes and the assistant's rule included). not_found, so a refusal never says whether the
+    // project exists. What was checked is what runs: a named project is rewritten to the canonical slug that was authorized.
+    // The tool gets meta.reach for what it lists; with no answer on the agent's grant it gets nothing (fail closed).
+    if ((def.projectArg || def.cwdArg) && agentClaim(caller) !== null) {
+      const fields = (/** @type {any} */ spec) => (spec ? (Array.isArray(spec) ? spec : [spec]) : []);
+      const valuesOf = (/** @type {string} */ arg) => {
         const v = input && typeof input === "object" ? input[arg] : undefined;
         return v === undefined || v === null || v === "" ? [] : Array.isArray(v) ? v : [v];
-      });
+      };
+      const refuse = { error: { code: "not_found", message: "no such project" } };
+      const named = fields(def.projectArg).flatMap(valuesOf);
+      const folders = fields(def.cwdArg).flatMap(valuesOf);
       const r = await withinMs(this.call("projects.reach", { caller: String(caller), kind: "content" }, "module:vyred", { door: true }), TARGET_MS);
       const reach = r && r.data && typeof r.data === "object" ? r.data : null;
-      // No answer on who may reach what (an agent with no recorded grant, or projects not running): no (fail closed). A project
-      // named is refused; nothing named, the tool gets an empty meta.reach, never the whole list.
       if (!reach) {
-        if (named.length) return { error: { code: "not_found", message: "no such project" } };
+        if (named.length || folders.length) return refuse;
         meta = { ...meta, reach: { all: false, projects: [] } };
       } else {
-        const slugs = reach.all ? null : (Array.isArray(reach.projects) ? reach.projects : []).flatMap((/** @type {any} */ p) => [p && p.slug, p && p.name]).filter(Boolean);
-        if (slugs && named.some((/** @type {any} */ one) => !slugs.includes(String(one)))) return { error: { code: "not_found", message: "no such project" } };
+        const granted = reach.all ? null : (Array.isArray(reach.projects) ? reach.projects : []).filter((/** @type {any} */ p) => p && typeof p.slug === "string");
+        if (granted) {
+          // A name or a slug, exactly; a slug first. Anything else (an object, a number) is no.
+          const canon = (/** @type {any} */ v) => typeof v !== "string" ? null : (granted.find((/** @type {any} */ p) => p.slug === v) || granted.find((/** @type {any} */ p) => p.name === v) || {}).slug || null;
+          if (named.some(v => canon(v) === null)) return refuse;
+          let rewritten = input;
+          for (const arg of fields(def.projectArg)) {
+            const v = input && typeof input === "object" ? input[arg] : undefined;
+            if (v === undefined || v === null || v === "") continue;
+            rewritten = { ...rewritten, [arg]: Array.isArray(v) ? v.map(canon) : canon(v) };
+          }
+          input = rewritten;
+          // A folder belongs to the project that owns it; one in no project is refused for an agent with an explicit list.
+          if (folders.length) {
+            let scoped = null;
+            for (const cwd of folders) {
+              const o = typeof cwd === "string" ? await withinMs(this.call("projects.of", { cwd }, "module:vyred", { door: true }), TARGET_MS) : null;
+              const slug = o && o.data && typeof o.data.slug === "string" ? o.data.slug : null;
+              if (slug) { if (!granted.some((/** @type {any} */ p) => p.slug === slug)) return refuse; continue; }
+              if (scoped === null) {
+                const sc = await withinMs(this.call("agents.scope", { name: String(agentClaim(caller)) }, "module:vyred", { door: true }), TARGET_MS);
+                const who = sc && sc.data ? sc.data : null;
+                scoped = !who || (who.kind !== "assistant" && who.projects !== "*");
+              }
+              if (scoped) return refuse;
+            }
+          }
+        }
         meta = { ...meta, reach: reach.all ? { all: true } : { all: false, projects: (Array.isArray(reach.projects) ? reach.projects : []).map((/** @type {any} */ p) => p && p.slug).filter(Boolean) } };
       }
     }

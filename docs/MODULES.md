@@ -117,6 +117,7 @@ That answer is what your yes is matched against, so it binds that thing and not 
 A tool that takes a project names the input field in `projectArg` (a name, or a list of names). The registry then
 refuses an agent's call for a project the agent is not granted, with `not_found` (so a refusal never says whether the
 project exists), before the tool runs, for every module alike. It asks `projects.reach`, so the owner's revokes count.
+`cwdArg` does the same for a folder: it is mapped to its project, and a folder in no project is refused for an agent with an explicit project list. A named project is rewritten to the canonical slug that was authorized.
 The tool also gets `meta.reach`, `{ all: true }` or `{ all: false, projects: [slug] }`, to keep a listing inside the
 grant when no project is named.
 

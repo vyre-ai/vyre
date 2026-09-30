@@ -94,14 +94,27 @@ async function bring(ctx, tabId, focus) {
 }
 
 /** @param {any} ctx @param {string} url @param {boolean} focus */
-async function open(ctx, url, focus) {
+async function open(ctx, url, focus, timeoutMs = 15_000) {
   const v = await ctx.floorUrl(url, "tabs.open");
   if (!v.allow) throw err("blocked", `${v.why} (${v.tier})`);
   const tab = await ctx.tabs.create({ url, active: focus });
   const set = await openedSet(ctx);
   set.add(tab.id);
   await saveOpened(ctx, set);
-  return tab;
+  // Resolve only when the tab has committed to the page and finished loading (or the time is up), so the next call sees the real page,
+  // never a tab that is still loading or already sitting on Chrome's error page.
+  const s = ctx.tabs.settle ? await ctx.tabs.settle(tab.id, timeoutMs) : { tab, settled: true, waitedMs: 0 };
+  return { created: tab, tab: s.tab || tab, settled: s.settled, waitedMs: s.waitedMs };
+}
+
+/**
+ * What an open tab ended up as, said plainly: loaded, still loading, or Chrome's error page (the site did not load).
+ * @param {any} r the result of open() @param {string} asked the URL that was asked for
+ */
+function landed(r, asked) {
+  const url = String((r.tab && (r.tab.url || r.tab.pendingUrl)) || "");
+  const failed = url.startsWith("chrome-error:");
+  return { finalUrl: redact.url(url || asked), title: String((r.tab && r.tab.title) || "").slice(0, 120), loaded: r.settled && !failed, ...(failed ? { failed: "the page did not load: Chrome is showing its own error page (no network, a wrong address or a refused connection). The tab is open; check the address and try again." } : {}), ...(!r.settled && !failed ? { stillLoading: true } : {}), waitedMs: r.waitedMs };
 }
 
 /** @type {{ name: string, ops: Record<string, (args: any, ctx: any) => Promise<any>> }} */
@@ -127,14 +140,16 @@ export default {
         return { ...shape(best.s), reused: true, matched: best.how };
       }
       if (typeof args.url !== "string" || args.openIfMissing === false) throw err("no_tab", "no open tab matches and none was opened");
-      const tab = await open(ctx, args.url, focus);
-      return { id: tab.id, windowId: tab.windowId, url: redact.url(args.url), title: "", active: !!tab.active, opened: true, reused: false, matched: "opened" };
+      const r = await open(ctx, args.url, focus, Number(args.timeoutMs) || undefined);
+      const l = landed(r, args.url);
+      return { id: r.created.id, windowId: r.created.windowId, url: l.finalUrl, title: l.title, active: !!r.created.active, opened: true, reused: false, matched: "opened", loaded: l.loaded, ...(l.failed ? { failed: l.failed } : {}), ...(l.stillLoading ? { stillLoading: true } : {}), waitedMs: l.waitedMs };
     },
 
     "tabs.open": async (args, ctx) => {
       if (typeof args.url !== "string" || !args.url) throw err("bad_request", "tabs.open needs a url");
-      const tab = await open(ctx, args.url, args.focus === true);
-      return { id: tab.id, windowId: tab.windowId, url: redact.url(args.url), opened: true };
+      const r = await open(ctx, args.url, args.focus === true, Number(args.timeoutMs) || undefined);
+      const l = landed(r, args.url);
+      return { id: r.created.id, windowId: r.created.windowId, url: l.finalUrl, title: l.title, opened: true, loaded: l.loaded, ...(l.failed ? { failed: l.failed } : {}), ...(l.stillLoading ? { stillLoading: true } : {}), waitedMs: l.waitedMs };
     },
 
     "tabs.activate": async (args, ctx) => {
@@ -182,7 +197,10 @@ export default {
       const target = await ctx.floorUrl(args.url, "tabs.open");
       if (!target.allow) throw err("blocked", `${target.why} (${target.tier})`);
       await ctx.tabs.update(id, { url: args.url });
-      return { id, url: redact.url(args.url) };
+      const st = ctx.tabs.settle ? await ctx.tabs.settle(id, Number(args.timeoutMs) || 15_000) : null;
+      const now = st && st.tab ? String(st.tab.url || "") : "";
+      const failed = now.startsWith("chrome-error:");
+      return { id, url: redact.url(now || args.url), ...(st ? { loaded: st.settled && !failed, waitedMs: st.waitedMs } : {}), ...(failed ? { failed: "the page did not load: Chrome is showing its own error page. Check the address and try again." } : {}) };
     },
   },
 };
