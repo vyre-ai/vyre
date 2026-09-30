@@ -48,6 +48,16 @@ types the seed (22 characters); no QR or words form yet (no bytes-to-words encod
 side). The persistent link window that keeps the channel for box calls (Drive) is NOT built.
 release.yml now calls capsule-win.yml as a reusable workflow and the release job needs it, no race.
 
+**Round 4:** (a) test-windows in node.yml now runs `npm run test:windows` (a bounded set, 10 min cap,
+--test-timeout): 282 tests in about 1.5 min on windows-latest, 211 pass and 70 fail. The failures are
+existing Windows gaps, not this branch: box and connect command tests (fake binaries and POSIX shells),
+config permission and unix-socket tests, the tar-safety tests, and the voice talk tests. The job stays
+continue-on-error. (b) The pairing seed shows as 13 words (seedwords.js) and a `vyre-pc:` QR (vendored
+qrcode), with Copy for a Deck on the same PC (not a true one-click: no link or scheme allowed); cleared
+when pairing ends. (c) Hidden `link` window keeps the box channel; tray "Open Vyre Drive" maps the first
+shared folder via files.drive.address. UNVERIFIED: the Tauri event listen from the page, and the shape
+of files.drive.candidates' answer; both need a real PC run.
+
 **RESUMED 2026-09-30 (relaunch).** Merged origin/work/stage-0.2 into work/windows (a merge, not a
 rebase: 32 old commits, six conflicts, all union-resolved; win32 fresh default is role local,
 machine device). Docs and config tests pass locally. Scaffolded the Tauri shell in
