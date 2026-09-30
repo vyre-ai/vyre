@@ -301,7 +301,8 @@ fn handle_link(app: &AppHandle, link: &str) {
         let body = serde_json::json!({ "loc": wink::locator(&ticket) }).to_string();
         let res = ureq::post(&format!("{RELAY}/v1/pair")).set("content-type", "application/json").send_string(&body);
         let Ok(res) = res else { return };
-        let Ok(v) = res.into_json::<serde_json::Value>() else { return };
+        let Ok(text) = res.into_string() else { return };
+        let Ok(v) = serde_json::from_str::<serde_json::Value>(&text) else { return };
         let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_millis() as u64).unwrap_or(0);
         let offer = wink::open_record(&ticket, v["record"].as_str().unwrap_or(""), v["mac"].as_str().unwrap_or(""), now);
         let Ok(offer) = offer else { return };
