@@ -816,8 +816,8 @@ export class Switchboard {
     // Memory for a prompt (memory.prompt, iq): blocks of text, scoped by vyred to this thread's own agent
     // and project. The scope is the thread's record, never anything the session says. Nothing if iq is absent.
     // memory.prompt gives a module caller nothing unless it names the thread's agent (then only that agent's grant) or says the
-    // thread is the person's own (no agent, and a chat, project or capsule thread): both come from this record, never from the session.
-    const personal = !rec.agent && ["chat", "project", "capsule"].includes(String(rec.purpose || "chat"));
+    // thread is the person's own (no agent, and a recorded chat, project or capsule purpose: a record with no purpose is not): both come from this record, never from the session.
+    const personal = !rec.agent && ["chat", "project", "capsule"].includes(String(rec.purpose || ""));
     const memory = async ({ prompt, first }) => {
       const r = await this.deps.call("memory.prompt", { prompt, first: Boolean(first), thread: id, ...(rec.project ? { project: rec.project } : {}), ...(rec.agent ? { agent: rec.agent } : personal ? { person: true } : {}) }).catch(() => null);
       return r && !r.error && r.data && Array.isArray(r.data.blocks) ? r.data.blocks.filter(b => b && b.type === "text" && typeof b.text === "string").map(b => ({ type: "text", text: b.text })) : [];

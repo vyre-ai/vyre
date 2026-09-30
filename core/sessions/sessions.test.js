@@ -436,6 +436,14 @@ for (const driver of ["cli", "sdk"]) {
     assert.equal(j.error, undefined, JSON.stringify(j));
     await w.finished(j.data.id);
     assert.deepEqual(asked.filter(x => x.thread === j.data.id), [{ thread: j.data.id, agent: undefined, person: undefined }]);
+    // A record with no purpose (an older row) is not the person's own thread: it is not read as a chat.
+    const nop = (await w.tool("threads.start", { cwd: w.work, provider: "grok", prompt: "older row", surface: "deck" })).data;
+    await w.finished(nop.id);
+    w.d.registry.deps.db.prepare("UPDATE threads_runs SET purpose = NULL WHERE id = ?").run(nop.id);
+    await w.tool("threads.stop", { thread: nop.id });
+    await w.tool("threads.send", { thread: nop.id, text: "after the purpose was lost", surface: "deck" });
+    await w.finished(nop.id, 2);
+    assert.deepEqual(asked.filter(x => x.thread === nop.id).at(-1), { thread: nop.id, agent: undefined, person: undefined }, "no purpose, no memory");
   });
 
   test(`${driver}: switching provider mid-session: same thread, a brief of what was said, a notice, and only between turns`, { skip }, async t => {
