@@ -8,8 +8,8 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Vyre: your work partner, on a machine you own</title>
-  <meta name="description" content="Vyre remembers every session, keeps every account in one place, and works beside you on a machine you own. Open source, Apache 2.0, built on Claude Code.">
+  <title>Vyre: self-hosted Claude Code agents for your Mac and phone</title>
+  <meta name="description" content="Open-source, self-hosted Claude Code agents. They run on your server and answer from your Mac or your phone. Your keys stay in your own vault.">
   <link rel="canonical" href="https://vyre.run/">
   <meta name="theme-color" content="#0E0D0C">
   <meta name="color-scheme" content="dark">
@@ -18,16 +18,29 @@
   <meta property="og:type" content="website">
   <meta property="og:site_name" content="Vyre">
   <meta property="og:url" content="https://vyre.run/">
-  <meta property="og:title" content="Vyre: your work partner, on a machine you own">
-  <meta property="og:description" content="Your best work, with a partner that never drops the thread. Open source, Apache 2.0, built on Claude Code.">
+  <meta property="og:title" content="Vyre: self-hosted Claude Code agents for your Mac and phone">
+  <meta property="og:description" content="Open-source, self-hosted Claude Code agents. They run on your server and answer from your Mac or your phone. Your keys stay in your own vault.">
   <meta property="og:image" content="https://vyre.run/og.png">
-  <meta property="og:image:width" content="1200">
-  <meta property="og:image:height" content="630">
-  <meta property="og:image:alt" content="The Vyre mark, one wire bent into a v with a green dot leaving its end">
+  <meta property="og:image:width" content="1280">
+  <meta property="og:image:height" content="640">
+  <meta property="og:image:alt" content="Vyre: your agents live on your server. Reach them from your Mac or your phone.">
   <meta name="twitter:card" content="summary_large_image">
-  <meta name="twitter:title" content="Vyre: your work partner, on a machine you own">
-  <meta name="twitter:description" content="Your best work, with a partner that never drops the thread. Open source, Apache 2.0, built on Claude Code.">
+  <meta name="twitter:title" content="Vyre: self-hosted Claude Code agents for your Mac and phone">
+  <meta name="twitter:description" content="Open-source, self-hosted Claude Code agents. They run on your server and answer from your Mac or your phone. Your keys stay in your own vault.">
   <meta name="twitter:image" content="https://vyre.run/og.png">
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "SoftwareApplication",
+    "name": "Vyre",
+    "description": "Open-source, self-hosted Claude Code agents. They run on your server and answer from your Mac or your phone. Your keys stay in your own vault.",
+    "applicationCategory": "DeveloperApplication",
+    "operatingSystem": "macOS, Linux",
+    "license": "https://www.apache.org/licenses/LICENSE-2.0",
+    "url": "https://vyre.run/",
+    "codeRepository": "https://github.com/vyre-ai/vyre"
+  }
+  </script>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;500;600&amp;family=JetBrains+Mono:wght@400;500&amp;display=swap">
@@ -64,11 +77,12 @@
   <section class="hero" id="top" aria-labelledby="hero-h">
     <div class="wrap">
       <p class="lbl eyebrow"><span>Open source</span><span aria-hidden="true">&#183;</span><span>Apache 2.0</span><span aria-hidden="true">&#183;</span><span>Built on Claude Code</span></p>
-      <h1 id="hero-h" class="h-display">Your best work, with a partner that never drops the thread.</h1>
+      <h1 id="hero-h" class="h-display">Your agents live on your server. Reach them from your Mac or your phone.</h1>
 
       <div class="hero-grid">
         <div class="hero-copy">
-          <p class="lead">Vyre remembers every session, keeps every account in one place, and works beside you on a machine you own. Ask anything with a keystroke. Watch it work. Step in whenever you like.</p>
+          <p class="lead">Vyre is an open-source, self-hosted home for Claude Code agents. They run on a server you own, keep working when your laptop is closed, and answer when you press Option-Space on your Mac or open Vyre on your phone.</p>
+          <p class="lead">Your API keys stay in an encrypted vault on that server. Anything that sends a message, posts or pays waits for your Touch ID or Face ID.</p>
 
           <div class="install" id="install" data-install>
             <div class="install-cmd">
@@ -345,6 +359,7 @@
           </div>
           <div class="t">
             <p class="body">The Deck opens in your browser at your own address, private to your Tailscale network. The phone app brings approvals and Glass with you. Nothing goes out as you until you&#39;ve seen the final words.</p>
+            <p class="body">Add your phone by opening phone.vyre.run and scanning the ring around your avatar. Your phone shows your server&#39;s name and a short code, and pairs only after you tap Pair.</p>
             <div class="address">
               <label class="lbl" for="yourname">Your address</label>
               <span class="address-line"><span class="scheme">https://</span><input id="yourname" class="name-in" type="text" value="alex" autocomplete="off" autocapitalize="off" spellcheck="false" maxlength="20" aria-describedby="yourname-hint"><span>.vyre.run</span></span>
@@ -440,7 +455,7 @@
   <div class="wrap outside">
     <div class="outside-in">
       <span class="stem" aria-hidden="true"></span>
-      <div class="t"><span class="lbl">Outside the line &#183; vyre.run</span><span class="xs stone">Holds one DNS record for your name. None of your data.</span></div>
+      <div class="t"><span class="lbl">Outside the line &#183; vyre.run</span><span class="xs stone">Holds your DNS record and relays a paired phone&#39;s traffic, end-to-end encrypted. Never your content or keys.</span></div>
     </div>
   </div>
 
@@ -459,7 +474,11 @@
           </details>
           <details>
             <summary>Where does my data live?</summary>
-            <p>On your server and your Mac. vyre.run only holds one DNS record for your name, so your address can find your server. None of your sessions, memory or vault pass through it.</p>
+            <p>Your sessions, memory and vault stay on your server and your Mac. vyre.run holds your name&#39;s DNS record and runs the relay (relay.vyre.run). A phone paired by scanning reaches your server through that relay, end-to-end encrypted: it can see that your phone and your server talk, and when, but never what&#39;s said, and never your keys. Your prompts still go to Anthropic&#39;s API through Claude Code, exactly as they would if you ran Claude Code directly.</p>
+          </details>
+          <details>
+            <summary>How do I add my phone?</summary>
+            <p>Add your phone by opening phone.vyre.run and scanning the ring around your avatar. Your phone shows your server&#39;s name and a short code, and pairs only after you tap Pair.</p>
           </details>
           <details>
             <summary>Do I need a server?</summary>
@@ -475,7 +494,7 @@
           </details>
           <details>
             <summary>Is it ready?</summary>
-            <p>It&#39;s 0.1.0, which means early. What this page shows works today, except what carries a <span class="chip chip-inline">coming</span> chip. Expect rough edges, and tell us about them on GitHub.</p>
+            <p>It&#39;s 0.1.1, which means early. What this page shows works today, except what carries a <span class="chip chip-inline">coming</span> chip. Expect rough edges, and tell us about them on GitHub.</p>
           </details>
           <details>
             <summary>Does it run on Windows?</summary>

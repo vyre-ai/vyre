@@ -76,7 +76,7 @@
 import { toolDetail } from "./tool-detail.js";
 
 /**
- * @typedef {"starting"|"working"|"asking"|"waiting"|"paused"|"stopped"|"finished"|"failed"} SessionState
+ * @typedef {"idle"|"starting"|"working"|"asking"|"waiting"|"paused"|"stopped"|"finished"|"failed"} SessionState
  *   Sessions' canonical, person-facing vocabulary (lib/thread-status.js, on work/sessions):
  *   thread.status/canonical_status. "idle" default below is legacy, replaced by the first
  *   thread.state or thread.status event/snapshot.

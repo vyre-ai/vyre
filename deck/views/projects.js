@@ -19,9 +19,10 @@
 import { h, put, link, go, head, empty } from "../js/dom.js";
 import { attempt, queue, queued } from "../js/api.js";
 import { icon } from "../js/icons.js";
-import { projectAvatar, draftAvatar, setProjects } from "../js/avatars.js";
+import { projectAvatar, draftAvatar, setProjects, personAvatar, threadAvatar, readTeammates, readProjects } from "../js/avatars.js";
+import { labelFor, readNames } from "../chat/lib/names.js";
 import * as needs from "../js/needs.js";
-import { when, clock, since, base, initial, initials, plural } from "../js/fmt.js";
+import { when, clock, since, base, initial, plural } from "../js/fmt.js";
 import { isMac, machineChip, readOnlyNote } from "../js/machine.js";
 import { elsewhere } from "../js/need-rows.js";
 import { createProject, createProjectInline, startThread, startThreadInline, indexHistoryInline } from "../js/empty-actions.js";
@@ -546,6 +547,15 @@ async function threadPane(ctx, id, o) {
   let fromMac = isMac(o.known?.live) || isMac(o.known?.rec);
   const isLive = !!o.known?.live && !fromMac;
   let thread = null, events = [], recorded = null, loadErr = null;
+  // Who is who for the avatars and names (each read once per page; a missing one just means a
+  // fallback). chat/lib/names.js's readNames reads system.info and passes it to the avatars too.
+  // The thread never waits on these: it draws at once, and whoReady() redraws the avatars and the
+  // reply names in place if they land after it (reviewer's nit on 6fea1c16).
+  /** @type {{ assistant?: string|null, owner?: string|null }} */ let names = {};
+  let identityIn = false;
+  /** @type {() => void} */ let whoReady = () => {};
+  Promise.all([readNames(attempt), readTeammates(attempt), readProjects(attempt)])
+    .then(([nm]) => { names = nm || {}; identityIn = true; whoReady(); }, () => {});
   if (isLive) {
     const r = await attempt("threads.get", { thread: id });
     if (r.data) ({ thread, events } = { thread: r.data.thread, events: r.data.events || [] }); else loadErr = r.error;
@@ -563,6 +573,11 @@ async function threadPane(ctx, id, o) {
 
   const swMissing = !!(o.switchboard?.error?.missing);
   const agent = thread?.agent || o.known?.live?.agent || null;
+  // ADR 0043 section 6: the person's own avatar on their messages; a reply wears the thread's
+  // (the project's tile in a project, a draft tile in none, an agent's blob, a teammate's character).
+  const project = o.project?.slug || thread?.project || null;
+  const youAv = (/** @type {string} */ who) => personAvatar({ size: 24, cls: "th-av", title: who });
+  const replyAv = (/** @type {string} */ who) => threadAvatar({ agent, project, thread: id }, { size: 24, cls: "th-av", title: who });
   const cwd = thread?.cwd || recorded?.session?.cwd || "";
   put(title, thread?.name || o.known?.name || o.known?.live?.name || recorded?.session?.name || recorded?.session?.title || (thread ? "New thread" : id));
   const machine = fromMac ? String(recorded?.machine || o.known?.live?.machine || o.known?.rec?.machine || "your Mac") : null;
@@ -577,6 +592,17 @@ async function threadPane(ctx, id, o) {
 
   // The stream of things said and done, in order.
   const stream = h("div", { class: "th-stream" });
+  // The identity reads landed after the thread drew: the right avatars and reply names, in place.
+  if (!identityIn) whoReady = () => {
+    if (!ctx.alive()) return;
+    for (const m of stream.querySelectorAll(".th-msg")) {
+      const name = m.querySelector(".th-name");
+      const user = m.classList.contains("user");
+      if (!user && name) put(name, labelFor({ role: "assistant", agent }, names));
+      const who = name?.textContent || "";
+      m.querySelector(".th-av")?.replaceWith(user ? youAv(who) : replyAv(who));
+    }
+  };
   put(body, stream);
   let toolGroup = /** @type {HTMLElement|null} */ (null);
   const byMsg = new Map();
@@ -613,14 +639,16 @@ async function threadPane(ctx, id, o) {
         : ev.text || "";
       if (live && key && byMsg.has(key)) { put(byMsg.get(key), text); return; }
       if (live && ev.role === "user" && pendingEcho.has(ev.text)) { pendingEcho.delete(ev.text); return; }
-      const m = message(ev.role === "user" ? "user" : "assistant", ev.role === "user" ? "You" : (agent || "Claude"), ev.at, text);
+      // A reply is named the way chat names it (chat/lib/names.js): the agent's name, else the assistant's, never "Claude".
+      const who = ev.role === "user" ? "You" : labelFor({ role: "assistant", agent }, names);
+      const m = message(ev.role === "user" ? "user" : "assistant", who, ev.at, text, ev.role === "user" ? youAv(who) : replyAv(who));
       if (key) byMsg.set(key, /** @type {HTMLElement} */ (m.querySelector(".th-text")));
       stream.append(m);
     } else if (type === "thread.sent") {
       // Another surface's own keystrokes: this surface already echoed its own (o.append, below).
       if (ev.surface === "deck") return;
       toolGroup = null;
-      stream.append(message("user", ev.surface || "Another surface", ev.at, ev.text || ""));
+      stream.append(message("user", ev.surface || "Another surface", ev.at, ev.text || "", youAv(ev.surface || "Another surface")));
     } else if (type === "ask.raised") {
       toolGroup = null;
       const a = normAsk(ev.ask || ev, ev.at);
@@ -676,7 +704,7 @@ async function threadPane(ctx, id, o) {
       pendingEcho.add(text);
       toolGroup = null;
       stream.querySelector(".th-wait")?.remove();
-      stream.append(message("user", "You", Date.now(), text));
+      stream.append(message("user", "You", Date.now(), text, youAv("You")));
       scrollDown();
     },
   });
@@ -684,9 +712,11 @@ async function threadPane(ctx, id, o) {
 
 const isRecall = tool => /(^|__|\.)(recall|memory)[._]/i.test(String(tool || "")) || /^(recall|memory)$/i.test(String(tool || ""));
 
-function message(role, who, at, text) {
+/** One message. `av`: its avatar (js/avatars.js), the person's for "you" and the thread's own
+ * (the project tile, a draft tile, an agent's blob or a teammate's character) for a reply. */
+function message(role, who, at, text, av) {
   return h("div", { class: "th-msg " + role },
-    role === "user" ? h("span", { class: "initial round", "aria-hidden": "true" }, initials(who) || "Y") : h("span", { class: "initial", "aria-hidden": "true" }, initial(who)),
+    av,
     h("div", { class: "th-msg-main" },
       h("div", { class: "th-who" }, h("span", { class: "th-name" }, who), at ? h("span", { class: "code faint" }, clock(at)) : null),
       h("p", { class: "th-text" }, text)));

@@ -35,8 +35,9 @@ export const shortModel = m => (m ? (/(opus|sonnet|haiku|fable)/i.exec(m)?.[1]?.
  * @returns {{ id: string, label: string, description?: string, now: boolean }[]}
  */
 export function modelChoices(o = {}) {
-  /** @type {Map<string, { id: string, label: string, description?: string, now: boolean }>} */
+  /** @type {any[]} */
   const aliases = Array.isArray(o.aliases) ? o.aliases.filter((/** @type {any} */ m) => m && typeof m.id === "string" && /^[a-z][a-z0-9-]{0,31}$/.test(m.id)) : [];
+  /** @type {Map<string, { id: string, label: string, description?: string, now: boolean }>} */
   const rows = new Map(aliases.map((/** @type {any} */ m) => [m.id, { id: m.id, label: String(m.label || m.id), ...(m.description ? { description: String(m.description) } : {}), now: false }]));
   /** @type {Map<string, string[]>} */
   const uses = new Map();

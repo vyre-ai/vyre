@@ -4,6 +4,24 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+- Module contract v1 (ADR 0047), as a proof on the platform branch. `module.json` says for each
+  tool who may call it (`reach`) and whether it acts as you outside (`outward`). Each ctx member a
+  module uses has one declaration, and the install card is built from them.
+- `@vyre/module-sdk` gains `testing` (a fake registry and Gate over a temp home), `conform` (the
+  checks every module passes) and `updatePlan` (install, show the card, or wait).
+- `vyre module new` writes a v1 module with `AGENTS.md`, the brief for an agent writing it.
+  `vyre module test` runs the conformance checks, then the module's own tests.
+- `examples/modules/bakery` is the complete example. `docs/build/AGENT-BRIEF.md` is the text to hand
+  another agent.
+- The loader reads v1 manifests: tools with a reach, `mac` and `windows` roles, and `requires` with
+  version ranges. A module added from outside reaches only tools with a declared reach, and may not
+  replace one of Vyre's modules.
+- Modules keep working as the contract grows. A module names its contract in module.json
+  (`"vyre": "1"`), and inside a major Vyre only adds. Unknown keys and deprecated usages are
+  warnings, never failures. A module for a newer contract is never run: its row says which Vyre it
+  needs. `vyre module upgrade` moves a module onto the current form, and pinned fixtures in
+  `test/fixtures/modules/` hold every release to it.
+
 ## 0.1.1
 
 What's new:
@@ -299,6 +317,13 @@ The entries below are the detailed engineering notes for 0.1.1.
 
 #### deck: project tiles (the fifth avatar family), locked renderers, base64url fingerprints
 
+- The Projects view's thread pane (/projects/<slug>/<thread> and /threads/<thread>) draws the
+  person's avatar on "You" and the thread's own on replies (the project tile, a draft tile, an
+  agent's blob or a teammate's character) instead of letter chips.
+  Its replies are named the way chat names them (chat/lib/names.js): the agent's name, else the
+  assistant's, never "Claude".
+  The pane never waits on the identity reads: the thread draws at once, and its avatars and reply
+  names are filled in place when system.info, team.list and projects.list answer.
 - A session's replies and header wear its project's tile (seeded from the stored avatar_seed); a
   chat in no project wears a dashed draft tile seeded from its id, which carries over when it is
   made into a project ("New project from this", projects.create from_thread) and switches in place

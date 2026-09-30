@@ -129,7 +129,48 @@ try {
   say("the rail's account button is the person's avatar", rail === "person", String(rail));
   await shot("chat-session");
 
+  // 3b. The Projects view's thread pane (/threads/<id>, then /projects/<slug>/<id>): the person's
+  // avatar on "You", the draft tile on replies while the chat is in no project; made into a project
+  // (projects.create from_thread), the replies wear that project's tile in the same colour.
+  const tool = async (/** @type {string} */ name, /** @type {any} */ input = {}) =>
+    (await fetch(`${world.url}/v1/tools/${name}`, { method: "POST", headers: { "content-type": "application/json", "x-vyre-caller": "deck" }, body: JSON.stringify(input) })).json();
+  const pane = () => tab.run(`await waitFor(".th-msg .vy-av", 15000); const f = s => document.querySelector(s);
+    const reply = f(".th-msg.assistant .vy-av");
+    return { you: f(".th-msg.user .vy-av")?.dataset.family, reply: reply?.dataset.family, draft: reply?.hasAttribute("data-draft"),
+      colour: reply?.querySelector("rect[stroke-dasharray]")?.getAttribute("stroke") || reply?.querySelector("rect")?.getAttribute("fill") || null,
+      letters: [...document.querySelectorAll(".th-msg .initial")].length,
+      claude: [...document.querySelectorAll(".th-msg .th-name")].filter(e => /claude/i.test(e.textContent)).length,
+      name: f(".th-msg.assistant .th-name")?.textContent || null };`);
+  await tab.go(`${world.url}/threads/${encodeURIComponent(world.s40)}`, 3000);
+  const loose = await pane();
+  say("project pane, a chat in no project: you, and its draft tile on replies", loose.you === "person" && loose.reply === "project" && loose.draft && loose.letters === 0, JSON.stringify(loose));
+  say("project pane: replies are named the way chat names them, never Claude", loose.claude === 0 && !!loose.name, JSON.stringify({ name: loose.name, claude: loose.claude }));
+  await shot("project-pane-draft");
+  // The pane never waits on the identity reads: with system.info held back 2.5 s, the thread's
+  // text is on screen first, and the avatars and names are right once it lands.
+  const slow = await tab.send("Page.addScriptToEvaluateOnNewDocument", { source: `(() => { const f = window.fetch;
+    window.fetch = (u, o) => String(u).includes("/v1/tools/system.info") ? new Promise(r => setTimeout(r, 2500)).then(() => f(u, o)) : f(u, o); })();` });
+  await tab.go(`${world.url}/threads/${encodeURIComponent(world.s40)}`, 1200);
+  const early = await tab.run(`await waitFor(".th-msg", 8000); return { rows: document.querySelectorAll(".th-msg").length, at: performance.now() };`);
+  await sleep(3000);
+  const late = await tab.run(`const r = document.querySelector(".th-msg.assistant"); return { reply: r?.querySelector(".vy-av")?.dataset.family,
+    you: document.querySelector(".th-msg.user .vy-av")?.dataset.family, name: r?.querySelector(".th-name")?.textContent };`);
+  say("project pane draws before system.info answers, then fills avatars and names in place", early.rows > 0 && early.at < 2500 && late.reply === "project" && late.you === "person" && !/claude/i.test(String(late.name)),
+    `${early.rows} rows at ${Math.round(early.at)} ms (system.info held to 2500 ms); then ${JSON.stringify(late)}`);
+  await tab.send("Page.removeScriptToEvaluateOnNewDocument", { identifier: slow.result?.identifier });
+  const made = await tool("projects.create", { name: "Northwind Bakery", from_thread: world.s40 });
+  if (made.error) say("made a project from the chat", false, JSON.stringify(made.error));
+  else {
+    await tab.go(`${world.url}/projects/${encodeURIComponent(made.data.slug)}/${encodeURIComponent(world.s40)}`, 3000);
+    const filed = await pane();
+    say("project pane, in its project: the solid tile, the chat's colour carried over", filed.reply === "project" && !filed.draft && filed.colour === loose.colour && filed.letters === 0,
+      `${JSON.stringify(filed)} (draft colour ${loose.colour})`);
+    await shot("project-pane-project");
+  }
+
   // 4. A tap hops; Reduce Motion keeps it still.
+  await tab.go(`${world.url}/chat/thread/${encodeURIComponent(world.s40)}`, 3000);
+  await tab.run(`await waitFor(".cv-user .vy-av", 15000); return true;`);
   const tap = () => tab.run(`const e = document.querySelector(".cv-user .vy-av"); e.classList.remove("vy-av-play"); e.dispatchEvent(new MouseEvent("click", { bubbles: true }));
     const on = e.classList.contains("vy-av-play"); const anim = getComputedStyle(e).animationName; return { on, anim };`);
   const moving = await tap();
