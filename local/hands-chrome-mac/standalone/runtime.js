@@ -171,6 +171,6 @@ export async function createRuntime(o = {}) {
 
   return {
     dataDir, trace, list, invoke, held,
-    async stop() { clearInterval(statusTimer); try { fs.rmSync(statusFile, { force: true }); } catch { /* gone */ } trace.write({ kind: "session", event: "stop" }); await running.stop(); },
+    async stop() { clearInterval(statusTimer); try { const j = JSON.parse(fs.readFileSync(statusFile, "utf8")); if (j && j.pid === process.pid) fs.rmSync(statusFile, { force: true }); } catch { /* gone or not ours */ } trace.write({ kind: "session", event: "stop" }); await running.stop(); },
   };
 }

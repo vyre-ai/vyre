@@ -83,7 +83,7 @@ export async function doctor({ dataDir, appDir, extensionId, selftest = true, pl
   if (selftest) {
     // 4. The launcher really starts node and host.js (no connection made).
     try {
-      const r = platform === "win32" ? spawnSync(launcher, ["--selftest"], { encoding: "utf8", timeout: 15_000, shell: true }) : spawnSync(launcher, ["--selftest"], { encoding: "utf8", timeout: 15_000 });
+      const r = platform === "win32" ? spawnSync(`"${launcher}"`, ["--selftest"], { encoding: "utf8", timeout: 15_000, shell: true }) : spawnSync(launcher, ["--selftest"], { encoding: "utf8", timeout: 15_000 });
       const j = JSON.parse(String(r.stdout || "").trim().split("\n").pop() || "{}");
       add(r.status === 0 && j.ok ? { name: "launcher-run", level: "ok", text: `the launcher starts the connector with node ${j.node}; it would connect to ${j.socket}` } : { name: "launcher-run", level: "fail", text: `the launcher did not start the connector (exit ${r.status}): ${String(r.stderr || r.stdout || "").trim().slice(0, 200)}`, fix: "Run `vyre-chrome install` again; if it persists, check the Node install." });
     } catch (e) { add({ name: "launcher-run", level: "fail", text: `the launcher could not run: ${/** @type {Error} */ (e).message}`, fix: "Run `vyre-chrome install` again." }); }

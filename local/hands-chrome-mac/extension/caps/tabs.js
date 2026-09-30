@@ -103,7 +103,7 @@ async function open(ctx, url, focus, timeoutMs = 15_000) {
   await saveOpened(ctx, set);
   // Resolve only when the tab has committed to the page and finished loading (or the time is up), so the next call sees the real page,
   // never a tab that is still loading or already sitting on Chrome's error page.
-  const s = ctx.tabs.settle ? await ctx.tabs.settle(tab.id, timeoutMs) : { tab, settled: true, waitedMs: 0 };
+  const s = ctx.tabs.settle ? await ctx.tabs.settle(tab.id, Math.min(60_000, Math.max(0, Number(timeoutMs) || 15_000))) : { tab, settled: true, waitedMs: 0 };
   return { created: tab, tab: s.tab || tab, settled: s.settled, waitedMs: s.waitedMs };
 }
 
@@ -197,7 +197,7 @@ export default {
       const target = await ctx.floorUrl(args.url, "tabs.open");
       if (!target.allow) throw err("blocked", `${target.why} (${target.tier})`);
       await ctx.tabs.update(id, { url: args.url });
-      const st = ctx.tabs.settle ? await ctx.tabs.settle(id, Number(args.timeoutMs) || 15_000) : null;
+      const st = ctx.tabs.settle ? await ctx.tabs.settle(id, Math.min(60_000, Math.max(0, Number(args.timeoutMs) || 15_000))) : null;
       const now = st && st.tab ? String(st.tab.url || "") : "";
       const failed = now.startsWith("chrome-error:");
       return { id, url: redact.url(now || args.url), ...(st ? { loaded: st.settled && !failed, waitedMs: st.waitedMs } : {}), ...(failed ? { failed: "the page did not load: Chrome is showing its own error page. Check the address and try again." } : {}) };

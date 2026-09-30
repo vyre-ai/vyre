@@ -115,7 +115,8 @@ export async function dispatch(op, args, ctx) {
     if (!v.allow) {
       // Say which tab and which page it saw, so "blocked" is never a mystery (the user's chrome.open then snapshot on a site that had not loaded).
       let where = "";
-      try { const tb = await ctx.tabs.get(args.tabId); const u = String(tb.pendingUrl || tb.url || ""); where = `tab ${args.tabId} is on ${u ? redactUrl(u.split(/[?#]/)[0]) : "no page yet"}${tb.status === "loading" ? " (still loading)" : ""}: `; } catch { where = `tab ${args.tabId}: `; }
+      // A sensitive (blind) page is never named to the model, only Chrome's own error page, which is nothing to protect; every other tier names the page.
+      try { const tb = await ctx.tabs.get(args.tabId); const u = String(tb.pendingUrl || tb.url || ""); where = (v.tier === "blind" && !u.startsWith("chrome-error:")) ? `tab ${args.tabId}: ` : `tab ${args.tabId} is on ${u ? redactUrl(u.split(/[?#]/)[0]) : "no page yet"}${tb.status === "loading" ? " (still loading)" : ""}: `; } catch { where = `tab ${args.tabId}: `; }
       throw err("blocked", `${where}${v.why} (${v.tier})`);
     }
   }

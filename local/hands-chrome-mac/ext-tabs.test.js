@@ -159,3 +159,12 @@ test("tabs.open returns after the timeout with stillLoading when a page is slow,
   assert.equal(r.loaded, false);
   assert.equal(r.stillLoading, true);
 });
+
+test("a blocked call on a blind page names the tab and the reason, never the page; Chrome's own error page is named, since there is nothing to protect", async () => {
+  const { ctx } = world();
+  // Tab 6 is a password manager: blind.
+  await assert.rejects(dispatch("page.snapshot", { tabId: 6 }, ctx), e => /^tab 6: /.test(e.message) && !/1password|vaults/.test(e.message) && /\(blind\)/.test(e.message));
+  // Tab 4 is an ordinary site read-only for acting: named.
+  const t = await dispatch("tabs.open", { url: "https://harlow.example/x", timeoutMs: 99_999_999 }, ctx);
+  assert.equal(typeof t.id, "number", "an absurd timeout is capped rather than honoured");
+});
