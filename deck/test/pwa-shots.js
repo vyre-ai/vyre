@@ -32,8 +32,8 @@ if (process.env.PHONES === "0") DEVICES.splice(0, 2);
 
 // Each screen: a path, then optional steps in the page, then the shot. `shell` is what the phone
 // shell must show there (docs/design/phone.md section 3): "page" (the header with Now, Chats and
-// Agents, and the Capsule), "pushed" (no Capsule; the header only as a back row, or not at all when
-// the view draws its own back) or "find" (the Capsule opened: neither).
+// Agents, and Lumen), "pushed" (no Lumen; the header only as a back row, or not at all when
+// the view draws its own back) or "find" (Lumen opened: neither).
 /** @type {{ name: string, path: string, script?: string | ((dev: { name: string }) => string), wait?: number, theme?: string, drag?: boolean, swipe?: boolean, reduce?: boolean, edge?: boolean, offline?: boolean, last?: string, expect?: string, stub?: Record<string, any>, noShell?: boolean, shell?: string }[]} */
 const SCREENS = [
   { name: "now", path: "/now" },
@@ -52,7 +52,7 @@ const SCREENS = [
   { name: "edge-back", path: "/agents/kit", edge: true, expect: "/now" },
   // A tap on a label jumps there.
   { name: "label-to-agents", path: "/now", script: `await click('.ph-tab[data-view=agents]'); await wait(900);`, expect: "/agents" },
-  // The Capsule, tapped: Find as a full-height sheet.
+  // Lumen, tapped: Find as a full-height sheet.
   { name: "capsule-find", path: "/now", script: `await wait(1500); await click('.cap-open'); await wait(900);`, expect: "/find", shell: "find" },
   { name: "capsule-find-paper", path: "/now", theme: "paper", script: `await wait(1500); await click('.cap-open'); await wait(900);`, expect: "/find", shell: "find" },
   // The avatar: the Places sheet over Now, and its Settings tile opens Settings pushed.
@@ -175,7 +175,7 @@ for (const dev of DEVICES) {
         await tab.run(`window.dispatchEvent(new Event("offline")); await wait(800);`);
       }
       if (s.swipe) {
-        // A finger swiping from right to left low on the page, just above the Capsule and clear of
+        // A finger swiping from right to left low on the page, just above Lumen and clear of
         // the Needs rows (which swipe on their own and hold the pager still).
         const y = dev.height - dev.insets.bottom - 110;
         await tab.send("Input.dispatchTouchEvent", { type: "touchStart", touchPoints: [{ x: dev.width - 40, y }] });
@@ -217,8 +217,8 @@ for (const dev of DEVICES) {
         phoneShell && check.tabbar && "a tab bar is drawn",
         phoneShell && check.at !== want && `the shell is in ${check.at || "no"} mode, not ${want}`,
         phoneShell && want === "page" && (check.head !== "flex" || check.labels !== "flex") && "no header with the page labels",
-        phoneShell && want === "page" && check.capsule !== "flex" && "no Capsule",
-        phoneShell && want !== "page" && check.capsule !== "none" && "the Capsule shows on a pushed screen",
+        phoneShell && want === "page" && check.capsule !== "flex" && "no Lumen",
+        phoneShell && want !== "page" && check.capsule !== "none" && "Lumen shows on a pushed screen",
         phoneShell && want === "find" && check.head !== "none" && "the header shows over Find",
         phoneShell && check.standalone !== "standalone" && "not standalone",
         errs.length && `errors: ${errs.join(" | ").slice(0, 300)}`].filter(Boolean);

@@ -36,6 +36,7 @@ export const COMMANDS = Object.freeze([
   { name: "model", description: "Switch the model for this session", hint: "[model]", source: "session", local: "model" },
   { name: "rewind", description: "Go back to an earlier message", source: "session", local: "rewind" },
   { name: "find", description: "Search every session, file and memory", hint: "[words]", aliases: ["search"], source: "session", local: "find" },
+  { name: "remember", description: "Save a note to memory", hint: "<note>", source: "session" },
   { name: "later", description: "Schedule a follow-up message for later", hint: "\"at 5pm\" | \"every weekday 9am\" | \"when this finishes\"", aliases: ["remind"], source: "session" },
   { name: "goal", description: "Set a goal with milestones, notified as each one is done", hint: "<goal>", source: "session", local: "goal" },
   { name: "vyre", description: "Vyre status, ask an agent, recall past sessions, remember a lesson", hint: "[status | ask | recall | remember]", source: "vyre" },

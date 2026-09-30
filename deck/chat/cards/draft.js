@@ -18,6 +18,7 @@
 // fields under `draft` (or on the ask). Mail: {from?, to, cc, subject, body, attach:[{name,size}]}.
 // Invite: {title, start, end, tz?, attendees:[{name, availability?}], place, notes}.
 
+import { kbd } from "../../js/platform.js";
 import { h, put, isPhone } from "../../js/dom.js";
 import { queued } from "../../js/api.js";
 import { icon } from "../../js/icons.js";
@@ -192,7 +193,7 @@ export function draftCard(ask, ctx = {}) {
   /** Only the Send label changes on an edit: no full redraw, so the caret stays where it is. */
   function label_() {
     const b = /** @type {any} */ (el.querySelector?.("[data-act=send]"));
-    if (b && !state.busy) put(b, sendLabel(), keyHint("⌘⏎"));
+    if (b && !state.busy) put(b, sendLabel(), keyHint(kbd("Enter")));
   }
 
   function draw() {
@@ -209,7 +210,7 @@ export function draftCard(ask, ctx = {}) {
     const primary = h("button", { class: "btn btn-primary cv-ask-btn cv-dr-send" + (state.busy === "send" ? " cv-ask-busy" : ""), type: "button", "data-act": "send", disabled: !!state.busy,
       "aria-busy": state.busy === "send" ? "true" : null, "aria-keyshortcuts": "Meta+Enter Control+Enter", onclick: send,
       style: state.busy === "send" && state.width ? { minWidth: `${state.width}px` } : null },
-    state.busy === "send" ? busyLabel("Sending") : [sendLabel(), keyHint("⌘⏎")]);
+    state.busy === "send" ? busyLabel("Sending") : [sendLabel(), keyHint(kbd("Enter"))]);
     put(el,
       cardHead({ kind: label, who: ask.agent || "Vyre", at: ask.at ?? ask.created_at, open: true, extra: h("span", { class: "cv-dr-gate" }, gateLabel) }),
       h("div", { class: "cv-dr-fields" },

@@ -483,7 +483,7 @@ test("daemon: Wink's relay client (deck/js/pair-ticket.js's ../../relay/client/*
   const get = (/** @type {string} */ p) => new Promise((resolve, reject) => http.get({ socketPath: socketPath(root), path: p }, res => {
     let b = ""; res.on("data", c => { b += c; }); res.on("end", () => resolve({ status: res.statusCode, headers: res.headers, body: b }));
   }).on("error", reject));
-  for (const f of ["client", "channel", "bytes", "response", "sse", "webcrypto", "noise"]) {
+  for (const f of ["client", "channel", "bytes", "response", "sse", "webcrypto", "noise", "seedwords", "words"]) {
     const r = /** @type {any} */ (await get(`/relay/client/${f}.js`));
     assert.equal(r.status, 200, f);
     assert.equal(r.headers["content-type"], "text/javascript");
@@ -505,6 +505,46 @@ test("daemon: Wink's relay client (deck/js/pair-ticket.js's ../../relay/client/*
   // to the relay runs from here, not from /relay/client/*.js).
   const shell = /** @type {any} */ (await get("/pair/scan"));
   assert.ok(shell.headers["content-security-policy"].includes("wss://relay.vyre.run"));
+});
+
+test("daemon: every module outside deck/ that any Deck module imports is served (a missing one blanks the page that imports it)", { timeout: 30_000 }, async t => {
+  const root = tempHome(t);
+  fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ transcripts: [] }));
+  const d = await start({ root, log: () => {} });
+  t.after(() => d.stop());
+  const { socketPath } = await import("../core/config/index.js");
+  const http = await import("node:http");
+  const get = (/** @type {string} */ p) => new Promise((resolve, reject) => http.get({ socketPath: socketPath(root), path: p }, res => {
+    let b = ""; res.on("data", c => { b += c; }); res.on("end", () => resolve({ status: res.statusCode, headers: res.headers, body: b }));
+  }).on("error", reject));
+  const REPO = path.join(import.meta.dirname, "..");
+  /** Every relative import from a file under deck/ (not tests, vendor or fixtures) that lands outside deck/. @type {Set<string>} */
+  const outside = new Set();
+  const seen = new Set();
+  const walk = (/** @type {string} */ file) => {
+    if (seen.has(file) || !fs.existsSync(file)) return;
+    seen.add(file);
+    const src = fs.readFileSync(file, "utf8");
+    for (const m of src.matchAll(/(?:^|\n)\s*(?:import|export)[^'"\n]*?from\s*["'](\.[^"']+)["']|import\(\s*["'](\.[^"']+)["']\s*\)|(?:^|\n)import\s+["'](\.[^"']+)["']/g)) {
+      const spec = m[1] || m[2] || m[3];
+      const target = path.normalize(path.join(path.dirname(file), spec));
+      if (!target.startsWith(path.join(REPO, "deck") + path.sep)) outside.add(path.relative(REPO, target));
+      walk(target);
+    }
+  };
+  const all = (/** @type {string} */ dir) => fs.readdirSync(dir, { withFileTypes: true }).flatMap(e => {
+    const p = path.join(dir, e.name);
+    if (e.isDirectory()) return ["vendor", "fixtures", "test", "node_modules"].includes(e.name) ? [] : all(p);
+    return e.name.endsWith(".js") && !e.name.endsWith(".test.js") ? [p] : [];
+  });
+  for (const f of all(path.join(REPO, "deck"))) walk(f);
+  assert.ok(outside.size > 3, "the Deck imports a few shared modules from outside deck/");
+  const bad = [];
+  for (const rel of [...outside].sort()) {
+    const r = /** @type {any} */ (await get("/" + rel.split(path.sep).join("/")));
+    if (r.status !== 200 || !/javascript/.test(String(r.headers["content-type"])) || r.body !== fs.readFileSync(path.join(REPO, rel), "utf8")) bad.push(rel);
+  }
+  assert.deepEqual(bad, [], `the daemon does not serve: ${bad.join(", ")} (add them to its Deck allowlist)`);
 });
 
 test("daemon: a real box never serves the Deck's sample data; only a dev world does (0.2 honesty pass)", { timeout: 20_000 }, async t => {

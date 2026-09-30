@@ -8,6 +8,7 @@ import { createCtx } from "./extension/lib/ctx.js";
 import { dispatch } from "./extension/caps/index.js";
 import page, { EXPRESSION, signatureOf, holdFor, resolve } from "./extension/caps/page.js";
 import { createFakeChrome, createFakePage, samplePage } from "./test-support/fake-chrome.js";
+import { dispatchT } from "./test-support/trust.js";
 
 const world = (model = samplePage()) => {
   const chrome = createFakeChrome([{ url: model.url, title: model.title, active: true }]);
@@ -15,7 +16,7 @@ const world = (model = samplePage()) => {
   chrome._.cdp = (tabId, method, params) => fake.handler(tabId, method, params);
   return { chrome, fake, model, ctx: createCtx({ chrome }) };
 };
-const act = (ctx, args) => dispatch("page.act", { tabId: 1, ...args }, ctx);
+const act = (ctx, args) => dispatchT("page.act", { tabId: 1, ...args }, ctx);
 
 test("every in-page script is valid JavaScript", async () => {
   new vm.Script(EXPRESSION);
@@ -24,14 +25,14 @@ test("every in-page script is valid JavaScript", async () => {
   chrome._.cdp = (t, m, p) => { if (m === "Runtime.evaluate") { new vm.Script(p.expression); seen.push(/^\/\*vyre:(\w+)/.exec(p.expression)[1]); } return createFakePage(samplePage()).handler(t, m, p); };
   await act(ctx, { selector: { role: "textbox", name: "Email" }, kind: "type", value: "a*/b" });
   await act(ctx, { selector: { name: "Cancel" }, kind: "click" });
-  await dispatch("page.wait", { tabId: 1, idleMs: 5, timeoutMs: 500 }, ctx);
-  await dispatch("page.wait", { tabId: 1, selector: "#done", timeoutMs: 200 }, ctx).catch(() => {});
+  await dispatchT("page.wait", { tabId: 1, idleMs: 5, timeoutMs: 500 }, ctx);
+  await dispatchT("page.wait", { tabId: 1, selector: "#done", timeoutMs: 200 }, ctx).catch(() => {});
   for (const k of ["snapshot", "apply", "locate", "quiet", "exists"]) assert.ok(seen.includes(k), k);
 });
 
 test("page.snapshot is one Runtime.evaluate and drops internals", async () => {
   const { chrome, ctx } = world();
-  const s = await dispatch("page.snapshot", { tabId: 1 }, ctx);
+  const s = await dispatchT("page.snapshot", { tabId: 1 }, ctx);
   assert.equal(chrome._.commands.filter(c => c.method === "Runtime.evaluate").length, 1);
   assert.equal(s.controls.length, 7);
   assert.equal(s.named, 7);
@@ -41,10 +42,10 @@ test("page.snapshot is one Runtime.evaluate and drops internals", async () => {
 
 test("page.snapshot defaults to the active tab and asks the floor", async () => {
   const { chrome, ctx } = world();
-  assert.equal((await dispatch("page.snapshot", {}, ctx)).title, "New contact");
+  assert.equal((await dispatchT("page.snapshot", {}, ctx)).title, "New contact");
   chrome._.tabs[0].url = "https://my.1password.com/vaults";
-  await assert.rejects(dispatch("page.snapshot", {}, ctx), { code: "blocked" });
-  await assert.rejects(dispatch("page.snapshot", { tabId: 1 }, ctx), { code: "blocked" });
+  await assert.rejects(dispatchT("page.snapshot", {}, ctx), { code: "blocked" });
+  await assert.rejects(dispatchT("page.snapshot", { tabId: 1 }, ctx), { code: "blocked" });
 });
 
 test("a safe click goes through Input.dispatchMouseEvent at the element centre after scrollIntoView", async () => {
@@ -108,7 +109,7 @@ test("release with an unchanged signature performs the held click", async () => 
 test("release after a field changed fails with code changed and clicks nothing", async () => {
   const { fake, model, ctx } = world();
   const held = await act(ctx, { selector: { name: "Save contact" }, kind: "click" });
-  await dispatch("page.fill", { tabId: 1, fields: [{ selector: { name: "Email" }, value: "someone.else@harlow.example" }] }, ctx);
+  await dispatchT("page.fill", { tabId: 1, fields: [{ selector: { name: "Email" }, value: "someone.else@harlow.example" }] }, ctx);
   await assert.rejects(act(ctx, { selector: { name: "Save contact" }, kind: "click", release: { sig: held.sig } }), { code: "changed" });
   assert.equal(fake.clicks.length, 0);
   // the new state signs differently, and a release with that new signature works
@@ -176,21 +177,21 @@ test("a disabled control is reported, not clicked", async () => {
 test("page.fill sets every field in ONE evaluate, all-or-nothing on resolution", async () => {
   const { chrome, model, fake, ctx } = world();
   const before = chrome._.commands.filter(c => c.method === "Runtime.evaluate").length;
-  const r = await dispatch("page.fill", { tabId: 1, fields: [{ selector: { name: "Full name" }, value: "Alex Harlow" }, { selector: { name: "Email" }, value: "alex@harlow.example" }] }, ctx);
+  const r = await dispatchT("page.fill", { tabId: 1, fields: [{ selector: { name: "Full name" }, value: "Alex Harlow" }, { selector: { name: "Email" }, value: "alex@harlow.example" }] }, ctx);
   assert.deepEqual([r.ok, r.filled], [true, 2]);
   assert.equal(fake.applies, 1);
   // one snapshot + one apply
   assert.equal(chrome._.commands.filter(c => c.method === "Runtime.evaluate").length - before, 2);
   assert.deepEqual([model.controls[0].value, model.controls[1].value], ["Alex Harlow", "alex@harlow.example"]);
   assert.ok(!JSON.stringify(r).includes("alex@harlow.example"), "values are not echoed");
-  await assert.rejects(dispatch("page.fill", { tabId: 1, fields: [{ selector: { name: "Full name" }, value: "X" }, { selector: { name: "Missing" }, value: "Y" }] }, ctx), { code: "not_found" });
+  await assert.rejects(dispatchT("page.fill", { tabId: 1, fields: [{ selector: { name: "Full name" }, value: "X" }, { selector: { name: "Missing" }, value: "Y" }] }, ctx), { code: "not_found" });
   assert.equal(fake.applies, 1, "nothing was applied by the failed fill");
   assert.equal(model.controls[0].value, "Alex Harlow");
 });
 
 test("page.fill with submit holds the form's submit button; release then clicks it", async () => {
   const { fake, ctx } = world();
-  const r = await dispatch("page.fill", { tabId: 1, submit: true, fields: [{ selector: { name: "Email" }, value: "alex@harlow.example" }] }, ctx);
+  const r = await dispatchT("page.fill", { tabId: 1, submit: true, fields: [{ selector: { name: "Email" }, value: "alex@harlow.example" }] }, ctx);
   assert.deepEqual([r.ok, r.held, r.filled], [false, true, 1]);
   assert.equal(r.fields.email, "alex@harlow.example");
   assert.equal(fake.clicks.length, 0);
@@ -202,52 +203,52 @@ test("page.fill with submit holds the form's submit button; release then clicks 
 test("page.eval returns a redacted value and reports a throw as text", async () => {
   const { fake, ctx } = world();
   fake.userEval = () => ({ result: { type: "object", value: { user: "alex", access_token: "abcdef0123456789abcdef", note: "Bearer abcdefghijklmnop1234" } } });
-  const r = await dispatch("page.eval", { tabId: 1, expression: "({})" }, ctx);
+  const r = await dispatchT("page.eval", { tabId: 1, expression: "({})" }, ctx);
   assert.equal(r.ok, true);
   assert.equal(r.value.user, "alex");
   assert.ok(!JSON.stringify(r).includes("abcdef0123456789abcdef"));
   assert.ok(!JSON.stringify(r).includes("abcdefghijklmnop1234"));
   fake.userEval = () => ({ exceptionDetails: { text: "Uncaught", exception: { description: "ReferenceError: nope" } } });
-  const t = await dispatch("page.eval", { tabId: 1, expression: "nope" }, ctx);
+  const t = await dispatchT("page.eval", { tabId: 1, expression: "nope" }, ctx);
   assert.deepEqual([t.ok, t.error], [false, "ReferenceError: nope"]);
-  await assert.rejects(dispatch("page.eval", { tabId: 1 }, ctx), { code: "bad_request" });
+  await assert.rejects(dispatchT("page.eval", { tabId: 1 }, ctx), { code: "bad_request" });
 });
 
 test("page.wait: selector, url, idle and timeout", async () => {
   const { model, fake, ctx } = world();
-  assert.equal((await dispatch("page.wait", { tabId: 1, selector: { name: "Cancel" }, timeoutMs: 300 }, ctx)).ok, true);
-  await assert.rejects(dispatch("page.wait", { tabId: 1, selector: { name: "Ghost" }, timeoutMs: 150 }, ctx), { code: "timeout" });
-  assert.equal((await dispatch("page.wait", { tabId: 1, url: "/contacts/new", timeoutMs: 300 }, ctx)).ok, true);
-  await assert.rejects(dispatch("page.wait", { tabId: 1, url: "/orders", timeoutMs: 150 }, ctx), { code: "timeout" });
-  assert.equal((await dispatch("page.wait", { tabId: 1, idleMs: 200, timeoutMs: 300 }, ctx)).ok, true);
+  assert.equal((await dispatchT("page.wait", { tabId: 1, selector: { name: "Cancel" }, timeoutMs: 300 }, ctx)).ok, true);
+  await assert.rejects(dispatchT("page.wait", { tabId: 1, selector: { name: "Ghost" }, timeoutMs: 150 }, ctx), { code: "timeout" });
+  assert.equal((await dispatchT("page.wait", { tabId: 1, url: "/contacts/new", timeoutMs: 300 }, ctx)).ok, true);
+  await assert.rejects(dispatchT("page.wait", { tabId: 1, url: "/orders", timeoutMs: 150 }, ctx), { code: "timeout" });
+  assert.equal((await dispatchT("page.wait", { tabId: 1, idleMs: 200, timeoutMs: 300 }, ctx)).ok, true);
   fake.quietMs = 0;
-  await assert.rejects(dispatch("page.wait", { tabId: 1, idleMs: 200, timeoutMs: 150 }, ctx), { code: "timeout" });
+  await assert.rejects(dispatchT("page.wait", { tabId: 1, idleMs: 200, timeoutMs: 150 }, ctx), { code: "timeout" });
   model.css = "#done";
-  assert.equal((await dispatch("page.wait", { tabId: 1, selector: "#done", timeoutMs: 300 }, ctx)).ok, true);
-  await assert.rejects(dispatch("page.wait", { tabId: 1 }, ctx), { code: "bad_request" });
+  assert.equal((await dispatchT("page.wait", { tabId: 1, selector: "#done", timeoutMs: 300 }, ctx)).ok, true);
+  await assert.rejects(dispatchT("page.wait", { tabId: 1 }, ctx), { code: "bad_request" });
 });
 
 test("page.wait halts when the person presses stop", async () => {
   const { ctx } = world();
-  const p = dispatch("page.wait", { tabId: 1, url: "/never", timeoutMs: 5000 }, ctx);
+  const p = dispatchT("page.wait", { tabId: 1, url: "/never", timeoutMs: 5000 }, ctx);
   setTimeout(() => ctx.setStopped(true), 30);
   await assert.rejects(p, { code: "stopped" });
 });
 
 test("page.screenshot returns an image and refuses an oversized frame", async () => {
   const { chrome, ctx } = world();
-  const r = await dispatch("page.screenshot", { tabId: 1, format: "png" }, ctx);
+  const r = await dispatchT("page.screenshot", { tabId: 1, format: "png" }, ctx);
   assert.equal(r.image.mime, "image/png");
   assert.equal(Buffer.from(r.image.data, "base64").toString(), "pixels-png");
   chrome._.cdp = () => ({ data: "A".repeat(1_000_000) });
-  await assert.rejects(dispatch("page.screenshot", { tabId: 1 }, ctx), { code: "bad_request" });
+  await assert.rejects(dispatchT("page.screenshot", { tabId: 1 }, ctx), { code: "bad_request" });
 });
 
 test("acting ops on a read-only page are refused, reading ops are not", async () => {
   const { chrome, ctx } = world();
   chrome._.store.local["floor.readonly"] = ["app.northwind.example"];
-  assert.equal((await dispatch("page.snapshot", { tabId: 1 }, ctx)).title, "New contact");
-  for (const op of ["page.act", "page.fill", "page.eval"]) await assert.rejects(dispatch(op, { tabId: 1, selector: "Cancel", fields: [], expression: "1" }, ctx), { code: "blocked" });
+  assert.equal((await dispatchT("page.snapshot", { tabId: 1 }, ctx)).title, "New contact");
+  for (const op of ["page.act", "page.fill", "page.eval"]) await assert.rejects(dispatchT(op, { tabId: 1, selector: "Cancel", fields: [], expression: "1" }, ctx), { code: "blocked" });
 });
 
 test("the page capability's op names are valid protocol ops", () => {

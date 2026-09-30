@@ -27,7 +27,7 @@
 html, body { margin: 0; height: 100%; }
 /* The shell never rubber-bands or pulls to refresh; only the view scrolls, and it stops at its ends. */
 html, body { overscroll-behavior: none; }
-/* The phone's Capsule floats on the bottom safe area (12 from the edge where there is none); a page
+/* The phone's Lumen floats on the bottom safe area (12 from the edge where there is none); a page
    leaves room for it (56 tall, 16 clear above it) so the last row is never under it. */
 :root { --cap-h: 56px; --cap-bottom: max(12px, env(safe-area-inset-bottom)); --cap-clear: calc(var(--cap-h) + 16px + var(--cap-bottom));
   -webkit-tap-highlight-color: transparent; -webkit-text-size-adjust: 100%; }
@@ -236,7 +236,7 @@ span.vy-av-ring { border-radius: 9999px; overflow: hidden; }
 .pull { display: none; }
 
 /* Phone: the Deck at 320px and up (docs/design/phone.md section 3). No rail and no tab bar: a 48
-   tall header with the three page labels, the pages side by side in a pager, the Capsule floating
+   tall header with the three page labels, the pages side by side in a pager, Lumen floating
    at the bottom, and every other address pushed over them. The shell's mode is #deck[data-at]:
    page, pushed or find (js/app.js). */
 @media (max-width: 719px), (max-height: 500px) and (pointer: coarse) {
@@ -323,7 +323,7 @@ span.vy-av-ring { border-radius: 9999px; overflow: hidden; }
   .ph-settle { transition: transform 200ms cubic-bezier(0.2, 0.8, 0.2, 1); }
   .ph-drag { box-shadow: var(--light-top); }
 
-  /* The Capsule: 12 from each side, on the bottom safe area, 56 tall, opaque, fully round. */
+  /* Lumen: 12 from each side, on the bottom safe area, 56 tall, opaque, fully round. */
   .capsule { display: flex; align-items: center; gap: 4px; position: fixed; z-index: 4; height: var(--cap-h); padding: 0 8px 0 0;
     left: calc(12px + env(safe-area-inset-left)); right: calc(12px + env(safe-area-inset-right)); bottom: var(--cap-bottom);
     background: var(--panel); border: 1px solid var(--rule-strong); border-radius: 999px; box-shadow: var(--light-top); touch-action: none; }
@@ -339,7 +339,7 @@ span.vy-av-ring { border-radius: 9999px; overflow: hidden; }
   .capsule.listening .cap-mic { background: var(--primary-bg); border-color: var(--primary-bg); color: var(--primary-ink); }
   /* Raises the keyboard in the same tap that opens Find; Find's own box takes it over. */
   .cap-proxy { position: fixed; bottom: 0; left: 0; width: 1px; height: 1px; opacity: 0; border: 0; padding: 0; font-size: 16px; pointer-events: none; }
-  /* A drag up on the Capsule: Find's sheet follows the finger. */
+  /* A drag up on Lumen: Find's sheet follows the finger. */
   .cap-rise { display: block; position: fixed; z-index: 5; left: 0; right: 0; bottom: 0; top: calc(env(safe-area-inset-top) + 8px);
     background: var(--panel); border-radius: 14px 14px 0 0; box-shadow: var(--light-top); transform: translateY(100%); pointer-events: none; }
   .cap-rise.going { transition: transform 200ms cubic-bezier(0.2, 0.8, 0.2, 1); }

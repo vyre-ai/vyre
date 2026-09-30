@@ -51,7 +51,38 @@ export function held(method, url, why, sigSource) {
   let path = url;
   try { const u = new URL(url); path = u.origin + u.pathname; } catch { /* raw */ }
   return { ok: false, held: true, why: `This would ${String(method).toUpperCase()} ${path}: ${why}. It sends something as the person and nobody asked for it, so it waits for their approval.`,
-    control: { role: "request", name: `${String(method).toUpperCase()} ${path}` }, fields: [], sig: digest(sigSource) };
+    control: { role: "request", name: `${String(method).toUpperCase()} ${path}` }, fields: [], sig: digest(sigSource),
+    ...(/(^|\/)(publish|published|activate|go-live|golive)(\/|$)/i.test(path) ? { kind: "publish", method: String(method).toUpperCase() } : {}) };
+}
+
+/** What a write is, in a person's words: POST creates, PUT and PATCH edit, DELETE deletes. @param {string} method */
+export const writeKind = method => ({ POST: "create", PUT: "edit", PATCH: "edit", DELETE: "delete" }[String(method).toUpperCase()] || "edit");
+
+/** A change made with the person's login that is not a message, post or payment: held unless a plan they approved covers it, or they asked for it. */
+export function heldWrite(method, url, sigSource) {
+  let path = url;
+  try { const u = new URL(url); path = u.origin + u.pathname; } catch { /* raw */ }
+  const m = String(method).toUpperCase();
+  let origin = ""; try { origin = new URL(url).origin; } catch { /* raw */ }
+  return { ok: false, held: true, write: true, kind: writeKind(m), method: m, ...(origin ? { origin } : {}), why: `This would ${m} ${path}, a change made with the person's login. Nothing was done. It waits for their approval, or for a plan they approved that covers it.`,
+    control: { role: "request", name: `${m} ${path}` }, fields: [], sig: digest(sigSource) };
+}
+
+/** The one proof that a request went through the write gate. Only writeGate() returns it, and pageFetch() refuses a write without it. */
+export const PASS = Symbol("vyre.write-passed");
+
+/**
+ * THE write gate. Every request Vyre issues with the page's credentials (api.call, net.replay, anything later) asks here first; pageFetch() will not
+ * send a write without the pass this returns. A read passes. A write passes only when the person asked for this very call (asked) or the module
+ * says a plan they approved covers it (writeOk, which the module sets and a model's input cannot). Anything else comes back as a held write.
+ * @param {string} method @param {string} url @param {string} body @param {{ asked?: boolean, writeOk?: boolean }} [trust] what the host approved (never the caller's args)
+ * @returns {{ pass: symbol, held?: undefined } | { held: any, pass?: undefined }}
+ */
+export function writeGate(method, url, body, trust = {}) {
+  const m = String(method || "GET").toUpperCase();
+  if (/^(GET|HEAD|OPTIONS)$/.test(m)) return { pass: PASS };
+  if (trust && (trust.asked === true || trust.writeOk === true)) return { pass: PASS };
+  return { held: heldWrite(m, url, `${m} ${url} ${body || ""}`) };
 }
 
 /**
@@ -66,7 +97,16 @@ export const guardInstall = `(() => {
   if (window.__vyreGuard) return true;
   const classifySend = ${classifySend.toString()};
   const blocked = [];
-  const hold = (m, u, b) => { const c = classifySend(m, u, b); if (c.send) { blocked.push({ method: String(m).toUpperCase(), url: String(u), why: c.why }); return true; } return false; };
+  // chrome.eval sets __vyreWrites: a script may read with the page's login but not write with it. A write goes through api.call, which is asked first.
+  const writes = window.__vyreWrites === true;
+  try { delete window.__vyreWrites; } catch (e) { window.__vyreWrites = undefined; }
+  // A second layer beside the browser-level guard: a script run under the guard may only reach origins it was given (this page's and what the page already talks to).
+  // Copied at install and removed from the page: a script that runs after this cannot add an origin to the list or null it.
+  const allow = Array.isArray(window.__vyreAllow) ? window.__vyreAllow.slice() : null;
+  try { delete window.__vyreAllow; } catch (e) { window.__vyreAllow = undefined; }
+  const outsider = u => { if (!allow) return ""; try { const x = new URL(String(u), location.href); if (!/^https?:$/.test(x.protocol)) return ""; return x.origin === location.origin || allow.includes(x.origin) ? "" : x.origin; } catch { return ""; } };
+  const hold = (m, u, b) => { const out = outsider(u); if (out) { blocked.push({ method: String(m).toUpperCase(), url: String(u), why: "the script tried to reach " + out + ", which is not this page or anything it already talks to" }); return true; } const c = classifySend(m, u, b); if (writes && !c.send && !/^(GET|HEAD|OPTIONS)$/i.test(String(m))) { blocked.push({ method: String(m).toUpperCase(), url: String(u), why: "write", write: true }); return true; } if (c.send) { blocked.push({ method: String(m).toUpperCase(), url: String(u), why: c.why }); return true; } return false; };
+  const restoreSrc = [];
   const of = window.fetch, xo = XMLHttpRequest.prototype.open, xs = XMLHttpRequest.prototype.send, sb = navigator.sendBeacon;
   window.fetch = function (i, o) {
     const m = (o && o.method) || (i && i.method) || "GET", u = (i && i.url) || i;
@@ -79,8 +119,33 @@ export const guardInstall = `(() => {
     return xs.apply(this, arguments);
   };
   if (sb) navigator.sendBeacon = function (u, d) { if (hold("POST", u, typeof d === "string" ? d : "")) return false; return sb.apply(this, arguments); };
+  // A script that submits a form writes too (form.submit(), form.requestSubmit(), or a click on a submit button), not only fetch and XHR. Under the eval flag a non-GET form submit is refused.
+  const fs = HTMLFormElement.prototype.submit, frs = HTMLFormElement.prototype.requestSubmit;
+  const formWrite = f => { try { return writes && String(f.method || "get").toLowerCase() !== "get"; } catch { return writes; } };
+  HTMLFormElement.prototype.submit = function () { if (formWrite(this)) { hold(String(this.method || "POST"), this.action || location.href, "form"); blocked[blocked.length - 1].write = true; return; } return fs.apply(this, arguments); };
+  if (frs) HTMLFormElement.prototype.requestSubmit = function () { if (formWrite(this)) { hold(String(this.method || "POST"), this.action || location.href, "form"); blocked[blocked.length - 1].write = true; return; } return frs.apply(this, arguments); };
+  const subMethod = e => { try { const m = e.submitter && e.submitter.formMethod; return String(m || e.target.method || "get").toLowerCase(); } catch { return "post"; } };
+  const onSubmit = e => { if (writes && subMethod(e) !== "get") { e.preventDefault(); e.stopImmediatePropagation(); blocked.push({ method: subMethod(e).toUpperCase(), url: String((e.submitter && e.submitter.formAction) || e.target.action || location.href), why: "form", write: true }); } };
+  if (writes) document.addEventListener("submit", onSubmit, true);
   // Channels the network layer does not always see: WebRTC (ICE resolves a hostname) and link hints that make the browser
   // resolve or connect (dns-prefetch, preconnect, prefetch). A cross-origin one made by the script is refused and reported.
+  // Under the eval guard (an allow list is present) a script may not start a Worker, SharedWorker or service worker (a worker has its own network and is not seen by this window's fetch),
+  // and may not open a window: each would be a way out that this shim and the frame-level guard do not watch.
+  if (allow) {
+    const refuseKind = what => { blocked.push({ method: what, url: what, why: "the script tried to start a " + what + ", which has its own network" }); throw new Error("Vyre held this"); };
+    for (const k of ["Worker", "SharedWorker"]) if (window[k]) window[k] = function () { refuseKind(k.toUpperCase()); };
+    try { if (navigator.serviceWorker && navigator.serviceWorker.register) navigator.serviceWorker.register = function () { refuseKind("SERVICEWORKER"); }; } catch (e) {}
+    if (window.open) window.open = function () { refuseKind("WINDOW.OPEN"); };
+    // An image or media element's src is a request too (new Image().src = "https://x/?d=..." is the oldest exfiltration there is). A cross-origin one is refused here.
+    for (const C of [window.HTMLImageElement, window.HTMLMediaElement]) {
+      try {
+        const d = C && Object.getOwnPropertyDescriptor(C.prototype, "src");
+        if (!d || !d.set) continue;
+        restoreSrc.push([C.prototype, d]);
+        Object.defineProperty(C.prototype, "src", { configurable: true, enumerable: d.enumerable, get: d.get, set(v) { if (hold("GET", v, "")) return; d.set.call(this, v); } });
+      } catch (e) {}
+    }
+  }
   const RTC = window.RTCPeerConnection, WRTC = window.webkitRTCPeerConnection;
   const refuse = (what, u) => { blocked.push({ method: what, url: String(u), why: "the script tried to open a channel to another site" }); };
   if (RTC) window.RTCPeerConnection = function () { refuse("WEBRTC", "webrtc"); throw new Error("Vyre held this"); };
@@ -99,8 +164,11 @@ export const guardInstall = `(() => {
   P.insertBefore = function (n) { if (hint(n)) { refuse("LINK", n.getAttribute("href")); return n; } return oi.apply(this, arguments); };
   E.append = function () { for (const n of arguments) if (hint(n)) { refuse("LINK", n.getAttribute("href")); return; } return oap.apply(this, arguments); };
   E.prepend = function () { for (const n of arguments) if (hint(n)) { refuse("LINK", n.getAttribute("href")); return; } return opp.apply(this, arguments); };
-  window.__vyreGuard = { blocked, restore() { if (WS) window.WebSocket = WS; if (RTC) window.RTCPeerConnection = RTC; if (WRTC) window.webkitRTCPeerConnection = WRTC; P.appendChild = oa; P.insertBefore = oi; E.append = oap; E.prepend = opp; window.fetch = of; XMLHttpRequest.prototype.open = xo; XMLHttpRequest.prototype.send = xs; if (sb) navigator.sendBeacon = sb; } };
+  window.__vyreGuard = { blocked, restore() { if (WS) window.WebSocket = WS; if (RTC) window.RTCPeerConnection = RTC; if (WRTC) window.webkitRTCPeerConnection = WRTC; P.appendChild = oa; P.insertBefore = oi; E.append = oap; E.prepend = opp; window.fetch = of; for (const [pr, d] of restoreSrc) { try { Object.defineProperty(pr, "src", d); } catch (e) {} } XMLHttpRequest.prototype.open = xo; XMLHttpRequest.prototype.send = xs; if (sb) navigator.sendBeacon = sb; HTMLFormElement.prototype.submit = fs; if (frs) HTMLFormElement.prototype.requestSubmit = frs; document.removeEventListener("submit", onSubmit, true); } };
   return true;
 })()`;
+
+/** The same guard for chrome.eval: a script may read with the page's login but not write with it. */
+export const guardInstallWrites = "window.__vyreWrites = true;" + guardInstall;
 
 export const guardCollect = `(() => { const g = window.__vyreGuard; if (!g) return []; g.restore(); delete window.__vyreGuard; return g.blocked; })()`;

@@ -44,7 +44,7 @@ events and the graph.
 | d. Graph | People, orgs, projects and relations by rules | server | CPU | the next curator pass |
 | e. Personal facts | The model reader reads the person's own turns | server | the Claude login, paced by the daily cap | read, in the background |
 
-   Stages b to d need no model and no money. A session is searchable, and Vyre IQ can answer from
+   Stages b to d need no model and no money. A session is searchable, and Vyre Memory can answer from
    it, as soon as stage b has it. Stage e runs on the person's Claude subscription at the reader's
    pace (config.memory.model: a one-time backfill pool, then a daily cap) and resumes after a
    restart, so it may take days for a long history. Nothing waits for the whole import.

@@ -49,7 +49,7 @@ jobs:
             if perl -e 'alarm 480; exec @ARGV' node --test --test-timeout=240000 --test-force-exit --test-reporter=spec "$f" > /tmp/one.log 2>&1; then
               echo "ok   $f ($(( $(date +%s) - start ))s)"
             else
-              echo "FAIL $f ($(( $(date +%s) - start ))s)"; grep -E "^(✖|  .*Error)" /tmp/one.log | head -8
+              echo "FAIL $f ($(( $(date +%s) - start ))s)"; sed -n '/failing tests:/,$p' /tmp/one.log | grep -vE "^\s+at " | head -70
               case " $known " in *" $f "*) echo "     (known hang, not failing the job)";; *) fail=1;; esac
             fi
           done

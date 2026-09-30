@@ -111,7 +111,7 @@ async function main() {
           ? { op: "page.act", args: { tabId: g.id, selector: { identifier: (/data-testid="([^"]+)"/.exec(s.selector) || [])[1] }, kind: "click" } }
           : { op: "page.fill", args: { tabId: g.id, fields: [{ selector: { identifier: s.selector.replace(/^#/, "") }, value: s.value }] } });
         const tRun = performance.now();
-        const run = bridge.call("batch.run", { steps, asked: true });
+        const run = bridge.call("batch.run", { steps }, { trust: { asked: true } });
         await sleep(30);
         const t0 = performance.now();
         await bridge.push({ event: "stop" });

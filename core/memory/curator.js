@@ -19,6 +19,7 @@
 // Measured on the prototype: the graph is precise for identity and routing, and did NOT make
 // passage retrieval better. So this holds facts, people and links, and leaves search to Recall.
 
+import { sourceOf } from "./iq/fix.js";
 import { extract } from "./extract.js";
 import { lesson, within, ENDS } from "./teach.js";
 import { MIGRATIONS } from "./schema.js";
@@ -274,9 +275,9 @@ export class Curator {
    */
   correct(c) {
     if (!ACTIONS.has(c.action)) throw new Error(`action must be one of ${[...ACTIONS].join(", ")}`);
-    const r = this.db.prepare(`INSERT INTO memory_corrections (action, src, rel, dst, object, at, scope, note, who, created)
-      VALUES (?,?,?,?,?,?,?,?,?,?)`).run(c.action, c.src, c.rel ?? null, c.dst ?? null, c.object ?? null, c.at ?? null, c.scope || "*",
-      c.note == null ? null : String(c.note).slice(0, 160), c.who ?? null, this.now());
+    const r = this.db.prepare(`INSERT INTO memory_corrections (action, src, rel, dst, object, at, scope, note, who, created, source)
+      VALUES (?,?,?,?,?,?,?,?,?,?,?)`).run(c.action, c.src, c.rel ?? null, c.dst ?? null, c.object ?? null, c.at ?? null, c.scope || "*",
+      c.note == null ? null : String(c.note).slice(0, 160), c.who ?? null, this.now(), sourceOf(c.who));
     this.dirty = true;
     return this.correction(Number(r.lastInsertRowid));
   }
