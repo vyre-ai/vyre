@@ -891,10 +891,15 @@ export default {
 
     // The install line's own boot: the code arrives in VYRE_SETUP_CODE (never argv), is taken once and
     // removed from this process's environment so no child inherits it.
-    const bootCode = (seam.env || process.env).VYRE_SETUP_CODE;
+    // The installer also writes VYRE_SETUP_CODE_AT (epoch seconds): a code older than the setup hour
+    // is ignored, so a restart of vyred never re-arms an old one. No stamp means no age to check.
+    const bootEnv = seam.env || process.env;
+    const bootCode = bootEnv.VYRE_SETUP_CODE, bootAt = Number(bootEnv.VYRE_SETUP_CODE_AT);
+    if (!seam.env) { delete process.env.VYRE_SETUP_CODE; delete process.env.VYRE_SETUP_CODE_AT; }
     if (bootCode) {
-      if (!seam.env) delete process.env.VYRE_SETUP_CODE;
-      beginSetup(String(bootCode)).catch(e => ctx.log(`relay: setup code not used: ${/** @type {Error} */ (e).message}`));
+      const at = bootAt > 1e12 ? bootAt : bootAt * 1000;
+      if (Number.isFinite(at) && at > 0 && Date.now() - at > SETUP_TTL) ctx.log("relay: the setup code on this box is more than an hour old and was not used");
+      else beginSetup(String(bootCode)).catch(e => ctx.log(`relay: setup code not used: ${/** @type {Error} */ (e).message}`));
     }
 
     return { async stop() { stopLink(); if (setup) clearTimeout(setup.timer); for (const set of live.values()) for (const ch of set) ch.close(1001, "box stopping"); live.clear(); } };

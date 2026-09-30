@@ -38,8 +38,8 @@ test("setup handoff: the name install-box.sh writes into vyre.env is the name th
   assert.equal(r.status, 0, r.stderr);
   const lines = fs.readFileSync(path.join(dir, "vyre.env"), "utf8").split("\n");
   assert.ok(lines.includes("CLOUDFLARE_VYRE_TOKEN=keep"), "the person's lines stay");
-  const names = lines.filter(l => /code/i.test(l.split("=")[0])).map(l => l.split("=")[0]);
-  assert.deepEqual(names, ["VYRE_SETUP_CODE"], "the box's name for the code, and only that");
+  const names = lines.filter(l => !l.startsWith("#") && /code/i.test(l.split("=")[0])).map(l => l.split("=")[0]);
+  assert.deepEqual(names.filter(n => n !== "VYRE_SETUP_CODE_AT"), ["VYRE_SETUP_CODE"], "the box's name for the code, and only that");
 
   // What compose does with env_file: every KEY=VALUE becomes the container's environment. The relay
   // boots on it and starts a setup session.
@@ -49,7 +49,7 @@ test("setup handoff: the name install-box.sh writes into vyre.env is the name th
   const root = tempHome(t);
   fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ role: "box", name: "alex", transcripts: [], network: { name: "alex" }, relay: { enabled: false, url: base }, modules: { disable: ["names", "onboard"] } }));
   const saved = { ...process.env };
-  for (const l of lines) { const i = l.indexOf("="); if (i > 0 && !l.startsWith("#")) process.env[l.slice(0, i)] = l.slice(i + 1); }
+  for (const l of lines.filter(l => !l.startsWith("#"))) { const i = l.indexOf("="); if (i > 0 && !l.startsWith("#")) process.env[l.slice(0, i)] = l.slice(i + 1); }
   t.after(() => { for (const k of Object.keys(process.env)) if (!(k in saved)) delete process.env[k]; });
   const d = await start({ root, log: () => {} });
   t.after(() => d.stop());

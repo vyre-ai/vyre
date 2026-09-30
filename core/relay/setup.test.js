@@ -505,3 +505,19 @@ test("route key: only a name-directory message for this box's own route is signe
     assert.ok(r.error, `${tool} is refused to a module that is not on its list`);
   }
 });
+
+test("setup boot: a code with a stamp over an hour old is ignored, a fresh or unstamped one starts", async t => {
+  const saved = { ...process.env };
+  t.after(() => { for (const k of Object.keys(process.env)) if (!(k in saved)) delete process.env[k]; });
+  const { code } = await newCode();
+  for (const [at, expect] of [[String(Math.floor(Date.now() / 1000) - 3700), "none"], [String(Math.floor(Date.now() / 1000) - 60), "waiting"], [undefined, "waiting"], [String(Date.now() - 3_700_000), "none"]]) {
+    process.env.VYRE_SETUP_CODE = code;
+    if (at) process.env.VYRE_SETUP_CODE_AT = at; else delete process.env.VYRE_SETUP_CODE_AT;
+    const w = await world(t);
+    await settle(150);
+    const st = (await w.d.registry.call("relay.setup.status", {}, "cli")).data;
+    assert.equal(st.state, expect, `stamp ${at}`);
+    assert.equal(process.env.VYRE_SETUP_CODE, undefined, "taken out of the environment either way");
+    await w.d.stop();
+  }
+});
