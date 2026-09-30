@@ -156,7 +156,7 @@ esac
 
 /** The environment every vyred and vyre here runs with. */
 const worldEnv = (home, bins, extra = {}) => {
-  const env = { ...process.env, VYRE_NO_DIALOGS: "1", NO_COLOR: "1", VYRE_TAILSCALE_BIN: bins.ts, VYRE_CLAUDE_BIN: bins.claude,
+  const env = { ...process.env, VYRE_NO_DIALOGS: "1", VYRE_DECK_FIXTURES: "1", NO_COLOR: "1", VYRE_TAILSCALE_BIN: bins.ts, VYRE_CLAUDE_BIN: bins.claude,
     NODE_OPTIONS: `${process.env.NODE_OPTIONS || ""} --import=${PRELOAD}`.trim(), VYRE_TMPDIR: SCRATCH, ...extra };
   if (home) env.VYRE_HOME = home;
   delete env.CLOUDFLARE_VYRE_TOKEN;
@@ -484,7 +484,7 @@ try {
       }
       // Finish the step, so the next screen is the one a person reaches.
       if (step === "you") {
-        if (!shot) await page.run(`type("#name", "alex"); type("#assistant", "Juno"); await until('!document.querySelector("#primary").disabled');`);
+        await page.run(`type("#name", "alex"); type("#assistant", "Juno"); await until('!document.querySelector("#primary").disabled');`);
         await page.run(`click("#primary"); await until('location.hash === "#claude"');`);
       } else if (step === "claude") {
         // Skipped, as a person without Claude at hand does: the setup then ends with no assistant
