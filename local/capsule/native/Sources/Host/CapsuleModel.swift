@@ -19,7 +19,7 @@ public final class CapsuleModel: ObservableObject {
         public var id: String { section.rawValue }
     }
 
-    @Published public var text = "" { didSet { if text != oldValue { userMoved = false; extensionBoxChanged?(); search() } } }
+    @Published public var text = "" { didSet { if text != oldValue { userMoved = false; extensionBoxChanged?(); trackInsert(oldValue); syncTags(); search() } } }
     /// After an answer, the box is the follow-up box: ⏎ continues the same thread (AutoAsk.swift).
     @Published public internal(set) var followUp = false
     /// How long typing rests before a question is answered on its own (AutoAsk.swift).
@@ -104,6 +104,32 @@ public final class CapsuleModel: ObservableObject {
     @Published public internal(set) var askedMemory: MemoryAnswer?
     /// The inline "Are you sure?" for a destructive action, until Enter again or Escape.
     @Published public var confirming: (item: ResultItem, action: ResultAction)?
+    /// Aliases and per-command hot keys (CommandBindings.swift), and the box's use while one is set.
+    var bindings: CommandBindings?
+    @Published var bindingEdit: BindingEdit?
+    /// The module command open in the box (ViewMode.swift), and where commands come from.
+    @Published var viewSession: ViewSession?
+    var viewProvider: ViewCommandsProvider?
+    /// The searches of slow providers in flight for the words now in the box (cancelled by the next key).
+    var searchTasks: [Task<Void, Never>] = []
+    /// Text put in the box other than a key at a time (a paste, a drop, dictation, undo): tags typed inside
+    /// it tag nothing (TagMode.swift).
+    var pastedSpans = PasteSpans()
+    var ownEdit = false
+    /// When a typing key was last pressed in the box (TagMode.swift noteKey).
+    var keyAt: Date?
+    /// "Harlow Legal call · in 25 min": the next meeting, under the empty box (ViewMode.swift).
+    @Published var nextMeeting: String?
+    var nextMeetingAt: Date?
+    /// True while the panel is warmed at launch with a search nobody typed: it draws local rows and asks nothing else.
+    var warming = false
+    /// "#" tags (TagMode.swift): the last search, the ones picked, and the search in flight.
+    var tagHits: [TagHit] = []
+    @Published var pickedTags: [TagHit] = []
+    var tagTask: Task<Void, Never>?
+    /// Words a module put in the box (an `ask` effect). They are the module's, not the person's: nothing
+    /// is asked, recalled or sent from them until the person changes them or presses Return.
+    var prefilled: String?
     /// The agent, project or thread picked with `@`: a chip before the box, where Enter sends.
     @Published public var target: VyreCandidate? {
         didSet {
@@ -213,6 +239,8 @@ public final class CapsuleModel: ObservableObject {
         return d
     }()
     var token = 0
+    /// When each publish of rows happened, by search token: the speed check reads when the last rows landed.
+    var publishLog: [(token: Int, at: UInt64)] = []
     private var partial: [String: [ResultItem]] = [:]
     var replySub: VyredSubscription?
     var recallTask: Task<Void, Never>?
@@ -221,6 +249,8 @@ public final class CapsuleModel: ObservableObject {
     private var staleTimer: Timer?
     /// Asked to close the panel (an action finished with .close).
     public var onClose: ((String?) -> Void)?
+    /// Open the Capsule with these words in the box (a hot key that needs a look first).
+    var onShow: ((String) -> Void)?
     /// Whether the panel is on screen (a reply that finishes while it is not gets a banner).
     var isShown: () -> Bool = { false }
     /// Asked to step aside for the front app.
@@ -271,6 +301,7 @@ public final class CapsuleModel: ObservableObject {
         Task { @MainActor [vyred] in
             _ = await vyred.refreshTools()
             guard vyred.isUp else { return }
+            self.loadNextMeeting()
             await self.loadModels()
             await self.loadIdentities()
             self.catalog = await CatalogLoader.load(vyred)
@@ -302,13 +333,16 @@ public final class CapsuleModel: ObservableObject {
         cancelMentionRefresh()
         sessionSearch?.cancel(); sessionSearch = nil
         confirming = nil
+        // A module command and an alias being set end with the Capsule too.
+        if viewSession != nil { exitView(clear: false) }
+        bindingEdit = nil
     }
 
     /// A fresh open starts with an empty box, unless a reply is still streaming.
     public func reset() {
         if let r = reply, !r.finished { return }
         followUp = false; autoKey = nil; autoTask?.cancel(); convo = []
-        text = ""; groups = []; selected = 0; line = nil; reply = nil; asked = nil; memory = nil; askedMemory = nil; targetParent = nil; target = nil
+        text = ""; pickedTags = []; pastedSpans.reset(); groups = []; selected = 0; line = nil; reply = nil; asked = nil; memory = nil; askedMemory = nil; targetParent = nil; target = nil
         iqStage = nil; iqDraft = nil; iqAnswerId = nil; iqCorrecting = nil; iqFixed = nil; iqAbstained = false
         cancelMentionRefresh()
         replySub?.cancel(); replySub = nil
@@ -390,8 +424,21 @@ public final class CapsuleModel: ObservableObject {
         line = nil
         confirming = nil
         // Rows of slow providers stay until replaced; the instant ones are recomputed below.
-        partial["calc"] = nil; partial["commands"] = nil; partial["ext-commands"] = nil
+        partial["calc"] = nil; partial["commands"] = nil; partial["ext-commands"] = nil; partial["alias"] = nil
         let q = Query(text, front: front)
+        // Setting an alias or a hotkey: the box is the field, and the one row says what it wants.
+        if let e = bindingEdit {
+            recallTask?.cancel(); memory = nil; autoTask?.cancel(); partial = [:]
+            groups = [Group(section: .top, items: [bindingEditRow(e)])]
+            selected = 0
+            return
+        }
+        // A module command is open: the box is its search, and its list is the results.
+        if let s = viewSession {
+            recallTask?.cancel(); memory = nil; autoTask?.cancel(); partial = [:]
+            if case .list? = s.level { s.load(q: text) } else if s.stack.isEmpty { s.load(q: text) }
+            return
+        }
         // `@` being typed: the list is what it can name, nothing else, and memory stays quiet.
         // Inside a nesting chip it is only what that chip holds (mentionQuery says when).
         if let m = mentionQuery {
@@ -402,6 +449,14 @@ public final class CapsuleModel: ObservableObject {
             refreshMentions(m, token: t)
             return
         }
+        // A "#" being typed: what can be tagged (TagMode.swift).
+        if let h = hashToken {
+            // The old rows were for other words: none stay to be picked by mistake while the list comes.
+            partial = [:]
+            if groups.first?.items.first?.kind != "tag" { groups = []; selected = 0 }
+            searchTags(h, token: t); return
+        }
+        tagTask?.cancel()
         cancelMentionRefresh()
         // The follow-up box: its words go to the answer's thread on ⏎; nothing is searched.
         if followUp && target == nil {
@@ -425,10 +480,11 @@ public final class CapsuleModel: ObservableObject {
             return
         }
         if commandRun?.running == false { commandRun = nil }
-        refreshAttachments(q.text, to: .ask)
-        recall(q.text, token: t)
+        // The warm-up search (Panel.prewarm) only draws local rows: no screen read, no memory lookup.
+        if !warming { refreshAttachments(q.text, to: .ask); recall(q.text, token: t) }
         if q.normalized.isEmpty { autoTask?.cancel(); if autoKey != nil { dropAuto() }; partial = [:]; groups = []; selected = 0; return }
         if let c = calcResult(q) { partial["calc"] = [withCopy(c)] }
+        if let a = bindings?.aliasRow(q.normalized) { partial["alias"] = [a] }
         partial["commands"] = SystemCommands.match(q.normalized).prefix(3).map { commandItem($0.command, score: $0.score) }
         partial["ext-commands"] = extensionCommands.compactMap { c in
             let s = Match.score(q.normalized, c.title, synonyms: c.keywords)
@@ -441,19 +497,32 @@ public final class CapsuleModel: ObservableObject {
         for p in providers + extensionProviders {
             if let now = p as? ImmediateResults { partial[p.id] = now.resultsNow(for: q) }
         }
-        publish()
-        for p in providers + extensionProviders where !(p is ImmediateResults) {
-            Task { @MainActor in
+        // The first paint is a slice of 8 rows; the rest follow on the next turn, so a wide search (one
+        // letter) puts its first rows up at once and does not make a keystroke wait for all of them.
+        publish(limit: Self.firstSlice)
+        DispatchQueue.main.async { [weak self] in
+            MainActor.assumeIsolated { if let self, t == self.token { self.publish() } }
+        }
+        // A newer key makes the older searches moot: they are cancelled, not left to finish.
+        searchTasks.forEach { $0.cancel() }
+        searchTasks = []
+        // One letter searches only what is already here: the quick, local providers. The slow ones
+        // (Spotlight, mail, documents) wait for a second letter.
+        let slow = providers + extensionProviders
+        let oneLetter = q.normalized.count < 2
+        for p in slow where !(p is ImmediateResults) {
+            if oneLetter { partial[p.id] = nil; continue }
+            searchTasks.append(Task { @MainActor in
                 let rows = await p.results(for: q)
-                guard t == self.token else { return }
+                guard !Task.isCancelled, t == self.token else { return }
                 self.partial[p.id] = rows
                 self.stale.remove(p.id)
                 self.publish()
-            }
+            })
         }
         let pending = Set((providers + extensionProviders).filter { !($0 is ImmediateResults) }.map(\.id))
         stale = pending
-        scheduleAuto(q, token: t)
+        if !warming { scheduleAuto(q, token: t) }
         staleTimer?.invalidate()
         staleTimer = Timer.scheduledTimer(withTimeInterval: staleAfter, repeats: false) { [weak self] _ in
             MainActor.assumeIsolated {
@@ -465,9 +534,16 @@ public final class CapsuleModel: ObservableObject {
         }
     }
 
-    func publish() {
+    /// How many rows the first paint of a search holds.
+    static let firstSlice = 8
+    /// The most rows a one-letter search shows.
+    static let oneLetterRows = 20
+
+    func publish(limit: Int? = nil) {
+        publishLog.append((token, DispatchTime.now().uptimeNanoseconds)); if publishLog.count > 400 { publishLog.removeFirst(200) }
         let q = Query(text, front: front)
         var all = partial.values.flatMap { $0 }
+        if let b = bindings { all = all.map { b.decorated($0, begin: { [weak self] e in await MainActor.run { self?.beginBinding(e) } }) } }
         let canSend = vyred.has("files.send")
         for i in all.indices {
             all[i].score += frecency.boost(all[i].id, query: q.normalized)
@@ -476,6 +552,9 @@ public final class CapsuleModel: ObservableObject {
             }
         }
         all.sort { $0.score > $1.score }
+        // The same row from two places (an alias and the app's own search) is one row.
+        var seen = Set<String>()
+        all = all.filter { seen.insert($0.id).inserted }
         let best = all.first { $0.section != .answer }
         var out: [Group] = []
         if let top = all.first, top.score >= 0.6, top.section != .answer {
@@ -495,6 +574,17 @@ public final class CapsuleModel: ObservableObject {
         // One Vyre group: rows from Vyre's own providers (Glass, watch) join the destinations.
         if let i = out.firstIndex(where: { $0.section == .vyre }) { asks.items += out.remove(at: i).items }
         if asksFirst(q, top: best) { out.insert(asks, at: out.first?.section == .answer ? 1 : 0) } else { out.append(asks) }
+        // A slice, or the one-letter cap: rows past it are left for the next publish (or not shown at all).
+        let cap = limit ?? (q.normalized.count < 2 ? Self.oneLetterRows : nil)
+        if let cap {
+            var left = cap
+            out = out.compactMap { g in
+                var g = g
+                g.items = Array(g.items.prefix(max(0, left)))
+                left -= g.items.count
+                return g.items.isEmpty ? nil : g
+            }
+        }
         let keep = current?.id
         groups = out
         if let keep, let i = flat.firstIndex(where: { $0.id == keep }) { selected = i } else { selected = 0 }
@@ -821,6 +911,7 @@ public final class CapsuleModel: ObservableObject {
     /// on this vyred there is no memory box at all. An answer for older words is dropped.
     func recall(_ raw: String, token t: Int) {
         recallTask?.cancel()
+        if raw == prefilled { memory = nil; return }
         let words = raw.trimmingCharacters(in: .whitespacesAndNewlines)
         if memory?.text != words { memory = nil }
         guard words.count >= 3, vyred.isUp, vyred.has("memory.answer") else { return }
@@ -871,10 +962,11 @@ public final class CapsuleModel: ObservableObject {
         doing = computerUse
         // Computer use is a full session: the Vyre plugin brings hands.* and screen.*, the floor
         // and the Gate. A question is a lean one on the fast model.
-        let input: [String: Any] = computerUse
+        var input: [String: Any] = computerUse
             ? ["prompt": words, "append": ([Self.computerUseBrief, append].filter { !$0.isEmpty }).joined(separator: "\n\n"), "purpose": "agent",
                "cwd": dir.path, "surface": "capsule", "name": name]
             : ["prompt": words, "append": append, "lean": true, "model": model, "purpose": "capsule", "cwd": dir.path, "surface": "capsule", "name": name]
+        addTags(to: &input, words: words)
         let r = await vyred.call("threads.start", input, presence: false)
         pending = false
         if let why = Bridge.explain(r) { asked = nil; replySub?.cancel(); replySub = nil; return .failed(why) }
@@ -922,7 +1014,11 @@ public final class CapsuleModel: ObservableObject {
             reply = VyState.reply(c.id)
             reply?.model = model
             follow { c.id }
-            let r = await vyred.call("threads.send", ["thread": c.id, "text": withAttachments(words), "surface": "capsule"], presence: false)
+            var sendInput: [String: Any] = ["thread": c.id, "text": withAttachments(words), "surface": "capsule"]
+            let tags = tagsFor(words)
+            _ = tags
+            addTags(to: &sendInput, words: words)
+            let r = await vyred.call("threads.send", sendInput, presence: false)
             pending = false
             if let why = Bridge.explain(r) { reply = nil; asked = nil; return .failed(why) }
             let d = (r.data as? [String: Any]) ?? [:]
@@ -943,7 +1039,9 @@ public final class CapsuleModel: ObservableObject {
             reply = VyState.reply("")
             var thread: String?
             follow { thread }
-            let r = await vyred.call("agents.ask", ["agent": c.id, "text": withAttachments(words), "surface": "capsule", "wait": false], presence: false)
+            var askInput: [String: Any] = ["agent": c.id, "text": withAttachments(words), "surface": "capsule", "wait": false]
+            addTags(to: &askInput, words: words)
+            let r = await vyred.call("agents.ask", askInput, presence: false)
             pending = false
             let d = (r.data as? [String: Any]) ?? [:]
             if let why = Bridge.explain(r) { reply = nil; asked = nil; return .failed(why) }
@@ -956,7 +1054,9 @@ public final class CapsuleModel: ObservableObject {
             reply = VyState.reply("")
             var thread: String?
             follow { thread }
-            let r = await vyred.call("threads.start", ["project": c.id, "prompt": withAttachments(words), "surface": "capsule"], presence: false)
+            var startInput: [String: Any] = ["project": c.id, "prompt": withAttachments(words), "surface": "capsule"]
+            addTags(to: &startInput, words: words)
+            let r = await vyred.call("threads.start", startInput, presence: false)
             pending = false
             if let why = Bridge.explain(r) { reply = nil; asked = nil; return .failed(why) }
             thread = (r.data as? [String: Any]).flatMap { VJ.nonEmpty($0["id"]) }

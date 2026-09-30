@@ -38,3 +38,7 @@ export const passwordFieldScript = `(() => {
   // A page too big to look through, or one this script cannot read, is treated as a password page: fail closed.
   try { return scan(document, 0) || over; } catch { return true; }
 })()`;
+
+
+/** A script that opens the page's auth stores. A tripwire, not a wall: what it stops is the plain way; the write-hold and redaction cover the rest. */
+export const CREDENTIAL_STORE = /firebaseLocalStorage|stsTokenManager|firebase:authUser|\b(?:access|refresh|id)[_-]?token\b.{0,80}(?:indexedDB|localStorage|sessionStorage)|(?:indexedDB|localStorage|sessionStorage).{0,200}(?:access|refresh|id)[_-]?token|document\.cookie/is;

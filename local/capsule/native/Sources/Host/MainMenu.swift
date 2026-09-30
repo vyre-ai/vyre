@@ -24,7 +24,7 @@ import AppKit
     static func make(_ actions: MenuActions) -> NSMenu {
         let main = NSMenu(title: "Main")
 
-        let app = NSMenu(title: "Vyre")
+        let app = NSMenu(title: "Lumen")
         add(app, "Settings…", #selector(MenuActions.openSettings(_:)), ",", target: actions)
         app.addItem(.separator())
         let services = NSMenu(title: "Services")

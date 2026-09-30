@@ -10,6 +10,7 @@ import { PassThrough } from "node:stream";
 import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { createRuntime } from "./runtime.js";
+import { runningBrowsers } from "./doctor.js";
 import { serve, wireName } from "./mcp.js";
 import { report, readSessions, pii, safeArgs, rotate, writeConfig } from "./trace.js";
 import { fakeExtension, until } from "../fake-extension.js";
@@ -70,8 +71,8 @@ test("mcp: a call reaches the extension, the answer is redacted, and the trace r
 
 test("mcp: a send is held with an id, chrome_send does it once, and only what this session held", async t => {
   let released = 0;
-  const { call, ext } = await rig(t, (/** @type {string} */ op, /** @type {any} */ a) => {
-    if (op === "page.act" && a.release) { released++; return { ok: true, sent: true }; }
+  const { call, ext } = await rig(t, (/** @type {string} */ op, /** @type {any} */ a, /** @type {any} */ m) => {
+    if (op === "page.act" && m && m.trust && m.trust.release) { released++; return { ok: true, sent: true }; }
     if (op === "page.act") return { ok: false, held: true, control: { role: "button", name: "Send inquiry" }, fields: [{ name: "Email", value: "alex@example.com" }], sig: "s1", url: "https://harlow.example/intake" };
     return { ok: true };
   });
@@ -82,7 +83,7 @@ test("mcp: a send is held with an id, chrome_send does it once, and only what th
   const sent = await call("chrome_send", { id: held.id });
   assert.equal(sent.isError, undefined, JSON.stringify(sent));
   assert.equal(released, 1);
-  assert.equal(ext.ops("page.act").at(-1).args.release.sig, "s1");
+  assert.equal(ext.ops("page.act").at(-1).trust.release.sig, "s1");
   const again = await call("chrome_send", { id: held.id });
   assert.equal(again.isError, true);
   assert.match(again.content[0].text, /not_found|already sent/);
@@ -305,8 +306,8 @@ test("privacy: typed values are logged as lengths off GoHighLevel builder pages,
 
 test("send approval: a client that can ask (MCP elicitation) is asked by the server, and a no means nothing is sent", async t => {
   let released = 0;
-  const handler = (/** @type {string} */ op, /** @type {any} */ a) => {
-    if (op === "page.act" && a.release) { released++; return { ok: true }; }
+  const handler = (/** @type {string} */ op, /** @type {any} */ a, /** @type {any} */ m) => {
+    if (op === "page.act" && m && m.trust && m.trust.release) { released++; return { ok: true }; }
     if (op === "page.act") return { ok: false, held: true, control: { role: "button", name: "Send" }, fields: [{ name: "Email", value: "alex@example.com" }], sig: "s", url: "https://harlow.example/x" };
     return { ok: true };
   };
@@ -326,6 +327,34 @@ test("send approval: a client that can ask (MCP elicitation) is asked by the ser
   const yes = await runtime.invoke("chrome.send", { id: held.id }, { ask: async () => ({ action: "accept", content: { approve: true } }) });
   assert.equal(yes.ok, true);
   assert.equal(released, 1);
+});
+
+test("plan approval in standalone: the person is asked once in plain words; no answer is pending, not a no; a yes starts the plan", async t => {
+  const dataDir = tmp(t);
+  const runtime = await createRuntime({ dataDir, sockPath: path.join(dataDir, "run", "chrome.sock"), log: () => {}, chrome: { extensionOrigin: null } });
+  t.after(() => runtime.stop());
+  const ext = await fakeExtension(path.join(dataDir, "run", "chrome.sock"), { handler: () => ({ ok: true }) });
+  t.after(() => ext.sock.destroy());
+  await until(async () => (await runtime.invoke("chrome.status", {})).result.connected);
+  const p = (await runtime.invoke("chrome.approve", { title: "Eight drafts", items: [{ kind: "create", what: "draft workflow", count: 8 }, { kind: "publish", what: "none yet" }], tab: 1 })).result;
+  assert.equal(p.held, true);
+  const asked = /** @type {string[]} */ ([]);
+  const late = await runtime.invoke("chrome.send", { id: p.id }, { ask: async (/** @type {string} */ m) => { asked.push(m); return { action: "timeout" }; } });
+  assert.equal(late.ok, false);
+  assert.equal(late.error.code, "pending");
+  assert.match(String(late.error.message), /not answered yet/);
+  assert.doesNotMatch(String(late.error.message), /ladder/);
+  assert.match(asked[0], /Approve this plan once/);
+  assert.match(asked[0], /Eight drafts/);
+  assert.match(asked[0], /Deleting, messaging and payments still ask/);
+  const no = await runtime.invoke("chrome.send", { id: p.id }, { ask: async () => ({ action: "accept", content: { approve: false } }) });
+  assert.equal(no.error.code, "declined");
+  assert.match(String(no.error.message), /did not approve this plan/);
+  const yes = await runtime.invoke("chrome.send", { id: p.id }, { ask: async () => ({ action: "accept", content: { approve: true } }) });
+  assert.equal(yes.ok, true, JSON.stringify(yes.error && yes.error.message));
+  assert.equal(yes.result.approved, true);
+  assert.equal(yes.result.covers.create, 8);
+  assert.equal(yes.result.covers.publish, 0, "a publish the person did not ask for is not covered");
 });
 
 test("callers: the person's Esc is only undone by the person (asked through the client), and the person's own tools are not the model's", async t => {
@@ -471,4 +500,42 @@ test("doctor: checks the install, the registration, the launcher and a real conn
   assert.match(d.stdout, /OK   the launcher starts the connector/);
   assert.match(d.stdout, /OK   a real connector process said hello to a bridge and relayed a request back/);
   assert.match(d.stdout, /Next: /);
+});
+
+
+test("ladder: a transport error (no extension connected) carries no step-down hint", async t => {
+  const dataDir = tmp(t);
+  const runtime = await createRuntime({ dataDir, sockPath: path.join(dataDir, "run", "chrome.sock"), log: () => {}, chrome: { extensionOrigin: null } });
+  t.after(() => runtime.stop());
+  const r = await runtime.invoke("chrome.snapshot", {});
+  assert.equal(r.ok, false);
+  assert.equal(r.error.code, "no_extension");
+  assert.ok(!/ladder/.test(r.error.message), r.error.message);
+});
+
+
+test("doctor: finds the main process of each running browser and when it started, never a helper", () => {
+  const ps = [
+    "Sun Sep 27 09:12:44 2026 /Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
+    "Sun Sep 27 09:12:45 2026 /Applications/Google Chrome.app/Contents/Frameworks/Google Chrome Helper.app/Contents/MacOS/Google Chrome Helper --type=renderer",
+    "Tue Sep 30 18:01:02 2026 /Applications/Dia.app/Contents/MacOS/Dia",
+    "Tue Sep 30 18:01:03 2026 /Applications/Dia.app/Contents/Frameworks/Dia Helper.app/Contents/MacOS/Dia Helper --type=gpu-process",
+  ].join("\n");
+  const b = runningBrowsers("darwin", ps);
+  assert.deepEqual(b.map(x => x.name).sort(), ["Dia", "Google Chrome"]);
+  assert.ok(b.find(x => x.name === "Google Chrome").startedAt < b.find(x => x.name === "Dia").startedAt);
+  assert.deepEqual(runningBrowsers("win32", ps), []);
+});
+
+test("site knowledge in standalone is off until the person turns it on, and then needs no server", async t => {
+  const dataDir = tmp(t);
+  const runtime = await createRuntime({ dataDir, sockPath: path.join(dataDir, "run", "chrome.sock"), log: () => {}, chrome: { extensionOrigin: null } });
+  t.after(() => runtime.stop());
+  const put = async () => (await runtime.call("memory.site.put", { origin: "https://app.example.com", patch: { key: "https://app.example.com", controls: [{ id: "c1", page: "/w", role: "button", selector: { strategy: "identifier", identifier: "save" }, identifierVisits: ["a", "b"] }] } }));
+  assert.equal((await put()).data.accepted, false, "off by default");
+  assert.ok(!fs.existsSync(path.join(dataDir, "sites")), "nothing written");
+  const { writeConfig } = await import("./trace.js");
+  writeConfig(dataDir, { learn: true });
+  assert.equal((await put()).data.accepted, true);
+  assert.equal((await runtime.call("memory.site.get", { origin: "https://app.example.com" })).data.origin.controls[0].selector.identifier, "save");
 });

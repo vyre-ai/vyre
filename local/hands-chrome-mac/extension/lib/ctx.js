@@ -13,6 +13,7 @@
 //   ctx.setStopped(bool)       the shell's, set from the module's stop and resume events
 
 import { createCdp } from "./cdp.js";
+import { createFrames } from "./frames.js";
 import * as floor from "./floor.js";
 import { err } from "./err.js";
 import { dispatch } from "../caps/index.js";
@@ -22,6 +23,7 @@ import { dispatch } from "../caps/index.js";
  */
 export function createCtx({ chrome, emit = () => {} }) {
   const cdp = createCdp({ chrome, emit });
+  const frames = createFrames({ cdp });
   let stopped = false;
 
   const storage = {
@@ -114,7 +116,7 @@ export function createCtx({ chrome, emit = () => {} }) {
 
   /** @type {any} */
   const ctx = {
-    cdp, tabs, storage, dnr,
+    cdp, tabs, storage, dnr, frames,
     emit,
     stopped: () => stopped,
     setStopped: (/** @type {boolean} */ v) => { stopped = !!v; if (stopped) ctx.stoppedAt = Date.now(); },
@@ -127,8 +129,8 @@ export function createCtx({ chrome, emit = () => {} }) {
     async floorTier() { const cfg = await floorConfig(); return (/** @type {string} */ url) => floor.tierOf(url, cfg).tier; },
     /** @param {string} url @param {string} op */
     async floorUrl(url, op) { return floor.decide(url, op, await floorConfig()); },
-    /** @param {string} op @param {any} [args] */
-    call: (op, args) => dispatch(op, args || {}, ctx),
+    /** @param {string} op @param {any} [args] @param {any} [trust] what the caller was approved for; never inside args */
+    call: (op, args, trust) => dispatch(op, args || {}, ctx, trust),
   };
   return ctx;
 }

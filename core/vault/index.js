@@ -34,7 +34,7 @@ import * as agentTools from "./tools/agents.js";
 import * as needsTools from "./tools/needs.js";
 import * as connectionTools from "./tools/connections.js";
 import * as saidTools from "./said.js";
-import { grantPrompt } from "./prompt.js";
+import { grantPrompt, putPrompt } from "./prompt.js";
 import * as requestTools from "./request.js";
 
 export { presence };
@@ -172,7 +172,7 @@ export default {
         return { ...out, ...(grants ? { granted: grants } : {}) };
       }, presence("Save an item in the vault", ({ name, kind }) => {
         const old = vault.row(name);
-        return `${old ? "Replace" : "Add"} ${kind || (old && old.kind) || "secret"} ${quoted(name)} in the vault`;
+        return putPrompt({ name, kind: kind || (old && old.kind) || "secret", replacing: Boolean(old) });
       }));
 
     tool("vault.list", null, "Every item's name, kind, description, field names, hosts and grants. Never a value.",

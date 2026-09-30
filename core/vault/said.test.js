@@ -321,3 +321,26 @@ test("grants: vault.list decides 'granted to that agent' by the agent's project 
   assert.deepEqual(await list("juno", { project: "northwind" }), ["api-x"]);
   assert.equal((await cli("vault.list")).data.items.length, 3, "the person sees everything");
 });
+
+test("put: a person's put never carries grants; people use vault.grant (the connect path is readers on the credential)", async t => {
+  const { reg, cli } = await daemon(t);
+  assert.match((await cli("vault.put", { name: "x1", kind: "api-key", fields: { value: "fixture-key-0000000000" }, grants: ["connectors"] })).error.message, /grants on put are for modules/);
+  assert.match((await cli("vault.put", { name: "x2", kind: "api-credential", fields: { config: "{}" }, grants: ["connectors"] })).error.message, /grants on put are for modules/);
+  assert.ok((await reg("vault.put", { name: "x3", kind: "api-key", fields: { value: "fixture-key-0000000000" }, grants: ["connectors"] }, "mcp")).error);
+});
+
+test("api-credential: replacing only the key keeps its hosts and endpoints; a module, an agent and a model cannot", async t => {
+  const { reg, cli } = await daemon(t);
+  const config = JSON.stringify({ auth: { type: "bearer" }, hosts: ["graph.example.test"] });
+  const made = await cli("vault.put", { name: "ms-graph", kind: "api-credential", fields: { config, secret: "fixture-secret-000000000" } });
+  assert.equal(made.error, undefined, JSON.stringify(made));
+  const replaced = await cli("vault.put", { name: "ms-graph", kind: "api-credential", fields: { secret: "fixture-secret-111111111" } });
+  assert.equal(replaced.error, undefined, JSON.stringify(replaced));
+  // The stored config came along: a call to another host is refused for the credential's hosts, not for a missing config.
+  const foreign = await cli("vault.request", { credential: "ms-graph", method: "GET", url: "https://elsewhere.example.test/x" });
+  assert.match(String(foreign.error && foreign.error.message), /host/i, JSON.stringify(foreign));
+  // A put for a credential that does not exist, with no config, is still refused.
+  assert.ok((await cli("vault.put", { name: "new-one", kind: "api-credential", fields: { secret: "fixture-secret-222222222" } })).error);
+  // Only a person's surface may replace the key.
+  for (const who of ["module:connectors", "module:watchers", "mcp", "mcp:agent:kit"]) assert.ok((await reg("vault.put", { name: "ms-graph", kind: "api-credential", fields: { secret: "fixture-secret-555555555" } }, who)).error, who);
+});

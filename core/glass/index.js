@@ -24,6 +24,7 @@ import { ComputerProvider } from "./providers/computer.js";
 import { Tickets, register } from "./streams.js";
 import { checkRel, checkName, MAX_PREVIEW, DEFAULT_UPLOAD_MB, KEY_SNIFF, isKeyBytes } from "./guard.js";
 import { INLINE, isText, mimeOf } from "./mime.js";
+import { within } from "../../lib/within.js";
 
 export const MIGRATIONS = [
   `CREATE TABLE glass_sessions (
@@ -188,14 +189,11 @@ export default {
      */
     const viewerLink = async peer => {
       if (!peer || !peer.stableId) return null;
-      let timer;
       try {
-        const r = await Promise.race([ctx.call("link.health", { node: String(peer.stableId) }),
-          new Promise(resolve => { timer = setTimeout(() => resolve(null), HEALTH_WAIT); timer.unref?.(); })]);
+        const r = await within(ctx.call("link.health", { node: String(peer.stableId) }), HEALTH_WAIT);
         const d = r && !r.error ? r.data : null;
         return d && d.path ? { path: String(d.path), latencyMs: typeof d.latencyMs === "number" ? d.latencyMs : null } : null;
       } catch { return null; }
-      finally { clearTimeout(timer); }
     };
 
     tool("glass.close", "Close a Glass session.", obj({ session: str }, ["session"]), async (i, { caller } = {}) => {

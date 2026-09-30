@@ -68,7 +68,7 @@ test("display: header, branch pair, summary, check chips with status words, file
   assert.equal($(c, "[data-act=merge]").getAttribute("aria-keyshortcuts"), "Meta+Enter Control+Enter");
   assert.equal($(c, "[data-act=merge]").disabled, false);
   assert.equal(c.isOpen(), false, "a display card blocks nothing");
-  assert.equal(JSON.parse(c.getAttribute("data-compact")).checks.length, 3, "the Capsule reads data-compact");
+  assert.equal(JSON.parse(c.getAttribute("data-compact")).checks.length, 3, "Lumen reads data-compact");
   assert.equal(JSON.parse(c.getAttribute("data-compact")).title, "#412 Add the pumpkin loaf to the price list");
 });
 

@@ -158,7 +158,12 @@ final class Hotkeys {
         guard spec != "off", let (key, mods) = Self.parse(spec) else { return }
         var type = EventTypeSpec(eventClass: OSType(kEventClassKeyboard), eventKind: UInt32(kEventHotKeyPressed))
         let me = Unmanaged.passUnretained(self).toOpaque()
-        InstallEventHandler(GetApplicationEventTarget(), { _, _, info in
+        InstallEventHandler(GetApplicationEventTarget(), { _, event, info in
+            // Only this hot key (id 1): the per-command hot keys (CommandBindings.swift) are theirs.
+            var hk = EventHotKeyID()
+            GetEventParameter(event, EventParamName(kEventParamDirectObject), EventParamType(typeEventHotKeyID), nil,
+                              MemoryLayout<EventHotKeyID>.size, nil, &hk)
+            guard hk.signature == OSType(0x5659_5245), hk.id == 1 else { return OSStatus(eventNotHandledErr) }
             let me = Unmanaged<Hotkeys>.fromOpaque(info!).takeUnretainedValue()
             MainActor.assumeIsolated { me.fire(PanelController.frontApp()) }
             return noErr

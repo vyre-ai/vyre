@@ -60,7 +60,7 @@ export function widthOf(root, act) {
   return b && typeof b.offsetWidth === "number" ? b.offsetWidth : 0;
 }
 
-/** "Answered from the Capsule · 14:31": another screen answered it (Needs, the phone, the Capsule). */
+/** "Answered from Lumen · 14:31": another screen answered it (Needs, the phone, Lumen). */
 export function fromLine(from) {
   if (!from || !from.where) return null;
   return h("div", { class: "cv-from" }, `Answered from ${from.where}` + (from.at ? ` · ${clock(from.at)}` : ""));
@@ -157,7 +157,7 @@ export function changesRow(d, view, cwd = null) {
  * the card says "Answer it on <mac>" with no buttons (presence.js macHeld).
  * @returns {HTMLElement & { update: (a: any) => void, answered: (decision: string, answers?: any, from?: { where: string, at?: number|null }|null) => void,
  *   onKey: (e: KeyboardEvent) => boolean, isOpen: () => boolean }}
- * answered's `from`: the screen that answered, when it was another one ("Answered from the Capsule · 14:31").
+ * answered's `from`: the screen that answered, when it was another one ("Answered from Lumen · 14:31").
  */
 export function askCard(ask) {
   const who = ask.agent || "Vyre";

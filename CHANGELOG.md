@@ -11,6 +11,172 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 - site knowledge, reviewer-2 fixes (reviews/iq.md e3bb3bc8, 67aa2397): H1 a stored step holds only {placeholders}, references to stored items, a small vocabulary, a flow's own declared choices and small integers; any other literal refuses the patch. H2 every path is canonicalised (canonTemplate: only known route words survive, every other segment becomes {id}, an @ refuses), which Chrome applies too before looking a page up. H3 a signal keeps a role, an identifier, a duration or a path, never page text or css. M1 labels need all their evidence or are dropped. M2 src shipped and notes are not claimable by a patch (trusted loader, person's surfaces only) and a future date is clamped to now. M3 a changed item (new steps, endpoint, frame match, page) starts over at 0.5. M5 opaque tokens refuse the patch. L keys never appear in a refusal path and __proto__ is skipped. Store: a whole-site forget leaves a tombstone that a replica's older copy cannot undo and sync tells the replica what was forgotten; forgotten rows are purged on every call; sync cannot raise trust or create a family no origin names; settings fail closed on a hub error; device:<id> phones are a person's surface.
 - site knowledge, step 2: the store in core/memory (core/memory/site.js): tables memory_site (one row per origin and per family, the record and its small arrival card), memory_site_events (a ring of 200 per key) and memory_site_forgotten (24-hour undo); tools site.get (card or named parts, not_modified by rev, origin merged with its family), site.put (through the lib's allowlist, refused whole on a secret, seed or email, a family written only by an origin that named it, a removal needs the current base_rev), site.report (ok or miss, heal and quarantine), site.list, site.forget (one item, a site, or all), site.restore, site.sync (two-way replica sync, union by newest verified) and the event site.learned. The person's surfaces and Vyre's own first-party modules only, never an agent. Two settings, both on by default: memory.site.learn (learn how each website works) and memory.site.sync (bring in what standalone Vyre for Chrome learned on its own); flipping the user's answer is a default change. SITE_TABLES lists the tables for memory.wipe and memory.export when they land.
 - site knowledge, step 1 (team/0.2/chrome-learning-plan.md): lib/site-knowledge.js, the pure record Vyre for Chrome keeps per website (frames, selectors and roles, ready and login signals, learned API shapes, flows, notes; each with conf and last-verified), usable by the extension, standalone and core/memory. An allowlist schema (no css or DOM paths in a selector, path templates only, type names in shapes); a secret shape, pairing seed, key or email anywhere refuses the whole patch and names the field, never the text; a control label is kept only when seen in two visits, unique, outside a record list and free of a person's data, otherwise the control is found by identifier or structure. Merge by item id with self-heal (success +0.1, miss x0.6, quarantine, a healed selector keeps the old one as prev), union for replicas with tombstones, family merge, and the 8 KB arrival card. The redaction rules moved to lib/secret-shapes.js (pure) so both share them; core/recall re-exports them unchanged.
+- Seeding a provider's config into an account's HOME no longer follows a link the agent planted: every folder below HOME is made and checked with `lstat` (a symlink is refused, nothing is written through it), and the file is replaced with `O_NOFOLLOW` (`core/sessions/spawn.js`).
+- An agent that switches its own mode mid-session (`current_mode_update`) to one Vyre does not list is never recorded as being in it: Vyre sets it back to the last listed mode with `session/set_mode`, or stops the session with a plain reason; `allowModes` on an entry now intersects with the default allowlist instead of replacing it, so an entry can only narrow it (`core/sessions/drivers/acp.js`).
+- Codex's start is pinned, not trusted: every start writes the account's `config.toml` from Vyre's own settings (approval on-request, sandbox workspace-write; whatever the agent left there is replaced), pins the session mode to `agent` (else `read-only`) with `session/set_mode`, and refuses a start where neither is offered; `agent` is on the ask-mode list, so Codex can work. What leaves for a person (an authenticate error, the agent's stderr tail) is stripped of credential shapes and of the run's own secret values, `CODEX_API_KEY` is kept from the agent's shells, and a custom endpoint with no key in the environment fails plainly instead of sending an empty Bearer (`core/sessions/drivers/acp.js`, `codex.js`).
+- The ACP driver follows what the real agents do (measured on hosted runners with codex-acp 2.0.1, codex-cli 0.159.2 and Grok Build 1.0.44, `scripts/provider-wire-proof.mjs`, `.github/workflows/proof-wire.yml`): session/new answers "Authentication required" until `authenticate`, so an entry names its method (`authMethod`; Codex: API key method when a key is set, else the stored ChatGPT login; Grok: `xai.api_key` with a key or custom endpoint, else `grok.com`), an agent left waiting for a browser sign-in is reported as "sign this account in first", and an entry can authenticate before any session (`authFirst`) and pass client capabilities and authenticate parameters. Codex's `-c` flags never reach it (the model provider and the start mode are unchanged), so none are passed; a custom OpenAI-compatible endpoint now goes through codex-acp's gateway method, and a real Codex turn ran end to end against a local stand-in. CODEX_HOME is made before codex-acp starts (it exits at once without it). Modes are an allowlist (`ALLOWED_MODES`: default, ask, untrusted, on-request, read-only, plan, agent; Codex narrows it to read-only and agent): an unknown mode, such as Codex's `agent-full-access` or one a later release adds, is never listed or entered, and an agent that starts in one is moved to an ask mode or the session does not run. A real Grok turn also ran against a stand-in with a config.toml custom model. Each CLI's real login command reached its provider's own address and code on a runner (codex: auth.openai.com, grok: accounts.x.ai, claude: claude.com) without completing a login (`core/sessions/drivers/*`).
+- fix: core/vault/rotate.test.js reads the provider list from lib/secret-detect.js, where the shape list moved (core/vault/detect.js re-exports it); vault-mac failed on the old path.
+- fix (stage red after the iq merge): the shared secret-shape list moved from core/vault/detect.js to lib/secret-detect.js (core/vault/detect.js re-exports it), and the redaction rules to lib/secret-shapes.js, so core/recall imports only libs (no core/recall to core/vault edge, test/boundaries). memory.write, memory.write.forget, memory.write.restore and memory.heard declare projectArg (test/project-arg). memory_remember from the person's own session (no agent, no project named) keeps a personal fact through memory.remember again, as /vyre remember does; an agent or a named project writes to project memory.
+#### test: the restart-loop SIGKILL test waits on its condition
+
+- `core/daemon/loop.test.js`: the fake vyred wrote its pid file after its start line, so on a slow hosted runner the test could read an empty file and `process.kill(0, "SIGKILL")` (its own process group) or kill too early. The fake writes the pid first, the test checks it is a real pid, and every wait in the file is a condition with a 20 s ceiling instead of a fixed count of 50 ms sleeps.
+
+- The onboarding's history step works: `import.scan`, `plan`, `start`, `status`, `stop` and `cancel` now allow the onboarding page's own caller (the loopback's `onboard` label), which they refused ("import.scan is not available to onboard callers"), so the step showed "Your history cannot be read yet". A model's caller is still refused. docs-shots: the walk's last step goes Continue on Your devices, then Open Vyre on the tour of Lumen.
+- `scripts/docs-shots`: the onboarding walk follows the new step order (You, Where should Vyre live, Tailscale, Your address, Claude Code, Your history, ..., Your devices): after the name it waits for `#live`, not `#claude`, and goes on to each step by address without choosing on the live step (choosing would mark Tailscale and the address skipped, and they have shots). Built on app-design's work/app-design-shots 76b24862 (a failed step stops the walk, the Deck shots still run). Not run here: it needs headless Chrome, which is a runner's, not this Mac's.
+- The Vyre master icon (app-design's export, work/app-design 978cd607) is wired in: vyre.run and its setup, start and 404 pages (favicon.svg and .ico, apple-touch, 32, 192 and 512 px), the iOS asset catalog (AppIcon-1024), Android (adaptive icon with foreground, background and monochrome, legacy and round mipmaps, the Play Store image; the old vector launcher drawables and the round icon pointing at the square one are gone), and the Expo app's icon, adaptive icon (with its background image) and favicon. `apps/ios/scripts/render-icon.sh` now copies the export instead of drawing the old icon from TOKENS.md. No product name (Lumen, Drive, Vault, Memory) icon is used: the trademark check is pending.
+#### The Capsule's `next` command (Lumen's next-meeting line)
+
+- `google`: `google.calendar.today` (read only, open to any caller) answers `{ events: [{ id, account, title, start, end, when, join?, link }] }`: timed meetings from now to the end of this box's day, running ones included, all-day events left out, `when` as "in 10 min" or "now, ends in 20 min", `join` only when the event carries an https link, `link` the join link or the event page. Nothing connected answers an empty list. Cached for a minute. The module declares `shows.capsule["view:next"]` over it (first-party, `root`, one "Open" action), so `capsule.commands` lists `next` and `capsule.view` answers a list frame.
+- Microsoft and personal Google are in it. The `next` command moved to the connectors module (`connectors.calendar.today`, `shows.capsule["view:next"]`; the google module no longer declares one, so there is one `next`): it merges Google's native module, Microsoft Graph's calendarView and Google Calendar's events, each read through `vault.request`.
+- Join links (reviewer-2 LOW): the row shows where "Open" goes (`in 10 min · meet.google.com`); a link in an event's location counts only on a known meeting host (Meet, Zoom, Teams, Webex), so an invite cannot put a phishing page in `join`; the meeting's own link (Google's hangout or conference entry, Graph's onlineMeeting) is preferred; events the person declined are skipped. `google.calendar.next` events gain `join` and `declined` only when present.
+- `vault`: an api-credential may carry `readers: [{ module, paths }]`, written with the credential (only a person's own surface can), so connecting is the grant and there is no second prompt. A listed module may make reads of those paths through the credential with no grant, and every other call (another path, a write, a send) is refused to it, never held. Reader paths are plain text, a literal prefix that may end in one `*` (no other wildcard), matched at a segment boundary: `calendarViewfoo`, `..` and an encoded slash, backslash or dot never match, and a reader that is also granted is still limited to its paths. `vault.update` and `vault.edit` cannot read an api-credential back, so `vault.put` from a person's surface is the only way to write or widen `readers` (tested for modules, mcp and agents). The Microsoft and personal Google presets name the connectors module and their calendar paths exactly (`/v1.0/me/calendarView`, `/calendar/v3/calendars/primary/events`, then only a query), and a path holding `;` is refused as well (reviewer-2 M-C1). `lib/connectors/calendar.js` shapes the answers.
+
+- CI now publishes stills of Lumen as an artifact (`lumen-screens-<sha>`): the lens drawing itself in on
+  a summon, the first-launch open at six moments, the menu bar mark light and dark, the panel in its
+  states, and a macOS screen capture of the panel with a word typed. The speed check reports "key to
+  first rows" against 50 ms and "key to all rows" (Spotlight and the like included) apart.
+- Lumen: Spotlight searches (files, documents, mail) now run entirely off the main thread, so a search
+  for a word no longer holds up the next keystroke. Text counts as typed only when a key press says
+  so; anything else that arrives in the box (a paste, a restored draft, dictation) is marked as not
+  typed.
+- Lumen: typing is lighter. The first paint of a search is a slice of 8 rows and the rest follow on
+  the next turn; one letter searches only what is already on this Mac (no Spotlight, mail or
+  document search) and shows at most 20 rows; and a newer key cancels the slow search an older one
+  started instead of letting it finish.
+- Lumen: a module's "needs" answer that names a credential (a need id, optionally the vendor) now opens
+  "Add your ..." in the panel; once it is saved, the command asks again. One without a credential is
+  shown as its words.
+- Lumen: stretches of the box that did not come from typing (a paste, a drop, undo, dictation, an
+  autocorrect) are tracked by position through every later edit, and sent with a message so that a
+  #Name inside them tags nothing.
+- Lumen: when a calendar module declares a next-meeting command, the empty box shows one line under
+  it: the next meeting and when ("Harlow Legal call · in 25 min"). It is asked when Lumen shows, at
+  most once a minute, and there is no line when there is no meeting.
+- Lumen: type "#" and some letters in the box to tag anything in your work: a saved login, a file, an
+  artifact, a repo or a pull request. The list shows names only, in the order the platform gives
+  them; Tab or Return writes the pick as #Name (or #"Name with spaces") and keeps it as a chip. Taking
+  the tag out of the words takes the chip off. A message sent to a session carries the chips that are
+  still in it. Nothing is looked up until you type a "#", and "issue#12" or "C#" stay plain words.
+- Lumen has its icon: the lens, on the app, in the menu bar (a one-colour template that follows light
+  and dark, with the bead larger and violet when something waits on you) and in the bar. On every
+  summon the bar arrives over 220 ms and the lens draws itself in; the first time Lumen runs, the
+  tile, the lens's point of light and "Vyre Lumen" appear for 1.6 s. With Reduce Motion everything is
+  simply there.
+- Lumen: icons for files and apps are made off the main thread, so a first letter no longer waits on
+  the system for a dozen pictures; a row draws without its icon and the icon appears when ready. The
+  panel is drawn once, hidden, shortly after launch, so the first summon is warm.
+- Lumen: words a module puts in the box (an ask effect) only sit there. Nothing is asked, looked up
+  or sent from them until you edit them or press Return. "Copy" says what it copies.
+- CLI: `vyre capsule` says Lumen ("Lumen built", "Lumen open", "Building Lumen for this Mac"). The
+  command name stays.
+- Lumen: commands that modules declare (Gmail, Calendar, Drive, GitHub, the vault and any module
+  you add) show up in the box as commands. Press Return on one and the box searches it: its list
+  is the results, Tab opens a row's detail, Command-K lists a row's actions, and Esc goes back one
+  step and then out. A form takes Return to send. Anything that sends as you shows exactly what will
+  go first; a second Return sends those words, and a change in them shows them again. A module you
+  added is marked "from <module>", and a link it gives opens only as https, mailto or vyre.
+  Nothing is polled; the list of commands is read when Lumen shows, at most twice a minute.
+- Capsule: the app is named Lumen (Vyre Lumen in the menu bar and in System Settings), and Vyre IQ
+  is now Vyre Memory in every line the Capsule shows. File and bundle names do not change in
+  0.2. Public use of the Lumen name waits for the trademark check.
+- Capsule: move and size the window of the app in front from the box. Type "left half", "right
+  half", "top right", "left third", "two thirds", "maximize", "center", "next display" or
+  "restore" and press Return. It needs Accessibility, which macOS asks for once the first time;
+  until then the row says what to allow. Restore puts a window back where it was before the
+  Capsule last moved it.
+- Capsule: Return now pastes clipboard history, snippets and emoji into the app you were in, instead
+  of only copying them. The first time, macOS asks once for Accessibility (until you allow it,
+  Return copies and says so). Type "paste" in the box and choose "Make Return copy instead of paste"
+  to switch back; Copy and Paste are always both in Command-K. Answers to a sum, a colour, a time or
+  a rate still copy.
+- Capsule: give any app, system command, snippet, quicklink or command of yours a short alias and a
+  hotkey. Press Command-K on the row and choose "Set alias" (type a word, Return) or "Set hotkey"
+  (press the shortcut). Typing the alias puts that row first. The hotkey runs the row from
+  anywhere with no window, except one that asks first (Restart, a shell line), which opens the
+  Capsule on it instead. macOS's own shortcuts and Option-Space are refused, and so is one another
+  app already holds. They are kept in `<vyre home>/capsule/bindings.json`.
+- Capsule: emoji, colours, time zones, money, snippets, quicklinks and your own commands now show
+  up as rows. ":tada" or "smile emoji" finds emoji, "#ff6347" gives every colour form, "time in
+  tokyo" gives the time there, and "100 usd in eur" converts. Money reads exchange rates from one
+  public source (open.er-api.com), only when you type something that reads as money, at most once
+  every 12 hours; with no rates there is no money row. Your own lists live in
+  `<vyre home>/capsule/snippets.json`: snippets (`;sig` copies its text with {date}, {time} and
+  {clipboard} filled in), quicklinks (`wiki pastry` opens a link with your words in it) and
+  commands (open a link, or run a shell line after you confirm). A bad entry is left out and the
+  rest still work.
+- Capsule speed check: the CI run now types real words a letter at a time and reports the median
+  and 95th percentile from key to rows and from hide to show, against one frame (16 ms) and 50 ms.
+- Capsule: the key that proves you are at the Mac no longer needs a fingerprint reader. It asks for
+  Touch ID where the Mac has it and for the Mac's login password where it does not, and only for
+  what already asked (pairing, vault reveals, sends you did not ask for). A Mac with no Secure
+  Enclave keeps the key in the keychain instead, guarded by the same check in the Capsule.
+- Capsule: on a Mac that runs vyre-core, the installer starts the Capsule with a one-time code on a
+  private channel. The Capsule makes its key, enrols it with vyre-core using that code, and tells
+  you the key's fingerprint to compare with the installer's. The code is used once, never written
+  down, and is sent only to a socket that really is vyre-core's.
+- Capsule: a small floating panel shows what an agent is doing while it drives your Mac or Chrome.
+  It lists the plan with the step it is on, and you can drag it anywhere (it remembers where) or
+  make it small. Change a step that has not started by double-clicking it, tell the agent what to
+  change in the field (Return sends, Esc stops), and Pause, Resume or Stop at any time. It asks
+  for nothing and shows no prompt. It appears when the agent's plan arrives and goes when the run
+  ends. Controls your Vyre cannot carry out are not shown.
+- lib/within.js is the one way to race a promise against a clock: the timer is held until the answer or the limit, then cleared. The modules registry, projects stop, recall stop, settings checks, presence Touch ID wait, glass link health, agents ask wait, the daemon drain, the backup tar exit wait, the ACP memory wait, teammates' boundedWait and the switchboard answer and control waits use it (each had an unref'd timer that let the loop drain mid-await on macOS and Node 22). test/within-hygiene.test.js fails on a new one-line unref'd race.
+#### fix: Settings did not load (a missing served module)
+
+- `deck/js/add-pc-card.js` (Settings, Add a Windows PC) imports `relay/client/seedwords.js` and `words.js`, which vyred did not serve, so the browser's module import failed and the Settings page stayed on "This page loads when your box answers." (it blanked the docs-shots settings-connections and settings-devices shots). The daemon's relay-client allowlist now includes both. A new daemon test walks every module the Deck imports from outside `deck/` and fetches each from a running vyred, so the next one fails in CI, not in a browser.
+
+#### chat: a queued-message edit always sends `pasted`
+
+- `threads.edit` now carries `pasted` every time, `[]` when nothing was pasted: sessions hears an edited queued message only when the key is an array (an absent key counts the whole edit as not typed). `threads.send` still leaves the key out when nothing was pasted.
+
+#### settings: hidden keys, and the cap over every provider
+
+- The generic Settings groups skip a key its module marks `hidden: true` (iq hides every `spend.*` key: Settings, Spend is their one screen). Settings, Spend and the spend-cap line also handle provider `all`, the cap over every provider together (`spend.summary`'s `all`, `spend.raise {provider: "all"}`).
+
+#### chat and settings: the spend cap
+
+- `deck/chat/cards/spend-capped.js`: when iq's `spend.capped` event is for this thread, a quiet row under the paused thread shows the box's line and a Raise it button that opens one amount field (prefilled with the suggested cap). Raise calls `spend.raise {provider, to}` (or `{provider, off: true}` for No cap); the provider comes from the event, the amount from the field, and the tool is fixed, never the one the event names.
+- Settings, Spend (`deck/views/settings-spend.js`): today's spend (UTC) per provider against its daily cap from `spend.summary`, with Change cap (`spend.raise`). One plain line on a box with no spend module. `spend.summary` and `spend.raise` are optional in the deck contract test until iq merges.
+
+#### chat: a failed send or a queued message taken back keeps its own span map
+
+- The composer remembers, per sent message, the pasted spans and the tags it carried. A failed send, or a queued message taken back for editing, puts the words back with that map: the typed `#tags` (and their chips) survive, pasted text stays marked, and the edit (`threads.edit`) carries the same `pasted` and `mentions`. A draft restored across a reload has no map and stays all not-typed. `paste-spans` gains `mark(start, end)`; the tag picker gains `restore(list)`.
+
+#### app: the Expo typecheck
+
+- `ToolItem` in `deck/chat/core/session-state.js` declares `render?: Record<string, any>` (the card payload a tool result carries), so `apps/app`'s `tsc --noEmit` passes again (it failed at the `item.render` assignment). Run locally with `npm ci && npm run typecheck` in `apps/app`: clean.
+
+#### chat: text is typed only when a keystroke says so (reviewer-2 M-N3)
+
+- The pasted-span default is flipped: an `input` with no `inputType`, a restored draft, a recalled message and a dictation replacement are not typing and mark their stretch; the composer's own deliberate insertions (a picked command, file, suggestion, tag or the @role near-miss) announce themselves as the person's own. The new-session sheet follows the same rule.
+
+#### deck: the Windows shell contract (C22): window.__VYRE_SHELL__, /quick
+
+- `deck/js/platform.js` reads `window.__VYRE_SHELL__ = { platform }` (the Windows app injects it frozen before any page script; the older `__vyreShell = { os }` still reads). Inside the shell the key glyphs are Ctrl (every hard-coded Cmd-Enter hint now comes from `kbd()`), the browser "Install" step is hidden, and `installed()` is true. It only changes presentation and never grants anything.
+- `/quick` (`deck/views/quick.js`): the hotkey panel's compact ask, the assistant's current thread drawn small with its recent answer above one composer and an "Open in full" link, no rail. A link to it opens the thread and waits for words; nothing acts on load.
+
+#### chat: the # tag picker in the new-session sheet
+
+- The `#` picker, its chips and the pasted-span tracking are one component now (`deck/chat/tag-picker.js`), used by the composer and by the new-session sheet, where the first message is where `#` is used most. A pick shows the same chip; Start sends `mentions: [{kind, id, name}]` and `pasted` on both `threads.start` and `agents.ask`. Esc closes the picker before it closes the sheet. More paste tests: a multi-line CRLF paste, undo of a paste, and a drag and drop move.
+
+#### chat: the composer sends the pasted spans (reviewer-2 M-P2)
+
+- `deck/chat/core/paste-spans.js` tracks which stretches of the draft were pasted, dropped, redone or replaced (the input's `inputType`, or a paste event, marks the stretch the edit's diff found, so no string is compared and a Windows `\r\n` paste is marked like any other; then the offsets of every later edit: typing before moves a span, typing inside keeps the whole stretch marked, deleting drops it). `threads.send` carries them as `pasted: [string]` and the new-session sheet sends them on `threads.start` and `agents.ask`, so a `#Name` inside pasted text never resolves as a tag; only a picked chip can. No `pasted` key when nothing was pasted. Tests: `paste-spans.test.js` (5), two in `composer-vault.test.js`, one in `newsession.test.js`.
+
+#### settings: "Add a service", the connectors catalog
+
+- `deck/views/connectors.js`: the catalog of vendor-hosted connectors (`connectors.catalog`) grouped by `group`, above the existing MCP, Google and GitHub lists in Settings > Connections. Connect (or Add another) draws the box's step in place: an https sign-in page opened in a new tab with a paste box for a browser on another device (`connectors.connect.finish`), a hidden token field with the preset's own extra fields, a vault item picker for an OAuth client (read only at that step), or a plain "comes through another connector" line; Disconnect calls `connectors.disconnect`. It follows `connectors.connected`, `connect-failed` and `disconnected`, and shows one plain line on a box without the connectors module. Tests: `deck/test/connectors.test.js` (9); the connections tests expect the catalog call.
+
+#### deck: the Capsule is Lumen
+
+- Every user-facing mention of the Capsule in the Deck now says Lumen (settings, devices, pairing, onboarding, the surfaces list, asks answered from it, the sign-in line). Code identifiers (`capsule`, `capsule.js`, css classes, route and tool names) are unchanged. Vyre IQ is now Vyre Memory in the same places (the onboarding history step's question box and its limit line).
+
+#### chat: "#" is one universal tag; "/remember" saves a memory; artifacts render from /v1/artifacts/content
+
+- `#` (anywhere, first character included) opens one picker over everything that can be tagged, through `mentions.search {q, limit}` (vault items, artifacts, files, repos, projects; names and hints only), grouped by kind. A pick writes `#Name` into the words and shows a chip that carries `{kind, id}`; the turn goes out with `mentions: [{kind, id, name}]` for the tags still in the text. The "using #name" line for vault uses stays. The menu gains group headings (`row.group`).
+- "Save a memory" is `/remember <note>` (a command in the list, and the composer's memory mode); `#` no longer means memory anywhere.
+- `renderSrc` in `cards/artifact.js` is now `/v1/artifacts/content?id=&v=`.
+
 - spend (reviewer-2): a person's own `agents.ask` is relayed to threads.send as that person whether or not it carries tags (it was as the agents module unless tagged), so the daily spend cap, which holds what agents and modules start on their own, does not hold it, and their words are heard as their own turn; the agent's thread gets one notice with the cap line. Any other caller's ask still goes as module:agents and stays held.
 - spend (reviewer-2, team-lead): the cap check holds an agent, a module or a hook, and no longer the person's own unnamed mcp or harness session (only one that carries an agent claim); a ledger that is down lets work through and says so once a day in the log. A real-daemon test shows the cap reached, asking an agent refused with the raise-it line, and the person's send, deck and own mcp session going through. capOf read settings.get's result wrongly through the daemon (it is `{data}`): fixed, and spend.raise now reports a failed write. The spend.* settings carry `hidden: true`, which settings.schema passes on, so the Deck's own Spend screen is the only one. The total cap over every provider was already in (spend.all.daily_usd).
 - spend: spend.all.daily_usd, a daily cap over every provider together (any provider, openrouter and the rest included), first in Settings, Spend. At it the spending thread pauses on whichever provider with "Spend across every provider today reached ..." and `vyre spend raise all <dollars>`; spend.check answers scope "all" for every provider while it holds, spend.summary carries `all`, and a provider's own cap still holds under a roomy all-cap.
@@ -73,6 +239,10 @@ Newest first. Every change to code lands here in the same commit. A new dependen
   and unanswerable unchanged at 0 and 50 of 50.
 - test: federation-reads grants the harness agent juno its project (an agent with no grant is refused), and asserts the refusal for one with none.
 
+- test: federation-reads grants the harness agent juno its project (an agent with no grant is refused), and asserts the refusal for one with none.
+- modules: the timer behind a call's bounded wait (target, lineage, project and scope lookups) is no longer unref'd, so a pending wait keeps the event loop alive; on macOS the loop drained with the call unanswered and the test runner cancelled the rest of the file.
+
+- Queued words keep what hearing them made, and an edit is heard again only with the composer's word on what was typed. `threads.edit` accepts `mentions` and `pasted` (a person's surface only, as `threads.send`): with `pasted` (even empty) the edited words are heard as the person's new words (a said row, `#` tags resolved for the thread), and the note the model is told is stored with the queued message (`threads_inbox.note`) and handed over with it at the turn's end, on Send now, and to a session in a terminal; without `pasted` the whole edited text counts as not typed, so nothing is heard and the old note is dropped. A queued `threads.send` now keeps its note too (it used to be lost). Words heard at send time are not heard again at delivery. An edit or a take-back (`threads.unqueue`) revokes what the original words recorded in vault (every intent recorded against the message: an act_out from "merge it", a use grant from a `#` tag), so an agent is not covered by words the person no longer stands behind; a grant a tag's provider made on its own (a Drive file) is that provider's to withdraw (`core/switchboard/index.js`).
 - module-sdk: toolEntries leaves target, projectArg and cwdArg out of an entry unless the manifest sets them, so the v1 entry shape is unchanged.
 
 - A daemon-level test that no module does work after vyred stops: the full registry starts, stops (after its startup work, at once, mid-startup, and with agents missing), then runs two seconds more with the store closed; any `database is not open`, unhandled rejection or uncaught exception fails it and names the module from its stack path. A control module that writes after stop proves the check catches and names it (`test/stop-quiet.test.js`). It found no other module on this machine's config.
@@ -90,12 +260,16 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 - The asked-tool check (reviewer-2): the match now passes `consume: true`, so one "yes" is spent by one act; the check is the last gate before the tool runs (after input validation, the rules and presence), so a call refused earlier never spends the ask; the target and thread-lineage calls get two seconds each and late is `not_asked` (`core/modules/index.js`).
 - An asked tool may carry `target` (built in only): an internal tool of its module that answers what one call acts on. The registry asks it before `vault.said.match` and passes its answer as the whole `to` of the match (github answers `github.project.pr.merge:alex/app#7`), so the person's yes binds one pull request, not the whole tool; an error, an empty answer or one later than two seconds is `not_asked` (`core/modules/index.js`, the manifest checker and schema; github's ask).
 - `memory.prompt` for a Codex or Grok prompt now says whose thread it is, as iq's new contract needs: an agent's thread passes `agent` (only that agent's grant), the person's own thread (no agent, a chat, project or capsule thread) passes `person: true`, and any other thread (a job, a helper) passes neither and so gets no memory. Both come from the thread's record, never from the session (`core/switchboard/index.js`).
+- `memory.prompt` for a Codex or Grok prompt now says whose thread it is, as iq's new contract needs: an agent's thread passes `agent` (only that agent's grant), the person's own thread (no agent, and a recorded chat, project or capsule purpose; a record with no purpose is not) passes `person: true`, and any other thread (a job, a helper) passes neither and so gets no memory. Both come from the thread's record, never from the session (`core/switchboard/index.js`).
+- The Vyre master icon (app-design's export, work/app-design 978cd607) is wired in: vyre.run and its setup, start and 404 pages (favicon.svg and .ico, apple-touch, 32, 192 and 512 px), the iOS asset catalog (AppIcon-1024), Android (adaptive icon with foreground, background and monochrome, legacy and round mipmaps, the Play Store image; the old vector launcher drawables and the round icon pointing at the square one are gone), and the Expo app's icon, adaptive icon (with its background image) and favicon. `apps/ios/scripts/render-icon.sh` now copies the export instead of drawing the old icon from TOKENS.md. No product name (Lumen, Drive, Vault, Memory) icon is used: the trademark check is pending.
 - An agent limited to certain projects can no longer read or act on another project's GitHub repo by naming it; the project reads as if it did not exist.
 
 - A person's own "open a PR", "merge it" or "review this PR" becomes an `act_out` intent at `threads.send` and on `threads.start`'s first prompt, through the assistant's `prIntents` (`lib/said/pr.js`, copied here identically until assistant lands): it keeps only real asks (no questions, conditions, negations or standing permissions), binds each to github's composite key (`github.act.target`: `github.project.pr.merge:alex/app#7`) for the thread's project and one PR, and the switchboard records it as the person with `vault.said.record`. The thread's own PR is `github.session.pr`'s answer, used only when it is exactly one; pasted spans are removed first (`core/switchboard/index.js` `hearActs`). Two tests use the real vault and skip until vault lists `module:threads` as a recorder and resolver.
 - said: `prIntents` records act_out intents for "open a PR", "merge it" and "review this PR", bound to the exact key github.act.target answers with. Nothing is recorded when the PR or branch is ambiguous or the sentence carries a condition (if, when, once, unless, after, before, until, only, as long as, provided, assuming). A plain ask covers 15 minutes.
 
 - `assistant.welcome`: the first chat message after setup, {text, cards}, built from onboard.status with no model call. A card shows only while its step is open, and carries an id (and href for links), never a tool.
+- A person's own "open a PR", "merge it" or "review this PR" becomes an `act_out` intent at `threads.send` and on `threads.start`'s first prompt, through the assistant's `prIntents` (`lib/said/pr.js`, copied here identically until assistant lands): it keeps only real asks (no questions, conditions, negations or standing permissions), binds each to github's composite key (`github.act.target`: `github.project.pr.merge:alex/app#7`) for the thread's project and one PR, and the switchboard records it as the person with `vault.said.record`. The thread's own PR is `github.session.pr`'s answer, used only when it is exactly one; pasted spans are removed first (`core/switchboard/index.js` `hearActs`). The intent carries prIntents' window (`window_minutes`, 15) so vault lets a spoken "merge it" lapse. Two tests use the real vault and registry, with only github stood in.
+- Vault lets the threads module record and resolve what the person said: `module:threads` joins the recorders of `vault.said.record` and the resolvers of `vault.mention.resolve` (the switchboard, which hears the person's turn, is module `threads`; before this a real box refused every `#` tag grant and every act_out from it). `vault.said.record` takes an optional `window_minutes` (1 to 1440, stored in the intent's `limits`, refused on a standing permission), and a plain `act_out` the person asked for lapses after it, 15 minutes when none is given; standing permissions and other kinds are unchanged. Composite act_out keys with `#` and `@` (`github.project.pr.merge:alex/app#7`) match exactly (`core/vault/said.js`).
 - `#` tags on `threads.start` and `agents.ask`, with `threads.send`'s trust: `mentions: [{kind, id, name}]` and `pasted: [span]` are honoured only from a person's own surface. `threads.start` hears the first prompt as any person's turn (said row, tags resolved for the new thread, the notes beside the prompt for the model only); from a model, a module or a guest the tags are dropped. `agents.ask` from a person with tags sends the words on as that person (`core/modules` `CALL_AS.agents`: person labels only, and only to `threads.send`), so threads.send hears them; any other caller's tags are dropped (`core/switchboard/index.js`, `core/agents/index.js`, `core/modules/index.js`).
 - GitHub reads for you and your agents: where a pull request stands (checks, reviews, ready to merge), its comments, and a project's issues. Text written by others is marked as theirs.
 
@@ -597,6 +771,9 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 - vyred refuses any path under a `fixtures` folder of the Deck unless VYRE_DECK_FIXTURES=1 (dev
   worlds and tests set it), so a `?fixtures=1` link can't show sample threads on a real install.
   Placeholders that named the sample world now say what to type ("Your project's name").
+#### lib/caps-flags: the one provider capability list (C14b), on its own for sessions
+
+- `lib/caps-flags/index.js`: `FLAGS` (steer, queue, interrupt, resume, fork, rewind {conversation, code}, modes, plan, questions, permissions, thinking, effort, images, commands, tasks, subagents, model_switch, usage none|coarse|detailed, remember null|CLAUDE.md|AGENTS.md|GEMINI.md), `TOOL_KINDS` (read, edit, write, run, search, fetch, mcp, task, other), `normalizeCaps(raw)` (every flag present and typed, unknown keys dropped) and `checkCaps(raw)` (the problems, [] when exact). No imports. Extracted from work/native-core-0.2 (5a9d5f96) so sessions can import it in conform() and threads.get's `caps`; `task` added to the tool kinds as sessions' shapes say.
 - A pairing hello with `enroll: true` gets `enroll: { grant, expires, rpId }` in the box's reply (inside the device's own Noise channel): the one-time, five-minute presence grant to enroll a passkey at the box's own address, `rpId` being that address's host. The setup QR's `relay.setup.claim` answers the same three fields, so a phone has one enrolment flow. Not bound to a peer (at the address the phone is a tailnet node the pairing cannot know); the owner-login rule, the rp_id, five minutes and one use bind it.
 - Migrating a Mac to vyre-core's device key: `redeem` deletes a `relay-device/key.json` left by an earlier pairing the moment the new pairing succeeds, and its result names the old device (`superseded`) for the owner to remove at the box with `relay.devices.remove`, so the old file key stops being trusted (reviewer-2).
 - Your own domain now serves. `names.domain.serve { domain }`, after `names.domain.check` passes, gets the domain's certificate by ACME DNS-01 through the `_acme-challenge` CNAME (the challenge goes to `<routehash>.acme.vyre.run` through the directory and is cleared after), keeps it beside the box's name, and the tailnet listener presents it by SNI, accepts its Host, and applies the same owner and Origin rules. Events `domain.ready { domain, address }` and `domain.failed`; `names.status` gains `domain` and `port`. Renewed daily at 30 days like the name's. (The event is `domain.ready`, not `names.domain.ready`: event names are noun.past-verb.) Tested against the real directory Worker on the fake runtime and a fake DNS, and a real TLS connection on loopback.

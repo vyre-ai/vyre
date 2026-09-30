@@ -9,7 +9,7 @@ import { clock } from "../js/fmt.js";
 import { NEEDS_UPDATE } from "./core/caps.js";
 
 /**
- * @typedef {{ key: string, render: () => any, value?: any }} MenuRow
+ * @typedef {{ key: string, render: () => any, value?: any, group?: string }} MenuRow
  * @typedef {{ el: HTMLElement, open: (rows: MenuRow[], pick: (row: MenuRow) => void, head?: any, foot?: any) => void,
  *   close: () => void, isOpen: () => boolean, move: (d: number) => void, pick: () => boolean, selected: () => MenuRow|null,
  *   kind: string|null, setKind: (k: string|null) => void }} ListMenu
@@ -52,8 +52,8 @@ export function listMenu(label = "Suggestions") {
   function draw() {
     put(el,
       head ? h("div", { class: "cv-menu-head" }, head) : null,
-      rows.length ? rows.map((r, i) => h("button", { type: "button", role: "option", class: i === sel ? "on" : null, "aria-selected": String(i === sel),
-        "data-key": r.key, onmousedown: (/** @type {Event} */ e) => e.preventDefault(), onclick: () => { sel = i; menu.pick(); } }, r.render()))
+      rows.length ? rows.flatMap((r, i) => [r.group && r.group !== rows[i - 1]?.group ? h("div", { class: "cv-menu-group", role: "presentation" }, r.group) : null, h("button", { type: "button", role: "option", class: i === sel ? "on" : null, "aria-selected": String(i === sel),
+        "data-key": r.key, onmousedown: (/** @type {Event} */ e) => e.preventDefault(), onclick: () => { sel = i; menu.pick(); } }, r.render())])
         : h("div", { class: "cv-menu-empty" }, "Nothing matches"),
       foot ? h("div", { class: "cv-menu-foot" }, foot) : null,
     );

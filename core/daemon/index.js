@@ -30,6 +30,7 @@ import { registryRules } from "../harness/rules.js";
 // edge (reviewer's MEDIUM, 2026-09-28) and would pull the whole relay module - link, bridge,
 // redeem, tailnet via relay/client - into the kernel just for one constant.
 import { DEFAULT_RELAY } from "../../lib/relay-default.js";
+import { within } from "../../lib/within.js";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 // The SSE heartbeat. Clients call a stream dead after three missed beats (ADR 0029, R1); the
@@ -169,7 +170,7 @@ async function startLocked(opts, root, p, release) {
     // Stop taking calls, and give the ones running up to DRAIN_MS to finish: a write cut off
     // mid-way looks to its client like a failure it will retry (ADR 0029, R7).
     drain.on = true;
-    if (inflight.size) await Promise.race([Promise.allSettled([...inflight]), new Promise(r => setTimeout(r, DRAIN_MS).unref())]);
+    if (inflight.size) await within(Promise.allSettled([...inflight]), DRAIN_MS);
     for (const end of streams) end();
     for (const s of upgraded) s.destroy();
     // A module's own stream (the link's box events) is not in `streams` or `upgraded`; close
@@ -793,13 +794,14 @@ async function route(req, res, { registry, events, cfg, started, streams, root, 
   // tailnet's relay client (ADR 0045/0037 "Wink"), which the Deck imports as
   // ../../relay/client/<file>.js (deck/js/pair-ticket.js, deck/js/pair-scan.js): that resolves
   // here in a browser and to the repo file in Node, so the Deck and its tests load the one copy.
-  // Only these seven files - client.js's own browser-safe closure (checked by hand: channel.js,
-  // bytes.js, response.js, sse.js, webcrypto.js, noise.js) - nothing else in relay/client/
+  // Only these nine files - client.js's own browser-safe closure (checked by hand: channel.js,
+  // bytes.js, response.js, sse.js, webcrypto.js, noise.js) plus seedwords.js and words.js, which deck/js/add-pc-card.js
+  // (Settings, Add a Windows PC) imports - nothing else in relay/client/
   // (nodecrypto.js is Node-only and never imported from the Deck). A real browser hitting
   // /pair/scan without this fell straight through to serveDeck's catch-all shell (team-lead,
   // reviewer of stage, 2026-09-28) - headless tests missed it because they never loaded the page
   // through a real vyred the way a phone does.
-  const resRelay = req.method === "GET" && /^\/relay\/client\/(client|channel|bytes|response|sse|webcrypto|noise)\.js$/.exec(url.pathname);
+  const resRelay = req.method === "GET" && /^\/relay\/client\/(client|channel|bytes|response|sse|webcrypto|noise|seedwords|words)\.js$/.exec(url.pathname);
   if (resRelay) return serveFile(res, path.join(REPO, "relay", "client", resRelay[1] + ".js"), cfg);
   // The pure libs the Deck shares with Node, so both load the one copy: lib/avatar-seed (ADR 0043
   // section 6, a project tile's bytes) and lib/caps-flags (PLAN.md C14b, provider capabilities).

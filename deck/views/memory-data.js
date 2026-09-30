@@ -190,7 +190,7 @@ export const lowerLevels = level => LEVELS.slice(0, Math.max(0, LEVELS.indexOf(l
 
 /**
  * What to tell the user when a presence tool was refused for want of a person: the passkey when
- * the Deck has one, else the terminal command or the Capsule.
+ * the Deck has one, else the terminal command or Lumen.
  * @param {string} tool @param {string|number} id @param {boolean} passkey
  */
 export function presenceText(tool, id, passkey) {
@@ -200,7 +200,7 @@ export function presenceText(tool, id, passkey) {
     : tool === "learn.skill_retire" ? `vyre learn skills retire ${id}` : `vyre call ${tool}`;
   const verb = tool === "learn.accept" ? "Accept" : tool === "learn.retire" ? "Retire" : tool === "learn.relax" ? "Relax"
     : tool === "learn.skill-install" ? "Install" : "Confirm";
-  return `${verb} this in a terminal: ${cmd}, or from the Capsule`;
+  return `${verb} this in a terminal: ${cmd}, or from Lumen`;
 }
 
 /** The terminal alternative to a presence tool, for when this Deck has no passkey. */

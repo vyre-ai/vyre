@@ -22,6 +22,38 @@ use vyre_capsule_win::{devicekey, drive, update};
 use vyre_capsule_win::shell;
 
 /// The data-only signal native-core reads (C22). A value, never a callable host object.
+/// The product name the person sees (window titles, toasts, the tray tooltip). The installer and the
+/// update file keep the plain "Vyre" name, which the updater matches on.
+/// A Windows tool by full path from the Windows folder, never by name (no planting from the working directory).
+fn sys(rel: &str) -> String { shell::system_path(std::env::var("SystemRoot").ok().as_deref(), rel) }
+
+const APP_NAME: &str = "Vyre Lumen";
+
+const TRAY_DARK_TASKBAR: &[u8] = include_bytes!("../icons/lumen-tray-white.ico");
+const TRAY_LIGHT_TASKBAR: &[u8] = include_bytes!("../icons/lumen-tray-black.ico");
+
+/// The tray glyph that reads on the current taskbar: black on a light one, white on a dark one.
+fn tray_icon() -> Option<tauri::image::Image<'static>> {
+    tauri::image::Image::from_bytes(if taskbar_is_light() { TRAY_LIGHT_TASKBAR } else { TRAY_DARK_TASKBAR }).ok()
+}
+
+/// SystemUsesLightTheme (1 is a light taskbar), read straight from the registry: no process is
+/// started, so there is nothing on the search path to plant. Unreadable counts as dark, the Windows
+/// 11 default.
+#[cfg(windows)]
+fn taskbar_is_light() -> bool {
+    use windows_sys::Win32::System::Registry::{RegGetValueW, HKEY_CURRENT_USER, RRF_RT_REG_DWORD};
+    let sub: Vec<u16> = "Software\\Microsoft\\Windows\\CurrentVersion\\Themes\\Personalize\0".encode_utf16().collect();
+    let val: Vec<u16> = "SystemUsesLightTheme\0".encode_utf16().collect();
+    let mut data: u32 = 0;
+    let mut size: u32 = 4;
+    let rc = unsafe { RegGetValueW(HKEY_CURRENT_USER, sub.as_ptr(), val.as_ptr(), RRF_RT_REG_DWORD, std::ptr::null_mut(), &mut data as *mut u32 as *mut _, &mut size) };
+    rc == 0 && data == 1
+}
+
+#[cfg(not(windows))]
+fn taskbar_is_light() -> bool { false }
+
 const SHELL_SIGNAL: &str = r#"Object.defineProperty(window, "__VYRE_SHELL__", { value: Object.freeze({ platform: "windows" }), writable: false, configurable: false });"#;
 
 struct Live {
@@ -79,7 +111,7 @@ fn show_first_run(app: &AppHandle) {
         return;
     }
     let _ = WebviewWindowBuilder::new(app, "first-run", WebviewUrl::App("first-run.html".into()))
-        .title("Vyre")
+        .title(APP_NAME)
         .inner_size(480.0, 360.0)
         .resizable(false)
         .build();
@@ -99,7 +131,7 @@ fn show_panel(app: &AppHandle, path: &str) {
     let popup_app = app.clone();
     let popup_pin = pin.clone();
     let built = WebviewWindowBuilder::new(app, "main", WebviewUrl::External(pin.url_for(path).parse().expect("pinned url")))
-        .title("Vyre")
+        .title(APP_NAME)
         .inner_size(560.0, 720.0)
         .initialization_script(SHELL_SIGNAL)
         .on_navigation(move |url| {
@@ -145,7 +177,7 @@ fn bind_hotkey(app: &AppHandle) -> String {
     }
     if tell {
         let _ = app.notification().builder()
-            .title("Vyre")
+            .title(APP_NAME)
             .body(format!("{} was taken, so Vyre uses {}.", hotkey::DEFAULT.label(), binding.label()))
             .show();
     }
@@ -173,7 +205,7 @@ fn save_pairing(app: AppHandle, address: String) -> Result<(), String> {
 fn set_autostart(enabled: bool) -> Result<(), String> {
     use std::process::Command;
     let exe = std::env::current_exe().map_err(|e| e.to_string())?;
-    let mut cmd = Command::new("schtasks");
+    let mut cmd = Command::new(sys("System32\\schtasks.exe"));
     if enabled {
         cmd.args(["/Create", "/TN", "Vyre", "/TR", &format!("\"{}\"", exe.display()), "/SC", "ONLOGON", "/RL", "LIMITED", "/F"]);
     } else {
@@ -216,7 +248,7 @@ fn check_update(app: &AppHandle) -> Result<Option<String>, String> {
     std::fs::write(&path, &bytes).map_err(|e| e.to_string())?;
     update::check_file(&listed, &name, &std::fs::read(&path).map_err(|e| e.to_string())?)?;
     std::process::Command::new(&path).arg("/S").spawn().map_err(|e| e.to_string())?;
-    let _ = app.notification().builder().title("Vyre").body(format!("Updating to {version}.")).show();
+    let _ = app.notification().builder().title(APP_NAME).body(format!("Updating to {version}.")).show();
     app.exit(0);
     Ok(Some(version))
 }
@@ -230,7 +262,7 @@ fn spawn_update_loop(app: AppHandle) {
 }
 
 fn net_use(args: &[String]) -> Result<String, String> {
-    let mut cmd = std::process::Command::new("net");
+    let mut cmd = std::process::Command::new(sys("System32\\net.exe"));
     cmd.args(args);
     #[cfg(windows)]
     { use std::os::windows::process::CommandExt; cmd.creation_flags(0x0800_0000); }
@@ -247,7 +279,7 @@ fn mount_drive(unc: String) -> Result<String, String> {
     let used = net_use(&[]).map(|o| drive::used_letters(&o)).unwrap_or_default();
     let letter = drive::free_letter(&used, |l| std::path::Path::new(&format!("{l}\\")).exists()).ok_or("No free drive letter.")?;
     net_use(&drive::map_args(&letter, &unc))?;
-    let _ = std::process::Command::new("explorer").arg(format!("{letter}\\")).spawn();
+    let _ = std::process::Command::new(sys("explorer.exe")).arg(format!("{letter}\\")).spawn();
     Ok(letter)
 }
 
@@ -289,7 +321,7 @@ fn offer_pair(app: AppHandle, live: State<Live>, name: String, fingerprint: Stri
     let clean = |s: &str, max: usize| s.chars().filter(|c| !c.is_control()).take(max).collect::<String>();
     *live.pending.lock().unwrap() = Some(PendingOut { name: clean(&name, 64), fingerprint: clean(&fingerprint, 16), host, own_domain: pin.own_domain, address: pin.address });
     let _ = WebviewWindowBuilder::new(&app, "confirm", WebviewUrl::App("confirm.html".into()))
-        .title("Vyre").inner_size(480.0, 340.0).resizable(false).build();
+        .title(APP_NAME).inner_size(480.0, 340.0).resizable(false).build();
     Ok(())
 }
 
@@ -458,8 +490,14 @@ fn main() {
                         toggle_panel(tray.app_handle());
                     }
                 });
-            if let Some(icon) = app.default_window_icon() { tray = tray.icon(icon.clone()); }
-            tray.build(app)?;
+            tray = tray.tooltip(APP_NAME);
+            if let Some(icon) = tray_icon().or_else(|| app.default_window_icon().cloned()) { tray = tray.icon(icon); }
+            let tray = tray.build(app)?;
+            // Follow the taskbar theme; once a minute is plenty.
+            std::thread::spawn(move || loop {
+                std::thread::sleep(std::time::Duration::from_secs(60));
+                if let Some(icon) = tray_icon() { let _ = tray.set_icon(Some(icon)); }
+            });
 
             // Start in the tray; show the panel only when first-run is needed.
             if pinned(&handle).is_none() { show_first_run(&handle); }

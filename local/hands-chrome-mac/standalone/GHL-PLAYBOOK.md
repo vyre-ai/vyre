@@ -10,6 +10,7 @@ Read this before you build or edit a workflow in the person's own Chrome. It is 
 2. One `chrome.ghl run` per whole job. A flow runs as one batch inside the browser: no model turn between steps, so it is fast and it does not lose its place. Use single `chrome.act` and `chrome.fill` calls only to look around, to recover from a failure, or for a step no flow covers.
 3. Every step waits for the page. You do not add sleeps. If you need to wait for something yourself, use `chrome.wait`.
 4. Outward acts are held. Publishing, sending and deleting come back as `held: true` with an id. Tell the person what is waiting, then call `chrome_send` with the id; Claude Code asks them to approve it. That is by design. Do not try to click around it.
+5. The workflow builder lives in an iframe, in its own process, so the page around it is only the shell (the left nav). Read `frames` and `notReadable` in every `chrome.snapshot`: a control belongs to the frame named in its `frame` field, and a frame listed in `notReadable` (or the sentence "N frames not readable" at the top of `text`) means you are not seeing the whole page. Call `chrome_frames` (`list`, then `probe`) first on a page you do not know; copy a control's selector from the snapshot as it is, because it carries its `frame`.
 
 ## Sequence for a workflow build
 
@@ -101,7 +102,9 @@ For a status change, use `publish-workflow`. It clicks the Publish toggle (held 
 
 Go down one rung only when the one you are on fails. The trace records the rung of every call, and a failure tells you the next one.
 
-1. The site's own API (`chrome_api`: learn once from the page's traffic, then `catalog` and `call`). Fastest and steadiest. Prefer it for reads and bulk work, and for any step a flow struggles with. A call is made from inside the page, so the person's own login signs it.
+1. The site's own API (`chrome_api`: learn once from the page's traffic, then `catalog` and `call`). Fastest and steadiest. Prefer it for reads and bulk work, and for any step a flow struggles with. A call is made from inside the page, so the person's own login signs it, and the token never reaches a script or the conversation. Prefer `api.call` over `eval`-fetch: `chrome_eval` cannot write with the page's login (a POST, PUT, PATCH or DELETE is refused, nothing is sent) and cannot open the stored login (IndexedDB, storage tokens, cookies). Do not try to lift a Firebase token out of the page.
+
+Before a job with many changes ("create these 8 workflows as drafts"), call `chrome_approve` with the plan. The person approves it once, and that many creates and edits then go through without asking again while the page shows the step count. Without a plan, every write asks. Deleting, messaging a contact and payments always ask one at a time, and so does publishing unless the person's own words asked for it ("build and publish these"): then the plan says `asked: true` on the publish and its card reads "and publish".
 2. The page's controls (`chrome_snapshot`, `chrome_act`, `chrome_fill`, `chrome_batch`, `chrome_ghl`). The normal path for building in the workflow UI.
 3. DevTools (`chrome_inspect`, `chrome_console`, `chrome_net`, `chrome_sources`, `chrome_eval`) for a page that resists: read the real DOM, see the request that failed, find a hidden control.
 4. Role and name from a snapshot, when a label is odd.

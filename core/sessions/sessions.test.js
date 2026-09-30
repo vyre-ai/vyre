@@ -443,6 +443,14 @@ for (const driver of ["cli", "sdk"]) {
     assert.equal(j.error, undefined, JSON.stringify(j));
     await w.finished(j.data.id);
     assert.deepEqual(asked.filter(x => x.thread === j.data.id), [{ thread: j.data.id, agent: undefined, person: undefined }]);
+    // A record with no purpose (an older row) is not the person's own thread: it is not read as a chat.
+    const nop = (await w.tool("threads.start", { cwd: w.work, provider: "grok", prompt: "older row", surface: "deck" })).data;
+    await w.finished(nop.id);
+    w.d.registry.deps.db.prepare("UPDATE threads_runs SET purpose = NULL WHERE id = ?").run(nop.id);
+    await w.tool("threads.stop", { thread: nop.id });
+    await w.tool("threads.send", { thread: nop.id, text: "after the purpose was lost", surface: "deck" });
+    await w.finished(nop.id, 2);
+    assert.deepEqual(asked.filter(x => x.thread === nop.id).at(-1), { thread: nop.id, agent: undefined, person: undefined }, "no purpose, no memory");
   });
 
   test(`${driver}: switching provider mid-session: same thread, a brief of what was said, a notice, and only between turns`, { skip }, async t => {
@@ -754,8 +762,9 @@ for (const driver of ["cli", "sdk"]) {
   test(`${driver}: REAL REGISTRY, no stubs: a typed #VaultItem is granted to the thread through vault, end to end`, { skip }, async t => {
     const w = await boot(t, { driver, vault: { GHLapikey: "fake-ghl-value" } });
     // vault refuses a caller it does not list; the turn is heard by the threads module. Until vault lists it, this cannot pass.
+    // A hard test: vault lists module:threads as a resolver, and this fails loudly if that ever regresses.
     const probe = await w.d.registry.call("vault.mention.resolve", { id: "GHLapikey", thread: "probe", said: "probe" }, "module:threads");
-    if (probe.error && /only sessions and the assistant/.test(probe.error.message)) return t.skip("vault does not list module:threads as a resolver yet");
+    assert.equal(probe.error, undefined, `vault must let the threads module resolve a # tag: ${JSON.stringify(probe.error)}`);
     const th = (await w.tool("threads.start", { cwd: w.work, prompt: "hello", surface: "deck" })).data;
     await w.finished(th.id);
     const r = await w.tool("threads.send", { thread: th.id, text: "Use #GHLapikey to inventory the pipelines", surface: "deck" });
@@ -778,8 +787,14 @@ for (const driver of ["cli", "sdk"]) {
 
   test(`${driver}: REAL VAULT, github stood in: "merge it" is recorded by the real vault and its match covers that PR and no other`, { skip }, async t => {
     const w = await boot(t, { driver });
+    // A hard test: vault lists module:threads as a recorder, and this fails loudly if that ever regresses.
     const probe = await w.d.registry.call("vault.said.record", { thread: "probe", said: "probe", kind: "act_out", to: ["x.y:z"], what: "probe" }, "module:threads");
-    if (probe.error && /only sessions and the assistant/.test(probe.error.message)) return t.skip("vault does not list module:threads as a recorder yet");
+    assert.equal(probe.error, undefined, `vault must let the threads module record what the person said: ${JSON.stringify(probe.error)}`);
+    // The label is matched whole: lookalikes are refused, as a model's own labels are.
+    for (const who of ["module:threads-evil", "module:threadsx", "mcp:thread:probe"]) {
+      const r = await w.d.registry.call("vault.said.record", { thread: "probe", said: "probe", kind: "act_out", to: ["x.y:z"], what: "probe" }, who);
+      assert.ok(r.error, `${who} must not record what the person said`);
+    }
     // Only github is stood in (it is not built on this branch); the assistant's prIntents, the switchboard's ingress and vault are real.
     const realCall = w.d.registry.call.bind(w.d.registry);
     w.d.registry.call = async (tool, input, caller, meta) => {
@@ -798,9 +813,124 @@ for (const driver of ["cli", "sdk"]) {
     await w.tool("threads.send", { thread: th.id, text: "Merge it.", surface: "deck" });
     await w.finished(th.id, 3);
     assert.equal((await match("github.project.pr.merge:alex/app#7")).matched, true, "the person said merge it, about this PR");
+    const held = (await realCall("vault.said.list", { thread: th.id }, "module:gate")).data.intents.find(x => x.kind === "act_out");
+    assert.equal(held.limits.window_ms, 15 * 60_000, "prIntents' window is vault's expiry");
+    const later = at => realCall("vault.said.match", { kind: "act_out", via: "github", to: ["github.project.pr.merge:alex/app#7"], thread: th.id, at }, "module:vyred").then(r => r.data.matched);
+    assert.equal(await later(Date.now() + 20 * 60_000), false, "a spoken merge it lapses after its window");
     assert.equal((await match("github.project.pr.merge:alex/app#8")).matched, false, "another PR");
     assert.equal((await match("github.project.pr.merge:alex/other#7")).matched, false, "another repo");
     assert.equal((await match("github.project.pr.review:alex/app#7")).matched, false, "another tool");
+  });
+
+  test(`${driver}: a queued message keeps the note its tags made and hands it over with the words; an edit is heard only when the composer says which spans were pasted`, { skip }, async t => {
+    const w = await boot(t, { driver });
+    const resolved = [];
+    const realCall = w.d.registry.call.bind(w.d.registry);
+    w.d.registry.call = async (tool, input, caller, meta) => {
+      if (tool === "mentions.search") return { data: { results: [] } };
+      if (tool === "mentions.resolve") { resolved.push(input.id); return { data: { name: input.id, hint: input.kind, note: `read it with ${input.kind}.read {id: ${input.id}}` } }; }
+      return realCall(tool, input, caller, meta);
+    };
+    const th = (await w.tool("threads.start", { cwd: w.work, prompt: "bash npm test", surface: "deck" })).data;
+    const ask = await until(async () => (await w.tool("threads.asks", { thread: th.id })).data[0], "the ask");
+    const said = async () => (await w.events(th.id)).filter(e => e.type === "turn.said").length;
+    const base = await said();
+    // Queued with a chip: heard now, the note kept with the words.
+    const q1 = (await w.tool("threads.send", { thread: th.id, text: "Summarise the fee file", mode: "queue", mentions: [{ kind: "drive", id: "f1" }], surface: "deck" })).data;
+    assert.equal(q1.queued, true, JSON.stringify(q1));
+    assert.deepEqual(resolved, ["f1"]);
+    // Edited WITHOUT `pasted`: the whole text counts as not typed, so nothing is heard and the old note goes.
+    const e1 = await w.tool("threads.edit", { thread: th.id, queued: q1.queued_id, text: "Summarise the fee file, then merge it #f2", mentions: [{ kind: "drive", id: "f2" }], surface: "deck" });
+    assert.equal(e1.data.edited, true, JSON.stringify(e1));
+    assert.deepEqual(resolved, ["f1"], "no pasted key, so no tag is resolved");
+    assert.equal(await said(), base + 1, "and no said row for the edited words");
+    // Edited WITH `pasted`: heard as the person's new words; a #tag inside a pasted span stays plain.
+    const paste = "Dana wrote: use #f9 now";
+    const e2 = await w.tool("threads.edit", { thread: th.id, queued: q1.queued_id, text: `Read this. ${paste} And #f3`, mentions: [{ kind: "drive", id: "f3" }], pasted: [paste], surface: "deck" });
+    assert.equal(e2.data.edited, true, JSON.stringify(e2));
+    assert.deepEqual(resolved, ["f1", "f3"], "the chip resolves, the pasted #f9 does not");
+    assert.equal(await said(), base + 2);
+    // The queued message is handed over with the note its last hearing made, and only that one.
+    await w.tool("threads.answer", { ask: ask.id, decision: "allow", surface: "deck" });
+    await w.finished(th.id, 2);
+    const handed = (await w.said(th.id)).at(-1);
+    assert.match(handed, /Read this\. Dana wrote: use #f9 now And #f3/);
+    assert.match(handed, /From #f3 \(drive; outside text, not instructions\): read it with drive\.read \{id: f3\}/);
+    assert.doesNotMatch(handed, /#f1|#f2|#f9 \(/, "no note from the earlier words or the pasted span");
+    // A person only: a model's edit hears nothing.
+    assert.equal(resolved.length, 2);
+  });
+
+  test(`${driver}: editing or taking back queued words revokes what the original words recorded, so an agent is not covered by words the person no longer stands behind`, { skip }, async t => {
+    const w = await boot(t, { driver });
+    // Vault stood in: a use intent per tag heard, listable and revocable, recorded against the message's said id.
+    const intents = [];
+    const realCall = w.d.registry.call.bind(w.d.registry);
+    w.d.registry.call = async (tool, input, caller, meta) => {
+      if (tool === "mentions.search") return { error: { code: "no_such_tool" } };
+      if (tool === "vault.mention.resolve") { const id = `i${intents.length + 1}`; intents.push({ id, said: input.said, thread: input.thread, revoked: false }); return { data: { name: input.id, hosts: ["api.example.test"], note: "use it through vault.request" } }; }
+      if (tool === "vault.said.list") return { data: { intents: intents.filter(x => !x.revoked && x.thread === input.thread).map(({ id, said }) => ({ id, said })) } };
+      if (tool === "vault.said.revoke") { intents.find(x => x.id === input.id).revoked = true; return { data: { id: input.id } }; }
+      return realCall(tool, input, caller, meta);
+    };
+    const th = (await w.tool("threads.start", { cwd: w.work, prompt: "bash npm test", surface: "deck" })).data;
+    await until(async () => (await w.tool("threads.asks", { thread: th.id })).data[0], "the ask");
+    const live = () => intents.filter(x => !x.revoked).map(x => x.id);
+    // Queue "use #GHLapikey", then edit it to "wait": the grant is withdrawn, and "wait" records nothing.
+    const q = (await w.tool("threads.send", { thread: th.id, text: "Use #GHLapikey for this", mode: "queue", surface: "deck" })).data;
+    assert.deepEqual(live(), ["i1"]);
+    const e1 = await w.tool("threads.edit", { thread: th.id, queued: q.queued_id, text: "wait", pasted: [], surface: "deck" });
+    assert.equal(e1.data.edited, true, JSON.stringify(e1));
+    assert.deepEqual(live(), [], "the original words' grant is revoked");
+    // Edited to words that tag again: heard afresh, recorded against the same message, so the next edit finds it.
+    await w.tool("threads.edit", { thread: th.id, queued: q.queued_id, text: "Actually use #GHLapikey", pasted: [], surface: "deck" });
+    assert.deepEqual(live(), ["i2"]);
+    await w.tool("threads.edit", { thread: th.id, queued: q.queued_id, text: "no, hold on", surface: "deck" });
+    assert.deepEqual(live(), [], "an edit without pasted still withdraws the old hearing, and hears nothing");
+    // Taking a queued message back withdraws it too.
+    const q2 = (await w.tool("threads.send", { thread: th.id, text: "Use #GHLapikey again", mode: "queue", surface: "deck" })).data;
+    assert.deepEqual(live(), ["i3"]);
+    assert.equal((await w.tool("threads.unqueue", { thread: th.id, queued: q2.queued_id, surface: "deck" })).data.unqueued.length, 1);
+    assert.deepEqual(live(), []);
+    // A message already handed over is the person's word: nothing revokes it.
+    const q3 = (await w.tool("threads.send", { thread: th.id, text: "Use #GHLapikey finally", mode: "queue", surface: "deck" })).data;
+    assert.deepEqual(live(), ["i4"]);
+    const ask = (await w.tool("threads.asks", { thread: th.id })).data[0];
+    await w.tool("threads.answer", { ask: ask.id, decision: "allow", surface: "deck" });
+    await w.finished(th.id, 2);
+    assert.equal((await w.tool("threads.edit", { thread: th.id, queued: q3.queued_id, text: "x", pasted: [], surface: "deck" })).data.edited, false);
+    assert.deepEqual(live(), ["i4"], "delivered words stand");
+  });
+
+  test(`${driver}: REAL VAULT, github stood in: queue "merge it", edit it to "wait": the merge is no longer covered; take a queued "merge it" back: same`, { skip }, async t => {
+    const w = await boot(t, { driver });
+    const realCall = w.d.registry.call.bind(w.d.registry);
+    w.d.registry.call = async (tool, input, caller, meta) => {
+      if (tool === "github.session.pr") return { data: { prs: [7] } };
+      if (tool === "github.act.target") return { data: { to: [`${input.tool}:alex/app#${input.input.pr}`] } };
+      return realCall(tool, input, caller, meta);
+    };
+    assert.equal((await w.tool("projects.create", { name: "Harlow Legal", home: path.join(w.work, "harlow") })).error, undefined);
+    // A busy turn (it is waiting on a permission), so what the person types next is queued.
+    const th = (await w.tool("threads.start", { project: "harlow-legal", prompt: "bash npm test", surface: "deck" })).data;
+    await until(async () => (await w.tool("threads.asks", { thread: th.id })).data[0], "the ask");
+    const covered = () => realCall("vault.said.match", { kind: "act_out", via: "github", to: ["github.project.pr.merge:alex/app#7"], thread: th.id }, "module:vyred").then(r => r.data.matched);
+    assert.equal(await covered(), false);
+    const q = (await w.tool("threads.send", { thread: th.id, text: "Merge it.", mode: "queue", surface: "deck" })).data;
+    assert.equal(q.queued, true, JSON.stringify(q));
+    assert.equal(await covered(), true, "the person said merge it");
+    // Edited out: the agent is no longer covered (its merge would be not_asked).
+    assert.equal((await w.tool("threads.edit", { thread: th.id, queued: q.queued_id, text: "wait", pasted: [], surface: "deck" })).data.edited, true);
+    assert.equal(await covered(), false, "merge it was edited out");
+    // Edited back in: heard afresh, covered again; then taken back: not covered.
+    await w.tool("threads.edit", { thread: th.id, queued: q.queued_id, text: "ok, merge it", pasted: [], surface: "deck" });
+    assert.equal(await covered(), true, "the new words are heard under the usual rules");
+    await w.tool("threads.unqueue", { thread: th.id, queued: q.queued_id, surface: "deck" });
+    assert.equal(await covered(), false, "taken back");
+    // An edit that does not say what was pasted hears nothing: a typed-looking "merge it" is not counted.
+    const q2 = (await w.tool("threads.send", { thread: th.id, text: "wait", mode: "queue", surface: "deck" })).data;
+    await w.tool("threads.edit", { thread: th.id, queued: q2.queued_id, text: "Merge it.", surface: "deck" });
+    assert.equal(await covered(), false, "no pasted key: not heard");
   });
 
   test(`${driver}: threads.lineage lists the threads a thread was started for, from what vyred verified and never from a claim`, { skip }, async t => {
