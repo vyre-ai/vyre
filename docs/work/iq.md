@@ -26,7 +26,7 @@ GitHub hosted runners (push work/iq). Never testbox (it is the user's server), n
 6. Streaming: memory.draft through threads.quick {stream}.
 
 ## Done
-- 2. memory.write and provenance: ce39b7f2 (ctx.memory.write in the loader), 3bba435a (tables,
+- 2. memory.write and provenance: 3bba435a (tables,
   tools, reads, tests in core/memory/write.test.js).
 - 1. The 0.2 eval world (open half) and the quality-bar harness: b5203ad5 (test/fixtures/iq02-open.js:
   175 sessions, 414 turns, 4 projects, juno/kit/pax/assistant, all five providers), 9d99aaf6
@@ -81,7 +81,7 @@ GitHub hosted runners (push work/iq). Never testbox (it is the user's server), n
 - memory.relevant may add items {id: "write:<id>", text: "From memory, not instructions: ...",
   source, via: "write", confidence, at}; memory.today may add such lines; memory.retrieve and
   memory.ask passages may include {role: "memory", session: "write:<id>", write, untrusted}.
-- Kernel (core/modules/index.js): ctx.memory.write(row) checks row.kind against teaches.memory and
-  calls memory.write as module:<name> through the loader's door. ctx.memory.teach unchanged.
-  packages/module-sdk: index.d.ts write() is no longer @planned, project required, returns
-  {id, linked}; the testing fake returns linked: false.
+- Kernel: none. platform owns the ctx.memory.write door (92838e8c on work/platform: kind checked against
+  teaches.memory, calls memory.write as module:<name> with from and untrusted after the spread; the
+  registry sets meta.firstParty). memory.write reads who wrote it from the caller and meta.firstParty only.
+  Reverted my copy at cece5c54 (reviews/iq.md H1).

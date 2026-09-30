@@ -9,9 +9,7 @@ import assert from "node:assert/strict";
 import path from "node:path";
 import { open } from "../store/index.js";
 import { SESSIONS, HOME, seedRecall } from "../../test/fixtures/corpus.js";
-import { tempHome, writeModule } from "../../test/helpers.js";
-import { Registry, discover } from "../modules/index.js";
-import { Events } from "../events/index.js";
+import { tempHome } from "../../test/helpers.js";
 import { fakeReachCall } from "../../test/fixtures/fake-reach.js";
 import { attribution, secretIn } from "./write.js";
 import memory from "./index.js";
@@ -269,32 +267,6 @@ test("write: attribution is built in one place", () => {
   assert.equal(attribution({ ...base, from_kind: "watcher", from_name: "billing-inbox" }), `the billing-inbox watcher filed (29 Sep): "She said 'yes'"`);
   assert.equal(attribution({ ...base, from_kind: "duty", from_name: "kit/restock" }), `kit's duty restock filed (29 Sep): "She said 'yes'"`);
   assert.equal(attribution({ ...base, from_kind: "module", from_name: "bakery", kind: "fact" }), `the bakery module noted (29 Sep): "She said 'yes'"`);
-});
-
-test("write: ctx.memory.write reaches memory.write as module:<name>, with the loader's first-party word, for a declared kind only", async t => {
-  const home = tempHome(t);
-  const root = path.join(home, "mods");
-  // A stand-in memory module that records what memory.write was given and by whom.
-  writeModule(root, "memory", { name: "memory", version: "0.1.0", roles: ["local"], does: { tools: [{ name: "memory.write", reach: "anyone" }] } },
-    `export default { async start(ctx) {
-      ctx.tool("memory.write", { run: async (input, extra) => ({ id: "mw_1", linked: false, got: { input, caller: extra.caller, firstParty: extra.firstParty } }) });
-      return {};
-    } };`);
-  writeModule(root, "bakery", { name: "bakery", version: "1.0.0", roles: ["local"], does: { tools: [{ name: "bakery.log", reach: "anyone" }] }, teaches: { memory: ["note"] } },
-    `export default { async start(ctx) {
-      ctx.tool("bakery.log", { run: async ({ kind }) => { try { return await ctx.memory.write({ kind, project: "northwind", text: "Northwind sold 40 loaves", from: "alex" }); } catch (e) { return { threw: e.message }; } } });
-      return {};
-    } };`);
-  const db = open(path.join(home, "vyre.db"));
-  t.after(() => db.close());
-  const reg = new Registry({ db, events: new Events(db), config: { role: "local" }, log: () => {} });
-  await reg.start(discover([root]), { role: "local" });
-  const r = await reg.call("bakery.log", { kind: "note" }, "cli");
-  assert.ok(!r.error, JSON.stringify(r));
-  assert.equal(r.data.data.got.caller, "module:bakery");
-  assert.equal(r.data.data.got.firstParty, false, "a module in a home folder is not first-party");
-  assert.equal(r.data.data.got.input.kind, "note");
-  assert.match((await reg.call("bakery.log", { kind: "decision" }, "cli")).data.threw, /does not declare under teaches.memory/);
 });
 
 test("write: two projects' own watchers matching the same email file one row, linked into both", async t => {
