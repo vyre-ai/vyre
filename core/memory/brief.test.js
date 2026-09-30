@@ -129,3 +129,20 @@ test("memory.ask: a decision corrected in one project never answers an agent gra
   const other = await ask(KIT, { agent: "kit", granted: ["harlow"] });
   assert.doesNotMatch(JSON.stringify(other), /clover|square|Now:/i, "vyred's grant is harlow only: nothing of northwind's decision");
 });
+
+test("memory.prompt: the brief on the first prompt, quoted relevant lines on every prompt, only the caller's project", async t => {
+  const { call } = await module_(t);
+  const first = await call("memory.prompt", { first: true, prompt: "where do we host the harlow site", project: "harlow" }, JUNO, { agent: "juno", granted: ["harlow"] });
+  assert.ok(!first.error, first.error);
+  assert.match(first.data.text, /memory_ask/);
+  assert.match(first.data.text, /netlify/i);
+  assert.equal(first.data.blocks.length, 1);
+  assert.equal(first.data.blocks[0].type, "text");
+  const next = (await call("memory.prompt", { prompt: "where do we host the harlow site", project: "harlow" }, JUNO, { agent: "juno", granted: ["harlow"] })).data;
+  assert.doesNotMatch(next.text, /memory_ask/, "no brief after the first prompt");
+  // kit, granted northwind, asking for harlow: nothing of harlow's.
+  const other = await call("memory.prompt", { first: true, prompt: "where do we host the harlow site", project: "harlow" }, KIT, { agent: "kit", granted: ["northwind"] });
+  assert.doesNotMatch(JSON.stringify(other), /netlify|vercel|Harlow/i);
+  // A slash command and no project add nothing.
+  assert.equal((await call("memory.prompt", { prompt: "/help", project: "harlow" }, JUNO, { agent: "juno", granted: ["harlow"] })).data.blocks.length, 0);
+});

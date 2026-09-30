@@ -42,7 +42,7 @@ A module runs on the `box` (the always-on server), on `local` (the Mac), or on b
 | [`link`](#link) | `core/link` | `box`, `local` | 23 | 16 | capsule, cli, deck |
 | [`mail`](#mail) | `core/mail` | `box`, `local` | 9 | 4 | capsule, deck |
 | [`mcp`](#mcp) | `core/mcp` | `box`, `local` | 9 | 9 | cli, deck |
-| [`memory`](#memory) | `core/memory` | `box`, `local` | 36 | 14 | capsule, cli, deck |
+| [`memory`](#memory) | `core/memory` | `box`, `local` | 37 | 14 | capsule, cli, deck |
 | [`names`](#names) | `core/names` | `box` | 8 | 6 | cli |
 | [`network`](#network) | `core/network` | `box` | 5 | 2 | capsule, cli, deck |
 | [`onboard`](#onboard) | `core/onboard` | `box`, `local` | 12 | 2 | none |
@@ -355,7 +355,7 @@ Makes the Mac and the box one system: pairing, box tools from the Mac, box event
 - Folder: `core/memory`, version 0.1.0
 - Runs on: `box`, `local`
 - Requires: none
-- Tools: [36](tools.md#memory), 2 of them only for other modules
+- Tools: [37](tools.md#memory), 2 of them only for other modules
 - Emits: [14 events](events.md#memory)
 - Shows on: capsule, cli, deck
 - Teaches tips: `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`
