@@ -422,6 +422,7 @@ test("gate: sendNow (asked-for) sends at once with no held card, and leaves a ro
   const it = gate.get({ id: r.id });
   assert.equal(it.state, "sent");
   assert.equal(it.by, "said:s_1");
+  assert.equal(it.said, "s_1", "get names the intent so the card can show You said to");
   assert.deepEqual(it.result, { ok: true });
   assert.deepEqual(it.diff, { removed: [], added: [] });
   assert.deepEqual(events.map(e => e.type), ["gate.released"], "no gate.held for what was asked for");

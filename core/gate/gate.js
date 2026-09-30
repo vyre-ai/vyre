@@ -266,7 +266,9 @@ export class Gate {
     const r = this.row(id);
     const draft = json(r.draft, {}), final = json(r.final, null);
     return { ...this.brief(r), state: r.state, draft, final, diff: final ? diff(draft, final) : { removed: [], added: [] },
-      result: json(r.result, null), error: r.error || null, by: r.by || null, decided: r.decided || null };
+      result: json(r.result, null), error: r.error || null, by: r.by || null, decided: r.decided || null,
+      // The intent that covered it when the person's own words asked for it ("You said to"): look it up in gate.said.list.
+      said: typeof r.by === "string" && r.by.startsWith("said:") ? r.by.slice(5) : null };
   }
 
   /**
