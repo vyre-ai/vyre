@@ -106,3 +106,24 @@ test("tailscale: one `up` however many clicks, one 15-minute watch that more cli
   assert.ok(ev.length >= 1);
   for (const e of ev) assert.deepEqual(Object.keys(e.p).sort(), ["state", "tailnetKind"], "no login, no address on the bus");
 });
+
+test("tailscale: with a setup session live and no owner, the login that signed the node in becomes the owner, once; never otherwise", async () => {
+  const calls = [];
+  const mk = (setupState, owner, s) => {
+    const tools = new Map();
+    const ctx = { log() {}, config: { network: owner ? { owner } : {} }, events: { emit() {} }, tool: (n, d) => tools.set(n, d),
+      call: async (tool, input) => { calls.push({ tool, input }); return tool === "relay.setup.status" ? { data: { state: setupState } } : { data: {} }; } };
+    startTailscale(ctx, { run: async () => ({ code: 0, out: JSON.stringify(s), err: "" }), up: async () => ({ loginUrl: URL_ }) });
+    return tools;
+  };
+  const settle = () => new Promise(r => setImmediate(r));
+  await mk("paired", null, status("Running")).get("network.tailscale.status").run({}, { caller: "cli" }); await settle();
+  assert.deepEqual(calls.filter(c => c.tool === "names.owner").map(c => c.input), [{ login: "alex@gmail.com" }]);
+  calls.length = 0;
+  await mk("none", null, status("Running")).get("network.tailscale.status").run({}, { caller: "cli" }); await settle();
+  await mk("waiting", "kit@harlow.example", status("Running")).get("network.tailscale.status").run({}, { caller: "cli" }); await settle();
+  await mk("waiting", null, status("NeedsLogin")).get("network.tailscale.status").run({}, { caller: "cli" }); await settle();
+  const tagged = status("Running"); tagged.Self = { ...tagged.Self, Tags: ["tag:server"] };
+  await mk("waiting", null, tagged).get("network.tailscale.status").run({}, { caller: "cli" }); await settle();
+  assert.deepEqual(calls.filter(c => c.tool === "names.owner"), [], "no session, an owner already, not connected, or a tagged node: nothing set");
+});

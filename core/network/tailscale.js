@@ -78,8 +78,24 @@ export function startTailscale(ctx, { run = ts.run, up = ts.up, setTimer = setIn
     return { ...shape(raw), raw };
   }
 
+  // While a setup session is live and this box has no owner yet, the login that signed this node in
+  // becomes the tailnet owner the box serves: whoever opened the sign-in link is the setup page's
+  // person. Without it the box's listener would admit nobody at its own address, and the claim
+  // (relay.setup.claim) could never reach it. A tagged node has no login and never sets one.
+  let ownerSet = false;
+  const adoptOwner = async (/** @type {any} */ v) => {
+    if (ownerSet || v.state !== "connected" || !v.login || (ctx.config && ctx.config.network && ctx.config.network.owner)) return;
+    try {
+      const st = /** @type {any} */ (await ctx.call("relay.setup.status", {}));
+      if (!st || st.error || !st.data || !["waiting", "paired"].includes(st.data.state)) return;
+      const r = /** @type {any} */ (await ctx.call("names.owner", { login: v.login }));
+      if (r && !r.error) ownerSet = true;
+    } catch {}
+  };
+
   /** @type {string|null} */ let last = null;
   const announce = (/** @type {any} */ v) => {
+    adoptOwner(v);
     const key = [v.state, v.login, v.tailnetKind, v.ip].join("|");   // any change counts, but the event says only the state
     if (key === last) return;
     const first = last === null;
