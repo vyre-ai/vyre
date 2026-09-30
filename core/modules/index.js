@@ -53,6 +53,9 @@ export const firstParty = dir => {
  * @type {Record<string, string[]>}
  */
 // settings passes a person's change on to the module that keeps the value, as that person.
+/** How long an asked tool's target may take to answer before the call is not_asked. */
+const TARGET_MS = 2000;
+/** @type {Record<string, any>} */
 const CALL_AS = { link: ["link:box"], settings: ["cli", "local", "deck", "capsule"], mentions: (/** @type {string} */ as) => isPerson(as) || as === "module:sessions" || as === "module:assistant",
   // capsule runs a view's declared tool as the asking person (first party modules) or as the added module itself, never as anyone else.
   capsule: (/** @type {string} */ as) => isPerson(as) || /^module:[a-z][a-z0-9-]*$/.test(as),
@@ -933,7 +936,11 @@ export class Registry {
     try {
       /** @type {string[]} */ let to = [tool];
       if (def && def.target) {
-        const t = await this.call(def.target, { tool, input }, "module:vyred", { door: true });
+        // The target is a module's own code answering for a call that may not be the person's: two seconds, and late is no.
+        let timer;
+        const late = new Promise(res => { timer = setTimeout(() => res(null), TARGET_MS); if (timer.unref) timer.unref(); });
+        const t = await Promise.race([this.call(def.target, { tool, input }, "module:vyred", { door: true }), late]).finally(() => clearTimeout(timer));
+        if (!t) return false;
         const extra = t && t.data && Array.isArray(t.data.to) ? t.data.to.filter((/** @type {any} */ x) => typeof x === "string" && x) : [];
         if (!extra.length) return false;
         to = extra;
