@@ -105,6 +105,23 @@ export default {
     let listenError = null;
     try { await bridge.listen(); } catch (e) { listenError = /** @type {Error} */ (e).message; ctx.log(`chrome bridge is not listening: ${listenError}`); }
 
+    /**
+     * Why there is no extension, and the one thing to do, from what has actually reached the socket. Null while connected.
+     * @returns {{ problem: string, fix: string, stage: string }|null}
+     */
+    const diagnose = () => {
+      if (bridge.connected()) return null;
+      if (listenError) return { stage: "not_listening", problem: "this session is not the one connected to Chrome", fix: `Another Vyre for Chrome session already holds the connector (${listenError}). Use that session, or close it and restart this one.` };
+      let installed = true;
+      try { const hs = host.status({ home: cfg.home, platform: cfg.platform, vyreHome: cfg.vyreHome, hostDir: cfg.hostDir, registry: cfg.registry }); installed = Boolean(hs && Array.isArray(hs.installed) && hs.installed.length && hs.launcherExists); } catch { /* unknown: do not blame the install */ }
+      if (!installed) return { stage: "host_not_registered", problem: "the connector is not registered with any browser", fix: "Run `vyre-chrome install` in a terminal, then load the extension and (if Chrome was already open) quit and reopen Chrome." };
+      const st = bridge.stats();
+      if (st.refused) return { stage: "host_refused", problem: `a connector started but was refused: ${st.refused.why}`, fix: "Run `vyre-chrome install` again (it re-registers the connector for the right extension id), reload the extension in chrome://extensions, and run `vyre-chrome doctor` if it still fails." };
+      if (st.hellos > 0) return { stage: "extension_dropped", problem: "the extension was connected and then disconnected (Chrome or the extension restarted, or the connector stopped)", fix: "It reconnects by itself within seconds. If it does not, click the Vyre for Chrome icon in Chrome's toolbar to see why, or run `vyre-chrome doctor`." };
+      if (st.connections > 0) return { stage: "host_no_hello", problem: "a connector process started but the extension never said hello", fix: "Reload the extension in chrome://extensions (it may be an old copy), then run `vyre-chrome doctor` if it still fails." };
+      return { stage: "host_never_started", problem: "Chrome has not started the connector: no connector process has ever connected", fix: "In Chrome open chrome://extensions and check that Vyre for Chrome is loaded (Load unpacked) and enabled, and click its toolbar icon to see why it cannot connect. If it is loaded and enabled, quit and reopen Chrome once: Chrome may only pick up a newly installed connector when it starts. `vyre-chrome doctor` checks the rest." };
+    };
+
     /** @type {Map<number, string>} the last URL seen for each tab, so an op is judged before it is sent */
     const urls = new Map();
 
@@ -257,7 +274,7 @@ export default {
         } catch (e) {
           const x = /** @type {any} */ (e);
           // Another program already holds the socket (a second session): say that, not "not connected".
-          if (x && x.code === "no_extension" && listenError) x.message = `this session is not the one connected to Chrome (${listenError})`;
+          if (x && x.code === "no_extension") { const d = diagnose(); if (d) x.message = `${d.problem}. ${d.fix}`; }
           acted(meta, agent, op, false, x && x.message ? String(x.message).replace(/^[a-z_]+: /, "") : "failed", summary);
           if (carry && /** @type {any} */ (carry).interjection && x && typeof x === "object") x.interjection = /** @type {any} */ (carry).interjection;
           throw wrapErr(x);
@@ -441,7 +458,8 @@ export default {
         let hostStatus = null;
         try { hostStatus = host.status({ home: cfg.home, platform: cfg.platform, vyreHome: cfg.vyreHome, hostDir: cfg.hostDir, registry: cfg.registry }); } catch (e) { hostStatus = { error: /** @type {Error} */ (e).message }; }
         const installed = Boolean(hostStatus && Array.isArray(hostStatus.installed) && hostStatus.installed.length && hostStatus.launcherExists);
-        return { connected: bridge.connected(), extension: bridge.info(), listening: !listenError, ...(listenError ? { listenError } : {}), hostInstalled: installed, host: hostStatus, tabs, attached, oversight: oversight.snapshot() };
+        const why = diagnose();
+        return { connected: bridge.connected(), extension: bridge.info(), listening: !listenError, ...(listenError ? { listenError } : {}), ...(why ? { problem: why.problem, fix: why.fix, stage: why.stage } : {}), socket: bridge.stats(), hostInstalled: installed, host: hostStatus, tabs, attached, oversight: oversight.snapshot() };
       });
 
     tool("chrome.install", "Set up the Vyre Chrome connector: registers the native host with Chrome (and the other Chromium browsers found), then returns the steps the person does in Chrome to load the extension.",
