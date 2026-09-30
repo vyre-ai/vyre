@@ -55,11 +55,13 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci --no-audit --no-fund
-      - name: TEMPORARY per-file result of the Windows set (removed in the next commit)
+      - name: TEMPORARY why each failing file fails (removed in the next commit)
         shell: pwsh
         run: |
-          $files = @(); foreach ($g in "core/config/*.test.js","core/cli/kit.test.js","core/cli/commands/box.test.js","core/cli/commands/connect.test.js","core/cli/commands/up.test.js","core/cli/commands/voice.test.js","local/voice/*.test.js","test/boundaries.test.js","test/windows-sums-vector.test.js","test/docs-*.test.js","relay/client/*.test.js","core/vyre-core/release.test.js") { $files += Get-ChildItem $g | ForEach-Object { (Resolve-Path -Relative $_.FullName) } }
-          foreach ($f in $files) { node --test --test-force-exit --test-timeout=120000 $f *> $null; "FILE $($f) exit=$LASTEXITCODE" }
+          foreach ($f in "core/config/claude-home.test.js","core/config/config.test.js","core/cli/commands/box.test.js","core/cli/commands/connect.test.js","core/cli/commands/up.test.js","local/voice/talk.test.js","local/voice/voice.test.js","test/docs-check.test.js","test/docs-index.test.js","relay/client/e2e.test.js","relay/client/nodecrypto.test.js","core/vyre-core/release.test.js") {
+            "=== $f"
+            node --test --test-force-exit --test-timeout=60000 --test-reporter=tap $f 2>&1 | Select-String -Pattern "^\s+(error|code|expected|actual|message): " | Select-Object -First 4 | ForEach-Object { $_.Line.Trim().Substring(0, [Math]::Min(150, $_.Line.Trim().Length)) }
+          }
       - run: npm run test:windows
   # Windows LOW (security review, ADR 0037): the local vyred socket's privacy, verified on a real
   # windows-latest runner rather than hardware. Not continue-on-error: the lead's call was that
