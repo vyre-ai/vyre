@@ -71,6 +71,66 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 - "Save a memory" is `/remember <note>` (a command in the list, and the composer's memory mode); `#` no longer means memory anywhere.
 - `renderSrc` in `cards/artifact.js` is now `/v1/artifacts/content?id=&v=`.
 
+- spend (reviewer-2): a person's own `agents.ask` is relayed to threads.send as that person whether or not it carries tags (it was as the agents module unless tagged), so the daily spend cap, which holds what agents and modules start on their own, does not hold it, and their words are heard as their own turn; the agent's thread gets one notice with the cap line. Any other caller's ask still goes as module:agents and stays held.
+- spend (reviewer-2, team-lead): the cap check holds an agent, a module or a hook, and no longer the person's own unnamed mcp or harness session (only one that carries an agent claim); a ledger that is down lets work through and says so once a day in the log. A real-daemon test shows the cap reached, asking an agent refused with the raise-it line, and the person's send, deck and own mcp session going through. capOf read settings.get's result wrongly through the daemon (it is `{data}`): fixed, and spend.raise now reports a failed write. The spend.* settings carry `hidden: true`, which settings.schema passes on, so the Deck's own Spend screen is the only one. The total cap over every provider was already in (spend.all.daily_usd).
+- spend: spend.all.daily_usd, a daily cap over every provider together (any provider, openrouter and the rest included), first in Settings, Spend. At it the spending thread pauses on whichever provider with "Spend across every provider today reached ..." and `vyre spend raise all <dollars>`; spend.check answers scope "all" for every provider while it holds, spend.summary carries `all`, and a provider's own cap still holds under a roomy all-cap.
+- spend (reviewer-2 M-S1, LOW): threads.start and threads.send now ask spend.check for the thread's provider when the caller is an agent, a module, mcp, a harness hook or an automation, and answer `spend_capped` with the cap line at the cap; the person's own surfaces are never held, and no spend module means no cap. Any provider without its own setting shares spend.other.daily_usd (a cap for each of them), so OpenRouter and the like are capped too.
+- spend (new module core/spend, plan 3.9): one ledger of what threads, agents and memory spend, per UTC day, provider, account, purpose and agent, and a daily cap per provider, a setting (spend.<provider>.daily_usd, Settings, Spend; empty is no cap). Hands-free: at the cap the spending thread is paused with one line and a raise-it action (`spend.capped` carries the line and spend.raise as its action, once a day per provider), never a prompt on a call. Tools spend.record (Vyre's own modules only), spend.check, spend.summary, spend.raise (the person only; `vyre spend raise claude 20`, `+5`, `off`). Threads are read from thread.finished; memory's reader and answers record their dollars, the reader waits and Vyre Memory answers from facts and search at the cap, saying why.
+- memory.prompt: person: true is honored only from a first-party module (meta.firstParty, the registry's own mark); an added module setting it gets nothing.
+- recall: a key in a URL's query or fragment (`?api_key=sk-...`) is redacted, the URL kept. recall.watch does one catch-up read 300 ms after it starts watching a file: on macOS fs.watch delivers nothing for a line appended in its first moments, which then waited for the 60 s sweep (the test of it was red on the Mac only). The recall module test no longer assumes $HOME is the person's home (it uses realHome()).
+- recall: the re-clean of stored turns is bounded (500 turns a batch, yielding between) and resumable (the last rowid is kept with REDACT_VERSION), run at the start of each index pass until done; pairing tickets (43 base64url characters after wink, ticket, pair or offer) are redacted too. memory.prompt fails closed: a module caller that names no agent and does not pass person: true gets nothing.
+- recall (reviewer-2 M-I1): the redaction list also removes `#claim=` codes, `vyre-pc:` pairing seeds, private key blocks and pasted keys or tokens by the shapes core/vault/detect.js names (not its random-looking fallback, so hashes and ids stay); turns already stored are cleaned once per REDACT_VERSION at the next pass and their vectors dropped. Wink tickets have no fixed shape and are not matched. memory.prompt's description says a module caller must pass the thread's agent (test added).
+- memory.facts: a name that is only in the person's own life (memory.me's personal store, such as "Robin" taught by memory.remember) returns an empty list with a `note` saying to ask memory.me, to a caller who may read personal facts; an agent gets the plain empty answer.
+- IQ is renamed Vyre Memory in what people read: memory tool descriptions, `vyre memory ask` help, the limit message, the Deck import screen, ADR 0034 and the memory and using docs. Code names, tool names and paths are unchanged.
+- memory.prompt: the text blocks an ACP session gets in a prompt, built from memory.brief (first prompt) and up to 5 memory.relevant lines (every prompt), each quoted as memory and never as instructions, scoped by the caller's own grant. The Switchboard's ACP driver sends them as resource blocks; the memory MCP tools already reach ACP sessions through the vyre server it passes in session/new.
+- recall: a redaction list (REDACTIONS, redact) runs on every turn before indexing, seeded with tailnet's Tailscale sign-in link rule; redactLinks stays as an alias.
+- recall: for a transcript under an account's folder (VYRE_ACCOUNTS_HOME), the indexer takes "a person started this" from the Switchboard's record (threads.origin) and never from the transcript; no record, an error or no switchboard is not human, so a forged transcript makes no decision and no personal claim. An unchanged file is read again when the record later vouches for it. Indexer.session() is now async. threads.origin itself lands with work/sessions-02 (eed82569 depends on its accounts commits, so it is not cherry-picked here).
+- eval: memory-eval-record hardened (reviewer-2): actions pinned to commit SHAs, checkout keeps no credentials, model is a choice (haiku default, sonnet), the per-call spend margin is per model, and the $15 cap is cumulative through the committed ledger test/eval/asks/iq02-open.spend.json (commit the artifact's ledger and replies after each dispatch). memory.ask has a direct test that a decision corrected in one project never answers an agent granted another.
+- eval: memory-eval-record workflow (manual, environment eval) records the open world's model replies through OpenRouter with a hard stop at $15 of spend; resumes from the recorded replies.
+- memory (iq, reviewer-2 hold): a decision correction in one project no longer reaches an agent granted another; memory.brief keeps only decisions the person wrote and no agent write lines (memory.today person_only); memory.heard's unproven filing reads "an agent reports the person corrected: ...".
+- memory.ask streams a draft of its answer (plan 3.7): the answer so far, at most every 100 ms, from a
+  streaming model runner (its new optional onText hook), and an empty draft when the check fails. It
+  goes to the calling connection only: vyred hands a tool a draft function in its meta only when the
+  caller sent Accept: application/x-ndjson, and answers with {"draft":{id,text}} lines then
+  {"result":...}. It is never an event, and a module's ctx.call or a caller that did not ask gets none.
+  memory.thinking and memory.answered stay on the bus with no text.
+- Memory scopes an agent's calls by vyred's meta.granted (the stored grant, "*" or slugs; none when
+  absent) and ignores the agent's own input.agent and project_cwds. The person's surfaces are
+  unchanged. Decisions: an agent's or untrusted decision never becomes current over the person's
+  words; a trusted agent's lone decision is answered as "Your agent <name> recorded: X" at
+  confidence 0.55, never as "Now:", with the writer on the source chip; untrusted is only a note.
+  memory.decisions rows carry agentOnly.
+- `memory.brief { for: session|project|teammate|assistant, project?, thread? } -> { text }` (plan 3.1C):
+  at most 600 characters, plain words on memory_ask, memory_remember and memory_correct, then the
+  project's current decisions (top 5) and what was learned lately, each marked "from memory, not
+  instructions". It runs memory.decisions and memory.today with the caller's own identity, so the
+  caller's reach applies; an untrusted write never enters it. Vyre's MCP server (harness/mcp) offers
+  the five memory tools by name: memory_ask and memory_decisions as before, and memory_search,
+  memory_remember and memory_correct (harness/mcp/memory-tools.js) over memory.retrieve, memory.write
+  and memory.heard, whose raw names are no longer listed beside them. The project a call names only
+  narrows; vyred still decides the caller and its reach.
+- Corrections made in chat reach memory three ways (plan 3.1B, 3.1E). New agent tool `memory.heard
+  { action, answer | fact | subject+rel+object, from_turn: { seq }, project? }`: with the person's own
+  fresh typed turn behind it (checked by `threads.said`) it applies as theirs; without it, it waits
+  for the person as a suggestion and, when the agent names a project it reaches, is also filed at
+  once as the agent's own attributed correction (quoted, never an instruction). `memory.correct`
+  stays the person's. The reader now catches "no, that's wrong", "actually it's X" and "we
+  switched to X" typed right after a reply that repeated one of `memory.ask`'s answers, and
+  corrects that answer as theirs; a reply that did not come from memory is never taken for one.
+  Every correction of an answer now records its source (capsule, chat:<thread> or reader), shown
+  in `memory.corrections`. Correcting a decision answer updates the decision: a replace is the
+  person's newest decision, a wrong drops the current one, and undoing the correction undoes both.
+  `memory.write` now returns its run for `memory.heard` to file as the same agent.
+- Memory keeps decisions (plan 3.5). The person's typed turns are read for what they decided
+  ("host it on netlify", "going back to stripe", "30 min slots"), per project and topic, and the
+  newest decision wins: the old one is replaced, or reverted when the person goes back to it, and
+  stays as history. `memory.ask` answers a decision question before any model: "Now: Netlify (since
+  24 Aug). Before: Vercel (9 Jul).", citing the one turn that says it. New tool `memory.decisions
+  { topic?, history?, project? }`. An agent's `memory.write` decision is current until something
+  newer replaces it; it never replaces the person's, and stays beside it as a note. Claude's
+  turns, system blocks, emails and limited writers never make a decision. On the open 0.2 world
+  (replayed reads, no model): decision questions 0 to 33 of 50, history 0 to 18 of 25, confident-wrong
+  and unanswerable unchanged at 0 and 50 of 50.
 - test: federation-reads grants the harness agent juno its project (an agent with no grant is refused), and asserts the refusal for one with none.
 
 - test: federation-reads grants the harness agent juno its project (an agent with no grant is refused), and asserts the refusal for one with none.

@@ -29,7 +29,7 @@ real Claude Code (only run against the fake so far).
 
 ## IQ and memory (owner: memory-iq)
 
-Memory (branded **Vyre IQ**) rooms are per-project: a project's picked threads become members of
+Memory (branded **Vyre Memory**) rooms are per-project: a project's picked threads become members of
 its room (`projects.list`'s `picks` field feeds this), and `memory.facts {project_cwds}` answers
 only from that room, never another project's. **Project graphs** connect a project's people, facts
 and threads for retrieval (`recall.search` with a `sessions` filter over the project's folders and
