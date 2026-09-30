@@ -747,6 +747,11 @@ for (const driver of ["cli", "sdk"]) {
     // A hard test: vault lists module:threads as a recorder, and this fails loudly if that ever regresses.
     const probe = await w.d.registry.call("vault.said.record", { thread: "probe", said: "probe", kind: "act_out", to: ["x.y:z"], what: "probe" }, "module:threads");
     assert.equal(probe.error, undefined, `vault must let the threads module record what the person said: ${JSON.stringify(probe.error)}`);
+    // The label is matched whole: lookalikes are refused, as a model's own labels are.
+    for (const who of ["module:threads-evil", "module:threadsx", "mcp:thread:probe"]) {
+      const r = await w.d.registry.call("vault.said.record", { thread: "probe", said: "probe", kind: "act_out", to: ["x.y:z"], what: "probe" }, who);
+      assert.ok(r.error, `${who} must not record what the person said`);
+    }
     // Only github is stood in (it is not built on this branch); the assistant's prIntents, the switchboard's ingress and vault are real.
     const realCall = w.d.registry.call.bind(w.d.registry);
     w.d.registry.call = async (tool, input, caller, meta) => {
