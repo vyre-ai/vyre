@@ -58,6 +58,7 @@ A module runs on the `box` (the always-on server), on `local` (the Mac), or on b
 | [`settings`](#settings) | `core/settings` | `box`, `local` | 7 | 1 | cli, deck |
 | [`sideview`](#sideview) | `local/sideview` | `local` | 3 | 0 | none |
 | [`sight`](#sight) | `core/sight` | `box`, `local` | 5 | 1 | none |
+| [`spend`](#spend) | `core/spend` | `box`, `local` | 4 | 2 | cli |
 | [`statusline`](#statusline) | `core/statusline` | `box`, `local` | 1 | 0 | cli |
 | [`suggest`](#suggest) | `core/suggest` | `box`, `local` | 3 | 1 | cli |
 | [`sync`](#sync) | `core/sync` | `box`, `local` | 10 | 5 | capsule, cli, deck |
@@ -526,6 +527,17 @@ One screen service for the user's Mac and every agent's computer: what is on it,
 - Tools: [5](tools.md#sight)
 - Emits: [1 events](events.md#sight)
 - Shows on: no surface
+
+## spend
+
+One ledger of what agents, sessions and memory spend, per provider and per day (UTC), and a daily cap per provider. At the cap the spending thread pauses with one line and a raise-it action; nothing asks on each call.
+
+- Folder: `core/spend`, version 0.1.0
+- Runs on: `box`, `local`
+- Requires: none
+- Tools: [4](tools.md#spend), 1 of them only for other modules
+- Emits: [2 events](events.md#spend)
+- Shows on: cli
 
 ## statusline
 

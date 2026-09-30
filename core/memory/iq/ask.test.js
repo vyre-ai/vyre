@@ -105,6 +105,13 @@ test("ask: no passages, no model, a spent budget or a made-up answer all abstain
   assert.equal(capped.message, LIMIT_MESSAGE);
   assert.doesNotMatch(capped.message, /\$|USD|dollar/i, "a cap in plan terms, never money");
   assert.equal(calls, 0);
+  // A cap the person set says so in its own words, and still answers nothing from the model.
+  const spendCapped = asker({ db: d, answer: async () => ({}), retrieve: async () => ({ passages: P }), runner: async () => { calls++; return { text: "{}", usd: 0 }; },
+    budget: { allow: () => false, charge: () => {}, why: () => "Claude has reached the daily spend cap you set." } });
+  const sc = await spendCapped({ question: "what port does staging use" });
+  assert.equal(sc.limited, true);
+  assert.equal(sc.message, "Claude has reached the daily spend cap you set.");
+  assert.equal(calls, 0);
   const liar = asker({ db: d, answer: async () => ({}), retrieve: async () => ({ passages: P }),
     runner: async () => ({ text: JSON.stringify({ answer: "Staging runs on port 9000.", cite: [1], confidence: 0.9 }), usd: 0.001 }) });
   const r = await liar({ question: "which port is staging on" });

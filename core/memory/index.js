@@ -119,8 +119,20 @@ export default {
     const runner = ctx.memoryRunner !== undefined ? ctx.memoryRunner
       : process.env.NODE_TEST_CONTEXT && !process.env.VYRE_CLAUDE_BIN ? null
       : jobs() ? claudeOnce({ cwd: /** @type {string} */ (jobs()), billing: () => ctx.config.memory?.model?.billing }) : null;
+    // The provider's daily cap (core/spend): while Claude is at it, memory answers from facts and search
+    // and the reader waits. Kept from spend's own events, so no answer waits on a call.
+    let spendCapped = false;
+    const capOffs = [
+      ctx.events.on("spend.capped", e => { if (e && e.payload && e.payload.provider === "claude") spendCapped = true; }),
+      ctx.events.on("spend.raised", e => { if (e && e.payload && e.payload.provider === "claude") spendCapped = false; }),
+    ];
+    Promise.resolve().then(() => ctx.call("spend.check", { provider: "claude" })).then(r => {
+      const d = r && (r.data || r);
+      if (d && d.capped === true) spendCapped = true;
+    }).catch(() => {});
     const model = createReader({
       db: ctx.store.db, personal, now: () => Date.now(), call: (tool, input) => ctx.call(tool, input), log: ctx.log, config: () => ctx.config,
+      capped: () => spendCapped,
       // Never a real model under node --test unless a test points VYRE_CLAUDE_BIN at a fake.
       runner,
     });
@@ -1018,10 +1030,14 @@ export default {
       runner: ctx.iqRunner !== undefined ? ctx.iqRunner : quick, model: () => modelFor(ctx.config),
       budget: {
         // The person's plan share (memory.plan_share) scales IQ's day too; an explicit figure wins.
-        allow: usd => askSpent() + usd <= (Number(ctx.config.memory?.model?.askDailyUsd) >= 0 ? Number(ctx.config.memory.model.askDailyUsd)
+        why: () => spendCapped ? "Claude has reached the daily spend cap you set, so Vyre Memory answers from facts and search. Raise the cap in Settings, Spend." : null,
+        allow: usd => !spendCapped && askSpent() + usd <= (Number(ctx.config.memory?.model?.askDailyUsd) >= 0 ? Number(ctx.config.memory.model.askDailyUsd)
           : ASK_DAILY_USD * ({ small: 0.5, medium: 1, large: 4 }[String(ctx.config.memory?.model?.share || "medium")] ?? 1)) + 1e-9,
-        charge: usd => void ctx.store.db.prepare(`INSERT INTO memory_me_budget (day, usd, calls) VALUES (?, ?, 1)
-          ON CONFLICT (day) DO UPDATE SET usd = round(usd + excluded.usd, 6), calls = calls + 1`).run(askDay(), usd),
+        charge: usd => {
+          ctx.store.db.prepare(`INSERT INTO memory_me_budget (day, usd, calls) VALUES (?, ?, 1)
+            ON CONFLICT (day) DO UPDATE SET usd = round(usd + excluded.usd, 6), calls = calls + 1`).run(askDay(), usd);
+          if (usd > 0) Promise.resolve(ctx.call("spend.record", { provider: "claude", purpose: "memory.ask", usd, calls: 1 })).catch(() => {});
+        },
       } });
     ctx.tool("memory.ask", {
       description: "Vyre Memory: answer a question about the user's own past work or life (a decision, a file, a bug, a date, who someone is, what was deployed) from every past session and personal fact, with its sources, or abstain. Ask it before saying you do not know or cannot remember something from earlier sessions, and name the session it cites. Returns { answer, answer_id, confidence, abstained, known, sources: [{ session, seq, name, quote, ts }], via: fact|retrieval|corrected|null, latency_ms, cost_usd }; the person corrects an answer where it is shown with memory.correct { answer: answer_id }. answer is null and abstained true when memory does not know yet; known lists what it does know that bears on it. At the day's cap (config.memory.model.askDailyUsd, $0.50) limited is true and message says so: show it, never nothing. stream: true emits memory.thinking { id, stage: understanding|searching|reading|checking } as each step starts, then memory.answered { id, abstained, limited }; id is the caller's (so it can match the events before the reply comes back), else a new one, and is in the reply.",
@@ -1462,7 +1478,7 @@ export default {
         off();
         for (const o of offs) o();
         revokedOff();
-        for (const o of modelOffs) if (typeof o === "function") o();
+        for (const o of [...modelOffs, ...capOffs]) if (typeof o === "function") o();
         model.stop();
         if (running) await running.catch(() => {});
       },

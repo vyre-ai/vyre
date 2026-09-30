@@ -1,0 +1,19 @@
+{
+  "name": "spend",
+  "version": "0.1.0",
+  "description": "One ledger of what agents, sessions and memory spend, per provider and per day (UTC), and a daily cap per provider. At the cap the spending thread pauses with one line and a raise-it action; nothing asks on each call.",
+  "roles": ["box", "local"],
+  "requires": [],
+  "does": { "tools": ["spend.record", "spend.check", "spend.summary", "spend.raise"] },
+  "watches": { "emits": ["spend.capped", "spend.raised"] },
+  "shows": { "cli": [] },
+  "settings": [
+    {"key": "spend.claude.daily_usd", "group": "spend", "label": "Daily spend cap for Claude (USD)", "help": "Everything on Claude together, each UTC day. At the cap the spending thread pauses and memory answers from facts and search. Empty means no cap.", "type": "number", "min": 0, "levels": ["account"], "apply": "live"},
+    {"key": "spend.codex.daily_usd", "group": "spend", "label": "Daily spend cap for Codex (USD)", "help": "Everything on Codex together, each UTC day. Empty means no cap.", "type": "number", "min": 0, "levels": ["account"], "apply": "live"},
+    {"key": "spend.gemini.daily_usd", "group": "spend", "label": "Daily spend cap for Gemini (USD)", "help": "Everything on Gemini together, each UTC day. Empty means no cap.", "type": "number", "min": 0, "levels": ["account"], "apply": "live"},
+    {"key": "spend.grok.daily_usd", "group": "spend", "label": "Daily spend cap for Grok (USD)", "help": "Everything on Grok together, each UTC day. Empty means no cap.", "type": "number", "min": 0, "levels": ["account"], "apply": "live"},
+    {"key": "spend.kimi.daily_usd", "group": "spend", "label": "Daily spend cap for Kimi (USD)", "help": "Everything on Kimi together, each UTC day. Empty means no cap.", "type": "number", "min": 0, "levels": ["account"], "apply": "live"}
+  ],
+  "needs": {},
+  "teaches": {}
+}

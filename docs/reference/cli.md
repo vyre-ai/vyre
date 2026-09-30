@@ -69,6 +69,7 @@ In the order `vyre help` lists them.
 | [`vyre apps`](#vyre-apps) | drive the Mac's apps: timer 10 min, note: buy milk, weather tomorrow |
 | [`vyre team`](#vyre-team) | Project teammates: add one, send it work, read what came back |
 | [`vyre sideview`](#vyre-sideview) | this session on the left, Chrome filling the rest |
+| [`vyre spend`](#vyre-spend) | today's spend per provider and its daily cap |
 | [`vyre statusline`](#vyre-statusline) | Vyre's line under every Claude Code session |
 | [`vyre voice`](#vyre-voice) | push-to-talk from the terminal (Enter to talk), status, and the speech key |
 | [`vyre mcp`](#vyre-mcp) | the Vyre MCP server on stdio, for plain claude |
@@ -670,6 +671,22 @@ This session on the left, Chrome filling the rest.
 ```
 vyre sideview [open|close|status] [--glass [name]] [--url U] [--ratio R] [--terminal] [--json]
 ```
+
+### vyre spend
+
+Today's spend per provider and its daily cap.
+
+```
+vyre spend [raise <provider> <usd|+usd|off>] [--json]
+```
+
+Read it:
+  vyre spend                          today's spend (UTC) per provider against its cap
+Change a cap:
+  vyre spend raise <provider> <usd>   set the cap in dollars
+  vyre spend raise <provider> +<usd>  add to it
+  vyre spend raise <provider> off     no cap
+At a cap the spending thread pauses with one line, and Vyre Memory answers from facts and search.
 
 ### vyre statusline
 

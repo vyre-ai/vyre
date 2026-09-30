@@ -119,7 +119,7 @@ export function checkAsk(reply, passages, { header: withHeader = true } = {}) {
 /**
  * @param {{ db: import("node:sqlite").DatabaseSync, answer: (i: any) => Promise<any>, retrieve: (i: any) => Promise<any>,
  *   runner?: ((r: { system: string, prompt: string, model: string, maxUsd: number, onText?: (soFar: string) => void }) => Promise<{ text: string, usd: number }>)|null,
- *   model?: () => string, budget?: { allow: (usd: number) => boolean, charge: (usd: number) => void },
+ *   model?: () => string, budget?: { allow: (usd: number) => boolean, charge: (usd: number) => void, why?: () => string | null },
  *   fixes?: ReturnType<typeof import("./fix.js").fixes>|null, personalQ?: (q: string) => boolean, trusted?: (session: string) => boolean,
  *   decide?: ((i: { q: string, project_cwds: string[], writes?: any }) => Promise<any>)|null }} deps
  *   decide: what the person decided (core/memory/decisions.js), tried before the model: "Now: X (since 24 Sep). Before: Y."
@@ -224,7 +224,7 @@ export function asker({ db, answer, retrieve, runner = null, model = () => "haik
     const hash = askHash(prompt);
     let text = /** @type {any} */ (get.get(hash))?.reply ?? null, usd = 0, shown = false;
     // The day's cap is reached: say so, with where to change it, and never answer quietly with nothing.
-    if (text == null && runner && !budget.allow(MAX_USD)) return done({ via: "retrieval", why: "daily limit", limited: true, message: LIMIT_MESSAGE });
+    if (text == null && runner && !budget.allow(MAX_USD)) return done({ via: "retrieval", why: "daily limit", limited: true, message: (budget.why && budget.why()) || LIMIT_MESSAGE });
     if (text == null && runner) {
       stage("reading");
       try {
