@@ -80,11 +80,11 @@ struct CapsuleView: View {
         .frame(width: Theme.width, height: CapsuleLayout.panelHeight(model), alignment: .top)
         .background { if snapshot { Theme.carbon } else { Backdrop() } }
         .clipShape(RoundedRectangle(cornerRadius: Theme.radius, style: .continuous))
-        .overlay(RoundedRectangle(cornerRadius: Theme.radius, style: .continuous).strokeBorder(Theme.ruleStrong.opacity(0.9), lineWidth: 1))
+        .overlay(RoundedRectangle(cornerRadius: Theme.radius, style: .continuous).strokeBorder(Glass.border, lineWidth: 1))
         .overlay(alignment: .top) {
             // A hairline of light along the top edge, as on the Mac's own panels.
             RoundedRectangle(cornerRadius: Theme.radius, style: .continuous)
-                .strokeBorder(LinearGradient(colors: [Theme.bone.opacity(0.10), .clear], startPoint: .top, endPoint: .center), lineWidth: 1)
+                .strokeBorder(LinearGradient(colors: [Theme.bone.opacity(Glass.topEdgeAlpha), .clear], startPoint: .top, endPoint: .center), lineWidth: 1)
                 .allowsHitTesting(false)
         }
         .onChange(of: focus.count) { boxFocused = true }
@@ -919,23 +919,4 @@ struct MarkView: View {
         }
         .frame(width: size, height: size)
     }
-}
-
-/// The panel's ground: the system's HUD material under a carbon wash, so it reads as Vyre and still
-/// lets the desktop through a little, like Spotlight.
-struct Backdrop: NSViewRepresentable {
-    func makeNSView(context: Context) -> NSVisualEffectView {
-        let v = NSVisualEffectView()
-        v.material = .hudWindow
-        v.blendingMode = .behindWindow
-        v.state = .active
-        v.appearance = NSAppearance(named: .darkAqua)
-        let wash = NSView()
-        wash.wantsLayer = true
-        wash.layer?.backgroundColor = NSColor(srgbRed: 0x16 / 255, green: 0x15 / 255, blue: 0x13 / 255, alpha: 0.86).cgColor
-        wash.autoresizingMask = [.width, .height]
-        v.addSubview(wash)
-        return v
-    }
-    func updateNSView(_ v: NSVisualEffectView, context: Context) {}
 }

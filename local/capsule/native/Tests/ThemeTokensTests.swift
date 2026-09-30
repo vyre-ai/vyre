@@ -1,4 +1,5 @@
 // capsule-suite: themeTokensSuite
+// capsule-suite: glassSuite
 // The Capsule's Theme reads the one tokens.json through Tokens.generated.swift: the same colours
 // as the app and the Deck, and the same status words, most urgent first.
 
@@ -19,5 +20,22 @@ let themeTokensSuite = Suite("theme tokens") { t in
         t.ok(Theme.status("needsYou")?.color == Tokens.dark.beacon)
         t.ok(Theme.status("running")?.color == Tokens.dark.focus)
         t.ok(Theme.status("nope") == nil)
+    }
+}
+
+let glassSuite = Suite("glass skin") { t in
+    t.test("Deep glass: a 0.62 tint over the material, opaque when transparency is reduced") {
+        Glass.reduceTransparencyOverride = false
+        t.eq(Glass.groundAlpha, 0.62)
+        t.ok(Glass.border == Theme.bone.opacity(0.14))
+        Glass.reduceTransparencyOverride = true
+        t.eq(Glass.groundAlpha, 1.0)
+        t.ok(Glass.border == Theme.ruleStrong.opacity(0.9))
+        Glass.reduceTransparencyOverride = nil
+    }
+
+    t.test("the skin keeps the panel's width and the CTA colour from the token") {
+        t.eq(Theme.width, 680)
+        t.ok(Theme.signal == Tokens.dark.focus)
     }
 }

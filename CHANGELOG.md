@@ -4,6 +4,9 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+- Capsule: the Deep glass skin. The panel is a 0.62 carbon tint over the system blur with a light
+  border, top edge and soft shadow; it keeps its width and every feature. With Reduce Transparency
+  on, the ground is the plain opaque panel. The call-to-action colour still comes from the tokens.
 - Capsule: Vyre IQ answers stream. While it works, the answer card names each step in a word
   (Understanding, Searching your sessions, Reading, Writing, Checking) and shows the draft
   dimmed under "Checking" until the checked answer replaces it; an answer that ends "Not sure

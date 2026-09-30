@@ -107,6 +107,12 @@ Worktree ../vyre-capsule-02-iq, based on main 9381ab15. Landed:
   (https://github.com/vyre-ai/vyre/actions/runs/36658983627).
 - No restyling: the draft reuses Theme.reply/stone/ash; app-design's glass theme will restyle it.
 
+## Doing (session 8, 2026-09-30, 0.2, work/capsule-02-glass off work/capsule-02-iq2 7b366c9b)
+Handed: IQ streaming (work/capsule-02-iq2 7b366c9b, CI green 393/393) to reviewer-2 (unreachable at handoff, notified integrator).
+1. Deep glass skin (Sources/UI/Glass.swift, glassSuite): 0.62 tint, border, reduce-transparency fallback. CI run pending.
+   Not done: the light variant (design shows one over bright wallpapers); the Capsule is dark only today.
+Next: 2. computer-use oversight panel UI with capsule-sight. 3. the other approved 0.2 screens (capsule-02.html, chat-components.html).
+
 ## Doing (session 7, 2026-09-28, 0.1.1 on work/capsule-011)
 work/capsule-011 is rebased on stage/0.1.1 e793afdf (the integrator's final P-256 + voice parity).
 The user's decisions for 0.1.1, all done; Swift 386/386 (build.sh test, build lock):
