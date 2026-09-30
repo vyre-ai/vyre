@@ -197,17 +197,4 @@ enum OversightLayout {
         let end = start + maxSteps
         return (Array(r.steps[start..<end]), start, n - end)
     }
-
-    static func height(_ r: OversightRun, collapsed: Bool, canSteer: Bool, hasLine: Bool) -> CGFloat {
-        if collapsed { return compactHeight }
-        let v = visible(r)
-        var h = header + v.steps.reduce(0) { $0 + rowHeight($1) } + 12
-        if v.before > 0 { h += more }
-        if v.after > 0 { h += more }
-        if r.voice != nil { h += voice }
-        if canSteer { h += prompt }
-        h += controls
-        if hasLine { h += line }
-        return h
-    }
 }

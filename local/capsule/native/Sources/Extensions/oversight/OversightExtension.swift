@@ -52,13 +52,13 @@ final class OversightExtension: CapsuleExtension {
 
     /// Open, resize or close the window to match the model. Called on every event.
     func sync() {
-        guard let r = model.active else {
-            window?.close()
+        guard model.active != nil else {
+            if window?.isOpen == true { window?.close() }
             shownSize = .zero
             return
         }
-        let size = CGSize(width: OversightLayout.width, height: OversightLayout.height(
-            r, collapsed: model.collapsed, canSteer: model.canSteer, hasLine: model.line != nil))
+        // Sized by the view itself, so the window never clips or leaves a gap.
+        let size = NSHostingView(rootView: OversightView(model: model)).fittingSize
         let w = window ?? host.floatingWindow(owner: Self.id)
         if window == nil {
             window = w

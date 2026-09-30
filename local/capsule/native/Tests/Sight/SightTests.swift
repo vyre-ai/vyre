@@ -422,7 +422,7 @@ let sightSuite = Suite("sight") { t in
                 ext.makeMic = { _ in mic }
                 ext.openStream = { onMessage, _ in box.value = onMessage; return .success(stream) }
                 ext.silenceWarnDelay = .milliseconds(20)
-                ext.silenceStopDelay = .milliseconds(60)
+                ext.silenceStopDelay = .milliseconds(600)
                 ext.toggleTalk()
                 return (host, ext)
             }

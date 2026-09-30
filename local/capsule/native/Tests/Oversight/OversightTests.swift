@@ -201,7 +201,7 @@ let oversightSuite = Suite("oversight") { t in
 
     t.test("pause, resume and stop are the person's own calls, keyed by run, no presence prompt") {
         let link = OvLink()
-        let ok: Bool? = t.wait { @MainActor () -> Bool in
+        let ok: Bool? = MainActor.assumeIsolated { () -> Bool in
             let (_, ext, _) = make(link)
             link.emit(plan())
             ext.model.pause()
@@ -223,7 +223,7 @@ let oversightSuite = Suite("oversight") { t in
 
     t.test("only a step that has not started can be retexted; empty or unchanged text sends nothing") {
         let link = OvLink()
-        _ = t.wait { @MainActor () -> Bool in
+        _ = MainActor.assumeIsolated { () -> Bool in
             let (_, ext, _) = make(link)
             link.emit(plan())
             ext.model.edit(step: "s3", to: "Something else")      // running: refused
@@ -243,7 +243,7 @@ let oversightSuite = Suite("oversight") { t in
 
     t.test("steering sends the words trimmed; the plan the agent resends is what changes") {
         let link = OvLink()
-        _ = t.wait { @MainActor () -> Bool in
+        _ = MainActor.assumeIsolated { () -> Bool in
             let (_, ext, _) = make(link)
             link.emit(plan())
             ext.model.steer("   "); ext.model.steer(" skip weekends ")
@@ -257,13 +257,13 @@ let oversightSuite = Suite("oversight") { t in
     t.test("a refused call is said in words under the controls, then the window grows to fit it") {
         let link = OvLink()
         link.failWith = "That step already started."
-        let ok: Bool? = t.wait { @MainActor () -> Bool in
+        let ok: Bool? = MainActor.assumeIsolated { () -> Bool in
             let (host, ext, _) = make(link)
             link.emit(plan())
             let before = host.window.frame.height
             ext.model.stop()
             let said = settle { ext.model.line == "That step already started." }
-            return said && host.window.frame.height == before + OversightLayout.line
+            return said && host.window.frame.height > before
         }
         t.eq(ok, true)
     }
@@ -284,7 +284,7 @@ let oversightSuite = Suite("oversight") { t in
             let top = host.window.frame.maxY, left = host.window.frame.minX
             let full = host.window.frame.height
             ext.model.collapsed = true
-            t.eq(host.window.frame.height, OversightLayout.compactHeight)
+            t.ok(host.window.frame.height < full - 100, "small \(host.window.frame.height) vs \(full)")
             t.eq(host.window.frame.maxY, top); t.eq(host.window.frame.minX, left)
             ext.model.collapsed = false
             t.eq(host.window.frame.height, full)
@@ -313,9 +313,6 @@ let oversightSuite = Suite("oversight") { t in
         // A long step takes two lines, never more.
         t.eq(OversightLayout.lines(String(repeating: "x", count: 200)), 2)
         t.eq(OversightLayout.lines("Short"), 1)
-        let h1 = OversightLayout.height(short, collapsed: false, canSteer: true, hasLine: false)
-        t.eq(OversightLayout.height(short, collapsed: false, canSteer: false, hasLine: false), h1 - OversightLayout.prompt)
-        t.eq(OversightLayout.height(short, collapsed: true, canSteer: true, hasLine: true), OversightLayout.compactHeight)
     }
 
     t.test("the last place the person dragged it is where it opens next, top-left kept") {
@@ -344,19 +341,19 @@ let oversightSuite = Suite("oversight") { t in
         }
     }
 
-    t.test("the view builds for a full plan, a paused one and the small one") {
+    t.test("the window is as tall as the view, full, paused and small") {
         MainActor.assumeIsolated {
-            let (_, ext, link) = make()
+            let (host, ext, link) = make()
             link.emit(plan())
             link.emit(ev("hands.voice", ["run": "r1", "text": "skip weekends"]))
             let full = NSHostingView(rootView: OversightView(model: ext.model)).fittingSize
             t.eq(full.width, OversightLayout.width)
-            t.ok(abs(full.height - OversightLayout.height(ext.model.active!, collapsed: false, canSteer: true, hasLine: false)) <= 6,
-                 "view \(full.height) vs layout")
+            t.eq(host.window.frame.height, full.height)
             link.emit(ev("hands.paused", ["run": "r1"]))
             ext.model.collapsed = true
             let small = NSHostingView(rootView: OversightView(model: ext.model)).fittingSize
-            t.ok(abs(small.height - OversightLayout.compactHeight) <= 6, "small \(small.height)")
+            t.eq(host.window.frame.height, small.height)
+            t.ok(small.height < 50 && small.height > 20, "small \(small.height)")
         }
     }
 }
