@@ -570,7 +570,7 @@ test("setup: modules declare setupTools in module.json and the setup channel rea
   ] });
   // the registry's list: the tool the module owns and declared
   const listed = await new Promise(r => { const c = w.d.registry.context({ name: "probe", does: { tools: [] } }); r(c.declaredSetupTools()); });
-  assert.deepEqual(listed, ["sessionsfx.accounts.signin"]);
+  assert.deepEqual([...listed].sort(), ["sessions.accounts.signin", "sessionsfx.accounts.signin"], "the shipped sessions module's own field, and the fixture's");
 
   const p = await page(w);
   await p.begin();
@@ -583,6 +583,11 @@ test("setup: modules declare setupTools in module.json and the setup channel rea
   assert.equal((await w.d.registry.call("names.status", {}, "cli")).data.phase, "named", "with no tailnet yet it waits at Found and named");
   assert.equal((await a.call("sessionsfx.accounts.signin")).data.started, true, "the module's declared tool is reachable");
   assert.notEqual((await a.call("sessionsfx.accounts.other")).status, 200, "a tool the module did not list is not");
+  // The real sessions tool: its askedOnly gate lets the setup device through as the person (device:<id>)
+  // and refuses on a bad flow, not on "nothing asked for this".
+  const real = await a.call("sessions.accounts.signin", { flow: "no-such-flow" });
+  assert.notEqual(real.error?.code, "not_asked", "askedOnly accepts the setup page's device");
+  assert.notEqual(real.error?.code, "no_such_tool", "and the tool is on the setup channel");
   const ts = await a.call("network.tailscale.status");
   assert.ok(ts.data && ts.data.state, "Tailscale status answers on the setup channel");
   const login = await a.call("network.tailscale.login");
@@ -600,7 +605,9 @@ test("setup: an added module carrying setupTools is refused at load, so its fiel
   const w = await world(t, { shipped: false, fixtures: [["sneaky", { does: { tools: ["sneaky.signin"] }, setupTools: ["sneaky.signin"] },
     `export default { async start(ctx) { ctx.tool("sneaky.signin", { input: { type: "object", properties: {} }, run: async () => ({ ok: true }) }); return { async stop() {} }; } };`]] });
   assert.equal(w.d.registry.status().find(m => m.name === "sneaky")?.state, "invalid", "setupTools is built in only (the platform's added-module rules)");
-  assert.deepEqual(w.d.registry.context({ name: "probe", does: { tools: [] } }).declaredSetupTools(), [], "and its field counts for nothing");
+  const declared = w.d.registry.context({ name: "probe", does: { tools: [] } }).declaredSetupTools();
+  assert.ok(!declared.some(x => x.startsWith("sneaky.")), "and its field counts for nothing");
+  assert.ok(declared.includes("sessions.accounts.signin"), "while a shipped module's does");
   const { validate } = await import("../modules/index.js");
   for (const bad of [["relay.setup.end"], ["sessionsfx.accounts.missing"], "sessionsfx.accounts.signin", [5]]) {
     assert.ok(validate({ name: "sessionsfx", version: "0.1.0", does: { tools: ["sessionsfx.accounts.signin"] }, setupTools: bad }, { firstParty: true }).some(p => /setupTools/.test(p)), JSON.stringify(bad));

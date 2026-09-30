@@ -50,6 +50,18 @@ final class FakeVyred: @unchecked Sendable {
         socket = (vyScratch("sock") as NSString).appendingPathComponent("\(name).sock")
     }
 
+    /// A tool that streams a live draft to a caller asking for application/x-ndjson, as vyred does:
+    /// each `draft(id, text)` is one {"draft":{id,text}} chunk written at once; the result is the last
+    /// {"result":...} line. Called without that Accept header it answers plain JSON, drafts dropped.
+    typealias DraftTool = ([String: Any], _ draft: @escaping (String, String) -> Void) -> Any
+    private var drafters: [String: DraftTool] = [:]
+
+    func draftTool(_ name: String, _ fn: @escaping DraftTool) {
+        lock.lock(); if tools[name] == nil { toolOrder.append(name) }; drafters[name] = fn
+        tools[name] = { input in fn(input) { _, _ in } }
+        lock.unlock()
+    }
+
     func tool(_ name: String, _ fn: @escaping Tool) {
         lock.lock(); if tools[name] == nil { toolOrder.append(name) }; tools[name] = fn; lock.unlock()
     }
@@ -134,6 +146,27 @@ final class FakeVyred: @unchecked Sendable {
             lock.lock(); toolHeaders.append((name, h)); let hook = headerHook; lock.unlock()
             let (err, back) = hook?(name, h) ?? (nil, [:])
             extra = back
+            lock.lock(); let drafter = drafters[name]; lock.unlock()
+            if err == nil, let drafter, (h["accept"] ?? "").contains("x-ndjson") {
+                let input = (VJ.decode(body) as? [String: Any]) ?? [:]
+                lock.lock(); calls.append((name, input)); lock.unlock()
+                var opened = false
+                let out = drafter(input) { id, text in
+                    if !opened {
+                        opened = true
+                        _ = VySock.writeAll(c, Data("HTTP/1.1 200 OK\r\nContent-Type: application/x-ndjson\r\nTransfer-Encoding: chunked\r\nConnection: close\r\n\r\n".utf8), deadline: Date().addingTimeInterval(5))
+                    }
+                    let line = String(decoding: VJ.encode(["draft": ["id": id, "text": text]]) ?? Data(), as: UTF8.self) + "\n"
+                    _ = VySock.writeAll(c, self.chunk(line), deadline: Date().addingTimeInterval(5))
+                }
+                let result: [String: Any] = (out as? FakeError).map { ["error": ["code": $0.code, "message": $0.message]] } ?? ["data": out]
+                if opened {
+                    let last = String(decoding: VJ.encode(["result": result]) ?? Data(), as: UTF8.self) + "\n"
+                    _ = VySock.writeAll(c, self.chunk(last) + Data("0\r\n\r\n".utf8), deadline: Date().addingTimeInterval(5))
+                    close(c); return
+                }
+                respond(c, result); close(c); return
+            }
             answer = err.map { ["error": ["code": $0.code, "message": $0.message]] as Any } ?? route(method, path, query, body)
         } else { answer = route(method, path, query, body) }
         respond(c, answer, headers: extra)

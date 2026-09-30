@@ -43,6 +43,18 @@ struct TypingReport {
     }
 }
 
+/// Runs the main loop until the panel's frame has not changed for three turns (or 5 s): the layout
+/// pass is what is waited on, so a slow runner only takes longer.
+@MainActor func settle(_ pc: PanelController, minMs: Double = 0) {
+    let floor = Date().addingTimeInterval(minMs / 1000), end = Date().addingTimeInterval(5 + minMs / 1000)
+    var last = -1, stable = 0
+    while (stable < 3 || Date() < floor) && Date() < end {
+        pc.host.layoutSubtreeIfNeeded(); pc.panel.displayIfNeeded()
+        RunLoop.main.run(until: Date().addingTimeInterval(0.02))
+        if pc.frameChanges == last { stable += 1 } else { stable = 0; last = pc.frameChanges }
+    }
+}
+
 @MainActor func typeTwenty(_ text: String = "safari northwind menu", gapMs: Double = 90) -> TypingReport {
     let v = VyredClient(socket: vyScratch("typing") + "/none.sock")
     let apps = (try? FileManager.default.contentsOfDirectory(atPath: "/System/Applications"))?.filter { $0.hasSuffix(".app") }.prefix(8).map { "/System/Applications/" + $0 } ?? []
@@ -54,12 +66,15 @@ struct TypingReport {
     let pc = PanelController(model: model)
     pc.showOffscreen()
     var report = TypingReport()
-    var seen: [String: Date] = [:], gone: [String: Date] = [:]
+    // Counted in keys, not seconds: a row that vanished and came back within three keys flickered.
+    // The stale timer is set long, so a loaded runner cannot drop a row the wave was about to replace.
+    model.staleAfter = 30
+    var keyNo = 0
+    var seen: [String: Int] = [:], gone: [String: Int] = [:]
     let sub = model.$groups.sink { gs in
         let ids = Set(gs.flatMap { $0.items.map(\.id) })
-        let now = Date()
-        for id in ids { if let g = gone[id], now.timeIntervalSince(g) < 0.3 { report.flickers += 1 }; gone[id] = nil; seen[id] = now }
-        for (id, _) in seen where !ids.contains(id) { gone[id] = now; seen[id] = nil }
+        for id in ids { if let g = gone[id], keyNo - g < 3 { report.flickers += 1 }; gone[id] = nil; seen[id] = keyNo }
+        for (id, _) in seen where !ids.contains(id) { gone[id] = keyNo; seen[id] = nil }
     }
     var woke: UInt64 = 0
     var spans: [Double] = []
@@ -70,9 +85,10 @@ struct TypingReport {
     CFRunLoopAddObserver(CFRunLoopGetMain(), obs, .commonModes)
     defer { CFRunLoopRemoveObserver(CFRunLoopGetMain(), obs, .commonModes) }
     func pump(_ ms: Double) { RunLoop.main.run(until: Date().addingTimeInterval(ms / 1000)) }
-    pump(50)
+    settle(pc)
     let startJumps = pc.frameChanges
     for c in text {
+        keyNo += 1
         let l0 = pc.host.layouts
         let t0 = DispatchTime.now().uptimeNanoseconds
         model.text.append(c)
@@ -85,7 +101,8 @@ struct TypingReport {
     // The first key may size the panel once (empty to results); every other change is a jump.
     report.jumpsWhileTyping = max(0, pc.frameChanges - startJumps - 1)
     let beforeSettle = pc.frameChanges
-    pump(700)
+    // The waves land, then the layout is still: waited on, not timed.
+    settle(pc, minMs: 700)
     report.jumpsAfter = pc.frameChanges - beforeSettle
     report.busy = spans
     sub.cancel()

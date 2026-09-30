@@ -53,9 +53,13 @@ test("sendArgs: --image repeats, --raw keeps a ! or # as words, a bare --image i
   assert.deepEqual(sendArgs(["a1b2", "see", "--image", "x.png"]).images, [], "after the text it is words");
 });
 
-test("routeLine: ! runs, # remembers, the rest is sent; raw sends as typed", () => {
+test("routeLine: ! runs, /remember remembers, a leading # is a tag and is sent; raw sends as typed", () => {
   assert.deepEqual(routeLine("!ls -la"), { tool: "threads.shell", body: "ls -la" });
-  assert.deepEqual(routeLine("# prefer tabs in Harlow Legal's scripts"), { tool: "threads.remember", body: "prefer tabs in Harlow Legal's scripts" });
+  assert.deepEqual(routeLine("/remember prefer tabs in Harlow Legal's scripts"), { tool: "threads.remember", body: "prefer tabs in Harlow Legal's scripts" });
+  assert.deepEqual(routeLine("/remember"), { tool: "threads.remember", body: "" });
+  assert.deepEqual(routeLine("/remembering"), { tool: "threads.send", body: "/remembering" });
+  assert.deepEqual(routeLine("#GHLapikey to inventory"), { tool: "threads.send", body: "#GHLapikey to inventory" }, "# tags, it no longer remembers");
+  assert.deepEqual(routeLine("/remember x", true), { tool: "threads.send", body: "/remember x" });
   assert.deepEqual(routeLine("/compact"), { tool: "threads.send", body: "/compact" });
   assert.deepEqual(routeLine("draft the menu! #2"), { tool: "threads.send", body: "draft the menu! #2" });
   assert.deepEqual(routeLine("!ls", true), { tool: "threads.send", body: "!ls" });
@@ -377,9 +381,9 @@ test("threads chat parity: model, thinking, commands, shell and !, remember and 
   assert.equal((await vyre(["threads", "send", id, "!"], w.env)).code, 2);
   assert.equal((await vyre(["threads", "send", id, "--queue", "!ls"], w.env)).code, 2);
 
-  // # mode: the project's CLAUDE.md in the thread's folder, or the folder's private one. Never user.
+  // /remember: the project's CLAUDE.md in the thread's folder, or the folder's private one. Never user.
   const r1 = await vyre(["threads", "remember", id, "prefer", "tabs"], w.env);
-  const r2 = await vyre(["threads", "send", id, "# prices in dollars"], w.env);
+  const r2 = await vyre(["threads", "send", id, "/remember prices in dollars"], w.env);
   const r3 = await vyre(["threads", "remember", id, "--scope", "local", "juno", "reviews", "drafts"], w.env);
   if (w.have.has("threads.remember")) {
     for (const r of [r1, r2, r3]) assert.equal(r.code, 0, r.out);

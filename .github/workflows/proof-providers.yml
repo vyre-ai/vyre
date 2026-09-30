@@ -1,0 +1,44 @@
+# Manual proof of Codex and Grok Build through Vyre's ACP driver against a real endpoint, using the
+# ONE capped OpenRouter key in the protected "eval" environment (secret OPENROUTER_EVAL_KEY). Never
+# runs on push. See scripts/provider-proof.mjs for what it checks. Every CLI flag and login path it
+# relies on is marked UNVERIFIED in core/sessions/drivers/{codex,grok}.js until this passes once.
+name: proof-providers
+on:
+  workflow_dispatch:
+    inputs:
+      provider:
+        description: which provider to prove
+        type: choice
+        options: [both, codex, grok]
+        default: both
+permissions:
+  contents: read
+jobs:
+  proof:
+    runs-on: ubuntu-latest
+    environment: eval
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm ci --no-audit --no-fund
+      - name: Codex and its ACP adapter
+        if: inputs.provider != 'grok'
+        run: npm i -g @openai/codex @agentclientprotocol/codex-acp || npm i -g @openai/codex @zed-industries/codex-acp
+      - name: Grok Build
+        if: inputs.provider != 'codex'
+        run: |
+          curl -fsSL https://x.ai/cli/install.sh | bash
+          echo "$HOME/.grok/bin" >> "$GITHUB_PATH"
+      - name: Prove codex
+        if: inputs.provider != 'grok'
+        env:
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_EVAL_KEY }}
+        run: node scripts/provider-proof.mjs codex
+      - name: Prove grok
+        if: inputs.provider != 'codex'
+        env:
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_EVAL_KEY }}
+        run: node scripts/provider-proof.mjs grok

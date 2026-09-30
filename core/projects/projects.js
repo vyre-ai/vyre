@@ -110,6 +110,16 @@ export const MIGRATIONS = [
     at INTEGER NOT NULL
   );
   `,
+  // Local version history for a project's folder (github.project.local-init): 'kept' once it is a
+  // repo, 'declined' when the person said no, 'offered' once the one quiet question was asked.
+  // Any row means never ask again.
+  `
+  CREATE TABLE projects_history (
+    project TEXT PRIMARY KEY,
+    state   TEXT NOT NULL,
+    at      INTEGER NOT NULL
+  );
+  `,
 ];
 
 /** @typedef {import("./markers.js").Project} Project */
@@ -183,6 +193,15 @@ export class Projects {
    * Make a project from what a person chose. The home defaults to a new folder in the projects
    * folder. A folder that already has a marker is refused, not overwritten.
    */
+  /** The folder create() would use, and whether it is new (missing or empty): the quiet-history rule needs to know before create() makes it. */
+  previewHome({ name, home }) {
+    const slug = M.slugify(String(name || "").trim());
+    const where = M.real(home ? untilde(home) : path.join(this.config.projectsDir, slug || "project"));
+    let fresh = true;
+    try { fresh = fs.readdirSync(where).length === 0; } catch {}
+    return { where, fresh, isRepo: fs.existsSync(path.join(where, ".git")) };
+  }
+
   create({ name, home, org, workspaces = [], threads = [], people = [], watchers = [], from_thread }) {
     const clean = String(name || "").trim();
     if (!clean) throw new Error("a project needs a name");
@@ -471,9 +490,35 @@ export class Projects {
     return { project: p.slug, candidates: [], text };
   }
 
+  /**
+   * Change a project's name. The slug is pinned in the marker first, so nothing that holds it (access
+   * grants, teammates, sessions) loses the project, and the avatar seed is already stored.
+   */
+  rename(ref, name) {
+    const p = this.resolve(ref);
+    const clean = String(name || "").trim();
+    if (!clean) throw Object.assign(new Error("a project needs a name"), { code: "bad_input" });
+    M.write(p.home, { slug: p.slug, name: clean, avatar_seed: p.avatar_seed });
+    this.db.prepare("UPDATE projects_projects SET name = ? WHERE slug = ?").run(clean, p.slug);
+    this.refresh();
+    const next = this.resolve(p.slug);
+    this.emit("project.changed", { project: p.slug, name: next.name }, { project: p.slug });
+    return next;
+  }
+
+  /** Hide a project from the list (its folder, threads and history stay), or bring it back. */
+  archive(ref, archived = true) {
+    const p = this.resolve(ref);
+    M.write(p.home, { slug: p.slug, archived_at: archived ? Date.now() : null });
+    this.refresh();
+    const next = this.resolve(p.slug);
+    this.emit("project.changed", { project: p.slug, archived: Boolean(next.archived_at) }, { project: p.slug });
+    return next;
+  }
+
   /** Projects for the list: newest activity first. */
-  list({ walk = true } = {}) {
-    const list = this.refresh({ walk });
+  list({ walk = true, archived = false } = {}) {
+    const list = this.refresh({ walk }).filter(p => archived || !p.archived_at);
     const member = this.membership();
     const sessions = new Map(this.sessions().map(s => [s.id, s]));
     const out = list.map(p => {
@@ -487,7 +532,7 @@ export class Projects {
       // picks: the picked session ids themselves (subagents folded to their parent), for Memory's
       // rooms. threads and picked stay counts: the CLI and the Deck print them.
       return { slug: p.slug, name: p.name, org: p.org, home: p.home, workspaces: p.workspaces, people: p.people,
-        watchers: p.watchers, avatar_seed: p.avatar_seed, threads: picked + folder, picked, folder, picks: [...new Set(p.threads.map(M.parentOf))], last };
+        watchers: p.watchers, avatar_seed: p.avatar_seed, archived_at: p.archived_at, threads: picked + folder, picked, folder, picks: [...new Set(p.threads.map(M.parentOf))], last };
     });
     out.sort((a, b) => b.last - a.last || a.name.localeCompare(b.name));
     const problems = this.all.filter(p => p.error).map(p => ({ home: p.home, error: p.error }));

@@ -89,6 +89,12 @@ extension CapsuleModel {
         if p != currentProject { currentProject = p }
     }
 
-    /// memory.ask's context: the current project's slug, or nothing.
-    var askContext: [String: Any]? { currentProject.map { ["project": $0.slug] } }
+    /// memory.ask's context (C13): the current project's slug, and the session window's thread
+    /// while it shows one; nil with neither.
+    var askContext: [String: Any]? {
+        var c: [String: Any] = [:]
+        if let p = currentProject { c["project"] = p.slug }
+        if let t = sessionFront?.thread, !t.isEmpty { c["thread"] = t }
+        return c.isEmpty ? nil : c
+    }
 }
