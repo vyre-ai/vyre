@@ -22,6 +22,11 @@
 #                  put the previous release back (src.prev, vyre:prev, box.prev, android.json.prev)
 #                  and keep the current database. --restore-data also puts back the database from
 #                  before the update, after a typed confirm (or --yes off a terminal).
+#   vyre uninstall [--delete-data | --keep-data] [--yes]
+#                  stop Vyre and take it off this server. It lists every volume with what is in it and asks
+#                  once whether to delete them too (default: keep); saying yes IS the approval, so there
+#                  is no second confirm. --delete-data or --keep-data answer for a script. Your own
+#                  Docker, Tailscale install and this folder's .env are never touched.
 #   vyre logs      follow vyred's output
 #   vyre ...       anything else goes to the vyre CLI in the container
 
@@ -445,6 +450,65 @@ rollback() {
   exit 0
 }
 
+# What is in each volume, in the words a person would use. Unknown ones (a future volume) still
+# get listed by name, so the screen never hides one.
+vol_says() {
+  case "$1" in
+    *vyre-home) echo "your vault, memory, settings and this server's sign-ins" ;;
+    *vyre-work) echo "your projects and files (/work)" ;;
+    *vyre-agent-home) echo "your agents' own sign-in state and transcripts" ;;
+    *vyre-accounts) echo "each AI account's sign-in" ;;
+    *tailscale-state) echo "this server's Tailscale identity" ;;
+    *docker-api-bearer|*tailscale-sock) echo "internal, nothing of yours" ;;
+    *) echo "Vyre data" ;;
+  esac
+}
+
+# uninstall: complete and easy. Containers, agents' computers and the network always go, and so does
+# this wrapper. The volumes go only when the person says so. It never removes their Docker, their
+# Tailscale, or their Claude, Codex and Gemini installs on any device.
+uninstall() {
+  choice=ask
+  yes=0
+  for a in "$@"; do
+    case "$a" in
+      --delete-data) choice=delete ;;
+      --keep-data) choice=keep ;;
+      --yes|-y) yes=1 ;;
+      *) die "unknown option $a (vyre uninstall [--delete-data | --keep-data] [--yes])" ;;
+    esac
+  done
+  vols=$(docker volume ls -q --filter label=run.vyre=1 --filter label=com.docker.compose.project=vyre)
+  if [ "$choice" = ask ]; then
+    if [ -n "$vols" ]; then
+      echo "Vyre will stop and come off this server. These hold your data:"
+      for v in $vols; do printf '  %s: %s\n' "$v" "$(vol_says "$v")"; done
+      echo "Before deleting them you can save everything with: vyre backup"
+    fi
+    choice=keep
+    if [ -n "$vols" ] && [ "$yes" = 0 ] && (: </dev/tty) 2>/dev/null; then
+      printf 'Delete this data too? Saying yes deletes it for good. [y/N] ' >/dev/tty
+      read -r answer </dev/tty || answer=n
+      case "$answer" in y|Y|yes|YES|Yes) choice=delete ;; esac
+    fi
+  fi
+  # Agents' computers are containers on the computers network, made by vyred, not by compose.
+  comp=$(docker ps -aq --filter network=vyre-computers 2>/dev/null || true)
+  # shellcheck disable=SC2086 # one container id per word
+  [ -z "$comp" ] || docker rm -f $comp >/dev/null
+  compose --profile computers down --remove-orphans
+  if [ "$choice" = delete ]; then
+    # shellcheck disable=SC2086 # one volume name per word
+    [ -z "$vols" ] || docker volume rm $vols >/dev/null
+    say "your data is deleted"
+  else
+    say "your data is kept: a fresh install picks up where this left off"
+  fi
+  if [ -e "$WRAPPER" ] && grep -q "$MARK" "$WRAPPER" 2>/dev/null; then rm -f "$WRAPPER" 2>/dev/null || sudo rm -f "$WRAPPER"; fi
+  say "Vyre is off this server. $DIR stays with its .env; remove it with: sudo rm -rf $DIR"
+  say "One thing is left in your own hands: this server still shows in your Tailscale machines list. Remove it there."
+}
+
 BUILD=0
 if grep -q '^COMPOSE_FILE=.*compose.build.yml' "$DIR/.env" 2>/dev/null; then BUILD=1; fi
 
@@ -469,6 +533,10 @@ case "${1:-}" in
     for a in "$@"; do if [ "$a" = --rollback ]; then rollback "$@"; fi; done
     for a in "$@"; do case "$a" in --restore-data|--yes|-y) die "$a goes with --rollback" ;; esac; done
     update "$@"
+    ;;
+  uninstall)
+    shift
+    uninstall "$@"
     ;;
   logs)
     shift

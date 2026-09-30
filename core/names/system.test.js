@@ -265,7 +265,7 @@ function runScript(t, args, extra, prepare = () => {}, env = {}) {
   return { ...r, dir: box.dir, wrapper: box.wrapper, calls: box.calls() };
 }
 
-const READ_ONLY = /^(uname|id|docker (compose version|info|volume ls|manifest inspect))/;
+const READ_ONLY = /^(uname|id|docker (--version|compose version|info|volume ls|manifest inspect))/;
 
 test("install-box.sh: parses with sh -n", () => {
   execFileSync("sh", ["-n", SCRIPT]);
@@ -406,16 +406,14 @@ test("install-box.sh: uninstall dry run, and --purge lists the volumes and asks"
     fs.copyFileSync(path.join(REPO, "box", "vyre"), wrapper);
   });
   assert.equal(kept.status, 0, kept.stderr);
-  assert.match(kept.stdout, new RegExp(`^would run: sh -c 'cd "\\$1" && docker compose down --remove-orphans' sh ${kept.dir}$`, "m"));
-  assert.match(kept.stdout, new RegExp(`^would run: sudo rm -f ${kept.wrapper}$`, "m"));
-  assert.match(kept.stdout, /^ {2}vyre_vyre-home$/m);
-  // No terminal to ask on, so the answer is no.
-  assert.match(kept.stdout, /^kept the volumes$/m);
+  // The wrapper is the one uninstall (box/vyre): it lists the volumes and asks. Without --yes the
+  // installer hands it no answer, so it asks; a dry run only shows that call.
+  assert.match(kept.stdout, new RegExp(`^would run: env VYRE_DIR=${kept.dir} VYRE_WRAPPER=${kept.wrapper} ${kept.wrapper} uninstall$`, "m"));
   assert.ok(!kept.stdout.includes("docker volume rm"));
   for (const c of kept.calls) assert.match(c, READ_ONLY, `mutating call in a dry run: ${c}`);
 
   const gone = runScript(t, ["--dry-run", "--yes", "--uninstall", "--purge"]);
-  assert.match(gone.stdout, /^would run: docker volume rm vyre_vyre-home vyre_vyre-work vyre_tailscale-state$/m);
+  assert.match(gone.stdout, /^would run: docker compose -p vyre down --remove-orphans$/m, "no wrapper here, so the plain path");
   assert.ok(fs.existsSync(path.join(REPO, "box", "vyre")));
 });
 
@@ -428,9 +426,10 @@ esac
 exit 0` };
 
 test("install-box.sh: with no image to pull, it builds from a verified vyre.tgz in DIR/src", t => {
-  const r = runScript(t, ["--yes"], NO_IMAGE);
+  // A release with no signed image digests only installs when asked to build from source (fail closed).
+  const r = runScript(t, ["--yes"], NO_IMAGE, () => {}, { VYRE_BUILD: "tgz" });
   assert.equal(r.status, 0, r.stderr + r.stdout);
-  assert.match(r.stdout, /cannot pull ghcr\.io\/vyre-ai\/vyre:latest; building it from vyre\.tgz/);
+  assert.match(r.stdout, /building the image from vyre\.tgz \(VYRE_BUILD=tgz\)/);
   assert.equal(fs.readFileSync(path.join(r.dir, "src", "VERSION"), "utf8"), "0.3.0\n");
   assert.ok(fs.existsSync(path.join(r.dir, "src", "box", "Dockerfile")));
   assert.ok(!fs.existsSync(path.join(r.dir, "src.new")));
@@ -469,7 +468,7 @@ test("install-box.sh: a file with no line in SHA256SUMS stops the install", t =>
   const r = runScript(t, ["--yes"], NO_IMAGE, box => {
     const f = path.join(box.site, "SHA256SUMS");
     fs.writeFileSync(f, fs.readFileSync(f, "utf8").split("\n").filter(l => !l.endsWith("  vyre.tgz")).join("\n"));
-  });
+  }, { VYRE_BUILD: "tgz" });
   assert.equal(r.status, 1);
   assert.match(r.stderr, /SHA256SUMS has no line for vyre\.tgz/);
   assert.ok(!fs.existsSync(path.join(r.dir, "src")));

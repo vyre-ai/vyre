@@ -22,9 +22,17 @@ import { SCRATCH } from "../../../test/scratch.mjs";
 const BIN = path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "..", "..", "bin", "vyre");
 
 /** @returns {Promise<{ code: number, out: string, stdout: string }>} */
-const run = (root, args, env = {}) => new Promise(resolve =>
-  execFile(process.execPath, [BIN, ...args], { cwd: root, env: { ...process.env, VYRE_HOME: root, VYRE_TMPDIR: SCRATCH, NO_COLOR: "1", VYRE_NO_DIALOGS: "1", ...env }, timeout: 30_000 },
-    (err, stdout, stderr) => resolve({ code: err ? Number(/** @type {any} */ (err).code ?? 1) : 0, out: stdout + stderr, stdout })));
+const run = (root, args, env = {}, input = undefined) => new Promise(resolve => {
+  const child = execFile(process.execPath, [BIN, ...args], { cwd: root, env: { ...process.env, VYRE_HOME: root, VYRE_TMPDIR: SCRATCH, NO_COLOR: "1", VYRE_NO_DIALOGS: "1", ...env }, timeout: 30_000 },
+    (err, stdout, stderr) => resolve({ code: err ? Number(/** @type {any} */ (err).code ?? 1) : 0, out: stdout + stderr, stdout }));
+  // execFile's stdin isn't a TTY, so `vyre backup`/`restore` read a piped passphrase line from
+  // it (readPassphrase, core/cli/commands/up.js); every other verb ignores an unread stdin.
+  if (input !== undefined) child.stdin.end(input.endsWith("\n") ? input : input + "\n");
+  else child.stdin.end();
+});
+
+/** A backup passphrase good enough for the 12-character minimum, piped on stdin. */
+const PASSPHRASE = "correct horse battery staple";
 
 /** A home with a config, a store holding one row, and a sealed vault file. */
 function seeded(t) {
@@ -51,24 +59,29 @@ test("backup and restore: a round trip between two temp homes; restore refuses a
   const file = path.join(from, "..", `${path.basename(from)}-backup.tar.gz`);
   t.after(() => fs.rmSync(file, { force: true }));
 
-  const b = await run(from, ["backup", file, "--json"]);
+  const b = await run(from, ["backup", file, "--json"], {}, PASSPHRASE);
   assert.equal(b.code, 0, b.out);
   const made = JSON.parse(b.stdout);
   assert.equal(made.file, path.resolve(file));
   assert.deepEqual(made.included, ["config.json", "vyre.db", "vault"]);
   assert.ok(made.bytes > 0);
-  assert.equal(fs.statSync(file).mode & 0o777, 0o600, "it holds the sealed vault");
-  const text = await run(from, ["backup", file]);
+  assert.equal(fs.statSync(file).mode & 0o777, 0o600, "it holds the sealed backup");
+  const text = await run(from, ["backup", file], {}, PASSPHRASE);
   assert.equal(text.code, 0, text.out);
   assert.match(text.out, /KB · config\.json, vyre\.db, vault/);
-  assert.match(text.out, /keep it somewhere only you can read/);
+  assert.match(text.out, /passphrase; keep the two apart/);
 
   const to = tempHome(t);
   const none = await run(to, ["restore"]);
   assert.equal(none.code, 2, none.out);
   assert.match(none.out, /next: vyre restore <file> \[--force\]/);
 
-  const r = await run(to, ["restore", file]);
+  const wrong = await run(to, ["restore", file], {}, "the wrong passphrase entirely");
+  assert.equal(wrong.code, 1, wrong.out);
+  assert.match(wrong.out, /does not open/);
+  assert.ok(!fs.existsSync(path.join(to, "vyre.db")), "nothing written on a failed open");
+
+  const r = await run(to, ["restore", file], {}, PASSPHRASE);
   assert.equal(r.code, 0, r.out);
   assert.match(r.out, /restored · vyre up to start/);
   assert.equal(note(to), "Northwind Bakery renewal is in March");
@@ -77,14 +90,14 @@ test("backup and restore: a round trip between two temp homes; restore refuses a
   assert.equal(fs.existsSync(path.join(to, "logs", "vyred.out")), false, "logs stay out");
 
   // A store is already there: only --force replaces it, and the refusal says so.
-  const again = await run(to, ["restore", file]);
+  const again = await run(to, ["restore", file], {}, PASSPHRASE);
   assert.equal(again.code, 1, again.out);
   assert.match(again.out, /already exists/);
   assert.match(again.out, /next: vyre restore .* --force, to replace it/);
   const db = new DatabaseSync(path.join(to, "vyre.db"));
   db.prepare("UPDATE notes SET body = ?").run("changed after the backup");
   db.close();
-  const forced = await run(to, ["restore", file, "--force"]);
+  const forced = await run(to, ["restore", file, "--force"], {}, PASSPHRASE);
   assert.equal(forced.code, 0, forced.out);
   assert.equal(note(to), "Northwind Bakery renewal is in March", "--force put the backup's store back");
 
@@ -92,7 +105,7 @@ test("backup and restore: a round trip between two temp homes; restore refuses a
   const live = tempHome(t);
   const d = await start({ root: live, log: () => {} });
   t.after(() => d.stop());
-  const busy = await run(live, ["restore", file, "--force"]);
+  const busy = await run(live, ["restore", file, "--force"], {}, PASSPHRASE);
   assert.equal(busy.code, 1, busy.out);
   assert.match(busy.out, /vyred is running/);
   assert.match(busy.out, /next: vyre down, then try again/);
@@ -242,6 +255,6 @@ test("up.js commands --view: up --dry-run is a card, name a card, name status th
   assert.deepEqual(calls.map(c => c.tool), ["names.status", "names.status"]);
   const file = path.join(SCRATCH, `up-view-${process.pid}-${Date.now()}.tar.gz`);
   t.after(() => fs.rmSync(file, { force: true }));
-  const b = frames((await run(root, ["backup", file, "--view"])).stdout);
+  const b = frames((await run(root, ["backup", file, "--view"], {}, PASSPHRASE)).stdout);
   assert.deepEqual([b[0].cmd, b[0].view.kind, b[0].data.file], ["backup", "card", file]);
 });

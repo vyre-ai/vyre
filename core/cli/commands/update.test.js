@@ -277,6 +277,9 @@ test("update --rollback --restore-data says what it drops and needs a typed conf
     const file = path.join(w.home, "backups", "pre-0.2.0", "vyre-backup.tar.gz");
     fs.mkdirSync(path.dirname(file), { recursive: true });
     fs.writeFileSync(file, "backup");
+    // R8: a real backup always has its passphrase's key file beside it (update.js writes one at
+    // the same moment it makes the backup); rollback --restore-data reads it back.
+    fs.writeFileSync(file + ".key", "a-fake-key-for-this-test-fixture");
     fs.utimesSync(file, new Date("2026-09-20T08:30:00Z"), new Date("2026-09-20T08:30:00Z"));
     return { w, file };
   };

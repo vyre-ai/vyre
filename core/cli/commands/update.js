@@ -21,6 +21,7 @@ import { REPO } from "../../daemon/index.js";
 import { build } from "../../daemon/build.js";
 import { stop } from "../daemonctl.js";
 import { call } from "../../daemon/client.js";
+import crypto from "node:crypto";
 import { backup, restore } from "../../names/backup.js";
 import { bring, waitFor, terminal } from "./up.js";
 import { out, dim, bold, signal, beacon } from "../style.js";
@@ -28,6 +29,30 @@ import { EXIT, UsageError, json, emit, fail, usage, parse } from "../kit.js";
 import * as R from "../update/releases.js";
 
 const REPO_PATH = "repos/vyre-ai/vyre/releases";
+
+// R8 (plans/launch.md's Review response, BLOCKER 3): every backup core/names/backup.js writes is
+// sealed under a passphrase, with no unencrypted option. This update's own pre-update backup is
+// automatic and unattended (nobody is at a terminal to type one, including during an unattended
+// rollback minutes or days later), so it gets a random one, written once beside the backup file
+// as `<file>.key`, mode 0600, in the same root-owned <home>/backups/ folder the backup itself sits
+// in: the same trust boundary the vault's own master key already lives in on this box, not a
+// weaker one. The person's own `vyre backup <file>` (up.js) never uses this path; it always asks.
+const KEY_SUFFIX = ".key";
+
+/** A fresh random passphrase for this update's own internal backup, written beside the file. */
+function writeInternalPassphrase(file) {
+  const passphrase = crypto.randomBytes(32).toString("base64url");
+  const keyFile = file + KEY_SUFFIX;
+  fs.mkdirSync(path.dirname(keyFile), { recursive: true, mode: 0o700 });
+  fs.writeFileSync(keyFile, passphrase, { mode: 0o600 });
+  return passphrase;
+}
+
+/** The passphrase beside a backup file this update made, for a later, possibly unattended, restore. */
+function readInternalPassphrase(file) {
+  try { return fs.readFileSync(file + KEY_SUFFIX, "utf8"); }
+  catch { throw new Error(`no key beside ${file}; it was not made by this update (or its key is gone)`); }
+}
 const USAGE = "vyre update [--check] [--channel stable|beta] [--to <version>] [--yes] [--rollback [--restore-data]] [--json]";
 
 /**
@@ -246,7 +271,8 @@ async function install(ctx, releases, target, channel) {
   if (!prev) say(beacon(`  no ${current} tarball to go back to`) + dim(" · a failed update restores the data but cannot reinstall this version"));
 
   const file = path.join(home, "backups", `pre-${target.version}`, "vyre-backup.tar.gz");
-  try { await ctx.backup({ root: home, file }); }
+  const passphrase = writeInternalPassphrase(file);
+  try { await ctx.backup({ root: home, file, passphrase }); }
   catch (e) { return fail(`the backup before updating did not finish: ${/** @type {Error} */ (e).message}; nothing was installed`, { code: "backup_failed" }); }
   say(dim(`  backed up · ${file}`));
 
@@ -262,7 +288,7 @@ async function install(ctx, releases, target, channel) {
     fs.rmSync(dir, { recursive: true, force: true });
     if (data) {
       await ctx.stop();
-      try { await ctx.restore({ root: home, file, force: true }); did.push("restored the backup"); }
+      try { await ctx.restore({ root: home, file, passphrase, force: true }); did.push("restored the backup"); }
       catch (e) { did.push(`could not restore the backup (${/** @type {Error} */ (e).message})`); }
     }
     const b = await ctx.bring(ctx.role, () => buildOf(current, prev ? prev.meta : null));
@@ -331,8 +357,11 @@ async function rollback(ctx) {
   const r = await npmInstall(ctx.npm, old.tgz);
   if (!r.ok) return fail(`could not reinstall ${prev.version}: ${r.why}`, { code: "install_failed" });
   if (data) {
+    let passphrase;
+    try { passphrase = readInternalPassphrase(file); }
+    catch (e) { return fail(String(/** @type {Error} */ (e).message), { code: "no_backup_key", next: "vyre update --rollback keeps the current data" }); }
     await ctx.stop();
-    try { await ctx.restore({ root: home, file, force: true }); }
+    try { await ctx.restore({ root: home, file, passphrase, force: true }); }
     catch (e) { return fail(`${prev.version} is installed but the backup did not go back: ${/** @type {Error} */ (e).message}`, { code: "restore_failed", next: "vyre up starts vyred on the current data" }); }
   }
   const back = buildOf(prev.version, old.meta);

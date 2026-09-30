@@ -23,7 +23,8 @@ import { json, emit, fail, failTool, usage, viewing } from "../kit.js";
 import * as config from "../../config/index.js";
 import { dialogsAllowed, isRealHome, realBoxAllowed } from "../../config/dialogs.js";
 import * as system from "../../names/system.js";
-import { backup, restore } from "../../names/backup.js";
+import { backup, restore, inspect as inspectSealed } from "../../names/backup.js";
+import { hiddenPrompt } from "../../vault/cli-io.js";
 import * as tailnet from "../tailnet.js";
 import { printEnding } from "../ending.js";
 import { hello } from "../brand.js";
@@ -41,6 +42,27 @@ export function parse(args, valued = ["user", "connect"]) {
     flags[k] = v !== undefined ? v : valued.includes(k) && args[i + 1] !== undefined && !args[i + 1].startsWith("--") ? args[++i] : true;
   }
   return { flags, rest };
+}
+
+/**
+ * A backup passphrase (R8): typed twice, hidden, on a real terminal; one line, unhidden, when
+ * stdin is piped (scripted use, e2e2's matrix, `vyre setup --name ... --yes`'s own automation).
+ * @param {string} question @param {{ confirm?: boolean }} [opts]
+ */
+export async function readPassphrase(question, { confirm = false } = {}) {
+  if (!process.stdin.isTTY) {
+    const rl = readline.createInterface({ input: process.stdin });
+    const { value: line } = await rl[Symbol.asyncIterator]().next();
+    rl.close();
+    if (line == null || !line.trim()) throw new Error("no passphrase piped on stdin");
+    return line.trim();
+  }
+  const a = await hiddenPrompt(question);
+  if (confirm) {
+    const b = await hiddenPrompt("again: ");
+    if (a !== b) throw new Error("the two did not match");
+  }
+  return a;
 }
 
 /**
@@ -552,17 +574,24 @@ export default [
     async run() { await import("../../daemon/main.js"); return new Promise(() => {}); },
   },
   {
-    name: "backup", order: 80, usage: "vyre backup [file]", summary: "copy config, store, vault, watchers and certificates into one file",
+    name: "backup", order: 80, usage: "vyre backup [file] [--with-provider-logins]",
+    summary: "seal config, store, vault, watchers and certificates into one passphrase-locked file",
     async run(args) {
-      const [file] = args.filter(a => a !== "--json");
-      const target = path.resolve(file || `vyre-backup-${new Date().toISOString().slice(0, 10)}.tar.gz`);
-      const r = await backup({ root: config.home(), file: target });
+      const { flags, rest } = parse(args);
+      const target = path.resolve(rest[0] || `vyre-backup-${new Date().toISOString().slice(0, 10)}.tar.gz`);
+      let passphrase;
+      try { passphrase = await readPassphrase("backup passphrase (12 characters or more): ", { confirm: true }); }
+      catch (e) { return fail(String(/** @type {Error} */ (e).message)); }
+      let r;
+      try { r = await backup({ root: config.home(), file: target, passphrase, includeProviderLogins: Boolean(flags["with-provider-logins"]) }); }
+      finally { passphrase = ""; }
+      const holds = r.included.join(", ") + (r.excludedLogins.length ? ` (left out: ${r.excludedLogins.join(", ")}, sign in again after restoring, or pass --with-provider-logins next time)` : "");
       if (json()) {
         return emit(r, { kind: "card", title: "Backup", state: "ok", fields: [{ label: "File", value: String(r.file) }, { label: "Size", value: `${Math.round(r.bytes / 1024)} KB` },
-          { label: "Holds", value: r.included.join(", ") }, { label: "Keep it", value: "somewhere only you can read: it holds the sealed vault" }] });
+          { label: "Holds", value: holds }, { label: "Keep it", value: "somewhere only you can read: it opens only with that passphrase" }] });
       }
-      out(`  ${signal(r.file)} ${dim(`· ${Math.round(r.bytes / 1024)} KB · ${r.included.join(", ")}`)}`);
-      out(dim("  it holds the sealed vault: keep it somewhere only you can read"));
+      out(`  ${signal(r.file)} ${dim(`· ${Math.round(r.bytes / 1024)} KB · ${holds}`)}`);
+      out(dim("  it opens only with that passphrase; keep the two apart"));
       return 0;
     },
   },
@@ -571,11 +600,18 @@ export default [
     async run(args) {
       const { flags, rest } = parse(args);
       if (!rest[0]) return usage("vyre restore needs the backup file", "vyre restore <file> [--force]");
-      try { await restore({ root: config.home(), file: path.resolve(rest[0]), force: Boolean(flags.force) }); }
+      const file = path.resolve(rest[0]);
+      try { const { header } = inspectSealed(fs.readFileSync(file)); out(dim(`  backup from ${new Date(header.at).toISOString().slice(0, 10)} · ${Math.round(header.bytes / 1024)} KB sealed`)); }
+      catch (e) { return fail(`${file} is not a sealed Vyre backup: ${String(/** @type {Error} */ (e).message)}`); }
+      let passphrase;
+      try { passphrase = await readPassphrase("backup passphrase: "); }
+      catch (e) { return fail(String(/** @type {Error} */ (e).message)); }
+      try { await restore({ root: config.home(), file, passphrase, force: Boolean(flags.force) }); }
       catch (e) {
         const m = String(/** @type {Error} */ (e).message);
         return fail(m, { next: /already exists/.test(m) ? `vyre restore ${rest[0]} --force, to replace it` : /is running/.test(m) ? "vyre down, then try again" : undefined });
       }
+      finally { passphrase = ""; }
       if (json()) return emit({ restored: path.resolve(rest[0]) });
       out("  restored · vyre up to start");
       return 0;
