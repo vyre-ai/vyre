@@ -76,6 +76,16 @@ jobs:
           push: false
           cache-from: type=gha,scope=box-image
           cache-to: type=gha,scope=box-image,mode=max
+      - name: Account homes exist, are private, and vyre can walk into them
+        run: |
+          docker run --rm --entrypoint sh "$IMAGE" -c 'set -e
+            for u in 2000 2001 2063; do
+              st=$(stat -c "%u:%g %a" "/home/acct/$u")
+              [ "$st" = "$u:$u 710" ] || { echo "home of account $u is $st, want $u:$u 710"; exit 1; }
+            done
+            [ "$(ls /home/acct | wc -l)" = 64 ]
+            for g in 2000 2001 2063; do id -G vyre | tr " " "\n" | grep -qx "$g" || { echo "vyre is not in group $g"; exit 1; }; done
+            echo "account homes ok"'
       - name: Image size
         run: docker image ls "$IMAGE" --format '{{.Repository}}:{{.Tag}} {{.Size}}' | tee -a "$GITHUB_STEP_SUMMARY"
 
