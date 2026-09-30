@@ -5,6 +5,67 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 ## Unreleased
 
 - The box image makes the per-account homes the spawner requires: uids and groups 2000 to 2063, each with a private `/home/acct/<uid>` (owner the account, mode 0710), `vyre` in every account's group so vyred can read transcripts, and compose mounts `/home/acct` as the `vyre-accounts` volume so accounts survive a recreate. Before this a fresh box answered "spawner: account 2001 has no home at /home/acct/2001" to every sign-in, so the setup page could not sign an account in (e2e2's B1). The box-image job checks the homes' owner and mode and vyre's groups (`box/Dockerfile`, `box/compose.yml`, `.github/workflows/box-image.yml`).
+#### Connectors: review fixes (reviewer-2 M1, M2, two LOWs)
+
+- Production reads only the shipped catalog: a config file's `connectors.presets` count only when a test sets `VYRE_CONNECTORS_TEST_PRESETS=1`, and then never reuse a shipped id. A person's own connector goes through add-an-MCP-server-by-URL.
+- Discovery is checked before anything is sent: the protected-resource document must be about the service asked (same origin, equal or parent path), the authorization-server document's issuer must be the one it was fetched for, every address it names goes through `checkHttpsUri` (https only for an https vendor), and each own-account preset pins the authorization-server origins it expects (`oauth.as`); anything else is refused before a registration or a code is sent. A path issuer (GitHub's shape) is fetched at its path-aware address. The `open` step reports the sign-in host.
+- `bind()` refuses a same-named server whose url or credential is not this connection's; `connectors.persist` takes only `refresh_token`, `access_token`, `expires_at` and `scope`.
+- `vault.request`: one OAuth refresh in flight per credential; concurrent callers wait and re-read the sealed tokens, so a rotating vendor never sees the same refresh token twice (vault review MEDIUM).
+- Guide text for Google says plainly that the unverified app screen shows once.
+- The test-preset switch also needs `NODE_TEST_CONTEXT` (a node:test run), and a test preset's id may not equal or extend a shipped id, or be a prefix of one, so it cannot win a shipped vendor's longest-match binding (reviewer-2 LOW).
+
+#### Connectors: guided own-app sign-ins, Slack and Zoom, Microsoft and Google personal through the vault, the # connector kind
+
+- Presets: `slack` (own internal app, prefilled manifest link, https redirect pasted back; a `xoxp-`
+  token mode), `zoom` (own General app, hosted MCP, Basic client secret), `microsoft` (Graph mail and
+  calendar, public client, `localhost` redirect), `google-personal` (Gmail, Calendar, Drive REST with the
+  publish-to-production guidance), `slack-web` (token fallback). `target: "api"` presets are vault
+  api-credentials, not hub servers. Guides are data: `oauth.guide` (steps, links, a manifest link with
+  `{redirect}` filled in), `oauth.redirect` (scheme, host, path), `oauth.port`, `oauth.basic`,
+  `oauth.public`.
+- `connectors.connect` answers `needs: client` with the guide and the two fields, and takes them back as
+  `app { client_id, client_secret? }` from a person's surface; they go to the vault as `<name>-app`.
+- `vault`: an oauth `api-credential` now signs in. `vault.credential.tokens` (internal, connectors only,
+  refused unless the token endpoint is the one the person's config names) seals the sign-in into the
+  credential; `vault.request` uses the stored access token, then refreshes at the config's own token
+  endpoint (target-checked) and seals a rotated refresh token before going on. `Vault.setApiSecret`.
+- `core/modules`: `connectors` may call `vault.put` for an `api-credential` as the person who asked
+  (`CALL_AS`), and nothing else.
+- `mcp`: `mcp.grant` (internal, connectors only): a `#tag` lets one thread, and the threads it came
+  from, use a server whatever its scope says, until vyred restarts.
+- `connectors.mention.search` and `connectors.mention.resolve` and a `mentions` manifest entry for the
+  `#` picker's `connector` kind: connected apps, then a `Connect <name>` row per app not connected.
+- `vyre connect add app` prints the guide, asks for the client ID and a hidden secret, and waits.
+
+#### Connectors: a catalog of vendor-hosted apps and one connect flow (charter minimum 9)
+
+- `lib/connector-presets` (`presets.json`, `index.js`): 45 presets, each a vendor's own hosted MCP
+  server as data (url, transport, sign-in shape, token header, who can use it, evidence), plus the
+  vendors checked and ruled out with the reason. Facts and sources: `team/0.2/connectors-catalog.md`.
+  GoHighLevel uses the generic `/mcp/` address; a client-specific one (`/mcp/anthropic`) fails
+  validation. `catalogFrom(config)` adds `connectors.presets` for test fakes on this machine.
+- `core/connectors` is now a module (`connectors`): tools `connectors.catalog`, `.list`, `.connect`,
+  `.connect.finish`, `.connect.cancel`, `.disconnect` and the internal `.persist`; table
+  `connectors_connections`; events `connectors.connected`, `.connect-failed`, `.disconnected`. One flow
+  for every app: dynamic client registration (RFC 7591) when discovery finds it, the person's own OAuth
+  app from a vault item when it does not, a pasted token where the preset offers one. The credential is
+  a vault item `<connection>-auth` bound to the vendor's origin and granted to the hub; a token comes
+  only from a person's surface and never comes back out.
+- `mcp`: a row that names a preset's item is refused for any host but the vendor's (longest preset id
+  wins), and the hub now passes the row's url when it mints a header, so a token is refused for any
+  other address (P21).
+- `core/connectors/auth.js`: an OAuth item may be a public client (no secret), may hold the access
+  token the sign-in just got (used while it is good, so a fresh connection does not spend its refresh
+  token), and a vendor that rotates the refresh token has the new one saved through `connectors.persist`
+  before it is needed again; a failed save is an error, and the new token is kept in memory meanwhile.
+- `core/connectors/oauth.js`: scopes are optional, `offline` asks for `offline_access` only where the
+  vendor lists it, and a fixed loopback `port` serves vendors whose redirect address is typed in ahead
+  of time.
+- `vyre connect apps` and `vyre connect add app <preset> [--label] [--mode] [--client]`; `remove` and
+  `test` accept an app.
+- Tests use fake OAuth and fake MCP servers only (`fake-oauth.js` gains `rotate`, `fake-mcp.js` gains
+  `protectedBy` and a function `requireAuth`).
+
 - `scripts/deploy-site.sh DIR --branch main|staging` is the one way to deploy the site: `--branch main` (vyre.run) refuses a folder that contains `setup/config.json`. `scripts/stage-site.sh` now validates the relay and install URL with the same code the page runs (`site/setup/config.js`), not shell patterns, so a lookalike host such as `ws://127.0.0.1.evil.example` is refused and never widens the CSP, and it prints what it wrote.
 - Reviewer-2's M-S1: the setup page ignores `/setup/config.json` on vyre.run and www.vyre.run, and elsewhere takes an install URL or relay only on a host under vyre.run or pages.dev (relay: workers.dev too) or a test runner's loopback, so nothing put on the production origin can change the install line.
 - Reviewer-2's follow-ups on the release files: root's `publish-release` copies each file without following links into a root-only temp folder, checks the copies are regular files, publishes only when SHA256SUMS.sig verifies over the copied SHA256SUMS (so an unsigned release publishes nothing), and only publishes a shell.json that the signed list has; the Mac `vyre update` publishes only after a verified signature (not after `--allow-unsigned`); `build-phone` refuses a sw.js without the SHELL_SIGNED line (the phone would run unchecked) and a shell.json path that climbs out of the site.

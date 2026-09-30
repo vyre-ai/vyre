@@ -1057,6 +1057,21 @@ export class Vault {
   }
 
   /**
+   * The sealed secret of an oauth api-credential, replaced: what a sign-in stores and what a refresh
+   * rotates. Only the secret changes; the person-written config is carried over untouched. In-process
+   * only (a tool that calls this decides who may), so it is the one write to an api-credential that
+   * does not come from a person's surface.
+   * @param {string} name @param {string} secret
+   */
+  async setApiSecret(name, secret) {
+    const { row, config } = await this.apiCredential(name);
+    if (config.auth.type !== "oauth") throw new Error(`${row.name} is not an oauth credential, so it has no sign-in to store`);
+    const { fields } = await this.open(row);
+    await this.writeVersion(row, {}, { ...fields, secret: String(secret) }, "vault");
+    this.audit("sign-in", row.name, "vault", true, "tokens stored");
+  }
+
+  /**
    * Open an item: `{ meta, fields }`. The row must pass its MAC, the file must be the version
    * the row names, and the sealed meta must match the row, or it is refused and audited.
    */

@@ -20,6 +20,7 @@
 
 import { Credentials } from "../../lib/connectors/auth.js";
 import { checkBehalf } from "../../lib/connectors/behalf.js";
+import { catalogFrom } from "../../lib/connector-presets/index.js";
 import { connect } from "./client.js";
 import { Hub, MIGRATIONS, TRANSPORTS, AUTH_TYPES, whoFrom } from "./hub.js";
 
@@ -42,7 +43,11 @@ export default {
     const opts = (ctx.config && ctx.config.mcp) || {};
     const data = r => { if (r.error) throw Object.assign(new Error(r.error.message), { code: r.error.code }); return r.data; };
 
-    const creds = new Credentials({ fetchItem: (item, field) => ctx.vault.fetch(item, field ? { field } : {}) });
+    const creds = new Credentials({
+      fetchItem: (item, field) => ctx.vault.fetch(item, field ? { field } : {}),
+      // A vendor that rotates its refresh token on every use: the connectors module made the item, so it saves the new one.
+      save: async (item, fields) => { data(await ctx.call("connectors.persist", { item, fields })); },
+    });
     const offer = async name => {
       const r = await ctx.call("gate.offer", { name: `mcp:${name}`, tool: "mcp.release", kinds: KINDS,
         content: { server: "the hub server", tool: "the server's own tool name", arguments: "object: exactly what the tool is called with", summary: "string" } });
@@ -69,6 +74,12 @@ export default {
       },
       idle: Number.isInteger(opts.idle) ? opts.idle : undefined,
       httpHosts: Array.isArray(opts.httpHosts) ? opts.httpHosts.map(String) : [],
+      boundFor: catalogFrom(ctx.config).boundFor,
+      lineage: async thread => {
+        const r = await ctx.call("threads.lineage", { thread });
+        const d = r && r.data;
+        return Array.isArray(d) ? d.map(x => String(x && x.thread || x)) : Array.isArray(d && d.ancestors) ? d.ancestors.map(x => String(x && x.thread || x)) : [];
+      },
     });
 
     for (const r of hub.rows()) await offer(r.name);
@@ -143,6 +154,16 @@ export default {
           w.person = false;
         }
         return hub.call({ ...rest, ...(mod && hold === true ? { hold: true } : {}) }, w);
+      },
+    });
+
+    ctx.tool("mcp.grant", {
+      internal: true,
+      description: "The connectors module lets one thread use a server after the person tagged it (#Slack) in their own turn.",
+      input: obj({ server: str, thread: str }, ["server", "thread"]),
+      run: (input, { caller }) => {
+        if (caller !== "module:connectors") throw Object.assign(new Error("only the connectors module grants a thread"), { code: "denied" });
+        return hub.grantThread(input);
       },
     });
 
