@@ -13,6 +13,7 @@
 //   ctx.setStopped(bool)       the shell's, set from the module's stop and resume events
 
 import { createCdp } from "./cdp.js";
+import { createFrames } from "./frames.js";
 import * as floor from "./floor.js";
 import { err } from "./err.js";
 import { dispatch } from "../caps/index.js";
@@ -22,6 +23,7 @@ import { dispatch } from "../caps/index.js";
  */
 export function createCtx({ chrome, emit = () => {} }) {
   const cdp = createCdp({ chrome, emit });
+  const frames = createFrames({ cdp });
   let stopped = false;
 
   const storage = {
@@ -114,7 +116,7 @@ export function createCtx({ chrome, emit = () => {} }) {
 
   /** @type {any} */
   const ctx = {
-    cdp, tabs, storage, dnr,
+    cdp, tabs, storage, dnr, frames,
     emit,
     stopped: () => stopped,
     setStopped: (/** @type {boolean} */ v) => { stopped = !!v; if (stopped) ctx.stoppedAt = Date.now(); },

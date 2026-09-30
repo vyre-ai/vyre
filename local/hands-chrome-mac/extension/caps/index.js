@@ -18,6 +18,7 @@ import { url as redactUrl } from "../shared/redact.js";
 import tabs from "./tabs.js";
 import page from "./page.js";
 import batch from "./batch.js";
+import frames from "./frames.js";
 import devtools from "./devtools.js";
 import net from "./net.js";
 import api from "./api.js";
@@ -79,7 +80,7 @@ export async function loadOptional(importer = async name => ({ default: /** @typ
   }
 }
 
-for (const c of [tabs, page, batch]) register(c);
+for (const c of [tabs, page, batch, frames]) register(c);
 
 /** Resolves when the optional capabilities have been tried. dispatch waits for it. */
 export let ready = loadOptional();
