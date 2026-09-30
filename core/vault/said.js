@@ -86,7 +86,7 @@ export function matchIntent(call, intents, lineage = []) {
     // A "use" intent names a vault item, which is a plain word: the exact name is enough, and the
     // hosts the item had when the person tagged it must still cover the item's hosts now.
     const use = covers[0] === "use";
-    if (use && it.limits && Array.isArray(it.limits.hosts) && Array.isArray(call.hosts) && !call.hosts.every(h => it.limits.hosts.map(norm).includes(norm(h)))) continue;
+    if (use && it.limits && Array.isArray(it.limits.hosts) && !(Array.isArray(call.hosts) && call.hosts.every(h => it.limits.hosts.map(norm).includes(norm(h))))) continue;
     const named = new Set((it.to || []).filter(x => use || !ambiguous(x)).map(norm));
     if (!named.size) continue;
     if (!dests.every(d => (use || !ambiguous(d)) && named.has(norm(d)))) continue;
@@ -132,6 +132,7 @@ export class SaidIntents {
       limits = { ...(max !== undefined ? { max_amount: max } : {}), ...(i.limits.currency ? { currency: i.limits.currency } : {}), ...(hosts ? { hosts } : {}) };
     }
     if (i.kind === "pay" && !(limits && limits.max_amount !== undefined && limits.currency)) throw bad("a pay intent needs limits.max_amount and limits.currency");
+    if (i.kind === "use" && !(limits && Array.isArray(limits.hosts))) throw bad("a use intent carries the item's hosts as limits.hosts; record it through vault.mention.resolve");
     if (i.agents !== undefined && !(Array.isArray(i.agents) && i.agents.length <= MAX_TO && i.agents.every(x => typeof x === "string" && x.trim() && x.length <= 80))) throw bad("agents is a list of agent names");
     const agents = (i.agents || []).map(x => x.trim());
     const at = Number.isFinite(i.at) ? Number(i.at) : Date.now();
@@ -266,7 +267,7 @@ export function register({ vault, internal, tool, emit }) {
     });
 
   internal("vault.use.check", "Whether a thread (or a thread it descends from) may use a vault item because the person tagged it. { item, thread, lineage?, hosts? } -> { allowed, id? }. Never a value. A host the item has now that it did not have at the tag ends the permission.",
-    obj({ item: str, thread: str, lineage: strs, hosts: strs }, ["item", "thread"]),
+    obj({ item: str, thread: str, lineage: strs, hosts: strs }, ["item", "thread", "hosts"]),
     async ({ item, thread, lineage, hosts }) => {
       const m = await said.match({ kind: "use", to: [String(item)], ...(hosts ? { hosts } : {}) }, { thread, lineage });
       return m ? { allowed: true, id: m.id } : { allowed: false };

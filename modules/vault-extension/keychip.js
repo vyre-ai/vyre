@@ -38,7 +38,10 @@
   // ---- the chip -------------------------------------------------------------------------
 
   const host = document.createElement("vyre-vault-key");
-  host.style.cssText = "all: initial; position: fixed; z-index: 2147483647; right: 16px; bottom: 16px;";
+  // Every property is set with priority "important", so page CSS (even with !important) cannot make the
+  // chip transparent or move it under a page button of its own (reviewer-2 H-K2).
+  for (const [k, v] of [["all", "initial"], ["position", "fixed"], ["z-index", "2147483647"], ["right", "16px"], ["bottom", "16px"], ["display", "block"],
+    ["opacity", "1"], ["visibility", "visible"], ["pointer-events", "auto"], ["transform", "none"], ["filter", "none"], ["clip-path", "none"], ["mix-blend-mode", "normal"]]) host.style.setProperty(k, v, "important");
   const root = host.attachShadow({ mode: "closed" });
   const style = document.createElement("style");
   style.textContent = `
@@ -62,6 +65,30 @@
   let showing = false;
   /** @type {Array<() => void>} */
   const waiting = [];
+  /** When the chip last went on screen, and the raise times in the last minute (a page cannot flood the person with chips). */
+  let shownAt = 0;
+  const raised = /** @type {number[]} */ ([]);
+  const MAX_CHIPS_PER_MIN = 3, MAX_WAITING = 3;
+  // The page's own scripts cannot set this: a content script's globals live in its isolated world.
+  const MIN_VISIBLE_MS = typeof g.vyreKeyChipMinMs === "number" ? g.vyreKeyChipMinMs : 400;
+
+  /**
+   * A tap counts only when the chip is really what the person saw: on screen long enough, opaque,
+   * not covered, not moved or hidden by page CSS, and the topmost thing at the button. Where the
+   * page has no layout (a test stub) there is nothing to check.
+   * @param {Element} b
+   */
+  function seenFor(b) {
+    if (Date.now() - shownAt < MIN_VISIBLE_MS) return false;
+    const gcs = /** @type {any} */ (window).getComputedStyle, efp = /** @type {any} */ (document).elementFromPoint;
+    if (typeof gcs !== "function" || typeof efp !== "function") return true;
+    const cs = gcs.call(window, host);
+    if (Number(cs.opacity) < 0.99 || cs.visibility !== "visible" || cs.pointerEvents === "none" || (cs.transform && cs.transform !== "none") || cs.position !== "fixed" || cs.display === "none") return false;
+    const r = b.getBoundingClientRect();
+    if (!r.width || !r.height) return true;
+    const top = efp.call(document, r.left + r.width / 2, r.top + r.height / 2);
+    return top === host;
+  }
 
   function hide() {
     if (timer) clearTimeout(timer);
@@ -91,6 +118,7 @@
       if (!e.isTrusted) return;
       e.preventDefault();
       e.stopPropagation();
+      if (!seenFor(b)) { hide(); return; }
       act();
     });
     return b;
@@ -105,7 +133,7 @@
   function raise(c, fp) {
     showing = true;
     const who = c.provider ? `${PROVIDER_NAMES[c.provider] || c.provider} ` : "";
-    chip.replaceChildren(line(`Save this ${who}key to Vyre?`, "t"));
+    chip.replaceChildren(line(`Save this ${who}key to Vyre?`, "t"), line(`Found on ${location.hostname}`));
     const row = document.createElement("div");
     row.className = "row";
     row.append(
@@ -130,6 +158,7 @@
     );
     chip.append(row);
     document.documentElement.append(host);
+    shownAt = Date.now();
   }
 
   /** One candidate at most once: this page load's set here, the tab's set in the worker. @type {Set<string>} */
@@ -140,6 +169,11 @@
     const fp = K.fingerprint(c.value);
     if (seen.has(fp)) return;
     seen.add(fp);
+    // A page cannot raise chips without limit: a few a minute, and a short queue.
+    const now = Date.now();
+    while (raised.length && now - raised[0] > 60_000) raised.shift();
+    if (raised.length >= MAX_CHIPS_PER_MIN || waiting.length >= MAX_WAITING) return;
+    raised.push(now);
     const r = await ask({ type: "key-raise", fp, generic: c.generic });
     if (!r || !r.data || !r.data.raise) return;
     const go = () => raise(c, fp);

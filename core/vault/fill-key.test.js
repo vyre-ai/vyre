@@ -15,7 +15,7 @@ import { Fill, serveFill } from "./fill.js";
 import { SCRATCH } from "../../test/scratch.mjs";
 
 const EXT = "chrome-extension://abcdefghijklmnopabcdefghijklmnop";
-const PAGE = "https://console.example.com";
+const PAGE = "https://console.anthropic.com";
 const ALNUM = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
 let seed = 0x4b657953; // "KeyS"
 function fake(n) {
@@ -57,8 +57,8 @@ test("save-key: one call stores a key ready to use, named from the host and labe
   const value = anthropic();
   const r = await call("save-key", key(value), both);
   assert.equal(r.status, 200, JSON.stringify(r.body));
-  assert.deepEqual(r.body.data, { name: "console.example.com-api-key", kind: "api-key", provider: "anthropic", created: true });
-  const row = vault.row("console.example.com-api-key");
+  assert.deepEqual(r.body.data, { name: "console.anthropic.com-api-key", kind: "api-key", provider: "anthropic", created: true });
+  const row = vault.row("console.anthropic.com-api-key");
   assert.equal(row.kind, "api-key");
   assert.equal(row.origin, PAGE, "the page's origin is recorded");
   assert.deepEqual(JSON.parse(row.hosts), [], "no login-style host");
@@ -69,15 +69,15 @@ test("save-key: one call stores a key ready to use, named from the host and labe
 
   // A different label is a different name; the same name is never reused.
   const second = await call("save-key", key(anthropic(), { label: "New key" }), both);
-  assert.equal(second.body.data.name, "console.example.com-new-key");
+  assert.equal(second.body.data.name, "console.anthropic.com-new-key");
   const third = await call("save-key", key(anthropic()), both);
-  assert.equal(third.body.data.name, "console.example.com-api-key-2");
+  assert.equal(third.body.data.name, "console.anthropic.com-api-key-2");
 });
 
 test("save-key: the kind and field follow what detect.js reads from the value", async t => {
   const { vault, call, both } = await setup(t);
   const pat = ["ghp", "_", fake(36)].join("");
-  const r = await call("save-key", key(pat, { label: "Personal access token" }), both);
+  const r = await call("save-key", key(pat, { label: "Personal access token", url: "https://github.com/settings/tokens", raisedOn: "https://github.com/settings/tokens" }), both);
   assert.deepEqual([r.body.data.kind, r.body.data.provider], ["pat", "github"], JSON.stringify(r.body));
   assert.equal((await vault.fields(vault.row(r.body.data.name))).token, pat);
 
@@ -103,7 +103,7 @@ test("save-key: a catalog provider goes to the connect hook; the answer names th
   const { call, both } = await setup(t, { connect: async k => { calls.push(k); return { module: "voice" }; } });
   const r = await call("save-key", key(anthropic()), both);
   assert.equal(r.body.data.connected, "voice");
-  assert.deepEqual(calls, [{ item: "console.example.com-api-key", kind: "api-key", provider: "anthropic" }]);
+  assert.deepEqual(calls, [{ item: "console.anthropic.com-api-key", kind: "api-key", provider: "anthropic" }]);
   // AWS is not in the provider catalog: the item is saved and the hook is not asked.
   const aws = await call("save-key", key(awsKey(), { label: "access key" }), both);
   assert.equal(aws.status, 200, JSON.stringify(aws.body));
@@ -126,7 +126,7 @@ test("save-key: refused when the page origin is not the origin the chip was rais
   assert.equal((await call("save-key", key(anthropic(), { raisedOn: undefined }), both)).body.error.code, "wrong_origin");
   assert.equal((await call("save-key", key(anthropic(), { raisedOn: "not a url" }), both)).body.error.code, "wrong_origin");
   assert.equal(vault.list().items.filter(i => i.kind === "api-key").length, 0);
-  assert.equal((await call("save-key", key(anthropic(), { url: "ftp://console.example.com" }), both)).body.error.code, "bad_input");
+  assert.equal((await call("save-key", key(anthropic(), { url: "ftp://console.anthropic.com" }), both)).body.error.code, "bad_input");
 });
 
 test("save-key: needs the extension, a paired device and a session; only a key-shaped secret is kept", async t => {
@@ -135,7 +135,7 @@ test("save-key: needs the extension, a paired device and a session; only a key-s
   assert.equal((await call("save-key", key(value), {})).status, 401);
   assert.equal((await call("save-key", key(value), device)).body.error.code, "session_required");
   assert.equal((await call("save-key", key(value), { ...device, "x-vyre-session": "x".repeat(43) })).body.error.code, "session_expired");
-  assert.equal((await call("save-key", key(value), both, "https://console.example.com")).body.error.code, "origin_refused", "a web page never reaches save-key");
+  assert.equal((await call("save-key", key(value), both, "https://console.anthropic.com")).body.error.code, "origin_refused", "a web page never reaches save-key");
   for (const [what, v] of [["a uuid", crypto.randomUUID()], ["a word", "hunter2hunter2hunter2"], ["a publishable key", ["pk", "_live_", fake(30)].join("")], ["plain text", "not a key at all"]]) {
     const r = await call("save-key", key(v), both);
     assert.equal(r.body.error?.code, "not_a_key", what);
@@ -172,8 +172,27 @@ test("no key from save-key appears in a response, an audit row, an event or the 
   for (const v of values) texts.push(JSON.stringify(await call("save-key", key(v, { generic: true }), both)));
   texts.push(JSON.stringify(await call("save-key", key(values[0]), both)));
   texts.push(JSON.stringify(await call("save-key", key(values[1], { raisedOn: "https://evil.example.net" }), both)));
-  texts.push(JSON.stringify(await call("save-key", { url: PAGE, undo: "console.example.com-api-key" }, both)));
+  texts.push(JSON.stringify(await call("save-key", { url: PAGE, undo: "console.anthropic.com-api-key" }, both)));
   texts.push(JSON.stringify(vault.auditTrail({ limit: 1000 })), JSON.stringify(events), JSON.stringify(vault.list()));
   for (const v of values) for (const [i, text] of texts.entries()) assert.ok(!text.includes(v), `a key appeared in output ${i}`);
   assert.ok(events.some(e => e.type === "vault.key-saved"), "an event says a key was saved, by name");
+});
+
+test("save-key: a provider-shaped key from a site that is not that provider's own is kept plain, never connected (H-K1)", async t => {
+  const calls = [];
+  const { vault, call, both } = await setup(t, { connect: async k => { calls.push(k); return { module: "voice" }; } });
+  const evil = "https://evil.example.net";
+  const r = await call("save-key", { url: `${evil}/page`, raisedOn: `${evil}/page`, value: anthropic(), label: "API key" }, both);
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  assert.equal(r.body.data.provider, undefined);
+  assert.equal(r.body.data.connected, undefined);
+  assert.deepEqual(calls, [], "the connect hook is never asked");
+  const item = vault.list().items.find(i => i.name === r.body.data.name);
+  assert.equal(item.details?.provider, undefined, "no provider detail, so it is no connection");
+  // A lookalike domain is not the provider either; a real subdomain is.
+  const look = await call("save-key", { url: "https://anthropic.com.evil.example.net/k", raisedOn: "https://anthropic.com.evil.example.net/k", value: anthropic(), label: "b" }, both);
+  assert.equal(look.body.data.provider, undefined);
+  const real = await call("save-key", { url: "https://console.anthropic.com/k", raisedOn: "https://console.anthropic.com/k", value: anthropic(), label: "c" }, both);
+  assert.equal(real.body.data.provider, "anthropic");
+  assert.equal(calls.length, 1);
 });

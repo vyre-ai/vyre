@@ -6853,9 +6853,9 @@ Add or change an item by merging fields: only the fields given are replaced, `re
 Whether a thread (or a thread it descends from) may use a vault item because the person tagged it. { item, thread, lineage?, hosts? } -> { allowed, id? }. Never a value. A host the item has now that it did not have at the tag ends the permission.
 
 - Input:
+  - `hosts` list of string, required
   - `item` string, required
   - `thread` string, required
-  - `hosts` list of string
   - `lineage` list of string
 - Callers: other modules only (internal: `vyre call` answers no_such_tool)
 

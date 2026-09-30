@@ -221,7 +221,9 @@ test("use: a # tag lets one thread and its descendants use an item by name; the 
   const r = (await reg("vault.mention.resolve", { id: "GHLapikey", thread: "t-1", said: "said-1" }, "module:sessions")).data;
   assert.deepEqual(r.grant, { use: true, hosts: ["https://api.example.test"] });
   assert.ok(!JSON.stringify(r).includes("fixture-key"));
-  const check = (o, caller = "module:vault") => reg("vault.use.check", { item: "GHLapikey", thread: "t-1", ...o }, caller);
+  const check = (o, caller = "module:vault") => reg("vault.use.check", { item: "GHLapikey", thread: "t-1", hosts: ["https://api.example.test"], ...o }, caller);
+  assert.ok((await reg("vault.use.check", { item: "GHLapikey", thread: "t-1" }, "module:vault")).error, "hosts are required (L-V1)");
+  assert.match((await reg("vault.said.record", { thread: "t-1", said: "s", kind: "use", to: ["GHLapikey"], what: "use" }, "module:sessions")).error.message, /limits\.hosts/, "a use intent without hosts is refused (L-V2)");
   assert.equal((await check({})).data.allowed, true);
   assert.equal((await check({})).data.allowed, true, "not used up");
   assert.equal((await check({ thread: "t-2" })).data.allowed, false, "another thread");

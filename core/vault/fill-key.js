@@ -23,6 +23,20 @@ import { classify } from "./detect.js";
 import { gate, openFailed } from "./fill-save.js";
 import { provider as catalog } from "./providers.js";
 
+/**
+ * The only sites a provider-shaped key may be saved AS that provider from (reviewer-2 H-K1): any web
+ * page can print a string shaped like a key, and one trusted click would otherwise make the page's
+ * own key the person's Anthropic, Slack or GitHub connection. From any other site the key is kept
+ * as a plain key, never connected. A host matches when it is the domain or a subdomain of it.
+ */
+export const PROVIDER_SITES = Object.freeze({
+  anthropic: ["anthropic.com", "claude.ai", "claude.com"], openai: ["openai.com"], github: ["github.com"], slack: ["slack.com"],
+  cloudflare: ["cloudflare.com"], tailscale: ["tailscale.com"], deepgram: ["deepgram.com"], elevenlabs: ["elevenlabs.io"], telegram: ["telegram.org", "t.me"],
+  "claude-setup-token": ["anthropic.com", "claude.ai", "claude.com"],
+});
+/** @param {string} prov @param {string} host */
+export const onProviderSite = (prov, host) => (PROVIDER_SITES[/** @type {keyof typeof PROVIDER_SITES} */ (prov)] || []).some(d => host === d || host.endsWith("." + d));
+
 const MAX_VALUE = 8192;
 /** Shapes that are never a key to keep, whatever detect.js makes of their randomness: ids and hashes. */
 const NEVER = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$|^[0-9a-f]{32}$|^[0-9a-f]{40}$|^[0-9a-f]{56}$|^[0-9a-f]{64}$|^[0-9a-f]{128}$/i;
@@ -104,7 +118,7 @@ export async function saveKeyRoute(fill, b, h) {
   try {
     const host = new URL(o).hostname;
     const name = freeName(vault, `${host}-${slug(label) || "key"}`);
-    const prov = c.provider && /^[a-z0-9][a-z0-9.-]{0,39}$/.test(c.provider) ? c.provider : undefined;
+    const prov = c.provider && /^[a-z0-9][a-z0-9.-]{0,39}$/.test(c.provider) && onProviderSite(c.provider, host.toLowerCase()) ? c.provider : undefined;
     await vault.put({ name, kind, description: `${label || "key"} from ${o}`.slice(0, 200), fields: { [field]: value }, origin: o,
       ...(prov ? { details: { provider: prov } } : {}) }, who);
     const row = vault.row(name);
