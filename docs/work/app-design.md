@@ -905,3 +905,9 @@ account + device and drop the tokens tool store. Then polish passes over the spe
   otherwise.
 - Both items go into capsule-02.html alongside what's already there; screenshot headlessly,
   section by section, before sending.
+
+## Session 6 (30 Sep, after restart)
+
+- Done: team/0.2/cta-options.html (lime replacement options: A Ember, B Tide, C Bone, contrast checked on opaque and glass, both themes, glass rule = accent as fill or dot, neutral chip text, two-tone focus ring). Lead told. Tokens NOT changed; waiting for the user's pick. On pick: change lib/theme/tokens.json (+ generated files), core/config/palette.js and theme.js, deck css, site css, brand marks, docs/design/TOKENS.md and boards.
+- Done: capsule-02.html section 12, the 680px Deep glass main search (apps, files, contacts, dictionary, calculator, commands, focused row, clipboard history), screenshotted and looked at.
+- Next: apply the picked colour product-wide, then support building teams.
