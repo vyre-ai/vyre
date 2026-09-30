@@ -43,7 +43,7 @@ schedule, and a watcher cannot widen its own credentials after you approved it.
   "name": "harlow-invoices",
   "project": "harlow-legal",
   "schedule": "*/15 * * * *",
-  "needs": ["billing-inbox"],
+  "net": { "mail.example": { "vault": "billing-inbox" } },
   "emits": "invoice.seen"
 }
 ```
@@ -51,18 +51,15 @@ schedule, and a watcher cannot widen its own credentials after you approved it.
 - `name` matches the folder. `project` is the slug of the project items file into.
 - `schedule` is five-field cron in the machine's local time (`*/15 * * * *`, `0 */2 * * *`,
   `@hourly`, `@daily`), or `"webhook"` for a source that pushes.
-- `needs` lists Vault item names. `emits` names the kind of item (`noun.past-verb`).
+- `net` lists the hosts the watcher reads, each with an optional Vault item that Vyre attaches to that host's requests; the watcher's code never sees it. `emits` names the kind of item (`noun.past-verb`).
 - Optional: `timeout` in seconds (default 60, at most 300) and `description`. Any other key is
   refused.
 
 `watch.js` exports one function:
 
 ```js
-export default async function watch({ vault, since, emit, log, hook }) {
-  const token = await vault.fetch("billing-inbox");
-  const res = await fetch(`https://mail.example/api/messages?after=${since ?? 0}`, {
-    headers: { authorization: `Bearer ${token}` },
-  });
+export default async function watch({ since, emit, log, hook }) {
+  const res = await fetch(`https://mail.example/api/messages?after=${since ?? 0}`);   // Vyre adds the credential
   if (!res.ok) throw new Error(`inbox answered ${res.status}`);
   for (const m of await res.json()) {
     if (/invoice/i.test(m.subject)) emit({ id: m.id, at: m.date, title: m.subject, url: m.link });
@@ -71,7 +68,7 @@ export default async function watch({ vault, since, emit, log, hook }) {
 ```
 
 Each run happens in a child process with no environment variables, read access to its own folder
-only, and no writes or child processes. It can reach the network. Every item needs a stable `id`,
+only, and no writes or child processes. It has no network of its own: `fetch` is run by Vyre, GET and HEAD only, to the public hosts listed under `net`. Every item needs a stable `id`,
 so a repeat is never filed twice.
 
 ## Give a watcher a credential

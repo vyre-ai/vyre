@@ -4,6 +4,12 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+- Raw vault values no longer reach a watcher (reviewer-2 H1). `needs` is refused in `watcher.json`
+  and `vault.fetch` in a watcher is refused; a credential goes under `net` and the parent attaches
+  it to that host's requests. A watcher reads only the hosts it lists under `net` (none listed means
+  no network). The parent scrubs an attached credential, and its base64, hex and URL forms, from
+  the response, the logs and the error.
+
 - Duties on the watchers runtime: `watchers.create {name: "duty-<role>-<id>", project, owner:
   {kind: "teammate", teammate}, when, instruction, act}` writes a watcher folder from plain words
   (fixed template code, never model-written), turns it on and files one item per firing.

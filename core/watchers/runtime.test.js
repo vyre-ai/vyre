@@ -166,8 +166,8 @@ test("watchers: editing a watcher after it is turned on pauses it until it is dr
   await rt.test("harlow-invoices");
   await rt.create("harlow-invoices");
   await rt.settle();
-  // Widening needs is exactly what must not slip through unseen.
-  write("harlow-invoices", FROM_FILE, { needs: ["billing-inbox"] });
+  // Widening net is exactly what must not slip through unseen.
+  write("harlow-invoices", FROM_FILE, { net: { "api.example.com": { vault: "billing-inbox" } } });
   assert.equal(rt.list().watchers[0].state, "changed");
   clock.now = new Date("2026-03-02T10:15:00").getTime();
   rt.tick(); await rt.settle();
@@ -195,28 +195,41 @@ test("watchers: bad items fail the dry run with what to fix", async t => {
   assert.ok(r.problems.some(p => /keys the runtime does not read: token/.test(p)));
 });
 
-test("watchers: vault items only from the watcher's own needs, and a released value never reaches a log or an item", async t => {
+test("watchers: a credential is attached by the parent to its one host, never reaches the watcher, and never appears in a log, an item or a body", async t => {
   const secret = "billing-value-0000111122223333";
+  const server = http.createServer((req, res) => { res.setHeader("content-type", "text/plain"); res.end(JSON.stringify({ sawAuth: req.headers.authorization || null, echo: req.headers.authorization })); });
+  await new Promise(r => server.listen(0, "127.0.0.1", () => r(undefined)));
+  t.after(() => server.close());
+  const port = /** @type {any} */ (server.address()).port;
+  testHooks.net = { lookup: async () => ["127.0.0.1"], allowAddress: ip => ip === "127.0.0.1", allowPort: () => true };
+  t.after(() => { testHooks.net = {}; });
   const { rt, write, fetched } = setup(t, { vault: { "billing-inbox": secret, "other-item": "nope" } });
+  const net = { "feed.test": { vault: "billing-inbox", field: "password" } };
   write("harlow-invoices", `export default async function watch({ vault, emit, log }) {
-    const v = await vault.fetch("billing-inbox", { field: "password" });
-    log("got", v);
-    console.log("token is " + v);
+    const r = await fetch("http://feed.test:${port}/", { headers: { authorization: "Bearer mine" } });
+    const body = await r.text();
+    log("body", body);
+    console.log("token is " + body);
     try { await vault.fetch("other-item"); } catch (e) { log("refused:", e.message); }
     emit({ id: "a1", title: "ok" });
-  }`, { needs: ["billing-inbox"] });
+  }`, { net });
   const r = await rt.test("harlow-invoices");
   assert.equal(r.ok, true, JSON.stringify(r));
-  assert.deepEqual(fetched, ["harlow-invoices:billing-inbox:password"], "the runtime asked the vault for an item the watcher does not list, or did not say which watcher asked");
+  assert.deepEqual(fetched, ["harlow-invoices:billing-inbox:password"], "the runtime asked the vault for something other than the declared item, or did not say which watcher asked");
+  assert.deepEqual(r.needs, ["billing-inbox"], "the net item is what a grant has to cover");
   const all = JSON.stringify(r) + JSON.stringify(rt.logs("harlow-invoices"));
-  assert.ok(!all.includes(secret), "a vault value reached a log");
-  assert.ok(r.logs.some(l => l === "got [vault value]"));
-  assert.ok(r.logs.some(l => /refused: this watcher does not list "other-item"/.test(l)));
+  assert.ok(!all.includes(secret) && !all.includes(Buffer.from(secret).toString("base64")), "a vault value reached a log");
+  assert.ok(r.logs.some(l => /"sawAuth":"\[vault value\]"/.test(l)), "the server did not get the parent's credential: " + r.logs.join("|"));
+  assert.ok(r.logs.some(l => /refused: a watcher does not handle credentials/.test(l)));
 
-  write("leaky", `export default async function watch({ vault, emit }) { emit({ id: 1, title: await vault.fetch("billing-inbox") }); }`, { needs: ["billing-inbox"] });
+  // An echoing item cannot carry it out either, in any common encoding.
+  write("leaky", `export default async function watch({ emit }) { const r = await fetch("http://feed.test:${port}/"); emit({ id: 1, title: (await r.text()) }); }`, { net });
   const leak = await rt.test("leaky");
-  assert.match(leak.error, /carried a value from the vault/);
-  assert.ok(!JSON.stringify(leak).includes(secret));
+  assert.equal(leak.ok, true);
+  assert.ok(!JSON.stringify(leak).includes(secret), "the server's echo reached an item");
+  // A watcher that still lists needs is told where to write it now.
+  write("old", `export default async function watch() {}`, { needs: ["billing-inbox"] });
+  assert.match((await rt.test("old")).problems.join(), /needs is retired.*net/);
 });
 
 test("watchers: each run is a child with no environment that can read only its own folder and write nothing", async t => {
@@ -258,16 +271,20 @@ test("watchers: the network is reachable, and a webhook watcher gets the body an
   const port = /** @type {any} */ (server.address()).port;
   const { rt, write } = setup(t);
   // Without the test hook a watcher cannot reach loopback at all: the parent refuses it.
-  write("inside", `export default async function watch() { await fetch("http://127.0.0.1:${port}/"); }`);
+  write("nonet", `export default async function watch() { await fetch("http://feed.test/"); }`);
+  assert.match((await rt.test("nonet")).error, /declares no hosts/);
+  testHooks.net = { lookup: async () => ["127.0.0.1"] };   // a name that points inside
+  t.after(() => { testHooks.net = {}; });
+  write("inside", `export default async function watch() { await fetch("http://feed.test:${port}/"); }`, { net: { "feed.test": {} } });
   assert.match((await rt.test("inside")).error, /port \d+ is not allowed/);
-  write("inside80", `export default async function watch() { await fetch("http://127.0.0.1/"); }`);
+  write("inside80", `export default async function watch() { await fetch("http://feed.test/"); }`, { net: { "feed.test": {} } });
   assert.match((await rt.test("inside80")).error, /not a public address/);
-  testHooks.net = { allowAddress: ip => ip === "127.0.0.1", allowPort: () => true };
+  testHooks.net = { lookup: async () => ["127.0.0.1"], allowAddress: ip => ip === "127.0.0.1", allowPort: () => true };
   t.after(() => { testHooks.net = {}; });
   write("feed", `export default async function watch({ emit }) {
-    const res = await fetch("http://127.0.0.1:${port}/");
+    const res = await fetch("http://feed.test:${port}/");
     for (const s of await res.json()) emit(s);
-  }`);
+  }`, { net: { "feed.test": {} } });
   assert.deepEqual((await rt.test("feed")).items.map(i => i.title), ["SQLite 4.0 released"]);
 
   write("harlow-forms", `export default async function watch({ hook, emit }) { if (hook) emit({ id: hook.submission, title: hook.subject }); }`, { schedule: "webhook" });

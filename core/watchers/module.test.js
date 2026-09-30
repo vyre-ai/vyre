@@ -72,7 +72,7 @@ test("watchers module: dry run, create, filing into the project, and the items i
   const g = await call("vault.grant", { name: "feed-key", module: "watchers", watcher: "harlow-sqlite" }, { root });
   assert.ok(!g.error, JSON.stringify(g.error));
   // A grant to one watcher is not a grant to another that lists the same item.
-  writeWatcher(p, "harlow-other", { schedule: "@hourly", needs: ["feed-key"] }, `export default async function watch({ vault }) { await vault.fetch("feed-key"); }`);
+  writeWatcher(p, "harlow-other", { schedule: "@hourly", net: { "feed.test": { vault: "feed-key" } } }, `export default async function watch() { await fetch("http://feed.test:${port}/"); }`);
   assert.match((await call("watchers.test", { name: "harlow-other" }, { root })).data.error, /not granted to watchers\/harlow-other/);
 
   const dry = (await call("watchers.test", { name: "harlow-sqlite" }, { root })).data;
@@ -129,7 +129,7 @@ test("watchers module: without a vault, a watcher that needs one fails its run a
   fs.writeFileSync(p.config, JSON.stringify({ ...CONFIG(root), modules: { disable: ["vault"] } }));
   const d = await start({ root, presence: present, log: () => {} });
   t.after(() => d.stop());
-  writeWatcher(p, "harlow-inbox", { schedule: "@hourly", needs: ["billing-inbox"] }, `export default async function watch({ vault }) { await vault.fetch("billing-inbox"); }`);
+  writeWatcher(p, "harlow-inbox", { schedule: "@hourly", net: { "inbox.example.com": { vault: "billing-inbox" } } }, `export default async function watch() { await fetch("https://inbox.example.com/"); }`);
   const r = (await call("watchers.test", { name: "harlow-inbox" }, { root })).data;
   assert.equal(r.ok, false);
   assert.match(r.error, /the vault is not running on this machine/);

@@ -74,8 +74,8 @@ function check(raw, name, problems) {
   else if (on !== null && schedule !== "event") problems.push(`a watcher with on runs on that event; its schedule must be "event" or left out, not "${schedule}"`);
   else if (schedule === "event" && on === null) problems.push('schedule "event" needs on: the event type to run on, like hook.received');
   else if (schedule !== "webhook" && schedule !== "event") { try { parse(schedule); } catch (e) { problems.push(/** @type {Error} */ (e).message); } }
-  const needs = raw.needs === undefined ? [] : raw.needs;
-  if (!Array.isArray(needs) || needs.some(n => typeof n !== "string" || !VAULT_NAME.test(n))) problems.push("needs must be a list of vault item names");
+  if (raw.needs !== undefined && !(Array.isArray(raw.needs) && !raw.needs.length)) problems.push('needs is retired: a watcher never holds a credential. Name the host and the vault item under net, like { "net": { "api.example.com": { "vault": "billing-inbox" } } }, and Vyre attaches it to that host\'s requests');
+  const needs = [];
   if (raw.emits !== undefined && (typeof raw.emits !== "string" || !KIND.test(raw.emits))) problems.push(`emits "${raw.emits}" must look like noun.past-verb, like invoice.seen`);
   const timeout = raw.timeout === undefined ? DEFAULT_TIMEOUT_S : raw.timeout;
   if (!Number.isFinite(timeout) || timeout <= 0 || timeout > MAX_TIMEOUT_S) problems.push(`timeout is seconds, at most ${MAX_TIMEOUT_S}`);

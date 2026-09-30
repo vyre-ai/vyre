@@ -96,6 +96,11 @@ by a test yet (module.test.js boots a daemon: runner only). Still open: ask() fo
 (threads.quick), `vault.push` (vault must emit it), filing to the teammate's notes (team.notes refuses
 module callers; items go to watchers.items for now, teammates can read them into its brief).
 
+Raw vault release retired (lead's order, reviewer-2 H1): `needs` refused in watcher.json, `vault.fetch` refused
+in the child, credentials only via `net` (parent-attached, scrubbed in body/logs with base64/hex/url forms), no
+`net` means no network. Skill, use-the-vault line and docs/using/watchers.md updated. module.test.js edited to
+the net shape but not run here (daemon: runner only).
+
 ## Next
 
 Build order agreed with the lead (GO message): lib/sandbox first, jointly with platform and the

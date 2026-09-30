@@ -5,10 +5,10 @@
 // access to its own folder and the runner and nothing else: no writes, no child processes, no
 // workers. It can reach the network; watching the network is the point.
 //
-// Vault values reach the child one at a time, only for names in the watcher's own `needs`, and
-// every value released during a run is scrubbed from its log lines and its error before either
-// is kept. An item that carries a released value fails the run: an item is filed into a project
-// and taught to Memory, and a credential must never end up in either.
+// Credentials never reach the child. The parent attaches the vault item a watcher named under `net`
+// to requests for that host only, and scrubs it (and its base64, hex and URL forms) from the
+// response, the log lines and the error before any is kept. An item that carries one fails the run:
+// an item is filed into a project and taught to Memory, and a credential must never end up in either.
 
 import { fork } from "node:child_process";
 import fs from "node:fs";
@@ -69,22 +69,19 @@ export function runOnce({ dir, needs, since, hook = null, timeoutMs, fetch, sign
         if (items.length >= LIMITS.items) { fail(`emitted more than ${LIMITS.items} items in one run; fetch only what is new since \`since\``); child.kill("SIGKILL"); return; }
         items.push(m.item);
       } else if (m.t === "vault") {
-        const name = String(m.name);
-        if (!needs.includes(name)) { child.connected && child.send({ t: "vault", id: m.id, error: `this watcher does not list "${name}" under needs in watcher.json` }); return; }
-        try {
-          const value = String(await fetch(name, m.field));
-          released.push(value);
-          child.connected && child.send({ t: "vault", id: m.id, value });
-        } catch (e) { child.connected && child.send({ t: "vault", id: m.id, error: /** @type {Error} */ (e).message }); }
+        // A raw credential never enters the child: it could send it to any host or use it to write.
+        child.connected && child.send({ t: "vault", id: m.id, error: "a watcher does not handle credentials; declare the host under net in watcher.json with its vault item, and Vyre attaches it to that host's requests" });
       } else if (m.t === "fetch") {
         // The child has no network of its own; this is its only way out (lib/sandbox/fetch.js).
         const reply = body => child.connected && child.send({ t: "fetch", id: m.id, ...body });
         try {
           const url = new URL(String(m.url));
-          if (hosts && !hosts.some(h => url.hostname === h || url.hostname.endsWith("." + h))) throw new Error(`${url.hostname} is not one of this watcher's declared hosts`);
+          if (!hosts || !hosts.length) throw new Error("this watcher declares no hosts; list each host it reads under net in watcher.json, like { \"api.example.com\": {} }");
+          if (!hosts.some(h => url.hostname === h || url.hostname.endsWith("." + h))) throw new Error(`${url.hostname} is not one of this watcher's declared hosts`);
           const auth = netAuth ? await netAuth(url) : undefined;
+          if (auth) released.push(...forms(auth.value), ...forms(auth.value.replace(/^\S+ /, "")));
           const r = await mediatedFetch(url.href, m.init || {}, { ...netOptions, ...(auth ? { auth } : {}) });
-          if (auth) { const raw = auth.value.replace(/^\S+ /, ""); r.body = r.body.split(raw).join("[vault value]"); }
+          r.body = scrub(r.body);
           reply({ result: r });
         } catch (e) { reply({ error: /** @type {Error} */ (e).message }); }
       } else if (m.t === "done") { finished = true; cursor = m.cursor; }
@@ -103,6 +100,13 @@ export function runOnce({ dir, needs, since, hook = null, timeoutMs, fetch, sign
     });
     child.send({ t: "run", entry: pathToFileURL(path.join(real, "watch.js")).href, since: since ?? null, hook });
   });
+}
+
+/** A value and the encodings that would still identify it in a log or an item. */
+function forms(v) {
+  const raw = String(v);
+  if (raw.length < 6) return [raw];
+  return [...new Set([raw, Buffer.from(raw).toString("base64"), Buffer.from(raw).toString("base64url"), Buffer.from(raw).toString("hex"), encodeURIComponent(raw), JSON.stringify(raw).slice(1, -1)])];
 }
 
 function lastLines(s) {
