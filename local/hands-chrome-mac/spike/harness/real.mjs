@@ -26,6 +26,11 @@ import { WORKFLOW_STEPS } from "../../bench/scenarios.mjs";
 const here = path.dirname(fileURLToPath(import.meta.url));
 const root = path.resolve(here, "..", "..");
 
+const T0 = performance.now();
+const log = (/** @type {string} */ m) => console.error(`[real +${Math.round(performance.now() - T0)}ms] ${m}`);
+/** A step that must finish: it rejects after ms instead of holding the job until the runner's own cutoff. @template T @param {Promise<T>} p @param {number} ms @param {string} what @returns {Promise<T>} */
+const within = (p, ms, what) => new Promise((res, rej) => { const t = setTimeout(() => rej(new Error(`${what} took longer than ${ms} ms`)), ms); p.then(v => { clearTimeout(t); res(v); }, e => { clearTimeout(t); rej(e); }); });
+
 async function main() {
   const args = parseArgs(process.argv.slice(2));
   const iters = Number(args.iters) || 30;
@@ -34,17 +39,27 @@ async function main() {
   const udd = path.join(tmp, "profile");
   fs.mkdirSync(udd);
   /** @type {Record<string, any>} */ const out = { tool: "chrome-real", os: `${process.platform}-${os.arch()}`, node: process.version, headless, stages: {}, at: new Date().toISOString() };
+  // Whatever happens, leave what was learned behind before the runner's own cutoff.
+  setTimeout(() => {
+    out.fatal = out.fatal || "watchdog: still running after 400 s";
+    console.log(JSON.stringify(out, null, 2));
+    if (typeof args.out === "string") { try { fs.mkdirSync(path.dirname(path.resolve(args.out)), { recursive: true }); fs.writeFileSync(args.out, JSON.stringify(out, null, 2)); } catch { /* best effort */ } }
+    process.exit(3);
+  }, 400_000).unref();
   const cleanups = /** @type {Array<()=>void>} */ ([]);
   /** @type {any} */ let chromeProc = null; let fixture = null; let bridge = null;
   const stage = async (/** @type {string} */ name, /** @type {()=>Promise<any>} */ fn) => {
     const t = performance.now();
-    try { out.stages[name] = { ok: true, ...(await fn()), ms: Math.round(performance.now() - t) }; return true; }
-    catch (e) { out.stages[name] = { ok: false, error: String(/** @type {Error} */ (e).message || e).slice(0, 400), ms: Math.round(performance.now() - t) }; return false; }
+    log(`stage ${name}`);
+    try { out.stages[name] = { ok: true, ...(await within(fn(), 120_000, `stage ${name}`)), ms: Math.round(performance.now() - t) }; log(`stage ${name} ok`); return true; }
+    catch (e) { log(`stage ${name} FAILED: ${/** @type {Error} */ (e).message}`); out.stages[name] = { ok: false, error: String(/** @type {Error} */ (e).message || e).slice(0, 400), ms: Math.round(performance.now() - t) }; return false; }
   };
   try {
+    log("fixture");
     fixture = await startFixtureServer();
     const sockPath = ipcPath();
     bridge = createBridge({ sockPath });
+    log("bridge listen");
     await bridge.listen();
     const ext = prepareExtension(path.join(root, "extension"), path.join(tmp, "extension"));
     out.extensionId = ext.id;
@@ -53,11 +68,13 @@ async function main() {
     if (process.platform !== "win32") fs.chmodSync(wrapper, 0o755);
     cleanups.push(registerHost({ manifestObj: hostManifest({ wrapper, id: ext.id }), dir: tmp, userDataDir: udd }));
 
+    log("resolve chrome");
     const chrome = resolveChrome({ chrome: typeof args.chrome === "string" ? args.chrome : undefined });
     out.chrome = chrome.version;
     const extra = [`--load-extension=${ext.dir}`, `--disable-extensions-except=${ext.dir}`];
     const launched = launchChrome({ chrome: chrome.path, userDataDir: udd, url: `${fixture.url}/checkout`, extraArgs: extra, headless, env: { VYRE_CHROME_SOCK: sockPath, VYRE_HOME: tmp }, logFile: path.join(tmp, "chrome.log") });
     chromeProc = launched.child;
+    log("chrome launched");
 
     const hello = await stage("hello", async () => {
       const end = Date.now() + 45_000;
@@ -68,7 +85,9 @@ async function main() {
 
     if (hello) {
       const driver = new ExtensionDriver(bridge);
-      out.bench = await runScenarios(driver, { url: fixture.url, iters });
+      log("bench");
+      out.bench = await within(runScenarios(driver, { url: fixture.url, iters }), 240_000, "the bench");
+      log("bench done");
 
       await stage("blind_refused", async () => {
         let code = "";
@@ -105,10 +124,12 @@ async function main() {
     out.fatal = String(/** @type {Error} */ (e).message || e);
     try { out.chromeLogTail = fs.readFileSync(path.join(tmp, "chrome.log"), "utf8").slice(-1500); } catch { /* no log */ }
   } finally {
+    log("cleanup");
     stopProcess(chromeProc);
     for (const c of cleanups) try { c(); } catch { /* best effort */ }
-    await bridge?.close();
-    await fixture?.close();
+    await within(Promise.resolve(bridge?.close()), 5000, "closing the bridge").catch(e => log(String(e.message)));
+    await within(Promise.resolve(fixture?.close()), 5000, "closing the fixture").catch(e => log(String(e.message)));
+    log("cleanup done");
     setTimeout(() => { try { fs.rmSync(tmp, { recursive: true, force: true }); } catch { /* best effort */ } }, 2500).unref();
   }
   const bench = out.bench;

@@ -123,6 +123,15 @@ steps 1-3 first (outward classifier, Gate wiring, the one grant), then deep Chro
   released result to the caller (state "sent") instead of a held answer. Tests: module.test.js (chrome), control.test.js (hands).
 - Tests: local/hands-chrome-mac + local/hands-mac 285 pass, 0 fail; docs tests clean.
 
+### CI on 3963b50c (run 36665788234), read 30 Sep
+- spike and direct-CDP bench PASSED on macOS, Windows, Linux (Chrome 154, headless new, extension loads and says hello,
+  native host round trip p50 macOS 3.3 ms / Windows 2.0 / Linux 6.3; direct-CDP bench p50: snapshot 0.5-1.0 ms, page.fill
+  of 12 fields 0.4-0.75, click 1.3-2.1, 20-step batch as ONE call 1.5-1.9 ms vs 20 sequential calls 31-48 ms).
+- The REAL extension run (spike/harness/real.mjs: batch through the product and the Esc halt number) produced NO numbers:
+  the step printed nothing for 15 min on all three OSes and hit the job cutoff. Batch and Esc-halt figures for the real
+  extension therefore do not exist yet. Fix in the next push: stage logging to stderr, 120 s per stage, 240 s for the bench,
+  5 s on closing the bridge and fixture, a 400 s watchdog that writes partial results, 8 min step timeout.
+
 ### Doing
 - Waiting on a push of work/capsule-sight to run chrome-spike.yml on the runners (now includes spike/harness/real.mjs: the real extension + host + bridge, the bench, stop-halts-batch and blind-refused checks).
 - Esc: hands.indicator (new hands tool) raises the shared pill before every Chrome act, and the hands overlay's stop (Esc or double Control) stops Chrome control through oversight.

@@ -56,6 +56,7 @@ jobs:
       - name: Real extension, native host and bridge (the bench through the product)
         id: real
         continue-on-error: true
+        timeout-minutes: 8
         run: node local/hands-chrome-mac/spike/harness/real.mjs --iters 30 --out "results/real-${{ runner.os }}.json"
       - name: Results
         if: always()
