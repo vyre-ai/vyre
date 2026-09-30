@@ -53,3 +53,10 @@ test("the console ring and script cache go when the page's contexts are cleared"
   assert.equal((await dt.ops["dev.console.read"]({ tab: 3 }, k.ctx)).entries.length, 0);
   assert.equal((await dt.ops["dev.sources.list"]({ tab: 3 }, k.ctx)).scripts?.length ?? 0, 0);
 });
+
+test("password guard fails closed: a page too big to look through, or one that throws, counts as a password page", () => {
+  const many = root(Array.from({ length: 5001 }, () => input({ type: "text", name: "q" })));
+  assert.equal(run(many), true);
+  const broken = { querySelectorAll: () => { throw new Error("boom"); } };
+  assert.equal(run(broken), true);
+});

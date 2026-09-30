@@ -58,7 +58,7 @@ async function main() {
     log("fixture");
     fixture = await startFixtureServer();
     const sockPath = ipcPath();
-    bridge = createBridge({ sockPath });
+    bridge = createBridge({ sockPath, timeoutMs: 10_000 });
     log("bridge listen");
     await bridge.listen();
     const ext = prepareExtension(path.join(root, "extension"), path.join(tmp, "extension"));
@@ -84,7 +84,15 @@ async function main() {
     });
 
     if (hello) {
-      const driver = new ExtensionDriver(bridge);
+      // Every call is logged with its time, so a hang names the op that never came back.
+      let calls = 0;
+      const traced = { call: async (/** @type {string} */ op, /** @type {any} */ a) => {
+        const n = ++calls, t = performance.now();
+        if (n <= 40 || n % 50 === 0) log(`> #${n} ${op}`);
+        try { const r = await bridge.call(op, a); if (n <= 40 || n % 50 === 0) log(`< #${n} ${op} ${Math.round(performance.now() - t)}ms`); return r; }
+        catch (e) { log(`! #${n} ${op} ${/** @type {any} */ (e).code} ${String(/** @type {any} */ (e).message).slice(0, 160)}`); throw e; }
+      }, close: () => bridge.close() };
+      const driver = new ExtensionDriver(traced);
       log("bench");
       out.bench = await within(runScenarios(driver, { url: fixture.url, iters }), 240_000, "the bench");
       log("bench done");

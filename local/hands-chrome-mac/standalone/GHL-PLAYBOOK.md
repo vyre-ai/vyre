@@ -96,3 +96,13 @@ For a status change, use `publish-workflow`. It clicks the Publish toggle (held 
 - Toast text and timing differ between screens. If a screen shows no toast and no disabled Save, a save on it can fail to verify even though it worked. Check the list or the URL and pass `expect.listItem`.
 - Spinners and skeletons are recognised by common class names and ARIA. A page that shows a permanent animated element makes the wait give up after a grace period and say `busyIgnored` instead of hanging.
 - This has been proven against a local fixture and unit tests with fakes, not against a live account.
+
+## The ladder: what to try, in order
+
+Go down one rung only when the one you are on fails. The trace records the rung of every call, and a failure tells you the next one.
+
+1. The site's own API (`chrome_api`: learn once from the page's traffic, then `catalog` and `call`). Fastest and steadiest. Prefer it for reads and bulk work, and for any step a flow struggles with. A call is made from inside the page, so the person's own login signs it.
+2. The page's controls (`chrome_snapshot`, `chrome_act`, `chrome_fill`, `chrome_batch`, `chrome_ghl`). The normal path for building in the workflow UI.
+3. DevTools (`chrome_inspect`, `chrome_console`, `chrome_net`, `chrome_sources`, `chrome_eval`) for a page that resists: read the real DOM, see the request that failed, find a hidden control.
+4. Role and name from a snapshot, when a label is odd.
+5. `chrome_screenshot`, and read it. Last, because it is slow and cannot be acted on precisely.

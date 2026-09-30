@@ -20,6 +20,35 @@ const EMAIL = /[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/g;
 const PHONE = /(?<![\w.])\+?\d[\d ()\-.]{5,}\d(?![\w])/g;
 export const DEFAULTS = Object.freeze({ logs: "on", shots: false, maxMB: 100, fileMB: 10 });
 
+/**
+ * The fallback ladder, one mechanism: which rung a tool call works on, and what to try when it fails.
+ *   1 api      the site's own API (chrome_api learn/catalog/call, a connector)
+ *   2 dom      the page's controls with refs, and batches of them (snapshot, act, fill, batch, ghl, wait)
+ *   3 devtools DOM, styles, scripts, console and network, for pages that resist (inspect, sources, console, net, eval)
+ *   4 ax       the accessibility tree (snapshot with role and name only, then act by role and name)
+ *   5 vision   a screenshot the model reads, last
+ * @param {string} tool @param {any} [args]
+ */
+export function rungOf(tool, args) {
+  const t = String(tool).replace(/^chrome[._]/, "");
+  if (t === "api") return 1;
+  if (t === "screenshot") return 5;
+  if (["inspect", "sources", "console", "net", "eval"].includes(t)) return 3;
+  if (["snapshot", "act", "fill", "batch", "ghl", "wait", "tabs", "click", "type", "open", "state"].includes(t)) return 2;
+  return 0;
+}
+export const RUNGS = Object.freeze({ 1: "api", 2: "dom", 3: "devtools", 4: "ax", 5: "vision" });
+/** What to say after a failure on a rung. @param {number} rung */
+export function nextRung(rung) {
+  return ({
+    1: "the site's API did not answer: read the page with chrome_snapshot and act on it (rung 2)",
+    2: "the page's controls did not work: look at the DOM, console and network with chrome_inspect, chrome_console, chrome_net (rung 3), or find it by role and name from a chrome_snapshot (rung 4)",
+    3: "devtools did not explain it: find the control by its role and name (rung 4), or take a chrome_screenshot and read it (rung 5)",
+    4: "the accessibility tree did not have it: take a chrome_screenshot and read it (rung 5)",
+    5: "there is no lower rung: tell the person what you see and ask",
+  })[/** @type {1|2|3|4|5} */ (rung)] || "";
+}
+
 /** Mask email- and phone-shaped text. @param {string} s */
 export function pii(s) {
   return String(s).replace(EMAIL, "[email]").replace(PHONE, m => { const n = m.replace(/\D/g, "").length; return n >= 7 && (/[ ()\-.+]/.test(m) || (n >= 10 && n <= 11)) ? "[phone]" : m; });
@@ -128,7 +157,8 @@ export function createTrace({ dataDir, now = Date.now, pid = process.pid, versio
     /** One finished tool call. @param {{ tool: string, args: any, queueMs: number, runMs: number, ok: boolean, result?: any, error?: any, caller?: string }} c */
     call(c) {
       const meta = describe(c.result, c.error);
-      return write({ kind: "call", tool: c.tool, args: safeArgs(c.args), queueMs: Math.round(c.queueMs), runMs: Math.round(c.runMs), ok: c.ok, ...meta });
+      const rung = rungOf(c.tool, c.args);
+      return write({ kind: "call", tool: c.tool, ...(rung ? { rung, rungName: /** @type {any} */ (RUNGS)[rung] } : {}), args: safeArgs(c.args), queueMs: Math.round(c.queueMs), runMs: Math.round(c.runMs), ok: c.ok, ...meta });
     },
     /** @param {string} type @param {any} payload */
     event(type, payload) { return write({ kind: "event", type, data: safe(payload) }); },
@@ -227,7 +257,10 @@ export function report(dataDir, { last = 5 } = {}) {
   const tools = Object.fromEntries(Object.entries(byTool).map(([k, t]) => [k, { calls: t.calls, failures: t.failures, p50Ms: pct(t.runMs, 0.5), p95Ms: pct(t.runMs, 0.95), waitMs: t.waitMs, fallbackRate: t.calls ? +(t.fallbacks / t.calls).toFixed(3) : 0, retries: t.retries }]));
   const withStrategy = calls.filter((/** @type {any} */ c) => c.strategy !== undefined);
   const slowest = [...calls].sort((a, b) => (b.runMs || 0) - (a.runMs || 0)).slice(0, 10).map(c => ({ seq: c.seq, t: c.t, tool: c.tool, runMs: c.runMs, waitMs: c.waitMs || 0, ok: c.ok, host: c.host, path: c.path }));
+  const byRung = {};
+  for (const c of calls) if (c.rung) { const r = /** @type {any} */ (byRung)[c.rungName] ||= { calls: 0, failures: 0 }; r.calls++; if (!c.ok) r.failures++; }
   const summary = {
+    rungs: byRung,
     sessions, calls: calls.length, failures: failures.length,
     failuresByKind: byKind, tools, slowest,
     fallbackRate: withStrategy.length ? +(withStrategy.filter((/** @type {any} */ c) => c.fallback).length / withStrategy.length).toFixed(3) : 0,

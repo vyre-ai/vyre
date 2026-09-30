@@ -11,7 +11,7 @@ import path from "node:path";
 import fs from "node:fs";
 import { fileURLToPath } from "node:url";
 import chromeModule from "../index.js";
-import { createTrace } from "./trace.js";
+import { createTrace, rungOf, nextRung } from "./trace.js";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 export const PKG = path.resolve(HERE, "..");
@@ -100,6 +100,8 @@ export async function createRuntime(o = {}) {
     }
     const runMs = Date.now() - t0;
     const c = /** @type {any} */ (out);
+    // The ladder: a failure says which rung it was on and what the next one is.
+    if (!c.ok && c.error && rungOf(name)) { const hint = nextRung(rungOf(name)); if (hint && c.error.code !== "blocked" && c.error.code !== "stopped") c.error.message = `${c.error.message} | ladder: ${hint}`; }
     trace.call({ tool: name, args: input, queueMs, runMs, ok: c.ok, result: c.result, error: c.error });
     // A failure can leave a small screenshot behind, when the person turned that on.
     if (!c.ok && trace.config().shots === true && tools.has("chrome.screenshot") && name !== "chrome.screenshot") {

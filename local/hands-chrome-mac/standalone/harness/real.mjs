@@ -27,13 +27,16 @@ const within = (p, ms, what) => new Promise((res, rej) => { const t = setTimeout
 
 /** A minimal MCP client over a child's stdio. @param {import("node:child_process").ChildProcess} child */
 function mcpClient(child) {
-  let n = 0, buf = ""; const waiting = new Map();
+  let n = 0, calls = 0, buf = ""; const waiting = new Map();
   /** @type {any} */ const c = child;
   c.stdout.on("data", (/** @type {any} */ d) => { buf += d; let i; while ((i = buf.indexOf("\n")) >= 0) { const line = buf.slice(0, i); buf = buf.slice(i + 1); if (!line.trim()) continue; try { const m = JSON.parse(line); waiting.get(m.id)?.(m); } catch { /* not ours */ } } });
   const rpc = (/** @type {string} */ method, /** @type {any} */ params, ms = 60_000) => within(new Promise(res => { const id = ++n; waiting.set(id, res); c.stdin.write(JSON.stringify({ jsonrpc: "2.0", id, method, params }) + "\n"); }), ms, `mcp ${method}`);
   /** A tool call: the parsed JSON result, or throws with the tool's error text. */
   const call = async (/** @type {string} */ name, /** @type {any} */ args = {}, ms = 60_000) => {
-    const r = /** @type {any} */ (await rpc("tools/call", { name, arguments: args }, ms));
+    const n = ++calls, t = performance.now();
+    if (n <= 40 || n % 50 === 0) log(`> #${n} ${name}`);
+    const r = /** @type {any} */ (await rpc("tools/call", { name, arguments: args }, ms).catch(e => { log(`! #${n} ${name} ${e.message}`); throw e; }));
+    if (n <= 40 || n % 50 === 0) log(`< #${n} ${name} ${Math.round(performance.now() - t)}ms${r.result && r.result.isError ? " (error)" : ""}`);
     if (r.error) throw new Error(`${name}: rpc ${r.error.code} ${r.error.message}`);
     const text = (r.result.content.find((/** @type {any} */ x) => x.type === "text") || {}).text || "null";
     if (r.result.isError) throw Object.assign(new Error(`${name}: ${text.slice(0, 500)}`), { text });

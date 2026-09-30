@@ -249,3 +249,13 @@ test("release: the built package runs on its own, with nothing from the repo, an
   assert.equal(run.status, 0, run.stderr);
   assert.equal(JSON.parse(run.stdout).logs, "on");
 });
+
+test("ladder: a failure names its rung and the next one, and the trace and report count calls per rung", async t => {
+  const { call, dataDir } = await rig(t, (/** @type {string} */ op) => { if (op === "page.act") throw Object.assign(new Error("nothing matches"), { code: "not_found" }); return { ok: true }; });
+  const r = await call("chrome_act", { selector: { name: "Add Action" }, kind: "click", tab: 1 });
+  assert.equal(r.isError, true);
+  assert.match(r.content[0].text, /ladder: .*rung 3/);
+  const rec = /** @type {any} */ (readSessions(dataDir, 1)).records.find((/** @type {any} */ x) => x.tool === "chrome.act");
+  assert.deepEqual([rec.rung, rec.rungName], [2, "dom"]);
+  assert.equal(report(dataDir).summary.rungs.dom.failures, 1);
+});
