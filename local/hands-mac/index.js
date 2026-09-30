@@ -161,6 +161,27 @@ export default {
       return fn(input, meta);
     });
 
+    /**
+     * A runaway guard, invisible until it matters: a granted agent that has done stepCap acts (default 300) without a word from the
+     * person is asked to check in. Any call from the person, an idle half hour, a stop, or `resume: true` after asking them starts
+     * the count again. Hands-free otherwise: the person is never asked ahead of time.
+     */
+    const stepCap = Number.isInteger(opts.stepCap) && opts.stepCap > 0 ? opts.stepCap : 300;
+    const IDLE_MS = 30 * 60_000;
+    /** @type {Map<string, { n: number, at: number }>} */
+    const runs = new Map();
+    const now = typeof opts.now === "function" ? opts.now : () => Date.now();
+    const counted = fn => (input, meta) => {
+      const agent = grantKey(meta.caller, meta);
+      if (agent) {
+        let r = runs.get(agent);
+        if (!r || now() - r.at > IDLE_MS || (input && input.resume === true)) { r = { n: 0, at: now() }; runs.set(agent, r); }
+        if (r.n >= stepCap) throw Object.assign(new Error(`${r.n} acts in a row with no word from the person. Ask them to check on this, then pass resume: true.`), { code: "step_cap" });
+        r.n++; r.at = now();
+      }
+      return fn(input, meta);
+    };
+
     ctx.tool("hands.observe", {
       description: "Read the accessibility tree of the frontmost app (or a named app or pid): its window title, a bounded list of controls, each with a selector to hand to hands.act, its value, enabled and focus state, frame and actions, and the text on screen. truncated says the list was capped. In a place Vyre may not look (its own surfaces, sign-in dialogs, password managers, security settings) it returns the app and window only, with blind saying why.",
       input: { type: "object", properties: { ...where, limit: { type: "integer", description: "Most controls to return, 1-500. Default 120." },
@@ -182,7 +203,7 @@ export default {
     ctx.tool("hands.act", {
       description: "Do one thing to one control, found by selector in a fresh observation: press it, set its value, focus it, perform one of its accessibility actions, type text into it, or send it a key. The app is never raised or activated: press, set, focus and type work on an app in the background, but a key needs the app in front and is refused with code needs_front otherwise (press the control instead). Then observe again and verify the effect. verified is true only when the re-observation shows it. An act that sends something as the person (a Send button, Return in a chat) is held, not done: the answer has held: true and an id, and the person approves it at the Gate (gate.approve) like any other send; hands.commit with the same input is the older direct path, kept for a caller that wants to drive it itself. Refuses with code floor where Vyre may not act, secure on a password field (use vault.fill), stopped after the person stopped Vyre (pass resume: true only after asking them), and no_indicator when the on-screen indicator cannot be shown.",
       input: actInput,
-      run: gated((input, meta) => hands.act(input, { thread: meta.thread, commit: asked(meta.caller) })),
+      run: gated(counted((input, meta) => hands.act(input, { thread: meta.thread, commit: asked(meta.caller) }))),
     });
 
     ctx.tool("hands.commit", {
@@ -212,7 +233,7 @@ export default {
     ctx.tool("hands.stop", {
       description: "Stop controlling the Mac now, as Escape does: the act in flight is cut short and later acts are refused until one passes resume: true.",
       input: { type: "object", properties: {} },
-      run: gated(async () => hands.halt("tool")),
+      run: gated(async () => { runs.clear(); return hands.halt("tool"); }),
     });
 
     ctx.tool("hands.indicator", {

@@ -110,3 +110,30 @@ test("release: only what hands itself held can be released; an agent's own gate 
   const direct = await reg.call("hands.release", { id: "x", content: {} }, "mcp:agent:kit");
   assert.ok(direct.error);
 });
+
+test("step cap: a granted agent that has acted stepCap times with no word from the person is asked to check in; the person, a stop or resume:true start the count again", async t => {
+  const home = tempHome(t);
+  const db = open(path.join(home, "vyre.db"));
+  t.after(() => db.close());
+  const f = fakeApp({ texts: ["0"], elements: [{ path: "/0/0/7", role: "AXButton", name: "7", enabled: true }] }, (req, s) => { s.texts = ["7"]; return { acted: true }; });
+  let clock = 1_000_000;
+  const reg = new Registry({ db, events: new Events(db), log: () => {}, config: { role: "local", hands: { runner: f.run, sleep: async () => {}, stepCap: 3, now: () => clock } } });
+  await reg.start(discover([path.dirname(HERE)]).filter(m => m.dir === HERE), { role: "local" });
+  assert.ok((await reg.call("hands.grant.add", { agent: "kit" }, "cli")).data.granted);
+  const sel = { role: "AXButton", name: "7", path: "/0/0/7" };
+  const act = (/** @type {any} */ extra = {}, caller = "mcp:agent:kit") => reg.call("hands.act", { selector: sel, kind: "press", ...extra }, caller);
+  for (let i = 0; i < 3; i++) assert.equal((await act()).error, undefined, `act ${i + 1}`);
+  const capped = await act();
+  assert.equal(capped.error.code, "step_cap");
+  assert.match(capped.error.message, /3 acts in a row/);
+  assert.equal((await act({}, "cli")).error, undefined, "the person is never capped");
+  assert.equal((await act({ resume: true })).error, undefined, "resume:true after asking the person starts the count again");
+  for (let i = 0; i < 2; i++) await act();
+  assert.equal((await act()).error.code, "step_cap");
+  clock += 31 * 60_000;
+  assert.equal((await act()).error, undefined, "an idle half hour starts it again");
+  for (let i = 0; i < 2; i++) await act();
+  assert.equal((await act()).error.code, "step_cap");
+  await reg.call("hands.stop", {}, "cli");
+  assert.equal((await act({ resume: true })).error, undefined, "a stop, then resume");
+});
