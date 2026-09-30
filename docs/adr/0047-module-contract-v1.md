@@ -3,12 +3,12 @@ title: "ADR 0047: The module contract v1"
 summary: The frozen module API 1 for Vyre 0.2. It covers module.json with per-tool reach and outward marks, the ctx a module gets, the capability manifest every agent reads, added modules running in a sandboxed host, the install card, and the kit that lets an agent write a module that works the first time.
 audience: builders, agents
 owner: platform
-status: proposed
+status: draft
 ---
 
 # ADR 0047: The module contract v1
 
-Status: proposed, 30 Sep 2026 · Workstream: platform · Finalizes [ADR 0033](0033-hackable-vyre.md)
+Status: draft for the person's approval, 30 Sep 2026 · Workstream: platform · Finalizes [ADR 0033](0033-hackable-vyre.md)
 section 1 and section 5 for Vyre 0.2. Binds to the 0.2 charter's rules (security without friction,
 asking is approving, agents can do everything the person can) and PLAN.md's contracts P5, P8, P14,
 P17, P20 and C25.
@@ -79,17 +79,19 @@ the deprecation rules (section 8). `x-` keys are free.
     "watchers": ["watchers/big-order.json"]
   },
   "watches": { "emits": ["bakery.order-added"], "on": ["memory.written"] },
-  "shows": { "deck": ["now:bakery.today"], "capsule": { "bakery.orders": { "title": "Orders" } } },
+  "shows": { "deck": ["now:bakery.today"], "capsule": { "bakery.orders": { "title": "Orders" } },
+             "notices": ["target-reached"] },
   "settings": [{ "key": "bakery.target", "label": "Daily target", "type": "int", "default": 40,
                  "levels": ["account"], "apply": "live" }],
   "needs": {
-    "tools": ["memory.write", "push.offer"],
+    "tools": ["gate.request"],
     "credentials": [{ "id": "supplier", "kind": "api-credential", "provider": "flourco",
                       "purpose": "place flour orders" }],
     "network": ["api.flourco.example"],
     "spend": { "dailyUsd": 0.5 }
   },
   "teaches": {
+    "memory": ["note"],
     "tips": [{ "id": "orders", "text": "Ask \"how many orders today?\" in any chat.",
                "surfaces": ["chat"], "level": "first-use", "trigger": "never-used", "since": "0.1.0" }]
   }
@@ -159,6 +161,11 @@ registry, not the module, routes every call to such a tool:
 
 This replaces `does.senders` (ADR 0033): an outward tool is its own sender. `gate.offer` stays
 for built in senders during one release.
+
+The limit on `outward` applies to every module, built in or added: it goes only on a tool with
+reach `anyone` or `asked`. An approved or person-run outward tool carries its clearance in
+`meta.gate`, so the `ctx.vault.request` or `ctx.connections.call` write inside its `run` is not
+held a second time.
 
 An added module has no other way to act as the person (section 5): it never holds the person's
 credentials. `cost: "paid"` marks a tool that spends money through the module's own model or
@@ -234,6 +241,14 @@ loader enforces. A hand-written list could lie.
 
 `ctx.memory.teach` stays as an alias of `ctx.memory.write({ kind: "fact" })` for one release
 (section 8).
+
+**Each ctx door has one declaration, and the install card is built from them.** `ctx.call` needs
+the tool in `needs.tools`, and `ctx.gate.request` needs `gate.request` there too. `ctx.vault.request`
+needs a `needs.credentials` id, `ctx.connections.call` a `needs.connections` provider and `ctx.fetch`
+a `needs.network` host. `ctx.memory.write` needs the kind (`fact` or `note`) in `teaches.memory`.
+`ctx.ask` and `ctx.spend` need `needs.spend`, and `ctx.push.offer` needs its `kind` in
+`shows.notices`. `ctx.undo.record` and the rest need nothing. A call without its declaration
+throws `undeclared`.
 
 **Rules every module keeps**, checked by the conformance test (section 7):
 
@@ -341,7 +356,7 @@ Runs: on your server, sandboxed
 | Piece | What it does | Status |
 |---|---|---|
 | `vyre module new <name>` | scaffolds `module.json` (v1, object tools, `apiVersion`), `index.js`, a test, `AGENTS.md` (the agent brief), README, `jsconfig.json` | on main, template updated to v1 |
-| `vyre module check [dir]` | schema, loader rules, reach and outward rules for added modules, entry file parses, static import scan (no `../core`, no `node:child_process`, `node:net`, `node:http(s)`, `node:dgram`, `node:worker_threads`) | on main, rules added |
+| `vyre module check [dir]` | schema, loader rules, reach and outward rules for added modules, entry file parses, static import scan (nothing outside the folder, nothing under `core/`, and none of `child_process`, `net`, `http`, `https`, `http2`, `tls`, `dns`, `dgram`, `worker_threads`, `cluster`, `inspector`, with or without `node:`) | on main, rules added |
 | `@vyre/module-sdk/testing` | `testModule(dir, opts)`: a fake registry and ctx over a temp home, with fake tools, a fake Gate (records holds), a fake vault.request, a fake spend and a fake push. The module's own tests import it. No daemon. | new |
 | `@vyre/module-sdk/conform` | `conformModule(dir)`: the checks every module must pass (below). `vyre module test` runs it, then the module's own tests. | new |
 | `vyre module add/remove/list/update/enable/disable` | as in section 6 | add on main, the rest new |
@@ -360,11 +375,11 @@ Runs: on your server, sandboxed
 6. An `outward` tool called as an agent without an ask produces a Gate hold and doesn't run.
    Called as the person, it runs once.
 7. An `asked` tool called as an agent without an ask returns `not_asked`.
-8. No timer under 60 s is left armed after `start`.
+8. No interval under 60 s is left running after `start`.
 9. `stop` resolves within 5 s with no handles left.
 10. Migrations run twice leave one schema.
-11. Tips and user-facing strings contain no em dash, no section sign and no fixture-guard word
-    (D2).
+11. Tips and user-facing strings contain no em dash, no section sign and no word on the
+    hygiene list (`scripts/lib/hygiene.js`, D2).
 
 **How updates keep added modules working (the ratchet):**
 
@@ -390,9 +405,11 @@ Runs: on your server, sandboxed
   "Module API" in the changelog.
 - Deprecated by this ADR, working through 0.3: string tool entries for added modules (built in
   modules keep them until they are touched), `does.senders` (use `outward`), `shows.cli` (use
-  `does.commands`), `ctx.memory.teach` (use `ctx.memory.write`), `presence: true` and
-  `callers: [...]` on added modules' tools (use `reach`), and roles meaning only `box` or `local`
-  (still valid; `mac` and `windows` are additions).
+  `does.commands`), `ctx.memory.teach` (use `ctx.memory.write`), and `callers: [...]` and
+  `internal` on built in modules' tools (use `reach`). Roles meaning only `box` or `local` stay
+  valid; `mac` and `windows` are additions. On added modules, `presence`, `callers`, `internal` and
+  `hook` in a tool definition are refused now, not deprecated: added modules never had them in a
+  release.
 
 ### 9. What each 0.2 team does so its modules match v1
 
@@ -421,6 +438,16 @@ confirm.
   modules may share one host process per trust level if PL1 shows the cost matters.
 - `does.providers`, `ctx.route` and `shows.streams` stay built in only in 0.2. That is said
   plainly in the docs and the check.
+
+## Build status on work/platform (proof, not merged)
+
+The schema, checker, `testing.js`, `conform.js`, the bakery example, the v1 scaffold,
+`vyre module test` and AGENT-BRIEF.md are written and pass their tests. The loader in
+`core/modules` accepts a v1 manifest and maps `reach` to its caller checks. Registry-side
+`outward` routing, the `asked` check, the module host and the install card are 0.2 build steps
+(plans/platform.md section 7), since they need the Gate's P17 match, vault's `vault.request` and
+watchers' sandbox. Until they land, a v1 module passes `vyre module test` against the harness,
+which already applies those rules.
 
 ## Open
 
