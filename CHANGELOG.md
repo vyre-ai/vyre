@@ -23,6 +23,9 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 - An agent limited to certain projects can no longer read or act on another project's GitHub repo by naming it; the project reads as if it did not exist.
 
 - A person's own "open a PR", "merge it" or "review this PR" becomes an `act_out` intent at `threads.send` and on `threads.start`'s first prompt, through the assistant's `prIntents` (`lib/said/pr.js`, copied here identically until assistant lands): it keeps only real asks (no questions, conditions, negations or standing permissions), binds each to github's composite key (`github.act.target`: `github.project.pr.merge:alex/app#7`) for the thread's project and one PR, and the switchboard records it as the person with `vault.said.record`. The thread's own PR is `github.session.pr`'s answer, used only when it is exactly one; pasted spans are removed first (`core/switchboard/index.js` `hearActs`). Two tests use the real vault and skip until vault lists `module:threads` as a recorder and resolver.
+- said: `prIntents` records act_out intents for "open a PR", "merge it" and "review this PR", bound to the exact key github.act.target answers with. Nothing is recorded when the PR or branch is ambiguous or the sentence carries a condition (if, when, once, unless, after, before, until, only, as long as, provided, assuming). A plain ask covers 15 minutes.
+
+- `assistant.welcome`: the first chat message after setup, {text, cards}, built from onboard.status with no model call. A card shows only while its step is open, and carries an id (and href for links), never a tool.
 - `#` tags on `threads.start` and `agents.ask`, with `threads.send`'s trust: `mentions: [{kind, id, name}]` and `pasted: [span]` are honoured only from a person's own surface. `threads.start` hears the first prompt as any person's turn (said row, tags resolved for the new thread, the notes beside the prompt for the model only); from a model, a module or a guest the tags are dropped. `agents.ask` from a person with tags sends the words on as that person (`core/modules` `CALL_AS.agents`: person labels only, and only to `threads.send`), so threads.send hears them; any other caller's tags are dropped (`core/switchboard/index.js`, `core/agents/index.js`, `core/modules/index.js`).
 - GitHub reads for you and your agents: where a pull request stands (checks, reviews, ready to merge), its comments, and a project's issues. Text written by others is marked as theirs.
 
@@ -772,6 +775,11 @@ Newest first. Every change to code lands here in the same commit. A new dependen
   warnings, never failures. A module for a newer contract is never run: its row says which Vyre it
   needs. `vyre module upgrade` moves a module onto the current form, and pinned fixtures in
   `test/fixtures/modules/` hold every release to it.
+- Undo for what acts on your behalf (core/undo, PLAN P14). When an agent, the assistant, a watcher
+  or a module does something reversible for you, the module that did it records the inverse, and
+  one tap runs it. A model never supplies an inverse, and nothing that sends, posts, pays, deletes
+  outside or is your own action gets one. An agent can undo only its own actions. The log works
+  with the assistant switched off and keeps 30 days. `docs/design/undo.md` explains it.
 - A Mac can be the server: `scripts/install-mac-server.sh` installs Vyre in your own account (no root, no password), starts Colima for agents' computers, writes the setup code into `vyre.env`, and runs vyred as one LaunchAgent under `caffeinate` so the Mac stays awake while it runs. It starts when you sign in to that Mac; starting with nobody signed in waits for the system service. `--uninstall` keeps your data.
 - `link.health` answers in one shape everywhere (`reach`, `why`, `fix`, `since`, `tailnet`) on the
   Mac, the box and the relay client, with the older fields kept beside it. Vyre publishes the
