@@ -9,8 +9,10 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import crypto from "node:crypto";
-import { spawnSync } from "node:child_process";
+import { spawnSync, spawn } from "node:child_process";
 import { fileURLToPath } from "node:url";
+import { createRelay } from "../relay/node/server.js";
+import { createSetupKey, setupCode, mailboxReader } from "../relay/client/setup.js";
 
 const REPO = fileURLToPath(new URL("..", import.meta.url));
 const SCRIPT = path.join(REPO, "scripts", "install-box.sh");
@@ -36,9 +38,19 @@ function box(t, opts = {}) {
     PATH: `${bin}:/usr/bin:/bin`, HOME: base, VYRE_DIR: path.join(base, "srv", "vyre"),
     VYRE_WRAPPER: path.join(base, "bin-out", "vyre"), VYRE_TUN: "/dev/null", VYRE_DOCKER_SOCK: path.join(base, "none"),
     VYRE_NO_UP: "1",
+    // Never the real relay: a closed local port, so a code's progress lines go nowhere in tests.
+    VYRE_RELAY: "http://127.0.0.1:9",
   };
   return { base, env, log, dir: env.VYRE_DIR, calls: () => (fs.existsSync(log) ? fs.readFileSync(log, "utf8") : "") };
 }
+
+/** The installer as a child that lets this process's own relay server answer (spawnSync would block it). @param {Record<string,string>} env @param {string[]} args */
+const runAsync = (env, args) => new Promise(resolve => {
+  const c = spawn("sh", [SCRIPT, ...args], { env, stdio: ["ignore", "pipe", "pipe"] });
+  let stdout = "", stderr = "";
+  c.stdout.on("data", d => { stdout += d; }); c.stderr.on("data", d => { stderr += d; });
+  c.on("close", status => resolve({ status, stdout, stderr }));
+});
 
 /** @param {Record<string,string>} env @param {string[]} args */
 const run = (env, args) => spawnSync("sh", [SCRIPT, ...args], { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"], env });
@@ -78,15 +90,15 @@ test("install-box.sh v2: a malformed VYRE_CODE stops the install, and is never p
 test("install-box.sh v2: the code lands in vyre.env at 0600, keeps the person's lines, and is in no argument", t => {
   const b = box(t);
   fs.mkdirSync(b.dir, { recursive: true });
-  fs.writeFileSync(path.join(b.dir, "vyre.env"), "CLOUDFLARE_VYRE_TOKEN=keep\nVYRE_SETUP_CODE=stale\n", { mode: 0o600 });
+  fs.writeFileSync(path.join(b.dir, "vyre.env"), "CLOUDFLARE_VYRE_TOKEN=keep\nVYRE_CODE=stale\n", { mode: 0o600 });
   const r = run({ ...b.env, VYRE_CODE: CODE }, ["--yes", "--from", REPO]);
   assert.equal(r.status, 0, r.stderr);
   const envFile = path.join(b.dir, "vyre.env");
   assert.equal(fs.statSync(envFile).mode & 0o777, 0o600);
   const text = fs.readFileSync(envFile, "utf8");
   assert.match(text, /^CLOUDFLARE_VYRE_TOKEN=keep$/m);
-  assert.equal(text.match(/^VYRE_SETUP_CODE=/gm)?.length, 1, "one code line, the stale one replaced");
-  assert.ok(text.includes(`VYRE_SETUP_CODE=${CODE}`));
+  assert.equal(text.match(/^VYRE_CODE=/gm)?.length, 1, "one code line, the stale one replaced");
+  assert.ok(text.includes(`VYRE_CODE=${CODE}`));
   assert.ok(!(r.stdout + r.stderr).includes(CODE), "never shown");
   assert.ok(!b.calls().includes(CODE), "never in a docker or sudo argument");
 });
@@ -171,7 +183,7 @@ test("install-box.sh v2: the install line as shown (curl | VYRE_CODE=... sh) han
   fs.mkdirSync(b.dir, { recursive: true });
   const r = spawnSync("sh", ["-c", `cat '${SCRIPT}' | VYRE_CODE='${CODE}' sh -s -- --yes --from '${REPO}'`], { encoding: "utf8", env: b.env });
   assert.equal(r.status, 0, r.stdout + r.stderr);
-  assert.ok(fs.readFileSync(path.join(b.dir, "vyre.env"), "utf8").includes(`VYRE_SETUP_CODE=${CODE}`), "sh saw the variable");
+  assert.ok(fs.readFileSync(path.join(b.dir, "vyre.env"), "utf8").includes(`VYRE_CODE=${CODE}`), "sh saw the variable");
   // And the placement the reviewer caught: on the reader, it never reaches the script.
   const b2 = box(t);
   fs.mkdirSync(b2.dir, { recursive: true });
@@ -262,4 +274,75 @@ test("install-box.sh --uninstall --purge --yes hands the one uninstall the delet
   const r = run(b.env, ["--uninstall", "--purge", "--yes"]);
   assert.equal(r.status, 0, r.stdout + r.stderr);
   assert.ok(b.calls().includes("volume rm"), b.calls());
+});
+
+
+// --- the progress mailbox: the install's steps reach the setup page, sealed, in order ---
+
+test("install-box.sh v2: with a code the steps are sent sealed to the relay mailbox, and only the page's key can read them", async t => {
+  const relay = createRelay({});
+  const base = await relay.listen();
+  t.after(() => relay.close());
+  const b = box(t);
+  const key = await createSetupKey();
+  const secret = crypto.randomBytes(16);
+  const code = await setupCode(secret, key.spki);
+  const r = await runAsync({ ...b.env, VYRE_CODE: code, VYRE_RELAY: base }, ["--yes", "--from", REPO]);
+  assert.equal(r.status, 0, r.stdout + r.stderr);
+  assert.ok(!(r.stdout + r.stderr + b.calls()).includes(code), "the code is still never shown");
+  const reader = await mailboxReader({ relay: base, secret, key, wait: 0 });
+  const lines = await reader.next(0);
+  assert.ok(lines.length >= 6, `the steps arrived: ${JSON.stringify(lines)}`);
+  assert.match(lines[0], /^\[1\/4\] Checking Docker$/);
+  assert.ok(lines.some(l => /^done: /.test(l)));
+  assert.ok(lines.some(l => /Installing the vyre command/.test(l)));
+  // A reader with another key gets nothing.
+  const other = await createSetupKey();
+  await assert.rejects(mailboxReader({ relay: base, secret, key: other, wait: 0 }).then(x => x.next(0)), /would not give this page/);
+});
+
+test("install-box.sh v2: a code another server already used stops with the plain refusal", async t => {
+  const relay = createRelay({});
+  const base = await relay.listen();
+  t.after(() => relay.close());
+  const key = await createSetupKey();
+  const code = await setupCode(crypto.randomBytes(16), key.spki);
+  // The first box uses the code; the second, with a different fingerprint claim at the same locator, is refused.
+  const first = box(t), second = box(t);
+  const a = await runAsync({ ...first.env, VYRE_CODE: code, VYRE_RELAY: base }, ["--yes", "--from", REPO]);
+  assert.equal(a.status, 0, a.stderr);
+  // Same locator, another writer token: the mailbox is contested, so the second install refuses to go on.
+  const other = await createSetupKey();
+  const raw = Buffer.from(code, "base64url");
+  const forged = Buffer.concat([raw.subarray(0, 16), Buffer.from(await (await import("../relay/client/setup.js")).setupFingerprint(other.spki))]).toString("base64url");
+  const c = await runAsync({ ...second.env, VYRE_CODE: forged, VYRE_RELAY: base }, ["--yes", "--from", REPO]);
+  assert.notEqual(c.status, 0);
+  assert.match(c.stderr, /Another server already used this code\. Your browser is not connected to this server\. Start again at https:\/\/vyre\.run\/setup\./);
+  assert.ok(!fs.existsSync(second.dir), "nothing was installed");
+});
+
+test("install-box.sh v2: the check words come from the box, show on the terminal, and never go through the mailbox", t => {
+  const b = box(t, { docker: `case "$1 $2" in "compose version") echo 2.29.1 ;; "compose exec") case "$*" in *relay.setup.status*) echo '{"data":{"state":"waiting","words":"lantern quiet river oak"}}' ;; esac ;; esac; exit 0` });
+  const r = run({ ...b.env, VYRE_CODE: CODE, VYRE_NO_UP: "0" }, ["--yes", "--from", REPO]);
+  assert.equal(r.status, 0, r.stdout + r.stderr);
+  assert.match(r.stdout, /Check words: lantern quiet river oak/);
+  assert.match(r.stdout, /They should match the four on your screen\./);
+  assert.ok(r.stdout.indexOf("Check words") < r.stdout.indexOf("Done. Back to your browser."), "words, then the plain last line");
+  assert.ok(!b.calls().includes("lantern"), "the words are not sent anywhere");
+});
+
+test("vyre wrapper: a setup code older than an hour is removed from vyre.env at the next up or update, a fresh one stays", t => {
+  const b = box(t);
+  fs.mkdirSync(b.dir, { recursive: true });
+  const f = path.join(b.dir, "vyre.env");
+  const fn = fs.readFileSync(BOXVYRE, "utf8").match(/^expire_code\(\) \{[\s\S]*?^\}/m)[0];
+  const call = () => spawnSync("sh", ["-c", `DIR='${b.dir}'\n${fn}\nexpire_code`], { encoding: "utf8", env: b.env });
+  const now = Math.floor(Date.now() / 1000);
+  fs.writeFileSync(f, `CLOUDFLARE_VYRE_TOKEN=keep\n# vyre-code-at=${now - 4000}\nVYRE_CODE=${CODE}\n`, { mode: 0o600 });
+  assert.equal(call().status, 0);
+  assert.equal(fs.readFileSync(f, "utf8"), "CLOUDFLARE_VYRE_TOKEN=keep\n", "the expired code and its time are gone, the rest is kept");
+  assert.equal(fs.statSync(f).mode & 0o777, 0o600);
+  fs.writeFileSync(f, `# vyre-code-at=${now - 100}\nVYRE_CODE=${CODE}\n`, { mode: 0o600 });
+  call();
+  assert.ok(fs.readFileSync(f, "utf8").includes(`VYRE_CODE=${CODE}`), "a code inside its hour stays");
 });

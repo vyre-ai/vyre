@@ -16,7 +16,11 @@
 # install line `curl -fsSL https://vyre.run/i | VYRE_CODE=... sh` (the variable goes on sh, the reader
 # of the script: on curl it would never reach it, and sudo drops it, so run it as yourself). The code is never a command-line
 # argument (a process list shows arguments); without one, and on a terminal, it is asked for and
-# Enter skips it. It goes only into $VYRE_DIR/vyre.env (0600) and is never printed.
+# Enter skips it. It goes only into $VYRE_DIR/vyre.env (0600) as VYRE_CODE, which the box reads once
+# at start, and is never printed. With a code, each step is also sent, sealed under a key only the
+# browser's setup page can derive from the code, to the relay's progress mailbox (VYRE_RELAY, default
+# https://relay.vyre.run) so the page shows the install as it happens. That needs curl and openssl; without
+# them the terminal is the only place it shows.
 #
 # A release that carries image digests (release.json) is pulled by digest, after cosign has verified
 # the signature against this repo's release workflow, with cosign itself run from a container pinned
@@ -57,6 +61,10 @@ COSIGN_IMAGE=${VYRE_COSIGN_IMAGE:-ghcr.io/sigstore/cosign/cosign@sha256:b03690aa
 COSIGN_ID='^https://github\.com/vyre-ai/vyre/\.github/workflows/release\.yml@refs/tags/v[0-9]+\.[0-9]+\.[0-9]+(-[a-z]+\.[0-9]+)?$'
 COSIGN_ISSUER=https://token.actions.githubusercontent.com
 CODE=""
+MBX=0
+MBXT=""
+MBX_SEQ=0
+RELAY_HTTP=${VYRE_RELAY:-https://relay.vyre.run}
 BOX_REF=""
 COMPUTER_REF=""
 # A line only our wrapper carries, so we never replace or remove someone else's vyre.
@@ -64,7 +72,7 @@ MARK="vyre on a Docker box"
 
 # In --print-link mode stdout carries only the machine-readable lines, so the talk goes to stderr.
 say() { if [ "$LINK_ONLY" = 1 ]; then printf '%s\n' "$*" >&2; else printf '%s\n' "$*"; fi; }
-die() { printf 'vyre: %s\n' "$*" >&2; exit 1; }
+die() { printf 'vyre: %s\n' "$*" >&2; mbx_send "stopped: $*"; exit 1; }
 
 # The look. Colour and Unicode only on a terminal, with NO_COLOR and CI unset and TERM not dumb;
 # plain ASCII otherwise, so a CI log reads cleanly. Set once in main() by pick_look. The words are
@@ -120,10 +128,11 @@ step() {
   STEP=$((STEP + 1))
   [ "$STEP" = 1 ] || say ""
   say "${ASH}[$STEP/$STEPS]$RESET $BOLD$1$RESET"
+  mbx_send "[$STEP/$STEPS] $1"
 }
 
 # done_step TEXT: the step finished, with a check mark (or "ok" in plain text).
-done_step() { say "  $SIGNAL$OK$RESET $1"; }
+done_step() { say "  $SIGNAL$OK$RESET $1"; mbx_send "done: $1"; }
 
 # WAITS: one quiet line for the one real wait in this installer (Docker's own script). Picked by
 # pid, not by odds, since something has to show while it's genuinely quiet: this is look only,
@@ -219,7 +228,7 @@ ask() {
   case "$answer" in y|Y|yes|YES|Yes) return 0 ;; *) return 1 ;; esac
 }
 
-cleanup() { [ -n "$TMP" ] && rm -rf "$TMP"; return 0; }
+cleanup() { [ -n "$TMP" ] && rm -rf "$TMP"; [ -n "$MBXT" ] && rm -rf "$MBXT"; return 0; }
 
 
 # The person who owns the stack folder: whoever ran sudo, or you.
@@ -507,6 +516,77 @@ start() {
   fi
 }
 
+# ---- the progress mailbox (tailnet plan 3.6b, N6) ----
+# b64u: base64url on stdin, no padding.
+b64u() { openssl base64 -A | tr '+/' '-_' | tr -d '='; }
+# mbx_derive TAG: sha256("TAG\n" || the code's 16-byte secret), raw, as core/relay/wire.js setupDerive.
+mbx_derive() { { printf '%s\n' "$1"; cat "$MBXT/secret.bin"; } | openssl dgst -sha256 -binary; }
+hexof() { od -An -tx1 | tr -d ' \n'; }
+
+# mbx_post JSON: one POST to the relay mailbox, the body on stdin so nothing secret rides in argv.
+# Prints the HTTP status, or 000 when the relay cannot be reached.
+mbx_post() {
+  printf '%s' "$1" | curl -sS -o /dev/null -w '%{http_code}' --max-time 6 -X POST -H 'content-type: application/json' \
+    --data-binary @- "$(printf '%s' "${RELAY_HTTP%/}" | sed 's|^ws|http|')/v1/setup/mbx" 2>/dev/null || printf '000'
+}
+
+# mbx_init: derive the mailbox keys from the code and open the mailbox. Quiet when curl or openssl
+# is missing, or the relay cannot be reached: the terminal still shows everything.
+mbx_init() {
+  [ -n "$CODE" ] || return 0
+  command -v curl >/dev/null 2>&1 && command -v openssl >/dev/null 2>&1 || return 0
+  MBXT=$(mktemp -d) || return 0
+  chmod 700 "$MBXT"
+  printf '%s=' "$CODE" | tr '_-' '/+' | { base64 -d 2>/dev/null || base64 -D 2>/dev/null; } >"$MBXT/code.bin" || { MBXT=""; return 0; }
+  [ "$(wc -c <"$MBXT/code.bin" | tr -d ' ')" = 32 ] || return 0
+  head -c 16 "$MBXT/code.bin" >"$MBXT/secret.bin"
+  tail -c 16 "$MBXT/code.bin" >"$MBXT/fp.bin"
+  MBX_LOC=$(mbx_derive vyre-pair-loc | b64u)
+  MBX_FP=$(b64u <"$MBXT/fp.bin")
+  MBX_WTOK=$(mbx_derive vyre-setup-mbx-w | b64u)
+  MBX_ENC=$(mbx_derive vyre-setup-mbx-enc | hexof)
+  MBX_MAC=$(mbx_derive vyre-setup-mbx-mac | hexof)
+  # The first write creates the mailbox and fixes who may write to it; a 409 means another server used
+  # this code first, and nothing here may go on to look like the page's server.
+  body=$(printf '{"loc":"%s","fp":"%s","wtok":"%s"}' "$MBX_LOC" "$MBX_FP" "$MBX_WTOK")
+  case "$(mbx_post "$body")" in
+    200) MBX=1 ;;
+    409) printf 'vyre: Another server already used this code. Your browser is not connected to this server. Start again at https://vyre.run/setup.\n' >&2; exit 1 ;;
+    *) MBX=0 ;;
+  esac
+}
+
+# mbx_send TEXT: one plain line for the browser: AES-256-CTR under the mailbox key, its HMAC over the
+# line's position, the IV and the ciphertext (core/relay/wire.js mbxSeal). Never blocks the install.
+mbx_send() {
+  [ "$MBX" = 1 ] || return 0
+  text=$(printf '%s' "$1" | tr -d '\000-\037' | cut -c1-900)
+  openssl rand 16 >"$MBXT/iv.bin" 2>/dev/null || return 0
+  printf '%s' "$text" | openssl enc -aes-256-ctr -K "$MBX_ENC" -iv "$(hexof <"$MBXT/iv.bin")" >"$MBXT/ct.bin" 2>/dev/null || return 0
+  b1=$((MBX_SEQ / 16777216 % 256)); b2=$((MBX_SEQ / 65536 % 256)); b3=$((MBX_SEQ / 256 % 256)); b4=$((MBX_SEQ % 256))
+  # shellcheck disable=SC2059 # the octal escapes are the point
+  printf "\\$(printf '%03o' "$b1")\\$(printf '%03o' "$b2")\\$(printf '%03o' "$b3")\\$(printf '%03o' "$b4")" >"$MBXT/seq.bin"
+  cat "$MBXT/seq.bin" "$MBXT/iv.bin" "$MBXT/ct.bin" | openssl dgst -sha256 -mac HMAC -macopt "hexkey:$MBX_MAC" -binary >"$MBXT/mac.bin" 2>/dev/null || return 0
+  line=$(cat "$MBXT/iv.bin" "$MBXT/ct.bin" "$MBXT/mac.bin" | b64u)
+  body=$(printf '{"loc":"%s","fp":"%s","wtok":"%s","line":"%s"}' "$MBX_LOC" "$MBX_FP" "$MBX_WTOK" "$line")
+  if [ "$(mbx_post "$body")" = 200 ]; then MBX_SEQ=$((MBX_SEQ + 1)); fi
+  return 0
+}
+
+# show_words: the four check words the box computed for this code, on the terminal only. The page shows
+# the same four from its own side; they match only if this box is the one the page is talking to, so they
+# never go through the relay mailbox. Best effort: a box that is slow to answer just leaves them out.
+show_words() {
+  [ -n "$CODE" ] && [ "$DRY" = 0 ] || return 0
+  n=0
+  while [ "$n" -lt 20 ]; do
+    out=$(dk env "VYRE_DIR=$DIR" "$WRAPPER" call relay.setup.status 2>/dev/null | tr -d '\n' || true)
+    words=$(printf '%s' "$out" | sed -n 's/.*"words": *"\([a-z][a-z ]*\)".*/\1/p')
+    if [ -n "$words" ]; then say "  Check words: $BOLD$words$RESET"; say "  They should match the four on your screen."; return 0; fi
+    n=$((n + 1)); sleep 1
+  done
+}
+
 # intake_code: the setup code, from VYRE_CODE or asked for on a terminal (hidden, Enter skips it).
 # Never an argument, never echoed. The shape is base64url of 32 bytes: 43 characters.
 intake_code() {
@@ -525,8 +605,10 @@ intake_code() {
     || die "that setup code does not look right. Copy the install line from your browser again."
 }
 
-# write_code: VYRE_SETUP_CODE into DIR/vyre.env (0600), which the vyre service already reads. The
-# rest of the file is kept as it is, and put installs from a temp file so the code is never an argument.
+# write_code: VYRE_CODE into DIR/vyre.env (0600), which the vyre service already reads, with the time it
+# was written so `vyre` can remove both lines once the hour is over (the box reads the code once, at
+# start, and never keeps it). The rest of the file is kept as it is, and put installs from a temp file
+# so the code is never an argument.
 write_code() {
   [ -n "$CODE" ] || return 0
   if [ "$DRY" = 1 ]; then say "would put the setup code in $DIR/vyre.env (0600); it is never shown"; return 0; fi
@@ -534,12 +616,12 @@ write_code() {
   : >"$TMP/vyre.env"
   if [ -e "$DIR/vyre.env" ]; then
     # shellcheck disable=SC2024
-    if [ -r "$DIR/vyre.env" ] || [ -z "$SUDO" ]; then grep -v '^VYRE_SETUP_CODE=' "$DIR/vyre.env" >"$TMP/vyre.env" || true
-    else sudo cat "$DIR/vyre.env" | grep -v '^VYRE_SETUP_CODE=' >"$TMP/vyre.env" || true
+    if [ -r "$DIR/vyre.env" ] || [ -z "$SUDO" ]; then grep -v -e '^VYRE_CODE=' -e '^# vyre-code-at=' "$DIR/vyre.env" >"$TMP/vyre.env" || true
+    else sudo cat "$DIR/vyre.env" | grep -v -e '^VYRE_CODE=' -e '^# vyre-code-at=' >"$TMP/vyre.env" || true
     fi
   fi
   chmod 600 "$TMP/vyre.env"
-  printf 'VYRE_SETUP_CODE=%s\n' "$CODE" >>"$TMP/vyre.env"
+  printf '# vyre-code-at=%s\nVYRE_CODE=%s\n' "$(date +%s)" "$CODE" >>"$TMP/vyre.env"
   put "$TMP/vyre.env" "$DIR/vyre.env" 0600
 }
 
@@ -699,6 +781,7 @@ main() {
   pick_look
   [ "$UNINSTALL" = 1 ] || hello
   intake_code
+  [ "$DRY" = 1 ] || mbx_init
   [ "$DRY" = 1 ] && say "dry run: nothing on this server will change"
 
   if [ "$UNINSTALL" = 1 ]; then
@@ -732,6 +815,7 @@ main() {
     step "Starting Vyre"
     start
     if [ "$DRY" = 1 ]; then done_step "nothing started (dry run)"; else done_step "Vyre is up"; fi
+    show_words
   fi
   finish
 }
