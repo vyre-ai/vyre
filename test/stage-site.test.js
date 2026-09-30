@@ -23,11 +23,11 @@ const run = (args) => spawnSync("sh", [path.join(REPO, "scripts", "stage-site.sh
 test("stage-site: the copy carries config.json and a CSP that allows the staging relay; the original site is untouched", t => {
   const home = tempHome(t);
   const site = fakeSite(path.join(home, "site")), out = path.join(home, "out");
-  const r = run(["--site", site, "--out", out, "--relay", "wss://relay-staging.example.com", "--install-url", "https://staging.example.com/i"]);
+  const r = run(["--site", site, "--out", out, "--relay", "wss://relay-staging.vyre.run", "--install-url", "https://staging.vyre-site.pages.dev/i"]);
   assert.equal(r.status, 0, r.stderr);
-  assert.deepEqual(JSON.parse(fs.readFileSync(path.join(out, "setup", "config.json"), "utf8")), { relay: "wss://relay-staging.example.com", installUrl: "https://staging.example.com/i" });
+  assert.deepEqual(JSON.parse(fs.readFileSync(path.join(out, "setup", "config.json"), "utf8")), { relay: "wss://relay-staging.vyre.run", installUrl: "https://staging.vyre-site.pages.dev/i" });
   const h = fs.readFileSync(path.join(out, "_headers"), "utf8");
-  assert.match(h, /connect-src 'self' https:\/\/relay\.vyre\.run wss:\/\/relay\.vyre\.run https:\/\/relay-staging\.example\.com wss:\/\/relay-staging\.example\.com;/);
+  assert.match(h, /connect-src 'self' https:\/\/relay\.vyre\.run wss:\/\/relay\.vyre\.run https:\/\/relay-staging\.vyre\.run wss:\/\/relay-staging\.vyre\.run;/);
   assert.equal(fs.readFileSync(path.join(site, "_headers"), "utf8"), HEADERS, "the built site is not changed");
   assert.ok(!fs.existsSync(path.join(site, "setup", "config.json")));
   // No options: a plain copy with no config.json, so it behaves as production does.
@@ -56,9 +56,14 @@ test("stage-site: it refuses a relay that is not wss, an install URL that is not
 });
 
 test("setupOverrides: only a plain wss relay and a plain https install URL are taken; the page's defaults otherwise", () => {
-  assert.deepEqual(setupOverrides({ relay: "wss://relay-staging.example.com:8443", installUrl: "https://staging.example.com/i" }), { relay: "wss://relay-staging.example.com:8443", installUrl: "https://staging.example.com/i" });
-  assert.deepEqual(setupOverrides({ relay: "ws://127.0.0.1:45123", installUrl: "http://localhost:45124/i" }), { relay: "ws://127.0.0.1:45123", installUrl: "http://localhost:45124/i" });
+  assert.deepEqual(setupOverrides({ relay: "wss://relay-staging.vyre.run:8443", installUrl: "https://staging.vyre-site.pages.dev/i" }, "staging.vyre-site.pages.dev"), { relay: "wss://relay-staging.vyre.run:8443", installUrl: "https://staging.vyre-site.pages.dev/i" });
+  // Production never takes the file, whatever it says: nothing put on that origin can change the install line.
+  for (const host of ["vyre.run", "www.vyre.run", "VYRE.RUN"]) assert.deepEqual(setupOverrides({ installUrl: "https://staging.vyre-site.pages.dev/i", relay: "wss://relay.vyre.run" }, host), {}, host);
+  // Elsewhere, only Vyre's own hosts (or a runner's loopback): an arbitrary https host is not an install line.
+  assert.deepEqual(setupOverrides({ installUrl: "https://evil.example.com/i", relay: "wss://evil.example.com" }, "staging.vyre-site.pages.dev"), {});
+  assert.deepEqual(setupOverrides({ installUrl: "https://vyre.run.evil.example.com/i" }, "x.pages.dev"), {}, "a suffix trick");
+  assert.deepEqual(setupOverrides({ relay: "ws://127.0.0.1:45123", installUrl: "http://localhost:45124/i" }, "127.0.0.1"), { relay: "ws://127.0.0.1:45123", installUrl: "http://localhost:45124/i" });
   for (const bad of [{ relay: "ws://x.example.com" }, { relay: "wss://x.example.com/path" }, { relay: "wss://x.example.com;evil" }, { relay: "https://x.example.com" },
     { relay: "ws://evil.example.com" }, { installUrl: "http://evil.example.com/i" }, { installUrl: "http://127.0.0.1@evil.example.com/i" }, { installUrl: "https://u:p@x.example.com/i" }, { installUrl: "https://x.example.com/i?a=1" }, { installUrl: "https://x.example.com/i#f" },
-    { installUrl: "https://127.0.0.1/i" }, { installUrl: 5 }, null, "x", []]) assert.deepEqual(setupOverrides(bad), {}, JSON.stringify(bad));
+    { installUrl: "https://127.0.0.1/i" }, { installUrl: 5 }, null, "x", []]) assert.deepEqual(setupOverrides(bad, "staging.vyre-site.pages.dev"), {}, JSON.stringify(bad));
 });
