@@ -127,3 +127,25 @@ test("no refresh token and an ended access token asks for a new sign-in", async 
   m.advance(3600_000);
   await assert.rejects(m.ask(), /sign-in has ended/);
 });
+
+test("two calls that both find the access token ended share one refresh, so a rotating vendor sees one", async t => {
+  const m = await mk(t);
+  const first = { access_token: fake("at1"), refresh_token: fake("rt1"), expires_in: 60, token_uri: TOKEN_URI };
+  await m.run("vault.credential.tokens", { name: "graph", tokens: first }, "module:connectors");
+  m.advance(3600_000);
+  let refreshes = 0;
+  const used = new Set();
+  m.net.script = async r => {
+    if (r.url.hostname !== "login.example-idp.test") return json(200, { ok: true });
+    refreshes++;
+    const rt = new URLSearchParams(r.body).get("refresh_token");
+    if (used.has(rt)) return json(400, { error: "invalid_grant", error_description: "already used" });
+    used.add(rt);
+    await new Promise(res => setTimeout(res, 20));
+    return json(200, { access_token: fake("at2"), refresh_token: fake("rt2"), expires_in: 3600 });
+  };
+  const results = await Promise.all([m.ask(), m.ask(), m.ask()]);
+  assert.equal(refreshes, 1, "one refresh for three concurrent calls");
+  assert.ok(results.every(r => r.status === 200));
+  assert.ok((await m.secret()).refresh_token.includes("rt2"), "the rotated token was sealed");
+});

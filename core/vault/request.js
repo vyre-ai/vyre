@@ -149,6 +149,8 @@ export class ApiRequests {
     this.now = deps.now || Date.now;
     /** Minted access tokens, in memory only. @type {Map<string, { token: string, expires: number }>} */
     this.tokens = new Map();
+    /** One refresh in flight per oauth credential. @type {Map<string, Promise<string>>} */
+    this.refreshing = new Map();
     this.stopped = false;
     /** @type {Set<any>} */
     this.timers = new Set();
@@ -249,10 +251,27 @@ export class ApiRequests {
    * @param {any} plan @param {string[]} known
    */
   async oauthToken(plan, known) {
-    const a = plan.config.auth;
     const key = `${plan.name}\u0000${plan.ver}`;
     const hit = this.tokens.get(key);
     if (hit && hit.expires - EARLY_MS > this.now()) { known.push(hit.token); return hit.token; }
+    // One refresh per credential at a time: a vendor that rotates the refresh token would refuse the
+    // second of two concurrent refreshes, and the loser could be the one sealed last. The second caller
+    // waits for the first and re-reads the sealed tokens.
+    const running = this.refreshing.get(plan.name);
+    if (running) {
+      await running.catch(() => {});
+      const fresh = await this.vault.apiCredential(plan.name);
+      return this.oauthToken({ ...plan, ver: Number(fresh.row.ver || 0), secret: fresh.secret }, known);
+    }
+    const p = this.refreshOauth(plan, known);
+    this.refreshing.set(plan.name, p);
+    try { return await p; } finally { if (this.refreshing.get(plan.name) === p) this.refreshing.delete(plan.name); }
+  }
+
+  /** The refresh itself; see oauthToken. @param {any} plan @param {string[]} known */
+  async refreshOauth(plan, known) {
+    const a = plan.config.auth;
+    const key = `${plan.name}\u0000${plan.ver}`;
     let t;
     try { t = JSON.parse(plan.secret || ""); } catch { t = null; }
     if (!isObj(t) || (!isStr(t.refresh_token) && !isStr(t.access_token))) throw bad(`${plan.name} is not signed in yet · vyre connect add app <name>`, "not_signed_in");
@@ -582,7 +601,9 @@ export function register({ vault, tool, internal, call, said, deps = {}, log }) 
       const { config } = await vault.apiCredential(String(name));
       if (config.auth.type !== "oauth") throw bad(`${name} is not an oauth credential`);
       const t = isObj(tokens) ? tokens : {};
-      // The token must come from the endpoint the person's config names (P21), never one the caller picks.
+      // The token must come from the endpoint the person's config names (P21), never one the caller picks. This proves
+      // what connectors claims, not where the tokens came from; that is acceptable because only the first-party
+      // connectors module can call this tool (the caller check above).
       if (t.token_uri !== config.auth.token_uri) throw bad("that sign-in did not come from the token endpoint this credential names", "denied");
       if (!isStr(t.access_token) || !t.access_token) throw bad("a sign-in has an access token");
       const expires = Number(t.expires_in) > 0 ? api.now() + Number(t.expires_in) * 1000 : 0;
