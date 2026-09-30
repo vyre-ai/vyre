@@ -1531,7 +1531,7 @@
     {"kind":"env","name":"VYRE_CAPSULE_CHECK_DETAIL","definedIn":"scripts/capsule-native-check.mjs","page":null,"mentions":[]},
     {"kind":"env","name":"VYRE_CHANNEL","definedIn":"box/vyre","page":null,"mentions":[{"page":"using/box-care.md","line":93,"anchor":"upgrade"}]},
     {"kind":"env","name":"VYRE_CHECK_VIEWS","definedIn":"core/cli/view.js","page":"reference/config.md#environment-variables","mentions":[]},
-    {"kind":"env","name":"VYRE_CHROME_HOME","definedIn":"local/hands-chrome-mac/standalone/runtime.js","page":"reference/config.md#environment-variables","mentions":[]},
+    {"kind":"env","name":"VYRE_CHROME_HOME","definedIn":"local/hands-chrome-mac/standalone/runtime.js","page":"reference/config.md#set-by-vyre","mentions":[]},
     {"kind":"env","name":"VYRE_CHROME_HOST_DIR","definedIn":"local/hands-chrome-mac/standalone/cli.mjs","page":"reference/config.md#environment-variables","mentions":[]},
     {"kind":"env","name":"VYRE_CHROME_SOCK","definedIn":"local/hands-chrome-mac/native-host/host.js","page":"reference/config.md#set-by-vyre","mentions":[]},
     {"kind":"env","name":"VYRE_CLAUDE_BIN","definedIn":"core/memory/index.js","page":"reference/config.md#environment-variables","mentions":[{"page":"contributing/testing.md","line":76,"anchor":"fakes-for-outside-services"}]},

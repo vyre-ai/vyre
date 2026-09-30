@@ -81,7 +81,6 @@ Vyre reads these when they are set. None is needed for normal use.
 | `VYRE_BOX_PROBE_MS` | How long `vyre box` waits for the box's address to answer. Default two minutes. | `core/cli/commands/box.js` |
 | `VYRE_BOX_WAIT_MS` | How long `vyre box` waits for an install to finish. Default 65 minutes. | `core/cli/commands/box.js` |
 | `VYRE_CHECK_VIEWS` | Not described yet. | `core/cli/view.js` |
-| `VYRE_CHROME_HOME` | Not described yet. | `local/hands-chrome-mac/standalone/runtime.js` |
 | `VYRE_CHROME_HOST_DIR` | Not described yet. | `local/hands-chrome-mac/standalone/cli.mjs` |
 | `VYRE_CLAUDE_BIN` | The `claude` binary to run. Default `claude` on the PATH. | `core/memory/index.js`, `core/memory/personal/reader.js`, `core/onboard/index.js`, `core/onboard/setup-token.js`, `core/switchboard/index.js` |
 | `VYRE_CLAUDE_HOME` | Claude Code's folder for a home other than `~/.vyre`. Without it such a home uses its own `claude` folder and never reads `~/.claude`. | `core/config/dialogs.js` |
@@ -154,6 +153,7 @@ vyred sets these for the threads and helpers it starts, and the Harness reads th
 | `VYRE_AGENT` | The agent a thread runs as. | `core/switchboard/index.js`, `harness/hooks/hook.js`, `harness/mcp/server.js` |
 | `VYRE_AGENT_KEY` | The key that proves a thread's calls come from its agent. | `core/daemon/client.js`, `core/switchboard/index.js` |
 | `VYRE_AGENT_KIND` | `assistant` or `agent`. Only the assistant is offered the tools that drive other threads. | `core/switchboard/index.js`, `harness/hooks/hook.js`, `harness/mcp/server.js` |
+| `VYRE_CHROME_HOME` | Not described yet. | `local/hands-chrome-mac/standalone/runtime.js` |
 | `VYRE_CHROME_SOCK` | Not described yet. | `local/hands-chrome-mac/native-host/host.js`, `local/hands-chrome-mac/spike/host/host.js` |
 | `VYRE_HUB_CHILD` | Not described yet. | `harness/mcp/run.js`, `harness/mcp/server.js` |
 | `VYRE_NO_DIALOGS` | `1`: never raise anything on screen (Touch ID, a keychain prompt, a browser tab). | `core/config/dialogs.js`, `core/files/drive.js`, `local/screen-mac/screen.js` |

@@ -1599,7 +1599,7 @@ generated: scripts/gen-docs-reference
 - `VYRE_CAPSULE_CHECK_DETAIL` environment variable, not explained on any page yet. No mentions.
 - `VYRE_CHANNEL` environment variable, not explained on any page yet. 1 mention: using/box-care.md [93](../using/box-care.md#upgrade)
 - `VYRE_CHECK_VIEWS` environment variable, [explained](config.md#environment-variables). No mentions.
-- `VYRE_CHROME_HOME` environment variable, [explained](config.md#environment-variables). No mentions.
+- `VYRE_CHROME_HOME` environment variable, [explained](config.md#set-by-vyre). No mentions.
 - `VYRE_CHROME_HOST_DIR` environment variable, [explained](config.md#environment-variables). No mentions.
 - `VYRE_CHROME_SOCK` environment variable, [explained](config.md#set-by-vyre). No mentions.
 - `VYRE_CLAUDE_BIN` environment variable, [explained](config.md#environment-variables). 1 mention: contributing/testing.md [76](../contributing/testing.md#fakes-for-outside-services)
