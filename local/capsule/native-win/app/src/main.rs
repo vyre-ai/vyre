@@ -205,7 +205,7 @@ fn check_update(app: &AppHandle) -> Result<Option<String>, String> {
     let sums = fetch(&format!("{RELEASE_BASE}/SHA256SUMS"), 1 << 20)?;
     let sig = String::from_utf8(fetch(&format!("{RELEASE_BASE}/SHA256SUMS.sig"), 4096)?).map_err(|_| "signature is not text")?;
     let listed = update::verify_sums(&sums, &sig, update::RELEASE_KEY)?;
-    let Some((name, version)) = update::newer_installer(&listed, env!("CARGO_PKG_VERSION")) else { return Ok(None) };
+    let Some((name, version)) = update::newer_installer(&listed, option_env!("VYRE_APP_VERSION").unwrap_or(env!("CARGO_PKG_VERSION"))) else { return Ok(None) };
     let bytes = fetch(&format!("{RELEASE_BASE}/{name}"), 300 << 20)?;
     update::check_file(&listed, &name, &bytes)?;
     // Written to the app's own data dir (not the shared temp dir), then re-hashed from disk so
@@ -354,11 +354,13 @@ fn key_path(app: &AppHandle) -> Result<std::path::PathBuf, String> {
 fn protect(data: &[u8], encrypt: bool) -> Result<Vec<u8>, String> {
     use windows_sys::Win32::Foundation::LocalFree;
     use windows_sys::Win32::Security::Cryptography::{CryptProtectData, CryptUnprotectData, CRYPT_INTEGER_BLOB};
+    // Never let Windows raise its own dialog from here.
+    const CRYPTPROTECT_UI_FORBIDDEN: u32 = 1;
     let input = CRYPT_INTEGER_BLOB { cbData: data.len() as u32, pbData: data.as_ptr() as *mut u8 };
     let mut out = CRYPT_INTEGER_BLOB { cbData: 0, pbData: std::ptr::null_mut() };
     let ok = unsafe {
-        if encrypt { CryptProtectData(&input, std::ptr::null(), std::ptr::null(), std::ptr::null(), std::ptr::null(), 0, &mut out) }
-        else { CryptUnprotectData(&input, std::ptr::null_mut(), std::ptr::null(), std::ptr::null(), std::ptr::null(), 0, &mut out) }
+        if encrypt { CryptProtectData(&input, std::ptr::null(), std::ptr::null(), std::ptr::null(), std::ptr::null(), CRYPTPROTECT_UI_FORBIDDEN, &mut out) }
+        else { CryptUnprotectData(&input, std::ptr::null_mut(), std::ptr::null(), std::ptr::null(), std::ptr::null(), CRYPTPROTECT_UI_FORBIDDEN, &mut out) }
     };
     if ok == 0 { return Err("Windows would not open the device key.".into()); }
     let v = unsafe { std::slice::from_raw_parts(out.pbData, out.cbData as usize).to_vec() };
@@ -370,17 +372,27 @@ fn protect(data: &[u8], encrypt: bool) -> Result<Vec<u8>, String> {
 #[cfg(not(windows))]
 fn protect(data: &[u8], _encrypt: bool) -> Result<Vec<u8>, String> { Ok(data.to_vec()) }
 
+static KEY_LOCK: Mutex<()> = Mutex::new(());
+
+/// Read the device key, or make it once. Two first calls cannot both create one (the lock), a
+/// key that exists but cannot be opened is an error and never replaced, and a new key is written
+/// to a side file then renamed into place, so a crash leaves either no key or a whole one.
 fn device_secret(app: &AppHandle) -> Result<[u8; 32], String> {
+    let _guard = KEY_LOCK.lock().unwrap_or_else(|e| e.into_inner());
     let path = key_path(app)?;
-    if let Ok(blob) = std::fs::read(&path) {
+    if path.exists() {
+        let blob = std::fs::read(&path).map_err(|e| e.to_string())?;
         let raw = protect(&blob, false)?;
         return raw.try_into().map_err(|_| "The device key file is damaged.".to_string());
     }
     use rand::RngCore;
     let mut k = [0u8; 32];
     rand::rngs::OsRng.fill_bytes(&mut k);
-    std::fs::create_dir_all(path.parent().unwrap()).map_err(|e| e.to_string())?;
-    std::fs::write(&path, protect(&k, true)?).map_err(|e| e.to_string())?;
+    let dir = path.parent().unwrap();
+    std::fs::create_dir_all(dir).map_err(|e| e.to_string())?;
+    let tmp = dir.join(format!("device.key.{}.tmp", std::process::id()));
+    std::fs::write(&tmp, protect(&k, true)?).map_err(|e| e.to_string())?;
+    std::fs::rename(&tmp, &path).map_err(|e| e.to_string())?;
     Ok(k)
 }
 

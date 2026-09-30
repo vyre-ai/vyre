@@ -32,7 +32,7 @@ jobs:
         working-directory: local/capsule/native-win
     steps:
       - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: dtolnay/rust-toolchain@1.98.1
       - name: cargo test
         run: cargo test --verbose
       - name: version, from the repo's package.json (the release checks it equals the tag)
@@ -40,9 +40,9 @@ jobs:
         run: |
           if [ -n "${{ inputs.tag }}" ]; then v="${{ inputs.tag }}"; v="${v#v}"; else v=$(node -p 'require("../../../package.json").version'); fi
           case "$v" in [0-9]*.[0-9]*.[0-9]*) ;; *) echo "not a version: $v"; exit 1 ;; esac
-          sed -i "0,/^version = .*/s//version = \"$v\"/" app/Cargo.toml
           sed -i "0,/\"version\": \".*\"/s//\"version\": \"$v\"/" app/tauri.conf.json
           echo "VERSION=$v" >> "$GITHUB_ENV"
+          echo "VYRE_APP_VERSION=$v" >> "$GITHUB_ENV"
       - name: the relay client the pairing page runs (one copy of tailnet's code, not a fork)
         shell: bash
         run: |
@@ -55,7 +55,7 @@ jobs:
         shell: bash
         working-directory: local/capsule/native-win/app
         run: |
-          cargo install tauri-cli --version "^2" --locked
+          cargo install tauri-cli --version "=2.12.0" --locked
           cargo tauri build --bundles nsis
       - name: the installer, named Vyre_<version>_x64-setup.exe, for release.yml
         shell: bash
@@ -68,3 +68,11 @@ jobs:
           name: app-windows-${{ github.sha }}
           path: out/Vyre_*_x64-setup.exe
           if-no-files-found: error
+      - name: TEMPORARY, phase 1 of committing Cargo.lock (removed in the next commit)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: cargo-locks
+          path: |
+            local/capsule/native-win/Cargo.lock
+            local/capsule/native-win/app/Cargo.lock
