@@ -4,6 +4,7 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+- eval: memory-eval-record hardened (reviewer-2): actions pinned to commit SHAs, checkout keeps no credentials, model is a choice (haiku default, sonnet), the per-call spend margin is per model, and the $15 cap is cumulative through the committed ledger test/eval/asks/iq02-open.spend.json (commit the artifact's ledger and replies after each dispatch). memory.ask has a direct test that a decision corrected in one project never answers an agent granted another.
 - eval: memory-eval-record workflow (manual, environment eval) records the open world's model replies through OpenRouter with a hard stop at $15 of spend; resumes from the recorded replies.
 - memory (iq, reviewer-2 hold): a decision correction in one project no longer reaches an agent granted another; memory.brief keeps only decisions the person wrote and no agent write lines (memory.today person_only); memory.heard's unproven filing reads "an agent reports the person corrected: ...".
 - memory.ask streams a draft of its answer (plan 3.7): the answer so far, at most every 100 ms, from a

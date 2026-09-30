@@ -3,14 +3,23 @@
 # environment `eval`, whose secret OPENROUTER_EVAL_KEY is a key capped at $20 by the user. The
 # recording stops itself at $15 of spend (exit 3, replies so far saved and uploaded); dispatch it
 # again to continue from what is recorded. Only the open world is recorded, never the sealed one.
+#
+# The $15 cap is cumulative, but only through what is committed: the ledger
+# test/eval/asks/iq02-open.spend.json and the replies test/eval/asks/iq02-open.json are read from
+# the checkout. After EACH dispatch, download the artifact and commit BOTH files before the next
+# dispatch. If you do not, the next run restarts from the committed total (and pays again for
+# questions whose replies were not committed). The summary prints the ledger total the run started from.
 name: memory-eval-record
 on:
   workflow_dispatch:
     inputs:
       model:
-        description: OpenRouter model slug for Vyre IQ's answers
+        description: OpenRouter model for Vyre IQ's answers (haiku is the product's quick path)
+        type: choice
         default: anthropic/claude-haiku-4.5
-        required: false
+        options:
+          - anthropic/claude-haiku-4.5
+          - anthropic/claude-sonnet-4.6
 permissions:
   contents: read
 concurrency:
@@ -24,8 +33,10 @@ jobs:
     environment: eval
     timeout-minutes: 120
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: 24
       - name: Record the open world
@@ -33,18 +44,20 @@ jobs:
           VYRE_EVAL_RECORD: "1"
           VYRE_EVAL_RUNNER: openrouter
           VYRE_EVAL_MODEL: ${{ inputs.model }}
-          VYRE_EVAL_SPEND_FILE: ${{ runner.temp }}/iq02-open.spend.json
+          VYRE_EVAL_SPEND_FILE: ${{ github.workspace }}/test/eval/asks/iq02-open.spend.json
           OPENROUTER_EVAL_KEY: ${{ secrets.OPENROUTER_EVAL_KEY }}
         run: |
           set +e
+          echo "ledger_start=$(cat test/eval/asks/iq02-open.spend.json 2>/dev/null || echo missing)" >> "$GITHUB_ENV"
           nice -n 10 node scripts/eval-bar.js --world open --record | tee "$RUNNER_TEMP/summary.txt"
           echo "code=${PIPESTATUS[0]}" >> "$GITHUB_ENV"
-          cp "$RUNNER_TEMP/iq02-open.spend.json" test/eval/asks/iq02-open.spend.json 2>/dev/null || true
           exit 0
       - name: Summary
+        env:
+          ledger_start: ${{ env.ledger_start }}
         run: |
-          { echo '### memory-eval-record'; echo '```'; cat "$RUNNER_TEMP/summary.txt"; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
-      - uses: actions/upload-artifact@v4
+          { echo '### memory-eval-record'; echo "Ledger total this run started from: $ledger_start"; echo "Ledger after: $(cat test/eval/asks/iq02-open.spend.json 2>/dev/null)"; echo "Commit both files from the artifact before the next dispatch."; echo '```'; cat "$RUNNER_TEMP/summary.txt"; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: iq02-open-replies
           path: |

@@ -114,3 +114,18 @@ test("decision corrections in one project never reach an agent granted another",
   assert.match(await seen("cli"), /clover/i, "the person sees their own correction");
   assert.doesNotMatch(await seen(JUNO), /clover/i);
 });
+
+test("memory.ask: a decision corrected in one project never answers an agent granted another", async t => {
+  const { call, db } = await module_(t);
+  const fix = db.prepare("INSERT INTO memory_iq_fixes (at, answer, qkey, question, kind, action, old, text, facts, turns, who) VALUES (?,?,?,?,?,?,?,?,?,?,?)")
+    .run(Date.now(), "a2", "q", "how do northwind take payments", "decision", "replace", "square", "Clover", "[]", "[]", "deck").lastInsertRowid;
+  db.prepare("INSERT INTO memory_decision_fixes (fix, at, project, topic, action, value, display, statement) VALUES (?,?,?,?,?,?,?,?)")
+    .run(fix, Date.now(), "northwind", "payments", "replace", "clover", "Clover", "You said: use clover");
+  const ask = (caller, meta) => call("memory.ask", { question: "what did we decide about payments?", ...(meta ? { context: { project: `${W}/northwind` } } : {}) }, caller, meta);
+  const person = await ask("cli");
+  assert.match(JSON.stringify(person), /clover/i, "the person's own ask sees the corrected decision");
+  const own = await ask(KIT, { agent: "kit", granted: ["northwind"] });
+  assert.match(JSON.stringify(own), /clover/i, "an agent granted northwind sees it");
+  const other = await ask(KIT, { agent: "kit", granted: ["harlow"] });
+  assert.doesNotMatch(JSON.stringify(other), /clover|square|Now:/i, "vyred's grant is harlow only: nothing of northwind's decision");
+});

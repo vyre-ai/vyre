@@ -4,7 +4,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import { tempHome } from "../../test/helpers.js";
-import { Budget, BudgetStop, openrouterOnce } from "./eval-openrouter.js";
+import { Budget, BudgetStop, openrouterOnce, marginFor, MARGIN_BY_MODEL } from "./eval-openrouter.js";
 
 const reply = (text, cost) => async (url, init) => ({ ok: true, status: 200, json: async () => ({ choices: [{ message: { content: text } }], usage: { cost, prompt_tokens: 10, completion_tokens: 5 } }), url, init });
 
@@ -58,4 +58,11 @@ test("openrouter runner: an error reply throws without echoing the key, and cost
   const run = openrouterOnce({ key: "sk-or-secret", budget: b, fetch: async () => ({ ok: false, status: 402, json: async () => ({ error: { message: "insufficient credits" }, usage: { cost: 0.5 } }) }) });
   await assert.rejects(run({ system: "s", prompt: "p", model: "m", maxUsd: 1 }), e => /402: insufficient credits/.test(e.message) && !/sk-or-secret/.test(e.message));
   assert.equal(b.total, 0.5);
+});
+
+test("margin: each model keeps its own per-call maximum, an unknown model the dearest", () => {
+  assert.equal(marginFor("anthropic/claude-haiku-4.5"), 0.05);
+  assert.equal(marginFor("anthropic/claude-sonnet-4.6"), 0.25);
+  assert.equal(marginFor("someone/else"), Math.max(...Object.values(MARGIN_BY_MODEL)));
+  assert.equal(marginFor(undefined), 0.25);
 });

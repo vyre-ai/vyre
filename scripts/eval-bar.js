@@ -44,7 +44,7 @@ import { chunks, encode } from "../core/recall/embed.js";
 import { fakeEmbedder } from "../core/recall/testing.js";
 import { claudeOnce, modelFor } from "../core/memory/personal/reader.js";
 import { VERSION as ASK_VERSION } from "../core/memory/iq/ask.js";
-import { Budget, openrouterOnce } from "./lib/eval-openrouter.js";
+import { Budget, openrouterOnce, marginFor } from "./lib/eval-openrouter.js";
 import { embedAll, correct, CONFIDENT } from "./eval-answer.js";
 import * as open02 from "../test/fixtures/iq02-open.js";
 
@@ -148,7 +148,7 @@ let budget = null;
 /** The recording runner: `claude -p`, or OpenRouter with a $15 stop when VYRE_EVAL_RUNNER=openrouter. @param {string} dir */
 function recorder(dir) {
   if (process.env.VYRE_EVAL_RUNNER !== "openrouter") return claudeOnce({ cwd: dir });
-  budget = new Budget({ file: process.env.VYRE_EVAL_SPEND_FILE || path.join(ROOT, "test/eval/asks/iq02-open.spend.json"), limit: Number(process.env.VYRE_EVAL_LIMIT_USD) || undefined });
+  budget = new Budget({ file: process.env.VYRE_EVAL_SPEND_FILE || path.join(ROOT, "test/eval/asks/iq02-open.spend.json"), limit: Number(process.env.VYRE_EVAL_LIMIT_USD) || undefined, margin: marginFor(process.env.VYRE_EVAL_MODEL || DEFAULT_OR_MODEL) });
   return openrouterOnce({ key: String(process.env.OPENROUTER_EVAL_KEY || ""), model: process.env.VYRE_EVAL_MODEL || DEFAULT_OR_MODEL, budget });
 }
 

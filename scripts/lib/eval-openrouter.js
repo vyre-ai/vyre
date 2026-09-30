@@ -10,6 +10,10 @@ import path from "node:path";
 export const LIMIT_USD = 15;
 /** Headroom kept under the limit: a call is refused when total + margin would pass it. */
 export const MARGIN_USD = 0.05;
+/** The most one call can cost, per model (a long prompt on a dear model): the margin kept for it. */
+export const MARGIN_BY_MODEL = { "anthropic/claude-haiku-4.5": 0.05, "anthropic/claude-sonnet-4.6": 0.25 };
+/** The margin for a model: its own maximum, and the dearest known one for a model not listed. @param {string} [model] */
+export const marginFor = model => (model && MARGIN_BY_MODEL[model]) || Math.max(...Object.values(MARGIN_BY_MODEL));
 export const ENDPOINT = "https://openrouter.ai/api/v1/chat/completions";
 
 /** The spend limit was reached: recordings so far are saved, the run stops. */
