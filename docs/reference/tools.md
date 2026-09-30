@@ -6653,6 +6653,7 @@ One question to a purpose's warm session (a lean one already started, so no star
   - `prompt` string, required
   - `purpose` one of "memory", "planner", "learn", "helper", "job", required
   - `model` string
+  - `spend_purpose` string: Who this question is for, as the spend ledger should say (for example watcher:digest): letters, digits and : _ . - up to 60. The cost of this one answer is recorded under it (spend.summary); absent, under the session's own purpose.
   - `stream` boolean: Hand partial text to the calling module as it arrives (ctx.call opts.onPartial); the answer still returns whole.
   - `system` string
   - `timeout_ms` integer

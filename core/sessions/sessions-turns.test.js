@@ -215,6 +215,23 @@ for (const driver of ["cli", "sdk"]) {
     assert.ok(launch.includes("--no-session-persistence"), "no transcript for Recall to index");
   });
 
+  test(`${driver}: threads.quick spend_purpose puts that answer's cost in the ledger under the asker's own word, and a bad one is ignored`, { skip }, async t => {
+    const w = await boot(t, { driver });
+    const ask = async i => w.d.registry.call("threads.quick", { purpose: "memory", ...i }, "module:watchers");
+    const a = await ask({ prompt: "spend 0.05", spend_purpose: "watcher:digest" });
+    assert.equal(a.error, undefined, JSON.stringify(a));
+    const row = () => w.d.registry.call("spend.summary", {}, "cli").then(r => JSON.stringify(r.data));
+    await until(async () => (await row()).includes("watcher:digest"), "the ledger row");
+    assert.match(await row(), /"purpose":"watcher:digest"/);
+    // No word, or one that is not a plain word: today's attribution (the session's purpose), never the bad text.
+    await ask({ prompt: "spend 0.04" });
+    await ask({ prompt: "spend 0.03", spend_purpose: "bad purpose with spaces; drop table" });
+    await until(async () => (await row()).includes('"purpose":"memory"'), "the default row");
+    assert.doesNotMatch(await row(), /drop table|bad purpose/);
+    // The field is for modules: a person's surface cannot even reach the tool, so it cannot name a purpose.
+    assert.equal((await w.tool("threads.quick", { purpose: "memory", prompt: "x", spend_purpose: "watcher:x" })).error.code, "no_such_tool");
+  });
+
   test(`${driver}: threads.quick with stream hands partial text to the calling module, never to a caller that did not ask`, { skip }, async t => {
     const w = await boot(t, { driver });
     // As a first-party module would call it (ctx.call's opts.onPartial becomes meta.partial).
