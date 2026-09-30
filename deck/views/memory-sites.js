@@ -10,8 +10,9 @@
 //   - Forget all: memory.site.forget {all: true}, after one "Forget all?" tap (the one place that asks);
 //     Undo restores each site it took.
 // Undo lives on the box (the tombstone), so it shows on any device and after any reload: the list answer's
-// `forgotten` entries ({ kind, key, name, part?, id?, label?, at, expires_at }) are drawn as "Forgot X. Undo" lines at
-// the top. A forget made on this screen leaves the same line in the place of the row or site it took.
+// `forgotten` entries ({ kind, key, name, part?, id?, label?, at, expires_at }) are listed, with an Undo each, in
+// one collapsed "Recently forgotten (N)" row at the bottom (quiet, and still reachable on any device). A forget
+// made on this screen leaves "Forgot X. Undo  Dismiss" in the place of the row or site it took.
 // A family asks once, with the count of sites it covers, since it touches several.
 // "Wrong?" on an answer about a site is the ordinary memory.correct / memory.uncorrect path on the answer
 // itself; nothing here re-implements it. Nothing polls: it loads on open and after each action.
@@ -70,7 +71,7 @@ export default async function sites(root, ctx, deps = {}) {
   const alive = () => !stopped && ctx.alive();
   const st = { list: /** @type {ReturnType<typeof sitesOf>} */ ([]), error: /** @type {any} */ (null), open: "", detail: /** @type {Record<string, any>} */ ({}), busy: "",
     /** Undo lines the person cleared with Dismiss on this screen (the box still lists them until the day ends). */ dismissed: /** @type {Set<string>} */ (new Set()),
-    problem: /** @type {string|null} */ (null), box: /** @type {ReturnType<typeof forgottenOf>} */ ([]), confirmAll: false, confirm: "",
+    recentOpen: false, problem: /** @type {string|null} */ (null), box: /** @type {ReturnType<typeof forgottenOf>} */ ([]), confirmAll: false, confirm: "",
     /** Sites forgotten on this screen, held in their row's place: key -> { name, site, at }. */ just: /** @type {Map<string, { name: string, site: any, at: number }>} */ (new Map()),
     /** Rows forgotten on this screen, held in their place in a site's detail: "key|part|id" -> { label, item, at }. */ justItem: /** @type {Map<string, { key: string, part: string, id: string, label: string, item: any, at: number }>} */ (new Map()) };
 
@@ -233,9 +234,6 @@ export default async function sites(root, ctx, deps = {}) {
     put(body,
       h("p", { class: "ml-note" }, "What Vyre for Chrome learned about each site: its layout, how to find its buttons, what its pages do. Never what you typed or what a page said. Forget anything and you can bring it back for a day."),
       st.problem ? h("p", { class: "small muted", role: "alert" }, st.problem) : null,
-      earlier.length ? h("div", { class: "ms-kept" }, earlier.map(f => h("div", { class: "ms-kept-row", "data-kept": tokenOf(f) },
-        forgotBlock({ text: f.part ? `Forgot ${f.label || f.id} from ${f.name} earlier.` : `Forgot ${f.name} earlier.`, busy: st.busy === "r" + tokenOf(f),
-          onUndo: () => restore(f), onDismiss: () => dismiss(f) })))) : null,
       h("div", { class: "ml-head" }, h("h2", { class: "lbl" }, "Sites"), h("span", { class: "ml-count" }, plural(st.list.filter(x => !st.just.has(x.key)).length, "site")),
         st.list.length > 1 ? (st.confirmAll
           ? h("span", { class: "ms-ask" }, h("span", { class: "small muted" }, `Forget all ${st.list.length}?`),
@@ -243,7 +241,14 @@ export default async function sites(root, ctx, deps = {}) {
             h("button", { class: "btn btn-ghost btn-sm", type: "button", "data-act": "all-no", onclick: () => { st.confirmAll = false; draw(); } }, "Keep"))
           : h("button", { class: "btn btn-ghost btn-sm", type: "button", "data-act": "all", disabled: !!st.busy, onclick: () => { st.confirmAll = true; draw(); } }, "Forget all")) : null),
       st.list.length ? h("div", { class: "ml-rows" }, st.list.map(siteRow))
-        : h("div", { class: "ml-none empty" }, h("strong", null, "No sites yet"), h("p", { class: "small muted" }, "Vyre for Chrome learns a site as you and your agents use it. Nothing is learned from pages you have not opened with Vyre.")));
+        : h("div", { class: "ml-none empty" }, h("strong", null, "No sites yet"), h("p", { class: "small muted" }, "Vyre for Chrome learns a site as you and your agents use it. Nothing is learned from pages you have not opened with Vyre.")),
+      // Everything else the box can still bring back, in one quiet collapsed row at the bottom (a forget made on this screen shows in place instead).
+      earlier.length ? h("div", { class: "ms-recent" },
+        h("button", { class: "btn btn-ghost btn-sm ms-recent-head", type: "button", "data-act": "recent", "aria-expanded": String(st.recentOpen), onclick: () => { st.recentOpen = !st.recentOpen; draw(); } },
+          icon("chevron", 14), `Recently forgotten (${earlier.length})`),
+        st.recentOpen ? h("div", { class: "ms-kept" }, earlier.map(f => h("div", { class: "ms-kept-row", "data-kept": tokenOf(f) },
+          h("span", { class: "small" }, f.part ? `${f.label || f.id} from ${f.name}` : f.name),
+          h("button", { class: "btn btn-ghost btn-sm ms-undo", type: "button", "data-act": "undo", disabled: st.busy === "r" + tokenOf(f), onclick: () => restore(f) }, st.busy === "r" + tokenOf(f) ? "Bringing back" : "Undo")))) : null) : null);
   }
 
   await load();
