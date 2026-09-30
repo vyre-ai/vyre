@@ -43,7 +43,7 @@ A module runs on the `box` (the always-on server), on `local` (the Mac), or on b
 | [`mail`](#mail) | `core/mail` | `box`, `local` | 9 | 4 | capsule, deck |
 | [`mcp`](#mcp) | `core/mcp` | `box`, `local` | 9 | 9 | cli, deck |
 | [`memory`](#memory) | `core/memory` | `box`, `local` | 29 | 13 | capsule, cli, deck |
-| [`names`](#names) | `core/names` | `box` | 11 | 9 | cli |
+| [`names`](#names) | `core/names` | `box` | 12 | 11 | cli |
 | [`network`](#network) | `core/network` | `box` | 9 | 4 | capsule, cli, deck |
 | [`onboard`](#onboard) | `core/onboard` | `box`, `local` | 12 | 2 | none |
 | [`planner`](#planner) | `core/planner` | `box`, `local` | 15 | 7 | capsule, cli, deck |
@@ -365,8 +365,8 @@ Makes the Mac and the box one system: pairing, box tools from the Mac, box event
 - Folder: `core/names`, version 0.1.0
 - Runs on: `box`
 - Requires: none
-- Tools: [11](tools.md#names), 2 of them only for other modules
-- Emits: [9 events](events.md#names)
+- Tools: [12](tools.md#names), 2 of them only for other modules
+- Emits: [11 events](events.md#names)
 - Shows on: cli
 - Needs vault: `cloudflare-vyre-token`
 - Teaches tips: `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`

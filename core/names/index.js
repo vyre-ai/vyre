@@ -109,6 +109,11 @@ export default {
       input: obj({ domain: { type: "string" } }, ["domain"]),
       run: async ({ domain }) => svc.domainCheck(domain),
     });
+    ctx.tool("names.domain.serve", {
+      description: "Serve this box at your own domain: after names.domain.check passes, get its certificate through the _acme-challenge CNAME, and answer at the domain as at the box's name. Runs in the background; watch names.status (domain) or the domain.ready event.",
+      input: obj({ domain: { type: "string" } }, ["domain"]),
+      run: async ({ domain }, { caller }) => { if (!person(caller)) throw new Error("not from the onboarding page"); return svc.serveDomain(domain); },
+    });
     ctx.tool("names.fallback", {
       description: "Serve at the tailnet's own ts.net name with a `tailscale cert` certificate instead of a vyre.run name.",
       input: obj(),

@@ -9,6 +9,7 @@ import fs from "node:fs";
 import path from "node:path";
 import crypto from "node:crypto";
 import { execFileSync } from "node:child_process";
+import { connect as tlsConnect } from "node:tls";
 import * as config from "../config/index.js";
 import * as certs from "./certs.js";
 import { names } from "./service.js";
@@ -25,10 +26,10 @@ const HOUR = 3_600_000;
 const hasOpenssl = (() => { try { execFileSync("openssl", ["version"], { stdio: "ignore" }); return true; } catch { return false; } })();
 const skip = !hasOpenssl && "openssl is needed to make a certificate";
 
-function selfSigned(cn) {
+function selfSigned(cn, days = 90) {
   const dir = fs.mkdtempSync(path.join(SCRATCH, "vyre-names-dir-"));
   try {
-    execFileSync("openssl", ["req", "-x509", "-newkey", "ec", "-pkeyopt", "ec_paramgen_curve:P-256", "-nodes", "-keyout", path.join(dir, "k.pem"), "-out", path.join(dir, "c.pem"), "-subj", `/O=Test CA/CN=${cn}`, "-days", "90"], { stdio: "ignore" });
+    execFileSync("openssl", ["req", "-x509", "-newkey", "ec", "-pkeyopt", "ec_paramgen_curve:P-256", "-nodes", "-keyout", path.join(dir, "k.pem"), "-out", path.join(dir, "c.pem"), "-subj", `/O=Test CA/CN=${cn}`, "-days", String(days)], { stdio: "ignore" });
     const cert = fs.readFileSync(path.join(dir, "c.pem"), "utf8");
     return { cert, key: fs.readFileSync(path.join(dir, "k.pem"), "utf8"), expires: Date.parse(new crypto.X509Certificate(cert).validTo) };
   } finally { fs.rmSync(dir, { recursive: true, force: true }); }
@@ -94,7 +95,7 @@ test("directory client: what it signs is what the Worker checks, and a signer th
 });
 
 /** A names service for one box, on the hosted directory. */
-function boxService(t, h, { ips = [], tun = true, resolver = undefined, accountUri = undefined, issueDns = false } = {}) {
+function boxService(t, h, { ips = [], tun = true, resolver = undefined, accountUri = undefined, issueDns = false, realListen = false } = {}) {
   const root = tempHome(t);
   const cfg = config.load(root);
   cfg.network.port = 0;
@@ -107,9 +108,9 @@ function boxService(t, h, { ips = [], tun = true, resolver = undefined, accountU
   const ts = {
     status: async () => ({ installed: true, running: true, backend: "Running", loginUrl: null, tun: state.tun, why: null,
       node: { name: "box", dnsName: "box.example.ts.net", ips: state.ips, stableId: "n1", tagged: false }, owner: "alex@example.com", certDomains: [] }),
-    whois: async () => null, up: async () => ({}), cert: async () => {}, operator: async () => ({ ok: true }), installCommand: () => "",
+    whois: async ip => (ip === "100.101.1.2" ? { login: "alex@example.com", tagged: false, node: "phone" } : null), up: async () => ({}), cert: async () => {}, operator: async () => ({ ok: true }), installCommand: () => "",
   };
-  const deps = { ctx, ts, certs, save: p => config.save(p, root, cfg), directory: b.client, listen: async () => {}, resolver, accountUri,
+  const deps = { ctx, ts, certs, save: p => config.save(p, root, cfg), directory: b.client, ...(realListen ? {} : { listen: async () => {} }), resolver, accountUri,
     issue: async ({ names: list, dns }) => {
       // As acme.issue does: a TXT under _acme-challenge for the name, then clear it.
       const handle = await dns.set(`_acme-challenge.${list[0]}`, "v".repeat(43));
@@ -286,4 +287,71 @@ test("directory: under a test runner the real fetch refuses the hosted directory
   let asked = 0;
   await directory({ base: "https://names.vyre.run", signer, fetch: async () => { asked++; return /** @type {any} */ ({ ok: true, status: 200, json: async () => ({}) }); } }).check("kit").catch(() => {});
   assert.equal(asked, 1, "a test's own fetch never leaves the process");
+});
+
+/** A box whose name is claimed in the directory and already served on loopback (the directory takes only tailnet addresses, which a test cannot bind). */
+async function servingBox(t, h, { resolver = undefined } = {}) {
+  const a = boxService(t, h, { ips: ["127.0.0.1"], realListen: true, resolver });
+  await a.box.client.claim("alex");
+  a.cfg.name = "alex"; a.cfg.network.via = "vyre.run";
+  certs.save(a.ctx.paths.certs, "alex.vyre.run", selfSigned("alex.vyre.run"));
+  assert.equal(await a.svc.serve(), true);
+  return a;
+}
+
+test("own domain: names.domain.serve gets the certificate through the CNAME delegation, and the listener answers at the domain under the owner and Origin rules", { skip }, async t => {
+  const h = hosted(t);
+  const dns = { cname: /** @type {Record<string, string[]>} */ ({}) };
+  const resolver = { resolveCname: async host => { if (!dns.cname[host]) throw Object.assign(new Error("no"), { code: "ENODATA" }); return dns.cname[host]; }, resolveCaa: async () => { throw Object.assign(new Error("no"), { code: "ENODATA" }); } };
+  const a = await servingBox(t, h, { resolver });
+  assert.equal(a.svc.status().phase, "serving", String(a.svc.status().why));
+  const zone = (await a.box.client.mine()).acmeZone;
+
+  await assert.rejects(a.svc.serveDomain("example.com"), /CNAME is not in place/, "no certificate before the delegation is there");
+  dns.cname["_acme-challenge.example.com"] = [zone + "."];
+
+  // The challenge lands under <routehash>.acme.vyre.run, only while issuing, and is cleared after.
+  const seen = [];
+  const acmeOwn = a.box.client.acmeOwn;
+  a.box.client.acmeOwn = async tok => { const r = await acmeOwn(tok); seen.push(h.dns.at(zone, "TXT").length); return r; };
+  const events = [];
+  const out = await a.svc.serveDomain("Example.com");
+  assert.equal(out.domain?.phase, "certificate");
+  for (let i = 0; i < 100 && !a.svc.status().domain?.ready; i++) await new Promise(r => setTimeout(r, 20));
+  const st = a.svc.status();
+  assert.equal(st.domain?.ready, true, String(st.domain?.why));
+  assert.deepEqual(seen, [1]);
+  assert.equal(h.dns.at(zone, "TXT").length, 0, "the challenge is cleared");
+  assert.equal(a.cfg.network.ownDomain, "example.com");
+  const ready = a.emitted.find(e => e.type === "domain.ready");
+  assert.equal(/** @type {any} */ (ready).payload.domain, "example.com");
+  assert.match(String(/** @type {any} */ (ready).payload.address), /^https:\/\/example\.com:\d+$/);
+
+  // The same listener presents each name's own certificate by SNI.
+  const port = Number(st.port);
+  const cn = servername => new Promise((resolve, reject) => {
+    const s = tlsConnect({ host: "127.0.0.1", port, servername, rejectUnauthorized: false }, () => { const c = /** @type {any} */ (s.getPeerCertificate()); s.end(); resolve(c.subject.CN); });
+    s.on("error", reject);
+  });
+  assert.equal(await cn("example.com"), "example.com");
+  assert.equal(await cn("alex.vyre.run"), "alex.vyre.run");
+
+  // Host: the domain is this box's; another host is not. Cross-site rules are the address's rules.
+  const req = (host, method = "GET", headers = {}) => ({ method, url: "/v1/health", headers: { host: `${host}:${port}`, "content-type": "application/json", ...headers }, socket: { remoteAddress: "100.101.1.2" } });
+  const res = () => { const r = { status: 0, headersSent: false, setHeader() {}, writeHead(c) { r.status = c; r.headersSent = true; }, end() {} }; return r; };
+  let r = res(); await a.svc.onRequest(/** @type {any} */ (req("example.com")), /** @type {any} */ (r)); assert.notEqual(r.status, 421);
+  r = res(); await a.svc.onRequest(/** @type {any} */ (req("elsewhere.example")), /** @type {any} */ (r)); assert.equal(r.status, 421);
+  r = res(); await a.svc.onRequest(/** @type {any} */ (req("example.com", "POST", { origin: "https://evil.example" })), /** @type {any} */ (r)); assert.equal(r.status, 403);
+  r = res(); await a.svc.onRequest(/** @type {any} */ (req("example.com", "POST", { origin: `https://example.com:${port}` })), /** @type {any} */ (r)); assert.notEqual(r.status, 403);
+  r = res(); await a.svc.onRequest(/** @type {any} */ ({ ...req("example.com"), socket: { remoteAddress: "100.101.1.9" } }), /** @type {any} */ (r)); assert.equal(r.status, 403, "still only the owner");
+  void events;
+});
+
+test("own domain: a certificate within 30 days is renewed through the same delegation, and a failed renewal says so", { skip }, async t => {
+  const h = hosted(t);
+  const a = await servingBox(t, h, {});
+  a.cfg.network.ownDomain = "example.com";
+  certs.save(a.ctx.paths.certs, "example.com", selfSigned("example.com", 10));
+  assert.equal(await a.svc.renew(), true, a.log.join("; "));
+  assert.ok(a.emitted.some(e => e.type === "certificate.issued" && /** @type {any} */ (e.payload).name === "example.com" && /** @type {any} */ (e.payload).renewed));
 });

@@ -10,6 +10,7 @@
 import crypto from "node:crypto";
 import fs from "node:fs";
 import https from "node:https";
+import tls from "node:tls";
 import path from "node:path";
 import { identifier } from "./identity.js";
 import { hostedOrigins } from "../config/index.js";
@@ -49,6 +50,8 @@ export function names(deps) {
   const now = deps.now || Date.now;
   const net = () => ctx.config.network || {};
   const domain = () => net().domain || "vyre.run";
+  /** A domain of the person's own (a host name), served at the same address as the box's name. */
+  const ownDomain = () => String(net().ownDomain || "").toLowerCase() || null;
   const port = () => Number(net().port ?? 443);
   /** @type {{ phase: "idle"|"named"|"dns"|"certificate"|"serving"|"failed", why: string|null, certificate: any }} */
   const state = { phase: "idle", why: null, certificate: null };
@@ -58,6 +61,11 @@ export function names(deps) {
   let selfIps = [];
   let working = null;
   let last = null;
+  /** The person's own domain, served beside the box's name: its certificate's progress. @type {{ phase: "idle"|"certificate"|"ready"|"failed", why: string|null }} */
+  const own = { phase: "idle", why: null, host: /** @type {string|null} */ (null) };
+  let ownWorking = null;
+  /** The own domain's TLS context, read by SNI. @type {{ host: string, ctx: import("node:tls").SecureContext } | null} */
+  let ownCtx = null;
   /** @type {Map<string, number>} claim code hash -> expiry */
   const codes = new Map();
 
@@ -106,6 +114,8 @@ export function names(deps) {
       why: state.why,
       certificate: state.certificate,
       listening: servers.length > 0,
+      port: servers.length ? bound() : null,
+      domain: (own.host || ownDomain()) ? { name: own.host || ownDomain(), phase: own.phase, why: own.why, ready: own.phase === "ready" } : null,
     };
   }
 
@@ -329,7 +339,7 @@ export function names(deps) {
     // and the source address would be the owner's. So a POST must be JSON (which forces a CORS
     // preflight we never answer), and a browser's Origin must be this box's own address.
     const host = String(req.headers.host || "").toLowerCase();
-    const mine = [certName(), ...selfIps].filter(Boolean).map(h => String(h).toLowerCase());
+    const mine = [certName(), ownDomain(), ...selfIps].filter(Boolean).map(h => String(h).toLowerCase());
     if (!mine.some(h => host === h || host === `${h}:${bound()}` || host === `[${h}]:${bound()}`)) {
       res.writeHead(421, { "content-type": "application/json" });
       return res.end(JSON.stringify({ error: { code: "misdirected", message: "not this box's address" } }));
@@ -440,13 +450,22 @@ export function names(deps) {
   async function serve() {
     // A ts.net name comes from Tailscale, and a freshly started vyred has not asked yet.
     if (net().via === "ts.net" && !(last && last.node)) await tailscale();
-    const name = certName();
-    const c = name && deps.certs.load(ctx.paths.certs, name);
+    const own1 = ownDomain();
+    const oc = own1 && deps.certs.load(ctx.paths.certs, own1);
+    ownCtx = oc ? { host: own1, ctx: tls.createSecureContext({ cert: oc.cert, key: oc.key }) } : null;
+    if (ownCtx && own.phase === "idle") own.phase = "ready";
+    // The box's name is the default certificate; the own domain's is chosen by SNI. A box that has
+    // only its own domain's certificate (its name not issued yet) serves that one.
+    const named = certName();
+    const nc = named && deps.certs.load(ctx.paths.certs, named);
+    const name = nc ? named : (oc ? own1 : named);
+    const c = nc || oc;
     if (!c) return false;
     state.certificate = { name, issuer: issuerOf(c.cert), expires: c.expires };
     if (servers.length) { for (const s of servers) s.setSecureContext({ cert: c.cert, key: c.key }); return true; }
     const make = () => {
-      const s = https.createServer({ cert: c.cert, key: c.key, minVersion: "TLSv1.2" }, (req, res) => {
+      const s = https.createServer({ cert: c.cert, key: c.key, minVersion: "TLSv1.2",
+        SNICallback: (sni, cb) => cb(null, ownCtx && String(sni).toLowerCase() === ownCtx.host ? ownCtx.ctx : undefined) }, (req, res) => {
         onRequest(req, res).catch(e => { if (!res.headersSent) { res.writeHead(500); res.end(JSON.stringify({ error: { code: "internal", message: e.message } })); } });
       });
       s.on("upgrade", (req, socket, head) => { onUpgrade(req, socket, head).catch(() => socket.destroy()); });
@@ -538,12 +557,69 @@ export function names(deps) {
     return { domain: host, ok: cname.ok, cname, caa: { host, present: caa.length > 0, found: caa, expected: account, ok: pinned, optional: true } };
   }
 
+  // ---- your own domain ----
+
+  /** What acme.issue writes an own domain's challenge through: the directory, under <routehash>.acme.vyre.run, which the person's CNAME points at. @param {string} host */
+  const ownAcmeDns = host => ({
+    set: async (fqdn, value) => {
+      if (fqdn !== `_acme-challenge.${host}`) throw new Error(`refusing a challenge for ${fqdn}`);
+      await /** @type {NonNullable<typeof dir>} */ (dir).acmeOwn(value);
+      return fqdn;
+    },
+    clear: () => /** @type {NonNullable<typeof dir>} */ (dir).acmeOwnClear(),
+  });
+
+  /**
+   * Serve the Deck at the person's own domain: once names.domain.check passes, get its certificate by
+   * DNS-01 through the CNAME delegation, keep it beside the box's name (chosen by SNI), accept its Host
+   * on the same listener under the same owner and Origin rules, and say so with domain.ready. Runs in
+   * the background; watch status().domain.
+   * @param {string} raw
+   */
+  async function serveDomain(raw) {
+    const check = await domainCheck(raw);
+    if (!check.cname.ok) throw new Error("the _acme-challenge CNAME is not in place yet: run the domain check and add it");
+    if (ownWorking) return status();
+    const host = check.domain;
+    own.phase = "certificate"; own.why = null; own.host = host;
+    ownWorking = (async () => {
+      const got = await deps.issue({ names: [host], dns: ownAcmeDns(host) });
+      deps.certs.save(ctx.paths.certs, host, got);
+      deps.save({ network: { ownDomain: host } });
+      ctx.events.emit("certificate.issued", { name: host, expires: got.expires });
+      await serve();
+      own.phase = "ready";
+      ctx.events.emit("domain.ready", { domain: host, address: address(host) });
+    })().catch(e => { own.phase = "failed"; own.why = /** @type {Error} */ (e).message; ctx.log(`names: ${host}: ${own.why}`); ctx.events.emit("domain.failed", { domain: host, why: own.why }); })
+      .finally(() => { ownWorking = null; });
+    return status();
+  }
+
+  /** Renew the own domain's certificate on the same rule as the name's. */
+  async function renewOwn() {
+    const host = ownDomain();
+    const c = host && deps.certs.load(ctx.paths.certs, host);
+    if (!host || !dir || !c || c.expires - now() > 30 * DAY || ownWorking) return false;
+    try {
+      deps.certs.save(ctx.paths.certs, host, await deps.issue({ names: [host], dns: ownAcmeDns(host) }));
+      const fresh = deps.certs.load(ctx.paths.certs, host);
+      ctx.events.emit("certificate.issued", { name: host, expires: fresh && fresh.expires, renewed: true });
+      await serve();
+      return true;
+    } catch (e) {
+      ctx.log(`names: renewal of ${host} failed: ` + /** @type {Error} */ (e).message);
+      if (c.expires - now() < 14 * DAY) ctx.events.emit("certificate.failed", { name: host, expires: c.expires, why: /** @type {Error} */ (e).message });
+      return false;
+    }
+  }
+
   /** Daily: renew at 30 days left; say so once fewer than 14 remain and renewal keeps failing. */
   async function renew() {
+    const ownRenewed = await renewOwn();
     if (net().via === "ts.net" && !(last && last.node)) await tailscale().catch(() => null);
     const name = certName();
     const c = name && deps.certs.load(ctx.paths.certs, name);
-    if (!c || c.expires - now() > 30 * DAY || working) return false;
+    if (!c || c.expires - now() > 30 * DAY || working) return ownRenewed;
     try {
       if (net().via === "ts.net") await ts.cert(name, path.join(ctx.paths.certs, `${name}.crt`), path.join(ctx.paths.certs, `${name}.key`));
       else deps.certs.save(ctx.paths.certs, name, await deps.issue({ names: [name], dns: await acmeDns() }));
@@ -558,7 +634,7 @@ export function names(deps) {
     }
   }
 
-  return { status, check, claim, fallback, release, claimCode, tailscale, setOwner, serve, close, renew, recover, watch, domainCheck,
+  return { status, check, claim, fallback, release, claimCode, tailscale, setOwner, serve, close, renew, recover, watch, domainCheck, serveDomain,
     connect: () => ts.up(), wait: () => working, onRequest, onUpgrade };
 }
 
