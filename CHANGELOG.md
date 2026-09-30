@@ -11,18 +11,18 @@ Newest first. Every change to code lands here in the same commit. A new dependen
   pushes only to its own commands; `ask` answers `prefill: true` (the Capsule only fills the box, never sends
   or records it as the person's words) and `from` for an added module; a preview carries an HMAC token (two
   minutes, bound to the caller and the exact words) that the second Enter must return
-  (`core/capsule/frames.js`, `views.js`).
+  (`local/capsule/frames.js`, `views.js`).
 - `mentions.resolve` reads a provider's `text` as its context, forwards an `outside` mark (true unless the kind is vault, so sessions frames third-party text as data), and keeps a grant only in the shape sessions understands (`core/mentions/index.js`).
 - Each MCP hub server gets a Tools command in the Capsule (`capsule.commands`/`view`/`act`): its tools listed,
   a form built from a tool's input schema (text, number, bool, choice, JSON), a read runs as the person, and a
-  write previews then is held at the Gate by the hub (`core/capsule/views.js`). The install card
+  write previews then is held at the Gate by the hub (`local/capsule/views.js`). The install card
   (`capabilities()`) lists an added module's Capsule commands, the tools they call and the front slot, and
   `widened()` asks again for a new command or a first request for the front slot.
 - The Capsule's view contract: `view:<id>` entries in shows.capsule (a list with a detail and actions, or a
   form; `map` by dotted path, a fixed template vocabulary, effects open/copy/say/ask/push, an icon
   allowlist), checked at load (`packages/module-sdk/capsule-view.js`), and three tools on the capsule module,
   `capsule.commands`, `capsule.view` and `capsule.act`, that turn a declaration and a tool's answer into
-  small bounded frames (`core/capsule`, `local/capsule`). The Capsule sends ids, never tool names. A first
+  small bounded frames (`local/capsule`, `local/capsule`). The Capsule sends ids, never tool names. A first
   party view's tool runs as the person's surface, an added module's as itself, and only a tool a view of
   that module declares (its own, or in needs.tools) can be called; an outward action previews the exact
   words with a hash before a second Enter sends. Status rows gain firstParty, needsTools and needsSlots.

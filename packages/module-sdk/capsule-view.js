@@ -2,7 +2,7 @@
 // The Capsule's `view:` entries in shows.capsule (ADR 0033: declarative first, code second).
 // A module says what a command lists, opens and does; vyred reads it, calls the module's own
 // tools, and the Capsule draws small fixed frames. Nothing from a module runs in the Capsule.
-// This file only checks the declaration; core/capsule builds the frames.
+// This file only checks the declaration; local/capsule builds the frames.
 
 /** SF Symbol names a module may name for an icon; `app:<bundle id>` is allowed too. A module supplies data, never style. */
 export const ICONS = new Set([

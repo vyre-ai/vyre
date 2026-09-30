@@ -5,14 +5,14 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
-import { discover, Registry, validate } from "../modules/index.js";
+import { discover, Registry, validate } from "../../core/modules/index.js";
 import { capabilities, widened } from "../../packages/module-sdk/manifest.js";
-import { open } from "../store/index.js";
-import { Events } from "../events/index.js";
+import { open } from "../../core/store/index.js";
+import { Events } from "../../core/events/index.js";
 import { tempHome, writeModule } from "../../test/helpers.js";
 import { fill, fillDeep, getPath, allowed, listFrame } from "./frames.js";
 
-const LOCAL = path.resolve(import.meta.dirname, "..", "..", "local", "capsule");
+const LOCAL = import.meta.dirname;
 const self = () => ({ dir: LOCAL, manifest: JSON.parse(fs.readFileSync(path.join(LOCAL, "module.json"), "utf8")), problems: [] });
 
 const north = {
