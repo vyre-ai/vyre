@@ -17,6 +17,7 @@ import { Prompts, PROMPTS_MIGRATION, REPLACE_WARNING, MAX_CHARS, scopeOf } from 
 import { composeIq, factsFrom } from "./iq-prompt.js";
 import { sessionsConfig, sdkDir, claudeBin, configModel, PURPOSES } from "./config.js";
 import { Accounts, ACCOUNTS_MIGRATION, KINDS as ACCOUNT_KINDS } from "./accounts.js";
+import { Routes, ROUTES_MIGRATION } from "./routes.js";
 import { usesSpawner } from "./spawn.js";
 import { grokProvider } from "./drivers/grok.js";
 import { codexProvider } from "./drivers/codex.js";
@@ -49,7 +50,7 @@ const scope = { type: "string", description: "assistant, agent:<name>, project:<
 
 export default {
   async start(ctx) {
-    ctx.store.migrate([PROMPTS_MIGRATION, MODELS_MIGRATION, LIMITS_MIGRATION, MODES_MIGRATION, ACCOUNTS_MIGRATION, ACP_MIGRATION]);
+    ctx.store.migrate([PROMPTS_MIGRATION, MODELS_MIGRATION, LIMITS_MIGRATION, MODES_MIGRATION, ACCOUNTS_MIGRATION, ACP_MIGRATION, ROUTES_MIGRATION]);
     const db = ctx.store.db;
     // A uid handed to a new account first has its HOME emptied: by the spawner on a box, by
     // removing the account's folder on a machine without one (there the uid only numbers it).
@@ -183,6 +184,32 @@ export default {
         accounts: accounts.list(p.id).map(a => ({ id: a.id, label: a.label, kind: a.kind, signed_in: true, default: a.is_default })),
         models: p.id === "claude" ? MODEL_ALIASES : [],
         capabilities: p.id === "claude" ? { streaming: true, resume: true, interrupt: true, modes: true, questions: true, transcripts: true } : /** @type {any} */ (drivers)[p.id].capabilities })),
+    });
+
+    // ---- routing and fallback order (plans/sessions.md 9.4)
+    const routes = new Routes(db, name => PROVIDERS.some(p => p.id === name));
+    const usable = e => { try { accounts.resolve({ provider: e.provider, ...(e.account ? { account: e.account } : {}) }); return true; } catch { return false; } };
+    tool("sessions.routes.get", "The fallback order for a scope (default, project:<slug> or agent:<name>): the ordered (provider, account) list a thread moves down when its turn hits a limit. Without a scope, every list.",
+      { type: "object", properties: { scope: str } },
+      async i => (i.scope ? routes.get(String(i.scope)) : routes.all()));
+    tool("sessions.routes.set", `Set the fallback order for a scope: entries is an ordered list of { provider, account? }, e.g. Claude, then Codex, then Grok. An empty list clears it. Two entries on one provider (two accounts combining one vendor's quota) may break that vendor's terms: it saves only with acknowledge: true, after the person has seen the warning. An agent sets only its own list or a project it is granted.`,
+      { type: "object", required: ["scope", "entries"], properties: { scope: str, acknowledge: { type: "boolean" },
+        entries: { type: "array", items: { type: "object", required: ["provider"], properties: { provider: str, account: str } } } } },
+      async (i, meta) => {
+        const who = meta && meta.agent ? String(meta.agent) : null;
+        if (who) {
+          // Grants come from vyred's own read of the agent's stored row, never from the input.
+          const granted = /** @type {any} */ (meta).granted;
+          const m = /^(project|agent):(.+)$/.exec(String(i.scope));
+          const ok = m && (m[1] === "agent" ? m[2] === who : granted === "*" || (Array.isArray(granted) && granted.includes(m[2])));
+          if (!ok) throw Object.assign(new Error("an agent sets its own fallback order, or a project it is granted"), { code: "denied" });
+        }
+        return routes.set(i, who ? `agent:${who}` : String(meta && meta.caller || "person"));
+      });
+    ctx.tool("sessions.routes.next", {
+      description: "The next (provider, account) a limited thread moves to, for the Switchboard. Not a public name.", internal: true,
+      input: { type: "object", required: ["provider"], properties: { provider: str, account: str, agent: str, project: str, tried: { type: "array", items: str } } },
+      run: async i => routes.next(i, usable),
     });
 
     tool("sessions.accounts.list", "Every account on a provider, or every account on every provider. Each names a vault item (never a value) and its scope: which projects and agents it is granted to.",

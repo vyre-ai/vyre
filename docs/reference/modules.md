@@ -55,7 +55,7 @@ A module runs on the `box` (the always-on server), on `local` (the Mac), or on b
 | [`relay`](#relay) | `core/relay` | `box`, `local` | 19 | 9 | capsule, cli, deck |
 | [`releases`](#releases) | `core/apps` | `box` | 2 | 0 | cli |
 | [`screen`](#screen) | `local/screen-mac` | `local` | 2 | 0 | none |
-| [`sessions`](#sessions) | `core/sessions` | `box`, `local` | 28 | 8 | cli |
+| [`sessions`](#sessions) | `core/sessions` | `box`, `local` | 31 | 8 | cli |
 | [`settings`](#settings) | `core/settings` | `box`, `local` | 7 | 1 | cli, deck |
 | [`sideview`](#sideview) | `local/sideview` | `local` | 3 | 0 | none |
 | [`sight`](#sight) | `core/sight` | `box`, `local` | 5 | 1 | none |
@@ -65,7 +65,7 @@ A module runs on the `box` (the always-on server), on `local` (the Mac), or on b
 | [`system`](#system) | `core/system` | `box`, `local` | 2 | 1 | cli |
 | [`team`](#team) | `core/team` | `box`, `local` | 13 | 6 | cli |
 | [`term`](#term) | `core/term` | `box`, `local` | 4 | 2 | none |
-| [`threads`](#threads) | `core/switchboard` | `box`, `local` | 42 | 28 | cli |
+| [`threads`](#threads) | `core/switchboard` | `box`, `local` | 43 | 29 | cli |
 | [`tips`](#tips) | `core/tips` | `box`, `local` | 7 | 1 | cli |
 | [`vault`](#vault) | `core/vault` | `box`, `local` | 109 | 42 | capsule, cli, deck |
 | [`vitals`](#vitals) | `core/vitals` | `box`, `local` | 5 | 2 | capsule, cli, deck |
@@ -500,7 +500,7 @@ How the sessions Vyre starts run (ADR 0030): the Claude Agent SDK driver's statu
 - Folder: `core/sessions`, version 0.1.0
 - Runs on: `box`, `local`
 - Requires: none
-- Tools: [28](tools.md#sessions), 7 of them only for other modules
+- Tools: [31](tools.md#sessions), 8 of them only for other modules
 - Emits: [8 events](events.md#sessions)
 - Shows on: cli
 - Teaches tips: `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`
@@ -612,8 +612,8 @@ Project teammates (ADR 0031): a named, persistent agent per role per project, a 
 - Folder: `core/switchboard`, version 0.1.0
 - Runs on: `box`, `local`
 - Requires: none
-- Tools: [42](tools.md#threads), 14 of them only for other modules
-- Emits: [28 events](events.md#threads)
+- Tools: [43](tools.md#threads), 14 of them only for other modules
+- Emits: [29 events](events.md#threads)
 - Shows on: cli
 - Needs vault: `claude-setup-token`, `anthropic-api-key`, `per-account`
 - Teaches tips: `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`

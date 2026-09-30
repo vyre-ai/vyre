@@ -375,6 +375,58 @@ for (const driver of ["cli", "sdk"]) {
     assert.deepEqual(await w.said(th.data.id), ["echo: hello", "echo: again"]);
   });
 
+  /** A stand-in `grok` first on PATH: the fake ACP agent. */
+  const withGrok = (t, w) => {
+    const bin = path.join(w.root, "shim");
+    fs.mkdirSync(bin, { recursive: true });
+    fs.symlinkSync(path.resolve(path.dirname(fileURLToPath(import.meta.url)), "testing", "fake-acp.js"), path.join(bin, "grok"));
+    const saved = { PATH: process.env.PATH, FAKE_ACP_STORE: process.env.FAKE_ACP_STORE };
+    process.env.PATH = `${bin}:${process.env.PATH}`;
+    process.env.FAKE_ACP_STORE = path.join(w.root, "acp-store");
+    fs.mkdirSync(process.env.FAKE_ACP_STORE, { recursive: true });
+    t.after(() => { for (const [k, v] of Object.entries(saved)) { if (v === undefined) delete process.env[k]; else process.env[k] = v; } });
+  };
+
+  test(`${driver}: switching provider mid-session: same thread, a brief of what was said, a notice, and only between turns`, { skip }, async t => {
+    const w = await boot(t, { driver });
+    withGrok(t, w);
+    const th = (await w.tool("threads.start", { cwd: w.work, prompt: "plan the Northwind menu", surface: "deck" })).data;
+    await w.finished(th.id);
+    const r = await w.tool("threads.switch", { thread: th.id, provider: "grok", text: "now the prices" });
+    assert.equal(r.error, undefined, JSON.stringify(r));
+    assert.equal(r.data.thread, th.id);
+    await w.finished(th.id, 2);
+    const said = await w.said(th.id);
+    assert.match(said.at(-1), /^echo: \[Vyre handoff/);
+    assert.match(said.at(-1), /plan the Northwind menu/, "the brief carries what was said");
+    assert.match(said.at(-1), /now the prices/);
+    const rec = (await w.tool("threads.get", { thread: th.id })).data;
+    assert.equal(rec.thread.provider, "grok");
+    assert.ok(rec.events.some(e => e.type === "thread.provider" && e.payload.from === "claude" && e.payload.to === "grok"));
+    assert.ok(rec.events.some(e => e.type === "thread.text" && e.payload.notice && e.payload.text === "continued on Grok"));
+    // Back to Claude: it ran this thread before, so its own session returns, with no brief.
+    const back = await w.tool("threads.switch", { thread: th.id, provider: "claude", text: "and the hours" });
+    assert.equal(back.error, undefined, JSON.stringify(back));
+    assert.equal(back.data.resumed, true);
+    // An unknown provider is refused, and a switch mid-turn says busy.
+    assert.equal((await w.tool("threads.switch", { thread: th.id, provider: "gemini" })).error.code, "bad_input");
+  });
+
+  test(`${driver}: routing: a limit moves the thread to the next entry of its list, and says why`, { skip }, async t => {
+    const w = await boot(t, { driver, sessions: { auth: "setup-token" }, vault: { "claude-setup-token": "fake-setup-value" } });
+    withGrok(t, w);
+    // No list: nothing changes (the thread stays limited, as before).
+    const set = await w.tool("sessions.routes.set", { scope: "default", entries: [{ provider: "claude" }, { provider: "grok" }] });
+    assert.equal(set.error, undefined, JSON.stringify(set));
+    const two = await w.tool("sessions.routes.set", { scope: "project:harlow-legal", entries: [{ provider: "grok" }, { provider: "grok" }] });
+    assert.equal(two.error && two.error.code, "bad_input", "the same provider twice with no account is a duplicate");
+    const th = (await w.tool("threads.start", { cwd: w.work, prompt: "limit", surface: "deck" })).data;
+    await until(async () => (await w.tool("threads.get", { thread: th.id })).data.thread.provider === "grok", "the move to Grok");
+    await w.finished(th.id, 2);
+    const ev = (await w.tool("threads.get", { thread: th.id })).data.events;
+    assert.ok(ev.some(e => e.type === "thread.text" && e.payload.notice && /moved to Grok: Claude's limit was reached/.test(e.payload.text)), JSON.stringify(ev.filter(e => e.payload && e.payload.notice)));
+  });
+
   test(`${driver}: from inside a session, a person-only call is refused, even claiming to be the CLI`, { skip }, async t => {
     const w = await boot(t, { driver });
     const th = (await w.tool("threads.start", { cwd: w.work, prompt: "forge cli sessions.prompt.set", surface: "deck" })).data;

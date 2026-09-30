@@ -94,6 +94,9 @@ export const MIGRATIONS = [
   // Which account (sessions_accounts, ADR 0030 phase 2) a thread runs on: kept, so a resume never
   // quietly moves to another person's paid account.
   `ALTER TABLE threads_runs ADD COLUMN account TEXT;`,
+  // Every provider a thread has run on (a mid-session switch, a fallback): a provider that ran it
+  // before picks its own session back up; a new one starts fresh from a handoff brief.
+  `CREATE TABLE IF NOT EXISTS threads_providers (thread TEXT NOT NULL, provider TEXT NOT NULL, at INTEGER NOT NULL, PRIMARY KEY (thread, provider))`,
   // Claude Code reports a session's cost as a running total (total_cost_usd, across the turns of
   // one process, continued from the transcript's saved total on a resume): the last one seen, so
   // each turn's own cost is the difference.
@@ -527,7 +530,7 @@ export class Switchboard {
     }
     // A thread no agent runs gets this machine's own Claude credential (sessions.auth): the
     // vault's setup token on a box, Claude Code's login on a Mac. An agent brings its own.
-    if (!o.agent && !acct && !(o.env && (o.env.CLAUDE_CODE_OAUTH_TOKEN || o.env.ANTHROPIC_API_KEY)) && this.deps.auth) {
+    if (!o.agent && !acct && (rec.provider || o.provider || "claude") === "claude" && !(o.env && (o.env.CLAUDE_CODE_OAUTH_TOKEN || o.env.ANTHROPIC_API_KEY)) && this.deps.auth) {
       const a = await this.deps.auth({ agent: null }).catch(e => { this.deps.log(`threads: ${e.message}; using this machine's own Claude login`); return null; });
       if (a && a.env) { o = { ...o, env: { ...(o.env || {}), ...a.env }, ...(a.fallback && !o.fallback ? { fallback: a.fallback } : {}) }; this.db.prepare("UPDATE threads_runs SET auth = ? WHERE id = ?").run(a.auth, id); }
     }
@@ -535,7 +538,10 @@ export class Switchboard {
     // A quick answer thinks not at all, so the same words get the same answer (no temperature knob).
     if (o.purpose === "capsule" && !o.agent) o = { ...o, env: { ...(o.env || {}), MAX_THINKING_TOKENS: "0" } };
     await this.openSocket(id, rec);
-    this.spawn(id, { ...o, cwd: rec.cwd, resume: Boolean(o.resume) });
+    this.db.prepare("INSERT OR IGNORE INTO threads_providers (thread, provider, at) VALUES (?,?,?)").run(id, rec.provider || o.provider || "claude", Date.now());
+    // A rebind (switchProvider) gives a provider that never ran this thread a fresh native session
+    // under the same thread: there is nothing of its own to resume.
+    this.spawn(id, { ...o, cwd: rec.cwd, resume: Boolean(o.resume) && !o.rebind });
     const fresh = this.must(id);
     // What a surface's chip says: "Claude · opus · subscription".
     const payload = { name: rec.name, cwd: rec.cwd, project: rec.project, agent: rec.agent, headless: true, resumed: Boolean(o.resume), ...(o.forkFrom ? { forked_from: o.forkFrom } : {}), mode: fresh.mode,
@@ -899,6 +905,7 @@ export class Switchboard {
     }
     if (t.limit) this.limit(id, st, t.limit, project);
     if (t.limited && st.launch.fallback && !st.switching) this.fallback(id, st);
+    else if (t.limited && !st.switching) this.routeFallback(id, st).catch(e => this.deps.log(`threads: no fallback for ${id.slice(0, 8)}: ${e.message}`));
   }
 
   /** Record an ask, set the thread waiting and emit ask.raised (small: never a permission's detail). */
@@ -991,6 +998,83 @@ export class Switchboard {
     const rec = this.record(id);
     if (st.rpending) { const delta = st.rpending; st.rpending = ""; this.emit("thread.thinking", { message: st.message, block: st.pendingBlock, delta }, id, rec ? rec.project : null); }
     if (st.pending) { const delta = st.pending; st.pending = ""; this.emit("thread.text", { message: st.message, block: st.pendingBlock, delta }, id, rec ? rec.project : null); }
+  }
+
+  /**
+   * What a provider that never saw this thread needs to carry on: the recent turns verbatim, the
+   * older ones cut short, built from the event log (the one record every provider writes). A
+   * deterministic cut for now; memory's summariser (iq) can replace the older half.
+   * @param {string} id
+   */
+  handoffBrief(id, { recent = 8, keep = 6000 } = {}) {
+    const rows = /** @type {any[]} */ (this.db.prepare(`SELECT type, payload FROM events WHERE thread = ?
+      AND (type = 'thread.sent' OR (type = 'thread.text' AND json_extract(payload, '$.done') = 1 AND json_extract(payload, '$.notice') IS NULL AND json_extract(payload, '$.kind') IS NULL))
+      ORDER BY id`).all(id));
+    const turns = rows.map(r => ({ who: r.type === "thread.sent" ? "person" : "assistant", text: String(JSON.parse(String(r.payload)).text || "").trim() })).filter(t => t.text);
+    if (!turns.length) return "";
+    const older = turns.slice(0, -recent).map(t => `${t.who}: ${cut(t.text.replace(/\s+/g, " "), 160)}`);
+    const last = turns.slice(-recent).map(t => `${t.who}: ${cut(t.text, 1500)}`);
+    let body = [...(older.length ? ["Earlier, in brief:", ...older, ""] : []), "Most recent:", ...last].join("\n");
+    if (body.length > keep) body = "..." + body.slice(body.length - keep);
+    return `[Vyre handoff: this conversation was already under way with another assistant. The files are as they left them. What was said so far:\n${body}\n]`;
+  }
+
+  /**
+   * Move a thread to another provider and account, between turns: same thread id, same folder and
+   * files, same event log. The new provider gets a fresh native session and the handoff brief
+   * with the next message (or its own session back, if it ran this thread before). Says so in the
+   * transcript. A limit's fallback is this, triggered by the limit instead of a person.
+   * @param {string} id @param {{ provider: string, account?: string|null, model?: string|null, reason?: "asked"|"limit", text?: string|null }} o
+   */
+  async switchProvider(id, { provider, account = null, model = null, reason = "asked", text = null }) {
+    const rec = this.must(id);
+    provider = String(provider || "");
+    if (provider !== "claude" && !(this.deps.providers && this.deps.providers.get(provider))) throw Object.assign(new Error(`no session provider ${provider}`), { code: "bad_input" });
+    const st = this.live.get(id);
+    if (st && st.turn && reason === "asked") throw Object.assign(new Error("a turn is running: interrupt it or wait for it to end, then switch"), { code: "busy" });
+    const acct = await this.accountFor({ provider, account, project: rec.project, agent: rec.agent });
+    const from = rec.provider || "claude";
+    const brief = this.handoffBrief(id);
+    const had = Boolean(this.db.prepare("SELECT 1 FROM threads_providers WHERE thread = ? AND provider = ?").get(id, provider));
+    if (st) {
+      st.switching = true;
+      const proc = st.proc;
+      this.live.delete(id);
+      await proc.stop();
+      for (const a of this.asks.open(id)) this.closeAsk(a, "cancelled", "switched provider");
+    }
+    const row = /** @type {any} */ (this.db.prepare("SELECT opts FROM threads_runs WHERE id = ?").get(id));
+    const kept = optsOf(row);
+    kept.provider = provider;
+    if (acct) kept.account = acct.id; else delete kept.account;
+    this.db.prepare("UPDATE threads_runs SET provider = ?, account = ?, model = ?, driver = NULL, opts = ? WHERE id = ?").run(provider, acct ? acct.id : null, model || null, JSON.stringify(kept), id);
+    const name = provider[0].toUpperCase() + provider.slice(1);
+    const why = reason === "limit" ? `moved to ${name}: ${from[0].toUpperCase() + from.slice(1)}'s limit was reached` : `continued on ${name}`;
+    this.emit("thread.text", { message: "vyre", text: why, done: true, notice: true }, id, rec.project);
+    this.emit("thread.provider", { from, to: provider, account: acct ? acct.id : null, reason }, id, rec.project);
+    const words = [had ? "" : brief, text || ""].filter(Boolean).join("\n\n");
+    await this.launch({ resume: id, rebind: !had, ...(words ? { prompt: words } : {}) });
+    return { thread: id, provider, account: acct ? acct.id : null, resumed: had };
+  }
+
+  /**
+   * A limit was hit: the next entry of this thread's routing list (agent, project, then the
+   * machine's), one not already tried in this run of fallbacks. False when there is none, and the
+   * thread simply stays limited as it always did.
+   * @param {string} id @param {any} st
+   */
+  async routeFallback(id, st) {
+    const rec = this.must(id);
+    st.tried = st.tried || new Set();
+    const r = await this.deps.call("sessions.routes.next", { provider: rec.provider || "claude", ...(rec.account ? { account: rec.account } : {}), ...(rec.agent ? { agent: rec.agent } : {}), ...(rec.project ? { project: rec.project } : {}), tried: [...st.tried] });
+    const hit = r.data && r.data.entry;
+    if (!hit) return false;
+    const last = st.lastPrompt || null;
+    const tried = new Set([...st.tried, `${rec.provider || "claude"}:${rec.account || ""}`]);
+    st.switching = true;
+    try { await this.switchProvider(id, { provider: hit.provider, account: hit.account || null, reason: "limit", text: last }); }
+    finally { const now = this.live.get(id); if (now) now.tried = tried; }
+    return true;
   }
 
   /**
@@ -2208,6 +2292,10 @@ export default {
     tool("threads.interrupt", "Stop the turn a thread is running, as Escape does in Claude Code. The thread stays and takes the next message; open questions of that turn are cancelled.",
       { type: "object", required: ["thread"], properties: { thread: str } },
       async (i, { caller }) => { guard(caller, "interrupt sessions"); return sb.interrupt(i.thread); });
+
+    tool("threads.switch", "Continue a thread on another provider (and account), between turns: the same thread, folder and files, the new provider given a brief of what was said. A person or an agent that may act on the thread can do it. provider: claude, codex or grok; account: one granted to this project or agent (never a guess between two); text: the next message to send there.",
+      { type: "object", required: ["thread", "provider"], properties: { thread: str, provider: str, account: str, model: str, text: str } },
+      async (i, { caller }) => { guard(caller, "switch a session's provider"); return sb.switchProvider(i.thread, { provider: i.provider, account: i.account || null, model: i.model || null, reason: "asked", text: i.text || null }); });
 
     tool("threads.unqueue", "Take back queued words before they are handed over: one (queued: the queued_id threads.send gave, or thread.queued's queued) or all of the thread's. Only a person's surface can.",
       { type: "object", required: ["thread"], properties: { thread: str, queued: { type: "integer" }, surface: str } },
