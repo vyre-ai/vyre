@@ -3,8 +3,10 @@
 // comes back. Any Chrome with DevTools works (desktop, or Android over adb forward).
 //
 //   node scripts/matrix/j0.mjs --cdp http://127.0.0.1:9222 --link <url> --device linux-chrome --out results [--mobile]
+//   node scripts/matrix/j0.mjs --webdriver http://127.0.0.1:4444 ...   (Safari, through safaridriver)
 import fs from "node:fs";
 import { connect } from "./lib/cdp.mjs";
+import { connect as connectWebDriver } from "./lib/webdriver.mjs";
 import { recorder, fixtureHits } from "./lib/results.mjs";
 
 const arg = (name, def) => { const i = process.argv.indexOf("--" + name); return i < 0 ? def : process.argv[i + 1]; };
@@ -18,7 +20,7 @@ const hide = s => String(s).replace(/([?&]t=)[^&\s]+/g, "$1...");
 const t0 = Date.now();
 let page;
 try {
-  page = await connect(cdp, native ? { reuse: true } : mobile ? { width: 390, height: 844, mobile: true, scale: 2 } : { width: 1280, height: 900 });
+  page = arg("webdriver") ? await connectWebDriver(arg("webdriver")) : await connect(cdp, native ? { reuse: true } : mobile ? { width: 390, height: 844, mobile: true, scale: 2 } : { width: 1280, height: 900 });
   const status = await page.open(link);
   r.step("open", status === 200, { ms: Date.now() - t0, why: status === 200 ? undefined : `HTTP ${status}` });
   const text = await page.waitText(/\S{3,}/);

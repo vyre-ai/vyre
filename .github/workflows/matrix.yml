@@ -128,8 +128,85 @@ jobs:
         if: always()
         with: { name: results-windows, path: results, retention-days: 14 }
 
+  # The Mac and the iPhone simulator can't run the box (no Docker on hosted macOS), so the box runs
+  # on a Linux runner behind a throwaway tunnel that hands it Host 127.0.0.1:7300. The two jobs
+  # meet through a run artifact (spike E2: about 20 s). The artifact holds the tunnel's address
+  # and one-time links to a throwaway box; it is deleted as soon as the Mac is done.
+  mac-box:
+    needs: build
+    if: contains(github.event.inputs.on || 'all', 'all') || contains(github.event.inputs.on, 'mac') || contains(github.event.inputs.on, 'ios')
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    permissions: { contents: read, actions: write }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22 }
+      - uses: actions/download-artifact@v4
+        with: { name: box, path: box }
+      - name: Install a box with the real installer
+        run: sh scripts/matrix/box-up.sh box link.txt
+      - name: A throwaway tunnel and one link per Mac device
+        run: |
+          curl -fsSLo cloudflared https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64 && chmod +x cloudflared
+          (./cloudflared tunnel --no-autoupdate --url http://127.0.0.1:7300 --http-host-header 127.0.0.1:7300 > cf.log 2>&1 &)
+          for i in $(seq 1 60); do URL=$(grep -o 'https://[a-z0-9-]*\.trycloudflare\.com' cf.log | head -1); [ -n "$URL" ] && break; sleep 1; done
+          mkdir rv; echo "$URL" > rv/url
+          for d in mac-chrome mac-safari ios-safari; do sh scripts/matrix/new-link.sh "rv/$d"; done
+      - uses: actions/upload-artifact@v4
+        with: { name: mac-rv, path: rv, retention-days: 1 }
+      - name: Hold the box until the Mac is done, then delete the links
+        env: { GH_TOKEN: "${{ github.token }}" }
+        run: |
+          api="repos/${{ github.repository }}/actions/runs/${{ github.run_id }}/artifacts"
+          for i in $(seq 1 200); do gh api "$api" --jq '.artifacts[].name' | grep -qx mac-done && break; sleep 10; done
+          id=$(gh api "$api" --jq '.artifacts[] | select(.name=="mac-rv") | .id'); [ -z "$id" ] || gh api -X DELETE "repos/${{ github.repository }}/actions/artifacts/$id"
+
+  mac:
+    needs: build
+    if: contains(github.event.inputs.on || 'all', 'all') || contains(github.event.inputs.on, 'mac') || contains(github.event.inputs.on, 'ios')
+    runs-on: macos-15
+    timeout-minutes: 45
+    permissions: { contents: read, actions: read }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22 }
+      - name: Meet the box (its tunnel and links)
+        env: { GH_TOKEN: "${{ github.token }}" }
+        run: |
+          api="repos/${{ github.repository }}/actions/runs/${{ github.run_id }}/artifacts"
+          for i in $(seq 1 120); do id=$(gh api "$api" --jq '.artifacts[] | select(.name=="mac-rv") | .id'); [ -n "$id" ] && break; sleep 10; done
+          gh api "repos/${{ github.repository }}/actions/artifacts/$id/zip" > rv.zip && mkdir -p "$RUNNER_TEMP/rv" && unzip -o -q rv.zip -d "$RUNNER_TEMP/rv" && rm rv.zip
+          (node scripts/matrix/mac-proxy.mjs "$(cat "$RUNNER_TEMP/rv/url")" > "$RUNNER_TEMP/proxy.log" 2>&1 &)
+          for i in $(seq 1 30); do curl -fs -o /dev/null http://127.0.0.1:7300/ -w '%{http_code}' 2>/dev/null | grep -q . && break; sleep 1; done
+      - name: J0 in Chrome on the Mac
+        run: |
+          "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" --headless=new --remote-debugging-port=9222 --user-data-dir="$RUNNER_TEMP/chrome" --no-first-run about:blank >/dev/null 2>&1 &
+          for i in $(seq 1 50); do curl -fs http://127.0.0.1:9222/json/version >/dev/null && break; sleep 0.2; done
+          node scripts/matrix/j0.mjs --link-file "$RUNNER_TEMP/rv/mac-chrome" --device mac-chrome --out results/mac
+      - name: J0 in Safari on the Mac
+        if: always()
+        run: |
+          sudo safaridriver --enable
+          safaridriver -p 4444 >/dev/null 2>&1 &
+          sleep 2
+          node scripts/matrix/j0.mjs --webdriver http://127.0.0.1:4444 --link-file "$RUNNER_TEMP/rv/mac-safari" --device mac-safari --out results/mac
+      - name: J0 in Safari on the iPhone simulator
+        if: always()
+        run: sh scripts/matrix/ios-j0.sh "$RUNNER_TEMP/rv/ios-safari"
+      - name: Tell the box it can go
+        if: always()
+        run: mkdir -p done && date > done/at
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with: { name: mac-done, path: done, retention-days: 1 }
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with: { name: results-mac, path: results, retention-days: 14 }
+
   report:
-    needs: [linux, android, windows]
+    needs: [linux, android, windows, mac]
     if: always()
     runs-on: ubuntu-24.04
     steps:
