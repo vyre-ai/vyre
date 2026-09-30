@@ -264,6 +264,10 @@ test("holdFor: a workflow builder's action tiles (Send Email, Remove Tag) are no
   assert.equal(holdFor(snap("http://127.0.0.1:1/ghl"), tile("Send SMS"), "click", undefined).held, false);
   assert.equal(holdFor(snap(url), tile("Send Email", { submit: true }), "click", undefined).held, true, "a submit is a send");
   assert.equal(holdFor(snap(url), { role: "button", name: "Send Email" }, "click", undefined).held, true, "not inside a dialog or drawer");
+  assert.equal(holdFor(snap(url), tile("Confirm"), "click", undefined).held, false, "the Confirm of the action picker keeps a step in the draft");
+  assert.equal(holdFor(snap(url), tile("Confirm", { container: "Delete workflow" }), "click", undefined).held, true, "the Confirm of a delete dialog is held");
+  assert.equal(holdFor(snap(url), tile("Confirm", { container: "Publish workflow" }), "click", undefined).held, true);
+  assert.equal(holdFor(snap(url), { role: "button", name: "Confirm" }, "click", undefined).held, true, "not inside a dialog");
   assert.equal(holdFor(snap(url), tile("Delete workflow"), "click", undefined).held, true);
   assert.equal(holdFor(snap(url), tile("Publish"), "click", undefined).held, true);
   assert.equal(holdFor(snap("https://mail.example.com/compose"), tile("Send Email"), "click", undefined).held, true, "not a workflow page");

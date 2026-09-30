@@ -529,6 +529,8 @@ export function builderTile(snap, ctl) {
   if (!/(^|\.)(gohighlevel\.com|leadconnectorhq\.com)$/i.test(host) && !ghlApi && !(/^(127\.0\.0\.1|localhost)$/.test(host) && /^\/ghl(\/|$)/.test(path))) return false;
   if (!/\/automation\/workflows|\/workflows?(\/|$)|^\/ghl(\/|$)/i.test(path)) return false;
   const name = String(ctl.name || "").trim();
+  // The Confirm or Apply of an action or trigger editor keeps a step in the draft; it is not the Confirm of a delete or a publish.
+  if (/^(confirm|apply|done|ok)$/i.test(name)) return /(action|trigger|configur|setting|edit|filter|condition|step)/i.test(String(ctl.container)) && !/(delete|remove|discard|publish|unsaved|leave|cancel|send|pay|charge)/i.test(String(ctl.container));
   return /^send [a-z][a-z .&/-]{1,30}$/i.test(name) || /^remove (tag|contact tag|from [a-z ]{2,30}|contact from [a-z ]{2,30})$/i.test(name);
 }
 
