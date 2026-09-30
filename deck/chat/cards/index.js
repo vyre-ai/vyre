@@ -9,6 +9,7 @@
 // Every factory is (data, ctx) => an element with .update(data), and asks also .answered(decision,
 // answers, from) like the cards in ask-item.js. ctx: { thread, phone, agent, open(href) }.
 
+import { go } from "../../js/dom.js";
 import { prReview } from "./pr-review.js";
 import { diffFiles } from "./diff-files.js";
 import { report } from "./report.js";
@@ -19,6 +20,14 @@ import { surveyCard, isSurvey } from "./survey.js";
 import { confirmationLine } from "./confirmation.js";
 import { filePreview } from "./file-preview.js";
 import { artifactCard } from "./artifact.js";
+
+/** Where a card sends the person by default: an address in this app goes through the router, an outside http(s) link opens
+ * in a new tab with no opener; anything else (a compose: or vyre: pseudo-address) is left to a ctx.open the caller gives. @param {string} href */
+export function defaultOpen(href) {
+  const h = String(href || "");
+  if (/^https?:\/\//i.test(h)) { if (typeof window !== "undefined") window.open?.(h, "_blank", "noopener,noreferrer"); return; }
+  if (h.startsWith("/")) go(h);
+}
 
 /** Non-blocking display kinds. */
 export const DISPLAY = {
@@ -41,13 +50,13 @@ export function renderOf(b) {
 /** The card for a display payload. @param {any} render @param {any} [ctx] */
 export function displayRow(render, ctx = {}) {
   const make = DISPLAY[render?.kind];
-  return make ? make(render, ctx) : null;
+  return make ? make(render, { open: defaultOpen, ...ctx }) : null;
 }
 
 /** The card for a blocking ask of one of the new kinds, else null. @param {any} full @param {any} [ctx] */
 export function askCardFor(full, ctx = {}) {
   const make = ASKS[full?.kind] || (full?.kind === "question" && isSurvey(full) ? surveyCard : null);
-  return make ? make(full, ctx) : null;
+  return make ? make(full, { open: defaultOpen, ...ctx }) : null;
 }
 
 /** A tool block whose result carries a render payload, as its card row; null when it has none.
