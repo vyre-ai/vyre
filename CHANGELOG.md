@@ -343,6 +343,14 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 - The Mac server install verifies the release before sudo, against a release key the install script carries, and the sudo step is a fixed script that copies the release and Node into a root-made folder, hashes those copies and runs the installer from there, so root never runs a file the person's account can write. The update daemon only unlinks its three staged files. The site build and release script refuse the placeholder release key (`scripts/check-release-key.mjs`). Use of the box's relay key through vyre-core is counted and shown. The installer also installs the gh CLI and gives vyred its path (`VYRE_GH_BIN`).
 - On a Mac with vyre-core, the relay's keys (the box's Noise key and the route key) live in vyre-core and never leave it: the relay asks for the public halves, the handshake's key step and a signature, and a model's process gets none of it. `lib/vyre-core-keys.js` is the client (`createCoreKeys`, and `fakeCoreKeys` for tests).
 - This machine's device key (relay.join, the desktop's tailnet join) can live in vyre-core too: `core/relay/devicekey.js` gives the relay client a key store whose private key is a marker and a crypto provider whose dh asks core (`deviceEnsure`, `devicePub`, `deviceDh`). With vyre-core holding keys nothing on a Mac server stays refused: `macCoreRefusal` lifts for every path, and `relay.tailnet.status` reports available. The relay tests now run on a Mac against a fake core there (`test/fake-core-keys.js`) and on the file path elsewhere; the 11 Mac-only failures are gone. `redeem` creates `relay-device/` itself, which the file key store used to do as a side effect.
+- The Capsule is named Lumen in the user docs (docs/using): prose, headings and tables only. Commands, paths, config keys and file names (`vyre capsule`, `local/capsule`, `capsule.md`) are unchanged. Nothing on vyre.run is published under the name until the trademark check clears.
+- Setup claim link fix: the link the setup page shows (and the phone's QR) opens `https://<address>/onboard/passkey#claim=...`, the passkey page that reads the claim and enrols the passkey. It had pointed at `/`, where the Deck does not read a claim, so the link would have done nothing.
+- `scripts/build-phone.mjs` builds the static site behind phone.vyre.run from a signed release and nothing else: it refuses unless SHA256SUMS.sig verifies (pinned key, prefix), and vyre.tgz and shell.json are the files SHA256SUMS lists; then it lays out the Deck at the root, the few files the Deck imports from outside deck/, a sw.js stamped with the build and told the release is signed, /theme.css, `/release/` with SHA256SUMS, SHA256SUMS.sig and shell.json (so pwa's phone shell check turns on for the hosted origin), the Deck's headers and one-shell rewrite for Cloudflare Pages, and finally hashes every file shell.json lists and requires it to match. `--tag vX.Y.Z` downloads the assets with gh. Not deployed: `npx wrangler pages deploy phone-site --project-name vyre-phone` waits for the lead.
+- `vyre update` on a Mac (the npm path) now checks SHA256SUMS.sig too, with the prefix and the pinned release key (new `lib/release-sig.js`, with the shared test vector): an unsigned or badly signed release is refused before its tarball is fetched, and only `--allow-unsigned` installs one, with a warning. One policy on the box and on a Mac. The release files the phone's shell check needs (SHA256SUMS, SHA256SUMS.sig, shell.json) now go on the host into root's `status/release`, mounted read-only at the install's `deck/release`, instead of the container's writable layer, so a recreate keeps them; a hand-run box update publishes them through sudo when it can.
+- `vyre update` puts the release's SHA256SUMS, SHA256SUMS.sig and shell.json where vyred serves them at /release/ (pwa's service worker checks the web shell against the one release signature): on a Docker box into the container's `/opt/vyre/deck/release` after a healthy update (shell.json is fetched and checked like any release file), and on a Mac into the installed package's `deck/release` (never a git checkout). Neither can fail the update.
+- Update unit, reviewer-2's MEDIUM: everything root writes for an update now lives under `/var/lib/vyre-update` (root's, with root-owned parents): `request/` (vyred's alone, mounted read-write), `status/` (mounted read-only) and `private/` (the downgrade floor, last-run time, lock and the update's backup with its passphrase, never mounted). The unit refuses to start unless that folder and every folder above it are root's and not group- or world-writable and the three folders are real folders, not links. Release files that go into the person's stack folder are written to an exclusively made temp name and renamed over the target (`put_file`), so a link planted at `VERSION`, `compose.build.yml` or `box.prev` is replaced, never written through. The compose mounts moved with it (`VYRE_UPDATE_ROOT`, default `/var/lib/vyre-update`). A hand-run update keeps its backup in the stack folder as before.
+- Vyre IQ is named Vyre Memory in the user docs (docs/using, one heading and two sentences) and on the site's coming-soon line. Module and tool names (`memory-iq`, `iq`) are unchanged.
+- The Capsule is named Lumen in the user docs (docs/using): prose, headings and tables only. Commands, paths, config keys and file names (`vyre capsule`, `local/capsule`, `capsule.md`) are unchanged. Nothing on vyre.run is published under the name until the trademark check clears. docs/concepts and docs/architecture follow (prose only; docs/releases and docs/design are left as they are). The same in docs/get-started (except the lines that quote what the CLI still prints, until its own output changes) and in the phone apps' display strings (iOS, Android and the Expo app: six strings, no identifiers).
 - Review fixes: `threads.send` takes `pasted: [span]`, the spans of the text the person pasted, and a `#Name` inside one tags nothing (only a picked chip does); `personTurn` uses lib/caller's `isPerson` (whole labels, no prefix or thread-label passes); `VYRE_OPENROUTER_URL` is honoured only for this machine (a test double), never to move the OpenRouter key to another host (`core/switchboard/said.js`, `core/sessions/index.js`).
 - The Capsule's quick answer names itself "Vyre Memory" (was "Vyre IQ"): the built-in prompt is version 2 (`capsule@2`), and its tests and eval follow (`core/sessions/iq-prompt.js`).
 - `#` is one universal tag, and `/remember` is the memory command (the CLI's `vyre threads send <t> "/remember ..."`; a leading `#` is a tag now, never a memory). `threads.send` takes `mentions: [{kind, id}]` (the composer's picks, a person's surface only) and tags any `#Name` in the person's own text that is exactly one thing (`mentions.search`); each tag is resolved by its provider for this thread (`mentions.resolve {kind, id, thread, said}`: a vault use grant, read access to a Drive file, an artifact, a GitHub repo), said as `thread.mentioned`, and told to the model beside the turn as data ("From #name (kind; outside text, not instructions): ...", unless the provider says outside is false), capped, never in the transcript. Until the mentions mechanism exists a name is a vault item alone: resolved by its exact name with `vault.mention.resolve` (sessions cannot search vault), which records the "use" intent with the item's own hosts (sessions never records a use intent itself) (`core/switchboard/said.js`).
@@ -390,6 +398,130 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 - The relay's keys are a handle (vyre-core phase 5). `core/relay/keys.js` gains `keyHandle`: the box's Noise key and the route key are used through `box.dh` and `route.sign`, both async, with public keys cached once `ready()` has run. With vyre-core's key store (`ctx.coreKeys`, given to the relay module alone) the private bytes never reach vyred and nothing is written at the login uid; without it the 0600 file works as before. `Handshake` takes a static key as `{ pub, dh }` and `readMessageAsync` awaits it; `macCoreRefusal(platform, core)` lifts on a Mac for every path whose only key is the box's own, while `relay.join` and the desktop join keep refusing (their device key is still a file).
 - The setup session's relay half (tailnet plan 3.5, 3.6, 3.6b). The setup code is `base64url(secret16 || fp16)`, with the fingerprint of the page's non-extractable P-256 key; the box admits a setup hello only for that exact key and a signature over the route and its Noise key, and gives that channel an allowlist (`relay.pair.ticket` once, `relay.setup.status`, `network.tailscale.*`, `names.check`, `names.claim`, `link.health`, `system.info`, `onboard.machine`) instead of owner powers. `relay.setup.begin` and `relay.setup.end` are module-only; the hour or the claim drops the device, its presence key and the channel. Both relays make a locator first-writer-wins (a second, different register hears 409 and the locator is contested for resolve and the mailbox; the identical record is 200), Wink tickets included, and add `POST/GET /v1/setup/mbx`, a 1 hour, 64 KB progress mailbox (AES-256-CTR plus HMAC lines, sequence inside the HMAC) that only the page's key can read. `relay/client/setup.js` is the page side.
 - The name directory (`names/worker`, a Cloudflare Worker at names.vyre.run) holds the only vyre.run DNS credential. A box claims a name for good, points it at a tailnet address only, and writes its own ACME challenge through it, signed with the relay route key. New `names.recover`, `names.domain.check`; Let's Encrypt only (ZeroSSL and the PSL wait for 0.3).
+- Update hardening (reviewer-2 and the lead, 30 Sep): a hand-run `vyre update` now also refuses an unsigned or badly signed release; only `--allow-unsigned` installs one, with a plain warning (the unit never can). The signature is over the line `vyre-release-sums` and then the exact SHA256SUMS bytes, so it can never pass as one over anything else the same key signs. The no-downgrade floor is a root-owned host file (`update-state/floor`, raised after each update), not the version the container reports. The unit's channel must be stable or beta, updates keep at least ten minutes apart (`VYRE_UPDATE_MIN_GAP`, tests), and `vyre updater install` refuses unless the wrapper is root-owned and neither it nor the stack folder is writable by group or others. The stack folder's owner is not required to be root: installs make it the installing account's own, and vyred has no mount of it.
+- `vyre updater` takes `VYRE_UPDATER_NAME` to name its systemd unit, for a rehearsal on a machine that already has the real one.
+- Updates from Settings on a Linux box (PLAN R2h reopened, 30 Sep): `update.apply` drops the one-word request `update` into `./update` (mounted only into vyred, owned by uid 1000, 0700, so Vyre-owned sessions cannot write it); a root systemd path unit (`vyre-update.path`, installed by `install-box.sh` and refreshed by `vyre update`, `vyre updater install|status|remove`) runs `vyre update-from-request`, which reads the request as data only (a link or any other word is dropped), takes a lock, picks the channel from the host's `.env`, and runs the update with `UPD_SIGNED=1`: `SHA256SUMS.sig` must verify (Ed25519, checked with Node in the running image, no network) against Vyre's release key pinned in `box/vyre`, and it never goes back a version. Progress and the result are `update-state/status.json`, written by root and mounted read-only into vyred; `update.status` reads it as known words only. The card shows the button, each step, the result and a rollback, and keeps the command as the fallback. New setting `update.auto_install` ("Update automatically", off by default, `update.install` in config.json) asks once per version between 2 and 5 in the morning. Also fixed: `vyre update` on a box had been failing at its pre-update backup since the export became passphrase-sealed; it now pipes a random passphrase on stdin and keeps it as `pre-<version>.key` (0600), and restores with it. A Mac server updates through vyre-core's signed updater (anywhere).
+- Import from other agents, checked end to end on a real Mac and box (`test/import-e2e.test.js`: Claude Code, Codex and Gemini CLI histories, login files planted). It found three faults that the module's stand-in tests could not, all fixed: a device never reached the box's `sync.consent` (it is a box tool: the import now asks over `link.call`), the device was named `solo` (the kind of machine) instead of the hostname it paired under, and `sync.send` refused every converted Codex and Gemini copy because it staged them outside the Claude Code folder (they are now staged in `<home>/.import-stage`, a 0700 folder of Vyre's own that `sync.send` also reads from).
+- `vyre uninstall` on a Docker box also removes Vyre's own images (the box, the computers, the rollback tag), which were left behind as a gigabyte of unused layers. Docker itself and the Tailscale sidecar's image stay.
+- Export holds session transcripts too: `vyre backup` carries the folders config.json names as `transcripts` (Claude Code's own, the archive and the synced copies) as a second kind of segment beside the project files, shows their size up front, and `vyre restore` puts them back where they came from. `--skip-transcripts` (or `VYRE_BACKUP_SKIP_TRANSCRIPTS=1`) leaves them out at either end. Settings' "Update, export and uninstall" section gets an Export card and an Uninstall card that say what each holds or removes and show the one command; neither runs anything from the page.
+- New module `update` (PLAN R2): `update.status` says whether a newer Vyre is out (running version, newest on the channel, the notes in between, when it last looked, and how to update), `update.check` looks now (at most once a minute), and `update.available` is emitted once per new version. One look a day, kept in `<home>/update.json`; `update.auto: "off"` in config.json stops it. It only reads: the person runs `vyre update` (a box) or the app updates itself (a Mac), so vyred holds no channel to its own host. Settings gets an "Update, export and uninstall" section whose first card draws it. `core/cli/update/releases.js` moved to `lib/releases.js` so the module and `vyre update` share the release rules without a new boundary edge.
+- Setup page: an optional own-domain step after the address is claimed and the recovery code saved. The person types a domain, the box looks up its DNS (`names.domain.check`, on the setup allowlist), and the page shows the `_acme-challenge` CNAME to add and whether it is in place; "Check again" re-reads it. Nothing is polled. The box does not serve the domain yet; that is names' side.
+- Finishing onboarding ends the setup session (`relay.setup.end` from the onboard module), after the claims are done.
+
+- Arrive and claim (PLAN.md step 8), against tailnet's built claim token (cc103f19): the setup page asks the box for a challenge
+  (`relay.setup.claim-token {host}`), signs it with its own key over the box's route and the exact address, and offers
+  `https://<name>.vyre.run/#claim=<token>&spki=<page key>` as one link and as a code for a phone; the token lives in the fragment only and lasts two
+  minutes. The passkey page at the address (`deck/onboard/passkey`) reads the fragment, clears it, calls `relay.setup.claim {token, spki}`, makes the
+  passkey for the rp_id the box names and enrols it with the grant (`callWithGrant`, header `x-vyre-presence: grant grant=<g>`). A failed link says
+  to get a new one. The page ends on "You're in" when the box ends the setup session before the hour (a 401 setup_over, or the channel closing with
+  4401), and on an expiry message at the hour. Events are read by polling the channel's event list. Tests: the token verifies only for its own route
+  and name, the link carries the token only in the fragment, the end detection both ways, and the grant header.
+- Mac and reviewer follow-ups: the installer's progress mailbox no longer needs `openssl dgst -mac` (LibreSSL on a Mac may lack it): the HMAC is
+  built by hand from plain sha256 (`mbx_pads`), tested with an openssl that refuses `-mac`. On a Mac the same install line fetches
+  `install-mac-server.sh` from the release site (build-site.sh copies it when it exists), checks it against SHA256SUMS, and runs it with the same
+  arguments and VYRE_CODE still in its environment; a changed or unlisted script never runs. The setup page's Tailscale step follows the box's
+  `tailscale.changed` event stream (reading status only when told) and falls back to a poll capped at fifteen minutes that ends on any error;
+  provider sign-in links are checked against `signin-hosts.json` when sessions' list exists (build-site.sh copies it), and the CSP allows
+  same-origin fetches for it.
+- Setup page, devices step: once the address is live the person can add a phone. The page makes the one pairing ticket the setup key may make
+  (`relay.pair.ticket`, good for five minutes) only when they ask, draws it as the Vyre-code ring (the Deck's own `phone-code.js` and vendored
+  renderer, copied in by build-site.sh; plain SVG shapes, so the page's CSP needs no exception), and watches for a `relay.paired` event after that
+  moment (`box.events`, a poll of the setup channel's allowed event list). The ticket is held outside the page's state, never printed, and dropped
+  once spent or expired; an earlier pairing does not count. 4 more flow tests and a real-vyred check that only allowed event types are readable.
+- Setup page, the next two steps (`site/setup/flow.js`, `ui.js`): after the address is named and the recovery code saved, "Sign in to your AI"
+  (`sessions.accounts.signin`: Claude, ChatGPT (Codex) and Grok each sign in on their own provider page, by a code typed there or a code pasted
+  back; one signed-in account is enough to go on; a link that is not a plain https address is refused and the sign-in stops), then Tailscale
+  (`network.tailscale.status` watched every few seconds, `network.tailscale.login` for the link, shown only when it is on tailscale.com, a
+  work-network warning, and `names.claim` run again once connected to publish the address, stopping at "serving"). 4 more flow tests against
+  fake tool answers; the real tools land with sessions and tailnet.
+- Setup page fixes (reviewer-2): after "Found" the page shows the four words with one "These match my server's terminal" click and opens no
+  connection and no name form until it is pressed ("They don't match" stops it), since anyone who saw the install line could answer first.
+  Fonts are self-hosted (copied in by build-site.sh; nothing loads from another origin), and `site/_headers` adds Cross-Origin-Opener-Policy
+  same-origin, a Permissions-Policy, object-src and worker-src none, on `/setup` and below. The recovery code screen warns that it is the only
+  copy, notes clipboard history, asks before closing or reloading until "I saved it", and drops the code from the page once saved. Two more
+  forged-line tests (an `<img onerror>` payload, a 1000-character line). vyre.env now carries `VYRE_SETUP_CODE_AT=<epoch>` as a real variable
+  beside `VYRE_SETUP_CODE`, for the relay to ignore an old code.
+- The setup page can name the server it found (`site/setup/box.js`, flow and screen): once the box's offer appears the page opens its own
+  connection as the setup device (hello signed with the page's non-extractable key over that connection's Noise key; tested against a real
+  vyred and the Node relay: the allowlist answers, `vault.list` and `relay.setup.end` are refused, a browser with only the code is not
+  admitted), guesses an address from the server's name, checks it live (only the newest answer counts) and claims it. The recovery code is shown
+  once, kept only in the page's memory. The name field keeps its element and caret while progress lines arrive. `relay/client/client.js` now
+  exports `openChannel` (it was internal; no behaviour change). 6 more tests.
+- The setup page, first slice (`site/setup/`, served at vyre.run/setup; PLAN.md steps 1 to 3, tailnet plan 3.6b): a controller (`flow.js`) that
+  makes the page's non-extractable key and the code, shows `curl -fsSL https://vyre.run/i | VYRE_CODE=... sh`, follows the install as plain
+  lines from the relay mailbox, and says "Found <server>" with the four check words once the relay holds the box's own sealed offer. Where the
+  flow is comes only from what the relay and the box signed, never from a progress line: a forged "Done, open https://..." line is shown as
+  text, makes no link or image, and moves nothing (tested with the screen's DOM). A contested code, a line that fails its check and the hour
+  running out each stop it with a plain message. The screen (`ui.js`) writes text nodes only, uses the shared tokens (the call-to-action
+  colour is `--primary-bg`, so it changes in `lib/theme/tokens.json` alone) and shows nothing that does not work yet: the Mac-as-server
+  choice and the steps after "Found" appear when they are built. `site/_headers` gives /setup a CSP that allows only itself and the relay;
+  `scripts/build-site.sh` copies the relay client and tokens.css in and serves `/i` as the installer. 5 flow tests against the real relay server.
+- Install script and the setup session (tailnet's 4dc19cc6 merged in): the install line's code (`VYRE_CODE`, the host-side pipe only) lands in `vyre.env` as `VYRE_SETUP_CODE`
+  (the name the box reads, per tailnet's 6e033a7f) with a `# vyre-setup-at=` time, and `vyre up` / `vyre update` remove both after an hour so a
+  restart never arms an old code. With a code, each step, each check and any stop is sent as a plain line to the relay's progress
+  mailbox (`POST /v1/setup/mbx`, keys derived from the code with openssl, AES-256-CTR plus an HMAC over position, IV and ciphertext, body on
+  stdin, never argv), so the setup page shows the install as it happens; without curl or openssl the terminal is the only place. A 409
+  (another server used the code) prints "Another server already used this code..." and stops. The terminal shows the box's four check words
+  (from `relay.setup.status`, never through the mailbox) before "Done. Back to your browser." Tests run against the real Node relay server.
+- Export stream fixes (reviewer-2's HIGH and MEDIUMs on bf867e03): every record now has its own random 12-byte nonce, with its
+  position in the additional data, so a resume or rewind can never encrypt two plaintexts under one nonce (test: interrupt, change a
+  file, resume, no nonce repeats and none of the discarded records' nonces come back). A `.partial` that is a link or folder is
+  refused and never opened through a link. A header chunk size above 16 MiB is refused. Restore checks free space per disk before
+  writing, puts project files back only where they came from when that is under this device's project folder (otherwise
+  `--work-to DIR` is required, or `--skip-projects`), prints the destinations before it starts, and catches link and device entries in
+  each tar listing before anything is extracted or moved. `planRestore` is exported for the CLI. 6 new tests.
+- Export stream check on a large tree: a 240 MB tree of incompressible files is cut mid-way, resumed and restored byte for byte in
+  `core/names/backup.test.js`, with live memory (heap plus buffers after gc) growing under 64 MB; the chunk joiner in
+  `core/names/sealstream.js` now copies each byte once instead of re-joining on every small piece.
+- Export holds everything (the lead's ruling, 30 Sep): `vyre backup` now includes the project files (the box's work folder, or `--work DIR`)
+  by default, shows the sizes before it asks for the passphrase, and `--skip-projects` (or `VYRE_BACKUP_SKIP_PROJECTS=1`) leaves them out.
+  New format v2 (`core/names/sealstream.js`): a chunked AES-256-GCM stream (scrypt key, nonce = prefix + record position, header and
+  segment bound into every tag, an end record so a cut-short file is refused), so nothing is ever whole in memory or a plain archive on
+  disk. An unfinished export stays as `<file>.partial` and the next `vyre backup` to the same file continues it when the same passphrase
+  opens it; a project whose files changed since is started again, with a note. Links are never carried. `vyre restore` reads v2 and the
+  old v1, checks the whole file to its end record before changing anything, and puts project files back where they came from or under
+  `--work-to DIR` (`--skip-projects` to leave them). 5 new export tests, 1 CLI test. Update's own pre-update backup stays data-only.
+- Review fixes on install-box.sh v2 and the sealed backup (reviewer-2): the install line is `curl -fsSL https://vyre.run/i | VYRE_CODE=... sh`
+  (the variable goes on sh; on curl it never reaches the script), with a test that pipes the script into sh both ways. A missing
+  release.json, or one with no box digest, now stops the install (only VYRE_BUILD=tgz builds from source), and every `image:` in the
+  released compose.yml must be pinned by digest. The plain archive `vyre backup` makes before sealing lives in its own 0700 folder,
+  created 0600, and is removed after. New accounts' sign-ins (vault items named in sessions_accounts) are left out of a backup by
+  default, and the deleted vault rows are zeroed (secure_delete) and vacuumed so they are not in the file's free pages.
+- Import from other agents (PLAN step 13): `core/import/formats/` reads OpenAI Codex CLI
+  (`sessions/YYYY/MM/DD/rollout-*.jsonl`, both the `session_meta`/`response_item` layout and the older bare-record
+  one) and Gemini CLI (`tmp/<projectHash>/chats/session-*.jsonl` and legacy `.json`, with replaced, `$set` and
+  `$rewindTo` records applied) and converts each session into Claude Code's JSONL shape (cwd, sessionId,
+  timestamp, text turns, tool_use / tool_result), so scrub, sync, Recall and filing by folder work unchanged.
+  `import.scan` now lists a source per agent that has sessions, tagged `agent: claude-code | codex | gemini-cli`;
+  a Gemini folder is found by hashing the known projects' folders against the project hash (unknown otherwise).
+  Each reader lists and opens only its allowlist of transcript shapes, never a symlink, and never
+  auth.json, oauth_creds.json, google_accounts.json or a .env; `import.start` sends a converted copy staged in a
+  temporary folder that is removed after the batch. A temp home reads its own `<home>/codex` and `<home>/gemini`.
+  8 new tests.
+- `vyre uninstall` on a box (box/vyre, PLAN.md HIGH 1): one flow. It removes the containers, agents' computers,
+  the network and the vyre command, lists every Vyre volume with what is in it (an unknown volume is still
+  named), and asks once whether to delete them; yes IS the approval, there is no second confirm, and with no
+  terminal the data is kept. `--delete-data` and `--keep-data` answer for a script. It points at `vyre backup`
+  and at removing the server from the Tailscale machines list. `install-box.sh --uninstall [--purge]` now hands
+  off to it. Volumes are found by the `run.vyre=1` label, so a new volume (vyre-accounts) needs that label in
+  compose.yml. 4 new tests; system.test.js updated for the hand-off and for the read-only Docker checks.
+- `scripts/install-box.sh` v2 (PLAN.md C6, R7, R6, M6-M11): the setup code comes from `VYRE_CODE` (or a
+  hidden prompt on a terminal, Enter skips) and is never an argument (`--code` is refused); it is
+  checked (43 base64url characters), never printed, and written only to `$VYRE_DIR/vyre.env` at 0600 as
+  `VYRE_SETUP_CODE`, through a temp file so no `docker`/`sudo` argument carries it. A release whose
+  `release.json` names image digests is pulled by digest after `cosign verify` (pinned cosign
+  container, identity = this repo's release workflow on a version tag); a failure stops the install and
+  there is no skip switch; `compose.yml` must pin the same digests. A running install is updated
+  (`vyre update`), never replaced; snap, rootless and Podman Docker stop with a plain line. With a code the
+  terminal ends on "Done. Back to your browser." New `test/install-box-v2.test.js` (10 tests, stub docker
+  and a file:// release site). Also cherry-picks e2e2's `--print-link` empty-`.env` fix (15ab8d40).
+- `vyre backup`/`vyre restore` now seal the file under a passphrase (PLAN.md R8): no unencrypted
+  backup is ever written. Provider sign-ins (Claude, Codex, Gemini) are left out of the vault items
+  a backup carries by default (re-made by signing in again after a restore), with
+  `--with-provider-logins` to opt back in. `vyre update`'s own automatic pre-update backup and
+  rollback stay fully unattended: they use a random passphrase generated for that run, kept beside
+  the file as `<file>.key`, never shown to the person. New `core/names/seal.js` (same scrypt/AES-256-GCM
+  shape as `core/vault/backup.js`'s own passphrase seal, over raw bytes instead of a JSON payload).
 - Module contract v1 (ADR 0047), as a proof on the platform branch. `module.json` says for each
   tool who may call it (`reach`) and whether it acts as you outside (`outward`). Each ctx member a
   module uses has one declaration, and the install card is built from them.
@@ -411,6 +543,21 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 - `link.health` answers in one shape everywhere (`reach`, `why`, `fix`, `since`, `tailnet`) on the
   Mac, the box and the relay client, with the older fields kept beside it. Vyre publishes the
   artifacts share path `/s/` on Tailscale Funnel when public links are on (`network.funnel.status`).
+#### install-box.sh: --print-link wrote an empty .env, so compose pulled an unpublished image
+
+- In `--print-link` mode `say` writes to stderr, and the .env block was built with `say`, so
+  `/srv/vyre/.env` came out empty (its lines went to the terminal). Compose then ran compose.yml
+  alone and tried to pull ghcr.io/vyre-ai/vyre:latest, which is not published: "denied", and the
+  install stopped. The block uses printf now. Found by e2e2's matrix on a fresh hosted runner;
+  test/install-box-look.test.js covers it.
+
+#### matrix: the real-device rehearsal matrix on GitHub-hosted runners (e2e2, 0.2)
+
+- `.github/workflows/matrix.yml` builds the box files, runs rc-smoke on x64 and arm64 runners,
+  installs a box on a fresh runner with the real installer (`scripts/matrix/box-up.sh`) and runs
+  J0 (the onboarding page loads, no errors, no sample-world names, a screenshot) in Chrome.
+  `scripts/matrix/report.mjs` folds every device's results into results.json and a results page.
+  Nothing runs on the test server, which is now the user's real server.
 
 ## 0.1.1
 

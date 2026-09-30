@@ -10,7 +10,7 @@
       "get-started/without-docker.md",
       "get-started/troubleshooting.md"
     ]},
-    {"title": "Releases", "pages": ["releases/0.1.0.md"]}, { "title": "Using Vyre", "pages": [
+    {"title": "Releases", "pages": ["releases/0.1.0.md", "releases/checklist.md"]}, { "title": "Using Vyre", "pages": [
       "using/capsule.md",
       "using/deck.md",
       "using/chat.md",

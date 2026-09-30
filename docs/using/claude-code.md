@@ -60,7 +60,7 @@ earlier decision).
 | `/vyre recall <query>` | Searches your past sessions. |
 | `/vyre project` | This folder's project brief. |
 | `/vyre todo <text>` | Adds a todo. With no text, lists your open todos. |
-| `/vyre remind <when> <text>` | Sets a reminder, for example `/vyre remind 6pm call Harlow Legal`, "tomorrow 9am" or "in 20 minutes". The [planner](planner.md) reads the time and says when it will ring. With no time, Claude asks for one. The reminder arrives by push, the Capsule and the Deck, not in the Claude session. |
+| `/vyre remind <when> <text>` | Sets a reminder, for example `/vyre remind 6pm call Harlow Legal`, "tomorrow 9am" or "in 20 minutes". The [planner](planner.md) reads the time and says when it will ring. With no time, Claude asks for one. The reminder arrives by push, Lumen and the Deck, not in the Claude session. |
 | `/vyre agenda` | Today: what is on, then your todos, overdue ones too. `/vyre agenda tomorrow` shows another day. |
 | `/vyre remember <fact>` | Saves a fact about you or your work to [memory](memory.md), for every future session. A session scoped to some projects can't teach personal facts; Claude offers a lesson instead. |
 | `/vyre lesson <rule>` | Makes a lesson, and says whether hooks check it or it is a reminder. |
@@ -121,7 +121,7 @@ with `--json`.
 
 ## Threads Vyre starts
 
-The threads Vyre starts (from the Deck, Chat, the Capsule, an agent, `vyre start` or
+The threads Vyre starts (from the Deck, Chat, Lumen, an agent, `vyre start` or
 `vyre resume`) load the same plugin from Vyre's own copy with `--plugin-dir`. For that session it
 replaces the installed plugin, so the hooks never run twice.
 
