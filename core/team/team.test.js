@@ -532,6 +532,30 @@ test("person-only writes: a session or an agent is refused projects.rename, proj
   assert.ok(!(await raw("projects.rename", { project: project.slug, name: "Harlow Legal Two" })).error);
 });
 
+test("a vyre restart while a request is running fails it with a reason, frees the teammate, and runs the next queued one", async t => {
+  const { tool, stop, root, project } = await boot(t);
+  const agent = `design-${project.slug}`;
+  await tool("team.add", { project: project.slug, role: "design" });
+  await stop();
+  // What a restart leaves behind: one request "running" for a teammate marked working, and one queued behind it.
+  const db = openStore(paths(root).db);
+  const now = Date.now();
+  const ins = (id, state) => db.prepare(`INSERT INTO team_requests (id, teammate, project, from_kind, from_label, via, text, refs, priority, state, attempt, created_at, started_at)
+    VALUES (?,?,?,'person','cli','[]',?,'[]','normal',?,1,?,?)`).run(id, agent, project.slug, 'vyre team.done {"result":"second ok","notes":"unchanged","reason":"test"}', state, now, state === "running" ? now : null);
+  ins("r_stuck001", "running");
+  ins("r_next0002", "queued");
+  db.prepare("UPDATE team_teammates SET current_request = 'r_stuck001', state = 'working' WHERE agent = ?").run(agent);
+  db.close();
+  const d2 = await start({ root, presence: present, log: () => {} });
+  t.after(() => d2.stop());
+  const st = id => call("team.status", { request: id }, { root, caller: "cli", timeout: 20_000 }).then(r => r.data);
+  const stuck = await until(async () => { const r = await st("r_stuck001"); return r && r.state !== "running" ? r : null; }, "the stuck request to close");
+  assert.equal(stuck.state, "failed");
+  assert.match(stuck.result, /vyre restarted/);
+  const next = await until(async () => { const r = await st("r_next0002"); return r && r.state === "done" ? r : null; }, "the queued request to run");
+  assert.match(next.result, /second ok/);
+});
+
 // --- step 2: notes-changed enforcement and compaction re-injection ------------------------------
 
 test("team.done refuses to close a request when the notes have not changed since it started; writing them lets it through", async t => {

@@ -31,6 +31,7 @@ import crypto from "node:crypto";
 import { boundedWait } from "./bounded.js";
 import { duties as makeDuties, DUTIES_MIGRATION } from "./duties.js";
 import { isPerson } from "../../lib/caller.js";
+import { LIVE_STATUSES } from "../../lib/thread-status.js";
 import { repoRoot, currentBranch, ensureWorktree, isOwnWorktree, worktreePath, branchOf, mergeBaseIn, aheadOf, shaRange,
   headSha, resetTo, mergeBranchIn, stillConflicted, compareAndSwap, detectTestCommand, B } from "./git.js";
 
@@ -1291,6 +1292,27 @@ export default {
       try { await ctx.call("threads.post", { thread: session, text: reminder, kind: "compact-reinject", from: tm.agent }); }
       catch (e2) { ctx.log?.(`team: could not re-inject notes into ${session} after compaction: ${/** @type {Error} */ (e2).message}`); }
     });
+
+    /**
+     * After a restart: a request still "running" whose thread is gone (threads stops every live one at boot) can never
+     * finish by itself, and its teammate would wait on it forever. Close it as failed, saying why (the asker gets that as
+     * the result; a half-done request is never re-run on its own, it may have changed things), free the teammate and
+     * start its next queued one. A slot needs nothing: sessions' slots live in memory and start empty.
+     */
+    const reconcile = async () => {
+      const rows = db.prepare("SELECT * FROM team_requests WHERE state = 'running'").all().map(shapeR);
+      const agents = new Set();
+      for (const req of rows) {
+        if (stopped) return;
+        const tm = byAgent(req.teammate);
+        const rec = tm && tm.thread ? await threadRecord(tm.thread) : null;
+        if (rec && LIVE_STATUSES.includes(String(rec.status))) continue; // still going: its own listener or the person owns it
+        await finish(req, "failed", { result: "vyre restarted while this was running; it was not finished. Ask again if it still matters." });
+        if (tm) { setTeammate(tm.agent, { current_request: null, state: tm.thread ? "idle" : "asleep" }); agents.add(tm.agent); }
+      }
+      for (const a of agents) pump(a);
+    };
+    track(reconcile());
 
     return { async stop() {
       stopped = true;

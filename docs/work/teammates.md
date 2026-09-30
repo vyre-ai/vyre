@@ -778,3 +778,10 @@ utilization, resets_at), the slot chip (per project), the waiting queue, "Resume
   open to agents: they draft, the person writes. Merged origin/work/platform-contract (67bd90da) for the projectArg registry rule, and declared
   `projectArg: "project"` on every team.* and projects.* tool that takes a project (team.add/retire/list/ask/charter.*/role.fill/duties.create+list/
   default.*/project-*, projects.history/rename/archive/add-threads/remove-threads).
+
+## Restart reconcile (2026-10-01, PLAN section 5 row 7)
+
+- At start, a request still `running` whose thread is gone (threads stops every live one at boot) is closed `failed` with "vyre restarted
+  while this was running" (the asker gets it as the result; never re-run on its own since it may have changed things), its teammate is
+  freed and its next queued request starts. Slots are in memory so they start free. Test: core/team/team.test.js "a vyre restart while a
+  request is running...". Daemon-booting tests run on runners or the test box from here on.
