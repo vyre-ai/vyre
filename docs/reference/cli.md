@@ -700,7 +700,7 @@ vyre mcp [serve | install [--yes]] [--json]
 Install the newest release after a backup, and roll back if it does not come up.
 
 ```
-vyre update [--check] [--channel stable|beta] [--to <version>] [--yes] [--rollback [--restore-data]] [--json]
+vyre update [--check] [--channel stable|beta] [--to <version>] [--yes] [--allow-unsigned] [--rollback [--restore-data]] [--json]
 ```
 
 --check          say whether a newer release is out; exit 0 when current, 1 when one waits

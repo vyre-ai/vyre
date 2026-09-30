@@ -99,7 +99,7 @@ Vyre looks for a newer release once a day and keeps the answer, so Settings can 
 Turn on **Update automatically** in Settings (off by default) and Vyre asks for a new release by itself between 2 and 5 in the morning, once per version, the same way. The channel is the host's own: set `VYRE_CHANNEL=beta` in the server's `.env`, or leave it on stable. Set `auto` to `"off"` inside the `update` object in `config.json` to stop the daily look. A Mac server updates through the app's own signed updater instead.
 
 Every file comes from the release and is checked against its `SHA256SUMS` before anything on the
-box changes. The `SHA256SUMS` list itself is checked against its signature (`SHA256SUMS.sig`) from Vyre's release key, which is built into the `vyre` command. An unsigned or badly signed release is refused, and `vyre update --allow-unsigned` installs it anyway after a plain warning that nothing proves it came from Vyre. Then, in order:
+box changes. The `SHA256SUMS` list itself is checked against its signature (`SHA256SUMS.sig`) from Vyre's release key, which is built into the `vyre` command. An unsigned or badly signed release is refused, and `vyre update --allow-unsigned` installs it anyway after a plain warning that nothing proves it came from Vyre. The same holds for `vyre update` on a Mac. Then, in order:
 
 1. It backs up the database with `vyre backup`, into `/home/vyre/.vyre/backups/pre-<version>.tar.gz`
    in the container, with a copy in `/srv/vyre/backups/` that only you can read. It holds the

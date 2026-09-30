@@ -526,6 +526,7 @@ test("vyre updater install: writes a path unit watching vyred's request file and
 test("compose: vyred gets only its own request folder (writable) and the state folder read-only", () => {
   assert.match(COMPOSE, /- \$\{VYRE_UPDATE_ROOT:-\/var\/lib\/vyre-update\}\/request:\/run\/vyre-update\n/);
   assert.match(COMPOSE, /- \$\{VYRE_UPDATE_ROOT:-\/var\/lib\/vyre-update\}\/status:\/run\/vyre-update-state:ro\n/);
+  assert.match(COMPOSE, /- \$\{VYRE_UPDATE_ROOT:-\/var\/lib\/vyre-update\}\/status\/release:\/opt\/vyre\/deck\/release:ro\n/, "the served release files are on the host, read-only");
   assert.ok(!/vyre-update\}\/private/.test(COMPOSE), "the private folder (floor, lock, backup keys) is never mounted");
   assert.ok(!/docker\.sock/.test(COMPOSE.split("docker-api:")[0]), "still no socket in the vyre service");
 });
@@ -676,13 +677,13 @@ test("update-from-request: the update's backup and its passphrase live in root's
   assert.ok(fs.existsSync(path.join(b.U, "private", "backups", "pre-0.2.0.key")));
   assert.equal(fs.statSync(path.join(b.U, "private", "backups", "pre-0.2.0.tar.gz")).mode & 0o777, 0o600);
   assert.ok(!fs.existsSync(path.join(b.DIR, "backups")), "nothing of it in the person's folder");
-  assert.equal(fs.readdirSync(path.join(b.U, "status")).sort().join(), "status.json", "the mounted folder holds only the status");
+  assert.equal(fs.readdirSync(path.join(b.U, "status")).sort().join(), "release,status.json", "the mounted folder holds only the status and the published release files, never a key");
   const h = await box(t, { releases: [{ tag: "v0.2.0" }] });
   assert.equal(/** @type {any} */ ((await h.run(["update"], {}))).code, 0);
   assert.ok(fs.existsSync(path.join(h.DIR, "backups", "pre-0.2.0.key")));
 });
 
-test("box update: the release's SHA256SUMS, signature and shell.json are put in the container's deck/release for the phone's shell check (pwa)", async t => {
+test("box update: the release's SHA256SUMS, signature and shell.json are put in root's status/release, mounted at the install's deck/release, for the phone's shell check (pwa)", async t => {
   const b = await box(t, { releases: [{ tag: "v0.2.0" }] });
   // shell.json is one more file of the release; it is listed in SHA256SUMS like the rest.
   const dl = path.join(b.DL, "dl", "v0.2.0");
@@ -692,7 +693,7 @@ test("box update: the release's SHA256SUMS, signature and shell.json are put in 
   fs.writeFileSync(path.join(dl, "SHA256SUMS.sig"), signSums(fs.readFileSync(path.join(dl, "SHA256SUMS")), RELEASE.privateKey));
   const r = /** @type {any} */ (await b.run(["update"], {}));
   assert.equal(r.code, 0, r.out);
-  const rel = path.join(b.FAKE, "ctr", "opt", "vyre", "deck", "release");
+  const rel = path.join(b.U, "status", "release");
   assert.equal(fs.readFileSync(path.join(rel, "SHA256SUMS"), "utf8"), fs.readFileSync(path.join(dl, "SHA256SUMS"), "utf8"));
   assert.equal(fs.readFileSync(path.join(rel, "SHA256SUMS.sig"), "utf8"), fs.readFileSync(path.join(dl, "SHA256SUMS.sig"), "utf8"));
   assert.equal(fs.readFileSync(path.join(rel, "shell.json"), "utf8"), fs.readFileSync(path.join(dl, "shell.json"), "utf8"));
@@ -700,5 +701,5 @@ test("box update: the release's SHA256SUMS, signature and shell.json are put in 
   // A release without shell.json still updates; only what it has is put there.
   const p = await box(t, { releases: [{ tag: "v0.2.0" }] });
   assert.equal(/** @type {any} */ ((await p.run(["update"], {}))).code, 0);
-  assert.deepEqual(fs.readdirSync(path.join(p.FAKE, "ctr", "opt", "vyre", "deck", "release")).sort(), ["SHA256SUMS", "SHA256SUMS.sig"]);
+  assert.deepEqual(fs.readdirSync(path.join(p.U, "status", "release")).sort(), ["SHA256SUMS", "SHA256SUMS.sig"]);
 });

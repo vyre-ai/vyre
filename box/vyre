@@ -372,15 +372,22 @@ put_wrapper() {
 # android: bring the release's phone app into the container's releases folder, APK first and
 # android.json last through a temp name and a rename, the old manifest kept as android.json.prev.
 # Then releases.sign signs it with the owner's key. Its refusal is reported, never fatal.
-# publish_release: the release's SHA256SUMS, its signature and shell.json go into the container's deck/release, which vyred
-# serves at /release/, so the phone's service worker can check the web shell against the one release signature (pwa). Only
-# what was downloaded and checked; a missing file is skipped, and none of it can fail the update. Written as the container's
-# own root, into the install folder, through a temp name and a rename.
+# publish_release SRC: the release's SHA256SUMS, its signature and shell.json go into root's status/release folder, which the
+# compose file mounts read-only at the install's deck/release, where vyred serves them at /release/ so the phone's service
+# worker can check the web shell against the one release signature (pwa). They live on the host, not in the container's
+# writable layer, so a recreate keeps them. Only what was downloaded and checked; a missing file is skipped, and none of it can
+# fail the update. A person running `vyre update` is not root, so root does it for them through sudo, if it can.
 publish_release() {
+  src=$1
+  if [ "$(id -u)" != "${VYRE_ROOT_UID:-0}" ]; then
+    sudo -n env "VYRE_DIR=$DIR" "VYRE_UPDATE_ROOT=$UPD_ROOT" sh "$WRAPPER" publish-release "$src" >/dev/null 2>&1 \
+      || echo "vyre: could not put the release's signature files where vyred serves them (that needs sudo); the phone's shell check stays off until an update runs as root" >&2
+    return 0
+  fi
+  if ! unit_dirs_ok; then echo "vyre: $UPD_ROOT is not root's alone; the release's signature files were not published" >&2; return 0; fi
+  mkdir -p "$UPD_STATE/release" && chmod 755 "$UPD_STATE/release" || return 0
   for f in SHA256SUMS SHA256SUMS.sig shell.json; do
-    [ -f "$tmp/$f" ] || continue
-    compose exec -T -u 0 vyre sh -c 'mkdir -p "$1" && cat >"$1/.$2.new" && mv -f "$1/.$2.new" "$1/$2"' sh /opt/vyre/deck/release "$f" <"$tmp/$f" \
-      || echo "vyre: could not put $f in the container's deck/release; the phone's shell check stays off until the next update" >&2
+    if [ -f "$src/$f" ] && [ ! -L "$src/$f" ]; then put_file "$src/$f" "$UPD_STATE/release/$f" 0644 || echo "vyre: could not publish $f" >&2; fi
   done
 }
 
@@ -531,7 +538,7 @@ update() {
   state ok finished "updated to $VERSION"
   say "updated to $VERSION"
 
-  publish_release
+  publish_release "$tmp"
   android
   # Report only: a fresh link would void the one the user was sent and has not opened yet.
   docker compose exec -T vyre vyre up --keep-link || true
@@ -547,8 +554,8 @@ update() {
 # request there, and nothing else in the container (Vyre-owned sessions run as uid 1001) can. update-state/ is root's,
 # mounted read-only, so vyred can only read what the update says about itself.
 updater_dirs() {
-  mkdir -p "$UPD_ROOT" "$UPD_REQ" "$UPD_STATE" "$UPD_PRIV" 2>/dev/null || return 0
-  chmod 755 "$UPD_ROOT" "$UPD_STATE" 2>/dev/null || true
+  mkdir -p "$UPD_ROOT" "$UPD_REQ" "$UPD_STATE" "$UPD_STATE/release" "$UPD_PRIV" 2>/dev/null || return 0
+  chmod 755 "$UPD_ROOT" "$UPD_STATE" "$UPD_STATE/release" 2>/dev/null || true
   chmod 700 "$UPD_PRIV" 2>/dev/null || true
   chown 1000:1000 "$UPD_REQ" 2>/dev/null || true
   chmod 700 "$UPD_REQ" 2>/dev/null || true
@@ -834,6 +841,10 @@ case "${1:-}" in
   updater)
     shift
     updater "$@"
+    ;;
+  publish-release)
+    [ -d "${2:-}" ] || die "vyre publish-release DIR"
+    publish_release "$2"
     ;;
   logs)
     shift

@@ -27,6 +27,7 @@ import { bring, waitFor, terminal } from "./up.js";
 import { out, dim, bold, signal, beacon } from "../style.js";
 import { EXIT, UsageError, json, emit, fail, usage, parse } from "../kit.js";
 import * as R from "../../../lib/releases.js";
+import { RELEASE_KEY, sumsSigned } from "../../../lib/release-sig.js";
 
 const REPO_PATH = "repos/vyre-ai/vyre/releases";
 
@@ -53,14 +54,14 @@ function readInternalPassphrase(file) {
   try { return fs.readFileSync(file + KEY_SUFFIX, "utf8"); }
   catch { throw new Error(`no key beside ${file}; it was not made by this update (or its key is gone)`); }
 }
-const USAGE = "vyre update [--check] [--channel stable|beta] [--to <version>] [--yes] [--rollback [--restore-data]] [--json]";
+const USAGE = "vyre update [--check] [--channel stable|beta] [--to <version>] [--yes] [--allow-unsigned] [--rollback [--restore-data]] [--json]";
 
 /**
  * What `vyre update` needs from the world, so tests can stand in for each piece.
  * @typedef {{ tty: boolean, ask(q: string): Promise<string> }} IO
  * @typedef {{ home?: string, api?: string, npm?: string, repo?: string, build?: () => import("../../daemon/build.js").Build,
  *   bring?: typeof bring, waitFor?: typeof waitFor, backup?: typeof backup, restore?: typeof restore, stop?: typeof stop,
- *   call?: typeof call, io?: IO, supervisor?: string, window?: number }} Deps
+ *   call?: typeof call, io?: IO, supervisor?: string, window?: number, key?: string }} Deps
  */
 
 /** Fetch with a time limit, as the one client Vyre is to GitHub. */
@@ -107,12 +108,17 @@ async function fetchMeta(rel, dir) {
   return { sums, meta };
 }
 
+/** The release's SHA256SUMS.sig into `dir`, or null when it has none. */
+async function fetchSig(rel, dir) {
+  if (!rel.assets["SHA256SUMS.sig"]) return null;
+  try { const f = path.join(dir, "SHA256SUMS.sig"); await download(rel.assets["SHA256SUMS.sig"], f); return fs.readFileSync(f, "utf8"); } catch { return null; }
+}
+
 /**
- * The release's signature and shell.json, kept beside its checked files for the phone's shell check (pwa): SHA256SUMS.sig is
- * not listed in SHA256SUMS (it signs it), and shell.json is checked against the list. Neither can fail an update.
+ * The release's shell.json, kept beside its checked files for the phone's shell check (pwa), checked against the list.
+ * It cannot fail an update.
  */
 async function fetchShellFiles(rel, dir, sums) {
-  try { if (rel.assets["SHA256SUMS.sig"]) await download(rel.assets["SHA256SUMS.sig"], path.join(dir, "SHA256SUMS.sig")); } catch { /* the check stays off */ }
   try { if (rel.assets["shell.json"] && sums["shell.json"]) await fetchChecked(rel, "shell.json", dir, sums); } catch { /* the check stays off */ }
 }
 
@@ -200,7 +206,7 @@ const buildOf = (version, meta) => ({ version, commit: typeof meta?.commit === "
  */
 export async function update(args, deps = {}) {
   let flags;
-  try { ({ flags } = parse(args, { bool: ["check", "yes", "rollback", "restore-data"], values: ["channel", "to"], cmd: "update" })); }
+  try { ({ flags } = parse(args, { bool: ["check", "yes", "rollback", "restore-data", "allow-unsigned"], values: ["channel", "to"], cmd: "update" })); }
   catch (e) { if (e instanceof UsageError) return usage(e.message, e.next); throw e; }
   const home = deps.home || config.home();
   const say = json() ? () => {} : out;
@@ -222,6 +228,7 @@ export async function update(args, deps = {}) {
     bring: deps.bring || bring, waitFor: deps.waitFor || waitFor,
     backup: deps.backup || backup, restore: deps.restore || restore, stop: deps.stop || stop, call: deps.call || call,
     io: deps.io || terminal, window: deps.window ?? 60_000,
+    key: deps.key || RELEASE_KEY, allowUnsigned: Boolean(flags["allow-unsigned"]),
   };
   if (flags.rollback) return rollback(ctx);
 
@@ -288,6 +295,18 @@ async function install(ctx, releases, target, channel) {
         next: step ? `vyre update --to ${step.version} first, then vyre update` : `install ${meta.min_from} by hand once: npm install -g <its vyre.tgz> && vyre up`,
       });
     }
+    // The signature first: an unsigned or badly signed release is refused before anything is downloaded or changed, and only
+    // --allow-unsigned installs one, with a plain warning (one policy on the box and on a Mac).
+    const sig = await fetchSig(target, dir);
+    const signed = sig !== null && sumsSigned(fs.readFileSync(path.join(dir, "SHA256SUMS")), sig, ctx.key);
+    if (!signed) {
+      const problem = sig === null ? "this release is not signed" : "the release's signature does not match Vyre's release key";
+      if (!ctx.allowUnsigned) {
+        fs.rmSync(dir, { recursive: true, force: true });
+        return fail(`${problem}; nothing was installed`, { code: "unsigned", next: "vyre update --allow-unsigned installs it anyway" });
+      }
+      ctx.say(beacon(`  WARNING: ${problem}. Installing it anyway because you passed --allow-unsigned: nothing proves this release came from Vyre.`));
+    } else say(dim("  signature checked against Vyre's release key"));
     tgz = await fetchChecked(target, "vyre.tgz", dir, got.sums);
     await fetchShellFiles(target, dir, got.sums);
   } catch (e) {

@@ -148,6 +148,9 @@ services:
       # here: the host writes it and vyred cannot. No socket, no arguments. See box/vyre.
       - ${VYRE_UPDATE_ROOT:-/var/lib/vyre-update}/request:/run/vyre-update
       - ${VYRE_UPDATE_ROOT:-/var/lib/vyre-update}/status:/run/vyre-update-state:ro
+      # The release's SHA256SUMS, signature and shell.json, which vyred serves at /release/ for the phone's shell check.
+      # On the host, so a recreate of this container keeps them; root writes them (box/vyre publish_release).
+      - ${VYRE_UPDATE_ROOT:-/var/lib/vyre-update}/status/release:/opt/vyre/deck/release:ro
     healthcheck:
       test: ["CMD", "vyre", "status"]
       interval: 30s
