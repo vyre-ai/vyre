@@ -284,6 +284,7 @@ async function main() {
         const r = await step("chrome_batch across frames", () => mcp.call("chrome_batch", { tab, steps }, 60_000));
         const ms = Math.round(performance.now() - t0);
         need(r.ok !== false, "batch.frames", `the batch failed at a step: ${brief(r)}`);
+        console.log("[frames-suite] BATCH STEPS " + JSON.stringify((r.results || []).map((/** @type {any} */ x) => ({ ok: x && x.ok, did: x && x.did, f: x && x.point && x.point.frame, own: x && x.point && x.point.ownSession, ms: x && x.ms, tf: x && x.trace && x.trace.frame, w: x && x.trace && x.trace.waitedMs, r: x && x.trace && x.trace.retries }))).slice(0, 1200));
         const acks = await step("the ticker frame's second page was pressed", () => stateWhere(s => s.acks, v => v.length > acks0, "the click in the navigated ticker frame"));
         need(acks[acks.length - 1] === 2, "batch.frames", `the ticker ack was for page ${acks[acks.length - 1]}, wanted 2: the batch acted on the old page`);
         const saves = await stateWhere(s => s.editorSaves, v => v.some((/** @type {any} */ e) => e.body === "batch text for juno"), "the nested editor's text from the batch");

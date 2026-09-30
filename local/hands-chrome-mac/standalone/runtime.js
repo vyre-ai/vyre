@@ -11,7 +11,7 @@ import path from "node:path";
 import fs from "node:fs";
 import { fileURLToPath } from "node:url";
 import chromeModule from "../index.js";
-import { createTrace, rungOf, nextRung } from "./trace.js";
+import { createTrace, rungOf, nextRung, readConfig } from "./trace.js";
 import { callerKind } from "../caller.js";
 import { createSiteStore } from "./sitestore.js";
 
@@ -62,14 +62,14 @@ export async function createRuntime(o = {}) {
     if (tool === "hands.grant.list") return { data: [] };
     // Vyre Memory's site knowledge, answered from files in this folder when there is no Vyre to ask.
     if (tool === "memory.site.get") return sites.get(input || {});
-    if (tool === "memory.site.put") return trace.config().learn === false ? { data: { accepted: false, refused: [{ path: "", why: "learning is off" }] } } : sites.put(input || {});
+    if (tool === "memory.site.put") return readConfig(dataDir).learn !== true ? { data: { accepted: false, refused: [{ path: "", why: "learning is off" }] } } : sites.put(input || {});
     if (tool === "memory.site.list") return sites.list();
     if (tool === "memory.site.forget") return sites.forget(input || {});
     return { error: { code: "no_such_tool", message: `no tool ${tool}` } };
   }
 
   const ctx = {
-    config: { chrome: { sockPath: o.sockPath || sockPathOf(dataDir), vyreHome: dataDir, hostDir: o.hostDir || path.join(PKG, "native-host"), extensionDir: o.extensionDir || path.join(PKG, "extension"), sendTool: "chrome_send", ghlHosts: () => { const h = trace.config().ghlHosts; return Array.isArray(h) ? h : []; }, ...(o.chrome || {}) } },
+    config: { chrome: { sockPath: o.sockPath || sockPathOf(dataDir), vyreHome: dataDir, hostDir: o.hostDir || path.join(PKG, "native-host"), extensionDir: o.extensionDir || path.join(PKG, "extension"), sendTool: "chrome_send", learn: () => readConfig(dataDir).learn === true, ghlHosts: () => { const h = trace.config().ghlHosts; return Array.isArray(h) ? h : []; }, ...(o.chrome || {}) } },
     log,
     events,
     call,
@@ -182,7 +182,7 @@ export async function createRuntime(o = {}) {
   }
 
   return {
-    dataDir, trace, list, invoke, held,
+    dataDir, trace, list, invoke, held, call,
     async stop() { clearInterval(statusTimer); try { const j = JSON.parse(fs.readFileSync(statusFile, "utf8")); if (j && j.pid === process.pid) fs.rmSync(statusFile, { force: true }); } catch { /* gone or not ours */ } trace.write({ kind: "session", event: "stop" }); await running.stop(); },
   };
 }

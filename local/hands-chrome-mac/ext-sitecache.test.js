@@ -63,7 +63,7 @@ test("the cache: a known site is read at once from memory or storage; an unknown
   const chrome = { storage: { local: { get: async (/** @type {string} */ k) => ({ [k]: kv[k] }), set: async (/** @type {any} */ o) => Object.assign(kv, o) } } };
   const sent = /** @type {any[]} */ ([]);
   let t = 1_000_000;
-  const c = createSiteCache({ chrome, emit: e => sent.push(e), now: () => t });
+  const c = createSiteCache({ chrome, emit: e => sent.push(e), now: () => t }); c.setEnabled(true);
   assert.equal(await c.arrive(GHL), null, "a first visit has nothing");
   assert.deepEqual(sent.map(e => e.event), ["site.want"]);
   await c.arrive(GHL);
@@ -71,7 +71,7 @@ test("the cache: a known site is read at once from memory or storage; an unknown
   await c.setCard("https://app.gohighlevel.com", { v: 1, key: "https://app.gohighlevel.com", controls: [{ id: "c1" }] }, 3);
   assert.equal((await c.arrive(GHL)).controls[0].id, "c1");
   // a fresh worker (memory empty) still finds it in storage
-  const c2 = createSiteCache({ chrome, emit: () => {}, now: () => t });
+  const c2 = createSiteCache({ chrome, emit: () => {}, now: () => t }); c2.setEnabled(true);
   assert.equal((await c2.arrive(GHL)).key, "https://app.gohighlevel.com");
   t += 11 * 60_000;
   await c.arrive(GHL);
@@ -83,7 +83,7 @@ test("the cache: a known site is read at once from memory or storage; an unknown
 test("learning is batched, cleaned before it leaves, and a secret-shaped field keeps the whole observation in the browser", async () => {
   const sent = /** @type {any[]} */ ([]);
   /** @type {Function[]} */ const timers = [];
-  const c = createSiteCache({ emit: e => sent.push(e), now: () => 5, setT: (/** @type {Function} */ f) => { timers.push(f); return 1; }, clearT: () => {} });
+  const c = createSiteCache({ emit: e => sent.push(e), now: () => 5, setT: (/** @type {Function} */ f) => { timers.push(f); return 1; }, clearT: () => {} }); c.setEnabled(true);
   c.learn({ op: "page.act", tabUrl: GHL, result: act({ role: "button", name: "Save", identifier: "save-workflow" }) });
   c.learn({ op: "page.act", tabUrl: GHL, result: act({ role: "button", name: "Add Action", identifier: "add-action" }) });
   assert.equal(sent.length, 0, "nothing goes out per op");
@@ -126,4 +126,22 @@ test("the file store: merges, reads back a card, refuses a secret whole, forgets
     assert.equal(st.put({ origin: "javascript:alert(1)", patch: {} }).error.code, "bad_request");
   } finally { fs.rmSync(dir, { recursive: true, force: true }); }
   void hash;
+});
+
+test("learning is off until the server says on: nothing is read, asked, queued, sent or stored; turning it off again forgets the device's copy", async () => {
+  const kv = /** @type {Record<string, any>} */ ({});
+  const chrome = { storage: { local: { get: async (/** @type {string} */ k) => ({ [k]: kv[k] }), set: async (/** @type {any} */ o) => Object.assign(kv, o) } } };
+  const sent = /** @type {any[]} */ ([]);
+  const c = createSiteCache({ chrome, emit: e => sent.push(e) });
+  assert.equal(c.enabled(), false, "off by default");
+  assert.equal(await c.arrive(GHL), null);
+  await c.setCard("https://app.gohighlevel.com", { v: 1, key: "x" }, 1);
+  c.learn({ op: "page.act", tabUrl: GHL, result: act({ role: "button", identifier: "save-workflow" }) });
+  assert.deepEqual(await c.flush(), []);
+  assert.deepEqual([sent.length, Object.keys(kv).length], [0, 0]);
+  c.setEnabled(true);
+  await c.setCard("https://app.gohighlevel.com", { v: 1, key: "x" }, 1);
+  assert.equal(Object.keys(kv).length, 1);
+  c.setEnabled(false);
+  assert.equal(c.card("https://app.gohighlevel.com"), null, "memory is cleared when it is turned off");
 });

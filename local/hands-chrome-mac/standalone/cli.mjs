@@ -71,6 +71,7 @@ const HELP = `Vyre for Chrome ${version} (vyre-chrome): control your own Chrome 
   vyre-chrome doctor                              checks the whole path from a terminal and says the one fix
   vyre-chrome report [--last N] [--out FILE]      one redacted bundle of your last N sessions, with a summary
   vyre-chrome config ghl-host <domain> [--remove]  optional: a GoHighLevel domain to always count (white-label domains are recognised automatically)
+  vyre-chrome config learn on|off                 learn each site's structure on this computer (default off; never a value)
   vyre-chrome config confirm-sends on|off         ask you before a send and before resuming after Esc (default on)
   vyre-chrome logs on|off|path                    turn the local trace on or off, or print where it is
   vyre-chrome logs values builder|all|none        which typed values a trace keeps (default builder: only on GoHighLevel automation pages)
@@ -169,7 +170,8 @@ async function main() {
       return;
     }
     if (args[0] === "confirm-sends" && ["on", "off"].includes(args[1])) { writeConfig(dataDir, { confirmSends: args[1] === "on" }); out(`Asking you before a send or a resume is ${args[1]}.`); return; }
-    throw new Error("config: confirm-sends on|off | ghl-host <domain> [--remove]");
+    if (args[0] === "learn" && ["on", "off"].includes(args[1])) { writeConfig(dataDir, { learn: args[1] === "on" }); out(`Learning each site's structure is ${args[1]}. It is off until you turn it on, and it never stores a value.`); return; }
+    throw new Error("config: confirm-sends on|off | learn on|off | ghl-host <domain> [--remove]");
   }
 
   if (cmd === "uninstall") {

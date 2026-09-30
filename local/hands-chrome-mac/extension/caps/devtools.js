@@ -21,12 +21,10 @@
 
 import * as redact from "../shared/redact.js";
 import { classify } from "../shared/floor.js";
-import { passwordFieldScript } from "../shared/guards.js";
+import { passwordFieldScript, CREDENTIAL_STORE } from "../shared/guards.js";
 import { guardInstallWrites, guardCollect, held as heldRequest } from "../shared/outbound.js";
 import { egressGuard } from "./net.js";
 
-/** A script that opens the page's auth stores. A tripwire, not a wall: what it stops is the plain way; the write-hold and redaction cover the rest. */
-const CREDENTIAL_STORE = /firebaseLocalStorage|stsTokenManager|firebase:authUser|\b(?:access|refresh|id)[_-]?token\b.{0,80}(?:indexedDB|localStorage|sessionStorage)|(?:indexedDB|localStorage|sessionStorage).{0,200}(?:access|refresh|id)[_-]?token|document\.cookie/is;
 import { fail } from "../shared/proto.js";
 
 const IDLE_MS = 5 * 60_000;

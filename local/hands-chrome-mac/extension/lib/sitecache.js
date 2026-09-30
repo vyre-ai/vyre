@@ -29,6 +29,8 @@ export function createSiteCache({ chrome, emit = () => {}, now = Date.now, setT 
   /** label text by origin and key: the visits that saw it. @type {Map<string, Map<string, { text: string, visits: Set<string> }>>} */ const labels = new Map();
   /** @type {any} */ let timer = null;
   /** @type {any} */ let this_ = null;
+  /** Off until the server says learning is on (site.config): nothing is read from storage, asked, queued, sent or written. */
+  let enabled = false;
   const stats = { learned: 0, sent: 0, refused: 0, dropped: 0 };
   const visit = () => `v${Math.floor(now() / VISIT_MS)}`;
   const store = chrome && chrome.storage && chrome.storage.local;
@@ -61,7 +63,7 @@ export function createSiteCache({ chrome, emit = () => {}, now = Date.now, setT 
     /** The card for this page's site, at once, and a quiet request to the server when there is none or it is old. @param {string} url */
     async arrive(url) {
       const origin = originOf(url);
-      if (!origin) return null;
+      if (!origin || !enabled) return null;
       const have = await load(origin);
       const t = now();
       if ((!have || t - have.at > STALE_MS) && t - (asked.get(origin) || 0) > WANT_EVERY_MS) { asked.set(origin, t); emit({ event: "site.want", origin, ...(have ? { since_rev: have.rev } : {}) }); }
@@ -69,7 +71,7 @@ export function createSiteCache({ chrome, emit = () => {}, now = Date.now, setT 
     },
     /** What the server sent. @param {string} origin @param {any} card @param {number} rev */
     async setCard(origin, card, rev) {
-      if (!originOf(origin) || !card || typeof card !== "object") return;
+      if (!enabled || !originOf(origin) || !card || typeof card !== "object") return;
       const v = { card, rev: Number(rev) || 0, at: now() };
       cards.set(origin, v);
       if (store) { try { await store.set({ [`site:${origin}`]: v }); } catch { /* storage full or gone */ } }
@@ -78,6 +80,7 @@ export function createSiteCache({ chrome, emit = () => {}, now = Date.now, setT 
     card(origin) { const c = cards.get(origin); return c ? c.card : null; },
     /** An op finished: queue what it taught. @param {{ op: string, args?: any, result?: any, tabUrl?: string }} o */
     learn(o) {
+      if (!enabled) return;
       let got;
       try { got = observeOp({ ...o, nameVisits }); } catch { return; }
       if (!got) return;
@@ -110,7 +113,10 @@ export function createSiteCache({ chrome, emit = () => {}, now = Date.now, setT 
     },
     /** The card for an origin, rebuilt from a full record the server sent. @param {any} record */
     async setRecord(record) { if (record && record.key) await this_.setCard(record.key, arrivalCard(record), record.rev); },
-    stats: () => ({ ...stats, origins: cards.size, pending: pending.size }),
+    /** @param {boolean} on */
+    setEnabled(on) { enabled = !!on; if (!enabled) { pending.clear(); cards.clear(); labels.clear(); } },
+    enabled: () => enabled,
+    stats: () => ({ enabled, ...stats, origins: cards.size, pending: pending.size }),
   };
   this_ = api;
   return api;

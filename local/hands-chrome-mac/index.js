@@ -117,8 +117,10 @@ export default {
     /** @type {Map<number, string>} the last URL seen for each tab, so an op is judged before it is sent */
     const urls = new Map();
 
+    /** Learning what each site looks like is OFF until the person turns it on (config learn, or the memory.site.learn setting), while the store's privacy review is open. */
+    const learnOn = () => (typeof cfg.learn === "function" ? cfg.learn() : cfg.learn) === true;
     const off = bridge.on(e => {
-      if (e.event === "hello") emit("chrome.connected", { version: e.version || null, browser: e.browser || null });
+      if (e.event === "hello") { emit("chrome.connected", { version: e.version || null, browser: e.browser || null }); void bridge.push({ event: "site.config", learn: learnOn() }); }
       else if (e.event === "disconnected") emit("chrome.disconnected", {});
       // A second connection took over from the live extension. A quiet notice for the panel to show
       // if it wants to, never a prompt: the person may simply have restarted Chrome.
@@ -126,14 +128,14 @@ export default {
       // The extension saw the person stop Vyre in the browser itself.
       else if (e.event === "stop") oversight.stop({ by: "esc" });
       // The extension asks for what Vyre knows about a site, and sends what it learned (Vyre Memory's memory.site.*, or files in standalone).
-      else if (e.event === "site.want") {
+      else if (e.event === "site.want" && learnOn()) {
         void (async () => {
           const r = /** @type {any} */ (await ctx.call("memory.site.get", { origin: String(e.origin || ""), ...(Number.isInteger(e.since_rev) ? { since_rev: e.since_rev } : {}) }).catch(() => null));
           const d = r && !r.error ? r.data : null;
           if (d && d.origin && typeof d.origin === "object") void bridge.push({ event: "site.card", origin: String(e.origin), card: d.origin, rev: d.rev });
         })();
       }
-      else if (e.event === "site.put") {
+      else if (e.event === "site.put" && learnOn()) {
         void (async () => {
           const r = /** @type {any} */ (await ctx.call("memory.site.put", { origin: String(e.origin || ""), target: "origin", patch: e.patch }).catch(() => null));
           if (r && r.data && r.data.accepted) emit("chrome.site-learned", { origin: String(e.origin), rev: r.data.rev });
