@@ -142,7 +142,9 @@ try {
     try {
       await send({ show: true }); await send({ text: "safari" }); await pause(900);
       const f = path.join(process.env.VYRE_CAPSULE_SCREENS, "screen-typing-safari.png");
-      execFileSync("/usr/sbin/screencapture", ["-x", f], { timeout: 20_000 });
+      // The app's own window, not the whole runner screen.
+      const w = await send({ windowid: true });
+      execFileSync("/usr/sbin/screencapture", w.windowid > 0 ? ["-x", "-o", "-l", String(w.windowid), f] : ["-x", f], { timeout: 20_000 });
       console.log(`screen capture: ${fs.statSync(f).size} bytes at ${f}`);
       await send({ text: "" });
     } catch (e) { console.log(`screen capture failed: ${String(e && e.message || e).split("\n")[0]}`); }

@@ -24,7 +24,10 @@ enum Drive {
     static var timings: [[String: Any]] = []
 
     static func start(_ a: CapsuleApp) {
-        guard ProcessInfo.processInfo.environment["VYRE_CAPSULE_DRIVE"] == "1" else { return }
+        // Drive mode hands a process the panel's rows and keys, so it needs both: the drive variable and the
+        // test marker (which also turns off every dialog and notification). A release run by a person has neither.
+        let env = ProcessInfo.processInfo.environment
+        guard env["VYRE_CAPSULE_DRIVE"] == "1", env["VYRE_CAPSULE_TEST"] == "1" else { return }
         app = a
         let input = FileHandle.standardInput
         Thread.detachNewThread {
@@ -80,6 +83,7 @@ enum Drive {
             return
         }
         if VJ.truthy(c["probe"]) { say(probe(a)); return }
+        if VJ.truthy(c["windowid"]) { say(["windowid": a.panel.panel.windowNumber, "visible": a.panel.panel.isVisible]); return }
         if VJ.truthy(c["views"]) {
             // What the server gave this Lumen: which tools it has, the module commands it read, the next meeting.
             let tools = ["mentions.search", "capsule.commands", "capsule.view", "capsule.act"]
