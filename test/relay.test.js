@@ -246,6 +246,11 @@ test("relay: an untrusted browser asks to be trusted once, about itself only, an
   assert.equal(first.status, 200, JSON.stringify(first));
   assert.deepEqual([first.data.asked, first.data.already], [true, false]);
   assert.equal(asked.length, 1);
+  // A reloaded Deck can show the ask again: the list carries when it asked, to the owner's surfaces only.
+  const listed = (await p.call("relay.devices.list")).data.devices.find(x => x.id === web.reply.device);
+  assert.ok(listed.trustAsked > 0 && listed.trustAsked <= Date.now(), JSON.stringify(listed));
+  assert.equal((await web.call("relay.devices.list")).data.devices.find(x => x.id === web.reply.device).trustAsked, undefined, "a limited browser does not see who is waiting");
+  assert.equal((await p.call("relay.devices.list")).data.devices.find(x => x.id === p.reply.device).trustAsked, undefined, "an app device has none");
   assert.deepEqual([asked[0].id, asked[0].name], [web.reply.device, "Harlow Legal laptop"]);
   assert.match(asked[0].fingerprint, /^[a-z2-7]{4} [a-z2-7]{4}$/);
   // Again says so and tells nobody twice.
@@ -261,6 +266,7 @@ test("relay: an untrusted browser asks to be trusted once, about itself only, an
   assert.equal((await p.call("relay.devices.trust", { id: web.reply.device, trusted: true }, P)).status, 200);
   const again = await phone(url, { keys: web.keys, pair: false, hello: { kind: "web" } });
   assert.deepEqual([(await again.call("relay.devices.ask-trust")).data.trusted], [true]);
+  assert.equal((await p.call("relay.devices.list")).data.devices.find(x => x.id === web.reply.device).trustAsked, undefined, "trusted: no longer waiting");
   // Taking trust back lets it ask afresh.
   assert.equal((await p.call("relay.devices.trust", { id: web.reply.device, trusted: false }, P)).status, 200);
   const back = await phone(url, { keys: web.keys, pair: false, hello: { kind: "web" } });

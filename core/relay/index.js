@@ -246,7 +246,7 @@ export default {
       }).catch(() => {});
     };
 
-    const active = () => /** @type {any[]} */ (db.prepare("SELECT id, name, pub, presence_key, paired_at, last_seen, kind, release, manifest, trusted, node_id, node_name, last_path, path_at, rtt FROM relay_devices WHERE removed_at IS NULL AND kind != 'setup' ORDER BY paired_at").all());
+    const active = () => /** @type {any[]} */ (db.prepare("SELECT id, name, pub, presence_key, paired_at, last_seen, kind, release, manifest, trusted, trust_asked, node_id, node_name, last_path, path_at, rtt FROM relay_devices WHERE removed_at IS NULL AND kind != 'setup' ORDER BY paired_at").all());
     const expired = d => d.kind === "web" && now() - (d.last_seen || d.paired_at) > Number(settings().web_expiry_days) * DAY;
     const personExists = () => active().length > 0 || Boolean(ctx.config.network && ctx.config.network.owner);
 
@@ -480,11 +480,13 @@ export default {
 
     /** Where a device is now: connected through the relay, or reporting from its tailnet node lately. */
     const pathOf = d => ((live.get(d.id)?.size || 0) > 0 ? "relay" : d.last_path === "direct" && now() - (d.path_at || 0) < DIRECT_FRESH ? "direct" : null);
-    const view = (d, rtt = null) => ({ id: d.id, name: d.name, kind: d.kind, pairedAt: d.paired_at, lastSeen: d.last_seen, presence: Boolean(d.presence_key),
+    const view = (d, rtt = null, withAsk = false) => ({ id: d.id, name: d.name, kind: d.kind, pairedAt: d.paired_at, lastSeen: d.last_seen, presence: Boolean(d.presence_key),
       online: pathOf(d) !== null, path: pathOf(d), rtt: pathOf(d) === "relay" ? rtt : pathOf(d) === "direct" ? d.rtt : null,
       ...(d.node_id ? { node: d.node_name || d.node_id } : {}),
       ...(d.kind === "web" ? { trusted: Boolean(d.trusted), release: d.release, build: knownBuild(d.release, d.manifest) ? "known" : "unknown",
-        expiresAt: (d.last_seen || d.paired_at) + Number(settings().web_expiry_days) * DAY } : {}) });
+        expiresAt: (d.last_seen || d.paired_at) + Number(settings().web_expiry_days) * DAY,
+        // When this browser asked to be trusted and is still waiting: what a surface reloaded later needs to show the ask again.
+        ...(withAsk && d.trust_asked && !d.trusted ? { trustAsked: d.trust_asked } : {}) } : {}) });
 
     /** Remove a device: close its channels, drop its presence key, tell every surface. */
     function forget(id, why) {
@@ -686,7 +688,11 @@ export default {
           const chans = [...(live.get(d.id) || [])];
           return chans.length ? chans[chans.length - 1].ping(1000) : null;
         }));
-        return { devices: rows.map((d, i) => view(d, rtts[i])) };
+        // A limited browser (a web device not yet trusted) sees the list but not who else is waiting to be trusted.
+        const c = String((meta && meta.caller) || "");
+        const me = c.startsWith("device:") ? /** @type {any} */ (db.prepare("SELECT kind, trusted FROM relay_devices WHERE id = ? AND removed_at IS NULL").get(c.slice(7))) : null;
+        const withAsk = !(me && me.kind === "web" && !me.trusted);
+        return { devices: rows.map((d, i) => view(d, rtts[i], withAsk)) };
       },
     });
 
