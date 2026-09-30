@@ -77,6 +77,12 @@ for a public source: `"net": { "hacker-news.firebaseio.com": {} }`. A redirect t
 the credential. Where vyred is not root (a Mac, a dev shell) the child runs as the same user and the firewall rule that blocks its own sockets is not there, so `fetch` is the only route we give it, not a wall; a dry run says `networkIsolated`. A `vault.fetch` call is refused. The item's `field` (a login's `password`, a
 card's `number`) goes in the `net` entry: `{ "vault": "billing-inbox", "field": "password" }`.
 
+When the code needs a judgment it cannot make by rule (is this relevant, which of these two), it
+may `await ask(prompt)`: a model answers in text, with no tools, inside a daily budget you declare
+in `watcher.json`: `"ask": { "dailyUsd": 0.25 }` (at most 5). At most 20 asks and 8000 characters
+a prompt per run. Text you fetched goes in the prompt as data; the answer is advice to your own
+code, and never decides a send. Prefer a plain rule when one works, since an ask costs money.
+
 ## 3. Write two files in the watchers folder
 
 Call the `watchers_list` tool first. It is an MCP tool, not a shell command: Claude Code names

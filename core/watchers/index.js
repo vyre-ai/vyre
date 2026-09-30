@@ -43,6 +43,11 @@ export default {
       emit: (type, payload, where) => ctx.events.emit(type, payload, where),
       call: ctx.call, fetch: (name, watcher, field) => ctx.vault.fetch(name, { watcher, ...(field ? { field } : {}) }),
       teach: (kind, fact) => ctx.memory.teach(kind, fact),
+      ask: ctx.ask ? (prompt, o) => ctx.ask(prompt, o) : async (prompt, o) => {
+        const r = await ctx.call("threads.quick", { purpose: "helper", prompt: String(prompt), ...(o && o.maxUsd ? { maxUsd: o.maxUsd } : {}) });
+        if (r.error || !r.data || r.data.ok === false) throw new Error((r.error && r.error.message) || "no model answered");
+        return { text: String(r.data.text || ""), usd: Number(r.data.cost_usd) || 0 };
+      },
       log: ctx.log, netOptions: () => (process.env.NODE_TEST_CONTEXT ? testHooks.net : {}),
       listen: (type, fn) => ctx.events.on(type, fn),
     });

@@ -23,7 +23,7 @@ const [major, minor] = process.versions.node.split(".").map(Number);
 const FLAG = major > 23 || (major === 23 && minor >= 5) || (major === 22 && minor >= 13) ? "--permission" : "--experimental-permission";
 export const SANDBOXED = major >= 22;
 
-export const LIMITS = { items: 1000, itemBytes: 4000, logLines: 200, lineChars: 500 };
+export const LIMITS = { asks: 20, askChars: 8000, askReply: 4000, items: 1000, itemBytes: 4000, logLines: 200, lineChars: 500 };
 
 /**
  * @typedef {{ items: any[], logs: string[], cursor: any, error: string|null, ms: number, sandboxed: boolean }} Result
@@ -34,17 +34,17 @@ export const LIMITS = { items: 1000, itemBytes: 4000, logLines: 200, lineChars: 
  * @param {{ dir: string, needs: string[], since: any, hook?: any, timeoutMs: number,
  *   fetch: (name: string, field?: string) => Promise<string>, signal?: AbortSignal,
  *   hosts?: string[]|null, netAuth?: (url: URL) => Promise<{ host: string, header: string, value: string }|undefined>,
- *   netOptions?: object, identity?: ReturnType<typeof sandboxIdentity> }} opts
+ *   askFn?: ((prompt: string) => Promise<string>)|null, netOptions?: object, identity?: ReturnType<typeof sandboxIdentity> }} opts
  * @returns {Promise<Result>}
  */
-export function runOnce({ dir, needs, since, hook = null, timeoutMs, fetch, signal, hosts = null, netAuth, netOptions = {}, identity = sandboxIdentity() }) {
+export function runOnce({ dir, needs, since, hook = null, timeoutMs, fetch, signal, hosts = null, netAuth, askFn = null, netOptions = {}, identity = sandboxIdentity() }) {
   const started = Date.now();
   const real = fs.realpathSync(dir);
   const runner = fs.realpathSync(RUNNER);
   const execArgv = SANDBOXED ? [FLAG,`--allow-fs-read=${real}`, `--allow-fs-read=${runner}`] : [];
   /** @type {string[]} */ const released = [];
   const items = [], logs = [];
-  let dropped = 0, cursor = null, error = /** @type {string|null} */ (null), finished = false;
+  let asks = 0, dropped = 0, cursor = null, error = /** @type {string|null} */ (null), finished = false;
 
   const scrub = s => { let out = String(s); for (const v of released) if (v) out = out.split(v).join("[vault value]"); return out; };
   const logLine = line => {
@@ -71,6 +71,16 @@ export function runOnce({ dir, needs, since, hook = null, timeoutMs, fetch, sign
       } else if (m.t === "vault") {
         // A raw credential never enters the child: it could send it to any host or use it to write.
         child.connected && child.send({ t: "vault", id: m.id, error: "a watcher does not handle credentials; declare the host under net in watcher.json with its vault item, and Vyre attaches it to that host's requests" });
+      } else if (m.t === "ask") {
+        const reply = body => child.connected && child.send({ t: "ask", id: m.id, ...body });
+        try {
+          if (!askFn) throw new Error("this watcher did not declare ask in watcher.json, like { \"ask\": { \"dailyUsd\": 0.25 } }");
+          if (++asks > LIMITS.asks) throw new Error(`ask is limited to ${LIMITS.asks} calls in one run`);
+          const prompt = String(m.prompt || "");
+          if (prompt.length > LIMITS.askChars) throw new Error(`ask takes at most ${LIMITS.askChars} characters; send the part that matters`);
+          if (released.some(v => v && prompt.includes(v))) throw new Error("the prompt carries a value from the vault");
+          reply({ text: scrub(String(await askFn(prompt))).slice(0, LIMITS.askReply) });
+        } catch (e) { reply({ error: /** @type {Error} */ (e).message }); }
       } else if (m.t === "fetch") {
         // The child has no network of its own; this is its only way out (lib/sandbox/fetch.js).
         const reply = body => child.connected && child.send({ t: "fetch", id: m.id, ...body });

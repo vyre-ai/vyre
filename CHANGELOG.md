@@ -4,6 +4,11 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+- `ask(prompt)` for watchers: a model judgment with no tools (through `threads.quick`, or `ctx.ask`
+  when the module host has it), only when `watcher.json` declares `ask: { dailyUsd }`. The budget is
+  kept per watcher per day in `watchers_spend`; 20 asks and 8000 characters per run; a prompt that
+  carries an attached credential is refused; the reply is scrubbed.
+
 - A duty on `push <connection>` runs on vault's `vault.push` event: one item per message id, only
   for projects the connection's `scope` covers (no scope, no run), keeping no sender or subject.
 

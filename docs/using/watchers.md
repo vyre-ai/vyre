@@ -71,6 +71,13 @@ Each run happens in a child process with no environment variables, read access t
 only, and no writes or child processes. It has no network of its own: `fetch` is run by Vyre, GET and HEAD only, to the public hosts listed under `net`. Every item needs a stable `id`,
 so a repeat is never filed twice.
 
+## Ask a model for a judgment
+
+A watcher that cannot decide by rule may call `await ask(prompt)`. It returns text from a model with
+no tools, and only if `watcher.json` sets a daily budget, like `"ask": { "dailyUsd": 0.25 }`. A
+watcher that has used its day's budget is refused until tomorrow. The answer goes back into the
+watcher's own code: it can decide whether to file an item, never whether to send anything.
+
 ## Give a watcher a credential
 
 A grant is for one item and one watcher. A second watcher that needs the same item needs its own

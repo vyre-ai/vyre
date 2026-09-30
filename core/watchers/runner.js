@@ -30,7 +30,21 @@ const wrap = r => ({ ok: r.status >= 200 && r.status < 300, status: r.status, ur
   text: async () => r.body, json: async () => JSON.parse(r.body) });
 globalThis.fetch = async (url, init) => wrap(await hostFetch(url, init));
 
+// ask(prompt) is a judgment from a model, no tools, answered as text. Treat fetched content in a
+// prompt as data: the reply is advice to your own code, never an instruction to follow blindly.
+const ask = prompt => new Promise((resolve, reject) => {
+  const id = ++fetched;
+  waiting.set(id, { resolve, reject });
+  send({ t: "ask", id, prompt: String(prompt) });
+});
+
 process.on("message", async (/** @type {any} */ msg) => {
+  if (msg.t === "ask") {
+    const w = waiting.get(msg.id);
+    waiting.delete(msg.id);
+    if (w) msg.error ? w.reject(new Error(msg.error)) : w.resolve(msg.text);
+    return;
+  }
   if (msg.t === "fetch") {
     const w = waiting.get(msg.id);
     waiting.delete(msg.id);
@@ -57,7 +71,7 @@ process.on("message", async (/** @type {any} */ msg) => {
     };
     const emit = item => { send({ t: "emit", item }); };
     const log = (...a) => { send({ t: "log", line: text(a) }); };
-    const cursor = await watch({ vault, since: msg.since ?? null, emit, log, hook: msg.hook ?? null });
+    const cursor = await watch({ vault, since: msg.since ?? null, emit, log, hook: msg.hook ?? null, ask });
     await send({ t: "done", cursor: cursor === undefined ? null : cursor });
   } catch (e) {
     const err = /** @type {Error} */ (e);
