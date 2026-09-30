@@ -4,6 +4,7 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+- recall (reviewer-2 M-I1): the redaction list also removes `#claim=` codes, `vyre-pc:` pairing seeds, private key blocks and pasted keys or tokens by the shapes core/vault/detect.js names (not its random-looking fallback, so hashes and ids stay); turns already stored are cleaned once per REDACT_VERSION at the next pass and their vectors dropped. Wink tickets have no fixed shape and are not matched. memory.prompt's description says a module caller must pass the thread's agent (test added).
 - memory.facts: a name that is only in the person's own life (memory.me's personal store, such as "Robin" taught by memory.remember) returns an empty list with a `note` saying to ask memory.me, to a caller who may read personal facts; an agent gets the plain empty answer.
 - IQ is renamed Vyre Memory in what people read: memory tool descriptions, `vyre memory ask` help, the limit message, the Deck import screen, ADR 0034 and the memory and using docs. Code names, tool names and paths are unchanged.
 - memory.prompt: the text blocks an ACP session gets in a prompt, built from memory.brief (first prompt) and up to 5 memory.relevant lines (every prompt), each quoted as memory and never as instructions, scoped by the caller's own grant. The Switchboard's ACP driver sends them as resource blocks; the memory MCP tools already reach ACP sessions through the vyre server it passes in session/new.

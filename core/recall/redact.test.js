@@ -18,3 +18,38 @@ test("recall: the redaction list applies every rule, and redact and redactLinks 
   assert.equal(redact(t), redactLinks(t));
   assert.ok(!redact(t).includes("zzz9"));
 });
+
+test("recall: pasted keys, claim codes, pairing seeds and private keys are removed; hashes, paths and words stay", async () => {
+  const { redact } = await import("./indexer.js");
+  const key = "sk-ant-" + "a1b2c3d4e5".repeat(4), gh = "ghp_" + "Ab1".repeat(14);
+  const r = redact(`use ${key} and ${gh}. claim https://x.vyre.run/setup#claim=AbC_def-123456 seed vyre-pc:AbCdEfGhIjKlMnOpQrStUv\n-----BEGIN PRIVATE KEY-----\nMIIEvQ\n-----END PRIVATE KEY----- done`);
+  for (const gone of ["a1b2c3d4", "Ab1Ab1", "AbC_def", "AbCdEfGh", "MIIEvQ"]) assert.ok(!r.includes(gone), `${gone} in ${r}`);
+  assert.match(r, /done$/);
+  const keep = "commit 3f2a9c1e7b2d84f6a9c0e5d7b1a2c3e4f5a6b7c8 in /Users/alex/Work/harlow-site/src/components/OrderForm.tsx and README.md";
+  assert.equal(redact(keep), keep);
+});
+
+test("recall: stored turns are cleaned once per redaction version, and their vectors dropped", async t => {
+  const { Indexer, REDACT_VERSION } = await import("./indexer.js");
+  const { open, migrate } = await import("../store/index.js");
+  const { MIGRATIONS } = await import("./schema.js");
+  const { tempHome } = await import("../../test/helpers.js");
+  const path = await import("node:path");
+  const db = open(path.join(tempHome(t), "vyre.db"));
+  t.after(() => db.close());
+  migrate(db, "recall", MIGRATIONS);
+  const key = "sk-ant-" + "a1b2c3d4e5".repeat(4);
+  const add = db.prepare("INSERT INTO recall_turns (session, seq, role, ts, text) VALUES (?,?,?,?,?)");
+  add.run("s1", 0, "user", 1, `my key is ${key} ok`);
+  add.run("s1", 1, "user", 2, "host harlow on netlify");
+  const vec = db.prepare("INSERT INTO recall_vectors (session, seq, chunk, off, v) VALUES (?,?,?,?,?)");
+  vec.run("s1", 0, 0, 0, Buffer.alloc(4)); vec.run("s1", 1, 0, 0, Buffer.alloc(4));
+  const ix = new Indexer(db);
+  assert.equal(ix.scrub(), 1);
+  const rows = db.prepare("SELECT seq, text FROM recall_turns ORDER BY seq").all();
+  assert.ok(!rows[0].text.includes("a1b2c3d4") && rows[0].text.endsWith("ok"));
+  assert.equal(rows[1].text, "host harlow on netlify");
+  assert.deepEqual(db.prepare("SELECT seq FROM recall_vectors").all().map(r => r.seq), [1], "only the cleaned turn lost its vector");
+  assert.equal(db.prepare("SELECT v FROM recall_meta WHERE k = 'redact'").get().v, REDACT_VERSION);
+  assert.equal(ix.scrub(), 0, "once per version");
+});

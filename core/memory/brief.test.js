@@ -146,3 +146,12 @@ test("memory.prompt: the brief on the first prompt, quoted relevant lines on eve
   // A slash command and no project add nothing.
   assert.equal((await call("memory.prompt", { prompt: "/help", project: "harlow" }, JUNO, { agent: "juno", granted: ["harlow"] })).data.blocks.length, 0);
 });
+
+test("memory.prompt: a module caller that passes the thread's agent is scoped to that agent's projects", async t => {
+  const { call } = await module_(t);
+  const asKit = await call("memory.prompt", { first: true, prompt: "where do we host the harlow site", project: "harlow", agent: "kit" }, "module:sessions");
+  assert.doesNotMatch(JSON.stringify(asKit), /netlify|vercel|Harlow/i, "kit is granted northwind only");
+  const asJuno = await call("memory.prompt", { first: true, prompt: "where do we host the harlow site", project: "harlow", agent: "juno" }, "module:sessions");
+  assert.ok(!asJuno.error, asJuno.error);
+  assert.match(asJuno.data.text, /netlify/i);
+});

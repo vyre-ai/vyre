@@ -14,6 +14,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import * as transcripts from "../transcripts/index.js";
+import { classify } from "../vault/detect.js";
 import { chunks, encode } from "./embed.js";
 
 /** Let the event loop breathe between files, so vyred keeps answering while it indexes. */
@@ -41,15 +42,34 @@ function defaultAccountsHome() {
 /**
  * Text that must never sit in the index, where a later memory_ask could quote it. Each rule is a
  * bearer credential or invitation: a Tailscale sign-in link (network.tailscale.login hands it to the
- * person's own session). Add a rule here and every transcript turn is cleaned before it is indexed.
+ * person's own session), a setup claim (`#claim=`), a pairing seed (`vyre-pc:`), a private key block.
+ * Add a rule here and bump REDACT_VERSION: every turn is cleaned before it is indexed, and the turns
+ * already stored are cleaned once at the next pass.
  * @type {{ name: string, re: RegExp, to: string }[]}
  */
 export const REDACTIONS = [
   { name: "tailscale-link", re: /https?:\/\/login\.tailscale\.com\/\S*/gi, to: "[tailscale sign-in link removed]" },
+  { name: "claim", re: /#claim=[A-Za-z0-9_-]+/g, to: "#claim=[removed]" },
+  { name: "pairing-seed", re: /\bvyre-pc:[A-Za-z0-9_-]+/g, to: "vyre-pc:[removed]" },
+  { name: "private-key", re: /-----BEGIN [A-Z ]*PRIVATE KEY-----[\s\S]*?(?:-----END [A-Z ]*PRIVATE KEY-----|$)/g, to: "[private key removed]" },
 ];
+/** Bumped when REDACTIONS or the token rule changes; a pass cleans stored turns once per version. */
+export const REDACT_VERSION = "2";
+
+// A pasted key or token, by the shapes the Vault already knows (core/vault/detect.js). Only a shape
+// it names (a provider key, a token, a cloud key, a JWT, a private key, a database URL); its
+// "looks random" fallback is left alone, since a commit hash or an id is not a secret.
+const KNOWN = new Set(["api-key", "pat", "oauth", "cloud", "jwt", "webhook", "private-key", "db-url"]);
+const TOKEN = /[^\s"'`<>()\[\]{},;]{16,512}/g;
+const tokens = (/** @type {string} */ text) => text.replace(TOKEN, w => {
+  if (w[0] === "/" || w[0] === "." || w.startsWith("http")) return w;
+  const tail = /[.:!?-]+$/.exec(w)?.[0] || "";
+  const c = classify("", tail ? w.slice(0, -tail.length) : w);
+  return c.secret && KNOWN.has(c.type) ? `[${c.provider || c.type} ${c.type} removed]${tail}` : w;
+});
 
 /** @param {string} text */
-export const redact = text => REDACTIONS.reduce((t, r) => t.replace(r.re, r.to), String(text));
+export const redact = text => tokens(REDACTIONS.reduce((t, r) => t.replace(r.re, r.to), String(text)));
 
 /** Kept for the callers that named it first. @param {string} text */
 export const redactLinks = redact;
@@ -108,6 +128,7 @@ export class Indexer {
     const t0 = Date.now();
     /** @type {Stats} */
     const s = { sessions: 0, added: 0, appended: 0, reindexed: 0, skipped: 0, failed: 0, turns: 0, ms: 0 };
+    this.scrub();
     const all = [...transcripts.list(folders)];
     for (const entry of all) {
       if (stopped()) break;
@@ -123,6 +144,32 @@ export class Indexer {
     s.ms = Date.now() - t0;
     this.q.meta.run("last_index", JSON.stringify({ at: Date.now(), ...s }));
     return s;
+  }
+
+  /**
+   * Clean the turns already stored, once per REDACT_VERSION: a turn a newer rule would change is
+   * rewritten in place and its vectors dropped (they embed the old text, and are made again).
+   */
+  scrub() {
+    const row = /** @type {any} */ (this.db.prepare("SELECT v FROM recall_meta WHERE k = 'redact'").get());
+    if (row && row.v === REDACT_VERSION) return 0;
+    const rows = /** @type {any[]} */ (this.db.prepare("SELECT rowid, session, seq, text FROM recall_turns").all());
+    const upd = this.db.prepare("UPDATE recall_turns SET text = ? WHERE rowid = ?");
+    const dv = this.db.prepare("DELETE FROM recall_vectors WHERE session = ? AND seq = ?");
+    let n = 0;
+    this.db.exec("BEGIN");
+    try {
+      for (const r of rows) {
+        const clean = redact(r.text);
+        if (clean === r.text) continue;
+        upd.run(clean, r.rowid); dv.run(r.session, r.seq); n++;
+      }
+      if (n) this.q.generation.run();
+      this.q.meta.run("redact", REDACT_VERSION);
+      this.db.exec("COMMIT");
+    } catch (e) { this.db.exec("ROLLBACK"); throw e; }
+    if (n) this.log(`recall: cleaned ${n} stored turns of credentials`);
+    return n;
   }
 
   /**

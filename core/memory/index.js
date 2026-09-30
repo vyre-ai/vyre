@@ -1325,7 +1325,7 @@ export default {
     // first prompt, then up to 5 relevant lines on every prompt, each quoted and attributed as data.
     // It runs the two tools it is built from with the caller's own extra, so scope is the caller's.
     ctx.tool("memory.prompt", {
-      description: "Text blocks for a provider's prompt: { blocks: [{ type: 'text', text }], text }. first: true adds memory.brief; prompt adds up to 5 relevant lines, quoted as memory and never as instructions. Empty when the caller may read nothing. Only the caller's reach; never an untrusted write.",
+      description: "Text blocks for a provider's prompt: { blocks: [{ type: 'text', text }], text }. first: true adds memory.brief; prompt adds up to 5 relevant lines, quoted as memory and never as instructions. Empty when the caller may read nothing. Only the caller's reach; never an untrusted write. A module calling for a thread (sessions, feeding an ACP prompt) MUST pass that thread's agent: a module call with no agent reads as the owner.",
       input: { type: "object", properties: { prompt: { type: "string" }, first: { type: "boolean" }, project: { type: "string" }, thread: { type: "string" }, project_cwds: cwds, ...agentField } },
       run: async (input, extra = {}) => {
         const parts = [];
