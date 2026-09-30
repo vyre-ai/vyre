@@ -1,15 +1,19 @@
-// Types for Vyre modules, module API 1 (ADR 0033).
+// Types for Vyre modules, module API 1 (ADR 0033, frozen by ADR 0047).
 //
 // A module is a folder with module.json and an entry file whose default export has start(ctx).
 // Everything a module may rely on is in ModuleContext without an @internal tag. @internal members
-// exist for Vyre's own modules and may change in any release. Members tagged @planned are part of
-// module API 1 but not built yet; check with ctx.api.has() before using them.
+// exist for Vyre's own (built in) modules, are absent in the module host an added module runs in,
+// and may change in any release. Members tagged @planned are part of module API 1 but not built in
+// vyred yet; check with ctx.api.has() before using them. @vyre/module-sdk/testing fakes all of them.
+// Members tagged @deprecated keep working through 0.3 (ADR 0047 section 8).
 //
 //   /** @type {import("@vyre/module-sdk").Module} */
 //   export default { async start(ctx) { ... return { async stop() {} }; } };
 
 /** The module API major this file describes. */
 export declare const API_VERSION: 1;
+/** The module contract version this file describes (contract.json "current"). */
+export declare const CONTRACT_VERSION: "1.0";
 
 // ---- The manifest (module.json); the schema is manifest.schema.json --------------------------
 
@@ -21,6 +25,30 @@ export type EventType = `${string}.${string}`;
 export type EventPattern = EventType | `${string}.*` | "*";
 /** A UI slot: panel, settings, route, view, now, renderer or slash, optionally ":<name>". */
 export type Slot = `${"panel" | "settings" | "route" | "view" | "now" | "renderer" | "slash"}${"" | `:${string}`}`;
+
+/** Who may call a tool (ADR 0047 section 2). */
+export type Reach = "anyone" | "asked" | "person" | "modules" | "hook";
+/** A tool that acts as the person outside: the registry routes every call to it through the Gate. */
+export type Outward = "send" | "post" | "pay" | "delete";
+
+/** One tool under does.tools, in the object form every added module uses. */
+export interface ToolEntry {
+  name: ToolName;
+  /** A short lowercase line for the install card and the capability manifest. */
+  summary?: string;
+  /**
+   * anyone (default): the person, any agent, and modules that list it under needs.tools.
+   * asked: the person, and an agent only when the person's own turn asked for it; otherwise the
+   * call answers { error: { code: "not_asked" } }. person: reserved for Vyre's own tools.
+   * modules: other modules only, hidden from people and agents. hook: the webhook route only.
+   */
+  reach?: Reach;
+  /** It acts as the person outside. From the person's own surface it runs; from anyone else it is held at the Gate. */
+  outward?: Outward;
+  /** It spends money through the module's own model or API use. */
+  cost?: "paid";
+  [experimental: `x-${string}`]: unknown;
+}
 
 export interface CapsuleEntry { title?: string; input?: Record<string, unknown>; hide?: boolean }
 
@@ -67,23 +95,37 @@ export interface Manifest {
   $schema?: string;
   name: string;
   version: string;
-  /** The module API major this module is written for. */
+  /**
+   * The module contract it is written for: the major ("1"), or "1.2" when it needs something added
+   * in minor 2. Required for an added module; a Vyre that doesn't speak it never imports the module.
+   */
+  vyre?: string;
+  /** @deprecated Use vyre. Read as "vyre": "1". */
   apiVersion?: 1;
+  /** One plain sentence for the install card. Required for an added module. */
   description?: string;
   /** The entry file, relative to the module folder. Default index.js. */
   main?: string;
-  roles?: ("box" | "local")[];
+  /** box: the server. local: any device's local node; mac and windows narrow it. Default ["box"] for an added module. */
+  roles?: ("box" | "local" | "mac" | "windows")[];
   /** Names, or (planned) names with a semver range. */
   requires?: string[] | Record<string, string>;
   /** @planned Set to this module's own name to replace the first-party module of that name. */
   replaces?: string;
+  /** Built in only: this module's tools the setup channel may call before sign-in. An added module that declares it fails to load. */
+  setupTools?: string[];
+  /** Built in only: what this module offers the # tag picker. `search` and `resolve` are this module's own tools; an added module that declares it fails to load. */
+  mentions?: { kind: string; label: string; icon?: string; search: string; resolve: string }[];
   does?: {
-    tools?: ToolName[];
-    /** Session drivers (ADR 0030). */
+    /** A name is the built in grace form (reach anyone). Added modules use ToolEntry. */
+    tools?: (ToolName | ToolEntry)[];
+    /** Session drivers (ADR 0030). Built in only in 0.2. */
     providers?: string[];
+    /** Watcher preset files it ships (relative .json paths). A preset only describes; it runs no code. */
+    watchers?: string[];
     /** @planned Harness points, each served by one of this module's tools. pretool only tightens. */
     hooks?: { brief?: ToolName; enrich?: ToolName; pretool?: ToolName; stop?: ToolName };
-    /** @planned Gate sender types: type name to the tool that sends after the Gate approved. */
+    /** @deprecated Mark the tool outward instead. Gate sender types: type name to the tool that sends after the Gate approved. */
     senders?: Record<string, ToolName>;
     /** @planned @App adapters. */
     apps?: Record<string, { app: string; bundleIds?: string[]; actions: Record<string, ToolName> }>;
@@ -102,7 +144,9 @@ export interface Manifest {
   shows?: {
     deck?: Slot[];
     capsule?: string[] | Record<string, CapsuleEntry>;
+    /** @deprecated Use does.commands. */
     cli?: string[];
+    /** WebSocket streams. Built in only in 0.2. */
     streams?: string[];
     /** @planned Notice kinds it raises, rendered from needs.list on every surface. */
     notices?: string[];
@@ -110,8 +154,12 @@ export interface Manifest {
   /** @planned Settings, drawn in the Deck's Settings and `vyre config` with no UI work. */
   settings?: SettingDef[];
   needs?: {
-    /** Vault item names, or "per-<thing>" for items named at run time. */
+    /** Vault item names, or "per-<thing>" for items named at run time. Built in only in 0.2. */
     vault?: string[];
+    /** Vendor-hosted MCP connections it reads through ctx.connections.call. */
+    connections?: { provider: string; purpose: string }[];
+    /** Its default daily cap on core/spend. */
+    spend?: { dailyUsd: number };
     /** @planned Tools it calls with ctx.call, or "module.*". */
     tools?: string[];
     /** @planned Hosts it talks to. A declaration the person approves, not a wall, while in process. */
@@ -205,10 +253,25 @@ export type Caller = string;
 
 export interface CallMeta {
   caller: Caller;
+  /** Who is calling, as vyred established it: never from input. */
+  who?: "person" | "agent" | "module" | "hook";
   /** Set only when vyred verified the calling agent. */
   agent?: string;
   /** Set only when vyred verified the calling session's thread. */
   thread?: string;
+  /** The project the call is made in, when there is one. */
+  project?: string;
+  /** True when vyred's P17 match found the person's own words in their own turn asking for this. */
+  asked?: boolean;
+  /**
+   * For an outward tool: how this run was cleared, and the Gate item that cleared it. via is
+   * "person" for the person's own words (a command they typed), "asked" when the Gate's P17 match
+   * ran it at once, "approved" when the person approved a hold (called as module:gate with the
+   * approved content). The item lets exactly one vault or connection write through (M3).
+   */
+  gate?: { via: "person" | "asked" | "approved"; item: string };
+  /** True when the call is a tap on a control the module drew (a slot). An outward tool never runs from one. */
+  slot?: boolean;
   /** How a person proved presence for this call, when the tool needed it. Never the proof. */
   presence?: { method: string; keyId: string | null };
   idempotencyKey?: string;
@@ -219,15 +282,21 @@ export interface CallMeta {
 
 export interface ToolDef<I = any, O = any> {
   description?: string;
+  /** JSON Schema for the input. */
   input?: InputSchema;
+  /** JSON Schema for the answer. Optional; the conformance test checks answers are JSON. */
+  output?: InputSchema;
+  /** At least one input the conformance test calls (ADR 0047 section 7). Each validates against input. */
+  examples?: { input: I; title?: string }[];
+  /** Returns JSON, or throws an Error carrying a short lowercase `code`. */
   run(input: I, meta: CallMeta): O | Promise<O>;
-  /** The caller kinds that may use it ("cli", "local", "deck", "capsule", "mcp", "module"). Omitted: all. */
+  /** @deprecated for added modules: declare reach in module.json. The caller kinds that may use it. Omitted: all. */
   callers?: string[];
-  /** Needs a person's presence proof, or only in some cases. */
+  /** @internal Presence is never an added module's to declare (C25); the host refuses it. */
   presence?: boolean | { when?: (input: I) => boolean; summary?: (input: I) => string; session?: boolean };
-  /** @internal Only other modules may call it, and it is left out of every listing. */
+  /** @internal Only other modules may call it, and it is left out of every listing. Added modules use reach "modules". */
   internal?: boolean;
-  /** @internal Reachable only as the webhook route POST /v1/<module>/<name>/hook. */
+  /** @internal Reachable only as the webhook route POST /v1/<module>/<name>/hook. Added modules use reach "hook". */
   hook?: boolean;
 }
 
@@ -286,62 +355,135 @@ export interface ToolListing { name: ToolName; module: string; description: stri
 
 export interface ModuleLog {
   (message: string, extra?: unknown): void;
-  /** @planned */ info(message: string, extra?: unknown): void;
-  /** @planned */ warn(message: string, extra?: unknown): void;
-  /** @planned */ error(message: string, extra?: unknown): void;
-  /** @planned */ debug(message: string, extra?: unknown): void;
+  info(message: string, extra?: unknown): void;
+  warn(message: string, extra?: unknown): void;
+  error(message: string, extra?: unknown): void;
+  debug(message: string, extra?: unknown): void;
 }
+
+/** A vendor API call carrying a granted credential the module never sees (vault P5). */
+export interface VaultRequest {
+  method: "GET" | "POST" | "PUT" | "PATCH" | "DELETE" | "HEAD";
+  url: string;
+  headers?: Record<string, string>;
+  query?: Record<string, string | number | boolean>;
+  body?: unknown;
+}
+/** A scrubbed response, or { held } when a write waits at the Gate. */
+export type VaultResponse = { status: number; headers: Record<string, string>; body: unknown } | { held: string };
 
 export interface ModuleContext {
   /** This module's name. */
   readonly name: string;
-  /** @planned The module API this vyred speaks, and feature tests inside it. */
-  readonly api: { version: 1; has(feature: string): boolean };
-  /** Logs prefixed with the module's name. */
+  /** This module's version, from module.json. */
+  readonly version: string;
+  /**
+   * The module contract this Vyre speaks, like "1.0", and feature tests for additions inside the
+   * major: a module that can do without a newer member checks for it and works either way.
+   */
+  readonly api: { version: string; has(feature: string): boolean };
+  /** Logs prefixed with the module's name: `vyre logs <module>`. */
   log: ModuleLog;
-  /** Another module's tool, through the same checks as any caller. The only way to use another module. */
-  call<T = any>(tool: ToolName, input?: Record<string, unknown>): Promise<CallResult<T>>;
-  /** Register a tool declared under does.tools. */
+  /**
+   * Another module's tool, as module:<name>, held to needs.tools. Resolves { data } or
+   * { error: { code, message } }; never throws for a refusal. The only way to use another module.
+   * @internal The third argument `{ as }` is for built in modules only.
+   */
+  call<T = any>(tool: ToolName, input?: Record<string, unknown>, opts?: { as?: string }): Promise<CallResult<T>>;
+  /**
+   * Register a tool declared under does.tools. run(input, meta) returns JSON or throws an Error
+   * with a short lowercase `code`. meta is set by vyred, never from input.
+   */
   tool<I = any, O = any>(name: ToolName, def: ToolDef<I, O>): void;
+  /** Emit types declared under watches.emits; subscribe to patterns under watches.on. */
   events: ModuleEvents;
-  /** Read only: every module's status row (a copy), and the tools a given caller may use. */
-  readonly modules: { status(): ModuleStatus[]; tools(caller?: Caller): ToolListing[] };
-  /** @planned This module's own settings, resolved project over account over default. */
+  /** Read only: every module's status row (a copy). */
+  readonly modules: {
+    status(): ModuleStatus[];
+    /** @internal The tools a given caller may use. */
+    tools(caller?: Caller): ToolListing[];
+  };
+  /** This module's own declared settings, resolved project over account over default. set writes only plain keys. */
   settings: {
     get<T = unknown>(key: string, opts?: { project?: string }): Promise<T>;
     set(key: string, value: unknown, opts?: { project?: string }): Promise<void>;
     on(key: string, fn: (value: unknown, change: { key: string; project?: string }) => void): () => void;
   };
-  /** This module's tables in vyre.db. Migrations are bound to its name, so tables carry that prefix. */
+  /**
+   * Its own SQLite tables. An added module's database is its own file in its data folder; a
+   * built in module's tables are prefixed in vyre.db.
+   */
   store: {
     /** A node:sqlite DatabaseSync. Write only your own tables; use tools for anyone else's. */
     db: any;
-    /** Ordered SQL steps, each applied once. */
+    /** Ordered SQL steps, forward only, each applied once. */
     migrate(steps: string[]): void;
   };
+  /** @internal Every path but data is for built in modules. */
   paths: {
-    /** @planned This module's own folder, <home>/data/<module>/. */
+    /** This module's own folder, <home>/data/<module>/, the only place it may write. */
     readonly data: string;
     /** @internal */ readonly [k: string]: string;
   };
-  /** A vault item declared under needs.vault, if the person granted it. */
-  vault: { fetch(name: string, opts?: { field?: string }): Promise<unknown> };
-  /** Hand the curator a fact of a kind declared under teaches.memory. Resolves false without Memory. */
-  memory: { teach(kind: string, fact: unknown): Promise<boolean> };
-  /** A WebSocket at /v1/streams/<module>/<name>, declared under shows.streams. */
+  vault: {
+    /**
+     * A vendor API call with a credential declared under needs.credentials, attached by the vault;
+     * the module never sees it. Reads run at once. Writes (send, spend, delete) hold at the Gate
+     * unless the person's own words asked. The response is scrubbed.
+     */
+    request(credentialId: string, req: VaultRequest): Promise<VaultResponse>;
+    /** @internal A vault item declared under needs.vault, if the person granted it. Built in only. */
+    fetch(name: string, opts?: { field?: string }): Promise<unknown>;
+  };
+  /** @planned A tool on a vendor-hosted MCP connection declared under needs.connections. Writes hold at the Gate. */
+  connections: { call<T = any>(provider: string, tool: string, input?: Record<string, unknown>): Promise<CallResult<T>> };
+  /**
+   * @planned An uncredentialed GET or HEAD, with no body, to a needs.network host; anything else
+   * throws code "method_not_allowed". Private, loopback, link-local, CGNAT, tailnet and metadata
+   * addresses are refused after DNS and on every redirect. To send data, use ctx.vault.request or
+   * an outward tool.
+   */
+  fetch(url: string, init?: { method?: "GET" | "HEAD"; headers?: Record<string, string> }): Promise<{ status: number; headers: Record<string, string>; text(): Promise<string>; json(): Promise<any> }>;
+  /** @planned Propose an outward act through an existing sender (the mail module, say). */
+  gate: { request(req: { kind: string; via: ToolName; to?: string; content: unknown; why?: string }): Promise<{ held: string } | { sent: unknown }> };
+  memory: {
+    /**
+     * @planned A memory row through iq's memory.write (needs.tools must list it). vyred sets
+     * from: "module:<name>", forces untrusted: true for an added module, and dedupes by source_ref.
+     */
+    write(row: { kind: "fact" | "note"; project?: string; text: string; subject?: string; source_ref?: string }): Promise<CallResult<{ id: string }>>;
+    /** @deprecated Use write({ kind: "fact" }). Hands the curator a fact of a kind declared under teaches.memory. */
+    teach(kind: string, fact: unknown): Promise<boolean>;
+  };
+  /** @planned A one-shot model read with no tools, billed on core/spend as module:<name>/<purpose>. */
+  ask(prompt: string, opts: { purpose: string; maxUsd?: number; model?: string }): Promise<{ text: string; usd: number } | { error: CallError }>;
+  /** @planned The cost of its own paid API use, on core/spend. */
+  spend: {
+    record(entry: { usd: number; purpose: string; estimated?: boolean }): Promise<void>;
+    check(purpose: string): Promise<{ ok: boolean; spentUsd: number; capUsd: number | null }>;
+  };
+  /** @planned Ask to notify the person, inside core/push's one daily budget and quiet hours. */
+  push: { offer(n: { title: string; body: string; url?: string; kind: string }): Promise<"sent" | "deferred"> };
+  /** @planned Declare the inverse of an action it just took, for the shared undo log. Only a declared inverse is replayed. */
+  undo: { record(entry: { tool: ToolName; input: unknown; inverse: { tool: ToolName; input: unknown } }): Promise<void> };
+  /** @internal A WebSocket at /v1/streams/<module>/<name>, declared under shows.streams. */
   upgrade(name: string, handler: (req: any, socket: any, head: any, caller: Caller) => void): void;
-  /** A raw HTTP route at /v1/<module>/<name>, for what a tool can't carry. */
+  /** @internal A raw HTTP route at /v1/<module>/<name>, for what a tool can't carry. */
   route(name: string, fn: (req: any, res: any, at: { caller: Caller; url: URL }) => unknown): void;
   /**
-   * Register a session driver declared under does.providers (ADR 0030). The driver's full shape is
-   * core/sessions/provider.js, and it must pass core/sessions/conformance.js.
+   * @internal Register a session driver declared under does.providers (ADR 0030). The driver's
+   * full shape is core/sessions/provider.js, and it must pass core/sessions/conformance.js.
    */
   provider(name: string, driver: SessionDriver): void;
   /** @internal The registered drivers, for the Switchboard. */
   providers: { get(name: string): SessionDriver | null; list(): string[] };
   /** @internal Every running module's declared settings, tagged with its module. For the settings module. */
   declaredSettings(): (SettingDef & { module: string })[];
-  /** Every running module's teaches.tips, for the tips module (core/tips). firstParty: shipped in the repo. */
+  /** @internal The tools shipped modules list under setupTools, for the relay's pre-claim setup channel. Only a built-in module's field counts. */
+  declaredSetupTools(): string[];
+  /** @internal vyre-core's key store (lib/vyre-core-keys.js), handed to the relay module alone; null for every other module and where core holds no keys. */
+  coreKeys: unknown;
+  /** @internal Every running module's teaches.tips, for the tips module (core/tips). firstParty: shipped in the repo. */
   declaredTips(): { module: string; version: string; firstParty: boolean; tips: Tip[] }[];
   /** @internal The whole merged config.json. Modules move to ctx.settings. */
   readonly config: any;

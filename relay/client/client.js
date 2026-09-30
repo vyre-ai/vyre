@@ -133,7 +133,7 @@ const about = a => ({
  * result, after a "pair with this box?" screen, can run the handshake as its own, separate step
  * (reviewer, 28 Sep MEDIUM: pairTicket alone could only show who it paired with after the fact).
  * @param {{ relay: string, route: string, box: Uint8Array, secret: string, name?: string }} offer
- * @param {{ name?: string, tailnet?: boolean, presenceKey?: { public_key: string, alg?: number }, about?: { kind?: "app"|"web", release?: string, manifest?: string }, keyStore?: import("./webcrypto.js").KeyStore,
+ * @param {{ name?: string, tailnet?: boolean, enroll?: boolean, presenceKey?: { public_key: string, alg?: number }, about?: { kind?: "app"|"web", release?: string, manifest?: string }, keyStore?: import("./webcrypto.js").KeyStore,
  *   crypto?: import("./noise.js").CryptoProvider, WebSocket?: any, timeout?: number }} [o]
  */
 export async function pairOffer(offer, o = {}) {
@@ -141,7 +141,7 @@ export async function pairOffer(offer, o = {}) {
   const keys = await deviceKey(d);
   // `tailnet: "join"` is a desktop asking its box for a tagged Tailscale key later (ADR 0046); a
   // phone leaves it out and stays on the relay.
-  const hello = { v: 1, ...about(o.about), pair: offer.secret, name: o.name || "a device", ...(o.presenceKey ? { presenceKey: o.presenceKey } : {}), ...(o.tailnet ? { tailnet: "join" } : {}) };
+  const hello = { v: 1, ...about(o.about), pair: offer.secret, name: o.name || "a device", ...(o.presenceKey ? { presenceKey: o.presenceKey } : {}), ...(o.tailnet ? { tailnet: "join" } : {}), ...(o.enroll ? { enroll: true } : {}) };
   let channel, reply;
   try { ({ channel, reply } = await openChannel({ ...d, relay: offer.relay, route: offer.route, box: offer.box, keys, hello, timeout: o.timeout })); }
   catch (e) { throw /** @type {any} */ (e).code ? e : fail("pair_failed", /** @type {Error} */ (e).message); }
@@ -150,7 +150,17 @@ export async function pairOffer(offer, o = {}) {
     relay: offer.relay, route: offer.route, box: base64url(offer.box),
     name: promptSafe((reply && reply.box && reply.box.name) || offer.name, "a Vyre box"),
     device: reply && reply.device, presence: (reply && reply.presence) || null,
+    // Only when asked (o.enroll) and the box has an address: the one-time grant to enroll this
+    // device's own passkey there (core/relay), { grant, expires, rpId }; null otherwise.
+    enroll: o.enroll ? enrollOf(reply && reply.enroll) : null,
   };
+}
+
+/** The box's enrolment grant when it is well formed (a base64url grant, a time, a bare host), else null. @param {any} e */
+function enrollOf(e) {
+  if (!e || typeof e.grant !== "string" || !/^[A-Za-z0-9_-]{16,128}$/.test(e.grant)) return null;
+  if (typeof e.rpId !== "string" || !/^[a-z0-9]([a-z0-9.-]*[a-z0-9])?$/i.test(e.rpId) || e.rpId.length > 253) return null;
+  return { grant: e.grant, expires: Number(e.expires) || 0, rpId: e.rpId.toLowerCase() };
 }
 
 /**
@@ -226,6 +236,8 @@ export async function resolveTicket(ticket, o) {
   const res = await fetchFn(`${base}/v1/pair`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ loc: base64url(loc) }) });
   if (res.status === 404) throw fail("ticket_gone", "this pairing code has expired or was already used");
   if (res.status === 429) throw fail("rate_limited", "too many pairing attempts; wait a minute");
+  // Two boxes registered this locator (first writer wins on the relay): the setup page's "Two servers used this code".
+  if (res.status === 409) throw fail("contested", "two servers used this code; start again");
   if (!res.ok) throw fail("pair_failed", `the relay would not resolve this pairing code (${res.status})`);
   const body = await res.json();
   const recordText = String((body && body.record) || "");

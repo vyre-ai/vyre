@@ -148,14 +148,14 @@ test("rail keys: Cmd+1 to Cmd+9 on a Mac, Ctrl off it, in rail order; never whil
 
 test("rail app: the shell mounts the rail, the brand leaves the header, and the keys go through placeForKey", () => {
   const app = read("js/app.js");
-  assert.match(app, /import \{ rail, placeForKey, macKeys \} from "\.\/rail\.js"/);
+  assert.match(app, /import \{ rail, placeForKey \} from "\.\/rail\.js"/);
   assert.doesNotMatch(app, /class: "brand"|wordmark|class: "avatar"|rail-foot/, "no brand, wordmark or avatar in the header, no machine footer");
   assert.doesNotMatch(app, /const PLACES = \[/, "the order lives in js/rail.js only");
   assert.match(app, /railEl\.el,\s*h\("div", \{ class: "stage" \},\s*h\("header", \{ class: "top" \}/, "the rail is left of the header, not under it");
   assert.match(app, /const href = placeForKey\(e, MAC\);/);
   // The page being left is hidden on the desk: the new address is current before leave() runs.
   assert.match(app, /current = key;\n(?: *\/\/.*\n)* *if \(was && !again\) leave\(wasKey, was, from, to, backward\);/);
-  assert.match(app, /if \(phone\(\)\) return;\s*const href = placeForKey/, "no rail keys on the phone");
+  assert.match(app, /if \(phone\(\) \|\| !installed\(\)\) return;\s*const href = placeForKey/, "no rail keys on the phone, or in a browser tab (they switch the browser's own tabs)");
   // The phone shell's own header is untouched.
   assert.match(app, /h\("nav", \{ class: "ph-tabs", "aria-label": "Pages" \}, phLabels\)/);
   assert.match(read("sw.js"), /"\/js\/rail\.js"/, "kept at install");

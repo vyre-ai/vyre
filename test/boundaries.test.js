@@ -27,7 +27,7 @@ const TREES = ["core", "local", "modules", "lib"];
  * The frozen exceptions: "from -> to" with the files `from` imports, why, and what it becomes
  * (ctx.call: go through the registry; lib: move the helper to a kernel folder or its own small
  * lib with no feature state; surface: the CLI is a surface and may keep its command helpers).
- * @type {Record<string, { files: string[], why: string, next: "ctx.call" | "lib" | "surface" }>}
+ * @type {Record<string, { files: string[], why: string, next: "ctx.call" | "lib" | "surface" | "host" }>}
  */
 export const ALLOW = {
   "core/cli -> core/names": { files: ["core/names/backup.js", "core/names/system.js"], next: "ctx.call",
@@ -78,6 +78,8 @@ export const ALLOW = {
     why: "the RFC 6455 framing sliver Glass wrote; a pure helper" },
   "core/term -> core/files": { files: ["core/files/safety.js"], next: "ctx.call",
     why: "the path gate every file path passes through" },
+  "core/vyre-core -> core/vault": { files: ["core/vault/vault.js"], next: "host",
+    why: "vyre-core hosts the vault's store and crypto in its own process and db (ADR 0040 phase 2); permanent by design, lead's OK pending" },
   "core/vault -> core/link": { files: ["core/link/transport.js"], next: "lib",
     why: "vault relay between the Mac and the box" },
   "core/vault -> core/names": { files: ["core/names/identity.js", "core/names/tailscale.js"], next: "lib",

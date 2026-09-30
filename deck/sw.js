@@ -29,12 +29,12 @@ const OFFLINE_MAX_AGE_MS = 7 * 86_400_000; // a week
 // there too. deck/test/sw.test.js checks every path here exists.
 const SHELL = ["/", "/manifest.webmanifest", "/icon.svg", "/icon-192.png", "/apple-touch-icon.png", "/favicon.svg",
   "/css/tokens.css", "/css/deck.css", "/css/buttons.css", "/css/marks.css", "/js/status-mark.js", "/js/rail.js", "/css/toast.css", "/js/toast.js", "/fonts/instrument-sans-latin.woff2", "/fonts/jetbrains-mono-latin.woff2", "/js/app.js", "/js/api.js", "/js/dom.js", "/js/icons.js", "/js/fmt.js", "/js/needs.js", "/js/editable.js",
-  "/js/pwa.js", "/js/reconnect.js", "/js/theme-live.js", "/js/context-report.js", "/js/glass-mini.js", "/js/keyboard.js", "/glass/util.js", "/js/health.js", "/js/machine.js", "/js/phone-setup.js", "/css/views/phone-setup.css", "/js/pair.js", "/css/pair.css", "/js/commands.js", "/js/first-passkey.js", "/js/assistant-setup.js", "/js/agent-create.js", "/js/empty-actions.js",
+  "/js/pwa.js", "/js/reconnect.js", "/js/theme-live.js", "/js/context-report.js", "/js/glass-mini.js", "/js/keyboard.js", "/glass/util.js", "/js/health.js", "/js/machine.js", "/js/phone-setup.js", "/css/views/phone-setup.css", "/js/pair.js", "/css/pair.css", "/js/commands.js", "/js/first-passkey.js", "/js/assistant-setup.js", "/js/agent-create.js", "/js/empty-actions.js", "/js/home.js", "/js/project-actions.js",
   "/js/now-phone.js", "/js/sheet.js", "/css/sheet.css", "/js/person.js", "/js/need-sheet.js", "/js/need-rows.js", "/js/capsule.js", "/js/places.js",
-  "/js/avatars.js", "/js/github-repo-picker.js", "/vendor/vyrecode/identity.js", "/vendor/vyrecode/creature.js", "/vendor/vyrecode/characters.js", "/vendor/vyrecode/project.js", "/vendor/vyrecode/vyrecode2.js",
+  "/js/avatars.js", "/js/build-check.js", "/js/platform.js", "/chat/lib/opened-here.js", "/js/github-repo-picker.js", "/vendor/vyrecode/identity.js", "/vendor/vyrecode/creature.js", "/vendor/vyrecode/characters.js", "/vendor/vyrecode/project.js", "/vendor/vyrecode/vyrecode2.js",
   "/vendor/vyrecode/geometry.js", "/vyrecode/payload.js", "/vyrecode/rs.js", "/lib/avatar-seed/index.js",
   "/views/now.js", "/css/views/now.css", "/views/projects.js", "/css/views/projects.css", "/views/chat.js", "/css/views/chat.css",
-  "/views/find.js", "/css/views/find.css", "/views/agents.js", "/css/views/agents.css", "/views/needs.js", "/css/views/needs.css",
+  "/views/find.js", "/views/artifact.js", "/css/views/find.css", "/views/agents.js", "/css/views/agents.css", "/views/needs.js", "/css/views/needs.css",
   "/chat/index.js", "/chat/session.js", "/chat/composer.js", "/chat/nav.js", "/chat/ask-item.js", "/chat/gate-item.js",
   "/chat/presence.js", "/chat/chat.css", "/chat/lib/routes.js", "/chat/lib/sessions.js", "/chat/lib/markdown.js",
   "/chat/lib/highlight.js", "/chat/lib/diff.js", "/chat/blocks.js", "/chat/question.js", "/chat/lib/blocks.js", "/chat/lib/names.js",
@@ -42,7 +42,7 @@ const SHELL = ["/", "/manifest.webmanifest", "/icon.svg", "/icon-192.png", "/app
   "/chat/live-text.js", "/chat/core/session-state.js", "/chat/core/tool-detail.js", "/chat/core/grouping.js", "/chat/core/pace.js",
   "/chat/window-view.js", "/chat/core/window.js", "/chat/pickers.js", "/chat/tray.js", "/chat/core/composer-state.js", "/chat/core/suggest.js",
   "/chat/core/caps.js", "/chat/core/commands.js", "/chat/core/match.js", "/chat/plan-card.js", "/chat/core/plan.js", "/chat/tip-line.js",
-  "/chat/core/images.js", "/chat/lightbox.js", "/chat/core/voice.js",
+  "/chat/core/images.js", "/chat/lightbox.js", "/chat/core/voice.js", "/js/mac-keys.js", "/chat/core/made.js", "/chat/cards/artifact-frame.js", "/chat/cards/artifact.css", "/chat/cards/artifact.js", "/chat/cards/calendar-event.css", "/chat/cards/calendar-event.js", "/chat/cards/charter-changed.css", "/chat/cards/charter-changed.js", "/chat/cards/confirmation.css", "/chat/cards/confirmation.js", "/chat/cards/diff-files.css", "/chat/cards/diff-files.js", "/chat/cards/draft.css", "/chat/cards/draft.js", "/chat/cards/email-thread.css", "/chat/cards/email-thread.js", "/chat/cards/file-preview.css", "/chat/cards/file-preview.js", "/chat/cards/index.js", "/chat/cards/kit.js", "/chat/cards/land.css", "/chat/cards/land.js", "/chat/cards/pr-review.css", "/chat/cards/pr-review.js", "/chat/cards/report.css", "/chat/cards/report.js", "/chat/cards/vault-used.css", "/chat/cards/vault-used.js", "/chat/cards/survey.css", "/chat/cards/survey.js",
   "/core/resilience/stream.js", "/core/resilience/sse.js", "/core/resilience/backoff.js", "/core/resilience/outbox.js", "/core/resilience/web.js"];
 
 self.addEventListener("install", e => e.waitUntil((async () => {

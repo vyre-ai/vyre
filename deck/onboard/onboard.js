@@ -320,9 +320,9 @@ const SCREENS = {
       h("p", { class: "lead" }, "Let's start with names: yours, and your assistant's. Only your own devices will be able to reach what you set up here."));
     const status = h("div", { class: "check-line", "aria-live": "polite" });
     const nameIn = h("input", { class: "input", id: "name", value: state.name, autocomplete: "off", spellcheck: "false", autocapitalize: "none",
-      "aria-describedby": "name-status", placeholder: "alex" });
+      "aria-describedby": "name-status", placeholder: "Your name" });
     status.id = "name-status";
-    const asst = h("input", { class: "input", id: "assistant", value: state.assistant, autocomplete: "off", placeholder: "juno" });
+    const asst = h("input", { class: "input", id: "assistant", value: state.assistant, autocomplete: "off", placeholder: "Your assistant's name" });
     let ok = false, seq = 0;
     const check = async () => {
       const v = /** @type {HTMLInputElement} */ (nameIn).value.trim().toLowerCase();
@@ -420,7 +420,7 @@ const SCREENS = {
     // only path that actually works, so it's shown plainly, not hidden behind a toggle with
     // nothing on the other side of it.
     let via = !relay.allowed ? "tailscale" : state.deviceVia;
-    const nodeIn = /** @type {HTMLInputElement} */ (h("input", { class: "input", id: "server-node", placeholder: "kit", autocomplete: "off",
+    const nodeIn = /** @type {HTMLInputElement} */ (h("input", { class: "input", id: "server-node", placeholder: "The server's name", autocomplete: "off",
       value: state.serverNode, oninput: () => { state.serverNode = nodeIn.value; } }));
     const codeIn = /** @type {HTMLInputElement} */ (h("input", { class: "input", id: "pair-code", placeholder: "Paste the code your server showed", autocomplete: "off" }));
 
@@ -1156,7 +1156,7 @@ const SCREENS = {
       h("span", { class: "t" }, h("b", null, name), h("span", null, path)));
     col.append(h("div", { class: "ob-panel" },
       h("p", { class: "lbl" }, "What to sync"),
-      h("div", { class: "choice" }, folder("Desktop", "~/Desktop", true), folder("Documents", "~/Documents", true), folder("Harlow Legal (project)", "~/Work/harlow-legal", true)),
+      h("div", { class: "choice" }, folder("Desktop", "~/Desktop", true), folder("Documents", "~/Documents", true)),
       h("p", { class: "small muted" }, "node_modules, .git and build folders are left out automatically."),
       h("p", { class: "lbl", style: { marginTop: "14px" } }, "How"),
       h("div", { class: "choice" },
