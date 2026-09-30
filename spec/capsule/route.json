@@ -1,0 +1,845 @@
+{
+  "v": 1,
+  "note": "Ported from local/capsule/native/Tests/RouteTests.swift and AutoAskTests.swift (wantsAnswer, doRequest only). Sample world only: alex, Harlow Legal, Northwind Bakery, juno, kit, pax. Every catalog below is self-contained (no inheritance), so a loader never has to merge overrides.",
+  "world": {
+    "now": 1790000000000,
+    "day": 86400000
+  },
+  "catalogs": {
+    "default": {
+      "agents": [
+        {
+          "name": "juno",
+          "kind": "assistant"
+        },
+        {
+          "name": "kit",
+          "kind": "agent",
+          "doing": "ads audit"
+        },
+        {
+          "name": "pax",
+          "kind": "agent"
+        }
+      ],
+      "projects": [
+        {
+          "slug": "harlow-legal",
+          "name": "Harlow Legal",
+          "org": "Rivera Studio",
+          "home": "/w/harlow",
+          "threads": 4,
+          "last": "now-2h",
+          "people": [
+            {
+              "name": "Dana Reyes"
+            }
+          ]
+        },
+        {
+          "slug": "northwind-bakery",
+          "name": "Northwind Bakery",
+          "home": "/w/northwind",
+          "threads": 3,
+          "last": "now-1day"
+        }
+      ],
+      "threads": [
+        {
+          "id": "aaaa1111",
+          "label": "Q3 report",
+          "cwd": "/w/harlow/q3",
+          "last": "now-4day",
+          "project": "harlow-legal",
+          "projectName": "Harlow Legal"
+        },
+        {
+          "id": "bbbb2222",
+          "label": "Intake form rebuild",
+          "last": "now-2h",
+          "project": "harlow-legal",
+          "projectName": "Harlow Legal"
+        },
+        {
+          "id": "cccc3333",
+          "label": "Northwind invoices",
+          "last": "now-1day",
+          "project": "northwind-bakery",
+          "projectName": "Northwind Bakery"
+        },
+        {
+          "id": "dddd4444",
+          "label": "Weekly planning",
+          "cwd": "/w",
+          "last": "now-3day"
+        }
+      ]
+    },
+    "none": {
+      "note": "agents is nil: no switchboard at all",
+      "agents": null,
+      "projects": [
+        {
+          "slug": "harlow-legal",
+          "name": "Harlow Legal",
+          "org": "Rivera Studio",
+          "home": "/w/harlow",
+          "threads": 4,
+          "last": "now-2h",
+          "people": [
+            {
+              "name": "Dana Reyes"
+            }
+          ]
+        },
+        {
+          "slug": "northwind-bakery",
+          "name": "Northwind Bakery",
+          "home": "/w/northwind",
+          "threads": 3,
+          "last": "now-1day"
+        }
+      ],
+      "threads": [
+        {
+          "id": "aaaa1111",
+          "label": "Q3 report",
+          "cwd": "/w/harlow/q3",
+          "last": "now-4day",
+          "project": "harlow-legal",
+          "projectName": "Harlow Legal"
+        },
+        {
+          "id": "bbbb2222",
+          "label": "Intake form rebuild",
+          "last": "now-2h",
+          "project": "harlow-legal",
+          "projectName": "Harlow Legal"
+        },
+        {
+          "id": "cccc3333",
+          "label": "Northwind invoices",
+          "last": "now-1day",
+          "project": "northwind-bakery",
+          "projectName": "Northwind Bakery"
+        },
+        {
+          "id": "dddd4444",
+          "label": "Weekly planning",
+          "cwd": "/w",
+          "last": "now-3day"
+        }
+      ]
+    },
+    "empty": {
+      "note": "agents is an empty array: a switchboard, but nothing on it yet",
+      "agents": [],
+      "projects": [
+        {
+          "slug": "harlow-legal",
+          "name": "Harlow Legal",
+          "org": "Rivera Studio",
+          "home": "/w/harlow",
+          "threads": 4,
+          "last": "now-2h",
+          "people": [
+            {
+              "name": "Dana Reyes"
+            }
+          ]
+        },
+        {
+          "slug": "northwind-bakery",
+          "name": "Northwind Bakery",
+          "home": "/w/northwind",
+          "threads": 3,
+          "last": "now-1day"
+        }
+      ],
+      "threads": [
+        {
+          "id": "aaaa1111",
+          "label": "Q3 report",
+          "cwd": "/w/harlow/q3",
+          "last": "now-4day",
+          "project": "harlow-legal",
+          "projectName": "Harlow Legal"
+        },
+        {
+          "id": "bbbb2222",
+          "label": "Intake form rebuild",
+          "last": "now-2h",
+          "project": "harlow-legal",
+          "projectName": "Harlow Legal"
+        },
+        {
+          "id": "cccc3333",
+          "label": "Northwind invoices",
+          "last": "now-1day",
+          "project": "northwind-bakery",
+          "projectName": "Northwind Bakery"
+        },
+        {
+          "id": "dddd4444",
+          "label": "Weekly planning",
+          "cwd": "/w",
+          "last": "now-3day"
+        }
+      ]
+    },
+    "onCurrentKit": {
+      "note": "kit's agent.thread is set to aaaa1111, so its current thread already matches the words",
+      "agents": [
+        {
+          "name": "juno",
+          "kind": "assistant"
+        },
+        {
+          "name": "kit",
+          "kind": "agent",
+          "doing": "ads audit",
+          "thread": "aaaa1111"
+        },
+        {
+          "name": "pax",
+          "kind": "agent"
+        }
+      ],
+      "projects": [
+        {
+          "slug": "harlow-legal",
+          "name": "Harlow Legal",
+          "org": "Rivera Studio",
+          "home": "/w/harlow",
+          "threads": 4,
+          "last": "now-2h",
+          "people": [
+            {
+              "name": "Dana Reyes"
+            }
+          ]
+        },
+        {
+          "slug": "northwind-bakery",
+          "name": "Northwind Bakery",
+          "home": "/w/northwind",
+          "threads": 3,
+          "last": "now-1day"
+        }
+      ],
+      "threads": [
+        {
+          "id": "aaaa1111",
+          "label": "Q3 report",
+          "cwd": "/w/harlow/q3",
+          "last": "now-4day",
+          "project": "harlow-legal",
+          "projectName": "Harlow Legal"
+        },
+        {
+          "id": "bbbb2222",
+          "label": "Intake form rebuild",
+          "last": "now-2h",
+          "project": "harlow-legal",
+          "projectName": "Harlow Legal"
+        },
+        {
+          "id": "cccc3333",
+          "label": "Northwind invoices",
+          "last": "now-1day",
+          "project": "northwind-bakery",
+          "projectName": "Northwind Bakery"
+        },
+        {
+          "id": "dddd4444",
+          "label": "Weekly planning",
+          "cwd": "/w",
+          "last": "now-3day"
+        }
+      ]
+    }
+  },
+  "threadSets": {
+    "kitThreads": {
+      "note": "the default catalog's first two threads (aaaa1111, bbbb2222), each with agent forced to kit",
+      "catalog": "default",
+      "ids": [
+        "aaaa1111",
+        "bbbb2222"
+      ],
+      "agent": "kit"
+    }
+  },
+  "cases": [
+    {
+      "input": {
+        "fn": "destinations",
+        "target": null,
+        "text": "what is left",
+        "catalog": "default"
+      },
+      "expect": {
+        "kinds": [
+          "assistant:juno"
+        ]
+      },
+      "note": "with no @ it goes to the assistant"
+    },
+    {
+      "input": {
+        "fn": "destinations",
+        "target": null,
+        "text": "x",
+        "catalog": "none"
+      },
+      "expect": {
+        "firstKind": "recall"
+      },
+      "note": "no assistant, no switchboard: memory answers, no model"
+    },
+    {
+      "input": {
+        "fn": "destinations",
+        "target": {
+          "kind": "agent",
+          "id": "kit"
+        },
+        "text": "the Harlow deck needs the Q3 report numbers",
+        "catalog": "default",
+        "agentThreads": "kitThreads"
+      },
+      "expect": {
+        "options": [
+          {
+            "kind": "thread",
+            "thread": "aaaa1111",
+            "meta": "thread · 4 days"
+          },
+          {
+            "kind": "agent",
+            "agent": "kit",
+            "meta": ""
+          }
+        ],
+        "whyContains": "\"report\" matched Q3 report",
+        "describeOptions1": {
+          "who": "kit",
+          "where": [
+            "current thread"
+          ]
+        },
+        "describeOptions0": {
+          "who": "kit",
+          "where": [
+            "Harlow Legal",
+            "Q3 report"
+          ]
+        },
+        "optionCount": 2
+      },
+      "note": "@agent goes to the thread its words match, with its current thread as the other choice"
+    },
+    {
+      "input": {
+        "fn": "destinations",
+        "target": {
+          "kind": "agent",
+          "id": "kit"
+        },
+        "text": "the Q3 report numbers",
+        "catalog": "onCurrentKit",
+        "agentThreads": "kitThreads"
+      },
+      "expect": {
+        "optionCount": 1
+      },
+      "note": "the match is already its current thread: one choice, not two"
+    },
+    {
+      "input": {
+        "fn": "destinations",
+        "target": {
+          "kind": "agent",
+          "id": "kit"
+        },
+        "text": "hello",
+        "catalog": "default",
+        "agentThreads": "kitThreads"
+      },
+      "expect": {
+        "options": [
+          {
+            "kind": "agent"
+          }
+        ]
+      },
+      "note": "no word match: falls back to the agent's current thread"
+    },
+    {
+      "input": {
+        "fn": "destinations",
+        "target": {
+          "kind": "project",
+          "id": "harlow-legal"
+        },
+        "text": "draft a welcome note",
+        "catalog": "default"
+      },
+      "expect": {
+        "kinds": [
+          "new-thread:-",
+          "thread:-"
+        ],
+        "options": [
+          {
+            "kind": "new-thread",
+            "cwd": "/w/harlow"
+          },
+          {
+            "kind": "thread",
+            "thread": "bbbb2222"
+          }
+        ],
+        "optionCount": 2
+      },
+      "note": "@project starts a new thread there, with its latest thread as the other choice"
+    },
+    {
+      "input": {
+        "fn": "destinations",
+        "target": {
+          "kind": "project",
+          "id": "harlow-legal"
+        },
+        "text": "fix the intake form",
+        "catalog": "default"
+      },
+      "expect": {
+        "options": [
+          {
+            "thread": "bbbb2222"
+          }
+        ]
+      },
+      "note": "@project joins the thread its words match"
+    },
+    {
+      "input": {
+        "fn": "destinations",
+        "target": {
+          "kind": "thread",
+          "id": "dddd4444",
+          "label": "Weekly planning"
+        },
+        "text": "anything",
+        "catalog": "default"
+      },
+      "expect": {
+        "options": [
+          {
+            "kind": "thread",
+            "thread": "dddd4444"
+          }
+        ]
+      },
+      "note": "@thread types into that thread"
+    },
+    {
+      "input": {
+        "fn": "destinations",
+        "target": null,
+        "text": "What is the capital of Peru?",
+        "catalog": "default",
+        "quick": true
+      },
+      "expect": {
+        "kinds": [
+          "quick:haiku",
+          "assistant:juno",
+          "quick:sonnet"
+        ],
+        "options": [
+          {
+            "meta": "fast model · haiku"
+          },
+          {},
+          {
+            "deep": true,
+            "meta": "deeper · sonnet"
+          }
+        ],
+        "why": null,
+        "optionCount": 3
+      },
+      "note": "a general question goes to a fast model first, then the assistant, then deeper"
+    },
+    {
+      "input": {
+        "fn": "destinations",
+        "target": null,
+        "text": "what did Dana say about the retainer?",
+        "catalog": "default",
+        "quick": true
+      },
+      "expect": {
+        "kinds": [
+          "assistant:juno",
+          "quick:haiku",
+          "quick:sonnet"
+        ],
+        "whyContains": "juno answers with your memory"
+      }
+    },
+    {
+      "input": {
+        "fn": "destinations",
+        "target": null,
+        "text": "Where is the Harlow Legal deck?",
+        "catalog": "default",
+        "quick": true
+      },
+      "expect": {
+        "kinds": [
+          "assistant:juno",
+          "quick:haiku",
+          "quick:sonnet"
+        ],
+        "whyContains": "juno answers with your memory"
+      }
+    },
+    {
+      "input": {
+        "fn": "destinations",
+        "target": null,
+        "text": "what is kit doing?",
+        "catalog": "default",
+        "quick": true
+      },
+      "expect": {
+        "kinds": [
+          "assistant:juno",
+          "quick:haiku",
+          "quick:sonnet"
+        ],
+        "whyContains": "juno answers with your memory"
+      }
+    },
+    {
+      "input": {
+        "fn": "destinations",
+        "target": null,
+        "text": "what's on my calendar tomorrow?",
+        "catalog": "default",
+        "quick": true
+      },
+      "expect": {
+        "kinds": [
+          "assistant:juno",
+          "quick:haiku",
+          "quick:sonnet"
+        ],
+        "whyContains": "juno answers with your memory"
+      }
+    },
+    {
+      "input": {
+        "fn": "destinations",
+        "target": null,
+        "text": "did I email the Q3 report?",
+        "catalog": "default",
+        "quick": true
+      },
+      "expect": {
+        "kinds": [
+          "assistant:juno",
+          "quick:haiku",
+          "quick:sonnet"
+        ],
+        "whyContains": "juno answers with your memory"
+      }
+    },
+    {
+      "input": {
+        "fn": "destinations",
+        "target": null,
+        "text": "how many clients do we have?",
+        "catalog": "default",
+        "quick": true
+      },
+      "expect": {
+        "kinds": [
+          "assistant:juno",
+          "quick:haiku",
+          "quick:sonnet"
+        ],
+        "whyContains": "juno answers with your memory"
+      }
+    },
+    {
+      "input": {
+        "fn": "destinations",
+        "target": null,
+        "text": "what is left this week",
+        "catalog": "default",
+        "quick": true
+      },
+      "expect": {
+        "kinds": [
+          "assistant:juno",
+          "quick:haiku",
+          "quick:sonnet"
+        ],
+        "whyContains": "juno answers with your memory"
+      }
+    },
+    {
+      "input": {
+        "fn": "ownThings",
+        "text": "how do I center a div?",
+        "catalog": "default"
+      },
+      "expect": null,
+      "note": "I without a work noun is a general question"
+    },
+    {
+      "input": {
+        "fn": "ownThings",
+        "text": "what is weekly inflation in Peru?",
+        "catalog": "default"
+      },
+      "expect": null,
+      "note": "one word of a thread's name does not name it"
+    },
+    {
+      "input": {
+        "fn": "ownThings",
+        "text": "any news on Weekly planning?",
+        "catalog": "default"
+      },
+      "expect": {
+        "contains": "Weekly planning"
+      }
+    },
+    {
+      "input": {
+        "fn": "destinations",
+        "target": null,
+        "text": "what did Dana say?",
+        "catalog": "none",
+        "quick": true
+      },
+      "expect": {
+        "kinds": [
+          "quick:haiku",
+          "quick:sonnet"
+        ]
+      },
+      "note": "a question with no assistant goes to the model"
+    },
+    {
+      "input": {
+        "fn": "destinations",
+        "target": null,
+        "text": "why is the sky blue?",
+        "catalog": "empty",
+        "quick": true
+      },
+      "expect": {
+        "kinds": [
+          "quick:haiku",
+          "quick:sonnet"
+        ]
+      }
+    },
+    {
+      "input": {
+        "fn": "destinations",
+        "target": null,
+        "text": "why is the sky blue?",
+        "catalog": "none",
+        "quick": false
+      },
+      "expect": {
+        "kinds": [
+          "recall:-"
+        ]
+      },
+      "note": "no switchboard: memory, as before"
+    },
+    {
+      "input": {
+        "fn": "destinations",
+        "target": null,
+        "text": "why is the sky blue?",
+        "catalog": "default",
+        "quick": false
+      },
+      "expect": {
+        "kinds": [
+          "assistant:juno"
+        ]
+      },
+      "note": "no threads.start: as before"
+    },
+    {
+      "input": {
+        "fn": "destinations",
+        "target": null,
+        "text": "send the invoice to the printer",
+        "catalog": "default",
+        "quick": true
+      },
+      "expect": {
+        "kinds": [
+          "assistant:juno"
+        ]
+      },
+      "note": "commands keep the assistant, however they read"
+    },
+    {
+      "input": {
+        "fn": "asksQuestion",
+        "text": "send the invoice to the printer"
+      },
+      "expect": false
+    },
+    {
+      "input": {
+        "fn": "destinations",
+        "target": null,
+        "text": "draft a welcome note for new clients",
+        "catalog": "default",
+        "quick": true
+      },
+      "expect": {
+        "kinds": [
+          "assistant:juno"
+        ]
+      }
+    },
+    {
+      "input": {
+        "fn": "asksQuestion",
+        "text": "draft a welcome note for new clients"
+      },
+      "expect": false
+    },
+    {
+      "input": {
+        "fn": "destinations",
+        "target": null,
+        "text": "harlow",
+        "catalog": "default",
+        "quick": true
+      },
+      "expect": {
+        "kinds": [
+          "assistant:juno"
+        ]
+      }
+    },
+    {
+      "input": {
+        "fn": "asksQuestion",
+        "text": "harlow"
+      },
+      "expect": false
+    },
+    {
+      "input": {
+        "fn": "asksQuestion",
+        "text": "can you send the invoice?"
+      },
+      "expect": true
+    },
+    {
+      "input": {
+        "fn": "wantsAnswer",
+        "text": "archipelago",
+        "topKind": null,
+        "topScore": 0
+      },
+      "expect": false,
+      "note": "a single word never asks"
+    },
+    {
+      "input": {
+        "fn": "wantsAnswer",
+        "text": "what is archipelago",
+        "topKind": null,
+        "topScore": 0
+      },
+      "expect": true
+    },
+    {
+      "input": {
+        "fn": "wantsAnswer",
+        "text": "archipelago meaning?",
+        "topKind": null,
+        "topScore": 0
+      },
+      "expect": true
+    },
+    {
+      "input": {
+        "fn": "wantsAnswer",
+        "text": "northwind bakery rye sourdough price",
+        "topKind": null,
+        "topScore": 0
+      },
+      "expect": true,
+      "note": "several words, nothing here matches"
+    },
+    {
+      "input": {
+        "fn": "wantsAnswer",
+        "text": "system settings",
+        "topKind": "setting",
+        "topScore": 0.97
+      },
+      "expect": false,
+      "note": "an exact local match opens"
+    },
+    {
+      "input": {
+        "fn": "wantsAnswer",
+        "text": "activity monitor",
+        "topKind": "app",
+        "topScore": 0.85
+      },
+      "expect": false,
+      "note": "two words with a strong match"
+    },
+    {
+      "input": {
+        "fn": "wantsAnswer",
+        "text": "run vyre voice",
+        "topKind": null,
+        "topScore": 0
+      },
+      "expect": false,
+      "note": "a vyre command is never asked about"
+    },
+    {
+      "input": {
+        "fn": "doRequest",
+        "text": "do open Notes and add milk"
+      },
+      "expect": "open Notes and add milk"
+    },
+    {
+      "input": {
+        "fn": "doRequest",
+        "text": "Do: "
+      },
+      "expect": null
+    },
+    {
+      "input": {
+        "fn": "doRequest",
+        "text": "what do you do"
+      },
+      "expect": null
+    }
+  ]
+}

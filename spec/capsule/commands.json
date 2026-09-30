@@ -1,0 +1,60 @@
+{
+  "v": 1,
+  "note": "The `vyre ...` parser. Ported from local/capsule/native/Sources/Host/CommandRun.swift (CLIRun.parse, .forCapsule, .refused) and Tests/CommandRunTests.swift.",
+  "cases": [
+    {
+      "input": { "fn": "parse", "text": "run vyre voice" },
+      "expect": ["voice"]
+    },
+    {
+      "input": { "fn": "parse", "text": "vyre voice status" },
+      "expect": ["voice", "status"]
+    },
+    {
+      "input": { "fn": "parse", "text": "vyre remind 'call dana' 5m" },
+      "expect": ["remind", "call dana", "5m"],
+      "note": "quotes keep words together"
+    },
+    {
+      "input": { "fn": "parse", "text": "vyre" },
+      "expect": null,
+      "note": "the bare word alone is not a command"
+    },
+    {
+      "input": { "fn": "parse", "text": "what is vyre" },
+      "expect": null,
+      "note": "vyre must open the line, not just appear in it"
+    },
+    {
+      "input": { "fn": "parse", "text": "vyred status" },
+      "expect": null,
+      "note": "vyred (the daemon) is not the same word as vyre (the CLI)"
+    },
+    {
+      "input": { "fn": "forCapsule", "argv": ["voice"] },
+      "expect": ["voice", "status"],
+      "note": "bare `vyre voice` is the terminal's push-to-talk; in the Capsule talking is Option-Return, so it shows voice's status instead"
+    },
+    {
+      "input": { "fn": "forCapsule", "argv": ["voice", "status"] },
+      "expect": ["voice", "status"]
+    },
+    {
+      "input": { "fn": "refused", "argv": ["capsule"] },
+      "expect": "This is the Capsule already. Its settings are in the menu bar mark."
+    },
+    {
+      "input": { "fn": "refused", "argv": ["voice", "--send", "t1"] },
+      "expect": "To talk to a session from here, pick it with @ and press Option-Return."
+    },
+    {
+      "input": { "fn": "refused", "argv": ["voice", "status"] },
+      "expect": null,
+      "note": "an ordinary verb is not refused"
+    },
+    {
+      "input": { "fn": "refused", "argv": ["watch"] },
+      "expect": null
+    }
+  ]
+}

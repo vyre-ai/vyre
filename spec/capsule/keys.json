@@ -1,0 +1,72 @@
+{
+  "v": 1,
+  "note": "The Capsule's keymap: the global keys that open it (Sources/Host/Hotkeys.swift), the in-panel keys (Sources/Host/Panel.swift key()), and the footer hints that advertise them per state (Sources/UI/CapsuleView.swift CapsuleLayout.footerHints/hints). Windows uses Alt+Space for its own panel (C1w); the global-open row here is Mac-only context.",
+  "global": [
+    {
+      "id": "open.control_twice",
+      "keys": ["control", "control"],
+      "within_ms": 450,
+      "action": "open the Capsule at the front app",
+      "where": "Sources/Host/Hotkeys.swift startDoubleControl()",
+      "note": "needs Input Monitoring; a Control press combined with any other key or modifier during the hold is a chord and is discarded, never counted as the double-tap"
+    },
+    {
+      "id": "open.chord",
+      "keys": ["option", "space"],
+      "action": "open the Capsule at the front app",
+      "where": "Sources/Host/Hotkeys.swift startChord()",
+      "note": "a Carbon hot key, needs no permission; the chord is configurable via VYRE_CAPSULE_HOTKEY and always exists even when Control-twice is off"
+    }
+  ],
+  "panel": [
+    { "id": "escape", "keys": ["esc"], "keyCode": 53, "action": "layered cancel: cancel talking, then cancel a presence ask, then cancel a credential ask, then stop/clear a live vyre command, then close a confirm, then stop a running reply, then clear the answer or follow-up box, then clear typed text, then hide the panel", "where": "Sources/Host/Panel.swift key()" },
+    { "id": "remove_last_attachment", "keys": ["cmd", "delete"], "keyCode": 51, "modifiers": ["command"], "condition": "attachments present", "action": "remove the last attachment", "where": "Sources/Host/Panel.swift key()" },
+    { "id": "drop_chip", "keys": ["delete"], "keyCode": 51, "condition": "box is empty and a target chip is set", "action": "drop the @ chip (a child chip first)", "where": "Sources/Host/Panel.swift key()" },
+    { "id": "pick_mention", "keys": ["tab"], "keyCode": 48, "condition": "current row is a mention", "action": "pick the @ row", "where": "Sources/Host/Panel.swift key()" },
+    { "id": "toggle_memory_sources", "keys": ["cmd", "right"], "keyCode": 124, "modifiers": ["command"], "condition": "caret at end of box, and memory is shown or was asked", "action": "show or fold memory's sources", "where": "Sources/Host/Panel.swift key()" },
+    { "id": "think_deeper_shortcut", "keys": ["cmd", "d"], "keyCode": 2, "modifiers": ["command"], "condition": "model.canGoDeeper", "action": "ask the same question again on the deeper model", "where": "Sources/Host/Panel.swift key()" },
+    { "id": "open_in_vyre", "keys": ["cmd", "o"], "keyCode": 31, "modifiers": ["command"], "condition": "the reply has a thread", "action": "open the answer's thread in Vyre chat on the box", "where": "Sources/Host/Panel.swift key()" },
+    { "id": "answer_scroll_top", "keys": ["cmd", "up"], "keyCode": 126, "modifiers": ["command"], "condition": "an answer is asked and its card overflows", "action": "scroll the answer card to the top", "where": "Sources/Host/Panel.swift key()" },
+    { "id": "answer_scroll_end", "keys": ["cmd", "down"], "keyCode": 125, "modifiers": ["command"], "condition": "an answer is asked and its card overflows", "action": "scroll the answer card to the end", "where": "Sources/Host/Panel.swift key()" },
+    { "id": "answer_scroll_line_up", "keys": ["option", "up"], "keyCode": 126, "modifiers": ["option"], "condition": "an answer is asked and its card overflows", "action": "scroll the answer card up one line", "where": "Sources/Host/Panel.swift key()" },
+    { "id": "answer_scroll_line_down", "keys": ["option", "down"], "keyCode": 125, "modifiers": ["option"], "condition": "an answer is asked and its card overflows", "action": "scroll the answer card down one line", "where": "Sources/Host/Panel.swift key()" },
+    { "id": "answer_scroll_page_up", "keys": ["pageup"], "keyCode": 116, "condition": "an answer is asked", "action": "page the answer card up", "where": "Sources/Host/Panel.swift key()" },
+    { "id": "answer_scroll_page_down", "keys": ["pagedown"], "keyCode": 121, "condition": "an answer is asked", "action": "page the answer card down", "where": "Sources/Host/Panel.swift key()" },
+    { "id": "answer_scroll_home", "keys": ["home"], "keyCode": 115, "modifiers_excluded": ["command"], "condition": "an answer is asked", "action": "scroll the answer card to the top", "where": "Sources/Host/Panel.swift key()" },
+    { "id": "answer_scroll_end_key", "keys": ["end"], "keyCode": 119, "modifiers_excluded": ["command"], "condition": "an answer is asked", "action": "scroll the answer card to the end", "where": "Sources/Host/Panel.swift key()" },
+    { "id": "move_down", "keys": ["down"], "keyCode": 125, "modifiers_excluded": ["command", "shift", "option"], "action": "move the selection down one result row", "where": "Sources/Host/Panel.swift key()" },
+    { "id": "move_up", "keys": ["up"], "keyCode": 126, "modifiers_excluded": ["command", "shift", "option"], "action": "move the selection up one result row", "where": "Sources/Host/Panel.swift key()" },
+    { "id": "return_save_credential", "keys": ["return"], "keyCode": [36, 76], "condition": "a credential ask is open", "action": "save the key being added", "where": "Sources/Host/Panel.swift key()" },
+    { "id": "return_ask_or_followup", "keys": ["return"], "keyCode": [36, 76], "modifiers_excluded": ["shift", "command"], "action": "ask the question, or (with an answer already on screen) keep it and open the follow-up box; also stops the mic on a plain return while listening", "where": "Sources/Host/Panel.swift key(), Host/AutoAsk.swift handleReturn()" },
+    { "id": "return_deeper_or_run_alt", "keys": ["cmd", "return"], "keyCode": [36, 76], "modifiers": ["command"], "action": "think deeper on the same question or follow-up; on a selected row, its own cmd+return action", "where": "Sources/Host/Panel.swift key(), Host/AutoAsk.swift handleReturn(command:)" },
+    { "id": "return_run", "keys": ["return"], "keyCode": [36, 76], "condition": "not a question, not offline-start; a plain row is selected", "action": "run the selected row", "where": "Sources/Host/Panel.swift key()" },
+    { "id": "copy_current_row", "keys": ["cmd", "c"], "keyCode": 8, "modifiers": ["command"], "condition": "nothing selected in the text field", "action": "copy the current row", "where": "Sources/Host/Panel.swift key()" },
+    { "id": "row_own_shortcut", "keys": ["cmd", "<letter>"], "action": "a result row's own declared cmd+letter action, unless the letter is one of the standard app/window/edit shortcuts (a, v, x, z, f, w, comma, q, o, delete) or an arrow key", "where": "Sources/Host/Panel.swift key() default case" }
+  ],
+  "footer_hints": {
+    "note": "CapsuleLayout.footerHints(m) returns at most 4 of these, chosen by state, left to right. Hint = {title, keys}.",
+    "states": [
+      { "id": "presence_ask", "hints": [{ "title": "Cancel", "keys": ["esc"] }] },
+      { "id": "credential_ask_editing", "hints": [{ "title": "Save in the vault", "keys": ["⏎"] }, { "title": "Cancel", "keys": ["esc"] }] },
+      { "id": "credential_ask_saving", "hints": [] },
+      { "id": "command_run_running", "hints": [{ "title": "Stop", "keys": ["esc"] }] },
+      { "id": "command_run_finished", "hints": [{ "title": "Clear", "keys": ["esc"] }] },
+      { "id": "action_menu_open", "hints": [{ "title": "Move", "keys": ["↑", "↓"] }, { "title": "Run", "keys": ["⏎"] }, { "title": "Back", "keys": ["esc"] }] },
+      { "id": "desk_list_ask_focused", "hints": [{ "title": "Allow once", "keys": ["A"] }, { "title": "Deny", "keys": ["D"] }, { "title": "Review", "keys": ["⏎"] }, { "title": "Close", "keys": ["esc"] }] },
+      { "id": "desk_list_other_focused", "hints": [{ "title": "Move", "keys": ["↑", "↓"] }, { "title": "Send or Accept", "keys": ["A"], "note": "label is Accept for a lesson, else Send" }, { "title": "Review", "keys": ["⏎"] }, { "title": "Close", "keys": ["esc"] }] },
+      { "id": "desk_card_gate", "hints": [{ "title": "Send", "keys": ["⌘", "⏎"] }, { "title": "Back", "keys": ["esc"] }] },
+      { "id": "desk_card_other", "hints": [{ "title": "Allow or Accept", "keys": ["⏎"], "note": "label is Accept for a lesson, else Allow" }, { "title": "Back", "keys": ["esc"] }] },
+      { "id": "confirming", "hints": [{ "title": "Confirm", "keys": ["⏎"] }, { "title": "Cancel", "keys": ["esc"] }] },
+      { "id": "dictating", "hints": [{ "title": "Stop", "keys": ["⌥", "⏎"] }] },
+      { "id": "reply_streaming_doing", "hints": [{ "title": "Stop", "keys": ["esc"] }, { "title": "Open in Vyre", "keys": ["⌘", "O"], "condition": "reply has a thread" }] },
+      { "id": "reply_streaming_plain", "hints": [{ "title": "Stop", "keys": ["esc"] }, { "title": "Think deeper", "keys": ["⌘", "⏎"], "condition": "no target chip" }] },
+      { "id": "computer_use_finished", "hints": [{ "title": "Open in Vyre", "keys": ["⌘", "O"], "condition": "reply has a thread" }, { "title": "Clear", "keys": ["esc"] }] },
+      { "id": "speaking", "hints": [{ "title": "Ask", "keys": ["⏎"] }, { "title": "Think deeper", "keys": ["⌘", "⏎"] }, { "title": "Open in Vyre", "keys": ["⌘", "O"], "condition": "reply has a thread" }, { "title": "Stop", "keys": ["esc"] }] },
+      { "id": "question_or_followup_on_screen", "hints": [{ "title": "Ask", "keys": ["⏎"] }, { "title": "Think deeper", "keys": ["⌘", "⏎"] }, { "title": "Open in Vyre", "keys": ["⌘", "O"], "condition": "reply has a thread" }, { "title": "Clear", "keys": ["esc"] }] },
+      { "id": "nothing_typed_desk_waiting", "hints": [{ "title": "Move", "keys": ["↑", "↓"] }, { "title": "Open", "keys": ["⏎"] }, { "title": "Hide", "keys": ["esc"] }] },
+      { "id": "nothing_typed_no_chip", "hints": [{ "title": "Hide", "keys": ["esc"] }] },
+      { "id": "nothing_typed_with_chip_or_text", "hints": [{ "title": "Hide or Clear", "keys": ["esc"], "note": "label is Hide when the box is empty, else Clear" }] },
+      { "id": "result_row_selected", "hints": [{ "title": "Move", "keys": ["↑", "↓"] }, { "title": "<the row's first action>", "keys": ["⏎"] }, { "title": "<the row's cmd+return action, or Send, or Open in Vyre>", "keys": ["⌘", "⏎"], "note": "cmd+S is used instead when the row's alt action id is send-box" }, { "title": "Hide or Clear", "keys": ["esc"] }] }
+    ]
+  }
+}

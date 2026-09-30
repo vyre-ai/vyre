@@ -4,6 +4,13 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+- capsule: extract the Capsule's parity vectors (C2) into `spec/capsule/{route,commands,match,
+  strings,keys}.json`, so the Windows panel and the Mac Capsule test against the same facts. Every
+  value is ported from the existing Swift tests (RouteTests, AutoAskTests, CommandRunTests,
+  MatchTests). `strings.json` flags 15 lines that leak internal words (`vyred`, `switchboard`,
+  internal tool names) for the plain-wording pass. Adds `test/capsule-spec.test.js` (shape only,
+  Node) and `Tests/SpecVectorsTests.swift` (proves the Swift side against the same files, CI only).
+
 ## 0.1.1
 
 What's new:

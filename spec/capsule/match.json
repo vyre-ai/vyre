@@ -1,0 +1,82 @@
+{
+  "v": 1,
+  "note": "How well a query names a label, 0..1. Ported from local/capsule/native/Sources/Core/Match.swift and Tests/MatchTests.swift. Tiers, per Match.swift's own comment: exact 1, prefix 0.9, word-prefix or initials 0.8, substring 0.5, in-order letters (subsequence) 0.3, else 0. Under three letters, only prefix/word-start/initials count.",
+  "cases": [
+    {
+      "input": { "fn": "score", "query": "safari", "label": "Safari" },
+      "expect": 1
+    },
+    {
+      "input": { "fn": "score", "query": "saf", "label": "Safari" },
+      "expect": 0.9
+    },
+    {
+      "input": { "fn": "score", "query": "code", "label": "Visual Studio Code" },
+      "expect": 0.8
+    },
+    {
+      "input": { "fn": "score", "query": "vsc", "label": "Visual Studio Code" },
+      "expect": 0.8,
+      "note": "initials"
+    },
+    {
+      "input": { "fn": "score", "query": "studio c", "label": "Visual Studio Code" },
+      "expect": 0.5,
+      "note": "substring"
+    },
+    {
+      "input": { "fn": "score", "query": "vscd", "label": "Visual Studio Code" },
+      "expect": 0.3,
+      "note": "in-order letters"
+    },
+    {
+      "input": { "fn": "score", "query": "zzz", "label": "Safari" },
+      "expect": 0
+    },
+    {
+      "input": { "fn": "words", "label": "VisualStudio Code" },
+      "expect": ["visual", "studio", "code"],
+      "note": "camelCase splits too"
+    },
+    {
+      "input": { "fn": "score", "query": "cafe", "label": "Café" },
+      "expect": 1,
+      "note": "accents fold"
+    },
+    {
+      "input": { "fn": "score", "query": "wifi", "label": "Network", "synonyms": ["wifi"] },
+      "expect": 0.95,
+      "note": "a synonym counts a little less than the label itself"
+    },
+    {
+      "input": { "fn": "hits", "query": "sa", "names": ["Safari", "Notes", "Calendar", "Reminders", "Screen Sharing", "System Settings", "Visual Studio Code"] },
+      "expect": ["Safari"],
+      "note": "short queries match like Spotlight: prefix, word start and initials only"
+    },
+    {
+      "input": { "fn": "hits", "query": "ss", "names": ["Safari", "Notes", "Calendar", "Reminders", "Screen Sharing", "System Settings", "Visual Studio Code"] },
+      "expect": ["Screen Sharing", "System Settings"],
+      "note": "initials, tied score keeps list order"
+    },
+    {
+      "input": { "fn": "hits", "query": "vsc", "names": ["Safari", "Notes", "Calendar", "Reminders", "Screen Sharing", "System Settings", "Visual Studio Code"] },
+      "expect": ["Visual Studio Code"],
+      "note": "initials, three letters"
+    },
+    {
+      "input": { "fn": "score", "query": "es", "label": "Notes" },
+      "expect": 0,
+      "note": "a substring under three letters is not a match"
+    },
+    {
+      "input": { "fn": "score", "query": "ote", "label": "Notes" },
+      "expect": 0.5,
+      "note": "three letters: substring counts"
+    },
+    {
+      "input": { "fn": "score", "query": "nts", "label": "Notes" },
+      "expect": 0.3,
+      "note": "three letters: in-order letters count, lowest tier"
+    }
+  ]
+}

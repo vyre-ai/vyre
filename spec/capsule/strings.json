@@ -1,0 +1,89 @@
+{
+  "v": 1,
+  "note": "Every user-visible line the Capsule shows, collected from Text(...) literals and message strings in local/capsule/native/Sources. Debug and log text (Suite.trace stderr lines, code comments) is excluded. A row with \"leaks\": true names an internal system word (vyred, switchboard, no such tool, a tool name) that a plain-wording pass should replace before shipping to the Windows panel or anyone outside the team.",
+  "strings": [
+    { "id": "hotkey.no_permission", "text": "Input Monitoring is off, so Control twice is off.", "where": "Sources/Host/HotkeyReport.swift", "leaks": false },
+    { "id": "hotkey.tap_failed", "text": "macOS would not let the Capsule listen for Control, so Control twice is off.", "where": "Sources/Host/HotkeyReport.swift", "leaks": false },
+    { "id": "hotkey.tap_disabled", "text": "macOS turned off the Capsule's Control listener and it could not be turned back on, so Control twice is off.", "where": "Sources/Host/HotkeyReport.swift", "leaks": false },
+    { "id": "hotkey.chip_still_works", "text": "{cause} {chord} still opens the Capsule.", "where": "Sources/Host/HotkeyReport.swift", "leaks": false, "note": "template; {chord} is a pretty-printed chord such as ⌥Space" },
+    { "id": "hotkey.no_other", "text": "{cause} No other hot key is set, so open the Capsule from the menu bar.", "where": "Sources/Host/HotkeyReport.swift", "leaks": false },
+
+    { "id": "chat.no_box", "text": "Vyre chat is on your box, and this Mac is not paired with one.", "where": "Sources/Host/AutoAsk.swift openInChat()", "leaks": false },
+    { "id": "gate.not_approved", "text": "Not approved. Nothing was done.", "where": "Sources/Host/CapsuleModel.swift", "leaks": false },
+    { "id": "search.nothing_named", "text": "Nothing called that in {name}.", "where": "Sources/Host/CapsuleModel.swift", "leaks": false, "note": "{name} is an extension's own label, e.g. Notes" },
+    { "id": "search.nothing_in_vyre", "text": "Nothing called that in Vyre yet.", "where": "Sources/Host/CapsuleModel.swift", "leaks": false },
+    { "id": "vyre.not_running_start", "text": "vyred is not running. Start Vyre: Return on an empty Capsule.", "where": "Sources/Host/CapsuleModel.swift, Sources/Vyred/Bridge.swift, Sources/Vyred/Stream.swift", "leaks": true, "leakWord": "vyred", "note": "the plain form should say \"Vyre is not running\", not the daemon's internal name" },
+    { "id": "followup.stopped_following", "text": "Stopped following. {agent} already has your message; its reply lands in its thread.", "where": "Sources/Host/CapsuleModel.swift", "leaks": false },
+    { "id": "undo.could_not", "text": "Could not take it back: {why}", "where": "Sources/Host/CapsuleModel.swift", "leaks": false },
+    { "id": "undo.too_late", "text": "Too late: {agent} already has it. Its reply shows here when its turn ends.", "where": "Sources/Host/CapsuleModel.swift", "leaks": false },
+    { "id": "thread.did_not_say", "text": "vyred did not say which thread it started.", "where": "Sources/Host/CapsuleModel.swift", "leaks": true, "leakWord": "vyred" },
+
+    { "id": "cli.no_cli_path", "text": "This vyred does not say where its CLI is (it needs a newer vyred).", "where": "Sources/Host/CommandRun.swift runCommand()", "leaks": true, "leakWord": "vyred" },
+    { "id": "cli.vyred_down", "text": "Start Vyre first: vyred is not running, so its commands cannot run.", "where": "Sources/Host/CommandRun.swift runCommand()", "leaks": true, "leakWord": "vyred" },
+    { "id": "cli.row.title", "text": "Run {command}", "where": "Sources/Host/CommandRun.swift commandRunItem()", "leaks": false },
+    { "id": "cli.row.subtitle", "text": "Runs here, as the CLI would, and shows what it says", "where": "Sources/Host/CommandRun.swift commandRunItem()", "leaks": false },
+    { "id": "cli.refused.capsule", "text": "This is the Capsule already. Its settings are in the menu bar mark.", "where": "Sources/Host/CommandRun.swift CLIRun.refused()", "leaks": false },
+    { "id": "cli.refused.voice_send", "text": "To talk to a session from here, pick it with @ and press Option-Return.", "where": "Sources/Host/CommandRun.swift CLIRun.refused()", "leaks": false },
+    { "id": "cli.error.vyred_down", "text": "vyred down", "where": "Sources/UI/CommandRunView.swift", "leaks": true, "leakWord": "vyred" },
+
+    { "id": "startvyre.not_found", "text": "The Capsule could not find the vyre command. Run vyre capsule once in Terminal, so it knows where Vyre is.", "where": "Sources/Host/StartVyre.swift", "leaks": false },
+    { "id": "startvyre.offline_hint_notrunning", "text": "vyred is not running on this Mac. Return starts it.", "where": "Sources/Host/StartVyre.swift", "leaks": true, "leakWord": "vyred" },
+    { "id": "startvyre.offline_hint_command", "text": "vyre {command} needs vyred, which is not running. Return starts it.", "where": "Sources/Host/StartVyre.swift", "leaks": true, "leakWord": "vyred" },
+
+    { "id": "credentials.no_vault_connect", "text": "This vyred cannot save keys from the Capsule yet (no vault.connect).", "where": "Sources/Host/Credentials.swift", "leaks": true, "leakWord": "vyred", "note": "also names the internal tool vault.connect" },
+    { "id": "credentials.not_saved", "text": "Not saved. {field} is still missing.", "where": "Sources/Host/Credentials.swift", "leaks": false },
+    { "id": "credentials.add_title", "text": "Add your {label}", "where": "Sources/UI/CredentialView.swift", "leaks": false },
+    { "id": "credentials.add_body", "text": "{Module} needs it. It goes straight into your vault, and only {module} may use it.", "where": "Sources/UI/CredentialView.swift", "leaks": false },
+    { "id": "credentials.saving", "text": "Saving in the vault", "where": "Sources/UI/CredentialView.swift", "leaks": false },
+
+    { "id": "presence.confirm_title", "text": "Confirm it's you", "where": "Sources/UI/PresenceView.swift", "leaks": false },
+
+    { "id": "menu.vyre_running", "text": "vyred is running", "where": "Sources/Host/MenuBarItem.swift", "leaks": true, "leakWord": "vyred" },
+    { "id": "menu.vyre_not_running", "text": "vyred is not running", "where": "Sources/Host/MenuBarItem.swift", "leaks": true, "leakWord": "vyred" },
+    { "id": "menu.title", "text": "Vyre", "where": "Sources/Host/MenuBarItem.swift", "leaks": false },
+
+    { "id": "desk.needs_you", "text": "Needs you · {count}", "where": "Sources/UI/AgentDeskView.swift", "leaks": false },
+    { "id": "desk.oldest_first", "text": "oldest first", "where": "Sources/UI/AgentDeskView.swift", "leaks": false },
+    { "id": "desk.click_hint", "text": "Click any line to change it. ⌘⏎ sends what you see. Esc goes back.", "where": "Sources/UI/AgentDeskView.swift", "leaks": false },
+    { "id": "desk.opening_draft", "text": "Opening the draft…", "where": "Sources/UI/AgentDeskView.swift", "leaks": false },
+    { "id": "desk.offline", "text": "Offline", "where": "Sources/UI/AgentDeskView.swift", "leaks": false },
+    { "id": "desk.offline_body_starting", "text": "Starting Vyre on this Mac…", "where": "Sources/UI/AgentDeskView.swift", "leaks": false },
+    { "id": "desk.offline_body_notrunning", "text": "vyred is not running on this Mac. Results here are from this Mac.", "where": "Sources/UI/AgentDeskView.swift", "leaks": true, "leakWord": "vyred" },
+
+    { "id": "answer.you", "text": "You", "where": "Sources/UI/CapsuleView.swift", "leaks": false },
+    { "id": "answer.vyre_iq", "text": "Vyre IQ", "where": "Sources/UI/CapsuleView.swift", "leaks": false },
+    { "id": "answer.earlier_count", "text": "{count} earlier", "where": "Sources/UI/CapsuleView.swift", "leaks": false },
+    { "id": "answer.said_ago", "text": "{who} said{age}", "where": "Sources/UI/CapsuleView.swift", "leaks": false },
+    { "id": "answer.noted_ago", "text": "noted{age}", "where": "Sources/UI/CapsuleView.swift", "leaks": false },
+    { "id": "answer.from_n_conversations_one", "text": "from 1 conversation", "where": "Sources/UI/CapsuleView.swift", "leaks": false },
+    { "id": "answer.from_n_conversations", "text": "from {n} conversations", "where": "Sources/UI/CapsuleView.swift", "leaks": false },
+    { "id": "answer.from_n_sessions_one", "text": "from 1 of your sessions", "where": "Sources/UI/CapsuleView.swift", "leaks": false },
+    { "id": "answer.from_n_sessions", "text": "from {n} of your sessions", "where": "Sources/UI/CapsuleView.swift", "leaks": false },
+    { "id": "answer.live_in_terminal", "text": "Live in terminal", "where": "Sources/UI/CapsuleView.swift", "leaks": false },
+
+    { "id": "reply.copy", "text": "Copy", "where": "Sources/UI/AgentReplyView.swift", "leaks": false },
+    { "id": "reply.deeper_sonnet", "text": "Deeper · sonnet", "where": "Sources/UI/AgentReplyView.swift", "leaks": false, "note": "a model name in a user-visible label; acceptable as a model chip, flagged for the plain-wording pass to confirm" },
+    { "id": "reply.type_to_follow_up", "text": "type to follow up", "where": "Sources/UI/AgentReplyView.swift", "leaks": false },
+
+    { "id": "direct.title", "text": "Direct", "where": "Sources/UI/AgentDirectView.swift", "leaks": false },
+    { "id": "direct.nothing_yet", "text": "Nothing with {agent} yet. What you send starts it.", "where": "Sources/UI/AgentDirectView.swift", "leaks": false },
+
+    { "id": "sight.reading_conversation", "text": "Reading the conversation", "where": "Sources/Extensions/sight/SessionPanel.swift", "leaks": false },
+    { "id": "sight.working", "text": "working", "where": "Sources/Extensions/sight/SessionPanel.swift", "leaks": false },
+    { "id": "sight.no_visible_text", "text": "No visible text", "where": "Sources/Extensions/sight/SightPanel.swift", "leaks": false },
+    { "id": "sight.no_voice_module", "text": "vyred has no voice module; it needs a vyred with local/voice", "where": "Sources/Extensions/sight/Talk.swift, Sources/Extensions/sight/SightExtension.swift", "leaks": true, "leakWord": "vyred", "note": "also names the internal path local/voice" },
+
+    { "id": "agent.no_assistant_here", "text": "There is no assistant on this vyred yet.", "where": "Sources/Agent/AgentDirect.swift, Sources/Agent/AgentDestinations.swift", "leaks": true, "leakWord": "vyred" },
+    { "id": "agent.no_such_agent", "text": "There is no agent called {agent}.", "where": "Sources/Agent/AgentDirect.swift", "leaks": false },
+    { "id": "agent.memory_no_assistant", "text": "Memory answered above. There is no assistant on this vyred to ask further.", "where": "Sources/Agent/AgentDestinations.swift", "leaks": true, "leakWord": "vyred" },
+    { "id": "agent.memory_nothing_no_assistant", "text": "Nothing in memory answers that yet, and there is no assistant on this vyred to ask.", "where": "Sources/Agent/AgentDestinations.swift", "leaks": true, "leakWord": "vyred" },
+    { "id": "agent.recall_nothing_to_send", "text": "Nothing to send to: there is no assistant on this vyred yet. Memory has answered what it can.", "where": "Sources/Agent/AgentDestinations.swift", "leaks": true, "leakWord": "vyred" },
+    { "id": "agent.no_switchboard", "text": "The assistant and agents come with the switchboard, which this vyred is not running yet.", "where": "Sources/Vyred/Bridge.swift", "leaks": true, "leakWord": "vyred and switchboard", "note": "two internal words in one line: switchboard is never a word the person should read" },
+    { "id": "agent.no_switchboard_threads", "text": "Driving a session needs the switchboard, which this vyred is not running yet.", "where": "Sources/Vyred/Bridge.swift", "leaks": true, "leakWord": "vyred and switchboard" },
+    { "id": "agent.no_gate", "text": "Holds come from the Gate, which this vyred is not running yet.", "where": "Sources/Vyred/Bridge.swift", "leaks": true, "leakWord": "vyred" },
+    { "id": "agent.lessons_no_learn", "text": "Lessons come from core/learn, which this vyred is not running.", "where": "Sources/Agent/AgentDesk.swift", "leaks": true, "leakWord": "vyred and core/learn" },
+
+    { "id": "vyred.stream_no_streams", "text": "This link to vyred has no streams.", "where": "Sources/Kit/Extension.swift", "leaks": true, "leakWord": "vyred" },
+    { "id": "apps.not_running", "text": "vyred is not running.", "where": "Sources/Extensions/apps/AppsExtension.swift", "leaks": true, "leakWord": "vyred" }
+  ]
+}
