@@ -26,7 +26,7 @@ import { classify, originOf } from "./floor-url.js";
 import { ACTING } from "./extension/shared/proto.js";
 import * as nativeHost from "./native-host/install.js";
 import { extensionIdFromKey, extensionIdFromPath } from "./native-host/install.js";
-import { callerKind, agentClaim } from "../../core/modules/index.js";
+import { callerKind, agentClaim } from "./caller.js";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 
@@ -124,7 +124,7 @@ export default {
     /** The pill must be up before Vyre acts in the person's browser, exactly as for the hands. A Mac without the hands module (Windows, a box) has none to show. */
     const indicator = async () => {
       const r = await ctx.call("hands.indicator", { app: "Chrome" });
-      if (r && r.error && r.error.code !== "unknown_tool" && r.error.code !== "not_found") throw Object.assign(new Error(r.error.message), { code: r.error.code || "no_indicator" });
+      if (r && r.error && r.error.code !== "unknown_tool" && r.error.code !== "no_such_tool" && r.error.code !== "not_found") throw Object.assign(new Error(r.error.message), { code: r.error.code || "no_indicator" });
     };
 
     let offered = false;
@@ -254,6 +254,8 @@ export default {
           return carry.interjection ? (isObj(res) ? { ...res, interjection: carry.interjection } : { result: res, interjection: carry.interjection }) : res;
         } catch (e) {
           const x = /** @type {any} */ (e);
+          // Another program already holds the socket (a second session): say that, not "not connected".
+          if (x && x.code === "no_extension" && listenError) x.message = `this session is not the one connected to Chrome (${listenError})`;
           acted(meta, agent, op, false, x && x.message ? String(x.message).replace(/^[a-z_]+: /, "") : "failed", summary);
           if (carry && /** @type {any} */ (carry).interjection && x && typeof x === "object") x.interjection = /** @type {any} */ (carry).interjection;
           throw wrapErr(x);
@@ -302,7 +304,9 @@ export default {
       heldActs.set(String(r.data.id), record);
       while (heldActs.size > 200) heldActs.delete(/** @type {string} */ (heldActs.keys().next().value));
       acted(meta, agent, op, true, "held for the person's approval", summary);
-      return { held: true, id: r.data.id, origin, fields: content.fields, why: "This sends something as the person. It waits for their approval at the Gate." };
+      return { held: true, id: r.data.id, origin, fields: content.fields, why: cfg.sendTool
+        ? `This sends something as the person, so it was not done. To do it, call ${cfg.sendTool} with this id; the person approves that call. It is refused if the page has changed since.`
+        : "This sends something as the person. It waits for their approval at the Gate." };
     }
 
     /** @param {string} name @param {string} description @param {any} input @param {(i: any, m: any) => Promise<any>} run @param {any} [extra] */

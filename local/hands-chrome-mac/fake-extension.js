@@ -27,7 +27,7 @@ export async function fakeExtension(sockPath, { hello = true, handler = () => ({
         send({ id: m.id, ok: true, result });
       } catch (e) {
         const x = /** @type {any} */ (e);
-        send({ id: m.id, ok: false, error: { code: x.code || "error", message: x.message || String(e) } });
+        send({ id: m.id, ok: false, error: { code: x.code || "error", message: x.message || String(e), ...(x.detail !== undefined ? { detail: x.detail } : {}) } });
       }
     }
   });
