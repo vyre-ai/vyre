@@ -16,6 +16,7 @@
 // as a flow that ends "failed" with what the command said, never as a wrong code.
 
 import crypto from "node:crypto";
+import fs from "node:fs";
 
 /** How each provider signs in. `bin`/`args` run as the account; `wantsPaste` logins read a code back on stdin. */
 export const LOGINS = /** @type {Record<string, { bin: string, args: string[], wantsPaste?: boolean }>} */ ({
@@ -24,12 +25,8 @@ export const LOGINS = /** @type {Record<string, { bin: string, args: string[], w
   claude: { bin: "claude", args: ["auth", "login"], wantsPaste: true },
 });
 
-/** Where a provider's sign-in page lives. A printed address on any other host is never shown to the person. */
-export const LOGIN_HOSTS = /** @type {Record<string, string[]>} */ ({
-  codex: ["openai.com", "chatgpt.com"],
-  grok: ["x.ai", "grok.com"],
-  claude: ["claude.ai", "claude.com", "anthropic.com"],
-});
+/** Where a provider's sign-in page lives (lib/providers/signin-hosts.json, shared with the setup page's own check). A printed address on any other host is never shown to the person. */
+export const LOGIN_HOSTS = /** @type {Record<string, string[]>} */ (JSON.parse(fs.readFileSync(new URL("../../lib/providers/signin-hosts.json", import.meta.url), "utf8")));
 const onHost = (url, hosts) => { try { if (/[\\\s\u0000-\u001f]/.test(url)) return false; /* a backslash reads differently in different clients */ const auth = /^https:\/\/([^/?#]*)/i.exec(url); if (!auth || auth[1].includes("@")) return false; /* @ before the path is a userinfo trick; in a query it is an email */ const u = new URL(url); return u.protocol === "https:" && !u.username && !u.password && hosts.some(h => u.hostname === h || u.hostname.endsWith("." + h)); } catch { return false; } };
 
 /** Is this address one a provider's sign-in may show? (exported for its table test) */
