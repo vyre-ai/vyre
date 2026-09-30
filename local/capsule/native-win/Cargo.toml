@@ -16,5 +16,9 @@ path = "src/lib.rs"
 
 [dependencies]
 url = "2"
+ed25519-dalek = "2"
+sha2 = "0.10"
+base64 = "0.22"
 
 [dev-dependencies]
+serde_json = "1"

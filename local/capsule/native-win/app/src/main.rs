@@ -18,6 +18,7 @@ use tauri_plugin_notification::NotificationExt;
 use tauri_plugin_opener::OpenerExt;
 use vyre_capsule_win::hotkey;
 use vyre_capsule_win::shell::Pinned;
+use vyre_capsule_win::update;
 
 /// The data-only signal native-core reads (C22). A value, never a callable host object.
 const SHELL_SIGNAL: &str = r#"Object.defineProperty(window, "__VYRE_SHELL__", { value: Object.freeze({ platform: "windows" }), writable: false, configurable: false });"#;
@@ -169,6 +170,40 @@ fn notify(app: AppHandle, title: String, body: String) -> Result<(), String> {
     app.notification().builder().title(title).body(body).show().map_err(|e| e.to_string())
 }
 
+const RELEASE_BASE: &str = "https://github.com/vyre-ai/vyre/releases/latest/download";
+
+fn fetch(url: &str, limit: u64) -> Result<Vec<u8>, String> {
+    use std::io::Read;
+    let mut buf = Vec::new();
+    ureq::get(url).call().map_err(|e| e.to_string())?.into_reader().take(limit).read_to_end(&mut buf).map_err(|e| e.to_string())?;
+    Ok(buf)
+}
+
+/// Download and run a newer installer, but only one the Vyre release key signed for. Unsigned,
+/// unlisted, hash-mismatched and not-newer all refuse; nothing is written until every check passes.
+fn check_update(app: &AppHandle) -> Result<Option<String>, String> {
+    let sums = fetch(&format!("{RELEASE_BASE}/SHA256SUMS"), 1 << 20)?;
+    let sig = String::from_utf8(fetch(&format!("{RELEASE_BASE}/SHA256SUMS.sig"), 4096)?).map_err(|_| "signature is not text")?;
+    let listed = update::verify_sums(&sums, &sig, update::RELEASE_KEY)?;
+    let Some((name, version)) = update::newer_installer(&listed, env!("CARGO_PKG_VERSION")) else { return Ok(None) };
+    let bytes = fetch(&format!("{RELEASE_BASE}/{name}"), 300 << 20)?;
+    update::check_file(&listed, &name, &bytes)?;
+    let path = std::env::temp_dir().join(&name);
+    std::fs::write(&path, &bytes).map_err(|e| e.to_string())?;
+    std::process::Command::new(&path).arg("/S").spawn().map_err(|e| e.to_string())?;
+    let _ = app.notification().builder().title("Vyre").body(format!("Updating to {version}.")).show();
+    app.exit(0);
+    Ok(Some(version))
+}
+
+/// Once at start, then daily. Failures are silent: the app keeps working on the version it has.
+fn spawn_update_loop(app: AppHandle) {
+    std::thread::spawn(move || loop {
+        let _ = check_update(&app);
+        std::thread::sleep(std::time::Duration::from_secs(24 * 3600));
+    });
+}
+
 fn main() {
     tauri::Builder::default()
         .plugin(tauri_plugin_global_shortcut::Builder::new().build())
@@ -200,6 +235,7 @@ fn main() {
 
             // Start in the tray; show the panel only when first-run is needed.
             if pinned(&handle).is_none() { show_first_run(&handle); }
+            spawn_update_loop(handle.clone());
             Ok(())
         })
         .run(tauri::generate_context!())

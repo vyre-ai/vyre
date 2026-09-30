@@ -2,13 +2,10 @@
 # self-update -- docs/design/windows-plan.md section 9, plans/windows.md sections 2-4). This is
 # what `$env:VYRE_CODE='...'; irm https://vyre.run/w | iex` runs (PLAN-setup-redo.md blocker B2).
 #
-# STATUS (2026-09-30, first draft, unwired): the verification LOGIC below is real and is the
-# actual fix for reviewer's W-B1 (the one BLOCKER on plans/windows.md) -- an unsigned installer.
-# What is NOT yet real: $ReleaseBase/$MinisignPublicKey are placeholders, no SignPath application
-# has been filed (plans/windows.md 6.4), and no minisign keypair or protected GitHub environment
-# exists yet (that's integrator's custodian decision, still open in CHAT.md). Do not point this at
-# a real release until those exist. Until then this script fails closed (see Get-VerifiedInstaller
-# below) rather than pretend to verify something unsigned.
+# STATUS (2026-09-30): the app ships unsigned for 0.2 (Authenticode later). This script checks the
+# installer's SHA-256 against the release SHA256SUMS and tells the person about "More info, then
+# Run anyway". Updates are verified by the app against the Vyre release key. Not yet pointed at a
+# real release: $ReleaseBase is still the default GitHub path.
 #
 # Env: VYRE_CODE (the single-use setup ticket, plans/windows.md section 3 "Pairing" -- read from
 # the environment or a prompt, NEVER written to a file or passed as an argv token per reviewer
@@ -46,22 +43,13 @@ function Test-ConstrainedLanguageMode {
     }
 }
 
-# --- W-B1 fix: verify before running anything -----------------------------------------------------
-# Downloads the installer, checks its SHA-256 against a published SHA256SUMS file (same pattern as
-# scripts/install-box.sh: "every downloaded file is checked ... a file without a line there, or
-# with a different hash, stops the install"), then checks a minisign signature over that SHA256SUMS
-# file itself, so the hash list can't be swapped along with the binary. The minisign public key is
-# embedded here AND published on the GitHub release, so a person can compare by hand (reviewer
-# W-B1's fix, plans/windows.md 6.4).
-#
-# NOT YET REAL: minisign has no native PowerShell/.NET implementation and Windows carries no
-# minisign binary by default, so this needs either a bundled minisign.exe (fetched and pinned by
-# its own hash, chicken-and-egg unless it ships inside THIS script's own signed release) or a
-# small Ed25519 verifier in pure .NET (System.Security.Cryptography doesn't have Ed25519 built in
-# before .NET 9; PowerShell 5.1's embedded CLR is older). Flagged as an open build question, not
-# guessed at here -- Verify-Minisign below throws until it's answered, so this script fails
-# closed rather than silently skip the check.
-$MinisignPublicKey = "RWTODO-not-a-real-key-see-plans-windows-md-6.4"
+# --- Install trust (user decision 2026-09-30: the app ships unsigned for 0.2) -----------------------
+# The first install is checked for damage, not for origin: the installer's SHA-256 must match its
+# line in the release SHA256SUMS, both fetched over https from the release. PowerShell 5.1 has no
+# Ed25519, so this script cannot verify SHA256SUMS.sig itself; the installed app does, on every
+# update (local/capsule/native-win/src/update.rs, the Vyre release key), and refuses anything
+# unsigned. Windows will show its "unrecognized app" warning because there is no Authenticode
+# signature yet, so the script says the one line the person needs first.
 
 function Verify-Sha256 {
     param([string]$Path, [string]$ExpectedHex)
@@ -71,16 +59,6 @@ function Verify-Sha256 {
     }
 }
 
-function Verify-Minisign {
-    param([string]$SumsPath, [string]$SigPath, [string]$PublicKey)
-    throw @"
-minisign verification is not implemented yet (see the comment above Verify-Minisign).
-This is a deliberate fail-closed stop, not a bug: shipping this script against a real release
-without this working would be exactly the unsigned-install-chain problem it exists to fix.
-Tracked in plans/windows.md 6.4/9; needs integrator's custodian decision first.
-"@
-}
-
 function Get-VerifiedInstaller {
     param([string]$ReleaseBase, [string]$Dest)
 
@@ -88,21 +66,18 @@ function Get-VerifiedInstaller {
         Write-Host "VYRE_SKIP_SIGCHECK=1: verification skipped. NEVER set this for a real install." -ForegroundColor Red
     }
 
+    Write-Host "Windows may say it does not recognize this app. Choose More info, then Run anyway."
+
     $exeUrl  = "$ReleaseBase/VyreSetup.exe"
     $sumsUrl = "$ReleaseBase/SHA256SUMS"
-    $sigUrl  = "$ReleaseBase/SHA256SUMS.minisig"
 
     $exePath  = Join-Path $Dest "VyreSetup.exe"
     $sumsPath = Join-Path $Dest "SHA256SUMS"
-    $sigPath  = Join-Path $Dest "SHA256SUMS.minisig"
 
     Invoke-WebRequest -Uri $exeUrl -OutFile $exePath -UseBasicParsing
     Invoke-WebRequest -Uri $sumsUrl -OutFile $sumsPath -UseBasicParsing
-    Invoke-WebRequest -Uri $sigUrl -OutFile $sigPath -UseBasicParsing
 
     if ($env:VYRE_SKIP_SIGCHECK -ne "1") {
-        Verify-Minisign -SumsPath $sumsPath -SigPath $sigPath -PublicKey $MinisignPublicKey
-
         $line = Get-Content $sumsPath | Where-Object { $_ -match "VyreSetup\.exe$" }
         if (-not $line) { throw "VyreSetup.exe has no line in SHA256SUMS; refusing to run it." }
         $expected = ($line -split '\s+')[0]

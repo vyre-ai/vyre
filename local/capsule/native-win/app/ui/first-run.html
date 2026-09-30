@@ -11,6 +11,7 @@
   p { color:var(--mut); margin:0 0 20px; }
   input { width:100%; box-sizing:border-box; padding:10px 12px; font:inherit; color:var(--fg); background:transparent; border:1px solid var(--line); border-radius:8px; }
   button { margin-top:12px; padding:10px 16px; font:inherit; color:var(--bg); background:var(--acc); border:0; border-radius:8px; cursor:pointer; }
+  .fine { font-size:13px; margin-top:24px; }
   #err { color:#b3402a; min-height:1.5em; margin-top:8px; }
 </style>
 <main>
@@ -19,5 +20,6 @@
   <input id="addr" placeholder="alex.vyre.run" autocomplete="off" autofocus>
   <button id="go">Connect</button>
   <div id="err" role="alert"></div>
+  <p class="fine">If Windows said it did not recognize this app, choose More info, then Run anyway.</p>
 </main>
 <script src="first-run.js"></script>

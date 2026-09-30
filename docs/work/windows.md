@@ -6,6 +6,11 @@ this round; verification leans on windows-latest CI.
 
 ## 0.2 status (2026-09-30, current - read this section first)
 
+**User decision 2026-09-30: unsigned for 0.2.** install-windows.ps1 now checks SHA-256 and says
+"More info, then Run anyway"; first-run says it too; the app's self-update (`src/update.rs`)
+verifies SHA256SUMS.sig with the Vyre release key (release.js scheme), the file hash, and refuses
+downgrades; fixture `tests/sums-vector.json` is checked by test/windows-sums-vector.test.js.
+
 **RESUMED 2026-09-30 (relaunch).** Merged origin/work/stage-0.2 into work/windows (a merge, not a
 rebase: 32 old commits, six conflicts, all union-resolved; win32 fresh default is role local,
 machine device). Docs and config tests pass locally. Scaffolded the Tauri shell in
