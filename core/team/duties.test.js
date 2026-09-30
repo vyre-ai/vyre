@@ -123,15 +123,3 @@ test("expect: turning a duty on with the text the person was shown starts it; an
   const on = await api.update(d.id, { enabled: true, expect: "Read the open issues and email the client." });
   assert.equal(on.started, true);
 });
-
-import { askedFor } from "./asked.js";
-test("askedFor: matches only on vault.said.match's yes, asks with the act's key, the thread and its lineage, and fails closed", async () => {
-  const seen = [];
-  const call = (answer) => async (tool, input) => { seen.push([tool, input]); return tool === "threads.lineage" ? { data: { lineage: ["p1"] } } : answer; };
-  assert.equal(await askedFor(call({ data: { matched: true, id: "s1" } }), { thread: "t1", agent: "kit" }, "team.retire:harlow/design"), true);
-  const m = seen.find(x => x[0] === "vault.said.match")[1];
-  assert.deepEqual([m.kind, m.via, m.to, m.consume, m.thread, m.lineage, m.agent], ["act_out", "team", ["team.retire:harlow/design"], true, "t1", ["p1"], "kit"]);
-  assert.equal(await askedFor(call({ data: { matched: false } }), { thread: "t1" }, "k"), false);
-  assert.equal(await askedFor(call({ error: { code: "locked" } }), { thread: "t1" }, "k"), false);
-  assert.equal(await askedFor(async () => { throw new Error("no vault"); }, { thread: "t1" }, "k"), false);
-});

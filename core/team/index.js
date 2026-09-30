@@ -28,7 +28,6 @@
 import fs from "node:fs";
 import path from "node:path";
 import crypto from "node:crypto";
-import { askedFor } from "./asked.js";
 import { boundedWait } from "./bounded.js";
 import { duties as makeDuties, DUTIES_MIGRATION, DUTIES_SEEN_MIGRATION } from "./duties.js";
 import { isPerson } from "../../lib/caller.js";
@@ -277,8 +276,6 @@ export default {
 
     /** Tool results unwrapped; an error becomes a throw with its message. */
     const dutyApi = makeDuties({ db, call: (tool, input) => ctx.call(tool, input), emit: (e, p) => ctx.events.emit(e, p) });
-    /** The person's own words asked for this act (a model, the assistant or a session acting for them); a person surface never needs it. */
-    const asked = (meta, key) => askedFor((tool, input) => ctx.call(tool, input), meta, key);
     const use = async (tool, input) => { const r = await ctx.call(tool, input); if (r.error) throw new Error(r.error.message); return r.data; };
 
     // ---------------------------------------------------------------- caller and project
@@ -860,9 +857,6 @@ export default {
           throw Object.assign(new Error("only a person retires the integrator"), { code: "denied" });
         const running = db.prepare("SELECT id FROM team_requests WHERE teammate = ? AND state = 'running'").get(tm.agent);
         if (running || tm.state === "running") throw Object.assign(new Error(`${tm.agent} is working on a request; wait for it, or stop its session first`), { code: "denied" });
-        // A session or the assistant retires only when the person's own words asked for it (P17).
-        if (!isPerson(meta.caller) && !(await asked(meta, `team.retire:${tm.project}/${tm.role}`)))
-          throw Object.assign(new Error(`team.retire runs for a session or the assistant only when the person's own words asked for it; tell the person what you would do`), { code: "not_asked" });
         const ran = db.prepare("SELECT COUNT(*) AS n FROM team_requests WHERE teammate = ? AND state IN ('done','failed','waiting')").get(tm.agent);
         const cancelled = db.prepare("SELECT id FROM team_requests WHERE teammate = ? AND state = 'queued'").all(tm.agent).map(r => String(r.id));
         const now = Date.now();
@@ -991,8 +985,6 @@ export default {
           const a = (!r.error && Array.isArray(r.data) ? r.data : []).find(x => x.name === String(i.agent));
           if (!a) throw Object.assign(new Error(`no agent ${i.agent}`), { code: "not_found" });
           if (a.kind === "assistant") throw Object.assign(new Error("the assistant works across every project already; it does not fill a role"), { code: "bad_input" });
-          if (!isPerson(meta.caller) && !(await asked(meta, `team.role.fill:${tm.project}/${tm.role}/${a.name}`)))
-            throw Object.assign(new Error(`team.role.fill runs for a session or the assistant only when the person's own words asked for it; tell the person what you would do`), { code: "not_asked" });
           const reaches = a.projects === "*" || (Array.isArray(a.projects) && a.projects.includes(tm.project));
           if (!reaches) {
             // The person, or the assistant acting on their words (TODO with the P17 gate: require gate.said.match for the assistant).
@@ -1003,8 +995,6 @@ export default {
           filler = a.name;
         }
         if ((tm.filler || null) === filler) return { agent: tm.agent, project: tm.project, role: tm.role, filler, unchanged: true };
-        if (!filler && !isPerson(meta.caller) && !(await asked(meta, `team.role.fill:${tm.project}/${tm.role}/default`)))
-          throw Object.assign(new Error(`team.role.fill runs for a session or the assistant only when the person's own words asked for it; tell the person what you would do`), { code: "not_asked" });
         // A different filler is a different character: the next request starts a fresh thread (notes and recent results carry over).
         setTeammate(tm.agent, { thread_charter: -1 });
         db.prepare("UPDATE team_teammates SET filler = ?, updated_at = ? WHERE agent = ?").run(filler, Date.now(), tm.agent);
@@ -1035,8 +1025,9 @@ export default {
       callers: CHARTER_CALLERS,
       run: async (i, meta = {}) => {
         const { tm, propose } = await dutyTarget(i, meta, { write: true });
-        // A person's surface starts it at once. A model's duty starts at once only when the person's own words asked for it (P17); otherwise it waits off as a proposal.
-        const start = !propose && (isPerson(meta.caller) || await asked(meta, `team.duties.create:${tm.project}/${tm.role}`));
+        // A person's surface starts it at once. A model's duty, the assistant's and a session's included, is always a proposal (off, no watcher):
+        // the person turns it on with one tap (team.duties.enable), because nothing they said can name a duty that does not exist yet.
+        const start = !propose && isPerson(meta.caller);
         return dutyApi.create(tm, { when: i.when, instruction: i.instruction, act: i.act, propose: !start, by: meta.agent || String(meta.caller || "vyre") });
       },
     });
@@ -1053,18 +1044,17 @@ export default {
       run: async (i, meta = {}) => {
         await dutyTarget(i, meta, { write: true, id: i.id });
         const { id, ...patch } = i;
-        // Turning on, or changing what a running duty does, starts code the person has not seen: a person's surface, or their own words (P17).
+        // Turning on, or changing what a running duty does, starts code the person has not seen: the person's own surface only (a tap on the card).
         const cur = dutyApi.get(id);
         const widens = patch.enabled === true || (cur.started && (patch.when !== undefined || patch.instruction !== undefined || patch.act !== undefined));
-        if (widens && !isPerson(meta.caller) && !(await asked(meta, `team.duties.update:${cur.teammate}/${id}`)))
-          throw Object.assign(new Error("turning a duty on, or changing one that is running, runs only when the person's own words asked for it"), { code: "not_asked" });
+        if (widens && !isPerson(meta.caller)) throw Object.assign(new Error("turning a duty on, or changing one that is running, is the person's own tap (team.duties.enable on the card)"), { code: "denied" });
         return dutyApi.update(id, patch);
       },
     });
     // A click on a person surface (Deck, CLI, Lumen, verified over the tailnet) IS the person asking: the one-tap enable a duty
     // card shows. Starting an unattended worker is the person's alone, so enable takes the person's own surfaces only: no module
     // (a third-party one could otherwise start a worker) and no thread or agent claim riding on one of them. A model asks through
-    // team.duties.update, which asks vault.said.match.
+    // team.duties.update, which keeps the same refusal.
     ctx.tool("team.duties.enable", {
       description: "Turn a duty on: the person's own tap. A proposed duty starts its watcher now; a paused one resumes. Person surfaces only (Deck, CLI, Lumen): no module, agent or session; those ask through team.duties.update, which keeps the gate.",
       input: { type: "object", required: ["id"], properties: { id: { type: "string" }, expect: { type: "string", description: "The instruction the person was shown; nothing starts if it has changed since." } } },
@@ -1093,6 +1083,26 @@ export default {
       input: { type: "object", required: ["id"], properties: { id: { type: "string" } } },
       callers: CHARTER_CALLERS,
       run: async (i, meta = {}) => { await dutyTarget(i, meta, { write: true, id: i.id }); return dutyApi.runNow(i.id); },
+    });
+
+    /**
+     * Registry only: what one call of an asked tool acts on, used as the whole `to` of the said-match (the way github.act.target
+     * answers for a pull request). team.retire: team.retire:<project>/<role>. team.role.fill:
+     * team.role.fill:<project>/<role>/<agent, or default>. The person's words name the role and the agent, never an id that does not exist yet.
+     */
+    ctx.tool("team.act.target", {
+      internal: true,
+      description: "Registry only: the destination an asked team call must be said for. Answers { to: [key] }.",
+      input: { type: "object", required: ["tool", "input"], properties: { tool: { type: "string" }, input: { type: "object" } } },
+      callers: ["module"],
+      run: async ({ tool, input }) => {
+        const i = input || {};
+        const tm = i.teammate ? byAgent(String(i.teammate)) : i.project && i.role ? byRole(String(i.project), String(i.role)) : null;
+        if (!tm || tm.retired_at) throw Object.assign(new Error("no such teammate"), { code: "not_found" });
+        if (tool === "team.retire") return { to: [`team.retire:${tm.project}/${tm.role}`] };
+        if (tool === "team.role.fill") return { to: [`team.role.fill:${tm.project}/${tm.role}/${i.agent ? String(i.agent) : "default"}`] };
+        throw Object.assign(new Error(`${tool} is not an asked team tool`), { code: "bad_input" });
+      },
     });
 
     ctx.tool("team.list", {

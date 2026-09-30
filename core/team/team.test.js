@@ -409,7 +409,7 @@ test("team.retire: a bare mcp caller is refused; a session in the project only w
   assert.equal(bare.error.code, "denied");
   const { session } = await realSession(root, tool, launches, project.slug);
   const viaSession = await call("team.retire", { teammate: `design-${project.slug}` }, { root, caller: "mcp", timeout: 20_000, session });
-  assert.equal(viaSession.error.code, "not_asked"); // nothing the person said matches, so a session cannot retire it
+  assert.equal(viaSession.error.code, "not_asked"); // the registry asks vault.said.match: nothing the person said matches, so a session cannot retire it
   assert.equal((await tool("team.list", { project: project.slug })).length, 1);
   const r = await tool("team.retire", { teammate: `design-${project.slug}` });
   assert.equal(r.retired, true);
@@ -522,7 +522,7 @@ test("team.duties: a session's duty is stored as a proposal (off, no watcher); o
   assert.equal(d.enabled, false);
   assert.equal(d.started, false);
   const on = await call("team.duties.update", { id: d.id, enabled: true }, { root, caller: "mcp", timeout: 20_000, session });
-  assert.equal(on.error.code, "not_asked");
+  assert.equal(on.error.code, "denied");
   const edit = await tool("team.duties.update", { id: d.id, instruction: "Read the open issues and goals." }, "mcp", { session });
   assert.equal(edit.enabled, false); // a proposal may still be edited
   // the person's tap: watchers here is the 0.1 module with no duty shape, so it refuses cleanly and the duty stays off
@@ -582,6 +582,13 @@ test("a vyre restart while a request is running fails it with a reason, frees th
   assert.match(stuck.result, /vyre restarted/);
   const next = await until(async () => { const r = await st("r_next0002"); return r && r.state === "done" ? r : null; }, "the queued request to run");
   assert.match(next.result, /second ok/);
+});
+
+test("team.act.target is internal: a person's surface cannot call it", async t => {
+  const { tool, raw, project } = await boot(t);
+  await tool("team.add", { project: project.slug, role: "design" });
+  const r = await raw("team.act.target", { tool: "team.retire", input: { project: project.slug, role: "design" } });
+  assert.ok(r.error);
 });
 
 // --- step 2: notes-changed enforcement and compaction re-injection ------------------------------
