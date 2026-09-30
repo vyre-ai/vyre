@@ -4,6 +4,46 @@ Scope: Windows support for Vyre. "Box" is retired for this work: Windows PCs and
 devices; the server is Linux only (including inside WSL2 on a Windows PC). No Windows hardware
 this round; verification leans on windows-latest CI.
 
+## 0.2 status (2026-09-30, current - read this section first)
+
+Everything below "## Done" through "## Changed contracts" is 0.1.x history (named-pipe device
+transport, socket ACL work, the Tier C module-shape draft). **Read it as background, not as the
+current design.** The full current plan, with a real architecture pivot mid-session, is
+`team/0.2/plans/windows.md` (outside this repo, in the team workspace) - this doc summarizes
+where the build itself stands; that file is the source of truth for design and review status.
+
+**The pivot**: Windows 0.2 drops the local `vyred`/named-pipe device entirely (no device-only
+tools exist yet to justify it). The app is now a thin Tauri shell (tray, hotkey, toast, autostart,
+update) hosting a WebView2 window that loads the real web app at the person's own server address
+directly - agreed with cohesion-2/native-core, reviewer-cleared (2 HIGH holds fixed, see the
+plan's "Review response, round 2"). The 0.1.2 pipe work below is NOT wasted - it's parked for a
+later, separate Windows Solo/Tier B piece (a Windows PC acting as the server), not part of this
+app.
+
+**Lead's GO (2026-09-30)**: build, not just plan. In progress this session:
+- `scripts/install-windows.ps1` - first draft of the signed-install/update chain (reviewer's
+  W-B1, the one BLOCKER on the plan). CLM/AppLocker detection (W-M2) and the SHA-256 check
+  against a published SHA256SUMS are real logic; the minisign verification step deliberately
+  **throws** (fails closed) because no minisign keypair, SignPath application, or protected
+  GitHub environment custodian exists yet (integrator's decision, still open in CHAT.md) - do NOT
+  point this at a real release until that's resolved. Autostart uses `schtasks`, matching the
+  0.1.2 Windows Solo design already in this doc's "Next" section below. Uninstall is only
+  partial (removes the scheduled task and install dir; the box-session-revoke and
+  protocol-key/Start-menu cleanup are TODO, flagged in the script itself).
+- `local/capsule/native-win/{Cargo.toml,src/lib.rs}` - description/doc comments updated to
+  describe the 0.2 shell shape (no local node) instead of the superseded 0.1.2 "Windows Capsule,
+  Tier C" framing. `hotkey.rs` itself is unchanged and still directly reusable - its
+  conflict-picker logic (Alt+Space default, Ctrl+Alt+Space/Alt+Shift+Space fallback) matches the
+  lead's 0.2 ruling exactly.
+- **Not yet started**: the actual `src-tauri/` Tauri app skeleton (window, WebView2 navigation
+  with the two-context IPC split, tray, capabilities.json), the WebView2 passkey spike with
+  native-core (plans/windows.md 6.1 - this is the plan's single biggest open risk, gates
+  presence/pairing), the Chrome native-messaging host (new 0.2 scope, section 9 of the plan -
+  gated on capsule-sight's runner spike, not started).
+- **No `cargo` in this session's sandbox** - nothing Rust has been locally built or tested this
+  round either; same "write it, let CI prove it" discipline as the original `hotkey.rs`
+  (`capsule-win.yml`, `windows-latest`).
+
 ## Done
 - Assessment: docs/design/windows-plan.md (inventory, tiers, sizes) and ADR 0037
   (docs/adr/0037-windows.md), approved by the lead: Tier A + B for 0.1.x, C + D for 0.2.

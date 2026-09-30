@@ -2,13 +2,14 @@
 name = "vyre-capsule-win"
 version = "0.1.0"
 edition = "2021"
-description = "The Windows Capsule shell (Tier C, docs/design/windows-plan.md section 9): a thin Tauri panel hosting Deck's existing web views. Not built yet; this crate starts with the one piece that needs a real decision before any UI goes up, the global hotkey's conflict handling."
+description = "The Windows app shell's host-independent logic (team/0.2/plans/windows.md sections 3-4): a thin Tauri wrapper (tray, hotkey, toast, autostart, update) around a WebView2 view of the ordinary web app at the person's own server -- no local vyred, no named pipe, per the 0.2 pivot. This crate starts with the one piece that needs a real decision before any UI goes up, the global hotkey's conflict handling."
 publish = false
 
-# The full Tauri app (tray, WebView2 panel, Windows Hello, Authenticode pin) is not scaffolded
-# yet; see docs/design/windows-plan.md section 9's Sequencing. This crate starts with `hotkey`,
-# a pure, host-independent module with no Tauri or Win32 dependency, so it builds and tests on
-# any platform (this Mac's cargo included) even though it only ever runs on win32 in the app.
+# The full Tauri app (tray, WebView2 navigation/capability wiring, Windows Hello/WebAuthn) is not
+# scaffolded yet; see team/0.2/plans/windows.md section 7 (build steps). This crate starts with
+# `hotkey`, a pure, host-independent module with no Tauri or Win32 dependency, so it builds and
+# tests on any platform (this Mac's cargo included) even though it only ever runs on win32 in the
+# app.
 [lib]
 name = "vyre_capsule_win"
 path = "src/lib.rs"
