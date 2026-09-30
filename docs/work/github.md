@@ -580,3 +580,11 @@ mcp.connect/oauth.js status have posted (both block the Next list below).
   config: reviewer's LOW). Tests in git.test.js and index.test.js.
 - reviewer-2 LOW on 622904e8: gh is resolved to an absolute path (config/VYRE_GH_BIN if absolute, else /usr/bin, /usr/local/bin, /opt/homebrew/bin, /bin, else a PATH folder the user cannot write); a planted gh in a writable PATH folder is never run.
 - reviewer-2 include.path bypass + lead ruling: no more per-key config scanning. pushSession now pushes from a fresh throwaway bare repo (alternates to the project's objects, one ref, git defaults, no template), token only there, folder deleted after. Test poisons origin/pushurl/insteadOf/http.*/include.path/credential/gitProxy and asserts the temp repo has none of it.
+- pr.open built (github.project.pr.open {project, title, session|head, base?, body?, draft?}): REST POST /pulls
+  with the recorded account, head from vyre/<session> (pushed first with github.session.push) or a named
+  branch. merge/review/open now declare reach: "asked" in module.json and requireAsked is deleted: the
+  registry refuses an agent's unasked call with not_asked (core/github/registry.test.js boots a real vyred).
+  Until vault's said-match wiring lands the registry refuses every model call to them (fail closed).
+- Hosted MCP: vault's githubServer row (c78e6f9d on work/vault-next, api.githubcopilot.com/mcp/, bearer from
+  github-<login>.token). Wiring mcp.add on connect (grant the item to mcp first) waits for that to reach
+  stage; pr.status/comments/issue reads are next.

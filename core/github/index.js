@@ -13,7 +13,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { connector } from "./connect.js";
 import { MIGRATIONS, store, projectStore, forOne } from "./accounts.js";
-import { prView, prMerge, prReview } from "./pr.js";
+import { prView, prMerge, prReview, prOpen } from "./pr.js";
 import { safeSegment, cloneRepo, worktreeAdd, worktreeRemove, originFullName, folderGitState, sanitizeRemoteUrl, defaultBranchOf, pushSession, localInit, sessionHistory, sessionUndo, sessionRedo } from "./git.js";
 
 const str = { type: "string" };
@@ -440,12 +440,8 @@ export default {
       const token = await ctx.vault.fetch(acct.item, { field: "token" });
       return { token, full_name: repo.full_name, login: acct.login };
     }
-    /** Outward writes: a person's own call always runs; an agent's only when the Gate marked it asked (meta.asked, from the person's own words). */
+    /** A model caller (an agent over MCP); the push's secret override needs the person's own words for it. */
     function isModelCaller(meta = {}) { return String(meta.caller || "").startsWith("mcp"); }
-    function requireAsked(tool, meta = {}) {
-      if (!isModelCaller(meta)) return;
-      if (!meta.asked) throw fail(`${tool} changes the pull request on GitHub, so it runs when you ask for it; ask and it will go`, "held");
-    }
     const prErr = (e, target) => {
       if (e && e.code === "token_invalid") ctx.events.emit("github.token-invalid", { name: target.account });
       return e;
@@ -462,26 +458,37 @@ export default {
     });
 
     ctx.tool("github.project.pr.merge", {
-      description: "Merge a pull request on the project's primary repo (merge, squash or rebase; default merge). Never deletes the branch. Outward: a person's own click runs it; an agent's call runs only when the person asked for it.",
+      description: "Merge a pull request on the project's primary repo (merge, squash or rebase; default merge). Never deletes the branch. Changes GitHub: reach is asked, so a person's own click runs it and an agent's call runs only when the person's own words asked for it.",
       input: obj({ project: str, pr: { type: "integer" }, method: str, thread: str }, ["project", "pr"]),
       callers: PEOPLE_AND_AGENTS,
-      run: async ({ project, pr, method }, meta = {}) => {
-        requireAsked("github.project.pr.merge", meta);
+      run: async ({ project, pr, method }) => {
         const t = await prTarget(project);
         try { return await prMerge({ ...t, pr, method }); } catch (e) { throw prErr(e, t); }
       },
     });
 
     ctx.tool("github.project.pr.review", {
-      description: "Review a pull request on the project's primary repo: event APPROVE, REQUEST_CHANGES or COMMENT with a body, or a reply to one review comment (in_reply_to). Outward: a person's own click runs it; an agent's call runs only when the person asked for it.",
+      description: "Review a pull request on the project's primary repo: event APPROVE, REQUEST_CHANGES or COMMENT with a body, or a reply to one review comment (in_reply_to). Changes GitHub: reach is asked, so a person's own click runs it and an agent's call runs only when the person's own words asked for it.",
       input: obj({ project: str, pr: { type: "integer" }, event: str, body: str, in_reply_to: { type: "integer" }, thread: str }, ["project", "pr", "event"]),
       callers: PEOPLE_AND_AGENTS,
-      run: async ({ project, pr, event, body, in_reply_to }, meta = {}) => {
-        requireAsked("github.project.pr.review", meta);
+      run: async ({ project, pr, event, body, in_reply_to }) => {
         const t = await prTarget(project);
         try { return await prReview({ ...t, pr, event, body, in_reply_to }); } catch (e) { throw prErr(e, t); }
       },
     });
+    ctx.tool("github.project.pr.open", {
+      description: "Open a pull request on the project's primary repo from a session's branch (session, pushed first with github.session.push) or any pushed branch (head), into base (default: the project's default branch). Needs a title; body and draft optional. Changes GitHub: reach is asked, so a person's own click runs it and an agent's call runs only when the person's own words asked for it.",
+      input: obj({ project: str, title: str, session: str, head: str, base: str, body: str, draft: { type: "boolean" }, thread: str }, ["project", "title"]),
+      callers: PEOPLE_AND_AGENTS,
+      run: async ({ project, title, session, head, base, body, draft }) => {
+        const t = await prTarget(project);
+        const repo = projects.get(project);
+        const from = session ? `vyre/${safeSegment(session, "session id")}` : named(head);
+        if (!from) throw fail("say which branch to open it from: a session, or head", "bad_input");
+        try { return await prOpen({ ...t, head: from, base: named(base) || repo.default_branch, title, body, draft }); } catch (e) { throw prErr(e, t); }
+      },
+    });
+
     ctx.tool("github.project.local-init", {
       description: "Give a project undo and per-session isolation with no GitHub: make its folder a git repo (main, one starting commit, no remote) so each session gets its own worktree and branch. A folder that already has commits is left exactly as it is. Secret-looking files (.env, keys) are kept out of the starting commit and listed in left_out. Refuses a folder that sits inside another repo. People, their agents, and projects/sessions when they create one.",
       input: obj({ project: str }, ["project"]),

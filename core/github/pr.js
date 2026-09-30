@@ -94,3 +94,18 @@ export async function prReview({ token, full_name, pr, event, body, in_reply_to 
   const r = await gh(token, "POST", `/repos/${full_name}/pulls/${n}/reviews`, { event, ...(text ? { body: text } : {}) });
   return { id: r.id, event, state: r.state, url: r.html_url };
 }
+
+/**
+ * Open a pull request from a pushed branch. `head` is the branch name on the repo itself (a
+ * session's vyre/<id> branch, pushed first with github.session.push); `base` defaults to the
+ * project's default branch. GitHub answers 422 when the branch isn't there yet, reported as refused.
+ */
+export async function prOpen({ token, full_name, head, base, title, body, draft }) {
+  const t = typeof title === "string" ? title.trim() : "";
+  if (!t || t.length > 256) throw err("a pull request needs a title of at most 256 characters", "bad_input");
+  if (!/^[A-Za-z0-9._\/-]{1,200}$/.test(String(head || "")) || String(head).startsWith("-") || String(head).includes("..")) throw err("head must be a branch name", "bad_input");
+  if (!/^[A-Za-z0-9._\/-]{1,200}$/.test(String(base || "")) || String(base).startsWith("-") || String(base).includes("..")) throw err("base must be a branch name", "bad_input");
+  if (head === base) throw err("head and base are the same branch", "bad_input");
+  const r = await gh(token, "POST", `/repos/${full_name}/pulls`, { title: t, head, base, ...(typeof body === "string" && body ? { body } : {}), ...(draft ? { draft: true } : {}) });
+  return { pr: r.number, url: r.html_url, state: r.state, draft: Boolean(r.draft), head, base };
+}

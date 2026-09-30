@@ -469,6 +469,7 @@ function fakePrApi(log, { mergeStatus = 200 } = {}) {
     if (p === "/repos/alex/app/issues/7/comments") return res(200, []);
     if (p === "/repos/alex/app/commits/abc/check-runs") return res(200, { check_runs: [{ name: "ci", status: "in_progress" }, { name: "lint", status: "completed", conclusion: "success" }, { name: "t", status: "completed", conclusion: "failure" }] });
     if (method === "PUT" && p === "/repos/alex/app/pulls/7/merge") return mergeStatus === 200 ? res(200, { merged: true, sha: "def", message: "ok" }) : res(mergeStatus, { message: "Pull Request is not mergeable" });
+    if (method === "POST" && p === "/repos/alex/app/pulls") return opts.body && JSON.parse(opts.body).head === "vyre/nopush" ? res(422, { message: "Validation Failed: head invalid" }) : res(201, { number: 12, html_url: "https://github.com/alex/app/pull/12", state: "open", draft: Boolean(JSON.parse(opts.body).draft) });
     if (method === "POST" && p === "/repos/alex/app/pulls/7/reviews") return res(200, { id: 9, state: "CHANGES_REQUESTED", html_url: "https://x" });
     if (method === "POST" && p === "/repos/alex/app/pulls/7/comments/5/replies") return res(201, { id: 10, html_url: "https://y" });
     return res(404, { message: "Not Found" });
@@ -496,12 +497,8 @@ test("github.project.pr.get: shapes the PR for the review card; outsiders are ma
   assert.deepEqual(d.comments.map(c => c.by), ["outside", "person"]);
 });
 
-test("github.project.pr.merge / .review: a person runs; an agent is held until asked; project is required to have a repo", async t => {
+test("github.project.pr.merge / .review: a person runs; a project without a repo is not_found (agents are held by reach: asked, see registry.test.js)", async t => {
   const w = await prWorld(t);
-  const agent = w.as("mcp:agent:kit");
-  const held = await agent("github.project.pr.merge", { project: "app", pr: 7 });
-  assert.equal(held.error.code, "held");
-  assert.equal(w.log.length, 0, "a held call never reaches GitHub");
   const m = await w.as("deck")("github.project.pr.merge", { project: "app", pr: 7, method: "squash" });
   assert.equal(m.data.merged, true);
   assert.deepEqual(w.log.at(-1).body, { merge_method: "squash" });
@@ -515,12 +512,27 @@ test("github.project.pr.merge / .review: a person runs; an agent is held until a
   assert.equal((await w.as("deck")("github.project.pr.merge", { project: "nope", pr: 7 })).error.code, "not_found");
 });
 
-test("github.project.pr.merge: GitHub's refusal is reported as refused; an asked agent call runs", async t => {
+test("github.project.pr.merge: GitHub's refusal is reported as refused; the tool itself runs for any allowed caller, since reach: asked is the registry's gate", async t => {
   const w = await prWorld(t, { mergeStatus: 405 });
   const r = await w.as("deck")("github.project.pr.merge", { project: "app", pr: 7 });
   assert.equal(r.error.code, "refused");
   const ok = await w.as("mcp:agent:kit", { asked: true })("github.project.pr.review", { project: "app", pr: 7, event: "APPROVE" });
   assert.equal(ok.data.id, 9, "an asked agent call reaches GitHub");
+});
+
+test("github.project.pr.open: opens from a session branch or a named head into the default branch; needs a title; a branch GitHub does not have is refused", async t => {
+  const w = await prWorld(t);
+  const r = await w.as("deck")("github.project.pr.open", { project: "app", session: "s1", title: "Add intake", body: "why", draft: true });
+  assert.deepEqual([r.data.pr, r.data.url, r.data.draft, r.data.head, r.data.base], [12, "https://github.com/alex/app/pull/12", true, "vyre/s1", "main"]);
+  assert.deepEqual(w.log.at(-1).body, { title: "Add intake", head: "vyre/s1", base: "main", body: "why", draft: true });
+  const named = await w.as("deck")("github.project.pr.open", { project: "app", head: "feature/x", base: "develop", title: "t" });
+  assert.equal(named.data.base, "develop");
+  assert.equal((await w.as("deck")("github.project.pr.open", { project: "app", session: "s1", title: "  " })).error.code, "bad_input");
+  assert.equal((await w.as("deck")("github.project.pr.open", { project: "app", title: "t" })).error.code, "bad_input", "no branch named");
+  assert.equal((await w.as("deck")("github.project.pr.open", { project: "app", head: "--upload-pack=x", title: "t" })).error.code, "bad_input");
+  assert.equal((await w.as("deck")("github.project.pr.open", { project: "app", head: "main", title: "t" })).error.code, "bad_input", "head equals base");
+  assert.equal((await w.as("deck")("github.project.pr.open", { project: "app", session: "nopush", title: "t" })).error.code, "refused");
+  assert.equal((await w.as("deck")("github.project.pr.open", { project: "nope", session: "s1", title: "t" })).error.code, "not_found");
 });
 
 test("github.project.local-init: an empty or plain folder becomes a repo whose sessions get worktrees; secrets stay out; an existing repo is untouched; a nested folder is refused", async t => {
