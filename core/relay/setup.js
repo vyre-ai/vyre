@@ -10,7 +10,7 @@
 // core/relay/index.js wires them to the database, the presence keys and the link.
 
 import crypto from "node:crypto";
-import { parseSetupCode, setupDerive, setupHelloOk, setupWords, SETUP_TTL } from "./wire.js";
+import { parseSetupCode, setupDerive, setupHelloOk, setupWords, setupFingerprint, setupClaimMessage, verifyP256, isP256Spki, CLAIM_TTL, SETUP_TTL } from "./wire.js";
 
 const sha = s => crypto.createHash("sha256").update(String(s)).digest();
 
@@ -22,7 +22,7 @@ const sha = s => crypto.createHash("sha256").update(String(s)).digest();
  */
 export const SETUP_TOOLS = Object.freeze(new Set([
   "relay.pair.ticket", "relay.setup.status",
-  "names.check", "names.claim", "names.domain.check", "link.health", "system.info", "onboard.machine",
+  "names.check", "names.claim", "names.domain.check", "relay.setup.claim-token", "link.health", "system.info", "onboard.machine",
 ]));
 /** The Tailscale tools the channel may call, by exact name: a later tool (logout, an auth key) is not exposed by being added. */
 export const SETUP_TOOL_FAMILIES = Object.freeze([/^network\.tailscale\.(login|status|peers)$/]);
@@ -69,6 +69,8 @@ export class SetupSession {
     this.state = "waiting";
     /** Whether the relay confirmed the offer (200). */
     this.registered = false;
+    /** @type {{ challenge: Buffer, exp: number, host: string } | null} the one live claim challenge */
+    this.claim = null;
     this.ended = false;
     this.onEnd = o.onEnd || (() => {});
     this.clearTimer = o.clearTimer || clearTimeout;
@@ -109,6 +111,43 @@ export class SetupSession {
     const ok = crypto.timingSafeEqual(sha(presented), this.secHash);
     if (ok) this.secUsed = true;
     return ok;
+  }
+
+  /**
+   * Make the claim challenge (B4): 32 random bytes, two minutes, for one address. A new one replaces
+   * the last, so at most one is live. Only the setup device's channel calls this.
+   * @param {string} host the address the claim will be made at
+   */
+  mintClaim(host) {
+    const h = String(host || "").toLowerCase();
+    if (!/^[a-z0-9]([a-z0-9.-]{0,251}[a-z0-9])?$/.test(h)) throw Object.assign(new Error("that is not an address"), { code: "bad_input" });
+    if (!this.live) throw Object.assign(new Error("this setup session has ended"), { code: "setup_over" });
+    const challenge = crypto.randomBytes(32);
+    this.claim = { challenge, exp: this.now() + CLAIM_TTL, host: h };
+    return { challenge: challenge.toString("base64url"), exp: this.claim.exp };
+  }
+
+  /**
+   * Check a claim token made at the address (B4). The challenge is burned by the first try, right or
+   * wrong. It must be live, made for this address (the request's own origin), signed by the page key
+   * the code names, over this box's route. One message for every refusal.
+   * @param {{ token: string, spki: string, route: string, origin: string }} o @returns {string} the address
+   */
+  takeClaim(o) {
+    const c = this.claim; this.claim = null;
+    const no = () => Object.assign(new Error("that claim is not valid"), { code: "denied" });
+    if (!c || !this.live || this.now() >= c.exp) throw no();
+    const raw = Buffer.from(String(o.token || ""), "base64url"), spki = Buffer.from(String(o.spki || ""), "base64url");
+    if (raw.length !== 96 || !isP256Spki(spki)) throw no();
+    const fp = setupFingerprint(spki);
+    if (fp.length !== this.fp.length || !crypto.timingSafeEqual(fp, this.fp)) throw no();
+    let originHost = "";
+    try { const u = new URL(String(o.origin || "")); if (u.protocol !== "https:") throw 0; originHost = u.hostname.toLowerCase(); } catch { throw no(); }
+    if (originHost !== c.host) throw no();
+    const challenge = raw.subarray(0, 32), sig = raw.subarray(32);
+    if (challenge.length !== c.challenge.length || !crypto.timingSafeEqual(challenge, c.challenge)) throw no();
+    if (!verifyP256(spki, setupClaimMessage(o.route, c.challenge, c.host), sig)) throw no();
+    return c.host;
   }
 
   /** Four check words for the box's static key and this code's secret (wire.js setupWords). @param {Buffer} boxPub */

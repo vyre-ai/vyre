@@ -100,6 +100,18 @@ export default {
       run: async () => presence.mintCode(),
     });
 
+    // The relay module's claim (relay.setup.claim) makes this after checking a signed claim token.
+    // Nothing else may: a grant enrols a passkey with no other proof.
+    ctx.tool("presence.grant.mint", {
+      internal: true,
+      description: "The one-time, five-minute grant that lets one browser enroll the first owner passkey. Only the relay module's checked claim makes it.",
+      input: obj({ peer: { type: ["object", "null"] } }),
+      run: async (input, meta = {}) => {
+        if (String((meta && meta.caller) || "") !== "module:relay") throw new Error("only a checked claim makes a grant");
+        return presence.mintGrant(input.peer || null);
+      },
+    });
+
     ctx.tool("presence.session.open", {
       description: "After one strong proof (Touch ID, the Capsule, a device key or a passkey), a secret that proves presence for revealing, copying, TOTP codes and sends at the Gate for 30 minutes, on this device only.",
       presence: { summary: async () => "Keep revealing and copying vault items for up to 30 minutes on this device" },

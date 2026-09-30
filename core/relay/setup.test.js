@@ -16,7 +16,7 @@ import { deviceSide } from "./channel.js";
 import * as wire from "./wire.js";
 import { WEB_DENY } from "./index.js";
 import { SetupSession, setupGate, setupToolAllowed, SETUP_TOOLS } from "./setup.js";
-import { createSetupKey, setupCode, setupHello, setupWords, resolveSetup, mailboxReader } from "../../relay/client/setup.js";
+import { createSetupKey, setupCode, setupHello, setupWords, resolveSetup, mailboxReader, claimToken } from "../../relay/client/setup.js";
 import { pairTicket } from "../../relay/client/client.js";
 import { nodeCrypto, fileKeyStore } from "../../relay/client/nodecrypto.js";
 import { fromBase64url } from "../../relay/client/bytes.js";
@@ -81,14 +81,14 @@ test("setup session: the pairing secret is burned once, and only by a hello that
 });
 
 test("setup session: the allowlist is exactly the plan's, and the extension point never takes pairing, presence or vault tools", () => {
-  for (const name of ["relay.pair.ticket", "relay.setup.status", "network.tailscale.login", "network.tailscale.status", "network.tailscale.peers", "names.check", "names.claim", "names.domain.check", "link.health", "system.info", "onboard.machine"]) {
+  for (const name of ["relay.pair.ticket", "relay.setup.status", "network.tailscale.login", "network.tailscale.status", "network.tailscale.peers", "names.check", "names.claim", "names.domain.check", "relay.setup.claim-token", "link.health", "system.info", "onboard.machine"]) {
     assert.equal(setupToolAllowed(name), true, name);
   }
   for (const name of ["network.tailscale.logout", "network.tailscale.authkey", "network.tailscale"]) assert.equal(setupToolAllowed(name), false, name);
   for (const name of ["relay.setup.end", "relay.setup.begin", "relay.pair.start", "relay.pair.first", "relay.devices.list", "relay.devices.trust", "presence.enroll", "presence.person.start", "vault.reveal", "names.recover", "names.release", "network.tailscalex", "network.tailscale.", "network.other", "threads.send", "system.exec", ""]) {
     assert.equal(setupToolAllowed(name), false, name);
   }
-  assert.deepEqual([...SETUP_TOOLS].sort(), ["link.health", "names.check", "names.claim", "names.domain.check", "onboard.machine", "relay.pair.ticket", "relay.setup.status", "system.info"]);
+  assert.deepEqual([...SETUP_TOOLS].sort(), ["link.health", "names.check", "names.claim", "names.domain.check", "onboard.machine", "relay.pair.ticket", "relay.setup.claim-token", "relay.setup.status", "system.info"]);
   assert.equal(setupToolAllowed("sessions.accounts.signin"), false, "nothing extra unless the registry lists it");
   assert.equal(setupToolAllowed("sessions.accounts.signin", ["sessions.accounts.signin"]), true);
   for (const bad of ["relay.pair.start", "presence.enroll", "vault.reveal"]) assert.equal(setupToolAllowed(bad, [bad]), false, `${bad} is never taken, even if listed`);
@@ -604,4 +604,77 @@ test("setup: an added module's setupTools is ignored, and a manifest listing a t
     assert.ok(validate({ name: "sessionsfx", version: "0.1.0", does: { tools: ["sessionsfx.accounts.signin"] }, setupTools: bad }, { firstParty: true }).some(p => /setupTools/.test(p)), JSON.stringify(bad));
   }
   assert.deepEqual(validate({ name: "sessionsfx", version: "0.1.0", does: { tools: ["sessionsfx.accounts.signin"] }, setupTools: ["sessionsfx.accounts.signin"] }, { firstParty: true }), []);
+});
+
+// ---- the claim token (B4) ----
+
+test("claim token: one challenge, burned by the first try, for one route, one address and the page's own key", async () => {
+  const c = clock();
+  const { code, key } = await newCode();
+  const s = new SetupSession({ code, now: c.now, setTimer: /** @type {any} */ (c.setTimer), clearTimer: /** @type {any} */ (c.clearTimer) });
+  const route = "r".repeat(26), origin = "https://alex.vyre.run";
+  const mint = async (host = "alex.vyre.run", k = key) => { const m = s.mintClaim(host); return { m, token: await claimToken({ privateKey: k.privateKey, route, challenge: m.challenge, host }), spki: Buffer.from(k.spki).toString("base64url") }; };
+  const take = (t, o = {}) => s.takeClaim({ token: t.token, spki: t.spki, route, origin, ...o });
+
+  let t = await mint();
+  assert.equal(take(t), "alex.vyre.run");
+  assert.throws(() => take(t), /not valid/, "a token works once");
+
+  t = await mint();
+  assert.throws(() => take(t, { origin: "https://evil.vyre.run" }), /not valid/, "another address");
+  assert.throws(() => take(t), /not valid/, "and the wrong try burned it");
+
+  t = await mint();
+  assert.throws(() => take(t, { origin: "http://alex.vyre.run" }), /not valid/, "not https");
+  t = await mint();
+  assert.throws(() => take(t, { route: "q".repeat(26) }), /not valid/, "another box");
+  t = await mint();
+  const other = await createSetupKey();
+  assert.throws(() => take({ token: t.token, spki: Buffer.from(other.spki).toString("base64url") }), /not valid/, "not the page key the code names");
+  const forged = await mint("alex.vyre.run", other);
+  assert.throws(() => take(forged), /not valid/, "signed by another key");
+  t = await mint();
+  assert.throws(() => take({ token: t.token.slice(0, -4) + "AAAA", spki: t.spki }), /not valid/, "a bad signature");
+  t = await mint();
+  c.advance(120_001);
+  assert.throws(() => take(t), /not valid/, "after two minutes");
+  const a = s.mintClaim("alex.vyre.run"), b = s.mintClaim("alex.vyre.run");
+  assert.notEqual(a.challenge, b.challenge, "a new challenge replaces the last");
+  assert.throws(() => s.mintClaim("bad host!"), { code: "bad_input" });
+  s.end("claimed");
+  assert.throws(() => s.mintClaim("alex.vyre.run"), { code: "setup_over" });
+});
+
+test("claim token: the page mints over its channel, the browser at the address claims once and gets one grant; a phone claims with a second token", async t => {
+  const w = await world(t);
+  const p = await page(w);
+  await p.begin();
+  const a = await p.connect();
+  const route = (await a.call("relay.setup.claim-token", { host: "alex.vyre.run" })).data;
+  assert.ok(route && route.challenge && route.route, "the setup channel can mint");
+  const spki = Buffer.from(p.key.spki).toString("base64url");
+  const token = await claimToken({ privateKey: p.key.privateKey, route: route.route, challenge: route.challenge, host: "alex.vyre.run" });
+  const at = { stableId: "n-laptop", node: "laptop", origin: "https://alex.vyre.run" };
+  const claim = (tok, caller = "tailnet:me@example.com", peer = at, sp = spki) => w.d.registry.call("relay.setup.claim", { token: tok, spki: sp }, caller, { peer });
+
+  for (const caller of ["cli", "tailnet-guest:sam@harlow.example", "mcp:agent:kit", "tailnet:agent:kit"]) assert.ok((await claim(token, caller)).error, `refused for ${caller}`);
+  // those refusals happened before the challenge was looked at, so it is still live
+  const r = await claim(token);
+  assert.equal(r.error, undefined, JSON.stringify(r.error));
+  assert.match(r.data.grant, /^[A-Za-z0-9_-]{43}$/);
+  assert.equal(r.data.rpId, "alex.vyre.run");
+  assert.ok((await claim(token)).error, "the token was burned");
+  assert.equal((await w.d.registry.call("relay.setup.status", {}, "cli")).data.state, "paired", "the session goes on until onboard ends it");
+
+  // the phone: another token for the same address, claimed from its own node
+  const again = (await a.call("relay.setup.claim-token", { host: "alex.vyre.run" })).data;
+  const token2 = await claimToken({ privateKey: p.key.privateKey, route: again.route, challenge: again.challenge, host: "alex.vyre.run" });
+  const phone = { stableId: "n-phone", node: "phone", origin: "https://alex.vyre.run" };
+  const r2 = await claim(token2, "tailnet:me@example.com", phone);
+  assert.match(r2.data.grant, /^[A-Za-z0-9_-]{43}$/);
+  assert.notEqual(r2.data.grant, r.data.grant);
+
+  // a code holder with no page key cannot mint; the claim tools are not in reach of a module that is not the presence one
+  assert.ok((await w.d.registry.call("relay.setup.claim-token", { host: "alex.vyre.run" }, "module:sneaky")).error);
+  assert.ok((await w.d.registry.call("presence.grant.mint", { peer: null }, "module:sneaky")).error, "only the relay module makes a grant");
 });

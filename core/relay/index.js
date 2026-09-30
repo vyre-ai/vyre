@@ -22,7 +22,7 @@ import { relayLink } from "./link.js";
 import { bridge } from "./bridge.js";
 import { pairUrl, parsePairUrl } from "./pairing.js";
 import { knownBuild, findRelease, newestRelease } from "./releases.js";
-import { agentClaim } from "../modules/index.js";
+import { agentClaim, ownerDevice } from "../modules/index.js";
 import { loadKeys } from "./keys.js";
 import { fingerprint8, toBase64url } from "../../lib/identity.js";
 import { redeem } from "./redeem.js";
@@ -863,6 +863,33 @@ export default {
       description: "Where the setup session is: none, waiting for the page, paired, or contested (another server used the code first), whether the relay holds the offer, whether the one pairing ticket is made, when the hour ends, and the four check words the page shows too.",
       input: obj(),
       run: async (_, meta = {}) => { owner(meta.caller, meta, "the setup status"); return setupStatus(); },
+    });
+
+    // The claim token (B4). The page mints a challenge over the setup channel, signs it with its key
+    // and carries the result to the address in the URL fragment; there, claim checks it and gives the
+    // browser one 5-minute grant for the first owner passkey. The setup ticket's phone claims the same
+    // way from a QR of the same link.
+    ctx.tool("relay.setup.claim-token", {
+      description: "Setup page only: a one-time challenge (two minutes) for a claim at the given address. The page signs it with its own key and puts the result in the link's fragment.",
+      input: obj({ host: str }, ["host"]),
+      run: async (input, meta = {}) => {
+        if (!setup || !setup.live || !setup.device || String(meta.caller || "") !== `device:${setup.device}`) throw fail("denied", "only this box's setup page can make a claim token");
+        return { ...setup.mintClaim(String(input.host || "")), route: route() };
+      },
+    });
+
+    ctx.tool("relay.setup.claim", {
+      description: "At the box's own address: check a claim token from the setup page and answer a one-time, five-minute grant for enrolling the first owner passkey from this browser. The challenge is burned by the first try.",
+      input: obj({ token: str, spki: str }, ["token", "spki"]),
+      run: async (input, meta = {}) => {
+        const c = String(meta.caller || "");
+        if (!(ownerDevice(c) && !agentClaim(c)) || (meta && meta.agent)) throw fail("denied", "a claim is made from the owner's own browser at the box's address");
+        if (!setup) throw fail("denied", "that claim is not valid");
+        const host = setup.takeClaim({ token: String(input.token || ""), spki: String(input.spki || ""), route: route(), origin: String((meta.peer && meta.peer.origin) || "") });
+        const r = /** @type {any} */ (await ctx.call("presence.grant.mint", { peer: meta.peer || null }));
+        if (!r || r.error || !r.data) throw fail("failed", "could not make the grant");
+        return { grant: r.data.grant, expires: r.data.expires, rpId: host };
+      },
     });
 
     // The route key's two calls for the names directory (core/names cannot import this module).

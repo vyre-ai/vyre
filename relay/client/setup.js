@@ -106,6 +106,21 @@ export async function setupWords(boxStatic, secret, o) {
   return [0, 1, 2, 3].map(i => WORDS[Math.floor(bits / 2 ** (37 - 11 * i)) % 2048]);
 }
 
+/**
+ * The claim token for the link's fragment (B4): the box's challenge and the page key's signature
+ * over "vyre-setup-claim\n" || route || "\n" || challenge || "\n" || host, so it is good for one
+ * box and one address only. base64url(challenge32 || sig64); it goes after "#claim=", never in a query.
+ * @param {{ privateKey: CryptoKey, route: string, challenge: string, host: string }} o
+ * @param {{ subtle?: SubtleCrypto }} [c]
+ */
+export async function claimToken(o, c) {
+  const subtle = getSubtle(c);
+  const challenge = fromBase64url(o.challenge);
+  const msg = concat(utf8(`vyre-setup-claim\n${o.route}\n`), challenge, utf8(`\n${String(o.host).toLowerCase()}`));
+  const sig = new Uint8Array(await subtle.sign({ name: "ECDSA", hash: "SHA-256" }, o.privateKey, msg));
+  return base64url(concat(challenge, sig));
+}
+
 /** What the mailbox reader signs: the page key over "vyre-setup-read\nloc\nts\nafter". @param {string} loc @param {number} ts @param {number} after */
 const readMessage = (loc, ts, after) => utf8(`${TAG.read}\n${loc}\n${ts}\n${after}`);
 
