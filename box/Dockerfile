@@ -60,6 +60,12 @@ RUN groupadd -g 1002 vyre-work \
 # service's OUTPUT rule in box/compose.yml).
 RUN mkdir -p /home/acct && chmod 0711 /home/acct \
  && for u in $(seq 2000 2063); do mkdir -m 0700 "/home/acct/$u" && chown "$u:$u" "/home/acct/$u"; done
+# Transcripts are not credentials: each account writes its own under /home/acct/.t/<uid> (0750,
+# group vyre-acct, which vyred belongs to; files 0640 by the spawner's umask), so vyred can read
+# them while a HOME stays 0700 and its tokens 0600. /home/acct stays 0711 so vyre can traverse.
+RUN groupadd -g 1003 vyre-acct && usermod -aG vyre-acct vyre \
+ && mkdir -m 0750 /home/acct/.t && chown 0:1003 /home/acct/.t \
+ && for u in $(seq 2000 2063); do mkdir -m 0750 "/home/acct/.t/$u" && chown "$u:1003" "/home/acct/.t/$u"; done
 
 # Everything .dockerignore lets through: package files, bin, core, harness, docs, LICENSE,
 # README.md, and deck, modules and local when they exist.
@@ -72,6 +78,7 @@ RUN if [ -f package-lock.json ]; then npm ci --omit=dev; else npm install --omit
 
 # node:sqlite is still flagged experimental in Node 22; the warning is noise in every log line.
 ENV VYRE_HOME=/home/vyre/.vyre \
+    VYRE_ACCOUNTS_HOME=/home/acct \
     VYRE_SUPERVISOR=docker \
     VYRE_SESSIONS_SDK_DIR=/opt/vyre-sessions-sdk \
     NODE_OPTIONS=--disable-warning=ExperimentalWarning
