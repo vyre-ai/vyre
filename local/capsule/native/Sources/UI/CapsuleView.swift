@@ -215,6 +215,19 @@ struct CapsuleView: View {
                       systemImage: q.delivered ? "checkmark.circle" : "clock")
                     .font(Theme.subtitle).foregroundColor(Theme.stone)
             }
+            // Vyre IQ's draft (C13 memory.draft): dimmed, with "Checking", until the answer replaces it.
+            if model.pending, model.replyText.isEmpty, let draft = model.iqDraft {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Checking").font(Theme.subtitle).foregroundColor(Theme.ash)
+                    Text(draft)
+                        .font(Theme.reply).foregroundColor(Theme.stone)
+                        .lineSpacing(Theme.lineGap(Tokens.TypeScale.read))
+                        .fixedSize(horizontal: false, vertical: true)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
+                .opacity(0.6)
+                .accessibilityLabel("Checking: \(draft)")
+            }
             if !model.replyText.isEmpty {
                 Text(markdown(model.shownReplyText))
                     .font(Theme.reply).foregroundColor(Theme.bone)
@@ -223,8 +236,19 @@ struct CapsuleView: View {
                     .fixedSize(horizontal: false, vertical: true)
                     .frame(maxWidth: .infinity, alignment: .leading)
             }
-            if let m = model.askedMemory, !model.replyText.isEmpty, !m.sources.isEmpty {
-                MemorySources(memory: m, expanded: $model.memoryExpanded, who: model.identities, assistant: model.assistantName)
+            if let m = model.askedMemory, !model.replyText.isEmpty, !m.sources.isEmpty || m.corrected {
+                MemorySources(memory: m, expanded: $model.memoryExpanded, who: model.identities, assistant: model.assistantName, openSource: { model.openSource($0) })
+            }
+            // Vyre IQ corrections (95b2b891): a quiet "Wrong?" line, its panel, or the last fix's Undo.
+            if model.reply?.finished == true, let id = model.iqAnswerId {
+                if let fixed = model.iqFixed {
+                    IQFixedLine(fix: fixed) { model.undoIQFix() }
+                } else if let c = model.iqCorrecting, c.answerId == id {
+                    IQCorrectPanel(state: c, onWrong: { model.correctIQ(action: "wrong") }, onForget: { model.correctIQ(action: "forget") },
+                                   onReplace: { model.correctIQ(action: "replace", object: $0) }, onCancel: { model.cancelIQCorrect() })
+                } else {
+                    IQWrongLine { model.openIQCorrect() }
+                }
             }
             if let r = model.reply, r.finished, let e = r.error, r.queued?.withdrawn != true {
                 Label(e == "stopped" ? "Stopped." : "Failed. \(e)", systemImage: "xmark.circle").font(Theme.subtitle).foregroundColor(Theme.stone)
@@ -244,6 +268,8 @@ struct CapsuleView: View {
     }
 
     private var replyState: String {
+        // Vyre IQ streaming (memory.thinking): the stage in words while memory.ask is out.
+        if model.pending, let stage = model.iqStage { return stage }
         if model.pending { return "starting" }
         guard let r = model.reply else { return "" }
         if let q = r.queued, !q.delivered, !r.finished { return "queued" }
@@ -682,31 +708,45 @@ struct MemoryLine: View {
     }
 }
 
-/// Under an answer that used memory: "from 2 of your sessions", which unfolds into where.
+/// Under an answer that used memory: "from 2 of your sessions", which unfolds into where. A Vyre
+/// IQ answer (memory.iq) instead keeps the confidence line and shows up to three source chips,
+/// ⌘1..⌘3, each opening that turn in Vyre (capsule.md); "you corrected this" and no chips when
+/// via was "corrected" (its "fix:<n>" source is provenance, never a chip).
 struct MemorySources: View {
     let memory: MemoryAnswer
     @Binding var expanded: Bool
     var who = Identities()
     /// The assistant's name, for its mark when there is no fingerprint.
     var assistant: String? = nil
+    var openSource: (Int) -> Void = { _ in }
     var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            // A source chip (capsule.md): 28 tall, radius 14, 1 px ruleStrong, 13/18 text2.
-            HStack(spacing: 6) {
-                let n = memory.conversationCount
-                // Vyre IQ's chip wears the assistant's mark: the answer is its own reading.
-                if memory.iq { AvatarView(who.assistant(assistant), size: 14) }
-                Text(memory.iq ? IQAnswer.chip(memory) : n == 1 ? "from 1 of your sessions" : "from \(n) of your sessions")
-                Image(systemName: expanded ? "chevron.down" : "chevron.right").imageScale(.small).foregroundColor(Theme.ash)
+        if memory.iq {
+            VStack(alignment: .leading, spacing: 6) {
+                // Vyre IQ's line wears the assistant's mark: the answer is its own reading.
+                HStack(spacing: 6) {
+                    AvatarView(who.assistant(assistant), size: 14)
+                    Text(IQAnswer.chip(memory))
+                }
+                .font(Theme.title).foregroundColor(Theme.stone)
+                if memory.corrected { IQCorrectedLine() } else if !memory.sources.isEmpty { IQSourceChips(memory: memory, open: openSource) }
             }
-            .font(Theme.title).foregroundColor(Theme.stone)
-            .padding(.horizontal, 10).frame(height: 28)
-            .fixedSize()
-            .overlay(Capsule().strokeBorder(Theme.ruleStrong, lineWidth: 1))
-            .contentShape(Capsule())
-            .onTapGesture { withAnimation(.easeOut(duration: 0.14)) { expanded.toggle() } }
-            .accessibilityAddTraits(.isButton)
-            if expanded { SourceList(memory: memory, who: who) }
+        } else {
+            VStack(alignment: .leading, spacing: 6) {
+                // A source chip (capsule.md): 28 tall, radius 14, 1 px ruleStrong, 13/18 text2.
+                HStack(spacing: 6) {
+                    let n = memory.conversationCount
+                    Text(n == 1 ? "from 1 of your sessions" : "from \(n) of your sessions")
+                    Image(systemName: expanded ? "chevron.down" : "chevron.right").imageScale(.small).foregroundColor(Theme.ash)
+                }
+                .font(Theme.title).foregroundColor(Theme.stone)
+                .padding(.horizontal, 10).frame(height: 28)
+                .fixedSize()
+                .overlay(Capsule().strokeBorder(Theme.ruleStrong, lineWidth: 1))
+                .contentShape(Capsule())
+                .onTapGesture { withAnimation(.easeOut(duration: 0.14)) { expanded.toggle() } }
+                .accessibilityAddTraits(.isButton)
+                if expanded { SourceList(memory: memory, who: who) }
+            }
         }
     }
 }
