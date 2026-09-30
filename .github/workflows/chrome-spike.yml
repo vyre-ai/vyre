@@ -16,6 +16,9 @@ on:
     paths:
       - local/hands-chrome-mac/spike/**
       - local/hands-chrome-mac/bench/**
+      - local/hands-chrome-mac/extension/**
+      - local/hands-chrome-mac/native-host/**
+      - local/hands-chrome-mac/bridge.js
       - .github/workflows/chrome-spike.yml
 permissions:
   contents: read
@@ -50,6 +53,10 @@ jobs:
         id: bench
         continue-on-error: true
         run: node local/hands-chrome-mac/bench/chrome-bench.mjs --direct-cdp --iters 30 --out "results/bench-${{ runner.os }}.json"
+      - name: Real extension, native host and bridge (the bench through the product)
+        id: real
+        continue-on-error: true
+        run: node local/hands-chrome-mac/spike/harness/real.mjs --iters 30 --out "results/real-${{ runner.os }}.json"
       - name: Results
         if: always()
         run: |
@@ -62,5 +69,5 @@ jobs:
           path: results/*.json
           if-no-files-found: warn
       - name: Fail the job if a step failed
-        if: steps.spike.outcome == 'failure' || steps.bench.outcome == 'failure'
+        if: steps.spike.outcome == 'failure' || steps.bench.outcome == 'failure' || steps.real.outcome == 'failure'
         run: exit 1

@@ -154,6 +154,21 @@ export default {
       return { id: args.tabId, closed: true };
     },
 
+    // The debugger attach is normally invisible (every op attaches on first use and keeps it). These
+    // two exist so its cost can be measured and so a person or a test can release a tab explicitly.
+    "tabs.attach": async (args, ctx) => {
+      if (typeof args.tabId !== "number") throw err("bad_request", "tabs.attach needs a tabId");
+      const t0 = Date.now();
+      await ctx.cdp.attach(args.tabId);
+      return { id: args.tabId, attached: true, ms: Date.now() - t0 };
+    },
+
+    "tabs.detach": async (args, ctx) => {
+      if (typeof args.tabId !== "number") throw err("bad_request", "tabs.detach needs a tabId");
+      await ctx.cdp.detach(args.tabId);
+      return { id: args.tabId, attached: false };
+    },
+
     "tabs.navigate": async (args, ctx) => {
       if (typeof args.url !== "string" || !args.url) throw err("bad_request", "tabs.navigate needs a url");
       let id = args.tabId;

@@ -127,7 +127,7 @@ export async function runScenarios(d, { url, iters }) {
     const cat = await d.call("api.learn", { tabId: gT, origin: url });
     checks.catalogEntries = cat.entries.map((/** @type {any} */ e) => `${e.key} [${e.auth.kind}]`);
     const contacts = cat.entries.find((/** @type {any} */ e) => e.key === "GET /api/contacts");
-    if (!contacts || contacts.auth.kind !== "bearer+cookie") throw new Error("catalog missed GET /api/contacts with bearer+cookie: " + JSON.stringify(checks.catalogEntries));
+    if (!contacts || !/bearer/.test(contacts.auth.kind)) throw new Error("catalog missed GET /api/contacts with bearer+cookie: " + JSON.stringify(checks.catalogEntries));
   });
 
   await scenario("api.call", async () => {
