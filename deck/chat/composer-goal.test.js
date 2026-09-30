@@ -80,7 +80,7 @@ test("picking /goal from the palette with no words starts with an empty title", 
   enter(c);
   assert.equal(text($(c.el, ".composer-kind")), "Goal");
   // "Set goal" is disabled until a title exists.
-  const go = $$(c.el, "button").find(b => text(b).replace(/(⌘|Ctrl)⏎/, "").trim() === "Set goal");
+  const go = $$(c.el, "button").find(b => text(b).replace(/(⌘⏎|Ctrl\+Enter)$/, "").trim() === "Set goal");
   assert.equal(go?.disabled, true);
   c.stop();
 });
