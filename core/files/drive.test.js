@@ -13,7 +13,7 @@ import { Registry, discover } from "../modules/index.js";
 import { open } from "../store/index.js";
 import { Events } from "../events/index.js";
 import * as config from "../config/index.js";
-import { tempHome, writeModule } from "../../test/helpers.js";
+import { tempHome, writeModule, removeHome } from "../../test/helpers.js";
 import { SCRATCH } from "../../test/scratch.mjs";
 import { uncFor, mapArgs, unmapArgs, parseNetUse, freeLetter, explainNetUse } from "./drive-windows.js";
 import { installFakeReach, clearFakeReach } from "../../test/fixtures/fake-reach.js";
@@ -43,7 +43,7 @@ function stoppers(t) {
 function tmp(t, prefix = "vyre-drive-") {
   stoppers(t);
   const dir = fs.mkdtempSync(path.join(SCRATCH, prefix));
-  t.after(() => fs.rmSync(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 }));
+  t.after(() => removeHome(dir));
   return dir;
 }
 

@@ -61,9 +61,32 @@ export function tempHome(t, { stop } = {}) {
     await stopDaemon(dir);
     // Retried: on a busy hosted runner a late write from a just-stopped child (a fake binary's log) can land while the
     // folder is being removed, which is ENOTEMPTY (files.drive.search, stage run 36772688407); a second pass removes it.
-    fs.rmSync(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
+    removeHome(dir);
   });
   return dir;
+}
+
+/**
+ * Remove a temp home, retrying; if it still will not go, say what is left in it (names only, never contents), so a
+ * recurring ENOTEMPTY names the late writer and the cause can be fixed instead of retried forever.
+ * @param {string} dir
+ */
+export function removeHome(dir) {
+  try { fs.rmSync(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 }); }
+  catch (e) {
+    const left = [];
+    const walk = (d, depth = 0) => {
+      let names = [];
+      try { names = fs.readdirSync(d, { withFileTypes: true }); } catch { return; }
+      for (const n of names) {
+        if (left.length >= 40) return;
+        left.push(path.relative(dir, path.join(d, n.name)) + (n.isDirectory() ? "/" : ""));
+        if (n.isDirectory() && depth < 3) walk(path.join(d, n.name), depth + 1);
+      }
+    };
+    walk(dir);
+    throw Object.assign(new Error(`${/** @type {Error} */ (e).message}; left in ${path.basename(dir)}: ${left.join(", ") || "(nothing now)"}`), { code: /** @type {any} */ (e).code });
+  }
 }
 
 /**
