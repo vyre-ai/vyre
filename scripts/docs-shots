@@ -506,7 +506,8 @@ try {
         } else if (step === "name" && !shot) {
           await page.run(`click("#primary"); await until('/switch to/i.test(document.querySelector("#primary").innerText)', 30000);`);
         } else if (step === "devices") {
-          // Open Vyre: onboard.finish, then the ending screen.
+          // Continue to the last step (the tour of Lumen), then Open Vyre there: onboard.finish, then the ending screen.
+          await page.run(`click("#primary"); await until('location.hash === "#capsule"', 20000); await wait(800);`);
           await page.run(`click("#primary"); await until('document.querySelector(".ob-end")', 20000); await wait(1500);`);
           continue;
         } else if (step === "ready") break;

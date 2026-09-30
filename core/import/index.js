@@ -17,8 +17,8 @@ import { scan } from "./scan.js";
 import { agentHomes, formatFor } from "./formats/index.js";
 import { folderName } from "./formats/shared.js";
 
-/** Only the person's own surfaces read what is on their disk. */
-const PEOPLE = ["cli", "local", "deck", "capsule"];
+/** Only the person's own surfaces read what is on their disk. "onboard" is the onboarding page on the machine's own loopback, reached only with the one-time link the person was given: its history step is this module's first screen. */
+const PEOPLE = ["cli", "local", "deck", "capsule", "onboard"];
 /** A plan is kept this long for its confirm screen. */
 const PLAN_TTL_MS = 30 * 60_000;
 /** A Vyre folder: the repo or one of its worktrees (the same rule as memory's source trust). */
