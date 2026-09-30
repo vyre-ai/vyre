@@ -99,7 +99,10 @@ export const guardInstall = `(() => {
   const blocked = [];
   // chrome.eval sets __vyreWrites: a script may read with the page's login but not write with it. A write goes through api.call, which is asked first.
   const writes = window.__vyreWrites === true;
-  const hold = (m, u, b) => { const c = classifySend(m, u, b); if (writes && !c.send && !/^(GET|HEAD|OPTIONS)$/i.test(String(m))) { blocked.push({ method: String(m).toUpperCase(), url: String(u), why: "write", write: true }); return true; } if (c.send) { blocked.push({ method: String(m).toUpperCase(), url: String(u), why: c.why }); return true; } return false; };
+  // A second layer beside the browser-level guard: a script run under the guard may only reach origins it was given (this page's and what the page already talks to).
+  const allow = Array.isArray(window.__vyreAllow) ? window.__vyreAllow : null;
+  const outsider = u => { if (!allow) return ""; try { const x = new URL(String(u), location.href); if (!/^https?:$/.test(x.protocol)) return ""; return x.origin === location.origin || allow.includes(x.origin) ? "" : x.origin; } catch { return ""; } };
+  const hold = (m, u, b) => { const out = outsider(u); if (out) { blocked.push({ method: String(m).toUpperCase(), url: String(u), why: "the script tried to reach " + out + ", which is not this page or anything it already talks to" }); return true; } const c = classifySend(m, u, b); if (writes && !c.send && !/^(GET|HEAD|OPTIONS)$/i.test(String(m))) { blocked.push({ method: String(m).toUpperCase(), url: String(u), why: "write", write: true }); return true; } if (c.send) { blocked.push({ method: String(m).toUpperCase(), url: String(u), why: c.why }); return true; } return false; };
   const of = window.fetch, xo = XMLHttpRequest.prototype.open, xs = XMLHttpRequest.prototype.send, sb = navigator.sendBeacon;
   window.fetch = function (i, o) {
     const m = (o && o.method) || (i && i.method) || "GET", u = (i && i.url) || i;

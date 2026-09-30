@@ -366,9 +366,9 @@ test("failures say which frame they looked in, the page snippet comes from that 
 test("eval: `frame` picks where the script runs (index, id or a piece of the origin); the guard shim goes in and comes out of that same frame", async () => {
   /** @type {any[]} */ const seen = [];
   const w = await world({ userEval: (/** @type {string} */ id, /** @type {string} */ expr) => {
-    seen.push([id, expr === passwordFieldScript ? "password" : (expr === guardInstall || expr === guardInstallWrites) ? "install" : expr === guardCollect ? "collect" : expr]);
+    seen.push([id, expr === passwordFieldScript ? "password" : (expr === guardInstall || String(expr).endsWith(guardInstallWrites)) ? "install" : expr === guardCollect ? "collect" : expr]);
     if (expr === passwordFieldScript) return { result: { type: "boolean", value: false } };
-    if (expr === guardInstall || expr === guardInstallWrites) return { result: { type: "boolean", value: true } };
+    if (expr === guardInstall || String(expr).endsWith(guardInstallWrites)) return { result: { type: "boolean", value: true } };
     if (expr === guardCollect) return { result: { type: "object", value: [] } };
     return { result: { type: "string", value: "ran in " + id } };
   } });
@@ -451,18 +451,18 @@ test("page.eval (the op chrome_eval calls): a script's write with the page's log
   const w = await world({ userEval: (/** @type {string} */ _id, /** @type {string} */ expr) => {
     ran.push(expr);
     if (expr === passwordFieldScript) return { result: { type: "boolean", value: false } };
-    if (expr === guardInstallWrites) return { result: { type: "boolean", value: true } };
+    if (String(expr).endsWith(guardInstallWrites)) return { result: { type: "boolean", value: true } };
     if (expr === guardCollect) return { result: { type: "object", value: [{ method: "POST", url: "https://backend.example.com/workflow/w1?token=SECRETSECRETSECRET12", why: "write", write: true }] } };
     return { result: { type: "string", value: "done" } };
   } });
   await assert.rejects(dispatchT("page.eval", { tabId: 1, expression: "fetch('https://backend.example.com/workflow/w1',{method:'POST'})" }, w.ctx), (/** @type {any} */ e) => e.code === "blocked" && /POST/.test(e.message) && /api\.call/.test(e.message) && !/SECRETSECRET/.test(e.message));
-  assert.ok(ran.includes(guardInstallWrites), "the write guard is what was installed");
+  assert.ok(ran.some(e => String(e).endsWith(guardInstallWrites)), "the write guard is what was installed");
   ran.length = 0;
   for (const expression of ["indexedDB.open('firebaseLocalStorageDb')", "x.stsTokenManager.accessToken", "document.cookie"]) {
     await assert.rejects(dispatchT("page.eval", { tabId: 1, expression }, w.ctx), (/** @type {any} */ e) => e.code === "blocked" && /chrome_api/.test(e.message), expression);
   }
   assert.ok(!ran.some(e => /firebaseLocalStorageDb|stsTokenManager|document\.cookie/.test(e)), "a script that opens the stored login is refused before it runs");
-  assert.ok(!ran.includes(guardInstallWrites), "and before the guard is even installed");
+  assert.ok(!ran.some(e => String(e).endsWith(guardInstallWrites)), "and before the guard is even installed");
 });
 
 test("act: a mouseMoved is never awaited, on the top session either (a macOS runner never acknowledged it: 5005 ms)", async () => {

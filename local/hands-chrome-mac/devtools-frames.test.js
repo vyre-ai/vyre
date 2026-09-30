@@ -158,7 +158,7 @@ test("egress guard: a fetch to a fresh origin from inside a child is held, its o
   const k = world();
   k.respond["Runtime.evaluate"] = (/** @type {any} */ p, /** @type {number} */ _t, /** @type {string|undefined} */ session) => {
     const x = String(p.expression);
-    if (x === guardInstallWrites) return { result: { value: true } };
+    if (String(x).endsWith(guardInstallWrites)) return { result: { value: true } };
     if (x === guardCollect) return { result: { value: [] } };
     if (x.includes("querySelectorAll('iframe, frame')")) return { result: { value: [] } };
     if (x.includes("getEntriesByType")) return { result: { value: session === "S-APP" ? [APP_API + "/known"] : [] } };
@@ -179,7 +179,7 @@ test("egress guard: a fetch to a fresh origin from inside a child is held, its o
   for (const s of [undefined, "S-APP", "S-INNER"]) assert.ok(k.sent.some(x => x.method === "Fetch.enable" && x.session === s), `Fetch on for ${s || "top"}`);
   for (const s of [undefined, "S-APP", "S-INNER"]) assert.ok(k.sent.some(x => x.method === "Fetch.disable" && x.session === s), `Fetch restored for ${s || "top"}`);
   assert.equal(k.ctx.dnr.removed.length, 1, "the tab rule is lifted");
-  assert.ok(k.sent.some(x => x.params && x.params.expression === guardInstallWrites && x.session === "S-APP"), "the send-hold shim is in the same frame as the script");
+  assert.ok(k.sent.some(x => x.params && String(x.params.expression).endsWith(guardInstallWrites) && x.session === "S-APP"), "the send-hold shim is in the same frame as the script");
   assert.ok(k.sent.some(x => x.params && x.params.expression === guardCollect && x.session === "S-APP"));
   // The password scan looked in every readable frame.
   const scans = k.sent.filter(x => x.method === "Runtime.evaluate" && String(x.params.expression).includes("isPassword"));

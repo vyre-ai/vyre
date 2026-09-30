@@ -4,7 +4,7 @@
 
 import { test, mock } from "node:test";
 import assert from "node:assert/strict";
-import net from "./extension/caps/net.js";
+import net, { egressGuard } from "./extension/caps/net.js";
 import { makeCtx, request } from "./devtools-kit.js";
 import { T } from "./test-support/trust.js";
 
@@ -307,4 +307,15 @@ test("the buffer never outlives the floor: a navigation to a blind page empties 
   push("Network.requestWillBeSent", { requestId: "3", type: "Document", request: { url: "https://accounts.google.com/signin", method: "GET", headers: {} } });
   list = await T(net.ops["net.list"])({ tab: 3 }, k.ctx);
   assert.equal(list.requests.length, 0, "going to a blind page empties the buffer");
+});
+
+test("egress guard: a child frame that attached a moment ago (capture had not seen it yet) is guarded before the script runs, with the guard on before its capture", async () => {
+  const k = makeCtx({ active: 1 });
+  await net.ops["net.start"]({ tab: 1 }, k.ctx);
+  // a session appears in the tab's child list without the capture having been told (the race: attached between start and the guard)
+  k.children.push({ sessionId: "S-NEW", targetId: "F9", type: "iframe", url: "https://b.example/x" });
+  const eg = await egressGuard(k.ctx, 1);
+  const fetchOn = k.sent.filter(s => s.method === "Fetch.enable" && s.session === "S-NEW");
+  assert.equal(fetchOn.length >= 1, true, "Fetch is on for the new session");
+  await eg.stop();
 });

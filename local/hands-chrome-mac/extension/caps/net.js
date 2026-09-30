@@ -134,8 +134,9 @@ const isFrameTarget = k => k && (k.type === "iframe" || k.type === "page");
 /** Turn capture (and interception, if it is up) on for one child session. @param {any} ctx @param {TabNet} t @param {string} session */
 async function enableSession(ctx, t, session) {
   try {
-    await ctx.cdp.send(t.tab, "Network.enable", NETWORK_ARGS, session);
+    // The guard first: a frame that attaches while a script runs must not have an unguarded moment between its capture and its interception.
     if (t.fetchOn && t.fetchPats) await ctx.cdp.send(t.tab, "Fetch.enable", { patterns: t.fetchPats.map(urlPattern => ({ urlPattern, requestStage: "Request" })) }, session);
+    await ctx.cdp.send(t.tab, "Network.enable", NETWORK_ARGS, session);
   } catch { t.sessions.delete(session); /* gone, or not ours to enable: tried again on the next start */ }
 }
 
@@ -452,6 +453,8 @@ export async function egressGuard(ctx, tab) {
   return {
     // "partial" when the browser-level rule could not be set: only the plain-form page shim stands for WebSockets and beacons.
     contained: eg.contained || (ctx.dnr ? "full" : "partial"), why: eg.containedWhy,
+    /** The origins the script may reach: for the page-level shim, a second layer beside the browser-level guard. */
+    allowed: [...eg.allowed],
     async stop() {
       if (done) return [];
       done = true;
@@ -466,8 +469,8 @@ export async function egressGuard(ctx, tab) {
 async function syncFetch(ctx, t) {
   /** @type {(m: string, x: any, session?: string) => Promise<any>} */
   const send = (m, x, session) => (session ? ctx.cdp.send(t.tab, m, x, session) : ctx.cdp.send(t.tab, m, x));
-  const kids = [...t.sessions];
   if (!/** @type {any} */ (t).egress && !t.rules.size) {
+    const kids = [...t.sessions];
     if (t.fetchOn) {
       t.fetchOn = false; t.fetchPats = null;
       await Promise.resolve(send("Fetch.disable", {})).catch(() => {});
@@ -475,6 +478,8 @@ async function syncFetch(ctx, t) {
     }
     return;
   }
+  // Every child session the tab has RIGHT NOW joins the guard, not only the ones capture already knew about (a frame that attached a moment ago is a way out).
+  await syncSessions(ctx, t);
   const pats = new Set();
   if (/** @type {any} */ (t).egress) pats.add("*");
   for (const r of t.rules.values()) {
@@ -485,6 +490,7 @@ async function syncFetch(ctx, t) {
   t.fetchOn = true; t.fetchPats = list;
   const arg = { patterns: list.map(urlPattern => ({ urlPattern, requestStage: "Request" })) };
   await send("Fetch.enable", arg);
+  const kids = [...t.sessions];
   await Promise.all(kids.map(k => Promise.resolve(send("Fetch.enable", arg, k)).catch(() => {})));
 }
 

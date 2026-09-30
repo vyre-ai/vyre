@@ -436,7 +436,7 @@ const ops = {
     const guarded = trust.asked !== true;
     const egress = guarded ? await egressGuard(ctx, tab) : null;
     // The send-hold shim goes into the SAME frame as the script, and is read back from there.
-    if (guarded) await runIn(ctx, tab, frame, guardInstallWrites, { returnByValue: true });
+    if (guarded) await runIn(ctx, tab, frame, `window.__vyreAllow = ${JSON.stringify(egress && egress.allowed || [])};` + guardInstallWrites, { returnByValue: true });
     /** @type {any} */ let r;
     /** @type {any[]} */ let blocked = [];
     /** @type {any[]} */ let outside = [];
