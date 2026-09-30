@@ -496,6 +496,9 @@ update_from_request() {
 # updater install|status|remove: the systemd path unit that makes vyred's request run update_from_request.
 updater() {
   units=${VYRE_SYSTEMD_DIR:-/etc/systemd/system}
+  # The unit's name is fixed; VYRE_UPDATER_NAME changes it for a rehearsal on a machine that already has the real one.
+  un=${VYRE_UPDATER_NAME:-vyre-update}
+  case "$un" in *[!A-Za-z0-9._-]*|"") die "VYRE_UPDATER_NAME is a plain unit name" ;; esac
   case "${1:-status}" in
     install)
       if ! command -v systemctl >/dev/null 2>&1 || { [ ! -d /run/systemd/system ] && [ -z "${VYRE_SYSTEMD_DIR:-}" ]; }; then
@@ -503,24 +506,24 @@ updater() {
       fi
       if [ "$(id -u)" != 0 ] && [ -z "${VYRE_SYSTEMD_DIR:-}" ]; then exec sudo -n "$WRAPPER" updater install; fi
       updater_dirs
-      svc="$units/vyre-update.service"
+      svc="$units/$un.service"
       { printf '[Unit]\nDescription=Vyre update, asked for by vyred\n\n[Service]\nType=oneshot\nEnvironment=VYRE_DIR=%s\nExecStart=%s update-from-request\nTimeoutStartSec=3600\n' "$DIR" "$WRAPPER"; } >"$svc.new" && mv "$svc.new" "$svc"
-      { printf '[Unit]\nDescription=Vyre update requests\n\n[Path]\nPathExists=%s/request\nUnit=vyre-update.service\n\n[Install]\nWantedBy=multi-user.target\n' "$UPD_REQ"; } >"$units/vyre-update.path.new" && mv "$units/vyre-update.path.new" "$units/vyre-update.path"
+      { printf '[Unit]\nDescription=Vyre update requests\n\n[Path]\nPathExists=%s/request\nUnit=%s.service\n\n[Install]\nWantedBy=multi-user.target\n' "$UPD_REQ" "$un"; } >"$units/$un.path.new" && mv "$units/$un.path.new" "$units/$un.path"
       systemctl daemon-reload
-      systemctl enable --now vyre-update.path >/dev/null 2>&1 || systemctl enable vyre-update.path
+      systemctl enable --now "$un.path" >/dev/null 2>&1 || systemctl enable "$un.path"
       # Vyre reads this (through the read-only mount) to know a unit will act on a request.
       printf '1\n' >"$UPD_STATE/ready"
-      say "updates can be asked for from Vyre: vyre-update.path watches $UPD_REQ/request"
+      say "updates can be asked for from Vyre: $un.path watches $UPD_REQ/request"
       ;;
     remove)
       rm -f "$UPD_STATE/ready"
-      systemctl disable --now vyre-update.path >/dev/null 2>&1 || true
-      rm -f "$units/vyre-update.path" "$units/vyre-update.service"
+      systemctl disable --now "$un.path" >/dev/null 2>&1 || true
+      rm -f "$units/$un.path" "$units/$un.service"
       systemctl daemon-reload 2>/dev/null || true
       say "the update path unit is removed"
       ;;
     status)
-      if [ -f "$units/vyre-update.path" ]; then echo "installed: $units/vyre-update.path"; else echo "not installed"; fi
+      if [ -f "$units/$un.path" ]; then echo "installed: $units/$un.path"; else echo "not installed"; fi
       ;;
     *) die "vyre updater install|status|remove" ;;
   esac
