@@ -15,6 +15,9 @@ import { ensureCss, shell, chip, untrusted, problemText } from "./kit.js";
 export const MAX_ROWS = 8;
 export const MAX_TEXT_LINES = 12;
 const MAX_ACTIONS = 3;
+/** The only tools a report's button may call. A report is data a tool made, so a tool name inside it never decides
+ * what runs: add a name here (a plain refresh or a pairing start, nothing that sends, merges or deletes). */
+export const ACTION_TOOLS = new Set(["devices.refresh", "devices.pair", "recall.index", "planner.list"]);
 const RUNNING = new Set(["running", "pending", "queued", "in_progress", "starting"]);
 const FAILED = new Set(["failed", "failure", "error", "offline", "revoked", "expired"]);
 const DONE = new Set(["ok", "done", "passed", "success", "connected", "active", "online", "ready", "live"]);
@@ -79,11 +82,13 @@ export function report(data, ctx = {}) {
   /** @type {any} */ let copyTimer = null;
 
   const human = (/** @type {any} */ e) => !(e && e.isTrusted === false);
-  const actions = () => (Array.isArray(data.actions) ? data.actions : []).filter((/** @type {any} */ a) => a && a.label && (a.run?.tool || a.href)).slice(0, MAX_ACTIONS);
+  const actions = () => (Array.isArray(data.actions) ? data.actions : []).filter((/** @type {any} */ a) => a && a.label && allowed(a)).slice(0, MAX_ACTIONS);
+  /** A link (from a Vyre tool's own result) or a tool on ACTION_TOOLS: never a name taken from the payload (reviewer-2 M1). */
+  const allowed = (/** @type {any} */ a) => !ctx.readOnly && !!a && (!!a.href || ACTION_TOOLS.has(String(a.run?.tool)));
 
   /** Open a link, or call a named tool through the outbox. @param {any} a @param {number} i */
   async function act(a, i) {
-    if (state.busy != null) return;
+    if (state.busy != null || !allowed(a)) return;
     if (a.href) { ctx.open?.(String(a.href)); return; }
     state.busy = i; state.waiting = false; state.error = null; state.done = null; draw();
     const r = await queued(String(a.run.tool), { ...(a.run.input || {}), ...(ctx.thread ? { thread: ctx.thread } : {}) }, { onWait: () => { state.waiting = true; draw(); } });
@@ -130,7 +135,7 @@ export function report(data, ctx = {}) {
     if (si >= 0) { st = statusOf(cells[si]); cells = cells.filter((_, i) => i !== si); }
     const [title, ...rest] = cells.map(cellText);
     const meta = [st?.word, ...rest].filter(Boolean).join(" · ");
-    const go = r && !Array.isArray(r) && (r.run?.tool || r.href) ? r : null;
+    const go = r && !Array.isArray(r) && allowed(r) ? r : null;
     const inner = [st ? h("span", { class: `cv-mark cv-mark-${st.state}`, "aria-hidden": "true" }) : null,
       h("span", { class: "cv-rp-title" }, title), meta ? h("span", { class: "cv-rp-meta" }, meta) : null];
     return go ? h("button", { class: "cv-rp-row go", type: "button", role: "listitem", onclick: (/** @type {any} */ e) => { if (human(e)) act(go, -1); } }, inner)

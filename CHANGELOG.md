@@ -4,6 +4,11 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### chat cards: reviewer-2's two MEDIUMs
+
+- M1: a display card is actionable only when its tool block's name is a Vyre tool (`firstParty`: a registry name, or `mcp__vyre__*`; the name comes from the transcript, a model cannot set it). A result from Bash, a fetch, a read or another server draws the same card with no buttons (`ctx.readOnly`): no report actions or links, no merge or review on a pull request, no RSVP on an event. A report's buttons call only tools on `ACTION_TOOLS` in `report.js`, never a name taken from the payload.
+- M2: the artifact frame guard takes a per-render nonce. The Deck asks the render route with `?n=<nonce>` and expects `{vyreFrame: nonce}` posted to the parent from the frame's own window; a first load with no message within 2 s, or any later load, blanks the frame. Asked for only where the route answers a HEAD with `x-vyre-frame-nonce`, so a route that does not yet send it is counted the old way. The route's half (the last script and the header) is artifacts'.
+
 #### projects: rename, archive and the history question from the Deck
 
 - `deck/js/project-actions.js`: `renameProject` (the project page's heading becomes a field; `projects.rename {project, name}`, name only, slug and tile stay) and `archiveProject` (`projects.archive`, then the list, with an Undo toast; `archived: false` is Restore). The Projects list gains an Archived view with Restore on each row.

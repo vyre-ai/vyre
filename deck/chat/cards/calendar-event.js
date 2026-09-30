@@ -60,7 +60,7 @@ const responseKind = r => ({ accepted: "done", declined: "failed", tentative: "n
 
 /**
  * @param {any} data render payload
- * @param {{ phone?: boolean, open?: (href: string) => void, now?: () => number }} [ctx]
+ * @param {{ phone?: boolean, open?: (href: string) => void, now?: () => number, readOnly?: boolean }} [ctx]
  */
 export function calendarEvent(data, ctx = {}) {
   ensureCss("calendar-event");
@@ -77,7 +77,7 @@ export function calendarEvent(data, ctx = {}) {
 
   /** @param {string} act */
   async function respond(act) {
-    if (state.busy) return;
+    if (ctx.readOnly || state.busy) return;
     if (data?.recurring && !state.asking) { state.asking = act; draw(); return; }
     state.asking = null; state.busy = act; state.error = null; draw();
     // The person's own answer: outbox, never a passkey.
@@ -112,6 +112,7 @@ export function calendarEvent(data, ctx = {}) {
   }
 
   function foot() {
+    if (ctx.readOnly) return null;
     if (state.asking) {
       // A recurring event asks which one first: two options inline, not a sheet.
       const a = ANSWERS.find(x => x.act === state.asking);

@@ -64,7 +64,7 @@ const ago = (/** @type {any} */ t) => {
 
 /**
  * @param {any} data a render payload, or an ask of kind "pr_review"
- * @param {{ thread?: string|null, phone?: boolean, agent?: string|null, open?: (href: string) => void }} [ctx]
+ * @param {{ thread?: string|null, phone?: boolean, agent?: string|null, open?: (href: string) => void, readOnly?: boolean }} [ctx]
  * @returns {HTMLElement & { update: (d: any) => void, answered: (decision: string, answers?: any, from?: { where: string, at?: number|null }|null) => void,
  *   onKey: (e: KeyboardEvent) => boolean, isOpen: () => boolean }}
  */
@@ -101,7 +101,7 @@ export function prReview(data, ctx = {}) {
 
   /** One action: the PR call, then (an ask) the answer. A retry skips what already went through. @param {"merge"|"changes"|"comment"} act @param {any} [again] */
   async function run(act, again) {
-    if (state.busy || state.decided || prState() !== "open") return;
+    if (ctx.readOnly || state.busy || state.decided || prState() !== "open") return;
     const job = again || { act, note: state.words.trim(), replyTo: state.replyTo, prDone: false };
     if (act !== "merge" && !job.note) return;
     state.width = widthOf(el, "merge");
@@ -228,6 +228,7 @@ export function prReview(data, ctx = {}) {
       footEl.classList.add("resolved");
       return;
     }
+    if (ctx.readOnly) { put(footEl, h("div", { class: "cv-prr-resolved" }, "Shown for reading only. Open the pull request on GitHub to act on it.")); footEl.classList.add("resolved"); return; }
     footEl.classList.remove("resolved");
     const noteRow = state.note ? h("div", { class: "cv-prr-note" },
       h("input", { class: "cv-why cv-prr-field", type: "text", value: state.words, "data-note": state.note, disabled: !!state.busy,

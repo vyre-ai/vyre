@@ -29,6 +29,14 @@ export function defaultOpen(href) {
   if (h.startsWith("/")) go(h);
 }
 
+/** Whether a tool block's name is a Vyre tool (a registry name such as github.project.pr.review, or Vyre's own MCP
+ * server). The name comes from the transcript, so a model cannot set it; a page or file an agent read arrives
+ * through Bash, WebFetch, Read or another server's tool, and draws read-only (reviewer-2 M1). @param {any} tool */
+export function firstParty(tool) {
+  const t = String(tool ?? "");
+  return /^[a-z][a-z0-9-]*(\.[a-z0-9-]+)+$/.test(t) || /^mcp__vyre__/.test(t);
+}
+
 /** Non-blocking display kinds. */
 export const DISPLAY = {
   pr_review: prReview, diff: diffFiles, report, email_thread: emailThread, calendar_event: calendarEvent,
@@ -60,11 +68,11 @@ export function askCardFor(full, ctx = {}) {
 }
 
 /** A tool block whose result carries a render payload, as its card row; null when it has none.
- * .update(block) redraws in place, and the row becomes the card the moment a payload arrives. @param {any} b @param {any} [ctx] */
+ * A block whose tool is not a Vyre tool draws the same card with no buttons (ctx.readOnly). .update(block) redraws in place, and the row becomes the card the moment a payload arrives. @param {any} b @param {any} [ctx] */
 export function toolDisplay(b, ctx = {}) {
   const r = renderOf(b);
   if (!r) return null;
-  const card = /** @type {any} */ (displayRow(r, ctx));
+  const card = /** @type {any} */ (displayRow(r, { readOnly: !firstParty(b.tool), ...ctx }));
   if (!card) return null;
   card._ts = b.ts ?? null;
   card.setAttribute?.("data-tool", String(b.tool || ""));

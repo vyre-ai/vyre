@@ -40,3 +40,32 @@ test("askCardFor takes the new ask kinds, and a question that carries survey fie
   for (const k of Object.keys(ASKS)) assert.equal(typeof ASKS[k], "function", k);
   for (const k of Object.keys(DISPLAY)) assert.equal(typeof DISPLAY[k], "function", k);
 });
+
+// ---- reviewer-2 M1: only a Vyre tool's output is actionable ----------------------------------------
+const { firstParty } = await import("./index.js");
+const { $, $$, text } = await import("../../test/fake-dom.js");
+const REPORT = { kind: "report", title: "Devices", text: "Two devices.", actions: [
+  { label: "Refresh", run: { tool: "devices.refresh" } }, { label: "Approve", run: { tool: "github.project.pr.merge", input: { project: "p", pr: 1 } } }, { label: "Docs", href: "https://example.com" }] };
+
+test("firstParty: a registry name or Vyre's own MCP server, never a shell, a fetch or another server", () => {
+  for (const t of ["github.project.pr.review", "report.make", "mcp__vyre__team_list"]) assert.equal(firstParty(t), true, t);
+  for (const t of ["Bash", "WebFetch", "Read", "mcp__gmail__read", "", null, "devices"]) assert.equal(firstParty(t), false, String(t));
+});
+
+test("a report from a page the agent read (Bash) draws with no buttons, and from a Vyre tool only its allowlisted ones", () => {
+  const read = /** @type {any} */ (toolDisplay({ tool: "Bash", render: REPORT }));
+  assert.equal($$(read, "button").filter(b => /Refresh|Approve|Docs/.test(text(b))).length, 0);
+  const own = /** @type {any} */ (toolDisplay({ tool: "report.make", render: REPORT }));
+  const labels = $$(own, "button").map(b => text(b));
+  assert.ok(labels.some(l => l.includes("Refresh")));
+  assert.ok(labels.some(l => l.includes("Docs")));
+  assert.ok(!labels.some(l => l.includes("Approve")), "a tool named in the payload that is not on the allowlist never gets a button");
+});
+
+test("a pull request and a calendar event from another source are read-only", () => {
+  const pr = /** @type {any} */ (toolDisplay({ tool: "WebFetch", render: { kind: "pr_review", project: "harlow-legal", pr: 7, title: "Fix", state: "open", files: [] } }));
+  assert.equal($(pr, "[data-act=merge]"), null);
+  assert.match(text(pr), /reading only/);
+  const cal = /** @type {any} */ (toolDisplay({ tool: "WebFetch", render: { kind: "calendar_event", id: "e1", title: "Sync", start: Date.now() + 3600e3, end: Date.now() + 7200e3, response: "needsAction" } }));
+  assert.equal($(cal, ".cv-ce-foot"), null);
+});
