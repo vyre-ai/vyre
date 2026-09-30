@@ -115,8 +115,10 @@ try {
 
   // 1.9 Tailscale. STAND-IN: a headscale on the runner. The person's "sign in on Tailscale's page" is the register command.
   await sees(/Connect my server/i, 30000);
-  await click("Connect my server");
-  await sees(/Tailscale's sign-in page/i, 60000);
+  const clicked = await click("Connect my server");
+  fs.writeFileSync(out + "/ts-click.txt", `clicked=${clicked}\n`);
+  let linkShown = await sees(/Tailscale's sign-in page/i, 30000);
+  if (!linkShown) { fs.appendFileSync(out + "/ts-click.txt", `no link after 30s; logs:\n${hide(page.logs.join("\n"))}\n`); await click("Connect my server"); linkShown = await sees(/Tailscale's sign-in page/i, 30000); }
   const login = String(await page.evaluate(`(([...document.querySelectorAll("a[href]")].find(a => /sign-in page/.test(a.textContent))||{}).href)||""`));
   const key = (login.match(/\/register\/([A-Za-z0-9_-]+)/) || [])[1];
   if (!key) {
