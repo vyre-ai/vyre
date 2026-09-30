@@ -187,19 +187,27 @@ async function main() {
           // A real WebSocket server on two origins: does a NEW handshake reach the second while the guard is up, and does a socket
           // the page already held (opened before, to the first) still carry data?
           const { createServer } = await import("node:http"); const { createHash } = await import("node:crypto");
-          const mkWs = () => new Promise(res => { const st = { upgrades: 0, bytes: 0, url: "", close: () => {} }; const srv = createServer((q, r) => r.end("ok"));
+          const mkWs = (/** @type {string} */ urlHost = "127.0.0.1") => new Promise(res => { const st = { upgrades: 0, bytes: 0, url: "", close: () => {} }; const srv = createServer((q, r) => r.end("ok"));
             srv.on("upgrade", (q, sock) => { st.upgrades++; const key = createHash("sha1").update(q.headers["sec-websocket-key"] + "258EAFA5-E914-47DA-95CA-C5AB0DC85B11").digest("base64"); sock.write(`HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Accept: ${key}\r\n\r\n`); sock.on("data", d => { st.bytes += d.length; }); sock.on("error", () => {}); });
-            srv.listen(0, "127.0.0.1", () => { st.url = `ws://127.0.0.1:${/** @type {any} */ (srv.address()).port}/`; st.close = () => srv.close(); res(st); }); });
-          const wsA = await mkWs(), wsB = await mkWs();
+            srv.listen(0, "127.0.0.1", () => { st.url = `ws://${urlHost}:${/** @type {any} */ (srv.address()).port}/`; st.close = () => srv.close(); res(st); }); });
+          // The page is on 127.0.0.1, so "localhost" is a fresh domain (the browser-level rule works on domains).
+          const wsA = await mkWs(), wsB = await mkWs("localhost"), wsC = await mkWs("localhost");
           const opened = await mcp.call("chrome_eval", { tab: et, asked: true, expression: `new Promise(r => { window.__ws = new WebSocket(${JSON.stringify(wsA.url)}); window.__ws.onopen = () => r('open'); window.__ws.onerror = () => r('error'); setTimeout(() => r('timeout'), 3000); })` }).catch(e => ({ error: String(e.message) }));
           const before = wsA.bytes;
           const freshGuarded = await mcp.call("chrome_eval", { tab: et, expression: `(async () => { try { new WebSocket(${JSON.stringify(wsB.url)}); } catch (e) {} await new Promise(r => setTimeout(r, 700)); return 1; })()` }).catch(e => ({ error: String(e.message) }));
           const existingGuarded = await mcp.call("chrome_eval", { tab: et, expression: `(async () => { try { window.__ws.send('hello-from-existing-socket'); } catch (e) { return 'threw'; } await new Promise(r => setTimeout(r, 500)); return 'sent'; })()` }).catch(e => ({ error: String(e.message) }));
           await sleep(300);
+          const guardedFreshUpgrades = wsB.upgrades;
+          const guardedIframeBefore = wsC.upgrades;
+          // Bypass form: a fresh iframe's own WebSocket constructor (the page shim does not reach it; the browser-level rule does).
+          await mcp.call("chrome_eval", { tab: et, expression: `(async () => { const f = document.createElement('iframe'); document.body.appendChild(f); try { new f.contentWindow.WebSocket(${JSON.stringify(wsC.url)}); } catch (e) {} await new Promise(r => setTimeout(r, 700)); return 1; })()` }).catch(() => ({}));
+          // A new socket to the page's own domain must still be allowed during the guard.
+          const knownBefore = wsA.upgrades;
+          await mcp.call("chrome_eval", { tab: et, expression: `(async () => { try { new WebSocket(${JSON.stringify(wsA.url)}); } catch (e) {} await new Promise(r => setTimeout(r, 700)); return 1; })()` }).catch(() => ({}));
           const freshUnguarded = await mcp.call("chrome_eval", { tab: et, asked: true, expression: `(async () => { try { new WebSocket(${JSON.stringify(wsB.url)}); } catch (e) {} await new Promise(r => setTimeout(r, 700)); return 1; })()` }).catch(e => ({ error: String(e.message) }));
           await sleep(300);
-          const websocketProof = { serverWorks: opened && opened.value === "open", freshHandshakesWhileGuarded: wsB.upgrades === 0 ? "refused (server saw none)" : `NOT refused (${wsB.upgrades} handshakes)`, existingSocketBytesAfterGuardedSend: wsA.bytes - before, freshHandshakesAfterUnguardedControl: wsB.upgrades, guardedFreshHeld: freshGuarded && freshGuarded.held === true, existingResult: existingGuarded && (existingGuarded.value ?? existingGuarded.error) };
-          wsA.close(); wsB.close();
+          const websocketProof = { serverWorks: opened && opened.value === "open", freshHandshakesWhileGuarded: guardedFreshUpgrades === 0 ? "refused (server saw none)" : `NOT refused (${guardedFreshUpgrades} handshakes)`, existingSocketBytesAfterGuardedSend: wsA.bytes - before, freshHandshakesAfterUnguardedControl: wsB.upgrades, iframeBypassHandshakes: wsC.upgrades - guardedIframeBefore, newSocketToKnownDomainAllowed: wsA.upgrades - knownBefore >= 1, guardedFreshHeld: freshGuarded && freshGuarded.held === true, existingResult: existingGuarded && (existingGuarded.value ?? existingGuarded.error) };
+          wsA.close(); wsB.close(); wsC.close();
           // Channels the Fetch domain does not see. Reported as they are: held or not, no claim beyond what this shows.
           const host = new URL(other.url).host;
           const probe = async (/** @type {string} */ name, /** @type {string} */ expression) => { try { const r = await mcp.call("chrome_eval", { tab: et, expression }); return { held: r.held === true, value: r.value, error: r.error }; } catch (e) { return { threw: String(/** @type {Error} */ (e).message).slice(0, 160) }; } };

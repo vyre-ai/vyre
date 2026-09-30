@@ -55,6 +55,29 @@ export function createCtx({ chrome, emit = () => {} }) {
     async focusWindow(windowId) { if (chrome.windows?.update) await chrome.windows.update(windowId, { focused: true }); },
   };
 
+  // ctx.dnr: a browser-level block on a tab (chrome.declarativeNetRequest session rules). It sees WebSocket handshakes and
+  // beacons from every frame of the tab, including a fresh iframe, which no page shim can. Absent in a browser without it.
+  let ruleSeq = 0;
+  const dnr = {
+    /**
+     * Block WebSockets, beacons and "other" requests of one tab to any host not in `allowHosts`. Returns an id for unblock(), or null.
+     * @param {{ tab: number, allowHosts: string[] }} o
+     */
+    async block({ tab, allowHosts }) {
+      const api = chrome.declarativeNetRequest;
+      if (!api || !api.updateSessionRules) return null;
+      const id = 800000 + ((++ruleSeq + Date.now()) % 100000);
+      const rule = { id, priority: 1, action: { type: "block" }, condition: { tabIds: [tab], resourceTypes: ["websocket", "ping", "other"], ...(allowHosts.length ? { excludedRequestDomains: allowHosts } : {}) } };
+      try { await api.updateSessionRules({ addRules: [rule] }); return id; } catch { return null; }
+    },
+    /** @param {number|null} id */
+    async unblock(id) {
+      const api = chrome.declarativeNetRequest;
+      if (id == null || !api || !api.updateSessionRules) return;
+      try { await api.updateSessionRules({ removeRuleIds: [id] }); } catch { /* already gone */ }
+    },
+  };
+
   /** @returns {Promise<floor.FloorConfig>} */
   async function floorConfig() {
     return { blind: (await storage.get("local", "floor.blind")) || [], readonly: (await storage.get("local", "floor.readonly")) || [] };
@@ -62,7 +85,7 @@ export function createCtx({ chrome, emit = () => {} }) {
 
   /** @type {any} */
   const ctx = {
-    cdp, tabs, storage,
+    cdp, tabs, storage, dnr,
     emit,
     stopped: () => stopped,
     setStopped: (/** @type {boolean} */ v) => { stopped = !!v; if (stopped) ctx.stoppedAt = Date.now(); },

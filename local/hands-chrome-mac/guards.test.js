@@ -108,3 +108,16 @@ test("egress guard: asked lifts it, and a script that reaches only known origins
   assert.equal(r2.ok, true);
   assert.equal(r2.value, "done");
 });
+
+test("egress guard: a browser-level rule blocks WebSockets and beacons of the tab for the guard window and is removed after", async () => {
+  const k = egressRig(async () => {});
+  await dt.ops["dev.console.eval"]({ tab: 3, expression: "/*vyre-test-script*/ 1" }, k.ctx);
+  const dnr = /** @type {any} */ (k.ctx).dnr;
+  assert.equal(dnr.rules.length, 1);
+  assert.equal(dnr.rules[0].tab, 3);
+  assert.ok(dnr.rules[0].allowHosts.includes("app.example.com") && dnr.rules[0].allowHosts.includes("services.example.com"), "own and known hosts stay allowed");
+  assert.deepEqual(dnr.removed, [dnr.rules[0].id], "the rule is removed when the script ends");
+  const k2 = egressRig(async () => {});
+  await dt.ops["dev.console.eval"]({ tab: 3, expression: "/*vyre-test-script*/ 1", asked: true }, k2.ctx);
+  assert.equal(/** @type {any} */ (k2.ctx).dnr.rules.length, 0, "no rule when the person asked");
+});

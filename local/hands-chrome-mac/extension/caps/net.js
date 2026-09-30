@@ -371,9 +371,14 @@ export async function egressGuard(ctx, tab) {
     const rt = await ctx.cdp.send(tab, "Runtime.evaluate", { expression: "[...new Set(performance.getEntriesByType('resource').map(e => e.name).concat(location.href))].slice(0, 1000)", returnByValue: true });
     for (const u of (rt && rt.result && rt.result.value) || []) add(u);
   } catch { /* the guard still stands with what it has */ }
+  if (eg.depth === 0 && ctx.dnr) {
+    const hosts = [...eg.allowed].map(o => { try { return new URL(o).hostname; } catch { return ""; } }).filter(Boolean);
+    eg.rule = await ctx.dnr.block({ tab, allowHosts: [...new Set(hosts)] });
+  }
   eg.depth++;
-  // The Fetch domain does not see a WebSocket handshake, and Network.setBlockedURLs did not stop a new one in a real Chrome
-  // (measured in CI): a new WebSocket is refused by the page shim in outbound.js instead, in its plain form.
+  // The Fetch domain does not see a WebSocket handshake and Network.setBlockedURLs did not stop a new one in a real Chrome
+  // (measured in CI). Two layers instead: a declarativeNetRequest session rule for this tab (every frame, no page cooperation,
+  // set above) and the page shim in outbound.js for the plain forms, which also reports what it refused.
   t.fetchOn = true;
   await ctx.cdp.send(tab, "Fetch.enable", { patterns: [{ urlPattern: "*", requestStage: "Request" }] });
   let done = false;
@@ -382,7 +387,7 @@ export async function egressGuard(ctx, tab) {
       if (done) return [];
       done = true;
       const blocked = eg.blocked.splice(0);
-      if (--eg.depth <= 0) { t.egress = null; await syncFetch(ctx, t); }
+      if (--eg.depth <= 0) { const rule = eg.rule; t.egress = null; if (ctx.dnr) await ctx.dnr.unblock(rule ?? null); await syncFetch(ctx, t); }
       return blocked;
     },
   };

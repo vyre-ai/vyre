@@ -10,7 +10,8 @@
     "tabs",
     "nativeMessaging",
     "storage",
-    "alarms"
+    "alarms",
+    "declarativeNetRequest"
   ],
   "background": {
     "service_worker": "background.js",

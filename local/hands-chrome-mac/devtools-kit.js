@@ -30,6 +30,7 @@ export function makeCtx(o = {}) {
       async detach(/** @type {number} */ t) { attachedSet.delete(t); },
       attached() { return [...attachedSet]; },
     },
+    dnr: { rules: /** @type {any[]} */ ([]), removed: /** @type {any[]} */ ([]), async block(/** @type {any} */ o) { const id = 1000 + this.rules.length; this.rules.push({ id, ...o }); return id; }, async unblock(/** @type {any} */ id) { this.removed.push(id); } },
     tabs: { async active() { return { id: o.active ?? 1 }; }, async get(/** @type {number} */ id) { return { id, url: /** @type {any} */ (o).tabUrl || "https://app.example.com/dashboard" }; } },
     emit(/** @type {any} */ e) { emitted.push(e); },
     stopped: () => state.stopped(),
