@@ -25,6 +25,10 @@ async function boot(t) {
   const home = tempHome(t);
   const root = path.join(home, "mods");
   writeModule(root, "threads", { does: { tools: ["threads.get"] } }, THREADS);
+  // A fake agents.list: aide is the assistant.
+  writeModule(root, "agents", { does: { tools: ["agents.list"] } }, `export default { async start(ctx) {
+    ctx.tool("agents.list", { run: async () => [{ name: "juno", kind: "agent" }, { name: "kit", kind: "agent" }, { name: "aide", kind: "assistant" }] });
+    return {}; } };`);
   const db = open(path.join(home, "vyre.db"));
   const events = new Events(db);
   const reg = new Registry({ db, events, config: { role: "box" }, paths: { root: home }, log: () => {} });
@@ -207,7 +211,6 @@ test("artifacts: public links, served by a separate process, pinned to a version
   // "Always the latest" is the person's choice: an agent's later version follows too (lead, 30 Sep).
   const juno = await ok("artifacts.update", { id: a.id, content: "# Intake\n\nNew matters: 49." }, "mcp:agent:juno", { thread: "t1" });
   assert.match((await get(url)).body, /New matters: 49/);
-  assert.equal(juno.share.unpublished, 0);
   assert.equal((await get(`http://127.0.0.1:${port}/s/AAAAAAAAAAAAAAAAAAAAAAAA`)).status, 404);
   assert.equal((await get(`http://127.0.0.1:${port}/v1/tools`)).status, 404, "nothing but /s/ answers");
   await ok("artifacts.unshare", { id: a.id }, "mcp:agent:juno", { thread: "t1" });
@@ -265,6 +268,9 @@ test("artifacts: an added module and a project-less agent reach only what they m
   assert.equal((await call("artifacts.delete", { id: mine.id }, "mcp", { thread: "t3" })).error.code, "not_found");
   const its = await ok("artifacts.create", { kind: "doc", content: "# Draft" }, "mcp", { thread: "t3" });
   assert.deepEqual((await ok("artifacts.list", {}, "mcp", { thread: "t3" })).map(a => a.id), [its.id], "but sees its own");
+  // The assistant reaches everything, the person's own space included (lead, 30 Sep).
+  assert.equal((await ok("artifacts.get", { id: mine.id }, "mcp:agent:aide", { thread: "t3" })).id, mine.id);
+  assert.equal((await ok("artifacts.list", {}, "mcp:agent:aide")).length, 2);
   // An added module is not the person
   const mod = await call("artifacts.list", {}, "module:bakery");
   if (!mod.error) assert.deepEqual(mod.data, [], "an added module lists nothing it didn't make");

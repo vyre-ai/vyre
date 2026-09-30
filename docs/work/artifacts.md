@@ -35,7 +35,8 @@ viewer UI (native-core, app-design) wait for app-design's screens and the user's
   so every later version publishes; the share sheet must say so plainly, app-design); M4 `artifacts.public.base` (reach modules, first-party) split from
   `artifacts.public.set {on}`; L1 capture folders must be real, unlinked and outside vyred's home;
   L2 downloaded pages carry a meta CSP. M5 (frame self-navigation) is native-core's frame, L3 is
-  share-sheet copy (app-design), L4 the assistant's scope (assistant).
+  share-sheet copy (app-design), L4 decided by the lead: the assistant (agents kind "assistant") reaches every
+  project's artifacts, the person's own space included.
 - Tests: core/artifacts/artifacts.test.js (10), share-server.test.js (1), lib/secret-text.test.js (2),
   plus boundaries, hygiene, modules, mcp-server-tools, docs-check green locally in temp homes.
 

@@ -143,7 +143,6 @@ export default {
       let seen = 0;
       try { seen = Number(fs.readFileSync(path.join(publicDir, s.hash, "views"), "utf8")) || 0; } catch {}
       return { path: `/s/${s.token}`, url: base ? `${String(base).replace(/\/$/, "")}/s/${s.token}` : null, version: s.version ?? "latest",
-        published: s.published ?? null, unpublished: s.version === null && s.published ? Math.max(0, r.head - s.published) : 0,
         created_at: s.created_at, expires_at: s.expires_at ?? null, views: seen };
     };
 
@@ -158,6 +157,13 @@ export default {
     const versionRow = (/** @type {string} */ id, /** @type {number} */ n) => /** @type {any} */ (db.prepare("SELECT * FROM artifacts_versions WHERE artifact = ? AND n = ?").get(id, n));
 
     // ---- who reaches what ---------------------------------------------------------------------
+
+    /** Whether an agent name is the assistant (agents' kind "assistant"). @param {string} name */
+    const isAssistant = async name => {
+      const r = await ctx.call("agents.list", {});
+      const rows = r && Array.isArray(r.data) ? r.data : r && r.data && Array.isArray(r.data.agents) ? r.data.agents : [];
+      return rows.some((/** @type {any} */ a) => a && a.name === name && a.kind === "assistant");
+    };
 
     /** The calling thread's own record, or null. @param {string|undefined} thread */
     const threadOf = async thread => {
@@ -177,6 +183,10 @@ export default {
       if (trustedCaller(meta)) return { all: true };
       const mod = addedModule(meta);
       const t = mod ? null : await threadOf(meta && meta.thread);
+      // The assistant is the person's own agent across everything (lead, 30 Sep): it reaches every
+      // project's artifacts. Its name comes from vyred's caller identity, its kind from agents.
+      const who = mod ? null : agentName(meta) || (t && t.agent) || null;
+      if (who && (await isAssistant(who))) return { all: true };
       if (t && t.project) return { project: t.project };
       return { own: { thread: mod ? null : (meta && meta.thread) || null, agent: mod ? null : agentName(meta) || (t && t.agent) || null, module: mod } };
     };

@@ -19,7 +19,8 @@ Newest first. Every change to code lands here in the same commit. A new dependen
   that isn't Vyre's. A share that looks like it holds a key is refused. Sharing counts as posting:
   an agent's own share waits for you. A link pinned to a version stays on it; one you keep on the
   latest shows every later version, whoever saved it.
-- An agent with no project, or a module you added, reaches only the artifacts it made. Capture opens
+- An agent with no project, or a module you added, reaches only the artifacts it made. The assistant
+  reaches all of them. Capture opens
   files without following links and checks the folder and the file's owner, so a swapped link is
   never read.
 - Artifact pages, private or public, always run at an opaque origin (a CSP `sandbox` header), with

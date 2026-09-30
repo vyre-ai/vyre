@@ -36,6 +36,6 @@
     "on": ["floor.wrote"]
   },
   "shows": { "deck": [], "capsule": [], "cli": ["artifacts"] },
-  "needs": { "tools": ["threads.get"] },
+  "needs": { "tools": ["threads.get", "agents.list"] },
   "teaches": {}
 }

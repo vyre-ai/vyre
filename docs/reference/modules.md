@@ -129,7 +129,7 @@ Documents, reports, pages, dashboards, diagrams, decks and small apps your agent
 - Emits: [10 events](events.md#artifacts)
 - Listens for: `floor.wrote`
 - Shows on: capsule, cli, deck
-- Needs tools: `threads.get`
+- Needs tools: `threads.get`, `agents.list`
 
 ## capsule
 
