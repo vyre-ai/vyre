@@ -99,8 +99,17 @@ export default {
     ctx.store.migrate([`CREATE TABLE import_runs (id TEXT PRIMARY KEY, at INTEGER NOT NULL, machine TEXT NOT NULL, plan_hash TEXT NOT NULL, mode TEXT NOT NULL, pace TEXT NOT NULL,
       state TEXT NOT NULL, of INTEGER NOT NULL, sent INTEGER NOT NULL DEFAULT 0, failed INTEGER NOT NULL DEFAULT 0, quarantined INTEGER NOT NULL DEFAULT 0, ended INTEGER);`]);
     const BATCH = 25;
-    /** This device's name, as the server files what it sends under synced/<machine>/. */
-    const machine = () => String(ctx.config.name || ctx.config.machine || os.hostname()).toLowerCase().replace(/[^a-z0-9._-]+/g, "-").slice(0, 80) || "device";
+    /** This device's name, as the server files what it sends under synced/<machine>/ and knows it from pairing (the hostname it paired under; config.machine is the kind of machine, never a name). */
+    const machine = () => String(ctx.config.name || os.hostname()).toLowerCase().replace(/[^a-z0-9._-]+/g, "-").slice(0, 80) || "device";
+    /**
+     * The server's own record of consent: sync.consent lives on the box only, so a device asks for it over the link. (A box
+     * importing its own sessions has the tool itself.)
+     */
+    const consent = async input => {
+      const r = await ctx.call("sync.consent", input);
+      if (r?.error?.code !== "no_such_tool" || ctx.config.role === "box") return r;
+      return ctx.call("link.call", { tool: "sync.consent", input });
+    };
     /** @type {{ id: string, stop: boolean, done: Promise<void>|null }|null} */
     let current = null;
     const runRow = id => /** @type {any} */ (ctx.store.db.prepare("SELECT * FROM import_runs WHERE id = ?").get(id));
@@ -123,7 +132,7 @@ export default {
             if (it.format) {
               const conv = formatFor(it.format)?.convert(it.home, it.path, { cwd: it.cwd, candidates: known });
               if (!conv || !conv.text) throw new Error("nothing to convert");
-              stage = stage || fs.mkdtempSync(path.join(root || os.tmpdir(), ".import-"));
+              if (!stage) { const base = root ? path.join(root, ".import-stage") : os.tmpdir(); fs.mkdirSync(base, { recursive: true, mode: 0o700 }); stage = fs.mkdtempSync(path.join(base, "b-")); }
               const staged = path.join(stage, `${files.length}-${crypto.randomBytes(3).toString("hex")}.jsonl`);
               fs.writeFileSync(staged, conv.text, { mode: 0o600 });
               item = { ...it, path: staged, bytes: Buffer.byteLength(conv.text) };
@@ -156,7 +165,7 @@ export default {
         const m = machine();
         // Consent goes to the server's own record, through federation's one door; the plan's hash
         // goes with this run, so a different plan is a different consent (e2e).
-        const c = await ctx.call("sync.consent", { machine: m, on: true, mode, plan: p.hash });
+        const c = await consent({ machine: m, on: true, mode, plan: p.hash });
         if (c?.error) throw Object.assign(new Error(c.error.code === "no_such_tool" ? "this device cannot send to a server yet" : `the server did not take the consent: ${c.error.message}`), { code: c.error.code === "no_such_tool" ? "unavailable" : "failed" });
         await ctx.call("memory.pace", { pace });
         const id = "imp_" + crypto.randomBytes(6).toString("hex");
@@ -174,7 +183,7 @@ export default {
       run: async (_, meta = {}) => {
         if (!person(meta.caller)) throw Object.assign(new Error("stopping an import is the person's own action"), { code: "denied" });
         const r = current; if (r) { r.stop = true; await r.done; }
-        await ctx.call("sync.consent", { machine: machine(), on: false });
+        await consent({ machine: machine(), on: false });
         return { stopped: Boolean(r) };
       },
     });
@@ -185,7 +194,7 @@ export default {
       run: async (_, meta = {}) => {
         if (!person(meta.caller)) throw Object.assign(new Error("cancelling an import is the person's own action"), { code: "denied" });
         const r = current; if (r) { r.stop = true; await r.done; }
-        await ctx.call("sync.consent", { machine: machine(), on: false });
+        await consent({ machine: machine(), on: false });
         if (r) ctx.store.db.prepare("UPDATE import_runs SET state = 'cancelled' WHERE id = ?").run(r.id);
         return { stopped: Boolean(r), dropped: false };
       },

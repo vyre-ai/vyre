@@ -454,11 +454,20 @@ function sessionRoots(root) {
   try { return [fs.realpathSync(dir)]; } catch { return [path.resolve(dir)]; }
 }
 
-/** Resolve `p` for real (following symlinks) and refuse it unless it lands inside this device's own Claude folder. */
+/**
+ * Where core/import stages the converted copy of a Codex or Gemini CLI session before it is sent (a folder of Vyre's own
+ * inside its home, made 0700 by the importer): sync.send may read from it as well as from the Claude Code folder.
+ * @param {string} root
+ */
+export const importStage = root => path.join(root, ".import-stage");
+
+/** Resolve `p` for real (following symlinks) and refuse it unless it lands inside this device's own Claude folder, or Vyre's own import staging folder. */
 function allowedSessionPath(p, root) {
   let real;
   try { real = fs.realpathSync(String(p)); } catch (e) { throw Object.assign(new Error(/** @type {Error} */ (e).message), { code: "bad_input" }); }
-  if (!sessionRoots(root).some(r => insideDir(real, r))) throw Object.assign(new Error(`${p} is not in this device's own Claude Code folder`), { code: "denied" });
+  let stage = importStage(root);
+  try { stage = fs.realpathSync(stage); } catch { /* not made yet: nothing can be inside it */ }
+  if (![...sessionRoots(root), stage].some(r => insideDir(real, r))) throw Object.assign(new Error(`${p} is not in this device's own Claude Code folder`), { code: "denied" });
   return real;
 }
 
