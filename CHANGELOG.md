@@ -4,6 +4,12 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+- Memory's personal reader no longer scans the whole `recall_turns` table once per turn: `recall_turns` is an FTS5
+  table whose session and seq are unindexed, so each lookup by (session, seq) was a scan of every turn (about 20,000
+  on a real history), which cost half a second of CPU a pass and, a batch a minute, failed perf-check's idle budget
+  on Node 22 (`core/memory/personal/reader.js`: one read per batch of sessions). perf-check also waits for vyred's
+  startup work to go quiet before it starts the idle window, and, like the embedder, keeps the paid model reader off
+  (`scripts/perf-check`).
 - The thread event family is also reserved for the artifacts module (it emits `thread.artifact`, the chat card per version) (`core/modules/index.js`).
 - The connectors module may relay the person who asked (isPerson label) to `vault.put` for an `api-credential`, and to no other tool (`CALL_AS.connectors` and a per-call check in `core/modules/index.js`; the sign-in for Microsoft, personal Google and Slack Web completes there).
 - An added module can never load under the name of a module shipped with Vyre in this start, on or off on this machine, whichever is found first, valid or not; and an invalid copy no longer overwrites the loaded module's registry row (`core/modules/index.js`, tests in modules.test.js). reviewer-2's note on the name-sharing change.
