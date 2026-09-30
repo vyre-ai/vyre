@@ -194,3 +194,11 @@ export async function issueGet({ token, full_name, project, issue, login }) {
   return { project, outside: true, ...issueRow(i), body: i.body || "", assignees: (i.assignees || []).map(a => a.login),
     comments: (cs || []).map(c => ({ id: c.id, author: c.user && c.user.login, by: login && c.user && c.user.login === login ? "person" : "outside", text: c.body || "", at: c.created_at })) };
 }
+
+/** The numbers of the OPEN pull requests whose head is `branch` on the repo itself (a session's vyre/<id> branch). */
+export async function openPrsForBranch({ token, full_name, branch }) {
+  if (!/^[A-Za-z0-9._\/-]{1,200}$/.test(String(branch || "")) || String(branch).startsWith("-") || String(branch).includes("..")) throw err("branch must be a branch name", "bad_input");
+  const owner = full_name.split("/")[0];
+  const rows = await gh(token, "GET", `/repos/${full_name}/pulls?state=open&per_page=30&head=${encodeURIComponent(`${owner}:${branch}`)}`);
+  return (rows || []).filter(r => r && r.head && r.head.ref === branch).map(r => r.number);
+}

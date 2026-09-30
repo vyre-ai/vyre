@@ -13,7 +13,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { connector } from "./connect.js";
 import { MIGRATIONS, store, projectStore, forOne } from "./accounts.js";
-import { prNumber, prView, prMerge, prReview, prOpen, prStatus, prComments, issueList, issueGet } from "./pr.js";
+import { prNumber, openPrsForBranch, prView, prMerge, prReview, prOpen, prStatus, prComments, issueList, issueGet } from "./pr.js";
 import { searchMentions, resolveMention, parseId } from "./mentions.js";
 import { safeSegment, cloneRepo, worktreeAdd, worktreeRemove, originFullName, folderGitState, sanitizeRemoteUrl, defaultBranchOf, pushSession, localInit, sessionHistory, sessionUndo, sessionRedo } from "./git.js";
 
@@ -46,7 +46,7 @@ const MODULE_CALLERS = {
   "github.project.local-init": new Set(["module:projects", "module:sessions", "module:threads"]),
   // The "#" picker's fan-out and the turn that attaches a tag.
   // The registry asks this before it asks whether the person said yes (reach: asked).
-  "github.act.target": new Set(["module:platform"]),
+  "github.act.target": new Set(["module:platform", "module:threads"]),
   "github.mentions.search": new Set(["module:mentions", "module:platform", "module:sessions", "module:threads"]),
   "github.mentions.resolve": new Set(["module:mentions", "module:platform", "module:sessions", "module:threads"]),
 };
@@ -575,6 +575,19 @@ export default {
           return { to: [`${tool}:${repo.full_name}@${branch}`] };
         }
         throw fail(`${tool} is not one of github's asked tools`, "bad_input");
+      },
+    });
+
+    /** Which open pull requests a session's branch has, for the turn that hears "merge it" (sessions records the intent only when exactly one). */
+    ctx.tool("github.session.pr", {
+      internal: true,
+      description: "Sessions only: the numbers of the OPEN pull requests whose head is this session's branch (vyre/<session>) on the project's primary repo. Answers { prs: [numbers] }. Read only.",
+      input: obj({ project: str, session: str }, ["project", "session"]),
+      callers: ["module"],
+      run: async ({ project, session }, meta = {}) => {
+        checkModuleCaller("github.session.pr", meta, SESSION_ONLY);
+        const t = await prTarget(project);
+        try { return { prs: await openPrsForBranch({ ...t, branch: `vyre/${safeSegment(session, "session id")}` }) }; } catch (e) { throw prErr(e, t); }
       },
     });
 
