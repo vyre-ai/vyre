@@ -12,7 +12,7 @@
 # With neither option the copy is the site as built.
 #
 # Deploy the copy to the staging branch alias, never main:
-#   npx wrangler pages deploy DIR --project-name vyre-site --branch staging
+#   scripts/deploy-site.sh DIR --branch staging
 set -eu
 
 here=$(cd "$(dirname "$0")/.." && pwd)
@@ -29,27 +29,35 @@ while [ $# -gt 0 ]; do
   shift
 done
 [ -n "$out" ] || { echo "stage-site: --out DIR is required" >&2; exit 1; }
-case "$relay" in ""|wss://*|ws://127.0.0.1*|ws://localhost*|ws://\[::1\]*) ;; *) echo "stage-site: the relay is a wss:// address (ws:// only for a loopback one)" >&2; exit 1 ;; esac
-case "$install" in ""|https://*|http://127.0.0.1*|http://localhost*|http://\[::1\]*) ;; *) echo "stage-site: the install URL is an https:// address (http:// only for a loopback one)" >&2; exit 1 ;; esac
 [ -d "$site/setup/relay" ] || { echo "stage-site: run scripts/build-site.sh first ($site/setup/relay is missing)" >&2; exit 1; }
 
 rm -rf "$out"
 mkdir -p "$out"
 cp -R "$site/." "$out/"
 if [ -n "$relay" ] || [ -n "$install" ]; then
-  node -e '
-    const fs = require("fs"), [out, relay, install] = process.argv.slice(1);
-    const cfg = {};
-    if (relay) cfg.relay = relay;
-    if (install) cfg.installUrl = install;
-    fs.writeFileSync(out + "/setup/config.json", JSON.stringify(cfg) + "\n");
-    if (relay) {
-      const https = relay.replace(/^wss:/, "https:").replace(/^ws:/, "http:");
+  # The values are checked by the very code the page runs (site/setup/config.js), for a staging hostname: what it would ignore is
+  # refused here, not written. (A shell pattern would let ws://127.0.0.1.evil.example through.)
+  node --input-type=module -e '
+    import fs from "node:fs";
+    import { pathToFileURL } from "node:url";
+    const [here, out, relay, install] = process.argv.slice(1);
+    const { setupOverrides } = await import(pathToFileURL(here + "/site/setup/config.js").href);
+    const want = {};
+    if (relay) want.relay = relay;
+    if (install) want.installUrl = install;
+    const got = setupOverrides(want, "staging.vyre-site.pages.dev");
+    for (const k of Object.keys(want)) {
+      if (got[k] !== want[k]) { console.error("stage-site: " + (k === "relay" ? "the relay" : "the install URL") + " " + want[k] + " is not one the page would take (a wss:// relay or https:// install URL on vyre.run or pages.dev, or a loopback ws:// / http:// one)"); process.exit(1); }
+    }
+    fs.writeFileSync(out + "/setup/config.json", JSON.stringify(got) + "\n");
+    if (got.relay) {
+      const https = got.relay.replace(/^wss:/, "https:").replace(/^ws:/, "http:");
       const f = out + "/_headers", h = fs.readFileSync(f, "utf8");
       const from = "connect-src \x27self\x27 https://relay.vyre.run wss://relay.vyre.run;";
       if (!h.includes(from)) { console.error("stage-site: _headers has no connect-src line to widen"); process.exit(1); }
-      fs.writeFileSync(f, h.replace(from, "connect-src \x27self\x27 https://relay.vyre.run wss://relay.vyre.run " + https + " " + relay + ";"));
+      fs.writeFileSync(f, h.replace(from, "connect-src \x27self\x27 https://relay.vyre.run wss://relay.vyre.run " + https + " " + got.relay + ";"));
     }
-  ' "$out" "$relay" "$install"
+    console.log("stage-site: wrote setup/config.json " + JSON.stringify(got));
+  ' "$here" "$out" "$relay" "$install" || { rm -rf "$out"; exit 1; }
 fi
 echo "stage-site: $out ($( [ -n "$relay" ] && echo "relay $relay" || echo "the production relay" ), $( [ -n "$install" ] && echo "install line $install" || echo "the production install line" ))"

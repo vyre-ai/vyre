@@ -24,7 +24,7 @@
 #   <src>/build.json              version, commit and dirty, for vyre status and /v1/health
 #
 # Deploy afterwards with:
-#   npx wrangler pages deploy site --project-name vyre-site --branch main
+#   scripts/deploy-site.sh site --branch main        (refuses a folder with setup/config.json)
 set -eu
 
 here=$(cd "$(dirname "$0")/.." && pwd)

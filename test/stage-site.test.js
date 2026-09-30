@@ -55,6 +55,47 @@ test("stage-site: it refuses a relay that is not wss, an install URL that is not
   assert.notEqual(run(["--site", site]).status, 0, "--out is required");
 });
 
+test("stage-site: a relay or install URL the page would ignore is refused, not written (a lookalike host is not loopback)", t => {
+  const home = tempHome(t);
+  const site = fakeSite(path.join(home, "site"));
+  for (const [flag, value] of [["--relay", "ws://127.0.0.1.evil.example"], ["--relay", "ws://localhost.evil.example:80"], ["--relay", "wss://evil.example.com"], ["--install-url", "http://127.0.0.1.evil.example/i"], ["--install-url", "http://localhost@evil.example/i"], ["--install-url", "https://evil.example.com/i"]]) {
+    const out = path.join(home, "o-" + value.replace(/\W/g, ""));
+    const r = run(["--site", site, "--out", out, flag, value]);
+    assert.notEqual(r.status, 0, `${flag} ${value}`);
+    assert.match(r.stderr, /is not one the page would take/);
+    assert.ok(!fs.existsSync(out), "nothing was left behind");
+  }
+  const ok = run(["--site", site, "--out", path.join(home, "ok"), "--relay", "ws://127.0.0.1:45123"]);
+  assert.equal(ok.status, 0, ok.stderr);
+  assert.match(ok.stdout, /wrote setup\/config\.json \{"relay":"ws:\/\/127\.0\.0\.1:45123"\}/, "it says what it wrote");
+});
+
+test("deploy-site: production refuses a folder with a staging config.json; a preview alias takes it", t => {
+  const home = tempHome(t);
+  const site = fakeSite(path.join(home, "site"));
+  fs.writeFileSync(path.join(site, "setup", "config.json"), '{"relay":"ws://127.0.0.1:1"}\n');
+  const log = path.join(home, "wrangler.log");
+  const fake = path.join(home, "wrangler");
+  fs.writeFileSync(fake, `#!/bin/sh\necho "$@" >>"${log}"\n`, { mode: 0o755 });
+  const deploy = (/** @type {string[]} */ args) => spawnSync("sh", [path.join(REPO, "scripts", "deploy-site.sh"), ...args], { encoding: "utf8", env: { ...process.env, VYRE_WRANGLER: fake } });
+  const prod = deploy([site, "--branch", "main"]);
+  assert.notEqual(prod.status, 0);
+  assert.match(prod.stderr, /staging override; it does not go to production/);
+  assert.ok(!fs.existsSync(log), "wrangler was never run");
+  assert.equal(deploy([site, "--branch", "staging"]).status, 0);
+  assert.match(fs.readFileSync(log, "utf8"), /pages deploy .* --project-name vyre-site --branch staging/);
+  // A clean folder goes to main.
+  fs.rmSync(path.join(site, "setup", "config.json"));
+  assert.equal(deploy([site, "--branch", "main"]).status, 0);
+  assert.match(fs.readFileSync(log, "utf8"), /--branch main/);
+  assert.notEqual(deploy([site]).status, 0, "--branch is required");
+});
+
+test("the setup page hands its own hostname to setupOverrides, so production never reads the file", () => {
+  const page = fs.readFileSync(path.join(REPO, "site", "setup", "page.js"), "utf8");
+  assert.match(page, /setupOverrides\(await r\.json\(\), location\.hostname\)/);
+});
+
 test("setupOverrides: only a plain wss relay and a plain https install URL are taken; the page's defaults otherwise", () => {
   assert.deepEqual(setupOverrides({ relay: "wss://relay-staging.vyre.run:8443", installUrl: "https://staging.vyre-site.pages.dev/i" }, "staging.vyre-site.pages.dev"), { relay: "wss://relay-staging.vyre.run:8443", installUrl: "https://staging.vyre-site.pages.dev/i" });
   // Production never takes the file, whatever it says: nothing put on that origin can change the install line.
