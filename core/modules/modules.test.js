@@ -912,3 +912,11 @@ test("modules: the agents module relays a person to threads.send and to nothing 
   assert.equal(agentsMayRelay("threads.send"), true);
   for (const tool of ["threads.start", "threads.delete", "threads.answer", "vault.put", "gate.request", "settings.set", "agents.create", "memory.write", ""]) assert.equal(agentsMayRelay(tool), false, tool);
 });
+
+test("modules: the agents relay check lets threads.send through and throws for every other tool, vault.reveal among them", async () => {
+  const { checkAgentsRelay } = await import("./index.js");
+  assert.doesNotThrow(() => checkAgentsRelay("threads.send", "deck"));
+  for (const tool of ["vault.reveal", "vault.put", "threads.delete", "gate.request", "settings.set"]) {
+    assert.throws(() => checkAgentsRelay(tool, "deck"), new RegExp(`agents may not call ${tool.replace(".", "\\.")} as deck: it relays a person to threads\\.send only`), tool);
+  }
+});

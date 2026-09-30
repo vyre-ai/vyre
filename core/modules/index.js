@@ -55,6 +55,10 @@ export const firstParty = dir => {
 // settings passes a person's change on to the module that keeps the value, as that person.
 /** The one tool the agents module may call as the asking person: agents.ask's words and tags, heard by threads.send. @param {string} tool */
 export const agentsMayRelay = tool => tool === "threads.send";
+/** The per-call check on the agents module's relay: throws for any tool but threads.send. @param {string} tool @param {string} as */
+export function checkAgentsRelay(tool, as) {
+  if (!agentsMayRelay(tool)) throw new Error(`agents may not call ${tool} as ${as}: it relays a person to threads.send only`);
+}
 const CALL_AS = { agents: (/** @type {string} */ as) => isPerson(as), link: ["link:box"], settings: ["cli", "local", "deck", "capsule"], mentions: (/** @type {string} */ as) => isPerson(as) || as === "module:sessions" || as === "module:assistant",
   // capsule runs a view's declared tool as the asking person (first party modules) or as the added module itself, never as anyone else.
   capsule: (/** @type {string} */ as) => isPerson(as) || /^module:[a-z][a-z0-9-]*$/.test(as),
@@ -838,7 +842,7 @@ export class Registry {
         // mentions replays the asking person to a provider's search tool, never to any other tool.
         if (m.name === "connectors" && !(tool === "vault.put" && input && typeof input === "object" && input.kind === "api-credential")) throw new Error(`connectors may not call ${tool} as ${as}: it relays a person to vault.put for an api-credential only`);
         // agents relays the asking person to threads.send alone (agents.ask's tags), never to any other tool.
-        if (m.name === "agents" && !agentsMayRelay(tool)) throw new Error(`agents may not call ${tool} as ${as}: it relays a person to threads.send only`);
+        if (m.name === "agents") checkAgentsRelay(tool, String(as));
         if (m.name === "capsule" && !this.capsuleMayCall(String(as), tool)) throw new Error(`capsule may not call ${tool} as ${as}: no Capsule view of that module declares it`);
         if (m.name === "mentions" && !this.mentionTools(String(as).startsWith("module:") ? "resolve" : "search").has(tool)) throw new Error(`mentions may not call ${tool} as ${as}: no first-party provider names it`);
         // settings relays a person only to the tools first-party modules declared as their own
