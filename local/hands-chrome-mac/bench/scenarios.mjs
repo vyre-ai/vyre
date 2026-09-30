@@ -73,3 +73,48 @@ export const GHL_PATH = "/ghl";
 export function allSelectors() {
   return [...CHECKOUT_FIELDS.map(f => f.selector), "#apply-promo", "#place-order", ...WORKFLOW_STEPS.map(s => s.selector)];
 }
+
+// ---------------------------------------------------------------- the frames world (fixtures/ghl-shell.html + ghl-app.html + frames-world.mjs)
+// GoHighLevel's Workflows UI is an iframe on another site than the shell. These are the data the frames suite drives and the
+// fixture test checks: which identifier lives on which served page.
+
+/** The ports are the server's; a site is a hostname: a shell, the app it embeds, the widgets nested or added, and a fresh origin. */
+export const FRAMES_SITES = { shell: "a.localhost", app: "b.localhost", widgets: "c.localhost", fresh: "d.localhost" };
+
+/** Which route serves what, and the identifiers (data-testid) that page must carry. `via` names the file it is served from. */
+export const FRAMES_PAGES = {
+  shell: { host: "shell", path: "/", identifiers: ["nav-dashboard", "nav-conversations", "nav-calendars", "nav-contacts", "nav-opportunities", "nav-payments", "nav-marketing", "nav-automation", "nav-sites", "nav-reputation", "nav-reporting", "nav-settings", "quick-search", "next-ticker"] },
+  app: { host: "app", path: "/automation/workflows", identifiers: ["create-workflow", "workflow-search", "start-from-scratch", "chooser-cancel", "workflow-name", "publish-toggle", "trigger-picker", "trigger-search", "trigger-contact-created", "trigger-tag-added", "trigger-confirm", "add-action", "action-search", "action-send-email", "action-send-sms", "action-wait", "action-add-tag", "action-remove-tag", "action-webhook", "action-config", "action-confirm", "test-send", "save-workflow", "back-to-workflows", "whatsnew-close", "unsaved-stay", "unsaved-discard"] },
+  editor: { host: "widgets", path: "/email-editor", identifiers: ["editor-body", "editor-save"] },
+  late: { host: "widgets", path: "/late", identifiers: ["open-chat"] },
+  ticker1: { host: "widgets", path: "/ticker?n=1", identifiers: ["ticker-ack-1"] },
+  ticker2: { host: "widgets", path: "/ticker?n=2", identifiers: ["ticker-ack-2"] },
+  sandboxed: { host: "widgets", path: "/sandboxed", identifiers: ["contact-support"] },
+  sameOrigin: { host: "shell", path: "/same-origin-frame", identifiers: ["mark-read"] },
+};
+
+/** The shell's address as GoHighLevel spells it (a sub-account, then the section); a listed GHL host on this path counts as a workflow page. */
+export const FRAMES_SHELL_PATH = "/v2/location/HarlowLoc0001/automation/workflows";
+
+/** The workflow the suite builds through the iframe builder with the ghl create-workflow flow (labels as in GHL_ROBUST). */
+export const FRAMES_WORKFLOW = {
+  name: "Intake flow", trigger: "contact-created",
+  actions: [
+    { type: "send-email", config: { subject: "Welcome to Harlow Legal", body: "Thanks for getting in touch" } },
+    { type: "add-tag", config: { "Tag name": "new-lead" } },
+  ],
+};
+
+/**
+ * A batch that spans frames, one of which navigates in the middle of it: press "Next ticker" (shell), wait for the control the
+ * ticker frame shows AFTER it navigates, press it, type into the email editor nested in the app, press its Save, type into the
+ * app's own search box. The suite adds tabId to each step's args.
+ */
+export const FRAMES_BATCH = [
+  { op: "page.act", args: { selector: { name: "Next ticker", identifier: "next-ticker" }, kind: "click", wait: { timeoutMs: 8000, stable: true } } },
+  { op: "page.wait", args: { selector: { name: "Ticker two ack", identifier: "ticker-ack-2" }, timeoutMs: 8000 } },
+  { op: "page.act", args: { selector: { name: "Ticker two ack", identifier: "ticker-ack-2" }, kind: "click", wait: { timeoutMs: 8000, stable: true } } },
+  { op: "page.fill", args: { fields: [{ selector: { name: "Email editor body", identifier: "editor-body" }, value: "batch text for juno" }], wait: { timeoutMs: 8000, stable: true } } },
+  { op: "page.act", args: { selector: { name: "Save design", identifier: "editor-save" }, kind: "click", wait: { timeoutMs: 8000, stable: true } } },
+  { op: "page.fill", args: { fields: [{ selector: { name: "Search workflows", identifier: "workflow-search" }, value: "intake" }], wait: { timeoutMs: 8000, stable: true } } },
+];
