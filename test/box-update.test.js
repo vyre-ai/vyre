@@ -596,12 +596,12 @@ test("update-from-request: at least the minimum gap between updates, and only st
 // SHA256SUMS, and the signature over "vyre-release-sums\n" + those exact bytes. Ed25519 is deterministic, so it is a constant.
 const VECTOR = {
   key: "MCowBQYDK2VwAyEA6kpsY+KcUgq+9VB7Ey7F+ZVHdq6+vnuSQh7qaRRG0iw=",
-  sums: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa  manifest.json\\nbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb  vyre.tgz\\n",
+  sums: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa  manifest.json\nbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb  vyre.tgz\n",
   sig: "X+aWDX+6p5YDh32E4tUXAHKEvCwi36rUm4I889QLs2I6b4hlP0J05o8PNtuyZnsCaqMkiv2MWmqJ3fllTLIzDA==",
 };
 
 test("release signature: the box verifies the shared vector, and refuses the same signature over the bare bytes", () => {
-  const js = /-e '(const c=require\\("crypto"\\)[^']*)'/.exec(WRAPPER_SRC)?.[1];
+  const js = /-e '(const c=require\("crypto"\)[^']*)'/.exec(WRAPPER_SRC)?.[1];
   assert.ok(js, "the wrapper's verifier is found");
   const check = (/** @type {string} */ sums, /** @type {string} */ sig) => spawnSync("node", ["-e", /** @type {string} */ (js), VECTOR.key, sig], { input: sums, encoding: "utf8" }).stdout.trim();
   assert.equal(check(VECTOR.sums, VECTOR.sig), "signed");
