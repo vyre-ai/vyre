@@ -1,0 +1,18 @@
+# Probes for the tailnet team's matrix items that need no real tailnet (T2b). Hosted runner, loopback only.
+name: tailnet-probe
+on:
+  workflow_dispatch:
+  push:
+    branches: ["work/tailnet-t2"]
+    paths: ["scripts/probe/**", ".github/workflows/tailnet-probe.yml"]
+permissions:
+  contents: read
+jobs:
+  dns-rebind:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - run: sudo apt-get update -qq && sudo apt-get install -y -qq dnsmasq-base dnsutils
+      - name: a Pi-hole style resolver (dnsmasq --stop-dns-rebind) against the addresses a box publishes
+        run: scripts/probe/dns-rebind.sh
