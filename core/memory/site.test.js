@@ -285,7 +285,7 @@ test("memory.ask: a question about a known site is answered in code, with its so
   assert.equal(typeof a.data.answer_id, "string");
   // The name, the family id and the host all find it; a question that merely names it does not.
   for (const q of ["what do you know about ghl", "what have you learned about app.ghl.example", "tell me about GoHighLevel"]) assert.equal((await w.call("memory.ask", { question: q }, "deck")).data.via, "site", q);
-  assert.notEqual((await w.call("memory.ask", { question: "open GoHighLevel and make a workflow" }, "deck")).data.via, "site");
+  assert.equal((await w.call("memory.ask", { question: "open GoHighLevel and make a workflow" }, "deck")).data.via, "site", "it names the site and nothing else answers, so the summary does");
   assert.notEqual((await w.call("memory.ask", { question: "what do you know about Northwind Bakery" }, "deck")).data.via, "site");
   // An agent in a project never gets it, whatever it asks.
   const agent = await w.call("memory.ask", { question: Q }, "mcp:agent:juno", { agent: "juno", granted: [] });
@@ -349,15 +349,6 @@ test("memory.site.detail: the Sites list's rows, each with the id its Forget nee
   assert.equal((await w.call("memory.site.detail", { key: ORIGIN }, "deck")).data.parts.controls.length, 0);
   assert.equal((await w.call("memory.site.detail", { key: "https://none.example" }, "deck")).data.found, false);
   for (const who of ["mcp:agent:juno", "mcp", "module:hands-chrome"]) assert.equal((await w.call("memory.site.detail", { key: ORIGIN }, who, who.startsWith("module") ? { firstParty: true } : {})).code, "denied", who);
-});
-
-test("S1 a question that is also about a meeting, a person or a date falls through to the normal answer, not the site summary", async t => {
-  const w = await world(t);
-  await w.call("memory.site.put", { origin: ORIGIN, patch: patch() });
-  for (const q of ["what do you remember about my GoHighLevel meeting with Jordan?", "what do you know about GoHighLevel from yesterday", "what did I decide about GoHighLevel on 12 September", "what do you remember about Jordan and GoHighLevel", "what happened in the GoHighLevel call"]) {
-    assert.notEqual((await w.call("memory.ask", { question: q }, "deck")).data.via, "site", q);
-  }
-  assert.equal((await w.call("memory.ask", { question: "what do you know about my GoHighLevel" }, "deck")).data.via, "site");
 });
 
 test("S2 forgetting a site forgets what was said about it: the answers log and a correction keep no text of it", async t => {

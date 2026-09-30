@@ -1,5 +1,5 @@
 // @ts-check
-// "What do you know about GoHighLevel?": memory.ask's answer about a site Vyre for Chrome learned, built in code from the
+// "What do you know about GoHighLevel?": memory.ask's answer about a site Vyre for Chrome learned, given when a question names the site, built in code from the
 // stored records (lib/site-knowledge.js), no model. It names the origins and the family, when it last worked, what it
 // knows (frames, controls, the site's own API, flows), how sure it is, and what used to work. Everything here is structure;
 // the store never held a value, so there is none to say. The answer is plain text quoted from memory, never an instruction.
@@ -8,9 +8,6 @@ import { mergeFamily, readConf, isQuarantined } from "../../lib/site-knowledge.j
 
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 const day = (/** @type {string|null} */ iso) => { const d = iso ? new Date(iso) : null; return d && Number.isFinite(d.getTime()) ? `${d.getUTCDate()} ${MONTHS[d.getUTCMonth()]}` : null; };
-/** A question that asks what is known, rather than one that merely names a site. */
-const INTENT = /\b(?:what|how much|how well|anything|everything)\b.{0,40}\b(?:know|learned|learnt|remember|understand|seen)\b|\b(?:do|did|have|has) (?:you|vyre|chrome)\b.{0,30}\b(?:know|learned|learnt|remember|seen)\b|\btell me about\b|\byour knowledge of\b|\bwhat have you (?:seen|learned)\b/i;
-const OTHER = /\b(?:meeting|meetings|call|calls|email|emails|with|yesterday|today|tomorrow|last|when|who|said|told|discussed|agreed|decided|invoice|client|clients|session|sessions|conversation|message|messages|ticket|bug|error)\b/;
 const esc = (/** @type {string} */ s) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 const host = (/** @type {string} */ origin) => origin.replace(/^https?:\/\//, "");
 
@@ -37,18 +34,10 @@ function tokensOf(rec) {
  * @returns {{ answer: string, confidence: number, abstained: false, known: string[], sources: any[], via: "site" } | null}
  */
 export function answerSite(question, records, { now = Date.now() } = {}) {
-  const raw = String(question || "");
-  const q = raw.toLowerCase();
-  if (!INTENT.test(q) || !records.length) return null;
-  // A question that is also about a meeting, a person, a date or a past event is about the person's own work, not the site's record:
-  // it falls through to the normal answer ("what do you remember about my GoHighLevel meeting with Jordan?").
-  if (OTHER.test(q) || /\d/.test(q)) return null;
+  const q = String(question || "").toLowerCase();
+  if (!records.length) return null;
   const hit = records.filter(r => tokensOf(r).some(t => new RegExp(`(?:^|[^a-z0-9.])${esc(t)}(?:$|[^a-z0-9])`).test(q)));
   if (!hit.length) return null;
-  // A capitalised word that is not the site's own name is a person or a place (Jordan), so the question is about something else.
-  const siteWords = new Set(hit.flatMap(tokensOf).flatMap(t => t.split(/[^a-z0-9]+/)));
-  const words = raw.replace(/[?!.,;:]/g, " ").split(/\s+/).filter(Boolean);
-  if (words.slice(1).some(w => /^[A-Z][a-z]+$/.test(w) && !siteWords.has(w.toLowerCase()) && !["I", "Chrome", "Vyre"].includes(w))) return null;
   // A family stands for its members: what is known about the product, whichever host was named.
   /** @type {Map<string, { family: any, origins: any[] }>} */
   const groups = new Map();

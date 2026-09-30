@@ -171,8 +171,18 @@ export function asker({ db, answer, retrieve, site = null, runner = null, model 
   return async function ask({ question, project_cwds = [], personal: sees = false, siteOk = false, thread = null, stage = () => {}, screen = null, writes = null, draft = null }) {
     const t0 = performance.now();
     const q = String(question || "").trim();
+    // A site Vyre for Chrome learned, when the question names it ("what do you know about GoHighLevel?"), is worked out in code,
+    // for the person's own surfaces only. It never decides anything: the normal answer always runs, and what it finds wins; the site
+    // summary goes after it, or answers alone when the normal answer found nothing.
+    const siteAns = site && siteOk && q ? await Promise.resolve(site(q)).catch(() => null) : null;
     const done = r => {
-      const out = { answer: null, confidence: 0, abstained: true, known: [], sources: [], via: null, cost_usd: 0, ...r, latency_ms: Math.round(performance.now() - t0) };
+      let out = { answer: null, confidence: 0, abstained: true, known: [], sources: [], via: null, cost_usd: 0, ...r, latency_ms: Math.round(performance.now() - t0) };
+      if (siteAns && siteAns.answer && out.via !== "corrected") {
+        if (out.answer && !out.abstained) out = { ...out, answer: `${out.answer}\n\n${siteAns.answer}`, sources: [...(out.sources || []), ...siteAns.sources] };
+        else { const { limited, message, why, ...rest } = out; out = { ...rest, answer: siteAns.answer, confidence: siteAns.confidence, abstained: false, known: [], sources: siteAns.sources, via: "site" }; }
+        // Said to be wrong: that whole answer, the site's part included, is never given again for this question.
+        if (fix && fix.action === "wrong" && out.answer === fix.old) out = { answer: null, confidence: 0, abstained: true, known: [`You said "${fix.old}" is wrong.`], sources: [], via: "corrected", why: "corrected", cost_usd: 0, latency_ms: out.latency_ms };
+      }
       // An answer the person can correct where it appears, by this id.
       // A "not sure" has one too: the person can type the answer IQ did not have.
       if (fixes && q && out.via !== "corrected" && !out.limited) out.answer_id = fixes.issue({ question: q, answer: out.answer || "", via: out.via, facts: r.facts || [], sources: out.sources });
@@ -189,7 +199,7 @@ export function asker({ db, answer, retrieve, site = null, runner = null, model 
     }
     // Said to be wrong: that answer is never given again for this question.
     const notThis = fix && fix.action === "wrong" ? fix.old : null;
-    const refused = r => notThis && r.answer === notThis ? done({ via: "corrected", known: [`You said "${notThis}" is wrong.`], why: "corrected" }) : done(r);
+    const refused = r => notThis && (r.answer === notThis || (siteAns && siteAns.answer && r.answer && `${r.answer}\n\n${siteAns.answer}` === notThis)) ? done({ via: "corrected", known: [`You said "${notThis}" is wrong.`], why: "corrected" }) : done(r);
     // 1. The fast path: a personal fact memory is sure of.
     if (sees) {
       const f = await answer({ q, project_cwds });
@@ -203,12 +213,6 @@ export function asker({ db, answer, retrieve, site = null, runner = null, model 
       if (d && d.answer) {
         return refused({ answer: d.answer, confidence: d.confidence, abstained: false, sources: [d.source], history: d.history, via: "decision" });
       }
-    }
-    // 1c. A site Vyre for Chrome learned ("what do you know about GoHighLevel?"): answered in code from what it keeps, for the
-    // person's own surfaces only, never an agent in a project.
-    if (site && siteOk) {
-      const w = await Promise.resolve(site(q)).catch(() => null);
-      if (w && w.answer) return refused({ answer: w.answer, confidence: w.confidence, abstained: false, sources: w.sources, via: "site" });
     }
     // 2. The passages.
     stage("searching");
