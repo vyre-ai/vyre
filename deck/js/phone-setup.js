@@ -161,12 +161,13 @@ const b64url = (/** @type {ArrayBuffer} */ buf) => btoa(String.fromCharCode(.../
  * Add a passkey, with a one-time code from `vyre presence code` standing in for the proof there
  * is no passkey yet to make. Call it directly from a click handler: Safari makes a passkey only
  * for a user gesture, so the WebAuthn prompt comes before anything is awaited.
- * @param {{ name?: string, code: string }} input
+ * With `grant` (tailnet's one-time enrolment grant, given at pairing) no typed code is needed.
+ * @param {{ name?: string, code?: string, grant?: string }} input
  * @returns {Promise<{ id: string, kind: string, name: string, created: number }>}
  */
-export async function enrollPasskey({ name, code }) {
+export async function enrollPasskey({ name, code, grant }) {
   if (!canProve()) throw new Error("This browser cannot create a passkey. Open the Deck in Safari or Chrome over your tailnet.");
-  const c = String(code || "").trim();
+  const c = String(grant || code || "").trim();
   if (!c) throw new Error("Type the code from vyre presence code first.");
   const label = String(name || "").trim() || deviceName();
   /** @type {any} */ let cred;
@@ -189,7 +190,7 @@ export async function enrollPasskey({ name, code }) {
     kind: "passkey", name: label,
     public_key: b64url(r.getPublicKey()), alg: r.getPublicKeyAlgorithm(),
     rp_id: location.hostname, credential_id: id,
-  }, c);
+  }, c, grant ? "grant" : "code");
   set(PASSKEY_KEY, JSON.stringify({ id: k?.id || id, name: k?.name || label, at: Date.now() }));
   // A box with person sessions: sign in on this device now, once, so the first real action is
   // not a second prompt. Errors are dropped; an older box skips it (js/person.js).
