@@ -64,6 +64,11 @@ async function prompt(id, blocks) {
     c.unref();
     if (process.env.FAKE_ACP_PIDFILE) fs.writeFileSync(process.env.FAKE_ACP_PIDFILE, String(c.pid));
     say("detached");
+  } else if ((m = /^switchmode (\S+)$/.exec(t))) {
+    mode = m[1];                                                     // the agent changes its own mode, and says so
+    out({ method: "session/update", params: { sessionId: session, update: { sessionUpdate: "current_mode_update", currentModeId: m[1] } } });
+    await new Promise(r => setTimeout(r, 300));
+    say("switched");
   } else if (t === "mode") say("mode: " + mode);
   else say("echo: " + t);
   out({ id, result: { stopReason: "end_turn" } });

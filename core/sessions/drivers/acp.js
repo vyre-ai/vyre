@@ -50,7 +50,7 @@ const MEMORY_MS = 3000;
 /**
  * The modes Vyre permits by name: the ones where the agent keeps asking (or cannot write). Anything else an agent reports is
  * refused, never listed and never entered, including a mode a later release adds: an allowlist, because a denylist of bypass
- * words let Codex's "agent-full-access" through once. An entry may narrow it (`allowModes`), never widen it past BYPASS_MODE.
+ * words let Codex's "agent-full-access" through once. An entry may narrow it (`allowModes`, intersected with this list), never widen it.
  */
 export const ALLOWED_MODES = /^(default|ask|untrusted|on-request|read-?only|plan|agent)$/i;
 export const BYPASS_MODE = /bypass|yolo|dangerous|never.?ask|full.?auto|full.?access|auto.?approve|accept.?all|skip.?perm/i;
@@ -198,6 +198,24 @@ function runAcp(entry, known, o) {
     return id;
   }
 
+  /**
+   * The agent says it changed its own mode. A listed mode is recorded; an unlisted one (a bypass mode, one a new release added, one
+   * its own config chose) is never recorded and is reverted with session/set_mode to the last listed mode, or the session is stopped.
+   * An agent that lists no modes at all (Grok) has nothing to enforce, but a bypass-shaped name still stops it.
+   * @param {string} id
+   */
+  function modeUpdate(id) {
+    if (modes.some(x => x.id === id)) { mode = id; return; }
+    if (!modes.length && !BYPASS_MODE.test(id)) return;
+    const back = mode && modes.some(x => x.id === mode) ? mode : (Array.isArray(entry.pinMode) ? entry.pinMode.find(m => modes.some(x => x.id === m)) : null) || (modes[0] && modes[0].id) || null;
+    const halt = () => {
+      say({ type: "result", subtype: "error", is_error: true, result: `${entry.id[0].toUpperCase() + entry.id.slice(1)} switched itself to a mode Vyre does not permit (${String(id).slice(0, 60)}) and could not be put back; Vyre stopped it`, total_cost_usd: 0 });
+      try { killGroup(child, "SIGKILL"); } catch {}
+    };
+    if (!back) return halt();
+    request("session/set_mode", { sessionId: sid, modeId: back }, 10_000).then(() => { mode = back; }, halt);
+  }
+
   function update(u) {
     const kind = u.sessionUpdate;
     if (kind === "agent_message_chunk") {
@@ -213,7 +231,7 @@ function runAcp(entry, known, o) {
       if (!announced.has(String(u.toolCallId))) announce(u);
       if (u.status === "completed" || u.status === "failed") toolDone(u);
     } else if (kind === "current_mode_update" && typeof u.currentModeId === "string") {
-      if (!BYPASS_MODE.test(u.currentModeId)) mode = u.currentModeId;
+      modeUpdate(u.currentModeId);
     } else if (kind === "plan" && Array.isArray(u.entries)) {
       say({ type: "system", subtype: "vyre_plan", entries: u.entries });
     } else if (kind === "usage_update") {
@@ -397,7 +415,7 @@ function runAcp(entry, known, o) {
     known.set(o.id, sid);
     const m = r.modes || {};
     const allow = entry.allowModes || ALLOWED_MODES;
-    const permitted = x => Boolean(x) && typeof x.id === "string" && allow.test(x.id) && !BYPASS_MODE.test(x.id + " " + (x.name || ""));
+    const permitted = x => Boolean(x) && typeof x.id === "string" && allow.test(x.id) && ALLOWED_MODES.test(x.id) && !BYPASS_MODE.test(x.id + " " + (x.name || ""));
     modes = (Array.isArray(m.availableModes) ? m.availableModes : []).filter(permitted);
     mode = typeof m.currentModeId === "string" && modes.some(x => x.id === m.currentModeId) ? m.currentModeId : null;
     // Fail closed: an agent that starts in a mode Vyre does not list (one that approves everything, a mode a new release added, or

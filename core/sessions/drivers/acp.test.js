@@ -404,3 +404,37 @@ test("codex entry: a custom endpoint with no key in the environment fails plainl
   assert.equal(w.launches().some(l => l.authenticate), false, "nothing was sent to the agent");
   await proc.stop(500);
 });
+
+test("acp: an agent that switches its own mode to an unlisted one is put back, or stopped; a listed switch is recorded", async t => {
+  const w = world(t);
+  const s = open(w, { env: { ...w.env, FAKE_ACP_EXTRA_MODE: "turbo" } });
+  await s.until(m => m.type === "system" && m.subtype === "init", "init");
+  assert.equal(await s.say("switchmode turbo"), "switched");
+  await new Promise(r => setTimeout(r, 300));
+  assert.ok(w.launches().some(l => l.set_mode === "default"), "set_mode back to the last listed mode");
+  assert.equal(await s.say("mode"), "mode: default", "and the agent is in it");
+  assert.equal(s.proc.mode, "default", "never recorded as turbo");
+  assert.equal(await s.say("switchmode bypassPermissions"), "switched");
+  await new Promise(r => setTimeout(r, 300));
+  assert.equal(await s.say("mode"), "mode: default", "a bypass switch is reverted too");
+  // A listed switch is fine and recorded.
+  await s.say("switchmode plan");
+  await new Promise(r => setTimeout(r, 200));
+  assert.equal(s.proc.mode, "plan");
+  await s.proc.stop(500);
+  // It cannot be put back: the session is stopped with a plain reason.
+  const w2 = world(t);
+  const s2 = open(w2, { env: { ...w2.env, FAKE_ACP_EXTRA_MODE: "turbo", FAKE_ACP_NO_SETMODE: "1" } });
+  await s2.until(m => m.type === "system" && m.subtype === "init", "init");
+  s2.proc.write({ type: "user", message: { role: "user", content: "switchmode turbo" } });
+  const r = await s2.until(m => m.type === "result" && m.is_error, "stopped");
+  assert.match(r.result, /switched itself to a mode Vyre does not permit \(turbo\) and could not be put back; Vyre stopped it/);
+});
+
+test("acp: an entry's allowModes narrows the default allowlist and never widens it", async t => {
+  const w = world(t, { allowModes: /.*/ });
+  const s = open(w, { env: { ...w.env, FAKE_ACP_EXTRA_MODE: "turbo" } });
+  const init = await s.until(m => m.type === "system" && m.subtype === "init", "init");
+  assert.deepEqual(init.modes.sort(), ["default", "plan"], "match-everything still lists only the default allowlist");
+  await s.proc.stop(500);
+});
