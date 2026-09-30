@@ -2207,6 +2207,18 @@ export class Switchboard {
   }
 }
 
+/**
+ * "<module>:<word>" for the spend ledger, from the calling module's label and the word it gave (with or without its own
+ * "<module>:" in front); null when there is no word, it is not a plain word, or it names another module.
+ * @param {unknown} caller @param {unknown} word
+ */
+export function ledgerName(caller, word) {
+  const m = /^module:([a-z][a-z0-9-]{0,39})$/.exec(String(caller || ""));
+  if (!m || typeof word !== "string") return null;
+  const w = word.startsWith(`${m[1]}:`) ? word.slice(m[1].length + 1) : word;
+  return /^[a-z0-9][a-z0-9_.-]{0,50}$/i.test(w) ? `${m[1]}:${w}` : null;
+}
+
 const str = { type: "string" };
 
 /** Pasted images a message may carry (Claude Code's own limits are close to these). */
@@ -2810,10 +2822,10 @@ export default {
     // instructions. Internal, so no surface or model can hand a thread an environment.
     ctx.tool("threads.quick", {
       description: "One question to a purpose's warm session (a lean one already started, so no start-up wait): memory (Vyre IQ), planner, helper and the like. A fresh session per question; the system text is fixed per spare, the question's material goes in prompt. Returns { text, ok, cost_usd, warm, ms, thread }.", internal: true,
-      input: { type: "object", required: ["purpose", "prompt"], properties: { purpose: { type: "string", enum: ["memory", "planner", "learn", "helper", "job"] }, spend_purpose: { type: "string", description: "Who this question is for, as the spend ledger should say (for example watcher:digest): letters, digits and : _ . - up to 60. The cost of this one answer is recorded under it (spend.summary); absent, under the session's own purpose." }, stream: { type: "boolean", description: "Hand partial text to the calling module as it arrives (ctx.call opts.onPartial); the answer still returns whole." }, prompt: str, system: str, model: str, timeout_ms: { type: "integer", minimum: 1000, maximum: 600000 } } },
+      input: { type: "object", required: ["purpose", "prompt"], properties: { purpose: { type: "string", enum: ["memory", "planner", "learn", "helper", "job"] }, spend_purpose: { type: "string", description: "Who this question is for, as a word (for example digest): letters, digits and _ . - up to 50. The cost of this one answer is recorded in the spend ledger under \"<your module>:<word>\" (spend.summary), never under another module's name; absent, under the session's own purpose." }, stream: { type: "boolean", description: "Hand partial text to the calling module as it arrives (ctx.call opts.onPartial); the answer still returns whole." }, prompt: str, system: str, model: str, timeout_ms: { type: "integer", minimum: 1000, maximum: 600000 } } },
       run: async (i, meta) => sb.quick({ purpose: i.purpose, prompt: i.prompt, system: i.system || null, model: i.model || null, timeoutMs: i.timeout_ms || 60_000,
-        // Only from a module (the tool is module-only): a short attribution word for the ledger, else today's (the session's purpose).
-        ledger: typeof i.spend_purpose === "string" && /^[a-z][a-z0-9:_.-]{0,59}$/i.test(i.spend_purpose) && String(/** @type {any} */ (meta).caller || "").startsWith("module:") ? i.spend_purpose : null,
+        // The ledger name is always "<the calling module>:<word>": a module books only under its own name (the tool is module-only).
+        ledger: ledgerName(/** @type {any} */ (meta).caller, i.spend_purpose),
         onText: i.stream && meta && typeof /** @type {any} */ (meta).partial === "function" ? /** @type {any} */ (meta).partial : null }),
     });
 
