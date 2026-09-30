@@ -67,7 +67,11 @@ async function open(ctx, share, p, e) {
   if (!ctx.alive() || !view.isConnected) return;
   if ("error" in r) return put(stage, empty(whyNot(r.error)));
   if ("tooBig" in r) return put(stage, h("p", { class: "muted" }, `${e.name} is ${sizeWord(r.size)}, too big to open here. Open it on a computer.`));
-  const blob = new Blob([/** @type {BlobPart} */ (r.bytes)], { type: r.mime || e.mime || "application/octet-stream" });
+  // The type is ours, from the kind we decided to show, never the box's string: a wrong mime must not render as HTML here.
+  const IMAGE = /^image\/(png|jpeg|gif|webp)$/;
+  const type = kind === "image" ? (IMAGE.test(r.mime || e.mime || "") ? String(r.mime || e.mime) : "application/octet-stream")
+    : kind === "pdf" ? "application/pdf" : kind === "text" ? "text/plain" : "application/octet-stream";
+  const blob = new Blob([/** @type {BlobPart} */ (r.bytes)], { type });
   const url = URL.createObjectURL(blob);
   ctx.cleanup(() => URL.revokeObjectURL(url));
   const save = h("a", { class: "btn btn-sm", href: url, download: e.name }, "Save");

@@ -19,6 +19,8 @@
 const BUILD = "dev";
 const CACHE = "vyre-deck-8-" + BUILD;
 const OFFLINE_CACHE = "vyre-deck-offline-1";
+const VERSION_CACHE = "vyre-deck-shell-version"; // the highest signed release accepted; outlives each build
+const HASHES_KEY = "/__shell-hashes";
 const OFFLINE_TOOLS = new Set(["threads.get", "projects.list"]);
 const OFFLINE_MAX = 20;                    // distinct calls kept, oldest evicted first
 const OFFLINE_MAX_AGE_MS = 7 * 86_400_000; // a week
@@ -66,9 +68,13 @@ function fromBase64(b64) {
  * fetched, as `{ path, bytes: ArrayBuffer }`. Returns `{ ok, checked, why? }`: `checked: false`
  * means nothing to check on this build (unsigned checkout, or a browser that cannot verify);
  * `checked: true, ok: false` means the shell does not match the release and must not activate.
- * @param {{ path: string, bytes: ArrayBuffer }[]} files
+ * Complete: every path in `required` (the SHELL list but sw.js) must have been fetched and be
+ * listed with a matching hash, so an origin cannot withhold a file. Version floor: shell.json
+ * carries the release version and a lower one than `floor` (the highest accepted) is refused.
+ * On success it also returns the listed hashes and the version, for the fetch handler and the floor.
+ * @param {{ path: string, bytes: ArrayBuffer }[]} files @param {string[]} required @param {string} [floor]
  */
-async function verifyShell(files) {
+async function verifyShell(files, required, floor = "") {
   if (!SHELL_SIGNED) return { ok: true, checked: false };
   const get = async (/** @type {string} */ name) => {
     const r = await fetch("/release/" + name, { cache: "no-cache" });
@@ -100,12 +106,24 @@ async function verifyShell(files) {
   try { shell = JSON.parse(new TextDecoder().decode(shellJson)); } catch { shell = null; }
   if (!shell || shell.v !== 1 || !Array.isArray(shell.files)) return { ok: false, checked: true, why: "shell.json malformed" };
   const known = new Map(shell.files);
-  for (const f of files) {
-    const want = known.get(f.path);
-    if (!want) continue; // sw.js itself is stamped per build, so it is not listed
-    if (hex(await crypto.subtle.digest("SHA-256", f.bytes)) !== want) return { ok: false, checked: true, why: `hash mismatch: ${f.path}` };
+  const version = typeof shell.version === "string" ? shell.version : "";
+  if (!/^\d+\.\d+\.\d+/.test(version)) return { ok: false, checked: true, why: "shell.json has no version" };
+  if (floor && semverLess(version, floor)) return { ok: false, checked: true, why: `older than ${floor}` };
+  const got = new Map(files.map(f => [f.path, f.bytes]));
+  for (const p of required) {
+    const want = known.get(p), bytes = got.get(p);
+    if (!want) return { ok: false, checked: true, why: `not listed: ${p}` };
+    if (!bytes) return { ok: false, checked: true, why: `not fetched: ${p}` };
+    if (hex(await crypto.subtle.digest("SHA-256", bytes)) !== want) return { ok: false, checked: true, why: `hash mismatch: ${p}` };
   }
-  return { ok: true, checked: true };
+  return { ok: true, checked: true, files: shell.files, version };
+}
+/** a < b for x.y.z versions (a prerelease tail is ignored). @param {string} a @param {string} b */
+function semverLess(a, b) {
+  const n = (/** @type {string} */ v) => v.split(/[-+]/)[0].split(".").map(x => parseInt(x, 10) || 0);
+  const x = n(a), y = n(b);
+  for (let i = 0; i < 3; i++) if ((x[i] || 0) !== (y[i] || 0)) return (x[i] || 0) < (y[i] || 0);
+  return false;
 }
 const SHELL = ["/", "/manifest.webmanifest", "/icon.svg", "/icon-192.png", "/apple-touch-icon.png", "/favicon.svg",
   "/css/tokens.css", "/css/deck.css", "/css/buttons.css", "/css/marks.css", "/js/status-mark.js", "/js/rail.js", "/css/toast.css", "/js/toast.js", "/fonts/instrument-sans-latin.woff2", "/fonts/jetbrains-mono-latin.woff2", "/js/app.js", "/js/api.js", "/js/dom.js", "/js/icons.js", "/js/fmt.js", "/js/needs.js", "/js/editable.js",
@@ -139,7 +157,9 @@ self.addEventListener("install", e => e.waitUntil((async () => {
     await cache.put(p, r);
     try { fetched.push({ path: p, bytes: await forHash.arrayBuffer() }); } catch {}
   }));
-  const v = await verifyShell(fetched);
+  const vc = SHELL_SIGNED ? await caches.open(VERSION_CACHE) : null;
+  const floor = vc ? await (await vc.match("/version"))?.text().catch(() => "") || "" : "";
+  const v = await verifyShell(fetched, SHELL.filter(p => p !== "/sw.js"), floor);
   if (v.checked && !v.ok) {
     // Fails closed: this new cache is discarded and skipWaiting() is never called, so the
     // browser keeps running whichever shell was already active (the old cache, the old worker) -
@@ -149,10 +169,15 @@ self.addEventListener("install", e => e.waitUntil((async () => {
     await caches.delete(CACHE);
     return;
   }
+  if (v.checked && v.files && vc) {
+    // What the fetch handler holds every later copy to, and the version no release may go under.
+    await cache.put(HASHES_KEY, new Response(JSON.stringify(v.files), { headers: { "content-type": "application/json" } }));
+    await vc.put("/version", new Response(v.version));
+  }
   await self.skipWaiting();
 })()));
 self.addEventListener("activate", e => e.waitUntil((async () => {
-  for (const k of await caches.keys()) if (k !== CACHE && k !== OFFLINE_CACHE) await caches.delete(k);
+  for (const k of await caches.keys()) if (k !== CACHE && k !== OFFLINE_CACHE && k !== VERSION_CACHE) await caches.delete(k);
   await self.clients.claim();
 })()));
 
@@ -251,6 +276,14 @@ self.addEventListener("notificationclick", e => {
   })());
 });
 
+/** The signed release's hash for one shell path, from the list install stored, else null. @param {Cache} cache @param {string} path */
+async function listed(cache, path) {
+  try {
+    const r = await cache.match(HASHES_KEY);
+    return r ? new Map(await r.json()).get(path) || null : null;
+  } catch { return null; }
+}
+
 self.addEventListener("fetch", e => {
   const url = new URL(e.request.url);
   if (url.origin !== location.origin) return;
@@ -272,8 +305,16 @@ self.addEventListener("fetch", e => {
     const cache = await caches.open(CACHE);
     const key = e.request.mode === "navigate" ? "/" : e.request;
     const hit = await cache.match(key);
-    const fresh = fetch(e.request).then(res => {
-      if (res.ok && res.type === "basic") cache.put(key, res.clone());
+    // A signed shell: a file is written to the cache only when its bytes are the ones the signed
+    // release listed (install stored the list), so an origin cannot swap code in on a later
+    // launch. A copy that does not match is never cached, and never served on a first visit.
+    const want = SHELL_SIGNED ? await listed(cache, e.request.mode === "navigate" ? "/" : url.pathname) : null;
+    const fresh = fetch(e.request).then(async res => {
+      if (res.ok && res.type === "basic") {
+        if (!SHELL_SIGNED) cache.put(key, res.clone());
+        else if (want && hex(await crypto.subtle.digest("SHA-256", await res.clone().arrayBuffer())) === want) cache.put(key, res.clone());
+        else if (want) return Response.error();
+      }
       return res;
     });
     if (hit) { e.waitUntil(fresh.catch(() => {})); return hit; }

@@ -1077,3 +1077,5 @@ Open with native-core: Lumen/Memory display strings in the Deck are theirs per t
 list; pwa touches none until they say which files are left.
 
 Drive tile added to Places and the rail (app-design's answer: /files, glyph drive, 3x3 grid with two free slots). Screen title Drive.
+
+reviewer-2 on 390f4b8b, all four fixed: revalidation only caches listed-hash bytes (hash list kept in the cache at install), completeness (withheld or unlisted required file refused), rollback floor (shell.json version, VERSION_CACHE), Blob type forced in the Files view. Tests in deck/test/shell-release-sw.test.js (needs vyre-core's sign-manifest and release.js, so red on stage until it re-lands; 13/13 with them).

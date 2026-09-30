@@ -7,6 +7,10 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 #### tests: hands-chrome waits 30 s for Chrome's DevTools port
 
 - A hosted runner sometimes takes longer than 10 s to start headless Chrome ("Chrome did not print its DevTools port in time"). That flake predates the mock-keychain flags (it failed on work/native-core-0.2 runs 4932f92d and 3ff930c6, before 47dafe78 existed; the flags are the only change to that launch and drop nothing), so the wait is 30 s. A launch that is truly broken still fails when Chrome exits early.
+#### pwa: the signed shell stays signed after install (reviewer-2's HIGH on N-H1)
+
+- On a signed build the worker stores the release's hash list at install and, on every later fetch, caches a shell file only when its bytes match the listed hash (a mismatching first visit gets nothing, a mismatching revalidation leaves the cached copy). Install now also refuses a release that withholds or does not list any SHELL file, and one older than the highest accepted (`shell.json` carries the version; `scripts/shell-hashes.mjs DIR [VERSION]`). The Files preview forces its own Blob type (PDF, a fixed image set, text), never the box's mime string.
+
 #### pwa: no passkey chore on the phone
 
 - "Set up this phone" is two steps (install, notifications). The passkey step and the two Now reminders ("Make your first passkey", "Add a passkey to send from this phone") are gone: a phone paired by scanning the Wink ring is a full owner device, and Face ID is asked only for pairing and vault reveals. Settings still enrolls a passkey.
