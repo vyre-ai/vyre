@@ -35,6 +35,29 @@ Newest first. Every change to code lands here in the same commit. A new dependen
   key is held too. A named agent (box-side, the assistant, or an ACP provider) now needs one
   grant, made once on the Mac with presence, before it can drive this Mac's computer use at
   all (`hands.grant.add`/`.remove`/`.list`); the person's own direct session is unaffected.
+- Artifacts (plans/artifacts.md, approved 30 Sep). A new box module, `artifacts`: documents,
+  reports, pages, dashboards, diagrams, decks and small apps that any agent makes with
+  `artifacts.create` and `artifacts.update`. Each artifact keeps every version in its own small git
+  history beside the project, never in the project's repository, with `artifacts.diff` and
+  `artifacts.restore` (going back is a new version). An agent reaches only its own project's
+  artifacts. Content an agent reads back is marked as data, not instructions.
+- A file a session saves in its artifacts folder becomes an artifact, and saving it again makes a new
+  version (`artifacts.capture.register`, `floor.wrote`).
+- Public links, off until you turn them on: `artifacts.share` publishes one version, with nothing
+  about the project, agent or thread, and `artifacts.unshare` stops it at once. Links expire (30
+  days by default). A separate share server with no way back into Vyre answers them, under its own
+  user and Node's permission model: public links stay off until Vyre sees it running as a user
+  that isn't Vyre's. A share that looks like it holds a key is refused. Sharing counts as posting:
+  an agent's own share waits for you. A link pinned to a version stays on it; one you keep on the
+  latest shows every later version, whoever saved it.
+- An agent with no project, or a module you added, reaches only the artifacts it made. The assistant
+  reaches all of them. Capture opens
+  files without following links and checks the folder and the file's owner, so a swapped link is
+  never read.
+- Artifact pages, private or public, always run at an opaque origin (a CSP `sandbox` header), with
+  no network, no forms and no remote images.
+- `lib/secret-text`: finds vendor key shapes in text, without repeating them.
+- The docs reference reads v1 object tool entries.
 - vyred no longer asks the name directory anything until a name is held or being recovered. The 30-second and hourly check made a signed request (and a route key) on every idle box, which broke the perf budget on Node 22 (CPU sustained 13%); the check now returns at once for a box that never claimed a name.
 - `npm test` and the sessions-sdk job pass `--test-force-exit`: a test file's process is ended once its tests are all done, so a handle a test leaves behind cannot hold a hosted runner until the 30-minute cap. Measured on a hosted runner: `core/cli/commands/threads-sessions.test.js` under Node 22 and 24 hung after its last test in 12 of 76 runs without the flag (nothing left but the output pipes), 0 of 40 with it.
 - A thread's provider is switched by one call at a time (`Switchboard.switchProvider`): a second while one runs is `busy` when a person asked and ignored when it was the router's, and the router's limit fallback takes its lock before it asks for the next entry and gives it back on any way out that is not a switch. Two rate-limit lines for one turn used to start two processes for one thread and lose the first, which then ran on after vyred stopped and kept the Node test process from exiting on hosted runners (the 30-minute node hang). A switch in flight is waited for at shutdown (`core/switchboard/index.js`).
@@ -294,6 +317,8 @@ Newest first. Every change to code lands here in the same commit. A new dependen
   only a definite answer is kept for a connection (`core/daemon/peer.js`, `core/daemon/index.js`).
 - `module.json` gains an optional `setupTools` list (v1, additive): built in modules name the tools the
   setup channel may call before sign-in. An added module that declares it fails to load.
+- `#` tags an artifact in any chat: artifacts is a mentions provider (`artifacts.mention.search` finds titles within the caller's reach, names and hints only; `artifacts.mention.resolve` gives the thread a reference and how to read it). Tagging gives that thread read access to exactly that artifact, in any project (`artifacts.get`, versions and diff), never edit or share; it ends when the artifact or the thread is deleted. Only the session, assistant and mentions modules record a tag.
+- The `artifacts` module may emit `thread.artifact` (the chat card for a version), as the other built in owners of the thread family do.
 - An added module can no longer emit the gate, push, presence, said, memory, thread, tailscale or
   artifact-links event families; each is reserved for its built-in owner.
 - vyred logs the stack and exits non-zero on an uncaught exception or unhandled rejection, so the
