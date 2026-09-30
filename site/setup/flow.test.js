@@ -641,6 +641,7 @@ test("claim: a fresh link carries the signed token in the fragment only, runs ou
   assert.equal(flow.state.claim.phase, "ready");
   const u = new URL(flow.state.claim.url);
   assert.equal(u.origin, "https://harlow-legal-server.vyre.run");
+  assert.equal(u.pathname, "/onboard/passkey", "the passkey page, not the Deck at /, which does not read a claim");
   assert.equal(u.search, "", "nothing in the query, where a server would log it");
   assert.match(u.hash, /^#claim=[A-Za-z0-9_-]{128}&spki=[A-Za-z0-9_-]{122}$/, "the token and the page key are in the fragment");
   assert.deepEqual(box.calls.filter(c => c[0] === "relay.setup.claim-token").map(c => c[1]), [{ host: "harlow-legal-server.vyre.run" }]);
@@ -728,7 +729,7 @@ test("claim: the screen offers the link as a real anchor to the person's own add
   const a = root.all().find(e => e.tag === "a" && e.attrs.href && e.attrs.href.includes("#claim="));
   assert.ok(a, "the link");
   assert.equal(a.attrs.href, flow.state.claim.url);
-  assert.ok(a.attrs.href.startsWith("https://harlow-legal-server.vyre.run/#claim="));
+  assert.ok(a.attrs.href.startsWith("https://harlow-legal-server.vyre.run/onboard/passkey#claim="));
   assert.ok(!root.textContent.includes("#claim="), "the token is in the href, never printed as text");
   assert.deepEqual(qr, [flow.state.claim.url], "the phone's code is drawn from the same link, once");
   flow.stop();
