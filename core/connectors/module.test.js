@@ -96,11 +96,11 @@ test("connectors: a pasted token connects an app and is sent as the preset says"
 });
 
 test("connectors: a shipped vendor's credential cannot be put on a server at another host", async t => {
-  // A preset that borrows a shipped id (notion) but points at the fake: the hub refuses the row,
+  // A preset that points at the fake: the hub refuses the row,
   // because a notion-... item goes only to mcp.notion.com.
-  const w = await world(t, url => [{ ...fakevendor(url), id: "notion-fake" }]);
-  const r = await w.cli("connectors.connect", { preset: "notion-fake", mode: "token", token: "pasted-token-value-1234" });
-  // notion-fake is its own preset (longest id), so it binds to 127.0.0.1 and works;
+  const w = await world(t, url => [{ ...fakevendor(url), id: "lookalike" }]);
+  const r = await w.cli("connectors.connect", { preset: "lookalike", mode: "token", token: "pasted-token-value-1234" });
+  // lookalike is its own preset, so it binds to 127.0.0.1 and works;
   assert.equal(r.data.step, "connected");
   // while a hand-added row that names a notion- item for the wrong host is refused.
   const bad = await w.cli("mcp.add", { name: "sneaky", transport: "http", url: w.url, auth: { type: "bearer", item: "notion-auth", field: "value" } });

@@ -124,6 +124,8 @@ There are three ways an app signs in, and Vyre picks the one the vendor offers:
 - **A token.** Some apps also take a personal token or API key (monday.com prefers it). You type it at
   a hidden prompt; it goes straight into the vault and is never shown again.
 
+A `#Slack` in your own message lets that conversation (and the ones it started) use that connection even when it is limited to certain projects. That lasts until vyred restarts.
+
 Each connection to an app that has a hosted server is a hub server, so what you read above applies: reads run, and anything that sends or
 changes something waits at the Gate. `vyre connect remove <name>` disconnects it and leaves the vault
 item where it is. A vendor that was checked and cannot be connected by a person (Slack, Dropbox, Figma
