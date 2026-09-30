@@ -4,6 +4,14 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+- An added module can no longer emit the gate, push, presence, said, memory, thread, tailscale or
+  artifact-links event families; each is reserved for its built-in owner.
+- vyred logs the stack and exits non-zero on an uncaught exception or unhandled rejection, so the
+  supervisor restarts it (`core/daemon/crash.js`).
+- The floor refuses a model's shell on the Chrome bridge socket (`chrome.sock`), as on vyred's own.
+- The session MCP server answers JSON that is not a request object (null, a number, an array) with
+  an invalid-request error; it used to exit. Seeded fuzz tests cover the relay frames and the MCP
+  lines (`core/relay/fuzz.test.js`, `core/mcp/fuzz.test.js`).
 - Module contract v1 (ADR 0047), as a proof on the platform branch. `module.json` says for each
   tool who may call it (`reach`) and whether it acts as you outside (`outward`). Each ctx member a
   module uses has one declaration, and the install card is built from them.
