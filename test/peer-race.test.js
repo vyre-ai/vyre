@@ -164,6 +164,9 @@ test("peer race: a chain through an exited, unreaped process (no command line) i
     assert.equal(r.inside, true, JSON.stringify(args));
     assert.equal(r.unreadable, true);
   }
+  // Parentheses in the middle of a real command line are not an unreaped process (reviewer-2).
+  const paren = insideClaude(20, { look: pid => ({ 20: { ppid: 10, args: "node app.js (x)" }, 10: { ppid: 1, args: "/bin/zsh -l" } }[pid] || null), exe: () => "/bin/zsh", started: () => "t", uid: () => 501, self: 1 });
+  assert.notEqual(paren.unreadable, true, JSON.stringify(paren));
   const live = await above({}, registry, "cli", { peerPid: async () => 20, alive: () => true, delayMs: 1,
     processTable: () => pid => ({ 20: { ppid: 10, args: "vyre call x", pgid: 10 }, 10: { ppid: 1, args: "/bin/zsh -l", pgid: 10 } }[pid] || null),
     insideClaude: (pid, o) => insideClaude(pid, { ...o, exe: () => "/bin/zsh", started: () => "t" }) });
