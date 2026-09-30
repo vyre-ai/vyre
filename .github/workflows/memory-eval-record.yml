@@ -1,0 +1,56 @@
+# Records the model's replies for the 0.2 open world (scripts/eval-bar.js --record) through
+# OpenRouter. Manual only: never on a pull request, push or schedule. It runs in the protected
+# environment `eval`, whose secret OPENROUTER_EVAL_KEY is a key capped at $20 by the user. The
+# recording stops itself at $15 of spend (exit 3, replies so far saved and uploaded); dispatch it
+# again to continue from what is recorded. Only the open world is recorded, never the sealed one.
+name: memory-eval-record
+on:
+  workflow_dispatch:
+    inputs:
+      model:
+        description: OpenRouter model slug for Vyre IQ's answers
+        default: anthropic/claude-haiku-4.5
+        required: false
+permissions:
+  contents: read
+concurrency:
+  group: memory-eval-record
+  cancel-in-progress: false
+env:
+  VYRE_NO_DIALOGS: "1"
+jobs:
+  record:
+    runs-on: ubuntu-latest
+    environment: eval
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - name: Record the open world
+        env:
+          VYRE_EVAL_RECORD: "1"
+          VYRE_EVAL_RUNNER: openrouter
+          VYRE_EVAL_MODEL: ${{ inputs.model }}
+          VYRE_EVAL_SPEND_FILE: ${{ runner.temp }}/iq02-open.spend.json
+          OPENROUTER_EVAL_KEY: ${{ secrets.OPENROUTER_EVAL_KEY }}
+        run: |
+          set +e
+          nice -n 10 node scripts/eval-bar.js --world open --record | tee "$RUNNER_TEMP/summary.txt"
+          echo "code=${PIPESTATUS[0]}" >> "$GITHUB_ENV"
+          cp "$RUNNER_TEMP/iq02-open.spend.json" test/eval/asks/iq02-open.spend.json 2>/dev/null || true
+          exit 0
+      - name: Summary
+        run: |
+          { echo '### memory-eval-record'; echo '```'; cat "$RUNNER_TEMP/summary.txt"; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: iq02-open-replies
+          path: |
+            test/eval/asks/iq02-open.json
+            test/eval/asks/iq02-open.spend.json
+          if-no-files-found: warn
+      - name: Fail when the recording stopped or failed
+        if: env.code != '0'
+        run: echo "eval-bar exited with ${{ env.code }} (3 means the spend stop; replies so far are in the artifact)"; exit 1

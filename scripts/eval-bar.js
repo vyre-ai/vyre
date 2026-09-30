@@ -44,6 +44,7 @@ import { chunks, encode } from "../core/recall/embed.js";
 import { fakeEmbedder } from "../core/recall/testing.js";
 import { claudeOnce, modelFor } from "../core/memory/personal/reader.js";
 import { VERSION as ASK_VERSION } from "../core/memory/iq/ask.js";
+import { Budget, openrouterOnce } from "./lib/eval-openrouter.js";
 import { embedAll, correct, CONFIDENT } from "./eval-answer.js";
 import * as open02 from "../test/fixtures/iq02-open.js";
 
@@ -141,7 +142,18 @@ async function timedAsk(mem, q, caller, input) {
  *   only: the first n questions of each class (the smoke test). explain: every question's result
  *   and every leak probe's reach, for tuning (never on a sealed world).
  */
+export const DEFAULT_OR_MODEL = "anthropic/claude-haiku-4.5";
+/** The spend guard of an OpenRouter recording run (null for `claude -p` or a replay). @type {Budget|null} */
+let budget = null;
+/** The recording runner: `claude -p`, or OpenRouter with a $15 stop when VYRE_EVAL_RUNNER=openrouter. @param {string} dir */
+function recorder(dir) {
+  if (process.env.VYRE_EVAL_RUNNER !== "openrouter") return claudeOnce({ cwd: dir });
+  budget = new Budget({ file: process.env.VYRE_EVAL_SPEND_FILE || path.join(ROOT, "test/eval/asks/iq02-open.spend.json"), limit: Number(process.env.VYRE_EVAL_LIMIT_USD) || undefined });
+  return openrouterOnce({ key: String(process.env.OPENROUTER_EVAL_KEY || ""), model: process.env.VYRE_EVAL_MODEL || DEFAULT_OR_MODEL, budget });
+}
+
 export async function runBar(opts = {}) {
+  budget = null;
   const name = opts.world || "open";
   const w = WORLDS[name];
   if (!w) throw new Error(`no world called ${name} (${Object.keys(WORLDS).join(", ")})`);
@@ -163,7 +175,7 @@ export async function runBar(opts = {}) {
     const t0 = performance.now();
     await embedAll(db, embedder);
     const embedMs = performance.now() - t0;
-    mem = await startBar(db, { me: world.ME, embedder, dense, fixture: reachFixture(world), iqRunner: opts.record ? claudeOnce({ cwd: dir }) : null });
+    mem = await startBar(db, { me: world.ME, embedder, dense, fixture: reachFixture(world), iqRunner: opts.record ? recorder(dir) : null });
     // The kept replies, replayed. A reply kept under another prompt version is not used.
     let kept = 0;
     if (fs.existsSync(asks)) {
@@ -183,6 +195,7 @@ export async function runBar(opts = {}) {
     const leaks = [], plants = [], traps = [], explained = [];
 
     for (const q of questions) {
+      if (budget && budget.stopped) break;
       const c = perClass[q.class];
       c.n++;
       const { caller, cwds } = who(q);
@@ -286,7 +299,7 @@ export async function runBar(opts = {}) {
     if (opts.record) {
       const replies = Object.fromEntries(/** @type {any[]} */ (db.prepare("SELECT hash, reply FROM memory_iq_asks WHERE v = ? ORDER BY hash").all(ASK_VERSION)).map(r => [String(r.hash), String(r.reply)]));
       fs.mkdirSync(path.dirname(asks), { recursive: true });
-      fs.writeFileSync(asks, JSON.stringify({ version: ASK_VERSION, model: modelFor({}), replies }, null, 1) + "\n");
+      fs.writeFileSync(asks, JSON.stringify({ version: ASK_VERSION, model: process.env.VYRE_EVAL_RUNNER === "openrouter" ? String(process.env.VYRE_EVAL_MODEL || DEFAULT_OR_MODEL) : modelFor({}), replies }, null, 1) + "\n");
     }
 
     // ---------------------------------------------------------------- the measures against the bar
@@ -324,6 +337,7 @@ export async function runBar(opts = {}) {
       rows,
       by_class: Object.fromEntries(Object.entries(perClass).filter(([, v]) => v.n).map(([k, v]) => [k, { n: v.n, ok: v.ok, rate: round(v.ok / v.n) }])),
       denied, fresh,
+      ...(budget ? { spend: { usd: Math.round(budget.total * 1e4) / 1e4, calls: budget.calls, limit: budget.limit, stopped: budget.stopped } } : {}),
       // Never the sealed world's questions or answers: counts only.
       ...(sealed ? {} : { leaks, planted: plants, traps, ...(opts.explain ? { explained } : {}) }),
       pass: rows.every(r => r.status !== "FAIL"),
@@ -360,9 +374,18 @@ async function main(argv) {
     process.exit(2);
   }
   const wi = argv.indexOf("--world");
+  if (argv.includes("--record") && wi >= 0 && argv[wi + 1] !== "open") {
+    process.stderr.write("eval-bar: only the open world is recorded here; a sealed world is never recorded by a workflow.\n");
+    process.exit(2);
+  }
   const r = await runBar({ world: /** @type {any} */ (wi >= 0 ? argv[wi + 1] : "open"), record: argv.includes("--record"), explain: argv.includes("--explain") });
   if (argv.includes("--json")) process.stdout.write(JSON.stringify(r, null, 1) + "\n"); else print(r);
   if (argv.includes("--gate") && !r.pass) process.exitCode = 1;
+  if (r.spend) process.stdout.write(`  spend: $${r.spend.usd} of $${r.spend.limit} over ${r.spend.calls} calls\n`);
+  if (r.spend && r.spend.stopped) {
+    process.stderr.write(`eval-bar: spend stop at $${r.spend.usd} of $${r.spend.limit}; the replies so far are saved. Rerun the workflow to continue.\n`);
+    process.exitCode = 3;
+  }
 }
 
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
