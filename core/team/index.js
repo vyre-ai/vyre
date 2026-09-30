@@ -28,6 +28,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import crypto from "node:crypto";
+import { boundedWait } from "./bounded.js";
 import { duties as makeDuties, DUTIES_MIGRATION } from "./duties.js";
 import { isPerson } from "../../lib/caller.js";
 import { repoRoot, currentBranch, ensureWorktree, isOwnWorktree, worktreePath, branchOf, mergeBaseIn, aheadOf, shaRange,
@@ -89,6 +90,9 @@ export const MIGRATIONS = [
   // Standing duties (plan section 9.2): identity only; watchers runs them.
   DUTIES_MIGRATION,
 ];
+
+/** How long stop() waits for in-flight dispatch and merge work before it stops anyway (milliseconds). */
+export const STOP_WAIT_MS = 10_000;
 
 /** The longest charter (characters): a role's purpose and habits, not a manual. */
 export const CHARTER_MAX = 8000;
@@ -858,6 +862,8 @@ export default {
       return tm;
     };
     const CHARTER_CALLERS = ["cli", "local", "deck", "capsule", "mcp"];
+    /** Writing a charter is the person's own: their surfaces and modules, never a model (an agent or a session is mcp). */
+    const CHARTER_WRITERS = ["cli", "local", "deck", "capsule", "module"];
     const charterRef = { teammate: { type: "string" }, project: { type: "string" }, role: { type: "string" } };
 
     ctx.tool("team.charter.get", {
@@ -873,9 +879,9 @@ export default {
       run: async (i, meta = {}) => { const tm = await charterTarget(i, meta, { write: false }); return { agent: tm.agent, versions: charterHistory(tm.agent, Math.min(200, Number(i.limit) || 50)) }; },
     });
     ctx.tool("team.charter.set", {
-      description: `Write a teammate's charter (a new version; the old ones stay). It adds to the teammate's system prompt and never replaces Vyre's own rules; a live thread starts fresh at its next request so the new charter applies. At most ${CHARTER_MAX} characters. A person, the assistant, or a session in that project on the person's request; never a teammate.`,
+      description: `Write a teammate's charter (a new version; the old ones stay). It adds to the teammate's system prompt and never replaces Vyre's own rules; a live thread starts fresh at its next request so the new charter applies. At most ${CHARTER_MAX} characters. Person-only: an agent or a session drafts (team.charter.draft), the person writes.`,
       input: { type: "object", required: ["text"], properties: { ...charterRef, text: { type: "string" }, note: { type: "string" } } },
-      callers: CHARTER_CALLERS,
+      callers: CHARTER_WRITERS,
       run: async (i, meta = {}) => {
         const tm = await charterTarget(i, meta, { write: true });
         return writeCharter(tm.agent, i.text, meta.agent || String(meta.caller || "vyre"), i.note);
@@ -1291,7 +1297,9 @@ export default {
       offCompact();
       for (const off of [...waiting]) off();
       waiting.clear();
-      while (inflight.size) await Promise.all([...inflight]);
+      // Bounded: a hung job (a stuck git call, say) must never hold daemon shutdown. It is logged, then left behind.
+      const gaveUp = await boundedWait([...inflight], STOP_WAIT_MS);
+      if (gaveUp) ctx.log?.(`team: ${inflight.size} background job(s) still running after ${STOP_WAIT_MS} ms; stopping anyway`);
     } };
   },
 };

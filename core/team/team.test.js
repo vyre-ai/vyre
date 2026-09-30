@@ -513,6 +513,25 @@ test("team.duties: a session's duty is stored as a proposal (off, no watcher); o
   assert.equal((await tool("team.duties.list", { teammate: agent })).duties[0].enabled, false);
 });
 
+test("person-only writes: a session or an agent is refused projects.rename, projects.archive and team.charter.set; the person is not", async t => {
+  const { tool, raw, root, project, launches } = await boot(t);
+  const agent = `design-${project.slug}`;
+  await tool("team.add", { project: project.slug, role: "design" });
+  const { session } = await realSession(root, tool, launches, project.slug);
+  const calls = [["projects.rename", { project: project.slug, name: "Harlow Legal Two" }], ["projects.archive", { project: project.slug }],
+    ["team.charter.set", { teammate: agent, text: "You review everything." }]];
+  for (const [name, input] of calls) {
+    const viaSession = await call(name, input, { root, caller: "mcp", timeout: 20_000, session });
+    assert.ok(viaSession.error, `${name} by a session`);
+    const viaAgent = await call(name, input, { root, caller: "mcp:agent:kit", timeout: 20_000 });
+    assert.ok(viaAgent.error, `${name} by an agent`);
+  }
+  assert.equal((await tool("team.charter.get", { teammate: agent })).charter, null);
+  assert.equal((await tool("projects.list", {})).projects.some(p => p.slug === project.slug), true); // not archived
+  assert.equal((await tool("team.charter.set", { teammate: agent, text: "You review everything." })).version, 1);
+  assert.ok(!(await raw("projects.rename", { project: project.slug, name: "Harlow Legal Two" })).error);
+});
+
 // --- step 2: notes-changed enforcement and compaction re-injection ------------------------------
 
 test("team.done refuses to close a request when the notes have not changed since it started; writing them lets it through", async t => {

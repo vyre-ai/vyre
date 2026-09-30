@@ -58,6 +58,8 @@ export async function withLive(ctx, cat) {
 }
 /** The person's own surfaces. The loader refuses every other caller (agents' MCP, models' harness, guests, modules). */
 const OWNER = ["cli", "local", "capsule", "deck"];
+/** The person's own surfaces and modules acting for them: never a model (an agent or a session is mcp). */
+const PERSON_ONLY = [...OWNER, "module"];
 // Reviewer's MEDIUM 2 on f8330ccc: callers: ["module"] alone lets ANY module reach these three,
 // third-party ones installed into the modules folder included — modules skip presence entirely,
 // so an installed module could grant an agent any project, or clear a person's explicit revokes
@@ -189,16 +191,16 @@ export default {
         throw refuse("this is the person's, or a session in that project acting on their request", "denied");
     };
     ctx.tool("projects.rename", {
-      description: "Rename a project. The slug, folder, threads, teammates and tile stay exactly as they were; only the name changes. A person, or a session in that project on their request.",
+      description: "Rename a project. The slug, folder, threads, teammates and tile stay exactly as they were; only the name changes. Person-only: a model (agent or session) is refused.",
       input: { type: "object", required: ["project", "name"], properties: { project: str, name: str } },
-      callers: [...OWNER, "mcp"],
-      run: async ({ project, name }, meta = {}) => { const p = P.resolve(project); await ownOrSession(meta, p.slug); return P.rename(p.slug, name); },
+      callers: PERSON_ONLY,
+      run: async ({ project, name }) => P.rename(P.resolve(project).slug, name),
     });
     ctx.tool("projects.archive", {
-      description: "Archive a project: it leaves the project list, and its folder, threads, teammates and history are untouched. archived: false brings it back. projects.list {archived: true} includes archived projects. A person, or a session in that project on their request.",
+      description: "Archive a project: it leaves the project list, and its folder, threads, teammates and history are untouched. archived: false brings it back. projects.list {archived: true} includes archived projects. Person-only: a model (agent or session) is refused.",
       input: { type: "object", required: ["project"], properties: { project: str, archived: { type: "boolean" } } },
-      callers: [...OWNER, "mcp"],
-      run: async ({ project, archived = true }, meta = {}) => { const p = P.resolve(project); await ownOrSession(meta, p.slug); return P.archive(p.slug, archived); },
+      callers: PERSON_ONLY,
+      run: async ({ project, archived = true }) => P.archive(P.resolve(project).slug, archived),
     });
     ctx.tool("projects.add-threads", {
       description: "Pick threads (Claude Code session ids) into a project. A thread can be in several projects.",
