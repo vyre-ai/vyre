@@ -39,7 +39,7 @@ function release(dir, kp, version, { badSig = false, tamper = false } = {}) {
   const sums = Buffer.from(`${h("manifest.json")}  manifest.json\n${h("vyre.tgz")}  vyre.tgz\n`);
   fs.writeFileSync(path.join(dir, "SHA256SUMS"), sums);
   const other = badSig ? keypair().priv : kp.priv;
-  fs.writeFileSync(path.join(dir, "SHA256SUMS.sig"), crypto.sign(null, sums, other).toString("base64"));
+  fs.writeFileSync(path.join(dir, "SHA256SUMS.sig"), crypto.sign(null, Buffer.concat([Buffer.from("vyre-release-sums\n"), sums]), other).toString("base64"));
   if (tamper) fs.appendFileSync(path.join(dir, "vyre.tgz"), "x");
   return { tarball: path.join(dir, "vyre.tgz"), manifest: path.join(dir, "manifest.json"), sums: path.join(dir, "SHA256SUMS"), sig: path.join(dir, "SHA256SUMS.sig") };
 }

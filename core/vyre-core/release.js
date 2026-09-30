@@ -16,6 +16,10 @@ import { execFileSync } from "node:child_process";
 // is refused by scripts/check-release-key.mjs.
 export const RELEASE_KEY = "MCowBQYDK2VwAyEAKXSdujH7tO/gscXCJZmYCjB+Cv1sVlOfdgLNedMR7FU=";
 
+/** What the release signature covers: this prefix (domain separation, so a signature made for another
+ *  purpose with this key can never pass as a release) then the exact bytes of SHA256SUMS. */
+export const SUMS_PREFIX = Buffer.from("vyre-release-sums\n");
+
 const SEMVER = /^(\d+)\.(\d+)\.(\d+)(?:-([0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*))?(?:\+[0-9A-Za-z.-]+)?$/;
 const HEX64 = /^[0-9a-fA-F]{64}$/;
 const B64 = /^[A-Za-z0-9+/]+={0,2}$/;
@@ -33,7 +37,7 @@ function publicKey(key) {
 }
 
 /**
- * The ONE signature: base64 Ed25519 over the exact bytes of SHA256SUMS (the same file the Linux box's
+ * The ONE signature: base64 Ed25519 over "vyre-release-sums\n" + the exact bytes of SHA256SUMS (the same file the Linux box's
  * `vyre update` checks). Returns the file names and hashes it lists, only once the signature holds.
  * @param {string | Buffer | Uint8Array} sumsBytes
  * @param {string | Buffer | Uint8Array} sigBytes
@@ -50,7 +54,7 @@ export function verifySums(sumsBytes, sigBytes, { key = RELEASE_KEY } = {}) {
   if (sig.length !== 64) throw new Error("signature is not 64 bytes");
   let ok = false;
   try {
-    ok = crypto.verify(null, m, publicKey(key), sig);
+    ok = crypto.verify(null, Buffer.concat([SUMS_PREFIX, m]), publicKey(key), sig);
   } catch (e) {
     if (e instanceof Error && e.message.startsWith("release key")) throw e;
     ok = false;

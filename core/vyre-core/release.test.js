@@ -6,7 +6,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { execFileSync } from "node:child_process";
 import {
-  RELEASE_KEY, verifySums, checkManifest, checkTarball, checkFloor, readFloor, raiseFloor,
+  RELEASE_KEY, SUMS_PREFIX, verifySums, checkManifest, checkTarball, checkFloor, readFloor, raiseFloor,
   compareVersions, listTar, checkEntries, extract,
 } from "./release.js";
 import { SCRATCH } from "../../test/scratch.mjs";
@@ -29,7 +29,7 @@ test("the baked-in key is a valid Ed25519 SPKI constant", () => {
 });
 
 const SUMS = Buffer.from(`${HASH}  vyre.tgz\n${"b".repeat(64)}  manifest.json\n`);
-const signSums = (kp, bytes = SUMS) => crypto.sign(null, bytes, kp.priv).toString("base64");
+const signSums = (kp, bytes = SUMS) => crypto.sign(null, Buffer.concat([SUMS_PREFIX, bytes]), kp.priv).toString("base64");
 
 test("a good SHA256SUMS verifies and returns its lines", () => {
   const kp = keypair();
@@ -232,4 +232,9 @@ t.add(sys.argv[3]+"/a.txt","a.txt");t.close()`, out, key, path.join(d, "s")]);
   }
   const ok = path.join(d, "ok.tgz"); tar(path.join(d, "s"), ["-czf", ok, "."]);
   assert.throws(() => extract(ok, path.join(d, "o"), { tar: "tar" }), /absolute path to tar/);
+});
+
+test("a signature over the bare SHA256SUMS bytes, without the domain prefix, is refused", () => {
+  const kp = keypair();
+  assert.throws(() => verifySums(SUMS, crypto.sign(null, SUMS, kp.priv).toString("base64"), { key: kp.key }), /does not verify/);
 });

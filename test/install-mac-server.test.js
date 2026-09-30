@@ -329,7 +329,7 @@ ${o.noEnrol ? "" : `console.log("VYRE_CORE_ENROL=${ENROL}");`}
   // The one signature: over SHA256SUMS, which lists the tarball and the manifest.
   const sums = Buffer.from(["vyre.tgz", "manifest.json"].map(f => `${sha(fs.readFileSync(path.join(site, f)))}  ${f}`).join("\n") + "\n");
   fs.writeFileSync(path.join(site, "SHA256SUMS"), sums);
-  fs.writeFileSync(path.join(site, "SHA256SUMS.sig"), crypto.sign(null, sums, kp.privateKey).toString("base64") + "\n");
+  fs.writeFileSync(path.join(site, "SHA256SUMS.sig"), crypto.sign(null, Buffer.concat([Buffer.from("vyre-release-sums\n"), sums]), kp.privateKey).toString("base64") + "\n");
   const env = {
     ...m.env, PATH: `${bin}:${path.dirname(process.execPath)}:/usr/bin:/bin`, VYRE_UNAME_M: "arm64",
     VYRE_TEST_SCRIPT: patched, VYRE_ROOT_TMP: path.join(m.base, "roottmp"), VYRE_SUDO: path.join(bin, "sudo"), VYRE_CORE_BASE: core, FAKE_CORE_BASE: core, FAKE_LOG_DIR: m.base,
@@ -501,7 +501,7 @@ test("install-mac-server.sh: SHA256SUMS signed by another key is refused before 
   const m = sys(t);
   const other = crypto.generateKeyPairSync("ed25519");
   const sums = fs.readFileSync(path.join(m.site, "SHA256SUMS"));
-  fs.writeFileSync(path.join(m.site, "SHA256SUMS.sig"), crypto.sign(null, sums, other.privateKey).toString("base64") + "\n");
+  fs.writeFileSync(path.join(m.site, "SHA256SUMS.sig"), crypto.sign(null, Buffer.concat([Buffer.from("vyre-release-sums\n"), sums]), other.privateKey).toString("base64") + "\n");
   const r = run(m.env, ["--yes", "--system"]);
   assert.notEqual(r.status, 0);
   assert.match(r.stderr, /signature does not verify/);

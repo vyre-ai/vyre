@@ -231,7 +231,7 @@ const [key, sf, gf, mf, tf] = process.argv.slice(1);
 const fail = (m) => { console.error(m); process.exit(1); };
 const sums = f.readFileSync(sf), sig = f.readFileSync(gf, "utf8").trim();
 const pub = c.createPublicKey({ key: Buffer.from(key, "base64"), format: "der", type: "spki" });
-if (!/^[A-Za-z0-9+\/]+={0,2}$/.test(sig) || !c.verify(null, sums, pub, Buffer.from(sig, "base64"))) fail("the SHA256SUMS signature does not verify");
+if (!/^[A-Za-z0-9+\/]+={0,2}$/.test(sig) || !c.verify(null, Buffer.concat([Buffer.from("vyre-release-sums\n"), sums]), pub, Buffer.from(sig, "base64"))) fail("the SHA256SUMS signature does not verify");
 const want = new Map();
 for (const line of sums.toString().split("\n")) {
   if (!line.trim()) continue;

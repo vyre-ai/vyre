@@ -285,7 +285,7 @@ update mechanism.
 
 - **The first install is verified before sudo, against a key the script carries.** The person already
   trusts the install script (it is the curl|sh line). It embeds the release public key and, before any
-  password prompt, checks SHA256SUMS.sig (the one signature Linux and Mac share, over the exact bytes of SHA256SUMS, which lists manifest.json and vyre.tgz) with the pinned, sha256-checked Node and a check written in the
+  password prompt, checks SHA256SUMS.sig (the one signature Linux and Mac share, over "vyre-release-sums\n" plus the exact bytes of SHA256SUMS, which lists manifest.json and vyre.tgz) with the pinned, sha256-checked Node and a check written in the
   script, then checks the manifest and the tarball against its lines; the version and the anti-rollback floor stay in manifest.json. A key inside the tarball proves nothing
   on a first install, since the tarball controls it.
 - **Root runs nothing the person can write.** The sudo step is one fixed `sh -c` literal in the script.
