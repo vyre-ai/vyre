@@ -51,6 +51,7 @@ const ROUTES = [
   ["/agents/:name", "agents"],
   ["/agents/:name/glass", "glass"],
   ["/glass/:name", "glass"],
+  ["/quick", "quick"],
   ["/chat", "chat"],
   ["/chat/thread/:thread", "chat"],
   ["/chat/:project", "chat"],
@@ -421,6 +422,8 @@ async function route() {
     newAgent = true;
   }
   const { view: name, params } = match(location.pathname);
+  // /quick is the hotkey panel: the compact ask alone, no rail (css/views/quick.css reads this).
+  document.documentElement.dataset.quick = name === "quick" ? "1" : "";
   const key = location.pathname + location.search;
   put(address.lastChild, location.host, h("b", null, location.pathname));
   railEl.setCurrent(name, location.hash);

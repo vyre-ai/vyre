@@ -23,6 +23,7 @@ import { attempt, canProve, callWithCode } from "./api.js";
 import { standalone, ios } from "./pwa.js";
 import { icon } from "./icons.js";
 import { signInAfterEnroll } from "./person.js";
+import { shell } from "./platform.js";
 
 const phone = () => isPhone();
 const android = () => /Android/.test(navigator.userAgent);
@@ -281,6 +282,8 @@ export function setupCard() {
   const status = () => h("p", { class: "small ps-status", role: "status" });
 
   const drawInstall = () => {
+    // Inside the Vyre desktop app (window.__VYRE_SHELL__) there is no browser to install from: no card at all.
+    if (shell()) { installRow.hidden = true; return; }
     if (isInstalled()) {
       stepBody(installRow, "done", "Install", [line(standalone() ? "Running from your Home Screen." : "Installed. Open Vyre from your Home Screen.")], null);
       return;

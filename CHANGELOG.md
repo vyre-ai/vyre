@@ -4,6 +4,11 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### deck: the Windows shell contract (C22): window.__VYRE_SHELL__, /quick
+
+- `deck/js/platform.js` reads `window.__VYRE_SHELL__ = { platform }` (the Windows app injects it frozen before any page script; the older `__vyreShell = { os }` still reads). Inside the shell the key glyphs are Ctrl (every hard-coded Cmd-Enter hint now comes from `kbd()`), the browser "Install" step is hidden, and `installed()` is true. It only changes presentation and never grants anything.
+- `/quick` (`deck/views/quick.js`): the hotkey panel's compact ask, the assistant's current thread drawn small with its recent answer above one composer and an "Open in full" link, no rail. A link to it opens the thread and waits for words; nothing acts on load.
+
 #### chat: the # tag picker in the new-session sheet
 
 - The `#` picker, its chips and the pasted-span tracking are one component now (`deck/chat/tag-picker.js`), used by the composer and by the new-session sheet, where the first message is where `#` is used most. A pick shows the same chip; Start sends `mentions: [{kind, id, name}]` and `pasted` on both `threads.start` and `agents.ask`. Esc closes the picker before it closes the sheet. More paste tests: a multi-line CRLF paste, undo of a paste, and a drag and drop move.

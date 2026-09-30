@@ -10,6 +10,7 @@
 //   What:  the first message. Cmd/Ctrl+Enter starts; Esc closes the sheet.
 // On success the new thread opens; a failure is shown as the box said it.
 
+import { kbd } from "../js/platform.js";
 import { pasteTracker, NOT_TYPED } from "./core/paste-spans.js";
 import { tagPicker } from "./tag-picker.js";
 import { listMenu } from "./pickers.js";
@@ -127,7 +128,7 @@ export function mountNewSession(container, opts) {
     h("div", { class: "ns-actions" },
       startBtn,
       h("button", { class: "btn btn-ghost", type: "button", onclick: () => opts.onDone() }, "Cancel"),
-      h("span", { class: "ns-hint faint" }, h("span", { class: "kbd" }, "Cmd/Ctrl+Enter"), " to start, ", h("span", { class: "kbd" }, "Esc"), " to close"))));
+      h("span", { class: "ns-hint faint" }, h("span", { class: "kbd" }, kbd("Enter")), " to start, ", h("span", { class: "kbd" }, "Esc"), " to close"))));
   text.setAttribute("id", "ns-text");
 
   const shown = opts.shown || (() => true);

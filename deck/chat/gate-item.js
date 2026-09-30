@@ -12,6 +12,7 @@
 // refused proof says why and leaves the buttons. While a presence session covers this device
 // (js/api.js), one quiet line under the buttons says until when, and Send asks for no passkey.
 
+import { kbd } from "../js/platform.js";
 import { h, put } from "../js/dom.js";
 import { attempt, queued } from "../js/api.js";
 import { icon } from "../js/icons.js";
@@ -105,7 +106,7 @@ export function gateCard(held) {
       it.diff && (it.diff.removed?.length || it.diff.added?.length) ? h("div", null, h("div", { class: "code", style: { marginBottom: "4px" } }, "changed from the draft"), renderDiff(String(it.draft?.body ?? ""), String(it.final?.body ?? content.body ?? ""))) : null,
       it.error ? h("div", { class: "gate-note" }, h("span", { class: "code" }, "failed: " + it.error), " Send tries again.") : null,
       h("div", { class: "gate-actions" },
-        h("button", { class: "btn btn-primary", disabled: state.busy, onclick: send }, "Send", h("span", { class: "kbd" }, "⌘⏎")),
+        h("button", { class: "btn btn-primary", disabled: state.busy, onclick: send }, "Send", h("span", { class: "kbd" }, kbd("Enter"))),
         h("button", { class: "btn btn-ghost", disabled: state.busy, onclick: discard }, "Discard"),
         state.busy ? h("span", { class: "code" }, "…") : null,
       ),
