@@ -1,22 +1,27 @@
 // @ts-check
 // Which stretches of a draft the person pasted (an email, a ticket, a page), so the box never reads a
 // "#Name" inside them as a tag: someone else wrote it (reviewer-2 M-P2). The composer tells this what
-// happened, the textarea's value before and after each change and, for a paste, the text that arrived;
+// happened: the textarea's value before and after each change, and whether the change was NOT typing (a paste,
+// a drop, undo or redo, an autocorrect or dictation replacement, or anything whose origin is unknown). The
+// stretch the diff finds is what gets marked, so no string is compared and \r\n against \n cannot matter;
 // it answers with the pasted spans still in the draft, sent as `pasted: [string]` on threads.send and
 // threads.start. Offsets follow every edit, so typing before a span moves it, typing inside one keeps
 // the whole stretch marked (the safe side: it can only tag less), and deleting one drops it.
 
 /** @typedef {{ start: number, end: number }} Span */
 
-/** @returns {{ edit: (before: string, after: string, pasted?: string|null) => void, spans: () => Span[], of: (text: string) => string[], reset: () => void }} */
+/** The input types that bring in text the person did not type at the keyboard (beforeinput/input `inputType`). */
+export const NOT_TYPED = new Set(["insertFromPaste", "insertFromPasteAsQuotation", "insertFromDrop", "insertFromYank", "insertReplacementText", "historyUndo", "historyRedo", "insertFromComposition"]);
+
+/** @returns {{ edit: (before: string, after: string, notTyped?: boolean) => void, spans: () => Span[], of: (text: string) => string[], reset: () => void }} */
 export function pasteTracker() {
   /** @type {Span[]} */ let spans = [];
   return {
     /**
-     * The draft went from `before` to `after`. `pasted` is the clipboard text when this change was a paste.
-     * @param {string} before @param {string} after @param {string|null} [pasted]
+     * The draft went from `before` to `after`; `notTyped` when the text that arrived was pasted, dropped, redone or replaced.
+     * @param {string} before @param {string} after @param {boolean} [notTyped]
      */
-    edit(before, after, pasted = null) {
+    edit(before, after, notTyped = false) {
       if (before === after) return;
       let p = 0;
       const max = Math.min(before.length, after.length);
@@ -31,10 +36,7 @@ export function pasteTracker() {
         else if (p <= sp.start && oldEnd >= sp.end) continue; // replaced or deleted outright
         else next.push({ start: Math.min(sp.start, p), end: sp.end >= oldEnd ? sp.end + delta : newEnd });
       }
-      if (pasted && newEnd > p && after.slice(p, newEnd).includes(pasted)) {
-        const at = p + after.slice(p, newEnd).indexOf(pasted);
-        next.push({ start: at, end: at + pasted.length });
-      }
+      if (notTyped && newEnd > p) next.push({ start: p, end: newEnd });
       spans = next.filter(x => x.end > x.start).sort((a, b) => a.start - b.start);
     },
     spans: () => spans.map(x => ({ ...x })),

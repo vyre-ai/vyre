@@ -10,7 +10,7 @@
 //   What:  the first message. Cmd/Ctrl+Enter starts; Esc closes the sheet.
 // On success the new thread opens; a failure is shown as the box said it.
 
-import { pasteTracker } from "./core/paste-spans.js";
+import { pasteTracker, NOT_TYPED } from "./core/paste-spans.js";
 import { h, put, go } from "../js/dom.js";
 import { attempt } from "../js/api.js";
 import { icon } from "../js/icons.js";
@@ -81,10 +81,10 @@ export function mountNewSession(container, opts) {
   };
 
   const pastes = pasteTracker();
-  let prevText = "", pendingPaste = /** @type {string|null} */ (null);
+  let prevText = "", pendingPaste = false;
   const text = h("textarea", { class: "input ns-text", rows: 4, placeholder: "What should this session start with?", "aria-label": "First message",
-    onpaste: (/** @type {ClipboardEvent} */ e) => { pendingPaste = e.clipboardData?.getData?.("text/plain") || null; },
-    oninput: () => { const v = /** @type {any} */ (text).value; pastes.edit(prevText, v, pendingPaste); prevText = v; pendingPaste = null; },
+    onpaste: () => { pendingPaste = true; setTimeout(() => { pendingPaste = false; }, 0); },
+    oninput: (/** @type {any} */ e) => { const v = /** @type {any} */ (text).value; pastes.edit(prevText, v, pendingPaste || NOT_TYPED.has(e?.inputType)); prevText = v; pendingPaste = false; },
     onkeydown: (/** @type {KeyboardEvent} */ e) => { if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) { e.preventDefault(); start(); } } });
   const whereBox = h("div", { class: "ns-where" });
   const whoBox = h("div", { class: "ns-who" });

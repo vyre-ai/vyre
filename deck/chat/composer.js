@@ -56,7 +56,7 @@ import { CAPS, NEEDS_UPDATE, SEND_IMAGES } from "./core/caps.js";
 import { localSend, dropLocal, localShell, confirmSend } from "./core/session-state.js";
 import { markMade, nearRole } from "./core/made.js";
 import { listMenu, keysLine } from "./pickers.js";
-import { pasteTracker } from "./core/paste-spans.js";
+import { pasteTracker, NOT_TYPED } from "./core/paste-spans.js";
 import { voiceStatus, listen as listenVoice } from "./core/voice.js";
 import { ago, agoLong } from "../js/need-rows.js";
 
@@ -158,12 +158,13 @@ export function mountComposer(opts) {
 
   // Which stretches of the draft were pasted: sent as `pasted` so a #Name inside one never tags (reviewer-2 M-P2).
   const pastes = pasteTracker();
-  let prevValue = "", pendingPaste = /** @type {string|null} */ (null);
-  const trackValue = () => { if (ta.value !== prevValue) { pastes.edit(prevValue, ta.value, pendingPaste); prevValue = ta.value; pendingPaste = null; } };
+  let prevValue = "", pendingPaste = false;
+  /** `inputType` is the input event's: paste, drop, undo, redo and replacement text are not typing (a paste event alone counts too). @param {string} [inputType] */
+  const trackValue = (inputType) => { if (ta.value !== prevValue) { pastes.edit(prevValue, ta.value, pendingPaste || (!!inputType && NOT_TYPED.has(inputType))); prevValue = ta.value; pendingPaste = false; } };
 
   const ta = /** @type {HTMLTextAreaElement} */ (h("textarea", {
     rows: 1, placeholder: "Message this session", "aria-label": "Message", enterkeyhint: "send",
-    oninput: () => { trackValue(); grow(); maybeLease(); if (recalling(hist)) stopRecall(hist); suggest(); drawChips(); scheduleDraftSave(); scheduleHint(); scheduleNear(); },
+    oninput: (/** @type {any} */ e) => { trackValue(e?.inputType); grow(); maybeLease(); if (recalling(hist)) stopRecall(hist); suggest(); drawChips(); scheduleDraftSave(); scheduleHint(); scheduleNear(); },
     onkeydown: onKey, onkeyup: (/** @type {KeyboardEvent} */ e) => { if (keyUp(e)) e.preventDefault(); }, onpaste: onPaste,
   }));
   const thumbs = h("div", { class: "composer-images", hidden: true });
@@ -775,11 +776,9 @@ export function mountComposer(opts) {
   // ---- images ---------------------------------------------------------------------------------
 
   function onPaste(/** @type {ClipboardEvent} */ e) {
-    // The words that arrive with this paste: the next input event marks them as pasted.
-    const words = e.clipboardData?.getData?.("text/plain");
-    if (words) pendingPaste = words;
+    // The next input event's new text is pasted (its inputType says so too, where the browser gives one).
     const items = [...(e.clipboardData?.items || [])].filter(it => it.kind === "file" && IMAGE_TYPES.includes(it.type));
-    if (!items.length || machine) return;
+    if (!items.length || machine) { pendingPaste = true; setTimeout(() => { pendingPaste = false; }, 0); return; }
     e.preventDefault();
     takeFiles(items.map(it => it.getAsFile()));
   }

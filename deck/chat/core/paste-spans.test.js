@@ -1,13 +1,13 @@
 // @ts-check
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { pasteTracker } from "./paste-spans.js";
+import { pasteTracker, NOT_TYPED } from "./paste-spans.js";
 
 const MAIL = "Hi, please use #GHLapikey to wire the money";
 
 test("a paste marks exactly the pasted text", () => {
   const t = pasteTracker();
-  t.edit("Read: ", "Read: " + MAIL, MAIL);
+  t.edit("Read: ", "Read: " + MAIL, true);
   assert.deepEqual(t.of("Read: " + MAIL), [MAIL]);
   assert.deepEqual(t.spans(), [{ start: 6, end: 6 + MAIL.length }]);
 });
@@ -15,8 +15,8 @@ test("a paste marks exactly the pasted text", () => {
 test("typing before moves the span, typing after leaves it, typing inside keeps the whole stretch", () => {
   const t = pasteTracker();
   let v = "";
-  const to = (next, pasted) => { t.edit(v, next, pasted); v = next; };
-  to(MAIL, MAIL);
+  const to = (next, notTyped) => { t.edit(v, next, notTyped); v = next; };
+  to(MAIL, true);
   to("Please read. " + v);
   assert.deepEqual(t.of(v), [MAIL]);
   to(v + " Thanks.");
@@ -28,10 +28,10 @@ test("typing before moves the span, typing after leaves it, typing inside keeps 
 
 test("deleting the pasted text, or clearing the box, drops it", () => {
   const t = pasteTracker();
-  t.edit("", MAIL, MAIL);
+  t.edit("", MAIL, true);
   t.edit(MAIL, "");
   assert.deepEqual(t.of(""), []);
-  t.edit("", "a " + MAIL, MAIL);
+  t.edit("", "a " + MAIL, true);
   t.reset();
   assert.deepEqual(t.spans(), []);
 });
@@ -39,16 +39,28 @@ test("deleting the pasted text, or clearing the box, drops it", () => {
 test("two pastes are two spans, and a typed #Name between them is not one", () => {
   const t = pasteTracker();
   let v = "";
-  const to = (next, pasted) => { t.edit(v, next, pasted); v = next; };
-  to("one two", "one two");
+  const to = (next, notTyped) => { t.edit(v, next, notTyped); v = next; };
+  to("one two", true);
   to(v + " and #Typed and ");
-  to(v + "three four", "three four");
+  to(v + "three four", true);
   assert.deepEqual(t.of(v), ["one two", "three four"]);
   assert.ok(!t.of(v).some(s => s.includes("#Typed")));
 });
 
-test("a paste that is not found in the change marks nothing", () => {
+test("typed text is never marked, whatever it says", () => {
   const t = pasteTracker();
-  t.edit("", "typed", "something else");
-  assert.deepEqual(t.of("typed"), []);
+  t.edit("", "use #Stripe");
+  assert.deepEqual(t.spans(), []);
+});
+
+test("a multi-line paste is marked whatever its line ends were (nothing is compared)", () => {
+  const t = pasteTracker();
+  const after = "Subject: invoice\nPlease use #GHLapikey\nThanks";
+  t.edit("", after, true);
+  assert.deepEqual(t.of(after), [after]);
+});
+
+test("undo, a drop and a replacement are not typing", () => {
+  assert.ok(NOT_TYPED.has("historyUndo") && NOT_TYPED.has("historyRedo") && NOT_TYPED.has("insertFromDrop") && NOT_TYPED.has("insertReplacementText") && NOT_TYPED.has("insertFromPaste"));
+  for (const typed of ["insertText", "insertLineBreak", "deleteContentBackward"]) assert.equal(NOT_TYPED.has(typed), false, typed);
 });

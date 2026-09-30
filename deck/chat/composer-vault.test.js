@@ -161,3 +161,18 @@ test("a message with nothing pasted sends no `pasted`", async () => {
   assert.equal("pasted" in calls.find(x => x.tool === "threads.send").input, false);
   c.stop();
 });
+
+test("undo or a drop brings text in with no paste event: still marked, and \r\n makes no difference (M-N1, L-N2)", async () => {
+  calls.length = 0;
+  const th = thread();
+  const c = mountComposer({ thread: th, session: createSession(th) });
+  const fireInput = (value, inputType) => { c.input.value = value; c.input.setSelectionRange(value.length, value.length); c.input.dispatchEvent(Object.assign(new /** @type {any} */ (globalThis).Event("input"), { inputType })); };
+  fireInput("Look: ", "insertText");
+  fireInput("Look: Subject: bill\nuse #GHLapikey for it", "insertFromDrop");
+  fireInput("Look: Subject: bill\nuse #GHLapikey for it and #Stripe", "insertText");
+  c.input.dispatchEvent(Object.assign(new /** @type {any} */ (globalThis).Event("keydown"), { key: "Enter", target: c.input }));
+  await settle();
+  const sent = calls.find(x => x.tool === "threads.send");
+  assert.deepEqual(sent.input.pasted, ["Subject: bill\nuse #GHLapikey for it"]);
+  c.stop();
+});
