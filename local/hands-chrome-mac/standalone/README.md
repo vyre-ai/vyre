@@ -58,7 +58,7 @@ Read `standalone/GHL-PLAYBOOK.md`; Claude Code can read it too. The short versio
 
 Honest limit: the labels come from GoHighLevel's documentation and have not been checked against a live account. If a label differs, the failure says which control it looked for, lists the closest names on the page, and includes a masked snippet of the page, so the fix is one step. Send the report (below) and it gets fixed for everyone.
 
-If your GoHighLevel is on your own domain, tell it once (install asks, or `node ~/.vyre-chrome/app/standalone/cli.mjs config ghl-host your.domain.com`; add or `--remove` several). `gohighlevel.com` and `leadconnectorhq.com` always count. Nothing a page does can add a domain; only this setting can. On those domains, the builder's own action tiles ("Send Email", "Remove Tag") and an action editor's Confirm are not held as sends, and typed workflow text is kept in the trace.
+A GoHighLevel account on its own (white-label) domain is recognised automatically when its pages talk to GoHighLevel's API hosts and use GoHighLevel's workflow address shape. If that ever fails, `node ~/.vyre-chrome/app/standalone/cli.mjs config ghl-host your.domain.com` lists it yourself (several allowed, `--remove` to undo). On these pages the builder's own action tiles ("Send Email", "Remove Tag") and an action editor's Confirm are not held as sends, and typed workflow text is kept in the trace.
 
 ## Logs
 

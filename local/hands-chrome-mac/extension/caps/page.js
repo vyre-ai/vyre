@@ -283,6 +283,8 @@ export const EXPRESSION = script("snapshot", {}, `
     blockers.push({ el, i: blockers.length, path: pathOf(el), role: role || undefined, title: txt(el.getAttribute("aria-label") || (head && head.textContent)).slice(0, 80), text: txt(el.innerText || el.textContent).slice(0, 300), modal: ariaModal || cover || (backdrop && (role === "dialog" || layer)) });
   }
   state.blockers = blockers.map(({ el, ...b }) => b);
+  // A white-label GoHighLevel account runs on its own domain but talks to GoHighLevel's API hosts.
+  try { state.ghlApi = performance.getEntriesByType("resource").some(e => e.name.indexOf("https://services.leadconnectorhq.com/") === 0 || e.name.indexOf("https://backend.leadconnectorhq.com/") === 0); } catch (e) { state.ghlApi = false; }
   const toasts = (window.__vyreToasts || []).filter(x => Date.now() - x.t < 15000).map(x => ({ ageMs: Date.now() - x.t, text: x.text }));
   for (const el of document.querySelectorAll(TOAST)) { if (toasts.length >= 8) break; if (!vis(el)) continue; const t = txt(el.innerText || el.textContent).slice(0, 160); if (t && !toasts.some(x => x.text === t)) toasts.push({ ageMs: null, text: t }); }
   state.toasts = toasts.slice(-8);
@@ -525,7 +527,10 @@ export function builderTile(snap, ctl) {
   try { const u = new URL(String(snap && snap.url)); path = u.pathname; host = u.hostname; } catch { return false; }
   // Only GoHighLevel (a workflow page on some other site is not one), and the local fixture's /ghl.
   // GoHighLevel's own domains, one the person listed as their white-label host, or the local fixture.
-  if (!isGhlHost(host) && !(/^(127\.0\.0\.1|localhost)$/.test(host) && /^\/ghl(\/|$)/.test(path))) return false;
+  // A white-label domain counts automatically only with BOTH the page's own traffic reaching GoHighLevel's API hosts AND
+  // GoHighLevel's real workflow URL shape; a host the person listed (`config ghl-host`) counts on its own.
+  const whiteLabel = Boolean(snap && snap.state && snap.state.ghlApi === true) && /^\/(v2\/)?location\/[A-Za-z0-9]{10,40}\/automation\/workflows(\/|$)/.test(path);
+  if (!isGhlHost(host) && !whiteLabel && !(/^(127\.0\.0\.1|localhost)$/.test(host) && /^\/ghl(\/|$)/.test(path))) return false;
   if (!/\/automation\/workflows|\/workflows?(\/|$)|^\/ghl(\/|$)/i.test(path)) return false;
   const name = String(ctl.name || "").trim();
   // The Confirm or Apply of an action or trigger editor keeps a step in the draft; it is not the Confirm of a delete or a publish.

@@ -273,16 +273,18 @@ test("holdFor: a workflow builder's action tiles (Send Email, Remove Tag) are no
   assert.equal(holdFor(snap("https://mail.example.com/compose"), tile("Send Email"), "click", undefined).held, true, "not a workflow page");
   assert.equal(holdFor(snap("https://example.test/workflows/1"), tile("Send Email"), "click", undefined).held, true, "a workflow page on another site is not GoHighLevel");
   assert.equal(holdFor(snap("https://example.test/workflows/1"), tile("Remove contact from list"), "click", undefined).held, true);
-  // A white-label agency domain counts only when the person listed it; nothing the page does can add it.
-  const { setGhlHosts } = await import("./extension/shared/ghlhosts.js");
+  // A white-label agency domain counts automatically only with GoHighLevel API traffic AND the real workflow URL shape.
+  const { setGhlHosts, getGhlHosts } = await import("./extension/shared/ghlhosts.js");
   const wlUrl = "https://crm.agency.example/v2/location/abcdefghij12/automation/workflows/wf1";
   const wl = (/** @type {any} */ state = {}) => ({ url: wlUrl, controls: [], state });
-  assert.equal(holdFor(wl({ ghlApi: true }), tile("Send Email"), "click", undefined).held, true, "unlisted host: held, whatever its traffic says");
+  assert.equal(holdFor(wl({ ghlApi: true }), tile("Send Email"), "click", undefined).held, false, "API traffic and the workflow URL shape");
+  assert.equal(holdFor(wl({ ghlApi: false }), tile("Send Email"), "click", undefined).held, true, "no GoHighLevel traffic");
+  assert.equal(holdFor({ url: "https://example.test/workflows/1", controls: [], state: { ghlApi: true } }, tile("Send Email"), "click", undefined).held, true, "a widget alone is not enough: the URL shape is missing");
+  // A host the person listed counts on its own; junk is dropped.
   setGhlHosts(["agency.example"]);
-  assert.equal(holdFor(wl(), tile("Send Email"), "click", undefined).held, false, "listed white-label host");
-  assert.equal(holdFor({ url: "https://example.test/workflows/1", controls: [] }, tile("Send Email"), "click", undefined).held, true, "another site is still held");
+  assert.equal(holdFor(wl(), tile("Send Email"), "click", undefined).held, false, "listed host");
   setGhlHosts(["not a host!", "..", "ok.example"]);
-  assert.deepEqual((await import("./extension/shared/ghlhosts.js")).getGhlHosts(), ["ok.example"], "junk is dropped");
+  assert.deepEqual(getGhlHosts(), ["ok.example"]);
   setGhlHosts([]);
   assert.equal(holdFor(wl(), tile("Send Email"), "click", undefined).held, true, "removed again");
 });

@@ -205,7 +205,6 @@ test("cli: install copies the package read-only under the data folder, registers
   assert.equal(JSON.parse(fs.readFileSync(path.join(home, ".vyre-chrome", "config.json"), "utf8")).ghlHosts[0], "crm.agency.example");
   assert.equal(runRel("config", "ghl-host", "crm.agency.example", "--remove").status, 0);
   assert.match(runRel("config", "ghl-host").stdout, /always count/);
-  assert.match(runRel("install", "--browsers", "chrome", "--ghl-host", "agency.example").stdout, /Counting agency\.example as GoHighLevel/);
   const st = JSON.parse(runRel("status").stdout);
   assert.equal(st.logs, "off");
   // Installing again replaces the copy.

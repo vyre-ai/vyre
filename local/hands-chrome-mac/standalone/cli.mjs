@@ -37,7 +37,7 @@ const HELP = `vyre-chrome ${version}: control your own Chrome from Claude Code
   vyre-chrome uninstall [--purge]                 remove the connector (--purge also deletes the logs)
   vyre-chrome status                              is it installed, is logging on
   vyre-chrome report [--last N] [--out FILE]      one redacted bundle of your last N sessions, with a summary
-  vyre-chrome config ghl-host <domain> [--remove]  your GoHighLevel domain, if it is not gohighlevel.com (several allowed)
+  vyre-chrome config ghl-host <domain> [--remove]  optional: a GoHighLevel domain to always count (white-label domains are recognised automatically)
   vyre-chrome config confirm-sends on|off         ask you before a send and before resuming after Esc (default on)
   vyre-chrome logs on|off|path                    turn the local trace on or off, or print where it is
   vyre-chrome logs values builder|all|none        which typed values a trace keeps (default builder: only on GoHighLevel automation pages)
@@ -77,14 +77,6 @@ async function main() {
     const browsers = flag(args, "browsers");
     const r = nativeHost.install({ vyreHome: dataDir, hostDir: hostDirNow, extensionId: id, ...(browsers ? { browsers: /** @type {any} */ (browsers.split(",")) } : {}) });
     if (appDir !== PKG) lock(appDir);
-    // GoHighLevel on the person's own domain: asked once, on a terminal; skipped when there is none or they press Enter.
-    let asked = flag(args, "ghl-host");
-    if (asked === undefined && process.stdin.isTTY && !flag(args, "no-prompt")) asked = await ask("Is your GoHighLevel on your own domain? Enter it, or press Enter to skip: ");
-    if (asked && asked !== "true") {
-      const h = hostOf(asked);
-      if (h) { const cur = readConfig(dataDir).ghlHosts || []; writeConfig(dataDir, { ghlHosts: [...new Set([...cur, h])] }); out(`Counting ${h} as GoHighLevel.`); }
-      else out(`"${asked}" is not a domain, so it was skipped. Add it later with: vyre-chrome config ghl-host your.domain.com`);
-    }
     out(`Registered the connector for: ${r.written.map((/** @type {any} */ w) => w.browser).join(", ")}`);
     out();
     out(guide(extDirNow, id, r.written.map((/** @type {any} */ w) => w.browser)).split("\n").slice(1, 5).join("\n"));
