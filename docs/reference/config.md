@@ -110,6 +110,8 @@ Vyre reads these when they are set. None is needed for normal use.
 | `VYRE_HOME` | Where Vyre keeps its data. Default `~/.vyre`. | `core/agents/index.js`, `core/config/dialogs.js`, `core/config/index.js`, `core/harness/rules.js`, `core/learn/checks.js`, `core/sessions/index.js`, `core/sessions/spawn.js`, `core/switchboard/index.js`, `harness/lib/vyre.js` |
 | `VYRE_HOST_USER` | The user name in the `ssh -L` line `vyre up` prints for reaching the box. | `core/cli/commands/up.js` |
 | `VYRE_MODULE_SDK` | A folder holding the module SDK's testing.js, for a module's own tests made by `vyre module new` before the SDK is on npm. | `core/cli/commands/module.js` |
+| `VYRE_NAMES_DEV_CLOUDFLARE` | Not described yet. | `core/names/index.js` |
+| `VYRE_NAMES_DIRECTORY` | Not described yet. | `core/names/index.js` |
 | `VYRE_NO_OPEN` | Never open a browser tab from the terminal. | `core/cli/commands/vault.js` |
 | `VYRE_NO_TIPS` | Not described yet. | `core/cli/index.js` |
 | `VYRE_NO_UP` | `vyre box add` installs Vyre without starting it. | `core/cli/commands/box.js` |
