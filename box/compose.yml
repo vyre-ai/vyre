@@ -143,11 +143,11 @@ services:
       # this container's filesystem and network but never this volume's file.
       - docker-api-bearer:/var/lib/vyre-secrets
       # Updates asked for from the Deck (core/update): vyred, and only vyred, drops the one-line file
-      # `request` in ./update; a root path unit on the host (vyre updater install) runs the signed
-      # `vyre update` when it appears. Progress and the result come back through ./update-state, read-only
+      # `request` in /var/lib/vyre-update/request (a folder root owns, with root-owned parents); a root path unit on the host (vyre updater install) runs the signed
+      # `vyre update` when it appears. Progress and the result come back through /var/lib/vyre-update/status, read-only
       # here: the host writes it and vyred cannot. No socket, no arguments. See box/vyre.
-      - ./update:/run/vyre-update
-      - ./update-state:/run/vyre-update-state:ro
+      - ${VYRE_UPDATE_ROOT:-/var/lib/vyre-update}/request:/run/vyre-update
+      - ${VYRE_UPDATE_ROOT:-/var/lib/vyre-update}/status:/run/vyre-update-state:ro
     healthcheck:
       test: ["CMD", "vyre", "status"]
       interval: 30s

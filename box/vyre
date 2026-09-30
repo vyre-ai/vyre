@@ -52,8 +52,17 @@ DIR=${VYRE_DIR:-/srv/vyre}
 cd "$DIR"
 compose() { docker compose "$@"; }
 # The update this run is (UPD_TRACK=1 under the path unit): where it has got to, for the card in the Deck.
-UPD_REQ="$DIR/update"
-UPD_STATE="$DIR/update-state"
+#
+# Everything root writes for an update lives under UPD_ROOT (/var/lib/vyre-update), a folder root owns whose parents root
+# owns too, so the person's own account (or a model running as it) cannot rename it away or plant a link in it:
+#   request/  vyred's alone (uid 1000, 0700), mounted read-write into the container: the one-line request
+#   status/   root writes, mounted READ-ONLY into the container: status.json and `ready`
+#   private/  root's only, never mounted: the floor, the last-run time, the lock, and the update's own backups and their keys
+# The stack folder $DIR is the person's, so root never writes into it through an existing path: see put_file.
+UPD_ROOT=${VYRE_UPDATE_ROOT:-/var/lib/vyre-update}
+UPD_REQ="$UPD_ROOT/request"
+UPD_STATE="$UPD_ROOT/status"
+UPD_PRIV="$UPD_ROOT/private"
 UPD_STAGE=start
 UPD_END=failed
 UPD_DONE=0
@@ -65,9 +74,25 @@ state() {
   [ "${UPD_TRACK:-0}" = 1 ] || return 0
   msg=$(printf '%s' "${3:-}" | tr -d '"\\\n\r' | cut -c1-200)
   printf '{"state":"%s","stage":"%s","message":"%s","from":"%s","to":"%s","at":%s}\n' "$1" "$2" "$msg" "${UPD_FROM:-}" "${UPD_TO:-}" "$(date +%s)" >"$UPD_STATE/status.json.new" || return 0
-  mv "$UPD_STATE/status.json.new" "$UPD_STATE/status.json" || true
+  mv -f "$UPD_STATE/status.json.new" "$UPD_STATE/status.json" || true
 }
 stage() { UPD_STAGE=$1; state running "$1"; }
+# put_file SRC DEST [MODE]: write DEST from SRC through a new file made in DEST's own folder (mktemp makes it exclusively, so a
+# name someone planted is never reused) and a rename over DEST. The rename replaces a link at DEST rather than following it,
+# and nothing is ever written through an existing path: this is how root puts files into the person's stack folder.
+put_file() {
+  pf=$(mktemp "$2.XXXXXX") || return 1
+  if cat "$1" >"$pf" && chmod "${3:-0644}" "$pf" && mv -f "$pf" "$2"; then return 0; fi
+  rm -f "$pf"; return 1
+}
+# put_text TEXT DEST [MODE]: the same, from a string.
+put_text() {
+  pt=$(mktemp "$2.XXXXXX") || return 1
+  if printf '%s\n' "$1" >"$pt" && chmod "${3:-0644}" "$pt" && mv -f "$pt" "$2"; then return 0; fi
+  rm -f "$pt"; return 1
+}
+# BK: where an update's backup and its key are kept: root's own folder under the path unit, the stack folder for a person.
+bk_dir() { if [ "${UPD_TRACK:-0}" = 1 ]; then echo "$UPD_PRIV/backups"; else echo "$DIR/backups"; fi; }
 die() {
   echo "vyre: $*" >&2
   if [ "${UPD_TRACK:-0}" = 1 ] && [ "$UPD_DONE" = 0 ]; then state "$UPD_END" "$UPD_STAGE" "$*"; fi
@@ -251,31 +276,33 @@ image() {
 # for a failed update and for --rollback --restore-data.
 backup_db() {
   f="$CHOME/backups/pre-$1.tar.gz"
+  BK=$(bk_dir)
   csh 'mkdir -p "$1" && rm -f "$2"' "$CHOME/backups" "$f" \
     || die "could not reach vyred's home in the container to back up; is the box up? (vyre up)"
-  mkdir -p "$DIR/backups"
-  chmod 700 "$DIR/backups"
+  mkdir -p "$BK"
+  chmod 700 "$BK"
   # The backup is always sealed under a passphrase (R8). An update's own backup is unattended, so it gets a random one, kept
   # beside the file as pre-<version>.key (0600, root, the same trust as the folder), and is data only: the project files and
   # transcripts are not in it. Piped on stdin, never in argv or the environment.
   pass=$(head -c 24 /dev/urandom | base64 | tr -d '=+/\n' | cut -c1-24)
   [ "${#pass}" -ge 16 ] || die "could not make a passphrase for the backup; nothing changed"
-  (umask 077; printf '%s\n' "$pass" >"$DIR/backups/pre-$1.key")
+  (umask 077; put_text "$pass" "$BK/pre-$1.key" 0600)
   printf '%s\n%s\n' "$pass" "$pass" | compose exec -T -e VYRE_BACKUP_SKIP_PROJECTS=1 -e VYRE_BACKUP_SKIP_TRANSCRIPTS=1 vyre vyre backup "$f" >/dev/null \
     || die "the backup before the update failed; nothing changed"
   # It holds the sealed vault: only this account reads the host copy.
-  (umask 077; csh 'cat "$1"' "$f" >"$DIR/backups/pre-$1.tar.gz") || true
-  printf '%s\n' "$f" >"$DIR/backups/last"
-  say "backed up the database to $f (and $DIR/backups/pre-$1.tar.gz)"
+  if hb=$(mktemp "$BK/.pre-$1.XXXXXX") && chmod 600 "$hb" && csh 'cat "$1"' "$f" >"$hb"; then mv -f "$hb" "$BK/pre-$1.tar.gz"; else rm -f "${hb:-}"; fi
+  put_text "$f" "$BK/last" 0600
+  say "backed up the database to $f (and $BK/pre-$1.tar.gz)"
 }
 
 # restore_db: put the pre-update backup back. restore wants vyred stopped, so the vyre container
 # stops and a one-off container of the same (already rolled back) image runs the restore.
 restore_db() {
-  f=$(cat "$DIR/backups/last" 2>/dev/null || true)
-  [ -n "$f" ] || { echo "vyre: no pre-update backup is recorded in $DIR/backups/last" >&2; return 1; }
+  BK=$(bk_dir)
+  f=$(cat "$BK/last" 2>/dev/null || true)
+  [ -n "$f" ] || { echo "vyre: no pre-update backup is recorded in $BK/last" >&2; return 1; }
   compose stop vyre
-  k="$DIR/backups/$(basename "$f" .tar.gz).key"
+  k="$BK/$(basename "$f" .tar.gz).key"
   [ -f "$k" ] || { echo "vyre: no passphrase is kept for $f ($k)" >&2; return 1; }
   compose run --rm --no-deps -T vyre vyre restore "$f" --force <"$k" || { echo "vyre: could not restore $f" >&2; return 1; }
   say "restored the database from $f"
@@ -293,15 +320,16 @@ swap_dirs() {
 save_box() {
   rm -rf "$DIR/box.prev"
   mkdir -p "$DIR/box.prev"
-  for f in $BOXF VERSION; do if [ -f "$DIR/$f" ]; then cp -p "$DIR/$f" "$DIR/box.prev/$f"; fi; done
-  if [ -f "$WRAPPER" ]; then cp -p "$WRAPPER" "$DIR/box.prev/vyre"; fi
+  # Only regular files, never a link that points somewhere else.
+  for f in $BOXF VERSION; do if [ -f "$DIR/$f" ] && [ ! -L "$DIR/$f" ]; then cp -p "$DIR/$f" "$DIR/box.prev/$f"; fi; done
+  if [ -f "$WRAPPER" ] && [ ! -L "$WRAPPER" ]; then cp -p "$WRAPPER" "$DIR/box.prev/vyre"; fi
 }
 
 # put_box FROM [exact]: install the box files found in folder FROM into $DIR. With exact (putting
 # box.prev back), a file FROM does not have is removed, so $DIR matches it; compose.yml always stays.
 put_box() {
   for f in $BOXF VERSION; do
-    if [ -f "$1/$f" ]; then cp "$1/$f" "$DIR/$f.new" && mv "$DIR/$f.new" "$DIR/$f"
+    if [ -f "$1/$f" ]; then put_file "$1/$f" "$DIR/$f" 0644
     elif [ "${2:-}" = exact ] && [ "$f" != compose.yml ]; then rm -f "$DIR/$f"
     fi
   done
@@ -422,7 +450,7 @@ update() {
   # An automatic update never goes back: a signed old release is still an old release.
   # The floor is the newest version the host has installed, kept in a file only root writes; what the container says it runs
   # is not trusted for this, since a compromised vyred could claim to be older.
-  floor=$(tr -d ' \n\r' <"$UPD_STATE/floor" 2>/dev/null || true)
+  floor=$(readf "$UPD_PRIV/floor")
   if [ "${UPD_SIGNED:-0}" = 1 ]; then
     if [ -n "$floor" ] && older "$VERSION" "$floor"; then die "the newest release is $VERSION and the newest this server has had is $floor; an automatic update never goes back"; fi
     if [ -n "$UPD_FROM" ] && older "$VERSION" "$UPD_FROM"; then die "the newest release is $VERSION and this box runs $UPD_FROM; an automatic update never goes back"; fi
@@ -465,14 +493,11 @@ update() {
   stage restarting
   compose up -d || roll_back
   ready || roll_back
-  printf '%s\n' "$VERSION" >"$DIR/VERSION"
+  put_text "$VERSION" "$DIR/VERSION"
   UPD_DONE=1
   # Raise the floor (never lower it): the host's own record of the newest version this server has had.
-  fl=$(tr -d ' \n\r' <"$UPD_STATE/floor" 2>/dev/null || true)
-  if [ -d "$UPD_STATE" ] && { [ -z "$fl" ] || older "$fl" "$VERSION"; }; then
-    printf '%s\n' "$VERSION" >"$UPD_STATE/floor.new" || true
-    mv "$UPD_STATE/floor.new" "$UPD_STATE/floor" 2>/dev/null || true
-  fi
+  fl=$(readf "$UPD_PRIV/floor")
+  if [ -d "$UPD_PRIV" ] && { [ -z "$fl" ] || older "$fl" "$VERSION"; }; then put_text "$VERSION" "$UPD_PRIV/floor" 0600 || true; fi
   state ok finished "updated to $VERSION"
   say "updated to $VERSION"
 
@@ -491,41 +516,61 @@ update() {
 # request there, and nothing else in the container (Vyre-owned sessions run as uid 1001) can. update-state/ is root's,
 # mounted read-only, so vyred can only read what the update says about itself.
 updater_dirs() {
-  mkdir -p "$UPD_REQ" "$UPD_STATE" 2>/dev/null || return 0
+  mkdir -p "$UPD_ROOT" "$UPD_REQ" "$UPD_STATE" "$UPD_PRIV" 2>/dev/null || return 0
+  chmod 755 "$UPD_ROOT" "$UPD_STATE" 2>/dev/null || true
+  chmod 700 "$UPD_PRIV" 2>/dev/null || true
   chown 1000:1000 "$UPD_REQ" 2>/dev/null || true
   chmod 700 "$UPD_REQ" 2>/dev/null || true
-  chmod 755 "$UPD_STATE" 2>/dev/null || true
+}
+
+# readf FILE: the file's text without blanks and newlines, or nothing when there is no such file (and no shell complaint).
+readf() { if [ -f "$1" ]; then tr -d ' \n\r' <"$1" 2>/dev/null || true; fi; }
+
+# unit_dirs_ok: before root reads or writes anything for an update, UPD_ROOT and every folder above it must be root's and not
+# writable by group or others, and request/, status/ and private/ must be real folders (never links), so nobody can have
+# moved them or planted a link in their place. VYRE_ROOT_UID and VYRE_CHAIN_TOP (where the walk up stops) are for tests only.
+unit_dirs_ok() {
+  ru=${VYRE_ROOT_UID:-0}
+  d=$UPD_ROOT
+  top=${VYRE_CHAIN_TOP:-/}
+  while :; do
+    [ -d "$d" ] && [ ! -L "$d" ] && own_ok "$d" "$ru" strict || return 1
+    if [ "$d" = "$top" ] || [ "$d" = / ] || [ "$d" = . ]; then break; fi
+    d=$(dirname "$d")
+  done
+  for d in "$UPD_STATE" "$UPD_PRIV"; do [ -d "$d" ] && [ ! -L "$d" ] && own_ok "$d" "$ru" strict || return 1; done
+  [ -d "$UPD_REQ" ] && [ ! -L "$UPD_REQ" ]
 }
 
 # update_from_request: what the path unit runs, as root. The request is data, never arguments: it is dropped whatever it
 # holds, and only the exact word `update` starts anything. It is a file in a folder vyred writes to, so it is looked at
 # without following links and its content is only ever compared.
 update_from_request() {
+  if ! unit_dirs_ok; then echo "vyre: $UPD_ROOT (or a folder above it) is not root's alone, or a folder in it is missing or a link; no update was started" >&2; exit 0; fi
   req="$UPD_REQ/request"
   if [ -L "$req" ] || [ ! -f "$req" ]; then rm -f "$req" 2>/dev/null || true; exit 0; fi
   line=$(head -c 16 "$req" 2>/dev/null | tr -d '\n\r' || true)
   rm -f "$req"
   [ "$line" = update ] || { echo "vyre: an update request that says anything else was dropped" >&2; exit 0; }
-  mkdir -p "$UPD_STATE"
   # Two updates at once would swap the same files: the second waits for the next request. A lock left by a crash goes after two hours.
-  if [ -d "$UPD_STATE/lock" ] && [ -n "$(find "$UPD_STATE/lock" -maxdepth 0 -mmin +120 2>/dev/null)" ]; then rmdir "$UPD_STATE/lock" 2>/dev/null || true; fi
-  mkdir "$UPD_STATE/lock" 2>/dev/null || { echo "vyre: an update is already running" >&2; exit 0; }
+  if [ -d "$UPD_PRIV/lock" ] && [ -n "$(find "$UPD_PRIV/lock" -maxdepth 0 -mmin +120 2>/dev/null)" ]; then rmdir "$UPD_PRIV/lock" 2>/dev/null || true; fi
+  mkdir "$UPD_PRIV/lock" 2>/dev/null || { echo "vyre: an update is already running" >&2; exit 0; }
   # At least ${VYRE_UPDATE_MIN_GAP:-600} seconds between updates, so a request that keeps coming cannot keep the box restarting.
-  last=$(tr -d ' \n\r' <"$UPD_STATE/last" 2>/dev/null || true)
+  last=$(readf "$UPD_PRIV/last")
   now=$(date +%s)
   case "$last" in ""|*[!0-9]*) last=0 ;; esac
   if [ $((now - last)) -lt "${VYRE_UPDATE_MIN_GAP:-600}" ]; then
-    rmdir "$UPD_STATE/lock" 2>/dev/null || true
+    rmdir "$UPD_PRIV/lock" 2>/dev/null || true
     echo "vyre: an update ran a moment ago; this request waits for the next" >&2
     UPD_TRACK=1; state failed too-soon "an update ran a moment ago; ask again in a few minutes"
     exit 0
   fi
-  printf '%s\n' "$now" >"$UPD_STATE/last"
+  put_text "$now" "$UPD_PRIV/last" 0600
   ch=$(sed -n 's/^VYRE_CHANNEL=//p' "$DIR/.env" 2>/dev/null | tail -n 1 | tr -d ' \r')
   case "$ch" in stable|beta|"") ;; *) echo "vyre: VYRE_CHANNEL in $DIR/.env is \"$ch\", not stable or beta; using stable" >&2; ch=stable ;; esac
   rc=0
-  ( UPD_TRACK=1; UPD_SIGNED=1; [ -z "$ch" ] || VYRE_CHANNEL=$ch; export VYRE_CHANNEL; update ) || rc=$?
-  rmdir "$UPD_STATE/lock" 2>/dev/null || true
+  ( UPD_TRACK=1; UPD_SIGNED=1; mkdir -p "$UPD_PRIV/backups"; [ -z "$ch" ] || VYRE_CHANNEL=$ch; export VYRE_CHANNEL; update ) || rc=$?
+  rmdir "$UPD_PRIV/lock" 2>/dev/null || true
   exit "$rc"
 }
 

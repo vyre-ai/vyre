@@ -155,6 +155,7 @@ async function box(t, { site = "0.1.5", releases = [], build = true } = {}) {
     ? `COMPOSE_PROJECT_NAME=vyre\nCOMPOSE_FILE=compose.yml:compose.build.yml\nVYRE_SOURCE=${DIR}/src\nTS_AUTHKEY=tskey-northwind\n`
     : "COMPOSE_PROJECT_NAME=vyre\nCOMPOSE_FILE=compose.yml\n";
   fs.writeFileSync(path.join(DIR, ".env"), env, { mode: 0o600 });
+  const U = path.join(root, "uroot");
   const WRAPPER = path.join(root, "bin", "vyre");
   fs.mkdirSync(path.dirname(WRAPPER));
   fs.writeFileSync(WRAPPER, WRAPPER_SRC, { mode: 0o755 });
@@ -182,7 +183,7 @@ async function box(t, { site = "0.1.5", releases = [], build = true } = {}) {
   const run = (/** @type {string[]} */ args, /** @type {Record<string,string>} */ extra = {}) => new Promise(resolve => {
     const c = spawn("sh", [WRAPPER, ...args], {
       env: { PATH: `${FAKE}/bin:${process.env.PATH}`, HOME: root, TMPDIR: SCRATCH, FAKE, VYRE_DIR: DIR, VYRE_WRAPPER: WRAPPER,
-        VYRE_UPDATE_WAIT: "2", VYRE_RELEASES_API: `${base}/api`, VYRE_BOX_URL: `${base}/site/`, ...KEY, VYRE_UPDATE_MIN_GAP: "0", ...extra },
+        VYRE_UPDATE_WAIT: "2", VYRE_RELEASES_API: `${base}/api`, VYRE_BOX_URL: `${base}/site/`, ...KEY, VYRE_UPDATE_MIN_GAP: "0", VYRE_UPDATE_ROOT: U, VYRE_ROOT_UID: String(process.getuid()), VYRE_CHAIN_TOP: root, ...extra },
       stdio: ["pipe", "pipe", "pipe"],
     });
     let out = "";
@@ -193,7 +194,7 @@ async function box(t, { site = "0.1.5", releases = [], build = true } = {}) {
   });
   const read = (/** @type {string} */ p) => fs.readFileSync(p, "utf8");
   return {
-    DIR, FAKE, DL, WRAPPER, hits, run, read, env,
+    DIR, U, FAKE, DL, WRAPPER, hits, run, read, env,
     calls: () => fs.existsSync(path.join(FAKE, "calls")) ? read(path.join(FAKE, "calls")).split("\n").filter(Boolean) : [],
     image: (/** @type {string} */ tag) => { try { return read(path.join(FAKE, "images", tag.replace(/[/:]/g, "_"))); } catch { return ""; } },
     db: () => read(path.join(FAKE, `ctr${CHOME}`, "vyre.db")),
@@ -389,8 +390,10 @@ test("box/vyre: shellcheck is clean, when shellcheck is installed", t => {
 
 // --- the automatic path: vyred's request file, run by a root path unit (vyre update-from-request) ---
 
-const status = (/** @type {any} */ b) => JSON.parse(b.read(path.join(b.DIR, "update-state", "status.json")));
-const ask = (/** @type {any} */ b, text = "update\n") => { fs.mkdirSync(path.join(b.DIR, "update"), { recursive: true }); fs.writeFileSync(path.join(b.DIR, "update", "request"), text); };
+const status = (/** @type {any} */ b) => JSON.parse(b.read(path.join(b.U, "status", "status.json")));
+/** The unit's folders, made the way `vyre updater install` makes them (here "root" is the test's own account: VYRE_ROOT_UID). */
+const units_dirs = (/** @type {any} */ b) => { for (const [d, m] of [["", 0o755], ["request", 0o700], ["status", 0o755], ["private", 0o700]]) { const f = path.join(b.U, d); fs.mkdirSync(f, { recursive: true }); fs.chmodSync(f, m); } };
+const ask = (/** @type {any} */ b, text = "update\n") => { units_dirs(b); fs.writeFileSync(path.join(b.U, "request", "request"), text); };
 
 test("update-from-request: a signed release is installed, the request is consumed, and the state file says from, to and ok", async t => {
   const b = await box(t, { releases: [{ tag: "v0.2.0", sign: RELEASE.privateKey }] });
@@ -399,8 +402,8 @@ test("update-from-request: a signed release is installed, the request is consume
   assert.equal(r.code, 0, r.out);
   assert.match(r.out, /signature checked against Vyre's release key/);
   assert.equal(b.read(path.join(b.DIR, "VERSION")).trim(), "0.2.0");
-  assert.ok(!fs.existsSync(path.join(b.DIR, "update", "request")), "the request is gone");
-  assert.ok(!fs.existsSync(path.join(b.DIR, "update-state", "lock")), "the lock is released");
+  assert.ok(!fs.existsSync(path.join(b.U, "request", "request")), "the request is gone");
+  assert.ok(!fs.existsSync(path.join(b.U, "private", "lock")), "the lock is released");
   assert.deepEqual([status(b).state, status(b).from, status(b).to], ["ok", "0.1.0", "0.2.0"]);
 });
 
@@ -409,16 +412,16 @@ test("update-from-request: only the word update starts anything; a link or anoth
   ask(b, "update --to 0.0.1; rm -rf /\n");
   let r = /** @type {any} */ (await b.run(["update-from-request"], KEY));
   assert.equal(r.code, 0);
-  assert.ok(!fs.existsSync(path.join(b.DIR, "update", "request")));
+  assert.ok(!fs.existsSync(path.join(b.U, "request", "request")));
   // A link to somewhere else: not followed, removed, nothing runs.
   const secret = path.join(b.DIR, "secret.txt");
   fs.writeFileSync(secret, "update\n");
-  fs.symlinkSync(secret, path.join(b.DIR, "update", "request"));
+  fs.symlinkSync(secret, path.join(b.U, "request", "request"));
   r = /** @type {any} */ (await b.run(["update-from-request"], KEY));
   assert.equal(r.code, 0);
-  assert.ok(!fs.existsSync(path.join(b.DIR, "update", "request")) && fs.readFileSync(secret, "utf8") === "update\n", "the link is removed, its target untouched");
+  assert.ok(!fs.existsSync(path.join(b.U, "request", "request")) && fs.readFileSync(secret, "utf8") === "update\n", "the link is removed, its target untouched");
   assert.equal(b.calls().length, 0, "no docker call at all: " + b.calls().join("\n"));
-  assert.ok(!fs.existsSync(path.join(b.DIR, "update-state", "status.json")));
+  assert.ok(!fs.existsSync(path.join(b.U, "status", "status.json")));
 });
 
 test("update-from-request: an unsigned release, or one signed by another key, installs nothing", async t => {
@@ -465,10 +468,10 @@ test("update-from-request: a vyred that does not come up rolls back and the stat
   assert.equal(r.code, 1, r.out);
   assert.equal(status(b).state, "rolled_back");
   assert.equal(b.db(), "v1", "the database is back");
-  assert.ok(!fs.existsSync(path.join(b.DIR, "update-state", "lock")));
+  assert.ok(!fs.existsSync(path.join(b.U, "private", "lock")));
   // The backup's passphrase went in on stdin, and its key file is kept 0600 beside it.
-  assert.ok(fs.statSync(path.join(b.DIR, "backups", "pre-0.2.0.key")).mode % 0o1000 === 0o600);
-  assert.ok(!b.calls().some(c => c.includes(fs.readFileSync(path.join(b.DIR, "backups", "pre-0.2.0.key"), "utf8").trim())), "never in argv");
+  assert.ok(fs.statSync(path.join(b.U, "private", "backups", "pre-0.2.0.key")).mode % 0o1000 === 0o600);
+  assert.ok(!b.calls().some(c => c.includes(fs.readFileSync(path.join(b.U, "private", "backups", "pre-0.2.0.key"), "utf8").trim())), "never in argv");
   const old = await box(t, { releases: [{ tag: "v0.2.0", sign: RELEASE.privateKey }] });
   fs.writeFileSync(path.join(old.FAKE, "cur"), "0.3.0");
   ask(old);
@@ -480,13 +483,13 @@ test("update-from-request: a vyred that does not come up rolls back and the stat
 
 test("update-from-request: a second request while one runs waits for the next; the channel is the host's own", async t => {
   const b = await box(t, { releases: [{ tag: "v0.3.0-beta.1", pre: true, sign: RELEASE.privateKey }, { tag: "v0.2.0", sign: RELEASE.privateKey }] });
-  fs.mkdirSync(path.join(b.DIR, "update-state", "lock"), { recursive: true });
+  fs.mkdirSync(path.join(b.U, "private", "lock"), { recursive: true });
   ask(b);
   const busy = /** @type {any} */ (await b.run(["update-from-request"], KEY));
   assert.equal(busy.code, 0);
   assert.match(busy.out, /already running/);
   assert.equal(b.calls().length, 0);
-  fs.rmdirSync(path.join(b.DIR, "update-state", "lock"));
+  fs.rmdirSync(path.join(b.U, "private", "lock"));
   // The unit picks the channel from the host's .env; vyred's request cannot.
   fs.appendFileSync(path.join(b.DIR, ".env"), "VYRE_CHANNEL=beta\n");
   ask(b);
@@ -503,7 +506,7 @@ test("vyre updater install: writes a path unit watching vyred's request file and
   const r = /** @type {any} */ (await b.run(["updater", "install"], { VYRE_SYSTEMD_DIR: units, VYRE_ROOT_UID: String(process.getuid()) }));
   assert.equal(r.code, 0, r.out);
   const path_ = fs.readFileSync(path.join(units, "vyre-update.path"), "utf8");
-  assert.match(path_, new RegExp(`PathExists=${b.DIR}/update/request`));
+  assert.match(path_, new RegExp(`PathExists=${b.U}/request/request`));
   assert.match(path_, /Unit=vyre-update\.service/);
   const svc = fs.readFileSync(path.join(units, "vyre-update.service"), "utf8");
   assert.match(svc, new RegExp(`ExecStart=${b.WRAPPER} update-from-request`));
@@ -512,17 +515,18 @@ test("vyre updater install: writes a path unit watching vyred's request file and
   const ctl = fs.readFileSync(path.join(b.FAKE, "systemctl"), "utf8");
   assert.match(ctl, /daemon-reload/);
   assert.match(ctl, /enable --now vyre-update\.path/);
-  assert.ok(fs.statSync(path.join(b.DIR, "update-state")).isDirectory());
-  assert.equal(fs.readFileSync(path.join(b.DIR, "update-state", "ready"), "utf8"), "1\n", "vyred is told a unit will act");
+  assert.ok(fs.statSync(path.join(b.U, "status")).isDirectory());
+  assert.equal(fs.readFileSync(path.join(b.U, "status", "ready"), "utf8"), "1\n", "vyred is told a unit will act");
   assert.match(/** @type {any} */ ((await b.run(["updater", "status"], { VYRE_SYSTEMD_DIR: units }))).out, /installed/);
   await b.run(["updater", "remove"], { VYRE_SYSTEMD_DIR: units });
   assert.ok(!fs.existsSync(path.join(units, "vyre-update.path")));
-  assert.ok(!fs.existsSync(path.join(b.DIR, "update-state", "ready")));
+  assert.ok(!fs.existsSync(path.join(b.U, "status", "ready")));
 });
 
 test("compose: vyred gets only its own request folder (writable) and the state folder read-only", () => {
-  assert.match(COMPOSE, /- \.\/update:\/run\/vyre-update\n/);
-  assert.match(COMPOSE, /- \.\/update-state:\/run\/vyre-update-state:ro\n/);
+  assert.match(COMPOSE, /- \$\{VYRE_UPDATE_ROOT:-\/var\/lib\/vyre-update\}\/request:\/run\/vyre-update\n/);
+  assert.match(COMPOSE, /- \$\{VYRE_UPDATE_ROOT:-\/var\/lib\/vyre-update\}\/status:\/run\/vyre-update-state:ro\n/);
+  assert.ok(!/vyre-update\}\/private/.test(COMPOSE), "the private folder (floor, lock, backup keys) is never mounted");
   assert.ok(!/docker\.sock/.test(COMPOSE.split("docker-api:")[0]), "still no socket in the vyre service");
 });
 
@@ -553,19 +557,19 @@ test("update-from-request: the no-downgrade floor is the host's own file, not wh
   const b = await box(t, { releases: [{ tag: "v0.2.0" }] });
   // vyred lies low (it says it runs 0.0.5), but the host has had 0.3.0.
   fs.writeFileSync(path.join(b.FAKE, "cur"), "0.0.5");
-  fs.mkdirSync(path.join(b.DIR, "update-state"), { recursive: true });
-  fs.writeFileSync(path.join(b.DIR, "update-state", "floor"), "0.3.0\n");
+  units_dirs(b);
+  fs.writeFileSync(path.join(b.U, "private", "floor"), "0.3.0\n");
   ask(b);
   const r = /** @type {any} */ (await b.run(["update-from-request"], KEY));
   assert.equal(r.code, 1);
   assert.match(r.out, /the newest this server has had is 0\.3\.0; an automatic update never goes back/);
   assert.ok(!b.calls().some(c => c.includes("backup")));
   // With a lower floor the update goes ahead, and the floor becomes its version.
-  fs.writeFileSync(path.join(b.DIR, "update-state", "floor"), "0.1.0\n");
+  fs.writeFileSync(path.join(b.U, "private", "floor"), "0.1.0\n");
   fs.writeFileSync(path.join(b.FAKE, "cur"), "0.1.0");
   ask(b);
   assert.equal(/** @type {any} */ ((await b.run(["update-from-request"], KEY))).code, 0);
-  assert.equal(b.read(path.join(b.DIR, "update-state", "floor")).trim(), "0.2.0");
+  assert.equal(b.read(path.join(b.U, "private", "floor")).trim(), "0.2.0");
 });
 
 test("update-from-request: at least the minimum gap between updates, and only stable or beta from the host's .env", async t => {
@@ -582,7 +586,7 @@ test("update-from-request: at least the minimum gap between updates, and only st
   assert.equal(status(b).state, "failed");
   assert.equal(status(b).stage, "too-soon");
   assert.equal(b.calls().length, calls, "nothing ran");
-  assert.ok(!fs.existsSync(path.join(b.DIR, "update-state", "lock")));
+  assert.ok(!fs.existsSync(path.join(b.U, "private", "lock")));
   // A channel that is not stable or beta is ignored with a note, and stable is used.
   fs.appendFileSync(path.join(b.DIR, ".env"), "VYRE_CHANNEL=nightly; rm -rf /\n");
   ask(b);
@@ -608,4 +612,69 @@ test("release signature: the box verifies the shared vector, and refuses the sam
   assert.equal(check(VECTOR.sums + "x", VECTOR.sig), "bad", "one more byte");
   const bare = crypto.sign(null, Buffer.from(VECTOR.sums), crypto.createPrivateKey({ key: Buffer.concat([Buffer.from("302e020100300506032b657004220420", "hex"), Buffer.alloc(32, 7)]), format: "der", type: "pkcs8" })).toString("base64");
   assert.equal(check(VECTOR.sums, bare), "bad", "a signature without the prefix is refused");
+});
+
+test("update-from-request: a link planted in the person's stack folder or in root's floor file is replaced, never written through", async t => {
+  const b = await box(t, { releases: [{ tag: "v0.2.0" }] });
+  const victim = path.join(b.DIR, "victim.txt");
+  fs.writeFileSync(victim, "keep me\n");
+  const victimDir = path.join(b.DIR, "victim-dir");
+  fs.mkdirSync(victimDir);
+  fs.writeFileSync(path.join(victimDir, "inside.txt"), "keep me too\n");
+  // The stack folder is the person's: links where root will write.
+  fs.symlinkSync(victim, path.join(b.DIR, "VERSION"));
+  fs.symlinkSync(victimDir, path.join(b.DIR, "box.prev"));
+  fs.rmSync(path.join(b.DIR, "compose.build.yml"), { force: true });
+  fs.symlinkSync(victim, path.join(b.DIR, "compose.build.yml"));
+  ask(b);
+  fs.symlinkSync(victim, path.join(b.U, "private", "floor"));
+  const r = /** @type {any} */ (await b.run(["update-from-request"], {}));
+  assert.equal(r.code, 0, r.out);
+  assert.equal(fs.readFileSync(victim, "utf8"), "keep me\n", "nothing was written through a link");
+  assert.equal(fs.readFileSync(path.join(victimDir, "inside.txt"), "utf8"), "keep me too\n");
+  assert.deepEqual(fs.readdirSync(victimDir), ["inside.txt"], "no box file was copied into a folder a link pointed at");
+  for (const f of [path.join(b.DIR, "VERSION"), path.join(b.DIR, "compose.build.yml"), path.join(b.U, "private", "floor")]) assert.ok(fs.lstatSync(f).isFile(), `${f} is a real file now`);
+  assert.equal(b.read(path.join(b.DIR, "VERSION")).trim(), "0.2.0");
+  assert.equal(b.read(path.join(b.U, "private", "floor")).trim(), "0.2.0");
+  assert.ok(!fs.readdirSync(b.DIR).some(n => /\.[A-Za-z0-9]{6}$/.test(n)), "no temp file left behind: " + fs.readdirSync(b.DIR).join(" "));
+});
+
+test("update-from-request: root's folders must be root's alone: a link for status/, or a folder above that others can write, means no update starts", async t => {
+  const b = await box(t, { releases: [{ tag: "v0.2.0" }] });
+  const elsewhere = path.join(b.DIR, "elsewhere");
+  fs.mkdirSync(elsewhere);
+  ask(b);
+  fs.rmSync(path.join(b.U, "status"), { recursive: true });
+  fs.symlinkSync(elsewhere, path.join(b.U, "status"));
+  let r = /** @type {any} */ (await b.run(["update-from-request"], {}));
+  assert.equal(r.code, 0);
+  assert.match(r.out, /is not root's alone/);
+  assert.deepEqual(fs.readdirSync(elsewhere), [], "nothing written through the link");
+  assert.equal(b.calls().length, 0);
+  assert.ok(fs.existsSync(path.join(b.U, "request", "request")), "the request is left; nothing was read or removed");
+  // A folder above that others can write (the person could rename root's folder away).
+  fs.rmSync(path.join(b.U, "status"));
+  fs.mkdirSync(path.join(b.U, "status"), { mode: 0o755 });
+  fs.chmodSync(path.dirname(b.U), 0o777);
+  r = /** @type {any} */ (await b.run(["update-from-request"], {}));
+  fs.chmodSync(path.dirname(b.U), 0o755);
+  assert.match(r.out, /is not root's alone/);
+  assert.equal(b.calls().length, 0);
+  // And once it is right again, the same request goes through.
+  r = /** @type {any} */ (await b.run(["update-from-request"], {}));
+  assert.equal(r.code, 0, r.out);
+  assert.equal(b.read(path.join(b.DIR, "VERSION")).trim(), "0.2.0");
+});
+
+test("update-from-request: the update's backup and its passphrase live in root's private folder, which is never mounted; a hand-run update keeps them in the stack folder", async t => {
+  const b = await box(t, { releases: [{ tag: "v0.2.0" }] });
+  ask(b);
+  assert.equal(/** @type {any} */ ((await b.run(["update-from-request"], {}))).code, 0);
+  assert.ok(fs.existsSync(path.join(b.U, "private", "backups", "pre-0.2.0.key")));
+  assert.equal(fs.statSync(path.join(b.U, "private", "backups", "pre-0.2.0.tar.gz")).mode & 0o777, 0o600);
+  assert.ok(!fs.existsSync(path.join(b.DIR, "backups")), "nothing of it in the person's folder");
+  assert.equal(fs.readdirSync(path.join(b.U, "status")).sort().join(), "status.json", "the mounted folder holds only the status");
+  const h = await box(t, { releases: [{ tag: "v0.2.0" }] });
+  assert.equal(/** @type {any} */ ((await h.run(["update"], {}))).code, 0);
+  assert.ok(fs.existsSync(path.join(h.DIR, "backups", "pre-0.2.0.key")));
 });
