@@ -266,3 +266,16 @@ test("the file store: a miss lowers a stored fact's confidence, three misses qua
     assert.equal(st.record(origin).controls.length, 1);
   } finally { fs.rmSync(dir, { recursive: true, force: true }); }
 });
+
+test("generated ids always have the shape the store accepts, even when the hash has no digit", () => {
+  const ids = new Set();
+  let noDigitHashes = 0;
+  for (let i = 0; i < 20000; i++) {
+    if (!/\d/.test(hash(`k${i}`))) noDigitHashes++;
+    const id = controlId("/x", { identifier: `k${i}` });
+    ids.add(id);
+    assert.equal(sanitize({ key: "https://a.example", controls: [{ id, page: "/x", role: "button", selector: { strategy: "identifier", identifier: "save" }, identifierVisits: ["a", "b"] }] }).record.controls.length, 1, id);
+  }
+  assert.ok(noDigitHashes > 0, "the sample includes hashes with no digit, which is the case being guarded");
+  assert.ok(ids.size > 19990, "ids stay distinct");
+});
