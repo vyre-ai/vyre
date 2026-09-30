@@ -4,6 +4,7 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+- The public site no longer says "vyred" (site/start and site/llms.txt: "Vyre" instead), and `test/site-words.test.js` keeps the internal words (vyred, switchboard, no such tool, as Claude Code does) out of the site's copy, with the same list as native-core's Deck test.
 - What vyre.run serves for setup and the install line can be checked against the signed release (PLAN R7, section 5 row 1): `scripts/setup-hashes.mjs DIR` writes `setup.json` (the sha256 of every file under site/setup as served, the index at /setup/, and the install scripts at /i and /w) for the release to list in SHA256SUMS before it is signed, and `scripts/check-served.mjs --origin URL --release DIR` verifies the release signature (pinned key, prefix), that setup.json is the listed file, and then fetches every path from the origin and compares its hash; any difference, or a path that does not answer 200, exits 1. Needs one line in release.yml (run setup-hashes after the site is built, before the SHA256SUMS step).
 - docs-shots: the onboarding history shot waits for the step's folder list ("N sessions") instead of the old meter, and writes a temp-folder path in the list as the sample person's own Claude Code folder before the picture, so no temp path is in a screenshot.
 - rungs (reviewer-2 LOWs): a replica's rung time is clamped to now, a change of rung is throttled to one per template per minute, and the count is documented as a hint for where to start, never trust.
