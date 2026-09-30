@@ -19,6 +19,19 @@ const REPO = path.join(path.dirname(fileURLToPath(import.meta.url)), "..");
  *  it is expected, not a bug this test should catch. A tool leaves this list the day every box
  *  registers it - it does not grow to paper over a call nothing answers by design. */
 const OPTIONAL = {
+  "team.list": "teammates ships it in work/teammates-0.2 (core/team); the project Team tab says so in a line when the box has no teammates module. Leaves this list when teammates merges.",
+  "team.default.get": "teammates ships it in work/teammates-0.2 (core/team); the project Team tab says so in a line when the box has no teammates module. Leaves this list when teammates merges.",
+  "team.default.set": "teammates ships it in work/teammates-0.2 (core/team); the project Team tab says so in a line when the box has no teammates module. Leaves this list when teammates merges.",
+  "team.status": "teammates ships it in work/teammates-0.2 (core/team); the project Team tab says so in a line when the box has no teammates module. Leaves this list when teammates merges.",
+  "team.notes": "teammates ships it in work/teammates-0.2 (core/team); the project Team tab says so in a line when the box has no teammates module. Leaves this list when teammates merges.",
+  "team.duties.list": "teammates ships it in work/teammates-0.2 (core/team); the project Team tab says so in a line when the box has no teammates module. Leaves this list when teammates merges.",
+  "team.duties.update": "teammates ships it in work/teammates-0.2 (core/team); the project Team tab says so in a line when the box has no teammates module. Leaves this list when teammates merges.",
+  "team.duties.run-now": "teammates ships it in work/teammates-0.2 (core/team); the project Team tab says so in a line when the box has no teammates module. Leaves this list when teammates merges.",
+  "team.role.fill": "teammates ships it in work/teammates-0.2 (core/team); the project Team tab says so in a line when the box has no teammates module. Leaves this list when teammates merges.",
+  "team.add": "teammates ships it in work/teammates-0.2 (core/team); the project Team tab says so in a line when the box has no teammates module. Leaves this list when teammates merges.",
+  "team.charter.get": "teammates ships it in work/teammates-0.2 (core/team); the project Team tab says so in a line when the box has no teammates module. Leaves this list when teammates merges.",
+  "team.charter.set": "teammates ships it in work/teammates-0.2 (core/team); the project Team tab says so in a line when the box has no teammates module. Leaves this list when teammates merges.",
+  "team.charter.draft": "teammates ships it in work/teammates-0.2 (core/team); the project Team tab says so in a line when the box has no teammates module. Leaves this list when teammates merges.",
   "spend.raise": "iq ships it (work/iq 90eb2f4f); the spend cap line and the Settings Spend section say so in a line when the box has no spend module. Leaves this list when iq merges.",
   "spend.summary": "iq ships it (work/iq 90eb2f4f); the spend cap line and the Settings Spend section say so in a line when the box has no spend module. Leaves this list when iq merges.",
   "connectors.catalog": "connectors ships it in work/connectors-0.2 (CHAT.md 11:40); the Add a service list checks the answer and says so in a line when the box has no connectors module. Leaves this list when connectors merges.",

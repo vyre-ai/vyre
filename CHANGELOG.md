@@ -4,6 +4,10 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### projects: the Team tab
+
+- `/projects/<slug>?tab=team` (`deck/views/project-team.js`): the teammates serving a project, from `team.list`, each with its role, state, who fills it, queue, brief and last result. Open shows what it is doing now (`team.status`), its last result, its notes (`team.notes`, editable), and its setup: who fills the role (`team.role.fill`, or the project's helper), its charter (`team.charter.get`, edit, and draft it from the project), its duties (pause, turn on, run now), and Retire (asks once; notes and history are kept). Add a teammate takes a role word and an optional brief (`team.add`). A switch steers new work to teammates (`team.default.set`). The box has no tool that lists a teammate's queued asks, so the pane shows how many are waiting, not each one. Tests: `deck/test/project-team.test.js`; the `team.*` tools are optional in the deck contract test until teammates merges.
+
 #### deck: no internal words on any surface (PLAN.md minimum 11)
 
 - `test/no-internal-words.test.js` scans every string literal in the Deck's code for "vyred", "switchboard", "no such tool" and "as Claude Code does"; a literal that must carry one (a module id compared in code, never drawn) ends its line with `// internal-word: <why>`. About 45 strings were said in plain words: "The box did not answer", "Sessions are not available on this box", "could not be read from the box", "This box cannot copy yet", and the vault and passkey messages. The Capsule's Swift sources and the Expo app had none. `site/start/index.html` and `site/llms.txt` still say vyred (the site pages are launch's copy).

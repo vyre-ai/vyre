@@ -31,7 +31,7 @@ import { openGithubRepoPicker } from "../js/github-repo-picker.js";
 import { showToast } from "../js/toast.js";
 
 const enc = encodeURIComponent;
-const TABS = [["threads", "Threads"], ["brief", "Brief"], ["files", "Files"], ["memory", "Memory"]];
+const TABS = [["threads", "Threads"], ["team", "Team"], ["brief", "Brief"], ["files", "Files"], ["memory", "Memory"]];
 
 /** @param {any} ctx */
 export default async function projects(ctx) {
@@ -230,6 +230,7 @@ async function board(ctx) {
   if (tab === "brief") { put(root, header, briefTab(ctx, p, cx, sw.error)); return; }
   if (tab === "files") { put(root, header, filesTab(ctx, p, items)); return; }
   if (tab === "memory") { put(root, header, memoryTab(ctx, p)); return; }
+  if (tab === "team") { const box = h("div", { class: "pj-page" }); put(root, header, box); const m = await import("./project-team.js"); if (ctx.alive()) await m.drawTeam(box, ctx, p); return; }
 
   const threadList = h("div", { class: "pj-threads" });
   const drawList = () => put(threadList,
