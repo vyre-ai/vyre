@@ -10,6 +10,8 @@
 // Pure: no I/O, no provider. voice.speak calls it when asked for a `reply`.
 
 export const MAX_SPOKEN = 600;
+/** Only the start of a reply is ever said, so only the start is read. */
+export const MAX_INPUT = 20_000;
 const TAIL = "The rest is on your screen.";
 
 /**
@@ -18,7 +20,7 @@ const TAIL = "The rest is on your screen.";
  * @returns {{ text: string, cut: boolean }} text is empty when nothing in the reply can be said
  */
 export function spoken(text, max = MAX_SPOKEN) {
-  let s = String(text ?? "").replace(/\r\n?/g, "\n");
+  let s = String(text ?? "").slice(0, MAX_INPUT).replace(/\r\n?/g, "\n");
   let dropped = false;
   const drop = (re, to = " ") => { s = s.replace(re, m => { dropped = true; return to; }); };
   drop(/```[\s\S]*?(```|$)/g);                       // fenced code

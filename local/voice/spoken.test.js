@@ -1,7 +1,7 @@
 // @ts-check
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { spoken, MAX_SPOKEN } from "./spoken.js";
+import { spoken, MAX_SPOKEN, MAX_INPUT } from "./spoken.js";
 
 test("plain prose is said as written", () => {
   assert.deepEqual(spoken("Northwind Bakery opens at nine. I set a reminder for eight."), { text: "Northwind Bakery opens at nine. I set a reminder for eight.", cut: false });
@@ -38,4 +38,13 @@ test("nothing speakable records nothing to say", () => {
   assert.deepEqual(spoken("```\nonly code\n```"), { text: "", cut: false });
   assert.deepEqual(spoken("   "), { text: "", cut: false });
   assert.deepEqual(spoken(null), { text: "", cut: false });
+});
+
+test("only the first 20000 characters are read, so a huge reply is quick and still cut at a sentence", () => {
+  const huge = "Sentence here. ".repeat(200_000);
+  const t = Date.now();
+  const r = spoken(huge);
+  assert.ok(Date.now() - t < 1000);
+  assert.ok(r.cut && r.text.length <= MAX_SPOKEN);
+  assert.equal(MAX_INPUT, 20_000);
 });
