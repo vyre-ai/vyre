@@ -40,7 +40,7 @@ const previewOf = c => String((c && (c.subject || c.body || wordsOf(c.arguments)
  * their mail, files or posts (which cannot be undone). Approving one needs presence. Every Gate
  * kind is one of these today; a kind added later asks only if it is listed here.
  */
-const OUTBOUND = new Set(["send", "spend", "delete"]);
+const OUTBOUND = new Set(["send", "spend", "delete", "act"]);
 
 /** @type {{ start(ctx: any): Promise<{ stop(): Promise<void> }> }} */
 export default {
@@ -111,15 +111,31 @@ export default {
       return items.map(it => ({ ...it, presence: { required: OUTBOUND.has(it.kind), ...c } }));
     };
 
+    /** The intent the vault says covers this call, or null: kind, via and every recipient exact, in the call's own thread (or standing). */
+    const said = async (input, thread) => {
+      try {
+        const to = (Array.isArray(input.to) ? input.to : [input.to]).map(String).filter(Boolean);
+        const r = await ctx.call("vault.said.match", { kind: String(input.kind), via: String(input.via), to, ...(thread ? { thread } : {}) });
+        return r && r.data && r.data.matched === true && typeof r.data.id === "string" ? r.data.id : null;
+      } catch { return null; }
+    };
+
     ctx.tool("gate.request", {
-      description: "Ask for something to go out as the user: an email, a post, a payment, a deletion. It is held until the user approves the final content; nothing is sent from here. See gate.senders for the `via` values and what each takes.",
+      description: "Ask for something to go out as the user: an email, a post, a payment, a deletion. It is held until the user approves the final content; nothing is sent from here, unless the user's own words already asked for exactly this (same kind, same recipients), which goes out at once and is logged. See gate.senders for the `via` values and what each takes.",
       input: obj({ kind: { type: "string", enum: KINDS }, via: str, to: { anyOf: [str, { type: "array", items: str }] }, content: { type: "object" }, why: str, thread: str, project: str, agent: str,
         tool_use_id: { type: "string", description: "The tool call this request comes from, when the caller knows it, so the user's surface can show it in the session." } },
         ["kind", "via", "to", "content"]),
       // `agent` in the input is heard only from a module, which files a request for the agent it
       // verified (the MCP hub, whose ctx.call runs as module:mcp). A model's claim is ignored.
-      run: async (input, { caller, thread, agent }) => gate.request({ ...input, ...(await filed(input, caller, thread)) },
-        { agent: agent || agentOf(caller) || (String(caller || "").startsWith("module:") && typeof input.agent === "string" ? input.agent : null) }),
+      run: async (input, { caller, thread, agent }) => {
+        const filing = await filed(input, caller, thread);
+        const by = { agent: agent || agentOf(caller) || (String(caller || "").startsWith("module:") && typeof input.agent === "string" ? input.agent : null) };
+        // Asking is approving (P17): what the person's own words covered goes out now, with no
+        // card and no proof; anything else holds. No match, or no vault to ask, is a hold as before.
+        const intent = await said(input, filing.thread);
+        if (intent) return gate.sendNow({ ...input, ...filing }, { ...by, intent });
+        return gate.request({ ...input, ...filing }, by);
+      },
     });
 
     ctx.tool("gate.senders", {
