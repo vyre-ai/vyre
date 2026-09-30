@@ -162,12 +162,13 @@ test("selectors: a control inside an open dialog wins a tie between frames", asy
   assert.equal(r.control.frame, 1);
 });
 
-test("act: the click is found in the frame, moved by the frame's offset, and sent to the TOP session", async () => {
+test("act: a click in a cross-process frame goes on the frame's own session at frame coordinates (top-session input is dropped by real Chrome)", async () => {
   const w = await world();
   const r = await act(w.ctx, { selector: { name: "Create Workflow" }, kind: "click", asked: true });
   assert.equal(r.ok, true);
   const c = centre(w.create);
-  assert.deepEqual(w.fx.raw.mouse.map((/** @type {any} */ m) => [m.type, m.x, m.y, m.sessionId]), [["mouseMoved", c.x + 200, c.y + 80, undefined], ["mousePressed", c.x + 200, c.y + 80, undefined], ["mouseReleased", c.x + 200, c.y + 80, undefined]]);
+  assert.deepEqual(w.fx.raw.mouse.map((/** @type {any} */ m) => [m.type, m.x, m.y, m.sessionId]), [["mouseMoved", c.x, c.y, "S-APP"], ["mousePressed", c.x, c.y, "S-APP"], ["mouseReleased", c.x, c.y, "S-APP"]]);
+  assert.deepEqual(r.point, { x: c.x + 200, y: c.y + 80, frame: 1, ownSession: true }, "the result says where and how it clicked");
   assert.deepEqual(w.fx.page("APP").clicks, [{ x: c.x, y: c.y }], "and inside the frame it lands where the control is");
   assert.equal(w.fx.page("TOP").clicks.length, 0);
 });
@@ -181,7 +182,7 @@ test("act: a nested frame's click adds up every offset on the way; the hit test 
   const c = centre(pay);
   const r = await act(w.ctx, { selector: { name: "Pay now" }, kind: "check", value: true });
   assert.equal(r.ok, true);
-  assert.deepEqual(w.fx.raw.clicks.map((/** @type {any} */ k) => [k.x, k.y, k.frame]), [[c.x + 210, c.y + 100, "INNER"]]);
+  assert.deepEqual(w.fx.raw.clicks.map((/** @type {any} */ k) => [k.x, k.y, k.frame]), [[c.x, c.y, "INNER"]]);
   // covered inside the frame: nothing is clicked
   w.fx.raw.clicks.length = 0;
   w.fx.page("INNER").covered = true;
@@ -189,12 +190,12 @@ test("act: a nested frame's click adds up every offset on the way; the hit test 
   assert.equal(w.fx.raw.clicks.length, 0);
 });
 
-test("act: keys focus the element inside its frame and go out on the top session", async () => {
+test("act: keys focus the element inside its frame and go out on that frame's own session", async () => {
   const w = await world();
   const r = await act(w.ctx, { selector: { name: "Workflow Name" }, kind: "press", value: "Tab", asked: true });
   assert.equal(r.ok, true);
   assert.equal(r.control.frame, 1);
-  assert.deepEqual(w.fx.raw.keys.map((/** @type {any} */ k) => [k.type, k.key, k.sessionId]), [["rawKeyDown", "Tab", undefined], ["keyUp", "Tab", undefined]]);
+  assert.deepEqual(w.fx.raw.keys.map((/** @type {any} */ k) => [k.type, k.key, k.sessionId]), [["rawKeyDown", "Tab", "S-APP"], ["keyUp", "Tab", "S-APP"]]);
 });
 
 test("held: a real Send in a frame is still held, and its selector carries the frame so a release lands in the same place", async () => {

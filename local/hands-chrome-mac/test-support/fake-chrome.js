@@ -240,14 +240,22 @@ export function createFakeFrames(chrome, spec, o = {}) {
     if (method === "DOM.getBoxModel") { const f = frames[params.backendNodeId - 1000]; if (!f) throw new Error("Could not find node with given id"); const b = f.box; return { model: { content: [b.x, b.y, b.x + b.w, b.y, b.x + b.w, b.y + b.h, b.x, b.y + b.h] } }; }
     if (method === "Input.dispatchMouseEvent") {
       raw.mouse.push({ type: params.type, x: params.x, y: params.y, sessionId });
-      // Chrome hands the event to the deepest frame under the point, in that frame's own coordinates.
+      // Measured in real Chrome (macOS, Windows, Linux): an event on a frame's own session lands in that frame at frame coordinates.
+      if (sessionId) {
+        const own = bySession(sessionId);
+        if (!own) throw new Error("Session with given id not found.");
+        if (params.type === "mousePressed") raw.clicks.push({ x: params.x, y: params.y, frame: own.id, sessionId });
+        return pages.get(own.id).handler(tabId, method, params);
+      }
+      // Sent on the top session over a cross-process frame, it reaches nothing; over a same-process frame Chrome hands it to the frame under the point, in that frame's coordinates.
       let hit = null;
       for (const f of frames) { const a = absolute(f); if (f.session || f.ctxId) if (params.x >= a.x && params.x < a.x + a.w && params.y >= a.y && params.y < a.y + a.h && (!hit || absolute(hit).w * absolute(hit).h >= a.w * a.h)) hit = f; }
-      if (params.type === "mousePressed") raw.clicks.push({ x: params.x, y: params.y, frame: hit ? hit.id : "TOP", sessionId });
+      if (params.type === "mousePressed") raw.clicks.push({ x: params.x, y: params.y, frame: hit ? (hit.session ? "DROPPED" : hit.id) : "TOP", sessionId });
+      if (hit && hit.session) return {};
       if (hit) { const a = absolute(hit); return pages.get(hit.id).handler(tabId, method, { ...params, x: params.x - a.x, y: params.y - a.y }); }
       return pages.get("TOP").handler(tabId, method, params);
     }
-    if (method === "Input.dispatchKeyEvent") { raw.keys.push({ ...params, sessionId }); return pages.get("TOP").handler(tabId, method, params); }
+    if (method === "Input.dispatchKeyEvent") { raw.keys.push({ ...params, sessionId }); const own = sessionId ? bySession(sessionId) : null; return pages.get(own ? own.id : "TOP").handler(tabId, method, params); }
     if (method === "Runtime.evaluate") {
       let id = "TOP";
       if (sessionId) { const f = bySession(sessionId); if (!f) throw new Error("Session with given id not found."); id = f.id; }

@@ -841,28 +841,33 @@ async function locateIn(ctx, tabId, ctl, snap, focus) {
 
 /** @param {any} ctx @param {number} tabId @param {any} ctl @param {any} [snap] */
 async function mouseClick(ctx, tabId, ctl, snap) {
-  const { loc } = await locateIn(ctx, tabId, ctl, snap, false);
+  const { loc, frame } = await locateIn(ctx, tabId, ctl, snap, false);
   if (!loc || !loc.found) throw err("not_found", "the control disappeared before it could be clicked");
   if (!loc.hit) throw err("covered", "another element covers the control, so nothing was clicked");
-  // Input goes to the top page's session: Chrome routes it into the iframe under that point.
-  const p = { x: loc.x, y: loc.y, button: "left", clickCount: 1 };
-  await ctx.cdp.send(tabId, "Input.dispatchMouseEvent", { type: "mouseMoved", x: loc.x, y: loc.y });
-  await ctx.cdp.send(tabId, "Input.dispatchMouseEvent", { type: "mousePressed", ...p });
-  await ctx.cdp.send(tabId, "Input.dispatchMouseEvent", { type: "mouseReleased", ...p });
-  return loc;
+  // A cross-process iframe takes input on its own session at frame coordinates: real Chrome drops mouse events the top session sends over it (measured on all three OSes).
+  const own = frame && frame.session && typeof loc.inFrameX === "number";
+  const session = own ? frame.session : undefined;
+  const x = own ? loc.inFrameX : loc.x, y = own ? loc.inFrameY : loc.y;
+  const p = { x, y, button: "left", clickCount: 1 };
+  await ctx.cdp.send(tabId, "Input.dispatchMouseEvent", { type: "mouseMoved", x, y }, session);
+  await ctx.cdp.send(tabId, "Input.dispatchMouseEvent", { type: "mousePressed", ...p }, session);
+  await ctx.cdp.send(tabId, "Input.dispatchMouseEvent", { type: "mouseReleased", ...p }, session);
+  return { ...loc, frame: frame ? frame.index : 0, session: own };
 }
 
 /** @param {any} ctx @param {number} tabId @param {any} ctl @param {string} key @param {any} [snap] */
 async function pressKey(ctx, tabId, ctl, key, snap) {
   const k = KEYS[key] || (key.length === 1 ? { code: /[a-z]/i.test(key) ? "Key" + key.toUpperCase() : "", vk: key.toUpperCase().charCodeAt(0), text: key } : null);
   if (!k) throw err("bad_request", `unknown key ${JSON.stringify(key)}`);
-  // Focus the element inside its own frame; the key then goes to the top page's session, which reaches whatever has focus.
+  // Focus the element inside its own frame; the key goes to that frame's own session when it has one.
   const list = await framesOf(ctx, tabId);
   const loc = await inFrame_(ctx, tabId, refindFrame(list, ctl, snap), locate(ctl.path, true));
   if (!loc || !loc.found) throw err("not_found", "the control disappeared before the key was pressed");
   const base = { key, code: k.code, windowsVirtualKeyCode: k.vk, nativeVirtualKeyCode: k.vk };
-  await ctx.cdp.send(tabId, "Input.dispatchKeyEvent", { type: k.text ? "keyDown" : "rawKeyDown", ...base, ...(k.text ? { text: k.text } : {}) });
-  await ctx.cdp.send(tabId, "Input.dispatchKeyEvent", { type: "keyUp", ...base });
+  const fr = refindFrame(list, ctl, snap);
+  const ks = fr && fr.session ? fr.session : undefined;
+  await ctx.cdp.send(tabId, "Input.dispatchKeyEvent", { type: k.text ? "keyDown" : "rawKeyDown", ...base, ...(k.text ? { text: k.text } : {}) }, ks);
+  await ctx.cdp.send(tabId, "Input.dispatchKeyEvent", { type: "keyUp", ...base }, ks);
 }
 
 /** @param {any} ctl */
@@ -927,7 +932,7 @@ async function doAct(ctx, tabId, snap, ctl, kind, value, release, asked = false)
     const r = await applyIn(ctx, tabId, snap, [{ ctl, kind, value }]);
     if (!r || !r[0] || !r[0].ok) return { ok: false, why: (r && r[0] && r[0].why) || "could not set the value", control: brief(ctl) };
   }
-  return { ok: true, did: kind, control: brief(ctl), ...(point && typeof point.x === "number" ? { point: { x: Math.round(point.x), y: Math.round(point.y), frame: ctl.frame ?? 0 } } : {}) };
+  return { ok: true, did: kind, control: brief(ctl), ...(point && typeof point.x === "number" ? { point: { x: Math.round(point.x), y: Math.round(point.y), frame: point.frame ?? ctl.frame ?? 0, ownSession: !!point.session } } : {}) };
 }
 
 
