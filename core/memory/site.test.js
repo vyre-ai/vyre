@@ -29,7 +29,10 @@ async function world(t, settings = {}) {
   };
   const handle = await memory.start(ctx);
   t.after(() => handle.stop());
-  const call = async (name, input, caller = "deck", meta = {}) => {
+  // Identifiers arrive with the two-visit evidence a real learner sends.
+  const visits = x => (x && Array.isArray(x.controls) ? { ...x, controls: x.controls.map(c => (c && c.selector && c.selector.identifier && !("identifierVisits" in c) ? { ...c, identifierVisits: ["v1", "v2"] } : c)) } : x);
+  const call = async (name, rawInput, caller = "deck", meta = {}) => {
+    const input = rawInput && typeof rawInput === "object" ? { ...rawInput, ...(rawInput.patch ? { patch: visits(rawInput.patch) } : {}), ...(Array.isArray(rawInput.push) ? { push: rawInput.push.map(visits) } : {}) } : rawInput;
     try { return { data: await tools.get(name).run(input, { ...meta, caller }) }; } catch (e) { return { error: /** @type {Error} */ (e).message, code: /** @type {any} */ (e).code || "failed" }; }
   };
   return { call, emitted, clock, set, db };
