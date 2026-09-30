@@ -740,8 +740,8 @@ test("the box's background tasks, thinking, ! and # and pasted images, on their 
   assert.match(text($(box6, ".cv-shell")), /estate intake: total/, "the answer's whole output");
   assert.equal($(box6, ".cv-shell").getAttribute("data-state"), "failed");
 
-  // # memory: threads.remember {thread, text, scope}; thread.remembered is a notice.
-  ta.value = "#Prices have two decimals.";
+  // /remember memory: threads.remember {thread, text, scope}; thread.remembered is a notice.
+  ta.value = "/remember Prices have two decimals.";
   key("Enter");
   await wait();
   assert.deepEqual(calls.filter(c => c.tool === "threads.remember").at(-1).input, { thread: NEW, text: "Prices have two decimals.", scope: "project" });

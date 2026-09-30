@@ -13,7 +13,8 @@
 // - The first character picks the mode and the composer names it: "/" commands (a picker with
 //   the session's own list, threads.commands, else a static one; /model and /rewind open their
 //   pickers here), "!" runs a shell command in the session's folder (threads.shell, the output as
-//   a row), "#" saves a memory (threads.remember, to this project or about you). "@" anywhere
+//   a row), "/remember" saves a memory (threads.remember, to this project or about you), and "#" anywhere
+//   tags a vault item, file, artifact, repo or project (mentions.search). "@" anywhere
 //   opens files in the session's folder (files.search, ranked by core/match.js).
 // - Esc stops the turn; Esc Esc with nothing typed opens the rewind picker; Esc leaves the shell
 //   or memory mode and closes a picker. Shift+Tab cycles the permission mode (the chip under the
@@ -190,7 +191,7 @@ export function mountComposer(opts) {
   const note = h("div", { class: "composer-note", role: "status" });
   // The tip sits on the left of the hint line, the key hints stay on the right (tip.md; chat's tip-line.js fills it).
   const tipSlot = h("div", { class: "composer-tip", hidden: true });
-  const hint = h("div", { class: "composer-hint" }, tipSlot, h("span", { class: "composer-keys" }, keysLine(["Enter", "to send"], ["Shift+Enter", "new line"], ["/", "commands"], ["@", "files"], ["!", "shell"], ["#", "memory"])));
+  const hint = h("div", { class: "composer-hint" }, tipSlot, h("span", { class: "composer-keys" }, keysLine(["Enter", "to send"], ["Shift+Enter", "new line"], ["/", "commands"], ["@", "files"], ["!", "shell"], ["#", "tag"])));
   const root = h("div", { class: "composer" }, note, thumbs, hintBox, voicePill, wrap, chips, hint);
 
   // The box fits its text. Where CSS can size it (field-sizing, chat.css) nothing runs per key.
@@ -271,9 +272,9 @@ export function mountComposer(opts) {
       chip("composer-model", "threads.model", "Switch the model", () => openModels(), shortModel(s.model) || "Model"),
       chip("composer-mode", "threads.mode", "Next mode (Shift+Tab)", () => cycleMode(), modeLabel(s.mode), h("span", { class: "kbd" }, "⇧Tab")),
       chip("composer-thinking", "threads.thinking", "Thinking on or off (Alt+T)", () => toggleThinking(), s.thinking === true ? "Thinking on" : s.thinking === false ? "Thinking off" : "Thinking"),
-      vts.length ? h("span", { class: "composer-scopes composer-vault", role: "list", "aria-label": "Vault items this message uses" },
-        vts.map(t => h("span", { class: "btn btn-ghost btn-sm composer-scope composer-vault-chip", role: "listitem", "data-vault": t.name, title: "This message can use #" + t.name + " for this session. The value is never shown." },
-          icon("key", 12), "#" + t.name,
+      vts.length ? h("span", { class: "composer-scopes composer-vault", role: "list", "aria-label": "Tags on this message" },
+        vts.map(t => h("span", { class: "btn btn-ghost btn-sm composer-scope composer-vault-chip", role: "listitem", "data-vault": t.name, "data-kind": t.kind, title: t.kind === "vault" ? "This message can use #" + t.name + " for this session. The value is never shown." : "#" + t.name + " goes with this message" },
+          icon(t.kind === "vault" ? "key" : "file", 12), "#" + t.name,
           h("button", { type: "button", "aria-label": "Remove #" + t.name, onclick: () => { const cur = vaultChips().find(x => x.name === t.name); if (cur) setValue((ta.value.slice(0, cur.start) + ta.value.slice(cur.end)).replace(/  +/g, " "), cur.start); ta.focus(); } }, "×")))) : null,
       label && kind !== "command" ? h("span", { class: "composer-kind" }, label,
         kind === "shell" ? h("span", { class: "faint" }, " · runs in " + shortDir(opts.cwd?.() || "") + (off("threads.shell") ? " · " + NEEDS_UPDATE : "")) : null) : null,
@@ -657,41 +658,47 @@ export function mountComposer(opts) {
     );
   }
 
-  // ---- "#": a vault item by name (names only, never a value) --------------------------------------
-  /** vault.items.names, read once per open picker: [{name, kind, hosts}], or null when this box has no vault to list. */
-  let vaultItems = /** @type {{ name: string, kind: string, hosts: string[] }[]|null} */ (null);
-  let vaultAt = 0;
-  async function loadVault() {
-    if (vaultItems && Date.now() - vaultAt < 60_000) return vaultItems;
-    const r = await CAPS.use("vault.items.names", () => attempt("vault.items.names", { limit: 500 }));
-    if (r.error) { if (r.missing) vaultItems = null; return vaultItems; }
-    const d = /** @type {any} */ (r.data), list = Array.isArray(d) ? d : Array.isArray(d?.names) ? d.names : [];
-    vaultItems = list.map((/** @type {any} */ x) => typeof x === "string" ? { name: x, kind: "", hosts: [] }
-      : { name: String(x?.name ?? ""), kind: String(x?.kind ?? ""), hosts: Array.isArray(x?.hosts) ? x.hosts.map(String) : [] }).filter(x => x.name);
-    vaultAt = Date.now();
-    return vaultItems;
+  // ---- "#": one universal tag: a vault item, file, artifact, repo, project... (mentions.search) ---------
+  /** The order groups show in; a kind the box adds later follows, by name. */
+  const TAG_ORDER = ["vault", "artifact", "drive", "github", "project", "session", "teammate"];
+  /** What was picked, by the name written after the "#": { kind, id, name }. Chips and the turn's mentions come from the tokens still in the text. */
+  const tags = /** @type {Map<string, { kind: string, id: string, name: string }>} */ (new Map());
+  let tagSeq = 0, tagTimer = /** @type {any} */ (null);
+  /** mentions.search's answer as one flat list: results, or groups of results. Names and hints only, never a value. @param {any} d */
+  function tagRows(d) {
+    const list = Array.isArray(d) ? d : Array.isArray(d?.results) ? d.results : Array.isArray(d?.groups) ? d.groups.flatMap((/** @type {any} */ g) => (g?.results || g?.items || []).map((/** @type {any} */ x) => ({ kind: g.kind, ...x }))) : [];
+    return list.map((/** @type {any} */ x) => ({ kind: String(x?.kind ?? ""), id: String(x?.id ?? x?.name ?? ""), name: String(x?.name ?? ""), hint: String(x?.hint ?? ""), label: String(x?.label ?? x?.kind ?? "") }))
+      .filter((/** @type {any} */ x) => x.kind && x.id && x.name)
+      .sort((/** @type {any} */ a, /** @type {any} */ b) => { const r = (/** @type {string} */ k) => { const n = TAG_ORDER.indexOf(k); return n < 0 ? TAG_ORDER.length : n; }; return r(a.kind) - r(b.kind) || a.kind.localeCompare(b.kind) || a.name.localeCompare(b.name); });
   }
-  async function showVault(/** @type {import("./core/composer-state.js").MentionRange} */ range) {
-    const all = await loadVault();
-    // No vault here, or the text moved on while the list loaded: nothing is offered that does not work.
-    if (!all || !findVaultMention(ta.value, caret())) { if (menu.kind === "vault") menu.close(); return; }
-    const list = rankVault(all, range.query).slice(0, 12);
-    menu.setKind("vault");
-    menu.open(list.map(v => ({ key: v.name, value: v, render: () => [h("span", { class: "cv-menu-name" }, "#" + v.name),
-      v.hosts.length ? h("span", { class: "cv-menu-hint" }, v.hosts.slice(0, 2).join(", ") + (v.hosts.length > 2 ? ` +${v.hosts.length - 2}` : "")) : null,
-      v.kind ? h("span", { class: "cv-menu-badge" }, v.kind) : null] })),
-    row => pickVault(row.value.name), "Vault", list.length ? keysLine(["↑↓", "move"], ["⏎", "use"], ["Esc", "close"]) : "No item by that name");
+  function showVault(/** @type {import("./core/composer-state.js").MentionRange} */ range) {
+    clearTimeout(tagTimer);
+    const seq = ++tagSeq;
+    // A short wait so a fast typist asks once; no query still lists what is at hand.
+    tagTimer = setTimeout(async () => {
+      const r = await CAPS.use("mentions.search", () => attempt("mentions.search", { q: range.query, limit: 30 }));
+      if (seq !== tagSeq) return;
+      // No provider on this box, or the text moved on while it searched: nothing is offered that does not work.
+      if (r.error || !findVaultMention(ta.value, caret())) { if (menu.kind === "vault") menu.close(); return; }
+      const rows = tagRows(r.data).slice(0, 24);
+      menu.setKind("vault");
+      menu.open(rows.map(v => ({ key: v.kind + ":" + v.id, group: v.label || v.kind, value: v, render: () => [h("span", { class: "cv-menu-name" }, "#" + v.name),
+        v.hint ? h("span", { class: "cv-menu-hint" }, v.hint) : null] })),
+      row => pickVault(row.value), "Tag", rows.length ? keysLine(["↑↓", "move"], ["⏎", "tag"], ["Esc", "close"]) : "Nothing by that name");
+    }, 120);
+    tagTimer?.unref?.();
   }
-  function pickVault(/** @type {string} */ name) {
+  function pickVault(/** @type {{ kind: string, id: string, name: string }} */ v) {
     const range = findVaultMention(ta.value, caret());
     menu.close();
     if (!range) return;
-    const r = applyVault(ta.value, range, name);
+    tags.set(v.name, { kind: v.kind, id: v.id, name: v.name });
+    const r = applyVault(ta.value, range, v.name);
     setValue(r.text, r.caret);
     ta.focus();
   }
-  /** The vault chips under the box: each "#name" in the draft that is a real item, with a way to take it out. */
-  const vaultChips = () => (vaultItems ? vaultTokens(ta.value, new Set(vaultItems.map(v => v.name))) : []);
+  /** The chips under the box: each "#name" still in the draft that was picked here, with a way to take it out. */
+  const vaultChips = () => (tags.size ? vaultTokens(ta.value, new Set(tags.keys())).map(t => ({ ...t, ...tags.get(t.name) })) : []);
 
   function showFiles(/** @type {import("./core/composer-state.js").MentionRange} */ range) {
     clearTimeout(fileTimer);
@@ -842,6 +849,9 @@ export function mountComposer(opts) {
   /** @param {string} text @param {"steer"|"queue"|null} mode */
   async function sendMessage(text, mode) {
     sending = true;
+    // The tags still in the words go with the turn as {kind, id, name}; the text keeps its #tokens.
+    const mentions = vaultChips().map(t => ({ kind: t.kind, id: t.id, name: t.name }));
+    tags.clear();
     const uuid = newUuid();
     const imgs = images;
     images = []; drawImages();
@@ -858,7 +868,7 @@ export function mountComposer(opts) {
     if (drawn) patch(localSend(/** @type {any} */ (S), { uuid, text, mode: mode || "send", at: Date.now(), ...(imgs.length ? { images: imgs } : {}) }));
     /** @type {Record<string, any>} */
     const input = machine ? { thread, text, surface: "deck", machine }
-      : { thread, text, surface: "deck", uuid, ...(mode ? { mode } : {}), ...(imgs.length && CAPS.has(SEND_IMAGES) === true ? { images: sendImages(imgs) } : {}) };
+      : { thread, text, surface: "deck", uuid, ...(mode ? { mode } : {}), ...(mentions.length ? { mentions } : {}), ...(imgs.length && CAPS.has(SEND_IMAGES) === true ? { images: sendImages(imgs) } : {}) };
     // Through the outbox (ADR 0029): a box out of reach keeps the words on this device and sends
     // them, once, when it is back. Meanwhile the note says so and the composer takes the next one.
     let waited = false;
