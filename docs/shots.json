@@ -23,13 +23,13 @@
     }
   },
   "docs/get-started/shots/onboarding-history.png": {
-    "sha256": "44d5346eaa8244cee305ec2070b0c57206347ec690c5f3c01fef495d8eb485db",
+    "sha256": "eef4cdbfd371d5e1faf50cbf4a887601ee7657b42f045320d8e98a1195257980",
     "shows": {
-      "core/onboard/index.js": "40f7145e3543c3089058ef16588bd92e662e9808eaca1c0b222c88a213d7599f",
-      "deck/css/deck.css": "44f7ce3dcfb14ec773efe64b1c934d10b871222d24563813cfc0ef6b9a1b559a",
-      "deck/onboard/index.html": "f65f86d02266714498a86802827d2ca69d698114d9530fd763f2747b32bfc82f",
-      "deck/onboard/onboard.css": "e99a6845d21187cdb01618a88455c9ff37b6009b57daeda9665db64946ad78b1",
-      "deck/onboard/onboard.js": "956c21dac4534e144d616ac53af9bbb4945e4138faac6faf0c8aac603889a9d3"
+      "core/onboard/index.js": "f69f84f3ed28d714a39762b675ca1415293b2f0eda2f54e242bf4b300f1c2256",
+      "deck/css/deck.css": "96e2c8740135ff6d4689d507ac9cff3f40dddff1d41ca5b5ce7ff0769dd4cb46",
+      "deck/onboard/index.html": "a0abe40e5351285e86f906e6dbce9215e2d7232ae6eddb98829935b5c550c490",
+      "deck/onboard/onboard.css": "0431050f5eb18e954a0f63a6d24afebec0533e3002587d3eb5f364403d2508ae",
+      "deck/onboard/onboard.js": "48b70a13cbb4de7f28e7e13e210bf63ad9182336c52d2946421f224772a6b697"
     }
   },
   "docs/get-started/shots/onboarding-name.png": {
