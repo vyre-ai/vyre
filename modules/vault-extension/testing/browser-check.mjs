@@ -132,6 +132,7 @@ async function main() {
     log(`extension loaded: ${extId}`);
 
     // Phase A + B: the popup, against real chrome.storage/chrome.runtime, pairs for real.
+    globalThis.__dump = async () => { try { return JSON.stringify((await (await fetch(`${base}/json/list`)).json()).map((/** @type {any} */ t) => [t.type, t.url.slice(0, 80), t.title])); } catch { return "(no target list)"; } };
     const popupTarget = await (await fetch(`${base}/json/new?chrome-extension://${extId}/popup.html`, { method: "PUT" })).json();
     const popup = await attach(popupTarget.webSocketDebuggerUrl);
     cleanup.push(() => fetch(`${base}/json/close/${popupTarget.id}`).catch(() => {}));
@@ -179,4 +180,4 @@ async function main() {
   }
 }
 
-main().catch(e => { process.stderr.write(`FAIL: ${e.message}\n`); process.exitCode = 1; });
+main().catch(async e => { const t = /** @type {any} */ (globalThis).__dump ? await /** @type {any} */ (globalThis).__dump() : ""; process.stderr.write(`FAIL: ${e.message}${t ? ` targets=${t}` : ""}\n${e.stack ? e.stack.split("\n").slice(1, 4).join("\n") : ""}\n`); process.exitCode = 1; });
