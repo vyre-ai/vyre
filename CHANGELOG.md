@@ -13,7 +13,7 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 #### pwa: a Files view for the phone
 
-- `/files` lists the box's shared VyreDrive folders and `/files/:share?p=` browses one, through `files.drive.list` and `files.drive.read` (a phone cannot mount a share). A picture, text or PDF up to 8 MB opens in place with a Save link; anything else, or anything larger, says so. A refusal reads as one plain line. Words and reads are in `deck/js/drive-browse.js`, tested against a fake box that serves 4-byte chunks. The Places sheet is unchanged (it is app-design's grid); the view is reached by its address until they place it.
+- `/files` lists the box's shared VyreDrive folders and `/files/:share?p=` browses one, through `files.drive.list` and `files.drive.read` (a phone cannot mount a share). A picture, text or PDF up to 8 MB opens in place with a Save link; anything else, or anything larger, says so. A refusal reads as one plain line. Words and reads are in `deck/js/drive-browse.js`, tested against a fake box that serves 4-byte chunks. It is the Places sheet's "Drive" tile (product name Vyre Drive, app-design's drive glyph), between Vault and Devices, and its pushed screen is titled Drive.
 
 #### pwa: the service worker checks a new shell against the signed release
 

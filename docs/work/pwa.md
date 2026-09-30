@@ -1075,3 +1075,5 @@ which proves a passkey only when the box answers presence_required, so the box's
 without `vyre presence code` (a paired owner device should be able to enroll itself).
 Open with native-core: Lumen/Memory display strings in the Deck are theirs per the lead's owner
 list; pwa touches none until they say which files are left.
+
+Drive tile added to Places and the rail (app-design's answer: /files, glyph drive, 3x3 grid with two free slots). Screen title Drive.

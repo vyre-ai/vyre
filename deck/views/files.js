@@ -1,5 +1,5 @@
 // @ts-check
-// Files: the folders this box shares as VyreDrive, browsed from a phone (/files, /files/:share,
+// Drive (the Files view): the folders this box shares as VyreDrive, browsed from a phone (/files, /files/:share,
 // the folder in ?p=). A phone cannot mount a share, so this reads through files.drive.list and
 // files.drive.read as an owner device (the box guards them like sharing itself). Reading only: a
 // preview for a picture, text or PDF up to 8 MB, otherwise a download. Words and reads:
@@ -21,7 +21,7 @@ export default async function files(ctx) {
   const share = ctx.params.share ? decodeURIComponent(ctx.params.share) : "";
   const body = h("div", { class: "fl-col" });
   put(ctx.root, h("div", { class: "fl" }, body));
-  put(body, head("Files"), h("p", { class: "muted" }, "Loading..."));
+  put(body, head("Drive"), h("p", { class: "muted" }, "Loading..."));
   if (!share) return shares(ctx, body);
   return folder(ctx, body, share, ctx.query.get("p") || "");
 }
@@ -30,9 +30,9 @@ export default async function files(ctx) {
 async function shares(ctx, body) {
   const r = await attempt("files.drive.status");
   if (!ctx.alive()) return;
-  if (r.error) return put(body, head("Files"), empty("Your box's folders are not reachable.", r.error));
+  if (r.error) return put(body, head("Drive"), empty("Your box's folders are not reachable.", r.error));
   const list = (r.data?.shares || []).filter((/** @type {any} */ s) => s && s.shared);
-  put(body, head("Files"),
+  put(body, head("Drive"),
     list.length
       ? h("div", { class: "fl-list" }, list.map((/** @type {any} */ s) => link(href(s.name, ""), { class: "fl-row" }, icon("projects", 16), h("span", { class: "fl-name" }, s.name), icon("chevronright", 14))))
       : empty("No folder is shared yet. Share one from Settings on your Mac."));
@@ -44,14 +44,14 @@ async function folder(ctx, body, share, dir) {
     crumbs(share, dir).map((c, i, all) => [link(href(share, c.path), { class: "fl-crumb", "aria-current": i === all.length - 1 ? "page" : false }, c.label), i < all.length - 1 ? h("span", { class: "faint" }, " / ") : null]));
   const r = await listAll(attempt, share, dir);
   if (!ctx.alive()) return;
-  if ("error" in r) return put(body, head("Files"), trail, empty(whyNot(r.error)));
+  if ("error" in r) return put(body, head("Drive"), trail, empty(whyNot(r.error)));
   const rows = r.entries.map(e => {
     const p = child(dir, e.name);
     if (e.dir) return link(href(share, p), { class: "fl-row" }, icon("projects", 16), h("span", { class: "fl-name" }, e.name), icon("chevronright", 14));
     return h("button", { type: "button", class: "fl-row", onclick: () => open(ctx, share, p, e) },
       icon("file", 16), h("span", { class: "fl-name" }, e.name), h("span", { class: "fl-meta small faint" }, [sizeWord(e.size), e.mtime ? since(Date.parse(e.mtime)) : ""].filter(Boolean).join(", ")));
   });
-  put(body, head("Files"), trail, rows.length ? h("div", { class: "fl-list" }, rows) : empty("Nothing in this folder."));
+  put(body, head("Drive"), trail, rows.length ? h("div", { class: "fl-list" }, rows) : empty("Nothing in this folder."));
 }
 
 /** One file: a preview when it is small and a known kind, else a download. @param {any} ctx @param {string} share @param {string} p @param {any} e */
