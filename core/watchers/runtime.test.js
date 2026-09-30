@@ -201,7 +201,7 @@ test("watchers: a credential is attached by the parent to its one host, never re
   await new Promise(r => server.listen(0, "127.0.0.1", () => r(undefined)));
   t.after(() => server.close());
   const port = /** @type {any} */ (server.address()).port;
-  testHooks.net = { lookup: async () => ["127.0.0.1"], allowAddress: ip => ip === "127.0.0.1", allowPort: () => true };
+  testHooks.net = { lookup: async () => ["127.0.0.1"], allowAddress: ip => ip === "127.0.0.1", allowPort: () => true, plainAuth: true };
   t.after(() => { testHooks.net = {}; });
   const { rt, write, fetched } = setup(t, { vault: { "billing-inbox": secret, "other-item": "nope" } });
   const net = { "feed.test": { vault: "billing-inbox", field: "password" } };
@@ -279,7 +279,7 @@ test("watchers: the network is reachable, and a webhook watcher gets the body an
   assert.match((await rt.test("inside")).error, /port \d+ is not allowed/);
   write("inside80", `export default async function watch() { await fetch("http://feed.test/"); }`, { net: { "feed.test": {} } });
   assert.match((await rt.test("inside80")).error, /not a public address/);
-  testHooks.net = { lookup: async () => ["127.0.0.1"], allowAddress: ip => ip === "127.0.0.1", allowPort: () => true };
+  testHooks.net = { lookup: async () => ["127.0.0.1"], allowAddress: ip => ip === "127.0.0.1", allowPort: () => true, plainAuth: true };
   t.after(() => { testHooks.net = {}; });
   write("feed", `export default async function watch({ emit }) {
     const res = await fetch("http://feed.test:${port}/");

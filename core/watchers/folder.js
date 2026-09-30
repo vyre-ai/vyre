@@ -111,8 +111,8 @@ const HEADER = /^[A-Za-z][A-Za-z0-9-]{0,40}$/;
 /**
  * `net`: the hosts a watcher reads, each optionally with the vault item the parent attaches to
  * requests for that host only: { "api.harlow.example": { "vault": "harlow-feed", "header":
- * "Authorization", "scheme": "Bearer" } }. With net, a watcher reaches those hosts (and their
- * subdomains) and no others; without it, any public host, anonymously. The watcher's own code
+ * "Authorization", "scheme": "Bearer" } }. With net, a watcher reaches those hosts
+ * exact host names) and no others; without it, no network at all. The watcher's own code
  * never handles the value.
  * @returns {Spec["net"]}
  */

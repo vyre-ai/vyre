@@ -77,11 +77,12 @@ export function runOnce({ dir, needs, since, hook = null, timeoutMs, fetch, sign
         try {
           const url = new URL(String(m.url));
           if (!hosts || !hosts.length) throw new Error("this watcher declares no hosts; list each host it reads under net in watcher.json, like { \"api.example.com\": {} }");
-          if (!hosts.some(h => url.hostname === h || url.hostname.endsWith("." + h))) throw new Error(`${url.hostname} is not one of this watcher's declared hosts`);
+          if (!hosts.includes(url.hostname)) throw new Error(`${url.hostname} is not one of this watcher's declared hosts`);
           const auth = netAuth ? await netAuth(url) : undefined;
           if (auth) released.push(...forms(auth.value), ...forms(auth.value.replace(/^\S+ /, "")));
-          const r = await mediatedFetch(url.href, m.init || {}, { ...netOptions, ...(auth ? { auth } : {}) });
+          const r = await mediatedFetch(url.href, m.init || {}, { ...netOptions, allowHost: u => hosts.includes(u.hostname), ...(auth ? { auth } : {}) });
           r.body = scrub(r.body);
+          for (const k of Object.keys(r.headers)) r.headers[k] = scrub(r.headers[k]);
           reply({ result: r });
         } catch (e) { reply({ error: /** @type {Error} */ (e).message }); }
       } else if (m.t === "done") { finished = true; cursor = m.cursor; }
@@ -96,7 +97,7 @@ export function runOnce({ dir, needs, since, hook = null, timeoutMs, fetch, sign
       if (!error && released.some(v => v && items.some(i => JSON.stringify(i).includes(v)))) {
         fail("an item carried a value from the vault; emit links and ids, never credentials");
       }
-      resolve({ items: error ? [] : items, logs, cursor: error ? null : cursor, error, ms: Date.now() - started, sandboxed: SANDBOXED });
+      resolve({ items: error ? [] : items, logs, cursor: error ? null : cursor, error, ms: Date.now() - started, sandboxed: SANDBOXED, isolated: identity.isolated });
     });
     child.send({ t: "run", entry: pathToFileURL(path.join(real, "watch.js")).href, since: since ?? null, hook });
   });

@@ -37,7 +37,7 @@ export default {
       emit: (type, payload, where) => ctx.events.emit(type, payload, where),
       call: ctx.call, fetch: (name, watcher, field) => ctx.vault.fetch(name, { watcher, ...(field ? { field } : {}) }),
       teach: (kind, fact) => ctx.memory.teach(kind, fact),
-      log: ctx.log, netOptions: () => testHooks.net,
+      log: ctx.log, netOptions: () => (process.env.NODE_TEST_CONTEXT ? testHooks.net : {}),
       listen: (type, fn) => ctx.events.on(type, fn),
     });
     rt.subscribe();

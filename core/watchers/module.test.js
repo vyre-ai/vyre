@@ -34,7 +34,7 @@ async function boot(t) {
   t.after(() => server.close());
   const port = /** @type {any} */ (server.address()).port;
 
-  testHooks.net = { lookup: async () => ["127.0.0.1"], allowAddress: ip => ip === "127.0.0.1", allowPort: () => true };
+  testHooks.net = { lookup: async () => ["127.0.0.1"], allowAddress: ip => ip === "127.0.0.1", allowPort: () => true, plainAuth: true };
   t.after(() => { testHooks.net = {}; });
   const d = await start({ root, presence: present, log: () => {} });
   t.after(() => d.stop());

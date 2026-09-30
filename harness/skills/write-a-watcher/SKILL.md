@@ -72,9 +72,9 @@ your reply. A public source needs no credential, but still names its host under 
 
 A watcher has no network of its own and never holds a credential. `fetch(url)` in `watch.js` is
 run by Vyre, GET and HEAD only, on ports 80 and 443, to public hosts only (never localhost, a
-private or tailnet address), and only to the hosts listed under `net` (and their subdomains), even
+private or tailnet address), and only to the hosts listed under `net`, even
 for a public source: `"net": { "hacker-news.firebaseio.com": {} }`. A redirect to another host drops
-the credential. A `vault.fetch` call is refused. The item's `field` (a login's `password`, a
+the credential. Where vyred is not root (a Mac, a dev shell) the child runs as the same user and the firewall rule that blocks its own sockets is not there, so `fetch` is the only route we give it, not a wall; a dry run says `networkIsolated`. A `vault.fetch` call is refused. The item's `field` (a login's `password`, a
 card's `number`) goes in the `net` entry: `{ "vault": "billing-inbox", "field": "password" }`.
 
 ## 3. Write two files in the watchers folder

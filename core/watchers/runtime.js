@@ -173,7 +173,7 @@ export class Runtime {
       ...(project ? {} : { warning: `no project "${spec.project}"; watchers.create will refuse until it exists (vyre projects lists them)` }),
       schedule: spec.schedule, every: spec.schedule === "event" ? describeOn(spec) : cron.describe(spec.schedule), needs: spec.needs, count: res.items.length,
       alreadyFiled: res.items.filter(i => filed.get(name, i.id)).length,
-      items: res.items.slice(0, 20), logs: res.logs.slice(-20), ms: res.ms, sandboxed: res.sandboxed,
+      items: res.items.slice(0, 20), logs: res.logs.slice(-20), ms: res.ms, sandboxed: res.sandboxed, networkIsolated: res.isolated === true,
       ...(res.items.length ? {} : { note: "no items. That can be right (nothing new matches), or the filter or the parsing is wrong; the logs show what it saw" }),
     };
   }
@@ -451,8 +451,7 @@ export class Runtime {
   async exec(dir, spec, since, hook) {
     const res = await runOnce({ dir, needs: spec.needs, since, hook, timeoutMs: spec.timeout * 1000, fetch: (n, field) => this.d.fetch(n, spec.name, field), signal: this.abort.signal, hosts: spec.net ? Object.keys(spec.net) : null,
       netAuth: spec.net ? async url => {
-        const key = Object.keys(spec.net).find(h => url.hostname === h || url.hostname.endsWith("." + h));
-        const rule = key && spec.net[key];
+        const rule = spec.net[url.hostname];   // the exact declared host, never a subdomain
         if (!rule || !rule.vault) return undefined;
         const value = await this.d.fetch(rule.vault, spec.name, rule.field);
         return { host: url.hostname, header: rule.header, value: rule.scheme ? `${rule.scheme} ${value}` : String(value) };
