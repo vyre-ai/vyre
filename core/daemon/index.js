@@ -305,7 +305,7 @@ function alive(pid) {
  * Whether the process on a socket runs under a Claude session or a thread vyred started.
  * `deps` are test seams.
  * @param {import("node:net").Socket} socket @param {any} registry @param {string} [caller]
- * @param {{ peerPid?: typeof peerPid, insideClaude?: typeof insideClaude, processTable?: typeof processTable, alive?: (pid: number) => boolean, delayMs?: number }} [deps]
+ * @param {{ capsuleSeam?: any, peerPid?: typeof peerPid, insideClaude?: typeof insideClaude, processTable?: typeof processTable, alive?: (pid: number) => boolean, delayMs?: number }} [deps]
  */
 export async function above(socket, registry, caller, deps = {}) {
   const pid = await (deps.peerPid || peerPid)(socket);
@@ -329,7 +329,7 @@ export async function above(socket, registry, caller, deps = {}) {
   // shell runs as could write to directly. The Capsule (launchd-started, its own session, not on
   // the terminal list) is the one positive proof besides the walk's own.
   if (result.unknown && caller === "capsule" && registry.deps.presence
-    && await verifiedCapsule(socket, pid, registry.deps.presence.capsulePin())) return { inside: false };
+    && await verifiedCapsule(socket, pid, registry.deps.presence.capsulePin(), deps.capsuleSeam)) return { inside: false };
   // Still unreadable and the caller is gone: it connected, sent and exited before the walk (a
   // forger's fire-and-forget). A real CLI waits for its answer, so it is alive here. Gone counts
   // as a model's, never as the person's.

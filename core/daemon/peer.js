@@ -334,7 +334,7 @@ const blank = p => !p.args || /^\(.*\)$/.test(p.args);
 
 /**
  * Is this chain (peer first, top last) one the walk can rely on? Every link has a command line,
- * is the same uid as vyred (the top may be root's: login, sshd), and started no earlier than its
+ * is vyred's uid or root's (login, sshd's privileged half), and started no earlier than its
  * parent did (a pid a new process reused shows as a child older than its parent; one second of
  * slack for the clock the macOS listing gives).
  * @param {{ pid: number, args: string }[]} chain @param {(pid: number) => any} look
@@ -344,7 +344,8 @@ function readable(chain, look) {
   for (let i = 0; i < chain.length; i++) {
     const row = look(chain[i].pid);
     if (blank(chain[i])) return false;
-    if (row && Number.isInteger(row.uid) && me !== null && row.uid !== me && !(i === chain.length - 1 && row.uid === 0)) return false;
+    // Root is fine anywhere: `login` and sshd's privileged half sit in the middle of a real login's chain, and a model cannot make a root process. Any other uid is another user's.
+    if (row && Number.isInteger(row.uid) && me !== null && row.uid !== me && row.uid !== 0) return false;
     const up = i + 1 < chain.length ? look(chain[i + 1].pid) : row && row.ppid > 1 ? look(row.ppid) : null;
     if (row && up && Number.isFinite(row.start) && Number.isFinite(up.start) && row.start < up.start - 1) return false;
   }

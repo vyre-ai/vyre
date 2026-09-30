@@ -10,6 +10,7 @@ import { spawn, execFileSync } from "node:child_process";
 import { tempHome, writeModule } from "./helpers.js";
 import { start } from "../core/daemon/index.js";
 import { SURFACE_LABELS } from "../core/modules/index.js";
+import { above } from "../core/daemon/index.js";
 import { ancestry, insideClaude, controllingTty, exePath, processUid, loginOf, tmuxClients,
   verifiedCapsule, parseCodesign, signatureOf } from "../core/daemon/peer.js";
 
@@ -121,6 +122,47 @@ test("peer: positive proof of the person: readable links up to a trusted login, 
     // Parentheses inside a real command line are not an exited process.
     rows[40].args = "node app.js (x)";
     assert.deepEqual(insideClaude(40, o), { inside: false });
+  } finally { if (hostedWas !== undefined) process.env.VYRE_TEST_HOSTED = hostedWas; }
+});
+
+test("peer: every real person surface still reads as the person (or as a server they prove once)", async () => {
+  const hostedWas = process.env.VYRE_TEST_HOSTED;
+  delete process.env.VYRE_TEST_HOSTED;
+  try {
+    const me = process.getuid();
+    const row = (ppid, args, extra = {}) => ({ ppid, pgid: ppid, uid: me, start: 100, args, ...extra });
+    // Terminal.app: launchd -> Terminal (a GUI app) -> login (root) -> -zsh -> vyre. Terminal is on the
+    // kernel-verified list; `login` in the middle is root's, which is fine anywhere.
+    const terminal = {
+      10: { ppid: 1, pgid: 10, uid: me, start: 100, args: "/System/Applications/Utilities/Terminal.app/Contents/MacOS/Terminal" },
+      11: { ppid: 10, pgid: 10, uid: 0, start: 101, args: "login -pf alex" }, 12: { ppid: 11, pgid: 12, uid: me, start: 102, args: "-zsh" }, 13: { ppid: 12, pgid: 13, uid: me, start: 103, args: "vyre call notes.list" },
+      // vyred started by launchd; the person's CLI is not its child.
+      200: { ppid: 1, pgid: 200, uid: me, start: 50, args: "node /opt/vyre/core/daemon/main.js" },
+    };
+    const trusted = { look: pid => terminal[pid] || null, threads: [], self: 200, exe: pid => (pid === 10 ? "/System/Applications/Utilities/Terminal.app/Contents/MacOS/Terminal" : null), started: () => "t", uid: () => me };
+    if (process.platform === "darwin") assert.deepEqual(insideClaude(13, trusted), { inside: false }, "vyre typed in Terminal.app");
+    // The same shape with a login on the kernel list (Linux console or a tty login), as a platform-neutral proof of the root link in the middle.
+    const console_ = { look: pid => terminal[pid] || null, threads: [], self: 200, exe: pid => (pid === 10 ? "/usr/bin/login" : null), started: () => "t", uid: () => me };
+    if (fs.existsSync("/usr/bin/login")) assert.deepEqual(insideClaude(13, console_), { inside: false }, "a console login with root's login in the middle");
+    // iTerm2 (and Ghostty, VS Code, Warp): a GUI app off the kernel list, so a server the person proves once, never a model.
+    const iterm = { ...trusted, exe: pid => (pid === 10 ? "/Applications/iTerm.app/Contents/MacOS/iTerm2" : null) };
+    assert.deepEqual(insideClaude(13, iterm), { inside: false, unknown: true, server: { exe: "/Applications/iTerm.app/Contents/MacOS/iTerm2", pid: 10, started: "t" } }, "vyre typed in iTerm: named as a server");
+    // A Mac server (vyred under launchd), the person over ssh: sshd's listener (root, launchd's child) -> sshd [priv] (root) -> sshd (person) -> -zsh -> vyre.
+    const ssh = {
+      300: { ppid: 1, pgid: 300, uid: 0, start: 10, args: "/usr/sbin/sshd -D" }, 301: { ppid: 300, pgid: 301, uid: 0, start: 100, args: "sshd: alex [priv]" },
+      302: { ppid: 301, pgid: 301, uid: me, start: 101, args: "sshd: alex@ttys001" }, 303: { ppid: 302, pgid: 303, uid: me, start: 102, args: "-zsh" }, 304: { ppid: 303, pgid: 304, uid: me, start: 103, args: "vyre call notes.list" },
+    };
+    const sshd = { look: pid => ssh[pid] || null, threads: [], self: 200, exe: () => "/usr/sbin/sshd", started: () => "t", uid: () => 0 };
+    assert.deepEqual(insideClaude(304, sshd), { inside: false, unknown: true, server: { exe: "/usr/sbin/sshd", pid: 300, started: "t" } }, "the CLI over ssh to a Mac server: a server the person proves once");
+    // Capsule.app: it connects itself and proves itself by the pinned cdhash, checked before the walk's own answer.
+    const capsule = { 20: row(1, "/Applications/Vyre.app/Contents/MacOS/Vyre"), 200: terminal[200] };
+    const registry = { call: async () => ({ data: { pids: [] } }), deps: { presence: { capsulePin: () => ({ cdhash: "a".repeat(40) }) } } };
+    const seam = { started: () => "t1", cdhash: () => "a".repeat(40) };
+    const via = (caller, over = {}) => above({}, registry, caller, { peerPid: async () => 20, alive: () => true, delayMs: 1, capsuleSeam: seam,
+      processTable: () => pid => capsule[pid] || null, insideClaude: (pid, o) => insideClaude(pid, { ...o, exe: () => "/Applications/Vyre.app/Contents/MacOS/Vyre", started: () => null, uid: () => me, self: 200 }), ...over });
+    assert.deepEqual(await via("capsule"), { inside: false }, "Capsule.app itself, pinned build");
+    assert.equal((await via("capsule", { capsuleSeam: { ...seam, cdhash: () => "b".repeat(40) } })).inside, true, "a different binary claiming the capsule label is a model's");
+    assert.equal((await via("cli")).inside, true, "the Capsule's own ambiguous shape under any other label proves nothing");
   } finally { if (hostedWas !== undefined) process.env.VYRE_TEST_HOSTED = hostedWas; }
 });
 

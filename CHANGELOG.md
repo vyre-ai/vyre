@@ -11,7 +11,7 @@ Newest first. Every change to code lands here in the same commit. A new dependen
   strictly shared ancestor of a terminal-started vyred. Reaching vyred itself or a child of it is a model's
   (an MCP child, a worker); reaching init proves nothing. Anything else is unreadable, a model's, never
   cached; a named server (tmux, ssh, an app terminal) stays for the person to prove once. A person's own cron
-  or launchd job calling vyre now reads as a model, which is accepted. Tests that host vyred in their own
+  or launchd job calling vyre now reads as a model, which is accepted. Root links are fine in the middle of a chain (login, sshd's privileged half). Tests that host vyred in their own
   process set VYRE_TEST_HOSTED (`core/daemon/peer.js`, `core/daemon/index.js`, `test/helpers.js`).
 - Closed a second fail-open in the caller check: a forger that sent and exited, and the process above it, were
   exited but not yet reaped, so their command line read as "(node)" (or empty on Linux) and the walk found
