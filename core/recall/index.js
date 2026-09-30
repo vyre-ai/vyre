@@ -94,6 +94,8 @@ export default {
     const indexer = new Indexer(db, {
       emit: (type, payload, where) => ctx.events.emit(type, payload, where),
       log: ctx.log,
+      // Who started a session under an account's folder comes from the Switchboard's record, never the transcript.
+      origin: async session => { const r = await ctx.call("threads.origin", { session }); return r && r.data ? r.data : null; },
       // Each new vector goes straight into the dense index, so a pass never forces a rebuild.
       // A rewrite moves the generation, and the index rebuilds itself on the next search.
       onVector: item => dense.add(item),
@@ -558,7 +560,7 @@ export default {
       clearTimeout(soon.get(id));
       soon.set(id, setTimeout(() => {
         soon.delete(id);
-        chain = chain.then(() => { if (!stopped) indexer.session(folders(), id); }).catch(err => ctx.log(`could not index ${id}: ${err.message}`));
+        chain = chain.then(() => (stopped ? null : indexer.session(folders(), id))).catch(err => ctx.log(`could not index ${id}: ${err.message}`));
       }, SOON_MS));
     };
     const offs = [ctx.events.on("turn.completed", indexSoon), ctx.events.on("thread.started", indexSoon),

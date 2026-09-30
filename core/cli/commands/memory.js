@@ -131,7 +131,7 @@ async function change(sub, args) {
 const CHANGES = new Set(["correct", "corrections", "uncorrect", "merge", "split", "pin", "mute"]);
 
 /**
- * `vyre memory ask "<question>"`: Vyre IQ (memory.ask), the answer with the sessions it stands on,
+ * `vyre memory ask "<question>"`: Vyre Memory (memory.ask), the answer with the sessions it stands on,
  * or "not sure yet" with what memory does know. A vyred without memory.ask answers from personal
  * facts alone (memory.answer).
  */
@@ -144,7 +144,7 @@ async function ask(args) {
   if (r.error) return fail(r);
   const d = r.data;
   if (json()) { emit(d); return d.answer ? 0 : 1; }
-  if (d.limited) { out(dim(`  ${d.message || "Vyre IQ has used today's share of your Claude plan"}`)); return 1; }
+  if (d.limited) { out(dim(`  ${d.message || "Vyre Memory has used today's share of your Claude plan"}`)); return 1; }
   if (!d.answer) {
     out(dim("  not sure yet"));
     if (d.known?.length) { out(dim("  what memory does know:")); for (const k of d.known) out(`    ${k}`); }
@@ -164,7 +164,7 @@ async function ask(args) {
 }
 
 /**
- * `vyre memory fix <answer id> wrong | forget | "<the right answer>"`: correct a Vyre IQ answer,
+ * `vyre memory fix <answer id> wrong | forget | "<the right answer>"`: correct a Vyre Memory answer,
  * remembered for next time. `vyre memory fix` lists this week's; `vyre memory fix undo <n>` undoes one.
  */
 async function fix(args) {
@@ -230,8 +230,8 @@ export default [
     usage: "vyre memory [about [<thing...>]|ask <question...>|fix [<answer id> <fix>]|correct <fact> <action>|corrections|uncorrect <id>|merge <node> <into>|split <node>|pin <node>|mute <node>] [--project <slug>] [--json]",
     verbs: [
       { verb: "about", summary: "what memory holds, or everything about one thing", usage: "[<thing...>] [--project v]", read: true },
-      { verb: "ask", summary: "Vyre IQ: an answer from your past sessions and what you have said, with where it came from", usage: "<question...> [--sources]", read: true },
-      { verb: "fix", summary: "correct an IQ answer, remembered next time; bare: what you corrected this week", usage: "[<answer id> wrong|forget|<the right answer...>] [undo <n>]" },
+      { verb: "ask", summary: "Vyre Memory: an answer from your past sessions and what you have said, with where it came from", usage: "<question...> [--sources]", read: true },
+      { verb: "fix", summary: "correct a Vyre Memory answer, remembered next time; bare: what you corrected this week", usage: "[<answer id> wrong|forget|<the right answer...>] [undo <n>]" },
       { verb: "correct", summary: "mark a fact wrong, ended, replaced or confirmed, or add one", usage: "<fact> wrong|ended|replace|confirm|add [<object...>] [--at v] [--note v] [--project v]" },
       { verb: "corrections", summary: "what you corrected, newest first", usage: "[--all] [--project v]", read: true },
       { verb: "uncorrect", summary: "undo a correction", usage: "<id>" },
@@ -240,7 +240,7 @@ export default [
       { verb: "pin", summary: "keep a thing in view", usage: "<node...> [--off]" },
       { verb: "mute", summary: "keep a thing out of view", usage: "<node...> [--off]" },
     ],
-    help: "Read it:\n  vyre memory [about] [<thing>] [--project <slug>]   what it holds, or everything about one thing\nAsk it:\n  vyre memory ask \"<question>\" [--sources]   Vyre IQ: an answer from your past sessions and what you have said, with where it came from\n  vyre memory fix <answer id> wrong | forget | \"<the right answer>\"   correct an answer; remembered next time\n  vyre memory fix [undo <n>]   what you corrected this week, or undo one\nChange what it holds:\n  " + USAGE.correct + "\n  vyre memory corrections [--all] · vyre memory uncorrect <id>\n  " + USAGE.merge + "\n  " + USAGE.split + "\n  vyre memory pin|mute <node> [--off]", summary: "what memory holds, or everything about one thing",
+    help: "Read it:\n  vyre memory [about] [<thing>] [--project <slug>]   what it holds, or everything about one thing\nAsk it:\n  vyre memory ask \"<question>\" [--sources]   Vyre Memory: an answer from your past sessions and what you have said, with where it came from\n  vyre memory fix <answer id> wrong | forget | \"<the right answer>\"   correct an answer; remembered next time\n  vyre memory fix [undo <n>]   what you corrected this week, or undo one\nChange what it holds:\n  " + USAGE.correct + "\n  vyre memory corrections [--all] · vyre memory uncorrect <id>\n  " + USAGE.merge + "\n  " + USAGE.split + "\n  vyre memory pin|mute <node> [--off]", summary: "what memory holds, or everything about one thing",
     async run(args0) {
       if (CHANGES.has(args0[0])) return change(args0[0], args0.slice(1));
       if (args0[0] === "ask") return ask(args0.slice(1));

@@ -2237,6 +2237,30 @@ export const fromLink = caller => /^link:/.test(String(caller || ""));
  * the Harness, or anything speaking as an agent, an agent's own tailnet node included.
  * @param {string} [caller]
  */
+/**
+ * The provider's daily cap (core/spend): an agent, a module or an automation does not start or feed a
+ * thread on a provider that is at its cap; the answer is the cap line, which says how to raise it. The
+ * person's own surfaces are never held, nor is their own Claude session (an mcp or harness caller that
+ * carries no agent claim), so nothing ever prompts. No spend module, or no answer from it, means no cap,
+ * and says so once a day in the log so a broken ledger is visible.
+ * @param {{ call: (tool: string, input: any) => Promise<any>, log?: (m: string) => void }} ctx @param {unknown} caller @param {unknown} [provider]
+ */
+export async function spendCheck(ctx, caller, provider) {
+  const c = String(caller || "");
+  if (!(/^(module|hook)/.test(c) || /(^|[\s:])agent:/.test(c))) return;
+  let r = null, why = "";
+  try { r = await ctx.call("spend.check", { provider: String(provider || "claude") }); } catch (e) { why = /** @type {Error} */ (e).message; }
+  const d = r && (r.data || r);
+  if (r && r.error) why = String(r.error.message || r.error.code || "an error");
+  if (d && d.capped === true) throw Object.assign(new Error(String(d.line || "the daily spend cap for this provider is reached")), { code: "spend_capped" });
+  if (why || !d || typeof d.capped !== "boolean") {
+    const day = new Date().toISOString().slice(0, 10);
+    if (spendDown.day !== day) { spendDown.day = day; try { ctx.log?.(`spend: the ledger did not answer (${why || "no answer"}); agents and automation are not held at a cap until it does`); } catch { /* a log never fails a send */ } }
+  }
+}
+const spendDown = { day: "" };
+
+
 export const queuesFor = caller => {
   const c = String(caller || "");
   if (fromLink(c)) return true;
@@ -2358,6 +2382,8 @@ export default {
     };
     const tool = (name, description, input, run, callers, extra = {}) => ctx.tool(name, { description, input, run, callers, ...extra });
 
+    const spendGate = (caller, provider) => spendCheck(ctx, caller, provider);
+
     tool("threads.start", "Start a headless Claude Code session in a folder or a project's home, owned by vyred so it outlives every surface. The calling surface gets the keyboard. Returns the thread; its id is the Claude Code session id.",
       { type: "object", properties: { project: str, cwd: str, prompt: str, name: str, model: str, surface: str, append: str,
         purpose: { type: "string", enum: ["chat", "agent", "project", "teammate", "capsule", "job", "memory", "planner", "learn", "helper"], description: "What kind of session: picks its model (sessions.models.get). Default: chat, or project in a project." },
@@ -2369,6 +2395,7 @@ export default {
         parent: { type: "string", description: "First-party modules only: the thread this one is started for (a teammate's thread for a person's). A session starting one is its own parent, from what vyred verified." } } },
       async (i, { caller, thread, firstParty }) => {
         guard(caller, "start sessions");
+        await spendGate(caller, i.provider);
         // The parent is the calling session's own verified thread, or (a first-party module starting it
         // on a thread's behalf) the id it names. Anyone else's claim is dropped, never believed.
         const parent = thread ? String(thread) : (firstParty && typeof i.parent === "string" ? i.parent : undefined);
@@ -2488,6 +2515,7 @@ export default {
       // Only a person's words are queued for a session open in a terminal: a model's are refused.
       async (i, { caller, idempotencyKey }) => {
         guard(caller, "type into sessions");
+        { const rec = sb.record(i.thread); await spendGate(caller, rec && rec.provider); }
         // Only the person's own callers reach a Mac; agents, MCP, guests and modules get the box's answer.
         if (wantsMacs(ctx, {}, caller) && !sb.knows(i.thread)) {
           const mac = await sendToMac(i, caller);
