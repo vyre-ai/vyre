@@ -12,7 +12,7 @@ import path from "node:path";
 import { spawn } from "node:child_process";
 import { tempHome, writeModule } from "./helpers.js";
 import { start, above, asTaken } from "../core/daemon/index.js";
-import { processTable, readPeerPid } from "../core/daemon/peer.js";
+import { processTable, readPeerPid, insideClaude } from "../core/daemon/peer.js";
 
 /** A macOS-shaped snapshot: pid -> row. */
 const rows = obj => new Map(Object.entries(obj).map(([k, v]) => [Number(k), { pgid: Number(k), ...v }]));
@@ -153,6 +153,21 @@ test("peer race: a peer that is vyred itself is a misread and a model's; only an
   assert.equal(r.self, true);
   const seam = await above({}, registry, "cli", { ...deps, self: true });
   assert.equal(seam.inside, false, "an in-process test client is let through by name");
+});
+
+test("peer race: a chain through an exited, unreaped process (no command line) is unreadable, so a model's", async () => {
+  // ps prints a zombie as "(node)", /proc as an empty cmdline; the fake claude above a forger that
+  // quit was one, and the walk read "no claude above" (fire-and-forget forger on a busy Mac, 30 Sep).
+  for (const args of ["(node)", ""]) {
+    const r = await above({}, registry, "cli", { peerPid: async () => 20, alive: () => true, delayMs: 1,
+      processTable: () => pid => ({ 20: { ppid: 10, args }, 10: { ppid: 1, args }, 1: { ppid: 0, args: "init" } }[pid] || null) });
+    assert.equal(r.inside, true, JSON.stringify(args));
+    assert.equal(r.unreadable, true);
+  }
+  const live = await above({}, registry, "cli", { peerPid: async () => 20, alive: () => true, delayMs: 1,
+    processTable: () => pid => ({ 20: { ppid: 10, args: "vyre call x", pgid: 10 }, 10: { ppid: 1, args: "/bin/zsh -l", pgid: 10 } }[pid] || null),
+    insideClaude: (pid, o) => insideClaude(pid, { ...o, exe: () => "/bin/zsh", started: () => "t" }) });
+  assert.equal(live.unreadable, undefined, "readable args are not this case");
 });
 
 /** A forger: a node script run under a fake `claude`, saying it is the person's cli. */

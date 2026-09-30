@@ -324,6 +324,11 @@ export function insideClaude(pid, { threads = [], look = processTable(), exe = e
   const mine = new Set(ancestry(self, look).chain.map(p => p.pid));
   const { chain, complete, docker } = ancestry(pid, look, p => mine.has(p));
   for (const p of chain) if (threads.includes(p.pid) || claudeCommand(p.args)) return { inside: true, by: p.pid };
+  // A process that has exited but is not yet reaped (a forger that sent and quit, the fake claude
+  // above it) is still in the table with no command line: `ps` prints it as "(node)", /proc as an
+  // empty cmdline. Its args say nothing about what it was, so a chain through one is unreadable,
+  // not "no claude above" (the fire-and-forget forger on a busy Mac, 30 Sep).
+  if (chain.some(p => !p.args || /^\(.*\)$/.test(p.args))) return { inside: false, unknown: true, unreadable: true };
   // A link that cannot be read (a pid missing from a fresh table, a peer that already exited, an
   // empty or timed-out `ps`) is `unreadable`: the caller fails closed on it. Only a process entered
   // from outside a container (docker exec) is a gap that says nothing about who is above.

@@ -4,6 +4,13 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+- Closed a second fail-open in the caller check: a forger that sent and exited, and the process above it, were
+  exited but not yet reaped, so their command line read as "(node)" (or empty on Linux) and the walk found
+  no claude above. A chain through such a process is now unreadable, a model's (`core/daemon/peer.js`).
+  Found by a 250-run loop under load, which failed within four runs before this.
+- `vyre up` restarting a vyred waits for the old process to exit, not only for its socket to go quiet: the
+  old vyred still held its lock, and the new one refused to start (upgrade test on node 22 in CI)
+  (`core/cli/daemonctl.js`).
 - A peer pid equal to vyred's own is refused as a model's (defence in depth, reviewer-2); an in-process test client passes `deps.self` (`core/daemon/index.js`).
 - Closed a fail-open in the caller check under load: a peer that connected, sent and exited freed its
   fd number, and the helper that reads the peer's pid could be handed another descriptor (its own
