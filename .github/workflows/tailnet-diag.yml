@@ -1,0 +1,24 @@
+name: tailnet-diag
+on:
+  workflow_dispatch:
+  push:
+    branches: ["work/tailnet-hang"]
+jobs:
+  diag:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    env:
+      VYRE_NO_DIALOGS: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci --no-audit --no-fund
+      - name: the file that hangs, alone, with a handle dump
+        run: NODE_OPTIONS="--import $PWD/scripts/diag/dump-handles.mjs" timeout 240 node --test --test-reporter=spec core/cli/commands/threads-sessions.test.js 2>&1 | tail -40; echo "exit=${PIPESTATUS[0]}"
+      - name: the same beside the rest of core/cli
+        run: NODE_OPTIONS="--import $PWD/scripts/diag/dump-handles.mjs" timeout 420 node --test --test-reporter=dot "core/cli/**/*.test.js" 2>&1 | grep -E "DUMPHANDLES|^# (pass|fail)" | cut -c1-500 | head -30; echo "exit=${PIPESTATUS[0]}"
+      - name: perf-check
+        run: npm run perf-check 2>&1 | tail -25
