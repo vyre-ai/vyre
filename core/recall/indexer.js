@@ -11,11 +11,27 @@
 // A file whose size and mtime have not moved is not read. The check is inequality, not "newer",
 // because a restored copy or clock skew can move an mtime backwards.
 
+import fs from "node:fs";
+import path from "node:path";
 import * as transcripts from "../transcripts/index.js";
 import { chunks, encode } from "./embed.js";
 
 /** Let the event loop breathe between files, so vyred keeps answering while it indexes. */
 const breathe = () => new Promise(r => setImmediate(r));
+
+/** How long a threads.origin answer is kept: a session's record changes rarely, and a pass asks once per file. */
+const ORIGIN_TTL_MS = 30_000;
+
+/**
+ * The folder holding the per-account homes (VYRE_ACCOUNTS_HOME, else /home/acct where it exists), or null on
+ * a machine with none. A transcript under it was written by a process running as an account, so its own
+ * words about who started it prove nothing.
+ * @returns {string|null}
+ */
+function defaultAccountsHome() {
+  if (process.env.VYRE_ACCOUNTS_HOME) return path.resolve(process.env.VYRE_ACCOUNTS_HOME);
+  try { return fs.statSync("/home/acct").isDirectory() ? "/home/acct" : null; } catch { return null; }
+}
 
 /**
  * @typedef {import("node:sqlite").DatabaseSync} DB
@@ -26,15 +42,24 @@ export class Indexer {
   /**
    * @param {DB} db
    * @param {{ emit?: (type: string, payload: object, where?: object) => void, log?: (m: string) => void,
-   *           onVector?: (item: { rid: number, session: string, seq: number, role: string, chunks: { off: number, v: Float32Array }[] }) => void }} [hooks]
+   *           onVector?: (item: { rid: number, session: string, seq: number, role: string, chunks: { off: number, v: Float32Array }[] }) => void,
+   *           origin?: (session: string) => Promise<{ known?: boolean, human?: boolean } | null | undefined>,
+   *           accountsHome?: string | null }} [hooks]
+   *   origin: the Switchboard's own record of a session (threads.origin). For a transcript under an
+   *   account folder, whether it is a person's comes only from this, never from the transcript: no
+   *   answer, or known false, is not human.
    */
   constructor(db, hooks = {}) {
     this.db = db;
     this.emit = hooks.emit || (() => {});
     this.log = hooks.log || (() => {});
     this.onVector = hooks.onVector || (() => {});
+    this.origin = hooks.origin || null;
+    this.accountsHome = hooks.accountsHome === undefined ? defaultAccountsHome() : hooks.accountsHome;
+    /** @type {Map<string, { at: number, human: boolean }>} */
+    this.origins = new Map();
     this.q = {
-      get: db.prepare("SELECT file, bytes, mtime, turns, name FROM recall_sessions WHERE id = ?"),
+      get: db.prepare("SELECT file, bytes, mtime, turns, name, human FROM recall_sessions WHERE id = ?"),
       moved: db.prepare("UPDATE recall_sessions SET file = ? WHERE id = ?"),
       // Two stored turns, found in one pass. session is UNINDEXED in the FTS table, so any
       // lookup by it reads the whole table; this runs only for sessions that changed.
@@ -72,7 +97,7 @@ export class Indexer {
       if (stopped()) break;
       s.sessions++;
       const t = Date.now();
-      try { this.one(entry, s); }
+      try { this.one(entry, s, await this.humanOf(entry)); }
       catch (e) { s.failed++; this.log(`could not index ${entry.id}: ${/** @type {Error} */ (e).message}`); }
       onProgress?.(s.sessions, all.length);
       // An unchanged file costs a stat; only real work is paced.
@@ -88,29 +113,56 @@ export class Indexer {
    * Index one session now, for a turn that just completed: its transcript copies only, and no
    * last_index mark, since this is not a pass over everything.
    * @param {string[]} folders @param {string} id
-   * @returns {Stats}
+   * @returns {Promise<Stats>}
    */
-  session(folders, id) {
+  async session(folders, id) {
     const t0 = Date.now();
     /** @type {Stats} */
     const s = { sessions: 0, added: 0, appended: 0, reindexed: 0, skipped: 0, failed: 0, turns: 0, ms: 0 };
     for (const entry of transcripts.list(folders)) {
       if (entry.id !== id) continue;
       s.sessions++;
-      try { this.one(entry, s); }
+      try { this.one(entry, s, await this.humanOf(entry)); }
       catch (e) { s.failed++; this.log(`could not index ${entry.id}: ${/** @type {Error} */ (e).message}`); }
     }
     s.ms = Date.now() - t0;
     return s;
   }
 
+  /** Whether a transcript file sits under an account's home. @param {string} file */
+  underAccounts(file) {
+    if (!this.accountsHome) return false;
+    const rel = path.relative(this.accountsHome, path.resolve(file));
+    return rel !== "" && !rel.startsWith("..") && !path.isAbsolute(rel);
+  }
+
+  /**
+   * For a transcript under an account folder: the Switchboard's word on whether a person started it
+   * (null for any other folder, where the transcript's own reading stands). Fails closed: no origin
+   * hook, an error, or no matching thread is false.
+   * @param {transcripts.Entry} entry @returns {Promise<boolean|null>}
+   */
+  async humanOf(entry) {
+    if (!this.underAccounts(entry.file)) return null;
+    const hit = this.origins.get(entry.id);
+    if (hit && Date.now() - hit.at < ORIGIN_TTL_MS) return hit.human;
+    let human = false;
+    try {
+      const r = this.origin ? await this.origin(entry.id) : null;
+      human = Boolean(r && r.known === true && r.human === true);
+    } catch { human = false; }
+    this.origins.set(entry.id, { at: Date.now(), human });
+    return human;
+  }
+
   /**
    * @param {transcripts.Entry} entry
    * @param {Stats} s
+   * @param {boolean|null} [human] the Switchboard's answer for an account-folder transcript; null otherwise
    */
-  one(entry, s) {
+  one(entry, s, human = null) {
     const prev = /** @type {any} */ (this.q.get.get(entry.id));
-    if (prev && prev.bytes === entry.size && prev.mtime === entry.mtime) {
+    if (prev && prev.bytes === entry.size && prev.mtime === entry.mtime && !(human === true && Number(prev.human) === 0)) {
       // Same bytes somewhere else (an archived folder): note where it lives now, read nothing.
       if (prev.file !== entry.file) this.q.moved.run(entry.file, entry.id);
       s.skipped++;
@@ -141,7 +193,7 @@ export class Indexer {
       }
       for (const turn of t.turns.slice(from)) this.q.addTurn.run(entry.id, turn.seq, turn.role, turn.ts, turn.text);
       this.q.put.run(entry.id, entry.file, t.cwd, t.name, t.title, t.started || null, t.ended || null,
-        t.turns.length, t.human, t.parent, entry.size, entry.mtime);
+        t.turns.length, human === null ? t.human : (human && t.human ? 1 : 0), t.parent, entry.size, entry.mtime);
       this.db.exec("COMMIT");
     } catch (e) { this.db.exec("ROLLBACK"); throw e; }
 
