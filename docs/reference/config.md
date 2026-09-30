@@ -67,7 +67,7 @@ Vyre reads these when they are set. None is needed for normal use.
 
 | Variable | What it does | Read in |
 | --- | --- | --- |
-| `VYRE_ACCOUNTS_HOME` | Not described yet. | `core/config/index.js`, `core/recall/indexer.js`, `core/sessions/index.js`, `core/sessions/spawn.js`, `core/spawner/main.js` |
+| `VYRE_ACCOUNTS_HOME` | Not described yet. | `core/config/index.js`, `core/sessions/index.js`, `core/sessions/spawn.js`, `core/spawner/main.js` |
 | `VYRE_ACCOUNT_UID_MAX` | Not described yet. | `core/spawner/main.js` |
 | `VYRE_ACCOUNT_UID_MIN` | Not described yet. | `core/spawner/main.js` |
 | `VYRE_ACME_DIRECTORY` | The ACME server certificates come from, in place of Let's Encrypt. With it set, Vyre does not wait for DNS. | `core/names/index.js` |
@@ -180,7 +180,7 @@ vyred sets these for the threads and helpers it starts, and the Harness reads th
 | `VYRE_HUB_CHILD` | Not described yet. | `harness/mcp/run.js`, `harness/mcp/server.js` |
 | `VYRE_NO_DIALOGS` | `1`: never raise anything on screen (Touch ID, a keychain prompt, a browser tab). | `core/config/dialogs.js`, `core/files/drive.js`, `local/screen-mac/screen.js` |
 | `VYRE_PROJECT` | The project a thread belongs to, for its brief. | `harness/hooks/hook.js` |
-| `VYRE_PROJECTS` | The projects an agent's thread is limited to, comma separated, or `*` for all of them. | `core/switchboard/index.js`, `harness/hooks/hook.js`, `harness/mcp/memory-tools.js`, `harness/mcp/server.js` |
+| `VYRE_PROJECTS` | The projects an agent's thread is limited to, comma separated, or `*` for all of them. | `core/switchboard/index.js`, `harness/hooks/hook.js`, `harness/mcp/server.js` |
 | `VYRE_PROXY_PAC` | Not described yet. | `core/computers/image/computerd/index.js` |
 | `VYRE_SCOPE_CWDS` | The folders an agent's `recall.search` is held to, as JSON. | `core/switchboard/index.js`, `harness/mcp/server.js` |
 | `VYRE_SESSIONS_SPAWNER` | Not described yet. | `core/sessions/config.js`, `core/sessions/spawn.js` |

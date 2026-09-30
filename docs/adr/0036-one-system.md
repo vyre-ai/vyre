@@ -10,7 +10,7 @@ status: draft
 
 Status: accepted by the lead, 27 Sep 2026 · Workstream: cohesion · Related: ADR 0015 (screen
 context on the Mac), ADR 0016 (connectors), ADR 0028 (vault v2), ADR 0033 (hackable Vyre),
-ADR 0034 (Vyre Memory), ADR 0035 (the settings hub) · Map: docs/design/cohesion.md
+ADR 0034 (Vyre IQ), ADR 0035 (the settings hub) · Map: docs/design/cohesion.md
 
 ## Context
 

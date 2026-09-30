@@ -451,8 +451,7 @@ export class Personal {
       const had = g.turns.get(tk);
       if (!had || had.conf < r.conf) g.turns.set(tk, { conf: r.conf, session: r.session, seq: r.seq, ts: r.ts });
       g.sessions.add(top(r.session));
-      // Said as a correction in a conversation ("no, biscuit's a corgi not a beagle"): as good as told.
-      if (r.method === "correct" || r.method === "told") g.fix = Math.max(g.fix || 0, r.ts);
+      if (r.session.startsWith("told:")) g.told = Math.max(g.told || 0, r.ts);
       g.first = Math.min(g.first, r.ts); g.last = Math.max(g.last, r.ts);
       groups.set(id, g);
     }
@@ -469,10 +468,9 @@ export class Personal {
     for (const f of facts) if (!SINGLE_VALUED.has(f.rel)) f.confidence = f.raw;
     for (const list of bySlot.values()) {
       const newest = [...list].sort((a, b) => b.last - a.last || b.raw - a.raw)[0];
-      // Told outright (memory.remember), or corrected in a conversation: what was said before the
-      // newest correction barely counts, unless it is the value that correction gave.
-      const fix = Math.max(0, ...list.map(f => f.fix || 0));
-      const w = list.map(f => f.raw * (TIME_VARYING.has(f.rel) && f !== newest ? 0.5 : 1) * (fix && (f.fix || 0) < fix && f.last <= fix ? 0.1 : 1));
+      // Told outright (memory.remember) is a correction: what was said before it barely counts.
+      const told = Math.max(0, ...list.map(f => f.told || 0));
+      const w = list.map(f => f.raw * (TIME_VARYING.has(f.rel) && f !== newest ? 0.5 : 1) * (told && !f.told && f.last <= told ? 0.1 : 1));
       const sum = w.reduce((a, b) => a + b, 0) || 1;
       list.forEach((f, i) => { f.confidence = f.raw * w[i] / sum; });
       const win = [...list].sort((a, b) => b.confidence - a.confidence || b.last - a.last)[0];

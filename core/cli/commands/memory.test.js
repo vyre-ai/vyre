@@ -63,7 +63,7 @@ test("memory mute: a node is muted and unmuted, the about view says so, and a mi
   assert.match(JSON.parse(nothing.out).error.message, /nothing in memory/);
 });
 
-test("memory ask: Vyre Memory answers from what the user said, with where; else not sure, exit 1", async t => {
+test("memory ask: Vyre IQ answers from what the user said, with where; else not sure, exit 1", async t => {
   const root = tempHome(t);
   fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ transcripts: [path.join(root, "no-transcripts")], vault: { keystore: "file" }, modules: { disable: ["learn"] } }));
   const db = open(path.join(root, "vyre.db"));

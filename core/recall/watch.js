@@ -19,7 +19,6 @@ import { follow, followState, settle, eachLine } from "../transcripts/index.js";
 /** Replaying from an old turn sends at most this many, the newest. */
 export const REPLAY_MAX = 500;
 /** A burst of appends is read once, this long after the first. */
-const CATCH_UP_MS = 300;
 const DEBOUNCE_MS = 25;
 
 /**
@@ -127,10 +126,6 @@ export class Watches {
     try {
       e.fsw = fs.watch(e.file, { persistent: false }, () => this.soon(e));
       e.fsw.on("error", () => { e.fsw?.close(); e.fsw = null; });
-      // macOS starts delivering events a moment after fs.watch returns: a line appended in that
-      // gap is never announced, and would wait for the 60 s sweep. One catch-up read closes it.
-      const late = setTimeout(() => this.read(e), CATCH_UP_MS);
-      late.unref?.();
     } catch { e.fsw = null; }
   }
 
