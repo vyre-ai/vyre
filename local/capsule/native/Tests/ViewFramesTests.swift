@@ -73,9 +73,9 @@ let viewFramesSuite = Suite("view frames") { t in
         let form: [String: Any] = ["v": 1, "kind": "form", "id": "f", "fields": [["name": "a"]]]
         if case .view(.form(let f)) = ViewActResult.parse(["v": 1, "kind": "view", "frame": form]) { t.eq(f.id, "f") } else { t.ok(false, "view form") }
         if case .error = ViewActResult.parse(["v": 1, "kind": "view", "frame": ["v": 1, "kind": "list", "rows": [] as [Any]]]) {} else { t.ok(false, "only a form may open from an action") }
-        let p = ViewActResult.parse(["v": 1, "kind": "preview", "title": "Send this email", "hash": "abc123",
+        let p = ViewActResult.parse(["v": 1, "kind": "preview", "title": "Send this email", "hash": "abc123", "token": "tok-abc",
                                      "words": [["label": "To", "value": "dana@harlowlegal.example"], ["label": "Body", "value": "Hello\nthere"]]])
-        if case .preview(let pv) = p { t.eq(pv.hash, "abc123"); t.eq(pv.words.count, 2); t.eq(pv.words[1].value, "Hello\nthere") } else { t.ok(false, "preview") }
+        if case .preview(let pv) = p { t.eq(pv.hash, "abc123"); t.eq(pv.token, "tok-abc"); t.eq(pv.words.count, 2); t.eq(pv.words[1].value, "Hello\nthere") } else { t.ok(false, "preview") }
         if case .error = ViewActResult.parse(["v": 1, "kind": "preview", "title": "x", "words": [] as [Any]]) {} else { t.ok(false, "a preview with no hash or words is refused") }
         t.eq(ViewActResult.parse(["v": 1, "kind": "held", "message": "Waiting for your OK."]), .held(message: "Waiting for your OK."))
         t.eq(ViewActResult.parse(["v": 1, "kind": "needs", "code": "no_connection", "message": "Connect Gmail."]), .needs(code: "no_connection", message: "Connect Gmail."))
@@ -87,6 +87,8 @@ let viewFramesSuite = Suite("view frames") { t in
         t.eq(MainActor.assumeIsolated { ViewSession.safeLink("https://example.com/a") }?.host, "example.com")
         t.ok(MainActor.assumeIsolated { ViewSession.safeLink("mailto:dana@harlowlegal.example") } != nil)
         t.ok(MainActor.assumeIsolated { ViewSession.safeLink("vyre://thread/t1") } != nil)
+        t.ok(MainActor.assumeIsolated { ViewSession.safeLink("vyre://thread/t1", added: true) } == nil, "an added module gets https and mailto only")
+        t.ok(MainActor.assumeIsolated { ViewSession.safeLink("https://example.com", added: true) } != nil)
         for bad in ["http://example.com", "file:///etc/passwd", "javascript:alert(1)", "x-apple.systempreferences:", "https://", "not a link", ""] {
             t.ok(MainActor.assumeIsolated { ViewSession.safeLink(bad) } == nil, bad)
         }

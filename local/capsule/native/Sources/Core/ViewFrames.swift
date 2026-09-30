@@ -215,8 +215,10 @@ public struct ViewPreview: Equatable, Sendable {
     public var title: String
     public var words: [(label: String, value: String)]
     public var hash: String
+    /// The server's proof that these exact words were shown (an HMAC); the second Return must send it back.
+    public var token: String
     public static func == (a: ViewPreview, b: ViewPreview) -> Bool {
-        a.title == b.title && a.hash == b.hash && a.words.count == b.words.count && zip(a.words, b.words).allSatisfy { $0.label == $1.label && $0.value == $1.value }
+        a.title == b.title && a.hash == b.hash && a.token == b.token && a.words.count == b.words.count && zip(a.words, b.words).allSatisfy { $0.label == $1.label && $0.value == $1.value }
     }
 }
 
@@ -253,7 +255,8 @@ public enum ViewActResult: Equatable, Sendable {
                 return (l, v)
             }
             guard let hash = ViewText.string(o["hash"]), !words.isEmpty else { return .error(code: "bad_frame", message: "There was nothing to preview.") }
-            return .preview(ViewPreview(title: ViewText.string(o["title"]) ?? "Check this first", words: words, hash: hash))
+            return .preview(ViewPreview(title: ViewText.string(o["title"]) ?? "Check this first", words: words, hash: hash,
+                                        token: ViewText.string(o["token"], max: 2000) ?? ""))
         case "held": return .held(message: ViewText.string(o["message"]) ?? "Waiting for your OK.")
         case "needs": return .needs(code: ViewText.string(o["code"]) ?? "needs", message: ViewText.string(o["message"]) ?? "Something needs connecting first.")
         case "error": return .error(code: ViewText.string(o["code"]) ?? "error", message: ViewText.string(o["message"]) ?? "It did not work.")

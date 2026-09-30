@@ -180,14 +180,17 @@ let viewSessionSuite = Suite("view session") { t in
             let link = ScriptLink()
             link.answer["capsule.view"] = { _ in .success(list(["t1"], actions: [["id": "send", "title": "Send reply", "outward": true]])) }
             var n = 0
+            func preview(_ hash: String) -> [String: Any] {
+                ["v": 1, "kind": "preview", "title": "Send this", "hash": hash, "token": "tok-\(hash)", "words": [["label": "To", "value": "dana@harlowlegal.example"]]]
+            }
             link.answer["capsule.act"] = { i in
                 n += 1
                 if let asked = i["asked"] as? [String: Any] {
-                    return (asked["hash"] as? String) == "h-2"
-                        ? .success(["v": 1, "kind": "done", "said": "Sent."])
-                        : .success(["v": 1, "kind": "preview", "title": "Send this", "hash": "h-3", "words": [["label": "To", "value": "dana@harlowlegal.example"]]])
+                    // A server that takes the second call only with the hash AND the token that came with the preview.
+                    guard let h = asked["hash"] as? String, (asked["token"] as? String) == "tok-\(h)" else { return .success(preview("refused")) }
+                    return h == "h-2" ? .success(["v": 1, "kind": "done", "said": "Sent."]) : .success(preview("h-3"))
                 }
-                return .success(["v": 1, "kind": "preview", "title": "Send this", "hash": n == 1 ? "h-1" : "h-2", "words": [["label": "To", "value": "dana@harlowlegal.example"]]])
+                return .success(preview(n == 1 ? "h-1" : "h-2"))
             }
             let (s, _) = session(link)
             s.load(q: ""); _ = await poll { s.base != nil }
@@ -196,14 +199,15 @@ let viewSessionSuite = Suite("view session") { t in
             out.append("\(await s.act(send, row: row))")               // first Return: a preview, nothing sent
             out.append("preview \(s.isFormOrPreview) \(link.calls("capsule.act").count)")
             out.append("\(await s.confirmPreview())")                   // second Return with h-1: the words changed, preview again
-            out.append("\((link.calls("capsule.act").last?["asked"] as? [String: Any])?["hash"] as? String ?? "-")")
+            let asked = link.calls("capsule.act").last?["asked"] as? [String: Any]
+            out.append("\(asked?["hash"] as? String ?? "-")/\(asked?["token"] as? String ?? "-")")
             out.append("stack \(s.stack.count)")
             out.append("\(await s.confirmPreview())")                   // h-3 is not h-2 in the script: previews once more
             return out
         }
         t.eq(r?.first, "said(\"\")")
         t.eq(r?[1], "preview true 1")
-        t.eq(r?[3], "h-1", "the second Return carries the hash of the words it showed")
+        t.eq(r?[3], "h-1/tok-h-1", "the second Return carries the hash and the token of the words it showed")
         t.eq(r?[4], "stack 2", "still one preview level over the list")
     }
 

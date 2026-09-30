@@ -43,6 +43,8 @@ final class ViewSession: ObservableObject {
     @Published var problem: String?
     @Published var values: [String: String] = [:]
     private(set) var q = ""
+    /// Set from a list or detail frame that names its module (an added one): its links are held to https and mailto.
+    private(set) var addedModule = false
 
     /// Something on screen changed (rows, a level): the model draws again.
     var onChange: () -> Void = {}
@@ -123,11 +125,14 @@ final class ViewSession: ObservableObject {
     private func apply(_ f: ViewFrame, words: String, cache store: Bool) {
         loading = false
         switch f {
-        case .list:
+        case .list(let l):
+            addedModule = l.from != nil
             problem = nil
             if store { cache[key(words)] = (f, now()) }
             if case .list? = stack.first { stack[0] = .list(listOf(f)) } else { stack = [.list(listOf(f))] }
-        case .detail(let d): stack.append(.detail(d, row: ViewRow(id: "", title: d.title, subtitle: nil, icon: nil, accessory: nil, group: nil, actions: d.actions)))
+        case .detail(let d):
+            if d.from != nil { addedModule = true }
+            stack.append(.detail(d, row: ViewRow(id: "", title: d.title, subtitle: nil, icon: nil, accessory: nil, group: nil, actions: d.actions)))
         case .form(let form): open(form)
         case .error(_, let m), .needs(_, let m), .held(let m): problem = m
         }
@@ -158,7 +163,9 @@ final class ViewSession: ObservableObject {
                 self.loading = false
                 if let why = r.error { self.problem = why; self.onChange(); return }
                 switch ViewFrame.parse(r.data) {
-                case .detail(let d): self.stack.append(.detail(d, row: row))
+                case .detail(let d):
+                    if d.from != nil { self.addedModule = true }
+                    self.stack.append(.detail(d, row: row))
                 case .error(_, let m), .needs(_, let m), .held(let m): self.problem = m
                 default: self.problem = "There is no more to show for that."
                 }
@@ -207,7 +214,7 @@ final class ViewSession: ObservableObject {
     /// The second Return on a preview: the same words, with the hash that names them.
     func confirmPreview() async -> ActionOutcome {
         guard case .preview(let p, let pending)? = level else { return .failed("Nothing to send.") }
-        var input: [String: Any] = ["action": pending.action, "asked": ["hash": p.hash]]
+        var input: [String: Any] = ["action": pending.action, "asked": ["hash": p.hash, "token": p.token]]
         if let id = pending.rowID { input["id"] = id }
         if let form = pending.form { input["form"] = form; input["fields"] = pending.fields }
         return await call(input, pending: pending, replacing: true)
@@ -244,7 +251,7 @@ final class ViewSession: ObservableObject {
     private func effectOutcome(said: String?, effect: ViewEffect?) -> ActionOutcome {
         switch effect {
         case .open(let s)?:
-            guard let u = Self.safeLink(s) else { return .failed("That link is not one Lumen opens.") }
+            guard let u = Self.safeLink(s, added: addedModule) else { return .failed("That link is not one Lumen opens.") }
             return openURL(u) ? .close(said) : .failed("Nothing opened it.")
         case .copy(let s)?:
             copy(s)
@@ -258,12 +265,13 @@ final class ViewSession: ObservableObject {
         }
     }
 
-    /// https, mailto and vyre links only.
-    static func safeLink(_ s: String) -> URL? {
+    /// https, mailto and vyre links only; an added module's are https and mailto.
+    static func safeLink(_ s: String, added: Bool = false) -> URL? {
         guard let u = URL(string: s.trimmingCharacters(in: .whitespaces)), let scheme = u.scheme?.lowercased() else { return nil }
         switch scheme {
         case "https": return u.host?.isEmpty == false ? u : nil
-        case "mailto", "vyre": return u
+        case "mailto": return u
+        case "vyre": return added ? nil : u
         default: return nil
         }
     }
