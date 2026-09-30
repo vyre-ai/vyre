@@ -32,7 +32,7 @@ export const COMMAND_CARDS = [
     commands: [{ line: "vyre backup", note: "shows the sizes first, then asks for a passphrase" },
       { line: "vyre backup --skip-projects --skip-transcripts", note: "your data only, without the files" }] },
   { title: "Uninstall",
-    says: ["Stops Vyre, removes its containers and its agents' computers, and takes the vyre command off. Your data stays unless you say to delete it.",
+    says: ["Stops Vyre, removes its containers, its images and its agents' computers, and takes the vyre command off. Your data stays unless you say to delete it.",
       "It never touches your Docker, your Tailscale, or Claude, Codex and Gemini on any device. The server still shows in your Tailscale machines list: remove it there."],
     commands: [{ line: "vyre uninstall", note: "on the server; asks whether to delete your data too" },
       { line: "vyre uninstall --keep-data", note: "removes Vyre and keeps everything, so a fresh install picks up where this left off" },

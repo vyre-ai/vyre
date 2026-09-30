@@ -497,6 +497,11 @@ uninstall() {
   # shellcheck disable=SC2086 # one container id per word
   [ -z "$comp" ] || docker rm -f $comp >/dev/null
   compose --profile computers down --remove-orphans
+  # Vyre's own images (the box and the computers, and the one kept for a rollback) are not data: a
+  # gigabyte of layers with no use once Vyre is gone. Docker itself and the Tailscale sidecar's image stay.
+  imgs=$(docker image ls -q --filter 'reference=ghcr.io/vyre-ai/*' --filter 'reference=vyre:*' 2>/dev/null | sort -u || true)
+  # shellcheck disable=SC2086 # one image id per word
+  [ -z "$imgs" ] || docker image rm -f $imgs >/dev/null 2>&1 || true
   if [ "$choice" = delete ]; then
     # shellcheck disable=SC2086 # one volume name per word
     [ -z "$vols" ] || docker volume rm $vols >/dev/null

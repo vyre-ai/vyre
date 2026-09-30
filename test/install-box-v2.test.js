@@ -226,7 +226,7 @@ const VOLS = ["vyre_vyre-home", "vyre_vyre-work", "vyre_vyre-accounts", "vyre_vy
 /** A box with a stack folder, our wrapper installed, and a docker that knows the volumes. */
 function installed(t) {
   const b = box(t, {
-    docker: `case "$1 $2" in "compose version") echo 2.29.1 ;; "volume ls") printf '%s\\n' ${VOLS.join(" ")} ;; "ps -aq") echo c1 c2 ;; esac; exit 0`,
+    docker: `case "$1 $2" in "compose version") echo 2.29.1 ;; "volume ls") printf '%s\\n' ${VOLS.join(" ")} ;; "ps -aq") echo c1 c2 ;; "image ls") printf '%s\\n' img2 img1 img2 ;; esac; exit 0`,
   });
   fs.mkdirSync(b.dir, { recursive: true });
   fs.writeFileSync(path.join(b.dir, "compose.yml"), "name: vyre\n");
@@ -248,6 +248,7 @@ test("vyre uninstall: with no answer the data is kept, every volume is listed in
   assert.ok(!calls.includes("volume rm"), calls);
   assert.ok(calls.includes("rm -f c1 c2"), "agents' computers are removed");
   assert.ok(calls.includes("compose --profile computers down --remove-orphans"), calls);
+  assert.ok(calls.includes("image rm -f img1 img2"), "Vyre's own images go, once each: " + calls);
   assert.ok(!fs.existsSync(b.env.VYRE_WRAPPER), "the vyre command is removed");
   assert.match(r.stdout, /Tailscale machines list/);
   assert.match(r.stdout, /vyre backup/, "the export is offered beside it");
