@@ -75,6 +75,7 @@ GitHub hosted runners (push work/iq). Never testbox (it is the user's server), n
 - MEDIUM: memory.heard with no evidence files "an agent reports the person corrected: ...".
 
 ## Doing
+- Recording is on GitHub only: `gh workflow run memory-eval-record.yml --ref work/iq`, needs secret OPENROUTER_EVAL_KEY in environment eval (83e5d30f). Exit 3 means the $15 spend stop; a rerun continues. Replies land in test/eval/asks/iq02-open.json (download the artifact and commit it); spend file iq02-open.spend.json.
 - Decisions MEDIUM and meta.granted (reviews/iq.md): cherry-picked sessions' e18148c2 (845ae5dc); every memory tool now runs through a wrapper in core/memory/index.js that, for a caller with via.agent, drops input.agent and project_cwds and intersects reach() with meta.granted (none when absent). decisions.resolve: an agent or untrusted row never becomes current over the person's; a trusted agent's lone decision is current with agentOnly and answered "Your agent <name> recorded: X (date)" at 0.55, never "Now:"; untrusted is always a note. Open-world eval-bar (replayed): decision 33/50, history 16/25, confident-wrong 0/195.
 - Fixed reviewer-2 H1 at 22ad3f07 (my ctx.memory.write door reverted at cece5c54; platform owns the door).
 - Two confident-wrong bugs fixed: d6890a60 (a correction in chat wins its one-value slot, old value becomes history), 28e51fab (personal fast path stays out of work questions).
