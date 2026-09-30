@@ -600,7 +600,14 @@ export default {
       // Sealed under the ticket's own "enc" key: the relay holds ciphertext only (wire.js).
       const record = ticketSeal(rawTicket, JSON.stringify({ v: 1, name: boxName(), handle: boxHandle(), address: addressOrigin(), identity: identityFingerprint(), relay: settings().url, route: route(), box: k().box.pub.toString("base64url"), exp }));
       const mac = ticketMac(rawTicket, record);
-      if (link) link.registerTicket({ loc: ticketDerive("loc", rawTicket).toString("base64url"), record, mac: mac.toString("base64url"), exp });
+      if (link) {
+        // The relay's own answer: 200, or 409 when another registration holds this locator (first writer
+        // wins there, and a contested locator resolves to nobody). A ticket the app chose itself could
+        // collide, so a refusal is a failure here, never a ticket that quietly does not work.
+        const status = await link.registerTicket({ loc: ticketDerive("loc", rawTicket).toString("base64url"), record, mac: mac.toString("base64url"), exp });
+        if (status === 409) { pendingTickets.delete(sha(secret).toString("hex")); throw fail("conflict", "the relay already holds a ticket with that seed; choose a new one"); }
+        if (connected && status !== 200) { pendingTickets.delete(sha(secret).toString("hex")); throw fail("unavailable", "the relay did not confirm the ticket; try again"); }
+      }
       return { ticket: rawTicket.toString("base64url"), expiresAt: exp, connected };
     };
 

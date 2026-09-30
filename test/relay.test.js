@@ -589,6 +589,11 @@ test("relay: a computer that chose its own ticket has the box register it; the r
     const r = await d.registry.call("relay.pair.ticket", { seed: bad }, "cli", PROOF);
     assert.equal(r.error?.code, "bad_input", String(bad));
   }
+  // A second box (or a second ask) registering a seed the relay still holds is a failure, not a ticket that quietly does not resolve.
+  const held = crypto.randomBytes(16).toString("base64url");
+  assert.ok((await d.registry.call("relay.pair.ticket", { seed: held }, "cli", PROOF)).data);
+  const twin = await d.registry.call("relay.pair.ticket", { seed: held }, "cli", PROOF);
+  assert.equal(twin.error?.code, "conflict", JSON.stringify(twin));
   // The app's own ticket pairs like any other.
   const seed3 = crypto.randomBytes(16);
   await d.registry.call("relay.pair.ticket", { seed: seed3.toString("base64url") }, "cli", PROOF);
