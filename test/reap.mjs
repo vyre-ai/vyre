@@ -15,8 +15,8 @@ import path from "node:path";
  */
 function checkMarker(marker) {
   const tmp = os.tmpdir();
-  if (typeof marker !== "string" || !path.isAbsolute(marker) || marker.length < 12 || !(marker === tmp || marker.startsWith(tmp + path.sep)) || marker === tmp || marker === tmp + path.sep) {
-    throw new Error(`reap: refusing the marker ${JSON.stringify(marker)}; it must be an absolute path of at least 12 characters under ${tmp}`);
+  if (typeof marker !== "string" || !path.isAbsolute(marker) || marker.length < 20 || !(marker === tmp || marker.startsWith(tmp + path.sep)) || marker === tmp || marker === tmp + path.sep) {
+    throw new Error(`reap: refusing the marker ${JSON.stringify(marker)}; it must be an absolute path of at least 20 characters under ${tmp}`);
   }
 }
 
