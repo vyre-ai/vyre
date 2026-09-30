@@ -25,7 +25,7 @@
       { "name": "artifacts.public.status", "summary": "whether public links are on", "reach": "anyone" },
       { "name": "artifacts.public.set", "summary": "turn public links on or off", "reach": "asked" },
       { "name": "artifacts.public.base", "summary": "the public address links use (network setup)", "reach": "modules" },
-      { "name": "artifacts.mention.search", "summary": "the # picker's artifact results", "reach": "modules" },
+      { "name": "artifacts.mention.search", "summary": "the # picker's artifact results", "reach": "person" },
       { "name": "artifacts.mention.resolve", "summary": "an artifact tagged with #, as a reference for the thread", "reach": "modules" },
       { "name": "artifacts.capture.register", "summary": "catch files a session saves in its artifacts folder", "reach": "modules" }
     ],
