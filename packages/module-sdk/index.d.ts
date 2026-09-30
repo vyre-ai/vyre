@@ -47,6 +47,12 @@ export interface ToolEntry {
   outward?: Outward;
   /** It spends money through the module's own model or API use. */
   cost?: "paid";
+  /** The input field (or fields) holding a project: an agent calling for a project it is not granted is refused (not_found) before the tool runs, and the tool gets meta.reach for listings. */
+  projectArg?: string | string[];
+  /** The input field (or fields) holding a folder: mapped to its project, and refused for an agent not granted that project (or for a folder in no project). */
+  cwdArg?: string | string[];
+  /** Built in only, for an asked tool: an internal tool of this module that answers { to: [string] }, what one call acts on, so the person's yes binds that thing and not the whole tool. */
+  target?: string;
   [experimental: `x-${string}`]: unknown;
 }
 

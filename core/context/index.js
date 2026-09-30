@@ -15,7 +15,12 @@
 import { ownerDevice } from "../modules/index.js";
 
 /** Fields a surface may report. Anything else in the input is ignored, except REFUSED. */
-export const FIELDS = ["project", "cwd", "thread", "view", "app", "window", "url"];
+export const FIELDS = ["project", "cwd", "thread", "view", "app", "window", "url", "tz", "localTime"];
+const TZ_RE = /^[A-Za-z][A-Za-z0-9_+-]*(\/[A-Za-z0-9_+-]+){0,2}$/;
+// An offset-bearing ISO 8601 timestamp: the device's own clock, never the server's. No bare "Z"
+// with no offset info is required of the caller, but the string must carry one so a reader never
+// has to guess which zone it was written in.
+const LOCAL_TIME_RE = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d{1,3})?(Z|[+-]\d{2}:\d{2})$/;
 /** What a screen reads that must never reach this module: it would sit in memory and in events. */
 export const REFUSED = ["text", "selection", "selected", "value", "focused"];
 /** Fields whose values never go into an event. */
@@ -68,6 +73,8 @@ export function clean(input) {
     let s = v === null || v.trim() === "" ? null : v.trim();
     if (s !== null && k === "cwd" && !s.startsWith("/")) throw fail("bad_input", "cwd must be an absolute path");
     if (s !== null && k === "url") s = stripUrl(s);
+    if (s !== null && k === "tz" && !TZ_RE.test(s)) throw fail("bad_input", "tz must be an IANA zone such as America/Los_Angeles or UTC");
+    if (s !== null && k === "localTime" && !LOCAL_TIME_RE.test(s)) throw fail("bad_input", "localTime must be an ISO 8601 timestamp with an offset, e.g. 2026-09-28T14:32:00-07:00: the device's own clock, not the server's");
     if (s !== null && s.length > MAX_LEN) s = s.slice(0, MAX_LEN);
     fields[k] = s;
   }
@@ -177,6 +184,8 @@ export default {
         app: { type: ["string", "null"], description: "The front app's name." },
         window: { type: ["string", "null"], description: "The front window's title." },
         url: { type: ["string", "null"], description: "The page open in a browser. Its query and fragment are dropped." },
+        tz: { type: ["string", "null"], description: "This device's own IANA time zone, e.g. America/Los_Angeles. Never the server's." },
+        localTime: { type: ["string", "null"], description: "This device's own clock right now, ISO 8601 with an offset, e.g. 2026-09-28T14:32:00-07:00. Never the server's." },
       } },
       callers: CALLERS,
       run: async (input, meta) => {
@@ -212,7 +221,7 @@ export default {
     });
 
     ctx.tool("context.now", {
-      description: "Where the user is now: the newest project, cwd, thread, app, window and url across every surface that reported, the surface and device that reported last (the focus), and the list of surfaces. The project is found from the folder when only a folder is known. parts: [\"screen\"] adds what sight sees on this Mac (not over the tailnet).",
+      description: "Where the user is now: the newest project, cwd, thread, app, window and url across every surface that reported, the surface and device that reported last (the focus), and the list of surfaces. The project is found from the folder when only a folder is known. tz, localTime and day come from whichever device most recently reported them: the device's own clock, never the server's, and null until some surface has reported one. parts: [\"screen\"] adds what sight sees on this Mac (not over the tailnet).",
       input: { type: "object", properties: {
         parts: { type: "array", items: { type: "string", enum: ["screen"] }, description: "Extra parts: screen." },
         surface: { type: "string", description: "Only this surface's own report (its view, thread and project), not the merge across surfaces." },
@@ -237,6 +246,11 @@ export default {
           app: latest.app ? latest.app.v : null,
           window: latest.window ? latest.window.v : null,
           url: latest.url ? latest.url.v : null,
+          tz: latest.tz ? latest.tz.v : null,
+          localTime: latest.localTime ? latest.localTime.v : null,
+          // The calendar date in the device's own local time, not the server's: the first 10
+          // characters of localTime are already that device's YYYY-MM-DD, offset and all.
+          day: latest.localTime && latest.localTime.v ? latest.localTime.v.slice(0, 10) : null,
           at: focus ? focus.at : null,
           surfaces: recs.map(r => ({ surface: r.surface, device: r.device, at: r.at })),
         };

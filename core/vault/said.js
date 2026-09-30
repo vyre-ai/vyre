@@ -34,7 +34,11 @@ export const SAID_MACED = ["id", "thread", "said", "kind", "channel", "recipient
 
 export const INTENT_KINDS = ["send", "post", "pay", "act_out", "setting", "revoke", "use"];
 /** The only callers that may record what the person said. */
-export const RECORDERS = ["module:sessions", "module:assistant"];
+export const RECORDERS = ["module:sessions", "module:assistant", "module:threads"];
+/** What the switchboard (module:threads), which hears the person's turn, may record: a # tag's use and an asked action, nothing else. */
+export const THREADS_KINDS = ["use", "act_out"];
+/** How long a plain (not standing) ask is good from when it was said, unless the recorder gave its own window (1 to 60 minutes): a stale "merge it" or "send that email" cannot be spent days later. */
+export const PLAIN_WINDOW_MS = Object.freeze({ act_out: 15 * 60_000, send: 60 * 60_000, post: 60 * 60_000, pay: 60 * 60_000 });
 const MAX_TO = 20, MAX_TEXT = 500;
 
 const isObj = v => Boolean(v) && typeof v === "object" && !Array.isArray(v);
@@ -78,6 +82,8 @@ export function matchIntent(call, intents, lineage = []) {
     if (!it || it.revoked || !covers.includes(it.kind)) continue;
     // A plain ask is used up by the send it asked for; only a standing permission persists.
     if (it.used && !it.standing) continue;
+    // A plain act_out ask is for now, not for days: it stops matching after its window (15 minutes unless the recorder said otherwise).
+    if (!it.standing && PLAIN_WINDOW_MS[it.kind] && at > it.at + (it.limits && Number.isFinite(it.limits.window_ms) ? it.limits.window_ms : PLAIN_WINDOW_MS[it.kind])) continue;
     // An intent that names agents covers only them; one that names none covers any of the person's agents.
     if (it.agents && it.agents.length && !it.agents.map(norm).includes(norm(call.agent))) continue;
     if (!(it.at <= at)) continue;
@@ -115,6 +121,7 @@ export class SaidIntents {
    */
   async record(i, caller) {
     if (!isObj(i)) throw bad("an intent is an object");
+    if (caller === "module:threads" && !THREADS_KINDS.includes(i.kind)) throw bad(`the threads module records only ${THREADS_KINDS.join(" and ")} intents`);
     if (typeof i.thread !== "string" || !i.thread) throw bad("thread is the session the person spoke in");
     if (typeof i.said !== "string" || !i.said) throw bad("said is the id of the ingress row the words came from");
     if (!INTENT_KINDS.includes(i.kind)) throw bad(`kind must be one of ${INTENT_KINDS.join(", ")}`);
@@ -132,6 +139,10 @@ export class SaidIntents {
       limits = { ...(max !== undefined ? { max_amount: max } : {}), ...(i.limits.currency ? { currency: i.limits.currency } : {}), ...(hosts ? { hosts } : {}) };
     }
     if (i.kind === "pay" && !(limits && limits.max_amount !== undefined && limits.currency)) throw bad("a pay intent needs limits.max_amount and limits.currency");
+    if (i.window_minutes !== undefined) {
+      if (!(Number.isFinite(i.window_minutes) && i.window_minutes > 0)) throw bad("window_minutes is a number of minutes");
+      limits = { ...(limits || {}), window_ms: Math.round(Math.min(60, Math.max(1, i.window_minutes)) * 60_000) };
+    }
     if (i.kind === "use" && !(limits && Array.isArray(limits.hosts))) throw bad("a use intent carries the item's hosts as limits.hosts; record it through vault.mention.resolve");
     if (i.agents !== undefined && !(Array.isArray(i.agents) && i.agents.length <= MAX_TO && i.agents.every(x => typeof x === "string" && x.trim() && x.length <= 80))) throw bad("agents is a list of agent names");
     const agents = (i.agents || []).map(x => x.trim());
@@ -213,7 +224,7 @@ export function register({ vault, internal, tool, emit }) {
   const said = new SaidIntents(vault);
 
   internal("vault.said.record", "Store what the person's own turn asked for. Only sessions and the assistant call it, after extracting it from a `said` row; nothing a model, agent, watcher or tool result produces can.",
-    obj({ thread: str, said: str, kind: { type: "string", enum: INTENT_KINDS }, channel: str, to: strs, what: str, when: str, standing: { type: "boolean" }, agents: strs,
+    obj({ thread: str, said: str, kind: { type: "string", enum: INTENT_KINDS }, channel: str, to: strs, what: str, when: str, standing: { type: "boolean" }, agents: strs, window_minutes: { type: "number" },
       limits: obj({ max_amount: { type: "number" }, currency: str, hosts: strs }), at: { type: "integer" } }, ["thread", "said", "kind", "what"]),
     (input, { caller }) => {
       if (!RECORDERS.includes(String(caller))) { vault.audit("said-record", null, caller, false, "not sessions or the assistant"); throw new Error("only sessions and the assistant record what the person said"); }
@@ -246,7 +257,7 @@ export function register({ vault, internal, tool, emit }) {
 
   /** The pickable items: names, kinds and bound hosts only. Never a value, never an ssh key's private half. */
   const pickable = (q = "") => vault.list({ filter: q }).items.filter(i => i.kind !== "ssh-key").map(i => ({ name: i.name, kind: i.kind, hosts: i.hosts || [], ...(i.description ? { description: String(i.description).slice(0, 120) } : {}) }));
-  const RESOLVERS = ["module:sessions", "module:assistant", "module:mentions"];
+  const RESOLVERS = ["module:sessions", "module:assistant", "module:threads", "module:mentions"];
 
   if (tool) {
     tool("vault.items.names", ["cli", "local", "deck", "capsule", "tailnet"], "Names, kinds and bound hosts of the vault items a person may tag with #, for pickers. Never a value.",
