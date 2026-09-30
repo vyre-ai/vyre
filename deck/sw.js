@@ -55,6 +55,19 @@ const SHELL_SIGNED = false;
 
 /** @param {ArrayBuffer} buf */
 function hex(buf) { return [...new Uint8Array(buf)].map(b => b.toString(16).padStart(2, "0")).join(""); }
+/**
+ * The sha256 the release lists for a file. The page (index.html, served at "/" and on every
+ * client route) carries its build id in a meta tag that vyred sets per build (core/daemon/build.js
+ * htmlWithBuild); the release lists it as built, with "dev", so that one tag is put back first.
+ * @param {string} path @param {ArrayBuffer} bytes
+ */
+async function sha(path, bytes) {
+  if (path === "/" || path === "/index.html" || !/\.[a-z0-9]+$/i.test(path)) {
+    const text = new TextDecoder().decode(bytes);
+    if (text.includes('name="vyre-build"')) bytes = new TextEncoder().encode(text.replace(/(<meta name="vyre-build" content=")[^"]*(")/, "$1dev$2")).buffer;
+  }
+  return hex(await crypto.subtle.digest("SHA-256", bytes));
+}
 /** @param {string} b64 */
 function fromBase64(b64) {
   const bin = atob(b64);
@@ -114,7 +127,7 @@ async function verifyShell(files, required, floor = "") {
     const want = known.get(p), bytes = got.get(p);
     if (!want) return { ok: false, checked: true, why: `not listed: ${p}` };
     if (!bytes) return { ok: false, checked: true, why: `not fetched: ${p}` };
-    if (hex(await crypto.subtle.digest("SHA-256", bytes)) !== want) return { ok: false, checked: true, why: `hash mismatch: ${p}` };
+    if (await sha(p, bytes) !== want) return { ok: false, checked: true, why: `hash mismatch: ${p}` };
   }
   return { ok: true, checked: true, files: shell.files, version };
 }
@@ -324,7 +337,7 @@ self.addEventListener("fetch", e => {
       let res;
       try { res = await fetch(e.request); } catch { return Response.error(); }
       if (!res.ok) return res;
-      return hex(await crypto.subtle.digest("SHA-256", await res.clone().arrayBuffer())) === want ? res : Response.error();
+      return await sha(url.pathname, await res.clone().arrayBuffer()) === want ? res : Response.error();
     })());
     return;
   }
@@ -348,7 +361,7 @@ self.addEventListener("fetch", e => {
     const fresh = fetch(e.request).then(async res => {
       if (res.ok && res.type === "basic") {
         if (!enforce) cache.put(key, res.clone());
-        else if (want && hex(await crypto.subtle.digest("SHA-256", await res.clone().arrayBuffer())) === want) cache.put(key, res.clone());
+        else if (want && await sha(url.pathname, await res.clone().arrayBuffer()) === want) cache.put(key, res.clone());
         else if (want) return Response.error();
       }
       return res;

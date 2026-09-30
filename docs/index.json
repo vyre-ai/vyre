@@ -1,7 +1,7 @@
 {
   "generated": "scripts/gen-docs-reference",
   "about": "Every Vyre command, tool, event, config key, environment variable, screen and concept, where the code defines it, the docs page that explains it, and every page, line and heading anchor that mentions it.",
-  "counts": {"command":329,"tool":617,"event":267,"config":211,"env":138,"screen":17,"concept":43},
+  "counts": {"command":329,"tool":617,"event":267,"config":211,"env":138,"screen":18,"concept":43},
   "things": [
     {"kind":"screen","name":"/a/:id","definedIn":"deck/views/artifact.js","page":"using/deck.md#what-is-on-each-view","label":"Artifact","routes":["/a/:id"],"mentions":[]},
     {"kind":"tool","name":"about.text","definedIn":"core/about/index.js","page":"reference/tools.md#abouttext","module":"about","mentions":[]},
@@ -151,6 +151,7 @@
     {"kind":"event","name":"file.touched","definedIn":"core/harness/index.js","page":"reference/events.md#harness","module":"harness","mentions":[{"page":"concepts/floor.md","line":50,"anchor":"5-every-file-change-is-visible-including-changes-a-command-made-without-saying-so"},{"page":"build/tools-and-events.md","line":81,"anchor":"hear-events-ctxeventson-and-since"},{"page":"build/tools-and-events.md","line":82,"anchor":"hear-events-ctxeventson-and-since"},{"page":"build/tools-and-events.md","line":93,"anchor":"hear-events-ctxeventson-and-since"},{"page":"build/tools-and-events.md","line":102,"anchor":"a-worked-example"},{"page":"build/tools-and-events.md","line":131,"anchor":"a-worked-example"},{"page":"build/tools-and-events.md","line":162,"anchor":"a-worked-example"}]},
     {"kind":"event","name":"file.trashed","definedIn":"core/glass/index.js","page":"reference/events.md#glass","module":"glass","mentions":[{"page":"adr/0005-glass.md","line":175,"anchor":"4-files-one-browser-three-targets-bytes-on-ticketed-routes"},{"page":"adr/0005-glass.md","line":216,"anchor":"5-ownership-through-the-module-contract"}]},
     {"kind":"event","name":"file.uploaded","definedIn":"core/glass/streams.js","page":"reference/events.md#glass","module":"glass","mentions":[{"page":"adr/0005-glass.md","line":175,"anchor":"4-files-one-browser-three-targets-bytes-on-ticketed-routes"},{"page":"adr/0005-glass.md","line":216,"anchor":"5-ownership-through-the-module-contract"}]},
+    {"kind":"screen","name":"/files","definedIn":"deck/views/files.js","page":"using/deck.md#what-is-on-each-view","label":"Files","routes":["/files","/files/:share"],"mentions":[]},
     {"kind":"config","name":"files","definedIn":"core/files/drive.js","page":null,"mentions":[{"page":"get-started/tailscale.md","line":414,"anchor":"taildrop-send-files-to-the-box"}]},
     {"kind":"config","name":"files.allowDot","definedIn":"core/files/index.js","page":null,"mentions":[]},
     {"kind":"tool","name":"files.deliver","definedIn":"core/files/drop.js","page":"reference/tools.md#filesdeliver","module":"files","mentions":[]},

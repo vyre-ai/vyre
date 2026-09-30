@@ -4,6 +4,10 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### pwa: the signed page check allows for the per-build meta tag
+
+- vyred stamps `deck/index.html` with the build id in `<meta name="vyre-build">` (`htmlWithBuild`). The release lists the page as built, with "dev", so the worker puts that one tag back to "dev" before hashing the page; without it every signed box would have refused its own page. The daemon test does the same and now passes against a real served box.
+
 #### tests: hands-chrome waits 30 s for Chrome's DevTools port
 
 - A hosted runner sometimes takes longer than 10 s to start headless Chrome ("Chrome did not print its DevTools port in time"). That flake predates the mock-keychain flags (it failed on work/native-core-0.2 runs 4932f92d and 3ff930c6, before 47dafe78 existed; the flags are the only change to that launch and drop nothing), so the wait is 30 s. A launch that is truly broken still fails when Chrome exits early.

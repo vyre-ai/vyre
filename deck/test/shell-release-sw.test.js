@@ -35,7 +35,7 @@ function release() {
 
 function load(/** @type {{ signed?: boolean, pub: string, served: Record<string, Buffer | undefined> }} */ o) {
   const pick = (/** @type {RegExp} */ re) => { const m = re.exec(SW_SRC); assert.ok(m, String(re)); return m[0]; };
-  const src = [pick(/function hex\([\s\S]*?\n}/), pick(/function fromBase64\([\s\S]*?\n}/), pick(/async function verifyShell\([\s\S]*?\n}\n/), pick(/function semverLess\([\s\S]*?\n}\n/), "verifyShell;"].join("\n");
+  const src = [pick(/function hex\([\s\S]*?\n}/), pick(/async function sha\([\s\S]*?\n}\n/), pick(/function fromBase64\([\s\S]*?\n}/), pick(/async function verifyShell\([\s\S]*?\n}\n/), pick(/function semverLess\([\s\S]*?\n}\n/), "verifyShell;"].join("\n");
   const fetch = async (/** @type {string} */ url) => {
     const b = o.served[url.replace("/release/", "")];
     return b ? { ok: true, status: 200, arrayBuffer: async () => b.buffer.slice(b.byteOffset, b.byteOffset + b.byteLength) } : { ok: false, status: 404, arrayBuffer: async () => new ArrayBuffer(0) };
@@ -254,4 +254,19 @@ test("no Ed25519: refuse the install when a worker is already running, run unche
   assert.equal(first.skipped, 1, "a first install runs, unchecked");
   assert.equal(first.store.has("/__shell-hashes"), false, "and stores no hash list");
   assert.equal((await (await first.ask("/views/vault.js")).text()), "x", "so no script is refused for lack of a list");
+});
+
+test("the page's per-build meta tag is put back to \"dev\" before hashing, so a stamped index.html matches the release", async () => {
+  const raw = '<html><meta name="vyre-build" content="dev"><body>x</body></html>';
+  const stamped = raw.replace('content="dev"', 'content="abc123def456"');
+  const want = crypto.createHash("sha256").update(raw).digest("hex");
+  const store = new Map([["/__shell-hashes", JSON.stringify([["/", want]])]]);
+  const name = k => (typeof k === "string" ? k : new URL(k.url).pathname);
+  const cache = { match: async k => (store.has(name(k)) ? new Response(store.get(name(k))) : undefined), put: async (k, r) => { store.set(name(k), await r.text()); } };
+  const on = {};
+  vm.runInNewContext(SW_SRC.replace("const SHELL_SIGNED = false;", "const SHELL_SIGNED = true;"), { self: { addEventListener: (t, fn) => { on[t] = fn; } }, location: { origin: "https://box" }, URL, Response, TextEncoder, TextDecoder, atob, crypto: globalThis.crypto, console,
+    caches: { open: async () => cache, keys: async () => [], delete: async () => true },
+    fetch: async () => Object.defineProperty(new Response(stamped), "type", { value: "basic" }) });
+  let out; on.fetch({ request: { url: "https://box/chat", method: "GET", mode: "navigate" }, respondWith: x => { out = x; }, waitUntil: x => x });
+  assert.equal(await (await out).text(), stamped, "the stamped page is served, and passes");
 });
