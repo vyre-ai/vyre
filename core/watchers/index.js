@@ -24,7 +24,7 @@ const str = { type: "string" };
 /** Deleting or running a watcher on demand: a duty by teammates' module or the person, any other only by the person. */
 function owned(name, caller) {
   if (DUTY_NAME.test(String(name))) return dutyCaller(caller);
-  if (!isPerson(caller)) throw Object.assign(new Error("deleting or running a watcher on demand is the person's; an agent asks them"), { code: "denied" });
+  if (!isPerson(caller)) throw Object.assign(new Error("deleting, running or resuming a watcher is the person's; an agent asks them"), { code: "denied" });
 }
 
 /** Duties are made and changed by teammates' module, for a person who turned them on, or by the person. */
