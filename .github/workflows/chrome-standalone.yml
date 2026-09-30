@@ -1,0 +1,64 @@
+# The standalone vyre-chrome package (Claude Code, no Vyre server) against a REAL Chrome.
+# On each of macOS, Windows and Linux it builds the release folder, installs the connector with
+# its own `install` command, starts `cli.mjs mcp` and drives it over stdio like Claude Code, with
+# Chrome for Testing and the real extension and native host in a temp profile. Nothing touches a
+# person's machine, no secrets, no external sites. The `package` job uploads the release tarball
+# and its sha256 as an artifact; the lead attaches it to a GitHub release once it is cleared.
+name: chrome-standalone
+on:
+  workflow_dispatch:
+  push:
+    branches: [work/capsule-sight]
+    paths:
+      - local/hands-chrome-mac/**
+      - .github/workflows/chrome-standalone.yml
+permissions:
+  contents: read
+concurrency:
+  group: chrome-standalone-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  real:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, windows-latest, ubuntu-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 12
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Standalone package against real Chrome
+        timeout-minutes: 9
+        run: node local/hands-chrome-mac/standalone/harness/real.mjs --iters 30 --out "results/standalone-${{ runner.os }}.json"
+      - name: Results
+        if: always()
+        run: |
+          ls -la results || true
+          for f in results/*.json; do echo "== $f"; head -c 8000 "$f"; echo; done
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: chrome-standalone-${{ runner.os }}
+          path: results/*.json
+          if-no-files-found: warn
+  package:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: node local/hands-chrome-mac/standalone/build-release.mjs --out dist
+      - uses: actions/upload-artifact@v4
+        with:
+          name: vyre-chrome-release
+          path: |
+            dist/*.tar.gz
+            dist/*.sha256

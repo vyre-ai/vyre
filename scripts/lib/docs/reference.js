@@ -415,16 +415,20 @@ function collectTools(root, mods, harvested) {
       if (t) out.push({ ...t, only: both && !(box.has(name) && local.has(name)) ? (box.has(name) ? "box" : "local") : null });
       else out.push({ name, description: staticDescription(root, dir, name), input: null, callers: null, internal: false, hook: false, presence: false, only: null, unregistered: true });
     }
-    byModule.set(m.name, out);
+    // A name shared by two modules (the box's chrome and the Mac's) is one entry, tools once each.
+    const have = byModule.get(m.name) || [];
+    byModule.set(m.name, [...have, ...out.filter(t => !have.some(h => h.name === t.name))].sort((x, y) => byName(x.name, y.name)));
   }
   return byModule;
 }
 
 function toolsPage(mods, byModule) {
   const sections = [];
+  const done = new Set();
   for (const { manifest: m } of mods) {
     const tools = byModule.get(m.name) || [];
-    if (!tools.length) continue;
+    if (!tools.length || done.has(m.name)) continue;
+    done.add(m.name);
     const out = [`## ${m.name}`, ""];
     for (const t of tools) {
       out.push(`### ${code(t.name)}`, "");

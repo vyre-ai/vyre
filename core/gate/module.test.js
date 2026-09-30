@@ -55,7 +55,9 @@ test("gate: an agent's email is held, edited and approved by the user, and sent 
   assert.equal((await cli("vault.grant", { name: "work-mail-token", module: "gate" })).data.grant.status, "active");
 
   const senders = (await juno("gate.senders")).data;
-  assert.deepEqual(senders.map(s => s.name), ["mail"]);
+  // "hands:mac" is offered by the hands module (local role, computer use), alongside the
+  // configured "mail" sender; not this test's concern, so only check "mail" is among them.
+  assert.ok(senders.map(s => s.name).includes("mail"));
 
   const held = await juno("gate.request", { kind: "send", via: "mail", to: "dana@harlowlegal.com",
     content: { subject: "Re: Intake form rebuild", body: "Hi Dana, the form is on staging. Call Thursday? Alex" }, thread: "t-1" });
