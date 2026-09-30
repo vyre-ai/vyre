@@ -39,7 +39,7 @@ function fakeBin(dir, name, out) {
 async function chrome(t, dir) {
   const isShell = /headless-shell/.test(CHROME_BIN);
   const profile = fs.mkdtempSync(path.join(dir, "chrome-"));
-  const args = [...(isShell ? [] : ["--headless=new"]), "--remote-debugging-port=0", `--user-data-dir=${profile}`, "--no-first-run", "--no-sandbox",
+  const args = [...(isShell ? [] : ["--headless=new"]), "--remote-debugging-port=0", `--user-data-dir=${profile}`, "--use-mock-keychain", "--password-store=basic", "--no-first-run", "--no-sandbox",
     ...(isShell ? [] : ["--no-default-browser-check"]), "--window-size=1280,900", "about:blank"];
   const child = spawn(CHROME_BIN, args, { stdio: "ignore", detached: true });
   // Chrome writes its profile until it exits, and tempHome's own cleanup may already have run:

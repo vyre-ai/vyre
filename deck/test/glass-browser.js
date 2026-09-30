@@ -58,7 +58,7 @@ try {
   });
   const bin = process.env.CHROME || "/usr/local/bin/vyre-chrome";
   const cdpPort = 9432 + Math.floor(Math.random() * 400);
-  const chrome = spawn("nice", ["-n", "15", bin, `--remote-debugging-port=${cdpPort}`, "--remote-debugging-address=127.0.0.1", `--user-data-dir=${scratch}`,
+  const chrome = spawn("nice", ["-n", "15", bin, `--remote-debugging-port=${cdpPort}`, "--remote-debugging-address=127.0.0.1", `--user-data-dir=${scratch}`, "--use-mock-keychain", "--password-store=basic",
     "--headless=new", "--no-sandbox", "--no-first-run", "about:blank"], { stdio: "ignore" });
   started.push(chrome);
   const CDP = `http://127.0.0.1:${cdpPort}`;

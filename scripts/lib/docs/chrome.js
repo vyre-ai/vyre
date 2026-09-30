@@ -14,7 +14,7 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
  */
 export async function launch({ bin, dir, args = [] }) {
   const profile = fs.mkdtempSync(path.join(dir, "chrome-"));
-  const child = spawn(bin, ["--headless=new", "--remote-debugging-port=0", `--user-data-dir=${profile}`, "--hide-scrollbars", "--no-first-run",
+  const child = spawn(bin, ["--headless=new", "--remote-debugging-port=0", `--user-data-dir=${profile}`, "--use-mock-keychain", "--password-store=basic", "--hide-scrollbars", "--no-first-run",
     "--no-default-browser-check", "--disable-extensions", "--disable-background-networking", "--disable-features=HttpsUpgrades,Translate",
     "--force-color-profile=srgb", "--window-size=1280,900", ...args, "about:blank"], { stdio: "ignore" });
   let port = 0;

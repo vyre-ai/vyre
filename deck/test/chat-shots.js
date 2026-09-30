@@ -62,7 +62,7 @@ log(`world ${base}`);
 // font's space advances and draws "No one is typing" as "Nooneis typing" (pwa, 27 Sep).
 const bin = process.env.CHROME || "/usr/local/bin/vyre-chrome";
 const cdpPort = 9431 + Math.floor(Math.random() * 400);
-const chrome = spawn("nice", ["-n", "15", bin, `--remote-debugging-port=${cdpPort}`, "--remote-debugging-address=127.0.0.1", `--user-data-dir=${profile}`,
+const chrome = spawn("nice", ["-n", "15", bin, `--remote-debugging-port=${cdpPort}`, "--remote-debugging-address=127.0.0.1", `--user-data-dir=${profile}`, "--use-mock-keychain", "--password-store=basic",
   "--headless=new", "--no-sandbox", "--no-first-run", "--no-default-browser-check", "about:blank"], { stdio: "ignore" });
 started.push(chrome);
 const CDP = `http://127.0.0.1:${cdpPort}`;

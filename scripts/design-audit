@@ -44,7 +44,7 @@ for (const name of names) {
   const [w, h] = size(file);
   let dom = "";
   try {
-    dom = execFileSync(bin, ["--headless=new", "--no-sandbox", "--disable-gpu", "--hide-scrollbars", "--allow-file-access-from-files",
+    dom = execFileSync(bin, ["--headless=new", "--use-mock-keychain", "--password-store=basic", "--no-sandbox", "--disable-gpu", "--hide-scrollbars", "--allow-file-access-from-files",
       "--force-device-scale-factor=1", "--virtual-time-budget=10000", `--window-size=${w},${h + 200}`, "--dump-dom", `file://${file}`],
       { encoding: "utf8", maxBuffer: 64 * 1024 * 1024, stdio: ["ignore", "pipe", "ignore"], timeout: 120_000 });
   } catch (e) { dom = String(/** @type {any} */ (e).stdout || ""); }

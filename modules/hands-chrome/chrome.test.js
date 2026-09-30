@@ -29,7 +29,7 @@ async function launchChrome(t) {
   const logFile = path.join(dir, "chrome.log");
   const log = fs.openSync(logFile, "a");
   const child = spawn(CHROME_BIN, [
-    "--headless=new", "--remote-debugging-port=0", `--user-data-dir=${dir}`,
+    "--headless=new", "--remote-debugging-port=0", `--user-data-dir=${dir}`, "--use-mock-keychain", "--password-store=basic",
     "--no-first-run", "--no-default-browser-check", "--disable-gpu", "--disable-extensions", "about:blank",
   ], { stdio: ["ignore", log, log], detached: true });
   // Chrome's own helpers outlive a SIGKILL to the browser and keep writing the profile, so the

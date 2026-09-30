@@ -212,7 +212,7 @@ try {
 
   profile = fs.mkdtempSync(path.join(os.tmpdir(), "vy-vault-chrome-"));
   const dport = 9400 + Math.floor(Math.random() * 400);
-  chrome = spawn(CHROME, ["--headless=new", `--remote-debugging-port=${dport}`, `--user-data-dir=${profile}`, "--hide-scrollbars", "--no-first-run",
+  chrome = spawn(CHROME, ["--headless=new", `--remote-debugging-port=${dport}`, `--user-data-dir=${profile}`, "--use-mock-keychain", "--password-store=basic", "--hide-scrollbars", "--no-first-run",
     "--no-default-browser-check", "--window-size=1440,900", "about:blank"], { stdio: "ignore" });
   let target;
   for (let i = 0; i < 50 && !target; i++) { await sleep(200); try { target = (await (await fetch(`http://127.0.0.1:${dport}/json`)).json()).find(t => t.type === "page"); } catch {} }
