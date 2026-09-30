@@ -426,9 +426,10 @@ esac
 exit 0` };
 
 test("install-box.sh: with no image to pull, it builds from a verified vyre.tgz in DIR/src", t => {
-  const r = runScript(t, ["--yes"], NO_IMAGE);
+  // A release with no signed image digests only installs when asked to build from source (fail closed).
+  const r = runScript(t, ["--yes"], NO_IMAGE, () => {}, { VYRE_BUILD: "tgz" });
   assert.equal(r.status, 0, r.stderr + r.stdout);
-  assert.match(r.stdout, /cannot pull ghcr\.io\/vyre-ai\/vyre:latest; building it from vyre\.tgz/);
+  assert.match(r.stdout, /building the image from vyre\.tgz \(VYRE_BUILD=tgz\)/);
   assert.equal(fs.readFileSync(path.join(r.dir, "src", "VERSION"), "utf8"), "0.3.0\n");
   assert.ok(fs.existsSync(path.join(r.dir, "src", "box", "Dockerfile")));
   assert.ok(!fs.existsSync(path.join(r.dir, "src.new")));
@@ -467,7 +468,7 @@ test("install-box.sh: a file with no line in SHA256SUMS stops the install", t =>
   const r = runScript(t, ["--yes"], NO_IMAGE, box => {
     const f = path.join(box.site, "SHA256SUMS");
     fs.writeFileSync(f, fs.readFileSync(f, "utf8").split("\n").filter(l => !l.endsWith("  vyre.tgz")).join("\n"));
-  });
+  }, { VYRE_BUILD: "tgz" });
   assert.equal(r.status, 1);
   assert.match(r.stderr, /SHA256SUMS has no line for vyre\.tgz/);
   assert.ok(!fs.existsSync(path.join(r.dir, "src")));

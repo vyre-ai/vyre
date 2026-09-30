@@ -77,7 +77,11 @@ export async function backup({ root = config.home(), file, db, passphrase, inclu
   const tmp = `${target}.${process.pid}.${crypto.randomBytes(4).toString("hex")}.tmp`;
   // Outside staging: tar reads staging's own contents, and a plain-tar output file sitting
   // inside the folder being tarred would try to include itself mid-write.
-  const plain = `${tmp}.plain.tar.gz`;
+  // In its own 0700 folder, and created 0600 before tar writes into it: the archive is the whole
+  // bundle in the clear, and must never sit at the process umask beside the destination.
+  const plainDir = fs.mkdtempSync(path.join(process.env.VYRE_TMPDIR || os.tmpdir(), "vyre-backup-plain-"));
+  const plain = path.join(plainDir, "backup.tar.gz");
+  fs.closeSync(fs.openSync(plain, "wx", 0o600));
   let excludedLogins = [];
   try {
     const included = [];
@@ -100,6 +104,13 @@ export async function backup({ root = config.home(), file, db, passphrase, inclu
           const staged = new DatabaseSync(out);
           try {
             const names = PROVIDER_LOGIN_NAMES();
+            // Accounts (core/sessions/accounts.js) name any vault item as their sign-in: Codex, Grok,
+            // a second Claude. Read the names from the staged copy, so no import across the boundary.
+            if (staged.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name='sessions_accounts'").get()) {
+              for (const r of /** @type {any[]} */ (staged.prepare("SELECT vault_item FROM sessions_accounts WHERE vault_item IS NOT NULL").all())) {
+                if (typeof r.vault_item === "string" && !names.includes(r.vault_item)) names.push(r.vault_item);
+              }
+            }
             // vault_items may not exist yet (a store older than the vault module, or a test
             // fixture with no vault table at all); nothing to exclude either way.
             const hasTable = staged.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name='vault_items'").get();
@@ -107,8 +118,12 @@ export async function backup({ root = config.home(), file, db, passphrase, inclu
               const rows = /** @type {any[]} */ (staged.prepare(`SELECT id, name FROM vault_items WHERE name IN (${names.map(() => "?").join(",")})`).all(...names));
               excludedIds = rows.map(r => r.id);
               excludedLogins = rows.map(r => r.name);
+              // secure_delete zeroes the freed pages, and the VACUUM below rewrites the file, so the
+              // excluded value is not left in free space to be read out of the sealed bytes later.
+              if (excludedIds.length) staged.exec("PRAGMA secure_delete = ON");
               if (excludedIds.length) staged.prepare(`DELETE FROM vault_items WHERE id IN (${excludedIds.map(() => "?").join(",")})`).run(...excludedIds);
             }
+            if (excludedIds.length) staged.exec("VACUUM");
           } finally { staged.close(); }
         }
         included.push(name);
@@ -135,7 +150,7 @@ export async function backup({ root = config.home(), file, db, passphrase, inclu
     return { file: target, bytes: fs.statSync(target).size, included, excludedLogins };
   } finally {
     fs.rmSync(tmp, { force: true });
-    fs.rmSync(plain, { force: true });
+    fs.rmSync(plainDir, { recursive: true, force: true });
     fs.rmSync(staging, { recursive: true, force: true });
   }
 }

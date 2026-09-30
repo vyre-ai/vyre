@@ -13,7 +13,8 @@
 # Environment: VYRE_DIR (default /srv/vyre), VYRE_BOX_URL (default https://vyre.run/box/),
 # VYRE_IMAGE (default ghcr.io/vyre-ai/vyre:latest), VYRE_BUILD=tgz to build from vyre.tgz even
 # when the image can be pulled, and VYRE_CODE: the setup code the browser shows, for the
-# install line `VYRE_CODE=... curl -fsSL https://vyre.run/i | sh`. The code is never a command-line
+# install line `curl -fsSL https://vyre.run/i | VYRE_CODE=... sh` (the variable goes on sh, the reader
+# of the script: on curl it would never reach it, and sudo drops it, so run it as yourself). The code is never a command-line
 # argument (a process list shows arguments); without one, and on a terminal, it is asked for and
 # Enter skips it. It goes only into $VYRE_DIR/vyre.env (0600) and is never printed.
 #
@@ -572,10 +573,23 @@ docker_flavor() {
 # read_release: the image digests release.json names (its SHA256SUMS line already matched), and a
 # check that the released compose.yml pins the same ones.
 read_release() {
-  [ -f "$TMP/release.json" ] || return 0
+  # Fail closed: a release that names no image digests cannot be checked, so it does not install
+  # (VYRE_BUILD=tgz builds from the verified vyre.tgz instead and never pulls an image).
+  if [ ! -f "$TMP/release.json" ]; then
+    [ "${VYRE_BUILD:-}" = tgz ] && return 0
+    die "this release has no release.json in its SHA256SUMS, so its image cannot be verified. Nothing was installed. (VYRE_BUILD=tgz builds from source instead.)"
+  fi
   j=$(tr -d '\n' <"$TMP/release.json")
   BOX_REF=$(printf '%s' "$j" | sed -n 's/.*"box": *{[^}]*"ref": *"\([^"]*\)".*/\1/p')
   COMPUTER_REF=$(printf '%s' "$j" | sed -n 's/.*"computer": *{[^}]*"ref": *"\([^"]*\)".*/\1/p')
+  if [ -z "$BOX_REF" ] && [ "${VYRE_BUILD:-}" != tgz ]; then
+    die "release.json names no image digest for the box, so it cannot be verified. Nothing was installed. (VYRE_BUILD=tgz builds from source instead.)"
+  fi
+  # Every image the compose file starts is pinned by digest, so an edit cannot slip in a moving tag.
+  if [ -n "$BOX_REF" ]; then
+    unpinned=$(sed -n 's/^ *image: *//p' "$TMP/compose.yml" | grep -v '@sha256:[0-9a-f]\{64\}' || true)
+    [ -z "$unpinned" ] || die "compose.yml starts an image that is not pinned by digest ($(printf '%s' "$unpinned" | head -n 1)). Nothing was installed."
+  fi
   for ref in $BOX_REF $COMPUTER_REF; do
     printf '%s' "$ref" | grep -Eq '^ghcr\.io/vyre-ai/[a-z-]+@sha256:[0-9a-f]{64}$' \
       || die "release.json names an image that is not a ghcr.io/vyre-ai digest"
@@ -655,7 +669,7 @@ main() {
       --print-link) LINK_ONLY=1 ;;
       --uninstall) UNINSTALL=1 ;;
       --purge) PURGE=1 ;;
-      --code|--code=*) die "the setup code is never a command-line argument, since a process list shows arguments. Set VYRE_CODE instead: VYRE_CODE=... sh install-box.sh" ;;
+      --code|--code=*) die "the setup code is never a command-line argument, since a process list shows arguments. Set VYRE_CODE for sh instead: curl -fsSL https://vyre.run/i | VYRE_CODE=... sh" ;;
       -h|--help) sed -n '2,14p' "$0" 2>/dev/null || true; exit 0 ;;
       *) die "unknown option $1" ;;
     esac
