@@ -3730,7 +3730,7 @@ What Vyre for Chrome knows about a site: { origin, family?, rev, family_rev } ca
 
 ### `memory.site.list`
 
-Every site Vyre knows: [{ key, kind, names, family, rev, updated, verified, counts, used_to_work }], newest first, for the Sites list in Memory. The person's own surfaces only.
+Every site Vyre knows: { sites: [{ key, kind, names, family, rev, updated, verified, counts, used_to_work }], forgotten: [{ kind: 'site'|'row', key, name, part?, id?, label?, at, expires_at }] }, for the Sites list in Memory. forgotten is what was forgotten in the last 24 hours and can still be brought back with memory.site.restore (a whole site by { key }, a row by { key, part, id }), newest first. The person's own surfaces only.
 
 - Input: none
 - Callers: any caller

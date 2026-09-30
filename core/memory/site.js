@@ -200,7 +200,7 @@ export function register(ctx, { denied }) {
   });
 
   ctx.tool("memory.site.list", {
-    description: "Every site Vyre knows: [{ key, kind, names, family, rev, updated, verified, counts, used_to_work }], newest first, for the Sites list in Memory. The person's own surfaces only.",
+    description: "Every site Vyre knows: { sites: [{ key, kind, names, family, rev, updated, verified, counts, used_to_work }], forgotten: [{ kind: 'site'|'row', key, name, part?, id?, label?, at, expires_at }] }, for the Sites list in Memory. forgotten is what was forgotten in the last 24 hours and can still be brought back with memory.site.restore (a whole site by { key }, a row by { key, part, id }), newest first. The person's own surfaces only.",
     input: { type: "object", properties: {} },
     run: async (_i, { caller } = {}) => {
       personOnly(caller, "the list of sites");
@@ -211,7 +211,13 @@ export function register(ctx, { denied }) {
         const verified = items.map(x => x.verified).filter(Boolean).sort().pop() || null;
         return { key: r.key, kind: r.kind, names: rec.names, family: rec.family, rev: Number(r.rev), updated: Number(r.updated), verified, counts: counts(rec), used_to_work: items.filter(isQuarantined).length };
       });
-      return { sites };
+      // What the person forgot in the last 24 hours and can still bring back (memory.site.restore), so a surface offers Undo from here,
+      // not from its own storage: a whole site ({ key }) or one row ({ key, part, id }).
+      const forgotten = [
+        .../** @type {any[]} */ (db.prepare("SELECT key, record, at FROM memory_site_forgotten ORDER BY at DESC").all()).map(r => { const rec = JSON.parse(r.record); return { kind: "site", key: String(r.key), name: (rec.names && rec.names[0]) || String(r.key).replace(/^https?:\/\//, ""), at: Number(r.at), expires_at: Number(r.at) + UNDO_MS }; }),
+        .../** @type {any[]} */ (db.prepare("SELECT key, part, id, item, at FROM memory_site_forgotten_items ORDER BY at DESC").all()).map(r => ({ kind: "row", key: String(r.key), name: String(r.key).replace(/^https?:\/\//, ""), part: String(r.part), id: String(r.id), label: labelOf(String(r.part), JSON.parse(r.item)), at: Number(r.at), expires_at: Number(r.at) + UNDO_MS })),
+      ].sort((a, b) => b.at - a.at);
+      return { sites, forgotten };
     },
   });
 
@@ -287,6 +293,21 @@ export function register(ctx, { denied }) {
     return out;
   };
 
+  /** What a row is called in the Sites list, from structure only. @param {string} part @param {any} x */
+  const labelOf = (part, x) => {
+    switch (part) {
+      case "controls": return `${x.name || x.role} on ${x.page}`;
+      case "api": return `${x.method} ${x.pathTemplate}`;
+      case "flows": return x.title || x.name;
+      case "frames": return `${x.role} frame`;
+      case "notes": return x.name;
+      case "ready": return `ready: ${x.kind}${x.arg ? ` ${x.arg}` : ""}`;
+      case "wall": return `sign-in: ${x.kind}${x.arg ? ` ${x.arg}` : ""}`;
+      case "signedIn": return `signed in: ${x.kind}${x.arg ? ` ${x.arg}` : ""}`;
+      default: return String(part);
+    }
+  };
+
   ctx.tool("memory.site.detail", {
     description: "One site in full, for the Sites list: { key, kind, names, family, related, rev, updated, verified, used_to_work, events, parts: { frames, controls, api, flows, notes, ready, wall, signedIn } } where each item is { id, label, conf, verified, quarantined, src } and never a selector, a value or page text beyond what the record holds (structure only). Each item's id is what memory.site.forget { key, part, id } removes. The person's own surfaces only.",
     input: { type: "object", required: ["key"], properties: { key: { type: "string" } } },
@@ -296,16 +317,9 @@ export function register(ctx, { denied }) {
       const rec = load(i.key);
       if (!rec) return { key: i.key, found: false };
       const row = (/** @type {any} */ x, /** @type {string} */ label) => ({ id: null, label, conf: readConf(x, now()), verified: x.verified || null, quarantined: isQuarantined(x), src: x.src });
-      const parts = {
-        frames: rec.frames.map((/** @type {any} */ x) => ({ ...row(x, `${x.role} frame`), id: itemId("frames", x) })),
-        controls: rec.controls.map((/** @type {any} */ x) => ({ ...row(x, `${x.name || x.role} on ${x.page}`), id: itemId("controls", x) })),
-        api: rec.api.map((/** @type {any} */ x) => ({ ...row(x, `${x.method} ${x.pathTemplate}`), id: itemId("api", x) })),
-        flows: rec.flows.map((/** @type {any} */ x) => ({ ...row(x, x.title || x.name), id: itemId("flows", x), runs: x.runs, fails: x.fails })),
-        notes: rec.notes.map((/** @type {any} */ x) => ({ ...row(x, x.name), id: itemId("notes", x) })),
-        ready: rec.ready.map((/** @type {any} */ x) => ({ ...row(x, `ready: ${x.kind}${x.arg ? ` ${x.arg}` : ""}`), id: itemId("ready", x) })),
-        wall: rec.login.wall.map((/** @type {any} */ x) => ({ ...row(x, `sign-in: ${x.kind}${x.arg ? ` ${x.arg}` : ""}`), id: itemId("wall", x) })),
-        signedIn: rec.login.signedIn.map((/** @type {any} */ x) => ({ ...row(x, `signed in: ${x.kind}${x.arg ? ` ${x.arg}` : ""}`), id: itemId("signedIn", x) })),
-      };
+      const rows = (/** @type {string} */ part, /** @type {any[]} */ list) => list.map(x => ({ ...row(x, labelOf(part, x)), id: itemId(part, x), ...(part === "flows" ? { runs: x.runs, fails: x.fails } : {}) }));
+      const parts = { frames: rows("frames", rec.frames), controls: rows("controls", rec.controls), api: rows("api", rec.api), flows: rows("flows", rec.flows), notes: rows("notes", rec.notes),
+        ready: rows("ready", rec.ready), wall: rows("wall", rec.login.wall), signedIn: rows("signedIn", rec.login.signedIn) };
       const all = Object.values(parts).flat();
       const events = /** @type {any[]} */ (db.prepare("SELECT at, kind, outcome FROM memory_site_events WHERE key = ? ORDER BY id DESC LIMIT 10").all(i.key)).map(e => ({ at: Number(e.at), kind: String(e.kind), ...(e.outcome ? { outcome: String(e.outcome) } : {}) }));
       return { key: rec.key, found: true, kind: isFamilyKey(rec.key) ? "family" : "origin", names: rec.names, family: rec.family, related: rec.related, rev: rec.rev, updated: rec.updated,

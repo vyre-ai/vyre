@@ -454,3 +454,30 @@ test("the test clock: under a test flag a harness can put misses on two days; wi
   at(NOW + 3 * DAY + 6 * HOUR);
   assert.equal((await miss()).data.quarantined, true, "a miss on a second day, two days after the first, sets it aside");
 });
+
+test("memory.site.list returns what was forgotten in the last 24 hours and can be restored, so Undo comes from the box", async t => {
+  const w = await world(t);
+  await w.call("memory.site.put", { origin: ORIGIN, patch: patch() });
+  await w.call("memory.site.put", { origin: AGENCY, patch: { names: ["Agency Site"], family: "ghl" } });
+  assert.deepEqual((await w.call("memory.site.list", {}, "deck")).data.forgotten, []);
+  await w.call("memory.site.forget", { key: ORIGIN, part: "controls", id: "c1" }, "deck");
+  w.clock.now += HOUR;
+  await w.call("memory.site.forget", { key: AGENCY }, "deck");
+  const list = (await w.call("memory.site.list", {}, "deck")).data;
+  assert.deepEqual(list.forgotten.map(f => [f.kind, f.key, f.name, f.part || null, f.id || null, f.label || null]), [
+    ["site", AGENCY, "Agency Site", null, null, null],
+    ["row", ORIGIN, "app.ghl.example", "controls", "c1", "button on /workflows"],
+  ], "newest first, with what a surface needs to show Undo");
+  assert.ok(list.forgotten.every(f => f.expires_at === f.at + 24 * HOUR));
+  assert.deepEqual(list.sites.map(s => s.key), [ORIGIN], "the forgotten site is not in the list of known sites");
+  // Restoring from what the list gave takes it off the list.
+  const row = list.forgotten.find(f => f.kind === "row");
+  assert.equal((await w.call("memory.site.restore", { key: row.key, part: row.part, id: row.id }, "deck")).data.restored, 1);
+  assert.equal((await w.call("memory.site.restore", { key: AGENCY }, "deck")).data.restored, 1);
+  assert.deepEqual((await w.call("memory.site.list", {}, "deck")).data.forgotten, []);
+  // After 24 hours what was forgotten is no longer offered.
+  await w.call("memory.site.forget", { key: ORIGIN, part: "controls", id: "c1" }, "deck");
+  w.clock.now += 25 * HOUR;
+  assert.deepEqual((await w.call("memory.site.list", {}, "deck")).data.forgotten, []);
+  assert.equal((await w.call("memory.site.list", {}, "mcp:agent:juno")).code, "denied");
+});
