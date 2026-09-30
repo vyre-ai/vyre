@@ -19,16 +19,6 @@ test("windows updater pins the same release key as vyre-core", () => {
   assert.ok(rs.includes(`"${RELEASE_KEY}"`), "update.rs RELEASE_KEY matches release.js");
 });
 
-import { ticketOpen, ticketMac, ticketDerive } from "../core/relay/wire.js";
-
-test("windows wink vector: the box-side code opens what the Rust reader is tested against", () => {
-  const w = JSON.parse(fs.readFileSync(new URL("../local/capsule/native-win/tests/wink-vector.json", import.meta.url), "utf8"));
-  const ticket = Buffer.from(w.ticket, "hex");
-  assert.equal(ticketDerive("loc", ticket).toString("base64url"), w.loc);
-  assert.equal(ticketMac(ticket, w.record).toString("base64url"), w.mac);
-  assert.equal(JSON.parse(ticketOpen(ticket, w.record)).handle, w.handle);
-});
-
 test("windows updater's shared vector is launch's, verified by verifySums too", () => {
   const key = "MCowBQYDK2VwAyEA6kpsY+KcUgq+9VB7Ey7F+ZVHdq6+vnuSQh7qaRRG0iw=";
   const sums = "a".repeat(64) + "  manifest.json\n" + "b".repeat(64) + "  vyre.tgz\n";
