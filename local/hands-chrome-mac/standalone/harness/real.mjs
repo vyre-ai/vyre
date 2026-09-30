@@ -261,6 +261,31 @@ async function main() {
         return { label: st.label, group: st.group, pill: st.pill, haltedByPill: halted };
       });
 
+      // Approve once, write many: without a plan a write made with the page's login is held; with one the person approved, that many go through and the next asks again.
+      await stage("plan_approval", async () => {
+        const g = await mcp.call("chrome_tabs", { action: "use", url: `${fixture.url}/ghl`, openIfMissing: true }); const gt = g.id ?? (g.tab && g.tab.id);
+        await mcp.call("chrome_tabs", { action: "navigate", tab: gt, url: `${fixture.url}/ghl` }); await sleep(300);
+        await mcp.call("chrome_api", { action: "learn", tab: gt });
+        const steps = WORKFLOW_STEPS.map(s => s.op === "click"
+          ? { op: "page.act", args: { tabId: gt, selector: { identifier: (/data-testid="([^"]+)"/.exec(s.selector) || [])[1] }, kind: "click" } }
+          : { op: "page.fill", args: { tabId: gt, fields: [{ selector: { identifier: s.selector.replace(/^#/, "") }, value: s.value }] } });
+        await mcp.call("chrome_batch", { tab: gt, steps });
+        const cat = await mcp.call("chrome_api", { action: "learn", tab: gt });
+        const entry = (cat.entries || []).find((/** @type {any} */ e) => e.method === "POST" && /\/api\/workflows/.test(e.pathTemplate || e.path || ""));
+        if (!entry) throw new Error("the catalog has no POST /api/workflows entry: " + JSON.stringify((cat.entries || []).map((/** @type {any} */ e) => e.method + " " + (e.pathTemplate || e.path))).slice(0, 300));
+        const write = (/** @type {string} */ name) => mcp.call("chrome_api", { action: "call", tab: gt, entry: entry.id, args: { body: { name } } });
+        const h0 = await write("plan probe 0");
+        if (!h0.held || !h0.id) throw new Error("a write with no plan was not held: " + JSON.stringify(h0).slice(0, 300));
+        const p = await mcp.call("chrome_approve", { tab: gt, title: "Two draft workflows", items: [{ kind: "create", what: "draft workflow", count: 2 }] });
+        if (!p.held || !p.id) throw new Error("the plan was not held for the person: " + JSON.stringify(p).slice(0, 300));
+        const ok = await mcp.call("chrome_send", { id: p.id });
+        if (!ok.approved) throw new Error("approving the plan did not start it: " + JSON.stringify(ok).slice(0, 300));
+        const a = await write("plan probe 1"); const b = await write("plan probe 2"); const c = await write("plan probe 3");
+        if (a.held || b.held || (a.status !== 201 && a.status !== 200)) throw new Error("the two covered writes did not go through: " + JSON.stringify({ a, b }).slice(0, 400));
+        if (!c.held) throw new Error("the third write, beyond the plan, was not held: " + JSON.stringify(c).slice(0, 300));
+        return { entry: entry.id, unplanned: "held", covered: [a.status, b.status], beyondPlan: "held" };
+      });
+
       // The sign-in handoff: a step on a login page answers login_required, the tab comes to the front, and Vyre carries on once the person is in.
       await stage("login_handoff", async () => {
         const l = await mcp.call("chrome_tabs", { action: "use", url: `${fixture.url}/login`, openIfMissing: true }); const lt = l.id ?? (l.tab && l.tab.id);

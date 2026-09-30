@@ -142,3 +142,22 @@ test("the pill script is a closed shadow root on an element the snapshot skips, 
   assert.match(s, /Esc to stop/);
   assert.match(s, /prefers-reduced-motion/);
 });
+
+test("an approval waiting raises a notification at once and again after two minutes, and never answers for the person", async () => {
+  const notes = /** @type {any[]} */ ([]);
+  const w = world();
+  const chromeN = /** @type {any} */ ({ notifications: { create: async (/** @type {string} */ id, /** @type {any} */ o) => { notes.push(o); } }, runtime: { getURL: (/** @type {string} */ p) => "chrome-extension://x/" + p } });
+  const w2 = world({ chrome: { ...chromeN, action: {}, tabs: {}, tabGroups: {} } });
+  await w2.p.state({ waiting: "approve: Plan: 8 drafts", notify: { title: "Vyre needs you to approve a plan", message: "Plan: 8 drafts (https://app.example)" } });
+  assert.equal(notes.length, 1);
+  assert.equal(notes[0].requireInteraction, true);
+  assert.match(notes[0].iconUrl, /icons\/icon-128\.png$/);
+  await w2.advance(120_000 + 10);
+  assert.equal(notes.length, 2, "reminded");
+  assert.match(notes[1].title, /Still waiting/);
+  assert.equal(w2.p.active(), true, "still open, not timed out");
+  void w;
+  await w2.p.state({ waiting: null });
+  await w2.advance(120_000 + 10);
+  assert.equal(notes.length, 2, "no reminder once answered");
+});

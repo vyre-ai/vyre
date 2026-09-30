@@ -23,7 +23,7 @@ function safeUser() { try { return os.userInfo().username; } catch { return "use
 
 /** Tools the model may not call: the person's own controls, and the Gate's release (chrome.send stands in for it). */
 /** Errors that are not about a control or a page (nothing to step down from): the ladder hint would only mislead. */
-const NO_LADDER = new Set(["blocked", "stopped", "no_extension", "denied", "declined", "detached", "not_listening", "plan_first", "waiting_input", "bad_request", "not_found_tool"]);
+const NO_LADDER = new Set(["blocked", "stopped", "no_extension", "denied", "declined", "pending", "detached", "not_listening", "plan_first", "waiting_input", "bad_request", "not_found_tool"]);
 const HIDDEN = new Set(["chrome.release", "chrome.interject", "chrome.install", "chrome.pause", "chrome.plan.edit", "chrome.voice"]);
 
 /**
@@ -115,8 +115,13 @@ export async function createRuntime(o = {}) {
         if (typeof ask === "function" && trace.config().confirmSends !== false) {
           const c = h.content || {};
           const fields = Array.isArray(c.fields) ? c.fields.slice(0, 12).map((/** @type {any} */ f) => `${f.name || f.label || "field"}: ${String(f.value ?? "").slice(0, 60)}`).join("\n") : "";
-          const r = /** @type {any} */ (await ask(`Send this from ${c.origin || "your browser"}?\nControl: ${c.control || "?"}${fields ? "\n" + fields : ""}`));
-          if (!r || r.action !== "accept" || !r.content || r.content.approve !== true) throw Object.assign(new Error("the person did not approve this send, so nothing was sent"), { code: "declined" });
+          const isPlan = c.kind === "plan";
+          const r = /** @type {any} */ (await ask(isPlan
+            ? `Approve this plan once?\n${c.control || "?"}${fields ? "\n" + fields : ""}\nEach create, edit or delete it lists then goes through without asking again. Publishing, messaging and payments still ask one at a time.`
+            : `Send this from ${c.origin || "your browser"}?\nControl: ${c.control || "?"}${fields ? "\n" + fields : ""}`));
+          // No answer is not a no: the act stays held, the person was notified in Chrome, and the same id can be asked again.
+          if (r && r.action === "timeout") throw Object.assign(new Error(`the person has not answered yet (they were notified in Chrome). Nothing was ${isPlan ? "approved" : "sent"}; it is still waiting. Call chrome_send with the same id to ask again, or carry on with something else.`), { code: "pending" });
+          if (!r || r.action !== "accept" || !r.content || r.content.approve !== true) throw Object.assign(new Error(isPlan ? "the person did not approve this plan, so nothing was started" : "the person did not approve this send, so nothing was sent"), { code: "declined" });
         }
         held.delete(id);
         out = { ok: true, result: await run("chrome.release", { id, content: h.content }, "module:gate") };

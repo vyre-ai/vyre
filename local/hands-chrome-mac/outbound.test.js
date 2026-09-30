@@ -50,14 +50,17 @@ async function withCatalog() {
   return { k, orig };
 }
 
-test("api.call: a send is held unless asked, a tag call runs free, asked runs the send", async () => {
+test("api.call: a send is held unless asked, a tag write needs a plan, asked runs the send", async () => {
   const { k } = await withCatalog();
   k.respond["Runtime.evaluate"] = () => ({ result: { value: { status: 200, mime: "application/json", headers: {}, body: "{}" } } });
   const h = await api.ops["api.call"]({ tab: 3, entryId: "e_send", params: { body: { text: "hi" } } }, k.ctx);
   assert.equal(h.held, true, JSON.stringify(h));
   assert.match(h.control.name, /POST .*conversations\/messages/);
-  const tag = await api.ops["api.call"]({ tab: 3, entryId: "e_tag", params: { path: { id: "c1" }, body: { tags: ["new"] } } }, k.ctx);
-  assert.equal(tag.held, undefined, "a tag write is hands-free");
+  const tagHeld = await api.ops["api.call"]({ tab: 3, entryId: "e_tag", params: { path: { id: "c1" }, body: { tags: ["new"] } } }, k.ctx);
+  assert.equal(tagHeld.held, true, "a tag write is a change with the person's login: held unless a plan covers it");
+  assert.equal(tagHeld.write, true);
+  const tag = await api.ops["api.call"]({ tab: 3, entryId: "e_tag", writeOk: true, params: { path: { id: "c1" }, body: { tags: ["new"] } } }, k.ctx);
+  assert.equal(tag.held, undefined, "covered by a plan, it runs");
   assert.equal(tag.status, 200);
   const asked = await api.ops["api.call"]({ tab: 3, entryId: "e_send", asked: true, params: { body: { text: "hi" } } }, k.ctx);
   assert.equal(asked.held, undefined);

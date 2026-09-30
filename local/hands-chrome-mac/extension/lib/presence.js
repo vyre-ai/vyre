@@ -17,6 +17,8 @@ const QUIET = /^(caps|status|hello|presence|tabs\.(list|query)|frames\.list|dev\
 export const IDLE_MS = 8000;
 /** The tab pill is redrawn this often while work continues, so a navigation that replaced the document gets it back. */
 export const BEAT_MS = 2000;
+/** An open question is raised again after this long. */
+export const REMIND_MS = 120_000;
 const PULSE_MS = 600;
 export const GROUP_TITLE = "Vyre";
 export const COLORS = { working: "#1a73e8", waiting: "#f29900", failed: "#d93025" };
@@ -70,6 +72,17 @@ export function createPresence({ chrome, cdp, onStop = () => {}, now = Date.now,
   /** A failure streak on the connection owns the badge; presence stays out of its way. */
   let badgeOwned = () => false;
   const bound = new Set();
+  /** @type {any} */ let remind = null;
+  let asked = 0;
+  /** @param {{ title: string, message: string }} n */
+  function notify(n) {
+    const api = chrome && chrome.notifications;
+    if (!api || !api.create) return;
+    try {
+      const p = api.create(`vyre-${asked}-${now()}`, { type: "basic", iconUrl: chrome.runtime && chrome.runtime.getURL ? chrome.runtime.getURL("icons/icon-128.png") : "icons/icon-128.png", title: n.title, message: n.message, priority: 2, requireInteraction: true });
+      if (p && typeof p.catch === "function") p.catch(() => {});
+    } catch { /* no notification permission: the amber badge and pill still say it */ }
+  }
 
   /** A timer that never keeps a process alive (under node, in tests); a service worker has no unref and needs none. */
   const weak = (/** @type {any} */ h) => { try { if (h && typeof h.unref === "function") h.unref(); } catch { /* not node */ } return h; };
@@ -212,9 +225,18 @@ export function createPresence({ chrome, cdp, onStop = () => {}, now = Date.now,
       if (s.done) { await finish(); return; }
       await begin();
       if (!run) return;
+      // A notification the person cannot miss, and a reminder if the question is still open two minutes later. Never auto-answered, never timed out.
+      if (s.notify && typeof s.notify === "object") {
+        const n = { title: String(s.notify.title || "Vyre needs you").slice(0, 80), message: String(s.notify.message || "").slice(0, 200) };
+        notify(n);
+        const at = ++asked;
+        remind = weak(setT(() => { if (run && run.waiting && asked === at) notify({ title: "Still waiting for you", message: n.message }); }, REMIND_MS));
+      }
+      if (s.waiting === null && remind) { clearT(remind); remind = null; }
       if (typeof s.of === "number" && s.of > 0) run.of = s.of;
       if (typeof s.label === "string") run.label = s.label.slice(0, 120);
-      if (s.waiting !== undefined) { run.waiting = s.waiting ? String(s.waiting).slice(0, 100) : null; if (run.waiting && idle) { clearT(idle); idle = null; } else arm(); }
+      if (s.waiting !== undefined) { run.waiting = s.waiting ? String(s.waiting).slice(0, 100) : null; if (run.waiting) { if (idle) { clearT(idle); idle = null; } } else arm(); }
+      if (!run.waiting && !idle) arm();
       await paintBadge();
       for (const t of run.tabs) void pill(t);
     },

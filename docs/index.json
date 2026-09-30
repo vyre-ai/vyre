@@ -1,7 +1,7 @@
 {
   "generated": "scripts/gen-docs-reference",
   "about": "Every Vyre command, tool, event, config key, environment variable, screen and concept, where the code defines it, the docs page that explains it, and every page, line and heading anchor that mentions it.",
-  "counts": {"command":332,"tool":751,"event":316,"config":235,"env":170,"screen":18,"concept":43},
+  "counts": {"command":332,"tool":752,"event":316,"config":235,"env":170,"screen":18,"concept":43},
   "things": [
     {"kind":"screen","name":"/a/:id","definedIn":"deck/views/artifact.js","page":"using/deck.md#what-is-on-each-view","label":"Artifact","routes":["/a/:id"],"mentions":[]},
     {"kind":"tool","name":"about.text","definedIn":"core/about/index.js","page":"reference/tools.md#abouttext","module":"about","mentions":[]},
@@ -94,6 +94,7 @@
     {"kind":"tool","name":"chrome.act","definedIn":"local/hands-chrome-mac/index.js","page":"reference/tools.md#chromeact","module":"chrome","mentions":[]},
     {"kind":"event","name":"chrome.acted","definedIn":"local/hands-chrome-mac/index.js","page":"reference/events.md#chrome","module":"chrome","mentions":[{"page":"adr/0036-one-system.md","line":20,"anchor":"context"},{"page":"adr/0036-one-system.md","line":46,"anchor":"1-sight-one-screen-service-on-both-sides"},{"page":"design/cohesion.md","line":73,"anchor":"1-one-screen-service-on-both-sides"},{"page":"design/agent-browsers.md","line":179,"anchor":"verify-every-action"},{"page":"design/agent-browsers.md","line":191,"anchor":"a-trace-per-run"}]},
     {"kind":"tool","name":"chrome.api","definedIn":"local/hands-chrome-mac/index.js","page":"reference/tools.md#chromeapi","module":"chrome","mentions":[]},
+    {"kind":"tool","name":"chrome.approve","definedIn":"local/hands-chrome-mac/index.js","page":"reference/tools.md#chromeapprove","module":"chrome","mentions":[]},
     {"kind":"tool","name":"chrome.batch","definedIn":"local/hands-chrome-mac/index.js","page":"reference/tools.md#chromebatch","module":"chrome","mentions":[]},
     {"kind":"tool","name":"chrome.click","definedIn":"local/hands-chrome-mac/index.js","page":"reference/tools.md#chromeclick","module":"chrome","mentions":[{"page":"design/agent-browsers.md","line":20,"anchor":"why-this-replaces-one-computer-per-agent"},{"page":"design/agent-browsers.md","line":67,"anchor":"2-shared-browser"},{"page":"design/agent-browsers.md","line":157,"anchor":"the-reach-ladder"},{"page":"design/agent-browsers.md","line":174,"anchor":"verify-every-action"},{"page":"design/agent-browsers.md","line":377,"anchor":"build-list-once-the-rest-of-this-design-is-approved"}]},
     {"kind":"event","name":"chrome.connected","definedIn":"local/hands-chrome-mac/index.js","page":"reference/events.md#chrome","module":"chrome","mentions":[]},
@@ -140,7 +141,7 @@
     {"kind":"tool","name":"chrome.status","definedIn":"local/hands-chrome-mac/index.js","page":"reference/tools.md#chromestatus","module":"chrome","mentions":[]},
     {"kind":"event","name":"chrome.step","definedIn":"local/hands-chrome-mac/oversight.js","page":"reference/events.md#chrome","module":"chrome","mentions":[]},
     {"kind":"tool","name":"chrome.stop","definedIn":"local/hands-chrome-mac/index.js","page":"reference/tools.md#chromestop","module":"chrome","mentions":[{"page":"adr/0049-deep-chrome-control.md","line":97,"anchor":"oversight"}]},
-    {"kind":"event","name":"chrome.stopped","definedIn":"local/hands-chrome-mac/oversight.js","page":"reference/events.md#chrome","module":"chrome","mentions":[]},
+    {"kind":"event","name":"chrome.stopped","definedIn":"local/hands-chrome-mac/index.js","page":"reference/events.md#chrome","module":"chrome","mentions":[]},
     {"kind":"tool","name":"chrome.tabs","definedIn":"local/hands-chrome-mac/index.js","page":"reference/tools.md#chrometabs","module":"chrome","mentions":[]},
     {"kind":"config","name":"chrome.timeoutMs","definedIn":"local/hands-chrome-mac/index.js","page":null,"mentions":[]},
     {"kind":"tool","name":"chrome.type","definedIn":"local/hands-chrome-mac/index.js","page":"reference/tools.md#chrometype","module":"chrome","mentions":[{"page":"design/agent-browsers.md","line":20,"anchor":"why-this-replaces-one-computer-per-agent"},{"page":"design/agent-browsers.md","line":67,"anchor":"2-shared-browser"},{"page":"design/agent-browsers.md","line":158,"anchor":"the-reach-ladder"},{"page":"design/agent-browsers.md","line":174,"anchor":"verify-every-action"},{"page":"design/agent-browsers.md","line":377,"anchor":"build-list-once-the-rest-of-this-design-is-approved"}]},

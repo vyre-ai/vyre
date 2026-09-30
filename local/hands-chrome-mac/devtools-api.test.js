@@ -92,7 +92,13 @@ test("api.call for a write is acting: stop and floor refuse it; a GET is not", a
   await assert.rejects(api.ops["api.call"]({ tab: 1, entryId: put.id, params: { path: { id: CONTACT } } }, k.ctx), e => e.code === "blocked");
   assert.deepEqual(seen, ["api.call"]);
   k.state.floor = () => ({ allow: true });
-  const ok = await api.ops["api.call"]({ tab: 1, entryId: put.id, params: { path: { id: CONTACT }, body: { firstName: "Sam" } } }, k.ctx);
+  // A write with the page's login is held until the person said yes (asked) or a plan they approved covers it (writeOk).
+  const heldW = await api.ops["api.call"]({ tab: 1, entryId: put.id, params: { path: { id: CONTACT }, body: { firstName: "Sam" } } }, k.ctx);
+  assert.equal(heldW.held, true);
+  assert.equal(heldW.write, true);
+  assert.equal(heldW.kind, "edit");
+  assert.equal(k.calls("Runtime.evaluate").filter(s => String(s.params.expression).includes("firstName")).length, 0, "nothing was sent");
+  const ok = await api.ops["api.call"]({ tab: 1, entryId: put.id, writeOk: true, params: { path: { id: CONTACT }, body: { firstName: "Sam" } } }, k.ctx);
   assert.equal(ok.method, "PUT");
   const payload = JSON.parse(k.calls("Runtime.evaluate").at(-1).params.expression.match(/\}\)\((\{.*\})\)$/s)[1]);
   assert.equal(payload.init.body, '{"firstName":"Sam"}');

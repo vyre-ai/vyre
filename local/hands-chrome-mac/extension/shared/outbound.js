@@ -54,6 +54,18 @@ export function held(method, url, why, sigSource) {
     control: { role: "request", name: `${String(method).toUpperCase()} ${path}` }, fields: [], sig: digest(sigSource) };
 }
 
+/** What a write is, in a person's words: POST creates, PUT and PATCH edit, DELETE deletes. @param {string} method */
+export const writeKind = method => ({ POST: "create", PUT: "edit", PATCH: "edit", DELETE: "delete" }[String(method).toUpperCase()] || "edit");
+
+/** A change made with the person's login that is not a message, post or payment: held unless a plan they approved covers it, or they asked for it. */
+export function heldWrite(method, url, sigSource) {
+  let path = url;
+  try { const u = new URL(url); path = u.origin + u.pathname; } catch { /* raw */ }
+  const m = String(method).toUpperCase();
+  return { ok: false, held: true, write: true, kind: writeKind(m), method: m, why: `This would ${m} ${path}, a change made with the person's login. Nothing was done. It waits for their approval, or for a plan they approved that covers it.`,
+    control: { role: "request", name: `${m} ${path}` }, fields: [], sig: digest(sigSource) };
+}
+
 /**
  * Two page scripts that bracket a user script: install a shim that holds back the page's own network
  * sends (fetch, XHR, sendBeacon) and records them, then take the shim off and read what it caught.

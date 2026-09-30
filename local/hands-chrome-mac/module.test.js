@@ -442,3 +442,53 @@ test("diagnose: a host launched for a different extension id is refused and says
   assert.match(st.problem, /different extension id/);
   assert.match(st.fix, /vyre-chrome install/);
 });
+
+test("module: an approved plan covers that many creates; a kind it does not list, a publish, and a stopped run still ask", async t => {
+  const { reg, gate, connect } = await rig(t);
+  const heldWrite = (/** @type {string} */ kind, /** @type {string} */ method) => ({ ok: false, held: true, write: true, kind, method, why: "a change with the person's login", control: { role: "request", name: `${method} https://api.example/x` }, fields: [], sig: "s", url: "https://app.example/w" });
+  const x = await connect({ "api.call": (/** @type {any} */ a) => (a.writeOk || a.asked)
+    ? { ok: true, status: 200, method: a.entry === "del" ? "DELETE" : "POST" }
+    : a.entry === "pub" ? { ok: false, held: true, control: { role: "request", name: "POST https://api.example/publish" }, fields: [], sig: "p", url: "https://app.example/w" }
+    : a.entry === "del" ? heldWrite("delete", "DELETE") : heldWrite("create", "POST") });
+  await reg.call("hands.grant.add", { agent: "kit" }, "cli");
+  await reg.call("chrome.plan", PLAN, KIT);
+  const call = (/** @type {string} */ entry) => reg.call("chrome.api", { action: "call", entry, tab: 1 }, KIT);
+  // no plan: a write is held for the person
+  assert.equal((await call("c1")).data.held, true);
+  // the plan: the person approves it once, through the same release path as a send
+  const p = await reg.call("chrome.approve", { title: "Two drafts", items: [{ kind: "create", what: "draft workflow", count: 2 }, { kind: "publish", what: "nothing yet" }], tab: 1 }, KIT);
+  assert.equal(p.error, undefined, JSON.stringify(p));
+  assert.equal(p.data.held, true);
+  const card = gate().requests[gate().requests.length - 1];
+  assert.equal(card.content.kind, "plan");
+  assert.match(card.content.control, /Two drafts/);
+  assert.deepEqual(card.content.fields.map((/** @type {any} */ f) => f.value), ["draft workflow", "nothing yet"]);
+  const rel = await reg.call("chrome.release", { id: p.data.id, content: card.content }, "module:gate");
+  assert.equal(rel.data.approved, true);
+  assert.equal(rel.data.total, 3, "counts the publish too, which it lists but never covers");
+  const before = x.ops("api.call").length;
+  assert.equal((await call("c1")).data.ok, true, "the first create goes through");
+  assert.equal((await call("c2")).data.ok, true, "and the second");
+  assert.equal(x.ops("api.call").filter((/** @type {any} */ o) => o.args.writeOk === true).length, 2);
+  assert.equal(x.ops("api.call").length - before, 4, "each covered write was tried, held, then sent once with writeOk");
+  assert.equal((await call("c3")).data.held, true, "a third create is not in the plan");
+  assert.equal((await call("del")).data.held, true, "a delete is not in the plan");
+  assert.equal((await call("pub")).data.held, true, "a publish is never covered");
+  assert.equal(x.ops("api.call").filter((/** @type {any} */ o) => o.args.writeOk === true).length, 2, "nothing else was sent");
+});
+
+test("module: stopping Vyre ends the plan, and a plan needs real items", async t => {
+  const { reg, gate, connect } = await rig(t);
+  const x = await connect({ "api.call": (/** @type {any} */ a) => (a.writeOk || a.asked) ? { ok: true, status: 200, method: "POST" } : { ok: false, held: true, write: true, kind: "create", method: "POST", control: { role: "request", name: "POST https://api.example/x" }, fields: [], sig: "s", url: "https://app.example/w" } });
+  await reg.call("hands.grant.add", { agent: "kit" }, "cli");
+  await reg.call("chrome.plan", PLAN, KIT);
+  assert.equal((await reg.call("chrome.approve", { title: "x", items: [] }, KIT)).error.code, "bad_request");
+  assert.equal((await reg.call("chrome.approve", { title: "x", items: [{ kind: "rm-rf", what: "all" }] }, KIT)).error.code, "bad_input");
+  const p = await reg.call("chrome.approve", { title: "One", items: [{ kind: "create", what: "a draft" }], tab: 1 }, KIT);
+  await reg.call("chrome.release", { id: p.data.id, content: gate().requests[gate().requests.length - 1].content }, "module:gate");
+  await reg.call("chrome.stop", { by: "esc" }, "capsule");
+  await reg.call("chrome.resume", { answer: "ok" }, "capsule");
+  const r = await reg.call("chrome.api", { action: "call", entry: "c1", tab: 1 }, KIT);
+  assert.equal(r.data.held, true, "the plan did not survive the stop");
+  assert.equal(x.ops("api.call").filter((/** @type {any} */ o) => o.args.writeOk === true).length, 0);
+});

@@ -329,6 +329,33 @@ test("send approval: a client that can ask (MCP elicitation) is asked by the ser
   assert.equal(released, 1);
 });
 
+test("plan approval in standalone: the person is asked once in plain words; no answer is pending, not a no; a yes starts the plan", async t => {
+  const dataDir = tmp(t);
+  const runtime = await createRuntime({ dataDir, sockPath: path.join(dataDir, "run", "chrome.sock"), log: () => {}, chrome: { extensionOrigin: null } });
+  t.after(() => runtime.stop());
+  const ext = await fakeExtension(path.join(dataDir, "run", "chrome.sock"), { handler: () => ({ ok: true }) });
+  t.after(() => ext.sock.destroy());
+  await until(async () => (await runtime.invoke("chrome.status", {})).result.connected);
+  const p = (await runtime.invoke("chrome.approve", { title: "Eight drafts", items: [{ kind: "create", what: "draft workflow", count: 8 }, { kind: "publish", what: "none yet" }], tab: 1 })).result;
+  assert.equal(p.held, true);
+  const asked = /** @type {string[]} */ ([]);
+  const late = await runtime.invoke("chrome.send", { id: p.id }, { ask: async (/** @type {string} */ m) => { asked.push(m); return { action: "timeout" }; } });
+  assert.equal(late.ok, false);
+  assert.equal(late.error.code, "pending");
+  assert.match(String(late.error.message), /not answered yet/);
+  assert.doesNotMatch(String(late.error.message), /ladder/);
+  assert.match(asked[0], /Approve this plan once/);
+  assert.match(asked[0], /Eight drafts/);
+  assert.match(asked[0], /Publishing, messaging and payments still ask/);
+  const no = await runtime.invoke("chrome.send", { id: p.id }, { ask: async () => ({ action: "accept", content: { approve: false } }) });
+  assert.equal(no.error.code, "declined");
+  assert.match(String(no.error.message), /did not approve this plan/);
+  const yes = await runtime.invoke("chrome.send", { id: p.id }, { ask: async () => ({ action: "accept", content: { approve: true } }) });
+  assert.equal(yes.ok, true, JSON.stringify(yes.error && yes.error.message));
+  assert.equal(yes.result.approved, true);
+  assert.equal(yes.result.covers.create, 8);
+});
+
 test("callers: the person's Esc is only undone by the person (asked through the client), and the person's own tools are not the model's", async t => {
   const dataDir = tmp(t);
   const runtime = await createRuntime({ dataDir, sockPath: path.join(dataDir, "run", "chrome.sock"), log: () => {}, chrome: { extensionOrigin: null } });
