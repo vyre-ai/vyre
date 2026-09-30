@@ -1295,7 +1295,7 @@ Every app Vyre can connect, each run by the vendor's own hosted server: id, labe
 
 ### `connectors.connect`
 
-Connect an app from the catalog. { preset, label? } starts the sign-in. It answers { step: "open", id, url }: open the address in a browser and the sign-in finishes when the vendor sends the browser back (connectors.connect.finish takes the address for a browser on another device). Or { step: "needs", needs: "token" | "client", ... }: ask the person for a token (pass it as `token`, with `extra` for any extra fields) or for their own OAuth app: the answer carries a `guide` (steps and links, with a prefilled app link where the vendor has one) and the two `fields` to ask for; pass them as `app` { client_id, client_secret }, or name a vault item holding them as `client`. `label` makes a second account of the same app. `mode` picks oauth or token when both exist.
+Connect an app from the catalog. { preset, label? } starts the sign-in. It answers { step: "open", id, url }: open the address in a browser and the sign-in finishes when the vendor sends the browser back (connectors.connect.finish takes the address for a browser on another device). Or { step: "needs", needs: "token" | "client", ... }: ask the person for a token (pass it as `token`, with `extra` for any extra fields) or for their own OAuth app: the answer carries a `guide` (steps and links, with a prefilled app link where the vendor has one) and the two `fields` to ask for; pass them as `app` { client_id, client_secret }, or name a vault item holding them as `client`. `scope` { projects, agents } is who may use it, the shape a server carries; left out, a server is open to every project and agent and a credential (Microsoft, personal Google) is for you and the assistant only. `label` makes a second account of the same app. `mode` picks oauth or token when both exist.
 
 - Input:
   - `preset` string, required
@@ -1306,6 +1306,7 @@ Connect an app from the catalog. { preset, label? } starts the sign-in. It answe
   - `mode` "oauth" or "token"
   - `name` string
   - `replace` boolean
+  - `scope` object
   - `token` string
 - Callers: `capsule`, `cli`, `deck`, `local`
 
