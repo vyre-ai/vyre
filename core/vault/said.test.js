@@ -181,3 +181,10 @@ test("said: a row edited in vyre.db is ignored and audited", async t => {
   // Even the right recipient no longer matches: the whole row is gone until it is recorded again.
   assert.equal((await reg("vault.said.match", { kind: "send", via: "mail", to: ["dana@harlowlegal.com"], thread: "t-1" }, "module:gate")).data.matched, false);
 });
+
+test("matchIntent: a setting intent names the setting key in `to` and covers only a setting call", () => {
+  const it = intent({ kind: "setting", to: ["morning.note"], standing: false });
+  assert.deepEqual(matchIntent({ kind: "setting", to: ["morning.note"], at: T0 + 1000 }, [it], ["t-1"]), { id: "s_1" });
+  assert.equal(matchIntent({ kind: "setting", to: ["chat.model"], at: T0 + 1000 }, [it], ["t-1"]), null);
+  assert.equal(matchIntent({ kind: "send", to: ["morning.note"], at: T0 + 1000 }, [it], ["t-1"]), null);
+});

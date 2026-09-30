@@ -66,6 +66,11 @@ action. The goal beyond that is that the user can cancel 1Password (spec section
 
 ## Doing
 
+- 2026-09-30 relaunch: Gate (asked via said_intents, gate.said.*) is built and on work/vault-next 1b01a6f8. Added intent kind
+  "setting" (`to: [key]`) so native-core's C25 check is `vault.said.match {kind:"setting", to:[key], thread}` (internal, module
+  callers). CI on 1b01a6f8: node job fails only on shellcheck of scripts/install-box.sh (launch's file, not mine); vault-mac still
+  running, so NOT pushing yet. Next: push when vault-mac finishes, send to reviewer-2 and integrator.
+
 - 0.1.1 (lead approved, see message log): 7 of 8 items shipped and green on testbox, each its own
   commit on this branch (boundary fix f3d39f3f..2ee3e337 range - check `git log --oneline` for
   exact shas): kinds.js/ssh-setup.js to lib/ (clears the two frozen boundary edges), scheduled

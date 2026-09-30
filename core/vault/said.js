@@ -32,7 +32,7 @@ export const SAID_MIGRATION = `CREATE TABLE vault_said_intents (
 /** Every column but the MAC: what was said, where, to whom, how far it reaches and whether it still stands. */
 export const SAID_MACED = ["id", "thread", "said", "kind", "channel", "recipients", "what", "when_text", "standing", "limits", "at", "revoked"];
 
-export const INTENT_KINDS = ["send", "post", "pay", "act_out"];
+export const INTENT_KINDS = ["send", "post", "pay", "act_out", "setting"];
 /** The only callers that may record what the person said. */
 export const RECORDERS = ["module:sessions", "module:assistant"];
 const MAX_TO = 20, MAX_TEXT = 500;
@@ -42,7 +42,7 @@ const json = (v, d) => { try { return v == null ? d : JSON.parse(String(v)); } c
 const bad = msg => Object.assign(new Error(msg), { code: "bad_input" });
 
 /** The intent kinds an outward call may be covered by. A Gate `send` may be a post; nothing else crosses. */
-const COVERS = { send: ["send", "post"], post: ["post"], pay: ["pay"], spend: ["pay"], act_out: ["act_out"], delete: ["act_out"], act: ["act_out"] };
+const COVERS = { send: ["send", "post"], post: ["post"], pay: ["pay"], spend: ["pay"], act_out: ["act_out"], delete: ["act_out"], act: ["act_out"], setting: ["setting"] };
 
 /** A recipient as compared: trimmed and lower-cased, so an address differs only by what it says. */
 export const norm = s => String(s ?? "").trim().toLowerCase();
