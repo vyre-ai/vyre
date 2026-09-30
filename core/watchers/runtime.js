@@ -90,6 +90,12 @@ export const MIGRATIONS = [`
  *   listen?: (type: string, fn: (event: any) => void) => (() => void) }} Deps
  */
 
+/** Does a vault.push event's scope ({projects, agents}) cover this project? */
+export function pushInScope(scope, project) {
+  const p = scope && scope.projects;
+  return p === "*" || (Array.isArray(p) && (p.includes("*") || p.includes(project)));
+}
+
 /** A watcher name is checked before it is ever joined into a path or looked up. */
 function mustName(name) {
   if (!folder.NAME.test(String(name || "")) || String(name).length > 60) throw Object.assign(new Error(`"${String(name).slice(0, 60)}" is not a watcher name`), { code: "bad_input" });
@@ -380,6 +386,8 @@ export class Runtime {
       // A folder edited since it was turned on is caught by fire(), which pauses it; one whose
       // type or where no longer fits this event is not run for it.
       if (!spec || spec.on !== event.type || !folder.matches(spec.where, event.payload)) continue;
+      // A connection's push reaches only the projects it is granted to (vault's scope); no scope, no run.
+      if (event.type === "vault.push" && !pushInScope(event.payload && event.payload.scope, spec.project)) continue;
       this.kick(name, "event", await this.eventInput(event.type, event.payload));
     }
   }

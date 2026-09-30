@@ -395,3 +395,20 @@ test("watchers: names are checked before any path is built, and a bad owner leav
   await assert.rejects(rt.createDuty({ name: "duty-r-x", project: "harlow-legal", owner: { kind: "person" }, when: "hourly", instruction: "x" }), /owner is/);
   assert.equal(fs.existsSync(path.join(dir, "duty-r-x")), false);
 });
+
+test("watchers: a push duty runs on vault.push for its connection and project only, one item per message id", async t => {
+  const { rt } = setup(t);
+  await rt.createDuty({ name: "duty-triage-aa11", project: "harlow-legal", owner: { kind: "teammate", teammate: "triage-harlow-legal" }, when: "push gmail", instruction: "Note any client email that needs an answer today.", act: false });
+  const push = (extra) => rt.onEvent({ type: "vault.push", payload: { connection: "gmail", kind: "mail.new", ids: ["m1", "m2"], at: 1, scope: { projects: ["harlow-legal"], agents: [] }, ...extra } });
+  await push({ scope: { projects: ["northwind"], agents: [] } });   // not granted to this project
+  await push({ connection: "outlook" });                              // another connection
+  await push({ scope: undefined });                                   // no scope, no run
+  await rt.settle();
+  assert.equal(rt.items({ name: "duty-triage-aa11" }).length, 0);
+  await push({});
+  await rt.settle();
+  assert.deepEqual(rt.items({ name: "duty-triage-aa11" }).map(i => i.id).sort(), ["duty-triage-aa11:m1", "duty-triage-aa11:m2"]);
+  await push({ ids: ["m2", "m3"] });
+  await rt.settle();
+  assert.equal(rt.items({ name: "duty-triage-aa11" }).length, 3, "a repeated id is not filed twice");
+});

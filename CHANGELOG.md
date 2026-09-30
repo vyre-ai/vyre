@@ -4,6 +4,9 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+- A duty on `push <connection>` runs on vault's `vault.push` event: one item per message id, only
+  for projects the connection's `scope` covers (no scope, no run), keeping no sender or subject.
+
 - lib/sandbox follow-ups from review: a redirect may not leave the watcher's declared hosts; a
   credential goes to the exact declared host over https only and is dropped when a redirect changes
   origin; one overall deadline per fetch; the credential is scrubbed from response headers; 6to4
