@@ -204,8 +204,11 @@ export function register(ctx, { denied }) {
     },
   });
 
+  /** A site's name for a row's Undo line: what it is called, else its host. @param {string} key */
+  const siteName = key => { const r = load(key); return (r && r.names && r.names[0]) || key.replace(/^https?:\/\//, ""); };
+
   ctx.tool("memory.site.list", {
-    description: "Every site Vyre knows: { sites: [{ key, kind, names, family, rev, updated, verified, counts, used_to_work }], forgotten: [{ kind: 'site'|'row', key, name, part?, id?, label?, at, expires_at }] }, for the Sites list in Memory. forgotten is what was forgotten in the last 24 hours and can still be brought back with memory.site.restore (a whole site by { key }, a row by { key, part, id }), newest first. The person's own surfaces only.",
+    description: "Every site Vyre knows: { sites: [{ key, kind, names, family, rev, updated, verified, counts, used_to_work }], forgotten: [{ kind: 'site'|'row', key, name, part?, id?, label?, at, until }] (until and expires_at are the same epoch ms) }, for the Sites list in Memory. forgotten is what was forgotten in the last 24 hours and can still be brought back with memory.site.restore (a whole site by { key }, a row by { key, part, id }), newest first. The person's own surfaces only.",
     input: { type: "object", properties: {} },
     run: async (_i, { caller } = {}) => {
       personOnly(caller, "the list of sites");
@@ -219,8 +222,8 @@ export function register(ctx, { denied }) {
       // What the person forgot in the last 24 hours and can still bring back (memory.site.restore), so a surface offers Undo from here,
       // not from its own storage: a whole site ({ key }) or one row ({ key, part, id }).
       const forgotten = [
-        .../** @type {any[]} */ (db.prepare("SELECT key, record, at FROM memory_site_forgotten ORDER BY at DESC").all()).map(r => { const rec = JSON.parse(r.record); return { kind: "site", key: String(r.key), name: (rec.names && rec.names[0]) || String(r.key).replace(/^https?:\/\//, ""), at: Number(r.at), expires_at: Number(r.at) + UNDO_MS }; }),
-        .../** @type {any[]} */ (db.prepare("SELECT key, part, id, item, at FROM memory_site_forgotten_items ORDER BY at DESC").all()).map(r => ({ kind: "row", key: String(r.key), name: String(r.key).replace(/^https?:\/\//, ""), part: String(r.part), id: String(r.id), label: labelOf(String(r.part), JSON.parse(r.item)), at: Number(r.at), expires_at: Number(r.at) + UNDO_MS })),
+        .../** @type {any[]} */ (db.prepare("SELECT key, record, at FROM memory_site_forgotten ORDER BY at DESC").all()).map(r => { const rec = JSON.parse(r.record); return { kind: "site", key: String(r.key), name: (rec.names && rec.names[0]) || String(r.key).replace(/^https?:\/\//, ""), at: Number(r.at), until: Number(r.at) + UNDO_MS, expires_at: Number(r.at) + UNDO_MS }; }),
+        .../** @type {any[]} */ (db.prepare("SELECT key, part, id, item, at FROM memory_site_forgotten_items ORDER BY at DESC").all()).map(r => ({ kind: "row", key: String(r.key), name: siteName(String(r.key)), part: String(r.part), id: String(r.id), label: labelOf(String(r.part), JSON.parse(r.item)), at: Number(r.at), until: Number(r.at) + UNDO_MS, expires_at: Number(r.at) + UNDO_MS })),
       ].sort((a, b) => b.at - a.at);
       return { sites, forgotten };
     },

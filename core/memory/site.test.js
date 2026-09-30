@@ -467,9 +467,9 @@ test("memory.site.list returns what was forgotten in the last 24 hours and can b
   const list = (await w.call("memory.site.list", {}, "deck")).data;
   assert.deepEqual(list.forgotten.map(f => [f.kind, f.key, f.name, f.part || null, f.id || null, f.label || null]), [
     ["site", AGENCY, "Agency Site", null, null, null],
-    ["row", ORIGIN, "app.ghl.example", "controls", "c1", "button on /workflows"],
+    ["row", ORIGIN, "GoHighLevel", "controls", "c1", "button on /workflows"],
   ], "newest first, with what a surface needs to show Undo");
-  assert.ok(list.forgotten.every(f => f.expires_at === f.at + 24 * HOUR));
+  assert.ok(list.forgotten.every(f => f.expires_at === f.at + 24 * HOUR && f.until === f.expires_at));
   assert.deepEqual(list.sites.map(s => s.key), [ORIGIN], "the forgotten site is not in the list of known sites");
   // Restoring from what the list gave takes it off the list.
   const row = list.forgotten.find(f => f.kind === "row");
