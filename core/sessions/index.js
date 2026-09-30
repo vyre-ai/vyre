@@ -16,6 +16,7 @@
 import { Prompts, PROMPTS_MIGRATION, REPLACE_WARNING, MAX_CHARS, scopeOf } from "./prompts.js";
 import { composeIq, factsFrom } from "./iq-prompt.js";
 import { sessionsConfig, sdkDir, claudeBin, configModel, PURPOSES } from "./config.js";
+import { Accounts, ACCOUNTS_MIGRATION } from "./accounts.js";
 
 /** Per-purpose and per-project model overrides a person set from a surface. */
 const MODELS_MIGRATION = `CREATE TABLE IF NOT EXISTS sessions_models (scope TEXT PRIMARY KEY, model TEXT NOT NULL, by TEXT, at INTEGER NOT NULL)`;
@@ -41,8 +42,9 @@ const scope = { type: "string", description: "assistant, agent:<name>, project:<
 
 export default {
   async start(ctx) {
-    ctx.store.migrate([PROMPTS_MIGRATION, MODELS_MIGRATION, LIMITS_MIGRATION, MODES_MIGRATION]);
+    ctx.store.migrate([PROMPTS_MIGRATION, MODELS_MIGRATION, LIMITS_MIGRATION, MODES_MIGRATION, ACCOUNTS_MIGRATION]);
     const db = ctx.store.db;
+    const accounts = new Accounts(db);
     const override = scope => { const r = /** @type {any} */ (db.prepare("SELECT model FROM sessions_models WHERE scope = ?").get(scope)); return r ? String(r.model) : null; };
     /**
      * The model a session runs on: an explicit one, else its agent's, else its project's override,
@@ -145,6 +147,47 @@ export default {
       description: "The model a session starting now runs on, and where that comes from.", internal: true,
       input: { type: "object", properties: { purpose: str, project: str, model: str } },
       run: async i => modelFor(i),
+    });
+
+    // ------------------------------------------------------------ providers and accounts (0.2)
+
+    // Claude only for now (0.2 charter narrowed to Claude, Codex, Grok); a module adds another
+    // provider with ctx.provider (ADR 0030 section 5) and its own entry here belongs to whichever
+    // module registers it - this module only ever speaks for "claude", the one built in. The
+    // public name is providers.list (agreed with capsule-pro/native-core, CHAT.md), which lives in
+    // the tiny core/providers module since a tool name must start with its own module's name
+    // (core/modules/index.js's validation) and "providers" is not this module's name; this is the
+    // internal snapshot that module calls through ctx.call.
+    const PROVIDERS = [{ id: "claude", label: "Claude" }];
+    ctx.tool("sessions.providers.snapshot", {
+      description: "Every session provider this module speaks for (claude), each with its own accounts and the models it offers. For providers.list (core/providers) to assemble; not a public name itself.", internal: true,
+      input: { type: "object", properties: {} },
+      run: async () => PROVIDERS.map(p => ({ ...p,
+        accounts: accounts.list(p.id).map(a => ({ id: a.id, label: a.label, signed_in: true, default: a.is_default })),
+        models: MODEL_ALIASES, capabilities: { streaming: true, resume: true, interrupt: true, modes: true, questions: true, transcripts: true } })),
+    });
+
+    tool("sessions.accounts.list", "Every account on a provider, or every account on every provider. Each names a vault item (never a value) and its scope: which projects and agents it is granted to.",
+      { type: "object", properties: { provider: str } },
+      async i => accounts.list(i.provider ? String(i.provider) : undefined));
+
+    tool("sessions.accounts.add", `Add an account: a label, and the vault item that already holds its credential (add the credential in the Vault first; this never touches its value). scope is { projects: "*"|[slugs], agents: "*"|[names] }, default "*" (every project and agent may use it until it is bound narrower). is_default makes it the provider's pick when nothing else resolves.`,
+      { type: "object", required: ["provider", "label", "vault_item"], properties: { provider: str, label: str, vault_item: str,
+        scope: { type: "object", properties: { projects: {}, agents: {} } }, is_default: { type: "boolean" } } },
+      async i => accounts.add(i), PEOPLE);
+
+    tool("sessions.accounts.remove", "Remove an account. Threads already resumed on it keep running; the next resume on that thread asks for another (a removed account is never a silent fallback).",
+      { type: "object", required: ["id"], properties: { id: str } },
+      async i => accounts.remove(i.id), PEOPLE);
+
+    tool("sessions.accounts.bind", "Grant an account to one more project or agent (added to its scope, others it already has kept), or make it its provider's default.",
+      { type: "object", required: ["id"], properties: { id: str, project: str, agent: str, is_default: { type: "boolean" } } },
+      async i => accounts.bind(i), PEOPLE);
+
+    ctx.tool("sessions.accounts.resolve", {
+      description: "Which account a session on this provider uses, for a project/agent/explicit choice, scope-checked either way.", internal: true,
+      input: { type: "object", required: ["provider"], properties: { provider: str, account: str, project: str, agent: str } },
+      run: async i => accounts.resolve(i),
     });
 
     // ------------------------------------------------------------ concurrency slots
