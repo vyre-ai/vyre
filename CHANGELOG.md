@@ -7,6 +7,10 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 #### tests: hands-chrome waits 30 s for Chrome's DevTools port
 
 - A hosted runner sometimes takes longer than 10 s to start headless Chrome ("Chrome did not print its DevTools port in time"). That flake predates the mock-keychain flags (it failed on work/native-core-0.2 runs 4932f92d and 3ff930c6, before 47dafe78 existed; the flags are the only change to that launch and drop nothing), so the wait is 30 s. A launch that is truly broken still fails when Chrome exits early.
+#### pwa: no passkey chore on the phone
+
+- "Set up this phone" is two steps (install, notifications). The passkey step and the two Now reminders ("Make your first passkey", "Add a passkey to send from this phone") are gone: a phone paired by scanning the Wink ring is a full owner device, and Face ID is asked only for pairing and vault reveals. Settings still enrolls a passkey.
+
 #### pwa: a Files view for the phone
 
 - `/files` lists the box's shared VyreDrive folders and `/files/:share?p=` browses one, through `files.drive.list` and `files.drive.read` (a phone cannot mount a share). A picture, text or PDF up to 8 MB opens in place with a Save link; anything else, or anything larger, says so. A refusal reads as one plain line. Words and reads are in `deck/js/drive-browse.js`, tested against a fake box that serves 4-byte chunks. The Places sheet is unchanged (it is app-design's grid); the view is reached by its address until they place it.

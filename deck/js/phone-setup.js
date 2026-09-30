@@ -1,7 +1,7 @@
 // @ts-check
-// Set up this phone: the three things that make the Deck work from a pocket, in order. Install
-// it to the Home Screen, turn on notifications, add a passkey. Shown at the top of Now on a phone
-// until all three are done or the user says "Not now".
+// Set up this phone: the two things that make the Deck work from a pocket, in order. Install
+// it to the Home Screen, turn on notifications. Shown at the top of Now on a phone
+// until both are done or the user says "Not now".
 //
 // This file is also the one implementation of subscribing to push and enrolling a passkey:
 // Settings uses subscribePush, unsubscribePush, pushState and enrollPasskey from here, so the
@@ -254,7 +254,7 @@ export function setupCard() {
     h("div", { class: "ps-top" },
       h("h2", { id: "ps-h", class: "ps-title" }, "Set up this phone"),
       h("button", { type: "button", class: "btn btn-ghost btn-sm", onclick: () => { set(DISMISS_KEY, String(Date.now())); stop(); card.remove(); } }, "Not now")),
-    h("p", { class: "small muted ps-lede" }, "Three steps, then Vyre can reach you and you can answer from here."),
+    h("p", { class: "small muted ps-lede" }, "Two steps, then Vyre can reach you and you can answer from here."),
     steps);
 
   /** @type {{ push: any, key: any }} */
@@ -263,7 +263,10 @@ export function setupCard() {
   const installRow = h("li", { class: "ps-step" });
   const pushRow = h("li", { class: "ps-step" });
   const keyRow = h("li", { class: "ps-step" });
-  put(steps, installRow, pushRow, keyRow);
+  // No passkey step (0.2): a phone paired by scanning the Wink ring is a full owner device, and the
+  // box asks for Face ID only for pairing and vault reveals, so a passkey is set up where a reveal
+  // needs one (Settings, Devices), not as a chore on the way in. The keyRow below is kept off the card.
+  put(steps, installRow, pushRow);
 
   const isInstalled = () => standalone() || installed;
 
@@ -372,8 +375,7 @@ export function setupCard() {
   const settle = () => {
     if (!st.push || !st.key) return;
     const pushDone = st.push.on || (!st.push.ok && st.push.why === "unsupported");
-    const keyDone = st.key.on || !st.key.ok;
-    if (isInstalled() && pushDone && keyDone) { stop(); card.remove(); return; }
+    if (isInstalled() && pushDone) { stop(); card.remove(); return; }
     card.hidden = false;
   };
 

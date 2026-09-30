@@ -1065,3 +1065,13 @@ Read-only: preview for image/text/pdf up to 8 MB (svg is a download), Save link,
 Refusals are one line (not_available covers unknown, ungranted and hidden). Unit tests pass with a
 fake chunking box; the DOM itself is a browser check. Open: no Places tile (app-design's 3x2 grid);
 needs their placement, and a real-phone check once drive lands.
+
+## Doing (no passkey chore, 2026-09-30)
+
+Setup card = install + notifications; removed the passkey step and the two Now passkey reminders
+(deck/js/phone-setup.js, now-phone.js). Send/approve on the phone already uses `presence: true`,
+which proves a passkey only when the box answers presence_required, so the box's Gate decides
+(asking is approving). Open with vault: where a phone enrolls a Face ID key for a vault reveal
+without `vyre presence code` (a paired owner device should be able to enroll itself).
+Open with native-core: Lumen/Memory display strings in the Deck are theirs per the lead's owner
+list; pwa touches none until they say which files are left.
