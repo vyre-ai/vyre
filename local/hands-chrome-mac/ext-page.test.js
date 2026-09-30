@@ -267,4 +267,6 @@ test("holdFor: a workflow builder's action tiles (Send Email, Remove Tag) are no
   assert.equal(holdFor(snap(url), tile("Delete workflow"), "click", undefined).held, true);
   assert.equal(holdFor(snap(url), tile("Publish"), "click", undefined).held, true);
   assert.equal(holdFor(snap("https://mail.example.com/compose"), tile("Send Email"), "click", undefined).held, true, "not a workflow page");
+  assert.equal(holdFor(snap("https://example.test/workflows/1"), tile("Send Email"), "click", undefined).held, true, "a workflow page on another site is not GoHighLevel");
+  assert.equal(holdFor(snap("https://example.test/workflows/1"), tile("Remove contact from list"), "click", undefined).held, true);
 });

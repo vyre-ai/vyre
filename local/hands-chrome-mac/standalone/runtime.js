@@ -105,6 +105,9 @@ export async function createRuntime(o = {}) {
       } else if (name === "chrome.resume") {
         // Esc is the person's: only they undo it. The server asks them itself; the run is then theirs.
         const confirm = trace.config().confirmSends !== false;
+        // Esc is the person's. If their client cannot be asked and they have not turned confirmation off, the
+        // model may not undo it: they resume from their own terminal with `config confirm-sends off`, or use a client that can ask.
+        if (confirm && typeof ask !== "function") throw Object.assign(new Error("Chrome control was stopped by the person, and this client cannot ask them to let it carry on. They can turn the question off with `vyre-chrome config confirm-sends off`."), { code: "denied" });
         if (confirm && typeof ask === "function") {
           const r = /** @type {any} */ (await ask("Chrome control was stopped (you pressed Esc, or stopped it). Let it carry on?" + (input && input.answer ? `\nYou told it: ${String(input.answer).slice(0, 200)}` : "")));
           if (!r || r.action !== "accept" || !r.content || r.content.approve !== true) throw Object.assign(new Error("the person did not let it carry on"), { code: "declined" });

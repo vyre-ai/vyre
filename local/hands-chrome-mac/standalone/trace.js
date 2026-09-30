@@ -299,5 +299,6 @@ export function report(dataDir, { last = 5 } = {}) {
     hosts: Object.fromEntries(Object.entries(calls.reduce((o, c) => { if (c.host) o[c.host] = (o[c.host] || 0) + 1; return o; }, /** @type {Record<string, number>} */ ({}))).sort((a, b) => b[1] - a[1]).slice(0, 10)),
   };
   // Written records were masked when they were written; they are passed through again so a bundle is safe even if a log was edited by hand.
-  return { summary, bundle: { tool: "vyre-chrome report", at: new Date().toISOString(), summary, records: records.map((/** @type {any} */ r) => safe(r)) } };
+  // A bundle is meant to be shared, so it never carries a typed value from any page, whatever the local trace keeps.
+  return { summary, bundle: { tool: "vyre-chrome report", at: new Date().toISOString(), summary, records: records.map((/** @type {any} */ r) => safe(r.args ? { ...r, args: stripValues(r.args) } : r)) } };
 }

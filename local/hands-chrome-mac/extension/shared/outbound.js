@@ -79,7 +79,20 @@ export const guardInstall = `(() => {
     return xs.apply(this, arguments);
   };
   if (sb) navigator.sendBeacon = function (u, d) { if (hold("POST", u, typeof d === "string" ? d : "")) return false; return sb.apply(this, arguments); };
-  window.__vyreGuard = { blocked, restore() { window.fetch = of; XMLHttpRequest.prototype.open = xo; XMLHttpRequest.prototype.send = xs; if (sb) navigator.sendBeacon = sb; } };
+  // Channels the network layer does not always see: WebRTC (ICE resolves a hostname) and link hints that make the browser
+  // resolve or connect (dns-prefetch, preconnect, prefetch). A cross-origin one made by the script is refused and reported.
+  const RTC = window.RTCPeerConnection, WRTC = window.webkitRTCPeerConnection;
+  const refuse = (what, u) => { blocked.push({ method: what, url: String(u), why: "the script tried to open a channel to another site" }); };
+  if (RTC) window.RTCPeerConnection = function () { refuse("WEBRTC", "webrtc"); throw new Error("Vyre held this"); };
+  if (WRTC) window.webkitRTCPeerConnection = window.RTCPeerConnection;
+  const hint = n => { try { if (!n || n.tagName !== "LINK") return false; const rel = String(n.getAttribute("rel") || n.rel || ""); if (!/(^|\s)(dns-prefetch|preconnect|prefetch|prerender|preload)(\s|$)/i.test(rel)) return false; const h = n.getAttribute("href"); return !h || new URL(h, location.href).origin !== location.origin; } catch { return true; } };
+  const P = Node.prototype, E = Element.prototype;
+  const oa = P.appendChild, oi = P.insertBefore, oap = E.append, opp = E.prepend;
+  P.appendChild = function (n) { if (hint(n)) { refuse("LINK", n.getAttribute("href")); return n; } return oa.apply(this, arguments); };
+  P.insertBefore = function (n) { if (hint(n)) { refuse("LINK", n.getAttribute("href")); return n; } return oi.apply(this, arguments); };
+  E.append = function () { for (const n of arguments) if (hint(n)) { refuse("LINK", n.getAttribute("href")); return; } return oap.apply(this, arguments); };
+  E.prepend = function () { for (const n of arguments) if (hint(n)) { refuse("LINK", n.getAttribute("href")); return; } return opp.apply(this, arguments); };
+  window.__vyreGuard = { blocked, restore() { if (RTC) window.RTCPeerConnection = RTC; if (WRTC) window.webkitRTCPeerConnection = WRTC; P.appendChild = oa; P.insertBefore = oi; E.append = oap; E.prepend = opp; window.fetch = of; XMLHttpRequest.prototype.open = xo; XMLHttpRequest.prototype.send = xs; if (sb) navigator.sendBeacon = sb; } };
   return true;
 })()`;
 

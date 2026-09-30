@@ -520,8 +520,10 @@ export function signatureOf(snap, ctl) {
  */
 export function builderTile(snap, ctl) {
   if (!ctl || ctl.submit || !ctl.container || !["button", "option", "menuitem"].includes(String(ctl.role))) return false;
-  let path = "";
-  try { path = new URL(String(snap && snap.url)).pathname; } catch { return false; }
+  let path = "", host = "";
+  try { const u = new URL(String(snap && snap.url)); path = u.pathname; host = u.hostname; } catch { return false; }
+  // Only GoHighLevel (a workflow page on some other site is not one), and the local fixture's /ghl.
+  if (!/(^|\.)(gohighlevel\.com|leadconnectorhq\.com)$/i.test(host) && !(/^(127\.0\.0\.1|localhost)$/.test(host) && /^\/ghl(\/|$)/.test(path))) return false;
   if (!/\/automation\/workflows|\/workflows?(\/|$)|^\/ghl(\/|$)/i.test(path)) return false;
   const name = String(ctl.name || "").trim();
   return /^send [a-z][a-z .&/-]{1,30}$/i.test(name) || /^remove (tag|contact tag|from [a-z ]{2,30}|contact from [a-z ]{2,30})$/i.test(name);

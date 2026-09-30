@@ -181,7 +181,16 @@ async function main() {
           if (!held.held) throw new Error("a script sending storage to a second origin was not held: " + JSON.stringify(held).slice(0, 300));
           const own = await mcp.call("chrome_eval", { tab: et, expression: `fetch('/api/contacts?limit=1').then(r => r.status)` });
           if (own.held || own.ok === false) throw new Error("the page's own API call was refused: " + JSON.stringify(own).slice(0, 300));
-          return { heldOutside: true, ownOriginValue: own.value };
+          // Channels the Fetch domain does not see. Reported as they are: held or not, no claim beyond what this shows.
+          const host = new URL(other.url).host;
+          const probe = async (/** @type {string} */ name, /** @type {string} */ expression) => { try { const r = await mcp.call("chrome_eval", { tab: et, expression }); return { held: r.held === true, value: r.value, error: r.error }; } catch (e) { return { threw: String(/** @type {Error} */ (e).message).slice(0, 160) }; } };
+          const channels = {
+            websocket: await probe("websocket", `(() => { try { new WebSocket('ws://${host}/x'); } catch (e) {} return 1; })()`),
+            webrtc: await probe("webrtc", `(() => { try { new RTCPeerConnection({ iceServers: [{ urls: 'stun:${host.replace(/:\d+$/, "")}:3478' }] }); } catch (e) {} return 1; })()`),
+            dnsPrefetch: await probe("dns", `(() => { const l = document.createElement('link'); l.rel = 'dns-prefetch'; l.href = 'http://${host}/'; document.head.appendChild(l); return 1; })()`),
+            preconnect: await probe("preconnect", `(() => { const l = document.createElement('link'); l.rel = 'preconnect'; l.href = 'http://${host}/'; document.head.append(l); return 1; })()`),
+          };
+          return { heldOutside: true, ownOriginValue: own.value, channels };
         } finally { await other.close(); }
       });
 

@@ -327,6 +327,9 @@ test("callers: the person's Esc is only undone by the person (asked through the 
   const runtime = await createRuntime({ dataDir, sockPath: path.join(dataDir, "run", "chrome.sock"), log: () => {}, chrome: { extensionOrigin: null } });
   t.after(() => runtime.stop());
   await runtime.invoke("chrome.stop", { by: "user" });
+  const cant = await runtime.invoke("chrome.resume", { answer: "go" });
+  assert.equal(cant.ok, false, "a client that cannot ask cannot resume");
+  assert.equal(cant.error.code, "denied");
   const no = await runtime.invoke("chrome.resume", { answer: "go" }, { ask: async () => ({ action: "accept", content: { approve: false } }) });
   assert.equal(no.ok, false);
   assert.equal(no.error.code, "declined");
@@ -335,4 +338,13 @@ test("callers: the person's Esc is only undone by the person (asked through the 
   for (const hidden of ["chrome.interject", "chrome.install", "chrome.release"]) assert.equal((await runtime.invoke(hidden, { id: "x", content: {} })).error.code, "no_such_tool", hidden);
   assert.ok(runtime.list().some(x => x.name === "chrome.resume" && /allow list/.test(x.description)));
   writeConfig(dataDir, { confirmSends: false });
+});
+
+test("report: a shared bundle never carries a typed value, even from a page whose values the local trace keeps", async t => {
+  const { call, dataDir } = await rig(t, () => ({ ok: true, url: "http://127.0.0.1:1/ghl" }));
+  writeConfig(dataDir, { values: "all" });
+  await call("chrome_fill", { tab: 1, fields: [{ label: "Subject", value: "Welcome to Harlow Legal" }] });
+  const { createTrace } = await import("./trace.js");
+  const { bundle } = report(dataDir);
+  assert.ok(!JSON.stringify(bundle).includes("Harlow Legal"));
 });
