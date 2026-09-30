@@ -805,3 +805,13 @@ utilization, resets_at), the slot chip (per project), the waiting queue, "Resume
   (the person bound another account to the teammate) the next request starts a fresh thread, and the role's notes, charter and recent results carry over
   (accountChanged, unit-tested). A teammate's identity is the role, not the provider's thread. Two teammates in one project on two providers stay independent
   because the resolve is per agent. Not covered live (needs two real accounts): runner e2e.
+
+## P17 swap against vault.said.match (2026-10-01)
+
+- `core/team/asked.js` askedFor: vault.said.match {kind act_out, via team, to [act key], consume, thread, lineage, agent}, fail closed, same as the
+  registry's asked check. A person's surface never asks. Four seams, refusal tested on each (daemon tests, runner CI): team.retire (key
+  team.retire:<project>/<role>), team.role.fill incl. the project grant and going back to default (team.role.fill:<project>/<role>/<agent|default>),
+  team.duties.create (asked: starts at once, else a proposal; team.duties.create:<project>/<role>) and team.duties.update turning on or editing a
+  running duty (team.duties.update:<teammate>/<id>). Refusal code `not_asked`. The re-show: team.duties.update/enable take `expect` (the instruction the person
+  saw); a changed duty refuses to start. Unit tests: askedFor (yes, key, lineage, fail closed), expect. The Deck card should pass `expect`.
+- Needs vault recording the person's act_out statement for these keys; until a surface records it, a model's call is refused, which is the safe default.

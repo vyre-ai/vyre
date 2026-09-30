@@ -66,6 +66,9 @@ export function duties({ db, call, emit }) {
     get: must,
     async update(id, patch) {
       let d = must(id);
+      // Turning a duty on shows the text that will run: if the person saw an older one (expect), nothing starts.
+      if (patch.enabled === true && patch.expect !== undefined && String(patch.expect).trim() !== d.instruction)
+        throw bad("this duty changed since you saw it; read it again before turning it on", "conflict");
       const next = { trigger: patch.when === undefined ? d.trigger : clean(patch.when, TRIGGER_MAX, "a trigger"),
         instruction: patch.instruction === undefined ? d.instruction : clean(patch.instruction, INSTRUCTION_MAX, "an instruction"),
         act: patch.act === undefined ? d.act : Boolean(patch.act), enabled: patch.enabled === undefined ? d.enabled : Boolean(patch.enabled) };

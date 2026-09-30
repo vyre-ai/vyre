@@ -6181,6 +6181,7 @@ Turn a duty on: the person's own tap. A proposed duty starts its watcher now; a 
 
 - Input:
   - `id` string, required
+  - `expect` string: The instruction the person was shown; nothing starts if it has changed since.
 - Callers: `capsule`, `cli`, `deck`, `local`
 
 ### `team.duties.list`
@@ -6209,6 +6210,7 @@ Change a duty: when, instruction, act, or enabled (true turns a proposed duty on
   - `id` string, required
   - `act` boolean
   - `enabled` boolean
+  - `expect` string: With enabled true: the instruction you were shown; nothing starts if it has changed since.
   - `instruction` string
   - `when` string
 - Callers: `capsule`, `cli`, `deck`, `local`, `mcp`

@@ -402,15 +402,33 @@ test("team.retire undo is refused once the teammate has done work; a plain retir
   assert.equal((await tool("team.status", { request: ask.request })).state, "done");
 });
 
-test("team.retire: a bare mcp caller with no session is refused; a session in the project may, on the person's request", async t => {
+test("team.retire: a bare mcp caller is refused; a session in the project only when the person's own words asked (P17); a person's surface always", async t => {
   const { tool, raw, root, project, launches } = await boot(t);
   await tool("team.add", { project: project.slug, role: "design" });
   const bare = await call("team.retire", { teammate: `design-${project.slug}` }, { root, caller: "mcp", timeout: 20_000 });
   assert.equal(bare.error.code, "denied");
   const { session } = await realSession(root, tool, launches, project.slug);
-  const r = await tool("team.retire", { teammate: `design-${project.slug}` }, "mcp", { session });
+  const viaSession = await call("team.retire", { teammate: `design-${project.slug}` }, { root, caller: "mcp", timeout: 20_000, session });
+  assert.equal(viaSession.error.code, "not_asked"); // nothing the person said matches, so a session cannot retire it
+  assert.equal((await tool("team.list", { project: project.slug })).length, 1);
+  const r = await tool("team.retire", { teammate: `design-${project.slug}` });
   assert.equal(r.retired, true);
   assert.equal((await raw("team.retire", { teammate: `design-${project.slug}` })).error.code, "not_found");
+});
+
+test("team.role.fill: a session in the project is refused without the person's words (P17); the person's surface fills it", async t => {
+  const { tool, raw, root, project, launches } = await boot(t);
+  const agent = `design-${project.slug}`;
+  await tool("agents.create", { name: "kit", projects: [] });
+  await tool("team.add", { project: project.slug, role: "design" });
+  const { session } = await realSession(root, tool, launches, project.slug);
+  const viaSession = await call("team.role.fill", { teammate: agent, agent: "kit" }, { root, caller: "mcp", timeout: 20_000, session });
+  assert.equal(viaSession.error.code, "not_asked");
+  assert.deepEqual((await tool("team.list", { project: project.slug }))[0].filler, { kind: "default" });
+  assert.equal((await tool("team.role.fill", { teammate: agent, agent: "kit" })).filler, "kit");
+  const back = await call("team.role.fill", { teammate: agent }, { root, caller: "mcp", timeout: 20_000, session });
+  assert.equal(back.error.code, "not_asked"); // going back to the default helper is also the person's word
+  void raw;
 });
 
 // --- role charters (plan section 9.1) -------------------------------------------------------------
@@ -504,7 +522,7 @@ test("team.duties: a session's duty is stored as a proposal (off, no watcher); o
   assert.equal(d.enabled, false);
   assert.equal(d.started, false);
   const on = await call("team.duties.update", { id: d.id, enabled: true }, { root, caller: "mcp", timeout: 20_000, session });
-  assert.equal(on.error.code, "denied");
+  assert.equal(on.error.code, "not_asked");
   const edit = await tool("team.duties.update", { id: d.id, instruction: "Read the open issues and goals." }, "mcp", { session });
   assert.equal(edit.enabled, false); // a proposal may still be edited
   // the person's tap: watchers here is the 0.1 module with no duty shape, so it refuses cleanly and the duty stays off
