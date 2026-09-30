@@ -16,6 +16,22 @@ RUN apt-get update \
 # through the shared socket at /var/run/tailscale/tailscaled.sock.
 COPY --from=tailscale/tailscale:stable /usr/local/bin/tailscale /usr/local/bin/tailscale
 
+# The GitHub CLI, for "Sign in with GitHub": vyred runs the real `gh auth login --web` (core/github), so gh is in the image at
+# /usr/local/bin/gh, where vyred finds it as plain `gh`. Pinned, and the release archive is checked against the sum in the release's
+# own gh_<version>_checksums.txt before it is unpacked: a moved release cannot change what the image runs. Bump the three ARGs together
+# (scripts/install-mac-server.sh pins the same GH_VERSION; test/box-gh.test.js keeps them equal).
+ARG GH_VERSION=2.102.0
+ARG GH_SHA256_AMD64=bb766f710eef8ede859c18578c72c327597cd4c8a85b06001b1f3843c6019386
+ARG GH_SHA256_ARM64=7862c86c72f43df3a2d93ddde6f473285b4e2af61b494849846827e513ef6484
+RUN arch=$(dpkg --print-architecture) \
+ && case "$arch" in amd64) sum=$GH_SHA256_AMD64 ;; arm64) sum=$GH_SHA256_ARM64 ;; *) echo "no pinned gh for $arch" >&2; exit 1 ;; esac \
+ && curl -fsSL --retry 3 -o /tmp/gh.tgz "https://github.com/cli/cli/releases/download/v${GH_VERSION}/gh_${GH_VERSION}_linux_${arch}.tar.gz" \
+ && echo "$sum  /tmp/gh.tgz" | sha256sum -c - \
+ && tar -xzf /tmp/gh.tgz -C /tmp \
+ && install -m 0755 "/tmp/gh_${GH_VERSION}_linux_${arch}/bin/gh" /usr/local/bin/gh \
+ && rm -rf /tmp/gh.tgz "/tmp/gh_${GH_VERSION}_linux_${arch}" \
+ && gh --version
+
 RUN npm install -g @anthropic-ai/claude-code@${CLAUDE_CODE_VERSION} \
  && npm cache clean --force
 

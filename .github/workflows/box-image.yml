@@ -91,6 +91,14 @@ jobs:
               [ "$m" = vyre ] || { echo "group $g has members [$m], want only vyre"; exit 1; }
             done
             echo "account homes ok"'
+      - name: gh is in the image, at the pinned version
+        run: |
+          want=$(sed -n 's/^ARG GH_VERSION=//p' box/Dockerfile)
+          [ -n "$want" ]
+          got=$(docker run --rm --entrypoint gh "$IMAGE" --version | head -n 1)
+          echo "$got" | tee -a "$GITHUB_STEP_SUMMARY"
+          case "$got" in "gh version $want "*) ;; *) echo "gh is not the pinned $want"; exit 1 ;; esac
+          docker run --rm --entrypoint sh "$IMAGE" -c 'command -v gh | grep -qx /usr/local/bin/gh && gh auth login --help >/dev/null'
       - name: Image size
         run: docker image ls "$IMAGE" --format '{{.Repository}}:{{.Tag}} {{.Size}}' | tee -a "$GITHUB_STEP_SUMMARY"
 
