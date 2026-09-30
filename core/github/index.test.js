@@ -67,6 +67,7 @@ async function world(t, { projectsRows = [], tokens = {}, projectsDir, existingT
         mcpRows.push(input); return { data: { name: input.name } };
       }
       if (toolName === "mcp.remove") { const i = mcpRows.findIndex(r => r.name === input.name); if (i >= 0) mcpRows.splice(i, 1); return { data: { removed: i >= 0 } }; }
+      if (toolName === "mcp.test") return { data: { ok: true } };
       if (toolName === "vault.grant") return { data: { grant: { status: "active" } } };
       if (toolName === "projects.list") return { data: { projects: rows } };
       if (toolName === "projects.add-workspace") {
@@ -716,6 +717,13 @@ test("github.mcp.sync / github.remove: each connected account gets GitHub's host
   assert.deepEqual((await person("github.mcp.sync", {})).data.accounts.map(a => a.added), [false, false], "again changes nothing");
   assert.equal(w.mcpRows.length, 2);
   assert.equal((await w.as("mcp:agent:kit")("github.mcp.sync", {})).error.code, "denied");
+  // a failed add leaves no grant behind
+  const grantsBefore = w.calls.filter(c => c.tool === "vault.grant").length;
+  seedAccount(w.db, { name: "clash", login: "zed" });
+  w.mcpRows.push({ name: "github-clash", auth: { item: "someone-else" } });
+  const failed = await person("github.mcp.sync", {});
+  assert.equal(failed.data.accounts.find(a => a.name === "clash").added, false);
+  assert.equal(w.calls.filter(c => c.tool === "vault.grant").length, grantsBefore, "no grant for the item whose add failed");
   await person("github.remove", { name: "home" });
-  assert.deepEqual(w.mcpRows.map(r => r.name), ["github-work"], "only the removed account's row goes");
+  assert.deepEqual(w.mcpRows.map(r => r.name), ["github-work", "github-clash"], "only the removed account's row goes");
 });

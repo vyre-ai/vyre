@@ -102,10 +102,13 @@ export default {
       try {
         const rows = await hostedRows();
         if (rows.some(x => x.auth && x.auth.item === acct.item)) return { added: false };
-        await ctx.call("vault.grant", { name: acct.item, module: "mcp" });
-        const name = rows.some(x => x.name === "github") ? `github-${acct.name}` : "github";
+        const name = rows.some(x => x.name === "github") ? `github-${acct.name}`.slice(0, 32) : "github";
         const r = await ctx.call("mcp.add", { name, transport: "http", url: HOSTED_URL, auth: { type: "bearer", item: acct.item, field: "token" }, tools: { deny: HOSTED_DENY } });
         if (r.error) { ctx.log("github hosted mcp not added", { account: acct.name, code: r.error.code }); return { added: false, error: r.error.code }; }
+        // Grant only once the row stands (a failed add leaves no grant behind), then try the server
+        // once so its tools are cached; a failure there does not undo the row.
+        await ctx.call("vault.grant", { name: acct.item, module: "mcp" });
+        await ctx.call("mcp.test", { name }).catch(() => {});
         return { added: true, server: name };
       } catch (e) { ctx.log("github hosted mcp not added", { account: acct.name, error: String(/** @type {any} */ (e)?.message || e).slice(0, 120) }); return { added: false, error: "failed" }; }
     }
