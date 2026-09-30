@@ -800,7 +800,7 @@ test("modules v1: an asked tool with a target binds the person's yes to what the
     ctx.tool("gh.merge.target", { internal: true, input: { type: "object" }, run: async ({ tool: tool_, input }) => {
       if (input.pr === "boom") throw new Error("no repo");
       if (input.pr === "none") return { to: [] };
-      if (input.pr === "slow") { await new Promise(r => setTimeout(r, 3000)); return { to: [tool_ + ":acme/site#12"] }; }
+      if (input.pr === "slow") { await new Promise(r => { setTimeout(r, 10_000).unref(); }); return { to: [tool_ + ":acme/site#12"] }; }
       return { to: [tool_ + ":acme/site#" + input.pr] };
     } });
     return {};
@@ -819,7 +819,7 @@ test("modules v1: an asked tool with a target binds the person's yes to what the
   assert.equal((await ask("gh.merge", { pr: "none" })).error.code, "not_asked", "an empty target is no");
   const started = Date.now();
   assert.equal((await ask("gh.merge", { pr: "slow" })).error.code, "not_asked", "a target that answers late is no");
-  assert.ok(Date.now() - started < 2900, "and the call does not wait for it");
+  assert.ok(Date.now() - started < 5000, "and the call does not wait for it (a 10 s tool, answered at the 2 s limit)");
   assert.equal((await ask("gh.plain", {})).error.code, "not_asked");
   assert.deepEqual(globalThis.__said2.at(-1).to, ["gh.plain"], "a tool with no target matches on its own name, as before");
   // The manifest: a target is for an asked tool, names one of the module's own internal tools, and is built in only.
