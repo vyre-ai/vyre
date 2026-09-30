@@ -9,7 +9,7 @@ import fs from "node:fs";
 import path from "node:path";
 import http from "node:http";
 import { DockerDriver } from "./docker.js";
-import { allowCreate, allowExec, allowContainerOp, isComputerLabels, computerLabels } from "./policy.js";
+import { allowCreate, allowExec, allowContainerOp, isComputerLabels, computerLabels, bootTar, allowBootTar, agentTokensTar, allowAgentTokensTar } from "./policy.js";
 import { SCRATCH } from "../../../test/scratch.mjs";
 import { chromeEnv } from "../egress.js";
 
@@ -32,7 +32,7 @@ async function capture(t) {
 
 const SPEC = {
   agent: "kit", image: "vyre/computer:0.1", network: "vyre-computers", cpus: 2, memoryMb: 3072, size: { w: 1440, h: 900 },
-  env: { VNC_PASSWORD: "abcdefgh", COMPUTERD_TOKEN: "t0ken", SCREEN: "1440x900" },
+  env: { SCREEN: "1440x900" },
   // Real deployments derive this from labelPrefix (pool.js's ensure()); docker.js itself just
   // takes whatever spec.volume says, so this fixture must already be the derived name for the
   // "run.vyre.computers" prefix realBody() configures below, the same way pool.js would build it.
@@ -43,7 +43,7 @@ const CONFIG = { network: "vyre-computers", image: "vyre/computer:0.1", labelPre
 /** The real body docker.js sends for the box's own configured prefix, from a real driver call. */
 async function realBody(t, opts = {}) {
   const e = await capture(t);
-  const d = new DockerDriver({ url: `unix://${e.socket}`, labelPrefix: "run.vyre.computers", network: "vyre-computers", ...opts });
+  const d = new DockerDriver({ bearer: "test-bearer", url: `unix://${e.socket}`, labelPrefix: "run.vyre.computers", network: "vyre-computers", ...opts });
   await d.create(SPEC);
   return e.body();
 }
@@ -63,6 +63,24 @@ test("policy: allows the capAdd escape hatch when configured, and nothing beside
   assert.deepEqual(allowCreate(body, { ...CONFIG, capAdd: ["SYS_NICE"] }), { ok: true });
   // The same body, without that capability configured, is refused - config decides, not the body.
   assert.equal(allowCreate(body, CONFIG).ok, false);
+});
+
+test("policy: SETUID and SETGID pass with no capAdd configured; the browser volume is pinned like the home", async t => {
+  const body = await realBody(t);
+  assert.deepEqual(body.HostConfig.CapAdd, ["SETUID", "SETGID"]);
+  assert.deepEqual(allowCreate(body, CONFIG), { ok: true });
+  assert.equal(body.HostConfig.Mounts[1].Source, "run.vyre.computers-browser-kit");
+  assert.equal(body.HostConfig.Mounts[1].Target, "/var/lib/vyre");
+  const pax = await mutate(t, b => { b.HostConfig.Mounts[1].Source = "run.vyre.computers-browser-pax"; return b; });
+  assert.equal(allowCreate(pax, CONFIG).ok, false, "another agent's browser volume");
+  const home = await mutate(t, b => { b.HostConfig.Mounts[1].Source = "run.vyre.computers-home-kit"; return b; });
+  assert.equal(allowCreate(home, CONFIG).ok, false, "the agent's home mounted where the browser profile goes");
+  const swapped = await mutate(t, b => { b.HostConfig.Mounts.reverse(); return b; });
+  assert.equal(allowCreate(swapped, CONFIG).ok, false);
+  const one = await mutate(t, b => { b.HostConfig.Mounts.pop(); return b; });
+  assert.equal(allowCreate(one, CONFIG).ok, false, "an old one-volume body");
+  const unlabeled = await mutate(t, b => { b.HostConfig.Mounts[1].VolumeOptions.Labels = {}; return b; });
+  assert.equal(allowCreate(unlabeled, CONFIG).ok, false);
 });
 
 test("policy: never a forbidden capability, even if a box misconfigures capAdd to ask for one", async t => {
@@ -177,7 +195,7 @@ test("policy: allowCreate needs the box's own network, image and labelPrefix, an
 
 test("policy: a create carrying the egress PAC passes unchanged, with no other field widened", async t => {
   const e = await capture(t);
-  const d = new DockerDriver({ url: `unix://${e.socket}`, labelPrefix: "run.vyre.computers", network: "vyre-computers" });
+  const d = new DockerDriver({ bearer: "test-bearer", url: `unix://${e.socket}`, labelPrefix: "run.vyre.computers", network: "vyre-computers" });
   const env = { ...SPEC.env, ...chromeEnv({ enabled: true, sites: ["bank.example.com", "*.harlow.example"] }) };
   await d.create({ ...SPEC, env });
   const body = e.body();
@@ -186,4 +204,118 @@ test("policy: a create carrying the egress PAC passes unchanged, with no other f
   // The PAC travels in Env alone: the rest of the body is what a create without it sends.
   const plain = await realBody(t);
   assert.deepEqual({ ...body, Env: null }, { ...plain, Env: null });
+});
+
+test("policy: a create whose Env carries the computer's secrets is refused", async t => {
+  for (const e of ["COMPUTERD_TOKEN=abc", "VNC_PASSWORD=abcdefgh"]) {
+    const bad = await mutate(t, b => { b.Env.push(e); return b; });
+    assert.equal(allowCreate(bad, CONFIG).ok, false, e);
+  }
+});
+
+test("policy: allowBootTar takes exactly the .boot tar bootTar makes, and nothing else", () => {
+  const good = bootTar({ computerd_token: "k".repeat(43), vnc_password: "Ab-_1234" });
+  assert.deepEqual(allowBootTar(good), { ok: true });
+  assert.throws(() => bootTar({ computerd_token: "short", vnc_password: "Ab-_1234" }), /expected shape/);
+  assert.throws(() => bootTar({ computerd_token: "k".repeat(43), vnc_password: "x\nEVIL=1" }), /expected shape/);
+  /** Change bytes of a copy, fixing the header checksum unless told not to. */
+  const change = (fn, fix = true) => {
+    const b = Buffer.from(good); fn(b);
+    if (fix) { b.fill(0x20, 148, 156); let sum = 0; for (let i = 0; i < 512; i++) sum += b[i]; b.write(sum.toString(8).padStart(6, "0") + "\0 ", 148, 8, "ascii"); }
+    return allowBootTar(b).ok;
+  };
+  assert.equal(change(b => { b.write(".boot2", 0, "ascii"); }), false, "another name");
+  assert.equal(change(b => { b.write("../x\0\0", 0, "ascii"); }), false, "a path");
+  assert.equal(change(b => { b.write("2", 156, "ascii"); }), false, "a symlink");
+  assert.equal(change(b => { b.write("0000644\0", 100, "ascii"); }), false, "a readable mode");
+  assert.equal(change(b => { b.write("0001750\0", 108, "ascii"); }), false, "the agent's uid");
+  assert.equal(change(b => { b[520] = 0x41; }, false), false, "contents changed");
+  assert.equal(change(b => { b[0] = 0x2e; b[1] = 0x62; }, false), true, "same bytes still pass");
+  assert.equal(change(b => { b[100] = 0x31; }, false), false, "a bad checksum");
+  assert.equal(allowBootTar(Buffer.concat([good, Buffer.alloc(512)])).ok, false, "an extra block");
+  assert.equal(allowBootTar(Buffer.concat([good.subarray(0, 1024), good])).ok, false, "a second file");
+  assert.equal(allowBootTar(Buffer.from("not a tar")).ok, false);
+});
+
+test("policy: allowAgentTokensTar takes exactly the .agent-tokens tar agentTokensTar makes, one agent or many, and nothing else", () => {
+  const alice = { id: "id1", name: "alice", token: "a".repeat(40) };
+  const bob = { id: "id2", name: "bob", token: "b".repeat(40) };
+  const one = agentTokensTar([alice]);
+  assert.deepEqual(allowAgentTokensTar(one), { ok: true });
+  const many = agentTokensTar([alice, bob]);
+  assert.deepEqual(allowAgentTokensTar(many), { ok: true }, "more than one agent, spanning a second 512-byte block, still passes");
+  // A repeated display name under two different ids is fine -- names are cosmetic, ids are the
+  // identity (reviewer + lead, 28 Sep).
+  assert.deepEqual(allowAgentTokensTar(agentTokensTar([alice, { id: "id2", name: "alice", token: "c".repeat(40) }])), { ok: true });
+
+  assert.throws(() => agentTokensTar([]), /at least one agent/);
+  assert.throws(() => agentTokensTar([{ id: "id1", name: "Alice", token: "a".repeat(40) }]), /expected shape/, "an uppercase name");
+  assert.throws(() => agentTokensTar([{ id: "id1", name: "alice", token: "short" }]), /expected shape/, "a short token");
+  assert.throws(() => agentTokensTar([{ id: "Bad Id", name: "alice", token: "a".repeat(40) }]), /expected shape/, "an id with a space");
+  assert.throws(() => agentTokensTar([alice, { ...alice, name: "someone-else" }]), /named more than once/, "a duplicate id");
+  assert.throws(() => agentTokensTar([alice, { id: "id2", name: "bob", token: alice.token }]), /share one token/, "a duplicate token");
+  assert.throws(() => agentTokensTar(Array.from({ length: 65 }, (_, i) => ({ id: `id${i}`, name: `a${i}`, token: "z".repeat(40) }))), /refuses more than/, "too many agents");
+
+  /** Change bytes of a copy, fixing the header checksum unless told not to. */
+  const change = (fn, fix = true) => {
+    const b = Buffer.from(one); fn(b);
+    if (fix) { b.fill(0x20, 148, 156); let sum = 0; for (let i = 0; i < 512; i++) sum += b[i]; b.write(sum.toString(8).padStart(6, "0") + "\0 ", 148, 8, "ascii"); }
+    return allowAgentTokensTar(b).ok;
+  };
+  assert.equal(change(b => { b.write(".boot", 0, "ascii"); }), false, "the .boot name instead");
+  assert.equal(change(b => { b.write("../x\0\0", 0, "ascii"); }), false, "a path");
+  assert.equal(change(b => { b.write("2", 156, "ascii"); }), false, "a symlink");
+  assert.equal(change(b => { b.write("0000644\0", 100, "ascii"); }), false, "a readable mode");
+  assert.equal(change(b => { b.write("0001750\0", 108, "ascii"); }), false, "the agent's uid");
+  // The body is "id1:alice=" + 40 a's + "\n"; byte 512+4 is the literal 'a' of "alice" -- '!'
+  // there breaks AGENT_TOKENS_LINE's shape (unlike changing a token byte to another allowed
+  // token character, which the shape alone cannot catch; that class of tamper is exactly the
+  // duplicate-id/duplicate-token checks above).
+  assert.equal(change(b => { b[516] = 0x21; }, false), false, "contents changed");
+  assert.equal(change(b => { b[0] = 0x2e; b[1] = 0x61; }, false), true, "same bytes still pass");
+  assert.equal(change(b => { b[100] = 0x31; }, false), false, "a bad checksum");
+  assert.equal(allowAgentTokensTar(Buffer.concat([one, Buffer.alloc(512)])).ok, false, "an extra block");
+  assert.equal(allowAgentTokensTar(Buffer.concat([one.subarray(0, 1024), one])).ok, false, "a second file");
+  assert.equal(allowAgentTokensTar(Buffer.from("not a tar")).ok, false);
+
+  // A tampered line still checked, even when the header's own size/checksum agree with it.
+  const tampered = Buffer.from(one);
+  tampered.write("id1:alice=NOT-A-VALID-TOKEN-SHAPE!!", 512, "ascii");
+  assert.equal(allowAgentTokensTar(tampered).ok, false, "a line that is not id:name=token-shaped, even with a consistent size/checksum");
+});
+
+// The reviewer's own fix (28 Sep): the writer (agentTokensTar/allowAgentTokensTar, here) and
+// computerd's own reader (parseAgentTokens, core/computers/image/computerd/index.js) drifted
+// once already when the line shape changed from "name=token" to "id:name=token" -- this file's
+// own regex moved, but computerd's did not, until the reviewer caught it live. A shared fixture,
+// checked against BOTH sides here, is what keeps that from happening silently again: this test
+// fails the build the moment either file's line shape changes without the other.
+test("policy: an .agent-tokens tar this file allows also parses under computerd's own parseAgentTokens -- the writer and computerd's reader never drift apart again", async () => {
+  const { readFileSync } = await import("node:fs");
+  const src = readFileSync(new URL("../image/computerd/index.js", import.meta.url), "utf8");
+  // Isolates parseAgentTokens without importing the whole of computerd (which starts a server,
+  // reads a token file, etc. at module load) -- it needs only sameToken, defined just above it there.
+  const sameTokenSrc = /function sameToken\([\s\S]*?\n}\n/.exec(src);
+  const parseSrc = /function parseAgentTokens\([\s\S]*?\n}\n/.exec(src);
+  assert.ok(sameTokenSrc && parseSrc, "could not find sameToken/parseAgentTokens in computerd/index.js to isolate");
+  const { default: crypto } = await import("node:crypto");
+  const parseAgentTokens = new Function("crypto", `${sameTokenSrc[0]}\n${parseSrc[0]}\nreturn parseAgentTokens;`)(crypto);
+
+  const agents = [
+    { id: "id1", name: "alice", token: "a".repeat(40) },
+    { id: "id2", name: "alice", token: "b".repeat(40) }, // a repeated display name, different id
+  ];
+  const tar = agentTokensTar(agents);
+  assert.deepEqual(allowAgentTokensTar(tar), { ok: true }, "policy.js's own writer/checker disagree with each other");
+  // The body, read straight out of the tar this file's own writer just made (the header's size
+  // field, same octal parse allowAgentTokensTar uses) -- not agentTokensBody() directly, so this
+  // test exercises the real bytes the archive-API PUT actually carries, not an internal string.
+  const h = tar.subarray(0, 512);
+  const size = parseInt(h.subarray(124, 136).toString("ascii").replace(/\0.*$/s, "").trim(), 8);
+  const body = tar.subarray(512, 512 + size).toString("ascii");
+  const parsed = parseAgentTokens(body);
+  assert.ok(parsed.ok, `computerd's parseAgentTokens refused a body policy.js's own writer made: ${!parsed.ok && parsed.why}`);
+  assert.equal(parsed.tokens.size, 2);
+  assert.deepEqual(parsed.tokens.get(agents[0].token), { id: "id1", name: "alice" });
+  assert.deepEqual(parsed.tokens.get(agents[1].token), { id: "id2", name: "alice" });
 });

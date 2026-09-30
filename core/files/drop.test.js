@@ -14,6 +14,7 @@ import { open } from "../store/index.js";
 import { Events } from "../events/index.js";
 import * as config from "../config/index.js";
 import { tempHome, writeModule } from "../../test/helpers.js";
+import { installFakeReach, clearFakeReach } from "../../test/fixtures/fake-reach.js";
 import { unavailable, parseWrote } from "./drop.js";
 
 const CORE = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
@@ -56,20 +57,33 @@ const peer = extra => ({ ID: BOX_ID, DNSName: "box.tail0000.ts.net.", HostName: 
   Online: true, Tags: [], TaildropTarget: 1, NoFileSharingReason: "", ...extra });
 const running = peers => ({ BackendState: "Running", Self: { ID: "nMac", DNSName: "mac.tail0000.ts.net." }, Peer: Object.fromEntries(peers.map((p, i) => [`k${i}`, p])) });
 
-/** A Registry with files (and, on the Mac, a stand-in link module answering link.status) running. */
-async function registry(t, home, { role, files, link = null }) {
+/** A Registry with files (and a stand-in link module answering link.status or link.macs) running.
+ * Also installs the shared fake projects.reach fixture (files.test.js's own pattern): files'
+ * reach() asks projects.reach even for the plain owner caller ("cli") these tests use, so without
+ * it every files.search/stat/preview/fetch call here would be refused as denied-by-default,
+ * exactly like a missing projects module rather than "nothing to check" (see
+ * test/fixtures/fake-reach.js's header). */
+async function registry(t, home, { role, files, link = null, macs = null }) {
   const vh = path.join(home, "vh");
   const p = config.ensure(vh);
   const found = discover([CORE]).filter(f => f.manifest && f.manifest.name === "files");
+  const mods = path.join(home, "mods");
+  installFakeReach(mods, p.root);
+  t.after(() => clearFakeReach(p.root));
   if (role === "local") {
-    const mods = path.join(home, "mods");
     writeModule(mods, "link", { roles: ["local"], does: { tools: ["link.status"] } },
       `export default { async start(ctx) {
         ctx.tool("link.status", { run: async () => (${JSON.stringify(link)}) });
         return { async stop() {} };
       } };`);
-    found.push(...discover([mods]));
+  } else if (macs) {
+    writeModule(mods, "link", { roles: ["box"], does: { tools: ["link.macs"] } },
+      `export default { async start(ctx) {
+        ctx.tool("link.macs", { run: async () => (${JSON.stringify(macs)}) });
+        return { async stop() {} };
+      } };`);
   }
+  found.push(...discover([mods]));
   const db = open(p.db);
   const events = new Events(db);
   const reg = new Registry({ db, events, config: { role, files }, paths: p, log: () => {} });
@@ -105,9 +119,9 @@ test("drop: unavailable() names why Taildrop cannot reach a peer, and says so fo
   assert.match(unavailable(peer({ TaildropTarget: 0, NoFileSharingReason: "file sharing not enabled by Tailscale admin" })) || "", /not enabled by Tailscale admin/);
 });
 
-test("drop: parseWrote finds the final path even when the name has ' as ' in it", () => {
-  assert.deepEqual(parseWrote("wrote a as b.txt as /work/inbox/a as b (1).txt (12 bytes)", "/work/inbox"), { file: "/work/inbox/a as b (1).txt", bytes: 12 });
-  assert.deepEqual(parseWrote("2026/09/27 10:00:00 wrote x.pdf as /work/inbox/x.pdf (3 bytes)", "/work/inbox"), { file: "/work/inbox/x.pdf", bytes: 3 });
+test("drop: parseWrote finds the final path even when the name has ' as ' in it, and the original name it was handed", () => {
+  assert.deepEqual(parseWrote("wrote a as b.txt as /work/inbox/a as b (1).txt (12 bytes)", "/work/inbox"), { file: "/work/inbox/a as b (1).txt", bytes: 12, orig: "a as b.txt" });
+  assert.deepEqual(parseWrote("2026/09/27 10:00:00 wrote x.pdf as /work/inbox/x.pdf (3 bytes)", "/work/inbox"), { file: "/work/inbox/x.pdf", bytes: 3, orig: "x.pdf" });
   assert.equal(parseWrote("waiting for file...", "/work/inbox"), null);
   assert.equal(parseWrote("wrote x as /etc/x (3 bytes)", "/work/inbox"), null);
 });
@@ -178,7 +192,9 @@ test("drop: the box runs one tailscale file get into a 0700 inbox, announces wha
   assert.ok(await until(() => got.length > 0), "files.received was emitted");
   const pid = f.pid();
   assert.ok(pid > 0 && alive(pid), "the receiver is running");
-  assert.deepEqual(got, [{ name: "report (1).pdf", path: "report (1).pdf", bytes: 5 }]);
+  // The fake writes "report.pdf" as "report (1).pdf": --conflict=rename kept both copies.
+  assert.deepEqual(got, [{ name: "report (1).pdf", path: "report (1).pdf", bytes: 5, conflict: true,
+    note: 'kept both copies: a file already named "report.pdf" was here, so this one landed as "report (1).pdf" instead' }]);
   assert.equal(fs.statSync(inbox).mode & 0o777, 0o700);
   const get = f.calls().filter(a => a[0] === "file");
   assert.deepEqual(get, [["file", "get", "--wait", "--loop", "--conflict=rename", "--verbose", fs.realpathSync(inbox)]]);
@@ -187,6 +203,163 @@ test("drop: the box runs one tailscale file get into a 0700 inbox, announces wha
   assert.ok(s.data.results.some(x => x.name === "report (1).pdf"), JSON.stringify(s));
   await stop();
   assert.ok(!alive(pid), "the child is gone after stop");
+});
+
+test("drop: files.deliver refuses a machine that is not a paired Mac, before Tailscale is asked", async t => {
+  const f = fake(t, running([]));
+  const w = work(f.home);
+  const macs = [{ mac: "m1", name: "alex-mac", node: "alex-mac.tail0000.ts.net", stableId: "nMac000", online: true, lastServe: 1 }];
+  const { reg } = await registry(t, f.home, { role: "box", files: { roots: [w] }, macs });
+  const r = await reg.call("files.deliver", { path: path.join(w, "report.pdf"), mac: "no-such-mac" }, "cli");
+  assert.equal(r.error?.code, "no_link");
+  assert.deepEqual(f.calls(), []);
+  const s = await reg.call("files.deliver", { path: path.join(w, ".env"), mac: "alex-mac" }, "cli");
+  assert.equal(s.error?.code, "not_available");
+  assert.deepEqual(f.calls(), []);
+});
+
+test("drop: files.deliver refuses a Mac paired without a known node", async t => {
+  const f = fake(t, running([]));
+  const w = work(f.home);
+  const macs = [{ mac: "m1", name: "old-mac", node: null, stableId: null, online: false, lastServe: null }];
+  const { reg } = await registry(t, f.home, { role: "box", files: { roots: [w] }, macs });
+  const r = await reg.call("files.deliver", { path: path.join(w, "report.pdf"), mac: "old-mac" }, "cli");
+  assert.equal(r.error?.code, "no_link");
+  assert.match(r.error?.message || "", /paired without its node known/);
+});
+
+test("drop: files.deliver hands the checked file to tailscale file cp at the named Mac's address, by id or name", async t => {
+  const f = fake(t, running([peer({ ID: "nOther", DNSName: "other.tail0000.ts.net.", TailscaleIPs: ["100.64.0.9"] }),
+    peer({ ID: "nMac000", DNSName: "alex-mac.tail0000.ts.net.", HostName: "alex-mac", TailscaleIPs: ["100.64.0.7"] })]));
+  const w = work(f.home);
+  const macs = [{ mac: "m1", name: "alex-mac", node: "alex-mac.tail0000.ts.net", stableId: "nMac000", online: true, lastServe: 1 }];
+  const { reg, events } = await registry(t, f.home, { role: "box", files: { roots: [w] }, macs });
+  const seen = [];
+  events.on("files.sent", e => seen.push(e.payload));
+  const r = await reg.call("files.deliver", { path: path.join(w, "report.pdf"), mac: "m1" }, "cli");
+  assert.deepEqual(r.data, { sent: "report.pdf", bytes: 5, to: "alex-mac.tail0000.ts.net", mac: "m1" });
+  const cp = f.calls().find(a => a[0] === "file");
+  assert.deepEqual(cp, ["file", "cp", fs.realpathSync(path.join(w, "report.pdf")), "100.64.0.7:"]);
+  assert.deepEqual(seen, [{ name: "report.pdf", bytes: 5, to: "alex-mac.tail0000.ts.net", mac: "m1" }]);
+  // By name too, and refused for anyone but a person's own surfaces: not MCP, and not a module
+  // either (e2e review of 0c645473, LOW: no first-party module needs to push files onto the Mac).
+  const byName = await reg.call("files.deliver", { path: path.join(w, "report.pdf"), mac: "alex-mac" }, "deck");
+  assert.equal(byName.data?.mac, "m1");
+  for (const caller of ["mcp", "module:test"]) assert.equal((await reg.call("files.deliver", { path: path.join(w, "report.pdf"), mac: "m1" }, caller)).error?.code, "denied", caller);
+});
+
+test("drop: files.deliver answers taildrop_unavailable when the named Mac is not among the box's tailnet peers", async t => {
+  const f = fake(t, running([peer({})]));
+  const w = work(f.home);
+  const macs = [{ mac: "m1", name: "alex-mac", node: "alex-mac.tail0000.ts.net", stableId: "nMac000", online: true, lastServe: 1 }];
+  const { reg } = await registry(t, f.home, { role: "box", files: { roots: [w] }, macs });
+  const r = await reg.call("files.deliver", { path: path.join(w, "report.pdf"), mac: "alex-mac" }, "cli");
+  assert.equal(r.error?.code, "taildrop_unavailable");
+  assert.match(r.error?.message || "", /not among this box's tailnet peers/);
+});
+
+test("drop: a Mac starts no receiver by default, so pairing never changes what Tailscale's own file flow does there (e2e review of 0c645473, MEDIUM)", async t => {
+  const f = fake(t, running([]));
+  const w = path.join(f.home, "work");
+  fs.mkdirSync(w);
+  const inbox = path.join(w, "inbox");
+  const { stop } = await registry(t, f.home, { role: "local", files: { roots: [w], inbox }, link: LINKED });
+  await new Promise(r => setTimeout(r, 150));
+  assert.deepEqual(f.calls(), [], "tailscale was never asked about status, let alone file get");
+  assert.equal(f.pid(), 0);
+  await stop();
+});
+
+test("drop: files.receive is exactly true, not merely truthy — the string \"false\" does not switch a Mac's receiver on (e2e nit on aa9cb40c)", async t => {
+  const f = fake(t, running([]));
+  const w = path.join(f.home, "work");
+  fs.mkdirSync(w);
+  const inbox = path.join(w, "inbox");
+  for (const receive of ["false", "0", "no", 1, {}]) {
+    const { stop } = await registry(t, f.home, { role: "local", files: { roots: [w], inbox, receive }, link: LINKED });
+    await new Promise(r => setTimeout(r, 100));
+    assert.deepEqual(f.calls(), [], `receive: ${JSON.stringify(receive)} must not start the receiver`);
+    await stop();
+  }
+});
+
+test("drop: a Mac runs its own tailscale file get into its ~/Vyre/inbox default, for what the box delivers, once files.receive is on", async t => {
+  const f = fake(t, running([]));
+  const w = path.join(f.home, "work");
+  fs.mkdirSync(w);
+  const inbox = path.join(w, "inbox");
+  const { reg, events, stop } = await registry(t, f.home, { role: "local", files: { roots: [w], inbox, receive: true }, link: LINKED });
+  const got = [];
+  events.on("files.received", e => got.push(e.payload));
+  assert.ok(await until(() => got.length > 0), "files.received was emitted");
+  const pid = f.pid();
+  assert.ok(pid > 0 && alive(pid), "the receiver is running");
+  assert.deepEqual(got, [{ name: "report (1).pdf", path: "report (1).pdf", bytes: 5, conflict: true,
+    note: 'kept both copies: a file already named "report.pdf" was here, so this one landed as "report (1).pdf" instead' }]);
+  const get = f.calls().filter(a => a[0] === "file" && a[1] === "get");
+  assert.deepEqual(get, [["file", "get", "--wait", "--loop", "--conflict=rename", "--verbose", fs.realpathSync(inbox)]]);
+  await stop();
+  assert.ok(!alive(pid), "the child is gone after stop");
+});
+
+test("drop: a file that lands under the name it was sent as carries no conflict note", async t => {
+  const f = fake(t, running([]));
+  const w = path.join(f.home, "work");
+  fs.mkdirSync(w);
+  const inbox = path.join(w, "inbox");
+  // A fake that writes the file under its own original name: no rename, so no conflict.
+  const plainFake = `#!/usr/bin/env node
+const fs = require("node:fs"), path = require("node:path");
+const dir = __dirname;
+const args = process.argv.slice(2);
+fs.appendFileSync(path.join(dir, "calls.log"), JSON.stringify(args) + "\\n");
+if (args[0] === "status") { process.stdout.write(fs.readFileSync(path.join(dir, "status.json"), "utf8")); process.exit(0); }
+if (args[0] === "file" && args[1] === "get") {
+  const inbox = args[args.length - 1];
+  fs.writeFileSync(path.join(dir, "get.pid"), String(process.pid));
+  fs.writeFileSync(path.join(inbox, "plain.txt"), "hi");
+  process.stderr.write("wrote plain.txt as " + path.join(inbox, "plain.txt") + " (2 bytes)\\n");
+  setInterval(() => {}, 1 << 30);
+} else process.exit(1);
+`;
+  fs.writeFileSync(path.join(f.home, "ts", "tailscale"), plainFake, { mode: 0o755 });
+  fs.chmodSync(path.join(f.home, "ts", "tailscale"), 0o755);
+  const { events, stop } = await registry(t, f.home, { role: "box", files: { roots: [w], inbox } });
+  const got = [];
+  events.on("files.received", e => got.push(e.payload));
+  assert.ok(await until(() => got.length > 0), "files.received was emitted");
+  assert.deepEqual(got, [{ name: "plain.txt", path: "plain.txt", bytes: 2 }]);
+  await stop();
+});
+
+test("drop: files.receive turns the Mac's receiver on and off live, no restart, and remembers the choice in config.json", async t => {
+  const f = fake(t, running([]));
+  const w = path.join(f.home, "work");
+  fs.mkdirSync(w);
+  const inbox = path.join(w, "inbox");
+  const { reg, stop } = await registry(t, f.home, { role: "local", files: { roots: [w], inbox }, link: LINKED });
+  // Off by default: no tailscale call yet.
+  await new Promise(r => setTimeout(r, 100));
+  assert.deepEqual(f.calls(), []);
+
+  const on = await reg.call("files.receive", { on: true }, "cli");
+  assert.deepEqual(on.data, { on: true, changed: true });
+  assert.ok(await until(() => f.pid() > 0), "the receiver started without a restart");
+  const pid1 = f.pid();
+  assert.ok(alive(pid1));
+  // Config remembers it.
+  assert.equal(JSON.parse(fs.readFileSync(path.join(f.home, "vh", "config.json"), "utf8")).files.receive, true);
+  // Calling it again with the same value is a no-op.
+  assert.deepEqual((await reg.call("files.receive", { on: true }, "cli")).data, { on: true, changed: false });
+
+  const off = await reg.call("files.receive", { on: false }, "cli");
+  assert.deepEqual(off.data, { on: false, changed: true });
+  assert.ok(!alive(pid1), "the receiver stopped without a restart");
+  assert.equal(JSON.parse(fs.readFileSync(path.join(f.home, "vh", "config.json"), "utf8")).files.receive, false);
+
+  // A person's own surfaces only, not MCP or a module.
+  for (const caller of ["mcp", "module:test"]) assert.equal((await reg.call("files.receive", { on: true }, caller)).error?.code, "denied", caller);
+  await stop();
 });
 
 test("drop: the box starts no receiver while Tailscale is not Running, or when the inbox is outside the roots", async t => {

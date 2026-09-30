@@ -9,7 +9,7 @@
       "threads.claimed", "threads.contend", "threads.vouch", "threads.pids", "threads.bind", "threads.history", "threads.usage", "threads.notice", "threads.halt", "threads.inbox", "threads.replied", "threads.post", "threads.live"]
   },
   "watches": { "emits": ["thread.started", "thread.sent", "thread.text", "thread.tool", "thread.finished", "thread.stopped",
-    "ask.raised", "ask.answered", "lease.changed", "thread.contended", "thread.watched", "thread.limit", "thread.queued", "mode.changed", "thread.turn", "thread.state", "thread.usage", "thread.steered", "thread.unqueued", "thread.rewound", "model.switched", "effort.switched", "thread.task", "thread.thinking", "thinking.switched", "thread.shell", "thread.remembered"] },
+    "ask.raised", "ask.answered", "lease.changed", "thread.contended", "thread.watched", "thread.limit", "thread.queued", "mode.changed", "thread.turn", "thread.state", "thread.status", "thread.usage", "thread.steered", "thread.unqueued", "thread.rewound", "model.switched", "effort.switched", "thread.task", "thread.thinking", "thinking.switched", "thread.shell", "thread.remembered"] },
   "shows": { "cli": ["threads"] },
   "needs": { "vault": ["claude-setup-token", "anthropic-api-key"] },
   "teaches": {

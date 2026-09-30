@@ -44,7 +44,8 @@ public enum CatalogLoader {
             projects: list.map { p in VyreProject(slug: VJ.s(p["slug"]), name: VJ.nonEmpty(p["name"]) ?? VJ.s(p["slug"]), org: VJ.str(p["org"]), home: VJ.str(p["home"]),
                                                   threads: VJ.int(p["threads"]), last: VJ.num(p["last"]),
                                                   // The people in a project make a question about them the user's own (Route.ownThings).
-                                                  people: ((p["people"] as? [[String: Any]]) ?? []).compactMap { x in VJ.nonEmpty(x["name"]).map { VyrePerson(name: $0, email: VJ.nonEmpty(x["email"])) } }) },
+                                                  people: ((p["people"] as? [[String: Any]]) ?? []).compactMap { x in VJ.nonEmpty(x["name"]).map { VyrePerson(name: $0, email: VJ.nonEmpty(x["email"])) } },
+                                                  avatarSeed: VJ.nonEmpty(p["avatar_seed"])) },
             threads: threads)
     }
 }

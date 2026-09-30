@@ -73,12 +73,12 @@ pick_look() {
   [ "${TERM:-dumb}" != dumb ] || return 0
   COLOR=1
   e=$(printf '\033')
-  BONE="$e[38;2;241;238;230m"
-  SIGNAL="$e[38;2;198;243;107m"
-  ASH="$e[38;2;140;135;125m"
-  BEACON="$e[38;2;184;164;255m"
-  BOLD="$e[1m"
-  RESET="$e[0m"
+  BONE="${e}[38;2;241;238;230m"
+  SIGNAL="${e}[38;2;198;243;107m"
+  ASH="${e}[38;2;140;135;125m"
+  BEACON="${e}[38;2;184;164;255m"
+  BOLD="${e}[1m"
+  RESET="${e}[0m"
   OK=$(printf '\342\234\223')
 }
 
@@ -95,7 +95,7 @@ hello() {
   else
     say "  Vyre${v:+ $v}"
   fi
-  say "  Let's set up your box. A few minutes, and nothing changes without asking."
+  say "  Let's set up your server. A few minutes, and nothing changes without asking."
   say ""
 }
 
@@ -103,11 +103,25 @@ hello() {
 step() {
   STEP=$((STEP + 1))
   [ "$STEP" = 1 ] || say ""
-  say "$ASH[$STEP/$STEPS]$RESET $BOLD$1$RESET"
+  say "${ASH}[$STEP/$STEPS]$RESET $BOLD$1$RESET"
 }
 
 # done_step TEXT: the step finished, with a check mark (or "ok" in plain text).
 done_step() { say "  $SIGNAL$OK$RESET $1"; }
+
+# WAITS: one quiet line for the one real wait in this installer (Docker's own script). Picked by
+# pid, not by odds, since something has to show while it's genuinely quiet: this is look only,
+# never invented data, never a name or anything a person typed.
+WAITS="this part is Docker's own installer, not ours
+nothing is stuck: it's just quiet before apt gets going
+the next lines on screen are curl's, not ours
+a fine moment for a coffee"
+
+wait_line() {
+  n=$(printf '%s\n' "$WAITS" | wc -l)
+  i=$(( ($$ % n) + 1 ))
+  printf '%s\n' "$WAITS" | sed -n "${i}p"
+}
 
 # rule: a short line across, before the finish.
 rule() {
@@ -124,12 +138,12 @@ finish() {
   say ""
   rule
   if [ "$DRY" = 1 ]; then
-    say "  $BOLD${BONE}That's the whole plan.$RESET Nothing on this box changed."
+    say "  $BOLD${BONE}That's the whole plan.$RESET Nothing on this server changed."
     say "  Run it again without --dry-run when you're ready."
   elif [ "${VYRE_NO_UP:-0}" = 1 ]; then
     say "  $BOLD${BONE}Installed.$RESET Start it when you're ready: ${SIGNAL}vyre up$RESET"
   else
-    say "  $BOLD${BONE}Your box is ready.$RESET"
+    say "  $BOLD${BONE}Your server is ready.$RESET"
     if [ "$LINK_ONLY" = 1 ]; then
       say "  The setup link went to stdout for the program that asked."
     else
@@ -208,6 +222,10 @@ need_docker() {
   cmd="curl -fsSL https://get.docker.com | sh"
   if ! command -v docker >/dev/null 2>&1; then
     if ask "Docker is not installed. Install it now with: $cmd ?"; then
+      # The one real silent gap in this installer: Docker's own script takes a minute or two
+      # before it says anything. One quiet line so it doesn't look stuck; --dry-run never gets
+      # here for real, so it stays out of that output.
+      [ "$DRY" = 1 ] || say "  $ASH$(wait_line)...$RESET"
       priv sh -c "$cmd"
       [ "$DRY" = 1 ] && return 0
     else
@@ -219,7 +237,7 @@ need_docker() {
   fi
   if ! compose_ok; then
     if docker compose version >/dev/null 2>&1; then
-      say "Vyre needs Docker Compose 2.24 or newer; this box has $(docker compose version --short)."
+      say "Vyre needs Docker Compose 2.24 or newer; this server has $(docker compose version --short)."
     else
       say "Vyre needs Docker Compose v2 (the \`docker compose\` plugin)."
     fi
@@ -237,7 +255,7 @@ need_docker() {
 # Tailscale runs in its own container with kernel networking, which needs the TUN device.
 need_tun() {
   [ -c "$TUN" ] && return 0
-  say "This box has no /dev/net/tun, which the Tailscale container needs."
+  say "This server has no /dev/net/tun, which the Tailscale container needs."
   say "Try: sudo modprobe tun. On a VPS or LXC container, enable TUN in the provider's panel."
   exit 1
 }
@@ -463,7 +481,7 @@ uninstall() {
   fi
   if [ -e "$WRAPPER" ]; then
     if grep -q "$MARK" "$WRAPPER" 2>/dev/null; then priv rm -f "$WRAPPER"
-    else say "$WRAPPER is not the box wrapper; leaving it"
+    else say "$WRAPPER is not the server wrapper; leaving it"
     fi
   fi
   if [ "$PURGE" = 1 ]; then
@@ -481,7 +499,7 @@ uninstall() {
       fi
     fi
   fi
-  say "Vyre is off this box. $DIR stays (with its .env); remove it with: sudo rm -rf $DIR"
+  say "Vyre is off this server. $DIR stays (with its .env); remove it with: sudo rm -rf $DIR"
   [ "$PURGE" = 1 ] || say "The volumes stay too, so a reinstall picks up where it left off."
 }
 
@@ -510,7 +528,7 @@ main() {
   case "$(uname -s)" in
     Linux) ;;
     Darwin)
-      say "This installer is for a Linux box. On a Mac, Vyre installs with npm:"
+      say "This installer is for a Linux server. On a Mac, Vyre installs with npm:"
       say "  npm install -g https://vyre.run/box/vyre.tgz && vyre up"
       exit 0 ;;
     *) die "this installer is for Linux boxes; on a Mac: npm install -g https://vyre.run/box/vyre.tgz && vyre up" ;;
@@ -528,7 +546,7 @@ main() {
   trap cleanup EXIT
   pick_look
   [ "$UNINSTALL" = 1 ] || hello
-  [ "$DRY" = 1 ] && say "dry run: nothing on this box will change"
+  [ "$DRY" = 1 ] && say "dry run: nothing on this server will change"
 
   if [ "$UNINSTALL" = 1 ]; then
     command -v docker >/dev/null 2>&1 || die "Docker is not installed, so there is no stack to stop"

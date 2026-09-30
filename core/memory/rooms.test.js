@@ -225,6 +225,9 @@ test("rooms: vyred keeps the rooms in step with Projects, picks included, and gu
   assert.ok(!(await call("projects.create", { name: "Northwind", home: path.join(work, "northwind") }, opts)).error);
   assert.ok(!(await call("projects.create", { name: "Harlow", home: path.join(work, "harlow-site"), workspaces: [path.join(work, "harlow-intake")] }, opts)).error);
   assert.ok(!(await call("agents.create", { name: "kit", projects: ["northwind"] }, opts)).error);
+  // memory's guard now also checks projects.access (Vyre Drive step 3): seed it from what
+  // agents.create just set, the way an upgrade would, so kit's grant keeps working here.
+  assert.ok(!(await call("projects.access.migrate", {}, opts)).error);
   await call("memory.curate", {}, opts);
   const nw = (await call("memory.facts", { room: "northwind" }, opts)).data.facts.map(f => f.text);
   assert.ok(nw.some(x => x.includes("Sam Okafor")) && !nw.some(x => x.includes("Harlow")), nw.join("\n"));

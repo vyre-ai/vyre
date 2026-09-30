@@ -9,7 +9,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { tempHome } from "../../../test/helpers.js";
 import { SCRATCH } from "../../../test/scratch.mjs";
-import { ensureBuilt, nativeHash, state, appPath, launchArgs, toolchain, identity } from "./capsule-native.js";
+import { ensureBuilt, nativeHash, state, appPath, launchArgs, toolchain, identity, recordCLI, CLI } from "./capsule-native.js";
 
 function fakeNative(t) {
   const dir = fs.mkdtempSync(path.join(SCRATCH, "vyre-native-"));
@@ -70,6 +70,20 @@ test("capsule native: built on first run, not again while the source is the same
   const c = ensureBuilt({ dir, home, runner: r, say: s => said2.push(s) });
   assert.equal(c.built, true);
   assert.match(said2[0], /changed: rebuilding/);
+});
+
+test("capsule native: the CLI is recorded in <home>/capsule/cli.json, so a Capsule with vyred down can start it", t => {
+  const home = tempHome(t);
+  const dir = fakeNative(t);
+  const { r } = fakeRunner();
+  ensureBuilt({ dir, home, runner: r });
+  const f = path.join(home, "capsule", "cli.json");
+  assert.deepEqual(JSON.parse(fs.readFileSync(f, "utf8")), { cli: CLI });
+  assert.equal(CLI[0], process.execPath);
+  assert.ok(fs.existsSync(CLI[1]) && CLI[1].endsWith(path.join("bin", "vyre")), "the package's own bin/vyre");
+  assert.equal(recordCLI(home), false, "unchanged: not written again");
+  assert.equal(recordCLI(home, ["/usr/local/bin/vyre"]), true);
+  assert.deepEqual(JSON.parse(fs.readFileSync(f, "utf8")), { cli: ["/usr/local/bin/vyre"] });
 });
 
 test("capsule native: no Command Line Tools is one line that names xcode-select --install", t => {

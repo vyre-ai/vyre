@@ -36,6 +36,16 @@ export const READER = { batch: 20, passes: 2, gapMs: 60_000, dailyUsd: 0.25, bac
   usdPerMIn: 1, usdPerMOut: 5 };
 const BUSY = ["starting", "working", "waiting"];
 
+/**
+ * A circuit breaker: a broken model (bad key, wrong model name, a quota error) fails the same
+ * way every time, and every new personal turn until it is fixed would otherwise trigger a paid
+ * retry of the same stuck batch. After this many CONSECUTIVE failed runs, back off for a growing
+ * wait before spending again; a run that succeeds resets the streak to zero. `force` (drain, the
+ * evaluation) always ignores this, same as the gap and a working thread.
+ */
+const FAIL_STREAK = 3;
+const FAIL_BACKOFF = [5 * 60_000, 15 * 60_000, 60 * 60_000];
+
 // ------------------------------------------------------------------ which turns
 
 /** A turn someone might say something about their life in: first person, and a life word. */
@@ -359,10 +369,25 @@ export function modelFor(config) {
   return String(m.memory || m.background || config?.memory?.model?.model || READER.model);
 }
 
+/** Keys that make Claude Code bill API dollars instead of the person's Claude plan. */
+export const API_BILLING_KEYS = ["ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN"];
+
+/**
+ * The environment for a model call: the person's Claude login, never API dollars, unless
+ * config.memory.model.billing is "api".
+ * @param {NodeJS.ProcessEnv} env @param {string|undefined} billing
+ */
+export function modelEnv(env, billing) {
+  const out = { ...env, MAX_THINKING_TOKENS: "0" };
+  if (billing !== "api") for (const k of API_BILLING_KEYS) delete out[k];
+  return out;
+}
+
 /**
  * A runner that asks `claude -p` once: no tools, no MCP, no settings, no session kept (so nothing
  * lands in ~/.claude/projects for Recall to read back). Returns the answer and what it cost.
- * @param {{ bin?: string, cwd?: string, env?: NodeJS.ProcessEnv }} [o]
+ * billing: "api" keeps an API key in the environment; anything else runs on the Claude login.
+ * @param {{ bin?: string, cwd?: string, env?: NodeJS.ProcessEnv, billing?: () => string|undefined }} [o]
  * @returns {(r: { system: string, prompt: string, model: string, maxUsd: number }) => Promise<{ text: string, usd: number, tokens_in: number, tokens_out: number }>}
  */
 export function claudeOnce(o = {}) {
@@ -370,7 +395,7 @@ export function claudeOnce(o = {}) {
     const args = ["-p", "--model", model, "--output-format", "json", "--tools", "", "--strict-mcp-config", "--setting-sources", "",
       "--no-session-persistence", "--disable-slash-commands", "--system-prompt", system, "--max-budget-usd", String(Math.max(0.01, maxUsd))];
     // No extended thinking: on this job it spent 21k tokens and three minutes a batch for the same reads.
-    const env = { ...(o.env || process.env), MAX_THINKING_TOKENS: "0" };
+    const env = modelEnv(o.env || process.env, o.billing ? o.billing() : undefined);
     const p = spawn(o.bin || process.env.VYRE_CLAUDE_BIN || "claude", args, { cwd: o.cwd || process.cwd(), env, stdio: ["pipe", "pipe", "pipe"] });
     let out = "", err = "";
     const timer = setTimeout(() => { p.kill("SIGKILL"); reject(new Error("the model did not answer in time")); }, READER.timeoutMs);
@@ -407,8 +432,15 @@ export function createReader(deps) {
     const c = cfgOf();
     const m = c.memory?.model || {};
     const num = (x, d) => (x !== null && x !== "" && Number.isFinite(Number(x)) && Number(x) >= 0 ? Number(x) : d);
-    return { on: m.on !== false, model: modelFor(c), dailyUsd: num(m.dailyUsd, READER.dailyUsd), backfillUsd: num(m.backfillUsd, READER.backfillUsd),
-      batch: Math.max(1, Math.min(50, num(m.batch, READER.batch))), gapMs: Math.max(60_000, num(m.gapMs, READER.gapMs)),
+    // A fast first read the person chose on the import screen (memory.pace) reads bigger batches
+    // within the same plan limits: never extra paid usage, never faster than once a minute.
+    let fast = false;
+    try { fast = /** @type {any} */ (db.prepare("SELECT v FROM memory_meta WHERE k = 'read_pace'").get())?.v === "fast"; } catch { /* no memory_meta yet */ }
+    // The person's setting is a share of their plan (memory.plan_share); the usage figure behind it
+    // stays internal. An explicit memory.model.dailyUsd in config still wins, for advanced use.
+    const share = { small: 0.1, medium: READER.dailyUsd, large: 1 }[String(m.share || "medium")] ?? READER.dailyUsd;
+    return { on: m.on !== false, model: modelFor(c), dailyUsd: num(m.dailyUsd, share), backfillUsd: num(m.backfillUsd, READER.backfillUsd),
+      batch: fast ? 50 : Math.max(1, Math.min(50, num(m.batch, READER.batch))), gapMs: Math.max(60_000, num(m.gapMs, READER.gapMs)),
       passes: Math.max(1, Math.min(3, num(m.passes, READER.passes))) };
   };
   const day = t => { const d = new Date(t); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`; };
@@ -504,6 +536,15 @@ export function createReader(deps) {
     const last = /** @type {any} */ (db.prepare("SELECT MAX(started) s FROM memory_me_model").get()).s;
     if (!force && last != null && t - Number(last) < cfg.gapMs) return why("a minute apart");
     if (!force && await busy()) return why("a thread is working");
+    if (!force) {
+      const recent = /** @type {any[]} */ (db.prepare("SELECT status, started FROM memory_me_model ORDER BY id DESC LIMIT 8").all());
+      let streak = 0;
+      for (const r of recent) { if (r.status === "failed") streak++; else break; }
+      if (streak >= FAIL_STREAK) {
+        const wait = FAIL_BACKOFF[Math.min(streak - FAIL_STREAK, FAIL_BACKOFF.length - 1)];
+        if (t - Number(recent[0].started) < wait) return why("backing off after repeated failures");
+      }
+    }
     const turns = [];
     for (const r of list) {
       const x = /** @type {any} */ (turnQ.get(r.session, r.seq));

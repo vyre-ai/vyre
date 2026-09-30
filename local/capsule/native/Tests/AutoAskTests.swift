@@ -171,7 +171,7 @@ let autoAskSuite = Suite("auto ask") { t in
         t.eq(r, ["open Notes and add milk", CapsuleModel.deeperModel, "capsule", "false"])
     }
 
-    t.test("voice: partial words ask nothing; the final words are asked at once, as ⏎ would") {
+    t.test("voice: partial words ask nothing; final: true stops without asking; submitDictated() then asks, as ⏎ would") {
         let v = quietVyred(); defer { v.stop() }
         let r: [String]? = t.wait {
             let m = await MainActor.run { () -> CapsuleModel in let m = askModel(v); m.autoDelay = 0.05; m.willShow(front: nil); return m }
@@ -181,12 +181,20 @@ let autoAskSuite = Suite("auto ask") { t in
             await MainActor.run { m.dictate("what is an archipelago", final: false) }
             try? await Task.sleep(nanoseconds: 200_000_000)
             let before = v.callsOf("threads.start").count
+            // Stopping (tap-to-stop, hold-release, silence auto-stop) never asks on its own -- the
+            // user's spec, 28 Sep, matching chat's tap-to-talk: the words stay in the box to edit.
             await MainActor.run { m.dictate("what is an archipelago", final: true) }
+            try? await Task.sleep(nanoseconds: 150_000_000)
+            let afterStop = v.callsOf("threads.start").count
+            let stillDictating = await MainActor.run { m.dictating }
+            let text = await MainActor.run { m.text }
+            // ⏎ while listening, or "send it": submitDictated() asks with the box's current words.
+            await MainActor.run { m.submitDictated() }
             _ = await until { !v.callsOf("threads.start").isEmpty }
             let state = await MainActor.run { "\(m.followUp) \(m.voiceTurn)" }
-            return ["\(before)"] + v.callsOf("threads.start").map { VJ.s($0["prompt"]) } + [state]
+            return ["\(before)", "\(afterStop)", "\(stillDictating)", text] + v.callsOf("threads.start").map { VJ.s($0["prompt"]) } + [state]
         }
-        t.eq(r, ["0", "what is an archipelago", "true true"])
+        t.eq(r, ["0", "0", "false", "what is an archipelago", "what is an archipelago", "true true"])
     }
 
     t.test("computer use: \"do …\" starts a full session told how to act; Esc stops the hands too") {

@@ -179,3 +179,23 @@ test("tailscale: under node --test, with no fake and no opt-in, the real CLI is 
     if (saved.real !== undefined) process.env.VYRE_TEST_REAL_TAILSCALE = saved.real;
   }
 });
+
+test("identity: a tag:vyre-device node is the device it was bound to, or bindable, never a person (ADR 0046)", async () => {
+  const { classify } = await import("./identity.js");
+  const node = { login: null, tagged: true, node: "alex-desktop", stableId: "nDESK1", tags: ["tag:vyre-device"], caps: {} };
+  const bound = await classify(node, { owner: "alex@example.com", deviceOf: async () => "abcdefghijklmnop" });
+  assert.equal(bound.ok, true);
+  assert.equal(bound.kind, "device");
+  assert.equal(bound.device, "abcdefghijklmnop");
+  assert.equal(bound.login, null);
+  const unbound = await classify(node, { owner: "alex@example.com", deviceOf: async () => null });
+  assert.equal(unbound.ok, false);
+  assert.equal(unbound.bindable, true);
+  const odd = await classify(node, { owner: "alex@example.com", deviceOf: async () => "../not-an-id" });
+  assert.equal(odd.ok, false, "only a real device id is taken");
+  const without = await classify(node, { owner: "alex@example.com" });
+  assert.equal(without.why, "a tagged node, not a person", "no deviceOf, no device: the old refusal");
+  // A person's own login that also carries the tag string somewhere is still judged as a person.
+  const person = await classify({ login: "alex@example.com", tagged: false, node: "mbp", stableId: "nMBP", tags: [] }, { owner: "alex@example.com", deviceOf: async () => "abcdefghijklmnop" });
+  assert.equal(person.kind, "owner");
+});

@@ -5,7 +5,7 @@
   "roles": ["box", "local"],
   "requires": [],
   "does": { "tools": ["suggest.query", "suggest.offer", "suggest.picked"] },
-  "watches": { "emits": [] },
+  "watches": { "emits": ["suggest.ready"] },
   "shows": { "cli": [] },
   "needs": {},
   "teaches": {}

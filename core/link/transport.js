@@ -134,9 +134,12 @@ export function connector({ address, verify, pinned, insecure = false, ttl = 60_
   function open(method, path, { body, headers = {}, timeout = 10_000, signal, onResponse }) {
     return new Promise((resolve, reject) => {
       if (signal && signal.aborted) return reject(Object.assign(new Error("the request was cancelled"), { code: "aborted" }));
-      const data = body === undefined ? undefined : JSON.stringify(body);
+      // A Buffer body (sync.upload's chunks) goes as-is, octet-stream; anything else is JSON, as
+      // every other call here has always sent it.
+      const data = body === undefined ? undefined : Buffer.isBuffer(body) ? body : JSON.stringify(body);
       const req = lib.request({ protocol: base.protocol, hostname: base.hostname, port: base.port || undefined, path, method, timeout, agent: false,
-        headers: { accept: "application/json", ...(data ? { "content-type": "application/json", "content-length": Buffer.byteLength(data) } : {}), ...headers } });
+        headers: { accept: "application/json", ...(Buffer.isBuffer(data) ? { "content-type": "application/octet-stream", "content-length": data.length }
+          : data ? { "content-type": "application/json", "content-length": Buffer.byteLength(data) } : {}), ...headers } });
       let who = null;
       req.on("socket", socket => {
         const go = () => check(socket).then(w => { who = w; if (data) req.write(data); req.end(); }).catch(e => { req.destroy(e); });

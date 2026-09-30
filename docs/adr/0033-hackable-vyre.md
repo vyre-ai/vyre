@@ -386,7 +386,8 @@ the native-core milestone**, one small branch per step, each merged green:
 1. **A `lib/tailnet`**: `core/names/tailscale.js` and `core/link/transport.js` move into a pure
    lib. This removes 7 edges (files, hooks, link, network and onboard into names; names and files
    into link) and the names/link cycle.
-2. `lib/credentials` from `core/connectors/auth.js` (google, mcp): 2 edges.
+2. Done early, as `lib/connectors` rather than `lib/credentials`, and covering more than planned:
+   `core/connectors/auth.js`, `message.js` and `behalf.js` (google, mail, mcp), 2026-09-28.
 3. `lib/resilience` for the reference client (cli): 1 edge. `lib/transcripts` for recall: 1 edge.
 4. The ctx.call edges: cli into names, recall and voice; daemon into names (guests) and
    switchboard; onboard into names.

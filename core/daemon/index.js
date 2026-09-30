@@ -16,15 +16,19 @@ import { themeCss } from "../config/theme.js";
 import { isRealHome } from "../config/dialogs.js";
 import { open } from "../store/index.js";
 import { Events } from "../events/index.js";
-import { Registry, discover, ownerDevice, callerKind } from "../modules/index.js";
+import { Registry, discover, ownerDevice } from "../modules/index.js";
 import { build, swWithBuild } from "./build.js";
 import { serveApp } from "./app.js";
 import { acquire } from "./lock.js";
-import { Presence, PERSON_ONLY, HUMAN_ONLY, SESSIONABLE, fingerprint, parse as parsePresence } from "../presence/index.js";
-import { peerPid, insideClaude, loginOf, tmuxClients, controllingTty } from "./peer.js";
+import { Presence, PERSON_ONLY, HUMAN_ONLY, SESSIONABLE, personOnly, fingerprint, parse as parsePresence } from "../presence/index.js";
+import { peerPid, insideClaude, loginOf, tmuxClients, controllingTty, canReadPeers, verifiedCapsule, signatureOf } from "./peer.js";
 import { PersonSessions, COOKIE, MAX as PERSON_MAX, carried } from "../presence/person.js";
 import { allowedTools } from "../names/guests.js";
 import { registryRules } from "../harness/rules.js";
+// lib/, not core/relay/index.js: importing the module itself would be a new kernel -> feature
+// edge (reviewer's MEDIUM, 2026-09-28) and would pull the whole relay module - link, bridge,
+// redeem, tailnet via relay/client - into the kernel just for one constant.
+import { DEFAULT_RELAY } from "../../lib/relay-default.js";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 // The SSE heartbeat. Clients call a stream dead after three missed beats (ADR 0029, R1); the
@@ -84,7 +88,7 @@ async function startLocked(opts, root, p, release) {
   const events = new Events(db);
   // vyred always checks presence. A test may pass a verifier, or a function that builds one on
   // this store (to give the real one fake OS touch points).
-  const presence = typeof opts.presence === "function" ? opts.presence({ db, events, log }) : opts.presence || new Presence({ db, events, log, role: cfg.role, network: () => cfg.network || {} });
+  const presence = typeof opts.presence === "function" ? opts.presence({ db, events, log }) : opts.presence || new Presence({ db, events, log, role: cfg.machine, network: () => cfg.network || {} });
   // Who is the person over the network, not only their device (core/presence/person.js).
   const people = new PersonSessions({ db });
   const started = Date.now();
@@ -122,7 +126,9 @@ async function startLocked(opts, root, p, release) {
   // Every call passes the floor's rules (SPEC 5.3), whoever makes it; a test may pass its own.
   const rules = opts.rules || registryRules({ home: root });
   registry = new Registry({ db, events, config: cfg, paths: p, log, rules, handler, upgrader, presence });
-  await registry.start(discover(moduleRoots(root)), { role: cfg.role, ...cfg.modules });
+  // The eight box-only modules gate on cfg.machine (ADR 0039: solo/server/device), not the
+  // legacy cfg.role -- that's what lets a Mac chosen as the server run them.
+  await registry.start(discover(moduleRoots(root)), { role: cfg.machine, ...cfg.modules });
 
   // A stale socket from a crash would make listen() fail with EADDRINUSE. If nothing answers on
   // it, it is safe to remove; if something does, another vyred is running and this one stops.
@@ -168,8 +174,14 @@ async function startLocked(opts, root, p, release) {
   return { registry, events, config: cfg, paths: p, stop };
 }
 
-/** A caller that names an agent: "mcp:agent:kit", "harness:agent:kit", "mcp agent:kit". */
+/** Any label that names an agent, in whatever form: "mcp:agent:kit", "cli agent:kit", "deck:agent:kit". */
 const AGENT_CLAIM = /(?:^|[\s:])agent:([A-Za-z0-9_-]*)/;
+/**
+ * The only forms a socket caller may name an agent in: its MCP server's and its hooks' (harness
+ * mcp/server.js, hooks/hook.js). A surface's label with an agent in it ("cli:agent:kit") would be
+ * vouched by the key and then pass every callers list as that surface, so it is refused.
+ */
+const AGENT_LABEL = /^(?:mcp|harness):agent:([A-Za-z0-9_-]+)$/;
 
 function send(res, status, body) {
   res.writeHead(status, { "content-type": "application/json" });
@@ -180,6 +192,18 @@ async function rawBody(req) {
   let raw = "";
   for await (const chunk of req) { raw += chunk; if (raw.length > 5_000_000) throw new Error("request too large"); }
   return raw;
+}
+
+/** A request's body as bytes, capped, for sync.upload's chunks (never JSON: octet-stream only). */
+async function rawBinary(req, max) {
+  const parts = [];
+  let got = 0;
+  for await (const chunk of req) {
+    got += chunk.length;
+    if (got > max) throw Object.assign(new Error(`a chunk is at most ${max} bytes`), { code: "bad_input" });
+    parts.push(chunk);
+  }
+  return Buffer.concat(parts);
 }
 
 async function body(req) {
@@ -205,7 +229,9 @@ async function body(req) {
  */
 export const callId = v => (typeof v === "string" && /^[A-Za-z0-9_-]{1,128}$/.test(v) ? v : null);
 
-const FORBIDDEN_LABEL = /^(module:|tailnet:|tailnet-guest:|device:|onboard$|hook$)/;
+// "link:" is the paired box's person on a Mac, which only the link module may call as (CALL_AS in
+// core/modules): threads.answer takes it only with the box's signed assertion checked.
+const FORBIDDEN_LABEL = /^(module:|tailnet:|tailnet-guest:|device:|link:|onboard$|hook$)/;
 
 /**
  * Who a socket request says it is. No label is "anonymous", which no tool's callers list names,
@@ -225,11 +251,14 @@ const MODEL_LABEL = /^(mcp|harness)(?=$|[\s:])/;
  * kernel which process connected (core/daemon/peer.js). From under a `claude`, or under a process
  * vyred runs a thread in, it is a model's shell however it names itself: it is an agent caller,
  * refused silently, and no presence proof or session counts for it. So is a caller whose ancestry
- * vyred cannot read to the top.
- * @param {import("node:net").Socket} socket @param {any} registry
+ * vyred cannot read to the top -- unless it claims to be the Capsule and proves it another way
+ * (core/daemon/peer.js's verifiedCapsule): the Capsule's own process has this same ambiguous
+ * shape (its own session, no controlling terminal) and is not on the terminal-host allowlist, so
+ * ancestry alone would always refuse it.
+ * @param {import("node:net").Socket} socket @param {any} registry @param {string} [caller]
  */
-async function fromClaude(socket, registry) {
-  const who = await above(socket, registry);
+async function fromClaude(socket, registry, caller) {
+  const who = await above(socket, registry, caller);
   if (who.nopid) return "vyred cannot tell which process is calling, so this is refused";
   if (who.inside) return "this comes from inside a Claude session, which acts as an agent: only the person answers, approves and proves presence";
   return who.unknown ? "vyred cannot read which processes this call runs under, so this is refused" : null;
@@ -237,36 +266,126 @@ async function fromClaude(socket, registry) {
 
 /**
  * What runs above the process on this socket: a `claude` or one of vyred's threads (inside), an
- * ancestry vyred cannot read to the top (unknown), or no pid at all (nopid).
- * @param {import("node:net").Socket} socket @param {any} registry
+ * ancestry vyred cannot read to the top (unknown), or no pid at all (nopid). A caller claiming to
+ * be the Capsule gets one more chance before "unknown": its own pinned code identity, checked and
+ * cached once per connection (core/daemon/peer.js's verifiedCapsule).
+ * @param {import("node:net").Socket} socket @param {any} registry @param {string} [caller]
  * @returns {Promise<{ inside: boolean, unknown?: boolean, nopid?: boolean }>}
  */
-async function above(socket, registry) {
+/**
+ * Retries `check()` a bounded few times while it says unknown with no named server, so a process
+ * that exits between the socket connecting and a /proc read (sessions' find, 28 Sep: a real race
+ * under a loaded box spawning many short-lived vyre CLI children) gets a second look before this
+ * is trusted as final. Never more than `attempts` retries, so this cannot be stretched into a
+ * long hang; still fails closed if every attempt agrees. Peer.js's OTHER unknown shapes (an
+ * orphan whose group died, or a named server with no readable start time) are deterministic, not
+ * a race, so retrying them changes nothing -- harmless, just a little slower.
+ * @param {() => { unknown?: boolean, server?: any }} check
+ * @param {number} [attempts] @param {number} [delayMs]
+ */
+export async function retryUnknown(check, attempts = 2, delayMs = 25) {
+  let result = check();
+  for (let n = 0; result.unknown && !result.server && n < attempts; n++) {
+    await new Promise(res => setTimeout(res, delayMs));
+    result = check();
+  }
+  return result;
+}
+
+async function above(socket, registry, caller) {
   const pid = await peerPid(socket);
   if (!pid) return { inside: false, nopid: true };
   const r = await registry.call("threads.pids", {}, "module:vyred");
   // The processes vyred runs threads in, their process groups and sessions (core/sessions/spawn.js
   // keeps a group listed until its last process is gone, so an orphan is still caught).
   const d = r.data || {};
-  return insideClaude(pid, { threads: [...(d.pids || []), ...(d.pgids || []), ...(d.sids || [])] });
+  const threads = [...(d.pids || []), ...(d.pgids || []), ...(d.sids || [])];
+  const result = await retryUnknown(() => insideClaude(pid, { threads }));
+  // The pin lives in vyred's own db (presence.capsulePin()), never a file the same uid a model's
+  // shell runs as could write to directly.
+  if (result.unknown && caller === "capsule" && registry.deps.presence
+    && await verifiedCapsule(socket, pid, registry.deps.presence.capsulePin())) return { inside: false };
+  return result;
 }
 
-/** The labels of a person's own surfaces, which tools trust as the person (their callers lists and checks). */
-const PERSON_LABELS = new Set(["cli", "local", "deck", "capsule"]);
+/**
+ * A server this process lives in (tmux, screen, sshd, Ghostty, iTerm2's server, a setsid'd model
+ * -- anything insideClaude names rather than flatly refusing), once trusted -- for the rest of
+ * that exact server's life (the lead's decision, 28 Sep: nobody with a real, unlisted terminal
+ * gets locked out; one proof, then trusted). A Map, not a socket-scoped cache, since the same
+ * server is reached over many different connections (every pane or ssh session's own call). Keyed
+ * by the server's exe, pid and start time, never a bare pid (a recycled pid never matches an old
+ * key) and never shared with a different server (a model-started one is its own process with its
+ * own pid and start time, so it always needs its own proof -- it can never inherit the person's).
+ * @type {Map<string, true>}
+ */
+const serverTrust = new Map();
 
 /**
- * A socket caller as vyred takes it. A person's label from a process under a `claude` or a thread
- * is that model's shell, so it is the session's own label ("mcp", or "mcp:thread:<id>" when the
- * call proved its session), for every tool: a label is only a claim (docs/work/e2e.md, the team
- * review). An ancestry vyred cannot read (a `docker exec` on the box has parent 0) keeps its label
+ * One presence proof on any call trusts that server for every later call from any of its panes or
+ * sessions, until it exits. @param {{exe:string,pid:number,started:string}} server
+ * @param {string|string[]|undefined} proofHeader @param {string} caller @param {any} registry
+ */
+// Hardware or a key a model cannot read, same as presence's own SESSION_FROM (a session opens
+// only from one of these too). NOT "tty": a model in its own detached tmux pane, or under a
+// setsid'd script/pty, IS the terminal that method writes its code to, so it could read the code
+// and answer its own challenge -- circular, not a proof at all here (the reviewer's MEDIUM,
+// 28 Sep). NOT "code" or "session" either, for the same reason: nothing here needs the person to
+// be at a DIFFERENT terminal.
+const SERVER_TRUST_METHODS = new Set(["touchid", "capsule", "device", "passkey"]);
+
+/** What the proof is over -- so a signature made for one server's prompt can never answer a
+ * different one's, and so the client signs exactly what the presence_required error already told
+ * it about this leader. */
+const sessionInput = server => ({ exe: server.exe, pid: server.pid, started: server.started });
+
+/** How the person is told what is asking. peer.js keys an unreadable root leader "uid0" (sshd,
+ * cron, a login manager: vyred cannot read which binary), so that one is described, not named. */
+const serverName = server => server.exe === "uid0"
+  ? `a system service running as root that Vyre cannot identify (pid ${server.pid}, started ${server.started}; for example sshd, cron or a login manager)`
+  : `${server.exe} (pid ${server.pid}, started ${server.started})`;
+
+/** The code signature of the process on this socket, or null when it cannot be read. @param {import("node:net").Socket} socket */
+async function signedBy(socket) {
+  const pid = await peerPid(socket);
+  return pid ? signatureOf(pid) : null;
+}
+
+async function serverTrusted(server, proofHeader, caller, registry) {
+  const key = `${server.exe}:${server.pid}:${server.started}`;
+  if (serverTrust.has(key)) return true;
+  const presence = registry.deps.presence;
+  // Test seam only: a verifier handed to start() in-process may already trust the leader its own
+  // test runs under (test/fixtures/vyred-leader.js, temp homes only), so CLI tests run over ssh on
+  // the testbox. vyred's own Presence has no such method, and main.js never passes a verifier.
+  if (presence && typeof presence.trustsServer === "function" && presence.trustsServer(server) === true) { serverTrust.set(key, true); return true; }
+  const proof = parsePresence(/** @type {string} */ (proofHeader));
+  if (!presence || !proof || !SERVER_TRUST_METHODS.has(proof.method)) return false;
+  // Plain wording, naming exactly what is asking -- the lead's decision, 28 Sep: a model can name
+  // its own process anything, so the reason must be specific enough that a real person can tell
+  // their own Warp window from a model-caused prompt apart, not just "an app wants to act as you".
+  const summary = `A program Vyre doesn't recognise wants to act as you: ${serverName(server)}. Did you just open this?`;
+  const r = await presence.verify({ tool: "session.trust", input: sessionInput(server), caller, proof, def: { presence: { summary: async () => summary } } });
+  if (r.ok) { serverTrust.set(key, true); return true; }
+  return false;
+}
+
+/**
+ * A socket caller as vyred takes it. Any label but a model's own (a surface's, core/modules
+ * SURFACE_LABELS, or one no surface uses yet) from a process under a `claude` or a thread is that
+ * model's shell, so it is the session's own label ("mcp", or "mcp:thread:<id>" when the call
+ * proved its session), for every tool: a label is only a claim (docs/work/e2e.md, the team
+ * review). "anonymous" stays: the session could say "mcp" itself, so it gains nothing. An ancestry vyred cannot read (a `docker exec` on the box has parent 0) keeps its label
  * here; the person's own actions still refuse it (fromClaude). Asked once per connection.
  * @param {string} caller @param {import("node:net").Socket} socket @param {any} registry @param {string} [thread]
  * @returns {Promise<{ caller: string, model: boolean }>}
  */
 async function asTaken(caller, socket, registry, thread) {
-  if (!PERSON_LABELS.has(callerKind(caller))) return { caller, model: false };
+  if (MODEL_LABEL.test(caller) || caller === "anonymous") return { caller, model: false };
   let v = taken.get(socket);
-  if (!v) { v = above(socket, registry).then(w => w.inside); taken.set(socket, v); }
+  // A peer vyred cannot read where it normally can (perl failed or timed out) is not taken on its
+  // word: a surface's label then counts as a model's, so a stall never reopens the forged label.
+  if (!v) { v = above(socket, registry).then(w => w.inside || Boolean(w.nopid && canReadPeers)); taken.set(socket, v); }
   return await v ? { caller: thread ? `mcp:thread:${thread}` : "mcp", model: true } : { caller, model: false };
 }
 /** @type {WeakMap<object, Promise<boolean>>} */
@@ -383,6 +502,8 @@ async function route(req, res, { registry, events, cfg, started, streams, root, 
   }
   if (policy.thread) {
     // Bound above; a key or a session claim on this socket changes nothing.
+  } else if (said && !agentNode && !AGENT_LABEL.test(caller)) {
+    return send(res, 403, { error: { code: "denied", message: "an agent is named only as mcp:agent:<name> or harness:agent:<name>" } });
   } else if (said) {
     const key = String(req.headers["x-vyre-agent-key"] || "");
     const v = key ? await registry.call("threads.vouch", { agent: said[1], key }, "module:vyred") : null;
@@ -410,7 +531,7 @@ async function route(req, res, { registry, events, cfg, started, streams, root, 
     // log, and a guessed cursor past the end drops every live event.
     const last = /** @type {any} */ (events.db.prepare("SELECT MAX(id) AS id FROM events").get());
     const b = build();
-    return send(res, 200, { data: { version: VERSION, commit: b.commit, dirty: b.dirty, pid: process.pid, role: cfg.role, uptime: Date.now() - started, supervisor: process.env.VYRE_SUPERVISOR || null, last_event: Number(last && last.id) || 0,
+    return send(res, 200, { data: { version: VERSION, commit: b.commit, dirty: b.dirty, pid: process.pid, role: cfg.role, machine: cfg.machine, uptime: Date.now() - started, supervisor: process.env.VYRE_SUPERVISOR || null, last_event: Number(last && last.id) || 0,
       // How to run this vyred's own CLI (node and bin/vyre): the Capsule runs `vyre ...` typed in
       // its box by argv, never through a shell, and must run the same version.
       cli: [process.execPath, path.join(REPO, "bin", "vyre")],
@@ -455,6 +576,22 @@ async function route(req, res, { registry, events, cfg, started, streams, root, 
     res.setHeader("set-cookie", `${COOKIE}=; Path=/; Secure; HttpOnly; SameSite=Strict; Max-Age=0`);
     return send(res, 200, { data: { ended: Boolean(person) } });
   }
+  // sync.upload's chunk data: octet-stream only, never JSON (e2e, session-import review), so it
+  // never goes through body()'s JSON parse. Only a paired peer's own tailnet node reaches it -
+  // never the relay, a guest or an agent's node, since none of those carry policy.peer.stableId
+  // the way an owner device's does. sync.upload.chunk (core/link/box.js) checks the rest: which
+  // peer, whether its sync switch is on, quota, and that this upload is that peer's own.
+  if (req.method === "POST" && url.pathname.startsWith("/v1/sync/upload/")) {
+    const upload = decodeURIComponent(url.pathname.slice("/v1/sync/upload/".length));
+    const offset = Number(url.searchParams.get("offset"));
+    if (!policy.peer || !policy.peer.stableId) return send(res, 403, { error: { code: "denied", message: "sync.upload is for a paired device's own tailnet connection only" } });
+    if (!Number.isFinite(offset) || offset < 0) return send(res, 400, { error: { code: "bad_input", message: "offset must be a non-negative number" } });
+    let data;
+    try { data = await rawBinary(req, 4 * 1024 * 1024); }
+    catch (e) { return send(res, 400, { error: { code: /** @type {any} */ (e).code || "bad_input", message: /** @type {Error} */ (e).message } }); }
+    const r = await registry.call("sync.upload.chunk", { upload, offset, data }, caller, { peer: policy.peer });
+    return send(res, r.error ? (r.error.code === "denied" ? 403 : r.error.code === "bad_input" ? 400 : 409) : 200, r);
+  }
   if (req.method === "POST" && url.pathname.startsWith("/v1/tools/")) {
     const name = decodeURIComponent(url.pathname.slice("/v1/tools/".length));
     if (drain.on) { res.setHeader("retry-after", "2"); return send(res, 503, { error: { code: "restarting", message: "vyred is restarting; try again in a moment" } }); }
@@ -464,12 +601,28 @@ async function route(req, res, { registry, events, cfg, started, streams, root, 
     const def = registry.tools.get(name);
     // link.call carries another tool to the box: what it carries is what counts.
     const inner = name === "link.call" && input && typeof input.tool === "string" ? input.tool : null;
-    const personal = PERSON_ONLY.has(name) || name === "link.signin" || Boolean(req.headers["x-vyre-presence"])
+    const personal = personOnly(name, def) || name === "link.signin" || Boolean(req.headers["x-vyre-presence"])
       || Boolean(inner && (PERSON_ONLY.has(inner) || HUMAN_ONLY.has(inner)))
       || Boolean(def && (registry.deps.presence ? registry.deps.presence.required(name, def, input) : def.presence));
     if (socket && personal && (shell.model || !MODEL_LABEL.test(caller))) {
-      const why = await fromClaude(req.socket, registry);
-      if (why) return send(res, 403, { error: { code: "denied", message: why } });
+      const who = await above(req.socket, registry, caller);
+      if (who.nopid) return send(res, 403, { error: { code: "denied", message: "vyred cannot tell which process is calling, so this is refused" } });
+      if (who.inside) return send(res, 403, { error: { code: "denied", message: "this comes from inside a Claude session, which acts as an agent: only the person answers, approves and proves presence" } });
+      if (who.unknown) {
+        if (!(who.server && await serverTrusted(who.server, req.headers["x-vyre-presence"], caller, registry))) {
+          // The full path, pid and start time, never a basename: a model can name its own process
+          // anything (`exec -a login`, `-title`), and the whole point of naming it in the prompt
+          // is that the PERSON can tell a real terminal from a model-caused one apart (the
+          // reviewer's MEDIUM, 28 Sep).
+          const all = registry.deps.presence ? await registry.deps.presence.methods() : [];
+          // `server` rides the error as structured fields too, not only inside the message: a
+          // client signs its proof over exactly this (sessionInput), so it needs it verbatim, not
+          // parsed back out of a sentence.
+          return send(res, who.server ? 401 : 403, who.server
+            ? { error: { code: "presence_required", message: `this runs inside ${serverName(who.server)}: prove you're here once for this session`, methods: all.filter(m => SERVER_TRUST_METHODS.has(m)), server: sessionInput(who.server) } }
+            : { error: { code: "denied", message: "vyred cannot read which processes this call runs under, so this is refused" } });
+        }
+      }
     }
     // Held in `inflight` until the answer has left, not just until the tool returns: stop()
     // closes every connection once these settle.
@@ -482,7 +635,10 @@ async function route(req, res, { registry, events, cfg, started, streams, root, 
     const terminal = socket && terminalOf && SESSIONABLE.has(name) && /^(cli|local)$/.test(caller) ? await terminalOf(req.socket) : null;
     // Only a caller vyred bound to a thread above says which chat tool call this is.
     const call = via.thread ? callId(req.headers["x-vyre-call-id"]) : null;
-    const result = await registry.call(name, input, caller, { ...via, proof, ...(terminal ? { terminal } : {}), ...(call ? { call } : {}),
+    // presence.capsule.pin judges the calling binary's own signature, read here from the socket's
+    // pid: only vyred's router can hand a tool this (a module's ctx.call carries no meta).
+    const signed = socket && name === "presence.capsule.pin" ? await signedBy(req.socket) : undefined;
+    const result = await registry.call(name, input, caller, { ...via, proof, ...(terminal ? { terminal } : {}), ...(call ? { call } : {}), ...(signed !== undefined ? { codeSignature: signed } : {}),
       keep: req.headers["x-vyre-presence-keep"] === "1", idempotencyKey: idemKey(req) });
     // A new person session for the Deck goes in the cookie, never in the body a script could read.
     if (name === "presence.person.start" && result.data && result.data.kind === "cookie" && result.data.token) {
@@ -552,10 +708,39 @@ async function route(req, res, { registry, events, cfg, started, streams, root, 
   // ../../core/resilience/<file>.js: that resolves here in a browser and to the repo file in Node,
   // so the Deck and its tests load the one copy. Only these five files; nothing else in core/.
   const res29 = req.method === "GET" && /^\/core\/resilience\/(backoff|sse|stream|outbox|web)\.js$/.exec(url.pathname);
-  if (res29) return serveFile(res, path.join(REPO, "core", "resilience", res29[1] + ".js"));
-  // The one app (ADR 0027), beside the Deck until it takes over /.
-  if (req.method === "GET" && (url.pathname === "/app" || url.pathname.startsWith("/app/"))) return serveApp(res, url.pathname);
-  if (req.method === "GET" && !url.pathname.startsWith("/v1/")) return serveDeck(res, url.pathname);
+  if (res29) return serveFile(res, path.join(REPO, "core", "resilience", res29[1] + ".js"), cfg);
+  // tailnet's relay client (ADR 0045/0037 "Wink"), which the Deck imports as
+  // ../../relay/client/<file>.js (deck/js/pair-ticket.js, deck/js/pair-scan.js): that resolves
+  // here in a browser and to the repo file in Node, so the Deck and its tests load the one copy.
+  // Only these seven files - client.js's own browser-safe closure (checked by hand: channel.js,
+  // bytes.js, response.js, sse.js, webcrypto.js, noise.js) - nothing else in relay/client/
+  // (nodecrypto.js is Node-only and never imported from the Deck). A real browser hitting
+  // /pair/scan without this fell straight through to serveDeck's catch-all shell (team-lead,
+  // reviewer of stage, 2026-09-28) - headless tests missed it because they never loaded the page
+  // through a real vyred the way a phone does.
+  const resRelay = req.method === "GET" && /^\/relay\/client\/(client|channel|bytes|response|sse|webcrypto|noise)\.js$/.exec(url.pathname);
+  if (resRelay) return serveFile(res, path.join(REPO, "relay", "client", resRelay[1] + ".js"), cfg);
+  // lib/avatar-seed (ADR 0043 section 6): the one rule for a project tile's bytes, which the Deck
+  // imports as ../../lib/avatar-seed/index.js, so the Deck and Node load the one copy. Only this file.
+  if (req.method === "GET" && url.pathname === "/lib/avatar-seed/index.js") return serveFile(res, path.join(REPO, "lib", "avatar-seed", "index.js"), cfg);
+  // The one app (ADR 0027), beside the Deck until it takes over /. Once config app.root flips
+  // (mobile's client-side migration, off by default: core/config/index.js), /app/* is a 301 to
+  // the same path under "/" instead, so an installed /app/ Home Screen icon or a stale bookmark
+  // still opens once "/" serves the app.
+  if (req.method === "GET" && (url.pathname === "/app" || url.pathname.startsWith("/app/"))) {
+    if (cfg.app?.root) {
+      // Never let this become a protocol-relative Location: "/app//evil.example" (or a
+      // "\" the URL parser already turned into "/") would otherwise slice down to "//evil.example",
+      // which a browser reads as scheme-relative and leaves the box for. Collapse every leading
+      // slash or backslash left after the "/app/" prefix before putting the one back.
+      const rest = (url.pathname === "/app" || url.pathname === "/app/") ? "" : url.pathname.slice(5).replace(/^[/\\]+/, "");
+      const to = "/" + rest + url.search;
+      res.writeHead(301, { location: to, "cache-control": "no-cache" });
+      return res.end();
+    }
+    return serveApp(res, url.pathname);
+  }
+  if (req.method === "GET" && !url.pathname.startsWith("/v1/")) return serveDeck(res, url.pathname, cfg);
   return send(res, 404, { error: { code: "not_found", message: `${req.method} ${url.pathname}` } });
 }
 
@@ -622,7 +807,7 @@ const TYPES = { ".html": "text/html; charset=utf-8", ".js": "text/javascript", "
  * are not files get index.html, so the Deck can route on the client. Nothing outside deck/ is
  * ever served, whatever the path says.
  */
-function serveDeck(res, pathname) {
+function serveDeck(res, pathname, cfg) {
   const dir = path.join(REPO, "deck");
   const shell = path.join(dir, "index.html");
   let file = path.resolve(dir, "." + path.posix.normalize(decodeURIComponent(pathname)));
@@ -643,19 +828,44 @@ function serveDeck(res, pathname) {
   // The service worker carries the build, so a release is a new sw.js and a phone swaps its cache
   // at once (deck/sw.js BUILD).
   if (file === path.join(dir, "sw.js")) buf = Buffer.from(swWithBuild(buf.toString("utf8")));
-  res.writeHead(200, { "content-type": TYPES[path.extname(file)] || "application/octet-stream", ...DECK_HEADERS });
+  res.writeHead(200, { "content-type": TYPES[path.extname(file)] || "application/octet-stream", ...deckHeaders(cfg) });
   res.end(buf);
 }
 
-/** What every Deck file goes out with. */
-const DECK_HEADERS = { "cache-control": "no-cache", "x-content-type-options": "nosniff",
-  "content-security-policy": "default-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: blob:; connect-src 'self'; frame-ancestors 'none'" };
+/**
+ * The relay origins Wink's pre-pairing fetch needs in connect-src (ADR 0045's resolveTicket(),
+ * a plain cross-origin POST to `<relay>/v1/pair` that runs BEFORE any pairing, so it cannot ride
+ * the one already-open channel ADR 0026's "no CORS/connect-src needed" reasoning covers - that
+ * reasoning only ever applied to traffic AFTER pairing). Always the production default
+ * (DEFAULT_RELAY); also this box's own configured relay (relay.status's url), so a self-hosted
+ * relay (relay/client/README.md's own documented case) is never silently blocked either. Exact
+ * origins only, both wss: (the socket pairOffer opens) and the matching https: (resolveTicket's
+ * own fetch, same scheme swap relay/client/client.js does) - never a wildcard. The configured
+ * relay is checked against a strict wss://<hostname>[:<port>] shape (reviewer's LOW,
+ * 2026-09-28): wss: only, never plain ws: (which would put a bare http: origin in connect-src),
+ * and a hostname charset only - no `;`, `'` or anything else that doesn't belong in a header.
+ * @param {any} cfg
+ */
+function relaySources(cfg) {
+  const urls = new Set([DEFAULT_RELAY]);
+  const configured = cfg && cfg.relay && cfg.relay.url;
+  if (typeof configured === "string" && /^wss:\/\/[A-Za-z0-9.-]+(:\d{1,5})?$/.test(configured)) urls.add(configured);
+  const out = [];
+  for (const u of urls) out.push(u, u.replace(/^ws/, "http"));
+  return out.join(" ");
+}
 
-/** One module from outside deck/ that the Deck imports (core/resilience), with the Deck's headers. */
-function serveFile(res, file) {
+/** What every Deck file goes out with. @param {any} cfg */
+function deckHeaders(cfg) {
+  return { "cache-control": "no-cache", "x-content-type-options": "nosniff",
+    "content-security-policy": `default-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: blob:; connect-src 'self' ${relaySources(cfg)}; frame-ancestors 'none'` };
+}
+
+/** One module from outside deck/ that the Deck imports (core/resilience, relay/client), with the Deck's headers. @param {any} cfg */
+function serveFile(res, file, cfg) {
   let buf;
   try { buf = fs.readFileSync(file); } catch { return send(res, 404, { error: { code: "not_found", message: path.basename(file) } }); }
-  res.writeHead(200, { "content-type": "text/javascript", ...DECK_HEADERS });
+  res.writeHead(200, { "content-type": "text/javascript", ...deckHeaders(cfg) });
   res.end(buf);
 }
 

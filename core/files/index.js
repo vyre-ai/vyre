@@ -18,7 +18,8 @@ import path from "node:path";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { StringDecoder } from "node:string_decoder";
-import { guard } from "./safety.js";
+import { guard, Refused } from "./safety.js";
+import { reach, within } from "./access.js";
 import { classify, KINDS } from "./kinds.js";
 import { defaults, walk } from "./search.js";
 import { drop } from "./drop.js";
@@ -55,6 +56,39 @@ export function merge(local, box, limit) {
 
 const clamp = (n, lo, hi) => Math.min(hi, Math.max(lo, n));
 const hasNul = buf => buf.includes(0);
+/** Open a file the safety guard already resolved, refusing outright if the final component
+ * turns out to be a symlink by the time this actually opens it (reviewer's LOW, TOCTOU on
+ * 450c34b6): describe() checks the real path once; a model on the same uid could otherwise swap
+ * the file for a symlink out of its granted folder in the gap before this reads it. O_NOFOLLOW
+ * makes that swap fail closed (ELOOP) rather than silently follow it. */
+export function openReal(real) {
+  try { return fs.openSync(real, fs.constants.O_RDONLY | fs.constants.O_NOFOLLOW); }
+  catch (e) { throw /** @type {any} */ (e).code === "ELOOP" ? new Refused() : e; }
+}
+/**
+ * openReal, plus the residual O_NOFOLLOW alone does not close (e2e's follow-up on e8560b79):
+ * O_NOFOLLOW refuses the final component turning into a symlink, but not one of ITS ancestors
+ * being renamed out and a new directory dropped in its place between describe()'s stat and this
+ * open — the path string still resolves, through the swapped-in parent, to a different real
+ * file that was never checked against scope or the guard. fstat after opening and comparing
+ * dev/ino to describe()'s own stat catches that: the swap either lands a different inode (dev
+ * or ino differs) or the original file was itself replaced (same path, new inode) — either way
+ * this refuses rather than silently reading whatever is there now.
+ * @param {{ real: string, dev: number, ino: number }} d describe()'s own result
+ * @returns {number} the open fd, already checked; the caller still owns closing it
+ */
+export function openChecked(d) {
+  const fd = openReal(d.real);
+  const st = fs.fstatSync(fd);
+  if (st.dev !== d.dev || st.ino !== d.ino) { fs.closeSync(fd); throw new Refused(); }
+  return fd;
+}
+/** Owner surfaces, modules, an agent's own session (mcp, harness) and the tailnet reader case
+ * (the user's other device). Reviewer's MEDIUM 2 (450c34b6): these four used to declare no
+ * callers at all, so a tailnet guest, a hook or any unrecognised kind reached them the same as
+ * the owner; access.js's reach() now also refuses that internally, but this is the registry's
+ * own backstop, the same list core/memory's tools are read by. */
+const FILES_CALLERS = ["cli", "local", "deck", "capsule", "module", "mcp", "harness", "tailnet"];
 
 /** Only the fields a search result is meant to carry, whatever a remote sent. */
 const tidy = (r, source) => ({ source, path: String(r.path), name: String(r.name), kind: String(r.kind),
@@ -96,35 +130,52 @@ export default {
       return { ...(r && r.data), source: "box" };
     }
 
-    /** A checked path with what stat and the name say about it. */
-    function describe(p, rs) {
+    /** A checked path with what stat and the name say about it. scope, when given and not
+     * scope.all, additionally refuses anything outside that agent's own granted folders, the
+     * same "not available" way as everything else this guard refuses (Vyre Drive step 5): a
+     * named agent never learns whether a path outside its grant exists at all. */
+    function describe(p, rs, scope) {
       const safe = g.resolveSafe(p, rs);
+      if (scope && !scope.all && !within(safe.real, scope.folders)) throw new Refused();
       const st = fs.statSync(safe.real);
       const name = path.basename(safe.path);
       const { kind, mime } = classify(name, st.isDirectory());
       return { path: safe.path, real: safe.real, name, kind, mime, dir: st.isDirectory(), size: st.isDirectory() ? 0 : st.size,
-        mtime: st.mtime.toISOString() };
+        mtime: st.mtime.toISOString(), dev: st.dev, ino: st.ino };
     }
 
-    /** Search this machine only. Never throws: a failure is reported in its source entry. */
-    async function searchHere(q, limit, kinds) {
+    /** Search this machine only. Never throws: a failure is reported in its source entry. scope,
+     * when given and not scope.all, narrows the folders actually searched to that agent's own
+     * granted ones (Vyre Drive step 5) as well as filtering results through describe()'s own
+     * check: a restricted agent's search never even reads outside its grant, rather than
+     * reading everything and hiding what it may not see. */
+    async function searchHere(q, limit, kinds, scope) {
       const rs = g.roots();
       const notes = [];
       if (rs.missing.length) notes.push(`skipped folders that do not exist: ${rs.missing.join(", ")}`);
+      // A restricted agent's own folders, clamped to what a configured root actually covers:
+      // the narrower of the two whenever a granted folder and a root overlap, so this can
+      // never search wider than either side allows on its own. Unrestricted otherwise, exactly
+      // today's behavior.
+      const dirs = scope && !scope.all
+        ? [...new Set(rs.live.flatMap(r => scope.folders
+            .map(f => (within(f, [r.real]) ? f : within(r.real, [f]) ? r.real : null))
+            .filter(Boolean)))].filter(d => fs.existsSync(d))
+        : rs.live.map(r => r.real);
       // Ask the backends for more than the limit: some candidates will be filtered out.
       const want = limit * 4 + 100;
       let candidates = [];
       try {
         if (role === "local" && platform === "darwin") {
           // Spotlight matches names and contents, and already knows every file, so it is fast.
-          const lists = await Promise.all(rs.live.map(r => mdfind(["-onlyin", r.real, q], { max: want })));
+          const lists = await Promise.all(dirs.map(d => mdfind(["-onlyin", d, q], { max: want })));
           candidates = lists.flat();
         } else {
           if (role === "local") notes.push("Spotlight is not available here, so the folders were walked");
-          candidates = walk(rs.live.map(r => r.real), q, g, { max: want });
-          if (rs.live.length) {
+          candidates = walk(dirs, q, g, { max: want });
+          if (dirs.length) {
             try {
-              candidates.push(...await rg(["-l", "-i", "-F", "--max-count", "1", "--max-filesize", "2M", "--", q, ...rs.live.map(r => r.real)], { max: want }));
+              candidates.push(...await rg(["-l", "-i", "-F", "--max-count", "1", "--max-filesize", "2M", "--", q, ...dirs], { max: want }));
             } catch (e) {
               notes.push(/** @type {any} */ (e).code === "ENOENT" ? "ripgrep is not installed, so only file names were matched"
                 : "the content search failed, so only file names were matched");
@@ -143,7 +194,7 @@ export default {
         // reachable by stat and preview; they are just not offered.
         if (c.split(path.sep).includes("node_modules")) continue;
         let d;
-        try { d = describe(c, rs); } catch { continue; }
+        try { d = describe(c, rs, scope); } catch { continue; }
         if (kinds && !kinds.includes(d.kind)) continue;
         results.push({ source: here, path: d.path, name: d.name, kind: d.kind, size: d.size, mtime: d.mtime });
       }
@@ -173,18 +224,24 @@ export default {
         q: { type: "string" }, limit: { type: "integer" },
         kinds: { type: "array", items: { type: "string", enum: KINDS } },
         where: { type: "string", enum: ["all", "here", "box"] } } },
-      run: async ({ q, limit = 50, kinds, where = "all" }) => {
+      callers: FILES_CALLERS,
+      run: async ({ q, limit = 50, kinds, where = "all" }, { caller } = {}) => {
         q = q.trim();
         if (!q) throw new Error("q is required");
         limit = clamp(limit, 1, 500);
         kinds = kinds && kinds.length ? kinds : undefined;
+        const scope = await reach(ctx, caller);
+        // A restricted agent's caller identity does not survive the hop to the box (ctx.remote
+        // relabels it "module:files"), so there is no way to scope that leg correctly there.
+        // Failing closed: a named agent searches this machine only, never the box through the
+        // link, whatever "where" asked for (Vyre Drive step 5).
         if (role === "box") {
-          const r = await searchHere(q, limit, kinds);
+          const r = await searchHere(q, limit, kinds, scope);
           return { results: r.results, sources: [r.source] };
         }
         const [mine, box] = await Promise.all([
-          where === "box" ? null : searchHere(q, limit, kinds),
-          where === "here" ? null : searchBox(q, limit, kinds, where === "all" ? remoteTimeout : 0),
+          where === "box" && scope.all ? null : searchHere(q, limit, kinds, scope),
+          where === "here" || !scope.all ? null : searchBox(q, limit, kinds, where === "all" ? remoteTimeout : 0),
         ]);
         return { results: merge(mine ? mine.results : [], box ? box.results : [], limit),
           sources: [mine && mine.source, box && box.source].filter(Boolean) };
@@ -194,9 +251,16 @@ export default {
     ctx.tool("files.stat", {
       description: "Size, dates and kind of one file or folder, on this machine or the box.",
       input: { type: "object", required: ["path"], properties: { path: { type: "string" }, source: { type: "string", enum: ["mac", "box"] } } },
-      run: async ({ path: p, source }) => {
-        if (target(source) === "box") return forward("files.stat", { path: p });
-        const d = describe(p);
+      callers: FILES_CALLERS,
+      run: async ({ path: p, source }, { caller } = {}) => {
+        const scope = await reach(ctx, caller);
+        // See files.search: a named agent's identity does not survive the hop to the box, so
+        // the cross-machine leg is refused outright rather than served unscoped there.
+        if (target(source) === "box") {
+          if (!scope.all) throw Object.assign(new Error("an agent reads this machine only, not the box"), { code: "denied" });
+          return forward("files.stat", { path: p });
+        }
+        const d = describe(p, undefined, scope);
         return { source: here, path: d.path, name: d.name, kind: d.kind, size: d.size, mtime: d.mtime, mime: d.mime, dir: d.dir };
       },
     });
@@ -220,15 +284,25 @@ export default {
     ctx.tool("files.preview", {
       description: "A look inside one file: the start of a text file, or a small image. Other kinds say what they are and show nothing.",
       input: { type: "object", required: ["path"], properties: { path: { type: "string" }, source: { type: "string", enum: ["mac", "box"] }, max: { type: "integer" } } },
-      run: async ({ path: p, source, max }) => {
-        if (target(source) === "box") return forward("files.preview", { path: p, ...(max !== undefined ? { max } : {}) });
-        const d = describe(p);
+      callers: FILES_CALLERS,
+      run: async ({ path: p, source, max }, { caller } = {}) => {
+        const scope = await reach(ctx, caller);
+        if (target(source) === "box") {
+          if (!scope.all) throw Object.assign(new Error("an agent reads this machine only, not the box"), { code: "denied" });
+          return forward("files.preview", { path: p, ...(max !== undefined ? { max } : {}) });
+        }
+        const d = describe(p, undefined, scope);
         const other = () => ({ source: here, path: d.path, kind: d.kind, mime: d.mime, size: d.size, preview: null });
         if (d.dir) return other();
         if (d.kind === "image") {
           const t = await thumbnail(d.real, path.extname(d.name).toLowerCase());
           if (t && t.buf && t.buf.length) return { source: here, path: d.path, kind: "image", mime: t.mime, base64: t.buf.toString("base64"), thumbnail: true, size: d.size };
-          if (d.size <= SMALL_IMAGE) return { source: here, path: d.path, kind: "image", mime: d.mime, base64: fs.readFileSync(d.real).toString("base64"), thumbnail: false, size: d.size };
+          if (d.size <= SMALL_IMAGE) {
+            const ifd = openChecked(d);
+            let ibuf;
+            try { ibuf = fs.readFileSync(ifd); } finally { fs.closeSync(ifd); }
+            return { source: here, path: d.path, kind: "image", mime: d.mime, base64: ibuf.toString("base64"), thumbnail: false, size: d.size };
+          }
           return { source: here, path: d.path, kind: "image", mime: d.mime, base64: null, thumbnail: false, size: d.size, note: "too large to preview" };
         }
         // A file with no known extension (README, LICENSE, Makefile) is tried as text too; the
@@ -236,7 +310,7 @@ export default {
         if (d.kind !== "text" && d.kind !== "code" && d.kind !== "other") return other();
         const limit = clamp(max ?? PREVIEW, 1, PREVIEW_CAP);
         const buf = Buffer.alloc(Math.min(limit, d.size));
-        const fd = fs.openSync(d.real, "r");
+        const fd = openChecked(d);
         let n = 0;
         try { n = fs.readSync(fd, buf, 0, buf.length, 0); } finally { fs.closeSync(fd); }
         const head = buf.subarray(0, n);
@@ -249,16 +323,20 @@ export default {
       },
     });
 
-    /** One chunk of a file on this machine. The other machine calls this in a loop. */
-    function chunk(p, offset = 0, length = CHUNK) {
-      const d = describe(p);
+    /** One chunk of a file on this machine. The other machine calls this in a loop. scope: see
+     * describe(). */
+    function chunk(p, offset = 0, length = CHUNK, scope) {
+      const d = describe(p, undefined, scope);
       if (d.dir) throw new Error("a folder cannot be fetched");
       if (offset < 0) throw new Error("offset must not be negative");
       const len = clamp(length, 1, CHUNK);
-      const fd = fs.openSync(d.real, "r");
+      const fd = openReal(d.real);
       try {
-        // Size and date from the open file itself, so they describe exactly what is read.
+        // Size and date from the open file itself, so they describe exactly what is read; the
+        // same fstat also carries dev/ino, checked against describe()'s own stat here rather
+        // than through openChecked (which would fstat twice for no reason).
         const st = fs.fstatSync(fd);
+        if (st.dev !== d.dev || st.ino !== d.ino) throw new Refused();
         if (offset > st.size) throw new Error("offset is past the end of the file");
         const buf = Buffer.alloc(Math.min(len, st.size - offset));
         const n = fs.readSync(fd, buf, 0, buf.length, offset);
@@ -306,10 +384,17 @@ export default {
       description: "Bring a file from the box to this Mac (source box), saved under Vyre's folder. Called on the machine holding the file, returns one chunk of it.",
       input: { type: "object", required: ["path"], properties: { path: { type: "string" }, source: { type: "string", enum: ["mac", "box"] },
         offset: { type: "integer" }, length: { type: "integer" } } },
-      run: async ({ path: p, source, offset, length }) => {
+      callers: FILES_CALLERS,
+      run: async ({ path: p, source, offset, length }, { caller } = {}) => {
         if (role === "local" && source === "mac") throw new Error("already on this Mac");
-        if (target(source) === "box") return pull(p);
-        return chunk(p, offset, length);
+        const scope = await reach(ctx, caller);
+        if (target(source) === "box") {
+          // See files.search: an agent's identity does not survive the hop, so pulling from the
+          // box is refused outright for a restricted one rather than served unscoped there.
+          if (!scope.all) throw Object.assign(new Error("an agent reads this machine only, not the box"), { code: "denied" });
+          return pull(p);
+        }
+        return chunk(p, offset, length, scope);
       },
     });
 

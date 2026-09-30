@@ -146,6 +146,14 @@
 .pj-fact .dot { align-self: center; }
 .pj-fact-text { font-size: 14px; line-height: 20px; }
 
+/* The Brief tab's Repos section (github.project.detect per workspace, "Add a repo"). */
+.pj-repos { display: flex; flex-direction: column; gap: 8px; padding-top: 12px; border-top: 1px solid var(--rule); }
+.pj-repo-row { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; }
+.pj-repos-add { padding-top: 4px; }
+
+/* /projects list head: New project and From a GitHub repo, side by side. */
+.pl-head-actions { display: flex; align-items: center; gap: 10px; }
+
 /* /threads/:thread */
 .lt-add { display: flex; align-items: center; gap: 10px; min-width: 0; }
 .lt-form { display: flex; align-items: center; gap: 8px; }

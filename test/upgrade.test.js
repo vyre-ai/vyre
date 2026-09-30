@@ -9,7 +9,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { spawn, execFile } from "node:child_process";
 import { fileURLToPath } from "node:url";
-import { tempHome } from "./helpers.js";
+import { tempHome, upLeader } from "./helpers.js";
 
 const BIN = path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "bin", "vyre");
 const vyre = (args, env) => new Promise(resolve =>
@@ -77,7 +77,11 @@ test("upgrade: a pid file that names someone else's process stops nothing", asyn
 });
 
 test("assistant: none yet says the command; a name makes it as onboarding does; then it is named", async t => {
-  const { env } = await running(t);
+  const { root, env } = await running(t);
+  // The real verifier again, trusting only the terminal server this test runs under (the
+  // testbox's sshd, which otherwise asks for a proof no headless test can give).
+  await vyre(["down"], env);
+  assert.equal((await upLeader(root, { ...process.env, ...env })).code, 0);
   const none = await vyre(["assistant"], env);
   assert.equal(none.code, 0, none.out);
   assert.match(none.out, /no assistant yet[\s\S]*vyre assistant Juno/);

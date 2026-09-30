@@ -13,7 +13,7 @@
 
 import { h, put, link as anchor } from "../js/dom.js";
 import { attempt, call } from "../js/api.js";
-import { gicon, errText, viewerCount, holderOf, surfaceKind } from "./util.js";
+import { gicon, errText, viewerCount, holderOf, surfaceKind, yourDevice } from "./util.js";
 import { takeover } from "./takeover.js";
 import { attach } from "./input.js";
 import { pinchZoom, softKeyboard } from "./phone.js";
@@ -29,6 +29,9 @@ const EVENTS = ["computer.taken-over", "computer.handed-back", "computer.idle-wa
 
 /** Is the box reaching this device through a relay? `link` is glass.open's { path, latencyMs }. */
 export const relayed = link => Boolean(link && (link.path === "relay" || link.path === "peer-relay"));
+
+/** "42 ms" from glass.open's link.latencyMs, taken when this screen was opened (not a live ping); "" if unknown. */
+export const latencyLabel = link => (link && Number.isFinite(link.latencyMs) ? `${Math.round(link.latencyMs)} ms` : "");
 
 /**
  * [quality, compression] for this device and link (ADR 0005 decision 1).
@@ -53,6 +56,7 @@ export function mountScreen(o) {
   let gen = 0, backoff = 1, retry = 0, session = /** @type {string|null} */ (null);
   let detachInput = () => {};
   let zoom = /** @type {ReturnType<typeof pinchZoom> | null} */ (null);
+  let fit = true;   // Deck only: true fits the whole remote desktop to the window (scaleViewport); false is 1:1, scrollable.
   let conn = "connecting";   // connecting | live | hidden | waiting | refused | ended | error | noscreen
   /** @type {{ path: string, latencyMs: number|null } | null} how the box reaches this device, from glass.open */
   let link = null;
@@ -73,9 +77,13 @@ export function mountScreen(o) {
   const over = h("div", { class: "gl-over" });
   const badge = h("div", { class: "gl-badge mono" });
   const panelSize = h("span", { class: "faint" });
+  // Deck only: 1:1 shows the remote desktop at its own resolution (scrollable) instead of
+  // squeezed to fit the window. Phone keeps pinch-zoom (zoomReset below) for the same job.
+  const scaleBtn = h("button", { type: "button", class: "btn btn-ghost btn-sm", onclick: () => { fit = !fit; applyScale(); draw(); } }, "1:1");
+  const screenEl = h("div", { class: "gl-screen" }, zoomView, snap, over);
   const stage = h("div", { class: "gl-stage", role: "img", "aria-label": `Live view of ${name}'s screen` },
-    h("div", { class: "gl-panel mono" }, h("span", { class: "gl-panel-me" }, `${name}@box-${name}`), h("span", { style: { flexGrow: "1" } }), panelSize),
-    h("div", { class: "gl-screen" }, zoomView, snap, over), badge);
+    h("div", { class: "gl-panel mono" }, h("span", { class: "gl-panel-me" }, `${name}@box-${name}`), h("span", { style: { flexGrow: "1" } }), scaleBtn, panelSize),
+    screenEl, badge);
   const bar = h("div", { class: "gl-barslot" });
   const notice = h("div", { class: "gl-noticeslot", "aria-live": "polite" });
   const caption = h("div", { class: "gl-caption" });
@@ -122,7 +130,8 @@ export function mountScreen(o) {
     stage.classList.toggle("gl-held", tk.mine());
     stage.classList.toggle("gl-private", !!(tk.mine() && s.holder?.private));
     put(badge, conn === "live" ? [h("span", { class: "dot signal" }), tk.mine() ? "You have control" : "Live",
-      relayed(link) ? h("span", { class: "gl-badge-note", title: "The box reaches this device through a relay, so the screen sends fewer frames" }, "relayed") : null]
+      relayed(link) ? h("span", { class: "gl-badge-note", title: "The box reaches this device through a relay, so the screen sends fewer frames" }, "relayed") : null,
+      latencyLabel(link) ? h("span", { class: "gl-badge-note mono", title: "Round-trip time to the box when this screen opened" }, latencyLabel(link)) : null]
       : conn === "hidden" ? "Paused" : conn === "refused" || conn === "error" || conn === "ended" ? "Offline" : "Connecting");
     badge.classList.toggle("gl-badge-live", conn === "live");
     put(panelSize, conn === "live" ? `${s.width} × ${s.height}` : "");
@@ -183,6 +192,16 @@ export function mountScreen(o) {
       h("div", { class: "gl-over-t" }, t), d ? h("div", { class: "gl-over-d small" }, d) : null, retryBtn, restart));
   }
 
+  /** Deck only: reflect `fit` onto the live RFB session and the screen's CSS. A no-op on the
+   * phone (which has no scaleBtn to click) and while there is no live session (applied on connect). */
+  function applyScale() {
+    screenEl.classList.toggle("gl-1to1", !phone && !fit);
+    scaleBtn.textContent = fit ? "1:1" : "Fit";
+    if (!rfb) return;
+    rfb.scaleViewport = fit;
+    rfb.clipViewport = !fit;
+  }
+
   function applyHolding() {
     detachInput(); detachInput = () => {};
     if (!rfb) return;
@@ -194,6 +213,22 @@ export function mountScreen(o) {
         onPaste: (sent, cut) => { if (cut) addLog(`Pasted the first ${sent} characters; Glass types at most 4 KB of a paste.`); },
       });
       if (!phone) rfb.focus({ preventScroll: true });
+    }
+  }
+
+  /**
+   * One line from computer.handed-back's fields (by, device, reason), phrased for the owner, who
+   * is the only one who can take over: "your", never a name.
+   * @param {any} p @param {string} agent
+   */
+  function handedBack(p, agent) {
+    const from = p.device ? ` (from ${p.device})` : "";
+    switch (p.reason || "") {
+      case "idle": return `Handed back to ${agent} after ${Math.round(Number(p.idle_ms) / 60_000)} min idle.`;
+      case "chat": return `Your take-over ended when the thread moved to chat${from}.`;
+      case "released": return `Your take-over ended when the thread's lease was released${from}.`;
+      case "expired": return `Your take-over lapsed after 90 s without a signal${from}.`;
+      default: return p.surface === surface ? `You handed back to ${agent}.` : `The keyboard went back to ${agent}.`;
     }
   }
 
@@ -210,12 +245,31 @@ export function mountScreen(o) {
     put(log, logRows);
   }
 
+  /** A still from sight.frame, for a cold start or a reconnect with no local frame of its own
+   * yet to keep (keepFrame() already covers a warm reconnect for free, from the canvas the live
+   * session already painted; this is only for "never connected in this mount"). Never overwrites
+   * a real kept frame, and never wins a race against a live connection that lands first. */
+  async function stillFrame() {
+    if (dead || !snap.hidden) return;
+    const r = await attempt("sight.frame", { target: `agent:${name}`, maxWidth: phone ? 480 : 960 });
+    if (dead || rfb || !snap.hidden || !r.data?.image) return;
+    const img = new Image();
+    img.onload = () => {
+      if (dead || rfb || !snap.hidden) return;
+      snap.width = img.naturalWidth; snap.height = img.naturalHeight;
+      snap.getContext("2d")?.drawImage(img, 0, 0);
+      snap.hidden = false;
+    };
+    img.src = `data:${r.data.mime || "image/jpeg"};base64,${r.data.image}`;
+  }
+
   // ---- connection --------------------------------------------------------------------------
   async function connect() {
     if (dead || !s.visible()) return;
     clearTimeout(retry); retry = 0;
     const my = ++gen;
     if (conn !== "waiting") { conn = "connecting"; draw(); }
+    stillFrame();
     await closeSession();
     const r = await attempt("glass.open", { target, surface });
     if (dead || my !== gen) { if (r.data?.session) call("glass.close", { session: r.data.session }).catch(() => {}); return; }
@@ -240,9 +294,9 @@ export function mountScreen(o) {
     // The relay does not take QEMU extended key events (ADR 0005): keysyms only, from event.key.
     try { Object.defineProperty(r2, "_qemuExtKeyEventSupported", { get: () => false, set: () => {}, configurable: true }); } catch {}
     r2.viewOnly = true;
-    r2.scaleViewport = true;
+    r2.scaleViewport = fit;
     r2.resizeSession = false;
-    r2.clipViewport = false;
+    r2.clipViewport = !fit;
     r2.focusOnClick = !phone;
     r2.background = "transparent";
     const [q, c] = levels(phone, link);
@@ -256,7 +310,7 @@ export function mountScreen(o) {
       if (rfb !== r2) return;
       backoff = 1; conn = "live"; why = "";
       snap.hidden = true;
-      applyHolding(); draw();
+      applyScale(); applyHolding(); draw();
     });
     r2.addEventListener("disconnect", (/** @type {any} */ e) => {
       if (rfb !== r2) return;   // we closed it on purpose
@@ -347,7 +401,7 @@ export function mountScreen(o) {
     if (dead) return;
     if (agentOf(e) !== name && e.payload?.target !== target) return;
     const p = e.payload || {};
-    const who = p.surface === surface ? "You" : `Someone on ${surfaceKind(p.surface)}`;
+    const who = p.surface === surface ? "You" : yourDevice(p.surface);
     switch (e.type) {
       case "computer.taken-over": case "glass.taken":
         if (!s.holder || s.holder.surface !== p.surface) s.holder = { surface: p.surface, since: p.since || e.at || Date.now(), private: !!p.private };
@@ -361,12 +415,10 @@ export function mountScreen(o) {
       case "computer.handed-back": case "glass.released":
         if (s.holder && (!p.surface || s.holder.surface === p.surface)) s.holder = null;
         if (p.surface === surface) s.idleAt = 0;
-        if (p.why === "idle") {
-          addLog(`Handed back to ${name} after ${Math.round(Number(p.idle_ms) / 60_000)} min idle.`);
-          if (p.surface === surface) tk.idled(p.idle_ms);
-        } else addLog(`${p.surface === surface ? "You" : "The keyboard"} ${p.surface === surface ? "handed back" : "went back"} to ${name}.`);
+        addLog(handedBack(p, name));
+        if (p.why === "idle" && p.surface === surface) tk.idled(p.idle_ms);
         break;
-      case "computer.shielded": addLog(`${name} cannot see the page while someone signs in.`); break;
+      case "computer.shielded": addLog(p.reason === "fill" ? `The Vault is signing ${name} in; ${name} cannot see the page until it is done.` : `${name} cannot see the page while someone signs in.`); break;
       case "computer.unshielded": addLog(`${name} can see the page again${p.origin ? ` (${p.origin})` : ""}.`); break;
       case "glass.opened": if (p.surface !== surface) addLog(`Someone started watching from ${surfaceKind(p.surface)}.`); refresh(); return;
       case "glass.closed": refresh(); return;
@@ -375,6 +427,7 @@ export function mountScreen(o) {
     applyHolding(); draw();
   });
 
+  applyScale();
   draw();
   if (s.visible()) connect(); else { conn = "hidden"; draw(); }
 

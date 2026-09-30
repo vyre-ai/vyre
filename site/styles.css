@@ -49,7 +49,7 @@ code { font-family: var(--mono); font-size: 0.92em; }
 .skip:focus { top: 12px; }
 
 .mono { font-family: var(--mono); }
-.lbl { font-size: 12px; line-height: 16px; font-weight: 400; color: var(--ash); }
+.lbl { font-size: 12px; line-height: 16px; font-weight: 600; color: var(--ash); }
 .lbl.beacon, .beacon { color: var(--beacon); }
 .lbl.sig { color: var(--signal); }
 .stone { color: var(--stone); }
@@ -139,6 +139,13 @@ code { font-family: var(--mono); font-size: 0.92em; }
 .copied { font-family: var(--mono); font-size: 12px; color: var(--signal); min-height: 16px; }
 
 .hint { display: flex; align-items: center; flex-wrap: wrap; gap: 8px 10px; color: var(--stone); font-size: 14px; }
+.hint .hk-touch { display: none; }
+/* No keyboard, or not enough room to be sure there is one: a key hint reads as broken instead of
+   inviting. Swap it for a tap hint; the demo card itself already opens on tap either way. */
+@media (pointer: coarse), (max-width: 720px) {
+  .hint .keys, .hint .hk-key { display: none; }
+  .hint .hk-touch { display: inline; }
+}
 .linkbtn { background: none; border: none; padding: 0 2px; color: var(--bone); text-decoration: underline; text-decoration-color: var(--rule-strong); text-underline-offset: 4px; cursor: pointer; min-height: 32px; }
 .linkbtn:hover { text-decoration-color: var(--signal); }
 
@@ -162,7 +169,7 @@ code { font-family: var(--mono); font-size: 0.92em; }
 .cap-modes { display: flex; gap: 6px; flex-wrap: wrap; }
 .dtab { font-size: 13px; line-height: 18px; min-height: 32px; padding: 0 10px; border-radius: var(--r-2); border: 1px solid var(--rule-strong); background: var(--carbon); color: var(--stone); cursor: pointer; }
 .dtab:hover { color: var(--bone); }
-.dtab[aria-pressed="true"] { background: var(--signal-wash); border-color: var(--signal); color: var(--signal); font-weight: 600; }
+.dtab[aria-pressed="true"] { background: var(--signal-wash); border-color: var(--signal); color: var(--bone); font-weight: 600; }
 .tries { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
 .try { font-family: var(--mono); font-size: 12px; line-height: 16px; color: var(--stone); background: transparent; border: 1px solid var(--rule); border-radius: var(--r-2); padding: 7px 10px; min-height: 32px; cursor: pointer; text-align: left; max-width: 100%; overflow-wrap: anywhere; transition: border-color 120ms, color 120ms; }
 .try:hover { color: var(--bone); border-color: var(--rule-strong); }

@@ -22,8 +22,8 @@ public enum Theme {
     public static let stone = c.text2
     public static let bone = c.text
     public static let signal = c.focus
-    /// Memory's colour, the Capsule's own: tokens.json has no recall key.
-    public static let recall = hex(0xEBC76B)
+    /// Memory's colour. Design A retired the gold: memory is drawn in neutral text.
+    public static let recall = c.text2
     /// The "needs you" colour: beacon (violet), the same as the Deck and the phone.
     public static let attention = c.beacon
 

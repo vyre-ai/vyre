@@ -15,7 +15,7 @@
 // client.js already scrubs it from every error string it raises, and nothing here holds it
 // past the one client it was built for.
 
-import { callerKind } from "../../core/modules/index.js";
+import { callerKind, agentClaim } from "../../core/modules/index.js";
 import { createClient } from "./client.js";
 import * as snapshot from "./snapshot.js";
 import * as act from "./act.js";
@@ -44,12 +44,18 @@ export default {
      * core/computers/index.js's resolve(): computers.endpoint is reached through ctx.call, which
      * forwards as "module:hands-desktop", so computers's own per-agent check never sees the real
      * caller and cannot enforce this on our behalf.
+     *
+     * This used to match only the exact shape "mcp:agent:<name>"; a caller vouched under another
+     * transport ("cli agent:<name>", the shape a person's own CLI gets when an agent runs inside
+     * it) fell through to the trusted-caller branch below and could name any agent's computer as
+     * if it were the CLI itself (e2e review, 2026-09-28). `agentClaim` (core/modules, shared with
+     * computers.js's ownSurface and sight) finds the claim under any transport, so the same
+     * self-or-assistant rule now applies whichever way the agent's identity reached this call.
      */
     const resolveAgent = async (input, caller) => {
-      const m = /^mcp:agent:(.+)$/.exec(String(caller || ""));
+      const self = agentClaim(caller);
       let agent;
-      if (m) {
-        const self = m[1];
+      if (self) {
         if (!input.agent || input.agent === self) agent = self;
         else if ((await kindOf(self)) === "assistant") agent = input.agent;
         else throw new Error(`${self} can only use its own computer, not ${input.agent}'s`);

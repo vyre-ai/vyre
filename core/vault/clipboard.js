@@ -92,10 +92,13 @@ export class Clipboard {
         this.held = { via: "helper", count: r.count };
         via = "helper";
       } catch (e) {
-        this.log(`vault clipboard helper unavailable, using pbcopy: ${/** @type {Error} */ (e).message}`);
+        this.log(`vault clipboard helper unavailable${this.pasteboard ? "" : ", using pbcopy"}: ${/** @type {Error} */ (e).message}`);
         this.stopChild();
       }
     }
+    // A named private pasteboard is a promise not to touch the real one: without the helper,
+    // refuse rather than fall back to pbcopy.
+    if (via === "pbcopy" && this.pasteboard) throw Object.assign(new Error("the private pasteboard needs the clipboard helper, which is not available"), { code: "unsupported" });
     if (via === "pbcopy") {
       await pipe("pbcopy", text, this.env);
       this.held = { via: "pbcopy", hash: sha(text) };

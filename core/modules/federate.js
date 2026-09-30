@@ -8,6 +8,27 @@
 // here and not in core/link: modules do not import each other's files. It only ever reaches the
 // link through ctx.call, so a box without the link module still answers with its own rows.
 
+import { HUMAN_ONLY } from "../presence/index.js";
+
+/** How Vyre's MCP server names a Vyre tool (harness/mcp/server.js): what MCP names cannot hold becomes "_". */
+const mcpName = t => t.replace(/[^A-Za-z0-9_-]/g, "_").slice(0, 64);
+/** The two server names Vyre's MCP server runs under in Claude Code (as in core/harness/rules.js). */
+const VYRE_SERVERS = ["mcp__vyre__", "mcp__plugin_vyre_vyre__"];
+/** Every name under which an ask can be for a floor tool: the tool itself, and each MCP name of it. */
+const GATED_TOOLS = new Set([...HUMAN_ONLY].flatMap(t => [t, ...VYRE_SERVERS.map(p => p + mcpName(t))]));
+
+/**
+ * Is this ask gated: does allowing it approve a floor tool that needs a fresh proof of presence
+ * (HUMAN_ONLY), or does the ask say presence is required? Matching is exact: the ask's `tool` is a
+ * HUMAN_ONLY name, or `mcp__vyre__<name>` / `mcp__plugin_vyre_vyre__<name>` with the name spelled as
+ * Vyre's MCP server spells it (every character outside [A-Za-z0-9_-] as "_"). Used at both ends of
+ * the link: the box asks for the proof, and the Mac refuses an answer that carries none
+ * (docs/adr/0021-box-reads-the-mac.md, "v2").
+ * @param {any} ask an ask, or an ask.raised payload
+ */
+export const gatedAsk = ask => Boolean(ask && ((typeof ask.tool === "string" && GATED_TOOLS.has(ask.tool))
+  || (ask.presence && typeof ask.presence === "object" && ask.presence.required === true)));
+
 /** The person's own callers: the Deck, the terminal, the Capsule. */
 const PERSON = new Set(["deck", "cli", "local", "capsule"]);
 /** The person on another of their devices. A guest is "tailnet-guest:<login>" and an agent carries "agent:", so neither matches. */

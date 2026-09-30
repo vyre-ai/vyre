@@ -18,6 +18,7 @@ import { totp } from "../core/vault/totp.js";
 import { ping } from "../core/daemon/index.js";
 import * as config from "../core/config/index.js";
 import { SCRATCH } from "./scratch.mjs";
+import { stopDaemon } from "./helpers.js";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const BIN = path.join(HERE, "..", "bin", "vyre");
@@ -199,11 +200,12 @@ async function vyred(t, vaultConfig) {
   const child = spawn(process.execPath, ["--import", fakeFetch, path.join(HERE, "fixtures", "vyred-present.js")],
     { detached: true, stdio: ["ignore", fd, fd], env: { ...process.env, VYRE_HOME: h, VYRE_NO_DIALOGS: "1" } });
   child.unref();
-  t.after(async () => {
-    try { process.kill(child.pid ?? 0, "SIGTERM"); } catch {}
-    for (let i = 0; i < 50 && child.exitCode === null; i++) await new Promise(r => setTimeout(r, 100));
-    fs.rmSync(h, { recursive: true, force: true });
-  });
+  // stopDaemon reads vyred.pid out of h itself (written by the same core/daemon/index.js start()
+  // vyred-present.js runs), escalates to SIGKILL and confirms the process is actually gone before
+  // returning - this used to be its own weaker copy here (SIGTERM, a bounded wait, then rmSync
+  // regardless of whether the process had actually exited), the exact "deleted a home out from
+  // under a still-running vyred" bug tempHome's own stopDaemon was already hardened against.
+  t.after(async () => { await stopDaemon(h); fs.rmSync(h, { recursive: true, force: true }); });
   for (let i = 0; i < 100; i++) {
     await new Promise(r => setTimeout(r, 100));
     if (await ping(p.socket)) return h;
@@ -235,7 +237,7 @@ test("vault cli: totp --json and piped print one result and exit, with the item'
   const j = await vyre(home, ["vault", "totp", "harlow-mail", "--json"]);
   assert.equal(j.code, 0, j.all);
   const d = JSON.parse(j.out).data;
-  assert.deepEqual(Object.keys(d).sort(), ["code", "period", "remaining"], "no next code is invented");
+  assert.deepEqual(Object.keys(d).sort(), ["code", "next", "period", "remaining"], "the next code rides along, so a rollover is never a guess (ADR 0028)");
   assert.equal(d.period, 30);
   const now = Date.now();
   assert.ok([totp(seed, { at: now }).code, totp(seed, { at: now - 30_000 }).code].includes(d.code));
