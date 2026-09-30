@@ -155,6 +155,26 @@ Branch: work/anywhere · Worktree: ../vyre-anywhere · Owner session: anywhere
   person-only-guard+docs-check, 178/178.
 - Sent 74f8832a to the reviewer.
 
+## Done (cont. 8): 30 Sep, relaunch as the Mac-as-server owner
+- Merged stage/0.2 (04d6f6f1). Read RULES, CHARTER, PLAN section for anywhere, launch's work log.
+- `scripts/install-mac-server.sh` (test/install-mac-server.test.js, 8/8, temp home, fake launchctl/
+  caffeinate/brew/colima): the Mac server install path. Person's own account, never root, no password.
+  Checks Node 22.5+, installs the release into ~/.vyre-server/app (SHA256SUMS-checked, or --from DIR),
+  Colima via Homebrew with DOCKER_HOST at Colima's own socket (Docker Desktop untouched, unused),
+  writes VYRE_SETUP_CODE and VYRE_SETUP_CODE_AT (epoch seconds) into VYRE_HOME/vyre.env at 0600 (never
+  an argument, never printed), one LaunchAgent (run.vyre.server) running vyred under `caffeinate -ims`
+  (keep-awake with nothing system-wide to restore, so no pmset), a wrapper that reads vyre.env line
+  by line, never executes it, and drops a code older than an hour. --dry-run, --uninstall, --purge.
+- Honest limits: (1) a LaunchAgent starts at login, not at boot with nobody signed in: that is the
+  vyre-core LaunchDaemon (ADR 0040 phase 4), not on stage/0.2 yet. (2) tailnet's beginSetup (work/
+  tailnet-02) and every relay pair path still refuse on darwin via macCoreRefusal, so the setup page
+  cannot reach a Mac server through the relay until vyre-core lifts it. (3) launch's install-box.sh
+  darwin branch still prints the npm line; the one-line dispatch to this script is launch's to make.
+  (4) macOS ships LibreSSL, whose `openssl dgst` has no `-mac`, so launch's mailbox progress stream
+  in install-box.sh cannot be copied to the Mac unchanged. (5) Colima's pinned-binary fallback (no
+  Homebrew) is not built: it needs a hash we pin at release; without Homebrew the script says so and
+  agents get no computer.
+
 ## Next
 1. ADR 0040 (vyre-core, drafted by e2e at 644c9e50 on work/e2e-setsid): write my three named
    sections -- install mechanics under the no-Apple-Developer-ID constraint (sudo once,
