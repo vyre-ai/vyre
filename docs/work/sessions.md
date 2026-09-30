@@ -417,3 +417,8 @@ optional deps; without them the tests silently run on the CLI).
 - onboard: CREDENTIAL_READERS gains threads.
 - New module sessions: tools sessions.status, setup, prompt.get/set/history/revert/preview,
   internal prompt.compose; event prompt.changed.
+
+## 2026-09-30 rebase onto stage/0.2 795a00b7 (platform 12a09627 landed)
+- work/sessions-02 rebuilt as 31 cherry-picked own commits on 795a00b7 (merge 3e1eef47 and 40f007ca dropped); de16d00d's core/daemon/peer.js hunk dropped (platform owns it), its other hunks kept. One conflict (core/modules/index.js: ctx.call keeps platform's undeclared-tools check plus my onPartial). Old head kept as backup/sessions-02-pre-rebase (f6d3e1f1 tip 434eaa2b). Pushed 066cabaf.
+- Next: CI run on 066cabaf, compare failures by name to stage 795a00b7, send sha + diff to reviewer-2 and integrator. After landing: threads.archive/unarchive (github.session.worktree reuses an existing branch; 50ddcffb), four native-core fields, checkCaps from lib/caps-flags, memory.prompt from acp.js (iq b52dd457; agree shape in CHAT.md).
+- CI on 066cabaf: sessions-sdk failed once (sessions.test.js finished all tests, then the process did not exit for 120 s: the known runner teardown hang), green on rerun. node run 36668272219 hit the 30-minute cap the same way (last output after the final sessions.test.js test); stage 795a00b7 node is green. Rerunning node.

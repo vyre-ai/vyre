@@ -105,7 +105,7 @@ async function startLocked(opts, root, p, release) {
   // calling themselves, then hand the request to this same router with that caller and a policy
   // limiting what it may reach. The router never reads a caller from their headers.
   const handler = (policy = {}) => (req, res, caller, peer) => route(req, res, { registry, events, cfg, started, streams, root, inflight, drain, people }, { ...policy, caller, ...(peer ? { peer } : {}) })
-    .catch(e => send(res, 500, { error: { code: "internal", message: e.message } }));
+    .catch(e => fail(res, e));
   // WebSockets a module registered with ctx.upgrade, at /v1/streams/<module>/<name>. Upgraded
   // sockets leave the HTTP server's hands, so they are tracked here and ended on stop, or
   // server.close() would wait on a Glass viewer forever. The socket below and every listener a
@@ -143,9 +143,7 @@ async function startLocked(opts, root, p, release) {
   }
 
   const terminalOf = opts.person || (sock => atTerminal(sock, registry, presence));
-  const server = http.createServer((req, res) => route(req, res, { registry, events, cfg, started, streams, root, inflight, drain, socket: true, terminalOf }).catch(e => {
-    send(res, 500, { error: { code: "internal", message: e.message } });
-  }));
+  const server = http.createServer((req, res) => route(req, res, { registry, events, cfg, started, streams, root, inflight, drain, socket: true, terminalOf }).catch(e => fail(res, e)));
   server.on("upgrade", async (req, socket, head) => {
     try { upgrade(req, socket, head, (await asTaken(socketCaller(req), /** @type {any} */ (socket), registry)).caller); }
     catch { socket.destroy(); }
@@ -186,6 +184,12 @@ const AGENT_CLAIM = /(?:^|[\s:])agent:([A-Za-z0-9_-]*)/;
  * vouched by the key and then pass every callers list as that surface, so it is refused.
  */
 const AGENT_LABEL = /^(?:mcp|harness):agent:([A-Za-z0-9_-]+)$/;
+
+/** A route that throws after it began a stream cannot send a 500 (headers are out): end the response, never throw from the catch. */
+function fail(res, e) {
+  if (res.headersSent) { res.destroy(); return; }
+  send(res, 500, { error: { code: "internal", message: e.message } });
+}
 
 function send(res, status, body) {
   res.writeHead(status, { "content-type": "application/json" });

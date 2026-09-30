@@ -4,6 +4,8 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+- vyred: a route that throws after it began a stream no longer throws again from its own catch (`ERR_HTTP_HEADERS_SENT`, an uncaught error that failed whichever test was running, seen as a flaky
+  "threads watch" on a vyred restart); the response is ended instead (`core/daemon/index.js`).
 - Closed a caller-identity race on macOS: a forged "cli" label from under a claude was believed
   when the caller was forked inside the 250 ms shared process snapshot. A pid the snapshot lacks is
   now read again, retries start from a fresh table, a peer that already exited is a model's, and
