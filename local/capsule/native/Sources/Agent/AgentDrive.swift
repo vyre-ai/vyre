@@ -58,9 +58,13 @@ enum Drive {
             let t0 = DispatchTime.now()
             m.text = t
             let setMs = ms(t0)
+            // Lay the view out now and say how long that took, to tell the view's cost from the model's.
+            let l0 = DispatchTime.now()
+            a.panel.host.layoutSubtreeIfNeeded()
+            let layoutMs = ms(l0)
             // The quick rows are drawn in this frame; the rest land after. Report both.
             DispatchQueue.main.async {
-                timings.append(["kind": "results", "ms": ms(t0), "set": setMs, "text": t, "n": m.flat.count])
+                timings.append(["kind": "results", "ms": ms(t0), "set": setMs, "layout": layoutMs, "text": t, "n": m.flat.count])
                 say(["text": t, "rows": m.flat.count])
             }
             return
