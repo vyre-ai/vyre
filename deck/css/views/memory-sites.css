@@ -20,3 +20,9 @@
 .ms-kept { display: flex; flex-direction: column; gap: 6px; padding: 10px 0; }
 .ms-kept-row { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; }
 @media (max-width: 719px), (max-height: 500px) and (pointer: coarse) { .ms .ml-row { grid-template-columns: 1fr; } .ms .btn, .ms .ibtn { min-height: 44px; min-width: 44px; } }
+.ms-dismiss { color: var(--label); }
+.ms-forgot-line { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 6px; }
+.ms-recent { margin-top: 20px; padding-top: 8px; border-top: 1px solid var(--rule); }
+.ms-recent-head { color: var(--label); }
+.ms-recent-head svg { transition: transform var(--motion-tap, 120ms) ease; }
+.ms-recent-head[aria-expanded="true"] svg { transform: rotate(90deg); }
