@@ -1034,6 +1034,17 @@ export default {
         return dutyApi.update(id, patch);
       },
     });
+    // A click on a person surface (Deck, CLI, Lumen, verified over the tailnet) IS the person asking: the one-tap enable and pause
+    // a duty card shows. The same change through team.duties.update is open to anyone, but only the person's own words (a
+    // surface click here, gate.said.match for a model) start an unattended worker.
+    for (const [name, enabled, what] of [["team.duties.enable", true, "Turn a duty on: the person's tap. A proposed duty starts its watcher now; a paused one resumes."], ["team.duties.disable", false, "Pause a duty (its watcher stays, stopped). Anyone who may edit the duty may; it is the person's tap on a card."]]) {
+      ctx.tool(name, {
+        description: `${what} Person surfaces only (Deck, CLI, Lumen); an agent or session asks through team.duties.update, which keeps the gate.`,
+        input: { type: "object", required: ["id"], properties: { id: { type: "string" } } },
+        callers: CHARTER_WRITERS,
+        run: async (i, meta = {}) => { await dutyTarget(i, meta, { write: true, id: i.id }); return dutyApi.update(i.id, { enabled }); },
+      });
+    }
     ctx.tool("team.duties.delete", {
       description: "Remove a duty and its watcher. A person, the assistant, or a session in the project; never a teammate.",
       input: { type: "object", required: ["id"], properties: { id: { type: "string" } } },

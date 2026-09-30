@@ -793,3 +793,8 @@ utilization, resets_at), the slot chip (per project), the waiting queue, "Resume
   capped). `seen_at` per duty, so each item is read once; a proposal has no watcher so no news. Watchers confirmed their calls match
   (create/update/pause/resume/delete/run, callers module:team or the person) and that a bad `when` throws a message on how to write it,
   which team.duties.* already surfaces as "watchers: ...". Tested with a fake watchers (duties.test.js, no daemon).
+
+## Person-surface click is the asking (2026-10-01, team-lead's ruling)
+
+- `team.duties.enable {id}` and `team.duties.disable {id}` for the duty card's tap: callers cli, local, deck, capsule and module (never mcp, so never a model).
+  They are the same change as team.duties.update {enabled}, which keeps its gate for agents and sessions (personAsked, gate.said.match with P17).

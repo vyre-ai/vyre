@@ -511,6 +511,11 @@ test("team.duties: a session's duty is stored as a proposal (off, no watcher); o
   const tap = await raw("team.duties.update", { id: d.id, enabled: true });
   assert.ok(tap.error && /watchers/.test(tap.error.message));
   assert.equal((await tool("team.duties.list", { teammate: agent })).duties[0].enabled, false);
+  // The person's click on a surface is the asking: enable takes it directly (here watchers refuses, but it got that far), a session cannot.
+  const click = await raw("team.duties.enable", { id: d.id });
+  assert.ok(click.error && /watchers/.test(click.error.message));
+  const viaSession = await call("team.duties.enable", { id: d.id }, { root, caller: "mcp", timeout: 20_000, session });
+  assert.ok(viaSession.error && !/watchers/.test(viaSession.error.message));
 });
 
 test("person-only writes: a session or an agent is refused projects.rename, projects.archive and team.charter.set; the person is not", async t => {
