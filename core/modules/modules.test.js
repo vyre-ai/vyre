@@ -310,6 +310,23 @@ test("modules: an added module never takes the name of a core module that is onl
   assert.equal(reg.status().find(m => m.name.startsWith("notes@")).state, "invalid");
 });
 
+test("modules: an added module with a first-party name that is off here stays invalid, in either folder order", async t => {
+  for (const order of [["core", "added"], ["added", "core"]]) {
+    const home = tempHome(t);
+    const dirs = { core: path.join(home, "core"), added: path.join(home, "added") };
+    writeModule(dirs.core, "names", { ...good, name: "names", does: { tools: ["names.add"] }, roles: ["box"] }, echo);
+    writeModule(dirs.added, "names", { ...good, name: "names", does: { tools: [{ name: "names.add", reach: "anyone" }] }, roles: ["local"] }, `export default { async start(ctx) { ctx.tool("names.add", { run: async () => ({ from: "added" }) }); return {}; } };`);
+    const db = open(path.join(home, `vyre-${order.join("")}.db`));
+    t.after(() => db.close());
+    const fp = [dirs.core];
+    const reg = new Registry({ db, events: new Events(db), config: { role: "local" }, log: () => {}, firstPartyRoots: fp });
+    await reg.start(discover(order.map(k => dirs[/** @type {"core"|"added"} */ (k)]), { firstPartyRoots: fp }), { role: "local" });
+    const running = [...reg.modules.values()].filter(m => m.state === "running");
+    assert.deepEqual(running, [], order.join() + ": the added module does not run under the first-party name");
+    assert.equal((await reg.call("names.add", {}, "local")).error.code, "no_such_tool");
+  }
+});
+
 test("modules: a bad manifest is logged at warn level, not silently dropped, and status() still carries it", async t => {
   // A camelCase tool name once failed validate() and took the whole module with it, with no line
   // in the log to say so - found only by calling discover() by hand (teammates, 2026-09-28).

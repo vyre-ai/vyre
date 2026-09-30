@@ -514,13 +514,24 @@ export class Registry {
       // for one that is, and stays listed as off, so which one runs never depends on folder order.
       if (this.modules.has(name)) {
         const prev = this.modules.get(name);
-        if (!on) { this.modules.set(`${name}@${f.dir}`, { manifest: f.manifest, dir: f.dir, state: "off" }); continue; }
-        // Only between Vyre's own modules: an added module never takes the name of one that is merely off on this machine.
-        if (prev.state === "off" && this.isFirstParty(f.dir) && this.isFirstParty(prev.dir)) { this.modules.set(`${name}@${prev.dir}`, prev); }
-        else {
-          const error = `a module named ${name} is already loaded from ${prev.dir}; this one is ignored`;
-          this.modules.set(`${name}@${f.dir}`, { manifest: f.manifest, dir: f.dir, state: "invalid", error });
-          this.deps.log(`warn: module ${name}@${f.dir} invalid: ${error}`);
+        const mine = this.isFirstParty(f.dir), theirs = this.isFirstParty(prev.dir);
+        /** @param {{ manifest: any, dir: string }} rec @param {string} error */
+        const reject = (rec, error) => { this.modules.set(`${name}@${rec.dir}`, { manifest: rec.manifest, dir: rec.dir, state: "invalid", error }); this.deps.log(`warn: module ${name}@${rec.dir} invalid: ${error}`); };
+        if (mine && !theirs) {
+          // Vyre's own module always owns its name, whatever the folder order: an added module found first steps aside.
+          reject(prev, `a Vyre module named ${name} owns that name; this one is ignored`);
+          this.modules.delete(name);
+        } else if (!mine && theirs) {
+          // An added module never takes or replaces a Vyre module's name, whether that one is on or off here.
+          reject({ manifest: f.manifest, dir: f.dir }, `a Vyre module named ${name} owns that name; this one is ignored`);
+          continue;
+        } else if (!on) {
+          this.modules.set(`${name}@${f.dir}`, { manifest: f.manifest, dir: f.dir, state: "off" });
+          continue;
+        } else if (mine && theirs && prev.state === "off") {
+          this.modules.set(`${name}@${prev.dir}`, prev);
+        } else {
+          reject({ manifest: f.manifest, dir: f.dir }, `a module named ${name} is already loaded from ${prev.dir}; this one is ignored`);
           continue;
         }
       }
