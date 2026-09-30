@@ -465,9 +465,14 @@ export const importStage = root => path.join(root, ".import-stage");
 function allowedSessionPath(p, root) {
   let real;
   try { real = fs.realpathSync(String(p)); } catch (e) { throw Object.assign(new Error(/** @type {Error} */ (e).message), { code: "bad_input" }); }
-  let stage = importStage(root);
-  try { stage = fs.realpathSync(stage); } catch { /* not made yet: nothing can be inside it */ }
-  if (![...sessionRoots(root), stage].some(r => insideDir(real, r))) throw Object.assign(new Error(`${p} is not in this device's own Claude Code folder`), { code: "denied" });
+  // The staging folder counts only when it is a real directory Vyre made: not a link, this account's own, closed to others.
+  const roots = sessionRoots(root);
+  const stage = importStage(root);
+  try {
+    const st = fs.lstatSync(stage);
+    if (st.isDirectory() && !st.isSymbolicLink() && (st.mode & 0o077) === 0 && (typeof process.getuid !== "function" || st.uid === process.getuid())) roots.push(fs.realpathSync(stage));
+  } catch { /* not made yet: nothing can be inside it */ }
+  if (!roots.some(r => insideDir(real, r))) throw Object.assign(new Error(`${p} is not in this device's own Claude Code folder`), { code: "denied" });
   return real;
 }
 

@@ -498,6 +498,12 @@ install_wrapper() {
   fi
   [ -d "$(dirname "$WRAPPER")" ] || priv mkdir -p "$(dirname "$WRAPPER")"
   priv install -m 0755 "$WRAPPER_SRC" "$WRAPPER"
+  # Updates asked for from Vyre's own Settings: the two folders the stack mounts and a root path unit that runs the signed
+  # `vyre update` when vyred drops its request (box/vyre, `vyre updater`). No systemd, or a wrapper somewhere else (a test):
+  # nothing is written, and an update is the `vyre update` command.
+  if [ "$DRY" != 1 ] && [ -z "${VYRE_WRAPPER:-}" ]; then
+    priv env "VYRE_DIR=$DIR" "$WRAPPER" updater install || say "note: could not set up updates from Settings; vyre update still works"
+  fi
 }
 
 # Start the stack. VYRE_DIR and SSH_CONNECTION are passed on because sudo drops them, and the

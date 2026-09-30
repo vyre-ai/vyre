@@ -99,6 +99,19 @@ export default {
     ctx.store.migrate([`CREATE TABLE import_runs (id TEXT PRIMARY KEY, at INTEGER NOT NULL, machine TEXT NOT NULL, plan_hash TEXT NOT NULL, mode TEXT NOT NULL, pace TEXT NOT NULL,
       state TEXT NOT NULL, of INTEGER NOT NULL, sent INTEGER NOT NULL DEFAULT 0, failed INTEGER NOT NULL DEFAULT 0, quarantined INTEGER NOT NULL DEFAULT 0, ended INTEGER);`]);
     const BATCH = 25;
+    /**
+     * A fresh folder for one batch's converted copies, inside <home>/.import-stage, which sync.send reads from (core/sync
+     * importStage). That folder is made here with mkdir and must be a real directory of this account, closed to others: one
+     * that is already there as a link, or open, or someone else's, is refused rather than reused.
+     */
+    const stagingFolder = () => {
+      const base = root ? path.join(root, ".import-stage") : null;
+      if (!base) return fs.mkdtempSync(path.join(os.tmpdir(), ".import-"));
+      try { fs.mkdirSync(base, { mode: 0o700 }); } catch (e) { if (/** @type {any} */ (e).code !== "EEXIST") throw e; }
+      const st = fs.lstatSync(base);
+      if (!st.isDirectory() || st.isSymbolicLink() || (st.mode & 0o077) !== 0 || (typeof process.getuid === "function" && st.uid !== process.getuid())) throw new Error(".import-stage is not a private folder of this account");
+      return fs.mkdtempSync(path.join(base, "b-"));
+    };
     /** This device's name, as the server files what it sends under synced/<machine>/ and knows it from pairing (the hostname it paired under; config.machine is the kind of machine, never a name). */
     const machine = () => String(ctx.config.name || os.hostname()).toLowerCase().replace(/[^a-z0-9._-]+/g, "-").slice(0, 80) || "device";
     /**
@@ -132,7 +145,7 @@ export default {
             if (it.format) {
               const conv = formatFor(it.format)?.convert(it.home, it.path, { cwd: it.cwd, candidates: known });
               if (!conv || !conv.text) throw new Error("nothing to convert");
-              if (!stage) { const base = root ? path.join(root, ".import-stage") : os.tmpdir(); fs.mkdirSync(base, { recursive: true, mode: 0o700 }); stage = fs.mkdtempSync(path.join(base, "b-")); }
+              if (!stage) { stage = stagingFolder(); }
               const staged = path.join(stage, `${files.length}-${crypto.randomBytes(3).toString("hex")}.jsonl`);
               fs.writeFileSync(staged, conv.text, { mode: 0o600 });
               item = { ...it, path: staged, bytes: Buffer.byteLength(conv.text) };

@@ -31,3 +31,23 @@ test("command cards: each command is a real verb with real flags, and the delete
   }
   assert.match(COMMAND_CARDS.flatMap(c => c.commands).find(c => /delete-data/.test(c.line)).note, /export first/);
 });
+
+test("update card: a request waits, a run shows its step, and the result is in words; a Mac or a host with no unit shows no button", () => {
+  const base = { current: "0.1.0", available: "0.2.0", how: "command", command: "vyre update", notes: [] };
+  assert.equal(updateCard({ ...base, canApply: true }).canApply, true);
+  assert.equal(updateCard({ ...base, canApply: false }).canApply, false);
+  assert.equal(updateCard({ ...base, canApply: true, how: "app", command: null }).canApply, false, "a Mac updates itself");
+  const wait = updateCard({ ...base, canApply: true, pending: true });
+  assert.deepEqual([wait.busy, wait.progress], [true, "Waiting for this server to start it"]);
+  const run = updateCard({ ...base, canApply: true, run: { state: "running", stage: "verifying", at: Date.now() } });
+  assert.deepEqual([run.busy, run.progress], [true, "Checking its signature"]);
+  assert.equal(updateCard({ ...base, run: { state: "running", stage: "not-a-stage" } }).progress, "Working");
+  const ok = updateCard({ current: "0.2.0", available: null, run: { state: "ok", from: "0.1.0", to: "0.2.0", at: Date.now() } });
+  assert.deepEqual([ok.busy, ok.result], [false, { ok: true, text: "Updated to 0.2.0." }]);
+  const rb = updateCard({ ...base, run: { state: "rolled_back", from: "0.1.0", to: "0.2.0", at: Date.now() } });
+  assert.match(rb.result.text, /0\.2\.0 did not start, so Vyre put 0\.1\.0 back and your data is as it was/);
+  assert.equal(rb.result.ok, false);
+  const failed = updateCard({ ...base, run: { state: "failed", message: "this release is not signed", at: Date.now() } });
+  assert.match(failed.result.text, /did not happen: this release is not signed\. Nothing was changed/);
+  assert.equal(updateCard({ ...base, run: { state: "ok", to: "0.2.0", at: Date.now() - 2 * 86400_000 } }).result, null, "a day old is not news");
+});

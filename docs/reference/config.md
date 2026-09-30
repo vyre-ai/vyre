@@ -150,6 +150,9 @@ Vyre reads these when they are set. None is needed for normal use.
 | `VYRE_TMPDIR` | Not described yet. | `core/files/index.js`, `core/names/backup.js` |
 | `VYRE_TMUX_BIN` | Not described yet. | `core/daemon/peer.js` |
 | `VYRE_UID` | Not described yet. | `core/spawner/main.js` |
+| `VYRE_UPDATE_DIR` | Not described yet. | `core/update/index.js` |
+| `VYRE_UPDATE_QUIET` | Not described yet. | `core/update/index.js` |
+| `VYRE_UPDATE_STATE` | Not described yet. | `core/update/index.js` |
 | `VYRE_UP_WAIT_MS` | Not described yet. | `core/cli/daemonctl.js` |
 | `VYRE_USER_HOME` | Not described yet. | `core/spawner/main.js` |
 | `VYRE_WORK` | Not described yet. | `core/spawner/main.js` |

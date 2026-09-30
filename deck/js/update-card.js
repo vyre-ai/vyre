@@ -5,24 +5,47 @@ import { since } from "./fmt.js";
 
 const str = v => (typeof v === "string" ? v : "");
 
+/** The words for each step the host reports (core/update readRun keeps only these). */
+export const STAGE_WORDS = {
+  start: "Starting", checking: "Looking for the release", downloading: "Downloading it", verifying: "Checking its signature",
+  "backing-up": "Backing up your data", installing: "Installing", restarting: "Restarting Vyre", "rolling-back": "Putting the old version back",
+  finished: "Done", none: "Working",
+};
+
 /**
  * What the Update card says, from update.status: plain data, so it can be tested without a page.
+ * `busy` means the card should keep asking (a request waits for the host, or a run is going); `result` is the last run's
+ * outcome in words, shown until it is a day old.
  * @param {any} s
- * @returns {{ headline: string, detail: string, command: string | null, app: boolean, notes: { version: string, notes: string }[], version: string | null }}
+ * @param {number} [now]
+ * @returns {{ headline: string, detail: string, command: string | null, app: boolean, notes: { version: string, notes: string }[], version: string | null,
+ *   canApply: boolean, busy: boolean, progress: string | null, result: null | { ok: boolean, text: string } }}
  */
-export function updateCard(s) {
+export function updateCard(s, now = Date.now()) {
   const current = str(s && s.current) || "unknown";
   const available = str(s && s.available) || null;
   const notes = (Array.isArray(s && s.notes) ? s.notes : []).slice(0, 8).map(n => ({ version: str(n && n.version), notes: str(n && n.notes) })).filter(n => n.version);
   const app = Boolean(s) && s.how === "app";
   const command = !app && s && typeof s.command === "string" && /^[a-z][a-z -]{0,40}$/.test(s.command) ? s.command : null;
-  if (available) return { headline: `Vyre ${available} is out`, detail: `You run ${current}.`, command, app, notes, version: available };
+  const canApply = Boolean(s && s.canApply === true) && !app;
+  const run = s && s.run && typeof s.run === "object" ? s.run : null;
+  const running = Boolean(run && run.state === "running");
+  const busy = running || Boolean(s && s.pending === true);
+  const progress = running ? (STAGE_WORDS[run.stage] || STAGE_WORDS.none) : s && s.pending === true ? "Waiting for this server to start it" : null;
+  /** @type {null | { ok: boolean, text: string }} */
+  let result = null;
+  if (run && !running && (!run.at || now - run.at < 24 * 3600_000)) {
+    const to = str(run.to), from = str(run.from);
+    if (run.state === "ok") result = { ok: true, text: to && to === current ? `Updated to ${to}.` : to ? `Updated to ${to}.` : "Updated." };
+    else if (run.state === "rolled_back") result = { ok: false, text: `${to ? `${to} did not start, so` : "The new version did not start, so"} Vyre put ${from || "the old version"} back and your data is as it was.` };
+    else if (run.state === "failed") result = { ok: false, text: `The update did not happen${str(run.message) ? `: ${str(run.message)}` : ""}. Nothing was changed.` };
+  }
+  if (available) return { headline: `Vyre ${available} is out`, detail: `You run ${current}.`, command, app, notes, version: available, canApply, busy, progress, result };
   const detail = s && s.error ? `Could not look for updates: ${str(s.error)}`
     : s && s.auto === "off" ? "Looking for updates is turned off."
     : s && s.checkedAt ? `Last looked ${since(s.checkedAt)} ago.` : "Not looked yet.";
-  return { headline: `Vyre ${current} is up to date`, detail, command: null, app, notes: [], version: null };
+  return { headline: `Vyre ${current} is up to date`, detail, command: null, app, notes: [], version: null, canApply: false, busy, progress, result };
 }
-
 
 /** @type {{ title: string, says: string[], commands: { line: string, note: string }[] }[]} */
 export const COMMAND_CARDS = [
