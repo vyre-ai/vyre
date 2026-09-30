@@ -4,6 +4,31 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+- An added module can never load under the name of a module shipped with Vyre in this start, on or off on this machine, whichever is found first, valid or not; and an invalid copy no longer overwrites the loaded module's registry row (`core/modules/index.js`, tests in modules.test.js). reviewer-2's note on the name-sharing change.
+- Capsule view effects (reviewer-2): an added module opens https and mailto only (a vyre: link can act) and
+  pushes only to its own commands; `ask` answers `prefill: true` (the Capsule only fills the box, never sends
+  or records it as the person's words) and `from` for an added module; a preview carries an HMAC token (two
+  minutes, bound to the caller and the exact words) that the second Enter must return
+  (`core/capsule/frames.js`, `views.js`).
+- `mentions.resolve` reads a provider's `text` as its context, forwards an `outside` mark (true unless the kind is vault, so sessions frames third-party text as data), and keeps a grant only in the shape sessions understands (`core/mentions/index.js`).
+- Each MCP hub server gets a Tools command in the Capsule (`capsule.commands`/`view`/`act`): its tools listed,
+  a form built from a tool's input schema (text, number, bool, choice, JSON), a read runs as the person, and a
+  write previews then is held at the Gate by the hub (`core/capsule/views.js`). The install card
+  (`capabilities()`) lists an added module's Capsule commands, the tools they call and the front slot, and
+  `widened()` asks again for a new command or a first request for the front slot.
+- The Capsule's view contract: `view:<id>` entries in shows.capsule (a list with a detail and actions, or a
+  form; `map` by dotted path, a fixed template vocabulary, effects open/copy/say/ask/push, an icon
+  allowlist), checked at load (`packages/module-sdk/capsule-view.js`), and three tools on the capsule module,
+  `capsule.commands`, `capsule.view` and `capsule.act`, that turn a declaration and a tool's answer into
+  small bounded frames (`core/capsule`, `local/capsule`). The Capsule sends ids, never tool names. A first
+  party view's tool runs as the person's surface, an added module's as itself, and only a tool a view of
+  that module declares (its own, or in needs.tools) can be called; an outward action previews the exact
+  words with a hash before a second Enter sends. Status rows gain firstParty, needsTools and needsSlots.
+- The `#` tag mechanism: an optional, built in only `mentions: [{ kind, label, icon?, search, resolve }]` in
+  module.json (schema, checker, docs), a new core module `mentions` with `mentions.kinds`, `mentions.search`
+  (fans out to every provider as the asking person, 400 ms each, fail-soft, names only, grouped by kind) and
+  `mentions.resolve` (sessions and the assistant only), one provider per kind (`core/mentions`,
+  `core/modules/index.js`, `packages/module-sdk`).
 - The caller check now counts a connection as the person on positive proof only (reviews/platform.md,
   reviewer-2 and the lead, 30 Sep). Every link up to the top must be readable (a command line, vyred's uid,
   no child older than its parent), none an agent host (claude, codex, gemini, grok, opencode, cursor-agent,
