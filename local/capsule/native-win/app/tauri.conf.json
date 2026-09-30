@@ -11,6 +11,7 @@
       "csp": "default-src 'self'; style-src 'self' 'unsafe-inline'; connect-src ipc: http://ipc.localhost"
     }
   },
+  "plugins": { "deep-link": { "desktop": { "schemes": ["vyre"] } } },
   "bundle": {
     "active": true,
     "targets": ["nsis"],
