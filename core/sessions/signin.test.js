@@ -74,7 +74,7 @@ test("signin: hostile addresses are never on a provider's host, and its own are"
     "https://evil.com/@openai.com", "https://openai.com\u0000.evil.com/", "https:// openai.com/", "not a url",
   ];
   for (const u of bad) assert.equal(signinAddressOk("codex", u), false, u);
-  for (const u of ["https://auth.openai.com/device", "https://chatgpt.com/auth/device", "https://openai.com/login"]) assert.equal(signinAddressOk("codex", u), true, u);
+  for (const u of ["https://auth.openai.com/device", "https://chatgpt.com/auth/device", "https://openai.com/login", "https://auth.openai.com/device?login_hint=alex%40harlow.example", "https://auth.openai.com/device?login_hint=alex@harlow.example&x=1", "https://auth.openai.com/log@in"]) assert.equal(signinAddressOk("codex", u), true, u);
   assert.equal(signinAddressOk("grok", "https://auth.openai.com/device"), false, "another provider's host is not grok's");
   assert.equal(signinAddressOk("gemini", "https://auth.openai.com/device"), false, "no provider, no hosts");
 });

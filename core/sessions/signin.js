@@ -30,7 +30,7 @@ export const LOGIN_HOSTS = /** @type {Record<string, string[]>} */ ({
   grok: ["x.ai", "grok.com"],
   claude: ["claude.ai", "claude.com", "anthropic.com"],
 });
-const onHost = (url, hosts) => { try { if (/[\\@\s\u0000-\u001f]/.test(url)) return false; /* a backslash or @ reads differently in different clients */ const u = new URL(url); return u.protocol === "https:" && !u.username && !u.password && hosts.some(h => u.hostname === h || u.hostname.endsWith("." + h)); } catch { return false; } };
+const onHost = (url, hosts) => { try { if (/[\\\s\u0000-\u001f]/.test(url)) return false; /* a backslash reads differently in different clients */ const auth = /^https:\/\/([^/?#]*)/i.exec(url); if (!auth || auth[1].includes("@")) return false; /* @ before the path is a userinfo trick; in a query it is an email */ const u = new URL(url); return u.protocol === "https:" && !u.username && !u.password && hosts.some(h => u.hostname === h || u.hostname.endsWith("." + h)); } catch { return false; } };
 
 /** Is this address one a provider's sign-in may show? (exported for its table test) */
 export const signinAddressOk = (provider, url) => onHost(url, LOGIN_HOSTS[provider] || []);
