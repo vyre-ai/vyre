@@ -238,6 +238,7 @@ const ENV_MEANING = {
   HARNESS_DIR: "The Harness plugin folder threads load. Default the one beside this install.",
   HOME: "Where Vyre keeps its data. Default `~/.vyre`.",
   HOST_USER: "The user name in the `ssh -L` line `vyre up` prints for reaching the box.",
+  MODULE_SDK: "A folder holding the module SDK's testing.js, for a module's own tests made by `vyre module new` before the SDK is on npm.",
   NO_DIALOGS: "`1`: never raise anything on screen (Touch ID, a keychain prompt, a browser tab).",
   NO_OPEN: "Never open a browser tab from the terminal.",
   NO_UP: "`vyre box add` installs Vyre without starting it.",

@@ -4,6 +4,29 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+- Module contract v1 (ADR 0047), as a proof on the platform branch. `module.json` says for each
+  tool who may call it (`reach`) and whether it acts as you outside (`outward`). Each ctx member a
+  module uses has one declaration, and the install card is built from them.
+- `@vyre/module-sdk` gains `testing` (a fake registry and Gate over a temp home), `conform` (the
+  checks every module passes) and `updatePlan` (install, show the card, or wait).
+- `vyre module new` writes a v1 module with `AGENTS.md`, the brief for an agent writing it.
+  `vyre module test` runs the conformance checks, then the module's own tests.
+- `examples/modules/bakery` is the complete example. `docs/build/AGENT-BRIEF.md` is the text to hand
+  another agent.
+- The loader reads v1 manifests: tools with a reach, `mac` and `windows` roles, and `requires` with
+  version ranges. A module added from outside reaches only tools with a declared reach, and may not
+  replace one of Vyre's modules.
+- Modules keep working as the contract grows. A module names its contract in module.json
+  (`"vyre": "1"`), and inside a major Vyre only adds. Unknown keys and deprecated usages are
+  warnings, never failures. A module for a newer contract is never run: its row says which Vyre it
+  needs. `vyre module upgrade` moves a module onto the current form, and pinned fixtures in
+  `test/fixtures/modules/` hold every release to it.
+- Undo for what acts on your behalf (core/undo, PLAN P14). When an agent, the assistant, a watcher
+  or a module does something reversible for you, the module that did it records the inverse, and
+  one tap runs it. A model never supplies an inverse, and nothing that sends, posts, pays, deletes
+  outside or is your own action gets one. An agent can undo only its own actions. The log works
+  with the assistant switched off and keeps 30 days. `docs/design/undo.md` explains it.
+
 ## 0.1.1
 
 What's new:
