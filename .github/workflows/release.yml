@@ -85,11 +85,19 @@ jobs:
         run: |
           prev=$(git describe --tags --abbrev=0 --match 'v[0-9]*' "HEAD^" 2>/dev/null || true)
           base=${prev:-$(git hash-object -t tree /dev/null)}
+          paths=".github/workflows scripts/sign-manifest.mjs scripts/check-release-key.mjs core/vyre-core/release.js"
           {
             echo "### Signing path: $TAG vs ${prev:-nothing (first release)}"
-            echo '```diff'
-            git diff "$base" HEAD -- .github/workflows scripts/sign-manifest.mjs core/vyre-core/release.js scripts/check-release-key.mjs || true
-            echo '```'
+            if git diff --quiet "$base" HEAD -- $paths; then
+              echo "no changes to the signing path"
+            else
+              echo '```'
+              git diff --stat "$base" HEAD -- $paths
+              echo '```'
+              echo '```diff'
+              git diff "$base" HEAD -- $paths || true
+              echo '```'
+            fi
           } | tee -a "$GITHUB_STEP_SUMMARY" | head -n 400
       - name: Box files and vyre.tgz, as build-site.sh makes them (unsigned, this job never sees the signing key)
         run: |
