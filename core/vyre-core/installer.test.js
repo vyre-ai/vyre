@@ -6,7 +6,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { execFileSync, spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
-import { plan, install, uninstall, apply, buildPlists, plistXml, flipCurrent, signCapsule, RUNTIME, LABELS } from "./installer.js";
+import { plan, install, uninstall, apply, buildPlists, plistXml, flipCurrent, signCapsule, launchCapsule, RUNTIME, LABELS } from "./installer.js";
 import { strictProblems } from "./strict.js";
 import { SCRATCH } from "../../test/scratch.mjs";
 
@@ -422,4 +422,27 @@ test("a bundled node that does not match its expected sha256 installs nothing", 
   assert.ok(!fs.existsSync(path.join(f.root, RUNTIME.base)));
   install(f.opts(f.rel, { nodeSha256: good }), { run: fakeRun().run, root: f.root, key: f.kp.key });
   assert.ok(fs.existsSync(path.join(f.root, RUNTIME.node)));
+});
+
+test("launchCapsule: the owner's screen session gets the Capsule, the code goes on stdin only, and no screen or no app starts nothing", (t) => {
+  const f = fixture(t);
+  const app = path.join(f.root, RUNTIME.current, "Vyre.app", "Contents", "MacOS", "Vyre");
+  const CODE = "K7QX2M";
+  /** @type {any[]} */ const spawned = [];
+  const fakeSpawn = (cmd, args, o) => { const chunks = []; spawned.push({ cmd, args, o, chunks }); return { stdin: { end: (c) => chunks.push(c) }, unref() {} }; };
+  const aqua = (managed) => (cmd, args) => { if (args.includes("managername")) { if (!managed) throw new Error("no session"); return "Aqua\n"; } return ""; };
+  const owner = { ownerUid: 501, ownerName: "alice", code: CODE };
+  assert.equal(launchCapsule(owner, { run: aqua(true), root: f.root, spawn: fakeSpawn }), "no-capsule", "a release with no app");
+  fs.mkdirSync(path.dirname(app), { recursive: true }); fs.writeFileSync(app, "#!/bin/sh\n", { mode: 0o755 });
+  assert.equal(launchCapsule(owner, { run: aqua(false), root: f.root, spawn: fakeSpawn }), "no-screen");
+  assert.equal(spawned.length, 0);
+  assert.equal(launchCapsule(owner, { run: aqua(true), root: f.root, spawn: fakeSpawn }), "launched");
+  const s = spawned[0];
+  assert.equal(s.cmd, "/bin/launchctl");
+  assert.deepEqual(s.args.slice(0, 7), ["asuser", "501", "/usr/bin/sudo", "-n", "-u", "alice", "/bin/sh"], "in the owner's session, as the owner");
+  assert.ok(s.args.includes('exec "$0" 3<&0 0</dev/null >/dev/null 2>&1'), "stdin becomes fd 3");
+  assert.equal(s.args.at(-1), "/Library/Application Support/Vyre/current/Vyre.app/Contents/MacOS/Vyre");
+  assert.ok(!JSON.stringify([s.args, s.o]).includes(CODE), "the code is in no argument and no environment");
+  assert.deepEqual(s.chunks, [CODE], "exactly the code, on stdin");
+  assert.deepEqual(s.o.env, { PATH: "/usr/bin:/bin:/usr/sbin:/sbin" });
 });

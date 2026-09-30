@@ -12,14 +12,14 @@
 // turns on the com.vyre.colima agent.
 //
 // Output: one line per step, "  ok  <name>", on stdout. For `install`, the LAST line on stdout is
-//   VYRE_CORE_ENROL=<code>
-// and nothing follows it. The parent installer reads that line and hands the code to the person;
-// it is never written to disk or logged here. Errors go to stderr with exit status 1.
+//   VYRE_CORE_CAPSULE=launched|no-screen|no-capsule
+// and nothing follows it. The one-time enrolment code is handed to the Capsule on fd 3 here and is
+// never printed, written or logged. Errors go to stderr with exit status 1.
 // Everything except `install --dry-run` refuses to run unless the uid is 0.
 
 import fs from "node:fs";
 import path from "node:path";
-import { install, uninstall, apply, plan } from "./installer.js";
+import { install, uninstall, apply, plan, launchCapsule } from "./installer.js";
 
 // The installer makes root-owned trees other accounts must read (core runs as _vyre): a caller's
 // umask (the install script's root step uses 077 for its scratch folder) must not narrow them.
@@ -70,7 +70,9 @@ try {
       for (const s of plan(opts)) { process.stdout.write(`would  ${s.name}\n`); for (const d of s.detail) process.stdout.write(`         ${d}\n`); }
     } else {
       const { code } = install(opts, { step: say });
-      process.stdout.write(`VYRE_CORE_ENROL=${code}\n`);
+      // The code goes straight to the Capsule (fd 3, in the owner's screen session) and is never printed.
+      const status = launchCapsule({ ownerUid: opts.ownerUid, ownerName: opts.ownerName, code });
+      process.stdout.write(`VYRE_CORE_CAPSULE=${status}\n`);
     }
   } else if (cmd === "uninstall") {
     uninstall({ purge: f.purge === true }, { step: say });

@@ -29,7 +29,6 @@ function mac(/** @type {import("node:test").TestContext} */ t) {
   fs.mkdirSync(bin); fs.mkdirSync(home);
   const stubs = {
     launchctl: `echo "launchctl $*" >>"${log}"
-[ "$1" = managername ] && echo "\${FAKE_MANAGER:-}"
 if [ "$1" = bootstrap ]; then
   P=$(sed -n 's|.*<string>\\(.*vyre-serve\\)</string>.*|\\1|p' "$3")
   if [ -n "$P" ]; then "$P" >>"${base}/serve.out" 2>&1 & echo $! >>"${pids}"; fi
@@ -289,7 +288,6 @@ test("install-mac-server.sh: a Docker Desktop already there is untouched and no 
 // like the real one where the script can see it: it prints the enrolment line last, writes core.json
 // and core's socket file, and starts the wrapper it was given as launchd would.
 
-const ENROL = "K7QX2M";
 
 /** A Mac where the script installs the system service: a fake sudo that records its argv, a fake root installer, a Node tarball to bundle, and a signed-looking release on file://. */
 function sys(/** @type {import("node:test").TestContext} */ t, /** @type {{ fail?: boolean, noEnrol?: boolean }} */ o = {}) {
@@ -318,7 +316,7 @@ const sock = path.join(base, "vyre-core.sock"); fs.writeFileSync(sock, "");
 fs.writeFileSync(path.join(base, "core.json"), JSON.stringify({ socket: sock, uid: 400 }));
 spawn(flag("--vyred-wrapper"), [], { detached: true, stdio: "ignore" }).unref();
 console.log("  ok  installed");
-${o.noEnrol ? "" : `console.log("VYRE_CORE_ENROL=${ENROL}");`}
+${o.noEnrol ? "" : `console.log("VYRE_CORE_CAPSULE=" + (process.env.FAKE_CAPSULE || "no-screen"));`}
 `);
   execFileSync("tar", ["-czf", path.join(site, "vyre.tgz"), "-C", path.dirname(pkg), "vyre"]);
   const kp = crypto.generateKeyPairSync("ed25519");
@@ -363,9 +361,6 @@ test("install-mac-server.sh: the default is the system service, under one sudo, 
   assert.ok(!/launchctl bootstrap/.test(m.calls()), "the script never bootstraps; the root installer does");
   assert.match(r.stdout, /vyre-core is up/);
   assert.match(r.stdout, /starts when this Mac boots, with nobody signed in/);
-  // The enrolment code is read and dropped: never on screen, never in the env file, never in a call.
-  assert.ok(!(r.stdout + r.stderr).includes(ENROL) && !m.calls().includes(ENROL));
-  assert.ok(!fs.readFileSync(path.join(m.env.VYRE_HOME, "vyre.env"), "utf8").includes(ENROL));
   assert.ok(!(r.stdout + r.stderr).includes(CODE), "the setup code is never shown either");
 });
 
@@ -522,42 +517,12 @@ test("install-mac-server.sh: the embedded release key is the one release.js comp
   assert.equal(key, rel);
 });
 
-/** A Vyre.app in the fake current/ tree whose binary writes what it finds on fd 3, and its argv and environment, to files. */
-function fakeCapsule(/** @type {ReturnType<typeof sys>} */ m) {
-  const bin = path.join(m.core, "current", "Vyre.app", "Contents", "MacOS", "Vyre");
-  fs.mkdirSync(path.dirname(bin), { recursive: true });
-  fs.writeFileSync(bin, `#!/bin/sh\ncat <&3 >"${path.join(m.base, "fd3.txt")}"\necho "$*" >"${path.join(m.base, "argv.txt")}"\nenv >"${path.join(m.base, "env.txt")}"\n`, { mode: 0o755 });
-  return { fd3: path.join(m.base, "fd3.txt"), argv: path.join(m.base, "argv.txt"), env: path.join(m.base, "env.txt") };
-}
-const until = (/** @type {() => boolean} */ f) => { const t0 = Date.now(); while (!f() && Date.now() - t0 < 5000) spawnSync("sleep", ["0.1"]); };
-
-test("install-mac-server.sh: with a screen, the Capsule gets the enrolment code on fd 3 and nowhere else", t => {
-  const m = sys(t);
-  const c = fakeCapsule(m);
-  const r = run({ ...m.env, FAKE_MANAGER: "Aqua" }, ["--yes", "--system"]);
-  assert.equal(r.status, 0, r.stderr + r.stdout);
-  until(() => fs.existsSync(c.env) && fs.readFileSync(c.env, "utf8").length > 0);
-  assert.equal(fs.readFileSync(c.fd3, "utf8"), ENROL, "exactly the code's bytes, then end of file");
-  assert.equal(fs.readFileSync(c.argv, "utf8").trim(), "", "not an argument");
-  assert.ok(!fs.readFileSync(c.env, "utf8").includes(ENROL), "not in the environment");
-  assert.ok(!(r.stdout + r.stderr).includes(ENROL) && !m.calls().includes(ENROL));
-  assert.match(r.stdout, /Capsule is opening to enrol/);
-});
-
-test("install-mac-server.sh: with nobody at the screen the Capsule is not started and the code goes nowhere", t => {
-  const m = sys(t);
-  const c = fakeCapsule(m);
-  const r = run({ ...m.env, FAKE_MANAGER: "Background" }, ["--yes", "--system"]);
-  assert.equal(r.status, 0, r.stderr + r.stdout);
-  spawnSync("sleep", ["0.5"]);
-  assert.ok(!fs.existsSync(c.fd3), "the Capsule never ran");
-  assert.match(r.stdout, /nobody is signed in at this Mac's screen/);
-  assert.ok(!(r.stdout + r.stderr).includes(ENROL));
-});
-
-test("install-mac-server.sh: a release with no Capsule app says so and starts nothing", t => {
-  const m = sys(t);
-  const r = run({ ...m.env, FAKE_MANAGER: "Aqua" }, ["--yes", "--system"]);
-  assert.equal(r.status, 0, r.stderr + r.stdout);
-  assert.match(r.stdout, /no Capsule app yet/);
+test("install-mac-server.sh: the enrolment code never reaches this script; the root step's Capsule status becomes a plain line", t => {
+  for (const [status, re] of [["launched", /Capsule is opening to enrol/], ["no-screen", /nobody is signed in at this Mac's screen/], ["no-capsule", /no Capsule app yet/]]) {
+    const m = sys(t);
+    const r = run({ ...m.env, FAKE_CAPSULE: status }, ["--yes", "--system"]);
+    assert.equal(r.status, 0, r.stderr + r.stdout);
+    assert.match(r.stdout, re, status);
+    assert.ok(!/VYRE_CORE_/.test(r.stdout), "the status line is consumed, not echoed");
+  }
 });

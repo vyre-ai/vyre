@@ -18,7 +18,7 @@
 import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
-import { execFileSync } from "node:child_process";
+import { execFileSync, spawn } from "node:child_process";
 import { signApp, removeIdentity, CAPSULE_APP } from "./signing.js";
 import { RELEASE_KEY, verifySums, checkManifest, checkFloor, compareVersions, readFloor, raiseFloor, checkTarball, extract } from "./release.js";
 
@@ -369,6 +369,30 @@ export function buildPlists(o) {
 
 // ---------------------------------------------------------------------------------------------
 // install
+
+/**
+ * The enrolment handoff: start the Capsule from core's root-owned tree as the OWNER, in the owner's
+ * own screen session (launchctl asuser, so Terminal or ssh is never its "responsible process"), with
+ * the one-time code on file descriptor 3 (a launcher wraps stdin as fd 3): exactly the code's bytes,
+ * then end of file. Never an argument, the environment or a file. Needs an Aqua session; with none, or
+ * a release with no Capsule, nothing starts and the code simply expires.
+ * @param {{ ownerUid: number, ownerName: string, code: string }} o
+ * @param {{ run?: Run, root?: string, spawn?: typeof spawn }} [seams]
+ * @returns {"launched" | "no-screen" | "no-capsule"}
+ */
+export function launchCapsule({ ownerUid, ownerName, code }, seams = {}) {
+  const run = seams.run || defaultRun;
+  const app = path.join(paths(seams.root || "/").current, CAPSULE_APP, "Contents", "MacOS", path.basename(CAPSULE_APP, ".app"));
+  if (!fs.existsSync(app)) return "no-capsule";
+  const mgr = tryRun(run, ["/bin/launchctl", "asuser", String(ownerUid), "/bin/launchctl", "managername"]);
+  if (!mgr || mgr.trim() !== "Aqua") return "no-screen";
+  const child = (seams.spawn || spawn)("/bin/launchctl",
+    ["asuser", String(ownerUid), "/usr/bin/sudo", "-n", "-u", ownerName, "/bin/sh", "-c", 'exec "$0" 3<&0 0</dev/null >/dev/null 2>&1', RUNTIME.current + `/${CAPSULE_APP}/Contents/MacOS/${path.basename(CAPSULE_APP, ".app")}`],
+    { stdio: ["pipe", "ignore", "ignore"], detached: true, env: { PATH: SAFE_PATH } });
+  child.stdin.end(code);
+  child.unref();
+  return "launched";
+}
 
 /**
  * Do the install. Returns the one-time enrolment code (and its expiry); the caller hands it on
