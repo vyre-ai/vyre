@@ -4,6 +4,11 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+- Closed a fail-open in the caller check under load: a peer that connected, sent and exited freed its
+  fd number, and the helper that reads the peer's pid could be handed another descriptor (its own
+  stdout pipe), which named vyred itself, read as "vyred itself, not a caller" and ran a person's tool
+  once in about 200 runs. The fd is now read afresh per attempt, no helper starts on a closed socket,
+  and an answer from a socket that closed meanwhile is discarded (`core/daemon/peer.js`).
 - The home lock is held only by vyred's real command line (node on core/daemon/main.js, or `vyre daemon`),
   not by any live process with "vyre" somewhere in its arguments (`core/daemon/lock.js`).
 - A caller chain that stays unreadable after a fresh read (a missing pid, an empty or timed-out `ps`) is

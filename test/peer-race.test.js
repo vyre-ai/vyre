@@ -12,7 +12,7 @@ import path from "node:path";
 import { spawn } from "node:child_process";
 import { tempHome, writeModule } from "./helpers.js";
 import { start, above, asTaken } from "../core/daemon/index.js";
-import { processTable } from "../core/daemon/peer.js";
+import { processTable, readPeerPid } from "../core/daemon/peer.js";
 
 /** A macOS-shaped snapshot: pid -> row. */
 const rows = obj => new Map(Object.entries(obj).map(([k, v]) => [Number(k), { pgid: Number(k), ...v }]));
@@ -130,6 +130,20 @@ test("peer race: a named server keeps its label when the chain is unreadable", a
     insideClaude: () => ({ inside: false, unknown: true, unreadable: true, server: { exe: "/usr/bin/sshd", pid: 9, started: "t" } }) });
   assert.equal(r.inside, false);
   assert.equal(r.unknown, true);
+});
+
+test("peer race: a socket that closed before or during the read gives no pid (its fd number may be another descriptor's)", { skip: process.platform === "win32" }, async t => {
+  const file = path.join(tempHome(t), "fd");
+  fs.writeFileSync(file, "");
+  const fd = fs.openSync(file, "r");
+  t.after(() => { try { fs.closeSync(fd); } catch {} });
+  const seam = { bin: "/bin/sh", args: ["-c", "sleep 0.2; echo 4242"] };
+  const open = { destroyed: false, _handle: { fd } };
+  assert.equal(await readPeerPid(/** @type {any} */ (open), seam), 4242, "an open socket is read");
+  assert.equal(await readPeerPid(/** @type {any} */ ({ destroyed: true, _handle: null }), seam), null, "destroyed before: no helper starts");
+  const closing = { destroyed: false, _handle: { fd } };
+  setTimeout(() => { closing.destroyed = true; closing._handle = /** @type {any} */ (null); }, 50);
+  assert.equal(await readPeerPid(/** @type {any} */ (closing), seam), null, "closed while the helper ran: its answer is thrown away");
 });
 
 /** A forger: a node script run under a fake `claude`, saying it is the person's cli. */

@@ -84,9 +84,16 @@ export function readPeerPid(socket, seam = {}) {
   if (!script) return Promise.resolve(null);
   // The fd number, not the Socket: given a Socket, Node wraps its handle for the child and closes
   // it when the child exits, which resets the person's keep-alive connection.
-  const fd = /** @type {any} */ (socket)._handle && /** @type {any} */ (socket)._handle.fd;
-  if (!Number.isInteger(fd) || fd < 0) return Promise.resolve(null);
+  const fdOf = () => { const f = /** @type {any} */ (socket)._handle && /** @type {any} */ (socket)._handle.fd; return Number.isInteger(f) && f >= 0 ? f : -1; };
+  if (socket.destroyed || fdOf() < 0) return Promise.resolve(null);
+  // A peer that connects, sends and exits closes vyred's end: the fd number is then free for any
+  // other descriptor (the helper's own stdout pipe, whose other end is vyred itself), and a helper
+  // handed that number reports the wrong process, once in 200 runs under load (30 Sep). So the fd
+  // is read afresh for every attempt, no helper starts on a closed socket, and an answer read from
+  // a socket that closed meanwhile is thrown away: it is not the peer's.
   const once = () => new Promise(resolve => {
+    const fd = fdOf();
+    if (socket.destroyed || fd < 0) return resolve(null);
     let out = "";
     const child = spawn(seam.bin || PERL_BIN, seam.args || ["-e", script], { stdio: ["ignore", "pipe", "ignore", fd], env: {} });
     const timer = setTimeout(() => child.kill("SIGKILL"), PEER_TIMEOUT);
@@ -96,13 +103,13 @@ export function readPeerPid(socket, seam = {}) {
       clearTimeout(timer);
       nonBlocking(socket);
       const pid = Number(out.trim());
-      resolve(code === 0 && Number.isInteger(pid) && pid > 0 ? pid : null);
+      resolve(code === 0 && !socket.destroyed && fdOf() === fd && Number.isInteger(pid) && pid > 0 ? pid : null);
     });
   });
   return (async () => {
     for (let n = 0; n < PEER_ATTEMPTS; n++) {
-      // Every attempt asks the SAME connection (the fd captured above) again -- never a pid found
-      // some other way -- so a retry can only confirm or fail to confirm this one peer, not drift.
+      // Every attempt asks the SAME connection again -- never a pid found some other way -- so a
+      // retry can only confirm or fail to confirm this one peer, not drift.
       const pid = await once();
       if (pid != null) return pid;
     }
