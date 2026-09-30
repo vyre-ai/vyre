@@ -41,6 +41,9 @@ import path from "node:path";
 import { execFileSync } from "node:child_process";
 import { spawnSession, killGroup } from "../spawn.js";
 
+/** How long a turn waits for memory before it goes without. */
+const MEMORY_MS = 3000;
+
 /** A mode name that would let the agent stop asking. Never offered, never set. */
 export const BYPASS_MODE = /bypass|yolo|dangerous|never.?ask|full.?auto|auto.?approve|accept.?all|skip.?perm/i;
 
@@ -373,9 +376,16 @@ function runAcp(entry, known, o) {
     if (!ready || busy || exited || !queue.length) return;
     const blocks = queue.shift();
     busy = true; cancelling = false; turnText = "";
-    if (firstPrompt && !loaded && o.system && o.system.text) blocks.unshift({ type: "text", text: String(o.system.text) });
+    // The person's own words, before Vyre's prompt is put in front of them: what memory searches on.
+    const words = blocks.filter(b => b.type === "text").map(b => b.text).join("\n");
+    const first = firstPrompt && !loaded;
+    const sys = first && o.system && o.system.text ? [{ type: "text", text: String(o.system.text) }] : [];
     firstPrompt = false;
-    request("session/prompt", { sessionId: sid, prompt: blocks }).then(r => r, e => ({ error: e })).then(r => {
+    // Memory, as Claude gets it: the brief on the first prompt and up to 5 quoted lines on every one,
+    // ahead of the person's words, scoped by vyred to this thread's own agent and project (the
+    // caller passes memory(); a slow or failing memory adds nothing and never holds the turn).
+    const memory = o.memory ? Promise.race([Promise.resolve().then(() => o.memory({ prompt: words, first })), new Promise(r => setTimeout(() => r([]), MEMORY_MS).unref())]).catch(() => []) : Promise.resolve([]);
+    memory.then(extra => request("session/prompt", { sessionId: sid, prompt: [...sys, ...(Array.isArray(extra) ? extra : []), ...blocks] })).then(r => r, e => ({ error: e })).then(r => {
       withdrawAsks();
       if (turnText) say({ type: "assistant", message: { id: `acp-turn-${Date.now()}`, content: [{ type: "text", text: turnText }] } });
       const bad = r && r.error;

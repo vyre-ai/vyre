@@ -800,7 +800,13 @@ export class Switchboard {
     const floor = call => floorRules({ ...call, cwd: call.cwd || rec.cwd, home: this.deps.root || undefined, agent: rec.agent || null });
     const mcpEnv = { VYRE_THREAD: id, ...(sock ? { VYRE_SOCKET: sock.path } : {}), ...(o.agent ? { VYRE_AGENT: o.agent, VYRE_AGENT_KIND: o.agent_kind || "agent" } : {}),
       ...(o.scope ? { VYRE_PROJECTS: o.scope.projects === "*" ? "*" : o.scope.projects.join(","), VYRE_SCOPE_CWDS: JSON.stringify(o.scope.cwds || []) } : {}) };
-    const foreignOpts = foreign ? { floor, ...(sock ? { mcpServers: [{ name: "vyre", command: process.execPath, args: [MCP_SERVER], env: Object.entries(mcpEnv).map(([name, value]) => ({ name, value: String(value) })) }] } : {}) } : {};
+    // Memory for a prompt (memory.prompt, iq): blocks of text, scoped by vyred to this thread's own agent
+    // and project. The scope is the thread's record, never anything the session says. Nothing if iq is absent.
+    const memory = async ({ prompt, first }) => {
+      const r = await this.deps.call("memory.prompt", { prompt, first: Boolean(first), thread: id, ...(rec.project ? { project: rec.project } : {}), ...(rec.agent ? { agent: rec.agent } : {}) }).catch(() => null);
+      return r && !r.error && r.data && Array.isArray(r.data.blocks) ? r.data.blocks.filter(b => b && b.type === "text" && typeof b.text === "string").map(b => ({ type: "text", text: b.text })) : [];
+    };
+    const foreignOpts = foreign ? { floor, memory, ...(sock ? { mcpServers: [{ name: "vyre", command: process.execPath, args: [MCP_SERVER], env: Object.entries(mcpEnv).map(([name, value]) => ({ name, value: String(value) })) }] } : {}) } : {};
     const how = { ...foreignOpts, subreaper: this.deps.subreaper || null, ...(this.deps.uid != null ? { uid: this.deps.uid, gid: this.deps.gid } : {}), ...(account ? { account } : {}),
       onSpawn: g => { state.group = g; this.groups.set(g.pgid, g.sid); } };
     const on = { ...how, onMessage: m => { this.touch(id, state); if (!state.pidSet && state.proc && state.proc.pid) { state.pidSet = true; this.set(id, { pid: state.proc.pid }); } this.onMessage(id, state, m); }, onExit: (code, signal, stderr) => this.onExit(id, state, code, signal, stderr) };

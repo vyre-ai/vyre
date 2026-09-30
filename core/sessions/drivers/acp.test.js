@@ -80,6 +80,19 @@ test("acp: a bypass-shaped mode is never listed and never set, whoever asks", as
   assert.ok(!w.launches().some(l => l.set_mode && /bypass/i.test(l.set_mode)), "the agent never heard of it");
 });
 
+test("acp: memory goes ahead of the person's words on every prompt, the brief only on the first, and a failing memory adds nothing", async t => {
+  const w = world(t);
+  const asked = [];
+  const s = open(w, { system: { text: "VYRE-PROMPT" }, memory: async q => { asked.push(q); return [{ type: "text", text: q.first ? "BRIEF" : "LINES" }]; } });
+  assert.equal(await s.say("where is the site hosted"), "echo: VYRE-PROMPTBRIEFwhere is the site hosted", "the system prompt, then memory, then the person's words");
+  assert.equal(await s.say("and the domain"), "echo: LINESand the domain");
+  assert.deepEqual(asked, [{ prompt: "where is the site hosted", first: true }, { prompt: "and the domain", first: false }], "memory searches on the person's words only");
+  await s.proc.stop(1000);
+  const bad = open(world(t), { memory: async () => { throw new Error("iq is down"); } });
+  assert.equal(await bad.say("hello"), "echo: hello");
+  await bad.proc.stop(1000);
+});
+
 test("acp: the agent's plan is said as a plan line and a delete is drawn as an edit", async t => {
   const w = world(t);
   const s = open(w);

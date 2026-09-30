@@ -388,6 +388,28 @@ for (const driver of ["cli", "sdk"]) {
     t.after(() => { for (const [k, v] of Object.entries(saved)) { if (v === undefined) delete process.env[k]; else process.env[k] = v; } });
   };
 
+  test(`${driver}: a Grok or Codex thread gets memory.prompt's blocks ahead of the person's words, scoped by the thread's own project and agent`, { skip }, async t => {
+    const w = await boot(t, { driver });
+    withGrok(t, w);
+    assert.equal((await w.tool("projects.create", { name: "Harlow Legal", home: path.join(w.work, "harlow") })).error, undefined);
+    const asked = [];
+    const realCall = w.d.registry.call.bind(w.d.registry);
+    w.d.registry.call = async (tool, input, caller, meta) => {
+      if (tool !== "memory.prompt") return realCall(tool, input, caller, meta);
+      asked.push(input);
+      return { data: { blocks: [{ type: "text", text: input.first ? "[brief]" : "[lines]" }] } };
+    };
+    const th = (await w.tool("threads.start", { project: "harlow-legal", provider: "grok", prompt: "where is it hosted", surface: "deck" })).data;
+    await w.finished(th.id);
+    assert.equal((await w.said(th.id))[0].startsWith("echo: "), true);
+    assert.match((await w.said(th.id))[0], /\[brief\].*where is it hosted$/s);
+    assert.deepEqual(asked[0], { prompt: "where is it hosted", first: true, thread: th.id, project: "harlow-legal" }, "the scope is the thread's record");
+    await w.tool("threads.send", { thread: th.id, text: "and the domain", surface: "deck" });
+    await w.finished(th.id, 2);
+    assert.match((await w.said(th.id))[1], /\[lines\].*and the domain$/s);
+    assert.equal(asked[1].first, false);
+  });
+
   test(`${driver}: switching provider mid-session: same thread, a brief of what was said, a notice, and only between turns`, { skip }, async t => {
     const w = await boot(t, { driver });
     withGrok(t, w);
