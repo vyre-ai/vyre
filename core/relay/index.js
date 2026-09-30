@@ -135,6 +135,11 @@ export default {
     const addressHost = () => {
       try { return new URL(String((ctx.config.network || {}).address || "")).hostname.toLowerCase() || null; } catch { return null; }
     };
+    // The box's own https origin (https://<handle>.vyre.run, or its own domain, with a port when not 443),
+    // for a ticket's record: an app that pins the address pins this, from a record whose MAC covers it.
+    const addressOrigin = () => {
+      try { const u = new URL(String((ctx.config.network || {}).address || "")); return u.protocol === "https:" ? u.origin : null; } catch { return null; }
+    };
     // The person's avatar seed (the lead's ruling, 28 Sep), from the one shared formula in
     // lib/identity.js so the box, system.info and the phone never disagree. A missing or malformed
     // owner.id gives null (no avatar), never a fabricated value.
@@ -410,7 +415,7 @@ export default {
       if (!settings().enabled) save({ enabled: true });
       startLink();
       await link?.ready();
-      const record = ticketSeal(s.secret, JSON.stringify({ v: 1, name: boxName(), handle: boxHandle(), identity: identityFingerprint(), relay: settings().url, route: route(), box: k().box.pub.toString("base64url"), exp: s.exp }));
+      const record = ticketSeal(s.secret, JSON.stringify({ v: 1, name: boxName(), handle: boxHandle(), address: addressOrigin(), identity: identityFingerprint(), relay: settings().url, route: route(), box: k().box.pub.toString("base64url"), exp: s.exp }));
       const mac = ticketMac(s.secret, record);
       const status = link ? await link.registerSetup({ loc: s.loc, record, mac: mac.toString("base64url"), exp: s.exp }) : null;
       s.registered = status === 200;
@@ -582,8 +587,9 @@ export default {
     // read the record (sealed under a fourth derived key, so it holds ciphertext only). The
     // pairing secret this mints is exactly relay.pair.start's own mechanism (`takeLiveSecret`
     // above checks both), so redemption and admission are unchanged.
-    const mintTicket = async () => {
-      const rawTicket = crypto.randomBytes(TICKET_BYTES);
+    /** @param {Buffer} [seed] a ticket the asking app chose itself (relay.pair.ticket { seed }): 8 to 32 bytes it keeps to itself until then */
+    const mintTicket = async (seed) => {
+      const rawTicket = seed || crypto.randomBytes(TICKET_BYTES);
       const exp = now() + TICKET_TTL;
       const secret = ticketDerive("sec", rawTicket).toString("base64url");
       pendingTickets.set(sha(secret).toString("hex"), { exp });
@@ -592,7 +598,7 @@ export default {
       startLink();
       const connected = link ? await link.ready() : false;
       // Sealed under the ticket's own "enc" key: the relay holds ciphertext only (wire.js).
-      const record = ticketSeal(rawTicket, JSON.stringify({ v: 1, name: boxName(), handle: boxHandle(), identity: identityFingerprint(), relay: settings().url, route: route(), box: k().box.pub.toString("base64url"), exp }));
+      const record = ticketSeal(rawTicket, JSON.stringify({ v: 1, name: boxName(), handle: boxHandle(), address: addressOrigin(), identity: identityFingerprint(), relay: settings().url, route: route(), box: k().box.pub.toString("base64url"), exp }));
       const mac = ticketMac(rawTicket, record);
       if (link) link.registerTicket({ loc: ticketDerive("loc", rawTicket).toString("base64url"), record, mac: mac.toString("base64url"), exp });
       return { ticket: rawTicket.toString("base64url"), expiresAt: exp, connected };
@@ -600,13 +606,21 @@ export default {
 
     ctx.tool("relay.pair.ticket", {
       description: "Mint a one-time pairing ticket for the Vyre code (Wink): a phone that scans it resolves the box's identity from the relay, then pairs exactly as relay.pair.start's QR does. Works once, for 5 minutes; call again for a fresh one (an old, unused ticket is simply left to expire, unlike relay.pair.start's single live QR). Not available on a Mac yet: see vyre-core (ADR 0040).",
-      input: obj(),
+      input: obj({ seed: str }),
       presence: { when: () => !macCoreRefusal(platform, keys.core), summary: async () => `Pair a new device with this box, by scanning its Vyre code${settings().enabled ? "" : " (this also turns the relay on)"}` },
-      run: async (_, meta = {}) => {
+      run: async (input, meta = {}) => {
         const refusal = macCoreRefusal(platform, keys.core);
         if (refusal) throw refusal;
         owner(meta.caller, meta, "pairing a device");
-        return mintTicket();
+        // A computer that asks to be added (Windows) chose its ticket itself and shows it to the person:
+        // the box only registers it, so the app already holds it and needs nothing sent back.
+        let seed;
+        if (input && input.seed !== undefined) {
+          if (typeof input.seed !== "string" || !/^[A-Za-z0-9_-]+$/.test(input.seed)) throw fail("bad_input", "the seed is base64url");
+          seed = Buffer.from(input.seed, "base64url");
+          if (seed.length < TICKET_BYTES || seed.length > 32) throw fail("bad_input", `the seed is ${TICKET_BYTES} to 32 bytes`);
+        }
+        return mintTicket(seed);
       },
     });
 
