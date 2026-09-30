@@ -2562,7 +2562,7 @@ Whether the device a call came from (its tailnet peer; none for this machine) ha
 
 ### `presence.enroll`
 
-Enroll a Capsule key (Ed25519), a phone's device key (P-256, alg -7) or a passkey, by its public key as base64url SPKI DER. Needs presence.
+Enroll a Capsule key (Ed25519), a device key (P-256 with alg -7, or RSA of 2048 bits or more with alg -257, as Windows Hello makes) or a passkey, by its public key as base64url SPKI DER, a JWK or a Windows BCRYPT RSA blob. Needs presence.
 
 - Input:
   - `kind` one of "capsule", "passkey", "device", required

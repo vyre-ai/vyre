@@ -4,6 +4,20 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### Presence: RS256 device keys, for Windows Hello (plan step 14, reviewer M7)
+
+- `presence.enroll {kind: "device", alg: -257}` takes an RSA public key. Minimum 2048 bits (8192 at
+  most), public exponent 65537, or it is refused. The alg is bound to the key's type: an EC key
+  enrolls only with -7, an RSA key only with -257, and verify re-checks that the stored alg and key
+  agree, so neither ever verifies as the other. RS256 is RSASSA-PKCS1-v1_5 with SHA-256 over the same
+  bytes the ES256 path signs; nonce, 60 s window and one-use rules are shared.
+- `public_key` may also be a JWK (public members only; a private member is refused) or a Windows
+  BCRYPT_RSAKEY_BLOB (magic RSA1), stored as SPKI. core/presence/keys.js holds the converters.
+- Passkeys with alg -257 get the same 2048-bit and 65537 rules, and `verifyAssertion` refuses an
+  assertion whose alg disagrees with the key's type.
+- Tests in core/presence/rsa.test.js use generated keys only. Real Windows Hello fixtures still need
+  windows' W2 spike.
+
 #### Vault, Connections: every account and key, granted per surface (ADR 0028, decision 9b)
 
 - A new table, `vault_connections`, MACed like the grant rows: the vault's own items with a

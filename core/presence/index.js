@@ -10,6 +10,7 @@
 // injectable, so tests never open a dialog or write to a real terminal.
 
 import crypto from "node:crypto";
+import { normalizePublicKey, checkRsa } from "./keys.js";
 import fs from "node:fs";
 import { execFile } from "node:child_process";
 import { migrate } from "../store/index.js";
@@ -259,7 +260,14 @@ export const fingerprint = b64 => crypto.createHash("sha256").update(Buffer.from
  */
 const SIGNERS = {
   capsule: { label: "Capsule", check: pub => [null, spki(pub)] },
-  device: { label: "device", check: pub => ["sha256", { key: spki(pub), dsaEncoding: /** @type {const} */ ("der") }] },
+  // The algorithm comes from the alg stored at enroll time, never from the caller: ES256 for a
+  // P-256 key, RS256 (RSASSA-PKCS1-v1_5, SHA-256) for an RSA key, and the key must be that type.
+  device: { label: "device", check: (pub, alg) => {
+    const key = spki(pub);
+    if (alg === -7 && key.asymmetricKeyType === "ec") return ["sha256", { key, dsaEncoding: /** @type {const} */ ("der") }];
+    if (alg === -257 && key.asymmetricKeyType === "rsa") { checkRsa(key); return ["sha256", { key, padding: crypto.constants.RSA_PKCS1_PADDING }]; }
+    throw new Error("the stored alg does not match the stored key");
+  } },
 };
 
 /** Load one of the helper modules lazily. Another file may not exist yet; a failed import is "unavailable". */
@@ -552,7 +560,7 @@ export class Presence {
     if (method === "capsule" || method === "device") {
       const { label, check } = SIGNERS[method];
       const { key, ts, nonce, sig } = proof;
-      const row = /** @type {any} */ (this.db.prepare("SELECT id, public_key FROM presence_keys WHERE id = ? AND kind = ?").get(String(key || ""), method));
+      const row = /** @type {any} */ (this.db.prepare("SELECT id, public_key, alg FROM presence_keys WHERE id = ? AND kind = ?").get(String(key || ""), method));
       if (!row) return refuse(`that ${label} key is not enrolled`);
       if (!/^\d{1,16}$/.test(String(ts || "")) || Math.abs(this.now() - Number(ts)) > CAPSULE_SKEW) return refuse(`the ${label} signature is too old or from the future`);
       if (!/^[A-Za-z0-9_-]{8,128}$/.test(String(nonce || ""))) return refuse(`the ${label} nonce is missing or malformed`);
@@ -561,7 +569,7 @@ export class Presence {
       let good = false;
       try {
         const msg = Buffer.from(`vyre-presence-v1\n${tool}\n${hash}\n${ts}\n${nonce}`);
-        const [alg, pub] = check(row.public_key);
+        const [alg, pub] = check(row.public_key, row.alg === null ? null : Number(row.alg));
         good = crypto.verify(alg, msg, pub, Buffer.from(String(sig || ""), "base64url"));
       } catch {}
       if (!good) return refuse(`the ${label} signature does not check out`);
@@ -665,22 +673,32 @@ export class Presence {
   }
 
   /**
-   * Enroll a Capsule key (Ed25519), a phone's device key (P-256) or a passkey. Public keys only, as base64url SPKI DER.
+   * Enroll a Capsule key (Ed25519), a device key (P-256 with alg -7, or RSA-2048+ with alg -257) or a passkey. Public keys
+   * only: base64url SPKI DER, or a JWK, or a Windows BCRYPT RSA blob (keys.js), stored as SPKI.
    * @param {{ kind: string, name?: string, public_key: string, alg?: number, rp_id?: string, credential_id?: string }} k
    */
   enroll({ kind, name, public_key, alg, rp_id, credential_id, device = null, origin = null }) {
     if (kind !== "capsule" && kind !== "passkey" && kind !== "device") throw new Error("kind must be capsule, passkey or device");
     let key;
-    try { key = spki(public_key); } catch { throw new Error("public_key must be a base64url SPKI DER public key"); }
+    try { public_key = normalizePublicKey(public_key); key = spki(public_key); } catch (e) {
+      const m = /** @type {Error} */ (e).message;
+      throw new Error(/private key material|JWK|BCRYPT|blob|JSON/.test(m) ? m : "public_key must be a base64url SPKI DER public key");
+    }
     let id;
     if (kind === "capsule") {
       if (key.asymmetricKeyType !== "ed25519") throw new Error("a Capsule key must be Ed25519");
       alg = -8; rp_id = undefined;
       id = fingerprint(public_key);
     } else if (kind === "device") {
-      // What a phone's hardware can hold: ES256 on P-256, nothing else (ADR 0018).
-      if (key.asymmetricKeyType !== "ec" || /** @type {any} */ (key.asymmetricKeyDetails || {}).namedCurve !== "prime256v1") throw new Error("a device key must be an EC P-256 key");
-      if (alg !== -7) throw new Error("a device key's alg must be -7 (ES256)");
+      // What a device's hardware can hold: ES256 on P-256 (ADR 0018), or RS256 on RSA of 2048 bits
+      // or more (Windows Hello). The alg is bound to the key's type here and again at every verify.
+      if (alg === -257) {
+        if (key.asymmetricKeyType !== "rsa") throw new Error("alg -257 (RS256) needs an RSA key");
+        try { checkRsa(key); } catch (e) { throw new Error(/** @type {Error} */ (e).message); }
+      } else {
+        if (key.asymmetricKeyType !== "ec" || /** @type {any} */ (key.asymmetricKeyDetails || {}).namedCurve !== "prime256v1") throw new Error("a device key must be an EC P-256 key, or RSA with alg -257");
+        if (alg !== -7) throw new Error("a device key's alg must be -7 (ES256) or -257 (RS256)");
+      }
       rp_id = undefined;
       id = fingerprint(public_key);
     } else {
@@ -689,6 +707,7 @@ export class Presence {
       const want = ALGS[String(alg)];
       if (!want) throw new Error("alg must be -7 (ES256), -8 (EdDSA) or -257 (RS256)");
       if (key.asymmetricKeyType !== want) throw new Error(`alg ${alg} needs a ${want} key, not ${key.asymmetricKeyType}`);
+      if (want === "rsa") checkRsa(key);
       id = String(credential_id);
     }
     if (this.db.prepare("SELECT 1 FROM presence_keys WHERE id = ?").get(id)) throw new Error("that key is already enrolled");
