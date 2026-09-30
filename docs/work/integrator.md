@@ -41,6 +41,8 @@ Never the test box (now the user's real server) and never the user's Mac. Tests 
   - **IM1:** with the new image and compose topology, account uid 2000 can't read 2001's HOME, write into it, or read its /proc environ (nor can vyre-agent). The watchers' uid 3000 is refused to 1.1.1.1, a 100.x address, 127.0.0.1 and ::1, while uids 1000 and 2000 still connect. Caveat: tailscaled wasn't logged in, so the rule order under a live tailnet is checked again on e2e2's matrix.
 - 30 Sep: box/Dockerfile and compose.yml have the per-account uids 2000-2063 (0700 HOMEs, vyre-accounts volume) and the uid 3000 OUTPUT REJECT (158b7dfa).
 
+- 30 Sep: LANDED platform work/platform-contract 12a09627 on stage/0.2 as merge 795a00b7 (CI run 36667526975: node 22 and 24, box-image, sessions-sdk, capsule-mac green; two single-test flakes, computerd CDP identity on 22 and upgrade.test.js on 24, each green on rerun, neither touches platform files). Next in the order: tailnet-02, sessions-02, launch-onboard-fix.
+
 ## Doing
 
 - release.yml v2 on work/integrator: buildx multi-arch, push by digest, cosign sign and attest, minisign, release.json v2. Dry-run first.
