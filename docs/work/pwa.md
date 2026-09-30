@@ -1079,3 +1079,5 @@ list; pwa touches none until they say which files are left.
 Drive tile added to Places and the rail (app-design's answer: /files, glyph drive, 3x3 grid with two free slots). Screen title Drive.
 
 reviewer-2 on 390f4b8b, all four fixed: revalidation only caches listed-hash bytes (hash list kept in the cache at install), completeness (withheld or unlisted required file refused), rollback floor (shell.json version, VERSION_CACHE), Blob type forced in the Files view. Tests in deck/test/shell-release-sw.test.js (needs vyre-core's sign-manifest and release.js, so red on stage until it re-lands; 13/13 with them).
+
+Enrol at pairing built against tailnet's 14b6bcc1: pairOffer({enroll:true}) -> reply.enroll {grant, expires, rpId} (validated in relay/client/client.js enrollOf, a small change to tailnet's file, listed under Changed contracts) -> redirect https://<rpId>/#enroll=<grant> -> js/enroll-grant.js takes and clears the fragment, one sheet, enrollPasskey({grant}). Untested end to end (needs a box with 14b6bcc1 and a real phone); unit-tested pieces only.

@@ -7,6 +7,10 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 #### tests: hands-chrome waits 30 s for Chrome's DevTools port
 
 - A hosted runner sometimes takes longer than 10 s to start headless Chrome ("Chrome did not print its DevTools port in time"). That flake predates the mock-keychain flags (it failed on work/native-core-0.2 runs 4932f92d and 3ff930c6, before 47dafe78 existed; the flags are the only change to that launch and drop nothing), so the wait is 30 s. A launch that is truly broken still fails when Chrome exits early.
+#### pwa: the phone makes its Face ID key at pairing
+
+- Scanning the Wink ring now pairs with `enroll: true`; when the box hands back its one-time enrolment grant (`{ grant, expires, rpId }`, core/relay), the pairing page redirects to `https://<rpId>/#enroll=<grant>`. The Deck there reads the fragment once, removes it from the address bar and history, and opens one sheet with one Face ID prompt (`js/enroll-grant.js`, `enrollPasskey` with method grant). No Mac code. `relay/client` `pairOffer` takes `enroll` and returns a validated `enroll`. The setup QR claim uses the same fragment.
+
 #### pwa: the signed shell stays signed after install (reviewer-2's HIGH on N-H1)
 
 - On a signed build the worker stores the release's hash list at install and, on every later fetch, caches a shell file only when its bytes match the listed hash (a mismatching first visit gets nothing, a mismatching revalidation leaves the cached copy). Install now also refuses a release that withholds or does not list any SHELL file, and one older than the highest accepted (`shell.json` carries the version; `scripts/shell-hashes.mjs DIR [VERSION]`). The Files preview forces its own Blob type (PDF, a fixed image set, text), never the box's mime string.
