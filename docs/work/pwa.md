@@ -846,6 +846,51 @@ Targeted rerun: test/boundaries.test.js, core/daemon/*.test.js, test/daemon.test
 deck/views/pair-scan.test.js, test/docs-check.test.js - 71/71 pass. Sent to reviewer and the
 integrator.
 
+## 0.2 (30 Sep 2026 onward)
+
+Phase 1 (planning) plan is at `team/0.2/plans/pwa.md`, reviewed and cleared (reviews/pwa.md: 1
+BLOCKER, 6 HIGH, 5 MEDIUM, 3 LOW, all fixed; one re-review HOLD on the shell-integrity fix,
+cleared). Section 1 there is the honest state as of 0.1.x's end, worth reading before touching
+this file's older entries above - it corrects one thing those entries assumed at the time
+(Wink's "redirect to `<handle>.vyre.run`" success step - reviewer P-H0a found this breaks under
+0.2's origin model, since a relay-only phone and a Tailscale-reachable one are different origins
+with different storage; 0.2 replaces the redirect with a re-pair, see plans/pwa.md section 3).
+
+**Operational note, binding as of today:** `team/RULES.md` now says outright that the test box is
+the same host as the user's real, live Vyre server, and NOTHING runs there any more (no spikes,
+no containers, no test runs). This whole file's own
+history above, and this session's earlier live-relay verification work, ran real commands against
+that box under the OLD rule (it was a shared testbox at the time). That's no longer allowed. Every
+test now runs on GitHub Actions (`.github/workflows/node.yml` on push/PR/workflow_dispatch, or
+`gh workflow run <name>.yml --ref work/pwa` for the Mac/iOS/Android-specific ones) - checked this
+before running anything further today, and confirmed by watching a real run rather than assuming.
+
+## Doing (N-H1 rebuilt on the release key, 2026-09-30)
+
+Rebased onto origin/work/stage-0.2 (943 behind; the earlier relay and Deck commits were already on
+stage, so only the two N-H1 commits remained). The first N-H1 attempt (own P-256 key and manifest)
+is replaced by the lead's spec: the service worker verifies against the ONE release signature.
+
+- `deck/sw.js` `verifyShell`: fetches `/release/SHA256SUMS`, `/release/SHA256SUMS.sig`,
+  `/release/shell.json`; checks the Ed25519 signature (pinned `RELEASE_KEY`, over
+  "vyre-release-sums\n" + SHA256SUMS), then the SUMS line for shell.json, then the shell.json
+  hash of each fetched file. Refuses the new shell (cache dropped, no skipWaiting) on any miss when
+  `SHELL_SIGNED` is true. Browser without Ed25519 installs unchecked with a console line.
+- `core/daemon/build.js` `swWithBuild` sets `SHELL_SIGNED = true` when `deck/release/SHA256SUMS.sig`
+  exists; a dev checkout or testbox has none and behaves as before. The daemon serves the three
+  files from `deck/release/` and answers 404 (not the shell) when one is absent.
+- `scripts/shell-hashes.mjs DIR` writes `DIR/shell.json` (every SHELL file except sw.js, which is
+  stamped per build). The release runs it before `scripts/sign-manifest.mjs`.
+- Tests: `deck/test/shell-release-sw.test.js` runs sw.js's own source against a real release made
+  by sign-manifest.mjs with a throwaway key (match, tampered file, wrong key, swapped shell.json,
+  missing file, unsigned build), and checks sw.js's key equals release.js's RELEASE_KEY.
+- Honest limit: sw.js comes from the same origin, so this catches a shell that differs from the
+  release, not an origin that also swaps the worker.
+
+**Needs from others (asked in CHAT.md):** launch/anywhere: add `node scripts/shell-hashes.mjs dist`
+to release.yml before the SHA256SUMS step, and have `vyre update` and the phone.vyre.run deploy
+copy SHA256SUMS, SHA256SUMS.sig and shell.json into `<install>/deck/release/`.
+
 ## Next
 - No test coverage of scan.js/scan-worker.js's own lifecycle (the busy flag, the transferred
   buffer, worker.terminate() on stop) - reviewer-2 hand-verified fa619b4a and confirmed it's

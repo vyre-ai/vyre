@@ -7,6 +7,9 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 #### tests: hands-chrome waits 30 s for Chrome's DevTools port
 
 - A hosted runner sometimes takes longer than 10 s to start headless Chrome ("Chrome did not print its DevTools port in time"). That flake predates the mock-keychain flags (it failed on work/native-core-0.2 runs 4932f92d and 3ff930c6, before 47dafe78 existed; the flags are the only change to that launch and drop nothing), so the wait is 30 s. A launch that is truly broken still fails when Chrome exits early.
+#### pwa: the service worker checks a new shell against the signed release
+
+- `deck/sw.js` verifies the shell's files against the release signature (SHA256SUMS.sig, Ed25519, pinned release key) before it activates a new shell, and keeps the old shell on any mismatch (reviewer N-H1). `scripts/shell-hashes.mjs` writes `shell.json` for the release to sign; `swWithBuild` turns the check on when `deck/release/` holds the signed files; the daemon serves them. A dev checkout is unchecked, as before.
 
 #### tests: every Chrome launch carries the mock-keychain flags
 
