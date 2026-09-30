@@ -17,12 +17,13 @@ rec() { # rec STEP ok|false [why]
 serve() { python3 -m http.server "$2" --bind 127.0.0.1 --directory "$1" >/dev/null 2>&1 & echo $! >>"$OUT/pids"; }
 version() { vyre version 2>/dev/null | tr -d ' \r\n'; }
 ready() { i=0; until vyre status 2>/dev/null | grep -q 'vyred running'; do i=$((i + 1)); [ $i -ge 120 ] && return 1; sleep 1; done; }
-upd() { VYRE_BOX_URL="http://127.0.0.1:$1/" VYRE_RELEASES_API="" VYRE_UPDATE_WAIT=180 vyre update "${@:2}" </dev/null 2>&1; }
+upd() { VYRE_BOX_URL="http://127.0.0.1:$1/" VYRE_RELEASES_API="" VYRE_UPDATE_WAIT=180 vyre update --yes "${@:2}" </dev/null 2>&1; }
 : >"$OUT/pids"
 serve "$OLD" 18081; serve "$NEW" 18082
 TAMPER=$(mktemp -d); cp -R "$NEW"/. "$TAMPER"/; printf 'tampered\n' >>"$TAMPER/vyre.tgz"; serve "$TAMPER" 18083
 for i in $(seq 1 50); do curl -fs http://127.0.0.1:18083/SHA256SUMS >/dev/null && break; sleep 0.2; done
 CAND=$(tr -d ' \r\n' <"$NEW/VERSION"); OLDV=$(tr -d ' \r\n' <"$OLD/VERSION")
+[ "$CAND" != "$OLDV" ] || { echo "j2-upgrade.sh: the candidate is $CAND, the same as the old release; bump its version first" >&2; exit 2; }
 
 # 2.1 install from the old release
 if VYRE_BOX_URL=http://127.0.0.1:18081/ VYRE_BUILD=tgz sh "$OLD/install-box.sh" --yes --print-link </dev/null >"$OUT/install.log" 2>&1 && ready; then
@@ -30,9 +31,9 @@ if VYRE_BOX_URL=http://127.0.0.1:18081/ VYRE_BUILD=tgz sh "$OLD/install-box.sh" 
 else rec 2.1-install-old false "install or start failed: $(tail -3 "$OUT/install.log")"; exit 1; fi
 
 # 2.2 fill it with a made-up world and read it back
-vyre call memory.remember '{"text":"Robin at Marlow and Finch keeps the lease review on Thursdays"}' >"$OUT/seed-memory.json" 2>&1
+vyre call memory.remember '{"text":"My wife is Robin"}' >"$OUT/seed-memory.json" 2>&1
 vyre call planner.add '{"kind":"note","text":"Marlow and Finch retainer draft"}' >"$OUT/seed-note.json" 2>&1
-seen() { vyre call planner.list '{}' 2>&1 | grep -q 'retainer draft' && vyre call memory.facts '{}' 2>&1 | grep -q 'lease review'; }
+seen() { vyre call planner.list '{}' 2>&1 | grep -q 'retainer draft' && vyre call memory.facts '{}' 2>&1 | grep -q 'Robin'; }
 seen && rec 2.2-seed ok || rec 2.2-seed false "seed not readable: $(head -c 200 "$OUT/seed-memory.json")"
 
 # 2.3 update to the candidate
