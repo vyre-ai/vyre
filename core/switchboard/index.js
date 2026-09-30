@@ -1122,17 +1122,23 @@ export class Switchboard {
     // One at a time: a second limit line for the same turn arrives before the first has set `switching`.
     if (st.routing) return false;
     st.routing = true;
-    const rec = this.must(id);
-    st.tried = st.tried || new Set();
-    const r = await this.deps.call("sessions.routes.next", { provider: rec.provider || "claude", ...(rec.account ? { account: rec.account } : {}), ...(rec.agent ? { agent: rec.agent } : {}), ...(rec.project ? { project: rec.project } : {}), tried: [...st.tried] }).catch(() => ({}));
-    const hit = r.data && r.data.entry;
-    if (!hit) { st.routing = false; return false; }
-    const last = st.lastPrompt || null;
-    const tried = new Set([...st.tried, `${rec.provider || "claude"}:${rec.account || ""}`]);
-    st.switching = true;
-    try { await this.switchProvider(id, { provider: hit.provider, account: hit.account || null, model: hit.model || null, reason: "limit", text: last }); }
-    finally { const now = this.live.get(id); if (now) now.tried = tried; }
-    return true;
+    let switched = false;
+    try {
+      const rec = this.must(id);
+      st.tried = st.tried || new Set();
+      const r = await this.deps.call("sessions.routes.next", { provider: rec.provider || "claude", ...(rec.account ? { account: rec.account } : {}), ...(rec.agent ? { agent: rec.agent } : {}), ...(rec.project ? { project: rec.project } : {}), tried: [...st.tried] }).catch(() => ({}));
+      const hit = r.data && r.data.entry;
+      if (!hit) return false;
+      const last = st.lastPrompt || null;
+      const tried = new Set([...st.tried, `${rec.provider || "claude"}:${rec.account || ""}`]);
+      st.switching = true;
+      try { await this.switchProvider(id, { provider: hit.provider, account: hit.account || null, model: hit.model || null, reason: "limit", text: last }); switched = true; }
+      finally { const now = this.live.get(id); if (now) now.tried = tried; }
+      return true;
+    } finally {
+      // Only a switch that happened retires this state; any other way out lets the next limit try again.
+      if (!switched) { st.routing = false; if (this.live.get(id) === st) st.switching = false; }
+    }
   }
 
   /**
