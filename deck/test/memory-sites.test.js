@@ -103,14 +103,16 @@ test("Forget a site: memory.site.forget {key}, the site leaves the list, and a l
 });
 
 test("Undo lives on the box: what it lists as forgotten shows as Forgot lines at the top, for a site and for a row, and Undo restores it", async () => {
-  const forgotten = [{ key: "https://old.example", name: "Old shop", at: Date.now() - 3600e3, until: Date.now() + 23 * 3600e3 },
-    { key: "https://portal.northwind.example", name: "Northwind portal", part: "controls", id: "c9", label: "Export on /reports", at: Date.now() - 600e3, until: Date.now() + 23 * 3600e3 }];
+  const forgotten = [{ kind: "site", key: "https://old.example", name: "Old shop", at: Date.now() - 3600e3, expires_at: Date.now() + 23 * 3600e3 },
+    { kind: "row", key: "https://portal.northwind.example", name: "Northwind portal", part: "controls", id: "c9", label: "Export on /reports", at: Date.now() - 600e3, expires_at: Date.now() + 23 * 3600e3 }];
   assert.equal(forgottenOf({ forgotten }).length, 2);
+  assert.deepEqual(forgottenOf({ forgotten }).map(f => f.kind), ["site", "row"]);
+  assert.equal(forgottenOf({ forgotten: [{ kind: "row", key: "k", name: "n" }] })[0].kind, "site", "a row entry with no part or id is read as a site");
   const m = await mount({ "memory.site.list": { sites: LIST.sites, forgotten }, "memory.site.restore": { restored: 1 } });
   const lines = $$(m.root, ".ms-kept [data-kept]");
   assert.equal(lines.length, 2);
-  assert.match(text(lines[0]), /Forgot Old shop\. Vyre will learn it again only if you use it\./);
-  assert.match(text(lines[1]), /Forgot Export on \/reports from Northwind portal\./);
+  assert.match(text(lines[0]), /Forgot Old shop earlier\./);
+  assert.match(text(lines[1]), /Forgot Export on \/reports from Northwind portal earlier\./);
   click($(lines[1], "[data-act=undo]")); await settle();
   assert.deepEqual(m.of("memory.site.restore")[0].input, { key: "https://portal.northwind.example", part: "controls", id: "c9" });
   click($(m.root, ".ms-kept [data-kept] [data-act=undo]")); await settle();
@@ -118,7 +120,7 @@ test("Undo lives on the box: what it lists as forgotten shows as Forgot lines at
 });
 
 test("a restore the box answers with 0 (after the day, or nothing forgotten) says it can no longer be brought back", async () => {
-  const m = await mount({ "memory.site.list": { sites: LIST.sites, forgotten: [{ key: "https://old.example", name: "Old shop", at: 1, until: 2 }] }, "memory.site.restore": { restored: 0 } });
+  const m = await mount({ "memory.site.list": { sites: LIST.sites, forgotten: [{ kind: "site", key: "https://old.example", name: "Old shop", at: 1, expires_at: 2 }] }, "memory.site.restore": { restored: 0 } });
   click($(m.root, ".ms-kept [data-act=undo]")); await settle();
   assert.match(text(m.root), /Old shop can no longer be brought back/);
 });
@@ -162,4 +164,28 @@ test("the empty state says what learns a site and what does not", async () => {
   const m = await mount({ "memory.site.list": { sites: [] } });
   assert.match(text(m.root), /No sites yet/);
   assert.match(text(m.root), /Nothing is learned from pages you have not opened with Vyre/);
+});
+
+test("Dismiss clears an Undo line for good on this screen: in a row's place, in a detail, and at the top", async () => {
+  const forgotten = [{ kind: "site", key: "https://old.example", name: "Old shop", at: 1, expires_at: Date.now() + 1e6 }];
+  let gone = false;
+  const m = await mount({ "memory.site.list": () => ({ sites: gone ? LIST.sites.slice(1) : LIST.sites, forgotten }), "memory.site.forget": () => { gone = true; return { forgotten: 1 }; } });
+  assert.equal($$(m.root, ".ms-kept [data-kept]").length, 1);
+  click($(m.root, ".ms-kept [data-act=dismiss]")); await settle();
+  assert.equal($$(m.root, ".ms-kept [data-kept]").length, 0, "the box's line is cleared on this screen");
+  const key = "https://portal.northwind.example";
+  click($(row(m.root, key), "[data-act=forget]")); await settle();
+  assert.ok($(row(m.root, key), "[data-act=dismiss]") && $(row(m.root, key), "[data-act=undo]"));
+  click($(row(m.root, key), "[data-act=dismiss]")); await settle();
+  assert.equal(row(m.root, key), null, "the line and its place are gone");
+});
+
+test("Wrong? on a row forgets it, with no confirmation and no warning that it cannot be undone", async () => {
+  const m = await mount({ "memory.site.detail": DETAIL, "memory.site.forget": { forgotten: 1 } });
+  const key = "https://portal.northwind.example";
+  click($(row(m.root, key), "[data-act=details]")); await settle();
+  assert.equal(text($(row(m.root, key), "[data-item=c1] [data-act=item-forget]")), "Wrong?");
+  click($(row(m.root, key), "[data-item=c1] [data-act=item-forget]")); await settle();
+  assert.equal(m.of("memory.site.forget").length, 1);
+  assert.doesNotMatch(text(m.root), /cannot be undone/);
 });
