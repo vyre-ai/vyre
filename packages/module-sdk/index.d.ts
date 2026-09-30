@@ -444,10 +444,12 @@ export interface ModuleContext {
   gate: { request(req: { kind: string; via: ToolName; to?: string; content: unknown; why?: string }): Promise<{ held: string } | { sent: unknown }> };
   memory: {
     /**
-     * @planned A memory row through iq's memory.write (needs.tools must list it). vyred sets
-     * from: "module:<name>", forces untrusted: true for an added module, and dedupes by source_ref.
+     * A memory row through memory's memory.write. The kind must be declared under teaches.memory.
+     * Memory sets from: "module:<name>", forces untrusted: true for an added module, and dedupes by
+     * source_ref (the same source_ref for another project links the row there: linked true).
+     * project is a project's slug.
      */
-    write(row: { kind: "fact" | "note"; project?: string; text: string; subject?: string; source_ref?: string }): Promise<CallResult<{ id: string }>>;
+    write(row: { kind: "fact" | "note"; project: string; text: string; subject?: string; source_ref?: string }): Promise<CallResult<{ id: string; linked: boolean }>>;
     /** @deprecated Use write({ kind: "fact" }). Hands the curator a fact of a kind declared under teaches.memory. */
     teach(kind: string, fact: unknown): Promise<boolean>;
   };
