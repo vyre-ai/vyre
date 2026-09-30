@@ -151,11 +151,35 @@ it and turns it back on. Filed items appear in the project and in its memory roo
 | Pause, resume | `vyre watchers pause`, `resume` | the pause switch | `watchers.pause`, `watchers.resume` |
 | Runs and items | `vyre watchers logs`, `items` | the project | `watchers.logs`, `watchers.items` |
 
+## Standing duties are watchers too
+
+A teammate's standing duty ("review every finished session", "note each morning what is stale") is a
+watcher owned by that teammate, not a second system. The teammate's own tools create and change it;
+Vyre writes the watcher folder from the plain words, runs it on the same runtime, and shows it on
+the same card. A duty that may act (`act`) still holds anything outward you did not ask for, exactly
+as a watcher would. Delete a duty from its teammate, or pause it with `vyre watchers pause`.
+
+## Vyre does not poll where it can listen
+
+A watcher runs when something happens, on a schedule, or when a source pushes:
+
+- **An event** ("a session finished") costs nothing until it happens.
+- **A push** (a connected Gmail account) arrives by itself from the Vault's connection, with no polling. A watcher sees only that message ids arrived, never the sender or subject, and only for the projects that connection is granted to.
+- **A schedule** (`daily 07:00`, `every 30 minutes`, cron) never runs faster than every five minutes.
+
+## The card before you turn it on
+
+Before anything runs on its own, you see a card: when it runs, what it checks, what it does, the
+hosts it reads, whether it can act and what a model would cost at most. The last three are worked
+out by Vyre from the watcher's files, not from what its author wrote about it. Turning it on
+turns on exactly the code the card described; if the files change first, it asks again.
+
 ## What it will not do
 
 - Send, post or reply to anything. A watcher reads. Anything outbound goes through you.
 - Run a watcher that changed since you saw its dry run.
-- Hand a watcher a Vault item it does not list under `needs`, or one not granted to it.
+- Hand a watcher a credential at all. Vyre attaches a Vault item to the one host a watcher names under `net`, and only if the item was granted to that watcher; the watcher's code never sees the value.
+- Read a host it did not list under `net`, or reach your machine, your tailnet or anything private.
 - Put a credential into an item, a log or a project.
 
 ## Next
