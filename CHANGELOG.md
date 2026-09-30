@@ -4,6 +4,10 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+- Capsule: the key that proves you are at the Mac no longer needs a fingerprint reader. It asks for
+  Touch ID where the Mac has it and for the Mac's login password where it does not, and only for
+  what already asked (pairing, vault reveals, sends you did not ask for). A Mac with no Secure
+  Enclave keeps the key in the keychain instead, guarded by the same check in the Capsule.
 - Capsule: on a Mac that runs vyre-core, the installer starts the Capsule with a one-time code on a
   private channel. The Capsule makes its key, enrols it with vyre-core using that code, and tells
   you the key's fingerprint to compare with the installer's. The code is used once, never written

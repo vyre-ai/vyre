@@ -106,7 +106,7 @@ let coreEnrollSuite = Suite("core enrol") { t in
         let raw: CoreEnroll.Outcome?? = t.wait { @MainActor () -> CoreEnroll.Outcome? in
             let store = MemStore()
             let p = CapsulePresence(home: vyScratch("enrol-ok"), vyred: VyredClient(socket: "/nowhere"), store: store)
-            p.makeKey = { (Data([1, 2, 3]), Data((0..<65).map { UInt8($0) })) }
+            p.hasSecureEnclave = { false }
             let o = await CoreEnroll.enrol(.code("Ab3xY9"), presence: p, config: CoreEnroll.Config(socket: fake.socket, uid: 1), problem: { _ in nil })
             t.eq(store.handle, Data([1, 2, 3]))
             t.eq(p.enrolled?.id, "k1")
@@ -130,7 +130,7 @@ let coreEnrollSuite = Suite("core enrol") { t in
         let raw: CoreEnroll.Outcome?? = t.wait { @MainActor () -> CoreEnroll.Outcome? in
             let store = MemStore()
             let p = CapsulePresence(home: vyScratch("enrol-no"), vyred: VyredClient(socket: "/nowhere"), store: store)
-            p.makeKey = { (Data([9]), Data((0..<65).map { UInt8($0) })) }
+            p.hasSecureEnclave = { false }
             let o = await CoreEnroll.enrol(.code("Zz9Zz9"), presence: p, config: CoreEnroll.Config(socket: fake.socket, uid: 1), problem: { _ in nil })
             t.eq(store.handle, nil, "an unenrolled key is deleted")
             t.ok(p.enrolled == nil)
@@ -149,7 +149,7 @@ let coreEnrollSuite = Suite("core enrol") { t in
         t.ok(fake.start())
         let r: [CoreEnroll.Outcome?]? = t.wait { @MainActor () -> [CoreEnroll.Outcome?] in
             let p = CapsulePresence(home: vyScratch("enrol-un"), vyred: VyredClient(socket: "/nowhere"), store: MemStore())
-            p.makeKey = { (Data([1]), Data((0..<65).map { UInt8($0) })) }
+            p.hasSecureEnclave = { false }
             let a = await CoreEnroll.enrol(.code("Ab3xY9"), presence: p, config: nil)
             let b = await CoreEnroll.enrol(.code("Ab3xY9"), presence: p, config: CoreEnroll.Config(socket: fake.socket, uid: 1), problem: { _ in "vyre-core's socket does not belong to vyre-core." })
             let c = await CoreEnroll.enrol(.failed, presence: p, config: nil)
