@@ -4,6 +4,10 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+- The home lock is held only by vyred's real command line (node on core/daemon/main.js, or `vyre daemon`),
+  not by any live process with "vyre" somewhere in its arguments (`core/daemon/lock.js`).
+- A caller chain that stays unreadable after a fresh read (a missing pid, an empty or timed-out `ps`) is
+  now a model's, not left unknown; a docker exec stays unknown (`core/daemon/peer.js`, `index.js`).
 - Closed a caller-identity race on macOS: a forged "cli" label from under a claude was believed
   when the caller was forked inside the 250 ms shared process snapshot. A pid the snapshot lacks is
   now read again, retries start from a fresh table, a peer that already exited is a model's, and
