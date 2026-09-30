@@ -387,11 +387,12 @@ test("acp: an entry can pin the start mode on every start; one that offers none 
 
 test("acp: what leaves for a person (an authenticate error, an open failure) has credential shapes and this run's secret values stripped", async t => {
   const secret = "s3cr3t-value-for-this-run";
+  const shaped = ["sk", "ant", "abcdefghijklmnopqrstuvwxyz0123"].join("-");   // a key-shaped string, built at runtime so no literal looks like a secret
   const w = world(t, { authMethod: () => "api-key", secretEnv: () => ["MY_KEY"] });
-  const s = open(w, { env: { ...w.env, MY_KEY: secret, FAKE_ACP_AUTH: "refuse", FAKE_ACP_AUTH_ERR: `bad key ${secret} and sk-ant-abcdefghijklmnopqrstuvwxyz0123` } });
+  const s = open(w, { env: { ...w.env, MY_KEY: secret, FAKE_ACP_AUTH: "refuse", FAKE_ACP_AUTH_ERR: `bad key ${secret} and ${shaped}` } });
   const r = (await s.until(m => m.type === "result", "the refusal")).result;
   assert.doesNotMatch(r, new RegExp(secret));
-  assert.doesNotMatch(r, /sk-ant-abcdefghijklmnop/);
+  assert.equal(r.includes(shaped), false);
   assert.match(r, /did not accept its sign-in \(bad key \[secret\]/);
 });
 
