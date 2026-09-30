@@ -587,11 +587,12 @@ test("a vyre restart while a request is running fails it with a reason, frees th
   assert.match(next.result, /second ok/);
 });
 
-test("team.act.target is internal: a person's surface cannot call it", async t => {
+test("team.act.target and team.roster are internal: a person's surface cannot call them", async t => {
   const { tool, raw, project } = await boot(t);
   await tool("team.add", { project: project.slug, role: "design" });
   const r = await raw("team.act.target", { tool: "team.retire", input: { project: project.slug, role: "design" } });
   assert.ok(r.error);
+  assert.ok((await raw("team.roster", { project: project.slug })).error);
 });
 
 // --- step 2: notes-changed enforcement and compaction re-injection ------------------------------

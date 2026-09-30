@@ -1119,6 +1119,23 @@ export default {
       },
     });
 
+    /**
+     * What the recorder of the person's words needs to know about a project's team: its live roles and its duties that could be
+     * started (hash and title as team.duties.list carries them). Internal; the turn-ingress recorder in threads asks it, fail-soft.
+     */
+    ctx.tool("team.roster", {
+      internal: true,
+      description: "Registry only: a project's live teammates' roles and their duties (id, teammate, title, hash, enabled, started), for recording what the person asked for. Answers { roles, duties }.",
+      input: { type: "object", required: ["project"], properties: { project: { type: "string" } } },
+      callers: ["module"],
+      run: async ({ project }) => {
+        if (!SLUG.test(String(project || ""))) throw Object.assign(new Error("project must be a project slug"), { code: "bad_input" });
+        const live = serving(String(project));
+        const duties = live.flatMap(tm => dutyApi.list(tm.agent)).map(d => ({ id: d.id, teammate: d.teammate, title: d.title, hash: d.hash, enabled: d.enabled, started: d.started }));
+        return { roles: live.map(tm => ({ role: tm.role })), duties };
+      },
+    });
+
     ctx.tool("team.list", {
       description: "The teammates that serve a project: role, brief, state, queue length and last result. With no project, the caller's own (from its thread); a person with no thread and no project sees every teammate.",
       input: { type: "object", properties: { project: { type: "string" }, all: { type: "boolean" } } },
