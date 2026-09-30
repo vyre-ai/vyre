@@ -4,6 +4,7 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+- `vyre backup` stops a tar that closes its output and then hangs: 30 seconds after the output ends it is killed with a plain error, so a stuck tar cannot hold a backup open (`core/names/backup.js`, reviewer-2). Test-only: the personal-extract speed test takes the best of three passes, so a loaded runner's swell no longer fails it.
 - Test-only: the Vyre Drive tests stop every registry they started before any temp dir (including the fake tailscale's) is removed (an after-hook ordering race that surfaced as ENOTEMPTY).
 - The CDP mux drops an agent client that has an agent id but no browser context, so a future path that skips the ready gate fails closed instead of serving unfenced (`core/computers/image/computerd/cdpmux.js`, reviewer-2).
 - A real race in `vyre backup`: once tar's output ended, the export killed tar if its exit code was not in yet, so a clean
