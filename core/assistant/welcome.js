@@ -4,6 +4,14 @@
 // now, so nothing on the screen is a dead end. Cards carry {id, title, body} and, for a link, href. The id is the
 // contract: the Deck maps it to its own handler, so a card never names a tool to run.
 
+/** The sign-in link only when it is https on tailscale.com or a subdomain of it; anything else is dropped. */
+export function vetted(u) {
+  try {
+    const x = new URL(String(u));
+    return x.protocol === "https:" && !x.username && !x.password && (x.hostname === "tailscale.com" || x.hostname.endsWith(".tailscale.com")) ? x.href : null;
+  } catch { return null; }
+}
+
 /** @param {any} st onboard.status data, or null when it could not be read */
 export function welcomeOf(st) {
   const d = (st && st.detail) || {};
@@ -16,7 +24,8 @@ export function welcomeOf(st) {
   }
   const ts = d.tailscale;
   if (ts && ts.state === "working" && ts.loginUrl) {
-    cards.push({ id: "tailscale", title: "Finish Tailscale sign-in", body: "One step left to reach this server from your phone.", href: ts.loginUrl });
+    const href = vetted(ts.loginUrl);
+    cards.push({ id: "tailscale", title: "Finish Tailscale sign-in", body: "One step left to reach this server from your phone.", ...(href ? { href } : {}) });
   }
   const h = d.history;
   if (h && h.state === "todo" && !h.running) {
