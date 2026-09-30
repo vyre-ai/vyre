@@ -110,7 +110,9 @@ Worktree ../vyre-capsule-02-iq, based on main 9381ab15. Landed:
 ## Doing (session 8, 2026-09-30, 0.2, work/capsule-02-glass off work/capsule-02-iq2 7b366c9b)
 Handed: IQ streaming (work/capsule-02-iq2 7b366c9b, CI green 393/393) to reviewer-2 (unreachable at handoff, notified integrator).
 1. Deep glass skin (Sources/UI/Glass.swift, glassSuite): 0.62 tint, border, reduce-transparency fallback. CI run pending.
-   Not done: the light variant (design shows one over bright wallpapers); the Capsule is dark only today.
+   Light variant done: Theme colours are dynamic (dark/paper tokens by system appearance), IconCache keys carry the scheme, backdrop material .popover + paper tint 0.66. 395/395 on CI.
+   memory.ask drafts now come from the ndjson response (VyredClient.call(onDraft:)); the IQ stage test waits on the stage, not a sleep.
+   CI note: TypingPerfTests flicker and StreamPerfTests size-change each failed once on a loaded runner and passed on rerun; layout timing tests are flaky under CI load (not from these changes as far as I can tell).
 Next: 2. computer-use oversight panel UI with capsule-sight. 3. the other approved 0.2 screens (capsule-02.html, chat-components.html).
 
 ## Doing (session 7, 2026-09-28, 0.1.1 on work/capsule-011)
