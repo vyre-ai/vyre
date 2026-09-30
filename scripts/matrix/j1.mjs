@@ -84,16 +84,29 @@ try {
   await sleep(500);
   await click("Continue");
 
-  // 1.8 AI: Claude signs in through the page. FAKE: the box runs a stand-in `claude setup-token`.
+  // 1.8 AI: Claude signs in through the page. FAKE: `claude auth login` on the box is a stand-in, since
+  // a real sign-in needs a person and a real account. The box's own account handling is real.
   await sees(/Sign in with Claude/i, 30000);
   await click("Sign in with Claude");
-  const paste = await sees(/the sign-in page/i, 60000);
-  if (!paste) { r.step("1.8a-claude-signin-offered", false, { shot: await shot("setup-ai-link"), why: hide((await page.evaluate(`document.body.innerText`)).match(/Claude[\\s\\S]{0,120}/)?.[0] || "") }); throw new Error("no sign-in link"); }
-  r.step("1.8a-claude-signin-offered", paste, { shot: await shot("setup-ai-link"), why: "fake claude setup-token" });
-  await page.evaluate(`(() => { const i = document.querySelector('input[name="code"]'); i.focus(); i.value = "good-code#rc1"; i.dispatchEvent(new Event("input", { bubbles: true })); })()`);
+  let paste = await sees(/the sign-in page/i, 45000);
+  if (!paste) {
+    // What the box said, straight from its tool (the page only shows a generic line).
+    const said = spawnSync("docker", ["exec", "-u", "vyre", "vyre-vyre-1", "vyre", "call", "sessions.accounts.signin", '{"provider":"claude","label":"diag"}'], { encoding: "utf8" });
+    const msg = ((said.stdout || "").match(/"message":\s*"([^"]+)"/) || [])[1] || "no message";
+    r.step("1.8a-claude-signin-offered", false, { shot: await shot("setup-ai-fail"), why: `the box said: ${msg}` });
+    // Known bug B1 (sessions): a fresh box has no /home/acct/<uid>. Provision it as root so the later stages run, and say so.
+    const uid = (msg.match(/account (\d+) has no home/) || [])[1];
+    if (!uid) throw new Error("sign-in failed: " + msg);
+    spawnSync("docker", ["exec", "-u", "root", "vyre-vyre-1", "sh", "-c", `mkdir -p /home/acct/${uid} && chown ${uid}:${uid} /home/acct/${uid} && chmod 700 /home/acct/${uid}`]);
+    await click("Sign in with Claude");
+    paste = await sees(/the sign-in page/i, 45000);
+    r.step("1.8a2-claude-signin-after-workaround", paste ? "fake" : false, { shot: await shot("setup-ai-link"), why: "home made by the harness, fake claude auth login" });
+    if (!paste) throw new Error("no sign-in link even with the home made");
+  } else r.step("1.8a-claude-signin-offered", "fake", { shot: await shot("setup-ai-link"), why: "fake claude auth login" });
+  await page.evaluate(`(() => { const i = document.querySelector('input[name="code"]'); i.focus(); i.value = "good-code"; i.dispatchEvent(new Event("input", { bubbles: true })); })()`);
   await click("Finish");
   const signed = await sees(/Claude is signed in/i, 60000);
-  r.step("1.8b-claude-signed-in", signed ? "fake" : false, { shot: await shot("setup-ai-done"), why: "fake claude setup-token" });
+  r.step("1.8b-claude-signed-in", signed ? "fake" : false, { shot: await shot("setup-ai-done"), why: "fake claude auth login" });
   if (!signed) throw new Error("claude sign-in did not finish");
   await click("Continue");
 

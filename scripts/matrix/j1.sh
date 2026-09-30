@@ -31,8 +31,7 @@ docker run -d --name e2e-pebble -p 14000:14000 -e PEBBLE_VA_ALWAYS_VALID=1 -e PE
 
 # The box's folder and home volume, made before the install so its first start already points at the stand-ins.
 sudo mkdir -p /srv/vyre && sudo chown "$(id -u):$(id -g)" /srv/vyre
-mkdir -p "$T/fake" && cp scripts/rc-smoke/fake-claude/fake-claude "$T/fake/fake-claude" 2>/dev/null || cp scripts/rc-smoke/fake-claude "$T/fake/fake-claude"
-chmod 755 "$T/fake/fake-claude"
+mkdir -p "$T/fake" && cp scripts/matrix/fake-claude-login.js "$T/fake/claude" && chmod 755 "$T/fake/claude"
 cat >/srv/vyre/compose.e2e.yml <<YML
 services:
   vyre:
@@ -40,9 +39,8 @@ services:
       - VYRE_TAILSCALE_UP_FLAGS=--accept-dns=false --hostname=vyre --login-server=http://$IP:8080
       - VYRE_ACME_DIRECTORY=https://$IP:14000/dir
       - NODE_TLS_REJECT_UNAUTHORIZED=0
-      - VYRE_CLAUDE_BIN=/opt/rc/fake-claude
     volumes:
-      - $T/fake:/opt/rc:ro
+      - $T/fake/claude:/usr/local/bin/claude:ro
 YML
 docker volume create --label com.docker.compose.project=vyre --label com.docker.compose.volume=vyre-home vyre_vyre-home >/dev/null
 docker run --rm -v vyre_vyre-home:/home/vyre -e R="$RELAY_BOX_WS" -e N="$NAMES_BOX" busybox sh -c \
@@ -55,8 +53,7 @@ rc=0
 node scripts/matrix/j1.mjs --site "$SITE" --env-file "$OUT/env.json" --out "$OUT/j1" || rc=$?
 docker logs --tail 80 vyre-vyre-1 >"$OUT/vyred.log" 2>&1 || true
 docker exec -u vyre vyre-vyre-1 sh -c 'for f in ~/.vyre/logs/* ~/.vyre/*.log; do [ -f "$f" ] && { echo "== $f"; tail -60 "$f"; }; done' >>"$OUT/vyred.log" 2>&1 || true
-docker exec -u vyre vyre-vyre-1 vyre call sessions.accounts.signin '{"provider":"claude","label":"diag"}' >>"$OUT/vyred.log" 2>&1 || true
-docker exec -u vyre vyre-vyre-1 sh -c 'ls -la /opt/rc; echo $VYRE_CLAUDE_BIN; /opt/rc/fake-claude --version' >>"$OUT/vyred.log" 2>&1 || true
+docker exec -u vyre vyre-vyre-1 sh -c 'claude --version' >>"$OUT/vyred.log" 2>&1 || true
 docker logs --tail 40 e2e-headscale >"$OUT/headscale.log" 2>&1 || true
 kill "$(cat "$OUT/services.pid")" 2>/dev/null || true
 exit $rc
