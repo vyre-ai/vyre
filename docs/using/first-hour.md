@@ -1,6 +1,6 @@
 ---
 title: Your first hour
-summary: A 20-minute first run of Vyre, in order. Install on the Mac, sign in to Claude, pair your phone, ask the Capsule, send one email, let Vyre use the Mac, and make the Deck your own colour.
+summary: A 20-minute first run of Vyre, in order. Install on the Mac, sign in to Claude, pair your phone, ask Lumen, send one email, let Vyre use the Mac, and make the Deck your own colour.
 audience: users
 owner: docs
 status: draft
@@ -61,13 +61,13 @@ A Mac can't approve itself, which is why the phone comes first
 
 **Check:** on the Mac, `vyre link` says "linked to" and names your box.
 
-## 4. Ask the Capsule (3 minutes)
+## 4. Ask Lumen (3 minutes)
 
 ```sh
 vyre capsule
 ```
 
-The first run builds the Capsule on your Mac and opens it. Allow Input Monitoring when macOS asks
+The first run builds Lumen on your Mac and opens it. Allow Input Monitoring when macOS asks
 ([Allow double-Control](capsule.md#allow-double-control)), then press Control twice anywhere.
 
 Ask something about your own recent work, in your own words, and press Return. The reply comes
@@ -83,13 +83,13 @@ It prints the answer, how sure it is, and the lines from your sessions it rests 
 
 > [!GAP]
 > Answers that appear on their own when you pause, and Vyre IQ's answers with sources right in
-> the Capsule (ADR 0034), arrive with the next Capsule and memory releases.
+> Lumen (ADR 0034), arrive with the next Lumen and memory releases.
 
 ## 5. Send one email (3 minutes)
 
 1. Deck **Settings**, **Connections**, **Add Google account**, **Sign in with Google**. Pick your
    account and allow what it asks. (From a terminal: `vyre connect add google <name> --sign-in`.)
-2. In the Capsule or in Chat, ask your assistant to email you a one-line note, to your own
+2. In Lumen or in Chat, ask your assistant to email you a one-line note, to your own
    address.
 3. The email does not go. It waits at the Gate: Now shows it with the address it leaves from, the
    To line, the subject and the words. Change anything you like; editing asks for nothing.
@@ -102,9 +102,9 @@ It prints the answer, how sure it is, and the lines from your sessions it rests 
 ## 6. Let Vyre use the Mac (2 minutes)
 
 > [!GAP]
-> "do …" is in the next Capsule release. If your Capsule has it, try this step; if not, skip it.
+> "do …" is in the next Lumen release. If your Lumen has it, try this step; if not, skip it.
 
-In the Capsule, type `do` and a small task on this Mac, like opening an app you use every day,
+In Lumen, type `do` and a small task on this Mac, like opening an app you use every day,
 and press Return. The first time, macOS asks for Accessibility and Screen Recording for Vyre:
 allow both in System Settings, Privacy and Security. A pill shows while Vyre drives, each step on
 screen. Press `Esc` to stop it at once. Anything that sends, pays or deletes still waits for you.
