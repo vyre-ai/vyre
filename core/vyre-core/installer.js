@@ -19,6 +19,7 @@ import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import { execFileSync } from "node:child_process";
+import { signApp, removeIdentity } from "./signing.js";
 import { RELEASE_KEY, verifySums, checkManifest, checkFloor, compareVersions, readFloor, raiseFloor, checkTarball, extract } from "./release.js";
 
 export const ACCOUNT = "_vyre";
@@ -130,7 +131,7 @@ function paths(root) {
   const j = (rt) => path.join(root, rt);
   return {
     base: j(RUNTIME.base), versions: j(RUNTIME.versions), current: j(RUNTIME.current), currentNew: j(`${RUNTIME.current}.new`),
-    node: j(RUNTIME.node), data: j(RUNTIME.data), staging: j(RUNTIME.staging), floor: j(RUNTIME.floor), coreJson: j(`${RT.base}/core.json`), socketDir: j(RT.socketDir),
+    node: j(RUNTIME.node), data: j(RUNTIME.data), staging: j(RUNTIME.staging), floor: j(RUNTIME.floor), coreJson: j(`${RT.base}/core.json`), signing: j(`${RT.base}/signing`), socketDir: j(RT.socketDir),
     plist: (label) => j(`${RT.daemons}/${label}.plist`), daemons: j(RT.daemons),
   };
 }
@@ -191,10 +192,19 @@ export function verifyRelease(files, { key, floorPath, strictFloor, version }) {
 // ---------------------------------------------------------------------------------------------
 // the code tree
 
-/** TODO(capsule-signing): sign Capsule.app inside `dir` with core's own signing key (ADR 0040
- *  section 4) before the flip. Out of scope for phase 4: deliberately a no-op. Never sign
- *  anything outside a freshly extracted, verified tree. @param {string} dir */
-export function signCapsule(dir) { void dir; }
+/**
+ * Sign Capsule.app inside `dir`, when the release carries one, with vyre-core's own identity kept in
+ * root's signing folder (core/vyre-core/signing.js). Only ever called on a freshly extracted tree whose
+ * release signature has just been verified. A release with no Capsule.app changes nothing.
+ * @param {string} dir the extracted tree @param {{ root: string, run: Run }} c
+ * @returns {{ requirement: string, cdhash: string } | null}
+ */
+export function signCapsule(dir, c) {
+  const app = path.join(dir, "Capsule.app");
+  if (!fs.existsSync(app)) return null;
+  const r = signApp({ app, dir: paths(c.root).signing, run: c.run });
+  return { requirement: r.requirement, cdhash: r.cdhash };
+}
 
 /**
  * Point `current` at versions/<version> in one atomic step: write current.new, then rename it
@@ -235,7 +245,7 @@ function extractVersion(c, version, tarBuf, manifest) {
     extract(file, dest, { tar: c.tar });
     if (!fs.existsSync(path.join(dest, "core", "vyre-core", "main.js"))) throw new Error("the release has no vyre-core in it");
     chown(c.run, "root:wheel", dest, true);
-    signCapsule(dest);
+    signCapsule(dest, { root: c.root, run: c.run });
   } catch (e) {
     fs.rmSync(dest, { recursive: true, force: true });
     if (aside) try { fs.renameSync(aside, dest); } catch { /* leave it aside rather than lose it */ }
@@ -476,7 +486,8 @@ export function uninstall(opts = {}, seams = {}) {
   }
   step("stopped and removed the LaunchDaemons");
   for (const d of [p.coreJson, p.versions, p.current, p.currentNew, p.node, `${p.node}.new`, p.socketDir, p.staging]) fs.rmSync(d, { recursive: true, force: true });
-  step("removed the code, the bundled node and the socket folder");
+  removeIdentity({ dir: p.signing, run });
+  step("removed the code, the bundled node, the socket folder and the signing identity");
   if (opts.purge) {
     fs.rmSync(p.data, { recursive: true, force: true });
     fs.rmSync(p.floor, { force: true });

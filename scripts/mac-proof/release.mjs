@@ -30,6 +30,14 @@ const patched = src.replace(/export const RELEASE_KEY = "[^"]+";/, `export const
 if (patched === src) throw new Error("RELEASE_KEY line not found in release.js");
 fs.writeFileSync(rel, patched);
 
+// A stand-in Capsule.app (the real one comes from capsule-mac.yml): a bundle with one Mach-O, so the
+// installer's signing step runs for real. It ships unsigned; core signs it with its own identity.
+const app = path.join(top, "Capsule.app", "Contents");
+fs.mkdirSync(path.join(app, "MacOS"), { recursive: true });
+fs.copyFileSync("/usr/bin/true", path.join(app, "MacOS", "Capsule"));
+fs.writeFileSync(path.join(app, "Info.plist"), `<?xml version="1.0" encoding="UTF-8"?>\n<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">\n<plist version="1.0"><dict><key>CFBundleIdentifier</key><string>run.vyre.capsule</string><key>CFBundleExecutable</key><string>Capsule</string><key>CFBundleName</key><string>Capsule</string><key>CFBundlePackageType</key><string>APPL</string></dict></plist>\n`);
+execFileSync("codesign", ["--remove-signature", path.join(app, "MacOS", "Capsule")], { stdio: "ignore" }); // /usr/bin/true is Apple-signed: start from unsigned
+
 execFileSync("tar", ["-czf", path.join(site, "vyre.tgz"), "-C", tree, "package"], { env: { ...process.env, COPYFILE_DISABLE: "1" } });
 const version = JSON.parse(fs.readFileSync(path.join(top, "package.json"), "utf8")).version;
 // The same signing code the release's sign job runs, with the throwaway key instead of the pinned one.

@@ -344,7 +344,7 @@ test("a failed extract leaves the old version current (crash between extract and
   assert.ok(!fs.existsSync(path.join(base, "versions/1.3.0")));
 });
 
-test("signCapsule is a no-op hook for now", () => { assert.equal(signCapsule("/nowhere"), undefined); });
+test("signCapsule does nothing for a release with no Capsule.app", () => { assert.equal(signCapsule("/nowhere", { root: "/", run: () => { throw new Error("must not run"); } }), null); });
 
 test("the produced tree passes strictProblems (ownership modelled from the recorded chowns)", (t) => {
   const f = fixture(t);
