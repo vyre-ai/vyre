@@ -245,8 +245,9 @@ async function main() {
         const c = await mcp.call("chrome_tabs", { action: "use", url: `${fixture.url}/checkout?form=1`, openIfMissing: true }); const ct = c.id ?? (c.tab && c.tab.id);
         await mcp.call("chrome_tabs", { action: "navigate", tab: ct, url: `${fixture.url}/checkout?form=1` }); await sleep(300);
         let err = /** @type {any} */ (null);
-        try { await mcp.call("chrome_eval", { tab: ct, expression: "(() => { const f = document.querySelector('form'); f.method = 'post'; f.action = '/api/form-probe'; f.requestSubmit(); return 'submitted'; })()" }); } catch (e) { err = e; }
-        if (!err || !/POST/.test(String(err.message))) throw new Error("a script's form submit was not refused: " + String(err && err.message).slice(0, 200));
+        let got = /** @type {any} */ (null);
+        try { got = await mcp.call("chrome_eval", { tab: ct, expression: "(() => { const f = document.querySelector('form'); f.method = 'post'; f.action = '/api/form-probe'; f.requestSubmit(); return 'submitted'; })()" }); } catch (e) { err = e; }
+        if (!err || !/POST/.test(String(err.message))) throw new Error("a script's form submit was not refused: err=" + String(err && err.message).slice(0, 200) + " result=" + JSON.stringify(got).slice(0, 300));
         const r2 = await mcp.call("chrome_tabs", { action: "presence", tab: ct });
         return { refused: String(err.message).slice(0, 120), pageStillAt: r2 && r2.pill !== undefined };
       });
@@ -254,8 +255,9 @@ async function main() {
       // What the person sees: Vyre's tab is in a group named Vyre, the badge run is on, a pill is in the page (hidden from snapshots), and the pill's Stop stops the run.
       await stage("presence", async () => {
         await mcp.call("chrome_summary", {}); // end whatever an earlier stage left open (a held send nobody answered still owns the badge)
-        const p0 = await mcp.call("chrome_tabs", { action: "use", url: `${fixture.url}/checkout?presence=1`, openIfMissing: true }); const pt = p0.id ?? (p0.tab && p0.tab.id);
-        await mcp.call("chrome_tabs", { action: "navigate", tab: pt, url: `${fixture.url}/checkout?presence=1` }); await sleep(300);
+        // A tab Vyre OPENS joins the group (a tab the person already had is left alone), so open a new one on another origin: localhost, not 127.0.0.1.
+        const p0 = await mcp.call("chrome_tabs", { action: "open", url: `${fixture.url.replace("127.0.0.1", "localhost")}/checkout?presence=1` }); const pt = p0.id ?? (p0.tab && p0.tab.id);
+        await sleep(400);
         await mcp.call("chrome_act", { tab: pt, selector: { identifier: "apply-promo" }, kind: "click" });
         let st = /** @type {any} */ ({});
         for (let i = 0; i < 20; i++) { st = await mcp.call("chrome_tabs", { action: "presence", tab: pt }); if (st.pill) break; await sleep(250); }

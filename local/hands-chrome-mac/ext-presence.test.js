@@ -89,8 +89,8 @@ test("the toolbar icon animates through 12 frames while working and holds still 
 
 test("a tab Vyre opens joins one grey group titled Vyre; the next joins it; a tab in the person's own group is left", async () => {
   const w = world();
-  await w.p.around("tabs.open", {}, async () => ({ id: 1, reused: false }));
-  await w.p.around("tabs.open", {}, async () => ({ id: 2, reused: false }));
+  await w.p.around("tabs.open", {}, async () => ({ id: 1, opened: true }));
+  await w.p.around("tabs.open", {}, async () => ({ id: 2, opened: true }));
   await w.p.around("tabs.use", { tabId: 3 }, async () => ({ id: 3, reused: false }));
   const g = w.log.filter(l => l[0] === "group");
   assert.equal(g.length, 2, "tab 3 is in the person's group and stays there");
