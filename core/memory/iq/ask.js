@@ -120,13 +120,15 @@ export function checkAsk(reply, passages, { header: withHeader = true } = {}) {
  * @param {{ db: import("node:sqlite").DatabaseSync, answer: (i: any) => Promise<any>, retrieve: (i: any) => Promise<any>,
  *   runner?: ((r: { system: string, prompt: string, model: string, maxUsd: number }) => Promise<{ text: string, usd: number }>)|null,
  *   model?: () => string, budget?: { allow: (usd: number) => boolean, charge: (usd: number) => void },
- *   fixes?: ReturnType<typeof import("./fix.js").fixes>|null, personalQ?: (q: string) => boolean, trusted?: (session: string) => boolean }} deps
+ *   fixes?: ReturnType<typeof import("./fix.js").fixes>|null, personalQ?: (q: string) => boolean, trusted?: (session: string) => boolean,
+ *   decide?: ((i: { q: string, project_cwds: string[], writes?: any }) => Promise<any>)|null }} deps
+ *   decide: what the person decided (core/memory/decisions.js), tried before the model: "Now: X (since 24 Sep). Before: Y."
  *   personalQ: the question is about the user's own life; then only the user's own words, from
  *   sessions source trust keeps, may ground the answer (never Claude's turns or a reply).
  *   fixes: the person's corrections (iq/fix.js); every answer gets an answer_id they can correct.
  *   runner: null means only kept replies are used (the evaluation's replay, or no model at all).
  */
-export function asker({ db, answer, retrieve, runner = null, model = () => "haiku", budget = { allow: () => true, charge: () => {} }, fixes = null, personalQ = () => false, trusted = () => true }) {
+export function asker({ db, answer, retrieve, runner = null, model = () => "haiku", budget = { allow: () => true, charge: () => {} }, fixes = null, personalQ = () => false, trusted = () => true, decide = null }) {
   const get = db.prepare("SELECT reply FROM memory_iq_asks WHERE hash = ?");
   const put = db.prepare("INSERT OR REPLACE INTO memory_iq_asks (hash, v, at, reply, usd) VALUES (?,?,?,?,?)");
 
@@ -163,6 +165,13 @@ export function asker({ db, answer, retrieve, runner = null, model = () => "haik
       const f = await answer({ q, project_cwds });
       if (f && f.answer && f.kind === "fact" && (f.confidence ?? 0) >= SURE && (f.facts?.length || f.sources?.length)) {
         return refused({ answer: f.answer, confidence: f.confidence, abstained: false, sources: f.sources || [], via: "fact", facts: (f.facts || []).map(x => String(x.id)) });
+      }
+    }
+    // 1b. A decision the person made, newest wins (plan 3.5): "Now: X (since 24 Sep). Before: Y." No model.
+    if (decide && !personalQ(q)) {
+      const d = await decide({ q, project_cwds, writes }).catch(() => null);
+      if (d && d.answer) {
+        return refused({ answer: d.answer, confidence: d.confidence, abstained: false, sources: [d.source], history: d.history, via: "decision" });
       }
     }
     // 2. The passages.

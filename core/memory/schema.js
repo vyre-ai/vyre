@@ -259,4 +259,12 @@ export const MIGRATIONS = [
   CREATE TABLE memory_write_links (write TEXT NOT NULL, project TEXT NOT NULL, state TEXT NOT NULL DEFAULT 'live' CHECK (state IN ('live','forgotten')), at INTEGER NOT NULL,
     PRIMARY KEY (write, project)) WITHOUT ROWID;
   CREATE INDEX memory_write_links_project ON memory_write_links (project, state);`,
+  // Decisions the person made in their own typed turns (core/memory/decisions.js, plan 3.5): one row
+  // per decision, read once per turn (the cursor holds the reader's version). State (current,
+  // replaced, reverted) is worked out on read, so a forget or a later decision is never stale.
+  `CREATE TABLE memory_decisions (id TEXT PRIMARY KEY, session TEXT NOT NULL, seq INTEGER NOT NULL, project TEXT NOT NULL, cwd TEXT NOT NULL, topic TEXT NOT NULL, label TEXT NOT NULL,
+    value TEXT NOT NULL, display TEXT NOT NULL, statement TEXT NOT NULL, revert INTEGER NOT NULL DEFAULT 0, decided_at INTEGER NOT NULL) WITHOUT ROWID;
+  CREATE INDEX memory_decisions_project ON memory_decisions (project, topic, decided_at);
+  CREATE INDEX memory_decisions_session ON memory_decisions (session);
+  CREATE TABLE memory_decisions_cursor (session TEXT PRIMARY KEY, upto INTEGER NOT NULL, v INTEGER NOT NULL) WITHOUT ROWID;`,
 ];

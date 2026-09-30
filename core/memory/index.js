@@ -20,6 +20,7 @@ import { profile } from "./personal/profile.js";
 import { contradictions, settle as answerOf } from "./personal/contradict.js";
 import { createReader, claudeOnce, modelFor, turnHash } from "./personal/reader.js";
 import { asker, ASK_DAILY_USD } from "./iq/ask.js";
+import { decisionStore, readDecisions, resolve as resolveDecisions, answerFrom as decisionAnswer } from "./decisions.js";
 import { fixes as fixLog } from "./iq/fix.js";
 import { heard, contentWords } from "./iq/heard.js";
 import { userWords, devTalk, vyreFolder } from "./personal/trust.js";
@@ -776,6 +777,44 @@ export default {
       if (outside.length) throw denied(`the assistant is not granted ${outside.join(", ")}`);
       return project_cwds;
     };
+    // ---- decisions (core/memory/decisions.js, plan 3.5): the person's typed decisions, per project and
+    // topic, newest wins, plus agents' memory.write decisions. State is worked out on read.
+    const decs = decisionStore(ctx.store.db, { projects: projectList, trust: () => ({ scratch: askDir, quick: quickDir, skip: Array.isArray(ctx.config.memory?.personal?.skipCwds) ? ctx.config.memory.personal.skipCwds.map(String) : [] }) });
+    let decSynced = 0;
+    const syncDecisions = async (force = false) => {
+      if (!force && Date.now() - decSynced < 2000) return;
+      decSynced = Date.now();
+      try { await decs.sync(); } catch (e) { ctx.log("decisions: " + /** @type {Error} */ (e).message); }
+    };
+    /**
+     * Every decision a reader may see, resolved: the person's from their own turns (inside the
+     * folders when scoped), and agents' memory.write decisions (inside the write scope).
+     * @param {string[]} cwds  the folders the reader is limited to; empty means every project
+     * @param {{ slugs: Set<string>|null, you: boolean }|null} wscope
+     */
+    const decisionRows = async (cwds, wscope) => {
+      await syncDecisions();
+      const list = await projectList().catch(() => []);
+      const rows = decs.person().filter(r => !cwds.length || within(r.cwd, cwds)).map(r => ({ ...r, untrusted: false }));
+      if (wscope) {
+        for (const w of writes.list(wscope, { limit: 2000 })) {
+          if (w.kind !== "decision") continue;
+          const read = readDecisions(String(w.text))[0];
+          const topic = read?.topic || String(w.subject || "").toLowerCase();
+          if (!topic) continue;
+          for (const l of w.links) if (l.project !== "you") rows.push({ id: String(w.id), project: l.project, cwd: "", topic, value: read?.value || String(w.text).toLowerCase().slice(0, 60), display: read?.display || String(w.text).slice(0, 60), text: String(w.text),
+            at: Number(w.at), by: w.from_kind === "person" ? "person" : "agent", session: w.thread ? String(w.thread) : null, seq: null, name: `${w.from_kind}:${w.from_name}`, label: read?.label || topic, untrusted: Boolean(w.untrusted) });
+        }
+      }
+      return { rows: resolveDecisions(rows), projects: list };
+    };
+    /** memory.ask's step before the model: a decision question memory can answer from what the person decided. */
+    const decide = async ({ q, project_cwds = [], writes: wscope = null }) => {
+      const { rows, projects } = await decisionRows(project_cwds, wscope);
+      if (!rows.length) return null;
+      const slugs = new Set(rows.map(r => r.project));
+      return decisionAnswer(q, rows, projects.filter(p => slugs.has(p.slug)));
+    };
     const answer = answerer({ personal, graph, db: ctx.store.db, me: ctx.config.me || null, call: (tool, input) => ctx.call(tool, input),
       scratch: askDir, quick: quickDir });
     ctx.tool("memory.answer", {
@@ -831,7 +870,7 @@ export default {
     const LIFE = new Set(["kin", "of", "birthday", "car", "carFate", "diet", "lives", "born", "myname", "owns"]);
     const trustOf = ctx.store.db.prepare("SELECT ok FROM memory_me_trust WHERE session = ?");
     const humanOf = () => { try { return ctx.store.db.prepare("SELECT human FROM recall_sessions WHERE id = ?"); } catch { return null; } };
-    const ask = asker({ db: ctx.store.db, answer, retrieve: async i => withWrites(await retrieve(i), i.question, i.writes || null), fixes: fixed,
+    const ask = asker({ db: ctx.store.db, answer, decide, retrieve: async i => withWrites(await retrieve(i), i.question, i.writes || null), fixes: fixed,
       personalQ: q => {
         // About the user's own life: a relative, their car, home, diet, birthday, name. Work
         // questions that the personal parser also reads ("who's priya") stay work questions.
@@ -872,6 +911,28 @@ export default {
         const r = await ask({ question: String(input.question || ""), project_cwds: effectiveCwds, personal: sees, thread, screen, writes: writesIn, stage: s => ctx.events.emit("memory.thinking", { id, stage: s }) });
         ctx.events.emit("memory.answered", { id, abstained: Boolean(r.abstained), limited: Boolean(r.limited) });
         return { id, ...r };
+      },
+    });
+    ctx.tool("memory.decisions", {
+      description: "What was decided, per project and topic, the newest decision winning: { decisions: [{ id, project, topic, value, text, state: current|replaced|reverted|note, by: person|agent, at, replaces, contested, untrusted, source: { session, seq } }] }. Current decisions only, or with history: true every one, replaced ones marked; a note is an agent's later word on a topic the person decided, kept beside it. The person's decisions come from their own typed words; an agent's from memory.write kind decision. topic narrows by a word (\"hosting\", \"stripe\"); project (a slug) or project_cwds to one project. Only within the caller's reach.",
+      input: { type: "object", properties: { topic: { type: "string" }, history: { type: "boolean" }, project: { type: "string" }, project_cwds: cwds, limit: { type: "integer", minimum: 1, maximum: 200 }, ...agentField } },
+      run: async (input, extra = {}) => {
+        const { caller } = extra;
+        let sees = true;
+        try { await personalOnly(input, caller, "memory.decisions"); } catch { sees = false; }
+        // A project by slug stands for its folders; an agent still reaches only what it is granted.
+        const named = typeof input.project === "string" && input.project ? (await projectList().catch(() => [])).find(p => p.slug === input.project) : null;
+        const project_cwds = clean(input.project_cwds?.length ? input.project_cwds : named ? named.folders : []);
+        const effective = await scopedCwds(sees, input.agent, caller, project_cwds);
+        const scope = await writeScope(input.agent, caller, extra, { cwds: project_cwds });
+        const { rows } = await decisionRows(effective, scope);
+        const want = typeof input.topic === "string" ? input.topic.toLowerCase().split(/[^a-z0-9.+#]+/).filter(w => w.length > 1) : [];
+        const slug = typeof input.project === "string" && input.project ? input.project : null;
+        const out = rows.filter(r => (!slug || r.project === slug) && (input.history === true || r.state === "current")
+          && (!want.length || want.every(w => `${r.topic} ${r.label || ""} ${r.value} ${r.text}`.toLowerCase().includes(w))))
+          .sort((a, b) => b.at - a.at).slice(0, input.limit ?? 50);
+        return { decisions: out.map(r => ({ id: r.id, project: r.project, topic: r.topic, value: r.display || r.value, text: r.text, state: r.state, by: r.by, at: r.at, replaces: r.replaces,
+          contested: r.contested, untrusted: Boolean(r.untrusted), source: r.session ? { session: r.session, seq: r.seq } : { write: r.id } })) };
       },
     });
     // Suggestions while typing (cohesion's suggest.query): people, pets, places and things memory

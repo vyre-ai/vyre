@@ -4,6 +4,16 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+- Memory keeps decisions (plan 3.5). The person's typed turns are read for what they decided
+  ("host it on netlify", "going back to stripe", "30 min slots"), per project and topic, and the
+  newest decision wins: the old one is replaced, or reverted when the person goes back to it, and
+  stays as history. `memory.ask` answers a decision question before any model: "Now: Netlify (since
+  24 Aug). Before: Vercel (9 Jul).", citing the one turn that says it. New tool `memory.decisions
+  { topic?, history?, project? }`. An agent's `memory.write` decision is current until something
+  newer replaces it; it never replaces the person's, and stays beside it as a note. Claude's
+  turns, system blocks, emails and limited writers never make a decision. On the open 0.2 world
+  (replayed reads, no model): decision questions 0 to 33 of 50, history 0 to 18 of 25, confident-wrong
+  and unanswerable unchanged at 0 and 50 of 50.
 - Module contract v1 (ADR 0047), as a proof on the platform branch. `module.json` says for each
   tool who may call it (`reach`) and whether it acts as you outside (`outward`). Each ctx member a
   module uses has one declaration, and the install card is built from them.

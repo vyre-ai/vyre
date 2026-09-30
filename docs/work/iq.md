@@ -47,10 +47,16 @@ GitHub hosted runners (push work/iq). Never testbox (it is the user's server), n
     a corgi"; "what were the first pickup slot hours" is answered "You used to have a Honda Civic"
     (0.7, via fact). Both are confident-wrong and both cite turns that lack the answer.
 
+- 3. Decisions: core/memory/decisions.js (reader, topics, resolve, answerFrom), memory.decisions, ask's
+  step 1b (via: decision). Open world, replayed reads, no model, before to after: decision 0 to 33 of
+  50, history 0 to 18 of 25, time 0 to 6 of 20; confident-wrong 3 to 0, citations 0.983 was 0.40, abstain
+  1.0. Remaining decision/history misses are things only Claude said (fonts, sitemap, versions), the
+  rate stated as a fact, and free-form topics; the model path takes them once replies are recorded.
+
 ## Doing
 - Fixed reviewer-2 H1 at 22ad3f07 (my ctx.memory.write door reverted at cece5c54; platform owns the door).
 - Two confident-wrong bugs fixed: d6890a60 (a correction in chat wins its one-value slot, old value becomes history), 28e51fab (personal fast path stays out of work questions).
-- Now: 3 decisions (reader, topics, newest wins, history, memory.decisions).
+- 3 decisions built (see Done); next: 4 corrections from chat, then 5 memory.brief and the five MCP tools.
 
 ## Next
 - Review 1 and 2, then 3.
@@ -67,6 +73,17 @@ GitHub hosted runners (push work/iq). Never testbox (it is the user's server), n
 - user (via the lead): $15 of eval recording, O12, throwaway provider accounts.
 
 ## Changed contracts
+- Decisions (task 3): new tables memory_decisions (id, session, seq, project, cwd, topic, label, value,
+  display, statement, revert, decided_at) and memory_decisions_cursor (session, upto, v). State
+  (current|replaced|reverted|note) is worked out on read, not stored, so a forget or a later decision is
+  never stale. New tool memory.decisions {topic?, history?, project?, project_cwds?, limit?, agent?} ->
+  {decisions: [{id, project, topic, value, text, state, by, at, replaces, contested, untrusted, source}]},
+  scoped like memory.ask (an agent names its project by slug or folders). memory.ask returns via
+  "decision" with sources [the one turn] and history [the Before turn]. A person's decision is only from
+  a trusted session's typed turn (userWords, devTalk, sessionTrust); memory.write kind decision joins
+  from agents, never from a limited writer. TODO: the person's "yes" to an agent's proposal in the same
+  thread (needs threads.said), an LLM read for turns the rules cannot place, the "contradictions/settle"
+  hookup for contested topics, and memory.brief carrying the current decisions.
 - New tables (memory migration): memory_writes (id, kind fact|note|decision|correction, text,
   subject, source_ref, from_kind person|agent|teammate|assistant|module|watcher|duty, from_name,
   provider, thread, seq, untrusted, state live|corrected|forgotten, at, updated) and
