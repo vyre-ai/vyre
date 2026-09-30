@@ -2,15 +2,26 @@
   "name": "@vyre/module-sdk",
   "version": "0.1.0",
   "private": true,
-  "description": "Types, the manifest schema and a manifest checker for Vyre modules (module API 1).",
+  "description": "Types, the manifest schema, a manifest checker, a test harness and the conformance checks for Vyre modules (module API 1).",
   "license": "Apache-2.0",
   "type": "module",
   "types": "index.d.ts",
   "exports": {
-    ".": { "types": "./index.d.ts" },
+    ".": {
+      "types": "./index.d.ts"
+    },
     "./manifest": "./manifest.js",
-    "./manifest.schema.json": "./manifest.schema.json"
+    "./manifest.schema.json": "./manifest.schema.json",
+    "./testing": "./testing.js"
   },
-  "files": ["index.d.ts", "manifest.js", "manifest.schema.json", "README.md"],
-  "engines": { "node": ">=22.5" }
+  "files": [
+    "index.d.ts",
+    "manifest.js",
+    "manifest.schema.json",
+    "testing.js",
+    "README.md"
+  ],
+  "engines": {
+    "node": ">=22.5"
+  }
 }
