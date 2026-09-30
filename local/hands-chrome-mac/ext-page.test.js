@@ -269,4 +269,8 @@ test("holdFor: a workflow builder's action tiles (Send Email, Remove Tag) are no
   assert.equal(holdFor(snap("https://mail.example.com/compose"), tile("Send Email"), "click", undefined).held, true, "not a workflow page");
   assert.equal(holdFor(snap("https://example.test/workflows/1"), tile("Send Email"), "click", undefined).held, true, "a workflow page on another site is not GoHighLevel");
   assert.equal(holdFor(snap("https://example.test/workflows/1"), tile("Remove contact from list"), "click", undefined).held, true);
+  // A white-label agency domain counts only when the page's own traffic goes to GoHighLevel's API hosts.
+  const wl = (/** @type {boolean} */ ghlApi) => ({ url: "https://crm.agency.example/v2/location/abcdefghij12/automation/workflows/wf1", controls: [], state: { ghlApi } });
+  assert.equal(holdFor(wl(true), tile("Send Email"), "click", undefined).held, false, "white-label host whose traffic goes to services.leadconnectorhq.com");
+  assert.equal(holdFor(wl(false), tile("Send Email"), "click", undefined).held, true, "no GoHighLevel traffic, so not one");
 });

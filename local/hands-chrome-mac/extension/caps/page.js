@@ -282,6 +282,8 @@ export const EXPRESSION = script("snapshot", {}, `
     blockers.push({ el, i: blockers.length, path: pathOf(el), role: role || undefined, title: txt(el.getAttribute("aria-label") || (head && head.textContent)).slice(0, 80), text: txt(el.innerText || el.textContent).slice(0, 300), modal: ariaModal || cover || (backdrop && (role === "dialog" || layer)) });
   }
   state.blockers = blockers.map(({ el, ...b }) => b);
+  // A white-label GoHighLevel account runs on its own domain but talks to GoHighLevel's API hosts.
+  try { state.ghlApi = performance.getEntriesByType("resource").some(e => e.name.indexOf("https://services.leadconnectorhq.com/") === 0 || e.name.indexOf("https://backend.leadconnectorhq.com/") === 0); } catch (e) { state.ghlApi = false; }
   const toasts = (window.__vyreToasts || []).filter(x => Date.now() - x.t < 15000).map(x => ({ ageMs: Date.now() - x.t, text: x.text }));
   for (const el of document.querySelectorAll(TOAST)) { if (toasts.length >= 8) break; if (!vis(el)) continue; const t = txt(el.innerText || el.textContent).slice(0, 160); if (t && !toasts.some(x => x.text === t)) toasts.push({ ageMs: null, text: t }); }
   state.toasts = toasts.slice(-8);
@@ -523,7 +525,8 @@ export function builderTile(snap, ctl) {
   let path = "", host = "";
   try { const u = new URL(String(snap && snap.url)); path = u.pathname; host = u.hostname; } catch { return false; }
   // Only GoHighLevel (a workflow page on some other site is not one), and the local fixture's /ghl.
-  if (!/(^|\.)(gohighlevel\.com|leadconnectorhq\.com)$/i.test(host) && !(/^(127\.0\.0\.1|localhost)$/.test(host) && /^\/ghl(\/|$)/.test(path))) return false;
+  const ghlApi = Boolean(snap && snap.state && snap.state.ghlApi === true);
+  if (!/(^|\.)(gohighlevel\.com|leadconnectorhq\.com)$/i.test(host) && !ghlApi && !(/^(127\.0\.0\.1|localhost)$/.test(host) && /^\/ghl(\/|$)/.test(path))) return false;
   if (!/\/automation\/workflows|\/workflows?(\/|$)|^\/ghl(\/|$)/i.test(path)) return false;
   const name = String(ctl.name || "").trim();
   return /^send [a-z][a-z .&/-]{1,30}$/i.test(name) || /^remove (tag|contact tag|from [a-z ]{2,30}|contact from [a-z ]{2,30})$/i.test(name);
