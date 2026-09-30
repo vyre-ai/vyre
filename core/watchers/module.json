@@ -4,7 +4,7 @@
   "roles": ["box", "local"],
   "requires": [],
   "does": {
-    "tools": ["watchers.create", "watchers.test", "watchers.list", "watchers.pause", "watchers.resume", "watchers.logs", "watchers.items", "watchers.hook"]
+    "tools": ["watchers.create", "watchers.test", "watchers.list", "watchers.pause", "watchers.resume", "watchers.logs", { "name": "watchers.items", "projectArg": "project" }, "watchers.hook"]
   },
   "watches": { "emits": ["watcher.created", "watcher.fired", "watcher.failed", "watcher.paused", "watcher.resumed"] },
   "shows": { "deck": ["panel:watchers"], "capsule": [], "cli": ["watchers"] },

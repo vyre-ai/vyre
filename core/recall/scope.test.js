@@ -97,7 +97,7 @@ test("recall.sessions: a named agent lists only its granted project's sessions",
   for (const s of kit.data) assert.match(s.cwd, /northwind$/, s.cwd);
   assert.equal(kit.data.some(s => s.id === UNMAPPED_SESSION), false, "an unmapped session leaked to a scoped agent");
   const cross = await d.registry.call("recall.sessions", { cwd: path.join(work, "harlow-site") }, "mcp:agent:kit");
-  assert.match(cross.error?.message || "", /kit is not granted/);
+  assert.equal(cross.error?.code, "not_found", "the registry refuses a folder in a project kit is not granted (cwdArg), before recall does");
   // ids can name any session (the box's cross-project resolve for a Mac's picked ones); a
   // scoped agent's own list still narrows to what it may read.
   const ids = await d.registry.call("recall.sessions", { ids: [NORTHWIND_SESSION, HARLOW_SESSION] }, "mcp:agent:kit");
