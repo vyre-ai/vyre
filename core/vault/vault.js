@@ -1143,8 +1143,14 @@ export class Vault {
       if (had && had.kind === "api-credential") {
         if (clean.config === undefined && (clean.secret !== undefined || clean.value !== undefined)) clean.config = JSON.stringify((await this.apiCredential(String(name))).config);
         else if (clean.config !== undefined && clean.secret === undefined && clean.value === undefined) {
-          const prev = (await this.apiCredential(String(name))).secret;
-          if (typeof prev === "string" && prev) clean.secret = prev;
+          const before = await this.apiCredential(String(name));
+          // The stored secret goes along only when what decides where and how it is sent is unchanged (hosts and the whole auth: token and
+          // authorize addresses, header, format, item, client, scopes). A config that points the key somewhere else needs the key again.
+          let next;
+          try { next = normalizeApiCredential(JSON.parse(clean.config)); } catch { next = null; }
+          const where = c => JSON.stringify({ auth: c.auth, hosts: [...c.hosts].sort() });
+          if (next && where(next) !== where(before.config)) throw new Error("this changes where or how the key is sent, so give the key again (fields.secret)");
+          if (typeof before.secret === "string" && before.secret) clean.secret = before.secret;
         }
       }
     }

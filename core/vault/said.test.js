@@ -382,6 +382,9 @@ test("api-credential: a person's put with a new config and no secret keeps the s
   // The secret survived: a read as the person still builds the request (it fails only at the network, never for a missing secret).
   const r = await cli("vault.request", { credential: "ms-graph", method: "GET", url: "https://elsewhere.example.test/x" });
   assert.match(String(r.error && r.error.message), /host/i, "the config carried its hosts and the secret was still there");
+  // A config that points the key at another host, or changes how it is sent, needs the key again.
+  assert.match((await cli("vault.put", { name: "ms-graph", kind: "api-credential", fields: { config: config({ hosts: ["evil.example.test"] }) } })).error.message, /give the key again/);
+  assert.match((await cli("vault.put", { name: "ms-graph", kind: "api-credential", fields: { config: JSON.stringify({ auth: { type: "bearer", header: "x-api-key" }, hosts: ["graph.example.test"] }) } })).error.message, /give the key again/);
   // A name that does not exist, with a config and no secret and no auth.item, is refused for lacking a secret.
   assert.ok((await cli("vault.put", { name: "new-one", kind: "api-credential", fields: { config: config({}) } })).error);
   // A module, watcher, agent or model still cannot rewrite the config of an existing credential.
