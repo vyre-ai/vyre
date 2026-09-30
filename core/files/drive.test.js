@@ -15,6 +15,7 @@ import { Events } from "../events/index.js";
 import * as config from "../config/index.js";
 import { tempHome, writeModule } from "../../test/helpers.js";
 import { SCRATCH } from "../../test/scratch.mjs";
+import { uncFor, mapArgs, unmapArgs, parseNetUse, freeLetter, explainNetUse } from "./drive-windows.js";
 import { installFakeReach, clearFakeReach } from "../../test/fixtures/fake-reach.js";
 import { HUMAN_ONLY, PERSON_ONLY } from "../presence/index.js";
 import { seams, parseDriveList, driveCap, driveUrl, shareMap, shareSpecs, mountStep, gitConfigCredential } from "./drive.js";
@@ -598,13 +599,14 @@ test("drive: files.drive.search's unknown_share never lists the box's other shar
 // ---- the Mac -----------------------------------------------------------------------------
 
 /** The Mac, with a fake link to a box that shares projects, and seams that record instead of mounting. */
-async function mac(t, { boxShares = [{ name: "projects", path: "/work", shared: true }, { name: "glass-files", path: "/work/glass", shared: false }], selfCaps = { "drive:access": null }, access = "ro", agents = undefined, projects = undefined, driveAccess = undefined } = {}) {
+async function mac(t, { boxShares = [{ name: "projects", path: "/work", shared: true }, { name: "glass-files", path: "/work/glass", shared: false }], selfCaps = { "drive:access": null }, access = "ro", agents = undefined, projects = undefined, driveAccess = undefined, platform = undefined } = {}) {
   fakeTailscale(t, { status: statusJson({ self: "alex-mac", selfCaps }) });
   const home = tmp(t, "vyre-machome-");
   const did = [];
   let mounted = [];
   const seam = {
     home,
+    ...(platform ? { platform, letter: async () => (mounted.includes("Z:") ? "Y:" : "Z:") } : {}),
     mounts: async () => mounted,
     mount: async (url, dir, opts) => { did.push(["mount", url, dir, opts]); mounted.push(dir); },
     unmount: async dir => { did.push(["unmount", dir]); mounted = mounted.filter(d => d !== dir); },
@@ -835,4 +837,55 @@ test("drive picker: the Mac forwards candidates, measure and offer for the owner
   await no(m.reg, "files.drive.candidates", {}, "mcp:agent:kit", "denied");
   await no(m.reg, "files.drive.offer", { path: "/work/harlow" }, "mcp:agent:kit", "denied");
   assert.equal(m.remote.length, before);
+});
+
+// ---- Windows -----------------------------------------------------------------------------
+
+test("drive windows: the UNC name, the net use lines, and reading net use back", () => {
+  assert.equal(uncFor("http://100.100.100.100:8080/example.com/vyre/projects"), "\\\\100.100.100.100@8080\\example.com\\vyre\\projects");
+  assert.throws(() => uncFor("https://100.100.100.100:8080/a/b/c"), /http/);
+  assert.throws(() => uncFor("http://100.100.100.100:8080/a/b/c%3Ad"), /Windows cannot map/);
+  assert.deepEqual(mapArgs("Z:", "\\\\h@8080\\a"), ["use", "Z:", "\\\\h@8080\\a", "/persistent:no"]);
+  assert.deepEqual(unmapArgs("Z:"), ["use", "Z:", "/delete", "/y"]);
+  const out = "New connections will not be remembered.\r\n\r\nStatus       Local     Remote                    Network\r\n-----------\r\nOK           Z:        \\\\100.100.100.100@8080\\example.com\\vyre\\projects\r\n                                                Web Client Network\r\nOK           Y:        \\\\fileserver\\share  Microsoft Windows Network\r\nThe command completed successfully.\r\n";
+  const r = parseNetUse(out);
+  assert.deepEqual(r.vyre, [{ letter: "Z:", unc: "\\\\100.100.100.100@8080\\example.com\\vyre\\projects" }]);
+  assert.deepEqual(r.used, ["Z:", "Y:"]);
+  assert.equal(freeLetter(["Z:", "Y:"], () => false), "X:");
+  assert.equal(freeLetter([], l => l === "Z:"), "Y:");
+  assert.equal(freeLetter("DEFGHIJKLMNOPQRSTUVWXYZ".split("").map(c => c + ":"), () => false), null);
+  assert.match(explainNetUse("System error 67 has occurred."), /WebClient/);
+  assert.equal(explainNetUse("System error 85 has occurred."), "that drive letter is already in use");
+});
+
+test("drive windows: mount maps a drive letter through the seam and remembers it; local, open and unmount follow", async t => {
+  const m = await mac(t, { platform: "win32" });
+  assert.deepEqual(await ok(m.reg, "files.drive.local", { path: "/work/notes.md" }), { local: null });
+  await no(m.reg, "files.drive.open", { share: "projects" }, "cli", "not_mounted");
+  const r = await ok(m.reg, "files.drive.mount", { share: "projects" });
+  assert.deepEqual(r, { share: "projects", dir: "Z:", url: "http://100.100.100.100:8080/example.com/vyre/projects", readonly: true });
+  assert.deepEqual(m.did, [["mount", "http://100.100.100.100:8080/example.com/vyre/projects", "Z:", { readonly: true, name: "projects" }]]);
+  await ok(m.reg, "files.drive.mount", { share: "projects" });
+  assert.equal(m.did.length, 1);
+  assert.deepEqual(await ok(m.reg, "files.drive.local", { path: "/work/src/app.js" }), { local: "Z:\\src\\app.js", share: "projects" });
+  assert.deepEqual(await ok(m.reg, "files.drive.open", { share: "projects", path: "src" }), { opened: "Z:\\src" });
+  await no(m.reg, "files.drive.open", { share: "projects", path: "..\\..\\Windows" }, "cli", "bad_input");
+  await no(m.reg, "files.drive.open", { share: "projects", path: "C:\\Windows" }, "cli", "bad_input");
+  const s = await ok(m.reg, "files.drive.status");
+  assert.deepEqual(s.shares.map(x => [x.name, x.mounted, x.dir]), [["projects", true, "Z:"], ["glass-files", false, null]]);
+  assert.deepEqual(await ok(m.reg, "files.drive.unmount", { share: "projects" }), { share: "projects", unmounted: true });
+  assert.deepEqual(m.did.at(-1), ["unmount", "Z:"]);
+  assert.deepEqual(await ok(m.reg, "files.drive.unmount", { share: "projects" }), { share: "projects", unmounted: false });
+});
+
+test("drive windows: the box says where a share is reached, for a device with no Vyre of its own", async t => {
+  const ts = fakeTailscale(t, { status: statusJson({ selfCaps: { "drive:share": null } }), list: LIST });
+  const { work } = boxWorld(t);
+  const { reg } = await registry(t, { role: "box", agents: [{ name: "kit", kind: "agent", projects: [] }], cfg: { projectsDir: path.join(work, "projects"), files: { roots: [work] } } });
+  const a = await ok(reg, "files.drive.address", { share: "projects" });
+  assert.deepEqual(a, { url: "http://100.100.100.100:8080/example.com/vyre/projects", tailnet: "example.com", machine: "vyre", share: "projects",
+    unc: "\\\\100.100.100.100@8080\\example.com\\vyre\\projects", access: "ro", shared: true });
+  assert.ok(ts.calls().some(c => c[0] === "drive" && c[1] === "list"));
+  await no(reg, "files.drive.address", { share: "nope" }, "cli", "unknown_share");
+  await no(reg, "files.drive.address", { share: "projects" }, "mcp:agent:kit", "denied");
 });

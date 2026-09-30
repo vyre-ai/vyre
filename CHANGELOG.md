@@ -4,6 +4,11 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+- VyreDrive on Windows: `files.drive.mount` maps a share as a drive letter with Windows' own
+  WebDAV client (`net use Z: \\100.100.100.100@8080\...`), and `files.drive.unmount`, `.open`,
+  `.local` and `.status` follow it. The pure pieces are in `core/files/drive-windows.js`.
+  `files.drive.address` on the box gives a device with no Vyre of its own (the Windows app) the
+  address to map.
 - VyreDrive picker: `files.drive.candidates` lists the folders a box could share (projects first),
   `files.drive.measure` sizes one and says why it cannot be shared, and `files.drive.offer` names,
   checks and shares a picked folder in one step, with the Mac forwarding all three for the owner.

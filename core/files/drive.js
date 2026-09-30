@@ -41,12 +41,13 @@ import { reach, within } from "./access.js";
 import { classify, KINDS } from "./kinds.js";
 import { walk as searchWalk, defaults as searchDefaults } from "./search.js";
 import { picker } from "./picker.js";
+import { uncFor, mapArgs, unmapArgs, parseNetUse, freeLetter, explainNetUse } from "./drive-windows.js";
 
 /**
  * Test seams, keyed by the VYRE_HOME a registry runs with: { mount(url, dir, opts), unmount(dir),
  * open(target), mounts(), home }. Anything left out uses the real thing, which refuses to run
  * under node --test.
- * @type {Map<string, { mount?: Function, unmount?: Function, open?: Function, mounts?: () => Promise<string[]>, home?: string }>}
+ * @type {Map<string, { mount?: Function, unmount?: Function, open?: Function, mounts?: () => Promise<string[]>, letter?: () => Promise<string|null>, platform?: string, home?: string }>}
  */
 export const seams = new Map();
 
@@ -242,11 +243,23 @@ const SYSTEM = {
   },
 };
 
+/**
+ * The Windows commands: net use maps the share as a drive letter (drive-windows.js), and Explorer
+ * opens it. Explorer answers exit code 1 even when it worked, so its exit is ignored.
+ */
+const SYSTEM_WIN = {
+  letter: async () => freeLetter(parseNetUse(await exec("net.exe", ["use"])).used),
+  mount: async (url, letter) => { try { await exec("net.exe", mapArgs(letter, uncFor(url))); } catch (e) { throw new Error(explainNetUse(/** @type {Error} */ (e).message)); } },
+  unmount: letter => exec("net.exe", unmapArgs(letter)),
+  open: target => exec("explorer.exe", [target], true),
+  mounts: async () => parseNetUse(await exec("net.exe", ["use"])).vyre.map(x => x.letter),
+};
+
 /** @returns {Promise<string>} */
-function exec(cmd, args) {
+function exec(cmd, args, ignoreExit = false) {
   if (!livesAllowed()) return Promise.reject(refuse("mounting and opening are off under tests", "off_in_tests"));
-  return new Promise((resolve, reject) => execFile(cmd, args, { timeout: 30_000 }, (e, out, err) => {
-    if (e) reject(new Error(String(err || e.message).trim().split("\n")[0]));
+  return new Promise((resolve, reject) => execFile(cmd, args, { timeout: 30_000, windowsHide: true }, (e, out, err) => {
+    if (e && !ignoreExit) reject(new Error(String(err || out || e.message).trim().split(/\r?\n/)[0]));
     else resolve(String(out));
   }));
 }
@@ -258,7 +271,8 @@ function exec(cmd, args) {
  */
 export function drive(ctx, { role, guard: g, roots }) {
   const seam = seams.get(ctx.paths.root) || {};
-  const fx = { ...SYSTEM, ...seam };
+  const win = (seam.platform || process.platform) === "win32";
+  const fx = { ...(win ? SYSTEM_WIN : SYSTEM), ...seam };
   const nameInput = { type: "object", required: ["name"], properties: { name: { type: "string" } } };
 
   if (role === "box") return boxSide();
@@ -448,6 +462,22 @@ export function drive(ctx, { role, guard: g, roots }) {
       return { shared: name, path: where, access: specs()[name].access, audit: await audit() };
     };
 
+    ctx.tool("files.drive.address", {
+      description: "Where one of this box's VyreDrive shares is reached on the tailnet, for a device that has no Vyre of its own to ask (a Windows PC's Vyre app): the WebDAV address, the Windows network path for it, the share's access, and whether the box is sharing it now. The owner and the owner's own devices only.",
+      input: { type: "object", required: ["share"], properties: { share: { type: "string" } } },
+      run: async ({ share }, meta = {}) => {
+        if (!(await reach(ctx, meta && meta.caller)).all) throw refuse("only the owner's own devices ask where a share is", "denied");
+        known(String(share));
+        const st = await status();
+        const node = st && st.Self && String(st.Self.DNSName || "").replace(/\.$/, "");
+        if (!node) throw refuse("Tailscale on this box does not say its own name; is it signed in?", "no_tailscale");
+        const a = driveUrl(st, node, String(share));
+        const list = hasCap(st, "drive:share") ? await tailscale(["drive", "list"]) : null;
+        const shared = Boolean(list && list.code === 0 && parseDriveList(list.out).some(x => x.name === share));
+        return { ...a, unc: uncFor(a.url), access: specs()[String(share)].access, shared };
+      },
+    });
+
     ctx.tool("files.drive.share", {
       description: "Share one of the box's offered folders with the paired Mac over VyreDrive. Owner only. Audits who else the tailnet policy lets in, right after.",
       input: nameInput,
@@ -602,11 +632,17 @@ export function drive(ctx, { role, guard: g, roots }) {
       fs.writeFileSync(tmp, JSON.stringify(v, null, 2) + "\n", { mode: 0o600 });
       fs.renameSync(tmp, file);
     };
+    /**
+     * Where a share is (or would be) mounted. On a Mac and on Linux that is ~/Vyre/Box/<share>. On
+     * Windows it is a drive letter, chosen when the share is mounted and remembered, so before
+     * that there is no place yet: null.
+     */
     const dirOf = share => {
       if (!NAME.test(String(share))) throw refuse(`"${share}" is not a share name`, "bad_input");
+      if (win) { const rec = load()[share]; return rec && rec.dir ? String(rec.dir) : null; }
       return path.join(base, share);
     };
-    const isMounted = async dir => { try { return (await fx.mounts()).map(String).includes(dir); } catch { return false; } };
+    const isMounted = async dir => { try { return Boolean(dir) && (await fx.mounts()).map(String).includes(String(dir)); } catch { return false; } };
 
     /** Ask the box, and turn its failure into a readable error with the box's code. */
     const forward = async (tool, input) => {
@@ -633,7 +669,7 @@ export function drive(ctx, { role, guard: g, roots }) {
         const box = await forward("files.drive.status", {});
         const mounted = load();
         const shares = await Promise.all((box && Array.isArray(box.shares) ? box.shares : []).map(async s => {
-          const dir = path.join(base, String(s.name));
+          const dir = win ? (mounted[s.name] && mounted[s.name].dir) || null : path.join(base, String(s.name));
           return { ...s, mounted: Boolean(mounted[s.name]) && await isMounted(dir), dir };
         }));
         return { ...box, shares, source: "box" };
@@ -684,7 +720,7 @@ export function drive(ctx, { role, guard: g, roots }) {
       input: { type: "object", required: ["share"], properties: { share: { type: "string" } } },
       callers: ["cli", "local", "capsule"],
       run: async ({ share }) => {
-        const dir = dirOf(share);
+        let dir = dirOf(share);
         const box = await forward("files.drive.status", {});
         const s = box && Array.isArray(box.shares) ? box.shares.find(x => x.name === share) : null;
         if (!s) throw refuse(`the box offers no share called "${share}"`, "unknown_share");
@@ -694,7 +730,12 @@ export function drive(ctx, { role, guard: g, roots }) {
         // The share's own access; a box from before shares had one sends only the top-level field.
         const readonly = (s.access || box.access) !== "rw";
         if (!(await isMounted(dir))) {
-          fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
+          if (win) {
+            // A drive letter, not a folder. Windows' own client cannot map read-only, so the
+            // share's access is enforced by the box; `readonly` still says what the box allows.
+            dir = await fx.letter();
+            if (!dir) throw refuse("every drive letter is in use; free one and mount again", "no_letter");
+          } else fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
           await fx.mount(u.url, dir, { readonly, name: share });
         }
         save({ ...load(), [share]: { dir, boxPath: String(s.path), url: u.url } });
@@ -723,11 +764,14 @@ export function drive(ctx, { role, guard: g, roots }) {
       callers: ["cli", "local", "capsule"],
       run: async ({ share, path: rel }) => {
         const dir = dirOf(share);
-        if (!(await isMounted(dir))) throw refuse(`"${share}" is not mounted on this Mac; mount it first (files.drive.mount)`, "not_mounted");
+        if (!(await isMounted(dir))) throw refuse(`"${share}" is not mounted on this ${win ? "PC" : "Mac"}; mount it first (files.drive.mount)`, "not_mounted");
         const r = String(rel || "");
-        if (r.includes("\0") || path.isAbsolute(r) || r.split(/[\\/]+/).includes("..")) throw refuse("path must be relative to the share, with no ..", "bad_input");
-        const target = path.join(dir, r);
-        if (!inside(target, dir)) throw refuse("path must be inside the share", "bad_input");
+        const P = win ? path.win32 : path;
+        if (r.includes("\0") || P.isAbsolute(r) || /^[A-Za-z]:/.test(r) || r.split(/[\\/]+/).includes("..")) throw refuse("path must be relative to the share, with no ..", "bad_input");
+        const top = win ? String(dir) + "\\" : String(dir);
+        const target = P.join(top, r);
+        const back = P.relative(top, target);
+        if (back.startsWith("..") || P.isAbsolute(back)) throw refuse("path must be inside the share", "bad_input");
         await fx.open(target);
         return { opened: target };
       },
@@ -750,8 +794,9 @@ export function drive(ctx, { role, guard: g, roots }) {
           const bp = String(rec && rec.boxPath || "");
           if (!bp || !inside(want, bp)) continue;
           if (!(await isMounted(String(rec.dir)))) continue;
-          const local = path.join(String(rec.dir), path.posix.relative(bp, want));
-          if (inside(local, String(rec.dir))) return { local, share };
+          const rel = path.posix.relative(bp, want);
+          const local = win ? path.win32.join(String(rec.dir) + "\\", ...rel.split("/").filter(Boolean)) : path.join(String(rec.dir), rel);
+          if (!rel.startsWith("..")) return { local, share };
         }
         return { local: null };
       },
