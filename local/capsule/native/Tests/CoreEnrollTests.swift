@@ -43,11 +43,11 @@ let coreEnrollSuite = Suite("core enrol") { t in
     }
 
     t.test("handoff: a closed fd 3 or a regular file is an ordinary launch, not a handoff") {
-        t.eq(CoreEnroll.readHandoff(fd: 987, timeout: 0.1), .none)
+        t.eq(CoreEnroll.readHandoff(fd: 987, timeout: 0.1), .absent)
         let path = vyScratch("enrol") + "/notpipe"
         FileManager.default.createFile(atPath: path, contents: Data("Ab3xY9".utf8))
         let fd = open(path, O_RDONLY)
-        t.eq(CoreEnroll.readHandoff(fd: fd, timeout: 0.1), .none)
+        t.eq(CoreEnroll.readHandoff(fd: fd, timeout: 0.1), .absent)
         close(fd)
     }
 
@@ -153,7 +153,7 @@ let coreEnrollSuite = Suite("core enrol") { t in
             let a = await CoreEnroll.enrol(.code("Ab3xY9"), presence: p, config: nil)
             let b = await CoreEnroll.enrol(.code("Ab3xY9"), presence: p, config: CoreEnroll.Config(socket: fake.socket, uid: 1), problem: { _ in "vyre-core's socket does not belong to vyre-core." })
             let c = await CoreEnroll.enrol(.failed, presence: p, config: nil)
-            let d = await CoreEnroll.enrol(.none, presence: p, config: nil)
+            let d = await CoreEnroll.enrol(.absent, presence: p, config: nil)
             return [a, b, c, d]
         }
         t.eq(r?[0]?.enrolled, false); t.eq(r?[1]?.enrolled, false); t.eq(r?[2]?.enrolled, false)

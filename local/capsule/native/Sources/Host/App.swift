@@ -112,7 +112,7 @@ final class CapsuleApp: NSObject, NSApplicationDelegate {
     /// The result is said in the panel, and in a notification if it is hidden.
     func enrolWithCore() {
         let handoff = CoreEnroll.handoff
-        guard handoff != .none else { return }
+        guard handoff != .absent else { return }
         let presence = self.presence
         Task { [weak self] in
             guard let out = await CoreEnroll.enrol(handoff, presence: presence, config: CoreEnroll.readConfig()) else { return }

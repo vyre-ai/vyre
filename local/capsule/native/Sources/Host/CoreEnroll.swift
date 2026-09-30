@@ -25,7 +25,7 @@ enum CoreEnroll {
     /// What the installer put on fd 3.
     enum Handoff: Equatable {
         /// fd 3 is not a handoff at all (closed, or not a pipe or socket): an ordinary launch.
-        case none
+        case absent
         /// Exactly six letters and digits, then end of file.
         case code(String)
         /// Something was there but it was not the code: too long, too short, not letters and
@@ -34,8 +34,8 @@ enum CoreEnroll {
     }
 
     static let codeLength = 6
-    /// What main.swift read from fd 3 at launch; .none in tests and on an ordinary launch.
-    nonisolated(unsafe) static var handoff: Handoff = .none
+    /// What main.swift read from fd 3 at launch; .absent in tests and on an ordinary launch.
+    nonisolated(unsafe) static var handoff: Handoff = .absent
 
     // MARK: fd 3
 
@@ -44,9 +44,9 @@ enum CoreEnroll {
     static func readHandoff(fd: Int32 = 3, timeout: TimeInterval = 2) -> Handoff {
         var st = stat()
         // A launch from Finder or launchd has no fd 3. A pipe or a socket is a handoff.
-        guard fstat(fd, &st) == 0 else { return .none }
+        guard fstat(fd, &st) == 0 else { return .absent }
         let kind = st.st_mode & S_IFMT
-        guard kind == S_IFIFO || kind == S_IFSOCK else { return .none }
+        guard kind == S_IFIFO || kind == S_IFSOCK else { return .absent }
         defer { close(fd) }
         let deadline = Date().addingTimeInterval(timeout)
         var got = [UInt8]()
@@ -135,7 +135,7 @@ enum CoreEnroll {
     @MainActor
     static func enrol(_ handoff: Handoff, presence: CapsulePresence, config: Config?, problem: (Config) -> String? = { socketProblem($0) }) async -> Outcome? {
         switch handoff {
-        case .none: return nil
+        case .absent: return nil
         case .failed:
             return Outcome(enrolled: false, words: "The installer's code did not arrive. Run the install again, or type the code it shows.")
         case .code(let code):
