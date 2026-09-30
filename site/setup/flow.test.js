@@ -770,7 +770,7 @@ test("site: the relay client copied the way build-site.sh does it loads on its o
   for (const name of ["createSetupKey", "setupCode", "resolveSetup", "setupWords", "mailboxReader"]) assert.equal(typeof m[name], "function", name);
   // and the page's own files import nothing at all except the client (page.js) and each other
   const page = fs.readFileSync(path.join(path.dirname(url.fileURLToPath(import.meta.url)), "page.js"), "utf8");
-  assert.deepEqual([...page.matchAll(/^import .* from "([^"]+)"/gm)].map(x => x[1]).sort(), ["./box.js", "./claim.js", "./deck/js/phone-code.js", "./deck/vendor/qrcode.js", "./flow.js", "./relay/bytes.js", "./relay/client.js", "./relay/setup.js", "./relay/webcrypto.js", "./ui.js"]);
+  assert.deepEqual([...page.matchAll(/^import .* from "([^"]+)"/gm)].map(x => x[1]).sort(), ["./box.js", "./claim.js", "./config.js", "./deck/js/phone-code.js", "./deck/vendor/qrcode.js", "./flow.js", "./relay/bytes.js", "./relay/client.js", "./relay/setup.js", "./relay/webcrypto.js", "./ui.js"]);
 });
 
 test("site: the setup page loads nothing from another origin, and its headers say so", async () => {

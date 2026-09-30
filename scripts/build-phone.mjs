@@ -88,7 +88,10 @@ export function buildPhone({ release, out, key = RELEASE_KEY }) {
     const id = (commit ? commit.slice(0, 12) : "v" + version).replace(/[^\w.-]/g, "");
     let sw = fs.readFileSync(path.join(deck, "sw.js"), "utf8");
     if (!sw.includes('const BUILD = "dev";')) throw new Error("deck/sw.js has no BUILD line to stamp");
+    // Without the SHELL_SIGNED line the phone would run its shell unchecked, so a release that lacks it does not build.
+    if (!sw.includes("const SHELL_SIGNED = false;")) throw new Error("deck/sw.js has no SHELL_SIGNED line: this release cannot check the phone's shell");
     sw = sw.replace('const BUILD = "dev";', `const BUILD = ${JSON.stringify(id)};`).replace("const SHELL_SIGNED = false;", "const SHELL_SIGNED = true;");
+    if (!sw.includes("const SHELL_SIGNED = true;") || !sw.includes(`const BUILD = ${JSON.stringify(id)};`)) throw new Error("could not stamp deck/sw.js");
     fs.writeFileSync(path.join(out, "sw.js"), sw);
     // The Deck links /theme.css: the defaults, since no box's config is behind this origin.
     fs.writeFileSync(path.join(out, "theme.css"), "/* Vyre's colours: the defaults are in tokens.css and deck.css. */\n");
@@ -109,7 +112,9 @@ export function buildPhone({ release, out, key = RELEASE_KEY }) {
     const shell = JSON.parse(fs.readFileSync(path.join(release, "shell.json"), "utf8"));
     if (!shell || shell.v !== 1 || !Array.isArray(shell.files)) throw new Error("shell.json is not { v: 1, files: [...] }");
     for (const [p, hex] of shell.files) {
-      const f = path.join(out, outPath(String(p)));
+      const f = path.resolve(out, outPath(String(p)));
+      // A path in the signed list that climbs out of the site is a broken or hostile list.
+      if (f !== path.resolve(out) && !f.startsWith(path.resolve(out) + path.sep)) throw new Error(`shell.json lists ${p}, which is outside the site`);
       if (!fs.existsSync(f)) throw new Error(`shell.json lists ${p}, which the build does not have`);
       if (sha(fs.readFileSync(f)) !== hex) throw new Error(`${p} in the build is not the file shell.json signed`);
     }

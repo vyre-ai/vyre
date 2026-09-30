@@ -372,3 +372,16 @@ test("update: an unsigned release, or one signed by another key, is refused befo
   assert.equal(await update(["--yes"], ok.deps), 0, ok.text());
   assert.match(ok.text(), /signature checked against Vyre's release key/);
 });
+
+test("update: only a release whose signature verified is published for the phone's shell check; --allow-unsigned installs and stops there", async t => {
+  const signed = await world(t);
+  const pkg = path.join(signed.home, "pkg");
+  fs.mkdirSync(pkg);
+  assert.equal(await update(["--yes"], { ...signed.deps, pkg }), 0, signed.text());
+  assert.deepEqual(fs.readdirSync(path.join(pkg, "deck", "release")).sort(), ["SHA256SUMS", "SHA256SUMS.sig"]);
+  const unsigned = await world(t, { sign: null });
+  const pkg2 = path.join(unsigned.home, "pkg");
+  fs.mkdirSync(pkg2);
+  assert.equal(await update(["--yes", "--allow-unsigned"], { ...unsigned.deps, pkg: pkg2 }), 0, unsigned.text());
+  assert.ok(!fs.existsSync(path.join(pkg2, "deck")), "an unsigned release is installed but nothing of it is published");
+});

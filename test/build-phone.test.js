@@ -94,11 +94,14 @@ test("build-phone: the real Deck builds: every file it imports from outside deck
   fs.mkdirSync(pkg);
   for (const p of ["deck", "core/resilience", "relay/client", "lib/avatar-seed"]) { fs.mkdirSync(path.dirname(path.join(pkg, p)), { recursive: true }); fs.cpSync(path.join(REPO, p), path.join(pkg, p), { recursive: true }); }
   fs.copyFileSync(path.join(REPO, "package.json"), path.join(pkg, "package.json"));
+  // The line pwa's release adds to deck/sw.js; a tree from before it gets the line here, and the build needs it either way.
+  const swCopy = path.join(pkg, "deck", "sw.js");
+  if (!fs.readFileSync(swCopy, "utf8").includes("const SHELL_SIGNED = false;")) fs.appendFileSync(swCopy, "\nconst SHELL_SIGNED = false;\n");
   const rel = path.join(dir, "rel");
   fs.mkdirSync(rel);
   assert.equal(spawnSync("tar", ["-czf", path.join(rel, "vyre.tgz"), "-C", src, "package"]).status, 0);
   // shell.json as scripts/shell-hashes.mjs makes it: the hash of every file in sw.js's SHELL list.
-  const sw = fs.readFileSync(path.join(REPO, "deck", "sw.js"), "utf8");
+  const sw = fs.readFileSync(swCopy, "utf8");
   const list = [.../** @type {RegExpExecArray} */ (/const SHELL = \[([\s\S]*?)\];/.exec(sw))[1].matchAll(/"([^"]+)"/g)].map(m => m[1]).filter(p => p !== "/sw.js");
   const files = list.map(p => [p, sha(fs.readFileSync(/^\/(core|relay|lib)\//.test(p) ? path.join(REPO, p.slice(1)) : path.join(REPO, "deck", p === "/" ? "index.html" : p.slice(1))))]);
   fs.writeFileSync(path.join(rel, "shell.json"), JSON.stringify({ v: 1, files }));
@@ -108,4 +111,20 @@ test("build-phone: the real Deck builds: every file it imports from outside deck
   assert.equal(r.shell, list.length);
   assert.ok(r.files > 20);
   assert.ok(fs.existsSync(path.join(dir, "site", "release", "SHA256SUMS.sig")));
+});
+
+test("build-phone: a release whose sw.js has no SHELL_SIGNED line does not build, and a shell.json path that climbs out of the site is refused", t => {
+  const dir = tempHome(t);
+  const key = spki(KEYS.publicKey);
+  const a = path.join(dir, "a"); fs.mkdirSync(a);
+  const noLine = { ...FIXTURE(), "deck/sw.js": 'const BUILD = "dev";\nconst SHELL = ["/"];\n' };
+  assert.throws(() => buildPhone({ release: release(a, noLine, ["/"]), out: path.join(a, "site"), key }), /no SHELL_SIGNED line/);
+  const b = path.join(dir, "b"); fs.mkdirSync(b);
+  const rel = release(b, FIXTURE(), ["/", "/js/app.js"]);
+  const s = JSON.parse(fs.readFileSync(path.join(rel, "shell.json"), "utf8"));
+  s.files.push(["/../../etc/hostname", "0".repeat(64)]);
+  fs.writeFileSync(path.join(rel, "shell.json"), JSON.stringify(s));
+  fs.writeFileSync(path.join(rel, "SHA256SUMS"), ["vyre.tgz", "shell.json"].map(n => `${sha(fs.readFileSync(path.join(rel, n)))}  ${n}\n`).join(""));
+  fs.writeFileSync(path.join(rel, "SHA256SUMS.sig"), signSums(fs.readFileSync(path.join(rel, "SHA256SUMS")), KEYS.privateKey));
+  assert.throws(() => buildPhone({ release: rel, out: path.join(b, "site"), key }), /which is outside the site/);
 });
