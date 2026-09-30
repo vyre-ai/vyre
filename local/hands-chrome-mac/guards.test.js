@@ -119,7 +119,7 @@ test("egress guard: a browser-level rule blocks WebSockets and beacons of the ta
   assert.ok(dnr.rules[0].initiatorHosts.includes("app.example.com") && dnr.rules[0].initiatorHosts.includes("services.example.com"), "own and known hosts scope the worker rule");
   assert.ok(dnr.rules[0].allowOrigins.includes("https://app.example.com") && dnr.rules[0].allowOrigins.includes("https://services.example.com"), "own and known origins stay allowed");
   assert.ok(dnr.rules[0].wsHosts.includes("app.example.com") && !dnr.rules[0].wsHosts.includes("services.example.com"), "new sockets: the tab host only, not a known third party");
-  assert.deepEqual(dnr.removed, [dnr.rules[0].id], "the rule is removed when the script ends");
+  assert.deepEqual(dnr.removed, [[dnr.rules[0].id]], "the rule is removed when the script ends");
   const k2 = egressRig(async () => {});
   await T(dt.ops["dev.console.eval"])({ tab: 3, expression: "/*vyre-test-script*/ 1", asked: true }, k2.ctx);
   assert.equal(/** @type {any} */ (k2.ctx).dnr.rules.length, 0, "no rule when the person asked");
