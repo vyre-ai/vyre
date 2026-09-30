@@ -97,7 +97,7 @@ try {
     // Known bug B1 (sessions): a fresh box has no /home/acct/<uid>. Provision it as root so the later stages run, and say so.
     const uid = (msg.match(/account (\d+) has no home/) || [])[1];
     if (!uid) throw new Error("sign-in failed: " + msg);
-    spawnSync("docker", ["exec", "-u", "root", "vyre-vyre-1", "sh", "-c", `mkdir -p /home/acct/${uid} && chown ${uid}:${uid} /home/acct/${uid} && chmod 700 /home/acct/${uid}`]);
+    spawnSync("docker", ["exec", "-u", "root", "vyre-vyre-1", "sh", "-c", `for u in $(seq ${uid} $((${uid} + 9))); do mkdir -p /home/acct/$u && chown $u:$u /home/acct/$u && chmod 700 /home/acct/$u; done`]);
     await click("Sign in with Claude");
     paste = await sees(/the sign-in page/i, 45000);
     r.step("1.8a2-claude-signin-after-workaround", paste ? "fake" : false, { shot: await shot("setup-ai-link"), why: "home made by the harness, fake claude auth login" });
