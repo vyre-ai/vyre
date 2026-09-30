@@ -4,6 +4,7 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+- vyred's own start (`core/daemon/main.js`) hands the relay vyre-core's key store on a Mac where core is installed and trusted; in-process tests never do. `createCoreKeys` from lib/vyre-core-keys.js, so the box, route and device keys stay in core.
 #### tests: every Chrome launch carries the mock-keychain flags
 
 - Chrome on macOS reached for the login Keychain and put a real dialog on the user's screen. `lib/chrome-flags` exports `CHROME_SAFE` (`--use-mock-keychain`, `--password-store=basic`), spread into every Chrome launch in the Deck shot and browser scripts, the native-bar run, the vyrecode harness, hands-chrome's and the onboarding page's tests, the docs build, design-audit, the iOS icon script and the app-perf playwright launch. `test/chrome-flags.test.js` fails on any file that launches Chrome without them (containers' own Chrome and the fakes are listed as exempt, each with why).

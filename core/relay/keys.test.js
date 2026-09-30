@@ -95,3 +95,10 @@ test("device key in core: the relay client runs Noise as the initiator with a ma
   const fresh = await c.generateKeyPair();
   assert.equal((await c.dh(fresh.privateKey, new Uint8Array(remote))).length, 32);
 });
+
+test("the test fake has the real client's surface, so a change to one shows in the other", async () => {
+  const real = await import("../../lib/vyre-core-keys.js");
+  const a = Object.keys(real.fakeCoreKeys("x")).filter(k => k !== "created").sort();
+  const mine = Object.keys(fakeCoreKeys()).filter(k => k !== "calls").sort();
+  assert.deepEqual(mine, a);
+});
