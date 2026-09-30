@@ -506,7 +506,7 @@ export function drive(ctx, { role, guard: g, roots }) {
     };
 
     ctx.tool("files.drive.search", {
-      description: "Find files by name or content across the box's offered VyreDrive shares (server files) — the search behind the Capsule's find-a-file and the Windows panel, neither of which keeps its own index of the box's folders. A named agent sees only the shares whose folder falls inside its own granted projects (files.drive.status's own rule); an offered share outside that is left out of the search entirely, not merely hidden from the list.",
+      description: "Find files by name or content across the box's offered VyreDrive shares (server files). It is the search behind the Capsule's find-a-file and the Windows panel, neither of which keeps its own index of the box's folders. A named agent sees only the shares whose folder falls inside its own granted projects (files.drive.status's own rule); an offered share outside that is left out of the search entirely, not merely hidden from the list.",
       input: { type: "object", required: ["q"], properties: {
         q: { type: "string" }, limit: { type: "integer" }, share: { type: "string" },
         kinds: { type: "array", items: { type: "string", enum: KINDS } } } },

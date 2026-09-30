@@ -684,7 +684,7 @@ Open a mounted box share, or a file or folder in it, in Finder.
 
 ### `files.drive.search`
 
-Find files by name or content across the box's offered VyreDrive shares (server files) — the search behind the Capsule's find-a-file and the Windows panel, neither of which keeps its own index of the box's folders. A named agent sees only the shares whose folder falls inside its own granted projects (files.drive.status's own rule); an offered share outside that is left out of the search entirely, not merely hidden from the list.
+Find files by name or content across the box's offered VyreDrive shares (server files). It is the search behind the Capsule's find-a-file and the Windows panel, neither of which keeps its own index of the box's folders. A named agent sees only the shares whose folder falls inside its own granted projects (files.drive.status's own rule); an offered share outside that is left out of the search entirely, not merely hidden from the list.
 
 - Input:
   - `q` string, required

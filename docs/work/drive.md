@@ -47,7 +47,7 @@ step, the Windows/phone clients themselves) stays 0.2.x.
   `test/hygiene.test.js`: 16/16 after `docs:ref`.
 
 ## Doing
-Nothing in flight; between steps.
+CI on work/drive after merging stage-0.2 (026dcaa5 plus a docs fix). reviewer-2 CLEARED H1/M1/L1 (30 Sep); the platform merge fixed files.test.js's fixture. Targeted files + docs tests: 156/156 on testbox.
 
 ## Next
 - Send the sha to the integrator for review before it lands on stage/0.2 (RULES.md: land only
