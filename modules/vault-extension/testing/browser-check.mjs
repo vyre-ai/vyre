@@ -22,6 +22,7 @@ import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { open, migrate } from "../../../core/store/index.js";
+import { CHROME_SAFE } from "../../../lib/chrome-flags/index.js";
 import { Vault, MIGRATIONS } from "../../../core/vault/vault.js";
 import { Fill, serveFill } from "../../../core/vault/fill.js";
 import { build } from "../build.mjs";
@@ -114,7 +115,7 @@ async function main() {
     log(`fill listener at ${srv.url}, page at ${pageUrl}`);
     log("starting Chromium with the extension loaded");
     const profile = fs.mkdtempSync(path.join(tmp, "chrome-"));
-    const child = spawn(CHROME, ["--headless=new", "--remote-debugging-port=0", `--user-data-dir=${profile}`, `--load-extension=${distDir}`,
+    const child = spawn(CHROME, ["--headless=new", ...CHROME_SAFE, "--remote-debugging-port=0", `--user-data-dir=${profile}`, `--load-extension=${distDir}`,
       "--no-first-run", "--no-default-browser-check", "--disable-background-networking", "--force-color-profile=srgb",
       "--window-size=1280,900", "about:blank"], { stdio: "ignore" });
     cleanup.push(() => { child.kill(); });

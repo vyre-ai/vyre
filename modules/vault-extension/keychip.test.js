@@ -215,11 +215,13 @@ function pageWith(fields, answers = {}) {
   return { sent, delays, shown, buttons, docListeners };
 }
 const tick = (ms = 20) => new Promise(r => setTimeout(r, ms));
+/** Wait for the page's worker replies to land (they arrive on timers), up to a few seconds on a loaded runner. */
+const until = async (fn, ms = 3000) => { const end = Date.now() + ms; while (Date.now() < end && !fn()) await tick(10); };
 
 test("page: a key-shaped value raises a chip; nothing but a fingerprint goes before the tap", async () => {
   const value = anthropic();
   const p = pageWith([codeEl(value, "New API key")]);
-  await tick();
+  await until(() => p.shown().length > 0);
   const raise = p.sent.find(m => m.type === "key-raise");
   assert.ok(raise, "asked the worker");
   assert.deepEqual(Object.keys(raise).sort(), ["fp", "generic", "type"]);
