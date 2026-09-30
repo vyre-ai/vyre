@@ -86,7 +86,7 @@ async function verifyShell(files, required, floor = "") {
   catch (e) { return { ok: false, checked: true, why: "release files: " + /** @type {Error} */ (e).message }; }
   let key;
   try { key = await crypto.subtle.importKey("spki", fromBase64(RELEASE_KEY), { name: "Ed25519" }, false, ["verify"]); }
-  catch { return { ok: true, checked: false, why: "no Ed25519 here" }; }
+  catch { return { ok: true, checked: false, unsupported: true, why: "no Ed25519 here" }; }
   const prefix = new TextEncoder().encode("vyre-release-sums\n");
   const signed = new Uint8Array(prefix.length + sums.byteLength);
   signed.set(prefix); signed.set(new Uint8Array(sums), prefix.length);
@@ -172,6 +172,17 @@ self.addEventListener("install", e => e.waitUntil((async () => {
     console.error("vyre: shell release check failed, refusing this release:", v.why);
     await caches.delete(CACHE);
     return;
+  }
+  if (v.unsupported) {
+    // No Ed25519 in this browser (older Safari): it cannot check. Never a "signed" worker with no
+    // hash list: with a worker already running, refuse this install so that one keeps running;
+    // with none (a first install), run as an unsigned shell, and the fetch handler sees no list.
+    if (self.registration && self.registration.active) {
+      console.error("vyre: this browser cannot verify the release signature; keeping the current shell");
+      await caches.delete(CACHE);
+      return;
+    }
+    console.warn("vyre: this browser cannot verify the release signature; running the shell unchecked");
   }
   if (v.checked && v.files && vc) {
     // What the fetch handler holds every later copy to, and the version no release may go under.
@@ -311,6 +322,7 @@ self.addEventListener("fetch", e => {
     if (!SHELL_SIGNED) return;
     e.respondWith((async () => {
       const cache = await caches.open(CACHE);
+      if (!(await cache.match(HASHES_KEY))) return fetch(e.request); // no list stored: an unchecked shell
       const want = await listed(cache, url.pathname);
       if (!want) return Response.error();
       let res;
@@ -330,14 +342,16 @@ self.addEventListener("fetch", e => {
     // A signed shell: a file is written to the cache only when its bytes are the ones the signed
     // release listed (install stored the list), so an origin cannot swap code in on a later
     // launch. A copy that does not match is never cached, and never served on a first visit.
-    const want = SHELL_SIGNED ? await listed(cache, e.request.mode === "navigate" ? "/" : url.pathname) : null;
+    // "Signed" means this install stored the release's list; none stored (a browser that could not check) is an unsigned shell.
+    const enforce = SHELL_SIGNED && !!(await cache.match(HASHES_KEY));
+    const want = enforce ? await listed(cache, e.request.mode === "navigate" ? "/" : url.pathname) : null;
     // And a script, stylesheet or page the release did not list is refused outright, not fetched:
     // the vault, pairing and settings code are as much the release as the precached shell. Images
     // and fonts may stay unlisted; /theme.css is made per box.
-    if (SHELL_SIGNED && !want && (e.request.mode === "navigate" || CODE_PATH.test(url.pathname)) && url.pathname !== "/theme.css") return Response.error();
+    if (enforce && !want && (e.request.mode === "navigate" || CODE_PATH.test(url.pathname)) && url.pathname !== "/theme.css") return Response.error();
     const fresh = fetch(e.request).then(async res => {
       if (res.ok && res.type === "basic") {
-        if (!SHELL_SIGNED) cache.put(key, res.clone());
+        if (!enforce) cache.put(key, res.clone());
         else if (want && hex(await crypto.subtle.digest("SHA-256", await res.clone().arrayBuffer())) === want) cache.put(key, res.clone());
         else if (want) return Response.error();
       }

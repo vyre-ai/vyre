@@ -227,3 +227,31 @@ test("a signed worker serves the passkey claim page only when the release lists 
   on2.fetch({ request: { url: "https://box/onboard/passkey", method: "GET", mode: "navigate" }, respondWith: () => { seen++; }, waitUntil: () => {} });
   assert.equal(seen, 0);
 });
+
+// A browser with no Ed25519 in WebCrypto (older Safari) cannot check. It must never end up with a
+// "signed" worker that has no hash list (which would refuse every script).
+test("no Ed25519: refuse the install when a worker is already running, run unchecked when none is", async () => {
+  const { served } = release();
+  const noEd = { subtle: { digest: globalThis.crypto.subtle.digest.bind(globalThis.crypto.subtle), importKey: async () => { throw new Error("Ed25519 unsupported"); }, verify: async () => false } };
+  async function run(/** @type {any} */ active) {
+    const store = new Map(); let deleted = 0, skipped = 0;
+    const name = k => (typeof k === "string" ? k : new URL(k.url).pathname);
+    const cache = { match: async k => (store.has(name(k)) ? new Response(store.get(name(k))) : undefined), put: async (k, r) => { store.set(name(k), await r.text()); } };
+    const on = {};
+    const src = SW_SRC.replace("const SHELL_SIGNED = false;", "const SHELL_SIGNED = true;");
+    vm.runInNewContext(src, { self: { addEventListener: (t, fn) => { on[t] = fn; }, skipWaiting: async () => { skipped++; }, registration: { active } }, location: { origin: "https://box" }, URL, Response, TextEncoder, TextDecoder, atob, crypto: noEd, console: { error() {}, warn() {}, log() {} },
+      caches: { open: async () => cache, keys: async () => [], delete: async () => { deleted++; return true; } },
+      fetch: async u => { const p = String(u); const b = p.startsWith("/release/") ? served[p.slice(9)] : Buffer.from("x");
+        return Object.defineProperty(new Response(b), "type", { value: "basic" }); } });
+    let done; on.install({ waitUntil: p => { done = p; } }); await done;
+    const ask = async p => { let out; on.fetch({ request: { url: "https://box" + p, method: "GET", mode: "no-cors" }, respondWith: x => { out = x; }, waitUntil: x => x }); return out; };
+    return { store, deleted, skipped, ask };
+  }
+  const withOld = await run({ state: "activated" });
+  assert.equal(withOld.skipped, 0, "the old worker keeps running");
+  assert.ok(withOld.deleted >= 1, "the new cache is dropped");
+  const first = await run(null);
+  assert.equal(first.skipped, 1, "a first install runs, unchecked");
+  assert.equal(first.store.has("/__shell-hashes"), false, "and stores no hash list");
+  assert.equal((await (await first.ask("/views/vault.js")).text()), "x", "so no script is refused for lack of a list");
+});

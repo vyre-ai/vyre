@@ -7,6 +7,10 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 #### tests: hands-chrome waits 30 s for Chrome's DevTools port
 
 - A hosted runner sometimes takes longer than 10 s to start headless Chrome ("Chrome did not print its DevTools port in time"). That flake predates the mock-keychain flags (it failed on work/native-core-0.2 runs 4932f92d and 3ff930c6, before 47dafe78 existed; the flags are the only change to that launch and drop nothing), so the wait is 30 s. A launch that is truly broken still fails when Chrome exits early.
+#### pwa: a browser that cannot check does not lose the app
+
+- On a signed build in a browser without Ed25519 (older Safari), the worker no longer enforces a list it never stored. With a worker already running, that install is refused so the running shell stays; with none, the shell runs unchecked with a console line. Enforcement now means "this install stored the release's list", so no path is refused for lack of one.
+
 #### pwa: the onboarding and sign-in pages are signed too
 
 - The passkey claim (`/onboard/passkey`), the onboarding pages and `/person/signin` are in `shell.json` (273 addresses: folder pages are listed at their own address too). On a signed build the worker fetches them, never caches them, and refuses a page the release does not list or whose bytes differ. An unsigned build leaves them alone as before. The very first visit to a box has no worker yet, so that load is the box's own.
