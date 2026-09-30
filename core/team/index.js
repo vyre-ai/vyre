@@ -104,6 +104,9 @@ export const neutralize = s => String(s == null ? "" : s).replace(/<(\/?)vyre-([
 /** Reserved: every project's merge target (ADR 0031 section 8). Never a role a person names for anything else. */
 export const INTEGRATOR_ROLE = "integrator";
 
+/** The person's assistant (vyred's verified caller identity: meta.agentKind, from the stored agent row, never from input). It acts for the person across every project. */
+export const isAssistant = meta => Boolean(meta && meta.agentKind === "assistant");
+
 export function preamble(tm) {
   const lines = [`You are ${tm.role}, a teammate in the ${tm.project} project (Vyre, ADR 0031).`,
     `Your brief: ${tm.brief || "no brief set yet"}.`,
@@ -235,7 +238,12 @@ export default {
     /** threads.get answers { thread: <record>, asks, events }, not the record flat; null on any failure. */
     const threadRecord = async thread => { const t = await use("threads.get", { thread }).catch(() => null); return t && t.thread ? t.thread : null; };
 
-    const projectOf = async ({ thread, agent, caller }, input) => {
+    const projectOf = async ({ thread, agent, caller, agentKind }, input) => {
+      // The assistant works across projects: it names the one it means (never trusted from any other agent).
+      if (agentKind === "assistant" && input && input.project && !callerTeammate(agent)) {
+        if (!SLUG.test(String(input.project))) throw Object.assign(new Error("project must be a project slug"), { code: "bad_input" });
+        return String(input.project);
+      }
       if (thread) {
         const t = await threadRecord(thread);
         if (t && t.project) return t.project;
@@ -674,11 +682,11 @@ export default {
         isolation: { type: "string", enum: ["worktree", "folder", "none"] }, model: { type: "string" }, helper_model: { type: "string" } } },
       // The person's act, and their agent's on their behalf (charter: agents can do everything the
       // person can): a session in that project. Never a teammate, never a bare mcp call with no session.
-      // TODO(P17): for a non-person caller, also require the person's own words asked for it (gate.said.match).
+      // TODO(P17): for a non-person caller (the assistant included), also require the person's own words asked for it (gate.said.match).
       callers: ["cli", "local", "deck", "capsule", "mcp"],
       run: async (i, meta = {}) => {
-        if (meta.agent) throw Object.assign(new Error("a teammate cannot add teammates; that is the person's, or a session acting on their request"), { code: "denied" });
-        if (!isPerson(meta.caller) && !(SLUG.test(String(i.project || "")) && await inProject(meta, i.project)))
+        if (callerTeammate(meta.agent)) throw Object.assign(new Error("a teammate cannot add teammates; that is the person's, or a session acting on their request"), { code: "denied" });
+        if (!isPerson(meta.caller) && !isAssistant(meta) && !(SLUG.test(String(i.project || "")) && await inProject(meta, i.project)))
           throw Object.assign(new Error("team.add is for a person, or a session in that project"), { code: "denied" });
         if (!SLUG.test(String(i.project || ""))) throw new Error("project must be a project slug");
         if (!NAME.test(i.role)) throw new Error("a role is lowercase letters, digits and dashes");
@@ -732,15 +740,15 @@ export default {
         reason: { type: "string" }, undo: { type: "boolean" } } },
       callers: ["cli", "local", "deck", "capsule", "mcp", "module"],
       run: async (i, meta) => {
-        if (meta.agent) throw Object.assign(new Error("a teammate cannot retire teammates; that is the person's, or a session acting on their request"), { code: "denied" });
+        if (callerTeammate(meta.agent)) throw Object.assign(new Error("a teammate cannot retire teammates; that is the person's, or a session acting on their request"), { code: "denied" });
         let tm = null;
         if (i.teammate) tm = byAgent(String(i.teammate));
         else if (i.project && i.role) tm = byRole(String(i.project), String(i.role));
         else throw Object.assign(new Error("give teammate, or project and role"), { code: "bad_input" });
         if (!tm || tm.retired_at) throw Object.assign(new Error(`no teammate ${i.teammate || `${i.role} in ${i.project}`}`), { code: "not_found" });
-        if (!isPerson(meta.caller) && !(await inProject(meta, tm.project)))
+        if (!isPerson(meta.caller) && !isAssistant(meta) && !(await inProject(meta, tm.project)))
           throw Object.assign(new Error(`team.retire is for a person, or a session in ${tm.project}`), { code: "denied" });
-        if (tm.role === INTEGRATOR_ROLE && !isPerson(meta.caller))
+        if (tm.role === INTEGRATOR_ROLE && !isPerson(meta.caller) && !isAssistant(meta))
           throw Object.assign(new Error("only a person retires the integrator"), { code: "denied" });
         const running = db.prepare("SELECT id FROM team_requests WHERE teammate = ? AND state = 'running'").get(tm.agent);
         if (running || tm.state === "running") throw Object.assign(new Error(`${tm.agent} is working on a request; wait for it, or stop its session first`), { code: "denied" });
@@ -769,15 +777,15 @@ export default {
 
     ctx.tool("team.list", {
       description: "The teammates that serve a project: role, brief, state, queue length and last result. With no project, the caller's own (from its thread); a person with no thread and no project sees every teammate.",
-      input: { type: "object", properties: { project: { type: "string" } } },
+      input: { type: "object", properties: { project: { type: "string" }, all: { type: "boolean" } } },
       // PERSON_ONLY: not because listing needs a proof (a session or teammate reads this freely,
       // unaffected), but because it is the only thing standing between a forged "cli"/"local"
       // label and `project` read straight from the input, or every project's teammates at once.
       run: async (i, meta) => {
         let project = null;
-        try { project = await projectOf(meta, i); } catch { project = null; }
+        if (!(i.all && (isPerson(meta.caller) || isAssistant(meta)))) { try { project = await projectOf(meta, i); } catch { project = null; } }
         const rows = project ? serving(project)
-          : isPerson(meta.caller) ? db.prepare("SELECT * FROM team_teammates WHERE retired_at IS NULL").all().map(shapeT)
+          : (isPerson(meta.caller) || isAssistant(meta)) ? db.prepare("SELECT * FROM team_teammates WHERE retired_at IS NULL").all().map(shapeT)
           : [];
         return rows.map(tm => {
           const queued = Number(/** @type {any} */ (db.prepare("SELECT COUNT(*) AS n FROM team_requests WHERE teammate = ? AND state = 'queued'").get(tm.agent)).n);

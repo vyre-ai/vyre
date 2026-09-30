@@ -696,4 +696,9 @@ utilization, resets_at), the slot chip (per project), the waiting queue, "Resume
   (archived_at in the marker; list hides it unless archived:true). team.add never had a confirm step, so
   @role's create needs nothing removed there: native-core's card was the only gate. Still TODO: gate.said.match
   provenance for non-person callers, team.list all:true, team.ask explicit project, charters, duties, filler.
+- Assistant allowed everywhere (team-lead): meta.agentKind === "assistant" (sessions' Wave A, vyred's stored
+  agent row) passes projects.rename/archive/history, team.add/retire, team.ask {project}, team.list {all}.
+  Teammates still refused. P17 gate.said.match check is a TODO on each. Not live-testable until sessions-02
+  lands meta.agentKind; unit-tested isAssistant only. Full core/team + core/projects + docs suites: only the
+  stage flake (platform fixing) fails.
 

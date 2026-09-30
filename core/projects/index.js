@@ -167,8 +167,9 @@ export default {
       description: "Answer the one question about version history for a project's folder: keep: true makes the folder a local git repo (no GitHub, no remote) so each session gets its own copy, branch and Undo; keep: false says no and it is never asked again. A folder that already has a history is left as it is. The person, or their agent on their request.",
       input: { type: "object", required: ["project", "keep"], properties: { project: str, keep: { type: "boolean" } } },
       callers: [...OWNER, "mcp"],
-      run: async ({ project, keep }) => {
+      run: async ({ project, keep }, meta = {}) => {
         const p = P.resolve(project);
+        await ownOrSession(meta, p.slug);
         if (!keep) { setHistory(p.slug, "declined"); return { project: p.slug, state: "declined" }; }
         const g = await ctx.call("github.project.local-init", { project: p.slug }).catch(e => ({ error: { code: "unavailable", message: String(e && e.message || e) } }));
         if (g.error) throw Object.assign(new Error(g.error.message), { code: g.error.code });
@@ -178,6 +179,9 @@ export default {
     });
     // Rename and archive are the person's, and their agent's on their behalf: a session in that project.
     const ownOrSession = async (meta, slug) => {
+      // The person's assistant acts for them across every project (vyred's verified identity, meta.agentKind).
+      // TODO(P17): also require the person's own words asked for it (gate.said.match) once the Gate lands.
+      if (meta.agentKind === "assistant") return;
       if (OWNER.includes(String(meta.caller || "").split(":")[0]) && !isAgent(meta.caller)) return;
       const t = meta.thread && await ctx.call("threads.get", { thread: meta.thread }).catch(() => null);
       if (isAgent(meta.caller) || !(t && t.data && t.data.thread && t.data.thread.project === slug))

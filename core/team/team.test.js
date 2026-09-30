@@ -18,7 +18,7 @@ import { fileURLToPath } from "node:url";
 import { start } from "../daemon/index.js";
 import { call } from "../daemon/client.js";
 import { tempHome, present } from "../../test/helpers.js";
-import { neutralize, rotationContext } from "./index.js";
+import { neutralize, rotationContext, isAssistant } from "./index.js";
 import { open as openStore } from "../store/index.js";
 import { paths } from "../config/index.js";
 import { execFileSync } from "node:child_process";
@@ -867,4 +867,17 @@ test("team.project-append: no em dash, ever (style's own rule, and this text rid
   assert.ok(!(await tool("team.project-append", { project: project.slug })).text.includes("—"));
   await tool("team.add", { project: project.slug, role: "design", brief: "visual design" });
   assert.ok(!(await tool("team.project-append", { project: project.slug })).text.includes("—"));
+});
+
+test("isAssistant reads only vyred's verified agentKind, and team.list all:true shows every project to a person", async t => {
+  assert.equal(isAssistant({ agentKind: "assistant" }), true);
+  assert.equal(isAssistant({ agentKind: "teammate" }), false);
+  assert.equal(isAssistant({ caller: "mcp:agent:assistant" }), false);
+  const { tool, project, launches, root } = await boot(t);
+  const other = await tool("projects.create", { name: "Northwind Bakery" });
+  await tool("team.add", { project: project.slug, role: "design" });
+  await tool("team.add", { project: other.slug, role: "ops" });
+  const { session } = await realSession(root, tool, launches, project.slug);
+  assert.equal((await tool("team.list", { all: true })).length, 2);
+  assert.equal((await tool("team.list", {}, "cli", { session })).length, 1);
 });

@@ -4391,6 +4391,7 @@ The teammate itself closes its running request as failed, with why. request may 
 The teammates that serve a project: role, brief, state, queue length and last result. With no project, the caller's own (from its thread); a person with no thread and no project sees every teammate.
 
 - Input:
+  - `all` boolean
   - `project` string
 - Callers: any caller
 

@@ -4,6 +4,10 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+- The person's assistant can now use `projects.rename`, `projects.archive`, `projects.history`,
+  `team.add`, `team.retire`, `team.ask {project}` and `team.list {all: true}` in any project, like the
+  person. It is recognised by vyred's own verified caller identity, never by anything a caller sends.
+
 - Projects and teammates are now tools an agent can use for the person: `projects.rename` (name only;
   slug, folder, threads and tile stay), `projects.archive` (hides it from the list, `archived: false`
   brings it back, `projects.list {archived: true}` shows them), and `team.add`, all allowed for a session
