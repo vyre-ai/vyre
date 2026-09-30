@@ -1,0 +1,38 @@
+# The Mac install tests start fake vyred processes (a stub launchctl, a fake root installer). They must never
+# outlive the tests: 502 were found orphaned on a CI host and 82 on a person's Mac. This runs the file on a
+# hosted Linux runner, counts the processes naming a vyre-mac-* temp folder before and after, and fails unless
+# the count is the same.
+name: leak-check
+on:
+  push:
+    paths: ["test/install-mac-server.test.js", "test/reap.mjs", "test/reap.test.js", "scripts/install-mac-server.sh", ".github/workflows/leak-check.yml"]
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: leak-check-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  leak:
+    strategy:
+      fail-fast: false
+      matrix:
+        node: [22, 24]
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+      - name: Count, run, count
+        run: |
+          count() { ps -axo command= | grep -c '[/]vyre-mac-' || true; }
+          before=$(count)
+          echo "vyre-mac processes before: $before"
+          node --test "test/install-mac-server.test.js" "test/reap.test.js"
+          sleep 2
+          after=$(count)
+          echo "vyre-mac processes after: $after"
+          if [ "$after" != "$before" ]; then ps -axo pid,command | grep '[/]vyre-mac-' | head -20; echo "LEAK: $before before, $after after"; exit 1; fi
+          echo "no leak: $before before, $after after" | tee -a "$GITHUB_STEP_SUMMARY"
