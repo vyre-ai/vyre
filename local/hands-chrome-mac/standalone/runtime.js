@@ -22,7 +22,7 @@ export const sockPathOf = (/** @type {string} */ dataDir, platform = process.pla
 function safeUser() { try { return os.userInfo().username; } catch { return "user"; } }
 
 /** Tools the model may not call: the person's own controls, and the Gate's release (chrome.send stands in for it). */
-const HIDDEN = new Set(["chrome.release", "chrome.interject", "chrome.install"]);
+const HIDDEN = new Set(["chrome.release", "chrome.interject", "chrome.install", "chrome.pause", "chrome.plan.edit", "chrome.voice"]);
 
 /**
  * @param {{ dataDir?: string, sockPath?: string, hostDir?: string, extensionDir?: string, version?: string, log?: (m: string) => void, chrome?: Record<string, any> }} [o]

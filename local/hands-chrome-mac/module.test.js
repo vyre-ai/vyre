@@ -363,3 +363,18 @@ test("module: an agent's own Gate card releases nothing, and a script or API cal
   assert.equal(x.ops("page.eval").at(-1).args.asked, true);
   assert.equal((await reg.call("chrome.release", { id: held.data.id, content: {} }, "module:gate")).error.code, "denied");
 });
+
+test("module: the panel's controls (pause, plan.edit, voice) are the person's, not an agent's, and each emits its event", async t => {
+  const { reg, events, connect } = await rig(t);
+  await connect();
+  assert.ok((await reg.call("hands.grant.add", { agent: "kit" }, "cli")).data.granted);
+  await reg.call("chrome.plan", { steps: [{ id: "1", text: "Read the page" }, { id: "2", text: "Fill it in" }], title: "Intake" }, KIT);
+  for (const tool of ["chrome.pause", "chrome.plan.edit", "chrome.voice"]) assert.equal((await reg.call(tool, { step: "2", text: "x", run: "kit" }, KIT)).error.code, "denied", tool);
+  assert.equal((await reg.call("chrome.plan.edit", { run: "kit", step: "2", text: "Fill in only the name" }, "cli")).data.ok, true);
+  assert.equal((await reg.call("chrome.voice", { run: "kit", text: "skip that", final: true }, "cli")).data.ok, true);
+  assert.equal((await reg.call("chrome.pause", { run: "kit" }, "cli")).data.paused, true);
+  assert.equal(events("chrome.paused").length, 1);
+  assert.equal(events("chrome.voice").length, 1);
+  assert.equal(events("chrome.plan").at(-1).payload.steps[1].text, "Fill in only the name");
+  assert.equal(events("chrome.plan").at(-1).payload.run, "kit");
+});

@@ -30,7 +30,9 @@ test("plan: recorded, emitted with the steps, and it lets that agent act", () =>
   assert.equal(os.state, "planning");
   const [e] = on("chrome.plan");
   assert.deepEqual([e.agent, e.thread, e.steps.length], ["kit", "t1", 2]);
-  assert.deepEqual(e.steps[0], { id: "1", text: "Open the intake page", risk: "low" });
+  assert.deepEqual(e.steps[0], { id: "1", text: "Open the intake page", risk: "low", state: "todo" });
+  assert.equal(e.run, "t1", "every event carries the run (the thread)");
+  assert.equal(e.title, "Open the intake page", "a plan with no title takes its first step");
   os.guard("kit", AGENT);
   assert.equal(os.state, "running");
   assert.throws(() => os.guard("juno", "mcp:agent:juno"), { code: "plan_first" }, "another agent needs its own plan");
@@ -129,4 +131,50 @@ test("words an agent wrote go through the cleaner before they are published", ()
   const { os, on } = rig({ deps: { clean: (/** @type {string} */ s) => s.replace(/https?:\/\/\S+/g, "[url]") } });
   os.plan("kit", [{ id: "1", text: "Open https://harlow.example/x?token=abc" }]);
   assert.equal(on("chrome.plan")[0].steps[0].text, "Open [url]");
+});
+
+test("panel contract: step state vocabulary, plan title, run on every event", () => {
+  const { os, events, on } = rig();
+  os.plan("kit", STEPS, { thread: "t9", title: "Fill in the intake form" });
+  assert.equal(on("chrome.plan")[0].title, "Fill in the intake form");
+  os.stepStarted("1"); os.stepDone("1"); os.stepStarted("2"); os.stepFailed("2", "captcha");
+  assert.deepEqual(on("chrome.step").map(e => e.state), ["current", "done", "current", "failed"]);
+  assert.ok(events.every(e => e.run === "t9"), "run is on every event: " + JSON.stringify(events.map(e => [e.type, e.run])));
+  assert.deepEqual(os.snapshot().steps.map(s => s.state), ["done", "failed"]);
+});
+
+test("plan.edit: only a step that has not started can be retexted, and the plan is sent again", () => {
+  const { os, on } = rig();
+  os.plan("kit", STEPS, { thread: "t1" });
+  os.stepStarted("1");
+  assert.throws(() => os.editStep({ run: "t1", step: "1", text: "x" }), { code: "bad_request" }, "a running step is steered, not edited");
+  assert.deepEqual(os.editStep({ run: "t1", step: "2", text: "Fill in only the name" }), { ok: true, step: "2" });
+  assert.equal(on("chrome.plan").at(-1).steps[1].text, "Fill in only the name");
+  assert.throws(() => os.editStep({ run: "nope", step: "2", text: "x" }), { code: "not_found" });
+  assert.throws(() => os.editStep({ run: "t1", step: "9", text: "x" }), { code: "bad_request" });
+});
+
+test("pause: holds like a stop until the person resumes, and says chrome.paused", async () => {
+  const { os, on, pushed } = rig();
+  os.plan("kit", STEPS, { thread: "t1" });
+  os.guard("kit", AGENT);
+  const r = await os.pause({ run: "t1" });
+  assert.equal(r.paused, true);
+  assert.equal(on("chrome.paused").length, 1);
+  assert.deepEqual(pushed.at(-1), { event: "stop", by: "user" });
+  assert.throws(() => os.guard("kit", AGENT), { code: "stopped" });
+  await os.resume({});
+  assert.doesNotThrow(() => os.guard("kit", AGENT));
+  await assert.rejects(async () => os.pause({ run: "nope" }), { code: "not_found" });
+});
+
+test("voice: a live phrase is shown, and only a final phrase reaches the agent, once", () => {
+  const { os, on } = rig();
+  os.plan("kit", STEPS, { thread: "t1" });
+  os.voice({ run: "t1", text: "skip the", final: false });
+  assert.equal(on("chrome.interjected").length, 0);
+  os.voice({ run: "t1", text: "skip the phone number", final: true });
+  assert.deepEqual(on("chrome.voice").map(e => [e.text, e.final]), [["skip the", false], ["skip the phone number", true]]);
+  assert.equal(os.guard("kit", AGENT).interjection, "skip the phone number");
+  assert.equal(os.guard("kit", AGENT).interjection, undefined, "once");
 });

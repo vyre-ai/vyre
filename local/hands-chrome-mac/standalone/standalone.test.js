@@ -46,7 +46,7 @@ test("mcp: initialize, tool names have no dots, the person's own tools and the r
   const names = list.map((/** @type {any} */ x) => x.name);
   for (const n of names) assert.match(n, /^[A-Za-z0-9_-]{1,64}$/, n);
   for (const want of ["chrome_tabs", "chrome_snapshot", "chrome_act", "chrome_fill", "chrome_batch", "chrome_ghl", "chrome_send", "chrome_stop", "chrome_resume", "chrome_status"]) assert.ok(names.includes(want), want);
-  for (const no of ["chrome_release", "chrome_interject", "chrome_install"]) assert.ok(!names.includes(no), no);
+  for (const no of ["chrome_release", "chrome_interject", "chrome_install", "chrome_pause", "chrome_plan_edit", "chrome_voice"]) assert.ok(!names.includes(no), no);
   assert.ok(list.every((/** @type {any} */ x) => !/at the Gate/.test(x.description)), "no mention of a Gate in a world with none");
   assert.equal(wireName("chrome.snapshot"), "chrome_snapshot");
 });

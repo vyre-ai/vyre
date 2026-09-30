@@ -361,13 +361,13 @@ export default {
 
     // Oversight: the plan, the person's word, and stop.
     tool("chrome.plan", "Post what you are about to do in the person's Chrome, as a short list of steps ({id, text, risk?}), before your first action: they see it and can interject or stop. Then report each step with step and status (running, done, failed), and finish when the run is over.",
-      obj({ steps: { type: "array", items: obj({ id: str, text: str, risk: str }, ["text"]) }, step: str, status: { type: "string", enum: ["running", "done", "failed"] }, why: str, finish: bool, agent: str }),
+      obj({ title: str, steps: { type: "array", items: obj({ id: str, text: str, risk: str }, ["text"]) }, step: str, status: { type: "string", enum: ["running", "done", "failed"] }, why: str, finish: bool, agent: str }),
       async (i, meta) => {
         const agent = agentOf(meta.caller);
         await requireGrant(agent);
         const name = agent || (i.agent ? String(i.agent) : "you");
         return via.run(meta, async () => {
-          if (Array.isArray(i.steps)) return oversight.plan(name, i.steps, { thread: meta.thread });
+          if (Array.isArray(i.steps)) return oversight.plan(name, i.steps, { thread: meta.thread, title: i.title });
           if (i.finish) return oversight.finish(name);
           if (i.step) return i.status === "done" ? oversight.stepDone(i.step) : i.status === "failed" ? oversight.stepFailed(i.step, i.why) : oversight.stepStarted(i.step);
           throw Object.assign(new Error("bad_request: give steps to post a plan, or step and status to report one"), { code: "bad_request" });
@@ -382,6 +382,17 @@ export default {
     tool("chrome.resume", "Carry on after a stop, once the person has answered. Their answer, if any, reaches the agent on its next call.",
       obj({ answer: str }),
       (i, m) => via.run(m, async () => oversight.resume({ answer: i.answer })).catch(e => { throw wrapErr(e); }), { callers: PEOPLE });
+
+    // The panel's own controls (the person, never a model): pause, retext a step that has not started, and the live voice line.
+    tool("chrome.pause", "Pause the run at once, as the person from the panel. It holds exactly like Esc until they resume.",
+      obj({ run: str }),
+      (i, m) => via.run(m, async () => oversight.pause({ run: i.run })).catch(e => { throw wrapErr(e); }), { callers: PEOPLE });
+    tool("chrome.plan.edit", "Change the words of a plan step that has not started, as the person from the panel. A running or finished step cannot be edited, only steered with chrome.interject. The plan is sent again.",
+      obj({ run: str, step: str, text: str }, ["step", "text"]),
+      (i, m) => via.run(m, async () => oversight.editStep({ run: i.run, step: i.step, text: i.text })).catch(e => { throw wrapErr(e); }), { callers: PEOPLE });
+    tool("chrome.voice", "The person's live speech while an agent works in Chrome, for the panel to show. A final phrase also reaches the agent as an interjection, once, on its next call.",
+      obj({ run: str, text: str, final: bool }, ["text"]),
+      (i, m) => via.run(m, async () => oversight.voice({ run: i.run, text: i.text, final: i.final === true })).catch(e => { throw wrapErr(e); }), { callers: PEOPLE });
 
     // The Gate's own call once the person approved a held act.
     ctx.tool("chrome.release", {

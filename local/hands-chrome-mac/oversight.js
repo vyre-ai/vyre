@@ -17,7 +17,7 @@ import { performance } from "node:perf_hooks";
 /** @param {string} code @param {string} message */
 const refuse = (code, message) => Object.assign(new Error(message), { code });
 
-const STEP_STATUS = new Set(["pending", "running", "done", "failed"]);
+const STEP_STATUS = new Set(["pending", "running", "done", "failed", "skipped"]);
 const clip = (/** @type {unknown} */ s, n = 300) => { const t = String(s ?? "").replace(/\s+/g, " ").trim(); return t.length > n ? t.slice(0, n - 1) + "…" : t; };
 
 /**
@@ -25,10 +25,14 @@ const clip = (/** @type {unknown} */ s, n = 300) => { const t = String(s ?? "").
  *   emit: events for the panel (chrome.plan, chrome.step, ...). push: tell the extension (the bridge's push).
  *   clean: what an agent's own words pass through before they are published.
  */
-export function createOversight({ emit = () => {}, push = () => false, now = () => performance.now(), clean = s => s } = {}) {
+export function createOversight({ emit: rawEmit = () => {}, push = () => false, now = () => performance.now(), clean = s => s } = {}) {
   /** @type {"idle"|"planning"|"running"|"stopped"|"waiting_input"} */
   let state = "idle";
-  /** @type {Map<string, { thread?: string, steps: { id: string, text: string, risk?: string, status: string }[] }>} */
+  // Every event carries `run`: the thread the panel's pills already use, or the agent when there is none.
+  const emit = (/** @type {string} */ type, /** @type {any} */ payload) => rawEmit(type, { ...payload, run: payload && (payload.thread || payload.agent) ? String(payload.thread || payload.agent) : (active ? String((plans.get(active) && /** @type {any} */ (plans.get(active)).thread) || active) : "") });
+  /** The panel's step vocabulary. */
+  const STATE_OF = /** @type {Record<string, string>} */ ({ pending: "todo", running: "current", done: "done", failed: "failed", skipped: "skipped" });
+  /** @type {Map<string, { thread?: string, title?: string, steps: { id: string, text: string, risk?: string, status: string }[] }>} */
   const plans = new Map();
   /** @type {string|null} the agent the panel is showing */
   let active = null;
@@ -51,9 +55,21 @@ export function createOversight({ emit = () => {}, push = () => false, now = () 
     s.status = status;
     if (status === "running" && state !== "stopped" && state !== "waiting_input") state = "running";
     const p = active ? plans.get(active) : null;
-    emit("chrome.step", { agent: active, ...(p && p.thread ? { thread: p.thread } : {}), id: s.id, status, ...(why ? { why: clean(clip(why)) } : {}) });
+    emit("chrome.step", { agent: active, ...(p && p.thread ? { thread: p.thread } : {}), id: s.id, status, state: STATE_OF[status] || status, ...(why ? { why: clean(clip(why)) } : {}) });
     return { id: s.id, status };
   }
+
+  /** The agent whose plan has this run id (its thread, or its own name). @param {string|undefined} run */
+  const agentOfRun = run => {
+    if (!run) return active;
+    for (const [agent, p] of plans) if (p.thread === String(run) || agent === String(run)) return agent;
+    return null;
+  };
+  /** The whole plan as the panel draws it. @param {string} agent */
+  const planFrame = agent => {
+    const p = /** @type {any} */ (plans.get(agent));
+    return { agent, ...(p.thread ? { thread: p.thread } : {}), title: p.title, steps: p.steps.map((/** @type {any} */ { status, ...s }) => ({ ...s, state: STATE_OF[status] || status })) };
+  };
 
   const self = {
     get state() { return state; },
@@ -64,12 +80,12 @@ export function createOversight({ emit = () => {}, push = () => false, now = () 
     /** What the panel draws. */
     snapshot() {
       const p = active ? plans.get(active) : null;
-      return { state, agent: active, thread: p ? p.thread || null : null, steps: p ? p.steps.map(s => ({ ...s })) : [], queued: queue.length, stoppedBy, question, stopLatencyMs: self.stopLatencyMs };
+      return { state, agent: active, thread: p ? p.thread || null : null, title: p ? p.title || null : null, steps: p ? p.steps.map(s => ({ ...s, state: STATE_OF[s.status] || s.status })) : [], queued: queue.length, stoppedBy, question, stopLatencyMs: self.stopLatencyMs };
     },
 
     /**
      * An agent's plan for its run. Replaces its last plan.
-     * @param {string} agent @param {{ id: string, text: string, risk?: string }[]} steps @param {{ thread?: string }} [meta]
+     * @param {string} agent @param {{ id: string, text: string, risk?: string }[]} steps @param {{ thread?: string, title?: string }} [meta]
      */
     plan(agent, steps, meta = {}) {
       if (!agent) throw refuse("bad_request", "a plan needs an agent");
@@ -82,11 +98,55 @@ export function createOversight({ emit = () => {}, push = () => false, now = () 
         if (!s || !String(s.text || "").trim()) throw refuse("bad_request", `step "${id}" has no text`);
         return { id, text: clean(clip(s.text)), ...(s.risk ? { risk: clip(s.risk, 40) } : {}), status: "pending" };
       });
-      plans.set(agent, { ...(meta.thread ? { thread: String(meta.thread) } : {}), steps: list });
+      const title = meta.title ? clean(clip(meta.title, 120)) : clean(clip(list[0].text, 80));
+      plans.set(agent, { ...(meta.thread ? { thread: String(meta.thread) } : {}), title, steps: list });
       active = agent;
       if (state === "idle" || state === "planning" || state === "running") state = "planning";
-      emit("chrome.plan", { agent, ...(meta.thread ? { thread: String(meta.thread) } : {}), steps: list.map(({ status, ...s }) => s) });
+      emit("chrome.plan", planFrame(agent));
       return { ok: true, steps: list.length };
+    },
+
+    /**
+     * The person retexts a step that has not started (a running or finished step cannot be edited, only steered). Resends the plan.
+     * @param {{ run?: string, step: string, text: string }} o
+     */
+    editStep({ run, step: id, text }) {
+      const agent = agentOfRun(run);
+      const pl = agent ? plans.get(agent) : null;
+      if (!agent || !pl) throw refuse("not_found", "there is no plan for that run");
+      const s = pl.steps.find(x => x.id === String(id));
+      if (!s) throw refuse("bad_request", `no step "${id}" in the plan`);
+      if (s.status !== "pending") throw refuse("bad_request", `step "${id}" has already started; steer the agent instead`);
+      const t = clean(clip(text));
+      if (!t) throw refuse("bad_request", "say what the step should say");
+      s.text = t;
+      emit("chrome.plan", planFrame(agent));
+      return { ok: true, step: s.id };
+    },
+
+    /**
+     * The person pauses the run (the panel's Pause): the same hold as a stop, resumed with resume().
+     * @param {{ run?: string }} [o]
+     */
+    pause({ run } = {}) {
+      if (run && !agentOfRun(run)) throw refuse("not_found", "there is no run with that id");
+      if (state === "stopped") return Promise.resolve({ ok: true, paused: true, already: true });
+      const t0 = now();
+      state = "stopped";
+      stoppedBy = "user";
+      emit("chrome.paused", { agent: active });
+      return Promise.resolve(push({ event: "stop", by: "user" })).catch(() => false).then(() => ({ ok: true, paused: true, already: false, latencyMs: Math.max(0, now() - t0) }));
+    },
+
+    /**
+     * What the person says aloud, live, for the panel to show. A final phrase reaches the agent as an interjection.
+     * @param {{ run?: string, text: string, final?: boolean }} o
+     */
+    voice({ run, text, final = false }) {
+      const t = clean(clip(text, 1000));
+      emit("chrome.voice", { agent: active, ...(run ? { run: String(run) } : {}), text: t, final: Boolean(final) });
+      if (final && t) self.interject({ from: "voice", text: t });
+      return { ok: true };
     },
     /** @param {string} id */ stepStarted: id => step("running", id),
     /** @param {string} id */ stepDone: id => step("done", id),
