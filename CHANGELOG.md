@@ -4,6 +4,10 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### tests: hands-chrome waits 30 s for Chrome's DevTools port
+
+- A hosted runner sometimes takes longer than 10 s to start headless Chrome ("Chrome did not print its DevTools port in time"). That flake predates the mock-keychain flags (it failed on work/native-core-0.2 runs 4932f92d and 3ff930c6, before 47dafe78 existed; the flags are the only change to that launch and drop nothing), so the wait is 30 s. A launch that is truly broken still fails when Chrome exits early.
+
 #### tests: every Chrome launch carries the mock-keychain flags
 
 - Chrome on macOS reached for the login Keychain and put a real dialog on the user's screen. `lib/chrome-flags` exports `CHROME_SAFE` (`--use-mock-keychain`, `--password-store=basic`), spread into every Chrome launch in the Deck shot and browser scripts, the native-bar run, the vyrecode harness, hands-chrome's and the onboarding page's tests, the docs build, design-audit, the iOS icon script and the app-perf playwright launch. `test/chrome-flags.test.js` fails on any file that launches Chrome without them (containers' own Chrome and the fakes are listed as exempt, each with why).
