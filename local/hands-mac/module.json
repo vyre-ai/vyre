@@ -7,7 +7,7 @@
   "does": { "tools": ["hands.observe", "hands.find", "hands.act", "hands.commit", "hands.release", "hands.stop", "hands.grant.list", "hands.grant.add", "hands.grant.remove"] },
   "watches": { "emits": ["hands.acted", "hands.stopped", "hands.resumed"] },
   "shows": {},
-  "needs": { "gate": ["hands:mac sender, offered if the gate module is present; degrades gracefully if not"] },
+  "needs": {},
   "teaches": {
     "tips": [
       {"id": "stop", "text": "While Vyre drives the Mac a pill says so. Press `Esc` or `⌃⌃` to stop it at once.", "surfaces": ["capsule"], "level": "first-use", "trigger": "on-use", "since": "0.1.0", "key": "Esc"},

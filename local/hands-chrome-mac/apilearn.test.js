@@ -5,7 +5,7 @@
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { learn, templatePath, looksLikeId, shapeOf, mergeShape, authKind, mergeCatalog, buildCall, MAX_ENTRIES } from "./shared/apilearn.js";
+import { learn, templatePath, looksLikeId, shapeOf, mergeShape, authKind, mergeCatalog, buildCall, MAX_ENTRIES } from "./extension/shared/apilearn.js";
 
 const UUID = "3f2b8c1e-9a47-4d55-b0c1-7e6d5a4c3b2a";
 const LOC = "Xq3RtYuIoPaSdFgHjKlZ";

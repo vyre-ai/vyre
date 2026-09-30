@@ -12,8 +12,8 @@ import fs from "node:fs";
 import path from "node:path";
 import { encode, reader } from "./native-host/stdio.js";
 import { socketPath } from "./native-host/host.js";
-import * as proto from "./shared/proto.js";
-import * as redact from "./shared/redact.js";
+import * as proto from "./extension/shared/proto.js";
+import * as redact from "./extension/shared/redact.js";
 
 export { socketPath };
 
@@ -115,6 +115,11 @@ export function createBridge({ sockPath = socketPath(), timeoutMs = 30_000, opTi
 
   /** redact.value, plus redact.url on every field called url (a query parameter named token is a secret whatever its value looks like). @param {any} v */
   function clean(v) {
+    // Screenshot pixels are base64 that the text rules would corrupt; they hold no credential.
+    if (v && typeof v === "object" && !Array.isArray(v) && v.image && typeof v.image.data === "string") {
+      const { image, ...rest } = v;
+      return { ...urls(redact.value(rest), 0), image };
+    }
     return urls(redact.value(v), 0);
   }
   /** @param {any} v @param {number} depth @returns {any} */

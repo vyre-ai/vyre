@@ -453,11 +453,12 @@ function heldResult(snap, target, why) {
  * Act on one already-bound control: hold, verify a release, then do it.
  * @param {any} ctx @param {number} tabId @param {any} snap @param {any} ctl @param {string} kind @param {any} value @param {any} release
  */
-async function doAct(ctx, tabId, snap, ctl, kind, value, release) {
+async function doAct(ctx, tabId, snap, ctl, kind, value, release, asked = false) {
   if (ctl.enabled === false) return { ok: false, why: `${JSON.stringify(ctl.name || ctl.role)} is disabled right now`, control: brief(ctl) };
   const h = holdFor(snap, ctl, kind, value);
   const want = release && (release.sig || release.signature);
-  if (h.held && !want) return heldResult(snap, h.target, h.why);
+  // asked: the module says the person drove this call themselves, which is the approval.
+  if (h.held && !want && !asked) return heldResult(snap, h.target, h.why);
   if (want) {
     // The person approved a page state, not a control name. If the page is not that state any more, do nothing.
     if (signatureOf(snap, h.target) !== String(want)) throw err("changed", "the page changed since it was held, so nothing was done; look again and ask again");
@@ -518,7 +519,7 @@ export default {
       if ((kind === "type" || kind === "select" || kind === "press") && (args.value === undefined || args.value === null)) throw err("bad_request", `${kind} needs a value`);
       const sel = selectorArg(args.selector);
       const snap = await snapshot(ctx, tabId);
-      return doAct(ctx, tabId, snap, bind(sel, snap), kind, args.value, args.release);
+      return doAct(ctx, tabId, snap, bind(sel, snap), kind, args.value, args.release, args.asked === true);
     },
 
     "page.fill": async (args, ctx) => {
@@ -541,7 +542,7 @@ export default {
       const form = bound[0].form;
       const btn = after.controls.find((/** @type {any} */ c) => c.submit && c.form === form) || after.controls.find((/** @type {any} */ c) => c.submit);
       if (!btn) return { ok: true, filled, fields: summary, submitted: false, why: "no submit control found" };
-      const r = await doAct(ctx, tabId, after, btn, "click", undefined, args.release);
+      const r = await doAct(ctx, tabId, after, btn, "click", undefined, args.release, args.asked === true);
       return { ...r, filled, ...(r.ok ? { submitted: true } : {}) };
     },
 

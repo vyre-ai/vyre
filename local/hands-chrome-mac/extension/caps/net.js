@@ -17,8 +17,8 @@
 // credentials included), so the page's own cookies authenticate it and no credential is handed to
 // anything outside the browser.
 
-import * as redact from "../../shared/redact.js";
-import { fail } from "../../shared/proto.js";
+import * as redact from "../shared/redact.js";
+import { fail } from "../shared/proto.js";
 
 const DEFAULT_MAX_REQUESTS = 500;
 const DEFAULT_MAX_BYTES = 20 * 1024 * 1024;

@@ -12,7 +12,7 @@
 // returned or logged, and the response comes back through redact.request. A call that is not GET
 // or HEAD is acting: refused while stop is in force and checked against the floor.
 
-import { learn, mergeCatalog, buildCall } from "../../shared/apilearn.js";
+import { learn, mergeCatalog, buildCall } from "../shared/apilearn.js";
 import { records, target, refuse, pageFetch, present, start } from "./net.js";
 
 const KEY = "api.catalog";

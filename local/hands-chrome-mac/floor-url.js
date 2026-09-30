@@ -12,7 +12,7 @@
 // bundle id. Deployments add to it through cfg: { box, blind: [], hands: [], open: [] }, where each
 // entry is a host ("example.com" covers its subdomains) or a host plus path ("example.com/admin").
 
-import { ACTING } from "./shared/proto.js";
+import { ACTING } from "./extension/shared/proto.js";
 
 /** Origin of a URL, or protocol//host for one URL() gives "null" for (chrome:, about:). @param {string|null|undefined} u */
 export function originOf(u) {

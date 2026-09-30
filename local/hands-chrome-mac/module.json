@@ -4,7 +4,7 @@
   "description": "Deep control of your own Chrome through the Vyre extension: read a page in one call, fill and act on it, run a batch with no round trips, look at DevTools (DOM, styles, scripts, console, network) and learn an app's API. The agent posts its plan first, you can interject or press Esc, credentials are masked before any model sees them, and an outward act holds at the Gate.",
   "roles": ["local"],
   "requires": [],
-  "does": { "tools": ["chrome.tabs", "chrome.snapshot", "chrome.act", "chrome.fill", "chrome.eval", "chrome.wait", "chrome.screenshot", "chrome.batch", "chrome.inspect", "chrome.sources", "chrome.console", "chrome.net", "chrome.api", "chrome.state", "chrome.click", "chrome.type", "chrome.open", "chrome.plan", "chrome.interject", "chrome.stop", "chrome.resume", "chrome.release", "chrome.status", "chrome.install"] },
+  "does": { "tools": ["chrome.tabs", "chrome.snapshot", "chrome.act", "chrome.fill", "chrome.eval", "chrome.wait", "chrome.screenshot", "chrome.batch", "chrome.inspect", "chrome.sources", "chrome.console", "chrome.net", "chrome.api", "chrome.ghl", "chrome.state", "chrome.click", "chrome.type", "chrome.open", "chrome.plan", "chrome.interject", "chrome.stop", "chrome.resume", "chrome.release", "chrome.status", "chrome.install"] },
   "watches": { "emits": ["chrome.acted", "chrome.plan", "chrome.step", "chrome.interjected", "chrome.stopped", "chrome.resumed", "chrome.waiting", "chrome.connected", "chrome.disconnected"] },
   "shows": {},
   "needs": {},

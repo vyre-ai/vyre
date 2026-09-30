@@ -72,6 +72,7 @@ const TAB_OPS = { list: "tabs.list", find: "tabs.find", use: "tabs.use", open: "
 const SOURCE_OPS = { list: "dev.sources.list", get: "dev.sources.get", search: "dev.sources.search" };
 const NET_OPS = { start: "net.start", list: "net.list", get: "net.get", watch: "net.watch", unwatch: "net.unwatch", on: "net.on", off: "net.off", rules: "net.rules", replay: "net.replay" };
 const API_OPS = { learn: "api.learn", catalog: "api.catalog", call: "api.call" };
+const GHL_OPS = { context: "ghl.context", section: "ghl.section", flows: "ghl.flows", run: "ghl.run" };
 
 /** @param {any} v */ const isObj = v => v && typeof v === "object" && !Array.isArray(v);
 
@@ -284,6 +285,9 @@ export default {
     tool("chrome.api", "An app's own API, learned from its traffic. learn: reduce captured requests to a catalog (method, path, query and body shape, auth kind, sample status; values masked). catalog: read it. call: invoke one entry from inside the page.",
       obj({ action: { type: "string", enum: Object.keys(API_OPS) }, tab, entry: str, args: { type: "object" }, host: str, timeoutMs: timeout }, ["action"]),
       (i, m) => { const { action, ...rest } = i; return dispatch(/** @type {Record<string,string>} */ (API_OPS)[action], { ...rest, action }, m); });
+    tool("chrome.ghl", "GoHighLevel in the person's own Chrome. context: which sub-account and section the open tab is on. section: go to Contacts, Workflows, Conversations and so on in the tab already open (it never opens another). flows: the ready-made automations. run: do one end to end, either a named flow with params or your own steps, as ONE batch inside the browser, and get back how long it took.",
+      obj({ action: { type: "string", enum: Object.keys(GHL_OPS) }, tab, section: str, locationId: str, flow: str, params: { type: "object" }, steps: { type: "array", items: { type: "object" } }, timeoutMs: timeout }, ["action"]),
+      (i, m) => { const { action, ...rest } = i; return dispatch(/** @type {Record<string,string>} */ (GHL_OPS)[action], { ...rest, action }, m); });
     pass("chrome.state", "dev.state", "What a page has stored, by name only: cookie names and flags, localStorage and sessionStorage keys. Values are never returned.", { what: { type: "array", items: { type: "string", enum: ["cookies", "local", "session"] } } });
 
     // The box's Chrome tools, same input shapes, so one prompt works against either target.

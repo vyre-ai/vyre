@@ -63,6 +63,8 @@ test("module: hands.acted carries the thread, tool call and agent of the call th
   const reg = new Registry({ db, events: new Events(db), log: () => {},
     config: { role: "local", hands: { runner: f.run, sleep: async () => {} } } });
   await reg.start(discover([path.dirname(HERE)]).filter(m => m.dir === HERE), { role: "local" });
+  // kit needs the one grant before it may drive this Mac at all (reviewer-2 H2).
+  assert.ok((await reg.call("hands.grant.add", { agent: "kit" }, "cli")).data.granted);
   const selector = { role: "AXButton", name: "7", path: "/0/0/7" };
   const r = await reg.call("hands.act", { selector, kind: "press" }, "mcp:agent:kit", { thread: "t-kit-1", call: "toolu_07" });
   assert.equal(r.data.verified, true, JSON.stringify(r));

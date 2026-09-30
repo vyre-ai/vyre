@@ -6,17 +6,20 @@
 // forget them: an op name is validated, an ACTING op is refused while the person's stop is in
 // force, and any op that names a tab (args.tabId) is checked against the URL floor first.
 //
-// Optional capabilities (devtools, net, api, ghl; vault adds itself with register()) are loaded
-// with a dynamic import inside try/catch so a missing or broken file never takes the others down.
-// GAP FOR INTEGRATION: an MV3 service worker forbids dynamic import(). It works under node and in
-// pages, but in the packed extension the four names below must become static imports (see
-// loadOptional's `importer` argument: pass one built from static imports and nothing else changes).
+// The capabilities are STATIC imports: an MV3 service worker forbids dynamic import(), so a
+// name-to-module table is the only loader that works in the packed extension as well as under
+// node. A capability that throws while registering is reported in loadReport() and the rest still
+// load. Vault adds its own with register() from its own file.
 
 import { proto } from "../lib/shared.js";
 import { err } from "../lib/err.js";
 import tabs from "./tabs.js";
 import page from "./page.js";
 import batch from "./batch.js";
+import devtools from "./devtools.js";
+import net from "./net.js";
+import api from "./api.js";
+import ghl from "./ghl.js";
 
 export const OPTIONAL = ["devtools", "net", "api", "ghl"];
 
@@ -52,13 +55,16 @@ const loadedFiles = new Set();
  * @param {(name: string) => Promise<any>} [importer]
  * @param {string[]} [names] file names under caps/ to try
  */
-export async function loadOptional(importer = name => import(`./${name}.js`), names = OPTIONAL) {
+const STATIC = { devtools, net, api, ghl };
+
+export async function loadOptional(importer = async name => ({ default: /** @type {any} */ (STATIC)[name] }), names = OPTIONAL) {
   for (const name of names) {
     if (loadedFiles.has(name)) continue;
     report.missing = report.missing.filter(n => n !== name);
     report.failed = report.failed.filter(f => f.name !== name);
     try {
       const m = await importer(name);
+      if (!m || !m.default) throw new Error(`Cannot find module './${name}.js'`);
       register(m.default);
       loadedFiles.add(name);
       report.loaded.push(name);
@@ -94,6 +100,10 @@ export async function dispatch(op, args, ctx) {
   if (!entry) throw err("unknown_op", `no such operation: ${op}`);
   if (args == null) args = {};
   if (typeof args !== "object" || Array.isArray(args)) throw err("bad_request", "args must be an object");
+  // The wire calls the tab `tab`; the page and tabs capabilities read `tabId`. Accept either and
+  // give every capability both, so no file has to know which spelling a caller used.
+  if (typeof args.tab === "number" && args.tabId === undefined) args = { ...args, tabId: args.tab };
+  else if (typeof args.tabId === "number" && args.tab === undefined) args = { ...args, tab: args.tabId };
   if (proto.ACTING.has(op) && ctx.stopped()) throw err("stopped");
   if (typeof args.tabId === "number") {
     const v = await ctx.floorAllows(args.tabId, op);

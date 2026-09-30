@@ -14,7 +14,7 @@ import path from "node:path";
 import crypto from "node:crypto";
 import { execFileSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
-import { HOST_NAME } from "../shared/proto.js";
+import { HOST_NAME } from "../extension/shared/proto.js";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 

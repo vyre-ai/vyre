@@ -13,8 +13,8 @@
 // as secret-bearing: they are redacted first and bounded after, so a cut can never leave half a
 // token that no longer matches a pattern.
 
-import * as redact from "../../shared/redact.js";
-import { fail } from "../../shared/proto.js";
+import * as redact from "../shared/redact.js";
+import { fail } from "../shared/proto.js";
 
 const IDLE_MS = 5 * 60_000;
 const HTML_MAX = 20_000;

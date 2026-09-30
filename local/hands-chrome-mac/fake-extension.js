@@ -5,7 +5,7 @@
 
 import net from "node:net";
 import { encode, reader } from "./native-host/stdio.js";
-import { PROTOCOL } from "./shared/proto.js";
+import { PROTOCOL } from "./extension/shared/proto.js";
 
 /**
  * @param {string} sockPath

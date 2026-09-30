@@ -63,7 +63,7 @@ export default {
         if (!step || typeof step.op !== "string") { halt(`step ${i} has no op`, "bad_request"); if (stopOnError) break; continue; }
         if (step.op === "batch.run") { halt("a batch cannot contain a batch", "bad_request"); if (stopOnError) break; continue; }
         try {
-          const result = await ctx.call(step.op, subst(step.args || {}, results));
+          const result = await ctx.call(step.op, { ...(args.asked === true ? { asked: true } : {}), ...subst(step.args || {}, results) });
           results.push(result);
           if (result && result.ok === false) {
             if (out.ok) { out.ok = false; out.failedAt = i; out.why = String(result.why || (result.error && result.error.message) || "the step did not succeed"); if (result.held) out.held = result; }
