@@ -572,10 +572,15 @@ test("answer: a work question never gets a personal fact, however many words it 
 
 test("facts: a person named only in the personal store answers empty with a note pointing to memory.me, for the person only", async t => {
   const { call } = await world(t);
-  assert.ok((await call("memory.me", { about: "Jordan" })).data.facts.length > 0);
-  const f = await call("memory.facts", { about: "Jordan" });
+  await call("memory.remember", { text: "My brother Zelda lives in Denver." });
+  assert.ok((await call("memory.me", { about: "Zelda" })).data.facts.length > 0, "the personal store has her");
+  const f = await call("memory.facts", { about: "Zelda" });
   assert.ok(!f.error, f.error);
-  if (!f.data.about) assert.match(f.data.note, /memory\.me/);
-  const k = await call("memory.facts", { about: "Jordan" }, "mcp:agent:kit");
+  assert.equal(f.data.about, null);
+  assert.deepEqual(f.data.facts, []);
+  assert.match(f.data.note, /memory\.me/);
+  const k = await call("memory.facts", { about: "Zelda" }, "mcp:agent:kit");
   assert.ok(!JSON.stringify(k).includes("memory.me"), "an agent is not told the personal store knows a name");
+  const none = await call("memory.facts", { about: "Nobody Atall" });
+  assert.equal(none.data.note, undefined);
 });
