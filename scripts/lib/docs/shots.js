@@ -85,10 +85,10 @@ export const SHOTS = [
     page: "get-started/onboarding.md", heading: "4. Your address" },
   { name: "onboarding-history", dir: "get-started", world: "onboard", url: "#history", width: 1280, height: 800, themes: ["dark"], shows: ONBOARD,
     // The step lists the folders it found, "N sessions" each; the sample world's transcripts live in a temp folder, whose path must not
-    // be in a picture, so it is written as the sample person's own Claude Code folder before the shot.
+    // be in a picture, so it is written as a folder in the sample person's own Claude Code folder (keeping its last segment, so rows stay different) before the shot.
     script: `await until('/[0-9]+ sessions?/.test(document.body.innerText) && !document.querySelector(".bar.moving")', 20000);
       const w = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT); const bad = []; while (w.nextNode()) bad.push(w.currentNode);
-      for (const n of bad) n.textContent = n.textContent.replace(/\\/(?:private\\/)?(?:tmp|var\\/folders)\\/[^\\s|]*/g, "/home/alex/.claude/projects");
+      for (const n of bad) n.textContent = n.textContent.replace(/\\/(?:private\\/)?(?:tmp|var\\/folders)\\/[^\\s|]*/g, m => "/home/alex/.claude/projects/" + (m.replace(/\\/+$/, "").split("/").pop() || "sessions")).replace(/a temporary folder/g, "Claude Code");
       await wait(800);`,
     alt: "Step 5: Vyre has read the Claude Code sessions on the machine and offers to group them into first projects.",
     page: "get-started/onboarding.md", heading: "5. Your history" },
