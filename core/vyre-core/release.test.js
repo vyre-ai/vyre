@@ -178,7 +178,7 @@ test(".. component is refused", (t) => {
     renameArgs("../evil"), /\.\./);
 });
 
-test("symlink is refused", (t) => {
+test("symlink outside a bundle is refused", (t) => {
   refused(t, (s) => { fs.writeFileSync(path.join(s, "f"), "x"); fs.symlinkSync("/etc/passwd", path.join(s, "l")); }, ["f", "l"], /symlink/);
 });
 
@@ -237,4 +237,53 @@ t.add(sys.argv[3]+"/a.txt","a.txt");t.close()`, out, key, path.join(d, "s")]);
 test("a signature over the bare SHA256SUMS bytes, without the domain prefix, is refused", () => {
   const kp = keypair();
   assert.throws(() => verifySums(SUMS, crypto.sign(null, SUMS, kp.priv).toString("base64"), { key: kp.key }), /does not verify/);
+});
+
+// A symlink is allowed only inside one .app bundle, pointing inside that same bundle.
+const mkApp = (/** @type {string} */ s) => {
+  const fw = path.join(s, "Vyre.app", "Contents", "Frameworks", "X.framework");
+  fs.mkdirSync(path.join(fw, "Versions", "A"), { recursive: true });
+  fs.writeFileSync(path.join(fw, "Versions", "A", "X"), "framework binary");
+  fs.symlinkSync("A", path.join(fw, "Versions", "Current"));
+  fs.symlinkSync("Versions/Current/X", path.join(fw, "X"));
+};
+
+test("in-bundle relative symlinks (framework Versions/Current) are accepted and extract as links that resolve inside", (t) => {
+  const { d, out } = build(t, mkApp, ["Vyre.app"]);
+  assert.equal(checkEntries(listTar(out)), true);
+  const dest = path.join(d, "out", "v1");
+  extract(out, dest);
+  const fw = path.join(dest, "Vyre.app", "Contents", "Frameworks", "X.framework");
+  assert.equal(fs.readlinkSync(path.join(fw, "Versions", "Current")), "A");
+  assert.equal(fs.readFileSync(path.join(fw, "X"), "utf8"), "framework binary", "the chain resolves");
+});
+
+test("every other symlink is refused: outside the bundle, absolute, outside any bundle, another bundle, the bundle itself", (t) => {
+  const cases = /** @type {[string, (s: string) => void][]} */ ([
+    ["out of the bundle", (s) => { mkApp(s); fs.symlinkSync("../../../../etc", path.join(s, "Vyre.app", "Contents", "esc")); }],
+    ["absolute", (s) => { mkApp(s); fs.symlinkSync("/etc/passwd", path.join(s, "Vyre.app", "Contents", "abs")); }],
+    ["no bundle", (s) => { fs.mkdirSync(path.join(s, "lib")); fs.writeFileSync(path.join(s, "lib", "a"), "x"); fs.symlinkSync("a", path.join(s, "lib", "l")); }],
+    ["another bundle", (s) => { mkApp(s); fs.mkdirSync(path.join(s, "Other.app")); fs.writeFileSync(path.join(s, "Other.app", "f"), "x"); fs.symlinkSync("../../Other.app/f", path.join(s, "Vyre.app", "Contents", "x")); }],
+    ["the bundle folder is a link", (s) => { fs.mkdirSync(path.join(s, "real")); fs.symlinkSync("real", path.join(s, "Vyre.app")); }],
+  ]);
+  for (const [name, setup] of cases) {
+    const { d, out } = build(t, setup, ["."]);
+    assert.throws(() => extract(out, path.join(d, "dest")), /symlink/, name);
+    assert.equal(fs.existsSync(path.join(d, "dest")), false, name);
+  }
+});
+
+test("a link that looks inside by its name but resolves outside through another link is refused after extraction", (t) => {
+  // g -> d/.. reads as the bundle itself, but d -> e/f -> the bundle, so d/.. is the bundle's parent.
+  const { d, out } = build(t, (s) => {
+    const app = path.join(s, "Vyre.app"); fs.mkdirSync(path.join(app, "e"), { recursive: true });
+    fs.symlinkSync("..", path.join(app, "e", "f"));
+    fs.symlinkSync("e/f", path.join(app, "d"));
+    fs.symlinkSync("d/..", path.join(app, "g"));
+  }, ["Vyre.app"]);
+  assert.equal(checkEntries(listTar(out)), true, "the names alone look fine");
+  const dest = path.join(d, "dest");
+  assert.throws(() => extract(out, dest), /outside its app bundle/);
+  assert.equal(fs.existsSync(dest), false);
+  assert.deepEqual(fs.readdirSync(d).sort(), ["src", "x.tgz"], "no stage left");
 });

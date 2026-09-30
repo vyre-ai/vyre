@@ -30,7 +30,7 @@ jobs:
     timeout-minutes: 20
     permissions:
       contents: read
-      actions: read        # app.yml's Android artifact
+      actions: read        # app.yml's Android artifact and capsule-mac.yml's Capsule
     env:
       TAG: ${{ github.event_name == 'push' && github.ref_name || inputs.tag }}
       # DRY RUN until the lead says go: publishing also needs the repo variable VYRE_RELEASES=go
@@ -107,6 +107,20 @@ jobs:
               if [ "$n" -gt 400 ]; then echo "**TRUNCATED: $((n - 400)) more lines. Read the full diff before approving.**"; fi
             fi
           } | tee -a "$GITHUB_STEP_SUMMARY"
+      - name: The Capsule (Vyre.app) from capsule-mac.yml on this commit, for the Mac server install
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          sha=$(git rev-parse HEAD)
+          id=$(gh run list -R "$GITHUB_REPOSITORY" --workflow capsule-mac.yml --commit "$sha" --status success -L 1 --json databaseId --jq '.[0].databaseId' || true)
+          if [ -n "$id" ] && gh run download "$id" -R "$GITHUB_REPOSITORY" -n "capsule-mac-$sha" -D "$RUNNER_TEMP/capsule" 2>/dev/null && [ -f "$RUNNER_TEMP/capsule/Vyre-capsule.app.zip" ]; then
+            echo "VYRE_CAPSULE_ZIP=$RUNNER_TEMP/capsule/Vyre-capsule.app.zip" >> "$GITHUB_ENV"
+            echo "Capsule: from capsule-mac run $id, in vyre.tgz" | tee -a "$GITHUB_STEP_SUMMARY"
+          elif [ "$PUBLISH" = true ]; then
+            echo "no green capsule-mac run on $sha: a publishing release must carry the Capsule for the Mac install"; exit 1
+          else
+            echo "Capsule: no green capsule-mac run on $sha, this dry run has no Vyre.app" | tee -a "$GITHUB_STEP_SUMMARY"
+          fi
       - name: Box files and vyre.tgz, as build-site.sh makes them (unsigned, this job never sees the signing key)
         run: |
           sh scripts/build-site.sh

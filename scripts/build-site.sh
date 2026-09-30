@@ -86,6 +86,20 @@ sh "$here/scripts/build-app.sh" --src "$src"
 name=$(cd "$src" && npm pack --silent --pack-destination "$out" | tail -n 1)
 mv "$out/$name" "$out/vyre.tgz"
 
+# The Capsule (Vyre.app, built by capsule-mac.yml) rides in vyre.tgz for the Mac server install: the
+# root installer signs it with vyre-core's own identity and launches it from the root-owned tree.
+# VYRE_CAPSULE_ZIP is that build's Vyre-capsule.app.zip (release.yml passes it when there is one).
+if [ -n "${VYRE_CAPSULE_ZIP:-}" ]; then
+  rp=$(mktemp -d)
+  tar -xzf "$out/vyre.tgz" -C "$rp"
+  unzip -q "$VYRE_CAPSULE_ZIP" -d "$rp/package" || { echo "build-site: could not unpack $VYRE_CAPSULE_ZIP" >&2; exit 1; }
+  rm -rf "$rp/package/__MACOSX"
+  [ -x "$rp/package/Vyre.app/Contents/MacOS/Vyre" ] || { echo "build-site: $VYRE_CAPSULE_ZIP has no Vyre.app/Contents/MacOS/Vyre" >&2; exit 1; }
+  COPYFILE_DISABLE=1 tar -czf "$out/vyre.tgz" -C "$rp" package
+  rm -rf "$rp"
+  echo "build-site: Vyre.app is in vyre.tgz"
+fi
+
 # The version the tarball carries, for the /start page and the installer's messages.
 node -e 'process.stdout.write(require(process.argv[1]).version + "\n")' "$src/package.json" >"$out/VERSION"
 

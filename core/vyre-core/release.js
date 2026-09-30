@@ -305,6 +305,22 @@ export function listTar(file) {
 }
 
 /**
+ * A symlink is accepted only inside a macOS .app bundle (framework Versions/Current and the like): a
+ * relative target that, taken from the link's own folder, stays inside the SAME bundle. Every other
+ * symlink is refused. (extract() then re-checks the real targets on disk.)
+ * @param {string} entry @param {string} link
+ */
+export function bundleLinkOk(entry, link) {
+  if (!link || link.startsWith("/") || link.includes("\0") || link.includes("\\")) return false;
+  const parts = entry.replace(/^\.\//, "").split("/").filter(Boolean);
+  const at = parts.findIndex((x) => x.endsWith(".app"));
+  if (at < 0 || at === parts.length - 1) return false; // not inside a bundle (the bundle folder itself is no link)
+  const root = parts.slice(0, at + 1).join("/");
+  const target = path.posix.normalize(path.posix.join(parts.slice(0, -1).join("/"), link));
+  return target === root || target.startsWith(root + "/");
+}
+
+/**
  * Refuse the WHOLE tarball if any entry is unsafe.
  * @param {TarEntry[]} entries
  */
@@ -315,7 +331,7 @@ export function checkEntries(entries) {
     if (!p || p.includes("\0")) throw new Error(`tarball entry has an empty or invalid path: ${JSON.stringify(p)}`);
     if (p.startsWith("/") || p.startsWith("\\") || /^[A-Za-z]:/.test(p)) throw new Error(`tarball entry has an absolute path: ${p}`);
     if (p.split(/[\\/]/).includes("..")) throw new Error(`tarball entry has a .. component: ${p}`);
-    if (e.type === "symlink") throw new Error(`tarball entry is a symlink: ${p}`);
+    if (e.type === "symlink" && !bundleLinkOk(p, e.linkname)) throw new Error(`tarball entry is a symlink: ${p}`);
     if (e.type === "hardlink") throw new Error(`tarball entry is a hardlink: ${p}`);
     if (e.type === "char" || e.type === "block") throw new Error(`tarball entry is a device file: ${p}`);
     if (e.type === "fifo") throw new Error(`tarball entry is a fifo: ${p}`);
@@ -331,10 +347,29 @@ function normalize(dir) {
   for (const name of fs.readdirSync(dir)) {
     const p = path.join(dir, name);
     const st = fs.lstatSync(p);
+    if (st.isSymbolicLink()) continue; // an in-bundle link the entry check accepted; extract() checks where it really points
     if (st.isDirectory()) normalize(p);
     else if (st.isFile()) fs.chmodSync(p, st.mode & 0o111 ? 0o755 : 0o644);
     else throw new Error(`extracted a non-regular file: ${name}`);
   }
+}
+
+/** After extraction: every symlink must really resolve inside its own .app bundle. @param {string} stage */
+function checkLinks(stage) {
+  const walk = (/** @type {string} */ dir, /** @type {string | null} */ bundle) => {
+    for (const name of fs.readdirSync(dir)) {
+      const p = path.join(dir, name);
+      const st = fs.lstatSync(p);
+      const b = bundle || (st.isDirectory() && name.endsWith(".app") ? p : null);
+      if (st.isSymbolicLink()) {
+        let real;
+        try { real = fs.realpathSync.native(p); } catch { throw new Error(`a link in the tarball does not resolve: ${path.relative(stage, p)}`); }
+        const base = b ? fs.realpathSync.native(b) : null;
+        if (!base || !(real === base || real.startsWith(base + path.sep))) throw new Error(`a link in the tarball points outside its app bundle: ${path.relative(stage, p)}`);
+      } else if (st.isDirectory()) walk(p, b);
+    }
+  };
+  walk(stage, null);
 }
 
 /**
@@ -360,6 +395,7 @@ export function extract(file, destDir, { tar = "/usr/bin/tar" } = {}) {
   fs.mkdirSync(stage, { mode: 0o700 });
   try {
     execFileSync(tar, ["-xzf", file, "-C", stage, "--no-same-owner", ...strip], { stdio: ["ignore", "ignore", "pipe"] });
+    checkLinks(stage);
     normalize(stage);
     fs.renameSync(stage, dest);
   } catch (e) {
