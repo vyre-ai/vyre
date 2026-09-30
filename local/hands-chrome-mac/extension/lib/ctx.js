@@ -57,26 +57,38 @@ export function createCtx({ chrome, emit = () => {} }) {
 
   // ctx.dnr: a browser-level block on a tab (chrome.declarativeNetRequest session rules). It sees WebSocket handshakes and
   // beacons from every frame of the tab, including a fresh iframe, which no page shim can. Absent in a browser without it.
-  let ruleSeq = 0;
+  // Rule ids live in 800000..899999. A monotonic counter never repeats within a run, so two tabs guarded at once cannot collide,
+  // and a worker that starts again clears whatever a crashed guard left behind (a stale rule would keep blocking a tab's sockets).
+  const RULE_MIN = 800000, RULE_MAX = 899999;
+  let ruleSeq = RULE_MIN;
+  const dnrApi = () => chrome.declarativeNetRequest && chrome.declarativeNetRequest.updateSessionRules ? chrome.declarativeNetRequest : null;
   const dnr = {
+    /** Remove every leftover rule of ours. */
+    async sweep() {
+      const api = dnrApi();
+      if (!api || !api.getSessionRules) return;
+      try { const old = (await api.getSessionRules()).map((/** @type {any} */ r) => r.id).filter((/** @type {number} */ id) => id >= RULE_MIN && id <= RULE_MAX); if (old.length) await api.updateSessionRules({ removeRuleIds: old }); } catch { /* nothing to clear */ }
+    },
     /**
-     * Block WebSockets, beacons and "other" requests of one tab to any host not in `allowHosts`. Returns an id for unblock(), or null.
-     * @param {{ tab: number, allowHosts: string[] }} o
+     * Block WebSockets, beacons and "other" requests of one tab to any host not in `allowHosts`. `ok` is false when the browser
+     * could not set the rule (no API, or it refused): the caller then reports the containment as partial.
+     * @param {{ tab: number, allowHosts: string[] }} o @returns {Promise<{ id: number|null, ok: boolean, why?: string }>}
      */
     async block({ tab, allowHosts }) {
-      const api = chrome.declarativeNetRequest;
-      if (!api || !api.updateSessionRules) return null;
-      const id = 800000 + ((++ruleSeq + Date.now()) % 100000);
+      const api = dnrApi();
+      if (!api) return { id: null, ok: false, why: "this browser has no declarativeNetRequest" };
+      const id = ruleSeq >= RULE_MAX ? (ruleSeq = RULE_MIN) : ++ruleSeq;
       const rule = { id, priority: 1, action: { type: "block" }, condition: { tabIds: [tab], resourceTypes: ["websocket", "ping", "other"], ...(allowHosts.length ? { excludedRequestDomains: allowHosts } : {}) } };
-      try { await api.updateSessionRules({ addRules: [rule] }); return id; } catch { return null; }
+      try { await api.updateSessionRules({ removeRuleIds: [id], addRules: [rule] }); return { id, ok: true }; } catch (e) { return { id: null, ok: false, why: String(/** @type {Error} */ (e).message || e).slice(0, 120) }; }
     },
     /** @param {number|null} id */
     async unblock(id) {
-      const api = chrome.declarativeNetRequest;
-      if (id == null || !api || !api.updateSessionRules) return;
+      const api = dnrApi();
+      if (id == null || !api) return;
       try { await api.updateSessionRules({ removeRuleIds: [id] }); } catch { /* already gone */ }
     },
   };
+  void dnr.sweep();
 
   /** @returns {Promise<floor.FloorConfig>} */
   async function floorConfig() {

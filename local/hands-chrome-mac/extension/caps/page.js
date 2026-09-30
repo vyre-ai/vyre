@@ -964,7 +964,7 @@ export default {
       }
       const res = (r && r.result) || {};
       const value = res.value !== undefined ? res.value : res.description;
-      return { ok: true, type: res.type, value: redact.value(value) };
+      return { ok: true, type: res.type, value: redact.value(value), ...(egress && egress.contained === "partial" ? { contained: "partial", containedWhy: egress.why || "no browser-level guard" } : {}) };
     },
 
     "page.wait": async (args, ctx) => waitFor(ctx, await tabOf(args, ctx, "page.wait"), args),

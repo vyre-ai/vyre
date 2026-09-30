@@ -348,7 +348,7 @@ const ops = {
     if (r?.exceptionDetails) return redact.value({ ok: false, error: clip(String(r.exceptionDetails.exception?.description || r.exceptionDetails.text || "error"), 4000).text });
     const o = r?.result || {};
     const v = "value" in o ? o.value : o.unserializableValue ?? o.description ?? o.type;
-    return redact.value({ ok: true, type: o.type, value: typeof v === "string" ? clip(v, 20_000).text : v });
+    return redact.value({ ok: true, type: o.type, value: typeof v === "string" ? clip(v, 20_000).text : v, ...(egress && egress.contained === "partial" ? { contained: "partial", containedWhy: egress.why || "no browser-level guard" } : {}) });
   },
 
   async "dev.state"(args, ctx) {

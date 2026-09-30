@@ -228,6 +228,7 @@ export function describe(result, error) {
     const hp = hostPath(result.url || (result.tab && result.tab.url));
     if (hp) Object.assign(m, hp);
     if (result.held === true) m.held = true;
+    if (result.contained) m.contained = result.contained;
     if (result.saved !== undefined) m.saved = result.saved === true;
     if (result.failed) m.failedStep = safe(result.failed);
     if (result.ok === false) m.ok = false;

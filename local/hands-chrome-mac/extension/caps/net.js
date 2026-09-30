@@ -359,7 +359,7 @@ async function paused(ctx, t, p) {
  * own nor one it already talks to is failed and reported. The known origins are the tab's own, those
  * in its captured traffic, and those in the page's own resource timing taken before the script runs.
  * @param {any} ctx @param {number} tab
- * @returns {Promise<{ stop: () => Promise<Array<{ method: string, origin: string }>> }>}
+ * @returns {Promise<{ contained: "full"|"partial", why?: string, stop: () => Promise<Array<{ method: string, origin: string }>> }>}
  */
 export async function egressGuard(ctx, tab) {
   const t = /** @type {any} */ (await start(ctx, tab));
@@ -373,7 +373,10 @@ export async function egressGuard(ctx, tab) {
   } catch { /* the guard still stands with what it has */ }
   if (eg.depth === 0 && ctx.dnr) {
     const hosts = [...eg.allowed].map(o => { try { return new URL(o).hostname; } catch { return ""; } }).filter(Boolean);
-    eg.rule = await ctx.dnr.block({ tab, allowHosts: [...new Set(hosts)] });
+    const b = await ctx.dnr.block({ tab, allowHosts: [...new Set(hosts)] });
+    eg.rule = b && b.id != null ? b.id : null;
+    eg.contained = b && b.ok ? "full" : "partial";
+    eg.containedWhy = b && !b.ok ? b.why : undefined;
   }
   eg.depth++;
   // The Fetch domain does not see a WebSocket handshake and Network.setBlockedURLs did not stop a new one in a real Chrome
@@ -383,6 +386,8 @@ export async function egressGuard(ctx, tab) {
   await ctx.cdp.send(tab, "Fetch.enable", { patterns: [{ urlPattern: "*", requestStage: "Request" }] });
   let done = false;
   return {
+    // "partial" when the browser-level rule could not be set: only the plain-form page shim stands for WebSockets and beacons.
+    contained: eg.contained || (ctx.dnr ? "full" : "partial"), why: eg.containedWhy,
     async stop() {
       if (done) return [];
       done = true;
