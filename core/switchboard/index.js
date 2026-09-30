@@ -380,7 +380,7 @@ export class Switchboard {
     // is the one person-facing vocabulary (lib/thread-status.js) every surface should read instead.
     return { id: r.id, name: r.name, cwd: r.cwd, project: r.project, agent: r.agent, status: r.status,
       canonical_status: threadStatus(r.status, r.stopped_reason), model: r.model, driver: r.driver || null,
-      provider: r.provider || "claude", account: r.account || null, purpose: r.purpose || null, mode: r.mode || "default", effort: optsOf(r).effort || null, origin: optsOf(r).origin || null,
+      provider: r.provider || "claude", account: r.account || null, purpose: r.purpose || null, branch: optsOf(r).branch || null, mode: r.mode || "default", effort: optsOf(r).effort || null, origin: optsOf(r).origin || null,
       auth: r.auth, started: r.started_at, last: r.last_at, cost_usd: r.cost_usd, turns: r.turns,
       holder: holder ? holder.surface : null, asks: this.asks.open(id).length, ...(r.stopped_reason ? { stopped_reason: r.stopped_reason } : {}) };
   }
@@ -430,14 +430,15 @@ export class Switchboard {
     if (!dir) throw new Error("a thread needs a folder: give cwd or project");
     if (!fs.existsSync(dir) || !fs.statSync(dir).isDirectory()) throw new Error(`${dir} is not a folder`);
     if (!slug) { const of = await this.deps.call("projects.of", { cwd: dir }); slug = of.data?.slug || null; }
+    let branch = null;
     if (!cwd && slug && session) {
       const gh = await this.deps.call("github.project.of", { project: slug }).catch(() => null);
       if (gh && !gh.error && gh.data) {
         const wt = await this.deps.call("github.session.worktree", { project: slug, session }).catch(() => null);
-        if (wt && !wt.error && wt.data && wt.data.path) dir = wt.data.path;
+        if (wt && !wt.error && wt.data && wt.data.path) { dir = wt.data.path; branch = wt.data.branch ? String(wt.data.branch) : null; }
       }
     }
-    return { cwd: dir, project: slug };
+    return { cwd: dir, project: slug, branch };
   }
 
   /**
@@ -513,6 +514,8 @@ export class Switchboard {
       if (o.purpose === "capsule" && o.append) kept.append = String(o.append).slice(0, 20000);
       // The surface that started it (the Capsule, the Deck, a phone): threads.get says it as origin.
       if (o.surface) kept.origin = String(o.surface).slice(0, 80);
+      // The session's own git branch (github.session.worktree), when the project gave it a worktree.
+      if (w.branch) kept.branch = w.branch;
       if (Object.keys(kept).length) this.db.prepare("UPDATE threads_runs SET opts = ? WHERE id = ?").run(JSON.stringify(kept), id);
       rec = this.must(id);
     }
@@ -1790,6 +1793,22 @@ export class Switchboard {
   }
 
   /**
+   * Is a turn streaming in this folder (a session's worktree)? For github's Undo, which must not reset
+   * a worktree an agent is writing in. Any live thread whose folder is, or is under, `cwd` counts.
+   * @param {string} cwd @returns {{ busy: boolean, threads: string[] }}
+   */
+  busyIn(cwd) {
+    const dir = path.resolve(String(cwd));
+    const threads = [];
+    for (const [id, st] of this.live) {
+      if (!st.turn) continue;
+      const rec = this.record(id);
+      if (rec && rec.cwd && (path.resolve(rec.cwd) === dir || path.resolve(rec.cwd).startsWith(dir + path.sep) || dir.startsWith(path.resolve(rec.cwd) + path.sep))) threads.push(id);
+    }
+    return { busy: threads.length > 0, threads };
+  }
+
+  /**
    * Delete a thread: stop it, remove its record, runs, questions, queue, steers and events, and say
    * thread.deleted so whatever else keeps something of it (OpenRouter's stored conversation) lets go.
    * What a provider's own program wrote to disk (Claude Code's transcript file) is that program's;
@@ -1800,6 +1819,8 @@ export class Switchboard {
     const rec = this.must(id);
     if (this.live.has(id)) { await this.stop(id).catch(() => {}); this.live.delete(id); }
     this.closeSocket(id);
+    // The session's git worktree goes only when nothing is lost (github decides; safe to repeat). Not on stop.
+    if (rec.project) await this.deps.call("github.session.cleanup", { project: rec.project, session: id }).catch(() => null);
     for (const [table, col] of [["threads_asks", "thread"], ["threads_leases", "thread"], ["threads_watches", "thread"], ["threads_inbox", "thread"], ["threads_providers", "thread"],
       ["threads_sent", "thread"], ["threads_steers", "thread"], ["threads_turns", "thread"], ["events", "thread"], ["threads_runs", "id"]]) {
       try { this.db.prepare(`DELETE FROM ${table} WHERE ${col} = ?`).run(id); } catch (e) { if (!/no such (table|column)/.test(/** @type {Error} */ (e).message)) throw e; }
@@ -2527,6 +2548,16 @@ export default {
     });
     // For recall: who really started a session under an account's folder, from this record and never
     // from what the transcript says about itself. No record, or an agent's or a job's: not a person's.
+    // For github's Undo: is a turn streaming in that worktree? (github asks before it resets one.)
+    ctx.tool("threads.busy", {
+      description: "Whether a turn is streaming in a folder (a session's worktree) or in a thread's own folder. github asks before Undo resets a worktree.", internal: true, callers: ["module"],
+      input: { type: "object", properties: { cwd: str, thread: str } },
+      run: async i => {
+        const dir = i.cwd || (i.thread ? sb.must(String(i.thread)).cwd : null);
+        if (!dir) throw Object.assign(new Error("give a folder or a thread"), { code: "bad_input" });
+        return sb.busyIn(String(dir));
+      },
+    });
     ctx.tool("threads.origin", {
       description: "Whether a session id is a thread this Switchboard started for a person (and on which account), from its own record. A session it has no record of is not.", internal: true, callers: ["module"],
       input: { type: "object", required: ["session"], properties: { session: str } },

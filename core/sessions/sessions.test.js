@@ -436,6 +436,27 @@ for (const driver of ["cli", "sdk"]) {
     assert.ok(ev.some(e => e.type === "thread.text" && e.payload.notice && /moved to Grok: Claude's limit was reached/.test(e.payload.text)), JSON.stringify(ev.filter(e => e.payload && e.payload.notice)));
   });
 
+  test(`${driver}: threads.busy says whether a turn streams in a folder, for github's Undo; a session's worktree branch is kept on its record`, { skip }, async t => {
+    const w = await boot(t, { driver });
+    // A stand-in github module: a session in a project gets a worktree and a branch.
+    const wt = path.join(w.work, "wt-1");
+    fs.mkdirSync(wt, { recursive: true });
+    assert.equal((await w.tool("projects.create", { name: "Harlow Legal", home: path.join(w.work, "harlow") })).error, undefined);
+    const realCall = w.d.registry.call.bind(w.d.registry);
+    w.d.registry.call = async (tool, input, caller, meta) => tool === "github.project.of" ? { data: { project: "harlow-legal" } } : tool === "github.session.worktree" ? { data: { path: wt, branch: "vyre/s1" } } : realCall(tool, input, caller, meta);
+    const started = await w.tool("threads.start", { project: "harlow-legal", prompt: "bash npm test", surface: "deck" });
+    assert.equal(started.error, undefined, JSON.stringify(started));
+    const th = started.data;
+    const rec = (await w.tool("threads.get", { thread: th.id })).data.thread;
+    assert.deepEqual([rec.cwd, rec.branch], [wt, "vyre/s1"]);
+    // Streaming: the turn waits on a permission question, so it is open.
+    await until(async () => (await w.tool("threads.asks", { thread: th.id })).data.length, "the question");
+    assert.equal((await w.internal("threads.busy", { cwd: wt })).data.busy, true);
+    assert.deepEqual((await w.internal("threads.busy", { thread: th.id })).data.threads, [th.id]);
+    assert.equal((await w.internal("threads.busy", { cwd: path.join(w.work, "elsewhere") })).data.busy, false);
+    assert.equal((await w.tool("threads.busy", { cwd: wt })).error.code, "no_such_tool", "modules only");
+  });
+
   test(`${driver}: threads.origin says a session is a person's only from the Switchboard's own record`, { skip }, async t => {
     const w = await boot(t, { driver });
     const th = (await w.tool("threads.start", { cwd: w.work, prompt: "hello", surface: "deck" })).data;
