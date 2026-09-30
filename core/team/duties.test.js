@@ -4,7 +4,7 @@ import assert from "node:assert/strict";
 import path from "node:path";
 import { tempHome } from "../../test/helpers.js";
 import { open as openStore } from "../store/index.js";
-import { duties, DUTIES_MIGRATION, DUTIES_SEEN_MIGRATION } from "./duties.js";
+import { duties, dutyHash, DUTIES_MIGRATION, DUTIES_SEEN_MIGRATION, DUTIES_TITLE_MIGRATION } from "./duties.js";
 import { dutyNewsBlock } from "./index.js";
 
 const tm = { agent: "reviewer-harlow-legal", project: "harlow-legal", role: "reviewer" };
@@ -15,6 +15,7 @@ function setup(t, { failOn, items = [] } = {}) {
   t.after(() => db.close());
   db.exec(DUTIES_MIGRATION);
   db.exec(DUTIES_SEEN_MIGRATION);
+  db.exec(DUTIES_TITLE_MIGRATION);
   const calls = [], events = [];
   const call = async (tool, input) => {
     calls.push([tool, input]);
@@ -122,4 +123,19 @@ test("expect: turning a duty on with the text the person was shown starts it; an
   assert.equal(calls.length, 0);
   const on = await api.update(d.id, { enabled: true, expect: "Read the open issues and email the client." });
   assert.equal(on.started, true);
+});
+
+test("hash and title: rows carry a fingerprint of what will run and a label to name it by; an edit changes the hash, a pause does not", async t => {
+  const { api } = setup(t);
+  const d = await api.create(tm, { when: "daily 07:00", instruction: "Read the open issues.", title: "  inbox duty ", by: "cli" });
+  assert.equal(d.title, "inbox duty");
+  assert.equal(d.hash, dutyHash({ trigger: "daily 07:00", instruction: "Read the open issues.", act: false }));
+  assert.match(d.hash, /^[0-9a-f]{12}$/);
+  const plain = await api.create(tm, { when: "thread.finished", instruction: "x".repeat(100), by: "cli" });
+  assert.equal(plain.title.length, 60); // no label: the instruction, cut
+  const paused = await api.update(d.id, { enabled: false });
+  assert.equal(paused.hash, d.hash);
+  const edited = await api.update(d.id, { instruction: "Read the open issues and goals." });
+  assert.notEqual(edited.hash, d.hash);
+  assert.notEqual(dutyHash({ trigger: "a", instruction: "b", act: true }), dutyHash({ trigger: "a", instruction: "b", act: false }));
 });

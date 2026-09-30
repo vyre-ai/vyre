@@ -29,7 +29,7 @@ import fs from "node:fs";
 import path from "node:path";
 import crypto from "node:crypto";
 import { boundedWait } from "./bounded.js";
-import { duties as makeDuties, DUTIES_MIGRATION, DUTIES_SEEN_MIGRATION } from "./duties.js";
+import { duties as makeDuties, DUTIES_MIGRATION, DUTIES_SEEN_MIGRATION, DUTIES_TITLE_MIGRATION } from "./duties.js";
 import { isPerson } from "../../lib/caller.js";
 import { LIVE_STATUSES } from "../../lib/thread-status.js";
 import { repoRoot, currentBranch, ensureWorktree, isOwnWorktree, worktreePath, branchOf, mergeBaseIn, aheadOf, shaRange,
@@ -91,6 +91,7 @@ export const MIGRATIONS = [
   // Standing duties (plan section 9.2): identity only; watchers runs them.
   DUTIES_MIGRATION,
   DUTIES_SEEN_MIGRATION,
+  DUTIES_TITLE_MIGRATION,
 ];
 
 /** How long stop() waits for in-flight dispatch and merge work before it stops anyway (milliseconds). */
@@ -1021,14 +1022,14 @@ export default {
     const dutyRef = { ...charterRef };
     ctx.tool("team.duties.create", {
       description: "Give a teammate a standing duty: something it does by itself when a trigger fires (an event like thread.finished or goal.stale, a schedule like daily 07:00, or a connection's push), described in plain words. act: true lets it call tools and ask a model (every outward call still holds at the Gate); false only files what it notices into the teammate's notes and the waiting list. A person starts it at once; anything an assistant, a session or a teammate makes waits off in the list (no watcher) until the person turns it on.",
-      input: { type: "object", required: ["when", "instruction"], properties: { ...dutyRef, when: { type: "string" }, instruction: { type: "string" }, act: { type: "boolean" } } },
+      input: { type: "object", required: ["when", "instruction"], properties: { ...dutyRef, when: { type: "string" }, instruction: { type: "string" }, act: { type: "boolean" }, title: { type: "string", description: "A short label the person names it by, like \"inbox duty\"; shown on the card." } } },
       callers: CHARTER_CALLERS,
       run: async (i, meta = {}) => {
         const { tm, propose } = await dutyTarget(i, meta, { write: true });
         // A person's surface starts it at once. A model's duty, the assistant's and a session's included, is always a proposal (off, no watcher):
         // the person turns it on with one tap (team.duties.enable), because nothing they said can name a duty that does not exist yet.
         const start = !propose && isPerson(meta.caller);
-        return dutyApi.create(tm, { when: i.when, instruction: i.instruction, act: i.act, propose: !start, by: meta.agent || String(meta.caller || "vyre") });
+        return dutyApi.create(tm, { when: i.when, instruction: i.instruction, act: i.act, title: i.title, propose: !start, by: meta.agent || String(meta.caller || "vyre") });
       },
     });
     ctx.tool("team.duties.list", {
@@ -1072,6 +1073,14 @@ export default {
       callers: CHARTER_WRITERS,
       run: async (i, meta = {}) => { await dutyTarget(i, meta, { write: true, id: i.id }); return dutyApi.update(i.id, { enabled: false }); },
     });
+    // A model starts a duty only when the person's own words asked for exactly this text: the registry asks vault.said.match for the key
+    // team.duties.start:<teammate>/<id>@<hash of trigger, instruction and act> (team.act.target), and `expect` must equal the stored instruction.
+    ctx.tool("team.duties.start", {
+      description: "Turn a proposed duty on for the person, when their own words asked for exactly this duty: give expect, the instruction you were shown. Anything changed since, or nothing said, refuses. A person's surface taps team.duties.enable instead.",
+      input: { type: "object", required: ["id", "expect"], properties: { id: { type: "string" }, expect: { type: "string" } } },
+      callers: CHARTER_CALLERS,
+      run: async (i, meta = {}) => { await dutyTarget(i, meta, { write: true, id: i.id }); return dutyApi.update(i.id, { enabled: true, expect: i.expect }); },
+    });
     ctx.tool("team.duties.delete", {
       description: "Remove a duty and its watcher. A person, the assistant, or a session in the project; never a teammate.",
       input: { type: "object", required: ["id"], properties: { id: { type: "string" } } },
@@ -1097,6 +1106,11 @@ export default {
       callers: ["module"],
       run: async ({ tool, input }) => {
         const i = input || {};
+        if (tool === "team.duties.start") {
+          const d = dutyApi.get(String(i.id || ""));
+          if (!d) throw Object.assign(new Error("no such duty"), { code: "not_found" });
+          return { to: [`team.duties.start:${d.teammate}/${d.id}@${d.hash}`] };
+        }
         const tm = i.teammate ? byAgent(String(i.teammate)) : i.project && i.role ? byRole(String(i.project), String(i.role)) : null;
         if (!tm || tm.retired_at) throw Object.assign(new Error("no such teammate"), { code: "not_found" });
         if (tool === "team.retire") return { to: [`team.retire:${tm.project}/${tm.role}`] };

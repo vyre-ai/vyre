@@ -817,3 +817,11 @@ utilization, resets_at), the slot chip (per project), the waiting queue, "Resume
 - Open, not mine: nothing records the person's act_out statement for the two team keys. switchboard.hearActs records only GitHub PR intents (lib/said/pr.js).
   Until a recorder for "retire the design teammate" and "have kit be the reviewer" exists (assistant's lib/said plus sessions' hook), a model's retire or fill is refused,
   which is safe but dead. Asked of assistant and sessions.
+
+## Duty start binds to the text (2026-10-01, team-lead, reviewer-2's MEDIUM)
+
+- A model starts a duty with `team.duties.start {id, expect}` (reach asked, target team.act.target): key `team.duties.start:<teammate>/<id>@<hash>`, hash = first 12 hex of sha256 of
+  JSON [trigger, instruction, act] as stored (`dutyHash`, carried on every team.duties.list row as `hash`, with `title`: the label given at create, else the instruction cut to 60). `expect`
+  must equal the stored instruction. A yes recorded for the text the person saw cannot start an edited duty. Create has no key: a model's duty is always a proposal, because
+  no words can name a duty that does not exist yet. A model cannot edit a running duty (person surface only).
+- Keys agreed with assistant (lib/said/team.js, work/assistant 56230e73): retire and role.fill as before, `team.duties.start:` replaces their create/update keys.
