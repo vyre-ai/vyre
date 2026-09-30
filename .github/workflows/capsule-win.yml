@@ -7,7 +7,9 @@
 name: capsule-win
 on:
   push:
-    paths: ["local/capsule/native-win/**", ".github/workflows/capsule-win.yml"]
+    branches: ["**"]
+    tags: ["v*"]
+    paths: ["local/capsule/native-win/**", ".github/workflows/capsule-win.yml", "package.json"]
   pull_request:
     paths: ["local/capsule/native-win/**", ".github/workflows/capsule-win.yml"]
   workflow_dispatch:
@@ -28,6 +30,27 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
       - name: cargo test
         run: cargo test --verbose
-      - name: build the app (release exe, no bundle)
+      - name: version, from the repo's package.json (the release checks it equals the tag)
+        shell: bash
+        run: |
+          v=$(node -p 'require("../../../package.json").version')
+          sed -i "0,/^version = .*/s//version = \"$v\"/" app/Cargo.toml
+          sed -i "0,/\"version\": \".*\"/s//\"version\": \"$v\"/" app/tauri.conf.json
+          echo "VERSION=$v" >> "$GITHUB_ENV"
+      - name: build the installer (NSIS, unsigned for 0.2)
+        shell: bash
         working-directory: local/capsule/native-win/app
-        run: cargo build --release
+        run: |
+          cargo install tauri-cli --version "^2" --locked
+          cargo tauri build --bundles nsis
+      - name: the installer, named Vyre_<version>_x64-setup.exe, for release.yml
+        shell: bash
+        run: |
+          exe=$(ls app/target/release/bundle/nsis/Vyre_*_x64-setup.exe | head -1)
+          [ "$(basename "$exe")" = "Vyre_${VERSION}_x64-setup.exe" ] || { echo "unexpected installer name: $exe"; exit 1; }
+          mkdir -p ../../../out && cp "$exe" ../../../out/
+      - uses: actions/upload-artifact@v4
+        with:
+          name: app-windows-${{ github.sha }}
+          path: out/Vyre_*_x64-setup.exe
+          if-no-files-found: error

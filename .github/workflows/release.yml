@@ -131,6 +131,22 @@ jobs:
           else
             echo "Android: no green app.yml run on $sha, released without the APK" | tee -a "$GITHUB_STEP_SUMMARY"
           fi
+      - name: The Windows app from capsule-win.yml on this commit, when there is one
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          sha=$(git rev-parse HEAD)
+          id=$(gh run list -R "$GITHUB_REPOSITORY" --workflow capsule-win.yml --commit "$sha" --status success -L 1 --json databaseId --jq '.[0].databaseId' || true)
+          if [ -n "$id" ] && gh run download "$id" -R "$GITHUB_REPOSITORY" -n "app-windows-$sha" -D "$RUNNER_TEMP/windows" 2>/dev/null; then
+            exe="Vyre_${VERSION}_x64-setup.exe"
+            [ -f "$RUNNER_TEMP/windows/$exe" ] || { echo "the Windows build is not version $VERSION"; exit 1; }
+            # The updater looks for Vyre_<version>_x64-setup.exe; install-windows.ps1 fetches VyreSetup.exe. Same bytes.
+            cp "$RUNNER_TEMP/windows/$exe" "dist/$exe"
+            cp "$RUNNER_TEMP/windows/$exe" dist/VyreSetup.exe
+            echo "Windows: from capsule-win run $id" | tee -a "$GITHUB_STEP_SUMMARY"
+          else
+            echo "Windows: no green capsule-win run on $sha, released without the installer" | tee -a "$GITHUB_STEP_SUMMARY"
+          fi
       - name: release.json and SHA256SUMS
         run: |
           node -e '
