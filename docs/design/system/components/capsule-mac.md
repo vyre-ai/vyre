@@ -101,6 +101,6 @@ Capsule (work/capsule-pro)
 - [ ] Offline banner reads "OFFLINE" in caps, not "Works offline · 1 queued".
 - [ ] Always dark; no `Tokens.paper`.
 - [ ] Presence reads "Touch ID to approve exactly this." with no 30 min covered line.
-- [ ] `AgentButton` primary is bone on graphite, radius 6, not lime `primaryBg`.
+- [ ] `AgentButton` primary is `primaryBg` (bone) with `primaryInk`, radius 6.
 - [ ] Radius is `Tokens.Radius.card` (12), not `sheet`.
 - [ ] `Tokens.generated.swift` has no shadow tokens, so `--float` cannot come from it yet.

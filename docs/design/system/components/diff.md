@@ -1,6 +1,6 @@
 ---
 title: Diff
-summary: A unified line diff with added lines on the lime wash, removed lines on a neutral wash, and line numbers.
+summary: A unified line diff with added lines on the bone wash, removed lines on a neutral wash, and line numbers.
 audience: builders
 owner: app-design
 status: draft
@@ -35,7 +35,7 @@ three columns:
 | Hunk header (`@@ ... @@`) | none | `--label` | empty |
 
 Above the block, in the tool row that holds it: the path in mono and the counts `+12 −4` in
-`--text-2`. Counts are neutral, never lime or another hue.
+`--text-2`. Counts are neutral, never bone or another hue.
 
 ## Variants
 

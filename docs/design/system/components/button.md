@@ -34,7 +34,7 @@ Border 1 px on every variant (transparent where none shows), so all five share o
 
 | Variant | Fill | Border | Ink | Job |
 |---|---|---|---|---|
-| Primary | `--primary-bg` | `--primary-bg` | `--primary-ink` | The one action on the surface. Lime on dark, ink on paper. |
+| Primary | `--primary-bg` | `--primary-bg` | `--primary-ink` | The one action on the surface. Bone on dark, ink on paper. |
 | Secondary | `--hover` | `--hover` | `--text` | A common second choice ("Snooze 5 min", "Send test"). |
 | Outline | none | `--rule-strong` | `--text` | A real alternative ("Always in Harlow Legal"). |
 | Ghost | none | transparent | `--text` | Cancel, Deny, Discard, Details, Pause. |
@@ -115,7 +115,7 @@ carries the count. Busy uses the same verb in -ing form. Never "OK", "Yes", "No"
 - [ ] Deck: `.btn` is JetBrains Mono 12, weight 500, upper case with letter spacing; use Instrument
   Sans 13/18 weight 600, sentence case.
 - [ ] Deck: no secondary, outline (plain `.btn` is it but unnamed), hold or busy; disabled uses
-  `opacity: 0.45` and primary disabled keeps the lime fill.
+  `opacity: 0.45` and primary disabled keeps the bone fill.
 - [ ] Deck: `.btn-ghost` ink is `--text-2`; use `--text`. Radius uses the old `--r-2`.
 - [ ] Deck (work/pwa): a second system, `.sb` (min 46) and `.sb-primary` (54, 17/22) with opacity
   disabled; fold into the one button at 44 and 54.

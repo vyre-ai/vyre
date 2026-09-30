@@ -21,7 +21,7 @@ export function UndoToast() {
     <View pointerEvents="box-none" style={[styles.wrap, { bottom: insets.bottom + tokens.control.touchLg + tokens.space[4] }]}>
       <View accessibilityRole="alert" style={[styles.toast, { backgroundColor: color.panel, borderColor: color.ruleStrong }]}>
         <Text numberOfLines={1} style={[type.base, styles.text, { color: color.text }]}>{toast.label}</Text>
-        {/* Undo is a ghost button (toast spec): text ink, never lime, 44 on touch and 28 on the desktop. */}
+        {/* Undo is a ghost button (toast spec): text ink, never bone, 44 on touch and 28 on the desktop. */}
         <Button kind="ghost" label="Undo" onPress={() => answers.undo(toast.id)} />
       </View>
     </View>

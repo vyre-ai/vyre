@@ -76,7 +76,7 @@ with "Show all".
 - **Default.** `--text-2`, no fill.
 - **Hover** (desktop, rows that open). Fill `--hover`, radius `--radius-field` (8).
 - **Focus.** 2 px `--focus` outline, offset 2.
-- **Running.** Spinner, "Running" or "Editing", lime is never used for the text; the elapsed
+- **Running.** Spinner, "Running" or "Editing", bone is never used for the text; the elapsed
   time counts up once a second so quiet work never looks stalled.
 - **Failed.** Crossed circle icon in `--text`, verb stays, meta "failed · exit 1". Never violet,
   never a border.

@@ -86,7 +86,7 @@ Say the fact and its cost in plain words; the action is a verb naming what it do
 ## Accessibility
 
 `role="status"` (polite) for facts that arrive while you are on the page; none for facts present
-at load. The icon is `aria-hidden`; the fact text carries the meaning. No beacon, lime or red:
+at load. The icon is `aria-hidden`; the fact text carries the meaning. No beacon, bone or red:
 the fill is `--hover` and text passes AA on it.
 
 ## Gaps

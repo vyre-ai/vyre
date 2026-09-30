@@ -55,7 +55,7 @@ A sheet: a centred card 540 wide on the desktop, a bottom sheet under 720.
 6. **Kept.** One line, 12/16 `--label`, with a 12 vault icon: "Kept in your vault on the box." and,
    under it, the grant in the same words the person will see later: "Voice can use it. Nothing
    else can."
-7. **Actions.** One primary, lime, once: **Connect** (a key or a file) or **Sign in with Google**
+7. **Actions.** One primary, bone, once: **Connect** (a key or a file) or **Sign in with Google**
    (oauth), with the Touch ID glyph (Face ID on the phone) beside its label. It is disabled until
    the fields have values. No Cancel: the close button is the way out.
 

@@ -39,7 +39,7 @@ app.vyre.run, and the relay. Every row answers three questions: how it reaches t
 5. **Path, right column.** Right-aligned, two lines: the status-mark dot then the path, meta size
    `--text-2` ("Tailscale · direct 12 ms", "Tailscale now · direct 18 ms", "Relay now · Tailscale
    when reachable"); under it, `--label`, the fallback and last seen ("Relay if it drops · seen 4
-   min ago", "via fra 80 ms · seen 1 h ago", "Seen now"). The dot is `--focus` (lime) for a
+   min ago", "via fra 80 ms · seen 1 h ago", "Seen now"). The dot is `--focus` (bone) for a
    direct path and `--label` (grey) when relayed. Never amber or gold.
 6. **More.** Icon button 28, "More" (Rename, Update, Remove) at the row's end on the desktop.
 

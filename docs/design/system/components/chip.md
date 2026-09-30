@@ -74,8 +74,12 @@ Filter chip:
 - **Off.** Border `--rule-strong`, ink `--text-2`.
 - **Hover** (pointer). Fill `--hover`, ink `--text`.
 - **On.** Border `--focus`, fill `--signal-wash`, ink `--text`; the count steps up to
-  `--text-2`. Selection is lime, never violet.
+  `--text-2`. Selection is bone, never violet.
 - **Focus.** 2 px outline `--focus`, offset 2.
+- **On Deep glass** (Capsule 0.2). No wash: a wash lifts the chip text to 3.98:1 over the brightest
+  wallpaper. The chip is the glass itself with a 1 px `--rule-strong` border and ink `--text` (4.5:1
+  or better over every sampled wallpaper, held by `core/config/palette.test.js`); On is a 2 px
+  border. Focus on glass is two-tone: a 2 px `--text` ring inside the 2 px `--focus` ring.
 - **Disabled** (no items of that kind). Border `--rule`, ink `--label`; still visible, not
   clickable.
 - **Loading.** Chips draw at once from cache; counts fill in without the chip changing width

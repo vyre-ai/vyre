@@ -13,7 +13,7 @@ enum Tone {
     static let ashDark = UIColor(hex: 0x8C877D)
     static let stoneDark = UIColor(hex: 0xB3AEA4)
     static let boneDark = UIColor(hex: 0xF1EEE6)
-    static let signalDark = UIColor(hex: 0xC6F36B)
+    static let signalDark = UIColor(hex: 0xF1EEE6)
     static let recallDark = UIColor(hex: 0xEBC76B)
     /// Attention ("needs you"), violet since 27 Sep 2026. The one place it is set: every beacon
     /// role below derives from this pair, so a different pick is a two-line change.
@@ -27,7 +27,7 @@ enum Tone {
     static let ink = UIColor(hex: 0x141311)
     static let ink2 = UIColor(hex: 0x4A463F)
     static let ink3 = UIColor(hex: 0x6B665D)
-    static let signalDeep = UIColor(hex: 0x46700C)
+    static let signalDeep = UIColor(hex: 0x141311)
     static let recallDeep = UIColor(hex: 0x7E5B0C)
 
     static func pair(_ dark: UIColor, _ light: UIColor) -> Color {
@@ -61,9 +61,9 @@ extension Color {
     /// `--focus`: the focus ring, and Signal where the design system uses it as text.
     static let focus = Tone.pair(Tone.signalDark, Tone.signalDeep)
     /// `--signal-wash`: the Ask row in Find, added diff lines.
-    static let signalWash = Tone.pair(UIColor(hex: 0xC6F36B, alpha: 0.12), UIColor(hex: 0x46700C, alpha: 0.10))
+    static let signalWash = Tone.pair(UIColor(hex: 0xF1EEE6, alpha: 0.12), UIColor(hex: 0x141311, alpha: 0.10))
     /// `--match` (phone): search match highlight, the Open session flash.
-    static let match = Tone.pair(UIColor(hex: 0xC6F36B, alpha: 0.20), UIColor(hex: 0x46700C, alpha: 0.16))
+    static let match = Tone.pair(UIColor(hex: 0xF1EEE6, alpha: 0.20), UIColor(hex: 0x141311, alpha: 0.16))
     /// `--beacon-ink`: needs you, as a label. Nothing else.
     static let beaconInk = Tone.pair(UIColor(hex: Tone.attentionDark), UIColor(hex: Tone.attentionPaper))
     /// `--beacon-dot`: needs you, as a dot or a badge.

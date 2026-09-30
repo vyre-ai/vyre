@@ -52,7 +52,7 @@ keeps 8 from the viewport edges and flips above or below its anchor to fit.
 ## States
 
 - **Active row** (keyboard or hover): fill `--signal-wash`; meta on it steps up to `--text-2`.
-- **Current value:** the lime check, never a fill.
+- **Current value:** the bone check, never a fill.
 - **Disabled item:** `--label` text, no hover, with a reason in its description.
 - **Empty completion:** one row in `--label`: "No files match est".
 - **Loading:** two skeleton rows at the row height.

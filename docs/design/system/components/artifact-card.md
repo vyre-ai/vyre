@@ -52,13 +52,13 @@ A compact row-card, height 56, padding 10 12, radius `--radius-card` (12), fill 
      CHAT.md) - the raw content URL also carries its own restrictive CSP so even a top-level open
      runs at an opaque origin.
 3. **Changes view** (when toggled): `diff.md`'s unified diff between the selected version and the
-   one before it - added on the lime wash, removed struck... no, per `diff.md`'s own rule, removed
+   one before it - added on the bone wash, removed struck... no, per `diff.md`'s own rule, removed
    on the neutral wash with no strikethrough. Exactly `diff.md`, not a second diff renderer.
 
 ## Anatomy: Artifacts tab (per project)
 
 A `list-row.md` list: title, kind/creator/date meta, a visibility chip (chip.md's Tag: "Public ·
-29 days" in a lime-adjacent neutral, "Only you" otherwise - never lime itself, matching every
+29 days" in a neutral, "Only you" otherwise - never an accent, matching every
 other neutral-chip rule in this system) right-aligned. Sits beside Threads/Brief/Files/Memory as
 its own tab (artifacts-options.html section 3).
 

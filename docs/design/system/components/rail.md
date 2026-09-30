@@ -51,7 +51,7 @@ width from 720; list and detail sit to its right (see phone-shell for the breakp
 | Focus (keyboard) | as above | 2 px `--focus` outline, offset 2 |
 | Pressed | `--hover` | `--text` (no scale) |
 
-- The badge is the only colour in the rail. No lime on the current place, no left bar, no pill.
+- The badge is the only colour in the rail. No bone on the current place, no left bar, no pill.
 - Needs you empty: no badge, and the home mark's dot returns to `--mark-dot`.
 - Offline: the rail does not change; the offline pill says so (see states).
 

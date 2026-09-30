@@ -79,7 +79,7 @@ Banner, `deck/css/views/planner.css` ([banner](components/banner.md))
 Button, `deck/css/deck.css`, `deck/css/sheet.css` ([button](components/button.md))
 
 - [ ] `.btn` is JetBrains Mono 12, weight 500, upper case with letter spacing; use Instrument Sans 13/18 weight 600, sentence case.
-- [ ] No secondary, outline (plain `.btn` is it but unnamed), hold or busy; disabled uses `opacity: 0.45` and primary disabled keeps the lime fill.
+- [ ] No secondary, outline (plain `.btn` is it but unnamed), hold or busy; disabled uses `opacity: 0.45` and primary disabled keeps the bone fill.
 - [ ] `.btn-ghost` ink is `--text-2`; use `--text`. Radius uses the old `--r-2`.
 - [ ] A second system, `.sb` (min 46) and `.sb-primary` (54, 17/22) with opacity disabled; fold into the one button at 44 and 54.
 
@@ -353,7 +353,7 @@ Draft card, `deck/chat/gate-item.js` ([draft card](components/draft-card.md))
 
 Form controls, `deck/chat/chat.css` ([form controls](components/form-controls.md))
 
-- [ ] Two checkboxes: `.cv-chk` on is lime, the design is `--text`.
+- [ ] Two checkboxes: `.cv-chk` on is bone, the design is `--text`.
 
 Glass mini-view ([Glass mini-view](components/glass-mini.md))
 
@@ -565,7 +565,7 @@ Owns the app (`apps/app`, Expo) on the phone and tablet.
 - [ ] Tabs: no tabs; build `Tabs` with the segmented and strip forms. ([tabs](components/tabs.md))
 - [ ] Terminal: not built. ([terminal](components/terminal.md))
 - [ ] Tip: nothing built; the Places sheet line and empty screen lines. ([tip](components/tip.md))
-- [ ] Toast, `src/ui/UndoToast.tsx`: Undo text is `--focus` (lime); use `--text`, 600. ([toast](components/toast.md))
+- [ ] Toast, `src/ui/UndoToast.tsx`: Undo text is `--focus` (bone); use `--text`, 600. ([toast](components/toast.md))
 - [ ] Toast, `src/ui/UndoToast.tsx`: floating only; no in-place variant; no ⌘Z on the web build. ([toast](components/toast.md))
 - [ ] Tool row, `src/session/Rows.tsx` RunRow: no icon, no elapsed timer, no detail; "Hide"/"Show" text instead of a chevron. ([tool row](components/tool-row.md))
 - [ ] Tool row: status mark dot instead of the icon. ([tool row](components/tool-row.md))
@@ -623,7 +623,7 @@ the session panel, presence and the menu-bar item.
 - [ ] Capsule on the Mac: offline banner reads "OFFLINE" in caps, not "Works offline · 1 queued". ([Capsule on the Mac](components/capsule-mac.md))
 - [ ] Capsule on the Mac: always dark; no `Tokens.paper`. ([Capsule on the Mac](components/capsule-mac.md))
 - [ ] Capsule on the Mac, `UI/PresenceView.swift`: reads "Touch ID to approve exactly this." with no 30 min covered line. ([Capsule on the Mac](components/capsule-mac.md))
-- [ ] Capsule on the Mac: `AgentButton` primary is bone on graphite, radius 6, not lime `primaryBg`. ([Capsule on the Mac](components/capsule-mac.md))
+- [ ] Capsule on the Mac: `AgentButton` primary is `primaryBg` (bone) with `primaryInk`, radius 6. ([Capsule on the Mac](components/capsule-mac.md))
 - [ ] Capsule on the Mac, `Host/Panel.swift`: radius is `Tokens.Radius.card` (12), not `sheet`. ([Capsule on the Mac](components/capsule-mac.md))
 - [ ] Capsule on the Mac: `Tokens.generated.swift` has no shadow tokens, so `--float` cannot come from it yet. ([Capsule on the Mac](components/capsule-mac.md))
 - [ ] Card, `UI/AgentDeskView.swift` HeldCardView: hand-typed sizes and a caps mono label; use `Tokens.Radius.card` and the 12/600 sentence-case label. ([card](components/card.md))
@@ -639,7 +639,7 @@ the session panel, presence and the menu-bar item.
 - [ ] Icon button, `Extensions/sight/SessionPanel.swift`, `UI/CapsuleView.swift`: close and mic buttons are SF Symbols at 11 to 13 pt with no hover fill or focus ring; draw the set's icons in a 28 square with `Tokens` colours. ([icon button](components/icon-button.md))
 - [ ] Icons: SF Symbols everywhere (xmark, chevron.down, sparkle.magnifyingglass, mic.fill); draw the set as SwiftUI `Shape`s from the same path data. ([icons](components/icons.md))
 - [ ] Key hint, `UI/CapsuleView.swift` `KeyCap`: SF Rounded 10.5 semibold in `Theme.stone`, 17 square, filled `Theme.raised`; use JetBrains Mono 12, 20 tall, no fill, `Tokens` label ink. ([key hint](components/key-hint.md))
-- [ ] List row, `UI/CapsuleView.swift` Row: 40 tall with hand-typed sizes (14, 12, 11.5); selected is a rounded raised fill with a 3 px lime capsule on the left; use 44, the type steps and the `--hover` fill. ([list row](components/list-row.md))
+- [ ] List row, `UI/CapsuleView.swift` Row: 40 tall with hand-typed sizes (14, 12, 11.5); selected is a rounded raised fill with a 3 px `--focus` capsule on the left; use 44, the type steps and the `--hover` fill. ([list row](components/list-row.md))
 - [ ] List, `UI/CapsuleView.swift` SectionHeader: mono 10 caps with tracking; use 12/600 sentence case. ([list](components/list.md))
 - [ ] List, `UI/AgentDeskView.swift` WaitingList: caps at 9 rows (`Theme.maxRows`) with no count or more. ([list](components/list.md))
 - [ ] Mode chip: none; the session panel needs the provider chip at least. ([mode chip](components/mode-chip.md))
@@ -652,7 +652,7 @@ the session panel, presence and the menu-bar item.
 - [ ] Presence line, `UI/PresenceView.swift`: only the proof prompt ("Confirm it's you", "Touch ID to approve exactly this."); no covered line under Send and no lapsed "Send with Touch ID" label. ([presence line](components/presence-line.md))
 - [ ] Question card: not built. ([question card](components/question-card.md))
 - [ ] States, OfflineBanner: reads "OFFLINE" in caps; no queued count; no skeleton. ([states](components/states.md))
-- [ ] Status mark, WaitingRow, `UI/CapsuleView.swift`, `Host/MenuBarItem.swift`: waiting dot uses `Theme.attention` at 7 px; tool rows use SF Symbols; Pulse is a lime 7 px dot, not the ring; no badge; relayed health is not neutral. ([status mark](components/status-mark.md))
+- [ ] Status mark, WaitingRow, `UI/CapsuleView.swift`, `Host/MenuBarItem.swift`: waiting dot uses `Theme.attention` at 7 px; tool rows use SF Symbols; Pulse is a bone 7 px dot, not the ring; no badge; relayed health is not neutral. ([status mark](components/status-mark.md))
 - [ ] Suggestions, `UI/CapsuleView.swift`: the @ target ranks its own agents and sessions; draw `suggest.query` rows under the local rows, never moving a drawn row; ghost text; `suggest.picked`. ([suggestions](components/suggestions.md))
 - [ ] Tip: nothing built; the line under the empty input, ⌘. to dismiss. ([tip](components/tip.md))
 - [ ] Toast: no toast; add the floating variant under the Capsule's list for answers given there. ([toast](components/toast.md))

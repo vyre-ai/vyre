@@ -1,6 +1,6 @@
 ---
 title: Stepper and checks
-summary: The numbered stepper, the live check rows that turn lime in place, and the QR block used by Add your phone and first-run setup.
+summary: The numbered stepper, the live check rows that turn bone in place, and the QR block used by Add your phone and first-run setup.
 audience: builders
 owner: app-design
 status: draft
@@ -62,7 +62,7 @@ run" (Onboarding).
 | Opened as an app, not a browser tab | | | | |
 | Sending a test notification… | | "4 s" | "Test notification arrived" | after 30 s: which part failed |
 | Face ID key saved for approvals | "next" | | | |
-| Switched to Tailscale · direct 18 ms | "Appears when Tailscale is reachable" | | lime when reached | stays waiting (optional) |
+| Switched to Tailscale · direct 18 ms | "Appears when Tailscale is reachable" | | bone when reached | stays waiting (optional) |
 
 Finished: the ok mark, "alex's iPhone is ready", "5 of 5 checks passed. Push on · Face ID key
 saved.", and "Switched to Tailscale · direct 18 ms, was relay 80 ms" when it switched.

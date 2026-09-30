@@ -84,7 +84,7 @@ counts stay in Instrument Sans.
 
 **Actions.** `actions` are `[{label, key?, run: {tool, input}}]` or a command to run. At most 3
 show, as ghost buttons xs with their key hint; the first may be secondary when it is the obvious
-next step, never primary: a result card has no lime. An action that sends, posts, pays or deletes
+next step, never primary: a result card has no bone. An action that sends, posts, pays or deletes
 goes through its own ask or draft card, never straight from here.
 
 **Copy as text.** ⌘C with the card focused, or the header's copy button, copies the result as the

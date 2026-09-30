@@ -73,7 +73,7 @@ Desktop titles never wrap. Phone titles wrap to two lines at larger text sizes a
 - **Selected**: fill `--signal-wash`; meta and trailing step up to `--text-2`; hover keeps the
   wash. Selected and focused can show together.
 - **Unread**: a text-colour dot leading and the title in 600; clears on open.
-- **Running**: the lime ring before the title with its elapsed time in the meta ("kit · 24m").
+- **Running**: the bone ring before the title with its elapsed time in the meta ("kit · 24m").
 - **Failed**: crossed circle in `--text-2`, the meta reads the failure in `--text`.
 - **Disabled**: title and meta in `--label`, no hover, a reason in the meta.
 - **Skeleton**: a 24 block, a title bar 10 tall at 40% width and a meta bar at 25%, in `--hover`.
@@ -121,5 +121,5 @@ App (work/mobile)
 - [ ] Rows sit on `--bg` with a bottom border, not in a card; the avatar is round, not a tile.
 
 Capsule (work/capsule-pro)
-- [ ] Row is 40 tall with hand-typed sizes (14, 12, 11.5); selected is a rounded raised fill with a 3 px lime capsule on the left; use
+- [ ] Row is 40 tall with hand-typed sizes (14, 12, 11.5); selected is a rounded raised fill with a 3 px `--focus` capsule on the left; use
       44, the type steps and the `--hover` fill.

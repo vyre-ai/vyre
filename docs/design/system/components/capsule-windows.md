@@ -51,7 +51,7 @@ section only covers what's different about the shell around them.
    value (roughly 70% alpha; tune so every AA pair in tokens.md's contrast rules still holds
    measured against a light desktop wallpaper, the worst case). Every other colour role (rule,
    text, text2, primaryBg, signalWash, focus) stays fully opaque, unchanged: only the ground
-   layer gains translucency, never text, never a status colour, never lime.
+   layer gains translucency, never text, never a status colour, never bone.
 3. **Fonts.** Instrument Sans stays the brand face; the fallback stack gains the Windows system
    font ahead of the Mac-only `Helvetica Neue`: `'Instrument Sans', 'Segoe UI Variable', 'Segoe UI',
    sans-serif` (Windows 11 ships Segoe UI Variable; Windows 10 falls to Segoe UI). JetBrains Mono
@@ -140,7 +140,7 @@ motion`; treat it the same way.
 ## Copy the accent color question, once, so nobody wires it up by accident
 
 Windows exposes the user's system accent colour (`GetSystemAccentColor` on the Composition API),
-and Mica's tint uses it under the hood. That accent colour should influence nothing else: lime
+and Mica's tint uses it under the hood. That accent colour should influence nothing else: bone
 stays the one primary action colour everywhere in Vyre (DIRECTION.md's System section, "one
 accent"), on Windows exactly as on the Mac and the Deck. Don't read the system accent into
 `--primary-bg`, `--focus` or any status colour; if the panel needs to feel like it's sitting on

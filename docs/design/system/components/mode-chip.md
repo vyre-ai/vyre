@@ -44,7 +44,7 @@ the menu row.
 A provider with no match for a mode shows that row disabled with "Not available with Codex".
 
 **Doesn't ask** is the inverse neutral chip: fill `--text`, ink `--bg`, border `--text`, the
-unlock icon in `--bg`. Calm and distinct; no violet, no lime, no warning colour, no banner, no
+unlock icon in `--bg`. Calm and distinct; no violet, no bone, no warning colour, no banner, no
 hold, no Face ID. Only the person switches into it: from this chip, the menu, ⇧Tab, or a
 project's "Trusted" default (new sessions there start in it). Agents, teammates and Claude's own
 sessions never can. Vyre's floor and the Gate still apply: sends, posts and payments are held for

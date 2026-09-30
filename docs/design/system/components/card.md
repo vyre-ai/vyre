@@ -61,9 +61,9 @@ and VyreDrive", and the Connections card on the Connections board (below).
      `--label` on the right. Never a Revoke or Disconnect here: that lives on the individual
      grant chip turned off, or the row's More menu.
 
-Colour is never the card's: no violet, lime or wash on the body or border. A card that needs you
+Colour is never the card's: no violet, bone or wash on the body or border. A card that needs you
 shows it only through the dot and label in its header. On the Connections card the only colour is
-the grant chips' own lime "on" state (chip.md); the card itself stays neutral even when nothing
+the grant chips' own bone "on" state (chip.md); the card itself stays neutral even when nothing
 is granted.
 
 ## Sizes

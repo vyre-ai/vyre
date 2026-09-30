@@ -32,7 +32,7 @@ Two placements, one look:
    max width 480 on the desktop. Min height 44 (`--control-touch`), padding 0 6 0 16, radius
    `--radius-card` (12), fill `--panel`, 1 px `--rule-strong`, shadow `--float`.
 
-Undo is a ghost button: `--text`, 600, 44 tall on touch, 28 on the desktop. It is never lime and
+Undo is a ghost button: `--text`, 600, 44 tall on touch, 28 on the desktop. It is never bone and
 never primary. Optional countdown: meta size `--label` "4 s" after Undo (drawn on the Presence
 board), counting whole seconds.
 
@@ -84,7 +84,7 @@ Deck (work/pwa, main)
 - [ ] Toast shadow is `--light-top`; use `--float`. Words 15/20; use the type steps.
 
 App (work/mobile)
-- [ ] Undo text is `--focus` (lime); use `--text`, 600.
+- [ ] Undo text is `--focus` (bone); use `--text`, 600.
 - [ ] Floating only; no in-place variant; no ⌘Z on the web build.
 
 Capsule (work/capsule-pro)

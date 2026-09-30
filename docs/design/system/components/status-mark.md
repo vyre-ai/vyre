@@ -99,4 +99,4 @@ Failed never pushes a notification; it waits in the list.
 - [ ] App: `StatusMark` has no badge, count or status word; done uses a 1 px border (1.5); the
   failed mark is a slashed circle, not the cross; no elapsed time on running.
 - [ ] Capsule: waiting dot uses `Theme.attention` at 7 px; tool rows use SF Symbols; Pulse is a
-  lime 7 px dot, not the ring; no badge; relayed health is not neutral.
+  bone 7 px dot, not the ring; no badge; relayed health is not neutral.

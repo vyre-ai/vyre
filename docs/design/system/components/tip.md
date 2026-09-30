@@ -43,7 +43,7 @@ never floating over content. Inside the chip, Show me and the × are 24 tall (th
 border takes the rest); their hit area stays 44 on touch.
 
 **New mark.** A tip with `whatsnew` starts with "New" 12/16 600 `--text-2` and a middle dot in
-`--label`. Never lime, violet or a filled badge.
+`--label`. Never bone, violet or a filled badge.
 
 **What's new card** (the Deck's Now, once after an update, on `tips.updated`). A card (card.md) at
 the top of Now, above the Needs rows: "What's new in 0.2" 15/600 `--text`, then up to three tip

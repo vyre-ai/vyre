@@ -141,7 +141,7 @@ set their own, and only ever their own. Not yet built: see Gaps.
 and chat 2026-09-28): a teammate's tile is the same neutral agent tile as any other agent, initial
 lower case, `--hover` fill, no per-teammate hue. Considered and turned down: a role-hashed accent
 colour (a coloured disc, a 3 px left border on bubbles, a coloured dot in rows). `docs/design/
-one-app/README.md`'s System section already draws this line for the whole product: "lime for
+one-app/README.md`'s System section already draws this line for the whole product: "bone for
 action, focus, running and selection, violet for needs you (teal the one alternative). No other
 hue. Devices and hosts never get a colour." A teammate is exactly this kind of entity, not a
 person, and giving each one its own hue would be the first crack in a rule that's held since
@@ -173,7 +173,7 @@ read without colour):
 may colour a teammate's name with a role-hashed ANSI 256 colour, the way `git log --graph` colours
 branches: text-only,
 degrades to plain text under `NO_COLOR`, chosen from a fixed set of about 8 pre-picked, AA-tested
-hues (never an arbitrary hash-to-hue) so a hash never lands near lime (`2` in the xterm 256 sense)
+hues (never an arbitrary hash-to-hue) so a hash never lands near bone (`2` in the xterm 256 sense)
 or violet, which would misread as a status signal in a terminal. This stays a CLI-only convention;
 it does not leak into the Deck, the App or the Capsule, where the rule above holds without
 exception.

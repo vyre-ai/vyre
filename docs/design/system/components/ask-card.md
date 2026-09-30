@@ -78,7 +78,7 @@ Text: title base 13 desktop, read 17 phone; command mono 13 on both.
 
 - `A` allow once, `D` deny, Enter also allows once. No proof: answering an ask never asks for Face
   ID or Touch ID.
-- Phone: swipe right on the Needs row approves (lime reveal), left denies, each with Undo 4 s.
+- Phone: swipe right on the Needs row approves (bone reveal), left denies, each with Undo 4 s.
 
 ## Motion
 

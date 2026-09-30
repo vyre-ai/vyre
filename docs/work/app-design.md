@@ -913,3 +913,8 @@ account + device and drop the tokens tool store. Then polish passes over the spe
 - Done: team/0.2/cta-options.html (lime replacement options: A Ember, B Tide, C Bone, contrast checked on opaque and glass, both themes, glass rule = accent as fill or dot, neutral chip text, two-tone focus ring). Lead told. Tokens NOT changed; waiting for the user's pick. On pick: change lib/theme/tokens.json (+ generated files), core/config/palette.js and theme.js, deck css, site css, brand marks, docs/design/TOKENS.md and boards.
 - Done: capsule-02.html section 12, the 680px Deep glass main search (apps, files, contacts, dictionary, calculator, commands, focused row, clipboard history), screenshotted and looked at.
 - Next: apply the picked colour product-wide, then support building teams.
+
+## Bone applied (30 Sep)
+
+- The user picked C, Bone (no accent). Applied product-wide: tokens.json + generated files (gen-tokens --check clean), palette.js/theme.js, deck/site/docs CSS, brand marks, app icons, splash, og, docs screenshots (pixel-recoloured from lime and paper green, not retaken: retake with scripts/docs-shots on a CI runner when convenient), boards, specs. Glass rule: no chip wash, two-tone focus (chip.md); glass text contrast test in core/config/palette.test.js.
+- test/no-lime.test.js fails on the old hex, its washes, the paper green and the word (history files exempt). Other UI teams: use the tokens only.

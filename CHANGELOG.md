@@ -4,6 +4,13 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+- The lime primary is retired everywhere. The user picked Bone: no accent hue, cream is the
+  primary on dark and ink on paper, and focus, washes, chips and the mark dot use the same
+  neutral. Capsule, Deck, phone, Windows, setup, site, docs, brand marks, app icons, splash
+  screens and screenshots all changed. On Deep glass a chip has no wash and focus is two-tone,
+  so text holds 4.5:1 over every sample wallpaper. `test/no-lime.test.js` fails if the old colour
+  or its hex comes back.
+
 ## 0.1.1
 
 What's new:
