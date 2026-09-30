@@ -4,6 +4,11 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+- Lumen has its icon: the lens, on the app, in the menu bar (a one-colour template that follows light
+  and dark, with the bead larger and violet when something waits on you) and in the bar. On every
+  summon the bar arrives over 220 ms and the lens draws itself in; the first time Lumen runs, the
+  tile, the lens's point of light and "Vyre Lumen" appear for 1.6 s. With Reduce Motion everything is
+  simply there.
 - Lumen: icons for files and apps are made off the main thread, so a first letter no longer waits on
   the system for a dozen pictures; a row draws without its icon and the icon appears when ready. The
   panel is drawn once, hidden, shortly after launch, so the first summon is warm.

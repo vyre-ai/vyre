@@ -101,7 +101,7 @@ struct CapsuleView: View {
 
     private var bar: some View {
         HStack(spacing: 12) {
-            MarkView(size: 20)
+            SummonMark(size: 20, replay: focus.count)
             if let vs = model.viewSession {
                 HStack(spacing: 5) {
                     Image(systemName: vs.command.icon.flatMap { ViewIcon.spec($0) }.map { if case .symbol(let n, _) = $0 { return n }; return "square.grid.2x2" } ?? "square.grid.2x2")

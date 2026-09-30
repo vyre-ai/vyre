@@ -65,6 +65,7 @@ case "$mode" in
   <key>CFBundleName</key><string>Lumen</string>
   <key>CFBundleDisplayName</key><string>Vyre Lumen</string>
   <key>CFBundleExecutable</key><string>Vyre</string>
+  <key>CFBundleIconFile</key><string>Lumen</string>
   <key>CFBundlePackageType</key><string>APPL</string>
   <key>CFBundleShortVersionString</key><string>${version:-0.0.0}</string>
   <key>CFBundleVersion</key><string>${version:-0.0.0}</string>
@@ -80,6 +81,10 @@ PLIST
       find "$here/Sources/Extensions" -name Info.plist.part -exec cat {} \; 2>/dev/null
       printf '</dict>\n</plist>\n'
     } > "$app/Contents/Info.plist"
+    # The app icon (app-design's Lumen lens), from the brand export. Missing is not an error: the app
+    # then has the generic icon and everything else works.
+    icon="$here/../../../docs/design/brand/export/lumen/macos/Lumen.icns"
+    if [ -f "$icon" ]; then cp "$icon" "$app/Contents/Resources/Lumen.icns"; else echo "note: no Lumen.icns at $icon; the app gets the generic icon" >&2; fi
     # One stable identity keeps Accessibility and Input Monitoring grants across updates. The
     # identifier pins the designated requirement; VYRE_SIGN_IDENTITY names a local certificate
     # when there is one, otherwise the signature is ad hoc.

@@ -166,7 +166,7 @@ struct MenuBarPopover: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             HStack(spacing: 10) {
-                MarkView(size: 20)
+                LumenMark(size: 20)
                 Text("Vyre Lumen").font(Theme.type(Tokens.TypeScale.read, .semibold)).foregroundColor(Theme.bone)
                 Spacer()
                 Circle().fill(Color(nsColor: health.dotColor)).frame(width: 7, height: 7)

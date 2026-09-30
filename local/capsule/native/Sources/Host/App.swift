@@ -125,6 +125,7 @@ final class CapsuleApp: NSObject, NSApplicationDelegate {
         // A module says its commands changed: read them again (never polled).
         viewSub = vyred.on("capsule.changed") { [weak self] _ in self?.viewCommands.read(force: true) }
         enrolWithCore()
+        if !headless { LumenOpen.showIfFirst() }
         // Once the launch has settled, draw the panel once in the dark (never shown): the first summon is then warm.
         if ProcessInfo.processInfo.environment["VYRE_CAPSULE_NO_PREWARM"] != "1" {
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) { [weak self] in MainActor.assumeIsolated { self?.panel.prewarm() } }
@@ -218,24 +219,6 @@ final class CapsuleApp: NSObject, NSApplicationDelegate {
     @objc func openCapsule() { panel.show(front: PanelController.frontApp()) }
     @objc func turnOnDoubleControl() { hotkeys.requestDoubleControl() }
 
-    /// The mark as a template image, so the menu bar tints it for light and dark.
-    static func menuBarMark() -> NSImage {
-        let img = NSImage(size: NSSize(width: 18, height: 18), flipped: true) { r in
-            let k = r.width / 16
-            let p = NSBezierPath()
-            p.move(to: NSPoint(x: 2.5 * k, y: 4 * k))
-            p.line(to: NSPoint(x: 8 * k, y: 13 * k))
-            p.line(to: NSPoint(x: 11.52 * k, y: 7.24 * k))
-            p.lineWidth = 1.8 * k
-            p.lineCapStyle = .round
-            p.lineJoinStyle = .round
-            NSColor.black.setStroke()
-            p.stroke()
-            NSColor.black.setFill()
-            NSBezierPath(ovalIn: NSRect(x: (13.5 - 1.8) * k, y: (4 - 1.8) * k, width: 3.6 * k, height: 3.6 * k)).fill()
-            return true
-        }
-        img.isTemplate = true
-        return img
-    }
+    /// The Lumen lens as a template image, so the menu bar tints it for light and dark.
+    static func menuBarMark() -> NSImage { LumenMark.menuBarImage() }
 }

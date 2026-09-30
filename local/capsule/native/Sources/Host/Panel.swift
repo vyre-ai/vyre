@@ -96,17 +96,24 @@ final class PanelController: NSObject, NSWindowDelegate {
         let f = screen.frame
         top = f.maxY - (f.height * Theme.topFraction).rounded()
         let h = height()
-        panel.setFrame(NSRect(x: (f.midX - Theme.width / 2).rounded(), y: top - h, width: Theme.width, height: h), display: false)
+        let target = NSRect(x: (f.midX - Theme.width / 2).rounded(), y: top - h, width: Theme.width, height: h)
+        let still = NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
+        // The bar arrives over 220 ms: it fades up and rises 4 points (LumenMotion). Reduce Motion: there at once.
+        var start = target
+        start.origin.y -= CGFloat(LumenMotion.riseDistance)
+        panel.setFrame(still ? target : start, display: false)
         // Set again before every show (capsule-now rule 6): macOS can drop it after a Space change.
         panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .transient, .ignoresCycle]
-        // In quickly: a fade over two frames' worth, so it arrives rather than blinks.
-        panel.alphaValue = 0
+        panel.alphaValue = still ? 1 : 0
         panel.orderFrontRegardless()
         panel.makeKey()
-        NSAnimationContext.runAnimationGroup { ctx in
-            ctx.duration = 0.11
-            ctx.timingFunction = CAMediaTimingFunction(name: .easeOut)
-            panel.animator().alphaValue = 1
+        if !still {
+            NSAnimationContext.runAnimationGroup { ctx in
+                ctx.duration = LumenMotion.arrivalMs / 1000
+                ctx.timingFunction = CAMediaTimingFunction(controlPoints: 0.33, 1, 0.68, 1)   // ease-out
+                panel.animator().alphaValue = 1
+                panel.animator().setFrame(target, display: true)
+            }
         }
         focus.count += 1
         startKeys()

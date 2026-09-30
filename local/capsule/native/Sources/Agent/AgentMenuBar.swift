@@ -54,20 +54,7 @@ extension CapsuleApp {
     /// The mark with the attention dot. Not a template (the dot keeps its colour), so the wire is drawn
     /// in the label colour of the menu bar's appearance at draw time.
     static func menuBarMarkWaiting() -> NSImage {
-        NSImage(size: NSSize(width: 18, height: 18), flipped: true) { r in
-            let k = r.width / 16
-            let p = NSBezierPath()
-            p.move(to: NSPoint(x: 2.5 * k, y: 4 * k))
-            p.line(to: NSPoint(x: 8 * k, y: 13 * k))
-            p.line(to: NSPoint(x: 11.52 * k, y: 7.24 * k))
-            p.lineWidth = 1.8 * k
-            p.lineCapStyle = .round
-            p.lineJoinStyle = .round
-            NSColor.labelColor.setStroke()
-            p.stroke()
-            NSColor(srgbRed: 0xB8 / 255, green: 0xA4 / 255, blue: 0xFF / 255, alpha: 1).setFill() // Theme.attention
-            NSBezierPath(ovalIn: NSRect(x: (13.5 - 2.2) * k, y: (4 - 2.2) * k, width: 4.4 * k, height: 4.4 * k)).fill()
-            return true
-        }
+        // The lens, with its bead larger and in the attention colour.
+        LumenMark.menuBarImage(beadColor: NSColor(srgbRed: 0xB8 / 255, green: 0xA4 / 255, blue: 0xFF / 255, alpha: 1), beadScale: 1.25)
     }
 }

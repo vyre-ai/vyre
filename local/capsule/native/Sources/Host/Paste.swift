@@ -51,6 +51,10 @@ enum Paster {
         try? d.write(to: URL(fileURLWithPath: p), options: .atomic)
     }
 
+    /// A yes-or-no note kept beside the setting (the first-launch moment has been shown).
+    static func flag(_ key: String) -> Bool { prefs()[key] as? Bool ?? false }
+    static func setFlag(_ key: String) { var o = prefs(); o[key] = true; save(o) }
+
     static var mode: PasteMode { PasteMode(rawValue: prefs()["enter"] as? String ?? "") ?? .paste }
 
     static func setMode(_ m: PasteMode) { var o = prefs(); o["enter"] = m.rawValue; save(o) }
