@@ -359,7 +359,7 @@ export default {
     const internal = (name, description, input, run) => ctx.tool(name, { internal: true, description, input, run });
     const said = saidTools.register({ vault, internal });
     // A vendor API call with an api-credential: reads run, asked-for sends run, the rest hold at the Gate.
-    requestTools.register({ vault, tool, internal, said, call: ctx.call ? (name, input) => ctx.call(name, input) : undefined, log: ctx.log });
+    const requests = requestTools.register({ vault, tool, internal, said, call: ctx.call ? (name, input) => ctx.call(name, input) : undefined, log: ctx.log });
 
     tool("vault.offboard", [...SURFACES, "mcp"], "Someone left: revoke every pass they hold and list what must be rotated.",
       obj({ person: str }, ["person"]), (input, { caller }) => vault.offboard(input, caller),
@@ -391,6 +391,7 @@ export default {
       vault,
       connections: conns.connections,
       async stop() {
+        requests.stop();
         reminders.stop();
         await conns.stop();
         await kits.stop();

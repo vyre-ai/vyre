@@ -167,6 +167,11 @@ test("vault.request and its Gate sender: who may call, and what stops before the
   for (const who of ["cli", "local", "mcp", "tailnet-guest:x@y.test", "hook"]) assert.equal((await reg("vault.api.send", { id: "abc" }, who)).error.code, "no_such_tool", who);
   assert.match((await reg("vault.api.send", { id: "abc" }, "module:sessions")).error.message, /only the Gate sends/);
   // The sender is offered to the Gate under a name in the vault's own namespace.
-  const senders = (await reg("gate.senders", {}, "cli")).data;
+  // (Modules start in dependency order and neither needs the other, so the offer retries until the Gate is there.)
+  let senders = [];
+  for (let i = 0; i < 40 && !senders.some(s => s.name === "vault-api"); i++) {
+    senders = (await reg("gate.senders", {}, "cli")).data;
+    if (!senders.some(s => s.name === "vault-api")) await new Promise(r => setTimeout(r, 100));
+  }
   assert.ok(senders.some(s => s.name === "vault-api" && s.module === "vault" && s.kinds.includes("spend")), JSON.stringify(senders));
 });

@@ -28,7 +28,7 @@ A module runs on the `box` (the always-on server), on `local` (the Mac), or on b
 | [`context`](#context) | `core/context` | `box`, `local` | 2 | 1 | cli |
 | [`events`](#events) | `core/event-catalog` | `box`, `local` | 1 | 0 | none |
 | [`files`](#files) | `core/files` | `box`, `local` | 17 | 3 | capsule, cli, deck |
-| [`gate`](#gate) | `core/gate` | `box`, `local` | 10 | 6 | capsule, cli, deck |
+| [`gate`](#gate) | `core/gate` | `box`, `local` | 12 | 6 | capsule, cli, deck |
 | [`glass`](#glass) | `core/glass` | `box` | 13 | 8 | capsule, cli, deck |
 | [`google`](#google) | `core/google` | `box`, `local` | 19 | 7 | capsule, cli, deck |
 | [`hands`](#hands) | `local/hands-mac` | `local` | 5 | 3 | none |
@@ -60,7 +60,7 @@ A module runs on the `box` (the always-on server), on `local` (the Mac), or on b
 | [`term`](#term) | `core/term` | `box`, `local` | 4 | 2 | none |
 | [`threads`](#threads) | `core/switchboard` | `box`, `local` | 42 | 27 | cli |
 | [`tips`](#tips) | `core/tips` | `box`, `local` | 7 | 1 | cli |
-| [`vault`](#vault) | `core/vault` | `box`, `local` | 109 | 42 | capsule, cli, deck |
+| [`vault`](#vault) | `core/vault` | `box`, `local` | 115 | 42 | capsule, cli, deck |
 | [`voice`](#voice) | `local/voice` | `local` | 3 | 0 | capsule |
 | [`waiting`](#waiting) | `core/waiting` | `box`, `local` | 2 | 1 | cli |
 | [`watchers`](#watchers) | `core/watchers` | `box`, `local` | 8 | 5 | capsule, cli, deck |
@@ -193,7 +193,7 @@ Find, look at and bring over files on this machine and the box, inside the folde
 - Folder: `core/gate`, version 0.1.0
 - Runs on: `box`, `local`
 - Requires: none
-- Tools: [10](tools.md#gate), 2 of them only for other modules
+- Tools: [12](tools.md#gate), 2 of them only for other modules
 - Emits: [6 events](events.md#gate)
 - Shows on: capsule, cli, deck
 - Needs vault: `per-sender`
@@ -546,7 +546,7 @@ One short tip at a time about the part of Vyre you are using, the parts you have
 - Folder: `core/vault`, version 0.1.0
 - Runs on: `box`, `local`
 - Requires: none
-- Tools: [109](tools.md#vault), 1 of them only for other modules
+- Tools: [115](tools.md#vault), 6 of them only for other modules
 - Emits: [42 events](events.md#vault)
 - Shows on: capsule, cli, deck
 - Teaches tips: `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`

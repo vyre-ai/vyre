@@ -82,7 +82,7 @@ See [tools and events](../build/tools-and-events.md) for how to listen.
 | `gate.failed` | `error`, `id`, `via` |
 | `gate.held` | none; sometimes `agent`, `description`, `id`, `input`, `kind`, `project`, `run`, `summary`, `thread`, `to`, `via` |
 | `gate.rejected` | `by`, `id`, `kind`, `reason`, `via` |
-| `gate.released` | `agent`, `by`, `edited`, `id`, `kind`, `project`, `thread`, `to`, `via` |
+| `gate.released` | `agent`, `by`, `edited`, `id`, `kind`, `project`, `thread`, `to`, `via`; sometimes `said` |
 | `gate.revised` | `agent`, `by`, `id`, `project`, `thread`, `to`, `via` |
 | `gate.settled` | `by`, `id`, `kind`, `outcome`, `via` |
 
@@ -367,7 +367,7 @@ See [tools and events](../build/tools-and-events.md) for how to listen.
 
 | Event | Fields |
 | --- | --- |
-| `grant.requested` | none; sometimes `agent`, `item`, `module`, `name`, `origin`, `watcher` |
+| `grant.requested` | none; sometimes `agent`, `item`, `module`, `name`, `origin`, `project`, `watcher` |
 | `pass.accept-requested` | `id` |
 | `pass.accepted` | `items`, `mode`, `owner`, `pass` |
 | `pass.created` | `holder`, `items`, `mode`, `pass` |
@@ -392,7 +392,7 @@ See [tools and events](../build/tools-and-events.md) for how to listen.
 | `vault.emergency-removed` | `person` |
 | `vault.emergency-requested` | `opens`, `person` |
 | `vault.filled` | `name`; sometimes `app`, `device`, `surface`, `what` |
-| `vault.granted` | `module`, `name`; sometimes `watcher` |
+| `vault.granted` | `module`, `name`; sometimes `project`, `watcher` |
 | `vault.item-added` | `kind`, `name` |
 | `vault.item-changed` | `kind`, `name`; sometimes `stale` |
 | `vault.item-deleted` | `name` |
@@ -405,7 +405,7 @@ See [tools and events](../build/tools-and-events.md) for how to listen.
 | `vault.released` | `name`; sometimes `holder`, `module`, `pass`, `watcher` |
 | `vault.restored` | `added`, `grants`, `identity`, `kept`, `mode`, `passes` |
 | `vault.revealed` | `field`, `name`, `surface` |
-| `vault.revoked` | `module`, `name`; sometimes `watcher` |
+| `vault.revoked` | `module`, `name`; sometimes `project`, `watcher` |
 | `vault.ssh-approved` | `expires`, `host`, `name` |
 | `vault.sync-conflicted` | `name`, `vault` |
 | `vault.unlocked` | none; sometimes `sessions`, `surface`, `vault` |

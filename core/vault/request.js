@@ -148,6 +148,9 @@ export class ApiRequests {
     this.now = deps.now || Date.now;
     /** Minted access tokens, in memory only. @type {Map<string, { token: string, expires: number }>} */
     this.tokens = new Map();
+    this.stopped = false;
+    /** @type {Set<any>} */
+    this.timers = new Set();
   }
 
   // ---- building the plan: everything a decision needs, from the request alone ----
@@ -395,12 +398,37 @@ export class ApiRequests {
     throw bad(`${name} is not granted to ${watcher ? `${mod}/${watcher}` : mod} for vault.request · vyre vault grant ${name} ${mod}${watcher ? ` --watcher ${watcher}` : ""}`, "denied");
   }
 
-  /** The Gate's `vault-api` sender: offered at start and before each hold, since a Gate that restarted forgot it. */
+  /**
+   * The Gate's `vault-api` sender: offered at start and before each hold, since a Gate that
+   * restarted forgot it. True when the Gate took it.
+   */
   async offer() {
-    if (!this.deps.call) return;
+    if (!this.deps.call) return false;
     const r = await this.deps.call("gate.offer", { name: GATE_SENDER, tool: "vault.api.send", kinds: Object.keys(GATE_KINDS),
       content: { credential: "the api-credential's name", method: "string", url: "string", summary: "string, built by Vyre", hash: "approval hash", request: "object: headers, body" } });
-    if (r && r.error && this.deps.log) this.deps.log(`vault: could not offer the Gate sender ${GATE_SENDER}: ${r.error.message}`);
+    if (r && r.error) { if (this.deps.log && r.error.code !== "no_such_tool") this.deps.log(`vault: could not offer the Gate sender ${GATE_SENDER}: ${r.error.message}`); return false; }
+    return true;
+  }
+
+  /** Offer now, and keep trying for a while when the Gate has not started yet (modules start in dependency order, and neither needs the other). */
+  offerSoon() {
+    let n = 0;
+    const delays = [200, 1000, 3000, 10_000, 30_000];
+    const attempt = async () => {
+      if (this.stopped) return;
+      const ok = await this.offer().catch(() => false);
+      if (ok || n >= delays.length || this.stopped) return;
+      const t = setTimeout(() => { this.timers.delete(t); attempt(); }, delays[n++]);
+      if (typeof t.unref === "function") t.unref();
+      this.timers.add(t);
+    };
+    return attempt();
+  }
+
+  stop() {
+    this.stopped = true;
+    for (const t of this.timers) clearTimeout(t);
+    this.timers.clear();
   }
 
   /**
@@ -464,7 +492,7 @@ export function register({ vault, tool, internal, call, said, deps = {}, log }) 
     obj({ id: str, to: { type: "array", items: str }, content: { type: "object" } }, ["id"]),
     (input, { caller }) => api.send(input, String(caller)));
 
-  // Offer the sender now if the Gate is already up; every hold offers it again.
-  api.offer().catch(() => {});
+  // Offer the sender now, and again until the Gate is up; every hold offers it again.
+  api.offerSoon().catch(() => {});
   return api;
 }
