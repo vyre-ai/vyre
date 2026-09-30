@@ -458,6 +458,14 @@ Branch: work/github · Worktree: ../vyre-github · Owner session: github
   form at all, so that one keeps the short name. 29/29 on testbox including a new ignored-file
   test. Sent to reviewer.
 
+## Save point (2026-09-30, usage-limit restart)
+work/github rebased onto origin/work/stage-0.2 and pushed, sha 57b485b4 (was 3623113a before the
+rebase - same content, replayed on top of stage's own already-folded 0.1.1 history, one clean
+module.json conflict resolved). Sent to reviewer (msg sent, no reply yet as of this save) and to
+the lead. Nothing uncommitted; nothing else in flight. On resume: check CHAT.md/reviews/github.md
+for the reviewer's clearance on 57b485b4, and whether vault's P17 Gate-provenance name or
+mcp.connect/oauth.js status have posted (both block the Next list below).
+
 ## Next (0.2)
 1. Close reviewer's N1/N2 (team/0.2/reviews/github.md's re-review) before starting build steps
    8-9: N1, `github.connect`/`.remove` for a model caller need the Gate's own-turn provenance
