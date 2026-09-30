@@ -88,9 +88,9 @@ async function list(ctx) {
   };
 
   const drawForm = () => {
-    const name = /** @type {HTMLInputElement} */ (h("input", { class: "input", id: "np-name", required: true, autocomplete: "off", placeholder: "Harlow Legal" }));
+    const name = /** @type {HTMLInputElement} */ (h("input", { class: "input", id: "np-name", required: true, autocomplete: "off", placeholder: "Your project's name" }));
     const home = /** @type {HTMLInputElement} */ (h("input", { class: "input mono-in", id: "np-home", autocomplete: "off", placeholder: "Leave empty for a new folder" }));
-    const people = /** @type {HTMLInputElement} */ (h("input", { class: "input", id: "np-people", autocomplete: "off", placeholder: "Dana Reyes <dana@harlowlegal.com>, Theo Grant" }));
+    const people = /** @type {HTMLInputElement} */ (h("input", { class: "input", id: "np-people", autocomplete: "off", placeholder: "Names or email addresses, separated by commas" }));
     const status = h("div", { class: "small muted", role: "status" });
     const submit = /** @type {HTMLButtonElement} */ (h("button", { type: "submit", class: "btn btn-primary" }, "Create project"));
     const el = h("form", { class: "pl-form-in", onsubmit: async (/** @type {Event} */ e) => {

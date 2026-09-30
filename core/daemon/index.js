@@ -812,6 +812,12 @@ function serveDeck(res, pathname, cfg) {
   const shell = path.join(dir, "index.html");
   let file = path.resolve(dir, "." + path.posix.normalize(decodeURIComponent(pathname)));
   if (!file.startsWith(dir + path.sep) && file !== dir) return send(res, 404, { error: { code: "not_found", message: pathname } });
+  // Sample data (deck/fixtures, deck/chat/fixtures) is for dev worlds and tests only: a real box
+  // never serves it, so no ?fixtures=1 link can put sample threads in front of a person (0.2
+  // honesty pass, PLAN.md D2). Dev worlds set VYRE_DECK_FIXTURES=1.
+  if (process.env.VYRE_DECK_FIXTURES !== "1" && path.relative(dir, file).split(path.sep).includes("fixtures")) {
+    return send(res, 404, { error: { code: "not_found", message: pathname } });
+  }
   // A path that is not a file at all (any client route) wants the one shell. A path that IS a
   // real directory (a view's own folder of modules, e.g. deck/chat/) wants that shell too, unless
   // the directory happens to carry its own index.html: a bare 404 there would be surprising, since

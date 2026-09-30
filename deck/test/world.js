@@ -59,7 +59,7 @@ export function buildHome(root, extra = {}, alex = path.join(root, "alex")) {
   }, null, 2));
   // VYRE_NO_DIALOGS: nothing this world runs may raise a prompt on the Mac it runs on.
   // VYRE_TAILSCALE_BIN: a sample tailnet (fake-tailscale.js), never the real Tailscale of this machine.
-  const env = { ...process.env, VYRE_HOME: root, NO_COLOR: "1", VYRE_NO_DIALOGS: "1", VYRE_HARNESS_DIR: path.join(root, "no-harness"),
+  const env = { ...process.env, VYRE_HOME: root, NO_COLOR: "1", VYRE_DECK_FIXTURES: "1", VYRE_NO_DIALOGS: "1", VYRE_HARNESS_DIR: path.join(root, "no-harness"),
     VYRE_TAILSCALE_BIN: path.join(REPO, "deck", "test", "fake-tailscale.js"),
     // A send from the Deck resumes a session headless: with the Switchboard's fake claude, which
     // streams an echo back (or asks permission for "write <file>"), never the real one.

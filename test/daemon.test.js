@@ -501,3 +501,25 @@ test("daemon: Wink's relay client (deck/js/pair-ticket.js's ../../relay/client/*
   const shell = /** @type {any} */ (await get("/pair/scan"));
   assert.ok(shell.headers["content-security-policy"].includes("wss://relay.vyre.run"));
 });
+
+test("daemon: a real box never serves the Deck's sample data; only a dev world does (0.2 honesty pass)", { timeout: 20_000 }, async t => {
+  const root = tempHome(t);
+  const saved = process.env.VYRE_DECK_FIXTURES;
+  delete process.env.VYRE_DECK_FIXTURES;
+  t.after(() => { if (saved === undefined) delete process.env.VYRE_DECK_FIXTURES; else process.env.VYRE_DECK_FIXTURES = saved; });
+  const d = await start({ root, log: () => {} });
+  t.after(() => d.stop());
+  const { socketPath } = await import("../core/config/index.js");
+  const http = await import("node:http");
+  const get = (/** @type {string} */ p) => new Promise((resolve, reject) => http.get({ socketPath: socketPath(root), path: p }, res => {
+    let b = ""; res.on("data", c => { b += c; }); res.on("end", () => resolve({ status: res.statusCode, body: b }));
+  }).on("error", reject));
+  for (const p of ["/fixtures/threads.json", "/chat/fixtures/session-blocks.json", "/fixtures/../fixtures/threads.json"]) {
+    const r = /** @type {any} */ (await get(p));
+    assert.equal(r.status, 404, p);
+    assert.doesNotMatch(r.body, /Harlow|Northwind/, p);
+  }
+  process.env.VYRE_DECK_FIXTURES = "1";
+  const dev = /** @type {any} */ (await get("/fixtures/threads.json"));
+  assert.equal(dev.status, 200, "a dev world still gets its sample data");
+});

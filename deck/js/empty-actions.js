@@ -57,7 +57,7 @@ function inline(label, primary, drawForm) {
  */
 export function createProjectInline(o = {}) {
   return inline("Create project", o.primary !== false, (box, closed) => {
-    const name = /** @type {HTMLInputElement} */ (h("input", { class: "input ea-in", "aria-label": "Project name", autocomplete: "off", placeholder: "Harlow Legal" }));
+    const name = /** @type {HTMLInputElement} */ (h("input", { class: "input ea-in", "aria-label": "Project name", autocomplete: "off", placeholder: "Your project's name" }));
     const status = h("span", { class: "small muted", role: "status" });
     const ok = /** @type {HTMLButtonElement} */ (h("button", { type: "submit", class: "btn btn-sm btn-primary" }, "Create"));
     put(box, h("form", { class: "ea-form", onsubmit: async (/** @type {Event} */ e) => {

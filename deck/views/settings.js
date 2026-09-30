@@ -512,7 +512,7 @@ function drawEgress(el) {
     const side = d.sidecar || {};
     if (!d.enabled) return row("Glass egress", onOff(false),
       faint("Some sites refuse a datacenter address. The sites you list leave an agent's Chrome through your own Mac instead."),
-      cmd(`vyre call --tty computers.egress.set '{"enabled":true,"sites":["portal.northwind.example"]}'`));
+      cmd(`vyre call --tty computers.egress.set '{"enabled":true,"sites":["example.com"]}'`));
     return row("Glass egress", h("span", null, sites.length ? `On, ${plural(sites.length, "site")}` : "On, no sites yet"),
       sites.length ? h("div", { class: "set-tags" }, sites.map(x => h("span", { class: "tag" }, String(x)))) : null,
       side.answers ? faint("The egress sidecar answers.")
