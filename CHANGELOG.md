@@ -4,6 +4,7 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+- An added module can never take the name of a first party module, on or off, and an invalid copy no longer overwrites the loaded module's registry row (`core/modules/index.js`, test in modules.test.js). reviewer-2's note on the name-sharing change.
 - Capsule view effects (reviewer-2): an added module opens https and mailto only (a vyre: link can act) and
   pushes only to its own commands; `ask` answers `prefill: true` (the Capsule only fills the box, never sends
   or records it as the person's words) and `from` for an added module; a preview carries an HMAC token (two
