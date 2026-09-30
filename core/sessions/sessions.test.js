@@ -271,7 +271,7 @@ for (const driver of ["cli", "sdk"]) {
     const w = await boot(t, { driver });
     const th = (await w.tool("threads.start", { cwd: w.work, prompt: "hello", surface: "deck" })).data;
     await w.finished(th.id);
-    const pids = (await w.tool("probe.pids", {})).data;
+    const pids = (await w.internal("threads.pids", {})).data;
     const pid = Array.isArray(pids && pids.pids) ? pids.pids[0] : null;
     assert.ok(pid, "a pid to kill");
     process.kill(pid, "SIGKILL");
@@ -651,16 +651,16 @@ for (const driver of ["cli", "sdk"]) {
     const th = (await w.tool("threads.start", { cwd: w.work, prompt: "hello", surface: "deck" })).data;
     await w.finished(th.id);
     const launch = w.launches().find(l => l.argv);
-    const pids = (await w.tool("probe.pids", {})).data;
+    const pids = (await w.internal("threads.pids", {})).data;
     assert.ok(pids.pids.includes(launch.ppid), "the subreaper's pid is a session pid");
     assert.ok(pids.pgids.includes(launch.ppid) && pids.sids.includes(launch.ppid), "its group and session are reported");
     // A process left in the group outlives the session: the group is still reported.
     await w.tool("threads.send", { thread: th.id, text: "orphan", surface: "deck" });
     await until(async () => (await w.events(th.id)).some(e => e.type === "thread.stopped"), "the session to end");
-    const after = (await w.tool("probe.pids", {})).data;
+    const after = (await w.internal("threads.pids", {})).data;
     assert.ok(!after.pids.includes(launch.ppid), "the session itself is gone");
     assert.ok(after.pgids.includes(launch.ppid), "its group is still reported while the orphan runs");
-    await until(async () => !(await w.tool("probe.pids", {})).data.pgids.includes(launch.ppid), "the group to end", 10_000);
+    await until(async () => !(await w.internal("threads.pids", {})).data.pgids.includes(launch.ppid), "the group to end", 10_000);
   });
 
   test(`${driver}: a session has its own socket (option A): its calls are that thread's, never a person's, and it goes when the thread stops`, { skip }, async t => {
