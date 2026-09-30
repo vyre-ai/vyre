@@ -404,7 +404,7 @@ function collectTools(root, mods, harvested) {
     const local = new Map((harvested.local[m.name]?.tools || []).map(t => [t.name, t]));
     const both = (m.roles || ["box", "local"]).length > 1;
     const out = [];
-    for (const name of [...new Set(m.does?.tools || [])].sort(byName)) {
+    for (const name of [...new Set((m.does?.tools || []).map(t => typeof t === "string" ? t : t.name))].sort(byName)) {
       const t = box.get(name) || local.get(name);
       if (t) out.push({ ...t, only: both && !(box.has(name) && local.has(name)) ? (box.has(name) ? "box" : "local") : null });
       else out.push({ name, description: staticDescription(root, dir, name), input: null, callers: null, internal: false, hook: false, presence: false, only: null, unregistered: true });
