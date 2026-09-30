@@ -1,0 +1,116 @@
+# Spikes for the 0.2 release pipeline (team plan I1, I3, S10). Dispatch only; it pushes nothing
+# anywhere public. Each job answers one question and writes the answer to the step summary:
+#   arm64-box:      does box/Dockerfile build and boot on linux/arm64 (native arm runner)?
+#   arm64-computer: does core/computers/image build on linux/arm64, with a working Chromium?
+#   cosign:         can a box verify a keyless cosign signature with only a pinned cosign binary,
+#                   and does it refuse a wrong identity and an unsigned image? The image goes to a
+#                   throwaway registry inside the job, never to ghcr.
+name: release-spike
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  arm64-box:
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - uses: docker/setup-buildx-action@v3
+      - name: Pack like a deploy
+        run: |
+          start=$(date +%s)
+          mkdir -p "$RUNNER_TEMP/src"
+          sh scripts/build-app.sh
+          tgz=$(npm pack --silent --pack-destination "$RUNNER_TEMP")
+          tar -xzf "$RUNNER_TEMP/$tgz" -C "$RUNNER_TEMP/src" --strip-components=1
+          echo "SRC=$RUNNER_TEMP/src" >> "$GITHUB_ENV"
+          echo "pack: $(( $(date +%s) - start )) s on $(uname -m)" | tee -a "$GITHUB_STEP_SUMMARY"
+      - name: Build box/Dockerfile for linux/arm64
+        run: |
+          start=$(date +%s)
+          docker buildx build --platform linux/arm64 --load -t vyre-box:arm64 -f "$SRC/box/Dockerfile" "$SRC" 2>&1 | tail -25
+          echo "box build (arm64, no cache): $(( $(date +%s) - start )) s; $(docker image ls vyre-box:arm64 --format '{{.Size}}')" | tee -a "$GITHUB_STEP_SUMMARY"
+      - name: Boot and health
+        run: |
+          docker run -d --name box vyre-box:arm64
+          for i in $(seq 1 90); do
+            if docker exec box node -e 'import("/opt/vyre/core/daemon/client.js").then(async m => { const r = await m.request("GET", "/v1/health", undefined, { timeout: 3000 }); console.log(JSON.stringify(r)); process.exit(r.error ? 1 : 0); }).catch(() => process.exit(1))'; then ok=1; break; fi
+            sleep 1
+          done
+          [ "${ok:-0}" = 1 ] || { docker logs box | tail -40; echo "arm64 box: NO health" >> "$GITHUB_STEP_SUMMARY"; exit 1; }
+          docker exec box sh -c 'uname -m; node --version; claude --version 2>&1 | head -1; ls /opt/vyre-sessions-sdk/node_modules/@anthropic-ai 2>/dev/null' | tee -a "$GITHUB_STEP_SUMMARY"
+          docker exec box vyre status 2>&1 | head -3 | tee -a "$GITHUB_STEP_SUMMARY"
+          echo "arm64 box: healthy" >> "$GITHUB_STEP_SUMMARY"
+
+  arm64-computer:
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - name: Build core/computers/image for linux/arm64
+        working-directory: core/computers/image
+        run: |
+          start=$(date +%s)
+          docker buildx build --platform linux/arm64 --load -t vyre-computer:arm64 -f Dockerfile . 2>&1 | tail -25
+          echo "computer build (arm64, no cache): $(( $(date +%s) - start )) s; $(docker image ls vyre-computer:arm64 --format '{{.Size}}')" | tee -a "$GITHUB_STEP_SUMMARY"
+      - name: Chromium runs
+        run: |
+          docker run --rm --entrypoint sh vyre-computer:arm64 -c 'uname -m; chromium --version; chromium --headless=new --no-sandbox --disable-gpu --dump-dom about:blank | head -c 200' 2>&1 | tee -a "$GITHUB_STEP_SUMMARY"
+
+  cosign:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      id-token: write   # keyless signing identity
+    services:
+      registry:
+        image: registry:2
+        ports: ["5000:5000"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: sigstore/cosign-installer@v3
+      - name: A small image, pushed by digest to the job's own registry
+        run: |
+          printf 'FROM busybox:latest\nRUN echo vyre-spike > /spike\n' > "$RUNNER_TEMP/Dockerfile"
+          docker build -q -t localhost:5000/vyre-spike:t "$RUNNER_TEMP"
+          docker push -q localhost:5000/vyre-spike:t
+          digest=$(docker inspect --format '{{index .RepoDigests 0}}' localhost:5000/vyre-spike:t)
+          echo "DIGEST=$digest" >> "$GITHUB_ENV"
+          printf 'FROM busybox:latest\nRUN echo unsigned > /spike\n' > "$RUNNER_TEMP/Dockerfile2"
+          docker build -q -t localhost:5000/vyre-unsigned:t -f "$RUNNER_TEMP/Dockerfile2" "$RUNNER_TEMP"
+          docker push -q localhost:5000/vyre-unsigned:t
+          echo "UNSIGNED=$(docker inspect --format '{{index .RepoDigests 0}}' localhost:5000/vyre-unsigned:t)" >> "$GITHUB_ENV"
+          echo "COSIGN_VERSION=$(cosign version --json 2>/dev/null | jq -r .gitVersion)" >> "$GITHUB_ENV"
+      - name: Sign keyless (the release workflow's OIDC identity)
+        run: cosign sign --yes --allow-insecure-registry "$DIGEST" 2>&1 | tail -3
+      - name: Verify the way a box would, with only a pinned cosign binary
+        run: |
+          set -u
+          v=$COSIGN_VERSION
+          d=$RUNNER_TEMP/box; mkdir -p "$d"
+          curl -fsSL -o "$d/cosign" "https://github.com/sigstore/cosign/releases/download/$v/cosign-linux-amd64"
+          curl -fsSL -o "$d/sums" "https://github.com/sigstore/cosign/releases/download/$v/cosign_checksums.txt"
+          want=$(awk '$2=="cosign-linux-amd64"{print $1}' "$d/sums"); got=$(sha256sum "$d/cosign" | cut -d' ' -f1)
+          [ "$want" = "$got" ] || { echo "cosign binary checksum mismatch"; exit 1; }
+          chmod +x "$d/cosign"
+          echo "cosign $v binary: $(du -h "$d/cosign" | cut -f1), checksum ok" | tee -a "$GITHUB_STEP_SUMMARY"
+          id="https://github.com/${GITHUB_REPOSITORY}/.github/workflows/release-spike.yml@${GITHUB_REF}"
+          iss=https://token.actions.githubusercontent.com
+          if "$d/cosign" verify --allow-insecure-registry --certificate-identity "$id" --certificate-oidc-issuer "$iss" "$DIGEST" >/dev/null 2>"$d/ok.err"; then
+            echo "signed image, right identity: VERIFIED" | tee -a "$GITHUB_STEP_SUMMARY"
+          else cat "$d/ok.err"; echo "signed image did not verify" | tee -a "$GITHUB_STEP_SUMMARY"; exit 1; fi
+          if "$d/cosign" verify --allow-insecure-registry --certificate-identity "https://github.com/someone/else/.github/workflows/x.yml@refs/heads/main" --certificate-oidc-issuer "$iss" "$DIGEST" >/dev/null 2>&1; then
+            echo "WRONG IDENTITY ACCEPTED" | tee -a "$GITHUB_STEP_SUMMARY"; exit 1
+          else echo "signed image, wrong identity: refused" | tee -a "$GITHUB_STEP_SUMMARY"; fi
+          if "$d/cosign" verify --allow-insecure-registry --certificate-identity "$id" --certificate-oidc-issuer "$iss" "$UNSIGNED" >/dev/null 2>&1; then
+            echo "UNSIGNED ACCEPTED" | tee -a "$GITHUB_STEP_SUMMARY"; exit 1
+          else echo "unsigned image: refused" | tee -a "$GITHUB_STEP_SUMMARY"; fi
+          start=$(date +%s%N)
+          "$d/cosign" verify --allow-insecure-registry --certificate-identity "$id" --certificate-oidc-issuer "$iss" "$DIGEST" >/dev/null 2>&1
+          echo "one verify: $(( ($(date +%s%N) - start) / 1000000 )) ms (needs the Rekor and Fulcio roots over the network)" | tee -a "$GITHUB_STEP_SUMMARY"
