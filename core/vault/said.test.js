@@ -101,7 +101,7 @@ const SAID = { thread: "t-1", said: "said-1", kind: "send", to: ["dana@harlowleg
 
 test("said: only sessions and the assistant record; every other caller kind is refused", async t => {
   const { reg, cli } = await daemon(t);
-  assert.deepEqual(RECORDERS, ["module:sessions", "module:assistant"]);
+  assert.deepEqual(RECORDERS, ["module:sessions", "module:assistant", "module:threads"]);
 
   const refused = [
     ["mcp", "mcp", {}], ["an agent", "mcp:agent:juno", { thread: "t-1", agent: "juno" }], ["a session's thread", "mcp:thread:t-1", { thread: "t-1" }],
@@ -234,4 +234,34 @@ test("use: a # tag lets one thread and its descendants use an item by name; the 
   const id = (await cli("gate.said.list")).data.intents.find(x => x.kind === "use").id;
   assert.equal((await cli("gate.said.revoke", { id })).data.id, id);
   assert.equal((await check({})).data.allowed, false);
+});
+
+test("act_out: the threads module records and resolves; a key with # @ and : is exact; a plain ask expires after its window", async t => {
+  const { reg } = await daemon(t);
+  // The switchboard's real caller label is module:threads.
+  const rec = (o, caller = "module:threads") => reg("vault.said.record", { thread: "t-1", said: "said-1", kind: "act_out", channel: "github", to: ["github.project.pr.merge:alex/app#7"], what: "merge it", ...o }, caller);
+  const a = await rec({});
+  assert.match(a.data.id, /^s_/, JSON.stringify(a));
+  const ask = (to, o = {}) => reg("vault.said.match", { kind: "act_out", via: "github", to: [to], thread: "t-1", ...o }, "module:vyred");
+  assert.equal((await ask("github.project.pr.merge:alex/app#7")).data.matched, true, "# and @ and : are fine in a key");
+  assert.equal((await ask("github.project.pr.merge:alex/app#40")).data.matched, false, "another PR is not covered");
+  assert.equal((await ask("github.project.pr.merge:ALEX/app#7", { consume: true })).data.matched, true, "compared without case, and used up");
+  assert.equal((await ask("github.project.pr.merge:alex/app#7")).data.matched, false, "a plain ask is single use");
+  const open = await rec({ said: "said-2", to: ["github.project.pr.open:alex/app@feature-x"] });
+  assert.ok(open.data.id);
+  assert.equal((await ask("github.project.pr.open:alex/app@feature-x")).data.matched, true);
+  // Expiry: 15 minutes by default, or the recorder's own window (1 to 60), never for a standing one.
+  const at = Date.now();
+  await rec({ said: "said-3", to: ["github.project.pr.review:alex/app#9"], at: at - 16 * 60_000 });
+  assert.equal((await ask("github.project.pr.review:alex/app#9")).data.matched, false, "said 16 minutes ago");
+  await rec({ said: "said-4", to: ["github.project.pr.review:alex/app#10"], at: at - 16 * 60_000, window_minutes: 30 });
+  assert.equal((await ask("github.project.pr.review:alex/app#10")).data.matched, true, "the recorder's own window");
+  await rec({ said: "said-5", to: ["github.project.pr.review:alex/app#11"], at: at - 500 * 60_000, window_minutes: 9999 });
+  assert.equal((await ask("github.project.pr.review:alex/app#11")).data.matched, false, "the window is clamped to 60 minutes");
+  assert.ok((await rec({ window_minutes: -1 })).error);
+  await rec({ said: "said-6", to: ["github.project.pr.merge:alex/app#12"], at: at - 5000 * 60_000, standing: true });
+  assert.equal((await ask("github.project.pr.merge:alex/app#12", { thread: "t-9" })).data.matched, true, "a standing one does not expire");
+  // The threads module resolves # tags too (the real caller), and another module label still does not.
+  assert.ok((await reg("vault.mention.resolve", { id: "nope", thread: "t-1" }, "module:threads")).error.code === "not_found");
+  assert.match((await reg("vault.mention.resolve", { id: "nope", thread: "t-1" }, "module:watchers")).error.message, /only sessions and the assistant/);
 });

@@ -34,7 +34,9 @@ export const SAID_MACED = ["id", "thread", "said", "kind", "channel", "recipient
 
 export const INTENT_KINDS = ["send", "post", "pay", "act_out", "setting", "revoke", "use"];
 /** The only callers that may record what the person said. */
-export const RECORDERS = ["module:sessions", "module:assistant"];
+export const RECORDERS = ["module:sessions", "module:assistant", "module:threads"];
+/** A plain (not standing) act_out ask is good this long from when it was said, unless the recorder gave its own window. */
+export const ACT_WINDOW_MS = 15 * 60_000;
 const MAX_TO = 20, MAX_TEXT = 500;
 
 const isObj = v => Boolean(v) && typeof v === "object" && !Array.isArray(v);
@@ -78,6 +80,8 @@ export function matchIntent(call, intents, lineage = []) {
     if (!it || it.revoked || !covers.includes(it.kind)) continue;
     // A plain ask is used up by the send it asked for; only a standing permission persists.
     if (it.used && !it.standing) continue;
+    // A plain act_out ask is for now, not for days: it stops matching after its window (15 minutes unless the recorder said otherwise).
+    if (!it.standing && it.kind === "act_out" && at > it.at + (it.limits && Number.isFinite(it.limits.window_ms) ? it.limits.window_ms : ACT_WINDOW_MS)) continue;
     // An intent that names agents covers only them; one that names none covers any of the person's agents.
     if (it.agents && it.agents.length && !it.agents.map(norm).includes(norm(call.agent))) continue;
     if (!(it.at <= at)) continue;
@@ -132,6 +136,10 @@ export class SaidIntents {
       limits = { ...(max !== undefined ? { max_amount: max } : {}), ...(i.limits.currency ? { currency: i.limits.currency } : {}), ...(hosts ? { hosts } : {}) };
     }
     if (i.kind === "pay" && !(limits && limits.max_amount !== undefined && limits.currency)) throw bad("a pay intent needs limits.max_amount and limits.currency");
+    if (i.window_minutes !== undefined) {
+      if (!(Number.isFinite(i.window_minutes) && i.window_minutes > 0)) throw bad("window_minutes is a number of minutes");
+      limits = { ...(limits || {}), window_ms: Math.round(Math.min(60, Math.max(1, i.window_minutes)) * 60_000) };
+    }
     if (i.kind === "use" && !(limits && Array.isArray(limits.hosts))) throw bad("a use intent carries the item's hosts as limits.hosts; record it through vault.mention.resolve");
     if (i.agents !== undefined && !(Array.isArray(i.agents) && i.agents.length <= MAX_TO && i.agents.every(x => typeof x === "string" && x.trim() && x.length <= 80))) throw bad("agents is a list of agent names");
     const agents = (i.agents || []).map(x => x.trim());
@@ -213,7 +221,7 @@ export function register({ vault, internal, tool, emit }) {
   const said = new SaidIntents(vault);
 
   internal("vault.said.record", "Store what the person's own turn asked for. Only sessions and the assistant call it, after extracting it from a `said` row; nothing a model, agent, watcher or tool result produces can.",
-    obj({ thread: str, said: str, kind: { type: "string", enum: INTENT_KINDS }, channel: str, to: strs, what: str, when: str, standing: { type: "boolean" }, agents: strs,
+    obj({ thread: str, said: str, kind: { type: "string", enum: INTENT_KINDS }, channel: str, to: strs, what: str, when: str, standing: { type: "boolean" }, agents: strs, window_minutes: { type: "number" },
       limits: obj({ max_amount: { type: "number" }, currency: str, hosts: strs }), at: { type: "integer" } }, ["thread", "said", "kind", "what"]),
     (input, { caller }) => {
       if (!RECORDERS.includes(String(caller))) { vault.audit("said-record", null, caller, false, "not sessions or the assistant"); throw new Error("only sessions and the assistant record what the person said"); }
@@ -246,7 +254,7 @@ export function register({ vault, internal, tool, emit }) {
 
   /** The pickable items: names, kinds and bound hosts only. Never a value, never an ssh key's private half. */
   const pickable = (q = "") => vault.list({ filter: q }).items.filter(i => i.kind !== "ssh-key").map(i => ({ name: i.name, kind: i.kind, hosts: i.hosts || [], ...(i.description ? { description: String(i.description).slice(0, 120) } : {}) }));
-  const RESOLVERS = ["module:sessions", "module:assistant", "module:mentions"];
+  const RESOLVERS = ["module:sessions", "module:assistant", "module:threads", "module:mentions"];
 
   if (tool) {
     tool("vault.items.names", ["cli", "local", "deck", "capsule", "tailnet"], "Names, kinds and bound hosts of the vault items a person may tag with #, for pickers. Never a value.",
