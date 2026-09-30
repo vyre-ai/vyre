@@ -519,3 +519,26 @@ test("vyre iq: memory.suggest, memory.retrieve and memory.ask through the module
   assert.equal(none.abstained, true);
   assert.equal(none.answer, null);
 });
+
+test("answer: a correction in chat wins its slot, and the old value becomes history", async t => {
+  const life = [
+    S(["rex (my labrador) needs a walk before the standup.", { a: "Noted." }], { day: 1 }),
+    S(["Rex is my labrador, he loves the beach.", { a: "Nice." }], { day: 2 }),
+    S(["I drive a Honda Jazz, park it on level 2.", { a: "Done." }], { day: 3 }),
+    S(["I'm from Bristol originally.", { a: "Noted." }], { day: 4 }),
+    S(["My wife Sam is a teacher at Hillside School.", { a: "Noted." }], { day: 5 }),
+    S(["my cat is a siamese, she hates the vacuum.", { a: "Poor thing." }], { day: 6 }),
+    S(["no, rex is a poodle not a labrador. fix the notes", { a: "Fixed: Rex is a poodle." }], { day: 20 }),
+    S(["actually I drive a Kia Niro, not the Jazz.", { a: "Updated." }], { day: 21 }),
+    S(["no, I'm from Bath, not Bristol.", { a: "Fixed." }], { day: 22 }),
+    S(["correction: my wife is a nurse, not a teacher.", { a: "Fixed." }], { day: 23 }),
+    S(["my cat keeps knocking the plant over.", { a: "Cats." }, "nope, it's a ragdoll, not a siamese", { a: "Fixed." }], { day: 24 }),
+  ];
+  const { ask } = await world(t, life);
+  for (const [q, a] of [["what breed is rex", "Rex is a poodle."], ["what car do i drive", "You drive a Kia Niro."], ["where am i from", "You are from Bath."],
+    ["what does my wife do", "Your wife is a nurse at Hillside School."], ["what breed is my cat", "Your cat is a ragdoll."]]) {
+    const r = await ask(q);
+    assert.equal(r.answer, a, `${q} -> ${r.answer}`);
+    assert.ok(r.confidence >= 0.5, `${q} @${r.confidence}`);
+  }
+});
