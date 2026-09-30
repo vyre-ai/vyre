@@ -48,6 +48,70 @@ types the seed (22 characters); no QR or words form yet (no bytes-to-words encod
 side). The persistent link window that keeps the channel for box calls (Drive) is NOT built.
 release.yml now calls capsule-win.yml as a reusable workflow and the release job needs it, no race.
 
+**Round 4:** (a) test-windows in node.yml now runs `npm run test:windows` (a bounded set, 10 min cap,
+--test-timeout): 282 tests in about 1.5 min on windows-latest, 211 pass and 70 fail. The failures are
+existing Windows gaps, not this branch: box and connect command tests (fake binaries and POSIX shells),
+config permission and unix-socket tests, the tar-safety tests, and the voice talk tests. The job stays
+continue-on-error. (b) The pairing seed shows as 13 words (seedwords.js) and a `vyre-pc:` QR (vendored
+qrcode), with Copy for a Deck on the same PC (not a true one-click: no link or scheme allowed); cleared
+when pairing ends. (c) Hidden `link` window keeps the box channel; tray "Open Vyre Drive" maps the first
+shared folder via files.drive.address. UNVERIFIED: the Tauri event listen from the page, and the shape
+of files.drive.candidates' answer; both need a real PC run.
+
+## Known Windows gaps (triage of the 70 failures; a Windows PC is a device in 0.2)
+
+`npm run test:windows` lists only files that pass on windows-latest, and the job now blocks (10 minute cap).
+
+Fixed in this round:
+- **Config and key file permissions (security, was MEDIUM).** Node's 0700/0600 do nothing on Windows; files take
+  the parent's ACL. Private under the user profile, but a home kept elsewhere inherited whoever the parent
+  allows. `lib/owner-only.js` now grants the current user alone (by SID) and removes inherited access (icacls, run by
+  full path from System32, verified from the SDDL afterwards) on the Vyre home in
+  `config.ensure`/`save`, the pipe token, and the relay device key folder. Tests check the ACL on win32
+  (no Everyone, Users or Authenticated Users) and the mode bits elsewhere. Best effort: a machine without
+  icacls keeps the profile default. Stricter than a default profile: SYSTEM and Administrators lose access to
+  that folder too, so a backup or antivirus tool running as SYSTEM will not read the Vyre home.
+
+Real gaps, NOT fixed (severity, reason):
+- **`vyre box add` / `box move` from a Windows CLI (MEDIUM, unsupported).** `core/cli/ssh.js` uses a fixed
+  `/tmp` folder and OpenSSH `ControlPath` multiplexing; Windows OpenSSH has no ControlMaster, so it cannot
+  work as written. The Windows path to a server is the setup page and the app. `box.test.js` left out.
+- **`vyre connect` (MEDIUM-low).** The command needs a local vyred. Its test fails with EBUSY deleting
+  `vyre.db` while vyred still holds it (a test cleanup problem on Windows, not a device flaw). Left out.
+- **Path strings (LOW).** `projectsDir` can mix `\` and `/` (a cosmetic join); the claude-home and work-folder
+  tests assert POSIX strings and are skipped on win32 with that named reason.
+- **`relay/client/e2e.test.js` (LOW).** Same EBUSY on `vyre.db`. Left out.
+
+Not things a Windows device does (skipped, named):
+- `core/vyre-core/release.test.js`: vyre-core's tarball install needs `/usr/bin/tar`; a Windows device updates
+  through the signed installer. The tar safety checks (absolute path, `..`, fifo, setuid) guard the Mac and
+  Linux install path, which Windows never runs.
+- `local/voice/*.test.js`, `core/cli/commands/voice.test.js` (the talk/voice services): the voice stream is
+  a Mac-and-box feature, refused to non-Mac callers; the Windows app has no mic path in 0.2.
+- `core/cli/commands/up.test.js`: Mac "up" flow.
+- `test/docs-check.test.js`, `test/docs-index.test.js`: docs build tooling, run on Linux in CI (not diagnosed on
+  Windows; likely line endings).
+
+Peer identity on Windows is in the next section; tests that need it (for example "vault cli: account create")
+are not in the set.
+
+## Windows peer identity (what vyred can and cannot tell on Windows)
+
+vyred decides "the person" versus "an agent" by asking the kernel which process is on the other end of the
+socket and walking its ancestry (core/daemon/peer.js). That read exists for macOS and Linux only. On Windows
+the local socket is a named pipe, and there is NO process-ancestry read: vyred gets no pid, so
+`fromClaude` answers "vyred cannot tell which process is calling" and refuses. The 0.1.2 pipe work adds an
+owner-SID check (the pipe is the signed-in user's), which proves WHICH USER, not whether a model or the person
+is behind the process.
+
+For 0.2 this does not block the Windows app: it runs no local vyred at all. Presence there is the passkey on
+the person's server (Windows Hello), the shell talks to the box over the paired Noise channel, and person-only
+actions are decided on the box. What it DOES block: a Windows PC acting as its own server (Solo or Tier B
+without WSL2). There, vyred could not tell the person from an agent on the same PC, so every person-only tool
+(vault reveal, presence proof, approvals, `vault account create`) would be refused for the person too. Options
+if that is wanted later: run vyred inside WSL2 (Linux peer read works, the Linux path), or build a Windows
+peer read (`GetNamedPipeClientProcessId` plus a process-tree walk) with its own review. Neither is 0.2 scope.
+
 **RESUMED 2026-09-30 (relaunch).** Merged origin/work/stage-0.2 into work/windows (a merge, not a
 rebase: 32 old commits, six conflicts, all union-resolved; win32 fresh default is role local,
 machine device). Docs and config tests pass locally. Scaffolded the Tauri shell in

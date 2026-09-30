@@ -335,8 +335,25 @@ fn finish_pair(app: AppHandle, live: State<Live>, link: serde_json::Value) -> Re
     std::fs::create_dir_all(path.parent().unwrap()).map_err(|e| e.to_string())?;
     std::fs::write(&path, serde_json::json!({ "address": p.address, "link": link }).to_string()).map_err(|e| e.to_string())?;
     if let Some(w) = app.get_webview_window("first-run") { let _ = w.close(); }
+    ensure_link_window(&app);
     show_panel(&app, "/quick");
     Ok(())
+}
+
+/// What `connect` needs to stay linked to the paired box (no secret in it), for the link window.
+#[tauri::command]
+fn get_link(app: AppHandle) -> Option<serde_json::Value> {
+    let text = std::fs::read_to_string(record_path(&app)?).ok()?;
+    let v: serde_json::Value = serde_json::from_str(&text).ok()?;
+    v.get("link").filter(|l| l.is_object()).cloned()
+}
+
+/// The persistent, hidden, bundled page that holds the box channel and makes box calls (Drive).
+/// The main panel never gets this: only this window has the device key commands after pairing.
+fn ensure_link_window(app: &AppHandle) {
+    if app.get_webview_window("link").is_some() || get_link(app.clone()).is_none() { return; }
+    let _ = WebviewWindowBuilder::new(app, "link", WebviewUrl::App("link.html".into()))
+        .title("Vyre link").visible(false).build();
 }
 
 /// A `vyre://open` link: a fixed route on the pinned origin, nothing else. Pairing has no link.
@@ -418,19 +435,21 @@ fn main() {
         .plugin(tauri_plugin_global_shortcut::Builder::new().build())
         .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_opener::init())
-        .invoke_handler(tauri::generate_handler![get_state, save_pairing, set_autostart, notify, mount_drive, unmount_drive, begin_pair, offer_pair, pending_pair, confirm_pair, cancel_pair, pair_status, finish_pair, device_key_pub, device_key_dh])
+        .invoke_handler(tauri::generate_handler![get_state, save_pairing, set_autostart, notify, mount_drive, unmount_drive, begin_pair, offer_pair, pending_pair, confirm_pair, cancel_pair, pair_status, finish_pair, device_key_pub, device_key_dh, get_link])
         .setup(|app| {
             let handle = app.handle().clone();
             app.manage(Live { hotkey: Mutex::new(bind_hotkey(&handle)), seed: Mutex::new(None), pending: Mutex::new(None), confirmed: Mutex::new(false) });
 
             let open = MenuItem::with_id(app, "open", "Open Vyre", true, None::<&str>)?;
+            let drive = MenuItem::with_id(app, "drive", "Open Vyre Drive", true, None::<&str>)?;
             let quit = MenuItem::with_id(app, "quit", "Quit", true, None::<&str>)?;
-            let menu = Menu::with_items(app, &[&open, &quit])?;
+            let menu = Menu::with_items(app, &[&open, &drive, &quit])?;
             let mut tray = TrayIconBuilder::new()
                 .menu(&menu)
                 .show_menu_on_left_click(false)
                 .on_menu_event(|app, e| match e.id.as_ref() {
                     "open" => show_panel(app, "/quick"),
+                    "drive" => { use tauri::Emitter; let _ = app.emit_to("link", "vyre-drive", ()); }
                     "quit" => app.exit(0),
                     _ => {}
                 })
@@ -444,6 +463,7 @@ fn main() {
 
             // Start in the tray; show the panel only when first-run is needed.
             if pinned(&handle).is_none() { show_first_run(&handle); }
+            ensure_link_window(&handle);
             spawn_update_loop(handle.clone());
 
             use tauri_plugin_deep_link::DeepLinkExt;
