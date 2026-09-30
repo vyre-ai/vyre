@@ -243,6 +243,7 @@ async function main() {
       // What the person sees: Vyre's tab is in a group named Vyre, the badge run is on, a pill is in the page (hidden from snapshots), and the pill's Stop stops the run.
       await stage("presence", async () => {
         const p0 = await mcp.call("chrome_tabs", { action: "use", url: `${fixture.url}/checkout?presence=1`, openIfMissing: true }); const pt = p0.id ?? (p0.tab && p0.tab.id);
+        await mcp.call("chrome_tabs", { action: "navigate", tab: pt, url: `${fixture.url}/checkout?presence=1` }); await sleep(300);
         await mcp.call("chrome_act", { tab: pt, selector: { identifier: "apply-promo" }, kind: "click" });
         let st = /** @type {any} */ ({});
         for (let i = 0; i < 20; i++) { st = await mcp.call("chrome_tabs", { action: "presence", tab: pt }); if (st.pill) break; await sleep(250); }

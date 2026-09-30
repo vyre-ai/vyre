@@ -231,6 +231,7 @@ async function main() {
         // Click inside the iframe app (its Create Workflow opens a chooser), then close the chooser with its own Cancel.
         const click = await step("click Create Workflow inside the iframe app", () => mcp.call("chrome_act", { tab, selector: { name: "Create Workflow", identifier: "create-workflow" }, kind: "click" }));
         need(click.ok !== false && !click.held, "act.frames", `the click inside the iframe app failed: ${short(click)}`);
+        console.log("[frames-suite] ACT TIMING " + JSON.stringify({ trace: click.trace, point: click.point, ms: click.ms }).slice(0, 700));
         const tr = click.trace || {};
         need(typeof tr.frame === "number" ? tr.frame > 0 : true, "act.frames", `the click ran in frame ${tr.frame}, not in the app's frame`);
         const opened = await step("the chooser opened (read inside the iframe)", () => mcp.call("chrome_eval", { tab, frame: "b.localhost", expression: "!document.getElementById('chooser').classList.contains('hidden')" }));
@@ -240,7 +241,7 @@ async function main() {
         const fill = await step("fill the nested editor's field (frame two levels down)", () => mcp.call("chrome_fill", { tab, fields: [{ selector: { name: "Email editor body", identifier: "editor-body" }, value: "hello from kit" }] }));
         need(fill.ok !== false, "fill.frames", `the fill inside the nested frame failed: ${short(fill)}`);
         // Diagnostic: where does a click in the nested frame land, by the top session and by the frame's own?
-        try { const ct = await step("clicktest the nested editor's Save (both routes)", () => mcp.call("chrome_frames", { action: "clicktest", tab, frame: "c.localhost", css: "#editor-save" })); console.log("[frames-suite] NESTED CLICKTEST " + JSON.stringify(ct).slice(0, 900)); } catch (e) { console.log("[frames-suite] NESTED CLICKTEST failed: " + String(e && e.message || e).slice(0, 300)); }
+        try { const ct = await step("clicktest the nested editor's Save (both routes)", () => mcp.call("chrome_frames", { action: "clicktest", tab, frame: "email-editor", css: "#editor-save" })); console.log("[frames-suite] NESTED CLICKTEST " + JSON.stringify(ct).slice(0, 900)); } catch (e) { console.log("[frames-suite] NESTED CLICKTEST failed: " + String(e && e.message || e).slice(0, 300)); }
         const save = await step("click Save design in the nested editor", () => mcp.call("chrome_act", { tab, selector: { name: "Save design", identifier: "editor-save" }, kind: "click" }));
         need(save.ok !== false && !save.held, "act.frames", `the Save click in the nested frame failed: ${short(save)}`);
         const saved = await step("the fixture saw the nested editor's text", () => stateWhere(s => s.editorSaves, v => v.length >= 1, "the nested editor's save"));

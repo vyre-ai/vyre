@@ -18,7 +18,7 @@ import * as redact from "./extension/shared/redact.js";
 export { socketPath };
 
 /** Longer ops than the default 30 s: a batch runs many steps, a replay waits on the network. */
-export const OP_TIMEOUTS = { "batch.run": 120_000, "net.replay": 60_000, "api.call": 60_000, "page.wait": 65_000 };
+export const OP_TIMEOUTS = { "batch.run": 120_000, "ghl.run": 120_000, "net.replay": 60_000, "api.call": 60_000, "page.wait": 65_000 };
 
 /** @param {string} code @param {string} [message] */
 const err = (code, message) => Object.assign(new Error(message || proto.fail(code).message), { code });

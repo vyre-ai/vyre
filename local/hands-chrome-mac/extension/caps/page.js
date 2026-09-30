@@ -841,7 +841,9 @@ async function locateIn(ctx, tabId, ctl, snap, focus) {
 
 /** @param {any} ctx @param {number} tabId @param {any} ctl @param {any} [snap] */
 async function mouseClick(ctx, tabId, ctl, snap) {
+  const t0 = Date.now();
   const { loc, frame } = await locateIn(ctx, tabId, ctl, snap, false);
+  const tLocate = Date.now() - t0;
   if (!loc || !loc.found) throw err("not_found", "the control disappeared before it could be clicked");
   if (!loc.hit) throw err("covered", "another element covers the control, so nothing was clicked");
   // A cross-process iframe takes input on its own session at frame coordinates: real Chrome drops mouse events the top session sends over it (measured on all three OSes).
@@ -849,10 +851,13 @@ async function mouseClick(ctx, tabId, ctl, snap) {
   const session = own ? frame.session : undefined;
   const x = own ? loc.inFrameX : loc.x, y = own ? loc.inFrameY : loc.y;
   const p = { x, y, button: "left", clickCount: 1 };
+  const t1 = Date.now();
   await ctx.cdp.send(tabId, "Input.dispatchMouseEvent", { type: "mouseMoved", x, y }, session);
+  const tMove = Date.now() - t1;
   await ctx.cdp.send(tabId, "Input.dispatchMouseEvent", { type: "mousePressed", ...p }, session);
+  const tPress = Date.now() - t1 - tMove;
   await ctx.cdp.send(tabId, "Input.dispatchMouseEvent", { type: "mouseReleased", ...p }, session);
-  return { ...loc, frame: frame ? frame.index : 0, session: own };
+  return { ...loc, frame: frame ? frame.index : 0, session: own, ms: { locate: tLocate, move: tMove, press: tPress, release: Date.now() - t1 - tMove - tPress } };
 }
 
 /** @param {any} ctx @param {number} tabId @param {any} ctl @param {string} key @param {any} [snap] */
@@ -932,7 +937,7 @@ async function doAct(ctx, tabId, snap, ctl, kind, value, release, asked = false)
     const r = await applyIn(ctx, tabId, snap, [{ ctl, kind, value }]);
     if (!r || !r[0] || !r[0].ok) return { ok: false, why: (r && r[0] && r[0].why) || "could not set the value", control: brief(ctl) };
   }
-  return { ok: true, did: kind, control: brief(ctl), ...(point && typeof point.x === "number" ? { point: { x: Math.round(point.x), y: Math.round(point.y), frame: point.frame ?? ctl.frame ?? 0, ownSession: !!point.session } } : {}) };
+  return { ok: true, did: kind, control: brief(ctl), ...(point && typeof point.x === "number" ? { point: { x: Math.round(point.x), y: Math.round(point.y), frame: point.frame ?? ctl.frame ?? 0, ownSession: !!point.session }, ...(point.ms ? { ms: point.ms } : {}) } : {}) };
 }
 
 
