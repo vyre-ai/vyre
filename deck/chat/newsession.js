@@ -10,6 +10,7 @@
 //   What:  the first message. Cmd/Ctrl+Enter starts; Esc closes the sheet.
 // On success the new thread opens; a failure is shown as the box said it.
 
+import { pasteTracker } from "./core/paste-spans.js";
 import { h, put, go } from "../js/dom.js";
 import { attempt } from "../js/api.js";
 import { icon } from "../js/icons.js";
@@ -28,9 +29,10 @@ export const baseName = p => String(p).replace(/\/+$/, "").split("/").pop() || p
  * @param {string|null} agent null for a plain session ("Vyre")
  * @param {string} text the first message
  * @param {string|null} fallback the folder "No folder" starts in (the first root)
+ * @param {string[]} [pasted] the stretches of the first message the person pasted: a #Name inside one never tags
  * @returns {{ tool: string, input: Record<string, any> } | { error: string }}
  */
-export function startCall(where, agent, text, fallback) {
+export function startCall(where, agent, text, fallback, pasted = []) {
   const prompt = String(text || "").trim();
   if (agent) {
     if (!prompt) return { error: `Write the first message for ${agent}.` };
@@ -38,6 +40,8 @@ export function startCall(where, agent, text, fallback) {
   }
   const input = /** @type {Record<string, any>} */ ({ surface: "deck" });
   if (prompt) input.prompt = prompt;
+  const spans = [...new Set(pasted.map(x => String(x).trim()).filter(x => x && prompt.includes(x)))];
+  if (spans.length) input.pasted = spans;
   if (where.kind === "project") input.project = where.slug;
   else if (where.kind === "folder") input.cwd = where.path;
   else if (fallback) input.cwd = fallback;
@@ -75,7 +79,11 @@ export function mountNewSession(container, opts) {
     loaded: false, starting: false, /** @type {string|null} */ error: null,
   };
 
+  const pastes = pasteTracker();
+  let prevText = "", pendingPaste = /** @type {string|null} */ (null);
   const text = h("textarea", { class: "input ns-text", rows: 4, placeholder: "What should this session start with?", "aria-label": "First message",
+    onpaste: (/** @type {ClipboardEvent} */ e) => { pendingPaste = e.clipboardData?.getData?.("text/plain") || null; },
+    oninput: () => { const v = /** @type {any} */ (text).value; pastes.edit(prevText, v, pendingPaste); prevText = v; pendingPaste = null; },
     onkeydown: (/** @type {KeyboardEvent} */ e) => { if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) { e.preventDefault(); start(); } } });
   const whereBox = h("div", { class: "ns-where" });
   const whoBox = h("div", { class: "ns-who" });
@@ -163,7 +171,7 @@ export function mountNewSession(container, opts) {
 
   async function start() {
     if (state.starting) return;
-    const c = startCall(state.where, state.agent, /** @type {any} */ (text).value, state.root);
+    const c = startCall(state.where, state.agent, /** @type {any} */ (text).value, state.root, pastes.of(/** @type {any} */ (text).value));
     if ("error" in c) { state.error = c.error; draw(); return; }
     state.starting = true; state.error = null; draw();
     const r = await attempt(c.tool, c.input);

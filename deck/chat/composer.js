@@ -56,6 +56,7 @@ import { CAPS, NEEDS_UPDATE, SEND_IMAGES } from "./core/caps.js";
 import { localSend, dropLocal, localShell, confirmSend } from "./core/session-state.js";
 import { markMade, nearRole } from "./core/made.js";
 import { listMenu, keysLine } from "./pickers.js";
+import { pasteTracker } from "./core/paste-spans.js";
 import { voiceStatus, listen as listenVoice } from "./core/voice.js";
 import { ago, agoLong } from "../js/need-rows.js";
 
@@ -155,9 +156,14 @@ export function mountComposer(opts) {
   function flushDraft() { clearTimeout(draftTimer); draftTimer = null; const v = ta.value; if (v) setDraft(thread, v); else clearDraft(thread); }
   const scheduleDraftSave = () => { clearTimeout(draftTimer); draftTimer = setTimeout(flushDraft, 200); draftTimer.unref?.(); };
 
+  // Which stretches of the draft were pasted: sent as `pasted` so a #Name inside one never tags (reviewer-2 M-P2).
+  const pastes = pasteTracker();
+  let prevValue = "", pendingPaste = /** @type {string|null} */ (null);
+  const trackValue = () => { if (ta.value !== prevValue) { pastes.edit(prevValue, ta.value, pendingPaste); prevValue = ta.value; pendingPaste = null; } };
+
   const ta = /** @type {HTMLTextAreaElement} */ (h("textarea", {
     rows: 1, placeholder: "Message this session", "aria-label": "Message", enterkeyhint: "send",
-    oninput: () => { grow(); maybeLease(); if (recalling(hist)) stopRecall(hist); suggest(); drawChips(); scheduleDraftSave(); scheduleHint(); scheduleNear(); },
+    oninput: () => { trackValue(); grow(); maybeLease(); if (recalling(hist)) stopRecall(hist); suggest(); drawChips(); scheduleDraftSave(); scheduleHint(); scheduleNear(); },
     onkeydown: onKey, onkeyup: (/** @type {KeyboardEvent} */ e) => { if (keyUp(e)) e.preventDefault(); }, onpaste: onPaste,
   }));
   const thumbs = h("div", { class: "composer-images", hidden: true });
@@ -212,7 +218,7 @@ export function mountComposer(opts) {
   }
   const caret = () => (typeof ta.selectionStart === "number" ? ta.selectionStart : ta.value.length);
   const setValue = (/** @type {string} */ v, at = v.length) => {
-    ta.value = v; try { ta.setSelectionRange?.(at, at); } catch {} grow(); drawChips(); flushDraft();
+    ta.value = v; try { ta.setSelectionRange?.(at, at); } catch {} trackValue(); grow(); drawChips(); flushDraft();
     // An empty box is a fresh compose: the next message gets its own hint, not the last one's "not now".
     if (!v) { clearTimeout(hintTimer); hintDismissed = false; hideHints(); }
   };
@@ -769,6 +775,9 @@ export function mountComposer(opts) {
   // ---- images ---------------------------------------------------------------------------------
 
   function onPaste(/** @type {ClipboardEvent} */ e) {
+    // The words that arrive with this paste: the next input event marks them as pasted.
+    const words = e.clipboardData?.getData?.("text/plain");
+    if (words) pendingPaste = words;
     const items = [...(e.clipboardData?.items || [])].filter(it => it.kind === "file" && IMAGE_TYPES.includes(it.type));
     if (!items.length || machine) return;
     e.preventDefault();
@@ -851,6 +860,7 @@ export function mountComposer(opts) {
     sending = true;
     // The tags still in the words go with the turn as {kind, id, name}; the text keeps its #tokens.
     const mentions = vaultChips().map(t => ({ kind: t.kind, id: t.id, name: t.name }));
+    const pasted = [...new Set(pastes.of(ta.value).map(x => x.trim()).filter(x => x && text.includes(x)))];
     tags.clear();
     const uuid = newUuid();
     const imgs = images;
@@ -868,7 +878,7 @@ export function mountComposer(opts) {
     if (drawn) patch(localSend(/** @type {any} */ (S), { uuid, text, mode: mode || "send", at: Date.now(), ...(imgs.length ? { images: imgs } : {}) }));
     /** @type {Record<string, any>} */
     const input = machine ? { thread, text, surface: "deck", machine }
-      : { thread, text, surface: "deck", uuid, ...(mode ? { mode } : {}), ...(mentions.length ? { mentions } : {}), ...(imgs.length && CAPS.has(SEND_IMAGES) === true ? { images: sendImages(imgs) } : {}) };
+      : { thread, text, surface: "deck", uuid, ...(mode ? { mode } : {}), ...(mentions.length ? { mentions } : {}), ...(pasted.length ? { pasted } : {}), ...(imgs.length && CAPS.has(SEND_IMAGES) === true ? { images: sendImages(imgs) } : {}) };
     // Through the outbox (ADR 0029): a box out of reach keeps the words on this device and sends
     // them, once, when it is back. Meanwhile the note says so and the composer takes the next one.
     let waited = false;

@@ -290,3 +290,9 @@ test("new session: every session busy says so, with Try again, which starts it o
   assert.equal(went.length, 1);
   stop();
 });
+
+test("startCall: pasted spans of the first message go to threads.start, only the ones still in it", () => {
+  const r = /** @type {any} */ (startCall({ kind: "project", slug: "harlow-legal" }, null, "Read this: Wire it with #Stripe. Thanks", "/work", ["Wire it with #Stripe.", "gone"]));
+  assert.deepEqual(r.input.pasted, ["Wire it with #Stripe."]);
+  assert.equal("pasted" in /** @type {any} */ (startCall({ kind: "project", slug: "harlow-legal" }, null, "hi", "/work", [])).input, false);
+});

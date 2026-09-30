@@ -4,6 +4,10 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### chat: the composer sends the pasted spans (reviewer-2 M-P2)
+
+- `deck/chat/core/paste-spans.js` tracks which stretches of the draft were pasted (the paste event plus the offsets of every later edit: typing before moves a span, typing inside keeps the whole stretch marked, deleting drops it). `threads.send` carries them as `pasted: [string]` and the new-session sheet sends them on `threads.start`, so a `#Name` inside pasted text never resolves as a tag; only a picked chip can. No `pasted` key when nothing was pasted. Tests: `paste-spans.test.js` (5), two in `composer-vault.test.js`, one in `newsession.test.js`.
+
 #### settings: "Add a service", the connectors catalog
 
 - `deck/views/connectors.js`: the catalog of vendor-hosted connectors (`connectors.catalog`) grouped by `group`, above the existing MCP, Google and GitHub lists in Settings > Connections. Connect (or Add another) draws the box's step in place: an https sign-in page opened in a new tab with a paste box for a browser on another device (`connectors.connect.finish`), a hidden token field with the preset's own extra fields, a vault item picker for an OAuth client (read only at that step), or a plain "comes through another connector" line; Disconnect calls `connectors.disconnect`. It follows `connectors.connected`, `connect-failed` and `disconnected`, and shows one plain line on a box without the connectors module. Tests: `deck/test/connectors.test.js` (9); the connections tests expect the catalog call.
