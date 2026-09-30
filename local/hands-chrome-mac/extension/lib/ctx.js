@@ -65,7 +65,7 @@ export function createCtx({ chrome, emit = () => {} }) {
     cdp, tabs, storage,
     emit,
     stopped: () => stopped,
-    setStopped: (/** @type {boolean} */ v) => { stopped = !!v; },
+    setStopped: (/** @type {boolean} */ v) => { stopped = !!v; if (stopped) ctx.stoppedAt = Date.now(); },
     /** @param {number} tabId @param {string} op */
     async floorAllows(tabId, op) {
       const tab = await tabs.get(tabId);

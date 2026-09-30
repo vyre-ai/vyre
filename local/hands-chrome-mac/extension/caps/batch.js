@@ -51,7 +51,7 @@ export default {
       const stopOnError = args.stopOnError !== false;
       /** @type {any[]} */
       const results = [];
-      /** @type {{ ok: boolean, done: number, results: any[], failedAt?: number, why?: string, code?: string, held?: any }} */
+      /** @type {{ ok: boolean, done: number, results: any[], failedAt?: number, why?: string, code?: string, held?: any, haltMs?: number }} */
       const out = { ok: true, done: 0, results };
       for (let i = 0; i < steps.length; i++) {
         const step = steps[i];
@@ -59,7 +59,7 @@ export default {
           results.push(result === undefined ? { ok: false, error: { code, message: why } } : result);
           if (out.ok) { out.ok = false; out.failedAt = i; out.why = why; out.code = code; }
         };
-        if (ctx.stopped()) { halt("the person pressed stop", "stopped"); break; }
+        if (ctx.stopped()) { halt("the person pressed stop", "stopped"); out.haltMs = ctx.stoppedAt ? Date.now() - ctx.stoppedAt : undefined; break; }
         if (!step || typeof step.op !== "string") { halt(`step ${i} has no op`, "bad_request"); if (stopOnError) break; continue; }
         if (step.op === "batch.run") { halt("a batch cannot contain a batch", "bad_request"); if (stopOnError) break; continue; }
         try {

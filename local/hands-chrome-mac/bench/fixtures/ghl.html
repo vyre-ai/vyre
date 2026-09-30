@@ -79,10 +79,13 @@
     tb.innerHTML = '';
     contacts.forEach(function (c, i) {
       var tr = document.createElement('tr');
-      tr.setAttribute('data-testid', 'contact-row-' + i);
-      tr.innerHTML = '<td></td><td></td><td></td>';
-      tr.children[0].textContent = c.name; tr.children[1].textContent = c.email; tr.children[2].textContent = c.stage;
-      tr.addEventListener('click', function () { $('detail-name').textContent = c.name; hide('contact-detail', false); });
+      tr.innerHTML = '<td><button type="button"></button></td><td></td><td></td>';
+      // The row's open control is a real button, as it is a link in the real app: a snapshot lists
+      // controls, not table rows.
+      var open = tr.children[0].firstChild;
+      open.setAttribute('data-testid', 'contact-row-' + i);
+      open.textContent = c.name; tr.children[1].textContent = c.email; tr.children[2].textContent = c.stage;
+      open.addEventListener('click', function () { $('detail-name').textContent = c.name; hide('contact-detail', false); });
       tb.appendChild(tr);
     });
   }

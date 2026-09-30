@@ -82,6 +82,7 @@ async function main() {
         const steps = [...WORKFLOW_STEPS, ...WORKFLOW_STEPS, ...WORKFLOW_STEPS].map(s => s.op === "click"
           ? { op: "page.act", args: { tabId: g.id, selector: { identifier: (/data-testid="([^"]+)"/.exec(s.selector) || [])[1] }, kind: "click" } }
           : { op: "page.fill", args: { tabId: g.id, fields: [{ selector: { identifier: s.selector.replace(/^#/, "") }, value: s.value }] } });
+        const tRun = performance.now();
         const run = bridge.call("batch.run", { steps, asked: true });
         await sleep(30);
         const t0 = performance.now();
@@ -90,7 +91,7 @@ async function main() {
         const stoppedMs = Math.round(performance.now() - t0);
         await bridge.push({ event: "resume" });
         if (r.ok !== false || r.code !== "stopped") throw new Error("the batch was not halted by stop: " + JSON.stringify({ ok: r.ok, code: r.code, done: r.done }));
-        return { stoppedMs, doneBeforeStop: r.done, of: steps.length };
+        return { stoppedMs, haltMsAfterStopArrived: r.haltMs, doneBeforeStop: r.done, of: steps.length, batchTotalMs: Math.round(performance.now() - tRun) };
       });
 
       await stage("held_submit", async () => {
