@@ -113,6 +113,23 @@ test("peer race: only a definite answer is kept for the connection", async () =>
   await asTaken("cli", outside, registry, undefined, clean);
   const again = await asTaken("cli", outside, registry, undefined, { ...deps, insideClaude: () => ({ inside: true }) });
   assert.equal(again.model, false, "a definite outside answer is kept");
+  // An unreadable chain is a model's for that call, but not kept: a stalled ps must not brand the
+  // connection for life.
+  const flaky = {};
+  let reads = 0;
+  const fdeps = { ...deps, insideClaude: () => (++reads <= 3 ? { inside: false, unknown: true, unreadable: true } : { inside: false }) };
+  const one = await asTaken("cli", flaky, registry, undefined, fdeps);
+  assert.equal(one.model, true, "unreadable is a model's this time");
+  await new Promise(r => setImmediate(r));
+  const two = await asTaken("cli", flaky, registry, undefined, fdeps);
+  assert.deepEqual(two, { caller: "cli", model: false }, "and is asked again, not kept");
+});
+
+test("peer race: a named server keeps its label when the chain is unreadable", async () => {
+  const r = await above({}, registry, "cli", { peerPid: async () => 5, alive: () => true, delayMs: 1,
+    insideClaude: () => ({ inside: false, unknown: true, unreadable: true, server: { exe: "/usr/bin/sshd", pid: 9, started: "t" } }) });
+  assert.equal(r.inside, false);
+  assert.equal(r.unknown, true);
 });
 
 /** A forger: a node script run under a fake `claude`, saying it is the person's cli. */

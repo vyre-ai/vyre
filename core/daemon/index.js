@@ -418,7 +418,7 @@ export async function asTaken(caller, socket, registry, thread, deps) {
   if (!v) {
     const mine = above(socket, registry, undefined, deps).then(w => ({
       model: Boolean(w.inside || (w.nopid && canReadPeers)),
-      definite: Boolean(w.inside || (!w.unknown && !w.nopid)),
+      definite: Boolean(!w.unreadable && (w.inside || (!w.unknown && !w.nopid))),
     }));
     v = mine;
     taken.set(socket, mine);
