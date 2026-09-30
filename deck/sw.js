@@ -280,6 +280,7 @@ self.addEventListener("notificationclick", e => {
   })());
 });
 
+const CODE_PATH = /(^\/$|\.(m?js|css|html)$)/;
 /** The signed release's hash for one shell path, from the list install stored, else null. @param {Cache} cache @param {string} path */
 async function listed(cache, path) {
   try {
@@ -313,6 +314,10 @@ self.addEventListener("fetch", e => {
     // release listed (install stored the list), so an origin cannot swap code in on a later
     // launch. A copy that does not match is never cached, and never served on a first visit.
     const want = SHELL_SIGNED ? await listed(cache, e.request.mode === "navigate" ? "/" : url.pathname) : null;
+    // And a script, stylesheet or page the release did not list is refused outright, not fetched:
+    // the vault, pairing and settings code are as much the release as the precached shell. Images
+    // and fonts may stay unlisted; /theme.css is made per box.
+    if (SHELL_SIGNED && !want && (e.request.mode === "navigate" || CODE_PATH.test(url.pathname)) && url.pathname !== "/theme.css") return Response.error();
     const fresh = fetch(e.request).then(async res => {
       if (res.ok && res.type === "basic") {
         if (!SHELL_SIGNED) cache.put(key, res.clone());

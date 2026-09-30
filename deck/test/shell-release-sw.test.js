@@ -166,3 +166,38 @@ test("a revalidation with different bytes leaves the cached shell file unchanged
   assert.equal(await r.text(), "export const x = 1;", "the cached copy is served");
   assert.equal(store.get("/js/app.js"), "export const x = 1;", "and stays");
 });
+
+test("the signed list covers every code file the daemon serves for the Deck", async () => {
+  const { codePaths } = await import("../../scripts/shell-hashes.mjs");
+  const listed = new Set(codePaths());
+  const DECK = path.join(import.meta.dirname, "..");
+  // The only places code is left out on purpose: tests and fixtures, and the onboarding and sign-in pages the worker never handles. A new one needs a decision here.
+  const SKIP = new Set(["test", "fixtures", "node_modules", "onboard", "person"]);
+  const missing = [];
+  (function walk(dir, base) {
+    for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
+      const rel = base + "/" + e.name;
+      if (e.isDirectory()) { if (!SKIP.has(e.name)) walk(path.join(dir, e.name), rel); continue; }
+      if (/\.(m?js|css|html)$/.test(e.name) && !/\.test\.m?js$/.test(e.name) && rel !== "/sw.js" && !listed.has(rel)) missing.push(rel);
+    }
+  })(DECK, "");
+  assert.deepEqual(missing, []);
+  for (const must of ["/vault/client.js", "/views/vault.js", "/views/settings-keys.js", "/js/pair-scan.js", "/glass/util.js", "/", "/index.html".replace("/index.html", "/")]) assert.ok(listed.has(must), must);
+});
+
+test("a signed worker refuses a script the release did not list, but lets an unlisted image through", async () => {
+  const store = new Map([["/__shell-hashes", JSON.stringify([["/js/app.js", "0".repeat(64)]])]]);
+  const name = k => (typeof k === "string" ? k : new URL(k.url).pathname);
+  const cache = { match: async k => (store.has(name(k)) ? new Response(store.get(name(k))) : undefined), put: async (k, r) => { store.set(name(k), await r.text()); } };
+  const on = {};
+  const src = SW_SRC.replace("const SHELL_SIGNED = false;", "const SHELL_SIGNED = true;");
+  let fetched = 0;
+  vm.runInNewContext(src, { self: { addEventListener: (t, fn) => { on[t] = fn; } }, location: { origin: "https://box" }, URL, Response, TextEncoder, TextDecoder, atob, crypto: globalThis.crypto, console,
+    caches: { open: async () => cache, keys: async () => [], delete: async () => true },
+    fetch: async () => { fetched++; return Object.defineProperty(new Response("bytes"), "type", { value: "basic" }); } });
+  const ask = async (p, mode = "no-cors") => { let out; on.fetch({ request: { url: "https://box" + p, method: "GET", mode }, respondWith: x => { out = x; }, waitUntil: x => x }); return out; };
+  const script = await ask("/vault/client.js");
+  assert.equal(fetched, 0, "an unlisted script is not even fetched");
+  await assert.rejects(async () => { const r = await script; if (r.type === "error") throw new Error("refused"); }, /refused/);
+  assert.equal((await (await ask("/icon-x.png")) .text()), "bytes", "an unlisted image passes");
+});

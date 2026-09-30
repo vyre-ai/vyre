@@ -7,6 +7,10 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 #### tests: hands-chrome waits 30 s for Chrome's DevTools port
 
 - A hosted runner sometimes takes longer than 10 s to start headless Chrome ("Chrome did not print its DevTools port in time"). That flake predates the mock-keychain flags (it failed on work/native-core-0.2 runs 4932f92d and 3ff930c6, before 47dafe78 existed; the flags are the only change to that launch and drop nothing), so the wait is 30 s. A launch that is truly broken still fails when Chrome exits early.
+#### pwa: the signed list covers all the Deck's code, not just the precache (reviewer-2 MEDIUM)
+
+- `scripts/shell-hashes.mjs` now lists every js, mjs, css and html file the daemon serves for the Deck (the vault, pairing, settings and glass code included; tests, fixtures, onboarding and sign-in pages excluded) plus the repo-root files it serves. On a signed build the worker refuses any script, stylesheet or page that is not listed or whose bytes differ, and lets unlisted images and fonts through. A test walks `deck/` and fails when a served code file is missing from the list. Clearing a browser's site data resets the version floor (a poisoned floor is cured that way).
+
 #### pwa: the phone makes its Face ID key at pairing
 
 - Scanning the Wink ring now pairs with `enroll: true`; when the box hands back its one-time enrolment grant (`{ grant, expires, rpId }`, core/relay), the pairing page redirects to `https://<rpId>/#enroll=<grant>`. The Deck there reads the fragment once, removes it from the address bar and history, and opens one sheet with one Face ID prompt (`js/enroll-grant.js`, `enrollPasskey` with method grant). No Mac code. `relay/client` `pairOffer` takes `enroll` and returns a validated `enroll`. The setup QR claim uses the same fragment.
