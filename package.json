@@ -18,6 +18,7 @@
     "perf-check": "node scripts/perf-check",
     "eval:memory": "node scripts/eval-memory.js",
     "eval:answer": "node scripts/eval-answer.js",
+    "eval:said": "node scripts/eval-said.js",
     "eval:iq": "node scripts/eval-iq-prompt.js --live",
     "docs:check": "node scripts/docs-check",
     "docs:build": "node scripts/build-docs",
