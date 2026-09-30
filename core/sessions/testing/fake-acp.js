@@ -42,6 +42,11 @@ async function prompt(id, blocks) {
       out({ method: "session/update", params: { sessionId: session, update: { sessionUpdate: "tool_call_update", toolCallId: tc.toolCallId, status: "completed", content: [{ type: "content", content: { type: "text", text: "ok" } }] } } });
       say("Ran it.");
     } else say("I was not allowed to.");
+  } else if (t === "plan") {
+    out({ method: "session/update", params: { sessionId: session, update: { sessionUpdate: "plan", entries: [{ content: "read it", priority: "high", status: "completed" }, { content: "change it", priority: "high", status: "in_progress" }, { content: "test it", priority: "low", status: "pending" }] } } });
+    const tc = { toolCallId: `call-${crypto.randomUUID().slice(0, 8)}`, title: "Delete build", kind: "delete", status: "completed", rawInput: { path: "/w/build" } };
+    out({ method: "session/update", params: { sessionId: session, update: { sessionUpdate: "tool_call", ...tc } } });
+    say("planned");
   } else if ((m = /^readfile (.+)$/.exec(t))) {
     try { say("read: " + (await call("fs/read_text_file", { sessionId: session, path: m[1] })).content); } catch (e) { say("read failed: " + e.message); }
   } else if ((m = /^writefile (\S+) (.*)$/.exec(t))) {

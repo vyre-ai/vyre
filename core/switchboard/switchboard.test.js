@@ -39,7 +39,16 @@ test("translate: real stream-json lines become small thread events", () => {
   const tool = translate({ type: "assistant", message: { id: "m1", content: [{ type: "tool_use", id: "t1", name: "Write", input: { file_path: "/w/a.txt", content: "x".repeat(50000) } }] } });
   // call and status (ADR 0030): the row is keyed by call, id kept equal during the migration.
   assert.deepEqual(tool.events[0], { type: "thread.tool", payload: { id: "t1", call: "t1", tool: "Write", name: "Write", phase: "started", status: "running", block: 0,
-    summary: "Write /w/a.txt", destination: "/w/a.txt" } });
+    summary: "Write /w/a.txt", destination: "/w/a.txt", kind: "write", path: "/w/a.txt" } });
+  // Kinds a card draws: Claude's tool names, an ACP provider's own kind when it said one, MCP by prefix, the rest "other".
+  const kindOf = (name, input, hint) => translate({ type: "assistant", message: { id: "m", content: [{ type: "tool_use", id: "k", name, input, vyre_kind: hint }] } }).events[0].payload;
+  assert.equal(kindOf("Bash", { command: "ls -la" }).command, "ls -la");
+  assert.deepEqual(["Read", "MultiEdit", "Grep", "WebFetch", "WebSearch", "Task", "mcp__vyre__memory_ask", "Whatever"].map(n => kindOf(n, {}).kind), ["read", "edit", "search", "fetch", "fetch", "task", "mcp", "other"]);
+  assert.equal(kindOf("Write", { path: "/w/gone.txt" }, "edit").kind, "edit", "ACP delete and move are edits");
+  assert.equal(kindOf("Grep", { pattern: "menu", path: "/w" }).query, "menu");
+  const plan = translate({ type: "assistant", message: { id: "m", content: [{ type: "tool_use", id: "p", name: "TodoWrite", input: { todos: [{ content: "a", status: "in_progress" }, { content: "b", status: "completed" }, { content: "c", status: "pending" }] } }] } });
+  assert.deepEqual(plan.events[1].payload.items, [{ text: "a", status: "running" }, { text: "b", status: "done" }, { text: "c", status: "pending" }]);
+  assert.deepEqual(translate({ type: "system", subtype: "vyre_plan", entries: [{ content: "x", status: "completed" }] }).events[0].payload.items, [{ text: "x", status: "done" }]);
   const ask = translate({ type: "control_request", request_id: "r1", request: { subtype: "can_use_tool", tool_name: "Bash", input: { command: "ls -la" }, tool_use_id: "t2" } });
   assert.equal(ask.ask.summary, "ls -la");
   assert.equal(ask.ask.request_id, "r1");
@@ -1138,6 +1147,42 @@ test("plan: the fake's ExitPlanMode ask carries the plan in its detail; allow st
   await tool("threads.answer", { ask: b.id, decision: "allow" });
   const said2 = await until(() => of(s.got, id2, "thread.text").find(e => e.payload.done && e.payload.kind !== "reasoning"), "the reply");
   assert.equal(said2.payload.text, "Starting on the plan: the price list first.");
+});
+
+test("items: a thread is its tool kinds, its plan and its words, oldest first, from stored events, with a since cursor and the caps it started with", async t => {
+  const { work, tool, root } = await boot(t);
+  const s = sse(root);
+  t.after(() => s.close());
+  const id = (await tool("threads.start", { cwd: work, prompt: "demo", surface: "deck" })).data.id;
+  for (const name of ["Edit", "Bash"]) {
+    const a = await until(async () => (await tool("threads.asks", { thread: id })).data.find(x => x.tool === name), `the ${name} ask`);
+    await tool("threads.answer", { ask: a.id, decision: "allow", surface: "deck" });
+  }
+  await until(() => of(s.got, id, "thread.text").find(e => e.payload.done), "the reply");
+  const plan = of(s.got, id, "thread.plan");
+  assert.equal(plan.length, 1, "TodoWrite is one plan event with the whole list");
+  assert.ok(plan[0].payload.items.every(x => typeof x.text === "string" && ["pending", "running", "done"].includes(x.status)), JSON.stringify(plan[0].payload));
+  const started = of(s.got, id, "thread.tool").filter(e => e.payload.phase === "started");
+  assert.deepEqual(started.map(e => e.payload.kind), ["read", "edit", "run", "other"]);
+  assert.equal(started[2].payload.command, "npm test");
+  assert.equal(started[1].payload.path, path.join(work, "menu.md"));
+  assert.ok(started.every(e => e.payload.provider === "claude"));
+
+  const all = (await tool("threads.items", { thread: id })).data;
+  assert.equal(all.next, null);
+  assert.deepEqual([all.items[0].kind, all.items.at(-1).kind], ["person", "assistant"]);
+  assert.ok(all.items.some(x => x.kind === "plan"));
+  assert.equal(all.items[0].text, "demo");
+  const tools = all.items.filter(x => x.kind === "tool");
+  assert.deepEqual(tools.map(x => x.tool.kind), ["read", "edit", "run", "other"]);
+  assert.ok(tools.every(x => x.tool.status === "completed" || x.tool.status === "running" || x.tool.status === "failed"));
+  assert.ok(all.items.every((x, n) => n === 0 || x.id > all.items[n - 1].id), "oldest first");
+  const page = (await tool("threads.items", { thread: id, limit: 2 })).data;
+  assert.equal(page.items.length, 2);
+  assert.equal(page.next, page.items[1].id);
+  const rest = (await tool("threads.items", { thread: id, since: page.next })).data;
+  assert.deepEqual([...page.items, ...rest.items].map(x => x.id), all.items.map(x => x.id));
+  assert.ok((await tool("threads.get", { thread: id })).data.thread.caps.resume, "the thread keeps what its provider could do when it started");
 });
 
 test("demo: Edit and Bash asks carry their detail, always hands back the suggestions, and the transcript is Claude Code's shape", async t => {

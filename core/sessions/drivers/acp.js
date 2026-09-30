@@ -46,6 +46,8 @@ export const BYPASS_MODE = /bypass|yolo|dangerous|never.?ask|full.?auto|auto.?ap
 
 /** ACP tool kind -> the Claude tool name the floor's rules know (rules.js is Claude-tool-name shaped until build step 8). */
 const KIND_TOOL = { read: "Read", edit: "Write", delete: "Write", move: "Write", search: "Grep", execute: "Bash", fetch: "WebFetch" };
+/** ACP tool kind -> the kind a surface draws (delete and move are edits; execute is a run; the rest are "other"). */
+const KIND_SEEN = { read: "read", edit: "edit", delete: "edit", move: "edit", search: "search", execute: "run", fetch: "fetch" };
 
 /**
  * The ask the Switchboard shows, from an ACP tool call.
@@ -171,7 +173,7 @@ function runAcp(entry, known, o) {
     if (!id || announced.has(id)) return id;
     announced.add(id);
     const a = askFor(tc);
-    say({ type: "assistant", message: { id: `acp-${id}`, content: [{ type: "tool_use", id, name: a.name, input: a.input }] } });
+    say({ type: "assistant", message: { id: `acp-${id}`, content: [{ type: "tool_use", id, name: a.name, input: a.input, vyre_kind: KIND_SEEN[tc.kind] || "other" }] } });
     return id;
   }
 
@@ -191,6 +193,8 @@ function runAcp(entry, known, o) {
       if (u.status === "completed" || u.status === "failed") toolDone(u);
     } else if (kind === "current_mode_update" && typeof u.currentModeId === "string") {
       if (!BYPASS_MODE.test(u.currentModeId)) mode = u.currentModeId;
+    } else if (kind === "plan" && Array.isArray(u.entries)) {
+      say({ type: "system", subtype: "vyre_plan", entries: u.entries });
     } else if (kind === "usage_update") {
       usage = { context_used: Number(u.used) || 0, context_size: Number(u.size) || 0, ...(u.cost && typeof u.cost.amount === "number" ? { cost: u.cost.amount } : {}) };
     }

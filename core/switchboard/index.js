@@ -355,6 +355,8 @@ export class Switchboard {
     // Every event of a turn says which turn (ADR 0030): a surface follows one turn's events.
     const st = this.live.get(thread);
     if (st && st.turn && payload && payload.turn === undefined && /^(thread|ask)\./.test(type) && type !== "thread.stopped") payload = { ...payload, turn: st.turn };
+    // Which provider ran a tool call, so a card draws its own tool names and a mixed thread reads right.
+    if (type === "thread.tool" && payload && payload.phase === "started" && payload.provider === undefined) payload = { ...payload, provider: (st && st.launch && st.launch.provider) || "claude" };
     // The server's clock on every piece of text (ms epoch), for a surface's words-per-second meter.
     if ((type === "thread.text" || type === "thread.thinking") && payload && payload.t === undefined) payload = { ...payload, t: Date.now() };
     const ev = this.emitRaw(type, payload, thread, project);
@@ -382,7 +384,7 @@ export class Switchboard {
     // is the one person-facing vocabulary (lib/thread-status.js) every surface should read instead.
     return { id: r.id, name: r.name, cwd: r.cwd, project: r.project, agent: r.agent, status: r.status,
       canonical_status: threadStatus(r.status, r.stopped_reason), model: r.model, driver: r.driver || null,
-      provider: r.provider || "claude", account: r.account || null, purpose: r.purpose || null, branch: optsOf(r).branch || null, mode: r.mode || "default", effort: optsOf(r).effort || null, origin: optsOf(r).origin || null, parent: optsOf(r).parent || null, archived: r.archived_at || null,
+      provider: r.provider || "claude", account: r.account || null, purpose: r.purpose || null, branch: optsOf(r).branch || null, mode: r.mode || "default", effort: optsOf(r).effort || null, origin: optsOf(r).origin || null, caps: optsOf(r).caps || null, parent: optsOf(r).parent || null, archived: r.archived_at || null,
       auth: r.auth, started: r.started_at, last: r.last_at, cost_usd: r.cost_usd, turns: r.turns,
       holder: holder ? holder.surface : null, asks: this.asks.open(id).length, ...(r.stopped_reason ? { stopped_reason: r.stopped_reason } : {}) };
   }
@@ -527,6 +529,11 @@ export class Switchboard {
       if (o.purpose === "capsule" && o.append) kept.append = String(o.append).slice(0, 20000);
       // The surface that started it (the Capsule, the Deck, a phone): threads.get says it as origin.
       if (o.surface) kept.origin = String(o.surface).slice(0, 80);
+      // What the provider could do when the thread started, kept for drawing its old items: never edited
+      // (a live control reads providers.list). A flag a provider does not say is false to a reader.
+      const drv = provider === "claude" ? null : this.deps.providers && this.deps.providers.get(provider);
+      kept.caps = provider === "claude" ? { streaming: true, resume: true, interrupt: true, modes: true, questions: true, transcripts: true, steering: true, rewind: true, usage: "detailed" }
+        : { ...((drv && drv.capabilities) || {}) };
       // The thread this one was started for (a teammate's or sub-agent's), so a person's words in the parent
       // count for it (threads.lineage). Only what vyred verified: never an id read from a model's input.
       if (o.parent && this.record(String(o.parent))) kept.parent = String(o.parent);
@@ -1926,6 +1933,45 @@ export class Switchboard {
   }
 
   /**
+   * A thread as the items a card list draws, oldest first, built from its stored events only (so it
+   * outlives every process and is the same for a session opened cold as for one watched live): what
+   * was said to it, what it said, each tool call with its last state, its plan as it changed, and
+   * notices. `since` is an event id; `next` is the last item's id, or null when nothing is left.
+   * A tool item's id is the event that started it, its status the last one said for that call.
+   * @param {string} id @param {{ since?: number, limit?: number }} [o]
+   */
+  items(id, { since = 0, limit = 50 } = {}) {
+    const rec = this.must(id);
+    const want = Math.max(1, Math.min(200, Number(limit) || 50));
+    const after = Math.max(0, Number(since) || 0);
+    const rows = /** @type {any[]} */ (this.db.prepare(`SELECT id, at, type, payload FROM events WHERE thread = ? AND id > ?
+      AND type IN ('thread.sent','thread.text','thread.tool','thread.plan','thread.provider') ORDER BY id ASC LIMIT ?`).all(id, after, want * 4 + 200));
+    const done = this.db.prepare(`SELECT payload FROM events WHERE thread = ? AND type = 'thread.tool' AND json_extract(payload, '$.call') = ? AND json_extract(payload, '$.phase') = 'done' ORDER BY id DESC LIMIT 1`);
+    let provider = rec.provider || "claude";
+    /** @type {any[]} */ const items = [];
+    let more = false;
+    for (const e of rows) {
+      const p = JSON.parse(String(e.payload));
+      if (e.type === "thread.provider") { if (typeof p.to === "string") provider = p.to; continue; }
+      /** @type {any} */ let item = null;
+      if (e.type === "thread.sent") item = { kind: p.kind ? "notice" : "person", text: String(p.text || ""), ...(p.surface ? { surface: p.surface } : {}), ...(p.kind ? { from: p.surface || null } : {}) };
+      else if (e.type === "thread.text") { if (p.done && !p.kind && typeof p.text === "string") item = { kind: p.notice ? "notice" : "assistant", text: p.text }; }
+      else if (e.type === "thread.plan") item = { kind: "plan", plan: p.items || [] };
+      else if (e.type === "thread.tool" && p.phase === "started") {
+        const d = /** @type {any} */ (done.get(id, String(p.call)));
+        const last = d ? JSON.parse(String(d.payload)) : null;
+        item = { kind: "tool", tool: { call: p.call, name: p.name || p.tool, kind: p.kind || "other", status: last ? last.status : "running",
+          ...(p.path ? { path: p.path } : {}), ...(p.command ? { command: p.command } : {}), ...(p.query ? { query: p.query } : {}) } };
+        if (p.provider) item.provider = p.provider;
+      }
+      if (!item) continue;
+      if (items.length >= want) { more = true; break; }
+      items.push({ id: e.id, at: e.at, turn: p.turn || null, ...item, provider: item.provider || provider });
+    }
+    return { items, next: more || rows.length >= want * 4 + 200 ? (items.length ? items[items.length - 1].id : null) : null };
+  }
+
+  /**
    * Conversations with agents, as exchanges: what a person or surface sent, and the replies that
    * came back before the next send. Newest last. Built from the stored events (thread.sent and
    * thread.text with done; partial text and notices are left out), so it outlives each process.
@@ -2631,6 +2677,9 @@ export default {
       run: async i => sb.replied(i.session, i.text || ""),
     });
     // For agents.history: conversations with agents, from the event log.
+    tool("threads.items", "A thread as the items a card list draws, oldest first, from its stored events: what was said to it, what it said, each tool call with its last state (kind, path, command, query), its plan as it changed, and notices. since: an event id; next: the last item's id, or null when nothing is left.",
+      { type: "object", required: ["thread"], properties: { thread: str, since: { type: "integer" }, limit: { type: "integer" } } },
+      async (i, { caller }) => { guard(caller, "read sessions"); return sb.items(String(i.thread), { since: i.since, limit: i.limit }); });
     ctx.tool("threads.history", {
       description: "Exchanges with agents (a send and its replies), newest last.", internal: true,
       input: { type: "object", properties: { agent: str, limit: { type: "integer" }, before: { type: "integer" } } },

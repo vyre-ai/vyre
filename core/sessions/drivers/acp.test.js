@@ -80,6 +80,18 @@ test("acp: a bypass-shaped mode is never listed and never set, whoever asks", as
   assert.ok(!w.launches().some(l => l.set_mode && /bypass/i.test(l.set_mode)), "the agent never heard of it");
 });
 
+test("acp: the agent's plan is said as a plan line and a delete is drawn as an edit", async t => {
+  const w = world(t);
+  const s = open(w);
+  s.proc.write({ type: "user", message: { role: "user", content: "plan" } });
+  await s.until(m => m.type === "result", "the result");
+  const plan = s.got.find(m => m.type === "system" && m.subtype === "vyre_plan");
+  assert.deepEqual(plan.entries.map(e => e.status), ["completed", "in_progress", "pending"]);
+  const use = s.got.filter(m => m.type === "assistant").flatMap(m => m.message.content).find(b => b.type === "tool_use");
+  assert.equal(use.vyre_kind, "edit", "ACP delete is an edit, though the floor sees Write");
+  await s.proc.stop(1000);
+});
+
 test("acp: a permission question goes to the person as can_use_tool, and always-allow is never chosen", async t => {
   const w = world(t);
   const s = open(w);
