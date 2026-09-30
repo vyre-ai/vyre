@@ -155,19 +155,55 @@ Branch: work/anywhere · Worktree: ../vyre-anywhere · Owner session: anywhere
   person-only-guard+docs-check, 178/178.
 - Sent 74f8832a to the reviewer.
 
+## Done (cont. 8): 30 Sep, relaunch as the Mac-as-server owner
+- Merged stage/0.2 (04d6f6f1). Read RULES, CHARTER, PLAN section for anywhere, launch's work log.
+- `scripts/install-mac-server.sh` (test/install-mac-server.test.js, 8/8, temp home, fake launchctl/
+  caffeinate/brew/colima): the Mac server install path. Person's own account, never root, no password.
+  Checks Node 22.5+, installs the release into ~/.vyre-server/app (SHA256SUMS-checked, or --from DIR),
+  Colima via Homebrew with DOCKER_HOST at Colima's own socket (Docker Desktop untouched, unused),
+  writes VYRE_SETUP_CODE and VYRE_SETUP_CODE_AT (epoch seconds) into VYRE_HOME/vyre.env at 0600 (never
+  an argument, never printed), one LaunchAgent (run.vyre.server) running vyred under `caffeinate -ims`
+  (keep-awake with nothing system-wide to restore, so no pmset), a wrapper that reads vyre.env line
+  by line, never executes it, and drops a code older than an hour. --dry-run, --uninstall, --purge.
+- Honest limits: (1) a LaunchAgent starts at login, not at boot with nobody signed in: that is the
+  vyre-core LaunchDaemon (ADR 0040 phase 4), not on stage/0.2 yet. (2) tailnet's beginSetup (work/
+  tailnet-02) and every relay pair path still refuse on darwin via macCoreRefusal, so the setup page
+  cannot reach a Mac server through the relay until vyre-core lifts it. (3) launch's install-box.sh
+  darwin branch still prints the npm line; the one-line dispatch to this script is launch's to make.
+  (4) macOS ships LibreSSL, whose `openssl dgst` has no `-mac`, so launch's mailbox progress stream
+  in install-box.sh cannot be copied to the Mac unchanged. (5) Colima's pinned-binary fallback (no
+  Homebrew) is not built: it needs a hash we pin at release; without Homebrew the script says so and
+  agents get no computer.
+
+## Done (cont. 9): 30 Sep, phase 4 (lead's rulings: no setup-only exception, I own work/vyre-core)
+- work/vyre-core (../vyre-core) now carries my installer commits (release manifest verify, root installer,
+  LaunchDaemons for core, update and vyred and Colima, signed apply step) and has stage/0.2 MERGED in (not
+  rebased: 19 commits each conflicting on generated docs). Resolved: presence role is cfg.machine, reach entries
+  and the core flag both kept, vault kinds import from lib/vault-kinds, the macOS session test injects its
+  Capsule stand-in. vyre-core, boundaries, docs, presence, modules, daemon tests green.
+- work/anywhere-server was reset onto work/vyre-core (backup: backup/anywhere-server-0930) with my three script
+  commits replayed. scripts/install-mac-server.sh default mode = system service: pinned Node fetched, release
+  + manifest + signature checked against SHA256SUMS, ONE sudo runs the root installer, enrolment line read and
+  dropped, waits for vyred and core's socket. `--login-only` is the old LaunchAgent mode. Colima pinned-binary
+  fallback (no Homebrew) feeds the Colima LaunchDaemon in system mode. test/install-mac-server.test.js 24/24.
+- Fixed: `out=$(sudo ...; printf rc)` died under set -e in a substitution; now && / ||.
+
+- Phase 5 built (0ef9f34e): core/vyre-core/keys.js + keys.* tools, lib/vyre-core-keys.js (createCoreKeys, fakeCoreKeys),
+  core/vyre-core/keys.test.js. Answer to tailnet: async only, caller = any owner-uid process outside every Claude session.
+- Found: the root extract did not strip npm pack's package/ folder (release.js extract, fixed 66f3a020, tested).
+- work/vyre-core == work/anywhere-server (ff'd), pushed at 66f3a020. Proof: .github/workflows/mac-server.yml runs
+  scripts/mac-proof/run.sh on macos-latest (throwaway release key via scripts/mac-proof/release.mjs, real sudo, PATH
+  without brew so the Colima/Lima/docker pins are checked for real). RESULT: pending (run on work/vyre-core).
+
+- 30 Sep, reviewer-2's round fixed (H1 verify before sudo + root copies/hashes, H2 placeholder gate, M1 staging, M2 pax, M3 audited keys + ADR 5a). Real release key pinned (release.js + script). gh in the installer (--gh-bin). scripts/sign-manifest.mjs + release.yml signing on publishing runs on main. First runner proof failed only at my keys check (launchd leader "unknown"), fixed; rerun pending the push (branch CI was still running).
+
 ## Next
-1. ADR 0040 (vyre-core, drafted by e2e at 644c9e50 on work/e2e-setsid): write my three named
-   sections -- install mechanics under the no-Apple-Developer-ID constraint (sudo once,
-   LaunchDaemon+LaunchAgent, root-owned bundled node, self-verified Ed25519 release-signed
-   updates), the vault migration sequence (~/.vyre/vyre.db into vyre-core's root-owned store) and
-   its failure modes, and whether the Solo-Deck loopback design above needs to change once
-   vyre-core exists (presence verification moves to vyre-core; person-side vyred may proxy reads
-   only, never a privileged write, per team-lead's binding constraint).
-2. Once ADR 0040's install design is agreed, redo `vyre server here` / the Mac server service
-   against it -- the plan in ADR 0039 section 3 is explicitly superseded, not a thing to build
-   as originally written.
-3. `core/cli/commands/up.js`: stop assuming role=local means "find a box"; ask/default Solo.
-4. Coordinate the move engine contract (section 4) with federation -- done (see Needs).
+1. (done, see above) Phase 5 (co-built with tailnet): core keys tools (keys.exists/ensure/box.pub/box.dh/route.pub/route.sign),
+   lib/vyre-core-keys.js client + fakeCoreKeys, on work/vyre-core.
+2. Ask reviewer-2 for review of work/vyre-core; land.
+3. GitHub macOS runner proof: workflow builds a release signed with a throwaway key (key patched into the test
+   tarball's release.js), runs the real script + real sudo, checks _vyre, daemons, core socket, vyred, pinned Colima.
+4. Then merge work/vyre-core into work/anywhere-server, review, land.
 
 ## Needs from others
 - federation: answered their vault/sessions atomicity question (no atomic pairing needed; their

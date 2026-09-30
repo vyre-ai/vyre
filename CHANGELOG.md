@@ -111,6 +111,10 @@ Newest first. Every change to code lands here in the same commit. A new dependen
   worlds and tests set it), so a `?fixtures=1` link can't show sample threads on a real install.
   Placeholders that named the sample world now say what to type ("Your project's name").
 
+- A publishing release now signs the release: `scripts/sign-manifest.mjs` writes `manifest.json`, `SHA256SUMS` (listing every asset including the manifest) and `SHA256SUMS.sig`, the one signature the Mac installer and the Linux updater both verify, with the release workflow's private key (only on a publishing run whose tag commit is on main), and refuses a key that is not the pinned one. The Mac install script is published beside `install-box.sh`.
+- The release public key is pinned (`RELEASE_KEY` in `core/vyre-core/release.js` and in the Mac install script), replacing the placeholder; the release workflow signs with it, and the release gate now refuses the old placeholder.
+- The Mac server install verifies the release before sudo, against a release key the install script carries, and the sudo step is a fixed script that copies the release and Node into a root-made folder, hashes those copies and runs the installer from there, so root never runs a file the person's account can write. The update daemon only unlinks its three staged files. The site build and release script refuse the placeholder release key (`scripts/check-release-key.mjs`). Use of the box's relay key through vyre-core is counted and shown. The installer also installs the gh CLI and gives vyred its path (`VYRE_GH_BIN`).
+- On a Mac with vyre-core, the relay's keys (the box's Noise key and the route key) live in vyre-core and never leave it: the relay asks for the public halves, the handshake's key step and a signature, and a model's process gets none of it. `lib/vyre-core-keys.js` is the client (`createCoreKeys`, and `fakeCoreKeys` for tests).
 - Closed a caller-identity race on macOS: a forged "cli" label from under a claude was believed
   when the caller was forked inside the 250 ms shared process snapshot. A pid the snapshot lacks is
   now read again, retries start from a fresh table, a peer that already exited is a model's, and
@@ -142,6 +146,7 @@ Newest first. Every change to code lands here in the same commit. A new dependen
   warnings, never failures. A module for a newer contract is never run: its row says which Vyre it
   needs. `vyre module upgrade` moves a module onto the current form, and pinned fixtures in
   `test/fixtures/modules/` hold every release to it.
+- A Mac can be the server: `scripts/install-mac-server.sh` installs Vyre in your own account (no root, no password), starts Colima for agents' computers, writes the setup code into `vyre.env`, and runs vyred as one LaunchAgent under `caffeinate` so the Mac stays awake while it runs. It starts when you sign in to that Mac; starting with nobody signed in waits for the system service. `--uninstall` keeps your data.
 
 ## 0.1.1
 
@@ -663,6 +668,30 @@ The entries below are the detailed engineering notes for 0.1.1.
   paired device, not the server (the server is Linux only). Leads with "This puts Vyre on your Mac
   as a device that pairs with your server (Linux only) over your tailnet." before the existing
   sentence.
+#### vyre-core phase 1: the daemon skeleton and presence (ADR 0040, not installed yet)
+
+- `core/vyre-core/`: vyre-core's own socket (HTTP over a unix socket), answered only for the
+  owner's uid by the kernel's word (SO_PEERCRED; LOCAL_PEERCRED on a Mac), with its own data dir
+  and presence tables. Writes (`presence.enroll`, `presence.remove`, `presence.session.open`)
+  need a proof core checks against its own keys: capsule, device or passkey signatures, or the
+  installer's one-time code for the first key. It never takes touchid or tty. `/v1/peer` is
+  core's own ancestry verdict on its own connection. Strict mode (default on a Mac) refuses to
+  start from a tree the owner's uid could write, or as the owner's uid.
+- `lib/vyre-core-client.js`: the client vyred, the CLI and tests use.
+- Nothing starts it yet; the installer is phase 4 (docs/work/vyre-core-plan.md).
+- Phase 1b: on a Mac whose root-owned core.json names vyre-core, vyred's presence checks every
+  capsule, device, passkey and code proof through core, lists core's keys and methods, gets
+  passkey challenges from core, and refuses to enroll or remove a key or mint a code itself
+  (`core_owned`). A proof is sent only to a socket owned by core's uid. Linux is unchanged.
+- The installer's enrollment code is 6 characters and lasts 2 minutes (`presence.mintCode` takes
+  a length and ttl, within 6 to 16 characters and 10 minutes), and vyre-core voids every open
+  code after five wrong ones.
+- Phase 2a, core side: vyre-core hosts the vault's store (the Vault class, a file keystore in its
+  own data dir). A new item anyone puts is unverified: never offered to fill, marked in the
+  list, and not grantable until the person verifies it with a proof. Overwrites, deletes, grants
+  and verifying need a proof; revoking doesn't. A module's value is released only under a grant
+  core holds. A plain value (reveal, totp) goes only to the Capsule core signed, with a proof or
+  a core session bound to that Capsule process.
 
 #### install-box.sh: shellcheck actually clean, and a quiet line for Docker's own wait
 
