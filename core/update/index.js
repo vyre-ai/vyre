@@ -28,7 +28,7 @@ const FILE = "update.json";
 /** The hours, on the server's clock, in which an automatic update may start. */
 const QUIET = [2, 5];
 const RUN_STATES = new Set(["running", "ok", "failed", "rolled_back"]);
-const STAGES = new Set(["start", "checking", "downloading", "verifying", "backing-up", "installing", "restarting", "rolling-back", "finished", "none"]);
+const STAGES = new Set(["start", "checking", "downloading", "verifying", "backing-up", "installing", "restarting", "rolling-back", "finished", "too-soon", "none"]);
 /** A run that says it is running after this long is not: the host stopped without saying. */
 const STALE_MS = 3 * 3600_000;
 /** The person's own callers. */

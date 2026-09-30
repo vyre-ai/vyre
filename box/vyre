@@ -7,12 +7,15 @@
 #   vyre up --print-link
 #                  the same, but stdout is only VYRE_LINK=<url> and, on a headless box,
 #                  VYRE_SSH=<ssh -L line>, for a program to read (or VYRE_LINK_ONLY=1)
-#   vyre update [--channel stable|beta] [--to <version>]
+#   vyre update [--channel stable|beta] [--to <version>] [--allow-unsigned]
 #                  bring the box to the newest release (ADR 0033, section 4). The release comes
 #                  from GitHub Releases (VYRE_RELEASES_API, repo vyre-ai/vyre; stable is the newest
 #                  non-prerelease, beta the newest of any), or from VYRE_BOX_URL when that alone is
 #                  set, or when GitHub has no release yet (default https://vyre.run/box/). Every
-#                  file is checked against the release's SHA256SUMS before anything changes. Then
+#                  file is checked against the release's SHA256SUMS before anything changes, and the
+#                  SHA256SUMS against its signature (SHA256SUMS.sig) from Vyre's release key: an unsigned or
+#                  badly signed release is refused, and only --allow-unsigned (with a plain warning) installs
+#                  one anyway. Then
 #                  it backs up the database, tags the running image vyre:prev, keeps src.prev and
 #                  box.prev, refreshes the box files and this wrapper (never .env), rebuilds or
 #                  pulls, and waits for vyred. If vyred does not come up it puts everything back,
@@ -165,22 +168,29 @@ get() {
   [ "$got" = "$want" ] || die "checksum mismatch for $BASE$1 (want $want, got $got)"
 }
 
-# verify_signature: the release's SHA256SUMS carries SHA256SUMS.sig, an Ed25519 signature over its exact bytes, and the
-# checksums vouch for every other file (release.json with the image digests, the wrapper, the compose file). It is checked
-# with Node in the image that runs now, against RELEASE_KEY above, with no network, before anything on the box changes.
-# An automatic update (UPD_SIGNED=1) installs nothing unsigned; a person running `vyre update` themselves may, with a note.
+# verify_signature: the release's SHA256SUMS carries SHA256SUMS.sig, an Ed25519 signature over the line "vyre-release-sums"
+# and then the exact bytes of SHA256SUMS (the prefix keeps a signature made for a checksum list from ever passing as one over
+# something else the same key signs, such as vyre-core's manifests). The checksums vouch for every other file (release.json
+# with the image digests, the wrapper, the compose file). It is checked with Node in the image that runs now, against
+# RELEASE_KEY above, with no network, before anything on the box changes. An unsigned or badly signed release is refused;
+# only a person running `vyre update --allow-unsigned` installs one, with a warning. An automatic update (UPD_SIGNED=1) never does.
 verify_signature() {
   stage verifying
+  problem=""
   if fetch SHA256SUMS.sig "$tmp/SHA256SUMS.sig" 2>/dev/null && [ -s "$tmp/SHA256SUMS.sig" ]; then
     sig=$(tr -d ' \n\r' <"$tmp/SHA256SUMS.sig")
-    ok=$(docker run --rm -i --network none --entrypoint node "$(image)" -e 'const c=require("crypto"),d=[];process.stdin.on("data",x=>d.push(x)).on("end",()=>{try{const k=c.createPublicKey({key:Buffer.from(process.argv[1],"base64"),format:"der",type:"spki"});console.log(c.verify(null,Buffer.concat(d),k,Buffer.from(process.argv[2],"base64"))?"signed":"bad")}catch{console.log("bad")}})' "$RELEASE_KEY" "$sig" <"$tmp/SHA256SUMS" 2>/dev/null || true)
-    [ "$ok" = signed ] || die "the release's signature does not match Vyre's release key; nothing was changed"
-    say "signature checked against Vyre's release key"
-  elif [ "${UPD_SIGNED:-0}" = 1 ]; then
-    die "this release is not signed, and an automatic update installs only signed releases; run vyre update yourself to install it"
+    ok=$(docker run --rm -i --network none --entrypoint node "$(image)" -e 'const c=require("crypto"),d=[Buffer.from("vyre-release-sums\n")];process.stdin.on("data",x=>d.push(x)).on("end",()=>{try{const k=c.createPublicKey({key:Buffer.from(process.argv[1],"base64"),format:"der",type:"spki"});console.log(c.verify(null,Buffer.concat(d),k,Buffer.from(process.argv[2],"base64"))?"signed":"bad")}catch{console.log("bad")}})' "$RELEASE_KEY" "$sig" <"$tmp/SHA256SUMS" 2>/dev/null || true)
+    if [ "$ok" = signed ]; then say "signature checked against Vyre's release key"; return 0; fi
+    problem="the release's signature does not match Vyre's release key"
   else
-    say "note: this release carries no signature; it is checked by its checksums only"
+    problem="this release is not signed"
   fi
+  if [ "${UPD_SIGNED:-0}" = 0 ] && [ "$ALLOW_UNSIGNED" = 1 ]; then
+    echo "vyre: WARNING: $problem. Installing it anyway because you passed --allow-unsigned: nothing proves this release came from Vyre." >&2
+    return 0
+  fi
+  if [ "${UPD_SIGNED:-0}" = 1 ]; then die "$problem, and an automatic update installs only signed releases; nothing was changed"; fi
+  die "$problem; nothing was changed. To install it anyway: vyre update --allow-unsigned"
 }
 
 # Unpack the verified vyre.tgz into $DIR/src.new. Nothing in $DIR/src changes yet.
@@ -355,12 +365,14 @@ roll_back() {
 update() {
   CHANNEL=${VYRE_CHANNEL:-stable}
   TO=""
+  ALLOW_UNSIGNED=0
   while [ $# -gt 0 ]; do
     case "$1" in
       --channel) [ $# -ge 2 ] || die "--channel needs stable or beta"; CHANNEL=$2; shift ;;
       --channel=*) CHANNEL=${1#--channel=} ;;
       --to) [ $# -ge 2 ] || die "--to needs a version"; TO=$2; shift ;;
       --to=*) TO=${1#--to=} ;;
+      --allow-unsigned) ALLOW_UNSIGNED=1 ;;
       *) die "vyre update: unknown option $1" ;;
     esac
     shift
@@ -408,7 +420,13 @@ update() {
   VERSION=${VERSION:-$(date -u +%Y%m%d%H%M%S)}
   UPD_TO=$VERSION
   # An automatic update never goes back: a signed old release is still an old release.
-  if [ "${UPD_SIGNED:-0}" = 1 ] && [ -n "$UPD_FROM" ] && older "$VERSION" "$UPD_FROM"; then die "the newest release is $VERSION and this box runs $UPD_FROM; an automatic update never goes back"; fi
+  # The floor is the newest version the host has installed, kept in a file only root writes; what the container says it runs
+  # is not trusted for this, since a compromised vyred could claim to be older.
+  floor=$(tr -d ' \n\r' <"$UPD_STATE/floor" 2>/dev/null || true)
+  if [ "${UPD_SIGNED:-0}" = 1 ]; then
+    if [ -n "$floor" ] && older "$VERSION" "$floor"; then die "the newest release is $VERSION and the newest this server has had is $floor; an automatic update never goes back"; fi
+    if [ -n "$UPD_FROM" ] && older "$VERSION" "$UPD_FROM"; then die "the newest release is $VERSION and this box runs $UPD_FROM; an automatic update never goes back"; fi
+  fi
   if [ "${UPD_SIGNED:-0}" = 1 ] && [ -n "$UPD_FROM" ] && [ "$VERSION" = "$UPD_FROM" ]; then UPD_DONE=1; state ok none "already on $VERSION"; say "already on $VERSION"; exit 0; fi
   if [ -f "$tmp/release.json" ]; then
     min=$(tr -d '\n' <"$tmp/release.json" | sed -n 's/.*"min_from": *"\([^"]*\)".*/\1/p')
@@ -449,6 +467,12 @@ update() {
   ready || roll_back
   printf '%s\n' "$VERSION" >"$DIR/VERSION"
   UPD_DONE=1
+  # Raise the floor (never lower it): the host's own record of the newest version this server has had.
+  fl=$(tr -d ' \n\r' <"$UPD_STATE/floor" 2>/dev/null || true)
+  if [ -d "$UPD_STATE" ] && { [ -z "$fl" ] || older "$fl" "$VERSION"; }; then
+    printf '%s\n' "$VERSION" >"$UPD_STATE/floor.new" || true
+    mv "$UPD_STATE/floor.new" "$UPD_STATE/floor" 2>/dev/null || true
+  fi
   state ok finished "updated to $VERSION"
   say "updated to $VERSION"
 
@@ -486,11 +510,31 @@ update_from_request() {
   # Two updates at once would swap the same files: the second waits for the next request. A lock left by a crash goes after two hours.
   if [ -d "$UPD_STATE/lock" ] && [ -n "$(find "$UPD_STATE/lock" -maxdepth 0 -mmin +120 2>/dev/null)" ]; then rmdir "$UPD_STATE/lock" 2>/dev/null || true; fi
   mkdir "$UPD_STATE/lock" 2>/dev/null || { echo "vyre: an update is already running" >&2; exit 0; }
-  ch=$(sed -n 's/^VYRE_CHANNEL=//p' "$DIR/.env" 2>/dev/null | tail -n 1)
+  # At least ${VYRE_UPDATE_MIN_GAP:-600} seconds between updates, so a request that keeps coming cannot keep the box restarting.
+  last=$(tr -d ' \n\r' <"$UPD_STATE/last" 2>/dev/null || true)
+  now=$(date +%s)
+  case "$last" in ""|*[!0-9]*) last=0 ;; esac
+  if [ $((now - last)) -lt "${VYRE_UPDATE_MIN_GAP:-600}" ]; then
+    rmdir "$UPD_STATE/lock" 2>/dev/null || true
+    echo "vyre: an update ran a moment ago; this request waits for the next" >&2
+    UPD_TRACK=1; state failed too-soon "an update ran a moment ago; ask again in a few minutes"
+    exit 0
+  fi
+  printf '%s\n' "$now" >"$UPD_STATE/last"
+  ch=$(sed -n 's/^VYRE_CHANNEL=//p' "$DIR/.env" 2>/dev/null | tail -n 1 | tr -d ' \r')
+  case "$ch" in stable|beta|"") ;; *) echo "vyre: VYRE_CHANNEL in $DIR/.env is \"$ch\", not stable or beta; using stable" >&2; ch=stable ;; esac
   rc=0
   ( UPD_TRACK=1; UPD_SIGNED=1; [ -z "$ch" ] || VYRE_CHANNEL=$ch; export VYRE_CHANNEL; update ) || rc=$?
   rmdir "$UPD_STATE/lock" 2>/dev/null || true
   exit "$rc"
+}
+
+# own_ok PATH ROOT_UID strict|loose: not writable by group or others, and, when strict, owned by ROOT_UID.
+own_ok() {
+  m=$(stat -c '%A %u' "$1" 2>/dev/null || stat -f '%Sp %u' "$1" 2>/dev/null) || return 1
+  perms=${m%% *}; uid=${m##* }
+  case "$perms" in ?????w*|????????w*) return 1 ;; esac
+  [ "$3" != strict ] || [ "$uid" = "$2" ]
 }
 
 # updater install|status|remove: the systemd path unit that makes vyred's request run update_from_request.
@@ -505,6 +549,13 @@ updater() {
         echo "vyre: this server has no systemd, so an update is the vyre update command only"; return 0
       fi
       if [ "$(id -u)" != 0 ] && [ -z "${VYRE_SYSTEMD_DIR:-}" ]; then exec sudo -n "$WRAPPER" updater install; fi
+      # The unit runs the wrapper as root, so neither it nor the folder it works in may be writable by anyone else.
+      root_uid=${VYRE_ROOT_UID:-0}
+      for f in "$WRAPPER" "$DIR"; do
+        if ! own_ok "$f" "$root_uid" "$( [ "$f" = "$WRAPPER" ] && echo strict || echo loose )"; then
+          die "$f must not be writable by its group or others (and $WRAPPER must be owned by root): the update unit would run it as root. Fix that, then run vyre updater install"
+        fi
+      done
       updater_dirs
       svc="$units/$un.service"
       { printf '[Unit]\nDescription=Vyre update, asked for by vyred\n\n[Service]\nType=oneshot\nEnvironment=VYRE_DIR=%s\nExecStart=%s update-from-request\nTimeoutStartSec=3600\n' "$DIR" "$WRAPPER"; } >"$svc.new" && mv "$svc.new" "$svc"

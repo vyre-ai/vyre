@@ -9,7 +9,7 @@ const str = v => (typeof v === "string" ? v : "");
 export const STAGE_WORDS = {
   start: "Starting", checking: "Looking for the release", downloading: "Downloading it", verifying: "Checking its signature",
   "backing-up": "Backing up your data", installing: "Installing", restarting: "Restarting Vyre", "rolling-back": "Putting the old version back",
-  finished: "Done", none: "Working",
+  finished: "Done", "too-soon": "An update just ran", none: "Working",
 };
 
 /**

@@ -18,6 +18,14 @@ const REPO = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const WRAPPER_SRC = fs.readFileSync(path.join(REPO, "box/vyre"), "utf8");
 const COMPOSE = fs.readFileSync(path.join(REPO, "box/compose.yml"), "utf8");
 const CHOME = "/home/vyre/.vyre";
+// Vyre's release key, for these tests: a key of their own, given to the wrapper as VYRE_RELEASE_KEY (test only). Every release
+// is signed by it unless a test says sign: false, or another key.
+const RELEASE = crypto.generateKeyPairSync("ed25519");
+const OTHER = crypto.generateKeyPairSync("ed25519");
+const spki = (/** @type {crypto.KeyObject} */ k) => k.export({ type: "spki", format: "der" }).toString("base64");
+const KEY = { VYRE_RELEASE_KEY: spki(RELEASE.publicKey) };
+/** The signed message: the domain-separation line, then the exact SHA256SUMS bytes. */
+const signSums = (/** @type {Buffer} */ sums, /** @type {crypto.KeyObject} */ key) => crypto.sign(null, Buffer.concat([Buffer.from("vyre-release-sums\n"), sums]), key).toString("base64") + "\n";
 const APK = "android-0.2.0-abc1234.apk";
 const sha = (/** @type {Buffer|string} */ b) => crypto.createHash("sha256").update(b).digest("hex");
 
@@ -88,7 +96,7 @@ process.exit(0);
 `;
 
 /** Release assets as files in a folder, with SHA256SUMS over them. */
-function release(dir, version, { android = false, corrupt = "", sign = null } = {}) {
+function release(dir, version, { android = false, corrupt = "", sign = /** @type {any} */ (RELEASE.privateKey) } = {}) {
   fs.mkdirSync(dir, { recursive: true });
   const pkg = path.join(dir, ".pkg", "package");
   fs.mkdirSync(path.join(pkg, "box"), { recursive: true });
@@ -113,7 +121,7 @@ function release(dir, version, { android = false, corrupt = "", sign = null } = 
   fs.writeFileSync(path.join(dir, "SHA256SUMS"), names.map(n => `${sha(fs.readFileSync(path.join(dir, n)))}  ${n}\n`).join(""));
   if (corrupt) fs.appendFileSync(path.join(dir, corrupt), "tampered");
   // SHA256SUMS.sig: Ed25519 over the exact bytes of SHA256SUMS, base64. Not listed in SHA256SUMS itself.
-  if (sign) fs.writeFileSync(path.join(dir, "SHA256SUMS.sig"), crypto.sign(null, fs.readFileSync(path.join(dir, "SHA256SUMS")), sign).toString("base64") + "\n");
+  if (sign) fs.writeFileSync(path.join(dir, "SHA256SUMS.sig"), signSums(fs.readFileSync(path.join(dir, "SHA256SUMS")), sign));
   return names;
 }
 
@@ -174,7 +182,7 @@ async function box(t, { site = "0.1.5", releases = [], build = true } = {}) {
   const run = (/** @type {string[]} */ args, /** @type {Record<string,string>} */ extra = {}) => new Promise(resolve => {
     const c = spawn("sh", [WRAPPER, ...args], {
       env: { PATH: `${FAKE}/bin:${process.env.PATH}`, HOME: root, TMPDIR: SCRATCH, FAKE, VYRE_DIR: DIR, VYRE_WRAPPER: WRAPPER,
-        VYRE_UPDATE_WAIT: "2", VYRE_RELEASES_API: `${base}/api`, VYRE_BOX_URL: `${base}/site/`, ...extra },
+        VYRE_UPDATE_WAIT: "2", VYRE_RELEASES_API: `${base}/api`, VYRE_BOX_URL: `${base}/site/`, ...KEY, VYRE_UPDATE_MIN_GAP: "0", ...extra },
       stdio: ["pipe", "pipe", "pipe"],
     });
     let out = "";
@@ -381,10 +389,6 @@ test("box/vyre: shellcheck is clean, when shellcheck is installed", t => {
 
 // --- the automatic path: vyred's request file, run by a root path unit (vyre update-from-request) ---
 
-const RELEASE = crypto.generateKeyPairSync("ed25519");
-const OTHER = crypto.generateKeyPairSync("ed25519");
-const spki = (/** @type {crypto.KeyObject} */ k) => k.export({ type: "spki", format: "der" }).toString("base64");
-const KEY = { VYRE_RELEASE_KEY: spki(RELEASE.publicKey) };
 const status = (/** @type {any} */ b) => JSON.parse(b.read(path.join(b.DIR, "update-state", "status.json")));
 const ask = (/** @type {any} */ b, text = "update\n") => { fs.mkdirSync(path.join(b.DIR, "update"), { recursive: true }); fs.writeFileSync(path.join(b.DIR, "update", "request"), text); };
 
@@ -418,7 +422,7 @@ test("update-from-request: only the word update starts anything; a link or anoth
 });
 
 test("update-from-request: an unsigned release, or one signed by another key, installs nothing", async t => {
-  const b = await box(t, { releases: [{ tag: "v0.2.0" }] });
+  const b = await box(t, { releases: [{ tag: "v0.2.0", sign: false }] });
   ask(b);
   let r = /** @type {any} */ (await b.run(["update-from-request"], KEY));
   assert.equal(r.code, 1);
@@ -433,13 +437,24 @@ test("update-from-request: an unsigned release, or one signed by another key, in
   assert.equal(r.code, 1);
   assert.match(r.out, /signature does not match Vyre's release key/);
   assert.equal(w.read(path.join(w.DIR, "src", "marker")).trim(), "old");
-  // Run by hand, a bad signature is refused too, and an unsigned release only earns a note.
+  // Run by hand, an unsigned or badly signed release is refused too, and only --allow-unsigned installs one, with a warning.
   const m = await box(t, { releases: [{ tag: "v0.2.0", sign: OTHER.privateKey }] });
-  assert.match(/** @type {any} */ ((await m.run(["update"], KEY))).out, /signature does not match/);
-  const u = await box(t, { releases: [{ tag: "v0.2.0" }] });
-  const hand = /** @type {any} */ (await u.run(["update"], KEY));
+  const bad = /** @type {any} */ (await m.run(["update"], KEY));
+  assert.equal(bad.code, 1);
+  assert.match(bad.out, /signature does not match Vyre's release key; nothing was changed/);
+  assert.match(bad.out, /--allow-unsigned/);
+  assert.equal(m.read(path.join(m.DIR, "src", "marker")).trim(), "old");
+  const u = await box(t, { releases: [{ tag: "v0.2.0", sign: false }] });
+  const refused = /** @type {any} */ (await u.run(["update"], KEY));
+  assert.equal(refused.code, 1);
+  assert.match(refused.out, /this release is not signed; nothing was changed/);
+  const hand = /** @type {any} */ (await u.run(["update", "--allow-unsigned"], KEY));
   assert.equal(hand.code, 0, hand.out);
-  assert.match(hand.out, /carries no signature/);
+  assert.match(hand.out, /WARNING: this release is not signed\. Installing it anyway because you passed --allow-unsigned/);
+  // The override is a person's alone: the unit never passes it, and the request cannot.
+  const auto = await box(t, { releases: [{ tag: "v0.2.0", sign: false }] });
+  ask(auto);
+  assert.equal(/** @type {any} */ ((await auto.run(["update-from-request"], KEY))).code, 1);
 });
 
 test("update-from-request: a vyred that does not come up rolls back and the state says rolled_back; it never goes back a version", async t => {
@@ -485,7 +500,7 @@ test("vyre updater install: writes a path unit watching vyred's request file and
   const units = path.join(b.DIR, "units");
   fs.mkdirSync(units);
   fs.writeFileSync(path.join(b.FAKE, "bin", "systemctl"), `#!/bin/sh\necho "$@" >>"$FAKE/systemctl"\n`, { mode: 0o755 });
-  const r = /** @type {any} */ (await b.run(["updater", "install"], { VYRE_SYSTEMD_DIR: units }));
+  const r = /** @type {any} */ (await b.run(["updater", "install"], { VYRE_SYSTEMD_DIR: units, VYRE_ROOT_UID: String(process.getuid()) }));
   assert.equal(r.code, 0, r.out);
   const path_ = fs.readFileSync(path.join(units, "vyre-update.path"), "utf8");
   assert.match(path_, new RegExp(`PathExists=${b.DIR}/update/request`));
@@ -509,4 +524,70 @@ test("compose: vyred gets only its own request folder (writable) and the state f
   assert.match(COMPOSE, /- \.\/update:\/run\/vyre-update\n/);
   assert.match(COMPOSE, /- \.\/update-state:\/run\/vyre-update-state:ro\n/);
   assert.ok(!/docker\.sock/.test(COMPOSE.split("docker-api:")[0]), "still no socket in the vyre service");
+});
+
+test("vyre updater install: refuses a wrapper or a folder that others could write, since the unit runs it as root", async t => {
+  const b = await box(t, { releases: [] });
+  const units = path.join(b.DIR, "units");
+  fs.mkdirSync(units);
+  fs.writeFileSync(path.join(b.FAKE, "bin", "systemctl"), `#!/bin/sh\n:\n`, { mode: 0o755 });
+  const env = { VYRE_SYSTEMD_DIR: units, VYRE_ROOT_UID: String(process.getuid()) };
+  fs.chmodSync(b.WRAPPER, 0o775);
+  let r = /** @type {any} */ (await b.run(["updater", "install"], env));
+  assert.equal(r.code, 1);
+  assert.match(r.out, /must not be writable by its group or others/);
+  fs.chmodSync(b.WRAPPER, 0o755);
+  fs.chmodSync(b.DIR, 0o777);
+  r = /** @type {any} */ (await b.run(["updater", "install"], env));
+  assert.equal(r.code, 1, r.out);
+  fs.chmodSync(b.DIR, 0o755);
+  // Owned by someone who is not root: the wrapper is refused.
+  r = /** @type {any} */ (await b.run(["updater", "install"], { ...env, VYRE_ROOT_UID: "0" }));
+  assert.equal(r.code, 1);
+  assert.ok(!fs.existsSync(path.join(units, "vyre-update.path")), "nothing was written");
+  r = /** @type {any} */ (await b.run(["updater", "install"], env));
+  assert.equal(r.code, 0, r.out);
+});
+
+test("update-from-request: the no-downgrade floor is the host's own file, not what the container says; it rises after an update", async t => {
+  const b = await box(t, { releases: [{ tag: "v0.2.0" }] });
+  // vyred lies low (it says it runs 0.0.5), but the host has had 0.3.0.
+  fs.writeFileSync(path.join(b.FAKE, "cur"), "0.0.5");
+  fs.mkdirSync(path.join(b.DIR, "update-state"), { recursive: true });
+  fs.writeFileSync(path.join(b.DIR, "update-state", "floor"), "0.3.0\n");
+  ask(b);
+  const r = /** @type {any} */ (await b.run(["update-from-request"], KEY));
+  assert.equal(r.code, 1);
+  assert.match(r.out, /the newest this server has had is 0\.3\.0; an automatic update never goes back/);
+  assert.ok(!b.calls().some(c => c.includes("backup")));
+  // With a lower floor the update goes ahead, and the floor becomes its version.
+  fs.writeFileSync(path.join(b.DIR, "update-state", "floor"), "0.1.0\n");
+  fs.writeFileSync(path.join(b.FAKE, "cur"), "0.1.0");
+  ask(b);
+  assert.equal(/** @type {any} */ ((await b.run(["update-from-request"], KEY))).code, 0);
+  assert.equal(b.read(path.join(b.DIR, "update-state", "floor")).trim(), "0.2.0");
+});
+
+test("update-from-request: at least the minimum gap between updates, and only stable or beta from the host's .env", async t => {
+  const b = await box(t, { releases: [{ tag: "v0.3.0-beta.1", pre: true }, { tag: "v0.2.0" }] });
+  ask(b);
+  let r = /** @type {any} */ (await b.run(["update-from-request"], { VYRE_UPDATE_MIN_GAP: "600" }));
+  assert.equal(r.code, 0, r.out);
+  assert.equal(status(b).state, "ok");
+  const calls = b.calls().length;
+  ask(b);
+  r = /** @type {any} */ (await b.run(["update-from-request"], { VYRE_UPDATE_MIN_GAP: "600" }));
+  assert.equal(r.code, 0);
+  assert.match(r.out, /an update ran a moment ago/);
+  assert.equal(status(b).state, "failed");
+  assert.equal(status(b).stage, "too-soon");
+  assert.equal(b.calls().length, calls, "nothing ran");
+  assert.ok(!fs.existsSync(path.join(b.DIR, "update-state", "lock")));
+  // A channel that is not stable or beta is ignored with a note, and stable is used.
+  fs.appendFileSync(path.join(b.DIR, ".env"), "VYRE_CHANNEL=nightly; rm -rf /\n");
+  ask(b);
+  r = /** @type {any} */ (await b.run(["update-from-request"], {}));
+  assert.equal(r.code, 0, r.out);
+  assert.match(r.out, /not stable or beta; using stable/);
+  assert.equal(b.read(path.join(b.DIR, "VERSION")).trim(), "0.2.0");
 });
