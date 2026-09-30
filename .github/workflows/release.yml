@@ -89,7 +89,7 @@ jobs:
           prev=$(gh release list -R "$GITHUB_REPOSITORY" --exclude-drafts --limit 1 --json tagName --jq '.[0].tagName // empty' 2>/dev/null || true)
           if [ -n "$prev" ] && git rev-parse -q --verify "refs/tags/$prev^{commit}" >/dev/null; then base=$prev
           else prev=""; base=$(git hash-object -t tree /dev/null); fi
-          paths=".github/workflows scripts/sign-manifest.mjs scripts/check-release-key.mjs core/vyre-core/release.js"
+          paths=".github/workflows scripts/sign-manifest.mjs scripts/check-release-key.mjs core/vyre-core/release.js local/capsule/native/build.sh"
           {
             echo "### Signing path: $TAG vs ${prev:-nothing (no published release yet)}"
             if git diff --quiet "$base" HEAD -- $paths; then

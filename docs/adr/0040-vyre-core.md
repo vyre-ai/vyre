@@ -309,6 +309,23 @@ update mechanism.
   a DH or a signature as the owner. Every such use is counted, logged and emitted as a `keys.used` event
   vyred shows, so misuse is visible. The real fix is identifying the peer by code signature (the audit
   token and SecCode) once vyred and the Capsule are signed.
+- **The Capsule's signing identity, as built.** core's certificate and key live in a folder only root can
+  read (`/Library/Application Support/Vyre/signing`), not in `_vyre`'s data directory: only root ever signs
+  (the installer and the update step), so a compromised `_vyre` cannot. The certificate is trusted for code
+  signing in the system domain, so it is a per-machine, self-made code-signing root, trusted machine-wide and
+  exactly as strong as root on that machine. The keychain password is passed to `security` as an argument
+  during a sign and so shows in `ps` for that moment; it is useless without read access to the root folder.
+  The Capsule is recognised by its kernel-reported executable path resolving into core's root-owned tree; a
+  peer-token plus dynamic code-signature check against the designated requirement is the later hardening.
+- **The Capsule's key on a Mac with no Secure Enclave** is a software key in the keychain (capsule-pro's
+  ruling, 30 Sep). There the key cannot ask for presence itself; the Capsule's own check before each signature
+  is what stands, and nothing stronger is claimed. The enclave key is an opaque handle, not bound to the code
+  requirement by the OS, so no security claim rests on that binding.
+- **Launching the Capsule from the install script** from a Terminal makes Terminal the TCC "responsible
+  process" for that run, so the Capsule can inherit Terminal's Full Disk Access or Accessibility until it is
+  next started by launchd. If that matters, the fix is to launch it through the user's launchd domain
+  (`launchctl asuser`) with the code on an inherited pipe, or to have the Capsule request its own permissions
+  after its first run.
 
 ### 6. Vault migration sequence and its failure modes
 
