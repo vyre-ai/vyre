@@ -4,6 +4,28 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### Vault extension: save an API key a page shows, in one tap (plan C26, the one Vyre extension)
+
+- `keyfind.js` (pure): a provider prefix from the rows of `core/vault/detect.js` (sk-ant-, sk-,
+  ghp_, xoxb-, AKIA and about 25 more), or a generic high-entropy string under a key, token or
+  secret label. A UUID, a git or file hash, a base64 image, a placeholder (`sk-xxxxxxxx`,
+  `YOUR_API_KEY`) or a password input's value never counts. Table-driven tests, with a parity
+  check against `detect.js` for every shape.
+- `keychip.js`: a page-side script (top frame, registered once paired and allowed on pages, on
+  unless turned off in the popup) that reads what a page shows locally, the text a person copies
+  and the box beside a clicked Copy button, and raises a small chip in a closed shadow root. One
+  trusted tap on Save stores the key ready to use, with Undo in the same chip for 10 seconds; no
+  draft, no second dialog. Before the tap only a fingerprint leaves the page; a value is offered
+  once per tab and never while Vyre is locked.
+- `POST /v1/fill/save-key` (`core/vault/fill-key.js`): same device and session gate as
+  `/v1/fill/save`. It classifies the value again with `detect.js` (kind, provider), names the item
+  from the page host and label, records the origin, sets `details.provider`, and calls an optional
+  `connect` hook given to `Fill` so a module's matching need can be filled. It refuses a save
+  whose page origin is not the origin the chip was raised on, and undo removes only what the route
+  made for the same device and page within two minutes. Nothing returns, audits or emits the value.
+- The popup has an "Offer to save API keys pages show" toggle; the page permission is dropped
+  only when all three toggles are off. `keyfind.js` and `keychip.js` join the build's INJECTED list.
+
 #### Connectors: the push credential, one Google consent for hosted MCP and mail push (plan: vault.md "Push credentials", risk 7)
 
 - `core/connectors/google.js`: one authorize call asks for the hosted-MCP scopes and
