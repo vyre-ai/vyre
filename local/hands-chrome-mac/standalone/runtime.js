@@ -22,6 +22,8 @@ export const sockPathOf = (/** @type {string} */ dataDir, platform = process.pla
 function safeUser() { try { return os.userInfo().username; } catch { return "user"; } }
 
 /** Tools the model may not call: the person's own controls, and the Gate's release (chrome.send stands in for it). */
+/** Errors that are not about a control or a page (nothing to step down from): the ladder hint would only mislead. */
+const NO_LADDER = new Set(["blocked", "stopped", "no_extension", "denied", "declined", "detached", "not_listening", "plan_first", "waiting_input", "bad_request", "not_found_tool"]);
 const HIDDEN = new Set(["chrome.release", "chrome.interject", "chrome.install", "chrome.pause", "chrome.plan.edit", "chrome.voice"]);
 
 /**
@@ -140,7 +142,7 @@ export async function createRuntime(o = {}) {
     const runMs = Date.now() - t0;
     const c = /** @type {any} */ (out);
     // The ladder: a failure says which rung it was on and what the next one is.
-    if (!c.ok && c.error && rungOf(name)) { const hint = nextRung(rungOf(name)); if (hint && c.error.code !== "blocked" && c.error.code !== "stopped") c.error.message = `${c.error.message} | ladder: ${hint}`; }
+    if (!c.ok && c.error && rungOf(name)) { const hint = nextRung(rungOf(name)); if (hint && !NO_LADDER.has(String(c.error.code))) c.error.message = `${c.error.message} | ladder: ${hint}`; }
     trace.call({ tool: name, args: input, queueMs, runMs, ok: c.ok, result: c.result, error: c.error });
     // A failure can leave a small screenshot behind, when the person turned that on.
     if (!c.ok && trace.config().shots === true && tools.has("chrome.screenshot") && name !== "chrome.screenshot") {

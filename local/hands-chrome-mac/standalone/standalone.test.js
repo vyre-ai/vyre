@@ -10,6 +10,7 @@ import { PassThrough } from "node:stream";
 import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { createRuntime } from "./runtime.js";
+import { runningBrowsers } from "./doctor.js";
 import { serve, wireName } from "./mcp.js";
 import { report, readSessions, pii, safeArgs, rotate, writeConfig } from "./trace.js";
 import { fakeExtension, until } from "../fake-extension.js";
@@ -471,4 +472,29 @@ test("doctor: checks the install, the registration, the launcher and a real conn
   assert.match(d.stdout, /OK   the launcher starts the connector/);
   assert.match(d.stdout, /OK   a real connector process said hello to a bridge and relayed a request back/);
   assert.match(d.stdout, /Next: /);
+});
+
+
+test("ladder: a transport error (no extension connected) carries no step-down hint", async t => {
+  const dataDir = tmp(t);
+  const runtime = await createRuntime({ dataDir, sockPath: path.join(dataDir, "run", "chrome.sock"), log: () => {}, chrome: { extensionOrigin: null } });
+  t.after(() => runtime.stop());
+  const r = await runtime.invoke("chrome.snapshot", {});
+  assert.equal(r.ok, false);
+  assert.equal(r.error.code, "no_extension");
+  assert.ok(!/ladder/.test(r.error.message), r.error.message);
+});
+
+
+test("doctor: finds the main process of each running browser and when it started, never a helper", () => {
+  const ps = [
+    "Sun Sep 27 09:12:44 2026 /Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
+    "Sun Sep 27 09:12:45 2026 /Applications/Google Chrome.app/Contents/Frameworks/Google Chrome Helper.app/Contents/MacOS/Google Chrome Helper --type=renderer",
+    "Tue Sep 30 18:01:02 2026 /Applications/Dia.app/Contents/MacOS/Dia",
+    "Tue Sep 30 18:01:03 2026 /Applications/Dia.app/Contents/Frameworks/Dia Helper.app/Contents/MacOS/Dia Helper --type=gpu-process",
+  ].join("\n");
+  const b = runningBrowsers("darwin", ps);
+  assert.deepEqual(b.map(x => x.name).sort(), ["Dia", "Google Chrome"]);
+  assert.ok(b.find(x => x.name === "Google Chrome").startedAt < b.find(x => x.name === "Dia").startedAt);
+  assert.deepEqual(runningBrowsers("win32", ps), []);
 });

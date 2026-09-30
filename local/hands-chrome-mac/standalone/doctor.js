@@ -16,6 +16,23 @@ import { diagnoseConnection } from "../diagnose.js";
 
 /** @typedef {{ name: string, level: "ok"|"warn"|"fail"|"info", text: string, fix?: string }} Check */
 
+/**
+ * Browsers running now with when they started (macOS and Linux: `ps`). Only the main process of each, never a helper.
+ * @param {string} [platform] @param {string|null} [psText] `ps` output for a test @returns {{ name: string, startedAt: number }[]}
+ */
+export function runningBrowsers(platform = process.platform, psText = null) {
+  if (platform === "win32") return [];
+  const r = { stdout: psText ?? spawnSync("ps", ["-axo", "lstart=,command="], { encoding: "utf8" }).stdout };
+  const names = /** @type {Array<[string, RegExp]>} */ ([["Google Chrome", /Google Chrome\.app\/Contents\/MacOS\/Google Chrome( |$)|\/(google-)?chrome( |$)/], ["Dia", /Dia\.app\/Contents\/MacOS\/Dia( |$)/], ["Arc", /Arc\.app\/Contents\/MacOS\/Arc( |$)/], ["Brave", /Brave Browser\.app\/Contents\/MacOS\/Brave Browser( |$)/], ["Edge", /Microsoft Edge\.app\/Contents\/MacOS\/Microsoft Edge( |$)/]]);
+  /** @type {{ name: string, startedAt: number }[]} */ const out = [];
+  for (const line of String(r.stdout || "").split("\n")) {
+    const m = /^\s*(\w{3} \w{3}\s+\d+ [\d:]{8} \d{4})\s+(.*)$/.exec(line);
+    if (!m || /Helper|crashpad|--type=|--headless/.test(m[2])) continue;
+    for (const [name, re] of names) if (re.test(m[2])) { const t = Date.parse(m[1]); if (Number.isFinite(t) && !out.some(o => o.name === name)) out.push({ name, startedAt: t }); }
+  }
+  return out;
+}
+
 /** @param {number} pid */
 const alive = pid => { try { process.kill(pid, 0); return true; } catch { return false; } };
 
@@ -119,6 +136,18 @@ export async function doctor({ dataDir, appDir, extensionId, selftest = true, pl
     add({ name: "browsers", level: "info", text: running.length ? `running now: ${running.join(", ")}` : "no supported browser is running right now" });
     add(running.length && !hosts ? { name: "connector-process", level: "warn", text: "a browser is running but has started no connector process", fix: "Check chrome://extensions: Vyre for Chrome must be loaded and enabled; click its toolbar icon for the reason. If it is, quit and reopen the browser once." }
       : { name: "connector-process", level: hosts ? "ok" : "info", text: hosts ? `${hosts} connector process(es) running: a browser started the connector` : "no connector process is running" });
+  }
+
+  // 8. Did a browser start BEFORE the connector was registered? (Real-use finding 2: a Chrome that had been running for days only connected after a restart.)
+  if (st && st.installed.length) {
+    for (const rb of runningBrowsers(platform)) {
+      const reg = st.installed.find((/** @type {any} */ x) => new RegExp(x.browser === "chrome" ? "chrome" : x.browser, "i").test(rb.name));
+      if (!reg) continue;
+      let wrote = 0; try { wrote = fs.statSync(reg.file).mtimeMs; } catch { /* gone */ }
+      if (wrote && rb.startedAt < wrote - 1000 && !(server && server.connected)) {
+        add({ name: `restart:${rb.name}`, level: "warn", text: `${rb.name} started ${new Date(rb.startedAt).toLocaleString()}, before the connector was registered (${new Date(wrote).toLocaleString()})`, fix: `Quit ${rb.name} completely and open it again once. A browser that was already running may not pick up a newly registered connector until it restarts.` });
+      }
+    }
   }
 
   const failing = checks.filter(c => c.level === "fail");
