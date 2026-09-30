@@ -1,0 +1,9 @@
+{
+  "manifest_version": 3,
+  "name": "Vyre",
+  "version": "0.2.0",
+  "description": "Lets Vyre work in your own Chrome, on the pages you allow, with you watching.",
+  "minimum_chrome_version": "116",
+  "permissions": ["debugger", "tabs", "nativeMessaging", "storage", "alarms"],
+  "background": { "service_worker": "background.js", "type": "module" }
+}

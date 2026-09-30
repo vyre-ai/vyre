@@ -1,0 +1,111 @@
+// @ts-check
+// caps/index: the capability registry and the one place an op is dispatched.
+//
+// A capability default-exports { name, ops: { "<cap>.<name>": async (args, ctx) => result },
+// onEvent?(evt, ctx) }. dispatch() is where the person's guard rails live so no capability can
+// forget them: an op name is validated, an ACTING op is refused while the person's stop is in
+// force, and any op that names a tab (args.tabId) is checked against the URL floor first.
+//
+// Optional capabilities (devtools, net, api, ghl; vault adds itself with register()) are loaded
+// with a dynamic import inside try/catch so a missing or broken file never takes the others down.
+// GAP FOR INTEGRATION: an MV3 service worker forbids dynamic import(). It works under node and in
+// pages, but in the packed extension the four names below must become static imports (see
+// loadOptional's `importer` argument: pass one built from static imports and nothing else changes).
+
+import { proto } from "../lib/shared.js";
+import { err } from "../lib/err.js";
+import tabs from "./tabs.js";
+import page from "./page.js";
+import batch from "./batch.js";
+
+export const OPTIONAL = ["devtools", "net", "api", "ghl"];
+
+/** @type {Map<string, { cap: any, handler: (args: any, ctx: any) => Promise<any> }>} */
+const ops = new Map();
+/** @type {Map<string, any>} */
+const caps = new Map();
+/** @type {{ loaded: string[], missing: string[], failed: { name: string, error: string }[] }} */
+const report = { loaded: [], missing: [], failed: [] };
+
+/**
+ * Add a capability. Throws on a bad name, a duplicate op, or a malformed cap so a mistake is
+ * loud at load time and never a silent missing tool.
+ * @param {{ name: string, ops: Record<string, (args: any, ctx: any) => Promise<any>>, onEvent?: (evt: any, ctx: any) => any }} cap
+ */
+export function register(cap) {
+  if (!cap || typeof cap.name !== "string" || !cap.name || typeof cap.ops !== "object" || !cap.ops) throw new Error("a capability needs a name and an ops object");
+  if (caps.get(cap.name) === cap) return;
+  for (const [op, fn] of Object.entries(cap.ops)) {
+    if (!proto.validOp(op)) throw new Error(`bad op name ${JSON.stringify(op)}`);
+    if (typeof fn !== "function") throw new Error(`op ${op} is not a function`);
+    const have = ops.get(op);
+    if (have && have.cap.name !== cap.name) throw new Error(`op ${op} is already registered by ${have.cap.name}`);
+  }
+  caps.set(cap.name, cap);
+  for (const [op, fn] of Object.entries(cap.ops)) ops.set(op, { cap, handler: fn });
+}
+
+/** File names (not capability names: caps/devtools.js registers "dev") already loaded. */
+const loadedFiles = new Set();
+
+/**
+ * @param {(name: string) => Promise<any>} [importer]
+ * @param {string[]} [names] file names under caps/ to try
+ */
+export async function loadOptional(importer = name => import(`./${name}.js`), names = OPTIONAL) {
+  for (const name of names) {
+    if (loadedFiles.has(name)) continue;
+    report.missing = report.missing.filter(n => n !== name);
+    report.failed = report.failed.filter(f => f.name !== name);
+    try {
+      const m = await importer(name);
+      register(m.default);
+      loadedFiles.add(name);
+      report.loaded.push(name);
+    } catch (e) {
+      const msg = String(/** @type {any} */ (e)?.message || e);
+      // A file that is simply not there yet is normal; a file that is there and broken is not.
+      if (new RegExp(`Cannot find module '[^']*/${name}\\.js'|Failed to fetch dynamically imported module: [^ ]*/${name}\\.js`).test(msg)) report.missing.push(name);
+      else report.failed.push({ name, error: msg });
+    }
+  }
+}
+
+for (const c of [tabs, page, batch]) register(c);
+
+/** Resolves when the optional capabilities have been tried. dispatch waits for it. */
+export let ready = loadOptional();
+
+/** What loaded and what did not, for the hello event and for support. */
+export const loadReport = () => ({ loaded: [...caps.keys()], optional: { ...report } });
+
+/** @returns {string[]} */
+export const opNames = () => [...ops.keys()].sort();
+
+/**
+ * Run one op. Throws VyreError (with a proto code) on refusal; the shell turns that into
+ * {ok:false, error}. Callers inside the worker (batch) get the same guard rails as the module.
+ * @param {string} op @param {any} args @param {any} ctx
+ */
+export async function dispatch(op, args, ctx) {
+  await ready;
+  if (!proto.validOp(op)) throw err("bad_request", `bad op name ${JSON.stringify(op)}`);
+  const entry = ops.get(op);
+  if (!entry) throw err("unknown_op", `no such operation: ${op}`);
+  if (args == null) args = {};
+  if (typeof args !== "object" || Array.isArray(args)) throw err("bad_request", "args must be an object");
+  if (proto.ACTING.has(op) && ctx.stopped()) throw err("stopped");
+  if (typeof args.tabId === "number") {
+    const v = await ctx.floorAllows(args.tabId, op);
+    if (!v.allow) throw err("blocked", `${v.why} (${v.tier})`);
+  }
+  return entry.handler(args, ctx);
+}
+
+/** Tell every capability about an event from the module (stop, resume, ...). @param {any} evt @param {any} ctx */
+export async function deliver(evt, ctx) {
+  for (const cap of caps.values()) {
+    if (typeof cap.onEvent !== "function") continue;
+    try { await cap.onEvent(evt, ctx); } catch { /* one capability's bug must not silence the others */ }
+  }
+}
