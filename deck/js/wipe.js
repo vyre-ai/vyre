@@ -8,6 +8,8 @@
 // What says "this phone was removed":
 //   presence.removed { id }  whose id is this phone's passkey (localStorage "vyre.passkey"),
 //   device.removed { id }    whose id is this phone's push device or relay device,
+//   device_removed           the box's answer to any call from a removed device (api.js onDeviceRemoved;
+//                            the relay closes such a device with 4401; one code, nowhere else),
 //   a launch check          the phone has a passkey note but presence.keys no longer lists it
 //                           (it was removed while the phone was away), asked once per launch.
 // Nothing polls. A box that cannot be asked (offline, unreachable) wipes nothing.
@@ -74,7 +76,7 @@ export function showRemoved(root) {
 
 /**
  * Watch for this phone's removal. `on` is api.js's on(type, fn); `attempt` its attempt. Returns a stop.
- * @param {{ on: (type: string, fn: (e: any) => void) => () => void, attempt: (n: string) => Promise<{ data?: any, error?: any }>, env?: any, root?: HTMLElement, store?: any, onWiped?: () => void }} d
+ * @param {{ on: (type: string, fn: (e: any) => void) => () => void, attempt: (n: string) => Promise<{ data?: any, error?: any }>, onDeviceRemoved?: (fn: () => void) => () => void, env?: any, root?: HTMLElement, store?: any, onWiped?: () => void }} d
  */
 export function watchRemoval(d) {
   const env = d.env || globalThis;
@@ -88,6 +90,7 @@ export function watchRemoval(d) {
     d.onWiped?.();
   };
   const offs = ["presence.removed", "device.removed"].map(type => d.on(type, (/** @type {any} */ e) => { if (isMyRemoval({ type, payload: e && (e.payload ?? e) }, myIds(store))) wipe(); }));
+  if (d.onDeviceRemoved) offs.push(d.onDeviceRemoved(() => { wipe(); }));
   // Removed while away: the passkey note is here, the box no longer lists the key.
   (async () => {
     let mine = null;

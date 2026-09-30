@@ -78,3 +78,13 @@ test("watchRemoval: removed while away, the launch check wipes; a box that canno
   assert.equal(await run({ data: [{ id: "pk1" }] }), 0, "still listed");
   assert.equal(await run({ error: { code: "offline" } }), 0, "cannot ask");
 });
+
+test("watchRemoval: the box's device_removed answer wipes", async () => {
+  const p = phone();
+  let fire = () => {};
+  let w = 0;
+  watchRemoval({ on: () => () => {}, attempt: async () => ({ error: { code: "offline" } }), onDeviceRemoved: fn => { fire = fn; return () => {}; }, env: p, store: { getItem: () => null }, onWiped: () => { w++; } });
+  fire(); fire();
+  await new Promise(r => setTimeout(r, 30));
+  assert.equal(w, 1);
+});

@@ -151,9 +151,17 @@ async function post(name, input, extra, keepalive) {
     return body.data;
   }
   const err = new ApiError(body?.error?.code || "http_" + res.status, body?.error?.message || res.statusText, name, body?.error);
+  // The one signal for a removed phone: the box's own answer to any contact from a device it no
+  // longer knows. Only that exact code on a 4xx; a network error or a 5xx never counts.
+  if (err.code === "device_removed" && res.status >= 400 && res.status < 500) for (const fn of [...removedSubs]) { try { fn(); } catch {} }
   if (err.missing || res.status === 404) return fallback(name, input, err);
   throw err;
 }
+
+/** @type {Set<() => void>} */
+const removedSubs = new Set();
+/** Hear the box say `device_removed` to this phone (js/wipe.js wipes on it). Returns a stop. @param {() => void} fn */
+export function onDeviceRemoved(fn) { removedSubs.add(fn); return () => { removedSubs.delete(fn); }; }
 
 // ---- the presence session: one passkey covers the next sends on this device ------------------
 // After a passkey proof for one of these tools the box opens a session bound to this device (30

@@ -17,7 +17,7 @@
 // Views never touch the shell; they reach vyred only through js/api.js.
 
 import { h, put, link, go, back, isPhone, PHONE_QUERY } from "./dom.js";
-import { attempt, on, onResume, fromFixtures, fixturesOn, canProve } from "./api.js";
+import { attempt, on, onResume, fromFixtures, fixturesOn, canProve, onDeviceRemoved } from "./api.js";
 import { icon, mark } from "./icons.js";
 import * as needs from "./needs.js";
 import { when, base, initials } from "./fmt.js";
@@ -794,7 +794,7 @@ window.addEventListener("deck:navigate", route);
 // fragment, and this phone makes its Face ID key now (js/enroll-grant.js).
 offerEnroll({ enroll: enrollPasskey, canProve }).catch(() => {});
 // A phone the owner removed from Settings > Devices wipes what it kept of the box (js/wipe.js).
-if (isPhone()) watchRemoval({ on, attempt, root: document.body });
+if (isPhone()) watchRemoval({ on, attempt, onDeviceRemoved, root: document.body });
   // The theme and scheme from the settings hub, live (ADR 0035); a box without the hub keeps /theme.css.
   followTheme({ attempt, on, onResume });
   // A tap on anyone's avatar plays its small hop (js/avatars.js), one listener for the page.
