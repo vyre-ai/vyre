@@ -14,6 +14,7 @@ import { SCRATCH } from "../../../test/scratch.mjs";
 import { conform } from "../conformance.js";
 import { rules } from "../../harness/rules.js";
 import { acpProvider, askFor } from "./acp.js";
+import { seedFiles } from "../spawn.js";
 import { codexProvider } from "./codex.js";
 
 const FAKE = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "testing", "fake-acp.js");
@@ -437,4 +438,28 @@ test("acp: an entry's allowModes narrows the default allowlist and never widens 
   const init = await s.until(m => m.type === "system" && m.subtype === "init", "init");
   assert.deepEqual(init.modes.sort(), ["default", "plan"], "match-everything still lists only the default allowlist");
   await s.proc.stop(500);
+});
+
+test("seedFiles: a symlinked folder or file on the way is refused or replaced, and nothing is written through a link", t => {
+  const home = fs.mkdtempSync(path.join(SCRATCH, "seed-home-")), target = fs.mkdtempSync(path.join(SCRATCH, "seed-target-"));
+  t.after(() => { fs.rmSync(home, { recursive: true, force: true }); fs.rmSync(target, { recursive: true, force: true }); });
+  seedFiles(home, { ".codex/config.toml": "a\n" });
+  assert.equal(fs.readFileSync(path.join(home, ".codex", "config.toml"), "utf8"), "a\n");
+  assert.equal(fs.statSync(path.join(home, ".codex", "config.toml")).mode & 0o777, 0o600);
+  seedFiles(home, { ".codex/config.toml": "b\n" });
+  assert.equal(fs.readFileSync(path.join(home, ".codex", "config.toml"), "utf8"), "b\n", "replaced at every start");
+  // The agent plants ~/.codex as a link to a folder outside.
+  fs.rmSync(path.join(home, ".codex"), { recursive: true });
+  fs.symlinkSync(target, path.join(home, ".codex"));
+  assert.throws(() => seedFiles(home, { ".codex/config.toml": "c\n" }), /is not a plain folder/);
+  assert.deepEqual(fs.readdirSync(target), [], "nothing was written through the link");
+  // The agent plants the file itself as a link to a file outside.
+  fs.rmSync(path.join(home, ".codex"));
+  fs.mkdirSync(path.join(home, ".codex"));
+  fs.writeFileSync(path.join(target, "victim"), "keep");
+  fs.symlinkSync(path.join(target, "victim"), path.join(home, ".codex", "config.toml"));
+  seedFiles(home, { ".codex/config.toml": "d\n" });
+  assert.equal(fs.readFileSync(path.join(target, "victim"), "utf8"), "keep", "the link target is untouched");
+  assert.equal(fs.lstatSync(path.join(home, ".codex", "config.toml")).isSymbolicLink(), false);
+  assert.equal(fs.readFileSync(path.join(home, ".codex", "config.toml"), "utf8"), "d\n");
 });
