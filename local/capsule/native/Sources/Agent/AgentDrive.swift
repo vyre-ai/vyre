@@ -49,17 +49,18 @@ enum Drive {
         let m = a.model
         if VJ.truthy(c["show"]) {
             let t0 = DispatchTime.now()
-            a.panel.showForDrive()
-            DispatchQueue.main.async { timings.append(["kind": "open", "ms": ms(t0)]); say(["shown": true]) }
+            let phases = a.panel.showForDrive()
+            DispatchQueue.main.async { timings.append(["kind": "open", "ms": ms(t0), "phases": phases]); say(["shown": true]) }
             return
         }
         if VJ.truthy(c["hide"]) { a.panel.hide(); say(["hidden": true]); return }
         if let t = c["text"] as? String {
             let t0 = DispatchTime.now()
             m.text = t
+            let setMs = ms(t0)
             // The quick rows are drawn in this frame; the rest land after. Report both.
             DispatchQueue.main.async {
-                timings.append(["kind": "results", "ms": ms(t0), "n": m.flat.count])
+                timings.append(["kind": "results", "ms": ms(t0), "set": setMs, "text": t, "n": m.flat.count])
                 say(["text": t, "rows": m.flat.count])
             }
             return
@@ -118,13 +119,20 @@ enum Drive {
 
 extension PanelController {
     /// Shown for a script: in front and drawn, but it does not take key focus from anyone.
-    func showForDrive() {
-        model.willShow(front: nil)
-        extensions?.willShow(front: nil)
+    /// Says how long each part took, in milliseconds, for the speed check.
+    @discardableResult
+    func showForDrive() -> [String: Double] {
+        func ms(_ t: DispatchTime) -> Double { Double(DispatchTime.now().uptimeNanoseconds - t.uptimeNanoseconds) / 1e6 }
+        var out: [String: Double] = [:]
+        var t = DispatchTime.now()
+        model.willShow(front: nil); out["model"] = ms(t); t = .now()
+        extensions?.willShow(front: nil); out["extensions"] = ms(t); t = .now()
         let f = Self.screenUnderMouse().frame
         top = f.maxY - (f.height * Theme.topFraction).rounded()
         let h = height()
         panel.setFrame(NSRect(x: (f.midX - Theme.width / 2).rounded(), y: top - h, width: Theme.width, height: h), display: false)
-        panel.orderFrontRegardless()
+        out["frame"] = ms(t); t = .now()
+        panel.orderFrontRegardless(); out["orderFront"] = ms(t)
+        return out
     }
 }

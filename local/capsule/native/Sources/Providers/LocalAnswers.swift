@@ -53,6 +53,8 @@ public final class LocalAnswersProvider: ResultProvider, ImmediateResults, @unch
     private let lock = NSLock()
     private var user = UserSnippets()
     private var userStamp: Date?
+    private var lastStat: Date?
+    private var loadedOnce = false
     private var rates: CurrencyRates?
     private var fetching = false
     private var lastTry: Date?
@@ -75,7 +77,7 @@ public final class LocalAnswersProvider: ResultProvider, ImmediateResults, @unch
     // MARK: state
 
     public func warm() {
-        reloadUser()
+        reloadUser(force: true)
         lock.lock(); let have = rates != nil; lock.unlock()
         if !have, let d = FileManager.default.contents(atPath: ratesPath), let r = try? JSONDecoder().decode(CurrencyRates.self, from: d) {
             lock.lock(); rates = r; lock.unlock()
@@ -85,7 +87,13 @@ public final class LocalAnswersProvider: ResultProvider, ImmediateResults, @unch
     public func cool() { EmojiIndex.release() }
 
     /// Read the file again only when it changed.
-    func reloadUser() {
+    func reloadUser(force: Bool = false) {
+        // Not a stat on every key: the file is looked at most twice a second.
+        let t = now()
+        lock.lock()
+        if !force, let last = lastStat, t.timeIntervalSince(last) < 0.5, userStamp != nil || loadedOnce { lock.unlock(); return }
+        lastStat = t; loadedOnce = true
+        lock.unlock()
         let stamp = (try? FileManager.default.attributesOfItem(atPath: snippetsPath))?[.modificationDate] as? Date
         lock.lock(); defer { lock.unlock() }
         if stamp == userStamp, userStamp != nil || stamp == nil { return }

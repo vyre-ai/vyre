@@ -116,7 +116,7 @@ let bindingsSuite = Suite("bindings") { t in
             t.eq(d.actions.map(\.id), ["set-alias", "set-hotkey"])
             let d2 = cb.decorated(appRow("Safari", id: "app:/Applications/Safari.app"), begin: { _ in })
             t.eq(d2.actions.first { $0.id == "set-alias" }?.title, "Set alias")
-            _ = cb.setAlias("sf", id: "app:/Applications/Safari.app", title: "Safari")
+            t.eq(cb.setAlias("saf", id: "app:/Applications/Safari.app", title: "Safari"), nil)
             let d3 = cb.decorated(appRow("Safari"), begin: { _ in })
             t.eq(d3.actions.map(\.title), ["Change alias", "Set hotkey", "Remove alias"])
             t.eq(cb.decorated(appRow("A file", kind: "file"), begin: { _ in }).actions.count, 0, "a file is not bindable")

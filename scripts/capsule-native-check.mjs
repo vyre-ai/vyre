@@ -72,13 +72,14 @@ try {
   const t = (await send({ timings: true })).timings;
   const open = t.find(x => x.kind === "open"), results = t.find(x => x.kind === "results");
   console.log(`open ${open && open.ms.toFixed(1)} ms · keystroke to rows ${results && results.ms.toFixed(1)} ms`);
+  if (open && open.phases) console.log(`open phases (ms): ${Object.entries(open.phases).map(([k, v]) => `${k} ${v.toFixed(1)}`).join(", ")}`);
   budget(open && open.ms < BUDGET.openMs, `open under ${BUDGET.openMs} ms`);
   // Feel: type real words one letter at a time (apps, files and the calculator all answer), and time
   // each keystroke to its rows. A frame at 60 Hz is 16 ms, so the 95th percentile must fit in one.
   // The quick providers answer in the same frame; the slow ones land after and are not counted here.
   const pct = (xs, q) => { const a = [...xs].sort((x, y) => x - y); return a.length ? a[Math.min(a.length - 1, Math.floor(q * a.length))] : NaN; };
   const words = ["safari", "system settings", "12 * (3 + 4)", "notes", "20 km in miles", "terminal", "a", "mail"];
-  const keyMs = [];
+  const keyMs = [], keyDetail = [];
   for (const w of words) {
     await send({ text: "" }); await pause(60);
     for (let i = 1; i <= w.length; i++) {
@@ -86,11 +87,14 @@ try {
       await send({ text: w.slice(0, i) });
       const tm = (await send({ timings: true })).timings;
       const last = tm.slice(before).find(x => x.kind === "results");
-      if (last) keyMs.push(last.ms);
+      if (last) { keyMs.push(last.ms); keyDetail.push(last); }
       await pause(20);
     }
   }
   console.log(`typing: ${keyMs.length} keystrokes to rows, median ${pct(keyMs, 0.5).toFixed(1)} ms, 95th ${pct(keyMs, 0.95).toFixed(1)} ms, worst ${Math.max(...keyMs).toFixed(1)} ms`);
+  // Which keystrokes were slowest, so a slow one can be traced to its words.
+  const slowest = [...keyDetail].sort((a, b) => b.ms - a.ms).slice(0, 6);
+  console.log(`slowest keystrokes: ${slowest.map(k => `"${k.text}" ${k.ms.toFixed(0)} ms (set ${Number(k.set).toFixed(0)})`).join(" · ")}`);
   budget(pct(keyMs, 0.95) < BUDGET.keyP95Ms, `keystroke to rows 95th percentile under ${BUDGET.keyP95Ms} ms (one frame)`);
   // Wake: hide and show ten times, timing each show.
   const wake = [];

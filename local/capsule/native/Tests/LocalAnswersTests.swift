@@ -121,11 +121,14 @@ let localAnswersSuite = Suite("local answers") { t in
 
     t.test("the file is read again only when it changed") {
         let h = home("reload"); write(h, USER_FILE)
-        let p = LocalAnswersProvider(home: h, fetch: RatesFetch { nil }, now: { NOW })
+        let clock = Counter()
+        let p = LocalAnswersProvider(home: h, fetch: RatesFetch { nil }, now: { NOW.addingTimeInterval(Double(clock.count)) })
         p.warm()
         t.eq(rows(p, "zzunique").count, 0)
         write(h, #"{ "snippets": [ { "keyword": "zzunique", "text": "new" } ] }"#)
         try? FileManager.default.setAttributes([.modificationDate: Date().addingTimeInterval(5)], ofItemAtPath: h + "/capsule/snippets.json")
+        t.eq(rows(p, "zzunique").count, 0, "looked at most twice a second: not yet")
+        clock.bump()
         t.eq(rows(p, "zzunique").first?.kind, "snippet")
     }
 
