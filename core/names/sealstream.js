@@ -102,19 +102,35 @@ export class SealWriter {
    */
   async segment(seg, source, { skipBytes = 0, onBytes } = {}) {
     if (seg >= END_SEG) throw new Error("bad segment");
-    let held = Buffer.alloc(0), skip = skipBytes, total = skipBytes;
+    let skip = skipBytes, total = skipBytes;
     const hash = crypto.createHash("sha256");
+    /** @type {Buffer[]} */ let parts = [];
+    let have = 0;
     /** @type {Buffer|null} */ let pending = null;
     const flush = last => { if (pending) { this.record(seg, last, pending); pending = null; } };
+    // Parts gather in a list and are joined once per chunk, so a stream of small pieces costs no more
+    // than one copy of each byte.
+    const take = n => {
+      const out = Buffer.allocUnsafe(n);
+      let at = 0;
+      while (at < n) {
+        const p0 = parts[0], need = n - at;
+        if (p0.length <= need) { p0.copy(out, at); at += p0.length; parts.shift(); }
+        else { p0.copy(out, at, 0, need); parts[0] = p0.subarray(need); at += need; }
+      }
+      have -= n;
+      return out;
+    };
     for await (let part of source) {
       if (skip > 0) { const cut = Math.min(skip, part.length); skip -= cut; part = part.subarray(cut); if (!part.length) continue; }
-      held = held.length ? Buffer.concat([held, part]) : part;
-      while (held.length > this.chunk) {
+      parts.push(part); have += part.length;
+      while (have > this.chunk) {
         flush(false);
-        pending = held.subarray(0, this.chunk); held = held.subarray(this.chunk);
+        pending = take(this.chunk);
         total += pending.length; hash.update(pending); onBytes?.(pending.length);
       }
     }
+    const held = have ? take(have) : Buffer.alloc(0);
     if (skip > 0) throw new Error("the stream ended before the part already written");
     flush(false);
     // What is left (possibly a full chunk, possibly nothing) is the last record of the segment.

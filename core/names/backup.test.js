@@ -266,6 +266,8 @@ test("backup: a new account's sign-in (named in sessions_accounts) is left out, 
 // --- project files: streamed, sized up front, skippable, resumable (lead's ruling, 30 Sep) ---
 
 import crypto from "node:crypto";
+import v8 from "node:v8";
+import vm from "node:vm";
 const FAST = { sealParams: { N: 1024, r: 8, p: 1 }, chunk: 4096 };
 
 /** A /work with two projects, some random (incompressible) files, and a link that must not travel. */
@@ -385,4 +387,40 @@ test("export: a resume with changed project files starts that project again and 
   const r2 = await backup({ root: a, file: f2, passphrase: "second passphrase here", work: { roots: [work] }, ...FAST });
   assert.equal(r2.resumed, false);
   await restore({ root: path.join(home, "b2"), file: f2, passphrase: "second passphrase here", workTo: { work: path.join(home, "back2") }, alive: dead });
+});
+
+test("export: a large tree (240 MB of incompressible files) streams in bounded memory, resumes after a cut, and restores byte for byte", { timeout: 240_000 }, async t => {
+  const home = tempHome(t);
+  const a = path.join(home, "a"), work = path.join(home, "work");
+  fs.mkdirSync(a); seed(a); fs.mkdirSync(path.join(work, "northwind-site", "media"), { recursive: true });
+  const sums = {};
+  // Twelve 20 MB files of random bytes, written in 1 MB pieces so building the tree is not the memory test.
+  for (let i = 0; i < 12; i++) {
+    const f = path.join(work, "northwind-site", "media", `reel-${i}.bin`);
+    const fd = fs.openSync(f, "w"), h = crypto.createHash("sha256");
+    for (let k = 0; k < 20; k++) { const b = crypto.randomBytes(1 << 20); fs.writeSync(fd, b); h.update(b); }
+    fs.closeSync(fd); sums[`northwind-site/media/reel-${i}.bin`] = h.digest("hex");
+  }
+  const file = path.join(home, "big.vyre");
+  const params = { sealParams: { N: 1024, r: 8, p: 1 } };
+  // Live memory, not RSS: the allocator keeps freed pages, so RSS says nothing about a leak. gc() is
+  // reached without a flag through v8 and vm, then heap plus external buffers are what is left.
+  v8.setFlagsFromString("--expose-gc");
+  const gc = vm.runInNewContext("gc");
+  const live = () => { gc(); const m = process.memoryUsage(); return m.heapUsed + m.external; };
+  const base = live();
+  let peak = 0, cut = false;
+  const watch = p => { peak = Math.max(peak, live()); if (!cut && p.phase === "projects" && p.done > 100 * (1 << 20)) { cut = true; throw new Error("power cut"); } };
+  await assert.rejects(backup({ root: a, file, passphrase: PASSPHRASE, work: { roots: [work] }, onProgress: watch, ...params }), /power cut/);
+  const partial = fs.statSync(file + ".partial").size;
+  assert.ok(partial > 50 * (1 << 20), "a good part was already written");
+  const r = await backup({ root: a, file, passphrase: PASSPHRASE, work: { roots: [work] }, onProgress: watch, ...params });
+  assert.equal(r.resumed, true);
+  assert.deepEqual(r.warnings, []);
+  assert.ok(r.bytes > 230 * (1 << 20));
+  assert.ok(peak - base < 64 * (1 << 20), `live memory grew ${Math.round((peak - base) / 1048576)} MB against a 240 MB tree`);
+  const back = path.join(home, "back");
+  await restore({ root: path.join(home, "b"), file, passphrase: PASSPHRASE, workTo: { work: back }, alive: dead });
+  const got = tree(back);
+  assert.deepEqual(got, Object.fromEntries(Object.entries(sums).map(([k, v]) => ["work/" + k.replace("work/", ""), v]).map(([k, v]) => [k.replace(/^work\//, ""), v])));
 });
