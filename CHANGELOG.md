@@ -4,6 +4,7 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+- `threads.archive` and `threads.unarchive`: a thread put away stops, github cleans its session worktree (branch and commits stay) and it leaves the default list (`threads.list {archived:true}` lists them, `all` shows everything); unarchive has github make the worktree again on the same branch. Resuming an archived thread is refused with `archived`. Events `thread.archived`, `thread.unarchived` (`core/switchboard/index.js`).
 - `threads.lineage {thread}` (internal): the threads a thread was started for, nearest first, up to the person's own. A thread's `parent` is recorded at `threads.start` from the verified calling session, or from a first-party module's `parent`; a claim from anyone else is dropped. The Gate reads it to match what the person said in a parent thread (`core/switchboard/index.js`).
 - vyred: a route that throws after it began a stream no longer throws again from its own catch (`ERR_HTTP_HEADERS_SENT`, an uncaught error that failed whichever test was running, seen as a flaky
   "threads watch" on a vyred restart); the response is ended instead (`core/daemon/index.js`).

@@ -472,6 +472,43 @@ for (const driver of ["cli", "sdk"]) {
     assert.equal((await w.tool("threads.origin", { session: th.id })).error.code, "no_such_tool", "modules only");
   });
 
+  test(`${driver}: threads.archive stops a thread and has github clean its worktree; threads.unarchive makes the worktree again; a resume of an archived thread is refused`, { skip }, async t => {
+    const w = await boot(t, { driver });
+    const wt = path.join(w.work, "wt-arch");
+    fs.mkdirSync(wt, { recursive: true });
+    assert.equal((await w.tool("projects.create", { name: "Harlow Legal", home: path.join(w.work, "harlow") })).error, undefined);
+    const gh = [];
+    const realCall = w.d.registry.call.bind(w.d.registry);
+    w.d.registry.call = async (tool, input, caller, meta) => {
+      if (tool === "github.project.of") return { data: { project: "harlow-legal" } };
+      if (tool === "github.session.worktree") { gh.push([tool, input]); return { data: { path: wt, branch: "vyre/arch" } }; }
+      if (tool === "github.session.cleanup") { gh.push([tool, input]); return { data: { removed: true } }; }
+      return realCall(tool, input, caller, meta);
+    };
+    const th = (await w.tool("threads.start", { project: "harlow-legal", prompt: "hello", surface: "deck" })).data;
+    await w.finished(th.id);
+    const listed = async q => (await w.tool("threads.list", q)).data.map(x => x.id);
+    assert.ok((await listed({})).includes(th.id));
+    const done = await w.tool("threads.archive", { thread: th.id });
+    assert.equal(done.error, undefined, JSON.stringify(done));
+    assert.deepEqual(done.data.cleanup, { removed: true });
+    assert.deepEqual(gh.filter(([n]) => n === "github.session.cleanup").at(-1)[1], { project: "harlow-legal", session: th.id });
+    assert.ok((await w.tool("threads.get", { thread: th.id })).data.thread.archived, "the record says archived");
+    assert.ok(!(await listed({})).includes(th.id), "out of the default list");
+    assert.ok((await listed({ archived: true })).includes(th.id));
+    assert.ok((await listed({ all: true })).includes(th.id));
+    assert.equal((await w.tool("threads.send", { thread: th.id, text: "again", surface: "deck" })).error.code, "archived");
+    assert.equal((await w.tool("threads.archive", { thread: th.id })).data.already, true);
+    const back = await w.tool("threads.unarchive", { thread: th.id });
+    assert.equal(back.error, undefined, JSON.stringify(back));
+    assert.deepEqual(gh.filter(([n]) => n === "github.session.worktree").at(-1)[1], { project: "harlow-legal", session: th.id });
+    assert.ok(!(await w.tool("threads.get", { thread: th.id })).data.thread.archived);
+    assert.ok((await listed({})).includes(th.id));
+    assert.equal((await w.tool("threads.send", { thread: th.id, text: "again", surface: "deck" })).error, undefined);
+    const ev = (await w.events(th.id)).map(e => e.type);
+    assert.ok(ev.includes("thread.archived") && ev.includes("thread.unarchived"));
+  });
+
   test(`${driver}: threads.lineage lists the threads a thread was started for, from what vyred verified and never from a claim`, { skip }, async t => {
     const w = await boot(t, { driver });
     const root = (await w.tool("threads.start", { cwd: w.work, prompt: "hello", surface: "deck" })).data;

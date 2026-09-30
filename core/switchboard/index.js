@@ -120,6 +120,8 @@ export const MIGRATIONS = [
   // surface with two open asks to the same teammate can match a reply to the ask it answers
   // instead of by role, FIFO (ambiguous once @role makes that a common case, not an edge one).
   `ALTER TABLE threads_inbox ADD COLUMN request TEXT;`,
+  // A thread the person put away (threads.archive): out of the default list, its worktree cleaned up by github.
+  `ALTER TABLE threads_runs ADD COLUMN archived_at INTEGER;`,
 ];
 
 /** Images kept as JSON (a queued or steered message's), or null. @param {any} v */
@@ -380,7 +382,7 @@ export class Switchboard {
     // is the one person-facing vocabulary (lib/thread-status.js) every surface should read instead.
     return { id: r.id, name: r.name, cwd: r.cwd, project: r.project, agent: r.agent, status: r.status,
       canonical_status: threadStatus(r.status, r.stopped_reason), model: r.model, driver: r.driver || null,
-      provider: r.provider || "claude", account: r.account || null, purpose: r.purpose || null, branch: optsOf(r).branch || null, mode: r.mode || "default", effort: optsOf(r).effort || null, origin: optsOf(r).origin || null, parent: optsOf(r).parent || null,
+      provider: r.provider || "claude", account: r.account || null, purpose: r.purpose || null, branch: optsOf(r).branch || null, mode: r.mode || "default", effort: optsOf(r).effort || null, origin: optsOf(r).origin || null, parent: optsOf(r).parent || null, archived: r.archived_at || null,
       auth: r.auth, started: r.started_at, last: r.last_at, cost_usd: r.cost_usd, turns: r.turns,
       holder: holder ? holder.surface : null, asks: this.asks.open(id).length, ...(r.stopped_reason ? { stopped_reason: r.stopped_reason } : {}) };
   }
@@ -480,6 +482,7 @@ export class Switchboard {
     if (o.resume) {
       rec = this.must(o.resume);
       id = rec.id;
+      if (rec.archived) throw Object.assign(new Error(`${rec.name || String(id).slice(0, 8)} is archived: unarchive it to continue`), { code: "archived" });
       if (this.live.has(id)) { if (o.prompt) this.write(id, o.prompt); return this.launched(id); }
       const row = /** @type {any} */ (this.db.prepare("SELECT opts FROM threads_runs WHERE id = ?").get(id));
       if (row && row.opts) o = { ...JSON.parse(String(row.opts)), ...o };
@@ -1858,7 +1861,7 @@ export class Switchboard {
     return { thread: id, deleted: true };
   }
 
-  list({ agent, all } = {}) {
+  list({ agent, all, archived } = {}) {
     const rows = agent
       ? this.db.prepare("SELECT id FROM threads_runs WHERE agent = ? ORDER BY last_at DESC LIMIT 200").all(agent)
       : this.db.prepare(`SELECT id FROM threads_runs ${all ? "" : `WHERE status IN (${LIVE.map(() => "?").join(",")}) OR last_at > ?`} ORDER BY last_at DESC LIMIT 200`)
@@ -1866,7 +1869,52 @@ export class Switchboard {
     const live = this.sessions.live(this.ours());
     // Warm sessions (quick) are Vyre's own plumbing: listed only with all.
     const quick = all ? new Set() : new Set(/** @type {any[]} */ (this.db.prepare("SELECT id, opts FROM threads_runs WHERE opts LIKE '%\"quick\":true%'").all()).map(r => String(r.id)));
-    return rows.filter(r => !quick.has(String(r.id))).map(r => ({ ...this.record(String(r.id)), live: live.has(String(r.id)) }));
+    // Archived threads leave the default list; archived: true lists only them, all lists everything.
+    return rows.filter(r => !quick.has(String(r.id))).map(r => ({ ...this.record(String(r.id)), live: live.has(String(r.id)) }))
+      .filter(t => all || (archived ? t.archived : !t.archived));
+  }
+
+  /**
+   * Put a thread away: it stops, github cleans its worktree up (branch and commits kept unless it
+   * says otherwise), and it leaves the default list. The transcript and events stay.
+   * @param {string} id
+   */
+  async archive(id) {
+    const rec = this.must(id);
+    if (rec.archived) return { thread: id, archived: true, already: true };
+    if (this.live.has(id)) { await this.stop(id).catch(() => {}); this.live.delete(id); }
+    let cleanup = null;
+    if (rec.project) {
+      const gh = await this.deps.call("github.project.of", { project: rec.project }).catch(() => null);
+      if (gh && !gh.error && gh.data) cleanup = (await this.deps.call("github.session.cleanup", { project: rec.project, session: id }).catch(() => null))?.data || null;
+    }
+    this.db.prepare("UPDATE threads_runs SET archived_at = ? WHERE id = ?").run(Date.now(), id);
+    this.emit("thread.archived", { project: rec.project || null, agent: rec.agent || null }, id, rec.project);
+    return { thread: id, archived: true, ...(cleanup ? { cleanup } : {}) };
+  }
+
+  /**
+   * Bring an archived thread back: github makes its worktree again (an existing branch is checked
+   * out as it is), and the thread's folder is that worktree.
+   * @param {string} id
+   */
+  async unarchive(id) {
+    const rec = this.must(id);
+    if (!rec.archived) return { thread: id, archived: false, already: true };
+    if (rec.project) {
+      const gh = await this.deps.call("github.project.of", { project: rec.project }).catch(() => null);
+      const wt = gh && !gh.error && gh.data ? await this.deps.call("github.session.worktree", { project: rec.project, session: id }).catch(() => null) : null;
+      if (wt && !wt.error && wt.data && wt.data.path) {
+        this.db.prepare("UPDATE threads_runs SET cwd = ? WHERE id = ?").run(String(wt.data.path), id);
+        if (wt.data.branch) {
+          const row = /** @type {any} */ (this.db.prepare("SELECT opts FROM threads_runs WHERE id = ?").get(id));
+          this.db.prepare("UPDATE threads_runs SET opts = ? WHERE id = ?").run(JSON.stringify({ ...optsOf(row), branch: String(wt.data.branch) }), id);
+        }
+      }
+    }
+    this.db.prepare("UPDATE threads_runs SET archived_at = NULL WHERE id = ?").run(id);
+    this.emit("thread.unarchived", { project: rec.project || null, agent: rec.agent || null }, id, rec.project);
+    return { thread: id, archived: false, cwd: this.must(id).cwd };
   }
 
   /** A thread with its recent events, its open asks and who holds it. What a surface opening it needs. */
@@ -2273,7 +2321,7 @@ export default {
       });
 
     tool("threads.list", "Headless threads: running ones and those active in the last day (all: every one), newest first, with who holds each, how many questions are open, and live (a terminal has it open now).",
-      { type: "object", properties: { agent: str, all: { type: "boolean" }, machines: { type: "string", enum: ["all", "local"] } } },
+      { type: "object", properties: { agent: str, all: { type: "boolean" }, archived: { type: "boolean", description: "Only the threads put away (threads.archive)." }, machines: { type: "string", enum: ["all", "local"] } } },
       async (i, { caller }) => {
         guard(caller, "list sessions");
         const { machines: _, ...q } = i;
@@ -2500,6 +2548,21 @@ export default {
         }
         return sb.delete(i.thread);
       });
+
+    // The same reach as delete: a person, the assistant, or an agent for its own and its granted projects' threads.
+    const mayReach = (meta, rec) => {
+      const m = /** @type {any} */ (meta);
+      if (m.agent && m.agentKind !== "assistant") {
+        const own = rec.agent === m.agent, granted = m.granted === "*" || (Array.isArray(m.granted) && rec.project && m.granted.includes(rec.project));
+        if (!own && !granted) throw Object.assign(new Error("an agent acts on its own threads, or threads of a project it is granted"), { code: "denied" });
+      }
+    };
+    tool("threads.archive", "Put a thread away: it stops, its session worktree is cleaned up by github (the branch and commits stay), and it leaves the default list. thread.archived is said. threads.unarchive brings it back. A person, the assistant, or an agent for its own threads and its own projects' threads.",
+      { type: "object", required: ["thread"], properties: { thread: str } },
+      async (i, meta) => { guard(meta.caller, "archive sessions"); mayReach(meta, sb.must(i.thread)); return sb.archive(i.thread); });
+    tool("threads.unarchive", "Bring an archived thread back into the list; its worktree is made again on the same branch. thread.unarchived is said.",
+      { type: "object", required: ["thread"], properties: { thread: str } },
+      async (i, meta) => { guard(meta.caller, "unarchive sessions"); mayReach(meta, sb.must(i.thread)); return sb.unarchive(i.thread); });
 
     tool("threads.stop", "Stop a headless thread. Its transcript stays; threads.send resumes it.",
       { type: "object", required: ["thread"], properties: { thread: str } },
