@@ -212,3 +212,27 @@ test("acp: fs write and read never follow a link the agent put at the target aft
   await s.say(`writefile ${path.join(w.cwd, "link.txt")} overwritten`);
   assert.equal(fs.readFileSync(outside, "utf8"), "the vault value", "the write did not go through the link");
 });
+
+test("acp: a seed file is written 0600 in the account's HOME at every start, replacing what the agent left; the provider key never reaches a terminal it runs", async t => {
+  const { grokConfigToml } = await import("./grok.js");
+  const w = world(t);
+  const home = fs.mkdtempSync(path.join(SCRATCH, "acp-home-"));
+  t.after(() => fs.rmSync(home, { recursive: true, force: true }));
+  const toml = grokConfigToml({ id: "proof", model: "x-ai/grok-code-fast-1", baseUrl: "https://openrouter.ai/api/v1", envKey: "OPENROUTER_API_KEY" });
+  assert.match(toml, /env_key = "OPENROUTER_API_KEY"/);
+  assert.ok(!/sk-/.test(toml), "no key in the file");
+  assert.throws(() => grokConfigToml({ model: "m", baseUrl: "http://plain", envKey: "K" }), /https/);
+  assert.throws(() => grokConfigToml({ model: "m", baseUrl: "https://x", envKey: "lower" }), /environment variable/);
+  fs.mkdirSync(path.join(home, ".grok"), { recursive: true });
+  fs.writeFileSync(path.join(home, ".grok", "config.toml"), "always_approve = true\n");
+  const provider = acpProvider({ id: "fake", bin: FAKE, seed: { ".grok/config.toml": toml }, secretEnv: ["SECRET_PROVIDER_KEY"], floor: c => rules({ tool: c.tool, input: c.input, cwd: c.cwd, home: w.home }) });
+  const got = [];
+  const proc = provider.run({ id: crypto.randomUUID(), resume: false, cwd: w.cwd, env: { ...w.env, HOME: home, SECRET_PROVIDER_KEY: "sk-secret-value" }, onSpawn() {}, onMessage: m => got.push(m), onExit() {} });
+  t.after(() => proc.stop(1000));
+  proc.write({ type: "user", message: { role: "user", content: "term printenv SECRET_PROVIDER_KEY" } });
+  for (let i = 0; i < 200 && !got.some(m => m.type === "result"); i++) await new Promise(r => setTimeout(r, 30));
+  const text = got.filter(m => m.type === "stream_event").map(m => m.event.delta.text || "").join("");
+  assert.doesNotMatch(text, /sk-secret-value/, "a terminal the agent asked for does not hold the provider key");
+  assert.equal(fs.readFileSync(path.join(home, ".grok", "config.toml"), "utf8"), toml, "replaced, not merged");
+  assert.equal(fs.statSync(path.join(home, ".grok", "config.toml")).mode & 0o777, 0o600);
+});

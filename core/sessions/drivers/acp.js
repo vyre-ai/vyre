@@ -80,7 +80,7 @@ const alive = pid => { try { process.kill(pid, 0); return true; } catch (e) { re
 const remembered = new Map();
 
 /**
- * @param {{ id: string, bin: string, askMode?: RegExp, args?: string[] | ((o: any) => string[]), env?: Record<string, string> | ((o: any) => Record<string, string>),
+ * @param {{ id: string, bin: string, askMode?: RegExp, seed?: Record<string, string> | ((o: any) => Record<string, string>), secretEnv?: string[] | ((o: any) => string[]), args?: string[] | ((o: any) => string[]), env?: Record<string, string> | ((o: any) => Record<string, string>),
  *   capabilities?: Record<string, any>, floor?: (call: { tool: string, input: any, cwd?: string }) => { decision: "deny"|"ask"|null, reason?: string },
  *   sessions?: { get(id: string): string|undefined, set(id: string, agent: string): void } }} entry
  */
@@ -101,7 +101,12 @@ function runAcp(entry, known, o) {
   const args = typeof entry.args === "function" ? entry.args(o) : entry.args || [];
   const extra = typeof entry.env === "function" ? entry.env(o) : entry.env || {};
   const cwd = o.cwd || process.cwd();
-  const child = spawnSession(entry.bin, args, { cwd, env: { ...(o.env || {}), ...extra }, subreaper: o.subreaper, uid: o.uid, gid: o.gid, account: o.account, onSpawn: o.onSpawn });
+  // Files the entry has Vyre put in the account's HOME at every start (a provider's own config: the
+  // agent could otherwise have edited what it reads), written as the account's uid, mode 0600.
+  const seed = typeof entry.seed === "function" ? entry.seed(o) : entry.seed || undefined;
+  // The provider's key is the CLI's own; the shells it asks Vyre to run (terminal/create) never get it.
+  const secretEnv = new Set(typeof entry.secretEnv === "function" ? entry.secretEnv(o) : entry.secretEnv || []);
+  const child = spawnSession(entry.bin, args, { cwd, env: { ...(o.env || {}), ...extra }, subreaper: o.subreaper, uid: o.uid, gid: o.gid, account: o.account, ...(seed ? { seed } : {}), onSpawn: o.onSpawn });
   const say = m => { try { o.onMessage(m); } catch {} };
 
   let buf = "", err = "", exited = false, rpcId = 0, ready = false, busy = false, sid = "", loaded = false;
@@ -302,6 +307,7 @@ function runAcp(entry, known, o) {
       await gate("Bash", { command });
       const tid = `term-${++tn}`;
       const env = { ...(o.env || {}), ...Object.fromEntries((Array.isArray(p.env) ? p.env : []).filter(e => e && typeof e.name === "string" && !/^(LD_|DYLD_|NODE_OPTIONS)/.test(e.name)).map(e => [e.name, String(e.value)])) };
+      for (const k of secretEnv) delete env[k];
       const t = { output: "", truncated: false, exit: /** @type {any} */ (null), waiters: /** @type {any[]} */ ([]), child: /** @type {any} */ (null), limit: Number(p.outputByteLimit) || 1_000_000 };
       t.child = spawnSession(String(p.command), Array.isArray(p.args) ? p.args.map(String) : [], { cwd: p.cwd ? confine(String(p.cwd), false) : cwd, env, subreaper: o.subreaper, uid: o.uid, gid: o.gid, account: o.account });
       const add = d => { t.output += d; if (t.output.length > t.limit) { t.output = t.output.slice(-t.limit); t.truncated = true; } };

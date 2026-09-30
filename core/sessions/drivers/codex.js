@@ -32,6 +32,7 @@ export function codexProvider(o = {}) {
         "-c", `model_providers.${o.custom.id}.env_key=${JSON.stringify(o.custom.envKey)}`] : [])],
     // HOME is the account's (the spawner sets it on a box, the Switchboard on a Mac); the sign-in lives under it.
     env: run => { const home = run.env && run.env.HOME; return home ? { CODEX_HOME: path.join(String(home), ".codex") } : {}; },
+    secretEnv: () => ["OPENAI_API_KEY", ...(o.custom ? [o.custom.envKey] : [])],
     capabilities: { steering: false, usage: "coarse", rewind: false },
     ...(o.floor ? { floor: o.floor } : {}),
     ...(o.sessions ? { sessions: o.sessions } : {}),

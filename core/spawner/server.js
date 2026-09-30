@@ -38,7 +38,8 @@ const MAX_LIVE = 16;
 
 /**
  * @param {{ socket: string, mode?: number, allow: string[], agent: { uid: number, gid: number, groups: number[] },
- *   work?: string, home?: string, wrap?: (argv: string[], cwd: string, who: Who) => string[], makeDir?: (dir: string, who: Who) => void, grantGroup?: (home: string, who: Who) => void, log?: (m: string) => void,
+ *   work?: string, home?: string, wrap?: (argv: string[], cwd: string, who: Who) => string[], makeDir?: (dir: string, who: Who) => void, grantGroup?: (home: string, who: Who) => void, seed?: (home: string, who: Who, files: Record<string, string>) => void, log?: (m: string) => void,
+ *   seed?: (home: string, who: Who, files: Record<string, string>) => void,
  *   grantGroup?: (home: string, who: Who) => void,
  *   accounts?: { min: number, max: number, home: string, shared?: number[], stat?: (dir: string) => import("node:fs").Stats|null, wipe?: (dir: string, who: Who) => void } }} o
  *   allow: programs argv[0] may name (absolute paths). wrap: how the child is started as its user;
@@ -56,6 +57,14 @@ export async function serve(o) {
   const custom = Boolean(o.wrap);
   const wrap = o.wrap || ((argv, cwd, who) => ["/usr/bin/setpriv", `--reuid=${who.uid}`, `--regid=${who.gid}`, who.groups.length ? `--groups=${who.groups.join(",")}` : "--clear-groups",
     "--inh-caps=-all", "--", "/bin/sh", "-c", 'umask 002; cd "$1" || exit 126; shift; exec "$@"', "sh", cwd, "/usr/bin/tini", "-s", "--", ...argv]);
+  /** Write each file as the account's uid: mkdir -p, replace, 0600 (root cannot enter an account's HOME). */
+  const defaultSeed = (home, who, files) => {
+    for (const [rel, text] of Object.entries(files)) {
+      const file = path.join(home, rel);
+      execFileSync("/usr/bin/setpriv", [`--reuid=${who.uid}`, `--regid=${who.gid}`, "--clear-groups", "--inh-caps=-all", "--", "/bin/sh", "-c",
+        'umask 077; mkdir -p "$(dirname "$1")" && rm -f "$1" && cat > "$1"', "sh", file], { input: text, stdio: ["pipe", "ignore", "ignore"] });
+    }
+  };
   const acc = o.accounts || null;
   const accountHome = uid => path.join(path.resolve(/** @type {any} */ (acc).home), String(uid));
   const lstat = /** @type {any} */ (acc && acc.stat) || (d => { try { return fs.lstatSync(d); } catch { return null; } });
@@ -101,6 +110,11 @@ export async function serve(o) {
     if (!Array.isArray(req.argv) || !req.argv.length || !req.argv.every(a => typeof a === "string" && !a.includes("\0"))) return "argv must be strings";
     if (!path.isAbsolute(req.argv[0]) || !allowed.has(real(req.argv[0]))) return `${req.argv[0]} is not a program the spawner starts`;
     if (req.fd3 !== undefined && (typeof req.fd3 !== "string" || req.fd3.length > 4096)) return "fd3 must be a short string";
+    if (req.seed !== undefined) {
+      if (req.account === undefined) return "seed files are for an account";
+      const e = req.seed && typeof req.seed === "object" && !Array.isArray(req.seed) ? Object.entries(req.seed) : null;
+      if (!e || e.length > 8 || e.some(([k, v]) => typeof v !== "string" || v.length > 65536 || typeof k !== "string" || !k || k.length > 200 || path.isAbsolute(k) || k.split(/[\\/]/).includes("..") || k.includes("\0"))) return "seed is up to 8 small files, by path inside the HOME";
+    }
     if (req.account !== undefined && (typeof req.account !== "number" || (req.shared !== undefined && typeof req.shared !== "boolean"))) return "account is a uid and shared a boolean";
     const w = whoFor(req);
     if (w.why) return w.why;
@@ -126,6 +140,10 @@ export async function serve(o) {
     if (who.home) { env.HOME = who.home; env.USER = who.account !== undefined ? `acct${who.account}` : "vyre-agent"; }
     // The HOME's group can walk in (710): see whoFor. Done as that uid, which owns it.
     if (who.account !== undefined && who.home && o.grantGroup) { try { o.grantGroup(who.home, who); } catch (e) { log(`spawner: cannot open ${who.home} to its group: ${/** @type {Error} */ (e).message}`); } }
+    // Config the provider reads, written fresh as the account's uid at every start.
+    if (who.account !== undefined && who.home && s.req.seed) {
+      try { (o.seed || defaultSeed)(who.home, who, s.req.seed); } catch (e) { log(`spawner: cannot write seed files: ${/** @type {Error} */ (e).message}`); }
+    }
     // An account's scratch space is inside its HOME, so a wipe of the HOME leaves nothing of it in /tmp.
     if (who.account !== undefined && who.home) {
       env.TMPDIR = path.join(who.home, ".tmp");

@@ -128,3 +128,23 @@ test("spawner accounts: a HOME open to its own group for walking in (710) is fin
   await assert.rejects(spawnAsAgent(["/bin/sh", "-c", "true"], { socket, cwd: work, account: 2001 }), /not private to it/);
   await assert.rejects(spawnAsAgent(["/bin/sh", "-c", "true"], { socket, cwd: work, account: 2002 }), /not private to it/);
 });
+
+test("spawner accounts: seed files are for an account, stay inside its HOME, and are written by the seed hook before the child starts", async t => {
+  const dir = fs.mkdtempSync(path.join(SCRATCH, "vyre-spawner-"));
+  const work = path.join(dir, "work"), acct = path.join(dir, "acct");
+  fs.mkdirSync(work, { recursive: true }); fs.mkdirSync(path.join(acct, "2000"), { recursive: true });
+  const written = [];
+  const socket = path.join(dir, "s.sock");
+  const stat = () => ({ isDirectory: () => true, isSymbolicLink: () => false, uid: 2000, mode: 0o40700 });
+  const srv = await serve({ socket, allow: ["/bin/sh"], work, agent: { uid: 1001, gid: 1001, groups: [] }, wrap: argv => argv,
+    seed: (home, who, files) => written.push([home, who.uid, files]),
+    accounts: { min: 2000, max: 2063, home: acct, shared: [], stat } });
+  t.after(async () => { await srv.close(); fs.rmSync(dir, { recursive: true, force: true }); });
+  // Without an account the client sends no seed at all, so nothing is ever written for the shared agent.
+  await exited(await spawnAsAgent(["/bin/sh", "-c", "true"], { socket, cwd: work, seed: { "a": "b" } }));
+  assert.deepEqual(written, []);
+  for (const bad of [{ "../x": "y" }, { "/etc/x": "y" }, { a: 1 }]) await assert.rejects(spawnAsAgent(["/bin/sh", "-c", "true"], { socket, cwd: work, account: 2000, seed: /** @type {any} */ (bad) }), /seed is up to 8/);
+  const p = await spawnAsAgent(["/bin/sh", "-c", "true"], { socket, cwd: work, account: 2000, seed: { ".grok/config.toml": "x = 1\n" } });
+  await exited(p);
+  assert.deepEqual(written, [[path.join(acct, "2000"), 2000, { ".grok/config.toml": "x = 1\n" }]]);
+});

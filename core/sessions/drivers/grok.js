@@ -20,15 +20,40 @@
 
 import { acpProvider } from "./acp.js";
 
+/** A double-quoted TOML string. @param {string} v */
+const q = v => JSON.stringify(String(v));
+
 /**
- * @param {{ bin?: string, home?: string, floor?: (call: any) => any, sessions?: any }} [o]
+ * The account's ~/.grok/config.toml for an OpenAI-compatible endpoint (Grok Build's own format,
+ * from the Orq and OpenRouter setup guides): a [model.<id>] table with the provider's model id
+ * (provider/model form), base_url and the NAME of the environment variable holding the key.
+ * The key itself is never in the file.
+ * @param {{ id?: string, model: string, baseUrl: string, envKey: string }} c
+ */
+export function grokConfigToml(c) {
+  const id = c.id || "custom";
+  if (!/^[a-z][a-z0-9-]{0,31}$/.test(id)) throw new Error("the model key is a short lowercase name");
+  if (!/^[A-Z][A-Z0-9_]{0,63}$/.test(c.envKey)) throw new Error("envKey names an environment variable");
+  if (!/^https:\/\//.test(c.baseUrl)) throw new Error("baseUrl is an https URL");
+  return `[models]\ndefault = ${q(id)}\n\n[model.${id}]\nmodel = ${q(c.model)}\nbase_url = ${q(c.baseUrl)}\nenv_key = ${q(c.envKey)}\nname = ${q(id)}\n`;
+}
+
+/**
+ * @param {{ bin?: string, home?: string, floor?: (call: any) => any, sessions?: any, custom?: { id?: string, model: string, baseUrl: string, envKey: string } }} [o]
  *   home: the HOME of the account the session runs as (core/sessions/accounts.js), never the person's own
+ *   custom: run Grok Build on another OpenAI-compatible endpoint (the hosted-runner proof: OpenRouter
+ *   with a capped key). Its config file is written into the account's HOME at every start, 0600,
+ *   as the account's uid, so the agent's own edits to it never carry over. UNVERIFIED until the
+ *   proof runs: that `-m <id>` is accepted with `agent stdio`, and that the model list it needs
+ *   is only what config.toml gives.
  */
 export function grokProvider(o = {}) {
   return acpProvider({
     id: "grok",
     bin: o.bin || "grok",
-    args: () => ["--no-auto-update", "agent", "stdio"],
+    args: () => ["--no-auto-update", ...(o.custom ? ["-m", o.custom.id || "custom"] : []), "agent", "stdio"],
+    ...(o.custom ? { seed: { ".grok/config.toml": grokConfigToml(o.custom) } } : {}),
+    secretEnv: () => ["XAI_API_KEY", ...(o.custom ? [o.custom.envKey] : [])],
     env: run => ({ ...(o.home || run.home ? { HOME: String(o.home || run.home) } : {}) }),
     capabilities: { steering: false, usage: "coarse", rewind: false },
     ...(o.floor ? { floor: o.floor } : {}),
