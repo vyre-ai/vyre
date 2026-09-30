@@ -48,7 +48,7 @@ A module runs on the `box` (the always-on server), on `local` (the Mac), or on b
 | [`onboard`](#onboard) | `core/onboard` | `box`, `local` | 12 | 2 | none |
 | [`planner`](#planner) | `core/planner` | `box`, `local` | 15 | 7 | capsule, cli, deck |
 | [`presence`](#presence) | `core/presence` | `box`, `local` | 12 | 6 | capsule, cli, deck |
-| [`projects`](#projects) | `core/projects` | `box`, `local` | 20 | 5 | cli |
+| [`projects`](#projects) | `core/projects` | `box`, `local` | 22 | 5 | cli |
 | [`push`](#push) | `core/push` | `box`, `local` | 8 | 3 | capsule, cli, deck |
 | [`recall`](#recall) | `core/recall` | `box`, `local` | 12 | 4 | cli |
 | [`relay`](#relay) | `core/relay` | `box`, `local` | 19 | 9 | capsule, cli, deck |
@@ -419,7 +419,7 @@ Alarms, timers, reminders, todos, notes and a calendar, kept on the box so somet
 - Folder: `core/projects`, version 0.1.0
 - Runs on: `box`, `local`
 - Requires: none
-- Tools: [20](tools.md#projects)
+- Tools: [22](tools.md#projects)
 - Emits: [5 events](events.md#projects)
 - Shows on: cli
 - Teaches tips: `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`

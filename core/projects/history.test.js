@@ -97,3 +97,27 @@ test("with github off, create still works, quietly", async t => {
   assert.equal(p.offer, undefined);
   assert.equal(w.state("northwind-bakery"), null);
 });
+
+test("projects.rename keeps the slug and tile; projects.archive hides from the list and brings back", async t => {
+  const w = await world(t);
+  const made = await w.call("projects.create", { name: "Northwind Bakery" });
+  const r = await w.call("projects.rename", { project: "northwind-bakery", name: "Northwind Bread Co" });
+  assert.equal(r.name, "Northwind Bread Co");
+  assert.equal(r.slug, "northwind-bakery");
+  assert.equal(r.avatar_seed, made.avatar_seed);
+  await assert.rejects(w.call("projects.rename", { project: "northwind-bakery", name: "  " }));
+  await w.call("projects.archive", { project: "northwind-bakery" });
+  assert.deepEqual((await w.call("projects.list", {})).projects, []);
+  const all = (await w.call("projects.list", { archived: true })).projects;
+  assert.equal(all[0].slug, "northwind-bakery");
+  assert.ok(all[0].archived_at);
+  await w.call("projects.archive", { project: "northwind-bakery", archived: false });
+  assert.equal((await w.call("projects.list", {})).projects.length, 1);
+});
+
+test("rename and archive: an agent with no session in the project is refused", async t => {
+  const w = await world(t);
+  await w.call("projects.create", { name: "Northwind Bakery" });
+  await assert.rejects(w.call("projects.rename", { project: "northwind-bakery", name: "X" }, { caller: "mcp" }), /person/);
+  await assert.rejects(w.call("projects.archive", { project: "northwind-bakery" }, { caller: "cli:agent:kit" }), /person/);
+});

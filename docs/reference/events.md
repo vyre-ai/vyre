@@ -306,7 +306,7 @@ See [tools and events](../build/tools-and-events.md) for how to listen.
 
 | Event | Fields |
 | --- | --- |
-| `project.changed` | `fields`, `project` |
+| `project.changed` | `project`; sometimes `archived`, `fields`, `name` |
 | `project.created` | `home`, `name`, `project`, `threads` |
 | `projects.moved` | `at`, `from`, `moved`, `skipped`, `to` |
 | `thread.picked` | `project`, `thread` |

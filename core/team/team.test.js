@@ -103,11 +103,17 @@ test("team.add makes a teammate; team.list shows it asleep with an empty queue",
   assert.equal(row.state, "asleep");
 });
 
-test("team.add is a person's own act: a bare mcp caller is refused", async t => {
-  const { root, project } = await boot(t);
+test("team.add: a bare mcp caller with no session is refused; a session in the project may add, another project's may not", async t => {
+  const { tool, root, project, launches } = await boot(t);
   const r = await call("team.add", { project: project.slug, role: "design" }, { root, caller: "mcp", timeout: 20_000 });
   assert.ok(r.error);
   assert.equal(r.error.code, "denied");
+  const other = await tool("projects.create", { name: "Northwind Bakery" });
+  const { session } = await realSession(root, tool, launches, project.slug);
+  const ok = await tool("team.add", { project: project.slug, role: "design" }, "mcp", { session });
+  assert.equal(ok.role, "design");
+  const no = await call("team.add", { project: other.slug, role: "design" }, { root, caller: "mcp", session, timeout: 20_000 });
+  assert.equal(no.error.code, "denied");
 });
 
 test("a request runs, the teammate closes it with team.done, and the result comes back", async t => {

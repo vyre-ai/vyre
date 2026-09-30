@@ -692,4 +692,8 @@ utilization, resets_at), the slot chip (per project), the waiting queue, "Resume
   for a new/empty folder, offers once for an existing non-repo folder (result carries `offer`),
   `projects.history {project, keep}` answers it, state in projects_history. Needs github 63caf8e3 on
   stage to do anything (without it create still works quietly). Tests: core/projects/history.test.js.
+- Built team.add for a session in the project (mcp + thread), projects.rename (pins slug), projects.archive
+  (archived_at in the marker; list hides it unless archived:true). team.add never had a confirm step, so
+  @role's create needs nothing removed there: native-core's card was the only gate. Still TODO: gate.said.match
+  provenance for non-person callers, team.list all:true, team.ask explicit project, charters, duties, filler.
 

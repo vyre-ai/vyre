@@ -4,6 +4,11 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+- Projects and teammates are now tools an agent can use for the person: `projects.rename` (name only;
+  slug, folder, threads and tile stay), `projects.archive` (hides it from the list, `archived: false`
+  brings it back, `projects.list {archived: true}` shows them), and `team.add`, all allowed for a session
+  in that project on the person's request. Never a teammate, never a bare call with no session.
+
 - Projects: version history without GitHub. A new project folder is made a local git repo quietly
   (through `github.project.local-init`). An existing folder that isn't a repo is offered it once
   ("Keep version history for this folder?"); the answer, yes or no, is remembered and never asked

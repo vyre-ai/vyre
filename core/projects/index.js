@@ -108,11 +108,11 @@ export default {
 
     ctx.tool("projects.list", {
       description: "Every project: name, home, folders, people, avatar_seed (what its tile is drawn from), how many threads are in it (picked or by folder), the picked thread ids (picks), newest activity first.",
-      input: { type: "object", properties: { machines } },
+      input: { type: "object", properties: { machines, archived: { type: "boolean" } } },
       run: async (input, { caller } = {}) => {
-        if (!wantsMacs(ctx, input, caller)) return P.list();
+        if (!wantsMacs(ctx, input, caller)) return P.list({ archived: Boolean(input.archived) });
         // On the box, for the person: the box's projects, then each Mac's, every one labelled.
-        const [own, answers] = await Promise.all([P.list(), askMacs(ctx, "projects.list", {})]);
+        const [own, answers] = await Promise.all([P.list({ archived: Boolean(input.archived) }), askMacs(ctx, "projects.list", { archived: Boolean(input.archived) })]);
         return { ...own, projects: mergeRows(ctx, own.projects, answers, { rows: d => d && d.projects }),
           problems: mergeRows(ctx, own.problems, answers, { rows: d => d && d.problems }), sources: sourcesOf(ctx, answers) };
       },
@@ -175,6 +175,25 @@ export default {
         setHistory(p.slug, "kept");
         return { project: p.slug, state: "kept", ...g.data };
       },
+    });
+    // Rename and archive are the person's, and their agent's on their behalf: a session in that project.
+    const ownOrSession = async (meta, slug) => {
+      if (OWNER.includes(String(meta.caller || "").split(":")[0]) && !isAgent(meta.caller)) return;
+      const t = meta.thread && await ctx.call("threads.get", { thread: meta.thread }).catch(() => null);
+      if (isAgent(meta.caller) || !(t && t.data && t.data.thread && t.data.thread.project === slug))
+        throw refuse("this is the person's, or a session in that project acting on their request", "denied");
+    };
+    ctx.tool("projects.rename", {
+      description: "Rename a project. The slug, folder, threads, teammates and tile stay exactly as they were; only the name changes. A person, or a session in that project on their request.",
+      input: { type: "object", required: ["project", "name"], properties: { project: str, name: str } },
+      callers: [...OWNER, "mcp"],
+      run: async ({ project, name }, meta = {}) => { const p = P.resolve(project); await ownOrSession(meta, p.slug); return P.rename(p.slug, name); },
+    });
+    ctx.tool("projects.archive", {
+      description: "Archive a project: it leaves the project list, and its folder, threads, teammates and history are untouched. archived: false brings it back. projects.list {archived: true} includes archived projects. A person, or a session in that project on their request.",
+      input: { type: "object", required: ["project"], properties: { project: str, archived: { type: "boolean" } } },
+      callers: [...OWNER, "mcp"],
+      run: async ({ project, archived = true }, meta = {}) => { const p = P.resolve(project); await ownOrSession(meta, p.slug); return P.archive(p.slug, archived); },
     });
     ctx.tool("projects.add-threads", {
       description: "Pick threads (Claude Code session ids) into a project. A thread can be in several projects.",
