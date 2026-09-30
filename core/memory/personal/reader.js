@@ -418,7 +418,7 @@ export function claudeOnce(o = {}) {
 
 /**
  * @param {{ db: import("node:sqlite").DatabaseSync, personal: import("./store.js").Personal, now?: () => number,
- *   call?: (tool: string, input: any) => Promise<any>, log?: (m: string) => void, config?: any,
+ *   capped?: () => boolean, call?: (tool: string, input: any) => Promise<any>, log?: (m: string) => void, config?: any,
  *   runner?: ((r: { system: string, prompt: string, model: string, maxUsd: number }) => Promise<{ text: string, usd: number, tokens_in?: number, tokens_out?: number }>)|null }} deps
  *   config: the Vyre config, or a function returning it. runner: null means reads are only ever
  *   applied from what is kept (the evaluation's replay); nothing is sent.
@@ -445,8 +445,12 @@ export function createReader(deps) {
   };
   const day = t => { const d = new Date(t); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`; };
   const spentOn = k => /** @type {any} */ (db.prepare("SELECT usd, calls FROM memory_me_budget WHERE day = ?").get(k)) || { usd: 0, calls: 0 };
-  const charge = (k, usd) => db.prepare(`INSERT INTO memory_me_budget (day, usd, calls) VALUES (?, ?, 1)
-    ON CONFLICT (day) DO UPDATE SET usd = round(usd + excluded.usd, 6), calls = calls + 1`).run(k, usd);
+  const charge = (k, usd) => {
+    db.prepare(`INSERT INTO memory_me_budget (day, usd, calls) VALUES (?, ?, 1)
+      ON CONFLICT (day) DO UPDATE SET usd = round(usd + excluded.usd, 6), calls = calls + 1`).run(k, usd);
+    // The one ledger (core/spend): where the reader's dollars show up beside every other spend.
+    if (usd > 0 && deps.call) Promise.resolve(deps.call("spend.record", { provider: "claude", purpose: "memory.read", usd, calls: 1 })).catch(() => {});
+  };
   /**
    * Turns of the given sessions, by session and seq, read in ONE pass. recall_turns is an FTS5 table
    * whose session and seq are unindexed columns, so every lookup by (session, seq) scans the whole
@@ -545,6 +549,8 @@ export function createReader(deps) {
     if (!cfg.on) return why("off");
     applyKept();
     if (!deps.runner) return why("no model");
+    // The provider's daily cap (core/spend) is reached: no model run until it is raised or the day turns.
+    if (deps.capped && deps.capped()) return why("spend cap");
     const list = unread(cfg.batch);
     if (!list.length) return why("nothing waiting");
     const t = now();

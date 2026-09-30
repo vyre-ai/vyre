@@ -223,7 +223,7 @@ export const MIGRATIONS = [
   `CREATE TABLE memory_me_trust (session TEXT PRIMARY KEY, ok INTEGER NOT NULL, why TEXT, dev INTEGER NOT NULL DEFAULT 0, v INTEGER NOT NULL) WITHOUT ROWID;
   DELETE FROM memory_me_claims WHERE method NOT IN ('model', 'told');
   DELETE FROM memory_me_cues; DELETE FROM memory_me_cursor;`,
-  // Vyre IQ (core/memory/iq/ask.js): the model's reply to each exact answer prompt, kept by its
+  // Vyre Memory (core/memory/iq/ask.js): the model's reply to each exact answer prompt, kept by its
   // hash, so a question over the same passages is answered the same way and never paid twice.
   `CREATE TABLE memory_iq_asks (hash TEXT PRIMARY KEY, v INTEGER NOT NULL, at INTEGER NOT NULL, reply TEXT NOT NULL, usd REAL NOT NULL DEFAULT 0) WITHOUT ROWID;`,
   // Correcting IQ where it appears (core/memory/iq/fix.js): the answers given, by id, the person's
@@ -247,4 +247,33 @@ export const MIGRATIONS = [
   `CREATE INDEX memory_me_model_started ON memory_me_model (started);
   CREATE INDEX memory_iq_suggested_state ON memory_iq_suggested (state, thread);
   CREATE INDEX memory_iq_fixes_at ON memory_iq_fixes (at);`,
+  // Agent, module and watcher writes (core/memory/write.js, plan 3.4): live the moment they land,
+  // attributed from the caller (never the input), read back only as quoted text. One row per
+  // item, linked into each project it was filed to; "you" is the person's own room. A row is
+  // forgotten when its last link is; nothing is deleted, so every forget can be undone.
+  `CREATE TABLE memory_writes (id TEXT PRIMARY KEY, kind TEXT NOT NULL CHECK (kind IN ('fact','note','decision','correction')), text TEXT NOT NULL, subject TEXT, source_ref TEXT,
+    from_kind TEXT NOT NULL CHECK (from_kind IN ('person','agent','teammate','assistant','module','watcher','duty')), from_name TEXT NOT NULL, provider TEXT, thread TEXT, seq INTEGER,
+    untrusted INTEGER NOT NULL DEFAULT 0, state TEXT NOT NULL DEFAULT 'live' CHECK (state IN ('live','corrected','forgotten')), at INTEGER NOT NULL, updated INTEGER NOT NULL) WITHOUT ROWID;
+  CREATE INDEX memory_writes_ref ON memory_writes (source_ref, from_kind, from_name);
+  CREATE INDEX memory_writes_at ON memory_writes (at);
+  CREATE TABLE memory_write_links (write TEXT NOT NULL, project TEXT NOT NULL, state TEXT NOT NULL DEFAULT 'live' CHECK (state IN ('live','forgotten')), at INTEGER NOT NULL,
+    PRIMARY KEY (write, project)) WITHOUT ROWID;
+  CREATE INDEX memory_write_links_project ON memory_write_links (project, state);`,
+  // Decisions the person made in their own typed turns (core/memory/decisions.js, plan 3.5): one row
+  // per decision, read once per turn (the cursor holds the reader's version). State (current,
+  // replaced, reverted) is worked out on read, so a forget or a later decision is never stale.
+  `CREATE TABLE memory_decisions (id TEXT PRIMARY KEY, session TEXT NOT NULL, seq INTEGER NOT NULL, project TEXT NOT NULL, cwd TEXT NOT NULL, topic TEXT NOT NULL, label TEXT NOT NULL,
+    value TEXT NOT NULL, display TEXT NOT NULL, statement TEXT NOT NULL, revert INTEGER NOT NULL DEFAULT 0, decided_at INTEGER NOT NULL) WITHOUT ROWID;
+  CREATE INDEX memory_decisions_project ON memory_decisions (project, topic, decided_at);
+  CREATE INDEX memory_decisions_session ON memory_decisions (session);
+  CREATE TABLE memory_decisions_cursor (session TEXT PRIMARY KEY, upto INTEGER NOT NULL, v INTEGER NOT NULL) WITHOUT ROWID;`,
+  // One corrections listing with its source (plan 3.1E): capsule, chat:<thread> or reader. The
+  // reader's cursor per session (chatfix.js) and what a correction of an answer did to a decision
+  // (a replace adds the person's decision, a wrong drops the one it says is wrong; undone with it).
+  `ALTER TABLE memory_corrections ADD COLUMN source TEXT;
+  ALTER TABLE memory_iq_fixes ADD COLUMN source TEXT;
+  CREATE TABLE memory_chatfix_cursor (session TEXT PRIMARY KEY, upto INTEGER NOT NULL) WITHOUT ROWID;
+  CREATE TABLE memory_decision_fixes (id INTEGER PRIMARY KEY, fix INTEGER NOT NULL, at INTEGER NOT NULL, project TEXT NOT NULL, topic TEXT NOT NULL, action TEXT NOT NULL,
+    value TEXT, display TEXT, statement TEXT, source TEXT, undone INTEGER);
+  CREATE INDEX memory_decision_fixes_fix ON memory_decision_fixes (fix);`,
 ];
