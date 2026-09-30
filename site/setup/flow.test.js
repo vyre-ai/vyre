@@ -339,15 +339,17 @@ function stepsBox(script = {}) {
       box.calls.push([tool, input]);
       if (input.provider) { const flow = `f-${input.provider}`; st.flows[flow] = { provider: input.provider, polls: 0 }; return input.provider === "claude" ? { flow, step: "url", url: "https://claude.ai/oauth/authorize?x=1", paste: true } : { flow, step: "code", url: "https://example.org/device", code: "WXYZ-1234" }; }
       const f = st.flows[input.flow];
-      if (input.code) { f.done = input.code === "good-code"; return f.done ? { step: "waiting" } : { step: "failed", why: "that code did not work" }; }
+      if (input.code) { f.done = input.code === "good-code"; return f.done ? { step: "waiting" } : { step: "failed", message: "Claude said that code has expired" }; }
+      if (f.failStatus) return { flow: input.flow, step: "failed", provider: f.provider, message: "the sign-in page was closed before it finished" };
       f.polls++;
       return f.provider === "claude" ? { step: f.done ? "done" : "url" } : { step: f.polls >= 2 ? "done" : "code" };
     }
+    if (tool === "names.status") { box.calls.push([tool, input]); if (!st.namesPhase) throw Object.assign(new Error("no such tool"), { status: 404 }); return { name: "harlow-legal-server", phase: st.namesPhase, why: st.namesWhy || null }; }
     if (tool === "relay.setup.claim-token") { box.calls.push([tool, input]); if (st.claimFails) throw new Error("this setup session has ended"); return { challenge: crypto.randomBytes(32).toString("base64url"), exp: Date.now() + (st.claimMs ?? 120_000), route: "r".repeat(26) }; }
     if (tool === "relay.pair.ticket") { box.calls.push([tool, input]); if (st.ticketMade) throw Object.assign(new Error("the setup page has already made its one pairing ticket"), { code: "denied" }); st.ticketMade = true; return { ticket: "AAECAwQFBgc", expiresAt: Date.now() + (st.ticketMs ?? 300_000), connected: true }; }
     return base(tool, input);
   };
-  box.events = async (type, since) => { box.calls.push(["events", { type, since }]); return (st.paired || []).filter(e => e.type === type && e.id > since); };
+  box.events = async (type, since) => { box.calls.push(["events", { type, since }]); return [...(st.paired || []), ...(st.events || [])].filter(e => e.type === type && e.id > since); };
   return box;
 }
 async function atNamed(t, box) {
@@ -380,7 +382,7 @@ test("steps: AI sign-in comes before Tailscale, needs one done login, and a past
   assert.equal(claude().paste, true);
   await flow.submitAiCode(claude().id, "bad-code");
   assert.equal(claude().step, "failed");
-  assert.equal(claude().error, "that code did not work");
+  assert.equal(claude().error, "Claude said that code has expired", "the box's own words (core/sessions/signin.js answers `message`), not a generic line");
   flow.startAi("claude");
   await until(() => flow.state.ai.accounts.filter(a => a.provider === "claude").some(a => a.step === "url"));
   const again = flow.state.ai.accounts.find(a => a.provider === "claude" && a.step === "url");
@@ -821,4 +823,101 @@ test("domain: after the recovery code is saved, a domain of the person's own is 
   await flow.checkDomain("bad.example");
   assert.equal(flow.state.domain.error, "that is not a domain of your own", "the box's refusal is shown in its words");
   flow.stop();
+});
+
+test("steps: a sign-in that fails while the page polls shows the box's message (message, as core/sessions/signin.js answers it)", async t => {
+  const box = stepsBox({ ts: "connected" });
+  const flow = await atNamed(t, box);
+  try {
+    flow.continueToAi();
+    flow.startAi("codex");
+    await until(() => box.st.flows["f-codex"]);
+    box.st.flows["f-codex"].failStatus = true;
+    const failed = await until(() => flow.state.ai.accounts.find(a => a.provider === "codex" && a.step === "failed"));
+    assert.equal(failed.error, "the sign-in page was closed before it finished");
+  } finally { flow.stop(); }
+});
+
+test("steps: the address goes from certificate to serving on the certificate's own event (no tailscale.changed), and a certificate failure is shown", async t => {
+  const box = stepsBox({ ts: "connected", claimPhase: "certificate" });
+  const flow = await atNamed(t, box);
+  try {
+    flow.continueToAi(); flow.startAi("codex");
+    await until(() => flow.state.ai.accounts[0] && flow.state.ai.accounts[0].step === "done");
+    flow.continueToTailscale();
+    await until(() => flow.state.tailscale.address && flow.state.tailscale.address.phase === "certificate");
+    // Another name's certificate is not this box's.
+    box.st.events = [{ id: 3, type: "certificate.issued", payload: { name: "someone-else.vyre.run" } }];
+    await new Promise(r => setTimeout(r, 1500));
+    assert.equal(flow.state.tailscale.address.phase, "certificate");
+    // The box's own certificate, issued: serving, and the watching ends.
+    box.st.events.push({ id: 4, type: "certificate.issued", payload: { name: "harlow-legal-server.vyre.run", expires: 1 } });
+    await until(() => flow.state.tailscale.address.phase === "serving", 8000);
+  } finally { flow.stop(); }
+
+  const bad = stepsBox({ ts: "connected", claimPhase: "certificate" });
+  const f2 = await atNamed(t, bad);
+  try {
+    f2.continueToAi(); f2.startAi("codex");
+    await until(() => f2.state.ai.accounts[0] && f2.state.ai.accounts[0].step === "done");
+    f2.continueToTailscale();
+    await until(() => f2.state.tailscale.address && f2.state.tailscale.address.phase === "certificate");
+    bad.st.events = [{ id: 1, type: "certificate.failed", payload: { name: "harlow-legal-server.vyre.run", why: "the certificate authority said no" } }];
+    await until(() => f2.state.tailscale.address.phase === "failed", 8000);
+    assert.equal(f2.state.tailscale.address.why, "the certificate authority said no");
+  } finally { f2.stop(); }
+});
+
+test("steps: names.status is the backstop: serving (or failed) on the box's own answer even when no event is ever seen; a box without that tool still works", async t => {
+  const box = stepsBox({ ts: "connected", claimPhase: "certificate" });
+  const flow = await atNamed(t, box);
+  try {
+    flow.continueToAi(); flow.startAi("codex");
+    await until(() => flow.state.ai.accounts[0] && flow.state.ai.accounts[0].step === "done");
+    flow.continueToTailscale();
+    await until(() => flow.state.tailscale.address && flow.state.tailscale.address.phase === "certificate");
+    box.st.namesPhase = "certificate";
+    await new Promise(r => setTimeout(r, 1300));
+    assert.equal(flow.state.tailscale.address.phase, "certificate", "still going");
+    box.st.namesPhase = "serving";
+    await until(() => flow.state.tailscale.address.phase === "serving", 8000);
+  } finally { flow.stop(); }
+  const bad = stepsBox({ ts: "connected", claimPhase: "certificate", namesPhase: "failed", namesWhy: "the certificate authority is unreachable" });
+  const f2 = await atNamed(t, bad);
+  try {
+    f2.continueToAi(); f2.startAi("codex");
+    await until(() => f2.state.ai.accounts[0] && f2.state.ai.accounts[0].step === "done");
+    f2.continueToTailscale();
+    await until(() => f2.state.tailscale.address && f2.state.tailscale.address.phase === "failed", 8000);
+    assert.equal(f2.state.tailscale.address.why, "the certificate authority is unreachable");
+  } finally { f2.stop(); }
+});
+
+test("steps: a sign-in link that is not Tailscale's is shown as a refusal with the Connect button back, not left on Getting the link", async t => {
+  const box = stepsBox({ loginUrl: "https://evil.example/login" });
+  const doc = new FakeDoc(), root = doc.createElement("main");
+  let flow;
+  const actions = { begin() {}, copy() {}, setName() {}, claim() {}, confirmWords: () => flow.confirmWords(), denyWords() {}, markSaved: () => flow.markSaved(),
+    continueToAi: () => flow.continueToAi(), continueToTailscale: () => flow.continueToTailscale(), connectTailscale: () => flow.connectTailscale(), startAi: p => flow.startAi(p), submitAiCode: (i, c) => flow.submitAiCode(i, c) };
+  const w = await world(t);
+  flow = createFlow({ client: clientWith(async () => offer()), relay: w.base, sleep: fastSleep, pollMs: 5, debounceMs: 1, connect: async () => box,
+    onChange: s => render(s, { doc: /** @type {any} */ (doc), root: /** @type {any} */ (root), actions }) });
+  try {
+    await flow.begin();
+    await until(() => flow.state.stage === "found");
+    flow.confirmWords();
+    await until(() => flow.state.naming.check);
+    await flow.claim(); flow.markSaved(); flow.continueToAi(); flow.startAi("codex");
+    await until(() => flow.state.ai.accounts[0] && flow.state.ai.accounts[0].step === "done");
+    flow.continueToTailscale();
+    await until(() => flow.state.tailscale.status);
+    const button = () => root.all().find(e => e.tag === "button" && e.children.some(c => /Connect my server|Getting the link/.test(String(c.value))));
+    await button().listeners.click();
+    assert.equal(flow.state.tailscale.busy, false, "the busy state is cleared");
+    assert.match(flow.state.tailscale.error, /not Tailscale's/);
+    assert.ok(!root.textContent.includes("Getting the link"), "not left waiting");
+    assert.ok(root.textContent.includes("that is not Tailscale's"), "the refusal is on the screen");
+    assert.ok(root.textContent.includes("Connect my server"), "and the person can try again");
+    assert.ok(!root.all().some(e => e.tag === "a" && /evil\\.example/.test(String(e.attrs.href))), "the link is never an anchor");
+  } finally { flow.stop(); }
 });
