@@ -10,14 +10,16 @@
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { normalize, classify, hostAllowed, addressBlocked, checkTarget, PRESETS } from "./api-request.js";
+import { normalize, classify, hostAllowed, addressBlocked, checkTarget, PRESETS, presetFor, presetRead } from "./api-request.js";
 
 test("normalize: service-account needs a fixed subject and scopes; oauth needs a client and https endpoints; hosts are bounded", () => {
   assert.throws(() => normalize({ auth: { type: "service-account", item: "sa" }, hosts: ["googleapis.com"] }), /subject/);
   assert.throws(() => normalize({ auth: { type: "service-account", item: "sa", subject: "a@b.com" }, hosts: ["googleapis.com"] }), /scopes/);
-  const sa = normalize({ auth: { type: "service-account", item: "sa", subject: "alex@harlowlegal.com", scopes: ["s1"] }, hosts: ["googleapis.com", "*.googleapis.com"] });
+  const sa = normalize({ auth: { type: "service-account", item: "sa", subject: "alex@harlowlegal.com", scopes: ["s1"] }, hosts: ["gmail.googleapis.com", "*.harlow.test"] });
   assert.deepEqual(sa.auth, { type: "service-account", item: "sa", subject: "alex@harlowlegal.com", scopes: ["s1"] });
-  assert.deepEqual(sa.hosts, ["googleapis.com", "*.googleapis.com"]);
+  assert.deepEqual(sa.hosts, ["gmail.googleapis.com", "*.harlow.test"]);
+  // With no item named, the secret is the credential's own sealed one.
+  assert.deepEqual(normalize({ auth: { type: "bearer" }, hosts: ["api.harlow.test"] }).auth, { type: "bearer" });
 
   assert.throws(() => normalize({ auth: { type: "oauth", authorize_uri: "https://a/authorize", token_uri: "https://a/token", scopes: ["s"] }, hosts: ["a"] }), /client/);
   assert.throws(() => normalize({ auth: { type: "oauth", client: { item: "c" }, authorize_uri: "http://a/authorize", token_uri: "https://a/token", scopes: ["s"] }, hosts: ["a"] }), /https/);
@@ -31,6 +33,14 @@ test("normalize: service-account needs a fixed subject and scopes; oauth needs a
   assert.deepEqual(b.endpoints, [{ method: "POST", path: "/v1/charges", kind: "spend" }]);
 
   assert.throws(() => normalize({ auth: { type: "bearer", item: "b" }, hosts: ["example.com"], endpoints: [{ method: "GET", path: "/x", kind: "maybe" }] }), /endpoint entry/);
+});
+
+test("normalize: a wildcard on a domain anyone can rent a name under is refused; an exact host there is fine; an address is never a host", () => {
+  for (const h of ["*.googleapis.com", "*.storage.googleapis.com", "*.s3.amazonaws.com", "*.appspot.com", "*.run.app", "*.azurewebsites.net", "*.cloudfunctions.net", "*.workers.dev", "*.github.io", "*.herokuapp.com"])
+    assert.throws(() => normalize({ auth: { type: "bearer" }, hosts: [h] }), /wildcard on a domain anyone can rent/, h);
+  assert.deepEqual(normalize({ auth: { type: "bearer" }, hosts: ["gmail.googleapis.com", "graph.microsoft.com"] }).hosts, ["gmail.googleapis.com", "graph.microsoft.com"]);
+  for (const h of ["127.0.0.1", "10.0.0.1", "169.254.169.254", "2130706433", "0x7f000001", "1.2.3.4", "[::1]", "::1", "0177.0.0.1"])
+    assert.throws(() => normalize({ auth: { type: "bearer" }, hosts: [h] }), /is not a host/, h);
 });
 
 test("classify: GET/HEAD default to read, everything else defaults to held; a credential's endpoints are checked first, presets second", () => {
@@ -90,6 +100,17 @@ test("checkTarget: https only, an allowed host, every resolved address checked, 
   // One good address and one bad one: the bad one refuses the whole request, not just half of it.
   const mixedLookup = async () => [{ address: "203.0.113.9", family: 4 }, { address: "169.254.169.254", family: 4 }];
   await assert.rejects(checkTarget("https://api.example.com/x", ["api.example.com"], { lookup: mixedLookup }), /private, loopback, link-local or metadata/);
+});
+
+test("presets name exact hosts, never a wildcard, and presetFor finds the family a request falls under", () => {
+  for (const p of PRESETS) assert.ok(/^[a-z0-9.-]+$/.test(p.host) && !p.host.includes("*"), `${p.path}: ${p.host}`);
+  assert.equal(presetFor("POST", "/v1.0/me/sendMail").family, "graph-mail");
+  assert.equal(presetFor("POST", "/gmail/v1/users/me/messages/send").host, "gmail.googleapis.com");
+  assert.equal(presetFor("GET", "/v1.0/me/sendMail"), null);
+  assert.equal(presetFor("POST", "/v1.0/me/messages"), null);
+  assert.ok(presetRead("GET", "/v1.0/me/messages", "graph.microsoft.com"));
+  assert.ok(!presetRead("GET", "/v1.0/me/messages", "evil.test"), "a preset read is for the preset's own host");
+  assert.ok(!presetRead("POST", "/v1.0/me/messages", "graph.microsoft.com"));
 });
 
 test("no preset silently classifies a known write as a read (the safety net this depends on)", () => {

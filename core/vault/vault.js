@@ -28,7 +28,8 @@ import * as relay from "./relay.js";
 import { enclaveCall, wrapAuk, unwrapAuk } from "./touchid.js";
 import { Helper } from "./mac/helper.js";
 import * as history from "./history.js";
-import { callerKind } from "../modules/index.js";
+import { callerKind, ownerDevice } from "../modules/index.js";
+import { normalize as normalizeApiCredential } from "./api-request.js";
 import { parseFile as parseImport, plan as planImport } from "./import.js";
 import { REMIND_MIGRATION } from "./remind.js";
 import { KINDS, PERSONAL_KINDS, defaultField, checkFields, cleanDetails, derivedDetails } from "../../lib/vault-kinds/kinds.js";
@@ -1026,9 +1027,33 @@ export class Vault {
     return r;
   }
 
-  /** An item's fields, opened. Only the methods that hand a value to its one recipient call this. */
-  async fields(r) {
+  /**
+   * An item's fields, opened. Only the methods that hand a value to its one recipient call this.
+   * An api-credential is never handed out (reviewer M11): reveal, copy, fill, env, a pass, a
+   * relay and every other path that reaches a value through here is refused. Only the sealed
+   * backup (`sealed`) and vault.request itself, which opens it in-process, are let past.
+   * @param {any} r @param {{ sealed?: boolean }} [o]
+   */
+  async fields(r, o = {}) {
+    if (r && r.kind === "api-credential" && !o.sealed) throw new Error(`${r.name} is an api-credential; it is used only by vault.request and is never handed out`);
     return (await this.open(r)).fields;
+  }
+
+  /**
+   * The api-credential `name`, opened for vault.request and nothing else: its checked config and
+   * its own sealed secret, if it has one. In-process only; no tool returns this.
+   * @param {string} name
+   * @returns {Promise<{ row: any, config: ReturnType<typeof normalizeApiCredential>, secret: string|undefined }>}
+   */
+  async apiCredential(name) {
+    await this.key();
+    const row = this.row(name);
+    if (!row) throw new Error(`no item named ${String(name).slice(0, 80)}`);
+    if (row.kind !== "api-credential") throw new Error(`${row.name} is not an api-credential`);
+    const { fields } = await this.open(row);
+    let raw;
+    try { raw = JSON.parse(fields.config); } catch { throw new Error(`${row.name} has a config that is not JSON`); }
+    return { row, config: normalizeApiCredential(raw), secret: fields.secret };
   }
 
   /**
@@ -1076,6 +1101,19 @@ export class Vault {
       clean[k] = v;
     }
     checkFields(kind, clean);
+    // An api-credential's hosts and endpoints decide what runs unasked and what holds, so only a
+    // person's own surface writes or replaces one (reviewer N4), whatever it was before.
+    const prior = /** @type {any} */ (this.db.prepare("SELECT kind FROM vault_items WHERE name = ?").get(String(name)));
+    if (kind === "api-credential" || (prior && prior.kind === "api-credential")) {
+      if (!(["cli", "local", "deck", "capsule"].includes(callerKind(who)) || ownerDevice(who))) throw new Error("an api-credential is made and changed only from your own surfaces, never by a module, a watcher or an agent");
+      if (kind !== "api-credential") throw new Error(`${name} is an api-credential; delete it before using the name for another kind`);
+      if (clean.value !== undefined && clean.secret === undefined) { clean.secret = clean.value; delete clean.value; }
+      let cfg;
+      try { cfg = JSON.parse(clean.config); } catch { throw new Error("config must be JSON: { auth, hosts, endpoints? }"); }
+      const n = normalizeApiCredential(cfg);
+      if (n.auth.type !== "oauth" && !n.auth.item && !clean.secret) throw new Error("give the credential its secret (fields.secret), or name the vault item that holds it (auth.item)");
+      clean.config = JSON.stringify(n);
+    }
     if (!Object.keys(clean).length) throw new Error("an item needs at least one field");
     // An expiry may be written as "90d" or a date, as grants' are.
     const given = cleanDetails(details && typeof details === "object" && typeof details.expires === "string" && details.expires
@@ -1253,6 +1291,7 @@ export class Vault {
     if (!r) { this.audit("release", name, who, false, "no such item"); throw new Error(`no item named ${name}`); }
     if (r.kind === "ssh-key") { this.audit("release", name, who, false, "ssh key"); throw new Error(`${name} is an ssh key; it signs through the vault's ssh agent and is never handed out`); }
     if (r.kind === "passkey") { this.audit("release", name, who, false, "passkey"); throw new Error(`${name} is a passkey; it signs inside the vault and is never handed out`); }
+    if (r.kind === "api-credential") { this.audit("release", name, who, false, "api-credential"); throw new Error(`${name} is an api-credential; it is used only by vault.request and is never handed out`); }
     const f = await this.fields(r);
     const want = field || defaultField(r.kind, json(r.fields, []));
     if (!want) { this.audit("release", name, who, false, "no field named"); throw new Error(`${name} is ${r.kind === "env-set" ? "an env-set" : `a ${r.kind}`}; name the field you want`); }
@@ -1270,6 +1309,7 @@ export class Vault {
       if (!r) { this.audit("inject", it.name, caller, false, "no such item"); throw new Error(`no item named ${it.name}`); }
       if (r.kind === "ssh-key") throw new Error(`${it.name} is an ssh key; it signs through the vault's ssh agent and is never handed out`);
       if (r.kind === "passkey") throw new Error(`${it.name} is a passkey; it signs inside the vault and is never handed out`);
+      if (r.kind === "api-credential") { this.audit("inject", it.name, caller, false, "api-credential"); throw new Error(`${it.name} is an api-credential; it is used only by vault.request and is never handed out`); }
       const f = await this.fields(r);
       if (r.kind === "env-set" && !it.field) Object.assign(env, f);
       else {

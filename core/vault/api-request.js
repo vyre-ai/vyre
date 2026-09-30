@@ -19,6 +19,8 @@
 // what the caller (vault.request) needs to actually connect to the address it already validated,
 // so nothing here and nothing downstream does a second, unchecked lookup.
 
+import crypto from "node:crypto";
+
 const isObj = v => Boolean(v) && typeof v === "object" && !Array.isArray(v);
 const bad = msg => Object.assign(new Error(msg), { code: "bad_input" });
 const ITEM = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/;
@@ -35,6 +37,9 @@ function checkRef(ref, where) {
   return r.field ? { item: r.item, field: r.field } : { item: r.item };
 }
 
+/** A secret may live in another vault item (item, field?) or, left out, in this credential's own sealed `secret` field, which nothing can release. */
+const optionalRef = a => (a.item === undefined && a.field === undefined ? {} : checkRef({ item: a.item, field: a.field }, "auth"));
+
 /**
  * @param {any} a
  * @returns {{ type: "service-account", item: string, field?: string, subject: string, scopes: string[] } |
@@ -44,7 +49,7 @@ function checkRef(ref, where) {
 function normalizeAuth(a) {
   if (!isObj(a) || !["service-account", "oauth", "bearer", "api-key"].includes(a.type)) throw bad('auth.type must be "service-account", "oauth", "bearer" or "api-key"');
   if (a.type === "service-account") {
-    const ref = checkRef({ item: a.item, field: a.field }, "auth");
+    const ref = optionalRef(a);
     if (typeof a.subject !== "string" || !a.subject) throw bad("a service-account credential needs auth.subject (the address it acts as), fixed here, never in a request");
     if (!Array.isArray(a.scopes) || !a.scopes.length || !a.scopes.every(s => typeof s === "string" && s)) throw bad("auth.scopes must be a non-empty list of strings");
     return { type: "service-account", ...ref, subject: a.subject, scopes: [...new Set(a.scopes)] };
@@ -57,17 +62,34 @@ function normalizeAuth(a) {
     if (!Array.isArray(a.scopes) || !a.scopes.length) throw bad("auth.scopes must be a non-empty list of strings");
     return { type: "oauth", client, authorize_uri: a.authorize_uri, token_uri: a.token_uri, scopes: [...new Set(a.scopes.map(String))] };
   }
-  const ref = checkRef({ item: a.item, field: a.field }, "auth");
+  const ref = optionalRef(a);
   const out = { type: a.type, ...ref };
   if (a.header !== undefined) { if (typeof a.header !== "string" || !a.header) throw bad("auth.header must be a header name"); out.header = a.header.toLowerCase(); }
   if (a.format !== undefined) { if (typeof a.format !== "string" || !a.format.includes("{value}")) throw bad("auth.format needs {value}"); out.format = a.format; }
   return out;
 }
 
+/**
+ * Suffixes anyone can rent a subdomain or a bucket under. A wildcard here would let an injected
+ * agent put the person's data in a URL on infrastructure an attacker controls, with the person's
+ * credential attached (reviewer M8), so these are allowed only as an exact host the person names.
+ */
+export const SHARED_SUFFIXES = ["googleapis.com", "googleusercontent.com", "amazonaws.com", "cloudfront.net", "appspot.com", "run.app", "web.app", "firebaseapp.com",
+  "azurewebsites.net", "blob.core.windows.net", "windows.net", "azureedge.net", "cloudfunctions.net", "workers.dev", "pages.dev", "herokuapp.com", "vercel.app",
+  "netlify.app", "github.io", "githubusercontent.com", "onrender.com", "fly.dev", "railway.app", "ngrok.io", "ngrok-free.app", "trycloudflare.com", "repl.co", "glitch.me"];
+
+/** A hostname that is really an address: dotted digits, a lone number (decimal or 0x hex), or bracketed IPv6. */
+const looksLikeIp = h => /^\[/.test(h) || h.includes(":") || /^(0x[0-9a-f]+|\d+)$/i.test(h.split(".").pop() || "");
+
 /** A host entry: an exact hostname, or one leading "*." wildcard. Nothing else matches, ever. */
 function normalizeHost(h) {
-  if (typeof h !== "string" || !HOST.test(h)) throw bad(`${String(h).slice(0, 60)} is not a host (an exact hostname, or one leading "*.")`);
-  return h.toLowerCase();
+  if (typeof h !== "string" || !HOST.test(h) || looksLikeIp(h)) throw bad(`${String(h).slice(0, 60)} is not a host (an exact hostname, or one leading "*.")`);
+  const host = h.toLowerCase();
+  if (host.startsWith("*.")) {
+    const rest = host.slice(2);
+    if (SHARED_SUFFIXES.some(s => rest === s || rest.endsWith("." + s))) throw bad(`${host} is a wildcard on a domain anyone can rent a name under; name the exact host instead`);
+  }
+  return host;
 }
 
 /**
@@ -101,17 +123,42 @@ export function normalize(i) {
  * own `endpoints`, which may only add to this, never loosen it (a credential cannot mark a preset
  * write as a read). */
 export const PRESETS = [
-  { method: "POST", path: "/gmail/v1/users/*/messages/send", kind: "send" },
-  { method: "POST", path: "/gmail/v1/users/*/drafts/send", kind: "send" },
-  { method: "POST", path: "/calendar/v3/calendars/*/events*sendUpdates=all*", kind: "send" },
-  { method: "POST", path: "/v1.0/*/sendMail", kind: "send" },
-  { method: "POST", path: "/v1.0/*/microsoft.graph.send", kind: "send" },
-  { method: "POST", path: "/v1/charges", kind: "spend" },
-  { method: "POST", path: "/v1/payment_intents", kind: "spend" },
-  { method: "POST", path: "/v1/payment_intents/*/confirm", kind: "spend" },
-  { method: "POST", path: "/v1/refunds", kind: "spend" },
-  { method: "POST", path: "/v1/transfers", kind: "spend" },
+  { method: "POST", path: "/gmail/v1/users/*/messages/send", kind: "send", host: "gmail.googleapis.com", family: "gmail" },
+  { method: "POST", path: "/gmail/v1/users/*/drafts/send", kind: "send", host: "gmail.googleapis.com", family: "gmail-draft" },
+  { method: "POST", path: "/calendar/v3/calendars/*/events*sendUpdates=all*", kind: "send", host: "www.googleapis.com", family: "calendar" },
+  { method: "POST", path: "/v1.0/*/sendMail", kind: "send", host: "graph.microsoft.com", family: "graph-mail" },
+  { method: "POST", path: "/v1.0/*/microsoft.graph.send", kind: "send", host: "graph.microsoft.com", family: "graph-mail" },
+  { method: "POST", path: "/v1/charges", kind: "spend", host: "api.stripe.com", family: "stripe" },
+  { method: "POST", path: "/v1/payment_intents", kind: "spend", host: "api.stripe.com", family: "stripe" },
+  { method: "POST", path: "/v1/payment_intents/*/confirm", kind: "spend", host: "api.stripe.com", family: "stripe" },
+  { method: "POST", path: "/v1/refunds", kind: "spend", host: "api.stripe.com", family: "stripe" },
+  { method: "POST", path: "/v1/transfers", kind: "spend", host: "api.stripe.com", family: "stripe" },
 ];
+
+/**
+ * Reads a preset lists on purpose, so an exact-host credential never has to spell them out.
+ * Nothing else gets this: an unlisted GET is a read only when no wildcard host is in play.
+ */
+export const PRESET_READS = [
+  { method: "GET", path: "/gmail/v1/users/*/messages*", host: "gmail.googleapis.com" },
+  { method: "GET", path: "/gmail/v1/users/*/threads*", host: "gmail.googleapis.com" },
+  { method: "GET", path: "/gmail/v1/users/*/labels*", host: "gmail.googleapis.com" },
+  { method: "GET", path: "/calendar/v3/*", host: "www.googleapis.com" },
+  { method: "GET", path: "/v1.0/*", host: "graph.microsoft.com" },
+  { method: "GET", path: "/v1/*", host: "api.stripe.com" },
+];
+
+/** The preset (and its exact host and family) a method and path fall under, or null. Never loosens: classify() decides read or outward. */
+export function presetFor(method, pathAndQuery) {
+  const m = String(method || "").toUpperCase();
+  return PRESETS.find(e => e.method === m && pathMatches(e.path, pathAndQuery)) || null;
+}
+
+/** Whether a GET or HEAD is on a preset's read list, on that preset's own host. */
+export function presetRead(method, pathAndQuery, host) {
+  const m = String(method || "").toUpperCase();
+  return (m === "GET" || m === "HEAD") && PRESET_READS.some(e => e.host === String(host || "").toLowerCase() && pathMatches(e.path, pathAndQuery));
+}
 
 /** A `path` pattern with `*` wildcard segments (each `*` matches one or more of any character,
  * including "/") against a real path (query string included, so a pattern can gate on it). */
@@ -146,19 +193,63 @@ const inV4 = (n, base, bits) => { const mask = bits === 0 ? 0 : (~0 << (32 - bit
 /** Every IPv4 range that must never be an api-credential's target: loopback, link-local
  * (includes cloud metadata's 169.254.169.254), private, CGNAT (which is also the tailnet range),
  * "this network" and its friends. */
-const V4_BLOCKED = [["0.0.0.0", 8], ["127.0.0.0", 8], ["169.254.0.0", 16], ["10.0.0.0", 8], ["172.16.0.0", 12], ["192.168.0.0", 16], ["100.64.0.0", 10], ["192.0.0.0", 24], ["198.18.0.0", 15]];
+const V4_BLOCKED = [["0.0.0.0", 8], ["127.0.0.0", 8], ["169.254.0.0", 16], ["10.0.0.0", 8], ["172.16.0.0", 12], ["192.168.0.0", 16], ["100.64.0.0", 10], ["192.0.0.0", 24], ["198.18.0.0", 15], ["224.0.0.0", 4], ["240.0.0.0", 4]];
 
 function v4Blocked(ip) { const n = v4num(ip); return n === null ? true : V4_BLOCKED.some(([base, bits]) => inV4(n, base, bits)); }
 
-/** An IPv6 address, unwrapping an IPv4-mapped one (::ffff:a.b.c.d), so that form cannot dodge the IPv4 checks. */
+/**
+ * An IPv6 address as 16 bytes, or null when it is not one. Handles "::", an embedded dotted IPv4
+ * tail (::ffff:1.2.3.4) and the all-hex forms of the same address (::ffff:102:304), so no notation
+ * hides an IPv4 address from the checks. A zone id (fe80::1%eth0) is refused: null.
+ * @param {string} ip @returns {number[]|null}
+ */
+export function parseV6(ip) {
+  let s = String(ip).toLowerCase();
+  if (s.startsWith("[") && s.endsWith("]")) s = s.slice(1, -1);
+  if (!s.includes(":") || /[^0-9a-f:.]/.test(s)) return null;
+  let tail = [];
+  const dotted = /^(.*:)(\d+\.\d+\.\d+\.\d+)$/.exec(s);
+  if (dotted) {
+    const n = v4num(dotted[2]);
+    if (n === null) return null;
+    tail = [(n >>> 24) & 255, (n >>> 16) & 255, (n >>> 8) & 255, n & 255];
+    s = dotted[1] + "0:0";
+  }
+  const halves = s.split("::");
+  if (halves.length > 2) return null;
+  const words = part => (part === "" ? [] : part.split(":"));
+  const head = words(halves[0]), rest = halves.length === 2 ? words(halves[1]) : [];
+  if (halves.length === 1 && head.length !== 8) return null;
+  if (halves.length === 2 && head.length + rest.length > 7) return null;
+  const all = halves.length === 2 ? [...head, ...Array(8 - head.length - rest.length).fill("0"), ...rest] : head;
+  if (all.length !== 8 || !all.every(w => /^[0-9a-f]{1,4}$/.test(w))) return null;
+  const bytes = all.flatMap(w => { const v = parseInt(w, 16); return [v >> 8, v & 255]; });
+  if (tail.length) bytes.splice(12, 4, ...tail);
+  return bytes;
+}
+
+/**
+ * An IPv6 address that may never be a target: loopback, unspecified, link-local, unique-local and
+ * site-local, multicast, documentation, discard and Teredo ranges, AWS's metadata address, and any
+ * address that carries an IPv4 one (mapped, compatible, NAT64, 6to4) whose IPv4 is itself blocked.
+ */
 function v6Blocked(ip) {
-  const low = ip.toLowerCase();
-  const mapped = /^::ffff:(\d+\.\d+\.\d+\.\d+)$/.exec(low);
-  if (mapped) return v4Blocked(mapped[1]);
-  if (low === "::1" || low === "::") return true; // loopback, unspecified
-  if (low.startsWith("fe8") || low.startsWith("fe9") || low.startsWith("fea") || low.startsWith("feb")) return true; // fe80::/10, link-local
-  if (/^f[cd]/.test(low)) return true; // fc00::/7, unique local
-  if (low.startsWith("fd00:ec2:")) return true; // AWS's IPv6 metadata address
+  const b = parseV6(ip);
+  if (!b) return true;
+  const zero = (from, to) => b.slice(from, to).every(x => x === 0);
+  const v4 = (o) => v4Blocked(`${b[o]}.${b[o + 1]}.${b[o + 2]}.${b[o + 3]}`);
+  if (zero(0, 15) && (b[15] === 0 || b[15] === 1)) return true; // :: and ::1
+  if (zero(0, 10) && b[10] === 255 && b[11] === 255) return v4(12); // ::ffff:a.b.c.d, mapped
+  if (zero(0, 12)) return v4(12); // ::a.b.c.d, the deprecated compatible form
+  if (b[0] === 0 && b[1] === 100 && b[2] === 255 && b[3] === 155 && zero(4, 12)) return v4(12); // 64:ff9b::/96, NAT64
+  if (b[0] === 0x20 && b[1] === 0x02) return v4(2); // 2002::/16, 6to4
+  if (b[0] === 0x20 && b[1] === 0x01 && b[2] === 0 && b[3] === 0) return true; // 2001::/32, Teredo
+  if (b[0] === 0x20 && b[1] === 0x01 && b[2] === 0x0d && b[3] === 0xb8) return true; // 2001:db8::/32, documentation
+  if (b[0] === 0x01 && zero(1, 8)) return true; // 100::/64, discard
+  if (b[0] === 0xfe && (b[1] & 0xc0) === 0x80) return true; // fe80::/10, link-local
+  if (b[0] === 0xfe && (b[1] & 0xc0) === 0xc0) return true; // fec0::/10, site-local
+  if ((b[0] & 0xfe) === 0xfc) return true; // fc00::/7, unique-local (includes AWS's fd00:ec2::254)
+  if (b[0] === 0xff) return true; // ff00::/8, multicast
   return false;
 }
 
@@ -193,6 +284,8 @@ export async function checkTarget(rawUrl, hosts, deps = {}) {
   try { u = new URL(String(rawUrl)); } catch { throw bad("url is not a valid address"); }
   if (u.protocol !== "https:") throw bad("url must be https; a vault-routed API credential never targets plain http");
   if (u.username || u.password) throw bad("url must not carry a user or password");
+  if (u.port && u.port !== "443") throw bad("url must use the https port; a vault-routed API credential never targets another port");
+  if (/%2f|%5c|%00|\\/i.test(u.pathname)) throw bad("url has an encoded slash, a backslash or a null in its path, which servers read differently than a classifier does");
   if (!hostAllowed(u.hostname, hosts)) throw bad(`${u.hostname} is not on this credential's allowed hosts`);
   const lookup = deps.lookup || defaultLookup;
   let addrs;
@@ -205,4 +298,161 @@ export async function checkTarget(rawUrl, hosts, deps = {}) {
 async function defaultLookup(hostname) {
   const dns = await import("node:dns/promises");
   return dns.lookup(hostname, { all: true, verbatim: true });
+}
+
+
+// ---- the request itself: headers, url, what it does, what the person sees, what they approve ----
+
+/** Headers a caller may never set: the credential owns authentication, the connection owns the rest. */
+const FORBIDDEN_HEADERS = new Set(["authorization", "proxy-authorization", "host", "cookie", "content-length", "transfer-encoding", "connection", "upgrade", "te", "trailer", "expect", "x-forwarded-for", "x-forwarded-host", "forwarded"]);
+
+/**
+ * The headers a caller asked to add, lower-cased and checked: no authentication (the credential
+ * adds that), no framing, no line breaks. Returns a fresh object.
+ * @param {any} h @returns {Record<string, string>}
+ */
+export function checkHeaders(h) {
+  if (h === undefined || h === null) return {};
+  if (!isObj(h)) throw bad("headers must be an object of strings");
+  const out = /** @type {Record<string, string>} */ ({});
+  const names = Object.keys(h);
+  if (names.length > 20) throw bad("at most 20 headers");
+  for (const k of names) {
+    const name = k.toLowerCase();
+    if (!/^[a-z0-9!#$%&'*+.^_`|~-]{1,64}$/.test(name)) throw bad(`"${k.slice(0, 40)}" is not a header name`);
+    if (FORBIDDEN_HEADERS.has(name) || name.startsWith("proxy-") || name.startsWith("sec-")) throw bad(`${name} is set by the credential or the connection, never by a request`);
+    const v = h[k];
+    if (typeof v !== "string" || v.length > 2000 || /[\r\n\0]/.test(v)) throw bad(`header ${name} must be a single-line string`);
+    out[name] = v;
+  }
+  return out;
+}
+
+/**
+ * The request's url with its query merged in. A query already in the url and one in `query` are
+ * both kept; values are strings, numbers or booleans, or lists of them.
+ * @param {any} rawUrl @param {any} query @returns {string}
+ */
+export function buildUrl(rawUrl, query) {
+  let u;
+  try { u = new URL(String(rawUrl)); } catch { throw bad("url is not a valid address"); }
+  if (query !== undefined && query !== null) {
+    if (!isObj(query)) throw bad("query must be an object");
+    for (const [k, v] of Object.entries(query)) for (const x of Array.isArray(v) ? v : [v]) {
+      if (!["string", "number", "boolean"].includes(typeof x)) throw bad(`query.${k.slice(0, 40)} must be a string, number or boolean`);
+      u.searchParams.append(k, String(x));
+    }
+  }
+  u.hash = "";
+  return u.toString();
+}
+
+const ZERO_DECIMAL = new Set(["bif", "clp", "djf", "gnf", "jpy", "kmf", "krw", "mga", "pyg", "rwf", "ugx", "vnd", "vuv", "xaf", "xof", "xpf"]);
+const EMAIL_IN = /[A-Za-z0-9._%+'-]+@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)*\.[A-Za-z]{2,}/g;
+const uniq = a => [...new Set(a.map(x => String(x).trim()).filter(Boolean))].slice(0, 50);
+
+/** A body as fields, whether it was sent as JSON or a form; {} when it is neither or will not parse. */
+function bodyFields(body, contentType) {
+  if (body === undefined || body === null || body === "") return {};
+  if (isObj(body)) return body;
+  const text = String(body);
+  try {
+    if (/x-www-form-urlencoded/i.test(contentType || "")) return Object.fromEntries(new URLSearchParams(text));
+    const j = JSON.parse(text);
+    return isObj(j) ? j : {};
+  } catch { return {}; }
+}
+
+/** The addresses in the To, Cc and Bcc headers of an RFC 822 message, base64url as Gmail's `raw` carries it. */
+function mimeRecipients(raw) {
+  let mime = "";
+  try { mime = Buffer.from(String(raw), "base64url").subarray(0, 65536).toString("utf8"); } catch { return []; }
+  const head = mime.split(/\r?\n\r?\n/, 1)[0].replace(/\r?\n[ \t]+/g, " ");
+  const found = [];
+  for (const line of head.split(/\r?\n/)) if (/^(to|cc|bcc)\s*:/i.test(line)) found.push(...(line.match(EMAIL_IN) || []));
+  return uniq(found);
+}
+
+/**
+ * What a request does, read from its parsed fields by the preset that recognises it, never from
+ * free text: who receives it, and for a payment, how much and to whom. Empty for a request no
+ * preset recognises; the caller then names the host. `amount` is in the currency's main unit.
+ * @param {{ family?: string }|null} preset @param {{ body?: any, contentType?: string }} req
+ * @returns {{ recipients: string[], amount?: number, currency?: string, payee?: string }}
+ */
+export function parseFields(preset, { body, contentType } = {}) {
+  const f = bodyFields(body, contentType);
+  switch (preset && preset.family) {
+    case "gmail": return { recipients: mimeRecipients(f.raw) };
+    case "graph-mail": {
+      const m = isObj(f.message) ? f.message : {};
+      const list = ["toRecipients", "ccRecipients", "bccRecipients"].flatMap(k => (Array.isArray(m[k]) ? m[k] : []).map(r => r && r.emailAddress && r.emailAddress.address));
+      return { recipients: uniq(list.filter(x => typeof x === "string")) };
+    }
+    case "calendar": return { recipients: uniq((Array.isArray(f.attendees) ? f.attendees : []).map(a => a && a.email).filter(x => typeof x === "string")) };
+    case "stripe": {
+      const minor = Number(f.amount);
+      const currency = typeof f.currency === "string" ? f.currency.toLowerCase() : undefined;
+      const payee = [f.destination, f.customer, f.payment_intent, f.charge].find(x => typeof x === "string" && x);
+      return { recipients: [], ...(Number.isFinite(minor) && minor >= 0 ? { amount: currency && ZERO_DECIMAL.has(currency) ? minor : minor / 100 } : {}),
+        ...(currency ? { currency } : {}), ...(payee ? { payee } : {}) };
+    }
+    default: return { recipients: [] };
+  }
+}
+
+const clean = (s, n) => String(s).replace(/[^\x20-\x7e]/g, "?").slice(0, n);
+
+/**
+ * The line on the held card, built by Vyre from parsed fields: who it acts as, what it does, to
+ * whom or how much, and the host and path. Never a subject, a body or any other free text the
+ * request carries (reviewer M10).
+ * @param {{ kind: string, method: string, url: string, actingAs?: string, parsed: { recipients: string[], amount?: number, currency?: string, payee?: string } }} r
+ */
+export function summarize({ kind, method, url, actingAs, parsed }) {
+  const u = new URL(url);
+  const dest = `${u.hostname}${u.pathname}`;
+  const who = actingAs ? ` as ${clean(actingAs, 80)}` : "";
+  let what;
+  if (kind === "spend") {
+    const amt = parsed.amount !== undefined ? `${parsed.amount.toFixed(2)}${parsed.currency ? " " + parsed.currency.toUpperCase() : ""}` : "an amount Vyre could not read";
+    what = `Pay ${amt}${parsed.payee ? " to " + clean(parsed.payee, 80) : ""}${who}`;
+  } else if (kind === "delete") what = `Delete${who}`;
+  else if (parsed.recipients.length) {
+    const shown = parsed.recipients.slice(0, 5).map(x => clean(x, 80)).join(", ");
+    what = `Send${who} to ${shown}${parsed.recipients.length > 5 ? ` and ${parsed.recipients.length - 5} more` : ""}`;
+  } else what = `Send${who} (recipients not readable)`;
+  return `${what} · ${method.toUpperCase()} ${clean(dest, 120)}`;
+}
+
+/** JSON with sorted keys, so the same request always hashes the same. */
+function stable(v) {
+  if (Array.isArray(v)) return `[${v.map(stable).join(",")}]`;
+  if (isObj(v)) return `{${Object.keys(v).sort().map(k => `${JSON.stringify(k)}:${stable(v[k])}`).join(",")}}`;
+  return JSON.stringify(v ?? null);
+}
+
+/**
+ * What an approval binds to: the exact method, url, headers (the ones the caller sent, never the
+ * credential's) and body, so the request that runs is the one the person saw (reviewer M10).
+ * @param {{ credential: string, method: string, url: string, headers?: Record<string, string>, body?: any }} r
+ */
+export function approvalHash({ credential, method, url, headers, body }) {
+  return crypto.createHash("sha256").update(stable({ credential, method: String(method).toUpperCase(), url, headers: headers || {}, body: body ?? null })).digest("hex");
+}
+
+/**
+ * The options that make https.request connect to one already-validated address while the url's
+ * own host name stays the Host header and the TLS server name, so the certificate is still checked
+ * for the name the credential allows and no second DNS lookup can land anywhere else.
+ * @param {URL} url @param {string} address @param {{ method?: string, headers?: Record<string, string>, timeout?: number }} [o]
+ */
+export function pinnedOptions(url, address, o = {}) {
+  const family = address.includes(":") ? 6 : 4;
+  return {
+    protocol: "https:", hostname: url.hostname, port: 443, path: url.pathname + url.search, method: o.method || "GET",
+    headers: { ...(o.headers || {}), host: url.host }, servername: url.hostname, agent: false, timeout: o.timeout ?? 30_000,
+    /** @type {(host: string, opts: any, cb: Function) => void} */
+    lookup: (_host, opts, cb) => (opts && opts.all ? cb(null, [{ address, family }]) : cb(null, address, family)),
+  };
 }

@@ -32,6 +32,7 @@ import * as agentTools from "./tools/agents.js";
 import * as needsTools from "./tools/needs.js";
 import * as connectionTools from "./tools/connections.js";
 import * as saidTools from "./said.js";
+import * as requestTools from "./request.js";
 
 export { presence };
 import * as shareTools from "./tools/share.js";
@@ -153,6 +154,7 @@ export default {
         const slash = String(input.name).indexOf("/");
         if (slash > 0) {
           if (mod) throw new Error("modules cannot write to shared vaults");
+          if (input.kind === "api-credential") throw new Error("an api-credential is never put in a shared vault; it is used only by this Vyre's vault.request");
           return vault.shared.put({ ...input, vault: String(input.name).slice(0, slash), name: String(input.name).slice(slash + 1) }, caller);
         }
         if (mod) {
@@ -356,6 +358,8 @@ export default {
     /** A tool only other modules can call, as vault.release is. */
     const internal = (name, description, input, run) => ctx.tool(name, { internal: true, description, input, run });
     const said = saidTools.register({ vault, internal });
+    // A vendor API call with an api-credential: reads run, asked-for sends run, the rest hold at the Gate.
+    requestTools.register({ vault, tool, internal, said, call: ctx.call ? (name, input) => ctx.call(name, input) : undefined, log: ctx.log });
 
     tool("vault.offboard", [...SURFACES, "mcp"], "Someone left: revoke every pass they hold and list what must be rotated.",
       obj({ person: str }, ["person"]), (input, { caller }) => vault.offboard(input, caller),

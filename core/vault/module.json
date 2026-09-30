@@ -120,7 +120,9 @@
       "vault.said.record",
       "vault.said.match",
       "vault.said.list",
-      "vault.said.revoke"
+      "vault.said.revoke",
+      "vault.request",
+      "vault.api.send"
     ]
   },
   "watches": {
