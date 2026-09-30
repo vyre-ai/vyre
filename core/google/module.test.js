@@ -21,6 +21,8 @@ import { startFakeGoogle } from "../../lib/connectors/testing/fake-google.js";
 process.env.TZ = "UTC";
 
 const S = "https://www.googleapis.com/auth/";
+// Later than the fake's "tomorrow 10:00" whatever day the suite runs (fixed dates went stale on 2026-09-30).
+const dayAt = (days, hh) => { const d = new Date(Date.now() + days * 86_400_000); d.setUTCHours(hh, 0, 0, 0); return d.toISOString(); };
 const ME = "alex@example.com";
 
 /** A vyred in a temp home with the file keystore, and helpers to call it as each kind of caller. */
@@ -179,7 +181,7 @@ test("google: a DWD service account reads with read-only tokens, holds sends and
   assert.equal(fake.mail.sent.length, 1);
 
   // An event with no attendees is written at once, and nobody is told.
-  const quiet = await v.model("google.calendar.create", { title: "Focus: Northwind Bakery menu", start: "2026-10-01T09:00:00Z", end: "2026-10-01T10:00:00Z" });
+  const quiet = await v.model("google.calendar.create", { title: "Focus: Northwind Bakery menu", start: dayAt(2, 9), end: dayAt(2, 10) });
   assert.ok(quiet.data.event.id, JSON.stringify(quiet));
   const quietEv = fake.calendar.events.find(e => e.id === quiet.data.event.id);
   assert.equal(quietEv._sendUpdates, "none");
@@ -190,7 +192,7 @@ test("google: a DWD service account reads with read-only tokens, holds sends and
 
   // An event with attendees is held; approval creates it with sendUpdates=all.
   const before = fake.calendar.events.length;
-  const invite = await v.model("google.calendar.create", { title: "Harlow Legal signing", start: "2026-10-02T15:00:00Z", where: "Zoom", attendees: ["dana@harlowlegal.com"] });
+  const invite = await v.model("google.calendar.create", { title: "Harlow Legal signing", start: dayAt(3, 15), where: "Zoom", attendees: ["dana@harlowlegal.com"] });
   const inviteId = invite.data.held;
   assert.ok(inviteId, JSON.stringify(invite));
   assert.equal(fake.calendar.events.length, before);

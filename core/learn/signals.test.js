@@ -49,7 +49,7 @@ function fakeSwitchboard(home) {
     return {};
   } };`;
   writeModule(path.join(home, "sbmods"), "threads", { does: { tools: ["threads.list", "threads.launch"] }, watches: { emits: ["thread.text", "thread.stopped", "thread.finished"] } }, src);
-  return discover([path.join(home, "sbmods")]);
+  return discover([path.join(home, "sbmods")], { firstPartyRoots: [path.join(home, "sbmods")] });
 }
 const sb = () => /** @type {any} */ (globalThis).__sb;
 
@@ -61,17 +61,17 @@ function fakeMemory(home) {
     return {};
   } };`;
   writeModule(path.join(home, "memmods"), "memory", { does: { tools: ["memory.teach"] } }, src);
-  return discover([path.join(home, "memmods")]);
+  return discover([path.join(home, "memmods")], { firstPartyRoots: [path.join(home, "memmods")] });
 }
 
 async function learning(t, { projects = false, switchboard = false, memory = false, config = {} } = {}) {
   const home = tempHome(t);
   const db = open(path.join(home, "vyre.db"));
   const events = new Events(db);
-  const reg = new Registry({ db, events, config: { role: "local", ...config }, paths: { root: home }, log: () => {} });
+  const reg = new Registry({ db, events, config: { role: "local", ...config }, paths: { root: home }, log: () => {}, firstPartyRoots: ["mods", "sbmods", "memmods"].map(d => path.join(home, d)) });
   const core = discover([path.join(HERE, "..")]).filter(f => ["harness", "learn"].includes(f.manifest?.name));
   const where = projects ? fakeProjects(home, t) : null;
-  const extra = [...(projects ? discover([path.join(home, "mods")]) : []), ...(switchboard ? fakeSwitchboard(home) : []), ...(memory ? fakeMemory(home) : [])];
+  const extra = [...(projects ? discover([path.join(home, "mods")], { firstPartyRoots: [path.join(home, "mods")] }) : []), ...(switchboard ? fakeSwitchboard(home) : []), ...(memory ? fakeMemory(home) : [])];
   await reg.start([...core, ...extra], { role: "local" });
   t.after(async () => { await reg.stop(); db.close(); });
   const of = type => events.since(0, { limit: 5000 }).filter(e => e.type === type);

@@ -92,6 +92,7 @@ async function registry(t, { role, files, home, seam = undefined, link = undefin
   const root = home || tmp(t, "vyre-test-");
   const p = config.ensure(root);
   if (seam) { seams.set(root, seam); t.after(() => seams.delete(root)); }
+  const fp = [];
   const found = discover([CORE]).filter(f => f.manifest && f.manifest.name === "files");
   if (link) {
     const mods = tmp(t, "vyre-mods-");
@@ -103,16 +104,18 @@ async function registry(t, { role, files, home, seam = undefined, link = undefin
         ctx.tool("link.remote", { run: async ({ tool, input }) => ({ result: await globalThis.__filesLinks.get(ctx.paths.root)(tool, input) }) });
         return { async stop() {} };
       } };`);
-    found.push(...discover([mods]));
+    fp.push(mods);
+    found.push(...discover([mods], { firstPartyRoots: [mods] }));
   }
   {
     const mods = tmp(t, "vyre-fake-agents-");
     installFakeReach(mods, root, { agents: agents || [], projects: projects || [], access: access || {} });
     t.after(() => clearFakeReach(root));
-    found.push(...discover([mods]));
+    fp.push(mods);
+    found.push(...discover([mods], { firstPartyRoots: [mods] }));
   }
   const db = open(p.db);
-  const reg = new Registry({ db, events: new Events(db), config: { role, files }, paths: p, log: () => {} });
+  const reg = new Registry({ db, events: new Events(db), config: { role, files }, paths: p, log: () => {}, firstPartyRoots: fp });
   await reg.start(found, { role });
   t.after(async () => { await reg.stop(); db.close(); });
   assert.equal(reg.modules.get("files").state, "running", reg.modules.get("files").error);
