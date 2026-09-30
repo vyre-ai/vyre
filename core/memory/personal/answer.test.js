@@ -519,3 +519,68 @@ test("vyre iq: memory.suggest, memory.retrieve and memory.ask through the module
   assert.equal(none.abstained, true);
   assert.equal(none.answer, null);
 });
+
+test("answer: a correction in chat wins its slot, and the old value becomes history", async t => {
+  const life = [
+    S(["rex (my labrador) needs a walk before the standup.", { a: "Noted." }], { day: 1 }),
+    S(["Rex is my labrador, he loves the beach.", { a: "Nice." }], { day: 2 }),
+    S(["I drive a Honda Jazz, park it on level 2.", { a: "Done." }], { day: 3 }),
+    S(["I'm from Bristol originally.", { a: "Noted." }], { day: 4 }),
+    S(["My wife Sam is a teacher at Hillside School.", { a: "Noted." }], { day: 5 }),
+    S(["my cat is a siamese, she hates the vacuum.", { a: "Poor thing." }], { day: 6 }),
+    S(["no, rex is a poodle not a labrador. fix the notes", { a: "Fixed: Rex is a poodle." }], { day: 20 }),
+    S(["actually I drive a Kia Niro, not the Jazz.", { a: "Updated." }], { day: 21 }),
+    S(["no, I'm from Bath, not Bristol.", { a: "Fixed." }], { day: 22 }),
+    S(["correction: my wife is a nurse, not a teacher.", { a: "Fixed." }], { day: 23 }),
+    S(["my cat keeps knocking the plant over.", { a: "Cats." }, "nope, it's a ragdoll, not a siamese", { a: "Fixed." }], { day: 24 }),
+  ];
+  const { ask } = await world(t, life);
+  for (const [q, a] of [["what breed is rex", "Rex is a poodle."], ["what car do i drive", "You drive a Kia Niro."], ["where am i from", "You are from Bath."],
+    ["what does my wife do", "Your wife is a nurse at Hillside School."], ["what breed is my cat", "Your cat is a ragdoll."]]) {
+    const r = await ask(q);
+    assert.equal(r.answer, a, `${q} -> ${r.answer}`);
+    assert.ok(r.confidence >= 0.5, `${q} @${r.confidence}`);
+  }
+});
+
+test("answer: a work question never gets a personal fact, however many words it shares with one", async t => {
+  const WORKQ = ["what were the earliest delivery slot hours", "what were the first pickup window hours", "how long are pickup slots", "how many orders per pickup slot",
+    "what's the deploy target for the harlow site", "where do we deploy the bakery app", "where is the invoice template file", "what's the path to the client site template",
+    "how much is the monthly price", "what was the old price before the change", "whats the hourly rate for northwind", "which rate changed in june",
+    "what drive folder has the logos", "which google drive holds the contracts", "why no client calls on friday", "what happened with the bakery contact in june",
+    "what was the previous staging server", "where did the old build live", "what's the wifi at the office", "what makes the invoice pdfs",
+    "where do the invoice rates live", "who made the client site template", "what did we use before the new database", "which port does the api run on"];
+  // No personal kind; at most a thing's fate or a name, which answer only for a thing or person memory knows by exactly that name.
+  for (const q of WORKQ) { const p = parse(q); assert.ok(p === null || p.kind === "carFate" || p.kind === "who", `${q} -> ${JSON.stringify(p)}`); }
+  const { ask } = await world(t);
+  for (const q of WORKQ) {
+    const r = await ask(q);
+    assert.ok(r.kind !== "fact", `${q} -> ${r.answer}`);
+  }
+  // The user's own questions still are.
+  for (const [q, a] of [["what car do i drive", "You drive a blue Volvo XC40."], ["where did i live before seattle", "Before Seattle you lived in Portland."],
+    ["who are my clients", /Harlow Legal/], ["whats my wfie's name", "Your wife is Jordan."], ["where do i work", "You work at Rivera Studio."]]) {
+    const r = await ask(q);
+    if (a instanceof RegExp) assert.match(String(r.answer), a, q); else assert.equal(r.answer, a, q);
+    assert.equal(r.kind, "fact", q);
+  }
+  // A typo is two letters swapped in a short word, not any word one letter away.
+  assert.equal(normalize("whats the rate"), "what is the rate");
+  assert.equal(normalize("home wifi"), "home wifi");
+  assert.equal(normalize("my wfie"), "my wife");
+});
+
+test("facts: a person named only in the personal store answers empty with a note pointing to memory.me, for the person only", async t => {
+  const { call } = await world(t);
+  await call("memory.remember", { text: "My brother Zelda lives in Denver." });
+  assert.ok((await call("memory.me", { about: "Zelda" })).data.facts.length > 0, "the personal store has her");
+  const f = await call("memory.facts", { about: "Zelda" });
+  assert.ok(!f.error, f.error);
+  assert.equal(f.data.about, null);
+  assert.deepEqual(f.data.facts, []);
+  assert.match(f.data.note, /memory\.me/);
+  const k = await call("memory.facts", { about: "Zelda" }, "mcp:agent:kit");
+  assert.ok(!JSON.stringify(k).includes("memory.me"), "an agent is not told the personal store knows a name");
+  const none = await call("memory.facts", { about: "Nobody Atall" });
+  assert.equal(none.data.note, undefined);
+});
