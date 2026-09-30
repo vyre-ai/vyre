@@ -820,7 +820,7 @@ Files on the box's VyreDrive shares whose name matches what you typed after #, f
 - Input:
   - `limit` integer
   - `q` string
-- Callers: `capsule`, `cli`, `deck`, `local`, `tailnet`
+- Callers: `capsule`, `cli`, `deck`, `local`, `mobile`, `tailnet`
 
 ### `files.preview`
 

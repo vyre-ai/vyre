@@ -722,7 +722,7 @@ export function drive(ctx, { role, guard: g, roots }) {
     ctx.tool("files.mentions.search", {
       description: "Files on the box's VyreDrive shares whose name matches what you typed after #, for tagging one in a chat. Runs as the person asking.",
       input: { type: "object", properties: { q: { type: "string" }, limit: { type: "integer" } } },
-      callers: ["cli", "local", "deck", "capsule", "tailnet"],
+      callers: ["cli", "local", "deck", "capsule", "mobile", "tailnet"],
       run: input => forward("files.mentions.search", input),
     });
     ctx.tool("files.mentions.resolve", {

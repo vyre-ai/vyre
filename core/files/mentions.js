@@ -51,10 +51,20 @@ export function mentions(ctx, { folder, shares, resolveIn }) {
     } catch { return null; }
   };
 
+  // A tag's grant ends with its chat. Sessions emits thread.deleted with the thread's id; the
+  // 30 day sweep is the net for a chat that went away some other way.
+  const drop = e => {
+    const p = (e && e.payload) || e || {};
+    const id = String((e && e.thread) || p.thread || p.uuid || p.id || "");
+    if (id) try { db().prepare("DELETE FROM files_mention_grants WHERE thread = ?").run(id); } catch { /* table not there yet */ }
+  };
+  try { ctx.events.on("thread.deleted", drop); } catch { /* no event bus in a bare test */ }
+  try { db().prepare("DELETE FROM files_mention_grants WHERE at < ?").run(Date.now() - 30 * 86_400_000); } catch { /* same */ }
+
   ctx.tool("files.mentions.search", {
     description: "Files on the box's VyreDrive shares whose name matches what you typed after #, for tagging one in a chat. Runs as the person asking.",
     input: { type: "object", properties: { q: { type: "string" }, limit: { type: "integer" } } },
-    callers: ["cli", "local", "deck", "capsule", "tailnet"],
+    callers: ["cli", "local", "deck", "capsule", "mobile", "tailnet"],
     run: async ({ q = "", limit = 30 }) => {
       q = String(q || "").trim();
       limit = Math.min(50, Math.max(1, Number(limit) || 30));

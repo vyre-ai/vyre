@@ -972,7 +972,7 @@ test("drive mentions: search finds files by name; resolve, for the chat only, le
   const a = path.join(work, "a"), b = path.join(work, "b");
   for (const d of [a, b]) fs.mkdirSync(path.join(d, "docs"), { recursive: true });
   fs.writeFileSync(path.join(a, "docs", "report.md"), "quarterly"); fs.writeFileSync(path.join(a, "other.md"), "x"); fs.writeFileSync(path.join(b, "report-b.md"), "b");
-  const { reg } = await registry(t, { role: "box",
+  const { reg, events } = await registry(t, { role: "box",
     agents: [{ name: "kit", kind: "agent", projects: [] }],
     projects: [{ slug: "a", name: "A", home: a, workspaces: [] }, { slug: "b", name: "B", home: b, workspaces: [] }], access: {},
     cfg: { files: { roots: [work], drive: { shares: { projects: null, work } } } } });
@@ -999,4 +999,9 @@ test("drive mentions: search finds files by name; resolve, for the chat only, le
   fs.unlinkSync(path.join(a, "docs", "report.md"));
   fs.symlinkSync(path.join(b, "report-b.md"), path.join(a, "docs", "report.md"));
   await no(reg, "files.drive.read", { share: "work", path: "a/docs/report.md" }, "mcp:agent:kit", "not_available", { thread: "t1" });
+  // The chat is deleted: its grant goes with it.
+  await ok(reg, "files.mentions.resolve", { id: "work:a/other.md", thread: "t3" }, "module:sessions");
+  await ok(reg, "files.drive.read", { share: "work", path: "a/other.md" }, "mcp:agent:kit", { thread: "t3" });
+  events.emit("sessions", "thread.deleted", { thread: "t3" }, { thread: "t3" });
+  await no(reg, "files.drive.read", { share: "work", path: "a/other.md" }, "mcp:agent:kit", "not_available", { thread: "t3" });
 });
