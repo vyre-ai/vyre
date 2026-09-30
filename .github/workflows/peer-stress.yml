@@ -31,7 +31,7 @@ jobs:
           for i in $(seq 1 $((n * 2))); do nice -n 10 sh -c 'while :; do :; done' & done
           fails=0
           for i in $(seq 1 50); do
-            out=$(node --test --test-name-pattern="sends and exits|200 forgers|closed before or during" test/peer-race.test.js 2>&1) || true
+            out=$(node --test --test-reporter=spec --test-name-pattern="sends and exits|200 forgers|closed before or during" test/peer-race.test.js 2>&1) || true
             echo "$out" | grep -q "^ℹ fail 0" || { fails=$((fails+1)); echo "RUN $i FAILED"; echo "$out" | grep -vE "Experimental|trace-warn" | tail -40; }
           done
           echo "fails=$fails of 50 (shard ${{ matrix.shard }}, ${{ matrix.os }})"
