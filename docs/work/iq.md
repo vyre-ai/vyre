@@ -64,6 +64,11 @@ GitHub hosted runners (push work/iq). Never testbox (it is the user's server), n
   TODO: agents' own correction rows are quoted text only and do not yet outrank/undo anything;
   the person's `yes` to an agent proposal still needs threads.said.
 
+## Done (task 5, memory.brief and the five MCP tools)
+- memory.brief (core/memory/index.js, tests core/memory/brief.test.js) and the five tool names in harness/mcp (memory-tools.js, server.js, memory-tools.test.js).
+- TODO: harness.brief (core/harness/index.js) still builds its own memory.today block; swap it for memory.brief once the harness owner agrees the budget (the brief also carries decisions). The ACP driver sends memory.brief as a resource block on the first session/prompt (wave B).
+- TODO: scoping is server-side (memory's guard on the caller) but the MCP server's client-side project default for memory_remember reads VYRE_PROJECTS; sessions' meta.grantedProjects should replace it when it lands.
+
 ## Doing
 - Fixed reviewer-2 H1 at 22ad3f07 (my ctx.memory.write door reverted at cece5c54; platform owns the door).
 - Two confident-wrong bugs fixed: d6890a60 (a correction in chat wins its one-value slot, old value becomes history), 28e51fab (personal fast path stays out of work questions).

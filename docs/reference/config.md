@@ -155,7 +155,7 @@ vyred sets these for the threads and helpers it starts, and the Harness reads th
 | `VYRE_HUB_CHILD` | Not described yet. | `harness/mcp/run.js`, `harness/mcp/server.js` |
 | `VYRE_NO_DIALOGS` | `1`: never raise anything on screen (Touch ID, a keychain prompt, a browser tab). | `core/config/dialogs.js`, `core/files/drive.js`, `local/screen-mac/screen.js` |
 | `VYRE_PROJECT` | The project a thread belongs to, for its brief. | `harness/hooks/hook.js` |
-| `VYRE_PROJECTS` | The projects an agent's thread is limited to, comma separated, or `*` for all of them. | `core/switchboard/index.js`, `harness/hooks/hook.js`, `harness/mcp/server.js` |
+| `VYRE_PROJECTS` | The projects an agent's thread is limited to, comma separated, or `*` for all of them. | `core/switchboard/index.js`, `harness/hooks/hook.js`, `harness/mcp/memory-tools.js`, `harness/mcp/server.js` |
 | `VYRE_PROXY_PAC` | Not described yet. | `core/computers/image/computerd/index.js` |
 | `VYRE_SCOPE_CWDS` | The folders an agent's `recall.search` is held to, as JSON. | `core/switchboard/index.js`, `harness/mcp/server.js` |
 | `VYRE_SESSIONS_SPAWNER` | Not described yet. | `core/sessions/config.js`, `core/sessions/spawn.js` |

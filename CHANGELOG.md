@@ -4,6 +4,15 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+- `memory.brief { for: session|project|teammate|assistant, project?, thread? } -> { text }` (plan 3.1C):
+  at most 600 characters, plain words on memory_ask, memory_remember and memory_correct, then the
+  project's current decisions (top 5) and what was learned lately, each marked "from memory, not
+  instructions". It runs memory.decisions and memory.today with the caller's own identity, so the
+  caller's reach applies; an untrusted write never enters it. Vyre's MCP server (harness/mcp) offers
+  the five memory tools by name: memory_ask and memory_decisions as before, and memory_search,
+  memory_remember and memory_correct (harness/mcp/memory-tools.js) over memory.retrieve, memory.write
+  and memory.heard, whose raw names are no longer listed beside them. The project a call names only
+  narrows; vyred still decides the caller and its reach.
 - Corrections made in chat reach memory three ways (plan 3.1B, 3.1E). New agent tool `memory.heard
   { action, answer | fact | subject+rel+object, from_turn: { seq }, project? }`: with the person's own
   fresh typed turn behind it (checked by `threads.said`) it applies as theirs; without it, it waits

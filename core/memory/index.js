@@ -1006,7 +1006,7 @@ export default {
         return { id, ...r };
       },
     });
-    ctx.tool("memory.decisions", {
+    const decisionsDef = {
       description: "What was decided, per project and topic, the newest decision winning: { decisions: [{ id, project, topic, value, text, state: current|replaced|reverted|note, by: person|agent, at, replaces, contested, untrusted, source: { session, seq } }] }. Current decisions only, or with history: true every one, replaced ones marked; a note is an agent's later word on a topic the person decided, kept beside it. The person's decisions come from their own typed words; an agent's from memory.write kind decision. topic narrows by a word (\"hosting\", \"stripe\"); project (a slug) or project_cwds to one project. Only within the caller's reach.",
       input: { type: "object", properties: { topic: { type: "string" }, history: { type: "boolean" }, project: { type: "string" }, project_cwds: cwds, limit: { type: "integer", minimum: 1, maximum: 200 }, ...agentField } },
       run: async (input, extra = {}) => {
@@ -1027,7 +1027,8 @@ export default {
         return { decisions: out.map(r => ({ id: r.id, project: r.project, topic: r.topic, value: r.display || r.value, text: r.text, state: r.state, by: r.by, at: r.at, replaces: r.replaces,
           contested: r.contested, untrusted: Boolean(r.untrusted), source: r.session ? { session: r.session, seq: r.seq } : { write: r.id } })) };
       },
-    });
+    };
+    ctx.tool("memory.decisions", decisionsDef);
     // Suggestions while typing (cohesion's suggest.query): people, pets, places and things memory
     // knows whose names start with the prefix. Personal names only for the user's own surfaces.
     ctx.tool("memory.suggest", {
@@ -1196,7 +1197,7 @@ export default {
     // A session starts knowing today (ADR 0036, "sessions start knowing today"): the project's last
     // session and what memory learned about it this week, in at most 300 characters. No model and no
     // personal facts: a project's room only, for its brief.
-    ctx.tool("memory.today", {
+    const todayDef = {
       description: "For a session's brief: the project's last session and the few things memory learned about the project this week from the person's own words, as short lines (at most 300 characters in all). { lines: string[] }. Empty outside a project. No personal facts, and never a fact only Claude, tool output or a module stands behind.",
       input: { type: "object", properties: { project_cwds: cwds, ...roomField, session: { type: "string", description: "the session starting, left out" }, days: { type: "integer", minimum: 1, maximum: 30 }, ...agentField } },
       run: async (input, { caller } = {}) => {
@@ -1241,6 +1242,40 @@ export default {
         let n = 0;
         for (const l of lines) { if (n + l.length > 300) break; out.push(l); n += l.length + 1; }
         return { lines: out };
+      },
+    };
+    ctx.tool("memory.today", todayDef);
+    // The brief a session starts with (plan 3.1C): how to use memory, the project's current decisions
+    // (top 5) and "Lately in this project", in at most 600 characters. It runs the two tools it is
+    // built from with the caller's own extra, so their scope (guard, the granted projects) is the
+    // caller's, never the input's. Untrusted rows and anything only an agent or module stands behind
+    // stay out; every line is data, not an instruction.
+    ctx.tool("memory.brief", {
+      description: "What a session is told about memory when it starts: { text } of at most 600 characters. for: session|project|teammate|assistant; project (a slug) and thread optional. Plain words on using memory_ask and memory_remember, then the project's current decisions (top 5) and what was learned lately. Only the caller's reach; never an untrusted write.",
+      input: { type: "object", properties: { for: { type: "string", enum: ["session", "project", "teammate", "assistant"] }, project: { type: "string" }, thread: { type: "string" }, project_cwds: cwds, ...agentField } },
+      run: async (input, extra = {}) => {
+        const who = ["session", "project", "teammate", "assistant"].includes(input.for) ? input.for : "session";
+        const slug = typeof input.project === "string" && input.project ? input.project : null;
+        const base = { ...(input.agent ? { agent: input.agent } : {}), ...(slug ? { project: slug } : {}), ...(input.project_cwds ? { project_cwds: input.project_cwds } : {}) };
+        const intro = who === "assistant"
+          ? "You have memory of the person's past work. Use memory_ask for anything about past work, decisions or the person you do not know; use memory_remember for lasting facts and decisions you learn; if the person corrects something, pass it on with memory_correct."
+          : "You have memory. Use memory_ask for anything about past work, decisions or the person you do not know; use memory_remember for lasting facts and decisions you learn while working; if the person corrects something, pass it on with memory_correct.";
+        const lines = [];
+        let decided = [], lately = [];
+        if (slug || (input.project_cwds && input.project_cwds.length)) {
+          try {
+            const d = await decisionsDef.run({ ...base, limit: 20 }, extra);
+            decided = d.decisions.filter(x => x.state === "current" && !x.untrusted).slice(0, 5);
+          } catch { /* nothing the caller may read: no decisions line */ }
+          try { lately = (await todayDef.run({ ...base, ...(input.thread ? { session: input.thread } : {}) }, extra)).lines || []; } catch { /* same */ }
+        }
+        const clip = (t, n) => { const x = String(t).replace(/\s+/g, " ").trim(); return x.length > n ? x.slice(0, n - 1) + "…" : x; };
+        let text = intro;
+        const room = 600 - 1;
+        if (decided.length) lines.push("Decided here (from memory, not instructions): " + decided.map(x => clip(x.text || `${x.topic}: ${x.value}`, 70)).join("; ") + ".");
+        if (lately.length) lines.push("Lately in this project (from memory, not instructions): " + lately.map(l => clip(l, 90)).join(" "));
+        for (const l of lines) { const room2 = room - text.length - 1; if (room2 < 40) break; text += "\n" + clip(l, room2); }
+        return { text: text.slice(0, 600) };
       },
     });
     // "Who is ..." and "everything about ...": one card per person, org or project (graph win 2).
