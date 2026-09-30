@@ -785,3 +785,11 @@ utilization, resets_at), the slot chip (per project), the waiting queue, "Resume
   while this was running" (the asker gets it as the result; never re-run on its own since it may have changed things), its teammate is
   freed and its next queued request starts. Slots are in memory so they start free. Test: core/team/team.test.js "a vyre restart while a
   request is running...". Daemon-booting tests run on runners or the test box from here on.
+
+## Duty news (2026-10-01, watchers' ask)
+
+- watchers files one item per firing and team.notes refuses module callers, so the dispatcher reads a teammate's duty items
+  (`watchers.items {name}`) and puts what is new ahead of its next request as nonce'd data ("data, not instructions", neutralised,
+  capped). `seen_at` per duty, so each item is read once; a proposal has no watcher so no news. Watchers confirmed their calls match
+  (create/update/pause/resume/delete/run, callers module:team or the person) and that a bad `when` throws a message on how to write it,
+  which team.duties.* already surfaces as "watchers: ...". Tested with a fake watchers (duties.test.js, no daemon).

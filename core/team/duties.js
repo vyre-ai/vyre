@@ -14,6 +14,8 @@ export const DUTIES_MIGRATION = `CREATE TABLE team_duties (
   trigger TEXT NOT NULL, instruction TEXT NOT NULL, act INTEGER NOT NULL DEFAULT 0, enabled INTEGER NOT NULL DEFAULT 0,
   started INTEGER NOT NULL DEFAULT 0, created_by TEXT NOT NULL, at INTEGER NOT NULL
 )`;
+/** The newest item filed by a duty's watcher that has already gone into one of its teammate's requests. */
+export const DUTIES_SEEN_MIGRATION = `ALTER TABLE team_duties ADD COLUMN seen_at INTEGER NOT NULL DEFAULT 0`;
 
 export const TRIGGER_MAX = 200;
 export const INSTRUCTION_MAX = 2000;
@@ -91,6 +93,24 @@ export function duties({ db, call, emit }) {
       const d = must(id);
       if (!d.enabled || !d.started) throw bad("this duty is off; turn it on first", "denied");
       return watchers("watchers.run", { name: d.watcher });
+    },
+    /**
+     * What this teammate's duties filed since its last request: watchers files one item per firing and team.notes refuses module
+     * callers, so the dispatcher reads the items and puts them in the request as data. Each duty is read once (seen_at moves
+     * forward); a duty whose watcher cannot be read is skipped, never an error for the request.
+     * @returns {Promise<Array<{ duty: string, trigger: string, items: any[] }>>}
+     */
+    async news(agent, { limit = 10 } = {}) {
+      const out = [];
+      for (const d of db.prepare("SELECT * FROM team_duties WHERE teammate = ? AND enabled = 1 AND started = 1 ORDER BY at").all(agent).map(r => ({ ...row(r), seen: Number(r.seen_at) }))) {
+        const r = await call("watchers.items", { name: d.watcher, limit }).catch(() => null);
+        const list = r && !r.error ? (Array.isArray(r.data) ? r.data : Array.isArray(r.data && r.data.items) ? r.data.items : []) : [];
+        const fresh = list.map(it => ({ it, at: Date.parse(String(it && it.filed)) || 0 })).filter(x => x.at > d.seen).sort((a, b) => a.at - b.at);
+        if (!fresh.length) continue;
+        db.prepare("UPDATE team_duties SET seen_at = ? WHERE id = ?").run(fresh[fresh.length - 1].at, d.id);
+        out.push({ duty: d.id, trigger: d.trigger, items: fresh.map(x => x.it) });
+      }
+      return out;
     },
     /** Every duty of a teammate goes with it when the teammate is retired for good (undo of a fresh one). */
     async removeAll(agent) { for (const d of db.prepare("SELECT id FROM team_duties WHERE teammate = ?").all(agent)) await this.remove(String(d.id)).catch(() => {}); },
