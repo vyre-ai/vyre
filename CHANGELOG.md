@@ -4,6 +4,13 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+- capsule: the Mac pieces of the 0.1.1 to 0.2 hop (`local/migrate`, R6). Detects an old ad hoc
+  Capsule, its npm global `vyre` and local vyred; stops them by exact pid or exact bundle path,
+  carries clipboard history, frecency, watches and config into the new node's home, renames the
+  old `~/.vyre` to `~/.vyre-0.1.1` instead of deleting it, and leaves a marker with the old
+  presence key id for the new Capsule to retire. `node local/migrate/cli.js` is the interface
+  launch's install line runs first, on a Mac.
+
 ## 0.1.1
 
 What's new:
