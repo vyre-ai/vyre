@@ -16,7 +16,7 @@ import { createRelay } from "../../relay/node/server.js";
 import { connect } from "../../relay/client/client.js";
 import { nodeCrypto, fileKeyStore } from "../../relay/client/nodecrypto.js";
 import { tempHome } from "../../test/helpers.js";
-import { macCore } from "../../test/fake-core-keys.js";
+import { macCore, fakeCoreKeys } from "../../test/fake-core-keys.js";
 import { deviceKeyFor } from "./devicekey.js";
 
 const KEY = "tskey-auth-kFAKE0CNTRL-0123456789abcdef";
@@ -363,4 +363,22 @@ test("tailnet: a failed node delete never lets the old node back in, even when t
   await d.registry.call("relay.devices.list", {}, "cli");
   await new Promise(r => setTimeout(r, 50));
   assert.equal(deletes.length, 2, "once deleted, never asked again");
+});
+
+test("redeem with vyre-core: a key file left by an earlier pairing is deleted, and the old device is named for the box to remove", async t => {
+  const d = await box(t);
+  const root = tempHome(t);
+  // As an earlier pairing left it: the file key and the record of its device.
+  const first = await redeem((await d.registry.call("relay.pair.start", {}, "cli", PROOF)).data.url, { root, name: "old desktop" });
+  const keyFile = path.join(root, "relay-device", "key.json");
+  assert.ok(fs.existsSync(keyFile), "the file key exists before core");
+  const core = macCore() || fakeCoreKeys();
+  const next = await redeem((await d.registry.call("relay.pair.start", {}, "cli", PROOF)).data.url, { root, name: "new desktop", coreKeys: core });
+  assert.equal(fs.existsSync(keyFile), false, "the old key file is gone");
+  assert.notEqual(next.device, first.device, "core's key is a new device");
+  assert.equal(/** @type {any} */ (next).superseded.device, first.device);
+  assert.match(/** @type {any} */ (next).superseded.note, /relay\.devices\.remove/);
+  // A pairing that never had a file says nothing.
+  const clean = await redeem((await d.registry.call("relay.pair.start", {}, "cli", PROOF)).data.url, { root: tempHome(t), name: "third", coreKeys: core });
+  assert.equal(/** @type {any} */ (clean).superseded, undefined);
 });

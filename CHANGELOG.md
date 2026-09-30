@@ -4,6 +4,7 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+- Migrating a Mac to vyre-core's device key: `redeem` deletes a `relay-device/key.json` left by an earlier pairing the moment the new pairing succeeds, and its result names the old device (`superseded`) for the owner to remove at the box with `relay.devices.remove`, so the old file key stops being trusted (reviewer-2).
 - Your own domain now serves. `names.domain.serve { domain }`, after `names.domain.check` passes, gets the domain's certificate by ACME DNS-01 through the `_acme-challenge` CNAME (the challenge goes to `<routehash>.acme.vyre.run` through the directory and is cleared after), keeps it beside the box's name, and the tailnet listener presents it by SNI, accepts its Host, and applies the same owner and Origin rules. Events `domain.ready { domain, address }` and `domain.failed`; `names.status` gains `domain` and `port`. Renewed daily at 30 days like the name's. (The event is `domain.ready`, not `names.domain.ready`: event names are noun.past-verb.) Tested against the real directory Worker on the fake runtime and a fake DNS, and a real TLS connection on loopback.
 - vyred's own start (`core/daemon/main.js`) hands the relay vyre-core's key store on a Mac where core is installed and trusted; in-process tests never do. `createCoreKeys` from lib/vyre-core-keys.js, so the box, route and device keys stay in core.
 #### tests: every Chrome launch carries the mock-keychain flags
