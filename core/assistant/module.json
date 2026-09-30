@@ -4,7 +4,7 @@
   "description": "The one assistant's own tools: a daily digest and triage from waiting.list and agents.list, and read-only pattern-noticing from what memory already surfaces about corrections and conflicts. Off by default; the person turns the digest on.",
   "roles": ["box", "local"],
   "requires": [],
-  "does": { "tools": ["assistant.brief", "assistant.patterns", "assistant.glance", "assistant.capabilities", "assistant.log", "assistant.prompt.diff", "assistant.daily"] },
+  "does": { "tools": ["assistant.brief", "assistant.patterns", "assistant.glance", "assistant.capabilities", "assistant.log", "assistant.prompt.diff", "assistant.daily", "assistant.welcome"] },
   "watches": { "emits": ["assistant.briefed", "assistant.glanced", "assistant.rolled"] },
   "shows": { "cli": [] },
   "settings": [

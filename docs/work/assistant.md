@@ -53,3 +53,4 @@ Branch: work/assistant · Worktree: ../vyre-assistant · Owner session: assistan
   duties) share assistant.chattiness a day (default 3), counted in the person's day. Ask and planner
   are not counted; loud alarms ring through. Over budget: no push, push.capped emitted, the item stays
   in waiting and the glance. Quiet hours were already there. Changed contract: core/push.
+- assistant.welcome {text, cards:[{id,title,body,action:{tool,input}|{href}}]} built from onboard.status (core/assistant/welcome.js), shape final per native-core's ask. Caller identity: the assistant runs as agent kind "assistant" (meta.agentKind), answered in CHAT.md.

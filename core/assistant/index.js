@@ -14,6 +14,7 @@
 
 import { glance } from "./glance.js";
 import { capabilities, render } from "./manifest.js";
+import { welcomeOf } from "./welcome.js";
 
 const STATE_KEY = "last_digest_day";
 const DAILY_DAY = "daily_day";
@@ -141,6 +142,16 @@ export default {
         await gate(meta);
         const cap = await capabilities(asCall, i.area);
         return i.compact ? { text: render(cap) } : cap;
+      },
+    });
+
+    ctx.tool("assistant.welcome", {
+      description: "The first message in the chat after setup: {text, cards:[{id, title, body, action:{tool,input}|{href}}]}. Built from onboard.status with no model call; a card appears only when its step is still open.",
+      input: { type: "object", properties: {} },
+      run: async (_, meta = {}) => {
+        await gate(meta);
+        const r = await ctx.call("onboard.status", {}).catch(() => null);
+        return welcomeOf(r && !r.error ? r.data : null);
       },
     });
 

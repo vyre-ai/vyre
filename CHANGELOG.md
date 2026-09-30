@@ -4,6 +4,7 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+- `assistant.welcome`: the first chat message after setup, {text, cards}, built from onboard.status with no model call. A card shows only while its step is open.
 - Module contract v1 (ADR 0047), as a proof on the platform branch. `module.json` says for each
   tool who may call it (`reach`) and whether it acts as you outside (`outward`). Each ctx member a
   module uses has one declaration, and the install card is built from them.
