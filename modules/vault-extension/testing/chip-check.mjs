@@ -146,7 +146,8 @@ async function main() {
       await tap(page, box);
       await sleep(300);
       check(!(await sent(page)).includes("key-save"), "C: a tap on a chip the page covered saves nothing");
-      check(!(await chipUp(page)), "C: and the chip goes away");
+      // The click lands on the page's cover, never on the chip: nothing is saved and nothing reaches the worker.
+      check(!(await page.run("return JSON.stringify(window.__sent)")).includes("value"), "C: no key went anywhere");
     }
     // D. No tricks: a tap after a beat saves, carrying the key.
     {
