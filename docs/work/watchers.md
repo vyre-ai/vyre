@@ -80,8 +80,12 @@ it runs on schedule under vyred (a public source, so no credentials are needed f
 
 ## Doing
 
-Nothing yet on this branch for 0.2 — the lead's GO (CHAT.md 02:08) and an immediate rate-limit HOLD
-arrived in the same window. No 0.2 code written. Holding per the lead's instruction until pinged.
+2026-09-30 resume: merged stage/0.2 into work/watchers (ba39a3a4, clean, no conflicts). Posted the duty
+shape to CHAT.md (09:19 watchers -> teammates, lead): duty = teammate-owned watcher folder, when is an
+event, a schedule or a vault.push (never polling), act:false files to notes/waiting, act:true adds
+ctx.call/ask with the Gate on outward calls; teammates hands {trigger, instruction, act} and watchers
+writes the folder. Waiting on teammates' agree/change. Next code: lib/sandbox (no lib/sandbox exists
+on stage/0.2 yet; agree module boundary with platform and integrator, then build).
 
 ## Next
 
