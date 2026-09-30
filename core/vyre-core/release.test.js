@@ -158,13 +158,17 @@ function refused(t, setup, args, re) {
   assert.deepEqual(fs.readdirSync(d).sort(), ["src", "x.tgz"]);
 }
 
+// Rename f on the way in: bsdtar spells it -s, GNU tar --transform.
+const gnuTar = /GNU/.test(execFileSync("tar", ["--version"], { encoding: "utf8" }));
+const renameArgs = (to) => (gnuTar ? ["-P", "--transform", `s|^f$|${to}|`, "f"] : ["-P", "-s", `|^f$|${to}|`, "f"]);
+
 test("absolute path is refused", (t) => {
-  refused(t, (s) => fs.writeFileSync(path.join(s, "f"), "x"), ["-P", "-s", "|^f$|/etc/evil|", "f"], /absolute/);
+  refused(t, (s) => fs.writeFileSync(path.join(s, "f"), "x"), renameArgs("/etc/evil"), /absolute/);
 });
 
 test(".. component is refused", (t) => {
   refused(t, (s) => { fs.mkdirSync(path.join(s, "sub")); fs.writeFileSync(path.join(s, "f"), "x"); },
-    ["-P", "-s", "|^f$|../evil|", "f"], /\.\./);
+    renameArgs("../evil"), /\.\./);
 });
 
 test("symlink is refused", (t) => {

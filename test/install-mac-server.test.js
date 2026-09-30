@@ -215,7 +215,9 @@ test("install-mac-server.sh: without Homebrew, pinned Colima and Lima that match
   const m = noBrew(t);
   const r = run(m.env, ["--yes", "--from", m.src]);
   assert.equal(r.status, 0, r.stderr + r.stdout);
-  assert.ok(m.installed("bin/colima") && m.installed("lima/bin/limactl") && m.installed("bin/docker"));
+  // A docker already on PATH (a Linux CI image) is used, not replaced.
+  const hasDocker = spawnSync("sh", ["-c", "command -v docker"], { env: { PATH: "/usr/bin:/bin" } }).status === 0;
+  assert.ok(m.installed("bin/colima") && m.installed("lima/bin/limactl") && (hasDocker || m.installed("bin/docker")));
   assert.equal(fs.statSync(path.join(m.env.VYRE_SERVER_DIR, "bin", "colima")).mode & 0o111, 0o111);
   const plist = fs.readFileSync(m.colimaPlist, "utf8");
   assert.match(plist, /<string>--foreground<\/string>/);
