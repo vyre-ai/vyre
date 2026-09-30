@@ -102,6 +102,7 @@
       "adr/0049-deep-chrome-control.md",
       "adr/0041-github-everywhere.md",
       "adr/0042-move-engine.md",
+      "adr/0043-identity-marks-and-vyre-code.md",
       "adr/0037-windows.md"
     ]},
     { "title": "Security", "pages": ["security/index.md"] },
@@ -110,6 +111,7 @@
       "CONTRIBUTING-DOCS.md",
       "contributing/testing.md",
       "design/TOKENS.md",
+      "design/brand/README.md",
       "design/deck.md",
       "design/settings-inventory.md",
       "design/native-bar.md",
