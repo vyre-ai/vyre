@@ -12,6 +12,7 @@ import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { openTab } from "./cdp.js";
+import { CHROME_SAFE } from "../../lib/chrome-flags/index.js";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const TREE = path.resolve(HERE, "..", "..");
@@ -38,7 +39,7 @@ try {
 
   const bin = process.env.CHROME || path.join(os.homedir(), "vyre-ci/pwa-chrome/chrome-headless-shell/linux-154.0.8037.57/chrome-headless-shell-linux64/chrome-headless-shell");
   const cdpPort = 9491 + Math.floor(Math.random() * 100);
-  const chrome = spawn("nice", ["-n", "15", bin, `--remote-debugging-port=${cdpPort}`, "--remote-debugging-address=127.0.0.1", `--user-data-dir=${scratch}`,
+  const chrome = spawn("nice", ["-n", "15", bin, `--remote-debugging-port=${cdpPort}`, "--remote-debugging-address=127.0.0.1", ...CHROME_SAFE, `--user-data-dir=${scratch}`,
     "--no-sandbox", "--no-first-run", "--no-default-browser-check", "--window-size=1280,860", "about:blank"], { stdio: "ignore" });
   started.push(chrome);
   const CDP = `http://127.0.0.1:${cdpPort}`;

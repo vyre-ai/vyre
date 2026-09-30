@@ -896,3 +896,13 @@ test("pendingEvents: the rows still queued and the steers not taken in, from thr
   assert.equal(marker && marker.pending, true);
   assert.deepEqual(pendingEvents([...ev, { id: 13, type: "thread.steered", payload: { uuid: "s2" } }, { id: 14, type: "thread.sent", payload: { queued: 5, via: "turn" } }]), []);
 });
+
+test("thread.artifact draws one card row per version, and never folds into a run of tools", () => {
+  const s = createSession(T);
+  ev(s, "thread.artifact", { thread: T, artifact: "a1", version: 1, kind: "report", title: "Q3 report" }, { at: 5 });
+  ev(s, "thread.artifact", { thread: T, artifact: "a1", version: 1, kind: "report", title: "Q3 report" }, { at: 6 });
+  ev(s, "thread.artifact", { thread: T, artifact: "a1", version: 2, kind: "report", title: "Q3 report" }, { at: 7 });
+  const rows = s.items.filter(it => it.kind === "tool" && it.name === "artifact");
+  assert.equal(rows.length, 2);
+  assert.deepEqual(rows[0].render, { kind: "artifact", id: "a1", thread: T, version: 1, type: "report", title: "Q3 report", agent: null, at: 5 });
+});

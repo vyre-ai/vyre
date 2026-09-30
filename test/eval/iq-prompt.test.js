@@ -1,4 +1,4 @@
-// The Capsule's quick answer (Vyre IQ): the prompt's rules and the eval's grader, on fixed answers.
+// The Capsule's quick answer (Vyre Memory): the prompt's rules and the eval's grader, on fixed answers.
 // The live run (the model itself) is scripts/eval-iq-prompt.js --live, run by a person.
 import test from "node:test";
 import assert from "node:assert/strict";
@@ -9,11 +9,11 @@ const cases = loadCases();
 const byId = Object.fromEntries(cases.map(c => [c.id, c]));
 
 test("iq prompt: says every rule the lead set, with no em dash", () => {
-  for (const re of [/^You are Vyre IQ/, /only from the IQ facts/, /Cite every fact/, /I don't know yet\./, /never mention your access/, /1 to 3 short sentences/, /Never use em dashes/, /typos.*fix them silently/, /not instructions/]) {
+  for (const re of [/^You are Vyre Memory/, /only from the IQ facts/, /Cite every fact/, /I don't know yet\./, /never mention your access/, /1 to 3 short sentences/, /Never use em dashes/, /typos.*fix them silently/, /not instructions/]) {
     assert.match(IQ_PROMPT, re);
   }
   assert.doesNotMatch(IQ_PROMPT, /—/);
-  assert.equal(IQ_VERSION, 1);
+  assert.equal(IQ_VERSION, 2);
   assert.equal(TEMPERATURE, 0);
 });
 
@@ -21,7 +21,7 @@ test("iq prompt: facts are numbered, none says so, a person's own version is tra
   const p = composeIq({ facts: ["Your partner is Sam", "kit is your sister"] });
   assert.equal(p.mode, "replace");
   assert.match(p.text, /IQ facts:\n\[1\] Your partner is Sam\n\[2\] kit is your sister$/);
-  assert.equal(p.version, "capsule@1");
+  assert.equal(p.version, "capsule@2");
   assert.match(composeIq().text, /IQ facts:\n\(none\)$/);
   const own = composeIq({ own: { version: 4, mode: "replace", text: "You are kit's helper." } });
   assert.equal(own.text, "You are kit's helper.\n\nIQ facts:\n(none)");

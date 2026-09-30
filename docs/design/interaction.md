@@ -27,7 +27,7 @@ transition, fill `--hover`), focus (2px `--focus` outline, offset -2), selected 
 `--signal-wash`), swiping (phone only, the rule below), committed (row height to 0 over the tap
 token, an Undo toast in its place) - plus the seven list-level states in `states.md` (empty,
 loading, offline, error, many items, long names, decided). One thread runs through all of it:
-violet is text-only, never a fill (a dot, a label, a count), lime is the one primary per surface
+violet is text-only, never a fill (a dot, a label, a count), bone is the one primary per surface
 and never decorative, and nothing optimistic is silent - every reversible action gets an Undo,
 every irreversible one gets a hold, never a confirm dialog.
 
@@ -75,7 +75,7 @@ fingerprint glyph in the reveal instead of committing blind - the swipe still ha
 step rides inside it rather than blocking it with a separate dialog. Every commit gets the Undo
 toast (`toast.md`): 4 s, one at a time, in-place (takes the row's own 44pt slot) or floating (above
 the Capsule or the safe area) when there is no row to hold it. Undo is always ghost styling, never
-lime.
+bone.
 
 ## 4. Keyboard first, one motion vocabulary, same gestures on phone and Deck
 

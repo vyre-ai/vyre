@@ -775,7 +775,7 @@ export async function drawConnections(el, ctx, deps = {}) {
     let transport = "stdio";
     const name = /** @type {HTMLInputElement} */ (h("input", { class: "input", id: "cn-name", autocomplete: "off", spellcheck: "false", placeholder: "tracker" }));
     const command = /** @type {HTMLInputElement} */ (h("input", { class: "input", id: "cn-command", autocomplete: "off", spellcheck: "false", placeholder: "npx" }));
-    const args = /** @type {HTMLInputElement} */ (h("input", { class: "input", id: "cn-args", autocomplete: "off", spellcheck: "false", placeholder: "-y @northwind/tracker-mcp" }));
+    const args = /** @type {HTMLInputElement} */ (h("input", { class: "input", id: "cn-args", autocomplete: "off", spellcheck: "false", placeholder: "Arguments, if any" }));
     const url = /** @type {HTMLInputElement} */ (h("input", { class: "input", id: "cn-url", autocomplete: "off", spellcheck: "false", placeholder: "https://mcp.example.com/mcp" }));
     const auth = /** @type {HTMLSelectElement} */ (h("select", { class: "input set-select", id: "cn-auth", "aria-label": "Auth" }));
     const itemBox = h("div", { class: "set-v" });
@@ -898,7 +898,7 @@ export async function drawConnections(el, ctx, deps = {}) {
   function googleForm(vaultErr) {
     let type = "signin";
     const name = /** @type {HTMLInputElement} */ (h("input", { class: "input", id: "cg-name", autocomplete: "off", spellcheck: "false", placeholder: "work" }));
-    const email = /** @type {HTMLInputElement} */ (h("input", { class: "input", id: "cg-email", type: "email", autocomplete: "off", spellcheck: "false", placeholder: "alex@harlowlegal.com" }));
+    const email = /** @type {HTMLInputElement} */ (h("input", { class: "input", id: "cg-email", type: "email", autocomplete: "off", spellcheck: "false", placeholder: "Your email address" }));
     const subject = /** @type {HTMLInputElement} */ (h("input", { class: "input", id: "cg-subject", type: "email", autocomplete: "off", spellcheck: "false", placeholder: "The address above" }));
     const seg = h("div", { class: "seg cn-seg", role: "group", "aria-label": "How it signs in" });
     const rest = h("div", { class: "rows" });

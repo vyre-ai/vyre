@@ -52,6 +52,8 @@ async function refresh() {
   input("passkeys").checked = Boolean(pk.data && pk.data.passkeys);
   input("passkeys").disabled = Boolean(pk.data && !pk.data.supported);
   if (pk.data && !pk.data.supported) $("passkeys-row").title = "Passkeys need Firefox 128 or later.";
+  const kc = await ask({ type: "keychip-state" });
+  input("keychip").checked = Boolean(kc.data && kc.data.keychip);
   await listLogins();
   await listCards();
 }
@@ -157,7 +159,7 @@ input("inline").addEventListener("change", async () => {
   } else {
     await ask({ type: "inline-disable" });
     // Passkeys share the page permission; it goes only when both are off.
-    if (!input("passkeys").checked) await chrome.permissions.remove({ origins: ["https://*/*", "http://*/*"] });
+    await dropPages();
     say("Suggestions are off.");
   }
 });
@@ -175,8 +177,29 @@ input("passkeys").addEventListener("change", async () => {
     say("Vyre answers passkey requests now. Reload open pages to use it.");
   } else {
     await ask({ type: "passkeys-disable" });
-    if (!input("inline").checked) await chrome.permissions.remove({ origins: ["https://*/*", "http://*/*"] });
+    await dropPages();
     say("Passkeys are the browser's own again.");
+  }
+});
+
+/** The page permission goes only when every toggle that needs it is off. */
+async function dropPages() {
+  if (!input("inline").checked && !input("passkeys").checked && !input("keychip").checked) await chrome.permissions.remove({ origins: ["https://*/*", "http://*/*"] });
+}
+
+// API keys a page shows (keychip.js): a small Save chip, on the same page leave as the two above.
+input("keychip").addEventListener("change", async () => {
+  const box = input("keychip");
+  say("");
+  if (box.checked) {
+    const granted = await chrome.permissions.request({ origins: ["https://*/*", "http://*/*"] });
+    const r = granted ? await ask({ type: "keychip-enable" }) : { error: { message: "The browser did not allow the key offer on pages." } };
+    if (r.error) { box.checked = false; return say(r.error.message, true); }
+    say("Vyre offers to save an API key a page shows. Reload open pages to use it.");
+  } else {
+    await ask({ type: "keychip-disable" });
+    await dropPages();
+    say("No key offers.");
   }
 });
 

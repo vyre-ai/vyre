@@ -202,12 +202,12 @@ Mac.
 - **Deck**: Copy asks vyred to write the clipboard; the value never comes back to the page.
   Reveal shows one field in the item pane and hides it again after 30 seconds, when the window
   loses focus, or when you leave the item.
-- **Capsule**: press Control twice, type the item's name, and choose **Fill in the front app**,
+- **Lumen**: press Control twice, type the item's name, and choose **Fill in the front app**,
   **Copy the password or key**, **Copy username**, **Copy one-time code** or **Show the one-time
   code**. Fill types the login into the app in front through a helper; the value never returns
-  to the Capsule (`vault.fill.native`).
+  to Lumen (`vault.fill.native`).
 
-The Deck, the Capsule and the browser extension open a short **session** with one proof. While
+The Deck, Lumen and the browser extension open a short **session** with one proof. While
 it lasts, reveal, copy and one-time codes do not ask again, except for cards, which ask every
 time. A session ends after 10 minutes idle or 12 hours at most, when the Mac sleeps or its screen
 locks, or on `vyre vault lock`. Set other limits in `config.json` under `vault.lock`, for example
@@ -297,7 +297,7 @@ vyre vault connections --surface agents
 ```
 
 A surface is `capsule`, `chat` (Claude in a thread), `agents` or `phone`. A new connection is
-granted to the Capsule and chat, so "send an email" in the Capsule offers every account that can
+granted to Lumen and chat, so "send an email" in Lumen offers every account that can
 send, and Claude in a chat thread sees the same list. Agents see nothing until you grant it:
 
 ```bash
@@ -437,7 +437,7 @@ The Chrome extension in `modules/vault-extension/` fills logins from your Vault.
 4. Pair it: `vyre vault pair` prints an 8-character code that works once, for 5 minutes. Type it
    into the extension.
 
-On a login page, unlock with the passphrase (or Touch ID through the Capsule) and choose **Fill**.
+On a login page, unlock with the passphrase (or Touch ID through Lumen) and choose **Fill**.
 Only logins whose hosts include the page's exact origin (scheme, host and port) are offered, so a
 lookalike domain gets nothing. An unlock lasts 30 minutes from the proof, and filling does not
 extend it; `vault.fill.window` in `config.json` (minutes, 1 to 30) makes it shorter. The same
@@ -485,7 +485,7 @@ keep what is granted to them while your personal vault is locked.
 
 ## Which surface does what
 
-| Task | Terminal | Deck | Capsule | Claude |
+| Task | Terminal | Deck | Lumen | Claude |
 | --- | --- | --- | --- | --- |
 | Add an item | `vyre vault put`, `import` | Add, per kind | | `vault.import` (a file path), never a value |
 | List items | `vyre vault` | `/vault` | type a name | `vault.list` (names only) |

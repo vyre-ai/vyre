@@ -48,16 +48,16 @@ async function draw(/** @type {Record<string, any>} */ o = {}) {
 
 const ev = (/** @type {string} */ type, /** @type {Record<string, any>} */ props = {}) => Object.assign(new Event(type), { button: 0, clientX: 10, clientY: 10, pointerId: 1, ...props });
 
-test("places: the six tiles in the spec's order, the rail's routes, no page among them", async () => {
+test("places: the seven tiles in the spec's order, the rail's routes, no page among them", async () => {
   const { TILES } = await load();
-  assert.deepEqual(TILES.map(t => t.label), ["Projects", "Planner", "Memory", "Vault", "Devices", "Settings"]);
-  assert.deepEqual(TILES.map(t => t.href), ["/projects", "/planner", "/memory", "/vault", "/settings#devices", "/settings"]);
-  assert.deepEqual(TILES.map(t => t.icon), ["projects", "planner", "memory", "vault", "devices", "settings"]);
+  assert.deepEqual(TILES.map(t => t.label), ["Projects", "Planner", "Memory", "Vault", "Drive", "Devices", "Settings"]);
+  assert.deepEqual(TILES.map(t => t.href), ["/projects", "/planner", "/memory", "/vault", "/files", "/settings#devices", "/settings"]);
+  assert.deepEqual(TILES.map(t => t.icon), ["projects", "planner", "memory", "vault", "drive", "devices", "settings"]);
   const { PLACES } = await import("../js/rail.js");
   for (const t of TILES) assert.equal(PLACES.find(p => p.label === t.label)?.href, t.href, `${t.label} goes where the rail goes`);
 });
 
-test("places: the head (avatar, name, address), a grid of six links named by their labels, the hint", async () => {
+test("places: the head (avatar, name, address), a grid of seven links named by their labels, the hint", async () => {
   const d = await draw();
   assert.ok(d.sheet.classList.contains("sheet-places"));
   assert.equal(d.$(d.head, ".plc-avatar").textContent, "A");
@@ -68,9 +68,9 @@ test("places: the head (avatar, name, address), a grid of six links named by the
   const grid = d.$(d.body, ".plc-grid");
   assert.equal(grid.getAttribute("aria-label"), "Places");
   const tiles = d.$$(grid, "a.plc-tile");
-  assert.equal(tiles.length, 6);
-  assert.deepEqual(tiles.map((/** @type {any} */ a) => d.$(a, ".plc-label").textContent), ["Projects", "Planner", "Memory", "Vault", "Devices", "Settings"]);
-  assert.deepEqual(tiles.map((/** @type {any} */ a) => a.getAttribute("href")), ["/projects", "/planner", "/memory", "/vault", "/settings#devices", "/settings"]);
+  assert.equal(tiles.length, 7);
+  assert.deepEqual(tiles.map((/** @type {any} */ a) => d.$(a, ".plc-label").textContent), ["Projects", "Planner", "Memory", "Vault", "Drive", "Devices", "Settings"]);
+  assert.deepEqual(tiles.map((/** @type {any} */ a) => a.getAttribute("href")), ["/projects", "/planner", "/memory", "/vault", "/files", "/settings#devices", "/settings"]);
   for (const a of tiles) {
     assert.ok(d.$(a, "svg"), "an icon over the label");
     assert.equal(a.getAttribute("aria-description"), "Long-press to pin as a page");

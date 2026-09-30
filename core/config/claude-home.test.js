@@ -6,11 +6,15 @@ import assert from "node:assert/strict";
 import os from "node:os";
 import path from "node:path";
 import fs from "node:fs";
-import { claudeHome, claudeJson, realHome, transcriptFolders } from "./dialogs.js";
+import { claudeHome, claudeJson, realHome, transcriptFolders, expandAccountFolders } from "./dialogs.js";
 import { load } from "./index.js";
 import { tempHome } from "../../test/helpers.js";
 
-test("claudeHome: ~/.claude only for the real ~/.vyre; any other home keeps its own", () => {
+// A Windows device has no unix sockets and uses backslash paths; these assert POSIX strings.
+const POSIX_ONLY = process.platform === "win32" ? "POSIX paths and unix sockets (a Windows device uses a named pipe)" : false;
+
+
+test("claudeHome: ~/.claude only for the real ~/.vyre; any other home keeps its own", { skip: POSIX_ONLY }, () => {
   const real = realHome();
   assert.equal(claudeHome(real, {}), path.join(os.homedir(), ".claude"));
   assert.equal(claudeHome(real, { CLAUDE_CONFIG_DIR: "/opt/cc" }), "/opt/cc", "the person's own CLAUDE_CONFIG_DIR");
@@ -21,7 +25,7 @@ test("claudeHome: ~/.claude only for the real ~/.vyre; any other home keeps its 
   assert.equal(claudeHome(temp, { VYRE_CLAUDE_HOME: "/srv/cc" }), "/srv/cc", "named outright");
 });
 
-test("claudeJson: ~/.claude.json only for the real ~/.vyre; any other home keeps its own, beside claudeHome's folder", () => {
+test("claudeJson: ~/.claude.json only for the real ~/.vyre; any other home keeps its own, beside claudeHome's folder", { skip: POSIX_ONLY }, () => {
   const real = realHome();
   assert.equal(claudeJson(real, {}), path.join(os.homedir(), ".claude.json"));
   assert.equal(claudeJson(real, { CLAUDE_CONFIG_DIR: "/opt/cc" }), path.join("/opt/cc", ".claude.json"),
@@ -67,4 +71,20 @@ test("transcriptFolders: a temp home never reads the person's Claude folder, thr
   assert.deepEqual(transcriptFolders([link], realHome(), env), [link], "the person's own ~/.vyre reads them");
   assert.deepEqual(transcriptFolders([link], realHome(), { ...env, NODE_TEST_CONTEXT: "child" }), [], "never under node --test");
   assert.deepEqual(transcriptFolders([link], "", env), [], "no home named: nothing of the person's");
+});
+
+test("expandAccountFolders: one folder per account that has it, never through a link an account planted", { skip: POSIX_ONLY }, t => {
+  const base = fs.mkdtempSync(path.join(path.dirname(tempHome(t)), "acct-"));
+  t.after(() => fs.rmSync(base, { recursive: true, force: true }));
+  fs.mkdirSync(path.join(base, "2000", ".claude", "projects"), { recursive: true });
+  fs.mkdirSync(path.join(base, "2001"), { recursive: true });
+  const outside = path.join(base, "elsewhere");
+  fs.mkdirSync(outside);
+  fs.symlinkSync(outside, path.join(base, "2002"));
+  fs.mkdirSync(path.join(base, "2003", ".claude"), { recursive: true });
+  fs.symlinkSync(outside, path.join(base, "2003", ".claude", "projects"));
+  fs.mkdirSync(path.join(base, "2004"), { recursive: true });
+  fs.symlinkSync(path.join(outside), path.join(base, "2004", ".claude"));   // .claude itself is a link: projects is "inside" it by path only
+  fs.mkdirSync(path.join(outside, "projects"));
+  assert.deepEqual(expandAccountFolders([path.join(base, "*", ".claude", "projects"), "/plain"]), [path.join(base, "2000", ".claude", "projects"), "/plain"]);
 });

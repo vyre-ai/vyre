@@ -1,5 +1,5 @@
 {
-  "about": "The Capsule's quick answer (Vyre IQ, core/sessions/iq-prompt.js): each case is the facts the Capsule sent, the question, and what a right answer does. scripts/eval-iq-prompt.js --live asks the model; the tests grade fixed answers.",
+  "about": "The Capsule's quick answer (Vyre Memory, core/sessions/iq-prompt.js): each case is the facts the Capsule sent, the question, and what a right answer does. scripts/eval-iq-prompt.js --live asks the model; the tests grade fixed answers.",
   "cases": [
     { "id": "partner", "q": "who is my partner", "facts": ["Your partner is Sam (noted 2 weeks ago)"], "expect": { "has": ["Sam"], "cites": [1] } },
     { "id": "wife-unknown", "q": "what is my wife's name", "facts": [], "expect": { "idk": true } },

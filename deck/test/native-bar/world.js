@@ -102,7 +102,7 @@ fs.chmodSync(fakeClaude, 0o755);
 // the network (deck/test/native-bar/fake-github.mjs). Off unless asked for, so every other world
 // caller is unaffected.
 const fakeGithub = args.includes("--fake-github");
-const env = { ...process.env, VYRE_HOME: root, VYRE_NO_DIALOGS: "1", NO_COLOR: "1", VYRE_HARNESS_DIR: path.join(root, "no-harness"),
+const env = { ...process.env, VYRE_HOME: root, VYRE_DECK_FIXTURES: "1", VYRE_NO_DIALOGS: "1", NO_COLOR: "1", VYRE_HARNESS_DIR: path.join(root, "no-harness"),
   VYRE_TAILSCALE_BIN: path.join(HARNESS, "deck", "test", "fake-tailscale.js"),
   VYRE_CLAUDE_BIN: fakeClaude, FAKE_CLAUDE_TRANSCRIPTS: transcripts, FAKE_BAR_LOG: fakeLog,
   ...(fakeGithub ? { FAKE_GITHUB_ENABLE: "1", FAKE_GITHUB_LOGIN: arg("--fake-github-login", "alex-harlow"), FAKE_GITHUB_PENDING_POLLS: arg("--fake-github-pending", "1") } : {}) };

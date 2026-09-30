@@ -28,7 +28,8 @@ import * as relay from "./relay.js";
 import { enclaveCall, wrapAuk, unwrapAuk } from "./touchid.js";
 import { Helper } from "./mac/helper.js";
 import * as history from "./history.js";
-import { callerKind } from "../modules/index.js";
+import { callerKind, ownerDevice } from "../modules/index.js";
+import { normalize as normalizeApiCredential } from "./api-request.js";
 import { parseFile as parseImport, plan as planImport } from "./import.js";
 import { REMIND_MIGRATION } from "./remind.js";
 import { KINDS, PERSONAL_KINDS, defaultField, checkFields, cleanDetails, derivedDetails } from "../../lib/vault-kinds/kinds.js";
@@ -41,7 +42,29 @@ import { Shared, SHARED_MIGRATIONS } from "./shared.js";
 import { Devices, DEVICE_MIGRATIONS } from "./devices.js";
 import { AgentGrants, AGENT_GRANTS_MIGRATION, AUDIT_WHERE_MIGRATION, AGENT_GRANT_MACED } from "./agents.js";
 import { Emergency, EMERGENCY_MIGRATION, EMERGENCY_MACED } from "./emergency.js";
-import { CONNECTIONS_MIGRATION, CONNECTIONS_PICKER_MIGRATION, CONNECTION_MACED } from "./connections.js";
+import { SAID_MIGRATION, SAID_MACED } from "./said.js";
+import { CONNECTIONS_MIGRATION, CONNECTIONS_PICKER_MIGRATION, CONNECTION_MACED, DEFAULT_SUGGEST_MIGRATION } from "./connections.js";
+
+/**
+ * A module grant may name the one project it is good for, so the same module (a shared teammate,
+ * say) does not carry one project's credentials into another's (docs/design/session-credentials.md,
+ * cohesion audit finding 1). "" means every project, as every grant meant before this column
+ * existed - kept out of the string a NULL would be (SQLite treats every NULL as distinct, which
+ * would silently stop deduplicating a project-less grant). The table is rebuilt because the old
+ * UNIQUE (item, module, watcher) has to widen to include it, the same shape share.js's vault_held
+ * migration uses. vault_agent_grants (one agent signing in to one site, ADR 0028 decision 2) gets
+ * the column too, inert for now: nothing scopes an agent login to a project yet.
+ */
+export const GRANT_PROJECT_MIGRATION = `CREATE TABLE vault_grants_v2 (
+     id TEXT PRIMARY KEY, item TEXT NOT NULL, module TEXT NOT NULL, watcher TEXT NOT NULL DEFAULT '',
+     project TEXT NOT NULL DEFAULT '', status TEXT NOT NULL, by TEXT NOT NULL, at INTEGER NOT NULL, mac TEXT,
+     UNIQUE (item, module, watcher, project)
+   );
+   INSERT INTO vault_grants_v2 (id, item, module, watcher, status, by, at, mac)
+     SELECT id, item, module, watcher, status, by, at, mac FROM vault_grants;
+   DROP TABLE vault_grants;
+   ALTER TABLE vault_grants_v2 RENAME TO vault_grants;
+   ALTER TABLE vault_agent_grants ADD COLUMN project TEXT;`;
 
 export const MIGRATIONS = [
   `CREATE TABLE vault_items (
@@ -106,6 +129,14 @@ export const MIGRATIONS = [
   CONNECTIONS_MIGRATION,
   // The account picker's ranking: the default per capability, and when each was last used.
   CONNECTIONS_PICKER_MIGRATION,
+  // Suggest a default once a capability has two or more ready connections, ever, not per surface.
+  DEFAULT_SUGGEST_MIGRATION,
+  // A grant may be scoped to one project (docs/design/session-credentials.md), so a teammate
+  // shared across two projects does not carry one client's credentials into the other's. Null
+  // means every project, as every grant meant before this column existed.
+  GRANT_PROJECT_MIGRATION,
+  // P17: what the person's own turn asked to go out, so the Gate can tell an asked-for send from an unasked one.
+  SAID_MIGRATION,
 ];
 
 /** The two classes of vault (ADR 0006 decision 1), and the key version each is on. */
@@ -135,6 +166,8 @@ export const MACED = {
   vault_emergency: EMERGENCY_MACED,
   // Which connection a row is, what it can do, and which surfaces may use it (ADR 0028, 9b).
   vault_connections: CONNECTION_MACED,
+  // What the person said to send, post or pay, and whether it still stands (said.js).
+  vault_said_intents: SAID_MACED,
 };
 /** The key column of each MACed table, where it is not `id`. */
 const KEY_COL = { vault_ssh_keys: "name", vault_marks: "name", vault_device_keys: "device" };
@@ -994,9 +1027,48 @@ export class Vault {
     return r;
   }
 
-  /** An item's fields, opened. Only the methods that hand a value to its one recipient call this. */
-  async fields(r) {
+  /**
+   * An item's fields, opened. Only the methods that hand a value to its one recipient call this.
+   * An api-credential is never handed out (reviewer M11): reveal, copy, fill, env, a pass, a
+   * relay and every other path that reaches a value through here is refused. Only the sealed
+   * backup (`sealed`) and vault.request itself, which opens it in-process, are let past.
+   * @param {any} r @param {{ sealed?: boolean }} [o]
+   */
+  async fields(r, o = {}) {
+    if (r && r.kind === "api-credential" && !o.sealed) throw new Error(`${r.name} is an api-credential; it is used only by vault.request and is never handed out`);
     return (await this.open(r)).fields;
+  }
+
+  /**
+   * The api-credential `name`, opened for vault.request and nothing else: its checked config and
+   * its own sealed secret, if it has one. In-process only; no tool returns this.
+   * @param {string} name
+   * @returns {Promise<{ row: any, config: ReturnType<typeof normalizeApiCredential>, secret: string|undefined }>}
+   */
+  async apiCredential(name) {
+    await this.key();
+    const row = this.row(name);
+    if (!row) throw new Error(`no item named ${String(name).slice(0, 80)}`);
+    if (row.kind !== "api-credential") throw new Error(`${row.name} is not an api-credential`);
+    const { fields } = await this.open(row);
+    let raw;
+    try { raw = JSON.parse(fields.config); } catch { throw new Error(`${row.name} has a config that is not JSON`); }
+    return { row, config: normalizeApiCredential(raw), secret: fields.secret };
+  }
+
+  /**
+   * The sealed secret of an oauth api-credential, replaced: what a sign-in stores and what a refresh
+   * rotates. Only the secret changes; the person-written config is carried over untouched. In-process
+   * only (a tool that calls this decides who may), so it is the one write to an api-credential that
+   * does not come from a person's surface.
+   * @param {string} name @param {string} secret
+   */
+  async setApiSecret(name, secret) {
+    const { row, config } = await this.apiCredential(name);
+    if (config.auth.type !== "oauth") throw new Error(`${row.name} is not an oauth credential, so it has no sign-in to store`);
+    const { fields } = await this.open(row);
+    await this.writeVersion(row, {}, { ...fields, secret: String(secret) }, "vault");
+    this.audit("sign-in", row.name, "vault", true, "tokens stored");
   }
 
   /**
@@ -1044,6 +1116,19 @@ export class Vault {
       clean[k] = v;
     }
     checkFields(kind, clean);
+    // An api-credential's hosts and endpoints decide what runs unasked and what holds, so only a
+    // person's own surface writes or replaces one (reviewer N4), whatever it was before.
+    const prior = /** @type {any} */ (this.db.prepare("SELECT kind FROM vault_items WHERE name = ?").get(String(name)));
+    if (kind === "api-credential" || (prior && prior.kind === "api-credential")) {
+      if (!(["cli", "local", "deck", "capsule"].includes(callerKind(who)) || ownerDevice(who))) throw new Error("an api-credential is made and changed only from your own surfaces, never by a module, a watcher or an agent");
+      if (kind !== "api-credential") throw new Error(`${name} is an api-credential; delete it before using the name for another kind`);
+      if (clean.value !== undefined && clean.secret === undefined) { clean.secret = clean.value; delete clean.value; }
+      let cfg;
+      try { cfg = JSON.parse(clean.config); } catch { throw new Error("config must be JSON: { auth, hosts, endpoints? }"); }
+      const n = normalizeApiCredential(cfg);
+      if (n.auth.type !== "oauth" && !n.auth.item && !clean.secret) throw new Error("give the credential its secret (fields.secret), or name the vault item that holds it (auth.item)");
+      clean.config = JSON.stringify(n);
+    }
     if (!Object.keys(clean).length) throw new Error("an item needs at least one field");
     // An expiry may be written as "90d" or a date, as grants' are.
     const given = cleanDetails(details && typeof details === "object" && typeof details.expires === "string" && details.expires
@@ -1106,7 +1191,7 @@ export class Vault {
         ...(r.url ? { url: r.url } : {}), hosts: json(r.hosts, []), rotate: Boolean(r.rotate), ...(r.rotate ? { why: r.rotate } : {}),
         ...(r.origin ? { origin: r.origin } : {}), updated: r.updated, vault: r.vault || AGENTS,
         ...(r.details && r.details !== "{}" ? { details: json(r.details, {}) } : {}),
-        grants: grants.filter(g => g.item === r.name).map(g => ({ module: g.module, ...(g.watcher ? { watcher: g.watcher } : {}) })),
+        grants: grants.filter(g => g.item === r.name).map(g => ({ module: g.module, ...(g.watcher ? { watcher: g.watcher } : {}), ...(g.project ? { project: g.project } : {}) })),
       }));
     const personal = this.hasAccount() ? (this.pvk ? "unlocked" : "locked") : "none";
     return { locked: this.kind === "passphrase" && !this.vk, keystore: this.kind, personal, items };
@@ -1144,23 +1229,29 @@ export class Vault {
 
   // ---- grants and release ---------------------------------------------------------------
 
-  async grant({ name, module, watcher = "" }, caller) {
+  /**
+   * @param {{ name: string, module: string, watcher?: string, project?: string }} input
+   *   project: this grant is good for one project only (docs/design/session-credentials.md);
+   *   omitted or "" means every project, as every grant meant before this existed.
+   */
+  async grant({ name, module, watcher = "", project = "" }, caller) {
     await this.key();
     const item = this.mustRow(name);
     // A module grants only items it put itself (index.js lets it do so only through vault.put).
     if (kindOf(caller) === "module" && item.origin !== caller) throw new Error(`${moduleOf(caller)} may grant only items it put`);
     if (!MODULE.test(String(module))) throw new Error(`"${module}" is not a module name`);
+    if (project && !/^[a-z0-9][a-z0-9_-]{0,63}$/i.test(String(project))) throw new Error("project is a project id");
     const status = kindOf(caller) === "mcp" ? "pending" : "active";
-    const old = /** @type {any} */ (this.db.prepare("SELECT * FROM vault_grants WHERE item=? AND module=? AND watcher=?").get(name, module, watcher));
+    const old = /** @type {any} */ (this.db.prepare("SELECT * FROM vault_grants WHERE item=? AND module=? AND watcher=? AND project=?").get(name, module, watcher, project));
     if (old && old.status === "active" && this.rowOk("vault_grants", old)) return { grant: this.grantOut(old) };
     // A module uses an item while nobody is here, so a granted item lives in the agent vault.
     if (status === "active" && item.vault === PERSONAL) await this.reseal(item, AGENTS);
     const id = old ? old.id : "g_" + newId();
-    this.db.prepare("INSERT OR REPLACE INTO vault_grants (id, item, module, watcher, status, by, at) VALUES (?,?,?,?,?,?,?)").run(id, name, module, watcher, status, String(caller), now());
+    this.db.prepare("INSERT OR REPLACE INTO vault_grants (id, item, module, watcher, status, by, at, project) VALUES (?,?,?,?,?,?,?,?)").run(id, name, module, watcher, status, String(caller), now(), project);
     this.sign("vault_grants", id);
     const g = this.db.prepare("SELECT * FROM vault_grants WHERE id=?").get(id);
     this.audit(status === "active" ? "grant" : "grant-requested", name, caller, true, watcher ? `${module}/${watcher}` : module);
-    this.emit(status === "active" ? "vault.granted" : "grant.requested", { name, module, ...(watcher ? { watcher } : {}) });
+    this.emit(status === "active" ? "vault.granted" : "grant.requested", { name, module, ...(watcher ? { watcher } : {}), ...(project ? { project } : {}) });
     return { grant: this.grantOut(g) };
   }
 
@@ -1173,15 +1264,28 @@ export class Vault {
   /** Write one use of an item to the audit trail, with its origin and surface (see agents.js). */
   recordUse(u) { return this.agents.recordUse(u); }
 
-  grantOut(g) { return { id: g.id, name: g.item, module: g.module, ...(g.watcher ? { watcher: g.watcher } : {}), status: g.status }; }
+  grantOut(g) { return { id: g.id, name: g.item, module: g.module, ...(g.watcher ? { watcher: g.watcher } : {}), ...(g.project ? { project: g.project } : {}), status: g.status }; }
 
-  revoke({ name, module, watcher }, caller) {
-    const r = watcher === undefined
-      ? this.db.prepare("DELETE FROM vault_grants WHERE item=? AND module=?").run(name, module)
-      : this.db.prepare("DELETE FROM vault_grants WHERE item=? AND module=? AND watcher=?").run(name, module, watcher);
+  revoke({ name, module, watcher, project }, caller, { onlyPendingBy = null } = {}) {
+    // A named agent or another module may only withdraw a request it made itself, never an active grant (reviewer-2 M-V4).
+    if (onlyPendingBy) {
+      const w = watcher === undefined ? "" : watcher;
+      const r = this.db.prepare(`DELETE FROM vault_grants WHERE item=? AND module=? AND status='pending' AND by=?${project !== undefined ? " AND project=?" : ""}${watcher !== undefined ? " AND watcher=?" : ""}`)
+        .run(...[name, module, onlyPendingBy, ...(project !== undefined ? [project] : []), ...(watcher !== undefined ? [w] : [])]);
+      const n = Number(r.changes);
+      this.audit("revoke", name, caller, true, `${watcher ? `${module}/${watcher}` : module} (own pending request)`);
+      return { revoked: n };
+    }
+    const r = project !== undefined
+      ? (watcher === undefined
+        ? this.db.prepare("DELETE FROM vault_grants WHERE item=? AND module=? AND project=?").run(name, module, project)
+        : this.db.prepare("DELETE FROM vault_grants WHERE item=? AND module=? AND watcher=? AND project=?").run(name, module, watcher, project))
+      : (watcher === undefined
+        ? this.db.prepare("DELETE FROM vault_grants WHERE item=? AND module=?").run(name, module)
+        : this.db.prepare("DELETE FROM vault_grants WHERE item=? AND module=? AND watcher=?").run(name, module, watcher));
     const n = Number(r.changes);
     this.audit("revoke", name, caller, true, watcher ? `${module}/${watcher}` : module);
-    if (n) this.emit("vault.revoked", { name, module, ...(watcher ? { watcher } : {}) });
+    if (n) this.emit("vault.revoked", { name, module, ...(watcher ? { watcher } : {}), ...(project ? { project } : {}) });
     return { revoked: n };
   }
 
@@ -1189,12 +1293,20 @@ export class Vault {
    * Hand one value to one module. The grant is the boundary: the loader's needs.vault check is
    * only a courtesy, since a module could reach this tool through ctx.call directly.
    */
-  async release({ name, field, watcher = "" }, caller) {
+  /**
+   * @param {{ name: string, field?: string, watcher?: string, project?: string }} input
+   *   project: the caller's own project, when it has one; a grant scoped to a different project
+   *   never matches, and one scoped to no project (still the default) matches any (docs/design/
+   *   session-credentials.md). Nothing passes this yet - modules run process-wide, not scoped to
+   *   one project - so today it is always absent and this filters nothing.
+   */
+  async release({ name, field, watcher = "", project }, caller) {
     const mod = moduleOf(caller);
     const who = watcher ? `${caller}/${watcher}` : String(caller);
     if (!mod) { this.audit("release", name, who, false, "not a module"); throw new Error("only modules may ask the vault for a value"); }
     await this.key();
-    const g = this.db.prepare("SELECT * FROM vault_grants WHERE item=? AND module=? AND watcher=? AND status='active'").all(name, mod, watcher).some(x => this.rowOk("vault_grants", x));
+    const g = this.db.prepare("SELECT * FROM vault_grants WHERE item=? AND module=? AND watcher=? AND status='active'").all(name, mod, watcher)
+      .filter(x => this.rowOk("vault_grants", x)).some(x => !project || !x.project || x.project === project);
     if (!g) {
       this.audit("release", name, who, false, "no grant");
       throw new Error(`${name} is not granted to ${watcher ? `${mod}/${watcher}` : mod} · vyre vault grant ${name} ${mod}${watcher ? ` --watcher ${watcher}` : ""}`);
@@ -1203,6 +1315,7 @@ export class Vault {
     if (!r) { this.audit("release", name, who, false, "no such item"); throw new Error(`no item named ${name}`); }
     if (r.kind === "ssh-key") { this.audit("release", name, who, false, "ssh key"); throw new Error(`${name} is an ssh key; it signs through the vault's ssh agent and is never handed out`); }
     if (r.kind === "passkey") { this.audit("release", name, who, false, "passkey"); throw new Error(`${name} is a passkey; it signs inside the vault and is never handed out`); }
+    if (r.kind === "api-credential") { this.audit("release", name, who, false, "api-credential"); throw new Error(`${name} is an api-credential; it is used only by vault.request and is never handed out`); }
     const f = await this.fields(r);
     const want = field || defaultField(r.kind, json(r.fields, []));
     if (!want) { this.audit("release", name, who, false, "no field named"); throw new Error(`${name} is ${r.kind === "env-set" ? "an env-set" : `a ${r.kind}`}; name the field you want`); }
@@ -1220,6 +1333,7 @@ export class Vault {
       if (!r) { this.audit("inject", it.name, caller, false, "no such item"); throw new Error(`no item named ${it.name}`); }
       if (r.kind === "ssh-key") throw new Error(`${it.name} is an ssh key; it signs through the vault's ssh agent and is never handed out`);
       if (r.kind === "passkey") throw new Error(`${it.name} is a passkey; it signs inside the vault and is never handed out`);
+      if (r.kind === "api-credential") { this.audit("inject", it.name, caller, false, "api-credential"); throw new Error(`${it.name} is an api-credential; it is used only by vault.request and is never handed out`); }
       const f = await this.fields(r);
       if (r.kind === "env-set" && !it.field) Object.assign(env, f);
       else {

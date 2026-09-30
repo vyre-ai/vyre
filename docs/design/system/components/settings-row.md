@@ -16,7 +16,7 @@ anywhere. Drawn on the boards "Settings · account and project scopes" and "Plac
 |---|---|---|
 | Deck | `deck/views/settings-keys.js`, `deck/css/views/settings-keys.css` (work/native-core) | built |
 | App | `apps/app/app/settings.tsx` (work/mobile): navigation rows only | not built |
-| Capsule | not used | |
+| Lumen | not used | |
 
 ## Anatomy
 

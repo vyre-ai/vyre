@@ -1,7 +1,7 @@
 // @ts-check
 import test from "node:test";
 import assert from "node:assert/strict";
-import { Handshake, keyPair, PROTOCOL } from "./noise.js";
+import { Handshake, keyPair, dh, PROTOCOL } from "./noise.js";
 
 // The Noise_IK_25519_AESGCM_SHA256 vector from the cacophony test vectors
 // (github.com/haskell-cryptography/cacophony, vectors/cacophony.txt, BSD-3-Clause).
@@ -104,4 +104,24 @@ test("rekey on both sides keeps the channel working", () => {
   i.send.rekey(); r.recv.rekey();
   const c = i.send.encrypt(Buffer.alloc(0), Buffer.from("after rekey"));
   assert.equal(r.recv.decrypt(Buffer.alloc(0), c).toString(), "after rekey");
+});
+
+test("a static key held elsewhere: an async dh completes the handshake, and readMessage refuses it", async () => {
+  const box = keyPair(), dev = keyPair();
+  let asked = 0;
+  const held = { pub: box.pub, dh: async remote => { asked++; await new Promise(r => setImmediate(r)); return dh(box.priv, remote); } };
+  const i = new Handshake({ initiator: true, s: dev, rs: box.pub, prologue: Buffer.from("p") });
+  const r = new Handshake({ initiator: false, s: held, prologue: Buffer.from("p") });
+  const m1 = i.writeMessage(Buffer.from("hi"));
+  assert.throws(() => new Handshake({ initiator: false, s: held, prologue: Buffer.from("p") }).readMessage(m1), /readMessageAsync/);
+  asked = 0;
+  assert.equal((await r.readMessageAsync(m1)).toString(), "hi");
+  assert.equal(asked, 2, "the responder's two static DHs went to the holder");
+  i.readMessage(r.writeMessage());
+  const a = /** @type {any} */ (i).send.encrypt(Buffer.alloc(0), Buffer.from("x"));
+  assert.equal(/** @type {any} */ (r).recv.decrypt(Buffer.alloc(0), a).toString(), "x");
+  // and the same box with its bytes gets the same session keys
+  const r2 = new Handshake({ initiator: false, s: box, prologue: Buffer.from("p") });
+  const i2 = new Handshake({ initiator: true, s: dev, rs: box.pub, prologue: Buffer.from("p") });
+  assert.equal((await r2.readMessageAsync(i2.writeMessage(Buffer.from("hi")))).toString(), "hi");
 });

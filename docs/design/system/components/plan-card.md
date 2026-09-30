@@ -17,10 +17,10 @@ Drawn on "Plan approval and modes, phone and desktop".
 |---|---|---|
 | Deck | none; the plan shows as an unfolded tool row (`deck/chat/core/grouping.js`, `deck/chat/core/tool-detail.js`, work/chat) | not built |
 | App | none | not built |
-| Capsule | none | not built |
+| Lumen | none | not built |
 
 Built once: this card is built once in chat-core for the web (the Deck and the PWA) and Expo (the
-app), from this spec, and the Capsule mirrors the same spec in Swift. No surface draws its own
+app), from this spec, and Lumen mirrors the same spec in Swift. No surface draws its own
 version (cohesion, ADR 0036).
 
 ## Anatomy
@@ -103,5 +103,5 @@ Deck (work/chat)
 App (work/mobile)
 - [ ] Not built.
 
-Capsule (work/capsule-pro)
+Lumen (work/capsule-pro)
 - [ ] Not built (proposed: the Needs row with Start building on `⌘⏎`, the card opening in Chat).

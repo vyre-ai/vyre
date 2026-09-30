@@ -13,10 +13,10 @@
 # entrypoint.sh's chrome_once/chrome_loop for how it is actually launched). agent (1000) runs the
 # desktop the agent works in. The container starts as root only to switch between them.
 #
-# UNVALIDATED: the uid split (browser, 1002) is written by inspection, never `docker build`'d or
-# run against a live box in this session. See docs/work/glass-live.md's "Next" for the throwaway-
-# stack check this needs before it ships (isolation.test.js's own uid checks, plus a browser-specific
-# one: Chrome cannot open .boot, the VNC password, or vyre's own X cookie).
+# VALIDATED (30 Sep, on the test server, scripts/computers-proof): built and run for real; the uid split holds
+# (isolation.test.js 13 of 13 in the running container: exec env and .boot unreadable by the agent, Chrome's uid cannot
+# open .boot, the VNC password or the X cookie, no capabilities). Downloads land in /var/lib/vyre/browser/downloads
+# (owned by the browser uid, readable by the agent), by design.
 
 FROM debian:bookworm-slim
 

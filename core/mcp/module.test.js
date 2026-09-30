@@ -371,10 +371,14 @@ test("mcp: hold and on_behalf are for modules only", async t => {
 test("mcp: a module installed into a home is refused on_behalf through its own ctx.call", async t => {
   const root = tempHome(t);
   fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ name: "test-box", vault: { keystore: "file" } }));
-  // A third-party module in the home's modules folder, calling the hub the only way a module can.
-  writeModule(path.join(root, "modules"), "bakery", { does: { tools: ["bakery.try"] } }, `export default { async start(ctx) {
+  // A third-party module in the home's modules folder. ADR 0047: it reaches a connection through
+  // ctx.connections.call, which builds the hub's input itself, so it can't pass on_behalf; and a
+  // direct ctx.call to mcp.call is refused by the loader's default-deny, whatever its input.
+  writeModule(path.join(root, "modules"), "bakery", { vyre: "1", description: "Northwind Bakery's issues.",
+    does: { tools: [{ name: "bakery.try" }, { name: "bakery.issue" }] }, needs: { tools: ["mcp.call"], connections: [{ provider: "chat", purpose: "file an issue" }] } }, `export default { async start(ctx) {
     ctx.tool("bakery.try", { input: { type: "object", properties: { on_behalf: { type: "object" }, hold: { type: "boolean" } } },
       run: async input => ctx.call("mcp.call", { server: "chat", tool: "create_issue", arguments: { title: "Rye" }, ...input }) });
+    ctx.tool("bakery.issue", { input: { type: "object" }, run: async () => ctx.connections.call("chat", "create_issue", { title: "Rye" }) });
     return { async stop() {} };
   } };`);
   const d = await start({ root, presence: present, log: () => {} });
@@ -385,10 +389,30 @@ test("mcp: a module installed into a home is refused on_behalf through its own c
   assert.equal(d.registry.status().find(m => m.name === "bakery")?.state, "running");
 
   const refused = (await cli("bakery.try", { on_behalf: { surface: "capsule" } })).data;
-  assert.equal(refused.error.code, "denied", JSON.stringify(refused));
-  const plain = (await cli("bakery.try", {})).data;
+  assert.equal(refused.error.code, "not_declared", JSON.stringify(refused));
+  assert.equal((await cli("bakery.try", {})).data.error.code, "not_declared", "mcp.call itself is not open to a home module");
+  const plain = (await cli("bakery.issue", {})).data;
   assert.ok(plain.data.held, "without on_behalf its outward call is held as usual");
   const it = (await cli("gate.get", { id: plain.data.held })).data;
   assert.ok(!it.thread && !it.agent);
   assert.deepEqual(calls(log), []);
+});
+
+test("an added module cannot put a command or a vault environment in the hub, but may add an http server; a person may add either", async t => {
+  const v = await vyred(t);
+  const http = await startFakeMcpHttp(t);
+  const added = (tool, input) => v.d.registry.call(tool, input, "module:some-added-module", {});
+  // stdio, an env from the vault, and env auth are refused
+  assert.equal((await added("mcp.add", { name: "proc", transport: "stdio", command: process.execPath, args: [FAKE, "--stdio"] })).error?.code, "denied");
+  assert.equal((await added("mcp.add", { name: "envy", transport: "stdio", command: process.execPath, args: [FAKE, "--stdio"], env: { TOKEN: "github-alex" } })).error?.code, "denied");
+  assert.equal((await added("mcp.add", { name: "envy2", transport: "http", url: http.url, env: { TOKEN: "github-alex" } })).error?.code, "denied");
+  // an http server is fine
+  const ok = await added("mcp.add", { name: "webby", transport: "http", url: http.url });
+  assert.ok(ok.data, JSON.stringify(ok));
+  // and update cannot turn things into a process either
+  assert.equal((await added("mcp.update", { name: "webby", command: process.execPath })).error?.code, "denied");
+  // a person adds a stdio server with an env
+  await v.secret("gh-token", "sample-token-value-12345");
+  const mine = await v.cli("mcp.add", { name: "mine", transport: "stdio", command: process.execPath, args: [FAKE, "--stdio"], env: { GH_TOKEN: "gh-token" } });
+  assert.ok(mine.data, JSON.stringify(mine));
 });

@@ -34,6 +34,7 @@ import { mountSession } from "./session.js";
 import { mountNewSession } from "./newsession.js";
 import { mountFolders, foldersHref } from "./folders.js";
 import { threadHref, projectHref } from "./lib/routes.js";
+import { markOpened, openedHere } from "./lib/opened-here.js";
 import { mergeSessions, title } from "./lib/sessions.js";
 import { machineChip, offlineChip, readMacs } from "../js/machine.js";
 
@@ -73,6 +74,7 @@ export async function openTerminalAt(cwd) {
   try { mod = await import("./term.js"); } catch { return "The terminal is not part of this Deck yet."; }
   const r = await mod.openTerminal(cwd);
   if (!r || r.error) return "Could not open a terminal: " + (r?.error?.message || r?.error || "the server did not say why") + ".";
+  markOpened("term:" + r.term);
   go("/chat?term=" + encodeURIComponent(r.term));
 }
 
@@ -189,20 +191,26 @@ export default async function chat(ctx) {
     } else if (mode === "term") {
       const term = String(query.get("term"));
       pad.classList.add("chat-term");
-      put(pad, h("div", { class: "empty" }, "Opening the terminal…"));
-      import("./term.js").then(mod => {
-        if (!ctx.alive()) return;
-        put(pad);
-        try {
-          const stop = mod.mountTerminal(pad, { term, onBack: () => back("/chat?folders") });
-          if (typeof stop === "function") ctx.cleanup(stop);
-        } catch (e) {
-          put(pad, empty("The terminal could not open.", e), link("/chat?folders", { class: "link" }, "Back to Folders"));
-        }
-      }, () => {
-        if (!ctx.alive()) return;
-        put(pad, empty("The terminal is not part of this Deck yet."), link("/chat?folders", { class: "link" }, "Back to Folders"));
-      });
+      const mount = () => {
+        put(pad, h("div", { class: "empty" }, "Opening the terminal…"));
+        import("./term.js").then(mod => {
+          if (!ctx.alive()) return;
+          put(pad);
+          try {
+            const stop = mod.mountTerminal(pad, { term, onBack: () => back("/chat?folders") });
+            if (typeof stop === "function") ctx.cleanup(stop);
+          } catch (e) {
+            put(pad, empty("The terminal could not open.", e), link("/chat?folders", { class: "link" }, "Back to Folders"));
+          }
+        }, () => {
+          if (!ctx.alive()) return;
+          put(pad, empty("The terminal is not part of this Deck yet."), link("/chat?folders", { class: "link" }, "Back to Folders"));
+        });
+      };
+      // Opened by this page: attach now. Reached by a link: attach only on a click (opened-here.js).
+      if (openedHere("term:" + term)) mount();
+      else put(pad, h("div", { class: "empty" }, "A terminal on the server.",
+        h("button", { type: "button", class: "btn btn-primary btn-sm", onclick: mount }, "Open the terminal")));
     }
   }
 
