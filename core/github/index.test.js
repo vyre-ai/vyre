@@ -67,6 +67,8 @@ async function world(t, { projectsRows = [], tokens = {}, projectsDir, existingT
         mcpRows.push(input); return { data: { name: input.name } };
       }
       if (toolName === "mcp.remove") { const i = mcpRows.findIndex(r => r.name === input.name); if (i >= 0) mcpRows.splice(i, 1); return { data: { removed: i >= 0 } }; }
+      if (toolName === "vault.list") return { data: { items: [] } };
+      if (toolName === "vault.put") return { data: { name: input.name } };
       if (toolName === "mcp.test") return { data: { ok: true } };
       if (toolName === "vault.grant") return { data: { grant: { status: "active" } } };
       if (toolName === "projects.list") return { data: { projects: rows } };
@@ -813,6 +815,24 @@ test("github.mentions.search / .resolve: the # picker lists repos, open PRs and 
   assert.equal((await w.as("deck")("github.mentions.resolve", { id: "repo:nobody/nothing" })).error.code, "not_found");
   assert.equal((await w.as("module:evil", { firstParty: true })("github.mentions.search", { q: "x" })).error.code, "denied");
   assert.ok(log.every(l => l.auth === "Bearer test-token"), "only the connected account's token, never anything else");
+});
+
+test("github.connect with a pasted token: checked with GitHub, saved under the account's vault item (granted to github only), listed without the token, hosted MCP added; an agent may not connect", async t => {
+  const w = await world(t);
+  const tok = "github_pat_11ABCDEFG0abcdefghijkl_mnopqrstuvwxyz0123456789ABCDEFGH";
+  withFetch(t, async (url, opts = {}) => {
+    assert.equal(opts.headers.authorization, `Bearer ${tok}`);
+    return { ok: true, status: 200, json: async () => ({ login: "sam", avatar_url: null }) };
+  });
+  const r = await w.as("deck")("github.connect", { name: "work", token: tok });
+  assert.equal(r.error, undefined, JSON.stringify(r.error));
+  assert.deepEqual([r.data.connected, r.data.login], [true, "sam"]);
+  const put = w.calls.find(c => c.tool === "vault.put");
+  assert.deepEqual([put.input.name, put.input.fields, put.input.grants], ["github-work", { token: tok }, ["github"]]);
+  assert.deepEqual((await w.as("deck")("github.accounts", {})).data, [{ name: "work", login: "sam", avatar_url: null }]);
+  assert.equal(JSON.stringify((await w.as("deck")("github.accounts", {})).data).includes(tok), false);
+  assert.equal(w.mcpRows[0].auth.item, "github-work", "the hosted MCP row follows the account");
+  assert.equal((await w.as("mcp:agent:kit")("github.connect", { name: "evil", token: tok })).error.code, "denied");
 });
 
 test("github.mcp.sync / github.remove: each connected account gets GitHub's hosted MCP row (bound item, no file writes), a second account a distinct name, sync is idempotent, and removing the account removes its row", async t => {

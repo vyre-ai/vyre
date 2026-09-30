@@ -46,7 +46,7 @@ const URL_RE = /(https:\/\/github\.com\/login\/device\S*)/;
 
 /**
  * @typedef {{ id: string, name: string, dir: string, child: any, expires: number,
- *   values: string[], timer: any, cancelled?: boolean, output: string, gh: string }} Flow
+ *   values: string[], timer: any, cancelled?: boolean, output: string, gh: string, pasted?: boolean }} Flow
  * @typedef {{
  *   taken: (name: string) => boolean | Promise<boolean>,
  *   blocked?: (item: string) => Promise<string | null>,
@@ -122,8 +122,8 @@ export function connector(deps) {
     flows.delete(flow.id);
     ended.set(flow.id, why);
     while (ended.size > MAX_ENDED) ended.delete(ended.keys().next().value);
-    try { flow.child.kill("SIGTERM"); } catch {}
-    try { fs.rmSync(flow.dir, { recursive: true, force: true }); } catch {}
+    try { flow.child && flow.child.kill("SIGTERM"); } catch {}
+    try { if (flow.dir) fs.rmSync(flow.dir, { recursive: true, force: true }); } catch {}
   }
 
   function failed(flow, error) {
@@ -173,6 +173,7 @@ export function connector(deps) {
     } catch (e) {
       throw fail(`Could not read the GitHub account that signed in: ${/** @type {any} */ (e)?.message || e}`, "network");
     }
+    if (res.status === 401) throw fail(flow.pasted ? "GitHub did not accept that token. Check it was copied whole, has not expired, and was made for this account." : "GitHub did not accept the sign-in.", "refused");
     if (!res.ok || !json || !LOGIN.test(String(json.login || ""))) throw fail("GitHub did not say which account signed in.", "refused");
     const login = String(json.login);
     const avatar_url = typeof json.avatar_url === "string" ? json.avatar_url : null;
@@ -182,6 +183,7 @@ export function connector(deps) {
     if (why) throw fail(why, "exists");
     await deps.save(item, { token });
     await deps.add({ name: flow.name, login, avatar_url, item });
+    /** @type {any} */ (flow).login = login;
     end(flow, "used");
     deps.emit("github.connected", { id: flow.id, name: flow.name, login });
     log("github sign-in connected", { id: flow.id, name: flow.name, login });
@@ -234,6 +236,24 @@ export function connector(deps) {
       log("github sign-in started", { id: flow.id, name });
       return { id: flow.id, user_code: shown.user_code, verification_uri: shown.verification_uri,
         expires_in: Math.round(expiresMs / 1000), interval: 5 };
+    }),
+
+    /**
+     * Connect with a pasted personal access token (a fine-grained one can be narrower than the
+     * sign-in's repo scope). One GET /user validates it before anything is saved, so a bad paste
+     * fails now, not as a later 401. No `gh` involved.
+     * @param {{ name: string, token: string }} input
+     */
+    paste: guarded(async ({ name, token }) => {
+      if (!NAME.test(String(name || ""))) throw fail("name must be lowercase letters, digits and dashes, starting with a letter, at most 32");
+      if (typeof token !== "string" || !/^[A-Za-z0-9_\-]{20,255}$/.test(token.trim())) throw fail("that does not look like a GitHub token (letters, digits, - and _ only, no spaces)");
+      const clean = token.trim();
+      if (await deps.taken(name)) throw fail(`an account named ${name} is already connected; remove it first or choose another name`, "exists");
+      const flow = /** @type {Flow} */ ({ id: `gh_${crypto.randomBytes(9).toString("base64url")}`, name, dir: "", child: null, expires: 0, values: [clean], timer: null, output: "", gh: "", pasted: true });
+      try { await complete(flow, clean); }
+      catch (e) { const clean2 = scrub(String(/** @type {any} */ (e)?.message || e), [clean]); throw Object.assign(new Error(clean2), { code: typeof /** @type {any} */ (e)?.code === "string" ? /** @type {any} */ (e).code : "failed" }); }
+      const acct = { name, login: /** @type {any} */ (flow).login };
+      return { connected: true, id: flow.id, name, login: acct.login };
     }),
 
     /** @param {{ id: string }} input */
