@@ -150,6 +150,11 @@ jobs:
           # scripts/shell-hashes.mjs lands with the pwa team's branch; until it is on this branch there is no shell.json.
           if [ -f scripts/shell-hashes.mjs ]; then node scripts/shell-hashes.mjs dist "$VERSION"; [ -f dist/shell.json ] || { echo "shell-hashes made no dist/shell.json"; exit 1; }
           else echo "no scripts/shell-hashes.mjs on this branch yet: no shell.json" | tee -a "$GITHUB_STEP_SUMMARY"; fi
+      - name: setup.json, the hashes of the served setup files and install scripts (launch), so the one signature covers it
+        run: |
+          # scripts/setup-hashes.mjs lands with the launch team's branch; until it is on this branch there is no setup.json.
+          if [ -f scripts/setup-hashes.mjs ]; then node scripts/setup-hashes.mjs dist; [ -f dist/setup.json ] || { echo "setup-hashes made no dist/setup.json"; exit 1; }
+          else echo "no scripts/setup-hashes.mjs on this branch yet: no setup.json" | tee -a "$GITHUB_STEP_SUMMARY"; fi
       - name: release.json and SHA256SUMS
         run: |
           node -e '
