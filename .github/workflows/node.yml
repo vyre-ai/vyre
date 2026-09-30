@@ -35,15 +35,16 @@ jobs:
       - run: npm test
       - run: npm run eval:answer
       - run: npm run perf-check
-  # Windows support (ADR 0037): the same suite on windows-latest, to catch path and shell
-  # assumptions before any Windows-specific code lands. Not yet green; non-blocking on purpose
-  # while docs/work/windows.md tracks the fixes it finds. Skips eval:answer and perf-check, which
-  # assume a Linux/Mac process model for their CPU/RSS budget, not what this job is proving.
+  # Windows support (ADR 0037): the Windows-relevant tests on windows-latest (`npm run test:windows`,
+  # only files that pass there), so a red result means something. Non-blocking for stage landings
+  # on purpose. No eval:answer or perf-check, which assume a Linux/Mac process model.
   test-windows:
     runs-on: windows-latest
     # The full suite took over 30 minutes here and held up stage landings. This runs the tests
     # that can differ on Windows (config, CLI kit and commands, voice, boundaries, docs, the relay
-    # client, release verification), each bounded, and must finish inside 10 minutes.
+    # client), each bounded, and must finish inside 10 minutes. It lists only files that pass on
+    # Windows, so a red result means something; the files left out, each with its reason, are in
+    # docs/work/windows.md ("Known Windows gaps").
     timeout-minutes: 10
     continue-on-error: true
     env:
