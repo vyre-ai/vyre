@@ -46,7 +46,7 @@ import { within } from "../../../lib/within.js";
 const MEMORY_MS = 3000;
 
 /** A mode name that would let the agent stop asking. Never offered, never set. */
-export const BYPASS_MODE = /bypass|yolo|dangerous|never.?ask|full.?auto|auto.?approve|accept.?all|skip.?perm/i;
+export const BYPASS_MODE = /bypass|yolo|dangerous|never.?ask|full.?auto|full.?access|auto.?approve|accept.?all|skip.?perm/i;
 
 /** ACP tool kind -> the Claude tool name the floor's rules know (rules.js is Claude-tool-name shaped until build step 8). */
 const KIND_TOOL = { read: "Read", edit: "Write", delete: "Write", move: "Write", search: "Grep", execute: "Bash", fetch: "WebFetch" };
@@ -88,6 +88,8 @@ const remembered = new Map();
 /**
  * @param {{ id: string, bin: string, askMode?: RegExp, seed?: Record<string, string> | ((o: any) => Record<string, string>), secretEnv?: string[] | ((o: any) => string[]), args?: string[] | ((o: any) => string[]), env?: Record<string, string> | ((o: any) => Record<string, string>),
  *   capabilities?: Record<string, any>, floor?: (call: { tool: string, input: any, cwd?: string }) => { decision: "deny"|"ask"|null, reason?: string },
+ *   authMethod?: (methods: { id: string, name?: string }[], run: any) => string|null, authTimeoutMs?: number,
+ *   authFirst?: boolean, clientCapabilities?: Record<string, any>, authParams?: (methodId: string, run: any) => Record<string, any>,
  *   sessions?: { get(id: string): string|undefined, set(id: string, agent: string): void } }} entry
  */
 export function acpProvider(entry) {
@@ -125,10 +127,11 @@ function runAcp(entry, known, o) {
   let firstPrompt = true;
 
   const send = obj => { if (!exited && child.stdin.writable) child.stdin.write(JSON.stringify({ jsonrpc: "2.0", ...obj }) + "\n"); };
-  const request = (method, params) => new Promise((resolve, reject) => {
+  const request = (method, params, timeoutMs = 0) => new Promise((resolve, reject) => {
     const id = ++rpcId;
     calls.set(id, { resolve, reject });
     send({ id, method, params });
+    if (timeoutMs > 0) setTimeout(() => { if (calls.delete(id)) reject(Object.assign(new Error(`${method} did not answer in ${Math.round(timeoutMs / 1000)} s`), { code: "timeout" })); }, timeoutMs).unref?.();
   });
   const respond = (id, result) => send({ id, result });
   const fail = (id, code, message) => send({ id, error: { code, message } });
@@ -337,17 +340,43 @@ function runAcp(entry, known, o) {
 
   // ---------------------------------------------------------------- the session
   async function open() {
-    const init = await request("initialize", { protocolVersion: 1, clientCapabilities: { fs: { readTextFile: true, writeTextFile: true }, terminal: true }, clientInfo: { name: "vyre", version: "0.2" } });
+    const init = await request("initialize", { protocolVersion: 1, clientCapabilities: { fs: { readTextFile: true, writeTextFile: true }, terminal: true, ...(entry.clientCapabilities || {}) }, clientInfo: { name: "vyre", version: "0.2" } });
     const caps = init.agentCapabilities || {};
     const prior = o.resume ? known.get(o.id) : undefined;
     const servers = Array.isArray(o.mcpServers) ? o.mcpServers : [];
+    // Real agents (codex-acp, Grok Build) answer session/new with "Authentication required" (-32000) until the client calls
+    // authenticate {methodId}. The entry names the method it wants from what the agent offers (never a prompt to the person):
+    // an API key method when the key is in the environment, else the stored login. An agent that then waits for a browser
+    // sign-in is a session that is not signed in, said plainly.
+    const methods = Array.isArray(init.authMethods) ? init.authMethods.filter(x => x && typeof x.id === "string") : [];
+    const label = entry.id[0].toUpperCase() + entry.id.slice(1);
+    const withAuth = async (method, params) => {
+      try { return await request(method, params); } catch (e) {
+        const err = /** @type {any} */ (e);
+        if (err.code !== -32000 || !methods.length || typeof entry.authMethod !== "function") throw e;
+        const methodId = entry.authMethod(methods, o);
+        if (!methodId) throw new Error(`${label} needs a sign-in and offers no way Vyre can use: ${methods.map(x => x.id).join(", ")}`);
+        try { await request("authenticate", { methodId, ...(typeof entry.authParams === "function" ? entry.authParams(methodId, o) : {}) }, entry.authTimeoutMs || 20_000); } catch (a) {
+          throw new Error(/** @type {any} */ (a).code === "timeout" ? `${label} is waiting for a sign-in in a browser: sign this account in first` : `${label} did not accept its sign-in (${String(/** @type {any} */ (a).message).slice(0, 200)})`);
+        }
+        return request(method, params);
+      }
+    };
+    // An entry that must configure the agent before any session exists (Codex's gateway: where the model is) authenticates first.
+    if (entry.authFirst && methods.length && typeof entry.authMethod === "function") {
+      const methodId = entry.authMethod(methods, o);
+      if (!methodId) throw new Error(`${label} needs a sign-in and offers no way Vyre can use: ${methods.map(x => x.id).join(", ")}`);
+      try { await request("authenticate", { methodId, ...(typeof entry.authParams === "function" ? entry.authParams(methodId, o) : {}) }, entry.authTimeoutMs || 20_000); } catch (a) {
+        throw new Error(/** @type {any} */ (a).code === "timeout" ? `${label} is waiting for a sign-in in a browser: sign this account in first` : `${label} did not accept its sign-in (${String(/** @type {any} */ (a).message).slice(0, 200)})`);
+      }
+    }
     let r;
     if (prior && (caps.loadSession || (caps.sessionCapabilities && caps.sessionCapabilities.resume))) {
       const method = caps.loadSession ? "session/load" : "session/resume";
-      r = await request(method, { sessionId: prior, cwd, mcpServers: servers });
+      r = await withAuth(method, { sessionId: prior, cwd, mcpServers: servers });
       sid = prior; loaded = true;
     } else {
-      r = await request("session/new", { cwd, mcpServers: servers });
+      r = await withAuth("session/new", { cwd, mcpServers: servers });
       sid = String(r.sessionId || "");
     }
     if (!sid) throw new Error("the agent gave no session id");

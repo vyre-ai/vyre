@@ -14,6 +14,7 @@ import { SCRATCH } from "../../../test/scratch.mjs";
 import { conform } from "../conformance.js";
 import { rules } from "../../harness/rules.js";
 import { acpProvider, askFor } from "./acp.js";
+import { codexProvider } from "./codex.js";
 
 const FAKE = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "testing", "fake-acp.js");
 fs.chmodSync(FAKE, 0o755);
@@ -260,4 +261,78 @@ test("acp: a seed file is written 0600 in the account's HOME at every start, rep
   assert.doesNotMatch(text, /sk-secret-value/, "a terminal the agent asked for does not hold the provider key");
   assert.equal(fs.readFileSync(path.join(home, ".grok", "config.toml"), "utf8"), toml, "replaced, not merged");
   assert.equal(fs.statSync(path.join(home, ".grok", "config.toml")).mode & 0o777, 0o600);
+});
+
+// Measured on the real codex-acp 2.0.1 and Grok Build 1.0.44 (proof-wire): session/new answers "Authentication required"
+// (-32000) until authenticate {methodId}; codex offers api-key and chat-gpt, Grok offers grok.com.
+test("acp: an agent that wants authenticate gets the entry's method, then session/new is tried again", async t => {
+  const w = world(t, { authMethod: (methods, run) => (run.env.OPENAI_API_KEY ? methods.find(m => m.id === "api-key")?.id : methods.find(m => m.id === "chat-gpt")?.id) || null });
+  const s = open(w, { env: { ...w.env, FAKE_ACP_AUTH: "ok", OPENAI_API_KEY: "sk-fake" } });
+  const init = await s.until(m => m.type === "system" && m.subtype === "init", "init");
+  assert.ok(init);
+  assert.deepEqual(w.launches().filter(l => l.authenticate).map(l => l.authenticate), ["api-key"], "the key method, because a key is in the environment");
+  assert.equal(await s.say("hello"), "echo: hello");
+  await s.proc.stop(1000);
+  const w2 = world(t, { authMethod: (methods, run) => (run.env.OPENAI_API_KEY ? "api-key" : "chat-gpt") });
+  const s2 = open(w2, { env: { ...w2.env, FAKE_ACP_AUTH: "ok" } });
+  await s2.until(m => m.type === "system" && m.subtype === "init", "init");
+  assert.deepEqual(w2.launches().filter(l => l.authenticate).map(l => l.authenticate), ["chat-gpt"], "no key: the stored login");
+  await s2.proc.stop(1000);
+});
+
+test("acp: an agent waiting for a browser sign-in, or one that refuses, or one with no usable method, says so plainly", async t => {
+  const wait = world(t, { authMethod: () => "chat-gpt", authTimeoutMs: 300 });
+  const a = open(wait, { env: { ...wait.env, FAKE_ACP_AUTH: "hang" } });
+  const ra = await a.until(m => m.type === "result", "the failure");
+  assert.match(ra.result, /Fake is waiting for a sign-in in a browser: sign this account in first/);
+  const refuse = world(t, { authMethod: () => "api-key" });
+  const b = open(refuse, { env: { ...refuse.env, FAKE_ACP_AUTH: "refuse" } });
+  assert.match((await b.until(m => m.type === "result", "the refusal")).result, /Fake did not accept its sign-in \(sign-in refused\)/);
+  const none = world(t, { authMethod: () => null });
+  const c = open(none, { env: { ...none.env, FAKE_ACP_AUTH: "ok" } });
+  assert.match((await c.until(m => m.type === "result", "no method")).result, /needs a sign-in and offers no way Vyre can use: api-key, chat-gpt/);
+  // An agent with no authMethod in its entry keeps the old behaviour: the error is the agent's.
+  const plain = world(t);
+  const d = open(plain, { env: { ...plain.env, FAKE_ACP_AUTH: "ok" } });
+  assert.match((await d.until(m => m.type === "result", "no hook")).result, /Authentication required/);
+  for (const x of [a, b, c, d]) await x.proc.stop(500);
+});
+
+test("acp: a full-access mode is filtered like bypass (codex-acp offers agent-full-access), never offered and never the start mode", async t => {
+  const w = world(t);
+  const s = open(w);
+  const init = await s.until(m => m.type === "system" && m.subtype === "init", "init");
+  assert.ok(!init.modes.some(x => /full.?access|bypass/i.test(x)), JSON.stringify(init.modes));
+  assert.ok(init.modes.includes("default"));
+  await s.proc.stop(500);
+});
+
+test("codex entry: a custom endpoint goes through the gateway method, authenticated before any session exists, with its key only in the headers", async t => {
+  const w = world(t);
+  const provider = codexProvider({ bin: FAKE, custom: { id: "mockmodel", baseUrl: "http://127.0.0.1:9/v1", envKey: "MOCK_MODEL_KEY", model: "m" } });
+  const got = [];
+  const proc = provider.run({ id: crypto.randomUUID(), resume: false, cwd: w.cwd, env: { ...w.env, HOME: path.join(w.store, "h"), MOCK_MODEL_KEY: "sekret-value", FAKE_ACP_AUTH: "ok" }, onSpawn() {}, onMessage: m => got.push(m), onExit() {} });
+  for (let i = 0; i < 200 && !got.find(m => m.type === "system"); i++) await new Promise(r => setTimeout(r, 30));
+  assert.ok(got.find(m => m.type === "system" && m.subtype === "init"), JSON.stringify(got.slice(0, 2)));
+  const launches = w.launches();
+  assert.equal(launches[0].clientCaps.auth._meta.gateway, true, "the client says it supports the gateway method");
+  assert.deepEqual(launches[0].launch, [], "no -c flags: they do not reach Codex");
+  const au = launches.find(l => l.authenticate);
+  assert.equal(au.authenticate, "gateway");
+  assert.deepEqual(au.gateway, { baseUrl: "http://127.0.0.1:9/v1", headers: ["Authorization"], providerName: "mockmodel" });
+  assert.equal(JSON.stringify(launches).includes("sekret-value"), false, "the key is in a header at the agent, never logged here or in the flags");
+  await proc.stop(500);
+});
+
+test("codex entry: without a custom endpoint the API key method is used when a key is set, else the stored ChatGPT login", async t => {
+  for (const [env, want] of [[{ OPENAI_API_KEY: "sk-fake" }, "api-key"], [{ CODEX_API_KEY: "sk-fake" }, "api-key"], [{}, "chat-gpt"]]) {
+    const w = world(t);
+    const p = codexProvider({ bin: FAKE });
+    const got = [];
+    const proc = p.run({ id: crypto.randomUUID(), resume: false, cwd: w.cwd, env: { ...w.env, HOME: path.join(w.store, "h"), FAKE_ACP_AUTH: "ok", OPENAI_API_KEY: "", CODEX_API_KEY: "", ...env }, onSpawn() {}, onMessage: m => got.push(m), onExit() {} });
+    for (let i = 0; i < 200 && !got.find(m => m.type === "system"); i++) await new Promise(r => setTimeout(r, 30));
+    assert.deepEqual(w.launches().filter(l => l.authenticate).map(l => l.authenticate), [want], JSON.stringify(env));
+    assert.equal(w.launches()[0].clientCaps.auth, undefined, "no gateway capability when there is no custom endpoint");
+    await proc.stop(500);
+  }
 });
