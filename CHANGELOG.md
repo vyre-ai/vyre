@@ -4,6 +4,24 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+- Artifacts (plans/artifacts.md, approved 30 Sep). A new box module, `artifacts`: documents,
+  reports, pages, dashboards, diagrams, decks and small apps that any agent makes with
+  `artifacts.create` and `artifacts.update`. Each artifact keeps every version in its own small git
+  history beside the project, never in the project's repository, with `artifacts.diff` and
+  `artifacts.restore` (going back is a new version). An agent reaches only its own project's
+  artifacts. Content an agent reads back is marked as data, not instructions.
+- A file a session saves in its artifacts folder becomes an artifact, and saving it again makes a new
+  version (`artifacts.capture.register`, `floor.wrote`).
+- Public links, off until you turn them on: `artifacts.share` publishes one version, with nothing
+  about the project, agent or thread, and `artifacts.unshare` stops it at once. Links expire (30
+  days by default). A separate share server with no way back into Vyre answers them, under Node's
+  permission model. A share that looks like it holds a key is refused. Sharing counts as posting: an
+  agent's own share waits for you.
+- Artifact pages, private or public, always run at an opaque origin (a CSP `sandbox` header), with
+  no network, no forms and no remote images.
+- `lib/secret-text`: finds vendor key shapes in text, without repeating them.
+- The docs reference reads v1 object tool entries.
+
 - Module contract v1 (ADR 0047), as a proof on the platform branch. `module.json` says for each
   tool who may call it (`reach`) and whether it acts as you outside (`outward`). Each ctx member a
   module uses has one declaration, and the install card is built from them.
