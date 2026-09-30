@@ -47,9 +47,25 @@ step, the Windows/phone clients themselves) stays 0.2.x.
   `test/hygiene.test.js`: 16/16 after `docs:ref`.
 
 ## Doing
-CI on work/drive after merging stage-0.2 (026dcaa5 plus a docs fix). reviewer-2 CLEARED H1/M1/L1 (30 Sep); the platform merge fixed files.test.js's fixture. Targeted files + docs tests: 156/156 on testbox.
+Lead's order (30 Sep): picker, Windows, phone are all IN 0.2, in that order, each to reviewer-2.
+1. Picker: built (core/files/picker.js; candidates, measure, offer; Mac forwards). Decision: NO
+   editable exclusion list, because Taildrive serves the whole folder and an exclusion would be a
+   promise the transport cannot keep; sharing less means a smaller folder. 109 tests pass on testbox.
+2. Windows: built. drive.js macSide is platform aware (seam `platform`, real `process.platform`):
+   `net use Z: \\100.100.100.100@8080\...` maps a drive letter (core/files/drive-windows.js, pure
+   pieces tested), unmount/open/local/status follow. IMPORTANT (windows plan pivot): the Windows
+   app has no local vyred, so it cannot call these tools itself. The box gained `files.drive.address
+   {share}` (url, unc, access, shared) so the app's own native mount command can run the same
+   `net use` line; drive-windows.js's strings are the spec for it. SPIKE RESULT (GitHub windows-
+   latest, fake WebDAV): the hosted Server image has NO WebClient service (error 1060, then net use
+   error 67), so `net use` against Taildrive cannot be proven on a runner. Needs a real Windows 11
+   machine or e2e2's VM, plus a tailnet. Unverified: the `host@port` UNC form on real Windows 11,
+   and the WebClient 50 MB file-size default (FileSizeLimitInBytes) for big files.
+3. Phone: built as `files.drive.list` and `files.drive.read` on the box (core/files/browse.js),
+   guarded like sharing. The PWA's own Files view is pwa's; contract posted to CHAT.
 
 ## Next
+- # provider: tools built (core/files/mentions.js, tested). STILL TO DO once platform's core/mentions is on stage: add the `mentions` entry to core/files/module.json ({kind: "drive" (lead ruling 30 Sep), label Files, icon file, search files.mentions.search, resolve files.mentions.resolve}), declare reach person/modules as platform asked, and confirm meta.thread reaches files.drive.read for agents. 
 - Send the sha to the integrator for review before it lands on stage/0.2 (RULES.md: land only
   through the integrator, after review).
 - Once teammates/iq confirm the project-slug grant key (plans/drive.md section 4.1, posted to

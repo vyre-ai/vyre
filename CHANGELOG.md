@@ -124,6 +124,27 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 - Migrating a Mac to vyre-core's device key: `redeem` deletes a `relay-device/key.json` left by an earlier pairing the moment the new pairing succeeds, and its result names the old device (`superseded`) for the owner to remove at the box with `relay.devices.remove`, so the old file key stops being trusted (reviewer-2).
 - Your own domain now serves. `names.domain.serve { domain }`, after `names.domain.check` passes, gets the domain's certificate by ACME DNS-01 through the `_acme-challenge` CNAME (the challenge goes to `<routehash>.acme.vyre.run` through the directory and is cleared after), keeps it beside the box's name, and the tailnet listener presents it by SNI, accepts its Host, and applies the same owner and Origin rules. Events `domain.ready { domain, address }` and `domain.failed`; `names.status` gains `domain` and `port`. Renewed daily at 30 days like the name's. (The event is `domain.ready`, not `names.domain.ready`: event names are noun.past-verb.) Tested against the real directory Worker on the fake runtime and a fake DNS, and a real TLS connection on loopback.
 - vyred's own start (`core/daemon/main.js`) hands the relay vyre-core's key store on a Mac where core is installed and trusted; in-process tests never do. `createCoreKeys` from lib/vyre-core-keys.js, so the box, route and device keys stay in core.
+- Files as a # tag, Drive's side: `files.mentions.search` (file names across the shares) and
+  `files.mentions.resolve` (sessions or the assistant only), which lets that one chat read that one
+  file through `files.drive.read`, by the file's real path. The `mentions` entry in module.json
+  waits for core/mentions to land (`core/files/mentions.js`).
+- VyreDrive browse and picker check a granted folder by its real path, so a link inside a granted
+  folder to another project in the same share is refused (`withinReal` in `core/files/access.js`).
+  Only a drive letter is ever mapped or unmapped on Windows.
+- VyreDrive browse for the phone: `files.drive.list` and `files.drive.read` list a folder of an
+  offered share and read a file in 1 MiB chunks through the box, since a phone cannot mount a
+  share. Same guard as sharing (no secret, dot folder or link leading out), and a named agent
+  only inside its own granted projects (`core/files/browse.js`).
+- VyreDrive on Windows: `files.drive.mount` maps a share as a drive letter with Windows' own
+  WebDAV client (`net use Z: \\100.100.100.100@8080\...`), and `files.drive.unmount`, `.open`,
+  `.local` and `.status` follow it. The pure pieces are in `core/files/drive-windows.js`.
+  `files.drive.address` on the box gives a device with no Vyre of its own (the Windows app) the
+  address to map.
+- VyreDrive picker: `files.drive.candidates` lists the folders a box could share (projects first),
+  `files.drive.measure` sizes one and says why it cannot be shared, and `files.drive.offer` names,
+  checks and shares a picked folder in one step, with the Mac forwarding all three for the owner.
+  There is no exclusion list: Taildrive serves a whole folder, so sharing less means sharing a
+  smaller folder (`core/files/picker.js`).
 #### tests: every Chrome launch carries the mock-keychain flags
 
 - Chrome on macOS reached for the login Keychain and put a real dialog on the user's screen. `lib/chrome-flags` exports `CHROME_SAFE` (`--use-mock-keychain`, `--password-store=basic`), spread into every Chrome launch in the Deck shot and browser scripts, the native-bar run, the vyrecode harness, hands-chrome's and the onboarding page's tests, the docs build, design-audit, the iOS icon script and the app-perf playwright launch. `test/chrome-flags.test.js` fails on any file that launches Chrome without them (containers' own Chrome and the fakes are listed as exempt, each with why).
