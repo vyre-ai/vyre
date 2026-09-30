@@ -754,6 +754,28 @@ test("modules: an invalid added copy found first never stops the first party mod
   assert.ok([...reg.modules.keys()].some(k => k.startsWith("gate@")), "the broken copy is reported under name@dir");
 });
 
+test("modules v1: an asked tool runs for a model only when vault.said.match says the person asked, and fails closed", async t => {
+  // A stand-in vault: it matches the tool "bakery.target" in thread t-1 only, and records what it was asked.
+  /** @type {any} */ (globalThis).__said = [];
+  t.after(() => { delete /** @type {any} */ (globalThis).__said; });
+  const vault = `export default { async start(ctx) {
+    ctx.tool("vault.said.match", { internal: true, run: async input => { globalThis.__said.push(input); if (input.thread === "boom") throw new Error("locked"); return { matched: input.to[0] === "bakery.target" && input.thread === "t-1" }; } });
+    return {};
+  } };`;
+  const mods = [["bakery", bakeryV1(), bakerySrc], ["notes", good, notesSrc], ["vault", { version: "0.1.0", does: { tools: ["vault.said.match"] } }, vault]];
+  const reg = await registry(t, mods, { builtIn: true });
+  const asAgent = thread => reg.call("bakery.target", {}, "mcp:agent:kit", { thread });
+  assert.equal((await asAgent("t-1")).data.ran, "bakery.target", "the person's words in this thread asked for it");
+  assert.deepEqual(globalThis.__said[0], { kind: "act_out", via: "bakery", to: ["bakery.target"], thread: "t-1" });
+  assert.equal((await asAgent("t-2")).error.code, "not_asked", "another thread");
+  assert.equal((await reg.call("bakery.target", {}, "mcp")).error.code, "not_asked", "no thread");
+  assert.equal((await asAgent("boom")).error.code, "not_asked", "a vault that errors (locked) fails closed");
+  assert.equal((await reg.call("bakery.orders", {}, "mcp")).data.ran, "bakery.orders", "anyone reach never asks");
+  // No vault at all: fail closed, as before.
+  const bare = await registry(t, [["bakery", bakeryV1(), bakerySrc], ["notes", good, notesSrc]], { builtIn: true });
+  assert.equal((await bare.call("bakery.target", {}, "mcp:agent:kit", { thread: "t-1" })).error.code, "not_asked");
+});
+
 test("modules v1: a required module below the range keeps the module from starting", async t => {
   const reg = await registry(t, [["bakery", { ...bakeryV1(), requires: { notes: ">=0.2.0" } }, bakerySrc], ["notes", good, notesSrc]]);
   assert.equal(reg.modules.get("bakery").state, "failed");

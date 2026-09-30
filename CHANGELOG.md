@@ -59,6 +59,9 @@ Newest first. Every change to code lands here in the same commit. A new dependen
   stdout pipe), which named vyred itself, read as "vyred itself, not a caller" and ran a person's tool
   once in about 200 runs. The fd is now read afresh per attempt, no helper starts on a closed socket,
   and an answer from a socket that closed meanwhile is discarded (`core/daemon/peer.js`).
+- A tool with reach "asked" now runs for a model, the harness or a module when `vault.said.match` says the
+  person's own words (or a standing permission) asked for it, in that call's thread and its lineage. It
+  fails closed: no vault, a locked vault, an error or no thread is `not_asked` (`core/modules/index.js`).
 - The home lock is held only by vyred's real command line (node on core/daemon/main.js, or `vyre daemon`),
   not by any live process with "vyre" somewhere in its arguments (`core/daemon/lock.js`).
 - A caller chain that stays unreadable after a fresh read (a missing pid, an empty or timed-out `ps`) is

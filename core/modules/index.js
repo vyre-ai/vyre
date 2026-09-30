@@ -912,6 +912,26 @@ export class Registry {
   }
 
   /**
+   * Did the person's own words ask for this tool (reach "asked")? Asks vault.said.match, which
+   * matches the person's turn in this thread or its lineage, or a standing permission, and uses a
+   * plain ask up. Fails closed: no vault, a locked vault, an error or no thread answers no.
+   * @param {string} tool @param {{ thread?: string, agent?: string }} meta
+   */
+  async saidMatch(tool, meta) {
+    if (!this.tools.has("vault.said.match")) return false;
+    try {
+      const thread = typeof meta.thread === "string" ? meta.thread : undefined;
+      let lineage;
+      if (thread && this.tools.has("threads.lineage")) {
+        const l = await this.call("threads.lineage", { thread }, "module:vyred", { door: true });
+        if (l.data && Array.isArray(l.data.lineage)) lineage = l.data.lineage;
+      }
+      const r = await this.call("vault.said.match", { kind: "act_out", via: tool.split(".")[0], to: [tool], ...(thread ? { thread } : {}), ...(lineage ? { lineage } : {}), ...(meta.agent ? { agent: meta.agent } : {}) }, "module:vyred", { door: true });
+      return Boolean(r.data && r.data.matched === true);
+    } catch { return false; }
+  }
+
+  /**
    * Run a tool. Every call goes through the rules before it runs, whoever made it: Claude through
    * MCP, a surface through HTTP, or the CLI. That is the point of having one path.
    */
@@ -949,7 +969,9 @@ export class Registry {
       return { error: { code: "held_unavailable", message: `${tool} acts as you outside. A call from anyone but you is held at the Gate, and that routing lands with the Gate wiring; until then it runs only from your own surface.` } };
     }
     if (def.reach === "asked" && (["mcp", "harness", "module"].includes(callerKind(caller)) || agentClaim(caller) !== null)) {
-      return { error: { code: "not_asked", message: `${tool} runs for an agent only when your own words asked for it; tell the person what you would do` } };
+      if (!(await this.saidMatch(tool, meta))) {
+        return { error: { code: "not_asked", message: `${tool} runs for an agent only when your own words asked for it; tell the person what you would do` } };
+      }
     }
     if (def.internal && !String(caller).startsWith("module:")) return { error: { code: "no_such_tool", message: `no tool ${tool}` } };
     if (Boolean(def.hook) !== (caller === "hook")) return { error: { code: "no_such_tool", message: `no tool ${tool}` } };
