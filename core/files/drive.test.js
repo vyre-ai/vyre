@@ -1009,5 +1009,3 @@ test("drive mentions: search finds files by name; resolve, for the chat only, le
   events.emit("sessions", "thread.archived", { thread: "t4" }, { thread: "t4" });
   await ok(reg, "files.drive.read", { share: "work", path: "a/other.md" }, "mcp:agent:kit", { thread: "t4" });
 });
-  await no(reg, "files.drive.read", { share: "work", path: "a/other.md" }, "mcp:agent:kit", "not_available", { thread: "t4" });
-});
