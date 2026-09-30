@@ -153,10 +153,13 @@ async function post(name, input, extra, keepalive) {
   const err = new ApiError(body?.error?.code || "http_" + res.status, body?.error?.message || res.statusText, name, body?.error);
   // The one signal for a removed phone: the box's own answer to any contact from a device it no
   // longer knows. Only that exact code on a 4xx; a network error or a 5xx never counts.
-  if (err.code === "device_removed" && res.status >= 400 && res.status < 500) for (const fn of [...removedSubs]) { try { fn(); } catch {} }
+  if (err.code === "device_removed" && res.status >= 400 && res.status < 500 && secureOrigin()) for (const fn of [...removedSubs]) { try { fn(); } catch {} }
   if (err.missing || res.status === 404) return fallback(name, input, err);
   throw err;
 }
+
+/** The answer is the box's own only over TLS to its address (a valid certificate for the box's name), or on this machine's own loopback: never plain http over a network. */
+const secureOrigin = () => { const l = globalThis.location; return !l || l.protocol === "https:" || l.hostname === "localhost" || l.hostname === "127.0.0.1"; };
 
 /** @type {Set<() => void>} */
 const removedSubs = new Set();

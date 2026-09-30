@@ -229,5 +229,16 @@ test("device_removed on a 4xx tells the phone it was removed; a network error or
     globalThis.fetch = async () => { throw new Error("network"); };
     await api.attempt("threads.list", {});
     assert.equal(heard, 1);
+    // Plain http over a network is not the box's own answer, however it is worded.
+    globalThis.fetch = real;
+    box = () => ({ body: { error: { code: "device_removed", message: "x" } } });
+    const was = Object.getOwnPropertyDescriptor(globalThis, "location");
+    Object.defineProperty(globalThis, "location", { value: { protocol: "http:", hostname: "192.168.1.5" }, configurable: true });
+    await assert.rejects(api.call("threads.list", {}));
+    assert.equal(heard, 1, "plain http never wipes");
+    Object.defineProperty(globalThis, "location", { value: { protocol: "https:", hostname: "alex.vyre.run" }, configurable: true });
+    await assert.rejects(api.call("threads.list", {}));
+    assert.equal(heard, 2, "https to the box's own address does");
+    if (was) Object.defineProperty(globalThis, "location", was); else delete globalThis.location;
   } finally { globalThis.fetch = real; off(); box = () => ({ body: { data: { state: "sent" } } }); }
 });

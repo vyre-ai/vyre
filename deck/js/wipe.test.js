@@ -71,12 +71,22 @@ test("watchRemoval: its own removal event wipes once; another device's does not"
   assert.match(root.textContent || "", /This phone was removed/);
 });
 
-test("watchRemoval: removed while away, the launch check wipes; a box that cannot be asked wipes nothing", async () => {
-  const st = { getItem: k => ({ "vyre.passkey": JSON.stringify({ id: "pk1" }) })[k] ?? null };
-  const run = async (/** @type {any} */ answer) => { const p = phone(); let w = 0; watchRemoval({ on: () => () => {}, attempt: async () => answer, env: p, store: st, onWiped: () => { w++; } }); await new Promise(r => setTimeout(r, 30)); return w; };
-  assert.equal(await run({ data: [{ id: "other" }] }), 1, "the key is no longer listed");
-  assert.equal(await run({ data: [{ id: "pk1" }] }), 0, "still listed");
-  assert.equal(await run({ error: { code: "offline" } }), 0, "cannot ask");
+test("watchRemoval: removed while away, one miss only marks it and a second look a minute later wipes; a key that is listed clears the mark; a box that cannot be asked wipes nothing", async () => {
+  const mem = new Map([["vyre.passkey", JSON.stringify({ id: "pk1" })]]);
+  const st = { getItem: k => mem.get(k) ?? null, setItem: (k, v) => { mem.set(k, v); }, removeItem: k => { mem.delete(k); } };
+  let clock = 1_000_000, w = 0;
+  const launch = async (/** @type {any} */ answer) => { w = 0; watchRemoval({ on: () => () => {}, attempt: async () => answer, now: () => clock, env: phone(), store: st, onWiped: () => { w++; } }); await new Promise(r => setTimeout(r, 30)); return w; };
+  assert.equal(await launch({ data: [{ id: "other" }] }), 0, "first miss: only marked");
+  assert.equal(mem.has("vyre.removed.suspect"), true);
+  clock += 5_000;
+  assert.equal(await launch({ data: [{ id: "other" }] }), 0, "too soon for a second look");
+  assert.equal(await launch({ error: { code: "offline" } }), 0, "cannot ask");
+  clock += 120_000;
+  assert.equal(await launch({ data: [{ id: "pk1" }] }), 0, "listed again (a restored box): mark cleared");
+  assert.equal(mem.has("vyre.removed.suspect"), false);
+  assert.equal(await launch({ data: [{ id: "other" }] }), 0);
+  clock += 120_000;
+  assert.equal(await launch({ data: [{ id: "other" }] }), 1, "still missing a minute or more later: wipe");
 });
 
 test("watchRemoval: the box's device_removed answer wipes", async () => {

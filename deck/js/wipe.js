@@ -16,6 +16,10 @@
 
 import { h, put } from "./dom.js";
 
+/** The first launch that found this phone's key missing; a second look a minute or more later confirms it. */
+const SUSPECT = "vyre.removed.suspect";
+const MIN_SECOND_LOOK_MS = 60_000;
+
 const get = (/** @type {any} */ store, /** @type {string} */ k) => { try { return store?.getItem(k) ?? null; } catch { return null; } };
 
 /**
@@ -76,7 +80,7 @@ export function showRemoved(root) {
 
 /**
  * Watch for this phone's removal. `on` is api.js's on(type, fn); `attempt` its attempt. Returns a stop.
- * @param {{ on: (type: string, fn: (e: any) => void) => () => void, attempt: (n: string) => Promise<{ data?: any, error?: any }>, onDeviceRemoved?: (fn: () => void) => () => void, env?: any, root?: HTMLElement, store?: any, onWiped?: () => void }} d
+ * @param {{ on: (type: string, fn: (e: any) => void) => () => void, attempt: (n: string) => Promise<{ data?: any, error?: any }>, onDeviceRemoved?: (fn: () => void) => () => void, now?: () => number, env?: any, root?: HTMLElement, store?: any, onWiped?: () => void }} d
  */
 export function watchRemoval(d) {
   const env = d.env || globalThis;
@@ -91,14 +95,20 @@ export function watchRemoval(d) {
   };
   const offs = ["presence.removed", "device.removed"].map(type => d.on(type, (/** @type {any} */ e) => { if (isMyRemoval({ type, payload: e && (e.payload ?? e) }, myIds(store))) wipe(); }));
   if (d.onDeviceRemoved) offs.push(d.onDeviceRemoved(() => { wipe(); }));
-  // Removed while away: the passkey note is here, the box no longer lists the key.
+  // Removed while away: the passkey note is here, the box answers and no longer lists the key. A box
+  // restored from an older backup also lacks the key, so one miss only marks it; a second launch
+  // (a minute or more later) that still misses it wipes. The box's own device_removed needs no second look.
   (async () => {
     let mine = null;
     try { mine = JSON.parse(get(store, "vyre.passkey") || "null"); } catch {}
     if (!mine || typeof mine.id !== "string") return;
     const r = await d.attempt("presence.keys");
     if (r.error || !Array.isArray(r.data)) return; // cannot ask: wipe nothing
-    if (!r.data.some((/** @type {any} */ k) => k && k.id === mine.id)) wipe();
+    if (r.data.some((/** @type {any} */ k) => k && k.id === mine.id)) { try { store?.removeItem?.(SUSPECT); } catch {} return; }
+    const first = Number(get(store, SUSPECT)) || 0;
+    const now = (d.now || Date.now)();
+    if (first && now - first >= MIN_SECOND_LOOK_MS) { await wipe(); return; }
+    if (!first) { try { store?.setItem?.(SUSPECT, String(now)); } catch {} }
   })().catch(() => {});
   return () => { for (const off of offs) off(); };
 }
