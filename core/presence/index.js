@@ -190,7 +190,7 @@ export function personOnly(name, def) {
   return Boolean(def) && Array.isArray(def.callers) && def.callers.length > 0 && def.callers.every(c => PERSON_SURFACES.has(c));
 }
 
-export const METHODS = ["touchid", "tty", "capsule", "device", "passkey", "code", "session"];
+export const METHODS = ["touchid", "tty", "capsule", "device", "passkey", "code", "grant", "session"];
 
 /**
  * Tools a short session may prove, after one strong proof: the Deck revealing or copying items
@@ -325,12 +325,24 @@ export const MIGRATIONS = [`
   CREATE TRIGGER presence_keys_signer_alg_update BEFORE UPDATE OF kind, alg, public_key ON presence_keys
     WHEN NEW.kind IN ('capsule', 'device') AND (NEW.alg IS NULL OR NEW.alg <> -7)
     BEGIN SELECT RAISE(ABORT, 'a capsule or device key must store alg -7'); END;
+`, `
+  -- The first owner passkey's one-time grant (relay.setup.claim): stored hashed, five minutes, one
+  -- use, bound to the node that asked for it and to the address the claim was made at (the
+  -- passkey's rp_id).
+  CREATE TABLE presence_grants (
+    hash TEXT PRIMARY KEY,
+    expires INTEGER NOT NULL,
+    used INTEGER,
+    peer TEXT,
+    host TEXT
+  );
 `];
 
 const CHALLENGE_TTL = 120_000;
 const CAPSULE_SKEW = 60_000;
 const COOL_DOWN = 30_000;
 const CODE_TTL = 10 * 60_000;
+const GRANT_TTL = 5 * 60_000;
 // A session lasts 30 minutes from the proof, used or not (the no-nag rule: one proof covers
 // about 30 minutes on that device). There is no shorter idle cutoff inside that.
 const SESSION_MAX = 30 * 60_000;
@@ -815,6 +827,25 @@ export class Presence {
       return proved();
     }
 
+    if (method === "grant") {
+      // The first owner passkey's grant (relay.setup.claim checked a signed claim token to mint it):
+      // presence.enroll only, once, within five minutes, from the browser it was made for, and on the
+      // box from the owner's own device over the tailnet as a code is.
+      if (tool !== "presence.enroll") return refuse("a grant only enrolls the first passkey");
+      if (isServer(this.role)) {
+        const owner = String((this.network() || {}).owner || "").toLowerCase();
+        if (!owner || String(caller || "").toLowerCase() !== `tailnet:${owner}`) return refuse("on the box, a passkey is enrolled from the owner's own device, over the tailnet");
+      }
+      const h = sha(String(proof.grant || "")).toString("hex");
+      const row = /** @type {any} */ (this.db.prepare("SELECT peer, host FROM presence_grants WHERE hash = ? AND used IS NULL AND expires > ?").get(h, this.now()));
+      if (!row || (row.peer && row.peer !== peerId(peer))) return refuse("that grant is wrong, used, expired or made for another device");
+      // It enrols a passkey for the address the claim was made at, and nothing else.
+      if (!input || input.kind !== "passkey" || !row.host || String(input.rp_id || "").toLowerCase() !== row.host) return refuse("a grant enrolls a passkey for the address it was claimed at");
+      const r = this.db.prepare("UPDATE presence_grants SET used = ? WHERE hash = ? AND used IS NULL AND expires > ?").run(this.now(), h, this.now());
+      if (Number(r.changes) !== 1) return refuse("that grant is wrong, used or expired");
+      return proved();
+    }
+
     return refuse(`unknown presence method ${method}`);
   }
 
@@ -863,6 +894,15 @@ export class Presence {
     const r = this.db.prepare("UPDATE presence_codes SET used = ? WHERE hash = ? AND used IS NULL AND expires > ?")
       .run(this.now(), sha(normal(code)).toString("hex"), this.now());
     return Number(r.changes) === 1;
+  }
+
+  /** The one-time grant for the first owner passkey: 32 random bytes, stored hashed, five minutes, bound to `peer` when known and to the address `host` it was claimed at. @param {any} [peer] @param {string} [host] */
+  mintGrant(peer = null, host = "") {
+    const now = this.now();
+    const grant = b64url(32);
+    this.db.prepare("DELETE FROM presence_grants WHERE expires < ?").run(now - 24 * 3600_000);
+    this.db.prepare("INSERT INTO presence_grants (hash, expires, used, peer, host) VALUES (?,?,NULL,?,?)").run(sha(grant).toString("hex"), now + GRANT_TTL, peerId(peer), String(host || "").toLowerCase() || null);
+    return { grant, expires: now + GRANT_TTL };
   }
 
   /** Enrolled keys, never their public keys: a list is for recognising and removing them. */

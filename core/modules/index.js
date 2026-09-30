@@ -412,7 +412,7 @@ export class Registry {
    *           rules?: (call: { tool: string, input: any, caller: string }) => Promise<{ allow: boolean, reason?: string }>,
    *           handler?: (policy: any) => (req: any, res: any, caller: string) => Promise<void>, paths?: any,
    *           upgrader?: (policy: any) => (req: any, socket: any, head: any, caller: string) => void,
-   *           presence?: import("../presence/index.js").Presence }} deps
+   *           presence?: import("../presence/index.js").Presence, coreKeys?: any }} deps
    */
   constructor(deps) {
     this.deps = deps;
@@ -669,6 +669,12 @@ export class Registry {
       declaredSettings: () => [...this.modules.entries()].filter(([, r]) => r.state === "running" && r.manifest && Array.isArray(r.manifest.settings))
         // module and firstParty come from the loader, after the declaration, so a manifest can't claim them.
         .flatMap(([name, r]) => r.manifest.settings.map(d => ({ ...d, module: name, firstParty: this.isFirstParty(r.dir) }))),
+      // The tools shipped modules put on the pre-claim setup channel (module.json "setupTools"),
+      // for the relay to build its allowlist from. Only a shipped module's field counts, only for a
+      // tool it declares and owns, and never a relay, presence or vault tool: an added module's field is ignored.
+      declaredSetupTools: () => [...this.modules.entries()]
+        .filter(([, r]) => r.state === "running" && r.manifest && Array.isArray(r.manifest.setupTools) && this.isFirstParty(r.dir))
+        .flatMap(([name, r]) => r.manifest.setupTools.filter((/** @type {any} */ t) => typeof t === "string" && t.startsWith(name + ".") && toolEntries(r.manifest).some(e => e.name === t) && !/^(relay|presence|vault)\./.test(t))),
       // Every running module's teaches.tips, for the tips module to choose from (core/tips). Tips
       // are plain text a module chose to show; the tips module checks them, never this loader.
       // firstParty: shipped in the repo, so its tips follow Vyre's version, not the module's own.
@@ -788,6 +794,9 @@ export class Registry {
         // what a surface can run (commands.list), never for deciding a call: the registry does that.
         tools: caller => structuredClone(this.listTools(caller ? String(caller) : undefined)),
       },
+      // The box's keys held by vyre-core (lib/vyre-core-keys.js), for the relay module alone: its dh
+      // and signature would let any module that held them speak as the box. Null where core has none.
+      coreKeys: m.name === "relay" && firstParty(String((this.modules.get(m.name) || {}).dir || "")) ? this.deps.coreKeys || null : null,
       handler: policy => { if (!this.deps.handler) throw new Error("this vyred has no router to hand out"); return this.deps.handler(policy); },
       // The same for WebSocket upgrades (/v1/streams/...): (req, socket, head, caller). Without it
       // a module's listener cannot carry a stream, and Glass over the tailnet never connected.

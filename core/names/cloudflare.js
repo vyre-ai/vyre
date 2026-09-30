@@ -1,5 +1,7 @@
 // @ts-check
-// cloudflare — the few DNS operations Vyre needs, fenced to one zone.
+// cloudflare: the few DNS operations Vyre needs, fenced to one zone. DEVELOPMENT ONLY since the
+// name directory (names/worker): a box no longer holds a Cloudflare token, index.js loads this only
+// with VYRE_NAMES_DEV_CLOUDFLARE=1.
 //
 // The interim name service is the user's own Cloudflare API token (ADR 0002, Names). That
 // token may also cover the user's other zones, so every method refuses a name that is not the

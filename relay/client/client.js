@@ -226,6 +226,8 @@ export async function resolveTicket(ticket, o) {
   const res = await fetchFn(`${base}/v1/pair`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ loc: base64url(loc) }) });
   if (res.status === 404) throw fail("ticket_gone", "this pairing code has expired or was already used");
   if (res.status === 429) throw fail("rate_limited", "too many pairing attempts; wait a minute");
+  // Two boxes registered this locator (first writer wins on the relay): the setup page's "Two servers used this code".
+  if (res.status === 409) throw fail("contested", "two servers used this code; start again");
   if (!res.ok) throw fail("pair_failed", `the relay would not resolve this pairing code (${res.status})`);
   const body = await res.json();
   const recordText = String((body && body.record) || "");

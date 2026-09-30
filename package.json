@@ -13,7 +13,7 @@
   "scripts": {
     "postinstall": "node scripts/postinstall.mjs",
     "pretest": "node test/tmp-guard.mjs before",
-    "test": "node --test --test-reporter=spec \"core/**/*.test.js\" \"test/**/*.test.js\" \"deck/**/*.test.js\" \"modules/**/*.test.js\" \"local/*/*.test.js\" \"relay/**/*.test.js\" \"apps/test/*.test.js\" \"apps/app/**/*.test.js\" \"lib/**/*.test.js\"",
+    "test": "node --test --test-reporter=spec \"core/**/*.test.js\" \"test/**/*.test.js\" \"deck/**/*.test.js\" \"modules/**/*.test.js\" \"local/*/*.test.js\" \"relay/**/*.test.js\" \"names/**/*.test.js\" \"apps/test/*.test.js\" \"apps/app/**/*.test.js\" \"lib/**/*.test.js\"",
     "posttest": "node test/tmp-guard.mjs after",
     "perf-check": "node scripts/perf-check",
     "eval:memory": "node scripts/eval-memory.js",
