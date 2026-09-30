@@ -110,11 +110,11 @@ These are rules, not aspirations. A change that breaks one needs a spec change f
    nothing. Budgets, checked by `scripts/perf-check` and in CI:
    - vyred idle: under 0.5% of one core and under 150 MB resident, with no polling faster than
      once a minute when nothing is happening; work is driven by events and file-system notice.
-   - Capsule hidden: under 0.2% CPU, no GPU use, under 250 MB resident for all its processes;
+   - Lumen hidden: under 0.2% CPU, no GPU use, under 250 MB resident for all its processes;
      shown and idle, under 2% CPU. It wakes in under 100 ms.
    - Deck in a background tab: no timers faster than a minute; the event stream only.
    - Heavy work (indexing, embedding, curation) runs at low priority, yields, pauses on battery
-     and when the user is active, and never blocks a hook or the Capsule.
+     and when the user is active, and never blocks a hook or Lumen.
    - Memory that grows with the corpus (search indexes, caches) is bounded and measured.
    A change that breaks a budget is a bug, like a failing test. Measured numbers are in
    [Performance](performance.md).
@@ -235,14 +235,14 @@ disabled and reported; it never takes `vyred` down.
 |---|---|
 | `does` | Tools this module offers. Each becomes an MCP tool for Claude, an HTTP route, and (where it makes sense) a CLI command, from one definition. |
 | `watches` | Events it emits into the event log. |
-| `shows` | Where it appears: Deck panels, Capsule actions, CLI commands. |
+| `shows` | Where it appears: Deck panels, Lumen actions, CLI commands. |
 | `needs` | Vault items it asks for. It never reads the vault any other way. |
 | `teaches` | Kinds of fact it hands the curator. It never writes Memory directly. |
 
 `requires` names other modules only. The store and the event log are the kernel: every module has
 them, so they are never listed. The published schema for every key, including those module API 1
 adds, is `packages/module-sdk/manifest.schema.json` ([ADR 0033](../adr/0033-hackable-vyre.md)).
-Today the Capsule reads `shows.capsule`; `shows.deck` is declared for the Deck's slot registry,
+Today Lumen reads `shows.capsule`; `shows.deck` is declared for the Deck's slot registry,
 which does not read it yet (ADR 0033, phase 4).
 
 ### 5.2 The entry file
@@ -384,7 +384,7 @@ Offboarding is one action: revoke everything a person holds and list what must b
 The Vault is meant to replace 1Password entirely, for a person and for their agents: logins
 (with TOTP codes), cards, secure notes, API keys and env sets, passkeys later; a password
 generator; import from 1Password, Bitwarden, Chrome and Safari; autofill in the browser through
-an extension, and on the phone; the Capsule can fill a login into the front app. Agents use
+an extension, and on the phone; Lumen can fill a login into the front app. Agents use
 items without seeing them; people see them only after unlocking on their own device.
 
 Tools: `vault.put`, `vault.list` (names only), `vault.grant`, `vault.revoke`, `vault.pass.create`,
@@ -418,7 +418,7 @@ Tools: `watchers.create`, `watchers.test`, `watchers.list`, `watchers.pause`, `w
 
 The only way out of an agent's container. It adds credentials at the boundary, and holds
 anything that would send as the user, spend money or delete until the user approves the final
-content. Held items appear in Now, the Capsule and the phone.
+content. Held items appear in Now, Lumen and the phone.
 
 Tools: `gate.held`, `gate.approve`, `gate.reject`.
 
@@ -500,7 +500,7 @@ The Harness also ships:
 | Surface | What it is | Built from |
 |---|---|---|
 | CLI | `vyre`: home, projects, threads, context, up, status | `core/cli` |
-| Capsule | Control-Control command bar on the Mac: talk to the assistant, to any agent, or to any session | `local/capsule` |
+| Lumen | Control-Control command bar on the Mac: talk to the assistant, to any agent, or to any session | `local/capsule` |
 | Deck | The web app at `<you>.vyre.run`: Now, Projects, Memory, Agents, Vault, Settings | `deck/` |
 | Glass | An agent's screen, live, with take-over | `deck/` + `core/computers` |
 | Chat | Vyre's own chat layer: projects, then sessions, each session the terminal mirrored as a readable conversation (tool calls folded, diffs, asks and held items inline), on phone and computer, driving the same Claude Code sessions as the terminal. No third-party chat server. | `deck/chat` |
@@ -514,18 +514,18 @@ Every surface talks to vyred's API. None reads the store directly.
 
 Every Vyre session is a real Claude Code session: in a terminal, or headless under the
 Switchboard. Vyre never imitates Claude Code; every surface (the terminal, Chat, the Deck, the
-Capsule, the phone) drives the same real sessions.
+Lumen, the phone) drives the same real sessions.
 
 - **The assistant.** Every install has one, made at onboarding. It is yours: its name, voice,
   instructions and skills are configurable. It can see every project and every session, and it
   can start, drive, monitor and stop any session in any project, or outside one, through the
-  `threads.*` and `agents.*` tools. It is who you talk to in the Capsule by default.
+  `threads.*` and `agents.*` tools. It is who you talk to in Lumen by default.
 - **Agents.** Others you create, e.g. a research agent or a bookkeeping agent. Each is headless,
   runs on your Claude subscription (a setup token in the Vault) or an API key with a budget,
   and can draw context from several projects, never from projects outside its list. When a
   subscription's limit is reached it falls back to the API key if one is allowed, and says so
   in its thread. Each can have its own computer (section 7.9).
-- **Talking to them.** From the Capsule, the Deck, Chat or the terminal you can talk to the
+- **Talking to them.** From Lumen, the Deck, Chat or the terminal you can talk to the
   assistant, to any agent directly, or to any session directly. Talking to a session types
   into it (one keyboard at a time, floor rule 4).
 
@@ -565,7 +565,7 @@ Enforced outside the model, in the Rules and the Gate. None can be switched off.
    proved presence on their own device, for that one value ([ADR 0004](../adr/0004-presence.md),
    [ADR 0006](../adr/0006-vault-next.md)). Never to a model,
    an agent, a log or an event.
-9. The Capsule works offline for the user's own Mac.
+9. Lumen works offline for the user's own Mac.
 
 ---
 
@@ -580,7 +580,7 @@ Enforced outside the model, in the Rules and the Gate. None can be switched off.
 | **M4** | Watchers | The runtime plus the write-a-watcher skill; one watcher written by Claude, running, filing into a project. |
 | **M5** | Box | `vyre up` on a Linux server; Tailscale joined; `<you>.vyre.run` resolves privately with HTTPS. |
 | **M6** | Switchboard and Deck | Headless threads streamed to the Deck; Now and Projects working. |
-| **M7** | Capsule | Ported from the current Mac app onto vyred's API. |
+| **M7** | Lumen | Ported from the current Mac app onto vyred's API. |
 | **M8** | Computers and Glass | An agent's desktop, live, with take-over. |
 | **M9** | Chat, Gate, phone | Vyre Chat (projects, sessions, the terminal mirrored) on phone and computer; the Gate holding sends. |
 
