@@ -31,7 +31,7 @@ test("a role made a moment ago says so and undoes through team.retire; a reply e
   assert.match(text($(el, ".cv-made")), /Made design, a new teammate/);
   await $(el, ".cv-made-undo").click();
   await new Promise(r => setTimeout(r, 10));
-  assert.deepEqual(calls.at(-1).input.teammate, "design-northwind");
+  assert.deepEqual(calls.at(-1).input, { project: "northwind", role: "design", undo: true });
   assert.equal(calls.at(-1).tool, "team.retire");
   assert.match(text($(el, ".cv-made")), /Undone/);
   assert.equal(madeNow("northwind", "design"), null);

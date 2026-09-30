@@ -348,7 +348,7 @@ export function handoffCard(b) {
     const made = !replied && !failed && project ? madeNow(project, role) : null;
     const undo = made ? h("button", { class: "btn btn-ghost btn-sm cv-made-undo", type: "button", onclick: async () => {
       undo.disabled = true;
-      const r = await attempt("team.retire", { teammate: made.id || `${role}-${project}`, reason: "undone by the person right after @" + role + " made it" });
+      const r = await attempt("team.retire", { project, role, undo: true });
       if (r.error) { undo.disabled = false; put(madeLine, `Made ${role}, a new teammate. Could not undo it: ${r.error.missing ? "this box cannot remove teammates yet" : r.error.message || r.error.code}`, undo); return; }
       unmark(project, role);
       put(madeLine, `Undone. ${role} is gone.`);
