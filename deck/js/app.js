@@ -33,6 +33,7 @@ import { fillPlaces, readPin } from "./places.js";
 import { watchHealth, linkLine } from "./health.js";
 import { followTheme, deviceId } from "./theme-live.js";
 import { installAvatars, setIdentity, personAvatar } from "./avatars.js";
+import { checkBuild } from "./build-check.js";
 import { reportContext } from "./context-report.js";
 
 /** Routes, most specific first. The name is the file in deck/views/. */
@@ -818,6 +819,23 @@ document.addEventListener("visibilitychange", () => {
   hiddenAt = 0;
 });
 
+// Whether the person has touched this page yet: a reload for a new build never lands under their finger.
+let touched = false;
+{
+  const touch = () => { touched = true; };
+  addEventListener("pointerdown", touch, { once: true, passive: true });
+  addEventListener("keydown", touch, { once: true, passive: true });
+}
+// Each time the stream comes back (the box may have been updated meanwhile): this page is never
+// older than its box. Invisible: deck/js/build-check.js.
+onResume(async () => {
+  const r = await attempt("system.info");
+  const reg = "serviceWorker" in navigator ? await navigator.serviceWorker.getRegistration().catch(() => undefined) : undefined;
+  checkBuild({ page: document.querySelector('meta[name="vyre-build"]')?.getAttribute("content") || null, info: r.data,
+    sw: reg || null, reload: () => location.reload(), untouched: () => !touched || document.visibilityState === "hidden",
+    onHidden: fn => document.addEventListener("visibilitychange", () => { if (document.visibilityState === "hidden") fn(); }) });
+});
+
 if ("serviceWorker" in navigator) {
   // updateViaCache none: the browser asks the box for sw.js on every launch, so a release (a new
   // BUILD in it) installs now. When that new worker takes over a page that already had one, the
@@ -825,10 +843,6 @@ if ("serviceWorker" in navigator) {
   // so a release never mixes old and new modules under someone's finger.
   const hadController = Boolean(navigator.serviceWorker.controller);
   navigator.serviceWorker.register("/sw.js", { updateViaCache: "none" }).catch(() => {});
-  let touched = false;
-  const touch = () => { touched = true; };
-  addEventListener("pointerdown", touch, { once: true, passive: true });
-  addEventListener("keydown", touch, { once: true, passive: true });
   navigator.serviceWorker.addEventListener("controllerchange", () => {
     if (!hadController) return;
     if (!touched || document.visibilityState === "hidden") { location.reload(); return; }

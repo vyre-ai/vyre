@@ -4,6 +4,13 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### deck: a page is never older than its box, and nobody is asked
+
+- vyred stamps its build id into the Deck page (`<meta name="vyre-build">`, core/daemon/build.js
+  htmlWithBuild) as it already does into sw.js. Each time the stream comes back, deck/js/build-check.js
+  compares the page's id with system.info's; on a mismatch the service worker updates and the page
+  reloads when untouched or next hidden (drafts kept). No prompt. A dev checkout never reloads.
+
 #### lib/caps-flags and chat's provider capabilities (0.2, PLAN.md C14b)
 
 - `lib/caps-flags/index.js` is the one list of provider capability flags, with `normalizeCaps`

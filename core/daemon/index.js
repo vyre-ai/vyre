@@ -17,7 +17,7 @@ import { isRealHome } from "../config/dialogs.js";
 import { open } from "../store/index.js";
 import { Events } from "../events/index.js";
 import { Registry, discover, ownerDevice } from "../modules/index.js";
-import { build, swWithBuild } from "./build.js";
+import { build, swWithBuild, htmlWithBuild } from "./build.js";
 import { serveApp } from "./app.js";
 import { acquire } from "./lock.js";
 import { Presence, PERSON_ONLY, HUMAN_ONLY, SESSIONABLE, personOnly, fingerprint, parse as parsePresence } from "../presence/index.js";
@@ -838,6 +838,7 @@ function serveDeck(res, pathname, cfg) {
   // The service worker carries the build, so a release is a new sw.js and a phone swaps its cache
   // at once (deck/sw.js BUILD).
   if (file === path.join(dir, "sw.js")) buf = Buffer.from(swWithBuild(buf.toString("utf8")));
+  if (file === shell || wantsShell) buf = Buffer.from(htmlWithBuild(buf.toString("utf8")));
   res.writeHead(200, { "content-type": TYPES[path.extname(file)] || "application/octet-stream", ...deckHeaders(cfg) });
   res.end(buf);
 }
