@@ -129,6 +129,10 @@ try {
   const reg = spawnSync("docker", ["exec", "e2e-headscale", "headscale", "nodes", "register", "--user", "marlow", "--key", key], { encoding: "utf8" });
   r.step("1.9b-node-approved", reg.status === 0, { why: reg.status === 0 ? "headscale stand-in" : (reg.stderr || reg.stdout).slice(0, 200) });
   const live = await sees(/Your address is live/i, 240000);
+  if (!live) {
+    const dbg = t => spawnSync("docker", ["exec", "-u", "vyre", "vyre-vyre-1", "vyre", "call", t, "{}"], { encoding: "utf8" });
+    fs.writeFileSync(out + "/addr-diag.txt", ["names.status", "network.tailscale.status"].map(t => { const x = dbg(t); return `== ${t}\n${hide(x.stdout || "")}${x.stderr || ""}`; }).join("\n"));
+  }
   r.step("1.9c-address-live", live, { shot: await shot("setup-ts-live"), why: live ? "certificate from a stand-in ACME server (pebble), DNS record in the fake zone" : undefined });
   if (!live) throw new Error("address never went live");
   await click("Continue");
