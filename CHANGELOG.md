@@ -4,6 +4,7 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+- On a Mac with vyre-core, the relay's keys (the box's Noise key and the route key) live in vyre-core and never leave it: the relay asks for the public halves, the handshake's key step and a signature, and a model's process gets none of it. `lib/vyre-core-keys.js` is the client (`createCoreKeys`, and `fakeCoreKeys` for tests).
 - Closed a caller-identity race on macOS: a forged "cli" label from under a claude was believed
   when the caller was forked inside the 250 ms shared process snapshot. A pid the snapshot lacks is
   now read again, retries start from a fresh table, a peer that already exited is a model's, and
