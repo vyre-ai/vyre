@@ -5,6 +5,13 @@ Branch: work/platform · Worktree: ../vyre-platform · ADR 0033
 ## Scope
 Hackable Vyre (ADR 0033): a stable, versioned module API; extension points for every part; user modules and overrides that survive updates; `vyre update` from GitHub releases; `vyre module new/add/remove`; the boundary ratchet toward a thin kernel.
 
+## 0.2: the module contract v1 (30 Sep, resume from here)
+- ADR 0047 (docs/adr/0047-module-contract-v1.md), docs/MODULES.md, docs/build/AGENT-BRIEF.md, plan at <team-dir>/0.2/plans/platform.md.
+- Owners agreed in CHAT.md 06:09-06:16: vault, iq, sessions, assistant, watchers, app-design. reviewer-2 red team (<team-dir>/0.2/reviews/platform.md): no BLOCKER, all HIGH/MEDIUM/LOW folded at 65c7bc74; re-check asked.
+- Proof on this branch (not merged; the integrator merges after the person approves): v1 schema and checker, testing.js, conform.js, examples/modules/bakery, test/module-api-compat.test.js, v1 scaffold with AGENTS.md, `vyre module test`.
+- Doing: loader accepts v1 (core/modules), harness follows "one declaration per ctx door"; then reviewer-2's rules in the harness (fetch GET only, not_declared default-deny, slot taps to the Gate card, update code-changed flag, no replaces for added modules).
+- Next: report to the lead; build steps in the plan's section 7 after the person's yes.
+
 ## Done
 - ADR 0033 accepted by the lead (decisions recorded in the ADR). Inventory in its appendix.
 - Team asks sent 2026-09-27: native-core (module settings into the registry: they pick "settings reads manifests" or an internal settings.register), sessions (providers shape frozen by the schema; hooks seam in canUseTool, P4), polish-cli (verb shapes, who writes module.js/update.js), app-design (card shapes, iframe tokens, slot placement), pwa (slot registry + sw caching of /m/<module>/), ci (lib/* in boundaries, the release workflow), chat (renderer slot heads-up).
