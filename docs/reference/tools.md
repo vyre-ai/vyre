@@ -4445,7 +4445,7 @@ The teammate itself closes its running request with a result. request may be lef
 
 ### `team.duties.create`
 
-Give a teammate a standing duty: something it does by itself when a trigger fires (an event like thread.finished or goal.stale, a schedule like daily 07:00, or a connection's push), described in plain words. act: true lets it call tools and ask a model (every outward call still holds at the Gate); false only files what it notices into the teammate's notes and the waiting list. A person, the assistant, or a session in the project on the person's request starts it at once; a teammate's own suggestion waits off in the list until a person turns it on.
+Give a teammate a standing duty: something it does by itself when a trigger fires (an event like thread.finished or goal.stale, a schedule like daily 07:00, or a connection's push), described in plain words. act: true lets it call tools and ask a model (every outward call still holds at the Gate); false only files what it notices into the teammate's notes and the waiting list. A person starts it at once; anything an assistant, a session or a teammate makes waits off in the list (no watcher) until the person turns it on.
 
 - Input:
   - `instruction` string, required
@@ -4484,7 +4484,7 @@ Run a duty once now, without waiting for its trigger. Refused while it is off.
 
 ### `team.duties.update`
 
-Change a duty: when, instruction, act, or enabled (true turns a proposed duty on; false pauses it). A person, the assistant, or a session in the project; never a teammate.
+Change a duty: when, instruction, act, or enabled (true turns a proposed duty on; false pauses it). Turning on, or changing a running duty, is the person's; the assistant or a session may pause it or edit a proposal; never a teammate.
 
 - Input:
   - `id` string, required

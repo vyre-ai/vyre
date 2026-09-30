@@ -963,14 +963,20 @@ export default {
       }
       return { tm: await charterTarget(ref, meta, { write }), propose: false };
     };
+    /**
+     * Whether the person's own words, in this thread, asked for this duty to run. TODO(P17): answer with gate.said.match (act_out,
+     * lineage-aware). Until it lands nobody but the person's own surface can start an unattended worker, so a session's or the
+     * assistant's duty is stored as a proposal (off, no watcher) and the person turns it on.
+     */
+    const personAsked = (meta) => isPerson(meta.caller);
     const dutyRef = { ...charterRef };
     ctx.tool("team.duties.create", {
-      description: "Give a teammate a standing duty: something it does by itself when a trigger fires (an event like thread.finished or goal.stale, a schedule like daily 07:00, or a connection's push), described in plain words. act: true lets it call tools and ask a model (every outward call still holds at the Gate); false only files what it notices into the teammate's notes and the waiting list. A person, the assistant, or a session in the project on the person's request starts it at once; a teammate's own suggestion waits off in the list until a person turns it on.",
+      description: "Give a teammate a standing duty: something it does by itself when a trigger fires (an event like thread.finished or goal.stale, a schedule like daily 07:00, or a connection's push), described in plain words. act: true lets it call tools and ask a model (every outward call still holds at the Gate); false only files what it notices into the teammate's notes and the waiting list. A person starts it at once; anything an assistant, a session or a teammate makes waits off in the list (no watcher) until the person turns it on.",
       input: { type: "object", required: ["when", "instruction"], properties: { ...dutyRef, when: { type: "string" }, instruction: { type: "string" }, act: { type: "boolean" } } },
       callers: CHARTER_CALLERS,
       run: async (i, meta = {}) => {
         const { tm, propose } = await dutyTarget(i, meta, { write: true });
-        return dutyApi.create(tm, { when: i.when, instruction: i.instruction, act: i.act, propose, by: meta.agent || String(meta.caller || "vyre") });
+        return dutyApi.create(tm, { when: i.when, instruction: i.instruction, act: i.act, propose: propose || !personAsked(meta), by: meta.agent || String(meta.caller || "vyre") });
       },
     });
     ctx.tool("team.duties.list", {
@@ -980,12 +986,16 @@ export default {
       run: async (i, meta = {}) => { const tm = await charterTarget(i, meta, { write: false }); return { agent: tm.agent, duties: dutyApi.list(tm.agent) }; },
     });
     ctx.tool("team.duties.update", {
-      description: "Change a duty: when, instruction, act, or enabled (true turns a proposed duty on; false pauses it). A person, the assistant, or a session in the project; never a teammate.",
+      description: "Change a duty: when, instruction, act, or enabled (true turns a proposed duty on; false pauses it). Turning on, or changing a running duty, is the person's; the assistant or a session may pause it or edit a proposal; never a teammate.",
       input: { type: "object", required: ["id"], properties: { id: { type: "string" }, when: { type: "string" }, instruction: { type: "string" }, act: { type: "boolean" }, enabled: { type: "boolean" } } },
       callers: CHARTER_CALLERS,
       run: async (i, meta = {}) => {
         await dutyTarget(i, meta, { write: true, id: i.id });
         const { id, ...patch } = i;
+        // Turning on, or changing what a running duty does, is starting code the person has not seen: theirs until gate.said.match.
+        const cur = dutyApi.get(id);
+        const widens = patch.enabled === true || (cur.started && (patch.when !== undefined || patch.instruction !== undefined || patch.act !== undefined));
+        if (widens && !personAsked(meta)) throw Object.assign(new Error("turning a duty on, or changing one that is running, is the person's"), { code: "denied" });
         return dutyApi.update(id, patch);
       },
     });

@@ -492,6 +492,24 @@ test("team.duties: watchers' refusal leaves no row, a bare mcp caller is refused
   assert.equal((await raw("team.duties.run-now", { id: "nope" })).error.code, "not_found");
 });
 
+test("team.duties: a session's duty is stored as a proposal (off, no watcher); only the person turns it on (reviewer-2 MEDIUM on e9756785)", async t => {
+  const { tool, raw, root, project, launches } = await boot(t);
+  const agent = `design-${project.slug}`;
+  await tool("team.add", { project: project.slug, role: "design" });
+  const { session } = await realSession(root, tool, launches, project.slug);
+  const d = await tool("team.duties.create", { teammate: agent, when: "daily 07:00", instruction: "Read the open issues.", act: true }, "mcp", { session });
+  assert.equal(d.enabled, false);
+  assert.equal(d.started, false);
+  const on = await call("team.duties.update", { id: d.id, enabled: true }, { root, caller: "mcp", timeout: 20_000, session });
+  assert.equal(on.error.code, "denied");
+  const edit = await tool("team.duties.update", { id: d.id, instruction: "Read the open issues and goals." }, "mcp", { session });
+  assert.equal(edit.enabled, false); // a proposal may still be edited
+  // the person's tap: watchers here is the 0.1 module with no duty shape, so it refuses cleanly and the duty stays off
+  const tap = await raw("team.duties.update", { id: d.id, enabled: true });
+  assert.ok(tap.error && /watchers/.test(tap.error.message));
+  assert.equal((await tool("team.duties.list", { teammate: agent })).duties[0].enabled, false);
+});
+
 // --- step 2: notes-changed enforcement and compaction re-injection ------------------------------
 
 test("team.done refuses to close a request when the notes have not changed since it started; writing them lets it through", async t => {

@@ -752,3 +752,11 @@ utilization, resets_at), the slot chip (per project), the waiting queue, "Resume
   `watchers.update/delete/run` exist. The live watchers module in this tree is still the 0.1 shape, so a real create is refused
   cleanly until theirs lands (covered by a test). Adapter is the one `watchers()` helper and `start()` in duties.js.
 - Tests: duties.test.js (5, fake watchers) plus 1 through the daemon; core/team 58/58.
+
+## Duties: non-person creates are proposals (reviewer-2 MEDIUM, 2026-09-30)
+
+- `team.duties.create` from anyone but the person's own surface (assistant, session, teammate) now stores a proposal: off, no
+  watcher. `team.duties.update` refuses non-person callers turning a duty on or changing a running one; they may pause it or edit a
+  proposal. One seam, `personAsked(meta)` in core/team/index.js, becomes `gate.said.match` (act_out, lineage-aware) with P17;
+  then an asked duty from the assistant or a session starts at once. On the P17 release list with charter, fill/grant and retire.
+- Note for team-lead: this supersedes "the assistant can turn a proposed duty on" until P17; the person's tap does it.
