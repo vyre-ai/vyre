@@ -34,7 +34,10 @@ jobs:
         working-directory: local/capsule/native-win
     steps:
       - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@1.98.1
+      # A full commit sha of the action (its 1.98.1 branch), with the toolchain named, not a movable tag.
+      - uses: dtolnay/rust-toolchain@ce678459e9fc7500d337468f904b95f1b5c10b5e
+        with:
+          toolchain: 1.98.1
       - name: cargo test
         run: cargo test --locked --verbose
       - name: version, from the repo's package.json (the release checks it equals the tag)
