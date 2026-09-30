@@ -155,3 +155,11 @@ test("memory.prompt: a module caller that passes the thread's agent is scoped to
   assert.ok(!asJuno.error, asJuno.error);
   assert.match(asJuno.data.text, /netlify/i);
 });
+
+test("memory.prompt: a module caller naming no agent, and not the person's own thread, gets nothing (fails closed)", async t => {
+  const { call } = await module_(t);
+  const none = await call("memory.prompt", { first: true, prompt: "where do we host the harlow site", project: "harlow" }, "module:sessions");
+  assert.deepEqual(none.data, { text: "", blocks: [] });
+  const own = await call("memory.prompt", { first: true, prompt: "where do we host the harlow site", project: "harlow", person: true }, "module:sessions");
+  assert.match(own.data.text, /netlify/i);
+});

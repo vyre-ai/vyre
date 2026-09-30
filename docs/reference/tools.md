@@ -2563,11 +2563,12 @@ The user's durable facts as short lines for a system prompt ("Your wife is Jorda
 
 ### `memory.prompt`
 
-Text blocks for a provider's prompt: { blocks: [{ type: 'text', text }], text }. first: true adds memory.brief; prompt adds up to 5 relevant lines, quoted as memory and never as instructions. Empty when the caller may read nothing. Only the caller's reach; never an untrusted write. A module calling for a thread (sessions, feeding an ACP prompt) MUST pass that thread's agent: a module call with no agent reads as the owner.
+Text blocks for a provider's prompt: { blocks: [{ type: 'text', text }], text }. first: true adds memory.brief; prompt adds up to 5 relevant lines, quoted as memory and never as instructions. Empty when the caller may read nothing. Only the caller's reach; never an untrusted write. A module calling for a thread (sessions, feeding an ACP prompt) must pass that thread's agent, or person: true for the person's own thread; a module call with neither gets nothing (never the owner's view).
 
 - Input:
   - `agent` string
   - `first` boolean
+  - `person` boolean
   - `project` string
   - `project_cwds` list of string
   - `prompt` string

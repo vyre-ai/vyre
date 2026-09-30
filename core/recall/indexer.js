@@ -51,10 +51,12 @@ export const REDACTIONS = [
   { name: "tailscale-link", re: /https?:\/\/login\.tailscale\.com\/\S*/gi, to: "[tailscale sign-in link removed]" },
   { name: "claim", re: /#claim=[A-Za-z0-9_-]+/g, to: "#claim=[removed]" },
   { name: "pairing-seed", re: /\bvyre-pc:[A-Za-z0-9_-]+/g, to: "vyre-pc:[removed]" },
+  // A pairing ticket or setup offer: 43 base64url characters near the word (a Wink ticket, ADR 0045).
+  { name: "pair-ticket", re: /\b((?:wink|ticket|pair(?:ing)?|offer)\b[^\n]{0,24}?)[A-Za-z0-9_-]{43}(?![A-Za-z0-9_-])/gi, to: "$1[removed]" },
   { name: "private-key", re: /-----BEGIN [A-Z ]*PRIVATE KEY-----[\s\S]*?(?:-----END [A-Z ]*PRIVATE KEY-----|$)/g, to: "[private key removed]" },
 ];
 /** Bumped when REDACTIONS or the token rule changes; a pass cleans stored turns once per version. */
-export const REDACT_VERSION = "2";
+export const REDACT_VERSION = "3";
 
 // A pasted key or token, by the shapes the Vault already knows (core/vault/detect.js). Only a shape
 // it names (a provider key, a token, a cloud key, a JWT, a private key, a database URL); its
@@ -128,7 +130,8 @@ export class Indexer {
     const t0 = Date.now();
     /** @type {Stats} */
     const s = { sessions: 0, added: 0, appended: 0, reindexed: 0, skipped: 0, failed: 0, turns: 0, ms: 0 };
-    this.scrub();
+    // The one-time re-clean of what is already stored, a batch at a time between yields.
+    while (!this.scrubbed() && !stopped()) { this.scrub(); await breathe(); }
     const all = [...transcripts.list(folders)];
     for (const entry of all) {
       if (stopped()) break;
@@ -147,13 +150,19 @@ export class Indexer {
   }
 
   /**
-   * Clean the turns already stored, once per REDACT_VERSION: a turn a newer rule would change is
-   * rewritten in place and its vectors dropped (they embed the old text, and are made again).
+   * Clean the turns already stored, once per REDACT_VERSION, a bounded batch per call and resumable:
+   * the last rowid done is kept with the version, so a stop or a restart carries on. A turn a newer
+   * rule would change is rewritten in place and its vectors dropped (they embed the old text).
+   * @param {number} [batch]
+   * @returns {number} turns cleaned in this batch; done() is true once every turn has been read
    */
-  scrub() {
-    const row = /** @type {any} */ (this.db.prepare("SELECT v FROM recall_meta WHERE k = 'redact'").get());
-    if (row && row.v === REDACT_VERSION) return 0;
-    const rows = /** @type {any[]} */ (this.db.prepare("SELECT rowid, session, seq, text FROM recall_turns").all());
+  scrub(batch = 500) {
+    const get = () => /** @type {any} */ (this.db.prepare("SELECT v FROM recall_meta WHERE k = 'redact'").get());
+    const cur = get();
+    if (cur && cur.v === REDACT_VERSION) return 0;
+    const [ver, last] = cur && typeof cur.v === "string" && cur.v.includes(":") ? cur.v.split(":") : ["", "0"];
+    const from = ver === REDACT_VERSION + "-working" ? Number(last) || 0 : 0;
+    const rows = /** @type {any[]} */ (this.db.prepare("SELECT rowid, session, seq, text FROM recall_turns WHERE rowid > ? ORDER BY rowid LIMIT ?").all(from, batch));
     const upd = this.db.prepare("UPDATE recall_turns SET text = ? WHERE rowid = ?");
     const dv = this.db.prepare("DELETE FROM recall_vectors WHERE session = ? AND seq = ?");
     let n = 0;
@@ -165,11 +174,17 @@ export class Indexer {
         upd.run(clean, r.rowid); dv.run(r.session, r.seq); n++;
       }
       if (n) this.q.generation.run();
-      this.q.meta.run("redact", REDACT_VERSION);
+      this.q.meta.run("redact", rows.length < batch ? REDACT_VERSION : `${REDACT_VERSION}-working:${rows[rows.length - 1].rowid}`);
       this.db.exec("COMMIT");
     } catch (e) { this.db.exec("ROLLBACK"); throw e; }
     if (n) this.log(`recall: cleaned ${n} stored turns of credentials`);
     return n;
+  }
+
+  /** True when every stored turn has been read against the current rules. */
+  scrubbed() {
+    const r = /** @type {any} */ (this.db.prepare("SELECT v FROM recall_meta WHERE k = 'redact'").get());
+    return Boolean(r && r.v === REDACT_VERSION);
   }
 
   /**

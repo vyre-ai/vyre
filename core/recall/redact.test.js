@@ -45,11 +45,18 @@ test("recall: stored turns are cleaned once per redaction version, and their vec
   const vec = db.prepare("INSERT INTO recall_vectors (session, seq, chunk, off, v) VALUES (?,?,?,?,?)");
   vec.run("s1", 0, 0, 0, Buffer.alloc(4)); vec.run("s1", 1, 0, 0, Buffer.alloc(4));
   const ix = new Indexer(db);
-  assert.equal(ix.scrub(), 1);
+  add.run("s1", 2, "user", 3, "unrelated");
+  assert.equal(ix.scrub(1), 1, "a batch of one turn cleans the first");
+  assert.ok(!ix.scrubbed(), "resumable: not done after one batch");
+  while (!ix.scrubbed()) ix.scrub(1);
   const rows = db.prepare("SELECT seq, text FROM recall_turns ORDER BY seq").all();
   assert.ok(!rows[0].text.includes("a1b2c3d4") && rows[0].text.endsWith("ok"));
   assert.equal(rows[1].text, "host harlow on netlify");
   assert.deepEqual(db.prepare("SELECT seq FROM recall_vectors").all().map(r => r.seq), [1], "only the cleaned turn lost its vector");
   assert.equal(db.prepare("SELECT v FROM recall_meta WHERE k = 'redact'").get().v, REDACT_VERSION);
   assert.equal(ix.scrub(), 0, "once per version");
+  // A pairing ticket near its word goes; the same 43 characters elsewhere are left.
+  const { redact } = await import("./indexer.js");
+  const tk = "AbCdEfGhIjKlMnOpQrStUvWxYz0123456789_-AbCdEf".slice(0, 43);
+  assert.ok(!redact(`the wink ticket is ${tk} ok`).includes(tk));
 });
