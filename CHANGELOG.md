@@ -4,6 +4,22 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### lib/caps-flags and chat's provider capabilities (0.2, PLAN.md C14b)
+
+- `lib/caps-flags/index.js` is the one list of provider capability flags, with `normalizeCaps`
+  (every flag present and typed; missing means off) and `checkCaps` (names each gap, for sessions'
+  conformance test). vyred serves it to the Deck at /lib/caps-flags/index.js, beside
+  lib/avatar-seed, from one fixed list.
+- `deck/chat/core/provider-caps.js` turns a provider's live caps into each chat control's state
+  (on, hidden, or off with a plain reason) and the meter's level. Controls read live caps; a
+  thread's snapshot only renders the past. Not yet wired into the UI (it waits for app-design).
+
+#### A real box never serves the Deck's sample data
+
+- vyred refuses any path under a `fixtures` folder of the Deck unless VYRE_DECK_FIXTURES=1 (dev
+  worlds and tests set it), so a `?fixtures=1` link can't show sample threads on a real install.
+  Placeholders that named the sample world now say what to type ("Your project's name").
+
 ## 0.1.1
 
 What's new:

@@ -720,9 +720,10 @@ async function route(req, res, { registry, events, cfg, started, streams, root, 
   // through a real vyred the way a phone does.
   const resRelay = req.method === "GET" && /^\/relay\/client\/(client|channel|bytes|response|sse|webcrypto|noise)\.js$/.exec(url.pathname);
   if (resRelay) return serveFile(res, path.join(REPO, "relay", "client", resRelay[1] + ".js"), cfg);
-  // lib/avatar-seed (ADR 0043 section 6): the one rule for a project tile's bytes, which the Deck
-  // imports as ../../lib/avatar-seed/index.js, so the Deck and Node load the one copy. Only this file.
-  if (req.method === "GET" && url.pathname === "/lib/avatar-seed/index.js") return serveFile(res, path.join(REPO, "lib", "avatar-seed", "index.js"), cfg);
+  // The pure libs the Deck shares with Node, so both load the one copy: lib/avatar-seed (ADR 0043
+  // section 6, a project tile's bytes) and lib/caps-flags (PLAN.md C14b, provider capabilities).
+  // Exact paths only, nothing else in lib/.
+  if (req.method === "GET" && DECK_LIBS.has(url.pathname)) return serveFile(res, path.join(REPO, ...url.pathname.slice(1).split("/")), cfg);
   // The one app (ADR 0027), beside the Deck until it takes over /. Once config app.root flips
   // (mobile's client-side migration, off by default: core/config/index.js), /app/* is a 301 to
   // the same path under "/" instead, so an installed /app/ Home Screen icon or a stale bookmark
@@ -801,6 +802,9 @@ function stream(req, res, url, events, streams) {
 const TYPES = { ".html": "text/html; charset=utf-8", ".js": "text/javascript", ".css": "text/css", ".json": "application/json",
   ".svg": "image/svg+xml", ".png": "image/png", ".woff2": "font/woff2", ".ico": "image/x-icon", ".webmanifest": "application/manifest+json",
   ".ttf": "font/ttf", ".map": "application/json" };
+
+/** The lib files vyred serves to the Deck (pure, import-free, shared with Node). */
+const DECK_LIBS = new Set(["/lib/avatar-seed/index.js", "/lib/caps-flags/index.js"]);
 
 /**
  * The Deck: static files from deck/ in the repo (the deck workstream builds them). Paths that

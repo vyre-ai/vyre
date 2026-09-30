@@ -461,8 +461,12 @@ test("daemon: the Deck's resilience client is served from core/resilience, and n
   assert.equal(seed.status, 200);
   assert.equal(seed.headers["content-type"], "text/javascript");
   assert.equal(seed.body, fs.readFileSync(path.join(import.meta.dirname, "..", "lib", "avatar-seed", "index.js"), "utf8"));
+  // lib/caps-flags (PLAN.md C14b): the provider capability flags, served the same way.
+  const caps = /** @type {any} */ (await get("/lib/caps-flags/index.js"));
+  assert.equal(caps.status, 200);
+  assert.equal(caps.body, fs.readFileSync(path.join(import.meta.dirname, "..", "lib", "caps-flags", "index.js"), "utf8"));
   // node.js (Node transports) and the tests are not the Deck's; neither is anything else in core/ or lib/.
-  for (const p of ["/core/resilience/node.js", "/core/resilience/sse.test.js", "/core/daemon/index.js", "/lib/avatar-seed/index.test.js", "/lib/identity.js"]) {
+  for (const p of ["/core/resilience/node.js", "/core/resilience/sse.test.js", "/core/daemon/index.js", "/lib/avatar-seed/index.test.js", "/lib/caps-flags/index.test.js", "/lib/identity.js"]) {
     const r = /** @type {any} */ (await get(p));
     assert.doesNotMatch(r.body, /^\/\/ @ts-check/, p);
   }
