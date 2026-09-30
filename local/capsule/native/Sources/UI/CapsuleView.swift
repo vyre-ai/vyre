@@ -36,6 +36,9 @@ struct CapsuleView: View {
                         PresenceView(ask: a, hasTouchID: LAContext().canEvaluatePolicy(.deviceOwnerAuthenticationWithBiometrics, error: nil))
                     } else if let c = model.credentialAsk {
                         CredentialView(ask: c) { Task { await model.saveCredential() } }
+                    } else if let vs = model.viewSession, vs.showsLevelView {
+                        // A module command's detail, form or preview takes the area (ViewLevelView.swift).
+                        ViewLevelView(session: vs) { Task { await model.viewSubmit() } }
                     } else if let run = model.commandRun, !(model.current?.kind == "cli" && model.current?.id != "cli:" + run.title) {
                         // What a command said, until a different command is typed (CommandRun.swift).
                         CommandRunView(run: run, scroller: model.answerScroll, cap: CapsuleLayout.answerCap(model, alone: true))
@@ -99,6 +102,19 @@ struct CapsuleView: View {
     private var bar: some View {
         HStack(spacing: 12) {
             MarkView(size: 20)
+            if let vs = model.viewSession {
+                HStack(spacing: 5) {
+                    Image(systemName: vs.command.icon.flatMap { ViewIcon.spec($0) }.map { if case .symbol(let n, _) = $0 { return n }; return "square.grid.2x2" } ?? "square.grid.2x2")
+                        .font(Theme.subtitle)
+                    Text(vs.command.title).font(Theme.type(Tokens.TypeScale.base, .medium)).lineLimit(1)
+                }
+                .foregroundColor(Theme.bone)
+                .padding(.horizontal, 8).padding(.vertical, 4)
+                .background(Capsule().fill(Theme.raised))
+                .overlay(Capsule().strokeBorder(Theme.signal.opacity(0.55), lineWidth: 1))
+                .frame(maxWidth: 240, alignment: .leading)
+                .fixedSize()
+            }
             if let c = model.target {
                 HStack(spacing: 5) {
                     // An extension's target shows the icon it gave (an app's own); the outer chip
@@ -363,7 +379,7 @@ enum CapsuleLayout {
     static let lineHeight: CGFloat = Tokens.Control.sm
 
     @MainActor static func isOpen(_ m: CapsuleModel) -> Bool {
-        m.presenceAsk != nil || m.credentialAsk != nil || m.commandRun != nil || m.asked != nil || !m.groups.isEmpty || m.showsMemory || m.panelFor?(m.current) != nil || AgentLayout.opens(m)
+        m.presenceAsk != nil || m.credentialAsk != nil || m.viewSession != nil || m.commandRun != nil || m.asked != nil || !m.groups.isEmpty || m.showsMemory || m.panelFor?(m.current) != nil || AgentLayout.opens(m)
     }
 
     /// The open panel's height (560): the bar, the body and the footer.
@@ -407,7 +423,7 @@ enum CapsuleLayout {
 
     /// The field's placeholder: a chip's "Message", the follow-up box, else the Capsule's own.
     @MainActor static func placeholder(_ m: CapsuleModel) -> String {
-        m.target != nil ? "Message" : m.followUp ? "Ask a follow-up" : "Ask Vyre, find, or run"
+        m.viewSession.map { $0.command.argPlaceholder ?? "Search \($0.command.title.lowercased())" } ?? (m.target != nil ? "Message" : m.followUp ? "Ask a follow-up" : "Ask Vyre, find, or run")
     }
 
     /// A group's heading, as written (sentence case): "Send to" over @ names, else its section.

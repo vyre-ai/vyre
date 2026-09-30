@@ -4,6 +4,13 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+- Lumen: commands that modules declare (Gmail, Calendar, Drive, GitHub, the vault and any module
+  you add) show up in the box as commands. Press Return on one and the box searches it: its list
+  is the results, Tab opens a row's detail, Command-K lists a row's actions, and Esc goes back one
+  step and then out. A form takes Return to send. Anything that sends as you shows exactly what will
+  go first; a second Return sends those words, and a change in them shows them again. A module you
+  added is marked "from <module>", and a link it gives opens only as https, mailto or vyre.
+  Nothing is polled; the list of commands is read when Lumen shows, at most twice a minute.
 - Capsule: the app is named Lumen (Vyre Lumen in the menu bar and in System Settings), and Vyre IQ
   is now Vyre Memory in every line the Capsule shows. File and bundle names do not change in
   0.2. Public use of the Lumen name waits for the trademark check.

@@ -24,7 +24,11 @@ Owns `local/capsule/` (now native Swift, `local/capsule/native/`) and `local/han
    snippets, quicklinks and user commands from <home>/capsule/snippets.json. Aliases and per-command hotkeys (Core/Bindings.swift, Host/CommandBindings.swift,
    <home>/capsule/bindings.json; native-core's settings hub keys can replace the file later). Window
    layouts (Core/WindowLayout.swift, Providers/WindowsProvider.swift) and Return-pastes
-   (Host/Paste.swift; Accessibility asked once) are in. Not built: the `view:` mechanism. The list above is scope,
+   (Host/Paste.swift; Accessibility asked once) are in. `view:` commands (Core/ViewFrames.swift,
+   Host/ViewSession.swift, Host/ViewMode.swift, Providers/ViewCommandsProvider.swift, UI/ViewLevelView.swift)
+   draw platform's capsule.commands/view/act frames; needs a vyred with those tools (platform-follow 39a3886e).
+   Not built: needs-a-credential (host.askCredential) from a `needs` frame, groups within a list, the
+   settings hub overrides (native-core). The list above is scope,
    not what works.
 3. The Capsule gaps from the gallery (brief item 6) and the Capsule items moved here from
    polish-surfaces (items 2, the Capsule half of 3, and 5).

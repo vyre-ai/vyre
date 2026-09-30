@@ -247,6 +247,7 @@ final class PanelController: NSObject, NSWindowDelegate {
             if model.presenceAsk != nil { model.cancelPresence(); return true }
             if model.credentialAsk != nil { model.cancelCredential(); return true }
             if model.escCommand() { return true }
+            if model.viewBack() { return true }
             if model.confirming != nil { model.confirming = nil; model.line = nil; return true }
             if let r = model.reply, !r.finished { model.stopReply(); return true }
             // An answer on screen, or the follow-up box: back to plain search. The next Esc hides.
@@ -257,6 +258,8 @@ final class PanelController: NSObject, NSWindowDelegate {
             model.removeAttachment(); return true
         case 51 where model.text.isEmpty && model.target != nil: // delete on an empty box drops the chip (a child first)
             model.dropChip(); return true
+        case 48 where model.viewSession != nil: // Tab: the row's detail, in a module command
+            return model.viewOpenDetail()
         case 48 where model.current?.kind == "mention": // tab picks the @ row
             model.run(); return true
         case 124 where cmd && !shift && (model.showsMemory || model.askedMemory != nil) && caretAtEnd: // ⌘→ at the end of the box shows or folds memory's sources
@@ -282,6 +285,9 @@ final class PanelController: NSObject, NSWindowDelegate {
         case 126 where !e.modifierFlags.contains(.command) && !shift && !e.modifierFlags.contains(.option): model.move(-1); return true
         case 36, 76: // return; a held key is one press, so a held Enter never confirms what it showed
             if e.isARepeat { return true }
+            // A module command's form, or a previewed send: ⏎ submits (a second ⏎ on a preview sends it).
+            if let vs = model.viewSession, vs.isFormOrPreview { Task { await model.viewSubmit() }; return true }
+            if model.viewRunDetailAction() { return true }
             // A key being added: ⏎ saves it (the field's own submit does the same).
             if model.credentialAsk != nil { Task { await model.saveCredential() }; return true }
             // Plain ⏎ while listening: stop the mic (keeping the words already heard) and send,

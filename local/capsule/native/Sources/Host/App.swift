@@ -20,6 +20,9 @@ final class CapsuleApp: NSObject, NSApplicationDelegate {
     lazy var presence = CapsulePresence(home: home, vyred: vyred)
     /// Emoji, colours, time zones, money, snippets, quicklinks and your commands (LocalAnswers.swift).
     let local: LocalAnswersProvider
+    /// Commands modules declare for the Capsule (ViewCommandsProvider.swift).
+    let viewCommands: ViewCommandsProvider
+    var viewSub: VyredSubscription?
     /// The box's alarms and reminders ringing here, from /v1/link/events (Planner.swift).
     lazy var planner = PlannerBanners(vyred: vyred)
     /// Clipboard, contacts, modules, Glass and watches (Agent/AgentWiring.swift).
@@ -36,11 +39,13 @@ final class CapsuleApp: NSObject, NSApplicationDelegate {
         wiring = AgentWiring(home: home, vyred: vyred)
         Paster.prefsPath = (home as NSString).appendingPathComponent("capsule/prefs.json")
         local = LocalAnswersProvider(home: home)
+        viewCommands = ViewCommandsProvider(vyred: vyred)
         model = CapsuleModel(home: home, vyred: vyred, providers: [
-            AppsProvider(), SettingsProvider(), FilesProvider(), DictionaryProvider(), local, WindowsProvider(),
+            AppsProvider(), SettingsProvider(), FilesProvider(), DictionaryProvider(), local, WindowsProvider(), viewCommands,
         ] + wiring.providers)
         super.init()
         local.onChange = { [weak self] in Task { @MainActor in self?.model.refresh() } }
+        model.attach(views: viewCommands)
     }
 
     func applicationDidFinishLaunching(_ note: Notification) {
@@ -117,6 +122,8 @@ final class CapsuleApp: NSObject, NSApplicationDelegate {
         Drive.start(self)
         // Kept open while hidden, on purpose: a timer on the box has to ring here.
         if !headless { planner.start() }
+        // A module says its commands changed: read them again (never polled).
+        viewSub = vyred.on("capsule.changed") { [weak self] _ in self?.viewCommands.read(force: true) }
         enrolWithCore()
         if ProcessInfo.processInfo.environment["VYRE_CAPSULE_OPEN"] == "1" { panel.show(front: PanelController.frontApp()) }
     }

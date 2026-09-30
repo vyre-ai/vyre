@@ -107,6 +107,9 @@ public final class CapsuleModel: ObservableObject {
     /// Aliases and per-command hot keys (CommandBindings.swift), and the box's use while one is set.
     var bindings: CommandBindings?
     @Published var bindingEdit: BindingEdit?
+    /// The module command open in the box (ViewMode.swift), and where commands come from.
+    @Published var viewSession: ViewSession?
+    var viewProvider: ViewCommandsProvider?
     /// The agent, project or thread picked with `@`: a chip before the box, where Enter sends.
     @Published public var target: VyreCandidate? {
         didSet {
@@ -307,6 +310,9 @@ public final class CapsuleModel: ObservableObject {
         cancelMentionRefresh()
         sessionSearch?.cancel(); sessionSearch = nil
         confirming = nil
+        // A module command and an alias being set end with the Capsule too.
+        if viewSession != nil { exitView(clear: false) }
+        bindingEdit = nil
     }
 
     /// A fresh open starts with an empty box, unless a reply is still streaming.
@@ -402,6 +408,12 @@ public final class CapsuleModel: ObservableObject {
             recallTask?.cancel(); memory = nil; autoTask?.cancel(); partial = [:]
             groups = [Group(section: .top, items: [bindingEditRow(e)])]
             selected = 0
+            return
+        }
+        // A module command is open: the box is its search, and its list is the results.
+        if let s = viewSession {
+            recallTask?.cancel(); memory = nil; autoTask?.cancel(); partial = [:]
+            if case .list? = s.level { s.load(q: text) } else if s.stack.isEmpty { s.load(q: text) }
             return
         }
         // `@` being typed: the list is what it can name, nothing else, and memory stays quiet.
