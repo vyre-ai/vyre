@@ -80,7 +80,7 @@ try {
   const pct = (xs, q) => { const a = [...xs].sort((x, y) => x - y); return a.length ? a[Math.min(a.length - 1, Math.floor(q * a.length))] : NaN; };
   const words = ["safari", "system settings", "12 * (3 + 4)", "notes", "20 km in miles", "terminal", "a", "mail"];
   // A profile of the app while it types, so a stall names its own code (macOS `sample`, 1 ms).
-  const sampler = spawn("/usr/bin/sample", [String(child.pid), "9", "1", "-mayDie"], { stdio: ["ignore", "pipe", "pipe"] });
+  const sampler = spawn("/usr/bin/sample", [String(child.pid), "6", "1", "-mayDie"], { stdio: ["ignore", "pipe", "pipe"] });
   let sampled = "", sampleErr = ""; sampler.stdout.on("data", d => { sampled += d; }); sampler.stderr.on("data", d => { sampleErr += d; });
   await pause(300);
   const keyMs = [], keyDetail = [];
@@ -97,7 +97,7 @@ try {
   }
   console.log(`typing: ${keyMs.length} keystrokes to rows, median ${pct(keyMs, 0.5).toFixed(1)} ms, 95th ${pct(keyMs, 0.95).toFixed(1)} ms, worst ${Math.max(...keyMs).toFixed(1)} ms`);
   // Which keystrokes were slowest, so a slow one can be traced to its words.
-  await new Promise(r => { if (sampler.exitCode !== null) r(); else { sampler.on("exit", r); setTimeout(r, 12_000); } });
+  await new Promise(r => { if (sampler.exitCode !== null) r(); else { sampler.on("exit", r); setTimeout(r, 75_000); } });
   // The heaviest frames of the main thread: lines of the call graph holding 100 or more of its samples.
   const graph = sampled.split("Call graph:")[1] || "";
   const main = graph.split(/\n\s*\d+ Thread_/)[0] || "";
