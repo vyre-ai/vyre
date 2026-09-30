@@ -12,8 +12,8 @@
 import fs from "node:fs";
 import path from "node:path";
 import crypto from "node:crypto";
-import { keyPair } from "./noise.js";
-import { newRouteKey } from "./wire.js";
+import { keyPair, dh } from "./noise.js";
+import { newRouteKey, signRoute } from "./wire.js";
 
 /** The box's relay keys, made on first use. */
 export function loadKeys(root) {
@@ -35,4 +35,66 @@ export function loadKeys(root) {
   fs.writeFileSync(tmp, JSON.stringify({ v: 1, box: box.priv.toString("base64url"), route: route.priv.toString("base64url") }) + "\n", { mode: 0o600 });
   fs.renameSync(tmp, file);
   return { box, route };
+}
+
+/**
+ * The handle the relay module works through: it never sees private bytes, only the two public keys
+ * and the two operations that need the private ones (a Diffie-Hellman for the box's Noise key, a
+ * signature for the route key). Both operations are async, because when vyre-core holds the keys
+ * they are a call to a root daemon. Public keys are read once and cached, so after `await ready()`
+ * `box.pub` and `route.pub` are plain synchronous values; before it they throw.
+ *
+ * With `core` (lib/vyre-core-keys.js's createCoreKeys, or its fake in a test) the private bytes
+ * stay in vyre-core. Without it they are the 0600 file above, on the person's own uid, which is why
+ * a Mac has no relay until core exists (macCoreRefusal in ./index.js).
+ * @param {{ root: string, core?: { exists(): Promise<boolean>, ensure(): Promise<boolean>, boxPub(): Promise<Buffer>, boxDh(remote: Buffer): Promise<Buffer>, routePub(): Promise<Buffer>, routeSign(msg: Buffer): Promise<Buffer> } | null }} o
+ */
+export function keyHandle(o) {
+  const core = o.core || null;
+  /** @type {{ box: Buffer, route: Buffer } | null} */
+  let pubs = null;
+  /** @type {ReturnType<typeof loadKeys> | null} */
+  let local = null;
+  /** @type {Promise<void> | null} */
+  let loading = null;
+  const need = () => { if (!pubs) throw new Error("the relay keys are not loaded yet"); return pubs; };
+  return {
+    /** Whether this handle's keys are held by vyre-core. */
+    core: Boolean(core),
+    /** vyre-core's key store itself, for the one other key it holds here: this machine's device key (./devicekey.js). */
+    client: core,
+    /** Whether the public keys are read (and so the keys exist). */
+    get loaded() { return Boolean(pubs); },
+    /** Whether keys exist yet, without making them. */
+    async exists() {
+      if (pubs) return true;
+      if (core) return Boolean(await core.exists());
+      return fs.existsSync(path.join(o.root, "relay", "keys.json"));
+    },
+    /** Read the public keys, making the keys first when there are none. */
+    ready() {
+      if (pubs) return Promise.resolve();
+      return loading = loading || (async () => {
+        if (core) {
+          await core.ensure();
+          pubs = { box: Buffer.from(await core.boxPub()), route: Buffer.from(await core.routePub()) };
+        } else {
+          local = loadKeys(o.root);
+          pubs = { box: local.box.pub, route: Buffer.from(local.route.pub) };
+        }
+      })().finally(() => { loading = null; });
+    },
+    /** The box's Noise static key, in the shape Handshake takes. */
+    box: {
+      get pub() { return need().box; },
+      /** @param {Buffer} remote */
+      dh: async remote => (core ? Buffer.from(await core.boxDh(remote)) : dh(/** @type {any} */ (local).box.priv, remote)),
+    },
+    /** The route key. */
+    route: {
+      get pub() { return need().route; },
+      /** @param {Buffer} msg */
+      sign: async msg => (core ? Buffer.from(await core.routeSign(msg)) : signRoute(/** @type {any} */ (local).route.priv, msg)),
+    },
+  };
 }

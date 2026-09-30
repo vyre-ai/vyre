@@ -19,6 +19,7 @@ const REPO = path.join(path.dirname(fileURLToPath(import.meta.url)), "..");
  *  it is expected, not a bug this test should catch. A tool leaves this list the day every box
  *  registers it - it does not grow to paper over a call nothing answers by design. */
 const OPTIONAL = {
+  "vault.items.names": "vault ships it (proposed in CHAT.md 02:40); the composer's # picker checks CAPS and offers nothing when the box has no such tool. Leaves this list when vault merges.",
   "assistant.daily": "assistant ships it in work/assistant; homePath() falls back to the assistant's own thread, then Now. Leaves this list when assistant merges.",
   "team.charter.history": "teammates ships it in work/teammates-0.2 (core/team); the charter notice draws only after the event, and says so in a line when a call fails. Leaves this list when teammates merges.",
   "team.charter.diff": "teammates ships it in work/teammates-0.2 (core/team); the charter notice draws only after the event, and says so in a line when a call fails. Leaves this list when teammates merges.",

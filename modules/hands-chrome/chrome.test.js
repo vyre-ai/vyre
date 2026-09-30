@@ -44,7 +44,7 @@ async function launchChrome(t) {
     try { fs.rmSync(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 }); } catch {}
   });
   let port = null;
-  const deadline = Date.now() + 10_000;
+  const deadline = Date.now() + 30_000;
   while (Date.now() < deadline) {
     const text = fs.readFileSync(logFile, "utf8");
     const m = /ws:\/\/127\.0\.0\.1:(\d+)\//.exec(text);

@@ -13,6 +13,7 @@ import path from "node:path";
 import { spawn } from "node:child_process";
 import { dialogsAllowed } from "../../core/config/dialogs.js";
 import { appPath } from "../../core/cli/commands/capsule-native.js";
+import { registerViews } from "./views.js";
 import { fileURLToPath } from "node:url";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
@@ -25,6 +26,8 @@ function native() {
 /** @type {{ start(ctx: any): Promise<{ stop(): Promise<void> }> }} */
 export default {
   async start(ctx) {
+    // The Capsule's commands, frames and actions from the modules' view: entries (local/capsule).
+    registerViews(ctx);
     ctx.tool("capsule.status", {
       description: "Whether the Capsule can run on this machine: macOS, the native app's source, whether it is built, and autostart.",
       input: { type: "object", properties: {} },

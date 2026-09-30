@@ -44,7 +44,7 @@ import { kbd } from "../js/platform.js";
 import { attempt, queued as viaOutbox, on } from "../js/api.js";
 import { icon } from "../js/icons.js";
 import {
-  draftKind, draftBody, teammateRole, kindLabel, findMention, applyMention, rankFiles, historyStore, remember, recall, recalling, stopRecall,
+  draftKind, draftBody, teammateRole, kindLabel, findMention, applyMention, findVaultMention, applyVault, vaultTokens, rankVault, rankFiles, historyStore, remember, recall, recalling, stopRecall,
   upAction, enterAction, createEsc, escape, nextMode, modeLabel, actionFor, addImage, removeImage, sendImages, newUuid, IMAGE_TYPES,
   modelChoices, shortModel,
 } from "./core/composer-state.js";
@@ -259,7 +259,8 @@ export function mountComposer(opts) {
     chips.hidden = false;
     const s = /** @type {import("./core/session-state.js").Session} */ (S);
     // Called on every keystroke: rebuilt only when something it shows changed.
-    const sig = JSON.stringify([kind, busy, queueToggle, scope, s.mode, s.model, s.thinking,
+    const vts = vaultChips();
+    const sig = JSON.stringify([vts.map(t => t.name), kind, busy, queueToggle, scope, s.mode, s.model, s.thinking,
       ["threads.model", "threads.mode", "threads.thinking", "threads.shell"].map(off), kind === "shell" ? opts.cwd?.() : null]);
     if (sig === chipSig) return;
     chipSig = sig;
@@ -270,6 +271,10 @@ export function mountComposer(opts) {
       chip("composer-model", "threads.model", "Switch the model", () => openModels(), shortModel(s.model) || "Model"),
       chip("composer-mode", "threads.mode", "Next mode (Shift+Tab)", () => cycleMode(), modeLabel(s.mode), h("span", { class: "kbd" }, "⇧Tab")),
       chip("composer-thinking", "threads.thinking", "Thinking on or off (Alt+T)", () => toggleThinking(), s.thinking === true ? "Thinking on" : s.thinking === false ? "Thinking off" : "Thinking"),
+      vts.length ? h("span", { class: "composer-scopes composer-vault", role: "list", "aria-label": "Vault items this message uses" },
+        vts.map(t => h("span", { class: "btn btn-ghost btn-sm composer-scope composer-vault-chip", role: "listitem", "data-vault": t.name, title: "This message can use #" + t.name + " for this session. The value is never shown." },
+          icon("key", 12), "#" + t.name,
+          h("button", { type: "button", "aria-label": "Remove #" + t.name, onclick: () => { const cur = vaultChips().find(x => x.name === t.name); if (cur) setValue((ta.value.slice(0, cur.start) + ta.value.slice(cur.end)).replace(/  +/g, " "), cur.start); ta.focus(); } }, "×")))) : null,
       label && kind !== "command" ? h("span", { class: "composer-kind" }, label,
         kind === "shell" ? h("span", { class: "faint" }, " · runs in " + shortDir(opts.cwd?.() || "") + (off("threads.shell") ? " · " + NEEDS_UPDATE : "")) : null) : null,
       kind === "memory" ? h("span", { class: "composer-scopes", role: "radiogroup", "aria-label": "Save this to" },
@@ -360,7 +365,9 @@ export function mountComposer(opts) {
     if (cmd) { showCommands(cmd); return; }
     const men = findMention(text, at);
     if (men && !machine) { showFiles(men); return; }
-    if (menu.kind === "command" || menu.kind === "mention") menu.close();
+    const vm = findVaultMention(text, at);
+    if (vm && !machine && !draftKind(text).startsWith("shell")) { void showVault(vm); return; }
+    if (menu.kind === "command" || menu.kind === "mention" || menu.kind === "vault") menu.close();
   }
 
   async function showCommands(/** @type {import("./core/commands.js").CommandRange} */ range) {
@@ -649,6 +656,42 @@ export function mountComposer(opts) {
         h("span", { class: "composer-hint-meta faint" }, (hit.role === "user" ? "you said" : "you were told") + " · " + ago(hit.ts)))),
     );
   }
+
+  // ---- "#": a vault item by name (names only, never a value) --------------------------------------
+  /** vault.items.names, read once per open picker: [{name, kind, hosts}], or null when this box has no vault to list. */
+  let vaultItems = /** @type {{ name: string, kind: string, hosts: string[] }[]|null} */ (null);
+  let vaultAt = 0;
+  async function loadVault() {
+    if (vaultItems && Date.now() - vaultAt < 60_000) return vaultItems;
+    const r = await CAPS.use("vault.items.names", () => attempt("vault.items.names", { limit: 500 }));
+    if (r.error) { if (r.missing) vaultItems = null; return vaultItems; }
+    const d = /** @type {any} */ (r.data), list = Array.isArray(d) ? d : Array.isArray(d?.names) ? d.names : [];
+    vaultItems = list.map((/** @type {any} */ x) => typeof x === "string" ? { name: x, kind: "", hosts: [] }
+      : { name: String(x?.name ?? ""), kind: String(x?.kind ?? ""), hosts: Array.isArray(x?.hosts) ? x.hosts.map(String) : [] }).filter(x => x.name);
+    vaultAt = Date.now();
+    return vaultItems;
+  }
+  async function showVault(/** @type {import("./core/composer-state.js").MentionRange} */ range) {
+    const all = await loadVault();
+    // No vault here, or the text moved on while the list loaded: nothing is offered that does not work.
+    if (!all || !findVaultMention(ta.value, caret())) { if (menu.kind === "vault") menu.close(); return; }
+    const list = rankVault(all, range.query).slice(0, 12);
+    menu.setKind("vault");
+    menu.open(list.map(v => ({ key: v.name, value: v, render: () => [h("span", { class: "cv-menu-name" }, "#" + v.name),
+      v.hosts.length ? h("span", { class: "cv-menu-hint" }, v.hosts.slice(0, 2).join(", ") + (v.hosts.length > 2 ? ` +${v.hosts.length - 2}` : "")) : null,
+      v.kind ? h("span", { class: "cv-menu-badge" }, v.kind) : null] })),
+    row => pickVault(row.value.name), "Vault", list.length ? keysLine(["↑↓", "move"], ["⏎", "use"], ["Esc", "close"]) : "No item by that name");
+  }
+  function pickVault(/** @type {string} */ name) {
+    const range = findVaultMention(ta.value, caret());
+    menu.close();
+    if (!range) return;
+    const r = applyVault(ta.value, range, name);
+    setValue(r.text, r.caret);
+    ta.focus();
+  }
+  /** The vault chips under the box: each "#name" in the draft that is a real item, with a way to take it out. */
+  const vaultChips = () => (vaultItems ? vaultTokens(ta.value, new Set(vaultItems.map(v => v.name))) : []);
 
   function showFiles(/** @type {import("./core/composer-state.js").MentionRange} */ range) {
     clearTimeout(fileTimer);

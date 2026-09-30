@@ -14,6 +14,7 @@
 
 import fs from "node:fs";
 import { CONTRACT, supports, moduleContract } from "./contract.js";
+import { checkCapsuleShows } from "./capsule-view.js";
 
 /** The module API majors this Vyre loads. */
 export const API_VERSIONS = [1];
@@ -183,6 +184,8 @@ export function checkManifestFull(m, { firstParty = false, contract } = {}) {
     }
     // The setup channel's allowlist is Vyre's to grow: an added module can't put a tool on it.
     if (m.setupTools !== undefined) out.push(`setupTools is built in only; an added module can't put a tool on the setup channel`);
+    // The # picker's providers are Vyre's own: an added module can't put a kind in it.
+    if (m.mentions !== undefined) out.push(`mentions is built in only; an added module can't offer a kind to the # picker`);
     // H2: in 0.2 the allowlist of modules an added module may replace is empty.
     if (m.replaces !== undefined) out.push(`replaces: an added module can't replace one of Vyre's modules; the 0.2 allowlist of replaceable modules is empty`);
     if (Array.isArray(m.roles) && m.roles.length && m.roles.every((/** @type {string} */ r) => r === "windows")) out.push(`roles ["windows"] loads nowhere in 0.2: only the Mac has a local node yet; add "mac" or "box"`);
@@ -235,6 +238,25 @@ export function checkManifestFull(m, { firstParty = false, contract } = {}) {
     const own = new Set(toolEntries(m).map(t => t.name));
     for (const t of m.setupTools) if (typeof t === "string" && !own.has(t)) out.push(`setupTools "${t}" is not a tool this module declares in does.tools`);
   }
+  // The Capsule's view: entries name this module's own tools (an added module's needs.tools too), and stay in the fixed vocabulary.
+  if (TYPES.object(m.shows) && TYPES.object(m.shows.capsule)) {
+    out.push(...checkCapsuleShows(m.shows.capsule, {
+      tools: new Set(toolEntries(m).map(t => t.name)),
+      needsTools: new Set(TYPES.object(m.needs) && Array.isArray(m.needs.tools) ? m.needs.tools.filter((/** @type {any} */ t) => typeof t === "string") : []),
+      firstParty, moduleName: String(m.name),
+    }));
+  }
+  // mentions name this module's own tools, one provider per kind.
+  if (Array.isArray(m.mentions)) {
+    const own = new Set(toolEntries(m).map(t => t.name));
+    const kinds = new Set();
+    for (const e of m.mentions) {
+      if (!e || typeof e !== "object") continue;
+      if (kinds.has(e.kind)) out.push(`mentions kind "${e.kind}" is declared twice`);
+      kinds.add(e.kind);
+      for (const f of ["search", "resolve"]) if (typeof e[f] === "string" && !own.has(e[f])) out.push(`mentions "${e.kind}" ${f} "${e[f]}" is not a tool this module declares in does.tools`);
+    }
+  }
   // A replacement registers the original's tools, so it carries the original's name; replaces
   // says so out loud, since a duplicate name without it is refused.
   if (typeof m.replaces === "string" && m.replaces !== m.name) out.push(`replaces is "${m.replaces}" but the module is named "${m.name}"; a replacement takes the name of the module it replaces`);
@@ -279,8 +301,20 @@ export function capabilities(m) {
     if (t.outward) outward.push({ tool: t.name, kind: t.outward, summary: t.summary, reach: t.reach, ...cost });
     else (tools[t.reach] || (tools[t.reach] = [])).push({ tool: t.name, summary: t.summary, ...cost });
   }
+  // The Capsule commands it adds, the tools those views call, and whether it wants what is in front (Part 2, step 12).
+  const capsuleView = TYPES.object(shows.capsule) ? Object.entries(shows.capsule).filter(([k]) => k.startsWith("view:")) : [];
+  const capsule = capsuleView.length ? {
+    commands: capsuleView.map(([k, v]) => ({ id: k.slice(5), title: TYPES.object(v) && typeof v.title === "string" ? v.title : k.slice(5), root: Boolean(TYPES.object(v) && v.root) })),
+    tools: [...new Set(capsuleView.flatMap(([, v]) => {
+      const e = /** @type {any} */ (v), l = TYPES.object(e) && TYPES.object(e.list) ? e.list : {};
+      return [l.tool, TYPES.object(l.detail) ? l.detail.tool : undefined, ...list(l.actions).map((/** @type {any} */ a) => a && a.tool),
+        ...Object.values(TYPES.object(e) && TYPES.object(e.forms) ? e.forms : {}).map((/** @type {any} */ f) => f && TYPES.object(f.submit) ? f.submit.tool : undefined)].filter((/** @type {any} */ t) => typeof t === "string");
+    }))],
+    front: list(needs.slots).includes("front"),
+  } : null;
   return {
     tools, outward,
+    ...(capsule ? { capsule } : {}),
     hosts: [...list(needs.network)],
     credentials: list(needs.credentials).filter(TYPES.object).map((/** @type {any} */ c) => ({ id: c.id, kind: c.kind, provider: c.provider, purpose: c.purpose })),
     connections: list(needs.connections).filter(TYPES.object).map((/** @type {any} */ c) => ({ provider: c.provider, purpose: c.purpose })),
@@ -301,7 +335,7 @@ export function capabilities(m) {
  * section 6); anything else shows the card again with only these lines.
  * @param {ReturnType<typeof capabilities>} before
  * @param {ReturnType<typeof capabilities>} after
- * @returns {{ kind: "outward" | "host" | "credential" | "connection" | "asked" | "tool" | "spend", what: string, from?: number | null, to?: number }[]}
+ * @returns {{ kind: "outward" | "host" | "credential" | "connection" | "asked" | "tool" | "command" | "slot" | "spend", what: string, from?: number | null, to?: number }[]}
  */
 export function widened(before, after) {
   /** @type {ReturnType<typeof widened>} */
@@ -317,6 +351,10 @@ export function widened(before, after) {
   const askedBefore = (before.tools.asked || []).map(t => t.tool);
   for (const t of after.tools.asked || []) if (!had(askedBefore, t.tool)) out.push({ kind: "asked", what: t.tool });
   for (const t of after.calls || []) if (!had(before.calls || [], t)) out.push({ kind: "tool", what: t });
+  // A new Capsule command, or a first request for what is in front of the Capsule, needs the person's yes again.
+  const cmdBefore = ((before.capsule && before.capsule.commands) || []).map(c => c.id);
+  for (const c of (after.capsule && after.capsule.commands) || []) if (!had(cmdBefore, c.id)) out.push({ kind: "command", what: c.title });
+  if (after.capsule && after.capsule.front && !(before.capsule && before.capsule.front)) out.push({ kind: "slot", what: "what is in front of the Capsule" });
   const from = before.spend ? before.spend.dailyUsd : null, to = after.spend ? after.spend.dailyUsd : null;
   if (to !== null && (from === null || to > from)) out.push({ kind: "spend", what: `up to $${to.toFixed(2)} a day`, from, to });
   return out;

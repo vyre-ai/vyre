@@ -20,8 +20,9 @@ import { Registry, discover, ownerDevice } from "../modules/index.js";
 import { build, swWithBuild, htmlWithBuild } from "./build.js";
 import { serveApp } from "./app.js";
 import { acquire } from "./lock.js";
-import { Presence, PERSON_ONLY, HUMAN_ONLY, SESSIONABLE, personOnly, fingerprint, parse as parsePresence } from "../presence/index.js";
-import { peerPid, insideClaude, processTable, loginOf, tmuxClients, controllingTty, canReadPeers, verifiedCapsule, signatureOf } from "./peer.js";
+import { Presence, PERSON_ONLY, HUMAN_ONLY, SESSIONABLE, personOnly, fingerprint, parse as parsePresence, core as coreHolder } from "../presence/index.js";
+import { readCoreConfig, coreLink } from "../../lib/vyre-core-client.js";
+import { peerPid, peerHosting, insideClaude, processTable, loginOf, tmuxClients, controllingTty, canReadPeers, verifiedCapsule, signatureOf } from "./peer.js";
 import { PersonSessions, COOKIE, MAX as PERSON_MAX, carried } from "../presence/person.js";
 import { allowedTools } from "../names/guests.js";
 import { registryRules } from "../harness/rules.js";
@@ -53,7 +54,7 @@ export function moduleRoots(root) {
 /**
  * Start vyred. Returns a handle with the running registry and a stop() for tests.
  * @param {{ root?: string, log?: (m: string, x?: any) => void, rules?: any, presence?: any,
- *   person?: (socket: import("node:net").Socket) => Promise<string|{ key: string, tty: string|null }|null> }} [opts] person: a test's stand-in for atTerminal
+ *   coreKeys?: any, person?: (socket: import("node:net").Socket) => Promise<string|{ key: string, tty: string|null }|null> }} [opts] person: a test's stand-in for atTerminal
  */
 export async function start(opts = {}) {
   const root = opts.root || config.home();
@@ -88,6 +89,13 @@ async function startLocked(opts, root, p, release) {
   const events = new Events(db);
   // vyred always checks presence. A test may pass a verifier, or a function that builds one on
   // this store (to give the real one fake OS touch points).
+  // On a Mac with vyre-core installed (ADR 0040), core holds the trust anchors: every presence
+  // check that rests on a key goes to core. Only a root-owned core.json turns this on; Linux never.
+  if (process.platform === "darwin" && opts.presence === undefined) {
+    const c = readCoreConfig();
+    coreHolder.link = c ? coreLink(c) : null;
+    if (c) log(`presence: keys and proofs are vyre-core's (${c.socket})`);
+  }
   const presence = typeof opts.presence === "function" ? opts.presence({ db, events, log }) : opts.presence || new Presence({ db, events, log, role: cfg.machine, network: () => cfg.network || {} });
   // Who is the person over the network, not only their device (core/presence/person.js).
   const people = new PersonSessions({ db });
@@ -105,7 +113,7 @@ async function startLocked(opts, root, p, release) {
   // calling themselves, then hand the request to this same router with that caller and a policy
   // limiting what it may reach. The router never reads a caller from their headers.
   const handler = (policy = {}) => (req, res, caller, peer) => route(req, res, { registry, events, cfg, started, streams, root, inflight, drain, people }, { ...policy, caller, ...(peer ? { peer } : {}) })
-    .catch(e => send(res, 500, { error: { code: "internal", message: e.message } }));
+    .catch(e => fail(res, e));
   // WebSockets a module registered with ctx.upgrade, at /v1/streams/<module>/<name>. Upgraded
   // sockets leave the HTTP server's hands, so they are tracked here and ended on stop, or
   // server.close() would wait on a Glass viewer forever. The socket below and every listener a
@@ -129,7 +137,7 @@ async function startLocked(opts, root, p, release) {
   // of this function can pass it; vyred's own start (main.js) passes nothing, and it is never read
   // from config.json, the environment or the command line.
   const firstPartyRoots = Array.isArray(opts.firstPartyRoots) ? opts.firstPartyRoots.filter(r => typeof r === "string" && path.isAbsolute(r)) : [];
-  registry = new Registry({ db, events, config: cfg, paths: p, log, rules, handler, upgrader, presence, firstPartyRoots });
+  registry = new Registry({ db, events, config: cfg, paths: p, log, rules, handler, upgrader, presence, firstPartyRoots, coreKeys: opts.coreKeys || null });
   // The eight box-only modules gate on cfg.machine (ADR 0039: solo/server/device), not the
   // legacy cfg.role -- that's what lets a Mac chosen as the server run them.
   await registry.start(discover(moduleRoots(root), { firstPartyRoots }), { role: cfg.machine, ...cfg.modules });
@@ -143,9 +151,7 @@ async function startLocked(opts, root, p, release) {
   }
 
   const terminalOf = opts.person || (sock => atTerminal(sock, registry, presence));
-  const server = http.createServer((req, res) => route(req, res, { registry, events, cfg, started, streams, root, inflight, drain, socket: true, terminalOf }).catch(e => {
-    send(res, 500, { error: { code: "internal", message: e.message } });
-  }));
+  const server = http.createServer((req, res) => route(req, res, { registry, events, cfg, started, streams, root, inflight, drain, socket: true, terminalOf }).catch(e => fail(res, e)));
   server.on("upgrade", async (req, socket, head) => {
     try { upgrade(req, socket, head, (await asTaken(socketCaller(req), /** @type {any} */ (socket), registry)).caller); }
     catch { socket.destroy(); }
@@ -186,6 +192,12 @@ const AGENT_CLAIM = /(?:^|[\s:])agent:([A-Za-z0-9_-]*)/;
  * vouched by the key and then pass every callers list as that surface, so it is refused.
  */
 const AGENT_LABEL = /^(?:mcp|harness):agent:([A-Za-z0-9_-]+)$/;
+
+/** A route that throws after it began a stream cannot send a 500 (headers are out): end the response, never throw from the catch. */
+function fail(res, e) {
+  if (res.headersSent) { res.destroy(); return; }
+  send(res, 500, { error: { code: "internal", message: e.message } });
+}
 
 function send(res, status, body) {
   res.writeHead(status, { "content-type": "application/json" });
@@ -305,11 +317,15 @@ function alive(pid) {
  * Whether the process on a socket runs under a Claude session or a thread vyred started.
  * `deps` are test seams.
  * @param {import("node:net").Socket} socket @param {any} registry @param {string} [caller]
- * @param {{ peerPid?: typeof peerPid, insideClaude?: typeof insideClaude, processTable?: typeof processTable, alive?: (pid: number) => boolean, delayMs?: number }} [deps]
+ * @param {{ capsuleSeam?: any, peerPid?: typeof peerPid, insideClaude?: typeof insideClaude, processTable?: typeof processTable, alive?: (pid: number) => boolean, delayMs?: number }} [deps]
  */
 export async function above(socket, registry, caller, deps = {}) {
   const pid = await (deps.peerPid || peerPid)(socket);
   if (!pid) return { inside: false, nopid: true };
+  // vyred never connects to its own socket: a peer that is vyred itself is a misread (a recycled
+  // descriptor), never the person. Only a test hosting vyred in its own process (peerHosting)
+  // is let through.
+  if (!peerHosting() && pid === process.pid) return { inside: true, by: pid, self: true };
   const r = await registry.call("threads.pids", {}, "module:vyred");
   // The processes vyred runs threads in, their process groups and sessions (core/sessions/spawn.js
   // keeps a group listed until its last process is gone, so an orphan is still caught).
@@ -321,14 +337,23 @@ export async function above(socket, registry, caller, deps = {}) {
   const table = deps.processTable || processTable;
   const check = deps.insideClaude || insideClaude;
   let result = await retryUnknown(() => check(pid, { threads, look: table({ fresh: looks++ > 0 }) }), 2, deps.delayMs);
+  // The pin lives in vyred's own db (presence.capsulePin()), never a file the same uid a model's
+  // shell runs as could write to directly. The Capsule (launchd-started, its own session, not on
+  // the terminal list) is the one positive proof besides the walk's own.
+  if (result.unknown && caller === "capsule" && registry.deps.presence
+    && await verifiedCapsule(socket, pid, registry.deps.presence.capsulePin(), deps.capsuleSeam)) return { inside: false };
+  // A `vyre` the Capsule spawned by argv: its top is the Capsule itself, named as a server. The pinned
+  // cdhash proves that top too (every link below it passed the walk's own checks), so no prompt.
+  if (result.server && registry.deps.presence
+    && await verifiedCapsule({}, result.server.pid, registry.deps.presence.capsulePin(), deps.capsuleSeam)) return { inside: false };
   // Still unreadable and the caller is gone: it connected, sent and exited before the walk (a
   // forger's fire-and-forget). A real CLI waits for its answer, so it is alive here. Gone counts
   // as a model's, never as the person's.
   if (result.unknown && !result.server && !(deps.alive || alive)(pid)) result = { inside: true, by: pid, exited: true };
-  // The pin lives in vyred's own db (presence.capsulePin()), never a file the same uid a model's
-  // shell runs as could write to directly.
-  if (result.unknown && caller === "capsule" && registry.deps.presence
-    && await verifiedCapsule(socket, pid, registry.deps.presence.capsulePin())) return { inside: false };
+  // Fail closed: a chain the walk cannot rely on (a pid it lacks, an empty or timed-out ps read, an
+  // unreaped link, a foreign uid, a pid reused, a top that proves nothing) is a model's, never the
+  // person's. What stays unknown: a named server (the person proves it once) and a docker exec.
+  else if (result.unreadable && !result.server) result = { inside: true, by: pid, unreadable: true };
   return result;
 }
 
@@ -415,7 +440,7 @@ export async function asTaken(caller, socket, registry, thread, deps) {
   if (!v) {
     const mine = above(socket, registry, undefined, deps).then(w => ({
       model: Boolean(w.inside || (w.nopid && canReadPeers)),
-      definite: Boolean(w.inside || (!w.unknown && !w.nopid)),
+      definite: Boolean(!w.unreadable && (w.inside || (!w.unknown && !w.nopid))),
     }));
     v = mine;
     taken.set(socket, mine);
@@ -556,6 +581,14 @@ async function route(req, res, { registry, events, cfg, started, streams, root, 
     const v = key ? await registry.call("threads.vouch", { session, key }, "module:vyred") : null;
     if (!(v && v.data && v.data.thread)) return send(res, 403, { error: { code: "denied", message: `the caller says it is in session ${session.slice(0, 8)}, and vyred has no running session bound with this key` } });
     via.thread = v.data.thread;
+  }
+  // What a verified agent is really granted, from its stored row (agents.scope), never from
+  // anything the caller sent: a tool that scopes by project reads meta.granted ("*" or slugs).
+  // A named agent with no row is granted nothing.
+  if (via.agent) {
+    const g = await registry.call("agents.scope", { name: via.agent }, "module:vyred");
+    /** @type {any} */ (via).granted = g && g.data ? g.data.projects : [];
+    /** @type {any} */ (via).agentKind = g && g.data ? g.data.kind : null;
   }
   // A person's label from a model's shell is the session's own, whatever the tool (asTaken).
   const shell = socket && !policy.caller ? await asTaken(caller, req.socket, registry, via.thread) : { caller, model: false };

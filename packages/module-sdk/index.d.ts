@@ -114,6 +114,8 @@ export interface Manifest {
   replaces?: string;
   /** Built in only: this module's tools the setup channel may call before sign-in. An added module that declares it fails to load. */
   setupTools?: string[];
+  /** Built in only: what this module offers the # tag picker. `search` and `resolve` are this module's own tools; an added module that declares it fails to load. */
+  mentions?: { kind: string; label: string; icon?: string; search: string; resolve: string }[];
   does?: {
     /** A name is the built in grace form (reach anyone). Added modules use ToolEntry. */
     tools?: (ToolName | ToolEntry)[];
@@ -477,6 +479,10 @@ export interface ModuleContext {
   providers: { get(name: string): SessionDriver | null; list(): string[] };
   /** @internal Every running module's declared settings, tagged with its module. For the settings module. */
   declaredSettings(): (SettingDef & { module: string })[];
+  /** @internal The tools shipped modules list under setupTools, for the relay's pre-claim setup channel. Only a built-in module's field counts. */
+  declaredSetupTools(): string[];
+  /** @internal vyre-core's key store (lib/vyre-core-keys.js), handed to the relay module alone; null for every other module and where core holds no keys. */
+  coreKeys: unknown;
   /** @internal Every running module's teaches.tips, for the tips module (core/tips). firstParty: shipped in the repo. */
   declaredTips(): { module: string; version: string; firstParty: boolean; tips: Tip[] }[];
   /** @internal The whole merged config.json. Modules move to ctx.settings. */

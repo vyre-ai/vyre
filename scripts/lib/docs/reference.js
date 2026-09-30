@@ -232,6 +232,10 @@ const ENV_MEANING = {
   COMPUTERS_IMAGE: "The container image agent computers run. Default `vyre/computer:0.1`.",
   COMPUTERS_LABEL_PREFIX: "The label prefix that marks Vyre's containers. Default `run.vyre.computers`.",
   COMPUTERS_NETWORK: "The Docker network agent computers join. Default `vyre-computers`.",
+  CORE_DATA: "vyre-core's data directory (ADR 0040). Default `/Library/Application Support/Vyre/data`.",
+  CORE_OWNER: "The owner's uid: the only uid vyre-core answers. Required.",
+  CORE_SOCKET: "vyre-core's socket. Default `/var/run/vyre/vyre-core.sock`, in a folder root makes and _vyre owns.",
+  CORE_STRICT: "`0` lets vyre-core start from a tree its owner could write (dev and Linux tests only). On by default on a Mac.",
   DOCKER_PROXY_PORT: "The port the Docker proxy listens on. Default 2375.",
   DTACH_BIN: "The `dtach` binary terminals run under so they outlive a vyred restart. Default `dtach` on the PATH. Empty: plain terminals that end with vyred.",
   HANDS_BIN: "Another build of the Mac hands helper.",
@@ -258,6 +262,7 @@ const ENV_MEANING = {
   THREAD: "The session id of a headless thread vyred runs.",
   WRAPPER: "Where `vyre box add` puts the `vyre` command on the server. Default `/usr/local/bin/vyre`.",
   TEST_DIALOGS: "`1`: allow dialogs under tests, for a person at the machine running one test on purpose.",
+  TEST_HOSTED: "`1`: for a vyred a test starts over a temp home, count its parent test process as the person's side. Never read for `~/.vyre`.",
   TEST_REAL_TAILSCALE: "`1`: let a test use the real tailscale binary.",
 };
 

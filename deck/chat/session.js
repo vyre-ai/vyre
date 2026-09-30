@@ -70,6 +70,7 @@ import { questionCard } from "./question.js";
 import { askCardFor, defaultOpen } from "./cards/index.js";
 import { welcomeRow, loadWelcome } from "./cards/land.js";
 import { charterChanged, agentMade } from "./cards/charter-changed.js";
+import { vaultUsed } from "./cards/vault-used.js";
 import { macAnswersHeld } from "./presence.js";
 import { mountComposer } from "./composer.js";
 import { duration, elapsed, toolTitle, toolVerb } from "./lib/blocks.js";
@@ -1636,6 +1637,13 @@ export function mountSession(container, opts) {
     on("memory.curated", () => fetchMemory()),
     on("onboard.stepped", () => { void refreshWelcome(); }),
     on("teammate.charter-changed", e => { void charterNotice(e.payload); }),
+    // A use of a vault item this thread was granted: a quiet "using #name" line, the name and host only, never the value.
+    on("vault.used", e => {
+      const p = e.payload || {};
+      if ((p.thread || e.thread) !== thread || !p.name || !timeline.isConnected) return;
+      timeline.append(vaultUsed({ name: String(p.name), host: p.host ? String(p.host) : null, at: p.at ?? e.at }));
+      if (stick.stuck) toBottom();
+    }),
     // Filed into a project (projects.add-threads, or made into one): the project's tile from now on.
     on("thread.picked", e => { if ((e.payload?.thread || e.thread) === thread) void refile(e.payload?.project); }),
     on("session.indexed", e => { if ((e.thread || e.payload?.session) !== thread) return; if (mode === "blocks") refresh(); else readMoreLegacy(); }),

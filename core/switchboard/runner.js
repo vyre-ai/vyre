@@ -91,7 +91,7 @@ export function answerLine(requestId, decision, input, message, extra = {}) {
  */
 export function run(o) {
   // Its own group and session, under the subreaper where there is one (core/sessions/spawn.js).
-  const child = spawnSession(o.bin, o.args, { cwd: o.cwd, env: o.env, subreaper: o.subreaper, uid: o.uid, gid: o.gid, onSpawn: o.onSpawn });
+  const child = spawnSession(o.bin, o.args, { cwd: o.cwd, env: o.env, subreaper: o.subreaper, uid: o.uid, gid: o.gid, account: o.account, onSpawn: o.onSpawn });
   let buf = "", err = "", exited = false, n = 0;
   /** @type {Map<string, { resolve: (r: any) => void, reject: (e: Error) => void }>} control requests Vyre sent, waiting for their answer */
   const asked = new Map();
@@ -147,15 +147,39 @@ export function run(o) {
     },
     /** Stop the current turn (as Escape does); the session stays. */
     interrupt() { write({ type: "control_request", request_id: `vyre-int-${Date.now()}`, request: { subtype: "interrupt" } }); return Promise.resolve(); },
-    /** End it: close stdin (Claude Code finishes and exits), then TERM, then KILL. */
+    /**
+     * End it: close stdin (Claude Code finishes and exits), then TERM, then KILL, then let go
+     * regardless. SIGKILL cannot be ignored by the child itself, but killGroup's -pid targets a
+     * process GROUP the child is only in when `detached` truly took (core/sessions/spawn.js) -
+     * a grandchild that ended up outside it (or a kill that missed for any other reason) would
+     * leave this waiting on an "exit" that never comes. Past `grace` plus one more beat, stop
+     * waiting and destroy our own pipes to the child: whatever the OS process is doing, vyred's
+     * own event loop must never hang on it (registry.stop()'s MODULE_STOP_MS races each module
+     * the same way; this is the one open-ended await underneath that race - settings.test.js
+     * hang, fcce3d4a). Seen as a real, non-deterministic hang on GitHub's Node 24 runners only
+     * (3 of 4 recent runs), never reproduced on testbox; this is the fix either way, since an
+     * unbounded await on a child's exit is wrong regardless of why it stalls.
+     */
     stop(grace = 3000) {
       return new Promise(resolve => {
         if (exited) return resolve(undefined);
-        child.once("exit", () => resolve(undefined));
+        let done = false;
+        const finish = () => {
+          if (done) return;
+          done = true;
+          clearTimeout(term); clearTimeout(kill); clearTimeout(giveUp);
+          // Release Node's own handles on the child's stdio: an open pipe keeps this process
+          // alive even after we've stopped waiting for the OS process to actually go.
+          try { child.stdout?.destroy(); } catch {}
+          try { child.stderr?.destroy(); } catch {}
+          try { child.stdin?.destroy(); } catch {}
+          resolve(undefined);
+        };
+        child.once("exit", finish);
         try { child.stdin.end(); } catch {}
         const term = setTimeout(() => killGroup(child, "SIGTERM"), Math.min(500, grace));
         const kill = setTimeout(() => killGroup(child, "SIGKILL"), grace);
-        child.once("exit", () => { clearTimeout(term); clearTimeout(kill); });
+        const giveUp = setTimeout(finish, grace + 2000);
       });
     },
   };
