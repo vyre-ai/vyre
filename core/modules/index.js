@@ -924,8 +924,8 @@ export class Registry {
    * matches the person's turn in this thread or its lineage, or a standing permission, and uses a
    * plain ask up. Fails closed: no vault, a locked vault, an error or no thread answers no.
    * A tool with a `target` (an internal tool of its own module) binds the yes to what the call acts on: the target
-   * answers { to: [string] } for this call's input, and the match names the tool AND every one of those. An error or
-   * an empty answer is no.
+   * answers { to: [string] } for this call's input, and that answer is the whole `to` of the match (each entry a
+   * composite key of the tool and the thing it acts on). An error or an empty answer is no.
    * @param {string} tool @param {{ thread?: string, agent?: string }} meta @param {any} [def] @param {any} [input]
    */
   async saidMatch(tool, meta, def, input) {
@@ -936,7 +936,7 @@ export class Registry {
         const t = await this.call(def.target, { tool, input }, "module:vyred", { door: true });
         const extra = t && t.data && Array.isArray(t.data.to) ? t.data.to.filter((/** @type {any} */ x) => typeof x === "string" && x) : [];
         if (!extra.length) return false;
-        to = [tool, ...extra];
+        to = extra;
       }
       const thread = typeof meta.thread === "string" ? meta.thread : undefined;
       let lineage;

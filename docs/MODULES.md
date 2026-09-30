@@ -111,8 +111,8 @@ A module never asks for Touch ID. Vyre asks for it only when pairing a device, r
 secret, or sending something you didn't ask for.
 
 An asked tool of Vyre's own may carry `target`, the name of one internal tool of the same module that answers
-`{ to: [...] }`: what this one call acts on (a pull request, a recipient). Your yes then binds that thing and not the
-whole tool, so "merge it" about one pull request never lets an agent merge another.
+`{ to: [...] }`: what this one call acts on, each entry a key of the tool and the thing (a pull request, a recipient).
+That answer is what your yes is matched against, so it binds that thing and not the whole tool, so "merge it" about one pull request never lets an agent merge another.
 
 ## Acting as you outside: `outward`
 

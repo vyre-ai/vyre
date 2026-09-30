@@ -4,7 +4,7 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
-- An asked tool may carry `target` (built in only): an internal tool of its module that answers what one call acts on. The registry asks it before `vault.said.match` and matches the tool AND every target, so the person's yes binds one pull request, not the whole tool; an error or an empty answer is `not_asked` (`core/modules/index.js`, the manifest checker and schema; github's ask).
+- An asked tool may carry `target` (built in only): an internal tool of its module that answers what one call acts on. The registry asks it before `vault.said.match` and passes its answer as the whole `to` of the match (github answers `github.project.pr.merge:alex/app#7`), so the person's yes binds one pull request, not the whole tool; an error or an empty answer is `not_asked` (`core/modules/index.js`, the manifest checker and schema; github's ask).
 - Memory's personal reader no longer scans the whole `recall_turns` table once per turn: `recall_turns` is an FTS5
   table whose session and seq are unindexed, so each lookup by (session, seq) was a scan of every turn (about 20,000
   on a real history), which cost half a second of CPU a pass and, a batch a minute, failed perf-check's idle budget
