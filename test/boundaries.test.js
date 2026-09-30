@@ -78,7 +78,7 @@ export const ALLOW = {
     why: "the RFC 6455 framing sliver Glass wrote; a pure helper" },
   "core/term -> core/files": { files: ["core/files/safety.js"], next: "ctx.call",
     why: "the path gate every file path passes through" },
-  "core/vyre-core -> core/vault": { files: ["core/vault/kinds.js", "core/vault/vault.js"], next: "host",
+  "core/vyre-core -> core/vault": { files: ["core/vault/vault.js"], next: "host",
     why: "vyre-core hosts the vault's store and crypto in its own process and db (ADR 0040 phase 2); permanent by design, lead's OK pending" },
   "core/vault -> core/link": { files: ["core/link/transport.js"], next: "lib",
     why: "vault relay between the Mac and the box" },

@@ -22,7 +22,7 @@
 import path from "node:path";
 import { migrate } from "../store/index.js";
 import { Vault, MIGRATIONS, ensureMacColumns } from "../vault/vault.js";
-import { defaultField } from "../vault/kinds.js";
+import { defaultField } from "../../lib/vault-kinds/kinds.js";
 
 const TRUST = [`
   CREATE TABLE vyrecore_item_trust (

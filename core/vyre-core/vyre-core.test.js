@@ -135,7 +135,7 @@ test("vyre-core: only the Capsule core signed may redeem the code, and two racin
 });
 
 test("vyre-core: a write is proved by an enrolled key over that exact input, once", async t => {
-  const c = await core(t, { peerCred: async () => ({ pid: process.pid, uid }) });
+  const c = await core(t, { peerCred: async () => ({ pid: process.pid, uid }), capsuleFrom: async () => true });
   const phone = deviceKey();
   const id = c.presence.enroll({ kind: "device", name: "alex-phone", public_key: phone.pub, alg: -7 }).id;
   const other = c.presence.enroll({ kind: "device", name: "kit-phone", public_key: deviceKey().pub, alg: -7 }).id;
