@@ -44,6 +44,14 @@ final class CapsuleApp: NSObject, NSApplicationDelegate {
 
     func applicationDidFinishLaunching(_ note: Notification) {
         panel = PanelController(model: model)
+        let bindings = CommandBindings(home: home)
+        model.attach(bindings: bindings)
+        model.onShow = { [weak self] words in
+            guard let self else { return }
+            self.panel.show(front: PanelController.frontApp())
+            self.model.text = words
+        }
+        if !(ProcessInfo.processInfo.environment["VYRE_CAPSULE_HEADLESS"] == "1") { bindings.start() }
         extensions = ExtensionHost(model: model)
         extensions.panel = panel
         panel.extensions = extensions

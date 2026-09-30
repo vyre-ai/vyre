@@ -227,3 +227,24 @@ public final class LocalAnswersProvider: ResultProvider, ImmediateResults, @unch
         return .close("Started \u{201C}\(line)\u{201D}")
     }
 }
+
+extension LocalAnswersProvider: RowResolver {
+    /// A snippet, quicklink or command of yours again, by the id its row had.
+    func row(forID id: String) -> ResultItem? {
+        reloadUser()
+        lock.lock(); let u = user; lock.unlock()
+        if id.hasPrefix("snippet:") {
+            let kw = String(id.dropFirst(8))
+            return u.snippets.first { $0.keyword == kw }.map { snippetRow($0, score: 1) }
+        }
+        if id.hasPrefix("quicklink:") {
+            let kw = String(id.dropFirst(10))
+            return u.quicklinks.first { $0.keyword.lowercased() == kw }.map { quicklinkRow($0, arg: nil) }
+        }
+        if id.hasPrefix("user-command:") {
+            let title = String(id.dropFirst(13))
+            return u.commands.first { $0.title == title }.map { commandRow($0, score: 1) }
+        }
+        return nil
+    }
+}

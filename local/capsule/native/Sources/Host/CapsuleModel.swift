@@ -104,6 +104,9 @@ public final class CapsuleModel: ObservableObject {
     @Published public internal(set) var askedMemory: MemoryAnswer?
     /// The inline "Are you sure?" for a destructive action, until Enter again or Escape.
     @Published public var confirming: (item: ResultItem, action: ResultAction)?
+    /// Aliases and per-command hot keys (CommandBindings.swift), and the box's use while one is set.
+    var bindings: CommandBindings?
+    @Published var bindingEdit: BindingEdit?
     /// The agent, project or thread picked with `@`: a chip before the box, where Enter sends.
     @Published public var target: VyreCandidate? {
         didSet {
@@ -221,6 +224,8 @@ public final class CapsuleModel: ObservableObject {
     private var staleTimer: Timer?
     /// Asked to close the panel (an action finished with .close).
     public var onClose: ((String?) -> Void)?
+    /// Open the Capsule with these words in the box (a hot key that needs a look first).
+    var onShow: ((String) -> Void)?
     /// Whether the panel is on screen (a reply that finishes while it is not gets a banner).
     var isShown: () -> Bool = { false }
     /// Asked to step aside for the front app.
@@ -390,8 +395,15 @@ public final class CapsuleModel: ObservableObject {
         line = nil
         confirming = nil
         // Rows of slow providers stay until replaced; the instant ones are recomputed below.
-        partial["calc"] = nil; partial["commands"] = nil; partial["ext-commands"] = nil
+        partial["calc"] = nil; partial["commands"] = nil; partial["ext-commands"] = nil; partial["alias"] = nil
         let q = Query(text, front: front)
+        // Setting an alias or a hotkey: the box is the field, and the one row says what it wants.
+        if let e = bindingEdit {
+            recallTask?.cancel(); memory = nil; autoTask?.cancel(); partial = [:]
+            groups = [Group(section: .top, items: [bindingEditRow(e)])]
+            selected = 0
+            return
+        }
         // `@` being typed: the list is what it can name, nothing else, and memory stays quiet.
         // Inside a nesting chip it is only what that chip holds (mentionQuery says when).
         if let m = mentionQuery {
@@ -429,6 +441,7 @@ public final class CapsuleModel: ObservableObject {
         recall(q.text, token: t)
         if q.normalized.isEmpty { autoTask?.cancel(); if autoKey != nil { dropAuto() }; partial = [:]; groups = []; selected = 0; return }
         if let c = calcResult(q) { partial["calc"] = [withCopy(c)] }
+        if let a = bindings?.aliasRow(q.normalized) { partial["alias"] = [a] }
         partial["commands"] = SystemCommands.match(q.normalized).prefix(3).map { commandItem($0.command, score: $0.score) }
         partial["ext-commands"] = extensionCommands.compactMap { c in
             let s = Match.score(q.normalized, c.title, synonyms: c.keywords)
@@ -468,6 +481,7 @@ public final class CapsuleModel: ObservableObject {
     func publish() {
         let q = Query(text, front: front)
         var all = partial.values.flatMap { $0 }
+        if let b = bindings { all = all.map { b.decorated($0, begin: { [weak self] e in await MainActor.run { self?.beginBinding(e) } }) } }
         let canSend = vyred.has("files.send")
         for i in all.indices {
             all[i].score += frecency.boost(all[i].id, query: q.normalized)
@@ -476,6 +490,9 @@ public final class CapsuleModel: ObservableObject {
             }
         }
         all.sort { $0.score > $1.score }
+        // The same row from two places (an alias and the app's own search) is one row.
+        var seen = Set<String>()
+        all = all.filter { seen.insert($0.id).inserted }
         let best = all.first { $0.section != .answer }
         var out: [Group] = []
         if let top = all.first, top.score >= 0.6, top.section != .answer {

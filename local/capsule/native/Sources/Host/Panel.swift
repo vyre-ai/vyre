@@ -225,6 +225,11 @@ final class PanelController: NSObject, NSWindowDelegate {
     /// One key while shown. Internal so the driven mode (Agent/AgentDrive.swift) can press keys in this
     /// window alone, never system-wide.
     func key(_ e: NSEvent) -> Bool {
+        // Setting a hotkey: the shortcut pressed is the answer (Esc leaves).
+        if model.bindingEdit?.field == .hotkey {
+            let f = e.modifierFlags
+            return model.captureHotkey(keyCode: e.keyCode, command: f.contains(.command), option: f.contains(.option), control: f.contains(.control), shift: f.contains(.shift))
+        }
         // The waiting list and its cards take their keys first (Agent/AgentPanelKeys.swift).
         if agentKey(e) { return true }
         let cmd = e.modifierFlags.contains(.command), shift = e.modifierFlags.contains(.shift)
@@ -238,6 +243,7 @@ final class PanelController: NSObject, NSWindowDelegate {
             // recording AND removes exactly what this dictation added -- anything typed before or
             // after it stays (the user's spec, 28 Sep, matching chat's tap-to-talk).
             if extensions?.cancelTalking() == true { return true }
+            if model.bindingEdit != nil { model.cancelBinding(); return true }
             if model.presenceAsk != nil { model.cancelPresence(); return true }
             if model.credentialAsk != nil { model.cancelCredential(); return true }
             if model.escCommand() { return true }

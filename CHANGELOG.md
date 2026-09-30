@@ -4,6 +4,12 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+- Capsule: give any app, system command, snippet, quicklink or command of yours a short alias and a
+  hotkey. Press Command-K on the row and choose "Set alias" (type a word, Return) or "Set hotkey"
+  (press the shortcut). Typing the alias puts that row first. The hotkey runs the row from
+  anywhere with no window, except one that asks first (Restart, a shell line), which opens the
+  Capsule on it instead. macOS's own shortcuts and Option-Space are refused, and so is one another
+  app already holds. They are kept in `<vyre home>/capsule/bindings.json`.
 - Capsule: emoji, colours, time zones, money, snippets, quicklinks and your own commands now show
   up as rows. ":tada" or "smile emoji" finds emoji, "#ff6347" gives every colour form, "time in
   tokyo" gives the time there, and "100 usd in eur" converts. Money reads exchange rates from one
