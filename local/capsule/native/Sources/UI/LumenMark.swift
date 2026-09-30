@@ -10,7 +10,7 @@ struct LumenMark: View {
     /// How much of the ring is drawn and how bright the bead is, 0 to 1. Both 1 at rest.
     var ring: Double = 1
     var bead: Double = 1
-    var beadColor: Color = Theme.signal
+    var beadColor: Color = Theme.bone
 
     var body: some View {
         Canvas { ctx, sz in
