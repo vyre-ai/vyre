@@ -557,6 +557,44 @@ test("drive: files.drive.search narrows a named agent to the shares its own gran
   assert.deepEqual((await ok(reg, "files.drive.search", { q: "brief", share: "northwind" }, "mcp:agent:kit")).results, []);
 });
 
+test("drive: files.drive.search narrows to the granted subfolder when the share is broader than the grant (reviewer H1)", async t => {
+  fakeTailscale(t, { status: statusJson({ selfCaps: { "drive:share": null } }), list: "" });
+  const { work } = boxWorld(t); // boxWorld's own "work" root doubles as the one broad share
+  const a = path.join(work, "a"), b = path.join(work, "b");
+  fs.mkdirSync(a, { recursive: true }); fs.mkdirSync(b, { recursive: true });
+  fs.writeFileSync(path.join(a, "brief.md"), "hello\n");
+  fs.writeFileSync(path.join(b, "brief.md"), "hello\n"); // a sibling project under the same share
+  const { reg } = await registry(t, { role: "box", cfg: { files: { roots: [work], drive: { shares: { projects: null, whole: work } } } },
+    agents: [{ name: "kit", kind: "agent", projects: ["proja"] }],
+    projects: [{ slug: "proja", name: "A", home: a, workspaces: [] }],
+    access: { "proja:kit": true } });
+  const full = await ok(reg, "files.drive.search", { q: "brief" });
+  assert.deepEqual(full.results.map(x => x.name).sort(), ["brief.md", "brief.md"]); // the owner sees the whole share
+  const scoped = await ok(reg, "files.drive.search", { q: "brief" }, "mcp:agent:kit");
+  assert.equal(scoped.results.length, 1);
+  assert.equal(scoped.results[0].path, path.join(fs.realpathSync(a), "brief.md")); // never b/brief.md
+  // A query that only b's file would match (its own name) finds nothing for kit either.
+  fs.writeFileSync(path.join(b, "only-in-b.md"), "x\n");
+  assert.deepEqual((await ok(reg, "files.drive.search", { q: "only-in-b" }, "mcp:agent:kit")).results, []);
+  assert.equal((await ok(reg, "files.drive.search", { q: "only-in-b" })).results.length, 1);
+});
+
+test("drive: files.drive.search's unknown_share never lists the box's other shares to a named agent (reviewer M1)", async t => {
+  fakeTailscale(t, { status: statusJson({ selfCaps: { "drive:share": null } }), list: "" });
+  const { work } = boxWorld(t);
+  const harlow = path.join(work, "harlow-site");
+  fs.mkdirSync(harlow, { recursive: true });
+  const { reg } = await registry(t, { role: "box", cfg: { files: { roots: [work], drive: { shares: { harlow } } } },
+    agents: [{ name: "kit", kind: "agent", projects: ["harlow"] }],
+    projects: [{ slug: "harlow", name: "Harlow Legal", home: harlow, workspaces: [] }],
+    access: { "harlow:kit": true } });
+  const owner = await no(reg, "files.drive.search", { q: "x", share: "nope" }, "cli", "unknown_share");
+  assert.match(owner.message, /the box offers/);
+  const agent = await no(reg, "files.drive.search", { q: "x", share: "nope" }, "mcp:agent:kit", "unknown_share");
+  assert.doesNotMatch(agent.message, /the box offers/);
+  assert.doesNotMatch(agent.message, /projects|glass-files/);
+});
+
 // ---- the Mac -----------------------------------------------------------------------------
 
 /** The Mac, with a fake link to a box that shares projects, and seams that record instead of mounting. */
@@ -696,4 +734,22 @@ test("drive: files.drive.local on the Mac never confirms a mounted box path outs
   const kit = "mcp:agent:kit";
   assert.equal((await ok(m.reg, "files.drive.local", { path: "/work/harlow-site/brief.md" }, kit)).share, "harlow");
   assert.deepEqual(await ok(m.reg, "files.drive.local", { path: "/work/northwind/brief.md" }, kit), { local: null });
+});
+
+test("drive: files.drive.local checks the requested path itself against the grant, not just the share (reviewer H1)", async t => {
+  // One share, "whole", covering /work, broader than kit's grant of only /work/a.
+  const m = await mac(t, {
+    boxShares: [{ name: "whole", path: "/work", shared: true }],
+    agents: [{ name: "kit", kind: "agent", projects: ["proja"] }],
+    projects: [{ slug: "proja", name: "A", home: "/work/a", workspaces: [] }],
+    driveAccess: { "proja:kit": true },
+  });
+  await ok(m.reg, "files.drive.mount", { share: "whole" });
+  const kit = "mcp:agent:kit";
+  // The owner sees any path under the share, a's and b's alike.
+  assert.equal((await ok(m.reg, "files.drive.local", { path: "/work/a/brief.md" })).share, "whole");
+  assert.equal((await ok(m.reg, "files.drive.local", { path: "/work/b/brief.md" })).share, "whole");
+  // kit's own path resolves; a sibling project's, under the very same mounted share, does not.
+  assert.equal((await ok(m.reg, "files.drive.local", { path: "/work/a/brief.md" }, kit)).share, "whole");
+  assert.deepEqual(await ok(m.reg, "files.drive.local", { path: "/work/b/brief.md" }, kit), { local: null });
 });

@@ -23,7 +23,7 @@
       {"id": "find-one-box", "text": "Open Find in the Deck, `/find`, to search sessions, files, agents, memory and projects in one box. On the phone it is a tab.", "surfaces": ["deck", "phone"], "level": "discovery", "trigger": "never-used", "since": "0.1.0", "docs": "using/deck.md"},
       {"id": "drive-mount", "text": "Mount a shared box folder at `~/Vyre/Box/<share>` with `vyre call files.drive.mount` so Finder opens box files in place.", "surfaces": ["cli", "capsule"], "level": "discovery", "trigger": "never-used", "since": "0.1.0", "command": "vyre call files.drive.mount", "docs": "reference/tools.md#files"},
       {"id": "recent-folders", "text": "`vyre call files.recent` lists the folders your sessions worked in lately, newest first, with how many sessions ran in each.", "surfaces": ["cli"], "level": "power", "trigger": "idle", "since": "0.1.0", "command": "vyre call files.recent", "docs": "reference/tools.md#files"},
-      {"id": "drive-search", "text": "`files.drive.search` finds a file by name or content across your box's shared folders, for the Capsule and the Windows panel.", "surfaces": ["cli"], "level": "power", "trigger": "on-use", "since": "0.1.0", "command": "vyre call files.drive.search", "docs": "reference/tools.md#files"}
+      {"id": "drive-search", "text": "`files.drive.search` finds a file on your server by its name or what's in it, across every folder you've shared.", "surfaces": ["cli"], "level": "power", "trigger": "on-use", "since": "0.1.0", "command": "vyre call files.drive.search", "docs": "reference/tools.md#files"}
     ]
   }
 }

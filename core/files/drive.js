@@ -502,7 +502,7 @@ export function drive(ctx, { role, guard: g, roots }) {
       const st = fs.statSync(safe.real);
       const name = path.basename(safe.path);
       const { kind, mime } = classify(name, st.isDirectory());
-      return { path: safe.path, name, kind, size: st.isDirectory() ? 0 : st.size, mtime: st.mtime.toISOString() };
+      return { path: safe.path, name, kind, mime, size: st.isDirectory() ? 0 : st.size, mtime: st.mtime.toISOString() };
     };
 
     ctx.tool("files.drive.search", {
@@ -519,7 +519,12 @@ export function drive(ctx, { role, guard: g, roots }) {
         const map = shares();
         let names = Object.keys(map);
         if (share) {
-          if (!Object.prototype.hasOwnProperty.call(map, share)) throw refuse(`no share called "${share}"; the box offers ${names.join(", ") || "none"}`, "unknown_share");
+          if (!Object.prototype.hasOwnProperty.call(map, share)) {
+            // Reviewer M1: an agent never learns the box's other share names from a typo or a
+            // probe. The owner still gets the helpful list; a scoped caller gets the same bare
+            // "unknown" an ungranted-but-real share would also produce below.
+            throw refuse(scope.all ? `no share called "${share}"; the box offers ${names.join(", ") || "none"}` : `no share called "${share}"`, "unknown_share");
+          }
           names = [share];
         }
         // Same rule as files.drive.status: an unrestricted caller sees every offered share; a
@@ -531,9 +536,29 @@ export function drive(ctx, { role, guard: g, roots }) {
         const results = [];
         for (const name of names) {
           if (results.length >= limit) break;
-          let real;
-          try { real = folder(map[name]); } catch { continue; } // must still pass the same check sharing does
-          const dirs = [real];
+          let shareReal;
+          try { shareReal = folder(map[name]); } catch { continue; } // must still pass the same check sharing does
+          // Reviewer H1: a share can be broader than what a named agent is granted (a share of
+          // /work with a grant of only /work/harlow-site). Walking and rg'ing the share's whole
+          // real folder in that case would hand the agent file names, and through rg a content
+          // oracle, for every sibling project under the same share. So for a restricted scope,
+          // narrow to the actual intersection: each granted folder that falls inside this share
+          // (the narrower side), or the whole share when it instead falls inside a granted
+          // folder (already covered end to end, same as today). An unrestricted caller keeps
+          // searching the whole share, as before.
+          //
+          // Compared against the share's own configured (not yet realpath-resolved) path, the
+          // same domain scope.folders itself lives in — a project's granted folder is never
+          // realpath-resolved either, so comparing against shareReal directly could miss a match
+          // behind a symlinked temp dir. Each winning raw folder is then resolved the same way
+          // folder() resolved the share itself (the module-level real(), not this loop's own
+          // shareReal), so what actually gets walked is real.
+          const rawShare = map[name];
+          const dirs = scope.all ? [shareReal] : [...new Set(scope.folders
+            .map(f => (within(f, [rawShare]) ? f : within(rawShare, [f]) ? rawShare : null))
+            .filter(Boolean)
+            .map(d => real(d) || d))];
+          if (!dirs.length) continue;
           let candidates = [];
           try { candidates = searchWalk(dirs, q, g, { max: want }); } catch { continue; }
           try {
@@ -547,9 +572,9 @@ export function drive(ctx, { role, guard: g, roots }) {
             if (typeof c !== "string" || seen.has(c) || c.split(path.sep).includes("node_modules")) continue;
             seen.add(c);
             let d;
-            try { d = describeInShare(real, c); } catch { continue; }
+            try { d = describeInShare(shareReal, c); } catch { continue; }
             if (kinds && !kinds.includes(d.kind)) continue;
-            results.push({ share: name, path: d.path, name: d.name, kind: d.kind, size: d.size, mtime: d.mtime });
+            results.push({ share: name, path: d.path, name: d.name, kind: d.kind, mime: d.mime, size: d.size, mtime: d.mtime });
           }
         }
         return { results, ...(notes.length ? { note: notes.join("; ") } : {}) };
@@ -688,11 +713,15 @@ export function drive(ctx, { role, guard: g, roots }) {
         const want = String(p);
         if (!path.posix.isAbsolute(want) || want.includes("\0") || want.split("/").includes("..")) return { local: null };
         const scope = await reach(ctx, meta && meta.caller);
+        // Reviewer H1: checking the SHARE against the grant (an overlap either direction) was
+        // not enough when the share is broader than the grant (a share of /work, a grant of only
+        // /work/harlow-site) — every path under that share, including a sibling project's,
+        // passed. The requested path itself must sit inside the grant.
+        if (!scope.all && !within(want, scope.folders)) return { local: null };
         const m = load();
         for (const [share, rec] of Object.entries(m)) {
           const bp = String(rec && rec.boxPath || "");
           if (!bp || !inside(want, bp)) continue;
-          if (!scope.all && !within(bp, scope.folders) && !scope.folders.some(f => within(f, [bp]))) continue;
           if (!(await isMounted(String(rec.dir)))) continue;
           const local = path.join(String(rec.dir), path.posix.relative(bp, want));
           if (inside(local, String(rec.dir))) return { local, share };
