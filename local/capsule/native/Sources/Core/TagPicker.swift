@@ -50,20 +50,6 @@ public enum TagToken {
         String(text[..<start]) + token(name) + " "
     }
 
-    /// What was put into `old` to make `new` in one go: the middle between their common start and common
-    /// end, when it is longer than one character (one key is one character). Line endings are made \n.
-    /// Nil for a key, a deletion or no change.
-    public static func inserted(old: String, new: String) -> String? {
-        let a = Array(old), b = Array(new)
-        var p = 0
-        while p < a.count, p < b.count, a[p] == b[p] { p += 1 }
-        var s = 0
-        while s < a.count - p, s < b.count - p, a[a.count - 1 - s] == b[b.count - 1 - s] { s += 1 }
-        let mid = String(b[p..<(b.count - s)])
-        guard mid.count > 1 else { return nil }
-        return mid.replacingOccurrences(of: "\r\n", with: "\n").replacingOccurrences(of: "\r", with: "\n")
-    }
-
     /// #Name, or #"Name with spaces".
     public static func token(_ name: String) -> String {
         let clean = name.replacingOccurrences(of: "\"", with: "")
@@ -114,5 +100,73 @@ public enum TagResults {
         case "teammate": return "person"
         default: return icon.flatMap { ViewIcon.spec($0) }.flatMap { if case .symbol(let n, _) = $0 { return n }; return nil } ?? "number"
         }
+    }
+}
+
+
+/// PasteSpans: which stretches of the box did not come from typing. A paste, a drop, undo, redo, an
+/// autocorrect or dictation replacement: anything put in more than one character at a time, which is
+/// all a key can do. A `#Name` inside such a stretch tags nothing (sessions' rule; only a picked chip can).
+///
+/// It tracks offsets, not strings, through every later edit (the same rules as the Deck's
+/// deck/chat/core/paste-spans.js): typing before a span moves it, typing inside it keeps the whole
+/// stretch marked, deleting all of it drops it, deleting part of it trims it. The edit is found from
+/// the old and new text by their common start and end, so a clipboard's own line endings never matter.
+public struct PasteSpans: Equatable, Sendable {
+    /// Half-open character ranges, sorted and not touching.
+    public private(set) var ranges: [Range<Int>] = []
+    public init() {}
+
+    public mutating func reset() { ranges = [] }
+
+    /// The box went from `old` to `new`. `notTyped` is false for an edit the Capsule made itself (a tag
+    /// pick): its text is not marked, but the spans around it still move.
+    public mutating func edit(old: String, new: String, notTyped: Bool = true) {
+        let a = Array(old), b = Array(new)
+        var p = 0
+        while p < a.count, p < b.count, a[p] == b[p] { p += 1 }
+        var s = 0
+        while s < a.count - p, s < b.count - p, a[a.count - 1 - s] == b[b.count - 1 - s] { s += 1 }
+        let remEnd = a.count - s                       // old text [p, remEnd) was replaced ...
+        let insLen = b.count - s - p                   // ... by this many characters
+        if remEnd == p, insLen == 0 { return }
+        let delta = insLen - (remEnd - p)
+        var out: [Range<Int>] = []
+        for r in ranges {
+            if r.upperBound <= p { out.append(r); continue }                                   // wholly before
+            if r.lowerBound >= remEnd { out.append((r.lowerBound + delta)..<(r.upperBound + delta)); continue }   // wholly after
+            if remEnd == p { out.append(r.lowerBound..<(r.upperBound + insLen)); continue }    // a pure insertion strictly inside: stays whole
+            if r.lowerBound <= p, remEnd <= r.upperBound, insLen > 0 { out.append(r.lowerBound..<(r.upperBound + delta)); continue }   // replaced inside: stays whole
+            if r.lowerBound < p { out.append(r.lowerBound..<p) }                               // what is left before the removal
+            if r.upperBound > remEnd { out.append((p + insLen)..<(r.upperBound + delta)) }     // what is left after it
+        }
+        if notTyped, insLen > 1 { out.append(p..<(p + insLen)) }
+        ranges = Self.merged(out.filter { !$0.isEmpty })
+    }
+
+    private static func merged(_ rs: [Range<Int>]) -> [Range<Int>] {
+        var out: [Range<Int>] = []
+        for r in rs.sorted(by: { $0.lowerBound < $1.lowerBound }) {
+            if let last = out.last, r.lowerBound <= last.upperBound { out[out.count - 1] = last.lowerBound..<max(last.upperBound, r.upperBound) }
+            else { out.append(r) }
+        }
+        return out
+    }
+
+    /// The stretches' text, for the send (`pasted`). `text` is the box; `words` is what is sent, which may
+    /// be the box with its ends trimmed.
+    public func of(_ text: String, sent words: String? = nil) -> [String] {
+        let chars = Array(text)
+        var shift = 0
+        if let w = words, w != text {
+            guard let r = text.range(of: w) else { return [] }
+            shift = text.distance(from: text.startIndex, to: r.lowerBound)
+            let len = w.count
+            return ranges.compactMap { r in
+                let lo = max(r.lowerBound, shift), hi = min(r.upperBound, shift + len)
+                return lo < hi && hi <= chars.count ? String(chars[lo..<hi]) : nil
+            }
+        }
+        return ranges.compactMap { $0.upperBound <= chars.count ? String(chars[$0]) : nil }
     }
 }

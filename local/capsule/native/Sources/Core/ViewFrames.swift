@@ -63,6 +63,22 @@ enum ViewText {
     }
 }
 
+/// What a `needs` frame says is missing, when the module says it in vault's terms: a credential the
+/// person can add here (`vault.need {module, need}` gives its fields and help), named by the module's
+/// own need id. Without it the frame is only words.
+public struct ViewNeed: Equatable, Sendable {
+    public var module: String?
+    public var need: String
+    public var label: String?
+
+    static func parse(_ v: Any?) -> ViewNeed? {
+        if let s = ViewText.string(v) { return ViewNeed(module: nil, need: s, label: nil) }
+        guard let o = v as? [String: Any], ViewText.string(o["kind"]) ?? "credential" == "credential",
+              let need = ViewText.string(o["need"]) ?? ViewText.string(o["item"]) else { return nil }
+        return ViewNeed(module: ViewText.string(o["module"]), need: need, label: ViewText.string(o["label"]) ?? ViewText.string(o["vendor"]))
+    }
+}
+
 public struct ViewAction: Equatable, Sendable {
     public var id: String
     public var title: String
@@ -128,7 +144,7 @@ public enum ViewFrame: Equatable, Sendable {
     case detail(ViewDetail)
     case form(ViewForm)
     case error(code: String, message: String)
-    case needs(code: String, message: String)
+    case needs(code: String, message: String, need: ViewNeed? = nil)
     case held(message: String)
 
     /// The frame in a `capsule.view` answer, or a words-only error for one this Capsule cannot draw.
@@ -152,7 +168,7 @@ public enum ViewFrame: Equatable, Sendable {
                                       actions: parseActions(o["actions"]), from: from))
         case "form": return parseForm(o).map { .form($0) } ?? .error(code: "bad_frame", message: "The form had nothing to fill in.")
         case "error": return .error(code: ViewText.string(o["code"]) ?? "error", message: ViewText.string(o["message"]) ?? "It did not work.")
-        case "needs": return .needs(code: ViewText.string(o["code"]) ?? "needs", message: ViewText.string(o["message"]) ?? "Something needs connecting first.")
+        case "needs": return .needs(code: ViewText.string(o["code"]) ?? "needs", message: ViewText.string(o["message"]) ?? "Something needs connecting first.", need: ViewNeed.parse(o["need"]))
         case "held": return .held(message: ViewText.string(o["message"]) ?? "Waiting for your OK.")
         default: return .error(code: "bad_frame", message: "That view is not one this Lumen can draw.")
         }
@@ -228,7 +244,7 @@ public enum ViewActResult: Equatable, Sendable {
     case view(ViewFrame)
     case preview(ViewPreview)
     case held(message: String)
-    case needs(code: String, message: String)
+    case needs(code: String, message: String, need: ViewNeed? = nil)
     case error(code: String, message: String)
 
     public static func parse(_ data: Any?) -> ViewActResult {
@@ -258,7 +274,7 @@ public enum ViewActResult: Equatable, Sendable {
             return .preview(ViewPreview(title: ViewText.string(o["title"]) ?? "Check this first", words: words, hash: hash,
                                         token: ViewText.string(o["token"], max: 2000) ?? ""))
         case "held": return .held(message: ViewText.string(o["message"]) ?? "Waiting for your OK.")
-        case "needs": return .needs(code: ViewText.string(o["code"]) ?? "needs", message: ViewText.string(o["message"]) ?? "Something needs connecting first.")
+        case "needs": return .needs(code: ViewText.string(o["code"]) ?? "needs", message: ViewText.string(o["message"]) ?? "Something needs connecting first.", need: ViewNeed.parse(o["need"]))
         case "error": return .error(code: ViewText.string(o["code"]) ?? "error", message: ViewText.string(o["message"]) ?? "It did not work.")
         default: return .error(code: "bad_frame", message: "The action answered with something this Lumen cannot read.")
         }

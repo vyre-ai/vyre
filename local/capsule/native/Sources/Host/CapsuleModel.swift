@@ -112,7 +112,7 @@ public final class CapsuleModel: ObservableObject {
     var viewProvider: ViewCommandsProvider?
     /// Text put in the box other than a key at a time (a paste, a drop, dictation, undo): tags typed inside
     /// it tag nothing (TagMode.swift).
-    var pastedSpans: [String] = []
+    var pastedSpans = PasteSpans()
     var ownEdit = false
     /// "Harlow Legal call · in 25 min": the next meeting, under the empty box (ViewMode.swift).
     @Published var nextMeeting: String?
@@ -336,7 +336,7 @@ public final class CapsuleModel: ObservableObject {
     public func reset() {
         if let r = reply, !r.finished { return }
         followUp = false; autoKey = nil; autoTask?.cancel(); convo = []
-        text = ""; pickedTags = []; pastedSpans = []; groups = []; selected = 0; line = nil; reply = nil; asked = nil; memory = nil; askedMemory = nil; targetParent = nil; target = nil
+        text = ""; pickedTags = []; pastedSpans.reset(); groups = []; selected = 0; line = nil; reply = nil; asked = nil; memory = nil; askedMemory = nil; targetParent = nil; target = nil
         iqStage = nil; iqDraft = nil; iqAnswerId = nil; iqCorrecting = nil; iqFixed = nil; iqAbstained = false
         cancelMentionRefresh()
         replySub?.cancel(); replySub = nil

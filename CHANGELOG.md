@@ -4,6 +4,12 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+- Lumen: a module's "needs" answer that names a credential (a need id, optionally the vendor) now opens
+  "Add your ..." in the panel; once it is saved, the command asks again. One without a credential is
+  shown as its words.
+- Lumen: stretches of the box that did not come from typing (a paste, a drop, undo, dictation, an
+  autocorrect) are tracked by position through every later edit, and sent with a message so that a
+  #Name inside them tags nothing.
 - Lumen: when a calendar module declares a next-meeting command, the empty box shows one line under
   it: the next meeting and when ("Harlow Legal call · in 25 min"). It is asked when Lumen shows, at
   most once a minute, and there is no line when there is no meeting.

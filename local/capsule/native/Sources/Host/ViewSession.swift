@@ -48,6 +48,8 @@ final class ViewSession: ObservableObject {
 
     /// Something on screen changed (rows, a level): the model draws again.
     var onChange: () -> Void = {}
+    /// A `needs` that names a credential: the model shows "Add your ..." and, once it is saved, asks again.
+    var onNeed: (CredentialNeed) -> Void = { _ in }
     /// A `push`: go to another command of the same module.
     var onPush: (String) -> Void = { _ in }
     /// An `ask` effect: put these words in the box and leave the command.
@@ -134,7 +136,8 @@ final class ViewSession: ObservableObject {
             if d.from != nil { addedModule = true }
             stack.append(.detail(d, row: ViewRow(id: "", title: d.title, subtitle: nil, icon: nil, accessory: nil, group: nil, actions: d.actions)))
         case .form(let form): open(form)
-        case .error(_, let m), .needs(_, let m), .held(let m): problem = m
+        case .error(_, let m), .held(let m): problem = m
+        case .needs(_, let m, let need): problem = m; askCredential(need)
         }
         onChange()
     }
@@ -166,7 +169,8 @@ final class ViewSession: ObservableObject {
                 case .detail(let d):
                     if d.from != nil { self.addedModule = true }
                     self.stack.append(.detail(d, row: row))
-                case .error(_, let m), .needs(_, let m), .held(let m): self.problem = m
+                case .error(_, let m), .held(let m): self.problem = m
+                case .needs(_, let m, let need): self.problem = m; self.askCredential(need)
                 default: self.problem = "There is no more to show for that."
                 }
                 self.onChange()
@@ -190,6 +194,14 @@ final class ViewSession: ObservableObject {
         timer?.cancel(); slowTimer?.cancel()
         loading = false
     }
+
+    private func askCredential(_ need: ViewNeed?) {
+        guard let need else { return }
+        onNeed(CredentialNeed(module: need.module ?? command.module, need: need.need, label: need.label ?? need.need))
+    }
+
+    /// Ask for the list again (a credential was just saved).
+    func reload() { cache = [:]; stack = []; problem = nil; load(q: q) }
 
     // MARK: acting
 
@@ -241,8 +253,8 @@ final class ViewSession: ObservableObject {
         case .held(let m):
             if replacing { stack = Array(stack.prefix(1)); onChange() }
             return .said(m)
-        case .needs(_, let m):
-            problem = m; onChange(); return .failed(m)
+        case .needs(_, let m, let need):
+            problem = m; askCredential(need); onChange(); return .failed(m)
         case .error(_, let m):
             return .failed(m)
         }

@@ -83,14 +83,53 @@ let tagPickerSuite = Suite("tag picker") { t in
         t.eq(r?[6], "chips 0")
     }
 
-    t.test("what was put in at once is pasted; a key, a deletion and our own tag pick are not; line endings are normal") {
-        t.eq(TagToken.inserted(old: "", new: "hello #ghlapikey"), "hello #ghlapikey")
-        t.eq(TagToken.inserted(old: "see ", new: "see a #tag here"), "a #tag here")
-        t.eq(TagToken.inserted(old: "see", new: "see a"), nil, "one key")
-        t.eq(TagToken.inserted(old: "see a", new: "see"), nil, "a deletion")
-        t.eq(TagToken.inserted(old: "x", new: "x"), nil)
-        t.eq(TagToken.inserted(old: "a z", new: "a line1\r\nline2 z"), "line1\nline2", "\r\n becomes \n")
-        t.eq(TagToken.inserted(old: "ab", new: "a12b"), "12", "in the middle")
+    t.test("pasted spans follow every edit by offset: typing before moves one, typing inside keeps it whole, deleting drops or trims it") {
+        var sp = PasteSpans()
+        var text = ""
+        func type(_ s: String, at i: Int) { let a = Array(text); let n = String(a[..<i]) + s + String(a[i...]); sp.edit(old: text, new: n); text = n }
+        func paste(_ s: String, at i: Int) { type(s, at: i) }
+        for c in "see " { type(String(c), at: text.count) }                       // typed
+        t.eq(sp.ranges, [])
+        paste("mail #vault1 ok", at: text.count)
+        t.eq(sp.of(text), ["mail #vault1 ok"])
+        type("X", at: 0)                                                            // typed before: the span moves
+        t.eq(sp.of(text), ["mail #vault1 ok"]); t.eq(sp.ranges, [5..<20])
+        type("Z", at: 13)                                                           // typed inside: the whole stretch stays marked
+        t.eq(sp.of(text), ["mail #vaZult1 ok"])
+        type("!", at: text.count)                                                   // typed right after: outside
+        t.eq(sp.of(text), ["mail #vaZult1 ok"])
+        // Delete part of it: it is trimmed; delete all of it: it goes.
+        var t2 = PasteSpans(), x = "ab"
+        let x2 = "ab" + "hello world"; t2.edit(old: x, new: x2); x = x2
+        let x3 = "ab" + "hello"; t2.edit(old: x, new: x3); x = x3
+        t.eq(t2.of(x), ["hello"], "trimmed from the end")
+        let x4 = "ab"; t2.edit(old: x, new: x4); x = x4
+        t.eq(t2.ranges, [], "deleted")
+    }
+
+    t.test("undo of a paste, a replacement, a drag and a clipboard's own line endings are all handled by the diff") {
+        var sp = PasteSpans()
+        sp.edit(old: "a z", new: "a line1\nline2 z")                                // a Windows paste is \n in the field
+        t.eq(sp.of("a line1\nline2 z"), ["line1\nline2 "], "the diff takes the space that follows it, as the Deck's does")
+        sp.edit(old: "a line1\nline2 z", new: "a z")                                // undo
+        t.eq(sp.ranges, [])
+        sp.edit(old: "see teh", new: "see tej")                                      // a one-character fix is typing
+        t.eq(sp.ranges, [])
+        sp.edit(old: "see the end", new: "see them all end")                         // autocorrect replacing more than a key
+        t.ok(!sp.ranges.isEmpty)
+        // A move: the text leaves one place and lands in another; the landing is marked.
+        var mv = PasteSpans()
+        mv.edit(old: "", new: "abc DEFGH xyz")
+        mv.edit(old: "abc DEFGH xyz", new: "abc  xyz")                               // dragged out
+        mv.edit(old: "abc  xyz", new: "abc  xyzDEFGH")                               // dropped at the end
+        t.ok(mv.of("abc  xyzDEFGH").joined().contains("DEFGH"))
+        // Our own edit is not marked, and the spans around it move.
+        var own = PasteSpans()
+        own.edit(old: "", new: "pasted words here")
+        own.edit(old: "pasted words here", new: "pasted words here #ghlapikey ", notTyped: false)
+        t.eq(own.of("pasted words here #ghlapikey "), ["pasted words here"])
+        // What is sent may be the box trimmed.
+        var tr = PasteSpans(); tr.edit(old: "", new: "  pasted one  "); t.eq(tr.of("  pasted one  ", sent: "pasted one"), ["pasted one"])
     }
 
     t.test("a send carries the chips and the pasted spans that are still in the words; a #Name inside a paste is not a chip") {
@@ -98,17 +137,17 @@ let tagPickerSuite = Suite("tag picker") { t in
             let v = FakeVyred(name: "tags-pasted")
             let m = CapsuleModel(home: vyScratch("tags-pasted-\(UUID().uuidString.prefix(6))"), vyred: VyredClient(socket: v.socket), providers: [])
             for c in "use " { m.text += String(c) }                            // typed, a key at a time
-            t.eq(m.pastedSpans, [])
+            t.eq(m.pastedSpans.ranges, [])
             m.text = "use Email from Dana: please check #ghlapikey today"       // a paste lands
-            t.eq(m.pastedSpans, ["Email from Dana: please check #ghlapikey today"])
+            t.eq(m.pastedSpans.of(m.text), ["Email from Dana: please check #ghlapikey today"])
             let hit = TagHit(kind: "vault", id: "v1", name: "intake", hint: nil, icon: nil, label: "Vault")
             m.pickedTags = [hit]
             for c in " #intake" { m.text += String(c) }                        // typed
             // Our own pick is not a paste.
-            let before = m.pastedSpans.count
+            let before = m.pastedSpans.ranges
             m.text = m.text.replacingOccurrences(of: " #intake", with: " #")
             m.pickTag(hit)
-            t.eq(m.pastedSpans.count, before, "a tag pick is not a paste")
+            t.eq(m.pastedSpans.ranges.count, before.count, "a tag pick is not a paste")
             var input: [String: Any] = ["text": m.text]
             m.addTags(to: &input, words: m.text)
             t.eq((input["mentions"] as? [[String: String]])?.map { $0["id"] ?? "" }, ["v1"])
@@ -116,10 +155,10 @@ let tagPickerSuite = Suite("tag picker") { t in
             // The paste is edited away: it is no longer sent.
             var input2: [String: Any] = [:]
             m.addTags(to: &input2, words: "use something else #intake")
-            t.ok(input2["pasted"] == nil)
+            t.ok(input2["pasted"] == nil, "words that do not hold the pasted stretch")
             // An empty box forgets them.
             m.text = ""
-            t.eq(m.pastedSpans, [])
+            t.eq(m.pastedSpans.ranges, [])
             // No chips and no # in the words: nothing extra goes.
             var plain: [String: Any] = [:]
             m.addTags(to: &plain, words: "just words")

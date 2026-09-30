@@ -56,21 +56,16 @@ extension CapsuleModel {
         TagToken.stillIn(words, pickedTags).map { ["kind": $0.kind, "id": $0.id, "name": $0.name] }
     }
 
-    /// What went into the box other than one key at a time, from the old words to the new: the chunk
-    /// between their common start and common end, when it is longer than one character. A paste, a drop,
-    /// dictation, an undo or a redo all look like this, and all count as not typed. Our own edits (a tag
-    /// pick) do not.
+    /// The box went from `old` to `text`. Whatever was put in other than one key at a time (a paste, a drop,
+    /// dictation, an undo or redo, an autocorrect) is marked not typed, by offsets that follow every later
+    /// edit (Core/TagPicker.swift PasteSpans). Our own edits (a tag pick) are not marked.
     func trackInsert(_ old: String) {
-        if text.isEmpty { pastedSpans = []; return }
-        if ownEdit { return }
-        if let chunk = TagToken.inserted(old: old, new: text) { pastedSpans.append(chunk) }
+        if text.isEmpty { pastedSpans.reset(); return }
+        pastedSpans.edit(old: old, new: text, notTyped: !ownEdit)
     }
 
-    /// The pasted spans still written in `words`, for the send (`pasted`). Line endings are normal.
-    func pastedFor(_ words: String) -> [String] {
-        var seen = Set<String>()
-        return pastedSpans.filter { words.contains($0) && seen.insert($0).inserted }
-    }
+    /// The pasted stretches of what is being sent (`pasted`).
+    func pastedFor(_ words: String) -> [String] { pastedSpans.of(text, sent: words) }
 
     /// `mentions` (the chips still in the words, at most 8) and `pasted` for a send that sessions reads:
     /// threads.send, threads.start (its first prompt) and agents.ask.

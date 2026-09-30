@@ -57,7 +57,11 @@ let viewFramesSuite = Suite("view frames") { t in
 
     t.test("errors, needs, held, and a frame this Lumen cannot draw are words") {
         t.eq(ViewFrame.parse(["v": 1, "kind": "error", "code": "not_found", "message": "No such thread."]), .error(code: "not_found", message: "No such thread."))
-        t.eq(ViewFrame.parse(["v": 1, "kind": "needs", "message": "Connect Google first."]), .needs(code: "needs", message: "Connect Google first."))
+        t.eq(ViewFrame.parse(["v": 1, "kind": "needs", "message": "Connect Google first."]), .needs(code: "needs", message: "Connect Google first.", need: nil))
+        t.eq(ViewFrame.parse(["v": 1, "kind": "needs", "message": "Add your key.", "need": ["kind": "credential", "item": "ghl-api", "vendor": "GoHighLevel"]]),
+             .needs(code: "needs", message: "Add your key.", need: ViewNeed(module: nil, need: "ghl-api", label: "GoHighLevel")))
+        t.eq(ViewFrame.parse(["v": 1, "kind": "needs", "message": "x", "need": "deepgram-key"]), .needs(code: "needs", message: "x", need: ViewNeed(module: nil, need: "deepgram-key", label: nil)))
+        t.eq(ViewFrame.parse(["v": 1, "kind": "needs", "message": "x", "need": ["kind": "connection", "url": "https://example.com"]]), .needs(code: "needs", message: "x", need: nil), "only a credential is added here")
         t.eq(ViewFrame.parse(["v": 1, "kind": "held", "message": "Waiting for your OK."]), .held(message: "Waiting for your OK."))
         if case .error(let code, _) = ViewFrame.parse(["v": 2, "kind": "list"]) { t.eq(code, "old_capsule") } else { t.ok(false, "v2") }
         if case .error(let code, _) = ViewFrame.parse(["v": 1, "kind": "carousel"]) { t.eq(code, "bad_frame") } else { t.ok(false, "carousel") }
@@ -78,7 +82,7 @@ let viewFramesSuite = Suite("view frames") { t in
         if case .preview(let pv) = p { t.eq(pv.hash, "abc123"); t.eq(pv.token, "tok-abc"); t.eq(pv.words.count, 2); t.eq(pv.words[1].value, "Hello\nthere") } else { t.ok(false, "preview") }
         if case .error = ViewActResult.parse(["v": 1, "kind": "preview", "title": "x", "words": [] as [Any]]) {} else { t.ok(false, "a preview with no hash or words is refused") }
         t.eq(ViewActResult.parse(["v": 1, "kind": "held", "message": "Waiting for your OK."]), .held(message: "Waiting for your OK."))
-        t.eq(ViewActResult.parse(["v": 1, "kind": "needs", "code": "no_connection", "message": "Connect Gmail."]), .needs(code: "no_connection", message: "Connect Gmail."))
+        t.eq(ViewActResult.parse(["v": 1, "kind": "needs", "code": "no_connection", "message": "Connect Gmail."]), .needs(code: "no_connection", message: "Connect Gmail.", need: nil))
         t.eq(ViewActResult.parse(["v": 1, "kind": "error", "code": "missing", "message": "Gone."]), .error(code: "missing", message: "Gone."))
         if case .error(let c, _) = ViewActResult.parse(["v": 3, "kind": "done"]) { t.eq(c, "old_capsule") } else { t.ok(false, "v3") }
     }

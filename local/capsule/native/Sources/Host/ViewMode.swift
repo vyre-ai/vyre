@@ -21,6 +21,7 @@ extension CapsuleModel {
             self.enterView(c2)
         }
         s.onAsk = { [weak self] words in self?.prefill(words) }
+        s.onNeed = { [weak self, weak s] need in self?.askCredential(need) { s?.reload() } }
         viewSession = s
         line = nil
         groups = []
