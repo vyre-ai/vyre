@@ -39,6 +39,7 @@ import { checkBuild } from "./build-check.js";
 import { installed, kbd, mac } from "./platform.js";
 import { reportContext } from "./context-report.js";
 import { homePath } from "./home.js";
+import { installTrustAsk } from "./trust-ask.js";
 
 /** Routes, most specific first. The name is the file in deck/views/. */
 const ROUTES = [
@@ -789,6 +790,7 @@ window.addEventListener("deck:navigate", route);
 (async () => {
   // A box that asks for a person session gets a sign-in sheet, and the call goes again once.
   installPersonHandler();
+  installTrustAsk();
 // Just paired by scanning the Wink ring: the box's own address opens with a one-time grant in the
 // fragment, and this phone makes its Face ID key now (js/enroll-grant.js).
 offerEnroll({ enroll: enrollPasskey, canProve }).catch(() => {});

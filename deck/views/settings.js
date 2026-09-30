@@ -26,6 +26,7 @@ import { shareAccess, accessWord, flip, perShare, unsafeLines, mountHint } from 
 import { fmtBytes, pieceLabel, pieceLine, totalBytes, piecePct, readyToConfirm, allReady, mergeEvent, destinationName, forgetGate } from "../js/server-rows.js";
 import { canRelayJoin } from "../js/join-caps.js";
 import { buildWinkCard } from "../js/wink-card.js";
+import { watchTrustAsks } from "../js/trust-ask.js";
 import { buildAddPcCard } from "../js/add-pc-card.js";
 
 const SECTIONS = [
@@ -613,6 +614,9 @@ function addPcCard(status, ctx) {
 
 /** The owner's devices on the tailnet (onboard.status detail.devices.peers) and the paired Macs (link.peers). */
 async function drawDevices(el, ctx) {
+  // A browser asking for full access (tailnet's device.trust-asked): its key first, its name as its own claim.
+  const asks = h("div");
+  ctx.cleanup?.(watchTrustAsks(card => put(asks, card)));
   const [st, macs] = await Promise.all([attempt("onboard.status"), attempt("link.peers")]);
   if (!ctx.alive()) return;
   if (st.error) { put(el, empty("Your devices are read by the box module.", st.error), foot(toOnboard("devices", "Open"))); return; }
@@ -637,6 +641,7 @@ async function drawDevices(el, ctx) {
     rows.push(row("Mac", h("span", { class: "set-inline" }, mono(m.name || m.node || "A Mac"), stateLbl("Paired", "faint"))));
   }
   put(el,
+    asks,
     wink,
     addPc,
     rows.length ? h("div", { class: "rows" }, rows)

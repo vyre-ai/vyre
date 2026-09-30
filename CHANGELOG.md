@@ -4,6 +4,10 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### deck: the trust prompt for a browser asking for full access
+
+- `deck/js/trust-ask.js`: tailnet's `device.trust-asked {id, name, fingerprint}` raises a toast ("A browser is asking for full access", Review) and a card at the top of Settings, Your devices. The card puts the key fingerprint first, in mono and in groups of four, to compare with what that browser shows, and labels the name "It says it is ...": the browser's own claim, plain text, at most 64 characters, control characters removed. Trust calls `relay.devices.trust {id, trusted: true}` with the person's own presence (the existing tool, nothing granted here); Not now sets it aside on this screen. Pending asks are held in memory only.
+
 #### projects: the Team tab
 
 - `/projects/<slug>?tab=team` (`deck/views/project-team.js`): the teammates serving a project, from `team.list`, each with its role, state, who fills it, queue, brief and last result. Open shows what it is doing now (`team.status`), its last result, its notes (`team.notes`, editable), and its setup: who fills the role (`team.role.fill`, or the project's helper), its charter (`team.charter.get`, edit, and draft it from the project), its duties (pause, turn on, run now), and Retire (asks once; notes and history are kept). Add a teammate takes a role word and an optional brief (`team.add`). A switch steers new work to teammates (`team.default.set`). The box has no tool that lists a teammate's queued asks, so the pane shows how many are waiting, not each one. Tests: `deck/test/project-team.test.js`; the `team.*` tools are optional in the deck contract test until teammates merges.
