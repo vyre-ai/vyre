@@ -512,6 +512,9 @@ test("daemon: a real box never serves the Deck's sample data; only a dev world d
   const saved = process.env.VYRE_DECK_FIXTURES;
   delete process.env.VYRE_DECK_FIXTURES;
   t.after(() => { if (saved === undefined) delete process.env.VYRE_DECK_FIXTURES; else process.env.VYRE_DECK_FIXTURES = saved; });
+test("daemon: every address the signed shell list names is served with exactly the listed bytes, the onboarding and passkey-claim pages included", { timeout: 60_000 }, async t => {
+  const root = tempHome(t);
+  fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ transcripts: [] }));
   const d = await start({ root, log: () => {} });
   t.after(() => d.stop());
   const { socketPath } = await import("../core/config/index.js");
@@ -527,4 +530,15 @@ test("daemon: a real box never serves the Deck's sample data; only a dev world d
   process.env.VYRE_DECK_FIXTURES = "1";
   const dev = /** @type {any} */ (await get("/fixtures/threads.json"));
   assert.equal(dev.status, 200, "a dev world still gets its sample data");
+  const { shellHashes } = await import("../scripts/shell-hashes.mjs");
+  const crypto = await import("node:crypto");
+  const get = (/** @type {string} */ p) => new Promise((resolve, reject) => http.get({ socketPath: socketPath(root), path: p }, res => {
+    /** @type {Buffer[]} */ const c = []; res.on("data", x => c.push(x)); res.on("end", () => resolve({ status: res.statusCode, body: Buffer.concat(c) }));
+  }).on("error", reject));
+  const bad = [];
+  for (const [p, want] of shellHashes().files) {
+    const r = /** @type {any} */ (await get(p));
+    if (r.status !== 200 || crypto.createHash("sha256").update(r.body).digest("hex") !== want) bad.push(p);
+  }
+  assert.deepEqual(bad, [], "a page with anything per-box in its bytes cannot be on the signed list");
 });
