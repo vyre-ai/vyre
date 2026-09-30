@@ -1040,6 +1040,24 @@ async function sweepCmd(args) {
   return 0;
 }
 
+/** `scan-env [folder...]`: the .env files in your project folders that hold secrets, and the command that imports each. */
+async function scanEnvCmd(args) {
+  const roots = args.filter(a => !a.startsWith("-")).map(a => path.resolve(a));
+  if (args.some(a => a.startsWith("-"))) return oops("vyre vault scan-env [folder...]");
+  const r = await tool("vault.env.scan", roots.length ? { roots } : {});
+  if (r.error) return fail(r);
+  const { files = [], scanned = 0, truncated } = r.data || {};
+  say("");
+  say(`  ${files.length ? beacon(plural(files.length, ".env file")) : signal("no .env file holds a secret")} ${dim(`· ${plural(scanned, "file")} looked at${truncated ? ", stopped at the limit" : ""}`)}`);
+  for (const f of files) {
+    const git = f.git && f.git.tracked ? dim(" · git tracks it, so the values are in its history too") : "";
+    say(`  ${f.project ? `${bold(f.project)} ` : ""}${f.file} ${dim(`· ${plural(f.secrets, "secret")}${f.kinds && f.kinds.length ? ` (${f.kinds.join(", ")})` : ""}`)}${git}`);
+    say(`    ${dim(f.offer)}`);
+  }
+  if (files.length) say(dim("\n  import swaps each secret for a vault reference; the program then runs with vyre run -- <command> in that folder"));
+  return 0;
+}
+
 /** `rotate <name>`: a new credential at the provider, or its page and steps. */
 async function rotateCmd(args) {
   if (args.length === 2 && args[1] === "--how") {
@@ -2040,7 +2058,7 @@ function viewOf(obj) {
 
 const SUBS = {
   list, ls: list, get, read, add: put, put, edit, rm: remove, delete: remove, inject, share, ssh, "git-credential": gitCredential,
-  pair, devices, "unlock-passphrase": unlockPassphrase, backup: backupCmd, restore: restoreCmd, relay: relayCmd, grant, revoke, pending, approve, needs: needsCmd, connect: connectCmd, connections: connectionsCmd, run, totp, codes: codesCmd, sweep: sweepCmd, rotate: rotateCmd, health, remind: remindCmd, breach, history, revert, "clear-clipboard": clearClipboard, agent: agentCmd, uses: usesCmd, generate, import: importFile, audit, card, people, fingerprint: fingerprintCmd, kit, vaults, members, move, device, pass, offboard, emergency, unlock, lock, account, "migrate-key": migrateKey, help,
+  "scan-env": scanEnvCmd, pair, devices, "unlock-passphrase": unlockPassphrase, backup: backupCmd, restore: restoreCmd, relay: relayCmd, grant, revoke, pending, approve, needs: needsCmd, connect: connectCmd, connections: connectionsCmd, run, totp, codes: codesCmd, sweep: sweepCmd, rotate: rotateCmd, health, remind: remindCmd, breach, history, revert, "clear-clipboard": clearClipboard, agent: agentCmd, uses: usesCmd, generate, import: importFile, audit, card, people, fingerprint: fingerprintCmd, kit, vaults, members, move, device, pass, offboard, emergency, unlock, lock, account, "migrate-key": migrateKey, help,
 };
 
 /** Every verb run() handles, for `vyre commands` (core/cli/verbs.js); an alias shares its verb's row. */
@@ -2067,6 +2085,7 @@ const VERBS = [
   { verb: "approve", summary: "allow one of them", usage: "<id>", person: true },
   { verb: "run", summary: "run a command with items in its environment, its output scrubbed (the command goes after --)", usage: "[--env-file f] [item...]", person: true },
   { verb: "totp", summary: "the one-time code, live", usage: "<name> [--once]", person: true, live: true },
+  { verb: "scan-env", summary: "the .env files in your project folders that hold secrets, and how to import each", usage: "[folder...]", read: true },
   { verb: "health", summary: "Watchtower: weak, reused, old and to-rotate items, by name", usage: "", read: true },
   { verb: "remind", summary: "the daily reminder pass, now", usage: "", read: true },
   { verb: "breach", summary: "check every login's password against known breaches", usage: "" },
