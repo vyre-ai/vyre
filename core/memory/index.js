@@ -414,7 +414,16 @@ export default {
           return graph.threadFacts({ thread, room, limit: Math.min(200, Math.max(1, limit ?? 50)) });
         }
         const r = await guard({ agent, project_cwds, room }, caller, { tailnet: true });
-        return graph.facts({ about, project_cwds: r.cwds, room, limit: Math.min(200, Math.max(1, limit ?? 20)) });
+        const out = graph.facts({ about, project_cwds: r.cwds, room, limit: Math.min(200, Math.max(1, limit ?? 20)) });
+        // A fact about the person's own life (their wife, their dog) lives in the personal store that
+        // memory.me reads, not in this graph of outside people and orgs. Say so, to a caller who may
+        // read personal facts, rather than return a bare empty list.
+        if (about && !out.about) {
+          let mine = null;
+          try { await personalOnly({ agent }, caller, "memory.facts"); mine = personal.about(String(about)); } catch { /* not this caller's to know */ }
+          if (mine) return { ...out, note: `"${String(about).slice(0, 60)}" is in the person's own life, not in the graph of people and orgs from sessions: ask memory.me { about } (or memory.answer) for it.` };
+        }
+        return out;
       },
     });
     const relevantDef = {

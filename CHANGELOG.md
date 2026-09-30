@@ -4,6 +4,7 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+- memory.facts: a name that is only in the person's own life (memory.me's personal store, such as "Robin" taught by memory.remember) returns an empty list with a `note` saying to ask memory.me, to a caller who may read personal facts; an agent gets the plain empty answer.
 - IQ is renamed Vyre Memory in what people read: memory tool descriptions, `vyre memory ask` help, the limit message, the Deck import screen, ADR 0034 and the memory and using docs. Code names, tool names and paths are unchanged.
 - memory.prompt: the text blocks an ACP session gets in a prompt, built from memory.brief (first prompt) and up to 5 memory.relevant lines (every prompt), each quoted as memory and never as instructions, scoped by the caller's own grant. The Switchboard's ACP driver sends them as resource blocks; the memory MCP tools already reach ACP sessions through the vyre server it passes in session/new.
 - recall: a redaction list (REDACTIONS, redact) runs on every turn before indexing, seeded with tailnet's Tailscale sign-in link rule; redactLinks stays as an alias.
