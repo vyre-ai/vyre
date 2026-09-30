@@ -119,6 +119,19 @@ Worktree ../vyre-capsule-02-iq, based on main 9381ab15. Landed:
   (https://github.com/vyre-ai/vyre/actions/runs/36658983627).
 - No restyling: the draft reuses Theme.reply/stone/ash; app-design's glass theme will restyle it.
 
+## Speed proof (0.2 item 1)
+On CI (macos-latest, every run): scripts/capsule-native-check.mjs types real words a letter at a time
+(apps, files, the calculator answer in one frame) and reports the median and 95th percentile from
+key to rows against one frame (16 ms), and 10 hide-and-show cycles against 50 ms wake, plus the
+hidden footprint (60 MB) and CPU (0.1%). Numbers land in the job summary ("Capsule speed"). A miss
+prints OVER and does not fail the run; it is a number to fix.
+By hand on the real Mac, only in the separate test account, never the person's own, when the lead says the Mac is
+free: log in to the test account, build with `sh local/capsule/native/build.sh app` under the build lock,
+then `node scripts/capsule-native-check.mjs local/capsule/native/.build/Vyre.app` for the same numbers
+on real hardware and a real display. What a runner cannot show and a person must: (1) the hot key opens
+it with no visible lag, (2) typing a word draws rows as fast as you type, (3) holding a key does not
+stutter, (4) nothing flickers between keystrokes, (5) hiding and reopening is instant.
+
 ## Doing (session 9, 2026-09-30, work/capsule-02-oversight off work/capsule-02-glass 62645bee)
 Computer-use oversight panel (capsule-02.html section 11), built against my proposed hands.* contract
 (CHAT.md, capsule-pro -> capsule-sight; capsule-sight has not answered yet). Sources/Extensions/oversight/:
