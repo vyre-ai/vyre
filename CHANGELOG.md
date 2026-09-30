@@ -4,6 +4,7 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+- The thread event family is also reserved for the artifacts module (it emits `thread.artifact`, the chat card per version) (`core/modules/index.js`).
 - The connectors module may relay the person who asked (isPerson label) to `vault.put` for an `api-credential`, and to no other tool (`CALL_AS.connectors` and a per-call check in `core/modules/index.js`; the sign-in for Microsoft, personal Google and Slack Web completes there).
 - An added module can never load under the name of a module shipped with Vyre in this start, on or off on this machine, whichever is found first, valid or not; and an invalid copy no longer overwrites the loaded module's registry row (`core/modules/index.js`, tests in modules.test.js). reviewer-2's note on the name-sharing change.
 - Capsule view effects (reviewer-2): an added module opens https and mailto only (a vyre: link can act) and
