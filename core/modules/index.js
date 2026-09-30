@@ -53,7 +53,7 @@ export const firstParty = dir => {
  * @type {Record<string, string[]>}
  */
 // settings passes a person's change on to the module that keeps the value, as that person.
-const CALL_AS = { link: ["link:box"], settings: ["cli", "local", "deck", "capsule"], mentions: (/** @type {string} */ as) => isPerson(as) };
+const CALL_AS = { link: ["link:box"], settings: ["cli", "local", "deck", "capsule"], mentions: (/** @type {string} */ as) => isPerson(as) || as === "module:sessions" || as === "module:assistant" };
 /**
  * A manifest still says `"roles": ["box"]` or `["local"]` (forty-plus modules across every
  * team; ADR 0039 keeps that vocabulary rather than renaming it everywhere). `start()` is called
@@ -789,7 +789,7 @@ export class Registry {
         const allowed = /** @type {any} */ (CALL_AS)[m.name];
         if (!core || !(typeof allowed === "function" ? allowed(String(as)) : (allowed || []).includes(String(as)))) throw new Error(`${m.name} may not call ${tool} as ${as}`);
         // mentions replays the asking person to a provider's search tool, never to any other tool.
-        if (m.name === "mentions" && !this.mentionTools().has(tool)) throw new Error(`mentions may not call ${tool} as ${as}: no first-party provider names it`);
+        if (m.name === "mentions" && !this.mentionTools(String(as).startsWith("module:") ? "resolve" : "search").has(tool)) throw new Error(`mentions may not call ${tool} as ${as}: no first-party provider names it`);
         // settings relays a person only to the tools first-party modules declared as their own
         // settings' getters and setters, never to any other tool (e2e review, HIGH 2).
         if (m.name === "settings" && !this.settingTools().has(tool)) throw new Error(`settings may not call ${tool} as ${as}: no first-party setting names it`);
@@ -991,12 +991,12 @@ export class Registry {
     }
   }
 
-  /** The search tools running first-party modules offer the # picker (core/mentions calls them as the asking person). */
-  mentionTools() {
+  /** The search (or resolve) tools running first-party modules offer the # picker: mentions calls search as the asking person and resolve as sessions or the assistant, nothing else. @param {"search" | "resolve"} [which] */
+  mentionTools(which = "search") {
     const out = new Set();
     for (const r of this.modules.values()) {
       if (r.state !== "running" || !r.manifest || !Array.isArray(r.manifest.mentions) || !this.isFirstParty(r.dir)) continue;
-      for (const e of r.manifest.mentions) if (e && typeof e.search === "string") out.add(e.search);
+      for (const e of r.manifest.mentions) if (e && typeof e[which] === "string") out.add(e[which]);
     }
     return out;
   }

@@ -37,8 +37,8 @@ async function registry(t, mods) {
   return reg;
 }
 
-const vault = ["vault", provider("vault", "vault"), src("vault", { find: `async ({ q, limit }, meta) => ({ items: [{ id: "v1", name: "GHLapikey", hint: "api.gohighlevel.com", icon: "key", secret: "sk-live-x" }, { id: "v2", name: "Stripe key" }].filter(i => i.name.toLowerCase().includes(q.toLowerCase())).slice(0, limit), by: meta.caller })`, pick: `async ({ id }) => ({ name: "GHLapikey", grant: { use: true, hosts: ["api.gohighlevel.com"] } })` })];
-const drive = ["drive", provider("drive", "drive"), src("drive", { find: `async ({ q }) => ({ items: [{ id: "f1", name: "Q3 report.pdf", hint: "Shared drive" }].filter(i => i.name.toLowerCase().includes(q.toLowerCase())) })`, pick: `async () => ({ name: "Q3 report.pdf", context: { title: "Q3 report" } })` })];
+const vault = ["vault", provider("vault", "vault"), src("vault", { find: `async ({ q, limit }, meta) => ({ items: [{ id: "v1", name: "GHLapikey", hint: "api.gohighlevel.com", icon: "key", secret: "sk-live-x" }, { id: "v2", name: "Stripe key" }].filter(i => i.name.toLowerCase().includes(q.toLowerCase())).slice(0, limit), by: meta.caller })`, pick: `async ({ id, thread, said }, meta) => { globalThis.__pick = { id, thread, said, caller: meta.caller }; return { name: "GHLapikey", hint: "api.gohighlevel.com", hosts: ["api.gohighlevel.com"], note: "use it through vault.request", grant: { use: true, hosts: ["api.gohighlevel.com"] }, secret: "sk-live" }; }` })];
+const drive = ["drive", provider("drive", "drive"), src("drive", { find: `async ({ q }) => [{ id: "f1", name: "Q3 report.pdf", hint: "Shared drive" }].filter(i => i.name.toLowerCase().includes(q.toLowerCase()))`, pick: `async () => ({ name: "Q3 report.pdf", context: { title: "Q3 report" } })` })];
 
 test("mentions: search fans out to every provider, grouped, in draw order, names only", async t => {
   const reg = await registry(t, [drive, vault]);
@@ -80,8 +80,9 @@ test("mentions: a provider that errors, is locked or is late is unavailable, and
 test("mentions: resolve is for sessions and the assistant only, and returns a value-free grant", async t => {
   const reg = await registry(t, [vault, drive]);
   for (const c of ["cli", "deck", "mcp", "mcp:agent:kit", "module:notes"]) assert.ok((await reg.call("mentions.resolve", { kind: "vault", id: "v1" }, c)).error, c);
-  const ok = await reg.call("mentions.resolve", { kind: "vault", id: "v1" }, "module:sessions");
-  assert.deepEqual(ok.data, { kind: "vault", id: "v1", name: "GHLapikey", grant: { use: true, hosts: ["api.gohighlevel.com"] } });
+  const ok = await reg.call("mentions.resolve", { kind: "vault", id: "v1", thread: "t-1", said: "s-1" }, "module:sessions");
+  assert.deepEqual(ok.data, { kind: "vault", id: "v1", name: "GHLapikey", hint: "api.gohighlevel.com", hosts: ["api.gohighlevel.com"], note: "use it through vault.request", grant: { use: true, hosts: ["api.gohighlevel.com"] } }, "the provider's secret key does not survive");
+  assert.deepEqual(globalThis.__pick, { id: "v1", thread: "t-1", said: "s-1", caller: "module:sessions" }, "the provider's resolve runs as the caller, with the thread and the said id");
   const d = await reg.call("mentions.resolve", { kind: "drive", id: "f1" }, "module:assistant");
   assert.equal(d.data.context, JSON.stringify({ title: "Q3 report" }), "an object context is carried as text");
   assert.equal((await reg.call("mentions.resolve", { kind: "nope", id: "x" }, "module:sessions")).error.code, "no_such_kind");

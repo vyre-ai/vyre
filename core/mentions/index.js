@@ -78,7 +78,8 @@ export default {
           try {
             const r = await within(ctx.call(p.search, { q, limit }, { as: meta.caller }), SEARCH_MS);
             if (!r || r.error || (r.data && r.data.error)) return { p, failed: true };
-            const raw = r.data && Array.isArray(r.data.items) ? r.data.items : Array.isArray(r.items) ? r.items : [];
+            const d = r.data !== undefined ? r.data : r;
+            const raw = Array.isArray(d) ? d : d && Array.isArray(d.items) ? d.items : [];
             return { p, items: raw.map(cleanItem).filter(Boolean).slice(0, limit) };
           } catch { return { p, failed: true }; }
         }));
@@ -91,21 +92,24 @@ export default {
 
     ctx.tool("mentions.resolve", {
       internal: true,
-      description: "What one picked tag means for a thread: { kind, id, name, context?, grant? }. Only sessions and the assistant call it, from the person's own turn; the provider's resolve returns a grant without a secret.",
-      input: { type: "object", required: ["kind", "id"], properties: { kind: { type: "string" }, id: { type: "string", maxLength: 200 }, thread: { type: "string" } } },
+      description: "What one picked tag means for a thread: { kind, id, name, hint?, hosts?, note?, context?, grant? }. Only sessions and the assistant call it, from the person's own turn; the provider's resolve runs as that caller and makes the grant, and answers without a secret.",
+      input: { type: "object", required: ["kind", "id"], properties: { kind: { type: "string" }, id: { type: "string", maxLength: 200 }, thread: { type: "string" }, said: { type: "string" } } },
       run: async (input, meta) => {
         const fail = (/** @type {string} */ code, /** @type {string} */ message) => Object.assign(new Error(message), { code });
         if (!RESOLVERS.includes(String(meta.caller))) throw fail("denied", "only sessions and the assistant resolve a tag, from the person's own turn");
         const p = providers(ctx.modules.status()).find(x => x.kind === input.kind);
         if (!p) throw fail("no_such_kind", `no provider offers ${input.kind}`);
         let r;
-        try { r = await within(ctx.call(p.resolve, { id: input.id, ...(input.thread ? { thread: input.thread } : {}) }), 2000); }
+        try { r = await within(ctx.call(p.resolve, { id: input.id, ...(input.thread ? { thread: input.thread } : {}), ...(input.said ? { said: input.said } : {}) }, { as: meta.caller }), 2000); }
         catch { throw fail("unavailable", `${p.kind} did not answer`); }
-        if (!r || r.error || (r.data && r.data.error)) throw fail((r.error || (r.data && r.data.error) || {}).code === "not_found" ? "not_found" : "unavailable", `${p.kind} could not resolve that`);
-        const d = r.data || r;
+        const bad = !r || r.error || (r.data && r.data.error);
+        if (bad) throw fail(((r && r.error) || (r && r.data && r.data.error) || {}).code === "not_found" ? "not_found" : "unavailable", `${p.kind} could not resolve that`);
+        const d = r.data !== undefined ? r.data : r;
         let context = d.context;
         if (context !== undefined && typeof context !== "string") { try { context = JSON.stringify(context); } catch { context = undefined; } }
-        return { kind: p.kind, id: String(input.id), name: text(d.name, 120) || String(input.id), ...(context ? { context: String(context).slice(0, CONTEXT_MAX) } : {}), ...(d.grant && typeof d.grant === "object" ? { grant: d.grant } : {}) };
+        const hosts = Array.isArray(d.hosts) ? d.hosts.filter((/** @type {any} */ h) => typeof h === "string").slice(0, 20) : undefined;
+        return { kind: p.kind, id: String(input.id), name: text(d.name, 120) || String(input.id), ...(text(d.hint, 120) ? { hint: text(d.hint, 120) } : {}), ...(hosts && hosts.length ? { hosts } : {}),
+          ...(text(d.note, 6000) ? { note: text(d.note, 6000) } : {}), ...(context ? { context: String(context).slice(0, CONTEXT_MAX) } : {}), ...(d.grant && typeof d.grant === "object" ? { grant: d.grant } : {}) };
       },
     });
     return { async stop() {} };

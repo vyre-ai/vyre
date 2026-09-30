@@ -230,6 +230,6 @@ does at once.
 
 `search` and `resolve` are tools of the same module. Search takes `{ q, limit }` and answers
 `{ items: [{ id, name, hint?, icon? }] }`: names only, never a value, and it runs as the person who
-is typing. Resolve takes `{ id }` and answers what the tag means for a thread: a `grant` (a use, a
+is typing. Resolve takes `{ id, thread, said }`, runs as sessions or the assistant (never a model), and answers what the tag means for a thread: a `grant` (a use, a
 read) and a `context` (a title, a summary), decided from the person's own turn and never from a
 model. A kind has one provider; a second module that claims it fails to load.

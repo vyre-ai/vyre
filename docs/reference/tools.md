@@ -2656,11 +2656,12 @@ The kinds the # picker offers: { kinds: [{ kind, label, icon, module }] }, in dr
 
 ### `mentions.resolve`
 
-What one picked tag means for a thread: { kind, id, name, context?, grant? }. Only sessions and the assistant call it, from the person's own turn; the provider's resolve returns a grant without a secret.
+What one picked tag means for a thread: { kind, id, name, hint?, hosts?, note?, context?, grant? }. Only sessions and the assistant call it, from the person's own turn; the provider's resolve runs as that caller and makes the grant, and answers without a secret.
 
 - Input:
   - `id` string, required
   - `kind` string, required
+  - `said` string
   - `thread` string
 - Callers: other modules only (internal: `vyre call` answers no_such_tool)
 
