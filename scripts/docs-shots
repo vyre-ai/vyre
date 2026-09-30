@@ -18,7 +18,7 @@
 //     only named, for Settings, Connections. Chrome opens every world as
 //     http://alex-box.tail0000.ts.net (a host-resolver rule points that name at a local proxy).
 //   - the onboarding: a second vyred in a fresh box home, fake tailscale (signs in when Connect
-//     is pressed, issues a self-signed certificate) and fake claude, walked through its six steps
+//     is pressed, issues a self-signed certificate) and fake claude, walked through its steps
 //     and the last screen in one browser tab, the way a person would, with the Claude step
 //     skipped. While step 6 is open, alex's Mac asks to pair over the box's HTTPS listener. Then
 //     that box's own Deck: no assistant yet, and the Mac still asking.
@@ -156,7 +156,7 @@ esac
 
 /** The environment every vyred and vyre here runs with. */
 const worldEnv = (home, bins, extra = {}) => {
-  const env = { ...process.env, VYRE_NO_DIALOGS: "1", NO_COLOR: "1", VYRE_TAILSCALE_BIN: bins.ts, VYRE_CLAUDE_BIN: bins.claude,
+  const env = { ...process.env, VYRE_NO_DIALOGS: "1", VYRE_DECK_FIXTURES: "1", NO_COLOR: "1", VYRE_TAILSCALE_BIN: bins.ts, VYRE_CLAUDE_BIN: bins.claude,
     NODE_OPTIONS: `${process.env.NODE_OPTIONS || ""} --import=${PRELOAD}`.trim(), VYRE_TMPDIR: SCRATCH, ...extra };
   if (home) env.VYRE_HOME = home;
   delete env.CLOUDFLARE_VYRE_TOKEN;
@@ -465,7 +465,9 @@ try {
     await page.send("Page.addScriptToEvaluateOnNewDocument", { source: "window.open = () => null;" });
     await page.viewport(1280, 800);
     await page.goto(ob.url, 3000);
-    const order = ["you", "claude", "tailscale", "name", "history", "devices", "ready"];
+    // The onboarding's order (deck/onboard/onboard.js STEPS): You, Where should Vyre live, Tailscale, Your address, Claude Code, Your history, ... Your devices.
+    // The steps between history and devices (secrets, accounts, computers, drive) have no shots: the walk goes to them by address, as it did before they were steps.
+    const order = ["you", "live", "tailscale", "name", "claude", "history", "devices", "ready"];
     for (const step of order) {
       const shot = obs.find(s => s.url === "#" + step);
       if (process.env.DOCS_SHOTS_TRACE) log(`  step ${step} at ${await page.run("return location.href").catch(() => "?")}`);
@@ -483,26 +485,33 @@ try {
         }
       }
       // Finish the step, so the next screen is the one a person reaches.
-      if (step === "you") {
-        if (!shot) await page.run(`type("#name", "alex"); type("#assistant", "Juno"); await until('!document.querySelector("#primary").disabled');`);
-        await page.run(`click("#primary"); await until('location.hash === "#claude"');`);
-      } else if (step === "claude") {
-        // Skipped, as a person without Claude at hand does: the setup then ends with no assistant
-        // made (nothing to run it on, and no real claude here to greet with), so the Deck opens on
-        // the Create your assistant card. The Deck world has juno for everything else.
-        await ob.call("onboard.skip", { step: "claude" });
-      } else if (step === "tailscale" && !shot) {
-        await page.run(`click("#primary"); await until('/continue/i.test(document.querySelector("#primary").innerText)', 20000);`);
-      } else if (step === "name" && !shot) {
-        await page.run(`click("#primary"); await until('/switch to/i.test(document.querySelector("#primary").innerText)', 30000);`);
-      } else if (step === "devices") {
-        // Open Vyre: onboard.finish, then the ending screen.
-        await page.run(`click("#primary"); await until('document.querySelector(".ob-end")', 20000); await wait(1500);`);
-        continue;
-      } else if (step === "ready") break;
-      // A fresh render of the next step reads the new status.
-      await page.run(`location.reload(); await wait(10);`).catch(() => {});
-      await sleep(2500);
+      try {
+        if (step === "you") {
+          await page.run(`type("#name", "alex"); type("#assistant", "Juno"); await until('!document.querySelector("#primary").disabled');`);
+          await page.run(`click("#primary"); await until('location.hash === "#live"');`);
+        } else if (step === "live") {
+          // Nothing is chosen here: picking Server, Device or Solo would mark Tailscale and the address skipped, and those have shots. The walk goes on by address.
+        } else if (step === "claude") {
+          // Skipped, as a person without Claude at hand does: the setup then ends with no assistant
+          // made (nothing to run it on, and no real claude here to greet with), so the Deck opens on
+          // the Create your assistant card. The Deck world has juno for everything else.
+          await ob.call("onboard.skip", { step: "claude" });
+        } else if (step === "tailscale" && !shot) {
+          await page.run(`click("#primary"); await until('/continue/i.test(document.querySelector("#primary").innerText)', 20000);`);
+        } else if (step === "name" && !shot) {
+          await page.run(`click("#primary"); await until('/switch to/i.test(document.querySelector("#primary").innerText)', 30000);`);
+        } else if (step === "devices") {
+          // Open Vyre: onboard.finish, then the ending screen.
+          await page.run(`click("#primary"); await until('document.querySelector(".ob-end")', 20000); await wait(1500);`);
+          continue;
+        } else if (step === "ready") break;
+        // A fresh render of the next step reads the new status.
+        await page.run(`location.reload(); await wait(10);`).catch(() => {});
+        await sleep(2500);
+      } catch (e) {
+        // The walk no longer matches the onboarding (its steps changed): stop here, keep the shots already taken, and let the Deck shots run.
+        log(`  ${step}: could not finish the step: ${/** @type {Error} */ (e).message}; the onboarding walk stops here`); process.exitCode = 1; break;
+      }
     }
     await page.close();
     // The Deck of the box just set up: no assistant yet, and the Mac still asking to pair.

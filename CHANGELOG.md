@@ -4,6 +4,7 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+- `scripts/docs-shots`: the onboarding walk follows the new step order (You, Where should Vyre live, Tailscale, Your address, Claude Code, Your history, ..., Your devices): after the name it waits for `#live`, not `#claude`, and goes on to each step by address without choosing on the live step (choosing would mark Tailscale and the address skipped, and they have shots). Built on app-design's work/app-design-shots 76b24862 (a failed step stops the walk, the Deck shots still run). Not run here: it needs headless Chrome, which is a runner's, not this Mac's.
 - The Vyre master icon (app-design's export, work/app-design 978cd607) is wired in: vyre.run and its setup, start and 404 pages (favicon.svg and .ico, apple-touch, 32, 192 and 512 px), the iOS asset catalog (AppIcon-1024), Android (adaptive icon with foreground, background and monochrome, legacy and round mipmaps, the Play Store image; the old vector launcher drawables and the round icon pointing at the square one are gone), and the Expo app's icon, adaptive icon (with its background image) and favicon. `apps/ios/scripts/render-icon.sh` now copies the export instead of drawing the old icon from TOKENS.md. No product name (Lumen, Drive, Vault, Memory) icon is used: the trademark check is pending.
 - An agent limited to certain projects can no longer read or act on another project's GitHub repo by naming it; the project reads as if it did not exist.
 
