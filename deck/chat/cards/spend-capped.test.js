@@ -65,3 +65,17 @@ test("No cap sends off; a bad amount is refused in words before anything is sent
   assert.match(text($(el, ".cv-spend-problem")), /did not go through/);
   assert.ok($(el, ".cv-spend-amount"));
 });
+
+test("a provider that is not a plain name gets the line and no Raise it; the amount must be a finite number above zero", () => {
+  vyred();
+  const el = spendCapped({ ...EVENT, provider: "claude; drop" });
+  assert.ok($(el, ".cv-spend-line"));
+  assert.equal($(el, "[data-act=raise]"), null);
+  for (const bad of ["Infinity", "-3", "0", "1e999"]) {
+    const e2 = spendCapped(EVENT);
+    click($(e2, "[data-act=raise]"));
+    $(e2, ".cv-spend-amount").value = bad;
+    $(e2, "form").dispatchEvent(new /** @type {any} */ (globalThis).Event("submit"));
+    assert.equal(calls.length, 0, bad);
+  }
+});

@@ -15,7 +15,8 @@ const usd = (/** @type {number} */ n) => `$${Number(n).toFixed(2)}`;
 /** @param {any} data @param {{ onRaised?: (cap: number|null) => void }} [ctx] @returns {HTMLElement} */
 export function spendCapped(data, ctx = {}) {
   ensureCss("spend-capped");
-  const provider = String(data?.provider || "claude");
+  // The provider is the event's own field (the spend module sets it), checked as a name; never read out of the line's words.
+  const provider = /^[a-z][a-z0-9-]{1,30}$/.test(String(data?.provider)) ? String(data.provider) : "";
   const el = /** @type {any} */ (h("div", { class: "cv-row cv-spend", role: "status", "aria-live": "polite" }));
   el._kind = "assistant";
   el._ts = data?.at ?? null;
@@ -23,6 +24,7 @@ export function spendCapped(data, ctx = {}) {
   const st = { open: false, busy: false, error: /** @type {any} */ (null), raised: /** @type {number|null|undefined} */ (undefined) };
 
   async function raise(/** @type {string} */ raw, off = false) {
+    if (!provider) return;
     const n = Number(String(raw).replace(/^\$/, "").trim());
     if (!off && !(n > 0 && Number.isFinite(n))) { st.error = "Enter an amount in dollars, more than zero."; draw(); return; }
     st.busy = true; st.error = null; draw();
@@ -40,7 +42,7 @@ export function spendCapped(data, ctx = {}) {
       h("div", { class: "cv-spend-row" },
         h("span", { class: "cv-spend-ico", "aria-hidden": "true" }, icon(st.raised !== undefined ? "check" : "clock", 16)),
         h("span", { class: "cv-spend-line", title: line }, line),
-        st.raised === undefined && !st.open ? h("button", { class: "btn btn-sm cv-spend-raise", type: "button", "data-act": "raise", onclick: () => { st.open = true; draw(); } }, String(data?.action?.label || "Raise it")) : null),
+        st.raised === undefined && !st.open && provider ? h("button", { class: "btn btn-sm cv-spend-raise", type: "button", "data-act": "raise", onclick: () => { st.open = true; draw(); } }, String(data?.action?.label || "Raise it")) : null),
       st.open ? h("form", { class: "cv-spend-form", onsubmit: (/** @type {Event} */ e) => { e.preventDefault(); void raise(amount.value); } },
         h("span", { class: "small muted" }, "Daily cap, dollars"), h("span", { class: "cv-spend-usd", "aria-hidden": "true" }, "$"), amount,
         h("button", { class: "btn btn-primary btn-sm", type: "submit", "data-act": "set", disabled: st.busy }, st.busy ? "Raising" : "Raise"),
