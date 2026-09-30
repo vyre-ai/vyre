@@ -77,7 +77,7 @@ test("appearance: the manifest and its three settings are valid, at account and 
     assert.deepEqual(d.levels, ["account", "device"], d.key);
     assert.equal(d.store, undefined, `${d.key}: the hub keeps it`);
   }
-  assert.deepEqual(manifest.does.tools, ["appearance.check", "appearance.presets", "appearance.resolve"]);
+  assert.deepEqual(manifest.does.tools.map(t => (typeof t === "string" ? t : t.name)), ["appearance.check", "appearance.presets", "appearance.resolve"]);
   // The hub's own checker, where it has landed, holds it to the rules of a module from outside
   // Vyre too: check and choicesFrom name only its own tools, and a device-level key has no store.
   const settings = await registry();

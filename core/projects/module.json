@@ -7,7 +7,7 @@
     "tools": [
       "projects.list", "projects.create", { "name": "projects.add-threads", "projectArg": "project" }, { "name": "projects.remove-threads", "projectArg": "project" }, "projects.add-workspace",
       "projects.watchers.add", "projects.watchers.remove",
-      "projects.catalog", "projects.of", { "name": "projects.threads", "projectArg": "project" }, { "name": "projects.context", "projectArg": "project" }, "projects.move",
+      "projects.catalog", { "name": "projects.of", "cwdArg": "cwd" }, { "name": "projects.threads", "projectArg": "project" }, { "name": "projects.context", "projectArg": "project", "cwdArg": "cwd" }, "projects.move",
       "projects.access.grant", "projects.access.revoke", "projects.access.check", "projects.access.list", "projects.access.migrate", "projects.access.clear", "projects.reach"
     ]
   },

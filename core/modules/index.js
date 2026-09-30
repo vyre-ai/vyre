@@ -926,7 +926,7 @@ export class Registry {
           internal: Boolean(def.internal) || reach === "modules",
           callers: reach === "person" ? [...PERSON_CALLERS] : Array.isArray(def.callers) ? def.callers : null,
           hook: Boolean(def.hook) || reach === "hook", presence: def.presence || false, core: Boolean(def.core),
-          reach, outward: (e && e.outward) || null, target: (e && e.target) || null, projectArg: (e && e.projectArg) || null, declaredReach: objectForm.has(name) });
+          reach, outward: (e && e.outward) || null, target: (e && e.target) || null, projectArg: (e && e.projectArg) || null, cwdArg: (e && e.cwdArg) || null, declaredReach: objectForm.has(name) });
       },
     };
   }
@@ -1021,24 +1021,54 @@ export class Registry {
     }
     const problems = checkInput(def.input, input);
     if (problems.length) return { error: { code: "bad_input", message: problems.join("; ") } };
-    // A tool that takes a project declares projectArg, and an agent's call for a project it is not granted is refused
-    // here, once, for every module: the one door is projects.reach (owner's revokes and the assistant's rule included).
-    // not_found, so a refusal never says whether the project exists. The tool gets meta.reach for what it lists.
-    if (def.projectArg && agentClaim(caller) !== null) {
-      const named = (Array.isArray(def.projectArg) ? def.projectArg : [def.projectArg]).flatMap((/** @type {string} */ arg) => {
+    // A tool that takes a project declares projectArg, and one that takes a folder declares cwdArg. An agent's call for a
+    // project it is not granted (or a folder in one) is refused here, once, for every module alike: the one door is
+    // projects.reach (owner's revokes and the assistant's rule included). not_found, so a refusal never says whether the
+    // project exists. What was checked is what runs: a named project is rewritten to the canonical slug that was authorized.
+    // The tool gets meta.reach for what it lists; with no answer on the agent's grant it gets nothing (fail closed).
+    if ((def.projectArg || def.cwdArg) && agentClaim(caller) !== null) {
+      const fields = (/** @type {any} */ spec) => (spec ? (Array.isArray(spec) ? spec : [spec]) : []);
+      const valuesOf = (/** @type {string} */ arg) => {
         const v = input && typeof input === "object" ? input[arg] : undefined;
         return v === undefined || v === null || v === "" ? [] : Array.isArray(v) ? v : [v];
-      });
+      };
+      const refuse = { error: { code: "not_found", message: "no such project" } };
+      const named = fields(def.projectArg).flatMap(valuesOf);
+      const folders = fields(def.cwdArg).flatMap(valuesOf);
       const r = await withinMs(this.call("projects.reach", { caller: String(caller), kind: "content" }, "module:vyred", { door: true }), TARGET_MS);
       const reach = r && r.data && typeof r.data === "object" ? r.data : null;
-      // No answer on who may reach what (an agent with no recorded grant, or projects not running): no (fail closed). A project
-      // named is refused; nothing named, the tool gets an empty meta.reach, never the whole list.
       if (!reach) {
-        if (named.length) return { error: { code: "not_found", message: "no such project" } };
+        if (named.length || folders.length) return refuse;
         meta = { ...meta, reach: { all: false, projects: [] } };
       } else {
-        const slugs = reach.all ? null : (Array.isArray(reach.projects) ? reach.projects : []).flatMap((/** @type {any} */ p) => [p && p.slug, p && p.name]).filter(Boolean);
-        if (slugs && named.some((/** @type {any} */ one) => !slugs.includes(String(one)))) return { error: { code: "not_found", message: "no such project" } };
+        const granted = reach.all ? null : (Array.isArray(reach.projects) ? reach.projects : []).filter((/** @type {any} */ p) => p && typeof p.slug === "string");
+        if (granted) {
+          // A name or a slug, exactly; a slug first. Anything else (an object, a number) is no.
+          const canon = (/** @type {any} */ v) => typeof v !== "string" ? null : (granted.find((/** @type {any} */ p) => p.slug === v) || granted.find((/** @type {any} */ p) => p.name === v) || {}).slug || null;
+          if (named.some(v => canon(v) === null)) return refuse;
+          let rewritten = input;
+          for (const arg of fields(def.projectArg)) {
+            const v = input && typeof input === "object" ? input[arg] : undefined;
+            if (v === undefined || v === null || v === "") continue;
+            rewritten = { ...rewritten, [arg]: Array.isArray(v) ? v.map(canon) : canon(v) };
+          }
+          input = rewritten;
+          // A folder belongs to the project that owns it; one in no project is refused for an agent with an explicit list.
+          if (folders.length) {
+            let scoped = null;
+            for (const cwd of folders) {
+              const o = typeof cwd === "string" ? await withinMs(this.call("projects.of", { cwd }, "module:vyred", { door: true }), TARGET_MS) : null;
+              const slug = o && o.data && typeof o.data.slug === "string" ? o.data.slug : null;
+              if (slug) { if (!granted.some((/** @type {any} */ p) => p.slug === slug)) return refuse; continue; }
+              if (scoped === null) {
+                const sc = await withinMs(this.call("agents.scope", { name: String(agentClaim(caller)) }, "module:vyred", { door: true }), TARGET_MS);
+                const who = sc && sc.data ? sc.data : null;
+                scoped = !who || (who.kind !== "assistant" && who.projects !== "*");
+              }
+              if (scoped) return refuse;
+            }
+          }
+        }
         meta = { ...meta, reach: reach.all ? { all: true } : { all: false, projects: (Array.isArray(reach.projects) ? reach.projects : []).map((/** @type {any} */ p) => p && p.slug).filter(Boolean) } };
       }
     }

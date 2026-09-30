@@ -894,6 +894,47 @@ test("modules v1: a tool's projectArg refuses an agent's call for a project it i
   assert.deepEqual(validate({ ...base, does: { tools: [{ name: "notes.read", summary: "r", projectArg: ["project", "projects"] }] } }).filter(p => /projectArg/.test(p)), []);
 });
 
+test("modules v1: cwdArg maps a folder to its project and refuses an agent outside its grant; a named project runs as the slug that was authorized", async t => {
+  /** @type {any} */ (globalThis).__seen = [];
+  t.after(() => { delete /** @type {any} */ (globalThis).__seen; });
+  // Projects: A (slug "harlow") and B (slug "b2", display name "harlow": a name that is another project's slug). kit is granted B only.
+  const projects = `export default { async start(ctx) {
+    const P = { harlow: { slug: "harlow", name: "Harlow Legal" }, b2: { slug: "b2", name: "harlow" }, northwind: { slug: "northwind", name: "Northwind" } };
+    const grants = { kit: ["b2"], wild: "*", asst: "*" };
+    ctx.tool("projects.reach", { internal: true, input: { type: "object" }, run: async ({ caller }) => {
+      const who = /agent:([a-z]+)/.exec(caller)?.[1];
+      if (!who || !grants[who]) throw Object.assign(new Error("no agent"), { code: "denied" });
+      const list = grants[who] === "*" ? Object.values(P) : grants[who].map(s => P[s]);
+      return { all: false, agent: who, projects: list };
+    } });
+    ctx.tool("projects.of", { internal: true, input: { type: "object" }, run: async ({ cwd }) => cwd.startsWith("/w/harlow") ? P.harlow : cwd.startsWith("/w/b2") ? P.b2 : cwd.startsWith("/w/northwind") ? P.northwind : null });
+    return {};
+  } };`;
+  const agents = `export default { async start(ctx) {
+    ctx.tool("agents.scope", { internal: true, input: { type: "object" }, run: async ({ name }) => ({ kind: name === "asst" ? "assistant" : "agent", projects: name === "kit" ? ["b2"] : "*" }) });
+    return {};
+  } };`;
+  const tool = { version: "0.1.0", roles: ["local"], does: { tools: [{ name: "notes.open", projectArg: "project", cwdArg: "cwd" }] } };
+  const toolSrc = `export default { async start(ctx) { ctx.tool("notes.open", { input: { type: "object" }, run: async i => { globalThis.__seen.push(i); return { ok: true }; } }); return {}; } };`;
+  const reg = await registry(t, [["notes", tool, toolSrc], ["projects", { version: "0.1.0", does: { tools: ["projects.reach", "projects.of"] } }, projects], ["agents", { version: "0.1.0", does: { tools: ["agents.scope"] } }, agents]], { builtIn: true });
+  const as = (who, input) => reg.call("notes.open", input, `mcp:agent:${who}`);
+  const first = await as("kit", { cwd: "/w/b2/src" });
+  assert.equal(first.data && first.data.ok, true, `a folder in a granted project: ${JSON.stringify(first)}`);
+  assert.equal((await as("kit", { cwd: "/w/northwind" })).error.code, "not_found", "a folder in another project");
+  assert.equal((await as("kit", { cwd: "/w/harlow" })).error.code, "not_found", "another project, whatever its slug is called");
+  assert.equal((await as("kit", { cwd: "/tmp/scratch" })).error.code, "not_found", "a folder in no project is refused for a scoped agent");
+  assert.equal((await as("wild", { cwd: "/tmp/scratch" })).data.ok, true, "a wildcard agent is not scoped to project folders");
+  assert.equal((await as("asst", { cwd: "/tmp/scratch" })).data.ok, true, "the assistant is not refused a folder outside every project");
+  assert.equal((await as("wild", { cwd: "/w/northwind" })).data.ok, true);
+  assert.equal((await reg.call("notes.open", { cwd: "/w/northwind" }, "cli")).data.ok, true, "the owner is unaffected");
+  // What was checked is what runs: "harlow" is B's display name and A's slug; kit is granted B, so the tool gets B's slug, never A's.
+  globalThis.__seen.length = 0;
+  assert.equal((await as("kit", { project: "harlow" })).data.ok, true);
+  assert.equal(globalThis.__seen[0].project, "b2", "rewritten to the canonical slug that was authorized");
+  assert.equal((await as("kit", { project: "Harlow Legal" })).error.code, "not_found", "project A is not granted, by its name either");
+  assert.equal((await as("kit", { project: { slug: "b2" } })).error.code, "not_found", "an object is no project");
+});
+
 test("modules v1: a required module below the range keeps the module from starting", async t => {
   const reg = await registry(t, [["bakery", { ...bakeryV1(), requires: { notes: ">=0.2.0" } }, bakerySrc], ["notes", good, notesSrc]]);
   assert.equal(reg.modules.get("bakery").state, "failed");
