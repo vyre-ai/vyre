@@ -89,14 +89,15 @@ mv "$out/$name" "$out/vyre.tgz"
 # The version the tarball carries, for the /start page and the installer's messages.
 node -e 'process.stdout.write(require(process.argv[1]).version + "\n")' "$src/package.json" >"$out/VERSION"
 
-# A publishing release run gives VYRE_SIGNING_KEY (the repo secret); nothing else ever has it. The
-# signed manifest is what the Mac install and updates verify (ADR 0040 section 5).
-if [ -n "${VYRE_SIGNING_KEY:-}" ]; then node "$src/scripts/sign-manifest.mjs" "$out/vyre.tgz" "$out" "$(cat "$out/VERSION")" "${VYRE_CHANNEL:-}" || exit 1; fi
-
 (
   cd "$out"
   find . -type f ! -name SHA256SUMS | sed 's|^\./||' | while read -r f; do sum "$f"; done | LC_ALL=C sort -k2 >SHA256SUMS
 )
+
+# A run that has the signing key (VYRE_SIGNING_KEY, only ever a publishing release's sign step) also
+# writes manifest.json and signs SHA256SUMS (SHA256SUMS.sig, ADR 0040 section 5); the release workflow's
+# build job never has it, its sign job runs scripts/sign-manifest.mjs on the finished files.
+if [ -n "${VYRE_SIGNING_KEY:-}" ]; then node "$src/scripts/sign-manifest.mjs" "$out" "$(cat "$out/VERSION")" "${VYRE_CHANNEL:-}" || exit 1; fi
 
 echo "site/box:"
 sed 's/^/  /' "$out/SHA256SUMS"

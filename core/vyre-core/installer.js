@@ -19,7 +19,7 @@ import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import { execFileSync } from "node:child_process";
-import { RELEASE_KEY, verifyManifest, checkFloor, compareVersions, readFloor, raiseFloor, checkTarball, extract } from "./release.js";
+import { RELEASE_KEY, verifySums, checkManifest, checkFloor, compareVersions, readFloor, raiseFloor, checkTarball, extract } from "./release.js";
 
 export const ACCOUNT = "_vyre";
 export const LABELS = Object.freeze({
@@ -73,7 +73,7 @@ export function defaultRun(cmd, args, { input } = {}) {
  * @property {string} ownerName
  * @property {string} [ownerHome]  default /Users/<ownerName>
  * @property {string} version
- * @property {{ tarball: string, manifest: string, sig: string }} release  file paths
+ * @property {{ tarball: string, manifest: string, sums: string, sig: string }} release  file paths (vyre.tgz, manifest.json, SHA256SUMS, SHA256SUMS.sig)
  * @property {string} nodeBinary  the bundled node to copy in
  * @property {string} vyredWrapper  person-side wrapper vyred's LaunchDaemon runs, as the owner
  * @property {string} [nodeSha256]  when given, the bundled node's bytes must hash to this, or nothing is installed
@@ -92,7 +92,7 @@ function checkOpts(o) {
   if (!Number.isInteger(o.ownerUid) || o.ownerUid <= 0) throw new Error("ownerUid must be the owner's own uid, never root");
   if (!ownerNameOk(o.ownerName)) throw new Error("ownerName is not a usable account name (and is never root or _vyre)");
   if (typeof o.version !== "string" || !o.version) throw new Error("version is required");
-  if (!o.release || !o.release.tarball || !o.release.manifest || !o.release.sig) throw new Error("release needs tarball, manifest and sig paths");
+  if (!o.release || !o.release.tarball || !o.release.manifest || !o.release.sums || !o.release.sig) throw new Error("release needs tarball, manifest, sums and sig paths");
   if (!o.nodeBinary || !path.isAbsolute(o.nodeBinary)) throw new Error("nodeBinary must be an absolute path");
   if (!o.vyredWrapper || !path.isAbsolute(o.vyredWrapper)) throw new Error("vyredWrapper must be an absolute path");
   if (o.nodeSha256 !== undefined && !/^[0-9a-fA-F]{64}$/.test(String(o.nodeSha256))) throw new Error("nodeSha256 must be 64 hex characters");
@@ -135,6 +135,8 @@ function paths(root) {
   };
 }
 
+/** A synchronous pause, for launchd's settling. @param {number} ms */
+const pause = (ms) => { Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms); };
 const rand = () => crypto.randomBytes(4).toString("hex");
 const defTar = () => "/usr/bin/tar";
 
@@ -152,7 +154,7 @@ function mkdirMode(p, mode) {
 
 /**
  * Read the three release files into memory once and check them. Throws, changing nothing.
- * @param {{ tarball: string, manifest: string, sig: string }} files
+ * @param {{ tarball: string, manifest: string, sums: string, sig: string }} files
  * @param {{ key: string, floorPath: string, strictFloor: boolean, version?: string }} o
  *   strictFloor: an update must be ABOVE the floor; a (re)install may equal it, so a re-run repairs.
  */
@@ -169,9 +171,15 @@ export function verifyRelease(files, { key, floorPath, strictFloor, version }) {
     } finally { fs.closeSync(fd); }
   };
   const manifestBytes = read(files.manifest, "manifest");
+  const sumsBytes = read(files.sums, "SHA256SUMS");
   const sigBytes = read(files.sig, "signature");
-  const manifest = verifyManifest(manifestBytes, sigBytes, { key });
+  // The signature covers SHA256SUMS; the manifest and the tarball are checked against its lines.
+  const listed = verifySums(sumsBytes, sigBytes, { key });
+  const sha = (/** @type {Buffer} */ b) => crypto.createHash("sha256").update(b).digest("hex");
+  if (listed.get("manifest.json") !== sha(manifestBytes)) throw new Error("manifest.json does not match the signed SHA256SUMS");
+  const manifest = checkManifest(manifestBytes);
   const tarBuf = read(files.tarball, "tarball");
+  if (listed.get("vyre.tgz") !== sha(tarBuf)) throw new Error("vyre.tgz does not match the signed SHA256SUMS");
   if (crypto.createHash("sha256").update(tarBuf).digest("hex") !== manifest.sha256.toLowerCase()) throw new Error("tarball sha256 does not match the manifest");
   if (version !== undefined && manifest.version !== version) throw new Error(`the manifest is for ${manifest.version}, not ${version}`);
   const floor = readFloor(floorPath);
@@ -428,8 +436,16 @@ export function install(opts, seams = {}) {
 
   // 6. Load them, core first. Bootout first if already loaded, so a re-run picks up new plists.
   for (const label of Object.keys(plists)) {
-    if (tryRun(run, ["/bin/launchctl", "print", `system/${label}`]) !== null) run("/bin/launchctl", ["bootout", `system/${label}`]);
-    run("/bin/launchctl", ["bootstrap", "system", p.plist(label)]);
+    if (tryRun(run, ["/bin/launchctl", "print", `system/${label}`]) !== null) {
+      run("/bin/launchctl", ["bootout", `system/${label}`]);
+      // bootout returns before the job is gone, and a bootstrap right after it fails with an I/O error:
+      // wait (up to 15 s) until launchd no longer knows the label.
+      for (let i = 0; i < 30 && tryRun(run, ["/bin/launchctl", "print", `system/${label}`]) !== null; i++) pause(500);
+    }
+    for (let attempt = 1; ; attempt++) {
+      try { run("/bin/launchctl", ["bootstrap", "system", p.plist(label)]); break; }
+      catch (e) { if (attempt >= 4) throw e; pause(1000); }
+    }
   }
   done("launchd");
 
@@ -474,7 +490,7 @@ export function uninstall(opts = {}, seams = {}) {
 // ---------------------------------------------------------------------------------------------
 // apply (the root update daemon)
 
-export const STAGED = Object.freeze({ tarball: "vyre.tgz", manifest: "manifest.json", sig: "manifest.sig" });
+export const STAGED = Object.freeze({ tarball: "vyre.tgz", manifest: "manifest.json", sums: "SHA256SUMS", sig: "SHA256SUMS.sig" });
 
 /**
  * Clear the three staged files, and nothing else. The folder belongs to _vyre, a service account, so
@@ -493,7 +509,7 @@ function emptyDir(dir) {
 }
 
 /**
- * Apply a staged release. core writes vyre.tgz and manifest.json, then manifest.sig LAST (by
+ * Apply a staged release. core writes vyre.tgz, manifest.json and SHA256SUMS, then SHA256SUMS.sig LAST (by
  * rename); with no sig yet there is nothing to do. Everything is re-verified here, from bytes
  * read once, and old versions are refused by the floor. A refusal empties staging and throws.
  * A crash between extract and flip leaves the old version current.
@@ -509,7 +525,7 @@ export function apply(seams = {}) {
   if (!fs.existsSync(p.staging)) return { status: "empty" };
   const names = fs.readdirSync(p.staging);
   if (!names.length) return { status: "empty" };
-  const files = { tarball: path.join(p.staging, STAGED.tarball), manifest: path.join(p.staging, STAGED.manifest), sig: path.join(p.staging, STAGED.sig) };
+  const files = { tarball: path.join(p.staging, STAGED.tarball), manifest: path.join(p.staging, STAGED.manifest), sums: path.join(p.staging, STAGED.sums), sig: path.join(p.staging, STAGED.sig) };
   if (!Object.values(files).every((f) => fs.existsSync(f))) return { status: "waiting" };
   let verified;
   try {

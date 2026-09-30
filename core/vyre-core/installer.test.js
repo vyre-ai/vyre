@@ -23,7 +23,7 @@ function keypair() {
   return { key: publicKey.export({ type: "spki", format: "der" }).toString("base64"), priv: privateKey };
 }
 
-/** A release dir signed by kp: vyre.tgz with core/vyre-core/main.js, manifest.json, manifest.sig. */
+/** A release dir signed by kp: vyre.tgz with core/vyre-core/main.js, manifest.json, SHA256SUMS and SHA256SUMS.sig. */
 function release(dir, kp, version, { badSig = false, tamper = false } = {}) {
   fs.mkdirSync(dir, { recursive: true });
   const tree = path.join(dir, "tree");
@@ -33,13 +33,15 @@ function release(dir, kp, version, { badSig = false, tamper = false } = {}) {
   fs.writeFileSync(path.join(tree, "package.json"), JSON.stringify({ version }));
   execFileSync("tar", ["-czf", path.join(dir, "vyre.tgz"), "-C", tree, "."]);
   fs.rmSync(tree, { recursive: true });
-  const sha = crypto.createHash("sha256").update(fs.readFileSync(path.join(dir, "vyre.tgz"))).digest("hex");
-  const manifest = Buffer.from(JSON.stringify({ version, tarball: "vyre.tgz", sha256: sha }));
+  const h = (f) => crypto.createHash("sha256").update(fs.readFileSync(path.join(dir, f))).digest("hex");
+  const manifest = Buffer.from(JSON.stringify({ version, tarball: "vyre.tgz", sha256: h("vyre.tgz") }));
   fs.writeFileSync(path.join(dir, "manifest.json"), manifest);
+  const sums = Buffer.from(`${h("manifest.json")}  manifest.json\n${h("vyre.tgz")}  vyre.tgz\n`);
+  fs.writeFileSync(path.join(dir, "SHA256SUMS"), sums);
   const other = badSig ? keypair().priv : kp.priv;
-  fs.writeFileSync(path.join(dir, "manifest.sig"), crypto.sign(null, manifest, other).toString("base64"));
+  fs.writeFileSync(path.join(dir, "SHA256SUMS.sig"), crypto.sign(null, sums, other).toString("base64"));
   if (tamper) fs.appendFileSync(path.join(dir, "vyre.tgz"), "x");
-  return { tarball: path.join(dir, "vyre.tgz"), manifest: path.join(dir, "manifest.json"), sig: path.join(dir, "manifest.sig") };
+  return { tarball: path.join(dir, "vyre.tgz"), manifest: path.join(dir, "manifest.json"), sums: path.join(dir, "SHA256SUMS"), sig: path.join(dir, "SHA256SUMS.sig") };
 }
 
 /** A recording run. state: which dscl records exist, which jobs are loaded. */
@@ -58,6 +60,7 @@ function fakeRun(state = {}) {
       if (args[1] === "-list" && args[2] === "/Groups") return "wheel 0\nstaff 20\n";
       return "";
     }
+    if (cmd.endsWith("launchctl") && args[0] === "bootout") st.loaded.delete(args[1]);
     if (cmd.endsWith("launchctl") && args[0] === "print") { if (!st.loaded.has(args[1])) throw new Error("not loaded"); return ""; }
     if (cmd.endsWith("sudo") && line.endsWith(" code")) return "SEKRET-CODE-42 1999999999\n";
     return "";
@@ -78,7 +81,7 @@ function fixture(t, version = "1.0.0") {
 const walk = (d) => (fs.existsSync(d) ? fs.readdirSync(d, { recursive: true }) : []);
 
 test("plan lists the steps in order, verify first, and prints as data", () => {
-  const f = { ownerUid: 501, ownerName: "alice", version: "1.0.0", release: { tarball: "a", manifest: "b", sig: "c" }, nodeBinary: "/n", vyredWrapper: "/w" };
+  const f = { ownerUid: 501, ownerName: "alice", version: "1.0.0", release: { tarball: "a", manifest: "b", sums: "d", sig: "c" }, nodeBinary: "/n", vyredWrapper: "/w" };
   assert.deepEqual(plan(f).map((s) => s.id), ["verify-release", "account", "code-tree", "node", "dirs", "plists", "launchd", "enrol-code"]);
   const withColima = plan({ ...f, colimaAgent: true, colimaProgram: ["/c", "start"] });
   assert.ok(withColima.find((s) => s.id === "launchd")?.detail.some((d) => d.includes("com.vyre.colima")));
@@ -100,7 +103,7 @@ test("a tampered tarball and an old version change nothing", (t) => {
   const f = fixture(t);
   const r = fakeRun();
   const bad = release(path.join(f.dir, "bad"), f.kp, "1.0.0", { tamper: true });
-  assert.throws(() => install(f.opts(bad), { run: r.run, root: f.root, key: f.kp.key }), /sha256/);
+  assert.throws(() => install(f.opts(bad), { run: r.run, root: f.root, key: f.kp.key }), /does not match the signed/);
   const floor = path.join(f.root, RUNTIME.floor);
   fs.mkdirSync(path.dirname(floor), { recursive: true });
   fs.writeFileSync(floor, "2.0.0\n");
@@ -267,7 +270,8 @@ function stage(f, rel) {
   fs.mkdirSync(s, { recursive: true });
   fs.copyFileSync(rel.tarball, path.join(s, "vyre.tgz"));
   fs.copyFileSync(rel.manifest, path.join(s, "manifest.json"));
-  fs.copyFileSync(rel.sig, path.join(s, "manifest.sig"));
+  fs.copyFileSync(rel.sums, path.join(s, "SHA256SUMS"));
+  fs.copyFileSync(rel.sig, path.join(s, "SHA256SUMS.sig"));
   return s;
 }
 
@@ -291,10 +295,10 @@ test("apply waits until the signature has landed, and touches nothing", (t) => {
   const f = fixture(t);
   install(f.opts(f.rel), { run: fakeRun().run, root: f.root, key: f.kp.key });
   const s = stage(f, release(path.join(f.dir, "rel2"), f.kp, "1.2.0"));
-  fs.rmSync(path.join(s, "manifest.sig"));
+  fs.rmSync(path.join(s, "SHA256SUMS.sig"));
   const r = fakeRun();
   assert.equal(apply({ run: r.run, root: f.root, key: f.kp.key }).status, "waiting");
-  assert.equal(fs.readdirSync(s).length, 2);
+  assert.equal(fs.readdirSync(s).length, 3);
   assert.equal(r.calls.length, 0);
 });
 
@@ -316,7 +320,7 @@ test("apply refuses a downgrade and an equal version, leaves the old current, em
 test("apply refuses a tampered tarball and a release signed by another key", (t) => {
   const f = fixture(t);
   install(f.opts(f.rel), { run: fakeRun().run, root: f.root, key: f.kp.key });
-  for (const [opt, re] of [[{ tamper: true }, /sha256/], [{ badSig: true }, /signature/]]) {
+  for (const [opt, re] of [[{ tamper: true }, /does not match the signed/], [{ badSig: true }, /signature/]]) {
     stage(f, release(path.join(f.dir, `x-${Object.keys(opt)[0]}`), f.kp, "1.5.0", opt));
     const r = fakeRun();
     assert.throws(() => apply({ run: r.run, root: f.root, key: f.kp.key }), re);
@@ -393,7 +397,7 @@ test("vyred's LaunchDaemon carries VYRE_GH_BIN only when given, and only an abso
   assert.throws(() => buildPlists(f.opts(f.rel, { ghBin: "gh" })), /absolute/);
 });
 
-test("a refused release clears only the three staged names: a link is unlinked, never followed, and nothing else is touched", (t) => {
+test("a refused release clears only the four staged names: a link is unlinked, never followed, and nothing else is touched", (t) => {
   const f = fixture(t);
   install(f.opts(f.rel), { run: fakeRun().run, root: f.root, key: f.kp.key });
   const staging = path.join(f.root, RUNTIME.staging);
@@ -401,10 +405,11 @@ test("a refused release clears only the three staged names: a link is unlinked, 
   fs.mkdirSync(path.join(staging, "vyre.tgz.d")); fs.writeFileSync(path.join(staging, "vyre.tgz.d", "x"), "x");
   fs.symlinkSync(victim, path.join(staging, "vyre.tgz"));               // the tarball name is a link to a folder
   fs.writeFileSync(path.join(staging, "manifest.json"), "{}");
-  fs.writeFileSync(path.join(staging, "manifest.sig"), "AAAA");
+  fs.writeFileSync(path.join(staging, "SHA256SUMS"), "");
+  fs.writeFileSync(path.join(staging, "SHA256SUMS.sig"), "AAAA");
   assert.throws(() => apply({ run: fakeRun().run, root: f.root, key: f.kp.key }), /signature|not a regular file/);
   assert.ok(fs.existsSync(path.join(victim, "keep.txt")), "the link's target is untouched");
-  assert.ok(!fs.existsSync(path.join(staging, "vyre.tgz")) && !fs.existsSync(path.join(staging, "manifest.json")), "the three names are gone");
+  assert.ok(!fs.existsSync(path.join(staging, "vyre.tgz")) && !fs.existsSync(path.join(staging, "manifest.json")), "the staged names are gone");
   assert.ok(fs.existsSync(path.join(staging, "vyre.tgz.d", "x")), "any other entry is left alone, never recursed into");
 });
 

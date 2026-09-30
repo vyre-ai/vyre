@@ -14,8 +14,8 @@
 # (default https://vyre.run/box/), VYRE_HOME (default ~/.vyre, where vyre.env lives).
 #
 # DEFAULT (system service, ADR 0040 section 5): Vyre starts at boot with nobody signed in. This
-# script never runs as root. It downloads vyre.tgz, manifest.json and manifest.sig and checks each
-# against SHA256SUMS (a download-integrity check only), fetches a pinned standalone Node 22 to
+# script never runs as root. It downloads vyre.tgz, manifest.json, SHA256SUMS and SHA256SUMS.sig, verifies the
+# signature on SHA256SUMS against the release key embedded below, and checks the other two against it, fetches a pinned standalone Node 22 to
 # bundle (Homebrew's node is not used for that: its libraries are person-writable), installs Colima
 # for agents' computers, writes vyre.env (0600) and the vyred wrapper, then runs the root installer
 # (core/vyre-core/install-main.js) under ONE sudo. The root installer checks the release's signature;
@@ -186,7 +186,7 @@ preflight() {
 
 install_app() {
   if [ "$DRY" = 1 ]; then
-    if [ "$SYSTEM" = 1 ]; then say "would download vyre.tgz, manifest.json and manifest.sig from $BASE and check them against SHA256SUMS"; fi
+    if [ "$SYSTEM" = 1 ]; then say "would download vyre.tgz, manifest.json, SHA256SUMS and SHA256SUMS.sig from $BASE and verify the signature"; fi
     say "would install Vyre into $APP"; return 0
   fi
   mkdir -p "$SERVER_DIR"
@@ -197,11 +197,11 @@ install_app() {
     if [ ! -s "$TMP/SHA256SUMS" ] || grep -vqE '^[0-9a-f]{64} [ *][^ ]+$' "$TMP/SHA256SUMS"; then
       die "$BASE""SHA256SUMS is not a checksum list; is VYRE_BOX_URL right?"
     fi
-    # SHA256SUMS comes from the same place as the files, so it only catches a broken download. The
-    # signature on manifest.json is checked by the root installer, against a key it carries itself.
-    get vyre.tgz; get manifest.json; get manifest.sig
+    # SHA256SUMS is signed (SHA256SUMS.sig, the one signature Linux and Mac both use): verify_release
+    # checks it here before sudo and root checks it again on its own copies.
+    get vyre.tgz; get manifest.json; fetch SHA256SUMS.sig "$TMP/SHA256SUMS.sig"; cp "$TMP/SHA256SUMS" "$TMP/sums"
     mkdir -p "$TMP/release"
-    mv "$TMP/vyre.tgz" "$TMP/manifest.json" "$TMP/manifest.sig" "$TMP/release/"
+    mv "$TMP/vyre.tgz" "$TMP/manifest.json" "$TMP/SHA256SUMS.sig" "$TMP/release/"; mv "$TMP/sums" "$TMP/release/SHA256SUMS"
     verify_release
     tar -xzf "$TMP/release/vyre.tgz" -C "$APP.new" --strip-components=1 || die "vyre.tgz did not unpack"
   elif [ -n "$FROM" ]; then
@@ -227,23 +227,31 @@ install_app() {
 # with the root-owned node, on the root-owned copies, which is the one that counts.
 VERIFY_JS='
 const c = require("crypto"), f = require("fs");
-const [key, mf, sf, tf] = process.argv.slice(1);
+const [key, sf, gf, mf, tf] = process.argv.slice(1);
 const fail = (m) => { console.error(m); process.exit(1); };
-const m = f.readFileSync(mf), s = f.readFileSync(sf, "utf8").trim();
+const sums = f.readFileSync(sf), sig = f.readFileSync(gf, "utf8").trim();
 const pub = c.createPublicKey({ key: Buffer.from(key, "base64"), format: "der", type: "spki" });
-if (!/^[A-Za-z0-9+\/]+={0,2}$/.test(s) || !c.verify(null, m, pub, Buffer.from(s, "base64"))) fail("the release manifest signature does not verify");
-let j; try { j = JSON.parse(m.toString()); } catch { fail("the release manifest is not JSON"); }
-if (typeof j.version !== "string" || !/^[0-9a-f]{64}$/i.test(String(j.sha256))) fail("the release manifest is malformed");
-const h = c.createHash("sha256").update(f.readFileSync(tf)).digest("hex");
-if (h !== j.sha256.toLowerCase()) fail("the download does not match the signed manifest");
-console.log(j.version + " " + h);
+if (!/^[A-Za-z0-9+\/]+={0,2}$/.test(sig) || !c.verify(null, sums, pub, Buffer.from(sig, "base64"))) fail("the SHA256SUMS signature does not verify");
+const want = new Map();
+for (const line of sums.toString().split("\n")) {
+  if (!line.trim()) continue;
+  const m = /^([0-9a-f]{64}) [ *]([^\s\/\\][^\/\\]*)$/i.exec(line);
+  if (!m) fail("SHA256SUMS has a line that is not sha256 and a name");
+  want.set(m[2], m[1].toLowerCase());
+}
+const sha = (b) => c.createHash("sha256").update(b).digest("hex");
+const mb = f.readFileSync(mf), tb = f.readFileSync(tf);
+if (want.get("manifest.json") !== sha(mb) || want.get("vyre.tgz") !== sha(tb)) fail("the download does not match the signed SHA256SUMS");
+let j; try { j = JSON.parse(mb.toString()); } catch { fail("the release manifest is not JSON"); }
+if (typeof j.version !== "string" || String(j.sha256).toLowerCase() !== sha(tb)) fail("the release manifest does not match the tarball");
+console.log(j.version + " " + sha(tb));
 '
 
-# verify_release: BEFORE sudo, the signature on manifest.json against the key embedded above, with
+# verify_release: BEFORE sudo, the signature on SHA256SUMS against the key embedded above, with
 # the pinned Node and a check written here (no code from the download), then the tarball against the
 # signed manifest. Early, friendly failure only: root repeats the same check (ROOT_SH) with its own node.
 verify_release() {
-  out=$("$NODE_DIST/bin/node" -e "$VERIFY_JS" "$RELEASE_KEY" "$TMP/release/manifest.json" "$TMP/release/manifest.sig" "$TMP/release/vyre.tgz") || die "the release did not verify; nothing was installed"
+  out=$("$NODE_DIST/bin/node" -e "$VERIFY_JS" "$RELEASE_KEY" "$TMP/release/SHA256SUMS" "$TMP/release/SHA256SUMS.sig" "$TMP/release/manifest.json" "$TMP/release/vyre.tgz") || die "the release did not verify; nothing was installed"
   RELEASE_VERSION=${out%% *}
   TGZ_SHA=${out##* }
   step "release $RELEASE_VERSION is signed by the Vyre release key"
@@ -509,12 +517,12 @@ nsha=$1; rel=$2; ntgz=$3; key=$4; vjs=$5; shift 5
 d=$(mktemp -d "${VYRE_ROOT_TMP:-/private/var/tmp}/vyre-install.XXXXXX")
 trap '"'"'rm -rf "$d"'"'"' EXIT
 mkdir "$d/rel" "$d/node" "$d/app"
-for f in vyre.tgz manifest.json manifest.sig; do cat "$rel/$f" >"$d/rel/$f"; done
+for f in vyre.tgz manifest.json SHA256SUMS SHA256SUMS.sig; do cat "$rel/$f" >"$d/rel/$f"; done
 cat "$ntgz" >"$d/node.tgz"
 [ "$(shasum -a 256 "$d/node.tgz" | cut -d" " -f1)" = "$nsha" ] || { echo "vyre-install: the Node download changed after it was checked; nothing was installed" >&2; exit 1; }
 tar -xzf "$d/node.tgz" -C "$d/node" --strip-components=1 --no-same-owner
 nb=$d/node/bin/node
-"$nb" -e "$vjs" "$key" "$d/rel/manifest.json" "$d/rel/manifest.sig" "$d/rel/vyre.tgz" >/dev/null || { echo "vyre-install: the release does not verify against the release key; nothing was installed" >&2; exit 1; }
+"$nb" -e "$vjs" "$key" "$d/rel/SHA256SUMS" "$d/rel/SHA256SUMS.sig" "$d/rel/manifest.json" "$d/rel/vyre.tgz" >/dev/null || { echo "vyre-install: the release does not verify against the release key; nothing was installed" >&2; exit 1; }
 tar -xzf "$d/rel/vyre.tgz" -C "$d/app" --strip-components=1 --no-same-owner
 ns=$(shasum -a 256 "$nb" | cut -d" " -f1)
 "$nb" "$d/app/core/vyre-core/install-main.js" "$@" --release-dir "$d/rel" --node "$nb" --node-sha256 "$ns"'

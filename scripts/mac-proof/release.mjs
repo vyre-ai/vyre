@@ -5,12 +5,13 @@
 // TEST tarball only, and into a COPY of the install script (run.sh), so both trust it; the production
 // key, the script and the checkout are untouched.
 //
-//   node scripts/mac-proof/release.mjs OUTDIR     writes OUTDIR/site/{vyre.tgz,manifest.json,manifest.sig,SHA256SUMS}
+//   node scripts/mac-proof/release.mjs OUTDIR     writes OUTDIR/site/{vyre.tgz,manifest.json,SHA256SUMS,SHA256SUMS.sig}
 
 import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import { execFileSync } from "node:child_process";
+import { signRelease } from "../sign-manifest.mjs";
 
 const out = path.resolve(process.argv[2] || "");
 if (!process.argv[2]) { console.error("usage: release.mjs OUTDIR"); process.exit(2); }
@@ -31,11 +32,8 @@ fs.writeFileSync(rel, patched);
 
 execFileSync("tar", ["-czf", path.join(site, "vyre.tgz"), "-C", tree, "package"], { env: { ...process.env, COPYFILE_DISABLE: "1" } });
 const version = JSON.parse(fs.readFileSync(path.join(top, "package.json"), "utf8")).version;
-const sha = (/** @type {string} */ f) => crypto.createHash("sha256").update(fs.readFileSync(path.join(site, f))).digest("hex");
-const manifest = Buffer.from(JSON.stringify({ version, tarball: "vyre.tgz", sha256: sha("vyre.tgz"), channel: "test" }));
-fs.writeFileSync(path.join(site, "manifest.json"), manifest);
-fs.writeFileSync(path.join(site, "manifest.sig"), crypto.sign(null, manifest, privateKey).toString("base64") + "\n");
-fs.writeFileSync(path.join(site, "SHA256SUMS"), ["vyre.tgz", "manifest.json", "manifest.sig"].map((f) => `${sha(f)}  ${f}`).join("\n") + "\n");
+// The same signing code the release's sign job runs, with the throwaway key instead of the pinned one.
+signRelease({ dir: site, version, channel: "test", pem: privateKey.export({ type: "pkcs8", format: "pem" }).toString(), key: spki });
 fs.writeFileSync(path.join(out, "release-key.pub"), spki); // the public half only, for the patched script copy
 fs.rmSync(tree, { recursive: true, force: true });
 fs.rmSync(pack, { recursive: true, force: true });

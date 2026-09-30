@@ -7,7 +7,7 @@
 //   uninstall [--purge]
 //   apply
 //
-// DIR holds vyre.tgz, manifest.json and manifest.sig. --version defaults to the manifest's own.
+// DIR holds vyre.tgz, manifest.json, SHA256SUMS and SHA256SUMS.sig. --version defaults to the manifest's own.
 // --colima-program is repeatable, one program argument each (the first an absolute path), and
 // turns on the com.vyre.colima agent.
 //
@@ -53,7 +53,7 @@ try {
   if (cmd === "install") {
     for (const k of ["owner-uid", "owner-name", "release-dir", "node", "vyred-wrapper"]) if (typeof f[k] !== "string") fail(`--${k} is required`);
     const dir = path.resolve(String(f["release-dir"]));
-    const release = { tarball: path.join(dir, "vyre.tgz"), manifest: path.join(dir, "manifest.json"), sig: path.join(dir, "manifest.sig") };
+    const release = { tarball: path.join(dir, "vyre.tgz"), manifest: path.join(dir, "manifest.json"), sums: path.join(dir, "SHA256SUMS"), sig: path.join(dir, "SHA256SUMS.sig") };
     let version = typeof f.version === "string" ? f.version : "";
     if (!version) {
       try { version = JSON.parse(fs.readFileSync(release.manifest, "utf8")).version; } catch { fail("could not read the version from manifest.json"); }

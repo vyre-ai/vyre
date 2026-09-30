@@ -33,14 +33,16 @@ function publicKey(key) {
 }
 
 /**
- * @param {string | Buffer | Uint8Array} manifestBytes
- * @param {string | Buffer | Uint8Array} sigBytes base64 detached signature over the exact manifest bytes
+ * The ONE signature: base64 Ed25519 over the exact bytes of SHA256SUMS (the same file the Linux box's
+ * `vyre update` checks). Returns the file names and hashes it lists, only once the signature holds.
+ * @param {string | Buffer | Uint8Array} sumsBytes
+ * @param {string | Buffer | Uint8Array} sigBytes
  * @param {{ key?: string }} [opts]
- * @returns {{ version: string, tarball: string, sha256: string, channel?: string }}
+ * @returns {Map<string, string>} name -> lowercase sha256
  */
-export function verifyManifest(manifestBytes, sigBytes, { key = RELEASE_KEY } = {}) {
-  if (manifestBytes == null || sigBytes == null) throw new Error("manifest or signature is missing");
-  const m = toBuf(manifestBytes);
+export function verifySums(sumsBytes, sigBytes, { key = RELEASE_KEY } = {}) {
+  if (sumsBytes == null || sigBytes == null) throw new Error("SHA256SUMS or its signature is missing");
+  const m = toBuf(sumsBytes);
   const sigText = toBuf(sigBytes).toString("utf8").trim();
   if (!sigText) throw new Error("signature is empty");
   if (!B64.test(sigText)) throw new Error("signature is not base64");
@@ -53,10 +55,29 @@ export function verifyManifest(manifestBytes, sigBytes, { key = RELEASE_KEY } = 
     if (e instanceof Error && e.message.startsWith("release key")) throw e;
     ok = false;
   }
-  if (!ok) throw new Error("manifest signature does not verify");
+  if (!ok) throw new Error("SHA256SUMS signature does not verify");
+  /** @type {Map<string, string>} */
+  const out = new Map();
+  for (const line of m.toString("utf8").split("\n")) {
+    if (!line.trim()) continue;
+    const mm = /^([0-9a-fA-F]{64}) [ *]([^\s/\\][^/\\]*)$/.exec(line);
+    if (!mm) throw new Error("SHA256SUMS has a line that is not `sha256  name`");
+    if (out.has(mm[2])) throw new Error(`SHA256SUMS lists ${mm[2]} twice`);
+    out.set(mm[2], mm[1].toLowerCase());
+  }
+  return out;
+}
+
+/**
+ * The manifest's own shape: the version (for the anti-rollback floor) and the tarball. It carries no
+ * signature; its hash is a line in the signed SHA256SUMS.
+ * @param {string | Buffer | Uint8Array} manifestBytes
+ * @returns {{ version: string, tarball: string, sha256: string, channel?: string }}
+ */
+export function checkManifest(manifestBytes) {
   let j;
   try {
-    j = JSON.parse(m.toString("utf8"));
+    j = JSON.parse(toBuf(manifestBytes).toString("utf8"));
   } catch {
     throw new Error("manifest is not valid JSON");
   }

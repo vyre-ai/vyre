@@ -6,7 +6,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { execFileSync } from "node:child_process";
 import {
-  RELEASE_KEY, verifyManifest, checkTarball, checkFloor, readFloor, raiseFloor,
+  RELEASE_KEY, verifySums, checkManifest, checkTarball, checkFloor, readFloor, raiseFloor,
   compareVersions, listTar, checkEntries, extract,
 } from "./release.js";
 import { SCRATCH } from "../../test/scratch.mjs";
@@ -21,10 +21,6 @@ function keypair() {
   return { key: publicKey.export({ type: "spki", format: "der" }).toString("base64"), priv: privateKey };
 }
 const HASH = "a".repeat(64);
-function signed(kp, obj = { version: "1.2.3", tarball: "core.tgz", sha256: HASH }) {
-  const bytes = Buffer.from(JSON.stringify(obj));
-  return { bytes, sig: crypto.sign(null, bytes, kp.priv).toString("base64") };
-}
 // COPYFILE_DISABLE: macOS tar would add ._ AppleDouble entries beside every file.
 const tar = (cwd, args) => execFileSync("tar", args, { cwd, stdio: "pipe", env: { ...process.env, COPYFILE_DISABLE: "1" } });
 
@@ -32,30 +28,41 @@ test("the baked-in key is a valid Ed25519 SPKI constant", () => {
   assert.ok(crypto.createPublicKey({ key: Buffer.from(RELEASE_KEY, "base64"), format: "der", type: "spki" }));
 });
 
-test("a good manifest verifies and returns the parsed object", () => {
+const SUMS = Buffer.from(`${HASH}  vyre.tgz\n${"b".repeat(64)}  manifest.json\n`);
+const signSums = (kp, bytes = SUMS) => crypto.sign(null, bytes, kp.priv).toString("base64");
+
+test("a good SHA256SUMS verifies and returns its lines", () => {
   const kp = keypair();
-  const { bytes, sig } = signed(kp, { version: "1.2.3", tarball: "core.tgz", sha256: HASH, channel: "stable" });
-  assert.deepEqual(verifyManifest(bytes, sig, { key: kp.key }), { version: "1.2.3", tarball: "core.tgz", sha256: HASH, channel: "stable" });
+  const m = verifySums(SUMS, signSums(kp), { key: kp.key });
+  assert.equal(m.get("vyre.tgz"), HASH);
+  assert.equal(m.get("manifest.json"), "b".repeat(64));
+  assert.equal(m.size, 2);
 });
 
-test("tampered manifest, wrong key, empty or missing signature are refused", () => {
+test("tampered SHA256SUMS, wrong key, empty or missing signature are refused", () => {
   const kp = keypair();
-  const { bytes, sig } = signed(kp);
-  assert.throws(() => verifyManifest(Buffer.concat([bytes, Buffer.from(" ")]), sig, { key: kp.key }), /does not verify/);
-  assert.throws(() => verifyManifest(bytes, sig, { key: keypair().key }), /does not verify/);
-  assert.throws(() => verifyManifest(bytes, sig), /does not verify/); // placeholder key
-  assert.throws(() => verifyManifest(bytes, "", { key: kp.key }), /empty/);
-  assert.throws(() => verifyManifest(bytes, undefined, { key: kp.key }), /missing/);
-  assert.throws(() => verifyManifest(bytes, "not base64!!", { key: kp.key }), /base64/);
-  assert.throws(() => verifyManifest(bytes, Buffer.alloc(10).toString("base64"), { key: kp.key }), /64 bytes/);
+  const sig = signSums(kp);
+  assert.throws(() => verifySums(Buffer.concat([SUMS, Buffer.from(" ")]), sig, { key: kp.key }), /does not verify/);
+  assert.throws(() => verifySums(SUMS, sig, { key: keypair().key }), /does not verify/);
+  assert.throws(() => verifySums(SUMS, sig), /does not verify/); // the pinned key
+  assert.throws(() => verifySums(SUMS, "", { key: kp.key }), /empty/);
+  assert.throws(() => verifySums(SUMS, undefined, { key: kp.key }), /missing/);
+  assert.throws(() => verifySums(SUMS, "not base64!!", { key: kp.key }), /base64/);
+  assert.throws(() => verifySums(SUMS, Buffer.alloc(10).toString("base64"), { key: kp.key }), /64 bytes/);
 });
 
-test("malformed JSON, bad version and bad hash are refused even when correctly signed", () => {
+test("a signed SHA256SUMS with a bad line, a duplicate or a path in a name is refused", () => {
   const kp = keypair();
-  const bad = (raw) => {
-    const bytes = Buffer.from(raw);
-    return () => verifyManifest(bytes, crypto.sign(null, bytes, kp.priv).toString("base64"), { key: kp.key });
-  };
+  const bad = (raw) => () => verifySums(Buffer.from(raw), signSums(kp, Buffer.from(raw)), { key: kp.key });
+  assert.throws(bad("nothex  vyre.tgz\n"), /not `sha256  name`/);
+  assert.throws(bad(`${HASH}  vyre.tgz\n${HASH}  vyre.tgz\n`), /twice/);
+  assert.throws(bad(`${HASH}  ../vyre.tgz\n`), /not `sha256  name`/);
+  assert.throws(bad(`${HASH}  /etc/x\n`), /not `sha256  name`/);
+});
+
+test("the manifest's shape: malformed JSON, bad version and bad hash are refused", () => {
+  const bad = (raw) => () => checkManifest(Buffer.from(raw));
+  assert.deepEqual(checkManifest(Buffer.from(JSON.stringify({ version: "1.2.3", tarball: "core.tgz", sha256: HASH, channel: "stable" }))), { version: "1.2.3", tarball: "core.tgz", sha256: HASH, channel: "stable" });
   assert.throws(bad("{nope"), /not valid JSON/);
   assert.throws(bad("[1]"), /not a JSON object/);
   assert.throws(bad(JSON.stringify({ version: "1.2", tarball: "x", sha256: HASH })), /semver/);

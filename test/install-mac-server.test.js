@@ -312,7 +312,7 @@ const base = process.env.FAKE_CORE_BASE;
 fs.appendFileSync(path.join(process.env.FAKE_LOG_DIR, "root.log"), JSON.stringify({ argv: a, uid: process.getuid?.(), from: new URL(import.meta.url).pathname }) + "\\n");
 if (cmd === "uninstall") { fs.rmSync(path.join(base, "core.json"), { force: true }); console.log("  ok  removed"); process.exit(0); }
 if (${o.fail ? "true" : "false"}) { console.error("vyre-install: the manifest signature does not verify"); process.exit(1); }
-for (const f of ["vyre.tgz", "manifest.json", "manifest.sig"]) if (!fs.existsSync(path.join(flag("--release-dir"), f))) { console.error("missing " + f); process.exit(1); }
+for (const f of ["vyre.tgz", "manifest.json", "SHA256SUMS", "SHA256SUMS.sig"]) if (!fs.existsSync(path.join(flag("--release-dir"), f))) { console.error("missing " + f); process.exit(1); }
 const sock = path.join(base, "vyre-core.sock"); fs.writeFileSync(sock, "");
 fs.writeFileSync(path.join(base, "core.json"), JSON.stringify({ socket: sock, uid: 400 }));
 spawn(flag("--vyred-wrapper"), [], { detached: true, stdio: "ignore" }).unref();
@@ -323,11 +323,13 @@ ${o.noEnrol ? "" : `console.log("VYRE_CORE_ENROL=${ENROL}");`}
   const kp = crypto.generateKeyPairSync("ed25519");
   const manifest = Buffer.from(JSON.stringify({ version: "0.2.0", tarball: "vyre.tgz", sha256: sha(fs.readFileSync(path.join(site, "vyre.tgz"))) }));
   fs.writeFileSync(path.join(site, "manifest.json"), manifest);
-  fs.writeFileSync(path.join(site, "manifest.sig"), crypto.sign(null, manifest, kp.privateKey).toString("base64") + "\n");
   const patched = path.join(m.base, "install-mac-server.sh");
   fs.writeFileSync(patched, fs.readFileSync(SCRIPT, "utf8").replace(/^RELEASE_KEY=.*$/m, `RELEASE_KEY=${kp.publicKey.export({ type: "spki", format: "der" }).toString("base64")}`));
   fs.mkdirSync(path.join(m.base, "roottmp"));
-  fs.writeFileSync(path.join(site, "SHA256SUMS"), ["vyre.tgz", "manifest.json", "manifest.sig"].map(f => `${sha(fs.readFileSync(path.join(site, f)))}  ${f}`).join("\n") + "\n");
+  // The one signature: over SHA256SUMS, which lists the tarball and the manifest.
+  const sums = Buffer.from(["vyre.tgz", "manifest.json"].map(f => `${sha(fs.readFileSync(path.join(site, f)))}  ${f}`).join("\n") + "\n");
+  fs.writeFileSync(path.join(site, "SHA256SUMS"), sums);
+  fs.writeFileSync(path.join(site, "SHA256SUMS.sig"), crypto.sign(null, sums, kp.privateKey).toString("base64") + "\n");
   const env = {
     ...m.env, PATH: `${bin}:${path.dirname(process.execPath)}:/usr/bin:/bin`, VYRE_UNAME_M: "arm64",
     VYRE_TEST_SCRIPT: patched, VYRE_ROOT_TMP: path.join(m.base, "roottmp"), VYRE_SUDO: path.join(bin, "sudo"), VYRE_CORE_BASE: core, FAKE_CORE_BASE: core, FAKE_LOG_DIR: m.base,
@@ -381,16 +383,15 @@ test("install-mac-server.sh: an installer that never printed the enrolment line 
   assert.match(r.stderr, /did not finish/);
 });
 
-test("install-mac-server.sh: system mode downloads the manifest and signature and refuses a bad sum", t => {
+test("install-mac-server.sh: system mode refuses a manifest that is not the one SHA256SUMS lists, before root is asked", t => {
   const m = sys(t);
-  fs.writeFileSync(path.join(m.site, "manifest.sig"), "tampered\n");
+  fs.writeFileSync(path.join(m.site, "manifest.json"), "{\"version\":\"9.9.9\"}");
   const r = run(m.env, ["--yes", "--system"]);
   assert.notEqual(r.status, 0);
-  assert.match(r.stderr, /manifest\.sig does not match SHA256SUMS/);
+  assert.match(r.stderr, /manifest\.json does not match SHA256SUMS/);
   assert.equal(m.rootCalls().length, 0, "root is never asked");
   assert.ok(!/^sudo /m.test(m.calls()));
 });
-
 test("install-mac-server.sh: a Node download that does not match its pin installs nothing and never reaches sudo", t => {
   const m = sys(t);
   const r = run({ ...m.env, VYRE_NODE_SHA256: sha("other") }, ["--yes", "--system"]);
@@ -496,18 +497,16 @@ test("install-mac-server.sh: a gh already on PATH is used as it is", t => {
   assert.ok(!fs.existsSync(path.join(m.env.VYRE_SERVER_DIR, "bin", "gh")));
 });
 
-test("install-mac-server.sh: a manifest signed by another key is refused before sudo", t => {
+test("install-mac-server.sh: SHA256SUMS signed by another key is refused before sudo", t => {
   const m = sys(t);
   const other = crypto.generateKeyPairSync("ed25519");
-  const mf = fs.readFileSync(path.join(m.site, "manifest.json"));
-  fs.writeFileSync(path.join(m.site, "manifest.sig"), crypto.sign(null, mf, other.privateKey).toString("base64") + "\n");
-  fs.writeFileSync(path.join(m.site, "SHA256SUMS"), ["vyre.tgz", "manifest.json", "manifest.sig"].map(f => `${sha(fs.readFileSync(path.join(m.site, f)))}  ${f}`).join("\n") + "\n");
+  const sums = fs.readFileSync(path.join(m.site, "SHA256SUMS"));
+  fs.writeFileSync(path.join(m.site, "SHA256SUMS.sig"), crypto.sign(null, sums, other.privateKey).toString("base64") + "\n");
   const r = run(m.env, ["--yes", "--system"]);
   assert.notEqual(r.status, 0);
   assert.match(r.stderr, /signature does not verify/);
   assert.ok(!/^sudo /m.test(m.calls()) && m.rootCalls().length === 0);
 });
-
 test("install-mac-server.sh: a release that changes after it was verified is caught by root's own signature check of its copy", t => {
   const m = sys(t);
   const r = run({ ...m.env, FAKE_TAMPER: "1" }, ["--yes", "--system"]);

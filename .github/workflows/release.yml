@@ -138,7 +138,7 @@ jobs:
             fs.writeFileSync("dist/release.json", JSON.stringify({ version, channel, commit, date: new Date().toISOString(), min_from,
               notes: fs.readFileSync("dist/notes.md", "utf8") }, null, 2) + "\n");' "$VERSION" "$CHANNEL" "$(git rev-parse HEAD)" "$MIN_FROM"
           (cd dist && find . -maxdepth 1 -type f ! -name SHA256SUMS ! -name notes.md | sed 's|^\./||' | LC_ALL=C sort | xargs sha256sum > SHA256SUMS)
-          cat dist/SHA256SUMS | tee -a "$GITHUB_STEP_SUMMARY"
+          { echo "### SHA256SUMS in this build lists $(wc -l < dist/SHA256SUMS | tr -d ' ') files (the sign step adds manifest.json and signs it)"; cat dist/SHA256SUMS; } | tee -a "$GITHUB_STEP_SUMMARY"
       - uses: actions/upload-artifact@v4
         with:
           name: dist-${{ env.TAG }}
@@ -153,7 +153,7 @@ jobs:
 
   # The ONLY job that sees the release signing key: the GitHub Environment `release` holds it, needs
   # the user's approval, and takes deployments only from main or v* tags. It gets the built files as
-  # an artifact, signs the tarball's manifest, and hands back manifest.json and manifest.sig.
+  # an artifact, signs the tarball's manifest, and hands back manifest.json, SHA256SUMS and SHA256SUMS.sig.
   sign:
     needs: release
     if: github.event_name == 'push' && vars.VYRE_RELEASES == 'go'
@@ -180,19 +180,20 @@ jobs:
         with:
           name: dist-${{ env.TAG }}
           path: dist
-      - name: Sign the manifest
+      - name: Sign SHA256SUMS (the one signature the Mac installer and the Linux updater both verify)
         env:
           VYRE_SIGNING_KEY: ${{ secrets.VYRE_RELEASE_SIGNING_KEY }}
         run: |
           version=$(cat dist/VERSION)
           channel=$(node -p 'require("./dist/release.json").channel')
-          node scripts/sign-manifest.mjs dist/vyre.tgz dist "$version" "$channel"
+          node scripts/sign-manifest.mjs dist "$version" "$channel"
       - uses: actions/upload-artifact@v4
         with:
           name: manifest-${{ env.TAG }}
           path: |
             dist/manifest.json
-            dist/manifest.sig
+            dist/SHA256SUMS
+            dist/SHA256SUMS.sig
           retention-days: 1
 
   publish:
@@ -215,10 +216,9 @@ jobs:
         with:
           name: manifest-${{ env.TAG }}
           path: dist
-      - name: SHA256SUMS again, now covering the manifest and its signature
+      - name: The signed files are all there
         run: |
-          [ -f dist/manifest.json ] && [ -f dist/manifest.sig ] || { echo "no signed manifest to publish"; exit 1; }
-          (cd dist && find . -maxdepth 1 -type f ! -name SHA256SUMS ! -name notes.md | sed 's|^\./||' | LC_ALL=C sort | xargs sha256sum > SHA256SUMS)
+          for f in manifest.json SHA256SUMS SHA256SUMS.sig; do [ -f "dist/$f" ] || { echo "no signed $f to publish"; exit 1; }; done
           cat dist/SHA256SUMS | tee -a "$GITHUB_STEP_SUMMARY"
       - uses: actions/attest-build-provenance@v2
         with:
