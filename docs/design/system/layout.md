@@ -82,6 +82,7 @@ target, or run"), streaming replies and key hints, from the same tokens. Touch I
 | Find, commands | Lumen, pulled up | ⌘K anywhere | Itself | `vyre <anything>` <!-- terms: ignore --> |
 | Projects, Memory | Places sheet | Rail | @ completion | `vyre projects` <!-- terms: ignore --> |
 | Planner | Today on Now; Places sheet | Rail | "alarm 7am" | `vyre planner` <!-- terms: ignore --> |
+| Drive, files | Places sheet | Rail | # file chips, @ | `vyre drive` <!-- terms: ignore --> |
 | Vault | Places sheet | Rail | "code northwind" | `vyre vault` <!-- terms: ignore --> |
 | Devices, Settings | Places sheet | Rail, bottom | Menu | `vyre devices` <!-- terms: ignore --> |
 
