@@ -275,13 +275,15 @@ test("names.domain.check: the CNAME to <routehash>.acme.vyre.run and the optiona
   assert.equal(h.dns.at(zone, "TXT").length, 0);
 });
 
-test("directory: under a test runner the real fetch refuses the hosted directory and any non-loopback host, and allows a fake on 127.0.0.1 or an injected fetch", () => {
+test("directory: under a test runner the real fetch refuses the hosted directory and any non-loopback host at the call, and allows a fake on 127.0.0.1 or an injected fetch", async () => {
   const signer = { identity: async () => ({ route: "r", pub: Buffer.alloc(32) }), sign: async () => Buffer.alloc(64) };
   for (const base of ["https://names.vyre.run", "https://example.com", "http://10.0.0.5:8787"]) {
-    assert.throws(() => directory({ base, signer }), e => e.code === "test_guard", base);
+    assert.doesNotThrow(() => directory({ base, signer }), "building it reaches nothing, so a daemon test can start the names module");
+    await assert.rejects(() => directory({ base, signer }).check("kit"), e => /** @type {any} */ (e).code === "test_guard", base);
   }
-  assert.throws(() => directory({ signer }), e => e.code === "test_guard", "the default base is the hosted one");
+  await assert.rejects(() => directory({ signer }).check("kit"), e => /** @type {any} */ (e).code === "test_guard", "the default base is the hosted one");
   assert.doesNotThrow(() => directory({ base: "http://127.0.0.1:8787", signer }));
-  assert.doesNotThrow(() => directory({ base: "http://localhost:8787", signer }));
-  assert.doesNotThrow(() => directory({ base: "https://names.vyre.run", signer, fetch: async () => ({}) }), "a test's own fetch never leaves the process");
+  let asked = 0;
+  await directory({ base: "https://names.vyre.run", signer, fetch: async () => { asked++; return /** @type {any} */ ({ ok: true, status: 200, json: async () => ({}) }); } }).check("kit").catch(() => {});
+  assert.equal(asked, 1, "a test's own fetch never leaves the process");
 });
