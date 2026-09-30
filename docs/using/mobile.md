@@ -128,7 +128,7 @@ approved until the box answers.
 - It will not show a draft's contents in a notification.
 
 Coming, from the mobile workstream (not on this branch): native iPhone and Android apps with Now,
-Chat, a mobile Capsule with voice, Files, Agents, Memory, Vault and native push, and a device key
+Chat, a mobile Lumen with voice, Files, Agents, Memory, Vault and native push, and a device key
 on the phone for approvals.
 
 ## Next

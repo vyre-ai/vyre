@@ -28,6 +28,7 @@ export const PLACES = Object.freeze([
   { href: "/planner", label: "Planner", icon: "planner", views: ["planner"], key: "5" },
   { href: "/memory", label: "Memory", icon: "memory", views: ["memory"], key: "6" },
   { href: "/vault", label: "Vault", icon: "vault", views: ["vault"], key: "7" },
+  { href: "/files", label: "Drive", icon: "drive", views: ["files"], key: "0" },
   { href: "/settings#devices", label: "Devices", icon: "devices", views: [], key: "8", end: true },
   { href: "/settings", label: "Settings", icon: "settings", views: ["settings"], key: "9", end: true },
 ]);

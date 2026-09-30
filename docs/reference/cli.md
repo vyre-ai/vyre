@@ -73,7 +73,7 @@ In the order `vyre help` lists them.
 | [`vyre voice`](#vyre-voice) | push-to-talk from the terminal (Enter to talk), status, and the speech key |
 | [`vyre mcp`](#vyre-mcp) | the Vyre MCP server on stdio, for plain claude |
 | [`vyre update`](#vyre-update) | install the newest release after a backup, and roll back if it does not come up |
-| [`vyre backup`](#vyre-backup) | copy config, store, vault, watchers and certificates into one file |
+| [`vyre backup`](#vyre-backup) | seal your data, project files and session transcripts into one passphrase-locked file (an unfinished one resumes) |
 | [`vyre presence`](#vyre-presence) | the keys that prove you are here, and a code to enroll a passkey |
 | [`vyre tips`](#vyre-tips) | short tips on using each part of Vyre |
 | [`vyre module`](#vyre-module) | make, check, test and add a module of your own |
@@ -700,7 +700,7 @@ vyre mcp [serve | install [--yes]] [--json]
 Install the newest release after a backup, and roll back if it does not come up.
 
 ```
-vyre update [--check] [--channel stable|beta] [--to <version>] [--yes] [--rollback [--restore-data]] [--json]
+vyre update [--check] [--channel stable|beta] [--to <version>] [--yes] [--allow-unsigned] [--rollback [--restore-data]] [--json]
 ```
 
 --check          say whether a newer release is out; exit 0 when current, 1 when one waits
@@ -715,10 +715,10 @@ vyre update does this; from a checkout, update with git.
 
 ### vyre backup
 
-Copy config, store, vault, watchers and certificates into one file.
+Seal your data, project files and session transcripts into one passphrase-locked file (an unfinished one resumes).
 
 ```
-vyre backup [file]
+vyre backup [file] [--skip-projects] [--skip-transcripts] [--work DIR] [--with-provider-logins]
 ```
 
 ### vyre presence
@@ -853,7 +853,7 @@ vyre home
 Put a backup back (vyred must be stopped).
 
 ```
-vyre restore <file> [--force]
+vyre restore <file> [--force] [--skip-projects] [--skip-transcripts] [--work-to DIR]
 ```
 
 ### vyre uninstall

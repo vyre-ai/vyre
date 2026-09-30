@@ -18,6 +18,7 @@ import { macCoreRefusal } from "../core/relay/index.js";
 import { useReleasesFile } from "../core/relay/releases.js";
 import { signed } from "../core/presence/person.js";
 import { pairTicket, resolveTicket, pairOffer } from "../relay/client/client.js";
+import { shellDeviceKey } from "../relay/client/shellkey.js";
 import { nodeCrypto, fileKeyStore } from "../relay/client/nodecrypto.js";
 import { fromBase64url } from "../relay/client/bytes.js";
 import crypto from "node:crypto";
@@ -567,6 +568,47 @@ test("relay: relay.pair.ticket mints a Vyre-code ticket, a phone resolves and re
   // Single-use: resolving (and so redeeming) the same ticket again is refused outright.
   await assert.rejects(() => pairTicket(fromBase64url(ticket), { relay: status.url, crypto: nodeCrypto(), keyStore: fileKeyStore(path.join(tempHome(t), "phone-key-2.json")) }),
     /expired or was already used/);
+});
+
+test("relay: a computer that chose its own ticket has the box register it; the record carries the box's own origin, own domain included, and no origin when there is none", async t => {
+  const { d } = await world(t);
+  const status = (await d.registry.call("relay.status", {}, "cli", PROOF)).data;
+  const seed = crypto.randomBytes(16);
+  // No address yet: no origin in the record.
+  let minted = (await d.registry.call("relay.pair.ticket", { seed: seed.toString("base64url") }, "cli", PROOF)).data;
+  assert.equal(minted.ticket, seed.toString("base64url"), "the box registers the app's own ticket and invents none");
+  let resolved = await resolveTicket(new Uint8Array(seed), { relay: status.url, crypto: nodeCrypto() });
+  assert.equal(resolved.address, null);
+  // With an address, the origin (port kept, path dropped) rides in the MAC-covered record.
+  d.registry.deps.config.network = { ...(d.registry.deps.config.network || {}), address: "https://harlow.example.com:8443/deck" };
+  const seed2 = crypto.randomBytes(16);
+  await d.registry.call("relay.pair.ticket", { seed: seed2.toString("base64url") }, "cli", PROOF);
+  resolved = await resolveTicket(new Uint8Array(seed2), { relay: status.url, crypto: nodeCrypto() });
+  assert.equal(resolved.address, "https://harlow.example.com:8443");
+  // A seed is 8 to 32 bytes of base64url; anything else is refused before a ticket exists.
+  for (const bad of [crypto.randomBytes(4).toString("base64url"), crypto.randomBytes(33).toString("base64url"), "not base64url!", 5]) {
+    const r = await d.registry.call("relay.pair.ticket", { seed: bad }, "cli", PROOF);
+    assert.equal(r.error?.code, "bad_input", String(bad));
+  }
+  // A second box (or a second ask) registering a seed the relay still holds is a failure, not a ticket that quietly does not resolve.
+  const held = crypto.randomBytes(16).toString("base64url");
+  assert.ok((await d.registry.call("relay.pair.ticket", { seed: held }, "cli", PROOF)).data);
+  const twin = await d.registry.call("relay.pair.ticket", { seed: held }, "cli", PROOF);
+  assert.equal(twin.error?.code, "conflict", JSON.stringify(twin));
+  // The app's own ticket pairs like any other.
+  const seed3 = crypto.randomBytes(16);
+  await d.registry.call("relay.pair.ticket", { seed: seed3.toString("base64url") }, "cli", PROOF);
+  // ...including when the device's private key never leaves its shell: the Noise handshake runs with the shell's own DH.
+  const shellPair = crypto.generateKeyPairSync("x25519");
+  const shellPub = new Uint8Array(shellPair.publicKey.export({ format: "der", type: "spki" }).subarray(-32));
+  const shell = shellDeviceKey(async (cmd, args) => {
+    if (cmd === "device_key_pub") return Buffer.from(shellPub).toString("base64url");
+    const remote = crypto.createPublicKey({ key: Buffer.concat([Buffer.from("302a300506032b656e032100", "hex"), Buffer.from(args.remote, "base64url")]), format: "der", type: "spki" });
+    return crypto.diffieHellman({ privateKey: shellPair.privateKey, publicKey: remote }).toString("base64url");
+  }, { crypto: nodeCrypto() });
+  const paired = await pairTicket(new Uint8Array(seed3), { relay: status.url, ...shell, name: "kit's PC" });
+  assert.ok(paired.device);
+  void minted;
 });
 
 test("relay: resolveTicket confirms who a ticket pairs with, before pairing, so a phone can show and pairOffer separately", async t => {

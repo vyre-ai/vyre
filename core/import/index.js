@@ -14,6 +14,8 @@ import path from "node:path";
 import crypto from "node:crypto";
 import { transcriptFolders, claudeHome } from "../config/index.js";
 import { scan } from "./scan.js";
+import { agentHomes, formatFor } from "./formats/index.js";
+import { folderName } from "./formats/shared.js";
 
 /** Only the person's own surfaces read what is on their disk. */
 const PEOPLE = ["cli", "local", "deck", "capsule"];
@@ -36,9 +38,10 @@ export default {
       const synced = root ? path.resolve(root, "synced") : null;
       const configured = (ctx.config.transcripts || []).filter(p => !synced || path.resolve(String(p)) !== synced).map(p => ({ path: String(p), kind: /archive/i.test(String(p)) ? "archive" : claude && path.resolve(String(p)).startsWith(path.resolve(claude)) ? "claude" : "folder" }));
       const added = (extra || []).filter(p => typeof p === "string" && path.isAbsolute(p)).map(p => ({ path: p, kind: /** @type {const} */ ("folder") }));
-      const all = [...configured, ...added];
+      // Codex and Gemini CLI: one source each when the agent has sessions here (scan drops an empty one).
+      const all = [...configured, ...added, ...agentHomes(root)];
       // The person's ~/.claude only for their own ~/.vyre; a dev, demo or test home reads its own.
-      const ok = new Set(transcriptFolders(all.map(r => r.path), root));
+      const ok = new Set([...transcriptFolders(all.filter(r => !formatFor(r.kind)).map(r => r.path), root), ...all.filter(r => formatFor(r.kind)).map(r => r.path)]);
       const seen = new Set();
       return all.filter(r => ok.has(r.path) && !seen.has(path.resolve(r.path)) && seen.add(path.resolve(r.path)));
     };
@@ -49,7 +52,7 @@ export default {
     };
 
     ctx.tool("import.scan", {
-      description: "The Claude Code sessions on this device, by source and by the folder each ran in: counts, sizes, dates, the project each folder belongs to, and which are suggested for import (Vyre's own sessions and temporary folders are not). Work on Vyre itself, folders the person excluded, and credential folders (~/.ssh and the like) are left out before anything is listed (left_out counts them). Reads file names, sizes, times and each session's folder only, within caps (capped says one was hit); nothing leaves the device. claude_keeps_days: how long Claude Code keeps sessions here. folders: more folders to look in (absolute paths).",
+      description: "The coding-agent sessions on this device (Claude Code, Codex, Gemini CLI; each source is tagged with its agent), by source and by the folder each ran in: counts, sizes, dates, the project each folder belongs to, and which are suggested for import (Vyre's own sessions and temporary folders are not). Work on Vyre itself, folders the person excluded, and credential folders (~/.ssh and the like) are left out before anything is listed (left_out counts them). Reads file names, sizes, times and each session's folder only, within caps (capped says one was hit); nothing leaves the device. claude_keeps_days: how long Claude Code keeps sessions here. folders: more folders to look in (absolute paths).",
       input: { type: "object", properties: { folders: { type: "array", items: { type: "string" } } } },
       callers: PEOPLE,
       run: async ({ folders } = {}) => {
@@ -62,7 +65,8 @@ export default {
         // Left out before anything is listed (e2e): Vyre's own folders, and folders the person
         // excluded from memory (memory.personal.skipCwds) or from imports (import.exclude).
         const exclude = [...(ctx.config.memory?.personal?.skipCwds || []), ...(ctx.config.import?.exclude || [])].filter(x => typeof x === "string");
-        const r = scan(roots(folders), { projectOf, exclude, isDev: cwd => VYRE_DIR.test(cwd), quick: root ? path.join(root, "quick") : null, ask: root ? path.join(root, "capsule", "ask") : null });
+        const candidates = ps.flatMap(p => p.folders);
+        const r = scan(roots(folders), { projectOf, candidates, exclude, isDev: cwd => VYRE_DIR.test(cwd), quick: root ? path.join(root, "quick") : null, ask: root ? path.join(root, "capsule", "ask") : null });
         last = { at: Date.now(), files: r.files };
         return { sources: r.sources, left_out: r.left_out, capped: r.capped, claude_keeps_days: keepsDays() };
       },
@@ -83,7 +87,7 @@ export default {
           return byFolder || bySource;
         });
         const id = "plan_" + crypto.randomBytes(6).toString("hex");
-        const plan = { at: t, files: chosen.map(f => f.file), items: chosen.map(f => ({ path: f.file, rel: `${path.basename(path.dirname(f.file))}/${f.id}.jsonl`, bytes: f.bytes })),
+        const plan = { at: t, files: chosen.map(f => f.file), items: chosen.map(f => ({ path: f.file, rel: f.format ? `${folderName(f.cwd)}/${f.id}.jsonl` : `${path.basename(path.dirname(f.file))}/${f.id}.jsonl`, bytes: f.bytes, ...(f.format ? { format: f.format, home: f.home, cwd: f.cwd } : {}) })),
           hash: crypto.createHash("sha256").update(chosen.map(f => f.file).sort().join("\n")).digest("hex"), sessions: chosen.length, bytes: chosen.reduce((n, f) => n + f.bytes, 0),
           folders: [...new Set(chosen.map(f => f.cwd).filter(Boolean))].sort() };
         plans.set(id, plan);
@@ -95,8 +99,30 @@ export default {
     ctx.store.migrate([`CREATE TABLE import_runs (id TEXT PRIMARY KEY, at INTEGER NOT NULL, machine TEXT NOT NULL, plan_hash TEXT NOT NULL, mode TEXT NOT NULL, pace TEXT NOT NULL,
       state TEXT NOT NULL, of INTEGER NOT NULL, sent INTEGER NOT NULL DEFAULT 0, failed INTEGER NOT NULL DEFAULT 0, quarantined INTEGER NOT NULL DEFAULT 0, ended INTEGER);`]);
     const BATCH = 25;
-    /** This device's name, as the server files what it sends under synced/<machine>/. */
-    const machine = () => String(ctx.config.name || ctx.config.machine || os.hostname()).toLowerCase().replace(/[^a-z0-9._-]+/g, "-").slice(0, 80) || "device";
+    /**
+     * A fresh folder for one batch's converted copies, inside <home>/.import-stage, which sync.send reads from (core/sync
+     * importStage). That folder is made here with mkdir and must be a real directory of this account, closed to others: one
+     * that is already there as a link, or open, or someone else's, is refused rather than reused.
+     */
+    const stagingFolder = () => {
+      const base = root ? path.join(root, ".import-stage") : null;
+      if (!base) return fs.mkdtempSync(path.join(os.tmpdir(), ".import-"));
+      try { fs.mkdirSync(base, { mode: 0o700 }); } catch (e) { if (/** @type {any} */ (e).code !== "EEXIST") throw e; }
+      const st = fs.lstatSync(base);
+      if (!st.isDirectory() || st.isSymbolicLink() || (st.mode & 0o077) !== 0 || (typeof process.getuid === "function" && st.uid !== process.getuid())) throw new Error(".import-stage is not a private folder of this account");
+      return fs.mkdtempSync(path.join(base, "b-"));
+    };
+    /** This device's name, as the server files what it sends under synced/<machine>/ and knows it from pairing (the hostname it paired under; config.machine is the kind of machine, never a name). */
+    const machine = () => String(ctx.config.name || os.hostname()).toLowerCase().replace(/[^a-z0-9._-]+/g, "-").slice(0, 80) || "device";
+    /**
+     * The server's own record of consent: sync.consent lives on the box only, so a device asks for it over the link. (A box
+     * importing its own sessions has the tool itself.)
+     */
+    const consent = async input => {
+      const r = await ctx.call("sync.consent", input);
+      if (r?.error?.code !== "no_such_tool" || ctx.config.role === "box") return r;
+      return ctx.call("link.call", { tool: "sync.consent", input });
+    };
     /** @type {{ id: string, stop: boolean, done: Promise<void>|null }|null} */
     let current = null;
     const runRow = id => /** @type {any} */ (ctx.store.db.prepare("SELECT * FROM import_runs WHERE id = ?").get(id));
@@ -105,12 +131,30 @@ export default {
     // (which has none) never starts one; callers holds the rest out before this runs.
     const person = caller => PEOPLE.includes(String(caller));
     const send = async (id, items, mode) => {
+      const known = (await projects().catch(() => [])).flatMap(p => p.folders);
       const upd = ctx.store.db.prepare("UPDATE import_runs SET sent = sent + ?, failed = failed + ?, quarantined = quarantined + ? WHERE id = ?");
       for (let i = 0; i < items.length; i += BATCH) {
         if (!current || current.id !== id || current.stop) break;
         const files = [];
-        for (const it of items.slice(i, i + BATCH)) { try { files.push({ ...it, hash: await hashOf(it.path) }); } catch { upd.run(0, 1, 0, id); } }
-        const r = await ctx.call("sync.send", { files, mode });
+        // A Codex or Gemini CLI session is converted to Claude Code's shape into a staging folder just
+        // for this batch (the reader opens only its allowlisted files), and that copy is what is sent.
+        let stage = null;
+        for (const it of items.slice(i, i + BATCH)) {
+          try {
+            let item = it;
+            if (it.format) {
+              const conv = formatFor(it.format)?.convert(it.home, it.path, { cwd: it.cwd, candidates: known });
+              if (!conv || !conv.text) throw new Error("nothing to convert");
+              if (!stage) { stage = stagingFolder(); }
+              const staged = path.join(stage, `${files.length}-${crypto.randomBytes(3).toString("hex")}.jsonl`);
+              fs.writeFileSync(staged, conv.text, { mode: 0o600 });
+              item = { ...it, path: staged, bytes: Buffer.byteLength(conv.text) };
+            }
+            files.push({ path: item.path, rel: item.rel, bytes: item.bytes, hash: await hashOf(item.path) });
+          } catch { upd.run(0, 1, 0, id); }
+        }
+        let r;
+        try { r = await ctx.call("sync.send", { files, mode }); } finally { if (stage) fs.rmSync(stage, { recursive: true, force: true }); }
         const d = r?.data || {};
         if (r?.error) { upd.run(0, files.length, 0, id); ctx.log(`import ${id}: sending failed: ${r.error.message}`); if (r.error.code === "no_such_tool") break; continue; }
         upd.run(Number(d.sent) || 0, Number(d.failed) || 0, Number(d.quarantined) || 0, id);
@@ -134,7 +178,7 @@ export default {
         const m = machine();
         // Consent goes to the server's own record, through federation's one door; the plan's hash
         // goes with this run, so a different plan is a different consent (e2e).
-        const c = await ctx.call("sync.consent", { machine: m, on: true, mode, plan: p.hash });
+        const c = await consent({ machine: m, on: true, mode, plan: p.hash });
         if (c?.error) throw Object.assign(new Error(c.error.code === "no_such_tool" ? "this device cannot send to a server yet" : `the server did not take the consent: ${c.error.message}`), { code: c.error.code === "no_such_tool" ? "unavailable" : "failed" });
         await ctx.call("memory.pace", { pace });
         const id = "imp_" + crypto.randomBytes(6).toString("hex");
@@ -152,7 +196,7 @@ export default {
       run: async (_, meta = {}) => {
         if (!person(meta.caller)) throw Object.assign(new Error("stopping an import is the person's own action"), { code: "denied" });
         const r = current; if (r) { r.stop = true; await r.done; }
-        await ctx.call("sync.consent", { machine: machine(), on: false });
+        await consent({ machine: machine(), on: false });
         return { stopped: Boolean(r) };
       },
     });
@@ -163,7 +207,7 @@ export default {
       run: async (_, meta = {}) => {
         if (!person(meta.caller)) throw Object.assign(new Error("cancelling an import is the person's own action"), { code: "denied" });
         const r = current; if (r) { r.stop = true; await r.done; }
-        await ctx.call("sync.consent", { machine: machine(), on: false });
+        await consent({ machine: machine(), on: false });
         if (r) ctx.store.db.prepare("UPDATE import_runs SET state = 'cancelled' WHERE id = ?").run(r.id);
         return { stopped: Boolean(r), dropped: false };
       },

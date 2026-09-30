@@ -38,6 +38,17 @@ person's own work branch is a write to a repo the person already owns, the same 
 
 ### 2. Sign-in: device flow, vault-only token, PERSON_ONLY
 
+> **Revised 1 Oct (0.2, lead ruling): sign-in runs the real GitHub CLI.** Vyre does not run the
+> device flow itself under any client id, gh's included (that would be Vyre acting as GitHub CLI).
+> `github.connect` spawns `gh auth login --web --scopes repo --insecure-storage` in a private
+> throwaway folder (HOME and GH_CONFIG_DIR inside it, nothing of the person's env passed), reads
+> the code and address gh prints, returns `{ id, user_code, verification_uri, expires_in, interval }`
+> (no `verification_uri_complete`), and when gh exits cleanly reads `gh auth token` once, files it
+> in the vault item and deletes the folder. The box image and Mac servers must carry `gh`; without
+> it the tool answers `gh_missing` and a pasted fine-grained token is the fallback. The rest of
+> this section (polling, one sign-in per name, scrubbing) describes the earlier direct flow; the
+> vault item, the events and the no-revoke rule are unchanged.
+
 `github.connect {name}` (people only, PERSON_ONLY) starts RFC 8628:
 `POST https://github.com/login/device/code` with `client_id` and `scope=repo` (decision 4).
 Returns `{ id, user_code, verification_uri, verification_uri_complete, expires_in, interval }`.

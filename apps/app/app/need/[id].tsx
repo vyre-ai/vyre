@@ -52,7 +52,7 @@ export default function NeedDetail() {
         </View>
         {!approve.ok ? (
           <Text style={[type.meta, { color: color.text2 }]}>
-            {approve.why}. {n.source === "gate" ? "Approve it from the Deck or the Capsule for now." : "Answer it in the session."}
+            {approve.why}. {n.source === "gate" ? "Approve it from the Deck or Lumen for now." : "Answer it in the session."}
           </Text>
         ) : null}
         {n.thread ? (
