@@ -15,7 +15,7 @@ import os from "node:os";
 import nodePath from "node:path";
 import { answerSite, neededKeys } from "./site-answer.js";
 import {
-  sanitize, testNow, emptyRecord, mergeRecord, mergeFamily, union, arrivalCard, heal, itemId, keyOk, isFamilyKey, isQuarantined, readConf, LIMITS,
+  sanitize, testNow, applyRung, canonTemplate, emptyRecord, mergeRecord, mergeFamily, union, arrivalCard, heal, itemId, keyOk, isFamilyKey, isQuarantined, readConf, LIMITS,
 } from "../../lib/site-knowledge.js";
 
 const PERSON = new Set(["deck", "cli", "local", "capsule"]);
@@ -181,14 +181,28 @@ export function register(ctx, { denied }) {
   });
 
   ctx.tool("memory.site.report", {
-    description: "One outcome for one item Chrome already holds: { origin, target?, part, id, outcome: 'ok'|'miss', why? } -> { conf, quarantined }. A success raises its trust, a miss cuts it, and three misses over two days quarantine it (kept as 'used to work', dropped after 30 days).",
-    input: { type: "object", required: ["origin", "part", "id", "outcome"], properties: { origin: { type: "string" }, target: { type: "string", enum: ["origin", "family"] },
-      part: { type: "string", enum: PARTS }, id: { type: "string" }, outcome: { type: "string", enum: ["ok", "miss"] }, why: { type: "string" } } },
+    description: "One outcome for one item Chrome already holds: { origin, target?, part, id, outcome: 'ok'|'miss', why? } -> { conf, quarantined }. A success raises its trust, a miss cuts it, and three misses over two days quarantine it (kept as 'used to work', dropped after 30 days). Or which rung of the page ladder worked on a page: { origin, target?, template, rung: 1..5, lowerFailed? } -> { rung: { r, n, startRung? } }; the count is the store's own (one per template per 30-minute visit, at most 255), and the page's card carries startRungs once a rung has worked twice.",
+    input: { type: "object", required: ["origin"], properties: { origin: { type: "string" }, target: { type: "string", enum: ["origin", "family"] },
+      part: { type: "string", enum: PARTS }, id: { type: "string" }, outcome: { type: "string", enum: ["ok", "miss"] }, why: { type: "string" },
+      template: { type: "string" }, rung: { type: "integer", minimum: 1, maximum: 5 }, lowerFailed: { type: "boolean" } } },
     run: async (i, { caller, ...meta } = {}) => {
       if (!chrome(caller, meta)) throw denied("site knowledge is for the person's own surfaces and Chrome's bridge");
       if (!keyOk(i.origin) || isFamilyKey(i.origin)) throw bad("origin is a scheme and host, like https://app.example");
       if (!(await setting("memory.site.learn"))) return { conf: null, learning: false };
       const own = load(i.origin);
+      if (i.rung != null) {
+        // Which rung of the page ladder worked on this page: the count is the store's, never a number the client sends.
+        if (!Number.isInteger(i.rung) || i.rung < 1 || i.rung > 5 || typeof i.template !== "string") throw bad("rung is 1 to 5 and names a template");
+        const tkey = i.target === "family" && own && own.family ? familyKey(own.family) : i.origin;
+        const cur = tkey === i.origin ? own : load(tkey);
+        if (!cur) return { rung: null };
+        const next = applyRung(cur, { template: i.template, rung: i.rung, lowerFailed: i.lowerFailed === true }, now());
+        if (next !== cur) { save(next); event(tkey, "rung", `r${i.rung}`, null); }
+        const t = Object.keys(next.rungs || {}).find(k => k === canonTemplate(String(i.template)));
+        const e = t ? next.rungs[t] : null;
+        return { rung: e ? { r: e.r, n: e.n, ...(e.n >= 2 ? { startRung: e.r } : {}) } : null };
+      }
+      if (typeof i.part !== "string" || typeof i.id !== "string" || (i.outcome !== "ok" && i.outcome !== "miss")) throw bad("report names part, id and outcome, or a template and a rung");
       const key = i.target === "family" && own && own.family ? familyKey(own.family) : i.origin;
       const rec = key === i.origin ? own : load(key);
       if (!rec) return { conf: null };
@@ -331,7 +345,7 @@ export function register(ctx, { denied }) {
       const all = Object.values(parts).flat();
       const events = /** @type {any[]} */ (db.prepare("SELECT at, kind, outcome FROM memory_site_events WHERE key = ? ORDER BY id DESC LIMIT 10").all(i.key)).map(e => ({ at: Number(e.at), kind: String(e.kind), ...(e.outcome ? { outcome: String(e.outcome) } : {}) }));
       return { key: rec.key, found: true, kind: isFamilyKey(rec.key) ? "family" : "origin", names: rec.names, family: rec.family, related: rec.related, rev: rec.rev, updated: rec.updated,
-        verified: all.map(x => x.verified).filter(Boolean).sort().pop() || null, used_to_work: all.filter(x => x.quarantined).length, events, parts };
+        verified: all.map(x => x.verified).filter(Boolean).sort().pop() || null, used_to_work: all.filter(x => x.quarantined).length, events, parts, rungs: Object.entries(rec.rungs || {}).map(([template, x]) => ({ template, r: x.r, n: x.n })) };
     },
   });
 
