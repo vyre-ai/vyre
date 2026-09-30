@@ -4,6 +4,8 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+- test: chaos R7 waits until the slow write is running in vyred (a chaos.started event) before it stops the daemon, instead of a fixed 100 ms sleep that let stop win the race on a loaded machine; the drive refusal test looks for a drive or whois call, not any tailscale call, since another module's late status --json landed in the window.
+
 - rungs (reviewer-2 LOWs): a replica's rung time is clamped to now, a change of rung is throttled to one per template per minute, and the count is documented as a hint for where to start, never trust.
 - site knowledge: rungs for capsule-sight's page ladder. The record holds `rungs: { <canonical page template>: { r: 1..5, n: 0..255, d: day, at } }`, at most 40 templates, integers only and never a string from the page; the store alone counts it (lib applyRung): one count per template per 30-minute visit window on its own clock, capped at 255, a different rung starts over (at 2 when the lower rungs were seen to fail). memory.site.report takes { origin, template, rung, lowerFailed? } beside its old { part, id, outcome } form; a patch from Chrome cannot set rungs (only a replica's sync can); the arrival card carries `startRungs` ({ template: r } once a rung has worked twice); union and mergeFamily fold them; memory.site.detail lists them.
 - eval (reviewer-2 notes): the recording re-reads the key's usage from OpenRouter every 20 calls (spend by anything else on the key is seen, and a read that fails stops the run), and scripts/provider-proof.mjs applies the same start guard (refuses at $14 or more, or when the usage cannot be read) and prints the usage before and after.
