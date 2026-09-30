@@ -87,7 +87,7 @@ const submit = form => Promise.all(form.dispatchEvent(new Event("submit")));
 
 test("renders every server and account with names only", async () => {
   const { el, api } = await render();
-  assert.deepEqual(api.calls.map(c => c.tool).sort(), ["github.accounts", "google.accounts", "mcp.servers", "vault.connections.list"], "opening makes four calls, and never google.test or github.connect");
+  assert.deepEqual(api.calls.map(c => c.tool).sort(), ["connectors.catalog", "github.accounts", "google.accounts", "mcp.servers", "vault.connections.list"], "opening makes five calls, and never google.test or github.connect");
 
   const t = text(server(el, "tracker"));
   assert.match(t, /tracker/);
@@ -768,9 +768,11 @@ test("Add Google account, service account: the admin block shows on the new row 
 
 test("follows mcp.* and google.* events, with no timer of its own", async () => {
   const { subs, api, cleanups } = await render();
-  assert.deepEqual(subs.map(s => s[0]).sort(), [...EVENTS].sort());
+  const mine = subs.filter(s => !String(s[0]).startsWith("connectors."));
+  assert.deepEqual(mine.map(s => s[0]).sort(), [...EVENTS].sort());
+  assert.equal(subs.filter(s => String(s[0]).startsWith("connectors.")).length, 3, "the catalog follows connectors.connected, connect-failed and disconnected");
   const before = api.of("mcp.servers").length;
-  for (const [, fn] of subs.slice(0, 3)) fn({});
+  for (const [, fn] of mine.slice(0, 3)) fn({});
   await new Promise(r => setTimeout(r, 460));
   assert.equal(api.of("mcp.servers").length, before + 1, "a burst of events is one reload");
   for (const f of cleanups) f();

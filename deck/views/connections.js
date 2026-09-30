@@ -40,6 +40,7 @@ import { withPresence, PresenceError } from "./memory-presence.js";
 import { showToast } from "../js/toast.js";
 import { since, plural } from "../js/fmt.js";
 import { statusMark, statusOf } from "../js/status-mark.js";
+import { drawCatalog } from "./connectors.js";
 
 /** Vault kinds that make sense for each way of using an item (ADR 0016, decision 2). */
 export const ITEM_KINDS = {
@@ -228,11 +229,13 @@ export async function drawConnections(el, ctx, deps = {}) {
 
   const top = h("div");
   const cardsBox = h("div", { class: "cn-cards" });
+  const catalogBox = h("div", { class: "cn-group" });
   const mcpBox = h("div", { class: "cn-group" });
   const googleBox = h("div", { class: "cn-group" });
   const githubBox = h("div", { class: "cn-group" });
   const formBox = h("div");
-  put(el, top, cardsBox, mcpBox, googleBox, githubBox, formBox);
+  put(el, top, cardsBox, catalogBox, mcpBox, googleBox, githubBox, formBox);
+  void drawCatalog(catalogBox, ctx, { attempt });
 
   async function load() {
     const [s, g, c, gh] = await Promise.all([attempt("mcp.servers"), attempt("google.accounts"), attempt("vault.connections.list"), attempt("github.accounts")]);

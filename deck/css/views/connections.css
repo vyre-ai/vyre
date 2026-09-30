@@ -118,3 +118,5 @@
   .cn-paste { flex-wrap: wrap; }
   .cn-gh-code { font-size: 24px; line-height: 30px; }
 }
+.cn-grow { flex: 1 1 auto; }
+.cn-flow { display: flex; flex-direction: column; gap: 8px; padding: 8px 0 4px; }

@@ -4,6 +4,10 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### settings: "Add a service", the connectors catalog
+
+- `deck/views/connectors.js`: the catalog of vendor-hosted connectors (`connectors.catalog`) grouped by `group`, above the existing MCP, Google and GitHub lists in Settings > Connections. Connect (or Add another) draws the box's step in place: an https sign-in page opened in a new tab with a paste box for a browser on another device (`connectors.connect.finish`), a hidden token field with the preset's own extra fields, a vault item picker for an OAuth client (read only at that step), or a plain "comes through another connector" line; Disconnect calls `connectors.disconnect`. It follows `connectors.connected`, `connect-failed` and `disconnected`, and shows one plain line on a box without the connectors module. Tests: `deck/test/connectors.test.js` (9); the connections tests expect the catalog call.
+
 #### deck: the Capsule is Lumen
 
 - Every user-facing mention of the Capsule in the Deck now says Lumen (settings, devices, pairing, onboarding, the surfaces list, asks answered from it, the sign-in line). Code identifiers (`capsule`, `capsule.js`, css classes, route and tool names) are unchanged. Vyre IQ is now Vyre Memory in the same places (the onboarding history step's question box and its limit line).
