@@ -534,7 +534,7 @@ export default {
       if (!fresh || fresh.state !== "running") return fresh; // already closed (or never started)
       db.prepare("UPDATE team_requests SET state = ?, result = ?, result_refs = ?, finished_at = ? WHERE id = ?")
         .run(status, result, JSON.stringify(result_refs), Date.now(), req.id);
-      ctx.events.emit("summon.finished", { request: req.id, teammate: req.teammate, project: req.project, status });
+      ctx.events.emit("summon.finished", { request: req.id, teammate: req.teammate, project: req.project, status, reply_to: req.reply_to || null });
       if (req.reply_to) {
         // A teammate wrote `result`, so it is untrusted text: a nonce (chosen here, after the
         // teammate has already written it, so it cannot be guessed and echoed back) makes the
