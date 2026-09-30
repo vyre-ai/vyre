@@ -118,6 +118,7 @@ test("egress guard: a browser-level rule blocks WebSockets and beacons of the ta
   assert.equal(dnr.rules[0].tab, 3);
   assert.ok(dnr.rules[0].initiatorHosts.includes("app.example.com") && dnr.rules[0].initiatorHosts.includes("services.example.com"), "own and known hosts scope the worker rule");
   assert.ok(dnr.rules[0].allowOrigins.includes("https://app.example.com") && dnr.rules[0].allowOrigins.includes("https://services.example.com"), "own and known origins stay allowed");
+  assert.ok(dnr.rules[0].wsHosts.includes("app.example.com") && !dnr.rules[0].wsHosts.includes("services.example.com"), "new sockets: the tab host only, not a known third party");
   assert.deepEqual(dnr.removed, [dnr.rules[0].id], "the rule is removed when the script ends");
   const k2 = egressRig(async () => {});
   await T(dt.ops["dev.console.eval"])({ tab: 3, expression: "/*vyre-test-script*/ 1", asked: true }, k2.ctx);
@@ -181,4 +182,18 @@ test("ctx.dnr.block: a block rule over every resource type but the main frame an
   const r2 = await miss.ctx.dnr.block({ tab: 7, allowOrigins: ["https://app.example.com"] });
   assert.equal(r2.ok, false, "a test request the rules do not block is not a guard");
   assert.equal(miss.st.rules.length, 0, "and nothing is left behind");
+});
+
+test("ctx.dnr.block: the first party's host gets ws and wss allow rules on any port, a third party's host gets none", async () => {
+  const { createCtx } = await import("./extension/lib/ctx.js");
+  const { createFakeChrome } = await import("./test-support/fake-chrome.js");
+  const chrome = createFakeChrome();
+  /** @type {any[]} */ let rules = [];
+  chrome.declarativeNetRequest = /** @type {any} */ ({ getSessionRules: async () => rules, updateSessionRules: async (/** @type {any} */ o) => { rules = rules.filter(r => !(o.removeRuleIds || []).includes(r.id)).concat(o.addRules || []); } });
+  const ctx = createCtx({ chrome });
+  const b = await ctx.dnr.block({ tab: 7, allowOrigins: ["https://app.example.com", "https://analytics.thirdparty.example"], wsHosts: ["app.example.com"] });
+  assert.equal(b.ok, true);
+  const ws = rules.filter(r => r.condition.resourceTypes && r.condition.resourceTypes.length === 1 && r.condition.resourceTypes[0] === "websocket").map(r => r.condition.urlFilter).sort();
+  assert.deepEqual(ws, ["|ws://app.example.com/", "|ws://app.example.com:", "|wss://app.example.com/", "|wss://app.example.com:"]);
+  assert.ok(!ws.some(u => /thirdparty/.test(u)), "no socket rule for a third party");
 });

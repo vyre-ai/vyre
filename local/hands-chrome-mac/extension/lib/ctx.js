@@ -94,7 +94,7 @@ export function createCtx({ chrome, emit = () => {} }) {
      * a hostname list would also allow other ports and every subdomain. `ok` is false when the browser could not set the rules (no API, or it refused).
      * @param {{ tab: number, allowOrigins?: string[], allowHosts?: string[] }} o @returns {Promise<{ id: number|null, ids: number[], ok: boolean, why?: string }>}
      */
-    async block({ tab, allowOrigins = [], initiatorHosts = [] }) {
+    async block({ tab, allowOrigins = [], initiatorHosts = [], wsHosts = [] }) {
       const api = dnrApi();
       if (!api) return { id: null, ids: [], ok: false, why: "this browser has no declarativeNetRequest" };
       const next = () => (ruleSeq >= RULE_MAX ? (ruleSeq = RULE_MIN) : ++ruleSeq);
@@ -110,6 +110,11 @@ export function createCtx({ chrome, emit = () => {} }) {
         rules.push({ id: first ? blockId : next(), priority: 1, action: { type: "block" }, condition: { ...scope, resourceTypes: TYPES } });
         first = false;
         for (const o of origins) rules.push({ id: next(), priority: 2, action: { type: "allow" }, condition: { ...scope, urlFilter: `|${o}/`, resourceTypes: TYPES } });
+      }
+      // A WebSocket handshake is ws:// or wss://, which the http(s) allow rules above do not match. The first party's host gets both, on any port (`|ws://host:` cannot match host.evil.com);
+      // a third party's host gets none, so a script's new socket to it is refused while the guard is up.
+      for (const h of [...new Set(wsHosts)].filter(h => /^[a-z0-9.\-]+$/i.test(h)).slice(0, 10)) {
+        for (const scheme of ["ws", "wss"]) for (const tail of ["/", ":"]) rules.push({ id: next(), priority: 2, action: { type: "allow" }, condition: { tabIds: [tab], urlFilter: `|${scheme}://${h}${tail}`, resourceTypes: ["websocket"] } });
       }
       const ids = rules.map(r => r.id);
       try { await api.updateSessionRules({ removeRuleIds: ids, addRules: rules }); } catch (e) { return { id: null, ids: [], ok: false, why: String(/** @type {Error} */ (e).message || e).slice(0, 160) }; }

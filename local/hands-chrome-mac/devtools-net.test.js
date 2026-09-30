@@ -382,11 +382,32 @@ test("egress guard: children start PAUSED while it is up; Fetch goes on BEFORE a
   k.respond["Fetch.enable"] = (/** @type {any} */ _p, /** @type {number} */ _t, /** @type {string|undefined} */ session) => { if (session === "S-F2") throw new Error("Timed out"); return {}; };
   k.push(1, "Target.attachedToTarget", { sessionId: "S-F2", waitingForDebugger: true, targetInfo: { targetId: "F2", type: "iframe", url: "https://b.example/x" } });
   await new Promise(r => setTimeout(r, 5));
-  assert.equal(k.sent.some(s => s.session === "S-F2" && s.method === "Runtime.runIfWaitingForDebugger"), false, "an unguarded child is never resumed mid-script");
+  const f2 = k.sent.filter(s => s.session === "S-F2").map(s => s.method === "Runtime.evaluate" ? "eval:" + s.params.expression : s.method);
+  assert.ok(f2.indexOf("eval:location.replace('about:blank')") >= 0 && f2.indexOf("Runtime.runIfWaitingForDebugger") > f2.indexOf("eval:location.replace('about:blank')"), "an unguarded child is emptied while it waits, and only then resumed: " + f2.join());
   assert.ok(k.sent.some(s => s.method === "Runtime.terminateExecution"), "the script is stopped");
   const out = await eg.stop();
   assert.ok(out.some((/** @type {any} */ o) => o.method === "GUARD" && o.stopped && /could not be guarded/.test(o.origin)), "the result says it was stopped");
   assert.equal(pauses[pauses.length - 1], false, "pausing is off again when the guard goes, which is what releases the waiting child");
+});
+
+test("egress guard: an unguardable child that cannot be emptied stays paused and is never handed to the fallback resume; the no-Fetch tolerance is for worker types only", async () => {
+  const k = makeCtx({ active: 1 });
+  const resumed = /** @type {string[]} */ ([]);
+  /** @type {any} */ (k.ctx.cdp).resumed = (/** @type {string} */ sid) => { resumed.push(sid); };
+  await net.ops["net.start"]({ tab: 1 }, k.ctx);
+  const eg = await egressGuard(k.ctx, 1);
+  k.respond["Fetch.enable"] = (/** @type {any} */ _p, /** @type {number} */ _t, /** @type {string|undefined} */ session) => { if (session === "S-X" || session === "S-W") throw new Error("'Fetch.enable' wasn't found"); return {}; };
+  k.respond["Runtime.evaluate"] = (/** @type {any} */ p, /** @type {number} */ _t, /** @type {string|undefined} */ session) => { if (session === "S-X" && /location\.replace/.test(String(p.expression))) throw new Error("no"); return { result: { value: [] } }; };
+  // a FRAME answering "no Fetch domain" is not a worker: it fails the guard, and with the evaluate refused it stays paused
+  k.push(1, "Target.attachedToTarget", { sessionId: "S-X", waitingForDebugger: true, targetInfo: { targetId: "X", type: "iframe", url: "https://b.example/x" } });
+  await new Promise(r => setTimeout(r, 10));
+  assert.equal(k.sent.some(s => s.session === "S-X" && s.method === "Runtime.runIfWaitingForDebugger"), false, "left paused");
+  assert.ok(resumed.includes("S-X"), "and dropped from the fallback's list");
+  k.push(1, "Target.attachedToTarget", { sessionId: "S-W", waitingForDebugger: true, targetInfo: { targetId: "W", type: "shared_worker", url: "blob:https://a.example/w" } });
+  await new Promise(r => setTimeout(r, 10));
+  assert.ok(k.sent.some(s => s.session === "S-W" && s.method === "Runtime.runIfWaitingForDebugger"), "a shared worker without the Fetch domain is resumed");
+  const out = await eg.stop();
+  assert.ok(out.some((/** @type {any} */ o) => o.method === "GUARD"), "the frame that could not be guarded is reported");
 });
 
 test("egress guard: the diagnostics name where each allowed origin came from, what the guard judged, and which sessions took Fetch; only completed unguarded requests count as 'the page talks to it'", async () => {

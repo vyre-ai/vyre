@@ -140,6 +140,8 @@ async function abortScript(ctx, t) {
 }
 
 /** Turn capture (and interception, if it is up) on for one child session. @param {any} ctx @param {TabNet} t @param {string} session */
+/** Target types that have no Fetch domain (the DNR rules cover them). A FRAME that answers the same way is not one of these: it fails the guard. */
+const WORKER_TYPES = /^(worker|shared_worker|service_worker)$/;
 async function enableSession(ctx, t, session) {
   try {
     // The guard first: a frame that attaches while a script runs must not have an unguarded moment between its capture and its interception.
@@ -147,7 +149,7 @@ async function enableSession(ctx, t, session) {
     // alone (measured: a Blob worker's fetch is blocked with Fetch off). Only that error is tolerated, and only here; any other failure still leaves the child paused and the script stopped.
     if (t.fetchOn && t.fetchPats) {
       try { await ctx.cdp.send(t.tab, "Fetch.enable", { patterns: t.fetchPats.map(urlPattern => ({ urlPattern, requestStage: "Request" })) }, session); }
-      catch (e) { if (!/'Fetch\.enable' wasn't found/.test(String(e && /** @type {any} */ (e).message || e))) throw e; const eg = /** @type {any} */ (t).egress; if (eg) eg.noFetchTargets = (eg.noFetchTargets || 0) + 1; }
+      catch (e) { if (!/'Fetch\.enable' wasn't found/.test(String(e && /** @type {any} */ (e).message || e)) || !WORKER_TYPES.test(String(t.sessionTypes?.get(session) || ""))) throw e; const eg = /** @type {any} */ (t).egress; if (eg) eg.noFetchTargets = (eg.noFetchTargets || 0) + 1; }
     }
     await ctx.cdp.send(t.tab, "Network.enable", NETWORK_ARGS, session);
     return true;
@@ -158,7 +160,7 @@ async function enableSession(ctx, t, session) {
 export function syncSessions(ctx, t) {
   const kids = typeof ctx.cdp.children === "function" ? ctx.cdp.children(t.tab) : [];
   const fresh = kids.filter((/** @type {any} */ k) => isGuardTarget(k) && !t.sessions.has(k.sessionId));
-  for (const k of fresh) t.sessions.add(k.sessionId);
+  for (const k of fresh) { t.sessions.add(k.sessionId); (t.sessionTypes || (t.sessionTypes = new Map())).set(k.sessionId, String(k.type || "")); }
   return Promise.all(fresh.map((/** @type {any} */ k) => enableSession(ctx, t, k.sessionId)));
 }
 
@@ -202,11 +204,28 @@ const keyOf = (session, id) => (session ? `${session}:${id}` : String(id));
 const docOrigin = u => { try { const o = new URL(String(u)).origin; return o === "null" ? "" : o; } catch { return ""; } };
 
 /** @param {any} ctx @param {TabNet} t @param {string} method @param {any} p @param {string} [session] */
+/**
+ * A child the guard could not reach is closed before it runs a line, not released: while it still waits for the debugger, `self.close()` (a worker) or `location.replace("about:blank")` (a frame)
+ * is evaluated in it and only then is it resumed, so its own code never runs. If that cannot be done it is LEFT paused (a paused target is inert; it is never handed to the fallback resume).
+ * @param {any} ctx @param {TabNet} t @param {string} sessionId @param {string} type @param {any} eg
+ */
+async function neutralize(ctx, t, sessionId, type, eg) {
+  const expression = WORKER_TYPES.test(type) ? "self.close()" : "location.replace('about:blank')";
+  try {
+    await ctx.cdp.send(t.tab, "Runtime.evaluate", { expression, returnByValue: true }, sessionId);
+    eg.neutralized = (eg.neutralized || 0) + 1;
+    try { await ctx.cdp.send(t.tab, "Runtime.runIfWaitingForDebugger", {}, sessionId); } catch { /* gone */ }
+  } catch {
+    eg.leftPaused = (eg.leftPaused || 0) + 1;
+  }
+  if (ctx.cdp.resumed) ctx.cdp.resumed(sessionId); // either way it is not the fallback's to resume
+}
 function handle(ctx, t, method, p, session) {
   if (method === "Target.attachedToTarget") {
     { const eg0 = /** @type {any} */ (t).egress; if (eg0) (eg0.attached || (eg0.attached = [])).length < 12 && eg0.attached.push({ type: String(p.targetInfo?.type || ""), url: String(p.targetInfo?.url || "").slice(0, 60), wait: !!p.waitingForDebugger, guardTarget: isGuardTarget(p.targetInfo), known: t.sessions.has(p.sessionId), from: session ? "child" : "top" }); }
     if (p.sessionId && isGuardTarget(p.targetInfo) && !t.sessions.has(p.sessionId)) {
       t.sessions.add(p.sessionId);
+      (t.sessionTypes || (t.sessionTypes = new Map())).set(p.sessionId, String(p.targetInfo?.type || ""));
       void (async () => {
         const ok = await enableSession(ctx, t, p.sessionId);
         const eg = /** @type {any} */ (t).egress;
@@ -214,6 +233,7 @@ function handle(ctx, t, method, p, session) {
           // A child that could not be guarded stays PAUSED while the script runs (that is the window it could leak in); the script is stopped now, and the child is released only after the guard is down.
           eg.failed = (eg.failed || 0) + 1; eg.unguarded = true;
           await abortScript(ctx, t);
+          if (p.waitingForDebugger) await neutralize(ctx, t, p.sessionId, String(p.targetInfo?.type || ""), eg);
         } else if (p.waitingForDebugger) {
           try { await ctx.cdp.send(t.tab, "Runtime.runIfWaitingForDebugger", {}, p.sessionId); } catch { /* gone */ }
           if (ctx.cdp.resumed) ctx.cdp.resumed(p.sessionId);
@@ -601,7 +621,9 @@ export async function egressGuard(ctx, tab, frame = null, opts = {}) {
   if (frame && frame.origin && !(t.denied && t.denied.has(frame.origin))) eg.first.add(frame.origin);
   if (eg.depth === 0 && ctx.dnr) {
     const hosts = [...eg.allowed].map(o => { try { return new URL(o).hostname; } catch { return ""; } }).filter(Boolean);
-    const b = await ctx.dnr.block({ tab, allowOrigins: [...eg.allowed], initiatorHosts: [...new Set(hosts)] });
+    // New WebSockets: only the FIRST PARTY's host (any port; ws and wss), never a third party's. Existing sockets are not touched by any of this.
+    const wsHosts = [...new Set([...eg.first].map(o => { try { return new URL(o).hostname; } catch { return ""; } }).filter(Boolean))];
+    const b = await ctx.dnr.block({ tab, allowOrigins: [...eg.allowed], initiatorHosts: [...new Set(hosts)], wsHosts });
     eg.rule = b && b.ids && b.ids.length ? b.ids : b && b.id != null ? b.id : null;
     eg.contained = b && b.ok ? "full" : "partial";
     eg.containedWhy = b && !b.ok ? b.why : undefined;
@@ -640,7 +662,7 @@ export async function egressGuard(ctx, tab, frame = null, opts = {}) {
       if (done) return [];
       done = true;
       const blocked = eg.blocked.splice(0);
-      /** @type {any} */ (t).lastGuard = { paused: eg.pausedCount || 0, blocked: blocked.slice(0, 8), decisions: (eg.decisions || []).slice(0, 40), failedSessions: eg.failedSessions || [], noFetch: !!eg.noFetch, rule: eg.rule, failed: eg.failed || 0, enableErrors: eg.enableErrors || [], noFetchTargets: eg.noFetchTargets || 0, swFrames: eg.swFrames || [], attached: eg.attached || [] }; // read back by the test harness only (net.list under trust.diag)
+      /** @type {any} */ (t).lastGuard = { paused: eg.pausedCount || 0, blocked: blocked.slice(0, 8), decisions: (eg.decisions || []).slice(0, 40), failedSessions: eg.failedSessions || [], noFetch: !!eg.noFetch, rule: eg.rule, failed: eg.failed || 0, enableErrors: eg.enableErrors || [], noFetchTargets: eg.noFetchTargets || 0, neutralized: eg.neutralized || 0, leftPaused: eg.leftPaused || 0, swFrames: eg.swFrames || [], attached: eg.attached || [] }; // read back by the test harness only (net.list under trust.diag)
       // A frame or worker that started during the script and could not be guarded is reported like a leak: it MAY have sent requests.
       if (eg.failed) blocked.push({ method: "GUARD", origin: "stopped: a frame could not be guarded", stopped: true });
       if (eg.pauseWhy && !blocked.length) blocked.push({ method: "GUARD", origin: eg.pauseWhy, leaked: true });
