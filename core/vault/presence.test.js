@@ -126,3 +126,16 @@ test("presence: reveal, copy and totp take the floor's session proof, except for
   }
   for (const n of ["vault.inject", "vault.fill.native", "vault.resolve"]) assert.ok(!tools.get(n).presence.session, `${n} never rides a session`);
 });
+
+test("presence: unlocking the vault with its password asks once; Touch ID, or no password at all, still asks for presence", async t => {
+  const { tools } = await recorded(t);
+  const { Presence } = await import("../presence/index.js");
+  const def = tools.get("vault.account.unlock");
+  const needs = input => Presence.prototype.required.call({}, "vault.account.unlock", def, input);
+  assert.equal(needs({ password: "fixture-password-000000" }), false, "the vault password is the proof");
+  assert.equal(needs({ method: "password", password: "fixture-password-000000" }), false);
+  assert.equal(needs({ method: "touchid" }), true, "Touch ID keeps its presence proof");
+  assert.equal(needs({ method: "touchid", password: "fixture-password-000000" }), true);
+  assert.equal(needs({}), true, "no password, no shortcut");
+  assert.equal(needs(undefined), true, "a listing of tools counts as asking");
+});

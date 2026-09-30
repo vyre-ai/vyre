@@ -207,9 +207,11 @@ export const SESSIONABLE = new Set(["vault.reveal", "vault.copy", "vault.totp", 
 /**
  * Floor tools whose owner may say, per input, that no proof is needed (`presence.when`). Without
  * that declaration they ask every time. gate.approve asks only for what goes out as the user:
- * sending, posting, paying or deleting outside (the no-nag rule).
+ * sending, posting, paying or deleting outside (the no-nag rule). vault.account.unlock asks only
+ * when no vault password comes with it (Touch ID): the password is the proof, so a Mac with no
+ * Touch ID reader is asked once, not for the Mac login and then the vault password.
  */
-export const NARROWABLE = new Set(["gate.approve"]);
+export const NARROWABLE = new Set(["gate.approve", "vault.account.unlock"]);
 
 /**
  * Who a session may prove a vault tool for: the Deck (locally, or as the owner over the tailnet),
