@@ -12,13 +12,15 @@
     },
     "./manifest": "./manifest.js",
     "./manifest.schema.json": "./manifest.schema.json",
-    "./testing": "./testing.js"
+    "./testing": "./testing.js",
+    "./conform": "./conform.js"
   },
   "files": [
     "index.d.ts",
     "manifest.js",
     "manifest.schema.json",
     "testing.js",
+    "conform.js",
     "README.md"
   ],
   "engines": {
