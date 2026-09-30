@@ -7,6 +7,10 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 #### tests: hands-chrome waits 30 s for Chrome's DevTools port
 
 - A hosted runner sometimes takes longer than 10 s to start headless Chrome ("Chrome did not print its DevTools port in time"). That flake predates the mock-keychain flags (it failed on work/native-core-0.2 runs 4932f92d and 3ff930c6, before 47dafe78 existed; the flags are the only change to that launch and drop nothing), so the wait is 30 s. A launch that is truly broken still fails when Chrome exits early.
+#### pwa: ask Vyre Memory from the phone's Find
+
+- Find's Memory scope (and All, when the words read as a question) gets an "Ask Vyre Memory" row. A tap calls `memory.ask { question }` once (no call while typing) and shows the answer with its sources, "Not sure yet." when Memory abstains, or its limit message. Words and the call are in `js/memory-ask.js`.
+
 #### pwa: the signed list is proven against a real served box
 
 - `test/daemon.test.js` starts a daemon and fetches every address `shell.json` names (273, the onboarding, passkey-claim and sign-in pages included) and checks each body against its listed hash, so nothing per-box can sit in a listed page's bytes. First-load trust, stated plainly: the very first load of a hosted origin (phone.vyre.run) has no worker yet, so that load is trusted on first use; the worker then checks every later load. A box's own address serves its own release files, and anyone who can change those files can change vyred, so vyred adds no serve-time check.

@@ -1089,3 +1089,5 @@ reviewer-2 MEDIUM (coverage) fixed: shell.json lists all served deck code (256 f
 Old-Safari brick risk (reviewer-2) fixed: unsupported Ed25519 refuses the install when a worker is active, else runs unchecked; the fetch handler enforces only when the install stored the hash list (test with a fake browser lacking Ed25519). /onboard and /person are covered (see above), not merely documented.
 
 Decision (reviewer-2, team-lead): no serve-time check in vyred. First-load trust is stated plainly: the first load of a hosted origin has no worker (trust on first use); the worker protects every later load. New daemon test proves all 273 listed addresses are byte-static on a real box.
+
+Step 9 done in a plain form: Find > Memory 'Ask Vyre Memory' row over memory.ask (non-streaming, one call per tap; memory.thinking events unused). app-design has not styled it (reuses the fd-askrow row). Step 11 (assistant.glance) not started: the tool is not on stage.
