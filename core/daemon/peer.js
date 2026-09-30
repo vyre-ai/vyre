@@ -189,6 +189,7 @@ const MAC_TABLE_TTL = 250;
  * "nobody above".
  * @param {number} pid @param {(pid: number) => { ppid: number, args: string } | null} look
  * @param {(pid: number) => boolean} [stop] a pid to stop at, counted as complete
+ * @returns {{ chain: { pid: number, args: string }[], complete: boolean, docker?: boolean }} `docker`: the walk ended at a process entered from outside a container (parent 0 or itself), the one gap that is not an unreadable link
  */
 export function ancestry(pid, look, stop = () => false) {
   const chain = [];
@@ -199,7 +200,7 @@ export function ancestry(pid, look, stop = () => false) {
     if (!p) return { chain, complete: false };
     chain.push({ pid: cur, args: p.args });
     // In a container, a process entered from outside (docker exec) has parent 0.
-    if (p.ppid === cur) return { chain, complete: false };
+    if (p.ppid === cur) return { chain, complete: false, docker: true };
     cur = p.ppid;
   }
   return { chain, complete: false };
@@ -306,7 +307,7 @@ function trustedLeader(p) {
  * ancestors are not the caller's. Unknown when the chain cannot be read to the top.
  * @param {number} pid
  * @param {{ threads?: number[], look?: (pid: number) => { ppid: number, args: string, pgid?: number, sid?: number } | null, exe?: (pid: number) => string | null, started?: (pid: number) => string | null, self?: number }} [o]
- * @returns {{ inside: boolean, by?: number, unknown?: boolean, server?: { exe: string, pid: number, started: string } }}
+ * @returns {{ inside: boolean, by?: number, unknown?: boolean, unreadable?: boolean, server?: { exe: string, pid: number, started: string } }}
  */
 export function insideClaude(pid, { threads = [], look = processTable(), exe = exePath, started = defaultStarted, uid = processUid, self = process.pid } = {}) {
   // A thread vyred spawned as its own process group (or session) keeps whatever it leaves behind:
@@ -314,9 +315,12 @@ export function insideClaude(pid, { threads = [], look = processTable(), exe = e
   const own = look(pid);
   if (own) for (const g of [own.pgid, own.sid]) if (g && g > 1 && g !== process.pid && threads.includes(g)) return { inside: true, by: g };
   const mine = new Set(ancestry(self, look).chain.map(p => p.pid));
-  const { chain, complete } = ancestry(pid, look, p => mine.has(p));
+  const { chain, complete, docker } = ancestry(pid, look, p => mine.has(p));
   for (const p of chain) if (threads.includes(p.pid) || claudeCommand(p.args)) return { inside: true, by: p.pid };
-  if (!complete) return { inside: false, unknown: true };
+  // A link that cannot be read (a pid missing from a fresh table, a peer that already exited, an
+  // empty or timed-out `ps`) is `unreadable`: the caller fails closed on it. Only a process entered
+  // from outside a container (docker exec) is a gap that says nothing about who is above.
+  if (!complete) return docker ? { inside: false, unknown: true } : { inside: false, unknown: true, unreadable: true };
   // The top of the chain, whose parent is init. An app, a terminal, sshd or a tmux server that
   // launchd, init or setsid started leads its own process group. One that does not was started
   // in a shell's group and outlived it (`nohup .. &`): whose shell that was, nobody can say now.

@@ -80,6 +80,24 @@ test("peer race: an unreadable peer that already exited is a model's; a live one
   assert.equal(live.unknown, true);
 });
 
+test("peer race: fail closed, an empty ps read or a pid a fresh table lacks is a model's, a docker exec is not", async () => {
+  const one = read => above({}, registry, "cli", { peerPid: async () => 710, delayMs: 1, alive: () => true, processTable: o => processTable({ ...o, platform: "darwin", read, cache: { at: 0, rows: null } }) });
+  const empty = await one(() => new Map());
+  assert.equal(empty.inside, true, "an empty or timed-out read");
+  assert.equal(empty.unreadable ?? empty.exited, true);
+  const missing = await one(() => rows(BASE));
+  assert.equal(missing.inside, true, "a pid missing from a fresh table");
+  // A chain that is whole and holds no claude is read to the top, not failed closed.
+  const person = await one(() => rows({ ...BASE, 700: { ppid: 1, args: "/bin/zsh -l" }, 710: { ppid: 700, args: "vyre call probe.mine" } }));
+  assert.equal(person.inside, false, JSON.stringify(person));
+  assert.equal(person.unreadable, undefined, "a whole chain is not an unreadable one");
+  assert.equal(person.exited, undefined);
+  // A docker exec (a process whose parent is itself) says nothing about who is above: not taken as a model's on that alone.
+  const docker = await above({}, registry, "cli", { peerPid: async () => 5, alive: () => true, delayMs: 1, processTable: () => pid => (pid === 5 ? { ppid: 5, args: "vyre call x" } : null) });
+  assert.equal(docker.inside, false);
+  assert.equal(docker.unknown, true);
+});
+
 test("peer race: only a definite answer is kept for the connection", async () => {
   const socket = {};
   let n = 0;
@@ -133,6 +151,13 @@ test("peer race: 200 forgers under a claude, in bursts, never reach a person's t
   const { d, dir } = await vyredWithProbe(t);
   for (let batch = 0; batch < 8; batch++) await Promise.all(Array.from({ length: 25 }, (_, i) => forger(dir, d.paths.socket, batch * 25 + i)));
   assert.equal(globalThis.__probeMineRan, 0, "a forged cli label from under a claude ran a person's tool");
+  // The control: the same call from a plain process outside any claude is the person's and runs.
+  const js = path.join(dir, "person.mjs");
+  fs.writeFileSync(js, `import http from "node:http";
+const req = http.request({ socketPath: ${JSON.stringify(d.paths.socket)}, path: "/v1/tools/probe.mine", method: "POST", headers: { "content-type": "application/json", "content-length": 2, "x-vyre-caller": "cli" } }, res => { res.resume(); res.on("end", () => process.exit(0)); });
+req.end("{}");`);
+  await new Promise(r => spawn(process.execPath, [js], { stdio: "ignore" }).on("close", r));
+  assert.equal(globalThis.__probeMineRan, 1, "the person's own cli still runs the tool");
 });
 
 test("peer race: a forger that sends and exits before the check is a model's, not the person's", { timeout: 120_000, skip: process.platform === "win32" }, async t => {

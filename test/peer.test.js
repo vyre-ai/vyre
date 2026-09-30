@@ -75,7 +75,7 @@ test("peer: under a claude, or under a thread vyred runs, is inside; a terminal,
     { inside: false, unknown: true, server: { exe: "/usr/bin/script", pid: 960, started: "t1" } }, "a fresh tty from `script` proves nothing: still judged on the binary, named as a server too");
   assert.deepEqual(insideClaude(921, o), { inside: true, by: 300 }, "a tmux a model started");
   assert.deepEqual(insideClaude(500, o), { inside: false }, "vyred itself");
-  assert.deepEqual(insideClaude(990, o), { inside: false, unknown: true }, "an unreadable chain is unknown, and vyred refuses it");
+  assert.deepEqual(insideClaude(990, o), { inside: false, unknown: true, unreadable: true }, "an unreadable chain is unknown and unreadable, and vyred takes it as a model's");
   // A claude above vyred (vyred and the caller both started from one session) is not the caller's.
   tree[400].ppid = 700;
   try { assert.deepEqual(insideClaude(210, { ...o, self: 500 }), { inside: false }); }

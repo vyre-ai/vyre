@@ -325,6 +325,9 @@ export async function above(socket, registry, caller, deps = {}) {
   // forger's fire-and-forget). A real CLI waits for its answer, so it is alive here. Gone counts
   // as a model's, never as the person's.
   if (result.unknown && !result.server && !(deps.alive || alive)(pid)) result = { inside: true, by: pid, exited: true };
+  // Fail closed: a chain still unreadable after a fresh table (a pid it lacks, an empty or timed-out
+  // ps read) is a model's, never the person's. The one gap left as it was is a docker exec.
+  else if (result.unreadable && !result.server) result = { inside: true, by: pid, unreadable: true };
   // The pin lives in vyred's own db (presence.capsulePin()), never a file the same uid a model's
   // shell runs as could write to directly.
   if (result.unknown && caller === "capsule" && registry.deps.presence
