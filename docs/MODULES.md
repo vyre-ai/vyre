@@ -189,7 +189,7 @@ module's data unless you pass `--data`.
 ## Every agent knows it at once
 
 When a module is added, turned on, updated or removed, Vyre rebuilds the capability manifest
-(`modules.capabilities`) from the manifests. Every agent, whatever its provider, sees the new tools
+(`modules.capabilities`) from the manifests. <!-- terms: ignore --> Every agent, whatever its provider, sees the new tools
 on its next turn: the Vyre MCP server announces the change, and the assistant's list of what it can
 do updates with it. An agent is only shown the tools it can actually use.
 

@@ -84,7 +84,6 @@ the deprecation rules (section 8). `x-` keys are free.
   "settings": [{ "key": "bakery.target", "label": "Daily target", "type": "int", "default": 40,
                  "levels": ["account"], "apply": "live" }],
   "needs": {
-    "tools": ["gate.request"],
     "credentials": [{ "id": "supplier", "kind": "api-credential", "provider": "flourco",
                       "purpose": "place flour orders" }],
     "network": ["api.flourco.example"],
