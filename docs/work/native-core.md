@@ -80,6 +80,22 @@ deck/css/deck.css span.vy-av rules; deck/css/views/agents.css, settings.css.
 - (done by app-design d9f6e445) avatar.md and ADR 0043 should say renaming an agent changes its blob
   (seed = name), and name projectBytes() as the project-tile seed-to-bytes rule for other surfaces.
 
+## 0.2 BUILD (started 2026-09-30, lead GO for non-visual work)
+Branch work/native-core-0.2 off origin/main 9381ab15 (stage/0.2 not cut yet; rebase onto it when
+the integrator cuts it). Plan: team/0.2/plans/native-core.md. Contracts: PLAN.md C14/C14b (caps),
+C21 (landing cards, ids only), C22 (shell contract), C25/P17 (settings on request), D2 (fixture
+names). Tests ONLY on GitHub hosted runners (push -> node.yml) or temp homes; never the test box or the live server;
+Mac tests only as vyretest. New UI (components, artifact card, @role flows, /quick) WAITS for
+app-design's contract and the user's OK.
+Order: (1) fixture-name leak fixes; (2) lib/caps-flags.js + deck/chat/core/provider-caps.js
+(pure: live caps for actions, snapshot for rendering, per-control state); (3) build-id check and
+one quiet reload; (4) shell contract: window.__vyreShell presentation only, vyre://open route
+parser + golden vectors in spec/, /chat?term= never acts from a link; (5) settings.set/reset for
+agents on the person's request (P17 match, fail closed until it exists), with by/prev recorded
+for Undo.
+Doing: (1).
+Next: (2)..(5). Needs: assistant+vault a P17 intent kind "setting" and a match call.
+
 ## Done
 - 2026-09-27 77faf1e3: core/settings (registry of ~70 keys, stores: settings_values, config.json,
   module tools, Claude Code files), settings.schema/get/set/reset/resolve, settings.changed,
