@@ -112,6 +112,16 @@ without WSL2). There, vyred could not tell the person from an agent on the same 
 if that is wanted later: run vyred inside WSL2 (Linux peer read works, the Linux path), or build a Windows
 peer read (`GetNamedPipeClientProcessId` plus a process-tree walk) with its own review. Neither is 0.2 scope.
 
+**Lumen (icon and name, unrun):** app icon is app-design's windows/lumen.ico (16 to 256), tray glyphs are
+the black and white tray icons, chosen by the taskbar theme (registry SystemUsesLightTheme, re-read every
+60 s). Window titles, toasts, tray tooltip and the first-run page say "Vyre Lumen". The installer and update
+file keep the plain name `Vyre_<version>_x64-setup.exe` on purpose: the updater and install script match it,
+and renaming it would orphan installed apps. Trademark check on the icons is pending (brand README): keep
+internal. The # picker is a Deck composer feature (deck/chat, native-core): the shell has nothing to add,
+it loads the same page. One dependency: the Deck does not read `window.__VYRE_SHELL__` anywhere yet (grep on
+stage 006da74a), so the Ctrl glyphs, the hidden browser-install card and the compact /quick variant the spec
+wants in the Windows panel are not switched on; that is native-core's side of C22.
+
 **RESUMED 2026-09-30 (relaunch).** Merged origin/work/stage-0.2 into work/windows (a merge, not a
 rebase: 32 old commits, six conflicts, all union-resolved; win32 fresh default is role local,
 machine device). Docs and config tests pass locally. Scaffolded the Tauri shell in
