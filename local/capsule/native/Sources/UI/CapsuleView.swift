@@ -197,7 +197,7 @@ struct CapsuleView: View {
                 if let depth = CapsuleLayout.answerDepth(model) {
                     if working { Pulse() }
                     AvatarView(model.replyAvatar, size: 18)
-                    Text("Vyre IQ").font(Theme.label).foregroundColor(Theme.ash)
+                    Text("Vyre Memory").font(Theme.label).foregroundColor(Theme.ash)
                     Text(depth).font(Theme.subtitle).foregroundColor(Theme.ash)
                 } else {
                     if working { Pulse() }
@@ -417,7 +417,7 @@ enum CapsuleLayout {
 
     /// The answer card's title: "Vyre IQ", or the @ target's (or queued session's) name.
     @MainActor static func answerTitle(_ m: CapsuleModel) -> String {
-        answerDepth(m) != nil ? "Vyre IQ" : m.replyWho
+        answerDepth(m) != nil ? "Vyre Memory" : m.replyWho
     }
 
     /// "quick" or "deeper" beside "Vyre IQ" (deeper on the model ⌘⏎ switches to); nil with an @

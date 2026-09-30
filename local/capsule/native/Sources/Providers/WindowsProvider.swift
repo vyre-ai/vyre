@@ -98,7 +98,7 @@ public final class WindowsProvider: ResultProvider, ImmediateResults, @unchecked
     /// Do it. Says in words what happened, never "done" for a move that did not happen.
     func apply(_ l: WindowLayout, front: FrontApp?) -> ActionOutcome {
         guard let front else { return .failed("There is no app in front to move.") }
-        guard allowed() else { return .failed("Allow Vyre under Privacy & Security, Accessibility, to move windows.") }
+        guard allowed() else { return .failed("Allow Lumen under Privacy & Security, Accessibility, to move windows.") }
         guard let win = access.focused(pid: front.pid) else { return .failed("\(front.name) has no window to move.") }
         let screens = access.screens
         guard let here = WindowLayout.screenIndex(of: win.frame, in: screens) else { return .failed("No screen to put it on.") }

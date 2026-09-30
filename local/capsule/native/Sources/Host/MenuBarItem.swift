@@ -98,7 +98,7 @@ final class MenuBarItem: NSObject, NSPopoverDelegate {
         self.health = health
         super.init()
         item.button?.image = CapsuleApp.menuBarMark()
-        item.button?.toolTip = "Vyre"
+        item.button?.toolTip = "Vyre Lumen"
         item.button?.target = self
         item.button?.action = #selector(clicked(_:))
         item.button?.sendAction(on: [.leftMouseUp, .rightMouseUp])
@@ -121,7 +121,7 @@ final class MenuBarItem: NSObject, NSPopoverDelegate {
 
     func paint() {
         dot.layer?.backgroundColor = health.dotColor.cgColor
-        item.button?.toolTip = "Vyre · \(health.summary)"
+        item.button?.toolTip = "Vyre Lumen · \(health.summary)"
     }
 
     @objc private func clicked(_ sender: NSStatusBarButton) {
@@ -167,7 +167,7 @@ struct MenuBarPopover: View {
         VStack(alignment: .leading, spacing: 0) {
             HStack(spacing: 10) {
                 MarkView(size: 20)
-                Text("Vyre").font(Theme.type(Tokens.TypeScale.read, .semibold)).foregroundColor(Theme.bone)
+                Text("Vyre Lumen").font(Theme.type(Tokens.TypeScale.read, .semibold)).foregroundColor(Theme.bone)
                 Spacer()
                 Circle().fill(Color(nsColor: health.dotColor)).frame(width: 7, height: 7)
             }
@@ -197,7 +197,7 @@ struct MenuBarPopover: View {
             }
             .padding(6)
             Rule()
-            PopoverButton(title: "Quit Vyre Capsule", hint: "⌘Q", action: quit).padding(6)
+            PopoverButton(title: "Quit Lumen", hint: "⌘Q", action: quit).padding(6)
         }
         .frame(width: 280)
         .background(Theme.carbon)

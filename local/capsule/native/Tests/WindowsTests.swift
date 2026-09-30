@@ -133,7 +133,7 @@ let windowsSuite = Suite("windows") { t in
             p.allowed = { true }
             t.eq(run(p, .leftHalf, front: nil), .failed("There is no app in front to move."))
             p.allowed = { false }
-            t.eq(run(p, .leftHalf), .failed("Allow Vyre under Privacy & Security, Accessibility, to move windows."))
+            t.eq(run(p, .leftHalf), .failed("Allow Lumen under Privacy & Security, Accessibility, to move windows."))
             t.eq(f.set.count, 0)
             p.allowed = { true }
             f.win = nil

@@ -36,7 +36,7 @@ let providerPeopleSuite = Suite("provider people") { t in
         t.eq(log.asked, 0, "typing never asks")
         let ctx = ActionContext(query: Query("ann lee"))
         t.eq(t.wait { await rows[0].actions[0].run(rows[0], ctx) },
-             .failed("Contacts are off for Vyre. Turn them on in System Settings, Privacy & Security, Contacts."))
+             .failed("Contacts are off for Lumen. Turn them on in System Settings, Privacy & Security, Contacts."))
         log.answer = true
         t.eq(t.wait { await rows[0].actions[0].run(rows[0], ctx) }, .said("Contacts will show here now."))
         t.eq(log.asked, 2)

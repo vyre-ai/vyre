@@ -35,7 +35,7 @@ enum Paster {
     nonisolated(unsafe) static var settle: UInt64 = 90_000_000
 
     static let copiedNote = "Copied. Press \u{2318}V to paste."
-    static let needAccess = "Copied. Allow Vyre under Privacy & Security, Accessibility, and Return will paste."
+    static let needAccess = "Copied. Allow Lumen under Privacy & Security, Accessibility, and Return will paste."
 
     // MARK: the setting
 

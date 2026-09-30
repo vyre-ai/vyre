@@ -4,6 +4,9 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+- Capsule: the app is named Lumen (Vyre Lumen in the menu bar and in System Settings), and Vyre IQ
+  is now Vyre Memory in every line the Capsule shows. File and bundle names do not change in
+  0.2. Public use of the Lumen name waits for the trademark check.
 - Capsule: move and size the window of the app in front from the box. Type "left half", "right
   half", "top right", "left third", "two thirds", "maximize", "center", "next display" or
   "restore" and press Return. It needs Accessibility, which macOS asks for once the first time;

@@ -34,7 +34,7 @@ extension CapsuleApp {
         let loud = model.desk.loud
         guard let bar = menuBar else { return }
         bar.item.button?.image = loud > 0 ? Self.menuBarMarkWaiting() : Self.menuBarMark()
-        bar.item.button?.toolTip = "Vyre · \(health.summary)" + (loud > 0 ? " · \(loud) waiting on you" : "")
+        bar.item.button?.toolTip = "Vyre Lumen · \(health.summary)" + (loud > 0 ? " · \(loud) waiting on you" : "")
     }
 
     /// "Waiting on you · N", which opens the list; "Nothing waiting" when nothing does.

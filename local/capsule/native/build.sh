@@ -62,8 +62,8 @@ case "$mode" in
 <plist version="1.0">
 <dict>
   <key>CFBundleIdentifier</key><string>sh.vyre.capsule</string>
-  <key>CFBundleName</key><string>Vyre</string>
-  <key>CFBundleDisplayName</key><string>Vyre</string>
+  <key>CFBundleName</key><string>Lumen</string>
+  <key>CFBundleDisplayName</key><string>Vyre Lumen</string>
   <key>CFBundleExecutable</key><string>Vyre</string>
   <key>CFBundlePackageType</key><string>APPL</string>
   <key>CFBundleShortVersionString</key><string>${version:-0.0.0}</string>
@@ -72,10 +72,10 @@ case "$mode" in
   <key>LSUIElement</key><true/>
   <key>NSHighResolutionCapable</key><true/>
   <key>NSSupportsAutomaticTermination</key><false/>
-  <key>NSContactsUsageDescription</key><string>Vyre lists the people you search for, on this Mac only.</string>
-  <key>NSCalendarsFullAccessUsageDescription</key><string>Vyre shows your events when you search for them, on this Mac only.</string>
-  <key>NSRemindersFullAccessUsageDescription</key><string>Vyre shows and adds reminders when you ask, on this Mac only.</string>
-  <key>NSAppleEventsUsageDescription</key><string>Vyre runs the Mac commands you pick, such as Empty Trash or Toggle Dark Mode.</string>
+  <key>NSContactsUsageDescription</key><string>Lumen lists the people you search for, on this Mac only.</string>
+  <key>NSCalendarsFullAccessUsageDescription</key><string>Lumen shows your events when you search for them, on this Mac only.</string>
+  <key>NSRemindersFullAccessUsageDescription</key><string>Lumen shows and adds reminders when you ask, on this Mac only.</string>
+  <key>NSAppleEventsUsageDescription</key><string>Lumen runs the Mac commands you pick, such as Empty Trash or Toggle Dark Mode.</string>
 PLIST
       find "$here/Sources/Extensions" -name Info.plist.part -exec cat {} \; 2>/dev/null
       printf '</dict>\n</plist>\n'

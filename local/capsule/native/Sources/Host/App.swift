@@ -132,7 +132,7 @@ final class CapsuleApp: NSObject, NSApplicationDelegate {
             guard let self else { return }
             self.model.line = out.words
             if !self.panel.isShown { self.panel.show(front: PanelController.frontApp()) }
-            if !out.enrolled { Notifier.shared.post(title: "Vyre", body: out.words) }
+            if !out.enrolled { Notifier.shared.post(title: "Lumen", body: out.words) }
         }
     }
 
@@ -175,7 +175,7 @@ final class CapsuleApp: NSObject, NSApplicationDelegate {
         link.isEnabled = false
         menu.addItem(link)
         menu.addItem(.separator())
-        menu.addItem(withTitle: "Quit Vyre Capsule", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
+        menu.addItem(withTitle: "Quit Lumen", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
         return menu
     }
 

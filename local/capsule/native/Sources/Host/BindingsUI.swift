@@ -95,7 +95,7 @@ extension CapsuleModel {
         Task { @MainActor in
             let out = await action.run(row, ActionContext(query: Query(row.title), frontIsBack: false))
             switch out {
-            case .close(let note): if let note { Notifier.shared.post(title: "Vyre", body: note) }
+            case .close(let note): if let note { Notifier.shared.post(title: "Lumen", body: note) }
             case .said(let s): if !s.isEmpty { Notifier.shared.post(title: row.title, body: s) }
             case .failed(let s): Notifier.shared.post(title: row.title, body: s)
             case .replaceQuery(let s): onShow?(s)
