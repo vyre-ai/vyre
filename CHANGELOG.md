@@ -4,6 +4,90 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### fix: Settings did not load (a missing served module)
+
+- `deck/js/add-pc-card.js` (Settings, Add a Windows PC) imports `relay/client/seedwords.js` and `words.js`, which vyred did not serve, so the browser's module import failed and the Settings page stayed on "This page loads when your box answers." (it blanked the docs-shots settings-connections and settings-devices shots). The daemon's relay-client allowlist now includes both. A new daemon test walks every module the Deck imports from outside `deck/` and fetches each from a running vyred, so the next one fails in CI, not in a browser.
+
+#### chat: a queued-message edit always sends `pasted`
+
+- `threads.edit` now carries `pasted` every time, `[]` when nothing was pasted: sessions hears an edited queued message only when the key is an array (an absent key counts the whole edit as not typed). `threads.send` still leaves the key out when nothing was pasted.
+
+#### settings: hidden keys, and the cap over every provider
+
+- The generic Settings groups skip a key its module marks `hidden: true` (iq hides every `spend.*` key: Settings, Spend is their one screen). Settings, Spend and the spend-cap line also handle provider `all`, the cap over every provider together (`spend.summary`'s `all`, `spend.raise {provider: "all"}`).
+
+#### chat and settings: the spend cap
+
+- `deck/chat/cards/spend-capped.js`: when iq's `spend.capped` event is for this thread, a quiet row under the paused thread shows the box's line and a Raise it button that opens one amount field (prefilled with the suggested cap). Raise calls `spend.raise {provider, to}` (or `{provider, off: true}` for No cap); the provider comes from the event, the amount from the field, and the tool is fixed, never the one the event names.
+- Settings, Spend (`deck/views/settings-spend.js`): today's spend (UTC) per provider against its daily cap from `spend.summary`, with Change cap (`spend.raise`). One plain line on a box with no spend module. `spend.summary` and `spend.raise` are optional in the deck contract test until iq merges.
+
+#### chat: a failed send or a queued message taken back keeps its own span map
+
+- The composer remembers, per sent message, the pasted spans and the tags it carried. A failed send, or a queued message taken back for editing, puts the words back with that map: the typed `#tags` (and their chips) survive, pasted text stays marked, and the edit (`threads.edit`) carries the same `pasted` and `mentions`. A draft restored across a reload has no map and stays all not-typed. `paste-spans` gains `mark(start, end)`; the tag picker gains `restore(list)`.
+
+#### app: the Expo typecheck
+
+- `ToolItem` in `deck/chat/core/session-state.js` declares `render?: Record<string, any>` (the card payload a tool result carries), so `apps/app`'s `tsc --noEmit` passes again (it failed at the `item.render` assignment). Run locally with `npm ci && npm run typecheck` in `apps/app`: clean.
+
+#### chat: text is typed only when a keystroke says so (reviewer-2 M-N3)
+
+- The pasted-span default is flipped: an `input` with no `inputType`, a restored draft, a recalled message and a dictation replacement are not typing and mark their stretch; the composer's own deliberate insertions (a picked command, file, suggestion, tag or the @role near-miss) announce themselves as the person's own. The new-session sheet follows the same rule.
+
+#### deck: the Windows shell contract (C22): window.__VYRE_SHELL__, /quick
+
+- `deck/js/platform.js` reads `window.__VYRE_SHELL__ = { platform }` (the Windows app injects it frozen before any page script; the older `__vyreShell = { os }` still reads). Inside the shell the key glyphs are Ctrl (every hard-coded Cmd-Enter hint now comes from `kbd()`), the browser "Install" step is hidden, and `installed()` is true. It only changes presentation and never grants anything.
+- `/quick` (`deck/views/quick.js`): the hotkey panel's compact ask, the assistant's current thread drawn small with its recent answer above one composer and an "Open in full" link, no rail. A link to it opens the thread and waits for words; nothing acts on load.
+
+#### chat: the # tag picker in the new-session sheet
+
+- The `#` picker, its chips and the pasted-span tracking are one component now (`deck/chat/tag-picker.js`), used by the composer and by the new-session sheet, where the first message is where `#` is used most. A pick shows the same chip; Start sends `mentions: [{kind, id, name}]` and `pasted` on both `threads.start` and `agents.ask`. Esc closes the picker before it closes the sheet. More paste tests: a multi-line CRLF paste, undo of a paste, and a drag and drop move.
+
+#### chat: the composer sends the pasted spans (reviewer-2 M-P2)
+
+- `deck/chat/core/paste-spans.js` tracks which stretches of the draft were pasted, dropped, redone or replaced (the input's `inputType`, or a paste event, marks the stretch the edit's diff found, so no string is compared and a Windows `\r\n` paste is marked like any other; then the offsets of every later edit: typing before moves a span, typing inside keeps the whole stretch marked, deleting drops it). `threads.send` carries them as `pasted: [string]` and the new-session sheet sends them on `threads.start` and `agents.ask`, so a `#Name` inside pasted text never resolves as a tag; only a picked chip can. No `pasted` key when nothing was pasted. Tests: `paste-spans.test.js` (5), two in `composer-vault.test.js`, one in `newsession.test.js`.
+
+#### settings: "Add a service", the connectors catalog
+
+- `deck/views/connectors.js`: the catalog of vendor-hosted connectors (`connectors.catalog`) grouped by `group`, above the existing MCP, Google and GitHub lists in Settings > Connections. Connect (or Add another) draws the box's step in place: an https sign-in page opened in a new tab with a paste box for a browser on another device (`connectors.connect.finish`), a hidden token field with the preset's own extra fields, a vault item picker for an OAuth client (read only at that step), or a plain "comes through another connector" line; Disconnect calls `connectors.disconnect`. It follows `connectors.connected`, `connect-failed` and `disconnected`, and shows one plain line on a box without the connectors module. Tests: `deck/test/connectors.test.js` (9); the connections tests expect the catalog call.
+
+#### deck: the Capsule is Lumen
+
+- Every user-facing mention of the Capsule in the Deck now says Lumen (settings, devices, pairing, onboarding, the surfaces list, asks answered from it, the sign-in line). Code identifiers (`capsule`, `capsule.js`, css classes, route and tool names) are unchanged. Vyre IQ is now Vyre Memory in the same places (the onboarding history step's question box and its limit line).
+
+#### chat: "#" is one universal tag; "/remember" saves a memory; artifacts render from /v1/artifacts/content
+
+- `#` (anywhere, first character included) opens one picker over everything that can be tagged, through `mentions.search {q, limit}` (vault items, artifacts, files, repos, projects; names and hints only), grouped by kind. A pick writes `#Name` into the words and shows a chip that carries `{kind, id}`; the turn goes out with `mentions: [{kind, id, name}]` for the tags still in the text. The "using #name" line for vault uses stays. The menu gains group headings (`row.group`).
+- "Save a memory" is `/remember <note>` (a command in the list, and the composer's memory mode); `#` no longer means memory anywhere.
+- `renderSrc` in `cards/artifact.js` is now `/v1/artifacts/content?id=&v=`.
+
+- test: federation-reads grants the harness agent juno its project (an agent with no grant is refused), and asserts the refusal for one with none.
+
+- module-sdk: toolEntries leaves target, projectArg and cwdArg out of an entry unless the manifest sets them, so the v1 entry shape is unchanged.
+
+- A daemon-level test that no module does work after vyred stops: the full registry starts, stops (after its startup work, at once, mid-startup, and with agents missing), then runs two seconds more with the store closed; any `database is not open`, unhandled rejection or uncaught exception fails it and names the module from its stack path. A control module that writes after stop proves the check catches and names it (`test/stop-quiet.test.js`). It found no other module on this machine's config.
+- The projects module's `stop()` now ends the access auto-seed's retries and waits (two seconds at most) for the step it is in; before, the seed kept running and writing after the registry stopped and its database closed ("database is not open"), which a test worked around with a sleep (`core/projects/index.js`).
+- A folder an agent names (cwdArg) is judged on its real path and the tool runs on it: `projects.of` answers the canonical `folder` (symlinks and `..` resolved), and the registry replaces the checked field with it. A `..` path or a symlink into another project is refused (`core/projects/index.js`, `core/modules/index.js`, `core/projects/cwd-grant.test.js`; reviewer-2).
+- Project grants, round two (reviewer-2): a tool entry's `cwdArg` names the input field holding a folder; for an agent the registry maps it to its project (`projects.of`) and refuses a project it is not granted, and a folder in no project for an agent with an explicit project list (a wildcard agent and the assistant are not scoped to project folders). A named project is now rewritten to the canonical slug that was authorized (a display name that equals another project's slug can no longer pass the check and resolve to the other project). `cwdArg` declared on harness.brief, enrich, rules, learn and stop, learn.check, projects.of and context, recall.sessions and threads.start (and `projectArg` on threads.start and appearance.resolve). A hygiene test fails when an agent-reachable tool with a project, projects or cwd input declares neither (`core/modules/index.js`, `test/project-arg.test.js`).
+- Project grants, fail closed (lead, github): an agent with no recorded grant, or one projects.reach cannot answer for, is refused any named project and gets an empty `meta.reach`, never the whole list (the daemon already gives a named agent with no row `granted: []`, never `*`); `projectArg` is also declared on watchers.items and harness.enrich; the asked gate's target call gets the agent's `granted` in its meta (`core/modules/index.js`). A `needs` frame from a Capsule view or action now carries `need: { kind: "credential", need | item, module?, label? }` from the tool's needs_credential detail, so Lumen opens "Add your key" directly (`local/capsule/views.js`).
+- Project grants enforced once, in the registry: a tool entry may name `projectArg` (an input field, or a list of them), and an
+  agent's call for a project it is not granted is refused with `not_found` before the tool runs, through `projects.reach` (the owner's
+  revokes included); the tool gets `meta.reach` for listings. Declared on the agent-callable tools that take a project: goals.list and
+  set, planner.list, add, update and calendar.create, projects.threads, add-threads, remove-threads and context, team.ask and list,
+  sessions.limits.get, mode.get and prompt.preview, settings.get, snapshot and request, harness.brief, gate.held and request, and the memory
+  tools (`core/modules/index.js`, the manifest schema and checker, the module.json files). Found by the github audit (reviewer-2).
+- The asked-tool check now sits inside the once-per-Idempotency-Key run, so a retry that only replays a stored answer never asks vault or spends an ask; a `not_asked` answer is not stored, so the retry after the person's yes runs (`core/modules/index.js`, `core/modules/idempotency.js`).
+- The asked-tool check (reviewer-2): the match now passes `consume: true`, so one "yes" is spent by one act; the check is the last gate before the tool runs (after input validation, the rules and presence), so a call refused earlier never spends the ask; the target and thread-lineage calls get two seconds each and late is `not_asked` (`core/modules/index.js`).
+- An asked tool may carry `target` (built in only): an internal tool of its module that answers what one call acts on. The registry asks it before `vault.said.match` and passes its answer as the whole `to` of the match (github answers `github.project.pr.merge:alex/app#7`), so the person's yes binds one pull request, not the whole tool; an error, an empty answer or one later than two seconds is `not_asked` (`core/modules/index.js`, the manifest checker and schema; github's ask).
+- `memory.prompt` for a Codex or Grok prompt now says whose thread it is, as iq's new contract needs: an agent's thread passes `agent` (only that agent's grant), the person's own thread (no agent, a chat, project or capsule thread) passes `person: true`, and any other thread (a job, a helper) passes neither and so gets no memory. Both come from the thread's record, never from the session (`core/switchboard/index.js`).
+- An agent limited to certain projects can no longer read or act on another project's GitHub repo by naming it; the project reads as if it did not exist.
+
+- A person's own "open a PR", "merge it" or "review this PR" becomes an `act_out` intent at `threads.send` and on `threads.start`'s first prompt, through the assistant's `prIntents` (`lib/said/pr.js`, copied here identically until assistant lands): it keeps only real asks (no questions, conditions, negations or standing permissions), binds each to github's composite key (`github.act.target`: `github.project.pr.merge:alex/app#7`) for the thread's project and one PR, and the switchboard records it as the person with `vault.said.record`. The thread's own PR is `github.session.pr`'s answer, used only when it is exactly one; pasted spans are removed first (`core/switchboard/index.js` `hearActs`). Two tests use the real vault and skip until vault lists `module:threads` as a recorder and resolver.
+- said: `prIntents` records act_out intents for "open a PR", "merge it" and "review this PR", bound to the exact key github.act.target answers with. Nothing is recorded when the PR or branch is ambiguous or the sentence carries a condition (if, when, once, unless, after, before, until, only, as long as, provided, assuming). A plain ask covers 15 minutes.
+
+- `assistant.welcome`: the first chat message after setup, {text, cards}, built from onboard.status with no model call. A card shows only while its step is open, and carries an id (and href for links), never a tool.
+- `#` tags on `threads.start` and `agents.ask`, with `threads.send`'s trust: `mentions: [{kind, id, name}]` and `pasted: [span]` are honoured only from a person's own surface. `threads.start` hears the first prompt as any person's turn (said row, tags resolved for the new thread, the notes beside the prompt for the model only); from a model, a module or a guest the tags are dropped. `agents.ask` from a person with tags sends the words on as that person (`core/modules` `CALL_AS.agents`: person labels only, and only to `threads.send`), so threads.send hears them; any other caller's tags are dropped (`core/switchboard/index.js`, `core/agents/index.js`, `core/modules/index.js`).
+- GitHub reads for you and your agents: where a pull request stands (checks, reviews, ready to merge), its comments, and a project's issues. Text written by others is marked as theirs.
+
 - Setup page, B3 backstop: `names.status` is now on the setup channel's tool list (read only: the name, its address, the phase and the certificate), and the page asks it about once a second while the address is not serving, so a missed event can never leave the page on "Publishing your address"; `serving` or `failed` (with the box's reason) from it advances the page beside the certificate events. A box without the tool is left to the events. B4 has a test that a sign-in link that is not Tailscale's clears "Getting the link" and shows the refusal with the Connect button.
 - Setup page fix (e2e2's B3): after the node joins, the address goes from dns to certificate to serving on the box without a `tailscale.changed`, so the page stayed on "Publishing your address". It now also reads the box's `certificate.issued` and `certificate.failed` events (only this box's own name, from the start of the list so an early one is not missed), shows serving when the certificate is issued and the box's reason when it failed, and stops watching at either.
 - The GitHub CLI ships with Vyre, so "Sign in with GitHub" (which runs the real `gh auth login`) works on a real box: the box image pins gh 2.102.0 and checks each architecture's archive against its published sum before unpacking it (`/usr/local/bin/gh`, found as plain `gh`), and CI runs `gh --version` in the built image and requires the pinned version. The Mac server installer no longer installs gh with Homebrew: it uses a gh already on PATH, else the same pinned version downloaded into Vyre's own bin and checked against its sum. `test/box-gh.test.js` keeps the two pins on one version.
