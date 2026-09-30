@@ -75,7 +75,7 @@ test("cloneRepo: only https is reachable - a local file:// repo (or any other tr
   plainGit(src, ["commit", "-q", "-m", "first"]);
 
   await assert.rejects(
-    cloneRepo({ projectsDir, name: "harlow", url: src, token: "not-a-real-token" }),
+    cloneRepo({ projectsDir, name: "harlow", url: src, token: "not-a-real-token", fullName: "alex/harlow", base: DEAD }),
     /clone failed/,
   );
   assert.ok(!fs.existsSync(path.join(projectsDir, "harlow")), "a refused clone leaves no folder behind");
@@ -319,6 +319,8 @@ test("scanOutgoing: finds a known secret shape only in the ADDED lines of a bran
   assert.equal(await scanOutgoing({ repoDir, branch: "vyre/s2", defaultBranch: "main" }), null);
 });
 
+const DEAD = "https://127.0.0.1:9"; // nothing listens: a push that gets past every check fails fast, offline
+
 test("pushSession: refuses on a secret hit before ever attempting the network push, and the override skips the scan", async t => {
   const repoDir = makeClonedRepo(t);
   const w = await worktreeAdd({ repoDir, session: "secret1", defaultBranch: "main" });
@@ -326,7 +328,7 @@ test("pushSession: refuses on a secret hit before ever attempting the network pu
   plainGit(w.path, ["add", "keys.txt"]);
   plainGit(w.path, ["commit", "-q", "-m", "oops"]);
 
-  const blocked = await pushSession({ repoDir, session: "secret1", defaultBranch: "main", token: "not-a-real-token" });
+  const blocked = await pushSession({ repoDir, session: "secret1", defaultBranch: "main", token: "not-a-real-token", fullName: "alex/harlow", base: DEAD });
   assert.equal(blocked.pushed, false);
   assert.equal(blocked.blocked, "secret");
   assert.equal(blocked.pattern, "GitHub token");
@@ -337,7 +339,7 @@ test("pushSession: refuses on a secret hit before ever attempting the network pu
   // own cloneRepo test proves the same thing for clone; makeClonedRepo's origin is a plain local
   // path, so this proves the restriction holds for push too, without needing a real network call).
   await assert.rejects(
-    pushSession({ repoDir, session: "secret1", defaultBranch: "main", token: "not-a-real-token", allowSecret: true }),
+    pushSession({ repoDir, session: "secret1", defaultBranch: "main", token: "not-a-real-token", fullName: "alex/harlow", base: DEAD, allowSecret: true }),
     /push failed/,
   );
 });
@@ -350,7 +352,7 @@ test("pushSession: a session with nothing secret-shaped still hits the same http
   plainGit(w.path, ["commit", "-q", "-m", "notes"]);
 
   await assert.rejects(
-    pushSession({ repoDir, session: "clean1", defaultBranch: "main", token: "not-a-real-token" }),
+    pushSession({ repoDir, session: "clean1", defaultBranch: "main", token: "not-a-real-token", fullName: "alex/harlow", base: DEAD }),
     /push failed/,
   );
 });
@@ -360,7 +362,30 @@ test("pushSession: a hostile session id can't push anything but its own sanitize
   // No worktree/branch exists for this id at all (safeSegment already proves the sanitizing
   // itself elsewhere) - the push fails outright, never reaching or affecting any other branch.
   await assert.rejects(
-    pushSession({ repoDir, session: "../../etc/passwd", defaultBranch: "main", token: "not-a-real-token" }),
+    pushSession({ repoDir, session: "../../etc/passwd", defaultBranch: "main", token: "not-a-real-token", fullName: "alex/harlow", base: DEAD }),
     /push failed/,
   );
+});
+
+test("pushSession: the destination is the project's recorded repo, never .git/config - a tampered origin is never contacted, and a url rewrite rule refuses before the token is handed over", async t => {
+  const repoDir = makeClonedRepo(t);
+  const evil = fs.mkdtempSync(path.join(os.tmpdir(), "vyre-gh-evil-"));
+  t.after(() => fs.rmSync(evil, { recursive: true, force: true }));
+  plainGit(evil, ["init", "-q", "--bare"]);
+  const w = await worktreeAdd({ repoDir, session: "tamper1", defaultBranch: "main" });
+  fs.writeFileSync(path.join(w.path, "n.md"), "x\n");
+  plainGit(w.path, ["add", "n.md"]);
+  plainGit(w.path, ["commit", "-q", "-m", "n"]);
+  // An agent's shell rewrote origin and added a push url.
+  plainGit(repoDir, ["remote", "set-url", "origin", evil]);
+  plainGit(repoDir, ["config", "remote.origin.pushurl", evil]);
+  await assert.rejects(pushSession({ repoDir, session: "tamper1", defaultBranch: "main", token: "not-a-real-token", fullName: "alex/harlow", base: DEAD }), /push failed/);
+  assert.equal(plainGit(evil, ["for-each-ref"]).trim(), "", "the rewritten origin was never pushed to");
+  // insteadOf / pushInsteadOf rules that would catch the real address are refused outright.
+  for (const key of ["insteadOf", "pushInsteadOf"]) {
+    plainGit(repoDir, ["config", `url.${evil}/.${key}`, `${DEAD}/`]);
+    await assert.rejects(pushSession({ repoDir, session: "tamper1", defaultBranch: "main", token: "not-a-real-token", fullName: "alex/harlow", base: DEAD }), e => e.code === "remote_changed");
+    plainGit(repoDir, ["config", "--unset", `url.${evil}/.${key}`]);
+  }
+  await assert.rejects(pushSession({ repoDir, session: "tamper1", defaultBranch: "main", token: "t", fullName: "../evil", base: DEAD }), e => e.code === "bad_input");
 });

@@ -412,14 +412,17 @@ export default {
       description: "Push a session's own branch, and only that branch, to the same name on the project's primary GitHub repo (github_projects, not a workspace repo - only the account recorded there is ever used, never `.git/config`, which an agent's own shell can edit). Never force, refuses a non-fast-forward remote rather than overwrite it, and scans the outgoing commits for a known secret shape first, refusing with the file and line on a hit; pass allow_secret: true (the person's own \"push it anyway\") to push past that specific check once. People and their agents; a model caller pushes only its own session, never another one.",
       input: obj({ project: str, session: str, allow_secret: { type: "boolean" } }, ["project", "session"]),
       callers: PEOPLE_AND_AGENTS,
-      run: async ({ project, session, allow_secret }) => {
+      run: async ({ project, session, allow_secret }, meta = {}) => {
+        // The secret scan is the person's to override: their own call, or an agent's call the Gate
+        // marked asked (their own words said "push it anyway"). An agent alone cannot lift it.
+        const override = Boolean(allow_secret) && (!isModelCaller(meta) || Boolean(meta.asked));
         const repo = projects.get(project);
         if (!repo) throw fail(`${project} has no primary GitHub repo to push to (a workspace repo added with github.project.add-repo isn't pushed through this tool yet)`, "not_found");
         const acct = accounts.get(repo.account);
         if (!acct) throw fail(`the account that made this project (${repo.account}) isn't connected anymore; reconnect it`, "no_account");
         const token = await ctx.vault.fetch(acct.item, { field: "token" });
-        const out = await pushSession({ repoDir: repo.home, session, defaultBranch: repo.default_branch, token, allowSecret: Boolean(allow_secret) });
-        if (out.blocked === "secret") throw fail(`a ${out.pattern} was found in the outgoing commits, at ${out.file}:${out.line}; push again with allow_secret: true if this is really meant to go`, "secret_found", out);
+        const out = await pushSession({ repoDir: repo.home, session, defaultBranch: repo.default_branch, token, fullName: repo.full_name, allowSecret: override });
+        if (out.blocked === "secret") throw fail(`a ${out.pattern} was found in the outgoing commits, at ${out.file}:${out.line}; if this is really meant to go, say "push it anyway" and it will be pushed`, "secret_found", out);
         if (out.blocked === "non_fast_forward") throw fail(`the remote branch has commits this one doesn't; pull or rebase before pushing: ${out.detail}`, "non_fast_forward");
         return out;
       },
@@ -438,9 +441,9 @@ export default {
       return { token, full_name: repo.full_name, login: acct.login };
     }
     /** Outward writes: a person's own call always runs; an agent's only when the Gate marked it asked (meta.asked, from the person's own words). */
+    function isModelCaller(meta = {}) { return String(meta.caller || "").startsWith("mcp"); }
     function requireAsked(tool, meta = {}) {
-      const caller = String(meta.caller || "");
-      if (!caller.startsWith("mcp")) return;
+      if (!isModelCaller(meta)) return;
       if (!meta.asked) throw fail(`${tool} changes the pull request on GitHub, so it runs when you ask for it; ask and it will go`, "held");
     }
     const prErr = (e, target) => {

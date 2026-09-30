@@ -299,23 +299,58 @@ export async function scanOutgoing({ repoDir, branch, defaultBranch }) {
 }
 
 /**
- * Push a session's own branch, and only that branch, to the same name on origin - an explicit
- * refspec, never `--force` (not even with-lease), and never anything but this one branch. Runs
- * `scanOutgoing` first and refuses on a hit unless `allowSecret` (the person's own override, ADR
- * 0041 addendum: "push it anyway" is the approval, no presence needed - reviewer's M8). A
- * non-fast-forward remote (someone else pushed to the same branch) is reported, never overwritten
- * (reviewer's M2). fd-3 token only, the same isolation `cloneRepo` already has (reviewer's H0a).
- * @param {{ repoDir: string, session: string, defaultBranch: string, token: string, allowSecret?: boolean }} p
+ * Where a token-carrying push may go: the repo's own repo on github.com, built from Vyre's own
+ * record (`fullName`, from the project's github_projects row), never read from `.git/config`,
+ * which an agent's shell can edit (`remote set-url`, `pushurl`, `url.<x>.insteadOf`). Config that
+ * could still redirect or observe the connection is refused, or overridden on the command line
+ * (command-line settings beat the repo's own), before the token is handed over.
+ * @param {string} repoDir @param {string} url
+ * @returns {Promise<string | null>} why not, or null when the destination is exactly `url`
  */
-export async function pushSession({ repoDir, session, defaultBranch, token, allowSecret = false }) {
+async function pushTargetProblem(repoDir, url) {
+  const rules = await gitAsync(repoDir, ["config", "--get-regexp", "^url\\..*\\.(insteadof|pushinsteadof)$"]);
+  for (const line of rules.ok ? rules.stdout.split("\n").filter(Boolean) : []) {
+    const value = line.slice(line.indexOf(" ") + 1);
+    if (value && url.startsWith(value)) return "this repo's git config rewrites github.com addresses (url.*.insteadOf), so the token would not go where GitHub says";
+  }
+  const got = await gitAsync(repoDir, ["ls-remote", "--get-url", url]);
+  if (!got.ok || got.stdout.trim() !== url) return "the push address does not resolve to the project's own GitHub repo";
+  return null;
+}
+
+/** Config that could send a github.com connection through someone else, forced off for a push. */
+const NO_DETOURS = ["-c", "http.proxy=", "-c", "https.proxy=", "-c", "http.https://github.com/.proxy=", "-c", "http.sslVerify=true",
+  "-c", "credential.https://github.com.helper="];
+
+/**
+ * Push a session's own branch, and only that branch, to the same name on the project's own repo
+ * (`https://github.com/<fullName>.git`, built here from the project's record, never `origin` and
+ * never anything from `.git/config`) - an explicit refspec, never `--force` (not even
+ * with-lease), and never anything but this one branch. Runs `scanOutgoing` first and refuses on
+ * a hit unless `allowSecret` (the caller decides who may set it; see github.session.push). A
+ * non-fast-forward remote (someone else pushed to the same branch) is reported, never
+ * overwritten (reviewer's M2). fd-3 token only, the same isolation `cloneRepo` already has.
+ * `base` is a test seam; the tool never passes it.
+ * @param {{ repoDir: string, session: string, defaultBranch: string, token: string, fullName: string, allowSecret?: boolean, base?: string }} p
+ */
+export async function pushSession({ repoDir, session, defaultBranch, token, fullName, allowSecret = false, base = "https://github.com" }) {
   const branch = `vyre/${safeSegment(session, "session id")}`;
+  if (!/^[A-Za-z0-9-]{1,39}\/[A-Za-z0-9._-]{1,100}$/.test(String(fullName || "")) || /(^|\/)\.\.?$/.test(fullName)) throw fail("the project's recorded repo name is not owner/name", "bad_input");
   if (!allowSecret) {
     const hit = await scanOutgoing({ repoDir, branch, defaultBranch });
     if (hit) return { pushed: false, blocked: "secret", ...hit };
   }
+  const url = `${base}/${fullName}.git`;
+  const bad = await pushTargetProblem(repoDir, url);
+  if (bad) throw fail(`not pushing: ${bad}`, "remote_changed");
   const refspec = `refs/heads/${branch}:refs/heads/${branch}`;
-  const r = await gitWithAskpass(repoDir, ["push", "--", "origin", refspec], { token, timeout: 120_000 });
-  if (r.ok) return { pushed: true, branch };
+  const r = await gitWithAskpass(repoDir, [...NO_DETOURS, "push", "--", url, refspec], { token, timeout: 120_000 });
+  if (r.ok) {
+    // Keep "is this commit on a remote" (worktree cleanup's safety check) true after a push by URL.
+    const sha = await gitAsync(repoDir, ["rev-parse", `refs/heads/${branch}`]);
+    if (sha.ok) await gitAsync(repoDir, ["update-ref", `refs/remotes/origin/${branch}`, sha.stdout.trim()]);
+    return { pushed: true, branch };
+  }
   if (/\[rejected\]|non-fast-forward|fetch first/i.test(r.stderr)) {
     return { pushed: false, blocked: "non_fast_forward", detail: r.stderr.trim().slice(0, 300) };
   }

@@ -437,6 +437,23 @@ test("github.session.push: refuses a secret in the outgoing commits before ever 
   assert.equal(r.error.detail.pattern, "AWS access key");
 });
 
+test("github.session.push: an agent cannot lift the secret scan with allow_secret; only the person's call or one the Gate marked asked can", async t => {
+  const home = makeRepo(t);
+  const w = await world(t, { projectsRows: [{ slug: "harlow", name: "Harlow", home }] });
+  seedAccount(w.db);
+  projectStore(w.db).put({ project: "harlow", account: "home", full_name: "alex/harlow-legal", default_branch: "main", home }, Date.now());
+  const wt = await w.as("module:threads", { firstParty: true })("github.session.worktree", { project: "harlow", session: "s2" });
+  execFileSync("git", ["-C", wt.data.path, "config", "user.email", "a@example.com"]);
+  execFileSync("git", ["-C", wt.data.path, "config", "user.name", "a"]);
+  fs.writeFileSync(path.join(wt.data.path, "keys.env"), "AWS_KEY=AKIAABCDEFGHIJKLMNOP\n");
+  execFileSync("git", ["-C", wt.data.path, "add", "keys.env"]);
+  execFileSync("git", ["-C", wt.data.path, "commit", "-q", "-m", "oops"]);
+  const agent = await w.as("mcp:agent:kit")("github.session.push", { project: "harlow", session: "s2", allow_secret: true });
+  assert.equal(agent.error.code, "secret_found", "an agent's allow_secret alone changes nothing");
+  // (The two allowed cases would go on to a real push to github.com, so the override itself is
+  // proven at the git level, git.test.js, against an unreachable address.)
+});
+
 /** A fake GitHub PR API: records every request, answers the routes the PR tools use. */
 function fakePrApi(log, { mergeStatus = 200 } = {}) {
   const res = (status, body) => ({ ok: status < 400, status, text: async () => JSON.stringify(body) });

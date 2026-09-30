@@ -572,3 +572,9 @@ mcp.connect/oauth.js status have posted (both block the Next list below).
 - No gh: error code gh_missing; PAT paste stays the fallback. Binary from ctx.config.gh, VYRE_GH_BIN or PATH.
 - Tests: connect.test.js rewritten against a fake gh binary (9 tests). ADR 0041 decision 2 has a revision note.
 - Needs: integrator adds gh to the box image and the Mac server installer (told). Vault agreed in CHAT.
+- reviewer-2 M1/M2 (lead rulings): pushSession pushes to https://github.com/<full_name>.git built from
+  the github_projects row (never origin/.git/config); refuses when url.*.insteadOf/pushInsteadOf
+  matches or `ls-remote --get-url` differs (remote_changed); proxy/credential-helper detours forced
+  off with -c; records origin/<branch> after a push so cleanup still sees it as on a remote.
+  allow_secret counts only for a non-model caller or meta.asked. cloneRepo left (fresh dir, no local
+  config: reviewer's LOW). Tests in git.test.js and index.test.js.
