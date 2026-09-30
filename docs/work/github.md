@@ -599,3 +599,4 @@ mcp.connect/oauth.js status have posted (both block the Next list below).
   "github-<name>"; tools.deny create_or_update_file/push_files/delete_file, since pushes go through
   github.session.push and its secret scan; other writes are classified outward by the hub and held at the Gate).
   github.remove drops the row; github.mcp.sync (people) adds rows for accounts that predate this. Tests: index.test.js (fake hub) and registry.test.js (the real hub accepts the row, refuses another host).
+- Read tools built: github.project.pr.status (checks, latest reviews, ready verdict; no outside text), .pr.comments (conversation + inline + review bodies, person/outside), .issue.list (state/q/limit, PRs filtered out), .issue.get. Agents may call them; reads need no Gate. Tests in index.test.js.
