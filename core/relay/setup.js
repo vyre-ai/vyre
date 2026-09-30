@@ -29,22 +29,17 @@ export const SETUP_TOOL_FAMILIES = Object.freeze([/^network\.tailscale\.(login|s
 /** The events the setup page may follow, one type per stream. */
 export const SETUP_EVENTS = Object.freeze(new Set(["tailscale.changed", "relay.paired", "name.claimed", "certificate.issued", "certificate.failed"]));
 
-// The named extension point for tools added later (the sessions sign-in tool, for "Sign in to your
-// AI"). Empty for now. A module calls registerSetupTool("sessions.signin") from its own start;
-// nothing under relay., presence. or vault. can ever be added, so an extension cannot widen the
-// channel into pairing, presence or secrets.
-/** @type {Set<string>} */
-const EXTRA = new Set();
-const NEVER = /^(relay|presence|vault)\./;
-/** @param {string} name */
-export function registerSetupTool(name) {
-  if (typeof name !== "string" || !/^[a-z][a-z0-9-]*(\.[a-z][a-z0-9-]*)+$/.test(name) || NEVER.test(name)) throw new Error(`the setup channel cannot take the tool "${name}"`);
-  EXTRA.add(name);
-  return () => { EXTRA.delete(name); };
-}
-export const setupExtensions = () => [...EXTRA];
-/** @param {string} name */
-export const setupToolAllowed = name => SETUP_TOOLS.has(name) || SETUP_TOOL_FAMILIES.some(r => r.test(name)) || EXTRA.has(name);
+// Tools added later (the sessions sign-in tool, for "Sign in to your AI") come from the registry,
+// not from a call: a shipped module lists them under "setupTools" in its module.json. Nothing under
+// relay., presence. or vault. is ever taken, so a module cannot widen the channel into pairing,
+// presence or secrets.
+/**
+ * May the setup channel call this tool? The fixed list above, or a tool a shipped module declared
+ * under "setupTools" in its module.json (`extra`, read from the registry by the caller; the loader
+ * only honours the field for shipped modules). Never a relay, presence or vault tool.
+ * @param {string} name @param {readonly string[]} [extra]
+ */
+export const setupToolAllowed = (name, extra = []) => SETUP_TOOLS.has(name) || SETUP_TOOL_FAMILIES.some(r => r.test(name)) || (extra.includes(name) && !/^(relay|presence|vault)\./.test(name));
 
 /**
  * One setup code, from install to claim or expiry. State only: the database rows, the presence
@@ -139,7 +134,7 @@ export function setupGate(o) {
   /** @type {Map<string, (req: any, res: any, caller: string, peer: any) => any>} */
   const cache = new Map();
   const routed = (key, policy) => { let h = cache.get(key); if (!h) { h = o.handlerFor(policy); cache.set(key, h); } return h; };
-  const tools = () => routed("tools", { tool: setupToolAllowed,
+  const tools = () => routed("tools", { tool: name => setupToolAllowed(name, o.extraTools ? o.extraTools() : []),
     path: (/** @type {string} */ m, /** @type {string} */ p) => (m === "POST" && p.startsWith("/v1/tools/")) || (m === "GET" && (p === "/v1/tools" || p === "/v1/health")) });
   const events = type => routed(`events:${type}`, { eventType: type, path: (m, p) => m === "GET" && p === "/v1/events" });
 

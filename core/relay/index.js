@@ -408,7 +408,7 @@ export default {
       return { state: s.state, registered: s.registered, ticket: s.ticket === "minted", expiresAt: s.exp, ownerExists: personExists(),
         words: s.words(k().box.pub).join(" ") };
     };
-    const setupHandler = setupGate({ session: () => setup, ownerExists: personExists, handlerFor: policy => ctx.handler(policy),
+    const setupHandler = setupGate({ session: () => setup, extraTools: () => (typeof ctx.declaredSetupTools === "function" ? ctx.declaredSetupTools() : []), ownerExists: personExists, handlerFor: policy => ctx.handler(policy),
       mintTicket: async () => { const refusal = macCoreRefusal(platform); if (refusal) throw refusal; return mintTicket(); },
       recoverCode: async input => { const r = /** @type {any} */ (await ctx.call("names.recover.code", input)); return r && r.data !== undefined ? r.data : r; } });
 

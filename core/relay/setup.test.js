@@ -15,12 +15,12 @@ import { loadKeys } from "./keys.js";
 import { deviceSide } from "./channel.js";
 import * as wire from "./wire.js";
 import { WEB_DENY } from "./index.js";
-import { SetupSession, setupGate, setupToolAllowed, registerSetupTool, setupExtensions, SETUP_TOOLS } from "./setup.js";
+import { SetupSession, setupGate, setupToolAllowed, SETUP_TOOLS } from "./setup.js";
 import { createSetupKey, setupCode, setupHello, setupWords, resolveSetup, mailboxReader } from "../../relay/client/setup.js";
 import { pairTicket } from "../../relay/client/client.js";
 import { nodeCrypto, fileKeyStore } from "../../relay/client/nodecrypto.js";
 import { fromBase64url } from "../../relay/client/bytes.js";
-import { tempHome } from "../../test/helpers.js";
+import { tempHome, writeModule } from "../../test/helpers.js";
 
 // ---- SetupSession, alone ----
 
@@ -89,13 +89,9 @@ test("setup session: the allowlist is exactly the plan's, and the extension poin
     assert.equal(setupToolAllowed(name), false, name);
   }
   assert.deepEqual([...SETUP_TOOLS].sort(), ["link.health", "names.check", "names.claim", "onboard.machine", "relay.pair.ticket", "relay.setup.status", "system.info"]);
-  assert.deepEqual(setupExtensions(), [], "empty until a module registers one");
-  const undo = registerSetupTool("sessions.signin");
-  assert.equal(setupToolAllowed("sessions.signin"), true);
-  assert.deepEqual(setupExtensions(), ["sessions.signin"]);
-  for (const bad of ["relay.pair.start", "presence.enroll", "vault.reveal", "nodot", "Sessions.signin", "a..b"]) assert.throws(() => registerSetupTool(bad), /cannot take/, bad);
-  undo();
-  assert.equal(setupToolAllowed("sessions.signin"), false);
+  assert.equal(setupToolAllowed("sessions.accounts.signin"), false, "nothing extra unless the registry lists it");
+  assert.equal(setupToolAllowed("sessions.accounts.signin", ["sessions.accounts.signin"]), true);
+  for (const bad of ["relay.pair.start", "presence.enroll", "vault.reveal"]) assert.equal(setupToolAllowed(bad, [bad]), false, `${bad} is never taken, even if listed`);
 });
 
 /** A fake response that records what the gate answered. */
@@ -218,7 +214,7 @@ const lenient = {
 };
 
 /** A real vyred with the relay module, a Node relay, and this machine posing as Linux (a Mac refuses the relay's tickets until vyre-core). */
-async function world(t) {
+async function world(t, { fixtures = null, disable = ["names", "onboard"], shipped = true } = {}) {
   const real = Object.getOwnPropertyDescriptor(process, "platform");
   Object.defineProperty(process, "platform", { value: "linux", configurable: true });
   t.after(() => Object.defineProperty(process, "platform", /** @type {any} */ (real)));
@@ -227,9 +223,10 @@ async function world(t) {
   t.after(() => relay.close());
   const root = tempHome(t);
   fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ role: "box", name: "alex", transcripts: [],
-    network: { name: "alex" }, relay: { enabled: false, url: base }, modules: { disable: ["names", "onboard"] } }));
+    network: { name: "alex" }, relay: { enabled: false, url: base }, modules: { disable } }));
   lenient.enrolled.length = 0;
-  const d = await start({ presence: lenient, root, log: () => {} });
+  if (fixtures) for (const [name, m, src] of fixtures) writeModule(path.join(root, "modules"), name, m, src);
+  const d = await start({ presence: lenient, root, log: () => {}, ...(fixtures && shipped ? { firstPartyRoots: [path.join(root, "modules")] } : {}) });
   t.after(() => d.stop());
   return { d, relay, base, root };
 }
@@ -527,4 +524,49 @@ test("setup boot: a code starts only with a stamp from the last hour; missing, g
 test("web deny: an untrusted paired browser cannot ask for the Tailscale sign-in link, and can still read the status", () => {
   assert.equal(WEB_DENY.test("network.tailscale.login"), true);
   for (const ok of ["network.tailscale.status", "network.tailscale.peers", "link.health", "names.check"]) assert.equal(WEB_DENY.test(ok), false, ok);
+});
+
+// ---- the setup channel, one session, end to end ----
+
+const SIGNIN_FIXTURE = `export default { async start(ctx) {
+  ctx.tool("sessionsfx.accounts.signin", { input: { type: "object", properties: {} }, run: async () => ({ started: true }) });
+  ctx.tool("sessionsfx.accounts.other", { input: { type: "object", properties: {} }, run: async () => ({ other: true }) });
+  return { async stop() {} };
+} };`;
+
+test("setup: modules declare setupTools in module.json and the setup channel reaches exactly those; one session survives a call, sign-in, Tailscale and a second call", async t => {
+  const w = await world(t, { disable: ["names", "onboard"], fixtures: [
+    ["sessionsfx", { does: { tools: ["sessionsfx.accounts.signin", "sessionsfx.accounts.other"] }, setupTools: ["sessionsfx.accounts.signin"] }, SIGNIN_FIXTURE],
+  ] });
+  // the registry's list: the tool the module owns and declared
+  const listed = await new Promise(r => { const c = w.d.registry.context({ name: "probe", does: { tools: [] } }); r(c.declaredSetupTools()); });
+  assert.deepEqual(listed, ["sessionsfx.accounts.signin"]);
+
+  const p = await page(w);
+  await p.begin();
+  const a = await p.connect();
+  // names.claim itself needs the hosted directory, which no test may call: system.info, also on the list, stands in for the two claims.
+  const claim = async () => (await a.call("system.info"));
+  const c1 = await claim(); assert.equal(c1.status, 200, JSON.stringify(c1));
+  assert.equal((await a.call("sessionsfx.accounts.signin")).data.started, true, "the module's declared tool is reachable");
+  assert.notEqual((await a.call("sessionsfx.accounts.other")).status, 200, "a tool the module did not list is not");
+  const ts = await a.call("network.tailscale.status");
+  assert.ok(ts.data && ts.data.state, "Tailscale status answers on the setup channel");
+  const login = await a.call("network.tailscale.login");
+  assert.ok(login.data && "state" in login.data, "so does login");
+  assert.equal((await claim()).status, 200, "a second call on the same channel still answers");
+  assert.equal((await w.d.registry.call("relay.setup.status", {}, "cli")).data.state, "paired", "the session survived all of it");
+  assert.notEqual((await a.call("relay.setup.end")).status, 200, "and the channel cannot end it, even though the module listed the tool");
+});
+
+test("setup: an added module's setupTools is ignored, and a manifest listing a tool it does not declare is refused", async t => {
+  const w = await world(t, { shipped: false, fixtures: [["sneaky", { does: { tools: ["sneaky.signin"] }, setupTools: ["sneaky.signin"] },
+    `export default { async start(ctx) { ctx.tool("sneaky.signin", { input: { type: "object", properties: {} }, run: async () => ({ ok: true }) }); return { async stop() {} }; } };`]] });
+  assert.equal(w.d.registry.status().find(m => m.name === "sneaky")?.state, "running", "the module loads");
+  assert.deepEqual(w.d.registry.context({ name: "probe", does: { tools: [] } }).declaredSetupTools(), [], "but its field counts for nothing");
+  const { validate } = await import("../modules/index.js");
+  for (const bad of [["relay.setup.end"], ["sessionsfx.accounts.missing"], "sessionsfx.accounts.signin", [5]]) {
+    assert.ok(validate({ name: "sessionsfx", version: "0.1.0", does: { tools: ["sessionsfx.accounts.signin"] }, setupTools: bad }, { firstParty: true }).some(p => /setupTools/.test(p)), JSON.stringify(bad));
+  }
+  assert.deepEqual(validate({ name: "sessionsfx", version: "0.1.0", does: { tools: ["sessionsfx.accounts.signin"] }, setupTools: ["sessionsfx.accounts.signin"] }, { firstParty: true }), []);
 });

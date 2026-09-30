@@ -188,6 +188,7 @@ export function validate(m, { firstParty = false } = {}) {
     if (typeof e === "object" && e.reach !== undefined && !REACHES.includes(e.reach)) out.push(`tool "${t}": reach must be one of ${REACHES.join(", ")}`);
     if (typeof e === "object" && e.outward !== undefined && !OUTWARD.includes(e.outward)) out.push(`tool "${t}": outward must be one of ${OUTWARD.join(", ")}`);
   }
+  if (m.setupTools !== undefined && (!Array.isArray(m.setupTools) || m.setupTools.some((/** @type {any} */ t) => typeof t !== "string" || !((m.does && m.does.tools) || []).includes(t)))) out.push("setupTools must list tools this module declares under does.tools");
   for (const e of (m.watches && m.watches.emits) || []) {
     if (!/^[a-z][a-z0-9-]*\.[a-z][a-z0-9-]*$/.test(e)) out.push(`event "${e}" must look like noun.past-verb`);
     // Events that make other modules act on the person's data (sync.deleted forgets a device's
@@ -669,6 +670,12 @@ export class Registry {
       declaredSettings: () => [...this.modules.entries()].filter(([, r]) => r.state === "running" && r.manifest && Array.isArray(r.manifest.settings))
         // module and firstParty come from the loader, after the declaration, so a manifest can't claim them.
         .flatMap(([name, r]) => r.manifest.settings.map(d => ({ ...d, module: name, firstParty: this.isFirstParty(r.dir) }))),
+      // The tools shipped modules put on the pre-claim setup channel (module.json "setupTools"),
+      // for the relay to build its allowlist from. Only a shipped module's field counts, only for a
+      // tool it declares and owns, and never a relay, presence or vault tool: an added module's field is ignored.
+      declaredSetupTools: () => [...this.modules.entries()]
+        .filter(([, r]) => r.state === "running" && r.manifest && Array.isArray(r.manifest.setupTools) && this.isFirstParty(r.dir))
+        .flatMap(([name, r]) => r.manifest.setupTools.filter((/** @type {any} */ t) => typeof t === "string" && t.startsWith(name + ".") && ((r.manifest.does && r.manifest.does.tools) || []).includes(t) && !/^(relay|presence|vault)\./.test(t))),
       // Every running module's teaches.tips, for the tips module to choose from (core/tips). Tips
       // are plain text a module chose to show; the tips module checks them, never this loader.
       // firstParty: shipped in the repo, so its tips follow Vyre's version, not the module's own.
