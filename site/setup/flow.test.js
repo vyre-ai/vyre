@@ -552,6 +552,59 @@ test("site: the phone's ring is plain SVG shapes: no script, style, link or hand
   assert.ok(!/<script|<style|style=|href=|xlink|on\w+=/i.test(svg));
 });
 
+test("tailscale: with the box's event stream it reads status when told, not on a clock; a broken stream falls back to a capped poll that stops on an error", async t => {
+  const box = stepsBox();
+  let poke = () => {}, endStream = () => {};
+  let followed = 0;
+  box.follow = (type, onEvent, onEnd) => { followed++; assert.equal(type, "tailscale.changed"); poke = () => onEvent({ type }); endStream = err => onEnd(err); return () => {}; };
+  const flow = await atNamed(t, box);
+  flow.continueToAi(); flow.startAi("codex");
+  await until(() => flow.state.ai.accounts[0] && flow.state.ai.accounts[0].step === "done");
+  flow.continueToTailscale();
+  await until(() => flow.state.tailscale.status && followed === 1);
+  const statusCalls = () => box.calls.filter(c => c[0] === "network.tailscale.status").length;
+  const first = statusCalls();
+  await new Promise(r => setTimeout(r, 120));
+  assert.equal(statusCalls(), first, "nothing reads status while the box is quiet");
+  box.st.ts = "connected"; box.st.claimPhase = "serving";
+  poke();
+  await until(() => flow.state.tailscale.address && flow.state.tailscale.address.phase === "serving");
+  assert.ok(statusCalls() > first, "an event was a reason to read");
+  flow.stop();
+
+  // The stream breaks: the capped poll takes over, and an error from the box ends the watching.
+  const b2 = stepsBox();
+  b2.follow = (type, onEvent, onEnd) => { setTimeout(() => onEnd(new Error("stream broke")), 10); return () => {}; };
+  const f2 = await atNamed(t, b2);
+  f2.continueToAi(); f2.startAi("codex");
+  await until(() => f2.state.ai.accounts[0] && f2.state.ai.accounts[0].step === "done");
+  f2.continueToTailscale();
+  await until(() => b2.calls.filter(c => c[0] === "network.tailscale.status").length >= 3);
+  const orig = b2.call;
+  b2.call = async (tool, input) => { if (tool === "network.tailscale.status") throw Object.assign(new Error("this setup session has ended"), { code: "setup_over", status: 401 }); return orig(tool, input); };
+  await until(() => f2.state.tailscale.error);
+  const n = b2.calls.length;
+  await new Promise(r => setTimeout(r, 80));
+  assert.equal(b2.calls.length, n, "no more calls after the error");
+  f2.stop();
+});
+
+test("ai: with a list of provider hosts, a sign-in link elsewhere is refused", async t => {
+  const box = stepsBox();
+  const flow = await foundFlow(t, box, { flow: { signinHosts: ["example.org", "claude.ai"] } });
+  await until(() => flow.state.naming.check);
+  await flow.claim(); flow.markSaved(); flow.continueToAi();
+  flow.startAi("codex");
+  await until(() => flow.state.ai.accounts[0] && flow.state.ai.accounts[0].step === "done");
+  assert.equal(flow.state.ai.accounts[0].error, null);
+  const orig = box.call;
+  box.call = async (tool, input) => { const r = await orig(tool, input); return tool === "sessions.accounts.signin" && input.provider === "grok" ? { ...r, url: "https://login.evil.example/x" } : r; };
+  flow.startAi("grok");
+  await until(() => flow.state.ai.accounts.find(a => a.provider === "grok" && a.error));
+  assert.equal(flow.state.ai.accounts.find(a => a.provider === "grok").step, "failed");
+  flow.stop();
+});
+
 // ---- a DOM just big enough to check what the screen makes ----
 class FakeEl {
   constructor(tag, doc) { this.tag = tag; this.doc = doc; this.attrs = {}; this.children = []; this.text = null; this.listeners = {}; }

@@ -316,11 +316,11 @@ test("install-box.sh: an old Compose stops the install", t => {
   assert.match(r.stdout, /Compose 2\.24 or newer; this server has 2\.20\.0/);
 });
 
-test("install-box.sh: says what to do on a Mac", t => {
+test("install-box.sh: on a Mac it looks for the Mac server's installer on the site, and stops when the site does not list it", t => {
   const mac = runScript(t, ["--dry-run"], { uname: `echo Darwin` });
-  assert.equal(mac.status, 0);
-  assert.match(mac.stdout, /On a Mac, Vyre installs with npm:\n {2}npm install -g https:\/\/vyre\.run\/box\/vyre\.tgz && vyre up$/m);
-  assert.deepEqual(mac.calls, ["uname -s"]);
+  assert.equal(mac.status, 1);
+  assert.match(mac.stderr, /SHA256SUMS has no line for install-mac-server\.sh/);
+  assert.ok(!mac.calls.some(c => /^(docker|sudo)/.test(c)), "nothing of the Linux install ran");
 });
 
 test("install-box.sh: --from DIR copies the checkout's files and builds from it", t => {

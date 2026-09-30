@@ -327,9 +327,9 @@ get_sums() {
 # get NAME: download a box file into TMP and check it against its line in SHA256SUMS.
 get() {
   mkdir -p "$TMP/$(dirname "$1")"
-  fetch "$1" "$TMP/$1"
   want=$(awk -v p="$1" '$2 == p || $2 == "*" p { print $1; exit }' "$TMP/SHA256SUMS")
   [ -n "$want" ] || die "SHA256SUMS has no line for $1"
+  fetch "$1" "$TMP/$1" || die "could not download $BASE$1"
   got=$(sha256 "$TMP/$1")
   [ "$got" = "$want" ] || die "checksum mismatch for $BASE$1 (want $want, got $got)"
 }
@@ -530,6 +530,23 @@ mbx_post() {
     --data-binary @- "$(printf '%s' "${RELAY_HTTP%/}" | sed 's|^ws|http|')/v1/setup/mbx" 2>/dev/null || printf '000'
 }
 
+# mbx_pads KEYHEX: the two HMAC pads for a 32-byte key (zero-padded to the 64-byte block): key xor 0x36 and key xor 0x5c,
+# as raw bytes in ipad.bin and opad.bin. Plain sh arithmetic and printf, so it runs on dash, bash and a Mac's sh alike.
+mbx_pads() {
+  : >"$MBXT/ipad.bin"; : >"$MBXT/opad.bin"
+  i=0
+  while [ "$i" -lt 64 ]; do
+    b=$(printf '%s' "$1" | cut -c$((i * 2 + 1))-$((i * 2 + 2)))
+    v=0
+    [ -z "$b" ] || v=$((0x$b))
+    # shellcheck disable=SC2059 # octal escapes are the point
+    printf "\\$(printf '%03o' $((v ^ 54)))" >>"$MBXT/ipad.bin"
+    # shellcheck disable=SC2059
+    printf "\\$(printf '%03o' $((v ^ 92)))" >>"$MBXT/opad.bin"
+    i=$((i + 1))
+  done
+}
+
 # mbx_init: derive the mailbox keys from the code and open the mailbox. Quiet when curl or openssl
 # is missing, or the relay cannot be reached: the terminal still shows everything.
 mbx_init() {
@@ -546,6 +563,7 @@ mbx_init() {
   MBX_WTOK=$(mbx_derive vyre-setup-mbx-w | b64u)
   MBX_ENC=$(mbx_derive vyre-setup-mbx-enc | hexof)
   MBX_MAC=$(mbx_derive vyre-setup-mbx-mac | hexof)
+  mbx_pads "$MBX_MAC"
   # The first write creates the mailbox and fixes who may write to it; a 409 means another server used
   # this code first, and nothing here may go on to look like the page's server.
   body=$(printf '{"loc":"%s","fp":"%s","wtok":"%s"}' "$MBX_LOC" "$MBX_FP" "$MBX_WTOK")
@@ -566,7 +584,9 @@ mbx_send() {
   b1=$((MBX_SEQ / 16777216 % 256)); b2=$((MBX_SEQ / 65536 % 256)); b3=$((MBX_SEQ / 256 % 256)); b4=$((MBX_SEQ % 256))
   # shellcheck disable=SC2059 # the octal escapes are the point
   printf "\\$(printf '%03o' "$b1")\\$(printf '%03o' "$b2")\\$(printf '%03o' "$b3")\\$(printf '%03o' "$b4")" >"$MBXT/seq.bin"
-  cat "$MBXT/seq.bin" "$MBXT/iv.bin" "$MBXT/ct.bin" | openssl dgst -sha256 -mac HMAC -macopt "hexkey:$MBX_MAC" -binary >"$MBXT/mac.bin" 2>/dev/null || return 0
+  # HMAC-SHA256 by hand from plain sha256, which every openssl has (LibreSSL on a Mac has no `dgst -mac`).
+  { cat "$MBXT/ipad.bin" "$MBXT/seq.bin" "$MBXT/iv.bin" "$MBXT/ct.bin" | openssl dgst -sha256 -binary >"$MBXT/inner.bin"; } 2>/dev/null || return 0
+  cat "$MBXT/opad.bin" "$MBXT/inner.bin" | openssl dgst -sha256 -binary >"$MBXT/mac.bin" 2>/dev/null || return 0
   line=$(cat "$MBXT/iv.bin" "$MBXT/ct.bin" "$MBXT/mac.bin" | b64u)
   body=$(printf '{"loc":"%s","fp":"%s","wtok":"%s","line":"%s"}' "$MBX_LOC" "$MBX_FP" "$MBX_WTOK" "$line")
   if [ "$(mbx_post "$body")" = 200 ]; then MBX_SEQ=$((MBX_SEQ + 1)); fi
@@ -741,7 +761,20 @@ dk_quiet() {
   if [ -n "$DOCKER_SUDO" ]; then sudo docker "$@"; else docker "$@"; fi
 }
 
+# mac_server "$@": on a Mac the same line installs the Mac as the server: the script for it comes from the release site,
+# is checked against SHA256SUMS like every file here, and runs with the same arguments and VYRE_CODE still in its environment.
+mac_server() {
+  case "$BASE" in */) ;; *) BASE="$BASE/" ;; esac
+  TMP=$(mktemp -d)
+  trap cleanup EXIT
+  get_sums
+  get install-mac-server.sh
+  sh "$TMP/install-mac-server.sh" "$@"
+  return $?
+}
+
 main() {
+  if [ "$(uname -s)" = Darwin ]; then mac_server "$@"; exit $?; fi
   while [ $# -gt 0 ]; do
     case "$1" in
       --dry-run) DRY=1 ;;
@@ -761,11 +794,7 @@ main() {
 
   case "$(uname -s)" in
     Linux) ;;
-    Darwin)
-      say "This installer is for a Linux server. On a Mac, Vyre installs with npm:"
-      say "  npm install -g https://vyre.run/box/vyre.tgz && vyre up"
-      exit 0 ;;
-    *) die "this installer is for Linux boxes; on a Mac: npm install -g https://vyre.run/box/vyre.tgz && vyre up" ;;
+    *) die "this installer is for a Linux server, or a Mac (which runs install-mac-server.sh from the same site)" ;;
   esac
 
   if [ "$(id -u)" != 0 ]; then

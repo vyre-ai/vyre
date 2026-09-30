@@ -290,6 +290,9 @@ test("install-box.sh v2: with a code the steps are sent sealed to the relay mail
   const key = await createSetupKey();
   const secret = crypto.randomBytes(16);
   const code = await setupCode(secret, key.spki);
+  // An openssl with no `dgst -mac` (a Mac's LibreSSL on some releases): the script must not need it.
+  const real = spawnSync("sh", ["-c", "command -v openssl"], { encoding: "utf8" }).stdout.trim();
+  fs.writeFileSync(path.join(b.base, "bin", "openssl"), `#!/bin/sh\nfor a in "$@"; do case "$a" in -mac|-macopt) echo "unknown option $a" >&2; exit 1 ;; esac; done\nexec ${real} "$@"\n`, { mode: 0o755 });
   const r = await runAsync({ ...b.env, VYRE_CODE: code, VYRE_RELAY: base }, ["--yes", "--from", REPO]);
   assert.equal(r.status, 0, r.stdout + r.stderr);
   assert.ok(!(r.stdout + r.stderr + b.calls()).includes(code), "the code is still never shown");
@@ -348,4 +351,36 @@ test("vyre wrapper: a setup code older than an hour is removed from vyre.env at 
   fs.writeFileSync(f, `VYRE_SETUP_CODE_AT=${now - 100}\nVYRE_SETUP_CODE=${CODE}\n`, { mode: 0o600 });
   call();
   assert.ok(fs.readFileSync(f, "utf8").includes(`VYRE_SETUP_CODE=${CODE}`), "a code inside its hour stays");
+});
+
+
+// --- a Mac runs the same line: the Mac server's installer comes from the site, checked, with the same arguments and code ---
+
+test("install-box.sh v2: on a Mac it fetches install-mac-server.sh, checks it against SHA256SUMS, and runs it with the same arguments and VYRE_CODE", t => {
+  const b = box(t);
+  fs.writeFileSync(path.join(b.base, "bin", "uname"), "#!/bin/sh\necho Darwin\n", { mode: 0o755 });
+  const url = site(b.base);
+  const dir = url.replace("file://", "");
+  const out = path.join(b.base, "mac-ran.txt");
+  const script = `#!/bin/sh\nprintf 'args=%s code=%s\\n' "$*" "$VYRE_CODE" >"${out}"\n`;
+  fs.writeFileSync(path.join(dir, "install-mac-server.sh"), script);
+  const sums = path.join(dir, "SHA256SUMS");
+  fs.appendFileSync(sums, `${crypto.createHash("sha256").update(script).digest("hex")}  install-mac-server.sh\n`);
+  const r = run({ ...b.env, VYRE_BOX_URL: url, VYRE_CODE: CODE }, ["--yes", "--name", "harlow"]);
+  assert.equal(r.status, 0, r.stdout + r.stderr);
+  assert.equal(fs.readFileSync(out, "utf8"), `args=--yes --name harlow code=${CODE}\n`);
+  assert.ok(!fs.existsSync(b.dir), "nothing of the Linux install ran");
+
+  // A tampered script, or one the checksum list does not name, never runs.
+  fs.writeFileSync(path.join(dir, "install-mac-server.sh"), script + "# changed\n");
+  fs.rmSync(out);
+  let x = run({ ...b.env, VYRE_BOX_URL: url }, ["--yes"]);
+  assert.notEqual(x.status, 0);
+  assert.match(x.stderr, /checksum mismatch for .*install-mac-server\.sh/);
+  assert.ok(!fs.existsSync(out));
+  fs.writeFileSync(sums, fs.readFileSync(sums, "utf8").split("\n").filter(l => l && !l.includes("install-mac-server.sh")).join("\n") + "\n");
+  x = run({ ...b.env, VYRE_BOX_URL: url }, ["--yes"]);
+  assert.notEqual(x.status, 0);
+  assert.match(x.stderr, /SHA256SUMS has no line for install-mac-server\.sh/);
+  assert.ok(!fs.existsSync(out));
 });

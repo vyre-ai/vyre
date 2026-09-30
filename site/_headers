@@ -6,7 +6,7 @@
   Cross-Origin-Opener-Policy: same-origin
   Cache-Control: no-store
 /setup/*
-  Content-Security-Policy: default-src 'none'; script-src 'self'; style-src 'self'; font-src 'self'; connect-src https://relay.vyre.run wss://relay.vyre.run; img-src 'self' data:; object-src 'none'; worker-src 'none'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'
+  Content-Security-Policy: default-src 'none'; script-src 'self'; style-src 'self'; font-src 'self'; connect-src 'self' https://relay.vyre.run wss://relay.vyre.run; img-src 'self' data:; object-src 'none'; worker-src 'none'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'
   Referrer-Policy: no-referrer
   Cross-Origin-Opener-Policy: same-origin
   Permissions-Policy: camera=(), microphone=(), geolocation=(), clipboard-read=()

@@ -52,7 +52,7 @@ export function suggestName(text) {
 
 /**
  * @param {{ client: SetupClient, relay: string, connect?: (o: { offer: any, key: any, secret: Uint8Array }) => Promise<BoxChannel>, installUrl?: string, random?: (n: number) => Uint8Array,
- *   now?: () => number, sleep?: (ms: number) => Promise<void>, pollMs?: number, debounceMs?: number, onChange?: (s: FlowState) => void }} o
+ *   now?: () => number, sleep?: (ms: number) => Promise<void>, pollMs?: number, debounceMs?: number, signinHosts?: string[]|null, onChange?: (s: FlowState) => void }} o
  */
 export function createFlow(o) {
   const now = o.now || Date.now;
@@ -240,18 +240,53 @@ export function createFlow(o) {
     watchTailscale(run);
   }
 
-  /** Read the box's Tailscale state now and every few seconds until it is connected and the address is up. */
+  /**
+   * Read the box's Tailscale state now, then again whenever the box says it changed (tailscale.changed) until it is connected and
+   * the address is up. If the box's event stream is not there or breaks, a capped poll takes over: every few seconds, for at most
+   * fifteen minutes, stopping at once when the box says the setup is over or answers with an error.
+   */
+  let watching = false;
   async function watchTailscale(mine) {
-    while (mine === run && state.stage === "tailscale" && chan) {
-      try {
-        const st = await chan.call("network.tailscale.status");
-        if (mine !== run) return;
-        const status = { state: String(st.state || ""), login: st.login ? String(st.login).slice(0, 120) : null, tailnet: st.tailnet ? String(st.tailnet).slice(0, 120) : null, tailnetKind: st.tailnetKind ? String(st.tailnetKind) : null, ip: st.ip ? String(st.ip).slice(0, 60) : null };
-        set({ tailscale: { ...state.tailscale, status, error: null, loginUrl: status.state === "connected" ? null : state.tailscale.loginUrl } });
-        if (status.state === "connected" && (!state.tailscale.address || state.tailscale.address.phase !== "serving")) await publishAddress(mine);
-        if (state.tailscale.address && state.tailscale.address.phase === "serving") return;
-      } catch (e) { if (mine !== run) return; set({ tailscale: { ...state.tailscale, error: String(/** @type {Error} */ (e).message).slice(0, 200) } }); }
-      await sleep(pollMs);
+    if (watching) return;
+    watching = true;
+    try { await watchTailscaleLoop(mine); } finally { watching = false; }
+  }
+  async function watchTailscaleLoop(mine) {
+    let stopFollow = () => {};
+    let poked = false, over = false;
+    const done = () => Boolean(state.tailscale.address && state.tailscale.address.phase === "serving");
+    const read = async () => {
+      const st = await chan.call("network.tailscale.status");
+      if (mine !== run) return;
+      const status = { state: String(st.state || ""), login: st.login ? String(st.login).slice(0, 120) : null, tailnet: st.tailnet ? String(st.tailnet).slice(0, 120) : null, tailnetKind: st.tailnetKind ? String(st.tailnetKind) : null, ip: st.ip ? String(st.ip).slice(0, 60) : null };
+      set({ tailscale: { ...state.tailscale, status, error: null, loginUrl: status.state === "connected" ? null : state.tailscale.loginUrl } });
+      if (status.state === "connected" && !done()) await publishAddress(mine);
+    };
+    const live = () => mine === run && state.stage === "tailscale" && chan;
+    try { await read(); } catch (e) { if (live()) set({ tailscale: { ...state.tailscale, error: String(/** @type {Error} */ (e).message).slice(0, 200) } }); return; }
+    if (!live() || done()) return;
+    // Events first: each one is a reason to read again, and nothing polls while the box is quiet.
+    let fellBack = typeof chan.follow !== "function";
+    if (!fellBack) {
+      stopFollow = chan.follow("tailscale.changed", () => { poked = true; }, err => { if (err && err.status === 401) over = true; fellBack = true; });
+      while (live() && !done() && !fellBack && !over) {
+        if (poked) { poked = false; try { await read(); } catch (e) { if (live()) set({ tailscale: { ...state.tailscale, error: String(/** @type {Error} */ (e).message).slice(0, 200) } }); stopFollow(); return; } }
+        await sleep(200);
+      }
+      stopFollow();
+    }
+    if (!live() || done() || over) return;
+    // The fallback: capped, and it stops when the box says the setup is over.
+    const until = now() + 15 * 60_000;
+    while (live() && !done() && now() < until) {
+      await sleep(Math.max(pollMs, 1000));
+      if (!live()) return;
+      try { await read(); } catch (e) {
+        if (!live()) return;
+        // Any error ends the watching (setup_over most of all); Connect starts it again.
+        set({ tailscale: { ...state.tailscale, error: String(/** @type {Error} */ (e).message).slice(0, 200) } });
+        return;
+      }
     }
   }
 
@@ -275,6 +310,7 @@ export function createFlow(o) {
       if (mine !== run) return;
       const url = r && r.loginUrl ? safeUrl(r.loginUrl, isTailscaleHost) : null;
       set({ tailscale: { ...state.tailscale, busy: false, loginUrl: url, error: r && r.loginUrl && !url ? "The box gave a sign-in link that is not Tailscale's, so it was not shown." : null } });
+      watchTailscale(mine);
     } catch (e) { if (mine === run) set({ tailscale: { ...state.tailscale, busy: false, error: String(/** @type {Error} */ (e).message).slice(0, 200) } }); }
   }
 
@@ -290,7 +326,8 @@ export function createFlow(o) {
     const upd = patch => { if (mine === run) set({ ai: { accounts: state.ai.accounts.map(a => (a.id === id ? { ...a, ...patch } : a)) } }); };
     try {
       const r = await chan.call("sessions.accounts.signin", { provider });
-      const url = r && r.url ? safeUrl(r.url) : null;
+      const hosts = o.signinHosts;
+      const url = r && r.url ? safeUrl(r.url, hosts ? h => hosts.some(x => h === x || h.endsWith(`.${x}`)) : undefined) : null;
       upd({ flow: String(r.flow), step: r.step === "url" ? "url" : "code", url, code: r.code ? String(r.code).slice(0, 80) : null, paste: Boolean(r.paste || r.step === "url") });
       // A link that is not a plain https address is not shown and the sign-in is not followed.
       if (r.url && !url) return upd({ step: "failed", url: null, code: null, error: "The box gave a sign-in link that is not a plain https address, so it was not shown." });
