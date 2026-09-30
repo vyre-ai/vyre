@@ -1,0 +1,19 @@
+{
+  "name": "matters",
+  "version": "1.0.0",
+  "vyre": "1.0",
+  "description": "Harlow Legal's open matters, counted by practice area.",
+  "roles": ["box"],
+  "does": {
+    "tools": [
+      { "name": "matters.count", "summary": "count the open matters" },
+      { "name": "matters.open", "summary": "open a matter" },
+      { "name": "matters.close", "summary": "close a matter", "reach": "asked" }
+    ]
+  },
+  "watches": { "emits": ["matters.opened"] },
+  "settings": [
+    { "key": "matters.area", "label": "Default practice area", "type": "string", "default": "estate",
+      "levels": ["account"], "apply": "live" }
+  ]
+}
