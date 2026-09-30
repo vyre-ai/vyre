@@ -40,10 +40,9 @@ jobs:
         shell: bash
         run: |
           fail=0
-          # Files that hang on a macOS runner with no output (found 30 Sep: the test never returns, the
-          # same tests pass on Linux in node.yml). They are still run and reported, but do not fail the
-          # job until someone finds why; delete a name from here once its file passes.
-          known="core/vault/module.test.js core/vault/surfaces.test.js core/vault/tools/cli.test.js core/cli/commands/home.test.js core/cli/commands/threads-sessions.test.js"
+          # Files known to hang on a macOS runner without output, run and reported but not failing the
+          # job. Empty now: the five that hung on 30 Sep pass after the merge with stage (each under 15 s).
+          known=""
           files=$(ls core/vault/*.test.js core/vault/**/*.test.js lib/connectors/*.test.js core/mcp/*.test.js core/google/*.test.js core/modules/*.test.js core/cli/commands/*.test.js local/voice/*.test.js test/docs-*.test.js test/hygiene*.test.js 2>/dev/null | sort -u)
           for f in $files; do
             start=$(date +%s)
