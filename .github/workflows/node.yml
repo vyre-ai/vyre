@@ -105,6 +105,10 @@ jobs:
           if (-not $found) {
             Write-Output "--- vyred.out ---"; Get-Content "$env:RUNNER_TEMP\vyred.out" -ErrorAction SilentlyContinue
             Write-Output "--- vyred.err ---"; Get-Content "$env:RUNNER_TEMP\vyred.err" -ErrorAction SilentlyContinue
+            $alive = Get-Process -Id $proc.Id -ErrorAction SilentlyContinue
+            Write-Output "--- vyred process ($($proc.Id)) still running: $([bool]$alive) ---"
+            $log = Get-ChildItem "$env:RUNNER_TEMP\vyre-home\logs" -Filter *.log -ErrorAction SilentlyContinue | Select-Object -Last 1
+            if ($log) { Write-Output "--- $($log.FullName) ---"; Get-Content $log.FullName -ErrorAction SilentlyContinue }
             throw "vyred did not create its socket at $sockPath"
           }
 
