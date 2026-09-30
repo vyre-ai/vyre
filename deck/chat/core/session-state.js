@@ -826,6 +826,7 @@ function onTool(s, p, at, out) {
   // after a reopen. Never overwrites input that already arrived (a later live event, or the
   // transcript read patching it in).
   if (p.input !== undefined && item.input === undefined) item.input = p.input;
+  if (p.render && typeof p.render === "object") item.render = p.render;
   out.add(key);
   guess(s, "working");
 }
@@ -1120,6 +1121,16 @@ export function applyEvent(s, e) {
     // Thinking as its own event: the same row as thread.text kind "reasoning".
     case "thread.thinking": onText(s, { ...p, kind: "reasoning", notice: undefined }, at, e, out); break;
     case "thread.tool": onTool(s, p, at, out); break;
+    // An artifact the agent made or changed (AR2): one card per version, drawn by cards/artifact.js.
+    case "thread.artifact": {
+      if (!p.artifact) break;
+      const key = `art:${p.artifact}:${p.version ?? 0}`;
+      if (s.byKey.has(key)) break;
+      insert(s, /** @type {any} */ ({ key, kind: "tool", call: key, name: "artifact", status: "completed", ...(at !== undefined ? { at } : {}),
+        render: { kind: "artifact", id: String(p.artifact), thread: p.thread ?? null, version: p.version ?? null, type: p.kind ?? null, title: p.title ?? null, agent: p.agent ?? null, at: at ?? null } }));
+      out.add(key);
+      break;
+    }
     case "ask.raised": case "ask.answered": case "ask.cancelled": onAsk(s, e.type, p, at, out); break;
     case "thread.usage":
       // cost_usd is the turn's own, total_cost_usd the session's so far: never the one for the other.
@@ -1240,6 +1251,8 @@ function fieldsOf(b) {
       if (output !== null) f.status = b.error ? "failed" : "completed";
       if (b.error) f.error = true;
       if (b.patch) f.patch = b.patch;
+      // A result a card draws (cards/index.js renderOf): pr_review, email_thread, calendar_event, diff, report, artifact.
+      if (b.render && typeof b.render === "object") f.render = b.render;
       // A tool's own picture (cohesion item 18): the caps are already applied by transcripts.blocks.
       if (Array.isArray(b.images) && b.images.length) f.images = b.images;
       return f;

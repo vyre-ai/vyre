@@ -22,6 +22,13 @@ const breathe = () => new Promise(r => setImmediate(r));
  * @typedef {{ sessions: number, added: number, appended: number, reindexed: number, skipped: number, failed: number, turns: number, ms: number }} Stats
  */
 
+/**
+ * A Tailscale sign-in link is a bearer invitation onto a machine (network.tailscale.login hands it
+ * to the person's own session). It must not sit in the index, where a later memory_ask could quote it.
+ * @param {string} text
+ */
+export const redactLinks = text => String(text).replace(/https?:\/\/login\.tailscale\.com\/\S*/gi, "[tailscale sign-in link removed]");
+
 export class Indexer {
   /**
    * @param {DB} db
@@ -118,6 +125,7 @@ export class Indexer {
     }
     const t = transcripts.read(entry.file, { id: entry.id, parent: entry.parent });
     if (!t) { s.failed++; return; }
+    for (const turn of t.turns) turn.text = redactLinks(turn.text);
 
     const have = prev ? Number(prev.turns) : 0;
     let from = 0, rewritten = false;

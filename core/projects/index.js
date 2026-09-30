@@ -101,17 +101,18 @@ export default {
       db: ctx.store.db, config: ctx.config, call: ctx.call,
       emit: (type, payload, where) => ctx.events.emit(type, payload, where),
     });
+    const setHistory = (project, state) => ctx.store.db.prepare("INSERT INTO projects_history (project, state, at) VALUES (?,?,?) ON CONFLICT(project) DO UPDATE SET state = excluded.state, at = excluded.at").run(project, state, Date.now());
     // Only markers already known are read at start. Walking the roots waits for the first list
     // or create, so starting vyred never crawls the user's folders unasked.
     try { P.refresh(); } catch (e) { ctx.log("could not read project markers: " + /** @type {Error} */ (e).message); }
 
     ctx.tool("projects.list", {
       description: "Every project: name, home, folders, people, avatar_seed (what its tile is drawn from), how many threads are in it (picked or by folder), the picked thread ids (picks), newest activity first.",
-      input: { type: "object", properties: { machines } },
+      input: { type: "object", properties: { machines, archived: { type: "boolean" } } },
       run: async (input, { caller } = {}) => {
-        if (!wantsMacs(ctx, input, caller)) return P.list();
+        if (!wantsMacs(ctx, input, caller)) return P.list({ archived: Boolean(input.archived) });
         // On the box, for the person: the box's projects, then each Mac's, every one labelled.
-        const [own, answers] = await Promise.all([P.list(), askMacs(ctx, "projects.list", {})]);
+        const [own, answers] = await Promise.all([P.list({ archived: Boolean(input.archived) }), askMacs(ctx, "projects.list", { archived: Boolean(input.archived) })]);
         return { ...own, projects: mergeRows(ctx, own.projects, answers, { rows: d => d && d.projects }),
           problems: mergeRows(ctx, own.problems, answers, { rows: d => d && d.problems }), sources: sourcesOf(ctx, answers) };
       },
@@ -134,6 +135,7 @@ export default {
             if (t.error || !t.data?.thread) throw Object.assign(new Error(`there is no chat ${id} to make a project from`), { code: "not_found" });
           }
         }
+        const before = P.previewHome(input);
         const created = P.create(input);
         const r = await ctx.call("agents.list", {});
         if (!r.error) {
@@ -147,8 +149,55 @@ export default {
             if (g.error) throw new Error(`${created.slug} was created, but could not grant ${a.name} access to it: ${g.error.message}`);
           }
         }
-        return created;
+        // Version history with no GitHub needed (charter): a new folder gets it quietly; an
+        // existing folder that is not a repo gets one quiet offer, once. A module caller (sync,
+        // github) maps folders it made itself and is never asked or offered anything.
+        if (String((meta && meta.caller) || "").startsWith("module:") || before.isRepo) return created;
+        if (before.fresh) {
+          const g = await ctx.call("github.project.local-init", { project: created.slug }).catch(e => ({ error: { message: String(e && e.message || e) } }));
+          if (!g.error) setHistory(created.slug, "kept");
+          else ctx.log?.(`projects: no local history for ${created.slug}: ${g.error.message}`);
+          return created;
+        }
+        setHistory(created.slug, "offered");
+        return { ...created, offer: { kind: "history", question: "Keep version history for this folder?", tool: "projects.history", input: { project: created.slug } } };
       },
+    });
+    ctx.tool("projects.history", {
+      description: "Answer the one question about version history for a project's folder: keep: true makes the folder a local git repo (no GitHub, no remote) so each session gets its own copy, branch and Undo; keep: false says no and it is never asked again. A folder that already has a history is left as it is. The person, or their agent on their request.",
+      input: { type: "object", required: ["project", "keep"], properties: { project: str, keep: { type: "boolean" } } },
+      callers: [...OWNER, "mcp"],
+      run: async ({ project, keep }, meta = {}) => {
+        const p = P.resolve(project);
+        await ownOrSession(meta, p.slug);
+        if (!keep) { setHistory(p.slug, "declined"); return { project: p.slug, state: "declined" }; }
+        const g = await ctx.call("github.project.local-init", { project: p.slug }).catch(e => ({ error: { code: "unavailable", message: String(e && e.message || e) } }));
+        if (g.error) throw Object.assign(new Error(g.error.message), { code: g.error.code });
+        setHistory(p.slug, "kept");
+        return { project: p.slug, state: "kept", ...g.data };
+      },
+    });
+    // Rename and archive are the person's, and their agent's on their behalf: a session in that project.
+    const ownOrSession = async (meta, slug) => {
+      // The person's assistant acts for them across every project (vyred's verified identity, meta.agentKind).
+      // TODO(P17): also require the person's own words asked for it (gate.said.match) once the Gate lands.
+      if (meta.agentKind === "assistant") return;
+      if (OWNER.includes(String(meta.caller || "").split(":")[0]) && !isAgent(meta.caller)) return;
+      const t = meta.thread && await ctx.call("threads.get", { thread: meta.thread }).catch(() => null);
+      if (isAgent(meta.caller) || !(t && t.data && t.data.thread && t.data.thread.project === slug))
+        throw refuse("this is the person's, or a session in that project acting on their request", "denied");
+    };
+    ctx.tool("projects.rename", {
+      description: "Rename a project. The slug, folder, threads, teammates and tile stay exactly as they were; only the name changes. A person, or a session in that project on their request.",
+      input: { type: "object", required: ["project", "name"], properties: { project: str, name: str } },
+      callers: [...OWNER, "mcp"],
+      run: async ({ project, name }, meta = {}) => { const p = P.resolve(project); await ownOrSession(meta, p.slug); return P.rename(p.slug, name); },
+    });
+    ctx.tool("projects.archive", {
+      description: "Archive a project: it leaves the project list, and its folder, threads, teammates and history are untouched. archived: false brings it back. projects.list {archived: true} includes archived projects. A person, or a session in that project on their request.",
+      input: { type: "object", required: ["project"], properties: { project: str, archived: { type: "boolean" } } },
+      callers: [...OWNER, "mcp"],
+      run: async ({ project, archived = true }, meta = {}) => { const p = P.resolve(project); await ownOrSession(meta, p.slug); return P.archive(p.slug, archived); },
     });
     ctx.tool("projects.add-threads", {
       description: "Pick threads (Claude Code session ids) into a project. A thread can be in several projects.",

@@ -24,6 +24,14 @@
       ]
     },
     "replaces": { "$ref": "#/$defs/moduleName", "x-status": "planned", "description": "Set to this module's own name to stand in for the first-party module of that name. It must register every tool the original declares." },
+    "mentions": { "type": "array", "items": { "type": "object", "additionalProperties": false, "required": ["kind", "label", "search", "resolve"],
+      "properties": {
+        "kind": { "type": "string", "pattern": "^[a-z][a-z0-9-]{1,24}$", "x-message": "must be lowercase letters, digits and dashes, 2 to 25 characters" },
+        "label": { "type": "string", "minLength": 1, "maxLength": 40 },
+        "icon": { "type": "string", "pattern": "^[a-z][a-z0-9-]{0,24}$" },
+        "search": { "type": "string", "pattern": "^[a-z][a-z0-9-]*\\.[a-z][a-z0-9_.-]*$", "x-message": "must be one of this module's own tools, like \"vault.mentions.search\"" },
+        "resolve": { "type": "string", "pattern": "^[a-z][a-z0-9-]*\\.[a-z][a-z0-9_.-]*$", "x-message": "must be one of this module's own tools, like \"vault.mentions.resolve\"" }
+      } }, "description": "What this module offers the # tag picker (built in only): a kind of thing the person can mention, with the tool that searches names and the tool that resolves one pick for a thread. Names only, never a value." },
     "setupTools": { "type": "array", "items": { "type": "string", "pattern": "^[a-z][a-z0-9-]*\\.[a-z][a-z0-9_.-]*$" }, "x-message": "must be a list of tool names like \"relay.setup\"", "description": "Tools of this module the setup channel may call before the person has signed in. Built in only: an added module that declares it fails to load. The relay reads it to build the setup-channel allowlist." },
     "does": {
       "type": "object",

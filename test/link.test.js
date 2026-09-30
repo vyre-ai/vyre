@@ -360,3 +360,46 @@ test("link: link.health on an unpaired Mac is unknown with a reason, and the sea
   assert.equal((await p.macCall("link.health")).data.path, "peer-relay");
   assert.deepEqual(asked, [{ stableId: "nBOX" }]);
 });
+
+test("link: link.health in the one reach shape, on the Mac, for a device over the relay and for the tailnet listener", async t => {
+  const s = await pair(t);
+  const dir = fs.mkdtempSync(path.join(s.macRoot, "..", "vyre-ts-"));
+  t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
+  const node = (id, ip, extra = {}) => ({ ID: id, HostName: id, DNSName: `${id}.tail0000.ts.net.`, TailscaleIPs: [ip], Online: true,
+    CurAddr: "", Relay: "fra", PeerRelay: "", LastHandshake: "2026-09-27T10:00:00Z", RxBytes: 10, TxBytes: 20, ...extra });
+  const world = {
+    status: { BackendState: "Running", Self: { ID: "nSELF" }, Peer: {
+      a: node("nBOX", "100.64.0.5", { CurAddr: "203.0.113.7:41641" }), b: node("nMAC", "100.64.0.2") } },
+    ping: { "100.64.0.5": "pong from box (100.64.0.5) via 203.0.113.7:41641 in 12ms" },   // the Mac has no answer
+  };
+  fakeTailscale(t, dir, world);
+
+  // (1) The Mac: direct with its tailnet detail, and the old fields beside.
+  const mac = (await s.macCall("link.health")).data;
+  assert.equal(mac.reach, "direct");
+  assert.match(mac.why, /Tailscale/);
+  assert.deepEqual(mac.tailnet, { path: "direct", latencyMs: 12 });
+  assert.equal(typeof mac.since, "number");
+  assert.equal(mac.path, "direct");
+  assert.equal(mac.fix, undefined);
+
+  // (2) The box. A device over the relay channel is "relay", whatever the tailnet says.
+  const dev = (await s.boxCall("link.health", {}, "device:d1")).data;
+  assert.equal(dev.reach, "relay");
+  assert.match(dev.why, /relay/);
+  assert.equal(typeof dev.since, "number");
+  assert.equal(dev.tailnet, undefined);
+  assert.equal((await s.boxCall("link.health", {}, "device:d1")).data.since, dev.since, "since holds while the path does");
+  const pinned = (await s.boxCall("link.health", {}, "device:d1", { since: 1234 })).data;
+  assert.equal(pinned.since, 1234, "the channel's own start wins when the bridge says");
+  // An agent acting as a device is still an agent.
+  assert.match((await s.boxCall("link.health", {}, "device:d1 agent:kit")).error.message, /owner and its modules only/);
+
+  // The tailnet listener is "direct" even when the box's own ping of the caller goes unanswered.
+  const tn = (await s.boxCall("link.health", {}, `tailnet:${OWNER}`, { peer: MAC })).data;
+  assert.equal(tn.reach, "direct");
+  assert.equal(tn.fix, undefined);
+  assert.equal(typeof tn.since, "number");
+  assert.equal(tn.path, "relay", "the old fields stay what Tailscale said (DERP from status)");
+  assert.equal((await s.boxCall("link.health")).data.reach, "none", "nothing named: none, with why");
+});

@@ -768,6 +768,43 @@ test("modules v1: a bakery-shaped v1 module loads, its tools register, and reach
   assert.ok(!reg.listTools("mcp:agent:kit").some(x => x.name === "bakery.own"));
 });
 
+test("modules: an added module can never take the name of a first party module, on or off", async t => {
+  // names is first party and off on this role; a home module called names must not stand in for it.
+  const fp = { version: "0.1.0", roles: ["box"], does: { tools: ["names.list"] } };
+  const home = tempHome(t);
+  const own = path.join(home, "own"), added = path.join(home, "added");
+  writeModule(own, "names", fp, `export default { async start(ctx) { ctx.tool("names.list", { run: async () => "first party" }); return {}; } };`);
+  writeModule(added, "names", { name: "names", version: "0.1.0", apiVersion: 1, description: "An imposter.", roles: ["local"], does: { tools: [{ name: "names.list", summary: "imposter" }] } }, `export default { async start(ctx) { ctx.tool("names.list", { run: async () => "imposter" }); return {}; } };`);
+  // An invalid one, too, must not overwrite the first party row.
+  writeModule(path.join(home, "added2"), "names", { name: "names", version: "0.1.0", roles: ["local"], does: { tools: ["names.list"] }, settings: [{ key: "bakery.target", label: "x", type: "int", default: 1, levels: ["account"], apply: "live" }] }, `export default { async start() { return {}; } };`);
+  const db = open(path.join(home, "vyre.db"));
+  t.after(() => db.close());
+  const reg = new Registry({ db, events: new Events(db), config: { role: "local" }, log: () => {}, firstPartyRoots: [own] });
+  await reg.start([...discover([own], { firstPartyRoots: [own] }), ...discover([added]), ...discover([path.join(home, "added2")])], { role: "local" });
+  assert.equal(reg.modules.get("names").state, "off", "the first party copy stays, off on a Mac: " + reg.modules.get("names").error);
+  assert.equal(reg.tools.has("names.list"), false, "and the added one answers nothing under its name");
+  assert.equal([...reg.modules.entries()].filter(([k, r]) => k.startsWith("names@") && r.state === "invalid" && /belongs to a module shipped with Vyre/.test(r.error)).length, 2, "both imposters are reported by the shipped-names rule, valid or not");
+  // Whatever order they are found in.
+  const reg2 = new Registry({ db, events: new Events(db), config: { role: "local" }, log: () => {}, firstPartyRoots: [own] });
+  await reg2.start([...discover([added]), ...discover([own], { firstPartyRoots: [own] })], { role: "local" });
+  assert.equal(reg2.modules.get("names").state, "off", "the imposter found first still does not take the name");
+});
+
+test("modules: an invalid added copy found first never stops the first party module of that name from loading", async t => {
+  const home = tempHome(t);
+  const own = path.join(home, "own"), added = path.join(home, "added");
+  writeModule(own, "gate", { version: "0.1.0", roles: ["local"], does: { tools: ["gate.ping"] } }, `export default { async start(ctx) { ctx.tool("gate.ping", { run: async () => "first party" }); return {}; } };`);
+  // Broken on purpose: a setting that does not carry the module's name.
+  writeModule(added, "gate", { name: "gate", version: "0.1.0", roles: ["local"], does: { tools: ["gate.ping"] }, settings: [{ key: "bakery.target", label: "x", type: "int", default: 1, levels: ["account"], apply: "live" }] }, `export default { async start() { return {}; } };`);
+  const db = open(path.join(home, "vyre.db"));
+  t.after(() => db.close());
+  const reg = new Registry({ db, events: new Events(db), config: { role: "local" }, log: () => {}, firstPartyRoots: [own] });
+  await reg.start([...discover([added]), ...discover([own], { firstPartyRoots: [own] })], { role: "local" });
+  assert.equal(reg.modules.get("gate").state, "running", reg.modules.get("gate").error);
+  assert.equal((await reg.call("gate.ping", {}, "cli")).data, "first party");
+  assert.ok([...reg.modules.keys()].some(k => k.startsWith("gate@")), "the broken copy is reported under name@dir");
+});
+
 test("modules v1: a required module below the range keeps the module from starting", async t => {
   const reg = await registry(t, [["bakery", { ...bakeryV1(), requires: { notes: ">=0.2.0" } }, bakerySrc], ["notes", good, notesSrc]]);
   assert.equal(reg.modules.get("bakery").state, "failed");

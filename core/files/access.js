@@ -20,6 +20,8 @@
 // `within` and `agentOf` (still exported; other files in this module use them directly, and
 // agentOf is how this file decides which agent's projects.reach is asking for its own).
 
+import fs from "node:fs";
+
 const AGENT_RE = /(?:^|[\s:])agent:([A-Za-z0-9_-]+)/;
 
 /** Is folder `p` one of these folders, or under one? */
@@ -60,4 +62,17 @@ export async function reach(ctx, caller) {
   }
   const { all, agent, projects } = r.data;
   return { all, agent, folders: all ? [] : (projects || []).flatMap(p => p.folders) };
+}
+
+/**
+ * Is this path, followed through every link, inside one of the granted folders (also followed)?
+ * `within` compares the text of a path, so a link inside a granted folder that points at another
+ * project passes it; this is the check that stops that. A path that does not resolve is refused.
+ * @param {string} p @param {string[]} folders
+ */
+export function withinReal(p, folders) {
+  let r;
+  try { r = fs.realpathSync(p); } catch { return false; }
+  const real = folders.map(f => { try { return fs.realpathSync(f); } catch { return String(f); } });
+  return within(r, real);
 }

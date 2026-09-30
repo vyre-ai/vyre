@@ -6,7 +6,7 @@
 //
 // A lock whose process is gone is stale and taken over. So is one left by a vyred from before a
 // reboot or a container restart, where its pid may now belong to something else: the lock
-// records the boot it was taken in, and a pid that is not a vyre process does not hold it. A box
+// records the boot it was taken in, and a pid that is not vyred does not hold it. A box
 // container replaced by `vyre update` is the same boot, and its new processes reuse the old pids
 // (the spawner or the loop, both under /opt/vyre, can have the old vyred's pid), so the lock also
 // records when its process started: a pid that started at another time is someone else.
@@ -35,13 +35,22 @@ export function startOf(pid) {
   try { return execFileSync("ps", ["-p", String(pid), "-o", "lstart="], { encoding: "utf8", timeout: 2000, stdio: ["ignore", "pipe", "ignore"] }).trim(); } catch { return ""; }
 }
 
-/** Is `pid` running, and (when this can tell) a vyre process? */
+/**
+ * A command line that is vyred: the daemon's main.js (`vyre up`, launchd, the box loop) or
+ * `vyre daemon` (systemd). "vyre" anywhere else in a command line, such as a repo path, is not.
+ */
+export const isVyred = (/** @type {string} */ cmd) => {
+  const c = cmd.replace(/\0/g, " ").trim();
+  return /(^|[\s/\\])node(\.exe)?\s+(-\S+\s+)*\S*daemon[\/\\]main\.js(\s|$)/.test(c) || /(^|[\s/\\])vyre\s+daemon(\s|$)/.test(c);
+};
+
+/** Is `pid` running, and (when this can tell) vyred? */
 function holds(pid) {
   try { process.kill(pid, 0); } catch (e) { if (/** @type {any} */ (e).code !== "EPERM") return false; }
   let cmd = "";
   try { cmd = fs.readFileSync(`/proc/${pid}/cmdline`, "utf8"); }
   catch { try { cmd = execFileSync("ps", ["-p", String(pid), "-o", "command="], { encoding: "utf8", timeout: 2000, stdio: ["ignore", "pipe", "ignore"] }); } catch {} }
-  return !cmd || /vyre/i.test(cmd);
+  return !cmd || isVyred(cmd);
 }
 
 /** The home's real folder: every spelling of one home (a symlink, a trailing slash) is one. */

@@ -343,15 +343,16 @@ export const restored = restore => (restore === "code" ? "the files (the convers
 
 /**
  * Where a composer line goes, as Claude Code's shortcuts do: "!ls" runs in the thread's folder
- * (threads.shell), "# prefer tabs" is a line for CLAUDE.md (threads.remember), anything else is a
- * message. raw sends it as typed.
+ * (threads.shell), "/remember prefer tabs" is a line for CLAUDE.md (threads.remember), anything else is a
+ * message (a leading # is a tag now, never a memory). raw sends it as typed.
  * @param {string} text @param {boolean} [raw]
  * @returns {{ tool: "threads.send"|"threads.shell"|"threads.remember", body: string }}
  */
 export function routeLine(text, raw = false) {
   const t = String(text ?? "");
   if (!raw && t.startsWith("!")) return { tool: "threads.shell", body: t.slice(1).trim() };
-  if (!raw && t.startsWith("#")) return { tool: "threads.remember", body: t.slice(1).trim() };
+  const m = !raw && /^\/remember(\s+([\s\S]*))?$/.exec(t);
+  if (m) return { tool: "threads.remember", body: (m[2] || "").trim() };
   return { tool: "threads.send", body: t };
 }
 
@@ -693,13 +694,13 @@ const run = {
     if (error) return usage(error, "vyre help threads");
     if (how === "both") return usage("--queue and --steer disagree: pick one", "vyre help threads");
     if (!ref || (!words.length && !files.length)) return usage("vyre threads send <thread> [--queue|--steer] [--image F] [--raw] <text>", "vyre threads list shows the threads");
-    // The composer's shortcuts: a leading ! runs the line in the thread's folder, a leading # adds
+    // The composer's shortcuts: a leading ! runs the line in the thread's folder, /remember adds
     // it to CLAUDE.md. --raw sends either as a message.
     const route = routeLine(words.join(" "), raw);
     if (route.tool !== "threads.send") {
-      const mark = route.tool === "threads.shell" ? "!" : "#";
+      const mark = route.tool === "threads.shell" ? "!" : "/remember";
       if (files.length || how) return usage(`a ${mark} line takes no --image, --queue or --steer`, `--raw sends it as a message`);
-      if (!route.body) return usage(`nothing after the ${mark}`, route.tool === "threads.shell" ? "vyre threads send <thread> \"!ls\"" : "vyre threads send <thread> \"# prefer tabs\"");
+      if (!route.body) return usage(`nothing after the ${mark}`, route.tool === "threads.shell" ? "vyre threads send <thread> \"!ls\"" : "vyre threads send <thread> \"/remember prefer tabs\"");
     }
     /** @type {{ media_type: string, data: string }[] | null} */
     let images = null;
@@ -954,7 +955,7 @@ const run = {
     return shellLine(f.id, words.join(" "));
   },
 
-  /** Claude Code's # mode: a line for CLAUDE.md. */
+  /** /remember: a line for CLAUDE.md (Claude Code's # mode; # is a tag now). */
   async remember(args) {
     const { flags, pos } = parse(args, FLAGS.remember);
     const [ref, ...words] = pos;
@@ -1329,7 +1330,7 @@ export function sendArgs(args) {
  */
 const VERBS = [
   { verb: "start", summary: "a new session vyred owns", usage: `[<prompt...>] [--cwd d] [--project p] [--name n] [--model m] [--purpose ${PURPOSES.join("|")}] [--provider p]` },
-  { verb: "send", summary: "type into a thread: mid-turn it joins the turn; ! runs it, # remembers it", usage: "<thread> <text...> [--queue] [--steer] [--image file] [--raw]" },
+  { verb: "send", summary: "type into a thread: mid-turn it joins the turn; ! runs it, /remember saves it", usage: "<thread> <text...> [--queue] [--steer] [--image file] [--raw]" },
   { verb: "list", aliases: ["ls"], summary: "the headless threads of the last day", usage: "[--all] [--agent a]", read: true },
   { verb: "get", aliases: ["show"], summary: "one read: the record, open asks and events", usage: "<thread> [--since id] [--limit n]", read: true },
   { verb: "watch", summary: "follow a thread live; reconnects on its own", usage: "<thread>", read: true, live: true },
@@ -1345,7 +1346,7 @@ const VERBS = [
   { verb: "rewind", summary: "go back to a message (double Esc); no message: which ones", usage: `<thread> [message] [--restore ${RESTORE.join("|")}]` },
   { verb: "fork", summary: "a new session from this one's history", usage: "<thread> [<prompt...>]" },
   { verb: "shell", summary: "run a line in the thread's folder (! mode)", usage: "<thread> <command...>" },
-  { verb: "remember", summary: "a line for CLAUDE.md (# mode)", usage: `<thread> <text...> [--scope ${SCOPES.join("|")}]` },
+  { verb: "remember", summary: "a line for CLAUDE.md (/remember)", usage: `<thread> <text...> [--scope ${SCOPES.join("|")}]` },
   { verb: "tasks", summary: "its background tasks: shells and subagents", usage: "<thread>", read: true },
   { verb: "kill-task", summary: "stop a background task", usage: "<thread> <task>" },
   { verb: "commands", summary: "the slash commands the session offers", usage: "<thread>", read: true },
@@ -1370,7 +1371,7 @@ export default {
     "  vyre threads send <thread> --queue <text>         hold it until the turn ends (a terminal session always does)",
     "  vyre threads send <thread> --steer <text>         join the running turn at its next step",
     `  vyre threads send <thread> --image F [text]       with a picture (.png .jpg .gif .webp, ${IMAGES.mb} MB, ${IMAGES.count} at most)`,
-    "  vyre threads send <thread> \"!ls\"                  a leading ! runs it (shell), # remembers it; --raw sends as typed",
+    "  vyre threads send <thread> \"!ls\"                  a leading ! runs it (shell), /remember saves it; --raw sends as typed",
     "  vyre threads send <thread> /compact               a slash command; vyre threads commands <thread> lists them",
     "  vyre threads list [--all] [--agent A]             the headless threads of the last day (ls)",
     "  vyre threads queue <thread>                       what is queued and not yet handed over",
@@ -1389,7 +1390,7 @@ export default {
     "  vyre threads rewind <thread> <n|uuid> [--restore conversation|code|both]",
     "                                                    back to a message (double Esc); its words come back",
     "  vyre threads shell <thread> <command...>          run it in the thread's folder (! mode); Claude sees it next",
-    "  vyre threads remember <thread> <text> [--scope project|user|local]   a line for CLAUDE.md (# mode)",
+    "  vyre threads remember <thread> <text> [--scope project|user|local]   a line for CLAUDE.md (/remember)",
     "  vyre threads tasks <thread>                       its background tasks (shells, subagents)",
     "  vyre threads kill-task <thread> <task>            stop one",
     "  vyre threads commands <thread>                    the slash commands the running session offers",

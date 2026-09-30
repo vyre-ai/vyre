@@ -3,8 +3,8 @@
   "version": "0.1.0",
   "roles": ["box"],
   "requires": [],
-  "does": { "tools": ["names.status", "names.check", "names.claim", "names.fallback", "names.release", "names.connect", "names.owner", "names.claim-code"] },
-  "watches": { "emits": ["name.claimed", "name.released", "certificate.issued", "certificate.failed", "owner.seen", "owner.changed"] },
+  "does": { "tools": ["names.status", "names.check", "names.claim", "names.recover", "names.recover.code", "names.domain.check", "names.domain.serve", "names.fallback", "names.release", "names.connect", "names.owner", "names.claim-code"] },
+  "watches": { "emits": ["name.claimed", "name.recovered", "name.recovery-pending", "name.recovery-cancelled", "name.released", "certificate.issued", "certificate.failed", "domain.ready", "domain.failed", "owner.seen", "owner.changed"] },
   "shows": { "cli": ["name"] },
   "needs": { "vault": ["cloudflare-vyre-token"] },
   "teaches": {

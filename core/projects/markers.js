@@ -22,7 +22,7 @@ const SKIP = new Set(["node_modules", "dist", "build", "out", "target", "venv", 
 
 /** @typedef {{ name: string, email?: string }} Person */
 /** @typedef {{ slug: string, name: string, org: string|null, home: string, workspaces: string[],
- *   threads: string[], people: Person[], watchers: string[], avatar_seed: string, error?: string }} Project */
+ *   threads: string[], people: Person[], watchers: string[], avatar_seed: string, archived_at: number|null, error?: string }} Project */
 
 // The canonical shape now lives in lib/project-id.js (any part may import a lib without a
 // boundaries exception); re-exported here so `M.slugify` and existing callers keep working.
@@ -76,6 +76,7 @@ export function load(home) {
     // What the project's tile is drawn from (ADR 0043 section 6): the stored seed, else the slug,
     // the project's id. Never read back from the name, so a rename never redraws the tile. A
     // marker from before this field is not rewritten on read; it just defaults.
+    archived_at: Number.isFinite(Number(raw.archived_at)) && Number(raw.archived_at) > 0 ? Number(raw.archived_at) : null,
     avatar_seed: typeof raw.avatar_seed === "string" && raw.avatar_seed ? raw.avatar_seed : slug,
   };
 }
