@@ -644,7 +644,7 @@ DevTools' view of the page: an element's outerHTML, attributes and box model, co
 Set up the Vyre Chrome connector: registers the native host with Chrome (and the other Chromium browsers found), then returns the steps the person does in Chrome to load the extension.
 
 - Input:
-  - `browsers` list of one of "chrome", "chromium", "brave", "edge"
+  - `browsers` list of one of "chrome", "chromium", "brave", "edge", "dia", "arc"
   - `extensionDir` string
   - `extensionId` string
 - Callers: `capsule`, `cli`, `deck`, `local`

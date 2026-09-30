@@ -12,6 +12,9 @@ import { PKG, dataDirOf, sockPathOf, createRuntime } from "./runtime.js";
 import { serve } from "./mcp.js";
 import { readConfig, writeConfig, report } from "./trace.js";
 import readline from "node:readline";
+import { doctor, render } from "./doctor.js";
+import { createBridge } from "../bridge.js";
+import { diagnoseConnection } from "../diagnose.js";
 import * as nativeHost from "../native-host/install.js";
 import { extensionIdFromKey } from "../native-host/install.js";
 import { guide } from "../index.js";
@@ -31,11 +34,41 @@ const hostOf = raw => { const h = String(raw || "").trim().toLowerCase().replace
 /** @param {string} q */
 const ask = q => new Promise(res => { const rl = readline.createInterface({ input: process.stdin, output: process.stdout }); rl.question(q, a => { rl.close(); res(a); }); });
 
+/**
+ * After install: wait for the extension to connect and say "connected" or the exact next step. If a server already holds the
+ * connector socket, its own status file is what is watched.
+ * @param {{ dataDir: string, sock: string, extensionId: string, seconds: number, hostRegistered: boolean }} o
+ */
+async function liveCheck({ dataDir, sock, extensionId, seconds, hostRegistered }) {
+  const bridge = createBridge({ sockPath: sock, extensionOrigin: `chrome-extension://${extensionId}/`, timeoutMs: 3000 });
+  /** @type {string|null} */ let listenErr = null;
+  try { await bridge.listen(); } catch (e) { listenErr = /** @type {Error} */ (e).message; }
+  const statusFile = path.join(dataDir, "run", "status.json");
+  const served = () => { try { const j = JSON.parse(fs.readFileSync(statusFile, "utf8")); return j && j.connected === true ? j : null; } catch { return null; } };
+  const end = Date.now() + seconds * 1000;
+  /** @type {any} */ let info = null;
+  while (Date.now() < end) {
+    if (bridge.connected()) { info = bridge.info(); break; }
+    const sv = listenErr ? served() : null;
+    if (sv) { info = sv.extension || {}; break; }
+    await new Promise(r => setTimeout(r, 250));
+  }
+  const stats = bridge.stats();
+  await bridge.close();
+  if (info) { out(`Connected: Vyre for Chrome is talking to your browser (extension ${info.version || "?"}). You are done with Chrome; add it to Claude Code (below) if you have not.`); return true; }
+  let d = diagnoseConnection({ connected: false, hostRegistered, stats });
+  if (listenErr) { try { const j = JSON.parse(fs.readFileSync(statusFile, "utf8")); if (j && j.problem) d = { stage: j.stage, problem: j.problem, fix: j.fix }; } catch { /* keep ours */ } }
+  out(`Not connected yet after ${seconds} s: ${d ? d.problem : "unknown"}.`);
+  if (d) out(`Next: ${d.fix}`);
+  return false;
+}
+
 const HELP = `Vyre for Chrome ${version} (vyre-chrome): control your own Chrome from Claude Code
 
   vyre-chrome install [--browsers chrome,brave]   register the connector; prints what to do next
   vyre-chrome uninstall [--purge]                 remove the connector (--purge also deletes the logs)
-  vyre-chrome status                              is it installed, is logging on
+  vyre-chrome status                              is it installed, is the server connected, is logging on
+  vyre-chrome doctor                              checks the whole path from a terminal and says the one fix
   vyre-chrome report [--last N] [--out FILE]      one redacted bundle of your last N sessions, with a summary
   vyre-chrome config ghl-host <domain> [--remove]  optional: a GoHighLevel domain to always count (white-label domains are recognised automatically)
   vyre-chrome config confirm-sends on|off         ask you before a send and before resuming after Esc (default on)
@@ -91,7 +124,11 @@ async function main() {
         else linked = { link, foreign: true };
       } catch { /* a read-only home: the printed steps below still work */ }
     }
-    out(`Vyre for Chrome is installed. Registered the connector for: ${r.written.map((/** @type {any} */ w) => w.browser).join(", ")}`);
+    const regd = r.written.map((/** @type {any} */ w) => w.browser);
+    const notRegd = Object.keys(nativeHost.BROWSERS).filter(b => nativeHost.available(/** @type {any} */ (b), process.platform) && !regd.includes(b));
+    out(`Vyre for Chrome is installed. Registered the connector for: ${regd.join(", ")}.`);
+    if (notRegd.length) out(`Not registered (not found on this computer): ${notRegd.join(", ")}. If you use one of them, run: vyre-chrome install --browsers <name>`);
+    out("If your browser is already open, it may need a quit and reopen before it sees the connector. The check at the end tells you.");
     out();
     out(guide(extDirNow, id, r.written.map((/** @type {any} */ w) => w.browser)).split("\n").slice(1, 5).join("\n"));
     out();
@@ -105,6 +142,16 @@ async function main() {
       if (!linked.onPath) { out(`~/.local/bin is not on your PATH yet. Add it once: echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.zshrc   (then open a new terminal)`); }
     } else if (launcher) out(`Run it any time as: ${launcher}`);
     out("To update, unpack the new release and run its install again.");
+    // The live check: wait for the extension to connect and say so, or say exactly what to do. Skipped with --no-wait, and off a terminal unless --wait N is given.
+    const waitFlag = flag(args, "wait");
+    const seconds = flag(args, "no-wait") !== undefined ? 0 : waitFlag !== undefined ? Math.max(0, Number(waitFlag) || 60) : process.stdout.isTTY ? 60 : 0;
+    if (seconds > 0) {
+      out();
+      out(`Now load the extension if you have not: chrome://extensions > Developer mode > Load unpacked > ${extDirNow}`);
+      out(`Waiting up to ${seconds} s for it to connect (Ctrl-C to skip)...`);
+      const ok = await liveCheck({ dataDir, sock, extensionId: id, seconds, hostRegistered: r.written.length > 0 });
+      if (!ok) process.exitCode = 2;
+    }
     return;
   }
 
@@ -148,10 +195,22 @@ async function main() {
     return;
   }
 
+  if (cmd === "doctor") {
+    const appDirD = fs.existsSync(path.join(dataDir, "app", "extension")) ? path.join(dataDir, "app") : PKG;
+    let extId = "";
+    try { extId = extensionIdFromKey(JSON.parse(fs.readFileSync(path.join(appDirD, "extension", "manifest.json"), "utf8")).key); } catch { /* reported as a failed install check */ }
+    const r = await doctor({ dataDir, appDir: appDirD, extensionId: extId, selftest: flag(args, "no-selftest") === undefined });
+    out(render(r));
+    process.exitCode = r.ok ? 0 : 1;
+    return;
+  }
+
   if (cmd === "status") {
     const c = readConfig(dataDir);
     let host; try { host = nativeHost.status({ vyreHome: dataDir, hostDir: fs.existsSync(path.join(dataDir, "app")) ? path.join(dataDir, "app", "native-host") : hostDir }); } catch (e) { host = { error: /** @type {Error} */ (e).message }; }
-    out(JSON.stringify({ version, dataDir, extensionDir: extDir, logs: c.logs, screenshots: c.shots === true, host }, null, 2));
+    /** @type {any} */ let server = null;
+    try { server = JSON.parse(fs.readFileSync(path.join(dataDir, "run", "status.json"), "utf8")); } catch { /* no server running */ }
+    out(JSON.stringify({ version, dataDir, extensionDir: extDir, logs: c.logs, screenshots: c.shots === true, host, server: server ? { pid: server.pid, connected: server.connected, problem: server.problem, fix: server.fix } : null, hint: "vyre-chrome doctor checks the whole path" }, null, 2));
     return;
   }
 
