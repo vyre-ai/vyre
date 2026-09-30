@@ -170,6 +170,11 @@ export function createFramesWorld() {
 
     // ---- site C: the widgets
     if (host === SITES.widgets && req.method === "GET") {
+      // A page that, the moment it runs, sends a request to the address in ?to= (the neutralize check: a frame the guard could not reach must never get to run this).
+      if (p === "/beacon-page") {
+        html(res, `<!doctype html><html><head><title>beacon page</title></head><body>beacon<script>try { fetch(${JSON.stringify(url.searchParams.get("to") || "")}, { mode: "no-cors" }); new Image().src = ${JSON.stringify(url.searchParams.get("to") || "")} + "img"; } catch (e) {}</script></body></html>`);
+        return true;
+      }
       if (p === "/email-editor") {
         html(res, small("email editor", `<label>Email editor body <input id="editor-body" data-testid="editor-body"></label> <button type="button" id="editor-save" data-testid="editor-save">Save design</button> <span id="editor-status" role="status"></span>
 <script>document.getElementById('editor-save').addEventListener('click', function () { var v = document.getElementById('editor-body').value; fetch('/api/editor/save', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ body: v }) }).then(function () { document.getElementById('editor-status').textContent = 'Design saved'; }); });</script>`));
