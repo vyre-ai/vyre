@@ -23,7 +23,7 @@ import { bridge } from "./bridge.js";
 import { pairUrl, parsePairUrl } from "./pairing.js";
 import { knownBuild, findRelease, newestRelease } from "./releases.js";
 import { agentClaim, ownerDevice } from "../modules/index.js";
-import { loadKeys } from "./keys.js";
+import { loadKeys, keyHandle } from "./keys.js";
 import { fingerprint8, toBase64url } from "../../lib/identity.js";
 import { redeem } from "./redeem.js";
 import { tailscaleApi, desktopJoin, pairedBox, MINT_ITEM, DEVICE_TAG, JOIN_PATH } from "./tailnet.js";
@@ -93,16 +93,16 @@ const fail = (code, message) => Object.assign(new Error(message), { code });
  *
  * A pure function of an explicit platform, like installCommand/operator in core/names/tailscale.js,
  * so a test can assert the darwin case without depending on the OS it happens to run on.
- * @param {string} platform
+ * @param {string} platform @param {boolean} [core] whether vyre-core holds this box's keys (keyHandle's `core`), which lifts it for every path whose only key is the box's own; relay.join and the desktop join keep a device key at the login uid, so they call it without
  */
-export function macCoreRefusal(platform) {
-  return platform === "darwin"
+export function macCoreRefusal(platform, core = false) {
+  return platform === "darwin" && !core
     ? fail("not_available_here", "not available on a Mac yet: this needs vyre-core to hold a key that today would sit unprotected at your login; use a Linux box instead, or wait for vyre-core")
     : null;
 }
 
 /**
- * @type {{ start(ctx: any, seam?: { WebSocket?: any, now?: () => number, platform?: string }): Promise<{ stop(): Promise<void> }> }}
+ * @type {{ start(ctx: any, seam?: { WebSocket?: any, now?: () => number, platform?: string, coreKeys?: any }): Promise<{ stop(): Promise<void> }> }}
  */
 export default {
   async start(ctx, seam = {}) {
@@ -112,10 +112,12 @@ export default {
     const platform = seam.platform || process.platform;
     const settings = () => ({ enabled: false, url: DEFAULT_RELAY, web_expiry_days: 30, ...(ctx.config.relay || {}) });
     const save = patch => config.save({ relay: patch }, ctx.paths.root, ctx.config);
-    /** @type {ReturnType<typeof loadKeys> | null} */
-    let keys = null;
-    const k = () => (keys = keys || loadKeys(ctx.paths.root));
-    const route = () => routeId(k().route.pub);
+    // The box's keys, through a handle that never shows private bytes (./keys.js): vyre-core's when
+    // `seam.coreKeys` is given, else the 0600 file. Public keys are plain values once `keys.ready()`
+    // has run, which every path that starts the link, or answers with them, awaits first.
+    const keys = keyHandle({ root: ctx.paths.root, core: seam.coreKeys || ctx.coreKeys || null });
+    const k = () => keys;
+    const route = () => routeId(keys.route.pub);
     // The box's name as the names module knows it (config.name), never the machine's hostname: it rides in QR codes and
     // shows in screenshots.
     const boxName = () => String(ctx.config.name || (ctx.config.network && ctx.config.network.name) || "Vyre box").slice(0, 64);
@@ -170,7 +172,7 @@ export default {
      * @param {string} id @param {any} res
      */
     async function tailnetKey(id, res) {
-      const refusal = macCoreRefusal(platform);
+      const refusal = macCoreRefusal(platform, keys.core);
       if (refusal) return answer(res, 403, { error: { code: refusal.code, message: refusal.message } });
       const row = /** @type {any} */ (db.prepare("SELECT kind, join_grant, join_mints, join_last, node_id, node_tagged FROM relay_devices WHERE id = ? AND removed_at IS NULL").get(id));
       if (row && row.node_tagged && row.node_id) return answer(res, 409, { error: { code: "already_joined", message: "this device is already on the tailnet" } });
@@ -199,7 +201,7 @@ export default {
     /** Delete every removed device's leftover tagged node; each success clears its row. */
     let deleting = null;
     const deleteOrphans = () => {
-      if (deleting || macCoreRefusal(platform)) return deleting;
+      if (deleting || macCoreRefusal(platform, keys.core)) return deleting;
       const rows = /** @type {any[]} */ (db.prepare("SELECT id, orphan_node FROM relay_devices WHERE orphan_node IS NOT NULL").all());
       if (!rows.length) return null;
       deleting = (async () => {
@@ -220,7 +222,7 @@ export default {
     let nodesAt = 0;
     const pruneGoneNodes = () => {
       const rows = /** @type {any[]} */ (db.prepare("SELECT id, node_id FROM relay_devices WHERE removed_at IS NULL AND node_tagged = 1 AND node_id IS NOT NULL").all());
-      if (!rows.length || now() - nodesAt < NODES_FRESH || macCoreRefusal(platform)) return;
+      if (!rows.length || now() - nodesAt < NODES_FRESH || macCoreRefusal(platform, keys.core)) return;
       nodesAt = now();
       ts.nodeIds().then(ids => {
         for (const r of rows) if (!ids.has(r.node_id)) {
@@ -375,8 +377,9 @@ export default {
      * @param {string} code
      */
     async function beginSetup(code) {
-      const refusal = macCoreRefusal(platform);
+      const refusal = macCoreRefusal(platform, keys.core);
       if (refusal) throw refusal;
+      await keys.ready();
       if (personExists()) throw fail("denied", "this box already has an owner; a setup code does nothing here");
       const s = new SetupSession({ code, now, onEnd: why => {
         if (setup === s) setup = null;
@@ -409,7 +412,7 @@ export default {
         words: s.words(k().box.pub).join(" ") };
     };
     const setupHandler = setupGate({ session: () => setup, extraTools: () => (typeof ctx.declaredSetupTools === "function" ? ctx.declaredSetupTools() : []), ownerExists: personExists, handlerFor: policy => ctx.handler(policy),
-      mintTicket: async () => { const refusal = macCoreRefusal(platform); if (refusal) throw refusal; return mintTicket(); },
+      mintTicket: async () => { const refusal = macCoreRefusal(platform, keys.core); if (refusal) throw refusal; return mintTicket(); },
       recoverCode: async input => { const r = /** @type {any} */ (await ctx.call("names.recover.code", input)); return r && r.data !== undefined ? r.data : r; } });
 
     let handle = null, webHandle = null, upgrade = null;
@@ -433,7 +436,9 @@ export default {
       channel.onclose = reason => { closed(reason); set.delete(channel); };
     }
 
-    if (settings().enabled) startLink();
+    if (settings().enabled) {
+      try { await keys.ready(); startLink(); } catch (e) { ctx.log(`relay: the box keys are not available: ${/** @type {Error} */ (e).message}`); }
+    }
 
     // This machine as a desktop of another box (ADR 0046): one join attempt at a time, once after
     // pairing and once at each start until it has joined. Never on a Mac before vyre-core.
@@ -482,7 +487,8 @@ export default {
         owner(meta.caller, meta, "the relay's status");
         const s = settings();
         const mine = pairedBox(ctx.paths.root);
-        return { enabled: Boolean(s.enabled), url: s.url, connected: Boolean(link && link.connected), route: s.enabled || keys ? route() : null,
+        if (s.enabled || await keys.exists()) await keys.ready();
+        return { enabled: Boolean(s.enabled), url: s.url, connected: Boolean(link && link.connected), route: s.enabled || keys.loaded ? route() : null,
           devices: active().length, open: link ? link.open : 0, pairing: pairing && pairing.exp > now() ? { expiresAt: pairing.exp } : null,
           // This machine's own tailnet join as another box's desktop (ADR 0046), when it is one.
           ...(mine ? { tailnet: mine.tailnet || { state: "pending" } } : {}) };
@@ -498,6 +504,7 @@ export default {
         const url = input.url ? String(input.url) : settings().url;
         if (!/^wss?:\/\/[^\s/]+/.test(url)) throw fail("bad_input", "url must be a ws:// or wss:// address");
         if (url !== settings().url) stopLink();
+        await keys.ready();
         save({ enabled: true, url });
         startLink();
         return { enabled: true, url };
@@ -522,6 +529,7 @@ export default {
     const mint = async first => {
       const secret = crypto.randomBytes(16).toString("base64url");
       pairing = { hash: sha(secret), exp: now() + PAIR_TTL, first };
+      await keys.ready();
       if (!settings().enabled) save({ enabled: true });
       startLink();
       const connected = link ? await link.ready() : false;
@@ -562,6 +570,7 @@ export default {
       const exp = now() + TICKET_TTL;
       const secret = ticketDerive("sec", rawTicket).toString("base64url");
       pendingTickets.set(sha(secret).toString("hex"), { exp });
+      await keys.ready();
       if (!settings().enabled) save({ enabled: true });
       startLink();
       const connected = link ? await link.ready() : false;
@@ -575,9 +584,9 @@ export default {
     ctx.tool("relay.pair.ticket", {
       description: "Mint a one-time pairing ticket for the Vyre code (Wink): a phone that scans it resolves the box's identity from the relay, then pairs exactly as relay.pair.start's QR does. Works once, for 5 minutes; call again for a fresh one (an old, unused ticket is simply left to expire, unlike relay.pair.start's single live QR). Not available on a Mac yet: see vyre-core (ADR 0040).",
       input: obj(),
-      presence: { when: () => !macCoreRefusal(platform), summary: async () => `Pair a new device with this box, by scanning its Vyre code${settings().enabled ? "" : " (this also turns the relay on)"}` },
+      presence: { when: () => !macCoreRefusal(platform, keys.core), summary: async () => `Pair a new device with this box, by scanning its Vyre code${settings().enabled ? "" : " (this also turns the relay on)"}` },
       run: async (_, meta = {}) => {
-        const refusal = macCoreRefusal(platform);
+        const refusal = macCoreRefusal(platform, keys.core);
         if (refusal) throw refusal;
         owner(meta.caller, meta, "pairing a device");
         return mintTicket();
@@ -803,7 +812,7 @@ export default {
       input: obj(),
       run: async (_, meta = {}) => {
         owner(meta.caller, meta, "the tailnet join");
-        const refusal = macCoreRefusal(platform);
+        const refusal = macCoreRefusal(platform, keys.core);
         const bound = /** @type {any} */ (db.prepare("SELECT COUNT(*) AS n FROM relay_devices WHERE removed_at IS NULL AND node_tagged = 1").get()).n;
         return { available: !refusal, why: refusal ? refusal.message : null, item: MINT_ITEM, tag: DEVICE_TAG, joined: bound };
       },
@@ -900,7 +909,7 @@ export default {
       internal: true,
       description: "This box's route id and route public key (base64url), for signing into the name directory. Modules only.",
       input: obj(),
-      run: async (_, meta) => { only(meta, ["names"], "the route id"); return { route: route(), pub: Buffer.from(k().route.pub).toString("base64url") }; },
+      run: async (_, meta) => { only(meta, ["names"], "the route id"); await keys.ready(); return { route: route(), pub: Buffer.from(k().route.pub).toString("base64url") }; },
     });
 
     ctx.tool("relay.route.sign", {
@@ -909,10 +918,10 @@ export default {
       input: obj({ message: str }, ["message"]),
       run: async (input, meta) => {
         only(meta, ["names"], "signing with the route key");
+        await keys.ready();
         const msg = Buffer.from(String(input.message || ""), "base64url");
         if (!msg.subarray(0, `vyre-names-v1\n${route()}\n`.length).equals(Buffer.from(`vyre-names-v1\n${route()}\n`))) throw fail("bad_input", "only a name-directory message for this box's own route is signed");
-        const priv = crypto.createPrivateKey({ key: Buffer.concat([Buffer.from("302e020100300506032b657004220420", "hex"), Buffer.from(k().route.priv)]), format: "der", type: "pkcs8" });
-        return { sig: crypto.sign(null, msg, priv).toString("base64url") };
+        return { sig: (await keys.route.sign(msg)).toString("base64url") };
       },
     });
 

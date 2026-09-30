@@ -22,6 +22,7 @@ import { nodeCrypto, fileKeyStore } from "../relay/client/nodecrypto.js";
 import { fromBase64url } from "../relay/client/bytes.js";
 import crypto from "node:crypto";
 import { tempHome } from "./helpers.js";
+import { fakeCoreKeys } from "./fake-core-keys.js";
 
 /** Asks for a proof on every human-only tool and takes any proof: refusals below are about who is calling. */
 const lenient = {
@@ -39,14 +40,14 @@ const SPKI = () => crypto.generateKeyPairSync("ec", { namedCurve: "P-256" }).pub
 const P = { "x-vyre-presence": "passkey id=abc" };
 const PROOF = { proof: { method: "passkey", id: "x" } };
 
-async function world(t, relayConfig = {}) {
+async function world(t, relayConfig = {}, startOpts = {}) {
   const relay = createRelay();
   const url = await relay.listen();
   t.after(() => relay.close());
   const root = tempHome(t);
   fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ role: "box", name: "alex", transcripts: [],
     network: { name: "alex" }, relay: { enabled: false, url, ...relayConfig }, modules: { disable: ["names", "onboard"] } }));
-  const d = await start({ presence: lenient, root, log: () => {} });
+  const d = await start({ presence: lenient, root, log: () => {}, ...startOpts });
   t.after(() => d.stop());
   return { d, relay, url, root };
 }
@@ -702,6 +703,29 @@ test("relay: relay.pair.ticket refuses on darwin, before any Touch ID prompt, th
   assert.equal(await def.presence.when(), false, "no prompt on darwin: the call can only refuse");
   const r = await d.registry.call("relay.pair.ticket", {}, "cli", PROOF);
   assert.equal(r.error.code, "not_available_here");
+});
+
+test("relay: on a Mac with vyre-core holding the keys, the box pairs a phone end to end through core's dh and signature, and no key file is written", async t => {
+  assert.equal(macCoreRefusal("darwin", true), null);
+  assert.equal(macCoreRefusal("darwin", false).code, "not_available_here");
+  const real = Object.getOwnPropertyDescriptor(process, "platform");
+  Object.defineProperty(process, "platform", { value: "darwin", configurable: true });
+  t.after(() => Object.defineProperty(process, "platform", real));
+  const core = fakeCoreKeys({ made: false });
+  const { d, root } = await world(t, {}, { coreKeys: core });
+  const def = d.registry.tools.get("relay.pair.ticket");
+  assert.equal(await def.presence.when(), true, "the ticket is offered once core holds the keys");
+  const url = await firstPairing(d);
+  const p = await phone(url);
+  assert.equal(p.reply.paired, true);
+  assert.ok(core.calls.boxDh >= 2, "the handshake's static DHs were answered by core");
+  assert.ok(core.calls.routeSign >= 1, "the relay's challenge was signed by core");
+  assert.equal(fs.existsSync(path.join(root, "relay", "keys.json")), false, "no key file at the login uid");
+  const status = (await d.registry.call("relay.status", {}, "cli", PROOF)).data;
+  assert.equal(status.connected, true);
+  // relay.join keeps its device key at the login uid, so it stays refused on a Mac even with core
+  const j = await d.registry.call("relay.join", { url: "vyre://x" }, "cli", PROOF);
+  assert.equal(j.error.code, "not_available_here");
 });
 
 test("relay: /v1/pair is rate-limited per IP", async t => {

@@ -54,7 +54,7 @@ export function moduleRoots(root) {
 /**
  * Start vyred. Returns a handle with the running registry and a stop() for tests.
  * @param {{ root?: string, log?: (m: string, x?: any) => void, rules?: any, presence?: any,
- *   person?: (socket: import("node:net").Socket) => Promise<string|{ key: string, tty: string|null }|null> }} [opts] person: a test's stand-in for atTerminal
+ *   coreKeys?: any, person?: (socket: import("node:net").Socket) => Promise<string|{ key: string, tty: string|null }|null> }} [opts] person: a test's stand-in for atTerminal
  */
 export async function start(opts = {}) {
   const root = opts.root || config.home();
@@ -137,7 +137,7 @@ async function startLocked(opts, root, p, release) {
   // of this function can pass it; vyred's own start (main.js) passes nothing, and it is never read
   // from config.json, the environment or the command line.
   const firstPartyRoots = Array.isArray(opts.firstPartyRoots) ? opts.firstPartyRoots.filter(r => typeof r === "string" && path.isAbsolute(r)) : [];
-  registry = new Registry({ db, events, config: cfg, paths: p, log, rules, handler, upgrader, presence, firstPartyRoots });
+  registry = new Registry({ db, events, config: cfg, paths: p, log, rules, handler, upgrader, presence, firstPartyRoots, coreKeys: opts.coreKeys || null });
   // The eight box-only modules gate on cfg.machine (ADR 0039: solo/server/device), not the
   // legacy cfg.role -- that's what lets a Mac chosen as the server run them.
   await registry.start(discover(moduleRoots(root), { firstPartyRoots }), { role: cfg.machine, ...cfg.modules });

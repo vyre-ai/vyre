@@ -35,6 +35,7 @@ export const prologue = route => Buffer.from(`${PROLOGUE_TAG}\n${route}`);
 /**
  * @typedef {{ send: (bytes: Buffer) => void, close: (code?: number, reason?: string) => void }} Transport
  * @typedef {{ priv: Buffer, pub: Buffer }} Keys
+ * @typedef {{ pub: Buffer, priv?: Buffer, dh?: (remotePub: Buffer) => Buffer | Promise<Buffer> }} StaticKey the box's static key: its bytes, or vyre-core's dh
  */
 
 /** An open channel: encrypted frames in and out, streams on top. */
@@ -206,7 +207,7 @@ export function deviceSide(transport, o) {
  * The box's side. `admit` sees the device's static key and hello and returns the reply payload,
  * or throws to refuse (the connection closes with the error's message and nothing else is read).
  * @param {Transport} transport
- * @param {{ s: Keys, route: string, admit: (devicePub: Buffer, hello: any) => Promise<any>, now?: () => number }} o
+ * @param {{ s: StaticKey, route: string, admit: (devicePub: Buffer, hello: any) => Promise<any>, now?: () => number }} o
  * @returns {{ receive: (bytes: Buffer) => void, gone: (reason: string) => void, ready: Promise<{ channel: Channel, hello: any, reply: any }> }}
  */
 export function boxSide(transport, o) {
@@ -227,7 +228,7 @@ export function boxSide(transport, o) {
       pending = true;
       let hello, reply;
       try {
-        hello = JSON.parse(hs.readMessage(bytes).toString());
+        hello = JSON.parse((await hs.readMessageAsync(bytes)).toString());
         reply = await o.admit(/** @type {Buffer} */ (hs.rs), hello);
       } catch (e) {
         const reason = String(/** @type {any} */ (e)?.message || "refused").slice(0, 120);

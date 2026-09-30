@@ -86,6 +86,8 @@ Taildrive per-share access and the secrets scan (ea158df, 27 Sep 2026):
 
 ## Doing
 
+30 Sep 2026, vyre-core phase 5, relay side (on work/tailnet-02, code to anywhere's shape, async only): `keyHandle` in core/relay/keys.js; Handshake static key as `{pub, dh}` with `readMessageAsync` (one generator, sync and async drivers); relayLink signs through `routeKey.sign`; `ctx.coreKeys` reaches the relay module only (core/modules); `macCoreRefusal(platform, core)` lifts for setup, tickets and the tailnet key paths, not relay.join or the desktop join. Tests use test/fake-core-keys.js until anywhere's `fakeCoreKeys` lands; a darwin end to end pairs a phone through core with no key file. Waiting on anywhere: the daemon must pass `coreKeys: createCoreKeys(...)` to `start()` when core is present (I did not touch daemon boot), and the sha of lib/vyre-core-keys.js. 11 tests in test/relay.test.js and core/relay/tailnet.test.js still fail on a Mac as on main (they do not fake the platform).
+
 30 Sep 2026, reviewer-2's two changes on cc103f19 (d1e975c9 plus regenerated reference): the grant stores the claimed host and enrolls only a passkey whose rp_id equals it; relay.setup.claim is in WEB_DENY. presence and setup tests 56 of 56. Next: vyre-core phase 5 with anywhere (keys.js as a handle so macCoreRefusal can lift); asked anywhere in CHAT.md for the key-store client path and whether dh is sync.
 
 30 Sep 2026, 0.2 build on work/tailnet-02 (plan: team/0.2/plans/tailnet.md 3.6b, 3.6c). Built, each

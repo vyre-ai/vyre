@@ -19,7 +19,8 @@ const DIAL_MS = 30_000;
 const closeCode = code => code === 1000 || (code >= 3000 && code <= 4999) ? code : 4000;
 
 /**
- * @param {{ url: string, route: string, routeKey: { priv: Buffer, pub: Buffer }, boxKey: { priv: Buffer, pub: Buffer },
+ * @param {{ url: string, route: string, routeKey: { pub: Buffer, priv?: Buffer, sign?: (msg: Buffer) => Promise<Buffer> },
+ *   boxKey: { pub: Buffer, priv?: Buffer, dh?: (remotePub: Buffer) => Buffer | Promise<Buffer> },
  *   admit: (devicePub: Buffer, hello: any) => Promise<any>,
  *   onchannel: (channel: import("./channel.js").Channel, info: { hello: any, reply: any }) => void,
  *   onstate?: (state: "connected"|"disconnected", why?: string) => void,
@@ -86,13 +87,16 @@ export function relayLink(o) {
     let settled = false;
     const dial = setTimeout(() => { log("relay: no answer from the relay; redialling"); gone({ code: 1006, reason: "dial timed out" }); }, DIAL_MS);
     dial.unref?.();
-    ws.onmessage = e => {
+    ws.onmessage = async e => {
       if (typeof e.data !== "string") return;
       if (e.data === "pong") { missed = 0; return; }
       let m;
       try { m = JSON.parse(e.data); } catch { return; }
       if (m.t === "challenge") {
-        const sig = signRoute(o.routeKey.priv, authMessage(o.route, Buffer.from(String(m.n), "base64url")));
+        const msg = authMessage(o.route, Buffer.from(String(m.n), "base64url"));
+        let sig;
+        try { sig = o.routeKey.sign ? await o.routeKey.sign(msg) : signRoute(/** @type {Buffer} */ (o.routeKey.priv), msg); } catch (err) { log(`relay: could not sign the challenge: ${/** @type {Error} */ (err).message}`); return; }
+        if (ws !== control) return;
         ws.send(JSON.stringify({ t: "auth", pub: o.routeKey.pub.toString("base64url"), sig: sig.toString("base64url") }));
       } else if (m.t === "ready") {
         clearTimeout(dial);
