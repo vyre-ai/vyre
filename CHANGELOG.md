@@ -4,6 +4,11 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### chat and projects: the watcher card
+
+- `deck/chat/cards/watcher.js` (+ css; app-design's section 16): a card for a watcher or duty before it runs on its own. `watchers.card {name}` gives three plain sentences (When, Check, Then or Do, in the author's words when it has them) and the runtime's own facts drawn exactly as given (Reads, Uses as credential chips, Acts, Cost, Runs), with the provenance line. Turn on is `watchers.create {name, hash}` with the card's own hash; if the box says the code changed after the card was shown, the card says so and offers "Show the new card" and never turns on a different version. On shows Turn off (`watchers.pause`), paused shows Turn back on (`watchers.resume`). It draws as render kind `watcher` ({kind, name}), read-only when the result is not from a Vyre tool. The project Team tab's duty rows show the title together with the full instruction, trigger and whether it acts (never the title alone) and open the same card, starting the duty through `team.duties.enable {id, expect}`.
+- The trust card already leads with the key fingerprint after a reload now that tailnet's device list carries it (4edbc7eb).
+
 #### connections: "Who can use it"; duties carry what was shown; shown errors are redacted
 
 - Add a service (`deck/views/connectors.js`): Connect first asks "Who can use it": "Just me and the assistant" (the default, which sends no `scope`), "All projects" (`scope {projects: "*", agents: "*"}`) or "Only these projects" (a picker; none chosen is refused in words). The choice rides along to every later step of the same connect (token, client). An existing connection has the same control ("Who can use it", prefilled from the `scope` the catalog row carries), saved through `connectors.scope {name, scope}` (null is the default), which I asked connectors for.

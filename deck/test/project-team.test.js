@@ -7,7 +7,7 @@ import { install, text, $, $$ } from "./fake-dom.js";
 const doc = /** @type {any} */ (install());
 doc.importNode = n => n;
 doc.createDocumentFragment = () => new /** @type {any} */ (globalThis).Element("fragment");
-Object.assign(globalThis, { dispatchEvent: () => true });
+Object.assign(globalThis, { dispatchEvent: () => true, DOMParser: class { parseFromString() { const E = /** @type {any} */ (globalThis).Element; const svg = new E("svg"); svg.append(new E("circle")); return { documentElement: svg }; } } });
 const { drawTeam, teammatesOf, stateWord, clip } = await import("../views/project-team.js");
 
 const LIST = [
@@ -21,7 +21,7 @@ function world(answers = {}) {
 const click = el => el.dispatchEvent(new /** @type {any} */ (globalThis).Event("click"));
 const settle = () => new Promise(r => setTimeout(r, 10));
 const ANS = { "team.list": LIST, "team.default.get": { project: "harlow-legal", enabled: true }, "team.notes": { agent: "x", part: "general", text: "Uses the warm palette.", versions: [] },
-  "team.charter.get": { agent: "x", charter: { version: 2, text: "Own the site's look." } }, "team.duties.list": { duties: [{ id: "d1", instruction: "Check contrast weekly", trigger: "every Monday", enabled: false, started: false }] },
+  "team.charter.get": { agent: "x", charter: { version: 2, text: "Own the site's look." } }, "team.duties.list": { duties: [{ id: "d1", title: "Weekly contrast check", instruction: "Check contrast weekly", trigger: "every Monday", act: false, enabled: false, started: false, watcher: "duty-design-contrast" }] },
   "team.status": { state: "running", position: 0 }, "agents.list": [{ name: "kit", kind: "agent" }, { name: "juno", kind: "assistant" }] };
 async function mount(answers = {}) {
   const w = world({ ...ANS, ...answers });
@@ -134,4 +134,13 @@ test("a failed enable shows the box's own words (a bad trigger reads watchers: h
   click($(row(m.el, a), "[data-act=open]")); await settle();
   click($(row(m.el, a), "[data-act=duty-toggle]")); await settle();
   assert.match(text(m.el), /watchers: write the trigger like daily 07:00/);
+});
+
+test("a duty shows its title together with the full instruction, trigger and whether it acts, and offers What it will do", async () => {
+  const m = await mount();
+  const a = "design-harlow-legal";
+  click($(row(m.el, a), "[data-act=open]")); await settle();
+  const t = text(row(m.el, a));
+  assert.match(t, /Weekly contrast check.*Check contrast weekly.*every Monday · Only looks and tells you/);
+  assert.ok($(row(m.el, a), "[data-act=duty-card]"), "a duty with a watcher offers its card");
 });

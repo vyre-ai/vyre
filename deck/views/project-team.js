@@ -12,6 +12,7 @@
 import { h, put, empty } from "../js/dom.js";
 import { attempt as apiAttempt } from "../js/api.js";
 import { plural } from "../js/fmt.js";
+import { watcherCard } from "../chat/cards/watcher.js";
 
 export const EVENTS = ["teammate.added", "teammate.retired", "teammate.charter-changed", "teammate.default-changed", "team.state", "team.request", "team.done", "team.failed", "team.cancelled"];
 const ROLE = /^[a-z][a-z0-9-]{0,30}$/;
@@ -37,7 +38,7 @@ export async function drawTeam(el, ctx, project, deps = {}) {
   const attempt = deps.attempt || apiAttempt;
   if (typeof document !== "undefined" && document.head) for (const href of ["/css/views/memory-lessons.css", "/css/views/project-team.css"]) if (!document.querySelector?.(`link[href="${href}"]`)) document.head.append(h("link", { rel: "stylesheet", href }));
   const st = { rows: /** @type {ReturnType<typeof teammatesOf>} */ ([]), error: /** @type {any} */ (null), open: "", pane: /** @type {Record<string, any>} */ ({}), steer: /** @type {boolean|null} */ (null),
-    agents: /** @type {string[]} */ ([]), problem: /** @type {string|null} */ (null), busy: "", adding: false, editing: /** @type {"" | "notes" | "charter"} */ (""), sure: "" };
+    agents: /** @type {string[]} */ ([]), problem: /** @type {string|null} */ (null), busy: "", cards: /** @type {Map<string, HTMLElement>} */ (new Map()), adding: false, editing: /** @type {"" | "notes" | "charter"} */ (""), sure: "" };
 
   async function load() {
     const [l, d] = await Promise.all([attempt("team.list", { project: project.slug }), attempt("team.default.get", { project: project.slug })]);
@@ -112,7 +113,12 @@ export async function drawTeam(el, ctx, project, deps = {}) {
                   h("button", { class: "btn btn-ghost btn-sm", type: "button", "data-act": "charter-draft", disabled: st.busy === "draft", onclick: () => act("draft", () => attempt("team.charter.draft", { teammate: t.agent })) }, st.busy === "draft" ? "Drafting" : "Draft it from the project"))))),
         h("div", { class: "set-row" }, h("div", { class: "set-k" }, "Duties"),
           h("div", { class: "set-v tm-col" }, p.duties.length ? p.duties.map((/** @type {any} */ d) => h("div", { class: "tm-duty", "data-duty": String(d.id) },
-            h("span", { class: "small" }, String(d.instruction || d.id)), d.trigger ? h("span", { class: "small faint" }, String(d.trigger)) : null,
+            // The title comes with the full instruction, its trigger and whether it acts, never alone: a title must not stand for text the person did not read.
+            d.title ? h("strong", { class: "small tm-duty-title" }, String(d.title)) : null,
+            h("span", { class: "small tm-duty-text" }, String(d.instruction || d.id)),
+            h("span", { class: "small faint" }, [d.trigger ? String(d.trigger) : "", d.act === true ? "Can make changes" : d.act === false ? "Only looks and tells you" : ""].filter(Boolean).join(" · ")),
+            d.watcher ? h("button", { class: "btn btn-ghost btn-sm", type: "button", "data-act": "duty-card", "aria-expanded": String(st.cards.has(String(d.id))), onclick: () => { const k = String(d.id); if (st.cards.has(k)) st.cards.delete(k); else st.cards.set(k, watcherCard({ name: String(d.watcher) }, { turnOn: () => attempt("team.duties.enable", { id: k, expect: String(d.instruction || "") }), onDone: () => { st.cards.delete(k); void loadPane(t); } })); draw(); } }, st.cards.has(String(d.id)) ? "Hide what it will do" : "What it will do") : null,
+            st.cards.get(String(d.id)) || null,
             h("button", { class: "btn btn-ghost btn-sm", type: "button", "data-act": "duty-toggle", disabled: st.busy === "duty" + d.id, onclick: () => act("duty" + d.id, () => attempt(d.enabled ? "team.duties.disable" : "team.duties.enable", d.enabled ? { id: String(d.id) } : { id: String(d.id), expect: String(d.instruction || "") })) }, d.enabled ? "Pause" : "Turn on"),
             d.enabled ? h("button", { class: "btn btn-ghost btn-sm", type: "button", "data-act": "duty-run", onclick: () => act("run" + d.id, () => attempt("team.duties.run-now", { id: String(d.id) })) }, "Run now") : null)) : h("span", { class: "small muted" }, "No duties."))),
         st.sure === t.agent
