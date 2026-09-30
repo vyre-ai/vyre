@@ -4,6 +4,10 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+- VyreDrive browse for the phone: `files.drive.list` and `files.drive.read` list a folder of an
+  offered share and read a file in 1 MiB chunks through the box, since a phone cannot mount a
+  share. Same guard as sharing (no secret, dot folder or link leading out), and a named agent
+  only inside its own granted projects (`core/files/browse.js`).
 - VyreDrive on Windows: `files.drive.mount` maps a share as a drive letter with Windows' own
   WebDAV client (`net use Z: \\100.100.100.100@8080\...`), and `files.drive.unmount`, `.open`,
   `.local` and `.status` follow it. The pure pieces are in `core/files/drive-windows.js`.

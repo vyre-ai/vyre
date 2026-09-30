@@ -889,3 +889,60 @@ test("drive windows: the box says where a share is reached, for a device with no
   await no(reg, "files.drive.address", { share: "nope" }, "cli", "unknown_share");
   await no(reg, "files.drive.address", { share: "projects" }, "mcp:agent:kit", "denied");
 });
+
+// ---- browsing a share from a phone -------------------------------------------------------
+
+test("drive browse: list shows a share's entries, folders first, and hides what the guard hides; read gives chunks", async t => {
+  fakeTailscale(t, { status: statusJson({ selfCaps: { "drive:share": null } }), list: "" });
+  const { work } = boxWorld(t);
+  const site = path.join(work, "site"), outside = path.join(work, "outside");
+  fs.mkdirSync(path.join(site, "docs"), { recursive: true }); fs.mkdirSync(path.join(site, ".git"), { recursive: true }); fs.mkdirSync(outside, { recursive: true });
+  fs.writeFileSync(path.join(site, "b.txt"), "hello world");
+  fs.writeFileSync(path.join(site, "a.md"), "# a\n");
+  fs.writeFileSync(path.join(site, ".env"), "TOKEN=x\n");
+  fs.writeFileSync(path.join(site, "id_rsa"), "x\n");
+  fs.writeFileSync(path.join(site, "docs", "c.txt"), "c");
+  fs.writeFileSync(path.join(outside, "secret.txt"), "no");
+  fs.symlinkSync(outside, path.join(site, "leak"));
+  const { reg } = await registry(t, { role: "box", cfg: { files: { roots: [work], drive: { shares: { site } } } } });
+  const l = await ok(reg, "files.drive.list", { share: "site" });
+  assert.deepEqual(l.entries.map(e => [e.name, e.dir]), [["docs", true], ["a.md", false], ["b.txt", false]]);
+  assert.equal(l.total, 3);
+  const sub = await ok(reg, "files.drive.list", { share: "site", path: "docs" });
+  assert.deepEqual(sub.entries.map(e => e.name), ["c.txt"]);
+  assert.equal(sub.path, "/docs");
+  const p1 = await ok(reg, "files.drive.list", { share: "site", limit: 2 });
+  assert.equal(p1.entries.length, 2);
+  assert.equal(p1.next, 2);
+  assert.deepEqual((await ok(reg, "files.drive.list", { share: "site", limit: 2, offset: 2 })).entries.map(e => e.name), ["b.txt"]);
+
+  const r = await ok(reg, "files.drive.read", { share: "site", path: "b.txt", offset: 0, length: 5 });
+  assert.deepEqual([Buffer.from(r.base64, "base64").toString(), r.size, r.done, r.length], ["hello", 11, false, 5]);
+  const r2 = await ok(reg, "files.drive.read", { share: "site", path: "/b.txt", offset: 5 });
+  assert.deepEqual([Buffer.from(r2.base64, "base64").toString(), r2.done], [" world", true]);
+
+  for (const bad of [".env", "id_rsa", "leak/secret.txt", "leak", ".git"]) await no(reg, "files.drive.read", { share: "site", path: bad }, "cli", "not_available");
+  await no(reg, "files.drive.list", { share: "site", path: "leak" }, "cli", "not_available");
+  await no(reg, "files.drive.list", { share: "site", path: "../outside" }, "cli", "bad_input");
+  await no(reg, "files.drive.read", { share: "site", path: "docs" }, "cli", "bad_input");
+  await no(reg, "files.drive.list", { share: "site", path: "b.txt" }, "cli", "bad_input");
+  await no(reg, "files.drive.list", { share: "nope" }, "cli", "not_available");
+});
+
+test("drive browse: a named agent lists and reads only inside its own granted folder of a broader share", async t => {
+  fakeTailscale(t, { status: statusJson({ selfCaps: { "drive:share": null } }), list: "" });
+  const { work } = boxWorld(t);
+  const a = path.join(work, "a"), b = path.join(work, "b");
+  for (const d of [a, b]) fs.mkdirSync(d, { recursive: true });
+  fs.writeFileSync(path.join(a, "one.txt"), "1"); fs.writeFileSync(path.join(b, "two.txt"), "2");
+  const { reg } = await registry(t, { role: "box",
+    agents: [{ name: "kit", kind: "agent", projects: ["a"] }],
+    projects: [{ slug: "a", name: "A", home: a, workspaces: [] }, { slug: "b", name: "B", home: b, workspaces: [] }], access: { "a:kit": true },
+    cfg: { files: { roots: [work], drive: { shares: { work } } } } });
+  assert.deepEqual((await ok(reg, "files.drive.list", { share: "work", path: "a" }, "mcp:agent:kit")).entries.map(e => e.name), ["one.txt"]);
+  assert.equal(Buffer.from((await ok(reg, "files.drive.read", { share: "work", path: "a/one.txt" }, "mcp:agent:kit")).base64, "base64").toString(), "1");
+  await no(reg, "files.drive.list", { share: "work", path: "b" }, "mcp:agent:kit", "not_available");
+  await no(reg, "files.drive.read", { share: "work", path: "b/two.txt" }, "mcp:agent:kit", "not_available");
+  await no(reg, "files.drive.list", { share: "work" }, "mcp:agent:kit", "not_available"); // the share's top is not the grant
+  assert.deepEqual((await ok(reg, "files.drive.list", { share: "work", path: "b" })).entries.map(e => e.name), ["two.txt"]);
+});

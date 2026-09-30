@@ -41,6 +41,7 @@ import { reach, within } from "./access.js";
 import { classify, KINDS } from "./kinds.js";
 import { walk as searchWalk, defaults as searchDefaults } from "./search.js";
 import { picker } from "./picker.js";
+import { browse } from "./browse.js";
 import { uncFor, mapArgs, unmapArgs, parseNetUse, freeLetter, explainNetUse } from "./drive-windows.js";
 
 /**
@@ -487,6 +488,7 @@ export function drive(ctx, { role, guard: g, roots }) {
       },
     });
 
+    browse(ctx, { g, folder, shares });
     picker(ctx, { g, roots, folder, scan, specs, shares, owner, shareOne, limit: SCAN_LIMIT, skip: SKIP_DIRS });
 
     ctx.tool("files.drive.access", {
