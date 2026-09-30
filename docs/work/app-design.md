@@ -814,3 +814,37 @@ account + device and drop the tokens tool store. Then polish passes over the spe
   updated, project.js new, all ESM. Verified all six files load and run under
   `node --input-type=module`. Sent native-core the API: projectTile(seedBytes, {draft, theme,
   size}), teammateProjectBadge(color, theme), and character()'s new fourth projectColor param.
+
+## Now (30 Sep, chat components contract + Capsule 0.2 + Glass theme)
+
+- User's top-priority ask: design, once, the common things agents show in chat (diff, PR review,
+  email, calendar, report, questions/survey, approval flows, checklist, progress, file/link
+  preview, handoff, error/offline, artifact card) so every surface and every provider renders the
+  same thing. Full contract in team/0.2/plans/app-design.md section 10; six new component docs
+  (pr-review.md, email-thread.md, calendar.md, confirmation.md, file-preview.md, artifact-card.md)
+  plus four extended (question-card.md's Survey variant, diff.md's Multi-file variant, pill.md
+  reading link.health, banner.md pointing to pill instead of duplicating it) committed to
+  work/app-design (c4093b41). Two emission mechanisms cover all thirteen, not a new one each:
+  ADR 0030's ask.raised/answered kind enum for anything blocking, ADR 0033's renderer:<tool> slot
+  for anything that isn't - verified against the real code/ADRs, not invented. Caught and fixed my
+  own error before commit: a first pass put the C5 unreachable-box line in banner.md as a new
+  variant; native-core had already committed C5 to the existing pill, so moved it there.
+  Mockups: team/0.2/chat-components.html, screenshotted clean in both themes.
+- Second ask, same session: Capsule 0.2 screens (ask/checking, corrections, provider chip,
+  hand-off, selection rewrite, morning glance, computer-use pills + Esc, deep-Chrome control,
+  compact chat components, offline) plus a new GLASS theme (translucent, vibrant, macOS-vibrancy-
+  style: a fixed-alpha neutral tint blended over a blur, not a plain blur, which is what keeps
+  text contrast anchored regardless of wallpaper). Computed real WCAG contrast across 4 sampled
+  wallpaper tones (bright sky, warm dusk, dark night, deep forest) for 3 alpha options before
+  picking one, not by eye: Option A (alpha .80, frosted, safe), Option B (alpha .62, deep glass,
+  recommended - worst case 5.5-15.9:1 dark, 6.9-16.9:1 light, real margin over AA's 4.5:1), Option
+  C (alpha .45, vibrant tinted, bold - bright-sky case only 4.69:1, flagged as too tight to ship
+  as default). Reduced-transparency falls back to the plain opaque panel via one @media rule.
+  Mockups: team/0.2/capsule-02.html, all 10 screens plus the 3 glass options over 4 wallpapers
+  each, screenshotted and verified section by section (headless Chrome, ImageMagick crops - sips
+  cropOffset turned out unreliable on this macOS version, switched tools rather than trust a bad
+  crop).
+- Both pages: real Vyre tokens as the base palette, no fixture or sample-world names (generic
+  placeholders like "A. Chen", "Q3 renewal numbers" instead), no em dashes anywhere including in
+  the HTML copy itself (caught and fixed 10 instances of the &mdash; entity before review).
+- Sent to the lead: both file paths, ready for review.
