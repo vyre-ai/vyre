@@ -2,8 +2,8 @@
 // A test release for the Mac server proof (.github/workflows/mac-server.yml): this checkout packed the
 // way vyre.tgz is (npm pack), signed with a THROWAWAY Ed25519 key made here and dropped when this
 // process ends. The key is never written anywhere. Its public half replaces RELEASE_KEY inside the
-// TEST tarball only, so the root installer in the tarball trusts it; the production key and the
-// checkout are untouched.
+// TEST tarball only, and into a COPY of the install script (run.sh), so both trust it; the production
+// key, the script and the checkout are untouched.
 //
 //   node scripts/mac-proof/release.mjs OUTDIR     writes OUTDIR/site/{vyre.tgz,manifest.json,manifest.sig,SHA256SUMS}
 
@@ -36,6 +36,7 @@ const manifest = Buffer.from(JSON.stringify({ version, tarball: "vyre.tgz", sha2
 fs.writeFileSync(path.join(site, "manifest.json"), manifest);
 fs.writeFileSync(path.join(site, "manifest.sig"), crypto.sign(null, manifest, privateKey).toString("base64") + "\n");
 fs.writeFileSync(path.join(site, "SHA256SUMS"), ["vyre.tgz", "manifest.json", "manifest.sig"].map((f) => `${sha(f)}  ${f}`).join("\n") + "\n");
+fs.writeFileSync(path.join(out, "release-key.pub"), spki); // the public half only, for the patched script copy
 fs.rmSync(tree, { recursive: true, force: true });
 fs.rmSync(pack, { recursive: true, force: true });
 console.log(`test release ${version} in ${site}`);

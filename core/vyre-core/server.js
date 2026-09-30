@@ -129,6 +129,7 @@ export async function startCore(o) {
   };
   const vaults = openVault({ db, dataDir: o.dataDir, log, emit, testKdf: o.testKdf });
   const keys = openKeys(o.dataDir);
+  let keyUses = 0;
   // The relay's keys (phase 5). The private halves never leave; what core offers is below. Any
   // owner-uid process that is not a model's (inside no Claude session, its ancestry read to the top)
   // may ask: vyred is a launchd job with no terminal, so the person verdict (which wants a login
@@ -274,7 +275,15 @@ export async function startCore(o) {
       if (READ[tool]) return send(res, 200, { data: await READ[tool](input) });
       if (KEYS[tool]) {
         if (!notModel(c.pid)) return send(res, 403, { error: { code: "not_person_side", message: "vyre-core's relay keys answer only a process outside every Claude session" } });
-        return send(res, 200, { data: await KEYS[tool](input) });
+        // Audited: ancestry cannot tell vyred from a process that detached itself, so the use of the
+        // box's key is counted and shown (vyred prints core's events), where misuse would show.
+        const data = await KEYS[tool](input);
+        if (tool === "keys.box.dh" || tool === "keys.route.sign") {
+          keyUses += 1;
+          log(`vyre-core: ${tool} by pid ${c.pid} (use ${keyUses} since core started)`);
+          emit("keys.used", { tool, uses: keyUses, pid: c.pid });
+        }
+        return send(res, 200, { data });
       }
       const header = req.headers["x-vyre-presence"];
       const who = `peer:${c.pid}`;

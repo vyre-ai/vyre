@@ -39,6 +39,8 @@ jobs:
       # (unset today). Until then every run, a tag push included, uploads its assets as a workflow
       # artifact and publishes nothing.
       PUBLISH: ${{ github.event_name == 'push' && vars.VYRE_RELEASES == 'go' }}
+      # A dry run may carry the placeholder release key; a publishing run may not (scripts/check-release-key.mjs).
+      VYRE_ALLOW_PLACEHOLDER_KEY: ${{ (github.event_name == 'push' && vars.VYRE_RELEASES == 'go') && 'no' || '1' }}
     steps:
       - uses: actions/checkout@v4
         with:

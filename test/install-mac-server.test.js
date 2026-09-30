@@ -61,7 +61,8 @@ exit 0`,
 const run = (/** @type {Record<string,string>} */ env, /** @type {string[]} */ args) => {
   const system = args.includes("--system");
   const a = system ? args.filter(x => x !== "--system") : ["--login-only", ...args];
-  return spawnSync("sh", [SCRIPT, ...a], { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"], env, timeout: 60_000 });
+  // VYRE_TEST_SCRIPT: a copy of the script with a throwaway release key patched in (the real one has no override).
+  return spawnSync("sh", [env.VYRE_TEST_SCRIPT || SCRIPT, ...a], { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"], env, timeout: 60_000 });
 };
 
 test("install-mac-server.sh: --code is refused, because a process list shows arguments", t => {
@@ -297,7 +298,8 @@ function sys(/** @type {import("node:test").TestContext} */ t, /** @type {{ fail
   fs.writeFileSync(path.join(nd, "bin", "node"), `#!/bin/sh\nexec "${process.execPath}" "$@"\n`, { mode: 0o755 });
   execFileSync("tar", ["-czf", path.join(m.base, "node.tgz"), "-C", path.dirname(nd), "node-v0"]);
   // sudo: records that it ran and with what, then runs the command as this user (the test is not root).
-  fs.writeFileSync(path.join(bin, "sudo"), `#!/bin/sh\necho "sudo $*" >>"${path.join(m.base, "calls.log")}"\nexec "$@"\n`, { mode: 0o755 });
+  // FAKE_TAMPER=1: the person's release file changes between the check and root's copy (argv 7 is the release dir).
+  fs.writeFileSync(path.join(bin, "sudo"), `#!/bin/sh\necho "sudo $*" >>"${path.join(m.base, "calls.log")}"\n[ -z "\${FAKE_TAMPER:-}" ] || echo tamper >>"$7/vyre.tgz"\nexec "$@"\n`, { mode: 0o755 });
   // The fake root installer.
   const pkg = path.join(m.base, "pkg", "vyre"); fs.mkdirSync(path.join(pkg, "core", "daemon"), { recursive: true }); fs.mkdirSync(path.join(pkg, "core", "vyre-core"), { recursive: true });
   fs.copyFileSync(path.join(m.src, "core", "daemon", "main.js"), path.join(pkg, "core", "daemon", "main.js"));
@@ -305,7 +307,7 @@ function sys(/** @type {import("node:test").TestContext} */ t, /** @type {{ fail
 const a = process.argv.slice(2), cmd = a[0];
 const flag = k => a[a.indexOf(k) + 1];
 const base = process.env.FAKE_CORE_BASE;
-fs.appendFileSync(path.join(process.env.FAKE_LOG_DIR, "root.log"), JSON.stringify({ argv: a, uid: process.getuid?.() }) + "\\n");
+fs.appendFileSync(path.join(process.env.FAKE_LOG_DIR, "root.log"), JSON.stringify({ argv: a, uid: process.getuid?.(), from: new URL(import.meta.url).pathname }) + "\\n");
 if (cmd === "uninstall") { fs.rmSync(path.join(base, "core.json"), { force: true }); console.log("  ok  removed"); process.exit(0); }
 if (${o.fail ? "true" : "false"}) { console.error("vyre-install: the manifest signature does not verify"); process.exit(1); }
 for (const f of ["vyre.tgz", "manifest.json", "manifest.sig"]) if (!fs.existsSync(path.join(flag("--release-dir"), f))) { console.error("missing " + f); process.exit(1); }
@@ -316,12 +318,17 @@ console.log("  ok  installed");
 ${o.noEnrol ? "" : `console.log("VYRE_CORE_ENROL=${ENROL}");`}
 `);
   execFileSync("tar", ["-czf", path.join(site, "vyre.tgz"), "-C", path.dirname(pkg), "vyre"]);
-  fs.writeFileSync(path.join(site, "manifest.json"), JSON.stringify({ version: "0.2.0", sha256: sha(fs.readFileSync(path.join(site, "vyre.tgz"))) }));
-  fs.writeFileSync(path.join(site, "manifest.sig"), "c2ln\n");
+  const kp = crypto.generateKeyPairSync("ed25519");
+  const manifest = Buffer.from(JSON.stringify({ version: "0.2.0", tarball: "vyre.tgz", sha256: sha(fs.readFileSync(path.join(site, "vyre.tgz"))) }));
+  fs.writeFileSync(path.join(site, "manifest.json"), manifest);
+  fs.writeFileSync(path.join(site, "manifest.sig"), crypto.sign(null, manifest, kp.privateKey).toString("base64") + "\n");
+  const patched = path.join(m.base, "install-mac-server.sh");
+  fs.writeFileSync(patched, fs.readFileSync(SCRIPT, "utf8").replace(/^RELEASE_KEY=.*$/m, `RELEASE_KEY=${kp.publicKey.export({ type: "spki", format: "der" }).toString("base64")}`));
+  fs.mkdirSync(path.join(m.base, "roottmp"));
   fs.writeFileSync(path.join(site, "SHA256SUMS"), ["vyre.tgz", "manifest.json", "manifest.sig"].map(f => `${sha(fs.readFileSync(path.join(site, f)))}  ${f}`).join("\n") + "\n");
   const env = {
     ...m.env, PATH: `${bin}:${path.dirname(process.execPath)}:/usr/bin:/bin`, VYRE_UNAME_M: "arm64",
-    VYRE_SUDO: path.join(bin, "sudo"), VYRE_CORE_BASE: core, FAKE_CORE_BASE: core, FAKE_LOG_DIR: m.base,
+    VYRE_TEST_SCRIPT: patched, VYRE_ROOT_TMP: path.join(m.base, "roottmp"), VYRE_SUDO: path.join(bin, "sudo"), VYRE_CORE_BASE: core, FAKE_CORE_BASE: core, FAKE_LOG_DIR: m.base,
     VYRE_BOX_URL: `file://${site}/`, VYRE_NODE_URL: `file://${path.join(m.base, "node.tgz")}`, VYRE_NODE_SHA256: sha(fs.readFileSync(path.join(m.base, "node.tgz"))),
   };
   const rootCalls = () => (fs.existsSync(path.join(m.base, "root.log")) ? fs.readFileSync(path.join(m.base, "root.log"), "utf8").trim().split("\n").map(l => JSON.parse(l)) : []);
@@ -338,9 +345,15 @@ test("install-mac-server.sh: the default is the system service, under one sudo, 
   const a = calls[0].argv;
   assert.equal(a[0], "install");
   assert.equal(a[a.indexOf("--owner-uid") + 1], String(process.getuid?.()), "the person's own uid, never root");
-  assert.match(a[a.indexOf("--release-dir") + 1], /release$/, "the three verified downloads sit in one folder");
   assert.equal(a[a.indexOf("--vyred-wrapper") + 1], path.join(m.env.VYRE_SERVER_DIR, "bin", "vyre-serve"));
-  assert.equal(a[a.indexOf("--node") + 1], path.join(m.env.VYRE_SERVER_DIR, "node-dist", "bin", "node"), "the bundled node, checked against its pin");
+  // Root ran the installer, its node and its release files from a root-made folder, never from the person's.
+  const roottmp = path.join(m.base, "roottmp");
+  assert.ok(calls[0].from.startsWith(roottmp + path.sep) || calls[0].from.includes("/roottmp/"), calls[0].from);
+  assert.ok(a[a.indexOf("--node") + 1].includes("/roottmp/"), "the root-owned node");
+  assert.match(a[a.indexOf("--node-sha256") + 1], /^[0-9a-f]{64}$/);
+  assert.ok(a[a.indexOf("--release-dir") + 1].includes("/roottmp/"));
+  assert.ok(!calls[0].from.includes(m.env.VYRE_SERVER_DIR), "not the copy in the person's folder");
+  assert.deepEqual(fs.readdirSync(roottmp), [], "root's folder is removed when it is done");
   assert.ok(!fs.existsSync(path.join(m.env.VYRE_LAUNCHAGENTS, "run.vyre.server.plist")), "no LaunchAgent: launchd's system domain runs it");
   assert.ok(!/launchctl bootstrap/.test(m.calls()), "the script never bootstraps; the root installer does");
   assert.match(r.stdout, /vyre-core is up/);
@@ -479,4 +492,30 @@ test("install-mac-server.sh: a gh already on PATH is used as it is", t => {
   const a = m.rootCalls()[0].argv;
   assert.equal(a[a.indexOf("--gh-bin") + 1], path.join(m.base, "bin", "gh"));
   assert.ok(!fs.existsSync(path.join(m.env.VYRE_SERVER_DIR, "bin", "gh")));
+});
+
+test("install-mac-server.sh: a manifest signed by another key is refused before sudo", t => {
+  const m = sys(t);
+  const other = crypto.generateKeyPairSync("ed25519");
+  const mf = fs.readFileSync(path.join(m.site, "manifest.json"));
+  fs.writeFileSync(path.join(m.site, "manifest.sig"), crypto.sign(null, mf, other.privateKey).toString("base64") + "\n");
+  fs.writeFileSync(path.join(m.site, "SHA256SUMS"), ["vyre.tgz", "manifest.json", "manifest.sig"].map(f => `${sha(fs.readFileSync(path.join(m.site, f)))}  ${f}`).join("\n") + "\n");
+  const r = run(m.env, ["--yes", "--system"]);
+  assert.notEqual(r.status, 0);
+  assert.match(r.stderr, /signature does not verify/);
+  assert.ok(!/^sudo /m.test(m.calls()) && m.rootCalls().length === 0);
+});
+
+test("install-mac-server.sh: a release that changes after it was verified is caught by root's own hash of its copy", t => {
+  const m = sys(t);
+  const r = run({ ...m.env, FAKE_TAMPER: "1" }, ["--yes", "--system"]);
+  assert.notEqual(r.status, 0);
+  assert.match(r.stderr, /changed after it was verified/);
+  assert.equal(m.rootCalls().length, 0, "the installer never ran");
+});
+
+test("install-mac-server.sh: the embedded release key is the one release.js compiles in", () => {
+  const key = /^RELEASE_KEY=(.*)$/m.exec(fs.readFileSync(SCRIPT, "utf8"))?.[1];
+  const rel = /export const RELEASE_KEY = "([^"]+)"/.exec(fs.readFileSync(path.join(REPO, "core", "vyre-core", "release.js"), "utf8"))?.[1];
+  assert.equal(key, rel);
 });

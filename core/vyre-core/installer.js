@@ -76,6 +76,7 @@ export function defaultRun(cmd, args, { input } = {}) {
  * @property {{ tarball: string, manifest: string, sig: string }} release  file paths
  * @property {string} nodeBinary  the bundled node to copy in
  * @property {string} vyredWrapper  person-side wrapper vyred's LaunchDaemon runs, as the owner
+ * @property {string} [nodeSha256]  when given, the bundled node's bytes must hash to this, or nothing is installed
  * @property {string} [ghBin]  absolute path of the gh CLI, set as VYRE_GH_BIN in vyred's LaunchDaemon environment
  * @property {boolean} [colimaAgent]
  * @property {string[]} [colimaProgram]  program arguments for com.vyre.colima
@@ -94,6 +95,7 @@ function checkOpts(o) {
   if (!o.release || !o.release.tarball || !o.release.manifest || !o.release.sig) throw new Error("release needs tarball, manifest and sig paths");
   if (!o.nodeBinary || !path.isAbsolute(o.nodeBinary)) throw new Error("nodeBinary must be an absolute path");
   if (!o.vyredWrapper || !path.isAbsolute(o.vyredWrapper)) throw new Error("vyredWrapper must be an absolute path");
+  if (o.nodeSha256 !== undefined && !/^[0-9a-fA-F]{64}$/.test(String(o.nodeSha256))) throw new Error("nodeSha256 must be 64 hex characters");
   if (o.ghBin !== undefined && (!path.isAbsolute(o.ghBin) || /[\0\n]/.test(o.ghBin))) throw new Error("ghBin must be an absolute path");
   if (o.ownerHome !== undefined && !path.isAbsolute(o.ownerHome)) throw new Error("ownerHome must be an absolute path");
   if (o.colimaAgent && (!Array.isArray(o.colimaProgram) || !o.colimaProgram.length || !o.colimaProgram.every((a) => typeof a === "string") || !path.isAbsolute(o.colimaProgram[0])))
@@ -134,7 +136,7 @@ function paths(root) {
 }
 
 const rand = () => crypto.randomBytes(4).toString("hex");
-const defTar = () => (process.platform === "darwin" ? "/usr/bin/tar" : "tar");
+const defTar = () => "/usr/bin/tar";
 
 /** @param {Run} run @param {string} owner @param {string} p @param {boolean} [recursive] */
 const chown = (run, owner, p, recursive = false) => run("/usr/sbin/chown", [...(recursive ? ["-R"] : []), owner, p]);
@@ -155,17 +157,21 @@ function mkdirMode(p, mode) {
  *   strictFloor: an update must be ABOVE the floor; a (re)install may equal it, so a re-run repairs.
  */
 export function verifyRelease(files, { key, floorPath, strictFloor, version }) {
-  const regular = (p, what) => {
-    const st = fs.lstatSync(p);
-    if (!st.isFile()) throw new Error(`${what} is not a regular file`);
+  // Each file is opened once with O_NOFOLLOW and read from that descriptor: the folder may be one a
+  // less trusted account writes to (the update daemon's staging), so a link swapped in after a check
+  // must not be followed.
+  const read = (p, what) => {
+    let fd;
+    try { fd = fs.openSync(p, fs.constants.O_RDONLY | fs.constants.O_NOFOLLOW); } catch { throw new Error(`${what} is not a regular file`); }
+    try {
+      if (!fs.fstatSync(fd).isFile()) throw new Error(`${what} is not a regular file`);
+      return fs.readFileSync(fd);
+    } finally { fs.closeSync(fd); }
   };
-  regular(files.manifest, "manifest");
-  regular(files.sig, "signature");
-  regular(files.tarball, "tarball");
-  const manifestBytes = fs.readFileSync(files.manifest);
-  const sigBytes = fs.readFileSync(files.sig);
+  const manifestBytes = read(files.manifest, "manifest");
+  const sigBytes = read(files.sig, "signature");
   const manifest = verifyManifest(manifestBytes, sigBytes, { key });
-  const tarBuf = fs.readFileSync(files.tarball);
+  const tarBuf = read(files.tarball, "tarball");
   if (crypto.createHash("sha256").update(tarBuf).digest("hex") !== manifest.sha256.toLowerCase()) throw new Error("tarball sha256 does not match the manifest");
   if (version !== undefined && manifest.version !== version) throw new Error(`the manifest is for ${manifest.version}, not ${version}`);
   const floor = readFloor(floorPath);
@@ -366,6 +372,9 @@ export function install(opts, seams = {}) {
   // 1. Verify, before anything changes.
   const nodeSt = fs.statSync(opts.nodeBinary);
   if (!nodeSt.isFile()) throw new Error("nodeBinary is not a file");
+  // Read once: the bytes hashed are the bytes installed (the update daemon runs this binary as root).
+  const nodeBytes = fs.readFileSync(opts.nodeBinary);
+  if (opts.nodeSha256 !== undefined && crypto.createHash("sha256").update(nodeBytes).digest("hex") !== String(opts.nodeSha256).toLowerCase()) throw new Error("the bundled node does not match its expected sha256; nothing was installed");
   const { manifest, tarBuf } = verifyRelease(opts.release, { key: seams.key || RELEASE_KEY, floorPath: p.floor, strictFloor: false, version: opts.version });
   done("verify-release");
 
@@ -383,7 +392,7 @@ export function install(opts, seams = {}) {
 
   // The bundled node: copied, never the person's own on PATH.
   const nodeNew = `${p.node}.new`;
-  fs.copyFileSync(opts.nodeBinary, nodeNew);
+  fs.writeFileSync(nodeNew, nodeBytes);
   fs.chmodSync(nodeNew, 0o755);
   chown(run, "root:wheel", nodeNew);
   fs.renameSync(nodeNew, p.node);
@@ -467,9 +476,20 @@ export function uninstall(opts = {}, seams = {}) {
 
 export const STAGED = Object.freeze({ tarball: "vyre.tgz", manifest: "manifest.json", sig: "manifest.sig" });
 
-/** @param {string} dir */
+/**
+ * Clear the three staged files, and nothing else. The folder belongs to _vyre, a service account, so
+ * this never recurses and never follows a link: it looks at each of the three known names with lstat
+ * and unlinks a file or a link (the link itself), and leaves anything else alone.
+ * @param {string} dir
+ */
 function emptyDir(dir) {
-  for (const n of fs.readdirSync(dir)) fs.rmSync(path.join(dir, n), { recursive: true, force: true });
+  for (const n of Object.values(STAGED)) {
+    const f = path.join(dir, n);
+    try {
+      const st = fs.lstatSync(f);
+      if (st.isFile() || st.isSymbolicLink()) fs.unlinkSync(f);
+    } catch { /* not there */ }
+  }
 }
 
 /**

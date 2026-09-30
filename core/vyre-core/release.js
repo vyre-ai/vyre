@@ -181,6 +181,9 @@ function num(b) {
   return parseInt(s, 8);
 }
 
+/** pax records that change how bsdtar reads the archive but that listTar would not follow. */
+const paxRefused = (/** @type {string} */ k) => k === "size" || k === "SCHILY.realsize" || k.startsWith("GNU.sparse.");
+
 /** @param {Buffer} data pax extended header records @returns {Record<string, string>} */
 function paxRecords(data) {
   /** @type {Record<string, string>} */
@@ -237,8 +240,13 @@ export function listTar(file) {
     if (dataStart + size > buf.length) throw new Error("tarball is truncated");
     if (flag === "x" || flag === "g" || flag === "L" || flag === "K") {
       const data = buf.subarray(dataStart, dataStart + size);
-      if (flag === "x") pax = paxRecords(data);
-      else if (flag === "g") globalPax = { ...globalPax, ...paxRecords(data) };
+      if (flag === "x" || flag === "g") {
+        // bsdtar honors pax `size` and GNU.sparse.* where this parser would not, so the two could
+        // disagree about what is in the archive: refuse the ones that change sizes.
+        const recs = paxRecords(data);
+        for (const k of Object.keys(recs)) if (paxRefused(k)) throw new Error(`tarball has a pax record this installer does not take: ${k}`);
+        if (flag === "x") pax = recs; else globalPax = { ...globalPax, ...recs };
+      }
       else if (flag === "L") longName = cstr(data);
       else longLink = cstr(data);
       off = next;
@@ -312,7 +320,8 @@ function normalize(dir) {
  * @param {string} destDir
  * @param {{ tar?: string }} [opts]
  */
-export function extract(file, destDir, { tar = "tar" } = {}) {
+export function extract(file, destDir, { tar = "/usr/bin/tar" } = {}) {
+  if (!path.isAbsolute(tar)) throw new Error("extract needs an absolute path to tar");
   const entries = listTar(file);
   checkEntries(entries);
   // `npm pack` (what vyre.tgz is) puts everything under one `package/` folder; a hand-built tarball

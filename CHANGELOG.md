@@ -4,6 +4,7 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+- The Mac server install verifies the release before sudo, against a release key the install script carries, and the sudo step is a fixed script that copies the release and Node into a root-made folder, hashes those copies and runs the installer from there, so root never runs a file the person's account can write. The update daemon only unlinks its three staged files. The site build and release script refuse the placeholder release key (`scripts/check-release-key.mjs`). Use of the box's relay key through vyre-core is counted and shown. The installer also installs the gh CLI and gives vyred its path (`VYRE_GH_BIN`).
 - On a Mac with vyre-core, the relay's keys (the box's Noise key and the route key) live in vyre-core and never leave it: the relay asks for the public halves, the handshake's key step and a signature, and a model's process gets none of it. `lib/vyre-core-keys.js` is the client (`createCoreKeys`, and `fakeCoreKeys` for tests).
 - Closed a caller-identity race on macOS: a forged "cli" label from under a claude was believed
   when the caller was forked inside the 250 ms shared process snapshot. A pid the snapshot lacks is

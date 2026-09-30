@@ -10,7 +10,8 @@ import path from "node:path";
 import { startCore, notModelOf } from "./server.js";
 import { openKeys } from "./keys.js";
 import { createCoreKeys, fakeCoreKeys, xPrivateKey, pubRaw } from "../../lib/vyre-core-keys.js";
-import { coreTool } from "../../lib/vyre-core-client.js";
+import { coreTool, coreCall } from "../../lib/vyre-core-client.js";
+const coreCallEvents = async (/** @type {string} */ socket) => (await coreCall({ socket, method: "GET", path: "/v1/events?after=0" })).data.events;
 import { SCRATCH } from "../../test/scratch.mjs";
 
 const uid = typeof process.getuid === "function" ? process.getuid() : 0;
@@ -87,6 +88,9 @@ test("keys: over the socket, a process outside every Claude session gets pubs, d
   const sig = await keys.routeSign(Buffer.from("hello"));
   assert.equal(sig.length, 64);
   assert.ok(crypto.verify(null, Buffer.from("hello"), crypto.createPublicKey({ key: Buffer.concat([Buffer.from("302a300506032b6570032100", "hex"), rp]), format: "der", type: "spki" }), sig));
+  // The uses of the key are counted and shown as events.
+  const ev = await coreCallEvents(c.socket);
+  assert.deepEqual(ev.filter(e => e.type === "keys.used").map(e => [e.payload.tool, e.payload.uses]), [["keys.box.dh", 1], ["keys.route.sign", 2]]);
   // What the store holds never appears in what core said.
   const stored = JSON.parse(fs.readFileSync(path.join(c.dataDir, "keys.json"), "utf8"));
   for (const tool of ["keys.box.pub", "keys.route.pub", "keys.exists"]) {

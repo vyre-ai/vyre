@@ -30,6 +30,12 @@ bad() { echo "FAIL  $*" >&2; exit 1; }
 
 node scripts/mac-proof/release.mjs "$work"
 node_bin=$(command -v node)
+# The install script verifies the first install against the release key embedded in itself, so the
+# test runs a COPY of it with the throwaway public key put in (the real script has no override).
+key=$(cat "$work/release-key.pub")
+sed "s|^RELEASE_KEY=.*|RELEASE_KEY=$key|" "$repo/scripts/install-mac-server.sh" >"$work/install-mac-server.sh"
+grep -q "^RELEASE_KEY=$key\$" "$work/install-mac-server.sh" || bad "the key did not patch in"
+script=$work/install-mac-server.sh
 
 # No Homebrew, no node on PATH: what a fresh Mac has. The script bundles its own Node and Colima.
 PATH_MIN=/usr/bin:/bin:/usr/sbin:/sbin
@@ -38,7 +44,7 @@ export VYRE_HOME="$HOME/.vyre-proof"
 export VYRE_SERVER_DIR="$HOME/.vyre-server"
 
 echo "::group::install"
-env PATH="$PATH_MIN" VYRE_CODE="" sh "$repo/scripts/install-mac-server.sh" --yes
+env PATH="$PATH_MIN" VYRE_CODE="" sh "$script" --yes
 echo "::endgroup::"
 
 # Account and tree.
@@ -124,7 +130,7 @@ ok "the pinned Node, Colima, Lima and docker client matched their sums and run"
 
 # A second run repairs: same release, nothing breaks, still one core.
 echo "::group::reinstall"
-env PATH="$PATH_MIN" sh "$repo/scripts/install-mac-server.sh" --yes
+env PATH="$PATH_MIN" sh "$script" --yes
 echo "::endgroup::"
 sudo launchctl print system/com.vyre.core >/dev/null || bad "core is gone after a second install"
 "$node_bin" "$work/probe.mjs" 2>/dev/null && bad "the second install should find the keys already there" || true
@@ -132,7 +138,7 @@ ok "installing again repairs and keeps core's keys"
 
 # Uninstall.
 echo "::group::uninstall"
-env PATH="$PATH_MIN" sh "$repo/scripts/install-mac-server.sh" --uninstall --purge --yes
+env PATH="$PATH_MIN" sh "$script" --uninstall --purge --yes
 echo "::endgroup::"
 if sudo launchctl print system/com.vyre.core >/dev/null 2>&1; then bad "core is still loaded"; fi
 if dscl . -read /Users/_vyre >/dev/null 2>&1; then bad "_vyre is still there"; fi

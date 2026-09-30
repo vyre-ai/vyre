@@ -392,3 +392,29 @@ test("vyred's LaunchDaemon carries VYRE_GH_BIN only when given, and only an abso
   assert.equal(p[LABELS.core].EnvironmentVariables.VYRE_GH_BIN, undefined, "core never gets it");
   assert.throws(() => buildPlists(f.opts(f.rel, { ghBin: "gh" })), /absolute/);
 });
+
+test("a refused release clears only the three staged names: a link is unlinked, never followed, and nothing else is touched", (t) => {
+  const f = fixture(t);
+  install(f.opts(f.rel), { run: fakeRun().run, root: f.root, key: f.kp.key });
+  const staging = path.join(f.root, RUNTIME.staging);
+  const victim = path.join(f.dir, "victim"); fs.mkdirSync(victim); fs.writeFileSync(path.join(victim, "keep.txt"), "mine");
+  fs.mkdirSync(path.join(staging, "vyre.tgz.d")); fs.writeFileSync(path.join(staging, "vyre.tgz.d", "x"), "x");
+  fs.symlinkSync(victim, path.join(staging, "vyre.tgz"));               // the tarball name is a link to a folder
+  fs.writeFileSync(path.join(staging, "manifest.json"), "{}");
+  fs.writeFileSync(path.join(staging, "manifest.sig"), "AAAA");
+  assert.throws(() => apply({ run: fakeRun().run, root: f.root, key: f.kp.key }), /signature|not a regular file/);
+  assert.ok(fs.existsSync(path.join(victim, "keep.txt")), "the link's target is untouched");
+  assert.ok(!fs.existsSync(path.join(staging, "vyre.tgz")) && !fs.existsSync(path.join(staging, "manifest.json")), "the three names are gone");
+  assert.ok(fs.existsSync(path.join(staging, "vyre.tgz.d", "x")), "any other entry is left alone, never recursed into");
+});
+
+test("a bundled node that does not match its expected sha256 installs nothing", (t) => {
+  const f = fixture(t);
+  const r = fakeRun();
+  const good = crypto.createHash("sha256").update(fs.readFileSync(f.node)).digest("hex");
+  assert.throws(() => install(f.opts(f.rel, { nodeSha256: "0".repeat(64) }), { run: r.run, root: f.root, key: f.kp.key }), /does not match its expected sha256/);
+  assert.equal(r.calls.length, 0);
+  assert.ok(!fs.existsSync(path.join(f.root, RUNTIME.base)));
+  install(f.opts(f.rel, { nodeSha256: good }), { run: fakeRun().run, root: f.root, key: f.kp.key });
+  assert.ok(fs.existsSync(path.join(f.root, RUNTIME.node)));
+});

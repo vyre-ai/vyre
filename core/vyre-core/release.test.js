@@ -208,3 +208,17 @@ test("a lone package/ folder (npm pack) is stripped on extract; any other single
   extract(dot.out, c);
   assert.equal(fs.readFileSync(path.join(c, "b.js"), "utf8"), "z", "the same layout written with a ./ prefix strips too");
 });
+
+test("a pax size or sparse record is refused, and extract wants an absolute tar", (t) => {
+  const d = tmp(t);
+  fs.mkdirSync(path.join(d, "s")); fs.writeFileSync(path.join(d, "s", "a.txt"), "x");
+  for (const key of ["size", "GNU.sparse.major"]) {
+    const out = path.join(d, `${key}.tgz`);
+    execFileSync("python3", ["-c", `import tarfile,sys
+t=tarfile.open(sys.argv[1],"w:gz",format=tarfile.PAX_FORMAT,pax_headers={sys.argv[2]:"5"})
+t.add(sys.argv[3]+"/a.txt","a.txt");t.close()`, out, key, path.join(d, "s")]);
+    assert.throws(() => listTar(out), /pax record/, key);
+  }
+  const ok = path.join(d, "ok.tgz"); tar(path.join(d, "s"), ["-czf", ok, "."]);
+  assert.throws(() => extract(ok, path.join(d, "o"), { tar: "tar" }), /absolute path to tar/);
+});
