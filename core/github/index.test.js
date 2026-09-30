@@ -87,12 +87,12 @@ async function world(t, { projectsRows = [], tokens = {}, projectsDir, existingT
   };
   const mod = await github.start(ctx);
   t.after(() => mod.stop());
-  const as = (caller, { firstParty = false, asked = false } = {}) => async (name, input = {}) => {
+  const as = (caller, { firstParty = false, asked = false, door = false } = {}) => async (name, input = {}) => {
     const def = tools.get(name);
     if (!def) return { error: { code: "no_such_tool" } };
     if (def.callers && !def.callers.some(c => caller === c || caller.startsWith(c + ":"))) return { error: { code: "denied" } };
     if (def.internal && !caller.startsWith("module:")) return { error: { code: "no_such_tool" } };
-    try { return { data: await def.run(input, { caller, firstParty, ...(asked ? { asked: true } : {}) }) }; }
+    try { return { data: await def.run(input, { caller, firstParty, ...(asked ? { asked: true } : {}), ...(door ? { door: true } : {}) }) }; }
     catch (e) { const err = /** @type {any} */ (e); return { error: { code: err.code, message: err.message, ...(err.detail ? { detail: err.detail } : {}) } }; }
   };
   return { db, events, calls, as, ctx, mcpRows };
@@ -557,7 +557,7 @@ test("github.project.issue.list / .get: issues without pull requests, search wit
 
 test("github.act.target: the destination a person's yes must name - merge and review bind repo and PR number, open binds repo and branch; only the registry may ask", async t => {
   const w = await prWorld(t);
-  const reg = w.as("module:vyred", { firstParty: true });
+  const reg = w.as("module:vyred");
   const to = async (tool, input) => (await reg("github.act.target", { tool, input }));
   assert.deepEqual((await to("github.project.pr.merge", { project: "app", pr: 12, method: "squash" })).data, { to: ["github.project.pr.merge:alex/app#12"] });
   assert.deepEqual((await to("github.project.pr.review", { project: "app", pr: 40, event: "APPROVE" })).data, { to: ["github.project.pr.review:alex/app#40"] });

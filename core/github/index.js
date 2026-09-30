@@ -46,7 +46,7 @@ const MODULE_CALLERS = {
   "github.project.local-init": new Set(["module:projects", "module:sessions", "module:threads"]),
   // The "#" picker's fan-out and the turn that attaches a tag.
   // The registry asks this before it asks whether the person said yes (reach: asked).
-  "github.act.target": new Set(["module:vyred", "module:platform"]),
+  "github.act.target": new Set(["module:platform"]),
   "github.mentions.search": new Set(["module:mentions", "module:platform", "module:sessions", "module:threads"]),
   "github.mentions.resolve": new Set(["module:mentions", "module:platform", "module:sessions", "module:threads"]),
 };
@@ -562,7 +562,10 @@ export default {
       input: obj({ tool: str, input: { type: "object" } }, ["tool", "input"]),
       callers: ["module"],
       run: async ({ tool, input }, meta = {}) => {
-        checkModuleCaller("github.act.target", { ...meta, firstParty: meta.firstParty !== false }, MODULE_CALLERS["github.act.target"]);
+        // The registry asks as module:vyred (its own door call, not a first-party module, so no
+        // firstParty flag); the tool is reach "modules", so the registry refuses an added module
+        // before it gets here.
+        if (meta.caller !== "module:vyred") checkModuleCaller("github.act.target", meta, MODULE_CALLERS["github.act.target"]);
         const repo = projects.get(named(input && input.project));
         if (!repo) throw fail(`${named(input && input.project) || "that project"} has no primary GitHub repo`, "not_found");
         if (tool === "github.project.pr.merge" || tool === "github.project.pr.review") return { to: [`${tool}:${repo.full_name}#${prNumber(input.pr)}`] };
