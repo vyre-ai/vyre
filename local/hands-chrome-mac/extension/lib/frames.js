@@ -124,8 +124,29 @@ export function createFrames({ cdp }) {
     return { dx, dy };
   }
 
+  /**
+   * Scroll a frame into view, outermost iframe first, so a point found inside it can be clicked in the top viewport (an iframe scrolled out of
+   * view has its content at coordinates the top page cannot receive input at). Best effort: a frame that cannot be scrolled is left where it is.
+   * @param {number} tabId @param {Frame} frame @param {Frame[]} [all]
+   */
+  async function reveal(tabId, frame, all) {
+    const frames = all || await list(tabId);
+    /** @type {Frame[]} */ const chain = [];
+    /** @type {Frame|undefined} */ let cur = frame;
+    for (let guard = 0; cur && cur.parentId && guard < 20; guard++) { chain.unshift(cur); cur = frames.find(f => f.frameId === cur?.parentId); }
+    for (const f of chain) {
+      const parent = frames.find(x => x.frameId === f.parentId);
+      if (!parent) continue;
+      const sid = sessionOf(parent);
+      try {
+        const owner = await cdp.send(tabId, "DOM.getFrameOwner", { frameId: f.frameId }, sid);
+        await cdp.send(tabId, "DOM.scrollIntoViewIfNeeded", { backendNodeId: owner.backendNodeId }, sid);
+      } catch { /* leave it where it is */ }
+    }
+  }
+
   /** How many frames cannot be read, and which: what a snapshot must say instead of pretending the page is only what it could see. @param {Frame[]} frames */
   const unreadable = frames => frames.filter(f => !f.readable);
 
-  return { list, pick, pickFrom, evalIn, offset, unreadable, sessionOf };
+  return { list, pick, pickFrom, evalIn, offset, reveal, unreadable, sessionOf };
 }

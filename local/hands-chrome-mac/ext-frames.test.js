@@ -96,3 +96,15 @@ test("frames.offset: a frame's viewport starts at the sum of its iframe elements
   // INNER sits at (10,20) inside APP, which sits at (100,60) in the top page.
   assert.deepEqual(await ctx.frames.offset(1, fr[2], fr), { dx: 110, dy: 80 });
 });
+
+test("frames.reveal scrolls each iframe owner into view, outermost first, best effort", async () => {
+  const { ctx, ev, calls } = world();
+  await ctx.cdp.attach(1);
+  ev({ tabId: 1 }, "Target.attachedToTarget", { sessionId: "S-APP", targetInfo: { targetId: "APP", type: "iframe", url: "" } });
+  ev({ tabId: 1, sessionId: "S-APP" }, "Target.attachedToTarget", { sessionId: "S-INNER", targetInfo: { targetId: "INNER", type: "iframe", url: "" } });
+  const fr = await ctx.frames.list(1);
+  await ctx.frames.reveal(1, fr[2], fr);
+  const scrolls = calls.filter(c => c.method === "DOM.scrollIntoViewIfNeeded");
+  assert.equal(scrolls.length, 2);
+  assert.deepEqual(scrolls.map(c => c.session), [undefined, "S-APP"], "the app's owner in the top page first, then the inner frame's owner inside the app");
+});

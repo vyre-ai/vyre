@@ -502,14 +502,15 @@ One frame for a command: { v: 1, kind: "list" | "detail" | "form" | "error" | "n
 
 ### `chrome.act`
 
-Do one thing to one control found by selector: click, type (with value), select an option, check a box, or press a key (value: the key). An act that sends something as the person (a real submit, a Send, Pay or Post control, decided from the page itself) is held for their approval at the Gate unless they asked for it directly: the answer has held: true.
+Do one thing to one control found by selector, in any frame of the tab (selector.frame pins one; a match in two frames is tied unless one is in an open dialog): click, type (with value), select an option, check a box, or press a key (value: the key). An act that sends something as the person (a real submit, a Send, Pay or Post control, decided from the page itself) is held for their approval at the Gate unless they asked for it directly: the answer has held: true.
 
 - Input:
   - `fillable` boolean: True: match only form fields, by their label.
   - `kind` one of "click", "type", "select", "check", "press"
   - `optional` boolean: True: if nothing matches, answer skipped instead of failing.
-  - `selector` object: How to find one control: role, name (its label), identifier, container. Copy it from chrome.snapshot.
+  - `selector` object: How to find one control: role, name (its label), identifier, container, and frame. Copy it from chrome.snapshot, which puts the control's frame in it.
     - `container` string
+    - `frame` any: Look only in this frame: its index from chrome.snapshot or chrome.frames, its frame id, top, or a piece of its origin or URL. Default: every frame.
     - `identifier` string
     - `name` string
     - `ref` string
@@ -526,12 +527,13 @@ Do one thing to one control found by selector: click, type (with value), select 
 
 ### `chrome.api`
 
-An app's own API, learned from its traffic. learn: reduce captured requests to a catalog (method, path, query and body shape, auth kind, sample status; values masked). catalog: read it. call: invoke one entry from inside the page.
+An app's own API, learned from its traffic. learn: reduce captured requests to a catalog (method, path, query and body shape, auth kind, sample status; values masked). catalog: read it. call: invoke one entry from inside the page. learn sees the calls of every frame, including a cross-origin iframe's (the workflow builder), and each entry records the frame it was learned in; call runs in that frame by default, so its own cookies and auth sign it, or in the frame you name.
 
 - Input:
   - `action` one of "learn", "catalog", "call", required
   - `args` object
   - `entry` string
+  - `frame` any: For call: run in this frame (index, frame id, or a piece of its origin). Default: the frame the entry was learned in.
   - `host` string
   - `tab` integer: Tab id from chrome.tabs. Default: the tab Vyre is working in.
   - `timeoutMs` integer: Give up after this many ms. Default 30000.
@@ -562,10 +564,11 @@ Click a control, chosen by role/name/identifier against a fresh look at the page
 
 ### `chrome.console`
 
-The page's console: messages, exceptions and log entries kept in a ring buffer, newest last.
+The page's console: messages, exceptions and log entries kept in a ring buffer, newest last. It holds every frame's messages (cross-origin iframes too); each entry carries its frame, and frame limits the read to one.
 
 - Input:
   - `clear` boolean
+  - `frame` any: Only this frame's entries: a piece of its origin.
   - `level` string
   - `limit` integer
   - `tab` integer: Tab id from chrome.tabs. Default: the tab Vyre is working in.
@@ -574,23 +577,24 @@ The page's console: messages, exceptions and log entries kept in a ring buffer, 
 
 ### `chrome.eval`
 
-Run a JavaScript expression in a tab and return its JSON result. Values shaped like credentials (tokens, keys, JWTs, values under secret-looking names) are masked; other values come back as the page holds them, so an expression can still read a short cookie or a typed field. Refused on a page with a visible password field. Hands-free, except that a message, post or payment the script tries to send is held for the person's approval unless they asked for it.
+Run a JavaScript expression in a tab and return its JSON result. Values shaped like credentials (tokens, keys, JWTs, values under secret-looking names) are masked; other values come back as the page holds them, so an expression can still read a short cookie or a typed field. Runs in the top page unless frame names one (an index, frame id, or a piece of its origin or URL). Refused when a visible password field is in ANY readable frame of the tab. Hands-free, except that a message, post or payment the script tries to send is held for the person's approval unless they asked for it.
 
 - Input:
   - `expression` string
+  - `frame` any: Run in this frame: its index, frame id, or a piece of its origin or URL. Default: the top page.
   - `tab` integer: Tab id from chrome.tabs. Default: the tab Vyre is working in.
   - `timeoutMs` integer: Give up after this many ms. Default 30000.
 - Callers: any caller
 
 ### `chrome.fill`
 
-Set many form fields in one step: fields is a list of {selector, value}. Values a person typed never come back in results. A submit is held like chrome.act's.
+Set many form fields in one step, across the tab's frames: fields is a list of {selector, value}. Values a person typed never come back in results. A submit is held like chrome.act's.
 
 - Input:
   - `fields` list of object
     - `label` string: Instead of a selector: the field's visible label.
     - `optional` boolean
-    - `selector` object: How to find one control: role, name (its label), identifier, container. Copy it from chrome.snapshot.
+    - `selector` object: How to find one control: role, name (its label), identifier, container, and frame. Copy it from chrome.snapshot, which puts the control's frame in it.
     - `value` string
   - `partial` boolean: True: set the fields that are found and report the rest (notFound) instead of failing before setting any.
   - `submit` boolean
@@ -634,11 +638,13 @@ GoHighLevel in the person's own Chrome. context: which sub-account and section t
 
 ### `chrome.inspect`
 
-DevTools' view of the page: an element's outerHTML, attributes and box model, computed styles, the CSS rules that match it, and its event listeners.
+DevTools' view of the page: an element's outerHTML, attributes and box model, computed styles, the CSS rules that match it, and its event listeners. Reads the top page unless frame names one (a cross-origin iframe is read through its own session).
 
 - Input:
-  - `selector` object: How to find one control: role, name (its label), identifier, container. Copy it from chrome.snapshot.
+  - `frame` any: Inspect in this frame: its index, frame id, or a piece of its origin. Default: the top page.
+  - `selector` object: How to find one control: role, name (its label), identifier, container, and frame. Copy it from chrome.snapshot, which puts the control's frame in it.
     - `container` string
+    - `frame` any: Look only in this frame: its index from chrome.snapshot or chrome.frames, its frame id, top, or a piece of its origin or URL. Default: every frame.
     - `identifier` string
     - `name` string
     - `ref` string
@@ -670,11 +676,12 @@ Tell the agent something while it works in Chrome, by prompt or voice: its next 
 
 ### `chrome.net`
 
-The page's network traffic. start: begin capturing. list and get: what was captured (headers and bodies with every credential masked). watch and unwatch: live capture. on and off: act on matching requests (block, mock, change headers, wait then run a step). rules: the active on rules. replay: re-send a captured request from inside the page, so its own cookies sign it and no credential leaves the browser.
+The page's network traffic. start: begin capturing. list and get: what was captured (headers and bodies with every credential masked). watch and unwatch: live capture. on and off: act on matching requests (block, mock, change headers, wait then run a step). rules: the active on rules. replay: re-send a captured request from inside the page, so its own cookies sign it and no credential leaves the browser. Every frame of the tab is captured (cross-origin iframes and nested ones too): a request carries frame, its origin, and frame (here or inside filter) limits list, get and watch to one. A request an iframe made is replayed inside that iframe.
 
 - Input:
   - `action` one of "start", "list", "get", "watch", "unwatch", "on", "off", "rules", "replay", required
   - `filter` object
+  - `frame` any: Only requests of this frame: a piece of its origin.
   - `id` string
   - `limit` integer
   - `tab` integer: Tab id from chrome.tabs. Default: the tab Vyre is working in.
@@ -762,10 +769,11 @@ Every actionable control on the agent's current page: role, name, whether it is 
 
 ### `chrome.sources`
 
-The page's scripts: list them, get one by id, or search across all of them. Source maps' file names come with them.
+The page's scripts: list them, get one by id, or search across all of them. Source maps' file names come with them. Scripts of every frame (cross-origin iframes too) are covered; each carries its frame, and frame limits a list or search to one.
 
 - Input:
   - `action` one of "list", "get", "search", required
+  - `frame` any: Only scripts of this frame: a piece of its origin.
   - `id` string
   - `limit` integer
   - `query` string
@@ -841,10 +849,11 @@ The person's live speech while an agent works in Chrome, for the panel to show. 
 
 ### `chrome.wait`
 
-Wait for exactly one thing: a control (selector), the URL to contain some text (url), or the network to be quiet for idleMs, up to timeoutMs.
+Wait for exactly one thing: a control (selector), the URL to contain some text (url), or the network to be quiet for idleMs, up to timeoutMs. It looks in every frame of the tab, including one that appears or navigates while waiting; frame limits it to one.
 
 - Input:
   - `enabled` boolean
+  - `frame` any: Look only in this frame: its index, frame id, or a piece of its origin or URL. Default: every frame.
   - `gone` boolean: With selector: wait until it is absent.
   - `idleMs` integer: Wait until the network has been quiet this long.
   - `netQuietMs` integer

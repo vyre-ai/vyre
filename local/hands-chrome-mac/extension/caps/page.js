@@ -822,7 +822,18 @@ async function locateIn(ctx, tabId, ctl, snap, focus) {
   const loc = await inFrame_(ctx, tabId, frame, locate(ctl.path, focus));
   if (!loc || !loc.found) return { loc, frame };
   if (frame.index > 0 && ctx.frames && ctx.frames.offset) {
-    const { dx, dy } = await ctx.frames.offset(tabId, frame, list);
+    let { dx, dy } = await ctx.frames.offset(tabId, frame, list);
+    // A frame scrolled out of the top viewport has its content at points the page cannot take input at: bring it into view and look again.
+    try {
+      const m = await ctx.cdp.send(tabId, "Page.getLayoutMetrics", {});
+      const vp = m && (m.cssLayoutViewport || m.layoutViewport);
+      const x = loc.x + dx, y = loc.y + dy;
+      if (vp && vp.clientWidth && vp.clientHeight && (x < 0 || y < 0 || x > vp.clientWidth || y > vp.clientHeight) && ctx.frames.reveal) {
+        await ctx.frames.reveal(tabId, frame, list);
+        const again = await inFrame_(ctx, tabId, frame, locate(ctl.path, focus));
+        if (again && again.found) { Object.assign(loc, again); ({ dx, dy } = await ctx.frames.offset(tabId, frame, list)); }
+      }
+    } catch { /* no metrics: go with the point we have */ }
     return { loc: { ...loc, x: loc.x + dx, y: loc.y + dy, inFrameX: loc.x, inFrameY: loc.y }, frame };
   }
   return { loc, frame };

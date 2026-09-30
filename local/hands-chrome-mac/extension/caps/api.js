@@ -89,12 +89,12 @@ const ops = {
 
   async "api.call"(args, ctx) {
     const all = await store(ctx).load();
-    const entry = Object.values(all).flatMap(o => o.entries).find(e => e.id === args?.entryId);
+    const entry = Object.values(all).flatMap(o => o.entries).find(e => e.id === (args?.entryId ?? args?.entry));
     if (!entry) throw refuse("not_found", "no catalog entry with that id (run api.learn first)");
     const acting = !/^(GET|HEAD)$/.test(entry.method);
     const tab = await target(ctx, args, acting ? "api.call" : "api.catalog", acting);
     let built;
-    try { built = buildCall(entry, args?.params || {}); } catch (e) { throw refuse("bad_request", /** @type {Error} */ (e).message); }
+    try { built = buildCall(entry, args?.params || args?.args || {}); } catch (e) { throw refuse("bad_request", /** @type {Error} */ (e).message); }
     /** @type {Record<string, string>} */
     const headers = { accept: "application/json", ...(built.headers || {}) };
     let authNote;
