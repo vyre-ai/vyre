@@ -52,6 +52,18 @@ RUN groupadd -g 1002 vyre-work \
  && mkdir -p /run/vyre-threads && chown 1000:1002 /run/vyre-threads && chmod 2710 /run/vyre-threads \
  && mkdir -p /var/lib/vyre-secrets && chown 1000:1000 /var/lib/vyre-secrets && chmod 700 /var/lib/vyre-secrets
 
+# One uid and group per signed-in account (sessions.accounts, ADR 0030 phase 2): 2000 to 2063, each
+# with a private HOME under /home/acct. The spawner (no chown capability) only checks these, so they
+# are made here, mode 0710 owned by the account: vyre is in every account's group and can walk in to
+# read the account's transcripts, and no other account is. compose mounts /home/acct as a volume,
+# which Docker fills from this directory the first time, ownership and modes kept.
+RUN mkdir -p /home/acct && chmod 755 /home/acct \
+ && for u in $(seq 2000 2063); do \
+      groupadd -g "$u" "vyre-acct-$u" \
+      && mkdir "/home/acct/$u" && chown "$u:$u" "/home/acct/$u" && chmod 710 "/home/acct/$u"; \
+    done \
+ && usermod -aG "$(seq 2000 2063 | sed 's/^/vyre-acct-/' | paste -sd, -)" vyre
+
 # Everything .dockerignore lets through: package files, bin, core, harness, docs, LICENSE,
 # README.md, and deck, modules and local when they exist.
 WORKDIR /opt/vyre
