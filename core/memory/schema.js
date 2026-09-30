@@ -282,5 +282,6 @@ export const MIGRATIONS = [
   `CREATE TABLE memory_site (key TEXT PRIMARY KEY, kind TEXT NOT NULL CHECK (kind IN ('origin','family')), rev INTEGER NOT NULL, record TEXT NOT NULL, card TEXT NOT NULL, updated INTEGER NOT NULL) WITHOUT ROWID;
   CREATE TABLE memory_site_events (id INTEGER PRIMARY KEY, key TEXT NOT NULL, at INTEGER NOT NULL, kind TEXT NOT NULL, item TEXT, outcome TEXT);
   CREATE INDEX memory_site_events_key ON memory_site_events (key, at);
-  CREATE TABLE memory_site_forgotten (key TEXT PRIMARY KEY, record TEXT NOT NULL, at INTEGER NOT NULL) WITHOUT ROWID;`,
+  CREATE TABLE memory_site_forgotten (key TEXT PRIMARY KEY, record TEXT NOT NULL, at INTEGER NOT NULL) WITHOUT ROWID;
+  CREATE TABLE memory_site_gone (key TEXT PRIMARY KEY, at INTEGER NOT NULL) WITHOUT ROWID;`,
 ];

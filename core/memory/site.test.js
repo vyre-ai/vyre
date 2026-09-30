@@ -23,7 +23,7 @@ async function world(t, settings = {}) {
   const ctx = {
     name: "memory", config: { me: { domains: [] } }, paths: {}, store: { db, migrate: () => {} }, log: () => {}, now: () => clock.now,
     events: { on: () => () => {}, emit: (type, payload) => emitted.push({ type, payload }), since: () => [], prune: () => 0 },
-    call: async (tool, input) => tool === "settings.get" ? { data: { value: set[input.key] } } : tool === "recall.search" ? { data: [] } : tool === "recall.thread" ? { data: { turns: [] } } : fakeReachCall(tool, input, { agents: AGENTS, projects: [] }),
+    call: async (tool, input) => tool === "settings.get" ? (set.__fail ? { error: { code: "failed", message: "hub down" } } : { data: { value: set[input.key] } }) : tool === "recall.search" ? { data: [] } : tool === "recall.thread" ? { data: { turns: [] } } : fakeReachCall(tool, input, { agents: AGENTS, projects: [] }),
     tool: (name, def) => tools.set(name, def),
     iqRunner: null, memoryRunner: null,
   };
@@ -162,11 +162,11 @@ test("site.sync: a replica's records are folded in by the same allowlist and new
   await w.call("memory.site.put", { origin: ORIGIN, patch: patch() });
   const replica = { key: ORIGIN, names: ["GoHighLevel"], controls: [{ id: "c1", page: "/workflows", role: "button", selector: { strategy: "identifier", identifier: "create-workflow-v2" }, verified: "2026-10-02T00:00:00Z", seen: 7 },
     { id: "c2", page: "/workflows", role: "tab", selector: { strategy: "identifier", identifier: "triggers" } }], rev: 5 };
-  const evil = { key: AGENCY, notes: [{ name: "n", text: `token ${KEY}` }] };
+  const evil = { key: AGENCY, flows: [{ name: "f-x", src: "learned", steps: [{ id: "s1", op: "page.fill", args: { value: "Robin Ellis" } }] }] };
   const r = (await w.call("memory.site.sync", { have: {}, push: [replica, evil] })).data;
   assert.equal(r.accepted, 1);
   assert.equal(r.refused.length, 1);
-  assert.ok(!JSON.stringify(r).includes("a1b2c3d4"));
+  assert.ok(!JSON.stringify(r).includes("Robin"));
   const got = (await w.call("memory.site.get", { origin: ORIGIN, parts: ["controls"] })).data.origin.controls;
   assert.equal(got.find(c => c.id === "c1").selector.identifier, "create-workflow-v2", "the newer verified wins");
   assert.ok(got.some(c => c.id === "c2"), "nothing is lost");
@@ -187,4 +187,80 @@ test("a person's data in a label never reaches a stored record", async t => {
   const stored = String(/** @type {any} */ (w.db.prepare("SELECT record FROM memory_site").get()).record);
   assert.ok(!stored.includes("Robin"));
   assert.ok(stored.includes("Add contact"));
+});
+
+const DAY = 24 * HOUR;
+
+test("notes are the person's own: a person's surface stores one, Chrome's bridge cannot", async t => {
+  const w = await world(t);
+  const note = { notes: [{ name: "builder", text: "The builder is a nested frame; wait for its landmark." }] };
+  await w.call("memory.site.put", { origin: ORIGIN, patch: note }, "module:hands-chrome", { firstParty: true });
+  assert.equal((await w.call("memory.site.get", { origin: ORIGIN, parts: ["notes"] })).data.origin.notes.length, 0, "the bridge's note is dropped");
+  await w.call("memory.site.put", { origin: ORIGIN, patch: note }, "deck");
+  assert.equal((await w.call("memory.site.get", { origin: ORIGIN, parts: ["notes"] })).data.origin.notes[0].src, "taught");
+});
+
+test("a forgotten site stays forgotten: a replica's older copy is dropped, newer learning is kept, and the replica is told", async t => {
+  const w = await world(t);
+  await w.call("memory.site.put", { origin: ORIGIN, patch: patch() });
+  const copy = (await w.call("memory.site.get", { origin: ORIGIN, parts: ["controls", "api", "ready"] })).data.origin;
+  assert.equal((await w.call("memory.site.forget", { key: ORIGIN })).data.forgotten, 1);
+  w.clock.now += HOUR;
+  const old = { key: ORIGIN, ...copy, controls: copy.controls.map(c => ({ ...c, verified: new Date(NOW - HOUR).toISOString() })), api: [], ready: [] };
+  const r1 = (await w.call("memory.site.sync", { have: {}, push: [old] })).data;
+  assert.deepEqual([r1.accepted, r1.skipped], [0, 1], "nothing newer than the forget");
+  assert.ok(r1.forgotten.some(f => f.key === ORIGIN), "the replica is told to forget it");
+  assert.equal((await w.call("memory.site.get", { origin: ORIGIN })).data.origin, null);
+  const fresh = { ...old, controls: old.controls.map(c => ({ ...c, verified: new Date(w.clock.now).toISOString() })) };
+  assert.equal((await w.call("memory.site.sync", { have: {}, push: [fresh] })).data.accepted, 1, "what was verified after the forget is new learning");
+});
+
+test("forgotten records leave the disk after 24 hours without a restart", async t => {
+  const w = await world(t);
+  await w.call("memory.site.put", { origin: ORIGIN, patch: patch() });
+  await w.call("memory.site.forget", { key: ORIGIN });
+  assert.equal(/** @type {any} */ (w.db.prepare("SELECT COUNT(*) n FROM memory_site_forgotten").get()).n, 1);
+  w.clock.now += 25 * HOUR;
+  await w.call("memory.site.list", {});
+  assert.equal(/** @type {any} */ (w.db.prepare("SELECT COUNT(*) n FROM memory_site_forgotten").get()).n, 0);
+});
+
+test("sync cannot raise trust or invent a family: new items start at 0.5, shipped is not claimable, a family needs an origin", async t => {
+  const w = await world(t);
+  const replica = { key: ORIGIN, family: "ghl", controls: [{ id: "c1", page: "/w", role: "button", conf: 1, selector: { strategy: "identifier", identifier: "go" } }],
+    flows: [{ name: "f-x", src: "shipped", conf: 1, expects: [{ kind: "selector", arg: "toast" }], steps: [] }] };
+  const orphan = { key: "family:mine", controls: [{ id: "c9", page: "/w", role: "button", selector: { strategy: "identifier", identifier: "nine" } }] };
+  const r = (await w.call("memory.site.sync", { push: [replica, orphan] })).data;
+  assert.equal(r.accepted, 1);
+  assert.equal(r.refused.length, 1);
+  assert.equal(r.refused[0].key, "family:mine");
+  const got = (await w.call("memory.site.get", { origin: ORIGIN, parts: ["controls", "flows"] })).data.origin;
+  assert.equal(got.controls[0].conf, 0.5);
+  assert.equal(got.flows[0].src, "learned");
+  assert.ok(got.flows[0].conf <= 0.5);
+  assert.equal((await w.call("memory.site.sync", { push: [{ key: "family:ghl", controls: [{ id: "c2", page: "/w", role: "tab", selector: { strategy: "identifier", identifier: "two" } }] }] })).data.accepted, 1, "a family an origin named is fine");
+});
+
+test("settings fail closed: an error from the hub keeps the last value, or off; no hub at all means the default", async t => {
+  const w = await world(t);
+  assert.equal((await w.call("memory.site.put", { origin: ORIGIN, patch: patch() })).data.accepted, true);
+  // The hub starts failing: the last known value (on) holds.
+  w.set.__fail = true;
+  assert.equal((await w.call("memory.site.put", { origin: ORIGIN, patch: patch() })).data.accepted, true);
+  // A person's OFF is remembered through a failure.
+  delete w.set.__fail; w.set["memory.site.learn"] = false;
+  assert.equal((await w.call("memory.site.put", { origin: ORIGIN, patch: patch() })).data.accepted, false);
+  w.set.__fail = true;
+  assert.equal((await w.call("memory.site.put", { origin: ORIGIN, patch: patch() })).data.accepted, false, "the off holds while the hub fails");
+  // A hub that never answered: off, since nothing is known.
+  const fresh = await world(t);
+  fresh.set.__fail = true;
+  assert.equal((await fresh.call("memory.site.put", { origin: ORIGIN, patch: patch() })).data.accepted, false);
+});
+
+test("a phone paired through the relay (device:<id>) is a person's surface", async t => {
+  const w = await world(t);
+  await w.call("memory.site.put", { origin: ORIGIN, patch: patch() });
+  assert.equal((await w.call("memory.site.list", {}, "device:phone-1")).data.sites.length, 1);
+  assert.equal((await w.call("memory.site.forget", { key: ORIGIN }, "device:phone-1")).data.forgotten, 1);
 });

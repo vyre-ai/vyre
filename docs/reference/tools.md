@@ -3762,7 +3762,7 @@ Bring back a site forgotten in the last 24 hours: { key } -> { restored }. The p
 
 ### `memory.site.sync`
 
-Two-way sync with a replica (standalone Vyre for Chrome on a computer, once it reaches this box): { have: { key: rev }, push: [records] } -> { accepted, refused, pull: [records newer than have] }. Each pushed record goes through the same allowlist and is folded in by per-item newest-verified, never overwriting. Off when memory.site.sync is off. The person's own surfaces and Chrome's bridge.
+Two-way sync with a replica (standalone Vyre for Chrome on a computer, once it reaches this box): { have: { key: rev }, push: [records] } -> { accepted, skipped, refused, pull: [records newer than have], forgotten: [{ key, at }] }. Each pushed record goes through the same allowlist and is folded in by per-item newest-verified, never overwriting; items the store did not hold start at 0.5 at most; items older than a forget the person made are dropped, and the replica is told what was forgotten. Off when memory.site.sync is off. The person's own surfaces and Chrome's bridge.
 
 - Input:
   - `have` object
