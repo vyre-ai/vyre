@@ -18,11 +18,27 @@ import { Hands, KINDS, ACTIONS } from "./hands.js";
 import { makeRunner, HandsError } from "./runner.js";
 import { makeOverlay, NO_OVERLAY } from "./overlay.js";
 import { MIGRATIONS, grants } from "./grant.js";
+import { callerKind, agentClaim } from "../../core/modules/index.js";
 
 const PEOPLE = ["cli", "local", "deck", "capsule"];
-/** An mcp caller inside a named agent's own thread: box-side, the assistant, or (once sessions
- * ships them) an ACP provider; every one of them is "an agent" for the grant, alike. */
-const agentOf = caller => { const m = /^mcp:agent:(.+)$/.exec(String(caller || "")); return m ? m[1] : null; };
+/**
+ * Who must hold the grant. Null is the person: their own surfaces, or their own MCP session
+ * (vyred vouches an unnamed mcp caller is not an agent). Anything else, named or not, is an agent
+ * or a stranger and needs a grant: a named claim from any route (mcp:agent:, harness:agent:,
+ * cli:agent:, ...) by that name, and every other caller (a tailnet guest, a module, a hook) by a
+ * key no one can be granted under, so it is refused. Fail closed (reviewer-2 H1).
+ */
+/** Modules that ship with Vyre and act for the person (the apps adapters press Send through hands.commit; sight reads). A module someone adds is not on it. */
+const FIRST_PARTY = /^module:(apps|sight|gate|chrome)$/;
+const grantKey = caller => {
+  const claim = agentClaim(caller);
+  if (claim) return claim;
+  if (FIRST_PARTY.test(String(caller))) return null;
+  return [...PEOPLE, "mcp"].includes(callerKind(caller)) ? null : `caller:${callerKind(caller)}`;
+};
+const agentOf = grantKey;
+/** The person's own direct turn, which is what asks for an outward act (asking is approving). */
+const asked = caller => PEOPLE.includes(callerKind(caller)) && !agentClaim(caller);
 
 const str = { type: "string" };
 const where = {
@@ -82,18 +98,30 @@ export default {
     const via = new AsyncLocalStorage();
     const emit = (/** @type {string} */ type, /** @type {any} */ payload) => {
       const m = /** @type {any} */ (via.getStore()) || {};
-      const agent = /^mcp:agent:(.+)$/.exec(String(m.caller || ""));
-      const where = { ...(m.thread ? { thread: String(m.thread) } : {}), ...(m.call ? { call: String(m.call) } : {}), ...(agent ? { agent: agent[1] } : {}) };
+      const agent = agentClaim(m.caller);
+      const where = { ...(m.thread ? { thread: String(m.thread) } : {}), ...(m.call ? { call: String(m.call) } : {}), ...(agent ? { agent } : {}) };
       return ctx.events.emit(type, { ...payload, ...where }, where.thread ? { thread: where.thread } : {});
     };
     // The Gate is how an unasked outward act reaches a person (PLAN.md C4): hands offers one
     // sender, hands:mac, and holds through it exactly like google or any other module does.
     // A call that comes before the Gate module has started (or fails for any reason) falls back
     // to the old direct hands.commit path rather than silently acting; see hands.act's `use`.
+    // What was held stays HERE, keyed by the Gate's id. The Gate card carries only what the person
+    // reads; the act to replay and its screen hash never leave hands, so an agent that files its
+    // own gate.request cannot make release run anything (reviewer-2 H2).
+    /** @type {Map<string, { input: any, hash: string, key: string|null }>} */
+    const heldActs = new Map();
     const hold = async ({ content, thread }) => {
       const to = (content && content.app) || "the Mac";
-      const r = await ctx.call("gate.request", { kind: "act", via: "hands:mac", to, content, ...(thread ? { thread } : {}) });
-      return r && !r.error && r.data ? r.data : null;
+      const { input, hash, ...shown } = content || {};
+      const caller = /** @type {any} */ (via.getStore() || {}).caller;
+      const r = await ctx.call("gate.request", { kind: "act", via: "hands:mac", to, content: shown, ...(thread ? { thread } : {}) });
+      const data = r && !r.error && r.data ? r.data : null;
+      if (data && data.id) {
+        heldActs.set(String(data.id), { input, hash, key: grantKey(caller) });
+        while (heldActs.size > 200) heldActs.delete(/** @type {string} */ (heldActs.keys().next().value));
+      }
+      return data;
     };
     const hands = new Hands({ run, emit, sleep: opts.sleep, overlay, known, hold });
     const offer = async () => {
@@ -118,7 +146,7 @@ export default {
     const gated = fn => wrap((input, meta) => {
       const agent = agentOf(meta.caller);
       if (agent && !g.has(agent)) {
-        throw Object.assign(new Error(`${agent} is not granted to drive this Mac. Grant it once with hands.grant.add (needs the person present on this Mac), or ask them to.`), { code: "denied" });
+        throw Object.assign(new Error(`${agent} is not granted to drive this Mac. Grant it once with hands.grant.add (needs the person), or ask them to.`), { code: "denied" });
       }
       return fn(input, meta);
     });
@@ -144,7 +172,7 @@ export default {
     ctx.tool("hands.act", {
       description: "Do one thing to one control, found by selector in a fresh observation: press it, set its value, focus it, perform one of its accessibility actions, type text into it, or send it a key. The app is never raised or activated: press, set, focus and type work on an app in the background, but a key needs the app in front and is refused with code needs_front otherwise (press the control instead). Then observe again and verify the effect. verified is true only when the re-observation shows it. An act that sends something as the person (a Send button, Return in a chat) is held, not done: the answer has held: true and an id, and the person approves it at the Gate (gate.approve) like any other send; hands.commit with the same input is the older direct path, kept for a caller that wants to drive it itself. Refuses with code floor where Vyre may not act, secure on a password field (use vault.fill), stopped after the person stopped Vyre (pass resume: true only after asking them), and no_indicator when the on-screen indicator cannot be shown.",
       input: actInput,
-      run: gated((input, meta) => hands.act(input, { thread: meta.thread })),
+      run: gated((input, meta) => hands.act(input, { thread: meta.thread, commit: asked(meta.caller) })),
     });
 
     ctx.tool("hands.commit", {
@@ -160,7 +188,12 @@ export default {
       input: { type: "object", properties: { id: str, to: { type: "array", items: str }, content: { type: "object" } }, required: ["id", "content"] },
       run: wrap((input, meta) => {
         if (meta.caller !== "module:gate") throw Object.assign(new Error("only the Gate releases a held act"), { code: "denied" });
-        return hands.release(input.content || {});
+        const rec = heldActs.get(String(input.id));
+        if (!rec || !rec.hash || !rec.input) throw Object.assign(new Error("that held act is not one hands made, or it was already released"), { code: "denied" });
+        heldActs.delete(String(input.id));
+        // The agent that caused the hold must still be granted when the person approves it.
+        if (rec.key && !g.has(rec.key)) throw Object.assign(new Error(`${rec.key} is no longer granted to drive this Mac. Nothing was done.`), { code: "denied" });
+        return hands.release({ input: rec.input, hash: rec.hash });
       }),
     });
 
@@ -185,10 +218,9 @@ export default {
     });
 
     ctx.tool("hands.grant.add", {
-      description: "Grant an agent (by name, from agents.list) to drive this Mac hands-free from then on: hands.observe/find/act/commit and screen.context reach it with no further prompt. This call itself is the one friction point, and it needs the person present on this Mac.",
+      description: "Grant an agent (by name, from agents.list) to drive this Mac hands-free from then on: hands.observe/find/act/commit and screen.context reach it with no further prompt. The person's own tap or own words (\"let my agents control my Mac\") is the approval, so this takes no Touch ID; an agent cannot grant itself because only the person's own surfaces may call it. One time, revocable with hands.grant.remove.",
       input: { type: "object", properties: { agent: str }, required: ["agent"] },
       callers: PEOPLE,
-      presence: { summary: input => `Let ${input.agent} drive this Mac's screen and computer use, hands-free from then on` },
       run: wrap((input, meta) => g.add(String(input.agent), meta.caller || null, Date.now())),
     });
 

@@ -68,11 +68,11 @@ test("floor: the module asks link.status for the box, and no link module means n
     call: async (/** @type {string} */ tool) => { asked.push(tool); return tool === "link.status" ? answer : { error: { code: "no_such_tool", message: `no tool ${tool}` } }; },
   });
   await mod.start(ctx({ data: { linked: true, box: { address: "https://box.tailnet-juno.ts.net" } } }));
-  assert.equal((await tools.get("hands.observe").run({})).blind, "a Vyre surface in the browser");
+  assert.equal((await tools.get("hands.observe").run({}, { caller: "cli" })).blind, "a Vyre surface in the browser");
   assert.deepEqual(asked.filter(t => t === "link.status"), ["link.status"]);
   tools.clear();
   await mod.start(ctx({ error: { code: "no_such_tool", message: "no tool link.status" } }));
-  assert.equal((await tools.get("hands.observe").run({})).blind, undefined);
+  assert.equal((await tools.get("hands.observe").run({}, { caller: "cli" })).blind, undefined);
 });
 
 test("floor: a window that turns guarded between the two looks is refused on what was read", async () => {
@@ -396,12 +396,12 @@ test("find: hands.find through the Registry returns only the matches, and the fl
   const f = fakeApp(chats());
   const reg = new Registry({ db, events: new Events(db), log: () => {}, config: { role: "local", hands: { runner: f.run, sleep: nosleep } } });
   await reg.start(discover([path.dirname(HERE)]).filter(m => m.dir === HERE), { role: "local" });
-  const r = await reg.call("hands.find", { app: "net.whatsapp.WhatsApp", role: "AXTextArea" }, "module");
+  const r = await reg.call("hands.find", { app: "net.whatsapp.WhatsApp", role: "AXTextArea" }, "module:apps");
   assert.ifError(r.error);
   assert.deepEqual(r.data.elements.map(e => e.selector.name), ["Compose message"]);
   assert.equal(r.data.texts, undefined);
   f.state.bundle = "com.1password.1password"; f.state.app = "1Password";
-  const b = await reg.call("hands.find", { role: "AXTextArea" }, "module");
+  const b = await reg.call("hands.find", { role: "AXTextArea" }, "module:apps");
   assert.ok(b.data.blind);
   assert.deepEqual(b.data.elements, []);
 });

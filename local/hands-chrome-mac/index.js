@@ -25,12 +25,17 @@ import { classify, originOf } from "./floor-url.js";
 import { ACTING } from "./extension/shared/proto.js";
 import * as nativeHost from "./native-host/install.js";
 import { extensionIdFromKey, extensionIdFromPath } from "./native-host/install.js";
-import { callerKind } from "../../core/modules/index.js";
+import { callerKind, agentClaim } from "../../core/modules/index.js";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 
 /** An mcp caller inside a named agent's own thread: the same rule as hands. */
-const agentOf = (/** @type {any} */ caller) => { const m = /^mcp:agent:(.+)$/.exec(String(caller || "")); return m ? m[1] : null; };
+/** Who must hold the grant: null for the person (their own surfaces or unnamed MCP session); a named claim from any route by that name; every other caller by a key that can never be granted, so it is refused (reviewer-2 H1, same rule as hands). */
+const agentOf = (/** @type {any} */ caller) => {
+  const claim = agentClaim(caller);
+  if (claim) return claim;
+  return [...PEOPLE, "mcp"].includes(callerKind(caller)) ? null : `caller:${callerKind(caller)}`;
+};
 const PEOPLE = ["cli", "local", "deck", "capsule"];
 
 /**

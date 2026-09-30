@@ -397,7 +397,7 @@ export class Hands {
     const off = untouchable(placeOf(w), k);
     if (off) throw new HandsError("floor", `Vyre does not act in ${off}. Nothing was done`);
     const fresh = await this.snap({ pid: w.pid, ...(input.window ? { window: input.window } : {}) }, { valueMax: VALUE_FULL });
-    if (hash && signature(fresh) !== hash) {
+    if (!hash || signature(fresh) !== hash) {
       throw new HandsError("changed", "the screen changed since this was held. Nothing was done; ask again so the person sees what is actually there now");
     }
     return this.act(input, { commit: true });

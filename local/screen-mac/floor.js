@@ -63,7 +63,9 @@ export const BROWSERS = new Set([
   "company.thebrowser.Browser", "com.operasoftware.Opera", "com.vivaldi.Vivaldi",
 ]);
 /** Text-entry roles: a Return in one of these, in a browser, can submit a form. */
-const TEXT_ROLES = new Set(["AXTextField", "AXTextArea", "AXComboBox", "AXSearchField"]);
+// The address bar and search boxes are AXComboBox and AXSearchField; Return there navigates or
+// searches, it does not send anything, so they stay free (reviewer-2 M4).
+const TEXT_ROLES = new Set(["AXTextField", "AXTextArea"]);
 
 /**
  * Words on a control that mean pressing it sends, posts or pays as the user (reviewer-2 B1,
@@ -74,10 +76,10 @@ const TEXT_ROLES = new Set(["AXTextField", "AXTextArea", "AXComboBox", "AXSearch
  * English first; other charter-market languages follow the same shape.
  */
 const OUTWARD_WORDS_EN = [
-  "send", "reply", "reply all", "forward", "post", "publish", "tweet", "share", "submit",
+  "send", "reply", "reply all", "forward", "post", "publish", "tweet", "share to", "submit",
   "pay", "place your order", "place order", "buy", "purchase", "checkout", "continue to payment",
   "confirm and pay", "confirm payment", "confirm purchase", "confirm order", "transfer",
-  "delete account", "approve", "sign", "merge pull request", "donate", "subscribe", "tip",
+  "delete account", "approve", "sign and send", "e-sign", "merge pull request", "donate", "subscribe",
 ];
 /** German, Spanish, French, Portuguese equivalents of the same list, for the same reason. */
 const OUTWARD_WORDS_INTL = [
@@ -95,8 +97,10 @@ const OUTWARD_WORDS_INTL = [
   "confirmar pagamento", "confirmar pedido", "finalizar compra", "transferir",
 ];
 const OUTWARD_WORDS = [...OUTWARD_WORDS_EN, ...OUTWARD_WORDS_INTL];
+/** A word counts as a whole word: "Send", "Pay $40.00", "Post comment" hold; "Sender", "Postcode", "Assign", "Approved", "Shared with me" do not (reviewer-2 M3). */
+const OUTWARD_WORD_RES = OUTWARD_WORDS.map(w => new RegExp(`(^|[^\\p{L}])${w.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}(?![\\p{L}])`, "iu"));
 /** A label that is exactly one of the short words above (old anchored behaviour, kept for parity). */
-const OUTWARD_NAMES = /^(send( now| message| email)?|reply( all)?|forward|post|publish|tweet|share|submit|pay( now)?|buy( now)?|place order|purchase|confirm (payment|purchase|order)|transfer|delete account|approve|sign|merge( pull request)?)$/i;
+const OUTWARD_NAMES = /^(send( now| message| email)?|reply( all)?|forward|post|publish|tweet|submit|pay( now)?|buy( now)?|place order|purchase|confirm (payment|purchase|order)|transfer|delete account|approve|merge( pull request)?)$/i;
 
 /** Whether a control's own label (or its AX identifier) reads as an outward action. */
 function namesOutward(/** @type {string} */ name, /** @type {string} */ identifier = "") {
@@ -104,7 +108,7 @@ function namesOutward(/** @type {string} */ name, /** @type {string} */ identifi
   const d = String(identifier || "").trim().toLowerCase();
   if (!n && !d) return false;
   if (OUTWARD_NAMES.test(name.trim())) return true;
-  return OUTWARD_WORDS.some(w => n.includes(w) || d.includes(w));
+  return OUTWARD_WORD_RES.some(re => re.test(n) || re.test(d));
 }
 
 /**

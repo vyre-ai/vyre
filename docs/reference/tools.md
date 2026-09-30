@@ -1688,12 +1688,11 @@ Find controls in an app by role, label and nearness without reading the whole li
 
 ### `hands.grant.add`
 
-Grant an agent (by name, from agents.list) to drive this Mac hands-free from then on: hands.observe/find/act/commit and screen.context reach it with no further prompt. This call itself is the one friction point, and it needs the person present on this Mac.
+Grant an agent (by name, from agents.list) to drive this Mac hands-free from then on: hands.observe/find/act/commit and screen.context reach it with no further prompt. The person's own tap or own words ("let my agents control my Mac") is the approval, so this takes no Touch ID; an agent cannot grant itself because only the person's own surfaces may call it. One time, revocable with hands.grant.remove.
 
 - Input:
   - `agent` string, required
 - Callers: `capsule`, `cli`, `deck`, `local`
-- Needs a person present.
 
 ### `hands.grant.list`
 

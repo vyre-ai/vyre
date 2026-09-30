@@ -77,3 +77,36 @@ test("module: hands.acted carries the thread, tool call and agent of the call th
   const plain = reg.deps.events.since(0).filter(x => x.type === "hands.acted")[1];
   assert.equal(plain.payload.thread, undefined, "a call with no thread labels nothing");
 });
+
+async function setup(/** @type {any} */ t) {
+  const home = tempHome(t);
+  const db = open(path.join(home, "vyre.db"));
+  t.after(() => db.close());
+  const f = fakeApp({ texts: ["0"], elements: [{ path: "/0/0/7", role: "AXButton", name: "7", enabled: true }] });
+  const reg = new Registry({ db, events: new Events(db), log: () => {}, config: { role: "local", hands: { runner: f.run, sleep: async () => {} } } });
+  await reg.start(discover([path.dirname(HERE)]).filter(m => m.dir === HERE), { role: "local" });
+  return { reg };
+}
+
+test("grant: every caller shape that claims an agent name is gated, and a caller that is not the person is refused outright", async t => {
+  const { reg } = await setup(t);
+  for (const caller of ["mcp:agent:kit", "harness:agent:kit", "cli:agent:kit", "module:agent:kit"]) {
+    const r = await reg.call("hands.observe", {}, caller);
+    assert.equal(r.error && r.error.code, "denied", caller);
+  }
+  for (const caller of ["tailnet-guest:sam", "module:newthing", "harness"]) {
+    const r = await reg.call("hands.observe", {}, caller);
+    assert.equal(r.error && r.error.code, "denied", caller);
+  }
+  assert.equal((await reg.call("hands.grant.add", { agent: "kit" }, "cli")).data.granted, true, "the person grants with no proof");
+  assert.equal((await reg.call("hands.observe", {}, "harness:agent:kit")).error, undefined, "then every route by that name works");
+  assert.equal((await reg.call("hands.grant.add", { agent: "kit" }, "mcp:agent:kit")).error.code, "denied", "an agent cannot grant itself");
+});
+
+test("release: only what hands itself held can be released; an agent's own gate card runs nothing", async t => {
+  const { reg } = await setup(t);
+  const r = await reg.call("hands.release", { id: "forged-1", content: { app: "Mail", control: "Attach", input: { selector: { role: "AXButton", name: "Send" }, kind: "press" } } }, "module:gate");
+  assert.ok(r.error, "a forged card releases nothing: " + JSON.stringify(r));
+  const direct = await reg.call("hands.release", { id: "x", content: {} }, "mcp:agent:kit");
+  assert.ok(direct.error);
+});
