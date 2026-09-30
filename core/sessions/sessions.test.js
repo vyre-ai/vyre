@@ -537,8 +537,7 @@ for (const driver of ["cli", "sdk"]) {
     const calls = [];
     const realCall = w.d.registry.call.bind(w.d.registry);
     w.d.registry.call = async (tool, input, caller, meta) => {
-      if (tool === "vault.mention.search") return { data: { items: [{ id: "GHLapikey", name: "GHLapikey", hint: "token · services.leadconnectorhq.com" }].filter(x => x.name.toLowerCase() === String(input.q).toLowerCase()) } };
-      if (tool === "vault.mention.resolve") { calls.push([input, caller]); return { data: { name: "GHLapikey", hint: "token", hosts: ["services.leadconnectorhq.com"], note: "use it through vault.request; you never see its value" } }; }
+      if (tool === "vault.mention.resolve") { if (String(input.id).toLowerCase() !== "ghlapikey") return { error: { code: "not_found" } }; calls.push([input, caller]); return { data: { name: "GHLapikey", hint: "token", hosts: ["services.leadconnectorhq.com"], note: "use it through vault.request; you never see its value" } }; }
       return realCall(tool, input, caller, meta);
     };
     const th = (await w.tool("threads.start", { cwd: w.work, prompt: "hello", surface: "deck" })).data;

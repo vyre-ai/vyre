@@ -65,7 +65,7 @@ const flat = data => {
  * (mentions.resolve {kind, id, thread, said}), which makes whatever the tag means for this thread (a
  * use grant, read access to a file) and answers { name, hint?, hosts?, note? }; a provider that
  * refuses or is absent means plain text, no grant. Before the mentions mechanism exists, a name is
- * a vault item alone (vault.mention.search, then vault.mention.resolve, which records the "use"
+ * a vault item alone (vault.mention.resolve by exact name, which records the "use"
  * intent with the item's own hosts; sessions never records a use intent itself).
  * @param {{ names: string[], chips?: { kind: string, id: string }[], thread: string, said: string, call: (tool: string, input: any) => Promise<any> }} o
  * @returns {Promise<{ kind: string, id: string, name: string, hint: string|null, hosts: string[], note: string|null, outside: boolean }[]>}
@@ -85,11 +85,10 @@ export async function resolveTags({ names, chips = [], thread, said, call }) {
       if (hits.length === 1) picked.push({ kind: hits[0].kind, id: String(hits[0].id), name: hits[0].name });
       continue;
     }
-    // No mentions mechanism yet: vault is a provider on its own (vault.mention.search, then vault.mention.resolve).
-    const v = await call("vault.mention.search", { q: name, limit: 20 }).catch(() => null);
-    const list = v && !v.error && v.data && Array.isArray(v.data.items) ? v.data.items : [];
-    const item = list.find(x => x && typeof x.name === "string" && x.name.toLowerCase() === name.toLowerCase());
-    if (item) picked.push({ kind: "vault", id: String(item.id ?? item.name), name: item.name });
+    // No mentions mechanism yet: vault is a provider on its own. Sessions cannot search it (that is for
+    // person surfaces), so the typed name is tried as an item name: vault.mention.resolve matches
+    // exactly and throws not_found for a name that is no item, which then stays plain text.
+    picked.push({ kind: "vault", id: name, name });
   }
   for (const c of picked) {
     // With no mentions mechanism a vault tag goes to vault directly: it records the "use" intent with the item's own hosts.
