@@ -236,13 +236,14 @@ export const canProve = () => typeof window !== "undefined" && !!/** @type {any}
  * A tool call authenticated by a one-time enrollment code (`vyre presence code`, typed on the
  * box), for `presence.enroll` when adding a first passkey: the normal passkey proof isn't
  * available yet, so a code stands in for it once. Resolves to the data; throws an ApiError.
- * @param {string} name @param {Record<string, any>} input @param {string} code
+ * `method` "grant" sends tailnet's one-time enrolment grant instead of a typed code (core/presence: the first owner passkey, rp_id-bound).
+ * @param {string} name @param {Record<string, any>} input @param {string} code @param {"code"|"grant"} [method]
  */
-export async function callWithCode(name, input, code) {
+export async function callWithCode(name, input, code, method = "code") {
   let res, body;
   try {
     res = await fetch("/v1/tools/" + encodeURIComponent(name), {
-      method: "POST", headers: { "content-type": "application/json", "x-vyre-caller": "deck", "x-vyre-presence": `code code=${code}` },
+      method: "POST", headers: { "content-type": "application/json", "x-vyre-caller": "deck", "x-vyre-presence": `${method} ${method}=${code}` },
       body: JSON.stringify(input),
     });
     body = await res.json().catch(() => null);

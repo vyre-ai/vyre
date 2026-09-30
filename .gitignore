@@ -16,3 +16,4 @@ local/capsule/bin/
 app-out/
 local/hands-chrome-mac/native-host/node-path
 local/hands-chrome-mac/native-host/sock-path
+deck/release/

@@ -122,9 +122,52 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 - A caller chain that stays unreadable after a fresh read (a missing pid, an empty or timed-out `ps`) is
   now a model's, not left unknown; a docker exec stays unknown (`core/daemon/peer.js`, `index.js`).
 - A session's `stop()` in the switchboard runner no longer waits forever for a child that never exits: it ends the process group, then destroys the child's pipes, and always resolves within a ceiling. This was the Node 24 runner hang that cancelled the node job at 30 minutes (`core/switchboard/runner.js`).
+#### pwa: the signed page check allows for the per-build meta tag
+
+- vyred stamps `deck/index.html` with the build id in `<meta name="vyre-build">` (`htmlWithBuild`). The release lists the page as built, with "dev", so the worker puts that one tag back to "dev" before hashing the page; without it every signed box would have refused its own page. The daemon test does the same and now passes against a real served box.
+
 #### tests: hands-chrome waits 30 s for Chrome's DevTools port
 
 - A hosted runner sometimes takes longer than 10 s to start headless Chrome ("Chrome did not print its DevTools port in time"). That flake predates the mock-keychain flags (it failed on work/native-core-0.2 runs 4932f92d and 3ff930c6, before 47dafe78 existed; the flags are the only change to that launch and drop nothing), so the wait is 30 s. A launch that is truly broken still fails when Chrome exits early.
+#### pwa: ask Vyre Memory from the phone's Find
+
+- Find's Memory scope (and All, when the words read as a question) gets an "Ask Vyre Memory" row. A tap calls `memory.ask { question }` once (no call while typing) and shows the answer with its sources, "Not sure yet." when Memory abstains, or its limit message. Words and the call are in `js/memory-ask.js`.
+
+#### pwa: the signed list is proven against a real served box
+
+- `test/daemon.test.js` starts a daemon and fetches every address `shell.json` names (273, the onboarding, passkey-claim and sign-in pages included) and checks each body against its listed hash, so nothing per-box can sit in a listed page's bytes. First-load trust, stated plainly: the very first load of a hosted origin (phone.vyre.run) has no worker yet, so that load is trusted on first use; the worker then checks every later load. A box's own address serves its own release files, and anyone who can change those files can change vyred, so vyred adds no serve-time check.
+
+#### pwa: a browser that cannot check does not lose the app
+
+- On a signed build in a browser without Ed25519 (older Safari), the worker no longer enforces a list it never stored. With a worker already running, that install is refused so the running shell stays; with none, the shell runs unchecked with a console line. Enforcement now means "this install stored the release's list", so no path is refused for lack of one.
+
+#### pwa: the onboarding and sign-in pages are signed too
+
+- The passkey claim (`/onboard/passkey`), the onboarding pages and `/person/signin` are in `shell.json` (273 addresses: folder pages are listed at their own address too). On a signed build the worker fetches them, never caches them, and refuses a page the release does not list or whose bytes differ. An unsigned build leaves them alone as before. The very first visit to a box has no worker yet, so that load is the box's own.
+
+#### pwa: the signed list covers all the Deck's code, not just the precache (reviewer-2 MEDIUM)
+
+- `scripts/shell-hashes.mjs` now lists every js, mjs, css and html file the daemon serves for the Deck (the vault, pairing, settings and glass code included; tests, fixtures, onboarding and sign-in pages excluded) plus the repo-root files it serves. On a signed build the worker refuses any script, stylesheet or page that is not listed or whose bytes differ, and lets unlisted images and fonts through. A test walks `deck/` and fails when a served code file is missing from the list. Clearing a browser's site data resets the version floor (a poisoned floor is cured that way).
+
+#### pwa: the phone makes its Face ID key at pairing
+
+- Scanning the Wink ring now pairs with `enroll: true`; when the box hands back its one-time enrolment grant (`{ grant, expires, rpId }`, core/relay), the pairing page redirects to `https://<rpId>/#enroll=<grant>`. The Deck there reads the fragment once, removes it from the address bar and history, and opens one sheet with one Face ID prompt (`js/enroll-grant.js`, `enrollPasskey` with method grant). No Mac code. `relay/client` `pairOffer` takes `enroll` and returns a validated `enroll`. The setup QR claim uses the same fragment.
+
+#### pwa: the signed shell stays signed after install (reviewer-2's HIGH on N-H1)
+
+- On a signed build the worker stores the release's hash list at install and, on every later fetch, caches a shell file only when its bytes match the listed hash (a mismatching first visit gets nothing, a mismatching revalidation leaves the cached copy). Install now also refuses a release that withholds or does not list any SHELL file, and one older than the highest accepted (`shell.json` carries the version; `scripts/shell-hashes.mjs DIR [VERSION]`). The Files preview forces its own Blob type (PDF, a fixed image set, text), never the box's mime string.
+
+#### pwa: no passkey chore on the phone
+
+- "Set up this phone" is two steps (install, notifications). The passkey step and the two Now reminders ("Make your first passkey", "Add a passkey to send from this phone") are gone: a phone paired by scanning the Wink ring is a full owner device, and Face ID is asked only for pairing and vault reveals. Settings still enrolls a passkey.
+
+#### pwa: a Files view for the phone
+
+- `/files` lists the box's shared VyreDrive folders and `/files/:share?p=` browses one, through `files.drive.list` and `files.drive.read` (a phone cannot mount a share). A picture, text or PDF up to 8 MB opens in place with a Save link; anything else, or anything larger, says so. A refusal reads as one plain line. Words and reads are in `deck/js/drive-browse.js`, tested against a fake box that serves 4-byte chunks. It is the Places sheet's "Drive" tile (product name Vyre Drive, app-design's drive glyph), between Vault and Devices, and its pushed screen is titled Drive.
+
+#### pwa: the service worker checks a new shell against the signed release
+
+- `deck/sw.js` verifies the shell's files against the release signature (SHA256SUMS.sig, Ed25519, pinned release key) before it activates a new shell, and keeps the old shell on any mismatch (reviewer N-H1). `scripts/shell-hashes.mjs` writes `shell.json` for the release to sign; `swWithBuild` turns the check on when `deck/release/` holds the signed files; the daemon serves them. A dev checkout is unchecked, as before.
 
 - Capsule: the Deep glass skin. The panel is a 0.62 carbon tint over the system blur with a light
   border, top edge and soft shadow; it keeps its width and every feature. With Reduce Transparency
