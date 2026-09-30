@@ -356,3 +356,17 @@ test("artifacts: a symlink swapped in after the checks, or a swapped folder, is 
   await settle();
   assert.equal((await ok("artifacts.list", {})).length, 0);
 });
+
+test("artifacts: the # picker finds titles within the caller's reach and resolves a tag to a reference", async t => {
+  const { ok, call, asVyre } = await boot(t);
+  const a = await ok("artifacts.create", { project: "harlow-legal", kind: "report", title: "Referral tracker", content: "# Referral tracker\n\nsecret body words" });
+  await ok("artifacts.create", { project: "other", kind: "doc", title: "Lease notes", content: "# Lease notes\n\nx" });
+  const hit = await asVyre("artifacts.mention.search", { q: "refer" });
+  assert.deepEqual(hit.map(h => [h.kind, h.id, h.name]), [["artifact", a.id, "Referral tracker"]]);
+  assert.ok(!JSON.stringify(hit).includes("secret body"), "names and hints only");
+  assert.equal((await asVyre("artifacts.mention.search", {})).length, 2, "an empty query lists the latest");
+  const r = await asVyre("artifacts.mention.resolve", { id: a.id });
+  assert.deepEqual([r.kind, r.id, r.version, r.read.tool], ["artifact", a.id, 1, "artifacts.get"]);
+  assert.equal((await call("artifacts.mention.resolve", { id: a.id })).error.code, "no_such_tool", "the person never calls it");
+  await assert.rejects(asVyre("artifacts.mention.resolve", { id: "a_nope" }), /not_found|no artifact|not found/i);
+});

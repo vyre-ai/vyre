@@ -25,12 +25,17 @@
       { "name": "artifacts.public.status", "summary": "whether public links are on", "reach": "anyone" },
       { "name": "artifacts.public.set", "summary": "turn public links on or off", "reach": "asked" },
       { "name": "artifacts.public.base", "summary": "the public address links use (network setup)", "reach": "modules" },
+      { "name": "artifacts.mention.search", "summary": "the # picker's artifact results", "reach": "modules" },
+      { "name": "artifacts.mention.resolve", "summary": "an artifact tagged with #, as a reference for the thread", "reach": "modules" },
       { "name": "artifacts.capture.register", "summary": "catch files a session saves in its artifacts folder", "reach": "modules" }
     ],
     "commands": [
       { "verb": "list", "tool": "artifacts.list", "summary": "your artifacts" }
     ]
   },
+  "mentions": [
+    { "kind": "artifact", "label": "Artifacts", "search": "artifacts.mention.search", "resolve": "artifacts.mention.resolve" }
+  ],
   "watches": {
     "emits": ["artifact.created", "artifact.updated", "artifact.moved", "artifact.archived", "artifact.deleted", "artifact.restored", "artifact.shared", "artifact.unshared", "artifact-links.changed", "thread.artifact"],
     "on": ["floor.wrote"]

@@ -42,6 +42,7 @@ viewer UI (native-core, app-design) wait for app-design's screens and the user's
 
 ## Doing
 
+- 30 Sep: `#` mentions provider: module.json `mentions` (top level) plus artifacts.mention.search/resolve (reach modules). Waiting on platform's mentions.search fan-out and the field's real shape; a mention across projects gives an agent no read access yet (sessions/platform to decide the grant). Local rule: only my own test files locally, never the full suite or Chrome.
 - 30 Sep: merged origin/work/stage-0.2 (795a00b7). Fixes: `thread.artifact` reserved (artifacts added to the thread owners in core/modules/index.js); the share test accepts the registry's held_unavailable for an agent; CHANGELOG conflict kept both sides. Route decision: `/v1/artifacts/content?id=&v=` stays (native-core adapts). CI on e6ae4f65: box-image and sessions-sdk green; node cancelled at the 30 min cap in the threads/sessions test file (same hang other branches and stage-0.2 show, sessions' runner item), all 11 artifacts tests and boundaries/hygiene/docs pass on both Node versions. Sha sent to integrator.
 - Paused (usage-limit restart, 30 Sep). Head 07fee1c0 is CLEARED by reviewer-2 and handed to the
   integrator to land on stage/0.2, with the share-server-as-its-own-user image item. Nothing
