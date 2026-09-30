@@ -1,4 +1,6 @@
-# GoHighLevel playbook for the chrome.* tools
+# GoHighLevel playbook for the chrome tools
+
+In Claude Code every tool name has an underscore where this page writes a dot: `chrome.ghl` is `chrome_ghl`, `chrome.act` is `chrome_act`.
 
 Read this before you build or edit a workflow in the person's own Chrome. It is written for you, the model, and it is short on purpose.
 
@@ -7,7 +9,7 @@ Read this before you build or edit a workflow in the person's own Chrome. It is 
 1. Never open a tab to do a step. The person already has GoHighLevel open. `chrome.ghl section` and every page tool reuse that tab. The only time a tab gets opened is `chrome.ghl section` with a `locationId` when no GoHighLevel tab exists at all, and the trace says `newTab: true` when it happens. Do not call `chrome.tabs open` for GoHighLevel.
 2. One `chrome.ghl run` per whole job. A flow runs as one batch inside the browser: no model turn between steps, so it is fast and it does not lose its place. Use single `chrome.act` and `chrome.fill` calls only to look around, to recover from a failure, or for a step no flow covers.
 3. Every step waits for the page. You do not add sleeps. If you need to wait for something yourself, use `chrome.wait`.
-4. Outward acts are held. Publishing, sending and deleting come back as `held: true` and wait for the person at the Gate. That is by design. Do not try to click around it.
+4. Outward acts are held. Publishing, sending and deleting come back as `held: true` with an id. Tell the person what is waiting, then call `chrome_send` with the id; Claude Code asks them to approve it. That is by design. Do not try to click around it.
 
 ## Sequence for a workflow build
 
@@ -70,7 +72,7 @@ The page tools handle two cases for you. A small allowlist of harmless popups (a
 Anything else is not touched. An unsaved-changes, confirm or delete dialog, or a dialog Vyre does not recognise, comes back as `code: "modal"` with the dialog's text and button names in `detail.blockers`. What to do:
 
 1. Read the text. Decide with the person if it is not obvious.
-2. Act on one of the dialog's own controls with `chrome.act`, by its name, for example `Stay`. A button like `Discard changes` or `Confirm` is held for the person's approval.
+2. Act on one of the dialog's own controls with `chrome.act`, by its name, for example `Stay`. A button like `Discard changes` or `Confirm` is held (approve it with `chrome_send`).
 3. Then run the failed step again. Do not re-run the whole flow: `chrome.ghl run` with `steps` from the failed one on.
 
 ## A save that did not verify

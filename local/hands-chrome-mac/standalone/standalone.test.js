@@ -227,3 +227,25 @@ test("cli: `mcp` as a real process speaks only protocol on stdout, serves a call
   p.stdin.end();
   assert.equal(await exited, 0);
 });
+
+test("release: the built package runs on its own, with nothing from the repo, and holds no test files or machine-specific files", async t => {
+  const out = tmp(t);
+  const { build } = await import("./build-release.mjs");
+  const r = build({ out });
+  assert.ok(fs.existsSync(r.tar));
+  assert.match(fs.readFileSync(`${r.tar}.sha256`, "utf8"), /^[0-9a-f]{64}  vyre-chrome-/);
+  const all = /** @type {string[]} */ ([]);
+  const walk = (/** @type {string} */ d) => { for (const f of fs.readdirSync(d)) { const p = path.join(d, f); fs.statSync(p).isDirectory() ? walk(p) : all.push(path.relative(r.dir, p)); } };
+  walk(r.dir);
+  assert.ok(all.every(f => !/\.test\.js$/.test(f) && !/node-path|sock-path/.test(f)), all.join(","));
+  for (const need of ["README.md", "package.json", "standalone/cli.mjs", "standalone/GHL-PLAYBOOK.md", "extension/manifest.json", "native-host/run-host.sh", "index.js"]) assert.ok(all.includes(need), need);
+  // Nothing may import from outside the package.
+  for (const f of all.filter(x => /\.(m?js)$/.test(x))) {
+    const src = fs.readFileSync(path.join(r.dir, f), "utf8");
+    for (const m of src.matchAll(/from\s+"(\.[^"]+)"/g)) assert.ok(fs.existsSync(path.resolve(path.dirname(path.join(r.dir, f)), m[1])), `${f} imports ${m[1]}`);
+  }
+  const home = tmp(t);
+  const run = spawnSync(process.execPath, [path.join(r.dir, "standalone", "cli.mjs"), "status"], { env: { ...process.env, HOME: home, VYRE_CHROME_HOME: path.join(home, "d") }, encoding: "utf8" });
+  assert.equal(run.status, 0, run.stderr);
+  assert.equal(JSON.parse(run.stdout).logs, "on");
+});
