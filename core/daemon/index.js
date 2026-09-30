@@ -113,7 +113,7 @@ async function startLocked(opts, root, p, release) {
   // calling themselves, then hand the request to this same router with that caller and a policy
   // limiting what it may reach. The router never reads a caller from their headers.
   const handler = (policy = {}) => (req, res, caller, peer) => route(req, res, { registry, events, cfg, started, streams, root, inflight, drain, people }, { ...policy, caller, ...(peer ? { peer } : {}) })
-    .catch(e => send(res, 500, { error: { code: "internal", message: e.message } }));
+    .catch(e => fail(res, e));
   // WebSockets a module registered with ctx.upgrade, at /v1/streams/<module>/<name>. Upgraded
   // sockets leave the HTTP server's hands, so they are tracked here and ended on stop, or
   // server.close() would wait on a Glass viewer forever. The socket below and every listener a
@@ -151,9 +151,7 @@ async function startLocked(opts, root, p, release) {
   }
 
   const terminalOf = opts.person || (sock => atTerminal(sock, registry, presence));
-  const server = http.createServer((req, res) => route(req, res, { registry, events, cfg, started, streams, root, inflight, drain, socket: true, terminalOf }).catch(e => {
-    send(res, 500, { error: { code: "internal", message: e.message } });
-  }));
+  const server = http.createServer((req, res) => route(req, res, { registry, events, cfg, started, streams, root, inflight, drain, socket: true, terminalOf }).catch(e => fail(res, e)));
   server.on("upgrade", async (req, socket, head) => {
     try { upgrade(req, socket, head, (await asTaken(socketCaller(req), /** @type {any} */ (socket), registry)).caller); }
     catch { socket.destroy(); }
@@ -194,6 +192,12 @@ const AGENT_CLAIM = /(?:^|[\s:])agent:([A-Za-z0-9_-]*)/;
  * vouched by the key and then pass every callers list as that surface, so it is refused.
  */
 const AGENT_LABEL = /^(?:mcp|harness):agent:([A-Za-z0-9_-]+)$/;
+
+/** A route that throws after it began a stream cannot send a 500 (headers are out): end the response, never throw from the catch. */
+function fail(res, e) {
+  if (res.headersSent) { res.destroy(); return; }
+  send(res, 500, { error: { code: "internal", message: e.message } });
+}
 
 function send(res, status, body) {
   res.writeHead(status, { "content-type": "application/json" });
@@ -564,6 +568,14 @@ async function route(req, res, { registry, events, cfg, started, streams, root, 
     const v = key ? await registry.call("threads.vouch", { session, key }, "module:vyred") : null;
     if (!(v && v.data && v.data.thread)) return send(res, 403, { error: { code: "denied", message: `the caller says it is in session ${session.slice(0, 8)}, and vyred has no running session bound with this key` } });
     via.thread = v.data.thread;
+  }
+  // What a verified agent is really granted, from its stored row (agents.scope), never from
+  // anything the caller sent: a tool that scopes by project reads meta.granted ("*" or slugs).
+  // A named agent with no row is granted nothing.
+  if (via.agent) {
+    const g = await registry.call("agents.scope", { name: via.agent }, "module:vyred");
+    /** @type {any} */ (via).granted = g && g.data ? g.data.projects : [];
+    /** @type {any} */ (via).agentKind = g && g.data ? g.data.kind : null;
   }
   // A person's label from a model's shell is the session's own, whatever the tool (asTaken).
   const shell = socket && !policy.caller ? await asTaken(caller, req.socket, registry, via.thread) : { caller, model: false };

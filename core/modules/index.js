@@ -765,7 +765,9 @@ export class Registry {
         if (!as && rec && !fp && !declared.has(tool) && !((m.needs && m.needs.tools) || []).includes(tool)) {
           return Promise.reject(Object.assign(new Error(`${m.name} called ${tool}, which needs.tools does not list`), { code: "undeclared" }));
         }
-        if (!as) return this.call(tool, input, `module:${m.name}`, { firstParty: fp });
+        // opts.onPartial: a tool that streams (threads.quick with stream: true) hands its partial text to
+        // this function, on this call only. Never the events bus, and never over a connection.
+        if (!as) return this.call(tool, input, `module:${m.name}`, { firstParty: fp, ...(opts && typeof opts.onPartial === "function" ? { partial: opts.onPartial } : {}) });
         const core = Boolean(rec && path.resolve(rec.dir).startsWith(CORE_DIR + path.sep));
         if (!core || !(CALL_AS[m.name] || []).includes(String(as))) throw new Error(`${m.name} may not call ${tool} as ${as}`);
         // settings relays a person only to the tools first-party modules declared as their own
@@ -877,7 +879,9 @@ export class Registry {
    *   the request carried, checked here and not passed on. `call` is the chat's id for this
    *   tool call (X-Vyre-Call-Id, only on a session's own paths): an unverified claim a tool may
    *   keep to link what it shows (a Glass step) to the chat's tool row, and never use for any
-   *   decision. Any other key a caller of this method adds reaches the tool the same way.
+   *   decision. `granted` (with `agentKind`) is the verified agent's stored project grant, "*" or
+   *   slugs, read by vyred from the agents module; a tool that scopes by project trusts it, never an
+   *   input filter. Any other key a caller of this method adds reaches the tool the same way.
    */
   async call(tool, input = {}, caller = "unknown", { proof = null, keep = false, terminal = null, idempotencyKey = undefined, door = false, ...meta } = {}) {
     const def = this.tools.get(tool);
