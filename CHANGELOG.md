@@ -4,6 +4,8 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+- lib/within.js is the one way to race a promise against a clock: the timer is held until the answer or the limit, then cleared. The modules registry, projects stop, recall stop, settings checks, presence Touch ID wait, glass link health, agents ask wait, the daemon drain, the backup tar exit wait, the ACP memory wait, teammates' boundedWait and the switchboard answer and control waits use it (each had an unref'd timer that let the loop drain mid-await on macOS and Node 22). test/within-hygiene.test.js fails on a new one-line unref'd race.
+
 - test: federation-reads grants the harness agent juno its project (an agent with no grant is refused), and asserts the refusal for one with none.
 - modules: the timer behind a call's bounded wait (target, lineage, project and scope lookups) is no longer unref'd, so a pending wait keeps the event loop alive; on macOS the loop drained with the call unanswered and the test runner cancelled the rest of the file.
 

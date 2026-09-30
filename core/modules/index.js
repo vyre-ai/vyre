@@ -21,6 +21,7 @@ import * as config from "../config/index.js";
 import { toolEntries, checkManifestFull } from "../../packages/module-sdk/manifest.js";
 import { isPerson } from "../../lib/caller.js";
 import { CONTRACT, supports, moduleContract, adapterFor } from "../../packages/module-sdk/contract.js";
+import { within } from "../../lib/within.js";
 
 /** Features ctx.api.has() answers true for in this loader, inside the running contract. */
 const LOADER_FEATURES = ["modules.status"];
@@ -55,17 +56,6 @@ export const firstParty = dir => {
 // settings passes a person's change on to the module that keeps the value, as that person.
 /** How long an asked tool's target (and the thread lineage) may take to answer before the call is not_asked. */
 const TARGET_MS = 2000;
-/**
- * A promise's answer, or null when it is later than `ms`. The timer is held until the answer or the
- * limit, then cleared: a call waiting on it is live work, and an unref'd one let a macOS event loop
- * drain with the call still pending.
- * @template T @param {Promise<T>} p @param {number} ms @returns {Promise<T | null>}
- */
-function withinMs(p, ms) {
-  let timer;
-  const late = new Promise(res => { timer = setTimeout(() => res(null), ms); });
-  return Promise.race([p, late]).finally(() => clearTimeout(timer));
-}
 /** The one tool the agents module may call as the asking person: agents.ask's words and tags, heard by threads.send. @param {string} tool */
 export const agentsMayRelay = tool => tool === "threads.send";
 /** The per-call check on the agents module's relay: throws for any tool but threads.send. @param {string} tool @param {string} as */
@@ -978,7 +968,7 @@ export class Registry {
       /** @type {string[]} */ let to = [tool];
       if (def && def.target) {
         // The target is a module's own code answering for a call that may not be the person's: late is no.
-        const t = await withinMs(this.call(def.target, { tool, input }, "module:vyred", { door: true, ...(/** @type {any} */ (meta).granted !== undefined ? { granted: /** @type {any} */ (meta).granted } : {}) }), TARGET_MS);
+        const t = await within(this.call(def.target, { tool, input }, "module:vyred", { door: true, ...(/** @type {any} */ (meta).granted !== undefined ? { granted: /** @type {any} */ (meta).granted } : {}) }), TARGET_MS);
         if (!t) return false;
         const extra = t && t.data && Array.isArray(t.data.to) ? t.data.to.filter((/** @type {any} */ x) => typeof x === "string" && x) : [];
         if (!extra.length) return false;
@@ -987,7 +977,7 @@ export class Registry {
       const thread = typeof meta.thread === "string" ? meta.thread : undefined;
       let lineage;
       if (thread && this.tools.has("threads.lineage")) {
-        const l = await withinMs(this.call("threads.lineage", { thread }, "module:vyred", { door: true }), TARGET_MS);
+        const l = await within(this.call("threads.lineage", { thread }, "module:vyred", { door: true }), TARGET_MS);
         if (!l) return false;
         if (l.data && Array.isArray(l.data.lineage)) lineage = l.data.lineage;
       }
@@ -1067,7 +1057,7 @@ export class Registry {
       const refuse = { error: { code: "not_found", message: "no such project" } };
       const named = fields(def.projectArg).flatMap(valuesOf);
       const folders = fields(def.cwdArg).flatMap(valuesOf);
-      const r = await withinMs(this.call("projects.reach", { caller: String(caller), kind: "content" }, "module:vyred", { door: true }), TARGET_MS);
+      const r = await within(this.call("projects.reach", { caller: String(caller), kind: "content" }, "module:vyred", { door: true }), TARGET_MS);
       const reach = r && r.data && typeof r.data === "object" ? r.data : null;
       if (!reach) {
         if (named.length || folders.length) return refuse;
@@ -1091,7 +1081,7 @@ export class Registry {
             /** @type {Map<string, string>} the folder as given -> the real folder projects.of judged */
             const canonical = new Map();
             for (const cwd of folders) {
-              const o = typeof cwd === "string" ? await withinMs(this.call("projects.of", { cwd }, "module:vyred", { door: true }), TARGET_MS) : null;
+              const o = typeof cwd === "string" ? await within(this.call("projects.of", { cwd }, "module:vyred", { door: true }), TARGET_MS) : null;
               const slug = o && o.data && typeof o.data.slug === "string" ? o.data.slug : null;
               if (slug) {
                 if (!granted.some((/** @type {any} */ p) => p.slug === slug)) return refuse;
@@ -1100,7 +1090,7 @@ export class Registry {
                 continue;
               }
               if (scoped === null) {
-                const sc = await withinMs(this.call("agents.scope", { name: String(agentClaim(caller)) }, "module:vyred", { door: true }), TARGET_MS);
+                const sc = await within(this.call("agents.scope", { name: String(agentClaim(caller)) }, "module:vyred", { door: true }), TARGET_MS);
                 const who = sc && sc.data ? sc.data : null;
                 scoped = !who || (who.kind !== "assistant" && who.projects !== "*");
               }
@@ -1296,10 +1286,7 @@ export class Registry {
           // settings.test.js, among others) and stops it in t.after. Race it against the same
           // bound the daemon already gives its own drain (DRAIN_MS), and say so loudly rather
           // than hang silently at 0% CPU.
-          const timedOut = await Promise.race([
-            r.handle.stop().then(() => false),
-            new Promise(resolve => { const t = setTimeout(() => resolve(true), MODULE_STOP_MS); t.unref && t.unref(); }),
-          ]);
+          const timedOut = await within(r.handle.stop().then(() => false), MODULE_STOP_MS, true);
           if (timedOut) this.deps.log(`warn: module ${name} did not stop within ${MODULE_STOP_MS}ms; moving on`);
         } catch {}
       }
