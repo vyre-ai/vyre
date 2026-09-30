@@ -101,10 +101,12 @@ in the child, credentials only via `net` (parent-attached, scrubbed in body/logs
 `net` means no network. Skill, use-the-vault line and docs/using/watchers.md updated. module.test.js edited to
 the net shape but not run here (daemon: runner only).
 
-ask(): runner verb + run.js handler + runtime.askModel; budget in core/spend under `watcher:<name>` (check for the
-provider cap, summary rows for this watcher's day, record after); watcher.json `ask: {dailyUsd}`; model via
-threads.quick (on work/sessions-02, not stage yet). UNVERIFIED: whether threads.quick's own thread.finished also
-lands in the ledger, which would count a quick twice; check when sessions-02 is merged. Tests use fakes.
+ask(): runner verb + run.js handler + runtime.askModel; model via threads.quick (on stage, internal, module-only,
+purpose helper); watcher.json `ask: {dailyUsd}`. FINDING: the switchboard's quick answer rides a thread.finished with
+cost_usd (core/switchboard/index.js:921) and core/spend's listener records every thread.finished cost, so a quick is
+ALREADY in the ledger; recording again under watcher:<name> would double count. So watchers only calls spend.check and
+keeps a per-watcher day tally (watchers_spend) for dailyUsd. Attribution by watcher in the ledger needs core/spend to
+take a purpose for a quick (asked of iq/lead). Real-tool test of ask() still to write and run on a runner.
 
 ## Next
 

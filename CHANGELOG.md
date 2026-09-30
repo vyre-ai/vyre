@@ -5,8 +5,9 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 ## Unreleased
 
 - `ask(prompt)` for watchers: a model judgment with no tools (through `threads.quick`), only when `watcher.json` declares `ask: { dailyUsd }`. The budget is
-  kept in core/spend under the purpose `watcher:<name>` (one ledger, the provider's own cap also
-  applies; with the ledger off a watcher cannot ask); 20 asks and 8000 characters per run; a prompt
+  tallied per watcher per day for that cap, while the dollars reach core/spend by themselves (the
+  quick session's thread.finished) and the provider's own cap is checked first with spend.check;
+  with the ledger off a watcher cannot ask; 20 asks and 8000 characters per run; a prompt
   that carries an attached credential is refused; the reply is scrubbed.
 
 - A duty on `push <connection>` runs on vault's `vault.push` event: one item per message id, only

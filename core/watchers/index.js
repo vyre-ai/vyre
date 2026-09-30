@@ -44,16 +44,12 @@ export default {
       call: ctx.call, fetch: (name, watcher, field) => ctx.vault.fetch(name, { watcher, ...(field ? { field } : {}) }),
       teach: (kind, fact) => ctx.memory.teach(kind, fact),
       ask: async (prompt, o) => {
-        // threads.quick, no tools. Watchers record their own spend (core/spend), so not ctx.ask, which bills under the module's name.
-        const r = await ctx.call("threads.quick", { purpose: "helper", prompt: String(prompt), ...(o && o.maxUsd ? { maxUsd: o.maxUsd } : {}) });
+        // threads.quick, no tools (internal, module-only). Its cost reaches core/spend on its own, from the quick session's thread.finished.
+        const r = await ctx.call("threads.quick", { purpose: "helper", prompt: String(prompt), timeout_ms: 30_000 });
         if (r.error || !r.data || r.data.ok === false) throw new Error((r.error && r.error.message) || "no model answered");
         return { text: String(r.data.text || ""), usd: Number(r.data.cost_usd) || 0, provider: r.data.provider };
       },
-      spend: {
-        check: async () => { const r = await ctx.call("spend.check", {}); return r.error ? { ok: false, line: "the spend ledger is not answering" } : r.data; },
-        used: async purpose => { const r = await ctx.call("spend.summary", {}); if (r.error) throw new Error("the spend ledger is not answering"); return (r.data.rows || []).filter(x => x.purpose === purpose).reduce((n, x) => n + (Number(x.usd) || 0), 0); },
-        record: async e => { const r = await ctx.call("spend.record", e); if (r.error) throw new Error(r.error.message || "could not record the spend"); return r.data; },
-      },
+      spend: { check: async () => { const r = await ctx.call("spend.check", {}); return r.error ? { ok: false, line: "the spend ledger is not answering" } : r.data; } },
       log: ctx.log, netOptions: () => (process.env.NODE_TEST_CONTEXT ? testHooks.net : {}),
       listen: (type, fn) => ctx.events.on(type, fn),
     });

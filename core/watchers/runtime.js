@@ -78,6 +78,8 @@ export const MIGRATIONS = [`
     logs TEXT
   );
   CREATE INDEX watchers_runs_watcher ON watchers_runs(watcher, id);
+`, `
+  CREATE TABLE watchers_spend (watcher TEXT NOT NULL, day TEXT NOT NULL, usd REAL NOT NULL DEFAULT 0, calls INTEGER NOT NULL DEFAULT 0, PRIMARY KEY (watcher, day));
 `];
 
 /**
@@ -484,21 +486,24 @@ export class Runtime {
 
   /**
    * A watcher's one way to a model: a judgment fed back into its own code (is this relevant, which
-   * of these). No tools, no vault values, never a decision to send. Spend is core/spend's, one
-   * ledger with everything else: the row's purpose is `watcher:<name>`, the provider's own daily cap
-   * applies (spend.check), and watcher.json's ask.dailyUsd caps this watcher's rows for the day.
+   * of these). No tools, no vault values, never a decision to send. The dollars are already in
+   * core/spend: the switchboard's thread.finished for the quick session lands in the ledger by
+   * itself, so recording again here would count it twice. What core/spend cannot do is say which
+   * watcher spent it, so this keeps only a per-watcher tally for watcher.json's ask.dailyUsd, and
+   * asks core/spend whether the provider's own daily cap still has room (spend.check).
    */
   async askModel(spec, prompt) {
     const sp = this.d.spend;
     if (typeof this.d.ask !== "function") throw new Error("no model is available to a watcher on this machine yet");
     if (!sp) throw new Error("a watcher cannot ask a model while the spend ledger is off");
-    const purpose = `watcher:${spec.name}`, cap = spec.ask ? spec.ask.dailyUsd : 0;
+    const day = new Date(this.now()).toISOString().slice(0, 10), cap = spec.ask ? spec.ask.dailyUsd : 0;
     const standing = await sp.check();
     if (standing && standing.ok === false) throw new Error(standing.line || "today's model budget is reached");
-    const used = await sp.used(purpose);
+    const used = Number(/** @type {any} */ (this.db.prepare("SELECT usd FROM watchers_spend WHERE watcher = ? AND day = ?").get(spec.name, day))?.usd || 0);
     if (used >= cap) throw new Error(`${spec.name} reached its daily model budget of $${cap}`);
-    const r = await this.d.ask(prompt, { purpose, maxUsd: Math.max(0.001, cap - used) });
-    await sp.record({ provider: (r && r.provider) || "claude", purpose, usd: Number(r && r.usd) || 0 });
+    const r = await this.d.ask(prompt, { purpose: `watcher:${spec.name}`, maxUsd: Math.max(0.001, cap - used) });
+    this.db.prepare(`INSERT INTO watchers_spend (watcher, day, usd, calls) VALUES (?,?,?,1)
+      ON CONFLICT(watcher, day) DO UPDATE SET usd = usd + excluded.usd, calls = calls + 1`).run(spec.name, day, Number(r && r.usd) || 0);
     return String((r && r.text) || "");
   }
 

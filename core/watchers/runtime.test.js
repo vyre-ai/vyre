@@ -415,7 +415,7 @@ test("watchers: a push duty runs on vault.push for its connection and project on
 
 test("watchers: ask is a model judgment inside a declared daily budget, with no secrets in and a capped refusal out", async t => {
   const asked = [], ledger = [];
-  const spend = { check: async () => ({ ok: true }), used: async p => ledger.filter(e => e.purpose === p).reduce((n, e) => n + e.usd, 0), record: async e => { ledger.push(e); } };
+  const spend = { check: async () => ({ ok: true }), record: async e => { ledger.push(e); } };
   const { rt, write } = setup(t, { spend, ask: async (prompt, o) => { asked.push({ prompt, ...o }); return { text: /bakery/i.test(prompt.split("? ")[1]) ? "yes, relevant" : "no", usd: 0.06 }; } });
   const code = `export default async function watch({ ask, emit, log }) {
     for (const title of ["Northwind Bakery opens", "Weather"]) {
@@ -431,7 +431,7 @@ test("watchers: ask is a model judgment inside a declared daily budget, with no 
   assert.deepEqual(r.items.map(i => i.id), ["Northwind Bakery opens"]);
   assert.equal(asked.length, 2);
   assert.equal(asked[0].purpose, "watcher:judge");
-  assert.deepEqual(ledger.map(e => [e.purpose, e.usd]), [["watcher:judge", 0.06], ["watcher:judge", 0.06]], "spend goes in core/spend under watcher:<name>");
+  assert.deepEqual(ledger, [], "core/spend records a quick's cost itself; recording it here would count it twice");
   // $0.12 is spent against a $0.10 day: the next run's first ask is refused, not sent.
   const again = await rt.test("judge");
   assert.match(again.logs.join(), /daily model budget of \$0.1/);
