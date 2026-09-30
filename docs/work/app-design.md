@@ -918,3 +918,9 @@ account + device and drop the tokens tool store. Then polish passes over the spe
 
 - The user picked C, Bone (no accent). Applied product-wide: tokens.json + generated files (gen-tokens --check clean), palette.js/theme.js, deck/site/docs CSS, brand marks, app icons, splash, og, docs screenshots (pixel-recoloured from lime and paper green, not retaken: retake with scripts/docs-shots on a CI runner when convenient), boards, specs. Glass rule: no chip wash, two-tone focus (chip.md); glass text contrast test in core/config/palette.test.js.
 - test/no-lime.test.js fails on the old hex, its washes, the paper green and the word (history files exempt). Other UI teams: use the tokens only.
+
+## Session 7 (30 Sep, relaunch after usage-limit restart)
+
+- Reviewed launch's setup page (work/launch-onboard-fix 705f31c9, site/setup) against Design A and Bone: tokens only, no fixture names in the page, placeholders or labels. Posted 3 fixes in CHAT.md (10:40): `.lbl` back to sans sentence case, `.warn` to a `--hover` fill with no violet border, plain words (Tailscale network, server not box, no "relay" or "progress lines", label "Arrive").
+- native-core land cards and project-page actions, and capsule-pro's oversight panel: not built yet in either worktree (checked native-core-0.2 4b19f800 and capsule-02-glass 62645bee), so nothing to review. Spec is chat-components.html and capsule-02.html section 11. Review each when their first commit lands.
+- Next: re-grep launch after its fixes; review native-core land cards and capsule-pro's panel when they commit.
