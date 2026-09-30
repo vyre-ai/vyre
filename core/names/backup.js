@@ -113,7 +113,10 @@ export function estimate({ root = config.home(), workRoots = [] } = {}) {
 }
 
 /** tar's output as a gzip stream we can iterate. Exit 1 (a file changed or vanished while read) is a warning. */
-export async function* tarGz(args, warnings) {
+/** How long tar may take to exit after its output has ended. */
+const TAR_EXIT_MS = 30_000;
+
+export async function* tarGz(args, warnings, { exitMs = TAR_EXIT_MS } = {}) {
   const child = spawn("tar", args, { stdio: ["ignore", "pipe", "pipe"], env: { ...process.env, COPYFILE_DISABLE: "1" } });
   let err = "";
   child.stderr.on("data", d => { if (err.length < 4096) err += d; });
@@ -127,7 +130,13 @@ export async function* tarGz(args, warnings) {
   let drained = false;
   try { for await (const part of gz) yield /** @type {Buffer} */ (part); drained = true; }
   finally { if (!drained && !child.killed && child.exitCode === null) child.kill(); }
-  const code = await Promise.race([closed, failed]);
+  // Its output has ended, so it should exit now; one that never does (a hung process, a stuck mount) is killed
+  // with a plain error, so a backup is never held open by it.
+  let hung;
+  const timeout = new Promise(res => { hung = setTimeout(() => res("hung"), exitMs); hung.unref(); });
+  const code = await Promise.race([closed, failed, timeout]);
+  clearTimeout(hung);
+  if (code === "hung") { try { child.kill("SIGKILL"); } catch {} throw new Error(`tar did not exit ${exitMs >= 1000 ? `${Math.round(exitMs / 1000)} seconds` : `${exitMs} ms`} after its output ended; it was stopped`); }
   if (code === 1) warnings.push("some files changed while they were being read");
   else if (code !== 0) throw new Error(`tar exited ${code}: ${err.trim()}`);
 }
