@@ -8,7 +8,7 @@
 //             the agent asks the person to review. The card also answers the ask (threads.answer):
 //             a merge is allow, a change request or comment is deny with the note, so the agent
 //             hears what happened.
-// Approve and merge is `pr.merge`; Request changes and Comment are `pr.review` with the GitHub
+// Approve and merge is `github.project.pr.merge`; Request changes and Comment are `github.project.pr.review` with the GitHub
 // review event (REQUEST_CHANGES, COMMENT). All go through the outbox, so offline reads "Approving
 // · sends when back online". No agent path: only a person's click or key acts (a script-made
 // event, isTrusted false, is ignored), and update() only redraws. A collaborator's comment is
@@ -45,7 +45,7 @@ function fields(d) {
   return {
     ask: typeof x.id === "string" && x.id ? x.id : null,
     agent: x.agent || null,
-    pr: src.pr ?? src.number ?? null, repo: src.repo || null,
+    pr: src.pr ?? src.number ?? null, repo: src.repo || null, project: src.project ?? x.project ?? null,
     title: String(src.title ?? ""), summary: String(src.summary ?? src.body ?? ""),
     from: src.branch?.from ?? "", to: src.branch?.to ?? "",
     checks: Array.isArray(src.checks) ? src.checks.filter((/** @type {any} */ c) => c && c.name) : [],
@@ -95,7 +95,8 @@ export function prReview(data, ctx = {}) {
   const mergeLabel = () => waitingOnChecks() ? "Waiting on checks" : anyFailed() ? "Approve and merge anyway" : "Approve and merge";
 
   function base() {
-    return { pr: n.pr, ...(n.repo ? { repo: n.repo } : {}), ...(ctx.thread ? { thread: ctx.thread } : {}), surface: "deck" };
+    // github's contract (CHAT.md 09:10): the project and the PR number, no repo field.
+    return { project: n.project || ctx.project || undefined, pr: n.pr };
   }
 
   /** One action: the PR call, then (an ask) the answer. A retry skips what already went through. @param {"merge"|"changes"|"comment"} act @param {any} [again] */
@@ -108,8 +109,8 @@ export function prReview(data, ctx = {}) {
     drawFoot();
     if (!job.prDone) {
       const onWait = () => { state.waiting = true; drawFoot(); };
-      const r = act === "merge" ? await queued("pr.merge", base(), { onWait })
-        : await queued("pr.review", { ...base(), event: act === "changes" ? "REQUEST_CHANGES" : "COMMENT", body: job.note,
+      const r = act === "merge" ? await queued("github.project.pr.merge", base(), { onWait })
+        : await queued("github.project.pr.review", { ...base(), event: act === "changes" ? "REQUEST_CHANGES" : "COMMENT", body: job.note,
           ...(job.replyTo?.id != null ? { in_reply_to: job.replyTo.id } : {}) }, { onWait });
       if (r.error) { state.busy = null; state.waiting = false; state.error = r.error; drawFoot(); return; }
       job.prDone = true;
@@ -314,7 +315,7 @@ export function prReview(data, ctx = {}) {
   });
 
   const trusted = new Set(n.comments.filter(c => OWN.has(String(c.by ?? "")) && c.path).map(c => c.path));
-  files = fileList(n.files, { phone, open: phone ? [] : trusted, onToggle: () => drawComments(),
+  files = fileList(n.files, { openHref: ctx.open, phone, open: phone ? [] : trusted, onToggle: () => drawComments(),
     openFile: (/** @type {any} */ f) => ctx.open?.(f.href || `/files?path=${encodeURIComponent(f.path)}`) });
   draw();
   return el;

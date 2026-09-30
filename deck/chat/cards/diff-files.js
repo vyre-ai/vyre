@@ -62,7 +62,7 @@ export function fileMeta(f, c) {
 /**
  * The file list: a bar (count, totals, Expand all / Collapse all) and one row per file.
  * @param {any[]} files [{ path, status?, additions?, deletions?, hunks|patch }]
- * @param {{ phone?: boolean, open?: Iterable<string>, onToggle?: (path: string, open: boolean) => void, openFile?: (f: any) => void }} [opts]
+ * @param {{ phone?: boolean, open?: Iterable<string>, onToggle?: (path: string, open: boolean) => void, openFile?: (f: any) => void, openHref?: (href: string) => void }} [opts]
  *   open: paths to start open, beyond the first-file rule
  * @returns {HTMLElement & { update: (files: any[]) => void, isOpen: (path: string) => boolean, setOpen: (path: string, open: boolean) => void,
  *   setAll: (open: boolean) => void, paths: () => string[] }}
@@ -97,6 +97,10 @@ export function fileList(files, opts = {}) {
 
   function body(/** @type {any} */ f, /** @type {any[]|null} */ rows) {
     if (isBinary(f)) return h("div", { class: "cv-df-note" }, "Binary file changed");
+    // No patch but lines changed: GitHub withheld it as too large.
+    if (!rows && (Number(f.additions) > 0 || Number(f.deletions) > 0)) return h("div", { class: "cv-df-note cv-df-big" },
+      h("span", null, "Too large to show here."),
+      f.href ? h("button", { class: "btn btn-sm", type: "button", onclick: () => opts.openHref?.(f.href) }, "Open on GitHub") : null);
     if (!rows) return h("div", { class: "cv-df-note" }, "No line changes to show");
     const n = rows.filter(r => r.type !== "@").length;
     if (n > TOO_LARGE) return h("div", { class: "cv-df-note cv-df-big" },

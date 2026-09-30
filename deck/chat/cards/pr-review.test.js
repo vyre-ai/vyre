@@ -41,7 +41,7 @@ const { prReview, checkState } = await import("./pr-review.js");
 
 const hunk = (lines = [" keep", "-old", "+new"]) => [{ oldStart: 1, newStart: 1, lines }];
 const PR = (o = {}) => ({
-  kind: "pr_review", pr: 412, repo: "northwind/site", title: "Add the pumpkin loaf to the price list",
+  kind: "pr_review", pr: 412, project: "northwind", repo: "northwind/site", title: "Add the pumpkin loaf to the price list",
   branch: { from: "feature/pumpkin-loaf", to: "main" },
   summary: "Adds the pumpkin loaf to prices.json and the price list page.",
   checks: [{ name: "build", state: "done" }, { name: "tests", state: "done" }, { name: "lint", state: "done" }],
@@ -103,8 +103,8 @@ test("Approve and merge calls pr.merge once, says Merging, then the footer colla
   assert.equal($(c, "[data-act=changes]").disabled, true);
   $(c, "[data-act=merge]").click();
   await settle();
-  assert.equal(f.of("pr.merge").length, 1, "a second click while busy does nothing");
-  assert.deepEqual(f.of("pr.merge")[0].input, { pr: 412, repo: "northwind/site", thread: "t-pr", surface: "deck" });
+  assert.equal(f.of("github.project.pr.merge").length, 1, "a second click while busy does nothing");
+  assert.deepEqual(f.of("github.project.pr.merge")[0].input, { project: "northwind", pr: 412 });
   assert.equal(f.of("threads.answer").length, 0, "a display card has no ask to answer");
   assert.match(text($(c, ".cv-prr-foot")), /Merged into main by you \u00b7 just now/);
   assert.equal($(c, ".cv-prr-actions"), null);
@@ -116,13 +116,13 @@ test("Cmd+Enter merges through onKey and the card's own keydown; it does nothing
   const c = card(PR());
   assert.equal(c.onKey(/** @type {any} */ ({ key: "Enter", metaKey: true })), true);
   await settle();
-  assert.equal(f.of("pr.merge").length, 1);
+  assert.equal(f.of("github.project.pr.merge").length, 1);
   const w = card(PR({ checks: [{ name: "lint", state: "running" }] }));
   assert.equal(w.onKey(/** @type {any} */ ({ key: "Enter", metaKey: true })), false);
   const d = card(PR());
   d.dispatchEvent(Ev("keydown", { key: "Enter", ctrlKey: true }));
   await settle();
-  assert.equal(f.of("pr.merge").length, 2, "the focused card handles the key itself");
+  assert.equal(f.of("github.project.pr.merge").length, 2, "the focused card handles the key itself");
 });
 
 test("no self-approval: a script-made event, a payload flag or update() never merges; only a person's click does", async () => {
@@ -137,7 +137,7 @@ test("no self-approval: a script-made event, a payload flag or update() never me
   assert.equal(typeof (/** @type {any} */ (c)).merge, "undefined");
   await $(c, "[data-act=merge]").click();
   await settle();
-  assert.equal(f.of("pr.merge").length, 1, "a real click merges");
+  assert.equal(f.of("github.project.pr.merge").length, 1, "a real click merges");
 });
 
 test("Request changes opens one line for the note; sending calls pr.review REQUEST_CHANGES with it; Comment sends COMMENT", async () => {
@@ -152,9 +152,9 @@ test("Request changes opens one line for the note; sending calls pr.review REQUE
   type(field, "Add the price for the small loaf too");
   $(c, "[data-act=send]").click();
   await settle();
-  assert.deepEqual(f.of("pr.review")[0].input, { pr: 412, repo: "northwind/site", thread: "t-pr", surface: "deck", event: "REQUEST_CHANGES", body: "Add the price for the small loaf too" });
+  assert.deepEqual(f.of("github.project.pr.review")[0].input, { project: "northwind", pr: 412, event: "REQUEST_CHANGES", body: "Add the price for the small loaf too" });
   assert.match(text($(c, ".cv-prr-foot")), /Changes requested/);
-  assert.equal(f.of("pr.merge").length, 0);
+  assert.equal(f.of("github.project.pr.merge").length, 0);
   const g = vyred();
   const d = card(PR());
   $(d, "[data-act=comment]").click();
@@ -162,8 +162,8 @@ test("Request changes opens one line for the note; sending calls pr.review REQUE
   type($(d, ".cv-prr-field"), "Looks good, one nit on line 12");
   $(d, "[data-act=send]").click();
   await settle();
-  assert.equal(g.of("pr.review")[0].input.event, "COMMENT");
-  assert.equal(g.of("pr.review")[0].input.body, "Looks good, one nit on line 12");
+  assert.equal(g.of("github.project.pr.review")[0].input.event, "COMMENT");
+  assert.equal(g.of("github.project.pr.review")[0].input.body, "Looks good, one nit on line 12");
   assert.match(text(d), /Comment sent/);
   assert.ok($(d, "[data-act=merge]"), "a comment does not close the review");
 });
@@ -179,11 +179,11 @@ test("Enter in the note line sends it; Escape closes the line without sending", 
   type($(c, ".cv-prr-field"), "Rename it");
   $(c, ".cv-prr-field").listeners.get("keydown")[0](Ev("keydown", { key: "Enter" }));
   await settle();
-  assert.equal(f.of("pr.review")[0].input.body, "Rename it");
+  assert.equal(f.of("github.project.pr.review")[0].input.body, "Rename it");
 });
 
 test("a failed merge says why in plain words with Retry, and Retry runs pr.merge again", async () => {
-  vyred({ "pr.merge": { $error: { code: "conflict", message: "main moved - rebase first" } } });
+  vyred({ "github.project.pr.merge": { $error: { code: "conflict", message: "main moved - rebase first" } } });
   const c = card(PR());
   $(c, "[data-act=merge]").click();
   await settle();
@@ -194,12 +194,12 @@ test("a failed merge says why in plain words with Retry, and Retry runs pr.merge
   const ok = vyred();
   $(c, "[data-act=retry]").click();
   await settle();
-  assert.equal(ok.of("pr.merge").length, 1);
+  assert.equal(ok.of("github.project.pr.merge").length, 1);
   assert.match(text($(c, ".cv-prr-foot")), /Merged into main/);
 });
 
 test("raw JSON from a refusal never reaches the person", async () => {
-  vyred({ "pr.merge": { $error: { code: "x", message: '{"message":"Branch protection","documentation_url":"x"}' } } });
+  vyred({ "github.project.pr.merge": { $error: { code: "x", message: '{"message":"Branch protection","documentation_url":"x"}' } } });
   const c = card(PR());
   $(c, "[data-act=merge]").click();
   await settle();
@@ -269,7 +269,7 @@ test("Reply opens the comment line prefilled with the anchor and sends in_reply_
   type($(c, ".cv-prr-field"), "Re prices.json:3: yes, adding it");
   $(c, "[data-act=send]").click();
   await settle();
-  const i = f.of("pr.review")[0].input;
+  const i = f.of("github.project.pr.review")[0].input;
   assert.equal(i.event, "COMMENT");
   assert.equal(i.in_reply_to, 77);
 });
@@ -281,7 +281,7 @@ test("ask form: says who asks, answers the ask on merge (allow) and on request c
   assert.equal(c.isOpen(), true);
   $(c, "[data-act=merge]").click();
   await settle();
-  assert.deepEqual(f.calls.map(x => x.tool), ["pr.merge", "threads.answer"]);
+  assert.deepEqual(f.calls.map(x => x.tool), ["github.project.pr.merge", "threads.answer"]);
   assert.deepEqual(f.of("threads.answer")[0].input, { ask: "ask-pr-1", decision: "allow", surface: "deck" });
   assert.equal(c.isOpen(), false);
   assert.match(text(c), /Merged into main by you/);
@@ -292,7 +292,7 @@ test("ask form: says who asks, answers the ask on merge (allow) and on request c
   type($(d, ".cv-prr-field"), "Rename the loaf");
   $(d, "[data-act=send]").click();
   await settle();
-  assert.deepEqual(g.calls.map(x => x.tool), ["pr.review", "threads.answer"]);
+  assert.deepEqual(g.calls.map(x => x.tool), ["github.project.pr.review", "threads.answer"]);
   assert.deepEqual(g.of("threads.answer")[0].input, { ask: "ask-pr-1", decision: "deny", surface: "deck", message: "Rename the loaf" });
   assert.equal(d.isOpen(), false);
 });
@@ -308,10 +308,10 @@ test("ask form: fields in detail read the same; if the answer fails Retry only a
   const g = vyred();
   $(c, "[data-act=retry]").click();
   await settle();
-  assert.equal(g.of("pr.merge").length, 0, "the merge already went through");
+  assert.equal(g.of("github.project.pr.merge").length, 0, "the merge already went through");
   assert.equal(g.of("threads.answer").length, 1);
   assert.equal(c.isOpen(), false);
-  assert.equal(f.of("pr.merge").length, 1);
+  assert.equal(f.of("github.project.pr.merge").length, 1);
 });
 
 test("ask form: answered elsewhere collapses the footer and says where", () => {
