@@ -129,6 +129,14 @@ export const neutralize = s => String(s == null ? "" : s).replace(/<(\/?)vyre-([
 export const INTEGRATOR_ROLE = "integrator";
 
 /** The person's assistant (vyred's verified caller identity: meta.agentKind, from the stored agent row, never from input). It acts for the person across every project. */
+/**
+ * Whether a teammate's live thread ran on an account other than the one its provider resolves to now (the person bound it to
+ * another account, or unbound the old one): it starts a fresh thread, and its notes, charter and recent results carry over, so
+ * its identity is the role, never the provider's thread. A thread with no recorded account, or a now-synthetic default with
+ * no id, is not a change.
+ */
+export const accountChanged = (rec, resolved) => Boolean(rec && rec.account && resolved && resolved.id && String(resolved.id) !== String(rec.account));
+
 export const isAssistant = meta => Boolean(meta && meta.agentKind === "assistant");
 
 export function preamble(tm) {
@@ -404,6 +412,9 @@ export default {
       if (!rec) return false;
       // A newer charter starts a fresh thread (notes and recent results carry over).
       if (charterVersion(tm.agent) !== (tm.thread_charter == null ? 0 : tm.thread_charter)) return true; // -1: the filler changed
+      // The account behind its provider changed (a swap): same role, fresh thread.
+      const resolved = await ctx.call("sessions.accounts.resolve", { provider: String(rec.provider || "claude"), agent: tm.agent, project: tm.project }).catch(() => null);
+      if (resolved && !resolved.error && accountChanged(rec, resolved.data)) return true;
       return Date.now() - Number(rec.started || Date.now()) > ROTATE_AGE_MS || Number(rec.turns || 0) >= ROTATE_TURNS;
     };
 

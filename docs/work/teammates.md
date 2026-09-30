@@ -798,3 +798,10 @@ utilization, resets_at), the slot chip (per project), the waiting queue, "Resume
 
 - `team.duties.enable {id}`: cli, local, deck, capsule only, plus an isPerson check (no module, agent or thread claim); `team.duties.disable {id}` also takes module callers since it only stops work.
   They are the same change as team.duties.update {enabled}, which keeps its gate for agents and sessions (personAsked, gate.said.match with P17).
+
+## Account swap keeps the role (2026-10-01, PLAN row 7)
+
+- shouldRotate also asks `sessions.accounts.resolve {provider of the live thread, agent, project}`; when the account differs from the one the thread ran on
+  (the person bound another account to the teammate) the next request starts a fresh thread, and the role's notes, charter and recent results carry over
+  (accountChanged, unit-tested). A teammate's identity is the role, not the provider's thread. Two teammates in one project on two providers stay independent
+  because the resolve is per agent. Not covered live (needs two real accounts): runner e2e.

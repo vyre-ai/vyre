@@ -103,3 +103,13 @@ test("news: a duty's new items are read once into the teammate's next request, a
   const slim = dutyNewsBlock([{ duty: "d1", trigger: "daily 07:00", items: [{ title: "Goal stale", secret: "x".repeat(5000), raw: { big: "y".repeat(5000) } }] }]);
   assert.ok(slim.includes("Goal stale") && !slim.includes("secret") && !slim.includes("raw") && slim.length < 1000, "only the whitelisted fields, cut short");
 });
+
+import { accountChanged } from "./index.js";
+test("accountChanged: a swapped account rotates the thread; no record, no account or a synthetic default does not", () => {
+  assert.equal(accountChanged({ provider: "claude", account: "a1" }, { id: "a2" }), true);
+  assert.equal(accountChanged({ provider: "claude", account: "a1" }, { id: "a1" }), false);
+  assert.equal(accountChanged({ provider: "claude", account: null }, { id: "a2" }), false);
+  assert.equal(accountChanged({ provider: "claude", account: "a1" }, null), false);
+  assert.equal(accountChanged({ provider: "claude", account: "a1" }, {}), false);
+  assert.equal(accountChanged(null, { id: "a2" }), false);
+});
