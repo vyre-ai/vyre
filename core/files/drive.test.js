@@ -618,6 +618,9 @@ async function mac(t, { boxShares = [{ name: "projects", path: "/work", shared: 
       if (tool === "files.drive.status") return { data: { enabled: true, access, shares: boxShares, list: [] } };
       if (tool === "files.drive.share") return { data: { shared: input.name } };
       if (tool === "files.drive.access") return { data: { name: input.name, access: input.mode } };
+      if (tool === "files.drive.candidates") return { data: { candidates: [{ kind: "project", slug: "harlow", path: "/work/harlow" }], projects: 1 } };
+      if (tool === "files.drive.measure") return { data: { path: input.path, files: 2, shareable: true } };
+      if (tool === "files.drive.offer") return { data: { shared: input.name || "harlow" } };
       if (tool === "files.drive.search") return { data: { results: [{ share: input.share || "projects", path: "/work/found.md", name: "found.md", kind: "text", size: 3, mtime: "2026-01-01T00:00:00.000Z" }] } };
       return { error: { code: "no_such_tool", message: tool } };
     },
@@ -752,4 +755,84 @@ test("drive: files.drive.local checks the requested path itself against the gran
   // kit's own path resolves; a sibling project's, under the very same mounted share, does not.
   assert.equal((await ok(m.reg, "files.drive.local", { path: "/work/a/brief.md" }, kit)).share, "whole");
   assert.deepEqual(await ok(m.reg, "files.drive.local", { path: "/work/b/brief.md" }, kit), { local: null });
+});
+
+// ---- the picker --------------------------------------------------------------------------
+
+test("drive picker: candidates list projects first, then the root's folders, marked with what is already shared", async t => {
+  fakeTailscale(t, { status: statusJson({ selfCaps: { "drive:share": null } }), list: "" });
+  const { work } = boxWorld(t);
+  const harlow = path.join(work, "harlow"), notes = path.join(work, "notes"), secret = path.join(work, "keys");
+  for (const d of [harlow, notes, secret, path.join(work, "node_modules")]) fs.mkdirSync(d, { recursive: true });
+  const { reg } = await registry(t, { role: "box",
+    projects: [{ slug: "harlow", name: "Harlow Legal", home: harlow, workspaces: [] }],
+    cfg: { files: { roots: [work], drive: { shares: { harlow } } } } });
+  const c = await ok(reg, "files.drive.candidates");
+  assert.equal(c.projects, 1);
+  assert.deepEqual(c.candidates.slice(0, 1).map(x => [x.kind, x.slug, x.shared, x.suggestedName]), [["project", "harlow", "harlow", "harlow"]]);
+  const names = c.candidates.filter(x => x.kind === "folder").map(x => x.name);
+  assert.ok(names.includes("notes") && names.includes("projects"));
+  assert.ok(!names.includes("node_modules") && !names.includes(".private") && !names.includes("harlow"), names.join());
+});
+
+test("drive picker: measure counts what a share would serve, names generated folders, and says why a folder cannot be shared", async t => {
+  fakeTailscale(t, { status: statusJson({ selfCaps: { "drive:share": null } }), list: "" });
+  const { work } = boxWorld(t);
+  const site = path.join(work, "site"), bad = path.join(work, "bad");
+  fs.mkdirSync(path.join(site, "src"), { recursive: true });
+  fs.mkdirSync(path.join(site, "node_modules", "x"), { recursive: true });
+  fs.writeFileSync(path.join(site, "a.txt"), "12345");
+  fs.writeFileSync(path.join(site, "src", "b.txt"), "123");
+  fs.writeFileSync(path.join(site, "node_modules", "x", "big.js"), "x".repeat(999));
+  fs.mkdirSync(bad, { recursive: true });
+  fs.writeFileSync(path.join(bad, ".env"), "TOKEN=x\n");
+  const { reg } = await registry(t, { role: "box", cfg: { files: { roots: [work] } } });
+  const m = await ok(reg, "files.drive.measure", { path: site });
+  assert.deepEqual([m.files, m.folders, m.bytes, m.generated, m.shareable, m.partial], [2, 1, 8, ["node_modules"], true, false]);
+  const b = await ok(reg, "files.drive.measure", { path: bad });
+  assert.equal(b.shareable, false);
+  assert.match(b.why, /secrets inside \(\.env\)/);
+  const out = await ok(reg, "files.drive.measure", { path: "/etc" });
+  assert.equal(out.shareable, false);
+});
+
+test("drive picker: offer adds the share and shares it in one step; a refused folder leaves config untouched; only the owner offers", async t => {
+  const ts = fakeTailscale(t, { status: statusJson({ selfCaps: { "drive:share": null } }), list: "", whois: {} });
+  const { work, real } = boxWorld(t);
+  const harlow = path.join(work, "harlow"), bad = path.join(work, "bad");
+  fs.mkdirSync(harlow, { recursive: true }); fs.mkdirSync(bad, { recursive: true });
+  fs.writeFileSync(path.join(harlow, "brief.md"), "hi\n");
+  fs.writeFileSync(path.join(bad, "server.pem"), "x\n");
+  const { reg, root } = await registry(t, { role: "box",
+    projects: [{ slug: "harlow", name: "Harlow Legal", home: harlow, workspaces: [] }],
+    agents: [{ name: "kit", kind: "agent", projects: ["harlow"] }], access: { "harlow:kit": true },
+    cfg: { files: { roots: [work] } } });
+  const r = await ok(reg, "files.drive.offer", { path: harlow });
+  assert.equal(r.name, "harlow");
+  assert.equal(r.access, "ro");
+  assert.deepEqual(ts.calls().find(c => c[0] === "drive" && c[1] === "share"), ["drive", "share", "harlow", path.join(real, "harlow")]);
+  const saved = JSON.parse(fs.readFileSync(path.join(root, "config.json"), "utf8"));
+  assert.equal(saved.files.drive.shares.harlow.access, "ro");
+
+  const before = fs.readFileSync(path.join(root, "config.json"), "utf8");
+  await no(reg, "files.drive.offer", { path: bad }, "cli", "unsafe_share");
+  assert.equal(fs.readFileSync(path.join(root, "config.json"), "utf8"), before);
+  await no(reg, "files.drive.offer", { path: harlow, name: "projects" }, "cli", "name_taken");
+  await no(reg, "files.drive.offer", { path: harlow, name: "Bad Name" }, "cli", "bad_input");
+  await no(reg, "files.drive.offer", { path: harlow }, "mcp:agent:kit", "denied");
+  // A named agent sees only its own project in the candidates and cannot measure a sibling.
+  const c = await ok(reg, "files.drive.candidates", {}, "mcp:agent:kit");
+  assert.deepEqual(c.candidates.map(x => x.path), [harlow]);
+  assert.equal((await ok(reg, "files.drive.measure", { path: bad }, "mcp:agent:kit")).why, "not available");
+});
+
+test("drive picker: the Mac forwards candidates, measure and offer for the owner; an agent is refused before the box hears", async t => {
+  const m = await mac(t);
+  assert.equal((await ok(m.reg, "files.drive.candidates")).projects, 1);
+  assert.equal((await ok(m.reg, "files.drive.measure", { path: "/work/harlow" })).files, 2);
+  assert.equal((await ok(m.reg, "files.drive.offer", { path: "/work/harlow", name: "harlow" })).shared, "harlow");
+  const before = m.remote.length;
+  await no(m.reg, "files.drive.candidates", {}, "mcp:agent:kit", "denied");
+  await no(m.reg, "files.drive.offer", { path: "/work/harlow" }, "mcp:agent:kit", "denied");
+  assert.equal(m.remote.length, before);
 });

@@ -47,6 +47,12 @@ step, the Windows/phone clients themselves) stays 0.2.x.
   `test/hygiene.test.js`: 16/16 after `docs:ref`.
 
 ## Doing
+Lead's order (30 Sep): picker, Windows, phone are all IN 0.2, in that order, each to reviewer-2.
+1. Picker: built (core/files/picker.js; candidates, measure, offer; Mac forwards). Decision: NO
+   editable exclusion list, because Taildrive serves the whole folder and an exclusion would be a
+   promise the transport cannot keep; sharing less means a smaller folder. 109 tests pass on testbox.
+2. Windows mount (next), 3. phone browse and read (after).
+
 CI on work/drive after merging stage-0.2 (026dcaa5 plus a docs fix). reviewer-2 CLEARED H1/M1/L1 (30 Sep); the platform merge fixed files.test.js's fixture. Targeted files + docs tests: 156/156 on testbox.
 
 ## Next

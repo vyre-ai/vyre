@@ -40,6 +40,7 @@ import { looksLikeKey, secretName, HOME_DENIED } from "./safety.js";
 import { reach, within } from "./access.js";
 import { classify, KINDS } from "./kinds.js";
 import { walk as searchWalk, defaults as searchDefaults } from "./search.js";
+import { picker } from "./picker.js";
 
 /**
  * Test seams, keyed by the VYRE_HOME a registry runs with: { mount(url, dir, opts), unmount(dir),
@@ -435,21 +436,28 @@ export function drive(ctx, { role, guard: g, roots }) {
       },
     });
 
+    /** Share one offered name: the guard, the secret scan, tailscale drive share, then an audit. */
+    const shareOne = async name => {
+      const p = known(name);
+      const st = await status();
+      if (!hasCap(st, "drive:share")) throw Object.assign(refuse("the tailnet policy does not let this box share folders (no drive:share node attribute)", "drive_off"), { detail: { fix: FIX_SHARE } });
+      const where = folder(p);
+      clean(name, where);
+      const r = await tailscale(["drive", "share", name, where]);
+      if (r.code !== 0) throw refuse((r.err || r.out).trim().split("\n")[0] || "tailscale drive share failed", "failed");
+      return { shared: name, path: where, access: specs()[name].access, audit: await audit() };
+    };
+
     ctx.tool("files.drive.share", {
       description: "Share one of the box's offered folders with the paired Mac over VyreDrive. Owner only. Audits who else the tailnet policy lets in, right after.",
       input: nameInput,
       run: async ({ name }, meta) => {
         owner(meta);
-        const p = known(name);
-        const st = await status();
-        if (!hasCap(st, "drive:share")) throw Object.assign(refuse("the tailnet policy does not let this box share folders (no drive:share node attribute)", "drive_off"), { detail: { fix: FIX_SHARE } });
-        const where = folder(p);
-        clean(name, where);
-        const r = await tailscale(["drive", "share", name, where]);
-        if (r.code !== 0) throw refuse((r.err || r.out).trim().split("\n")[0] || "tailscale drive share failed", "failed");
-        return { shared: name, path: where, access: specs()[name].access, audit: await audit() };
+        return shareOne(name);
       },
     });
+
+    picker(ctx, { g, roots, folder, scan, specs, shares, owner, shareOne, limit: SCAN_LIMIT, skip: SKIP_DIRS });
 
     ctx.tool("files.drive.access", {
       description: "Make one of the box's shares read-only (ro) or read-write (rw) for the paired Mac. Owner only, with no proof asked; never an agent, a model or a guest. Says when the tailscale container's /work mount must change to match.",
@@ -644,6 +652,25 @@ export function drive(ctx, { role, guard: g, roots }) {
       description: "Ask the box which nodes the tailnet policy lets into its VyreDrive shares, besides this Mac.",
       input: { type: "object", properties: {} },
       run: () => forward("files.drive.audit", {}),
+    });
+
+    // The picker, asked from the Mac. Reads are the owner's own surfaces only here (an agent's
+    // identity does not survive the hop to the box); offer is the owner's action, like share.
+    for (const [tool, what] of [["files.drive.candidates", "The box's folders you could share over VyreDrive, projects first (asked over the link)."], ["files.drive.measure", "How big one of the box's folders is and whether it may be shared (asked over the link)."]]) {
+      ctx.tool(tool, {
+        description: what,
+        input: tool === "files.drive.measure" ? { type: "object", required: ["path"], properties: { path: { type: "string" } } } : { type: "object", properties: {} },
+        run: async (input, meta = {}) => {
+          if (!(await reach(ctx, meta && meta.caller)).all) throw refuse("an agent looks at the box's folders with files.dirs, not through the Mac", "denied");
+          return forward(tool, input);
+        },
+      });
+    }
+    ctx.tool("files.drive.offer", {
+      description: "Share one of the box's folders you picked over VyreDrive, by path, in one step. Owner only.",
+      input: { type: "object", required: ["path"], properties: { path: { type: "string" }, name: { type: "string" }, access: { type: "string", enum: ["ro", "rw"] } } },
+      callers: ["cli", "local", "capsule"],
+      run: input => forward("files.drive.offer", input),
     });
 
     ctx.tool("files.drive.url", {

@@ -4,6 +4,11 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+- VyreDrive picker: `files.drive.candidates` lists the folders a box could share (projects first),
+  `files.drive.measure` sizes one and says why it cannot be shared, and `files.drive.offer` names,
+  checks and shares a picked folder in one step, with the Mac forwarding all three for the owner.
+  There is no exclusion list: Taildrive serves a whole folder, so sharing less means sharing a
+  smaller folder (`core/files/picker.js`).
 - Closed a caller-identity race on macOS: a forged "cli" label from under a claude was believed
   when the caller was forked inside the 250 ms shared process snapshot. A pid the snapshot lacks is
   now read again, retries start from a fresh table, a peer that already exited is a model's, and
