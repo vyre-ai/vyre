@@ -273,6 +273,13 @@ test("the file store: one miss counts per item per 30 minutes, three counted mis
     assert.equal(st.get({ origin }).data.origin.controls.length, 0, "the arrival card no longer offers it");
     assert.equal(st.record(origin).controls.length, 1, "the record keeps it as used to work");
     // without the test flag the clock file is ignored
+    // and in a folder that is not under the OS temp directory the clock file is ignored even under the flag
+    const elsewhere = fs.mkdtempSync(path.join(process.cwd(), ".sk-notmp-"));
+    try {
+      const notTmp = createSiteStore({ dataDir: elsewhere, env: { VYRE_CHROME_TEST: "1", VYRE_SITE_TEST_CLOCK: clockFile }, now: () => Date.parse("2031-01-01T00:00:00Z") });
+      notTmp.put({ origin, patch: { key: origin, controls: [{ id, page: "/w", role: "button", selector: { strategy: "identifier", identifier: "save-workflow" }, identifierVisits: ["a", "b"] }] } });
+      assert.ok(Date.parse(notTmp.record(origin).updated) >= Date.parse("2031-01-01T00:00:00Z"), "a store outside the temp directory ignores the clock file");
+    } finally { fs.rmSync(elsewhere, { recursive: true, force: true }); }
     const real = createSiteStore({ dataDir: dir, env: {}, now: () => Date.parse("2030-01-01T00:00:00Z") });
     at("2026-10-01T09:00:00Z");
     assert.ok(real.report({ origin, part: "controls", id, outcome: "ok" }).data.known);

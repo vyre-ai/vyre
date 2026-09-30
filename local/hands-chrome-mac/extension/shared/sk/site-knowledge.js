@@ -1,4 +1,4 @@
-// VENDORED from work/iq-s2 (lib/site-knowledge.js, lib/secret-shapes.js, core/vault/detect.js) at 0bc87300, import path adjusted. Do not edit here: change it upstream and re-copy (see VERSION).
+// VENDORED from work/iq-s2 (lib/site-knowledge.js, lib/secret-shapes.js, core/vault/detect.js) at 1690366d, import path adjusted. Do not edit here: change it upstream and re-copy (see VERSION).
 // @ts-check
 // site-knowledge: what Vyre for Chrome learns about a website, as a record that holds structure and
 // never a value (team/0.2/chrome-learning-plan.md). PURE: no fs, no vyred, no chrome.* API, so the
@@ -126,7 +126,7 @@ const identifierHasId = s => s.split(/[-_:.]/).some(t => /^[0-9a-f]{8,}$/i.test(
 // The allowlist: each cleaner returns the cleaned value or null (dropped), and files problems.
 
 /**
- * @typedef {{ refused: Problem[], dropped: Problem[], now: number, trusted: boolean, notes: boolean, ids: Set<string> }} Ctx
+ * @typedef {{ refused: Problem[], dropped: Problem[], now: number, trusted: boolean, notes: boolean, ids: Set<string>, replica: boolean }} Ctx
  */
 
 /** A word that is an opaque token: long and mixing letters and digits (or hex). Never text a person would write. @param {string} w */
@@ -176,7 +176,8 @@ function fact(f, path, c) {
     conf: Math.round(num(f && f.conf, 0, 1, 0.5) * 1000) / 1000,
     // A date in the future is a claim of trust we cannot give: never later than now.
     verified: at ? (Date.parse(at) > c.now ? new Date(c.now).toISOString() : at) : null, seen: int(f && f.seen, 0, 1e9, 1), misses: int(f && f.misses, 0, 1e6, 0), src,
-    ...(iso(f && f.missAt) ? { missAt: iso(f && f.missAt) } : {}), ...(iso(f && f.lastMissAt) ? { lastMissAt: iso(f && f.lastMissAt) } : {}), ...(iso(f && f.qAt) ? { qAt: iso(f && f.qAt) } : {}),
+    // The miss bookkeeping is the store's own. Only a replica's record (the person's own other device, through sync) carries it.
+    ...(c.replica && iso(f && f.missAt) ? { missAt: iso(f && f.missAt) } : {}), ...(c.replica && iso(f && f.lastMissAt) ? { lastMissAt: iso(f && f.lastMissAt) } : {}), ...(c.replica && iso(f && f.qAt) ? { qAt: iso(f && f.qAt) } : {}),
     ...(f && f.outcome === "ok" || f && f.outcome === "miss" ? { outcome: f.outcome } : {}),
   };
 }
@@ -451,12 +452,12 @@ export const isFamilyKey = (/** @type {string} */ k) => FAMILY_KEY.test(k);
  * it and nothing is kept (fail closed); `refused` names the fields, never their text. `dropped` lists
  * what the allowlist removed without refusing the rest.
  * @param {any} input
- * @param {{ now?: number, trusted?: boolean, notes?: boolean, known?: Iterable<string> }} [opts] known: ids of the items the record already holds (a step may name them); trusted: the shipped-file loader only (src "shipped" is honoured); notes: the person's own surfaces only
+ * @param {{ now?: number, trusted?: boolean, notes?: boolean, known?: Iterable<string>, replica?: boolean }} [opts] replica: the person's own other device, through sync, whose miss state is kept (a patch from Chrome never carries it); known: ids of the items the record already holds (a step may name them); trusted: the shipped-file loader only (src "shipped" is honoured); notes: the person's own surfaces only
  * @returns {{ ok: boolean, record: any, refused: Problem[], dropped: Problem[] }}
  */
-export function sanitize(input, { now = Date.now(), trusted = false, notes = false, known = [] } = {}) {
+export function sanitize(input, { now = Date.now(), trusted = false, notes = false, known = [], replica = false } = {}) {
   /** @type {Ctx} */
-  const c = { refused: [], dropped: [], now, trusted, notes, ids: new Set(known) };
+  const c = { refused: [], dropped: [], now, trusted, notes, ids: new Set(known), replica };
   const o = obj(input);
   if (!o) return { ok: false, record: null, refused: [{ path: "", why: "not an object" }], dropped: [] };
   // The ids this patch itself defines: a step may refer to them by their exact id and to nothing else.
@@ -620,7 +621,7 @@ export function union(a, b, { now = Date.now() } = {}) {
   const out = JSON.parse(JSON.stringify(a));
   const tomb = new Map();
   for (const t of [...(a.tombstones || []), ...(b.tombstones || [])]) { const k = `${t.part}|${t.id}`; const o = tomb.get(k); if (!o || t.at > o.at) tomb.set(k, t); }
-  // a is what this side holds. A replica's copy (b) can refresh when an item was last verified and add counts, but it can
+  // a is what this side holds. The replica is the person's own other device, so its miss state comes with its copy. A replica's copy (b) can refresh when an item was last verified and add counts, but it can
   // never raise the trust of an item a holds, change what it is without starting it over, or arrive above 0.5.
   const pick = (part, x, y) => {
     const vx = x.verified || "", vy = y.verified || ""; const w = vy > vx ? y : x;
@@ -687,10 +688,15 @@ export const cardBytes = (/** @type {any} */ c) => JSON.stringify(c).length;
 /**
  * A clock for tests only. Under a test flag (NODE_ENV=test or VYRE_CHROME_TEST) and with VYRE_SITE_TEST_CLOCK naming a file that holds
  * an ISO time, that time is "now", so a harness can put misses on two different days without waiting. Never a person's setting, never
- * read without a test flag, and null otherwise. `read` returns a file's text (injected so this file stays pure).
- * @param {Record<string, string | undefined>} env @param {(path: string) => string} read @returns {number | null}
+ * read without a test flag, and honoured only when the store's home is under the OS temp directory, so a forged clock can never move a
+ * real home's purge or undo windows. `read` returns a file's text (injected so this file stays pure).
+ * @param {Record<string, string | undefined>} env @param {(path: string) => string} read
+ * @param {{ home?: string | null, tmp?: string | null }} [where] the store's home and the OS temp directory, both real paths
+ * @returns {number | null}
  */
-export function testNow(env, read) {
+export function testNow(env, read, { home = null, tmp = null } = {}) {
   if (!(env.NODE_ENV === "test" || env.VYRE_CHROME_TEST) || !env.VYRE_SITE_TEST_CLOCK) return null;
+  const norm = (/** @type {string} */ p) => p.replace(/\\/g, "/").replace(/\/+$/, "").toLowerCase();
+  if (!home || !tmp || !(norm(home) + "/").startsWith(norm(tmp) + "/")) return null;
   try { const t = Date.parse(String(read(env.VYRE_SITE_TEST_CLOCK)).trim()); return Number.isFinite(t) ? t : null; } catch { return null; }
 }

@@ -6,14 +6,18 @@
 // (memory.site.sync, union by newest verified, tombstones win). Nothing here holds a value: a patch with anything secret-shaped is refused whole.
 
 import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import crypto from "node:crypto";
 import { sanitize, emptyRecord, mergeRecord, arrivalCard, keyOk, heal, itemId, testNow } from "../extension/shared/sk/site-knowledge.js";
 
 /** @param {{ dataDir: string, now?: () => number }} o */
 export function createSiteStore({ dataDir, now: clock = Date.now, env = process.env }) {
-  // The store's ONE clock. Under a test flag (NODE_ENV=test or VYRE_CHROME_TEST) VYRE_SITE_TEST_CLOCK may name a file holding an ISO time, so a harness can put misses on different days; never a setting.
-  const now = () => { const t = testNow(env, (/** @type {string} */ p) => fs.readFileSync(p, "utf8")); return t ?? clock(); };
+  // The store's ONE clock. Under a test flag (NODE_ENV=test or VYRE_CHROME_TEST), and ONLY when this store's folder is under the OS temp directory, VYRE_SITE_TEST_CLOCK may
+  // name a file holding an ISO time, so a harness can put misses on different days; in a person's real folder it is ignored, and it is never a setting.
+  const real = (/** @type {string} */ p) => { try { return fs.realpathSync(p); } catch { return path.resolve(p); } };
+  const where = { home: real(dataDir), tmp: real(os.tmpdir()) };
+  const now = () => { const t = testNow(env, (/** @type {string} */ p) => fs.readFileSync(p, "utf8"), where); return t ?? clock(); };
   const dir = path.join(dataDir, "sites");
   const fileOf = (/** @type {string} */ key) => path.join(dir, `${crypto.createHash("sha256").update(key).digest("hex").slice(0, 16)}.json`);
   /** @param {string} key @returns {any} */
