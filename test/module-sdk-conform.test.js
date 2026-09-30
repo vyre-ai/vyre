@@ -73,7 +73,7 @@ test("conform: the import scan", t => {
 
 test("conform: each broken rule is one line that says what to change", async t => {
   const m = base();
-  m.does.tools[0].summary = "list the reading list — fast";
+  m.does.tools[0].summary = "list the reading list \u2014 fast";
   m.teaches = { tips: [{ id: "list", text: "Ask kit for the list.", surfaces: ["chat"], level: "first-use", trigger: "never-used", since: "0.1.0" }] };
   const src = `export default {
   async start(ctx) {

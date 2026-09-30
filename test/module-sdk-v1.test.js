@@ -52,7 +52,7 @@ test("v1: tool entries in either form, named once, and mapped tools find both fo
   has(edit(m => { m.does.tools[0].reach = "everyone"; }), /reach must be one of anyone, asked, person, modules, hook/);
   has(edit(m => { m.does.tools[3].outward = "email"; }), /outward must be one of send, post, pay, delete/);
   has(edit(m => { m.does.tools[3].cost = "free"; }), /cost must be "paid"/);
-  has(edit(m => { m.does.tools[0].summary = "orders — today"; }), /no em dash or section sign/);
+  has(edit(m => { m.does.tools[0].summary = "orders \u2014 today"; }), /no em dash or section sign/);
   has(edit(m => { m.does.tools[0].colour = "red"; }), /colour is not a manifest key/);
   assert.deepEqual(edit(m => { m.does.tools[0]["x-note"] = 1; }), []);
   // A string entry and an object entry are both names a command, hook or setting may map to.

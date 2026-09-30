@@ -78,8 +78,8 @@ export function scanImports(dir) {
 function wording(where, text) {
   if (typeof text !== "string") return [];
   const out = [];
-  if (text.includes("—")) out.push(`${where} has an em dash; use a colon, a comma or two sentences`);
-  if (text.includes("§")) out.push(`${where} has a section sign; write "section"`);
+  if (text.includes("\u2014")) out.push(`${where} has an em dash; use a colon, a comma or two sentences`);
+  if (text.includes("\u00a7")) out.push(`${where} has a section sign; write "section"`);
   const lower = text.toLowerCase();
   if (GUARD_WORDS.some(w => lower.includes(w))) out.push(`${where} names a real person or business; use the sample world (alex, Harlow Legal, Northwind Bakery, juno, kit)`);
   return out;
