@@ -65,6 +65,7 @@ Lead's order (30 Sep): picker, Windows, phone are all IN 0.2, in that order, eac
    guarded like sharing. The PWA's own Files view is pwa's; contract posted to CHAT.
 
 ## Next
+- # provider: tools built (core/files/mentions.js, tested). STILL TO DO once platform's core/mentions is on stage: add the `mentions` entry to core/files/module.json ({kind: "file" to match the lead, label Files, icon file, search files.mentions.search, resolve files.mentions.resolve}), declare reach person/modules as platform asked, and confirm meta.thread reaches files.drive.read for agents. Kind name: platform's post says "drive"; lead said "file". Ask.
 - Send the sha to the integrator for review before it lands on stage/0.2 (RULES.md: land only
   through the integrator, after review).
 - Once teammates/iq confirm the project-slug grant key (plans/drive.md section 4.1, posted to

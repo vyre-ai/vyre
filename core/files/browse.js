@@ -21,9 +21,11 @@ const clamp = (n, lo, hi) => Math.min(hi, Math.max(lo, n));
 
 /**
  * @param {any} ctx
- * @param {{ g: any, folder: (p: string) => string, shares: () => Record<string, string> }} d
+ * @param {{ g: any, folder: (p: string) => string, shares: () => Record<string, string>,
+ *   tagged?: (thread: string, share: string, rel: string) => string|null }} d
+ * `tagged` answers the real path a person's #tag gave this thread for exactly one file, or null.
  */
-export function browse(ctx, { g, folder, shares }) {
+export function browse(ctx, { g, folder, shares, tagged = () => null }) {
   /**
    * A path inside an offered share, checked: the share's folder (through folder(), the same check
    * sharing runs), the relative path clean, the caller's grant covering it, and the files guard
@@ -31,7 +33,7 @@ export function browse(ctx, { g, folder, shares }) {
    * hidden file read the same to a caller that may not know.
    * @param {string} share @param {string} rel @param {any} meta
    */
-  async function resolve(share, rel, meta) {
+  async function resolve(share, rel, meta, { file = false } = {}) {
     const nope = () => refuse("not available", "not_available");
     const map = shares();
     if (!Object.prototype.hasOwnProperty.call(map, String(share))) throw nope();
@@ -39,7 +41,9 @@ export function browse(ctx, { g, folder, shares }) {
     if (rel.includes("\0") || rel.split(/[\\/]+/).includes("..") || path.isAbsolute(rel)) throw refuse("path must be inside the share, with no ..", "bad_input");
     const scope = await reach(ctx, meta && meta.caller);
     const raw = path.join(map[share], rel);
-    if (!scope.all && !within(raw, scope.folders)) throw nope();
+    // A file the person tagged in a chat is readable in that chat, one file and nothing around it.
+    const tag = !scope.all && file && meta && meta.thread ? tagged(String(meta.thread), String(share), rel.replace(/\/+$/, "")) : null;
+    if (!scope.all && !tag && !within(raw, scope.folders)) throw nope();
     let top;
     try { top = folder(map[share]); } catch { throw nope(); }
     const rs = { live: [{ given: top, real: top }] };
@@ -47,7 +51,8 @@ export function browse(ctx, { g, folder, shares }) {
     try { safe = g.resolveSafe(path.join(top, rel), rs); } catch { throw nope(); }
     // The grant is text, and a link inside a granted folder can point at another project in the
     // same share: the real path has to sit inside the real grant too.
-    if (!scope.all && !withinReal(safe.real, scope.folders)) throw nope();
+    if (tag) { if (safe.real !== tag) throw nope(); }
+    else if (!scope.all && !withinReal(safe.real, scope.folders)) throw nope();
     return { top, rs, safe, scope };
   }
 
@@ -87,7 +92,7 @@ export function browse(ctx, { g, folder, shares }) {
     input: { type: "object", required: ["share", "path"], properties: { share: { type: "string" }, path: { type: "string" }, offset: { type: "integer" }, length: { type: "integer" } } },
     run: async ({ share, path: rel, offset = 0, length = CHUNK }, meta = {}) => {
       if (!rel) throw refuse("path is required", "bad_input");
-      const { safe } = await resolve(share, rel, meta);
+      const { safe } = await resolve(share, rel, meta, { file: true });
       offset = Number(offset) || 0;
       if (offset < 0) throw refuse("offset must not be negative", "bad_input");
       length = clamp(Number(length) || CHUNK, 1, CHUNK);
@@ -104,4 +109,6 @@ export function browse(ctx, { g, folder, shares }) {
       } finally { fs.closeSync(fd); }
     },
   });
+
+  return { resolve };
 }

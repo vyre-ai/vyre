@@ -42,6 +42,7 @@ import { classify, KINDS } from "./kinds.js";
 import { walk as searchWalk, defaults as searchDefaults } from "./search.js";
 import { picker } from "./picker.js";
 import { browse } from "./browse.js";
+import { mentions, MIGRATIONS as MENTION_MIGRATIONS } from "./mentions.js";
 import { uncFor, mapArgs, unmapArgs, parseNetUse, freeLetter, explainNetUse } from "./drive-windows.js";
 
 /**
@@ -490,7 +491,11 @@ export function drive(ctx, { role, guard: g, roots }) {
       },
     });
 
-    browse(ctx, { g, folder, shares });
+    ctx.store.migrate(MENTION_MIGRATIONS);
+    /** @type {{ tagged: Function }} */
+    const box = { tagged: () => null };
+    const { resolve: resolveIn } = browse(ctx, { g, folder, shares, tagged: (t, s, r) => box.tagged(t, s, r) });
+    box.tagged = mentions(ctx, { store: ctx.store, folder, shares, resolveIn }).tagged;
     picker(ctx, { g, roots, folder, scan, specs, shares, owner, shareOne, limit: SCAN_LIMIT, skip: SKIP_DIRS });
 
     ctx.tool("files.drive.access", {
@@ -711,6 +716,20 @@ export function drive(ctx, { role, guard: g, roots }) {
       input: { type: "object", required: ["path"], properties: { path: { type: "string" }, name: { type: "string" }, access: { type: "string", enum: ["ro", "rw"] } } },
       callers: ["cli", "local", "capsule"],
       run: input => forward("files.drive.offer", input),
+    });
+
+    // The # tag for files lives on the box (where chats run); the Mac only passes a search along.
+    ctx.tool("files.mentions.search", {
+      description: "Files on the box's VyreDrive shares whose name matches what you typed after #, for tagging one in a chat. Runs as the person asking.",
+      input: { type: "object", properties: { q: { type: "string" }, limit: { type: "integer" } } },
+      callers: ["cli", "local", "deck", "capsule", "tailnet"],
+      run: input => forward("files.mentions.search", input),
+    });
+    ctx.tool("files.mentions.resolve", {
+      description: "Make a tagged file readable in the chat it was tagged in. The box does this; a Mac has no chats of its own.",
+      input: { type: "object", required: ["id", "thread"], properties: { id: { type: "string" }, thread: { type: "string" }, said: { type: "string" } } },
+      callers: ["module"],
+      run: async () => { throw refuse("that file is not available", "not_found"); },
     });
 
     ctx.tool("files.drive.url", {

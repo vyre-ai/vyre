@@ -963,3 +963,40 @@ test("drive browse: a link inside a granted folder to another project is not a w
   await no(reg, "files.drive.read", { share: "work", path: "a/link/two.txt" }, "mcp:agent:kit", "not_available");
   assert.equal((await ok(reg, "files.drive.measure", { path: path.join(a, "link") }, "mcp:agent:kit")).why, "not available");
 });
+
+// ---- files as a # tag --------------------------------------------------------------------
+
+test("drive mentions: search finds files by name; resolve, for the chat only, lets that thread read that one file", async t => {
+  fakeTailscale(t, { status: statusJson({ selfCaps: { "drive:share": null } }), list: "" });
+  const { work } = boxWorld(t);
+  const a = path.join(work, "a"), b = path.join(work, "b");
+  for (const d of [a, b]) fs.mkdirSync(path.join(d, "docs"), { recursive: true });
+  fs.writeFileSync(path.join(a, "docs", "report.md"), "quarterly"); fs.writeFileSync(path.join(a, "other.md"), "x"); fs.writeFileSync(path.join(b, "report-b.md"), "b");
+  const { reg } = await registry(t, { role: "box",
+    agents: [{ name: "kit", kind: "agent", projects: [] }],
+    projects: [{ slug: "a", name: "A", home: a, workspaces: [] }, { slug: "b", name: "B", home: b, workspaces: [] }], access: {},
+    cfg: { files: { roots: [work], drive: { shares: { projects: null, work } } } } });
+  const s = await ok(reg, "files.mentions.search", { q: "report" }, "deck");
+  assert.deepEqual(s.items.map(i => [i.id, i.name, i.hint, i.icon]).sort(), [["work:a/docs/report.md", "report.md", "work/a/docs", "file"], ["work:b/report-b.md", "report-b.md", "work/b", "file"]]);
+  assert.deepEqual((await ok(reg, "files.mentions.search", { q: "" }, "deck")).items, []);
+
+  // Before the tag the agent has no way in.
+  await no(reg, "files.drive.read", { share: "work", path: "a/docs/report.md" }, "mcp:agent:kit", "not_available", { thread: "t1" });
+  // Only the sessions module (or the assistant) resolves a tag.
+  await no(reg, "files.mentions.resolve", { id: "work:a/docs/report.md", thread: "t1" }, "deck", "denied");
+  await no(reg, "files.mentions.resolve", { id: "work:a/docs/nope.md", thread: "t1" }, "module:sessions", "not_found");
+  await no(reg, "files.mentions.resolve", { id: "work:a/docs", thread: "t1" }, "module:sessions", "not_found");
+  const r = await ok(reg, "files.mentions.resolve", { id: "work:a/docs/report.md", thread: "t1", said: "s1" }, "module:sessions");
+  assert.equal(r.name, "report.md");
+  assert.match(r.note, /files\.drive\.read/);
+  assert.deepEqual(r.grant, { read: "work:a/docs/report.md" });
+  // That thread reads that file, and nothing beside it, and no other thread reads it.
+  assert.equal(Buffer.from((await ok(reg, "files.drive.read", { share: "work", path: "a/docs/report.md" }, "mcp:agent:kit", { thread: "t1" })).base64, "base64").toString(), "quarterly");
+  await no(reg, "files.drive.read", { share: "work", path: "a/other.md" }, "mcp:agent:kit", "not_available", { thread: "t1" });
+  await no(reg, "files.drive.read", { share: "work", path: "a/docs/report.md" }, "mcp:agent:kit", "not_available", { thread: "t2" });
+  await no(reg, "files.drive.list", { share: "work", path: "a/docs" }, "mcp:agent:kit", "not_available", { thread: "t1" });
+  // Swap the file for a link to another project: the grant was for that file, not that name.
+  fs.unlinkSync(path.join(a, "docs", "report.md"));
+  fs.symlinkSync(path.join(b, "report-b.md"), path.join(a, "docs", "report.md"));
+  await no(reg, "files.drive.read", { share: "work", path: "a/docs/report.md" }, "mcp:agent:kit", "not_available", { thread: "t1" });
+});

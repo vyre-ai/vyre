@@ -4,6 +4,10 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+- Files as a # tag, Drive's side: `files.mentions.search` (file names across the shares) and
+  `files.mentions.resolve` (sessions or the assistant only), which lets that one chat read that one
+  file through `files.drive.read`, by the file's real path. The `mentions` entry in module.json
+  waits for core/mentions to land (`core/files/mentions.js`).
 - VyreDrive browse and picker check a granted folder by its real path, so a link inside a granted
   folder to another project in the same share is refused (`withinReal` in `core/files/access.js`).
   Only a drive letter is ever mapped or unmapped on Windows.
