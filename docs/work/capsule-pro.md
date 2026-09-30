@@ -107,7 +107,21 @@ Worktree ../vyre-capsule-02-iq, based on main 9381ab15. Landed:
   (https://github.com/vyre-ai/vyre/actions/runs/36658983627).
 - No restyling: the draft reuses Theme.reply/stone/ash; app-design's glass theme will restyle it.
 
-## Doing (session 8, 2026-09-30, 0.2, work/capsule-02-glass off work/capsule-02-iq2 7b366c9b)
+## Doing (session 9, 2026-09-30, work/capsule-02-oversight off work/capsule-02-glass 62645bee)
+Computer-use oversight panel (capsule-02.html section 11), built against my proposed hands.* contract
+(CHAT.md, capsule-pro -> capsule-sight; capsule-sight has not answered yet). Sources/Extensions/oversight/:
+OversightModel (folds hands.plan/step/voice/paused/resumed/stopped by run, taps -> hands.pause/resume/stop/
+plan.edit/steer, presence:false), OversightView (Bone tokens, Backdrop glass, grip, 6-step window, edit in
+place for todo steps, voice line, steer field, Esc stops, small mode), OversightExtension (opens on hands.plan,
+closes on stop or after a 4 s linger when all done, remembers the dragged top-left). Seam additions:
+CapsuleHost.floatingWindow(owner:) and SessionWindow.onMoved (defaults keep every fake host compiling);
+CapsuleSessionWindow(floating: true) is level .floating, movable by background, non-activating.
+Controls whose tool the vyred lacks (pause, edit, steer) are not drawn. Typechecked with swiftc (build lock);
+tests in Tests/Oversight run on CI only.
+Next: CI result, then reviewer-2; adjust to capsule-sight's answer on the contract; Chrome "being debugged"
+coexistence needs a real-Mac look (panel opens top right, below the menu bar).
+
+## Earlier (session 8, 2026-09-30, 0.2, work/capsule-02-glass off work/capsule-02-iq2 7b366c9b)
 Handed: IQ streaming (work/capsule-02-iq2 7b366c9b, CI green 393/393) to reviewer-2 (unreachable at handoff, notified integrator).
 1. Deep glass skin (Sources/UI/Glass.swift, glassSuite): 0.62 tint, border, reduce-transparency fallback. CI run pending.
    Light variant done: Theme colours are dynamic (dark/paper tokens by system appearance), IconCache keys carry the scheme, backdrop material .popover + paper tint 0.66. 395/395 on CI.

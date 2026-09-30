@@ -4,6 +4,12 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+- Capsule: a small floating panel shows what an agent is doing while it drives your Mac or Chrome.
+  It lists the plan with the step it is on, and you can drag it anywhere (it remembers where) or
+  make it small. Change a step that has not started by double-clicking it, tell the agent what to
+  change in the field (Return sends, Esc stops), and Pause, Resume or Stop at any time. It asks
+  for nothing and shows no prompt. It appears when the agent's plan arrives and goes when the run
+  ends. Controls your Vyre cannot carry out are not shown.
 - Capsule: the Deep glass skin. The panel is a 0.62 carbon tint over the system blur with a light
   border, top edge and soft shadow; it keeps its width and every feature. With Reduce Transparency
   on, the ground is the plain opaque panel, and it changes live. Increase Contrast draws a heavier,
