@@ -18,6 +18,8 @@ final class CapsuleApp: NSObject, NSApplicationDelegate {
     let menuActions = MenuActions()
     lazy var health = Health(vyred: vyred)
     lazy var presence = CapsulePresence(home: home, vyred: vyred)
+    /// Emoji, colours, time zones, money, snippets, quicklinks and your commands (LocalAnswers.swift).
+    let local: LocalAnswersProvider
     /// The box's alarms and reminders ringing here, from /v1/link/events (Planner.swift).
     lazy var planner = PlannerBanners(vyred: vyred)
     /// Clipboard, contacts, modules, Glass and watches (Agent/AgentWiring.swift).
@@ -32,10 +34,12 @@ final class CapsuleApp: NSObject, NSApplicationDelegate {
         home = env["VYRE_HOME"].flatMap { $0.isEmpty ? nil : $0 } ?? (NSHomeDirectory() as NSString).appendingPathComponent(".vyre")
         vyred = VyredClient(socket: vyredSocketPath(env))
         wiring = AgentWiring(home: home, vyred: vyred)
+        local = LocalAnswersProvider(home: home)
         model = CapsuleModel(home: home, vyred: vyred, providers: [
-            AppsProvider(), SettingsProvider(), FilesProvider(), DictionaryProvider(),
+            AppsProvider(), SettingsProvider(), FilesProvider(), DictionaryProvider(), local,
         ] + wiring.providers)
         super.init()
+        local.onChange = { [weak self] in Task { @MainActor in self?.model.refresh() } }
     }
 
     func applicationDidFinishLaunching(_ note: Notification) {

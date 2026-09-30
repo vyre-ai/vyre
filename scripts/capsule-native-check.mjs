@@ -26,7 +26,7 @@ const app = path.resolve(process.argv[2] || "local/capsule/native/.build/Vyre.ap
 const bin = path.join(app, "Contents", "MacOS", "Vyre");
 if (!fs.existsSync(bin)) { console.error(`no app at ${app}`); process.exit(1); }
 const home = fs.mkdtempSync(path.join(os.tmpdir(), "vyre-capsule-check-"));
-const BUDGET = { hiddenMB: 60, hiddenCpu: 0.1, openMs: 50 };
+const BUDGET = { hiddenMB: 60, hiddenCpu: 0.1, openMs: 50, keyP95Ms: 16, wakeP95Ms: 50 };
 // The whole check has four minutes; a hang anywhere fails it in words instead of eating the job.
 const watchdog = setTimeout(() => { console.log("FAIL the check did not finish in 4 minutes"); try { child.kill("SIGKILL"); } catch {} process.exit(1); }, 240_000);
 watchdog.unref();
@@ -73,6 +73,40 @@ try {
   const open = t.find(x => x.kind === "open"), results = t.find(x => x.kind === "results");
   console.log(`open ${open && open.ms.toFixed(1)} ms · keystroke to rows ${results && results.ms.toFixed(1)} ms`);
   budget(open && open.ms < BUDGET.openMs, `open under ${BUDGET.openMs} ms`);
+  // Feel: type real words one letter at a time (apps, files and the calculator all answer), and time
+  // each keystroke to its rows. A frame at 60 Hz is 16 ms, so the 95th percentile must fit in one.
+  // The quick providers answer in the same frame; the slow ones land after and are not counted here.
+  const pct = (xs, q) => { const a = [...xs].sort((x, y) => x - y); return a.length ? a[Math.min(a.length - 1, Math.floor(q * a.length))] : NaN; };
+  const words = ["safari", "system settings", "12 * (3 + 4)", "notes", "20 km in miles", "terminal", "a", "mail"];
+  const keyMs = [];
+  for (const w of words) {
+    await send({ text: "" }); await pause(60);
+    for (let i = 1; i <= w.length; i++) {
+      const before = (await send({ timings: true })).timings.length;
+      await send({ text: w.slice(0, i) });
+      const tm = (await send({ timings: true })).timings;
+      const last = tm.slice(before).find(x => x.kind === "results");
+      if (last) keyMs.push(last.ms);
+      await pause(20);
+    }
+  }
+  console.log(`typing: ${keyMs.length} keystrokes to rows, median ${pct(keyMs, 0.5).toFixed(1)} ms, 95th ${pct(keyMs, 0.95).toFixed(1)} ms, worst ${Math.max(...keyMs).toFixed(1)} ms`);
+  budget(pct(keyMs, 0.95) < BUDGET.keyP95Ms, `keystroke to rows 95th percentile under ${BUDGET.keyP95Ms} ms (one frame)`);
+  // Wake: hide and show ten times, timing each show.
+  const wake = [];
+  for (let i = 0; i < 10; i++) {
+    await send({ hide: true }); await pause(200);
+    const n = (await send({ timings: true })).timings.length;
+    await send({ show: true }); await pause(150);
+    const o = (await send({ timings: true })).timings.slice(n).find(x => x.kind === "open");
+    if (o) wake.push(o.ms);
+  }
+  console.log(`wake: ${wake.length} shows, median ${pct(wake, 0.5).toFixed(1)} ms, 95th ${pct(wake, 0.95).toFixed(1)} ms`);
+  budget(pct(wake, 0.95) < BUDGET.wakeP95Ms, `wake 95th percentile under ${BUDGET.wakeP95Ms} ms`);
+  if (process.env.GITHUB_STEP_SUMMARY) {
+    fs.appendFileSync(process.env.GITHUB_STEP_SUMMARY, `### Capsule speed\n\n| | median | 95th |\n|---|---|---|\n| keystroke to rows (ms) | ${pct(keyMs, 0.5).toFixed(1)} | ${pct(keyMs, 0.95).toFixed(1)} |\n| wake (ms) | ${pct(wake, 0.5).toFixed(1)} | ${pct(wake, 0.95).toFixed(1)} |\n`);
+  }
+  await send({ text: "" });
   await send({ hide: true });
   await pause(3000);
   const samples = [];

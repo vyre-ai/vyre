@@ -19,11 +19,11 @@ Owns `local/capsule/` (now native Swift, `local/capsule/native/`) and `local/han
    user commands, paste into the front app, vault inline, currency, time zones, emoji, colour
    picker, media keys. Each permission asked for on first use.
    STATUS (2026-09-30, checked in code): wired and in use today are apps, files, contacts, the
-   dictionary, settings, clipboard history, the calculator with units, and system commands.
-   Written and unit-tested in Sources/Core but NOT called from anywhere, so not usable yet:
-   snippets and user commands, currency, time zones, emoji, colours. Currency also has no rates
-   source. Window management, quicklinks, paste into the front app and per-command hotkeys are not
-   built. The list above is scope, not what works.
+   dictionary, settings, clipboard history, the calculator with units, system commands, and (since
+   Providers/LocalAnswers.swift) emoji, colours, time zones, money with rates from open.er-api.com,
+   snippets, quicklinks and user commands from <home>/capsule/snippets.json. Not built: window
+   management, paste into the front app, per-command hotkeys and aliases. The list above is scope,
+   not what works.
 3. The Capsule gaps from the gallery (brief item 6) and the Capsule items moved here from
    polish-surfaces (items 2, the Capsule half of 3, and 5).
 

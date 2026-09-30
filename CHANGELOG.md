@@ -4,6 +4,17 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+- Capsule: emoji, colours, time zones, money, snippets, quicklinks and your own commands now show
+  up as rows. ":tada" or "smile emoji" finds emoji, "#ff6347" gives every colour form, "time in
+  tokyo" gives the time there, and "100 usd in eur" converts. Money reads exchange rates from one
+  public source (open.er-api.com), only when you type something that reads as money, at most once
+  every 12 hours; with no rates there is no money row. Your own lists live in
+  `<vyre home>/capsule/snippets.json`: snippets (`;sig` copies its text with {date}, {time} and
+  {clipboard} filled in), quicklinks (`wiki pastry` opens a link with your words in it) and
+  commands (open a link, or run a shell line after you confirm). A bad entry is left out and the
+  rest still work.
+- Capsule speed check: the CI run now types real words a letter at a time and reports the median
+  and 95th percentile from key to rows and from hide to show, against one frame (16 ms) and 50 ms.
 - Capsule: the key that proves you are at the Mac no longer needs a fingerprint reader. It asks for
   Touch ID where the Mac has it and for the Mac's login password where it does not, and only for
   what already asked (pairing, vault reveals, sends you did not ask for). A Mac with no Secure
