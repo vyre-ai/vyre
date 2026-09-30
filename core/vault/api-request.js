@@ -127,7 +127,8 @@ function normalizeReaders(r) {
   if (!Array.isArray(r) || r.length > 8) throw bad("readers is a short list of { module, paths }");
   return r.map(e => {
     if (!isObj(e) || typeof e.module !== "string" || !/^[a-z][a-z0-9-]{0,31}$/.test(e.module)) throw bad("a reader names a module");
-    if (!Array.isArray(e.paths) || !e.paths.length || e.paths.length > 16 || !e.paths.every(p => typeof p === "string" && /^\/[^\s]{0,200}$/.test(p))) throw bad("a reader lists the paths it may read, each starting with /");
+    // A path is a literal prefix, optionally ending in one `*`; no other wildcard, and no encoded characters.
+    if (!Array.isArray(e.paths) || !e.paths.length || e.paths.length > 16 || !e.paths.every(p => typeof p === "string" && /^\/[A-Za-z0-9._~\/-]{0,200}\*?$/.test(p) && !/(^|\/)\.\.?(\/|$)/.test(p))) throw bad("a reader lists the paths it may read: each starts with /, is plain text and may end in one *");
     return { module: e.module, paths: [...new Set(e.paths)] };
   });
 }
@@ -139,7 +140,18 @@ function normalizeReaders(r) {
  */
 export function readerMayRead(config, mod, pathAndQuery) {
   const e = (config.readers || []).find(x => x.module === mod);
-  return Boolean(e && e.paths.some(p => pathMatches(p, pathAndQuery)));
+  if (!e) return false;
+  const q = pathAndQuery.indexOf("?");
+  const pathname = q < 0 ? pathAndQuery : pathAndQuery.slice(0, q);
+  // Encoded slashes and dots are how a path is smuggled past a prefix (the server may decode %2f, the URL parser does not), so none is allowed.
+  if (/%(2f|5c|2e|00)/i.test(pathname) || /(^|\/)\.\.?(\/|$)/.test(pathname)) return false;
+  return e.paths.some(pat => {
+    const prefix = pat.endsWith("*") ? pat.slice(0, -1) : pat;
+    if (!pathname.startsWith(prefix)) return false;
+    const rest = pathname.slice(prefix.length);
+    // The prefix ends at a segment: the path is the prefix itself or goes on under it, never a longer name (calendarViewfoo).
+    return pat.endsWith("*") ? rest === "" || prefix.endsWith("/") || rest.startsWith("/") : rest === "";
+  });
 }
 
 // ---- classify ----

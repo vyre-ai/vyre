@@ -16,6 +16,8 @@ import * as saidTools from "./said.js";
 import { register } from "./request.js";
 import { normalize, readerMayRead } from "./api-request.js";
 import { SCRATCH } from "../../test/scratch.mjs";
+import { start } from "../daemon/index.js";
+import { tempHome, present } from "../../test/helpers.js";
 
 const fake = label => `fixture-${label}-${crypto.randomBytes(12).toString("hex")}`;
 const json = (status, body) => ({ status, headers: { "content-type": "application/json" }, body: Buffer.from(JSON.stringify(body)) });
@@ -48,11 +50,22 @@ async function mk(t) {
 test("readers: the shape is checked", () => {
   assert.deepEqual(normalize(CONFIG).readers, CONFIG.readers);
   assert.equal(normalize({ ...CONFIG, readers: undefined }).readers, undefined);
+  for (const badPath of ["/a/*/b", "/a%2fb", "/a b", "/a/../b", "no-slash", "/a**"]) assert.throws(() => normalize({ ...CONFIG, readers: [{ module: "connectors", paths: [badPath] }] }), /reader lists the paths/, badPath);
   for (const bad of ["connectors", [{ module: "Bad Name", paths: ["/a"] }], [{ module: "connectors" }], [{ module: "connectors", paths: [] }], [{ module: "connectors", paths: ["no-slash"] }],
     Array.from({ length: 9 }, (_, i) => ({ module: `m${i}`, paths: ["/a"] }))]) assert.throws(() => normalize({ ...CONFIG, readers: bad }), /reader/, JSON.stringify(bad).slice(0, 60));
   assert.equal(readerMayRead(normalize(CONFIG), "connectors", "/v1.0/me/calendarView?startDateTime=a"), true);
   assert.equal(readerMayRead(normalize(CONFIG), "connectors", "/v1.0/me/messages"), false);
   assert.equal(readerMayRead(normalize(CONFIG), "sessions", "/v1.0/me/calendarView?x=1"), false);
+  // a prefix ends at a segment, and an encoded slash or dot is never a way past it
+  const c = normalize(CONFIG);
+  assert.equal(readerMayRead(c, "connectors", "/v1.0/me/calendarView"), true);
+  assert.equal(readerMayRead(c, "connectors", "/v1.0/me/calendarView/abc?x=1"), true);
+  assert.equal(readerMayRead(c, "connectors", "/v1.0/me/calendarViewfoo"), false, "a longer name is not under the prefix");
+  for (const p of ["/v1.0/me/calendarView%2f..%2fmessages", "/v1.0/me/calendarView%2F..%2Fmessages", "/v1.0/me/calendarView/%2e%2e/messages", "/v1.0/me/calendarView/../messages", "/v1.0/me/calendarView%5cmessages", "/v1.0/me/events/%00"])
+    assert.equal(readerMayRead(c, "connectors", p), false, p);
+  const exact = normalize({ ...CONFIG, readers: [{ module: "connectors", paths: ["/v1.0/me"] }] });
+  assert.equal(readerMayRead(exact, "connectors", "/v1.0/me"), true);
+  assert.equal(readerMayRead(exact, "connectors", "/v1.0/me/messages"), false, "no trailing * means exactly that path");
 });
 
 test("a listed reader reads the named paths with no grant, and nothing else; others still need a grant", async t => {
@@ -69,6 +82,9 @@ test("a listed reader reads the named paths with no grant, and nothing else; oth
   assert.equal(m.net.calls.length, 1, "nothing else reached the network");
   // a module that is not a reader still needs a grant
   await assert.rejects(m.ask({ method: "GET", url: "https://graph.microsoft.com/v1.0/me/calendarView" }, "module:sessions"), /is not granted to sessions/);
+  // an encoded slash does not smuggle the mailbox past the calendar prefix
+  await assert.rejects(m.ask({ method: "GET", url: "https://graph.microsoft.com/v1.0/me/calendarView%2f..%2fmessages" }, "module:connectors"), /encoded slash|may only read/);
+  await assert.rejects(m.ask({ method: "GET", url: "https://graph.microsoft.com/v1.0/me/calendarViewfoo" }, "module:connectors"), /may only read/);
   // a person is unaffected, and a reader cannot be claimed in a request
   assert.equal((await m.ask({ method: "GET", url: "https://graph.microsoft.com/v1.0/me/messages" }, "cli")).status, 200);
   await assert.rejects(m.ask({ method: "GET", url: "https://graph.microsoft.com/v1.0/me/messages", watcher: "w1" }, "module:connectors"), /not granted/, "a watcher's call is not a reader's");
@@ -82,4 +98,43 @@ test("only a person's own surface writes readers; a module cannot add itself", a
   for (const who of ["module:connectors", "module:sessions", "mcp"]) {
     await assert.rejects(m.v.put({ name: "microsoft", kind: "api-credential", fields: { config: JSON.stringify({ ...CONFIG, readers: [{ module: "sessions", paths: ["/v1.0/me/messages*"] }] }), secret: fake("s") } }, who), /only from your own surfaces|your own surfaces/, who);
   }
+});
+
+test("a module that is both a listed reader and granted is still limited to its reader paths", async t => {
+  const m = await mk(t);
+  await m.v.grant({ name: "microsoft", module: "connectors" }, "cli");
+  assert.equal((await m.ask({ method: "GET", url: "https://graph.microsoft.com/v1.0/me/calendarView" }, "module:connectors")).status, 200);
+  await assert.rejects(m.ask({ method: "GET", url: "https://graph.microsoft.com/v1.0/me/messages" }, "module:connectors"), /may only read/, "the grant does not widen it");
+  await assert.rejects(m.ask({ method: "POST", url: "https://graph.microsoft.com/v1.0/me/sendMail", body: { message: {} } }, "module:connectors"), /may only read/);
+  assert.equal(m.gate.held.length, 0);
+});
+
+test("readers can be written and widened only from a person's surface, by put, update and edit alike", async t => {
+  const root = tempHome(t);
+  fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ name: "test-box", vault: { keystore: "file" } }));
+  const d = await start({ root, presence: present, log: () => {} });
+  t.after(() => d.stop());
+  const reg = (tool, input, caller) => d.registry.call(tool, input, caller);
+  const secret = fake("s");
+  const wide = JSON.stringify({ ...CONFIG, readers: [{ module: "connectors", paths: ["/v1.0/me/*"] }, { module: "sessions", paths: ["/v1.0/me/messages*"] }] });
+  assert.ok((await reg("vault.put", { name: "microsoft", kind: "api-credential", fields: { config: JSON.stringify(CONFIG), secret } }, "cli")).data);
+  for (const who of ["module:connectors", "module:sessions", "module:mcp", "mcp", "mcp:agent:juno"]) {
+    for (const [tool, input] of [
+      ["vault.put", { name: "microsoft", kind: "api-credential", fields: { config: wide, secret } }],
+      ["vault.update", { name: "microsoft", fields: { config: wide } }],
+      ["vault.edit", { name: "microsoft", fields: { config: wide } }],
+    ]) {
+      const r = await reg(tool, input, who);
+      assert.ok(r.error, `${who} ${tool} was refused`);
+    }
+  }
+  // the credential was not written by any of them: still one version
+  const versions = async () => ((await reg("vault.history", { name: "microsoft" }, "cli")).data.versions || (await reg("vault.history", { name: "microsoft" }, "cli")).data.history || []).length;
+  assert.equal(await versions(), 1, "no refused call wrote a new version");
+  // a person changes it by put
+  // update and edit read the item back to merge it, which an api-credential never allows, so even a person changes one only by put
+  assert.match((await reg("vault.update", { name: "microsoft", fields: { config: wide } }, "cli")).error?.message || "", /never handed out/);
+  assert.match((await reg("vault.edit", { name: "microsoft", fields: { config: wide } }, "cli")).error?.message || "", /never handed out|api-credential/);
+  assert.ok((await reg("vault.put", { name: "microsoft", kind: "api-credential", fields: { config: wide, secret } }, "cli")).data);
+  assert.equal(await versions(), 2);
 });
