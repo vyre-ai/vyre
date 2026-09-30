@@ -18,7 +18,7 @@ A module runs on the `box` (the always-on server), on `local` (the Mac), or on b
 | Module | Folder | Runs on | Tools | Events | Shows on |
 | --- | --- | --- | --- | --- | --- |
 | [`about`](#about) | `core/about` | `box`, `local` | 1 | 0 | cli |
-| [`agents`](#agents) | `core/agents` | `box`, `local` | 10 | 0 | cli |
+| [`agents`](#agents) | `core/agents` | `box`, `local` | 11 | 0 | cli |
 | [`appearance`](#appearance) | `core/appearance` | `box`, `local` | 3 | 1 | cli |
 | [`apps`](#apps) | `local/apps` | `local` | 6 | 2 | none |
 | [`capsule`](#capsule) | `local/capsule` | `local` | 3 | 2 | capsule, cli |
@@ -89,7 +89,7 @@ A few lines on who the user is, cached for every Claude Code session to start wi
 - Folder: `core/agents`, version 0.1.0
 - Runs on: `box`, `local`
 - Requires: `threads`
-- Tools: [10](tools.md#agents)
+- Tools: [11](tools.md#agents), 1 of them only for other modules
 - Emits: no events
 - Shows on: cli
 - Needs vault: `per-agent`
