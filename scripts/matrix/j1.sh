@@ -48,7 +48,7 @@ docker volume create --label com.docker.compose.project=vyre --label com.docker.
 docker run --rm -v vyre_vyre-home:/home/vyre -e R="$RELAY_BOX_WS" -e N="$NAMES_BOX" busybox sh -c \
   'mkdir -p /home/vyre/.vyre && printf "{\"relay\":{\"enabled\":true,\"url\":\"%s\"},\"network\":{\"directory\":\"%s\"}}\n" "$R" "$N" >/home/vyre/.vyre/config.json && chown -R 1000:1000 /home/vyre && chmod 700 /home/vyre/.vyre && chmod 600 /home/vyre/.vyre/config.json'
 
-printf '{"VYRE_BOX_URL":"%s/box/","VYRE_RELAY":"http://%s:%s","VYRE_BUILD":"tgz","COMPOSE_FILE":"/srv/vyre/compose.yml:/srv/vyre/compose.e2e.yml"}\n' "$SITE" "$IP" "${RELAY##*:}" >"$OUT/env.json"
+printf '{"VYRE_BOX_URL":"%s/box/","VYRE_RELAY":"http://%s:%s","VYRE_BUILD":"tgz","COMPOSE_FILE":"/srv/vyre/compose.yml:/srv/vyre/compose.build.yml:/srv/vyre/compose.e2e.yml"}\n' "$SITE" "$IP" "${RELAY##*:}" >"$OUT/env.json"
 google-chrome --headless=new --remote-debugging-port=9222 --user-data-dir="$RUNNER_TEMP/chrome-j1" --use-mock-keychain --password-store=basic --no-first-run about:blank >/dev/null 2>&1 &
 for i in $(seq 1 50); do curl -fs http://127.0.0.1:9222/json/version >/dev/null && break; sleep 0.2; done
 rc=0
