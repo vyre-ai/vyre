@@ -9,6 +9,8 @@ import { Events } from "../events/index.js";
 import { tempHome, writeModule } from "../../test/helpers.js";
 
 const good = { name: "notes", version: "0.1.0", does: { tools: ["notes.add"] }, watches: { emits: ["note.added"] } };
+/** The same, with notes.add's reach declared (module API 1), so a module in a home may call it. */
+const goodDeclared = { ...good, does: { tools: [{ name: "notes.add", reach: "anyone" }] } };
 
 test("modules: a good manifest has no problems", () => {
   assert.deepEqual(validate(good), []);
@@ -193,7 +195,8 @@ test("modules: one module calls another's tool through ctx.call, and the rules s
     ctx.tool("brief.make", { run: async () => (await ctx.call("notes.add", { text: "from brief" })).data });
     return {};
   } };`;
-  const reg = await registry(t, [["notes", good, echo], ["brief", { version: "0.1.0", requires: ["notes"], does: { tools: ["brief.make"] } }, caller]],
+  // notes.add declares its reach: a module in a home reaches only a declared tool (ADR 0047 H4).
+  const reg = await registry(t, [["notes", goodDeclared, echo], ["brief", { version: "0.1.0", requires: ["notes"], does: { tools: ["brief.make"] } }, caller]],
     { rules: async c => { seen.push(`${c.caller}>${c.tool}`); return { allow: true }; } });
   assert.deepEqual(await reg.call("brief.make", {}, "cli"), { data: { saved: "from brief" } });
   assert.deepEqual(seen, ["cli>brief.make", "module:brief>notes.add"]);
@@ -306,7 +309,7 @@ test("modules: a presence tool needs a proof from every caller but a module, and
   };
   const home = tempHome(t);
   const root = path.join(home, "mods");
-  writeModule(root, "notes", good, echo);
+  writeModule(root, "notes", goodDeclared, echo);
   writeModule(root, "brief", { requires: ["notes"], does: { tools: ["brief.make", "brief.secret"] } }, `export default { async start(ctx) {
     ctx.tool("brief.make", { run: async () => (await ctx.call("notes.add", { text: "from brief" })).data });
     ctx.tool("brief.secret", { internal: true, presence: true, run: async () => 1 });
@@ -670,7 +673,10 @@ test("modules v1: a bakery-shaped v1 module loads, its tools register, and reach
   assert.equal((await reg.call("bakery.target", {}, "mcp")).data.ran, "bakery.target");
   // modules: internal, hidden from everyone but another module.
   assert.equal((await reg.call("bakery.sync", {}, "cli")).error.code, "no_such_tool");
-  assert.equal((await reg.call("bakery.sync", {}, "module:notes")).data.ran, "bakery.sync");
+  // Default-deny (H4): reach modules is for Vyre's own modules, never one in a home.
+  assert.equal((await reg.call("bakery.sync", {}, "module:notes")).error.code, "not_declared");
+  reg.modules.set("mail", { ...reg.modules.get("notes"), dir: path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "mail") });
+  assert.equal((await reg.call("bakery.sync", {}, "module:mail")).data.ran, "bakery.sync");
   // hook: the webhook route only.
   assert.equal((await reg.call("bakery.hook", {}, "cli")).error.code, "no_such_tool");
   assert.equal((await reg.call("bakery.hook", {}, "hook")).data.ran, "bakery.hook");
@@ -692,4 +698,28 @@ test("modules v1: a required module below the range keeps the module from starti
   assert.equal(reg.modules.get("bakery").state, "failed");
   assert.match(reg.modules.get("bakery").error, /requires "notes" >=0\.2\.0, but notes is 0\.1\.0/);
   assert.equal(reg.modules.get("notes").state, "running");
+});
+
+test("modules v1: default-deny, an added caller reaches only a declared reach, and built in callers are unaffected", async t => {
+  const caller = `export default { async start(ctx) {
+    ctx.tool("brief.make", { run: async ({ tool }) => await ctx.call(tool, { text: "from brief" }) });
+    return {};
+  } };`;
+  const reg = await registry(t, [["notes", good, echo], ["bakery", bakeryV1(), bakerySrc], ["brief", { version: "0.1.0", does: { tools: ["brief.make"] } }, caller]]);
+  const via = async tool => (await reg.call("brief.make", { tool }, "cli")).data;
+  assert.equal((await via("notes.add")).error.code, "not_declared", "a string entry is grace form");
+  assert.equal((await via("bakery.orders")).data.ran, "bakery.orders", "declared anyone");
+  assert.equal((await via("bakery.sync")).error.code, "not_declared", "reach modules");
+  // A built in caller keeps grace form.
+  reg.modules.set("mail", { ...reg.modules.get("brief"), dir: path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "mail") });
+  assert.deepEqual(await reg.call("notes.add", { text: "hi" }, "module:mail"), { data: { saved: "hi" } });
+});
+
+test("modules v1: an added module may not replace one of Vyre's, and reserved events key on first-party identity", () => {
+  assert.match(validate({ ...good, replaces: "notes" }).join(), /the 0\.2 allowlist of replaceable modules is empty/);
+  assert.deepEqual(validate({ ...good, replaces: "notes" }, { firstParty: true }), []);
+  // An added module named like sync's owner, replacing it, still can't emit sync.*: the owner is
+  // the first-party module, never the name.
+  const impostor = validate({ ...good, name: "sync", does: {}, replaces: "sync", watches: { emits: ["sync.deleted"] } });
+  assert.ok(impostor.some(p => /reserved for sync/.test(p)) && impostor.some(p => /allowlist/.test(p)), impostor.join("; "));
 });

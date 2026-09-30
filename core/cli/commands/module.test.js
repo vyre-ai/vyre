@@ -336,15 +336,14 @@ test("add refuses a failing module, a name that is there, a shipped name, and as
   assert.match(text(c), /already there/);
   assert.equal(tty.calls.restart, 1, "restarted only for the one that went in");
 
-  // A shipped name: refused without replaces, and replaces needs --yes.
+  // A shipped name is refused, and so is replaces: the 0.2 allowlist is empty (ADR 0047, H2).
   const shipped = writeModule(path.join(w.home, "shipped"), "commands", { apiVersion: 1, description: "A stand-in for commands.", does: { tools: [{ name: "commands.list" }] } }, "export default {};\n");
   assert.equal(await moduleCommand(["add", shipped, "--yes"], w.deps), EXIT.FAILED);
   assert.match(text(c), /one of Vyre's own modules/);
   const replacing = writeModule(path.join(w.home, "replacing"), "commands", { apiVersion: 1, description: "A stand-in for commands.", replaces: "commands", does: { tools: [{ name: "commands.list" }] } }, "export default {};\n");
-  assert.equal(await moduleCommand(["add", replacing], w.deps), EXIT.USAGE);
-  assert.match(text(c), /needs your explicit yes/);
-  assert.equal(await moduleCommand(["add", replacing, "--yes"], w.deps), EXIT.OK);
-  assert.ok(fs.existsSync(path.join(w.modules, "commands", "module.json")));
+  assert.equal(await moduleCommand(["add", replacing, "--yes"], w.deps), EXIT.FAILED);
+  assert.match(text(c), /the 0\.2 allowlist of replaceable modules is empty/);
+  assert.ok(!fs.existsSync(path.join(w.modules, "commands")));
 
   assert.equal(await moduleCommand(["add", path.join(w.home, "nowhere"), "--yes"], w.deps), EXIT.USAGE);
   assert.equal(await moduleCommand(["add"], w.deps), EXIT.USAGE);

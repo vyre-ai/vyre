@@ -19,8 +19,8 @@
 //                   from /v1/modules. In the box's container the host restarts it instead.
 //
 // Adding a module is trusted like installing an npm package: it runs inside vyred. `add` says so
-// in one line. A module named like one of Vyre's own is refused unless its manifest says
-// "replaces" with that name and the person passes --yes; replacing needs that explicit consent.
+// in one line. A module named like one of Vyre's own is refused, and so is one that says
+// "replaces": in 0.2 the allowlist of modules an added module may replace is empty (ADR 0047, H2).
 //
 // --view prints frames ({v, cmd, view, data}, then {v, done, exit}) for the Capsule, chat and the
 // phone (docs/reference/cli-json.md). frame() below is local until polish-cli's core/cli/view.js
@@ -402,7 +402,7 @@ async function make(args, flags, o, deps) {
   if (!NAME.test(name)) return o.refuse(`"${name}" is not a module name: lowercase letters, digits and dashes, 2 to 41 long, starting with a letter`, { code: "bad_name", exit: EXIT.USAGE, next: "vyre module new bake" });
   const home = deps.home || config.home();
   const repo = deps.repo || REPO;
-  if (shippedNames(repo).has(name)) return o.refuse(`${name} is one of Vyre's own modules`, { code: "name_taken", next: "pick another name; replacing a module of Vyre's is a module that says \"replaces\"" });
+  if (shippedNames(repo).has(name)) return o.refuse(`${name} is one of Vyre's own modules`, { code: "name_taken", next: "pick another name; in 0.2 an added module replaces none of Vyre's" });
   if ((await runningNames(deps, home)).has(name)) return o.refuse(`vyred already runs a module named ${name}`, { code: "name_taken", next: "vyre modules shows every name in use; pick another" });
   const parent = path.resolve(flags.dir ? String(flags.dir) : config.paths(home).modules);
   const dir = path.join(parent, name);
@@ -524,7 +524,7 @@ async function install(args, flags, o, deps) {
     if (fs.existsSync(dest)) return o.refuse(`${dest} is already there`, { code: "exists", next: `remove ${dest} first to add this one in its place` });
     const replacing = shippedNames(repo).has(name);
     if (replacing && m.replaces !== name) {
-      return o.refuse(`${name} is one of Vyre's own modules`, { code: "name_taken", next: `a replacement says "replaces": "${name}" in module.json, and is added with --yes` });
+      return o.refuse(`${name} is one of Vyre's own modules`, { code: "name_taken", next: "pick another name; in 0.2 an added module replaces none of Vyre's" });
     }
     if (replacing && !flags.yes) {
       return o.refuse(`${name} replaces Vyre's own ${name}; that needs your explicit yes`, { code: "needs_yes", exit: EXIT.USAGE, next: `vyre module add ${src} --yes` });
@@ -629,7 +629,7 @@ export default {
     "  --yes           do not ask first (needed without a terminal, and with --json or --view)",
     "",
     "A module runs inside vyred, trusted like an npm package. A module named like one of Vyre's",
-    "own is refused, unless its module.json says \"replaces\" with that name and you pass --yes.",
+    "own is refused, and in 0.2 an added module may not say \"replaces\".",
     "In the box's container, the host restarts vyred: docker compose restart vyre.",
     "--view prints frames for the Capsule and the phone (docs/reference/cli-json.md).",
   ].join("\n"),

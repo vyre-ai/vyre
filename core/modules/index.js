@@ -155,6 +155,8 @@ export function validate(m, { firstParty = false } = {}) {
   const providers = m.does && m.does.providers;
   if (providers !== undefined && (!Array.isArray(providers) || providers.some(p => !NAME.test(String(p))))) out.push("does.providers must be a list of lowercase names");
   out.push(...checkCredentials(m.needs && m.needs.credentials));
+  // ADR 0047, reviews/platform.md H2: an added module replaces nothing in 0.2.
+  if (!firstParty && m.replaces !== undefined) out.push("replaces: an added module can't replace one of Vyre's modules; the 0.2 allowlist of replaceable modules is empty");
   return out;
 }
 
@@ -520,7 +522,7 @@ export class Registry {
         fetch: async (name, { field, watcher } = {}) => {
           const declared = [...((m.needs && m.needs.vault) || []), ...credentialItems(m)];
           if (!declared.includes(name) && !declared.some(d => d.startsWith("per-")) && !multipleItem(m, name)) throw new Error(`${m.name} asked the vault for ${name}, which its manifest does not declare under needs.vault or needs.credentials`);
-          const r = await this.call("vault.release", { name, ...(field ? { field } : {}), ...(watcher ? { watcher } : {}) }, `module:${m.name}`);
+          const r = await this.call("vault.release", { name, ...(field ? { field } : {}), ...(watcher ? { watcher } : {}) }, `module:${m.name}`, { door: true });
           if (r.error) throw new Error(r.error.code === "no_such_tool" ? "the vault is not running on this machine" : r.error.message);
           return r.data && r.data.value;
         },
@@ -531,7 +533,7 @@ export class Registry {
         teach: async (kind, fact) => {
           const declared = (m.teaches && m.teaches.memory) || [];
           if (!declared.includes(kind)) throw new Error(`${m.name} taught ${kind}, which its manifest does not declare under teaches.memory`);
-          const r = await this.call("memory.teach", { kind, fact, from: m.name }, `module:${m.name}`);
+          const r = await this.call("memory.teach", { kind, fact, from: m.name }, `module:${m.name}`, { door: true });
           return !r.error;
         },
       },
@@ -582,7 +584,7 @@ export class Registry {
       // tailnet. Resolves like call(), and to { error: { code: "box_unreachable" } } when the
       // box cannot be reached, so a caller can fall back to what this machine has.
       remote: async (tool, input = {}) => {
-        const r = await this.call("link.remote", { tool, input }, `module:${m.name}`);
+        const r = await this.call("link.remote", { tool, input }, `module:${m.name}`, { door: true });
         return r.error && r.error.code === "no_such_tool" ? { error: { code: "no_link", message: "this machine is not linked to a box" } } : r.data && r.data.result ? r.data.result : r;
       },
       // A raw HTTP route on vyred's socket at /v1/<module>/<name>, for what a tool cannot carry:
@@ -653,9 +655,19 @@ export class Registry {
    *   keep to link what it shows (a Glass step) to the chat's tool row, and never use for any
    *   decision. Any other key a caller of this method adds reaches the tool the same way.
    */
-  async call(tool, input = {}, caller = "unknown", { proof = null, keep = false, terminal = null, idempotencyKey = undefined, ...meta } = {}) {
+  async call(tool, input = {}, caller = "unknown", { proof = null, keep = false, terminal = null, idempotencyKey = undefined, door = false, ...meta } = {}) {
     const def = this.tools.get(tool);
     if (!def) return { error: { code: "no_such_tool", message: `no tool ${tool}` } };
+    // Default-deny for an added module (ADR 0047, reviews/platform.md H4): it reaches only a tool
+    // whose reach is declared, and never one declared for Vyre's own modules. `door` is the
+    // loader's own ctx doors (vault.fetch, memory.teach, remote), which check their own declarations.
+    if (!door && String(caller).startsWith("module:")) {
+      const from = this.modules.get(String(caller).slice(7));
+      // A module's own tools are its own business, in either form.
+      if (from && from.dir && def.module !== from.manifest?.name && !firstParty(from.dir) && (!def.declaredReach || def.reach === "modules")) {
+        return { error: { code: "not_declared", message: `${tool} is not open to added modules` } };
+      }
+    }
     if (def.internal && !String(caller).startsWith("module:")) return { error: { code: "no_such_tool", message: `no tool ${tool}` } };
     if (Boolean(def.hook) !== (caller === "hook")) return { error: { code: "no_such_tool", message: `no tool ${tool}` } };
     if (!callerAllowed(def.callers, caller)) return { error: { code: "denied", message: `${tool} is not available to ${callerKind(caller)} callers` } };
