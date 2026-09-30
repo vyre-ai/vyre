@@ -48,7 +48,9 @@ GitHub hosted runners (push work/iq). Never testbox (it is the user's server), n
     (0.7, via fact). Both are confident-wrong and both cite turns that lack the answer.
 
 ## Doing
-- (none: 1 and 2 are done)
+- Fixed reviewer-2 H1 at 22ad3f07 (my ctx.memory.write door reverted at cece5c54; platform owns the door).
+- Two confident-wrong bugs fixed: d6890a60 (a correction in chat wins its one-value slot, old value becomes history), 28e51fab (personal fast path stays out of work questions).
+- Now: 3 decisions (reader, topics, newest wins, history, memory.decisions).
 
 ## Next
 - Review 1 and 2, then 3.
