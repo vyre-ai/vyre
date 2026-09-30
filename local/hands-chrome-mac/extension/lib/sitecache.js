@@ -11,7 +11,7 @@
 // use of a site falls in); a label seen once is remembered here and never sent.
 
 import { sanitize, arrivalCard } from "../shared/sk/site-knowledge.js";
-import { observeOp, originOf } from "./observe.js";
+import { observeOp, observeMiss, originOf } from "./observe.js";
 
 export const FLUSH_MS = 10_000;
 export const STALE_MS = 10 * 60_000;
@@ -26,6 +26,7 @@ export function createSiteCache({ chrome, emit = () => {}, now = Date.now, setT 
   /** @type {Map<string, { card: any, rev: number, at: number }>} */ const cards = new Map();
   /** @type {Map<string, Record<string, any>>} */ const pending = new Map();
   /** @type {Map<string, number>} */ const asked = new Map();
+  /** Misses of facts the device knows, waiting to be reported: one per origin and item. @type {Map<string, { origin: string, part: string, id: string }>} */ const reports = new Map();
   /** label text by origin and key: the visits that saw it. @type {Map<string, Map<string, { text: string, visits: Set<string> }>>} */ const labels = new Map();
   /** @type {any} */ let timer = null;
   /** @type {any} */ let this_ = null;
@@ -45,6 +46,9 @@ export function createSiteCache({ chrome, emit = () => {}, now = Date.now, setT 
     while (m.size > MAX_LABELS) m.delete(/** @type {string} */ (m.keys().next().value));
     return e.visits.size >= 2 ? [...e.visits].slice(0, 4) : [];
   }
+
+  /** The same two-visit evidence for a set of option names (a menu's choices). @param {string} origin @param {string} key @param {string[]} options @returns {string[]} */
+  function choicesVisits(origin, key, options) { return nameVisits(origin, `choices|${key}`, [...options].sort().join("\u0001")); }
 
   /** Read a card from the device: memory, else storage. @param {string} origin */
   async function load(origin) {
@@ -96,10 +100,22 @@ export function createSiteCache({ chrome, emit = () => {}, now = Date.now, setT 
       pending.set(got.origin, cur);
       if (!timer) timer = weak(setT(() => { timer = null; void this_.flush(); }, FLUSH_MS));
     },
+    /** A step could not find a control the card knows: queue one miss for that fact. @param {{ op: string, args?: any, error?: any, tabUrl?: string }} o */
+    miss(o) {
+      if (!enabled) return;
+      const origin = originOf(String(o.tabUrl || ""));
+      const c = origin ? cards.get(origin) : null;
+      let r; try { r = observeMiss({ ...o, card: c ? c.card : null }); } catch { return; }
+      if (!r) return;
+      reports.set(`${r.origin}|${r.part}|${r.id}`, r);
+      if (!timer) timer = weak(setT(() => { timer = null; void this_.flush(); }, FLUSH_MS));
+    },
     /** Clean and send every origin's queue. Returns what was sent, for tests. */
     async flush() {
       if (timer) { clearT(timer); timer = null; }
       /** @type {Array<{ origin: string, patch: any }>} */ const out = [];
+      for (const r of [...reports.values()].slice(0, 20)) { emit({ event: "site.report", origin: r.origin, part: r.part, id: r.id, outcome: "miss" }); stats.sent++; }
+      reports.clear();
       for (const [origin, patch] of [...pending]) {
         pending.delete(origin);
         const s = sanitize(patch);
@@ -113,6 +129,7 @@ export function createSiteCache({ chrome, emit = () => {}, now = Date.now, setT 
     },
     /** The card for an origin, rebuilt from a full record the server sent. @param {any} record */
     async setRecord(record) { if (record && record.key) await this_.setCard(record.key, arrivalCard(record), record.rev); },
+    choicesVisits,
     /** @param {boolean} on */
     setEnabled(on) { enabled = !!on; if (!enabled) { pending.clear(); cards.clear(); labels.clear(); } },
     enabled: () => enabled,

@@ -136,6 +136,9 @@ export default {
           if (d && d.origin && typeof d.origin === "object") void bridge.push({ event: "site.card", origin: String(e.origin), card: d.origin, rev: d.rev });
         })();
       }
+      else if (e.event === "site.report" && learnOn()) {
+        void (async () => { await ctx.call("memory.site.report", { origin: String(e.origin || ""), part: String(e.part || ""), id: String(e.id || ""), outcome: e.outcome === "ok" ? "ok" : "miss" }).catch(() => null); })();
+      }
       else if (e.event === "site.put" && learnOn()) {
         void (async () => {
           const r = /** @type {any} */ (await ctx.call("memory.site.put", { origin: String(e.origin || ""), target: "origin", patch: e.patch }).catch(() => null));

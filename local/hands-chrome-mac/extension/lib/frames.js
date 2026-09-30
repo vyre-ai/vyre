@@ -60,10 +60,13 @@ export function createFrames({ cdp }) {
     // its own tree (whose root is the iframe's frame): read each and graft it under the frame that owns it.
     /** @type {Array<{ session: string|null, tree: any }>} */
     const trees = [{ session: null, tree: t && t.frameTree }];
-    await Promise.all(kids.map(async k => {
+    // The trees are taken in the ORDER THE SESSIONS ATTACHED, whatever order they answer in: when a frame has been replaced (a navigation gave it a new session while the old one
+    // lingers for a moment and still names the same frame id), the newest session wins. A session that answered last must never be the one input is sent to.
+    const answers = await Promise.all(kids.map(async k => {
       await ensureRuntime(tabId, k.sessionId);
-      try { const r = await cdp.send(tabId, "Page.getFrameTree", {}, k.sessionId); if (r && r.frameTree) trees.push({ session: k.sessionId, tree: r.frameTree }); } catch { /* the session went away */ }
+      try { const r = await cdp.send(tabId, "Page.getFrameTree", {}, k.sessionId); return r && r.frameTree ? { session: k.sessionId, tree: r.frameTree } : null; } catch { return null; /* the session went away */ }
     }));
+    for (const a of answers) if (a) trees.push(a);
     /** @type {Map<string, { node: any, session: string|null, parentId: string|null }>} */ const all = new Map();
     /** @param {any} node @param {string|null} session @param {string|null} parentId */
     const collect = (node, session, parentId) => { const f = node.frame || {}; all.set(String(f.id), { node, session, parentId: parentId ?? (f.parentId ? String(f.parentId) : null) }); for (const c of node.childFrames || []) collect(c, session, String(f.id)); };
