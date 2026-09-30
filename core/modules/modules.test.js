@@ -2,6 +2,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import path from "node:path";
+import fs from "node:fs";
 import { validate, discover, order, checkInput, Registry, callerKind, callerAllowed, agentClaim, roleBuckets, firstParty, satisfies } from "./index.js";
 import { fileURLToPath } from "node:url";
 import { open } from "../store/index.js";
@@ -67,13 +68,19 @@ test("modules: tool input is checked before a tool runs", () => {
   assert.match(checkInput(schema, { text: "hi", n: 1.5 }).join(), /n must be integer/);
 });
 
-async function registry(t, mods, { rules } = {}) {
+/**
+ * A real Registry over a temp home. builtIn: the fixtures stand in for modules shipped with Vyre
+ * (core/, local/, modules/), so they are checked as first party: a test of a built in only member
+ * (ctx.vault.fetch, needs.vault) can't sit in the home as an added module (reviews/platform.md CR-H3).
+ */
+async function registry(t, mods, { rules, builtIn = false } = {}) {
   const home = tempHome(t);
   const root = path.join(home, "mods");
   for (const [name, manifest, src] of mods) writeModule(root, name, manifest, src);
   const db = open(path.join(home, "vyre.db"));
   const reg = new Registry({ db, events: new Events(db), config: { role: "local" }, log: () => {}, rules });
-  await reg.start(discover([root]), { role: "local" });
+  const found = discover([root]).map(f => (builtIn ? { ...f, problems: validate(f.manifest, { firstParty: true }), warnings: [] } : f));
+  await reg.start(found, { role: "local" });
   t.after(() => db.close());
   return reg;
 }
@@ -196,7 +203,7 @@ test("modules: one module calls another's tool through ctx.call, and the rules s
     return {};
   } };`;
   // notes.add declares its reach: a module in a home reaches only a declared tool (ADR 0047 H4).
-  const reg = await registry(t, [["notes", goodDeclared, echo], ["brief", { version: "0.1.0", requires: ["notes"], does: { tools: ["brief.make"] } }, caller]],
+  const reg = await registry(t, [["notes", goodDeclared, echo], ["brief", { version: "0.1.0", requires: ["notes"], does: { tools: ["brief.make"] }, needs: { tools: ["notes.add"] } }, caller]],
     { rules: async c => { seen.push(`${c.caller}>${c.tool}`); return { allow: true }; } });
   assert.deepEqual(await reg.call("brief.make", {}, "cli"), { data: { saved: "from brief" } });
   assert.deepEqual(seen, ["cli>brief.make", "module:brief>notes.add"]);
@@ -214,7 +221,7 @@ test("modules: ctx.vault.fetch releases only declared items, through an internal
   const reg = await registry(t, [
     ["vault", { version: "0.1.0", does: { tools: ["vault.release"] } }, vault],
     ["mailer", { version: "0.1.0", does: { tools: ["mailer.check"] }, needs: { vault: ["inbox"] } }, user],
-  ]);
+  ], { builtIn: true });
   assert.deepEqual(await reg.call("mailer.check", { item: "inbox" }, "cli"), { data: { got: "value-of-inbox-for-module:mailer" } });
   assert.match((await reg.call("mailer.check", { item: "bank" }, "cli")).error.message, /does not declare/);
   assert.equal((await reg.call("vault.release", { name: "inbox" }, "mcp")).error.code, "no_such_tool", "Claude reached the vault directly");
@@ -233,7 +240,7 @@ test("modules: \"per-agent\" lets a module fetch any item name, still through va
   const reg = await registry(t, [
     ["vault", { version: "0.1.0", does: { tools: ["vault.release"] } }, vault],
     ["agents", { version: "0.1.0", does: { tools: ["agents.check"] }, needs: { vault: ["per-agent"] } }, user],
-  ]);
+  ], { builtIn: true });
   assert.deepEqual(await reg.call("agents.check", { item: "scout-token" }, "cli"), { data: { got: "value-of-scout-token-for-module:agents" } });
   assert.deepEqual(await reg.call("agents.check", { item: "juno-key" }, "cli"), { data: { got: "value-of-juno-key-for-module:agents" } });
 });
@@ -296,7 +303,7 @@ test("modules: a per-<thing> declaration lets a module fetch items named at run 
   const reg = await registry(t, [
     ["vault", { version: "0.1.0", does: { tools: ["vault.release"] } }, vault],
     ["relay", { version: "0.1.0", does: { tools: ["relay.check"] }, needs: { vault: ["per-sender"] } }, user],
-  ]);
+  ], { builtIn: true });
   assert.deepEqual(await reg.call("relay.check", { item: "work-mail" }, "cli"), { data: { got: "value-of-work-mail-for-module:relay" } });
 });
 
@@ -310,7 +317,7 @@ test("modules: a presence tool needs a proof from every caller but a module, and
   const home = tempHome(t);
   const root = path.join(home, "mods");
   writeModule(root, "notes", goodDeclared, echo);
-  writeModule(root, "brief", { requires: ["notes"], does: { tools: ["brief.make", "brief.secret"] } }, `export default { async start(ctx) {
+  writeModule(root, "brief", { requires: ["notes"], does: { tools: ["brief.make", "brief.secret"] }, needs: { tools: ["notes.add"] } }, `export default { async start(ctx) {
     ctx.tool("brief.make", { run: async () => (await ctx.call("notes.add", { text: "from brief" })).data });
     ctx.tool("brief.secret", { internal: true, presence: true, run: async () => 1 });
     return {};
@@ -456,7 +463,7 @@ test("modules: ctx.vault.fetch accepts items named by needs.credentials, by item
   const reg = await registry(t, [
     ["vault", { version: "0.1.0", does: { tools: ["vault.release"] } }, vault],
     ["talker", { version: "0.1.0", does: { tools: ["talker.check", "talker.mods"] }, needs: { credentials: creds } }, user],
-  ]);
+  ], { builtIn: true });
   assert.deepEqual(await reg.call("talker.check", { item: "talker-deepgram-key" }, "cli"), { data: { got: "value-of-talker-deepgram-key-for-module:talker" } });
   assert.deepEqual(await reg.call("talker.check", { item: "talker-openai" }, "cli"), { data: { got: "value-of-talker-openai-for-module:talker" } });
   assert.match((await reg.call("talker.check", { item: "talker-deepgram" }, "cli")).error.message, /does not declare/);
@@ -604,13 +611,14 @@ const bakeryV1 = () => ({
     { name: "bakery.flour", summary: "order flour", outward: "pay" },
     { name: "bakery.sync", summary: "for other modules", reach: "modules" },
     { name: "bakery.hook", summary: "the till's webhook", reach: "hook" },
-    { name: "bakery.own", summary: "the person's own", reach: "person" },
   ] },
   watches: { emits: ["bakery.order-added"] },
   settings: [{ key: "bakery.target", label: "Daily target", type: "int", default: 40, levels: ["account"], apply: "live" }],
 });
+/** The same shape as one of Vyre's own, which alone may keep a person reach tool. */
+const bakeryBuiltIn = () => { const m = bakeryV1(); m.does.tools.push({ name: "bakery.own", summary: "the person's own", reach: "person" }); return m; };
 const bakerySrc = `export default { async start(ctx) {
-  for (const name of ["bakery.orders", "bakery.target", "bakery.flour", "bakery.sync", "bakery.hook", "bakery.own"]) {
+  for (const name of ctx.name === "bakery" ? ["bakery.orders", "bakery.target", "bakery.flour", "bakery.sync", "bakery.hook", ...(globalThis.__bakeryOwn ? ["bakery.own"] : [])] : []) {
     ctx.tool(name, { input: { type: "object" }, run: async (input, meta) => ({ ran: name, caller: meta.caller }) });
   }
   return { async stop() {} };
@@ -619,6 +627,8 @@ const notesSrc = `export default { async start(ctx) { ctx.tool("notes.add", { ru
 
 test("modules v1: validate accepts object tool entries, mac and windows, and requires with ranges", () => {
   assert.deepEqual(validate(bakeryV1()), []);
+  assert.deepEqual(validate(bakeryBuiltIn(), { firstParty: true }), []);
+  assert.match(validate(bakeryBuiltIn()).join(), /reach "person" is kept for Vyre's own tools/, "an added module can't (CR-H3)");
   assert.deepEqual(validate({ ...bakeryV1(), roles: ["mac", "windows"], requires: ["notes"] }), []);
   const bad = validate({ ...bakeryV1(), roles: ["cloud"], requires: { Notes: "soon" },
     does: { tools: [{ name: "oven.bake" }, { summary: "no name" }, { name: "bakery.x", reach: "everyone", outward: "email" }] } });
@@ -665,15 +675,26 @@ test("modules v1: a mac module runs on a Mac device and stays off elsewhere", as
 });
 
 test("modules v1: a bakery-shaped v1 module loads, its tools register, and reach sets who may call", async t => {
-  const reg = await registry(t, [["bakery", bakeryV1(), bakerySrc], ["notes", good, notesSrc]]);
+  /** @type {any} */ (globalThis).__bakeryOwn = true;
+  t.after(() => { delete /** @type {any} */ (globalThis).__bakeryOwn; });
+  const reg = await registry(t, [["bakery", bakeryBuiltIn(), bakerySrc], ["notes", good, notesSrc]], { builtIn: true });
   assert.equal(reg.modules.get("bakery").state, "running", reg.modules.get("bakery").error);
   for (const n of ["bakery.orders", "bakery.target", "bakery.flour", "bakery.sync", "bakery.hook", "bakery.own"]) assert.ok(reg.tools.has(n), n);
-  // anyone and asked stay open in the loader; outward routing and the asked check come later.
   assert.deepEqual(await reg.call("bakery.orders", {}, "mcp"), { data: { ran: "bakery.orders", caller: "mcp" } });
-  assert.equal((await reg.call("bakery.target", {}, "mcp")).data.ran, "bakery.target");
+  // CR-H1: asked never runs for a model, the harness or a module until the P17 wiring lands.
+  assert.equal((await reg.call("bakery.target", {}, "cli")).data.ran, "bakery.target");
+  for (const c of ["mcp", "mcp:agent:kit", "harness", "cli:agent:kit", "module:notes"]) assert.equal((await reg.call("bakery.target", {}, c)).error.code, "not_asked", c);
+  // CR-H1: outward runs only from the person's own surface or device; everyone else is held_unavailable.
+  assert.equal((await reg.call("bakery.flour", {}, "cli")).data.ran, "bakery.flour");
+  assert.equal((await reg.call("bakery.flour", {}, "tailnet:alex")).data.ran, "bakery.flour");
+  for (const c of ["mcp", "mcp:agent:kit", "cli:agent:kit", "harness", "hook", "module:notes", "tailnet-guest:juno"]) {
+    const r = await reg.call("bakery.flour", {}, c);
+    assert.equal(r.error && r.error.code, "held_unavailable", c);
+    assert.match(r.error.message, /lands with the Gate wiring/);
+  }
   // modules: internal, hidden from everyone but another module.
   assert.equal((await reg.call("bakery.sync", {}, "cli")).error.code, "no_such_tool");
-  // Default-deny (H4): reach modules is for Vyre's own modules, never one in a home.
+  // Default-deny (H4): reach modules is for Vyre's own modules; notes sits in the home, mail ships.
   assert.equal((await reg.call("bakery.sync", {}, "module:notes")).error.code, "not_declared");
   reg.modules.set("mail", { ...reg.modules.get("notes"), dir: path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "mail") });
   assert.equal((await reg.call("bakery.sync", {}, "module:mail")).data.ran, "bakery.sync");
@@ -705,11 +726,18 @@ test("modules v1: default-deny, an added caller reaches only a declared reach, a
     ctx.tool("brief.make", { run: async ({ tool }) => await ctx.call(tool, { text: "from brief" }) });
     return {};
   } };`;
-  const reg = await registry(t, [["notes", good, echo], ["bakery", bakeryV1(), bakerySrc], ["brief", { version: "0.1.0", does: { tools: ["brief.make"] } }, caller]]);
-  const via = async tool => (await reg.call("brief.make", { tool }, "cli")).data;
+  const reg = await registry(t, [["notes", good, echo], ["bakery", bakeryV1(), bakerySrc],
+    ["brief", { version: "0.1.0", does: { tools: ["brief.make"] }, needs: { tools: ["notes.add", "bakery.orders", "bakery.sync", "bakery.target"] } }, caller]]);
+  const via = async tool => { const r = await reg.call("brief.make", { tool }, "cli"); return r.error ? r : r.data; };
   assert.equal((await via("notes.add")).error.code, "not_declared", "a string entry is grace form");
   assert.equal((await via("bakery.orders")).data.ran, "bakery.orders", "declared anyone");
   assert.equal((await via("bakery.sync")).error.code, "not_declared", "reach modules");
+  // CR-H2: asked is never open to a module, and the real ctx.call holds an added module to needs.tools.
+  assert.equal((await via("bakery.target")).error.code, "not_asked");
+  const undeclared = await via("bakery.flour");
+  assert.equal(undeclared.error.code, "undeclared");
+  assert.match(undeclared.error.message, /brief called bakery\.flour, which needs\.tools does not list/);
+  assert.equal((await via("notes.nothing")).error.code, "undeclared");
   // A built in caller keeps grace form.
   reg.modules.set("mail", { ...reg.modules.get("brief"), dir: path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "mail") });
   assert.deepEqual(await reg.call("notes.add", { text: "hi" }, "module:mail"), { data: { saved: "hi" } });
@@ -739,4 +767,28 @@ test("modules v1: the loader speaks the current contract, and apiVersion warns o
   assert.deepEqual((await reg.call("notes.add", {}, "cli")).data, { api: "1.0", has: true, later: false, version: "0.1.0" });
   assert.equal(logs.filter(l => /notes uses apiVersion, which is deprecated; use "vyre": "1"/.test(l)).length, 1);
   assert.equal(reg.modules.get("notes").contract, "1");
+});
+
+test("modules CR-H3: a module placed in the home by hand is held to the added-module rules, never imported when it breaks one", async t => {
+  const home = tempHome(t);
+  const root = path.join(home, "modules");
+  const mark = path.join(home, "imported");
+  const trap = `import fs from "node:fs"; fs.writeFileSync(${JSON.stringify(mark)}, "yes"); export default { async start() { return {}; } };`;
+  writeModule(root, "roster", { vyre: "1", description: "Kit's roster.", does: { tools: [{ name: "roster.fetch" }] }, needs: { vault: ["per-agent"] } }, trap);
+  writeModule(root, "till", { does: { tools: ["till.sum"] }, colour: "red" }, `export default { async start(ctx) { ctx.tool("till.sum", { run: async () => 1 }); return {}; } };`);
+  const db = open(path.join(home, "vyre.db"));
+  t.after(() => db.close());
+  const logs = [];
+  const reg = new Registry({ db, events: new Events(db), config: {}, log: m => logs.push(m) });
+  await reg.start(discover([root]), { role: "box" });
+  const roster = reg.modules.get("roster");
+  assert.equal(roster.state, "invalid");
+  assert.match(roster.error, /needs\.vault is built in only in 0\.2/);
+  assert.ok(!fs.existsSync(mark), "its entry was never imported");
+  // The graces of a load: no vyre reads as "1", and a string entry, a missing description and an
+  // unknown key only warn, once per start.
+  assert.equal(reg.modules.get("till").state, "running");
+  for (const re of [/till: description is missing/, /till: string tool entries are deprecated/, /till: manifest\.colour is not a key in module contract 1\.0/]) {
+    assert.equal(logs.filter(l => re.test(l)).length, 1, `${re} in ${logs.join("\n")}`);
+  }
 });
