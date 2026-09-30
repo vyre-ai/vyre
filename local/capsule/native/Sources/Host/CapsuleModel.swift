@@ -239,6 +239,8 @@ public final class CapsuleModel: ObservableObject {
         return d
     }()
     var token = 0
+    /// When each publish of rows happened, by search token: the speed check reads when the last rows landed.
+    var publishLog: [(token: Int, at: UInt64)] = []
     private var partial: [String: [ResultItem]] = [:]
     var replySub: VyredSubscription?
     var recallTask: Task<Void, Never>?
@@ -538,6 +540,7 @@ public final class CapsuleModel: ObservableObject {
     static let oneLetterRows = 20
 
     func publish(limit: Int? = nil) {
+        publishLog.append((token, DispatchTime.now().uptimeNanoseconds)); if publishLog.count > 400 { publishLog.removeFirst(200) }
         let q = Query(text, front: front)
         var all = partial.values.flatMap { $0 }
         if let b = bindings { all = all.map { b.decorated($0, begin: { [weak self] e in await MainActor.run { self?.beginBinding(e) } }) } }

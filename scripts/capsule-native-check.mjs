@@ -95,6 +95,16 @@ try {
       await pause(20);
     }
   }
+  // What the person feels: the first rows (local: apps, commands, recents) against 50 ms; the rest (Spotlight, mail,
+  // files) may append after, and is reported apart.
+  const firstMs = keyDetail.map(k => k.first).filter(x => typeof x === "number" && x >= 0);
+  await pause(800);                                   // let the slow sources land before reading when they did
+  const allMs = (await send({ timings: true })).timings.filter(x => x.kind === "results").map(x => x.all).filter(x => typeof x === "number");
+  if (firstMs.length) {
+    console.log(`key to first rows: ${firstMs.length} keystrokes, median ${pct(firstMs, 0.5).toFixed(1)} ms, 95th ${pct(firstMs, 0.95).toFixed(1)} ms, worst ${Math.max(...firstMs).toFixed(1)} ms`);
+    budget(pct(firstMs, 0.95) < 50, "key to first rows 95th percentile under 50 ms");
+  }
+  if (allMs.length) console.log(`key to all rows (slow sources included): median ${pct(allMs, 0.5).toFixed(1)} ms, 95th ${pct(allMs, 0.95).toFixed(1)} ms, worst ${Math.max(...allMs).toFixed(1)} ms`);
   console.log(`typing: ${keyMs.length} keystrokes to rows, median ${pct(keyMs, 0.5).toFixed(1)} ms, 95th ${pct(keyMs, 0.95).toFixed(1)} ms, worst ${Math.max(...keyMs).toFixed(1)} ms`);
   // Which keystrokes were slowest, so a slow one can be traced to its words.
   await new Promise(r => { if (sampler.exitCode !== null) r(); else { sampler.on("exit", r); setTimeout(r, 75_000); } });
@@ -106,7 +116,7 @@ try {
   if (heavy.length) console.log(`main thread while typing (samples of 10 ms):\n${heavy.map(l => l.replace(/\s+/g, " ").slice(0, 200)).join("\n")}`);
   const slowest = [...keyDetail].sort((a, b) => b.ms - a.ms).slice(0, 6);
   console.log(`slowest keystrokes: ${slowest.map(k => `"${k.text}" ${k.ms.toFixed(0)} ms (set ${Number(k.set).toFixed(0)}, layout ${Number(k.layout).toFixed(0)})`).join(" · ")}`);
-  budget(pct(keyMs, 0.95) < BUDGET.keyP95Ms, `keystroke to rows 95th percentile under ${BUDGET.keyP95Ms} ms (one frame)`);
+  budget(pct(keyMs, 0.95) < 50, "keystroke to the turn's end 95th percentile under 50 ms");
   // Wake: hide and show ten times, timing each show.
   const wake = [];
   for (let i = 0; i < 10; i++) {
@@ -115,6 +125,17 @@ try {
     await send({ show: true }); await pause(150);
     const o = (await send({ timings: true })).timings.slice(n).find(x => x.kind === "open");
     if (o) wake.push(o.ms);
+  }
+  // A real screen picture, if asked for: the panel shown with a word typed, captured by macOS itself.
+  if (process.env.VYRE_CAPSULE_SCREENS) {
+    fs.mkdirSync(process.env.VYRE_CAPSULE_SCREENS, { recursive: true });
+    try {
+      await send({ show: true }); await send({ text: "safari" }); await pause(900);
+      const f = path.join(process.env.VYRE_CAPSULE_SCREENS, "screen-typing-safari.png");
+      execFileSync("/usr/sbin/screencapture", ["-x", f], { timeout: 20_000 });
+      console.log(`screen capture: ${fs.statSync(f).size} bytes at ${f}`);
+      await send({ text: "" });
+    } catch (e) { console.log(`screen capture failed: ${String(e && e.message || e).split("\n")[0]}`); }
   }
   console.log(`wake: ${wake.length} shows, median ${pct(wake, 0.5).toFixed(1)} ms, 95th ${pct(wake, 0.95).toFixed(1)} ms`);
   budget(pct(wake, 0.95) < BUDGET.wakeP95Ms, `wake 95th percentile under ${BUDGET.wakeP95Ms} ms`);

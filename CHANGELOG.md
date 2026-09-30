@@ -4,6 +4,10 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+- CI now publishes stills of Lumen as an artifact (`lumen-screens-<sha>`): the lens drawing itself in on
+  a summon, the first-launch open at six moments, the menu bar mark light and dark, the panel in its
+  states, and a macOS screen capture of the panel with a word typed. The speed check reports "key to
+  first rows" against 50 ms and "key to all rows" (Spotlight and the like included) apart.
 - Lumen: Spotlight searches (files, documents, mail) now run entirely off the main thread, so a search
   for a word no longer holds up the next keystroke. Text counts as typed only when a key press says
   so; anything else that arrives in the box (a paste, a restored draft, dictation) is marked as not

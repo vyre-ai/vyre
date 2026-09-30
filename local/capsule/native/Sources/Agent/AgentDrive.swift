@@ -58,13 +58,21 @@ enum Drive {
             let t0 = DispatchTime.now()
             m.text = t
             let setMs = ms(t0)
+            let tok = m.token
             // Lay the view out now and say how long that took, to tell the view's cost from the model's.
             let l0 = DispatchTime.now()
             a.panel.host.layoutSubtreeIfNeeded()
             let layoutMs = ms(l0)
-            // The quick rows are drawn in this frame; the rest land after. Report both.
+            let idx = timings.count
+            timings.append(["kind": "results", "ms": -1.0, "set": setMs, "layout": layoutMs, "text": t, "token": tok, "t0": t0.uptimeNanoseconds])
+            // "First rows": the local rows are in this turn's publish; this is when the turn has finished and
+            // the run loop is about to sleep, after the view has been updated and committed.
+            let obs = CFRunLoopObserverCreateWithHandler(nil, CFRunLoopActivity.beforeWaiting.rawValue, false, 3_000_000) { _, _ in
+                MainActor.assumeIsolated { if idx < timings.count { timings[idx]["first"] = ms(t0) } }
+            }
+            CFRunLoopAddObserver(CFRunLoopGetMain(), obs, .commonModes)
             DispatchQueue.main.async {
-                timings.append(["kind": "results", "ms": ms(t0), "set": setMs, "layout": layoutMs, "text": t, "n": m.flat.count])
+                if idx < timings.count { timings[idx]["ms"] = ms(t0); timings[idx]["n"] = m.flat.count }
                 say(["text": t, "rows": m.flat.count])
             }
             return
@@ -75,7 +83,19 @@ enum Drive {
             return
         }
         if VJ.truthy(c["probe"]) { say(probe(a)); return }
-        if VJ.truthy(c["timings"]) { say(["timings": timings]); return }
+        if VJ.truthy(c["timings"]) {
+            // "All rows": when the last publish of this keystroke's rows landed (Spotlight and the like append).
+            let out: [[String: Any]] = timings.map { e in
+                var e = e
+                if let tok = e["token"] as? Int, let t0 = e["t0"] as? UInt64 {
+                    let last = m.publishLog.filter { $0.token == tok }.map(\.at).max()
+                    if let last, last >= t0 { e["all"] = Double(last - t0) / 1e6 }
+                }
+                e["t0"] = nil
+                return e
+            }
+            say(["timings": out]); return
+        }
         if VJ.truthy(c["memory"]) { say(["memory": memory()]); return }
         say(["error": "unknown command"])
     }

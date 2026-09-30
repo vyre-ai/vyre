@@ -8,14 +8,17 @@ import SwiftUI
 
 struct LumenOpenView: View {
     let start: Date
+    /// For a picture of one instant (the speed check's stills): the time to show, instead of the clock.
+    var fixedMs: Double?
+    var icon: NSImage = NSApp.applicationIconImage
 
     var body: some View {
-        TimelineView(.animation) { tl in
-            let ms = tl.date.timeIntervalSince(start) * 1000
+        TimelineView(.animation(paused: fixedMs != nil)) { tl in
+            let ms = fixedMs ?? tl.date.timeIntervalSince(start) * 1000
             let s = LumenMotion.open(atMs: ms)
             VStack(spacing: 18) {
                 ZStack {
-                    Image(nsImage: NSApp.applicationIconImage).resizable().interpolation(.high)
+                    Image(nsImage: icon).resizable().interpolation(.high)
                         .frame(width: 144, height: 144)
                         .scaleEffect(s.tileScale).opacity(s.tileOpacity)
                     // The flare: a warm point on the lens's rim, upper left to right, blooming once.
