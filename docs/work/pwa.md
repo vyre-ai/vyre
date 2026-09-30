@@ -1091,3 +1091,9 @@ Old-Safari brick risk (reviewer-2) fixed: unsupported Ed25519 refuses the instal
 Decision (reviewer-2, team-lead): no serve-time check in vyred. First-load trust is stated plainly: the first load of a hosted origin has no worker (trust on first use); the worker protects every later load. New daemon test proves all 273 listed addresses are byte-static on a real box.
 
 Step 9 done in a plain form: Find > Memory 'Ask Vyre Memory' row over memory.ask (non-streaming, one call per tap; memory.thinking events unused). app-design has not styled it (reuses the fd-askrow row). Step 11 (assistant.glance) not started: the tool is not on stage.
+
+## SAVE / PAUSED (2026-09-30, work/pwa 5554b085 pushed, base stage e1a061cc)
+
+Done and pushed: N-H1 (release-signed shell, hash-gated caching, complete list of 273 served addresses incl. /onboard and /person, version floor, no-Ed25519 safe path), Files view (Drive tile), no passkey chore, enrol-at-pairing client (js/enroll-grant.js, relay/client enroll), Ask Vyre Memory in Find.
+Waiting on: vyre-core re-landing on stage (deck/test/shell-release-sw.test.js is red until then; needs scripts/sign-manifest.mjs and core/vyre-core/release.js; 15/15 with them), native-core's composer (# picker, phone check), assistant.glance (step 11), a box with tailnet 14b6bcc1 plus a real phone (enrol-at-pairing end to end), launch serving /release/ on phone.vyre.run, anywhere's release.yml push.
+Resume: rebase on origin/work/stage-0.2 (cherry-pick if stage was rewound; backup branches backup/pwa-old-tip, backup/pwa-76f39091), get CI green, then the real-device matrix.
