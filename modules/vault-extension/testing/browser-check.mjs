@@ -150,6 +150,16 @@ async function main() {
       await new Promise(r => setTimeout(r, 400));
       return document.getElementById("msg").textContent;
     `);
+    if (/not from the popup/.test(String(paired))) {
+      // Headless Chrome cannot open the real toolbar popup: an extension page opened as a tab carries
+      // sender.tab, and the worker refuses pairing from it on purpose (only the popup pairs). So this
+      // run proves the popup renders against real chrome.* APIs and that a tab-hosted copy is refused;
+      // pairing and fill need the toolbar popup and stay a by-hand check.
+      log("popup renders against real chrome.* APIs; a popup opened as a tab is refused, as designed");
+      log("PARTIAL: pairing and fill need the toolbar popup (run by hand in a headed Chrome)");
+      popup.close();
+      return;
+    }
     if (!/^Paired as/.test(String(paired))) throw new Error(`pairing did not confirm: ${JSON.stringify(paired)}`);
     log(`popup: ${paired}`);
     if (popup.errors.length) throw new Error(`console errors in the popup: ${popup.errors.join(" | ")}`);
