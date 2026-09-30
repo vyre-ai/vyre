@@ -43,8 +43,8 @@ export function createFakeChrome(seed = []) {
       async detach(/** @type {any} */ t) { counts.detach++; attached.delete(t.tabId); },
       async sendCommand(/** @type {any} */ t, /** @type {string} */ method, /** @type {any} */ params) {
         counts.sendCommand++;
-        commands.push({ tabId: t.tabId, method, params });
-        return chrome._.cdp(t.tabId, method, params);
+        commands.push({ tabId: t.tabId, method, params, ...(t.sessionId ? { sessionId: t.sessionId } : {}) });
+        return chrome._.cdp(t.tabId, method, params, t.sessionId);
       },
     },
     tabs: {

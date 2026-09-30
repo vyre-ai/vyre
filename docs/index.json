@@ -1,7 +1,7 @@
 {
   "generated": "scripts/gen-docs-reference",
   "about": "Every Vyre command, tool, event, config key, environment variable, screen and concept, where the code defines it, the docs page that explains it, and every page, line and heading anchor that mentions it.",
-  "counts": {"command":332,"tool":749,"event":314,"config":235,"env":170,"screen":18,"concept":43},
+  "counts": {"command":332,"tool":750,"event":314,"config":235,"env":170,"screen":18,"concept":43},
   "things": [
     {"kind":"screen","name":"/a/:id","definedIn":"deck/views/artifact.js","page":"using/deck.md#what-is-on-each-view","label":"Artifact","routes":["/a/:id"],"mentions":[]},
     {"kind":"tool","name":"about.text","definedIn":"core/about/index.js","page":"reference/tools.md#abouttext","module":"about","mentions":[]},
@@ -104,6 +104,7 @@
     {"kind":"config","name":"chrome.extensionOrigin","definedIn":"local/hands-chrome-mac/index.js","page":null,"mentions":[]},
     {"kind":"tool","name":"chrome.fill","definedIn":"local/hands-chrome-mac/index.js","page":"reference/tools.md#chromefill","module":"chrome","mentions":[]},
     {"kind":"config","name":"chrome.floor","definedIn":"local/hands-chrome-mac/index.js","page":null,"mentions":[]},
+    {"kind":"tool","name":"chrome.frames","definedIn":"local/hands-chrome-mac/index.js","page":"reference/tools.md#chromeframes","module":"chrome","mentions":[]},
     {"kind":"tool","name":"chrome.ghl","definedIn":"local/hands-chrome-mac/index.js","page":"reference/tools.md#chromeghl","module":"chrome","mentions":[]},
     {"kind":"config","name":"chrome.ghlHosts","definedIn":"local/hands-chrome-mac/index.js","page":null,"mentions":[]},
     {"kind":"config","name":"chrome.home","definedIn":"local/hands-chrome-mac/index.js","page":null,"mentions":[]},
