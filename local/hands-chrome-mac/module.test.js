@@ -50,6 +50,9 @@ async function rig(/** @type {any} */ t, { gate = true, nativeHost = /** @type {
   const reg = new Registry({ db, events: new Events(db), log: () => {},
     config: { role: "local", hands: { runner: f.run, sleep: async () => {} }, chrome: { extensionOrigin: null, sockPath, nativeHost, floor, home: sockDir, platform: "darwin", hostDir: sockDir } } });
   const found = [...discover([path.dirname(HERE)]).filter(m => m.dir === HERE || m.dir === HANDS), ...(gate ? discover([path.join(home, "mods")]) : [])];
+  // The stand-in Gate stands for Vyre's own Gate module, which is first party; an added module could not call chrome.release.
+  const firstParty = reg.isFirstParty.bind(reg);
+  reg.isFirstParty = (/** @type {string} */ dir) => dir.startsWith(path.join(home, "mods")) || firstParty(dir);
   await reg.start(found, { role: "local" });
   t.after(() => reg.stop && reg.stop());
   const events = (/** @type {string} */ type) => reg.deps.events.since(0).filter((/** @type {any} */ e) => e.type === type);
