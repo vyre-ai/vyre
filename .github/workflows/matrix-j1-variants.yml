@@ -1,0 +1,54 @@
+# J1 personas and variants (e2e2 item 7): the same install and onboarding on an arm64 server, on a Docker the
+# installer must refuse (snap, rootless, Podman), through a slow link, and with the line pasted twice.
+# Push to work/e2e2-variants or dispatch it.
+name: matrix-j1-variants
+on:
+  workflow_dispatch:
+  push:
+    branches: ["work/e2e2-variants"]
+permissions:
+  contents: read
+concurrency:
+  group: matrix-j1-variants-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  j1:
+    name: j1-${{ matrix.variant }}
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { variant: arm64, runner: ubuntu-24.04-arm, chrome: playwright }
+          - { variant: snap, runner: ubuntu-24.04 }
+          - { variant: rootless, runner: ubuntu-24.04 }
+          - { variant: podman, runner: ubuntu-24.04 }
+          - { variant: slow, runner: ubuntu-24.04 }
+          - { variant: twice, runner: ubuntu-24.04 }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22 }
+      - run: npm ci --no-audit --no-fund
+      - name: A browser for arm64 (Google ships no Linux arm64 Chrome, so Playwright's Chromium)
+        if: matrix.chrome == 'playwright'
+        run: |
+          npx --yes playwright@1.49.1 install --with-deps chromium
+          CH=$(ls -d "$HOME"/.cache/ms-playwright/chromium-*/chrome-linux/chrome | head -1)
+          echo "J1_CHROME=$CH" >>"$GITHUB_ENV"
+          "$CH" --version
+      - name: The site, as vyre.run serves it
+        run: sh scripts/build-site.sh
+      - name: J1 (${{ matrix.variant }})
+        env:
+          J1_VARIANT: ${{ matrix.variant == 'arm64' && '' || matrix.variant }}
+        run: sh scripts/matrix/j1.sh results
+      - name: Diagnostics
+        if: failure()
+        run: |
+          uname -m; tail -30 results/j1/install.log 2>/dev/null; cat results/services.err 2>/dev/null | tail -20; cat results/tc.txt results/tc.err 2>/dev/null
+          docker ps -a; docker logs --tail 60 vyre-vyre-1 2>&1 || true
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with: { name: results-j1-${{ matrix.variant }}, path: results, retention-days: 14 }

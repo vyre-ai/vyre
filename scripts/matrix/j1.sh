@@ -48,8 +48,39 @@ docker volume create --label com.docker.compose.project=vyre --label com.docker.
 docker run --rm -v vyre_vyre-home:/home/vyre -e R="$RELAY_BOX_WS" -e N="$NAMES_BOX" busybox sh -c \
   'mkdir -p /home/vyre/.vyre && printf "{\"relay\":{\"enabled\":true,\"url\":\"%s\"},\"network\":{\"directory\":\"%s\"}}\n" "$R" "$N" >/home/vyre/.vyre/config.json && chown -R 1000:1000 /home/vyre && chmod 700 /home/vyre/.vyre && chmod 600 /home/vyre/.vyre/config.json'
 
-printf '{"VYRE_BOX_URL":"%s/box/","VYRE_RELAY":"http://%s:%s","VYRE_BUILD":"tgz","COMPOSE_FILE":"/srv/vyre/compose.yml:/srv/vyre/compose.build.yml:/srv/vyre/compose.e2e.yml"}\n' "$SITE" "$IP" "${RELAY##*:}" >"$OUT/env.json"
-google-chrome --headless=new --remote-debugging-port=9222 --user-data-dir="$RUNNER_TEMP/chrome-j1" --use-mock-keychain --password-store=basic --no-first-run about:blank >/dev/null 2>&1 &
+
+# Variants (J1_VARIANT): the same journey on a different server or link. Set by the workflow, never by a person.
+#   snap | podman | rootless  a docker on PATH that answers the way that flavour does (a stand-in, named in the results):
+#                             the installer has to turn it away in plain words and start nothing
+#   slow                      the link to the page and the installer is 1 Mbit with 100 ms each way (tc on the runner)
+#   twice                     the install line pasted a second time changes nothing
+VARIANT=${J1_VARIANT:-}
+SHIM=""
+case "$VARIANT" in
+  snap|podman|rootless)
+    REAL=$(command -v docker)
+    case "$VARIANT" in snap) D=$T/shim/snap/bin ;; *) D=$T/shim/bin ;; esac
+    mkdir -p "$D"
+    case "$VARIANT" in
+      snap) printf '#!/bin/sh\nexec %s "$@"\n' "$REAL" >"$D/docker" ;;
+      podman) printf '#!/bin/sh\ncase "$1" in --version) echo "podman version 4.9.3";; *) exec %s "$@";; esac\n' "$REAL" >"$D/docker" ;;
+      rootless) printf '#!/bin/sh\ncase "$1 $2" in "info --format") echo "[name=seccomp,profile=builtin name=rootless name=cgroupns]";; *) exec %s "$@";; esac\n' "$REAL" >"$D/docker" ;;
+    esac
+    chmod 755 "$D/docker"; SHIM=$D
+    case "$VARIANT" in snap) export J1_EXPECT_REFUSE="snap" ;; podman) export J1_EXPECT_REFUSE="podman" ;; rootless) export J1_EXPECT_REFUSE="rootless" ;; esac ;;
+  slow)
+    IFACE=$(ip route get 1.1.1.1 | sed -n 's/.* dev \([^ ]*\).*/\1/p' | head -1)
+    # The page, the relay and the installer's download travel over loopback here: 1 Mbit. The runner's own uplink
+    # (image layers from registries) only gets the 100 ms, since a real server pulls those at its provider's speed.
+    sudo tc qdisc add dev lo root netem delay 100ms rate 1mbit limit 1000 2>"$OUT/tc.err" || sudo tc qdisc add dev lo root tbf rate 1mbit burst 32kbit latency 400ms 2>>"$OUT/tc.err" || echo "j1.sh: could not throttle lo" >&2
+    sudo tc qdisc add dev "$IFACE" root netem delay 100ms 2>>"$OUT/tc.err" || echo "j1.sh: could not delay $IFACE" >&2
+    sudo tc qdisc show >"$OUT/tc.txt" 2>&1 ;;
+  twice) export J1_TWICE=1 ;;
+esac
+
+PATHV=$PATH; [ -z "$SHIM" ] || PATHV=$SHIM:$PATH
+printf '{"VYRE_BOX_URL":"%s/box/","VYRE_RELAY":"http://%s:%s","VYRE_BUILD":"tgz","COMPOSE_FILE":"/srv/vyre/compose.yml:/srv/vyre/compose.build.yml:/srv/vyre/compose.e2e.yml","PATH":"%s"}\n' "$SITE" "$IP" "${RELAY##*:}" "$PATHV" >"$OUT/env.json"
+${J1_CHROME:-google-chrome} --headless=new --remote-debugging-port=9222 --user-data-dir="$RUNNER_TEMP/chrome-j1" --use-mock-keychain --password-store=basic --no-first-run about:blank >/dev/null 2>&1 &
 for i in $(seq 1 150); do curl -fs http://127.0.0.1:9222/json/version >/dev/null && break; sleep 0.2; done
 curl -fs http://127.0.0.1:9222/json/version >/dev/null || { echo "j1.sh: Chrome DevTools never came up" >&2; exit 1; }
 rc=0

@@ -57,8 +57,26 @@ try {
       resolve({ code, words: m ? m[1].split(" ") : null, tail: hide(all).split("\n").slice(-6).join(" | ") });
     });
   });
+  if (process.env.J1_EXPECT_REFUSE) {
+    // A server the installer must turn away (snap, rootless or Podman Docker): it stops in plain words, names the fix,
+    // exits non-zero and starts nothing. The rest of the journey is not reachable, by design.
+    const log = fs.readFileSync(out + "/install.log", "utf8");
+    const plain = new RegExp(process.env.J1_EXPECT_REFUSE, "i").test(log) && /docker\.com/.test(log);
+    r.step("1.3-install-refuses", words.code !== 0 && plain, { ms: Date.now() - t0, why: words.code === 0 ? "the installer went ahead on a Docker it should refuse" : plain ? `exit ${words.code}, plain words and the fix` : `exit ${words.code}: ${words.tail}`.slice(0, 300) });
+    const ps = spawnSync("docker", ["ps", "-a", "--format", "{{.Names}}"], { encoding: "utf8" });
+    const left = String(ps.stdout || "").split("\n").filter(n => /^vyre/.test(n));
+    r.step("1.3c-nothing-started", left.length === 0, { why: left.length ? "containers left: " + left.join(", ") : "no Vyre container was made" });
+    for (const st of ["1.4-page-found-box", "1.5-words-match", "1.6-channel-ready", "1.7-address", "1.8-claude", "1.9-tailscale", "1.11-claim-link"]) r.step(st, "skip", { why: "refused by design on this Docker" });
+    throw Object.assign(new Error("done"), { expected: true });
+  }
   r.step("1.3-install-runs", words.code === 0, { ms: Date.now() - t0, why: words.code === 0 ? undefined : `exit ${words.code}: ${words.tail}`.slice(0, 300) });
   if (words.code !== 0) throw new Error("install failed");
+  if (process.env.J1_TWICE) {
+    // The line pasted a second time (on the same server, or a screenshotted one): it leaves the running box alone.
+    const again = spawnSync("sh", ["-c", line], { env: { ...process.env, ...extraEnv }, encoding: "utf8" });
+    const said = hide((again.stdout || "") + (again.stderr || ""));
+    r.step("1.3d-line-twice-is-harmless", again.status === 0 && /already running/i.test(said) && !/Check words/.test(said), { why: `exit ${again.status}: ${said.split("\n").slice(-4).join(" | ")}`.slice(0, 300) });
+  }
   r.step("1.3b-terminal-words", Boolean(words.words), { why: words.words ? undefined : "the terminal printed no four check words" });
 
   // 1.4 the page finds the box
@@ -156,8 +174,10 @@ try {
   const claimHref = String(await page.evaluate(`(() => { const t = [...document.querySelectorAll("a[href],pre,code,input")].map(e => e.href || e.value || e.textContent).find(x => /onboard\\/passkey/.test(x || "")); return t || ""; })()`)).trim();
   r.step("1.11-claim-link", arrive && /^https:\/\/marlow-finch\.vyre\.run\/onboard\/passkey#claim=\S+/.test(claimHref), { shot: await shot("setup-claim-link"), why: claimHref ? hide(claimHref).slice(0, 100) : "no link on the page after Get my link" });
 } catch (e) {
-  r.step("run", false, { why: hide(e.message).slice(0, 300) });
-  try { await shot("failure"); } catch {}
+  if (!(e && /** @type {any} */ (e).expected)) {
+    r.step("run", false, { why: hide(e.message).slice(0, 300) });
+    try { await shot("failure"); } catch {}
+  }
 } finally {
   if (page) await page.close();
 }
