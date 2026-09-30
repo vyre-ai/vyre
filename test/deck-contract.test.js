@@ -19,6 +19,7 @@ const REPO = path.join(path.dirname(fileURLToPath(import.meta.url)), "..");
  *  it is expected, not a bug this test should catch. A tool leaves this list the day every box
  *  registers it - it does not grow to paper over a call nothing answers by design. */
 const OPTIONAL = {
+  "connectors.scope": "connectors ships it (asked in CHAT.md) for changing who can use an existing connection; the control says so in a line when it fails. Leaves this list when connectors merges.",
   "relay.devices.trust": "tailnet ships it; the trust prompt only appears after a device.trust-asked event, and says so in a line when the call fails. Leaves this list when tailnet merges.",
   "team.list": "teammates ships it in work/teammates-0.2 (core/team); the project Team tab says so in a line when the box has no teammates module. Leaves this list when teammates merges.",
   "team.default.get": "teammates ships it in work/teammates-0.2 (core/team); the project Team tab says so in a line when the box has no teammates module. Leaves this list when teammates merges.",

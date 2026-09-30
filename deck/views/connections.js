@@ -41,6 +41,7 @@ import { showToast } from "../js/toast.js";
 import { since, plural } from "../js/fmt.js";
 import { statusMark, statusOf } from "../js/status-mark.js";
 import { drawCatalog } from "./connectors.js";
+import { redact } from "../js/redact.js";
 
 /** Vault kinds that make sense for each way of using an item (ADR 0016, decision 2). */
 export const ITEM_KINDS = {
@@ -235,7 +236,7 @@ export async function drawConnections(el, ctx, deps = {}) {
   const githubBox = h("div", { class: "cn-group" });
   const formBox = h("div");
   put(el, top, cardsBox, catalogBox, mcpBox, googleBox, githubBox, formBox);
-  void drawCatalog(catalogBox, ctx, { attempt });
+  void drawCatalog(catalogBox, ctx, { attempt, projects: () => (st.projects.length ? st.projects.map(x => ({ slug: x.slug, name: x.name })) : null) });
 
   async function load() {
     const [s, g, c, gh] = await Promise.all([attempt("mcp.servers"), attempt("google.accounts"), attempt("vault.connections.list"), attempt("github.accounts")]);
@@ -622,7 +623,7 @@ export async function drawConnections(el, ctx, deps = {}) {
       if (!ctx.alive()) return;
       tokBtn.disabled = false; save.disabled = false;
       // GitHub's own message is shown as it came (a bad token is a 401 with its words); nothing is made up.
-      if (r.error) { put(stt, String(r.error.message || r.error.code || "GitHub did not take that token.")); return; }
+      if (r.error) { put(stt, redact(r.error.message || r.error.code || "GitHub did not take that token.", [t])); return; }
       const login = str(r.data?.login), repos = num(r.data?.repos);
       st.form = ""; put(formBox);
       showToast({ text: login ? `Connected ${login}${repos != null ? `, reaches ${plural(repos, "repo")}` : ""}` : "Connected the GitHub account." });

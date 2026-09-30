@@ -4,6 +4,12 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### connections: "Who can use it"; duties carry what was shown; shown errors are redacted
+
+- Add a service (`deck/views/connectors.js`): Connect first asks "Who can use it": "Just me and the assistant" (the default, which sends no `scope`), "All projects" (`scope {projects: "*", agents: "*"}`) or "Only these projects" (a picker; none chosen is refused in words). The choice rides along to every later step of the same connect (token, client). An existing connection has the same control ("Who can use it", prefilled from the `scope` the catalog row carries), saved through `connectors.scope {name, scope}` (null is the default), which I asked connectors for.
+- The project Team tab turns a duty on through `team.duties.enable {id, expect}` with the duty's full instruction as shown, so a duty edited since never starts; it reads the row's `trigger`, and a failed enable shows the box's own words. 
+- `deck/js/redact.js` masks token shapes (and whatever was just typed) in error text the Deck shows for a pasted token, in the GitHub token form and the connect steps (reviewer-2).
+
 #### deck: trust asks survive a reload; the box's error texts join the internal-words guard
 
 - The trust card reads who is waiting from `relay.devices.list` (tailnet's `trustAsked`, for a web device that asked and is not trusted), so an ask waits until it is acted on, and drops when the box no longer lists it. The key fingerprint comes from the event; a row from the list has none yet, so after a reload the card says the key is not shown, turns Trust off, and asks the browser to ask again (asked of tailnet: a `fingerprint` on the row). The claimed name also loses bidi, zero-width and C1 control characters (reviewer-2).

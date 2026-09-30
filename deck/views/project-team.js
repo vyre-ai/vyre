@@ -112,8 +112,8 @@ export async function drawTeam(el, ctx, project, deps = {}) {
                   h("button", { class: "btn btn-ghost btn-sm", type: "button", "data-act": "charter-draft", disabled: st.busy === "draft", onclick: () => act("draft", () => attempt("team.charter.draft", { teammate: t.agent })) }, st.busy === "draft" ? "Drafting" : "Draft it from the project"))))),
         h("div", { class: "set-row" }, h("div", { class: "set-k" }, "Duties"),
           h("div", { class: "set-v tm-col" }, p.duties.length ? p.duties.map((/** @type {any} */ d) => h("div", { class: "tm-duty", "data-duty": String(d.id) },
-            h("span", { class: "small" }, clip(d.instruction || d.id, 120)), d.when ? h("span", { class: "small faint" }, String(typeof d.when === "string" ? d.when : d.when?.text || "")) : null,
-            h("button", { class: "btn btn-ghost btn-sm", type: "button", "data-act": "duty-toggle", disabled: st.busy === "duty" + d.id, onclick: () => act("duty" + d.id, () => attempt(d.enabled ? "team.duties.disable" : "team.duties.enable", { id: String(d.id) })) }, d.enabled ? "Pause" : "Turn on"),
+            h("span", { class: "small" }, String(d.instruction || d.id)), d.trigger ? h("span", { class: "small faint" }, String(d.trigger)) : null,
+            h("button", { class: "btn btn-ghost btn-sm", type: "button", "data-act": "duty-toggle", disabled: st.busy === "duty" + d.id, onclick: () => act("duty" + d.id, () => attempt(d.enabled ? "team.duties.disable" : "team.duties.enable", d.enabled ? { id: String(d.id) } : { id: String(d.id), expect: String(d.instruction || "") })) }, d.enabled ? "Pause" : "Turn on"),
             d.enabled ? h("button", { class: "btn btn-ghost btn-sm", type: "button", "data-act": "duty-run", onclick: () => act("run" + d.id, () => attempt("team.duties.run-now", { id: String(d.id) })) }, "Run now") : null)) : h("span", { class: "small muted" }, "No duties."))),
         st.sure === t.agent
           ? h("div", { class: "tm-actions" }, h("span", { class: "small muted" }, `Retire ${t.role}? Its notes and history are kept, and adding ${t.role} again brings it back.`),
