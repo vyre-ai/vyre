@@ -52,6 +52,9 @@ export default {
       if (!Array.isArray(steps) || !steps.length) throw err("bad_request", "batch.run needs steps: [{op, args}]");
       if (steps.length > MAX_STEPS) throw err("bad_request", `batch.run takes at most ${MAX_STEPS} steps`);
       const stopOnError = args.stopOnError !== false;
+      /** What the module's approved plan still covers, set only by the module. @type {any} */
+      const wb = args.writeBudget && typeof args.writeBudget === "object" ? { ...args.writeBudget } : null;
+      /** @type {{ kind: string, res: any }[]} */ const covered = [];
       /** @type {any[]} */
       const results = [];
       /** @type {{ ok: boolean, done: number, results: any[], failedAt?: number, why?: string, code?: string, held?: any, haltMs?: number, detail?: any }} */
@@ -74,7 +77,14 @@ export default {
           const wants = (step.op === "page.act" || step.op === "page.fill") && stepArgs.wait === undefined && args.wait !== false;
           // A batch that names a tab runs its steps on that tab, not on whichever is in front (the agent's tab need not be the active one).
           const onTab = typeof args.tabId === "number" && stepArgs.tabId === undefined && stepArgs.tab === undefined && !/^(tabs\.|ghl\.section)/.test(step.op) ? { tabId: args.tabId, tab: args.tabId } : {};
-          const result = await ctx.call(step.op, { ...onTab, ...(args.asked === true ? { asked: true } : {}), ...(wants ? { wait: args.wait && typeof args.wait === "object" ? args.wait : { timeoutMs: 3000 } } : {}), ...stepArgs });
+          let result = await ctx.call(step.op, { ...onTab, ...(args.asked === true ? { asked: true } : {}), ...(wants ? { wait: args.wait && typeof args.wait === "object" ? args.wait : { timeoutMs: 3000 } } : {}), ...stepArgs });
+          // A write the module's approved plan covers (it sent a budget; a model's input cannot): run it again with writeOk, up to the budget, on the one API origin.
+          if (wb && result && typeof result === "object" && result.held === true && result.write === true && (wb[result.kind] || 0) > 0 && (!wb.origin || result.origin === wb.origin)) {
+            wb[result.kind]--; if (!wb.origin && result.origin) wb.origin = result.origin;
+            const again = await ctx.call(step.op, { ...onTab, ...stepArgs, writeOk: true });
+            covered.push({ kind: result.kind, res: again });
+            result = again;
+          }
           results.push(result);
           if (result && result.ok === false) {
             if (out.ok) {
@@ -92,6 +102,7 @@ export default {
           if (stopOnError) break;
         }
       }
+      if (covered.length) /** @type {any} */ (out).covered = covered.map(c => ({ kind: c.kind, res: c.res }));
       // A batch that was given a name and did every step is kept as a recipe: its steps with every literal turned into a {parameter}.
       if (typeof args.saveAs === "string" && args.saveAs && out.ok && out.done === steps.length) {
         try {

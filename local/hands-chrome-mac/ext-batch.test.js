@@ -159,3 +159,19 @@ test("batch.run: a step cannot carry its own approval (asked, writeOk, release, 
   await batch.ops["batch.run"]({ tabId: 7, asked: true, steps: [{ op: "api.call", args: { entry: "e" } }] }, ctx);
   assert.equal(calls[0][1].asked, true, "the batch's own asked (set by the module from the caller) still applies");
 });
+
+test("batch.run: a held write the module's budget covers is run again with writeOk, up to the budget and on one API origin; the step result is the real one", async () => {
+  const calls = [];
+  const heldW = origin => ({ ok: false, held: true, write: true, kind: "create", method: "POST", origin });
+  const ctx = { stopped: () => false, call: async (op, a) => { calls.push([op, a]); return a.writeOk ? { ok: true, status: 201, method: "POST" } : heldW(a.entry === "other" ? "https://other.example" : "https://api.one.example"); } };
+  const { default: batch } = await import("./extension/caps/batch.js");
+  const steps = [{ op: "api.call", args: { entry: "a" } }, { op: "api.call", args: { entry: "a" } }, { op: "api.call", args: { entry: "a" } }];
+  const r = await batch.ops["batch.run"]({ tabId: 7, writeBudget: { create: 2, edit: 0 }, steps, stopOnError: false }, ctx);
+  assert.equal(r.covered.length, 2);
+  assert.equal(r.results[2].held, true, "the third is beyond the budget");
+  assert.equal(calls.filter(c => c[1].writeOk === true).length, 2);
+  const o = await batch.ops["batch.run"]({ tabId: 7, writeBudget: { create: 5, edit: 0 }, steps: [{ op: "api.call", args: { entry: "a" } }, { op: "api.call", args: { entry: "other" } }], stopOnError: false }, ctx);
+  assert.equal(o.covered.length, 1, "the first write pins the origin; another origin is not covered");
+  const none = await batch.ops["batch.run"]({ tabId: 7, steps, stopOnError: false }, ctx);
+  assert.equal(none.covered, undefined);
+});

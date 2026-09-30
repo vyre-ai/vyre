@@ -253,7 +253,7 @@ export default {
       return via.run(meta || {}, async () => {
         const agent = agentOf(meta.caller);
         const args = { ...input };
-        delete args.agent; delete args.release; delete args.asked; delete args.action; delete args.writeOk;
+        delete args.agent; delete args.release; delete args.asked; delete args.action; delete args.writeOk; delete args.writeBudget;
         const summary = summarize(op, input);
         /** @type {any} */
         let carry = {};
@@ -272,7 +272,25 @@ export default {
           // Scripts, API calls, replays and automations are hands-free after the grant. The extension
           // holds only a request that SENDS something as the person (a message, a post, a payment)
           // when `asked` is false, judged by method and endpoint (extension/shared/outbound.js).
+          // A batch, recipe or flow may make the writes the approved plan still covers without stopping at each one: the module hands it a budget, and only the module can.
+          if (/^(batch\.run|recipe\.run|ghl\.run)$/.test(op) && grant && covers("", { origin: grant.apiOrigin }, args) && oversight.state !== "stopped") {
+            const b = /** @type {any} */ ({ create: grant.left.create, edit: grant.left.edit });
+            if (grant.apiOrigin) b.origin = grant.apiOrigin;
+            if (b.create > 0 || b.edit > 0) args.writeBudget = b;
+          }
           let res = screen(await bridge.call(op, args, { timeoutMs: op === "login.wait" ? Math.min(Number(args.timeoutMs) || 120_000, 600_000) + 15_000 : args.timeoutMs }));
+          // What the batch covered on its own: count it against the plan and keep it for the summary.
+          if (isObj(res) && Array.isArray(res.covered) && grant) {
+            for (const c of res.covered) {
+              if (!isObj(c) || !isObj(c.res)) continue;
+              const g = grant; if (!g) break;
+              g.left[String(c.kind)] = Math.max(0, (g.left[String(c.kind)] || 0) - 1); g.used++;
+              pinPlan(c.res, args);
+              recordChange(c.res, summary, true, urls.get(Number(args.tab)) || "");
+            }
+            showPresence({ of: grant ? grant.total : undefined, label: grant ? grant.title : undefined });
+            res = { ...res, covered: res.covered.length };
+          }
           // A write with the page's login that the plan in force covers goes through; the rest wait for the person.
           if (isObj(res) && res.held === true && res.write === true && covers(String(res.kind), res, args)) {
             pinPlan(res, args);
@@ -329,7 +347,7 @@ export default {
     const covers = (kind, res, args) => {
       if (!grant || oversight.state === "stopped") { grant = grant && oversight.state === "stopped" ? null : grant; return false; }
       if (Date.now() > grant.expiresAt) { grant = null; return false; }
-      if ((grant.left[kind] || 0) <= 0) return false;
+      if (kind && (grant.left[kind] || 0) <= 0) return false;
       // A plan is for one site: the tab it was approved for, that tab's origin, and the one API origin its first write used. Any other is asked.
       const tab = Number(args && args.tab);
       const here = originOf(urls.get(tab) || "");

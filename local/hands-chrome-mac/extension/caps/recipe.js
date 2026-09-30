@@ -62,7 +62,7 @@ export default {
       let steps;
       try { steps = fill(r, args.params && typeof args.params === "object" ? args.params : {}); } catch (e) { throw err("bad_request", String(/** @type {any} */ (e).message)); }
       const t0 = Date.now();
-      const res = await ctx.call("batch.run", { steps, stopOnError: true, asked: args.asked === true, ...(typeof args.tabId === "number" ? { tabId: args.tabId } : {}) });
+      const res = await ctx.call("batch.run", { steps, stopOnError: true, asked: args.asked === true, ...(args.writeBudget ? { writeBudget: args.writeBudget } : {}), ...(typeof args.tabId === "number" ? { tabId: args.tabId } : {}) });
       const ok = res && res.ok !== false;
       r.runs++; if (!ok) r.fails++;
       r.conf = ok ? Math.min(1, r.conf + 0.1) : r.conf * 0.6;

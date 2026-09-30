@@ -590,3 +590,34 @@ test("module: a plan is for one site: other tabs and other API origins are still
   assert.equal((await call(1)).data.ok, true, "the pinned origin still goes through");
   assert.equal(x.ops("api.call").filter((/** @type {any} */ o) => o.args.writeOk === true).length, 2);
 });
+
+test("module: a batch or recipe may make the writes an approved plan covers without stopping at each; the budget is the module's alone", async t => {
+  const { reg, gate, connect } = await rig(t);
+  /** @type {any[]} */ const seen = [];
+  const x = await connect({
+    "tabs.list": () => ({ tabs: [{ id: 1, title: "A", url: "https://app.one.example/w" }] }),
+    "batch.run": (/** @type {any} */ a) => {
+      seen.push(a);
+      const b = a.writeBudget ? { ...a.writeBudget } : null;
+      const covered = [];
+      let created = 0;
+      for (let i = 0; i < 3; i++) { if (b && b.create > 0) { b.create--; covered.push({ kind: "create", res: { ok: true, status: 201, method: "POST", url: "https://api.one.example/x", origin: "https://api.one.example", responseBody: JSON.stringify({ id: `id${i}abcd` }) } }); created++; } }
+      return { ok: created === 3, done: created, results: [], ...(covered.length ? { covered } : {}) };
+    } });
+  void x;
+  await reg.call("hands.grant.add", { agent: "kit" }, "cli");
+  await reg.call("chrome.plan", PLAN, KIT);
+  await reg.call("chrome.tabs", { action: "list" }, KIT);
+  // no plan: no budget, and a model's own budget is stripped
+  await reg.call("chrome.batch", { tab: 1, steps: [{ op: "page.act", args: {} }], writeBudget: { create: 99 } }, KIT);
+  assert.equal(seen[0].writeBudget, undefined);
+  const p = await reg.call("chrome.approve", { title: "Two", items: [{ kind: "create", what: "drafts", count: 2 }], tab: 1 }, KIT);
+  await reg.call("chrome.release", { id: p.data.id, content: gate().requests[gate().requests.length - 1].content }, "module:gate");
+  await reg.call("chrome.batch", { tab: 1, steps: [{ op: "page.act", args: {} }], writeBudget: { create: 99 } }, KIT);
+  assert.deepEqual(seen[1].writeBudget, { create: 2, edit: 0 }, "the plan's remaining count, not the model's");
+  const s = await reg.call("chrome.summary", {}, KIT);
+  assert.equal(s.data.counts.create, 2, "what the batch covered is counted and listed");
+  // the budget is spent: the next batch gets none
+  await reg.call("chrome.batch", { tab: 1, steps: [{ op: "page.act", args: {} }] }, KIT);
+  assert.equal(seen[2].writeBudget, undefined);
+});
