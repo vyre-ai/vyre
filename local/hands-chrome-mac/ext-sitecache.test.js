@@ -5,7 +5,8 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { pageTemplate, observeOp, familyOf, hash } from "./extension/lib/observe.js";
+import { pageTemplate, observeOp, familyOf, hash, paramWithChoices } from "./extension/lib/observe.js";
+import { sanitize } from "./extension/shared/sk/site-knowledge.js";
 import { createSiteCache, FLUSH_MS, WANT_EVERY_MS } from "./extension/lib/sitecache.js";
 import { createSiteStore } from "./standalone/sitestore.js";
 
@@ -38,7 +39,7 @@ test("a control found by identifier is learned; a label only with two visits, an
   // a link's label is never stored (a link can be a person's name), even after many visits
   assert.equal(observeOp({ op: "page.act", tabUrl: GHL, result: act({ role: "link", name: "Robin Ellis" }, { strategy: "role+name" }), nameVisits: () => ["v1", "v2", "v3"] }), null);
   // a button label after two visits is kept
-  const b = observeOp({ op: "page.act", tabUrl: GHL, result: act({ role: "button", name: "Create Workflow" }, { strategy: "role+name" }), nameVisits: () => ["v1", "v2"] });
+  const b = observeOp({ op: "page.act", tabUrl: GHL, result: { ...act({ role: "button", name: "Create Workflow" }, { strategy: "role+name" }), evidence: { container: "none", siblings: 1 } }, nameVisits: () => ["v1", "v2"] });
   assert.equal(b && b.patch.controls[0].name, "Create Workflow");
 });
 
@@ -154,4 +155,34 @@ test("page paths and API paths are canonical before any lookup or send: only rou
   const a = observeOp({ op: "api.learn", tabUrl: GHL, result: { entries: [e, { ...e, id: "e2", pathTemplate: "not a path" }] } });
   assert.equal(a && a.patch.api.length, 1);
   assert.equal(a && a.patch.api[0].pathTemplate, "/contacts/{id}/tags");
+});
+
+test("a label survives only with its full evidence (container, siblings, two visits); without it the control is found by identifier alone", () => {
+  const ev = { container: "none", siblings: 1 };
+  const b = (/** @type {any} */ evidence, /** @type {string[]} */ visits) => observeOp({ op: "page.act", tabUrl: GHL, result: { ...act({ role: "button", name: "Create Workflow", identifier: "create-workflow" }, { strategy: "identifier" }), ...(evidence ? { evidence } : {}) }, nameVisits: () => visits });
+  const withEv = b(ev, ["v1", "v2"]);
+  const item = withEv && withEv.patch.controls[0];
+  assert.deepEqual([item.container, item.siblings, item.name, item.nameVisits], ["none", 1, "Create Workflow", ["v1", "v2"]]);
+  const s = sanitize({ key: "https://app.gohighlevel.com", controls: [item] });
+  assert.equal(s.ok, true);
+  assert.equal(s.record.controls[0].name, "Create Workflow", "the label is kept with evidence");
+  const none = b(null, ["v1", "v2"]);
+  assert.equal(none && none.patch.controls[0].name, undefined, "no evidence, no label sent");
+  // the store itself refuses a label inside a record list or repeated among siblings
+  for (const bad of [{ container: "row", siblings: 1 }, { container: "none", siblings: 5 }]) {
+    const x = b(bad, ["v1", "v2"]);
+    const r = sanitize({ key: "https://app.gohighlevel.com", controls: [x && x.patch.controls[0]] });
+    assert.equal(r.record.controls[0].name, undefined, JSON.stringify(bad));
+  }
+});
+
+test("a menu's choices survive only with the widget's role and two visits that saw the same options", () => {
+  const flow = (/** @type {any} */ param) => sanitize({ key: "https://app.gohighlevel.com", flows: [{ name: "add-action", title: "Add action", params: [param], steps: [], expects: [{ kind: "landmark", arg: "toast" }] }] }).record.flows[0].params[0];
+  const good = flow(paramWithChoices({ name: "type" }, { options: ["Send Email", "Add Tag"], container: "menu", visits: ["v1", "v2"] }));
+  assert.deepEqual(good.choices, ["Send Email", "Add Tag"]);
+  assert.equal(flow(paramWithChoices({ name: "type" }, { options: ["Send Email"], container: "menu", visits: ["v1"] })).choices, undefined, "one visit");
+  assert.equal(flow(paramWithChoices({ name: "owner" }, { options: ["Robin Ellis", "Jane Doe"], container: "listbox", visits: ["v1", "v2"] })).choices, undefined, "a listbox of people is data");
+  assert.equal(flow(paramWithChoices({ name: "x" }, { options: Array.from({ length: 12 }, (_, i) => `Opt ${i}`), container: "menu", visits: ["v1", "v2"] })).choices, undefined, "too many options");
+  const c = createSiteCache({ now: () => 1_000_000 });
+  assert.equal(c.choicesVisits("https://a.example", "p|menu", ["A", "B"]).length, 0, "one visit is not evidence");
 });

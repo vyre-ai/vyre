@@ -72,11 +72,14 @@ export function observeOp(o) {
       const page = pageTemplate(tabUrl);
       const identifier = typeof c.identifier === "string" && c.identifier ? c.identifier : undefined;
       const fixed = FIXED_UI_ROLES.has(role);
-      const name = fixed && typeof c.name === "string" && c.name ? c.name : undefined;
+      // A label travels only for a fixed UI role AND with its full evidence: the container's role, how many controls of the kind share it, and the two visits that saw it.
+      const evd = r.evidence && typeof r.evidence === "object" && typeof r.evidence.container === "string" && Number.isFinite(r.evidence.siblings) ? r.evidence : null;
+      const name = fixed && evd && typeof c.name === "string" && c.name ? c.name : undefined;
       const visits = name && o.nameVisits ? o.nameVisits(origin, `${page}|${role}|${name}`, name) : [];
       if (!identifier && !(name && visits.length >= 2)) continue; // nothing stable to find it by, and nothing that may be stored
       items.push({
         id: `c_${hash(`${page}|${role}|${identifier || name}`)}`, page, role,
+        ...(evd ? { container: evd.container, siblings: evd.siblings } : {}),
         ...(name ? { name, nameVisits: visits } : {}),
         selector: { strategy: identifier ? "identifier" : strategy, ...(identifier ? { identifier } : {}), ...(name && !identifier ? { role, name } : {}) },
         ...(r.trace.fallback === true ? { outcome: "ok", seen: 1 } : { outcome: "ok" }),
@@ -107,4 +110,19 @@ export function observeOp(o) {
   }
 
   return Object.keys(patch).some(k => !["key", "family", "names"].includes(k)) ? { origin, patch } : null;
+}
+
+/** Widgets whose option names are fixed UI vocabulary. A list that holds data (an "Assigned to" select of people) is a listbox or combobox and is never one of these. */
+export const CHOICE_WIDGETS = new Set(["menu", "menubar", "radiogroup", "tablist", "toolbar"]);
+
+/**
+ * A flow parameter that picks from options, with the evidence the store needs before it keeps the option names: the widget's role and the visits that saw the same
+ * options. Without both, the parameter goes out as a plain parameter with no choices.
+ * @param {{ name: string, type?: string }} param @param {{ options?: string[], container?: string, visits?: string[] }} [ev]
+ */
+export function paramWithChoices(param, ev = {}) {
+  const base = { name: param.name, type: param.type || "string" };
+  const opts = Array.isArray(ev.options) ? ev.options.map(x => String(x)).filter(Boolean) : [];
+  if (!opts.length || opts.length > 8 || !ev.container || !CHOICE_WIDGETS.has(String(ev.container).toLowerCase()) || !Array.isArray(ev.visits) || new Set(ev.visits).size < 2) return base;
+  return { ...base, type: "choice", choices: opts, choicesContainer: String(ev.container).toLowerCase(), choicesVisits: [...new Set(ev.visits)].slice(0, 4) };
 }

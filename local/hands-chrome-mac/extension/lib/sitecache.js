@@ -46,6 +46,9 @@ export function createSiteCache({ chrome, emit = () => {}, now = Date.now, setT 
     return e.visits.size >= 2 ? [...e.visits].slice(0, 4) : [];
   }
 
+  /** The same two-visit evidence for a set of option names (a menu's choices). @param {string} origin @param {string} key @param {string[]} options @returns {string[]} */
+  function choicesVisits(origin, key, options) { return nameVisits(origin, `choices|${key}`, [...options].sort().join("\u0001")); }
+
   /** Read a card from the device: memory, else storage. @param {string} origin */
   async function load(origin) {
     const have = cards.get(origin);
@@ -113,6 +116,7 @@ export function createSiteCache({ chrome, emit = () => {}, now = Date.now, setT 
     },
     /** The card for an origin, rebuilt from a full record the server sent. @param {any} record */
     async setRecord(record) { if (record && record.key) await this_.setCard(record.key, arrivalCard(record), record.rev); },
+    choicesVisits,
     /** @param {boolean} on */
     setEnabled(on) { enabled = !!on; if (!enabled) { pending.clear(); cards.clear(); labels.clear(); } },
     enabled: () => enabled,
