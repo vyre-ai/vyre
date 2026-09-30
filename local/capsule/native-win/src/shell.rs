@@ -78,6 +78,16 @@ pub fn pin_from_offer(handle: Option<&str>, address: Option<&str>) -> Result<Pin
     }
 }
 
+/// A Windows tool's full path under the Windows folder, so the shell never runs a same-named file
+/// from the working directory. `system_root` is the SystemRoot variable, trusted only as a drive path.
+pub fn system_path(system_root: Option<&str>, rel: &str) -> String {
+    let root = match system_root {
+        Some(r) if r.len() >= 3 && r.as_bytes()[0].is_ascii_alphabetic() && &r[1..3] == ":\\" => r.trim_end_matches('\\'),
+        _ => "C:\\Windows",
+    };
+    format!("{root}\\{rel}")
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -142,5 +152,13 @@ mod tests {
         assert_eq!(ok(None, Some("http://box.harlow.example")), Err("bad_address"));
         assert_eq!(ok(None, None), Err("no_address"));
         assert_eq!(ok(Some("-x"), None), Err("bad_handle"));
+    }
+
+    #[test]
+    fn windows_tools_run_by_full_path() {
+        assert_eq!(system_path(Some("D:\\Win"), "System32\\reg.exe"), "D:\\Win\\System32\\reg.exe");
+        assert_eq!(system_path(Some("D:\\Win\\"), "explorer.exe"), "D:\\Win\\explorer.exe");
+        assert_eq!(system_path(Some(".\\evil"), "System32\\reg.exe"), "C:\\Windows\\System32\\reg.exe");
+        assert_eq!(system_path(None, "System32\\net.exe"), "C:\\Windows\\System32\\net.exe");
     }
 }

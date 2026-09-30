@@ -21,6 +21,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { isPerson } from "../../lib/caller.js";
+import { within } from "../../lib/within.js";
 
 export const MIGRATIONS = [
   `CREATE TABLE agents_agents (
@@ -332,9 +333,24 @@ export default {
         guard(caller, "talk to other agents");
         // A person's own tags ride with the words, as that person (threads.send hears their turn); from any other caller they are dropped.
         const tagged = isPerson(caller) && ((Array.isArray(i.mentions) && i.mentions.length) || (Array.isArray(i.pasted) && i.pasted.length));
+        // The person typing an ask is the person choosing to spend, so the daily spend cap (core/spend) does not hold it;
+        // it is told instead. What agents and automations start on their own is what the cap holds.
+        const byPerson = isPerson(caller);
+        const told = { done: false };
+        const capNotice = async thread => {
+          if (!byPerson || told.done) return;
+          told.done = true;
+          try {
+            const c = (await ctx.call("spend.check", { provider: "claude" })).data;
+            if (c && c.capped) await ctx.call("threads.notice", { thread, text: `The daily spend cap is reached ($${Number(c.spent).toFixed(2)} of $${Number(c.cap).toFixed(2)}). You asked, so this went through. To change the cap: vyre spend raise ${c.scope || "claude"} <dollars>` });
+          } catch { /* no spend module: no cap to tell */ }
+        };
+        // A person's ask is relayed as that person (threads.send hears it as their own turn, and the daily spend cap, which holds
+        // what agents and modules start on their own, does not hold it); any other caller's goes as this module and stays held.
         const sendWords = async thread => {
-          if (!tagged) return use("threads.send", { thread, text: i.text, surface });
-          const r = await ctx.call("threads.send", { thread, text: i.text, surface, mentions: i.mentions || [], pasted: i.pasted || [] }, { as: String(caller) });
+          await capNotice(thread);
+          if (!byPerson) return use("threads.send", { thread, text: i.text, surface });
+          const r = await ctx.call("threads.send", { thread, text: i.text, surface, ...(tagged ? { mentions: i.mentions || [], pasted: i.pasted || [] } : {}) }, { as: String(caller) });
           if (r.error) throw new Error(r.error.message);
           return r.data;
         };
@@ -367,8 +383,7 @@ export default {
             if (!s.sent) return { agent: a.name, thread, ok: false, text: "", note: s.note };
           }
           if (i.wait === false) return { agent: a.name, thread, ok: true, sent: true, text: "" };
-          const timer = new Promise(r => setTimeout(() => r({ ok: false, note: "still working; the reply will stream to the thread" }), ASK_WAIT_MS).unref?.());
-          const r = await Promise.race([done, timer]);
+          const r = await within(done, ASK_WAIT_MS, { ok: false, note: "still working; the reply will stream to the thread" });
           return { agent: a.name, thread, text: heard.text, ...(/** @type {object} */ (r)) };
         } finally {
           for (const off of offs) off();

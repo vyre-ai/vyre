@@ -14,6 +14,7 @@ import { wantsMacs, askMacs, mergeRows, sourcesOf, boxLabel, macLabel } from "..
 import { isProjectId } from "../../lib/project-id.js";
 import { ownerDevice } from "../modules/index.js";
 import { real } from "./markers.js";
+import { within } from "../../lib/within.js";
 
 const str = { type: "string" };
 const strs = { type: "array", items: str };
@@ -531,9 +532,7 @@ export default {
       // Stops the auto-seed and waits (two seconds at most) for the step it is in, so nothing writes after the database closes.
       async stop() {
         stopped = true;
-        let timer;
-        await Promise.race([autoSeed.catch(() => {}), new Promise(res => { timer = setTimeout(res, 2000); if (timer.unref) timer.unref(); })]);
-        clearTimeout(timer);
+        await within(autoSeed.catch(() => {}), 2000);
       },
       seeded: autoSeed,
     };

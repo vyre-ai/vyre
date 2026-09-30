@@ -1,6 +1,6 @@
 // @ts-check
 // Who a row is from, in the words every Chat view shows. One rule, here, so the session view, the
-// cards and the list agree (and the Capsule and the phone mirror it):
+// cards and the list agree (and Lumen and the phone mirror it):
 //
 //   a reply        the agent's own name when the thread is an agent's, else the assistant's name
 //                  from onboarding (system.info's assistant.name), else "Vyre"

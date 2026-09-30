@@ -1431,3 +1431,28 @@ test("describe: a Bash ask's summary is redacted, as it is shown on every device
   assert.match(d.summary, /^curl -H "Authorization: Bearer \[/);
   assert.equal(describe("Bash", { command: "npm   test" }).summary, "npm test");
 });
+
+test("spend cap, through the real daemon: at the cap the person's own agents.ask, threads.send and unnamed mcp session go through, the ask with a notice on the thread", async t => {
+  const { root, tool, work } = await boot(t);
+  const s = sse(root);
+  t.after(() => s.close());
+  assert.equal((await tool("spend.raise", { provider: "all", to: 0.25 })).data.cap, 0.25);
+  const started = await tool("threads.start", { cwd: work, prompt: "spend 0.5" });
+  assert.ok(started.data, JSON.stringify(started.error));
+  const id = started.data.id || started.data.thread;
+  // The turn cost more than the cap: the ledger has seen it.
+  const at = await until(async () => { const c = (await tool("spend.check", {})).data; return c && c.capped ? c : null; }, "the ledger reaching the cap");
+  assert.equal(at.scope, "all");
+  assert.match(at.line, /vyre spend raise all/);
+  await tool("agents.create", { name: "scout", projects: [] });
+  // The person typing an ask to an agent is the person choosing to spend: it goes through, and the thread is told about the cap.
+  const asked = await tool("agents.ask", { agent: "scout", text: "hello", wait: false });
+  assert.ok(asked.data && asked.data.sent, JSON.stringify(asked));
+  const note = await until(() => of(s.got, asked.data.thread, "thread.text").find(e => e.payload.notice && /You asked, so this went through/.test(e.payload.text || "")), "the cap notice on the agent's thread");
+  assert.match(note.payload.text, /vyre spend raise all/);
+  // The person's own surfaces and their own Claude session are never held.
+  for (const who of ["cli", "deck", "mcp"]) {
+    const r = await tool("threads.send", { thread: id, text: `from ${who}` }, who);
+    assert.notEqual(r.error && r.error.code, "spend_capped", `${who}: ${JSON.stringify(r.error)}`);
+  }
+});

@@ -16,6 +16,7 @@ import { execFile } from "node:child_process";
 import { migrate } from "../store/index.js";
 import { dialogsAllowed, NO_DIALOG } from "../config/dialogs.js";
 import { isServer } from "../config/index.js";
+import { within } from "../../lib/within.js";
 
 /**
  * The floor's list. These need presence whatever their owners declare; a module can add to the
@@ -598,8 +599,7 @@ export class Presence {
       // The helper is built on first use, which can take a while. A refusal should not wait on
       // that: until it answers, Touch ID is not offered, and the build carries on behind.
       const t = await this.touchid();
-      const within = new Promise(r => setTimeout(r, 3000, false).unref());
-      try { if (t && await Promise.race([t.available(), within])) out.push("touchid"); } catch {}
+      try { if (t && await within(t.available(), 3000, false)) out.push("touchid"); } catch {}
     }
     if (this.ttyAllowed() && !this.noTtyWrites) out.push("tty");
     const link = this.coreLink;

@@ -19,6 +19,7 @@ import fs from "node:fs";
 import { coerce, read, write, whereIs, needsConfirm } from "../config/settings.js";
 import { claudeHome } from "../config/index.js";
 import { readHub, writeHub, hubPath, digest, levelOf } from "./hub.js";
+import { withinOrThrow } from "../../lib/within.js";
 
 const PEOPLE = ["cli", "local", "deck", "capsule"];
 const MIGRATIONS = [
@@ -91,11 +92,11 @@ export const asPerson = caller => {
 };
 
 /** What a caller may see about one key, without its value. @param {any} d */
-const describe = d => ({
+export const describe = d => ({
   key: d.key, module: d.module, group: d.group || d.module, label: d.label, ...(d.help ? { help: d.help } : {}), type: d.type,
   ...(d.enum ? { enum: d.enum } : {}), ...(d.labels ? { labels: d.labels } : {}), ...(d.choices ? { choices: d.choices } : {}),
   ...(d.min !== undefined ? { min: d.min } : {}), ...(d.max !== undefined ? { max: d.max } : {}),
-  levels: d.levels, apply: d.apply, owner: d.store && d.store.claude ? "C" : "V", ...(d.advanced ? { advanced: true } : {}),
+  levels: d.levels, apply: d.apply, owner: d.store && d.store.claude ? "C" : "V", ...(d.advanced ? { advanced: true } : {}), ...(d.hidden ? { hidden: true } : {}),
   ...(d.security ? { security: d.security } : {}), ...(d.confirm ? { confirm: d.confirm } : {}), ...(d.loosens ? { loosens: d.loosens } : {}),
   ...(d.default !== undefined ? { default: d.default } : {}), ...(d.secret ? { secret: true } : {}),
 });
@@ -197,8 +198,7 @@ export default {
 
     // ---- check and choicesFrom: a module's own say, with a deadline --------------------------------
     const DEADLINE = 500;
-    const inTime = (/** @type {Promise<any>} */ p, /** @type {string} */ tool) => Promise.race([p,
-      new Promise((_, no) => { const t = setTimeout(() => no(Object.assign(new Error(`${tool} took too long`), { code: "bad_input" })), DEADLINE); t.unref?.(); })]);
+    const inTime = (/** @type {Promise<any>} */ p, /** @type {string} */ tool) => withinOrThrow(p, DEADLINE, () => Object.assign(new Error(`${tool} took too long`), { code: "bad_input" }));
     /** A key's own check, called as this module: it refuses, never passes by default. */
     const checked = async (/** @type {any} */ d, /** @type {any} */ value, /** @type {Lv} */ lv, /** @type {string|null} */ target) => {
       if (!d.check || !d.check.tool || value === undefined) return;

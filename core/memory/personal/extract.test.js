@@ -452,3 +452,22 @@ test("personal extract: tools said in passing", () => {
   noFacts("i'm in charge of the release");
   noFacts("is anyone in figma right now?");
 });
+
+test("personal extract: a correction marks the new value of a one-value slot, in many phrasings", () => {
+  const methods = text => Object.fromEntries(extractPersonal(text).claims.map(c => [`${c.subj}|${c.rel}|${c.obj}`, c.method]));
+  const want = [
+    ["no, rex is a poodle not a labrador", "name:Rex|breed|lit:poodle"],
+    ["nope, the cat is a ragdoll", "kin:cat|breed|lit:ragdoll"],
+    ["actually we live in Denver, not Boulder", "me|lives_in|place:Denver"],
+    ["no, I'm from Bath, not Bristol", "me|from|place:Bath"],
+    ["actually I drive a Kia Niro, not the Jazz", "me|drives|vehicle:Kia Niro"],
+    ["correction: my wife is a nurse, not a teacher", "kin:spouse|role|lit:nurse"],
+    ["not a teacher, my wife's a nurse", "kin:spouse|role|lit:nurse"],
+    ["my husband works at Acme Corp now, rather than Globex", "kin:spouse|works_at|org:Acme Corp"],
+  ];
+  for (const [t, k] of want) assert.equal(methods(t)[k], "correct", `${t}: ${JSON.stringify(methods(t))}`);
+  // The link to the relative is not the thing corrected, and a plain line corrects nothing.
+  assert.notEqual(methods("correction: my wife is a nurse, not a teacher")["me|spouse|kin:spouse"], "correct");
+  for (const t of ["I live in Denver, not far from Boulder", "I drive a Honda Jazz", "Rex is a poodle", "I'm not sure yet, but I live in Leeds"])
+    assert.ok(!Object.values(methods(t)).includes("correct"), `${t}: ${JSON.stringify(methods(t))}`);
+});

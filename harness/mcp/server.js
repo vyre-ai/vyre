@@ -19,11 +19,12 @@ import { VERSION } from "../../core/daemon/index.js";
 import { home, paths } from "../../core/config/index.js";
 import { readKey } from "../../core/switchboard/sessions.js";
 import { PERSON_ONLY, HUMAN_ONLY } from "../../core/presence/index.js";
+import { ALIASES, REPLACED } from "./memory-tools.js";
 
 const PROTOCOL = "2025-06-18";
 /**
  * MCP name -> what a call runs: a Vyre module tool, or a hub tool by its aggregated name.
- * @type {Map<string, { tool: string } | { hub: string }>}
+ * @type {Map<string, { tool: string, alias?: string } | { hub: string }>}
  */
 let names = new Map();
 /** A model reads this first on a hub tool that goes to the Gate, so it expects to wait. */
@@ -63,9 +64,14 @@ async function tools() {
   // A session's own socket (VYRE_SOCKET) is vyred's to open: never start a vyred from inside one.
   if (r.error && r.error.code === "unreachable" && !process.env.VYRE_SOCKET) { await ensureUp(); r = await request("GET", "/v1/tools", undefined, { caller: CALLER }); }
   if (r.error) return [];
-  const list = r.data.filter(offered);
+  const all = r.data.filter(offered);
+  // The five memory tools go by their own names; their raw twins are not offered beside them.
+  const has = new Set(all.map(t => t.name));
+  const list = all.filter(t => !(REPLACED.has(t.name) && Object.values(ALIASES).some(a => a.tool === t.name)));
+  const aliased = Object.entries(ALIASES).filter(([, a]) => has.has(a.tool));
   const own = list.map(t => ({ name: mcpName(t.name), description: t.description || t.name, inputSchema: { type: "object", ...(t.input || {}) } }));
   const next = new Map(list.map(t => [mcpName(t.name), { tool: t.name }]));
+  for (const [name, a] of aliased) { own.push({ name, description: a.description, inputSchema: a.input }); next.set(name, { tool: a.tool, alias: name }); }
   // No mcp module (no_such_tool) or any other refusal: the module tools alone, as before.
   const hub = await call("mcp.tools", {}, { caller: CALLER, session: sessionKey() });
   const extra = [];
@@ -98,7 +104,7 @@ async function handle(msg) {
     case "initialize":
       return { protocolVersion: params?.protocolVersion || PROTOCOL, capabilities: { tools: { listChanged: false } }, serverInfo: { name: "vyre", version: VERSION },
         instructions: "Vyre's tools: projects, recall across every past session, memory, and whatever modules this machine runs. Facts from memory come with their source; say where a fact came from when you use one. " +
-          "When the user asks what you know about them or their work, ask memory_answer, when it is offered, before saying you do not know. " +
+          "When the user asks what you know about them or their work, ask memory_ask, when it is offered, before saying you do not know. " +
           "When you promise a reminder or a todo (\"I'll remind you at 6\"), make it real with planner_add in the same turn and say when it is set. Without planner_add, say Vyre cannot remind yet rather than promise." };
     case "ping": return {};
     case "tools/list": return { tools: await tools() };
@@ -110,13 +116,14 @@ async function handle(msg) {
       // which checks scope itself; a module tool's name never has "__".
       if ((hit && "hub" in hit) || (!hit && asked.includes("__"))) return hubCall(asked, params?.arguments || {});
       const tool = hit && "tool" in hit ? hit.tool : asked;
+      const alias = hit && "alias" in hit ? ALIASES[String(hit.alias)] : null;
       // agents.ask waits for a whole turn of another session, which can take minutes.
       const session = sessionKey();
       // Claude Code's own id for this tool call, so a tool's steps (a Glass step, a computer action)
       // link back to the chat row that caused them (vyred reads it as meta.call on a session's paths).
       const meta = params?._meta || {};
       const callId = [meta["claudecode/toolUseId"], meta.toolUseId, meta.tool_use_id].find(v => typeof v === "string" && v);
-      const r = await call(tool, scoped(tool, params?.arguments || {}), { caller: CALLER, session, timeout: tool === "agents.ask" ? 600_000 : 120_000,
+      const r = await call(tool, scoped(tool, alias ? alias.map(params?.arguments || {}, process.env) : params?.arguments || {}), { caller: CALLER, session, timeout: tool === "agents.ask" ? 600_000 : 120_000,
         ...(callId ? { headers: { "x-vyre-call-id": callId } } : {}) });
       if (r.error) return { content: [{ type: "text", text: `${r.error.code}: ${r.error.message}` }], isError: true };
       return { content: [{ type: "text", text: typeof r.data === "string" ? r.data : JSON.stringify(r.data, null, 2) }], structuredContent: r.data && typeof r.data === "object" && !Array.isArray(r.data) ? r.data : undefined };
