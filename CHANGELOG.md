@@ -26,6 +26,7 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 - The session MCP server answers JSON that is not a request object (null, a number, an array) with
   an invalid-request error; it used to exit. Seeded fuzz tests cover the relay frames and the MCP
   lines (`core/relay/fuzz.test.js`, `core/mcp/fuzz.test.js`).
+- The name directory (`names/worker`, a Cloudflare Worker at names.vyre.run) holds the only vyre.run DNS credential. A box claims a name for good, points it at a tailnet address only, and writes its own ACME challenge through it, signed with the relay route key. New `names.recover`, `names.domain.check`; Let's Encrypt only (ZeroSSL and the PSL wait for 0.3).
 - Module contract v1 (ADR 0047), as a proof on the platform branch. `module.json` says for each
   tool who may call it (`reach`) and whether it acts as you outside (`outward`). Each ctx member a
   module uses has one declaration, and the install card is built from them.

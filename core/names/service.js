@@ -1,9 +1,11 @@
 // @ts-check
 // The names service: `<you>.vyre.run`, its certificate, and the tailnet listener (ADR 0002).
 //
-// Everything that touches the outside world comes in as an adapter (tailscale, Cloudflare, ACME,
-// the certificate store), so the whole claim flow runs in tests against fakes. index.js wires
-// the real ones.
+// Everything that touches the outside world comes in as an adapter (tailscale, the name directory,
+// ACME, the certificate store), so the whole claim flow runs in tests against fakes. index.js wires
+// the real ones. The name directory (directory.js, names/worker) holds the only vyre.run DNS
+// credential; `deps.dns`, a Cloudflare zone client, is the development path for a box that has
+// its own token and no directory.
 
 import crypto from "node:crypto";
 import fs from "node:fs";
@@ -11,10 +13,8 @@ import https from "node:https";
 import path from "node:path";
 import { identifier } from "./identity.js";
 import { hostedOrigins } from "../config/index.js";
+import { verdict, codeHash, base32 } from "./rules.js";
 
-const NAME = /^[a-z][a-z0-9-]{0,30}[a-z0-9]$/;
-const RESERVED = new Set(["www", "api", "app", "admin", "mail", "docs", "status", "blog", "help", "support", "deck", "vyre",
-  "root", "ns1", "ns2", "dev", "staging", "test", "download", "install", "login", "auth", "directory"]);
 const HSTS = "max-age=31536000";
 
 export { HOSTED_ORIGINS } from "../config/index.js";
@@ -25,11 +25,8 @@ const DAY = 86_400_000;
 
 /** Is this a name someone can have? Pure, so the Deck's check and the claim agree. */
 export function checkName(name) {
-  const n = String(name || "").trim().toLowerCase();
-  if (!NAME.test(n)) return { name: n, valid: false, why: "2 to 32 letters, digits or dashes, starting with a letter" };
-  if (n.includes("--")) return { name: n, valid: false, why: "no double dashes" };
-  if (RESERVED.has(n)) return { name: n, valid: false, why: "that name is reserved" };
-  return { name: n, valid: true, why: null };
+  const v = verdict(name);
+  return { name: v.name, valid: v.status === "ok", why: v.why };
 }
 
 const sha = s => crypto.createHash("sha256").update(s).digest("hex");
@@ -37,8 +34,11 @@ const sha = s => crypto.createHash("sha256").update(s).digest("hex");
 /**
  * @param {{ ctx: any, save: (patch: any) => void,
  *   ts: { status(): Promise<any>, whois(ip: string): Promise<any>, up(o?: any): Promise<any>, cert(d: string, c: string, k: string): Promise<void>, operator(u: string): Promise<any>, installCommand(): string },
- *   dns: (zone: string) => Promise<{ available(f: string, ip: string): Promise<any>, upsertA(f: string, ip: string): Promise<any>, find(f: string, t?: string): Promise<any[]>, remove(id: string): Promise<void>, set(f: string, v: string): Promise<any>, clear(h: any): Promise<void> }>,
+ *   dns?: (zone: string) => Promise<{ available(f: string, ip: string): Promise<any>, upsertA(f: string, ip: string): Promise<any>, find(f: string, t?: string): Promise<any[]>, remove(id: string): Promise<void>, set(f: string, v: string): Promise<any>, clear(h: any): Promise<void> }>,
  *   issue: (o: { names: string[], dns: any }) => Promise<{ cert: string, key: string, expires: number }>,
+ *   directory?: ReturnType<typeof import("./directory.js").directory>,
+ *   resolver?: { resolveCname(host: string): Promise<string[]>, resolveCaa(host: string): Promise<any[]> },
+ *   accountUri?: () => Promise<string|null>,
  *   certs: { load(dir: string, name: string): any, save(dir: string, name: string, c: any): void },
  *   agentOf?: (stableId: string) => Promise<string|null>,
  *   listen?: (server: import("node:https").Server, where: { fd?: number, host?: string, port?: number }) => Promise<void>,
@@ -50,7 +50,7 @@ export function names(deps) {
   const net = () => ctx.config.network || {};
   const domain = () => net().domain || "vyre.run";
   const port = () => Number(net().port ?? 443);
-  /** @type {{ phase: "idle"|"dns"|"certificate"|"serving"|"failed", why: string|null, certificate: any }} */
+  /** @type {{ phase: "idle"|"named"|"dns"|"certificate"|"serving"|"failed", why: string|null, certificate: any }} */
   const state = { phase: "idle", why: null, certificate: null };
   /** @type {https.Server[]} */
   let servers = [];
@@ -113,10 +113,18 @@ export function names(deps) {
     const c = checkName(raw);
     const out = { name: c.name, valid: c.valid, available: false, why: c.why, address: c.valid ? address(`${c.name}.${domain()}`) : null };
     if (!c.valid) return out;
+    if (dir) {
+      try {
+        const r = await dir.check(c.name);
+        return { ...out, available: r.status === "ok" || r.status === "mine", why: r.status === "ok" || r.status === "mine" ? null : r.why || "someone else has that name" };
+      } catch (e) {
+        return { ...out, why: "could not check: " + /** @type {Error} */ (e).message };
+      }
+    }
     const s = await tailscale();
     const ip = s.node && s.node.ips.find(a => a.includes("."));
     try {
-      const a = await (await deps.dns(domain())).available(`${c.name}.${domain()}`, ip || "0.0.0.0");
+      const a = await (await zoneDns()).available(`${c.name}.${domain()}`, ip || "0.0.0.0");
       return { ...out, available: a.available, why: a.available ? null : "someone else has that name" };
     } catch (e) {
       return { ...out, why: "could not check: " + /** @type {Error} */ (e).message };
@@ -125,10 +133,38 @@ export function names(deps) {
 
   const fail = e => { state.phase = "failed"; state.why = /** @type {Error} */ (e).message; ctx.log("names: " + state.why); };
 
-  /** Reserve the name, point it at this box, get its certificate, start serving. In the background. */
+  const dir = deps.directory || null;
+  /** The zone client for the development path. */
+  const zoneDns = () => {
+    if (!deps.dns) throw new Error("no name directory and no DNS adapter");
+    return deps.dns(domain());
+  };
+  /** What acme.issue writes challenges through: the directory, which only writes for names this box holds. */
+  const acmeDns = async () => {
+    if (!dir) return zoneDns();
+    const suffix = "." + domain(), lead = "_acme-challenge.";
+    const label = fqdn => {
+      if (!fqdn.startsWith(lead) || !fqdn.endsWith(suffix)) throw new Error(`refusing a challenge for ${fqdn}`);
+      return fqdn.slice(lead.length, -suffix.length);
+    };
+    return { set: async (fqdn, value) => { const n = label(fqdn); await dir.acme(n, value); return n; }, clear: n => dir.acmeClear(n) };
+  };
+  const v4 = s => s.node && s.node.ips.find(a => a.includes("."));
+  const v6 = s => s.node && s.node.ips.find(a => a.includes(":"));
+  /** 128 bits, in the same shape the directory hands out: abcd-efgh-... */
+  const newCode = () => base32(crypto.randomBytes(16)).slice(0, 26).replace(/(.{4})(?=.)/g, "$1-");
+
+  /**
+   * Reserve the name, point it at this box, get its certificate, start serving. In the background.
+   * With the directory the reservation comes first and is quick: it answers before Tailscale is up
+   * ("Found and named"), with the one-time recovery code when the name is new. Run it again once
+   * the tailnet is connected and it carries on to the address and the certificate.
+   * @param {string} [raw]
+   */
   function claim(raw) {
     const c = checkName(raw || ctx.config.name);
     if (!c.valid) throw new Error(c.why || "no name");
+    if (dir) return claimNamed(c.name);
     if (working) return status();
     state.phase = "dns"; state.why = null;
     working = (async () => {
@@ -137,7 +173,7 @@ export function names(deps) {
       if (!ip) throw new Error("this machine is not on a tailnet yet");
       if (!s.tun) throw new Error("Tailscale is in userspace networking mode, so there is no tailnet address to serve on");
       const fqdn = `${c.name}.${domain()}`;
-      const dns = await deps.dns(domain());
+      const dns = await zoneDns();
       const a = await dns.available(fqdn, ip);
       if (!a.available) throw new Error("someone else has that name");
       await dns.upsertA(fqdn, ip);
@@ -152,6 +188,38 @@ export function names(deps) {
       state.phase = "serving";
     })().catch(fail).finally(() => { working = null; });
     return status();
+  }
+
+  /** @param {string} name */
+  async function claimNamed(name) {
+    if (working) return { ...status(), recoveryCode: null };
+    const fqdn = `${name}.${domain()}`;
+    state.phase = "dns"; state.why = null;
+    let code = null;
+    try {
+      const r = await /** @type {NonNullable<typeof dir>} */ (dir).claim(name);
+      code = r.code;
+      deps.save({ name, network: { via: "vyre.run" } });
+      if (code) ctx.events.emit("name.claimed", { name: fqdn });
+    } catch (e) { fail(e); return { ...status(), recoveryCode: null }; }
+    working = (async () => {
+      const s = await tailscale();
+      const ip = v4(s);
+      if (!ip || !s.tun) { state.phase = "named"; state.why = "connect Tailscale, then claim again to publish the address"; return; }
+      await /** @type {NonNullable<typeof dir>} */ (dir).point(name, ip);
+      // The tailnet's IPv6 address is best effort: a box with no fd7a address just has no AAAA.
+      const six = v6(s);
+      if (six) await /** @type {NonNullable<typeof dir>} */ (dir).point(name, six).catch(e => ctx.log("names: AAAA not published: " + /** @type {Error} */ (e).message));
+      state.phase = "certificate";
+      const got = await deps.issue({ names: [fqdn], dns: await acmeDns() });
+      deps.certs.save(ctx.paths.certs, fqdn, got);
+      ctx.events.emit("certificate.issued", { name: fqdn, expires: got.expires });
+      await serve();
+      deps.save({ network: { address: address(fqdn) } });
+      state.phase = "serving";
+    })().catch(fail).finally(() => { working = null; });
+    // The code is the answer to this one call. It is not in status(), an event or a log.
+    return { ...status(), recoveryCode: code };
   }
 
   /** The tailnet's own name, with `tailscale cert`, when there is no vyre.run name. */
@@ -179,8 +247,11 @@ export function names(deps) {
   async function release() {
     const name = ctx.config.name;
     if (name && net().via === "vyre.run") {
-      const dns = await deps.dns(domain());
-      for (const r of await dns.find(`${name}.${domain()}`, "A")) await dns.remove(r.id);
+      if (dir) await dir.release(name);
+      else {
+        const dns = await zoneDns();
+        for (const r of await dns.find(`${name}.${domain()}`, "A")) await dns.remove(r.id);
+      }
       ctx.events.emit("name.released", { name: `${name}.${domain()}` });
     }
     await close();
@@ -400,6 +471,73 @@ export function names(deps) {
     servers = [];
   }
 
+  // ---- recovery ----
+
+  /**
+   * A reinstalled box takes its name back with the recovery code. The directory holds a 72-hour
+   * pending rebind that the old box cancels by itself if it is still online, and tells the owner's
+   * devices about (name.recovery-pending). The code is the only authority, which is why the setup
+   * channel of a new install can call this too (names.recover.code). Returns the NEW recovery
+   * code, shown once: it takes over when the rebind lands.
+   * @param {{ name?: string, code: string }} r
+   */
+  async function recover(r) {
+    if (!dir) throw new Error("recovery needs the name directory");
+    const c = checkName(r.name || ctx.config.name);
+    if (!c.valid) throw new Error(c.why || "no name");
+    if (!r.code || typeof r.code !== "string") throw new Error("the recovery code is needed");
+    const next = newCode();
+    const out = await dir.recover({ name: c.name, code: r.code, next: codeHash(c.name, next) });
+    deps.save({ network: { recovering: c.name } });
+    return { name: c.name, pendingUntil: out.pendingUntil, recoveryCode: next };
+  }
+
+  let told = 0;
+  /**
+   * Ask the directory how this box's name stands. Run at start and hourly. A pending recovery of a
+   * name this box holds is cancelled here, with no click: a box that is online is the owner. A
+   * recovery this box asked for is adopted once it lands.
+   */
+  async function watch() {
+    if (!dir) return null;
+    const m = await dir.mine();
+    if (m.name && m.pending) {
+      const fqdn = m.fqdn || `${m.name}.${domain()}`;
+      if (m.pending.eta !== told) { told = m.pending.eta; ctx.events.emit("name.recovery-pending", { name: fqdn, eta: m.pending.eta }); }
+      await dir.cancel(m.name);
+      ctx.events.emit("name.recovery-cancelled", { name: fqdn });
+    }
+    if (m.name && net().recovering === m.name && ctx.config.name !== m.name) {
+      deps.save({ name: m.name, network: { via: "vyre.run", recovering: null } });
+      ctx.events.emit("name.recovered", { name: m.fqdn || `${m.name}.${domain()}` });
+    }
+    return m;
+  }
+
+  /**
+   * Live DNS for the two records a person adds at their own domain: `_acme-challenge.<domain>`
+   * as a CNAME to `<routehash>.acme.vyre.run` (required), and an optional CAA that pins their
+   * certificates to this box's own ACME account.
+   * @param {string} raw
+   */
+  async function domainCheck(raw) {
+    const host = String(raw || "").trim().toLowerCase().replace(/\.$/, "");
+    if (!/^([a-z0-9]([a-z0-9-]*[a-z0-9])?\.)+[a-z]{2,}$/.test(host) || host === domain() || host.endsWith("." + domain())) throw new Error("that is not a domain of your own");
+    if (!dir || !deps.resolver) throw new Error("the domain check needs the name directory");
+    const m = await dir.mine();
+    if (!m.name) throw new Error("claim a name first");
+    const expected = m.acmeZone;
+    if (!expected) throw new Error("the directory did not say where challenges go");
+    const ask = async fn => { try { return await fn(); } catch (e) { const code = /** @type {any} */ (e).code; if (["ENODATA", "ENOTFOUND", "NXDOMAIN", "ENOENT"].includes(code)) return []; throw e; } };
+    const challenge = `_acme-challenge.${host}`;
+    const cnames = (await ask(() => deps.resolver.resolveCname(challenge))).map(x => String(x).toLowerCase().replace(/\.$/, ""));
+    const caa = (await ask(() => deps.resolver.resolveCaa(host))).map(r => r.issue ?? r.issuewild ?? "").filter(Boolean).map(String);
+    const account = deps.accountUri ? await deps.accountUri() : null;
+    const pinned = account ? caa.some(v => v.includes("letsencrypt.org") && v.includes(`accounturi=${account}`)) : null;
+    const cname = { host: challenge, expected, found: cnames, ok: cnames.includes(expected) };
+    return { domain: host, ok: cname.ok, cname, caa: { host, present: caa.length > 0, found: caa, expected: account, ok: pinned, optional: true } };
+  }
+
   /** Daily: renew at 30 days left; say so once fewer than 14 remain and renewal keeps failing. */
   async function renew() {
     if (net().via === "ts.net" && !(last && last.node)) await tailscale().catch(() => null);
@@ -408,7 +546,7 @@ export function names(deps) {
     if (!c || c.expires - now() > 30 * DAY || working) return false;
     try {
       if (net().via === "ts.net") await ts.cert(name, path.join(ctx.paths.certs, `${name}.crt`), path.join(ctx.paths.certs, `${name}.key`));
-      else deps.certs.save(ctx.paths.certs, name, await deps.issue({ names: [name], dns: await deps.dns(domain()) }));
+      else deps.certs.save(ctx.paths.certs, name, await deps.issue({ names: [name], dns: await acmeDns() }));
       const fresh = deps.certs.load(ctx.paths.certs, name);
       ctx.events.emit("certificate.issued", { name, expires: fresh && fresh.expires, renewed: true });
       await serve();
@@ -420,7 +558,7 @@ export function names(deps) {
     }
   }
 
-  return { status, check, claim, fallback, release, claimCode, tailscale, setOwner, serve, close, renew,
+  return { status, check, claim, fallback, release, claimCode, tailscale, setOwner, serve, close, renew, recover, watch, domainCheck,
     connect: () => ts.up(), wait: () => working, onRequest, onUpgrade };
 }
 
