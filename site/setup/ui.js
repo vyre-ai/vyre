@@ -16,11 +16,12 @@ export function h(doc, tag, attrs, ...kids) {
 
 /** @typedef {{ begin: () => void, copy: (text: string, button: HTMLElement) => Promise<boolean>|boolean, setName: (text: string) => void, claim: () => void, confirmWords: () => void, denyWords: () => void, markSaved: () => void,
  *   continueToAi: () => void, continueToTailscale: () => void, connectTailscale: () => void, startAi: (provider: string) => void, submitAiCode: (id: string, code: string) => void,
- *   continueToDevices: () => void, addPhone: () => void, drawRing: (slot: HTMLElement) => void }} Actions */
+ *   continueToDevices: () => void, addPhone: () => void, drawRing: (slot: HTMLElement) => void,
+ *   continueToClaim: () => void, mintClaim: () => void, drawQr: (slot: HTMLElement, text: string) => void }} Actions */
 
 /** Per root: the region elements and the key each was last built for. @type {WeakMap<object, { regions: Record<string, any>, keys: Record<string, string>, stage: string|null }>} */
 const memory = new WeakMap();
-const REGIONS = ["head", "words", "naming", "ai", "tailscale", "devices", "log"];
+const REGIONS = ["head", "words", "naming", "ai", "tailscale", "devices", "claim", "log"];
 
 /**
  * @param {import("./flow.js").FlowState} s
@@ -78,6 +79,17 @@ export function render(s, ctx) {
       el("p", { class: "lbl" }, "Your AI"),
       el("h1", { tabindex: "-1" }, "Sign in to your AI"),
       el("p", { class: "lead" }, "Each one signs in with its own provider's page, on any browser. Vyre never sees your password. One is enough to go on; you can add more later."),
+    ];
+    if (s.stage === "claim") return [
+      el("p", { class: "lbl" }, "Arrive"),
+      el("h1", { tabindex: "-1" }, "Open your server"),
+      el("p", { class: "lead" }, "Your server has its own address. Open it once from here: it asks for your fingerprint, face or security key, and that makes you its owner. Nothing else can."),
+    ];
+    if (s.stage === "done") return [
+      el("p", { class: "lbl" }, "Done"),
+      el("h1", { tabindex: "-1" }, "You're in"),
+      el("p", { class: "lead" }, "Your server knows you now. Carry on at its own address."),
+      s.named ? el("div", { class: "actions" }, el("a", { class: "btn primary", href: `https://${s.named.name}.vyre.run/`, rel: "noopener" }, "Open your server")) : null,
     ];
     if (s.stage === "devices") return [
       el("p", { class: "lbl" }, "Devices"),
@@ -209,19 +221,43 @@ export function render(s, ctx) {
   const rebuiltDevices = region("devices", dvKey, () => {
     if (s.stage !== "devices") return [];
     const address = s.named && (s.named.address || s.named.name);
+    const next = el("div", { class: "actions" }, button(dv.phone === "paired" ? "Continue" : "Skip for now", dv.phone === "paired" ? "primary" : "quiet", () => actions.continueToClaim()));
     if (dv.phone === "idle" || dv.phone === "failed" || dv.phone === "minting") return [
       el("div", { class: "actions" }, button(dv.phone === "minting" ? "Making the ring" : "Add my phone", "primary", () => actions.addPhone())),
       dv.error ? el("p", { class: "warn", role: "alert" }, dv.error) : null,
+      el("p", { class: "note" }, "You can add phones later from your server's own page."), next,
     ];
     if (dv.phone === "showing") return [
       el("div", { class: "ring-slot", "data-role": "ring", role: "img", "aria-label": "The ring to scan with the Vyre app on your phone" }),
       el("p", { class: "status", role: "status" }, el("span", { class: "ring", "aria-hidden": "true" }), "Waiting for your phone"),
       el("p", { class: "note" }, "Open the Vyre app on your phone and point its camera at the ring."),
+      next,
     ];
-    if (dv.phone === "paired") return [el("p", { class: "lead" }, `${dv.paired || "Your phone"} is connected.`), el("p", { class: "hint" }, `Finish on your phone at ${address}.`)];
-    return [el("p", { class: "warn", role: "alert" }, "The ring expired. You can add your phone from your server's own page once setup is done.")];
+    if (dv.phone === "paired") return [el("p", { class: "lead" }, `${dv.paired || "Your phone"} is connected.`), el("p", { class: "hint" }, `You will finish on your phone or here, at ${address}.`), next];
+    return [el("p", { class: "warn", role: "alert" }, "The ring expired. You can add your phone from your server's own page once setup is done."), next];
   });
   if (rebuiltDevices && dvKey.startsWith("d:showing")) { const slot = findByRole(m.regions.devices, "ring"); if (slot) actions.drawRing(slot); }
+
+  // ---- claim: a fresh one-time link, and the same link as a code for a phone ----
+  const cl = s.claim;
+  const clKey = s.stage === "claim" ? `c:${cl.phase}|${cl.url}|${cl.error}` : "none";
+  const rebuiltClaim = region("claim", clKey, () => {
+    if (s.stage !== "claim") return [];
+    const host = s.named ? `${s.named.name}.vyre.run` : "your server";
+    if (cl.phase === "ready" && cl.url) return [
+      el("div", { class: "actions" }, el("a", { class: "btn primary", href: cl.url, rel: "noopener" }, `Open ${host}`)),
+      el("p", { class: "note" }, "This link works once, for two minutes. Open it in the browser you will use with your server."),
+      el("h2", { class: "sub" }, "Or on your phone"),
+      el("div", { class: "qr-slot", "data-role": "qr", role: "img", "aria-label": "A code that opens the same link on your phone" }),
+      el("div", { class: "actions" }, button("Get a new link", "quiet", () => actions.mintClaim())),
+    ];
+    return [
+      el("div", { class: "actions" }, button(cl.phase === "minting" ? "Making your link" : cl.phase === "expired" ? "Get a new link" : "Get my link", "primary", () => actions.mintClaim())),
+      cl.phase === "expired" ? el("p", { class: "hint" }, "That link expired.") : null,
+      cl.error ? el("p", { class: "warn", role: "alert" }, cl.error) : null,
+    ];
+  });
+  if (rebuiltClaim && clKey.startsWith("c:ready") && cl.url) { const slot = findByRole(m.regions.claim, "qr"); if (slot) actions.drawQr(slot, cl.url); }
 
   // ---- log: the install as the server tells it, as plain text ----
   region("log", `${s.lines.length}|${s.lines[s.lines.length - 1] || ""}`, () => s.lines.length ? [

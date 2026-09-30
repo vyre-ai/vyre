@@ -35,7 +35,7 @@ export function suggestName(text) {
 }
 
 /**
- * @typedef {{ stage: "start"|"install"|"found"|"named"|"tailscale"|"ai"|"devices"|"stopped", installLine: string, code: string, lines: string[],
+ * @typedef {{ stage: "start"|"install"|"found"|"named"|"tailscale"|"ai"|"devices"|"claim"|"done"|"stopped", installLine: string, code: string, lines: string[],
  *   box: null | { name: string, fingerprint: string, words: string[], handle: string|null },
  *   confirm: "none"|"pending"|"matched",
  *   channel: "none"|"connecting"|"ready"|"failed",
@@ -45,6 +45,7 @@ export function suggestName(text) {
  *     address: null | { phase: string, why: string|null } },
  *   ai: { accounts: { id: string, provider: string, flow: string|null, step: "starting"|"code"|"url"|"waiting"|"done"|"failed", url: string|null, code: string|null, paste: boolean, error: string|null }[] },
  *   devices: { phone: "idle"|"minting"|"showing"|"paired"|"expired"|"failed", expiresAt: number, error: string|null, paired: string|null },
+ *   claim: { phase: "idle"|"minting"|"ready"|"expired"|"failed", url: string|null, expiresAt: number, error: string|null },
  *   error: null | { code: string, message: string }, expiresAt: number, listening: boolean }} FlowState
  * @typedef {{ createSetupKey: Function, setupCode: Function, resolveSetup: Function, setupWords: Function, mailboxReader: Function }} SetupClient
  * @typedef {{ call: (tool: string, input?: object) => Promise<any>, close: () => void }} BoxChannel
@@ -52,7 +53,7 @@ export function suggestName(text) {
 
 /**
  * @param {{ client: SetupClient, relay: string, connect?: (o: { offer: any, key: any, secret: Uint8Array }) => Promise<BoxChannel>, installUrl?: string, random?: (n: number) => Uint8Array,
- *   now?: () => number, sleep?: (ms: number) => Promise<void>, pollMs?: number, debounceMs?: number, signinHosts?: string[]|null, onChange?: (s: FlowState) => void }} o
+ *   now?: () => number, sleep?: (ms: number) => Promise<void>, pollMs?: number, debounceMs?: number, signinHosts?: string[]|null, signClaim?: (o: { privateKey: any, route: string, challenge: string, host: string }) => Promise<string>, onChange?: (s: FlowState) => void }} o
  */
 export function createFlow(o) {
   const now = o.now || Date.now;
@@ -64,9 +65,10 @@ export function createFlow(o) {
   /** @type {FlowState} */
   const blankTs = () => ({ status: null, loginUrl: null, busy: false, error: null, address: null });
   const blankAi = () => ({ accounts: [] });
+  const blankClaim = () => ({ phase: "idle", url: null, expiresAt: 0, error: null });
   const blankDevices = () => ({ phone: "idle", expiresAt: 0, error: null, paired: null });
   const blankNaming = () => ({ input: "", check: null, checking: false, claiming: false, error: null });
-  let state = { stage: "start", installLine: "", code: "", lines: [], box: null, confirm: "none", channel: "none", naming: blankNaming(), named: null, tailscale: blankTs(), ai: blankAi(), devices: blankDevices(), error: null, expiresAt: 0, listening: false };
+  let state = { stage: "start", installLine: "", code: "", lines: [], box: null, confirm: "none", channel: "none", naming: blankNaming(), named: null, tailscale: blankTs(), ai: blankAi(), devices: blankDevices(), claim: blankClaim(), error: null, expiresAt: 0, listening: false };
   let run = 0;
   /** @type {BoxChannel|null} */
   let chan = null;
@@ -75,10 +77,12 @@ export function createFlow(o) {
   let checkSeq = 0;
   /** The pairing ticket, held here only so the ring can be drawn from it: never in state, the DOM or a log. */
   let ticket = null;
+  /** The page key and the box's offer, kept for signing the claim token. @type {null | { key: any, route: string }} */
+  let sess = null;
   const closeChan = () => { try { chan?.close(); } catch { /* gone */ } chan = null; };
   const emit = () => o.onChange?.(state);
   const set = patch => { state = { ...state, ...patch }; emit(); };
-  const fail = code => { run++; closeChan(); pending = null; ticket = null; set({ stage: "stopped", listening: false, error: { code, message: MESSAGES[code] || MESSAGES.relay } }); };
+  const fail = code => { run++; closeChan(); pending = null; ticket = null; sess = null; set({ stage: "stopped", listening: false, error: { code, message: MESSAGES[code] || MESSAGES.relay } }); };
 
   /** The install line, exactly as it must be run: the variable goes on sh, the reader of the script. */
   const lineFor = code => `curl -fsSL ${installUrl} | VYRE_CODE=${code} sh`;
@@ -92,8 +96,8 @@ export function createFlow(o) {
       code = await o.client.setupCode(secret, key.spki);
     } catch { return fail("key"); }
     if (mine !== run) return;
-    closeChan(); checkSeq++; pending = null; ticket = null;
-    set({ stage: "install", installLine: lineFor(code), code, lines: [], box: null, confirm: "none", channel: "none", naming: blankNaming(), named: null, tailscale: blankTs(), ai: blankAi(), devices: blankDevices(), error: null, expiresAt: now() + TTL_MS, listening: true });
+    closeChan(); checkSeq++; pending = null; ticket = null; sess = null;
+    set({ stage: "install", installLine: lineFor(code), code, lines: [], box: null, confirm: "none", channel: "none", naming: blankNaming(), named: null, tailscale: blankTs(), ai: blankAi(), devices: blankDevices(), claim: blankClaim(), error: null, expiresAt: now() + TTL_MS, listening: true });
     followMailbox(mine, key, secret);
     waitForBox(mine, key, secret);
     // The hour is the box's; the page stops listening when it is over.
@@ -152,6 +156,7 @@ export function createFlow(o) {
     const p = pending;
     if (!p || p.mine !== run || state.stage !== "found" || state.confirm !== "pending") return;
     pending = null;
+    sess = { key: p.key, route: p.offer.route };
     set({ confirm: "matched" });
     return openBox(p.mine, p.offer, p.key, p.secret, p.name);
   }
@@ -412,10 +417,52 @@ export function createFlow(o) {
     }
   }
 
+  // ---- Arrive and claim: a one-time link to the person's own address, where the passkey is made ----
+
+  /** From devices, whatever happened there (a phone can be added later): on to claiming. */
+  function continueToClaim() {
+    if (state.stage !== "devices" || state.devices.phone === "minting") return;
+    set({ stage: "claim", claim: blankClaim() });
+    // The box ends the setup session itself when the first owner enrols, and says so only by answering 401 setup_over or closing
+    // the channel (4401). A session that ends before the hour is up was claimed (or replaced); at the hour it expired.
+    const mine = run;
+    const ended = () => {
+      if (mine !== run || (state.stage !== "claim" && state.stage !== "devices")) return;
+      if (now() >= state.expiresAt) return fail("expired");
+      closeChan();
+      set({ stage: "done", listening: false });
+    };
+    if (chan && typeof chan.onClose === "function") chan.onClose(ended);
+    (async () => {
+      while (mine === run && state.stage === "claim") {
+        await sleep(Math.max(pollMs, 1000));
+        if (mine !== run || state.stage !== "claim" || !chan) return;
+        try { await chan.call("relay.setup.status"); }
+        catch (e) { const code = /** @type {any} */ (e).code, status = /** @type {any} */ (e).status; if (code === "setup_over" || status === 401) return ended(); }
+      }
+    })();
+  }
+
+  /** A fresh link: the box's challenge, signed here with the page key, in the fragment of the person's own address. Good for two minutes. */
+  async function mintClaim() {
+    if (!chan || !sess || !o.signClaim || state.stage !== "claim" || state.claim.phase === "minting" || !state.named) return;
+    const mine = run;
+    set({ claim: { ...state.claim, phase: "minting", error: null } });
+    try {
+      const host = `${state.named.name}.vyre.run`;
+      const r = await chan.call("relay.setup.claim-token", { name: state.named.name });
+      const token = await o.signClaim({ privateKey: sess.key.privateKey, route: sess.route, challenge: String(r.challenge), host });
+      if (mine !== run) return;
+      set({ claim: { phase: "ready", url: `https://${host}/#claim=${token}`, expiresAt: Number(r.exp) || now() + 120_000, error: null } });
+      // The two minutes run out; the link stops being shown then.
+      (async () => { while (mine === run && state.claim.phase === "ready") { const left = state.claim.expiresAt - now(); if (left <= 0) return set({ claim: { ...state.claim, phase: "expired", url: null } }); await sleep(Math.min(left, 5000)); } })();
+    } catch (e) { if (mine === run) set({ claim: { ...state.claim, phase: "failed", url: null, error: String(/** @type {Error} */ (e).message).slice(0, 200) } }); }
+  }
+
   return {
     get state() { return state; },
     setName, claim, confirmWords, denyWords, markSaved,
-    continueToDevices, addPhone, currentTicket: () => ticket,
+    continueToClaim, mintClaim, continueToDevices, addPhone, currentTicket: () => ticket,
     continueToAi, continueToTailscale, connectTailscale, startAi, submitAiCode,
     /** Start (or start again): a new key and a new code; the old one is forgotten. */
     begin,

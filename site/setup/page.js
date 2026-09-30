@@ -8,6 +8,8 @@ import { connectSetup } from "./box.js";
 import { createFlow } from "./flow.js";
 import { render } from "./ui.js";
 import { ticketRingSvg } from "./deck/js/phone-code.js";
+import qrcode from "./deck/vendor/qrcode.js";
+import { signClaim } from "./claim.js";
 
 const RELAY = "wss://relay.vyre.run";
 const root = document.getElementById("setup");
@@ -26,6 +28,27 @@ const actions = {
   submitAiCode: (id, code) => flow.submitAiCode(id, code),
   continueToDevices: () => flow.continueToDevices(),
   addPhone: () => flow.addPhone(),
+  continueToClaim: () => flow.continueToClaim(),
+  mintClaim: () => flow.mintClaim(),
+  // The claim link as a QR of plain SVG squares (the vendored encoder, drawn by hand: no innerHTML).
+  drawQr(slot, text) {
+    const q = qrcode(0, "M");
+    q.addData(String(text), "Byte");
+    q.make();
+    const n = q.getModuleCount(), NS = "http://www.w3.org/2000/svg", quiet = 3;
+    const svg = document.createElementNS(NS, "svg");
+    svg.setAttribute("viewBox", `0 0 ${n + quiet * 2} ${n + quiet * 2}`);
+    svg.setAttribute("shape-rendering", "crispEdges");
+    const bg = document.createElementNS(NS, "rect");
+    for (const [k, v] of Object.entries({ width: n + quiet * 2, height: n + quiet * 2, fill: "#fff" })) bg.setAttribute(k, String(v));
+    svg.appendChild(bg);
+    const path = document.createElementNS(NS, "path");
+    let d = "";
+    for (let y = 0; y < n; y++) for (let x = 0; x < n; x++) if (q.isDark(y, x)) d += `M${x + quiet} ${y + quiet}h1v1h-1z`;
+    path.setAttribute("d", d); path.setAttribute("fill", "#000");
+    svg.appendChild(path);
+    slot.replaceChildren(svg);
+  },
   // The ring is drawn from the ticket as SVG shapes only; the ticket is never put in the page as text.
   drawRing(slot) {
     const t = flow.currentTicket();
@@ -46,6 +69,6 @@ addEventListener("beforeunload", e => { if (unsaved) { e.preventDefault(); e.ret
 // The hosts a provider's sign-in page may be on (lib/providers/signin-hosts.json, copied in by build-site.sh). No list yet: any plain https address.
 let signinHosts = null;
 try { const r = await fetch("/setup/signin-hosts.json", { cache: "no-store" }); if (r.ok) { const j = await r.json(); if (Array.isArray(j)) signinHosts = j.map(String); else if (j && Array.isArray(j.hosts)) signinHosts = j.hosts.map(String); } } catch { /* none */ }
-const flow = createFlow({ client, relay: RELAY, connect, signinHosts, onChange: s => { unsaved = Boolean(s.named && s.named.recoveryCode && !s.named.saved); render(s, { doc: document, root, actions }); } });
+const flow = createFlow({ client, relay: RELAY, connect, signinHosts, signClaim, onChange: s => { unsaved = Boolean(s.named && s.named.recoveryCode && !s.named.saved); render(s, { doc: document, root, actions }); } });
 render(flow.state, { doc: document, root, actions });
 addEventListener("pagehide", () => flow.stop());

@@ -85,6 +85,10 @@ rm -rf "$here/site/setup/deck"
 mkdir -p "$here/site/setup/deck/js" "$here/site/setup/deck/vendor/vyrecode"
 cp "$src/deck/js/phone-code.js" "$here/site/setup/deck/js/"
 cp "$src"/deck/vendor/vyrecode/*.js "$here/site/setup/deck/vendor/vyrecode/"
+cp "$src/deck/vendor/qrcode.js" "$here/site/setup/deck/vendor/"
+# Where a provider's sign-in page may be (sessions' list); the page falls back to any plain https address until it exists.
+rm -f "$here/site/setup/signin-hosts.json"
+[ -f "$src/lib/providers/signin-hosts.json" ] && cp "$src/lib/providers/signin-hosts.json" "$here/site/setup/signin-hosts.json"
 # The two fonts, self-hosted so the page loads nothing from another origin.
 rm -rf "$here/site/setup/fonts"
 mkdir -p "$here/site/setup/fonts"

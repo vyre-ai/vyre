@@ -59,6 +59,14 @@ test("page connection: connectSetup is admitted with the page's key, calls the a
   assert.equal(st.words, (await client.setupWords(offer.box, secret)).join(" "), "the words the page computes are the ones the box holds");
   assert.deepEqual(await box.events("relay.paired", 0), [], "an allowed event type answers (nothing has paired yet)");
   await assert.rejects(box.events("vault.changed", 0), e => e.status === 404, "any other event type is refused");
+  // The follower reads that list (a poll), hears an error as the end, and stops when told.
+  let ended = null;
+  const stop = box.follow("vault.changed", () => {}, e => { ended = e; }, 20);
+  await new Promise(r => setTimeout(r, 120));
+  assert.ok(ended && ended.status === 404, "a type the channel may not read ends the follower with the box's answer");
+  const stop2 = box.follow("relay.paired", () => assert.fail("nothing has paired"), () => assert.fail("no error expected"), 20);
+  await new Promise(r => setTimeout(r, 100));
+  stop(); stop2();
   await assert.rejects(box.call("vault.list"), e => e.status >= 400);
   await assert.rejects(box.call("relay.setup.end"), e => e.status >= 400);
 

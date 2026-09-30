@@ -52,3 +52,6 @@ a { color: var(--text); text-decoration-color: var(--rule-strong); text-underlin
 a:hover { text-decoration-color: var(--focus); }
 .ring-slot { margin: 24px 0 0; width: 280px; max-width: 100%; }
 .ring-slot svg { width: 100%; height: auto; display: block; }
+.qr-slot { margin: 12px 0 0; width: 220px; max-width: 100%; border-radius: var(--radius-field); overflow: hidden; }
+.qr-slot svg { width: 100%; height: auto; display: block; }
+a.btn { display: inline-flex; align-items: center; text-decoration: none; }

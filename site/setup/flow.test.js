@@ -9,6 +9,7 @@ import { createRelay } from "../../relay/node/server.js";
 import * as wire from "../../core/relay/wire.js";
 import { createFlow, MESSAGES, MAX_LINES, suggestName } from "./flow.js";
 import { render, h } from "./ui.js";
+import { signClaim } from "./claim.js";
 
 /** A relay on a free port, and the install script's side of the mailbox (the same POSTs install-box.sh makes). */
 async function world(t) {
@@ -156,7 +157,7 @@ function fakeBox({ check, claim } = {}) {
 /** A flow whose box offer appears at once and whose connection is `box`. */
 async function foundFlow(t, box, extra = {}) {
   const w = await world(t);
-  const flow = createFlow({ client: clientWith(async () => offer()), relay: w.base, sleep: fastSleep, pollMs: 5, debounceMs: 1, connect: async () => { if (extra.connectFails) throw new Error("no"); return box; }, ...extra.flow });
+  const flow = createFlow({ client: clientWith(async () => offer()), relay: w.base, sleep: fastSleep, pollMs: 5, debounceMs: 1, connect: async () => { if (extra.connectFails) throw new Error("no"); return box; }, signClaim, ...extra.flow });
   await flow.begin();
   await until(() => flow.state.stage === "found");
   if (!extra.unconfirmed) flow.confirmWords();
@@ -341,6 +342,7 @@ function stepsBox(script = {}) {
       f.polls++;
       return f.provider === "claude" ? { step: f.done ? "done" : "url" } : { step: f.polls >= 2 ? "done" : "code" };
     }
+    if (tool === "relay.setup.claim-token") { box.calls.push([tool, input]); if (st.claimFails) throw new Error("this setup session has ended"); return { challenge: crypto.randomBytes(32).toString("base64url"), exp: Date.now() + (st.claimMs ?? 120_000) }; }
     if (tool === "relay.pair.ticket") { box.calls.push([tool, input]); if (st.ticketMade) throw Object.assign(new Error("the setup page has already made its one pairing ticket"), { code: "denied" }); st.ticketMade = true; return { ticket: "AAECAwQFBgc", expiresAt: Date.now() + (st.ticketMs ?? 300_000), connected: true }; }
     return base(tool, input);
   };
@@ -520,7 +522,7 @@ test("devices: the screen draws the ring into its slot only while showing, and n
   let flow;
   const actions = { begin() {}, copy() {}, setName() {}, claim() {}, confirmWords: () => flow.confirmWords(), denyWords() {}, markSaved: () => flow.markSaved(),
     continueToAi: () => flow.continueToAi(), continueToTailscale: () => flow.continueToTailscale(), connectTailscale() {}, startAi: p => flow.startAi(p), submitAiCode() {},
-    continueToDevices: () => flow.continueToDevices(), addPhone: () => flow.addPhone(), drawRing: slot => drawn.push(slot.attrs["data-role"]) };
+    continueToDevices: () => flow.continueToDevices(), addPhone: () => flow.addPhone(), drawRing: slot => drawn.push(slot.attrs["data-role"]), continueToClaim() {}, mintClaim() {}, drawQr() {} };
   const w = await world(t);
   flow = createFlow({ client: clientWith(async () => offer()), relay: w.base, sleep: fastSleep, pollMs: 5, debounceMs: 1, connect: async () => box,
     onChange: s => render(s, { doc: /** @type {any} */ (doc), root: /** @type {any} */ (root), actions }) });
@@ -605,6 +607,132 @@ test("ai: with a list of provider hosts, a sign-in link elsewhere is refused", a
   flow.stop();
 });
 
+test("claim: the token is the box's challenge signed by the page key over its route and the exact address, and only that key's signature verifies", async () => {
+  const key = await client.createSetupKey();
+  const challenge = crypto.randomBytes(32).toString("base64url");
+  const route = "r".repeat(26);
+  const token = await signClaim({ privateKey: key.privateKey, route, challenge, host: "harlow.vyre.run" });
+  const raw = Buffer.from(token, "base64url");
+  assert.equal(raw.length, 96, "32 bytes of challenge and a 64-byte signature");
+  assert.deepEqual(raw.subarray(0, 32), Buffer.from(challenge, "base64url"));
+  const pub = crypto.createPublicKey({ key: Buffer.from(key.spki), format: "der", type: "spki" });
+  const msg = (r, c, h) => Buffer.concat([Buffer.from(`vyre-setup-claim\n${r}\n`), Buffer.from(c, "base64url"), Buffer.from(`\n${h}`)]);
+  const ok = (r, h) => crypto.verify("sha256", msg(r, challenge, h), { key: pub, dsaEncoding: "ieee-p1363" }, raw.subarray(32));
+  assert.equal(ok(route, "harlow.vyre.run"), true);
+  assert.equal(ok(route, "other.vyre.run"), false, "another name never verifies");
+  assert.equal(ok("s".repeat(26), "harlow.vyre.run"), false, "another box never verifies");
+  await assert.rejects(signClaim({ privateKey: key.privateKey, route, challenge: "AAAA", host: "harlow.vyre.run" }), /32 bytes/);
+  await assert.rejects(signClaim({ privateKey: key.privateKey, route, challenge, host: "evil.example" }), /vyre\.run/);
+  assert.equal(key.privateKey.extractable, false);
+});
+
+async function atClaim(t, box) {
+  const flow = await atDevices(t, box);
+  flow.continueToClaim();
+  return flow;
+}
+
+test("claim: a fresh link carries the signed token in the fragment only, runs out after its time, and a new one replaces it", async t => {
+  const box = stepsBox({ claimMs: 250 });
+  const flow = await atClaim(t, box);
+  assert.equal(flow.state.stage, "claim");
+  await flow.mintClaim();
+  assert.equal(flow.state.claim.phase, "ready");
+  const u = new URL(flow.state.claim.url);
+  assert.equal(u.origin, "https://harlow-legal-server.vyre.run");
+  assert.equal(u.search, "", "nothing in the query, where a server would log it");
+  assert.match(u.hash, /^#claim=[A-Za-z0-9_-]{128}$/, "the token is in the fragment");
+  assert.deepEqual(box.calls.filter(c => c[0] === "relay.setup.claim-token").map(c => c[1]), [{ name: "harlow-legal-server" }]);
+  await until(() => flow.state.claim.phase === "expired", 3000);
+  assert.equal(flow.state.claim.url, null, "an expired link is no longer shown");
+  await flow.mintClaim();
+  assert.equal(flow.state.claim.phase, "ready");
+  flow.stop();
+
+  const bad = stepsBox({ claimFails: true });
+  const f2 = await atClaim(t, bad);
+  await f2.mintClaim();
+  assert.equal(f2.state.claim.phase, "failed");
+  assert.match(f2.state.claim.error, /has ended/);
+  f2.stop();
+});
+
+test("claim: the setup ending before its hour means claimed and ends the page on 'You're in'; at the hour it is an expiry", async t => {
+  // The channel closing (the box closes it with 4401 when the session ends) before the hour: claimed.
+  const box = stepsBox();
+  let closed = () => {};
+  box.onClose = cb => { closed = cb; };
+  const flow = await atClaim(t, box);
+  await flow.mintClaim();
+  closed(4401, "setup ended");
+  assert.equal(flow.state.stage, "done");
+  flow.stop();
+
+  // A 401 setup_over on the page's own poll says the same.
+  const b2 = stepsBox();
+  const f2 = await atClaim(t, b2);
+  const orig = b2.call;
+  b2.call = async (tool, input) => { if (tool === "relay.setup.status") throw Object.assign(new Error("this setup session has ended"), { code: "setup_over", status: 401 }); return orig(tool, input); };
+  await until(() => f2.state.stage === "done");
+  f2.stop();
+
+  // At (or after) the hour the same signal is an expiry.
+  let clock = Date.now();
+  const b3 = stepsBox();
+  let closed3 = () => {};
+  b3.onClose = cb => { closed3 = cb; };
+  const late = createFlow({ client: clientWith(async () => offer()), relay: (await world(t)).base, sleep: fastSleep, pollMs: 5, debounceMs: 1, now: () => clock, connect: async () => b3, signClaim });
+  await late.begin();
+  await until(() => late.state.stage === "found");
+  late.confirmWords();
+  await until(() => late.state.naming.check);
+  await late.claim(); late.markSaved(); late.continueToAi(); late.startAi("codex");
+  await until(() => late.state.ai.accounts[0] && late.state.ai.accounts[0].step === "done");
+  late.continueToTailscale();
+  b3.st.ts = "connected"; b3.st.claimPhase = "serving";
+  await until(() => late.state.tailscale.address && late.state.tailscale.address.phase === "serving");
+  late.continueToDevices(); late.continueToClaim();
+  clock += 61 * 60_000;
+  closed3(4401, "setup ended");
+  assert.equal(late.state.stage, "stopped");
+  assert.equal(late.state.error.message, MESSAGES.expired);
+  late.stop();
+});
+
+test("claim: the screen offers the link as a real anchor to the person's own address, and a code for a phone", async t => {
+  const box = stepsBox();
+  const doc = new FakeDoc(), root = doc.createElement("main");
+  const qr = [];
+  let flow;
+  const actions = { begin() {}, copy() {}, setName() {}, claim() {}, confirmWords: () => flow.confirmWords(), denyWords() {}, markSaved: () => flow.markSaved(),
+    continueToAi: () => flow.continueToAi(), continueToTailscale: () => flow.continueToTailscale(), connectTailscale() {}, startAi: p => flow.startAi(p), submitAiCode() {},
+    continueToDevices: () => flow.continueToDevices(), addPhone() {}, drawRing() {}, continueToClaim: () => flow.continueToClaim(), mintClaim: () => flow.mintClaim(), drawQr: (slot, text) => qr.push(text) };
+  const w = await world(t);
+  flow = createFlow({ client: clientWith(async () => offer()), relay: w.base, sleep: fastSleep, pollMs: 5, debounceMs: 1, connect: async () => box, signClaim,
+    onChange: s => render(s, { doc: /** @type {any} */ (doc), root: /** @type {any} */ (root), actions }) });
+  await flow.begin();
+  await until(() => flow.state.stage === "found");
+  flow.confirmWords();
+  await until(() => flow.state.naming.check);
+  await flow.claim(); flow.markSaved(); flow.continueToAi(); flow.startAi("codex");
+  await until(() => flow.state.ai.accounts[0] && flow.state.ai.accounts[0].step === "done");
+  flow.continueToTailscale();
+  box.st.ts = "connected"; box.st.claimPhase = "serving";
+  await until(() => flow.state.tailscale.address && flow.state.tailscale.address.phase === "serving");
+  flow.continueToDevices();
+  root.all().find(e => e.tag === "button" && e.children.some(c => c.value === "Skip for now")).listeners.click();
+  assert.equal(flow.state.stage, "claim");
+  root.all().find(e => e.tag === "button" && e.children.some(c => c.value === "Get my link")).listeners.click();
+  await until(() => flow.state.claim.phase === "ready");
+  const a = root.all().find(e => e.tag === "a" && e.attrs.href && e.attrs.href.includes("#claim="));
+  assert.ok(a, "the link");
+  assert.equal(a.attrs.href, flow.state.claim.url);
+  assert.ok(a.attrs.href.startsWith("https://harlow-legal-server.vyre.run/#claim="));
+  assert.ok(!root.textContent.includes("#claim="), "the token is in the href, never printed as text");
+  assert.deepEqual(qr, [flow.state.claim.url], "the phone's code is drawn from the same link, once");
+  flow.stop();
+});
+
 // ---- a DOM just big enough to check what the screen makes ----
 class FakeEl {
   constructor(tag, doc) { this.tag = tag; this.doc = doc; this.attrs = {}; this.children = []; this.text = null; this.listeners = {}; }
@@ -640,7 +768,7 @@ test("site: the relay client copied the way build-site.sh does it loads on its o
   for (const name of ["createSetupKey", "setupCode", "resolveSetup", "setupWords", "mailboxReader"]) assert.equal(typeof m[name], "function", name);
   // and the page's own files import nothing at all except the client (page.js) and each other
   const page = fs.readFileSync(path.join(path.dirname(url.fileURLToPath(import.meta.url)), "page.js"), "utf8");
-  assert.deepEqual([...page.matchAll(/^import .* from "([^"]+)"/gm)].map(x => x[1]).sort(), ["./box.js", "./deck/js/phone-code.js", "./flow.js", "./relay/bytes.js", "./relay/client.js", "./relay/setup.js", "./relay/webcrypto.js", "./ui.js"]);
+  assert.deepEqual([...page.matchAll(/^import .* from "([^"]+)"/gm)].map(x => x[1]).sort(), ["./box.js", "./claim.js", "./deck/js/phone-code.js", "./deck/vendor/qrcode.js", "./flow.js", "./relay/bytes.js", "./relay/client.js", "./relay/setup.js", "./relay/webcrypto.js", "./ui.js"]);
 });
 
 test("site: the setup page loads nothing from another origin, and its headers say so", async () => {

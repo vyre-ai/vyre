@@ -8,7 +8,7 @@
  * @param {{ openChannel: Function, request: Function, setupHello: Function, webCrypto: Function, utf8: (s: string) => Uint8Array }} lib the relay client's own functions (page.js passes them in, tests too)
  * @param {{ relay?: string, offer: { relay: string, route: string, box: Uint8Array }, key: { privateKey: CryptoKey, spki: Uint8Array },
  *   secret: Uint8Array, WebSocket?: any, timeout?: number }} o
- * @returns {Promise<{ call: (tool: string, input?: object) => Promise<any>, events: (type: string, since?: number) => Promise<{ id: number, type: string, payload: any }[]>, follow: (type: string, onEvent: (e: any) => void, onEnd: (err: Error|null) => void) => () => void, close: () => void }>}
+ * @returns {Promise<{ call: (tool: string, input?: object) => Promise<any>, events: (type: string, since?: number) => Promise<{ id: number, type: string, payload: any }[]>, follow: (type: string, onEvent: (e: any) => void, onEnd: (err: Error|null) => void, every?: number) => () => void, onClose: (cb: (...a: any[]) => void) => void, close: () => void }>}
  */
 export async function connectSetup(lib, o) {
   const crypto = lib.webCrypto();
@@ -37,33 +37,27 @@ export async function connectSetup(lib, o) {
       return Array.isArray(body && body.data) ? body.data.map(e => ({ id: Number(e.id) || 0, type: String(e.type || ""), payload: e.payload })) : [];
     },
     /**
-     * Follow one event type as it happens (the box's server-sent stream, from now). onEvent hears each event; onEnd hears the
-     * stream end, with the error if it broke. Returns a function that stops it.
+     * Hear one event type as it happens: the channel only allows a poll of its event list (GET /v1/events?type=&since=), so this
+     * reads that list every few seconds from now on and calls onEvent for each new one. The list is a cheap read, not the work the
+     * event is about. onEnd hears the loop end, with the error if a read failed (a 401 setup_over means the session is over).
+     * Returns a function that stops it.
      */
-    follow(type, onEvent, onEnd) {
-      let stopped = false, res = null;
+    follow(type, onEvent, onEnd, every = 3000) {
+      let stopped = false;
       (async () => {
         try {
-          res = await lib.request(channel, { method: "GET", path: `/v1/events/stream?type=${encodeURIComponent(type)}&since=latest` }, new Uint8Array(0));
-          if (!res.ok) throw Object.assign(new Error(`the box answered ${res.status}`), { status: res.status });
-          const dec = new TextDecoder();
-          let buf = "";
-          for await (const chunk of res.body) {
-            buf += dec.decode(chunk, { stream: true });
-            let at;
-            while ((at = buf.indexOf("\n\n")) !== -1) {
-              const block = buf.slice(0, at); buf = buf.slice(at + 2);
-              const data = block.split("\n").filter(l => l.startsWith("data:")).map(l => l.slice(5).trimStart()).join("\n");
-              if (!data) continue;
-              try { const e = JSON.parse(data); if (e && e.type === type && !stopped) onEvent(e); } catch { /* a line that is not an event */ }
-            }
-            if (buf.length > 65536) buf = "";
+          let since = (await this.events(type, 0)).reduce((n, e) => Math.max(n, e.id), 0);
+          while (!stopped) {
+            await new Promise(r => setTimeout(r, every));
+            if (stopped) return;
+            for (const e of await this.events(type, since)) { since = Math.max(since, e.id); if (!stopped) onEvent(e); }
           }
-          if (!stopped) onEnd(null);
         } catch (e) { if (!stopped) onEnd(/** @type {Error} */ (e)); }
       })();
-      return () => { stopped = true; try { res && res.cancel(); } catch { /* gone */ } };
+      return () => { stopped = true; };
     },
+    /** Hear the channel close (the box closes it with 4401 when the setup session ends). */
+    onClose(cb) { const prev = channel.onclose; channel.onclose = (...a) => { try { prev && prev(...a); } finally { cb(...a); } }; },
     close() { try { channel.close(1000, "done"); } catch { /* already closed */ } },
   };
 }
