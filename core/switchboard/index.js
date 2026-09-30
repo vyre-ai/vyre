@@ -480,7 +480,12 @@ export class Switchboard {
    *           append?: string, budget_usd?: number, fallback?: { env: Record<string,string>, budget_usd?: number },
    *           scope?: { projects: string[]|"*", cwds?: string[] } }} o
    */
-  async launch(o) {
+  /**
+   * @param {any} o
+   * @param {{ chips?: { kind: string, id: string }[], pasted?: string[] }|null} [person] set only by threads.start for a person's own
+   *   turn (never read from `o`): the first prompt is then heard as any person's turn is (said row, # tags).
+   */
+  async launch(o, person = null) {
     let id, rec;
     if (o.effort !== undefined) o = { ...o, effort: effortOf(o.effort) || undefined };
     if (o.lean) o = { ...o, plugin: false, tools: "none", settings: false };
@@ -582,8 +587,12 @@ export class Switchboard {
     // A resume first hands over what was steered in and never taken (a stop or a restart mid-turn).
     if (o.resume) this.restoreSteers(id);
     if (o.prompt) {
-      if (o.surface) await this.send(id, o.prompt, o.surface);
-      else { this.write(id, o.prompt); this.emit("thread.sent", { text: cut(o.prompt, 2000), surface: o.agent ? `agent:${o.agent}` : null }, id, rec.project); }
+      // A person's own first words are heard like any turn of theirs: before any provider sees them.
+      const said = crypto.randomUUID();
+      const heard = person ? await this.ingress(id, String(o.prompt), o.surface || "vyre", said, person.chips || [], person.pasted || []) : [];
+      const note = heard.length ? tagNote(heard) : "";
+      if (o.surface) await this.send(id, o.prompt, o.surface, { ...(person ? { uuid: said } : {}), ...(note ? { note } : {}) });
+      else { this.write(id, o.prompt, { ...(person ? { uuid: said } : {}), ...(note ? { note } : {}) }); this.emit("thread.sent", { text: cut(o.prompt, 2000), surface: o.agent ? `agent:${o.agent}` : null }, id, rec.project); }
     }
     return this.launched(id);
   }
@@ -2295,13 +2304,19 @@ export default {
         provider: { type: "string", description: "The session provider: claude (the default), or one a module added." },
         effort: { type: "string", enum: EFFORTS, description: "Reasoning effort, as /effort: low, medium, high, xhigh or max. Default: the model's own." },
         lean: { type: "boolean", description: "A one-question thread: no Vyre plugin, no tools, no MCP servers, none of the user's settings. Cheap to start." },
+        mentions: { type: "array", maxItems: 8, items: { type: "object", required: ["kind", "id"], properties: { kind: str, id: str, name: str } }, description: "The # tags the composer picked ({kind, id}) for the first prompt, from a person's own surface only; as threads.send." },
+        pasted: { type: "array", maxItems: 20, items: str, description: "The spans of the prompt the person pasted: a #Name inside one tags nothing. As threads.send." },
         parent: { type: "string", description: "First-party modules only: the thread this one is started for (a teammate's thread for a person's). A session starting one is its own parent, from what vyred verified." } } },
       async (i, { caller, thread, firstParty }) => {
         guard(caller, "start sessions");
         // The parent is the calling session's own verified thread, or (a first-party module starting it
         // on a thread's behalf) the id it names. Anyone else's claim is dropped, never believed.
         const parent = thread ? String(thread) : (firstParty && typeof i.parent === "string" ? i.parent : undefined);
-        return sb.launch({ ...i, parent, surface: surfaceOf(i, caller) });
+        // The first prompt is a person's own turn only when a person's surface started the thread; tags and pasted
+        // spans ride with it from there and from nowhere else.
+        const { mentions, pasted, ...rest } = i;
+        const person = personTurn(caller) && i.prompt ? { chips: Array.isArray(mentions) ? mentions : [], pasted: Array.isArray(pasted) ? pasted.filter(x => typeof x === "string").slice(0, 20) : [] } : null;
+        return sb.launch({ ...rest, parent, surface: surfaceOf(i, caller) }, person);
       });
 
     /**

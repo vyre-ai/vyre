@@ -47,8 +47,11 @@ async function boot(t) {
   // projectsDir must live under root: its default (~/Vyre/projects) is the user's real home,
   // never a temp one (RULES: temp homes only).
   fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ name: "test-box", role: "box", sessions: { install: false }, projectsDir: path.join(root, "projects") }));
-  const d = await start({ root, presence: present, log: () => {} });
-  t.after(() => d.stop());
+  const logs = [];
+  const d = await start({ root, presence: present, log: m => logs.push(String(m)) });
+  let stopped = false;
+  const stop = async () => { if (!stopped) { stopped = true; await d.stop(); } };
+  t.after(stop);
   const tool = async (name, input, caller = "cli", extra = {}) => {
     const r = await call(name, input, { root, caller, timeout: 20_000, ...extra });
     if (r.error) throw Object.assign(new Error(r.error.message || r.error.code), { code: r.error.code });
@@ -57,7 +60,7 @@ async function boot(t) {
   const project = await tool("projects.create", { name: "Harlow Legal" });
   const raw = (name, input, caller = "cli") => call(name, input, { root, caller, timeout: 20_000 });
   const launches = () => { try { return fs.readFileSync(log, "utf8").trim().split("\n").filter(Boolean).map(l => JSON.parse(l)); } catch { return []; } };
-  return { root, d, tool, raw, project, launches };
+  return { root, d, stop, logs, tool, raw, project, launches };
 }
 
 const GIT_ENV = { ...process.env, GIT_AUTHOR_NAME: "test", GIT_AUTHOR_EMAIL: "test@example.com", GIT_COMMITTER_NAME: "test", GIT_COMMITTER_EMAIL: "test@example.com" };
@@ -572,7 +575,9 @@ test("compaction: a teammate's own SessionStart (source compact) gets its notes 
 // --- step 4, slice A (2026-09-28): worktree lifecycle, the integrator, merge-before-dispatch ----
 
 test("isolation: worktree falls back to sharing the folder when the project's home is not a git repo, saying so", async t => {
-  const { tool, project } = await boot(t); // boot(), not bootGit(): a plain folder, no `git init`
+  const { tool, project } = await boot(t);
+  // projects.create now keeps a quiet local history in a new folder (acf46930); this test is about a folder that is not a repo.
+  fs.rmSync(path.join(project.home, ".git"), { recursive: true, force: true });
   const tm = await tool("team.add", { project: project.slug, role: "design", isolation: "worktree" });
   assert.equal(tm.isolation, "folder"); // never git init'd on the person's behalf: shares the folder instead
   assert.match(tm.notice, /isn't a git repo/);
@@ -723,6 +728,26 @@ test("a worktree teammate's request that finishes with new commits queues a merg
     return row && /^merge team\/design /.test(row.text) ? row : null;
   }, "a merge request queued to the integrator");
   assert.match(merge.text, new RegExp(`from request ${ask.request}`));
+});
+
+test("stopping the daemon right after a worktree teammate's merge was queued leaves no job running against a closed store", async t => {
+  const { tool, stop, logs, project, repo } = await bootGit(t);
+  await tool("team.add", { project: project.slug, role: "design", isolation: "worktree" });
+  const dir = worktreePath(repo, "design");
+  fs.writeFileSync(path.join(dir, "form.md"), "a calmer form\n");
+  git(dir, ["add", "."]);
+  git(dir, ["commit", "-q", "-m", "calmer form"]);
+  const rejections = [];
+  const onRej = e => rejections.push(String(e && e.message || e));
+  process.on("unhandledRejection", onRej);
+  t.after(() => process.off("unhandledRejection", onRej));
+  // No wait: the merge request is queued and the integrator's dispatch starts as the ask closes.
+  await tool("team.ask", { to: "design", project: project.slug, text: 'vyre team.done {"result":"done","notes":"unchanged","reason":"test"}' });
+  await new Promise(r => setTimeout(r, 400));
+  await stop();
+  await new Promise(r => setTimeout(r, 600)); // anything left running would hit the closed store by now
+  assert.deepEqual(rejections.filter(m => /not open/.test(m)), []);
+  assert.deepEqual(logs.filter(m => /not open/.test(m)), []);
 });
 
 // --- slice A review (e2e and reviewer, 8eb1a785): nothing the repo says to run ------------------

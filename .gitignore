@@ -23,3 +23,6 @@ site/setup/fonts/
 site/setup/deck/
 site/setup/signin-hosts.json
 phone-site/
+local/hands-chrome-mac/native-host/node-path
+local/hands-chrome-mac/native-host/sock-path
+deck/release/

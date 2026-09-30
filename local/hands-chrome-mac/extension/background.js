@@ -6,8 +6,12 @@
 //   4. answers {id, ok:true, result} or {id, ok:false, error:{code, message}}.
 //
 // Light by default (Vyre SPEC principle 8): while connected the open native port keeps the worker
-// alive and nothing polls. While disconnected it retries no faster than every 5 s, backing off to
-// a minute, and a once-a-minute alarm wakes a sleeping worker to try again. Idle cost is that alarm.
+// alive and nothing polls. While disconnected it retries every few seconds for the first two minutes of
+// a failure (a person who has just installed is watching for it), then backs off to a minute, and a
+// once-a-minute alarm wakes a sleeping worker to try again. Idle cost is that alarm.
+//
+// Nothing is swallowed: every attempt, Chrome's own error for a failure, and the moment it connected are
+// kept in chrome.storage.session ("vyre.conn"), and the popup and the toolbar badge say what is wrong.
 //
 // The module tells us when the person presses stop: {event:"stop"} sets ctx.stopped() until
 // {event:"resume"}. Acting ops are refused while it is set (caps/index.js) and a batch halts
@@ -19,9 +23,15 @@
 import { proto, redact } from "./lib/shared.js";
 import { createCtx } from "./lib/ctx.js";
 import { dispatch, deliver, ready, loadReport, opNames } from "./caps/index.js";
+import { explain } from "./shared/diag.js";
 
-export const MIN_RETRY_MS = 5000;
+export const MIN_RETRY_MS = 2500;
+export const FAST_RETRY_MS = 3000;
+export const FAST_WINDOW_MS = 120_000;
+export const BACKOFF_START_MS = 5000;
 export const MAX_RETRY_MS = 60_000;
+/** After this long failing, the toolbar badge shows "!" so the person notices without opening anything. */
+export const BADGE_AFTER_MS = 20_000;
 const ALARM = "vyre.keepalive";
 
 /**
@@ -61,6 +71,32 @@ export function start(chrome, opts = {}) {
   let lastAttempt = -Infinity;
   /** @type {any} */
   let timer = null;
+  /** The record the popup reads. @type {import("./shared/diag.js").Conn} */
+  const conn = { startedAt: now(), attempts: 0, lastAttemptAt: null, lastError: null, lastErrorAt: null, connectedAt: null, everConnected: false, failingSince: null };
+  /** Attempts since the failure streak began (the backoff's own counter). */
+  let streak = 0;
+  const persist = () => {
+    try {
+      const p = chrome.storage && chrome.storage.session && chrome.storage.session.set({ "vyre.conn": { ...conn } });
+      if (p && typeof p.catch === "function") p.catch(() => {});
+    } catch { /* storage may be gone with the worker */ }
+    try {
+      if (chrome.action && chrome.action.setBadgeText) {
+        const failingFor = conn.failingSince == null ? 0 : now() - conn.failingSince;
+        const bad = !conn.connectedAt || conn.failingSince != null ? failingFor >= BADGE_AFTER_MS : false;
+        chrome.action.setBadgeText({ text: bad ? "!" : "" });
+        if (bad && chrome.action.setBadgeBackgroundColor) chrome.action.setBadgeBackgroundColor({ color: "#c0392b" });
+        if (chrome.action.setTitle) chrome.action.setTitle({ title: `Vyre for Chrome: ${explain(conn, now()).headline}` });
+      }
+    } catch { /* no action API in this browser */ }
+  };
+  /** A failed attempt: keep Chrome's own words and when the streak began. @param {string} why */
+  const failed = why => {
+    conn.lastError = String(why || "the connector closed the connection").slice(0, 300);
+    conn.lastErrorAt = now();
+    if (conn.failingSince == null) conn.failingSince = now();
+    persist();
+  };
 
   /** @param {any} msg */
   function post(msg) {
@@ -73,7 +109,8 @@ export function start(chrome, opts = {}) {
 
   /** @param {any} msg */
   async function onMessage(msg) {
-    attempts = 0;
+    attempts = 0; streak = 0;
+    if (!conn.connectedAt || conn.failingSince != null) { conn.connectedAt = now(); conn.everConnected = true; conn.failingSince = null; conn.lastError = null; persist(); }
     if (!msg || typeof msg !== "object") return;
     if (typeof msg.event === "string") {
       if (msg.event === "stop") ctx.setStopped(true);
@@ -98,7 +135,9 @@ export function start(chrome, opts = {}) {
 
   function scheduleReconnect() {
     if (timer) return;
-    const wait = Math.min(MAX_RETRY_MS, MIN_RETRY_MS * 2 ** Math.min(attempts, 10));
+    // Fast for the first two minutes of a failure, then backing off to a minute.
+    const failingFor = conn.failingSince == null ? 0 : now() - conn.failingSince;
+    const wait = failingFor < FAST_WINDOW_MS ? FAST_RETRY_MS : Math.min(MAX_RETRY_MS, BACKOFF_START_MS * 2 ** Math.min(streak++, 10));
     attempts++;
     timer = setT(() => { timer = null; connect(); }, wait);
   }
@@ -108,13 +147,17 @@ export function start(chrome, opts = {}) {
     // A wake-up by the alarm must not shorten the wait the backoff already chose.
     if (now() - lastAttempt < MIN_RETRY_MS) { scheduleReconnect(); return; }
     lastAttempt = now();
+    conn.attempts++; conn.lastAttemptAt = now();
     let p;
-    try { p = chrome.runtime.connectNative(proto.HOST_NAME); } catch { scheduleReconnect(); return; }
+    try { p = chrome.runtime.connectNative(proto.HOST_NAME); } catch (e) { failed(/** @type {any} */ (e) && /** @type {any} */ (e).message || String(e)); scheduleReconnect(); return; }
     port = p;
+    persist();
     p.onMessage.addListener((/** @type {any} */ m) => { void onMessage(m); });
     p.onDisconnect.addListener(() => {
-      void chrome.runtime.lastError; // read it so Chrome does not log an unchecked error
+      // Chrome's own reason ("Specified native messaging host not found.", "...forbidden.", "Native host has exited."): kept, never dropped.
+      const le = chrome.runtime.lastError;
       if (port === p) port = null;
+      failed(le && le.message ? le.message : conn.connectedAt ? "the connector closed the connection" : "the connector closed the connection before saying anything");
       scheduleReconnect();
     });
     void ready.then(() => post({
@@ -130,7 +173,7 @@ export function start(chrome, opts = {}) {
   }
 
   connect();
-  return { ctx, connect, onMessage, port: () => port, attempts: () => attempts, stop: () => { if (timer) clearT(timer); timer = null; } };
+  return { ctx, connect, onMessage, port: () => port, attempts: () => attempts, conn: () => ({ ...conn }), stop: () => { if (timer) clearT(timer); timer = null; } };
 }
 
 if (/** @type {any} */ (globalThis).chrome?.runtime?.id) start(/** @type {any} */ (globalThis).chrome);

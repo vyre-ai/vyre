@@ -51,6 +51,23 @@ export function createCtx({ chrome, emit = () => {} }) {
       const b = await chrome.tabs.query({ active: true, currentWindow: true });
       return (b && b[0]) || null;
     },
+    /**
+     * Wait until a tab has COMMITTED to a page and finished loading (status complete, an address, nothing pending), or the time is up.
+     * Never throws for a slow page: it returns what the tab looks like at the end. @param {number} id @param {number} [ms]
+     * @returns {Promise<{ tab: any, settled: boolean, waitedMs: number }>}
+     */
+    async settle(id, ms = 15_000) {
+      const t0 = Date.now();
+      /** @type {any} */ let tab = null;
+      for (;;) {
+        try { tab = await chrome.tabs.get(id); } catch { tab = null; }
+        const url = tab ? String(tab.url || "") : "";
+        if (tab && tab.status === "complete" && url && !tab.pendingUrl) return { tab, settled: true, waitedMs: Date.now() - t0 };
+        if (!tab) return { tab: null, settled: false, waitedMs: Date.now() - t0 };
+        if (Date.now() - t0 >= ms) return { tab, settled: false, waitedMs: Date.now() - t0 };
+        await new Promise(r => setTimeout(r, 80));
+      }
+    },
     /** @param {number} windowId */
     async focusWindow(windowId) { if (chrome.windows?.update) await chrome.windows.update(windowId, { focused: true }); },
   };

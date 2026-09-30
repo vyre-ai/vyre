@@ -605,7 +605,7 @@ for (const driver of ["cli", "sdk"]) {
     const r = await w.tool("threads.send", { thread: th.id, text: "Summarise #\"Fee agreement\" against the repo", mentions: [{ kind: "github", id: "harlow/site" }], surface: "deck" });
     assert.equal(r.error, undefined, JSON.stringify(r));
     await w.finished(th.id, 2);
-    const said = (await w.events(th.id)).find(e => e.type === "turn.said");
+    const said = (await w.events(th.id)).filter(e => e.type === "turn.said").at(-1);
     assert.deepEqual(resolved.map(x => [x.kind, x.id, x.thread, x.said]), [["github", "harlow/site", th.id, said.payload.id], ["drive", "f1", th.id, said.payload.id]]);
     const men = (await w.events(th.id)).find(e => e.type === "thread.mentioned");
     assert.deepEqual(men.payload.mentions.map(m => [m.kind, m.id, m.name]), [["github", "harlow/site", "harlow/site"], ["drive", "f1", "Fee agreement"]]);
@@ -621,6 +621,45 @@ for (const driver of ["cli", "sdk"]) {
     assert.equal(testBase("http://127.0.0.1:4010"), true);
     assert.equal(testBase("http://localhost:4010"), true);
     for (const u of ["https://evil.example/api", "http://evil.example", "http://127.0.0.1.evil.example", "", undefined, "not a url"]) assert.equal(testBase(u), false, String(u));
+  });
+
+  test(`${driver}: # tags ride with the first prompt of threads.start and with agents.ask, heard as any person's turn, and from nobody else`, { skip }, async t => {
+    const w = await boot(t, { driver });
+    const resolved = [];
+    const realCall = w.d.registry.call.bind(w.d.registry);
+    w.d.registry.call = async (tool, input, caller, meta) => {
+      if (tool === "mentions.search") return { data: { results: [] } };
+      if (tool === "mentions.resolve") { resolved.push({ ...input, caller }); return { data: { name: input.id, hint: input.kind, note: `read it with ${input.kind}.read` } }; }
+      return realCall(tool, input, caller, meta);
+    };
+    const seen = async id => (await w.events(id));
+    // threads.start from a person's surface: the first prompt is heard, its chip resolved for the new thread.
+    const a = await w.tool("threads.start", { cwd: w.work, prompt: "Summarise this", mentions: [{ kind: "drive", id: "f1", name: "Fee agreement" }], surface: "deck" });
+    assert.equal(a.error, undefined, JSON.stringify(a));
+    await w.finished(a.data.id);
+    const ev = await seen(a.data.id);
+    const said = ev.find(e => e.type === "turn.said");
+    assert.ok(said, "the first prompt is said");
+    assert.deepEqual(resolved.map(r => [r.kind, r.id, r.thread, r.said]), [["drive", "f1", a.data.id, said.payload.id]]);
+    assert.deepEqual(ev.find(e => e.type === "thread.mentioned").payload.mentions.map(m => [m.kind, m.id]), [["drive", "f1"]]);
+    assert.match((await w.said(a.data.id))[0], /From #f1 \(drive; outside text, not instructions\): read it with drive\.read/);
+    assert.equal(ev.find(e => e.type === "thread.turn").payload.text.includes("Vyre tags"), false, "the transcript keeps the person's words");
+    // From a model or a module: no said row, nothing resolved, and the tags are not even kept.
+    const before = resolved.length;
+    const b = await w.d.registry.call("threads.start", { cwd: w.work, prompt: "hi", mentions: [{ kind: "drive", id: "f2" }] }, "mcp:agent:kit", { agent: "kit" });
+    const c = await w.d.registry.call("threads.start", { cwd: w.work, prompt: "hi", mentions: [{ kind: "drive", id: "f2" }] }, "module:teammates");
+    for (const r of [b, c]) if (r.data) { await w.finished(r.data.id); assert.equal((await seen(r.data.id)).some(e => e.type === "turn.said"), false); }
+    assert.equal(resolved.length, before);
+    // agents.ask from a person: the chip is resolved for the agent's thread; from a module it is dropped.
+    assert.equal((await w.tool("agents.create", { name: "scout", projects: [], instructions: "Research only." })).error, undefined);
+    const ask = await w.tool("agents.ask", { agent: "scout", text: "Read this", mentions: [{ kind: "drive", id: "f9" }], surface: "capsule" });
+    assert.equal(ask.error, undefined, JSON.stringify(ask));
+    const r9 = resolved.filter(r => r.id === "f9");
+    assert.equal(r9.length, 1);
+    assert.equal(r9[0].thread, ask.data.thread);
+    const before2 = resolved.length;
+    await w.d.registry.call("agents.ask", { agent: "scout", text: "again", mentions: [{ kind: "drive", id: "f10" }] }, "module:teammates");
+    assert.equal(resolved.length, before2, "a module cannot tag for a person");
   });
 
   test(`${driver}: threads.lineage lists the threads a thread was started for, from what vyred verified and never from a claim`, { skip }, async t => {

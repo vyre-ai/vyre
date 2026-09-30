@@ -30,7 +30,7 @@ test("module: starts in the Registry, registers its tools, and act observes agai
   const found = discover([path.dirname(HERE)]).filter(m => m.dir === HERE);
   await reg.start(found, { role: "local" });
   assert.equal(reg.status().find(m => m.name === "hands")?.state, "running");
-  assert.deepEqual(reg.listTools().map(x => x.name).sort(), ["hands.act", "hands.commit", "hands.find", "hands.grant.add", "hands.grant.list", "hands.grant.remove", "hands.indicator", "hands.observe", "hands.stop"]);
+  assert.deepEqual(reg.listTools().map(x => x.name).sort(), ["hands.act", "hands.commit", "hands.find", "hands.grant.add", "hands.grant.list", "hands.grant.remove", "hands.indicator", "hands.observe", "hands.pause", "hands.resume", "hands.stop"]);
 
   const seen = await reg.call("hands.observe", {}, "mcp");
   assert.deepEqual(seen.data.elements[0].selector, { role: "AXButton", name: "7", path: "/0/0/7" });
@@ -136,4 +136,25 @@ test("step cap: a granted agent that has acted stepCap times with no word from t
   assert.equal((await act()).error.code, "step_cap");
   await reg.call("hands.stop", {}, "cli");
   assert.equal((await act({ resume: true })).error, undefined, "a stop, then resume");
+});
+
+test("panel: hands.pause holds like a stop and says hands.paused, hands.resume is the person's and carries on; every hands event carries run", async t => {
+  const home = tempHome(t);
+  const db = open(path.join(home, "vyre.db"));
+  t.after(() => db.close());
+  const f = fakeApp({ texts: ["0"], elements: [{ path: "/0/0/7", role: "AXButton", name: "7", enabled: true }] }, (req, s) => { s.texts = ["7"]; return { acted: true }; });
+  const reg = new Registry({ db, events: new Events(db), log: () => {}, config: { role: "local", hands: { runner: f.run, sleep: async () => {} } } });
+  await reg.start(discover([path.dirname(HERE)]).filter(m => m.dir === HERE), { role: "local" });
+  assert.ok((await reg.call("hands.grant.add", { agent: "kit" }, "cli")).data.granted);
+  const sel = { role: "AXButton", name: "7", path: "/0/0/7" };
+  assert.equal((await reg.call("hands.pause", {}, "mcp:agent:kit")).error.code, "denied", "the model cannot pause or resume for the person");
+  assert.equal((await reg.call("hands.resume", {}, "mcp:agent:kit")).error.code, "denied");
+  assert.equal((await reg.call("hands.act", { selector: sel, kind: "press" }, "mcp:agent:kit", { thread: "t7" })).error, undefined);
+  assert.equal((await reg.call("hands.pause", {}, "cli")).data.paused, true);
+  assert.equal((await reg.call("hands.act", { selector: sel, kind: "press" }, "mcp:agent:kit", { thread: "t7" })).error.code, "stopped");
+  assert.equal((await reg.call("hands.resume", {}, "cli")).data.ok, true);
+  assert.equal((await reg.call("hands.act", { selector: sel, kind: "press" }, "mcp:agent:kit", { thread: "t7" })).error, undefined, "carries on without resume:true once the person resumed");
+  const ev = reg.deps.events.since(0).filter(x => /^hands\./.test(x.type));
+  assert.ok(ev.some(e => e.type === "hands.paused") && ev.some(e => e.type === "hands.resumed"), ev.map(e => e.type).join());
+  assert.equal(ev.find(e => e.type === "hands.acted").payload.run, "t7");
 });

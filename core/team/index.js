@@ -584,11 +584,23 @@ export default {
       setTeammate(req.teammate, { current_request: null, state: "idle" });
     };
 
-    const pump = async agent => {
+    /**
+     * Stopping (reviewer/platform: a merge job outlived the daemon and hit "database is not open"): once stopped nothing
+     * starts, the waiting thread.finished listeners are dropped, and stop() awaits whatever is in flight, so the store is
+     * still open for it. The daemon stops modules before it closes the store.
+     */
+    let stopped = false;
+    const inflight = new Set();
+    const track = p => { const q = Promise.resolve(p).catch(e => ctx.log?.(`team: background work failed: ${/** @type {Error} */ (e).message}`)); inflight.add(q); q.finally(() => inflight.delete(q)); return q; };
+    const waiting = new Set();
+
+    const pump = agent => (stopped ? Promise.resolve() : track(pumpAgent(agent)));
+    const pumpAgent = async agent => {
       if (pumping.has(agent)) return;
       pumping.add(agent);
       try {
         for (;;) {
+          if (stopped) return;
           const tm = byAgent(agent);
           if (!tm || tm.current_request) return;
           const req = next(agent);
@@ -698,7 +710,8 @@ export default {
             setTeammate(agent, { thread: t.id, ...(first ? { thread_charter: charterVersion(agent) } : {}) });
             if (already) { await onTurnEnded(); }
             else {
-              const off = ctx.events.on("thread.finished", async e => { if (e.thread === t.id) { off(); await onTurnEnded(); } });
+              const off = ctx.events.on("thread.finished", e => { if (e.thread === t.id) { off(); waiting.delete(off); if (!stopped) track(onTurnEnded()); } });
+              waiting.add(off);
             }
           } catch (e) {
             const closed = await finish(reqById(req.id), "failed", { result: `could not start: ${/** @type {Error} */ (e).message}` });
@@ -1273,6 +1286,12 @@ export default {
       catch (e2) { ctx.log?.(`team: could not re-inject notes into ${session} after compaction: ${/** @type {Error} */ (e2).message}`); }
     });
 
-    return { async stop() { offCompact(); } };
+    return { async stop() {
+      stopped = true;
+      offCompact();
+      for (const off of [...waiting]) off();
+      waiting.clear();
+      while (inflight.size) await Promise.all([...inflight]);
+    } };
   },
 };

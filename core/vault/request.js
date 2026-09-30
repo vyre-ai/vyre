@@ -149,6 +149,8 @@ export class ApiRequests {
     this.now = deps.now || Date.now;
     /** Minted access tokens, in memory only. @type {Map<string, { token: string, expires: number }>} */
     this.tokens = new Map();
+    /** One refresh in flight per oauth credential. @type {Map<string, Promise<string>>} */
+    this.refreshing = new Map();
     this.stopped = false;
     /** @type {Set<any>} */
     this.timers = new Set();
@@ -219,7 +221,12 @@ export class ApiRequests {
    */
   async authFor(plan) {
     const a = plan.config.auth;
-    if (a.type === "oauth") throw bad(`${plan.name} is an oauth credential; signing in for one is not built yet. Use a bearer token or a service account for now`, "unsupported");
+    if (a.type === "oauth") {
+      const known = [];
+      const token = await this.oauthToken(plan, known);
+      known.push(token);
+      return { headers: { authorization: `Bearer ${token}` }, known };
+    }
     const secret = await this.secretOf(plan);
     const known = forms(secret);
     if (a.type === "service-account") {
@@ -233,6 +240,81 @@ export class ApiRequests {
     if (/[\r\n]/.test(value)) throw bad(`${plan.name}'s secret has a line break, which a header cannot carry`, "config");
     known.push(value);
     return { headers: { [header]: value }, known };
+  }
+
+  /**
+   * The access token of a signed-in oauth credential. The sign-in (the connectors module, through
+   * vault.credential.tokens) stored { refresh_token, access_token, expires_at } as this credential's
+   * sealed secret; a stored token is used while it is good, then refreshed at the config's own
+   * token_uri (never one from the secret), which must pass the same target check. A vendor that
+   * rotates the refresh token has the new one sealed before the call goes on.
+   * @param {any} plan @param {string[]} known
+   */
+  async oauthToken(plan, known) {
+    const key = `${plan.name}\u0000${plan.ver}`;
+    const hit = this.tokens.get(key);
+    if (hit && hit.expires - EARLY_MS > this.now()) { known.push(hit.token); return hit.token; }
+    // One refresh per credential at a time: a vendor that rotates the refresh token would refuse the
+    // second of two concurrent refreshes, and the loser could be the one sealed last. The second caller
+    // waits for the first and re-reads the sealed tokens.
+    const running = this.refreshing.get(plan.name);
+    if (running) {
+      await running.catch(() => {});
+      const fresh = await this.vault.apiCredential(plan.name);
+      return this.oauthToken({ ...plan, ver: Number(fresh.row.ver || 0), secret: fresh.secret }, known);
+    }
+    const p = this.refreshOauth(plan, known);
+    this.refreshing.set(plan.name, p);
+    try { return await p; } finally { if (this.refreshing.get(plan.name) === p) this.refreshing.delete(plan.name); }
+  }
+
+  /** The refresh itself; see oauthToken. @param {any} plan @param {string[]} known */
+  async refreshOauth(plan, known) {
+    const a = plan.config.auth;
+    const key = `${plan.name}\u0000${plan.ver}`;
+    let t;
+    try { t = JSON.parse(plan.secret || ""); } catch { t = null; }
+    if (!isObj(t) || (!isStr(t.refresh_token) && !isStr(t.access_token))) throw bad(`${plan.name} is not signed in yet · vyre connect add app <name>`, "not_signed_in");
+    for (const k of ["refresh_token", "access_token"]) if (isStr(t[k])) known.push(t[k]);
+    const at = Number(t.expires_at) || 0;
+    if (isStr(t.access_token) && at - EARLY_MS > this.now()) { this.tokens.set(key, { token: t.access_token, expires: at }); return t.access_token; }
+    if (!isStr(t.refresh_token)) throw bad(`${plan.name}'s sign-in has ended; sign in again · vyre connect add app <name> --replace`, "not_signed_in");
+    const row = this.vault.row(a.client.item);
+    if (!row) throw bad(`${plan.name} names the vault item ${a.client.item}, which is not there`, "config");
+    if (row.kind === "api-credential") throw bad(`${plan.name} names another api-credential as its app, which never hands out a value`, "config");
+    const f = await this.vault.fields(row);
+    const clientId = f[a.client.field || "client_id"], clientSecret = f.client_secret;
+    if (!isStr(clientId) || !clientId) throw bad(`${a.client.item} has no client_id`, "config");
+    if (isStr(clientSecret)) known.push(clientSecret);
+    let host;
+    try { host = new URL(a.token_uri).hostname; } catch { throw bad(`${plan.name} has a token_uri that is not an address`, "config"); }
+    const target = await checkTarget(a.token_uri, [host], { lookup: this.deps.lookup });
+    const body = new URLSearchParams({ grant_type: "refresh_token", refresh_token: t.refresh_token, client_id: clientId, scope: a.scopes.join(" ") });
+    if (isStr(clientSecret) && clientSecret) body.set("client_secret", clientSecret);
+    const r = await this.transport({ url: target.url, address: target.addresses[0], method: "POST", body: body.toString(),
+      headers: { "content-type": "application/x-www-form-urlencoded", accept: "application/json" }, timeoutMs: TIMEOUT_MS, maxBytes: 100_000 });
+    const text = scrub(r.body.toString("utf8"), known);
+    if (r.status >= 300 && r.status < 400) throw bad("the token endpoint answered a redirect, which is refused", "redirect");
+    let j = null;
+    try { j = JSON.parse(r.body.toString("utf8")); } catch { /* not JSON */ }
+    if (isObj(j)) for (const k of ["access_token", "refresh_token", "id_token"]) if (isStr(j[k])) known.push(j[k]);
+    if (r.status !== 200) {
+      const why = isObj(j) && isStr(j.error) ? `${j.error}${isStr(j.error_description) ? ` (${scrub(j.error_description, known).slice(0, 200)})` : ""}` : text.slice(0, 200) || "no reason given";
+      throw bad(`the token endpoint answered ${r.status}: ${why}. If the sign-in ended, sign in again · vyre connect add app <name> --replace`, "refused");
+    }
+    if (!isObj(j) || !isStr(j.access_token) || !j.access_token) throw bad("the token endpoint answered with no access token", "token");
+    const secs = Number(j.expires_in) > 0 ? Number(j.expires_in) : 3600;
+    const expires = this.now() + secs * 1000;
+    // Seal the new tokens before using them, so a rotation is never lost: the old refresh token is spent.
+    const next = { refresh_token: isStr(j.refresh_token) && j.refresh_token ? j.refresh_token : t.refresh_token, access_token: j.access_token, expires_at: expires };
+    await this.vault.setApiSecret(plan.name, JSON.stringify(next));
+    this.tokens.set(key, { token: j.access_token, expires });
+    return j.access_token;
+  }
+
+  /** Forget every access token held for a credential (its sign-in was replaced). @param {string} name */
+  forget(name) {
+    for (const k of [...this.tokens.keys()]) if (k.startsWith(`${name}\u0000`)) this.tokens.delete(k);
   }
 
   /**
@@ -517,6 +599,24 @@ export function register({ vault, tool, internal, call, said, deps = {}, log }) 
   internal("vault.api.send", "The Gate calls this with { id } once a person approves a held vault.request, and it runs exactly the request the person saw, re-checked. Offered to the Gate as the vault-api sender.",
     obj({ id: str, to: { type: "array", items: str }, content: { type: "object" } }, ["id"]),
     (input, { caller }) => api.send(input, String(caller)));
+
+  internal("vault.credential.tokens", "The connectors module stores a finished sign-in in an oauth api-credential: { name, tokens: { refresh_token?, access_token, expires_in?, token_uri } }. Refused unless the token_uri is the one the credential names.",
+    obj({ name: str, tokens: { type: "object" } }, ["name", "tokens"]),
+    async ({ name, tokens }, { caller }) => {
+      if (caller !== "module:connectors") throw bad("only the connectors module stores a sign-in", "denied");
+      const { config } = await vault.apiCredential(String(name));
+      if (config.auth.type !== "oauth") throw bad(`${name} is not an oauth credential`);
+      const t = isObj(tokens) ? tokens : {};
+      // The token must come from the endpoint the person's config names (P21), never one the caller picks. This proves
+      // what connectors claims, not where the tokens came from; that is acceptable because only the first-party
+      // connectors module can call this tool (the caller check above).
+      if (t.token_uri !== config.auth.token_uri) throw bad("that sign-in did not come from the token endpoint this credential names", "denied");
+      if (!isStr(t.access_token) || !t.access_token) throw bad("a sign-in has an access token");
+      const expires = Number(t.expires_in) > 0 ? api.now() + Number(t.expires_in) * 1000 : 0;
+      await vault.setApiSecret(String(name), JSON.stringify({ ...(isStr(t.refresh_token) && t.refresh_token ? { refresh_token: t.refresh_token } : {}), access_token: t.access_token, ...(expires ? { expires_at: expires } : {}) }));
+      api.forget(String(name));
+      return { stored: true };
+    });
 
   // Offer the sender now, and again until the Gate is up; every hold offers it again.
   api.offerSoon().catch(() => {});

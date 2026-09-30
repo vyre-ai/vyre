@@ -157,7 +157,9 @@ async function startLocked(opts, root, p, release) {
     catch { socket.destroy(); }
   });
   await new Promise((resolve, reject) => { server.once("error", reject); server.listen(p.socket, () => resolve(undefined)); });
-  fs.chmodSync(p.socket, 0o600);
+  // No POSIX mode on win32: the socket is a named pipe (core/config/index.js's socketPath),
+  // which Node already restricts to this user by default; there is no file for chmod to touch.
+  if (process.platform !== "win32") fs.chmodSync(p.socket, 0o600);
   fs.writeFileSync(p.pid, String(process.pid));
   log(`vyred ${VERSION} up · role ${cfg.role} · ${registry.status().filter(m => m.state === "running").length} modules`);
 

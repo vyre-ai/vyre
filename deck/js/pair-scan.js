@@ -174,7 +174,7 @@ export function pairScanSheet(opts) {
   }
 
   function spawnConfetti(/** @type {HTMLElement} */ host) {
-    const colors = ["#C6F36B", "#F6D186", "#E8A6C7", "#9FD8C8"];
+    const colors = ["#F1EEE6", "#F6D186", "#E8A6C7", "#9FD8C8"];
     for (let i = 0; i < 7; i++) {
       const bit = h("span", { class: "confetti-bit" });
       const angle = Math.random() * Math.PI * 2, dist = 22 + Math.random() * 26;

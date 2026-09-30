@@ -42,7 +42,7 @@
 
 /* The surface-grant filter chip (chip.md's Filter chip anatomy: 28 tall, radius-full, 1px
    --rule-strong, ink --text-2, gap 6; On is --focus border + --signal-wash fill + --text ink,
-   lime never violet). Its own class, not deck.css's shared .chip (26 tall, no on state, and
+   bone never violet). Its own class, not deck.css's shared .chip (26 tall, no on state, and
    already carries settings-keys.js's differently-sized source chip), so this is correct without
    touching that shared rule; chip.md's own Gap already names the shared .chip fix as separate
    work. */

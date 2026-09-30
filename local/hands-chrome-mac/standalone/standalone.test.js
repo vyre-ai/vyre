@@ -17,7 +17,7 @@ import { extensionIdFromKey } from "../native-host/install.js";
 import { build } from "./build-release.mjs";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
-const tmp = (/** @type {any} */ t) => { const d = fs.mkdtempSync(path.join(os.tmpdir(), "vc-sa-")); t.after(() => fs.rmSync(d, { recursive: true, force: true })); return d; };
+const tmp = (/** @type {any} */ t) => { const d = fs.mkdtempSync(path.join(os.tmpdir(), "vc-sa-")); t.after(() => { spawnSync("chmod", ["-R", "u+rwX", d]); fs.rmSync(d, { recursive: true, force: true }); }); return d; };
 
 /** A runtime plus an MCP client over in-memory streams. */
 async function rig(/** @type {any} */ t, /** @type {any} */ handler = null) {
@@ -376,4 +376,99 @@ test("privacy: an automatically recognised white-label builder page keeps typed 
   const recs = /** @type {any} */ (readSessions(dataDir, 1)).records.filter((/** @type {any} */ x) => x.tool === "chrome.fill");
   assert.equal(recs[0].args.fields[0].value, "Welcome to Harlow Legal");
   assert.match(String(recs[1].args.fields[0].value), /^\[\d+ chars\]$/);
+});
+
+
+test("launcher: finds Node itself when PATH has none (nvm, Homebrew), refuses an old Node, follows a symlink, and install puts it in ~/.local/bin", { skip: process.platform === "win32" && "sh launcher" }, async t => {
+  const home = tmp(t);
+  const out = path.join(home, "rel"); fs.mkdirSync(out);
+  const rel = build({ out });
+  const launcher = path.join(rel.dir, "vyre-chrome");
+  assert.ok(fs.statSync(launcher).mode & 0o111, "the launcher is executable");
+  const env = (/** @type {Record<string,string>} */ e = {}) => ({ HOME: home, PATH: "/usr/bin:/bin", VYRE_CHROME_HOME: path.join(home, ".vyre-chrome"), ...e });
+  const run = (/** @type {string[]} */ args, /** @type {any} */ e, bin = launcher) => spawnSync(bin, args, { env: env(e), encoding: "utf8" });
+  // No node anywhere it looks: a clear message, exit 127.
+  const none = run(["version"], { PATH: "/nonexistent" });
+  if (!fs.existsSync("/usr/bin/node") && !fs.existsSync("/usr/local/bin/node") && !fs.existsSync("/opt/homebrew/bin/node")) {
+    assert.equal(none.status, 127);
+    assert.match(none.stderr, /needs Node 22 or newer/);
+  }
+  // Node under nvm, not on PATH.
+  const nvmBin = path.join(home, ".nvm", "versions", "node", "v22.99.0", "bin");
+  fs.mkdirSync(nvmBin, { recursive: true });
+  fs.symlinkSync(process.execPath, path.join(nvmBin, "node"));
+  const viaNvm = run(["version"]);
+  assert.equal(viaNvm.status, 0, viaNvm.stderr);
+  assert.match(viaNvm.stdout.trim(), /^\d+\.\d+\.\d+$/);
+  // An old node is skipped: a fake v20 that reports failure on the version check is never chosen.
+  const oldBin = path.join(home, ".nvm", "versions", "node", "v20.1.0", "bin");
+  fs.mkdirSync(oldBin, { recursive: true });
+  fs.writeFileSync(path.join(oldBin, "node"), "#!/bin/sh\nexit 1\n", { mode: 0o755 });
+  assert.equal(run(["version"]).status, 0, "the old one is skipped, the new one is used");
+  // Through a symlink, as install leaves it in ~/.local/bin.
+  const link = path.join(home, "somewhere", "vyre-chrome");
+  fs.mkdirSync(path.dirname(link)); fs.symlinkSync(launcher, link);
+  assert.equal(run(["version"], {}, link).status, 0, "a symlink to the launcher still finds the package");
+  // Install (from the release, with no node on PATH) puts the command in ~/.local/bin and prints how to reach it.
+  const inst = run(["install", "--browsers", "chrome"]);
+  assert.equal(inst.status, 0, inst.stderr);
+  const installed = path.join(home, ".local", "bin", "vyre-chrome");
+  assert.ok(fs.lstatSync(installed).isSymbolicLink(), "the command is in ~/.local/bin");
+  assert.match(inst.stdout, /~\/\.local\/bin is not on your PATH yet/);
+  assert.equal(run(["version"], {}, installed).status, 0, "and it works from there");
+  assert.equal(run(["uninstall"]).status, 0);
+  assert.equal(fs.existsSync(installed), false, "uninstall removes the command it put there");
+});
+
+test("install waits for the extension when asked, says connected the moment it does, and otherwise says the exact next step", async t => {
+  const home = tmp(t);
+  const out = path.join(home, "rel"); fs.mkdirSync(out);
+  const rel = build({ out });
+  const dataDir = path.join(home, ".vyre-chrome");
+  const env = { ...process.env, HOME: home, USERPROFILE: home, VYRE_CHROME_HOME: dataDir };
+  const cli = path.join(rel.dir, "standalone", "cli.mjs");
+  const key = JSON.parse(fs.readFileSync(path.join(HERE, "..", "extension", "manifest.json"), "utf8")).key;
+  const origin = `chrome-extension://${extensionIdFromKey(key)}/`;
+  const { spawn } = await import("node:child_process");
+  const sock = path.join(dataDir, "run", "chrome.sock");
+  t.after(() => spawnSync("chmod", ["-R", "u+rwX", home]));
+  // 1. An extension that connects while install waits.
+  const p = spawn(process.execPath, [cli, "install", "--browsers", "chrome", "--wait", "15"], { env, stdio: ["ignore", "pipe", "pipe"] });
+  let text = ""; p.stdout.on("data", d => { text += d; }); p.stderr.on("data", d => { text += d; });
+  const done = new Promise(r => p.on("exit", c => r(c)));
+  await until(() => /Waiting up to/.test(text), 10_000);
+  await until(() => fs.existsSync(sock), 5000);
+  const ext = await fakeExtension(sock, { hello: false });
+  t.after(() => ext.sock.destroy());
+  await ext.send({ event: "host", origin });
+  await ext.hello();
+  assert.equal(await done, 0, text);
+  assert.match(text, /Connected: Vyre for Chrome is talking to your browser/);
+  // 2. Nothing connects: the exact next step.
+  const q = spawnSync(process.execPath, [cli, "install", "--browsers", "chrome", "--wait", "1"], { env, encoding: "utf8" });
+  assert.equal(q.status, 2);
+  assert.match(q.stdout, /Not connected yet after 1 s: Chrome has not started the connector/);
+  assert.match(q.stdout, /Next: .*chrome:\/\/extensions.*quit and reopen Chrome/);
+});
+
+test("doctor: checks the install, the registration, the launcher and a real connector round trip, and says the one next step", async t => {
+  const home = tmp(t);
+  const out = path.join(home, "rel"); fs.mkdirSync(out);
+  const rel = build({ out });
+  const env = { ...process.env, HOME: home, USERPROFILE: home, VYRE_CHROME_HOME: path.join(home, ".vyre-chrome") };
+  const cli = path.join(rel.dir, "standalone", "cli.mjs");
+  t.after(() => spawnSync("chmod", ["-R", "u+rwX", home]));
+  // Before install: fails, and says to install.
+  const before = spawnSync(process.execPath, [cli, "doctor", "--no-selftest"], { env, encoding: "utf8" });
+  assert.equal(before.status, 1);
+  assert.match(before.stdout, /FAIL nothing installed/);
+  assert.match(before.stdout, /Next: Run `\.\/vyre-chrome install`/);
+  assert.equal(spawnSync(process.execPath, [cli, "install", "--browsers", "chrome", "--no-wait"], { env, encoding: "utf8" }).status, 0);
+  const d = spawnSync(process.execPath, [path.join(home, ".vyre-chrome", "app", "standalone", "cli.mjs"), "doctor"], { env, encoding: "utf8", timeout: 60_000 });
+  assert.equal(d.status, 0, d.stdout + d.stderr);
+  assert.match(d.stdout, /OK   installed at/);
+  assert.match(d.stdout, /OK   registered for chrome/);
+  assert.match(d.stdout, /OK   the launcher starts the connector/);
+  assert.match(d.stdout, /OK   a real connector process said hello to a bridge and relayed a request back/);
+  assert.match(d.stdout, /Next: /);
 });

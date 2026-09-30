@@ -264,6 +264,9 @@ export async function resolveTicket(ticket, o) {
   const handle = typeof record.handle === "string" && /^[a-z0-9](?:[a-z0-9-]{0,30}[a-z0-9])?$/i.test(record.handle) ? record.handle.slice(0, 32) : null;
   // The avatar's own seed (the lead's ruling, 28 Sep): 8 bytes, base64url, or null on a box that
   // hasn't got an owner.id yet (anywhere's core/onboard, not landed everywhere), never guessed.
+  // The box's own https origin, from the MAC-covered record: the only source an app may pin (null when none).
+  let address = null;
+  try { if (typeof record.address === "string") { const u = new URL(record.address); if (u.protocol === "https:" && u.origin === record.address) address = u.origin; } } catch {}
   let identity = null;
   try { const b = fromBase64url(String(record.identity || "")); if (b.length === 8) identity = base64url(b); } catch {}
   return {
@@ -271,6 +274,7 @@ export async function resolveTicket(ticket, o) {
     name: promptSafe(record.name, "a Vyre box"),
     fingerprint: await keyFingerprint(box, cryptoP),
     handle,
+    address,
     identity,
   };
 }

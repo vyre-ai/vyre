@@ -19,7 +19,7 @@ desktop" (missed alarm), "Glass · take-over and hand-back states" and "Vault, p
 |---|---|---|
 | Deck | `deck/css/views/planner.css` `.pl-banner` (main); `deck/chat/term.css` `.term-note` (main) | partial |
 | App | `apps/app/src/ui/NotifyBar.tsx`, `apps/app/src/ui/SignInBar.tsx` (work/mobile) | partial |
-| Capsule | `local/capsule/native/Sources/UI/AgentDeskView.swift` WaitingHint (work/capsule-pro) | partial |
+| Lumen | `local/capsule/native/Sources/UI/AgentDeskView.swift` WaitingHint (work/capsule-pro) | partial |
 
 ## Anatomy
 
@@ -46,7 +46,11 @@ border, no shadow.
 | Vault note | "12 passwords are reused" | "A todo is waiting in Planner" | none (the banner opens it) |
 | One-time notice | the fact, in `--text-2` 12/16 | | none |
 
-A firing alarm is not this banner: it rings on every device and is drawn by the agenda spec.
+A firing alarm is not this banner: it rings on every device and is drawn by the agenda spec. "The
+box can't be reached" is NOT this component - native-core already committed (CHAT.md, 30 Sep, C5)
+to reading `link.health {reach, why, fix?}` straight into the existing floating pill
+(`pill.md`), not a new banner; see that file's Unreachable states instead. Noted here only so a
+future reader doesn't add a second, conflicting "unreachable" surface.
 
 ## Sizes
 
@@ -82,7 +86,7 @@ Say the fact and its cost in plain words; the action is a verb naming what it do
 ## Accessibility
 
 `role="status"` (polite) for facts that arrive while you are on the page; none for facts present
-at load. The icon is `aria-hidden`; the fact text carries the meaning. No beacon, lime or red:
+at load. The icon is `aria-hidden`; the fact text carries the meaning. No beacon, bone or red:
 the fill is `--hover` and text passes AA on it.
 
 ## Gaps
@@ -96,5 +100,5 @@ App (work/mobile)
 - [ ] NotifyBar and SignInBar are inline bars with their own styles; build one Banner with icon,
       fact, detail and one action.
 
-Capsule (work/capsule-pro)
-- [ ] WaitingHint is a 30 tall hint line; banners are not drawn in the Capsule panel.
+Lumen (work/capsule-pro)
+- [ ] WaitingHint is a 30 tall hint line; banners are not drawn in Lumen panel.

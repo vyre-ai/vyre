@@ -13,6 +13,7 @@
     "alarms",
     "declarativeNetRequest"
   ],
+  "action": { "default_title": "Vyre for Chrome", "default_popup": "popup.html" },
   "background": {
     "service_worker": "background.js",
     "type": "module"

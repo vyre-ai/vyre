@@ -18,7 +18,7 @@ and modes, phone and desktop".
 |---|---|---|
 | Deck | `deck/chat/pickers.js` `.composer-menu`, `.cv-rewind` (main, work/chat); `deck/css/deck.css` `.search-pop` | built |
 | App | none | not built |
-| Capsule | `local/capsule/native/Sources/UI/AgentDeskView.swift` ActionMenuView; `Host/MenuBarItem.swift` MenuBarPopover (work/capsule-pro) | partial |
+| Lumen | `local/capsule/native/Sources/UI/AgentDeskView.swift` ActionMenuView; `Host/MenuBarItem.swift` MenuBarPopover (work/capsule-pro) | partial |
 
 ## Anatomy
 
@@ -52,7 +52,7 @@ keeps 8 from the viewport edges and flips above or below its anchor to fit.
 ## States
 
 - **Active row** (keyboard or hover): fill `--signal-wash`; meta on it steps up to `--text-2`.
-- **Current value:** the lime check, never a fill.
+- **Current value:** the bone check, never a fill.
 - **Disabled item:** `--label` text, no hover, with a reason in its description.
 - **Empty completion:** one row in `--label`: "No files match est".
 - **Loading:** two skeleton rows at the row height.
@@ -90,6 +90,6 @@ Deck
 App (work/mobile)
 - [ ] No popover or picker: mode is plain text in `app/session/[id].tsx`.
 
-Capsule (work/capsule-pro)
+Lumen (work/capsule-pro)
 - [ ] ActionMenuView has a caps title with tracking and a 2 px `Theme.signal` left bar on the
       active row; use the `--signal-wash` fill and a 12/600 sentence-case header.

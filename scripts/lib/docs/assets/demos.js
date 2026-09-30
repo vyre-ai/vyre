@@ -36,7 +36,7 @@
   // The first Capsule's own drawings, on the 16 grid.
   var GLYPHS = {
     agent: '<circle cx="8" cy="5.5" r="2.5"/><path d="M3.5 13.5c.6-2.6 2.4-4 4.5-4s3.9 1.4 4.5 4"/>',
-    assistant: '<circle cx="8" cy="5.5" r="2.5"/><path d="M3.5 13.5c.6-2.6 2.4-4 4.5-4s3.9 1.4 4.5 4"/><circle cx="13" cy="3" r="1.6" fill="#C6F36B" stroke="none"/>',
+    assistant: '<circle cx="8" cy="5.5" r="2.5"/><path d="M3.5 13.5c.6-2.6 2.4-4 4.5-4s3.9 1.4 4.5 4"/><circle cx="13" cy="3" r="1.6" fill="#F1EEE6" stroke="none"/>',
     project: '<path d="M2 4.5h4l1.5 1.5H14v7H2z"/>',
     thread: '<path d="M3 4.5l3 3.5-3 3.5"/><path d="M8 11.5h5"/>',
     memory: '<path d="M3.5 1.5h6l3 3v10h-9z"/><path d="M6 8h4M6 11h4"/>',
@@ -45,9 +45,9 @@
     quick: '<path d="M8 2v3M8 11v3M2 8h3M11 8h3M4 4l1.8 1.8M10.2 10.2L12 12M12 4l-1.8 1.8M5.8 10.2L4 12"/>',
     calc: '<path d="M4 6h8M4 10h8"/>',
   };
-  var TONE = { memory: "#EBC76B", quick: "#C6F36B", calc: "#C6F36B" };
+  var TONE = { memory: "#EBC76B", quick: "#F1EEE6", calc: "#F1EEE6" };
   var KIND = { agent: "Agent", assistant: "Assistant", project: "Project", thread: "Thread", memory: "Memory", vault: "Vault", boxfile: "Box" };
-  var MARK = '<svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M2.5 4L8 13L11.52 7.24" stroke="#F1EEE6" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><circle cx="13.5" cy="4" r="1.8" fill="#C6F36B"/></svg>';
+  var MARK = '<svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M2.5 4L8 13L11.52 7.24" stroke="#F1EEE6" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><circle cx="13.5" cy="4" r="1.8" fill="#F1EEE6"/></svg>';
 
   function glyph(kind) {
     var cls = "vd-ic" + (kind === "memory" ? " gold" : "");

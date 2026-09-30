@@ -217,13 +217,19 @@ get() {
 # with the image digests, the wrapper, the compose file). It is checked with Node in the image that runs now, against
 # RELEASE_KEY above, with no network, before anything on the box changes. An unsigned or badly signed release is refused;
 # only a person running `vyre update --allow-unsigned` installs one, with a warning. An automatic update (UPD_SIGNED=1) never does.
+# sig_ok SUMS SIG: whether SIG (base64) is a valid signature over the prefix and SUMS, by RELEASE_KEY, checked with Node in the
+# image that runs now and no network.
+sig_ok() {
+  sg=$(tr -d ' \n\r' <"$2")
+  ok=$(docker run --rm -i --network none --entrypoint node "$(image)" -e 'const c=require("crypto"),d=[Buffer.from("vyre-release-sums\n")];process.stdin.on("data",x=>d.push(x)).on("end",()=>{try{const k=c.createPublicKey({key:Buffer.from(process.argv[1],"base64"),format:"der",type:"spki"});console.log(c.verify(null,Buffer.concat(d),k,Buffer.from(process.argv[2],"base64"))?"signed":"bad")}catch{console.log("bad")}})' "$RELEASE_KEY" "$sg" <"$1" 2>/dev/null || true)
+  [ "$ok" = signed ]
+}
+
 verify_signature() {
   stage verifying
   problem=""
   if fetch SHA256SUMS.sig "$tmp/SHA256SUMS.sig" 2>/dev/null && [ -s "$tmp/SHA256SUMS.sig" ]; then
-    sig=$(tr -d ' \n\r' <"$tmp/SHA256SUMS.sig")
-    ok=$(docker run --rm -i --network none --entrypoint node "$(image)" -e 'const c=require("crypto"),d=[Buffer.from("vyre-release-sums\n")];process.stdin.on("data",x=>d.push(x)).on("end",()=>{try{const k=c.createPublicKey({key:Buffer.from(process.argv[1],"base64"),format:"der",type:"spki"});console.log(c.verify(null,Buffer.concat(d),k,Buffer.from(process.argv[2],"base64"))?"signed":"bad")}catch{console.log("bad")}})' "$RELEASE_KEY" "$sig" <"$tmp/SHA256SUMS" 2>/dev/null || true)
-    if [ "$ok" = signed ]; then say "signature checked against Vyre's release key"; return 0; fi
+    if sig_ok "$tmp/SHA256SUMS" "$tmp/SHA256SUMS.sig"; then say "signature checked against Vyre's release key"; return 0; fi
     problem="the release's signature does not match Vyre's release key"
   else
     problem="this release is not signed"
@@ -385,10 +391,25 @@ publish_release() {
     return 0
   fi
   if ! unit_dirs_ok; then echo "vyre: $UPD_ROOT is not root's alone; the release's signature files were not published" >&2; return 0; fi
-  mkdir -p "$UPD_STATE/release" && chmod 755 "$UPD_STATE/release" || return 0
-  for f in SHA256SUMS SHA256SUMS.sig shell.json; do
-    if [ -f "$src/$f" ] && [ ! -L "$src/$f" ]; then put_file "$src/$f" "$UPD_STATE/release/$f" 0644 || echo "vyre: could not publish $f" >&2; fi
-  done
+  # The caller's folder is not trusted, even when root was asked by name: each file is copied WITHOUT following a link into a folder
+  # only root can use, and everything after this looks only at the copies. Nothing is published unless SHA256SUMS.sig verifies
+  # over the copied SHA256SUMS (so an unsigned release publishes nothing), and shell.json is the file that SHA256SUMS lists.
+  rt=$(mktemp -d) || return 0
+  for f in SHA256SUMS SHA256SUMS.sig shell.json; do cp -P "$src/$f" "$rt/$f" 2>/dev/null || true; done
+  if [ -f "$rt/SHA256SUMS" ] && [ ! -L "$rt/SHA256SUMS" ] && [ -f "$rt/SHA256SUMS.sig" ] && [ ! -L "$rt/SHA256SUMS.sig" ] && sig_ok "$rt/SHA256SUMS" "$rt/SHA256SUMS.sig"; then
+    if [ -f "$rt/shell.json" ] && [ ! -L "$rt/shell.json" ]; then
+      want=$(awk '$2 == "shell.json" || $2 == "*shell.json" { print $1; exit }' "$rt/SHA256SUMS")
+      if [ -z "$want" ] || [ "$want" != "$(sha256 "$rt/shell.json")" ]; then echo "vyre: shell.json is not the file the signed SHA256SUMS lists; it was not published" >&2; rm -f "$rt/shell.json"; fi
+    fi
+    if mkdir -p "$UPD_STATE/release" && chmod 755 "$UPD_STATE/release"; then
+      for f in SHA256SUMS SHA256SUMS.sig shell.json; do
+        if [ -f "$rt/$f" ] && [ ! -L "$rt/$f" ]; then put_file "$rt/$f" "$UPD_STATE/release/$f" 0644 || echo "vyre: could not publish $f" >&2; fi
+      done
+    fi
+  else
+    echo "vyre: the release's SHA256SUMS.sig is missing or does not verify; nothing was published for the phone's shell check" >&2
+  fi
+  rm -rf "$rt"
 }
 
 android() {
