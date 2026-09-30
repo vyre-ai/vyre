@@ -161,3 +161,12 @@ ticket-derived secret as the pairing secret, and returns the same shape `pair()`
 shown as two groups of 4) the box's own Touch ID prompt already shows for `relay.join`, so a
 "pairing with alex's box (a1b2 c3d4)" screen on the phone reads identically to what the person
 sees on the box's own screens.
+
+## A removed device
+
+When the owner removes a device (`relay.devices.remove`, or `presence.remove` on its key) the box closes
+its channel with code **4401** and reason **`device removed`**, and refuses its reconnects with the same
+code and reason. The relay (Worker and Node server) passes on exactly that code and reason and nothing
+else the box says. `connect()` ends in the final state `"removed"` (`conn.onstate("removed")`), stops
+redialing, and rejects waiting calls with `code: "device_removed"`. A handshake refusal for a stranger's
+key is the relay's generic 4410 "box closed the connection". Pair again to come back.

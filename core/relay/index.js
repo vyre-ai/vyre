@@ -337,7 +337,13 @@ export default {
         return { v: 1, box: { name: boxName() }, device: id, paired: true, presence, ...(enroll ? { enroll } : {}) };
       }
       const row = /** @type {any} */ (db.prepare("SELECT id, pub, kind, paired_at, last_seen FROM relay_devices WHERE id = ? AND removed_at IS NULL").get(id));
-      if (!row || !crypto.timingSafeEqual(Buffer.from(row.pub, "base64url"), pub)) throw new Error("not a paired device");
+      if (!row || !crypto.timingSafeEqual(Buffer.from(row.pub, "base64url"), pub)) {
+        // A device the owner removed hears exactly that, on the same code (4401) as when its open channel was
+        // closed, so an app can tell "removed" from "box unreachable" and stop retrying (pwa).
+        const gone = /** @type {any} */ (db.prepare("SELECT pub FROM relay_devices WHERE id = ? AND removed_at IS NOT NULL").get(id));
+        if (gone && crypto.timingSafeEqual(Buffer.from(gone.pub, "base64url"), pub)) throw new Error("device removed");
+        throw new Error("not a paired device");
+      }
       if (expired(row)) { forget(id, "expired"); throw new Error("this browser went unused too long and was removed; pair it again from another device"); }
       const release = hello && typeof hello.release === "string" && BUILD.test(hello.release) ? hello.release : null;
       const manifest = hello && typeof hello.manifest === "string" && /^[a-f0-9]{64}$/.test(hello.manifest) ? hello.manifest : null;
@@ -978,6 +984,15 @@ export default {
       else beginSetup(String(bootCode)).catch(e => ctx.log(`relay: setup code not used: ${/** @type {Error} */ (e).message}`));
     }
 
-    return { async stop() { stopLink(); if (setup) clearTimeout(setup.timer); for (const set of live.values()) for (const ch of set) ch.close(1001, "box stopping"); live.clear(); } };
+    // Taking a device's presence key away (presence.remove) takes the device away too: its open
+    // channel closes with 4401 "device removed" and it is refused on reconnect, the same as relay.devices.remove.
+    const offPresence = ctx.events.on("presence.removed", (/** @type {any} */ ev) => {
+      const keyId = ev && ev.payload && ev.payload.id;
+      if (!keyId) return;
+      const row = /** @type {any} */ (db.prepare("SELECT id FROM relay_devices WHERE presence_key = ? AND removed_at IS NULL").get(String(keyId)));
+      if (row) forget(row.id, "presence key removed");
+    });
+
+    return { async stop() { try { offPresence(); } catch {} stopLink(); if (setup) clearTimeout(setup.timer); for (const set of live.values()) for (const ch of set) ch.close(1001, "box stopping"); live.clear(); } };
   },
 };
