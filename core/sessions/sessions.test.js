@@ -144,8 +144,9 @@ test("providers: a module adds one through its manifest, with no core change, an
   const rec = (await w.tool("threads.get", { thread: th.id })).data.thread;
   assert.deepEqual([rec.provider, rec.driver], ["echo", "echo"]);
   assert.deepEqual(await w.said(th.id), ["echo: hello"]);
-  const none = await w.tool("threads.start", { cwd: w.work, prompt: "hello", provider: "codex" });
-  assert.match(none.error.message, /no session provider codex; this machine has claude, echo/);
+  const none = await w.tool("threads.start", { cwd: w.work, prompt: "hello", provider: "gemini" });
+  assert.match(none.error.message, /no session provider gemini; this machine has claude, /);
+  assert.match(none.error.message, /echo/);
 });
 
 test("slots: a terminal session's subagent takes a slot through the plugin's hooks, refused at once with its place when full", async t => {

@@ -424,15 +424,17 @@ test("switchboard: a stopped thread's open question is closed, not left waiting"
 });
 
 test("switchboard: a terminal resume of a live headless thread is warned about, never blocked", async t => {
-  const { root, work, tool } = await boot(t, { probe: true });
+  const { root, work, tool, d } = await boot(t);
+  // threads.claimed is internal; a temp-home module is an added one under contract v1, so ask as vyred's own label.
+  const claimed = session => d.registry.call("threads.claimed", { session }, "module:vyred");
   const s = sse(root);
   t.after(() => s.close());
   const id = (await tool("threads.start", { cwd: work, surface: "deck:1" })).data.id;
   assert.equal((await tool("threads.claimed", { session: id })).error.code, "no_such_tool", "internal: modules only");
   // Past "starting", so the status cannot move between the two reads.
   const status = await until(async () => { const st = (await tool("threads.get", { thread: id })).data.thread.status; return st !== "starting" && st; }, "the thread to start");
-  assert.deepEqual((await tool("probe.claimed", { session: id })).data, { headless: true, holder: "deck:1", status });
-  assert.equal((await tool("probe.claimed", { session: "not-a-thread" })).data.headless, false);
+  assert.deepEqual((await claimed(id)).data, { headless: true, holder: "deck:1", status });
+  assert.equal((await claimed("not-a-thread")).data.headless, false);
 
   // Our own child's SessionStart (headless true) is not a second writer.
   const own = (await tool("harness.brief", { cwd: work, session: id, headless: true }, "harness")).data;
@@ -448,7 +450,7 @@ test("switchboard: a terminal resume of a live headless thread is warned about, 
 
   await tool("threads.stop", { thread: id });
   await until(() => of(s.got, id, "thread.stopped")[0], "thread.stopped");
-  assert.equal((await tool("probe.claimed", { session: id })).data.headless, false, "a stopped thread is nobody's writer");
+  assert.equal((await claimed(id)).data.headless, false, "a stopped thread is nobody's writer");
   assert.doesNotMatch((await tool("harness.brief", { cwd: work, session: id, headless: false }, "harness")).data.text, /running headless/);
   assert.equal(of(s.got, id, "thread.contended").length, 1);
 });
