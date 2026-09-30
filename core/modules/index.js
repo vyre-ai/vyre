@@ -620,7 +620,8 @@ export class Registry {
     /** vault.request: a vendor call with a credential it never sees (vault P5). @param {string} id @param {any} req */
     const vaultRequest = async (id, req = {}) => {
       if (!((needs.credentials) || []).some(c => c && c.id === id)) throw undeclared(`asked the vault for ${id}, which needs.credentials does not declare`);
-      return doorValue("vault.request", { module: m.name, credential: id, ...req });
+      // module and credential come last, so nothing in the request can name another (reviews N1).
+      return doorValue("vault.request", { ...req, module: m.name, credential: id });
     };
     return {
       name: m.name, version: m.version, config, paths,

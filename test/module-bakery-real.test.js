@@ -85,3 +85,11 @@ test("bakery on the real registry: a missing memory.write answers not_available,
   await assert.rejects(ctx.gate.request({ kind: "pay", via: "x", to: "y", content: {} }), (/** @type {any} */ e) => e.code === "undeclared");
   assert.deepEqual(await ctx.undo.record({ tool: "bakery.target", input: {}, inverse: { tool: "bakery.target", input: {} } }), { error: { code: "not_available", message: "undo.record isn't running on this Vyre yet" } });
 });
+
+test("bakery on the real registry: a request carrying module or credential keys can't change who vault.request sees (N1)", async t => {
+  const { reg, seen } = await world(t);
+  const ctx = reg.context(JSON.parse(fs.readFileSync(path.join(EXAMPLES, "bakery", "module.json"), "utf8")));
+  await ctx.vault.request("supplier", /** @type {any} */ ({ method: "GET", url: "https://api.flourco.example/menu", module: "vault", credential: "root-key" }));
+  const v = seen.find(s => s.tool === "vault.request");
+  assert.deepEqual({ module: v.input.module, credential: v.input.credential, caller: v.caller }, { module: "bakery", credential: "supplier", caller: "module:bakery" });
+});
