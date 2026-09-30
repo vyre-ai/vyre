@@ -410,6 +410,39 @@ test("team.retire: a bare mcp caller with no session is refused; a session in th
   assert.equal((await raw("team.retire", { teammate: `design-${project.slug}` })).error.code, "not_found");
 });
 
+// --- role charters (plan section 9.1) -------------------------------------------------------------
+
+test("charters: set makes versions, an identical text is no change, revert is a new version, history keeps all", async t => {
+  const { tool, raw, project } = await boot(t);
+  const agent = `design-${project.slug}`;
+  await tool("team.add", { project: project.slug, role: "design" });
+  assert.equal((await tool("team.charter.get", { teammate: agent })).charter, null);
+  const v1 = await tool("team.charter.set", { teammate: agent, text: "You review copy for the Harlow Legal site." });
+  assert.equal(v1.version, 1);
+  assert.equal((await tool("team.charter.set", { teammate: agent, text: "You review copy for the Harlow Legal site." })).unchanged, true);
+  const v2 = await tool("team.charter.set", { project: project.slug, role: "design", text: "You review copy and layout." });
+  assert.equal(v2.version, 2);
+  const v3 = await tool("team.charter.revert", { teammate: agent, version: 1 });
+  assert.equal(v3.version, 3);
+  assert.equal((await tool("team.charter.get", { teammate: agent })).charter.text, "You review copy for the Harlow Legal site.");
+  assert.equal((await tool("team.charter.history", { teammate: agent })).versions.length, 3);
+  assert.equal((await raw("team.charter.set", { teammate: agent, text: "  " })).error.code, "bad_input");
+  assert.equal((await raw("team.charter.set", { teammate: agent, text: "x".repeat(8001) })).error.code, "bad_input");
+  assert.equal((await raw("team.charter.revert", { teammate: agent, version: 9 })).error.code, "not_found");
+});
+
+test("charters: draft saves a version composed from the project's own context, and a bare mcp caller is refused", async t => {
+  const { tool, root, project } = await boot(t);
+  const agent = `design-${project.slug}`;
+  await tool("team.add", { project: project.slug, role: "design", brief: "visual design and UI copy" });
+  const d = await tool("team.charter.draft", { teammate: agent, from: "Alex wants it to watch the pricing page" });
+  assert.equal(d.version, 1);
+  assert.ok(d.text.includes("design"));
+  assert.ok(String(d.by).endsWith("(draft)"));
+  const bare = await call("team.charter.set", { teammate: agent, text: "x" }, { root, caller: "mcp", timeout: 20_000 });
+  assert.equal(bare.error.code, "denied");
+});
+
 // --- step 2: notes-changed enforcement and compaction re-injection ------------------------------
 
 test("team.done refuses to close a request when the notes have not changed since it started; writing them lets it through", async t => {

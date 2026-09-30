@@ -702,3 +702,18 @@ utilization, resets_at), the slot chip (per project), the waiting queue, "Resume
   lands meta.agentKind; unit-tested isAssistant only. Full core/team + core/projects + docs suites: only the
   stage flake (platform fixing) fails.
 
+
+## Role charters (2026-09-30)
+
+- Built `team_charters` (versioned, appended, never edited), `team.charter.get/set/history/revert/draft`,
+  event `teammate.charter-changed`. Callers: person, assistant, or a session in the project; a teammate may only
+  read its own charter, never write one. Draft composes from the brief, projects.context and the teammate's notes
+  via threads.quick, falling back to a plain template when no model answers; saved as a new version.
+- Delivery: the charter rides in the teammate's preamble (the `append` on its first launch), after Vyre's own
+  rules, so it can never replace them. A new version rotates the live thread at the next request
+  (`thread_charter` records the version a thread started with). This uses core/team's own launch path, not
+  sessions' `agent:<name>` prompt scope, because a teammate's prompt is already composed here; nothing needed
+  from sessions.
+- Tests: 2 new in core/team/team.test.js (versions, unchanged, revert, bounds, draft, bare mcp refused); full
+  core/team suite 51/51.
+- Next: filler column + team.role.fill (real agent identity), then duties as watchers (waits on work/watchers).
