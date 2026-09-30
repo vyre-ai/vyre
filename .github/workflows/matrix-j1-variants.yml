@@ -51,4 +51,7 @@ jobs:
           docker ps -a; docker logs --tail 60 vyre-vyre-1 2>&1 || true
       - uses: actions/upload-artifact@v4
         if: always()
-        with: { name: results-j1-${{ matrix.variant }}, path: results, retention-days: 14 }
+        with:
+          name: results-j1-${{ matrix.variant }}
+          path: results
+          retention-days: 14
