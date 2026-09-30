@@ -35,3 +35,16 @@ Branch: work/assistant · Worktree: ../vyre-assistant · Owner session: assistan
 
 ## Changed contracts
 - None yet. This round was design-only, no code changed.
+
+## 2026-09-30 build status
+- Done: P17 extractor + S9 eval (77134b2a..577f71f4), undo module (3ccc8262), assistant.glance,
+  assistant.capabilities (+ compact render), assistant.log, assistant.prompt.diff, assistant.daily
+  (rolls the day with memory.digest seed, deferred while working), assistant.chattiness setting (default 3).
+- Prompt replace stays allowed by the user's decision; versions/history/revert are sessions.prompt.*.
+- Changed contracts: core/agents gained agents.rollover (module:assistant or person only).
+- Open: nothing enforces assistant.chattiness yet, core/push owns the cap (W4) and must read it.
+  memory.digest and modules.capabilities are not on main; both are read defensively and dropped if absent.
+  assistant.glance next is null until a calendar read exists. docs-check and reference tests fail on the
+  base tree too (terms.js n.split on a non-string name), not from this branch.
+- Next: vault's Gate consuming lib/said/match; wire the capabilities render into the append block once
+  sessions lands the scope fix.
