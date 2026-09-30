@@ -348,7 +348,7 @@ function stepsBox(script = {}) {
     if (tool === "relay.pair.ticket") { box.calls.push([tool, input]); if (st.ticketMade) throw Object.assign(new Error("the setup page has already made its one pairing ticket"), { code: "denied" }); st.ticketMade = true; return { ticket: "AAECAwQFBgc", expiresAt: Date.now() + (st.ticketMs ?? 300_000), connected: true }; }
     return base(tool, input);
   };
-  box.events = async (type, since) => { box.calls.push(["events", { type, since }]); return (st.paired || []).filter(e => e.type === type && e.id > since); };
+  box.events = async (type, since) => { box.calls.push(["events", { type, since }]); return [...(st.paired || []), ...(st.events || [])].filter(e => e.type === type && e.id > since); };
   return box;
 }
 async function atNamed(t, box) {
@@ -835,4 +835,34 @@ test("steps: a sign-in that fails while the page polls shows the box's message (
     const failed = await until(() => flow.state.ai.accounts.find(a => a.provider === "codex" && a.step === "failed"));
     assert.equal(failed.error, "the sign-in page was closed before it finished");
   } finally { flow.stop(); }
+});
+
+test("steps: the address goes from certificate to serving on the certificate's own event (no tailscale.changed), and a certificate failure is shown", async t => {
+  const box = stepsBox({ ts: "connected", claimPhase: "certificate" });
+  const flow = await atNamed(t, box);
+  try {
+    flow.continueToAi(); flow.startAi("codex");
+    await until(() => flow.state.ai.accounts[0] && flow.state.ai.accounts[0].step === "done");
+    flow.continueToTailscale();
+    await until(() => flow.state.tailscale.address && flow.state.tailscale.address.phase === "certificate");
+    // Another name's certificate is not this box's.
+    box.st.events = [{ id: 3, type: "certificate.issued", payload: { name: "someone-else.vyre.run" } }];
+    await new Promise(r => setTimeout(r, 1500));
+    assert.equal(flow.state.tailscale.address.phase, "certificate");
+    // The box's own certificate, issued: serving, and the watching ends.
+    box.st.events.push({ id: 4, type: "certificate.issued", payload: { name: "harlow-legal-server.vyre.run", expires: 1 } });
+    await until(() => flow.state.tailscale.address.phase === "serving", 8000);
+  } finally { flow.stop(); }
+
+  const bad = stepsBox({ ts: "connected", claimPhase: "certificate" });
+  const f2 = await atNamed(t, bad);
+  try {
+    f2.continueToAi(); f2.startAi("codex");
+    await until(() => f2.state.ai.accounts[0] && f2.state.ai.accounts[0].step === "done");
+    f2.continueToTailscale();
+    await until(() => f2.state.tailscale.address && f2.state.tailscale.address.phase === "certificate");
+    bad.st.events = [{ id: 1, type: "certificate.failed", payload: { name: "harlow-legal-server.vyre.run", why: "the certificate authority said no" } }];
+    await until(() => f2.state.tailscale.address.phase === "failed", 8000);
+    assert.equal(f2.state.tailscale.address.why, "the certificate authority said no");
+  } finally { f2.stop(); }
 });
