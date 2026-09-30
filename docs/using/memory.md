@@ -120,6 +120,15 @@ its source turns. **Now** shows **Memory learned today**, each fact with its sou
 
 ![Memory in the Deck as a map: rooms for Northwind Bakery and Harlow Legal with Sam Okafor, Dana Reyes, their things and threads, and each fact as a gold dot](shots/deck-memory.png)
 
+## See what Vyre has learned about a site
+
+**Sites** in Memory lists every website Vyre for Chrome has learned, with its host and its family of
+related sites. Choose the arrow on a site to see what it knows: flows, controls, API calls and notes,
+each with when it was last checked. **Forget** removes a site at once and leaves a line with **Undo**
+for 24 hours. **Wrong?** on one item forgets just that item the same way.
+
+![The Sites tab in Memory: Harlow CRM with its host, its family, and what Vyre for Chrome has learned about it, with a Forget button](shots/deck-memory-sites.png)
+
 > [!SNAG] The Deck says "Memory is not available."
 > The Memory view could not read the graph from vyred. Choose **Try again**. If it keeps failing,
 > check that vyred runs (`vyre status`) and that the memory module started (`vyre modules`).
