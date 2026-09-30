@@ -4,6 +4,10 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### fix: Settings did not load (a missing served module)
+
+- `deck/js/add-pc-card.js` (Settings, Add a Windows PC) imports `relay/client/seedwords.js` and `words.js`, which vyred did not serve, so the browser's module import failed and the Settings page stayed on "This page loads when your box answers." (it blanked the docs-shots settings-connections and settings-devices shots). The daemon's relay-client allowlist now includes both. A new daemon test walks every module the Deck imports from outside `deck/` and fetches each from a running vyred, so the next one fails in CI, not in a browser.
+
 #### chat: a queued-message edit always sends `pasted`
 
 - `threads.edit` now carries `pasted` every time, `[]` when nothing was pasted: sessions hears an edited queued message only when the key is an array (an absent key counts the whole edit as not typed). `threads.send` still leaves the key out when nothing was pasted.
