@@ -150,6 +150,8 @@ export const RESERVED_EVENTS = {
   sync: ["sync"], gate: ["gate"], push: ["push", "assistant"], presence: ["presence"],
   said: ["assistant"], memory: ["memory"], "artifact-links": ["artifacts"],
   // thread.deleted wipes a chat history: only the session modules that own threads emit thread.*.
+  // tailscale.changed tells the setup page the tailnet is connected: only the network module says so.
+  tailscale: ["network"],
   thread: ["threads", "harness", "link", "projects", "sessions"],
 };
 
