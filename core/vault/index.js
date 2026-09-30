@@ -179,12 +179,12 @@ export default {
       obj({ filter: str, kind: str, host: str }), (input, { caller, project }) => {
         const r = cli.list(vault.list(input), input);
         // A named agent sees only the items granted to it or to its project, and only their names and kinds (reviewer-2 L-V3).
-        // Grants go to MODULES (and narrow to a project), never to an agent as such, so "granted to that agent" is decided by two keys:
-        // the agent's project scope (the verified project of its thread, meta.project) matching a grant's project, or a grant whose
-        // module carries the agent's own name. An item granted to no project and no module of that name is invisible to it.
+        // Grants go to MODULES (and narrow to a project), never to an agent as such, and an agent's name is its own choice, so it is
+        // never matched against a module name. "Granted to that agent" means one key: the agent's verified project scope (meta.project)
+        // equals a grant's project. An agent with no project sees nothing.
         const who = /^mcp:agent:(.+)$/.exec(String(caller));
         if (!who || !r || !Array.isArray(r.items)) return r;
-        const mine = g => g.module === who[1] || (project && g.project === project);
+        const mine = g => Boolean(project) && g.project === project;
         return { ...r, items: r.items.filter(i => (i.grants || []).some(mine)).map(i => ({ name: i.name, kind: i.kind })) };
       });
 

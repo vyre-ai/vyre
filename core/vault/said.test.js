@@ -283,8 +283,8 @@ test("grants: a named agent withdraws only its own pending request, lists only w
   assert.equal((await kit("vault.revoke", { name: "api-a", module: "kit" })).data.revoked, 1, "its own pending request");
   // The person, and an unnamed session, revoke freely.
   assert.equal((await reg("vault.revoke", { name: "api-a", module: "planner" }, "mcp")).data.revoked, 1);
-  // List: a named agent sees names and kinds of what is granted to it, nothing else.
-  assert.deepEqual((await kit("vault.list", {})).data.items, [{ name: "api-b", kind: "api-key" }]);
+  // List: a named agent with no project scope sees nothing (the project-scoped rules are in the next test).
+  assert.deepEqual((await kit("vault.list", {})).data.items, []);
   assert.equal((await cli("vault.list")).data.items.length, 2, "the person sees everything");
 });
 
@@ -308,15 +308,16 @@ test("said: a plain send, post or pay ask lives an hour by default, the recorder
   for (const lookalike of ["module:threads-evil", "module:threadsx"]) assert.ok((await rec({}, lookalike)).error, lookalike);
 });
 
-test("grants: vault.list decides 'granted to that agent' by the agent's project scope or a grant to a module of its own name", async t => {
+test("grants: vault.list decides 'granted to that agent' by the agent's project scope alone; an agent named like a granted module sees nothing", async t => {
   const { reg, cli } = await daemon(t);
   for (const n of ["api-p", "api-m", "api-x"]) await cli("vault.put", { name: n, kind: "api-key", fields: { value: `fixture-key-${n}-0000000000` } });
   await cli("vault.grant", { name: "api-p", module: "planner", project: "harlow" });
   await cli("vault.grant", { name: "api-m", module: "kit" });
   await cli("vault.grant", { name: "api-x", module: "planner", project: "northwind" });
   const list = (agent, meta = {}) => reg("vault.list", {}, `mcp:agent:${agent}`, { agent, ...meta }).then(r => r.data.items.map(i => i.name).sort());
-  assert.deepEqual(await list("kit", { project: "harlow" }), ["api-m", "api-p"], "its project's grant and the one to a module named kit, not another project's");
-  assert.deepEqual(await list("kit"), ["api-m"], "with no project scope only the grant to its own name counts");
+  assert.deepEqual(await list("kit", { project: "harlow" }), ["api-p"], "its project's grant only, not a grant to a module that shares its name, not another project's");
+  assert.deepEqual(await list("kit"), [], "with no project scope nothing is visible, even an item granted to a module named kit");
+  assert.deepEqual(await list("planner"), [], "an agent named like a granted module sees nothing");
   assert.deepEqual(await list("juno", { project: "northwind" }), ["api-x"]);
-  assert.deepEqual(await list("juno"), [], "nothing is visible to an agent with no grant and no project");
+  assert.equal((await cli("vault.list")).data.items.length, 3, "the person sees everything");
 });
