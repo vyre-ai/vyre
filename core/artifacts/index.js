@@ -253,10 +253,11 @@ export default {
       return { v, files: await store.read(r.project, r.id, v.sha) };
     };
 
-    /** Save a version and its row, emit, and republish a share that follows the latest, but only
-     * for the person's own change: an agent's later edit never goes public by itself (reviewer-2 M3).
-     * @param {any} r @param {Record<string,string>} files @param {number} size @param {any} by @param {string} message @param {boolean} [republish] */
-    const commit = async (r, files, size, by, message, republish = false) => {
+    /** Save a version and its row, emit, and republish a share that follows the latest. "Keep the
+     * link on the latest" is the person's own choice (the user's approved option, lead 30 Sep), so
+     * every later version goes public, whoever saved it; the share sheet says so plainly.
+     * @param {any} r @param {Record<string,string>} files @param {number} size @param {any} by @param {string} message */
+    const commit = async (r, files, size, by, message) => {
       const n = r.head + 1;
       const sha = await store.write(r.project, r.id, files, `v${n}${message ? `: ${message}` : ""}`);
       const at = now();
@@ -264,7 +265,7 @@ export default {
       db.prepare("UPDATE artifacts_items SET head = ?, text = ?, updated_at = ? WHERE id = ?").run(n, textOf(files), at, r.id);
       const fresh = row(r.id);
       const s = /** @type {any} */ (db.prepare("SELECT * FROM artifacts_shares WHERE artifact = ?").get(r.id));
-      if (s && s.version === null && republish) await publish(fresh, s.token, null, s.expires_at).catch(e => ctx.log(`artifacts: republish ${r.id}: ${e.message}`));
+      if (s && s.version === null) await publish(fresh, s.token, null, s.expires_at).catch(e => ctx.log(`artifacts: republish ${r.id}: ${e.message}`));
       return fresh;
     };
 
@@ -393,7 +394,7 @@ export default {
         const content = i.content !== undefined ? i.content : /** @type {any} */ (cur)[MAIN_FILE[/** @type {keyof typeof MAIN_FILE} */ (r.format)]];
         const dataIn = r.format === "chart" ? (i.data !== undefined ? i.data : /** @type {any} */ (cur)[DATA_FILE]) : i.data;
         const { files, size } = filesFor(r.format, content, dataIn);
-        fresh = await commit(fresh, files, size, by, i.message || "", isPerson(meta));
+        fresh = await commit(fresh, files, size, by, i.message || "");
         if (!trustedCaller(meta) && !r.untrusted) db.prepare("UPDATE artifacts_items SET untrusted = 1 WHERE id = ?").run(r.id), fresh = row(r.id);
       } else if (i.title === undefined) throw refuse("nothing to change: give content, data or a title", "bad_input");
       emit("artifact.updated", fresh, { made_by: by });
@@ -586,7 +587,7 @@ export default {
         const { files } = await filesAt(r, i.version);
         const size = Object.values(files).reduce((n, v) => n + Buffer.byteLength(v), 0);
         const by = await madeBy(meta);
-        const fresh = await commit(r, files, size, by, `back to v${i.version}`, isPerson(meta));
+        const fresh = await commit(r, files, size, by, `back to v${i.version}`);
         emit("artifact.restored", fresh, { from: i.version, made_by: by });
         emit("artifact.updated", fresh, { made_by: by });
         return shape(fresh);

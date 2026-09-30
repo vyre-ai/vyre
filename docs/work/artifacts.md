@@ -31,8 +31,8 @@ viewer UI (native-core, app-design) wait for app-design's screens and the user's
 - Review fixes (reviewer-2, reviews/artifacts.md): H1 capture reads through an O_NOFOLLOW fd with
   folder dev/ino, one link, owner uid and (Linux) /proc/self/fd checks, with swap tests; H2 above;
   M1 only first-party modules are trusted (meta.firstParty); M2 a project-less agent or added module
-  reaches only what it made; M3 an agent's edit never republishes a latest link (`unpublished` count
-  on the share); M4 `artifacts.public.base` (reach modules, first-party) split from
+  reaches only what it made; M3 kept as designed (lead 30 Sep: "always the latest" is the person's own choice,
+  so every later version publishes; the share sheet must say so plainly, app-design); M4 `artifacts.public.base` (reach modules, first-party) split from
   `artifacts.public.set {on}`; L1 capture folders must be real, unlinked and outside vyred's home;
   L2 downloaded pages carry a meta CSP. M5 (frame self-navigation) is native-core's frame, L3 is
   share-sheet copy (app-design), L4 the assistant's scope (assistant).

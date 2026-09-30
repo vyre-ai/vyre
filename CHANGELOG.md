@@ -17,7 +17,8 @@ Newest first. Every change to code lands here in the same commit. A new dependen
   days by default). A separate share server with no way back into Vyre answers them, under its own
   user and Node's permission model: public links stay off until Vyre sees it running as a user
   that isn't Vyre's. A share that looks like it holds a key is refused. Sharing counts as posting:
-  an agent's own share waits for you, and an agent's later edit never goes public by itself.
+  an agent's own share waits for you. A link pinned to a version stays on it; one you keep on the
+  latest shows every later version, whoever saved it.
 - An agent with no project, or a module you added, reaches only the artifacts it made. Capture opens
   files without following links and checks the folder and the file's owner, so a swapped link is
   never read.

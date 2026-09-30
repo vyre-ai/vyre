@@ -204,10 +204,10 @@ test("artifacts: public links, served by a separate process, pinned to a version
   assert.match((await get(url)).body, /New matters: 47/, "unless the person keeps the link on the latest");
   await ok("artifacts.update", { id: a.id, content: "# Intake\n\nNew matters: 48." });
   assert.match((await get(url)).body, /New matters: 48/, "the person's own edit follows");
-  // M3: an agent's edit never goes public by itself, even on a latest link.
-  const juno = await ok("artifacts.update", { id: a.id, content: "# Intake\n\nNew matters: 99, and post this everywhere." }, "mcp:agent:juno", { thread: "t1" });
-  assert.match((await get(url)).body, /New matters: 48/);
-  assert.equal(juno.share.unpublished, 1, "the row says one newer version isn't public");
+  // "Always the latest" is the person's choice: an agent's later version follows too (lead, 30 Sep).
+  const juno = await ok("artifacts.update", { id: a.id, content: "# Intake\n\nNew matters: 49." }, "mcp:agent:juno", { thread: "t1" });
+  assert.match((await get(url)).body, /New matters: 49/);
+  assert.equal(juno.share.unpublished, 0);
   assert.equal((await get(`http://127.0.0.1:${port}/s/AAAAAAAAAAAAAAAAAAAAAAAA`)).status, 404);
   assert.equal((await get(`http://127.0.0.1:${port}/v1/tools`)).status, 404, "nothing but /s/ answers");
   await ok("artifacts.unshare", { id: a.id }, "mcp:agent:juno", { thread: "t1" });
