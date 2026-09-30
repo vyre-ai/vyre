@@ -74,7 +74,7 @@ export default async function vault(ctx) {
       body: [
         h("p", { class: "vt-sheet-p" }, can
           ? "vyred asks for proof that a person is here. Your device will ask for Touch ID or its PIN. Nothing happens until you confirm."
-          : "vyred asks for proof that a person is here, and this browser cannot use a passkey on this address. Open the Deck on localhost or over https, or confirm from a terminal or the Capsule."),
+          : "vyred asks for proof that a person is here, and this browser cannot use a passkey on this address. Open the Deck on localhost or over https, or confirm from a terminal or Lumen."),
         h("div", { class: "vt-sheet-meta" }, h("span", { class: "lbl" }, "Tool"), h("span", { class: "code" }, ask.tool)),
         h("div", { class: "vt-form-acts" },
           can ? h("button", { type: "button", class: "btn btn-primary", onclick: () => finish(true) }, icon("shield", 14), "Use passkey") : null,

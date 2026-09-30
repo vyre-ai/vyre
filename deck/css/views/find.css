@@ -1,4 +1,4 @@
-/* Find: the phone's Capsule (deck/views/find.js). Phone first at 390 and 430 px; on desktop a
+/* Find: the phone's Lumen (deck/views/find.js). Phone first at 390 and 430 px; on desktop a
    centred column of 640px. Every colour is a variable, so dark and paper both follow. The
    From memory section takes the --hover ground; nothing is gold. */
 
@@ -106,7 +106,7 @@
 .fd-plan { padding: 8px 2px 0; color: var(--text-2); }
 .fd-chosen .fd-ic { color: var(--focus); }
 
-/* ---- The phone: the Capsule, opened (docs/design/phone.md section 7) ------------------------
+/* ---- The phone: Lumen, opened (docs/design/phone.md section 7) ------------------------
    Drawn only under 760 px (find.js adds .fd-phone), inside the shell's full-height sheet.
    --match is the phone's search highlight, in both themes. */
 :root { --match: rgba(241,238,230,0.20); }

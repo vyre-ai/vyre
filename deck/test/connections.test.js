@@ -87,7 +87,7 @@ const submit = form => Promise.all(form.dispatchEvent(new Event("submit")));
 
 test("renders every server and account with names only", async () => {
   const { el, api } = await render();
-  assert.deepEqual(api.calls.map(c => c.tool).sort(), ["github.accounts", "google.accounts", "mcp.servers", "vault.connections.list"], "opening makes four calls, and never google.test or github.connect");
+  assert.deepEqual(api.calls.map(c => c.tool).sort(), ["connectors.catalog", "github.accounts", "google.accounts", "mcp.servers", "vault.connections.list"], "opening makes five calls, and never google.test or github.connect");
 
   const t = text(server(el, "tracker"));
   assert.match(t, /tracker/);
@@ -139,12 +139,12 @@ test("Connections cards: one per vault connection, whatever the source, granted 
   assert.doesNotMatch(alex, /min ago/, "Last used is not shown once Default applies");
   assert.match(alex, /Connected 9 d ago/);
   assert.match(alex, /Wrong account\?/);
-  // Granted: Capsule and Chat show pressed; Agents and Phone do not. The Agents chip trails a
+  // Granted: Lumen and Chat show pressed; Agents and Phone do not. The Agents chip trails a
   // shield glyph while off (chip.md's Asking state); the others do not.
   assert.deepEqual(chipsOf(connection(el, "cn_alex")), [
-    { text: "Capsule", on: true }, { text: "Chat", on: true }, { text: "Agents", on: false }, { text: "Phone", on: true } ]);
+    { text: "Lumen", on: true }, { text: "Chat", on: true }, { text: "Agents", on: false }, { text: "Phone", on: true } ]);
   assert.ok($(findChip(connection(el, "cn_alex"), "Agents"), "svg.cn-chip-shield"), "the Agents chip, off, trails the shield glyph");
-  assert.equal($(findChip(connection(el, "cn_alex"), "Capsule"), "svg.cn-chip-shield"), null, "a non-Agents chip never trails one");
+  assert.equal($(findChip(connection(el, "cn_alex"), "Lumen"), "svg.cn-chip-shield"), null, "a non-Agents chip never trails one");
 
   const tracker = text(connection(el, "cn_tracker"));
   assert.match(tracker, /tracker/, "the account (its own name/ref for an MCP row) is the heading");
@@ -161,7 +161,7 @@ test("Connections cards: one per vault connection, whatever the source, granted 
   noLeak(el);
 });
 
-test("Connections cards: a chip toggle is optimistic for Capsule/Chat/Phone, calls grant or revoke by id and surface, and a failure reverts", async () => {
+test("Connections cards: a chip toggle is optimistic for Lumen/Chat/Phone, calls grant or revoke by id and surface, and a failure reverts", async () => {
   const { el, api } = await render();
   const chatChip = findChip(connection(el, "cn_tracker"), "Chat");
   assert.equal(chatChip.getAttribute("aria-pressed"), "false");
@@ -179,7 +179,7 @@ test("Connections cards: a chip toggle is optimistic for Capsule/Chat/Phone, cal
 
 test("Connections cards: revoking any surface, including Agents, is one tap through vault.connections.revoke directly, never presence", async () => {
   const { el, api, p } = await render();
-  const capsuleChip = findChip(connection(el, "cn_alex"), "Capsule");
+  const capsuleChip = findChip(connection(el, "cn_alex"), "Lumen");
   await Promise.all(capsuleChip.dispatchEvent(new Event("click")));
   assert.deepEqual(api.of("vault.connections.revoke"), [{ tool: "vault.connections.revoke", input: { id: "cn_alex", surface: "capsule" } }]);
   assert.equal(api.of("vault.connections.grant").length, 0);
@@ -768,9 +768,11 @@ test("Add Google account, service account: the admin block shows on the new row 
 
 test("follows mcp.* and google.* events, with no timer of its own", async () => {
   const { subs, api, cleanups } = await render();
-  assert.deepEqual(subs.map(s => s[0]).sort(), [...EVENTS].sort());
+  const mine = subs.filter(s => !String(s[0]).startsWith("connectors."));
+  assert.deepEqual(mine.map(s => s[0]).sort(), [...EVENTS].sort());
+  assert.equal(subs.filter(s => String(s[0]).startsWith("connectors.")).length, 3, "the catalog follows connectors.connected, connect-failed and disconnected");
   const before = api.of("mcp.servers").length;
-  for (const [, fn] of subs.slice(0, 3)) fn({});
+  for (const [, fn] of mine.slice(0, 3)) fn({});
   await new Promise(r => setTimeout(r, 460));
   assert.equal(api.of("mcp.servers").length, before + 1, "a burst of events is one reload");
   for (const f of cleanups) f();

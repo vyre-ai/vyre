@@ -38,7 +38,7 @@
 // (core/caps.js): that control turns off and says "Needs the sessions update".
 //
 // Asks and questions are inline at the tail and in Needs at once; answering either resolves the
-// other, and one answered on another screen says where ("Answered from the Capsule · 14:31"). Keys
+// other, and one answered on another screen says where ("Answered from Lumen · 14:31"). Keys
 // go to the card that has focus, or the newest open one, whenever focus is not in a text field:
 // A allows once, D denies, Enter, Esc, arrows, space and 1-9 as the cards define. Keys are heard
 // only while this page is on screen.
@@ -71,6 +71,7 @@ import { askCardFor, defaultOpen } from "./cards/index.js";
 import { welcomeRow, loadWelcome } from "./cards/land.js";
 import { charterChanged, agentMade } from "./cards/charter-changed.js";
 import { vaultUsed } from "./cards/vault-used.js";
+import { spendCapped } from "./cards/spend-capped.js";
 import { macAnswersHeld } from "./presence.js";
 import { mountComposer } from "./composer.js";
 import { duration, elapsed, toolTitle, toolVerb } from "./lib/blocks.js";
@@ -117,7 +118,7 @@ const PROVIDERS = /** @type {Record<string, string>} */ ({ claude: "Claude", cod
 // its bug (asking/waiting swapped for a person); dropped per sessions' 6e2f8a71/28a8b4f8.
 const BUSY = new Set(["starting", "working", "asking"]);
 /** Where an answer came from, as the card says it. */
-const SURFACES = /** @type {Record<string, string>} */ ({ capsule: "the Capsule", cli: "the terminal", local: "the terminal", phone: "your phone",
+const SURFACES = /** @type {Record<string, string>} */ ({ capsule: "Lumen", cli: "the terminal", local: "the terminal", phone: "your phone",
   mobile: "your phone", pwa: "your phone", needs: "Needs", deck: "the Deck", chat: "the Deck", glass: "Glass" });
 
 /**
@@ -1637,6 +1638,13 @@ export function mountSession(container, opts) {
     on("memory.curated", () => fetchMemory()),
     on("onboard.stepped", () => { void refreshWelcome(); }),
     on("teammate.charter-changed", e => { void charterNotice(e.payload); }),
+    // The thread this provider's daily cap paused: the box's line and a Raise it, right where the thread stopped.
+    on("spend.capped", e => {
+      const p = e.payload || {};
+      if ((p.thread || e.thread) !== thread || !timeline.isConnected) return;
+      timeline.append(spendCapped({ ...p, at: e.at }));
+      if (stick.stuck) toBottom();
+    }),
     // A use of a vault item this thread was granted: a quiet "using #name" line, the name and host only, never the value.
     on("vault.used", e => {
       const p = e.payload || {};
