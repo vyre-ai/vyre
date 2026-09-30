@@ -421,10 +421,20 @@ async function probeGuard(ctx, t, eg, frame) {
   for (let attempt = 0; attempt < 2; attempt++) {
     eg.probeSeen = new Set();
     try {
-      for (const [n, f] of targets.entries()) {
-        const fire = `(() => { const o = location.origin; if (!/^https?:/.test(o)) return 0; const u = o + ${JSON.stringify(PROBE_PATH + eg.nonce + "_" + n)}; try { new Image().src = u; } catch (e) {} try { fetch(u, { mode: "no-cors", cache: "no-store" }).catch(function () {}); } catch (e) {} return 1; })()`;
-        const r = await runIn(ctx, t.tab, f, fire, { returnByValue: true });
-        if (!(r && r.result && r.result.value === 1)) { if (n === 0) return false; eg.probeSkipped = (eg.probeSkipped || 0) + 1; targets[n] = null; }
+      // All frames at once: each waits ~120 ms for a CSP report, and a page with many frames must not pay that per frame.
+      const results = await Promise.all(targets.map(async (f, n) => {
+        // A page's own Content-Security-Policy may stop the probe before the network layer sees it (img-src, connect-src): that request could not have left either, so a
+        // securitypolicyviolation for the probe's URL counts as that type being covered.
+        const fire = `(async () => { const o = location.origin; if (!/^https?:/.test(o)) return { ok: 0 }; const u = o + ${JSON.stringify(PROBE_PATH + eg.nonce + "_" + n)}; const csp = []; const on = e => { try { if (String(e.blockedURI || "").indexOf(u) === 0) csp.push(/^img/.test(e.effectiveDirective) ? "Image" : /^connect/.test(e.effectiveDirective) ? "Fetch" : e.effectiveDirective); } catch (x) {} }; document.addEventListener("securitypolicyviolation", on); try { new Image().src = u; } catch (e) {} try { fetch(u, { mode: "no-cors", cache: "no-store" }).catch(function () {}); } catch (e) {} await new Promise(function (r) { setTimeout(r, 120); }); document.removeEventListener("securitypolicyviolation", on); var sw = false; try { sw = !!(navigator.serviceWorker && navigator.serviceWorker.controller); } catch (x) {} return { ok: 1, csp: csp, sw: sw }; })()`;
+        const r = await runIn(ctx, t.tab, f, fire, { returnByValue: true, awaitPromise: true });
+        return r && r.result && r.result.value;
+      }));
+      for (const [n, v] of results.entries()) {
+        if (!(v === 1 || (v && v.ok === 1))) { if (n === 0) return false; eg.probeSkipped = (eg.probeSkipped || 0) + 1; targets[n] = null; continue; }
+        if (v && Array.isArray(v.csp)) for (const c of v.csp) eg.probeSeen.add(`${n}:${c}`);
+        // A frame a service worker controls: its requests go through the worker's own network, where Chrome offers no Fetch interception (measured: the page's Image is not paused). The browser-level
+        // rules, confirmed above, are what stop them (measured with Fetch off), so the frame counts as covered by those and the probe does not ask Fetch to see it.
+        if (v && v.sw === true) { for (const ty of ["Image", "Fetch"]) eg.probeSeen.add(`${n}:${ty}`); (eg.swFrames || (eg.swFrames = [])).push(n); }
       }
     } catch { return false; /* a frame that cannot run the probe is not a frame the guard can vouch for */ }
     const need = targets.flatMap((f, n) => (f ? expect(n) : []));
@@ -630,7 +640,7 @@ export async function egressGuard(ctx, tab, frame = null, opts = {}) {
       if (done) return [];
       done = true;
       const blocked = eg.blocked.splice(0);
-      /** @type {any} */ (t).lastGuard = { paused: eg.pausedCount || 0, blocked: blocked.slice(0, 8), decisions: (eg.decisions || []).slice(0, 40), failedSessions: eg.failedSessions || [], noFetch: !!eg.noFetch, rule: eg.rule, failed: eg.failed || 0, enableErrors: eg.enableErrors || [], noFetchTargets: eg.noFetchTargets || 0, attached: eg.attached || [] }; // read back by the test harness only (net.list under trust.diag)
+      /** @type {any} */ (t).lastGuard = { paused: eg.pausedCount || 0, blocked: blocked.slice(0, 8), decisions: (eg.decisions || []).slice(0, 40), failedSessions: eg.failedSessions || [], noFetch: !!eg.noFetch, rule: eg.rule, failed: eg.failed || 0, enableErrors: eg.enableErrors || [], noFetchTargets: eg.noFetchTargets || 0, swFrames: eg.swFrames || [], attached: eg.attached || [] }; // read back by the test harness only (net.list under trust.diag)
       // A frame or worker that started during the script and could not be guarded is reported like a leak: it MAY have sent requests.
       if (eg.failed) blocked.push({ method: "GUARD", origin: "stopped: a frame could not be guarded", stopped: true });
       if (eg.pauseWhy && !blocked.length) blocked.push({ method: "GUARD", origin: eg.pauseWhy, leaked: true });
