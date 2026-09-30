@@ -4,7 +4,7 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
-- settings.request binds the person's yes to the key, the canonical value and the level (and project, device or session): lib/said/setting.js settingTo gives `<key>=<json value>@<level>[/<id>]` (or `=reset`), matched inside change() once those are resolved. "Use Sonnet here" no longer licenses the opposite value, another level or another project; a secret setting is refused to agents outright. The assistant's setting recorder writes the same string with settingTo.
+- settings.request binds the person's yes to the key, the canonical value and the level (and project): the assistant's settingTo (lib/said/setting.js) gives `setting:<key>=<json value>@account` or `@project:<slug>`, matched inside change() once those are resolved, so "use Sonnet here" no longer licenses the opposite value, another level or another project. A reset, a device or session change and a secret setting are never covered, so agents are refused them.
 
 - settings.request asked a tool that does not exist (gate.said.match), so an agent could never change a setting even when the person asked. It now asks vault.said.match (kind setting, the key as the one destination, consumed by the change), and its test records a real intent through the vault instead of faking the wrong name. The TODOs in projects and team name the real tool.
 

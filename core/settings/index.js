@@ -458,7 +458,9 @@ export default {
       if (lv !== "account" && !target) throw Object.assign(new Error(`a ${lv} setting needs ${lv}`), { code: "bad_input" });
       const value = raw === undefined ? undefined : coerce(d, raw);
       if (o.ask) {
-        intent = (await o.ask(settingTo({ key: d.key, value, reset: raw === undefined, level: lv, target }))) || "";
+        // The recorder writes account and project asks with a value; a reset, a device or a session change is never recorded, so it is never covered.
+        if (raw === undefined || (lv !== "account" && lv !== "project")) throw Object.assign(new Error(o.refusal || "the person did not ask for this change"), { code: "denied" });
+        intent = (await o.ask(settingTo(d.key, value, { level: lv, project: target == null ? undefined : String(target) }))) || "";
         if (!intent) throw Object.assign(new Error(o.refusal || "the person did not ask for this change"), { code: "denied" });
       }
       const whereTo = await whereIs(env, d, lv, target);

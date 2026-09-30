@@ -481,7 +481,7 @@ test("an agent changes a setting only when the person asked (C25, P17), every ch
 
   // The real vault keeps what the person said; sessions record it from a `said` row.
   const say = (/** @type {any} */ i) => d.registry.call("vault.said.record", { said: "row-1", what: "use this setting", ...i }, "module:sessions");
-  const to = (/** @type {any} */ v, level = "account") => settingTo({ key: k.key, value: v, level });
+  const to = (/** @type {any} */ v, level = "account") => settingTo(k.key, v, { level });
   assert.ok(!(await say({ thread: "t_other", kind: "setting", to: [to(want)] })).error, "recorded for another thread");
   r = await req({ key: k.key, value: want });
   assert.equal(r.error?.code, "denied", "words in another thread don't count");
@@ -491,7 +491,7 @@ test("an agent changes a setting only when the person asked (C25, P17), every ch
   assert.ok(!(await say({ thread: "t_asked", kind: "setting", to: [to(!want)] })).error);
   r = await req({ key: k.key, value: want });
   assert.equal(r.error?.code, "denied", "an ask for the opposite value doesn't count");
-  assert.ok(!(await say({ thread: "t_asked", kind: "setting", to: [settingTo({ key: "some.other.key", value: want, level: "account" })] })).error);
+  assert.ok(!(await say({ thread: "t_asked", kind: "setting", to: [settingTo("some.other.key", want)] })).error);
   r = await req({ key: k.key, value: want });
   assert.equal(r.error?.code, "denied", "an ask that names a different key doesn't count");
   assert.ok(!(await say({ thread: "t_asked", kind: "send", to: [to(want)] })).error);
