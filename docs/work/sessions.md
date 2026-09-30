@@ -43,56 +43,30 @@ Capsule quick asks to the box assistant, Mac project folders Mac-owned.
   (sessions.usage.*, usage_paused on sessions.slots take with auth).
 
 ## Doing
-- 0.2 build, wave A0/A (lead's GO, 30 Sep): caller identity inside vyred (with iq), per-account
-  isolation, accounts, then the generic ACP driver on Grok, then Codex. Branch work/sessions-02 off
-  main 3e1eef47 (platform's module contract v1 merge), worktree vyre-sessions unchanged. Land only
-  through the integrator onto stage/0.2, after review (reviewer-2). NOT YET COMMITTED - notes below
-  survive a reset even if the code doesn't.
-
-  **Caller identity: what I found by reading the real code before writing anything** (this is the
-  thing to re-derive first if a reset hits before a commit lands):
-  - `core/daemon/client.js:27` sends `x-vyre-agent-key: process.env.VYRE_AGENT_KEY` on any call
-    naming an agent. `core/switchboard/index.js:690` sets `VYRE_AGENT_KEY` as a literal env var on
-    the spawned session process. Env vars are inherited by every child a session's Bash tool spawns
-    by default - so a Bash subprocess CAN read and replay its own thread's key and get vouched
-    (`threads.vouch`) as `mcp:agent:<name>`, fully legitimately by the vouch check's own logic
-    (confirmed by reading, not the untested worry iq's plan states it as - it's real).
-  - This is LESS dangerous than it first looks, also confirmed by reading, not assumed:
-    - `core/harness/rules.js`'s floor already denies (not asks - `deny1`) a Bash command that talks
-      to a unix socket matching vyred's own (`SOCKET_CLIENT` regex + a path check), so a raw curl
-      replaying the leaked key from inside Bash is refused before it runs, for a session whose
-      floor actually runs (owned sessions: vyred's own `canUseTool`, ADR 0030 section 3 - already
-      provider-neutral in design, which is exactly why 3.7's B2 fix (ACP client fs/terminal caps,
-      strictest spawn flags) matters: it's what makes non-Claude drivers actually hit this same
-      floor instead of bypassing it).
-    - `guard()` (23 call sites in `core/switchboard/index.js`, e.g. `threads.start`) already checks
-      `sb.kindOf(agent) !== "assistant"` at CALL TIME for every `threads.*`/`agents.*` tool, not
-      just at the MCP listing layer (`harness/mcp/server.js`'s `offered()`, which only hides tools
-      from `tools/list` and is not itself a security boundary) - so even a successfully-replayed
-      key grants a non-assistant agent nothing beyond what its own legitimate MCP already could.
-  - **The gap that's still real, not yet fixed**: `harness/mcp/server.js`'s `scoped()` function
-    limits a search to an agent's own granted projects (`VYRE_PROJECTS`, `VYRE_SCOPE_CWDS`) by
-    adding `project_cwds` to the INPUT of `recall.search` - client-side, inside the MCP wrapper,
-    never checked against the caller's actual verified grant server-side. A caller that reaches
-    `memory.facts`/`memory.ask`/`recall.search` some other way (not necessarily even needing the
-    leaked key - depends what those tools' own `callers` lists allow) could pass no project filter,
-    or a wide one, and the tool would have no server-side fact to refuse it with. This is very
-    likely what iq's S8 ("bare curl --unix-socket, no headers, memory.facts and memory.ask on
-    another project") actually finds when it runs - not an identity-spoofing problem so much as a
-    scope-trusts-the-caller's-own-input problem.
-  - **My actual wave-A0 piece, scoped down from "fix everything caller-identity" to something
-    concrete**: vyred's `route()` (`core/daemon/index.js`) already resolves a vouched agent/session
-    claim into `via.thread`/`via.agent` before a tool ever runs. Extend that resolution to ALSO
-    attach the agent's real, stored project grant (from `agents_agents`, not from anything the
-    caller's env or input claims) onto the same `meta` every tool's `run(input, meta)` receives, so
-    a tool that wants to enforce scope (iq's memory.facts/memory.ask included) reads
-    `meta.grantedProjects` rather than trusting a client-supplied filter. This is the daemon-side
-    half; iq's own tools reading it and refusing when a project isn't in it is theirs, not mine -
-    posting this analysis to CHAT.md/iq before writing enforcement code, since it changes what
-    their tools should trust and deserves their and reviewer-2's eyes first.
-  - Not started writing code yet: this analysis is the result of the reading pass. Next action is
-    the CHAT.md post, then (regardless of the reply) starting section 3.2's `sessions_accounts`
-    table + resolution order, which has no dependency on this question being settled first.
+- 0.2 build, wave A0/A on branch work/sessions-02 (pushed; land only through the integrator onto
+  stage/0.2 after reviewer-2). Done so far, in order:
+  1. 845ae5dc caller identity: vyred's route() reads the verified agent's stored grant from the new
+     internal `agents.scope` and puts `meta.granted` ("*" or slugs) and `meta.agentKind` on every
+     call. iq's memory.facts/ask/recall.search must read meta.granted, not input.project_cwds
+     (harness/mcp/server.js scoped() is still client-side; iq's to change). Test: "carry the grant".
+  2. be926527 spawner: spawn request `account` (uid 2000-2063) and `shared`; HOME /home/acct/<uid>
+     checked (dir, not symlink, owner uid, no group/other bits) at request and at start; gid = uid, no
+     groups unless shared; `wipe` op. Env: VYRE_ACCOUNT_UID_MIN/MAX, VYRE_ACCOUNTS_HOME.
+  3. 1bad084f, cbc79cee accounts: sessions_accounts (kind api-key|setup-token|login, uid allocation,
+     dirty-uid wipe before reuse), scope-checked resolve (H1), `account` kept on threads_runs and in
+     KEPT opts, credential from the vault as the provider's env var (threads manifest needs.vault
+     "per-account"), removed account on resume -> code account_removed (M3).
+  4. 97e18c8a, 8d60b974 generic ACP driver (hand-rolled ndjson, not the SDK), fake ACP agent,
+     conform() safety set, Grok and Codex entries registered by core/sessions (does.providers),
+     floor passed to non-Claude drivers, harness MCP server passed in session/new mcpServers,
+     agent session ids persisted (sessions_acp).
+- Known gaps, honest: (a) Claude accounts on a box run as the account uid, so vyred cannot read
+  their transcripts under /home/acct/<uid> (0700): needs a decision (group-readable projects dir or
+  a transcript relay) before Claude accounts are used on a box. (b) Grok/Codex flags and login
+  locations are UNVERIFIED until a real account runs on a hosted runner (needs a pay-per-use test
+  key from the lead). (c) 11 Mac-only failures in core/sessions tests (/proc pid, subreaper, socket
+  peer) predate this work; Linux CI is the judge. (d) sessions.accounts.signin (device-code flow)
+  not built; login accounts need it. (e) No mid-session switch or routing/fallback yet.
 
 - 0.1.1 test-fix queue from team-lead (branch work/sessions-011 off stage/0.1.1 d9b916d4, both
   failures predate today, also seen on 029756bc): fixed.
