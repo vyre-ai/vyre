@@ -186,8 +186,13 @@ export function classify(method, pathAndQuery, endpoints) {
 
 // ---- SSRF guard ----
 
-/** IPv4 octets as a 32-bit number. */
-function v4num(ip) { const p = ip.split(".").map(Number); return p.length === 4 && p.every(n => n >= 0 && n <= 255) ? ((p[0] << 24) | (p[1] << 16) | (p[2] << 8) | p[3]) >>> 0 : null; }
+/** A strict dotted quad as a 32-bit number: four parts, each 0 or 1 to 3 digits with no leading zero (so an octal or short form is null, and refused by callers). */
+function v4num(ip) {
+  const p = String(ip).split(".");
+  if (p.length !== 4 || !p.every(x => /^(0|[1-9]\d{0,2})$/.test(x))) return null;
+  const n = p.map(Number);
+  return n.every(x => x <= 255) ? ((n[0] << 24) | (n[1] << 16) | (n[2] << 8) | n[3]) >>> 0 : null;
+}
 const inV4 = (n, base, bits) => { const mask = bits === 0 ? 0 : (~0 << (32 - bits)) >>> 0; return (n & mask) === (v4num(base) & mask); };
 
 /** Every IPv4 range that must never be an api-credential's target: loopback, link-local
@@ -269,7 +274,8 @@ export function hostAllowed(host, hosts) {
     const suffix = entry.slice(1); // ".googleapis.com"
     if (!h.endsWith(suffix)) return false;
     const label = h.slice(0, h.length - suffix.length);
-    return label.length > 0 && !label.includes(".");
+    // Exactly one label, and a real hostname label: no "*", "_", space or other character a name server would treat specially.
+    return /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/.test(label);
   });
 }
 
@@ -304,7 +310,9 @@ async function defaultLookup(hostname) {
 // ---- the request itself: headers, url, what it does, what the person sees, what they approve ----
 
 /** Headers a caller may never set: the credential owns authentication, the connection owns the rest. */
-const FORBIDDEN_HEADERS = new Set(["authorization", "proxy-authorization", "host", "cookie", "content-length", "transfer-encoding", "connection", "upgrade", "te", "trailer", "expect", "x-forwarded-for", "x-forwarded-host", "forwarded"]);
+const FORBIDDEN_HEADERS = new Set(["authorization", "proxy-authorization", "host", "cookie", "content-length", "transfer-encoding", "connection", "upgrade", "te", "trailer", "expect", "x-forwarded-for", "x-forwarded-host", "forwarded",
+  // A read that a header turns into a write: many frameworks honour these, and a GET runs unasked.
+  "x-http-method-override", "x-http-method", "x-method-override"]);
 
 /**
  * The headers a caller asked to add, lower-cased and checked: no authentication (the credential
@@ -345,6 +353,15 @@ export function buildUrl(rawUrl, query) {
   }
   u.hash = "";
   return u.toString();
+}
+
+/**
+ * Refuse a query that asks the server to treat the call as another method (`_method=DELETE`), which
+ * would turn a GET, run at once, into a write nobody classified. @param {URL} u
+ */
+export function checkQuery(u) {
+  for (const k of u.searchParams.keys()) if (/^(_method|x-http-method(-override)?|x-method-override|\$?httpmethod|_httpmethod)$/i.test(k))
+    throw bad(`the query names ${k.slice(0, 40)}, which asks the server to use another method; use the method itself`);
 }
 
 const ZERO_DECIMAL = new Set(["bif", "clp", "djf", "gnf", "jpy", "kmf", "krw", "mga", "pyg", "rwf", "ugx", "vnd", "vuv", "xaf", "xof", "xpf"]);

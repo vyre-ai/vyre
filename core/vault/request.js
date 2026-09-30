@@ -33,7 +33,7 @@ import crypto from "node:crypto";
 import https from "node:https";
 import { defaultField } from "../../lib/vault-kinds/kinds.js";
 import {
-  checkTarget, classify, presetFor, presetRead, parseFields, summarize, approvalHash, checkHeaders, buildUrl, pinnedOptions,
+  checkTarget, classify, presetFor, presetRead, parseFields, summarize, approvalHash, checkHeaders, checkQuery, buildUrl, pinnedOptions,
 } from "./api-request.js";
 
 const GATE_SENDER = "vault-api";
@@ -165,6 +165,7 @@ export class ApiRequests {
     const rawUrl = buildUrl(input.url, input.query);
     const target = await checkTarget(rawUrl, config.hosts, { lookup: this.deps.lookup });
     const url = target.url;
+    checkQuery(url);
     let body;
     if (input.body !== undefined && input.body !== null && input.body !== "") {
       if (method === "GET" || method === "HEAD") throw bad("a GET or HEAD carries no body");
