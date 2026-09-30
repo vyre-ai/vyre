@@ -45,13 +45,40 @@ extension CapsuleModel {
         guard let tok = TagToken.trailing(in: text) else { return }
         if !pickedTags.contains(where: { $0.kind == h.kind && $0.id == h.id }) { pickedTags.append(h) }
         tagHits = []
+        ownEdit = true
         text = TagToken.insert(h.name, into: text, replacing: tok.start)
+        ownEdit = false
         line = nil
     }
 
     /// The chips still written in `words`, as the send carries them (threads.send's `mentions`).
     func tagsFor(_ words: String) -> [[String: String]] {
         TagToken.stillIn(words, pickedTags).map { ["kind": $0.kind, "id": $0.id, "name": $0.name] }
+    }
+
+    /// What went into the box other than one key at a time, from the old words to the new: the chunk
+    /// between their common start and common end, when it is longer than one character. A paste, a drop,
+    /// dictation, an undo or a redo all look like this, and all count as not typed. Our own edits (a tag
+    /// pick) do not.
+    func trackInsert(_ old: String) {
+        if text.isEmpty { pastedSpans = []; return }
+        if ownEdit { return }
+        if let chunk = TagToken.inserted(old: old, new: text) { pastedSpans.append(chunk) }
+    }
+
+    /// The pasted spans still written in `words`, for the send (`pasted`). Line endings are normal.
+    func pastedFor(_ words: String) -> [String] {
+        var seen = Set<String>()
+        return pastedSpans.filter { words.contains($0) && seen.insert($0).inserted }
+    }
+
+    /// `mentions` (the chips still in the words, at most 8) and `pasted` for a send that sessions reads:
+    /// threads.send, threads.start (its first prompt) and agents.ask.
+    func addTags(to input: inout [String: Any], words: String) {
+        let tags = tagsFor(words)
+        if !tags.isEmpty { input["mentions"] = Array(tags.prefix(8)) }
+        let pasted = pastedFor(words)
+        if !pasted.isEmpty, !tags.isEmpty || words.contains("#") { input["pasted"] = pasted }
     }
 
     /// Take a chip off: its token leaves the words.

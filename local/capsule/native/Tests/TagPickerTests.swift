@@ -62,7 +62,7 @@ let tagPickerSuite = Suite("tag picker") { t in
             try? await Task.sleep(nanoseconds: 300_000_000)
             out.append("searched before # \(v.callsOf("mentions.search").count)")
             m.text = "check #gh"
-            for _ in 0..<300 where m.flat.isEmpty { try? await Task.sleep(nanoseconds: 10_000_000) }
+            for _ in 0..<300 where m.flat.first?.kind != "tag" { try? await Task.sleep(nanoseconds: 10_000_000) }
             out.append(m.flat.map { "\($0.kind):\($0.title):\($0.subtitle)" }.joined(separator: ","))
             out.append("q \(v.callsOf("mentions.search").last?["q"] as? String ?? "-")")
             // Nothing is sent by listing; the row's own action writes the tag.
@@ -81,5 +81,49 @@ let tagPickerSuite = Suite("tag picker") { t in
         t.eq(r?[4], "ghlapikey")
         t.ok(r?[5].contains("vault") == true && r?[5].contains("v1") == true, r?[5] ?? "nil")
         t.eq(r?[6], "chips 0")
+    }
+
+    t.test("what was put in at once is pasted; a key, a deletion and our own tag pick are not; line endings are normal") {
+        t.eq(TagToken.inserted(old: "", new: "hello #ghlapikey"), "hello #ghlapikey")
+        t.eq(TagToken.inserted(old: "see ", new: "see a #tag here"), "a #tag here")
+        t.eq(TagToken.inserted(old: "see", new: "see a"), nil, "one key")
+        t.eq(TagToken.inserted(old: "see a", new: "see"), nil, "a deletion")
+        t.eq(TagToken.inserted(old: "x", new: "x"), nil)
+        t.eq(TagToken.inserted(old: "a z", new: "a line1\r\nline2 z"), "line1\nline2", "\r\n becomes \n")
+        t.eq(TagToken.inserted(old: "ab", new: "a12b"), "12", "in the middle")
+    }
+
+    t.test("a send carries the chips and the pasted spans that are still in the words; a #Name inside a paste is not a chip") {
+        MainActor.assumeIsolated {
+            let v = FakeVyred(name: "tags-pasted")
+            let m = CapsuleModel(home: vyScratch("tags-pasted-\(UUID().uuidString.prefix(6))"), vyred: VyredClient(socket: v.socket), providers: [])
+            for c in "use " { m.text += String(c) }                            // typed, a key at a time
+            t.eq(m.pastedSpans, [])
+            m.text = "use Email from Dana: please check #ghlapikey today"       // a paste lands
+            t.eq(m.pastedSpans, ["Email from Dana: please check #ghlapikey today"])
+            let hit = TagHit(kind: "vault", id: "v1", name: "intake", hint: nil, icon: nil, label: "Vault")
+            m.pickedTags = [hit]
+            for c in " #intake" { m.text += String(c) }                        // typed
+            // Our own pick is not a paste.
+            let before = m.pastedSpans.count
+            m.text = m.text.replacingOccurrences(of: " #intake", with: " #")
+            m.pickTag(hit)
+            t.eq(m.pastedSpans.count, before, "a tag pick is not a paste")
+            var input: [String: Any] = ["text": m.text]
+            m.addTags(to: &input, words: m.text)
+            t.eq((input["mentions"] as? [[String: String]])?.map { $0["id"] ?? "" }, ["v1"])
+            t.eq(input["pasted"] as? [String], ["Email from Dana: please check #ghlapikey today"])
+            // The paste is edited away: it is no longer sent.
+            var input2: [String: Any] = [:]
+            m.addTags(to: &input2, words: "use something else #intake")
+            t.ok(input2["pasted"] == nil)
+            // An empty box forgets them.
+            m.text = ""
+            t.eq(m.pastedSpans, [])
+            // No chips and no # in the words: nothing extra goes.
+            var plain: [String: Any] = [:]
+            m.addTags(to: &plain, words: "just words")
+            t.ok(plain["mentions"] == nil && plain["pasted"] == nil)
+        }
     }
 }

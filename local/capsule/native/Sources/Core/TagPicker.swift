@@ -50,6 +50,20 @@ public enum TagToken {
         String(text[..<start]) + token(name) + " "
     }
 
+    /// What was put into `old` to make `new` in one go: the middle between their common start and common
+    /// end, when it is longer than one character (one key is one character). Line endings are made \n.
+    /// Nil for a key, a deletion or no change.
+    public static func inserted(old: String, new: String) -> String? {
+        let a = Array(old), b = Array(new)
+        var p = 0
+        while p < a.count, p < b.count, a[p] == b[p] { p += 1 }
+        var s = 0
+        while s < a.count - p, s < b.count - p, a[a.count - 1 - s] == b[b.count - 1 - s] { s += 1 }
+        let mid = String(b[p..<(b.count - s)])
+        guard mid.count > 1 else { return nil }
+        return mid.replacingOccurrences(of: "\r\n", with: "\n").replacingOccurrences(of: "\r", with: "\n")
+    }
+
     /// #Name, or #"Name with spaces".
     public static func token(_ name: String) -> String {
         let clean = name.replacingOccurrences(of: "\"", with: "")

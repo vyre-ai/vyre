@@ -23,6 +23,8 @@ enum Paster {
         guard dialogsAllowed() else { return }
         _ = AXIsProcessTrustedWithOptions([kAXTrustedCheckOptionPrompt.takeUnretainedValue() as String: true] as CFDictionary)
     }
+    /// The app in front right now (a fake in tests).
+    nonisolated(unsafe) static var frontPid: () -> Int32? = { NSWorkspace.shared.frontmostApplication?.processIdentifier }
     nonisolated(unsafe) static var post: () -> Void = {
         let src = CGEventSource(stateID: .combinedSessionState)
         for down in [true, false] {
@@ -82,6 +84,8 @@ enum Paster {
             guard ctx.frontIsBack else { return .close(copiedNote) }
             if !accessibilityOn() { return .close(needAccess) }
             try? await Task.sleep(nanoseconds: settle)
+            // The app could have changed in that moment: paste only into the one the person was in.
+            if let want = ctx.query.front?.pid, frontPid() != want { return .close(copiedNote) }
             post()
             return .close(nil)
         }

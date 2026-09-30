@@ -19,7 +19,7 @@ public final class CapsuleModel: ObservableObject {
         public var id: String { section.rawValue }
     }
 
-    @Published public var text = "" { didSet { if text != oldValue { userMoved = false; extensionBoxChanged?(); syncTags(); search() } } }
+    @Published public var text = "" { didSet { if text != oldValue { userMoved = false; extensionBoxChanged?(); trackInsert(oldValue); syncTags(); search() } } }
     /// After an answer, the box is the follow-up box: ⏎ continues the same thread (AutoAsk.swift).
     @Published public internal(set) var followUp = false
     /// How long typing rests before a question is answered on its own (AutoAsk.swift).
@@ -110,6 +110,10 @@ public final class CapsuleModel: ObservableObject {
     /// The module command open in the box (ViewMode.swift), and where commands come from.
     @Published var viewSession: ViewSession?
     var viewProvider: ViewCommandsProvider?
+    /// Text put in the box other than a key at a time (a paste, a drop, dictation, undo): tags typed inside
+    /// it tag nothing (TagMode.swift).
+    var pastedSpans: [String] = []
+    var ownEdit = false
     /// "Harlow Legal call · in 25 min": the next meeting, under the empty box (ViewMode.swift).
     @Published var nextMeeting: String?
     var nextMeetingAt: Date?
@@ -332,7 +336,7 @@ public final class CapsuleModel: ObservableObject {
     public func reset() {
         if let r = reply, !r.finished { return }
         followUp = false; autoKey = nil; autoTask?.cancel(); convo = []
-        text = ""; pickedTags = []; groups = []; selected = 0; line = nil; reply = nil; asked = nil; memory = nil; askedMemory = nil; targetParent = nil; target = nil
+        text = ""; pickedTags = []; pastedSpans = []; groups = []; selected = 0; line = nil; reply = nil; asked = nil; memory = nil; askedMemory = nil; targetParent = nil; target = nil
         iqStage = nil; iqDraft = nil; iqAnswerId = nil; iqCorrecting = nil; iqFixed = nil; iqAbstained = false
         cancelMentionRefresh()
         replySub?.cancel(); replySub = nil
@@ -440,7 +444,12 @@ public final class CapsuleModel: ObservableObject {
             return
         }
         // A "#" being typed: what can be tagged (TagMode.swift).
-        if let h = hashToken { partial = [:]; searchTags(h, token: t); return }
+        if let h = hashToken {
+            // The old rows were for other words: none stay to be picked by mistake while the list comes.
+            partial = [:]
+            if groups.first?.items.first?.kind != "tag" { groups = []; selected = 0 }
+            searchTags(h, token: t); return
+        }
         tagTask?.cancel()
         cancelMentionRefresh()
         // The follow-up box: its words go to the answer's thread on ⏎; nothing is searched.
@@ -917,10 +926,11 @@ public final class CapsuleModel: ObservableObject {
         doing = computerUse
         // Computer use is a full session: the Vyre plugin brings hands.* and screen.*, the floor
         // and the Gate. A question is a lean one on the fast model.
-        let input: [String: Any] = computerUse
+        var input: [String: Any] = computerUse
             ? ["prompt": words, "append": ([Self.computerUseBrief, append].filter { !$0.isEmpty }).joined(separator: "\n\n"), "purpose": "agent",
                "cwd": dir.path, "surface": "capsule", "name": name]
             : ["prompt": words, "append": append, "lean": true, "model": model, "purpose": "capsule", "cwd": dir.path, "surface": "capsule", "name": name]
+        addTags(to: &input, words: words)
         let r = await vyred.call("threads.start", input, presence: false)
         pending = false
         if let why = Bridge.explain(r) { asked = nil; replySub?.cancel(); replySub = nil; return .failed(why) }
@@ -970,7 +980,8 @@ public final class CapsuleModel: ObservableObject {
             follow { c.id }
             var sendInput: [String: Any] = ["thread": c.id, "text": withAttachments(words), "surface": "capsule"]
             let tags = tagsFor(words)
-            if !tags.isEmpty { sendInput["mentions"] = tags }
+            _ = tags
+            addTags(to: &sendInput, words: words)
             let r = await vyred.call("threads.send", sendInput, presence: false)
             pending = false
             if let why = Bridge.explain(r) { reply = nil; asked = nil; return .failed(why) }
@@ -992,7 +1003,9 @@ public final class CapsuleModel: ObservableObject {
             reply = VyState.reply("")
             var thread: String?
             follow { thread }
-            let r = await vyred.call("agents.ask", ["agent": c.id, "text": withAttachments(words), "surface": "capsule", "wait": false], presence: false)
+            var askInput: [String: Any] = ["agent": c.id, "text": withAttachments(words), "surface": "capsule", "wait": false]
+            addTags(to: &askInput, words: words)
+            let r = await vyred.call("agents.ask", askInput, presence: false)
             pending = false
             let d = (r.data as? [String: Any]) ?? [:]
             if let why = Bridge.explain(r) { reply = nil; asked = nil; return .failed(why) }
@@ -1005,7 +1018,9 @@ public final class CapsuleModel: ObservableObject {
             reply = VyState.reply("")
             var thread: String?
             follow { thread }
-            let r = await vyred.call("threads.start", ["project": c.id, "prompt": withAttachments(words), "surface": "capsule"], presence: false)
+            var startInput: [String: Any] = ["project": c.id, "prompt": withAttachments(words), "surface": "capsule"]
+            addTags(to: &startInput, words: words)
+            let r = await vyred.call("threads.start", startInput, presence: false)
             pending = false
             if let why = Bridge.explain(r) { reply = nil; asked = nil; return .failed(why) }
             thread = (r.data as? [String: Any]).flatMap { VJ.nonEmpty($0["id"]) }

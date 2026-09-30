@@ -104,4 +104,20 @@ let pasteSuite = Suite("paste") { t in
         }
         t.eq(r, ["paste", "copy", "copy"])
     }
+
+    t.test("if the app in front changed while it settled, nothing is pasted: it copies and says so") {
+        let r: [String]? = t.wait { () -> [String] in
+            await withPaster(trusted: true) { posts, _, _ in
+                await MainActor.run { Paster.frontPid = { 99 } }
+                let a = Paster.actions(text: "hello")
+                let asked = ActionContext(query: Query("x", front: FrontApp(bundle: "com.example.notes", pid: 7, name: "Notes")), frontIsBack: true)
+                let o1 = await a[0].run(ROW, asked)
+                await MainActor.run { Paster.frontPid = { 7 } }
+                let o2 = await a[0].run(ROW, asked)
+                await MainActor.run { Paster.frontPid = { NSWorkspace.shared.frontmostApplication?.processIdentifier } }
+                return ["\(o1 == .close(Paster.copiedNote))", "\(o2)", "\(posts.value)"]
+            }
+        }
+        t.eq(r, ["true", "close(nil)", "1"])
+    }
 }
