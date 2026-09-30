@@ -498,7 +498,8 @@ export default {
       // again (a re-pairing included), and the node itself is deleted from the tailnet, retried
       // until Tailscale confirms. A failed delete is logged and shown, never a half-trusted device.
       const orphan = row.node_tagged && row.node_id ? row.node_id : null;
-      db.prepare("UPDATE relay_devices SET removed_at = ?, join_grant = 0, node_id = NULL, node_name = NULL, node_tagged = 0, orphan_node = COALESCE(?, orphan_node) WHERE id = ?").run(now(), orphan, id);
+      // Only what the 4401 answer needs stays (the key and the time): the name the person deleted, the presence key id, the build and the path are blanked.
+      db.prepare("UPDATE relay_devices SET removed_at = ?, name = '', presence_key = NULL, release = NULL, manifest = NULL, trusted = 0, last_path = NULL, rtt = NULL, join_grant = 0, node_id = NULL, node_name = NULL, node_tagged = 0, orphan_node = COALESCE(?, orphan_node) WHERE id = ?").run(now(), orphan, id);
       binding.delete(id);
       if (orphan) deleteOrphans();
       for (const ch of live.get(id) || []) ch.close(4401, "device removed");

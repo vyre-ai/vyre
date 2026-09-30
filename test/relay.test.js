@@ -209,6 +209,10 @@ test("relay: removing a device closes its connection at once with 4401 'device r
   assert.equal(p.channel.closed, true);
   assert.deepEqual(p.closed(), { code: 4401, reason: "device removed" }, "the open channel hears it");
   await assert.rejects(phone(url, { keys: p.keys, pair: false }), /device removed/, "a reconnect is refused with the same words");
+  // What is kept of a removed device is what that answer needs: its key and when, never the name the person deleted.
+  const kept = /** @type {any} */ (d.registry.deps.db.prepare("SELECT name, pub, presence_key, release, removed_at, trusted FROM relay_devices WHERE id = ?").get(p.reply.device));
+  assert.ok(kept.pub && kept.removed_at, "key and time stay");
+  assert.deepEqual([kept.name, kept.presence_key, kept.release, kept.trusted], ["", null, null, 0], "the rest is blanked");
   // a stranger's key is just not paired, which is a different answer
   await assert.rejects(phone(url, { keys: keyPair(), pair: false }), /box closed the connection/, "a stranger's key just gets the relay's generic close");
 });
