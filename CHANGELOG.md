@@ -16,6 +16,11 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 - The loader reads v1 manifests: tools with a reach, `mac` and `windows` roles, and `requires` with
   version ranges. A module added from outside reaches only tools with a declared reach, and may not
   replace one of Vyre's modules.
+- Modules keep working as the contract grows. A module names its contract in module.json
+  (`"vyre": "1"`), and inside a major Vyre only adds. Unknown keys and deprecated usages are
+  warnings, never failures. A module for a newer contract is never run: its row says which Vyre it
+  needs. `vyre module upgrade` moves a module onto the current form, and pinned fixtures in
+  `test/fixtures/modules/` hold every release to it.
 
 ## 0.1.1
 

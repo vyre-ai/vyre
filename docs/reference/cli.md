@@ -742,7 +742,7 @@ vyre tips [module | new | reset] [--json]
 Make, check, test and add a module of your own.
 
 ```
-vyre module new <name> [--dir <parent>] | check [dir] | test [dir] | add <path|git url> [--yes]
+vyre module new <name> [--dir <parent>] | check [dir] | test [dir] | upgrade [dir] [--dry-run] | add <path|git url> [--yes]
 ```
 
 new <name>        a module on module API 1 that passes check, test and its own test, in
@@ -750,6 +750,10 @@ new <name>        a module on module API 1 that passes check, test and its own t
   --dir PARENT    make it in PARENT/<name> instead
 check [dir]       the manifest (schema and loader rules) and the entry file; exit 1 on a problem
 test [dir]        the conformance checks every module passes, then its own *.test.js files
+upgrade [dir]     move a module onto the current contract: apiVersion to vyre, string tools to
+                  objects, ctx.memory.teach to ctx.memory.write; lists what it can't do, then
+                  runs the conformance checks
+  --dry-run       show the changes and check a copy; write nothing
 add <source>      a folder or a git URL (https://, git@, file://): check it, show what it asks
                   for, copy it into <home>/modules and restart vyred to load it
   --yes           do not ask first (needed without a terminal, and with --json or --view)

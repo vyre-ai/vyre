@@ -66,6 +66,22 @@ A module is a folder: `module.json`, an entry file (`index.js`) whose default ex
 6. **Add it.** `vyre module add <folder>` shows the person an install card built from your
    manifest. Their tap turns it on.
 
+## Versions: what stays working
+
+- `"vyre": "1"` names the module contract you write for. Write `"1.2"` only when you use something
+  added in contract 1.2; a Vyre that has only 1.0 then says so plainly and never runs your code.
+- Inside contract 1, Vyre only adds. Nothing you use is removed, renamed or narrowed, and a default
+  never changes what your module does. A module written for 1.0 keeps working on every 1.x Vyre.
+- A key Vyre doesn't know is ignored when it loads, and `vyre module check` shows it as a warning:
+  a typo, or a key from a newer contract. Warnings never fail a check or a test.
+- Check for a newer ctx member with `ctx.api.has("<feature>")` and work without it when you can.
+  `ctx.api.version` is the contract this Vyre speaks, like `"1.0"`.
+- Something deprecated keeps working, with a warning, for at least two Vyre releases or six
+  months. `vyre module upgrade .` rewrites what it safely can (for example `apiVersion` to
+  `"vyre"`, string tool entries to objects, `ctx.memory.teach` to `ctx.memory.write`), lists what
+  it left for you, and runs the checks. `--dry-run` shows the changes and writes nothing.
+- When contract 2 arrives, a `"vyre": "1"` module keeps running beside it for at least 12 months.
+
 ## module.json cheat sheet
 
 ```json
@@ -73,7 +89,7 @@ A module is a folder: `module.json`, an entry file (`index.js`) whose default ex
   "$schema": "https://vyre.run/schema/module-1.json",
   "name": "bakery",
   "version": "0.1.0",
-  "apiVersion": 1,
+  "vyre": "1",
   "description": "Northwind Bakery's orders, the daily target and the flour order.",
   "roles": ["box"],
   "does": {
@@ -101,7 +117,7 @@ A module is a folder: `module.json`, an entry file (`index.js`) whose default ex
 | Key | Rule |
 |---|---|
 | `name` | `^[a-z][a-z0-9-]{1,40}$`. It prefixes every tool, event, setting and table. |
-| `apiVersion`, `description` | Required. `1`, and one plain sentence for the install card. |
+| `vyre`, `description` | Required. The contract you write for (`"1"`), and one plain sentence for the install card. |
 | `roles` | `box` (the server), `local` (a device), `mac`. Default `["box"]`. `windows` alone loads nowhere yet. |
 | `does.tools[]` | `{ name, summary, reach?, outward?, cost? }`. `name` is `<module>.<verb>`. |
 | `reach` | `anyone` (default): the person, agents, modules listing it. `asked`: an agent only when the person's own words asked. `modules`: Vyre's own modules only. `hook`: the webhook route only. Never `person`. |
@@ -222,7 +238,9 @@ test("bakery.flour is held for an agent and runs for the person", async t => {
 
 | The check says | Change |
 |---|---|
-| `apiVersion is required outside Vyre's own modules` | Add `"apiVersion": 1`. |
+| `"vyre" is required outside Vyre's own modules` | Add `"vyre": "1"`. |
+| `needs a newer Vyre (module contract 1.2); this Vyre has 1.0` | Update Vyre, or write for an older contract: use only what `"vyre": "1"` has. |
+| `apiVersion is deprecated` and other warnings | Nothing fails. Run `vyre module upgrade .` to move to the current form. |
 | `description is required outside Vyre's own modules` | Add one plain sentence under `description`. |
 | `tool "x.y" must be an object like { "name": ... }` | Write the entry as `{ "name": "x.y", "summary": "...", "reach": "anyone" }`. |
 | `tool "x" must start with "<name>."` | Prefix every tool with your module's name and a dot. |
