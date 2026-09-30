@@ -1,0 +1,5 @@
+{
+  "id": "big-order",
+  "summary": { "when": "an order of 20 or more items is added", "do": "tell you" },
+  "when": { "event": "bakery.order-added", "match": { "big": true } }
+}

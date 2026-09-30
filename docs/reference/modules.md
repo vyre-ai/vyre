@@ -18,7 +18,7 @@ A module runs on the `box` (the always-on server), on `local` (the Mac), or on b
 | Module | Folder | Runs on | Tools | Events | Shows on |
 | --- | --- | --- | --- | --- | --- |
 | [`about`](#about) | `core/about` | `box`, `local` | 1 | 0 | cli |
-| [`agents`](#agents) | `core/agents` | `box`, `local` | 10 | 0 | cli |
+| [`agents`](#agents) | `core/agents` | `box`, `local` | 11 | 0 | cli |
 | [`appearance`](#appearance) | `core/appearance` | `box`, `local` | 3 | 1 | cli |
 | [`apps`](#apps) | `local/apps` | `local` | 6 | 2 | none |
 | [`capsule`](#capsule) | `local/capsule` | `local` | 3 | 2 | capsule, cli |
@@ -49,12 +49,13 @@ A module runs on the `box` (the always-on server), on `local` (the Mac), or on b
 | [`planner`](#planner) | `core/planner` | `box`, `local` | 15 | 7 | capsule, cli, deck |
 | [`presence`](#presence) | `core/presence` | `box`, `local` | 12 | 6 | capsule, cli, deck |
 | [`projects`](#projects) | `core/projects` | `box`, `local` | 19 | 5 | cli |
+| [`providers`](#providers) | `core/providers` | `box`, `local` | 1 | 0 | cli |
 | [`push`](#push) | `core/push` | `box`, `local` | 8 | 3 | capsule, cli, deck |
 | [`recall`](#recall) | `core/recall` | `box`, `local` | 12 | 4 | cli |
 | [`relay`](#relay) | `core/relay` | `box`, `local` | 19 | 9 | capsule, cli, deck |
 | [`releases`](#releases) | `core/apps` | `box` | 2 | 0 | cli |
 | [`screen`](#screen) | `local/screen-mac` | `local` | 2 | 0 | none |
-| [`sessions`](#sessions) | `core/sessions` | `box`, `local` | 22 | 8 | cli |
+| [`sessions`](#sessions) | `core/sessions` | `box`, `local` | 28 | 8 | cli |
 | [`settings`](#settings) | `core/settings` | `box`, `local` | 7 | 1 | cli, deck |
 | [`sideview`](#sideview) | `local/sideview` | `local` | 3 | 0 | none |
 | [`sight`](#sight) | `core/sight` | `box`, `local` | 5 | 1 | none |
@@ -88,7 +89,7 @@ A few lines on who the user is, cached for every Claude Code session to start wi
 - Folder: `core/agents`, version 0.1.0
 - Runs on: `box`, `local`
 - Requires: `threads`
-- Tools: [10](tools.md#agents)
+- Tools: [11](tools.md#agents), 1 of them only for other modules
 - Emits: no events
 - Shows on: cli
 - Needs vault: `per-agent`
@@ -424,6 +425,17 @@ Alarms, timers, reminders, todos, notes and a calendar, kept on the box so somet
 - Shows on: cli
 - Teaches tips: `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`
 
+## providers
+
+providers.list: every session provider on this machine, each with its own accounts and models, so a picker (Chat, the Capsule, the CLI) builds itself from one call. Assembles what each provider's own module reports; holds no state of its own.
+
+- Folder: `core/providers`, version 0.1.0
+- Runs on: `box`, `local`
+- Requires: `sessions`
+- Tools: [1](tools.md#providers)
+- Emits: no events
+- Shows on: cli
+
 ## push
 
 - Folder: `core/push`, version 0.1.0
@@ -488,7 +500,7 @@ How the sessions Vyre starts run (ADR 0030): the Claude Agent SDK driver's statu
 - Folder: `core/sessions`, version 0.1.0
 - Runs on: `box`, `local`
 - Requires: none
-- Tools: [22](tools.md#sessions), 5 of them only for other modules
+- Tools: [28](tools.md#sessions), 7 of them only for other modules
 - Emits: [8 events](events.md#sessions)
 - Shows on: cli
 - Teaches tips: `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`
@@ -603,7 +615,7 @@ Project teammates (ADR 0031): a named, persistent agent per role per project, a 
 - Tools: [42](tools.md#threads), 14 of them only for other modules
 - Emits: [28 events](events.md#threads)
 - Shows on: cli
-- Needs vault: `claude-setup-token`, `anthropic-api-key`
+- Needs vault: `claude-setup-token`, `anthropic-api-key`, `per-account`
 - Teaches tips: `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`
 
 ## tips

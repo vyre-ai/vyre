@@ -61,9 +61,11 @@ if (!process.getuid || process.getuid() !== 0) {
   }
   const allow = ["/usr/local/bin/claude", ...bundled, ...String(env.VYRE_SPAWNER_ALLOW || "").split(":").filter(p => p.startsWith("/"))];
   const home = env.VYRE_AGENT_HOME || "/home/vyre-agent";
-  const makeDir = dir => execFileSync("/usr/bin/setpriv", [`--reuid=${AGENT.uid}`, `--regid=${AGENT.gid}`, `--groups=${SHARED}`, "--inh-caps=-all", "--",
+  const makeDir = (dir, who) => execFileSync("/usr/bin/setpriv", [`--reuid=${who.uid}`, `--regid=${who.gid}`, who.groups.length ? `--groups=${who.groups.join(",")}` : "--clear-groups", "--inh-caps=-all", "--",
     "/bin/sh", "-c", 'umask 002; exec mkdir -p "$1"', "sh", dir], { stdio: "ignore" });
-  const srv = await serve({ socket: SOCKET, mode: 0o660, allow, work: WORK, agent: AGENT, home, makeDir, log });
+  // One uid per account, 2000-2063 in the image, each with a private HOME in the vyre-accounts volume.
+  const accounts = { min: num(env.VYRE_ACCOUNT_UID_MIN, 2000), max: num(env.VYRE_ACCOUNT_UID_MAX, 2063), home: env.VYRE_ACCOUNTS_HOME || "/home/acct", shared: [SHARED] };
+  const srv = await serve({ socket: SOCKET, mode: 0o660, allow, work: WORK, agent: AGENT, home, makeDir, accounts, log });
 
   // The loop, and so vyred, as uid vyre, in the shared group, with no capabilities, and knowing
   // where to ask. Its umask is 002, so what it writes in /work the agent can change too; its own

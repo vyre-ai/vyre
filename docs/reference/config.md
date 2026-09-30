@@ -67,6 +67,9 @@ Vyre reads these when they are set. None is needed for normal use.
 
 | Variable | What it does | Read in |
 | --- | --- | --- |
+| `VYRE_ACCOUNTS_HOME` | Not described yet. | `core/sessions/spawn.js`, `core/spawner/main.js` |
+| `VYRE_ACCOUNT_UID_MAX` | Not described yet. | `core/spawner/main.js` |
+| `VYRE_ACCOUNT_UID_MIN` | Not described yet. | `core/spawner/main.js` |
 | `VYRE_ACME_DIRECTORY` | The ACME server certificates come from, in place of Let's Encrypt. With it set, Vyre does not wait for DNS. | `core/names/index.js` |
 | `VYRE_ADB_BIN` | Not described yet. | `core/cli/commands/phone.js` |
 | `VYRE_AGENT_GID` | Not described yet. | `core/spawner/main.js` |
@@ -106,6 +109,7 @@ Vyre reads these when they are set. None is needed for normal use.
 | `VYRE_HARNESS_DIR` | The Harness plugin folder threads load. Default the one beside this install. | `core/cli/commands/projects.js`, `core/switchboard/index.js` |
 | `VYRE_HOME` | Where Vyre keeps its data. Default `~/.vyre`. | `core/agents/index.js`, `core/config/dialogs.js`, `core/config/index.js`, `core/harness/rules.js`, `core/learn/checks.js`, `core/sessions/index.js`, `core/sessions/spawn.js`, `core/switchboard/index.js`, `harness/lib/vyre.js` |
 | `VYRE_HOST_USER` | The user name in the `ssh -L` line `vyre up` prints for reaching the box. | `core/cli/commands/up.js` |
+| `VYRE_MODULE_SDK` | A folder holding the module SDK's testing.js, for a module's own tests made by `vyre module new` before the SDK is on npm. | `core/cli/commands/module.js` |
 | `VYRE_NO_OPEN` | Never open a browser tab from the terminal. | `core/cli/commands/vault.js` |
 | `VYRE_NO_TIPS` | Not described yet. | `core/cli/index.js` |
 | `VYRE_NO_UP` | `vyre box add` installs Vyre without starting it. | `core/cli/commands/box.js` |
@@ -137,7 +141,7 @@ Vyre reads these when they are set. None is needed for normal use.
 | `VYRE_UID` | Not described yet. | `core/spawner/main.js` |
 | `VYRE_UP_WAIT_MS` | Not described yet. | `core/cli/daemonctl.js` |
 | `VYRE_USER_HOME` | Not described yet. | `core/spawner/main.js` |
-| `VYRE_WORK` | Not described yet. | `core/spawner/main.js` |
+| `VYRE_WORK` | Not described yet. | `core/spawner/main.js`, `core/switchboard/index.js` |
 | `VYRE_WORK_DIR` | Not described yet. | `core/config/index.js` |
 | `VYRE_WORK_GID` | Not described yet. | `bin/vyre`, `core/spawner/main.js` |
 | `VYRE_WRAPPER` | Where `vyre box add` puts the `vyre` command on the server. Default `/usr/local/bin/vyre`. | `core/cli/commands/box.js` |

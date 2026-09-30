@@ -16,6 +16,11 @@
 import { Prompts, PROMPTS_MIGRATION, REPLACE_WARNING, MAX_CHARS, scopeOf } from "./prompts.js";
 import { composeIq, factsFrom } from "./iq-prompt.js";
 import { sessionsConfig, sdkDir, claudeBin, configModel, PURPOSES } from "./config.js";
+import { Accounts, ACCOUNTS_MIGRATION, KINDS as ACCOUNT_KINDS } from "./accounts.js";
+import { usesSpawner } from "./spawn.js";
+import { grokProvider } from "./drivers/grok.js";
+import { codexProvider } from "./drivers/codex.js";
+import { wipeAccount } from "../spawner/client.js";
 
 /** Per-purpose and per-project model overrides a person set from a surface. */
 const MODELS_MIGRATION = `CREATE TABLE IF NOT EXISTS sessions_models (scope TEXT PRIMARY KEY, model TEXT NOT NULL, by TEXT, at INTEGER NOT NULL)`;
@@ -35,14 +40,20 @@ import { Slots, KINDS, BOX_DEFAULTS } from "./slots.js";
 /** Per-project concurrency limits a person set (sessions.limits.set). */
 const LIMITS_MIGRATION = `CREATE TABLE IF NOT EXISTS sessions_limits (project TEXT NOT NULL, kind TEXT NOT NULL, value INTEGER NOT NULL, PRIMARY KEY (project, kind))`;
 
+/** The agent's own session id for a thread on an ACP provider, so a resume after a vyred restart loads it instead of starting fresh. */
+const ACP_MIGRATION = `CREATE TABLE IF NOT EXISTS sessions_acp (thread TEXT PRIMARY KEY, provider TEXT NOT NULL, agent_session TEXT NOT NULL)`;
+
 const PEOPLE = ["cli", "local", "deck", "capsule"];
 const str = { type: "string" };
 const scope = { type: "string", description: "assistant, agent:<name>, project:<slug> or capsule (the Capsule's quick answer, Vyre IQ)" };
 
 export default {
   async start(ctx) {
-    ctx.store.migrate([PROMPTS_MIGRATION, MODELS_MIGRATION, LIMITS_MIGRATION, MODES_MIGRATION]);
+    ctx.store.migrate([PROMPTS_MIGRATION, MODELS_MIGRATION, LIMITS_MIGRATION, MODES_MIGRATION, ACCOUNTS_MIGRATION, ACP_MIGRATION]);
     const db = ctx.store.db;
+    // A uid handed to a new account first has its HOME emptied: by the spawner on a box, by
+    // removing the account's folder on a machine without one (there the uid only numbers it).
+    const accounts = new Accounts(db, { wipe: async uid => { if (usesSpawner()) await wipeAccount(uid); } });
     const override = scope => { const r = /** @type {any} */ (db.prepare("SELECT model FROM sessions_models WHERE scope = ?").get(scope)); return r ? String(r.model) : null; };
     /**
      * The model a session runs on: an explicit one, else its agent's, else its project's override,
@@ -145,6 +156,56 @@ export default {
       description: "The model a session starting now runs on, and where that comes from.", internal: true,
       input: { type: "object", properties: { purpose: str, project: str, model: str } },
       run: async i => modelFor(i),
+    });
+
+    // ------------------------------------------------------------ providers and accounts (0.2)
+
+    // Claude only for now (0.2 charter narrowed to Claude, Codex, Grok); a module adds another
+    // provider with ctx.provider (ADR 0030 section 5) and its own entry here belongs to whichever
+    // module registers it - this module only ever speaks for "claude", the one built in. The
+    // public name is providers.list (agreed with capsule-pro/native-core, CHAT.md), which lives in
+    // the tiny core/providers module since a tool name must start with its own module's name
+    // (core/modules/index.js's validation) and "providers" is not this module's name; this is the
+    // internal snapshot that module calls through ctx.call.
+    const PROVIDERS = [{ id: "claude", label: "Claude" }, { id: "codex", label: "Codex" }, { id: "grok", label: "Grok" }];
+    // Codex (through codex-acp) and Grok (its own ACP mode) run on the one generic ACP driver, each
+    // with strictest-approval flags at every start and its own sign-in in the account's HOME.
+    const acpSessions = provider => ({
+      get: id => { const r = /** @type {any} */ (db.prepare("SELECT agent_session FROM sessions_acp WHERE thread = ? AND provider = ?").get(String(id), provider)); return r ? String(r.agent_session) : undefined; },
+      set: (id, a) => { db.prepare("INSERT INTO sessions_acp (thread, provider, agent_session) VALUES (?,?,?) ON CONFLICT(thread) DO UPDATE SET agent_session = excluded.agent_session").run(String(id), provider, String(a)); },
+    });
+    const drivers = { codex: codexProvider({ sessions: acpSessions("codex") }), grok: grokProvider({ sessions: acpSessions("grok") }) };
+    for (const [name, driver] of Object.entries(drivers)) ctx.provider(name, driver);
+    ctx.tool("sessions.providers.snapshot", {
+      description: "Every session provider this module speaks for (claude, codex, grok), each with its own accounts and the models it offers. For providers.list (core/providers) to assemble; not a public name itself.", internal: true,
+      input: { type: "object", properties: {} },
+      run: async () => PROVIDERS.map(p => ({ ...p,
+        accounts: accounts.list(p.id).map(a => ({ id: a.id, label: a.label, kind: a.kind, signed_in: true, default: a.is_default })),
+        models: p.id === "claude" ? MODEL_ALIASES : [],
+        capabilities: p.id === "claude" ? { streaming: true, resume: true, interrupt: true, modes: true, questions: true, transcripts: true } : /** @type {any} */ (drivers)[p.id].capabilities })),
+    });
+
+    tool("sessions.accounts.list", "Every account on a provider, or every account on every provider. Each names a vault item (never a value) and its scope: which projects and agents it is granted to.",
+      { type: "object", properties: { provider: str } },
+      async i => accounts.list(i.provider ? String(i.provider) : undefined));
+
+    tool("sessions.accounts.add", `Add an account: a label, its kind, and for an api-key or setup-token the vault item that already holds its credential (add it in the Vault first and grant it to threads; this never touches its value). kind login has no vault item: the provider's own sign-in fills that account's private home. scope is { projects: "*"|[slugs], agents: "*"|[names] }, default "*" (every project and agent may use it until it is bound narrower). is_default makes it the provider's pick when nothing else resolves. Each account runs as its own user on a server, so one account's sign-in is unreadable from another's.`,
+      { type: "object", required: ["provider", "label"], properties: { provider: str, label: str, kind: { type: "string", enum: ACCOUNT_KINDS }, vault_item: str,
+        scope: { type: "object", properties: { projects: {}, agents: {} } }, is_default: { type: "boolean" } } },
+      async i => accounts.add(i), PEOPLE);
+
+    tool("sessions.accounts.remove", "Remove an account. Threads already resumed on it keep running; the next resume on that thread asks for another (a removed account is never a silent fallback).",
+      { type: "object", required: ["id"], properties: { id: str } },
+      async i => accounts.remove(i.id), PEOPLE);
+
+    tool("sessions.accounts.bind", "Grant an account to one more project or agent (added to its scope, others it already has kept), or make it its provider's default.",
+      { type: "object", required: ["id"], properties: { id: str, project: str, agent: str, is_default: { type: "boolean" } } },
+      async i => accounts.bind(i), PEOPLE);
+
+    ctx.tool("sessions.accounts.resolve", {
+      description: "Which account a session on this provider uses, for a project/agent/explicit choice, scope-checked either way.", internal: true,
+      input: { type: "object", required: ["provider"], properties: { provider: str, account: str, project: str, agent: str } },
+      run: async i => accounts.resolve(i),
     });
 
     // ------------------------------------------------------------ concurrency slots

@@ -321,6 +321,60 @@ for (const driver of ["cli", "sdk"]) {
     assert.ok(!all.includes("fake-setup-value") && !all.includes("fake-api-value"), "no credential reaches an event");
   });
 
+  test(`${driver}: accounts: a session runs on the account it resolves to, its credential from the vault, and a removed account is never a silent fallback`, { skip }, async t => {
+    const w = await boot(t, { driver, vault: { "work-token": "fake-work-value", "other-token": "fake-other-value" } });
+    for (const n of ["Harlow Legal", "Northwind"]) assert.equal((await w.tool("projects.create", { name: n, home: path.join(w.work, n.split(" ")[0].toLowerCase()) })).error, undefined);
+    const wr = await w.tool("sessions.accounts.add", { provider: "claude", label: "Harlow work", kind: "setup-token", vault_item: "work-token", scope: { projects: ["harlow-legal"], agents: "*" } });
+    assert.equal(wr.error, undefined, JSON.stringify(wr));
+    const work = wr.data;
+    const other = (await w.tool("sessions.accounts.add", { provider: "claude", label: "Other", kind: "setup-token", vault_item: "other-token", scope: { projects: ["northwind"], agents: "*" } })).data;
+    assert.equal(work.uid, 2000);
+    assert.equal(other.uid, 2001);
+    // The project's own account, with no account named.
+    const started = await w.tool("threads.start", { cwd: path.join(w.work, "harlow"), project: "harlow-legal", prompt: "whoami", surface: "deck" });
+    assert.equal(started.error, undefined, JSON.stringify(started));
+    const th = started.data;
+    await w.finished(th.id);
+    assert.deepEqual(await w.said(th.id), ["auth=subscription"]);
+    const rec = (await w.tool("threads.get", { thread: th.id })).data.thread;
+    assert.equal(rec.account, work.id);
+    assert.ok(!JSON.stringify(await w.events(th.id)).includes("fake-work-value"), "no credential reaches an event");
+    // H1: naming the other project's account from this project is denied, not a fallback.
+    const denied = await w.tool("threads.start", { cwd: path.join(w.work, "harlow"), project: "harlow-legal", account: other.id, prompt: "whoami", surface: "deck" });
+    assert.equal(denied.error && denied.error.code, "denied");
+    // M3: the account is removed; the thread's next message asks for another instead of running on a default.
+    assert.equal((await w.tool("sessions.accounts.remove", { id: work.id })).error, undefined);
+    await w.tool("threads.stop", { thread: th.id });
+    const back = await w.tool("threads.send", { thread: th.id, text: "again", surface: "deck" });
+    assert.equal(back.error && back.error.code, "account_removed", JSON.stringify(back));
+  });
+
+  test(`${driver}: providers: Grok runs a thread on the ACP driver, providers.list names all three, and a resume loads the agent's own session`, { skip }, async t => {
+    const w = await boot(t, { driver });
+    // A stand-in `grok` first on PATH: the fake ACP agent, its sessions kept in a folder.
+    const bin = path.join(w.root, "shim");
+    fs.mkdirSync(bin);
+    fs.symlinkSync(path.resolve(path.dirname(fileURLToPath(import.meta.url)), "testing", "fake-acp.js"), path.join(bin, "grok"));
+    const saved = { PATH: process.env.PATH, FAKE_ACP_STORE: process.env.FAKE_ACP_STORE };
+    process.env.PATH = `${bin}:${process.env.PATH}`;
+    process.env.FAKE_ACP_STORE = path.join(w.root, "acp-store");
+    fs.mkdirSync(process.env.FAKE_ACP_STORE);
+    t.after(() => { for (const [k, v] of Object.entries(saved)) { if (v === undefined) delete process.env[k]; else process.env[k] = v; } });
+    const list = (await w.tool("providers.list", {})).data;
+    assert.deepEqual(list.map(p => p.id), ["claude", "codex", "grok"]);
+    const th = await w.tool("threads.start", { cwd: w.work, provider: "grok", prompt: "hello", surface: "deck" });
+    assert.equal(th.error, undefined, JSON.stringify(th));
+    await w.finished(th.data.id);
+    assert.deepEqual(await w.said(th.data.id), ["echo: hello"]);
+    const rec = (await w.tool("threads.get", { thread: th.data.id })).data.thread;
+    assert.equal(rec.provider, "grok");
+    // Stopped, then a message: the agent's own session comes back (the fake says "echo" either way; the store proves the load).
+    await w.tool("threads.stop", { thread: th.data.id });
+    await w.tool("threads.send", { thread: th.data.id, text: "again", surface: "deck" });
+    await w.finished(th.data.id, 2);
+    assert.deepEqual(await w.said(th.data.id), ["echo: hello", "echo: again"]);
+  });
+
   test(`${driver}: from inside a session, a person-only call is refused, even claiming to be the CLI`, { skip }, async t => {
     const w = await boot(t, { driver });
     const th = (await w.tool("threads.start", { cwd: w.work, prompt: "forge cli sessions.prompt.set", surface: "deck" })).data;
@@ -474,6 +528,27 @@ for (const driver of ["cli", "sdk"]) {
     const b = (await w2.tool("threads.start", { cwd: w2.work, prompt: "hello", surface: "deck" })).data;
     await w2.finished(b.id);
     assert.equal(w2.launches().at(-1).socket, null);
+  });
+
+  test(`${driver}: an agent's calls carry the grant vyred stored for it, whatever the session's own env or input says`, { skip }, async t => {
+    const whoami = { name: "whoami", manifest: { does: { tools: ["whoami.me"] } }, source: `
+      export default { async start(ctx) {
+        ctx.tool("whoami.me", { input: { type: "object" }, run: async (i, meta) => ({ agent: meta.agent || null, granted: meta.granted ?? null, kind: meta.agentKind ?? null, said: i.projects ?? null }) });
+        return { async stop() {} };
+      } };` };
+    const w = await boot(t, { driver, sessions: { thread_socket: "on" }, modules: [whoami] });
+    assert.equal((await w.tool("projects.create", { name: "Harlow Legal", home: path.join(w.work, "harlow") })).error, undefined);
+    assert.equal((await w.tool("agents.create", { name: "kit", projects: ["harlow-legal"] })).error, undefined);
+    const th = (await w.tool("threads.start", { cwd: w.work, agent: "kit", prompt: 'vyre-sock whoami.me {"projects":"*"}', surface: "deck" })).data;
+    await w.finished(th.id);
+    // The input said "*"; the daemon says what agents_agents holds.
+    const first = JSON.parse((await w.said(th.id)).at(-1));
+    assert.deepEqual(first.data, { agent: "kit", granted: ["harlow-legal"], kind: "agent", said: "*" }, JSON.stringify(first));
+    // Widening the stored grant changes the next thread's meta, nothing else can.
+    assert.equal((await w.tool("agents.update", { name: "kit", projects: "*" })).error, undefined);
+    await w.tool("threads.send", { thread: th.id, text: "vyre-sock whoami.me {}", surface: "deck" });
+    await w.finished(th.id, 2);
+    assert.equal(JSON.parse((await w.said(th.id)).at(-1)).data.granted, "*");
   });
 
   test(`${driver}: the Capsule's quick answer is Vyre IQ: the whole prompt, its facts numbered, thinking off, the version on the chip`, { skip }, async t => {

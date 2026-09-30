@@ -30,11 +30,16 @@
 // "echo: <text>"; "bash <command>" asks permission for Bash and says "Ran it." or "I was not
 // allowed to."; an interrupt withdraws an open question and ends the turn.
 
+import fs from "node:fs";
 import { groupAlive } from "./spawn.js";
+
+/** A mode name that would let a session stop asking (the same words the ACP driver filters). */
+const BYPASS = /bypass|yolo|dangerous|never.?ask|full.?auto|auto.?approve|accept.?all|skip.?perm/i;
+const pidAlive = pid => { try { process.kill(pid, 0); return true; } catch (e) { return /** @type {any} */ (e).code === "EPERM"; } };
 
 /**
  * @param {{ run: (o: any) => any, capabilities?: any }} provider
- * @param {{ id: string, cwd: string, env: Record<string, string|undefined>, timeout?: number, extra?: any }} o
+ * @param {{ id: string, cwd: string, env: Record<string, string|undefined>, timeout?: number, extra?: any, detach?: { prompt: string, pidFile: string } }} o
  * @returns {Promise<string[]>} what failed; empty means the provider conforms
  */
 export async function conform(provider, o) {
@@ -70,6 +75,7 @@ export async function conform(provider, o) {
   const results = s => s.got.filter(m => m.type === "result").length;
 
   const s = open(false);
+  /** @type {number|null} */ let detached = null;
   try {
     // 1. A turn streams: init with the session's id, text deltas, one result.
     s.proc.write(user("hello"));
@@ -102,12 +108,38 @@ export async function conform(provider, o) {
     s.proc.write(user("again"));
     await s.wait(m => m.type === "result" && results(s) >= 4, "a turn after the interrupt");
 
+    // 3b. The fixed safety set (plans/sessions.md 3.7 H3): no bypass-shaped mode is reachable through
+    // setMode, whatever the provider's own driver reports or a caller asks for. A provider with no
+    // setMode has no way in, and passes. Not skippable by `capabilities`.
+    if (typeof s.proc.setMode === "function") {
+      const names = ["bypassPermissions", "yolo", "dangerously-skip-permissions", "never-ask", "full-auto", "auto-approve", ...(Array.isArray(s.proc.modes) ? s.proc.modes : [])];
+      for (const name of names) {
+        let refused = false;
+        try { const r = await s.proc.setMode(name); refused = r === false || Boolean(r && r.ok === false); } catch { refused = true; }
+        const bypassy = BYPASS.test(name);
+        if (bypassy) check(refused, `setMode("${name}") is refused`);
+      }
+      if (typeof s.proc.mode === "string") check(!BYPASS.test(s.proc.mode), `the session is not in a bypass-shaped mode (${s.proc.mode})`);
+      if (Array.isArray(s.proc.modes)) check(!s.proc.modes.some(m => BYPASS.test(m)), "no bypass-shaped mode is listed");
+    }
+
+    // 3c. A tool that detaches (setsid) from the session is gone after stop too (plan 3.7 M4). The
+    // double starts one when given `detach.prompt` and writes its pid to `detach.pidFile`.
+    if (o.detach) {
+      s.proc.write(user(o.detach.prompt));
+      await s.wait(m => m.type === "result" && results(s) >= 5, "the detach turn");
+      const raw = fs.existsSync(o.detach.pidFile) ? Number(fs.readFileSync(o.detach.pidFile, "utf8")) : NaN;
+      check(Number.isInteger(raw) && raw > 1 && pidAlive(raw), "the detaching tool started");
+      detached = raw;
+    }
+
     // 4. Stop ends the whole process group.
     const pgid = s.group && s.group.pgid;
     await s.proc.stop(3000);
     check(!s.proc.alive && s.exited !== null, "stop ends the session and reports the exit");
     await new Promise(r => setTimeout(r, 200));
     check(!groupAlive(pgid), "stop takes the whole process group");
+    if (detached) check(!pidAlive(detached), "stop takes a tool that detached from the group too");
   } catch (e) { fails.push(String(/** @type {Error} */ (e).message)); try { await s.proc.stop(1000); } catch {} return fails; }
 
   // 5. Resume: the same session id comes back.

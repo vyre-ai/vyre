@@ -1,20 +1,21 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://docs.vyre.run/schema/module.json",
+  "$id": "https://vyre.run/schema/module-1.json",
   "title": "Vyre module manifest (module API 1)",
-  "description": "module.json: what a module does, watches, shows, needs and teaches. ADR 0033. Keys marked x-status planned are part of module API 1 but not read by the loader yet.",
+  "description": "module.json: what a module does, watches, shows, needs and teaches. Module API 1, frozen by ADR 0047 (it finalizes ADR 0033). Keys marked x-status planned are part of module API 1 but not read by the loader yet. Keys marked deprecated keep working and only warn. An unknown key (x-unknown warn) is ignored at load and is a warning from the checker, never a failure, so a module written for a newer minor still loads (ADR 0047 section 8).",
   "type": "object",
   "required": ["name", "version"],
-  "additionalProperties": false,
+  "x-unknown": "warn",
   "patternProperties": { "^x-": {} },
   "properties": {
     "$schema": { "type": "string" },
     "name": { "$ref": "#/$defs/moduleName" },
     "version": { "type": "string", "pattern": "^\\d+\\.\\d+\\.\\d+", "x-message": "must be semver, like 0.1.0" },
-    "apiVersion": { "type": "integer", "minimum": 1, "maximum": 1, "description": "The module API major this module is written for. Vyre 0.x supports 1." },
-    "description": { "type": "string" },
+    "vyre": { "type": "string", "pattern": "^\\d+(\\.\\d+)?$", "x-message": "must be a contract version like \"1\" or \"1.2\"", "description": "The module contract it is written for: the major, like \"1\", or \"1.2\" when it needs something added in minor 2. Required for an added module (ADR 0047 section 8)." },
+    "apiVersion": { "type": "integer", "minimum": 1, "maximum": 1, "deprecated": true, "description": "Deprecated: use \"vyre\". Read as \"vyre\": \"1\"." },
+    "description": { "type": "string", "minLength": 1, "description": "One plain sentence, shown on the install card. Required for an added module." },
     "main": { "type": "string", "description": "The entry file, relative to the module folder. Default index.js." },
-    "roles": { "type": "array", "items": { "enum": ["box", "local"] }, "uniqueItems": true, "description": "Where it runs by default: on the box, on the person's own machine, or both." },
+    "roles": { "type": "array", "items": { "enum": ["box", "local", "mac", "windows"] }, "uniqueItems": true, "description": "Where it runs: box is the server, local any device's local node, and mac or windows narrow local to one OS. Default [\"box\"] for an added module. In 0.2 only the Mac has a local node, so windows alone loads nowhere yet." },
     "requires": {
       "description": "Modules that must be running first: a list of names, or names with a semver range.",
       "anyOf": [
@@ -25,25 +26,26 @@
     "replaces": { "$ref": "#/$defs/moduleName", "x-status": "planned", "description": "Set to this module's own name to stand in for the first-party module of that name. It must register every tool the original declares." },
     "does": {
       "type": "object",
-      "additionalProperties": false,
+      "x-unknown": "warn",
       "patternProperties": { "^x-": {} },
       "properties": {
-        "tools": { "type": "array", "items": { "$ref": "#/$defs/tool" }, "uniqueItems": true },
-        "providers": { "type": "array", "items": { "$ref": "#/$defs/moduleName" }, "uniqueItems": true, "description": "Session drivers (ADR 0030)." },
+        "tools": { "type": "array", "items": { "anyOf": [{ "$ref": "#/$defs/tool" }, { "$ref": "#/$defs/toolEntry" }] }, "uniqueItems": true, "description": "Its tools: a name (the built in grace form, reach anyone) or an object with reach and outward. Added modules use the object form (ADR 0047)." },
+        "providers": { "type": "array", "items": { "$ref": "#/$defs/moduleName" }, "uniqueItems": true, "description": "Session drivers (ADR 0030). Built in only in 0.2." },
+        "watchers": { "type": "array", "items": { "type": "string", "pattern": "^(?!/)(?!.*(^|/)\\.\\.(/|$)).+\\.json$", "x-message": "must be a relative path to a .json file inside the module" }, "uniqueItems": true, "description": "Watcher preset files the module ships. A preset only describes; it never runs code of its own." },
         "connections": { "$ref": "#/$defs/tool", "x-status": "planned", "description": "The tool that returns this module's connection rows for the connections module (docs/design/cohesion.md). One of this module's own tools." },
         "suggest": { "$ref": "#/$defs/tool", "x-status": "planned", "description": "The tool that answers suggest.query for this module, inside a 25 ms deadline. One of this module's own tools." },
         "hooks": {
           "type": "object", "x-status": "planned",
           "description": "Harness points this module contributes to, each served by one of its tools. pretool may only tighten a verdict.",
-          "additionalProperties": false,
+          "x-unknown": "warn",
           "properties": { "brief": { "$ref": "#/$defs/tool" }, "enrich": { "$ref": "#/$defs/tool" }, "pretool": { "$ref": "#/$defs/tool" }, "stop": { "$ref": "#/$defs/tool" } }
         },
-        "senders": { "type": "object", "x-status": "planned", "description": "Gate sender types: type name to the tool that sends after the Gate approved.", "propertyNames": { "$ref": "#/$defs/moduleName" }, "additionalProperties": { "$ref": "#/$defs/tool" } },
+        "senders": { "type": "object", "x-status": "planned", "deprecated": true, "description": "Deprecated (ADR 0047): mark the tool outward instead. Gate sender types: type name to the tool that sends after the Gate approved.", "propertyNames": { "$ref": "#/$defs/moduleName" }, "additionalProperties": { "$ref": "#/$defs/tool" } },
         "apps": {
           "type": "object", "x-status": "planned", "description": "@App adapters: app id to its actions, each served by a tool.",
           "propertyNames": { "$ref": "#/$defs/moduleName" },
           "additionalProperties": {
-            "type": "object", "required": ["app", "actions"], "additionalProperties": false,
+            "type": "object", "required": ["app", "actions"], "x-unknown": "warn",
             "properties": {
               "app": { "type": "string", "minLength": 1 },
               "bundleIds": { "type": "array", "items": { "type": "string" } },
@@ -54,7 +56,7 @@
         "commands": {
           "type": "array", "x-status": "planned", "description": "CLI verbs: vyre <module> <verb> runs this tool, with positional args taken as these input keys in order.",
           "items": {
-            "type": "object", "required": ["verb", "tool", "summary"], "additionalProperties": false,
+            "type": "object", "required": ["verb", "tool", "summary"], "x-unknown": "warn",
             "properties": {
               "verb": { "$ref": "#/$defs/word" },
               "tool": { "$ref": "#/$defs/tool" },
@@ -67,7 +69,7 @@
     },
     "watches": {
       "type": "object",
-      "additionalProperties": false,
+      "x-unknown": "warn",
       "patternProperties": { "^x-": {} },
       "properties": {
         "emits": { "type": "array", "items": { "$ref": "#/$defs/event" }, "uniqueItems": true },
@@ -76,7 +78,7 @@
     },
     "shows": {
       "type": "object",
-      "additionalProperties": false,
+      "x-unknown": "warn",
       "patternProperties": { "^x-": {} },
       "properties": {
         "deck": { "type": "array", "items": { "$ref": "#/$defs/slot" }, "uniqueItems": true },
@@ -86,14 +88,14 @@
             {
               "type": "object",
               "additionalProperties": {
-                "type": "object", "additionalProperties": false,
+                "type": "object", "x-unknown": "warn",
                 "properties": { "title": { "type": "string" }, "input": { "type": "object" }, "hide": { "type": "boolean" } }
               }
             }
           ]
         },
-        "cli": { "type": "array", "items": { "$ref": "#/$defs/word" }, "uniqueItems": true },
-        "streams": { "type": "array", "items": { "$ref": "#/$defs/word" }, "uniqueItems": true },
+        "cli": { "type": "array", "items": { "$ref": "#/$defs/word" }, "uniqueItems": true, "deprecated": true, "description": "Deprecated (ADR 0047): use does.commands." },
+        "streams": { "type": "array", "items": { "$ref": "#/$defs/word" }, "uniqueItems": true, "description": "WebSocket streams. Built in only in 0.2." },
         "notices": { "type": "array", "x-status": "planned", "items": { "$ref": "#/$defs/word" }, "uniqueItems": true, "description": "Notice kinds it raises, rendered from needs.list by push, the Capsule, the Deck and the phone, instead of a fixed map." }
       }
     },
@@ -104,17 +106,22 @@
     },
     "needs": {
       "type": "object",
-      "additionalProperties": false,
+      "x-unknown": "warn",
       "patternProperties": { "^x-": {} },
       "properties": {
-        "vault": { "type": "array", "items": { "type": "string", "pattern": "^[a-z0-9][a-z0-9._-]*$", "x-message": "must be a vault item name, or per-<thing>" }, "uniqueItems": true },
+        "vault": { "type": "array", "items": { "type": "string", "pattern": "^[a-z0-9][a-z0-9._-]*$", "x-message": "must be a vault item name, or per-<thing>" }, "uniqueItems": true, "description": "Raw vault item names. Built in only in 0.2; an added module uses needs.credentials and ctx.vault.request." },
+        "connections": {
+          "type": "array", "uniqueItems": true, "description": "Vendor-hosted MCP connections it reads through ctx.connections.call (P5, P20).",
+          "items": { "type": "object", "required": ["provider", "purpose"], "x-unknown": "warn", "patternProperties": { "^x-": {} }, "properties": { "provider": { "$ref": "#/$defs/word" }, "purpose": { "type": "string", "minLength": 1 } } }
+        },
+        "spend": { "type": "object", "required": ["dailyUsd"], "x-unknown": "warn", "description": "Its default daily cap on core/spend.", "properties": { "dailyUsd": { "type": "number", "minimum": 0 } } },
         "tools": { "type": "array", "items": { "$ref": "#/$defs/toolPattern" }, "uniqueItems": true, "x-status": "planned", "description": "Tools it calls through ctx.call, or module.* for all of one module's." },
         "network": { "type": "array", "items": { "type": "string", "pattern": "^(\\*\\.)?[a-z0-9.-]+(:\\d+)?$", "x-message": "must be a host name, optionally *.domain or with a port" }, "uniqueItems": true, "x-status": "planned" },
         "slots": { "type": "array", "items": { "$ref": "#/$defs/slot" }, "uniqueItems": true, "x-status": "planned" },
         "credentials": {
           "type": "array", "description": "What it needs from the Vault, which the vault lists and fills (ADR 0028, 9a). The item is `item`, or <module>-<id>.",
           "items": {
-            "type": "object", "required": ["id", "kind", "provider", "purpose"], "additionalProperties": false, "patternProperties": { "^x-": {} },
+            "type": "object", "required": ["id", "kind", "provider", "purpose"], "x-unknown": "warn", "patternProperties": { "^x-": {} },
             "properties": {
               "id": { "type": "string", "pattern": "^[a-z][a-z0-9_-]{0,40}$", "x-message": "must be a lowercase name" },
               "kind": { "type": "string", "minLength": 1 },
@@ -131,21 +138,21 @@
     },
     "teaches": {
       "type": "object",
-      "additionalProperties": false,
+      "x-unknown": "warn",
       "patternProperties": { "^x-": {} },
       "properties": {
         "memory": { "type": "array", "items": { "type": "string", "pattern": "^[a-z][a-z0-9._-]*$" }, "uniqueItems": true },
         "prompt": {
           "type": "array", "x-status": "planned", "description": "Prompt layers: markdown files in the module, at account, project or agent level.",
           "items": {
-            "type": "object", "required": ["level", "file"], "additionalProperties": false,
+            "type": "object", "required": ["level", "file"], "x-unknown": "warn",
             "properties": { "level": { "enum": ["account", "project", "agent"] }, "file": { "type": "string", "pattern": "^[^/].*\\.md$", "x-message": "must be a relative path to a .md file" } }
           }
         },
         "tips": {
           "type": "array", "x-status": "planned", "description": "Short tips the tips module shows on each surface.",
           "items": {
-            "type": "object", "required": ["id", "text", "surfaces", "level", "trigger", "since"], "additionalProperties": false, "patternProperties": { "^x-": {} },
+            "type": "object", "required": ["id", "text", "surfaces", "level", "trigger", "since"], "x-unknown": "warn", "patternProperties": { "^x-": {} },
             "properties": {
               "id": { "type": "string", "pattern": "^[a-z0-9-]+$", "x-message": "must be lowercase letters, digits and dashes" },
               "text": { "type": "string", "minLength": 1, "maxLength": 140, "pattern": "^[^\\u2014\\u00a7]*$", "x-message": "must be 1 to 140 characters with no em dash or section sign" },
@@ -164,7 +171,18 @@
     }
   },
   "$defs": {
-    "toolRef": { "type": "object", "required": ["tool"], "additionalProperties": false, "properties": { "tool": { "$ref": "#/$defs/tool" } } },
+    "toolEntry": {
+      "type": "object", "required": ["name"], "x-unknown": "warn", "patternProperties": { "^x-": {} },
+      "description": "One tool: who may call it (reach), whether it acts as the person outside (outward), and whether it spends money (cost).",
+      "properties": {
+        "name": { "$ref": "#/$defs/tool" },
+        "summary": { "type": "string", "minLength": 1, "maxLength": 140, "pattern": "^[^\\u2014\\u00a7]*$", "x-message": "must be 1 to 140 characters with no em dash or section sign" },
+        "reach": { "enum": ["anyone", "asked", "person", "modules", "hook"], "description": "anyone (default), asked (an agent only when the person's own turn asked), person (reserved for Vyre), modules (other modules only), hook (the webhook route only)." },
+        "outward": { "enum": ["send", "post", "pay", "delete"], "description": "It acts as the person outside. The registry runs it from the person's own surface and files every other call at the Gate." },
+        "cost": { "const": "paid", "description": "It spends money through the module's own model or API use." }
+      }
+    },
+    "toolRef": { "type": "object", "required": ["tool"], "x-unknown": "warn", "properties": { "tool": { "$ref": "#/$defs/tool" } } },
     "surface": { "enum": ["capsule", "deck", "chat", "phone", "cli", "glass", "statusline"] },
     "moduleName": { "type": "string", "pattern": "^[a-z][a-z0-9-]{1,40}$", "x-message": "must be lowercase letters, digits and dashes" },
     "word": { "type": "string", "pattern": "^[a-z][a-z0-9-]*$", "x-message": "must be lowercase letters, digits and dashes" },
@@ -176,7 +194,7 @@
     "setting": {
       "type": "object",
       "required": ["key", "label", "type", "levels", "apply"],
-      "additionalProperties": false,
+      "x-unknown": "warn",
       "properties": {
         "key": { "type": "string", "pattern": "^[a-z][a-z0-9-]*\\.[a-z0-9_.-]+$", "x-message": "must look like module.key" },
         "group": { "type": "string" },
@@ -185,7 +203,7 @@
         "type": { "enum": ["enum", "bool", "int", "number", "string", "list", "object", "model"] },
         "enum": { "type": "array", "items": { "type": "string" } },
         "choices": { "type": "array", "items": { "type": "number" } },
-        "choicesFrom": { "type": "object", "required": ["tool"], "additionalProperties": false, "properties": { "tool": { "$ref": "#/$defs/tool" }, "read": { "type": "string", "minLength": 1, "description": "A dotted path into the tool's answer that holds the list." } }, "description": "One of this module's own tools that lists the choices when the schema is read, within 500 ms; otherwise the enum or no choices (ADR 0035)." },
+        "choicesFrom": { "type": "object", "required": ["tool"], "x-unknown": "warn", "properties": { "tool": { "$ref": "#/$defs/tool" }, "read": { "type": "string", "minLength": 1, "description": "A dotted path into the tool's answer that holds the list." } }, "description": "One of this module's own tools that lists the choices when the schema is read, within 500 ms; otherwise the enum or no choices (ADR 0035)." },
         "check": { "$ref": "#/$defs/toolRef", "description": "One of this module's own tools, asked { ok } or { ok: false, message } before a value is stored, within 500 ms; off or late refuses the change (ADR 0035)." },
         "min": { "type": "number" },
         "max": { "type": "number" },

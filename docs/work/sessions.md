@@ -43,6 +43,31 @@ Capsule quick asks to the box assistant, Mac project folders Mac-owned.
   (sessions.usage.*, usage_paused on sessions.slots take with auth).
 
 ## Doing
+- 0.2 build, wave A0/A on branch work/sessions-02 (pushed; land only through the integrator onto
+  stage/0.2 after reviewer-2). Done so far, in order:
+  1. 845ae5dc caller identity: vyred's route() reads the verified agent's stored grant from the new
+     internal `agents.scope` and puts `meta.granted` ("*" or slugs) and `meta.agentKind` on every
+     call. iq's memory.facts/ask/recall.search must read meta.granted, not input.project_cwds
+     (harness/mcp/server.js scoped() is still client-side; iq's to change). Test: "carry the grant".
+  2. be926527 spawner: spawn request `account` (uid 2000-2063) and `shared`; HOME /home/acct/<uid>
+     checked (dir, not symlink, owner uid, no group/other bits) at request and at start; gid = uid, no
+     groups unless shared; `wipe` op. Env: VYRE_ACCOUNT_UID_MIN/MAX, VYRE_ACCOUNTS_HOME.
+  3. 1bad084f, cbc79cee accounts: sessions_accounts (kind api-key|setup-token|login, uid allocation,
+     dirty-uid wipe before reuse), scope-checked resolve (H1), `account` kept on threads_runs and in
+     KEPT opts, credential from the vault as the provider's env var (threads manifest needs.vault
+     "per-account"), removed account on resume -> code account_removed (M3).
+  4. 97e18c8a, 8d60b974 generic ACP driver (hand-rolled ndjson, not the SDK), fake ACP agent,
+     conform() safety set, Grok and Codex entries registered by core/sessions (does.providers),
+     floor passed to non-Claude drivers, harness MCP server passed in session/new mcpServers,
+     agent session ids persisted (sessions_acp).
+- Known gaps, honest: (a) Claude accounts on a box run as the account uid, so vyred cannot read
+  their transcripts under /home/acct/<uid> (0700): needs a decision (group-readable projects dir or
+  a transcript relay) before Claude accounts are used on a box. (b) Grok/Codex flags and login
+  locations are UNVERIFIED until a real account runs on a hosted runner (needs a pay-per-use test
+  key from the lead). (c) 11 Mac-only failures in core/sessions tests (/proc pid, subreaper, socket
+  peer) predate this work; Linux CI is the judge. (d) sessions.accounts.signin (device-code flow)
+  not built; login accounts need it. (e) No mid-session switch or routing/fallback yet.
+
 - 0.1.1 test-fix queue from team-lead (branch work/sessions-011 off stage/0.1.1 d9b916d4, both
   failures predate today, also seen on 029756bc): fixed.
   1. `apps/app/src/session/model.test.js` "idle is not ended": `deck/chat/core/session-state.js`

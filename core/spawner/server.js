@@ -16,13 +16,19 @@
 //                                                                 (an API key: Claude Code reads it there, its tools never see it)
 //                                                                 the client may send {"kill":"SIGTERM"}
 //   {"op":"io","id":"...","stream":"stdio"|"stderr"}            -> raw bytes: stdin in, stdout out; or stderr out
+//   spawn may carry "account": <uid> (2000-2063 in the image) and "shared": true. The child then runs
+//   as that account's own uid and gid, HOME at <accounts home>/<uid>, in no supplementary group
+//   unless shared (only project work under /work needs the shared group). The HOME must exist, be
+//   owned by that uid, and be closed to every other user: it is checked before every spawn.
+//   {"op":"wipe","account":<uid>}                               -> {"wiped":true}: empties that account's HOME (as that uid)
+//                                                                 so a uid handed to a new account holds nothing of the last
 // The child starts once both io connections are attached; a spawn nobody attaches to in 10 s ends.
 
 import crypto from "node:crypto";
 import fs from "node:fs";
 import net from "node:net";
 import path from "node:path";
-import { spawn } from "node:child_process";
+import { spawn, execFileSync } from "node:child_process";
 
 /** Environment keys a session child may get. Anything else (LD_PRELOAD, NODE_OPTIONS ...) is dropped. */
 const ENV_KEYS = /^(HOME|PATH|LANG|LC_[A-Z]+|TERM|TZ|USER|SHELL|TMPDIR|NO_COLOR|FORCE_COLOR|VYRE_[A-Z0-9_]+|CLAUDE_CODE_[A-Z0-9_]+|CLAUDE_CONFIG_DIR|ANTHROPIC_API_KEY|ANTHROPIC_BASE_URL|DISABLE_[A-Z0-9_]+|MCP_[A-Z0-9_]+)$/;
@@ -32,9 +38,14 @@ const MAX_LIVE = 16;
 
 /**
  * @param {{ socket: string, mode?: number, allow: string[], agent: { uid: number, gid: number, groups: number[] },
- *   work?: string, home?: string, wrap?: (argv: string[], cwd: string) => string[], makeDir?: (dir: string) => void, log?: (m: string) => void }} o
- *   allow: programs argv[0] may name (absolute paths). wrap: how the child is started as the agent;
+ *   work?: string, home?: string, wrap?: (argv: string[], cwd: string, who: Who) => string[], makeDir?: (dir: string, who: Who) => void, log?: (m: string) => void,
+ *   accounts?: { min: number, max: number, home: string, shared?: number[], stat?: (dir: string) => import("node:fs").Stats|null, wipe?: (dir: string, who: Who) => void } }} o
+ *   allow: programs argv[0] may name (absolute paths). wrap: how the child is started as its user;
  *   the default is setpriv plus umask 002 plus tini as a subreaper. A test passes identity.
+ *   accounts: the per-account uid range and where each HOME lives (ADR 0030 phase 2); without it
+ *   a spawn naming an account is refused. shared: the groups an account joins only when asked
+ *   (the /work group).
+ * @typedef {{ uid: number, gid: number, groups: number[], home?: string, account?: number }} Who
  */
 export async function serve(o) {
   const log = o.log || (() => {});
@@ -42,8 +53,23 @@ export async function serve(o) {
   // The default changes directory as the agent, after setpriv: root here has no right to enter the
   // agent's home (no DAC capabilities), so the spawn itself starts in /.
   const custom = Boolean(o.wrap);
-  const wrap = o.wrap || ((argv, cwd) => ["/usr/bin/setpriv", `--reuid=${o.agent.uid}`, `--regid=${o.agent.gid}`, `--groups=${o.agent.groups.join(",")}`,
+  const wrap = o.wrap || ((argv, cwd, who) => ["/usr/bin/setpriv", `--reuid=${who.uid}`, `--regid=${who.gid}`, who.groups.length ? `--groups=${who.groups.join(",")}` : "--clear-groups",
     "--inh-caps=-all", "--", "/bin/sh", "-c", 'umask 002; cd "$1" || exit 126; shift; exec "$@"', "sh", cwd, "/usr/bin/tini", "-s", "--", ...argv]);
+  const acc = o.accounts || null;
+  const accountHome = uid => path.join(path.resolve(/** @type {any} */ (acc).home), String(uid));
+  const lstat = /** @type {any} */ (acc && acc.stat) || (d => { try { return fs.lstatSync(d); } catch { return null; } });
+  /** The identity a spawn runs as: the agent, or a numbered account. Null when the request names an account it may not. */
+  function whoFor(req) {
+    if (req.account === undefined) return { who: /** @type {Who} */ ({ ...o.agent, home: o.home }), why: null };
+    const uid = req.account;
+    if (!acc || !Number.isInteger(uid) || uid < acc.min || uid > acc.max) return { who: null, why: `account must be a uid from ${acc ? acc.min + " to " + acc.max : "a range this spawner has (none)"}` };
+    const home = accountHome(uid);
+    const st = lstat(home);
+    if (!st || !st.isDirectory() || st.isSymbolicLink()) return { who: null, why: `account ${uid} has no home at ${home}` };
+    // Owned by that uid alone and closed to everyone else, or the split means nothing.
+    if (st.uid !== uid || (st.mode & 0o077) !== 0) return { who: null, why: `account ${uid}'s home is not private to it (owner ${st.uid}, mode ${(st.mode & 0o777).toString(8)})` };
+    return { who: /** @type {Who} */ ({ uid, gid: uid, groups: req.shared === true ? [...(acc.shared || [])] : [], home, account: uid }), why: null };
+  }
   // Programs by their real path, so a symlink (/bin/sh to dash) is the program it names.
   const real = p => { try { return fs.realpathSync(p); } catch { return p; } };
   const allowed = new Set(o.allow.map(real));
@@ -71,10 +97,14 @@ export async function serve(o) {
     if (!Array.isArray(req.argv) || !req.argv.length || !req.argv.every(a => typeof a === "string" && !a.includes("\0"))) return "argv must be strings";
     if (!path.isAbsolute(req.argv[0]) || !allowed.has(real(req.argv[0]))) return `${req.argv[0]} is not a program the spawner starts`;
     if (req.fd3 !== undefined && (typeof req.fd3 !== "string" || req.fd3.length > 4096)) return "fd3 must be a short string";
+    if (req.account !== undefined && (typeof req.account !== "number" || (req.shared !== undefined && typeof req.shared !== "boolean"))) return "account is a uid and shared a boolean";
+    const w = whoFor(req);
+    if (w.why) return w.why;
     const cwd = path.resolve(String(req.cwd || work));
     const under = dir => dir && (cwd === dir || cwd.startsWith(dir + path.sep));
-    // The work folder, or the agent's own home (an agent without a project works there).
-    if (!under(work) && !under(o.home ? path.resolve(o.home) : null)) return `cwd must be under ${work}${o.home ? ` or ${o.home}` : ""}`;
+    // The work folder, or the runner's own home (an agent without a project works there).
+    const home = /** @type {Who} */ (w.who).home;
+    if (!under(work) && !under(home ? path.resolve(home) : null)) return `cwd must be under ${work}${home ? ` or ${home}` : ""}`;
     if (live.size >= MAX_LIVE) return "too many sessions are running";
     return null;
   }
@@ -85,13 +115,17 @@ export async function serve(o) {
     clearTimeout(s.timer);
     const env = {};
     for (const [k, v] of Object.entries(s.req.env || {})) if (ENV_KEYS.test(k) && typeof v === "string" && !v.includes("\0")) env[k] = v;
-    if (o.home) { env.HOME = o.home; env.USER = "vyre-agent"; }
+    // Checked again here, at the moment of starting, not only when the request came in.
+    const w = whoFor(s.req);
+    if (!w.who) { try { s.control.end(JSON.stringify({ error: w.why }) + "\n"); } catch {} end(id, w.why || "refused"); return; }
+    const who = w.who;
+    if (who.home) { env.HOME = who.home; env.USER = who.account !== undefined ? `acct${who.account}` : "vyre-agent"; }
     const cwd = path.resolve(String(s.req.cwd || work));
-    const argv = wrap(s.req.argv, cwd);
-    // A folder in the agent's home is made as the agent, which owns that home (mkdir -p: root
+    const argv = wrap(s.req.argv, cwd, who);
+    // A folder in the runner's home is made as that user, which owns that home (mkdir -p: root
     // here cannot even look inside it).
-    if (o.home && cwd.startsWith(path.resolve(o.home) + path.sep) && o.makeDir) {
-      try { o.makeDir(cwd); } catch (e) { log(`spawner: cannot make ${cwd}: ${/** @type {Error} */ (e).message}`); }
+    if (who.home && cwd.startsWith(path.resolve(who.home) + path.sep) && o.makeDir) {
+      try { o.makeDir(cwd, who); } catch (e) { log(`spawner: cannot make ${cwd}: ${/** @type {Error} */ (e).message}`); }
     }
     const fd3 = typeof s.req.fd3 === "string";
     const child = spawn(argv[0], argv.slice(1), { cwd: custom ? cwd : "/", env, stdio: fd3 ? ["pipe", "pipe", "pipe", "pipe"] : ["pipe", "pipe", "pipe"], detached: true });
@@ -103,7 +137,7 @@ export async function serve(o) {
     /** @type {any} */ (child.stderr).pipe(s.stderr).on("error", () => {});
     s.stdio.resume(); s.stderr.resume();
     s.control.write(JSON.stringify({ id, pid: child.pid }) + "\n");
-    log(`spawner: started ${path.basename(s.req.argv[0])} as pid ${child.pid}`);
+    log(`spawner: started ${path.basename(s.req.argv[0])} as pid ${child.pid}${who.account !== undefined ? ` for account ${who.account}` : ""}`);
     // Once the child and its pipes are done: the exit on the control line, then every connection
     // closes, whether or not the client ever ended stdin.
     child.on("close", (code, signal) => {
@@ -161,6 +195,20 @@ export async function serve(o) {
       if (!s || !["stdio", "stderr"].includes(req.stream) || s[req.stream]) { sock.destroy(); return; }
       s[req.stream] = sock;
       start(String(req.id));
+      return;
+    }
+    if (req.op === "wipe") {
+      const uid = req.account;
+      const w = whoFor({ account: uid });
+      if (!w.who || !acc) { sock.end(JSON.stringify({ error: w.why || "no accounts here" }) + "\n"); return; }
+      // Never while a session of that account still runs.
+      for (const s of live.values()) if (s.req.account === uid) { sock.end(JSON.stringify({ error: `account ${uid} still has a session running` }) + "\n"); return; }
+      try {
+        if (acc.wipe) acc.wipe(/** @type {string} */ (w.who.home), w.who);
+        else execFileSync("/usr/bin/setpriv", [`--reuid=${w.who.uid}`, `--regid=${w.who.gid}`, "--clear-groups", "--inh-caps=-all", "--",
+          "/usr/bin/find", /** @type {string} */ (w.who.home), "-mindepth", "1", "-delete"], { stdio: "ignore" });
+        sock.end(JSON.stringify({ wiped: true }) + "\n");
+      } catch (e) { sock.end(JSON.stringify({ error: `cannot empty account ${uid}'s home: ${/** @type {Error} */ (e).message}` }) + "\n"); }
       return;
     }
     sock.end(JSON.stringify({ error: "unknown op" }) + "\n");
