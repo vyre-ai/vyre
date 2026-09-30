@@ -208,10 +208,11 @@ test("check reports a schema problem, a loader problem, a missing entry and a sy
   const unknown = await checkModule(bakery(path.join(root, "a0"), { colour: "red" }), { repo, node });
   assert.equal(unknown.ok, true);
   assert.ok(unknown.warnings.some(w => /colour is not a key in module contract 1\.0/.test(w)), unknown.warnings.join("; "));
-  // A schema problem: the schema says so, the loader lets it by.
+  // A schema problem: the schema says so, and so does the loader, which holds a module from
+  // outside Vyre to the same added-module rules (reviews/platform.md CR-H3).
   const schema = await checkModule(bakery(path.join(root, "a"), { description: "" }), { repo, node });
   assert.equal(by(schema, "schema").state, "failed");
-  assert.equal(by(schema, "loader").state, "ok");
+  assert.equal(by(schema, "loader").state, "failed");
   assert.ok(schema.problems.some(p => /description is too short/.test(p)), schema.problems.join("; "));
   // A contract this Vyre doesn't speak is the one problem.
   const newer = await checkModule(bakery(path.join(root, "a2"), { vyre: "1.9", widgets: { from: "1.9" } }), { repo, node });

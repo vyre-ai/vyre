@@ -16,7 +16,7 @@ composer, like Claude Code", "Session, phone and desktop" and "Plan approval and
 |---|---|---|
 | Deck | `deck/chat/composer.js`, `deck/chat/core/composer-state.js`, `deck/chat/tray.js`, `deck/chat/pickers.js` (work/chat) | partial |
 | App | `apps/app/src/session/Composer.tsx` (work/mobile) | partial |
-| Capsule | `local/capsule/native/Sources/UI/CapsuleView.swift` bar, `Extensions/sight/SessionPanel.swift` prompt (work/capsule-pro) | partial |
+| Lumen | `local/capsule/native/Sources/UI/CapsuleView.swift` bar, `Extensions/sight/SessionPanel.swift` prompt (work/capsule-pro) | partial |
 
 ## Anatomy
 
@@ -113,5 +113,5 @@ Deck (work/chat)
 App (work/mobile)
 - [ ] Text only: no chips, attach, prefixes, queued row, pills or rewind; input 16 not 17.
 
-Capsule (work/capsule-pro)
+Lumen (work/capsule-pro)
 - [ ] Plain field; no steer, queue, Stop, modes or prefixes.

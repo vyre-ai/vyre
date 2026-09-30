@@ -52,6 +52,20 @@ export const MAX_RESULT = 256 * 1024;
 const STDERR_LINES = 20;
 
 export const TRANSPORTS = ["stdio", "http", "sse"];
+/**
+ * A vendor's own credential goes only to that vendor's hosted MCP server (PLAN.md P21, the invisible
+ * allowlist on credentials). An item named <prefix>... can be put in a row only when the row's url
+ * host is one of `hosts`, so a model or a mistake cannot send the GitHub token, or a Google one, to
+ * another server by adding a row that names the item.
+ */
+export const BOUND_ITEMS = [
+  { prefix: "github-", hosts: ["api.githubcopilot.com"], url: "https://api.githubcopilot.com/mcp/" },
+  { prefix: "google-", hosts: ["gmailmcp.googleapis.com", "calendarmcp.googleapis.com", "drivemcp.googleapis.com"] },
+];
+
+/** The row a person's GitHub connection needs: GitHub's own hosted MCP, the token from their vault item. @param {string} login */
+export const githubServer = login => ({ name: "github", transport: "http", url: BOUND_ITEMS[0].url, auth: { type: "bearer", item: `github-${login}`, field: "token" } });
+
 export const AUTH_TYPES = ["none", "bearer", "env", "oauth", "service-account"];
 const MODES = ["read", "write", "off"];
 
@@ -233,7 +247,7 @@ function ownServer(command, args) {
 /**
  * The stored row for an add or update, checked. Refuses anything that would put a value in the
  * table: a sensitive header, an env value that is not a vault item, a credential in a url.
- * @param {any} i @param {{ httpHosts?: string[] }} [opts]
+ * @param {any} i @param {{ httpHosts?: string[], boundFor?: (item: string) => ({ prefix: string, hosts: string[] } | null) }} [opts]
  */
 export function normalize(i, opts = {}) {
   if (!NAME.test(String(i.name || ""))) throw bad("a server name is a lowercase letter, then up to 31 lowercase letters, digits or dashes");
@@ -277,6 +291,12 @@ export function normalize(i, opts = {}) {
     }
   }
   out.auth = normalizeAuth(i.auth, out);
+  if (out.url && out.auth.item) {
+    // A connector preset's own prefix wins over the older hand-listed ones (google-gmail before google-).
+    const lower = String(out.auth.item).toLowerCase();
+    const bound = (opts.boundFor && opts.boundFor(lower)) || BOUND_ITEMS.find(b => lower.startsWith(b.prefix));
+    if (bound && !bound.hosts.includes(new URL(out.url).hostname)) throw bad(`${String(out.auth.item).slice(0, 60)} is a ${bound.prefix.replace(/-$/, "")} credential: it goes only to ${bound.hosts.join(", ")}`);
+  }
   for (const k of [...Object.keys(out.env), ...Object.keys(out.vars)]) if (/^VYRE_/.test(k)) throw bad(`${k.slice(0, 40)}: VYRE_ settings belong to Vyre, not a server`);
   out.scope = normalizeScope(i.scope);
   out.tools = normalizePolicy(i.tools);
@@ -355,7 +375,7 @@ const MODULE_CLAIM = /(?:^|[\s:])(agent|thread):/;
  *   item?: (id: string) => Promise<any>,
  *   agentProjects?: (agent: string) => Promise<"*"|string[]>,
  *   threadProject?: (thread: string) => Promise<string|null>,
- *   idle?: number, httpHosts?: string[], maxResult?: number, timeout?: number }} HubDeps
+ *   idle?: number, httpHosts?: string[], boundFor?: (item: string) => ({ prefix: string, hosts: string[] } | null), lineage?: (thread: string) => Promise<string[]>, maxResult?: number, timeout?: number }} HubDeps
  */
 
 /** Who is calling, from the registry's caller and what vyred verified. @returns {Who} */
@@ -388,6 +408,8 @@ export class Hub {
   /** @param {HubDeps} deps */
   constructor(deps) {
     this.deps = deps;
+    /** @type {Map<string, Set<string>>} */
+    this.threadGrants = new Map();
     this.db = deps.db;
     this.creds = deps.creds;
     this.now = deps.now || Date.now;
@@ -436,8 +458,23 @@ export class Hub {
 
   // ---- management ----
 
+  /**
+   * Let one thread (and the threads that come from it) use a server whatever its scope, until vyred
+   * restarts. Held in memory: it is the person's tag on one conversation, not a setting.
+   * @param {{ server: string, thread: string }} input
+   */
+  grantThread({ server, thread }) {
+    this.must(server);
+    if (typeof thread !== "string" || !thread || thread.length > 200) throw fail("bad_input", "thread must be a thread id");
+    let set = this.threadGrants.get(server);
+    if (!set) { set = new Set(); this.threadGrants.set(server, set); }
+    if (set.size >= 2000) set.delete(set.values().next().value);
+    set.add(thread);
+    return { granted: true };
+  }
+
   async add(input) {
-    const n = normalize(input, { httpHosts: this.deps.httpHosts });
+    const n = normalize(input, { httpHosts: this.deps.httpHosts, boundFor: this.deps.boundFor });
     if (this.row(n.name)) throw fail("conflict", `there is already a server ${n.name}; mcp.update changes it`);
     const now = this.now();
     this.db.prepare(`INSERT INTO mcp_servers (name, transport, command, args, cwd, url, headers, env, vars, auth, scope, tools, idle, added, updated)
@@ -458,7 +495,7 @@ export class Hub {
     if (input.transport && input.transport !== r.transport) {
       for (const k of ["command", "args", "cwd", "url", "headers", "env", "vars", "auth"]) if (input[k] === undefined) delete merged[k];
     }
-    const n = normalize(merged, { httpHosts: this.deps.httpHosts });
+    const n = normalize(merged, { httpHosts: this.deps.httpHosts, boundFor: this.deps.boundFor });
     const how = ["transport", "command", "args", "cwd", "url", "headers", "env", "vars", "auth"];
     const changed = Object.keys(input).filter(k => k !== "name");
     const reconnect = how.some(k => JSON.stringify(n[k]) !== JSON.stringify(r[k]));
@@ -467,7 +504,14 @@ export class Hub {
       JSON.stringify(n.headers), JSON.stringify(n.env), JSON.stringify(n.vars), JSON.stringify(n.auth), JSON.stringify(n.scope), JSON.stringify(n.tools), n.idle, this.now(), n.name);
     // A new command, url or credential is a different connection: the running one stops, and the
     // old tool list is dropped, since it may not be the same server any more.
-    if (reconnect) { await this.stopServer(n.name, "updated"); const s = this.state(n.name); s.crashes = []; s.error = null; s.state = "stopped"; }
+    if (reconnect) {
+      await this.stopServer(n.name, "updated");
+      const s = this.state(n.name); s.crashes = []; s.error = null; s.state = "stopped";
+      // A repointed url or transport must never reuse a cached token minted for the old target
+      // (PLAN.md P21, reviewer P2-B2): drop any in-memory access token this row's old auth held,
+      // so the next call mints fresh rather than carrying a token across to a different server.
+      if (n.url !== r.url || n.transport !== r.transport) this.creds.invalidate(r.auth, r.auth.scopes);
+    }
     else { const s = this.live.get(n.name); if (s && s.client) this.arm(n.name); }
     this.deps.emit("mcp.updated", { name: n.name, fields: changed });
     return this.view(this.must(n.name));
@@ -531,6 +575,15 @@ export class Hub {
    */
   async inScope(r, who, memo) {
     if (who.person) return true;
+    // A #tag in the person's own turn: this thread (or one it came from) may use this server, whatever its scope says.
+    if (who.thread && this.threadGrants.has(r.name)) {
+      const set = /** @type {Set<string>} */ (this.threadGrants.get(r.name));
+      if (set.has(who.thread)) return true;
+      if (this.deps.lineage) {
+        if (memo.lineage === undefined || memo.lineage.thread !== who.thread) memo.lineage = { thread: who.thread, ancestors: await this.deps.lineage(who.thread).catch(() => []) };
+        if (memo.lineage.ancestors.some(a => set.has(a))) return true;
+      }
+    }
     const { projects, agents } = r.scope;
     if (who.agent) {
       if (agents !== "*" && !agents.includes(who.agent)) return false;
@@ -780,7 +833,7 @@ export class Hub {
       const env = { ...r.vars, ...(await this.creds.env(r.env)) };
       client = await this.deps.connect({ transport: "stdio", command: r.command, args: r.args, ...(r.cwd ? { cwd: r.cwd } : {}) }, { ...opts, env });
     } else {
-      const headers = async () => ({ ...r.headers, ...(await this.creds.headers(r.auth, { scopes: r.auth.scopes })) });
+      const headers = async () => ({ ...r.headers, ...(await this.creds.headers(r.auth, { scopes: r.auth.scopes, url: r.url })) });
       client = await this.deps.connect({ transport: /** @type {"http"|"sse"} */ (r.transport), url: r.url }, { ...opts, headers });
     }
     return client;

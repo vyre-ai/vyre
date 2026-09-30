@@ -6,7 +6,7 @@ BOARDS=${*:-$(ls *.dc.html | sed 's/\.dc\.html$//')}
 for b in $BOARDS; do
   size=$(node -e 'const c=require("./canvas.json").boards[process.argv[1]+".dc.html"];console.log(c?c.w+","+c.h:"1440,900")' "$b")
   h=${size#*,}; w=${size%,*}; size="$w,$((h+200))"
-  flags="--headless=new --no-sandbox --disable-gpu --hide-scrollbars --allow-file-access-from-files --force-device-scale-factor=1 --virtual-time-budget=8000 --window-size=$size"
+  flags="--headless=new --use-mock-keychain --password-store=basic --no-sandbox --disable-gpu --hide-scrollbars --allow-file-access-from-files --force-device-scale-factor=1 --virtual-time-budget=8000 --window-size=$size"
   "$CHROME" $flags --screenshot="png/$b.png" "file://$PWD/$b.dc.html" >/dev/null 2>&1
   "$CHROME" $flags --dump-dom "file://$PWD/$b.dc.html" 2>/dev/null > png/$b.dom.html
   node -e '

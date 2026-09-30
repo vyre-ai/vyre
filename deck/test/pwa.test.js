@@ -455,7 +455,7 @@ test("pwa sideways: the JS asks the phone question only through dom.js isPhone /
         if (rel === path.join("js", "dom.js")) continue;
         assert.doesNotMatch(src, /["'`]\(max-width: (719|760)px\)/, `${rel} spells the phone query itself`);
         if (/\b(isPhone|PHONE_QUERY)\b/.test(src)) {
-          assert.match(src, /import \{[^}]*\b(isPhone|PHONE_QUERY)\b[^}]*\} from "(\.\/|\.\.\/js\/)dom\.js"/, `${rel} takes the helper from dom.js`);
+          assert.match(src, /import \{[^}]*\b(isPhone|PHONE_QUERY)\b[^}]*\} from "(\.\/|(\.\.\/)+js\/)dom\.js"/, `${rel} takes the helper from dom.js`);
           users++;
         }
       }

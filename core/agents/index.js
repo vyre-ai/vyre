@@ -20,6 +20,7 @@
 
 import fs from "node:fs";
 import path from "node:path";
+import { isPerson } from "../../lib/caller.js";
 
 export const MIGRATIONS = [
   `CREATE TABLE agents_agents (
@@ -242,6 +243,15 @@ export default {
       if (m && get(m[1])?.kind !== "assistant") throw new Error(`only the assistant can ${what}; ${m[1]} is an agent`);
     };
 
+    // For vyred only: the stored grant of an agent vyred has already verified (its thread's own
+    // socket, or a vouched key), attached to meta so a tool that scopes by project reads what the
+    // agent is really granted, never a filter the caller's own input or env carries.
+    ctx.tool("agents.scope", {
+      description: "The kind and stored project grant (\"*\" or a list of slugs) of one agent, for vyred to put on the meta of that agent's calls.", internal: true, callers: ["module"],
+      input: { type: "object", required: ["name"], properties: { name: { type: "string" } } },
+      run: async i => { const a = get(String(i.name)); return a ? { kind: a.kind, projects: a.kind === "assistant" ? "*" : a.projects } : null; },
+    });
+
     ctx.tool("agents.list", {
       description: "Every agent, the assistant first, with what each is doing now.",
       input: { type: "object", properties: {} },
@@ -315,9 +325,19 @@ export default {
 
     ctx.tool("agents.ask", {
       description: "Talk to an agent: the text goes to its current thread (started if needed) and the reply comes back when the turn ends. If the thread stops on a permission question, returns with the question instead; the user answers it with threads.answer.",
-      input: { type: "object", required: ["agent", "text"], properties: { agent: { type: "string" }, text: { type: "string" }, surface: { type: "string" }, wait: { type: "boolean" } } },
+      input: { type: "object", required: ["agent", "text"], properties: { agent: { type: "string" }, text: { type: "string" }, surface: { type: "string" }, wait: { type: "boolean" },
+        mentions: { type: "array", maxItems: 8, items: { type: "object", required: ["kind", "id"], properties: { kind: { type: "string" }, id: { type: "string" }, name: { type: "string" } } }, description: "The # tags the composer picked, from a person's own surface only (as threads.send): each is resolved for the agent's thread." },
+        pasted: { type: "array", maxItems: 20, items: { type: "string" }, description: "The spans of the text the person pasted: a #Name inside one tags nothing." } } },
       run: async (i, { caller }) => {
         guard(caller, "talk to other agents");
+        // A person's own tags ride with the words, as that person (threads.send hears their turn); from any other caller they are dropped.
+        const tagged = isPerson(caller) && ((Array.isArray(i.mentions) && i.mentions.length) || (Array.isArray(i.pasted) && i.pasted.length));
+        const sendWords = async thread => {
+          if (!tagged) return use("threads.send", { thread, text: i.text, surface });
+          const r = await ctx.call("threads.send", { thread, text: i.text, surface, mentions: i.mentions || [], pasted: i.pasted || [] }, { as: String(caller) });
+          if (r.error) throw new Error(r.error.message);
+          return r.data;
+        };
         const a = must(i.agent);
         const surface = i.surface || String(caller || "vyre");
         // Listen before sending, so a fast reply is not missed.
@@ -338,12 +358,12 @@ export default {
             // the reply cannot beat a model's first token back.
             const t = await launch(a);
             thread = t.id;
-            const s = await use("threads.send", { thread, text: i.text, surface });
+            const s = await sendWords(thread);
             if (!s.sent) return { agent: a.name, thread, ok: false, text: "", note: s.note };
           } else {
             thread = cur.id;
             if (cur.status === "stopped") await launch(a, { resume: cur.id });
-            const s = await use("threads.send", { thread, text: i.text, surface });
+            const s = await sendWords(thread);
             if (!s.sent) return { agent: a.name, thread, ok: false, text: "", note: s.note };
           }
           if (i.wait === false) return { agent: a.name, thread, ok: true, sent: true, text: "" };

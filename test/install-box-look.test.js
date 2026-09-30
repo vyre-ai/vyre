@@ -76,3 +76,13 @@ test("install-box.sh look: on a terminal it is in colour, with the mark and a ch
   assert.ok(r.stdout.includes("✓"), "a check mark");
   assert.match(r.stdout, /would run: env VYRE_DIR=/);
 });
+
+test("install-box.sh --print-link still writes .env's lines into the file, not to the terminal", t => {
+  // In --print-link mode say() talks on stderr; the .env block used say, so the file came out
+  // empty and compose fell back to pulling an image that is not published (e2e2's matrix, 30 Sep).
+  const r = run(box(t), ["--dry-run", "--yes", "--from", REPO, "--print-link"]);
+  assert.equal(r.status, 0, r.stderr);
+  const all = r.stdout + r.stderr;
+  assert.match(all, /^ {2}COMPOSE_FILE=compose\.yml:compose\.build\.yml$/m, `the dry run shows the file's own lines:\n${all}`);
+  assert.match(all, /^ {2}COMPOSE_PROJECT_NAME=vyre$/m, all);
+});

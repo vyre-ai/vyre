@@ -155,6 +155,47 @@ export function applyMention(text, range, path) {
   return { text: before + word + gap + after, caret: before.length + word.length + 1 };
 }
 
+/** The name written after a "#": plain when it is one word of letters, digits, dots, dashes and underscores, else quoted. @param {string} name */
+export const vaultToken = name => "#" + (/^[A-Za-z0-9][\w.-]*$/.test(name) ? name : `"${String(name).replace(/"/g, "")}"`);
+
+/**
+ * The "#" vault mention at the caret: a "#" after a space or an opening bracket or quote (never the very first
+ * character, which is the save-a-memory mode), then no whitespace up to the caret. A name with spaces is picked, not typed.
+ * @param {string} text @param {number} caret @returns {MentionRange|null}
+ */
+export function findVaultMention(text, caret) {
+  const t = String(text ?? "");
+  const end = Math.max(0, Math.min(caret, t.length));
+  for (let i = end - 1; i >= 1; i--) {
+    const ch = t[i];
+    if (/\s/.test(ch)) return null;
+    if (ch === "#") return /[\s("'`[{]/.test(t[i - 1]) ? { start: i, end, query: t.slice(i + 1, end).replace(/^"/, "") } : null;
+  }
+  return null;
+}
+
+/** The text with a vault token in place of the mention, and the caret after it and one space. @param {string} text @param {MentionRange} range @param {string} name */
+export function applyVault(text, range, name) {
+  const before = text.slice(0, range.start), after = text.slice(range.end);
+  const word = vaultToken(name);
+  const gap = after.startsWith(" ") ? "" : " ";
+  return { text: before + word + gap + after, caret: before.length + word.length + 1 };
+}
+
+/** Every vault token in a draft that is one of `names` (a "#" at the very start is a memory, never a token). @param {string} text @param {Set<string>} names @returns {{ start: number, end: number, name: string }[]} */
+export function vaultTokens(text, names) {
+  const out = [], t = String(text ?? ""), re = /(?<=[\s("'`[{])#(?:"([^"\n]+)"|([A-Za-z0-9][\w.-]*))/g;
+  for (let m; (m = re.exec(t));) { const name = m[1] ?? m[2]; if (m.index >= 1 && names.has(name)) out.push({ start: m.index, end: m.index + m[0].length, name }); }
+  return out;
+}
+
+/** Vault names for the picker: names starting with the query first, then names containing it, each by name. @param {{ name: string }[]} items @param {string} query */
+export function rankVault(items, query) {
+  const q = String(query ?? "").toLowerCase();
+  const tier = (/** @type {string} */ n) => { const l = n.toLowerCase(); return !q || l.startsWith(q) ? 0 : l.includes(q) ? 1 : 2; };
+  return items.filter(i => tier(i.name) < 2).sort((a, b) => tier(a.name) - tier(b.name) || a.name.localeCompare(b.name));
+}
+
 /**
  * Files for the "@" picker: paths relative to the folder, best match first; ties by recency
  * (an `mtime` when the list has one), then by length. Only paths inside `cwd` are kept.

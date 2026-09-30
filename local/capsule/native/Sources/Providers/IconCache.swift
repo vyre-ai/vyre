@@ -26,12 +26,29 @@ import UniformTypeIdentifiers
 
 @MainActor
 public final class IconCache {
+    /// Drawn icons are rasterized, so they take the scheme at draw time, and it is part of their cache key.
+    /// Test seam: nil reads the appearance.
+    nonisolated(unsafe) static var darkOverride: Bool?
+    static var dark: Bool { darkOverride ?? Theme.isDark(NSApp?.effectiveAppearance ?? NSAppearance.currentDrawing()) }
+    static var scheme: String { dark ? "d" : "l" }
+
+    /// A tint in the current scheme: the dark values, or paper's (the same tokens as Theme).
     public static func color(_ t: Tint) -> NSColor {
+        if !dark {
+            switch t {
+            case .bone: return rgb(0x141311)
+            case .stone: return rgb(0x4A463F)
+            case .ash: return rgb(0x6B665D)
+            case .signal: return rgb(0x141311)
+            case .recall: return rgb(0x4A463F)
+            case .attention: return rgb(0x5B3FC4)
+            }
+        }
         switch t {
         case .bone: return rgb(0xF1EEE6)
         case .stone: return rgb(0xB3AEA4)
         case .ash: return rgb(0x8C877D)
-        case .signal: return rgb(0xC6F36B)
+        case .signal: return rgb(0xF1EEE6)
         case .recall: return rgb(0xB3AEA4) // Design A retired the gold: as stone
         case .attention: return rgb(0xB8A4FF)
         }
@@ -86,11 +103,11 @@ public final class IconCache {
             let m = ((try? FileManager.default.attributesOfItem(atPath: p))?[.modificationDate] as? Date)?.timeIntervalSince1970 ?? 0
             return "file:\(p):\(Int(m)):\(px)"
         case .bundle(let b): return "bundle:\(b):\(px)"
-        case .symbol(let n, let t): return "symbol:\(n):\(t.rawValue):\(px)"
-        case .mark: return "mark:\(px)"
-        case .contact(let id, let i): return "contact:\(id):\(i):\(px)"
+        case .symbol(let n, let t): return "symbol:\(n):\(t.rawValue):\(px):\(Self.scheme)"
+        case .mark: return "mark:\(px):\(Self.scheme)"
+        case .contact(let id, let i): return "contact:\(id):\(i):\(px):\(Self.scheme)"
         case .swatch(let r, let g, let b): return "swatch:\(r),\(g),\(b):\(px)"
-        case .glyph(let s): return "glyph:\(s):\(px)"
+        case .glyph(let s): return "glyph:\(s):\(px):\(Self.scheme)"
         case .none: return ""
         }
     }

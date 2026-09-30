@@ -1,0 +1,23 @@
+[package]
+name = "vyre-pipe-verify"
+version = "0.1.0"
+edition = "2021"
+description = "Section 7a point 2c (docs/design/windows-plan.md): before a Windows client sends anything to vyred's named pipe, confirm the pipe's owning process belongs to the current user, not a squatter who won the name race despite the 2a/2b defenses. A tiny standalone helper, not a library loaded into vyred or the CLI, since the Win32 calls it needs have no safe public path through Node."
+publish = false
+
+[[bin]]
+name = "vyre-pipe-verify"
+path = "src/main.rs"
+
+[lib]
+name = "vyre_pipe_verify"
+path = "src/lib.rs"
+
+[target.'cfg(windows)'.dependencies]
+windows = { version = "0.58", features = [
+  "Win32_Foundation",
+  "Win32_Security",
+  "Win32_Storage_FileSystem",
+  "Win32_System_Pipes",
+  "Win32_System_Threading",
+] }

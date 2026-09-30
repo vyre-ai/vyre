@@ -41,7 +41,7 @@ function hashSeed(seed) {
 }
 const pick = (rnd, arr) => arr[Math.floor(rnd() * arr.length)];
 
-// Warm gradient pairs for the person, kept off lime/violet the same way every other palette here
+// Warm gradient pairs for the person, kept off bone/violet the same way every other palette here
 // is (swept in round4/check.js before export).
 const USER_GRADIENTS = [
   ["#F7C9A6", "#EE9B6B"], ["#F6E0A6", "#EFC15E"], ["#F3B3C4", "#E6789A"], ["#A9E0C9", "#5FBE95"],
@@ -135,8 +135,8 @@ function rimFor(skinHex, theme) {
 // A project isn't a being - a rounded tile with a mark and colour, not a creature or a face.
 // Seeded from the project's own stored avatar_seed (falling back to its permanent id, never its
 // name, so a rename never reseeds it). 8 hues, spread across three arcs (0-50, 115-225,
-// 285-360deg) that keep the same wide margin from lime (~80deg) and violet (~253deg) every other
-// palette here already keeps - an even 45deg step would land two hues inside the lime band, so
+// 285-360deg) that keep the same wide margin from bone (~80deg) and violet (~253deg) every other
+// palette here already keeps - an even 45deg step would land two hues inside the old accent band, so
 // these are picked by hand within the allowed arcs instead. Saturation and lightness are tuned
 // per hue (not one fixed S/L) so every hue clears the dark-ink floor with margin (3.3-10.8:1) AND
 // clears its backdrop floor without needing rimFor()'s help where avoidable (4.6-9.5:1 worst
@@ -207,7 +207,7 @@ function userAvatar(option = 0, size = 120) {
 // Cool-to-warm luminous pairs for the assistant, a different family from the person's palette so
 // the two are never confusable even in monochrome (paper theme, print, a colour-blind check).
 const ASSISTANT_GRADIENTS = [
-  ["#EAF3E8", "#F0E6C9"], // a pale sage-to-straw wash, checked well clear of the true lime hex
+  ["#EAF3E8", "#F0E6C9"], // a pale sage-to-straw wash, checked well clear of the old accent hue
   ["#FDEFD8", "#F0C97A"], ["#E4F1F0", "#8FC7C2"],
 ];
 // ui-ux found this live: a soft light-to-mid gradient like the ones above has almost no contrast

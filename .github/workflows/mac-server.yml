@@ -1,0 +1,33 @@
+# A Mac as the always-on server (ADR 0039, 0040 phase 4 and 5), proved on a real macOS runner: the real
+# install script with the runner's real sudo, a test release signed with a throwaway key, and every
+# LaunchDaemon in launchd's system domain. See scripts/mac-proof/run.sh for what is checked and what
+# a hosted runner cannot do (reboot, Colima's VM).
+name: mac-server
+on:
+  push:
+    paths: ["scripts/install-mac-server.sh", "scripts/mac-proof/**", "core/vyre-core/**", "lib/vyre-core-*.js", ".github/workflows/mac-server.yml"]
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: mac-server-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  proof:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    env:
+      VYRE_NO_DIALOGS: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: The script's own tests
+        run: node --test "test/install-mac-server.test.js" "core/vyre-core/*.test.js"
+      - name: Install, check, reinstall, uninstall
+        run: sh scripts/mac-proof/run.sh

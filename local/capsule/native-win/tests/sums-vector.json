@@ -1,0 +1,6 @@
+{
+  "note": "throwaway key; checked against core/vyre-core/release.js verifySums by test/windows-sums-vector.test.js",
+  "key": "MCowBQYDK2VwAyEANAbWpWHjilax6syCOhu1YQ6fyxJP0ZEpGRQFF4PApWI=",
+  "sums": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa  Vyre_0.2.0_x64-setup.exe\nbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb  vyre-box.tar.gz\n",
+  "sig": "BWje6EuNBkHki6jaY4BYNIcKmznnPkbMq+wuO+hC5Zd78H75N6gMPip359VjfqgZ5obkL53U2LSaxYV/TmMXCg=="
+}

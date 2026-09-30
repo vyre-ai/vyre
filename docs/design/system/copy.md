@@ -26,7 +26,7 @@ status: draft
 - Agents by name, lower case as they are set: kit, juno. The assistant's name comes from
   onboarding.
 - Devices by their names: "alex's iPhone", "Chrome on alex's Pixel 8". On owner-facing copy,
-  "Your phone", "Your laptop", "Your Capsule".
+  "Your phone", "Your laptop", "Your Lumen".
 - Projects by name: Harlow Legal. Another client's name never appears on a screen that belongs to a
   different project (screens are shared with clients).
 - Machine words stay in mono and only where they are what the person types or reads back:

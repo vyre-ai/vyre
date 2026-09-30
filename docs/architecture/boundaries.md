@@ -48,7 +48,7 @@ their wider imports). "Becomes" says where each remaining one should go:
 | `core/cli -> core/recall` | embed.js, progress.js | `vyre status` and `vyre doctor` read index progress and the embedder's state directly | ctx.call |
 | `core/cli -> core/resilience` | backoff.js, node.js, stream.js | the reference client every surface uses, a pure library | lib |
 | `core/cli -> core/vault` | backup.js, cli-io.js, refs.js | `vyre vault`'s terminal side: no-echo prompts, `vault://` refs, the sealed backup format | surface |
-| `core/cli -> local/voice` | talk.js | `vyre voice`, push-to-talk from a terminal until the native Capsule has voice | ctx.call |
+| `core/cli -> local/voice` | talk.js | `vyre voice`, push-to-talk from a terminal until the native Lumen has voice | ctx.call |
 | `core/daemon -> core/harness` | rules.js | the kernel runs the security floor on every call's input; the floor belongs in the kernel | lib |
 | `core/daemon -> core/names` | guests.js | the router asks whether a tailnet caller is a guest before the registry | ctx.call |
 | `core/daemon -> core/switchboard` | sessions.js | the router resolves which Claude Code session a call comes from | ctx.call |
@@ -68,9 +68,10 @@ their wider imports). "Becomes" says where each remaining one should go:
 | `core/switchboard -> core/transcripts` | sanitize.js | keeps credentials out of what it builds from transcripts | lib |
 | `core/term -> core/computers` | ws.js | the RFC 6455 framing sliver Glass wrote, a pure helper | lib |
 | `core/term -> core/files` | safety.js | the path gate every file path passes through | ctx.call |
+| `core/vyre-core -> core/vault` | vault.js | vyre-core hosts the vault's store and crypto in its own process and db (ADR 0040 phase 2) | host |
 | `core/vault -> core/link` | transport.js | the vault relay between the Mac and the box | lib |
 | `core/vault -> core/names` | identity.js, tailscale.js | who is on the other end of a vault relay, and the tailscale CLI | lib |
-| `local/capsule -> core/cli` | commands/capsule-native.js | where the native Capsule app is built, shared with `vyre capsule` | lib |
+| `local/capsule -> core/cli` | commands/capsule-native.js | where the native Lumen app is built, shared with `vyre capsule` | lib |
 | `local/hands-mac -> local/screen-mac` | floor.js | the floor for Vyre's hands and eyes on the Mac (SPEC section 11) | lib |
 | `local/sideview -> local/screen-mac` | floor.js, runner.js | drives the sight helper and its floor directly | ctx.call |
 

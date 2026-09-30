@@ -193,14 +193,14 @@ vyre threads stop 3f2a9c1e
 ```
 
 A permission question from a headless thread goes to wherever you are: the terminal, the Deck,
-the Capsule or your phone. Only a person answers it (`threads.answer`); a model never approves a
+Lumen or your phone. Only a person answers it (`threads.answer`); a model never approves a
 permission. The tools are `threads.start`, `threads.send`, `threads.lease`, `threads.release`,
 `threads.asks`, `threads.answer` and `threads.stop`. For every flag, see
 [Drive a running session](cli.md#drive-a-running-session).
 
 ## Which surface does what
 
-| Task | Terminal | Deck | Capsule | Chat | Claude |
+| Task | Terminal | Deck | Lumen | Chat | Claude |
 | --- | --- | --- | --- | --- | --- |
 | List projects | `vyre projects`, `vyre` | `/projects` | `@` a project | `/chat` | `projects.list` |
 | Make a project | `vyre new` | New project | | | `projects.create` |

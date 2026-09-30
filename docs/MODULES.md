@@ -131,25 +131,25 @@ attaches them outside the sandbox, and a write through it is held at the Gate th
 Every member that reaches outside the module returns a promise. Types are in
 [`packages/module-sdk/index.d.ts`](https://github.com/vyre-ai/vyre/blob/main/packages/module-sdk/index.d.ts).
 
-| Member | Use it to | Declare it in |
-|---|---|---|
-| `ctx.tool(name, { description, input, examples, run })` | register a tool. `run(input, meta)` returns JSON or throws `{ code, message }`. | `does.tools` |
-| `ctx.call(tool, input)` | use another module's tool. It answers `{ data }` or `{ error }`. | `needs.tools` |
-| `ctx.events.emit / on / since / latestId` | emit and follow events | `watches.emits`, `watches.on` |
-| `ctx.store.db`, `ctx.store.migrate(steps)` | your own SQLite tables, with migrations that only go forward | |
-| `ctx.paths.data` | your own folder, the one place you write files | |
-| `ctx.settings.get / set / on` | your own settings | `settings` |
-| `ctx.vault.request(id, { method, url, ... })` | call a vendor API with a credential you never see | `needs.credentials` |
-| `ctx.connections.call(provider, tool, input)` | use a connected vendor MCP server (Google, Notion, Slack...) | `needs.connections` |
-| `ctx.fetch(url, init)` | GET or HEAD from a public host, with no credentials and no body. To send data, use `ctx.vault.request` or an `outward` tool. | `needs.network` |
-| `ctx.gate.request({ kind, via, to, content, why })` | propose a send through another module's sender | `needs.tools: ["gate.request"]` |
-| `ctx.memory.write({ kind, project, text, subject?, source_ref? })` | write memory, shown with your module as its source and quoted as data | `teaches.memory` |
-| `ctx.ask(prompt, { purpose, maxUsd })` | a one-shot model read with no tools, counted against your daily cap | `needs.spend` |
-| `ctx.spend.record / check` | count your own paid API use | `needs.spend` |
-| `ctx.push.offer({ title, body, kind })` | ask to notify the person. It answers `sent` or `deferred`, under one shared daily budget. | `shows.notices` |
-| `ctx.undo.record({ tool, input, inverse })` | give an action you took an Undo | |
-| `ctx.log.info / warn / error / debug` | logs, read with `vyre logs <module>` | |
-| `ctx.api.version`, `ctx.api.has(feature)` | find newer features without breaking on older Vyre | |
+| Member | Use it to | Declare it in | Available |
+|---|---|---|---|
+| `ctx.tool(name, { description, input, examples, run })` | register a tool. `run(input, meta)` returns JSON or throws `{ code, message }`. | `does.tools` | now |
+| `ctx.call(tool, input)` | use another module's tool. It answers `{ data }` or `{ error }`. | `needs.tools` | now |
+| `ctx.events.emit / on / since / latestId` | emit and follow events | `watches.emits`, `watches.on` | now |
+| `ctx.store.db`, `ctx.store.migrate(steps)` | your own SQLite tables, with migrations that only go forward | | now |
+| `ctx.paths.data` | your own folder, the one place you write files | | now |
+| `ctx.settings.get / set / on` | your own settings | `settings` | now |
+| `ctx.vault.request(id, { method, url, ... })` | call a vendor API with a credential you never see | `needs.credentials` | when vault.request lands |
+| `ctx.connections.call(provider, tool, input)` | use a connected vendor MCP server (Google, Notion, Slack...) | `needs.connections` | now |
+| `ctx.fetch(url, init)` | GET or HEAD from a public host, with no credentials and no body. To send data, use `ctx.vault.request` or an `outward` tool. | `needs.network` | when the module host lands |
+| `ctx.gate.request({ kind, via, to, content, why })` | propose a send through another module's sender | `needs.tools: ["gate.request"]` | now |
+| `ctx.memory.write({ kind, project, text, subject?, source_ref? })` | write memory, shown with your module as its source and quoted as data | `teaches.memory` | when memory.write lands |
+| `ctx.ask(prompt, { purpose, maxUsd })` | a one-shot model read with no tools, counted against your daily cap | `needs.spend` | when spend.check lands |
+| `ctx.spend.record / check` | count your own paid API use | `needs.spend` | when spend.record lands |
+| `ctx.push.offer({ title, body, kind })` | ask to notify the person. It answers `sent` or `deferred`, under one shared daily budget. | `shows.notices` | when push.offer lands |
+| `ctx.undo.record({ tool, input, inverse })` | give an action you took an Undo | | when undo.record lands |
+| `ctx.log.info / warn / error / debug` | logs, read with `vyre logs <module>` | | now |
+| `ctx.api.version`, `ctx.api.has(feature)` | find newer features without breaking on older Vyre | | now |
 
 A call without its declaration throws `undeclared`.
 
@@ -214,6 +214,62 @@ Your module keeps working when Vyre updates. The rules:
 
 ## What's built in only, for now
 
-Session providers (`does.providers`), streams (`shows.streams`), raw HTTP routes and raw vault
-values stay with Vyre's own modules in 0.2, because each needs a process, a socket or a secret that
+Session providers (`does.providers`), streams (`shows.streams`), raw HTTP routes, raw vault
+values and the `#` picker's kinds (`mentions`) stay with Vyre's own modules in 0.2, because each needs a process, a socket or a secret that
 the sandbox withholds. `vyre module check` says so if you use them.
+
+## The `#` tag: `mentions`
+
+Typing `#` in a chat opens one picker over everything the person may mention. A built in module
+offers a kind of thing with one entry in `mentions`, and `mentions.search` asks every module that
+does at once.
+
+```json
+"mentions": [{ "kind": "vault", "label": "Vault", "icon": "key", "search": "vault.mentions.search", "resolve": "vault.mentions.resolve" }]
+```
+
+`search` and `resolve` are tools of the same module. Search takes `{ q, limit }` and answers
+`{ items: [{ id, name, hint?, icon? }] }`: names only, never a value, and it runs as the person who
+is typing. Resolve takes `{ id, thread, said }`, runs as sessions or the assistant (never a model), and answers what the tag means for a thread: a `grant` (a use, a
+read) and a `context` (a title, a summary), decided from the person's own turn and never from a
+model. A kind has one provider; a second module that claims it fails to load.
+
+## The Capsule: `view:` entries
+
+A module adds commands to the Capsule by declaring them under `shows.capsule`. The Capsule draws
+them natively; nothing from a module runs inside it.
+
+```json
+"shows": { "capsule": {
+  "view:orders": {
+    "title": "Orders", "keywords": ["bakery"], "icon": "tray", "root": true,
+    "arg": { "name": "q", "placeholder": "customer" },
+    "list": {
+      "tool": "bakery.orders", "input": { "q": "{q}", "limit": 20 },
+      "map": { "rows": "orders", "id": "ref", "title": "name", "subtitle": "note", "url": "link" },
+      "actions": [
+        { "id": "open", "title": "Open", "do": { "open": "{url}" } },
+        { "id": "reply", "title": "Reply", "form": "reply" }
+      ]
+    },
+    "forms": { "reply": { "title": "Reply to {title}", "fields": [{ "name": "body", "label": "Your reply", "type": "multiline", "required": true }],
+      "submit": { "title": "Send", "tool": "bakery.reply", "input": { "ref": "{id}", "body": "{body}" }, "outward": true } } }
+  }
+} }
+```
+
+A view is a `list` (with an optional `detail` and its `actions`) or a `form`. `map` names fields in the
+tool's JSON by plain dotted path: no expressions, no code. Templates fill `{q}`, `{id}`, `{title}`,
+`{subtitle}`, `{accessory}`, `{url}`, a form's field names, and `{front.app}` and `{front.selection}` only
+when the module declares `needs.slots: ["front"]`; any other name is empty. An action ends in `do`
+(`open`, `copy`, `say`, `ask` or `push`), a `tool` of the module's own, or a `form`. An added module opens
+only https and mailto links (a `vyre:` link can act, so it is Vyre's own), pushes only to its own commands,
+and may name only its own tools and the ones in `needs.tools`. Its
+tools run as the module, never as you, and its rows say "from" the module. An `outward` action shows the
+exact words first, and a second Enter sends; the preview carries a token good for two minutes that the
+second call must return. Icons are system symbol names from a fixed list, or
+`app:<bundle id>`.
+
+The Capsule reads `capsule.commands` for the list of commands, `capsule.view` for a frame and
+`capsule.act` for an action. It sends ids, never tool names. The older `results:<tool>` and
+`action:<tool>` keys keep working and appear as one command.

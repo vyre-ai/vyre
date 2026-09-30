@@ -102,9 +102,11 @@ async function world(t, { fakes = SOURCES.map(s => s[0]), extra = [], data = DAT
     writeModule(root, name, { roles: ["box", "local"], requires: ["suggest"], does: { tools } }, FAKE(tools, [], offers));
   const db = open(path.join(home, "vyre.db"));
   const events = new Events(db);
-  const reg = new Registry({ db, events, config: { role: "local" }, paths: { root: home }, log: () => {} });
+  // The fakes stand in for Vyre's own projects, threads, planner and the rest, so they load as
+  // first party (ADR 0047: an added module reaches only tools with a declared reach).
+  const reg = new Registry({ db, events, config: { role: "local" }, paths: { root: home }, log: () => {}, firstPartyRoots: [root] });
   const core = discover([path.join(path.dirname(new URL(import.meta.url).pathname), "..")]).filter(f => f.manifest?.name === "suggest");
-  await reg.start([...core, ...discover([root])], { role: "local" });
+  await reg.start([...core, ...discover([root], { firstPartyRoots: [root] })], { role: "local" });
   t.after(async () => { await reg.stop?.(); db.close(); });
   const F = /** @type {any} */ (globalThis).SUGGEST_FAKE;
   const q = async (text, more = {}) => {

@@ -1,0 +1,225 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Vault, import your secrets — the onboarding moment</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="vyre.css">
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;600&amp;family=JetBrains+Mono:wght@400;600&amp;display=swap">
+<style>body{margin:0}</style>
+</helmet>
+<div class="vy board {{theme}}" style="width: 1900px; height: 2150px;">
+
+  <div class="bhead">
+    <div class="col" style="max-width: 1500px;">
+      <span class="lbl">Onboarding, step 5 · Vault, import your secrets</span>
+      <h1 class="t28 w6">Found on this Mac, grouped by project, sealed with one Touch ID.</h1>
+      <p class="t15 t2">Six sources, one pass: .env files, shell exports, a password manager, Chrome, SSH keys, and MCP and Claude config env. Nothing is sent anywhere to find these. One Touch ID unlocks the vault and imports everything at once; each item lands with its project, masked, and a live count grows as it happens.</p>
+    </div>
+  </div>
+
+  <div class="frames"><div class="col" style="gap: 30px;"><div class="row" style="gap: 24px; align-items: flex-start;">
+
+    <div class="cap">
+      <span class="cap-t">Browser, step 5 · Discover · found and grouped, masked, dev noise left out</span>
+      <div class="win" style="width: 900px; height: 900px;">
+        <div class="win-bar"><i></i><i></i><i></i><span class="u mono">localhost:7300/onboard</span></div>
+        <div class="vy {{theme}}" style="flex: 1 1 auto; min-height: 0;">
+          <main class="col grow" style="padding: 24px 32px 20px; gap: 14px; min-width: 0;">
+            <div class="col" style="gap: 4px;">
+              <span class="lbl">Step 5 of 6</span>
+              <h2 class="t20 w6">Bring in your secrets</h2>
+              <p class="t13 t2">34 items found across 6 sources. Nothing is sent anywhere; this Mac read its own files.</p>
+            </div>
+            <div class="row" style="gap: 10px; flex-wrap: wrap;">
+              <div class="tile tile-on" style="width: 140px; gap: 6px; cursor: default;">
+                <div class="row" style="gap: 8px;"><svg class="ic t2" viewBox="0 0 16 16"><path d="M4 1.5h5l3 3v10H4z"></path><path d="M9 1.5v3h3"></path></svg><span class="t13 w6 grow trunc">.env files</span></div>
+                <span class="t12 t3">4 found, 4 in</span>
+              </div>
+              <div class="tile tile-on" style="width: 140px; gap: 6px; cursor: default;">
+                <div class="row" style="gap: 8px;"><svg class="ic t2" viewBox="0 0 16 16"><path d="M2 3.5h12v9H2z"></path><path d="M2 6h12M5 3.5V6"></path></svg><span class="t13 w6 grow trunc">Shell exports</span></div>
+                <span class="t12 t3">12 found, 9 in</span>
+              </div>
+              <div class="tile tile-on" style="width: 140px; gap: 6px; cursor: default;">
+                <div class="row" style="gap: 8px;"><svg class="ic t2" viewBox="0 0 16 16"><circle cx="8" cy="8" r="6"></circle><path d="M2 8h12M8 2c1.8 1.8 2.5 3.8 2.5 6S9.8 12.2 8 14M8 2C6.2 3.8 5.5 5.8 5.5 8S6.2 12.2 8 14"></path></svg><span class="t13 w6 grow trunc">Chrome</span></div>
+                <span class="t12 t3">18 found, 15 in</span>
+              </div>
+              <div class="tile" style="width: 140px; gap: 6px; cursor: default;">
+                <div class="row" style="gap: 8px;"><svg class="ic t2" viewBox="0 0 16 16"><rect x="3" y="7" width="10" height="7" rx="1.5"></rect><path d="M5 7V5a3 3 0 0 1 6 0v2"></path></svg><span class="t13 w6 grow trunc">1Password</span></div>
+                <span class="t12 t3">Not connected</span>
+              </div>
+              <div class="tile tile-on" style="width: 140px; gap: 6px; cursor: default;">
+                <div class="row" style="gap: 8px;"><svg class="ic t2" viewBox="0 0 16 16"><path d="M2 5V3.5A1.5 1.5 0 0 1 3.5 2H5M11 2h1.5A1.5 1.5 0 0 1 14 3.5V5M14 11v1.5a1.5 1.5 0 0 1-1.5 1.5H11M5 14H3.5A1.5 1.5 0 0 1 2 12.5V11"></path></svg><span class="t13 w6 grow trunc">SSH keys</span></div>
+                <span class="t12 t3">3 found, 3 in</span>
+              </div>
+              <div class="tile tile-on" style="width: 140px; gap: 6px; cursor: default;">
+                <div class="row" style="gap: 8px;"><svg class="ic t2" viewBox="0 0 16 16"><circle cx="8" cy="5.5" r="2.5"></circle><path d="M3 13.5c.8-2.6 2.7-4 5-4s4.2 1.4 5 4"></path></svg><span class="t13 w6 grow trunc">MCP and Claude</span></div>
+                <span class="t12 t3">3 found, 3 in</span>
+              </div>
+            </div>
+            <div class="list" style="flex: 1 1 auto; min-height: 0; overflow: hidden;">
+              <div class="list-h"><span class="lbl grow">34 found, 34 selected</span><span class="t12 t3">Values stay masked here</span></div>
+              <div class="grp"><span class="dot" style="background: var(--rule-strong);"></span>Harlow Legal<span class="t3" style="margin-left: auto; font-weight: 400;">12</span></div>
+              <div class="li" style="padding: 8px 16px;">
+                <span class="chk chk-on"><svg class="ic ic-12" viewBox="0 0 16 16"><path d="M3 8.5l3 3 7-7"></path></svg></span>
+                <span class="av"><svg class="ic ic-12" viewBox="0 0 16 16"><path d="M4 1.5h5l3 3v10H4z"></path><path d="M9 1.5v3h3"></path></svg></span>
+                <div class="col grow" style="gap: 0; min-width: 0;"><span class="mono t13 trunc">HARLOW_STRIPE_KEY</span><span class="t12 t3 trunc">harlow-intake/.env</span></div>
+                <span class="mono t13 t3">••••••••••</span>
+              </div>
+              <div class="li" style="padding: 8px 16px;">
+                <span class="chk chk-on"><svg class="ic ic-12" viewBox="0 0 16 16"><path d="M3 8.5l3 3 7-7"></path></svg></span>
+                <span class="av"><svg class="ic ic-12" viewBox="0 0 16 16"><circle cx="8" cy="8" r="6"></circle><path d="M2 8h12M8 2c1.8 1.8 2.5 3.8 2.5 6S9.8 12.2 8 14M8 2C6.2 3.8 5.5 5.8 5.5 8S6.2 12.2 8 14"></path></svg></span>
+                <div class="col grow" style="gap: 0; min-width: 0;"><span class="t13 trunc">app.harlowlegal.test</span><span class="t12 t3 trunc">Chrome · alex@harlowlegal.com</span></div>
+                <span class="mono t13 t3">••••••••••</span>
+              </div>
+              <div class="li" style="padding: 8px 16px;">
+                <span class="chk chk-on"><svg class="ic ic-12" viewBox="0 0 16 16"><path d="M3 8.5l3 3 7-7"></path></svg></span>
+                <span class="av"><svg class="ic ic-12" viewBox="0 0 16 16"><path d="M2 5V3.5A1.5 1.5 0 0 1 3.5 2H5M11 2h1.5A1.5 1.5 0 0 1 14 3.5V5M14 11v1.5a1.5 1.5 0 0 1-1.5 1.5H11M5 14H3.5A1.5 1.5 0 0 1 2 12.5V11"></path></svg></span>
+                <div class="col grow" style="gap: 0; min-width: 0;"><span class="mono t13 trunc">id_ed25519 (harlow-box)</span><span class="t12 t3 trunc">~/.ssh</span></div>
+                <span class="t12 t3">3.4 KB</span>
+              </div>
+              <div class="grp">Northwind Bakery<span class="t3" style="margin-left: auto; font-weight: 400;">14</span></div>
+              <div class="li" style="padding: 8px 16px;">
+                <span class="chk chk-on"><svg class="ic ic-12" viewBox="0 0 16 16"><path d="M3 8.5l3 3 7-7"></path></svg></span>
+                <span class="av"><svg class="ic ic-12" viewBox="0 0 16 16"><path d="M4 1.5h5l3 3v10H4z"></path><path d="M9 1.5v3h3"></path></svg></span>
+                <div class="col grow" style="gap: 0; min-width: 0;"><span class="mono t13 trunc">NORTHWIND_PAYMENTS_KEY</span><span class="t12 t3 trunc">northwind-kitchen-app/.env</span></div>
+                <span class="mono t13 t3">••••••••••</span>
+              </div>
+              <div class="li" style="padding: 8px 16px;">
+                <span class="chk chk-on"><svg class="ic ic-12" viewBox="0 0 16 16"><path d="M3 8.5l3 3 7-7"></path></svg></span>
+                <span class="av"><svg class="ic ic-12" viewBox="0 0 16 16"><circle cx="8" cy="5.5" r="2.5"></circle><path d="M3 13.5c.8-2.6 2.7-4 5-4s4.2 1.4 5 4"></path></svg></span>
+                <div class="col grow" style="gap: 0; min-width: 0;"><span class="t13 trunc">Google Sheets MCP</span><span class="t12 t3 trunc">claude_desktop_config.json</span></div>
+                <span class="mono t13 t3">••••••••••</span>
+              </div>
+              <div class="grp">Not grouped, no project matched<span class="t3" style="margin-left: auto; font-weight: 400;">8</span></div>
+              <div class="li" style="padding: 8px 16px; border-bottom: 0;">
+                <span class="chk chk-on"><svg class="ic ic-12" viewBox="0 0 16 16"><path d="M3 8.5l3 3 7-7"></path></svg></span>
+                <span class="av"><svg class="ic ic-12" viewBox="0 0 16 16"><path d="M2 3.5h12v9H2z"></path><path d="M2 6h12M5 3.5V6"></path></svg></span>
+                <div class="col grow" style="gap: 0; min-width: 0;"><span class="mono t13 trunc">OPENROUTER_API_KEY</span><span class="t12 t3 trunc">~/.zshrc</span></div>
+                <span class="mono t13 t3">••••••••••</span>
+              </div>
+            </div>
+            <div class="row" style="gap: 8px;">
+              <button class="btn btn-p" type="button">Import 34 items<span class="k">⏎</span></button>
+              <button class="btn btn-g" type="button">Skip for now</button>
+              <span class="t12 t3" style="margin-left: auto;">Choosing is confirming · change any of this later in Vault</span>
+            </div>
+          </main>
+        </div>
+      </div>
+    </div>
+
+    <div class="cap">
+      <span class="cap-t">Browser, step 5 · One Touch ID unlocks the vault and starts the import</span>
+      <div class="win" style="width: 900px; height: 900px; position: relative;">
+        <div class="win-bar"><i></i><i></i><i></i><span class="u mono">localhost:7300/onboard</span></div>
+        <div class="vy {{theme}}" style="flex: 1 1 auto; min-height: 0; opacity: 0.35; filter: blur(1px);">
+          <main class="col grow" style="padding: 24px 32px 20px; gap: 14px; min-width: 0;">
+            <div class="col" style="gap: 4px;"><span class="lbl">Step 5 of 6</span><h2 class="t20 w6">Bring in your secrets</h2></div>
+          </main>
+        </div>
+        <div class="ph-scrim"></div>
+        <div class="col" style="position: absolute; inset: 0; align-items: center; justify-content: center; gap: 20px; z-index: 7; padding: 40px;">
+          <div class="card" style="width: 420px; align-items: center; text-align: center; padding: 40px 32px 32px; gap: 16px;">
+            <svg width="56" height="56" viewBox="0 0 16 16" fill="none" class="t" style="color: var(--primary-bg);"><path d="M8 1.5l5.5 2v4c0 3.5-2.4 6-5.5 7-3.1-1-5.5-3.5-5.5-7v-4z" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"></path><path d="M8 5.5v3.2M8 11.2v.3" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"></path></svg>
+            <div class="col" style="gap: 6px; align-items: center;">
+              <h2 class="t20 w6">Unlock to import 34 items</h2>
+              <p class="t13 t2">One Touch ID adds them to your vault, sealed on this box. Nothing leaves it, and nothing is sent anywhere to find or read them.</p>
+            </div>
+            <button class="btn btn-p" type="button" style="width: 100%; justify-content: center;"><svg class="ic" viewBox="0 0 16 16"><path d="M8 1.5l5.5 2v4c0 3.5-2.4 6-5.5 7-3.1-1-5.5-3.5-5.5-7v-4z"></path></svg>Import with Touch ID</button>
+            <button class="btn btn-g" type="button" style="width: 100%; justify-content: center;">Not now</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    </div>
+    <div class="row" style="gap: 24px; align-items: flex-start;">
+
+    <div class="cap">
+      <span class="cap-t">Browser, step 5 · Live · items land in the vault as they're sealed</span>
+      <div class="win" style="width: 900px; height: 900px;">
+        <div class="win-bar"><i></i><i></i><i></i><span class="u mono">localhost:7300/onboard</span></div>
+        <div class="vy {{theme}}" style="flex: 1 1 auto; min-height: 0;">
+          <main class="col grow" style="padding: 24px 32px 20px; gap: 16px; min-width: 0;">
+            <div class="col" style="gap: 4px;">
+              <div class="row" style="gap: 8px;"><span class="lbl grow">Step 5 of 6</span><span class="st"><span class="ring"></span>Live</span></div>
+              <h2 class="t20 w6">Sealing 34 items into your vault</h2>
+              <p class="t13 t2">Each item is masked the moment it lands. You can open the vault while this finishes.</p>
+            </div>
+            <div style="position: relative; height: 220px; flex: none;">
+              <svg style="position: absolute; inset: 0; overflow: visible;" width="896" height="220" aria-hidden="true">
+                <line x1="120" y1="190" x2="448" y2="70" stroke="var(--rule-strong)" stroke-width="1.5" stroke-dasharray="4 4"></line>
+                <line x1="300" y1="200" x2="448" y2="70" stroke="var(--rule-strong)" stroke-width="1.5" stroke-dasharray="4 4"></line>
+                <line x1="596" y1="195" x2="448" y2="70" stroke="var(--rule-strong)" stroke-width="1.5" stroke-dasharray="4 4"></line>
+                <line x1="770" y1="185" x2="448" y2="70" stroke="var(--rule-strong)" stroke-width="1.5" stroke-dasharray="4 4"></line>
+              </svg>
+              <div class="col" style="position: absolute; left: 398px; top: 10px; width: 100px; align-items: center; gap: 6px;">
+                <div style="width: 64px; height: 64px; border-radius: 32px; background: var(--hover); border: 1px solid var(--rule-strong); display: flex; align-items: center; justify-content: center;"><svg class="ic ic-20" viewBox="0 0 16 16"><rect x="3" y="7" width="10" height="7" rx="1.5"></rect><path d="M5 7V5a3 3 0 0 1 6 0v2"></path></svg></div>
+                <span class="t13 w6">Your vault</span>
+              </div>
+              <span class="tag mono" style="position: absolute; left: 88px; top: 168px;">.env</span>
+              <span class="tag mono" style="position: absolute; left: 264px; top: 178px;">shell</span>
+              <span class="tag mono" style="position: absolute; left: 560px; top: 173px;">Chrome</span>
+              <span class="tag mono" style="position: absolute; left: 730px; top: 163px;">SSH</span>
+              <div class="row" style="position: absolute; left: 200px; top: 118px; gap: 6px; padding: 4px 8px; border-radius: 14px; background: var(--panel); border: 1px solid var(--rule-strong); box-shadow: var(--float);"><span class="mono t12">NORTHWIND_PAYMENTS_KEY</span></div>
+              <div class="row" style="position: absolute; left: 490px; top: 130px; gap: 6px; padding: 4px 8px; border-radius: 14px; background: var(--panel); border: 1px solid var(--rule-strong); box-shadow: var(--float);"><span class="t12">app.harlowlegal.test</span></div>
+            </div>
+            <div class="row" style="gap: 12px; align-items: center;">
+              <span class="t28 w6" style="font-variant-numeric: tabular-nums;">27</span><span class="t15 t2">of 34 imported</span>
+              <div style="flex: 1 1 auto; height: 4px; border-radius: 2px; background: var(--rule);"><div style="width: 79%; height: 4px; border-radius: 2px; background: var(--primary-bg);"></div></div>
+            </div>
+            <div class="col" style="padding: 0;">
+              <div class="check" style="min-height: 40px;"><span class="ok"><svg class="ic ic-12" viewBox="0 0 16 16"><path d="M3 8.5l3 3 7-7"></path></svg></span><span class="t15 grow trunc">Harlow Legal</span><span class="t13 t2">12 of 12</span></div>
+              <div class="check" style="min-height: 40px;"><span style="width: 18px; display: inline-flex; justify-content: center; flex: none;"><span class="spin"></span></span><span class="t15 grow trunc">Northwind Bakery</span><span class="t13 t2">11 of 14</span></div>
+              <div class="check" style="min-height: 40px;"><span class="wait"></span><span class="t15 t2 grow trunc">Not grouped</span><span class="t12 t3">queued</span></div>
+            </div>
+          </main>
+        </div>
+      </div>
+    </div>
+
+    <div class="cap">
+      <span class="cap-t">Browser, step 5 · Done · straight into the vault</span>
+      <div class="win" style="width: 900px; height: 900px;">
+        <div class="win-bar"><i></i><i></i><i></i><span class="u mono">localhost:7300/onboard</span></div>
+        <div class="vy {{theme}}" style="flex: 1 1 auto; min-height: 0;">
+          <main class="col grow" style="padding: 24px 32px 20px; gap: 16px; min-width: 0; align-items: center; justify-content: center; text-align: center;">
+            <div style="width: 72px; height: 72px; border-radius: 36px; background: var(--signal-wash); display: flex; align-items: center; justify-content: center;"><span class="ok" style="width: 40px; height: 40px; border-radius: 20px;"><svg class="ic ic-20" viewBox="0 0 16 16"><path d="M3 8.5l3 3 7-7"></path></svg></span></div>
+            <div class="col" style="gap: 6px; align-items: center;">
+              <h2 class="t28 w6">34 items imported, into 3 projects.</h2>
+              <p class="t15 t2" style="max-width: 480px;">Everything is masked and sealed. Agents ask for a grant before they use anything here.</p>
+            </div>
+            <div class="row" style="gap: 12px; margin-top: 4px;">
+              <div class="col" style="width: 168px; gap: 2px; padding: 14px; border: 1px solid var(--rule); border-radius: 12px;"><span class="t20 w6">12</span><span class="t12 t3">Harlow Legal</span></div>
+              <div class="col" style="width: 168px; gap: 2px; padding: 14px; border: 1px solid var(--rule); border-radius: 12px;"><span class="t20 w6">14</span><span class="t12 t3">Northwind Bakery</span></div>
+              <div class="col" style="width: 168px; gap: 2px; padding: 14px; border: 1px solid var(--rule); border-radius: 12px;"><span class="t20 w6">8</span><span class="t12 t3">Not grouped</span></div>
+            </div>
+            <div class="row" style="gap: 8px; margin-top: 12px;">
+              <button class="btn btn-p" type="button">Open the vault</button>
+              <button class="btn btn-g" type="button">Continue to Devices</button>
+            </div>
+          </main>
+        </div>
+      </div>
+    </div>
+
+    </div>
+    </div>
+  </div>
+
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"theme":{"editor":"enum","options":["t-dark","t-light"],"default":"t-dark"},"$preview":{"width":1900,"height":2150}}'>
+class Component extends DCLogic {
+  renderVals() {
+    return { theme: this.props.theme ?? 't-dark' };
+  }
+}
+</script>
+</body>
+</html>

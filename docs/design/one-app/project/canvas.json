@@ -444,6 +444,104 @@
       "w": 2640,
       "h": 2000,
       "title": "Glass mini-view \u00b7 what the agent is doing now \u00b7 paper"
+    },
+    "Og.dc.html": {
+      "h": 630,
+      "title": "Launch \u00b7 og image for vyre.run",
+      "w": 1200,
+      "x": 0,
+      "y": 25900
+    },
+    "Social.dc.html": {
+      "h": 640,
+      "title": "Launch \u00b7 GitHub social preview",
+      "w": 1280,
+      "x": 1280,
+      "y": 25900
+    },
+    "ReadmeHero.dc.html": {
+      "h": 640,
+      "title": "Launch \u00b7 README hero",
+      "w": 1600,
+      "x": 2640,
+      "y": 25900
+    },
+    "Og-paper.dc.html": {
+      "h": 630,
+      "title": "Launch \u00b7 og image for vyre.run \u00b7 paper",
+      "w": 1200,
+      "x": 0,
+      "y": 26660
+    },
+    "Social-paper.dc.html": {
+      "h": 640,
+      "title": "Launch \u00b7 GitHub social preview \u00b7 paper",
+      "w": 1280,
+      "x": 1280,
+      "y": 26660
+    },
+    "ReadmeHero-paper.dc.html": {
+      "h": 640,
+      "title": "Launch \u00b7 README hero \u00b7 paper",
+      "w": 1600,
+      "x": 2640,
+      "y": 26660
+    },
+    "Import.dc.html": {
+      "h": 1040,
+      "title": "Import, step 5 of onboarding, choose then watch it build",
+      "w": 1900,
+      "x": 0,
+      "y": 28000
+    },
+    "Import-paper.dc.html": {
+      "h": 1040,
+      "title": "Import, step 5 of onboarding, choose then watch it build \u00b7 paper",
+      "w": 1900,
+      "x": 0,
+      "y": 1080
+    },
+    "MemoryGraph.dc.html": {
+      "h": 1040,
+      "title": "Memory graph, a floor plan that grows live, and one entity's facts",
+      "w": 2680,
+      "x": 2000,
+      "y": 28000
+    },
+    "MemoryGraph-paper.dc.html": {
+      "h": 1040,
+      "title": "Memory graph, a floor plan that grows live, and one entity's facts \u00b7 paper",
+      "w": 2680,
+      "x": 2000,
+      "y": 29100
+    },
+    "VaultImport.dc.html": {
+      "h": 2150,
+      "title": "Vault, import your secrets \u2014 the onboarding moment",
+      "w": 1900,
+      "x": 4900,
+      "y": 28000
+    },
+    "VaultImport-paper.dc.html": {
+      "h": 2150,
+      "title": "Vault, import your secrets \u2014 the onboarding moment \u00b7 paper",
+      "w": 1900,
+      "x": 4900,
+      "y": 30300
+    },
+    "Connections.dc.html": {
+      "h": 1200,
+      "title": "Connections \u2014 every account looks the same, one tap to grant",
+      "w": 2500,
+      "x": 7100,
+      "y": 28000
+    },
+    "Connections-paper.dc.html": {
+      "h": 1200,
+      "title": "Connections \u2014 every account looks the same, one tap to grant \u00b7 paper",
+      "w": 2500,
+      "x": 7100,
+      "y": 29300
     }
   },
   "createdOnFiles": {
@@ -546,6 +644,13 @@
       "text": "Tips and the Glass mini-view",
       "kind": "title1",
       "maxW": 5360
+    },
+    "launch": {
+      "x": 0,
+      "y": 25600,
+      "text": "Launch: og image, social preview, README hero",
+      "kind": "title1",
+      "maxW": 4240
     }
   },
   "order": [
@@ -611,7 +716,13 @@
     "TipLine.dc.html",
     "GlassMini.dc.html",
     "TipLine-paper.dc.html",
-    "GlassMini-paper.dc.html"
+    "GlassMini-paper.dc.html",
+    "Og.dc.html",
+    "Social.dc.html",
+    "ReadmeHero.dc.html",
+    "Og-paper.dc.html",
+    "Social-paper.dc.html",
+    "ReadmeHero-paper.dc.html"
   ],
   "pages": [],
   "title": "Vyre one app"

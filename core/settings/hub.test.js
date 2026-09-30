@@ -120,7 +120,7 @@ test("a session never writes or reads hub.json, and a backup carries it", async 
   await c("settings.set", { key: "sessions.effort", value: "high" });
   const out = path.join(root, "..", `b-${process.pid}.tar.gz`);
   t.after(() => fs.rmSync(out, { force: true }));
-  const r = await backup({ root, file: out });
+  const r = await backup({ root, file: out, passphrase: "correct horse battery staple" });
   assert.ok(r.included.includes("hub.json"), JSON.stringify(r.included));
 });
 

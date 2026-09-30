@@ -44,7 +44,7 @@ export function assistantCard({ onCreated } = {}) {
   const id = "asst-name-" + Math.random().toString(36).slice(2, 8);
   const status = h("p", { class: "asst-status small", id: id + "-status", role: "status", "aria-live": "polite" });
   const nameIn = /** @type {HTMLInputElement} */ (h("input", { class: "input", id, required: true, autocomplete: "off", spellcheck: "false",
-    autocapitalize: "none", placeholder: "juno", maxlength: "40", "aria-describedby": id + "-status" }));
+    autocapitalize: "none", placeholder: "Your assistant's name", maxlength: "40", "aria-describedby": id + "-status" }));
   // The same offer as a new agent's form (views/agents.js): a computer from the pool, which the
   // assistant can browse and use, and the user can watch and take over in Glass.
   const computer = /** @type {HTMLInputElement} */ (h("input", { type: "checkbox" }));

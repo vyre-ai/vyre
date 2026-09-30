@@ -28,6 +28,11 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { buildHome, makeProjects, makeAgents, heldItems } from "../../deck/test/world.js";
 import { SCRATCH } from "../../test/scratch.mjs";
+import { setPeerHosting } from "../../core/daemon/peer.js";
+
+// This world hosts vyred in its own process and drives it from that process and its children:
+// the one seam the caller check keeps for a test (core/daemon/peer.js).
+setPeerHosting(true);
 
 const REPO = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
 const PORT = process.argv[2] === undefined ? 4800 : Number(process.argv[2]);

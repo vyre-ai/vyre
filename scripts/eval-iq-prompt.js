@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // @ts-check
-// eval-iq-prompt: does the Capsule's quick answer (Vyre IQ, core/sessions/iq-prompt.js) answer
+// eval-iq-prompt: does the Capsule's quick answer (Vyre Memory, core/sessions/iq-prompt.js) answer
 // only from its facts, cite them, say "I don't know yet" when none answers, and say the same
 // thing twice?
 //
@@ -102,7 +102,7 @@ if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.me
   const r = report(cases, answers);
   if (args.includes("--json")) console.log(JSON.stringify({ model, runs, ...r }, null, 2));
   else {
-    console.log(`Vyre IQ prompt ${composeIq().version} on ${model}, ${runs} runs: ${r.pass}/${r.cases} pass, ${r.steady}/${r.cases} steady`);
+    console.log(`Vyre Memory prompt ${composeIq().version} on ${model}, ${runs} runs: ${r.pass}/${r.cases} pass, ${r.steady}/${r.cases} steady`);
     for (const row of r.rows) console.log(`${row.pass && row.steady ? "ok  " : "FAIL"} ${row.id}: ${JSON.stringify(row.answer)}${row.fails.length ? `  (${[...new Set(row.fails)].join("; ")})` : ""}${row.steady ? "" : "  (answers differ)"}`);
   }
   process.exit(r.ok ? 0 : 1);

@@ -51,5 +51,22 @@ name = "PAIR_LIMITER_GLOBAL"
 namespace_id = "26003"
 simple = { limit = 600, period = 60 }
 
+# The setup mailbox (tailnet plan 3.6b). Appends are the install script's, a handful per install,
+# so the per-address limit is small; reads are the page's long polls (one every 20 seconds), and
+# the global one caps what the Free plan's object requests can be made to cost. A zone rule backs
+# these if the Workers Free limiter stays silent.
+[[ratelimits]]
+name = "SETUP_LIMITER"
+namespace_id = "26004"
+simple = { limit = 20, period = 60 }
+[[ratelimits]]
+name = "SETUP_READ_LIMITER"
+namespace_id = "26005"
+simple = { limit = 10, period = 60 }
+[[ratelimits]]
+name = "SETUP_LIMITER_GLOBAL"
+namespace_id = "26006"
+simple = { limit = 300, period = 60 }
+
 [observability]
 enabled = true

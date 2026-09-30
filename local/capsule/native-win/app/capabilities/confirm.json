@@ -1,0 +1,14 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "confirm",
+  "description": "Bundled page only; the main panel has no capability.",
+  "windows": [
+    "confirm"
+  ],
+  "permissions": [
+    "core:default",
+    "allow-pending-pair",
+    "allow-confirm-pair",
+    "allow-cancel-pair"
+  ]
+}

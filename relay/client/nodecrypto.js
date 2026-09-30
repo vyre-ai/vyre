@@ -72,6 +72,7 @@ export function fileKeyStore(file) {
       const fs = await import("node:fs");
       const path = await import("node:path");
       fs.mkdirSync(path.dirname(file), { recursive: true, mode: 0o700 });
+      (await import("../../lib/owner-only.js")).ownerOnly(path.dirname(file));
       const tmp = `${file}.${process.pid}.tmp`;
       fs.writeFileSync(tmp, JSON.stringify({ v: 1, privateKey: Buffer.from(kp.privateKey).toString("base64url"), publicKey: Buffer.from(kp.publicKey).toString("base64url") }) + "\n", { mode: 0o600 });
       fs.renameSync(tmp, file);
