@@ -43,6 +43,7 @@ lead's 0.2 BUILD GO.
 
 ## Doing
 
+- Charter minimums built on this branch (30 Sep): update module + Settings card (146acc9b), export with transcripts + Export/Uninstall cards (f6155797), uninstall removes images (4709f0cd), import end to end + three import faults fixed (9f220f5c). Open: real update button (needs the lead's call on R2h), Mac-side uninstall/export surfaces (capsule-pro's shell), rebase after tailnet-02.
 - Update: core/update (update.status, update.check, update.available) and Settings' Update card are built and tested; the card SHOWS the command per R2h. Waiting on the lead about a real button (would need a host-side path unit and R2h reopened). Next: uninstall, export, import end to end.
 - Own-domain naming: built in the setup page (flow.checkDomain, ui domain region), tested against a fake names.domain.check; not yet run against the real tool (tailnet-02). The box only checks DNS today; serving the domain is names' work. onboard test fixes are in 4a06eb43.
 - Arrive-and-claim is built on tailnet's cc103f19 contract (dd21305c page + link, 705f31c9 fragment and passkey page with the claim grant, rp_id = the address the box answers). onboard.finish now calls relay.setup.end (module:onboard), so the session lives through the phone's claim after the computer's; untested against the real tool until tailnet-02 is on stage (3 onboard tests already fail on this base, same 3 without my change). Waiting on tailnet-02 for the rebase (drop cfd95c2b, box.test.js to the boot path), then own-domain naming.
