@@ -7,6 +7,9 @@
 // - Under a subreaper where there is one (`tini -s` on the box): a model's Bash that detaches
 //   (`nohup ... &`, `setsid`) reparents to tini, not to init, so its ancestry still leads to a
 //   session process and the peer check still refuses it.
+// - With an account (o.account, ADR 0030 phase 2), the spawner runs it as that account's own uid
+//   instead, in that uid's private HOME, so one account's sign-in and processes are out of every
+//   other's reach. Without a spawner an account changes nothing here (a Mac has one user).
 // - On the box, as uid vyre-agent through the spawner (core/spawner, ADR 0032 part 3), which
 //   cannot open vyred's socket or read its home: vyred itself has no right to change uid. The
 //   spawner runs it under `tini -s` in its own group and session, and passes the API key on fd 3.
@@ -38,7 +41,7 @@ export const usesSpawner = () => process.env.VYRE_SESSIONS_SPAWNER === "on" && p
  * reads at start and its tools never inherit. A setup token (CLAUDE_CODE_OAUTH_TOKEN) Claude Code
  * already keeps from its tools.
  * @param {{ cwd?: string, env?: Record<string, string|undefined>, signal?: AbortSignal, subreaper?: string|null,
- *           uid?: number, gid?: number, onSpawn?: (g: { pid: number, pgid: number, sid: number }) => void }} o
+ *           uid?: number, gid?: number, account?: { uid: number, shared?: boolean }, onSpawn?: (g: { pid: number, pgid: number, sid: number }) => void }} o
  */
 export function spawnSession(command, args, o = {}) {
   // With sessions.spawner "on" (VYRE_SESSIONS_SPAWNER=on) and a spawner here. vyre-agent cannot
@@ -112,7 +115,7 @@ function viaSpawner(command, args, o) {
   const env = { ...(o.env || {}) };
   const key = env.ANTHROPIC_API_KEY;
   if (key) { delete env.ANTHROPIC_API_KEY; env.CLAUDE_CODE_API_KEY_FILE_DESCRIPTOR = "3"; }
-  spawnAsAgent([absolute(command, env), ...args], { env, cwd: agentCwd(o.cwd), ...(key ? { fd3: String(key) } : {}), ...(o.spawnerSocket ? { socket: o.spawnerSocket } : {}) }).then(h => {
+  spawnAsAgent([absolute(command, env), ...args], { env, cwd: agentCwd(o.cwd, o.account ? { agentHome: path.join(process.env.VYRE_ACCOUNTS_HOME || "/home/acct", String(o.account.uid)) } : {}), ...(key ? { fd3: String(key) } : {}), ...(o.account ? { account: o.account.uid, shared: o.account.shared } : {}), ...(o.spawnerSocket ? { socket: o.spawnerSocket } : {}) }).then(h => {
     handle = h;
     proc.pid = h.pid;
     // The spawner starts it detached: it leads a new group and session, both its pid.

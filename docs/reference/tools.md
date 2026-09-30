@@ -3769,16 +3769,17 @@ Take a screenshot now, of the front window (default) or the main display (window
 
 ### `sessions.accounts.add`
 
-Add an account: a label, and the vault item that already holds its credential (add the credential in the Vault first; this never touches its value). scope is { projects: "*"|[slugs], agents: "*"|[names] }, default "*" (every project and agent may use it until it is bound narrower). is_default makes it the provider's pick when nothing else resolves.
+Add an account: a label, its kind, and for an api-key or setup-token the vault item that already holds its credential (add it in the Vault first and grant it to threads; this never touches its value). kind login has no vault item: the provider's own sign-in fills that account's private home. scope is { projects: "*"|[slugs], agents: "*"|[names] }, default "*" (every project and agent may use it until it is bound narrower). is_default makes it the provider's pick when nothing else resolves. Each account runs as its own user on a server, so one account's sign-in is unreadable from another's.
 
 - Input:
   - `label` string, required
   - `provider` string, required
-  - `vault_item` string, required
   - `is_default` boolean
+  - `kind` one of "api-key", "setup-token", "login"
   - `scope` object
     - `agents` any
     - `projects` any
+  - `vault_item` string
 - Callers: `capsule`, `cli`, `deck`, `local`
 
 ### `sessions.accounts.bind`

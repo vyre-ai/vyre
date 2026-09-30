@@ -67,6 +67,9 @@ Vyre reads these when they are set. None is needed for normal use.
 
 | Variable | What it does | Read in |
 | --- | --- | --- |
+| `VYRE_ACCOUNTS_HOME` | Not described yet. | `core/sessions/spawn.js`, `core/spawner/main.js` |
+| `VYRE_ACCOUNT_UID_MAX` | Not described yet. | `core/spawner/main.js` |
+| `VYRE_ACCOUNT_UID_MIN` | Not described yet. | `core/spawner/main.js` |
 | `VYRE_ACME_DIRECTORY` | The ACME server certificates come from, in place of Let's Encrypt. With it set, Vyre does not wait for DNS. | `core/names/index.js` |
 | `VYRE_ADB_BIN` | Not described yet. | `core/cli/commands/phone.js` |
 | `VYRE_AGENT_GID` | Not described yet. | `core/spawner/main.js` |
@@ -138,7 +141,7 @@ Vyre reads these when they are set. None is needed for normal use.
 | `VYRE_UID` | Not described yet. | `core/spawner/main.js` |
 | `VYRE_UP_WAIT_MS` | Not described yet. | `core/cli/daemonctl.js` |
 | `VYRE_USER_HOME` | Not described yet. | `core/spawner/main.js` |
-| `VYRE_WORK` | Not described yet. | `core/spawner/main.js` |
+| `VYRE_WORK` | Not described yet. | `core/spawner/main.js`, `core/switchboard/index.js` |
 | `VYRE_WORK_DIR` | Not described yet. | `core/config/index.js` |
 | `VYRE_WORK_GID` | Not described yet. | `bin/vyre`, `core/spawner/main.js` |
 | `VYRE_WRAPPER` | Where `vyre box add` puts the `vyre` command on the server. Default `/usr/local/bin/vyre`. | `core/cli/commands/box.js` |
