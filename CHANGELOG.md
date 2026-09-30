@@ -72,6 +72,18 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 - A hosted runner sometimes takes longer than 10 s to start headless Chrome ("Chrome did not print its DevTools port in time"). That flake predates the mock-keychain flags (it failed on work/native-core-0.2 runs 4932f92d and 3ff930c6, before 47dafe78 existed; the flags are the only change to that launch and drop nothing), so the wait is 30 s. A launch that is truly broken still fails when Chrome exits early.
 
+- Capsule: the Deep glass skin. The panel is a 0.62 carbon tint over the system blur with a light
+  border, top edge and soft shadow; it keeps its width and every feature. With Reduce Transparency
+  on, the ground is the plain opaque panel, and it changes live. Increase Contrast draws a heavier,
+  stronger border. Answer text and its draft use the strongest ink of the scheme (the draft at 90%
+  and italic), which clears WCAG AA over a white or black wallpaper at the approved glass; the
+  glass itself is unchanged. A draft is clipped to 4,000 characters. The call-to-action colour still comes from the tokens. It follows the system appearance (light and dark).
+- Capsule: Vyre IQ answers stream. While it works, the answer card names each step in a word
+  (Understanding, Searching your sessions, Reading, Writing, Checking) and shows the draft
+  dimmed under "Checking" until the checked answer replaces it; an answer that ends "Not sure
+  yet." drops the draft. Up to three sources sit under the answer as chips, opened with ⌘1 to ⌘3.
+  "Wrong?" under an answer lets you mark it wrong, forget it, or type the right one, with Undo.
+  Questions asked with a session open carry that session's thread as well as its project.
 #### tests: every Chrome launch carries the mock-keychain flags
 
 - Chrome on macOS reached for the login Keychain and put a real dialog on the user's screen. `lib/chrome-flags` exports `CHROME_SAFE` (`--use-mock-keychain`, `--password-store=basic`), spread into every Chrome launch in the Deck shot and browser scripts, the native-bar run, the vyrecode harness, hands-chrome's and the onboarding page's tests, the docs build, design-audit, the iOS icon script and the app-perf playwright launch. `test/chrome-flags.test.js` fails on any file that launches Chrome without them (containers' own Chrome and the fakes are listed as exempt, each with why).
