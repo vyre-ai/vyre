@@ -7,7 +7,7 @@ import { install, text, $, $$ } from "./fake-dom.js";
 const doc = /** @type {any} */ (install());
 doc.importNode = n => n;
 Object.assign(globalThis, { DOMParser: class { parseFromString() { const E = /** @type {any} */ (globalThis).Element; const svg = new E("svg"); svg.append(new E("circle")); return { documentElement: svg }; } }, dispatchEvent: () => true, CustomEvent: class extends /** @type {any} */ (globalThis).Event { constructor(t, o) { super(t); this.detail = o?.detail; } } });
-const { drawCatalog, groupsOf } = await import("../views/connectors.js");
+const { drawCatalog, groupsOf, scopeLine } = await import("../views/connectors.js");
 
 const CATALOG = { checked: 1, presets: [
   { id: "github", label: "GitHub", group: "Code", who: "GitHub", setup: "none", connected: [] },
@@ -142,7 +142,7 @@ test("Connect asks who can use it first: the default sends no scope, All project
   assert.equal(m.of("connectors.connect").length, 0, "nothing is sent before the choice");
   const sel = $(row(m.el, "github"), "[data-who]");
   assert.equal(sel.value, "me", "the default is just me and the assistant");
-  assert.deepEqual($$(row(m.el, "github"), "[data-who] option").map(o => text(o)), ["Just me and the assistant", "All projects", "Only these projects"]);
+  assert.deepEqual($$(row(m.el, "github"), "[data-who] option").map(o => text(o)), ["Just me and the assistant", "All projects, every agent", "Only these projects"]);
   click($(row(m.el, "github"), "[data-act=who-go]")); await settle();
   assert.deepEqual(m.of("connectors.connect")[0].input, { preset: "github" }, "the default writes nothing");
   // all projects
@@ -192,4 +192,15 @@ test("an error that echoes a typed token is shown with it hidden", async () => {
   fire($(row(m.el, "ghl"), "form"), "submit"); await settle();
   assert.ok(!text(m.el).includes("pit-secret-123"));
   assert.match(text(m.el), /token \[hidden\] was refused/);
+});
+
+test("a connection's scope in words: the default, everything it granted before, named projects", async () => {
+  assert.equal(scopeLine(null), "Just you and the assistant");
+  assert.equal(scopeLine({ projects: "*", agents: "*" }), "All projects, every agent");
+  assert.equal(scopeLine({ projects: ["northwind", "harlow"], agents: "*" }), "northwind, harlow");
+  assert.equal(scopeLine({ projects: "*", agents: ["kit"] }), "All projects, kit");
+  const cat = JSON.parse(JSON.stringify(CATALOG));
+  cat.presets[1].connected = [{ name: "linear", mode: "read", scope: { projects: "*", agents: "*" } }];
+  const m = await mount({ "connectors.catalog": cat });
+  assert.equal(text($(row(m.el, "linear"), "[data-scope-line=linear]")), "All projects, every agent");
 });

@@ -4,6 +4,10 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### connections: say what a connection already grants
+
+- "Who can use it" now reads "All projects, every agent" for the wide choice, and each connected row shows its scope in words beside its name ("Just you and the assistant", "All projects, every agent", or the projects), so a person sees what a migrated connection had been granting and can narrow it.
+
 #### connections: connectors' default scope, and Turn back on carries the hash
 
 - A server whose scope is connectors' default (`{projects: "*", agents: [], assistant: true}`) reads "Just you and the assistant" in Settings, Connections, not "Every project". Turn back on on a watcher card sends `watchers.resume {name, hash}` (watchers accepts it now).

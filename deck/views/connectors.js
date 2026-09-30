@@ -23,7 +23,15 @@ const words = (/** @type {any} */ e, /** @type {string[]} */ also = []) => (e?.m
 const SETUP_WORD = { none: "", app: "Needs an app from the vendor", token: "Needs a token", via: "Comes through another connector" };
 
 /** Who can use a connection: the person and the assistant by default, every project, or only some. */
-export const WHO = [["me", "Just me and the assistant"], ["all", "All projects"], ["some", "Only these projects"]];
+export const WHO = [["me", "Just me and the assistant"], ["all", "All projects, every agent"], ["some", "Only these projects"]];
+/** What a connection carries, in words: the default, everything it granted before, or named projects. @param {any} scope */
+export function scopeLine(scope) {
+  if (!scope || typeof scope !== "object") return "Just you and the assistant";
+  const agents = scope.agents === "*" ? "every agent" : Array.isArray(scope.agents) && scope.agents.length ? scope.agents.join(", ") : "";
+  if (scope.projects === "*") return agents === "every agent" ? "All projects, every agent" : `All projects${agents ? `, ${agents}` : ""}`;
+  const p = Array.isArray(scope.projects) ? scope.projects.join(", ") : "";
+  return p ? `${p}${agents && agents !== "every agent" ? `, ${agents}` : ""}` : "Just you and the assistant";
+}
 /** A who-state to the scope connectors.connect takes: null is the default (nothing written), undefined is an unfinished choice. @param {{ mode: string, projects: Set<string> } | null | undefined} w */
 export function scopeOf(w) {
   if (!w || w.mode === "me") return null;
@@ -237,7 +245,7 @@ export async function drawCatalog(el, ctx, deps = {}) {
           : h("button", { type: "button", class: "btn btn-sm" + (p.connected.length ? "" : " btn-primary"), "data-act": "connect", disabled: !!st.flow, onclick: () => startWho(p.id) }, p.connected.length ? "Add another" : "Connect")),
       p.note ? h("p", { class: "small muted" }, p.note) : null,
       p.setup === "via" && p.via && !p.connected.length ? h("p", { class: "small muted" }, `Comes through ${p.via}.`) : null,
-      p.connected.map((/** @type {any} */ c) => st.editing?.name === c.name ? editScope(c) : h("div", { class: "cn-meta-row" }, icon("check", 14), h("span", null, c.label || c.name), c.mode ? h("span", { class: "small faint" }, c.mode) : null,
+      p.connected.map((/** @type {any} */ c) => st.editing?.name === c.name ? editScope(c) : h("div", { class: "cn-meta-row" }, icon("check", 14), h("span", null, c.label || c.name), c.mode ? h("span", { class: "small faint" }, c.mode) : null, h("span", { class: "small faint", "data-scope-line": c.name }, scopeLine(c.scope)),
         h("button", { type: "button", class: "btn btn-ghost btn-sm", "data-act": "who", "aria-label": `Who can use ${c.name}`, onclick: async () => { st.editing = { name: c.name, who: whoFrom(c.scope), error: null, busy: false }; draw(); await loadProjects(); draw(); } }, "Who can use it"),
         h("button", { type: "button", class: "btn btn-ghost btn-sm", "data-act": "disconnect", "aria-label": `Disconnect ${c.name}`, onclick: () => disconnect(c.name) }, "Disconnect"))),
       f ? panel(f) : null);
