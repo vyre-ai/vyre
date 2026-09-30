@@ -57,20 +57,12 @@ jobs:
           done
           ls app/ui/relay
           mkdir -p app/ui/vendor && cp ../../../deck/vendor/qrcode.js app/ui/vendor/qrcode.js
-      - name: TEMPORARY add only the new entries to app/Cargo.lock (removed next commit)
-        shell: bash
-        working-directory: local/capsule/native-win/app
-        run: cargo metadata --format-version 1 >/dev/null
-      - uses: actions/upload-artifact@v4
-        with:
-          name: cargo-lock-app
-          path: local/capsule/native-win/app/Cargo.lock
       - name: build the installer (NSIS, unsigned for 0.2)
         shell: bash
         working-directory: local/capsule/native-win/app
         run: |
           cargo install tauri-cli --version "=2.12.0" --locked
-          cargo tauri build --bundles nsis
+          cargo tauri build --bundles nsis -- --locked
       - name: the installer, named Vyre_<version>_x64-setup.exe, for release.yml
         shell: bash
         run: |
