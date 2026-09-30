@@ -117,7 +117,10 @@ enum Listen {
 /// The talk chord's state machine. All state lives on one serial queue; what the Capsule shows is
 /// handed to the main actor. Pressing while starting is remembered, not a second utterance.
 final class Talker: @unchecked Sendable {
-    enum Event: Equatable { case listening, heard(String), done(String), failed(String) }
+    /// `heard`'s `final` distinguishes a live partial (shows as it comes, asks nothing) from a
+    /// settled phrase (where a command word -- "send it", "new line", "scratch that" -- is looked
+    /// for); local/voice/listen.js's own "final" text is cumulative, not just this phrase.
+    enum Event: Equatable { case listening, heard(String, final: Bool), done(String), failed(String) }
 
     typealias Opener = @Sendable (_ onMessage: @escaping @Sendable ([String: Any]) -> Void, _ onClose: @escaping @Sendable () -> Void) async -> Result<TalkStream, TalkFailure>
 
@@ -125,14 +128,17 @@ final class Talker: @unchecked Sendable {
     private let makeMic: @Sendable () -> MicSource
     private let open: Opener
     private let emit: @Sendable (Event) -> Void
+    /// The real mic level, 0 to 1, throttled to about 10 Hz -- for a live ring, not per frame.
+    private let onLevel: (@Sendable (Double) -> Void)?
+    private var lastLevel = Date.distantPast
 
     private var mic: MicSource?
     private var stream: TalkStream?
     private var early: [Data] = []
     private var live = false, micDone = false, stopped = false, ended = false, settled = true, quiet = false
 
-    init(makeMic: @escaping @Sendable () -> MicSource, open: @escaping Opener, emit: @escaping @Sendable (Event) -> Void) {
-        self.makeMic = makeMic; self.open = open; self.emit = emit
+    init(makeMic: @escaping @Sendable () -> MicSource, open: @escaping Opener, emit: @escaping @Sendable (Event) -> Void, onLevel: (@Sendable (Double) -> Void)? = nil) {
+        self.makeMic = makeMic; self.open = open; self.emit = emit; self.onLevel = onLevel
     }
 
     var isLive: Bool { q.sync { live } }
@@ -174,6 +180,31 @@ final class Talker: @unchecked Sendable {
     private func audio(_ d: Data) {
         guard !settled else { return }
         if let s = stream { s.sendBinary(d) } else { early.append(d) }
+        reportLevel(d)
+    }
+
+    /// RMS of this linear16 frame, 0 to 1, throttled to about 10 Hz -- matches local/voice's own
+    /// browser client (deck/chat/core/voice.js), which scales sqrt(meanSquare) by 4 for a livelier
+    /// ring than a raw RMS gives on ordinary speech.
+    private func reportLevel(_ d: Data) {
+        guard let onLevel else { return }
+        let now = Date()
+        guard now.timeIntervalSince(lastLevel) > 0.09 else { return }
+        lastLevel = now
+        let n = d.count / 2
+        guard n > 0 else { onLevel(0); return }
+        var sumSq = 0.0
+        // Read as raw bytes, never bound to Int16 directly: linear16 frames are not guaranteed
+        // 2-byte aligned in Data's own storage.
+        d.withUnsafeBytes { (raw: UnsafeRawBufferPointer) in
+            for i in 0..<n {
+                let lo = UInt16(raw[2 * i]), hi = UInt16(raw[2 * i + 1])
+                let sample = Int16(bitPattern: lo | (hi << 8))
+                let s = Double(sample) / 32768.0
+                sumSq += s * s
+            }
+        }
+        onLevel(min(1, (sumSq / Double(n)).squareRoot() * 4))
     }
 
     private func opened(_ r: Result<TalkStream, TalkFailure>) {
@@ -212,7 +243,8 @@ final class Talker: @unchecked Sendable {
         switch m["type"] as? String {
         case "done": finish(.done(text))
         case "error": finish(.failed(m["message"] as? String ?? "the stream failed"))
-        case "partial", "final": if !text.isEmpty { emit(.heard(text)) }
+        case "partial": if !text.isEmpty { emit(.heard(text, final: false)) }
+        case "final": if !text.isEmpty { emit(.heard(text, final: true)) }
         default: break
         }
     }
@@ -224,6 +256,7 @@ final class Talker: @unchecked Sendable {
         settled = true; live = false; early = []
         mic?.stop(); mic = nil
         stream?.close(); stream = nil
+        onLevel?(0)
         if !quiet { emit(e) }
     }
 }

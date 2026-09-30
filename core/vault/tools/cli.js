@@ -22,8 +22,8 @@ import { parseRef, parseTemplate } from "../refs.js";
 import { parseRequest, requestOrigin, candidates, formatResponse } from "../git.js";
 import { parsePrivate, generateKey, TYPES as SSH_TYPES } from "../ssh/keys.js";
 import { SshAgent, listen, LEASE_MS } from "../ssh/agent.js";
-import { defaultField } from "../kinds.js";
 import { gitSync } from "../../../lib/git-safe.js";
+import { defaultField } from "../../../lib/vault-kinds/kinds.js";
 
 const PEOPLE = ["cli", "local"];
 const str = { type: "string" };

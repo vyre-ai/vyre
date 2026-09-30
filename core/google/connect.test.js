@@ -12,7 +12,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import net from "node:net";
 import { connector, CONSENT_SCOPES } from "./connect.js";
-import { startFakeGoogle } from "../connectors/testing/fake-google.js";
+import { startFakeGoogle } from "../../lib/connectors/testing/fake-google.js";
 
 const ME = "alex@example.com";
 

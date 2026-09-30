@@ -31,7 +31,7 @@ import * as history from "./history.js";
 import { callerKind } from "../modules/index.js";
 import { parseFile as parseImport, plan as planImport } from "./import.js";
 import { REMIND_MIGRATION } from "./remind.js";
-import { KINDS, PERSONAL_KINDS, defaultField, checkFields, cleanDetails, derivedDetails } from "./kinds.js";
+import { KINDS, PERSONAL_KINDS, defaultField, checkFields, cleanDetails, derivedDetails } from "../../lib/vault-kinds/kinds.js";
 import { findEnvFiles, readEnv, rewriteEnv, isEnvName, gitState } from "./envfiles.js";
 import { FILL_MIGRATION, FILL_KEY_MIGRATION } from "./fill.js";
 import { totp } from "./totp.js";

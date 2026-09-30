@@ -25,11 +25,14 @@
 //   GET    /containers/json                 list, label filter forced, rows filtered again
 //   POST   /containers/create?name=         allowCreate, name pinned, existing volume checked
 //   GET    /containers/{id}/json            inspect      \
+//   GET    /containers/{id}/stats           one sample, stream=false hard-coded, no query at all
 //   POST   /containers/{id}/start|stop|pause|unpause      > the Engine's labels are a computer's
 //   DELETE /containers/{id}?v=&force=       remove       /
 //   POST   /containers/{id}/exec            exec create, never privileged, never another user
 //   POST   /exec/{id}/start                 exec start, checked through the exec's own container
 //   GET    /volumes/{name}                  volume inspect, the volume's labels are a computer's
+//   PUT    /containers/{id}/archive?path=   the computer's secrets file, and nothing else: path
+//                                            /var/lib/vyre, a tar that is exactly .boot (policy.js)
 // No Upgrade: docker.js never attaches, so a hijacked stdin stream is refused outright.
 
 import http from "node:http";
@@ -50,12 +53,14 @@ const ROUTES = [
   ["GET", /^\/containers\/json$/, "list", ["all", "filters", "limit", "size"], false],
   ["POST", /^\/containers\/create$/, "create", ["name"], true],
   ["GET", new RegExp(`^/containers/(${NAME})/json$`), "inspect", ["size"], false],
+  ["GET", new RegExp(`^/containers/(${NAME})/stats$`), "stats", [], false],
   ["POST", new RegExp(`^/containers/(${NAME})/(start|pause|unpause)$`), "op", [], false],
   ["POST", new RegExp(`^/containers/(${NAME})/(stop)$`), "op", ["t"], false],
   ["DELETE", new RegExp(`^/containers/(${NAME})$`), "remove", ["v", "force"], false],
   ["POST", new RegExp(`^/containers/(${NAME})/exec$`), "exec", [], true],
   ["POST", new RegExp(`^/exec/(${NAME})/start$`), "execStart", [], true],
   ["GET", new RegExp(`^/volumes/(${NAME})$`), "volume", [], false],
+  ["PUT", new RegExp(`^/containers/(${NAME})/archive$`), "seed", ["path"], true],
 ];
 
 class Refusal extends Error {
@@ -129,11 +134,13 @@ function only(body, shape, what) {
   }
 }
 
-// Exec runs as the container's own user, unprivileged, with no stdin: `Privileged` would hand it
-// every capability the container dropped, and `User: "0"` root inside it.
+// Exec runs as the agent's own uid, unprivileged, with no stdin. A computer starts as root to
+// switch users (entrypoint.sh), so an exec without a User would be root in it; `User` is required
+// and must be exactly the agent's uid, never vyre's (1001, computerd and Chrome) or root.
+// `Privileged` would hand it every capability the container dropped.
 const EXEC_SHAPE = { AttachStdin: v => v === false, AttachStdout: isBool, AttachStderr: isBool, Tty: isBool,
   Cmd: v => isStrs(v) && v.length > 0, Env: isStrs, WorkingDir: v => typeof v === "string", ConsoleSize: isSize,
-  Privileged: v => v === false };
+  Privileged: v => v === false, User: v => v === "1000:1000" };
 const EXEC_START_SHAPE = { Detach: isBool, Tty: isBool, ConsoleSize: isSize };
 
 /**
@@ -143,7 +150,7 @@ const EXEC_START_SHAPE = { Detach: isBool, Tty: isBool, ConsoleSize: isSize };
  */
 export async function loadPolicy(file = new URL("../computers/driver/policy.js", import.meta.url)) {
   const p = await import(String(file));
-  for (const f of ["computerLabels", "isComputerLabels", "allowCreate", "allowExec", "allowContainerOp"]) {
+  for (const f of ["computerLabels", "isComputerLabels", "allowCreate", "allowExec", "allowContainerOp", "allowBootTar"]) {
     if (typeof p[f] !== "function") throw new Error(`${file} does not export ${f}()`);
   }
   return p;
@@ -154,7 +161,10 @@ export async function loadPolicy(file = new URL("../computers/driver/policy.js",
  *   isComputerLabels: (labels: any) => boolean,
  *   allowCreate: (body: any, config: any) => ({ ok: boolean, why?: string }),
  *   allowExec: (labels: any, cmd?: string[]) => ({ ok: boolean, why?: string }),
- *   allowContainerOp: (labels: any) => ({ ok: boolean, why?: string }) }} Policy
+ *   allowContainerOp: (labels: any) => ({ ok: boolean, why?: string }),
+ *   allowAgentTokensTar?: (buf: Buffer) => ({ ok: boolean, why?: string }) }} Policy
+ *   allowAgentTokensTar is optional (loadPolicy does not require it): a policy that omits it
+ *   simply never allows a shared computer's .agent-tokens through this proxy, .boot only.
  * @typedef {{ network: string, image: string, labelPrefix: string, capAdd: string[] }} Config
  */
 
@@ -228,9 +238,10 @@ export function createProxy({ socket = "/var/run/docker.sock", policy, config, b
    * @param {http.ServerResponse} res @param {string} method @param {string} path @param {any} [body]
    */
   const forward = (res, method, path, body) => new Promise((resolve, reject) => {
-    const data = body === undefined ? null : Buffer.from(JSON.stringify(body));
+    const tar = Buffer.isBuffer(body);
+    const data = body === undefined ? null : tar ? body : Buffer.from(JSON.stringify(body));
     const up = http.request({ socketPath: socket, method, path, headers: { host: "docker",
-      ...(data ? { "content-type": "application/json", "content-length": data.length } : { "content-length": 0 }) } }, ures => {
+      ...(data ? { "content-type": tar ? "application/x-tar" : "application/json", "content-length": data.length } : { "content-length": 0 }) } }, ures => {
       const headers = {};
       for (const [k, v] of Object.entries(ures.headers)) if (!HOP.has(k.toLowerCase()) && v !== undefined) headers[k] = v;
       res.writeHead(ures.statusCode || 502, headers);
@@ -296,7 +307,7 @@ export function createProxy({ socket = "/var/run/docker.sock", policy, config, b
     const v = /^\/v1\.\d{1,2}(?=\/)/.exec(url.pathname);
     const ver = v ? v[0] : "";
     const path = url.pathname.slice(ver.length);
-    if (!["GET", "POST", "DELETE", "HEAD"].includes(method)) refuse(`${method} is not a method this proxy passes`);
+    if (!["GET", "POST", "DELETE", "HEAD", "PUT"].includes(method)) refuse(`${method} is not a method this proxy passes`);
     const route = ROUTES.find(([m, re]) => m === method && re.test(path));
     if (!route) refuse(`${method} ${path} is not an endpoint agents' computers use`);
     const [, re, name, keys, hasBody] = /** @type {[string, RegExp, string, string[], boolean]} */ (route);
@@ -311,7 +322,21 @@ export function createProxy({ socket = "/var/run/docker.sock", policy, config, b
     if (raw === null) refuse(`the body is over ${MAX_BODY} bytes`, 413);
     const buf = /** @type {Buffer} */ (raw);
     if (!hasBody && buf.length) refuse(`${path} takes no body`);
-    const body = hasBody ? parse(buf) : undefined;
+    // The seed's body is a tar, checked byte for byte below; every other body is JSON.
+    const body = hasBody && name !== "seed" ? parse(buf) : undefined;
+    // The seed: checked whole before the Engine is asked anything, even which container this is.
+    // Two files ever land at this one directory -- .boot (every computer) and .agent-tokens (a
+    // shared/browser-kind one, agent-browsers.md level 2) -- and the tar's own filename, not the
+    // query, is what tells them apart; allowBootTar and allowAgentTokensTar each refuse the other
+    // file's name outright, so exactly one of them can ever say ok for a given tar.
+    if (name === "seed") {
+      if (typeof policy.allowBootTar !== "function" || !policy.BOOT) refuse("this policy has no secrets file to allow");
+      if (q.get("path") !== policy.BOOT.dir) refuse(`archive: only path=${policy.BOOT.dir}`);
+      if (String(req.headers["content-type"] || "") !== "application/x-tar") refuse("archive: the body must be application/x-tar", 400);
+      const boot = policy.allowBootTar(buf);
+      const agentTokens = typeof policy.allowAgentTokensTar === "function" ? policy.allowAgentTokensTar(buf) : { ok: false, why: "this policy has no agent-tokens file to allow" };
+      if (!boot.ok && !agentTokens.ok) refuse(`archive: ${boot.why}`);
+    }
 
     if (name === "list") {
       const qs = new URLSearchParams(q);
@@ -373,6 +398,14 @@ export function createProxy({ socket = "/var/run/docker.sock", policy, config, b
       if (!computer(r.body && r.body.Config && r.body.Config.Labels).ok) refuse(`container ${m[1]} changed under the check`);
       return send(res, 200, scrub(r.body));
     }
+    if (name === "stats") {
+      // stream is never the caller's to set: a streaming request would hold this connection open
+      // for as long as the container runs, so ?stream=false is hard-coded, whatever the path
+      // carried (the route above lets no query key through at all). One buffered sample, numeric
+      // counters only, nothing to scrub.
+      const r = await engine("GET", `${ver}/containers/${id}/stats?stream=false`);
+      return send(res, r.status, r.body);
+    }
     // Residual (security, 26 Sep): any caller that reaches this proxy can stop, pause or remove
     // ANY agent's computer, not only its own; labels tell a computer from vyred's containers, not
     // one agent's from another's. Denial of service only: the home volume survives a remove
@@ -380,9 +413,11 @@ export function createProxy({ socket = "/var/run/docker.sock", policy, config, b
     // vyred is the only caller on this network.
     if (name === "op") return forward(res, "POST", `${ver}/containers/${id}/${m[2]}${qs}`);
     if (name === "remove") return forward(res, "DELETE", `${ver}/containers/${id}${qs}`);
+    if (name === "seed") return forward(res, "PUT", `${ver}/containers/${id}/archive?${new URLSearchParams({ path: policy.BOOT.dir })}`, buf);
     if (name === "exec") {
       only(body, EXEC_SHAPE, "exec");
       if (!body.Cmd) refuse("exec needs a Cmd");
+      if (body.User !== "1000:1000") refuse("exec must name User 1000:1000 (the agent's uid)");
       const verdict = policy.allowExec(c.Config.Labels, body.Cmd);
       if (!verdict.ok) refuse(`exec: ${verdict.why}`);
       return forward(res, "POST", `${ver}/containers/${id}/exec`, body);

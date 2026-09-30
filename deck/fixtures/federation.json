@@ -1,0 +1,45 @@
+{
+  "federation.move.plan": {
+    "planId": "plan_1",
+    "destination": { "name": "kit", "address": "kit.tail-example.ts.net" },
+    "pieces": {
+      "projects": { "label": "Projects", "count": 14, "bytes": 2100000000 },
+      "memory": { "label": "Memory", "count": 812, "bytes": 41000000 },
+      "vault": { "label": "Vault", "count": 23, "bytes": 40000 },
+      "sessions": { "label": "Sessions", "count": 3, "bytes": 900000 }
+    }
+  },
+  "federation.move.start": { "moveId": "move_1" },
+  "federation.move.status": {
+    "$seq": [
+      { "stage": "copying", "pieces": {
+        "projects": { "bytes": 315000000, "of": 2100000000, "done": false },
+        "memory": { "bytes": 0, "of": 41000000, "done": false },
+        "vault": { "bytes": 0, "of": 40000, "done": false },
+        "sessions": { "bytes": 0, "of": 900000, "done": false } } },
+      { "stage": "copying", "pieces": {
+        "projects": { "bytes": 2100000000, "of": 2100000000, "done": true },
+        "memory": { "bytes": 18450000, "of": 41000000, "done": false },
+        "vault": { "bytes": 0, "of": 40000, "done": false },
+        "sessions": { "bytes": 0, "of": 900000, "done": false } } },
+      { "stage": "copying", "pieces": {
+        "projects": { "bytes": 2100000000, "of": 2100000000, "done": true },
+        "memory": { "bytes": 41000000, "of": 41000000, "done": true },
+        "vault": { "bytes": 28000, "of": 40000, "done": false },
+        "sessions": { "bytes": 0, "of": 900000, "done": false } } },
+      { "stage": "verifying", "pieces": {
+        "projects": { "bytes": 2100000000, "of": 2100000000, "done": true },
+        "memory": { "bytes": 41000000, "of": 41000000, "done": true },
+        "vault": { "bytes": 40000, "of": 40000, "done": true },
+        "sessions": { "bytes": 720000, "of": 900000, "done": false } } },
+      { "stage": "ready", "pieces": {
+        "projects": { "bytes": 2100000000, "of": 2100000000, "done": true },
+        "memory": { "bytes": 41000000, "of": 41000000, "done": true },
+        "vault": { "bytes": 40000, "of": 40000, "done": true },
+        "sessions": { "bytes": 900000, "of": 900000, "done": true } } }
+    ]
+  },
+  "federation.move.confirm": { "destination": { "name": "kit" } },
+  "federation.move.cancel": { "ok": true },
+  "federation.move.forget": { "ok": true, "freedBytes": 2141900000 }
+}

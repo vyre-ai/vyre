@@ -152,6 +152,31 @@ export async function up(args, deps = {}) {
   catch (e) { one({ error: { code: "failed", message: String((e && /** @type {Error} */ (e).message) || e) } }); return 1; }
 }
 
+/** Common, obviously-not-a-secret .env values: no point nudging over these. */
+const ENV_NOT_SECRET = new Set(["true", "false", "development", "production", "test", "staging", "localhost", "debug", "info", "warn", "error"]);
+
+/**
+ * A rough, local count of .env values in `dir` that look like secrets and are not already a
+ * vault:// reference - no vault call, so no presence and no network: just enough to nudge
+ * (vault sweep and vault import do the real, careful work). Top-level .env* files only.
+ * @param {string} dir
+ */
+export function envCandidates(dir) {
+  let n = 0;
+  for (const name of [".env", ".env.local", ".env.development", ".env.production"]) {
+    let text;
+    try { text = fs.readFileSync(path.join(dir, name), "utf8"); } catch { continue; }
+    for (const line of text.split("\n")) {
+      const m = /^\s*(?:export\s+)?[A-Za-z_][A-Za-z0-9_]*\s*=\s*(.*)$/.exec(line);
+      if (!m) continue;
+      const v = m[1].trim().replace(/^["']|["']$/g, "");
+      if (v.length < 10 || v.startsWith("vault://") || /^\d+$/.test(v) || ENV_NOT_SECRET.has(v.toLowerCase())) continue;
+      n++;
+    }
+  }
+  return n;
+}
+
 /**
  * @param {string[]} args
  * @param {Deps} deps
@@ -204,6 +229,10 @@ async function run(args, deps) {
     say("  address. Setting it up takes about ten minutes, one step at a time.");
     say(dim(`\n  vyred running in the background · your data lives in ${config.home().replace(os.homedir(), "~")}`));
   } else say(b.note ? `  vyred ${signal("running")} ${dim(`· ${VERSION} · ${role} · ${b.note}`)}` : `  vyred is already running ${dim(`· ${VERSION} · ${role}`)}`);
+  if (!first) {
+    const found = envCandidates(process.cwd());
+    if (found) say(dim(`  found ${found} secret-looking value${found === 1 ? "" : "s"} in .env here, not in the vault yet · vyre vault import . --rewrite brings them in`));
+  }
 
   if (systemdManaged()) {
     // An upgrade can change the units; only root can rewrite them.

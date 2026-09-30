@@ -7,7 +7,8 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import crypto from "node:crypto";
 import { recorded } from "./testing.js";
-import { nextRun } from "./remind.js";
+import { nextRun, remindTick, BREACH_EVERY_MS } from "./remind.js";
+import { BREACH_URL } from "./health.js";
 
 const hex = n => crypto.randomBytes(n).toString("hex");
 
@@ -84,4 +85,100 @@ test("reminders: due once a day, the first 09:00 after the last run", () => {
   assert.equal(nextRun(at(5, 9, 1), at(5, 15)), at(6, 9));
   assert.equal(nextRun(at(5, 9, 1), at(7, 8)), at(7, 8) + 60_000, "a day was missed: soon");
   assert.equal(nextRun(at(4, 23), at(5, 8)), at(5, 9));
+});
+
+/** A fake pwnedpasswords that flags exactly `flagged` by password value. */
+function fakeBreachFetch(flagged) {
+  const sha = s => crypto.createHash("sha1").update(s).digest("hex").toUpperCase();
+  return async url => {
+    const prefix = String(url).slice(BREACH_URL.length);
+    const rows = ["0000000000000000000000000000000000A:0"];
+    for (const pw of flagged) if (sha(pw).slice(0, 5) === prefix) rows.push(sha(pw).slice(5) + ":9");
+    return new Response(rows.join("\r\n"));
+  };
+}
+
+test("reminders: the breach check rides the daily tick, opted in, at most once a week", async t => {
+  const planner = fakePlanner();
+  const { run, vault, db } = await recorded(t, { reminders: false }, { call: planner.call });
+  const pw = hex(12);
+  await run("vault.put", { name: "old-forum", kind: "login", fields: { username: "juno", password: pw } });
+  const fetch = /** @type {any} */ (fakeBreachFetch([pw]));
+  let now = Date.now();
+
+  // Not opted in: no network call, no breached reason.
+  const off = await remindTick(vault, planner.call, { clock: () => now, breach: { enabled: false, fetch } });
+  assert.deepEqual(off.breached, []);
+  assert.equal(db.prepare("SELECT 1 FROM vault_jobs WHERE name = 'breach'").get(), undefined);
+
+  // Opted in: the first tick runs it, and old-forum gets a "breached" todo.
+  const on = await remindTick(vault, planner.call, { clock: () => now, breach: { enabled: true, fetch } });
+  assert.deepEqual(on.breached, ["old-forum"]);
+  assert.equal(on.added.length, 1);
+  assert.match([...planner.items.values()][0].title, /old-forum/);
+  assert.equal(db.prepare("SELECT at FROM vault_jobs WHERE name = 'breach'").get().at, now);
+
+  // A second tick, minutes later, does not run it again.
+  now += 60_000;
+  const soon = await remindTick(vault, planner.call, { clock: () => now, breach: { enabled: true, fetch } });
+  assert.deepEqual(soon.breached, []);
+
+  // A week on, it runs again.
+  now += BREACH_EVERY_MS;
+  const week = await remindTick(vault, planner.call, { clock: () => now, breach: { enabled: true, fetch } });
+  assert.deepEqual(week.breached, ["old-forum"]);
+});
+
+test("reminders: a connection stuck at needs_credential gets a todo, closed once it is ready", async t => {
+  const planner = fakePlanner();
+  const { run, vault, connections, db } = await recorded(t, { reminders: false }, { call: planner.call });
+  const now = Date.now();
+
+  // A module registers before anything grants it the item it names: needs_credential.
+  const reg = (await run("vault.connections.register", { ref: "harlow", provider: "imap-smtp", account: "alex@harlowlegal.test",
+    auth: "password", capabilities: ["send_mail"], items: ["postbox-harlow"] }, "module:postbox")).id;
+
+  const first = await remindTick(vault, planner.call, { clock: () => now, connections });
+  assert.deepEqual(first.added, [`connection:${reg}`]);
+  const todo = [...planner.items.values()][0];
+  assert.match(todo.title, /^Connect alex@harlowlegal\.test$/);
+  assert.equal(todo.priority, 3);
+
+  // A second tick raises nothing new.
+  assert.deepEqual((await remindTick(vault, planner.call, { clock: () => now, connections })).added, []);
+  assert.equal(planner.items.size, 1);
+
+  // Fixed: the item exists and is granted to postbox. The todo is done.
+  await run("vault.put", { name: "postbox-harlow", kind: "login", fields: { username: "alex", password: hex(12) } });
+  await run("vault.grant", { name: "postbox-harlow", module: "postbox" });
+  await run("vault.connections.sync");
+  const closed = await remindTick(vault, planner.call, { clock: () => now, connections });
+  assert.deepEqual(closed.closed, [`connection:${reg}`]);
+  assert.equal(todo.state, "done");
+});
+
+test("reminders: a pass nearing its end gets a heads-up before it lapses", async t => {
+  const day = 86400_000;
+  const planner = fakePlanner();
+  const { run, vault } = await recorded(t, { reminders: false }, { call: planner.call });
+  const now = Date.now();
+  await run("vault.put", { name: "harlow-api", kind: "api-key", fields: { value: hex(16) } });
+  const card = (await vault.card()).card;
+  const soon = await vault.createPass({ holder: "Dana", card, items: ["harlow-api"], mode: "sealed", expires: new Date(now + 3 * day).toISOString() }, "cli");
+  const far = await vault.createPass({ holder: "Dana", card, items: ["harlow-api"], mode: "sealed", expires: new Date(now + 60 * day).toISOString() }, "cli");
+
+  const first = await remindTick(vault, planner.call, { clock: () => now });
+  assert.deepEqual(first.added, [`pass:${soon.pass.id}`], "only the one ending soon");
+  const todo = [...planner.items.values()][0];
+  assert.match(todo.title, /^Renew or revoke the pass for Dana: it ends \d{4}-\d{2}-\d{2} \(harlow-api\)$/);
+
+  // A second tick raises nothing new.
+  assert.deepEqual((await remindTick(vault, planner.call, { clock: () => now })).added, []);
+
+  // Revoked: the heads-up is done.
+  await run("vault.pass.revoke", { id: soon.pass.id });
+  const revoked = await remindTick(vault, planner.call, { clock: () => now });
+  assert.deepEqual(revoked.closed, [`pass:${soon.pass.id}`]);
+  assert.equal(todo.state, "done");
+  void far;
 });

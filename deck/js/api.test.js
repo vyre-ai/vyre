@@ -133,6 +133,40 @@ test("presence session: a relaunched app finds a live session in localStorage, a
   assert.equal(kept.has("vyre.presence.session"), false);
 });
 
+test("presence \"asked\": relay.join goes without proof first, and only passkeys once the box actually asks",
+  async () => {
+    // deck/onboard/onboard.js's live() screen calls relay.join this way (presence:"asked"), so a
+    // box from before ADR 0004 (no presence_required) pairs in one round trip, and a box that
+    // does require it gets exactly the retry api.js promises — never a passkey up front. This is
+    // the sequence reviewer-2 flagged as uncovered: onboard-page.test.js's "pair with a code"
+    // test only ever hits the fixture fallback (relay.join is not a real tool yet, so a
+    // "missing" answer short-circuits before presence enters into it at all), so nothing
+    // committed had actually driven a real presence_required round trip for this call.
+    sent.length = 0;
+    passkeys = 0;
+    const input = { url: "relay://pair/abc123", becomeDevice: true };
+    box = h => (h["x-vyre-presence"] ? { body: { data: { relay: true, box: { name: "kit" }, device: { id: "dev_1" } } } } : refused);
+    const r = await api.call("relay.join", input, { presence: "asked" });
+    assert.deepEqual(r, { relay: true, box: { name: "kit" }, device: { id: "dev_1" } });
+    const tool = sent.filter(s => s.url === "/v1/tools/relay.join");
+    assert.equal(tool.length, 2, "no proof first, then the real send once the box asks");
+    assert.equal(tool[0].headers["x-vyre-presence"], undefined);
+    assert.deepEqual(tool[0].body, input, "the same url/becomeDevice both times, not re-typed");
+    assert.match(tool[1].headers["x-vyre-presence"], /^passkey id=c1 cred=\S+ ad=\S+ cd=\S+ sig=\S+$/);
+    assert.deepEqual(tool[1].body, input);
+    assert.equal(passkeys, 1);
+  });
+
+test("presence \"asked\": a box with no presence_required pairs in one round trip, no passkey shown",
+  async () => {
+    sent.length = 0;
+    passkeys = 0;
+    box = () => ({ body: { data: { relay: true, box: { name: "kit" } } } });
+    await api.call("relay.join", { url: "relay://pair/def456", becomeDevice: true }, { presence: "asked" });
+    assert.equal(sent.filter(s => s.url === "/v1/tools/relay.join").length, 1, "the no-nag rule: never asks a box that never asked");
+    assert.equal(passkeys, 0);
+  });
+
 test("keepalive: a report sent as the page goes away asks the browser to finish it", async () => {
   sent.length = 0;
   box = () => ({ body: { error: { code: "no_such_tool", message: "no tool push.seen" } } });

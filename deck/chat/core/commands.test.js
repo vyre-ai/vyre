@@ -47,7 +47,7 @@ test("the session's own list: slashes dropped, sources kept, the composer's own 
     { name: "two words", description: "not a name" },
     null,
   ]);
-  assert.deepEqual(got.map(c => [c.name, c.source]), [["compact", "session"], ["intake-check", "project"], ["pdf", "skill"], ["model", "session"], ["rewind", "session"]]);
+  assert.deepEqual(got.map(c => [c.name, c.source]), [["compact", "session"], ["intake-check", "project"], ["pdf", "skill"], ["model", "session"], ["rewind", "session"], ["find", "session"], ["goal", "session"]]);
   assert.equal(got[1].hint, "[form]");
   assert.equal(got.find(c => c.name === "model")?.local, "model");
   assert.deepEqual(normalizeCommands({}).map(c => c.name), COMMANDS.map(c => c.name), "an older box's {}");

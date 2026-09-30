@@ -234,7 +234,7 @@ export class Dense {
    * them recovered most of dense retrieval's real-corpus quality that exclusion did, without the
    * fictional set's regression (see docs/work/recall.md for both numbers).
    * @param {Float32Array} qv  unit length
-   * @param {{ k?: number, floor?: number, z?: number, role?: string, keep?: (cwd: string|null) => boolean, userWeight?: number }} [opts]
+   * @param {{ k?: number, floor?: number, z?: number, role?: string, keep?: (cwd: string|null, session: string) => boolean, userWeight?: number }} [opts]
    * @returns {Promise<DenseHit[] & { stats?: { mean: number, std: number, n: number, effectiveFloor: number } }>}
    */
   async search(qv, { k = 200, floor = 0, z, role, keep, userWeight = 1 } = {}) {
@@ -250,7 +250,7 @@ export class Dense {
       if (want && x.role[i] !== want) continue;
       if (keep) {
         let ok = allowed.get(x.sess[i]);
-        if (ok === undefined) { ok = keep(x.cwds[x.sess[i]]); allowed.set(x.sess[i], ok); }
+        if (ok === undefined) { ok = keep(x.cwds[x.sess[i]], x.sessions[x.sess[i]]); allowed.set(x.sess[i], ok); }
         if (!ok) continue;
       }
       let dot = 0;

@@ -113,7 +113,8 @@ export default [
 
 /**
  * The memory line of vyre status, from memory.stats' `personal` field: "memory   412 facts about
- * you, model pass $0.02 of $0.05 today". null when memory said nothing usable.
+ * you, reading 40% of today's plan share". In plan terms, never dollars: nothing here is a charge
+ * (the reads run on the person's Claude plan). null when memory said nothing usable.
  * @param {any} p
  */
 export function memoryLine(p) {
@@ -122,13 +123,13 @@ export function memoryLine(p) {
   if (!Number.isFinite(n)) return null;
   let line = `memory   ${n} ${n === 1 ? "fact" : "facts"} about you`;
   const m = p.model;
-  const usd = x => `$${Number(x).toFixed(2)}`;
+  const pct = (a, b) => `${Math.min(100, Math.round((Number(a) / Math.max(1e-9, Number(b))) * 100))}%`;
   if (m && typeof m === "object") {
-    if (m.on === false) line += ", model pass off";
-    else if (Number.isFinite(Number(m.today_usd)) && Number.isFinite(Number(m.cap_usd))) {
-      line += `, model pass ${usd(m.today_usd)} of ${usd(m.cap_usd)} today`;
+    if (m.on === false) line += ", reading off";
+    else if (Number.isFinite(Number(m.today_usd)) && Number(m.cap_usd) > 0) {
+      line += `, reading ${pct(m.today_usd, m.cap_usd)} of today's plan share`;
       // The one-time read of the history that was there before, while it lasts.
-      if (Number(m.backfill_usd) > 0 && Number.isFinite(Number(m.backfill_cap_usd))) line += `, backfill ${usd(m.backfill_usd)} of ${usd(m.backfill_cap_usd)}`;
+      if (Number(m.backfill_usd) > 0 && Number(m.backfill_cap_usd) > 0) line += `, first read ${pct(m.backfill_usd, m.backfill_cap_usd)} of its share`;
       if (Number(m.waiting_turns) > 0) line += `, ${m.waiting_turns} turns to read`;
     }
   }

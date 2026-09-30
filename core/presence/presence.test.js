@@ -132,14 +132,14 @@ test("presence: tty refuses a bad path, a terminal that is not ours, one that is
   assert.equal((await p.challenge({ ...APPROVE, method: "capsule" })).error.code, "bad_input");
 });
 
-/** An Ed25519 Capsule key, enrolled, and a signer for calls. */
+/** A P-256 Capsule key (as the Secure Enclave makes), enrolled, and a signer for calls. */
 function capsuleKey(p) {
-  const { publicKey, privateKey } = crypto.generateKeyPairSync("ed25519");
+  const { publicKey, privateKey } = crypto.generateKeyPairSync("ec", { namedCurve: "P-256" });
   const pub = publicKey.export({ format: "der", type: "spki" }).toString("base64url");
-  const { id } = p.enroll({ kind: "capsule", name: "Capsule", public_key: pub });
+  const { id } = p.enroll({ kind: "capsule", name: "Capsule", public_key: pub, alg: -7 });
   const sign = (tool, input, ts, nonce = crypto.randomBytes(12).toString("base64url")) => ({
     method: "capsule", key: id, ts: String(ts), nonce,
-    sig: crypto.sign(null, Buffer.from(`vyre-presence-v1\n${tool}\n${inputHash(input)}\n${ts}\n${nonce}`), privateKey).toString("base64url"),
+    sig: crypto.sign("sha256", Buffer.from(`vyre-presence-v1\n${tool}\n${inputHash(input)}\n${ts}\n${nonce}`), { key: privateKey, dsaEncoding: "der" }).toString("base64url"),
   });
   return { id, sign, privateKey };
 }
@@ -158,10 +158,83 @@ test("presence: a Capsule signature proves one call, within 60 seconds, with a f
   assert.match((await p.verify({ ...APPROVE, caller: "capsule", proof: { ...k.sign(APPROVE.tool, APPROVE.input, now()), key: "nope" } })).message, /not enrolled/);
 });
 
+test("presence: a Capsule key is P-256 from the Secure Enclave; the old Ed25519 kind is refused at enroll", async t => {
+  const { p, db, now } = setup(t);
+  const spkiOf = k => k.export({ format: "der", type: "spki" }).toString("base64url");
+  const ed = crypto.generateKeyPairSync("ed25519");
+  assert.throws(() => p.enroll({ kind: "capsule", public_key: spkiOf(ed.publicKey) }), /P-256/);
+  assert.throws(() => p.enroll({ kind: "capsule", public_key: spkiOf(crypto.generateKeyPairSync("ec", { namedCurve: "P-384" }).publicKey) }), /P-256/);
+  const p256 = crypto.generateKeyPairSync("ec", { namedCurve: "P-256" });
+  assert.throws(() => p.enroll({ kind: "capsule", public_key: spkiOf(p256.publicKey), alg: -8 }), /alg/);
+
+  // The Capsule's own format (agreed with capsule-pro): SecKeyCopyExternalRepresentation's raw
+  // 65-byte point behind the fixed P-256 SPKI header is the same SPKI DER Node exports.
+  const point = p256.publicKey.export({ format: "jwk" });
+  const raw = Buffer.concat([Buffer.from([4]), Buffer.from(point.x, "base64url"), Buffer.from(point.y, "base64url")]);
+  const fromSwift = Buffer.concat([Buffer.from("3059301306072a8648ce3d020106082a8648ce3d030107034200", "hex"), raw]).toString("base64url");
+  assert.equal(fromSwift, spkiOf(p256.publicKey));
+  const k = p.enroll({ kind: "capsule", name: "Capsule", public_key: fromSwift });
+  assert.equal(db.prepare("SELECT alg FROM presence_keys WHERE id = ?").get(k.id).alg, -7);
+
+  // A signature by any other key, naming this id, does not check out: only the stored key counts.
+  const other = crypto.generateKeyPairSync("ec", { namedCurve: "P-256" });
+  const signWith = (key, id) => {
+    const ts = String(now()), nonce = crypto.randomBytes(12).toString("base64url");
+    return { method: "capsule", key: id, ts, nonce, sig: crypto.sign("sha256", Buffer.from(`vyre-presence-v1\n${APPROVE.tool}\n${inputHash(APPROVE.input)}\n${ts}\n${nonce}`), { key, dsaEncoding: "der" }).toString("base64url") };
+  };
+  assert.match((await p.verify({ ...APPROVE, caller: "capsule", proof: signWith(other.privateKey, k.id) })).message, /does not check out/);
+  assert.equal((await p.verify({ ...APPROVE, caller: "capsule", proof: signWith(p256.privateKey, k.id) })).ok, true);
+});
+
+test("presence: capsule and device rows always store alg -7; old rows are refused in words for their kind", async t => {
+  // A database from before this migration: an Ed25519 Capsule row and a phone row with no alg.
+  const home = tempHome(t);
+  const db = open(path.join(home, "vyre.db"));
+  t.after(() => db.close());
+  const { migrate } = await import("../store/index.js");
+  const { MIGRATIONS } = await import("./index.js");
+  migrate(db, "presence", MIGRATIONS.slice(0, -1));
+  const spkiOf = k => k.export({ format: "der", type: "spki" }).toString("base64url");
+  const ed = crypto.generateKeyPairSync("ed25519");
+  const phone = crypto.generateKeyPairSync("ec", { namedCurve: "P-256" });
+  const ins = db.prepare("INSERT INTO presence_keys (id, kind, name, public_key, alg, sign_count, created) VALUES (?,?,?,?,?,0,?)");
+  ins.run("old-capsule", "capsule", "Capsule", spkiOf(ed.publicKey), -8, Date.now());
+  ins.run("old-phone", "device", "alex-phone", spkiOf(phone.publicKey), null, Date.now());
+  ins.run("ed-phone", "device", "kit-phone", spkiOf(ed.publicKey), null, Date.now());
+  const p = new Presence({ db, platform: "linux", touchid: null, webauthn: null, who: async () => [] });
+  const alg = id => db.prepare("SELECT alg FROM presence_keys WHERE id = ?").get(id).alg;
+  assert.equal(alg("old-phone"), -7, "a device row with no alg is filled in");
+  assert.equal(alg("old-capsule"), -8, "an old Capsule row is kept as it was, to be refused");
+
+  const sign = (method, key, privateKey, ed25519 = false) => {
+    const ts = String(Date.now()), nonce = crypto.randomBytes(12).toString("base64url");
+    const msg = Buffer.from(`vyre-presence-v1\n${APPROVE.tool}\n${inputHash(APPROVE.input)}\n${ts}\n${nonce}`);
+    const sig = (ed25519 ? crypto.sign(null, msg, privateKey) : crypto.sign("sha256", msg, { key: privateKey, dsaEncoding: "der" })).toString("base64url");
+    return { method, key, ts, nonce, sig };
+  };
+  const old = await p.verify({ ...APPROVE, caller: "capsule", proof: sign("capsule", "old-capsule", ed.privateKey, true) });
+  assert.equal(old.ok, false);
+  assert.match(old.message, /re-enroll the Capsule's key/);
+  assert.equal((await p.verify({ ...APPROVE, caller: "capsule", proof: sign("device", "old-phone", phone.privateKey) })).ok, true, "a filled-in phone row still proves");
+  // A device row whose stored key isn't P-256, whatever its alg says: the phone's own wording.
+  const bad = await p.verify({ ...APPROVE, caller: "capsule", proof: sign("device", "ed-phone", ed.privateKey, true) });
+  assert.equal(bad.ok, false);
+  assert.match(bad.message, /pair the phone again/);
+  assert.doesNotMatch(bad.message, /Capsule/);
+
+  // From here on the table refuses a signer row without alg -7, however it is written.
+  assert.throws(() => ins.run("new-capsule", "capsule", "Capsule", spkiOf(phone.publicKey), -8, Date.now()), /alg -7/);
+  assert.throws(() => ins.run("new-phone", "device", "juno-phone", spkiOf(phone.publicKey), null, Date.now()), /alg -7/);
+  assert.throws(() => db.prepare("UPDATE presence_keys SET alg = NULL WHERE id = 'old-phone'").run(), /alg -7/);
+  // A new key written over an old -8 Capsule row, alg untouched, is refused too: re-enroll adds a row.
+  assert.throws(() => db.prepare("UPDATE presence_keys SET public_key = ? WHERE id = 'old-capsule'").run(spkiOf(phone.publicKey)), /alg -7/);
+  ins.run("pk", "passkey", "Laptop", spkiOf(phone.publicKey), -7, Date.now());
+});
+
 test("presence: enrolling checks the key, and listing never shows it", async t => {
   const { p } = setup(t);
   const rsa = crypto.generateKeyPairSync("rsa", { modulusLength: 2048 }).publicKey.export({ format: "der", type: "spki" }).toString("base64url");
-  assert.throws(() => p.enroll({ kind: "capsule", public_key: rsa }), /Ed25519/);
+  assert.throws(() => p.enroll({ kind: "capsule", public_key: rsa }), /P-256/);
   assert.throws(() => p.enroll({ kind: "capsule", public_key: "bm90IGEga2V5" }), /SPKI/);
   assert.throws(() => p.enroll({ kind: "passkey", public_key: rsa, alg: -7, rp_id: "example.com", credential_id: "credential-1" }), /needs a ec key/);
   p.enroll({ kind: "passkey", name: "Phone", public_key: rsa, alg: -257, rp_id: "example.com", credential_id: "credential-1" });
@@ -270,8 +343,9 @@ test("presence: through the registry, every claimed caller needs a proof, and on
   t.after(() => db.close());
   const events = new Events(db);
   const presence = new Presence({ db, events, platform: "linux", touchid: null, webauthn: null, who: async () => [], statTty: () => charDev(), writeTty: () => {} });
-  const reg = new Registry({ db, events, config: { role: "local" }, log: () => {}, presence });
-  await reg.start(discover([root]), { role: "local" });
+  // The fakes stand in for Vyre's own gate and chat, so they load as first party (ADR 0047).
+  const reg = new Registry({ db, events, config: { role: "local" }, log: () => {}, presence, firstPartyRoots: [root] });
+  await reg.start(discover([root], { firstPartyRoots: [root] }), { role: "local" });
   for (const caller of ["cli", "capsule", "deck", "local", "mcp", "mcp:agent:assistant", "unknown"]) {
     const r = await reg.call("gate.approve", { id: "a1" }, caller);
     assert.equal(r.error && r.error.code, "presence_required", `${caller} approved without a proof`);

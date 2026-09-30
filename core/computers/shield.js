@@ -7,49 +7,68 @@
 // /tree, /screenshot, /act and /input. The set lives in memory: after a restart nothing is
 // shielded, which is true, since the take-over it guarded went with the old vyred too.
 //
-// The shield ends on its own when the take-over does (computer.handed-back), so a lapsed lease
-// or a closed tab never leaves an agent blind. computerd is told on a best-effort basis; if it
+// The same shield guards a Vault fill (reason "fill", core/computers/fill.js, ADR 0028 decision
+// 3): the agent is blind while vyred signs in for it, and computerd accepts only the fill's own
+// token on /cdp. A person's shield ends on its own when the take-over does (computer.handed-back),
+// so a lapsed lease or a closed tab never leaves an agent blind; a fill's ends with the fill. computerd is told on a best-effort basis; if it
 // cannot be reached, vyred's refusal still holds, and a restarted computerd starts unshielded.
 
 /** What the hands hear while a person signs in. */
 export const SHIELDED = "a person is signing in on this computer";
+/** What the hands hear while the Vault fills a login for the agent. */
+export const FILLING = "a sign-in is being filled on this computer";
+
+/** @typedef {"person"|"fill"} Reason */
 
 export class Shield {
   /**
    * @param {{ pool: import("./pool.js").Pool, emit: (type: string, payload: any, where?: any) => any,
    *   on?: (pattern: string, fn: (e: any) => void) => () => void, log?: (m: string) => void,
-   *   tell?: (agent: string, on: boolean) => Promise<boolean> }} deps
+   *   tell?: (agent: string, on: boolean, o?: { reason?: Reason, fill_token?: string }) => Promise<boolean> }} deps
    */
   constructor(deps) {
     this.pool = deps.pool;
     this.send = deps.emit;
     this.log = deps.log || (() => {});
     this.tell = deps.tell || (async () => false);
-    /** @type {Set<string>} */
-    this.agents = new Set();
+    /** Shielded agents, and why. @type {Map<string, Reason>} */
+    this.agents = new Map();
     this.off = deps.on ? deps.on("computer.handed-back", e => {
       const agent = e && e.payload && e.payload.agent;
-      if (agent && this.agents.has(String(agent))) this.set(String(agent), false).catch(err => this.log(`unshield ${agent}: ${err.message}`));
+      if (agent && this.agents.get(String(agent)) === "person") this.set(String(agent), false).catch(err => this.log(`unshield ${agent}: ${err.message}`));
     }) : () => {};
   }
 
   has(agent) { return this.agents.has(agent); }
 
+  /** Why the agent is shielded, or null. */
+  reason(agent) { return this.agents.get(agent) || null; }
+
   /**
    * Raise or lower the shield. vyred's refusal changes first, before computerd is asked, so no
-   * read slips through while the request is on the wire.
+   * read slips through while the request is on the wire. A person's shield and a fill's never
+   * replace each other: raising one while the other is up is refused ("busy"), and lowering
+   * names the reason it lowers, so a person's hand-back never ends a fill.
+   * @param {string} agent @param {boolean} on
+   * @param {{ reason?: Reason, fill_token?: string }} [o] fill_token only with reason "fill"
    * @returns {Promise<{ agent: string, shielded: boolean, computerd: boolean }>}
    */
-  async set(agent, on) {
-    const was = this.agents.has(agent);
-    if (on) this.agents.add(agent);
+  async set(agent, on, o = {}) {
+    const reason = o.reason || "person";
+    const now = this.agents.get(agent);
+    if (on && now && now !== reason) throw Object.assign(new Error(now === "fill"
+      ? `${agent}'s computer is busy: a sign-in is being filled; try again in a few seconds`
+      : `${agent}'s computer is busy: a person is signing in on it`), { code: "busy" });
+    if (!on && now && now !== reason) return { agent, shielded: true, computerd: false };
+    const was = Boolean(now);
+    if (on) this.agents.set(agent, reason);
     else this.agents.delete(agent);
     if (was !== on) {
-      this.send(on ? "computer.shielded" : "computer.unshielded", { agent });
-      this.log(`${agent}'s computer ${on ? "shielded" : "unshielded"}`);
+      this.send(on ? "computer.shielded" : "computer.unshielded", { agent, reason });
+      this.log(`${agent}'s computer ${on ? "shielded" : "unshielded"} (${reason})`);
     }
     let told = false;
-    try { told = await this.tell(agent, on); }
+    try { told = await this.tell(agent, on, on && reason === "fill" && o.fill_token ? { reason, fill_token: o.fill_token } : { reason }); }
     catch (e) { this.log(`could not ${on ? "shield" : "unshield"} computerd for ${agent}: ${/** @type {Error} */ (e).message}`); }
     return { agent, shielded: on, computerd: told };
   }
@@ -61,7 +80,8 @@ export class Shield {
    * @param {string} agent @param {boolean} read @param {() => any} next
    */
   mayAct(agent, read, next) {
-    if (this.agents.has(agent)) return { ok: false, why: SHIELDED };
+    const r = this.agents.get(agent);
+    if (r) return { ok: false, why: r === "fill" ? FILLING : SHIELDED };
     if (read) { this.pool.touch(agent); return { ok: true }; }
     return next();
   }

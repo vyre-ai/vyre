@@ -33,7 +33,10 @@ A new exception needs the lead's OK.
 
 ## The frozen exceptions
 
-Frozen from main on 27 September 2026: 26 edges. "Becomes" says where each one should go:
+Frozen from main on 27 September 2026: 26 edges, 24 now (connectors moved its shared credential,
+mail-message and on_behalf helpers into `lib/connectors` on 2026-09-28, which removed
+`core/google -> core/connectors` and `core/mcp -> core/connectors` entirely rather than freezing
+their wider imports). "Becomes" says where each remaining one should go:
 
 - **ctx.call**: call a tool through the registry instead.
 - **lib**: the imported file is a pure helper; move it to `lib/<name>`.
@@ -44,18 +47,15 @@ Frozen from main on 27 September 2026: 26 edges. "Becomes" says where each one s
 | `core/cli -> core/names` | backup.js, system.js | `vyre backup` and `vyre up` write the box backup and the systemd unit in-process | ctx.call |
 | `core/cli -> core/recall` | embed.js, progress.js | `vyre status` and `vyre doctor` read index progress and the embedder's state directly | ctx.call |
 | `core/cli -> core/resilience` | backoff.js, node.js, stream.js | the reference client every surface uses, a pure library | lib |
-| `core/cli -> core/vault` | backup.js, cli-io.js, kinds.js, refs.js, ssh/setup.js | `vyre vault`'s terminal side: no-echo prompts, `vault://` refs, the sealed backup format. Debt: kinds.js and ssh/setup.js move to a shared lib/ in 0.1.1 (vault) | surface |
+| `core/cli -> core/vault` | backup.js, cli-io.js, refs.js | `vyre vault`'s terminal side: no-echo prompts, `vault://` refs, the sealed backup format | surface |
 | `core/cli -> local/voice` | talk.js | `vyre voice`, push-to-talk from a terminal until the native Capsule has voice | ctx.call |
 | `core/daemon -> core/harness` | rules.js | the kernel runs the security floor on every call's input; the floor belongs in the kernel | lib |
 | `core/daemon -> core/names` | guests.js | the router asks whether a tailnet caller is a guest before the registry | ctx.call |
 | `core/daemon -> core/switchboard` | sessions.js | the router resolves which Claude Code session a call comes from | ctx.call |
 | `core/files -> core/link` | transport.js | Mac to box file transfer over the tailnet transport | lib |
 | `core/files -> core/names` | tailscale.js | runs the tailscale CLI (Taildrive) | lib |
-| `core/google -> core/connectors` | auth.js, behalf.js, message.js | the connectors' shared credential library (ADR 0016, decision 2). Debt: behalf.js and message.js move to a shared lib/ in 0.1.1 (connectors) | lib |
-| `core/mail -> core/connectors` | auth.js, behalf.js, message.js | mail sends through the connectors' helpers. Debt: move to a shared lib/ in 0.1.1 (connectors) | lib |
 | `core/hooks -> core/names` | tailscale.js | runs the tailscale CLI | lib |
 | `core/link -> core/names` | tailscale.js | finds the box on the tailnet | lib |
-| `core/mcp -> core/connectors` | auth.js, behalf.js | the connectors' shared credential library. Debt: behalf.js moves to a shared lib/ in 0.1.1 (connectors) | lib |
 | `core/names -> core/link` | transport.js | names and link import each other; the transport belongs in a lib both use | lib |
 | `core/network -> core/names` | guests.js, identity.js, tailscale.js | the listeners identify tailnet peers (ADR 0002) | lib |
 | `core/onboard -> core/names` | service.js, tailscale.js | onboarding reserves the name and starts the tailnet listener in-process | ctx.call |
@@ -77,11 +77,12 @@ Frozen from main on 27 September 2026: 26 edges. "Becomes" says where each one s
 
 ## What the list says
 
-Four files carry most of it. `core/names/tailscale.js` (6 edges) and `core/link/transport.js`
-(3) are shared plumbing, not features: the first move is a small tailnet lib beside the kernel
-that both names and link use, which also ends the `names` and `link` cycle.
-`core/connectors/auth.js` (2) is already a library by design. The ctx.call cases (8) are places
-where a part reaches into another's state and should ask its tools instead.
+Two files carry most of the rest. `core/names/tailscale.js` (6 edges) and
+`core/link/transport.js` (3) are shared plumbing, not features: the first move is a small tailnet
+lib beside the kernel that both names and link use, which also ends the `names` and `link` cycle.
+The ctx.call cases (8) are places where a part reaches into another's state and should ask its
+tools instead. `lib/connectors` (auth.js, message.js, behalf.js) is the same move already done for
+the connectors' own shared helpers.
 
 ## First cleanup: a tailnet lib
 

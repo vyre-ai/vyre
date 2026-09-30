@@ -84,12 +84,12 @@ const handle = d.registry.deps.handler({});
 // key that is removed again at once, so the phone starts with nothing but a code to enroll with.
 {
   const presence = d.registry.deps.presence;
-  const cap = crypto.generateKeyPairSync("ed25519");
-  const key = presence.enroll({ kind: "capsule", name: "setup", public_key: cap.publicKey.export({ format: "der", type: "spki" }).toString("base64url") });
+  const cap = crypto.generateKeyPairSync("ec", { namedCurve: "P-256" });
+  const key = presence.enroll({ kind: "capsule", name: "setup", public_key: cap.publicKey.export({ format: "der", type: "spki" }).toString("base64url"), alg: -7 });
   const { inputHash } = await import("../../core/presence/index.js");
   const person = (tool, input) => {
     const ts = String(Date.now()), nonce = crypto.randomBytes(12).toString("base64url");
-    const sig = crypto.sign(null, Buffer.from(`vyre-presence-v1\n${tool}\n${inputHash(input)}\n${ts}\n${nonce}`), cap.privateKey).toString("base64url");
+    const sig = crypto.sign("sha256", Buffer.from(`vyre-presence-v1\n${tool}\n${inputHash(input)}\n${ts}\n${nonce}`), { key: cap.privateKey, dsaEncoding: "der" }).toString("base64url");
     return d.registry.call(tool, input, "cli", { proof: { method: "capsule", key: key.id, ts, nonce, sig } });
   };
   for (const name of ["harlow-gmail", "northwind-ads"]) {

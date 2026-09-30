@@ -22,7 +22,7 @@ export const SURE = 0.5;
 /** The default daily cap on questions, in USD (config.memory.model.askDailyUsd): about 150 a day. */
 export const ASK_DAILY_USD = 0.5;
 /** What a surface shows when the cap is reached: never a silent failure. */
-export const LIMIT_MESSAGE = "Vyre IQ's daily limit is reached, change it in Settings";
+export const LIMIT_MESSAGE = "Vyre IQ has used today's share of your Claude plan. It answers again tomorrow, or give memory a bigger share in Settings.";
 /** What one answer call may cost at most, in USD. */
 export const MAX_USD = 0.02;
 
@@ -42,12 +42,25 @@ const TO_USER = /\byour (?:wife|husband|partner|spouse|girlfriend|boyfriend|fian
 /** A passage's header as the model sees it: project folder, session name, date. */
 const header = p => [p.cwd ? String(p.cwd).split("/").filter(Boolean).pop() : "unknown", String(p.name || p.session), p.ts ? new Date(p.ts).toISOString().slice(0, 10) : "unknown"];
 
+/** A question that points at what is on the screen. */
+export const POINTS = /\b(?:this|that|these|those|here|screen|looking at|in front of me|open|the (?:email|mail|message|sender|page|doc|document|pr|issue|ticket|thread|person|file|tab|window|invite|meeting))\b|\b(?:he|she|they|him|her|them|his|hers|their)\b/i;
+
+/** The screen as plain text, capped: app, title, selection, then what is visible. @param {any} s */
+export function screenText(s) {
+  if (!s || typeof s !== "object") return "";
+  const one = (x, n) => (typeof x === "string" ? x.replace(/\s+/g, " ").trim().slice(0, n) : "");
+  return [one(s.app, 80) && `app: ${one(s.app, 80)}`, one(s.title, 200) && `title: ${one(s.title, 200)}`,
+    one(s.selection, 2000) && `selected: ${one(s.selection, 2000)}`, one(s.text, 4000) && `visible: ${one(s.text, 4000)}`].filter(Boolean).join("\n");
+}
+
 /** The prompt for one question and its passages: numbered from 1, each with its session name and date. */
-export function askPrompt(question, passages) {
+export function askPrompt(question, passages, view = "") {
   const fence = s => String(s).replace(/<\/?(?:passage|reply)[^>]*>/gi, "");
   const body = passages.map((p, i) => { const [project, session, date] = header(p); const said = p.reply ? `${fence(String(p.text).slice(0, 600))}\n<reply role="assistant">\n${fence(String(p.reply.text).slice(0, 1200))}\n</reply>` : fence(String(p.text).slice(0, 1500));
     return `<passage n="${i + 1}" project="${fence(project)}" session="${fence(session)}" date="${date}" role="${p.role}">\n${said}\n</passage>`; }).join("\n");
-  return `${body}\n\nQuestion: ${fence(question)}`;
+  // What is on screen only says what the question points at: it is not a passage and never a source.
+  const seen = view ? `\n\n<screen note="what the user is looking at: only to understand the question; never cite it, never a fact">\n${fence(view).replace(/<\/?screen[^>]*>/gi, "")}\n</screen>` : "";
+  return `${body}${seen}\n\nQuestion: ${fence(question)}`;
 }
 
 export const askHash = (/** @type {string} */ prompt) => crypto.createHash("sha256").update(`${VERSION}\u0000${SYSTEM}\u0000${prompt}`).digest("hex").slice(0, 32);
@@ -107,7 +120,7 @@ export function checkAsk(reply, passages, { header: withHeader = true } = {}) {
  * @param {{ db: import("node:sqlite").DatabaseSync, answer: (i: any) => Promise<any>, retrieve: (i: any) => Promise<any>,
  *   runner?: ((r: { system: string, prompt: string, model: string, maxUsd: number }) => Promise<{ text: string, usd: number }>)|null,
  *   model?: () => string, budget?: { allow: (usd: number) => boolean, charge: (usd: number) => void },
- *   fixes?: any, personalQ?: (q: string) => boolean, trusted?: (session: string) => boolean }} deps
+ *   fixes?: ReturnType<typeof import("./fix.js").fixes>|null, personalQ?: (q: string) => boolean, trusted?: (session: string) => boolean }} deps
  *   personalQ: the question is about the user's own life; then only the user's own words, from
  *   sessions source trust keeps, may ground the answer (never Claude's turns or a reply).
  *   fixes: the person's corrections (iq/fix.js); every answer gets an answer_id they can correct.
@@ -122,7 +135,7 @@ export function asker({ db, answer, retrieve, runner = null, model = () => "haik
    *   stage?: (s: "understanding"|"searching"|"reading"|"checking") => void }} input
    *   stage: told as each step starts, so a surface shows what IQ is doing (ADR 0034, stream).
    */
-  return async function ask({ question, project_cwds = [], personal: sees = false, thread = null, stage = () => {} }) {
+  return async function ask({ question, project_cwds = [], personal: sees = false, thread = null, stage = () => {}, screen = null }) {
     const t0 = performance.now();
     const q = String(question || "").trim();
     const done = r => {
@@ -154,15 +167,20 @@ export function asker({ db, answer, retrieve, runner = null, model = () => "haik
     // 2. The passages.
     stage("searching");
     const forgotten = fixes ? fixes.forgotten() : new Set();
-    let passages = (await retrieve({ question: q, project_cwds, k: 8, personal: sees, thread })).passages.filter(p => !forgotten.has(`${p.session}:${p.seq}`));
     // Source trust (ADR 0034): a question about the user's life is answered only from their own
     // words in sessions trust keeps. Claude's turns, a reply, injected blocks and dev talk never count.
     const mine = personalQ(q);
+    // The screen (the Capsule's front app, title, selection, visible text) helps understand a
+    // question that points at it ("who sent the email I'm looking at"): its names widen the search
+    // and the model sees it, marked as never a source. Never for a question about the user's life,
+    // never as evidence, never cited.
+    const view = !mine && screen && POINTS.test(q) ? screenText(screen) : "";
+    let passages = (await retrieve({ question: q, project_cwds, k: 8, personal: sees, thread, hint: view })).passages.filter(p => !forgotten.has(`${p.session}:${p.seq}`));
     if (mine) passages = passages.filter(p => p.role === "user" && trusted(p.session) && !devTalk(String(p.text)))
       .map(p => ({ ...p, reply: undefined, text: userWords(String(p.text)) })).filter(p => p.text.trim());
     if (!passages.length) return done({ via: "retrieval" });
     // 3. The answer, kept by the prompt's hash.
-    const prompt = askPrompt(q, passages);
+    const prompt = askPrompt(q, passages, view);
     const hash = askHash(prompt);
     let text = /** @type {any} */ (get.get(hash))?.reply ?? null, usd = 0;
     // The day's cap is reached: say so, with where to change it, and never answer quietly with nothing.

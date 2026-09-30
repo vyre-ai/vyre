@@ -59,6 +59,7 @@ import { chunks, encode } from "../core/recall/embed.js";
 import { Dense } from "../core/recall/dense.js";
 import { claudeOnce, modelFor, VERSION } from "../core/memory/personal/reader.js";
 import { fakeEmbedder } from "../core/recall/testing.js";
+import { fakeReachCall } from "../test/fixtures/fake-reach.js";
 import { rankSaid, yourAnswer, words } from "./lib/said.js";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
@@ -181,6 +182,8 @@ export async function startMemory(db, { me, embedder, dense, runner = null, iqRu
         if (tool === "projects.list") return { data: [] };
         if (tool === "projects.of") return { data: null };
         if (tool === "agents.list") return { data: [] };
+        // memory's reach() asks projects.reach even for the owner case (dcd97809).
+        if (tool === "projects.reach") return fakeReachCall(tool, input, {});
       } catch (e) { return { error: { code: "failed", message: /** @type {Error} */ (e).message } }; }
       return { error: { code: "no_such_tool", message: `${tool} is not in the evaluation` } };
     },

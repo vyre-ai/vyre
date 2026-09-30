@@ -187,6 +187,29 @@ test("reader: a failed run or a bad answer charges what was spent and keeps the 
   assert.equal(x.reader.status().last?.status, "failed");
 });
 
+test("reader: repeated failures back off, so a broken model isn't paid for on every turn", async t => {
+  let calls = 0;
+  const w = await world(t, { turns: ["my dog is a corgi"], config: { memory: { model: { batch: 1 } } },
+    runner: async () => { calls++; throw new Error("offline"); } });
+  assert.equal((await w.reader.pump()).waiting, "the model failed");
+  w.clock.t += 61_000;
+  assert.equal((await w.reader.pump()).waiting, "the model failed");
+  w.clock.t += 61_000;
+  assert.equal((await w.reader.pump()).waiting, "the model failed");
+  assert.equal(calls, 3, "three tries, each its own charge-eligible run");
+  // A fourth attempt, even after the usual minute apart, backs off instead of paying to fail again.
+  w.clock.t += 61_000;
+  assert.equal((await w.reader.pump()).waiting, "backing off after repeated failures");
+  assert.equal(calls, 3, "no model call while backing off");
+  w.clock.t += 2 * 60_000;
+  assert.equal((await w.reader.pump()).waiting, "backing off after repeated failures", "still inside the 5-minute wait");
+  assert.equal(calls, 3);
+  // Once the wait since the last failure has passed, it tries again (and a success resets the streak).
+  w.clock.t += 2 * 60_000;
+  assert.equal((await w.reader.pump()).waiting, "the model failed");
+  assert.equal(calls, 4);
+});
+
 test("reader: two readings of a batch keep the union of what they found", async t => {
   let n = 0;
   const runner = async r => {
@@ -231,4 +254,12 @@ test("reader: model calls run on the Claude login, never API dollars, unless bil
   const ask = billing => claudeOnce({ bin, cwd: dir, env: { ...process.env, ANTHROPIC_API_KEY: "sk-fixture" }, billing: () => billing })({ system: "s", prompt: "p", model: "haiku", maxUsd: 0.01 });
   assert.equal((await ask(undefined)).text, "login");
   assert.equal((await ask("api")).text, "key");
+});
+
+test("reader: the person's plan share sets the daily cap; an explicit figure in config still wins", async t => {
+  const cap = async config => (await world(t, { turns: ["hi"], config })).reader.status().cap_usd;
+  assert.equal(await cap({}), READER.dailyUsd, "medium by default");
+  assert.equal(await cap({ memory: { model: { share: "small" } } }), 0.1);
+  assert.equal(await cap({ memory: { model: { share: "large" } } }), 1);
+  assert.equal(await cap({ memory: { model: { share: "large", dailyUsd: 0.3 } } }), 0.3);
 });

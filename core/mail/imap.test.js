@@ -7,7 +7,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { EventEmitter } from "node:events";
 import { imapAdapter, smtpData, searchCriteria } from "./imap.js";
-import { parseQuery } from "../connectors/message.js";
+import { parseQuery } from "../../lib/connectors/message.js";
 import { startFakeMail } from "./testing/fake-imap.js";
 
 const PASS = "correct horse battery";

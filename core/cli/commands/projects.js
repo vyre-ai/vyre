@@ -134,9 +134,16 @@ export async function hereProject() {
   return r.data || null;
 }
 
+// A Claude Code session id: a UUID, optionally with a /agent-... subagent suffix. Recognising
+// the shape lets a literal id through even before Recall's catalogue has indexed it: the exact
+// moment a person says "put this chat in project X" right after starting it.
+const SESSION_ID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}(\/.+)?$/i;
+
 /**
  * A thread from what a person typed: a number from the project's list, an id or the start of
- * one, or a /rename name (exact first, then a unique partial match).
+ * one, or a /rename name (exact first, then a unique partial match). A full session id is
+ * accepted even when it is not in the catalogue yet (a thread just started, not indexed): the
+ * caller already knows the exact id, so no lookup is needed to trust it.
  */
 async function findThread(ref, projectSlug) {
   const q = String(ref || "").trim();
@@ -157,6 +164,7 @@ async function findThread(ref, projectSlug) {
     || (q.length >= 4 && pickOne(rows.filter(r => r.id.startsWith(low))))
     || pickOne(rows.filter(r => (r.name || "").toLowerCase() === low))
     || pickOne(rows.filter(r => (r.name || "").toLowerCase().includes(low)))
+    || (SESSION_ID_RE.test(q) && { thread: { id: q, missing: true } })
     || { error: `no thread matches "${q}"` };
 }
 
@@ -314,12 +322,12 @@ async function moveHomes(args) {
 
 export default [
   {
-    name: "projects", order: 20, usage: "vyre projects [list|move [--dry-run]] [--json]", summary: "every project; on a box, move moves the homes to /work/projects",
+    name: "projects", order: 20, usage: "vyre projects [list|move [--dry-run]] [--json]", summary: "every project; on a server, move moves the homes to /work/projects",
     verbs: [
       // --json: projects.list's rows [{ slug, name, home, threads, ... }]
       { verb: "list", summary: "every project", usage: "", read: true },
       // --json: { moved: [slug], skipped: [{ slug, why }], from, to, rewrites?, next?, done? }
-      { verb: "move", summary: "on a box, move the project homes to /work/projects", usage: "[--dry-run]" },
+      { verb: "move", summary: "on a server, move the project homes to /work/projects", usage: "[--dry-run]" },
     ],
     async run(args) {
       if (args[0] === "list") args = args.slice(1);

@@ -27,8 +27,8 @@ import fs from "node:fs";
 import { hiddenPrompt, visiblePrompt, Scrubber, parseRunArgs, flags } from "../../vault/cli-io.js";
 import { inspect } from "../../vault/backup.js";
 import { templateRefs, render, parseEnvFile, parseRef } from "../../vault/refs.js";
-import { KINDS as VAULT_KINDS, defaultField as defaultFieldOf } from "../../vault/kinds.js";
-import { setupPlan, addAllowedSigner, findPrivateKeys } from "../../vault/ssh/setup.js";
+import { KINDS as VAULT_KINDS, defaultField as defaultFieldOf } from "../../../lib/vault-kinds/kinds.js";
+import { setupPlan, addAllowedSigner, findPrivateKeys } from "../../../lib/vault-ssh-setup/setup.js";
 
 // --json, on every command: the tool's own `{"data":...}` or `{"error":{code,message}}` as one
 // line on stdout and nothing else there. Exit codes: 0 ok, 1 error, 3 presence refused or
@@ -1202,6 +1202,7 @@ const REASONS = [
   ["rotate", "rotate", "a copy left this box · replace the value to clear it"],
   ["old", "old", "not changed for more than a year"],
   ["2fa-available", "two-factor available", "the site offers one-time codes · vyre vault edit <item> --field totp"],
+  ["passkey-available", "passkey available", "the site takes a passkey instead of this password · sign in there and add one"],
   ["unprotected", "not yet protected", "still opened without your password · vyre vault account create"],
 ];
 
@@ -1210,10 +1211,11 @@ async function health(args) {
   if (args.length) return oops("vyre vault health");
   const r = await tool("vault.health");
   if (r.error) return fail(r);
-  const { items = [], counts = {}, checked = 0 } = r.data || {};
+  const { items = [], counts = {}, checked = 0, touchid } = r.data || {};
   say("");
   say(`  ${bold("Watchtower")} ${dim(`· ${plural(checked, "item")} checked`)}`);
   say("  " + REASONS.map(([k, label]) => (counts[k] ? beacon(`${counts[k]} ${label}`) : dim(`0 ${label}`))).join(dim(" · ")));
+  if (touchid && touchid.available && !touchid.enrolled) say(dim("  Touch ID could unlock your personal vault, no password prompts · vyre vault account enroll-touchid"));
   if (!items.length) { say(`\n  ${signal("nothing to fix")}\n`); return 0; }
   for (const [k, label, why] of REASONS) {
     const rows = items.filter(i => (i.reasons || []).includes(k));

@@ -10,6 +10,7 @@ import path from "node:path";
 import http from "node:http";
 import { createProxy, duplicateKey, loadPolicy, scrub } from "./proxy.js";
 import { SCRATCH } from "../../test/scratch.mjs";
+import { BOOT, bootTar, allowBootTar, AGENT_TOKENS, agentTokensTar, allowAgentTokensTar } from "../computers/driver/policy.js";
 
 const PREFIX = "run.vyre.computers";
 const CONFIG = { network: "vyre-computers", image: "vyre/computer:0.1", labelPrefix: PREFIX, capAdd: [] };
@@ -34,6 +35,9 @@ const stub = {
   },
   allowExec: labels => stub.isComputerLabels(labels) ? { ok: true } : { ok: false, why: "not a computer" },
   allowContainerOp: labels => stub.allowExec(labels),
+  // The real ones: the .boot and .agent-tokens checks are byte-exact, and a stub of either would
+  // test nothing.
+  BOOT, allowBootTar, allowAgentTokensTar,
 };
 
 /** A fake Engine: one computer, one database, one volume per case, two execs. */
@@ -76,6 +80,11 @@ async function engine(t) {
       const v = volumes.get(m[1]);
       return v ? send(200, v) : send(404, { message: "no such volume" });
     }
+    if ((m = /^\/containers\/([^/]+)\/stats$/.exec(p))) {
+      assert.equal(u.search, "?stream=false", "stream=false is hard-coded; the caller's query never reaches here");
+      const b = boxes.get(m[1]);
+      return b ? send(200, { cpu_stats: {}, precpu_stats: {}, memory_stats: {}, networks: {} }) : send(404, { message: "no such container" });
+    }
     if ((m = /^\/exec\/([^/]+)\/json$/.exec(p))) {
       const e = execs.get(m[1]);
       return e ? send(200, e) : send(404, { message: "no such exec" });
@@ -86,6 +95,7 @@ async function engine(t) {
       return;
     }
     if (/^\/containers\/[^/]+\/exec$/.test(p)) return send(201, { Id: "ex9" });
+    if (req.method === "PUT" && /^\/containers\/[^/]+\/archive$/.test(p)) return send(200);
     if (/^\/containers\/[^/]+\/(start|stop|pause|unpause)$/.test(p) || (req.method === "DELETE" && /^\/containers\/[^/]+$/.test(p))) return send(204);
     send(404, { message: "page not found" });
   });
@@ -112,7 +122,7 @@ async function proxy(t, policy = stub, bearer = BEARER) {
    * @returns {Promise<{ status: number, text: string, json: any }>}
    */
   const call = (method, p, body, headers = {}) => new Promise((resolve, reject) => {
-    const data = body === undefined ? null : Buffer.from(typeof body === "string" ? body : JSON.stringify(body));
+    const data = body === undefined ? null : Buffer.isBuffer(body) ? body : Buffer.from(typeof body === "string" ? body : JSON.stringify(body));
     /** @type {Record<string, any>} an empty value drops the header */
     const h = { authorization: `Bearer ${bearer}`, ...(data ? { "content-type": "application/json", "content-length": data.length } : {}), ...headers };
     for (const k of Object.keys(h)) if (h[k] === "") delete h[k];
@@ -243,6 +253,16 @@ test("dockerproxy: per-container ops on a computer pass, by the id the Engine ga
   assert.equal((await p.call("GET", "/v1.43/containers/gone/json")).status, 404);
 });
 
+test("dockerproxy: stats forwards for a computer, whatever query the caller tried, and is refused for someone else's container", async t => {
+  const p = await proxy(t);
+  const r = await p.call("GET", "/v1.43/containers/kitfull0001/stats");
+  assert.equal(r.status, 200, r.text);
+  assert.deepEqual(Object.keys(r.json), ["cpu_stats", "precpu_stats", "memory_stats", "networks"]);
+  assert.equal((await p.call("GET", "/containers/kitfull0001/stats?stream=true")).status, 403, "stream is never the caller's to set");
+  assert.equal((await p.call("GET", "/containers/db1/stats")).status, 403, "someone else's container");
+  assert.equal((await p.call("GET", "/containers/gone/stats")).status, 404);
+});
+
 test("dockerproxy: a container without computer labels is refused, whatever the request claims", async t => {
   const p = await proxy(t);
   for (const id of ["db1", "vyred"]) {
@@ -259,8 +279,13 @@ test("dockerproxy: a container without computer labels is refused, whatever the 
 
 test("dockerproxy: exec on a computer passes; exec start on a non-computer's exec is refused", async t => {
   const p = await proxy(t);
-  const c = await p.call("POST", "/v1.43/containers/kitfull0001/exec", { AttachStdout: true, AttachStderr: true, Cmd: ["id", "-u"] });
+  const c = await p.call("POST", "/v1.43/containers/kitfull0001/exec", { AttachStdout: true, AttachStderr: true, Cmd: ["id", "-u"], User: "1000:1000" });
   assert.equal(c.status, 201, c.text);
+  // A computer starts as root to switch users, so an exec with no User would be root in it; and
+  // vyre's uid runs computerd and Chrome. Only the agent's own uid is allowed.
+  assert.equal((await p.call("POST", "/v1.43/containers/kitfull0001/exec", { Cmd: ["id"] })).status, 403, "no User");
+  assert.equal((await p.call("POST", "/v1.43/containers/kitfull0001/exec", { Cmd: ["id"], User: "1001:1001" })).status, 403, "vyre's uid");
+  assert.equal((await p.call("POST", "/v1.43/containers/kitfull0001/exec", { Cmd: ["id"], User: "agent" })).status, 403, "a name, not the uid");
   assert.equal((await p.call("POST", "/v1.43/containers/kitfull0001/exec", { Cmd: ["sh"], Privileged: true })).status, 403);
   assert.equal((await p.call("POST", "/v1.43/containers/kitfull0001/exec", { Cmd: ["sh"], User: "0" })).status, 403);
   const s = await p.call("POST", "/v1.43/exec/ex1/start", { Detach: false, Tty: false });
@@ -314,6 +339,56 @@ test("dockerproxy: scrub drops an exec's ProcessConfig and a container's Env, Cm
   assert.deepEqual(scrub({ Id: "c", Path: "p", Args: ["a"], Config: { Env: ["A=1"], Cmd: ["x"], Entrypoint: ["y"], Labels: {} } }),
     { Id: "c", Config: { Labels: {} } });
   assert.equal(scrub(null), null);
+});
+
+test("dockerproxy: the only archive upload is a computer's .boot tar, to /var/lib/vyre", async t => {
+  const p = await proxy(t);
+  const good = bootTar({ computerd_token: "k".repeat(43), vnc_password: "Ab-_1234" });
+  const tarH = { "content-type": "application/x-tar" };
+  const put = (path, body, h = tarH) => p.call("PUT", path, body, h);
+  const ok = await put("/v1.43/containers/kitfull0001/archive?path=%2Fvar%2Flib%2Fvyre", good);
+  assert.equal(ok.status, 200, ok.text);
+  const fwd = p.sent().filter(s => s.method === "PUT");
+  assert.deepEqual(fwd.map(s => s.url), ["/v1.43/containers/kitfull0001/archive?path=%2Fvar%2Flib%2Fvyre"]);
+  assert.equal((await put("/v1.43/containers/kitfull0001/archive?path=%2Fhome%2Fagent", good)).status, 403, "another folder");
+  assert.equal((await put("/v1.43/containers/kitfull0001/archive?path=%2F", good)).status, 403, "the root");
+  assert.equal((await put("/v1.43/containers/kitfull0001/archive", good)).status, 403, "no path");
+  assert.equal((await put("/v1.43/containers/db1/archive?path=%2Fvar%2Flib%2Fvyre", good)).status, 403, "not a computer");
+  assert.equal((await put("/v1.43/containers/kitfull0001/archive?path=%2Fvar%2Flib%2Fvyre", good, { "content-type": "application/json" })).status, 400);
+  const evil = Buffer.from(good); evil.write("x", 0, "ascii");
+  assert.equal((await put("/v1.43/containers/kitfull0001/archive?path=%2Fvar%2Flib%2Fvyre", evil)).status, 403, "another file");
+  assert.equal((await put("/v1.43/containers/kitfull0001/archive?path=%2Fvar%2Flib%2Fvyre&noOverwriteDirNonDir=1", good)).status, 403, "extra query");
+  assert.equal(p.sent().filter(s => s.method === "PUT").length, 1, "only the good upload reached the Engine");
+  assert.equal((await p.call("GET", "/v1.43/containers/kitfull0001/archive?path=%2Fvar%2Flib%2Fvyre")).status, 403, "never a read");
+  // The archive route is exactly as bound to the bearer as every other route -- this is HIGH 2's
+  // new route getting the same fix the rest of the proxy just did, not a separate exemption.
+  assert.equal((await put("/v1.43/containers/kitfull0001/archive?path=%2Fvar%2Flib%2Fvyre", good, { ...tarH, authorization: "" })).status, 401);
+});
+
+test("dockerproxy: a shared computer's .agent-tokens tar is let through the same archive route -- the tar's own name, not the query, tells it apart from .boot", async t => {
+  const p = await proxy(t);
+  const goodAgents = agentTokensTar([{ id: "id1", name: "alice", token: "a".repeat(40) }, { id: "id2", name: "bob", token: "b".repeat(40) }]);
+  const put = (path, body, h = { "content-type": "application/x-tar" }) => p.call("PUT", path, body, h);
+  const ok = await put("/v1.43/containers/kitfull0001/archive?path=%2Fvar%2Flib%2Fvyre", goodAgents);
+  assert.equal(ok.status, 200, ok.text);
+  assert.deepEqual(p.sent().filter(s => s.method === "PUT").map(s => s.url), ["/v1.43/containers/kitfull0001/archive?path=%2Fvar%2Flib%2Fvyre"]);
+  // Still every other rule the .boot route has: another folder, another file, no path query.
+  assert.equal((await put("/v1.43/containers/kitfull0001/archive?path=%2Fhome%2Fagent", goodAgents)).status, 403, "another folder");
+  const evil = Buffer.from(goodAgents); evil.write("x", 0, "ascii");
+  assert.equal((await put("/v1.43/containers/kitfull0001/archive?path=%2Fvar%2Flib%2Fvyre", evil)).status, 403, "tampered contents");
+  assert.equal(p.sent().filter(s => s.method === "PUT").length, 1, "only the good upload reached the Engine");
+});
+
+test("dockerproxy: a policy that has no allowAgentTokensTar (every policy before this feature existed) refuses .agent-tokens outright, .boot only", async t => {
+  const { allowAgentTokensTar: _omit, ...noAgentTokens } = stub;
+  const p = await proxy(t, noAgentTokens);
+  const goodAgents = agentTokensTar([{ id: "id1", name: "alice", token: "a".repeat(40) }]);
+  const r = await p.call("PUT", "/v1.43/containers/kitfull0001/archive?path=%2Fvar%2Flib%2Fvyre", goodAgents, { "content-type": "application/x-tar" });
+  assert.equal(r.status, 403);
+  // .boot itself still works on that same, older policy.
+  const good = bootTar({ computerd_token: "k".repeat(43), vnc_password: "Ab-_1234" });
+  const r2 = await p.call("PUT", "/v1.43/containers/kitfull0001/archive?path=%2Fvar%2Flib%2Fvyre", good, { "content-type": "application/x-tar" });
+  assert.equal(r2.status, 200);
 });
 
 test("dockerproxy: createProxy needs a bearer -- there is no unauthenticated mode", async t => {

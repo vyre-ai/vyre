@@ -15,9 +15,9 @@
 
 import fs from "node:fs";
 import path from "node:path";
+import { gitSync } from "../../lib/git-safe.js";
 import { classify } from "./detect.js";
 import { isRef, templateRefs } from "./refs.js";
-import { gitSync } from "../../lib/git-safe.js";
 
 /**
  * @typedef {{ key: string, value: string, start: number, end: number, exported: boolean }} Entry
@@ -224,9 +224,7 @@ export function findEnvFiles(root, { depth = 6, limit = 200 } = {}) {
 export function gitState(file) {
   const dir = path.dirname(file);
   /** @param {string[]} args */
-  const ok = args => {
-    return gitSync(dir, args, { timeout: 3000 }).ok;
-  };
+  const ok = args => gitSync(dir, args, { timeout: 3000 }).ok;
   if (!ok(["rev-parse", "--is-inside-work-tree"])) return null;
   return { tracked: ok(["ls-files", "--error-unmatch", "--", path.basename(file)]), ignored: ok(["check-ignore", "-q", "--", path.basename(file)]) };
 }

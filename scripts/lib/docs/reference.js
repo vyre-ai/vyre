@@ -242,6 +242,7 @@ const ENV_MEANING = {
   HARNESS_DIR: "The Harness plugin folder threads load. Default the one beside this install.",
   HOME: "Where Vyre keeps its data. Default `~/.vyre`.",
   HOST_USER: "The user name in the `ssh -L` line `vyre up` prints for reaching the box.",
+  MODULE_SDK: "A folder holding the module SDK's testing.js, for a module's own tests made by `vyre module new` before the SDK is on npm.",
   NO_DIALOGS: "`1`: never raise anything on screen (Touch ID, a keychain prompt, a browser tab).",
   NO_OPEN: "Never open a browser tab from the terminal.",
   NO_UP: "`vyre box add` installs Vyre without starting it.",
@@ -408,7 +409,7 @@ function collectTools(root, mods, harvested) {
     const local = new Map((harvested.local[m.name]?.tools || []).map(t => [t.name, t]));
     const both = (m.roles || ["box", "local"]).length > 1;
     const out = [];
-    for (const name of [...new Set(m.does?.tools || [])].sort(byName)) {
+    for (const name of [...new Set((m.does?.tools || []).map(t => typeof t === "string" ? t : t.name))].sort(byName)) {
       const t = box.get(name) || local.get(name);
       if (t) out.push({ ...t, only: both && !(box.has(name) && local.has(name)) ? (box.has(name) ? "box" : "local") : null });
       else out.push({ name, description: staticDescription(root, dir, name), input: null, callers: null, internal: false, hook: false, presence: false, only: null, unregistered: true });
@@ -506,6 +507,8 @@ const MEANING = {
   "modules.disable": "Modules never to start.",
   network: "How this machine is reached. See [Tailscale](../using/tailscale.md).",
   onboard: "Onboarding's own settings.",
+  owner: "The person's own, non-secret identity. Written only by core/onboard's own startup, never by a tool's input.",
+  "owner.id": "16 random bytes, hex. Made once and never changed; `system.info` exposes only a fingerprint of it (fingerprint8), never this value itself.",
   "network.tailscale": "Whether this machine serves over Tailscale.",
   "network.address": "The https URL the Deck is served at.",
   "network.owner": "The one Tailscale login this box serves (ADR 0002). Set by `vyre owner`.",
@@ -514,7 +517,7 @@ const MEANING = {
   "network.port": "The port the tailnet listener serves on.",
   "network.acme": "`staging` to get test certificates while trying things out; `production` otherwise.",
   "network.box": "On a Mac: the address of the box it is paired with.",
-  "network.onboardPort": "The loopback port onboarding listens on. 7300 when unset.",
+  "network.onboardPort": "The loopback port onboarding listens on. 7300 when unset, except 7301 on a Mac chosen as server, which never binds 7300.",
   "network.ownerSeen": "When the owner was first seen on the tailnet. Written by Vyre.",
   "network.origins": "Other sites whose pages may call this box from the owner's browser, with CORS: Vyre's hosted app. `[\"https://app.vyre.run\"]` when unset; `[]` turns it off. Each call but the reachability probe and the token exchange needs a person session.",
   term: "Terminals in the browser. `keep_hours`: how long a terminal nobody is looking at is kept before it ends (12). `max`: how many may be open at once (8). `shell`: the shell to run, in place of your login shell.",

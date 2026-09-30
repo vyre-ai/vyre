@@ -3,10 +3,10 @@
 //
 // Reads use gmail.readonly, drafts gmail.compose, and a send gmail.send alone, minted only when
 // the Gate releases one. The message is built by hand (RFC 822, plain text, base64 body) with the
-// shared parts in core/connectors/message.js, for the reasons given there. This file does not
+// shared parts in lib/connectors/message.js, for the reasons given there. This file does not
 // import core/gate (modules never import each other's files).
 
-import { addresses, checkContent, rfc822Text, htmlToText, addressOf, nameOf } from "../connectors/message.js";
+import { addresses, checkContent, rfc822Text, htmlToText, addressOf, nameOf } from "../../lib/connectors/message.js";
 
 export { addresses, htmlToText, addressOf, nameOf };
 

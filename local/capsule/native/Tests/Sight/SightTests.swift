@@ -42,12 +42,20 @@ private final class SightHost: CapsuleHost {
     var panels: [String] = []
     var queries: [String] = []
     var said: [String] = []
+    var submits = 0
+    var cancels: [String] = []
+    /// What toggleTalk()'s baseline capture reads: set by a test before starting, as if typed.
+    var box = ""
     init(_ link: VyredLink) { vyred = link }
     func permission(_ p: Permission) -> PermissionState { .notAsked }
     func request(_ p: Permission, reason: String) async -> Bool { false }
     func showPanel(_ extensionID: String) { panels.append(extensionID) }
     func hidePanel() {}
-    func setQuery(_ text: String) { queries.append(text) }
+    func setQuery(_ text: String) { queries.append(text); box = text }
+    func currentQuery() -> String { box }
+    // dictate(_:final:) keeps the protocol's own default (setQuery), same as production.
+    func submitDictation() { submits += 1 }
+    func cancelDictation(_ restore: String) { cancels.append(restore); box = restore }
     func say(_ line: String) { said.append(line) }
     var needs: [CredentialNeed] = []
     var onSaved: (@MainActor () -> Void)?
@@ -273,6 +281,161 @@ let sightSuite = Suite("sight") { t in
         t.eq(r?.0.last, "two dozen rolls"); t.eq(r?.1, true); t.eq(r?.2, true, "the mic path came from voice.status")
     }
 
+    t.test("talk: words land after what the box already held, and \"send it\" submits at once") {
+        let mic = FakeMic(), stream = FakeStream()
+        let box = ResultBox<@Sendable ([String: Any]) -> Void>()
+        let r = t.wait { () -> ([String], Int, Bool) in
+            let link = SightLink()
+            link.answer("voice.status") { _ in .success(["key": true, "mic": "/nowhere/vyre-mic"]) }
+            let (host, ext) = await MainActor.run { () -> (SightHost, SightExtension) in
+                let host = SightHost(link)
+                host.box = "Email Dana: "
+                let ext = SightExtension(host: host)
+                ext.makeMic = { _ in mic }
+                ext.openStream = { onMessage, _ in box.value = onMessage; return .success(stream) }
+                ext.toggleTalk()
+                return (host, ext)
+            }
+            _ = await until { mic.onData != nil && box.value != nil }
+            box.value?(["type": "partial", "text": "two dozen"])
+            _ = await until { await MainActor.run { host.queries.last == "Email Dana: two dozen" } }
+            box.value?(["type": "final", "text": "two dozen rolls send it"])
+            _ = await until { await MainActor.run { host.submits == 1 } }
+            return await MainActor.run { (host.queries, host.submits, mic.stopped == 1) }
+        }
+        t.eq(r?.0.last, "Email Dana: two dozen rolls")
+        t.eq(r?.1, 1, "submitDictation() ran exactly once")
+        t.ok(r?.2 == true, "the mic stops once \"send it\" fires, without waiting for its own done")
+    }
+
+    t.test("talk: \"scratch that\" undoes only the phrase this final just added") {
+        let mic = FakeMic(), stream = FakeStream()
+        let box = ResultBox<@Sendable ([String: Any]) -> Void>()
+        let r = t.wait { () -> [String] in
+            let link = SightLink()
+            link.answer("voice.status") { _ in .success(["key": true, "mic": "/nowhere/vyre-mic"]) }
+            let (host, ext) = await MainActor.run { () -> (SightHost, SightExtension) in
+                let host = SightHost(link)
+                let ext = SightExtension(host: host)
+                ext.makeMic = { _ in mic }
+                ext.openStream = { onMessage, _ in box.value = onMessage; return .success(stream) }
+                ext.toggleTalk()
+                return (host, ext)
+            }
+            _ = await until { mic.onData != nil && box.value != nil }
+            box.value?(["type": "final", "text": "two dozen rolls"])
+            _ = await until { await MainActor.run { host.queries.last == "two dozen rolls" } }
+            // The server's own "final" is cumulative: the words just spoken ("for alex") plus the
+            // command phrase itself, appended to what was already committed.
+            box.value?(["type": "final", "text": "two dozen rolls for alex scratch that"])
+            _ = await until { await MainActor.run { host.queries.last == "two dozen rolls" && host.said.contains { $0.contains("scratch that") } } }
+            return await MainActor.run { host.queries }
+        }
+        t.eq(r?.last, "two dozen rolls", "\"for alex\" is undone; the earlier phrase stays")
+    }
+
+    t.test("talk: \"new line\" strips the words and adds one") {
+        let mic = FakeMic(), stream = FakeStream()
+        let box = ResultBox<@Sendable ([String: Any]) -> Void>()
+        let r = t.wait { () -> [String] in
+            let link = SightLink()
+            link.answer("voice.status") { _ in .success(["key": true, "mic": "/nowhere/vyre-mic"]) }
+            let (host, ext) = await MainActor.run { () -> (SightHost, SightExtension) in
+                let host = SightHost(link)
+                let ext = SightExtension(host: host)
+                ext.makeMic = { _ in mic }
+                ext.openStream = { onMessage, _ in box.value = onMessage; return .success(stream) }
+                ext.toggleTalk()
+                return (host, ext)
+            }
+            _ = await until { mic.onData != nil && box.value != nil }
+            box.value?(["type": "final", "text": "line one new line"])
+            _ = await until { await MainActor.run { host.queries.last == "line one\n" } }
+            return await MainActor.run { host.queries }
+        }
+        t.eq(r?.last, "line one\n")
+    }
+
+    t.test("talk: Esc cancels and restores exactly what the box held; the mic is dropped, not asked") {
+        let mic = FakeMic(), stream = FakeStream()
+        let box = ResultBox<@Sendable ([String: Any]) -> Void>()
+        let r = t.wait { () -> ([String], [String], Bool) in
+            let link = SightLink()
+            link.answer("voice.status") { _ in .success(["key": true, "mic": "/nowhere/vyre-mic"]) }
+            let (host, ext) = await MainActor.run { () -> (SightHost, SightExtension) in
+                let host = SightHost(link)
+                host.box = "About Northwind: "
+                let ext = SightExtension(host: host)
+                ext.makeMic = { _ in mic }
+                ext.openStream = { onMessage, _ in box.value = onMessage; return .success(stream) }
+                ext.toggleTalk()
+                return (host, ext)
+            }
+            _ = await until { mic.onData != nil && box.value != nil }
+            box.value?(["type": "partial", "text": "two dozen"])
+            _ = await until { await MainActor.run { host.queries.last == "About Northwind: two dozen" } }
+            let cancelled = await MainActor.run { ext.cancelTalking() }
+            _ = await until { mic.stopped == 1 }
+            return await MainActor.run { (host.cancels, host.queries, cancelled) }
+        }
+        t.eq(r?.0, ["About Northwind: "], "restored to exactly the pre-dictation baseline")
+        t.eq(r?.1.last, "About Northwind: two dozen", "the last live partial is untouched -- cancelDictation is a separate call")
+        t.eq(r?.2, true)
+        t.ok(mic.stopped == 1, "cancel() stops the mic straight away, never sending its audio on")
+    }
+
+    t.test("talk: an ordinary Return stops the mic (keeping the words) without submitting on its own") {
+        let mic = FakeMic(), stream = FakeStream()
+        let box = ResultBox<@Sendable ([String: Any]) -> Void>()
+        let r = t.wait { () -> (Int, Bool, Bool) in
+            let link = SightLink()
+            link.answer("voice.status") { _ in .success(["key": true, "mic": "/nowhere/vyre-mic"]) }
+            let (host, ext) = await MainActor.run { () -> (SightHost, SightExtension) in
+                let host = SightHost(link)
+                let ext = SightExtension(host: host)
+                ext.makeMic = { _ in mic }
+                ext.openStream = { onMessage, _ in box.value = onMessage; return .success(stream) }
+                ext.toggleTalk()
+                return (host, ext)
+            }
+            _ = await until { mic.onData != nil && box.value != nil }
+            box.value?(["type": "partial", "text": "two dozen rolls"])
+            _ = await until { await MainActor.run { host.queries.last == "two dozen rolls" } }
+            let stopped = await MainActor.run { ext.stopTalking() } // what Panel.swift's plain-Return case calls
+            _ = await until { mic.stopped == 1 }
+            return await MainActor.run { (host.submits, stopped, !ext.model.talking) }
+        }
+        t.eq(r?.0, 0, "stopTalking() never submits by itself -- the caller (⏎'s own handleReturn) does that")
+        t.eq(r?.1, true)
+        t.eq(r?.2, true, "the Listening state ends at once, not only once the mic's own .done arrives")
+    }
+
+    t.test("talk: 2 minutes with nothing new nudges once; 5 minutes stops (never sends)") {
+        let mic = FakeMic(), stream = FakeStream()
+        let box = ResultBox<@Sendable ([String: Any]) -> Void>()
+        let r = t.wait { () -> (Bool, Int, Bool) in
+            let link = SightLink()
+            link.answer("voice.status") { _ in .success(["key": true, "mic": "/nowhere/vyre-mic"]) }
+            let (host, ext) = await MainActor.run { () -> (SightHost, SightExtension) in
+                let host = SightHost(link)
+                let ext = SightExtension(host: host)
+                ext.makeMic = { _ in mic }
+                ext.openStream = { onMessage, _ in box.value = onMessage; return .success(stream) }
+                ext.silenceWarnDelay = .milliseconds(20)
+                ext.silenceStopDelay = .milliseconds(60)
+                ext.toggleTalk()
+                return (host, ext)
+            }
+            _ = await until { mic.onData != nil && box.value != nil }
+            _ = await until { await MainActor.run { host.said.contains { $0.contains("Still listening?") } } }
+            _ = await until { mic.stopped == 1 }
+            return await MainActor.run { (host.said.contains { $0.contains("Still listening?") }, host.submits, !ext.model.talking) }
+        }
+        t.eq(r?.0, true)
+        t.eq(r?.1, 0, "the auto-stop never sends")
+        t.eq(r?.2, true)
+    }
+
     t.test("talk: a mic that fails says its own words; hiding stops the mic and says nothing") {
         let events = Events()
         let mic = FakeMic(), stream = FakeStream()
@@ -299,6 +462,28 @@ let sightSuite = Suite("sight") { t in
         t3.toggle()
         t.ok(settle { refused.list.count == 2 })
         t.eq(refused.list.last, .failed("vyre-mic is not built. Build it with: sh /repo/local/voice/build.sh"))
+    }
+
+    t.test("talk: onLevel is the frame's RMS (scaled), throttled, and 0 once it finishes") {
+        let mic = FakeMic(), stream = FakeStream()
+        let levels = ResultBox<[Double]>(); levels.value = []
+        let talker = Talker(makeMic: { mic }, open: { _, _ in .success(stream) }, emit: { _ in },
+                            onLevel: { l in levels.value = (levels.value ?? []) + [l] })
+        talker.toggle()
+        t.ok(settle { mic.onData != nil })
+        // Full-scale square wave: RMS is 1 exactly, so the *4 scaling clamps to 1, not blows past it.
+        var loud = Data(count: 3200)
+        loud.withUnsafeMutableBytes { (raw: UnsafeMutableRawBufferPointer) in
+            for i in stride(from: 0, to: raw.count, by: 2) { raw[i] = 0xff; raw[i + 1] = 0x7f } // Int16.max, little-endian
+        }
+        mic.say(loud)
+        t.ok(settle { (levels.value?.count ?? 0) >= 1 })
+        t.eq(levels.value?.last, 1.0)
+        // A second frame inside the same ~90 ms window is throttled away, not a second reading.
+        mic.say(Data(count: 3200))
+        t.eq(levels.value?.count, 1, "throttled: still just the one reading")
+        talker.cancel()
+        t.ok(settle { levels.value?.last == 0 }, "finish() reports the level back to 0")
     }
 
     t.test("mic path: env, then voice.status, then next to the app in the repo") {

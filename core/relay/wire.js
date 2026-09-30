@@ -57,6 +57,46 @@ export const authMessage = (route, challenge) => Buffer.concat([Buffer.from(`${B
 const ED_SPKI = Buffer.from("302a300506032b6570032100", "hex");
 const ED_PKCS8 = Buffer.from("302e020100300506032b657004220420", "hex");
 
+// Pairing tickets (ADR 0045, ADR 0026 section 6 amendment): a compact 64-bit random value a
+// Vyre code can carry, in place of the full offer a QR encodes. Everything derived from it and
+// handed to the relay is a one-way function of the ticket under a distinct tag, so the relay
+// never learns the pairing secret and can't forge or substitute the record it hands back
+// (reviewer, 28 Sep): a locator to store the record under, a MAC key to authenticate it with, and
+// the pairing secret itself, which only ever travels to the box (at redeem, inside the Noise
+// channel) and never to the relay at all. The record itself is sealed under a fourth key (the
+// lead's ruling, 28 Sep, closing ADR 0026's relay-operator threat row): the relay stores and
+// hands back only ciphertext, so the box's name, handle, identity fingerprint and key never sit
+// on it in the clear.
+export const TICKET_BYTES = 8;
+export const TICKET_TTL = 5 * 60_000;
+const TAG = { loc: "vyre-pair-loc", sec: "vyre-pair-sec", mac: "vyre-pair-mac", enc: "vyre-pair-enc" };
+/** @param {"loc"|"sec"|"mac"|"enc"} which @param {Buffer} ticket */
+export const ticketDerive = (which, ticket) => crypto.createHash("sha256").update(`${TAG[which]}\n`).update(ticket).digest();
+/** HMAC over the exact record bytes the relay stores and hands back, never a re-serialized copy. @param {Buffer} ticket @param {Buffer|string} record */
+export const ticketMac = (ticket, record) => crypto.createHmac("sha256", ticketDerive("mac", ticket)).update(record).digest();
+// A fresh random 12-byte nonce rides in front of every sealed record (the reviewer's LOW 2), so
+// nonce safety never depends on tickets being unique across every box. relay/client/client.js
+// opens it with the same layout and AD, byte for byte. The seal's real strength against the relay
+// operator is the ticket's 64 bits: the relay holds the locator, a hash of the ticket, so it can
+// search the ticket space offline with no time limit (ADR 0045).
+export const TICKET_SEAL_AD = "vyre-pair-record\n1";
+/** AES-256-GCM, base64url(nonce12 || ciphertext || tag16). @param {Buffer} ticket @param {string} plaintext */
+export function ticketSeal(ticket, plaintext) {
+  const nonce = crypto.randomBytes(12);
+  const c = crypto.createCipheriv("aes-256-gcm", ticketDerive("enc", ticket), nonce);
+  c.setAAD(Buffer.from(TICKET_SEAL_AD));
+  return Buffer.concat([nonce, c.update(plaintext, "utf8"), c.final(), c.getAuthTag()]).toString("base64url");
+}
+/** The inverse of ticketSeal; throws on a wrong key or any modified byte. @param {Buffer} ticket @param {string} sealed */
+export function ticketOpen(ticket, sealed) {
+  const b = Buffer.from(sealed, "base64url");
+  if (b.length < 28) throw new Error("sealed record too short");
+  const d = crypto.createDecipheriv("aes-256-gcm", ticketDerive("enc", ticket), b.subarray(0, 12));
+  d.setAAD(Buffer.from(TICKET_SEAL_AD));
+  d.setAuthTag(b.subarray(-16));
+  return Buffer.concat([d.update(b.subarray(12, -16)), d.final()]).toString("utf8");
+}
+
 /** A new Ed25519 route key, raw. */
 export function newRouteKey() {
   const k = crypto.generateKeyPairSync("ed25519");

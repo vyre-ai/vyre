@@ -23,8 +23,8 @@
 // item it makes for itself, google-<name>, granted to itself, and adds the account the way
 // google.add does. Only people start, finish or cancel a sign-in; a model never can.
 
-import { Credentials, CredentialError } from "../connectors/auth.js";
-import { checkBehalf } from "../connectors/behalf.js";
+import { Credentials, CredentialError } from "../../lib/connectors/auth.js";
+import { checkBehalf } from "../../lib/connectors/behalf.js";
 import { client, SCOPE, SCOPES } from "./api.js";
 import { MIGRATIONS, check, store, forRead, forWrite, EMAIL, loopback } from "./accounts.js";
 import { calendar, fieldsOf, dayRange } from "./calendar.js";

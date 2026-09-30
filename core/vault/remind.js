@@ -9,8 +9,15 @@
 // stays usable. A reason that has gone away (the password was changed, the PAT renewed) marks its
 // todo done. A todo the person dismissed stays quiet until the reason changes. The planner is
 // reached through ctx.call; without it nothing happens and Watchtower still shows the list.
+//
+// The breach check rides the same daily timer, at most once a week, and only when a person opted
+// in (vault.breach: "ask" in config.json) - the same gate vault.breach.check asks presence for.
+// A scheduled run asks nobody (there is nobody to ask): opting in in config is the person's
+// standing answer, same as scheduleReminders itself running with no per-day approval.
 
-import { judge } from "./health.js";
+import { judge, breachCheck, EXPIRING_MS } from "./health.js";
+
+export const BREACH_EVERY_MS = 7 * 86400_000;
 
 export const REMIND_MIGRATION = `CREATE TABLE IF NOT EXISTS vault_reminders (
    name TEXT NOT NULL, reason TEXT NOT NULL, planner TEXT, state TEXT NOT NULL DEFAULT 'open', at INTEGER NOT NULL,
@@ -58,7 +65,9 @@ export async function remindRun(vault, call, { now = Date.now(), breached = [] }
   for (const j of judged.items) flagged.set(j.name, new Set(j.reasons.filter(r => r in REASONS)));
   for (const n of breached) if (kinds.has(n)) (flagged.get(n) ?? flagged.set(n, new Set()).get(n))?.add("breached");
 
-  const marks = /** @type {any[]} */ (db.prepare("SELECT * FROM vault_reminders").all());
+  // needs-credential and pass-expiring rows are keyed by connection or pass id, not an item
+  // name; oneOffReminders owns them, on the same table, so they never collide with an item's.
+  const marks = /** @type {any[]} */ (db.prepare("SELECT * FROM vault_reminders WHERE reason NOT IN ('needs-credential', 'pass-expiring')").all());
   const had = new Map(marks.map(m => [`${m.name}\n${m.reason}`, m]));
   const closed = [];
   // A reason gone away: its todo is done, and the mark goes, so it may be raised again later.
@@ -147,7 +156,138 @@ export function nextRun(last, now) {
  * @param {{ log?: (m: string) => void, clock?: () => number, local?: boolean }} [opts] local: a Mac, which
  *   leaves reminders to its box when it is paired with one, so a person is not told twice
  */
-export function scheduleReminders(vault, call, { log = () => {}, clock = Date.now, local = false } = {}) {
+/**
+ * Every login's password against known breaches, k-anonymously. Same shape vault.breach.check
+ * uses; this is the version a scheduled run makes, with no person there to see it happen.
+ * @param {import("./vault.js").Vault} vault @param {{ fetch: typeof globalThis.fetch }} deps
+ * @returns {Promise<string[]>} names
+ */
+async function scheduledBreachCheck(vault, { fetch }) {
+  const rows = /** @type {any[]} */ (vault.db.prepare("SELECT * FROM vault_items WHERE kind = 'login' ORDER BY name").all());
+  const entries = [];
+  for (const r of rows) {
+    if (!vault.rowOk("vault_items", r)) continue;
+    try { const f = await vault.fields(r); if (f.password) entries.push({ name: r.name, password: f.password }); } catch {}
+  }
+  return (await breachCheck(entries, { fetch })).breached;
+}
+
+const lastBreach = vault => { const r = /** @type {any} */ (vault.db.prepare("SELECT at FROM vault_jobs WHERE name = 'breach'").get()); return r ? Number(r.at) : null; };
+
+/**
+ * A reminder outside Watchtower's own item-by-item rules: one todo per key while `byKey` names
+ * it, keyed `<reason>:<...>` in vault_reminders (shared with remindRun, which only ever touches
+ * its own REASONS-listed rows), closed the moment a key drops out, quiet once dismissed. Both
+ * needs-credential connections and expiring passes are one of these; only what is being watched
+ * and how its todo reads differ.
+ * @param {import("./vault.js").Vault} vault @param {(tool: string, input: any) => Promise<any>} call
+ * @param {string} reason @param {Map<string, any>} byKey @param {(row: any) => string} titleOf
+ * @param {{ tags: string[], priority: number, due: number }} todo @param {number} now
+ */
+async function oneOffReminders(vault, call, reason, byKey, titleOf, todo, now) {
+  const marks = /** @type {any[]} */ (vault.db.prepare("SELECT * FROM vault_reminders WHERE reason = ?").all(reason));
+  const had = new Map(marks.map(m => [m.name, m]));
+  const closed = [];
+  for (const m of marks) {
+    if (byKey.has(m.name)) continue;
+    if (m.planner && m.state === "open") await call("planner.done", { item: m.planner }).catch(() => {});
+    vault.db.prepare("DELETE FROM vault_reminders WHERE name = ? AND reason = ?").run(m.name, reason);
+    closed.push(m.name);
+  }
+  for (const m of marks) {
+    if (m.state !== "open" || !m.planner || !byKey.has(m.name)) continue;
+    const g = await call("planner.get", { item: m.planner });
+    const st = g.data && g.data.item && g.data.item.state;
+    if (st === "cancelled") vault.db.prepare("UPDATE vault_reminders SET state = 'dismissed' WHERE name = ? AND reason = ?").run(m.name, reason);
+    else if (st === "done") vault.db.prepare("UPDATE vault_reminders SET state = 'done' WHERE name = ? AND reason = ?").run(m.name, reason);
+  }
+  const added = [];
+  for (const [key, row] of byKey) {
+    if (had.has(key)) continue;
+    const r = await call("planner.add", { kind: "todo", list: "Vault", title: titleOf(row), tags: todo.tags, priority: todo.priority, due: ymd(now + todo.due) });
+    if (r.error) return { added, closed, planner: r.error.code !== "no_such_tool" };
+    const id = r.data && (r.data.id || (r.data.item && r.data.item.id));
+    vault.db.prepare("INSERT OR REPLACE INTO vault_reminders (name, reason, planner, state, at) VALUES (?, ?, ?, 'open', ?)").run(key, reason, id ? String(id) : null, now);
+    added.push(key);
+  }
+  return { added, closed, planner: true };
+}
+
+/**
+ * A connection stuck at needs_credential (a module registered one, but nothing has filled it
+ * yet) gets one todo, keyed `connection:<id>`, closed the moment it becomes ready.
+ * @param {import("./vault.js").Vault} vault @param {(tool: string, input: any) => Promise<any>} call
+ * @param {import("./connections.js").Connections} connections @param {number} now
+ */
+async function needsCredentialReminders(vault, call, connections, now) {
+  const rows = (await connections.list({}, "cli")).connections.filter(r => r.state === "needs_credential");
+  const byKey = new Map(rows.map(r => [`connection:${r.id}`, r]));
+  const titleOf = row => { const need = row.needs && row.needs[0]; return need ? `Connect ${row.label}: ${need.module} needs its ${need.need}` : `Connect ${row.label}`; };
+  return oneOffReminders(vault, call, "needs-credential", byKey, titleOf, { tags: ["vault", "connection"], priority: 3, due: 14 * DAY }, now);
+}
+
+/**
+ * A share pass within EXPIRING_MS of its end gets one heads-up, keyed `pass:<id>`, before an
+ * agent's (or a person's) access to it lapses mid-task. Closed once it is renewed, revoked, or
+ * finally expires (it then drops out of activePasses on its own).
+ * @param {import("./vault.js").Vault} vault @param {(tool: string, input: any) => Promise<any>} call @param {number} now
+ */
+async function expiringPassReminders(vault, call, now) {
+  const passes = vault.activePasses().filter(p => p.expires && p.expires - now <= EXPIRING_MS);
+  const byKey = new Map(passes.map(p => [`pass:${p.id}`, p]));
+  const titleOf = p => `Renew or revoke the pass for ${p.holder}: it ends ${ymd(p.expires)} (${p.items.length === 1 ? p.items[0] : `${p.items.length} items`})`;
+  return oneOffReminders(vault, call, "pass-expiring", byKey, titleOf, { tags: ["vault", "pass"], priority: 2, due: EXPIRING_MS }, now);
+}
+
+/**
+ * One tick: the opted-in weekly breach check (if due), needs-credential connections, then the
+ * daily reminder run. Split out of scheduleReminders so a test can call it without waiting on a
+ * real timer.
+ * @param {import("./vault.js").Vault} vault @param {(tool: string, input: any) => Promise<any>} call
+ * @param {{ log?: (m: string) => void, clock?: () => number, local?: boolean,
+ *   breach?: { enabled: boolean, fetch: typeof globalThis.fetch, everyMs?: number },
+ *   connections?: import("./connections.js").Connections }} [opts] local: a Mac, which leaves
+ *   reminders to its box when it is paired with one, so a person is not told twice. breach:
+ *   opted in (vault.breach: "ask") runs the check at most once a week, folded into the same
+ *   daily timer rather than a second one (principle 8).
+ */
+export async function remindTick(vault, call, { log = () => {}, clock = Date.now, local = false, breach, connections } = {}) {
+  const paired = local && Boolean((await call("link.status", {}))?.data?.linked);
+  let breached = [];
+  if (!paired && breach && breach.enabled) {
+    const due = clock() - (lastBreach(vault) ?? -Infinity) >= (breach.everyMs || BREACH_EVERY_MS);
+    if (due) {
+      try {
+        breached = await scheduledBreachCheck(vault, { fetch: breach.fetch });
+        vault.db.prepare("INSERT OR REPLACE INTO vault_jobs (name, at) VALUES ('breach', ?)").run(clock());
+      } catch (e) { log(`vault: breach check skipped this week (${/** @type {Error} */ (e).message})`); }
+    }
+  }
+  const now = clock();
+  let needsCred = { added: [], closed: [] };
+  if (!paired && connections) {
+    try { needsCred = await needsCredentialReminders(vault, call, connections, now); }
+    catch (e) { log(`vault: connection reminders skipped today (${/** @type {Error} */ (e).message})`); }
+  }
+  let expiring = { added: [], closed: [] };
+  if (!paired) {
+    try { expiring = await expiringPassReminders(vault, call, now); }
+    catch (e) { log(`vault: pass reminders skipped today (${/** @type {Error} */ (e).message})`); }
+  }
+  const r = paired ? { added: [], closed: [] } : await remindRun(vault, call, { now, breached });
+  const added = [...r.added, ...needsCred.added, ...expiring.added], closed = [...r.closed, ...needsCred.closed, ...expiring.closed];
+  if (added.length || closed.length) log(`vault: ${added.length} reminders added, ${closed.length} closed`);
+  return { added, closed, breached };
+}
+
+/**
+ * @param {import("./vault.js").Vault} vault
+ * @param {(tool: string, input: any) => Promise<any>} call
+ * @param {{ log?: (m: string) => void, clock?: () => number, local?: boolean,
+ *   breach?: { enabled: boolean, fetch: typeof globalThis.fetch, everyMs?: number } }} [opts]
+ */
+export function scheduleReminders(vault, call, opts = {}) {
+  const { clock = Date.now } = opts;
   /** @type {NodeJS.Timeout | null} */
   let timer = null;
   let stopped = false;
@@ -156,10 +296,8 @@ export function scheduleReminders(vault, call, { log = () => {}, clock = Date.no
     if (stopped) return;
     const wait = Math.max(60_000, nextRun(lastRun(), clock()) - clock());
     timer = setTimeout(async () => {
-      try {
-        const paired = local && Boolean((await call("link.status", {}))?.data?.linked);
-        const r = paired ? { added: [], closed: [] } : await remindRun(vault, call); if (r.added.length || r.closed.length) log(`vault: ${r.added.length} reminders added, ${r.closed.length} closed`); }
-      catch (e) { log(`vault: reminders skipped today (${/** @type {Error} */ (e).message})`); }
+      try { await remindTick(vault, call, opts); }
+      catch (e) { (opts.log || (() => {}))(`vault: reminders skipped today (${/** @type {Error} */ (e).message})`); }
       arm();
     }, Math.min(wait, 2 ** 31 - 1));
     timer.unref?.();

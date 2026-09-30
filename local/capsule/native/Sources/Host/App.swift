@@ -81,7 +81,10 @@ final class CapsuleApp: NSObject, NSApplicationDelegate {
         }
         vyred.follower.onState = { [weak self] st in
             self?.health.set(up: st == .open)
-            if st == .open { self?.hotkeys.reportRetry() }
+            if st == .open {
+                self?.hotkeys.reportRetry()
+                Task { await self?.presence.pinSelf() }
+            }
         }
         vyred.follower.start()
         panel.onShownChange = { [weak self] shown in if shown { self?.health.refresh() } else { self?.menuBar?.close() } }
@@ -115,9 +118,12 @@ final class CapsuleApp: NSObject, NSApplicationDelegate {
     func makeStatusItem() {
         let bar = MenuBarItem(health: health)
         bar.content = { [unowned self] in
-            AnyView(MenuBarPopover(health: self.health, hotkeys: self.hotkeyWords, canTurnOnControl: !self.hotkeys.doubleControl,
+            // Who is who, as last read; read again so the next open is current.
+            Task { await self.model.loadIdentities() }
+            return AnyView(MenuBarPopover(health: self.health, identities: self.model.identities, hotkeys: self.hotkeyWords, canTurnOnControl: !self.hotkeys.doubleControl,
                                    open: { [unowned self] in self.menuBar?.close(); self.openCapsule() },
                                    turnOnControl: { [unowned self] in self.menuBar?.close(); self.turnOnDoubleControl() },
+                                   start: { [unowned self] in self.menuBar?.close(); self.openCapsule(); self.model.startVyre() },
                                    quit: { NSApp.terminate(nil) }))
         }
         bar.menu = { [unowned self] in self.plainMenu() }

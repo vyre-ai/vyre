@@ -21,7 +21,7 @@
 
 import crypto from "node:crypto";
 import http from "node:http";
-import { scrub, checkTokenUri } from "../connectors/auth.js";
+import { scrub, checkTokenUri } from "../../lib/connectors/auth.js";
 import { SCOPE, SCOPES } from "./api.js";
 import { NAME, EMAIL } from "./accounts.js";
 

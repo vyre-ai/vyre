@@ -156,7 +156,9 @@ async function boot(t) {
     verify: async () => (pres.deny ? { ok: false, code: "presence_required", message: "prove presence" } : { ok: true, method: "test" }),
     challenge: async () => ({ error: { code: "bad_input", message: "no challenge in this test" } }) };
   const lines = [];
-  const d = await start({ root, presence: pres, log: (m, x) => lines.push(m + (x ? " " + JSON.stringify(x) : "")) });
+  // postbox stands in for one of Vyre's own modules (mail) registering its connections, so it
+  // loads as first party (ADR 0047: an added module reaches only tools with a declared reach).
+  const d = await start({ root, presence: pres, firstPartyRoots: [path.join(root, "modules")], log: (m, x) => lines.push(m + (x ? " " + JSON.stringify(x) : "")) });
   t.after(() => d.stop());
   /** A caller over the socket. */
   const as = caller => (tool, input = {}) => call(tool, input, { root, caller });
@@ -246,9 +248,13 @@ test("connections: several email accounts, one list, granted per surface", async
   assert.equal(ok(await other("vault.connections.list", { caller: "capsule", capability: "send_mail" })).connections.length, 4);
   assert.equal(ok(await other("vault.connections.list", { caller: "mcp:agent:kit" })).surface, "agents");
 
-  // Grant needs a person; revoke never does.
+  // Granting agents needs presence (a credential to an autonomous session); capsule, chat and
+  // phone are one tap, no proof (the lead's call, 2026-09-28: card.md/chip.md). Revoke never does.
   pres.deny = true;
   assert.equal((await cli("vault.connections.grant", { id: m2.id, surface: "agents" })).error.code, "presence_required");
+  assert.deepEqual(ok(await cli("vault.connections.revoke", { id: m2.id, surface: "capsule" })).connection.surfaces, ["chat"], "revoke needs no proof, even denied");
+  assert.deepEqual(ok(await cli("vault.connections.grant", { id: m2.id, surface: "capsule" })).connection.surfaces, ["capsule", "chat"],
+    "capsule needs no presence either, even denied");
   pres.deny = false;
   assert.equal((await mcp("vault.connections.grant", { id: m2.id, surface: "agents" })).error.code, "denied", "Claude never grants");
   assert.deepEqual(ok(await cli("vault.connections.grant", { id: m2.id, surface: "agents" })).connection.surfaces, ["capsule", "chat", "agents"]);

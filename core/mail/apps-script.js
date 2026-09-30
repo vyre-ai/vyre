@@ -23,8 +23,8 @@
 // - This file never holds or sends a message on its own: `mail` puts every send through the Gate
 //   first and calls send() only on release.
 
-import { scrub, scrubAll } from "../connectors/auth.js";
-import { EMAIL, addresses, checkContent } from "../connectors/message.js";
+import { scrub, scrubAll } from "../../lib/connectors/auth.js";
+import { EMAIL, addresses, checkContent } from "../../lib/connectors/message.js";
 
 export const MAX_RESPONSE = 2 * 1024 * 1024;
 export const DEFAULT_TIMEOUT = 30_000;

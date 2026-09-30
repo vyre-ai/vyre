@@ -85,8 +85,9 @@ test("link: a Mac answers on the box only once the person signs it in, and only 
   const made = await s.macCall("link.call", { tool: "agents.create", input: { name: "kit" } }, "cli");
   assert.ok(!made.error, JSON.stringify(made.error));
   assert.ok((await s.boxCall("agents.list")).data.some(a => a.name === "kit"));
-  // A model or a module on the Mac never carries the session.
-  for (const caller of ["mcp", "mcp:agent:kit", "anonymous", "module:planner"]) {
+  // A model or a module on the Mac never carries the session, nor an agent riding a person's
+  // transport ("cli:agent:kit" reads as "cli" by its first word alone).
+  for (const caller of ["mcp", "mcp:agent:kit", "anonymous", "module:planner", "cli:agent:kit", "cli agent:kit", "capsule:agent:juno", "deck:thread:t1", "cli:agent:"]) {
     const r = await s.macCall("link.call", { tool: "agents.update", input: { name: "kit", description: "x" } }, caller);
     assert.equal(r.error && r.error.code, "person_session_required", caller);
   }
@@ -97,6 +98,7 @@ test("link: a Mac answers on the box only once the person signs it in, and only 
   assert.equal(enclave.signed, 1, "one Touch ID for one human-only call");
   // Never for a model or a module: no signature is even asked for.
   assert.equal((await s.macCall("link.call", { tool: "presence.session.open", input: {} }, "mcp")).error.code, "person_session_required");
+  assert.equal((await s.macCall("link.call", { tool: "presence.session.open", input: {} }, "cli:agent:kit")).error.code, "person_session_required");
   assert.equal(enclave.signed, 1);
   // The box lists the Mac's session, pinned to the Mac's node.
   const list = (await s.boxCall("presence.person.sessions")).data.sessions;

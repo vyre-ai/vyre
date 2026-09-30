@@ -95,7 +95,7 @@ hello() {
   else
     say "  Vyre${v:+ $v}"
   fi
-  say "  Let's set up your box. A few minutes, and nothing changes without asking."
+  say "  Let's set up your server. A few minutes, and nothing changes without asking."
   say ""
 }
 
@@ -138,12 +138,12 @@ finish() {
   say ""
   rule
   if [ "$DRY" = 1 ]; then
-    say "  $BOLD${BONE}That's the whole plan.$RESET Nothing on this box changed."
+    say "  $BOLD${BONE}That's the whole plan.$RESET Nothing on this server changed."
     say "  Run it again without --dry-run when you're ready."
   elif [ "${VYRE_NO_UP:-0}" = 1 ]; then
     say "  $BOLD${BONE}Installed.$RESET Start it when you're ready: ${SIGNAL}vyre up$RESET"
   else
-    say "  $BOLD${BONE}Your box is ready.$RESET"
+    say "  $BOLD${BONE}Your server is ready.$RESET"
     if [ "$LINK_ONLY" = 1 ]; then
       say "  The setup link went to stdout for the program that asked."
     else
@@ -237,7 +237,7 @@ need_docker() {
   fi
   if ! compose_ok; then
     if docker compose version >/dev/null 2>&1; then
-      say "Vyre needs Docker Compose 2.24 or newer; this box has $(docker compose version --short)."
+      say "Vyre needs Docker Compose 2.24 or newer; this server has $(docker compose version --short)."
     else
       say "Vyre needs Docker Compose v2 (the \`docker compose\` plugin)."
     fi
@@ -255,7 +255,7 @@ need_docker() {
 # Tailscale runs in its own container with kernel networking, which needs the TUN device.
 need_tun() {
   [ -c "$TUN" ] && return 0
-  say "This box has no /dev/net/tun, which the Tailscale container needs."
+  say "This server has no /dev/net/tun, which the Tailscale container needs."
   say "Try: sudo modprobe tun. On a VPS or LXC container, enable TUN in the provider's panel."
   exit 1
 }
@@ -481,7 +481,7 @@ uninstall() {
   fi
   if [ -e "$WRAPPER" ]; then
     if grep -q "$MARK" "$WRAPPER" 2>/dev/null; then priv rm -f "$WRAPPER"
-    else say "$WRAPPER is not the box wrapper; leaving it"
+    else say "$WRAPPER is not the server wrapper; leaving it"
     fi
   fi
   if [ "$PURGE" = 1 ]; then
@@ -499,7 +499,7 @@ uninstall() {
       fi
     fi
   fi
-  say "Vyre is off this box. $DIR stays (with its .env); remove it with: sudo rm -rf $DIR"
+  say "Vyre is off this server. $DIR stays (with its .env); remove it with: sudo rm -rf $DIR"
   [ "$PURGE" = 1 ] || say "The volumes stay too, so a reinstall picks up where it left off."
 }
 
@@ -528,7 +528,7 @@ main() {
   case "$(uname -s)" in
     Linux) ;;
     Darwin)
-      say "This installer is for a Linux box. On a Mac, Vyre installs with npm:"
+      say "This installer is for a Linux server. On a Mac, Vyre installs with npm:"
       say "  npm install -g https://vyre.run/box/vyre.tgz && vyre up"
       exit 0 ;;
     *) die "this installer is for Linux boxes; on a Mac: npm install -g https://vyre.run/box/vyre.tgz && vyre up" ;;
@@ -546,7 +546,7 @@ main() {
   trap cleanup EXIT
   pick_look
   [ "$UNINSTALL" = 1 ] || hello
-  [ "$DRY" = 1 ] && say "dry run: nothing on this box will change"
+  [ "$DRY" = 1 ] && say "dry run: nothing on this server will change"
 
   if [ "$UNINSTALL" = 1 ]; then
     command -v docker >/dev/null 2>&1 || die "Docker is not installed, so there is no stack to stop"

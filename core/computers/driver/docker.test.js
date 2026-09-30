@@ -11,6 +11,7 @@ import os from "node:os";
 import path from "node:path";
 import http from "node:http";
 import { DockerDriver } from "./docker.js";
+import { allowBootTar, allowAgentTokensTar } from "./policy.js";
 import { SCRATCH } from "../../../test/scratch.mjs";
 
 /** A fake Engine: two containers of ours to be, and one that is someone else's database. */
@@ -25,9 +26,11 @@ async function engine(t) {
     ["half", { Id: "half", Name: "/half", Config: { Labels: { "vyre.managed": "true" } }, State: { Status: "running" }, NetworkSettings: { Networks: {} } }],
   ]);
   const server = http.createServer(async (req, res) => {
-    let raw = "";
-    for await (const c of req) raw += c;
-    const body = raw ? JSON.parse(raw) : undefined;
+    const chunks = [];
+    for await (const c of req) chunks.push(c);
+    const buf = Buffer.concat(chunks);
+    const tar = req.headers["content-type"] === "application/x-tar";
+    const body = tar ? buf : buf.length ? JSON.parse(buf.toString("utf8")) : undefined;
     seen.push({ method: String(req.method), path: String(req.url), body, authorization: req.headers.authorization });
     const send = (status, b) => { res.writeHead(status, { "content-type": "application/json" }); res.end(b === undefined ? "" : JSON.stringify(b)); };
     const url = new URL(String(req.url), "http://d");
@@ -52,6 +55,17 @@ async function engine(t) {
       return send(204);
     }
     if (req.method === "DELETE" && (m = /^\/v1\.43\/containers\/([^/]+)$/.exec(url.pathname))) { boxes.delete(m[1]); return send(204); }
+    if (req.method === "PUT" && (m = /^\/v1\.43\/containers\/([^/]+)\/archive$/.exec(url.pathname))) return send(boxes.has(m[1]) ? 200 : 404);
+    if (req.method === "GET" && (m = /^\/v1\.43\/containers\/([^/]+)\/stats$/.exec(url.pathname))) {
+      if (!boxes.has(m[1])) return send(404, { message: "no such container" });
+      assert.equal(url.search, "", "stats must never carry a query string, whatever the caller asked for");
+      return send(200, {
+        cpu_stats: { cpu_usage: { total_usage: 2_000_000_000 }, system_cpu_usage: 100_000_000_000, online_cpus: 4 },
+        precpu_stats: { cpu_usage: { total_usage: 1_000_000_000 }, system_cpu_usage: 90_000_000_000 },
+        memory_stats: { usage: 512 * 1024 * 1024, limit: 2 * 1024 * 1024 * 1024 },
+        networks: { eth0: { rx_bytes: 100, tx_bytes: 200 } },
+      });
+    }
     send(404, { message: "page not found" });
   });
   await new Promise(r => server.listen(socket, () => r(undefined)));
@@ -61,7 +75,7 @@ async function engine(t) {
 
 const spec = {
   agent: "kit", image: "vyre/computer:0.1", network: "vyre-computers", cpus: 2, memoryMb: 3072, size: { w: 1440, h: 900 },
-  env: { VNC_PASSWORD: "abcdefgh", COMPUTERD_TOKEN: "t0ken", SCREEN: "1440x900" },
+  env: { SCREEN: "1440x900" },
   labels: { "vyre.computer": "kit", "vyre.managed": "true" }, volume: "vyre-home-kit",
 };
 
@@ -78,7 +92,7 @@ test("docker: create sends exactly the container Vyre means, and nothing is publ
   assert.deepEqual(r.body, {
     Image: "vyre/computer:0.1",
     Hostname: "kit",
-    Env: ["VNC_PASSWORD=abcdefgh", "COMPUTERD_TOKEN=t0ken", "SCREEN=1440x900"],
+    Env: ["SCREEN=1440x900"],
     Labels: { "vyre.computer": "kit", "vyre.managed": "true", "run.vyre": "1" },
     ExposedPorts: { "5900/tcp": {}, "7000/tcp": {} },
     HostConfig: {
@@ -90,12 +104,16 @@ test("docker: create sends exactly the container Vyre means, and nothing is publ
       PublishAllPorts: false,
       Privileged: false,
       CapDrop: ["ALL"],
+      CapAdd: ["SETUID", "SETGID"],
       Devices: [],
       SecurityOpt: ["no-new-privileges"],
       ReadonlyRootfs: true,
       Tmpfs: { "/tmp": "mode=1777,exec", "/run": "mode=0755", "/var/run": "mode=0755" },
       ShmSize: 1024 * 1024 * 1024,
-      Mounts: [{ Type: "volume", Source: "vyre-home-kit", Target: "/home/agent", VolumeOptions: { Labels: { "vyre.managed": "true", "vyre.computer": "kit", "run.vyre": "1" } } }],
+      Mounts: [
+        { Type: "volume", Source: "vyre-home-kit", Target: "/home/agent", VolumeOptions: { Labels: { "vyre.managed": "true", "vyre.computer": "kit", "run.vyre": "1" } } },
+        { Type: "volume", Source: "vyre-browser-kit", Target: "/var/lib/vyre", VolumeOptions: { Labels: { "vyre.managed": "true", "vyre.computer": "kit", "run.vyre": "1" } } },
+      ],
       RestartPolicy: { Name: "no" },
     },
   });
@@ -113,8 +131,10 @@ test("docker: never privileged, never a host mount, never host network or PID, a
   assert.deepEqual(body.HostConfig.Devices, []);
   assert.equal(body.HostConfig.ReadonlyRootfs, true);
   assert.ok(body.HostConfig.Tmpfs && Object.keys(body.HostConfig.Tmpfs).length > 0, "a read-only root needs somewhere to write");
-  // The only mount is the agent's own named volume: never a bind, and never the docker socket.
-  assert.equal(body.HostConfig.Mounts.length, 1);
+  // The only mounts are the agent's own two named volumes: never a bind, never the docker socket.
+  assert.equal(body.HostConfig.Mounts.length, 2);
+  // Every capability dropped but the two the entrypoint switches users with.
+  assert.deepEqual(body.HostConfig.CapAdd, ["SETUID", "SETGID"]);
   for (const m of body.HostConfig.Mounts) {
     assert.equal(m.Type, "volume", "no bind mount ever reaches a create body");
     assert.doesNotMatch(String(m.Source), /docker\.sock/);
@@ -129,6 +149,24 @@ test("docker: a computer is refused the host network, whatever config or a calle
   await assert.rejects(d.create({ ...spec, network: "host" }), /never runs on the host network/);
   const onHost = new DockerDriver({ bearer: "test-bearer", url: `unix://${e.socket}`, labelPrefix: "vyre", network: "host" });
   await assert.rejects(onHost.create({ ...spec, network: undefined }), /never runs on the host network/);
+});
+
+test("docker: stats reduces one buffered sample to cpu/ram/network, and never for a stopped or unmanaged container", async t => {
+  const e = await engine(t);
+  const d = new DockerDriver({ bearer: "test-bearer", url: `unix://${e.socket}`, labelPrefix: "vyre", network: "vyre-computers" });
+  const { id } = await d.create(spec);
+  const before = await d.stats(id);
+  assert.deepEqual(before, { cpu: null, ram: null, ramLimit: null, netRx: null, netTx: null }, "created but not started: no stats request at all");
+  assert.ok(!e.seen.some(r => /\/stats$/.test(r.path)), "a stopped container is never asked for stats");
+  await d.start(id);
+  const r = await d.stats(id);
+  assert.equal(r.cpu, 40);
+  assert.equal(r.ram, 25);
+  assert.equal(r.ramLimit, 2 * 1024 * 1024 * 1024);
+  assert.equal(r.netRx, 100);
+  assert.equal(r.netTx, 200);
+  await assert.rejects(d.stats("half"), /does not carry .*managed/, "an existing container without our labels is refused before any stats request");
+  await assert.rejects(d.stats("nope"), /no such container/);
 });
 
 test("docker: run.vyre=1 marks every container and its volume, alongside the prefix labels", async t => {
@@ -220,4 +258,37 @@ test("docker: works over TCP to a proxy too", async t => {
   const d = new DockerDriver({ bearer: "test-bearer", url: `http://127.0.0.1:${addr.port}` });
   assert.deepEqual(await d.list(), []);
   assert.match(seen[0], /^GET \/v1\.43\/containers\/json\?all=true/);
+});
+
+test("docker: the secrets never go in Env; seed() puts them in the computer's volume as a .boot tar", async t => {
+  const e = await engine(t);
+  const d = new DockerDriver({ bearer: "test-bearer", url: `unix://${e.socket}`, labelPrefix: "vyre", network: "vyre-computers" });
+  await assert.rejects(d.create({ ...spec, env: { SCREEN: "1440x900", COMPUTERD_TOKEN: "x".repeat(43) } }), /must not be in a computer's Env/);
+  await assert.rejects(d.create({ ...spec, env: { VNC_PASSWORD: "abcdefgh" } }), /must not be in a computer's Env/);
+  const { id } = await d.create(spec);
+  await d.seed(id, { computerd_token: "T".repeat(43), vnc_password: "Ab-_1234" });
+  const put = e.seen.at(-1);
+  assert.equal(put.method, "PUT");
+  assert.equal(put.path, `/v1.43/containers/${id}/archive?path=%2Fvar%2Flib%2Fvyre`);
+  assert.equal(put.authorization, "Bearer test-bearer", "the secrets themselves travel behind the bearer too");
+  assert.deepEqual(allowBootTar(put.body), { ok: true });
+  assert.match(put.body.toString("latin1"), /COMPUTERD_TOKEN=T{43}\nVNC_PASSWORD=Ab-_1234\n/);
+  // Only our containers: someone else's database is never written to.
+  await assert.rejects(d.seed("db1", { computerd_token: "T".repeat(43), vnc_password: "Ab-_1234" }));
+  assert.ok(!e.seen.some(s => s.method === "PUT" && s.path.includes("db1")));
+});
+
+test("docker: seedAgentTokens() writes .agent-tokens the same way seed() writes .boot, to the same directory, and never to another container", async t => {
+  const e = await engine(t);
+  const d = new DockerDriver({ bearer: "test-bearer", url: `unix://${e.socket}`, labelPrefix: "vyre", network: "vyre-computers" });
+  const { id } = await d.create(spec);
+  await d.seedAgentTokens(id, [{ id: "id1", name: "alice", token: "a".repeat(40) }, { id: "id2", name: "bob", token: "b".repeat(40) }]);
+  const put = e.seen.at(-1);
+  assert.equal(put.method, "PUT");
+  assert.equal(put.path, `/v1.43/containers/${id}/archive?path=%2Fvar%2Flib%2Fvyre`);
+  assert.equal(put.authorization, "Bearer test-bearer");
+  assert.deepEqual(allowAgentTokensTar(put.body), { ok: true });
+  assert.match(put.body.toString("latin1"), /id1:alice=a{40}\nid2:bob=b{40}\n/);
+  await assert.rejects(d.seedAgentTokens("db1", [{ id: "id1", name: "alice", token: "a".repeat(40) }]));
+  assert.ok(!e.seen.some(s => s.method === "PUT" && s.path.includes("db1")));
 });

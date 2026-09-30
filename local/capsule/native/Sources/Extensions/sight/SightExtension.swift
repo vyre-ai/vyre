@@ -71,6 +71,8 @@ final class SightModel: ObservableObject {
     @Published var talking = false
     @Published var heard = ""
     @Published var line: String?
+    /// The real mic level while talking, 0 to 1, throttled to about 10 Hz -- for a live ring.
+    @Published var level: Double = 0
 }
 
 // capsule-extension: SightExtension
@@ -86,8 +88,28 @@ final class SightExtension: CapsuleExtension, SendAttaching {
     private var talker: Talker?
     private var holdStart: Date?
     private var preparing = false, stopWanted = false
-    /// Bumped on hide, so a press still waiting on voice.status never starts the mic afterwards.
+    /// Bumped on hide (or a forced stop/cancel), so a press still waiting on voice.status never
+    /// starts the mic afterwards.
     private var generation = 0
+    /// What the box held before this utterance started; Esc restores exactly this (never a
+    /// general clear -- typed text this utterance did not touch is never lost).
+    private var dictationBaseline = ""
+    /// How much of the server's own cumulative "final" text (local/voice/listen.js's own running
+    /// "committed" string) is already reflected in the box -- what a new final's own newly-added
+    /// tail is checked against for a command word, and what "scratch that" undoes back to.
+    private var committedLen = 0
+    /// Offsets where each phrase began, oldest first -- "scratch that" truncates back to the last one.
+    private var segmentStarts: [Int] = []
+    /// True once this utterance was finished early (⏎, Esc, or "send it"): the talker's own
+    /// eventual .done/.heard/.failed for the SAME utterance is then ignored, since acting on it
+    /// again could clobber whatever came next (a new question, a follow-up box).
+    private var finishedUtterance = false
+    /// 2 minutes: a "still listening?" nudge. 5 minutes: stop (keeping the words), never sent.
+    /// Tests shorten both.
+    var silenceWarnDelay: Duration = .seconds(120)
+    var silenceStopDelay: Duration = .seconds(300)
+    private var silenceWarnTask: Task<Void, Never>?
+    private var silenceStopTask: Task<Void, Never>?
     /// For tests: how the mic and the stream are made. Nil means vyre-mic and vyred's socket.
     var makeMic: (@Sendable (String) -> MicSource)?
     var openStream: Talker.Opener?
@@ -129,6 +151,7 @@ final class SightExtension: CapsuleExtension, SendAttaching {
         panel = SessionPanelModel(vyred: host.vyred)
         panel.attacher = ScreenAttacher(vyred: host.vyred) { [weak host] in host?.log($0) }
         panel.onTalk = { [weak self] in self?.toggleTalk(toPanel: true) }
+        panel.onShown = { [weak host] s in host?.sessionShown(thread: s.map { $0.thread ?? "" }, project: s?.project) }
     }
 
     var panelOpen: Bool { window?.isOpen ?? false }
@@ -258,10 +281,128 @@ final class SightExtension: CapsuleExtension, SendAttaching {
     private func stopTalk() {
         generation += 1
         preparing = false
+        finishedUtterance = true
         talker?.cancel()
         talker = nil
+        endTalkUI()
+    }
+
+    /// An ordinary ⏎ about to submit while listening (Kit/Extension.swift's CapsuleExtension):
+    /// stop the mic gracefully -- like a tap-to-stop -- keeping whatever words already landed;
+    /// the caller (Panel.swift) submits them right after, using the box's current text.
+    func stopTalking() -> Bool {
+        guard talker != nil || preparing else { return false }
+        generation += 1
+        finishedUtterance = true
+        preparing = false
+        endTalkUI()
+        talker?.toggle()
+        talker = nil
+        if !talkToPanel { host.dictate(host.currentQuery(), final: true) }
+        return true
+    }
+
+    /// Esc while listening (Kit/Extension.swift's CapsuleExtension): stop the mic without sending
+    /// anything more, and put the box back exactly as it was before this utterance.
+    func cancelTalking() -> Bool {
+        guard talker != nil || preparing else { return false }
+        generation += 1
+        finishedUtterance = true
+        preparing = false
+        endTalkUI()
+        talker?.cancel()
+        talker = nil
+        if talkToPanel { panel.draft = "" } else { host.cancelDictation(dictationBaseline) }
+        return true
+    }
+
+    /// The end of listening's own UI, from every path (a normal .done/.failed, a forced stop or
+    /// cancel, or the Capsule hiding): the talking state, the level ring and the silence timers.
+    private func endTalkUI() {
         model.talking = false
         panel.talking = false
+        model.level = 0
+        silenceWarnTask?.cancel(); silenceStopTask?.cancel()
+        silenceWarnTask = nil; silenceStopTask = nil
+    }
+
+    /// Reset on .listening and on every partial or final: 2 minutes with nothing new, a nudge;
+    /// 5 minutes, stop (the words stay; nothing is sent) -- the user's spec, matching chat's own
+    /// VOICE_SILENCE_WARN_MS/VOICE_SILENCE_STOP_MS.
+    private func resetSilenceTimers() {
+        silenceWarnTask?.cancel(); silenceStopTask?.cancel()
+        let warn = silenceWarnDelay, stop = silenceStopDelay
+        silenceWarnTask = Task { @MainActor [weak self] in
+            try? await Task.sleep(for: warn)
+            guard !Task.isCancelled, let self else { return }
+            self.say("Still listening? Option-Return to stop.")
+        }
+        silenceStopTask = Task { @MainActor [weak self] in
+            try? await Task.sleep(for: stop)
+            guard !Task.isCancelled, let self else { return }
+            _ = self.stopTalking()
+        }
+    }
+
+    /// A settled phrase, checked for a command word at its very end (never a live partial, so a
+    /// still-changing guess never fires one early). Ports deck/chat/composer.js's own onFinal.
+    private func handleFinal(_ text: String) {
+        let priorLen = committedLen
+        if let (kind, idx) = VoiceCommands.match(text) {
+            let words = String(text[..<idx])
+            switch kind {
+            case .send:
+                committedLen = words.count
+                model.heard = words
+                put(joined(words), final: true)
+                say("\"send it\": sending")
+                finishAndSubmit()
+            case .newLine:
+                let withNL = words + "\n"
+                committedLen = withNL.count
+                model.heard = withNL
+                put(joined(withNL), final: false)
+                say("\"new line\"")
+            case .scratch:
+                // Undo whatever this final just added, back to the length as of the previous
+                // final. If nothing new came before the command, there was nothing to undo here,
+                // so undo the phrase before that instead.
+                var kept = String(words.prefix(priorLen))
+                if words.count <= priorLen {
+                    if !segmentStarts.isEmpty { segmentStarts.removeLast() }
+                    kept = String(kept.prefix(segmentStarts.last ?? 0))
+                }
+                committedLen = kept.count
+                model.heard = kept
+                put(joined(kept), final: false)
+                say("\"scratch that\": removed the last phrase")
+            }
+            return
+        }
+        if text.count > committedLen { segmentStarts.append(committedLen) }
+        committedLen = text.count
+        model.heard = text
+        put(joined(text), final: false)
+    }
+
+    /// The "send it" command: update the box, stop the mic without waiting for it (its own eventual
+    /// .done is ignored, finishedUtterance is already set), and submit right now.
+    private func finishAndSubmit() {
+        finishedUtterance = true
+        endTalkUI()
+        talker?.toggle()
+        talker = nil
+        if !talkToPanel { host.submitDictation() }
+    }
+
+    /// The dictated words, placed after whatever the box held before this utterance -- never over
+    /// typed text. (The user's spec says "at the cursor"; this box has no free-form cursor to
+    /// target, so "after what was already there" is the closest faithful match, and empty for the
+    /// panel's own draft, which starts fresh every time.)
+    private func joined(_ words: String) -> String {
+        guard !dictationBaseline.isEmpty else { return words }
+        let sep = words.isEmpty || dictationBaseline.hasSuffix(" ") || dictationBaseline.hasSuffix("\n") ? "" : " "
+        return dictationBaseline + sep + words
     }
 
     // MARK: - The session panel
@@ -406,7 +547,11 @@ final class SightExtension: CapsuleExtension, SendAttaching {
         if let t = talker { t.toggle(); return }
         if preparing { stopWanted = true; return }
         preparing = true; stopWanted = false
+        finishedUtterance = false
         talkToPanel = toPanel && panelOpen
+        // The panel's draft starts fresh every time; the box keeps whatever was already typed.
+        dictationBaseline = talkToPanel ? "" : host.currentQuery()
+        committedLen = 0; segmentStarts = []
         model.talking = true
         panel.talking = talkToPanel
         model.heard = ""
@@ -464,9 +609,11 @@ final class SightExtension: CapsuleExtension, SendAttaching {
         let bin = MicPath.resolve(env: env, fromStatus: fromStatus, bundle: bundleURL)
         let mic = makeMic ?? { ProcessMic(bin: $0) }
         let open: Talker.Opener = openStream ?? Listen.opener(host.vyred)
-        return Talker(makeMic: { mic(bin) }, open: open) { [weak self] e in
+        return Talker(makeMic: { mic(bin) }, open: open, emit: { [weak self] e in
             Task { @MainActor in self?.talkEvent(e) }
-        }
+        }, onLevel: { [weak self] level in
+            Task { @MainActor in self?.model.level = level }
+        })
     }
 
     private func talkEvent(_ e: Talker.Event) {
@@ -474,14 +621,24 @@ final class SightExtension: CapsuleExtension, SendAttaching {
         case .listening:
             model.talking = true
             panel.talking = talkToPanel
-        case .heard(let text):
-            model.heard = text
-            put(text, final: false)
+            resetSilenceTimers()
+        case .heard(let text, let isFinal):
+            guard !finishedUtterance else { return }
+            resetSilenceTimers()
+            guard isFinal else { model.heard = text; put(joined(text), final: false); return }
+            handleFinal(text)
         case .done(let text):
-            model.talking = false; panel.talking = false; talker = nil
-            if text.isEmpty { say("Nothing heard"); if !talkToPanel { host.dictate("", final: true) } } else { model.heard = text; put(text, final: true) }
+            guard !finishedUtterance else { return }
+            endTalkUI()
+            talker = nil
+            // Nothing heard: back to exactly what the box held before, never a blank box (a real
+            // gap in the old behaviour, which set it to "" outright and lost anything typed first).
+            if text.isEmpty { say("Nothing heard"); if !talkToPanel { host.dictate(dictationBaseline, final: true) } }
+            else { model.heard = text; put(joined(text), final: true) }
         case .failed(let why):
-            model.talking = false; panel.talking = false; talker = nil
+            guard !finishedUtterance else { return }
+            endTalkUI()
+            talker = nil
             model.line = why
             say(why)
         }
