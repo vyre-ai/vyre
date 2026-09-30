@@ -21,21 +21,47 @@ import { REPO } from "../../daemon/index.js";
 import { build } from "../../daemon/build.js";
 import { stop } from "../daemonctl.js";
 import { call } from "../../daemon/client.js";
+import crypto from "node:crypto";
 import { backup, restore } from "../../names/backup.js";
 import { bring, waitFor, terminal } from "./up.js";
 import { out, dim, bold, signal, beacon } from "../style.js";
 import { EXIT, UsageError, json, emit, fail, usage, parse } from "../kit.js";
-import * as R from "../update/releases.js";
+import * as R from "../../../lib/releases.js";
+import { RELEASE_KEY, sumsSigned } from "../../../lib/release-sig.js";
 
 const REPO_PATH = "repos/vyre-ai/vyre/releases";
-const USAGE = "vyre update [--check] [--channel stable|beta] [--to <version>] [--yes] [--rollback [--restore-data]] [--json]";
+
+// R8 (plans/launch.md's Review response, BLOCKER 3): every backup core/names/backup.js writes is
+// sealed under a passphrase, with no unencrypted option. This update's own pre-update backup is
+// automatic and unattended (nobody is at a terminal to type one, including during an unattended
+// rollback minutes or days later), so it gets a random one, written once beside the backup file
+// as `<file>.key`, mode 0600, in the same root-owned <home>/backups/ folder the backup itself sits
+// in: the same trust boundary the vault's own master key already lives in on this box, not a
+// weaker one. The person's own `vyre backup <file>` (up.js) never uses this path; it always asks.
+const KEY_SUFFIX = ".key";
+
+/** A fresh random passphrase for this update's own internal backup, written beside the file. */
+function writeInternalPassphrase(file) {
+  const passphrase = crypto.randomBytes(32).toString("base64url");
+  const keyFile = file + KEY_SUFFIX;
+  fs.mkdirSync(path.dirname(keyFile), { recursive: true, mode: 0o700 });
+  fs.writeFileSync(keyFile, passphrase, { mode: 0o600 });
+  return passphrase;
+}
+
+/** The passphrase beside a backup file this update made, for a later, possibly unattended, restore. */
+function readInternalPassphrase(file) {
+  try { return fs.readFileSync(file + KEY_SUFFIX, "utf8"); }
+  catch { throw new Error(`no key beside ${file}; it was not made by this update (or its key is gone)`); }
+}
+const USAGE = "vyre update [--check] [--channel stable|beta] [--to <version>] [--yes] [--allow-unsigned] [--rollback [--restore-data]] [--json]";
 
 /**
  * What `vyre update` needs from the world, so tests can stand in for each piece.
  * @typedef {{ tty: boolean, ask(q: string): Promise<string> }} IO
  * @typedef {{ home?: string, api?: string, npm?: string, repo?: string, build?: () => import("../../daemon/build.js").Build,
  *   bring?: typeof bring, waitFor?: typeof waitFor, backup?: typeof backup, restore?: typeof restore, stop?: typeof stop,
- *   call?: typeof call, io?: IO, supervisor?: string, window?: number }} Deps
+ *   call?: typeof call, io?: IO, supervisor?: string, window?: number, key?: string, pkg?: string }} Deps
  */
 
 /** Fetch with a time limit, as the one client Vyre is to GitHub. */
@@ -80,6 +106,39 @@ async function fetchMeta(rel, dir) {
   const meta = JSON.parse(fs.readFileSync(await fetchChecked(rel, "release.json", dir, sums), "utf8"));
   if (meta.version !== rel.version) throw new Error(`release.json says ${meta.version}, the tag says ${rel.version}`);
   return { sums, meta };
+}
+
+/** The release's SHA256SUMS.sig into `dir`, or null when it has none. */
+async function fetchSig(rel, dir) {
+  if (!rel.assets["SHA256SUMS.sig"]) return null;
+  try { const f = path.join(dir, "SHA256SUMS.sig"); await download(rel.assets["SHA256SUMS.sig"], f); return fs.readFileSync(f, "utf8"); } catch { return null; }
+}
+
+/**
+ * The release's shell.json, kept beside its checked files for the phone's shell check (pwa), checked against the list.
+ * It cannot fail an update.
+ */
+async function fetchShellFiles(rel, dir, sums) {
+  try { if (rel.assets["shell.json"] && sums["shell.json"]) await fetchChecked(rel, "shell.json", dir, sums); } catch { /* the check stays off */ }
+}
+
+/**
+ * After a healthy update: the release's SHA256SUMS, signature and shell.json into the installed package's deck/release, which
+ * vyred serves at /release/. Not into a git checkout (a developer's tree), and never fails the update.
+ */
+export function publishRelease(dir, pkg = REPO) {
+  try {
+    if (fs.existsSync(path.join(pkg, ".git"))) return;
+    const to = path.join(pkg, "deck", "release");
+    fs.mkdirSync(to, { recursive: true });
+    for (const f of ["SHA256SUMS", "SHA256SUMS.sig", "shell.json"]) {
+      const from = path.join(dir, f);
+      if (!fs.existsSync(from)) continue;
+      const tmp = path.join(to, `.${f}.new`);
+      fs.copyFileSync(from, tmp);
+      fs.renameSync(tmp, path.join(to, f));
+    }
+  } catch { /* the phone's shell check stays off until the next update */ }
 }
 
 /** A release folder kept in <home>/releases, checked again before it is used. */
@@ -147,7 +206,7 @@ const buildOf = (version, meta) => ({ version, commit: typeof meta?.commit === "
  */
 export async function update(args, deps = {}) {
   let flags;
-  try { ({ flags } = parse(args, { bool: ["check", "yes", "rollback", "restore-data"], values: ["channel", "to"], cmd: "update" })); }
+  try { ({ flags } = parse(args, { bool: ["check", "yes", "rollback", "restore-data", "allow-unsigned"], values: ["channel", "to"], cmd: "update" })); }
   catch (e) { if (e instanceof UsageError) return usage(e.message, e.next); throw e; }
   const home = deps.home || config.home();
   const say = json() ? () => {} : out;
@@ -169,6 +228,7 @@ export async function update(args, deps = {}) {
     bring: deps.bring || bring, waitFor: deps.waitFor || waitFor,
     backup: deps.backup || backup, restore: deps.restore || restore, stop: deps.stop || stop, call: deps.call || call,
     io: deps.io || terminal, window: deps.window ?? 60_000,
+    pkg: deps.pkg || REPO, key: deps.key || RELEASE_KEY, allowUnsigned: Boolean(flags["allow-unsigned"]),
   };
   if (flags.rollback) return rollback(ctx);
 
@@ -223,6 +283,8 @@ async function install(ctx, releases, target, channel) {
   const { home, say, current } = ctx;
   const dir = path.join(home, "releases", target.version);
   let meta, tgz;
+  // Only a release whose signature verified is published for the phone's shell check; --allow-unsigned installs one, and stops there.
+  let releaseSigned = false;
   try {
     const got = await fetchMeta(target, dir);
     meta = got.meta;
@@ -235,7 +297,20 @@ async function install(ctx, releases, target, channel) {
         next: step ? `vyre update --to ${step.version} first, then vyre update` : `install ${meta.min_from} by hand once: npm install -g <its vyre.tgz> && vyre up`,
       });
     }
+    // The signature first: an unsigned or badly signed release is refused before anything is downloaded or changed, and only
+    // --allow-unsigned installs one, with a plain warning (one policy on the box and on a Mac).
+    const sig = await fetchSig(target, dir);
+    const signed = sig !== null && sumsSigned(fs.readFileSync(path.join(dir, "SHA256SUMS")), sig, ctx.key);
+    if (!signed) {
+      const problem = sig === null ? "this release is not signed" : "the release's signature does not match Vyre's release key";
+      if (!ctx.allowUnsigned) {
+        fs.rmSync(dir, { recursive: true, force: true });
+        return fail(`${problem}; nothing was installed`, { code: "unsigned", next: "vyre update --allow-unsigned installs it anyway" });
+      }
+      ctx.say(beacon(`  WARNING: ${problem}. Installing it anyway because you passed --allow-unsigned: nothing proves this release came from Vyre.`));
+    } else { releaseSigned = true; say(dim("  signature checked against Vyre's release key")); }
     tgz = await fetchChecked(target, "vyre.tgz", dir, got.sums);
+    await fetchShellFiles(target, dir, got.sums);
   } catch (e) {
     fs.rmSync(dir, { recursive: true, force: true });
     return fail(`${/** @type {Error} */ (e).message}; nothing was installed`, { code: "bad_release", next: "try again later; if it keeps failing the release is broken" });
@@ -246,7 +321,8 @@ async function install(ctx, releases, target, channel) {
   if (!prev) say(beacon(`  no ${current} tarball to go back to`) + dim(" · a failed update restores the data but cannot reinstall this version"));
 
   const file = path.join(home, "backups", `pre-${target.version}`, "vyre-backup.tar.gz");
-  try { await ctx.backup({ root: home, file }); }
+  const passphrase = writeInternalPassphrase(file);
+  try { await ctx.backup({ root: home, file, passphrase }); }
   catch (e) { return fail(`the backup before updating did not finish: ${/** @type {Error} */ (e).message}; nothing was installed`, { code: "backup_failed" }); }
   say(dim(`  backed up · ${file}`));
 
@@ -262,7 +338,7 @@ async function install(ctx, releases, target, channel) {
     fs.rmSync(dir, { recursive: true, force: true });
     if (data) {
       await ctx.stop();
-      try { await ctx.restore({ root: home, file, force: true }); did.push("restored the backup"); }
+      try { await ctx.restore({ root: home, file, passphrase, force: true }); did.push("restored the backup"); }
       catch (e) { did.push(`could not restore the backup (${/** @type {Error} */ (e).message})`); }
     }
     const b = await ctx.bring(ctx.role, () => buildOf(current, prev ? prev.meta : null));
@@ -282,6 +358,7 @@ async function install(ctx, releases, target, channel) {
   if (!h) return undo(`vyred did not report ${target.version} on /v1/health within ${Math.round(ctx.window / 1000)}s`, true);
 
   // Healthy: from here on nothing restores the data by itself.
+  if (releaseSigned) publishRelease(dir, ctx.pkg);
   const removed = prune(home, target.version);
   const fresh = await whatsNew(ctx, current);
   if (json()) return emit({ updated: true, from: current, to: target.version, channel, backup: file, removed, new: fresh });
@@ -331,8 +408,11 @@ async function rollback(ctx) {
   const r = await npmInstall(ctx.npm, old.tgz);
   if (!r.ok) return fail(`could not reinstall ${prev.version}: ${r.why}`, { code: "install_failed" });
   if (data) {
+    let passphrase;
+    try { passphrase = readInternalPassphrase(file); }
+    catch (e) { return fail(String(/** @type {Error} */ (e).message), { code: "no_backup_key", next: "vyre update --rollback keeps the current data" }); }
     await ctx.stop();
-    try { await ctx.restore({ root: home, file, force: true }); }
+    try { await ctx.restore({ root: home, file, passphrase, force: true }); }
     catch (e) { return fail(`${prev.version} is installed but the backup did not go back: ${/** @type {Error} */ (e).message}`, { code: "restore_failed", next: "vyre up starts vyred on the current data" }); }
   }
   const back = buildOf(prev.version, old.meta);

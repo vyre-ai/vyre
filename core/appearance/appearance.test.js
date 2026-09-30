@@ -102,7 +102,7 @@ test("appearance: check accepts a good override and names each broken rule", asy
   await refused({ color: { attentionAlt: {} } }, /^color\.attentionAlt may not be overridden$/);
   await refused({ color: { dark: { brand: "#123456" } } }, /is not a colour role/);
   await refused({ radius: { huge: 40 } }, /^radius\.huge is not a token$/);
-  await refused({ color: { dark: { beacon: "#C6F36B" } } }, /beacon \(attention\) is reused as primaryBg/);
+  await refused({ color: { dark: { beacon: "#F1EEE6" } } }, /beacon \(attention\) is reused as primaryBg/);
   await refused({ color: { paper: { focus: "#EEEAE2" } } }, /^paper: focus on bg .* needs 3:1$/);
   await refused({ color: { dark: { label: "#3A3733" } } }, /^dark: label on bg .* needs 4\.5:1$/);
   await refused({ type: { mono: [11, 13] } }, /under the 12 pt minimum/);
@@ -158,7 +158,7 @@ test("appearance: settings.set runs the check, refuses a bad value whole, and a 
   let r = await c("settings.set", { key: "appearance.tokens", value: { radius: { card: 16 }, control: { touch: 30 } } });
   assert.equal(r.error.code, "bad_input");
   assert.equal(r.error.message, "control.touch: 30 is under the 44 pt touch target");
-  r = await c("settings.set", { key: "appearance.tokens", value: { color: { dark: { beacon: "#C6F36B" } } } });
+  r = await c("settings.set", { key: "appearance.tokens", value: { color: { dark: { beacon: "#F1EEE6" } } } });
   assert.match(r.error.message, /beacon \(attention\) is reused/);
   assert.deepEqual((await c("settings.get", { key: "appearance.tokens" })).data.value, {}, "the default, nothing stored");
   assert.equal((await c("settings.set", { key: "appearance.theme", value: "kit/ocean" })).error.message, "appearance.theme: no preset kit/ocean; appearance.presets lists the installed ones");
@@ -307,7 +307,7 @@ test("appearance: the legacy config.theme.colors folds in under the person's tok
 });
 
 test("appearance: legacy colours that break a rule are left out, and said so", async t => {
-  const { c } = await world(t, { theme: { colors: { dark: { beacon: "#C6F36B" } } } });
+  const { c } = await world(t, { theme: { colors: { dark: { beacon: "#F1EEE6" } } } });
   const r = (await c("appearance.resolve")).data;
   assert.equal(r.version, SHIPPED);
   assert.equal(r.legacy.applied, false);

@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Launch · README hero</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="vyre.css">
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;600&amp;family=JetBrains+Mono:wght@400;600&amp;display=swap">
+<style>body{margin:0}</style>
+</helmet>
+<div class="vy {{theme}}" style="width: 1600px; height: 640px; padding: 64px; flex-direction: column; justify-content: space-between;">
+
+  <!-- The lockup: the Lead mark and the wordmark, as IdSystem draws them. -->
+  <div class="row" style="gap: 18px;">
+    <svg width="44" height="44" viewBox="0 0 24 24" fill="none" role="img" aria-label="Vyre"><path class="mk-w" d="M3.5 5.5L12 19.5L17.96 9.69" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"></path><circle class="mk-d" cx="20.5" cy="5.5" r="2.3"></circle></svg>
+    <svg width="115" height="48" viewBox="-2 3 62 26" fill="none" role="img" aria-label="vyre"><path class="mk-w" d="M0 6L6 20L12 6M16 6L22 20M28 6L19.4 26M33 6V20M33 13Q33 6 40 6M43 13H57A7 7 0 1 0 55.36 17.5" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"></path></svg>
+  </div>
+
+  <!-- The one focal point. -->
+  <h1 class="w6" data-display-type="hero" style="width: 720px; font-size: 64px; line-height: 70px; letter-spacing: -0.03em;">Your best work,<br>with a partner that<br>never drops the thread.</h1>
+
+  <span class="mono t28 t2">vyre.run</span>
+
+    <!-- The product glimpse: the Capsule panel, trimmed from CapsuleIQ (b). Scaled as one piece. -->
+    <div class="kc-p" style="position: absolute; left: auto; top: 50%; right: 64px; width: 432px; max-height: none; transform: translateY(-50%) scale(1.7); transform-origin: 100% 50%;">
+      <div class="kc-in">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path class="mk-w" d="M3.5 5.5L12 19.5L17.96 9.69" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"></path><circle class="mk-d" cx="20.5" cy="5.5" r="2.3"></circle></svg>
+        <span class="kc-q"><span class="kc-ph">Ask a follow-up</span></span>
+      </div>
+      <div class="kc-body">
+        <div class="kc-iq" style="border-bottom: 0;">
+          <div class="row" style="gap: 8px;"><span class="lbl">Vyre IQ</span><span class="t12 t3">quick</span></div>
+          <span class="kc-bub">what did we decide about the Estate intake?</span>
+          <p class="prose" style="text-wrap: pretty;">On Tuesday you and kit agreed to split the Estate intake in two: a short first form now, the full asset list after the consult is booked.</p>
+          <div class="row" style="gap: 8px; flex-wrap: wrap;">
+            <span class="lbl">From</span>
+            <span class="kc-src"><svg class="ic ic-12" viewBox="0 0 16 16"><path d="M2.5 3.5h11v7h-6l-3 2.5v-2.5h-2z"></path></svg>Q3 report and Estate intake · Harlow Legal · Tue<span class="kbd">⌘1</span></span>
+            <span class="kc-src"><svg class="ic ic-12" viewBox="0 0 16 16"><path d="M8 2l6 3-6 3-6-3z"></path><path d="M2 8l6 3 6-3"></path><path d="M2 11l6 3 6-3"></path></svg>Memory: the Estate intake starts with a short form<span class="kbd">⌘2</span></span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"theme":{"editor":"enum","options":["t-dark","t-light"],"default":"t-dark"},"$preview":{"width":1600,"height":640}}'>
+class Component extends DCLogic {
+  renderVals() {
+    return { theme: this.props.theme ?? 't-dark' };
+  }
+}
+</script>
+</body>
+</html>

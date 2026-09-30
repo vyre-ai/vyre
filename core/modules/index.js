@@ -64,8 +64,14 @@ function withinMs(p, ms) {
   const late = new Promise(res => { timer = setTimeout(() => res(null), ms); if (timer.unref) timer.unref(); });
   return Promise.race([p, late]).finally(() => clearTimeout(timer));
 }
+/** The one tool the agents module may call as the asking person: agents.ask's words and tags, heard by threads.send. @param {string} tool */
+export const agentsMayRelay = tool => tool === "threads.send";
+/** The per-call check on the agents module's relay: throws for any tool but threads.send. @param {string} tool @param {string} as */
+export function checkAgentsRelay(tool, as) {
+  if (!agentsMayRelay(tool)) throw new Error(`agents may not call ${tool} as ${as}: it relays a person to threads.send only`);
+}
 /** @type {Record<string, any>} */
-const CALL_AS = { link: ["link:box"], settings: ["cli", "local", "deck", "capsule"], mentions: (/** @type {string} */ as) => isPerson(as) || as === "module:sessions" || as === "module:assistant",
+const CALL_AS = { agents: (/** @type {string} */ as) => isPerson(as), link: ["link:box"], settings: ["cli", "local", "deck", "capsule"], mentions: (/** @type {string} */ as) => isPerson(as) || as === "module:sessions" || as === "module:assistant",
   // capsule runs a view's declared tool as the asking person (first party modules) or as the added module itself, never as anyone else.
   capsule: (/** @type {string} */ as) => isPerson(as) || /^module:[a-z][a-z0-9-]*$/.test(as),
   // connectors relays the person who asked to one thing: writing an api-credential (a module cannot write one on its own); checked per call below.
@@ -552,14 +558,40 @@ export class Registry {
         this.deps.log(`warn: module ${name || f.dir} invalid: ${error}`);
         continue;
       }
+      const roles = f.manifest.roles || ["box", "local"];
+      // "mac" and "windows" are "local" on that OS only (roleBuckets); box and local are themselves.
+      const here = roleBuckets(role, platform);
+      const on = !disable.includes(name) && (roles.some(r => (r === "mac" || r === "windows" ? roleBuckets(r, platform) : [r]).some(b => here.includes(b))) || enable.includes(name));
       // Two modules with one name: the first found wins (Vyre's own folders come before the
       // user's), and the other is reported, never silently dropped. A user's module named like a
       // core one once vanished without a word, and so did every tool it offered.
+      // The exception is a name two of Vyre's own modules share on purpose for different machines
+      // (the box's chrome and the Mac's chrome): a copy that is not on for this machine steps aside
+      // for one that is, and stays listed as off, so which one runs never depends on folder order.
       if (this.modules.has(name)) {
-        const error = `a module named ${name} is already loaded from ${this.modules.get(name).dir}; this one is ignored`;
-        this.modules.set(`${name}@${f.dir}`, { manifest: f.manifest, dir: f.dir, state: "invalid", error });
-        this.deps.log(`warn: module ${name}@${f.dir} invalid: ${error}`);
-        continue;
+        const prev = this.modules.get(name);
+        const mine = this.isFirstParty(f.dir), theirs = this.isFirstParty(prev.dir);
+        /** @param {{ manifest: any, dir: string }} rec @param {string} error */
+        const reject = (rec, error) => { this.modules.set(`${name}@${rec.dir}`, { manifest: rec.manifest, dir: rec.dir, state: "invalid", error }); this.deps.log(`warn: module ${name}@${rec.dir} invalid: ${error}`); };
+        // The two "added vs Vyre" branches below cannot be reached today: the shipped-names check at the top of the loop already sends an added copy of a
+        // shipped name to `name@dir` as invalid, in either folder order. They stay as defence in depth; the invariant lives in that top check.
+        if (mine && !theirs) {
+          // Vyre's own module always owns its name, whatever the folder order: an added module found first steps aside.
+          reject(prev, `a Vyre module named ${name} owns that name; this one is ignored`);
+          this.modules.delete(name);
+        } else if (!mine && theirs) {
+          // An added module never takes or replaces a Vyre module's name, whether that one is on or off here.
+          reject({ manifest: f.manifest, dir: f.dir }, `a Vyre module named ${name} owns that name; this one is ignored`);
+          continue;
+        } else if (!on) {
+          this.modules.set(`${name}@${f.dir}`, { manifest: f.manifest, dir: f.dir, state: "off" });
+          continue;
+        } else if (mine && theirs && prev.state === "off") {
+          this.modules.set(`${name}@${prev.dir}`, prev);
+        } else {
+          reject({ manifest: f.manifest, dir: f.dir }, `a module named ${name} is already loaded from ${prev.dir}; this one is ignored`);
+          continue;
+        }
       }
       // One provider per # kind: the first module found keeps it, and a later one that claims it fails.
       const taken = (Array.isArray(f.manifest.mentions) ? f.manifest.mentions : []).map(e => [e && e.kind, mentionKinds.get(e && e.kind)]).find(([, by]) => by && by !== name);
@@ -570,10 +602,6 @@ export class Registry {
         continue;
       }
       for (const e of Array.isArray(f.manifest.mentions) ? f.manifest.mentions : []) if (e && e.kind) mentionKinds.set(e.kind, name);
-      const roles = f.manifest.roles || ["box", "local"];
-      // "mac" and "windows" are "local" on that OS only (roleBuckets); box and local are themselves.
-      const here = roleBuckets(role, platform);
-      const on = !disable.includes(name) && (roles.some(r => (r === "mac" || r === "windows" ? roleBuckets(r, platform) : [r]).some(b => here.includes(b))) || enable.includes(name));
       this.modules.set(name, { manifest: f.manifest, dir: f.dir, state: on ? "pending" : "off" });
     }
     const candidates = found.filter(f => { const r = this.modules.get(f.manifest && f.manifest.name); return r?.state === "pending" && r.dir === f.dir; });
@@ -833,6 +861,8 @@ export class Registry {
         if (!core || !(typeof allowed === "function" ? allowed(String(as)) : (allowed || []).includes(String(as)))) throw new Error(`${m.name} may not call ${tool} as ${as}`);
         // mentions replays the asking person to a provider's search tool, never to any other tool.
         if (m.name === "connectors" && !(tool === "vault.put" && input && typeof input === "object" && input.kind === "api-credential")) throw new Error(`connectors may not call ${tool} as ${as}: it relays a person to vault.put for an api-credential only`);
+        // agents relays the asking person to threads.send alone (agents.ask's tags), never to any other tool.
+        if (m.name === "agents") checkAgentsRelay(tool, String(as));
         if (m.name === "capsule" && !this.capsuleMayCall(String(as), tool)) throw new Error(`capsule may not call ${tool} as ${as}: no Capsule view of that module declares it`);
         if (m.name === "mentions" && !this.mentionTools(String(as).startsWith("module:") ? "resolve" : "search").has(tool)) throw new Error(`mentions may not call ${tool} as ${as}: no first-party provider names it`);
         // settings relays a person only to the tools first-party modules declared as their own

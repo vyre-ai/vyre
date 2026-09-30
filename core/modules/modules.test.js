@@ -276,6 +276,57 @@ test("modules: a second module with a name already loaded is reported, and the f
   assert.equal((await reg.call("notes.other", {})).error.code, "no_such_tool");
 });
 
+test("modules: two modules that share a name for different machines: the one that is on for this machine runs, whichever folder is found first", async t => {
+  for (const order of [["a", "b"], ["b", "a"]]) {
+    const home = tempHome(t);
+    const dirs = { a: path.join(home, "a"), b: path.join(home, "b") };
+    // a is the Mac's copy (local), b is the box's copy.
+    writeModule(dirs.a, "notes", { ...good, roles: ["local"] }, echo);
+    writeModule(dirs.b, "notes", { ...good, roles: ["box"], does: { tools: ["notes.add"] } }, `export default { async start(ctx) { ctx.tool("notes.add", { run: async () => ({ from: "box" }) }); return {}; } };`);
+    const db = open(path.join(home, `vyre-${order.join("")}.db`));
+    t.after(() => db.close());
+    const reg = new Registry({ db, events: new Events(db), config: { role: "box" }, log: () => {}, firstPartyRoots: [dirs.a, dirs.b] });
+    await reg.start(discover(order.map(k => dirs[/** @type {"a"|"b"} */ (k)]), { firstPartyRoots: [dirs.a, dirs.b] }), { role: "box" });
+    const st = reg.status();
+    assert.equal(st.find(m => m.name === "notes").state, "running", order.join());
+    assert.equal(path.dirname(reg.modules.get("notes").dir), dirs.b, "the box copy is the one that runs");
+    assert.equal((await reg.call("notes.add", {})).data.from, "box");
+    assert.ok(st.filter(m => m.name.startsWith("notes@")).every(m => m.state === "off"), "the other stays listed as off, not invalid");
+  }
+});
+
+test("modules: an added module never takes the name of a core module that is only off on this machine", async t => {
+  const home = tempHome(t);
+  const a = path.join(home, "a"), b = path.join(home, "b");
+  writeModule(a, "notes", { ...good, roles: ["box"] }, echo);
+  writeModule(b, "notes", { ...good, roles: ["local"], does: { tools: ["notes.add"] } }, `export default { async start(ctx) { ctx.tool("notes.add", { run: async () => ({ from: "added" }) }); return {}; } };`);
+  const db = open(path.join(home, "vyre.db"));
+  t.after(() => db.close());
+  const reg = new Registry({ db, events: new Events(db), config: { role: "local" }, log: () => {} });
+  await reg.start(discover([a, b]), { role: "local" });
+  // Neither folder is one of Vyre's own here, so the old rule holds: the first found keeps the name, the other is reported.
+  assert.equal(reg.modules.get("notes").state, "off");
+  assert.equal(path.dirname(reg.modules.get("notes").dir), a);
+  assert.equal(reg.status().find(m => m.name.startsWith("notes@")).state, "invalid");
+});
+
+test("modules: an added module with a first-party name that is off here stays invalid, in either folder order", async t => {
+  for (const order of [["core", "added"], ["added", "core"]]) {
+    const home = tempHome(t);
+    const dirs = { core: path.join(home, "core"), added: path.join(home, "added") };
+    writeModule(dirs.core, "names", { ...good, name: "names", does: { tools: ["names.add"] }, roles: ["box"] }, echo);
+    writeModule(dirs.added, "names", { ...good, name: "names", does: { tools: [{ name: "names.add", reach: "anyone" }] }, roles: ["local"] }, `export default { async start(ctx) { ctx.tool("names.add", { run: async () => ({ from: "added" }) }); return {}; } };`);
+    const db = open(path.join(home, `vyre-${order.join("")}.db`));
+    t.after(() => db.close());
+    const fp = [dirs.core];
+    const reg = new Registry({ db, events: new Events(db), config: { role: "local" }, log: () => {}, firstPartyRoots: fp });
+    await reg.start(discover(order.map(k => dirs[/** @type {"core"|"added"} */ (k)]), { firstPartyRoots: fp }), { role: "local" });
+    const running = [...reg.modules.values()].filter(m => m.state === "running");
+    assert.deepEqual(running, [], order.join() + ": the added module does not run under the first-party name");
+    assert.equal((await reg.call("names.add", {}, "local")).error.code, "no_such_tool");
+  }
+});
+
 test("modules: a bad manifest is logged at warn level, not silently dropped, and status() still carries it", async t => {
   // A camelCase tool name once failed validate() and took the whole module with it, with no line
   // in the log to say so - found only by calling discover() by hand (teammates, 2026-09-28).
@@ -1035,4 +1086,18 @@ test("modules: firstPartyRoots, an in-process test's own option, loads a stand-i
   assert.equal(reg.isFirstParty(path.join(home, "elsewhere", "roster")), false);
   await reg.start(discover([root], { firstPartyRoots: [root] }), { role: "box" });
   assert.equal(reg.modules.get("roster").state, "running");
+});
+
+test("modules: the agents module relays a person to threads.send and to nothing else", async () => {
+  const { agentsMayRelay } = await import("./index.js");
+  assert.equal(agentsMayRelay("threads.send"), true);
+  for (const tool of ["threads.start", "threads.delete", "threads.answer", "vault.put", "gate.request", "settings.set", "agents.create", "memory.write", ""]) assert.equal(agentsMayRelay(tool), false, tool);
+});
+
+test("modules: the agents relay check lets threads.send through and throws for every other tool, vault.reveal among them", async () => {
+  const { checkAgentsRelay } = await import("./index.js");
+  assert.doesNotThrow(() => checkAgentsRelay("threads.send", "deck"));
+  for (const tool of ["vault.reveal", "vault.put", "threads.delete", "gate.request", "settings.set"]) {
+    assert.throws(() => checkAgentsRelay(tool, "deck"), new RegExp(`agents may not call ${tool.replace(".", "\\.")} as deck: it relays a person to threads\\.send only`), tool);
+  }
 });

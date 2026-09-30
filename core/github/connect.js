@@ -1,38 +1,52 @@
 // @ts-check
-// connect: "Sign in with GitHub", the device flow (RFC 8628, ADR 0041 decision 2).
+// connect: "Sign in with GitHub", through GitHub's own CLI (`gh`), ADR 0041 decision 2 (revised
+// 1 Oct, lead ruling: Vyre never runs GitHub's device flow under the CLI's client id itself; that
+// would be Vyre pretending to be GitHub CLI).
 //
-// A person opens a page and types a short code Vyre shows them; there is no redirect back to
-// Vyre to catch (unlike Google's loopback, connect.js in ../google/), so Vyre polls GitHub on its
-// own timer until the person finishes or the code expires. The device flow needs only the OAuth
-// App's client id: no secret, no PKCE, no state to forge, since nothing calls back here.
+// A person opens a page and types a short code Vyre shows them. The real `gh auth login --web`
+// runs the device flow, as itself, and prints the code and address; Vyre shows them, waits for
+// `gh` to finish, then reads `gh auth token` once and files the token in the vault. Nothing here
+// talks to GitHub's OAuth endpoints.
 //
 // Rules, and why:
-// - One poll timer per open sign-in, cleared the moment it ends (used, expired or cancelled).
-//   Nothing polls once the sign-in is over, and at most one sign-in per account name at a time.
+// - `gh` runs in a private throwaway config folder (GH_CONFIG_DIR and HOME both point into it,
+//   token stored in a file there, never the OS keychain) that is deleted the moment the sign-in
+//   ends, so it never touches the person's own gh login, keychain or config, and leaves no token
+//   behind on disk.
+// - One `gh` process per open sign-in, killed the moment it ends (used, expired or cancelled),
+//   and at most one sign-in per account name at a time. Nothing runs once the sign-in is over.
 // - The token goes straight into a new vault item the module makes for itself, github-<name>, and
 //   is never held anywhere else in this process once that write returns.
-// - Every error is scrubbed of every value a sign-in touched: the token and anything GitHub sent
-//   back with it. Log lines and events carry ids and names only.
+// - Every error is scrubbed of every value a sign-in touched. Log lines and events carry ids and
+//   names only.
 // Everything this file needs from vyred comes in as a function, so it can be tested alone.
 
+import { spawn } from "node:child_process";
 import crypto from "node:crypto";
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
 import { scrub } from "./scrub.js";
 
-export const DEVICE_CODE_URI = "https://github.com/login/device/code";
-export const TOKEN_URI = "https://github.com/login/oauth/access_token";
 export const API = "https://api.github.com";
-export const REVOKE_URI = client_id => `${API}/applications/${client_id}/token`;
-/** Requested once, at sign-in: full read/write on every repo the account can reach (ADR 0041
- * decision 3 has no narrower device-flow option; 0.1.2's GitHub App is the real fix). */
+/** Requested once, at sign-in: full read/write on every repo the account can reach. GitHub's
+ * device flow has no narrower option; a fine-grained personal access token, pasted by hand
+ * instead of signing in, is the narrower alternative offered alongside this (0.2 charter minimum
+ * 9, lead ruling 30 Sep). */
 export const SCOPE = "repo";
 const TIMEOUT_MS = 15_000;
+/** `gh` gives no expiry; GitHub's device codes last 15 minutes. */
+const EXPIRES_S = 900;
+const CODE_WAIT_MS = 20_000;
 const MAX_ENDED = 200;
 const NAME = /^[a-z][a-z0-9-]{0,31}$/;
 const LOGIN = /^[A-Za-z0-9](?:[A-Za-z0-9-]{0,37}[A-Za-z0-9])?$/;
+const CODE_RE = /one-time code:\s*([A-Z0-9]{4}-[A-Z0-9]{4})/i;
+const URL_RE = /(https:\/\/github\.com\/login\/device\S*)/;
 
 /**
- * @typedef {{ id: string, name: string, device_code: string, interval: number, expires: number,
- *   values: string[], timer: any, cancelled?: boolean }} Flow
+ * @typedef {{ id: string, name: string, dir: string, child: any, expires: number,
+ *   values: string[], timer: any, cancelled?: boolean, output: string, gh: string }} Flow
  * @typedef {{
  *   taken: (name: string) => boolean | Promise<boolean>,
  *   blocked?: (item: string) => Promise<string | null>,
@@ -40,21 +54,39 @@ const LOGIN = /^[A-Za-z0-9](?:[A-Za-z0-9-]{0,37}[A-Za-z0-9])?$/;
  *   add: (account: { name: string, login: string, avatar_url: string | null, item: string }) => Promise<void>,
  *   emit: (type: string, payload: Record<string, unknown>) => void,
  *   log?: (message: string, fields?: Record<string, unknown>) => void,
- *   fetch?: typeof fetch, clientId?: string, minIntervalMs?: number,
+ *   fetch?: typeof fetch, gh?: string, tmpRoot?: string, expiresMs?: number, codeWaitMs?: number,
  * }} ConnectDeps
  */
 
 const fail = (msg, code = "bad_input") => Object.assign(new Error(msg), { code });
-/** Like `Number(v) || dflt`, but a real 0 (a valid poll interval) is not treated as missing. */
-const numOr = (v, dflt) => { const n = Number(v); return Number.isFinite(n) ? n : dflt; };
+
+/** Where a system-installed gh lives; a hit here is trusted even if the person owns the folder (Homebrew). */
+const GH_DIRS = ["/usr/bin", "/usr/local/bin", "/opt/homebrew/bin", "/bin", "/usr/local/sbin"];
+
+/**
+ * gh as an absolute path: the configured one if it is absolute, else the first executable `gh` in
+ * a short list of system folders, else one in a PATH folder the person's own user cannot write to.
+ * A `gh` planted in a user-writable PATH folder is never run (it would run as the person).
+ * @param {string | undefined} configured @returns {string | null}
+ */
+export function resolveGh(configured) {
+  if (configured && path.isAbsolute(configured)) return configured;
+  const name = configured || "gh";
+  if (name.includes("/")) return null;
+  const exec = file => { try { fs.accessSync(file, fs.constants.X_OK); return fs.statSync(file).isFile(); } catch { return false; } };
+  const locked = dir => { try { fs.accessSync(dir, fs.constants.W_OK); return false; } catch { return true; } };
+  for (const dir of GH_DIRS) if (exec(path.join(dir, name))) return path.join(dir, name);
+  for (const dir of String(process.env.PATH || "").split(path.delimiter)) {
+    if (dir && path.isAbsolute(dir) && locked(dir) && exec(path.join(dir, name))) return path.join(dir, name);
+  }
+  return null;
+}
 
 /** @param {ConnectDeps} deps */
 export function connector(deps) {
   const log = deps.log || (() => {});
   const f = deps.fetch || globalThis.fetch;
-  const clientId = deps.clientId || "";
-  const minInterval = deps.minIntervalMs || 4_000;
-  if (!clientId) throw fail("connector needs a client id", "config");
+  const expiresMs = deps.expiresMs || EXPIRES_S * 1000;
   /** @type {Map<string, Flow>} */ const flows = new Map();
   /** How each recent sign-in ended, by id, so a stale id gets a plain answer instead of "no such sign-in". */
   /** @type {Map<string, string>} */ const ended = new Map();
@@ -66,11 +98,32 @@ export function connector(deps) {
     declined: "That sign-in was declined, so nothing was connected. Start a new one in Vyre.",
   })[why] || "That sign-in has ended. Start a new one in Vyre.";
 
+  /** The private environment `gh` runs in: nothing of the person's own, nothing of ours. */
+  const envFor = dir => ({
+    PATH: process.env.PATH || "", HOME: dir, GH_CONFIG_DIR: path.join(dir, "cfg"),
+    GH_NO_UPDATE_NOTIFIER: "1", GH_PROMPT_DISABLED: "1", NO_COLOR: "1", BROWSER: "true",
+  });
+
+  /** Run `gh` to completion and return its output (used for `auth token`). */
+  function runGh(dir, args, gh) {
+    return new Promise((resolve, reject) => {
+      let out = "", err = "";
+      const c = spawn(gh, args, { env: envFor(dir), stdio: ["ignore", "pipe", "pipe"] });
+      const to = setTimeout(() => c.kill("SIGKILL"), TIMEOUT_MS);
+      c.stdout.on("data", d => { out += d; });
+      c.stderr.on("data", d => { err += d; });
+      c.on("error", e => { clearTimeout(to); reject(e); });
+      c.on("close", code => { clearTimeout(to); code === 0 ? resolve(out) : reject(fail(`gh ${args[0]} ${args[1]} failed: ${err.trim().slice(0, 200)}`, "refused")); });
+    });
+  }
+
   function end(flow, why) {
     clearTimeout(flow.timer);
     flows.delete(flow.id);
     ended.set(flow.id, why);
     while (ended.size > MAX_ENDED) ended.delete(ended.keys().next().value);
+    try { flow.child.kill("SIGTERM"); } catch {}
+    try { fs.rmSync(flow.dir, { recursive: true, force: true }); } catch {}
   }
 
   function failed(flow, error) {
@@ -89,48 +142,26 @@ export function connector(deps) {
     }
   };
 
-  async function postForm(uri, body) {
-    let res;
-    try {
-      res = await f(uri, { method: "POST", signal: AbortSignal.timeout(TIMEOUT_MS),
-        headers: { "content-type": "application/x-www-form-urlencoded", accept: "application/json" }, body: new URLSearchParams(body).toString() });
-    } catch (e) {
-      throw fail(`GitHub ${/** @type {any} */ (e)?.name === "TimeoutError" ? "did not answer in time" : "could not be reached"}.`, "network");
-    }
-    const text = await res.text().catch(() => "");
-    let json = null;
-    try { json = JSON.parse(text); } catch {}
-    return { res, json };
-  }
-
-  /** One poll: pending keeps going, an answer ends the flow either way. Never throws. */
-  async function poll(flow) {
+  /** `gh` finished: a clean exit means the person approved, so read the token it holds. */
+  async function finished(flow, code) {
     if (flows.get(flow.id) !== flow || flow.cancelled) return;
-    if (Date.now() >= flow.expires) { end(flow, "expired"); failed(flow, "The code expired after its time was up."); return; }
-    let json;
-    try {
-      ({ json } = await postForm(TOKEN_URI, { client_id: clientId, device_code: flow.device_code, grant_type: "urn:ietf:params:oauth:grant-type:device_code" }));
-    } catch (e) {
-      // A network hiccup retries at the normal interval rather than ending the sign-in.
-      schedule(flow, flow.interval);
+    if (code !== 0) {
+      const tail = flow.output.trim().split("\n").pop() || "";
+      const expired = /expired|timed out/i.test(flow.output);
+      const declined = /denied|declined|cancel/i.test(flow.output);
+      end(flow, expired ? "expired" : declined ? "declined" : "failed");
+      failed(flow, expired ? "The code expired. Start a new one in Vyre."
+        : declined ? "The sign-in was declined, so nothing was connected."
+        : `GitHub CLI did not finish the sign-in: ${tail.slice(0, 120)}`);
       return;
     }
-    const err = json && json.error;
-    if (err === "authorization_pending") { schedule(flow, flow.interval); return; }
-    if (err === "slow_down") { flow.interval = numOr(json.interval, flow.interval + 5); schedule(flow, flow.interval); return; }
-    if (err === "expired_token") { end(flow, "expired"); failed(flow, "The code expired. Start a new one in Vyre."); return; }
-    if (err === "access_denied") { end(flow, "declined"); failed(flow, "The sign-in was declined, so nothing was connected."); return; }
-    if (err) { end(flow, "failed"); failed(flow, `GitHub refused the sign-in: ${String(err).slice(0, 80)}.`); return; }
-    const token = json && json.access_token;
-    if (typeof token !== "string" || !token) { end(flow, "failed"); failed(flow, "GitHub sent no token. Start a new one in Vyre."); return; }
+    let token;
+    try { token = (await runGh(flow.dir, ["auth", "token", "--hostname", "github.com"], flow.gh)).trim(); }
+    catch (e) { end(flow, "failed"); failed(flow, String(/** @type {any} */ (e)?.message || e)); return; }
+    if (!token) { end(flow, "failed"); failed(flow, "GitHub CLI sent no token. Start a new one in Vyre."); return; }
     flow.values.push(token);
     try { await complete(flow, token); }
     catch (e) { end(flow, "failed"); failed(flow, String(/** @type {any} */ (e)?.message || e)); }
-  }
-
-  function schedule(flow, ms) {
-    flow.timer = setTimeout(() => { poll(flow).catch(() => {}); }, Math.max(minInterval, ms * 1000));
-    flow.timer.unref?.();
   }
 
   /** A token came back: who is it, save it, add the account. */
@@ -165,17 +196,44 @@ export function connector(deps) {
       if (!NAME.test(String(name || ""))) throw fail("name must be lowercase letters, digits and dashes, starting with a letter, at most 32");
       if (await deps.taken(name)) throw fail(`an account named ${name} is already connected; remove it first or choose another name`, "exists");
       if ([...flows.values()].some(x => x.name === name)) throw fail(`a sign-in for ${name} is already open; finish or cancel it first`, "exists");
-      const { res, json } = await postForm(DEVICE_CODE_URI, { client_id: clientId, scope: SCOPE });
-      if (!res.ok || !json || !json.device_code) throw fail(`GitHub refused to start a sign-in (status ${res.status}).`, "refused");
+      const gh = resolveGh(deps.gh);
+      if (!gh) throw fail("Sign-in needs the GitHub CLI (gh), which is not installed here. Install it, or add a fine-grained token instead.", "gh_missing");
+      const dir = fs.mkdtempSync(path.join(deps.tmpRoot || os.tmpdir(), "vyre-gh-"));
       const id = `gh_${crypto.randomBytes(9).toString("base64url")}`;
-      const flow = /** @type {Flow} */ ({ id, name, device_code: json.device_code, interval: numOr(json.interval, 5),
-        expires: Date.now() + numOr(json.expires_in, 900) * 1000, values: [json.device_code], timer: null });
+      const drop = () => { try { fs.rmSync(dir, { recursive: true, force: true }); } catch {} };
+      let child;
+      try {
+        child = spawn(gh, ["auth", "login", "--hostname", "github.com", "--git-protocol", "https", "--web",
+          "--scopes", SCOPE, "--skip-ssh-key", "--insecure-storage"], { env: envFor(dir), stdio: ["ignore", "pipe", "pipe"] });
+      } catch (e) { drop(); throw fail(`GitHub CLI could not be started: ${/** @type {any} */ (e)?.message || e}`, "gh_missing"); }
+      const flow = /** @type {Flow} */ ({ id, name, dir, child, expires: Date.now() + expiresMs, values: [], timer: null, output: "", gh });
+      // Wait for the code (or the CLI giving up) before answering.
+      const shown = await new Promise((resolve, reject) => {
+        const wait = setTimeout(() => reject(fail("GitHub CLI did not show a sign-in code in time.", "refused")), deps.codeWaitMs || CODE_WAIT_MS);
+        const onData = d => {
+          flow.output += String(d);
+          const code = CODE_RE.exec(flow.output), url = URL_RE.exec(flow.output);
+          if (code && url) { clearTimeout(wait); resolve({ user_code: code[1].toUpperCase(), verification_uri: url[1] }); }
+        };
+        child.stdout.on("data", onData);
+        child.stderr.on("data", onData);
+        child.on("error", e => { clearTimeout(wait); reject(/** @type {any} */ (e)?.code === "ENOENT"
+          ? fail("Sign-in needs the GitHub CLI (gh), which is not installed here. Install it, or add a fine-grained token instead.", "gh_missing")
+          : fail(`GitHub CLI could not be started: ${/** @type {any} */ (e)?.message || e}`, "gh_missing")); });
+        child.on("close", code => { clearTimeout(wait); reject(fail(`GitHub CLI stopped before showing a code (exit ${code}).`, "refused")); });
+      }).catch(e => { try { child.kill("SIGTERM"); } catch {} drop(); throw e; });
+      child.removeAllListeners("close");
+      child.on("close", code => { finished(flow, code).catch(() => {}); });
+      child.on("error", () => { if (flows.get(flow.id) === flow) { end(flow, "failed"); failed(flow, "GitHub CLI stopped unexpectedly."); } });
       flows.set(flow.id, flow);
-      schedule(flow, flow.interval);
+      flow.timer = setTimeout(() => {
+        if (flows.get(flow.id) !== flow) return;
+        end(flow, "expired"); failed(flow, "The code expired. Start a new one in Vyre.");
+      }, expiresMs);
+      flow.timer.unref?.();
       log("github sign-in started", { id: flow.id, name });
-      return { id: flow.id, user_code: String(json.user_code), verification_uri: String(json.verification_uri),
-        verification_uri_complete: typeof json.verification_uri_complete === "string" ? json.verification_uri_complete : undefined,
-        expires_in: numOr(json.expires_in, 900), interval: flow.interval };
+      return { id: flow.id, user_code: shown.user_code, verification_uri: shown.verification_uri,
+        expires_in: Math.round(expiresMs / 1000), interval: 5 };
     }),
 
     /** @param {{ id: string }} input */
@@ -191,30 +249,20 @@ export function connector(deps) {
     /** Whether a sign-in is open, for tests and for a status poll from the Deck. @param {string} id */
     status: id => (flows.has(id) ? "pending" : ended.has(id) ? ended.get(id) : "unknown"),
 
-    /** Module stop: drop every open sign-in and its timer. */
+    /** Module stop: drop every open sign-in, its process and its folder. */
     stop() {
-      for (const flow of [...flows.values()]) { clearTimeout(flow.timer); flows.delete(flow.id); }
+      for (const flow of [...flows.values()]) {
+        clearTimeout(flow.timer); flows.delete(flow.id);
+        try { flow.child.kill("SIGTERM"); } catch {}
+        try { fs.rmSync(flow.dir, { recursive: true, force: true }); } catch {}
+      }
     },
   };
 }
 
-/**
- * Revoke a token at GitHub: the one call that reads the OAuth App's client secret. A failure
- * (unreachable, already revoked, wrong secret) is reported, never thrown past the caller's
- * control: `github.remove` removes the local account and item either way, so a person is never
- * stuck with a connected-looking account whose token doesn't work.
- * @param {{ clientId: string, clientSecret: string, token: string, fetch?: typeof fetch }} p
- */
-export async function revoke({ clientId, clientSecret, token, fetch: f = globalThis.fetch }) {
-  const basic = Buffer.from(`${clientId}:${clientSecret}`).toString("base64");
-  try {
-    const res = await f(REVOKE_URI(clientId), { method: "DELETE", signal: AbortSignal.timeout(TIMEOUT_MS),
-      headers: { authorization: `Basic ${basic}`, "content-type": "application/json", accept: "application/vnd.github+json" },
-      body: JSON.stringify({ access_token: token }) });
-    // 204 No Content is success; GitHub answers 404 for an already-invalid token, which is also "gone".
-    if (res.status === 204 || res.status === 404) return { revoked: true };
-    return { revoked: false, error: `GitHub answered ${res.status} revoking the token.` };
-  } catch (e) {
-    return { revoked: false, error: scrub(String(/** @type {any} */ (e)?.message || e), [token, clientSecret]) };
-  }
-}
+// There is no revoke() here on purpose (0.2, lead ruling 30 Sep). The token belongs to GitHub
+// CLI's own app grant, shared with every `gh` install the person has; revoking it would sign their
+// own real `gh` out on every other machine and CI runner too. `github.remove` only ever deletes
+// Vyre's own local vault item and account row; the token itself, and whether it still works
+// elsewhere, is the person's own business, at github.com/settings/applications if they ever want
+// it gone entirely.

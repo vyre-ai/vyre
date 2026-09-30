@@ -299,7 +299,7 @@ export const Composer = memo(function Composer({
   );
 });
 
-/** Focus is lime (the system's focus colour), not the browser's blue. */
+/** Focus is bone (the system's focus colour), not the browser's blue. */
 const focusRing = (c: string) => (Platform.OS === "web" ? ({ outlineColor: c, outlineWidth: 1 } as object) : null);
 
 const styles = StyleSheet.create({

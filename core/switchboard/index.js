@@ -305,6 +305,8 @@ export class Switchboard {
     this.groups = new Map();
     /** Spare quick sessions being started (threads.quick), which a stop waits for; and whether vyred is stopping. */
     this.starting = new Set();
+    /** @type {Set<string>} threads whose provider is being switched right now */
+    this.switches = new Set();
     this.closing = false;
     /** @type {Map<string, { path: string, close: () => Promise<void> }>} each live thread's own socket to vyred (deps.threadSocket) */
     this.socks = new Map();
@@ -478,7 +480,12 @@ export class Switchboard {
    *           append?: string, budget_usd?: number, fallback?: { env: Record<string,string>, budget_usd?: number },
    *           scope?: { projects: string[]|"*", cwds?: string[] } }} o
    */
-  async launch(o) {
+  /**
+   * @param {any} o
+   * @param {{ chips?: { kind: string, id: string }[], pasted?: string[] }|null} [person] set only by threads.start for a person's own
+   *   turn (never read from `o`): the first prompt is then heard as any person's turn is (said row, # tags).
+   */
+  async launch(o, person = null) {
     let id, rec;
     if (o.effort !== undefined) o = { ...o, effort: effortOf(o.effort) || undefined };
     if (o.lean) o = { ...o, plugin: false, tools: "none", settings: false };
@@ -580,8 +587,12 @@ export class Switchboard {
     // A resume first hands over what was steered in and never taken (a stop or a restart mid-turn).
     if (o.resume) this.restoreSteers(id);
     if (o.prompt) {
-      if (o.surface) await this.send(id, o.prompt, o.surface);
-      else { this.write(id, o.prompt); this.emit("thread.sent", { text: cut(o.prompt, 2000), surface: o.agent ? `agent:${o.agent}` : null }, id, rec.project); }
+      // A person's own first words are heard like any turn of theirs: before any provider sees them.
+      const said = crypto.randomUUID();
+      const heard = person ? await this.ingress(id, String(o.prompt), o.surface || "vyre", said, person.chips || [], person.pasted || []) : [];
+      const note = heard.length ? tagNote(heard) : "";
+      if (o.surface) await this.send(id, o.prompt, o.surface, { ...(person ? { uuid: said } : {}), ...(note ? { note } : {}) });
+      else { this.write(id, o.prompt, { ...(person ? { uuid: said } : {}), ...(note ? { note } : {}) }); this.emit("thread.sent", { text: cut(o.prompt, 2000), surface: o.agent ? `agent:${o.agent}` : null }, id, rec.project); }
     }
     return this.launched(id);
   }
@@ -1060,7 +1071,25 @@ export class Switchboard {
    * transcript. A limit's fallback is this, triggered by the limit instead of a person.
    * @param {string} id @param {{ provider: string, account?: string|null, model?: string|null, reason?: "asked"|"limit", text?: string|null }} o
    */
-  async switchProvider(id, { provider, account = null, model = null, reason = "asked", text = null }) {
+  /**
+   * Switch a thread's provider. One switch per thread at a time: a second while one runs (two
+   * rate-limit lines for one turn) is refused when a person asked and ignored when it is the router's,
+   * never a second process for the same thread. A switch in flight is waited for at shutdown.
+   * @param {string} id @param {{ provider: string, account?: string|null, model?: string|null, reason?: string, text?: string|null }} o
+   */
+  switchProvider(id, o) {
+    if (this.switches.has(id)) {
+      if ((o.reason || "asked") === "asked") return Promise.reject(Object.assign(new Error("this thread is already switching provider"), { code: "busy" }));
+      return Promise.resolve({ thread: id, provider: String(o.provider || ""), account: null, resumed: false, already: true });
+    }
+    this.switches.add(id);
+    const p = this.doSwitchProvider(id, o).finally(() => { this.switches.delete(id); this.starting.delete(tracked); });
+    const tracked = p.catch(() => {});
+    this.starting.add(tracked);
+    return p;
+  }
+
+  async doSwitchProvider(id, { provider, account = null, model = null, reason = "asked", text = null }) {
     const rec = this.must(id);
     provider = String(provider || "");
     if (provider !== "claude" && !(this.deps.providers && this.deps.providers.get(provider))) throw Object.assign(new Error(`no session provider ${provider}`), { code: "bad_input" });
@@ -1099,17 +1128,26 @@ export class Switchboard {
    * @param {string} id @param {any} st
    */
   async routeFallback(id, st) {
-    const rec = this.must(id);
-    st.tried = st.tried || new Set();
-    const r = await this.deps.call("sessions.routes.next", { provider: rec.provider || "claude", ...(rec.account ? { account: rec.account } : {}), ...(rec.agent ? { agent: rec.agent } : {}), ...(rec.project ? { project: rec.project } : {}), tried: [...st.tried] });
-    const hit = r.data && r.data.entry;
-    if (!hit) return false;
-    const last = st.lastPrompt || null;
-    const tried = new Set([...st.tried, `${rec.provider || "claude"}:${rec.account || ""}`]);
-    st.switching = true;
-    try { await this.switchProvider(id, { provider: hit.provider, account: hit.account || null, model: hit.model || null, reason: "limit", text: last }); }
-    finally { const now = this.live.get(id); if (now) now.tried = tried; }
-    return true;
+    // One at a time: a second limit line for the same turn arrives before the first has set `switching`.
+    if (st.routing) return false;
+    st.routing = true;
+    let switched = false;
+    try {
+      const rec = this.must(id);
+      st.tried = st.tried || new Set();
+      const r = await this.deps.call("sessions.routes.next", { provider: rec.provider || "claude", ...(rec.account ? { account: rec.account } : {}), ...(rec.agent ? { agent: rec.agent } : {}), ...(rec.project ? { project: rec.project } : {}), tried: [...st.tried] }).catch(() => ({}));
+      const hit = r.data && r.data.entry;
+      if (!hit) return false;
+      const last = st.lastPrompt || null;
+      const tried = new Set([...st.tried, `${rec.provider || "claude"}:${rec.account || ""}`]);
+      st.switching = true;
+      try { await this.switchProvider(id, { provider: hit.provider, account: hit.account || null, model: hit.model || null, reason: "limit", text: last }); switched = true; }
+      finally { const now = this.live.get(id); if (now) now.tried = tried; }
+      return true;
+    } finally {
+      // Only a switch that happened retires this state; any other way out lets the next limit try again.
+      if (!switched) { st.routing = false; if (this.live.get(id) === st) st.switching = false; }
+    }
   }
 
   /**
@@ -1301,11 +1339,11 @@ export class Switchboard {
    * for a caller personTurn admits.
    * @param {string} id @param {string} text @param {string} surface @param {string} uuid @param {{ kind: string, id: string }[]} [chips]
    */
-  async ingress(id, text, surface, uuid, chips = []) {
+  async ingress(id, text, surface, uuid, chips = [], pasted = []) {
     // A terminal session Vyre has not adopted yet has no record; it is adopted by the send that follows.
     const rec = this.record(id) || { project: null };
     this.emit("turn.said", { id: uuid, surface, at: Date.now(), text_hash: textHash(text) }, id, rec.project);
-    const names = mentionsOf(text);
+    const names = mentionsOf(text, pasted);
     if (!names.length && !chips.length) return [];
     const tags = await resolveTags({ names, chips, thread: id, said: uuid, call: (tool, input) => this.deps.call(tool, input) });
     if (tags.length) this.emit("thread.mentioned", { uuid, mentions: tags.map(({ note, ...t }) => t) }, id, rec.project);
@@ -2266,13 +2304,19 @@ export default {
         provider: { type: "string", description: "The session provider: claude (the default), or one a module added." },
         effort: { type: "string", enum: EFFORTS, description: "Reasoning effort, as /effort: low, medium, high, xhigh or max. Default: the model's own." },
         lean: { type: "boolean", description: "A one-question thread: no Vyre plugin, no tools, no MCP servers, none of the user's settings. Cheap to start." },
+        mentions: { type: "array", maxItems: 8, items: { type: "object", required: ["kind", "id"], properties: { kind: str, id: str, name: str } }, description: "The # tags the composer picked ({kind, id}) for the first prompt, from a person's own surface only; as threads.send." },
+        pasted: { type: "array", maxItems: 20, items: str, description: "The spans of the prompt the person pasted: a #Name inside one tags nothing. As threads.send." },
         parent: { type: "string", description: "First-party modules only: the thread this one is started for (a teammate's thread for a person's). A session starting one is its own parent, from what vyred verified." } } },
       async (i, { caller, thread, firstParty }) => {
         guard(caller, "start sessions");
         // The parent is the calling session's own verified thread, or (a first-party module starting it
         // on a thread's behalf) the id it names. Anyone else's claim is dropped, never believed.
         const parent = thread ? String(thread) : (firstParty && typeof i.parent === "string" ? i.parent : undefined);
-        return sb.launch({ ...i, parent, surface: surfaceOf(i, caller) });
+        // The first prompt is a person's own turn only when a person's surface started the thread; tags and pasted
+        // spans ride with it from there and from nowhere else.
+        const { mentions, pasted, ...rest } = i;
+        const person = personTurn(caller) && i.prompt ? { chips: Array.isArray(mentions) ? mentions : [], pasted: Array.isArray(pasted) ? pasted.filter(x => typeof x === "string").slice(0, 20) : [] } : null;
+        return sb.launch({ ...rest, parent, surface: surfaceOf(i, caller) }, person);
       });
 
     /**
@@ -2378,6 +2422,7 @@ export default {
         images: { type: "array", items: { type: "object", required: ["media_type", "data"], properties: { media_type: { type: "string", enum: IMAGE_TYPES }, data: str } },
           description: `Pasted images, base64: at most ${IMAGES.count}, ${IMAGES.mb} MB each.` },
         mentions: { type: "array", maxItems: 8, items: { type: "object", required: ["kind", "id"], properties: { kind: str, id: str } }, description: "The # tags the composer picked ({kind, id}), from a person's own surface only; a #Name in the text that is exactly one thing is tagged too." },
+        pasted: { type: "array", maxItems: 20, items: str, description: "The spans of the text the person pasted (an email, a ticket): a #Name inside one tags nothing, since someone else wrote it; only a picked chip does." },
         model: { type: "string", description: "Switch the thread to this model first (as threads.model): the Capsule's Cmd-Return, deeper. A person's surface only." },
         effort: { type: "string", enum: EFFORTS, description: "Set this effort first (as threads.effort). A person's surface only." } } },
       // Only a person's words are queued for a session open in a terminal: a model's are refused.
@@ -2394,7 +2439,7 @@ export default {
         if (i.effort && had && had.effort !== i.effort) await sb.switchEffort(i.thread, i.effort);
         const uuid = idempotencyKey ? keyUuid(String(caller || ""), String(idempotencyKey)) : crypto.randomUUID();
         // The person's own words, and only theirs: said, and the credentials they let this thread use.
-        const heard = personTurn(caller) && sb.knows(i.thread) && !sb.sentBefore(uuid) ? await sb.ingress(i.thread, String(i.text), surfaceOf(i, caller), uuid, Array.isArray(i.mentions) ? i.mentions : []) : [];
+        const heard = personTurn(caller) && sb.knows(i.thread) && !sb.sentBefore(uuid) ? await sb.ingress(i.thread, String(i.text), surfaceOf(i, caller), uuid, Array.isArray(i.mentions) ? i.mentions : [], Array.isArray(i.pasted) ? i.pasted.filter(x => typeof x === "string").slice(0, 20) : []) : [];
         return sb.send(i.thread, i.text, surfaceOf(i, caller), { queue: queuesFor(caller), wait: fromLink(caller), mode: i.mode === "queue" ? "queue" : "steer", images: imagesOf(i.images), uuid,
           ...(heard.length ? { note: tagNote(heard) } : {}) });
       });

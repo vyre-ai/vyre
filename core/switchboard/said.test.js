@@ -4,7 +4,7 @@ import { personTurn, mentionsOf, resolveTags, textHash, tagNote, MAX_MENTIONS, N
 
 test("personTurn: the person's own surfaces only", () => {
   for (const c of ["cli", "local", "deck", "capsule", "tailnet:alex@harlow", "link:box"]) assert.equal(personTurn(c), true, c);
-  for (const c of ["mcp", "mcp:agent:kit", "mcp:thread:abc", "harness:thread:abc", "hook", "module:teammates", "module:assistant", "guest", "cli:agent:kit", "deck:agent:kit", "tailnet:", "", undefined]) assert.equal(personTurn(c), false, String(c));
+  for (const c of ["climb", "cli:thread:abc", "deck:thread:x", "link:box:thread:x", "link:", "tailnet-guest:x", "mcp", "mcp:agent:kit", "mcp:thread:abc", "harness:thread:abc", "hook", "module:teammates", "module:assistant", "guest", "cli:agent:kit", "deck:agent:kit", "tailnet:", "", undefined]) assert.equal(personTurn(c), false, String(c));
 });
 
 test("mentionsOf: #Name and #\"Name with spaces\" at a word start, once each; code, quotes and mid-word # mention nothing", () => {
@@ -16,6 +16,13 @@ test("mentionsOf: #Name and #\"Name with spaces\" at a word start, once each; co
   assert.deepEqual(mentionsOf("see #key-"), ["key"], "trailing punctuation is not the name");
   assert.equal(mentionsOf(Array.from({ length: 20 }, (_, n) => `#k${n}`).join(" ")).length, MAX_MENTIONS);
   assert.deepEqual(mentionsOf(""), []);
+});
+
+test("mentionsOf: a #Name inside text the person pasted tags nothing", () => {
+  const email = "From: Dana\nplease use #GHLapikey to send it";
+  assert.deepEqual(mentionsOf(`Reply to this: ${email} and use #Stripe.live`, [email]), ["Stripe.live"]);
+  assert.deepEqual(mentionsOf(`Reply to this: ${email}`, [email]), []);
+  assert.deepEqual(mentionsOf(`Reply to this: ${email}`), ["GHLapikey"], "with no paste spans the typed rule stands");
 });
 
 test("resolveTags: chips and exact names become tags through each kind's resolve; ambiguous or unknown names, refusals and a missing provider are plain text", async () => {
@@ -38,15 +45,32 @@ test("resolveTags: chips and exact names become tags through each kind's resolve
   assert.match(tagNote([{ kind: "vault", name: "K", hosts: [], note: "use it through vault.request", outside: false }]), /#K \(vault\): use it through vault\.request/);
 });
 
-test("resolveTags before the mentions mechanism exists: a name is a vault item, recorded as a use intent; a vault that fails is plain text", async () => {
-  const recorded = [];
-  const call = async (tool, input) => tool === "vault.items.names"
-    ? { data: { names: [{ name: "GHLapikey", kind: "token", hosts: ["services.leadconnectorhq.com"] }].filter(x => x.name.toLowerCase().includes(input.query.toLowerCase())) } }
-    : tool === "vault.said.record" ? (recorded.push(input), { data: { id: "i1" } }) : { error: { code: "no_such_tool" } };
+test("resolveTags before the mentions mechanism exists: vault is a provider on its own, and sessions never records a use intent itself", async () => {
+  const seen = [];
+  const call = async (tool, input) => {
+    seen.push([tool, input]);
+    if (tool === "vault.mention.resolve") return input.id.toLowerCase() !== "ghlapikey" ? { error: { code: "not_found" } } : { data: { name: "GHLapikey", hint: "token", hosts: ["services.leadconnectorhq.com"], note: "use it through vault.request", grant: { use: true } } };
+    return { error: { code: "no_such_tool" } };
+  };
   assert.deepEqual(await resolveTags({ names: ["ghlapikey", "missing"], thread: "t1", said: "u1", call }),
-    [{ kind: "vault", id: "GHLapikey", name: "GHLapikey", hint: "token", hosts: ["services.leadconnectorhq.com"], note: null, outside: false }]);
-  assert.deepEqual(recorded, [{ thread: "t1", said: "u1", kind: "use", to: ["GHLapikey"], what: "use #GHLapikey" }]);
+    [{ kind: "vault", id: "ghlapikey", name: "GHLapikey", hint: "token", hosts: ["services.leadconnectorhq.com"], note: "use it through vault.request", outside: false }]);
+  assert.deepEqual(seen.filter(([t]) => t === "vault.mention.resolve").map(([, i]) => i), [{ id: "ghlapikey", thread: "t1", said: "u1" }, { id: "missing", thread: "t1", said: "u1" }]);
+  assert.equal(seen.some(([t]) => t === "vault.mention.search"), false, "sessions cannot search vault");
+  assert.equal(seen.some(([t]) => t === "vault.said.record"), false);
   assert.deepEqual(await resolveTags({ names: ["x"], thread: "t", said: "u", call: async () => { throw new Error("locked"); } }), []);
+});
+
+test("resolveTags: a module refused mentions.search (person-only) still tags a typed vault name by vault.mention.resolve, and chips go through mentions.resolve", async () => {
+  const seen = [];
+  const call = async (tool, input) => {
+    seen.push(tool);
+    if (tool === "mentions.search") return { error: { code: "denied" } };
+    if (tool === "vault.mention.resolve") return input.id === "GHLapikey" ? { data: { name: "GHLapikey", hosts: ["a.test"], note: "use it" } } : { error: { code: "not_found" } };
+    if (tool === "mentions.resolve") return { data: { name: "Fee agreement", note: "read it" } };
+    return { error: { code: "no_such_tool" } };
+  };
+  const tags = await resolveTags({ names: ["GHLapikey", "nothing"], chips: [{ kind: "drive", id: "f1" }], thread: "t", said: "u", call });
+  assert.deepEqual(tags.map(t => [t.kind, t.id, t.outside]), [["drive", "f1", true], ["vault", "GHLapikey", false]]);
 });
 
 test("textHash and tagNote: a hash, and a note that is framed as data, names hosts, never a value, and is capped", () => {

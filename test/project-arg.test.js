@@ -12,6 +12,8 @@ import { toolEntries } from "../packages/module-sdk/manifest.js";
 const EXEMPT = {
   "agents.update": "an agent changes only what it says about itself; the tool guards that (core/agents)",
   "sessions.accounts.bind": "an agent binds an account only when the person asked (askedOnly); the asked gate is the check",
+  "vault.grant": "presence-gated and person-only at the vault; reviewer-2 has the vault grant and revoke review",
+  "vault.revoke": "presence-gated and person-only at the vault; reviewer-2 has the vault grant and revoke review",
   "github.project.detect": "github checks the grant itself (inGrant, core/github)",
   "github.project.of": "github checks the grant itself (inGrant, core/github)",
 };

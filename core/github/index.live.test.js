@@ -6,7 +6,7 @@
 // proves that refusal), so index.test.js's own github.project/.add-repo tests only ever cover the
 // validation that runs before a clone is attempted.
 //
-// Off by default; set VYRE_LIVE_GITHUB=1 to run it, on testbox only, never on the Mac (RULES.md:
+// Off by default; set VYRE_LIVE_GITHUB=1 to run it, on a GitHub Actions runner only, never on the Mac or testbox (0.2 RULES:
 // no git network experiments on the Mac). No real GitHub credential anywhere - a dummy, made-up
 // account row and a dummy, non-empty token value the whole way through:
 // - github.repos/GitHub's repo-metadata read (getRepo, index.js) retries once with no credential
@@ -19,7 +19,7 @@
 //   for credentials when the server first answers 401, and GitHub serves a public repo's
 //   git-http endpoints anonymously.
 // octocat/Hello-World is GitHub's own tiny public demo repo (two files, no history to speak of),
-// chosen so a real clone costs nothing meaningful in a testbox run.
+// chosen so a real clone costs nothing meaningful in a CI run.
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
@@ -99,7 +99,7 @@ function hasNoCredentialHelper(dir) {
   }
 }
 
-test(`LIVE (real network, testbox only): github.project and .add-repo really clone ${REPO}`, { skip: RUN ? false : "set VYRE_LIVE_GITHUB=1 to run this on testbox (real network, no real token)" }, async t => {
+test(`LIVE (real network, GitHub Actions runner only): github.project and .add-repo really clone ${REPO}`, { skip: RUN ? false : "set VYRE_LIVE_GITHUB=1 to run this on a GitHub Actions runner (real network, no real token)" }, async t => {
   const FROM_THREAD = "11111111-1111-4111-8111-111111111111";
   const w = await world(t, { existingThreads: new Set([FROM_THREAD]) });
   accountStore(w.db).put({ name: "dummy", login: "dummy", avatar_url: null, item: "github-dummy" }, Date.now());
@@ -156,7 +156,7 @@ test(`LIVE (real network, testbox only): github.project and .add-repo really clo
   assert.ok(w.events.filter(e => e.type === "github.token-invalid").length >= 1);
 });
 
-test(`LIVE (real network, testbox only): the user's binding no-auto-delete rule - a projects.create/.add-workspace failure after a real clone leaves it exactly where it is, path named in the error (lead + reviewer correction, 9cf93817/e723df32 review)`, { skip: RUN ? false : "set VYRE_LIVE_GITHUB=1 to run this on testbox (real network, no real token)" }, async t => {
+test(`LIVE (real network, GitHub Actions runner only): the user's binding no-auto-delete rule - a projects.create/.add-workspace failure after a real clone leaves it exactly where it is, path named in the error (lead + reviewer correction, 9cf93817/e723df32 review)`, { skip: RUN ? false : "set VYRE_LIVE_GITHUB=1 to run this on a GitHub Actions runner (real network, no real token)" }, async t => {
   const wCreate = await world(t, { failCreate: true });
   accountStore(wCreate.db).put({ name: "dummy", login: "dummy", avatar_url: null, item: "github-dummy" }, Date.now());
   const failed = await wCreate.as("cli")("github.project", { repo: REPO });

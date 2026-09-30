@@ -105,6 +105,8 @@ let providerPeopleSuite = Suite("provider people") { t in
         let dir = providerFixture("icons")
         defer { try? FileManager.default.removeItem(atPath: dir) }
         let r = t.wait { @MainActor () -> [String] in
+            IconCache.darkOverride = true
+            defer { IconCache.darkOverride = nil }
             let c = IconCache(countLimit: 50, contactPhoto: { _ in nil })
             var log: [String] = []
             let a = c.image(.file("/System/Applications/Calculator.app"), points: 20, scale: 2)

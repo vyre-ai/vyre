@@ -10,7 +10,11 @@ import { claudeHome, claudeJson, realHome, transcriptFolders, expandAccountFolde
 import { load } from "./index.js";
 import { tempHome } from "../../test/helpers.js";
 
-test("claudeHome: ~/.claude only for the real ~/.vyre; any other home keeps its own", () => {
+// A Windows device has no unix sockets and uses backslash paths; these assert POSIX strings.
+const POSIX_ONLY = process.platform === "win32" ? "POSIX paths and unix sockets (a Windows device uses a named pipe)" : false;
+
+
+test("claudeHome: ~/.claude only for the real ~/.vyre; any other home keeps its own", { skip: POSIX_ONLY }, () => {
   const real = realHome();
   assert.equal(claudeHome(real, {}), path.join(os.homedir(), ".claude"));
   assert.equal(claudeHome(real, { CLAUDE_CONFIG_DIR: "/opt/cc" }), "/opt/cc", "the person's own CLAUDE_CONFIG_DIR");
@@ -21,7 +25,7 @@ test("claudeHome: ~/.claude only for the real ~/.vyre; any other home keeps its 
   assert.equal(claudeHome(temp, { VYRE_CLAUDE_HOME: "/srv/cc" }), "/srv/cc", "named outright");
 });
 
-test("claudeJson: ~/.claude.json only for the real ~/.vyre; any other home keeps its own, beside claudeHome's folder", () => {
+test("claudeJson: ~/.claude.json only for the real ~/.vyre; any other home keeps its own, beside claudeHome's folder", { skip: POSIX_ONLY }, () => {
   const real = realHome();
   assert.equal(claudeJson(real, {}), path.join(os.homedir(), ".claude.json"));
   assert.equal(claudeJson(real, { CLAUDE_CONFIG_DIR: "/opt/cc" }), path.join("/opt/cc", ".claude.json"),
@@ -69,7 +73,7 @@ test("transcriptFolders: a temp home never reads the person's Claude folder, thr
   assert.deepEqual(transcriptFolders([link], "", env), [], "no home named: nothing of the person's");
 });
 
-test("expandAccountFolders: one folder per account that has it, never through a link an account planted", t => {
+test("expandAccountFolders: one folder per account that has it, never through a link an account planted", { skip: POSIX_ONLY }, t => {
   const base = fs.mkdtempSync(path.join(path.dirname(tempHome(t)), "acct-"));
   t.after(() => fs.rmSync(base, { recursive: true, force: true }));
   fs.mkdirSync(path.join(base, "2000", ".claude", "projects"), { recursive: true });

@@ -15,7 +15,7 @@ call and before a turn ends, so a model cannot forget it. Learning works in four
 lesson that keeps being broken.
 
 Anything that makes Vyre stricter is free. Anything that makes it looser needs you, from your
-own terminal, Deck or Capsule.
+own terminal, Deck or Lumen.
 
 ## Signals: what Vyre hears
 
@@ -74,7 +74,7 @@ the Harness stops Claude's shell from running them. A proposed lesson looks like
 
 - **Deck**: **Memory**, then the **Lessons** tab (`/memory?tab=lessons`), in four groups:
   Proposed, Active, Retired, and Proposed skills. Accept, Retire and Relax ask for your passkey.
-- **Capsule**: a proposed lesson shows as a row to accept or decline.
+- **Lumen**: a proposed lesson shows as a row to accept or decline.
 - **Claude**: `/vyre lessons` lists them. Claude can add a lesson (`learn.add`) and tighten one
   (`learn.edit`), and never accepts, retires or loosens one.
 
@@ -137,7 +137,7 @@ Installing and retiring a skill need presence.
 
 ## Which surface does what
 
-| Task | Terminal | Deck | Capsule | Claude |
+| Task | Terminal | Deck | Lumen | Claude |
 | --- | --- | --- | --- | --- |
 | List lessons | `vyre learn` | Memory, Lessons tab | | `/vyre lessons`, `learn.lessons` |
 | Add a lesson | `vyre learn add` | | | `/vyre remember`, `learn.add` |
