@@ -116,10 +116,11 @@ export function readPeerPid(socket, seam = {}) {
  * costs one process however deep it goes.
  * pgid and sid (Linux) say which process group and session the process runs in: an orphan keeps
  * them when its parent ends, so a thread spawned as its own group still owns what it left behind.
+ * @param {{ fresh?: boolean, platform?: string, read?: () => Map<number, any>, cache?: { at: number, rows: Map<number, any> | null } }} [o] `fresh` skips the shared snapshot; `read` and `cache` are test seams for the macOS read
  * @returns {(pid: number) => { ppid: number, args: string, pgid?: number, sid?: number } | null}
  */
-export function processTable() {
-  if (process.platform === "linux") return pid => {
+export function processTable({ fresh = false, platform = process.platform, read = readMacRows, cache = macCache } = {}) {
+  if (platform === "linux") return pid => {
     try {
       const stat = fs.readFileSync(`/proc/${pid}/stat`, "utf8");
       // The command name is in parentheses and may hold spaces; the parent pid follows the state.
@@ -131,16 +132,37 @@ export function processTable() {
   };
   // The reviewer's LOW, 28 Sep: this bulk read blocks vyred's whole event loop while it runs, and
   // every connection needing an ancestry check (a fresh insideClaude()) triggers its own by
-  // default. A full async rewrite of insideClaude/ancestry/loginOf/tmuxClients (all synchronous by
-  // design today, and used that way in several places -- atTerminal's tmux-client loop calls
-  // insideClaude() directly inside a plain `for`, not awaited) is real scope on its own, not
-  // something to fold into this fix unverified (this Mac-only path cannot be tested on this Linux
-  // testbox at all). Narrower mitigation that does not touch the interface: cache the table
-  // briefly, so a burst of connections (several panes waking at once, a run of quick CLI calls)
-  // shares one blocking read instead of one each. Shrinks the frequency of the block; does not
-  // remove it. Flagged to the lead as a partial answer, not the fix asked for.
+  // default. Narrower mitigation that does not touch the interface: share one snapshot for a
+  // quarter second, so a burst of connections costs one read. It shrinks the frequency of the
+  // block; it does not remove it.
+  //
+  // A snapshot that does not list a pid is never taken as "nobody" (reviewer-2, 30 Sep: a process
+  // forked inside the window is not in it, so a forged "cli" label under a claude was believed, 20
+  // of 20 on a Mac). A miss on a shared snapshot reads the table again, once; a walk that asks for
+  // `fresh` starts from a new read. Only a pid missing from a read taken after the caller
+  // connected is really gone.
   const now = Date.now();
-  if (macTable && now - macTable.at < MAC_TABLE_TTL) return pid => /** @type {any} */ (macTable).rows.get(pid) || null;
+  /** @type {Map<number, any>} */
+  let rows;
+  let refreshed;
+  if (!fresh && cache.rows && now - cache.at < MAC_TABLE_TTL) { rows = cache.rows; refreshed = false; }
+  else {
+    rows = read(); refreshed = true;
+    // Only a real answer is cached: an empty table is a failed read, never "nobody above".
+    if (rows.size) { cache.at = now; cache.rows = rows; }
+  }
+  return pid => {
+    const hit = rows.get(pid);
+    if (hit || refreshed) return hit || null;
+    refreshed = true;
+    const again = read();
+    if (again.size) { rows = again; cache.at = Date.now(); cache.rows = again; }
+    return rows.get(pid) || null;
+  };
+}
+
+/** One `ps -A` read of the process table (macOS). Empty when the read failed twice. @returns {Map<number, { ppid: number, args: string, pgid: number }>} */
+function readMacRows() {
   /** @type {Map<number, { ppid: number, args: string, pgid: number }>} */
   const rows = new Map();
   // A busy box can starve this single bulk read past a short timeout (the same rc.2 find as
@@ -154,13 +176,11 @@ export function processTable() {
       }
     } catch {}
   }
-  // Only a real answer is cached: an empty table is a failed read, never "nobody above".
-  if (rows.size) macTable = { at: now, rows };
-  return pid => rows.get(pid) || null;
+  return rows;
 }
 
-/** @type {{ at: number, rows: Map<number, any> } | null} */
-let macTable = null;
+/** The macOS snapshot shared for MAC_TABLE_TTL. @type {{ at: number, rows: Map<number, any> | null }} */
+const macCache = { at: 0, rows: null };
 const MAC_TABLE_TTL = 250;
 
 /**

@@ -5,6 +5,19 @@ Branch: work/platform · Worktree: ../vyre-platform · ADR 0033
 ## Scope
 Hackable Vyre (ADR 0033): a stable, versioned module API; extension points for every part; user modules and overrides that survive updates; `vyre update` from GitHub releases; `vyre module new/add/remove`; the boundary ratchet toward a thin kernel.
 
+## 0.2: the module contract v1 (30 Sep, resume from here)
+- ADR 0047 (docs/adr/0047-module-contract-v1.md), docs/MODULES.md, docs/build/AGENT-BRIEF.md, plan at <team-dir>/0.2/plans/platform.md.
+- Owners agreed in CHAT.md 06:09-06:16: vault, iq, sessions, assistant, watchers, app-design. reviewer-2 red team (<team-dir>/0.2/reviews/platform.md): no BLOCKER, all HIGH/MEDIUM/LOW folded at 65c7bc74; re-check asked.
+- Proof on this branch (not merged; the integrator merges after the person approves): v1 schema and checker, testing.js, conform.js, examples/modules/bakery, test/module-api-compat.test.js, v1 scaffold with AGENTS.md, `vyre module test`.
+- Done on this branch: loader accepts v1 (ca17b36e), one declaration per ctx door (c937cfc1), reviewer-2's rules in harness and loader (2175ac24, 9a8552f5: fetch GET/HEAD, not_declared default-deny, no replaces for added modules, slot taps to a Gate card, updatePlan, one write per Gate item), changelog and reference (e1d722a0). 167/167 targeted tests, run locally in temp dirs.
+- APPROVED by the lead (30 Sep) with the person's compatibility rule (ADR 0047 section 8), built in 616f1e74..d31fd54d. Ready to merge at the head of work/platform: 181/181 targeted tests. Next: build steps in the plan's section 7; docs owner to move first-module.md and module-contract.md from apiVersion to vyre.
+
+## SAVE (30 Sep, paused for the usage limit)
+- Branch HEAD 9aaa402d (plus this note) is pushed as work/platform-contract. The old remote work/platform has pre-rewrite history, and we never force-push.
+- CI running on work/platform-contract: node https://github.com/vyre-ai/vyre/actions/runs/36660039136 , sessions-sdk https://github.com/vyre-ai/vyre/actions/runs/36660039123 , box-image https://github.com/vyre-ai/vyre/actions/runs/36660039153
+- Code review: reviewer-2 cleared 84f901ce on the condition that the vault fixture move lands with it (41fffb54). N1 is fixed (69690f9e). N2 and N3 wait for the host build. The integrator's 23 failures are fixed via firstPartyRoots (b59e893f, 9aaa402d).
+- Next: (1) if CI is green, SendMessage the lead one line with the green node run URL, then send the integrator the sha (trailer-free, checked). (2) If red, compare against main's own failures. The subagent found these also failing on pre-merge main 9381ab15: files.test (3), google next ordering (1), sessions and sessions-turns (5), and vault-cli/vault-next (presence.methods missing on test/helpers `present`, owner to agree the one-line fix). Fix any that are ours. (3) Ask reviewer-2 to re-check the diff 84f901ce..HEAD (firstPartyRoots is new loader surface).
+
 ## Done
 - ADR 0033 accepted by the lead (decisions recorded in the ADR). Inventory in its appendix.
 - Team asks sent 2026-09-27: native-core (module settings into the registry: they pick "settings reads manifests" or an internal settings.register), sessions (providers shape frozen by the schema; hooks seam in canUseTool, P4), polish-cli (verb shapes, who writes module.js/update.js), app-design (card shapes, iframe tokens, slot placement), pwa (slot registry + sw caching of /m/<module>/), ci (lib/* in boundaries, the release workflow), chat (renderer slot heads-up).
@@ -48,6 +61,10 @@ Hackable Vyre (ADR 0033): a stable, versioned module API; extension points for e
 - Local, unpushed (waiting for the testbox hold to lift, then one targeted run and push as a finished sha): 9d9354f8 PLANNED renames, 7d548e64 + b5145ee1 Render in polish-cli shapes (flat prompt). Tell polish-cli when pushed.
 
 - RC from platform: work/platform e75a6a11 (402/0/16) + settings-write d62792d0 (on native-core fa349d31; 81/81; hub.json secret test; now runs the check tool like change(); e2e glancing). Both with the integrator.
+
+- vyre module new/check/add DONE a79d58f1 (176/176), sent for the RC. Open: loader reads `replaces` (P1 second half); real local restart inside add not under test.
+
+- SAVE (restart): handed off to the integrator for the RC: work/platform a79d58f1 (vyre module + everything before), settings-write d62792d0 (after native-core fa349d31; e2e glancing at the checked() addition). b4fix 97686e1b landed in b4. Waiting on: e2e ok for d62792d0; integrator's RC report; loader `replaces` + ctx.settings (P1 second half) once native-core is on main; event renames after 0.1.0 (lead routes). No testbox processes running.
 
 ## Next
 0. After tonight's deploy (lead): end-to-end `vyre update` on a testbox throwaway stack, never /srv/vyre.
