@@ -4,6 +4,13 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+- Mac bundle (C1, first cut): `scripts/mac-bundle.sh` assembles Vyre.app from the Capsule, a
+  pinned Node 22 runtime, the files npm publishes, the CLI at `Contents/Resources/bin/vyre` and a
+  LaunchAgent plist for SMAppService, and signs it inside out with one certificate. The new
+  `mac-bundle` workflow builds and signs it on GitHub's Mac runners with a throwaway certificate,
+  checks that a second build satisfies the first build's designated requirement (spike S1), and
+  measures size, cold start and memory (spike S2). Results in docs/work/capsule-bundle.md.
+
 ## 0.1.1
 
 What's new:

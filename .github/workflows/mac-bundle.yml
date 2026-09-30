@@ -1,0 +1,222 @@
+# The signed Vyre.app for macOS (PLAN.md C1): built, signed and measured here, never on a person's
+# Mac. Also spikes S1 (do TCC grants survive an update signed with the same self-signed
+# certificate?) and S2 (the bundled node's size, cold start and memory); results in
+# docs/work/capsule-bundle.md.
+#
+# The certificate is made in the job on a throwaway keychain and never trusted: a stand-in for the
+# real CI certificate, which will come from a secret (docs/work/capsule-bundle.md, open items).
+name: mac-bundle
+on:
+  workflow_dispatch:
+  push:
+    branches: [work/capsule-02-bundle]
+    paths: ["scripts/mac-bundle*", "local/capsule/native/**", ".github/workflows/mac-bundle.yml"]
+permissions:
+  contents: read
+concurrency:
+  group: mac-bundle-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  bundle:
+    runs-on: macos-latest
+    timeout-minutes: 40
+    env:
+      VYRE_NO_DIALOGS: "1"
+      KC: ${{ runner.temp }}/vyre-ci.keychain-db
+      T: ${{ runner.temp }}/mb
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Toolchain
+        run: sw_vers && uname -m && swiftc --version && (csrutil status || true)
+      - name: Two throwaway certificates, never trusted
+        # "Vyre CI" stands in for the real certificate; "other" has the same name and a different
+        # key, the negative control. Nothing here waits for input, and the login keychain is untouched.
+        timeout-minutes: 5
+        run: |
+          set -eu
+          exec </dev/null
+          mkdir -p "$T/certs" dist/s1
+          PW=ci-throwaway
+          security create-keychain -p "$PW" "$KC"
+          security set-keychain-settings -lut 3600 "$KC"
+          security unlock-keychain -p "$PW" "$KC"
+          security list-keychains -d user -s "$KC" $(security list-keychains -d user | tr -d '"')
+          mk() { # dir: the same openssl call as capsule-native.js createIdentity
+            d="$T/certs/$1"; mkdir -p "$d"
+            /usr/bin/openssl req -x509 -newkey rsa:2048 -sha256 -days 3650 -nodes -keyout "$d/key.pem" -out "$d/cert.pem" \
+              -subj "/CN=Vyre CI" -addext keyUsage=critical,digitalSignature -addext extendedKeyUsage=critical,codeSigning \
+              -addext basicConstraints=critical,CA:false 2>/dev/null
+            /usr/bin/openssl pkcs12 -export -inkey "$d/key.pem" -in "$d/cert.pem" -out "$d/id.p12" -name "Vyre CI" -passout pass:p
+            security import "$d/id.p12" -k "$KC" -P p -T /usr/bin/codesign >/dev/null
+            rm -f "$d/key.pem" "$d/id.p12"
+            /usr/bin/openssl x509 -in "$d/cert.pem" -noout -fingerprint -sha1 | sed 's/.*=//; s/://g'
+          }
+          echo "ID_CI=$(mk ci)" >> "$GITHUB_ENV"
+          echo "ID_OTHER=$(mk other)" >> "$GITHUB_ENV"
+          security set-key-partition-list -S apple-tool:,apple: -s -k "$PW" "$KC" >/dev/null
+          cp "$T/certs/ci/cert.pem" dist/s1/ci-cert.pem
+          echo "Valid identities (none expected: the certificates are not trusted):"
+          security find-identity -v -p codesigning "$KC" || true
+          echo "All identities:"
+          security find-identity -p codesigning "$KC"
+      - name: Sign with an untrusted certificate
+        # codesign takes the identity by SHA-1. If it refused an untrusted one, the real CI job
+        # would trust its certificate on the runner, which changes nothing in the signature.
+        run: |
+          set -eu
+          cp /bin/echo "$T/probe-bin"
+          if codesign --force --sign "$ID_CI" --keychain "$KC" --timestamp=none "$T/probe-bin"; then
+            echo "codesign signs with the untrusted certificate"
+          else
+            echo "codesign refused the untrusted certificate: trusting it in this runner's admin domain"
+            sudo -n security add-trusted-cert -d -r trustRoot -p codeSign -k "$KC" "$T/certs/ci/cert.pem" </dev/null
+            sudo -n security add-trusted-cert -d -r trustRoot -p codeSign -k "$KC" "$T/certs/other/cert.pem" </dev/null
+            codesign --force --sign "$ID_CI" --keychain "$KC" --timestamp=none "$T/probe-bin"
+          fi
+          codesign -d -r- "$T/probe-bin"
+      - name: Build the Capsule twice, with different source
+        run: |
+          set -eu
+          VYRE_CAPSULE_BUILD="$T/capA" sh local/capsule/native/build.sh app
+          # Build 2: one more public symbol, so the binary and its cdhash differ as an update's would.
+          echo 'public let s1BuildStamp = "build 2"' > local/capsule/native/Sources/Host/S1BuildStamp.swift
+          VYRE_CAPSULE_BUILD="$T/capB" sh local/capsule/native/build.sh app
+          rm local/capsule/native/Sources/Host/S1BuildStamp.swift
+          cmp -s "$T/capA/Vyre.app/Contents/MacOS/Vyre" "$T/capB/Vyre.app/Contents/MacOS/Vyre" && { echo "the two builds are identical"; exit 1; } || true
+      - name: Bundle A, B (same certificate), C (other certificate), D (ad hoc)
+        run: |
+          set -eu
+          tgz="$T/$(npm pack --silent --pack-destination "$T" | tail -n 1)"
+          b() { sh scripts/mac-bundle.sh --capsule "$T/$2/Vyre.app" --tgz "$tgz" --out "$T/$1" --cache "$T/node-cache"; }
+          VYRE_SIGN_IDENTITY="$ID_CI" VYRE_SIGN_KEYCHAIN="$KC" b A capA
+          VYRE_SIGN_IDENTITY="$ID_CI" VYRE_SIGN_KEYCHAIN="$KC" b B capB
+          VYRE_SIGN_IDENTITY="$ID_OTHER" VYRE_SIGN_KEYCHAIN="$KC" b C capB
+          b D capB
+          mkdir -p "$T/s1"
+          for x in A B C D; do mv "$T/$x/Vyre.app" "$T/s1/$x.app"; done
+      - name: S1 designated requirements (signing runner)
+        run: sh scripts/mac-bundle-s1.sh "$T/s1" | tee dist/s1/signing-runner.txt
+      - name: S1 what TCC does with build 1's requirement
+        # TCC stores the requirement of the build a person granted (csreq) and checks later builds
+        # against it. A probe app is built twice with the CI certificate; build 1's requirement is
+        # written into TCC.db as a grant would be, then builds 2 and 3 (other certificate) ask.
+        # SIP usually forbids writing TCC.db; then this says so and the job carries on.
+        if: always()
+        timeout-minutes: 8
+        run: |
+          set +e
+          exec </dev/null
+          P="$T/tcc"; mkdir -p "$P"
+          alarm() { perl -e 'alarm shift; exec @ARGV' "$@"; }
+          for s in 1 2; do
+            a="$P/P$s.app"; mkdir -p "$a/Contents/MacOS"
+            sed "s/STAMP/build $s/" scripts/mac-bundle-tccprobe.swift > "$P/p$s.swift"
+            swiftc -O -o "$a/Contents/MacOS/probe" "$P/p$s.swift" || exit 0
+            plutil -create xml1 "$a/Contents/Info.plist"
+            plutil -insert CFBundleIdentifier -string sh.vyre.tccprobe "$a/Contents/Info.plist"
+            plutil -insert CFBundleExecutable -string probe "$a/Contents/Info.plist"
+            plutil -insert CFBundlePackageType -string APPL "$a/Contents/Info.plist"
+            plutil -insert LSUIElement -bool true "$a/Contents/Info.plist"
+            plutil -insert NSMicrophoneUsageDescription -string "S1 probe" "$a/Contents/Info.plist"
+            codesign --force --sign "$ID_CI" --keychain "$KC" --timestamp=none --identifier sh.vyre.tccprobe "$a"
+          done
+          ditto "$P/P2.app" "$P/P3.app"
+          codesign --force --sign "$ID_OTHER" --keychain "$KC" --timestamp=none --identifier sh.vyre.tccprobe "$P/P3.app"
+          req="$(codesign -d -r- "$P/P1.app" 2>&1 | sed -n 's/^designated => //p')"
+          echo "P1 DR: $req"
+          echo "$req" | csreq -r- -b "$P/req.bin" && hex="$(xxd -p "$P/req.bin" | tr -d '\n')"
+          SYS="/Library/Application Support/com.apple.TCC/TCC.db"
+          USR="$HOME/Library/Application Support/com.apple.TCC/TCC.db"
+          echo "--- system TCC.db schema"
+          sudo -n sqlite3 "$SYS" 'pragma table_info(access)' 2>&1 | head -30
+          row() { # db, service, sudo?
+            q="INSERT OR REPLACE INTO access (service,client,client_type,auth_value,auth_reason,auth_version,csreq,flags,last_modified) VALUES ('$2','sh.vyre.tccprobe',0,2,4,1,X'$hex',0,CAST(strftime('%s','now') AS INTEGER));"
+            if [ "$3" = sudo ]; then sudo -n sqlite3 "$1" "$q"; else sqlite3 "$1" "$q"; fi
+            echo "write $2 into $(basename "$(dirname "$(dirname "$1")")")/TCC.db: exit $?"
+          }
+          row "$SYS" kTCCServiceAccessibility sudo
+          row "$SYS" kTCCServiceListenEvent sudo
+          row "$USR" kTCCServiceMicrophone no
+          echo "--- rows now"
+          sudo -n sqlite3 "$SYS" "select service,client,auth_value,length(csreq) from access where client='sh.vyre.tccprobe'" 2>&1
+          sqlite3 "$USR" "select service,client,auth_value,length(csreq) from access where client='sh.vyre.tccprobe'" 2>&1
+          for x in P1 P2 P3; do
+            rm -f "$P/$x.json"
+            alarm 30 open -W -n "$P/$x.app" --args "$P/$x.json"
+            echo "$x via open (own responsible process): $(cat "$P/$x.json" 2>/dev/null || echo 'no answer')"
+          done
+          alarm 30 "$P/P2.app/Contents/MacOS/probe" "$P/P2-direct.json"
+          echo "P2 run from the runner's shell (the runner is responsible): $(cat "$P/P2-direct.json" 2>/dev/null || echo 'no answer')"
+          sudo -n sqlite3 "$SYS" "delete from access where client='sh.vyre.tccprobe'" 2>/dev/null
+          sqlite3 "$USR" "delete from access where client='sh.vyre.tccprobe'" 2>/dev/null
+          exit 0
+      - name: S2 cold start, memory, CLI (signing runner)
+        run: node scripts/mac-bundle-measure.mjs "$T/s1/A.app" --idle 30 | tee dist/s2-signing-runner.json
+      - name: Package
+        if: success() || failure()
+        run: |
+          set -eu
+          mkdir -p "$T/out" && ditto "$T/s1/A.app" "$T/out/Vyre.app"
+          ditto -c -k --keepParent "$T/out/Vyre.app" dist/Vyre.app.zip
+          echo "Vyre.app: $(du -sk "$T/out/Vyre.app" | cut -f1) KB on disk, $(du -k dist/Vyre.app.zip | cut -f1) KB zipped ($(stat -f %z dist/Vyre.app.zip) bytes)" | tee -a "$GITHUB_STEP_SUMMARY"
+          for x in A B C D; do ditto -c -k --keepParent "$T/s1/$x.app" "dist/s1/$x.app.zip"; done
+      - uses: actions/upload-artifact@v4
+        if: success() || failure()
+        with:
+          name: vyre-mac-bundle-${{ github.sha }}
+          path: dist/Vyre.app.zip
+          retention-days: 14
+      - uses: actions/upload-artifact@v4
+        if: success() || failure()
+        with:
+          name: s1-builds-${{ github.sha }}
+          path: |
+            dist/s1
+            dist/s2-signing-runner.json
+          retention-days: 14
+
+  # A fresh runner that has never seen the certificate: the Mac a person installs on.
+  verify-untrusted:
+    needs: bundle
+    runs-on: macos-latest
+    timeout-minutes: 20
+    env:
+      VYRE_NO_DIALOGS: "1"
+      T: ${{ runner.temp }}/mb
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: s1-builds-${{ github.sha }}
+          path: ${{ runner.temp }}/mb/in
+      - name: Unpack
+        run: |
+          set -eu
+          mkdir -p "$T/s1"
+          for x in A B C D; do ditto -x -k "$T/in/s1/$x.app.zip" "$T/s1"; mv "$T/s1/Vyre.app" "$T/s1/$x.app" 2>/dev/null || true; done
+          ls "$T/s1"
+      - name: S1 with no certificate at all
+        run: |
+          set -eu
+          security find-certificate -a -c "Vyre CI" 2>&1 | head -3 || true
+          sh scripts/mac-bundle-s1.sh "$T/s1"
+      - name: S1 with only the public certificate, untrusted
+        run: |
+          set -eu
+          exec </dev/null
+          KC="$RUNNER_TEMP/pub.keychain-db"
+          security create-keychain -p p "$KC"
+          security unlock-keychain -p p "$KC"
+          security import "$T/in/s1/ci-cert.pem" -k "$KC"
+          security list-keychains -d user -s "$KC" $(security list-keychains -d user | tr -d '"')
+          security verify-cert -c "$T/in/s1/ci-cert.pem" -p codeSign 2>&1 || true
+          sh scripts/mac-bundle-s1.sh "$T/s1"
+      - name: S2 cold start, memory, CLI (fresh runner, run by the bundle's own node)
+        run: |
+          set -eu
+          xattr -cr "$T/s1/A.app"
+          "$T/s1/A.app/Contents/MacOS/node" scripts/mac-bundle-measure.mjs "$T/s1/A.app" --idle 30 | tee "$T/s2.json"
+          echo '```json' >> "$GITHUB_STEP_SUMMARY"; cat "$T/s2.json" >> "$GITHUB_STEP_SUMMARY"; echo '```' >> "$GITHUB_STEP_SUMMARY"
