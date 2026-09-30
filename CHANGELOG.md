@@ -44,6 +44,9 @@ Newest first. Every change to code lands here in the same commit. A new dependen
   needs. `vyre module upgrade` moves a module onto the current form, and pinned fixtures in
   `test/fixtures/modules/` hold every release to it.
 - A Mac can be the server: `scripts/install-mac-server.sh` installs Vyre in your own account (no root, no password), starts Colima for agents' computers, writes the setup code into `vyre.env`, and runs vyred as one LaunchAgent under `caffeinate` so the Mac stays awake while it runs. It starts when you sign in to that Mac; starting with nobody signed in waits for the system service. `--uninstall` keeps your data.
+- `link.health` answers in one shape everywhere (`reach`, `why`, `fix`, `since`, `tailnet`) on the
+  Mac, the box and the relay client, with the older fields kept beside it. Vyre publishes the
+  artifacts share path `/s/` on Tailscale Funnel when public links are on (`network.funnel.status`).
 
 ## 0.1.1
 

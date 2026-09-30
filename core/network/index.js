@@ -14,6 +14,7 @@ import * as ts from "../names/tailscale.js";
 import { classify } from "../names/identity.js";
 import { GUEST_SAFE, allowedTools, grantedPatterns, listed, settings } from "../names/guests.js";
 import { agentClaim } from "../modules/index.js";
+import { startFunnel } from "./funnel.js";
 
 const LOGIN = /^[^\s@]{1,128}@[^\s@]{1,128}$/;
 const str = { type: "string" };
@@ -130,6 +131,14 @@ export default {
       },
     });
 
-    return { async stop() {} };
+    // The public share path on Funnel (funnel.js): the owner's to read, never an agent's or a guest's.
+    const funnel = await startFunnel(ctx, { guard: (caller, meta) => {
+      notGuest(caller);
+      const c = String(caller || "");
+      if ((meta && meta.agent) || agentClaim(c)) throw fail("denied", `"${c}" is an agent; the public link's state is the owner's`);
+      if (["anonymous", "onboard", "hook"].includes(c)) throw fail("denied", "the public link's state is the owner's, from the box's terminal, the Capsule or the Deck");
+    } });
+
+    return { async stop() { await funnel.stop(); } };
   },
 };
