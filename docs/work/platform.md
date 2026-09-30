@@ -9,7 +9,7 @@ Hackable Vyre (ADR 0033): a stable, versioned module API; extension points for e
 - ADR 0047 (docs/adr/0047-module-contract-v1.md), docs/MODULES.md, docs/build/AGENT-BRIEF.md, plan at <team-dir>/0.2/plans/platform.md.
 - Owners agreed in CHAT.md 06:09-06:16: vault, iq, sessions, assistant, watchers, app-design. reviewer-2 red team (<team-dir>/0.2/reviews/platform.md): no BLOCKER, all HIGH/MEDIUM/LOW folded at 65c7bc74; re-check asked.
 - Proof on this branch (not merged; the integrator merges after the person approves): v1 schema and checker, testing.js, conform.js, examples/modules/bakery, test/module-api-compat.test.js, v1 scaffold with AGENTS.md, `vyre module test`.
-- Doing: loader accepts v1 (core/modules), harness follows "one declaration per ctx door"; then reviewer-2's rules in the harness (fetch GET only, not_declared default-deny, slot taps to the Gate card, update code-changed flag, no replaces for added modules).
+- Done on this branch: loader accepts v1 (ca17b36e), one declaration per ctx door (c937cfc1), reviewer-2's rules in harness and loader (2175ac24, 9a8552f5: fetch GET/HEAD, not_declared default-deny, no replaces for added modules, slot taps to a Gate card, updatePlan, one write per Gate item), changelog and reference (e1d722a0). 167/167 targeted tests, run locally in temp dirs.
 - Next: report to the lead; build steps in the plan's section 7 after the person's yes.
 
 ## Done
