@@ -19,6 +19,7 @@ function fake() {
     if (cmd.endsWith("openssl") && args[0] === "x509") return `SHA1 Fingerprint=${fp}\n`;
     if (cmd.endsWith("codesign") && args[0] === "-d" && args[1] === "-r-") return `# designated => identifier "${CAPSULE_ID}" and certificate leaf = H"${SHA1.toLowerCase()}"\n`;
     if (cmd.endsWith("codesign") && args[0] === "-dvvv") return "Identifier=sh.vyre.capsule\nCDHash=0123456789abcdef0123456789abcdef01234567\n";
+    if (cmd.endsWith("security") && args[0] === "find-identity" && args[1] === "-v") return `  1) ${SHA1} "${IDENTITY}"\n     1 valid identities found\n`;
     if (cmd.endsWith("openssl") && args[0] === "req") { const i = args.indexOf("-keyout"); fs.writeFileSync(args[i + 1], "KEY"); fs.writeFileSync(args[args.indexOf("-out") + 1], "CERT"); }
     if (cmd.endsWith("openssl") && args[0] === "pkcs12") fs.writeFileSync(args[args.indexOf("-out") + 1], "P12");
     if (cmd.endsWith("security") && args[0] === "create-keychain") fs.writeFileSync(args[args.length - 1], "KC");
@@ -69,4 +70,12 @@ test("signing: removeIdentity takes the trust and the folder away", t => {
   removeIdentity({ dir, run: f.run });
   assert.ok(!fs.existsSync(dir));
   assert.ok(f.calls.some(c => c.args[0] === "remove-trusted-cert"));
+});
+
+test("signing: an identity codesign would not list as valid fails at install, with what the keychain said", t => {
+  const dir = dirOf(t);
+  const f = fake();
+  const run = (/** @type {string} */ cmd, /** @type {string[]} */ args) => (cmd.endsWith("security") && args[0] === "find-identity" ? "     0 valid identities found\n" : f.run(cmd, args));
+  assert.throws(() => ensureIdentity({ dir, run }), /not valid for code signing.*0 valid identities found/);
+  assert.ok(!fs.existsSync(path.join(dir, "identity.json")), "nothing recorded");
 });

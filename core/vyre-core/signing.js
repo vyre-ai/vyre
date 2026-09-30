@@ -59,6 +59,13 @@ export function ensureIdentity({ dir, run, systemKeychain = SYSTEM_KEYCHAIN }) {
     const fp = run(OPENSSL, ["x509", "-in", cert, "-noout", "-fingerprint", "-sha1"]);
     const sha1 = ((fp.match(/=([0-9A-Fa-f:]{59})/) || [])[1] || "").replace(/:/g, "").toUpperCase();
     if (!/^[0-9A-F]{40}$/.test(sha1)) throw new Error("could not read the signing certificate's fingerprint");
+    // codesign lists only identities it finds valid. Check that now, and when it is not, say what
+    // the keychain and the trust say instead of codesign's bare "no identity found".
+    const tryOut = (/** @type {string[]} */ a) => { try { return String(run(SECURITY, a)); } catch (e) { return `(${/** @type {Error} */ (e).message.split("\n")[0]})`; } };
+    const valid = tryOut(["find-identity", "-v", "-p", "codesigning", keychain]);
+    if (!valid.toUpperCase().includes(sha1)) {
+      throw new Error(`the signing identity is not valid for code signing. valid: ${valid.trim()} | all: ${tryOut(["find-identity", "-p", "codesigning", keychain]).trim()} | verify: ${tryOut(["verify-cert", "-c", cert, "-p", "codeSign", "-k", keychain])}`.replace(/\s+/g, " "));
+    }
     fs.writeFileSync(path.join(dir, "pw"), pw + "\n", { mode: 0o600 });
     fs.writeFileSync(path.join(dir, "cert.pem"), fs.readFileSync(cert), { mode: 0o600 });
     fs.writeFileSync(meta, JSON.stringify({ sha1, keychain, identity: IDENTITY, created: new Date().toISOString() }) + "\n", { mode: 0o600 });
