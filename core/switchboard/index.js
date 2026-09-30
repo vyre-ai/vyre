@@ -1809,6 +1809,20 @@ export class Switchboard {
   }
 
   /**
+   * Press stop for every turn streaming in a folder (as a person would before Undo), and wait until
+   * they have ended: an interrupt, not a kill, so the threads stay and take their next message.
+   * @param {string} cwd @param {number} [timeoutMs] @returns {Promise<{ stopped: string[], still: string[] }>}
+   */
+  async haltIn(cwd, timeoutMs = 15_000) {
+    const { threads } = this.busyIn(cwd);
+    await Promise.all(threads.map(id => this.interrupt(id).catch(() => null)));
+    const end = Date.now() + timeoutMs;
+    while (Date.now() < end && this.busyIn(cwd).busy) await new Promise(r => setTimeout(r, 50));
+    const still = this.busyIn(cwd).threads;
+    return { stopped: threads.filter(id => !still.includes(id)), still };
+  }
+
+  /**
    * Delete a thread: stop it, remove its record, runs, questions, queue, steers and events, and say
    * thread.deleted so whatever else keeps something of it (OpenRouter's stored conversation) lets go.
    * What a provider's own program wrote to disk (Claude Code's transcript file) is that program's;
@@ -2548,6 +2562,12 @@ export default {
     });
     // For recall: who really started a session under an account's folder, from this record and never
     // from what the transcript says about itself. No record, or an agent's or a job's: not a person's.
+    // For github's Undo, which stops the turn first (a person pressing stop) and then resets the worktree.
+    ctx.tool("threads.interrupt-in", {
+      description: "Interrupt every turn streaming in a folder (a session's worktree) and wait for them to end; the threads stay. github calls it before Undo resets a worktree. Answers who stopped and who still runs.", internal: true, callers: ["module"],
+      input: { type: "object", required: ["cwd"], properties: { cwd: str } },
+      run: async i => sb.haltIn(String(i.cwd)),
+    });
     // For github's Undo: is a turn streaming in that worktree? (github asks before it resets one.)
     ctx.tool("threads.busy", {
       description: "Whether a turn is streaming in a folder (a session's worktree) or in a thread's own folder. github asks before Undo resets a worktree.", internal: true, callers: ["module"],

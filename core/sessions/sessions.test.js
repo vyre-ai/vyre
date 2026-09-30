@@ -455,6 +455,11 @@ for (const driver of ["cli", "sdk"]) {
     assert.deepEqual((await w.internal("threads.busy", { thread: th.id })).data.threads, [th.id]);
     assert.equal((await w.internal("threads.busy", { cwd: path.join(w.work, "elsewhere") })).data.busy, false);
     assert.equal((await w.tool("threads.busy", { cwd: wt })).error.code, "no_such_tool", "modules only");
+    // Undo presses stop first: the open turn ends, the thread stays.
+    const halted = await w.internal("threads.interrupt-in", { cwd: wt });
+    assert.deepEqual(halted.data, { stopped: [th.id], still: [] });
+    assert.equal((await w.internal("threads.busy", { cwd: wt })).data.busy, false);
+    assert.notEqual((await w.tool("threads.get", { thread: th.id })).data.thread.status, "stopped", "an interrupt, not a stop");
   });
 
   test(`${driver}: threads.origin says a session is a person's only from the Switchboard's own record`, { skip }, async t => {
