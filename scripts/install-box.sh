@@ -12,7 +12,14 @@
 #
 # Environment: VYRE_DIR (default /srv/vyre), VYRE_BOX_URL (default https://vyre.run/box/),
 # VYRE_IMAGE (default ghcr.io/vyre-ai/vyre:latest), VYRE_BUILD=tgz to build from vyre.tgz even
-# when the image can be pulled.
+# when the image can be pulled, and VYRE_CODE: the setup code the browser shows, for the
+# install line `VYRE_CODE=... curl -fsSL https://vyre.run/i | sh`. The code is never a command-line
+# argument (a process list shows arguments); without one, and on a terminal, it is asked for and
+# Enter skips it. It goes only into $VYRE_DIR/vyre.env (0600) and is never printed.
+#
+# A release that carries image digests (release.json) is pulled by digest, after cosign has verified
+# the signature against this repo's release workflow, with cosign itself run from a container pinned
+# by digest below. A failed check stops the install; there is no switch to skip it.
 #
 # Every downloaded file is checked against SHA256SUMS from the same place, and a file without a
 # line there, or with a different hash, stops the install.
@@ -43,6 +50,14 @@ BASE=${VYRE_BOX_URL:-https://vyre.run/box/}
 WRAPPER=${VYRE_WRAPPER:-/usr/local/bin/vyre}
 TUN=${VYRE_TUN:-/dev/net/tun}
 DOCKER_SOCK=${VYRE_DOCKER_SOCK:-/var/run/docker.sock}
+# The cosign that checks our images, pinned by digest so a moved tag cannot swap it. The identity
+# is the release workflow of this repo on a version tag, and nothing else.
+COSIGN_IMAGE=${VYRE_COSIGN_IMAGE:-ghcr.io/sigstore/cosign/cosign@sha256:b03690aa52bfe94054187142fba24dc54137650682810633901767d8a3e15b31}
+COSIGN_ID='^https://github\.com/vyre-ai/vyre/\.github/workflows/release\.yml@refs/tags/v[0-9]+\.[0-9]+\.[0-9]+(-[a-z]+\.[0-9]+)?$'
+COSIGN_ISSUER=https://token.actions.githubusercontent.com
+CODE=""
+BOX_REF=""
+COMPUTER_REF=""
 # A line only our wrapper carries, so we never replace or remove someone else's vyre.
 MARK="vyre on a Docker box"
 
@@ -147,8 +162,12 @@ finish() {
     if [ "$LINK_ONLY" = 1 ]; then
       say "  The setup link went to stdout for the program that asked."
     else
-      say "  Next: open the link above. If it came with an ssh -L line,"
-      say "  run that on your own computer first, then open the link there."
+      if [ -n "$CODE" ]; then
+        say "  Done. Back to your browser."
+      else
+        say "  Next: open the link above. If it came with an ssh -L line,"
+        say "  run that on your own computer first, then open the link there."
+      fi
     fi
   fi
   say ""
@@ -200,6 +219,7 @@ ask() {
 }
 
 cleanup() { [ -n "$TMP" ] && rm -rf "$TMP"; return 0; }
+
 
 # The person who owns the stack folder: whoever ran sudo, or you.
 pick_owner() {
@@ -311,6 +331,9 @@ pick_build() {
   if [ "${VYRE_BUILD:-}" = tgz ]; then
     TGZ=1
     say "building the image from vyre.tgz (VYRE_BUILD=tgz)"
+  elif [ -n "$BOX_REF" ]; then
+    # A release that names its image by digest is pulled by that digest, never built or pulled by tag.
+    :
   elif ! dk_quiet manifest inspect "$IMAGE" >/dev/null 2>&1; then
     TGZ=1
     say "cannot pull $IMAGE; building it from vyre.tgz instead"
@@ -369,15 +392,26 @@ write_stack() {
   else
     TMP=$(mktemp -d)
     files="compose.yml compose.build.yml vyre.env.example vyre"
-    [ "$TGZ" = 1 ] && files="$files vyre.tgz"
     if [ "$DRY" = 1 ]; then
+      pick_build
+      [ "$TGZ" = 1 ] && files="$files vyre.tgz"
       say "would download: $BASE""SHA256SUMS"
       for f in $files; do say "would download and verify: $BASE$f"; done
+      say "would read release.json and, when it names image digests, check each with cosign and pull it by digest"
       done_step "nothing downloaded (dry run)"
     else
       get_sums
-      for f in $files; do get "$f"; done
+      if awk '$2 == "release.json" || $2 == "*release.json" { f = 1 } END { exit !f }' "$TMP/SHA256SUMS"; then
+        get release.json
+      fi
+      # compose.yml first: read_release checks it pins the digests release.json names.
+      get compose.yml
+      read_release
+      pick_build
+      [ "$TGZ" = 1 ] && files="$files vyre.tgz"
+      for f in $files; do [ -f "$TMP/$f" ] || get "$f"; done
       done_step "every file matches SHA256SUMS"
+      verify_images
     fi
     step "Laying out $DIR"
     say "the stack goes in $DIR, owned by $OWNER"
@@ -472,6 +506,99 @@ start() {
   fi
 }
 
+# intake_code: the setup code, from VYRE_CODE or asked for on a terminal (hidden, Enter skips it).
+# Never an argument, never echoed. The shape is base64url of 32 bytes: 43 characters.
+intake_code() {
+  CODE=${VYRE_CODE:-}
+  unset VYRE_CODE
+  [ "$UNINSTALL" = 1 ] && { CODE=""; return 0; }
+  if [ -z "$CODE" ] && [ "$DRY" = 0 ] && [ "$YES" = 0 ] && [ "$LINK_ONLY" = 0 ] && (: </dev/tty) 2>/dev/null; then
+    printf '%sPaste the setup code from your browser (Enter to skip): %s' "$BEACON" "$RESET" >/dev/tty
+    stty -echo </dev/tty 2>/dev/null || true
+    read -r CODE </dev/tty || CODE=""
+    stty echo </dev/tty 2>/dev/null || true
+    printf '\n' >/dev/tty
+  fi
+  [ -n "$CODE" ] || return 0
+  printf '%s' "$CODE" | grep -Eq '^[A-Za-z0-9_-]{43}$' \
+    || die "that setup code does not look right. Copy the install line from your browser again."
+}
+
+# write_code: VYRE_SETUP_CODE into DIR/vyre.env (0600), which the vyre service already reads. The
+# rest of the file is kept as it is, and put installs from a temp file so the code is never an argument.
+write_code() {
+  [ -n "$CODE" ] || return 0
+  if [ "$DRY" = 1 ]; then say "would put the setup code in $DIR/vyre.env (0600); it is never shown"; return 0; fi
+  TMP=${TMP:-$(mktemp -d)}
+  : >"$TMP/vyre.env"
+  if [ -e "$DIR/vyre.env" ]; then
+    # shellcheck disable=SC2024
+    if [ -r "$DIR/vyre.env" ] || [ -z "$SUDO" ]; then grep -v '^VYRE_SETUP_CODE=' "$DIR/vyre.env" >"$TMP/vyre.env" || true
+    else sudo cat "$DIR/vyre.env" | grep -v '^VYRE_SETUP_CODE=' >"$TMP/vyre.env" || true
+    fi
+  fi
+  chmod 600 "$TMP/vyre.env"
+  printf 'VYRE_SETUP_CODE=%s\n' "$CODE" >>"$TMP/vyre.env"
+  put "$TMP/vyre.env" "$DIR/vyre.env" 0600
+}
+
+# one_install: an install that is already running here is updated, never replaced.
+one_install() {
+  [ -f "$DIR/compose.yml" ] || return 0
+  command -v docker >/dev/null 2>&1 || return 0
+  up=$(dk_quiet compose -p vyre ps -q 2>/dev/null | head -n 1 || true)
+  [ -n "$up" ] || return 0
+  say "Vyre is already running in $DIR, so this installer leaves it alone."
+  say "  Update it:    vyre update"
+  say "  Start over:   vyre uninstall, then run this line again"
+  exit 0
+}
+
+# docker_flavor: the Docker this installer knows. Snap, rootless and Podman each break something
+# specific (the TUN device, the socket group, compose.yml itself), so they stop here in plain words.
+docker_flavor() {
+  command -v docker >/dev/null 2>&1 || return 0
+  case "$(command -v docker)" in
+    /snap/*|*/snap/bin/*) die "this Docker came from snap, which cannot give the Tailscale container a TUN device. Install Docker Engine from docker.com instead: curl -fsSL https://get.docker.com | sh" ;;
+  esac
+  if docker --version 2>/dev/null | grep -qi podman; then
+    die "this is Podman answering as docker. Vyre needs Docker Engine with Compose v2: curl -fsSL https://get.docker.com | sh"
+  fi
+  if dk_quiet info --format '{{.SecurityOptions}}' 2>/dev/null | grep -qi rootless; then
+    die "this Docker runs rootless, which cannot run the Tailscale container's network. Install the regular Docker Engine: curl -fsSL https://get.docker.com | sh"
+  fi
+}
+
+# read_release: the image digests release.json names (its SHA256SUMS line already matched), and a
+# check that the released compose.yml pins the same ones.
+read_release() {
+  [ -f "$TMP/release.json" ] || return 0
+  j=$(tr -d '\n' <"$TMP/release.json")
+  BOX_REF=$(printf '%s' "$j" | sed -n 's/.*"box": *{[^}]*"ref": *"\([^"]*\)".*/\1/p')
+  COMPUTER_REF=$(printf '%s' "$j" | sed -n 's/.*"computer": *{[^}]*"ref": *"\([^"]*\)".*/\1/p')
+  for ref in $BOX_REF $COMPUTER_REF; do
+    printf '%s' "$ref" | grep -Eq '^ghcr\.io/vyre-ai/[a-z-]+@sha256:[0-9a-f]{64}$' \
+      || die "release.json names an image that is not a ghcr.io/vyre-ai digest"
+    grep -qF "$ref" "$TMP/compose.yml" || die "compose.yml does not pin $ref, which release.json names"
+  done
+}
+
+# verify_images: each named image is signed by our release workflow, then the box image is
+# pulled by digest. Fail closed, and never skippable.
+verify_images() {
+  [ -n "$BOX_REF" ] || return 0
+  say "checking the image signature"
+  for ref in $BOX_REF $COMPUTER_REF; do
+    if ! dk docker run --rm "$COSIGN_IMAGE" verify --certificate-identity-regexp "$COSIGN_ID" \
+      --certificate-oidc-issuer "$COSIGN_ISSUER" "$ref" >/dev/null 2>"$TMP/cosign.err"; then
+      sed 's/^/  /' "$TMP/cosign.err" >&2
+      die "cosign could not verify $ref against Vyre's release workflow. Nothing was installed."
+    fi
+  done
+  dk docker pull -q "$BOX_REF" >/dev/null
+  done_step "signed by Vyre's release workflow, and pulled by digest"
+}
+
 uninstall() {
   if [ -f "$DIR/compose.yml" ]; then
     # $1 expands in the inner shell, which is the point.
@@ -519,6 +646,7 @@ main() {
       --print-link) LINK_ONLY=1 ;;
       --uninstall) UNINSTALL=1 ;;
       --purge) PURGE=1 ;;
+      --code|--code=*) die "the setup code is never a command-line argument, since a process list shows arguments. Set VYRE_CODE instead: VYRE_CODE=... sh install-box.sh" ;;
       -h|--help) sed -n '2,14p' "$0" 2>/dev/null || true; exit 0 ;;
       *) die "unknown option $1" ;;
     esac
@@ -547,6 +675,7 @@ main() {
   trap cleanup EXIT
   pick_look
   [ "$UNINSTALL" = 1 ] || hello
+  intake_code
   [ "$DRY" = 1 ] && say "dry run: nothing on this server will change"
 
   if [ "$UNINSTALL" = 1 ]; then
@@ -561,13 +690,15 @@ main() {
   pick_owner
   need_docker
   need_tun
-  pick_build
+  docker_flavor
+  one_install
   if command -v docker >/dev/null 2>&1; then done_step "Docker, Compose and the TUN device are there"
   else done_step "Docker would be installed first (dry run)"
   fi
   if [ -n "$FROM" ]; then step "Reading the box files"; else step "Downloading and verifying"; fi
   write_stack
   write_env
+  write_code
   if [ "$DRY" = 1 ]; then done_step "nothing written (dry run)"; else done_step "$DIR is laid out"; fi
   step "Installing the vyre command"
   install_wrapper

@@ -4,6 +4,16 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+- `scripts/install-box.sh` v2 (PLAN.md C6, R7, R6, M6-M11): the setup code comes from `VYRE_CODE` (or a
+  hidden prompt on a terminal, Enter skips) and is never an argument (`--code` is refused); it is
+  checked (43 base64url characters), never printed, and written only to `$VYRE_DIR/vyre.env` at 0600 as
+  `VYRE_SETUP_CODE`, through a temp file so no `docker`/`sudo` argument carries it. A release whose
+  `release.json` names image digests is pulled by digest after `cosign verify` (pinned cosign
+  container, identity = this repo's release workflow on a version tag); a failure stops the install and
+  there is no skip switch; `compose.yml` must pin the same digests. A running install is updated
+  (`vyre update`), never replaced; snap, rootless and Podman Docker stop with a plain line. With a code the
+  terminal ends on "Done. Back to your browser." New `test/install-box-v2.test.js` (10 tests, stub docker
+  and a file:// release site). Also cherry-picks e2e2's `--print-link` empty-`.env` fix (15ab8d40).
 - `vyre backup`/`vyre restore` now seal the file under a passphrase (PLAN.md R8): no unencrypted
   backup is ever written. Provider sign-ins (Claude, Codex, Gemini) are left out of the vault items
   a backup carries by default (re-made by signing in again after a restore), with
