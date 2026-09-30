@@ -171,6 +171,9 @@ or an API key. The credential goes into the vault as `claude-setup-token` or
    `vyre capsule install` downloads `Vyre-mac.zip` for this version from `vyre.run/box/`,
    checks it against `SHA256SUMS`, and unpacks it to `~/Applications/Vyre.app` (never
    `/Applications`, never with sudo).
+   *Superseded:* there is no zip any more. The Capsule is the native app (ADR 0017), and
+   `vyre capsule install` builds it on the Mac from the npm package, into
+   `~/.vyre/capsule/Vyre.app`. See [Capsule](../using/capsule.md#install-it).
 6. **The phone.** Two QR codes side by side: Tailscale's app, and the address's `/now`. The
    line under them names the login to sign in with.
 
@@ -226,6 +229,61 @@ On the Mac: `npm i -g vyre@latest && vyre up` upgrades (`vyre up` restarts an ol
 `vyre down && npm rm -g vyre` removes it and leaves `~/.vyre`. On the server alone, box's
 `vyre update` and `install.sh --uninstall` stand as written in [Install on a server](../get-started/install.md).
 
+## Amendment: session sync to the box (28 Sep 2026, 0.2)
+
+The user asked for the Mac's Claude Code sessions to build the box's memory, so the box can answer
+from them while the Mac sleeps. Step 3's "the Mac's sessions stay on the Mac" becomes the default,
+not a rule:
+
+1. **Consent, per device.** One switch per Mac in the settings hub (ADR 0035), off by default:
+   "Build memory on your box from this Mac's Claude Code sessions." Only a person turns it on
+   (a person session, as for other person-only settings); no agent, module or remote device can.
+   Onboarding may offer it, never pre-ticked.
+2. **What moves.** Session files (JSONL), over the tailnet (encrypted in transit), into
+   `<home>/synced/<machine>/` on the box, labelled `source: "mac-sync"`. Never Vyre's own folders,
+   `<home>/quick`, or folders the person excludes; those never leave the Mac.
+3. **Dedupe and load.** One file per session id, replaced whole when it changes. Batches only while
+   the Mac is idle, never more often than every 60 s.
+4. **What is built where.** The box's Recall, graph and personal facts read the synced copies under
+   the same source-trust rules (by the session's own folder, not the synced path). Only the box
+   runs the model reader for a synced Mac, so no turn is paid for twice. The Mac keeps its own
+   index for offline search.
+5. **What came from a device is the person's, not the device's** (the user, 28 Sep: "I upgrade my
+   laptop and now I don't have access to any of it, that's just stupid"). Unpairing a device, or
+   it being replaced or lost, keeps everything by default: sessions, memories, the graph and files.
+   Turning sync off stops new uploads only. Deleting is a separate action the person takes:
+   "Delete everything that came from <device>", person-only, with a preview of what goes (in
+   counts) and one confirm, from the device's page in Settings, and offered as an unticked option
+   in the unpair dialog. "Replace this device" gives the new one the old one's history view,
+   grants and sync choices. Every derived row keeps its device, so the delete stays possible.
+5a. **A one-time import** (onboarding's "Import these now", docs/design/import.md) follows the same
+   rules: the person chooses what goes and confirms once with a person session, and the person's
+   delete removes it the same way. It sends only what was chosen, once; new sessions go only if
+   the person also turns sync on. Discovery on the device reads file metadata and sends nothing.
+6. **Security conditions** (e2e's review, 28 Sep; they hold before 0.2 is built):
+   - *Transport.* The box takes `<machine>` from the verified link peer, never from the request
+     body or path. It accepts a file only while its own record of that Mac's switch is on (the box
+     keeps its own copy; the Mac's word is not enough). File names are session UUIDs ending in
+     `.jsonl`. Files are written to a temp file and renamed, symlinks are never followed, and
+     each Mac has a quota.
+   - *The switch.* Turning it on needs a person session on that Mac. Turning it off works from
+     any person surface, the box included, and the box stops accepting that Mac's files at once;
+     it deletes nothing (item 5).
+   - *Trust.* The folder written in a synced session is the Mac's claim. Its trust is the lower of
+     the folder rule and the trust of `mac-sync`, so a compromised Mac cannot pass as a trusted
+     project folder.
+   - *Secrets.* Transcripts hold tool output (environment, keys). The same secret scrub as
+     indexing runs at ingest. `<home>/synced` stays out of agent users, the files and Drive tools
+     and MCP. An agent's recall of synced sessions is scoped by project, as it is locally.
+   - *The delete.* Every derived row (Recall turns and chunks, embeddings, graph facts, personal
+     facts, IQ caches, answers and fixes) carries the machine it came from from ingest on, so
+     everything derived can be listed and deleted. The delete is the person's choice (item 5), never
+     a side effect of unpairing: a person-chosen delete removes everything that device sent and
+     everything derived from it. The screen says that existing box backups keep the data until they
+     age out.
+   - e2e reviews the transport code when federation has it. Federation owns the transport and
+     memory-iq the indexing (docs/design/iq-everywhere.md, "Host to server").
+
 ## Consequences
 
 - One user-only step is unavoidable in v0.1: turning on HTTPS in the tailnet's admin console.
@@ -236,8 +294,8 @@ On the Mac: `npm i -g vyre@latest && vyre up` upgrades (`vyre up` restarts an ol
   for a sudo password works, because the install runs with `-t`.
 - `vyre box add` holds an SSH connection for as long as onboarding takes. That is a foreground
   command the person is watching, so it is outside the idle budgets; nothing polls once it ends.
-- The Mac's history does not move to the box. The box reads it through the link while the Mac is
-  online.
+- The Mac's history does not move to the box unless the person turns on session sync for that Mac
+  or imports it (amendment below). Once there, it stays until the person deletes it. Otherwise the box reads it through the link while the Mac is online.
 
 ## Who builds what
 
@@ -247,4 +305,4 @@ On the Mac: `npm i -g vyre@latest && vyre up` upgrades (`vyre up` restarts an ol
 | `onboard.finish` creating the assistant and greeting; `onboard.you` without `names.check`; ts.net as the default in `onboard.name`, with the HTTPS-off check | box |
 | The finish screen (greeting, three ticks, Open Vyre), two QR codes, "Turn on HTTPS", the Mac card, the history wording | deck |
 | `link.pair`, `link.find`, `link.status`, `ctx.remote`, offline behaviour | link |
-| `vyre.run/box` alias, `Vyre-mac.zip` and `SHA256SUMS`, GETTING-STARTED linking JOURNEY | release |
+| `vyre.run/box` alias, `Vyre-mac.zip` (since dropped: the Mac builds the Capsule) and `SHA256SUMS`, GETTING-STARTED linking JOURNEY | release |

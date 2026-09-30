@@ -12,6 +12,10 @@
 coverage
 test
 scripts
+# Except what the npm package ships from scripts/: npm ci runs postinstall.mjs, and
+# `vyre box` reads install-box.sh.
+!scripts/postinstall.mjs
+!scripts/install-box.sh
 # Design mockups and working notes: not read at runtime.
 docs/design/boards
 docs/work

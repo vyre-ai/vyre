@@ -5,6 +5,10 @@
 // then prints one thing: the onboarding link, the box's address, or on a Mac the box it talks to.
 // `vyre up --system` (as root) installs the systemd units; `vyre uninstall --system` removes them.
 // Both print every change and make none with --dry-run. See docs/INSTALL.md and ADR 0002.
+//
+// --json shapes: up {role, version, url, port, ssh, address, box, ready, ...} or {error} ·
+// backup {file, bytes, included} · restore {restored} · name {address, phase, owner?, why?} and
+// name check {name, valid, available, address?, why?} · owner {owner}. Only `vyre name` has verbs.
 
 import fs from "node:fs";
 import os from "node:os";
@@ -15,15 +19,16 @@ import { request, call } from "../../daemon/client.js";
 import { ensureUp, stop } from "../daemonctl.js";
 import { REPO, VERSION } from "../../daemon/index.js";
 import { out, dim, bold, signal, beacon } from "../style.js";
-import { json, emit, failTool, usage } from "../kit.js";
+import { json, emit, fail, failTool, usage, viewing } from "../kit.js";
 import * as config from "../../config/index.js";
-import { dialogsAllowed, isRealHome } from "../../config/dialogs.js";
+import { dialogsAllowed, isRealHome, realBoxAllowed } from "../../config/dialogs.js";
 import * as system from "../../names/system.js";
 import { backup, restore } from "../../names/backup.js";
 import * as tailnet from "../tailnet.js";
 import { printEnding } from "../ending.js";
 import { hello } from "../brand.js";
-import { build } from "../../daemon/build.js";
+import { findAssistant } from "./assistant.js";
+import { build, label } from "../../daemon/build.js";
 
 /** Pull --flags out of argv: { flags: { user: "alex", "dry-run": true }, rest: [...] }. */
 export function parse(args, valued = ["user", "connect"]) {
@@ -54,27 +59,40 @@ export function sshLine(port, user, env = process.env) {
 const UNIT = path.join(system.ETC, "vyre.service");
 const systemdManaged = () => process.platform === "linux" && fs.existsSync(UNIT);
 
-async function health() { const h = await request("GET", "/v1/health"); return h.error ? null : h.data; }
+/** vyred's /v1/health, or null when it does not answer. */
+export async function health() { const h = await request("GET", "/v1/health"); return h.error ? null : h.data; }
 
-/** Wait for vyred to answer with the wanted version (after systemd restarts it). */
-async function waitFor(version, ms = 15_000) {
+/** Wait for vyred to answer with the wanted version and build (after systemd restarts it). */
+export async function waitFor(version, ms = 15_000, commit = null) {
   for (let t = 0; t < ms; t += 250) {
     const h = await health();
-    if (h && h.version === version) return h;
+    if (h && h.version === version && (!commit || h.commit === commit)) return h;
     await new Promise(r => setTimeout(r, 250));
   }
   return null;
 }
 
-/** Start vyred, or restart it when it runs an older version or the wrong role. */
-async function bring(role) {
+/**
+ * Start vyred, or restart it when it runs an older version or the wrong role. `mineOf` names the
+ * build that should be running: this package's own, or for `vyre update` the release it just
+ * installed, since this process still holds the old code and the old version number.
+ */
+export async function bring(role, mineOf = build) {
   const h = await health();
-  if (h && h.version === VERSION && h.role === role) return { ok: true, note: null };
+  // A release is stamped with its commit (build.json). An upgrade that keeps the version number
+  // still changes the commit, and the vyred started before it runs the old code: that one is
+  // restarted, as is one whose build is dirty or unknown. A checkout (no stamp) compares versions.
+  const mine = mineOf();
+  const sameBuild = !mine.stamped || (h && h.commit === mine.commit && h.dirty === false && mine.dirty === false);
+  if (h && h.version === mine.version && h.role === role && sameBuild) return { ok: true, note: null };
+  const was = h ? label({ version: h.version, commit: h.commit ?? null, dirty: h.dirty ?? null }) : "";
+  const now = label(mine);
+  const restarted = h && h.version === mine.version && !sameBuild ? `updated · restarted vyred (${was} → ${now})` : `restarted ${was} → ${now}`;
   if (h && h.supervisor === "systemd") {
     // systemd restarts it (Restart=always) with the code npm just installed.
     try { process.kill(h.pid, "SIGTERM"); } catch {}
-    const back = await waitFor(VERSION);
-    return back ? { ok: true, note: `restarted ${h.version} → ${VERSION}` } : { ok: false, note: "vyred did not come back; see journalctl -u vyre" };
+    const back = await waitFor(mine.version, 15_000, mine.stamped ? mine.commit : null);
+    return back ? { ok: true, note: restarted } : { ok: false, note: "vyred did not come back; see journalctl -u vyre" };
   }
   if (process.env.VYRE_SUPERVISOR === "docker") {
     // In the box's container vyred is the container's main process: the image is the version, and
@@ -83,10 +101,13 @@ async function bring(role) {
       : { ok: false, note: "vyred is not answering in its container: docker compose -p vyre logs vyre" };
   }
   if (!h && systemdManaged()) return { ok: false, note: "vyred is installed as a service and is stopped: sudo systemctl start vyre" };
-  if (h) await stop();
+  if (h) {
+    const s = await stop({ pid: h.pid });
+    if (!s.ok) return { ok: false, note: s.why || "the running vyred did not stop; vyre down, then vyre up" };
+  }
   const r = await ensureUp();
   if (!r.ok) return { ok: false, note: `vyred did not start; its output is in ${r.log}` };
-  return { ok: true, note: h ? `restarted ${h.version} → ${VERSION}` : `started · pid ${r.pid}` };
+  return { ok: true, note: h ? restarted : `started · pid ${r.pid}` };
 }
 
 /**
@@ -112,6 +133,11 @@ export function openUrl(url) {
   try { spawn(process.env.VYRE_OPEN_BIN || "open", [url], { detached: true, stdio: "ignore" }).unref(); } catch {}
 }
 
+/** A box on this machine's own loopback (a dev world or a test's): never the person's real box. */
+function loopbackBox(box) {
+  try { const h = new URL(String(box)).hostname; return h === "127.0.0.1" || h === "localhost" || h === "[::1]" || h === "::1"; } catch { return false; }
+}
+
 /** An address as network.box holds it: https, no trailing slash. */
 export const normalize = a => String(a).trim().replace(/^(?!https:\/\/)/, "https://").replace(/\/$/, "");
 
@@ -123,7 +149,32 @@ export async function up(args, deps = {}) {
   if (!parse(args).flags.json) return run(args, deps);
   // A caller parsing --json gets one object whatever happens, so a throw anywhere is an error object too.
   try { return await run(args, deps); }
-  catch (e) { out(JSON.stringify({ error: { code: "failed", message: String((e && /** @type {Error} */ (e).message) || e) } })); return 1; }
+  catch (e) { one({ error: { code: "failed", message: String((e && /** @type {Error} */ (e).message) || e) } }); return 1; }
+}
+
+/** Common, obviously-not-a-secret .env values: no point nudging over these. */
+const ENV_NOT_SECRET = new Set(["true", "false", "development", "production", "test", "staging", "localhost", "debug", "info", "warn", "error"]);
+
+/**
+ * A rough, local count of .env values in `dir` that look like secrets and are not already a
+ * vault:// reference - no vault call, so no presence and no network: just enough to nudge
+ * (vault sweep and vault import do the real, careful work). Top-level .env* files only.
+ * @param {string} dir
+ */
+export function envCandidates(dir) {
+  let n = 0;
+  for (const name of [".env", ".env.local", ".env.development", ".env.production"]) {
+    let text;
+    try { text = fs.readFileSync(path.join(dir, name), "utf8"); } catch { continue; }
+    for (const line of text.split("\n")) {
+      const m = /^\s*(?:export\s+)?[A-Za-z_][A-Za-z0-9_]*\s*=\s*(.*)$/.exec(line);
+      if (!m) continue;
+      const v = m[1].trim().replace(/^["']|["']$/g, "");
+      if (v.length < 10 || v.startsWith("vault://") || /^\d+$/.test(v) || ENV_NOT_SECRET.has(v.toLowerCase())) continue;
+      n++;
+    }
+  }
+  return n;
 }
 
 /**
@@ -135,7 +186,7 @@ async function run(args, deps) {
   const json = Boolean(flags.json);
   if (flags.system) {
     // --system prints the plan it applies as it goes; there is no single object to give.
-    if (json) { out(JSON.stringify({ error: { code: "bad_input", message: "--json does not go with --system" } })); return 1; }
+    if (json) { one({ error: { code: "bad_input", message: "--json does not go with --system" } }); return 1; }
     return upSystem(flags);
   }
   const callTool = deps.call || call;
@@ -143,8 +194,9 @@ async function run(args, deps) {
   // In JSON mode the one object is the whole output: no prose, no colour, and no questions.
   const say = json ? () => {} : out;
   /** @param {Record<string, any>} o */
-  const done = (o, code = 0) => { if (json) out(JSON.stringify({ role, version: VERSION, url: null, port: null, ssh: null, address: null, box: null, ready: false, ...o })); return code; };
-  const fail = (code, message) => { if (json) out(JSON.stringify({ error: { code, message } })); else out(beacon("  " + message)); return 1; };
+  // Under --view the one object is a frame: the link, the box or where things stand, as a card.
+  const done = (o, code = 0) => { if (json) { const d = { role, version: VERSION, url: null, port: null, ssh: null, address: null, box: null, ready: false, ...o }; one(d, upView(d)); } return code; };
+  const fail = (code, message) => { if (json) one({ error: { code, message } }); else out(beacon("  " + message)); return 1; };
 
   if (flags.connect !== undefined && (flags.connect === true || !String(flags.connect).trim())) {
     return fail("no_address", "--connect needs your box's address: vyre up --connect https://vyre.<tailnet>.ts.net");
@@ -167,7 +219,7 @@ async function run(args, deps) {
   const v = cfg.vault || {};
   if (process.platform === "darwin" && isRealHome(config.home()) && dialogsAllowed() && v.keychain === undefined && !v.keystore) config.save({ vault: { keychain: true } });
 
-  const b = await (deps.bring || bring)(role);
+  const b = await (deps.bring || bring)(role, deps.build);
   if (!b.ok) return fail("vyred_down", b.note || "vyred did not start");
   if (first) {
     say("");
@@ -177,6 +229,10 @@ async function run(args, deps) {
     say("  address. Setting it up takes about ten minutes, one step at a time.");
     say(dim(`\n  vyred running in the background · your data lives in ${config.home().replace(os.homedir(), "~")}`));
   } else say(b.note ? `  vyred ${signal("running")} ${dim(`· ${VERSION} · ${role} · ${b.note}`)}` : `  vyred is already running ${dim(`· ${VERSION} · ${role}`)}`);
+  if (!first) {
+    const found = envCandidates(process.cwd());
+    if (found) say(dim(`  found ${found} secret-looking value${found === 1 ? "" : "s"} in .env here, not in the vault yet · vyre vault import . --rewrite brings them in`));
+  }
 
   if (systemdManaged()) {
     // An upgrade can change the units; only root can rewrite them.
@@ -188,7 +244,9 @@ async function run(args, deps) {
   }
 
   if (role === "local") {
-    return mac(config.load().network.box || null, { capsule: !flags["no-capsule"] && !json }, { ...deps, tool: callTool, json, say, done, fail });
+    // Pairing starts only when the person asked for this box: --connect (onboarding's choice 3 comes
+    // this way too), or a yes on their terminal. A box merely named in config is never asked.
+    return mac(config.load().network.box || null, { capsule: !flags["no-capsule"] && !json, pair: Boolean(flags.connect) }, { ...deps, tool: callTool, json, say, done, fail });
   }
 
   // --keep-link (vyre update): report, mint nothing, so the link the user already has still works.
@@ -210,7 +268,10 @@ async function run(args, deps) {
     const n = await callTool("names.status");
     const ready = Boolean(d.address && n.data && n.data.phase === "serving");
     if (json) return done({ address: d.address || null, ready, passkeyUrl: d.passkeyUrl || null });
-    if (d.address) printEnding({ address: d.address, assistant: config.load().onboard?.assistant || null });
+    if (d.address) {
+      const f = await findAssistant(callTool).catch(() => ({}));
+      printEnding({ address: d.address, assistant: f.agent ? f.agent.name : config.load().onboard?.assistant || null });
+    }
     else say("  set up is done; there is no address yet (vyre name)");
     // No passkey yet: on a box it is the only way to prove it is you, so offer a fresh link to make one.
     if (d.passkeyUrl) say(`\n  Make your passkey ${dim("(from a device on your tailnet; the link works once, for 10 minutes)")}:\n    ${signal(d.passkeyUrl)}`);
@@ -236,6 +297,19 @@ async function run(args, deps) {
   return 0;
 }
 
+/** The view of vyre up's one object: the onboarding link, the box, or where things stand. @param {any} d */
+function upView(d) {
+  const fields = [{ label: "vyred", value: `${d.version} · ${d.role}` }];
+  if (d.url) fields.push({ label: "Open this link to set up Vyre", value: String(d.url) });
+  if (d.ssh) fields.push({ label: "This box is headless: on your own computer, first", value: String(d.ssh) });
+  if (d.address) fields.push({ label: "Address", value: String(d.address) });
+  if (d.box) fields.push({ label: "Your box", value: String(d.box) });
+  if (d.pairing) fields.push({ label: "Pairing", value: String(d.pairing) });
+  if (d.passkeyUrl) fields.push({ label: "Make your passkey", value: String(d.passkeyUrl) });
+  if (!d.url && !d.box && !d.address && d.role === "local") fields.push({ label: "No box yet", value: "vyre box add user@host, vyre up --box, or vyre up --connect <address>" });
+  return { kind: "card", title: d.ready ? "Vyre is ready" : "Vyre", state: d.ready ? "ok" : "wait", fields };
+}
+
 /**
  * `vyre up` on a Mac (ADR 0008 sections 1, 3 and 7). With no box known it looks on the tailnet
  * (link.find); one answer is taken, several are offered, none asks where Vyre should run. Then:
@@ -244,7 +318,7 @@ async function run(args, deps) {
  * `deps` is for tests; `say`, `done` and `fail` come from up() so --json stays one object.
  * @param {string|null|undefined} box
  */
-export async function mac(box, { capsule = true } = {}, deps = {}) {
+export async function mac(box, { capsule = true, pair: asked = false } = {}, deps = {}) {
   const {
     health = b => tailnet.probe(b),
     tool = call,
@@ -257,11 +331,14 @@ export async function mac(box, { capsule = true } = {}, deps = {}) {
     done = () => 0,
     openCapsule = async () => {
       const c = await import("./capsule.js");
-      if (!c.installed() && !c.packaged().bin && !c.electron()) return false;
+      // The native Capsule builds itself on first run, so its source is enough.
+      if (!c.nativeAvailable()) return false;
       return (await c.default.run([])) === 0;
     },
     // Offered only on the person's own terminal, never under node --test: a test never reaches
     // the settings.json of whoever runs it.
+    // May this home talk to that box? Tests stand in for the rule (they run under node --test).
+    mayReach = () => realBoxAllowed(config.home()),
     statusline = async () => { if (io === terminal && !process.env.NODE_TEST_CONTEXT) await (await import("./statusline.js")).offerStatusline({ interactive: true, io }); },
   } = /** @type {any} */ (deps);
   const asking = io.tty && !json;
@@ -312,18 +389,35 @@ export async function mac(box, { capsule = true } = {}, deps = {}) {
     return 1;
   }
 
-  const paired = await pair(box, tool, say);
+  // A temp or dev home never talks to a real box unless its owner says so (core/config/dialogs.js).
+  if (!loopbackBox(box) && !mayReach(box)) {
+    const why = `this home (${config.home()}) is not ~/.vyre, so it does not talk to a real box; set VYRE_ALLOW_REAL_BOX=1 if you mean it`;
+    if (json) return fail("not_real_home", why);
+    say(beacon("  " + why));
+    return 1;
+  }
+  const paired = await pair(box, tool, say, { start: asked, ask: asking ? q => io.ask(q) : null });
   if (json) return done({ box, ready: paired !== "pending", ...(paired === "pending" ? { pairing: "waiting for approval" } : {}) });
   if (asking) await statusline().catch(() => {});
   if (capsule && platform === "darwin" && !(await openCapsule())) {
     say(`  the Capsule is not installed: ${signal("vyre capsule install")}`);
+  }
+  if (paired === "unpaired") {
+    say(dim(`\n  This Mac is not paired with ${box} yet. To pair it: vyre link pair ${box}`));
+    return 0;
   }
   if (paired === "pending") {
     // Not ready until the box says yes: say what happens next instead of "Vyre is ready."
     say(dim("\n  Once you approve it, run vyre up again to finish."));
     return 0;
   }
-  printEnding({ address: box, assistant: (h && h.assistant) || null });
+  // The box's health does not name the assistant; the box does, over the link, once paired.
+  let assistant = (h && h.assistant) || null;
+  if (!assistant && paired === "linked") {
+    const f = await findAssistant((name, input = {}) => tool("link.call", { tool: name, input })).catch(() => ({}));
+    assistant = f.agent ? f.agent.name : null;
+  }
+  printEnding({ address: box, assistant });
   return 0;
 }
 
@@ -331,10 +425,14 @@ export async function mac(box, { capsule = true } = {}, deps = {}) {
  * Pair this Mac with the box, or say where pairing stands. The link module owns the mechanics:
  * the Mac shows a code and the box's owner approves it (ADR 0008 section 7; `vyre box add`
  * approves it itself over SSH). Resolves "linked", "pending" (a code is waiting for approval),
- * or "unknown" (a vyred without the link module, or an error already said).
- * @returns {Promise<"linked" | "pending" | "unknown">}
+ * "unpaired" (nobody asked to pair; nothing was sent), or "unknown" (a vyred without the link
+ * module, or an error already said). A request goes to the box only when the person asked for
+ * this box (`start`: --connect, onboarding) or says yes on their terminal (`ask`).
+ * @param {string} box @param {any} tool @param {(s: string) => void} say
+ * @param {{ start?: boolean, ask?: ((q: string) => Promise<string>) | null }} [o]
+ * @returns {Promise<"linked" | "pending" | "unpaired" | "unknown">}
  */
-async function pair(box, tool, say) {
+async function pair(box, tool, say, { start = false, ask = null } = {}) {
   const s = await tool("link.status");
   if (s.error) {
     if (s.error.code !== "no_such_tool") say(beacon("  cannot read the link: ") + s.error.message);
@@ -343,6 +441,8 @@ async function pair(box, tool, say) {
   if (s.data.linked) { say(`  ${signal("linked")} ${dim("· this Mac and your box work as one")}`); return "linked"; }
   let code = s.data.pending && s.data.pending.code;
   if (!code) {
+    if (!start && ask) start = /^y(es)?$/i.test(String(await ask(`  Pair this Mac with ${box}? It sends the box a request to approve. (y/N) `)).trim());
+    if (!start) return "unpaired";
     const p = await tool("link.pair", { box });
     if (p.error) say(beacon("  pairing did not start: ") + p.error.message + dim(" · vyre link pair " + box));
     code = p.data && p.data.code;
@@ -389,6 +489,16 @@ async function where(io, deps) {
   return 1;
 }
 
+/**
+ * vyre up's one JSON object: a line through out (as its tests read it), or under --view a frame
+ * with `view` (derived when left out, so an {error} is an error frame).
+ * @param {any} d @param {any} [view]
+ */
+function one(d, view) {
+  if (viewing()) emit(d, view);
+  else out(JSON.stringify(d));
+}
+
 /** Look up a local account: its home and primary group. */
 function account(user) {
   if (process.platform === "linux") {
@@ -420,7 +530,7 @@ async function upSystem(flags) {
 
 export default [
   {
-    name: "up", order: 10, usage: "vyre up [--box|--connect <addr>] [--json] [--no-capsule] [--keep-link]", summary: "start vyred and print the onboarding link, or this box's address",
+    name: "up", order: 10, usage: "vyre up [--box] [--connect <addr>] [--no-capsule] [--keep-link] [--dry-run] [--json]", summary: "start vyred and print the onboarding link, or this box's address",
     run: args => up(args),
   },
   {
@@ -447,7 +557,10 @@ export default [
       const [file] = args.filter(a => a !== "--json");
       const target = path.resolve(file || `vyre-backup-${new Date().toISOString().slice(0, 10)}.tar.gz`);
       const r = await backup({ root: config.home(), file: target });
-      if (json()) return emit(r);
+      if (json()) {
+        return emit(r, { kind: "card", title: "Backup", state: "ok", fields: [{ label: "File", value: String(r.file) }, { label: "Size", value: `${Math.round(r.bytes / 1024)} KB` },
+          { label: "Holds", value: r.included.join(", ") }, { label: "Keep it", value: "somewhere only you can read: it holds the sealed vault" }] });
+      }
       out(`  ${signal(r.file)} ${dim(`· ${Math.round(r.bytes / 1024)} KB · ${r.included.join(", ")}`)}`);
       out(dim("  it holds the sealed vault: keep it somewhere only you can read"));
       return 0;
@@ -459,34 +572,59 @@ export default [
       const { flags, rest } = parse(args);
       if (!rest[0]) return usage("vyre restore needs the backup file", "vyre restore <file> [--force]");
       try { await restore({ root: config.home(), file: path.resolve(rest[0]), force: Boolean(flags.force) }); }
-      catch (e) { out(beacon("  " + /** @type {Error} */ (e).message)); return 1; }
+      catch (e) {
+        const m = String(/** @type {Error} */ (e).message);
+        return fail(m, { next: /already exists/.test(m) ? `vyre restore ${rest[0]} --force, to replace it` : /is running/.test(m) ? "vyre down, then try again" : undefined });
+      }
+      if (json()) return emit({ restored: path.resolve(rest[0]) });
       out("  restored · vyre up to start");
       return 0;
     },
   },
   {
-    name: "name", order: 30, usage: "vyre name [check <n>|claim <n>|ts.net|release] [--json]", summary: "this box's address: <you>.vyre.run",
+    name: "name", order: 30, usage: "vyre name [status|check <n>|claim <n>|ts.net|release] [--json]", summary: "this box's address: <you>.vyre.run",
+    verbs: [
+      { verb: "status", summary: "this box's address and where it stands", usage: "", read: true },
+      { verb: "check", summary: "whether a name is free", usage: "<n>", read: true },
+      { verb: "claim", summary: "take <n>.vyre.run for this box", usage: "<n>" },
+      { verb: "ts.net", summary: "use the tailnet's own ts.net address instead", usage: "" },
+      { verb: "release", summary: "give the name back", usage: "", person: true },
+    ],
     async run(args) {
-      const [action, name] = args.filter(a => a !== "--json");
+      const [action0, name] = args.filter(a => a !== "--json");
+      const action = action0 === "status" ? undefined : action0;
       const TOOLS = { check: "names.check", claim: "names.claim", "ts.net": "names.fallback", release: "names.release" };
-      if (action && !(action in TOOLS)) return usage(`vyre name ${action}: not a subcommand`, "vyre name [check <n>|claim <n>|ts.net|release]");
+      if (action && !(action in TOOLS)) return usage(`vyre name ${action}: not a subcommand`, "vyre name [status|check <n>|claim <n>|ts.net|release]");
       if ((action === "check" || action === "claim") && !name) return usage(`vyre name ${action} needs a name`, `vyre name ${action} alex`);
       const tool = TOOLS[/** @type {keyof typeof TOOLS} */ (action || "")] || "names.status";
       const r = await call(tool, name ? { name } : {});
       if (r.error) return failTool(r.error);
       const d = r.data;
-      if (json()) return emit(d);
+      if (json()) {
+        if (tool === "names.check") return emit(d, { kind: "card", title: String(d.name), state: d.valid && d.available ? "ok" : "failed", fields: [{ label: d.valid && d.available ? "Free" : "Not free", value: d.valid && d.available ? String(d.address) : String(d.why || "") }] });
+        return emit(d, { kind: "card", title: "Address", state: d.phase === "serving" ? "ok" : "wait", fields: [{ label: "Address", value: d.address || "no address" }, { label: "Phase", value: String(d.phase || "") },
+          ...(d.owner ? [{ label: "Owner", value: String(d.owner) }] : []), ...(d.why ? [{ label: "Why", value: String(d.why) }] : [])] });
+      }
       if (tool === "names.check") out(d.valid && d.available ? `  ${signal(d.address)} is free` : beacon(`  ${d.name}: ${d.why}`));
       else out(`  ${d.address ? signal(d.address) : dim("no address")} ${dim(`· ${d.phase}${d.owner ? " · owner " + d.owner : ""}${d.why ? " · " + d.why : ""}`)}`);
       return 0;
     },
   },
   {
-    name: "owner", order: 31, hidden: true, usage: "vyre owner <tailscale login>", summary: "the one Tailscale login this box serves",
-    async run([login]) {
-      if (!login) { const s = await call("names.status"); out(`  ${s.data ? s.data.owner || "no owner yet" : s.error.message}`); return 0; }
+    name: "owner", order: 31, hidden: true, usage: "vyre owner [<tailscale-login>]", summary: "the one Tailscale login this box serves",
+    async run(args) {
+      // --json is a flag, never a login: `vyre owner --json` once made "--json" the owner.
+      const [login] = args.filter(a => a !== "--json");
+      if (!login) {
+        const s = await call("names.status");
+        if (s.error) return failTool(s.error);
+        if (json()) return emit({ owner: s.data.owner || null });
+        out(`  ${s.data.owner || "no owner yet"}`);
+        return 0;
+      }
       const r = await call("names.owner", { login });
       if (r.error) return failTool(r.error);
+      if (json()) return emit(r.data);
       out(`  owner: ${signal(login)}`);
       return 0;
     },

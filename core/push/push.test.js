@@ -12,7 +12,7 @@ import { start } from "../daemon/index.js";
 import { call } from "../daemon/client.js";
 import { tempHome } from "../../test/helpers.js";
 import { vapidKeys, vapidAuth, encrypt } from "./webpush.js";
-import { isQuiet } from "./index.js";
+import { isQuiet, testHooks } from "./index.js";
 
 const subtle = crypto.webcrypto.subtle;
 const u8 = b => new Uint8Array(b);
@@ -183,6 +183,38 @@ test("push: devices subscribe, the moments reach them as kind, title and path on
   assert.ok(priv.length > 40 && !everything.includes(priv), "the VAPID private key leaked");
 });
 
+test("push: devices are keyed by endpoint, so two subscriptions of the same push service upsert to one device, never two", async t => {
+  // The /app/ -> / migration (docs/work/pwa.md) leans on this: the app's own launch-time
+  // pushManager.getSubscription() re-sends the same endpoint the Deck already holds (same
+  // browser, same push service registration), and push.unsubscribe by endpoint has to actually
+  // reach the row that ring, not a stray duplicate.
+  const root = tempHome(t);
+  const svc = await fakeService(t);
+  fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ name: "test-box", transcripts: [], vault: { keystore: "file" },
+    modules: { enable: [], disable: ["recall", "memory", "learn"] }, push: { hosts: ["127.0.0.1"], allow_http: true } }));
+  const d = await start({ root, log: () => {} });
+  t.after(() => d.stop());
+  const deck = (tool, input = {}) => call(tool, input, { root, caller: "deck" });
+
+  const phone = await browser();
+  const endpoint = `${svc.base}/push/one-phone`;
+  const first = (await deck("push.subscribe", { subscription: { endpoint, keys: phone.keys }, label: "the Deck's registration" })).data;
+  const second = (await deck("push.subscribe", { subscription: { endpoint, keys: phone.keys }, label: "the app's registration" })).data;
+  assert.equal(second.device, first.device, "the same endpoint is the same device, whichever scope's SW registered it");
+  const devices = (await deck("push.devices")).data;
+  assert.equal(devices.length, 1, "one row, not two");
+  assert.equal(devices[0].label, "the app's registration", "the later subscribe's label wins, upsert not append");
+
+  // The migration's cleanup: unsubscribe by endpoint (not by device id, which the app's own
+  // code may never have learned if it only ever read the endpoint back from the browser).
+  const gone = await deck("push.unsubscribe", { endpoint });
+  assert.equal(gone.data.removed, true);
+  assert.deepEqual((await deck("push.devices")).data, []);
+  d.events.emit("threads", "ask.raised", { ask: "a1", tool: "Bash", summary: "x" }, { thread: "t-1" });
+  await new Promise(r => setTimeout(r, 300));
+  assert.equal(svc.got.length, 0, "unsubscribing by endpoint really drops the row: nothing was pushed to it");
+});
+
 test("push: a planner firing reaches the phone as kind planner with a fixed title, never the label; alarms ring through quiet hours", async t => {
   const root = tempHome(t);
   const svc = await fakeService(t);
@@ -194,13 +226,16 @@ test("push: a planner firing reaches the phone as kind planner with a fixed titl
   const until = async (fn, what) => { const end = Date.now() + 5000; for (;;) { const v = await fn(); if (v) return v; if (Date.now() > end) throw new Error("timed out: " + what); await new Promise(r => setTimeout(r, 20)); } };
   const phone = await browser();
   await deck("push.subscribe", { subscription: { endpoint: `${svc.base}/push/phone`, keys: phone.keys } });
-  const fire = (firing, kind, title) => d.events.emit("planner", "planner.fired", { firing, item: "i_1", kind, title, due: Date.now(), ring: 1, missed: false, actions: ["done", "snooze"] }, {});
+  // Each firing its own item, all due at one moment: the tag is the ring's key.
+  const DUE = 1_790_000_000_000, key = firing => `planner-i_${firing}-${DUE / 1000}`;
+  const fire = (firing, kind, title) => d.events.emit("planner", "planner.fired", { firing, key: key(firing), item: `i_${firing}`, kind, title, due: DUE, ring: 1, missed: false, actions: ["done", "snooze"] }, {});
 
   fire("f_alarm", "alarm", "Pick up juno from Northwind Bakery");
   const got = await until(() => svc.got[0], "the alarm push");
   assert.equal(got.headers.urgency, "high");
   const msg = JSON.parse((await decrypt(phone, got.body)).toString());
-  assert.deepEqual({ ...msg, at: 0 }, { kind: "planner", title: "Alarm", path: "/planner/f_alarm", tag: "planner-f_alarm", actions: ["done", "snooze"], at: 0 });
+  assert.deepEqual({ ...msg, at: 0 }, { kind: "planner", title: "Alarm", path: "/planner/f_alarm", tag: "planner-i_f_alarm-1790000000", item: "i_f_alarm", due: 1_790_000_000,
+    actions: ["done", "snooze"], at: 0 });
   assert.ok(!/juno|Northwind|loud/.test(JSON.stringify(msg)), "the label never crosses the push service");
 
   // Quiet now: a timer still rings; a reminder and a todo wait.
@@ -214,7 +249,7 @@ test("push: a planner firing reaches the phone as kind planner with a fixed titl
   assert.equal(svc.got.length, 2, "only the timer rang in quiet hours");
   const timer = JSON.parse((await decrypt(phone, svc.got[1].body)).toString());
   assert.equal(timer.title, "Timer finished");
-  assert.equal(timer.tag, "planner-f_timer");
+  assert.equal(timer.tag, "planner-i_f_timer-1790000000");
   // Out of quiet hours, each kind has its own fixed word.
   await deck("push.settings", { quiet: null });
   fire("f_ev", "event", "Harlow Legal intake call");
@@ -226,24 +261,202 @@ test("push: a planner firing reaches the phone as kind planner with a fixed titl
 
   // Done elsewhere closes the notification on every device: a push with the tag and nothing else.
   // A firing that was never pushed sends nothing.
-  const ack = firing => d.events.emit("planner", "planner.acked", { firing, item: "i_1", action: "done", by: "deck" }, {});
+  const ack = (firing, more = {}) => d.events.emit("planner", "planner.acked", { firing, key: key(firing), item: `i_${firing}`, due: DUE, action: "done", by: "deck", ...more }, {});
   ack("f_unpushed");
   ack("f_alarm");
   await until(() => svc.got.length === 6, "the ack push");
   await new Promise(r => setTimeout(r, 200));
   assert.equal(svc.got.length, 6, "only the pushed firing's ack went out");
-  assert.deepEqual({ ...JSON.parse((await decrypt(phone, svc.got[5].body)).toString()), at: 0 }, { kind: "planner-ack", tag: "planner-f_alarm", at: 0 });
+  assert.deepEqual({ ...JSON.parse((await decrypt(phone, svc.got[5].body)).toString()), at: 0 }, { kind: "planner-ack", tag: "planner-i_f_alarm-1790000000", at: 0 });
   assert.equal(svc.got[5].headers.urgency, "normal");
   ack("f_alarm");
   await new Promise(r => setTimeout(r, 200));
   assert.equal(svc.got.length, 6, "once per firing");
+  // A ring the box never rang, answered on a device that rang it from its own schedule: the
+  // others have it scheduled too, so the ack goes out by key (ADR 0029, R6).
+  ack("f_local", { unrung: true });
+  await until(() => svc.got.length === 7, "the unrung ack push");
+  assert.equal(JSON.parse((await decrypt(phone, svc.got[6].body)).toString()).tag, "planner-i_f_local-1790000000");
 
   // The lock-screen label is the user's choice, off until they turn it on.
   assert.equal((await deck("push.settings", {})).data.planner_label, false);
   assert.equal((await deck("push.settings", { planner_label: true })).data.planner_label, true);
   fire("f_lab", "reminder", "Call kit");
-  await until(() => svc.got.length === 7, "the labelled push");
-  const labelled = JSON.parse((await decrypt(phone, svc.got[6].body)).toString());
+  await until(() => svc.got.length === 8, "the labelled push");
+  const labelled = JSON.parse((await decrypt(phone, svc.got[7].body)).toString());
   assert.deepEqual([labelled.title, labelled.body], ["Reminder", "Call kit"]);
   assert.equal((await deck("push.settings", { kinds: { planner: false } })).data.kinds.planner, false);
+
+  // core/goals: a milestone, then the goal itself done, each its own kind and tag.
+  d.events.emit("goals", "goal.milestone", { goal: "g_1", index: 0, text: "Draft the intake form" }, {});
+  await until(() => svc.got.length === 9, "the milestone push");
+  const milestone = JSON.parse((await decrypt(phone, svc.got[8].body)).toString());
+  assert.deepEqual([milestone.kind, milestone.title, milestone.path, milestone.tag, milestone.body],
+    ["goal", "A milestone is done", "/goals/g_1", "goal-milestone-g_1-0", "Draft the intake form"]);
+  d.events.emit("goals", "goal.done", { goal: "g_1" }, {});
+  await until(() => svc.got.length === 10, "the goal-done push");
+  const done = JSON.parse((await decrypt(phone, svc.got[9].body)).toString());
+  assert.deepEqual([done.kind, done.title, done.tag], ["goal", "A goal is done", "goal-done-g_1"]);
+  assert.equal((await deck("push.settings", { kinds: { goal: false } })).data.kinds.goal, false);
+});
+
+/** A vyred with one subscribed phone, for the "needs you" hold. The hold is cut to `hold` ms of real time. */
+async function held(t, hold) {
+  const root = tempHome(t);
+  const svc = await fakeService(t);
+  fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ name: "test-box", transcripts: [], vault: { keystore: "file" },
+    modules: { enable: [], disable: ["recall", "memory", "learn"] }, push: { hosts: ["127.0.0.1"], allow_http: true } }));
+  const before = testHooks.holdMs;
+  testHooks.holdMs = hold;
+  t.after(() => { testHooks.holdMs = before; });
+  const d = await start({ root, log: () => {} });
+  t.after(() => d.stop());
+  const deck = (tool, input = {}) => call(tool, input, { root, caller: "deck" });
+  const phone = await browser();
+  await deck("push.subscribe", { subscription: { endpoint: `${svc.base}/push/phone`, keys: phone.keys } });
+  const until = async (fn, what, ms = 5000) => { const end = Date.now() + ms; for (;;) { const v = await fn(); if (v) return v; if (Date.now() > end) throw new Error("timed out: " + what); await new Promise(r => setTimeout(r, 20)); } };
+  const tags = async () => Promise.all(svc.got.map(async g => JSON.parse((await decrypt(phone, g.body)).toString()).tag));
+  const state = () => d.registry.modules.get("push").handle.held();
+  const sleep = ms => new Promise(r => setTimeout(r, ms));
+  return { d, root, deck, svc, until, tags, state, sleep };
+}
+
+test("push: an ask while a screen is in use waits until the hold after the last use, and a newer use pushes it out again", async t => {
+  const hold = 1200;
+  const { d, root, deck, svc, until, tags, state, sleep } = await held(t, hold);
+  assert.deepEqual(state(), { pending: [], timer: false }, "no timer while nothing is held");
+  assert.equal((await call("push.seen", {}, { root, caller: "mcp" })).error.code, "denied", "Claude cannot say a person is here");
+  assert.match((await deck("push.seen", { surface: "x".repeat(81) })).error.message, /80/);
+
+  // (a) Seen, then an ask a third of the way in: not now, but at seen + hold.
+  assert.deepEqual((await deck("push.seen", { surface: "deck", visible: true })).data, { ok: true });
+  const seenAt = Date.now();
+  await sleep(hold / 3);
+  d.events.emit("threads", "ask.raised", { ask: "a1", tool: "Bash", summary: "ls" }, { thread: "t-1" });
+  await until(() => state().pending.length === 1, "the ask held");
+  assert.equal(state().timer, true);
+  await sleep(hold / 3);
+  assert.equal(svc.got.length, 0, "not while the screen is in use");
+  await until(() => svc.got.length === 1, "the held ask sent");
+  assert.ok(Date.now() - seenAt >= hold - 50, "not before the hold ran out");
+  assert.deepEqual(await tags(), ["ask-a1"]);
+  assert.deepEqual(state(), { pending: [], timer: false }, "the timer ends with the last held moment");
+
+  // (b) A newer use before the timer fires pushes the send out to the new use + hold.
+  await deck("push.seen", { surface: "deck", visible: true });
+  d.events.emit("gate", "gate.held", { id: "g_1", kind: "send", via: "mail" }, { thread: "t-1" });
+  await until(() => state().pending.length === 1, "the draft held");
+  await sleep(hold / 2);
+  await deck("push.seen", { surface: "deck" });
+  const again = Date.now();
+  await sleep(hold * 3 / 4);
+  assert.equal(svc.got.length, 1, "the first timer saw the newer use and waited again");
+  assert.equal(state().timer, true);
+  await until(() => svc.got.length === 2, "the draft sent after the newer use's hold");
+  assert.ok(Date.now() - again >= hold - 50);
+  assert.deepEqual((await tags()).slice(1), ["draft-g_1"]);
+
+  // Long after the last use, a moment goes at once, as before.
+  await sleep(hold + 50);
+  d.events.emit("threads", "thread.watched", { watch: "w1", reason: "finished" }, { thread: "t-1" });
+  await until(() => svc.got.length === 3, "the watch at once", 1000);
+  assert.deepEqual(state(), { pending: [], timer: false });
+});
+
+test("push: a held ask answered, or a held draft resolved, never pushes; planner rings go at once; lesson is off by default", async t => {
+  const hold = 800;
+  const { d, deck, svc, until, tags, state, sleep } = await held(t, hold);
+  await deck("push.seen", { surface: "capsule", visible: true });
+
+  // (c) Answered or resolved on a screen before the hold ran out.
+  d.events.emit("threads", "ask.raised", { ask: "a2", tool: "Bash" }, { thread: "t-1" });
+  d.events.emit("gate", "gate.held", { id: "g_2", kind: "send", via: "mail" }, { thread: "t-1" });
+  d.events.emit("gate", "gate.held", { id: "g_3", kind: "send", via: "mail" }, { thread: "t-1" });
+  await until(() => state().pending.length === 3, "three held");
+  d.events.emit("threads", "ask.answered", { ask: "a2", decision: "allow", by: "capsule" }, { thread: "t-1" });
+  d.events.emit("gate", "gate.rejected", { id: "g_2", kind: "send", via: "mail", by: "deck" }, { thread: "t-1" });
+  await until(() => state().pending.length === 1, "two resolved");
+  assert.deepEqual(state().pending, ["draft-g_3"]);
+  d.events.emit("gate", "gate.released", { id: "g_3", kind: "send", via: "mail", by: "deck" }, { thread: "t-1" });
+  await until(() => !state().pending.length, "all resolved");
+  assert.equal(state().timer, false, "nothing held, no timer");
+
+  // (d) A planner ring right after a use goes at once.
+  d.events.emit("planner", "planner.fired", { firing: "f_1", item: "i_1", kind: "reminder", title: "Call kit", due: Date.now(), ring: 1 }, {});
+  await until(() => svc.got.length === 1, "the ring", 1000);
+  assert.deepEqual(await tags(), ["planner-f_1"]);
+
+  // (e) A lesson is not "needs you": off by default, on only when switched on.
+  assert.equal((await deck("push.settings", {})).data.kinds.lesson, false);
+  await sleep(hold + 50);
+  d.events.emit("learn", "lesson.proposed", { lesson: 1 }, {});
+  await sleep(200);
+  assert.equal(svc.got.length, 1, "no lesson push by default");
+  assert.equal((await deck("push.settings", { kinds: { lesson: true } })).data.kinds.lesson, true);
+  d.events.emit("learn", "lesson.proposed", { lesson: 2 }, {});
+  await until(() => svc.got.length === 2, "the lesson once switched on", 1000);
+  assert.deepEqual((await tags()).slice(1), ["lesson-2"]);
+
+  // (f) The resolved moments never went out, and stop() leaves no timer behind.
+  await sleep(200);
+  assert.equal(svc.got.length, 2, "the resolved moments never went out");
+  await deck("push.seen", {});
+  d.events.emit("threads", "ask.raised", { ask: "a3", tool: "Bash" }, { thread: "t-1" });
+  await until(() => state().timer, "a timer for the held ask");
+  await d.registry.modules.get("push").handle.stop();
+  assert.deepEqual(state(), { pending: [], timer: false }, "stop clears the timer and what was held");
+});
+
+test("push: live checks for `vyre phone add`: push.subscribed, a test receipt posted back once as push.delivered, push.seen from an installed app once per surface", async t => {
+  const { d, root, deck, svc, until, sleep } = await held(t, 50);
+  const events = type => d.events.since(0, { limit: 5000 }).filter(e => e.type === type);
+
+  // push.subscribed: the device, its label and the service's name. Never the endpoint or keys.
+  const phone = await browser();
+  const endpoint = `${svc.base}/push/kit-phone`;
+  const { device } = (await deck("push.subscribe", { subscription: { endpoint, keys: phone.keys }, label: "kit's phone" })).data;
+  const subs = await until(() => { const s = events("push.subscribed"); return s.length === 2 && s; }, "two push.subscribed");
+  assert.deepEqual(subs[1].payload, { device, label: "kit's phone", service: "127.0.0.1" });
+  assert.equal(subs[0].payload.label, null);
+  const blob = JSON.stringify(subs);
+  assert.ok(!blob.includes("/push/") && !blob.includes(phone.keys.p256dh) && !blob.includes(phone.keys.auth), "no endpoint or keys in the event");
+
+  // push.test receipt: true: a nonce in the payload and the result; push.receipt with it once.
+  const out = (await deck("push.test", { device, receipt: true })).data;
+  assert.match(out.receipt, /^[A-Za-z0-9_-]{12}$/);
+  assert.deepEqual({ ...out, receipt: "" }, { sent: 1, failed: 0, dropped: 0, receipt: "" });
+  const got = svc.got.find(g => g.path === "/push/kit-phone");
+  assert.equal(JSON.parse((await decrypt(phone, got.body)).toString()).receipt, out.receipt);
+  assert.equal("receipt" in (await deck("push.test", {})).data, false, "no receipt unless asked");
+  assert.equal((await call("push.receipt", { receipt: out.receipt }, { root, caller: "mcp" })).error.code, "denied", "same callers as push.subscribe");
+  assert.deepEqual((await deck("push.receipt", { receipt: out.receipt })).data, { ok: true });
+  const delivered = await until(() => { const e = events("push.delivered"); return e.length && e; }, "push.delivered");
+  assert.deepEqual(delivered.map(e => e.payload), [{ receipt: out.receipt, device }]);
+  assert.equal((await deck("push.receipt", { receipt: out.receipt })).error.code, "unknown_receipt", "once only");
+  assert.equal((await deck("push.receipt", { receipt: "made-up-nonce" })).error.code, "unknown_receipt");
+  const all = (await deck("push.test", { receipt: true })).data;
+  assert.deepEqual((await deck("push.receipt", { receipt: all.receipt })).data, { ok: true });
+  await until(() => events("push.delivered").length === 2, "the second push.delivered");
+  assert.deepEqual(events("push.delivered")[1].payload, { receipt: all.receipt, device: null }, "no device when push.test named none");
+
+  // An expired receipt is unknown too.
+  const now = testHooks.now;
+  t.after(() => { testHooks.now = now; });
+  const late = (await deck("push.test", { receipt: true })).data.receipt;
+  testHooks.now = () => Date.now() + 10 * 60_000;
+  assert.equal((await deck("push.receipt", { receipt: late })).error.code, "unknown_receipt", "expired after 10 minutes");
+  testHooks.now = now;
+
+  // push.seen: only standalone emits, once per surface per 10 minutes.
+  await deck("push.seen", { surface: "deck:a1", visible: true });
+  await deck("push.seen", { surface: "deck:a1", visible: true, standalone: false });
+  await deck("push.seen", { surface: "deck:a1", visible: true, standalone: true });
+  await deck("push.seen", { surface: "deck:a1", visible: false, standalone: true });
+  await deck("push.seen", { surface: "deck:b2", visible: true, standalone: true, device });
+  await until(() => events("push.seen").length === 2, "two push.seen");
+  await sleep(100);
+  assert.deepEqual(events("push.seen").map(e => e.payload), [{ surface: "deck:a1", standalone: true }, { surface: "deck:b2", standalone: true, device }], "the device rides along when sent");
+  testHooks.now = () => Date.now() + 10 * 60_000;
+  await deck("push.seen", { surface: "deck:a1", visible: true, standalone: true });
+  await until(() => events("push.seen").length === 3, "again after 10 minutes");
 });

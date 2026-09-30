@@ -4,8 +4,8 @@
 // The Mac's mic is captured by the Capsule shell (swift/Mic.swift, or bin/vyre-mic until the
 // shell exists) and streamed to vyred at /v1/streams/voice/listen; see listen.js for the frames.
 // This module holds no audio and no key between calls. The key lives in the Vault
-// (voice-deepgram-key, voice-openai-key, voice-elevenlabs-key), put there by a person from the
-// Capsule's Settings with vault.put and vault.grant. This module only fetches it, for one
+// (voice-deepgram-key, voice-openai-key, voice-elevenlabs-key), declared under needs.credentials
+// and put there by a person through vault.connect. This module only fetches it, for one
 // stream or one reply, and sends it to the provider it belongs to and nowhere else.
 //
 // At idle it does nothing: no timer, no socket, no poll. `online` in voice.status is one TCP
@@ -50,6 +50,25 @@ export default {
     const refusePeer = meta => {
       if (meta && meta.peer) throw new VoiceError("denied", "voice is for this Mac's own Capsule, not for a tailnet peer");
     };
+    // The mic and the speech key are the person's: an agent (a model's shell, "cli agent:kit")
+    // never uses either, whatever surface it is wrapped in (the lead, 28 Sep). core/projects's
+    // own isAgent() convention, since callers: LOCAL matches by the bare kind and would let it
+    // through otherwise.
+    const isAgent = caller => /(?:^|[\s:])agent:/.test(String(caller || ""));
+    const refuseAgent = meta => {
+      if ((meta && meta.agent) || isAgent(meta && meta.caller)) throw new VoiceError("denied", "an agent cannot use the person's mic or speech key");
+    };
+
+    ctx.tool("voice.listen", {
+      description: "A one-use ticket (30 s) for the WebSocket at path: /v1/streams/voice/listen?ticket=<t>, the same shape as term.attach. For a caller that cannot set x-vyre-caller itself (the Deck's browser WebSocket); the native Capsule may still connect directly.",
+      callers: LOCAL,
+      input: { type: "object", properties: {} },
+      run: async (_input, meta) => {
+        refusePeer(meta);
+        refuseAgent(meta);
+        return listen.issue();
+      },
+    });
 
     ctx.tool("voice.status", {
       description: "The speech provider, whether its key is saved (never the key), whether replies are spoken, whether the provider can be reached right now, and the path of the built mic helper (null until local/voice/build.sh has run).",
@@ -57,6 +76,7 @@ export default {
       input: { type: "object", properties: {} },
       run: async (_input, meta) => {
         refusePeer(meta);
+        refuseAgent(meta);
         const s = settings(ctx.config);
         const key = await keyState(s.provider);
         let base = null, endpoint = "default";
@@ -65,6 +85,8 @@ export default {
         return {
           provider: s.provider, providers: [...PROVIDERS], item: DEFAULTS[s.provider].item,
           key: key === "ready", key_state: key,
+          // Where a surface sends the person to fill the key: vault.connect with this need.
+          ...(key === "ready" ? {} : { need: { module: "voice", need: s.provider } }),
           speak: s.speak, voice: s.voice,
           streaming: DEFAULTS[s.provider].streaming, mode: DEFAULTS[s.provider].streaming ? "streaming" : "on-release",
           online: base ? await reachable(base) : false, endpoint,

@@ -1,5 +1,5 @@
 // @ts-check
-// drive: the box's chosen folders on the paired Mac, through Taildrive.
+// drive: VyreDrive (Taildrive underneath), the box's chosen folders on the paired Mac.
 //
 // Taildrive is Tailscale's own file sharing: tailscaled on the box serves a folder over WebDAV,
 // and the Mac reaches it at http://100.100.100.100:8080/<tailnet>/<machine>/<share>, which its
@@ -11,7 +11,8 @@
 // tailscale.com/cap/drive capability from the owner to the box. Vyre never edits that policy.
 // It does three things instead:
 //   - it shares only the folders named in config files.drive.shares, and only when the folder
-//     passes the files guard and holds none of Vyre's own private places;
+//     passes the files guard, holds none of Vyre's own private places, and has nothing the guard
+//     calls a secret anywhere inside it (a .env, a key, a password store);
 //   - only the owner shares or unshares: the box's terminal, the Capsule, or a paired Mac, never
 //     an agent;
 //   - files.drive.audit asks tailscaled, for every online peer, which drive capability the policy
@@ -19,7 +20,12 @@
 //
 // What a share exposes is the whole folder. The files guard's per-file rules (no .env, no keys)
 // hold for Vyre's own tools, but WebDAV serves every file under the shared folder to whoever the
-// policy lets in. That is why the audit exists, and why a share is audited as soon as it is made.
+// policy lets in. That is why a share's tree is scanned before it is shared and again at every
+// audit, and why a share is audited as soon as it is made.
+//
+// Each share is read-only unless its own access says "rw" (files.drive.access, the owner's own
+// action: no proof, but never an agent, a model or a guest). The tailscale container's /work mount has to be rw too for writes to land; vyred
+// cannot change that, so it answers the .env step instead.
 //
 // On the Mac, mount, unmount and open go through seams, so no test ever mounts a volume or opens
 // a Finder window.
@@ -29,6 +35,9 @@ import os from "node:os";
 import path from "node:path";
 import { execFile } from "node:child_process";
 import { run as tailscale } from "../names/tailscale.js";
+import * as config from "../config/index.js";
+import { looksLikeKey, secretName, HOME_DENIED } from "./safety.js";
+import { reach, within } from "./access.js";
 
 /**
  * Test seams, keyed by the VYRE_HOME a registry runs with: { mount(url, dir, opts), unmount(dir),
@@ -42,7 +51,7 @@ export const seams = new Map();
 export const QUAD100 = "http://100.100.100.100:8080";
 export const DRIVE_CAP = "tailscale.com/cap/drive";
 
-/** Where to read how to turn Taildrive on. The steps are in the tailnet policy, which Vyre never edits. */
+/** Where to read how to turn VyreDrive on (Taildrive underneath). The steps are in the tailnet policy, which Vyre never edits. */
 const FIX_SHARE = "In the Tailscale admin console, Access controls: give this box the drive:share node attribute, give the Mac drive:access, and grant tailscale.com/cap/drive from your Mac to the box (see https://tailscale.com/kb/1369/taildrive).";
 const FIX_ACCESS = "In the Tailscale admin console, Access controls: give this Mac the drive:access node attribute and grant tailscale.com/cap/drive from it to the box (see https://tailscale.com/kb/1369/taildrive).";
 
@@ -58,36 +67,94 @@ const isAgent = caller => /(?:^|[\s:])agent:/.test(String(caller || ""));
 /** Mounting and opening can raise a dialog or a window: never under tests unless a person asks (core/vault/mac/dialogs.js). */
 const livesAllowed = (env = process.env) => env.VYRE_NO_DIALOGS !== "1" && (!env.NODE_TEST_CONTEXT || env.VYRE_TEST_DIALOGS === "1");
 
+/** How many entries a share's scan looks at before it gives up and refuses. */
+export const SCAN_LIMIT = 20_000;
+
+/**
+ * Folders a share's scan does not walk: dependencies and build output, large and generated. Only
+ * real folders; .git/objects is skipped too (in walk), the rest of .git is scanned.
+ */
+export const SKIP_DIRS = new Set(["node_modules", "dist", ".next", "target", "venv", ".venv"]);
+
+/** How much of a .git/config the scan reads. */
+const GIT_CONFIG_MAX = 64 * 1024;
+
+/**
+ * Pure: does this git config text hold a credential? A URL with a user or token before the host
+ * (https://x-access-token:abc@github.com/...), or an extraheader carrying Authorization. An ssh
+ * URL's user alone (ssh://git@github.com) is a login name, not a secret, so it is not counted.
+ * @param {string} text
+ */
+export function gitConfigCredential(text) {
+  for (const m of String(text).matchAll(/([a-z][a-z0-9+.-]*):\/\/([^\s\/@"']+)@[^\s\/@"']/gi)) {
+    const scheme = m[1].toLowerCase(), user = m[2];
+    if (/ssh/.test(scheme) && !user.includes(":")) continue;
+    return true;
+  }
+  return /^\s*extraheader\s*=.*\bauthorization\b/im.test(String(text));
+}
+
+/** Read the first GIT_CONFIG_MAX bytes of a .git/config and look for a credential. */
+function gitCredential(file) {
+  let fd;
+  try {
+    fd = fs.openSync(file, "r");
+    const buf = Buffer.alloc(GIT_CONFIG_MAX);
+    const n = fs.readSync(fd, buf, 0, GIT_CONFIG_MAX, 0);
+    return gitConfigCredential(buf.subarray(0, n).toString("utf8"));
+  } catch { return false; } finally { if (fd !== undefined) fs.closeSync(fd); }
+}
+
+/** The .env step for the tailscale container's /work mount. */
+export const mountStep = mode => `Set VYRE_DRIVE_ACCESS=${mode} in /srv/vyre/.env, then run docker compose up -d`;
+
 const inside = (p, dir) => p === dir || p.startsWith(dir.endsWith(path.sep) ? dir : dir + path.sep);
 const real = p => { try { return fs.realpathSync(p); } catch { return null; } };
 const refuse = (message, code = "denied") => Object.assign(new Error(message), { code });
 
 /**
- * Pure: the shares this box offers, name to absolute path. Defaults first, then config
+ * Pure: the shares this box offers, name to { path, access }. Defaults first, then config
  * files.drive.shares over them; a name set to null removes a default.
  *   projects     config projectsDir when it sits inside a files root, else the first files root
  *                (on the box that is /work, which compose names Projects);
  *   glass-files  the first of glass.roots, when Glass has box folders at all.
+ * An entry is a path, or { path, access }; { access } alone keeps a default's path. Access is
+ * "ro" unless it says "rw". A share that does not say takes the old global files.drive.access,
+ * so a config written before shares had their own access mounts as it did.
  * @param {any} config the loaded config @param {string[]} roots the files roots, resolved
- * @returns {Record<string, string>}
+ * @returns {Record<string, { path: string, access: "ro"|"rw" }>}
  */
-export function shareMap(config, roots) {
-  /** @type {Record<string, string>} */
+export function shareSpecs(config, roots) {
+  const drv = (config && config.files && config.files.drive) || {};
+  /** @type {"ro"|"rw"} */
+  const fallback = drv.access === "rw" ? "rw" : "ro";
+  /** @type {Record<string, { path: string, access: "ro"|"rw" }>} */
   const out = {};
   const pd = config && typeof config.projectsDir === "string" ? path.resolve(config.projectsDir) : null;
   const projects = pd && roots.some(r => inside(pd, path.resolve(r))) ? pd : roots[0];
-  if (projects) out.projects = path.resolve(projects);
+  if (projects) out.projects = { path: path.resolve(projects), access: fallback };
   const glassRoots = config && config.glass && Array.isArray(config.glass.roots) ? config.glass.roots : [];
   const g = glassRoots.find(d => typeof d === "string" && path.isAbsolute(d));
-  if (g) out["glass-files"] = path.resolve(g);
-  const given = config && config.files && config.files.drive && config.files.drive.shares;
+  if (g) out["glass-files"] = { path: path.resolve(g), access: fallback };
+  const given = drv.shares;
   if (given && typeof given === "object" && !Array.isArray(given)) {
-    for (const [name, p] of Object.entries(given)) {
-      if (p === null) delete out[name];
-      else if (typeof p === "string" && NAME.test(name)) out[name] = p;
+    for (const [name, v] of Object.entries(given)) {
+      if (v === null) { delete out[name]; continue; }
+      if (!NAME.test(name)) continue;
+      if (typeof v === "string") out[name] = { path: v, access: fallback };
+      else if (v && typeof v === "object") {
+        const p = typeof v.path === "string" ? v.path : out[name] && out[name].path;
+        const access = v.access === "rw" ? "rw" : v.access === "ro" ? "ro" : fallback;
+        if (p) out[name] = { path: p, access };
+      }
     }
   }
   return out;
+}
+
+/** Pure: the shares this box offers, name to absolute path (shareSpecs without access). */
+export function shareMap(config, roots) {
+  return Object.fromEntries(Object.entries(shareSpecs(config, roots)).map(([n, s]) => [n, s.path]));
 }
 
 /**
@@ -187,8 +254,6 @@ function exec(cmd, args) {
  * @param {{ role: "box"|"local", guard: any, roots: string[] }} opts
  */
 export function drive(ctx, { role, guard: g, roots }) {
-  const cfg = (ctx.config && ctx.config.files && ctx.config.files.drive) || {};
-  const access = cfg.access === "rw" ? "rw" : "ro";
   const seam = seams.get(ctx.paths.root) || {};
   const fx = { ...SYSTEM, ...seam };
   const nameInput = { type: "object", required: ["name"], properties: { name: { type: "string" } } };
@@ -197,7 +262,10 @@ export function drive(ctx, { role, guard: g, roots }) {
   return macSide();
 
   function boxSide() {
+    const specs = () => shareSpecs(ctx.config, roots);
     const shares = () => shareMap(ctx.config, roots);
+    /** "rw" when any share is, since the container's mount has to allow the widest. */
+    const overall = () => (Object.values(specs()).some(s => s.access === "rw") ? "rw" : "ro");
 
     /** The stable IDs of the paired Macs, from the link module's table. None when link is not running. */
     const paired = () => {
@@ -236,10 +304,75 @@ export function drive(ctx, { role, guard: g, roots }) {
       return map[name];
     };
 
+    /**
+     * Everything inside a share's folder that the files guard calls a secret: a .env file, a key
+     * by name or by its first bytes, a password store, a denied place such as the vault or an
+     * .ssh folder, and a link to any of those. The guard hides dot folders like .git from Vyre's
+     * own tools, but they are not secrets, so they are scanned and not refused; a .git/config
+     * that holds a credential (a remote URL with a user or token before the host, or an
+     * extraheader with an Authorization value) is a finding. Build and dependency folders
+     * (SKIP_DIRS) and .git/objects are not walked and do not count toward SCAN_LIMIT: they are
+     * large, generated, and hold no hand-placed secret. Only real folders are skipped; a link
+     * with one of those names is still checked as a link. A folder that cannot be read is a
+     * finding: nothing says it is safe. Stops at 10 findings, and after SCAN_LIMIT entries says
+     * the tree is too big to check.
+     * @param {string} dir a folder that passed folder() @returns {{ found: string[], tooBig: boolean, seen: number }}
+     */
+    const scan = dir => {
+      const r = walk(dir);
+      return { ...r, found: r.found.sort() };
+    };
+    /** @param {string} dir @returns {{ found: string[], tooBig: boolean, seen: number }} */
+    const walk = dir => {
+      const found = [];
+      let seen = 0;
+      const homeDenied = HOME_DENIED.map(d => path.sep + d);
+      const secret = p => secretName(path.basename(p)) || g.isDenied(p) || homeDenied.some(d => p.endsWith(d));
+      const stack = [dir];
+      while (stack.length) {
+        const d = /** @type {string} */ (stack.pop());
+        let ents;
+        try { ents = fs.readdirSync(d, { withFileTypes: true }).sort((a, b) => a.name.localeCompare(b.name)); }
+        catch { found.push(path.relative(dir, d) || "."); if (found.length >= 10) break; continue; }
+        const dirs = [];
+        const inGit = path.basename(d) === ".git";
+        for (const e of ents) {
+          // Real folders only: withFileTypes says isDirectory() false for a link.
+          if (e.isDirectory() && (SKIP_DIRS.has(e.name) || (inGit && e.name === "objects"))) continue;
+          if (++seen > SCAN_LIMIT) return { found, tooBig: true, seen };
+          const p = path.join(d, e.name);
+          let bad = secret(p);
+          if (!bad && e.isFile()) bad = looksLikeKey(p) || (inGit && e.name === "config" && gitCredential(p));
+          else if (!bad && e.isSymbolicLink()) {
+            const r = real(p);
+            bad = Boolean(r && (secret(r) || looksLikeKey(r, [e.name, path.basename(r)])));
+          } else if (!bad && e.isDirectory()) dirs.push(p);
+          if (bad) { found.push(path.relative(dir, p)); if (found.length >= 10) return { found, tooBig: false, seen }; }
+        }
+        stack.push(...dirs.reverse());
+      }
+      return { found, tooBig: false, seen };
+    };
+
+    /** Refuse a folder with a secret inside, or one too big to check. */
+    const clean = (name, dir) => {
+      const r = scan(dir);
+      if (r.tooBig) throw Object.assign(refuse(`"${name}" holds more than ${SCAN_LIMIT} files and folders, too many to check for secrets; share a smaller folder`, "unsafe_share"), { detail: { found: r.found, tooBig: true } });
+      if (r.found.length) throw Object.assign(refuse(`"${name}" has secrets inside (${r.found.slice(0, 3).join(", ")}${r.found.length > 3 ? ", ..." : ""}); move them out or share a folder without them`, "unsafe_share"), { detail: { found: r.found } });
+    };
+
+    /** Does the tailscale container's mount have to change? vyred sees VYRE_DRIVE_ACCESS only when compose passes it. */
+    const mountState = () => {
+      const want = overall();
+      const env = process.env.VYRE_DRIVE_ACCESS;
+      const now = env === "rw" ? "rw" : env === "ro" ? "ro" : "unknown";
+      return { want, now, change: now !== want, ...(now !== want ? { step: mountStep(want) } : {}) };
+    };
+
     async function driveStatus() {
       const st = await status();
-      const map = shares();
-      const configured = Object.entries(map).map(([name, p]) => ({ name, path: p }));
+      const configured = Object.entries(specs()).map(([name, s]) => ({ name, path: s.path, access: s.access }));
+      const access = overall();
       if (!hasCap(st, "drive:share")) {
         return { enabled: false, why: "the tailnet policy does not let this box share folders (no drive:share node attribute)", fix: FIX_SHARE,
           access, shares: configured.map(s => ({ ...s, shared: false })), list: [] };
@@ -270,18 +403,38 @@ export function drive(ctx, { role, guard: g, roots }) {
         findings.push({ node: String((w.Node && w.Node.Name) || p.DNSName || p.HostName || "").replace(/\.$/, ""), login, access: cap });
       }));
       findings.sort((a, b) => a.node.localeCompare(b.node));
-      if (findings.length) ctx.events.emit("drive.exposed", { findings });
-      return { ok: findings.length === 0, findings, checked: peers.length };
+      // What is shared now, scanned again: a secret can land in a shared folder after it was shared.
+      const unsafe = [];
+      if (hasCap(st, "drive:share")) {
+        const r = await tailscale(["drive", "list"]);
+        const map = shares();
+        for (const { name } of r.code === 0 ? parseDriveList(r.out) : []) {
+          if (!Object.prototype.hasOwnProperty.call(map, name)) continue;
+          let dir;
+          try { dir = folder(map[name]); } catch { unsafe.push({ share: name, found: [], why: "the folder no longer passes the files guard" }); continue; }
+          const s = scan(dir);
+          if (s.tooBig) unsafe.push({ share: name, found: s.found, why: `more than ${SCAN_LIMIT} files and folders, too many to check` });
+          else if (s.found.length) unsafe.push({ share: name, found: s.found });
+        }
+      }
+      if (findings.length || unsafe.length) ctx.events.emit("drive.exposed", { findings, unsafe });
+      return { ok: findings.length === 0 && unsafe.length === 0, findings, unsafe, checked: peers.length };
     }
 
     ctx.tool("files.drive.status", {
-      description: "Whether this box may share folders over Taildrive, the shares it offers (config files.drive.shares), and what is shared now.",
+      description: "VyreDrive (built on Tailscale's Taildrive) on the box: whether this box may share folders with the paired Mac, the shares it offers (config files.drive.shares), and what is shared now. A named agent (Vyre Drive step 5) sees only the shares whose folder falls inside one of its own granted projects; a share outside that is simply left off the list, the same as an ungranted project elsewhere.",
       input: { type: "object", properties: {} },
-      run: driveStatus,
+      run: async (input, meta = {}) => {
+        const st = await driveStatus();
+        const scope = await reach(ctx, meta && meta.caller);
+        if (scope.all) return st;
+        const mine = p => within(p, scope.folders);
+        return { ...st, shares: st.shares.filter(s => mine(s.path)), list: st.list.filter(s => mine(s.path)) };
+      },
     });
 
     ctx.tool("files.drive.share", {
-      description: "Share one of the box's offered folders with the paired Mac over Taildrive. Owner only. Audits who else the tailnet policy lets in, right after.",
+      description: "Share one of the box's offered folders with the paired Mac over VyreDrive. Owner only. Audits who else the tailnet policy lets in, right after.",
       input: nameInput,
       run: async ({ name }, meta) => {
         owner(meta);
@@ -289,14 +442,32 @@ export function drive(ctx, { role, guard: g, roots }) {
         const st = await status();
         if (!hasCap(st, "drive:share")) throw Object.assign(refuse("the tailnet policy does not let this box share folders (no drive:share node attribute)", "drive_off"), { detail: { fix: FIX_SHARE } });
         const where = folder(p);
+        clean(name, where);
         const r = await tailscale(["drive", "share", name, where]);
         if (r.code !== 0) throw refuse((r.err || r.out).trim().split("\n")[0] || "tailscale drive share failed", "failed");
-        return { shared: name, path: where, access, audit: await audit() };
+        return { shared: name, path: where, access: specs()[name].access, audit: await audit() };
+      },
+    });
+
+    ctx.tool("files.drive.access", {
+      description: "Make one of the box's shares read-only (ro) or read-write (rw) for the paired Mac. Owner only, with no proof asked; never an agent, a model or a guest. Says when the tailscale container's /work mount must change to match.",
+      input: { type: "object", required: ["name", "mode"], properties: { name: { type: "string" }, mode: { type: "string", enum: ["ro", "rw"] } } },
+      run: async ({ name, mode }, meta) => {
+        owner(meta);
+        known(name);
+        if (mode !== "ro" && mode !== "rw") throw refuse('mode is "ro" or "rw"', "bad_input");
+        const drv = (ctx.config.files && ctx.config.files.drive) || {};
+        const given = drv.shares && typeof drv.shares === "object" && !Array.isArray(drv.shares) ? drv.shares : {};
+        const cur = given[name];
+        // A default share keeps its default path: only the access is written.
+        const entry = typeof cur === "string" ? { path: cur, access: mode } : { ...(cur && typeof cur === "object" ? cur : {}), access: mode };
+        config.save({ files: { drive: { ...drv, shares: { ...given, [name]: entry } } } }, ctx.paths.root, ctx.config);
+        return { name, access: specs()[name].access, mount: mountState() };
       },
     });
 
     ctx.tool("files.drive.unshare", {
-      description: "Stop sharing one of the box's folders over Taildrive. Owner only.",
+      description: "Stop sharing one of the box's folders over VyreDrive. Owner only.",
       input: nameInput,
       run: async ({ name }, meta) => {
         owner(meta);
@@ -308,9 +479,12 @@ export function drive(ctx, { role, guard: g, roots }) {
     });
 
     ctx.tool("files.drive.audit", {
-      description: "Check the tailnet policy from the box's side: every online node the policy lets into Taildrive here that is not a paired Mac is a finding.",
+      description: "Check the tailnet policy from the box's side: every online node the policy lets into this box's VyreDrive shares that is not a paired Mac is a finding. A tailnet-wide security report, not a per-folder read: never an agent (Vyre Drive step 5), same as share/unshare/access above.",
       input: { type: "object", properties: {} },
-      run: audit,
+      run: async (input, meta = {}) => {
+        if (!(await reach(ctx, meta && meta.caller)).all) throw refuse("an agent cannot audit VyreDrive's tailnet policy; that is for the owner");
+        return audit();
+      },
     });
   }
 
@@ -351,7 +525,7 @@ export function drive(ctx, { role, guard: g, roots }) {
     // The box's side, asked from the Mac. Share and unshare stay the owner's here too: the box
     // trusts this paired Mac, so the Mac must not pass on an agent's request.
     ctx.tool("files.drive.status", {
-      description: "The box's Taildrive state (asked over the link), and what this Mac has mounted.",
+      description: "VyreDrive (built on Tailscale's Taildrive) from the Mac: the box's shares (asked over the link), and what this Mac has mounted.",
       input: { type: "object", properties: {} },
       run: async () => {
         const box = await forward("files.drive.status", {});
@@ -363,17 +537,23 @@ export function drive(ctx, { role, guard: g, roots }) {
         return { ...box, shares, source: "box" };
       },
     });
-    for (const [tool, what] of [["files.drive.share", "Share one of the box's folders with this Mac over Taildrive."], ["files.drive.unshare", "Stop sharing one of the box's folders."]]) {
+    for (const [tool, what] of [["files.drive.share", "Share one of the box's folders with this Mac over VyreDrive."], ["files.drive.unshare", "Stop sharing one of the box's folders."]]) {
       ctx.tool(tool, { description: what, input: nameInput, callers: ["cli", "local", "capsule"], run: ({ name }) => forward(tool, { name }) });
     }
+    ctx.tool("files.drive.access", {
+      description: "Make one of the box's shares read-only (ro) or read-write (rw) for this Mac. Remount it after a change.",
+      input: { type: "object", required: ["name", "mode"], properties: { name: { type: "string" }, mode: { type: "string", enum: ["ro", "rw"] } } },
+      callers: ["cli", "local", "capsule"],
+      run: ({ name, mode }) => forward("files.drive.access", { name, mode }),
+    });
     ctx.tool("files.drive.audit", {
-      description: "Ask the box which nodes the tailnet policy lets into its Taildrive shares, besides this Mac.",
+      description: "Ask the box which nodes the tailnet policy lets into its VyreDrive shares, besides this Mac.",
       input: { type: "object", properties: {} },
       run: () => forward("files.drive.audit", {}),
     });
 
     ctx.tool("files.drive.url", {
-      description: "The WebDAV address of one of the box's Taildrive shares, as this Mac reaches it.",
+      description: "The WebDAV address of one of the box's VyreDrive shares, as this Mac reaches it.",
       input: { type: "object", required: ["share"], properties: { share: { type: "string" } } },
       run: ({ share }) => url(share),
     });
@@ -389,8 +569,9 @@ export function drive(ctx, { role, guard: g, roots }) {
         if (!s) throw refuse(`the box offers no share called "${share}"`, "unknown_share");
         if (!s.shared) throw refuse(`the box is not sharing "${share}"; share it first (files.drive.share)`, "not_shared");
         const u = await url(share);
-        if (!u.ready) throw Object.assign(refuse("the tailnet policy does not let this Mac use Taildrive (no drive:access node attribute)", "drive_off"), { detail: { fix: FIX_ACCESS } });
-        const readonly = box.access !== "rw";
+        if (!u.ready) throw Object.assign(refuse("the tailnet policy does not let this Mac use VyreDrive (no drive:access node attribute)", "drive_off"), { detail: { fix: FIX_ACCESS } });
+        // The share's own access; a box from before shares had one sends only the top-level field.
+        const readonly = (s.access || box.access) !== "rw";
         if (!(await isMounted(dir))) {
           fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
           await fx.mount(u.url, dir, { readonly, name: share });
@@ -432,7 +613,7 @@ export function drive(ctx, { role, guard: g, roots }) {
     });
 
     ctx.tool("files.drive.local", {
-      description: "Where a box file is on this Mac through a mounted Taildrive share, or null when no mounted share holds it.",
+      description: "Where a box file is on this Mac through a mounted VyreDrive share, or null when no mounted share holds it.",
       input: { type: "object", required: ["path"], properties: { path: { type: "string" } } },
       run: async ({ path: p }) => {
         const want = String(p);

@@ -12,7 +12,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { start } from "../daemon/index.js";
 import { call } from "../daemon/client.js";
-import { tempHome, present } from "../../test/helpers.js";
+import { tempHome, present, writeModule } from "../../test/helpers.js";
 import { startFakeMcpHttp } from "./testing/fake-mcp.js";
 
 const FAKE = path.join(import.meta.dirname, "testing", "fake-mcp.js");
@@ -156,6 +156,11 @@ test("mcp: an agent's outward call is held, edited by the person, and reaches th
 
 test("mcp: scope by agent, by an agent's projects, and by a session's thread", async t => {
   const v = await vyred(t);
+  // option (a): agents.create now grants projects.access as part of making the agent, so the
+  // projects it names have to exist first (they never did before this, since this test only
+  // cares about MCP scoping, not real project folders).
+  assert.ok((await v.cli("projects.create", { name: "Harlow Legal", home: path.join(v.root, "harlow-legal") })).data);
+  assert.ok((await v.cli("projects.create", { name: "Northwind", home: path.join(v.root, "northwind") })).data);
   assert.ok((await v.cli("agents.create", { name: "juno", projects: ["harlow-legal"] })).data);
   assert.ok((await v.cli("agents.create", { name: "kit", projects: ["northwind"] })).data);
   const log = path.join(v.root, "x.log");
@@ -235,4 +240,155 @@ test("mcp: a server that keeps crashing stops restarting after three tries, unti
   assert.equal(s.state, "failed");
   assert.equal((await v.cli("mcp.restart", { name: "flaky" })).data.state, "running");
   assert.equal(starts(log), 5);
+});
+
+test("mcp: several instances of one server, each with its own credential", async t => {
+  const v = await vyred(t);
+  const home = fake("mail-home"), work = fake("mail-work");
+  await v.secret("mail-home-token", home);
+  await v.secret("mail-work-token", work);
+  const sha = s => crypto.createHash("sha256").update(s).digest("hex");
+  const homeLog = path.join(v.root, "mail-home.log"), workLog = path.join(v.root, "mail-work.log");
+  // The same fake server twice, one credential each, told to say which one it holds as a hash.
+  const mail = (name, logFile, item) => stdio(name, logFile, { FAKE_MCP_IDENTITY_ENV: "MAIL_TOKEN", FAKE_MCP_REQUIRE_ENV: "MAIL_TOKEN" },
+    { env: { MAIL_TOKEN: item }, tools: { mode: { whoami: "read" } }, idle: 200 });
+  const a = await v.cli("mcp.add", mail("mail-home", homeLog, "mail-home-token"));
+  assert.equal(a.data.test.ok, true, JSON.stringify(a));
+  assert.equal(a.data.tools, 7);
+  const b = await v.cli("mcp.add", mail("mail-work", workLog, "mail-work-token"));
+  assert.equal(b.data.test.ok, true, JSON.stringify(b));
+
+  const servers = (await v.cli("mcp.servers")).data;
+  assert.deepEqual(servers.map(s => [s.name, s.transport]), [["mail-home", "stdio"], ["mail-work", "stdio"]]);
+  const tools = (await v.session("t-1")("mcp.tools")).data;
+  assert.equal(tools.length, 14);
+  const names = tools.map(x => x.name);
+  assert.equal(new Set(names).size, names.length, "two instances share a tool name");
+  assert.ok(names.includes("mail-home__whoami") && names.includes("mail-work__whoami"));
+  assert.deepEqual(tools.filter(x => x.tool === "send_message").map(x => [x.server, x.outward]), [["mail-home", true], ["mail-work", true]]);
+
+  // Both stop when idle; a call to one starts that one alone.
+  await until(async () => (await v.cli("mcp.servers")).data.every(s => s.state === "stopped"));
+  assert.deepEqual([starts(homeLog), starts(workLog)], [1, 1]);
+  const h = await v.cli("mcp.call", { name: "mail-home__whoami" });
+  assert.equal(h.data.structuredContent.sha256, sha(home), JSON.stringify(h));
+  assert.deepEqual([starts(homeLog), starts(workLog)], [2, 1], "a call to mail-home started mail-work");
+  assert.deepEqual(calls(workLog), [], "a call to mail-home reached mail-work");
+  assert.equal(calls(homeLog).length, 1);
+
+  const w = await v.cli("mcp.call", { server: "mail-work", tool: "whoami" });
+  assert.equal(w.data.structuredContent.sha256, sha(work), JSON.stringify(w));
+  assert.notEqual(sha(home), sha(work));
+  assert.deepEqual([starts(homeLog), starts(workLog)], [2, 2]);
+  assert.equal(calls(homeLog).length, 1, "a call to mail-work reached mail-home");
+  assert.equal(calls(workLog).length, 1);
+
+  // A held send is filed for its own instance, and names it.
+  const held = (await v.session("t-1")("mcp.call", { name: "mail-work__send_message", arguments: { to: "dana@northwind-bakery.example", text: "The rota is ready." } })).data.held;
+  assert.equal((await v.cli("gate.get", { id: held })).data.via, "mcp:mail-work");
+  assert.equal(calls(workLog).length, 1);
+
+  const rows = v.d.registry.deps.db.prepare("SELECT * FROM mcp_servers").all();
+  const everything = JSON.stringify([v.events(), v.lines, rows, servers, tools, h, w, a, b]);
+  for (const value of [home, work]) assert.ok(!everything.includes(value), "a credential leaked");
+});
+
+test("mcp: hold and on_behalf are for modules only", async t => {
+  const v = await vyred(t);
+  const log = path.join(v.root, "chat.log");
+  assert.equal((await v.cli("mcp.add", stdio("chat", log))).data.test.ok, true);
+  const mod = (tool, input = {}) => v.d.registry.call(tool, input, "module:mail", {});
+  const gateGet = async id => (await v.cli("gate.get", { id })).data;
+  const behalf = { thread: "t-9", agent: "kit" };
+  // The threads on_behalf may name: kit's t-9 and a person's t-8, as the Switchboard knows them.
+  const now = Date.now();
+  const db = v.d.registry.deps.db;
+  db.prepare("INSERT INTO threads_runs (id, cwd, agent, status, started_at, last_at) VALUES (?,?,?,?,?,?)").run("t-9", v.root, "kit", "stopped", now, now);
+  db.prepare("INSERT INTO threads_runs (id, cwd, status, started_at, last_at) VALUES (?,?,?,?,?)").run("t-8", v.root, "stopped", now, now);
+
+  // A module: hold holds even a read, and the item is filed under the thread and agent it names.
+  const r1 = await mod("mcp.call", { server: "chat", tool: "list_issues", hold: true, on_behalf: behalf });
+  assert.ok(r1.data?.held, JSON.stringify(r1));
+  assert.deepEqual(calls(log), [], "a held read reached the server");
+  const it1 = await gateGet(r1.data.held);
+  assert.deepEqual([it1.via, it1.kind, it1.thread, it1.agent], ["mcp:chat", "send", "t-9", "kit"]);
+  assert.equal(it1.state, "held");
+  // Without hold, the same read from the module runs.
+  assert.equal((await mod("mcp.call", { server: "chat", tool: "list_issues" })).data.structuredContent.issues.length, 2);
+  assert.equal(calls(log).length, 1);
+
+  // A tool that sends can never be set to read; a plain one can, and hold still holds it.
+  const refused = await v.cli("mcp.update", { name: "chat", tools: { mode: { send_message: "read" } } });
+  assert.match(refused.error.message, /sends as the person/);
+  assert.ok((await v.cli("mcp.update", { name: "chat", tools: { mode: { get_issue: "read" } } })).data);
+  const r2 = await mod("mcp.call", { server: "chat", tool: "get_issue", arguments: { id: 1 }, hold: true, on_behalf: { thread: "t-8" } });
+  assert.ok(r2.data?.held, JSON.stringify(r2));
+  const it2 = await gateGet(r2.data.held);
+  assert.equal(it2.thread, "t-8");
+  assert.ok(!it2.agent);
+  assert.equal(calls(log).length, 1, "a held get_issue reached the server");
+
+  // Anyone but one of Vyre's own modules: hold on a read is ignored (it runs), and on_behalf is
+  // refused outright, never quietly dropped.
+  const s = v.session("t-1");
+  const r3 = await s("mcp.call", { server: "chat", tool: "list_issues", hold: true });
+  assert.equal(r3.data?.held, undefined, JSON.stringify(r3));
+  assert.equal(calls(log).length, 2);
+  assert.equal((await s("mcp.call", { server: "chat", tool: "create_issue", arguments: { title: "Oven rota" }, on_behalf: behalf })).error.code, "denied");
+  assert.equal((await v.session()("mcp.call", { server: "chat", tool: "create_issue", arguments: { title: "x" }, on_behalf: behalf })).error.code, "denied");
+  const kit = v.agent("kit", "t-k");
+  assert.equal((await kit("mcp.call", { server: "chat", tool: "list_issues", hold: true })).data?.held, undefined);
+  assert.equal(calls(log).length, 3);
+  assert.equal((await kit("mcp.call", { server: "chat", tool: "send_message", arguments: { to: "dana@northwind-bakery.example", text: "Rota is up." }, on_behalf: { thread: "t-9", agent: "juno" } })).error.code, "denied");
+  assert.equal((await v.d.registry.call("mcp.call", { server: "chat", tool: "create_issue", arguments: { title: "y" }, on_behalf: behalf }, "mcp:agent:kit", {})).error.code, "denied");
+  assert.equal((await v.cli("mcp.call", { server: "chat", tool: "list_issues", hold: true })).data?.held, undefined);
+  assert.equal(calls(log).length, 4);
+  assert.equal((await v.cli("mcp.call", { server: "chat", tool: "create_issue", arguments: { title: "z" }, on_behalf: behalf })).error.code, "denied");
+
+  // A thread that does not exist, or one that is another agent's, is refused, not filed.
+  assert.equal((await mod("mcp.call", { server: "chat", tool: "create_issue", arguments: { title: "a" }, on_behalf: { thread: "t-none" } })).error.code, "bad_input");
+  assert.equal((await mod("mcp.call", { server: "chat", tool: "create_issue", arguments: { title: "b" }, on_behalf: { thread: "t-9", agent: "juno" } })).error.code, "denied");
+  assert.equal((await mod("mcp.call", { server: "chat", tool: "create_issue", arguments: { title: "c" }, on_behalf: { thread: "t-8", agent: "kit" } })).error.code, "denied");
+  // An agent named with no thread must exist.
+  assert.equal((await mod("mcp.call", { server: "chat", tool: "create_issue", arguments: { title: "c2" }, on_behalf: { agent: "nobody" } })).error.code, "bad_input");
+  assert.ok((await v.cli("agents.create", { name: "kit" })).data);
+  const onlyAgent = await mod("mcp.call", { server: "chat", tool: "create_issue", arguments: { title: "c3" }, on_behalf: { agent: "kit" } });
+  assert.equal((await gateGet(onlyAgent.data.held)).agent, "kit", JSON.stringify(onlyAgent));
+
+  // A module label the loader does not count as shipped is refused, and passing firstParty in
+  // changes nothing: the registry sets it.
+  assert.equal((await v.d.registry.call("mcp.call", { server: "chat", tool: "create_issue", arguments: { title: "d" }, on_behalf: behalf }, "module:bakery-helper", { firstParty: true })).error.code, "denied");
+  assert.ok((await v.d.registry.call("mcp.call", { server: "chat", tool: "list_issues", hold: true }, "module:bakery-helper", {})).data.held, "hold only makes a call stricter");
+
+  // on_behalf an agent scopes the call to that agent: kit never reaches a server only juno may use.
+  assert.equal((await v.cli("mcp.add", stdio("juno-only", log, {}, { scope: { agents: ["juno"] } }))).data.test.ok, true);
+  assert.equal((await mod("mcp.call", { server: "juno-only", tool: "list_issues", on_behalf: behalf })).error.code, "denied");
+
+  assert.equal(calls(log).length, 4, "a held call reached the server");
+  assert.ok(calls(log).every(l => l.startsWith("call list_issues ")));
+});
+
+test("mcp: a module installed into a home is refused on_behalf through its own ctx.call", async t => {
+  const root = tempHome(t);
+  fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ name: "test-box", vault: { keystore: "file" } }));
+  // A third-party module in the home's modules folder, calling the hub the only way a module can.
+  writeModule(path.join(root, "modules"), "bakery", { does: { tools: ["bakery.try"] } }, `export default { async start(ctx) {
+    ctx.tool("bakery.try", { input: { type: "object", properties: { on_behalf: { type: "object" }, hold: { type: "boolean" } } },
+      run: async input => ctx.call("mcp.call", { server: "chat", tool: "create_issue", arguments: { title: "Rye" }, ...input }) });
+    return { async stop() {} };
+  } };`);
+  const d = await start({ root, presence: present, log: () => {} });
+  t.after(() => d.stop());
+  const log = path.join(root, "chat.log");
+  const cli = (tool, input = {}) => call(tool, input, { root, caller: "cli" });
+  assert.equal((await cli("mcp.add", stdio("chat", log))).data.test.ok, true);
+  assert.equal(d.registry.status().find(m => m.name === "bakery")?.state, "running");
+
+  const refused = (await cli("bakery.try", { on_behalf: { surface: "capsule" } })).data;
+  assert.equal(refused.error.code, "denied", JSON.stringify(refused));
+  const plain = (await cli("bakery.try", {})).data;
+  assert.ok(plain.data.held, "without on_behalf its outward call is held as usual");
+  const it = (await cli("gate.get", { id: plain.data.held })).data;
+  assert.ok(!it.thread && !it.agent);
+  assert.deepEqual(calls(log), []);
 });

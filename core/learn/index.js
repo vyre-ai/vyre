@@ -10,13 +10,14 @@
 // Nothing becomes a lesson unseen. A correction heard in a prompt is only proposed; Claude is
 // told to ask the user, and the user's next prompt decides: a plain yes accepts it here, inside
 // Learning, with no tool call (accept by reply); a plain no declines it. The user can also accept
-// with presence (learn.accept from the CLI, the Capsule or the Deck), or write a lesson
+// from their own surface (learn.accept from the CLI, the Capsule or the Deck), or write a lesson
 // themselves (learn.add, `/vyre remember`, `vyre learn add`).
 //
 // Anything that makes Vyre stricter is free; anything that makes it looser needs a person
 // (ADR 0007, decision 11). learn.edit only tightens. Lowering, narrowing, removing a check,
 // pinning and retiring go through learn.relax and learn.retire, which only owner surfaces may
-// call and which declare presence (ADR 0004).
+// call. They ask no presence (the no-nag rule): the callers list and the harness floor, which
+// refuses a model's shell that names them, keep models and agents out.
 //
 // Levels: remind (repeated to Claude, never holds anything), ask (a tool call waits for the
 // user; a reply is sent back), block (a tool call is denied; a reply is sent back). A lesson
@@ -43,6 +44,7 @@ import { SKILL_MIGRATIONS, createSkills, stepsOf } from "./skills.js";
 import { createJobs, JOBS_MIGRATION } from "./jobs.js";
 import { createMetrics, METRICS_MIGRATION } from "./metrics.js";
 import * as sig from "./signals.js";
+import { claudeHome } from "../config/index.js";
 
 const MIGRATIONS = [
   `CREATE TABLE learn_lessons (
@@ -479,6 +481,8 @@ export default {
     const offAnswered = ctx.events.on("ask.answered", e => { onAnswer(e).catch(err => ctx.log("answer not counted: " + err.message)); });
     const onAnswer = async e => {
       const p = e.payload || {};
+      // A paired Mac's ask, relayed to the box (source "mac"): the Mac's own learn counts it there.
+      if (p.source === "mac") return;
       const session = e.thread || p.thread || null;
       if (!session || !["allow", "deny"].includes(p.decision) || !p.tool) return;
       const c = /** @type {any} */ (db.prepare("SELECT * FROM learn_calls WHERE session = ? AND tool = ? AND outcome IS NULL ORDER BY at DESC LIMIT 1").get(session, p.tool));
@@ -567,17 +571,14 @@ export default {
       await snap();
       return get(id);
     };
-    /** What a person sees before proving they are there (ADR 0004). */
-    const about = (verb, id) => { const l = get(id); return l ? `${verb} Vyre lesson ${id}: "${l.rule}"` : `${verb} Vyre lesson ${id}`; };
 
     const levelSchema = { type: "string", enum: LEVELS };
     const changeSchema = { rule: { type: "string" }, when: { type: "string" }, level: levelSchema, scope: scopeSchema,
       check: { anyOf: [checkSchema, { type: "null" }] }, max_level: { anyOf: [levelSchema, { type: "null" }] }, pinned: { type: "boolean" } };
 
     ctx.tool("learn.accept", {
-      description: "Accept a proposed lesson. Only the user can: from the CLI, the Capsule or the Deck, with presence. In a thread the user accepts by replying yes; nothing needs calling.",
+      description: "Accept a proposed lesson. Only the user can: from the CLI, the Capsule or the Deck; an agent is refused. In a thread the user accepts by replying yes; nothing needs calling.",
       callers: HUMAN,
-      presence: { summary: ({ id }) => about("Accept", id) },
       input: { type: "object", required: ["id"], properties: { id: { type: "integer" } } },
       run: async ({ id }) => {
         const l = must(id);
@@ -593,7 +594,7 @@ export default {
       run: async ({ id, ...change }) => {
         const l = must(id);
         // A proposal is accepted as the user was shown it; changing it first would accept something else.
-        if (l.status === "proposed") throw presenceRequired(`lesson ${id} is proposed: the user accepts it as they were shown it (learn.accept, with presence), then it can be tightened`, { tool: "learn.accept", id });
+        if (l.status === "proposed") throw presenceRequired(`lesson ${id} is proposed: the user accepts it as they were shown it (learn.accept, from their own surface), then it can be tightened`, { tool: "learn.accept", id });
         clean(change);
         if (change.scope !== undefined) change.scope = await slugged(change.scope);
         const loose = loosens(l, change);
@@ -603,9 +604,8 @@ export default {
     });
 
     ctx.tool("learn.relax", {
-      description: "Loosen a lesson: lower its level, narrow or move its scope, narrow `when`, change or remove its check, lower its cap, pin it, or rewrite its rule. Only the user can, with presence.",
+      description: "Loosen a lesson: lower its level, narrow or move its scope, narrow `when`, change or remove its check, lower its cap, pin it, or rewrite its rule. Only the user can, from their own surfaces; an agent is refused.",
       callers: HUMAN,
-      presence: { summary: ({ id, ...change }) => { const l = get(id); const what = l ? loosens(l, change) : []; return `${about("Relax", id)}${what.length ? `: ${what.join(", ")}` : ""}`; } },
       input: { type: "object", required: ["id"], properties: { id: { type: "integer" }, ...changeSchema } },
       run: async ({ id, ...change }) => {
         must(id);
@@ -616,16 +616,15 @@ export default {
     });
 
     ctx.tool("learn.retire", {
-      description: "Retire a lesson, or decline a proposed one. Only the user can, with presence.",
+      description: "Retire a lesson, or decline a proposed one. Only the user can, from their own surfaces; an agent is refused.",
       callers: HUMAN,
-      presence: { summary: ({ id }) => about("Retire", id) },
       input: { type: "object", required: ["id"], properties: { id: { type: "integer" } } },
       run: async ({ id }) => retire(must(id)),
     });
 
     // ---- Skills from repeated procedures (ADR 0007, decision 10) ----------------------------
 
-    const skills = createSkills(db, { now, emit: (type, payload) => ctx.events.emit(type, payload) });
+    const skills = createSkills(db, { now, emit: (type, payload) => ctx.events.emit(type, payload), ...(root ? { claudeDir: claudeHome(root) } : {}) });
     /** Does the Switchboard answer here? Only then can a job draft anything. */
     const switchboard = async () => { const r = await ctx.call("threads.list", {}); return Boolean(r && !r.error); };
     /** A procedure clean in 3 sessions: drafted by a job when the Switchboard can, else the template. */
@@ -676,7 +675,7 @@ export default {
     const offText = ctx.events.on("thread.text", e => {
       const p = e.payload || {};
       const thread = e.thread || p.thread;
-      if (p.done !== true || p.notice || p.message === "vyre" || typeof p.text !== "string" || !thread || !jobs.owns(thread)) return;
+      if (p.done !== true || p.notice || p.kind === "reasoning" || p.message === "vyre" || typeof p.text !== "string" || !thread || !jobs.owns(thread)) return;
       jobs.answered(thread, String(p.text || "")).then(r => { if (r && r.skill == null && !r.ok) return skillFallback(); }).catch(err => ctx.log("job answer not read: " + err.message));
     });
     const offStopped = ctx.events.on("thread.stopped", e => {

@@ -9,8 +9,10 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { blocks, BLOCK_CAP, THINK_CAP } from "./index.js";
 import { tempHome } from "../../test/helpers.js";
+import { translate } from "../switchboard/translate.js";
 
-const RICH = path.join(path.dirname(fileURLToPath(import.meta.url)), "fixtures", "rich.jsonl");
+const FIX = path.join(path.dirname(fileURLToPath(import.meta.url)), "fixtures");
+const RICH = path.join(FIX, "rich.jsonl");
 const at = (/** @type {string} */ s) => Date.parse(s);
 
 test("blocks: a real-shaped session reads as user, thinking, text, tools and turns", () => {
@@ -33,15 +35,19 @@ test("blocks: a real-shaped session reads as user, thinking, text, tools and tur
   assert.match(prompt.text, /\[Stripe key redacted …ke12\]/);
   assert.ok(!JSON.stringify(bs).includes("NorthwindBakery0000fake"), "a pasted key left the read");
   assert.equal(prompt.ts, at("2026-09-02T10:01:00.000Z"));
+  assert.equal(prompt.uuid, "u0004", "a person's block carries its line's uuid");
 
   assert.equal(by(5, "thinking").text, "juno said the form breaks on submit. Read the component first.");
-  assert.deepEqual(by(6, "text"), { seq: 6, kind: "text", ts: at("2026-09-02T10:01:04.000Z"), message: "msg_01A", text: "Let me look at the order form." });
+  assert.equal(by(5, "thinking").block, 0);
+  // msg_01A is written as three lines (thinking, text, tool_use): the text is its block 1.
+  assert.deepEqual(by(6, "text"), { seq: 6, kind: "text", ts: at("2026-09-02T10:01:04.000Z"), message: "msg_01A", block: 1, text: "Let me look at the order form." });
 
   const read = by(7, "tool");
   assert.equal(read.tool, "Read");
   assert.equal(read.input.file_path, "/home/alex/Work/northwind-bakery/src/OrderForm.js");
   assert.match(read.output, /export function OrderForm/);
   assert.match(read.output, /\[image\]$/, "an image in a tool_result array is named");
+  assert.deepEqual(read.images, [{ media_type: "image/png", data: "iVBOR" }], "and, within the caps, the picture itself comes along (cohesion item 18)");
   assert.equal(read.error, false);
   assert.equal(read.done_ts, at("2026-09-02T10:01:05.250Z"));
   assert.equal(read.duration_ms, 250);
@@ -149,6 +155,79 @@ test("blocks: caps and redaction on tool input, output, thinking and Write conte
   assert.equal(td.input.todos[2].content.length, BLOCK_CAP + 11, "todos are kept whole");
 });
 
+test("blocks: images (cohesion item 18) - a person's own pasted picture, a tool's own, and every cap", t => {
+  /** A base64 string long enough to decode to about `n` bytes (the caps measure length, never decode). */
+  const b64 = n => "A".repeat(Math.ceil(n / 3) * 4);
+  const pic = (media_type, bytes) => ({ type: "image", source: { type: "base64", media_type, data: b64(bytes) } });
+  const f = write(t, [
+    // The person's own pasted picture, alongside their words.
+    { type: "user", timestamp: "2026-09-03T10:00:00Z", message: { role: "user", content: [{ type: "text", text: "What's wrong with this invoice?" }, pic("image/png", 1000)] } },
+    A("m1", { type: "tool_use", id: "t1", name: "Read", input: { file_path: "invoice.pdf" } }, "2026-09-03T10:00:01Z"),
+    // A tool's own picture (a screenshot), too big to inline: kept as [image] text only, no bytes.
+    R("t1", [{ type: "text", text: "read" }, pic("image/jpeg", 3 * 1024 * 1024)], "2026-09-03T10:00:02Z"),
+    A("m2", { type: "tool_use", id: "t2", name: "Read", input: { file_path: "a.svg" } }, "2026-09-03T10:00:03Z"),
+    // Not an allowed type, and a malformed one (no base64 source): both dropped, never a throw.
+    R("t2", [pic("image/svg+xml", 1000), { type: "image", source: { type: "url", url: "https://x" } }, { type: "image" }], "2026-09-03T10:00:04Z"),
+    A("m3", { type: "tool_use", id: "t3", name: "Bash", input: { command: "ls" } }, "2026-09-03T10:00:05Z"),
+    // Five pictures, each on its own well under the per-image cap: only the count cap (4) applies.
+    R("t3", Array.from({ length: 5 }, () => pic("image/png", 10)), "2026-09-03T10:00:06Z"),
+    A("m4", { type: "tool_use", id: "t4", name: "Bash", input: { command: "ls -la" } }, "2026-09-03T10:00:07Z"),
+    // Four pictures each just under the per-image cap: the third pushes the block over the total
+    // cap (6 MB), so the fourth is dropped even though the count cap (4) would still allow it.
+    R("t4", Array.from({ length: 4 }, () => pic("image/png", 1_900_000)), "2026-09-03T10:00:08Z"),
+  ]);
+  const bs = /** @type {any[]} */ (blocks(f, { from: 0 }).blocks);
+  const user = bs.find(b => b.kind === "user");
+  assert.deepEqual(user.images, [{ media_type: "image/png", data: b64(1000) }]);
+  const tooBig = bs.find(b => b.id === "t1");
+  assert.equal(tooBig.images, undefined, "over IMAGE_BYTES_CAP: dropped, the text placeholder is unaffected");
+  assert.match(tooBig.output, /\[image\]$/);
+  const badTypes = bs.find(b => b.id === "t2");
+  assert.equal(badTypes.images, undefined, "an unlisted media type and a non-base64 source: both dropped, never a throw");
+  const fiveSmall = bs.find(b => b.id === "t3");
+  assert.equal(fiveSmall.images.length, 4, "the count cap: at most 4, however many came with it");
+  const fourNearCap = bs.find(b => b.id === "t4");
+  assert.equal(fourNearCap.images.length, 3, "the byte-total cap can bind before the count cap");
+});
+
+test("blocks: images - data that isn't clean base64 is dropped (a surface builds a data: URL straight from it)", t => {
+  const b64 = n => "A".repeat(Math.ceil(n / 3) * 4);
+  const bad = (data) => ({ type: "image", source: { type: "base64", media_type: "image/png", data } });
+  const good = { type: "image", source: { type: "base64", media_type: "image/png", data: b64(1000) } };
+  const f = write(t, [
+    A("m1", { type: "tool_use", id: "t1", name: "Read", input: { file_path: "a.png" } }, "2026-09-03T11:00:00Z"),
+    R("t1", [
+      bad(`data:text/html,<script>1</script>`), // a break-out attempt, not base64 at all
+      bad(b64(100) + " " + b64(100)), // whitespace
+      bad("../../etc/passwd"),
+      bad(""), // empty (already filtered as falsy, kept here for belt-and-braces)
+      good,
+    ], "2026-09-03T11:00:01Z"),
+  ]);
+  const bs = /** @type {any[]} */ (blocks(f, { from: 0 }).blocks);
+  const tool = bs.find(b => b.id === "t1");
+  assert.deepEqual(tool.images, [{ media_type: "image/png", data: b64(1000) }], "only the one clean base64 picture came through");
+});
+
+test("blocks: images - a whole read's pictures share one budget (RESPONSE_BYTES_CAP), across every block", t => {
+  const b64 = n => "A".repeat(Math.ceil(n / 3) * 4);
+  const SIZE = 1_900_000; // under IMAGE_BYTES_CAP (2 MB) and IMAGES_BYTES_CAP (6 MB) on its own
+  const pic = () => ({ type: "image", source: { type: "base64", media_type: "image/png", data: b64(SIZE) } });
+  // Seven tool results, one picture each: the first six total 11.4 MB (under the 12 MB response
+  // budget), the seventh would push it to 13.3 MB - dropped, though it is small on its own.
+  const lines = [];
+  for (let i = 1; i <= 7; i++) {
+    lines.push(A(`m${i}`, { type: "tool_use", id: `t${i}`, name: "Read", input: { file_path: `p${i}.png` } }, `2026-09-03T12:00:0${i}Z`));
+    lines.push(R(`t${i}`, [pic()], `2026-09-03T12:00:0${i}Z`));
+  }
+  const f = write(t, lines);
+  const bs = /** @type {any[]} */ (blocks(f, { from: 0 }).blocks);
+  const by = id => /** @type {any} */ (bs.find(b => b.id === id));
+  for (let i = 1; i <= 6; i++) assert.equal(by(`t${i}`).images.length, 1, `picture ${i}: ${i * SIZE} bytes so far, within the 12 MB budget`);
+  assert.equal(by("t7").images, undefined, "the 7th would be 13.3 MB total: over budget, dropped - the text placeholder is unaffected");
+  assert.match(by("t7").output, /\[image\]$/);
+});
+
 test("blocks: a big file reads its tail and from far in without trouble", t => {
   const lines = [];
   for (let i = 0; i < 20000; i++) {
@@ -170,4 +249,165 @@ test("blocks: a big file reads its tail and from far in without trouble", t => {
 test("blocks: a missing file is no blocks, never an error", () => {
   assert.deepEqual(blocks("/nowhere/at/all.jsonl", { from: 5 }), { blocks: [], next: 5, first: null });
   assert.deepEqual(blocks("/nowhere/at/all.jsonl"), { blocks: [], next: 0, first: null });
+});
+
+test("blocks: words typed while the model works are a steer inside its turn, with the step they joined at", t => {
+  const f = write(t, [
+    U("Rebuild the Harlow Legal intake", "2026-09-03T08:00:00Z"),
+    A("m1", { type: "tool_use", id: "t1", name: "Read", input: { file_path: "src/intake/general.ts" } }, "2026-09-03T08:00:01Z"),
+    R("t1", "1\texport const general = {};", "2026-09-03T08:00:02Z"),
+    A("m2", { type: "tool_use", id: "t2", name: "Bash", input: { command: "npm test" } }, "2026-09-03T08:00:03Z"),
+    { ...U("Use Estate intake v2 instead", "2026-09-03T08:00:04Z"), uuid: "steer-1" },
+    R("t2", "ok", "2026-09-03T08:00:05Z"),
+    A("m3", { type: "text", text: "Switching to the v2 form." }, "2026-09-03T08:00:06Z"),
+    U("Thanks, now push q3-report", "2026-09-03T08:01:00Z"),
+    A("m4", { type: "text", text: "Pushed." }, "2026-09-03T08:01:02Z"),
+  ]);
+  const bs = /** @type {any[]} */ (blocks(f, { from: 0 }).blocks);
+  assert.deepEqual(bs.map(b => `${b.seq}:${b.kind}`), ["0:user", "1:tool", "3:tool", "4:user", "6:text", "7:turn", "7:user", "8:text", "8:turn"]);
+  const steer = bs.find(b => b.seq === 4);
+  assert.deepEqual([steer.steered, steer.step, steer.uuid, steer.text], [true, 1, "steer-1", "Use Estate intake v2 instead"], "one call had finished");
+  const closed = bs.find(b => b.kind === "turn" && !b.open);
+  assert.deepEqual([closed.seq, closed.duration_ms], [7, 6000], "the steer starts no turn: the first turn runs on to its reply");
+  assert.equal(bs.find(b => b.seq === 7 && b.kind === "user").steered, undefined, "after the reply, a new turn");
+});
+
+test("blocks: a live read of an open turn keeps its steer, and resumes at the turn's first line", t => {
+  const f = write(t, [
+    U("Draft the Northwind Bakery menu", "2026-09-03T09:00:00Z"),
+    A("m1", { type: "tool_use", id: "t1", name: "Read", input: { file_path: "menu.md" } }, "2026-09-03T09:00:01Z"),
+    { ...U("Keep the prices as they are", "2026-09-03T09:00:02Z"), uuid: "s-2" },
+  ]);
+  const one = blocks(f, { from: 0 });
+  const steer = /** @type {any} */ (one.blocks.find(b => b.kind === "user" && b.seq === 2));
+  assert.deepEqual([steer.steered, steer.step], [true, 0], "the Read was still running");
+  assert.equal(one.next, 0);
+  assert.deepEqual(blocks(f, { from: one.next }).blocks.filter(b => /** @type {any} */ (b).steered).map(b => b.seq), [2], "the same on a re-read");
+});
+
+test("blocks: an interrupt ends the turn; neither it nor what follows is a steer", t => {
+  const f = write(t, [
+    U("Run the Northwind Bakery build", "2026-09-03T10:00:00Z"),
+    A("m1", { type: "tool_use", id: "t1", name: "Bash", input: { command: "npm run build" } }, "2026-09-03T10:00:01Z"),
+    { type: "user", timestamp: "2026-09-03T10:00:02Z", message: { role: "user", content: [
+      { type: "tool_result", tool_use_id: "t1", content: "Interrupted", is_error: true },
+      { type: "text", text: "[Request interrupted by user for tool use]" }] } },
+    U("Try the dev build instead", "2026-09-03T10:00:03Z"),
+  ]);
+  const bs = /** @type {any[]} */ (blocks(f, { from: 0 }).blocks);
+  assert.ok(!bs.some(b => b.steered));
+  assert.equal(bs.filter(b => b.kind === "user").length, 3);
+});
+
+// ------------------------------------------------------------ live keys equal transcript keys
+
+/** The (message, block) keys the live stream gives, done and partial, from stream-json lines. */
+/**
+ * translate as the Switchboard runs it: a whole line's text blocks keyed across the lines of one
+ * message. Either translate(m, seen) counts them itself (work/chat), or it names the line's own
+ * blocks (`blocks`) and the Switchboard adds the lines before (work/sessions, onMessage's ord).
+ */
+const keyed = () => {
+  const seen = new Map(), ord = new Map();
+  return (/** @type {any} */ m) => {
+    const t = /** @type {any} */ (translate)(m, seen);
+    if (typeof t.blocks === "number" && m && m.message && m.message.id) {
+      const id = String(m.message.id), base = ord.get(id) || 0;
+      for (const e of t.events) if (typeof e.payload.block === "number") e.payload.block += base;
+      ord.set(id, base + t.blocks);
+    }
+    return t;
+  };
+};
+
+/**
+ * The live keys of a stream, text apart from reasoning (thread.thinking, or thread.text kind
+ * "reasoning" on sessions 034c71e5, which a box that streams thinking adds): text keys are
+ * compared with text keys, reasoning with reasoning.
+ */
+function liveKeys(/** @type {string} */ file) {
+  const tr = keyed();
+  let message = "";
+  const done = [], deltas = new Map(), rdone = [], rdeltas = new Map();
+  for (const line of fs.readFileSync(file, "utf8").split("\n").filter(Boolean)) {
+    const t = tr(JSON.parse(line));
+    if (t.message !== undefined) message = t.message;
+    if (t.delta) deltas.set(`${message}#${t.block}`, (deltas.get(`${message}#${t.block}`) || "") + t.delta);
+    if (t.reasoning) rdeltas.set(`${message}#${t.block}`, (rdeltas.get(`${message}#${t.block}`) || "") + t.reasoning);
+    for (const e of t.events) {
+      if (e.type === "thread.thinking" || (e.type === "thread.text" && e.payload.kind === "reasoning")) rdone.push(e.payload);
+      else if (e.type === "thread.text") done.push(e.payload);
+    }
+  }
+  return { done, deltas, rdone, rdeltas };
+}
+
+test("blocks: a message written as text, tool_use, text keeps each text's content block index", () => {
+  const bs = /** @type {any[]} */ (blocks(path.join(FIX, "split.jsonl"), { from: 0 }).blocks);
+  assert.deepEqual(bs.filter(b => b.kind === "text" || b.kind === "thinking").map(b => [b.kind, b.message ?? null, b.block]), [
+    ["thinking", null, 0], ["text", "msg_03A", 1], ["text", "msg_03A", 3], ["text", "msg_03B", 0],
+  ]);
+  assert.equal(bs[0].uuid, "u0301");
+  // A read that starts inside msg_03A (its last line) counts the lines before the window.
+  const mid = /** @type {any[]} */ (blocks(path.join(FIX, "split.jsonl"), { from: 4 }).blocks);
+  assert.deepEqual(mid.filter(b => b.kind === "text").map(b => [b.message, b.block]), [["msg_03A", 3], ["msg_03B", 0]]);
+});
+
+test("blocks: the live stream's keys (message, block) equal the transcript's for every text", () => {
+  const tx = /** @type {any[]} */ (blocks(path.join(FIX, "split.jsonl"), { from: 0 }).blocks).filter(b => b.kind === "text");
+  const { done, deltas } = liveKeys(path.join(FIX, "split.stream.jsonl"));
+  const keys = (/** @type {any[]} */ xs) => xs.map(x => `${x.message}#${x.block}`);
+  assert.deepEqual(keys(done), keys(tx), "a done text is keyed as its transcript block");
+  assert.deepEqual([...deltas.keys()], keys(tx), "the deltas of each text are keyed as its transcript block");
+  for (const b of tx) {
+    assert.equal(deltas.get(`${b.message}#${b.block}`), b.text, "the deltas of one block add up to its text, and only its");
+    assert.equal(done.find(d => d.message === b.message && d.block === b.block).text, b.text);
+  }
+  // Without the count, two texts of one message would share a key and the second overwrite the first.
+  assert.equal(new Set(keys(done)).size, done.length);
+});
+
+test("blocks: the live stream's reasoning keys (message, block) equal the transcript's thinking, and never a text's", () => {
+  const all = /** @type {any[]} */ (blocks(path.join(FIX, "split.jsonl"), { from: 0 }).blocks);
+  const think = all.filter(b => b.kind === "thinking");
+  const texts = new Set(all.filter(b => b.kind === "text").map(b => `${b.message}#${b.block}`));
+  const { rdone, rdeltas } = liveKeys(path.join(FIX, "split.stream.jsonl"));
+  // A box without thinking deltas (before sessions 034c71e5) sends none: nothing to compare.
+  if (!rdone.length && !rdeltas.size) return;
+  // The transcript's thinking block has no message id; its block index is the live one, on msg_03A.
+  assert.deepEqual(rdone.map(d => d.block), think.map(b => b.block));
+  assert.deepEqual(rdone.map(d => d.message), ["msg_03A"]);
+  for (const d of rdone) {
+    assert.ok(!texts.has(`${d.message}#${d.block}`), "a reasoning key is never a text key");
+    assert.equal(rdeltas.get(`${d.message}#${d.block}`), d.text, "the reasoning deltas add up to the thinking, and only it");
+  }
+  assert.equal(rdone[0].text, think[0].text);
+});
+
+test("blocks: a rewind's abandoned branch (two person's lines under one parent) is skipped, before and after paging", t => {
+  const P = (/** @type {string|null} */ parent, /** @type {string} */ uuid, /** @type {any} */ line) => ({ parentUuid: parent, ...line, uuid });
+  const f = write(t, [
+    P(null, "a1", U("Read the Harlow Legal intake folder", "2026-09-03T10:00:00Z")),
+    P("a1", "a2", A("m1", { type: "text", text: "It has three forms." }, "2026-09-03T10:00:01Z")),
+    // The message rewound to, and what followed it: a branch the session no longer follows.
+    P("a2", "b1", U("Rebuild the Estate intake", "2026-09-03T10:01:00Z")),
+    P("b1", "b2", A("m2", { type: "tool_use", id: "t1", name: "Edit", input: { file_path: "src/intake/estate.ts" } }, "2026-09-03T10:01:01Z")),
+    P("b2", "b3", R("t1", "ok", "2026-09-03T10:01:02Z")),
+    P("b3", "b4", A("m3", { type: "text", text: "Rebuilt." }, "2026-09-03T10:01:03Z")),
+    // After the rewind: the next message is a second child of a2.
+    P("a2", "c1", U("Rebuild it as Estate intake v2", "2026-09-03T10:02:00Z")),
+    P("c1", "c2", A("m4", { type: "text", text: "On it." }, "2026-09-03T10:02:01Z")),
+  ]);
+  const bs = /** @type {any[]} */ (blocks(f, { from: 0 }).blocks);
+  assert.deepEqual(bs.map(b => `${b.seq}:${b.kind}`), ["0:user", "1:text", "6:turn", "6:user", "7:text", "7:turn"]);
+  assert.ok(!bs.some(b => b.kind === "tool" || /Rebuil(d the|t\.)/.test(b.text || "")), "nothing of the old branch");
+  assert.deepEqual(blocks(f, {}).blocks.map(b => `${b.seq}:${b.kind}`), ["0:user", "1:text", "6:turn", "6:user", "7:text", "7:turn"], "the tail read too");
+  // A tool's results under one parent are not a branch: only two person's lines are.
+  const g = write(t, [
+    P(null, "x1", U("Run the Northwind Bakery tests", "2026-09-03T11:00:00Z")),
+    P("x1", "x2", A("n1", { type: "tool_use", id: "t2", name: "Bash", input: { command: "npm test" } }, "2026-09-03T11:00:01Z")),
+    P("x2", "x3", R("t2", "ok", "2026-09-03T11:00:02Z")),
+    P("x2", "x4", A("n2", { type: "text", text: "Passing." }, "2026-09-03T11:00:03Z")),
+  ]);
+  assert.deepEqual(blocks(g, { from: 0 }).blocks.map(b => `${b.seq}:${b.kind}`), ["0:user", "1:tool", "3:text", "3:turn"]);
 });

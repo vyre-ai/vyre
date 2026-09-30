@@ -1,0 +1,18 @@
+{
+  "name": "vitals",
+  "version": "0.1.0",
+  "description": "How the server and this device are doing: CPU, RAM, GPU, disk, network and battery, plus a breakdown per running computer on the server. Person-level only; an agent gets a summary with no process or window detail.",
+  "roles": ["box", "local"],
+  "requires": [],
+  "does": { "tools": ["vitals.watch", "vitals.status", "vitals.summary", "vitals.explain", "vitals.advice"] },
+  "watches": { "emits": ["vitals.sample", "vitals.trouble"] },
+  "shows": { "deck": [], "capsule": [], "cli": ["vitals"] },
+  "needs": {},
+  "teaches": {
+    "tips": [
+      {"id": "status", "text": "Run `vyre vitals` to see this machine's CPU, RAM, disk and network right now, and its last 24 hours.", "surfaces": ["cli"], "level": "first-use", "trigger": "on-use", "since": "0.1.0", "command": "vyre vitals status", "docs": "reference/cli.md#vyre-vitals"},
+      {"id": "advice", "text": "Run `vyre vitals advice` for sizing suggestions from the last week's numbers.", "surfaces": ["cli"], "level": "power", "trigger": "on-use", "since": "0.1.0", "command": "vyre vitals advice", "docs": "reference/cli.md#vyre-vitals"},
+      {"id": "no-nag", "text": "vitals never pushes anything on its own: set up a watcher on vitals.trouble if you want to hear about sustained trouble.", "surfaces": ["cli"], "level": "discovery", "trigger": "never-used", "since": "0.1.0"}
+    ]
+  }
+}

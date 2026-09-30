@@ -190,8 +190,9 @@ screen and stacked on a narrow one.
 **Pair this Mac**:
 
 1. **Install Vyre**: `npm i -g https://vyre.run/box/vyre.tgz` on the Mac.
-2. **Pair it with this box**: `vyre up` on the Mac. It finds the box on your tailnet and shows a
-   code.
+2. **Pair it with this box**: `vyre up` on the Mac. It finds the box on your tailnet, asks
+   whether to pair with it, and shows a code once you say yes (`vyre link pair <address>` does the
+   same without the question).
 3. A card appears here, "A Mac wants to pair:" and the Mac's name, with a field for **Code on that
    Mac**, **Approve** and **Deny**. Type the code, press **Approve**, and confirm with your
    passkey. The card counts down the request's ten minutes.
@@ -226,6 +227,8 @@ More in [On your phone](../using/mobile.md).
 
 The page says **Vyre is ready.**, your assistant says hello, and three rows tick for your Mac,
 your phone and your history. **Open Vyre** takes you to the Deck at your address.
+
+![The last screen of the setup: Vyre is ready, with your Mac, your phone and your history ticked or still to do, and Open Vyre.](shots/onboarding-ready.png)
 
 If you skipped the Claude Code step, no assistant was made. Now and Agents in the Deck then show
 **Create your assistant**: give it a name, tick **Give it its own computer, from the pool** if you

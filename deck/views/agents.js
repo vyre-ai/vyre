@@ -6,13 +6,23 @@
 // watchers.list, watchers.pause, watchers.resume (watchers), computers.get, computers.restart, computers.limits
 // (computers), threads.list for thread names and times, projects.list for project names.
 // Each may be missing; each section then says which module is not running.
+//
+// On a phone (under 760 px, docs/design/phone.md section 8) /agents is the Agents page: one line
+// ("1 working, 1 idle"), a card per working agent with a live console of its thread's last three
+// lines (thread.tool and thread.text, subscribed only while the page is on screen, painted at most
+// four times a second), Watch and Pause; the idle agents as rows; then Scheduled, the schedule
+// watchers (watchers.list per agent, read on load and on each return, never polled). The layout
+// is picked at render and redrawn when the width crosses 760 px; the desktop list is unchanged.
 
-import { h, put, link, head, empty } from "../js/dom.js";
-import { attempt } from "../js/api.js";
+import { h, put, link, head, empty, PHONE_QUERY } from "../js/dom.js";
+import { attempt, on, snapshot } from "../js/api.js";
 import { icon } from "../js/icons.js";
 import * as needs from "../js/needs.js";
 import { assistantCard } from "../js/assistant-setup.js";
-import { since, initial, count, plural, clock } from "../js/fmt.js";
+import { createProjectInline, action } from "../js/empty-actions.js";
+import { createAgent } from "../js/agent-create.js";
+import { since, count, plural, clock } from "../js/fmt.js";
+import { assistantAvatar, agentAvatar, teammateAvatar, readSystem, setTeammates, setProjects } from "../js/avatars.js";
 
 // Making and changing an agent is the person's own business: no passkey (the no-nag rule).
 
@@ -31,6 +41,10 @@ const threadHref = (thread, project) => project ? `/projects/${encodeURIComponen
 const agentHref = name => `/agents/${encodeURIComponent(name)}`;
 const glassHref = name => `/agents/${encodeURIComponent(name)}/glass`;
 const why = err => err?.missing ? `The ${err.module} module is not running on this machine.` : String(err?.message || err || "");
+const clip = (s, n) => { const t = String(s ?? ""); return t.length > n ? t.slice(0, n - 1) + "…" : t; };
+
+/** An agent's avatar (js/avatars.js): the assistant's creature, else the agent's blob, seeded from its name (its stable id). */
+const tileFor = (a, size, cls) => a?.kind === "assistant" ? assistantAvatar({ size, cls }) : agentAvatar(String(a?.name || ""), { size, cls });
 
 /** @param {any} ctx */
 export default async function agents(ctx) {
@@ -44,6 +58,7 @@ async function world() {
   const names = new Map();
   for (const th of t.data || []) if (th.project && th.projectName) names.set(th.project, th.projectName);
   for (const pr of p.data?.projects || []) names.set(pr.slug, pr.name);
+  setProjects(p.data?.projects || []); // each project's tile seed, for its teammates' colour
   const threads = new Map((t.data || []).map(th => [th.id, th]));
   return { names, threads, projects: p.data?.projects || [], threadsErr: t.error || null };
 }
@@ -71,17 +86,43 @@ async function list(ctx) {
   const newBtn = h("button", { type: "button", class: "btn btn-primary", "aria-expanded": "false", "aria-controls": "ag-new" }, icon("plus", 14), "New agent");
   const form = h("section", { class: "ag-new", id: "ag-new", hidden: true, "aria-label": "New agent" });
   const rows = h("section", { class: "ag-list", "aria-labelledby": "ag-list-h" });
+  // Teammates (team.list): a project's persistent roles. Absent when the team module is off.
+  const teamEl = h("section", { class: "ag-team", "aria-labelledby": "ag-team-h", hidden: true });
+  /** @type {any[]} */ let team = [];
   // No assistant yet: the card to make one comes before everything else on the page.
   const setup = h("div", { class: "ag-setup" });
-  put(ctx.root, h("div", { class: "ag" }, h("div", { class: "ag-col" },
+  const mq = matchMedia(PHONE_QUERY);
+  const root = h("div", { class: "ag" + (mq.matches ? " ag-phone" : "") }, h("div", { class: "ag-col" },
     h("div", { class: "ag-top" }, h("div", { class: "ag-top-text" }, title, sub), newBtn),
-    setup, form, rows)));
+    setup, form, rows, teamEl));
+  put(ctx.root, root);
+  /** The phone's page: its state lives here so a redraw keeps the consoles. */
+  const ph = phonePage(ctx, () => w, () => all, openNew, form);
 
   /** @type {any[]} */ let all = [];
-  let w = await world();
+  /** Project and thread names; empty until world() answers. */
+  let w = /** @type {Awaited<ReturnType<typeof world>>} */ ({ names: new Map(), threads: new Map(), projects: [], threadsErr: null });
   let listErr = null;
 
+  const drawTeam = () => {
+    teamEl.hidden = !team.length;
+    if (!team.length) { put(teamEl); return; }
+    const th = head("Teammates", h("span", { class: "lbl" }, count(team.length)));
+    /** @type {HTMLElement} */ (th.firstChild).id = "ag-team-h";
+    put(teamEl, th, h("div", { class: "rows" }, team.map(t => teammateRow(t, w))));
+  };
   const draw = () => {
+    root.classList.toggle("ag-phone", mq.matches);
+    drawTeam();
+    if (mq.matches) {
+      if (!listErr) {
+        const assistant = all.find(a => a.kind === "assistant");
+        if (assistant) put(setup);
+        else if (!setup.firstChild) put(setup, assistantCard({ onCreated: a => { if (!ctx.alive()) return; all = [a, ...all.filter(x => x.name !== a.name)]; draw(); } }));
+      } else put(setup);
+      put(rows, ph.draw(listErr));
+      return;
+    }
     const headRow = head("Every agent", h("span", { class: "lbl" }, listErr ? "" : `${all.filter(a => a.status === "working").length} working`));
     /** @type {HTMLElement} */ (headRow.firstChild).id = "ag-list-h";
     if (listErr) {
@@ -98,40 +139,301 @@ async function list(ctx) {
     if (assistant) put(setup);
     else if (!setup.firstChild) put(setup, assistantCard({ onCreated: a => { if (!ctx.alive()) return; all = [a, ...all.filter(x => x.name !== a.name)]; draw(); } }));
     // No agents at all: the card is the empty state, not a blank list.
-    put(rows, all.length ? [headRow, h("div", { class: "rows" }, [assistant, ...others].filter(Boolean).map(a => agentRow(a, w)))] : null);
+    put(rows, all.length ? [headRow, h("div", { class: "rows" }, [assistant, ...others].filter(Boolean).map(a => agentRow(a, w))),
+      assistant && !others.length && form.hidden ? h("div", { class: "empty" }, "No other agents yet. An agent works only in the projects you give it.", action("New agent", openNew)) : null] : null);
   };
 
+  // The list as this device last saw it, at once (ADR 0029 R3); the box's answer replaces it.
+  const snap = await snapshot.get("agents");
+  if (!ctx.alive()) return;
+  if (snap && Array.isArray(snap.value) && snap.value.length) { all = snap.value; draw(); }
+  w = await world();
+  if (!ctx.alive()) return;
+
   const load = async () => {
-    const r = await attempt("agents.list");
+    const [r, tm] = await Promise.all([attempt("agents.list"), attempt("team.list", {}), readSystem(attempt)]);
+    if (!tm.error) { team = Array.isArray(tm.data) ? tm.data : tm.data?.teammates || []; setTeammates(team); }
     if (!ctx.alive()) return;
+    // Out of reach with a list on screen: keep it (R3) rather than trade it for an error.
+    if (r.error?.code === "offline" && all.length) return;
     listErr = r.error || null;
     all = Array.isArray(r.data) ? r.data : r.data?.agents || [];
+    if (!r.error) void snapshot.set("agents", all);
     draw();
+    // Scheduled is the phone's alone: read once per load, not on a desktop.
+    if (mq.matches && !listErr) ph.schedules().then(() => { if (ctx.alive() && mq.matches) draw(); });
   };
   await load();
 
-  newBtn.addEventListener("click", () => {
+  function openNew() {
     newBtn.hidden = true;
     form.hidden = false;
     newBtn.setAttribute("aria-expanded", "true");
     put(form, newForm(w, {
       done: (a) => { form.hidden = true; newBtn.hidden = false; newBtn.setAttribute("aria-expanded", "false");
-        if (a) { all = all.filter(x => x.name !== a.name).concat(a); draw(); } newBtn.focus(); },
+        if (a) all = all.filter(x => x.name !== a.name).concat(a);
+        draw(); newBtn.focus(); },
     }));
+    draw();
     /** @type {HTMLElement|null} */ (form.querySelector("input"))?.focus();
-  });
+  }
+  newBtn.addEventListener("click", openNew);
+  // The phone header's "+" (the shell's) opens the same form: /agents?new=1, or this event.
+  if (ctx.query?.get("new") === "1") openNew();
+  const onNew = () => { if (ctx.alive() && form.hidden) openNew(); };
+  window.addEventListener("deck:new-agent", onNew);
+  ctx.cleanup(() => window.removeEventListener("deck:new-agent", onNew));
 
   let t = 0;
   const later = () => { clearTimeout(t); t = window.setTimeout(async () => { w = await world(); if (ctx.alive()) load(); }, 300); };
   for (const e of ["thread.started", "thread.finished"]) ctx.on(e, later);
   ctx.cleanup(() => clearTimeout(t));
+
+  const onWidth = () => { draw(); ph.live(); if (mq.matches) later(); };
+  mq.addEventListener("change", onWidth);
+  ctx.cleanup(() => mq.removeEventListener("change", onWidth));
+  // Back on screen (a swipe to Agents, or a return): fresh state behind the kept page, and the
+  // consoles listen again. The desktop keeps today's behaviour.
+  ctx.onShow?.(() => { if (mq.matches) later(); ph.live(); });
+  ph.live();
+}
+
+// ---- /agents on a phone ----------------------------------------------------------------------
+
+const isWorking = a => (a.status || a.state) === "working" && !!a.thread;
+
+/** Stroke glyphs the phone needs that icons.js does not have: 24 grid, 1.5 stroke, currentColor. */
+function glyph(kind, size = 20) {
+  const svg = s("svg", { viewBox: "0 0 24 24", width: size, height: size, fill: "none", stroke: "currentColor", "stroke-width": 1.5,
+    "stroke-linecap": "round", "stroke-linejoin": "round", "aria-hidden": "true", focusable: "false" });
+  if (kind === "eye") svg.append(s("path", { d: "M2.5 12S6 5.5 12 5.5 21.5 12 21.5 12 18 18.5 12 18.5 2.5 12 2.5 12z" }), s("circle", { cx: 12, cy: 12, r: 3 }));
+  else if (kind === "pause") svg.append(s("rect", { x: 7, y: 5.5, width: 3, height: 13, rx: 1 }), s("rect", { x: 14, y: 5.5, width: 3, height: 13, rx: 1 }));
+  else if (kind === "clock") svg.append(s("circle", { cx: 12, cy: 12, r: 8.5 }), s("path", { d: "M12 7.5V12l3 2" }));
+  else if (kind === "right") svg.append(s("path", { d: "M9.5 6l6 6-6 6" }));
+  return svg;
+}
+
+/** A tool call as one console line: the tool, then what it touched. */
+function toolText(p) {
+  if (p.summary) return String(p.summary);
+  const i = p.input;
+  if (i == null) return "";
+  if (typeof i === "string") return i;
+  const k = ["command", "file_path", "path", "pattern", "url", "query", "q", "description"].find(k => typeof i[k] === "string");
+  return k ? i[k] : "";
+}
+
+/** "3 of 5" when the thread says so; nothing is made up. */
+function stepOf(t) {
+  const n = t?.step ?? t?.progress?.done, of = t?.steps ?? t?.progress?.total;
+  return Number.isFinite(n) && Number.isFinite(of) && of > 0 ? { n, of } : null;
+}
+
+/** "Mondays 08:00, weekly ads check" → the job and its cadence. */
+function scheduleParts(x) {
+  const trig = String(x.trigger || x.name || "");
+  const m = /^([^,]+),\s*(.+)$/.exec(trig);
+  const job = m ? m[2] : trig;
+  return { job: job.charAt(0).toUpperCase() + job.slice(1), cadence: x.cadence || x.schedule || (m ? m[1] : "") };
+}
+
+/** "in 14 h" for the next run, when the watcher knows it. */
+function inTime(at) {
+  const t = typeof at === "number" ? at : Date.parse(at);
+  if (!Number.isFinite(t) || t <= Date.now()) return "";
+  return `in ${since(Date.now(), t).replace(" ", "")}`;
+}
+
+/**
+ * The phone's Agents page. Returns draw (the page's rows), schedules (read the schedule
+ * watchers) and live (subscribe the consoles when the page is on screen, else not).
+ * @param {any} ctx @param {() => any} getWorld @param {() => any[]} getAll @param {() => void} openNew @param {HTMLElement} form
+ */
+function phonePage(ctx, getWorld, getAll, openNew, form) {
+  const shown = () => ctx.alive() && (typeof ctx.shown === "function" ? ctx.shown() : true) && document.visibilityState !== "hidden";
+  /** thread id → its console: the element, its last lines, the message being streamed. */
+  const consoles = new Map();
+  /** @type {any[] | null} */ let scheduled = null;
+  /** Pause answers, kept across redraws: agent name → text. */
+  const notes = new Map();
+  /** @type {(() => void)[]} */ let offs = [];
+
+  function consoleFor(thread, seed) {
+    let c = consoles.get(thread);
+    if (!c) {
+      c = { el: h("div", { class: "agp-con", role: "log", "aria-label": "Live output", "aria-live": "off" }), lines: seed ? [{ text: clip(seed, 200) }] : [],
+        msg: null, buf: "", cur: null, timer: 0 };
+      consoles.set(thread, c);
+      paint(c);
+    }
+    return c.el;
+  }
+  function paint(c) {
+    c.timer = 0;
+    const lines = c.lines.slice(-3);
+    const caret = () => h("span", { class: "agp-caret", "aria-hidden": "true" });
+    put(c.el, lines.length ? lines.map((l, i) => h("div", { class: "agp-cl" }, l.cmd ? h("span", { class: "agp-cmd" }, l.cmd, " ") : null,
+      l.text, i === lines.length - 1 ? caret() : null))
+      : h("div", { class: "agp-cl agp-quiet" }, "Waiting for its next step", caret()));
+  }
+  // At most four paints a second, whatever the stream does.
+  const soon = c => { if (!c.timer) c.timer = window.setTimeout(() => paint(c), 250); };
+  const push = (c, line) => { c.lines.push(line); if (c.lines.length > 3) c.lines.splice(0, c.lines.length - 3); };
+
+  function onTool(e) {
+    if (!shown()) { live(); return; }
+    const p = e.payload || {};
+    const c = consoles.get(e.thread || p.thread);
+    if (!c || p.phase === "done") return;
+    c.cur = null;
+    push(c, { cmd: p.tool || "Tool", text: clip(toolText(p), 200) });
+    soon(c);
+  }
+  function onText(e) {
+    if (!shown()) { live(); return; }
+    const p = e.payload || {};
+    const c = consoles.get(e.thread || p.thread);
+    if (!c || p.role === "user" || p.notice) return;
+    if (p.message !== c.msg || !c.cur) { c.msg = p.message; c.buf = ""; c.cur = { text: "" }; push(c, c.cur); }
+    if (p.delta) c.buf += p.delta;
+    if (p.done && typeof p.text === "string") c.buf = p.text;
+    c.cur.text = clip(c.buf.trim().split("\n").filter(l => l.trim()).pop() || "", 200);
+    soon(c);
+  }
+
+  /** Listen while the page is on screen and a console is drawn; otherwise not at all. */
+  function live() {
+    const want = matchMedia(PHONE_QUERY).matches && shown() && consoles.size > 0;
+    if (want && !offs.length) offs = [on("thread.tool", onTool), on("thread.text", onText)];
+    else if (!want && offs.length) for (const f of offs.splice(0)) f();
+  }
+  const onVis = () => live();
+  document.addEventListener("visibilitychange", onVis);
+  // Once a minute, while on screen: the elapsed times move, and a page left behind stops listening.
+  const tick = window.setInterval(() => {
+    live();
+    if (!shown()) return;
+    for (const el of ctx.root.querySelectorAll(".agp-el[data-since]")) el.textContent = since(Number(el.getAttribute("data-since")));
+  }, 60_000);
+  ctx.cleanup(() => {
+    document.removeEventListener("visibilitychange", onVis);
+    clearInterval(tick);
+    for (const f of offs.splice(0)) f();
+    for (const c of consoles.values()) clearTimeout(c.timer);
+  });
+
+  async function schedules() {
+    const all = getAll();
+    const rs = await Promise.all(all.map(a => attempt("watchers.list", { agent: a.name })));
+    const out = [];
+    rs.forEach((r, i) => {
+      if (r.error) return;
+      const list = Array.isArray(r.data) ? r.data : r.data?.watchers || [];
+      for (const x of list) if (x && (x.source === "schedule" || x.cadence || x.schedule) && (!x.agent || x.agent === all[i].name)) out.push({ ...x, agent: x.agent || all[i].name });
+    });
+    scheduled = out;
+  }
+
+  function workingCard(a, w) {
+    const t = w.threads.get(a.thread);
+    const session = t?.name || a.thread;
+    const step = stepOf(t);
+    const started = typeof t?.started === "number" ? t.started : Date.parse(t?.started || "");
+    const status = h("p", { class: "agp-note", role: "status" }, notes.get(a.name) || "");
+    const watch = link(a.computer ? glassHref(a.name) : agentHref(a.name), { class: "agp-btn", "aria-label": `Watch ${a.name}` }, glyph("eye", 20), "Watch");
+    const pause = h("button", { type: "button", class: "agp-btn", "aria-label": `Pause ${a.name}`, onclick: async () => {
+      /** @type {HTMLButtonElement} */ (pause).disabled = true;
+      put(status, `Pausing ${a.name}…`);
+      const r = await attempt("agents.stop", { agent: a.name });
+      if (!ctx.alive()) return;
+      /** @type {HTMLButtonElement} */ (pause).disabled = false;
+      if (r.error) { notes.delete(a.name); put(status, why(r.error)); return; }
+      notes.set(a.name, `Paused. ${a.name} stopped its thread.`);
+      a.status = "idle"; if (a.state) a.state = "idle";
+      put(status, notes.get(a.name));
+    } }, glyph("pause", 20), "Pause");
+    return h("article", { class: "agp-work", "aria-label": `${a.name}, working on ${session}` },
+      h("div", { class: "agp-whead" },
+        tileFor(a, 32, "agp-tile"),
+        h("div", { class: "agp-wid" },
+          h("div", { class: "agp-name" }, a.name),
+          h("div", { class: "agp-on" }, h("span", { class: "agp-live", "aria-hidden": "true" }), h("span", { class: "agp-ontext" }, "Working on ",
+            link(threadHref(a.thread, t?.project || null), { class: "agp-sess" }, session)))),
+        Number.isFinite(started) ? h("span", { class: "agp-el", "data-since": String(started), title: "Running for" }, since(started)) : null),
+      consoleFor(a.thread, t?.activity),
+      step ? h("div", { class: "agp-step" }, h("span", null, `Step ${step.n} of ${step.of}`),
+        h("span", { class: "agp-bar", role: "progressbar", "aria-label": "Steps done", "aria-valuemin": "0", "aria-valuemax": String(step.of), "aria-valuenow": String(step.n) },
+          h("span", { style: { width: `${Math.min(100, Math.round(step.n / step.of * 100))}%` } }))) : null,
+      h("div", { class: "agp-acts" }, watch, pause),
+      status,
+      h("div", { class: "agp-chips" }, projectsText(a, w.names).map(p => h("span", { class: "agp-chip" }, p))));
+  }
+
+  function idleRow(a, w) {
+    const where = a.projects === "*" ? "sees every project" : projectsText(a, w.names).join(", ") || "no projects yet";
+    const role = a.kind === "assistant" ? "Assistant" : a.role || "";
+    return link(agentHref(a.name), { class: "agp-row", "aria-label": `${a.name}${role ? `, ${role}` : ""}. Idle, ${where}.` },
+      tileFor(a, 32, "agp-tile"),
+      h("span", { class: "agp-rmain" },
+        h("span", { class: "agp-rname" }, h("span", { class: "agp-name" }, a.name), role ? h("span", { class: "agp-tag" }, role) : null),
+        h("span", { class: "agp-rsub" }, `Idle · ${where}`)),
+      h("span", { class: "agp-chev" }, glyph("right", 16)));
+  }
+
+  function scheduledRow(x) {
+    const { job, cadence } = scheduleParts(x);
+    const right = x.paused ? "Paused" : inTime(x.next_at || x.next);
+    return link(agentHref(x.agent), { class: "agp-row agp-sched" },
+      h("span", { class: "agp-clock" }, glyph("clock", 22)),
+      h("span", { class: "agp-rmain" }, h("span", { class: "agp-job" }, job), h("span", { class: "agp-rsub" }, [x.agent, cadence].filter(Boolean).join(" · "))),
+      right ? h("span", { class: "agp-when" }, right) : null);
+  }
+
+  function draw(listErr) {
+    const w = getWorld();
+    const all = getAll();
+    if (listErr) return [h("p", { class: "agp-sum" }, "Agents are kept by the switchboard."), empty("No agents can be listed.", listErr)];
+    const assistant = all.find(a => a.kind === "assistant");
+    const ordered = [assistant, ...all.filter(a => a.kind !== "assistant")].filter(Boolean);
+    const working = ordered.filter(isWorking);
+    const idle = ordered.filter(a => !isWorking(a));
+    // Consoles only for what is running now; one that stopped is let go.
+    const keep = new Set(working.map(a => a.thread));
+    for (const [id, c] of consoles) if (!keep.has(id)) { clearTimeout(c.timer); consoles.delete(id); }
+    const cards = working.map(a => workingCard(a, w));
+    live();
+    const others = all.filter(a => a.kind !== "assistant");
+    const sched = (scheduled || []).filter(x => all.some(a => a.name === x.agent));
+    return [
+      all.length ? h("p", { class: "agp-sum" }, `${working.length} working, ${idle.length} idle`) : null,
+      cards,
+      idle.length ? h("div", { class: "agp-card" }, idle.map(a => idleRow(a, w))) : null,
+      assistant && !others.length && form.hidden
+        ? h("div", { class: "agp-empty" }, h("span", null, `Only ${assistant.name} so far.`),
+          h("button", { type: "button", class: "agp-btn agp-new", onclick: openNew }, icon("plus", 16), "New agent")) : null,
+      sched.length ? h("section", { class: "agp-group", "aria-labelledby": "agp-sched-h" }, h("h2", { class: "agp-gh", id: "agp-sched-h" }, "Scheduled"),
+        h("div", { class: "agp-card" }, sched.map(scheduledRow))) : null,
+    ];
+  }
+
+  return { draw, schedules, live };
+}
+
+/** A teammate: its character (seeded from its teammate id), its role, the Teammate tag, its project and state. */
+function teammateRow(t, w) {
+  const state = t.state === "working" ? "Working" : t.queued ? `${t.queued} queued` : "Asleep";
+  return h("div", { class: "ag-team-row", "aria-label": `${t.role}, Teammate in ${nameOf(w.names, t.project)}. ${state}.` },
+    teammateAvatar(String(t.agent || ""), { size: 40, cls: "ag-av", project: t.project }),
+    h("span", { class: "ag-team-main" },
+      h("span", { class: "ag-team-name" }, h("span", { class: "ag-name" }, t.role), h("span", { class: "tag" }, "Teammate")),
+      h("span", { class: "small faint ellipsis" }, `${nameOf(w.names, t.project)} · ${state}`)));
 }
 
 function agentRow(a, w) {
   const d = doing(a, w);
   const where = projectsText(a, w.names);
   return link(agentHref(a.name), { class: "ag-row" },
-    h("span", { class: "ag-tile", "aria-hidden": "true" }, initial(a.name)),
+    tileFor(a, 40, "ag-av"),
     h("span", { class: "ag-row-main" },
       h("span", { class: "ag-row-name" }, h("span", { class: "ag-name" }, a.name),
         a.kind === "assistant" ? h("span", { class: "tag" }, "Assistant") : null,
@@ -157,7 +459,7 @@ function newForm(w, { done }) {
   const keyVault = /** @type {HTMLInputElement} */ (h("input", { class: "input", value: VAULT_KEY, "aria-label": "Vault item for the API key", list: "na-vault", spellcheck: "false" }));
   const budget = /** @type {HTMLInputElement} */ (h("input", { class: "input na-budget", type: "number", min: "1", step: "1", value: "10", "aria-label": "Monthly budget in US dollars" }));
   const fallback = /** @type {HTMLInputElement} */ (h("input", { type: "checkbox", checked: true }));
-  const computer = /** @type {HTMLInputElement} */ (h("input", { type: "checkbox" }));
+  const computer = /** @type {HTMLInputElement} */ (h("input", { type: "checkbox", id: "na-computer" }));
   const vaultList = h("datalist", { id: "na-vault" });
   attempt("vault.list").then(r => {
     const items = Array.isArray(r.data) ? r.data : r.data?.items || [];
@@ -177,6 +479,19 @@ function newForm(w, { done }) {
   fallback.addEventListener("change", drawAuth);
   drawAuth();
 
+  // No projects yet: make the first one right here, and it comes in ticked.
+  const projGroup = h("div", { role: "group", "aria-labelledby": "na-where", class: "na-projects" });
+  const drawProjects = () => put(projGroup, slugs.length ? slugs.map((s, i) => h("label", { class: "na-pick" }, boxes[i], nameOf(w.names, s)))
+    : [h("span", { class: "small faint" }, "No projects yet. It will see none until you add some."),
+      createProjectInline({ primary: false, onCreated: (slug, pname) => {
+        if (!slug) return;
+        w.names.set(slug, pname);
+        slugs.push(slug);
+        boxes.push(/** @type {HTMLInputElement} */ (h("input", { type: "checkbox", value: slug, checked: true })));
+        drawProjects();
+      } })]);
+  drawProjects();
+
   const create = h("button", { type: "submit", class: "btn btn-primary" }, "Create agent");
   const submit = async (/** @type {Event} */ e) => {
     e.preventDefault();
@@ -191,10 +506,16 @@ function newForm(w, { done }) {
     const input = { name: n, kind: "agent", projects, instructions: instr.value.trim(), auth: a, computer: computer.checked };
     /** @type {HTMLButtonElement} */ (create).disabled = true;
     put(status, "Creating…");
-    const r = await attempt("agents.create", input);
+    const r = await createAgent(input, attempt);
     /** @type {HTMLButtonElement} */ (create).disabled = false;
     if (r.error) { put(status, r.error.missing ? `${why(r.error)} The agent was not created.` : why(r.error)); return; }
-    done({ ...input, role: "", state: "idle", skills: [], model: MODELS[1].id, ...(r.data && typeof r.data === "object" ? { name: r.data.name === "new-agent" ? n : r.data.name || n } : {}) });
+    // Made, but the computer was refused: say so and point at its page, whose button tries again.
+    if (r.computerError) {
+      /** @type {HTMLButtonElement} */ (create).disabled = true;
+      put(status, `${n} was made, but not given a computer: ${why(r.computerError)} `, link(agentHref(n), { class: "link" }, `Open ${n}`));
+      return;
+    }
+    done({ ...input, role: "", state: "idle", skills: [], model: MODELS[1].id, ...(r.data ? { name: r.data.name === "new-agent" ? n : r.data.name || n, computer: r.data.computer ?? input.computer } : {}) });
   };
 
   return h("form", { class: "na", onsubmit: submit, novalidate: true },
@@ -203,9 +524,7 @@ function newForm(w, { done }) {
       h("label", { class: "na-k lbl", for: "na-name" }, "Name"),
       h("div", null, name, h("div", { class: "small faint na-hint", id: "na-name-hint" }, "Lowercase, one word. It signs its threads with it.")),
       h("span", { class: "na-k lbl", id: "na-where" }, "Works in"),
-      h("div", { role: "group", "aria-labelledby": "na-where", class: "na-projects" },
-        slugs.length ? slugs.map((s, i) => h("label", { class: "na-pick" }, boxes[i], nameOf(w.names, s)))
-          : h("span", { class: "small faint" }, "No projects yet. It will see none until you add some.")),
+      projGroup,
       h("label", { class: "na-k lbl", for: "na-job" }, "Job"),
       instr,
       h("span", { class: "na-k lbl", id: "na-authl" }, "Runs on"),
@@ -280,7 +599,7 @@ async function board(ctx, agentName) {
       ? h("button", { type: "button", class: "btn btn-primary", disabled: true, title: glassWhy }, icon("watch", 14), "Open Glass")
       : link(glassHref(nm), { class: "btn btn-primary" }, icon("watch", 14), "Open Glass");
     put(headEl,
-      h("span", { class: "ab-tile", "aria-hidden": "true" }, initial(nm)),
+      tileFor(a, 56, "ab-av"),
       h("div", { class: "ab-id" },
         h("div", { class: "ab-name" }, h("h1", { class: "h2" }, nm),
           a.kind === "assistant" ? h("span", { class: "tag" }, "Assistant") : null,
@@ -325,7 +644,8 @@ function drawJob(sec, a, w, stub, listErr) {
     const edit = h("button", { type: "button", class: "link ab-edit", disabled: stub, onclick: () => editing() }, "Edit");
     put(sec, sectionHead("ab-job", "Job", stub ? null : edit),
       stub ? empty(`${a.name}'s job is kept by the switchboard.`, listErr)
-        : h("p", { class: "ab-job" }, a.instructions || h("span", { class: "faint" }, "No instructions yet.")),
+        : a.instructions ? h("p", { class: "ab-job" }, a.instructions)
+        : h("div", { class: "ab-job" }, h("span", { class: "faint" }, "No instructions yet."), action("Write its job", () => editing())),
       stub ? null : h("div", { class: "ab-where" }, h("span", { class: "small faint" }, "Works in"), where),
       status);
   };
@@ -381,7 +701,14 @@ function drawWakes(sec, a, w, ctx) {
     if (!ctx.alive()) return;
     if (r.error) { put(body, empty(`${a.name} wakes only when you talk to it.`, r.error)); return; }
     const list = (Array.isArray(r.data) ? r.data : r.data?.watchers || []).filter(x => !x.agent || x.agent === a.name);
-    if (!list.length) { put(body, h("div", { class: "empty" }, `Nothing wakes ${a.name} yet. It works when you talk to it.`)); return; }
+    // None yet: the way to add one (the Add watcher note) is shown open, right under this line.
+    if (!list.length) {
+      note.hidden = false;
+      add.setAttribute("aria-expanded", "true");
+      put(body, h("div", { class: "empty" }, `Nothing wakes ${a.name} yet. It works when you talk to it.`));
+      body.after(note);
+      return;
+    }
     put(body, list.map(x => watcherRow(x, w)));
   });
 }

@@ -5,61 +5,9 @@ import net from "node:net";
 import crypto from "node:crypto";
 import { Glass, Pacer } from "./glass.js";
 import { encodeClientFrame } from "./ws.js";
+import { fakeXvnc } from "../../test/fixtures/fake-xvnc.js";
 
 const PASSWORD = "s3cr3t8!";
-
-/** A minimal RFB server: enough of the real handshake for rfb.js's clientHandshake to complete
- * against it, offering security type None so DES is not in the loop (that belongs to rfb.js's
- * own tests, not Glass's). After the handshake it hands the test raw access to what arrives and
- * a way to push bytes toward Glass, standing in for Xvnc. */
-function fakeXvnc({ width = 800, height = 600, name = "agent's screen" } = {}) {
-  return new Promise((resolve, reject) => {
-    const server = net.createServer();
-    const received = [];
-    /** @type {import("node:net").Socket|null} */
-    let sock = null;
-    server.on("connection", s => {
-      sock = s;
-      s.write("RFB 003.008\n");
-      let stage = 0, buf = Buffer.alloc(0);
-      s.on("data", d => {
-        buf = Buffer.concat([buf, d]);
-        if (stage === 0 && buf.length >= 12) {
-          buf = buf.subarray(12);
-          s.write(Buffer.from([1, 1])); // one security type: None
-          stage = 1;
-        }
-        if (stage === 1 && buf.length >= 1) {
-          buf = buf.subarray(1); // the chosen type
-          s.write(Buffer.alloc(4)); // security-result: OK
-          stage = 2;
-        }
-        if (stage === 2 && buf.length >= 1) {
-          buf = buf.subarray(1); // ClientInit shared flag
-          const nameBuf = Buffer.from(name, "utf8");
-          const head = Buffer.alloc(24);
-          head.writeUInt16BE(width, 0);
-          head.writeUInt16BE(height, 2);
-          head.writeUInt32BE(nameBuf.length, 20);
-          s.write(Buffer.concat([head, nameBuf]));
-          stage = 3;
-          return;
-        }
-        if (stage === 3 && buf.length) { received.push(Buffer.from(buf)); buf = Buffer.alloc(0); }
-      });
-    });
-    server.listen(0, "127.0.0.1", () => {
-      const addr = /** @type {import("node:net").AddressInfo} */ (server.address());
-      resolve({
-        port: addr.port,
-        received,
-        send: b => sock && sock.write(b),
-        close: () => new Promise(r => server.close(() => r(undefined))),
-      });
-    });
-    server.on("error", reject);
-  });
-}
 
 /** A raw TCP client standing in for the browser's WebSocket, so it can send masked frames and
  * read unmasked ones the way noVNC's transport actually does. */

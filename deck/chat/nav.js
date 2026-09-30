@@ -12,6 +12,7 @@
 
 import { h, link, go } from "../js/dom.js";
 import { icon } from "../js/icons.js";
+import { projectAvatar } from "../js/avatars.js";
 import { threadHref, projectHref } from "./lib/routes.js";
 import { groupSessions, title } from "./lib/sessions.js";
 import { machineChip } from "../js/machine.js";
@@ -59,7 +60,7 @@ function groups(projects, rows, route, q, onChange) {
 
 function projectGroup(p, rows, route, onChange) {
   const isOpen = open.has("p:" + p.slug) || route.project === p.slug;
-  const label = [link(projectHref(p.slug), { class: "ellipsis link quiet", style: { flexGrow: "1", color: "inherit" }, onclick: e => e.stopPropagation() }, p.name), machineChip(p)];
+  const label = [projectAvatar(p.slug, { size: 20, cls: "nav-pj-av" }), link(projectHref(p.slug), { class: "ellipsis link quiet", style: { flexGrow: "1", color: "inherit" }, onclick: e => e.stopPropagation() }, p.name), machineChip(p)];
   return disclose("p:" + p.slug, label, rows.length, () =>
     h("div", { class: "rail-sub" }, rows.length ? rows.map(t => threadLink(t, route, p.slug)) : h("div", { class: "empty", style: { padding: "4px 10px" } }, "No sessions yet")),
     false, isOpen, onChange);

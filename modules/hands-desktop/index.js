@@ -15,10 +15,13 @@
 // client.js already scrubs it from every error string it raises, and nothing here holds it
 // past the one client it was built for.
 
+import { callerKind, agentClaim } from "../../core/modules/index.js";
 import { createClient } from "./client.js";
 import * as snapshot from "./snapshot.js";
 import * as act from "./act.js";
 
+/** Callers that are the person at one of their own surfaces, who may say which thread a step is for. */
+const PERSON_SURFACES = new Set(["cli", "local", "deck", "capsule"]);
 const str = { type: "string" };
 const obj = (properties, required = []) => ({ type: "object", properties, required });
 const AGENT = /^[a-z][a-z0-9-]{0,40}$/;
@@ -41,12 +44,18 @@ export default {
      * core/computers/index.js's resolve(): computers.endpoint is reached through ctx.call, which
      * forwards as "module:hands-desktop", so computers's own per-agent check never sees the real
      * caller and cannot enforce this on our behalf.
+     *
+     * This used to match only the exact shape "mcp:agent:<name>"; a caller vouched under another
+     * transport ("cli agent:<name>", the shape a person's own CLI gets when an agent runs inside
+     * it) fell through to the trusted-caller branch below and could name any agent's computer as
+     * if it were the CLI itself (e2e review, 2026-09-28). `agentClaim` (core/modules, shared with
+     * computers.js's ownSurface and sight) finds the claim under any transport, so the same
+     * self-or-assistant rule now applies whichever way the agent's identity reached this call.
      */
     const resolveAgent = async (input, caller) => {
-      const m = /^mcp:agent:(.+)$/.exec(String(caller || ""));
+      const self = agentClaim(caller);
       let agent;
-      if (m) {
-        const self = m[1];
+      if (self) {
         if (!input.agent || input.agent === self) agent = self;
         else if ((await kindOf(self)) === "assistant") agent = input.agent;
         else throw new Error(`${self} can only use its own computer, not ${input.agent}'s`);
@@ -119,13 +128,14 @@ export default {
         return { apps: await (await clientFor(agent, i.thread)).apps() };
       });
 
-    tool("hands-desktop.screenshot", "A PNG of the agent's whole display, base64-encoded.",
-      obj({ agent: str, thread: str }, ["agent"]),
+    tool("hands-desktop.screenshot", "The agent's whole display, base64-encoded: a PNG, or with format jpeg a JPEG scaled down to maxWidth (160-1920, default 640), the small still a phone shows.",
+      obj({ agent: str, thread: str, format: { type: "string", enum: ["png", "jpeg"] }, maxWidth: { type: "integer", minimum: 160, maximum: 1920 } }, ["agent"]),
       async (i, { caller }) => {
         const agent = await resolveAgent(i, caller);
         await mayRead(agent, "hands-desktop.screenshot");
-        const png = await (await clientFor(agent, i.thread)).screenshot();
-        return { image: png.toString("base64"), mime: "image/png" };
+        const jpeg = i.format === "jpeg";
+        const bytes = await (await clientFor(agent, i.thread)).screenshot(jpeg ? { format: "jpeg", width: i.maxWidth } : {});
+        return { image: bytes.toString("base64"), mime: jpeg ? "image/jpeg" : "image/png" };
       });
 
     tool("hands-desktop.act",
@@ -136,7 +146,8 @@ export default {
         action: { type: "string", enum: ["press", "focus", "set-text"] },
         value: str,
       }, ["agent", "name"]),
-      async (i, { caller }) => {
+      async (i, meta) => {
+        const { caller } = meta;
         const agent = await resolveAgent(i, caller);
         await mayRead(agent, "hands-desktop.act");
         const client = await clientFor(agent, i.thread);
@@ -148,9 +159,20 @@ export default {
           decide: decideFor({ name: i.name, role: i.role }),
           click: clickWith(client, agent)(actionName, i.value),
         });
+        // The thread is the one vyred traced the call to. A person's own surface may name one; any
+        // other caller naming a thread would put its steps in someone else's chat (e2e review).
+        // The call links the step to the chat row that asked for it (ADR 0036), as a link only.
+        const kind = callerKind(caller);
+        // callerKind drops an agent label ("cli agent:kit" is "cli"): an agent vouched on a person's
+        // surface is still an agent, and names no thread.
+        const person = PERSON_SURFACES.has(kind) && !/(?:^|[\s:])agent:/.test(String(caller));
+        const thread = meta.thread ? String(meta.thread) : i.thread && person ? String(i.thread) : null;
+        const line = (/** @type {unknown} */ x) => String(x ?? "").replace(/\s+/g, " ").trim().slice(0, 200);
         ctx.events.emit("desktop.acted",
-          { agent, action: actionName, summary: i.name, ok: result.ok, ...(result.ok ? {} : { why: result.why }) },
-          i.thread ? { thread: i.thread } : {});
+          { agent, action: actionName, summary: line(i.name), ok: result.ok, ...(i.app ? { app: line(i.app) } : {}),
+            ...(thread ? { thread } : {}), ...(meta.call ? { call: String(meta.call) } : {}),
+            ...(result.ok ? {} : { why: line(result.why) }) },
+          thread ? { thread } : {});
         return result;
       });
 

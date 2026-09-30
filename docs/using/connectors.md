@@ -22,6 +22,8 @@ You manage both in the Deck, under Settings, Connections, or from the terminal w
 
 ## Add an MCP server
 
+![Settings, Connections: the harlow-docs MCP server with its tools and the projects it serves, and Harlow Legal's Google account, each with Test and Remove, and the buttons to add more.](shots/settings-connections.png)
+
 Put the server's credential in the vault first. Values are never typed on the command line:
 
 ```
@@ -123,8 +125,10 @@ vyre connect add google work --email alex@harlowlegal.com --item harlow-google-s
 message names the scopes to allow for its client ID in the Google Workspace admin console, under
 Security, API controls, Domain-wide delegation.
 
-Coming next: a **Sign in with Google** button in the Deck that runs the consent flow and puts the
-refresh token in the vault for you (the `google.connect` tools already exist in the module).
+To sign in with a browser instead, run `vyre connect add google home --sign-in`. It opens
+Google's consent page, finds the address itself and puts the refresh token in the vault. It uses
+the OAuth client in the vault item `google-oauth-client` unless you name another with `--client`.
+A **Sign in with Google** button in the Deck is coming next.
 
 What Vyre does with the account:
 
@@ -134,6 +138,40 @@ What Vyre does with the account:
   mails each of them an invite. A draft and an event with no attendees are written directly.
 - Each account is its own sender at the Gate, so you see which address a message would leave
   from.
+
+## Send an email from any account
+
+Every mail account you connect works the same way: a Google account (OAuth or a Workspace
+service account), an MCP server that reads and sends mail, your own Google Apps Script web app,
+or any mailbox over IMAP and SMTP. You can connect several at once, and several of one kind. Each
+one is a connection in Vault, Connections, where you choose which surfaces may use it: the
+Capsule and chats by default, agents only when you turn them on.
+
+In the Capsule, type **send an email**. You get one row per account you may send from, such as
+"Send from alex@harlow.example". Words you add are filled in: "email dana@northwind-bakery.example
+about the order" sets the address and the subject, "write to dana saying the rota is ready" finds
+Dana's address in your mail and sets the body. Press Return on a row and the message waits at the
+Gate, where you finish it and approve it with Touch ID. "email from dana" lists messages across
+your accounts instead.
+
+A chat or an agent uses the same three tools: `mail.accounts` lists the accounts it may use,
+`mail.search` and `mail.read` read, and `mail.send` is always held at the Gate. With more than one
+account it has to say which; it never picks one for you.
+
+**IMAP and SMTP.** In Vault, Connections, pick **Email (IMAP and SMTP)** and fill in the servers,
+the ports, your username, the password (often an app password), and TLS or STARTTLS. Vyre never
+connects without TLS. Grant the connection to `mail`.
+
+**Apps Script.** For a Gmail account where you cannot add an OAuth client, paste
+`core/mail/apps-script.gs` into a new project at script.google.com, set the script property
+`vyre_token` to a long random value, and deploy it as a web app that runs as you with access for
+Anyone. Put the `/exec` address and the token in Vault, Connections as **Google Apps Script web
+app**. The token travels in the request body, never in the address.
+
+**An MCP mail server.** Add the server as in [Add an MCP server](#add-an-mcp-server). Vyre reads
+its tools and guesses which one sends, searches and reads. The `mail.map` tool shows the guess,
+and you can correct it with the same tool. Its sends are held even if you marked the
+tool as a read.
 
 ## What it never does
 
@@ -151,7 +189,7 @@ outside the vault and the Gate.
 
 ## Next
 
-- [Tools reference](../reference/tools.md): every `mcp.*` and `google.*` tool.
+- [Tools reference](../reference/tools.md): every `mcp.*`, `google.*` and `mail.*` tool.
 - [CLI reference](../reference/cli.md): `vyre connect` and `vyre mcp`.
 - [Vyre in Claude Code](claude-code.md): the plugin for a `claude` you start yourself.
 - [The MCP hub](../build/mcp-hub.md), for builders.

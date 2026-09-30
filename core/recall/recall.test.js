@@ -11,7 +11,7 @@ import path from "node:path";
 import { open, migrate } from "../store/index.js";
 import { MIGRATIONS } from "./schema.js";
 import { Indexer } from "./indexer.js";
-import { search, thread, sessions, anyOf, floorFor } from "./search.js";
+import { search, thread, sessions, anyOf, floorFor, prefixOf } from "./search.js";
 import { Dense } from "./dense.js";
 import { chunks, encode, decode, cosine, CHUNK } from "./embed.js";
 import { SESSIONS, writeTranscripts, seedRecall } from "../../test/fixtures/corpus.js";
@@ -258,6 +258,12 @@ test("recall: search filters by role, by project folders and caps hits per sessi
   assert.equal((await search(e.db, { q: "intake", project_cwds: ["/home/alex/Work/harlow"] })).hits.length, 0, "a folder matched another folder that only starts with the same letters");
   const one = (await search(e.db, { q: "intake form", per_session: 1 })).hits;
   assert.equal(new Set(one.map(h => h.session)).size, one.length);
+  // A project's attached sessions count wherever they ran; alone they scope as tightly.
+  const outside = under.find(h => h.cwd !== "/home/alex/Work/harlow-site");
+  const joined = (await search(e.db, { q: "intake", project_cwds: ["/home/alex/Work/harlow-site/"], sessions: [outside.session] })).hits;
+  assert.ok(joined.some(h => h.session === outside.session), "an attached session outside the folder was missed");
+  assert.ok(joined.every(h => h.cwd === "/home/alex/Work/harlow-site" || h.session === outside.session));
+  assert.ok((await search(e.db, { q: "intake", sessions: [outside.session] })).hits.every(h => h.session === outside.session));
 });
 
 test("recall: FTS grammar in a query is a search, not a crash", async t => {
@@ -377,6 +383,12 @@ test("recall: dense retrieval honours role and project folders", async t => {
   assert.ok(asst.every(h => h.role === "assistant"));
   const elsewhere = (await search(e.db, { q: "blind visitors", project_cwds: ["/home/alex/Work/northwind"] }, emb, dense)).hits;
   assert.ok(elsewhere.every(h => h.cwd === "/home/alex/Work/northwind"), "a dense hit came from outside the project");
+  const all = (await search(e.db, { q: "blind visitors" }, emb, dense)).hits;
+  const far = all.find(h => h.cwd !== "/home/alex/Work/northwind");
+  if (far) {
+    const joined = (await search(e.db, { q: "blind visitors", project_cwds: ["/home/alex/Work/northwind"], sessions: [far.session] }, emb, dense)).hits;
+    assert.ok(joined.some(h => h.session === far.session), "dense missed an attached session");
+  }
 });
 
 test("recall: the exact keyword matches stay pinned when meaning disagrees", async t => {
@@ -482,4 +494,18 @@ test("recall: vectors that arrive during a build are not lost", async t => {
   await building;
   assert.equal(dense.stats()?.chunks, 3);
   assert.equal((await search(e.db, { q: "blind visitors" }, emb, dense)).hits[0]?.seq, 2);
+});
+
+test("recall: prefix mode completes what is typed: every word a prefix, keyword only", async t => {
+  const db = open(path.join(tempHome(t), "vyre.db"));
+  t.after(() => db.close());
+  seedRecall(db, SESSIONS);
+  assert.equal(prefixOf("harl inta"), '"harl"* "inta"*');
+  assert.equal(prefixOf("  "), null);
+  const hits = (await search(db, { q: "harl inta", prefix: true, per_session: 1 })).hits;
+  assert.ok(hits.length > 0);
+  assert.ok(hits.every(h => /harl/i.test(h.text) && /inta/i.test(h.text)), JSON.stringify(hits.map(h => h.text)));
+  // A half word in FTS5's grammar is still a prefix, never an error.
+  assert.deepEqual((await search(db, { q: "north-(", prefix: true })).hybrid, false);
+  assert.deepEqual((await search(db, { q: "zzzqx", prefix: true })).hits, []);
 });

@@ -1,0 +1,490 @@
+/* Vyre Deck, Direction B second pass. The reduced system:
+   2 families (Instrument Sans for everything, JetBrains Mono for code, commands, paths and IDs),
+   5 sizes (12/16, 13/18, 15/22, 20/26, 28/34), 2 weights (400, 600),
+   8 neutrals per theme, lime as the one accent (primary action, focus, running), violet for
+   "needs you" as a dot and a label only. No other hue. Values match core/config/palette.js. */
+
+.t-dark {
+  --bg: #0E0D0C; --panel: #161513; --hover: #1E1C1A; --rule: #2B2926; --rule-strong: #3A3733;
+  --text: #F1EEE6; --text-2: #B3AEA4; --label: #8C877D;
+  --primary-bg: #C6F36B; --primary-hover: #D4F88A; --primary-ink: #0E0D0C;
+  --focus: #C6F36B; --signal-wash: rgba(198,243,107,0.12); --del-wash: rgba(140,135,125,0.14);
+  --beacon-ink: #B8A4FF; --beacon-dot: #B8A4FF;
+  --code-bg: #121110; --scrim: rgba(0,0,0,0.6);
+  --popover: 0 16px 40px -12px rgba(0,0,0,0.7), 0 0 0 1px var(--rule-strong);
+  --mark-wire: #F1EEE6; --mark-dot: #C6F36B;
+  color-scheme: dark;
+}
+.t-light {
+  --bg: #F4F1EA; --panel: #FBFAF6; --hover: #EEEAE2; --rule: #DCD7CC; --rule-strong: #C9C3B7;
+  --text: #141311; --text-2: #4A463F; --label: #6B665D;
+  --primary-bg: #141311; --primary-hover: #4A463F; --primary-ink: #F4F1EA;
+  --focus: #46700C; --signal-wash: rgba(70,112,12,0.10); --del-wash: rgba(107,102,93,0.10);
+  --beacon-ink: #5B3FC4; --beacon-dot: #5B3FC4;
+  --code-bg: #F0EDE5; --scrim: rgba(20,19,17,0.3);
+  --popover: 0 16px 40px -12px rgba(20,19,17,0.25), 0 0 0 1px var(--rule-strong);
+  --mark-wire: #141311; --mark-dot: #141311;
+  color-scheme: light;
+}
+/* The one alternative attention colour, shown on the options board only. */
+.t-dark .att-teal, .t-dark.att-teal { --beacon-ink: #5FD4C4; --beacon-dot: #5FD4C4; }
+.t-light .att-teal, .t-light.att-teal { --beacon-ink: #0B6E66; --beacon-dot: #0B6E66; }
+
+.vy { position: relative; overflow: hidden; display: flex; background: var(--bg); color: var(--text);
+  font-family: 'Instrument Sans', 'Helvetica Neue', Arial, sans-serif; font-size: 13px; line-height: 18px; font-weight: 400;
+  font-variant-numeric: tabular-nums; -webkit-font-smoothing: antialiased; box-sizing: border-box; }
+.vy *, .vy *::before, .vy *::after { box-sizing: border-box; }
+:where(.vy) :where(h1, h2, h3, p) { margin: 0; font-weight: inherit; font-size: inherit; line-height: inherit; }
+:where(.vy) :where(button, input, textarea) { font: inherit; color: inherit; }
+:where(.vy) :where(a) { color: inherit; text-decoration: none; }
+.vy :focus-visible, .vy .is-focus { outline: 2px solid var(--focus); outline-offset: 2px; }
+
+/* Type: five sizes, two weights. Nothing else. */
+.t12 { font-size: 12px; line-height: 16px; }
+.t13 { font-size: 13px; line-height: 18px; }
+.t15 { font-size: 15px; line-height: 22px; }
+.t20 { font-size: 20px; line-height: 26px; letter-spacing: -0.01em; }
+.t28 { font-size: 28px; line-height: 34px; letter-spacing: -0.02em; }
+.w6 { font-weight: 600; }
+.mono { font-family: 'JetBrains Mono', ui-monospace, Menlo, monospace; font-variant-numeric: normal; }
+.t2 { color: var(--text-2); }
+.t3 { color: var(--label); }
+.bea { color: var(--beacon-ink); }
+/* A section label: 12, 600, sentence case, ash. Never mono caps. */
+.lbl { font-size: 12px; line-height: 16px; font-weight: 600; color: var(--label); }
+.lbl.bea { color: var(--beacon-ink); }
+/* Meta on a tint steps up one level (ash on a wash falls under 4.5:1). */
+.li-sel .t3, .chip-on .t3, .choice-on .t3, .tile-on .t3 { color: var(--text-2); }
+
+/* Icons: 16 grid, 1.5 stroke, currentColor. */
+.ic { width: 16px; height: 16px; flex: none; fill: none; stroke: currentColor; stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; }
+.ic-12 { width: 12px; height: 12px; }
+.ic-20 { width: 20px; height: 20px; }
+.mk-w { stroke: var(--mark-wire); }
+.mk-d { fill: var(--mark-dot); }
+
+/* Buttons: sentence case, 13/600. Primary is lime (paper: ink). One primary per surface. */
+.vy .btn { display: inline-flex; align-items: center; justify-content: center; gap: 8px; height: 32px; padding: 0 12px;
+  border-radius: 8px; border: 1px solid var(--rule-strong); background: transparent; color: var(--text);
+  font-size: 13px; line-height: 18px; font-weight: 600; white-space: nowrap; cursor: pointer; transition: background 120ms ease-out; }
+.vy .btn:hover { background: var(--hover); }
+.vy .btn-p { background: var(--primary-bg); border-color: var(--primary-bg); color: var(--primary-ink); }
+.vy .btn-p:hover { background: var(--primary-hover); border-color: var(--primary-hover); }
+.vy .btn-g { border-color: transparent; }
+.vy .btn-sm { height: 28px; padding: 0 10px; }
+.vy .btn[disabled] { color: var(--label); border-color: var(--rule); background: transparent; cursor: default; }
+.vy .btn-p[disabled] { background: var(--hover); border-color: var(--hover); color: var(--label); }
+.btn .k { font-size: 12px; font-weight: 400; color: var(--label); }
+.btn-p .k { color: var(--primary-ink); }
+.vy .btn-p[disabled] .k { color: var(--label); }
+.ibtn { display: inline-flex; align-items: center; justify-content: center; width: 32px; height: 32px; border-radius: 8px;
+  border: 0; background: transparent; color: var(--text-2); cursor: pointer; padding: 0; flex: none; }
+.ibtn:hover { background: var(--hover); color: var(--text); }
+.ibtn-sm { width: 28px; height: 28px; }
+.kbd { display: inline-flex; align-items: center; justify-content: center; min-width: 20px; height: 20px; padding: 0 5px;
+  border: 1px solid var(--rule-strong); border-radius: 5px; font-family: 'JetBrains Mono', ui-monospace, Menlo, monospace;
+  font-size: 12px; line-height: 16px; color: var(--label); background: transparent; flex: none; }
+.li-sel .kbd { color: var(--text-2); }
+
+/* Marks */
+.dot { width: 8px; height: 8px; border-radius: 4px; flex: none; background: var(--label); }
+.dot-run { background: var(--focus); }
+.dot-need { background: var(--beacon-dot); }
+.dot-idle { background: transparent; box-shadow: inset 0 0 0 1.5px var(--label); }
+.badge { min-width: 18px; height: 18px; padding: 0 5px; border-radius: 9px; background: var(--beacon-dot); color: var(--primary-ink);
+  font-size: 12px; line-height: 16px; font-weight: 600; display: inline-flex; align-items: center; justify-content: center; flex: none; }
+.count { min-width: 18px; height: 18px; padding: 0 5px; border-radius: 9px; background: var(--hover); color: var(--text-2);
+  font-size: 12px; line-height: 16px; font-weight: 600; display: inline-flex; align-items: center; justify-content: center; flex: none; }
+.av { width: 24px; height: 24px; border-radius: 6px; background: var(--hover); color: var(--text); flex: none;
+  display: inline-flex; align-items: center; justify-content: center; font-size: 12px; line-height: 16px; font-weight: 600; }
+.av-32 { width: 32px; height: 32px; border-radius: 8px; font-size: 13px; }
+.av-40 { width: 40px; height: 40px; border-radius: 10px; font-size: 15px; }
+.av-me { border-radius: 50%; }
+.chip { display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 10px; border-radius: 14px;
+  border: 1px solid var(--rule-strong); color: var(--text-2); font-size: 13px; line-height: 18px; white-space: nowrap; background: transparent; cursor: pointer; }
+.chip:hover { color: var(--text); background: var(--hover); }
+.chip-on { border-color: var(--focus); background: var(--signal-wash); color: var(--text); }
+.tag { display: inline-flex; align-items: center; height: 20px; padding: 0 6px; border-radius: 5px; background: var(--hover);
+  font-size: 12px; line-height: 16px; color: var(--text-2); white-space: nowrap; }
+
+/* Fields */
+.fl { display: flex; flex-direction: column; gap: 6px; }
+.fl-l { font-size: 12px; line-height: 16px; font-weight: 600; color: var(--text-2); }
+.fl-h { font-size: 12px; line-height: 16px; color: var(--label); }
+.inp { height: 32px; padding: 0 10px; border-radius: 8px; border: 1px solid var(--rule-strong); background: var(--bg);
+  color: var(--text); font-size: 13px; line-height: 18px; display: flex; align-items: center; gap: 8px; width: 100%; outline: none; }
+.inp-lg { height: 40px; padding: 0 12px; font-size: 15px; line-height: 22px; }
+.inp-ph { color: var(--label); }
+.inp-focus { border-color: var(--focus); box-shadow: 0 0 0 1px var(--focus); }
+.ta { padding: 10px 12px; border-radius: 8px; border: 1px solid var(--rule-strong); background: var(--bg); color: var(--text);
+  font-size: 15px; line-height: 22px; width: 100%; }
+.seg { display: inline-flex; padding: 2px; gap: 2px; border-radius: 8px; background: var(--hover); }
+.seg button { height: 28px; padding: 0 12px; border-radius: 6px; border: 0; background: transparent; color: var(--text-2); font-size: 13px; cursor: pointer; }
+.seg .on { background: var(--panel); color: var(--text); font-weight: 600; box-shadow: 0 0 0 1px var(--rule-strong); }
+.tog { width: 32px; height: 18px; border-radius: 9px; background: var(--rule-strong); position: relative; flex: none; border: 0; padding: 0; cursor: pointer; }
+.tog::after { content: ""; position: absolute; top: 2px; left: 2px; width: 14px; height: 14px; border-radius: 7px; background: var(--text); transition: transform 160ms ease-out; }
+.tog-on { background: var(--primary-bg); }
+.tog-on::after { transform: translateX(14px); background: var(--primary-ink); }
+.chk { width: 16px; height: 16px; border-radius: 4px; box-shadow: inset 0 0 0 1.5px var(--rule-strong); display: inline-flex; align-items: center; justify-content: center; flex: none; }
+.chk-on { background: var(--text); box-shadow: none; color: var(--bg); }
+.radio { width: 16px; height: 16px; border-radius: 8px; box-shadow: inset 0 0 0 1.5px var(--rule-strong); flex: none; position: relative; }
+.radio-on { box-shadow: inset 0 0 0 1.5px var(--focus); }
+.radio-on::after { content: ""; position: absolute; inset: 4px; border-radius: 4px; background: var(--focus); }
+
+/* Layout helpers */
+.row { display: flex; align-items: center; gap: 12px; }
+.col { display: flex; flex-direction: column; }
+.grow { flex: 1 1 auto; min-width: 0; }
+.trunc { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+.hr { height: 1px; background: var(--rule); flex: none; }
+
+/* Surfaces. A card is panel plus a hairline. Nothing inside a card gets its own box, except code. */
+.card { background: var(--panel); border: 1px solid var(--rule); border-radius: 12px; }
+.card-h { display: flex; align-items: center; gap: 8px; height: 44px; padding: 0 16px; flex: none; }
+.card-f { display: flex; align-items: center; gap: 8px; padding: 12px 16px; border-top: 1px solid var(--rule); flex: none; }
+.sheet { background: var(--panel); border-radius: 12px; box-shadow: var(--popover); }
+
+/* Lists: the daily surface. 44px rows (36 in compact), one line of title, one of meta. */
+.list { background: var(--panel); border: 1px solid var(--rule); border-radius: 12px; overflow: hidden; }
+.li { display: flex; align-items: center; gap: 12px; min-height: 44px; padding: 6px 16px; border-top: 1px solid var(--rule); cursor: pointer; }
+.li:first-child, .list-h + .li { border-top: 0; }
+.li:hover { background: var(--hover); }
+.li-sel { background: var(--signal-wash); }
+.li-sel:hover { background: var(--signal-wash); }
+.li.is-focus { outline-offset: -2px; border-radius: 0; }
+.list-h { display: flex; align-items: center; gap: 12px; height: 32px; padding: 0 16px; border-bottom: 1px solid var(--rule); }
+.dense .li { min-height: 36px; padding: 4px 16px; }
+
+/* States */
+.banner { display: flex; align-items: center; gap: 12px; min-height: 40px; padding: 8px 12px 8px 16px; border-radius: 10px; background: var(--hover); }
+.sk { background: var(--hover); border-radius: 4px; height: 10px; }
+.sk-shine { background: linear-gradient(90deg, var(--hover) 0%, var(--rule) 50%, var(--hover) 100%); background-size: 200% 100%; animation: vysk 1.4s linear infinite; }
+@keyframes vysk { to { background-position: -200% 0; } }
+.empty { display: flex; flex-direction: column; align-items: center; text-align: center; gap: 12px; padding: 40px 24px; }
+.empty-ic { width: 40px; height: 40px; border-radius: 10px; background: var(--hover); color: var(--text-2); display: flex; align-items: center; justify-content: center; }
+.spin { width: 14px; height: 14px; border-radius: 7px; box-shadow: inset 0 0 0 1.5px var(--rule-strong); border-top: 1.5px solid var(--text-2); animation: vyspin 0.9s linear infinite; flex: none; }
+@keyframes vyspin { to { transform: rotate(360deg); } }
+
+/* Held item and ask: neutral card; the attention colour is only the dot and the label. */
+.need-h { display: flex; align-items: center; gap: 8px; }
+.code { font-family: 'JetBrains Mono', ui-monospace, Menlo, monospace; font-size: 13px; line-height: 18px; font-variant-numeric: normal;
+  background: var(--code-bg); border-radius: 8px; padding: 8px 12px; color: var(--text); }
+code.ic-code { font-family: 'JetBrains Mono', ui-monospace, Menlo, monospace; font-size: 13px; padding: 1px 4px; border-radius: 4px; background: var(--hover); }
+/* Draft fields edit in place: every line is a field. No Edit button; Send and Discard only. */
+.df { display: grid; grid-template-columns: 64px minmax(0, 1fr); align-items: baseline; gap: 12px; padding: 7px 0; border-top: 1px solid var(--rule); }
+.df-v { border-radius: 6px; padding: 2px 6px; margin: -2px -6px; cursor: text; }
+.df-v:hover { background: var(--hover); }
+.df-v.editing { box-shadow: 0 0 0 1px var(--focus); background: var(--bg); }
+.caret { display: inline-block; width: 1.5px; height: 16px; margin-left: 1px; vertical-align: -3px; background: var(--focus); animation: vyblink 1s steps(2, start) infinite; }
+@keyframes vyblink { to { visibility: hidden; } }
+@media (prefers-reduced-motion: reduce) { .caret, .sk-shine, .spin { animation: none; } }
+
+/* Chat */
+.msg { display: flex; gap: 12px; }
+.prose { font-size: 15px; line-height: 22px; color: var(--text); }
+.prose p + p { margin-top: 8px; }
+.you { background: var(--hover); border-radius: 12px; padding: 10px 14px; font-size: 15px; line-height: 22px; }
+.tool { border: 1px solid var(--rule); border-radius: 10px; overflow: hidden; }
+.tool-h { display: flex; align-items: center; gap: 8px; height: 36px; padding: 0 12px; width: 100%; border: 0; background: transparent; text-align: left; cursor: pointer; }
+.tool-h:hover { background: var(--hover); }
+.tool-b { border-top: 1px solid var(--rule); background: var(--code-bg); }
+.chev { color: var(--label); transition: transform 160ms ease-out; }
+.chev-open { transform: rotate(90deg); }
+.diff { font-family: 'JetBrains Mono', ui-monospace, Menlo, monospace; font-size: 12px; line-height: 20px; font-variant-numeric: normal; padding: 6px 0; }
+.dl { display: grid; grid-template-columns: 44px 16px minmax(0, 1fr); white-space: pre; color: var(--text-2); }
+.dl .n { text-align: right; padding-right: 10px; color: var(--label); }
+.dl-add { background: var(--signal-wash); color: var(--text); }
+.dl-del { background: var(--del-wash); }
+.dl-add .n, .dl-del .n { color: var(--text-2); }
+.choice { display: flex; align-items: flex-start; gap: 12px; padding: 10px 16px; border-top: 1px solid var(--rule); width: 100%;
+  border-left: 0; border-right: 0; border-bottom: 0; background: transparent; text-align: left; cursor: pointer; }
+.choice:hover { background: var(--hover); }
+.choice-on, .choice-on:hover { background: var(--signal-wash); }
+.composer { border: 1px solid var(--rule-strong); border-radius: 12px; background: var(--panel); }
+.composer-in { padding: 12px 14px 4px; font-size: 15px; line-height: 22px; color: var(--label); min-height: 44px; }
+.composer-bar { display: flex; align-items: center; gap: 4px; padding: 6px 8px 8px; }
+.cchip { display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 8px; border-radius: 6px; border: 0;
+  background: transparent; color: var(--text-2); font-size: 13px; cursor: pointer; white-space: nowrap; }
+.cchip:hover { background: var(--hover); color: var(--text); }
+
+/* Direction B frame: 72px icon rail, top bar with the command bar, primary action top right. */
+.dB .rail { width: 72px; flex: none; display: flex; flex-direction: column; align-items: center; padding: 12px 0; gap: 2px;
+  border-right: 1px solid var(--rule); }
+.dB .home { width: 40px; height: 40px; border-radius: 10px; display: flex; align-items: center; justify-content: center; margin-bottom: 10px; }
+.dB .rb { width: 60px; height: 50px; border-radius: 10px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px;
+  color: var(--label); font-size: 12px; line-height: 16px; position: relative; }
+.dB .rb:hover { background: var(--hover); color: var(--text); }
+.dB .rb-on { background: var(--hover); color: var(--text); font-weight: 600; }
+.dB .rb .badge { position: absolute; top: 3px; right: 8px; }
+.dB .main { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; }
+.dB .top { height: 56px; flex: none; display: grid; grid-template-columns: minmax(0, 1fr) 440px minmax(0, 1fr); align-items: center; gap: 16px;
+  padding: 0 20px 0 28px; border-bottom: 1px solid var(--rule); }
+.dB .top-l { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.dB .top-r { display: flex; align-items: center; justify-content: flex-end; gap: 8px; }
+.dB .cmd { height: 34px; border-radius: 8px; background: var(--hover); display: flex; align-items: center; gap: 8px; padding: 0 6px 0 12px; color: var(--label); font-size: 13px; }
+.dB .needs { display: inline-flex; align-items: center; gap: 8px; height: 32px; padding: 0 10px; border-radius: 8px; color: var(--beacon-ink); font-weight: 600; white-space: nowrap; }
+.dB .needs:hover { background: var(--hover); }
+.dB .page { flex: 1 1 auto; min-height: 0; padding: 24px 28px; overflow: hidden; }
+.tile { border: 1px solid var(--rule); border-radius: 10px; background: transparent; padding: 12px; display: flex; flex-direction: column; gap: 8px; text-align: left; cursor: pointer; }
+.tile:hover { background: var(--hover); }
+.tile-on { border-color: var(--focus); box-shadow: 0 0 0 1px var(--focus); }
+
+/* Board furniture (canvas notes, not product). */
+.note { font-size: 12px; line-height: 16px; color: var(--label); }
+
+/* ============================================================================================
+   One app (app-design, 27 Sep 2026). Everything below is added for the one-app sheet: the same
+   tokens, now drawn at three sizes (phone, tablet, desktop), plus the Capsule and the CLI.
+   Phone sizes: the 15 and 20 steps become 17 and 22 (iOS body size, no zoom on focus).
+   ============================================================================================ */
+
+/* Board furniture: a sheet of frames with a heading. Not product. */
+.board { flex-direction: column; padding: 56px 64px; gap: 32px; }
+.bhead { display: flex; align-items: flex-end; gap: 48px; }
+.bhead .col { gap: 8px; }
+.frames { display: flex; align-items: flex-start; gap: 56px; }
+.cap { display: flex; flex-direction: column; gap: 10px; }
+.cap-t { font-size: 12px; line-height: 16px; font-weight: 600; color: var(--label); }
+.anno { display: flex; flex-direction: column; gap: 12px; width: 300px; flex: none; }
+.anno-i { display: grid; grid-template-columns: 22px minmax(0, 1fr); gap: 10px; font-size: 13px; line-height: 18px; color: var(--text-2); }
+.anno-n { width: 22px; height: 22px; border-radius: 11px; border: 1px solid var(--rule-strong); display: inline-flex; align-items: center; justify-content: center;
+  font-size: 12px; line-height: 16px; font-weight: 600; color: var(--text); }
+.pin { position: absolute; width: 22px; height: 22px; border-radius: 11px; background: var(--text); color: var(--bg); display: inline-flex; align-items: center;
+  justify-content: center; font-size: 12px; line-height: 16px; font-weight: 600; z-index: 5; }
+
+/* The phone frame: 390 x 844, the device's safe areas drawn as space, no fake status bar. */
+.phone { width: 390px; height: 844px; border-radius: 48px; border: 1px solid var(--rule-strong); background: var(--bg); position: relative;
+  overflow: hidden; display: flex; flex-direction: column; flex: none; font-size: 13px; line-height: 18px; }
+.phone .safe-t { height: 59px; flex: none; }
+.phone .safe-b { height: 34px; flex: none; }
+.phone .island { position: absolute; top: 11px; left: 50%; margin-left: -62px; width: 124px; height: 36px; border-radius: 18px; background: #000; }
+.t-light .phone .island { background: var(--primary-bg); }
+.phone .home-ind { position: absolute; bottom: 8px; left: 50%; margin-left: -67px; width: 134px; height: 5px; border-radius: 3px; background: var(--text); }
+/* Phone type: 17/24 reads, 22/28 page labels. */
+.t17 { font-size: 17px; line-height: 24px; }
+.t22 { font-size: 22px; line-height: 28px; letter-spacing: -0.01em; }
+.ph-h { height: 48px; flex: none; display: flex; align-items: center; gap: 14px; padding: 0 16px; }
+.ph-h .pg { font-size: 22px; line-height: 28px; font-weight: 600; letter-spacing: -0.01em; color: var(--label); }
+.ph-h .pg-on { color: var(--text); }
+.ph-body { flex: 1 1 auto; min-height: 0; overflow: hidden; padding: 8px 16px 0; display: flex; flex-direction: column; gap: 12px; }
+.ph-nav { height: 44px; flex: none; display: flex; align-items: center; gap: 8px; padding: 0 8px; }
+.ph-sec { display: flex; align-items: center; gap: 8px; font-size: 17px; line-height: 24px; font-weight: 600; padding-top: 12px; }
+.ph-card { background: var(--panel); border: 1px solid var(--rule); border-radius: 10px; overflow: hidden; }
+.ph-row { display: flex; align-items: flex-start; gap: 12px; padding: 12px 14px; border-top: 1px solid var(--rule); }
+.ph-row:first-child { border-top: 0; }
+.ph-row .ttl { font-size: 17px; line-height: 24px; font-weight: 600; }
+.ph-btn { height: 44px; border-radius: 10px; padding: 0 16px; font-size: 17px; line-height: 24px; }
+.vy .btn.ph-btn { height: 44px; border-radius: 10px; padding: 0 16px; font-size: 17px; line-height: 24px; }
+.vy .btn.ph-btn-lg { height: 54px; border-radius: 12px; font-size: 17px; line-height: 24px; }
+/* The Capsule on the phone: floating, opaque, one shadow. */
+.capsule { position: absolute; left: 12px; right: 12px; bottom: 34px; height: 56px; border-radius: 28px; background: var(--panel);
+  border: 1px solid var(--rule-strong); display: flex; align-items: center; gap: 10px; padding: 0 8px 0 18px; box-shadow: var(--float); z-index: 4; }
+.capsule .ph { flex: 1 1 auto; font-size: 17px; line-height: 24px; color: var(--label); }
+.mic { width: 40px; height: 40px; border-radius: 20px; background: var(--hover); display: inline-flex; align-items: center; justify-content: center; color: var(--text); flex: none; border: 0; }
+.t-dark { --float: inset 0 1px 0 rgba(241,238,230,0.06), 0 24px 48px -24px rgba(0,0,0,0.6); }
+.t-light { --float: 0 24px 48px -24px rgba(20,19,17,0.28); }
+/* Swipe reveal on a Needs row. */
+.swipe { display: flex; }
+.swipe-a { width: 100px; flex: none; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px;
+  background: var(--primary-bg); color: var(--primary-ink); font-size: 13px; line-height: 18px; font-weight: 600; }
+.swipe-d { width: 100px; flex: none; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px;
+  background: var(--hover); color: var(--text); font-size: 13px; line-height: 18px; font-weight: 600; }
+/* Sheets on the phone: top corners 14, a grabber, the scrim behind. */
+.ph-scrim { position: absolute; inset: 0; background: var(--scrim); z-index: 6; }
+.ph-sheet { position: absolute; left: 0; right: 0; bottom: 0; background: var(--panel); border-radius: 14px 14px 0 0; z-index: 7;
+  display: flex; flex-direction: column; box-shadow: var(--float); }
+.grab { width: 36px; height: 5px; border-radius: 3px; background: var(--rule-strong); margin: 6px auto 0; flex: none; }
+
+/* The desktop window: a macOS-style frame drawn in tokens only (no coloured traffic lights). */
+.win { border-radius: 12px; border: 1px solid var(--rule-strong); overflow: hidden; background: var(--bg); display: flex; flex-direction: column; flex: none; }
+.win-bar { height: 28px; flex: none; display: flex; align-items: center; gap: 8px; padding: 0 12px; border-bottom: 1px solid var(--rule); background: var(--panel); }
+.win-bar i { width: 10px; height: 10px; border-radius: 5px; background: var(--rule-strong); display: inline-block; }
+.win-bar .u { margin: 0 auto; font-size: 12px; line-height: 16px; color: var(--label); }
+.win .dB { flex: 1 1 auto; min-height: 0; }
+/* List + detail: 320 list, detail fills; a 360 side panel from 1400 up. */
+.ld { display: grid; grid-template-columns: 320px minmax(0, 1fr); flex: 1 1 auto; min-height: 0; }
+.ld-l { border-right: 1px solid var(--rule); display: flex; flex-direction: column; min-height: 0; overflow: hidden; }
+.ld-d { display: flex; flex-direction: column; min-width: 0; min-height: 0; overflow: hidden; }
+.side { width: 340px; flex: none; border-left: 1px solid var(--rule); display: flex; flex-direction: column; overflow: hidden; }
+.lrow { display: flex; align-items: flex-start; gap: 10px; padding: 10px 16px; border-bottom: 1px solid var(--rule); }
+.lrow-on { background: var(--signal-wash); }
+.lrow-on .t3 { color: var(--text-2); }
+.grp { display: flex; align-items: center; gap: 8px; height: 32px; padding: 0 16px; font-size: 12px; line-height: 16px; font-weight: 600; color: var(--label); }
+
+/* The five buttons. Primary (one per surface), Secondary (quiet fill), Outline, Ghost, Hold (destructive:
+   an outline in text colour whose label carries the count, with a fill that tracks a 0.6 s hold). */
+.vy .btn-s { background: var(--hover); border-color: var(--hover); color: var(--text); }
+.vy .btn-s:hover { background: var(--rule); border-color: var(--rule); }
+.vy .btn-h { border-color: var(--text); color: var(--text); position: relative; overflow: hidden; }
+.vy .btn-h .fillbar { position: absolute; left: 0; top: 0; bottom: 0; background: var(--hover); z-index: 0; }
+.vy .btn-h > span, .vy .btn-h > svg { position: relative; z-index: 1; }
+.vy .btn-busy { gap: 8px; }
+
+/* Status: one model everywhere (rows, tabs, the favicon, the badge, the Capsule, the CLI). */
+.st { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; line-height: 16px; color: var(--text-2); white-space: nowrap; }
+.ring { width: 10px; height: 10px; border-radius: 5px; box-shadow: inset 0 0 0 1.5px var(--focus); border-top: 1.5px solid transparent; flex: none; }
+.dot-done { background: transparent; box-shadow: inset 0 0 0 1.5px var(--label); }
+.dot-unread { background: var(--text); }
+.xg { width: 12px; height: 12px; flex: none; }
+
+/* Session: user turns in a quiet bubble, tool runs as one-line rows, the terminal in mono. */
+.turn-you { align-self: flex-end; max-width: 78%; background: var(--hover); border-radius: 12px; padding: 8px 12px; }
+.trow { display: flex; align-items: center; gap: 8px; height: 28px; font-size: 13px; line-height: 18px; color: var(--text-2); }
+.trow .mono { color: var(--text-2); font-size: 12px; line-height: 16px; }
+.term { background: var(--code-bg); font-family: 'JetBrains Mono', ui-monospace, Menlo, monospace; font-size: 12px; line-height: 18px; color: var(--text);
+  font-variant-numeric: normal; white-space: pre; overflow: hidden; }
+.term .d { color: var(--label); }
+.term .s { color: var(--text-2); }
+.term .g { color: var(--focus); }
+.term .v { color: var(--beacon-ink); }
+.keybar { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 6px; padding: 6px 8px; background: var(--panel); border-top: 1px solid var(--rule); }
+.key { height: 34px; border-radius: 6px; background: var(--hover); display: flex; align-items: center; justify-content: center; font-family: 'JetBrains Mono', ui-monospace, Menlo, monospace;
+  font-size: 12px; line-height: 16px; color: var(--text); font-variant-numeric: normal; }
+.key-on { background: var(--signal-wash); box-shadow: inset 0 0 0 1px var(--focus); }
+
+/* Glass: a remote screen, drawn as a quiet placeholder of a browser page. */
+.glass { background: var(--code-bg); border: 1px solid var(--rule-strong); border-radius: 8px; overflow: hidden; display: flex; flex-direction: column; position: relative; }
+.glass-bar { height: 26px; flex: none; display: flex; align-items: center; gap: 8px; padding: 0 10px; border-bottom: 1px solid var(--rule); }
+.gl-line { height: 8px; border-radius: 4px; background: var(--rule); }
+.gl-block { border-radius: 6px; background: var(--hover); }
+.live { display: inline-flex; align-items: center; gap: 6px; height: 22px; padding: 0 8px; border-radius: 11px; background: var(--panel); border: 1px solid var(--rule-strong);
+  font-size: 12px; line-height: 16px; font-weight: 600; color: var(--text); }
+.cursor-ai { position: absolute; width: 0; height: 0; border-left: 7px solid transparent; border-right: 7px solid transparent; border-bottom: 12px solid var(--focus); transform: rotate(-30deg); }
+
+/* Vault: the authenticator. Current code large, next code small, a ring that counts down. */
+.otp { font-family: 'JetBrains Mono', ui-monospace, Menlo, monospace; font-variant-numeric: normal; letter-spacing: 0.04em; }
+.cd { width: 22px; height: 22px; flex: none; }
+.cd circle { fill: none; stroke-width: 2.5; }
+.cd .trk { stroke: var(--rule-strong); }
+.cd .arc { stroke: var(--focus); stroke-linecap: round; }
+.lock-pill { display: inline-flex; align-items: center; gap: 6px; height: 24px; padding: 0 10px; border-radius: 12px; background: var(--hover); font-size: 12px; line-height: 16px; color: var(--text-2); }
+
+/* Planner */
+.agenda { display: grid; grid-template-columns: 52px minmax(0, 1fr); }
+.hour { height: 48px; border-top: 1px solid var(--rule); font-size: 12px; line-height: 16px; color: var(--label); padding-top: 2px; }
+.ev { border-radius: 8px; background: var(--hover); padding: 6px 10px; display: flex; flex-direction: column; gap: 2px; }
+.ev-now { box-shadow: inset 0 0 0 1px var(--focus); background: var(--signal-wash); }
+.nowline { height: 2px; background: var(--focus); position: relative; }
+
+/* Install and pairing */
+.qr { width: 168px; height: 168px; border-radius: 12px; background: #FFFFFF; padding: 12px; flex: none; display: grid; grid-template-columns: repeat(21, minmax(0, 1fr)); gap: 0; }
+.qr i { display: block; background: #000000; aspect-ratio: 1; }
+.qr b { display: block; aspect-ratio: 1; }
+.step { display: grid; grid-template-columns: 28px minmax(0, 1fr); gap: 12px; }
+.step-n { width: 28px; height: 28px; border-radius: 14px; border: 1px solid var(--rule-strong); display: inline-flex; align-items: center; justify-content: center;
+  font-size: 12px; line-height: 16px; font-weight: 600; color: var(--text-2); }
+.step-done .step-n { background: var(--primary-bg); border-color: var(--primary-bg); color: var(--primary-ink); }
+.step-on .step-n { border-color: var(--focus); color: var(--text); box-shadow: 0 0 0 1px var(--focus); }
+.check { display: flex; align-items: center; gap: 10px; min-height: 36px; border-top: 1px solid var(--rule); }
+.check:first-child { border-top: 0; }
+.ok { width: 18px; height: 18px; border-radius: 9px; background: var(--primary-bg); color: var(--primary-ink); display: inline-flex; align-items: center; justify-content: center; flex: none; }
+.wait { width: 18px; height: 18px; border-radius: 9px; box-shadow: inset 0 0 0 1.5px var(--rule-strong); flex: none; }
+.path { border: 1px solid var(--rule); border-radius: 12px; background: var(--panel); padding: 16px; display: flex; flex-direction: column; gap: 10px; }
+.path-rec { border-color: var(--focus); box-shadow: 0 0 0 1px var(--focus); }
+.tbl { display: grid; border: 1px solid var(--rule); border-radius: 12px; overflow: hidden; background: var(--panel); }
+.tbl > div { padding: 10px 14px; border-top: 1px solid var(--rule); font-size: 13px; line-height: 18px; color: var(--text-2); }
+.tbl > .th { font-size: 12px; line-height: 16px; font-weight: 600; color: var(--label); border-top: 0; }
+.tbl > .rh { color: var(--text); font-weight: 600; }
+
+/* Resilience: one quiet pill, never a wall. */
+.pill { display: inline-flex; align-items: center; gap: 8px; height: 28px; padding: 0 12px; border-radius: 14px; background: var(--panel); border: 1px solid var(--rule-strong);
+  font-size: 12px; line-height: 16px; color: var(--text-2); box-shadow: var(--float); }
+.queued { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; line-height: 16px; color: var(--label); }
+
+/* The Mac Capsule: native Swift, same tokens. A floating panel, 680 wide. */
+.mcap { width: 680px; border-radius: 16px; background: var(--panel); border: 1px solid var(--rule-strong); box-shadow: var(--float); display: flex; flex-direction: column; overflow: hidden; }
+.mcap-in { height: 56px; display: flex; align-items: center; gap: 12px; padding: 0 16px; border-bottom: 1px solid var(--rule); }
+/* A terminal window for the CLI. */
+.cli { border-radius: 12px; border: 1px solid var(--rule-strong); background: var(--code-bg); overflow: hidden; display: flex; flex-direction: column; }
+.cli .term { padding: 14px 16px; background: transparent; }
+
+/* CapsuleSearch and CapsuleIQ (k1, 27 Sep): the Design A Capsule panel, shared by every Capsule board.
+   Panel 680 wide, radius 14 (sheet), opaque panel fill, 1 px rule-strong, the float shadow.
+   Input 56, group header 28, row 44, collapsed line 32, footer 32 (key hints only). Max 560. */
+.kc-desk { width: 760px; border-radius: 12px; border: 1px solid var(--rule-strong); background: var(--bg); position: relative; overflow: hidden; flex: none; }
+.kc-mb { height: 24px; display: flex; align-items: center; gap: 10px; padding: 0 12px; background: var(--panel); border-bottom: 1px solid var(--rule); }
+.kc-win { position: absolute; border-radius: 10px; background: var(--panel); border: 1px solid var(--rule); }
+.kc-blk { position: absolute; border-radius: 10px; background: var(--hover); }
+.kc-p { position: absolute; left: 39px; top: 56px; width: 680px; max-height: 560px; border-radius: 14px; background: var(--panel); border: 1px solid var(--rule-strong);
+  box-shadow: var(--float); display: flex; flex-direction: column; overflow: hidden; z-index: 2; }
+.kc-in { height: 56px; flex: none; display: flex; align-items: center; gap: 12px; padding: 0 16px; border-bottom: 1px solid var(--rule); }
+.kc-q { flex: 1 1 auto; min-width: 0; display: flex; align-items: center; font-size: 15px; line-height: 22px; color: var(--text); white-space: nowrap; }
+.kc-ph { color: var(--label); }
+.kc-body { flex: 1 1 auto; min-height: 0; overflow: hidden; display: flex; flex-direction: column; position: relative; }
+.kc-g { height: 28px; flex: none; display: flex; align-items: center; gap: 8px; padding: 0 16px; font-size: 12px; line-height: 16px; font-weight: 600; color: var(--label); }
+.kc-r { min-height: 44px; flex: none; display: flex; align-items: center; gap: 12px; padding: 4px 16px; }
+.kc-r-on { background: var(--signal-wash); }
+.kc-r-on .t3, .kc-r-on .kbd { color: var(--text-2); }
+.kc-lead { width: 24px; height: 24px; flex: none; display: inline-flex; align-items: center; justify-content: center; color: var(--text-2); }
+.kc-f { height: 32px; flex: none; display: flex; align-items: center; gap: 16px; padding: 0 16px; border-top: 1px solid var(--rule); font-size: 12px; line-height: 16px; color: var(--label); }
+.kc-k { display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; }
+.kc-iq { flex: none; display: flex; flex-direction: column; gap: 10px; padding: 14px 16px 16px; border-bottom: 1px solid var(--rule); }
+.kc-src { display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 4px 0 10px; border-radius: 14px; border: 1px solid var(--rule-strong);
+  font-size: 13px; line-height: 18px; color: var(--text-2); white-space: nowrap; max-width: 100%; }
+.kc-more { height: 32px; flex: none; display: flex; align-items: center; gap: 8px; padding: 0 16px; font-size: 12px; line-height: 16px; color: var(--label); }
+.kc-bub { align-self: flex-end; max-width: 78%; background: var(--hover); border-radius: 12px; padding: 6px 12px; font-size: 13px; line-height: 18px; color: var(--text); }
+.kc-thk { display: flex; align-items: center; gap: 8px; height: 28px; font-size: 13px; line-height: 18px; color: var(--text-2); }
+.kc-thumb { position: absolute; right: 3px; width: 4px; border-radius: 2px; background: var(--rule-strong); }
+
+/* CapsuleAct (k2, 27 Sep): asks, held sends and agents in the Capsule panel.
+   Waiting row one meta line, inline answers 28, target chip 24, tool row 28, thread block. */
+.kc-nr { display: flex; align-items: flex-start; gap: 12px; padding: 10px 16px; flex: none; }
+.kc-nr .av-32 { margin-top: 2px; }
+.kc-acts { display: flex; align-items: center; gap: 8px; margin-top: 10px; }
+.kc-r-on .btn .k { color: var(--text-2); }
+.kc-r-on .btn-p .k { color: var(--primary-ink); }
+.kc-tgt { display: inline-flex; align-items: center; gap: 6px; height: 24px; padding: 0 10px; border-radius: 12px; background: var(--hover);
+  font-size: 13px; line-height: 18px; font-weight: 600; color: var(--text); white-space: nowrap; flex: none; }
+.kc-th { flex: none; display: flex; flex-direction: column; gap: 10px; padding: 14px 16px 16px; }
+.kc-tr { display: flex; align-items: center; gap: 8px; height: 28px; font-size: 13px; line-height: 18px; color: var(--text-2); min-width: 0; }
+.kc-tr .mono { font-size: 12px; line-height: 16px; }
+.kc-dc { display: flex; flex-direction: column; padding: 0 16px 12px 60px; flex: none; }
+.kc-pl { display: flex; align-items: center; gap: 8px; min-height: 28px; font-size: 12px; line-height: 16px; color: var(--text-2); }
+
+/* CapsuleModules (k3, 27 Sep): voice and computer use in the Capsule panel.
+   Level meter (neutral bars), the "using your Mac" strip (36, in flow under the input), the menu-bar mark ring and tooltip. */
+.kc-meter { display: inline-flex; align-items: center; gap: 2px; height: 20px; flex: none; }
+.kc-meter span { width: 2px; border-radius: 1px; background: var(--text-2); }
+.kc-strip { height: 36px; flex: none; display: flex; align-items: center; gap: 10px; padding: 0 16px; background: var(--hover); border-bottom: 1px solid var(--rule); font-size: 13px; line-height: 18px; color: var(--text); }
+.kc-strip .kbd { color: var(--text-2); }
+.kc-mkr { display: inline-flex; align-items: center; justify-content: center; width: 22px; height: 22px; border-radius: 11px; box-shadow: inset 0 0 0 1.5px var(--focus); flex: none; }
+.kc-tip { display: inline-flex; align-items: center; height: 24px; padding: 0 8px; border-radius: 6px; background: var(--panel); border: 1px solid var(--rule-strong); box-shadow: var(--float); font-size: 12px; line-height: 16px; color: var(--text); white-space: nowrap; }
+
+/* Tips and the Glass mini-view (27 Sep 2026): tip.md and glass-mini.md.
+   Tip line 28 min, 12/16 label, a 12 lightbulb, Show me ghost xs, a close x. Tip chip 28, radius 14, 1 px rule.
+   Mini frame 16:10, radius 8, code-bg, 1 px rule-strong, the small Live badge (20), the step line 13/18 under it. */
+.tipl { display: flex; align-items: center; gap: 8px; min-height: 28px; font-size: 12px; line-height: 16px; color: var(--label); min-width: 0; }
+.tipl > .ic, .tipc > .ic { width: 12px; height: 12px; color: var(--label); }
+.tip-t { min-width: 0; }
+.tipc .tip-t, .tipl .tip-t.trunc { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.tip-t .kbd { vertical-align: 1px; margin: 0 1px; }
+.tip-cmd { font-family: 'JetBrains Mono', ui-monospace, Menlo, monospace; font-size: 12px; line-height: 16px; color: var(--text-2); font-variant-numeric: normal; }
+.vy .btn.tip-show { height: 28px; padding: 0 8px; border-radius: 6px; font-size: 12px; line-height: 16px; color: var(--text-2); border-color: transparent; flex: none; }
+.ibtn.tip-x { width: 28px; height: 28px; border-radius: 6px; color: var(--label); }
+.tipc { display: inline-flex; align-items: center; gap: 8px; height: 28px; max-width: 560px; padding: 0 2px 0 10px; border-radius: 14px; border: 1px solid var(--rule);
+  color: var(--label); font-size: 12px; line-height: 16px; white-space: nowrap; flex: none; min-width: 0; }
+.tipc .btn.tip-show { height: 24px; border-radius: 12px; }
+.tipc .ibtn.tip-x { width: 24px; height: 24px; border-radius: 12px; }
+.tip-new { font-weight: 600; color: var(--text-2); }
+.tip-menu { display: flex; flex-direction: column; padding: 4px; width: 220px; border-radius: 10px; background: var(--panel); box-shadow: var(--popover); }
+.tip-menu > span { display: flex; align-items: center; height: 32px; padding: 0 10px; border-radius: 6px; font-size: 13px; line-height: 18px; color: var(--text); }
+.tip-menu > .on { background: var(--hover); }
+.toast { display: inline-flex; align-items: center; gap: 12px; height: 40px; padding: 0 6px 0 14px; border-radius: 10px; background: var(--panel); box-shadow: var(--popover);
+  font-size: 13px; line-height: 18px; color: var(--text); white-space: nowrap; }
+
+.gm { position: relative; aspect-ratio: 16 / 10; border-radius: 8px; background: var(--code-bg); border: 1px solid var(--rule-strong); overflow: hidden; flex: none; }
+.gm-pic { position: absolute; inset: 0; display: flex; }
+.gm-dim .gm-pic { opacity: 0.6; }
+.gm .live { position: absolute; left: 8px; top: 8px; height: 20px; padding: 0 7px; border-radius: 10px; z-index: 1; }
+.gm-col { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.gm-row { display: flex; flex-direction: column; gap: 4px; padding: 6px 8px; border-bottom: 1px solid var(--rule); }
+.gm-l { display: block; height: 4px; border-radius: 2px; background: var(--rule); flex: none; }
+.gm-b { display: block; border-radius: 3px; background: var(--hover); flex: none; }
+.gm-step { display: flex; align-items: center; gap: 8px; min-width: 0; font-size: 13px; line-height: 18px; color: var(--text); }
+.gm-mk { width: 12px; height: 18px; flex: none; display: inline-flex; align-items: center; justify-content: center; color: var(--text-2); }
+.gm-age { font-size: 12px; line-height: 16px; color: var(--label); white-space: nowrap; flex: none; }
+.gm-hold { font-size: 12px; line-height: 16px; color: var(--text-2); white-space: nowrap; flex: none; }
+.gm-why { font-size: 12px; line-height: 16px; color: var(--text-2); padding-left: 20px; }
+.gm-pill { display: inline-flex; align-items: center; gap: 8px; height: 28px; padding: 0 12px; border-radius: 14px; background: var(--panel); border: 1px solid var(--rule-strong);
+  box-shadow: var(--float); font-size: 13px; line-height: 18px; color: var(--text); white-space: nowrap; max-width: 100%; min-width: 0; }
+.steplink { font-size: 12px; line-height: 16px; color: var(--text-2); text-decoration: underline; text-decoration-color: var(--rule-strong); text-underline-offset: 3px; white-space: nowrap; flex: none; }

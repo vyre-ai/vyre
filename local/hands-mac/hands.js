@@ -372,7 +372,8 @@ export class Hands {
     // was proven. Never the value or the keys: typed text can be a password.
     const { role, name, identifier, container } = input.selector || {};
     this.emit("hands.acted", { app: before.app, kind: input.kind, ...(input.kind === "action" ? { action: input.action } : {}),
-      selector: { role, name, identifier, container }, acted, verified, ...(held ? { held: true } : {}) });
+      selector: { role, name, identifier, container }, acted, verified, ...(held ? { held: true } : {}),
+      ...(verified || !reason ? {} : { why: String(reason).replace(/\s+/g, " ").trim().slice(0, 200) }) });
     const side = (/** @type {Snap} */ s, /** @type {Element|null|undefined} */ e) => ({ window: s.window, signature: signature(s), target: e ? present(e) : null });
     return {
       acted, verified, reason,

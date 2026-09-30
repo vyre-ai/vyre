@@ -66,16 +66,17 @@ services:
     volumes:
       - tailscale-state:/var/lib/tailscale
       - tailscale-sock:/var/run/tailscale
-      # Taildrive (core/files/drive.js). tailscaled serves a shared folder itself, from this
-      # container, so the folder must be here at the same path as in the vyre service, or the
-      # share points at nothing. Only /work: the projects share and Glass's box folders
+      # VyreDrive (built on Tailscale's Taildrive; core/files/drive.js). tailscaled serves a
+      # shared folder itself, from this container, so the folder must be here at the same path
+      # as in the vyre service, or the share points at nothing. Only /work: the projects share and Glass's box folders
       # (glass.roots) are chosen inside it. vyre-home is never mounted here, since it holds the
       # vault and Claude's sign-in, and a share serves every file under its folder.
       #
       # Read-only unless VYRE_DRIVE_ACCESS=rw in /srv/vyre/.env: this container runs as root with
       # NET_ADMIN, and read-only keeps it from ever changing a project (ADR 0009's rule, read-only
-      # where possible). Set rw only to edit box files from the Mac's Finder, and set vyred's
-      # files.drive.access to the same value so the Mac mounts to match. Recreate after a change.
+      # where possible). Each share is read-only on its own too; the mount needs rw only while some
+      # share is rw (the files.drive.access tool). That tool answers the step when the two differ:
+      # set VYRE_DRIVE_ACCESS=rw (or back to ro) in /srv/vyre/.env, then run docker compose up -d.
       - vyre-work:/work:${VYRE_DRIVE_ACCESS:-ro}
     ports:
       # The onboarding page, on host loopback only. Reach it with
@@ -100,8 +101,16 @@ services:
     depends_on:
       - tailscale
     restart: unless-stopped
-    init: true
-    user: "1000:1000"
+    # No `init: true`: the image's tini is PID 1 (box/Dockerfile, ADR 0029 R4).
+    # Root, for the spawner only (core/spawner, ADR 0032): it runs vyred as uid vyre (1000) and
+    # Vyre-owned Claude sessions as vyre-agent (1001), which cannot open vyred's socket. Every
+    # capability is dropped but changing uid and signalling its children. `vyre` in this
+    # container drops to uid vyre by itself.
+    user: "0:0"
+    cap_drop: [ALL]
+    cap_add: [SETUID, SETGID, KILL]
+    security_opt:
+      - no-new-privileges:true
     labels:
       run.vyre: "1"
     environment:
@@ -112,6 +121,9 @@ services:
       - VYRE_ONBOARD_HOST=vyred
       # Onboarding's Connect runs `tailscale up`; these keep the preferences the entrypoint set.
       - VYRE_TAILSCALE_UP_FLAGS=--accept-dns=false --hostname=${VYRE_TS_HOSTNAME:-vyre}
+      # The tailscale service's /work mount mode, so files.drive.access can say whether the
+      # .env step is needed.
+      - VYRE_DRIVE_ACCESS=${VYRE_DRIVE_ACCESS:-ro}
     env_file:
       # CLOUDFLARE_VYRE_TOKEN and similar. See vyre.env.example.
       - path: ./vyre.env
@@ -119,10 +131,17 @@ services:
     volumes:
       # .vyre, .claude and .claude.json live here, so everything survives a recreate.
       - vyre-home:/home/vyre
+      # Vyre-owned sessions' own home (their ~/.claude and transcripts), readable by vyred's group.
+      - vyre-agent-home:/home/vyre-agent
       # Projects.
       - vyre-work:/work
       # The CLI in this image talks to tailscaled through this socket.
       - tailscale-sock:/var/run/tailscale
+      # docker-api's bearer (core/dockerproxy/bearer.js): vyred (uid vyre, 1000) generates it
+      # here on first use and reads it back on every computers.docker request. Shared with the
+      # docker-api service below, mode 0400 -- unreadable to vyre-agent (uid 1001), which shares
+      # this container's filesystem and network but never this volume's file.
+      - docker-api-bearer:/var/lib/vyre-secrets
     healthcheck:
       test: ["CMD", "vyre", "status"]
       interval: 30s
@@ -142,7 +161,7 @@ services:
     command: ["node", "/opt/vyre/core/dockerproxy/main.js"]
     profiles: ["computers"]
     restart: unless-stopped
-    init: true
+    # No `init: true`: the image's tini is PID 1 (box/Dockerfile, ADR 0029 R4).
     user: "1000:1000"
     group_add:
       - "${DOCKER_GID:-999}"
@@ -160,8 +179,15 @@ services:
       - VYRE_COMPUTERS_IMAGE=${VYRE_COMPUTERS_IMAGE:-vyre/computer:0.1}
       - VYRE_COMPUTERS_LABEL_PREFIX=${VYRE_COMPUTERS_LABEL_PREFIX:-run.vyre.computers}
       - VYRE_COMPUTERS_CAP_ADD=${VYRE_COMPUTERS_CAP_ADD:-}
+      # Required (core/dockerproxy/main.js refuses to start without it): every request must
+      # carry this bearer, so being on the docker-api network is not enough on its own -- a
+      # session sharing vyred's container and network cannot reach this proxy just by being on
+      # it. vyred writes the file this points at (core/computers/index.js, bearer.ensure); this
+      # container only ever reads it, and retries for a while on a first-boot race.
+      - DOCKER_PROXY_BEARER_FILE=/var/lib/vyre-secrets/docker-api-bearer
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
+      - docker-api-bearer:/var/lib/vyre-secrets:ro
     networks:
       - docker-api
 
@@ -176,6 +202,12 @@ volumes:
     labels:
       run.vyre: "1"
   vyre-work:
+    labels:
+      run.vyre: "1"
+  vyre-agent-home:
+    labels:
+      run.vyre: "1"
+  docker-api-bearer:
     labels:
       run.vyre: "1"
 

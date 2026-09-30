@@ -5,7 +5,7 @@ import path from "node:path";
 import { execFile } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import fs from "node:fs";
-import { diagnose, lines, BUDGET_MS } from "./doctor.js";
+import { diagnose, lines, item, IDS, BUDGET_MS } from "./doctor.js";
 import { stripAnsi } from "../screen/width.js";
 import { tempHome } from "../../../test/helpers.js";
 
@@ -42,6 +42,7 @@ const deps = (o = {}) => ({
   role: "local", health: async () => ({ version: "0.0.1", commit: "1a2b3c4d5e", dirty: false }),
   tool: tools(), tailscale: async () => tailnet(), resolve: async () => ({ address: "100.64.0.2" }),
   probe: async () => ({ version: "0.0.1", commit: "1a2b3c4d5e" }), capsuleApps: [], size: () => ({ bytes: 5_900_000, files: 450 }), path: () => ({ ours: true, others: [] }),
+  modules: async () => ({ data: [{ name: "settings", state: "running" }, { name: "recall", state: "running" }] }),
   ...o,
 });
 const byId = r => Object.fromEntries(r.checks.map(c => [c.id, c]));
@@ -49,11 +50,12 @@ const byId = r => Object.fromEntries(r.checks.map(c => [c.id, c]));
 test("doctor: a Mac where everything works is all ticks, with what it found", async () => {
   const r = await diagnose(deps());
   const c = byId(r);
-  for (const id of ["vyred", "tailscale", "magicdns", "tailscale-box", "phone", "address", "paired", "passkey", "claude", "install"]) assert.equal(c[id].ok, true, `${id}: ${JSON.stringify(c[id])}`);
+  for (const id of ["vyred", "tailscale", "magicdns", "tailscale-box", "phone", "address", "paired", "passkey", "claude", "modules", "install"]) assert.equal(c[id].ok, true, `${id}: ${JSON.stringify(c[id])}`);
   assert.equal(c.vyred.detail, "0.0.1 · 1a2b3c4");
   assert.equal(c.tailscale.detail, `signed in as ${me}`);
   assert.equal(c.phone.detail, "alex-phone");
   assert.equal(c.passkey.detail, "vyre.tail0000.ts.net");
+  assert.equal(c.modules.detail, "2 running");
   assert.equal(c.install.detail, "5.9 MB");
   assert.equal(c.recall.detail, "indexing 1,234 of 5,678 sessions, low priority");
   assert.ok(r.ms < BUDGET_MS);
@@ -80,16 +82,39 @@ test("doctor: each thing the user tripped on is a cross with the one thing to do
   assert.match(c.passkey.fix, /vyre up/);
   assert.deepEqual([c.claude.ok, c.claude.detail], [false, "not signed in"]);
   assert.equal(c.install.ok, false);
-  assert.match(c.install.fix, /npm i -g vyre@latest/);
+  assert.match(c.install.fix, /npm install -g https:\/\/vyre\.run\/box\/vyre\.tgz/);
   const text = lines(c.passkey).map(stripAnsi);
   assert.match(text[0], /^  ✗ A passkey for the box's address · passkeys exist/);
   assert.match(text[1], /^      on the box: vyre up/);
 });
 
+test("doctor: a module whose manifest under-declares a tool or event is a named cross, not a silent gap", async () => {
+  // The exact gotcha tailnet lost time to (docs/work/tailnet.md, 28 Sep 2026): a module that
+  // registers a tool or emits an event its own module.json does not declare fails to start, every
+  // other module still loads, and vyred's log is the only place that says which one and why.
+  // vyre doctor is the other place now.
+  const c = byId(await diagnose(deps({ modules: async () => ({ data: [
+    { name: "settings", state: "running" },
+    { name: "relay", state: "failed", error: "relay registered tool relay.pair.ticket, which its manifest does not declare under does.tools" },
+  ] }) })));
+  assert.equal(c.modules.ok, false);
+  assert.equal(c.modules.detail, "relay: relay registered tool relay.pair.ticket, which its manifest does not declare under does.tools");
+  assert.match(c.modules.fix, /vyred's log/);
+});
+
+test("doctor: more than one failed module names all of them, not just the first", async () => {
+  const c = byId(await diagnose(deps({ modules: async () => ({ data: [
+    { name: "relay", state: "failed", error: "relay emitted relay.paired, which its manifest does not declare under watches.emits" },
+    { name: "old-thing", state: "invalid", error: "module.json unreadable: Unexpected token" },
+  ] }) })));
+  assert.equal(c.modules.ok, false);
+  assert.match(c.modules.detail, /^2 modules \(relay, old-thing\):/);
+});
+
 test("doctor: with vyred down, it says start it, and what it cannot check is a question, not a cross", async () => {
   const c = byId(await diagnose(deps({ health: async () => null, tool: async () => ({ error: { code: "unreachable", message: "down" } }) })));
   assert.deepEqual([c.vyred.ok, c.vyred.fix], [false, "vyre up"]);
-  for (const id of ["passkey", "claude"]) assert.equal(c[id].ok, null, id);
+  for (const id of ["passkey", "claude", "modules"]) assert.equal(c[id].ok, null, id);
   assert.equal(c.paired.ok, null);
 });
 
@@ -175,4 +200,44 @@ test("doctor: an old vyre on PATH is flagged, first or later, with the command t
   assert.deepEqual(shadows({ PATH: [path.dirname(OURS), dir].join(path.delimiter) }).others[0].first, false);
   // The postinstall runs before npm links the command; it knows the folder it will be in.
   assert.equal(shadows({ PATH: [dir, "/nowhere/bin"].join(path.delimiter), binDir: "/nowhere/bin" }).others[0].first, true);
+});
+
+test("doctor: onCheck hears every check as it answers, and item() makes a checks frame's item", async () => {
+  const heard = [];
+  const r = await diagnose(deps({ onCheck: (i, c) => heard.push([IDS[i], c && c.id]) }));
+  assert.equal(heard.length, IDS.length, "one call per check");
+  for (const [id, got] of heard) assert.ok(got === null || got === id, `${id} heard as ${got}`);
+  assert.deepEqual(item({ id: "phone", label: "Your phone on the tailnet", ok: false, detail: "no phone signed in", fix: "install Tailscale on your phone" }),
+    { id: "phone", label: "Your phone on the tailnet", state: "failed", note: "no phone signed in · next: install Tailscale on your phone" });
+  assert.deepEqual(item({ id: "path", label: "This is the vyre your shell runs", ok: true }), { id: "path", label: "This is the vyre your shell runs", state: "ok" });
+  assert.equal(item({ id: "x", label: "x", ok: null, detail: "why" }).state, "unknown");
+  assert.equal(r.checks.length, heard.filter(([, c]) => c).length);
+});
+
+test("doctor --view: checks frames as each check answers, all waiting first, the --json result last; no verbs", async t => {
+  const root = tempHome(t);
+  fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ transcripts: [], vault: { keystore: "file" } }));
+  const bin = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../../bin/vyre");
+  const env = { ...process.env, VYRE_HOME: root, VYRE_NO_DIALOGS: "1", NO_COLOR: "1", VYRE_TAILSCALE_BIN: path.join(root, "no-tailscale") };
+  const vyre = args => new Promise(res => execFile(process.execPath, [bin, ...args], { env }, (e, stdout) => res({ code: e ? e.code : 0, out: stdout })));
+  const c = /** @type {any} */ (await vyre(["commands", "doctor", "--json"]));
+  const doc = JSON.parse(c.out).commands[0];
+  assert.deepEqual([doc.verbs, doc.flags], [[], [{ name: "json" }]]);
+  const r = /** @type {any} */ (await vyre(["doctor", "--view"]));
+  assert.equal(r.code, 1, "vyred is not running here, which fails");
+  const f = r.out.trim().split("\n").map(l => JSON.parse(l));
+  const done = f.pop();
+  assert.deepEqual(done, { v: 1, done: true, exit: 1 });
+  assert.ok(f.length >= 3, `a frame per change: ${f.length}`);
+  for (const x of f) {
+    assert.equal(x.view.kind, "checks");
+    for (const it of x.view.items) assert.ok(["ok", "wait", "failed", "unknown"].includes(it.state), it.state);
+  }
+  assert.ok(f[0].view.items.every(it => it.state === "wait"), "the first frame is every check waiting");
+  assert.equal(f[0].data, null);
+  const last = f.at(-1);
+  assert.deepEqual(Object.keys(last.data), ["ok", "role", "ms", "checks"], "the last frame's data is what --json prints");
+  assert.equal(last.view.items.find(it => it.id === "vyred").state, "failed");
+  assert.match(last.view.items.find(it => it.id === "vyred").note, /next: vyre up/);
+  assert.ok(last.view.items.every(it => it.state !== "wait"));
 });

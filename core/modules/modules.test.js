@@ -2,7 +2,8 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import path from "node:path";
-import { validate, discover, order, checkInput, Registry, callerAllowed } from "./index.js";
+import { validate, discover, order, checkInput, Registry, callerKind, callerAllowed, agentClaim, roleBuckets, firstParty } from "./index.js";
+import { fileURLToPath } from "node:url";
 import { open } from "../store/index.js";
 import { Events } from "../events/index.js";
 import { tempHome, writeModule } from "../../test/helpers.js";
@@ -13,12 +14,40 @@ test("modules: a good manifest has no problems", () => {
   assert.deepEqual(validate(good), []);
 });
 
+// ADR 0039: config.machine (solo/server/device) is what start() is actually called with now;
+// manifests keep saying "box"/"local", so this is the seam between the two.
+test("modules: roleBuckets maps config.machine onto the manifests' box/local vocabulary", () => {
+  assert.deepEqual(roleBuckets("server", "linux"), ["box"]);
+  assert.deepEqual(roleBuckets("device", "linux"), ["local"]);
+  // Reviewer's HOLD on 80fd866e, 28 Sep: solo is the full local core and none of the eight
+  // box-only modules -- it is a device, never a server, until the person chooses otherwise.
+  assert.deepEqual(roleBuckets("solo", "linux"), ["local"]);
+  // A raw legacy value (existing tests, or a caller not yet updated) passes straight through.
+  assert.deepEqual(roleBuckets("box", "linux"), ["box"]);
+  assert.deepEqual(roleBuckets("local", "linux"), ["local"]);
+});
+
+// team-lead, 28 Sep: a Mac chosen as the server is still, often, someone's own desk -- Capsule,
+// voice and the rest of the local core stay. A Linux box never had those modules to begin with.
+test("modules: roleBuckets gives a darwin server the local bucket too, but not a Linux one", () => {
+  assert.deepEqual(roleBuckets("server", "darwin").sort(), ["box", "local"]);
+  assert.deepEqual(roleBuckets("server", "linux"), ["box"]);
+  // device and solo are unaffected by platform: a device is never also a server.
+  assert.deepEqual(roleBuckets("device", "darwin"), ["local"]);
+  assert.deepEqual(roleBuckets("solo", "darwin"), ["local"]);
+});
+
 test("modules: tools must carry the module's own name", () => {
   assert.match(validate({ ...good, does: { tools: ["vault.fetch"] } }).join(), /must start with "notes\."/);
 });
 
 test("modules: the five verbs must be objects", () => {
   assert.match(validate({ ...good, needs: ["x"] }).join(), /needs must be an object/);
+  // sync.* makes memory forget a device's history: only federation's first-party module declares it.
+  assert.match(validate({ ...good, watches: { emits: ["sync.deleted"] } }).join(), /event "sync.deleted" is reserved for sync/);
+  assert.match(validate({ ...good, name: "sync", does: {}, watches: { emits: ["sync.deleted"] } }).join(), /reserved/, "a home module named sync is not first-party");
+  assert.deepEqual(validate({ ...good, name: "sync", does: {}, watches: { emits: ["sync.deleted"] } }, { firstParty: true }), []);
+  assert.match(validate({ ...good, name: "link", does: {}, watches: { emits: ["sync.deleted"] } }, { firstParty: true }).join(), /reserved for sync/, "only core/sync");
 });
 
 test("modules: dependencies start first; cycles and missing ones are named", () => {
@@ -74,6 +103,25 @@ test("modules: a module installed into a home never calls as another caller, eve
       assert.match((await reg.call(`${name}.try`, { as })).data, /may not call/, `${name} as ${as}`);
     }
   }
+});
+
+test("modules: meta.firstParty is set by the registry, from the loader's firstParty rule", async t => {
+  // A module in a home asks another tool what it was told; a claimed firstParty is overwritten.
+  const src = `export default { async start(ctx) {
+    ctx.tool("notes.seen", { input: { type: "object" }, run: async (_, meta) => ({ firstParty: meta.firstParty, caller: meta.caller }) });
+    ctx.tool("notes.ask", { input: { type: "object" }, run: async () => (await ctx.call("notes.seen", {})).data });
+    return { async stop() {} };
+  } };`;
+  const reg = await registry(t, [["notes", { version: "0.1.0", does: { tools: ["notes.seen", "notes.ask"] } }, src]]);
+  assert.deepEqual((await reg.call("notes.ask", {})).data, { firstParty: false, caller: "module:notes" });
+  assert.equal((await reg.call("notes.seen", {}, "module:notes", { firstParty: true })).data.firstParty, false, "a claim is overwritten");
+  assert.equal((await reg.call("notes.seen", {}, "cli", { firstParty: true })).data.firstParty, false);
+  assert.equal((await reg.call("notes.seen", {}, "module:nobody", {})).data.firstParty, false);
+  // A module shipped in the repo's core/ is first party, by the same rule the loader uses.
+  const shipped = path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "mail");
+  assert.equal(firstParty(shipped), true);
+  reg.modules.set("mail", { ...reg.modules.get("notes"), dir: shipped });
+  assert.equal((await reg.call("notes.seen", {}, "module:mail", {})).data.firstParty, true);
 });
 
 test("modules: a module that throws on start is failed, and the rest still run", async t => {
@@ -215,6 +263,24 @@ test("modules: a second module with a name already loaded is reported, and the f
   assert.equal((await reg.call("notes.other", {})).error.code, "no_such_tool");
 });
 
+test("modules: a bad manifest is logged at warn level, not silently dropped, and status() still carries it", async t => {
+  // A camelCase tool name once failed validate() and took the whole module with it, with no line
+  // in the log to say so - found only by calling discover() by hand (teammates, 2026-09-28).
+  const home = tempHome(t);
+  const root = path.join(home, "mods");
+  writeModule(root, "notes", { ...good, does: { tools: ["notes.addNote"] } }, echo);
+  const db = open(path.join(home, "vyre.db"));
+  t.after(() => db.close());
+  const logs = [];
+  const reg = new Registry({ db, events: new Events(db), config: { role: "local" }, log: (m) => logs.push(m) });
+  await reg.start(discover([root]), { role: "local" });
+  assert.ok(logs.some(l => /^warn: module notes invalid: .*must look like module\.verb/.test(l)), logs.join("\n"));
+  const st = reg.status();
+  const m = st.find(x => x.name === "notes");
+  assert.equal(m.state, "invalid");
+  assert.match(m.error, /must look like module\.verb/);
+});
+
 test("modules: a per-<thing> declaration lets a module fetch items named at run time", async t => {
   const vault = `export default { async start(ctx) {
     ctx.tool("vault.release", { internal: true, run: async ({ name }, { caller }) => ({ value: "value-of-" + name + "-for-" + caller }) });
@@ -305,7 +371,27 @@ test("modules: a tool learns how presence was proved, and never sees the proof i
   const reg = new Registry({ db, events: new Events(db), config: {}, log: () => {}, presence });
   await reg.start(discover([path.join(home, "mods")]), { role: "local" });
   const r = await reg.call("notes.add", {}, "cli", { proof: { method: "capsule", sig: "secret" }, thread: "t1" });
-  assert.deepEqual(r.data.meta, { thread: "t1", presence: { method: "capsule", keyId: "k1" }, caller: "cli" });
+  assert.deepEqual(r.data.meta, { thread: "t1", presence: { method: "capsule", keyId: "k1" }, caller: "cli", firstParty: false });
+});
+
+test("modules: a \"tailnet\" entry in callers lets the owner's devices in, and nothing else that looks like one", async t => {
+  const src = `export default { async start(ctx) {
+    ctx.tool("notes.add", { callers: ["cli", "tailnet"], run: async (i, meta) => ({ caller: meta.caller }) });
+    ctx.tool("notes.wipe", { callers: ["cli"], run: async () => 1 });
+    return {};
+  } };`;
+  const reg = await registry(t, [["notes", { ...good, does: { tools: ["notes.add", "notes.wipe"] } }, src]]);
+  for (const caller of ["tailnet:alex@example.com", "tailnet:alex-phone@example.com"]) {
+    assert.deepEqual(await reg.call("notes.add", {}, caller), { data: { caller } }, caller);
+    assert.ok(reg.listTools(caller).some(x => x.name === "notes.add"), caller);
+    assert.ok(!reg.listTools(caller).some(x => x.name === "notes.wipe"), caller);
+  }
+  assert.equal((await reg.call("notes.wipe", {}, "tailnet:alex@example.com")).error.code, "denied", "a list without tailnet still refuses a device");
+  for (const caller of ["tailnet", "tailnet:", "tailnet:agent:kit", "tailnet-guest:juno@example.com", "xtailnet:alex@example.com", "mcp tailnet:alex", "mcp"]) {
+    assert.equal((await reg.call("notes.add", {}, caller)).error.code, "denied", caller);
+    assert.ok(!reg.listTools(caller).some(x => x.name === "notes.add"), caller);
+  }
+  assert.equal(callerKind("tailnet:alex@example.com"), "tailnet:alex@example.com", "callerKind still returns the whole string");
 });
 
 test("modules: the owner's Deck at the box's tailnet address may use what the Deck may", () => {
@@ -316,4 +402,188 @@ test("modules: the owner's Deck at the box's tailnet address may use what the De
   assert.equal(callerAllowed(deck, "tailnet-guest:juno@example.com"), false);
   assert.equal(callerAllowed(deck, "mcp:agent:kit"), false);
   assert.equal(callerAllowed(null, "anonymous"), true);
+});
+
+test("modules: agentClaim finds the agent name behind any transport shape, or null", () => {
+  for (const [caller, name] of [
+    ["mcp:agent:kit", "kit"], ["harness:agent:kit", "kit"], ["cli:agent:kit", "kit"],
+    ["module:agent:kit", "kit"], ["tailnet:agent:kit", "kit"], ["agent:kit", "kit"],
+    ["cli agent:kit", "kit"], ["mcp agent:kit", "kit"],
+  ]) assert.equal(agentClaim(caller), name, caller);
+  for (const caller of ["cli", "tailnet:alex@example.com", "module:notes", "mcp", "", null, undefined]) {
+    assert.equal(agentClaim(caller), null, String(caller));
+  }
+  // An empty or odd name still counts as a claim (e2e review, 2026-09-28): every caller checks
+  // `if (agentClaim(...))`, and "" is falsy, so a claim with no name must never come back as ""
+  // or it reads as no claim at all and the caller is trusted fully instead of refused.
+  for (const caller of ["cli agent:", "mcp:agent:", "agent:"]) {
+    const claim = agentClaim(caller);
+    assert.ok(claim, `${caller} -> ${JSON.stringify(claim)}, must be truthy`);
+    assert.notEqual(claim, "", caller);
+  }
+});
+
+test("modules: needs.credentials is a list of {id, kind, provider, purpose}, with item, optional and group", () => {
+  const need = { id: "deepgram", kind: "api-key", provider: "deepgram", purpose: "push-to-talk", group: "speech" };
+  assert.deepEqual(validate({ ...good, needs: { credentials: [need, { ...need, id: "openai", provider: "openai", item: "notes-openai-key", optional: true }] } }), []);
+  const bad = c => validate({ ...good, needs: { credentials: c } }).join("; ");
+  assert.match(bad({ id: "x" }), /needs.credentials must be a list/);
+  assert.match(bad([{ ...need, id: "Bad Id" }]), /\.id must be a lowercase name/);
+  assert.match(bad([need, need]), /declared twice/);
+  assert.match(bad([{ ...need, kind: 3 }]), /\.kind must be a string/);
+  assert.match(bad([{ ...need, purpose: "" }]), /\.purpose must be a string/);
+  assert.match(bad([{ ...need, item: "a b" }]), /\.item must be a vault item name/);
+  assert.match(bad([{ ...need, group: "Speech!" }]), /\.group must be a lowercase name/);
+  assert.match(bad([{ ...need, optional: "yes" }]), /\.optional must be true or false/);
+  assert.match(bad(["deepgram"]), /must be an object/);
+});
+
+test("modules: ctx.vault.fetch accepts items named by needs.credentials, by item or <module>-<id>", async t => {
+  const vault = `export default { async start(ctx) {
+    ctx.tool("vault.release", { internal: true, run: async ({ name }, { caller }) => ({ value: "value-of-" + name + "-for-" + caller }) });
+    return {};
+  } };`;
+  const user = `export default { async start(ctx) {
+    ctx.tool("talker.check", { run: async ({ item }) => ({ got: await ctx.vault.fetch(item) }) });
+    ctx.tool("talker.mods", { run: async () => ctx.modules.status().find(m => m.name === "talker").credentials.map(c => c.id) });
+    return {};
+  } };`;
+  const creds = [{ id: "deepgram", kind: "api-key", provider: "deepgram", purpose: "speech", item: "talker-deepgram-key" },
+    { id: "openai", kind: "api-key", provider: "openai", purpose: "speech" }];
+  const reg = await registry(t, [
+    ["vault", { version: "0.1.0", does: { tools: ["vault.release"] } }, vault],
+    ["talker", { version: "0.1.0", does: { tools: ["talker.check", "talker.mods"] }, needs: { credentials: creds } }, user],
+  ]);
+  assert.deepEqual(await reg.call("talker.check", { item: "talker-deepgram-key" }, "cli"), { data: { got: "value-of-talker-deepgram-key-for-module:talker" } });
+  assert.deepEqual(await reg.call("talker.check", { item: "talker-openai" }, "cli"), { data: { got: "value-of-talker-openai-for-module:talker" } });
+  assert.match((await reg.call("talker.check", { item: "talker-deepgram" }, "cli")).error.message, /does not declare/);
+  assert.deepEqual((await reg.call("talker.mods", {}, "cli")).data, ["deepgram", "openai"]);
+});
+
+test("modules: a use is a tool that ran for a person, a surface or a model; refusals, modules and hooks are not", async t => {
+  const src = `export default { async start(ctx) {
+    ctx.tool("notes.add", { input: { type: "object", properties: { fail: { type: "boolean" } } },
+      run: async ({ fail }) => { if (fail) throw new Error("no"); return { ok: true }; } });
+    ctx.tool("notes.inside", { callers: ["module"], run: async () => ({ ok: true }) });
+    return {};
+  } };`;
+  const reg = await registry(t, [["notes", { ...good, does: { tools: ["notes.add", "notes.inside"] } }, src]]);
+  t.after(() => reg.stop());
+  const use = () => reg.status().find(m => m.name === "notes").use;
+  assert.deepEqual(use(), { calls: 0, lastUsed: null });
+  assert.equal(reg.flushTimer, null, "nothing is scheduled while nothing was used");
+  await reg.call("notes.add", {}, "cli");
+  await reg.call("notes.add", { fail: true }, "mcp:agent:kit");
+  await reg.call("notes.add", { fail: "yes" }, "cli");
+  await reg.call("notes.inside", {}, "cli");
+  await reg.call("notes.add", {}, "module:planner");
+  const u = use();
+  assert.equal(u.calls, 2, "a success and an error count; bad input, a denied caller and a module do not");
+  assert.ok(u.lastUsed && Math.abs(Date.now() - u.lastUsed) < 5000);
+  assert.ok(reg.flushTimer, "the first change arms one write");
+  assert.equal(/** @type {any} */ (reg.flushTimer).hasRef(), false, "and it never keeps vyred awake");
+});
+
+test("modules: use counts are written at stop and read back by the next registry", async t => {
+  const home = tempHome(t);
+  const root = path.join(home, "mods");
+  writeModule(root, "notes", good, echo);
+  const db = open(path.join(home, "vyre.db"));
+  t.after(() => db.close());
+  const make = async () => {
+    const reg = new Registry({ db, events: new Events(db), config: { role: "local" }, log: () => {} });
+    await reg.start(discover([root]), { role: "local" });
+    return reg;
+  };
+  const a = await make();
+  await a.call("notes.add", { text: "a" }, "cli");
+  await a.call("notes.add", { text: "b" }, "deck");
+  assert.equal(db.prepare("SELECT COUNT(*) n FROM modules_use").get().n, 0, "not written on every call");
+  await a.stop();
+  assert.equal(a.flushTimer, null);
+  const row = db.prepare("SELECT calls, last_used FROM modules_use WHERE module = 'notes'").get();
+  assert.equal(row.calls, 2);
+  const b = await make();
+  t.after(() => b.stop());
+  assert.equal(b.status().find(m => m.name === "notes").use.calls, 2);
+  assert.equal(b.status().find(m => m.name === "notes").use.lastUsed, Number(row.last_used));
+});
+
+test("modules: status rows carry what a manifest declares for the surfaces, and ctx.modules reads a copy", async t => {
+  const manifest = { ...good, does: { tools: ["notes.add"], commands: [{ verb: "add", tool: "notes.add", summary: "add a note", args: ["text"] }],
+    connections: "notes.add", suggest: "notes.add" }, shows: { notices: ["note-late"] } };
+  const src = `export default { async start(ctx) {
+    ctx.tool("notes.add", { run: async () => {
+      const rows = ctx.modules.status();
+      rows[0].name = "changed";
+      return { rows, tools: ctx.modules.tools("cli").map(t => t.name) };
+    } });
+    return {};
+  } };`;
+  const reg = await registry(t, [["notes", manifest, src]]);
+  const row = reg.status().find(m => m.name === "notes");
+  assert.deepEqual(row.commands, manifest.does.commands);
+  assert.equal(row.connections, "notes.add");
+  assert.equal(row.suggest, "notes.add");
+  assert.deepEqual(row.notices, ["note-late"]);
+  assert.deepEqual(row.emits, ["note.added"]);
+  assert.deepEqual(row.shows, { notices: ["note-late"] });
+  const r = await reg.call("notes.add", {}, "cli");
+  assert.deepEqual(r.data.tools, ["notes.add"]);
+  assert.equal(reg.status()[0].name, "notes", "a module's edit to its copy changes nothing");
+});
+
+test("modules: declaredTips lists the teaches.tips of running modules, a home module as not first-party", async t => {
+  const tip = { id: "rye", text: "Rye orders show in Now.", surfaces: ["deck"], level: "first-use", trigger: "on-use", since: "1.0.0" };
+  const peek = `export default { async start(ctx) { globalThis.__tipsPeek = ctx.declaredTips; return { async stop() {} }; } };`;
+  const quiet = `export default { async start() { return { async stop() {} }; } };`;
+  await registry(t, [
+    ["bakery", { name: "bakery", version: "1.0.0", teaches: { tips: [tip] } }, quiet],
+    ["oven", { name: "oven", version: "0.1.0", teaches: {} }, quiet],
+    ["peek", { name: "peek", version: "0.1.0" }, peek],
+  ]);
+  const list = /** @type {any} */ (globalThis).__tipsPeek();
+  delete (/** @type {any} */ (globalThis).__tipsPeek);
+  assert.deepEqual(list, [{ module: "bakery", version: "1.0.0", firstParty: false, tips: [tip] }]);
+});
+
+test("modules: first-party means shipped in the repo's core/, local/ or modules/, never a dev home inside the checkout", async t => {
+  const { firstParty } = await import("./index.js");
+  const repo = path.resolve(path.dirname(new URL(import.meta.url).pathname), "..", "..");
+  const was = process.env.VYRE_HOME;
+  t.after(() => { if (was === undefined) delete process.env.VYRE_HOME; else process.env.VYRE_HOME = was; });
+  process.env.VYRE_HOME = path.join(repo, ".dev");
+  assert.equal(firstParty(path.join(repo, "core", "settings")), true);
+  assert.equal(firstParty(path.join(repo, "modules", "tips")), true);
+  assert.equal(firstParty(path.join(repo, ".dev", "modules", "bakery")), false, "a dev home's module");
+  assert.equal(firstParty(path.join(repo, "test", "fixtures", "oven")), false, "anywhere else in the checkout");
+  assert.equal(firstParty(path.join(repo, "core", "settings", "nested")), false, "only a folder directly in core/");
+});
+
+test("modules: Registry.stop() does not hang forever on a module whose own stop() never settles", async t => {
+  // core/settings/settings.test.js (and anything else that starts a real vyred in-process and
+  // stops it in t.after) hung indefinitely, at 0% CPU, whenever any one loaded module's stop()
+  // never resolved: Registry.stop() awaited each module in turn with no bound at all. Races it
+  // against MODULE_STOP_MS now, the same way the daemon already bounds its own drain. Mocked
+  // timers, not a real multi-second wait: a module whose stop() truly never resolves is exactly
+  // the case a real wait can't safely reach without either leaving that promise dangling past
+  // the test (node:test's own pending-promise-at-exit check) or waiting the real MODULE_STOP_MS.
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  const home = tempHome(t);
+  const root = path.join(home, "mods");
+  const stuck = `export default { async start(ctx) {
+    ctx.tool("stuck.ping", { run: async () => "pong" });
+    return { stop: () => new Promise(() => {}) }; // never settles
+  } };`;
+  writeModule(root, "stuck", { version: "0.1.0", does: { tools: ["stuck.ping"] } }, stuck);
+  const db = open(path.join(home, "vyre.db"));
+  t.after(() => db.close());
+  const logs = [];
+  const reg = new Registry({ db, events: new Events(db), config: { role: "local" }, log: m => logs.push(m) });
+  await reg.start(discover([root]), { role: "local" });
+  assert.deepEqual(await reg.call("stuck.ping", {}, "cli"), { data: "pong" });
+  const done = reg.stop();
+  t.mock.timers.tick(5_000); // MODULE_STOP_MS, mocked: instant, nothing left dangling
+  await done;
+  assert.ok(logs.some(l => /^warn: module stuck did not stop within \d+ms/.test(l)), logs.join("\n"));
 });

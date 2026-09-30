@@ -158,11 +158,18 @@ export class Scheduler {
       } else patch.next_fire = null;
     }
     st.patch(item.id, patch);
+    // Answered on a device that rang it while the box was out of reach (planner.done with a key):
+    // the box does not ring that moment again (ADR 0029, R6).
+    const pre = st.firingAt(item.id, dueAt);
+    if (pre && pre.state === "acked") return;
     // A new ring for an item replaces one still ringing from before.
     this.d.db.prepare("UPDATE planner_firings SET state = 'superseded', next_ring = NULL WHERE item = ? AND state = 'ringing'").run(item.id);
     const missed = now - dueAt > LATE_MS;
+    // A task runs quietly once (team-lead, 2026-09-28): it is not an alarm nobody answered, it is
+    // an instruction that already ran (runTask, on this same fired()) - escalating it would run
+    // that instruction again, unattended, every escalate_after minutes up to escalate_max times.
     const f = { id: newId("f"), item: item.id, kind: item.kind, due: dueAt, ring: 1, missed, state: "ringing", fired_at: now,
-      next_ring: s.escalate_max > 0 ? now + s.escalate_after * 60_000 : null };
+      next_ring: item.kind === "task" ? null : (s.escalate_max > 0 ? now + s.escalate_after * 60_000 : null) };
     if (now - dueAt > STALE_MS) {
       // A day stale: kept as missed, never rung.
       st.insertFiring({ ...f, ring: 0, state: "missed", next_ring: null });

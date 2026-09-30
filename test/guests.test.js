@@ -33,7 +33,7 @@ const lenient = {
   challenge: async () => ({ error: { code: "bad_input", message: "no challenges here" } }),
 };
 
-async function box(t, { guests = { enabled: true, people: { "sam@harlow.example": { tools: ["threads.list", "glass.close", "glass.take"] } } },
+async function box(t, { guests = { enabled: true, people: { "sam@harlow.example": { tools: ["threads.list", "glass.close", "glass.take", "glass.open"] } } },
   agentOf = async id => (id === "nKIT" ? "kit" : null) } = {}) {
   const root = tempHome(t);
   fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ role: "box", name: "alex", transcripts: [],
@@ -61,15 +61,15 @@ async function box(t, { guests = { enabled: true, people: { "sam@harlow.example"
 test("guests: a listed guest calls its tools and nothing else, and learns nothing about the rest", async t => {
   const { d, send, call } = await box(t);
   assert.equal((await call(SAM_IP, "threads.list")).status, 200);
-  assert.deepEqual((await call(SAM_IP, "glass.close", { session: "none" })).data, { closed: false });
-  // Not safe, even though config lists it: glass.take is never a guest's. Not listed: 404 as well.
-  for (const tool of ["glass.take", "glass.open", "names.status", "gate.approve", "link.pair.approve", "presence.enroll", "vault.reveal",
+  // Not safe, even though config lists them: glass.take is never a guest's, and neither are
+  // glass.open and glass.close (tailnet streams are the owner's alone). Not listed: 404 as well.
+  for (const tool of ["glass.take", "glass.open", "glass.close", "names.status", "gate.approve", "link.pair.approve", "presence.enroll", "vault.reveal",
     "network.guests.add", "network.guests.list", "no.such"]) {
     const r = await call(SAM_IP, tool, {});
     assert.deepEqual([tool, r.status, r.error && r.error.code], [tool, 404, "no_such_tool"]);
     assert.equal(r.error.message, "no such tool here", "one message for all of them");
   }
-  assert.deepEqual((await send(SAM_IP, "GET", "/v1/tools")).data.map(x => x.name).sort(), ["glass.close", "threads.list"]);
+  assert.deepEqual((await send(SAM_IP, "GET", "/v1/tools")).data.map(x => x.name).sort(), ["threads.list"]);
   for (const p of ["/v1/events", "/v1/modules", "/v1/health", "/v1/events/stream"]) assert.equal((await send(SAM_IP, "GET", p)).status, 404, p);
   assert.equal((await send(SAM_IP, "POST", "/v1/presence/challenge", { tool: "gate.approve" })).status, 404);
   assert.equal(d.config.network.ownerSeen, undefined, "a guest is not the owner being seen");
@@ -83,7 +83,7 @@ test("guests: a grant's tools count without a listing, still only the safe ones;
   const { d, root, call } = await box(t);
   assert.equal((await call(PAT_IP, "threads.list")).status, 200, "granted vyre.run/cap/guest threads.list");
   assert.equal((await call(PAT_IP, "vault.reveal", { name: "x" })).status, 404, "granted, but not safe");
-  assert.equal((await call(PAT_IP, "glass.close", { session: "x" })).status, 404, "safe, but not granted");
+  assert.equal((await call(PAT_IP, "glass.close", { session: "x" })).status, 404, "granted by no one, and not safe");
   config.save({ network: { guests: { enabled: false, people: d.config.network.guests.people } } }, root, d.config);
   for (const ip of [SAM_IP, PAT_IP]) {
     const r = await call(ip, "threads.list");
@@ -101,17 +101,17 @@ test("guests: a guest never approves, never proves presence, never pairs, and a 
     assert.equal(r.error && r.error.code, "denied", tool);
   }
   const pair = await d.registry.call("link.pair.request", { name: "sams-laptop" }, guest, {});
-  assert.match(pair.error.message, /from the Mac, over the tailnet/);
+  assert.match(pair.error.message, /from the device, over the tailnet/);
   // x-vyre-caller over the listener is ignored, and over the socket a guest's label is anonymous.
   const { socketCaller } = await import("../core/daemon/index.js");
   assert.equal(socketCaller({ headers: { "x-vyre-caller": guest } }), "anonymous");
   assert.equal((await call(SAM_IP, "threads.list", {}, { "x-vyre-caller": "cli" })).status, 200);
 });
 
-test("guests: a guest closes only the Glass sessions it opened", async t => {
+test("guests: a guest cannot close the owner's Glass session", async t => {
   const { d, call } = await box(t);
   d.registry.deps.db.prepare("INSERT INTO glass_sessions (id, target, surface, caller, opened, closed) VALUES ('s-owner', 'box', 'deck:mac', 'tailnet:alex@example.com', 1, NULL)").run();
-  assert.deepEqual((await call(SAM_IP, "glass.close", { session: "s-owner" })).data, { closed: false });
+  assert.equal((await call(SAM_IP, "glass.close", { session: "s-owner" })).status, 404);
   assert.deepEqual((await d.registry.call("glass.close", { session: "s-owner" }, "cli")).data, { closed: true });
 });
 
@@ -137,7 +137,7 @@ test("agent nodes: the node's agent must also bring that same agent's key", asyn
   assert.deepEqual([m.peer.kind, m.peer.agent, m.peer.stableId, m.peer.login], ["agent", "kit", "nKIT", null]);
   // An agent's node is not one of the owner's devices: it cannot pair.
   const pair = await call(KIT_IP, "link.pair.request", { name: "kit" }, { "x-vyre-agent-key": "kit-key" });
-  assert.match(pair.error.message, /from the Mac, over the tailnet/);
+  assert.match(pair.error.message, /from the device, over the tailnet/);
 });
 
 test("agent nodes: without a resolver's answer, the node is refused as a tagged node", async t => {
@@ -151,30 +151,35 @@ test("network.guests: add, remove and enable need presence and the owner; agents
   const got = [];
   d.events.on("guest.*", e => got.push([e.type, e.payload]));
   const proof = { method: "test" };
-  assert.equal((await d.registry.call("network.guests.add", { login: "sam@harlow.example", tools: ["glass.open"] }, "cli")).error.code, "presence_required");
-  for (const [caller, meta] of [["mcp:agent:kit", { agent: "kit", thread: "t" }], ["tailnet:agent:kit", { agent: "kit" }], ["tailnet-guest:sam@harlow.example", {}], ["anonymous", {}]]) {
+  assert.equal((await d.registry.call("network.guests.add", { login: "sam@harlow.example", tools: ["threads.list"] }, "cli")).error.code, "presence_required");
+  // "cli agent:kit" is an agent vouched under the CLI transport, not "mcp:agent:"; agentClaim
+  // (core/modules) must still catch it, same as the narrower shape (e2e review, 2026-09-28).
+  for (const [caller, meta] of [["mcp:agent:kit", { agent: "kit", thread: "t" }], ["cli agent:kit", {}], ["tailnet:agent:kit", { agent: "kit" }], ["tailnet-guest:sam@harlow.example", {}], ["anonymous", {}]]) {
     for (const [tool, input] of [["network.guests.add", { login: "sam@harlow.example", tools: [] }], ["network.guests.remove", { login: "sam@harlow.example" }], ["network.guests.enable", { on: true }]]) {
       const r = await d.registry.call(tool, input, caller, { ...meta, proof });
       assert.equal(r.error && r.error.code, "denied", `${caller} ${tool}`);
     }
   }
+  // A claim with no name at all ("cli agent:") must still be refused, not read as no claim and
+  // trusted fully (agentClaim never returns "", e2e review, 2026-09-28).
+  assert.equal((await d.registry.call("network.guests.enable", { on: true }, "cli agent:", { proof })).error.code, "denied", "an empty agent name is still an agent");
   const bad = await d.registry.call("network.guests.add", { login: "sam@harlow.example", tools: ["glass.take"] }, "cli", { proof });
-  assert.match(bad.error.message, /glass.close, glass.open, threads.list; not glass.take/);
+  assert.match(bad.error.message, /threads.list; not glass.take/);
   assert.equal((await d.registry.call("network.guests.add", { login: "alex@example.com", tools: [] }, "cli", { proof })).error.code, "bad_input");
-  const added = await d.registry.call("network.guests.add", { login: "sam@harlow.example", tools: ["threads.list", "glass.open"] }, "tailnet:alex@example.com", { proof });
-  assert.deepEqual(added.data.people, [{ login: "sam@harlow.example", tools: ["glass.open", "threads.list"], allowed: [] }], "listed, but guests are off");
+  const added = await d.registry.call("network.guests.add", { login: "sam@harlow.example", tools: ["threads.list"] }, "tailnet:alex@example.com", { proof, person: { id: "s1", kind: "cookie" } });
+  assert.deepEqual(added.data.people, [{ login: "sam@harlow.example", tools: ["threads.list"], allowed: [] }], "listed, but guests are off");
   const on = await d.registry.call("network.guests.enable", { on: true }, "cli", { proof });
-  assert.deepEqual([on.data.enabled, on.data.people[0].allowed], [true, ["glass.open", "threads.list"]]);
+  assert.deepEqual([on.data.enabled, on.data.people[0].allowed], [true, ["threads.list"]]);
   assert.deepEqual(JSON.parse(fs.readFileSync(path.join(d.paths.root, "config.json"), "utf8")).network.guests,
-    { enabled: true, people: { "sam@harlow.example": { tools: ["glass.open", "threads.list"] } } });
+    { enabled: true, people: { "sam@harlow.example": { tools: ["threads.list"] } } });
   const gone = await d.registry.call("network.guests.remove", { login: "SAM@harlow.example" }, "cli", { proof });
   assert.deepEqual(gone.data.people, []);
-  assert.deepEqual(got, [["guest.added", { login: "sam@harlow.example", tools: ["glass.open", "threads.list"] }], ["guest.removed", { login: "sam@harlow.example" }]]);
+  assert.deepEqual(got, [["guest.added", { login: "sam@harlow.example", tools: ["threads.list"] }], ["guest.removed", { login: "sam@harlow.example" }]]);
   assert.equal((await d.registry.call("network.guests.list", {}, "tailnet-guest:sam@harlow.example")).error.code, "denied");
 });
 
 test("network.guests.check: asks a fake tailscale who each online person is and what the listener would do", async t => {
-  const { d } = await box(t, { guests: { enabled: true, people: { "sam@harlow.example": { tools: ["glass.open"] } } } });
+  const { d } = await box(t, { guests: { enabled: true, people: { "sam@harlow.example": { tools: ["threads.list"] } } } });
   const dir = fs.mkdtempSync(path.join(d.paths.root, "ts-"));
   const bin = path.join(dir, "tailscale");
   const status = { BackendState: "Running", Self: { ID: "nBOX", TailscaleIPs: ["100.101.1.1"], UserID: 1 },
@@ -205,9 +210,9 @@ process.stderr.write("no"); process.exit(1);
   const r = (await d.registry.call("network.guests.check", {}, "cli")).data;
   assert.equal(r.enabled, true);
   assert.deepEqual(r.peers, [
-    { login: "sam@harlow.example", node: "sams-laptop", stableId: "nSAM", served: true, listed: true, granted: [], tools: ["glass.open"], why: "guest" },
+    { login: "sam@harlow.example", node: "sams-laptop", stableId: "nSAM", served: true, listed: true, granted: [], tools: ["threads.list"], why: "guest" },
     { login: "pat@northwind.example", node: "pats-mac", stableId: "nPAT", served: true, listed: false, granted: ["threads.list", "glass.*"],
-      tools: ["glass.close", "glass.open", "threads.list"], why: "guest" },
+      tools: ["threads.list"], why: "guest" },
   ]);
   const calls = fs.readFileSync(path.join(dir, "calls"), "utf8").trim().split("\n");
   assert.deepEqual(calls, ["status --json", `whois --json ${SAM_IP}`, `whois --json ${PAT_IP}`], "offline, tagged and owner nodes are never asked about");
@@ -216,4 +221,16 @@ process.stderr.write("no"); process.exit(1);
   config.save({ network: { guests: { enabled: false, people: {} } } }, d.paths.root, d.config);
   const off = (await d.registry.call("network.guests.check", {}, "cli")).data;
   assert.deepEqual(off.peers.map(p => [p.login, p.served, p.why]), [["sam@harlow.example", false, "not the owner"], ["pat@northwind.example", false, "not the owner"]]);
+});
+
+test("hosted app: the listener answers the owner's preflight and probe from app.vyre.run; a guest's calls are refused", async t => {
+  const { send, call } = await box(t);
+  const app = { origin: "https://app.vyre.run" };
+  assert.equal((await send(OWNER_IP, "OPTIONS", "/v1/tools/threads.list", undefined, { ...app, "access-control-request-method": "POST" })).status, 204);
+  assert.deepEqual(await send(OWNER_IP, "GET", "/v1/health", undefined, app), { status: 200, data: { reachable: true } });
+  // Whether a call from the hosted origin runs is the router's person-session rule (e2e's,
+  // test/person.test.js); the listener's part is only that it gets there, from the owner.
+  // A guest from the same page gets nothing; the owner's own page needs no session.
+  assert.equal((await call(SAM_IP, "threads.list", {}, app)).status, 403);
+  assert.equal((await call(OWNER_IP, "threads.list", {}, { origin: "https://alex.vyre.run:0" })).status, 200);
 });

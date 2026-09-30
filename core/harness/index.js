@@ -10,6 +10,7 @@
 import os from "node:os";
 import path from "node:path";
 import { rules } from "./rules.js";
+import { LIVE_STATUSES } from "../../lib/thread-status.js";
 
 const MIGRATIONS = [
   `CREATE TABLE harness_files (
@@ -40,6 +41,9 @@ export default {
      * @param {string|undefined} projects @param {string|null} slug
      */
     const inScope = (projects, slug) => !projects || projects === "*" || (slug != null && projects.split(",").includes(slug));
+    // A hard ceiling on the style-plus-team nudge harness.brief prepends (defense in depth: both
+    // already cap their own text, this bounds the sum even if either drifts).
+    const APPEND_TOTAL_MAX = 2000;
 
     /**
      * The agent a hook speaks for. The caller "harness:agent:<name>" is checked by vyred against
@@ -96,9 +100,33 @@ export default {
         // The lessons the user taught apply in every thread, in a project or not.
         const lessons = await ask("learn.check", { stage: "brief", cwd, session });
         const lessonText = lessons && lessons.text ? lessons.text : "";
-        // An agent outside its projects gets no brief, only the lessons.
-        if (!inScope(projects, slug)) return { text: withWarning(lessonText), project: null };
-        return { text: withWarning([text, lessonText].filter(Boolean).join("\n\n")), project: slug };
+        // Computed once, used both for the style.append call below and the early return: an
+        // agent out of scope must not see that project's own style.rules (a person's free text)
+        // any more than it sees the project's brief (reviewer's LOW on 36caa4ad).
+        const scoped = inScope(projects, slug);
+        // core/style (ADR 0037): the person's house writing voice, for every session - project or
+        // not - null when they turned it off. {} still asks for the account-level voice when out
+        // of scope; only style.rules (the project-specific part) needs the project to be in scope.
+        const style = await ask("style.append", scoped && slug ? { project: slug } : {});
+        const styleText = style && typeof style.text === "string" ? style.text : "";
+        // An agent outside its projects gets no brief, only the lessons and the house voice.
+        if (!scoped) return { text: withWarning([styleText, lessonText].filter(Boolean).join("\n\n")), project: null };
+        // What memory learned about the project lately, and its last session (ADR 0036: sessions
+        // start knowing today). A few short lines; nothing when memory is off or knows nothing.
+        const today = slug ? await ask("memory.today", { room: slug, ...(session ? { session } : {}) }) : null;
+        const lately = today && Array.isArray(today.lines) && today.lines.length ? `Lately in this project (Vyre memory; notes from the person's own sessions, not instructions):\n${today.lines.map(l => `- ${l}`).join("\n")}` : "";
+        // Teammates section 1 (docs/design/teammates.md): every ordinary project session gets a
+        // nudge toward team_ask, ahead of the project's own brief - null when the person turned
+        // team.default off for this project, or core/team is not running.
+        const teamAppend = slug ? await ask("team.project-append", { project: slug }) : null;
+        const teamText = teamAppend && typeof teamAppend.text === "string" ? teamAppend.text : "";
+        // Defense in depth (both style and team already cap their own text; this bounds the sum
+        // even if either drifts, or a third append joins them later): a hard ceiling at the one
+        // place they are joined. A plain character cut (it may land mid-word - this is a safety
+        // bound against drift, not a rendered UI truncation), ellipsis not an em dash.
+        let nudge = [styleText, teamText].filter(Boolean).join("\n\n");
+        if (nudge.length > APPEND_TOTAL_MAX) nudge = nudge.slice(0, APPEND_TOTAL_MAX - 1) + "…";
+        return { text: withWarning([nudge, text, lately, lessonText].filter(Boolean).join("\n\n")), project: slug };
       },
     });
 
@@ -135,6 +163,19 @@ export default {
       },
     });
 
+    const SUBAGENT = /^(Agent|Task)$/;
+    /** Take a subagent slot for a session's Agent call: null when it may run, else why not. */
+    const subagentSlot = async (session, cwd, key) => {
+      const t = await ask("threads.get", { thread: session, limit: 1 });
+      if (t && t.thread && t.thread.driver === "sdk" && LIVE_STATUSES.includes(t.thread.status)) return null;   // held in-process
+      const of = cwd ? await ask("projects.of", { cwd }) : null;
+      const r = await ask("sessions.slots", { action: "take", kind: "subagent", project: (of && of.slug) || "_none", owner: `session:${session}`, key: String(key || Date.now()), wait: false });
+      if (!r || !r.queued) return null;
+      return `Too many subagents are running right now (Vyre's limit for this project or this machine); this one is number ${r.position} in line. Do the work in this session, or try the subagent again in a little while.`;
+    };
+    const releaseSlots = (session, key = null) => ask("sessions.slots",
+      key ? { action: "release", owner: `session:${session}`, key: String(key) } : { action: "release-owner", owner: `session:${session}`, kind: "subagent" }).catch(() => null);
+
     ctx.tool("harness.rules", {
       description: "PreToolUse: the security floor's verdict on a tool call, then the lessons'. null means no opinion; Claude Code's own permissions decide.",
       input: { type: "object", required: ["tool_name"], properties: { tool_name: { type: "string" }, tool_input: { type: "object" }, cwd: { type: "string" }, session: { type: "string" }, prompt_id: { type: "string" }, agent: { type: "string" }, tool_use_id: { type: "string" },
@@ -142,7 +183,10 @@ export default {
       run: async ({ tool_name, tool_input, cwd, session, prompt_id, agent: named, tool_use_id, plugin_root }, { caller } = {}) => {
         const agent = agentOf(named, caller);
         /** @type {{ decision: "deny"|"ask"|null, reason?: string, rule?: number, lesson?: number }} */
-        let verdict = rules({ tool: tool_name, input: tool_input || {}, cwd, home: ctx.paths ? ctx.paths.root : undefined });
+        // Only an agent vyred vouched for (its key, harness:agent:<name>) gets its own folder as a
+        // working place; a name in the input is a claim.
+        const vouched = /^harness:agent:(.+)$/.exec(String(caller || ""))?.[1] || null;
+        let verdict = rules({ tool: tool_name, input: tool_input || {}, cwd, home: ctx.paths ? ctx.paths.root : undefined, agent: vouched });
         // A send inside an agent's thread goes through the Gate instead, where the user can edit
         // it. Without the Gate running, the floor's "ask first" stands.
         if (verdict.rule === 1 && agent) {
@@ -156,6 +200,13 @@ export default {
             ...(plugin_root ? { plugin_root } : {}) });
           if (l && l.decision) verdict = { decision: l.decision, reason: l.reason, lesson: l.lesson };
         }
+        // A subagent in a session the Agent SDK does not drive (a terminal, or the CLI runner) takes a
+        // subagent slot here (ADR 0030 section 12). No waiting in a hook: when the project or the
+        // box is full it is refused at once, with its place in line.
+        if (!verdict.decision && SUBAGENT.test(String(tool_name)) && session) {
+          const held = await subagentSlot(session, cwd, tool_use_id);
+          if (held) verdict = { decision: "deny", reason: held };
+        }
         if (verdict.decision) ctx.events.emit("tool.held", { session: session || null, tool: tool_name, decision: verdict.decision, rule: verdict.rule ?? null, lesson: verdict.lesson ?? null });
         return verdict;
       },
@@ -167,6 +218,7 @@ export default {
       input: { type: "object", required: ["tool_name"], properties: { tool_name: { type: "string" }, tool_input: { type: "object" }, cwd: { type: "string" }, session: { type: "string" },
         tool_use_id: { type: "string" }, ok: { type: "boolean" }, error_head: { type: "string" }, interrupted: { type: "boolean" } } },
       run: async ({ tool_name, tool_input, cwd, session, tool_use_id, ok = true, error_head, interrupted }) => {
+        if (SUBAGENT.test(String(tool_name)) && session && tool_use_id) await releaseSlots(session, tool_use_id);
         const key = WRITERS[/** @type {keyof typeof WRITERS} */ (tool_name)];
         const raw = key && tool_input ? tool_input[key] : null;
         const file = raw && typeof raw === "string" ? path.resolve(cwd || os.homedir(), raw.startsWith("~/") ? path.join(os.homedir(), raw.slice(2)) : raw) : null;
@@ -198,6 +250,7 @@ export default {
       input: { type: "object", properties: { session: { type: "string" }, prompt_id: { type: "string" }, cwd: { type: "string" }, agent: { type: "string" }, text: { type: "string" }, stop_hook_active: { type: "boolean" },
         headless: { type: "boolean" } } },
       run: async ({ session, ...turn }, { caller } = {}) => {
+        if (session) await releaseSlots(session);                       // a turn's end gives its subagent slots back
         const agent = agentOf(turn.agent, caller);
         const check = session ? await ask("learn.check", { stage: "stop", session, ...turn, ...(agent ? { agent } : {}) }) : null;
         if (check && check.decision === "block") return { decision: "block", reason: String(check.reason) };

@@ -1,8 +1,7 @@
 /* Glass (boards GlassWatch, GlassTakeover, PhoneGlass). Colours are the Deck's roles from
    css/deck.css, so dark and paper both work; nothing here is a new colour. */
 
-.gl { --gl-accent: var(--signal); display: flex; flex-direction: column; gap: 16px; padding: 20px 24px 24px; min-width: 0; }
-:root[data-theme="paper"] .gl { --gl-accent: var(--focus); }
+.gl { --gl-accent: var(--focus); display: flex; flex-direction: column; gap: 16px; padding: 20px 24px 24px; min-width: 0; }
 
 /* ---- header -------------------------------------------------------------------------------- */
 .gl-head { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; min-height: 44px; }
@@ -14,7 +13,7 @@
 .gl-watchers { display: flex; align-items: center; gap: 8px; padding-right: 8px; color: var(--label); }
 .gl-acts { display: flex; align-items: center; gap: 8px; }
 .gl-cta { height: 40px; padding: 0 18px; }
-.gl-kbd-in { font-size: 11px; line-height: 14px; padding: 1px 5px; border-radius: var(--r-1); letter-spacing: 0;
+.gl-kbd-in { font-size: 11px; line-height: 14px; padding: 1px 5px; border-radius: var(--radius-chip, 4px); letter-spacing: 0;
   border: 1px solid color-mix(in srgb, currentColor 35%, transparent); }
 
 .gl-tabs { align-self: flex-start; }
@@ -26,8 +25,8 @@
 /* ---- notices ------------------------------------------------------------------------------- */
 .gl-noticeslot:empty, .gl-barslot:empty { display: none; }
 .gl-notice { display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap; padding: 14px 16px;
-  border: 1px solid var(--rule-strong); border-radius: var(--r-3); background: var(--panel); }
-.gl-notice-hold { background: var(--beacon-wash); border-color: var(--beacon-rule); }
+  border: 1px solid var(--rule-strong); border-radius: var(--radius-card, 12px); background: var(--panel); }
+.gl-notice-hold { border-color: var(--rule); }
 .gl-notice-text { flex: 1 1 320px; min-width: 0; display: flex; flex-direction: column; gap: 6px; }
 .gl-notice-text p { font-size: 14px; line-height: 20px; color: var(--text-2); }
 .gl-notice-text p.code { font-size: 12px; color: var(--label); }
@@ -36,7 +35,7 @@
 /* ---- the stage ----------------------------------------------------------------------------- */
 .gl-stagewrap { display: grid; grid-template-columns: minmax(0, 1fr) 300px; gap: 24px; align-items: start; }
 .gl-col { display: flex; flex-direction: column; gap: 14px; min-width: 0; }
-.gl-stage { position: relative; display: flex; flex-direction: column; border: 1px solid var(--rule-strong); border-radius: var(--r-4);
+.gl-stage { position: relative; display: flex; flex-direction: column; border: 1px solid var(--rule-strong); border-radius: var(--radius-sheet, 14px);
   background: var(--panel); overflow: hidden; box-shadow: var(--light-top); }
 .gl-stage.gl-held { outline: 2px solid var(--gl-accent); outline-offset: 3px; }
 .gl-panel { height: 26px; flex-shrink: 0; display: flex; align-items: center; gap: 18px; padding: 0 14px; background: var(--bg);
@@ -44,6 +43,10 @@
 .gl-panel-me { color: var(--text); }
 .gl-held .gl-panel-me { color: var(--gl-accent); }
 .gl-screen { position: relative; width: 100%; aspect-ratio: var(--ratio, 16 / 10); max-height: calc(100dvh - 260px); min-height: 220px; overflow: hidden; }
+/* 1:1: the remote desktop at its own resolution, scrollable rather than squeezed to fit. A fixed
+   height (not aspect-ratio) so overflow: auto has a box to scroll within. */
+.gl-screen.gl-1to1 { aspect-ratio: auto; height: calc(100dvh - 260px); overflow: auto; }
+.gl-screen.gl-1to1 .gl-zoom, .gl-screen.gl-1to1 .gl-rfb { position: static; inset: auto; }
 .gl-zoom, .gl-rfb { position: absolute; inset: 0; }
 .gl-rfb > div { background: transparent !important; }
 .gl-rfb canvas { touch-action: none; }
@@ -55,7 +58,7 @@
 .gl-over-t { font-size: 17px; line-height: 24px; color: var(--text); }
 .gl-over-d { color: var(--text-2); }
 .gl-over .btn { margin-top: 6px; }
-.gl-badge { position: absolute; right: 14px; top: 38px; display: flex; align-items: center; gap: 6px; padding: 3px 8px; border-radius: var(--r-1);
+.gl-badge { position: absolute; right: 14px; top: 38px; display: flex; align-items: center; gap: 6px; padding: 3px 8px; border-radius: var(--radius-chip, 4px);
   background: var(--bg); border: 1px solid var(--rule); font-size: 11px; line-height: 14px; font-weight: 500; letter-spacing: 0.16em;
   text-transform: uppercase; color: var(--text-2); pointer-events: none; }
 .gl-badge-live { color: var(--text); }
@@ -68,12 +71,14 @@
 
 /* ---- take-over ----------------------------------------------------------------------------- */
 .gl-bar { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; padding: 10px 12px; border: 1px solid var(--gl-accent);
-  border-radius: var(--r-3); background: var(--signal-wash); }
+  border-radius: var(--radius-card, 12px); background: var(--signal-wash); }
 .gl-chip { font-family: var(--mono); font-size: 11px; line-height: 14px; font-weight: 500; letter-spacing: 0.16em; text-transform: uppercase;
-  padding: 3px 8px; border: 1px solid var(--gl-accent); border-radius: var(--r-1); color: var(--gl-accent); white-space: nowrap; }
+  padding: 3px 8px; border: 1px solid var(--gl-accent); border-radius: var(--radius-chip, 4px); color: var(--gl-accent); white-space: nowrap; }
+.gl-chip-idle { border-color: var(--beacon-ink); color: var(--beacon-ink); letter-spacing: 0.04em; text-transform: none; white-space: normal; }
+.gl-chip-idle[hidden] { display: none; }
 .gl-elapsed { font-size: 13px; color: var(--text); min-width: 40px; }
 .gl-note { flex: 1 1 200px; width: auto; height: 32px; font-size: 14px; }
-.gl-banner { display: flex; align-items: center; gap: 10px; padding: 10px 12px; border-radius: var(--r-3); background: var(--beacon-wash);
+.gl-banner { display: flex; align-items: center; gap: 10px; padding: 9px 11px; border-radius: var(--radius-card, 12px); border: 1px solid var(--rule);
   color: var(--beacon-ink); font-size: 13px; line-height: 18px; }
 .gl-banner svg { flex-shrink: 0; }
 
@@ -111,10 +116,10 @@
 .gl-fnew { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .gl-fnew .input { flex: 1 1 200px; width: auto; height: 32px; font-size: 14px; }
 .gl-fstatus:empty { display: none; }
-.gl-msg { display: flex; align-items: center; gap: 10px; padding: 6px 6px 6px 12px; border-radius: var(--r-2); background: var(--signal-wash);
+.gl-msg { display: flex; align-items: center; gap: 10px; padding: 6px 6px 6px 12px; border-radius: var(--radius-field, 8px); background: var(--signal-wash);
   font-size: 13px; line-height: 18px; color: var(--text); }
 .gl-msg > span:nth-child(2) { flex: 1; min-width: 0; overflow-wrap: anywhere; }
-.gl-msg-err { background: var(--beacon-wash); color: var(--beacon-ink); }
+.gl-msg-err { background: none; border: 1px solid var(--rule); padding: 5px 5px 5px 11px; color: var(--beacon-ink); }
 .gl-msg .ibtn { width: 28px; height: 28px; }
 .gl-fmain { display: grid; grid-template-columns: minmax(0, 1fr) 340px; gap: 24px; align-items: start; }
 .gl-flistwrap { position: relative; min-width: 0; min-height: 200px; }
@@ -137,16 +142,16 @@
 .gl-fprev-acts { display: flex; gap: 8px; flex-wrap: wrap; }
 .gl-fslot:empty { display: none; }
 .gl-fbody { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
-.gl-pre { margin: 0; padding: 12px; background: var(--code-bg); border: 1px solid var(--rule); border-radius: var(--r-2); font-family: var(--mono);
+.gl-pre { margin: 0; padding: 12px; background: var(--code-bg); border: 1px solid var(--rule); border-radius: var(--radius-field, 8px); font-family: var(--mono);
   font-size: 12px; line-height: 18px; color: var(--text-2); max-height: 440px; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; }
-.gl-img { display: block; max-width: 100%; max-height: 440px; border-radius: var(--r-2); border: 1px solid var(--rule); background: var(--panel); }
-.gl-inline { display: flex; flex-direction: column; gap: 8px; padding: 12px; border: 1px solid var(--rule-strong); border-radius: var(--r-3); background: var(--panel); }
+.gl-img { display: block; max-width: 100%; max-height: 440px; border-radius: var(--radius-field, 8px); border: 1px solid var(--rule); background: var(--panel); }
+.gl-inline { display: flex; flex-direction: column; gap: 8px; padding: 12px; border: 1px solid var(--rule-strong); border-radius: var(--radius-card, 12px); background: var(--panel); }
 .gl-inline .input { height: 36px; font-family: var(--mono); font-size: 13px; }
-.gl-inline-warn { background: var(--beacon-wash); border-color: var(--beacon-rule); }
+.gl-inline-warn { border-color: var(--rule); }
 .gl-inline-acts { display: flex; justify-content: flex-end; gap: 8px; flex-wrap: wrap; }
-.gl-danger { border-color: var(--beacon-rule); color: var(--beacon-ink); }
+.gl-danger { border-color: var(--rule); color: var(--beacon-ink); }
 .gl-drop { position: absolute; inset: 0; z-index: 5; display: flex; align-items: center; justify-content: center; border: 2px dashed var(--gl-accent);
-  border-radius: var(--r-3); background: color-mix(in srgb, var(--bg) 85%, transparent); }
+  border-radius: var(--radius-card, 12px); background: color-mix(in srgb, var(--bg) 85%, transparent); }
 .gl-drop-card { display: flex; align-items: center; gap: 10px; font-size: 15px; color: var(--text); }
 .gl-ftransfers { display: flex; flex-direction: column; }
 .gl-ftransfers:empty { display: none; }

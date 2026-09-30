@@ -7,13 +7,13 @@ import assert from "node:assert/strict";
 import path from "node:path";
 import { open, migrate } from "../store/index.js";
 import { Pool, MIGRATIONS } from "./pool.js";
-import { Keyboard, TTL } from "./keyboard.js";
+import { Keyboard, TTL, IDLE_WARN_MS, idleMsOf } from "./keyboard.js";
 import { FakeDriver } from "./driver/fake.js";
 import { tempHome } from "../../test/helpers.js";
 
 const AGENTS = [{ name: "kit", kind: "agent", computer: true }, { name: "juno", kind: "assistant", computer: true }];
 
-function setup(t, { threads = { kit: ["th-kit-2", "th-kit-1"] }, switchboard = true } = {}) {
+function setup(t, { threads = { kit: ["th-kit-2", "th-kit-1"] }, switchboard = true, idle = { min: 5 } } = {}) {
   const root = tempHome(t);
   const db = open(path.join(root, "t.db"));
   t.after(() => db.close());
@@ -26,8 +26,10 @@ function setup(t, { threads = { kit: ["th-kit-2", "th-kit-1"] }, switchboard = t
   const leases = new Map();
   const leaseCalls = [];
   const bus = (thread, holder, previous) => { for (const fn of listeners) fn({ type: "lease.changed", thread, payload: { holder, previous } }); };
+  const sent = [];
   const call = async (tool, input) => {
     if (tool === "agents.list") return { data: AGENTS };
+    if (tool === "threads.send") { sent.push(input); return { data: { ok: true } }; }
     if (tool === "agents.threads") return { data: (threads[input.agent] || []).map(id => ({ id })) };
     if (switchboard && tool === "threads.lease") {
       leaseCalls.push(["lease", input.thread, input.surface]);
@@ -47,12 +49,34 @@ function setup(t, { threads = { kit: ["th-kit-2", "th-kit-1"] }, switchboard = t
   };
   const emit = (type, payload, where) => { events.push({ type, payload, where }); };
   const pool = new Pool({ db, driver: new FakeDriver(), call, emit, now: () => clock.t });
-  const kb = new Keyboard({ pool, call, emit, on: (_p, fn) => { listeners.add(fn); return () => listeners.delete(fn); } });
+  /** A timer queue on the test's clock: `due()` runs whatever the clock has passed. */
+  const timers = [];
+  const schedule = (fn, ms) => { const tm = { at: clock.t + ms, fn, dead: false }; timers.push(tm); return () => { tm.dead = true; }; };
+  const due = () => {
+    for (;;) {
+      const next = timers.filter(x => !x.dead && x.at <= clock.t).sort((a, b) => a.at - b.at)[0];
+      if (!next) return;
+      next.dead = true;
+      next.fn();
+    }
+  };
+  const kb = new Keyboard({ pool, call, emit, on: (_p, fn) => { listeners.add(fn); return () => listeners.delete(fn); },
+    idleMs: () => idleMsOf(idle.min), schedule });
+  t.after(() => kb.stop());
   /** Someone types into the thread from a surface: the lease moves, as threads.send would move it. */
   const chat = (thread, surface) => { const prev = leases.get(thread) || null; leases.set(thread, surface); bus(thread, surface, prev); };
   const changes = [];
   kb.on("changed", c => changes.push(c));
-  return { pool, kb, clock, events, leases, leaseCalls, chat, changes, types: () => events.map(e => e.type) };
+  /** Move the clock in steps, the holder's stream ponging every 30 s, and fire due timers. */
+  const pass = (ms, pong = "glass:laptop") => {
+    const end = clock.t + ms;
+    while (clock.t < end) {
+      clock.t = Math.min(end, clock.t + 1_000);
+      if (pong && (clock.t - 1_000) % 30_000 === 0) kb.renew("kit", pong);
+      due();
+    }
+  };
+  return { pool, kb, clock, events, leases, leaseCalls, chat, changes, sent, timers, due, pass, idle, types: () => events.map(e => e.type) };
 }
 
 test("keyboard: take-over stops the agent's hands, names the holder, and giveback restores them", async t => {
@@ -75,7 +99,7 @@ test("keyboard: take-over stops the agent's hands, names the holder, and givebac
   assert.equal(kb.canType("kit", "glass:laptop"), false);
   assert.equal(leases.has("th-kit-2"), false);
   assert.deepEqual(leaseCalls, [["lease", "th-kit-2", "glass:laptop"], ["release", "th-kit-2", "glass:laptop"]]);
-  assert.deepEqual(events.filter(e => e.type === "computer.handed-back").map(e => e.payload), [{ agent: "kit", surface: "glass:laptop", why: "gave back" }]);
+  assert.deepEqual(events.filter(e => e.type === "computer.handed-back").map(e => e.payload), [{ agent: "kit", surface: "glass:laptop", why: "gave back", by: "owner", device: "glass", reason: "gave back" }]);
   assert.deepEqual(changes, [{ agent: "kit", surface: "glass:laptop" }, { agent: "kit", surface: null }]);
 });
 
@@ -117,7 +141,7 @@ test("keyboard: a take-over nobody renews ends when the lease expires", async t 
   clock.t += 1;
   kb.sweep();
   assert.deepEqual(kb.mayAct("kit"), { ok: true });
-  assert.deepEqual(events.at(-1)?.payload, { agent: "kit", surface: "glass:laptop", why: "lease expired" });
+  assert.deepEqual(events.at(-1)?.payload, { agent: "kit", surface: "glass:laptop", why: "lease expired", by: "owner", device: "glass", reason: "expired" });
 });
 
 test("keyboard: chatting with the agent moves the lease but never pauses its hands", async t => {
@@ -149,7 +173,7 @@ test("keyboard: the lease released or moved to something that is not a screen en
   a.leases.delete("th-kit-2");
   a.kb.onLease({ thread: "th-kit-2", payload: { holder: null, previous: "glass:laptop" } });
   assert.deepEqual(a.kb.mayAct("kit"), { ok: true });
-  assert.deepEqual(a.events.at(-1)?.payload, { agent: "kit", surface: "glass:laptop", why: "lease released" });
+  assert.deepEqual(a.events.at(-1)?.payload, { agent: "kit", surface: "glass:laptop", why: "lease released", by: "owner", device: "glass", reason: "released" });
 });
 
 test("keyboard: another person's screen taking over replaces the first", async t => {
@@ -200,4 +224,91 @@ test("keyboard: a take-over holds the screen through idle sweeps, and the idle c
   assert.equal(pool.view("kit").screen, 1);
   clock.t += 1; await pool.sweep();
   assert.equal(pool.view("kit").screen, null);
+});
+
+test("keyboard: idle choices are off, 2, 5 or 15 minutes, 5 by default", () => {
+  assert.deepEqual([0, 2, 5, 15].map(idleMsOf), [0, 120_000, 300_000, 900_000]);
+  assert.equal(idleMsOf(undefined), 300_000);
+  assert.equal(idleMsOf(7), 300_000, "a value that is not a choice falls back to the default");
+});
+
+test("keyboard: a take-over with no input is warned 10 s before and handed back after the idle time", async t => {
+  const { kb, events, pass, leases, sent } = setup(t);
+  await kb.takeover("kit", "glass:laptop");
+  const warns = () => events.filter(e => e.type === "computer.idle-warning").map(e => e.payload);
+  // Pongs keep the lease alive the whole time, but they are not input.
+  pass(300_000 - IDLE_WARN_MS - 1_000);
+  assert.deepEqual(warns(), [], "warned too early");
+  pass(1_000);
+  assert.deepEqual(warns(), [{ agent: "kit", surface: "glass:laptop", at: 1_000 + 300_000 }]);
+  assert.equal(kb.mayAct("kit").ok, false, "handed back at the warning, not after it");
+  pass(IDLE_WARN_MS);
+  assert.deepEqual(kb.mayAct("kit"), { ok: true });
+  assert.deepEqual(events.filter(e => e.type === "computer.handed-back").map(e => e.payload),
+    [{ agent: "kit", surface: "glass:laptop", why: "idle", by: "owner", device: "glass", reason: "idle", idle_ms: 300_000 }]);
+  await new Promise(r => setImmediate(r));
+  assert.deepEqual(sent, [{ thread: "th-kit-2", text: "Handed back to kit after 5 min idle" }]);
+  assert.equal(leases.has("th-kit-2"), false, "the thread's lease was not released");
+});
+
+test("keyboard: input after the warning takes it back and restarts the idle clock", async t => {
+  const { kb, events, pass, clock } = setup(t, { idle: { min: 2 } });
+  await kb.takeover("kit", "glass:laptop");
+  pass(120_000 - IDLE_WARN_MS + 2_000);
+  assert.equal(events.filter(e => e.type === "computer.idle-warning").length, 1);
+  assert.equal(kb.renew("kit", "glass:laptop", true), true);
+  const typed = clock.t;
+  assert.deepEqual(events.at(-1), { type: "computer.idle-warning", payload: { agent: "kit", surface: "glass:laptop", at: null }, where: { thread: "th-kit-2" } });
+  pass(120_000 - IDLE_WARN_MS - 1_000);
+  assert.equal(kb.mayAct("kit").ok, false, "handed back although the holder typed");
+  assert.equal(events.filter(e => e.type === "computer.idle-warning").length, 2, "warned again too early");
+  pass(1_000);
+  assert.deepEqual(events.filter(e => e.type === "computer.idle-warning").at(-1)?.payload, { agent: "kit", surface: "glass:laptop", at: typed + 120_000 });
+  pass(IDLE_WARN_MS);
+  assert.equal(events.at(-1)?.payload.why, "idle");
+});
+
+test("keyboard: renewing the take-over counts as input, and each keystroke does not re-arm a timer", async t => {
+  const { kb, pass, timers } = setup(t);
+  await kb.takeover("kit", "glass:laptop");
+  for (let i = 0; i < 50; i++) kb.renew("kit", "glass:laptop", true);
+  assert.equal(timers.length, 1, "a timer per keystroke");
+  pass(200_000);
+  await kb.takeover("kit", "glass:laptop");
+  pass(200_000);
+  assert.equal(kb.mayAct("kit").ok, false, "a renewal did not restart the idle clock");
+});
+
+test("keyboard: idle hand-back off keeps the take-over while the lease lives, and turning it on applies at once", async t => {
+  const { kb, events, pass, idle, timers } = setup(t, { idle: { min: 0 } });
+  await kb.takeover("kit", "glass:laptop");
+  assert.equal(timers.length, 0, "a timer armed while off");
+  pass(20 * 60_000);
+  assert.equal(kb.mayAct("kit").ok, false);
+  assert.equal(events.some(e => e.type === "computer.idle-warning"), false);
+  // On, with 20 min already idle: the sweep (the timer's backstop) hands it back.
+  idle.min = 2;
+  kb.sweep();
+  assert.deepEqual(kb.mayAct("kit"), { ok: true });
+  assert.equal(events.at(-1)?.payload.why, "idle");
+});
+
+test("keyboard: an idle hand-back needs no thread", async t => {
+  const { kb, events, pass, sent } = setup(t, { threads: {} });
+  await kb.takeover("kit", "glass:laptop");
+  pass(300_000);
+  assert.equal(events.at(-1)?.payload.why, "idle");
+  assert.deepEqual(sent, []);
+});
+
+test("keyboard: a take-over the thread's lease ends tells the agent's thread how", async t => {
+  const { kb, chat, sent } = setup(t);
+  await kb.takeover("kit", "glass:laptop");
+  chat("th-kit-2", "cli");
+  await new Promise(r => setImmediate(r));
+  assert.deepEqual(sent, [{ thread: "th-kit-2", text: "The owner's take-over (from glass) ended when the thread moved to chat" }]);
+  await kb.takeover("kit", "deck:laptop");
+  kb.onLease({ thread: "th-kit-2", payload: { holder: null, previous: "deck:laptop" } });
+  await new Promise(r => setImmediate(r));
+  assert.equal(sent.at(-1)?.text, "The owner's take-over (from deck) ended when the thread's lease was released");
 });

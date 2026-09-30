@@ -40,10 +40,12 @@ const APPROVE = { tool: "gate.approve", input: { id: "a1" } };
 test("presence: the floor's list holds every human-only tool", () => {
   for (const t of ["gate.revise", "gate.reject", "threads.answer"]) assert.ok(!HUMAN_ONLY.has(t), `${t}: sends nothing, needs no proof`);
   for (const t of ["gate.approve", "vault.put", "vault.approve", "vault.unlock",
-    "vault.offboard", "learn.accept", "learn.retire", "presence.enroll", "presence.remove", "presence.code"]) assert.ok(HUMAN_ONLY.has(t), t);
+    "vault.offboard", "learn.skill-install", "presence.enroll", "presence.remove", "presence.code"]) assert.ok(HUMAN_ONLY.has(t), t);
   assert.ok(HUMAN_ONLY.size >= 10);
   // The owner's own actions ask no proof (no nagging), but stay off a model's shell (PERSON_ONLY).
-  for (const t of ["threads.answer", "term.open", "gate.revise", "gate.reject", "agents.create", "agents.update", "computers.takeover"]) assert.ok(!HUMAN_ONLY.has(t) && PERSON_ONLY.has(t), t);
+  for (const t of ["threads.answer", "term.open", "gate.revise", "gate.reject", "agents.create", "agents.update", "agents.resume", "computers.takeover",
+    "files.drive.access", "learn.accept", "learn.retire", "learn.relax", "projects.move", "presence.person.revoke"]) assert.ok(!HUMAN_ONLY.has(t) && PERSON_ONLY.has(t), t);
+  assert.ok(!HUMAN_ONLY.has("memory.correct"));
 });
 
 test("presence: canonical JSON sorts keys at every depth, and the hash follows it", () => {
@@ -130,14 +132,14 @@ test("presence: tty refuses a bad path, a terminal that is not ours, one that is
   assert.equal((await p.challenge({ ...APPROVE, method: "capsule" })).error.code, "bad_input");
 });
 
-/** An Ed25519 Capsule key, enrolled, and a signer for calls. */
+/** A P-256 Capsule key (as the Secure Enclave makes), enrolled, and a signer for calls. */
 function capsuleKey(p) {
-  const { publicKey, privateKey } = crypto.generateKeyPairSync("ed25519");
+  const { publicKey, privateKey } = crypto.generateKeyPairSync("ec", { namedCurve: "P-256" });
   const pub = publicKey.export({ format: "der", type: "spki" }).toString("base64url");
-  const { id } = p.enroll({ kind: "capsule", name: "Capsule", public_key: pub });
+  const { id } = p.enroll({ kind: "capsule", name: "Capsule", public_key: pub, alg: -7 });
   const sign = (tool, input, ts, nonce = crypto.randomBytes(12).toString("base64url")) => ({
     method: "capsule", key: id, ts: String(ts), nonce,
-    sig: crypto.sign(null, Buffer.from(`vyre-presence-v1\n${tool}\n${inputHash(input)}\n${ts}\n${nonce}`), privateKey).toString("base64url"),
+    sig: crypto.sign("sha256", Buffer.from(`vyre-presence-v1\n${tool}\n${inputHash(input)}\n${ts}\n${nonce}`), { key: privateKey, dsaEncoding: "der" }).toString("base64url"),
   });
   return { id, sign, privateKey };
 }
@@ -156,10 +158,83 @@ test("presence: a Capsule signature proves one call, within 60 seconds, with a f
   assert.match((await p.verify({ ...APPROVE, caller: "capsule", proof: { ...k.sign(APPROVE.tool, APPROVE.input, now()), key: "nope" } })).message, /not enrolled/);
 });
 
+test("presence: a Capsule key is P-256 from the Secure Enclave; the old Ed25519 kind is refused at enroll", async t => {
+  const { p, db, now } = setup(t);
+  const spkiOf = k => k.export({ format: "der", type: "spki" }).toString("base64url");
+  const ed = crypto.generateKeyPairSync("ed25519");
+  assert.throws(() => p.enroll({ kind: "capsule", public_key: spkiOf(ed.publicKey) }), /P-256/);
+  assert.throws(() => p.enroll({ kind: "capsule", public_key: spkiOf(crypto.generateKeyPairSync("ec", { namedCurve: "P-384" }).publicKey) }), /P-256/);
+  const p256 = crypto.generateKeyPairSync("ec", { namedCurve: "P-256" });
+  assert.throws(() => p.enroll({ kind: "capsule", public_key: spkiOf(p256.publicKey), alg: -8 }), /alg/);
+
+  // The Capsule's own format (agreed with capsule-pro): SecKeyCopyExternalRepresentation's raw
+  // 65-byte point behind the fixed P-256 SPKI header is the same SPKI DER Node exports.
+  const point = p256.publicKey.export({ format: "jwk" });
+  const raw = Buffer.concat([Buffer.from([4]), Buffer.from(point.x, "base64url"), Buffer.from(point.y, "base64url")]);
+  const fromSwift = Buffer.concat([Buffer.from("3059301306072a8648ce3d020106082a8648ce3d030107034200", "hex"), raw]).toString("base64url");
+  assert.equal(fromSwift, spkiOf(p256.publicKey));
+  const k = p.enroll({ kind: "capsule", name: "Capsule", public_key: fromSwift });
+  assert.equal(db.prepare("SELECT alg FROM presence_keys WHERE id = ?").get(k.id).alg, -7);
+
+  // A signature by any other key, naming this id, does not check out: only the stored key counts.
+  const other = crypto.generateKeyPairSync("ec", { namedCurve: "P-256" });
+  const signWith = (key, id) => {
+    const ts = String(now()), nonce = crypto.randomBytes(12).toString("base64url");
+    return { method: "capsule", key: id, ts, nonce, sig: crypto.sign("sha256", Buffer.from(`vyre-presence-v1\n${APPROVE.tool}\n${inputHash(APPROVE.input)}\n${ts}\n${nonce}`), { key, dsaEncoding: "der" }).toString("base64url") };
+  };
+  assert.match((await p.verify({ ...APPROVE, caller: "capsule", proof: signWith(other.privateKey, k.id) })).message, /does not check out/);
+  assert.equal((await p.verify({ ...APPROVE, caller: "capsule", proof: signWith(p256.privateKey, k.id) })).ok, true);
+});
+
+test("presence: capsule and device rows always store alg -7; old rows are refused in words for their kind", async t => {
+  // A database from before this migration: an Ed25519 Capsule row and a phone row with no alg.
+  const home = tempHome(t);
+  const db = open(path.join(home, "vyre.db"));
+  t.after(() => db.close());
+  const { migrate } = await import("../store/index.js");
+  const { MIGRATIONS } = await import("./index.js");
+  migrate(db, "presence", MIGRATIONS.slice(0, -1));
+  const spkiOf = k => k.export({ format: "der", type: "spki" }).toString("base64url");
+  const ed = crypto.generateKeyPairSync("ed25519");
+  const phone = crypto.generateKeyPairSync("ec", { namedCurve: "P-256" });
+  const ins = db.prepare("INSERT INTO presence_keys (id, kind, name, public_key, alg, sign_count, created) VALUES (?,?,?,?,?,0,?)");
+  ins.run("old-capsule", "capsule", "Capsule", spkiOf(ed.publicKey), -8, Date.now());
+  ins.run("old-phone", "device", "alex-phone", spkiOf(phone.publicKey), null, Date.now());
+  ins.run("ed-phone", "device", "kit-phone", spkiOf(ed.publicKey), null, Date.now());
+  const p = new Presence({ db, platform: "linux", touchid: null, webauthn: null, who: async () => [] });
+  const alg = id => db.prepare("SELECT alg FROM presence_keys WHERE id = ?").get(id).alg;
+  assert.equal(alg("old-phone"), -7, "a device row with no alg is filled in");
+  assert.equal(alg("old-capsule"), -8, "an old Capsule row is kept as it was, to be refused");
+
+  const sign = (method, key, privateKey, ed25519 = false) => {
+    const ts = String(Date.now()), nonce = crypto.randomBytes(12).toString("base64url");
+    const msg = Buffer.from(`vyre-presence-v1\n${APPROVE.tool}\n${inputHash(APPROVE.input)}\n${ts}\n${nonce}`);
+    const sig = (ed25519 ? crypto.sign(null, msg, privateKey) : crypto.sign("sha256", msg, { key: privateKey, dsaEncoding: "der" })).toString("base64url");
+    return { method, key, ts, nonce, sig };
+  };
+  const old = await p.verify({ ...APPROVE, caller: "capsule", proof: sign("capsule", "old-capsule", ed.privateKey, true) });
+  assert.equal(old.ok, false);
+  assert.match(old.message, /re-enroll the Capsule's key/);
+  assert.equal((await p.verify({ ...APPROVE, caller: "capsule", proof: sign("device", "old-phone", phone.privateKey) })).ok, true, "a filled-in phone row still proves");
+  // A device row whose stored key isn't P-256, whatever its alg says: the phone's own wording.
+  const bad = await p.verify({ ...APPROVE, caller: "capsule", proof: sign("device", "ed-phone", ed.privateKey, true) });
+  assert.equal(bad.ok, false);
+  assert.match(bad.message, /pair the phone again/);
+  assert.doesNotMatch(bad.message, /Capsule/);
+
+  // From here on the table refuses a signer row without alg -7, however it is written.
+  assert.throws(() => ins.run("new-capsule", "capsule", "Capsule", spkiOf(phone.publicKey), -8, Date.now()), /alg -7/);
+  assert.throws(() => ins.run("new-phone", "device", "juno-phone", spkiOf(phone.publicKey), null, Date.now()), /alg -7/);
+  assert.throws(() => db.prepare("UPDATE presence_keys SET alg = NULL WHERE id = 'old-phone'").run(), /alg -7/);
+  // A new key written over an old -8 Capsule row, alg untouched, is refused too: re-enroll adds a row.
+  assert.throws(() => db.prepare("UPDATE presence_keys SET public_key = ? WHERE id = 'old-capsule'").run(spkiOf(phone.publicKey)), /alg -7/);
+  ins.run("pk", "passkey", "Laptop", spkiOf(phone.publicKey), -7, Date.now());
+});
+
 test("presence: enrolling checks the key, and listing never shows it", async t => {
   const { p } = setup(t);
   const rsa = crypto.generateKeyPairSync("rsa", { modulusLength: 2048 }).publicKey.export({ format: "der", type: "spki" }).toString("base64url");
-  assert.throws(() => p.enroll({ kind: "capsule", public_key: rsa }), /Ed25519/);
+  assert.throws(() => p.enroll({ kind: "capsule", public_key: rsa }), /P-256/);
   assert.throws(() => p.enroll({ kind: "capsule", public_key: "bm90IGEga2V5" }), /SPKI/);
   assert.throws(() => p.enroll({ kind: "passkey", public_key: rsa, alg: -7, rp_id: "example.com", credential_id: "credential-1" }), /needs a ec key/);
   p.enroll({ kind: "passkey", name: "Phone", public_key: rsa, alg: -257, rp_id: "example.com", credential_id: "credential-1" });
@@ -328,6 +403,147 @@ test("presence: a session proves reveal, copy, TOTP and sends for a while, on on
   assert.equal((await p.verify({ ...reveal, proof: { method: "session", id: s3.session, secret: s3.secret } })).ok, false, "closed");
 });
 
+test("presence: a session covers vault reveal, approve and grant for the Deck and the Capsule; the CLI, MCP and agents prove each time", async t => {
+  const { p } = setup(t);
+  const def = { presence: { session: () => true } };
+  const s = p.openSession({ method: "touchid" });
+  const proof = { method: "session", id: s.session, secret: s.secret };
+  for (const tool of ["vault.reveal", "vault.copy", "vault.totp", "vault.approve", "vault.grant"]) {
+    for (const caller of ["deck", "capsule", "tailnet:alex@example.com", "device:abcdefghijklmnop"]) {
+      assert.ok((await p.verify({ tool, input: { name: "mail-token" }, caller, proof, def })).ok, `${tool} from ${caller}`);
+    }
+    for (const caller of ["cli", "local", "mcp", "mcp:agent:kit", "deck agent:kit", "tailnet:agent:kit", "harness", "device:notarelaydeviceid", "device:abcdefghijklmnop agent:kit"]) {
+      assert.equal((await p.verify({ tool, input: { name: "mail-token" }, caller, proof, def })).ok, false, `${tool} from ${caller}`);
+    }
+  }
+});
+
+test("presence: one Touch ID covers the same login's vault approvals and grants for 30 minutes, with a notice; secrets and codes ask each time", async t => {
+  const touchid = { available: async () => true, authenticate: async () => ({ ok: true }) };
+  const { p, tick, written } = setup(t, { platform: "darwin", touchid });
+  const def = { presence: { session: i => !i.reprompt } };
+  const login = { key: "ttys003#812@Sun Sep 27 09:00:00 2026", tty: "ttys003" };
+  const at = { tool: "vault.grant", input: { name: "mail-token", module: "gate" }, caller: "cli", def, terminal: login };
+  assert.equal((await p.verify({ ...at, proof: null })).ok, false, "nothing proved yet");
+  // A terminal code proves its one call and opens no window.
+  const c = await p.challenge({ tool: "vault.grant", input: at.input, method: "tty", tty: "/dev/ttys003" });
+  assert.ok((await p.verify({ ...at, proof: { method: "tty", id: c.challenge, code: codeFrom(written.at(-1).text) } })).ok);
+  assert.equal((await p.verify({ ...at, proof: null })).ok, false);
+  // Touch ID on a reveal opens it; the reveal itself was proved by the touch.
+  assert.equal((await p.verify({ ...at, tool: "vault.reveal", input: { name: "bank" }, proof: { method: "touchid" } })).method, "touchid");
+  const before = written.length;
+  for (const [tool, input] of [["vault.grant", { name: "mail-token", module: "gate" }], ["vault.approve", { id: "g_1" }]]) {
+    assert.deepEqual(await p.verify({ ...at, tool, input, proof: null }), { ok: true, method: "window", keyId: null, where: "ttys003" }, tool);
+  }
+  assert.equal(written.length, before + 2, "a line on the terminal for each use");
+  assert.equal(written.at(-2).file, "/dev/ttys003");
+  assert.match(written.at(-2).text, /vyre: used your Touch ID window for letting gate use mail-token/);
+  assert.match(written.at(-1).text, /approving g_1/);
+  // What puts a secret or a code on screen asks every time, window or not.
+  for (const tool of ["vault.reveal", "vault.copy", "vault.totp", "gate.approve"]) assert.equal((await p.verify({ ...at, tool, input: { name: "bank" }, proof: null })).ok, false, tool);
+  // Another login on the same tty number, no login, a model or agent label, an item that asks
+  // every time, or a tool that did not say yes: each still asks.
+  assert.equal((await p.verify({ ...at, terminal: { key: "ttys003#990@Sun Sep 27 09:20:00 2026", tty: "ttys003" }, proof: null })).ok, false, "a new login on a reused tty");
+  assert.equal((await p.verify({ ...at, terminal: null, proof: null })).ok, false, "no login");
+  for (const caller of ["mcp", "cli agent:kit", "harness", "deck"]) assert.equal((await p.verify({ ...at, caller, proof: null })).ok, false, caller);
+  assert.equal((await p.verify({ ...at, input: { name: "card", module: "gate", reprompt: true }, proof: null })).ok, false, "reprompt");
+  assert.equal((await p.verify({ ...at, def: { presence: true }, proof: null })).ok, false, "a tool that did not say yes");
+  tick(29 * 60_000);
+  assert.ok((await p.verify({ ...at, proof: null })).ok, "within 30 minutes");
+  tick(61_000);
+  assert.equal((await p.verify({ ...at, proof: null })).ok, false, "30 minutes from the proof");
+});
+
+/** A P-256 device key, as a phone's Secure Enclave or StrongBox makes one, enrolled, and a signer for calls. */
+function deviceKey(p, name = "alex-phone") {
+  const { publicKey, privateKey } = crypto.generateKeyPairSync("ec", { namedCurve: "P-256" });
+  const pub = publicKey.export({ format: "der", type: "spki" }).toString("base64url");
+  const k = p.enroll({ kind: "device", name, public_key: pub, alg: -7 });
+  const sign = (tool, input, ts, nonce = crypto.randomBytes(12).toString("base64url")) => ({
+    method: "device", key: k.id, ts: String(ts), nonce,
+    sig: crypto.sign("sha256", Buffer.from(`vyre-presence-v1\n${tool}\n${inputHash(input)}\n${ts}\n${nonce}`), { key: privateKey, dsaEncoding: "der" }).toString("base64url"),
+  });
+  return { ...k, pub, sign, privateKey };
+}
+
+test("presence: the device header parses like the Capsule's", () => {
+  assert.deepEqual(parse("device key=abc ts=1 nonce=n1234567 sig=s"), { method: "device", key: "abc", ts: "1", nonce: "n1234567", sig: "s" });
+});
+
+test("presence: enrolling a device key takes only P-256 with alg -7, and its id is its fingerprint", async t => {
+  const { p, db } = setup(t);
+  const spkiOf = k => k.export({ format: "der", type: "spki" }).toString("base64url");
+  const p384 = spkiOf(crypto.generateKeyPairSync("ec", { namedCurve: "P-384" }).publicKey);
+  const ed = spkiOf(crypto.generateKeyPairSync("ed25519").publicKey);
+  const rsa = spkiOf(crypto.generateKeyPairSync("rsa", { modulusLength: 2048 }).publicKey);
+  const p256 = spkiOf(crypto.generateKeyPairSync("ec", { namedCurve: "P-256" }).publicKey);
+  for (const bad of [p384, ed, rsa]) assert.throws(() => p.enroll({ kind: "device", name: "x", public_key: bad, alg: -7 }), /P-256/);
+  for (const alg of [-8, -257, -35, undefined]) assert.throws(() => p.enroll({ kind: "device", name: "x", public_key: p256, alg }), /alg/, String(alg));
+  assert.throws(() => p.enroll({ kind: "device", name: "x", public_key: "bm90IGEga2V5", alg: -7 }), /SPKI/);
+  const k = p.enroll({ kind: "device", name: "alex-phone", public_key: p256, alg: -7, rp_id: "box.example.com" });
+  const want = crypto.createHash("sha256").update(Buffer.from(p256, "base64url")).digest("base64url").slice(0, 22);
+  assert.deepEqual({ id: k.id, kind: k.kind, name: k.name }, { id: want, kind: "device", name: "alex-phone" });
+  const row = db.prepare("SELECT alg, rp_id FROM presence_keys WHERE id = ?").get(k.id);
+  assert.deepEqual({ ...row }, { alg: -7, rp_id: null }, "a device key has no relying party");
+  assert.throws(() => p.enroll({ kind: "device", name: "again", public_key: p256, alg: -7 }), /already enrolled/);
+  assert.ok(p.keys().some(r => r.id === k.id && r.kind === "device"));
+});
+
+test("presence: a device signature proves one call, within 60 seconds, with a fresh nonce", async t => {
+  const { p, db, now } = setup(t);
+  const k = deviceKey(p);
+  const proof = k.sign(APPROVE.tool, APPROVE.input, now());
+  assert.deepEqual(await p.verify({ ...APPROVE, caller: "tailnet:alex@example.com", proof }), { ok: true, method: "device", keyId: k.id });
+  assert.ok(db.prepare("SELECT last_used FROM presence_keys WHERE id = ?").get(k.id).last_used);
+  assert.match((await p.verify({ ...APPROVE, caller: "tailnet:alex@example.com", proof })).message, /nonce was already used/);
+  assert.match((await p.verify({ ...APPROVE, caller: "tailnet:alex@example.com", proof: k.sign(APPROVE.tool, APPROVE.input, now() - 61_000) })).message, /too old/);
+  assert.match((await p.verify({ ...APPROVE, caller: "tailnet:alex@example.com", proof: k.sign(APPROVE.tool, APPROVE.input, now() + 61_000) })).message, /too old or from the future/);
+  assert.equal((await p.verify({ tool: "gate.approve", input: { id: "b2" }, caller: "tailnet:alex@example.com", proof: k.sign(APPROVE.tool, APPROVE.input, now()) })).ok, false, "a signature for a1 approved b2");
+  const other = crypto.generateKeyPairSync("ec", { namedCurve: "P-256" }).privateKey;
+  const nonce = crypto.randomBytes(12).toString("base64url");
+  const forged = { ...k.sign(APPROVE.tool, APPROVE.input, now(), nonce),
+    sig: crypto.sign("sha256", Buffer.from(`vyre-presence-v1\n${APPROVE.tool}\n${inputHash(APPROVE.input)}\n${now()}\n${nonce}`), { key: other, dsaEncoding: "der" }).toString("base64url") };
+  assert.match((await p.verify({ ...APPROVE, caller: "tailnet:alex@example.com", proof: forged })).message, /does not check out/);
+  assert.match((await p.verify({ ...APPROVE, caller: "tailnet:alex@example.com", proof: { ...k.sign(APPROVE.tool, APPROVE.input, now()), nonce: "bad nonce!" } })).message, /nonce is missing or malformed/);
+  assert.match((await p.verify({ ...APPROVE, caller: "tailnet:alex@example.com", proof: { ...k.sign(APPROVE.tool, APPROVE.input, now()), key: "nope" } })).message, /not enrolled/);
+  // One nonce set for both methods: a Capsule nonce cannot be replayed as a device one, and a Capsule key is not a device key.
+  const c = capsuleKey(p);
+  const cap = c.sign(APPROVE.tool, APPROVE.input, now());
+  assert.equal((await p.verify({ ...APPROVE, caller: "capsule", proof: cap })).ok, true);
+  assert.match((await p.verify({ ...APPROVE, caller: "tailnet:alex@example.com", proof: k.sign(APPROVE.tool, APPROVE.input, now(), cap.nonce) })).message, /nonce was already used/);
+  assert.match((await p.verify({ ...APPROVE, caller: "tailnet:alex@example.com", proof: { ...c.sign(APPROVE.tool, APPROVE.input, now()), method: "device" } })).message, /not enrolled/);
+  assert.match((await p.verify({ ...APPROVE, caller: "capsule", proof: { ...k.sign(APPROVE.tool, APPROVE.input, now()), method: "capsule" } })).message, /not enrolled/);
+});
+
+test("presence: device is offered only once a device key is enrolled, on the box too, and it opens a session", async t => {
+  const { p, now } = setup(t);
+  p.role = "box";
+  assert.ok(!(await p.verify({ ...APPROVE, caller: "tailnet:alex@example.com", proof: null })).methods.includes("device"));
+  const k = deviceKey(p);
+  assert.deepEqual((await p.verify({ ...APPROVE, caller: "tailnet:alex@example.com", proof: null })).methods, ["device"]);
+  const v = await p.verify({ tool: "presence.session.open", input: {}, caller: "tailnet:alex@example.com", proof: k.sign("presence.session.open", {}, now()) });
+  assert.deepEqual(v, { ok: true, method: "device", keyId: k.id });
+  const s = p.openSession({ method: v.method, keyId: v.keyId, peer: { stableId: "nTEST" } });
+  const reveal = { tool: "vault.reveal", input: { name: "bank" }, caller: "tailnet:alex@example.com", def: { presence: { session: () => true } } };
+  assert.deepEqual(await p.verify({ ...reveal, proof: { method: "session", id: s.session, secret: s.secret }, peer: { stableId: "nTEST" } }), { ok: true, method: "session", keyId: k.id });
+});
+
+test("presence: a database from before device keys takes one, and keeps its keys", async t => {
+  const home = tempHome(t);
+  const db = open(path.join(home, "vyre.db"));
+  t.after(() => db.close());
+  const { migrate } = await import("../store/index.js");
+  const { MIGRATIONS } = await import("./index.js");
+  migrate(db, "presence", MIGRATIONS.slice(0, 2));
+  db.prepare("INSERT INTO presence_keys (id, kind, name, public_key, alg, rp_id, sign_count, created) VALUES ('cred-1','passkey','Laptop','AA',-7,'box.example.com',4,1)").run();
+  assert.throws(() => db.prepare("INSERT INTO presence_keys (id, kind, name, public_key, created) VALUES ('d','device','x','AA',1)").run(), /CHECK/);
+  const p = new Presence({ db, platform: "linux", touchid: null, webauthn: null, who: async () => [] });
+  const k = deviceKey(p);
+  assert.deepEqual(p.keys().map(r => [r.id, r.kind]), [["cred-1", "passkey"], [k.id, "device"]]);
+  assert.equal(db.prepare("SELECT sign_count FROM presence_keys WHERE id = 'cred-1'").get().sign_count, 4);
+  assert.throws(() => db.prepare("INSERT INTO presence_keys (id, kind, name, public_key, created) VALUES ('z','magic','x','AA',1)").run(), /CHECK/);
+});
+
 test("presence: under tests the real Touch ID is never offered or tried; the refusal says no_dialog", async t => {
   // touchid left undefined is the real helper, which shows a system dialog.
   const { p } = setup(t, { platform: "darwin", touchid: undefined });
@@ -374,4 +590,38 @@ test("presence: a tool can ask only for some inputs, and counts as asking when l
   assert.equal(p.required("agents.update", def), true, "no input: listing tools");
   assert.equal(p.required("vault.reveal", {}, { name: "northwind-mail" }), true, "on the floor's list whatever the input");
   assert.equal(p.required("agents.create", {}, { name: "kit" }), false, "making an agent is a person's, with no passkey");
+});
+
+test("presence: a passkey a relayed browser enrolled proves only for that device, from its app's origin", async t => {
+  const home = tempHome(t);
+  const db = open(path.join(home, "vyre.db"));
+  t.after(() => db.close());
+  const seen = [];
+  const p = new Presence({ db, platform: "linux", touchid: null, who: async () => [],
+    webauthn: { verifyAssertion: async a => { seen.push(a.origins || null); return { ok: true, signCount: 0 }; } } });
+  const spkiOf = () => crypto.generateKeyPairSync("ec", { namedCurve: "P-256" }).publicKey.export({ format: "der", type: "spki" }).toString("base64url");
+  p.enroll({ kind: "passkey", name: "alex-mac", public_key: spkiOf(), alg: -7, rp_id: "vyre.tail0000.ts.net", credential_id: "boxcredential1" });
+  p.enroll({ kind: "passkey", name: "alex-phone web", public_key: spkiOf(), alg: -7, rp_id: "app.vyre.run", credential_id: "webcredential1",
+    device: "abcdefghijklmnop", origin: "https://app.vyre.run" });
+  const PHONE = { kind: "device", stableId: "abcdefghijklmnop" }, OTHER = { kind: "device", stableId: "qrstuvwxyz234567" };
+  const tool = "vault.reveal", input = { name: "northwind-mail" };
+  const proveWith = async (peer, cred, verifyPeer = peer) => {
+    const c = await p.challenge({ tool, input, method: "passkey", peer });
+    if (c.error) return c;
+    const v = await p.verify({ tool, input, caller: "deck", peer: verifyPeer, proof: { method: "passkey", id: c.challenge, cred, ad: "x", cd: "x", sig: "x" }, def: {} });
+    return { offered: c.webauthn.allowCredentials.map(x => x.id), rpId: c.webauthn.rpId, ok: v.ok };
+  };
+  // The Deck is offered only the box's passkey, and the phone's web passkey does not prove there.
+  assert.deepEqual(await proveWith(null, "boxcredential1"), { offered: ["boxcredential1"], rpId: "vyre.tail0000.ts.net", ok: true });
+  assert.equal((await proveWith(null, "webcredential1")).ok, false);
+  // The relayed browser is offered only its own, checked against app.vyre.run's origin.
+  assert.deepEqual(await proveWith(PHONE, "webcredential1"), { offered: ["webcredential1"], rpId: "app.vyre.run", ok: true });
+  assert.deepEqual(seen[seen.length - 1], ["https://app.vyre.run"]);
+  assert.equal((await proveWith(PHONE, "boxcredential1")).ok, false, "not the box's passkey from a relayed device");
+  // Another device: no passkey offered; and a challenge made for the phone does not prove from it.
+  assert.match((await proveWith(OTHER, "webcredential1")).error.message, /no passkey is enrolled for this device/);
+  assert.equal((await proveWith(PHONE, "webcredential1", OTHER)).ok, false);
+  // Removing the key removes its binding.
+  assert.equal(p.remove("webcredential1"), true);
+  assert.equal(db.prepare("SELECT COUNT(*) AS n FROM presence_key_devices").get().n, 0);
 });

@@ -6,20 +6,28 @@
   "does": {
     "tools": [
       "computers.list", "computers.get", "computers.checkout", "computers.release", "computers.stop", "computers.restart", "computers.limits",
+      "computers.stats",
       "computers.pause", "computers.resume", "computers.takeover", "computers.giveback", "computers.watch",
       "computers.endpoint", "computers.may-act", "computers.helper", "computers.shield",
       "computers.egress.status", "computers.egress.set",
-      "computers.tailnet.status", "computers.tailnet.set", "computers.node.agent"
+      "computers.tailnet.status", "computers.tailnet.set", "computers.node.agent",
+      "computers.handback.status", "computers.handback.set",
+      "computers.fill.begin", "computers.fill.end",
+      "computers.member.add", "computers.member.remove", "computers.member.rotate", "computers.member.dispose"
     ]
   },
   "watches": {
     "emits": [
       "computer.created", "computer.checked-out", "computer.released", "computer.frozen", "computer.thawed",
-      "computer.stopped", "computer.paused", "computer.resumed", "computer.taken-over", "computer.handed-back",
-      "computer.shielded", "computer.unshielded", "computer.joined", "computer.left"
+      "computer.stopped", "computer.paused", "computer.resumed", "computer.taken-over", "computer.handed-back", "computer.idle-warning", "computer.fill-began", "computer.fill-ended",
+      "computer.shielded", "computer.unshielded", "computer.joined", "computer.left",
+      "computer.member-added", "computer.member-removed", "computer.member-rotated"
     ]
   },
   "shows": { "streams": ["glass"], "cli": ["computers"], "deck": ["panel:glass"] },
-  "needs": { "vault": ["tailscale-agent-authkey"] },
-  "teaches": {}
+  "needs": { "vault": ["tailscale-agent-authkey", "vyre-shared-computer-member-key"] },
+  "teaches": {},
+  "settings": [
+    {"key": "computers.handback_minutes", "group": "devices", "label": "Hand a computer back after (minutes idle)", "help": "0 is never.", "type": "int", "choices": [0, 2, 5, 15], "default": 5, "levels": ["account"], "apply": "live", "store": {"config": "computers.handbackIdleMin"}}
+  ]
 }

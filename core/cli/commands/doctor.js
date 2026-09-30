@@ -9,8 +9,11 @@
 // box that does not answer is a line that says so, not a hang.
 //
 // On a Mac it checks vyred, Tailscale here, the box (through Tailscale, its address, and through
-// the link for what only the box knows), the phone, the Capsule and the install. On a box it
-// checks the same things from the box's side.
+// the link for what only the box knows), the phone, the Capsule, whether every module on THIS
+// machine started, and the install. On a box it checks the same things from the box's side.
+//
+// --json: { ok, role, ms, checks: [{ id, label, ok, detail?, fix? }] }. --view draws the same
+// checks live: a checks frame as each one answers (data null), then the whole result as the last.
 
 import fs from "node:fs";
 import os from "node:os";
@@ -21,11 +24,12 @@ import { REPO } from "../../daemon/index.js";
 import { label as buildLabel } from "../../daemon/build.js";
 import * as config from "../../config/index.js";
 import { status as tailscaleStatus, probe } from "../tailnet.js";
-import { INSTALLED } from "./capsule.js";
+import { appPath as capsuleApp } from "./capsule-native.js";
 import { shadows } from "../shadow.js";
 import { progressLine } from "../../recall/progress.js";
 import { out, dim, bold, signal, beacon } from "../style.js";
-import { json, emit, EXIT } from "../kit.js";
+import { INSTALL } from "../brand.js";
+import { json, emit, EXIT, viewing } from "../kit.js";
 
 /** The whole run's budget, and one check's. */
 export const BUDGET_MS = 2000;
@@ -72,7 +76,9 @@ export function installSize(dir = REPO, cap = 200_000) {
  * @param {{ health?: () => Promise<any>, tool?: (name: string, input?: any) => Promise<{ data?: any, error?: any }>,
  *   tailscale?: () => Promise<any>, resolve?: (h: string) => Promise<any>, probe?: (a: string, ms: number) => Promise<any>,
  *   capsuleApps?: string[], size?: () => { bytes: number, files: number }, role?: string, box?: string | null,
- *   path?: () => ReturnType<typeof shadows> }} [deps]
+ *   modules?: () => Promise<{ data?: any, error?: any }>,
+ *   path?: () => ReturnType<typeof shadows>, onCheck?: (i: number, c: Check | null) => void }} [deps] onCheck hears each
+ *   check as it answers, by its place in IDS (null: it does not apply here)
  * @returns {Promise<{ role: string, checks: Check[], ms: number }>}
  */
 export async function diagnose(deps = {}) {
@@ -199,7 +205,8 @@ export async function diagnose(deps = {}) {
   // --------------------------------------------------------------- this machine
   const capsule = role === "box" || process.platform !== "darwin" ? Promise.resolve(null) : (async () => {
     const labelCap = "The Capsule";
-    const app = (deps.capsuleApps || INSTALLED).find(p => fs.existsSync(p));
+    // The native app, built on this Mac into the Vyre home (capsule-native.js).
+    const app = (deps.capsuleApps || [capsuleApp(config.paths().root)]).find(p => fs.existsSync(p));
     if (!app) return failed("capsule", labelCap, "not installed", "vyre capsule install");
     // What macOS allows is known to the app itself (TCC holds Vyre.app responsible); it reports
     // it as capsule.hotkey. A Capsule that has not reported yet is "?" rather than a guess.
@@ -214,7 +221,7 @@ export async function diagnose(deps = {}) {
     const s = (deps.size || installSize)();
     const mb = s.bytes / 1e6;
     return mb > 50
-      ? failed("install", "Install size", `${mb.toFixed(0)} MB in ${s.files} files`, "npm i -g vyre@latest (the search model lives in ~/.vyre now)")
+      ? failed("install", "Install size", `${mb.toFixed(0)} MB in ${s.files} files`, `${INSTALL} (the search model lives in ~/.vyre now)`)
       : pass("install", "Install size", `${mb.toFixed(1)} MB`);
   });
 
@@ -230,6 +237,23 @@ export async function diagnose(deps = {}) {
     return pass("path", labelPath);
   });
 
+  // Every module started: a manifest that under- or over-declares a tool or event fails that
+  // module alone, silently to a person just watching Chat or the Deck (every other module still
+  // loads, so "no such tool" from something that quietly never registered is the only symptom
+  // otherwise) - the gotcha that cost tailnet real time shipping relay.pair.ticket (docs/work/
+  // tailnet.md, 28 Sep 2026). vyred's own log already names the module and the exact manifest key
+  // (core/modules/index.js's startOne), but nothing surfaced it here until now, and the log is
+  // the only place it was loud. /v1/modules is this machine's own registry (box or Mac, whichever
+  // `vyre doctor` runs on), same status() the module never disappears from.
+  const modules = up ? within((deps.modules || (() => request("GET", "/v1/modules", undefined, { timeout: STEP_MS })))(), STEP_MS, () => ({ error: { message: "no answer" } })).then(r => {
+    const labelMods = "Every module started";
+    if (r.error || !Array.isArray(r.data)) return unknown("modules", labelMods, r.error ? r.error.message : "/v1/modules did not answer");
+    const bad = r.data.filter(m => m.state === "failed" || m.state === "invalid");
+    if (!bad.length) return pass("modules", labelMods, `${r.data.filter(m => m.state === "running").length} running`);
+    const names = bad.map(m => m.name).join(", ");
+    return failed("modules", labelMods, `${bad.length === 1 ? bad[0].name : `${bad.length} modules (${names})`}: ${bad[0].error}`, "check vyred's log for the module and manifest key it names");
+  }) : Promise.resolve(unknown("modules", "Every module started", "vyred is not running", "vyre up"));
+
   // Recall's index: keyword search works at once; meaning trickles in at low priority.
   const recall = up ? within(tool("recall.status"), STEP_MS, () => ({ error: { message: "no answer" } })).then(r => {
     if (r.error || !r.data) return unknown("recall", "Search", `recall.status did not answer${r.error ? ": " + r.error.message : ""}`);
@@ -237,13 +261,26 @@ export async function diagnose(deps = {}) {
     return pass("recall", "Search", line || `${Number(r.data.sessions || 0).toLocaleString("en-US")} sessions indexed${r.data.vectors && r.data.vectors.ready ? ", by meaning too" : ""}`);
   }) : Promise.resolve(null);
 
-  const all = [vyred, tailscale, magic, boxTailscale, phone, address, paired, passkey, claude, capsule, recall, onPath, size];
+  const all = [vyred, tailscale, magic, boxTailscale, phone, address, paired, passkey, claude, capsule, modules, recall, onPath, size];
   const left = Math.max(100, BUDGET_MS - (Date.now() - t0));
-  const results = await Promise.all(all.map(p => within(p, left, () => ({ id: "?", label: "", ok: null, detail: "timed out" }))));
-  const labels = ["vyred", "Tailscale", "MagicDNS and HTTPS", "Tailscale on the box", "Your phone", "The box's address", "Paired", "Passkey", "Claude on the box", "The Capsule", "Search", "The vyre on PATH", "Install size"];
-  const ids = ["vyred", "tailscale", "magicdns", "tailscale-box", "phone", "address", "paired", "passkey", "claude", "capsule", "recall", "path", "install"];
-  const checks = results.map((c, i) => c && c.id === "?" ? { ...c, id: ids[i], label: labels[i], detail: `no answer in ${BUDGET_MS / 1000} s` } : c).filter(Boolean);
+  const named = (c, i) => c && c.id === "?" ? { ...c, id: IDS[i], label: LABELS[i], detail: `no answer in ${BUDGET_MS / 1000} s` } : c;
+  const results = await Promise.all(all.map((p, i) => within(p, left, () => ({ id: "?", label: "", ok: null, detail: "timed out" }))
+    .then(c => { const n = named(c, i); if (deps.onCheck) deps.onCheck(i, n || null); return n; })));
+  const checks = results.filter(Boolean);
   return { role, checks: /** @type {Check[]} */ (checks), ms: Date.now() - t0 };
+}
+
+/** Every check's id and short label, in the order diagnose runs them. */
+export const IDS = ["vyred", "tailscale", "magicdns", "tailscale-box", "phone", "address", "paired", "passkey", "claude", "capsule", "modules", "recall", "path", "install"];
+const LABELS = ["vyred", "Tailscale", "MagicDNS and HTTPS", "Tailscale on the box", "Your phone", "The box's address", "Paired", "Passkey", "Claude on the box", "The Capsule", "Every module started", "Search", "The vyre on PATH", "Install size"];
+
+/**
+ * A check as a checks frame's item: ok, failed or unknown, the detail and the fix in the note.
+ * @param {Check} c @returns {{ id: string, label: string, state: "ok"|"failed"|"unknown", note?: string }}
+ */
+export function item(c) {
+  const note = [c.detail, c.fix && c.ok !== true ? `next: ${c.fix}` : ""].filter(Boolean).join(" · ");
+  return { id: c.id, label: c.label, state: c.ok === true ? "ok" : c.ok === false ? "failed" : "unknown", ...(note ? { note } : {}) };
 }
 
 /** One check as terminal lines. */
@@ -253,12 +290,26 @@ export function lines(/** @type {Check} */ c) {
   return c.fix && c.ok !== true ? [head, "      " + (c.ok === false ? c.fix : dim(c.fix))] : [head];
 }
 
+/** --view: a checks frame each time a check answers, then the result with its checks as the last frame. */
+async function live() {
+  /** @type {(Check | null | undefined)[]} */
+  const known = IDS.map(() => undefined);
+  const items = () => IDS.map((id, i) => known[i] === undefined ? { id, label: LABELS[i], state: /** @type {const} */ ("wait") } : known[i] ? item(/** @type {Check} */ (known[i])) : null).filter(Boolean);
+  emit(null, { kind: "checks", title: "Checking", items: items() });
+  const r = await diagnose({ onCheck: (i, c) => { known[i] = c; emit(null, { kind: "checks", title: "Checking", items: items() }); } });
+  const ok = r.checks.every(c => c.ok !== false);
+  const bad = r.checks.filter(c => c.ok === false).length;
+  emit({ ok, role: r.role, ms: r.ms, checks: r.checks }, { kind: "checks", title: `${bad ? `${bad} to fix` : "Nothing to fix"} · checked in ${(r.ms / 1000).toFixed(1)} s`, items: r.checks.map(item) });
+  return ok ? EXIT.OK : EXIT.FAILED;
+}
+
 export default {
   name: "doctor", order: 12, usage: "vyre doctor [--json]",
   summary: "check vyred, Tailscale, the box, your phone, passkey, pairing, Claude and the Capsule, and say what to fix",
   help: "Read-only and under 2 s. ✓ passed, ✗ failed (the line under it is what to do), ? could not be checked.\nExit 0 when nothing failed, 1 when something did. --json: { ok, role, checks: [{ id, label, ok, detail, fix }] }.",
   /** @param {string[]} args */
   async run(args = []) {
+    if (viewing()) return live();
     const r = await diagnose();
     const ok = r.checks.every(c => c.ok !== false);
     if (json() || args.includes("--json")) { emit({ ok, role: r.role, ms: r.ms, checks: r.checks }); return ok ? EXIT.OK : EXIT.FAILED; }

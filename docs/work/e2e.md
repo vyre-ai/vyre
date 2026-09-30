@@ -153,7 +153,196 @@ example.com in kit's address bar; the page loaded). Hand back also asks for the 
 (glass.release is on the presence list): is that intended? Torn down afterwards, including the
 computer container and its home volume.
 
-## Doing (27 Sep, after the restart)
+## HTTP listener audit (27 Sep, after logout 3, on main ef51363)
+
+Question: can a process that is not the person act as the person over HTTP? Yes, three ways.
+
+| listener | bind | reach | auth | caller | risk |
+|---|---|---|---|---|---|
+| names (the tailnet HTTPS) core/names/service.js | the box's tailnet IPs :443 | every tailnet node | whois; Host, JSON-only POST and Origin checks | `tailnet:<login>` for any node of the owner | HIGH |
+| onboard core/onboard/loopback.js | 127.0.0.1, or the `vyred` alias on the `vyre` network (host 127.0.0.1:7300) | host loopback, the `vyre` network (computers are not on it) | one-time token, loopback Host, Origin | `onboard` | low |
+| hooks core/hooks/listener.js | 127.0.0.1, published by Funnel | the internet | per-route token, never calls a tool | `hook` | low |
+| vault relay core/vault/relay.js | 127.0.0.1 (forced in tailscale mode) | local, tailscale serve | signed holder envelope | `pass:<id>:<holder>` | low |
+| vault fill core/vault/fill.js | 127.0.0.1 (0.0.0.0 if configured) | local | Host allowlist, extension Origin, device token | none | medium: a script can send `Origin: chrome-extension://..`; vault.devices and vault.device.revoke have `callers: null` |
+| vault kit, google connect | 127.0.0.1:0, while open | local | one-time path token / OAuth state | none | none |
+| ssh agent core/vault/ssh/agent.js | unix socket 0600 | same uid | per key+host approval, then a lease | none | low |
+| computerd | 0.0.0.0 in each computer | vyre-computers, the computer's tailnet node | per-computer bearer (plain `===`) | none | low |
+| egressgate, docker-api proxy | 0.0.0.0 on internal networks | vyred's namespace, computers | none | none | low (status leaks a reason; docker-api can stop computers) |
+| vyred socket core/daemon/index.js | unix socket 0600 | same uid | label + peer ancestry for person actions | label | HIGH (below) |
+| agent computer (glass-live 70a72036, reviewed 27 Sep) | computerd, CDP over a pipe, Xvnc with a cookie | the agent (uid 1000) in its own container | token, untrusted X cookie, freezer during a shield | none | HIGH until fixed: token and VNC password in Config.Env (every exec reads them); CDP denylist leaves cookies, file:// and chrome:// open |
+
+Findings:
+
+1. Any process on any owner node is the Deck. names labels every request from an owner-login node
+   `tailnet:<login>`; `callerAllowed` opens every tool whose callers list names `deck` to it; the
+   ancestry check runs only on the socket. The Host/JSON/Origin checks stop web pages, not curl.
+   Reachable with no proof: threads.answer (a Claude Code on the Mac answers its own permission
+   ask), gate.revise/reject, gate.approve on items that need no proof, agents.create/update,
+   term.open (a shell on the box, then its WebSocket), glass.take, computers.takeover.
+   HUMAN_ONLY tools still need a passkey proof, which a script cannot make.
+2. link.call launders the Mac socket's check (core/link/mac.js link.call, no callers list):
+   the socket checks the outer tool name, remote() blocks only link.*, and the box sees
+   `tailnet:<owner>`. A model on the Mac calls `link.call {tool:"threads.answer"}` through the
+   socket or MCP.
+3. The socket ancestry check is escaped by an orphan. A model's Bash runs
+   `nohup sh -c "sleep 1; vyre call threads.answer .." &`; once the shell exits the child's parent
+   is 1 (checked on this Mac: ppid 1), the chain reaches init "complete" with no claude above, and
+   the call passes. setsid and a daemonized tmux server do the same, and env markers are the
+   model's to clear. Same uid means a model's shell can reach whatever the person's shell can.
+   Hard lines are only user presence (passkey, Touch ID) and a different uid.
+
+Plan (to the lead before building):
+- A person session over HTTP. `tailnet:<login>` becomes a device of the owner, not the person:
+  PERSON_ONLY, HUMAN_ONLY and presence-needing calls over the tailnet also need a person session.
+  Made by a passkey sign-in at the box's address, 30 days sliding, 90 days max, listed and
+  revocable in Settings, pinned to the tailnet node it was made on. Same-origin Deck and phone
+  PWA: `__Host-` cookie, HttpOnly, Secure, SameSite=Strict (plus today's JSON/Origin checks).
+  Hosted app at app.vyre.run: no cookie (third-party in Safari); a sign-in hop to the box's page
+  (passkey there, rpId stays the box), a one-time code back to app.vyre.run, exchanged with a
+  PKCE verifier over CORS for a bearer token in `Authorization`, held with a non-extractable
+  WebCrypto key that signs each request (DPoP style). Not ambient, so CSRF-safe; CORS names only
+  https://app.vyre.run. Existing 30-min presence sessions stay the proof for HUMAN_ONLY.
+- The Capsule: its presence key (kind capsule) opens a person session; link.call passes it
+  through. link.call refuses PERSON_ONLY and presence-needing tools without one, and the Mac socket
+  runs the person check on link.call's inner tool.
+- Residual, stated plainly: a same-uid process can read browser storage from disk (Chrome's
+  cookie store is keychain-encrypted, Safari's is TCC-protected; IndexedDB keys are not). The
+  session raises the bar from one curl to stealing a browser's store.
+
+## Doing (28 Sep, e2e2, rc-smoke for 0.1.1, work/e2e-011 off stage/0.1.1 73293a6e)
+
+rc-smoke on stage/0.1.1 was 15 pass, 6 fail, 1 skip (same on 029756bc). All four failing steps
+were the smoke script, none the product. After the fix, on testbox with build-site.sh's
+site/box/vyre.tgz (0.1.0-rc.2): 27 pass, 0 fail, 1 skip (the phone-enrol skip, as always).
+
+| step | cause | fix |
+|---|---|---|
+| 3 vault | `ready()` grepped `running`, which "vyred not running" matches, so step 3 ran before vyred was up (unreachable) | script: wait for "vyred running" |
+| 6 mail | a `docker exec` process has parent 0, so the leader check names it as an unknown server and wants one session.trust proof (personguard, by design, reviewer's rulings 28 Sep). person.mjs sent only the tool's own proof | script: person.mjs proves session.trust over the answer's `server`, then repeats the call |
+| 7 theme | settings.set is PERSON_ONLY; a bare `vyre call` from docker exec gets no_terminal, read as "theme.css unchanged" | script: step 7 goes through person.mjs; a presence refusal is reported as such |
+| 8 update | follows from 3 (no vault item was ever written); `ready()` after update also passed early | same fix as 3 |
+
+The leader check is right: a docker exec shell on the box has the cron/atd shape, so one proof
+per server is the intended floor. To rerun: rsync the worktree to testbox, build-site.sh, then
+`sh scripts/rc-smoke.sh site/box/vyre.tgz` over plain ssh with stdin from /dev/null.
+
+## Doing (28 Sep, e2e2, after the RESUME 10 restart)
+
+- ADR 0040 revised on 91c02d81 against the settled decisions: presence keys and the Capsule pin
+  re-enrolled not copied, vault imported after a shown summary plus a post-install proof; the
+  Capsule signing key held by vyre-core; install through `vyre up` also checks the Ed25519
+  signature; a root-only updater daemon (code stays root-owned); Deck writes carry a proof; the
+  computers/spawner/dockerproxy rule; the phone-join and relay sequencing. docs:ref regenerated
+  (the stale #6-vault-migration and #open-questions anchors). Sent to the reviewer.
+- ADR 0040 SIGNED OFF by the reviewer at 6a2b3f5f (range 91c02d81..6a2b3f5f). LOWs for whoever
+  builds it: (a) a same-uid model can stream its own value for an approved item name, so the
+  person-side reader is the root-owned, DR-signed Capsule, not the person-writable `vyre` CLI;
+  (b) the root apply step is the ONLY reader of core's signing key in the _vyre data dir.
+- P-256: 9bfc452e + 6579710a + 457ef10c cleared; one batch with capsule-pro's Swift, never
+  6579710a alone. link kindOf 9138e567 (work/e2e-linkkind) cleared; swap to lib/caller.js once it
+  is on stage, keeping the thread: refusal.
+
+## Doing (27 Sep, after logout 4)
+
+Done this session:
+- Merged main 7880dfa6 into work/e2e (0856b9b9; changelog union, generated docs regenerated).
+- The candidate image did not build: box/Dockerfile imports core/sessions/sdk.js on its own to read
+  the SDK pin, and 8aed4887 gave it an import. Fixed in work/e2e-sdk 65cbc02a (pin in
+  core/sessions/sdk-pin.js, imports nothing; test on the Dockerfile's COPY line). Sent to the
+  integrator, box-deploy and the lead.
+- Headscale gate on main + 65cbc02a: PASS, 16 items (list sent to box-deploy). Glass not rerun.
+  Low: unknown ids at gate.get/agents.delete answer 500, not 404; `vyre link signin` prints nothing
+  on success. Harness: the image needs a build.json stamp, or the Deck's service worker keeps the
+  last run's files (same "v0.0.1" cache name) and the passkey page breaks on a stale api.js.
+- rooms.test.js:227 passes alone on testbox; asked the integrator for the failing text (likely a
+  run under a `claude` process, since agents.create is PERSON_ONLY on the socket).
+- Batch 4 sha sent: work/e2e 4e5a27f7 (was 0856b9b9).
+- native-core re-review of 62abf2cf (tip 87fb03d7): HIGH 1 and 2 fixed, store limits right, 60/60
+  on testbox. NOT signed off: new HIGH, settings.get has no callers, so mcp and agents read
+  sessions.env values (Claude Code's env, API keys). Asked for masked values for non-person
+  callers plus a test. MEDIUMs sent: firstParty = "under the repo" (dev home in a checkout),
+  env/plugins/deny-removal without confirm, asPerson's "deck" fallback. SIGNED OFF at 3ae4fc93
+  (env and hooks secret, masked for non-person callers; 63/63). MEDIUMs are theirs before 0.1.0.
+
+~/.claude from a temp home (lead, 27 Sep): platform saw a fresh temp home report "107 facts about
+you". recall's readable() guards only under node --test, so a dev world read the real transcripts
+(config default, core/config/index.js:135). Guard test on work/e2e-noclaude (52ac6576 + the next
+commit): vyred in a child with HOME = a planted fake home, NODE_TEST_CONTEXT cleared, every fs call on
+a .claude path recorded and refused. Red on main with exactly those 3 paths. FIXED by me (lead's call): claudeHome() in core/config, work/e2e-noclaude 32dc0956, guard
+green, sent to the integrator. memory-iq keeps its recall-side fix (I review it). One-line switches sent to sessions,
+polish-cli, native-core; learn done by me (lead OK): 399ca89f; the skills write guard keeps refusing the real ~/.claude too. Branch sent at 399ca89f. Other defaults to route through one kernel helper:
+learn/skills.js:414, switchboard/index.js:1333, cli statusline.js:22, native-core settings claudeDir.
+
+Reviews (27 Sep, testbox on hold at load 20 per the lead):
+- memory-iq 6a49c4bb (recall readable): OK. MEDIUM: realpath both sides (symlinks); the switchboard
+  reads config.transcripts unfiltered (index.js:1554), offered to move readable() into core/config.
+- cohesion c362505b (hands): nothing typed reaches events. MEDIUM scrub() bypass (quote or space in
+  a model URL keeps the query; build open's summary from new URL()); MEDIUM desktop takes
+  input.thread when meta has none. Chrome e2e needs a Mac slot from the lead.
+- connectors 04a5495e: HIGH any module (home ones too) passes on_behalf {surface:"capsule"} to mail
+  and reads mail as the Capsule; asked for registry meta.firstParty. MEDIUM on_behalf person=true
+  skips MCP scope; check on_behalf.thread against threads.get.
+- e2e-noclaude bf35f8ea: switchboard remember's user CLAUDE.md via claudeHome (sessions agreed).
+  TESTED 147 pass / 0 fail / 28 skip; sent to the integrator as the sha to land.
+Next when testbox is free: that test run, then rebuild 501ca3fc (+ sessions' callAsPerson fix) and
+run check.sh + thread.sh.
+
+- native-core ac34c322: my 3 MEDIUMs fixed (98412a66). Hub step 1 OK; MEDIUM secret non-store keys
+  would go to hub.json in clear (and backup); LOW same-uid edits of plain settings, file rev lags.
+
+- transcriptFolders (lead OK, memory-iq agreed): core/config/dialogs.js, realpath both ways,
+  switchboard reads through it; e2e-noclaude 88c90d56 green, sent to the integrator and memory-iq.
+- cohesion: SIGNED OFF at 533f84e2 (agent-label nit fixed); Chromium e2e result still to come.
+- connectors 7e648545: HIGH + MEDIUMs fixed, OK once tests run; build firstParty(name) on
+  native-core's firstParty(dir).
+
+RC SMOKE PROVEN: build-app.sh + npm pack of pre/batch4b 63d943f5 (build.json stamped): 21 pass,
+0 fail, 3 skip (pairing, mail, theme). /app/ 200. Rerun on ci's rc.1 dry-run artifact later.
+RC SMOKE (lead, 27 Sep): scripts/rc-smoke.sh <tgz> + scripts/rc-smoke/ (e62b0d22). Dry run on an
+npm pack of pre/batch4b 63d943f5: 19 pass, 2 FAIL (/app/ no_app: npm pack has no built app; a
+build-site tgz must pass), 3 skip (phone enrol needs a tailnet; mail and appearance not in b4).
+Mail step written (daf63e22: vault.connect, made-up hosts, mail.send held; on with vault-next +
+connectors). Next: ci sends the run id of release-dry-run-v0.1.0-rc.1 after batch 4 + the rc.1 bump;
+`gh run download <id> -R vyre-ai/vyre -n release-dry-run-v0.1.0-rc.1 -D <dir>`, check SHA256SUMS, run rc-smoke.
+Cleared: native-core fa349d31 + platform d62792d0; cohesion 0f4d1105 (Chromium 8/8).
+
+SPLIT VALIDATED on sessions db4af9c3 (callAsPerson ed2715ae) + main 53cd1326: check.sh 30/30,
+thread.sh 8/8; cleared to the integrator. MCP list 258 -> 239 (asked sessions to check the filter).
+connectors SIGNED OFF at 84f630c9 (226/226 + docs 50/50); firstParty dup with native-core at merge.
+memory-iq merged 88c90d56 (2dd6e83a).
+
+Split with sessions 501ca3fc (lead, 27 Sep): image from 501ca3fc merged with main 53cd1326.
+check.sh 30/30. New scripts/e2e-split/thread.sh (vyred starts a session through the spawner, CLI
+runner, VYRE_CLAUDE_BIN = a stand-in in /work): 6/7. FAIL `vyre call` inside a session: callAsPerson
+(core/cli/presence.js:47) pins root, so VYRE_SOCKET is ignored. Sent to sessions with the fix. Low:
+MCP offers 258 tools incl. person-only. NOT yet cleared for the integrator; rerun both on their sha.
+
+Batch 4 lows (lead, 27 Sep): DONE in 8b9b092c. Unknown ids at gate.* and agents.* answer 404
+not_found; `vyre link signin` at a terminal waits on the event stream and says "signed in on the
+box until <date>" (test/daemon.test.js, test/link-person.test.js; 115/115 + 88/88 on testbox).
+
+Next, in order:
+1. DONE (see above). To rerun the headscale gate on a new sha: Setup kept in
+   /srv/vyre-e2e (CA, NSS db). Build `docker build -t vyre-e2e:local -f box/Dockerfile .` from that
+   sha on testbox, then `./run1.sh`, `./run2.sh <link>`, `./run3.sh` (run3 uses `vyre up --connect`),
+   then the person-session checks (curl from the Mac node gets 401; the Deck's first action signs in;
+   `vyre link signin`; a claude-parented call and its orphan refused). A cloned passkey on the phone
+   makes the Mac's counter go backwards: bump signCount or re-add. Tear down: `docker compose
+   --profile mac --profile phone --profile computers down -v` in /srv/vyre-e2e; kill drive*.pid.
+   Report pass/fail per item to box-deploy and the lead.
+2. Re-review native-core when it sends a sha. Open: settings.set/reset into PERSON_ONLY and refuse
+   agent labels (HIGH 1); module-declared stores: home modules only own tools as module:<name>, own
+   config paths, no claude store, checked at load; CALL_AS scoped to core modules' declared setter
+   tools (HIGH 2). platform's settings.write e4515fb6 is approved, lands after.
+3. Batch 4: no auto-pair (9fc65458).
+4. Per-thread socket with sessions: they wire VYRE_SOCKET in spawnSession and client.js, then flip
+   sessions.spawner to "on"; rebuild the image and run scripts/e2e-split/check.sh (it now also checks
+   /run/vyre-threads).
+Also open: glass-live MEDIUMs (docs/work/glass-live.md); sessions' bypass checks (hook floor, refuse
+bypass without the harness plugin); the phone's two identities (tailnet node vs relay device) is a
+design item for the lead.
+
+## Earlier (27 Sep, after the restart)
 
 Done this session: main c48959b merged in (fc80279); the no-nag agents reversal and the SSE
 `: open` byte at 61692fd, pushed, sha sent to the integrator and the lead. The docs "403
@@ -197,6 +386,38 @@ event stream's first byte. Tear down afterwards.
 
 ## Changed contracts
 
+- core/config: `claudeHome(root, env?)`: Claude Code's folder for a Vyre home (real ~/.claude or
+  CLAUDE_CONFIG_DIR only for the real ~/.vyre; `<home>/claude` otherwise; VYRE_CLAUDE_HOME
+  overrides). Default `transcripts` use it.
+
+- core/spawner: spawnAsAgent(argv, { env, cwd }) -> ChildProcess-like (pid, stdin, stdout, stderr,
+  kill, exit). VYRE_SPAWNER_SOCKET (/run/vyre/spawner.sock), VYRE_SPAWNER_ALLOW (extra programs,
+  colon-separated). Image: users vyre (1000), vyre-agent (1001), group vyre-work (1002); CMD is
+  core/spawner/main.js. compose: vyre service user 0:0, cap_add SETUID SETGID KILL, volume
+  vyre-agent-home.
+
+- link: link.signin / link.signout (callers cli, local, capsule), link.status.signedIn,
+  events link.signed-in / link.signed-out. remote() carries PERSON_ONLY tools with the Mac's
+  person session for person callers only; HUMAN_ONLY never rides the link. presence.person.start
+  accepts `return` = http://127.0.0.1:<port>/cb/<nonce> (a Mac's vyred, traded with no Origin).
+- vault fill: Fill({ extensions }) from vault.fill.extensions; pair(body, headers) keeps the
+  Origin and an optional ES256 `key` (vault_meta device-origin:/device-key:); a key-bound
+  device must send `x-vyre-proof` (same format as the person session). vault.devices and
+  vault.device.revoke callers cli, local, deck, capsule. handle(route, body, headers, { raw, path }).
+
+- Person session (core/presence/person.js). Over the tailnet (`tailnet:<login>` callers) the
+  registry refuses PERSON_ONLY and presence-needing tools without `meta.person`, which only the
+  router sets, from the cookie `__Host-vyre_person` or `authorization: Vyre <id>.<secret>` plus
+  `x-vyre-proof: t=<ms> n=<nonce> sig=<b64url>` (ES256 P1363 over
+  `METHOD\npath?query\nsha256b64url(body)\nt\nn`). 401 `person_session_required`. Exempt:
+  presence.person.start and presence.enroll. Routes POST /v1/person/token {code, verifier, key},
+  POST /v1/person/end. Tools presence.person.start {cc?, return?, label?} (with cc, return must be an allowed https origin, network.origins; the answer carries redirect) (HUMAN_ONLY), .status, .sessions,
+  .revoke (PERSON_ONLY). Events presence.signed-in, presence.signed-out. A request tailnet marks
+  cross-origin (peer.origin) is refused without a session. Tests standing in for a signed-in Deck
+  pass `person: { id, kind }` in meta.
+
+- link.call / ctx.remote refuse PERSON_ONLY and HUMAN_ONLY box tools: `person_session_required`.
+
 - core/modules: `callerAllowed(callers, caller)`. A `tailnet:<login>` caller (the names listener
   admits only the owner) may use any tool whose callers list names `deck`; `tailnet:agent:*` and
   `tailnet-guest:*` may not. The registry and vault.update use it.
@@ -213,3 +434,5 @@ event stream's first byte. Tear down afterwards.
   gate.revise, gate.reject, threads.answer: no presence. gate.approve: presence for send, spend
   and delete, sessionable. A presence session lasts 30 minutes from the proof. Request header `x-vyre-presence-keep: 1` + strong proof returns
   `x-vyre-presence-session: session id=.. secret=.. expires=..`. Internal tool presence.covered.
+- presence.covered returns `{ covered, since, expires }`; items and asks carry
+  `presence: { required, covered, since }` (since in ms, null when not covered).

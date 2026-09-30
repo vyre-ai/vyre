@@ -5,7 +5,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { DatabaseSync } from "node:sqlite";
-import { Credentials } from "../connectors/auth.js";
+import { Credentials } from "../../lib/connectors/auth.js";
 import { McpError } from "./client.js";
 import { Hub, MIGRATIONS, MAX_NAME, aggregate, classify, normalize, target, looksSecret, whoFrom, checkUrl, sends } from "./hub.js";
 
@@ -129,6 +129,47 @@ test("whoFrom: people see all, a model is scoped by what vyred verified", () => 
   assert.equal(whoFrom("harness:agent:kit").person, false);
 });
 
+test("whoFrom: an owner-surface-shaped agent claim is never person: true (cohesion's audit, 2026-09-28)", () => {
+  // The bug: stripping "agent:kit" off "cli:agent:kit" before checking PEOPLE read the kind as
+  // "cli", so this named agent came back person AND agent at once. inScope() trusts who.person
+  // to skip every per-agent scope check outright, so this would have let it reach every
+  // connected server the true owner can, not just its own agents/projects scope.
+  for (const c of ["cli:agent:kit", "local:agent:kit", "deck:agent:kit", "capsule:agent:kit", "module:agent:kit"]) {
+    const who = whoFrom(c);
+    assert.equal(who.person, false, c);
+    assert.equal(who.agent, "kit", c);
+  }
+});
+
+test("whoFrom: the same bypass with a space instead of a colon, or an agent claim with no name after it (reviewer's round-2 MEDIUM on 513f984d)", () => {
+  // "mcp agent:kit" is a real transport shape this file's own callerKind treats identically to
+  // "mcp:agent:kit" (the space-or-colon boundary is deliberate, not this file's own invention:
+  // core/memory/floor.test.js's own test calls both). The first fix's named regex was anchored
+  // to "<kind>:agent:<name>" exactly, so a space before "agent:", or a claim with nothing after
+  // it at all, matched neither the old PEOPLE-strip nor the old named capture: person still came
+  // back true.
+  assert.equal(whoFrom("cli agent:kit").person, false, "a space, not a colon, before agent:");
+  assert.equal(whoFrom("cli agent:kit").agent, "kit");
+  assert.equal(whoFrom("cli:agent:").person, false, "an agent claim with no name after it");
+  assert.equal(whoFrom("cli:agent:").agent, null);
+  // A thread: claim is refused the same way callerKind's own strip already treats it: identically
+  // to an agent: claim, not the person's own surface either.
+  assert.equal(whoFrom("deck:thread:t1").person, false, "a thread: claim is not the person either");
+});
+
+test("whoFrom: an owner device is not person: true here, even though lib/caller.js's isPerson admits it (reviewer's HOLD on f2df7888, lead's ruling 2026-09-28)", () => {
+  // isPerson (lib/caller.js) also admits an owner device (isOwnerDevice: tailnet:<owner>,
+  // device:<id>), which this file's own pre-swap check never did. Per ADR 0032 any script on a
+  // paired phone or tailnet node is that owner device with no person session behind it -
+  // admitting it here would skip inScope()'s per-agent check for every connected MCP server, so
+  // this stays excluded on purpose to keep today's behaviour, unlike goals/planner's swap (which
+  // is intentionally stricter, not identical - see their own tests/comments).
+  assert.equal(whoFrom("tailnet:alex@example.com").person, false, "a tailnet owner device is not the person");
+  assert.equal(whoFrom("device:abcdefghijklmnop").person, false, "a paired device is not the person");
+  // An agent's own tailnet node was already refused before the swap, and still is.
+  assert.equal(whoFrom("tailnet:agent:kit").person, false);
+});
+
 // ---- a hub with a fake connect ----
 
 function fakeHub({ values = {}, behave = {}, ...extra } = {}) {
@@ -193,6 +234,26 @@ test("hub: an error from the server is scrubbed, and a result over the cap is cu
   await hub.add({ name: "web", transport: "http", url: "https://mcp.northwind.example/mcp", auth: { type: "bearer", item: "tok" } });
   await hub.call({ server: "web", tool: "get_big" }, person).then(r => { assert.equal(r.truncated, true); assert.ok(JSON.stringify(r).length < 1300); });
   await assert.rejects(hub.call({ server: "web", tool: "list_issues" }, person), e => e.code === "rpc" && !e.message.includes(token));
+});
+
+test("hub: an error says whether the call may have reached the server (detail.reached)", async () => {
+  let mode = "rpc";
+  const { hub } = fakeHub({ behave: {
+    call: () => { throw new McpError(mode, `${mode} happened`); },
+    initFail: n => (mode === "start" && n > 0 ? new McpError("spawn_failed", "could not start") : null),
+  } });
+  await hub.add({ name: "web", transport: "http", url: "https://mcp.northwind.example/mcp" });
+  const reached = async () => { try { await hub.run("web", "list_issues", {}); return "ran"; } catch (e) { return /** @type {any} */ (e).detail?.reached; } };
+  assert.equal(await reached(), "no", "the server answered no itself");
+  mode = "closed";
+  assert.equal(await reached(), "maybe", "it closed mid-call: it may have run");
+  mode = "timeout";
+  assert.equal(await reached(), "maybe");
+  mode = "exited";
+  assert.equal(await reached(), "maybe");
+  mode = "start";
+  assert.equal(await reached(), "no", "it never started, so nothing was asked");
+  await hub.stop();
 });
 
 test("hub: a failed add stands, does not spend the restart budget, and a missing grant reads plainly", async () => {

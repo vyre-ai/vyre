@@ -11,6 +11,11 @@
 // Vyre come through. It serves a single route and only answers signed requests for live passes.
 
 import { Vault, MIGRATIONS, KINDS, parseExpiry, ensureMacColumns } from "./vault.js";
+import { DETAILS, defaultField } from "../../lib/vault-kinds/kinds.js";
+import { codes, importCodes } from "./codes.js";
+import { sweep } from "./sweep.js";
+import { scheduleReminders, remindRun } from "./remind.js";
+import * as rotateTools from "./tools/rotate.js";
 import fs from "node:fs";
 import path from "node:path";
 import { serve, decodeTicket } from "./relay.js";
@@ -23,6 +28,9 @@ import { callerKind } from "../modules/index.js";
 import { presence, quoted, list } from "./tools/presence.js";
 import * as account from "./tools/account.js";
 import * as historyTools from "./tools/history.js";
+import * as agentTools from "./tools/agents.js";
+import * as needsTools from "./tools/needs.js";
+import * as connectionTools from "./tools/connections.js";
 
 export { presence };
 import * as shareTools from "./tools/share.js";
@@ -74,14 +82,16 @@ export default {
           if (!byWhois) return vault.onRelay(env, meta);
           return vault.onRelay(env, whoisMeta(meta, await byWhois(meta.remoteAddress)));
         },
-        onSync: env => (String(env && env.vault).startsWith("device:") ? vault.devices.onSync(env) : vault.shared.onSync(env)) });
+        onSync: env => (String(env && env.vault).startsWith("device:") ? vault.devices.onSync(env) : vault.shared.onSync(env)),
+        onEmergency: env => vault.emergency.onRequest(env) });
       vault.relayUrl = opts.relay.url ? String(opts.relay.url) : listener.url;
       ctx.log(`vault relay listening on ${listener.url}`);
     }
 
     // Autofill: a listener only browser extensions (and the Capsule's helper) talk to, after
     // pairing and unlock. vault.fill is a route there, never a registry tool, so no agent has it.
-    const fill = new Fill({ vault, verifyVaultPassphrase: p => vault.checkPassphrase(p) });
+    const fill = new Fill({ vault, verifyVaultPassphrase: p => vault.checkPassphrase(p), config: ctx.config,
+      extensions: opts.fill && Array.isArray(opts.fill.extensions) ? opts.fill.extensions.map(String) : [] });
     let fillListener = null;
     if (opts.fill && (opts.fill.port !== undefined || opts.fill.host)) {
       fillListener = await serveFill({ host: opts.fill.host || "127.0.0.1", port: Number(opts.fill.port || 0), fill, names: Array.isArray(opts.fill.names) ? opts.fill.names.map(String) : [] });
@@ -90,6 +100,12 @@ export default {
 
     /** `needs` is the tool's presence declaration; left out, the tool needs no person. */
     const tool = (name, callers, description, input, run, needs) => ctx.tool(name, { description, input, callers, run, ...(needs ? { presence: needs } : {}) });
+
+    // A terminal's Touch ID window (core/presence TERMINAL_WINDOWED) proved this call, not a touch:
+    // the audit says so, with the terminal, beside the line vyred wrote there.
+    const windowUse = (how, action, name, caller) => {
+      if (how && how.method === "window") vault.audit(action, name ?? null, caller, true, `Touch ID window on ${how.where || "a terminal"}`);
+    };
 
     // item, resolve, render, edit, the git helper and the ssh agent (tools/cli.js).
     const cli = await registerCli({ ctx, vault });
@@ -125,9 +141,10 @@ export default {
     // or items they made themselves, and they may grant only what they put: neither reveals a
     // value the module did not already have. `value` is shorthand for fields.value.
     tool("vault.put", [...SURFACES, "module"], "Add or replace an item. Values come from `vyre vault put`'s hidden prompt or a module, never from Claude.",
-      obj({ name: str, kind: { type: "string", enum: KINDS }, description: str, value: str, fields: { type: "object" }, url: str, hosts: strs, apps: strs, reprompt: { type: "boolean" }, grants: strs, relay: obj({ body: { type: "boolean" } }) }, ["name"]),
+      obj({ name: str, kind: { type: "string", enum: KINDS }, description: str, value: str, fields: { type: "object" }, url: str, hosts: strs, apps: strs, reprompt: { type: "boolean" }, grants: strs, relay: obj({ body: { type: "boolean" } }), details: DETAILS }, ["name"]),
       async ({ value, grants, relay: relayRules, ...input }, { caller }) => {
-        if (value !== undefined) input.fields = { ...(input.fields || {}), value };
+        // `value` is the kind's own field: a PAT's token, a secret's value.
+        if (value !== undefined) input.fields = { ...(input.fields || {}), [defaultField(input.kind || "secret") || "value"]: value };
         if (!input.fields) throw new Error("give the item a value or fields");
         const mod = caller.startsWith("module:") ? caller.slice(7) : null;
         if (!mod && grants) throw new Error("grants on put are for modules; people use vault.grant");
@@ -164,10 +181,10 @@ export default {
       presence("Delete an item from the vault", ({ name }) => `Delete ${quoted(name)} and its grants`));
 
     tool("vault.grant", [...SURFACES, "mcp"], "Let a module (or one watcher) use an item through ctx.vault.fetch. From Claude it waits for a person to approve it.",
-      obj({ name: str, module: str, watcher: str }, ["name", "module"]), (input, { caller }) => vault.grant(input, caller),
+      obj({ name: str, module: str, watcher: str }, ["name", "module"]), (input, { caller, presence: how }) => { windowUse(how, "grant", input.name, caller); return vault.grant(input, caller); },
       // From Claude a grant only waits as pending, and approving it needs a person, so the proof is skipped there.
       presence("Let a module use a vault item", ({ name, module, watcher }) => `Let ${module}${watcher ? `/${watcher}` : ""} use ${quoted(name)} while you are away${vault.row(name)?.vault === "personal" ? "; this moves it out of your password-protected vault" : ""}`,
-        { skip: ({ caller }) => callerKind(caller) === "mcp" }));
+        { skip: ({ caller }) => callerKind(caller) === "mcp", session: () => true }));
 
     tool("vault.revoke", null, "Take an item away from a module, or from one of its watchers.",
       obj({ name: str, module: str, watcher: str }, ["name", "module"]), (input, { caller }) => vault.revoke(input, caller));
@@ -176,15 +193,18 @@ export default {
       obj({}), () => vault.pending());
 
     tool("vault.approve", SURFACES, "Approve a pending grant or pass.",
-      obj({ id: str }, ["id"]), (input, { caller }) => vault.approve(input, caller),
+      obj({ id: str }, ["id"]), (input, { caller, presence: how }) => { windowUse(how, "approve", input.id, caller); return vault.approve(input, caller); },
       presence("Approve a pending grant or pass", ({ id }) => {
         const p = vault.pending();
         const g = p.grants.find(x => x.id === id);
         if (g) return `Let ${g.module}${g.watcher ? `/${g.watcher}` : ""} use ${quoted(g.name)} while you are away${vault.row(g.name)?.vault === "personal" ? "; this moves it out of your password-protected vault" : ""}`;
+        const ag = p.agentGrants.find(x => x.id === id);
+        if (ag) return vault.agents.summary(ag, () => ag.expires);
         const s = p.passes.find(x => x.id === id);
         if (s) return `Share ${list(s.items)} with ${s.holder}, ${s.mode}, until ${new Date(s.expires).toISOString().slice(0, 10)}`;
         return "";
-      }));
+      // A presence session from the Deck or the Capsule covers approving (the floor keeps the CLI out).
+      }, { session: () => true }));
 
     ctx.tool("vault.release", {
       internal: true,
@@ -200,19 +220,35 @@ export default {
         `Put ${(Array.isArray(items) ? items : []).map(i => i && i.env ? `${quoted(i.name)} as ${i.env}` : quoted(i && i.name)).join(", ")} into a program's environment`));
 
     // A surface with a live session skips the proof for a non-reprompt item (ADR 0006, decision 3).
-    tool("vault.totp", [...SURFACES, "module"], "The current one-time code for a login with a TOTP seed.",
+    tool("vault.totp", [...SURFACES, "module", "tailnet"], "The current one-time code for a login with a TOTP seed.",
       // `id` is the Capsule's name for the item (its actions get `{ id, front }`).
       obj({ name: str, id: str, session: str }),
       async ({ name, id }, { caller }) => {
         const n = name ?? id;
         if (typeof n !== "string" || !n) throw new Error("name the item");
         const r = await vault.code({ name: n }, caller);
-        return { code: r.code, period: r.period ?? 30, remaining: r.remaining };
+        return { code: r.code, next: r.next, period: r.period ?? 30, remaining: r.remaining };
       },
       presence("Show a one-time code", ({ name, id }) => `Show the one-time code for ${quoted(name ?? id)}`,
         { skip: ({ input }) => Boolean(input && /** @type {any} */ (vault).sessions?.ok(input.session, input.name ?? input.id)),
           // The presence floor's session method covers a code unless the item is reprompt.
           session: input => { const n = input && (input.name ?? input.id); return typeof n === "string" && !reprompt(vault, n); } }));
+
+    // The leak sweep (ADR 0028): where the vault's values, and credentials it lacks, sit in plain text.
+    tool("vault.sweep", ["cli", "local", "deck", "mcp"], "Look in a folder, its git history (history) and the shell's history (shell) for values the vault holds and for credentials it does not hold yet. Returns places and item names or credential types, never a value.",
+      obj({ path: str, history: { type: "boolean" }, shell: { type: "boolean" } }, ["path"]), (input, { caller }) => sweep(vault, input, caller),
+      presence("Look for leaked secrets", ({ path: p, history, shell }) => `Compare every value in the vault with the files in ${path.resolve(String(p))}${history ? ", its git history" : ""}${shell ? " and your shell history" : ""}`));
+
+    // The authenticator (ADR 0028): every code at once, current and next, on the same window as one.
+    tool("vault.codes", SURFACES, "Every one-time code: the current and next code for each item with a TOTP seed, the seconds left, and the issuer. Never a seed.",
+      obj({ names: strs, session: str }), (input, { caller }) => codes(vault, { names: input.names }, caller),
+      presence("Show your one-time codes", () => "Show the current one-time codes for every account in the vault",
+        { session: () => true }));
+
+    // Scanned codes only: the person's own camera read them, so they never pass through Claude.
+    tool("vault.codes.import", SURFACES, "Bring in accounts from scanned codes: every part of a Google Authenticator export (otpauth-migration://), or otpauth://totp/ addresses. preview stores nothing. A split export waits until every part is scanned.",
+      obj({ uris: strs, preview: { type: "boolean" } }, ["uris"]), (input, { caller }) => importCodes(vault, input, caller),
+      presence("Import one-time codes", ({ uris, preview }) => `${preview ? "Preview" : "Import"} ${Array.isArray(uris) ? uris.length : 0} scanned code${Array.isArray(uris) && uris.length === 1 ? "" : "s"} into the vault`));
 
     tool("vault.generate", ["cli", "local", "mcp"], "Generate a password or passphrase. With `name` it is stored and never returned; Claude must give a name.",
       obj({ length: { type: "integer" }, words: { type: "integer" }, symbols: { type: "boolean" }, name: str, description: str }),
@@ -224,9 +260,15 @@ export default {
         return vault.generate(input, caller);
       });
 
-    tool("vault.import", ["cli", "local", "mcp"], "Import a .env file or a 1Password, Bitwarden, Chrome or Safari export. vyred reads the file itself; the values never pass through Claude.",
-      obj({ file: str, format: str }, ["file"]), (input, { caller }) => vault.import(input, caller),
-      presence("Import a file into the vault", ({ file }) => `Import the items in ${path.resolve(String(file))} into the vault`));
+    // Preview opens the file and the existing logins, so it asks for the same presence as import
+    // (ADR 0028, decision 1). It returns names and counts, never a value.
+    tool("vault.import.preview", ["cli", "local", "mcp"], "What an import would add, skip as already here, or find in conflict, by name and count only, with a token that binds vault.import to this exact file. A folder is scanned for .env files; each file's variables come back with their type and whether they are secret, never a value.",
+      obj({ file: str, format: str }, ["file"]), (input, { caller }) => vault.importPreview(input, caller),
+      presence("Preview a file for import", ({ file }) => `Preview the items in ${path.resolve(String(file))}`));
+
+    tool("vault.import", ["cli", "local", "mcp"], "Import a .env file, a folder of them, or a 1Password, Bitwarden, Chrome or Apple Passwords export. vyred reads the files itself; the values never pass through Claude. Pass the token from vault.import.preview to refuse a file that changed since; conflicts \"update\" makes a new version of the existing item; rewrite swaps each imported .env value for a vault:// reference once it is stored.",
+      obj({ file: str, format: str, token: str, conflicts: { type: "string", enum: ["skip", "update"] }, rewrite: { type: "boolean" } }, ["file"]), (input, { caller }) => vault.import(input, caller),
+      presence("Import a file into the vault", ({ file, rewrite }) => `Import the items in ${path.resolve(String(file))} into the vault${rewrite ? " and rewrite its .env files to vault references" : ""}`));
 
     tool("vault.audit", null, "Who used which item, when, and whether it was allowed. Never a value.",
       obj({ name: str, limit: { type: "integer" } }), input => vault.auditTrail(input));
@@ -276,8 +318,38 @@ export default {
       obj({ item: str, owner: str, request: obj({ method: str, url: str, headers: { type: "object" }, body: str }, ["url"]) }, ["item", "request"]),
       (input, { caller }) => vault.relayOut(input, caller));
 
+    // Emergency access (ADR 0028, decision 8). Adding and refreshing open every item, and the
+    // contact's status call may take them in, so those need a person; deny and remove never do.
+    if (ctx.call) vault.emergency.call = (name, input) => ctx.call(name, input);
+    const who = p => String(p ?? "").slice(0, 64);
+    tool("vault.emergency.add", SURFACES, "Keep emergency access for a verified contact: they can ask, and after the wait (7d by default, 1d to 30d) the items open to them unless you deny it. Every item except ssh keys and passkeys unless `items` names some.",
+      obj({ person: str, wait: str, items: strs }, ["person"]), (input, { caller }) => vault.emergency.add(input, caller),
+      presence("Keep emergency access for someone", ({ person, wait, items }) => who(person) && `Let ${who(person)} open ${Array.isArray(items) && items.length ? list(items) : "every item except ssh keys and passkeys"} ${String(wait || "7d").slice(0, 8)} after they ask, unless you deny it`));
+    tool("vault.emergency.refresh", SURFACES, "Rebuild the escrowed emergency ticket for one contact or all, so items added since are in it. It happens on its own at most once a day when the personal vault is unlocked.",
+      obj({ person: str }), (input, { caller }) => vault.emergency.refresh(input, caller),
+      presence("Rebuild emergency access", ({ person }) => `Seal every emergency item again for ${who(person) || "each emergency contact"}`));
+    tool("vault.emergency.deny", null, "Close an emergency request (or a release) from a contact. They may ask again, and wait again.",
+      obj({ person: str }, ["person"]), (input, { caller }) => vault.emergency.deny(input, caller));
+    tool("vault.emergency.remove", null, "End a contact's emergency access and delete its escrow.",
+      obj({ person: str }, ["person"]), (input, { caller }) => vault.emergency.remove(input, caller));
+    tool("vault.emergency.list", null, "Emergency contacts: the wait, where a request stands and when it opens. Names only.",
+      obj({}), () => vault.emergency.list());
+    tool("vault.emergency.request", SURFACES, "Ask an owner who named you as an emergency contact for access. It opens after their wait unless they deny it.",
+      obj({ owner: str }, ["owner"]), (input, { caller }) => vault.emergency.request(input, caller),
+      presence("Ask for emergency access", ({ owner }) => who(owner) && `Ask ${who(owner)} for emergency access to their vault`));
+    tool("vault.emergency.status", SURFACES, "Where an emergency request to an owner stands; once it has opened, the items are taken into this vault.",
+      obj({ owner: str }, ["owner"]), (input, { caller }) => vault.emergency.status(input, caller),
+      presence("Check emergency access", ({ owner }) => who(owner) && `Check emergency access with ${who(owner)}, and take their items in if it has opened`));
+
     account.register({ ctx, vault, tool });
     historyTools.register({ ctx, vault, tool });
+    agentTools.register({ vault, tool });
+    // What modules need from the Vault, and the one way to fill it (ADR 0028, decision 9a).
+    needsTools.register({ ctx, vault, tool });
+    // Every connection and which surface may use it (ADR 0028, decision 9b).
+    const conns = connectionTools.register({ ctx, vault, tool });
+    // Google and mcp start after the vault, so their rows sync on first read and on their events.
+    if (!vault.guarded) conns.connections.resync(["vault"]).catch(() => {});
 
     tool("vault.offboard", [...SURFACES, "mcp"], "Someone left: revoke every pass they hold and list what must be rotated.",
       obj({ person: str }, ["person"]), (input, { caller }) => vault.offboard(input, caller),
@@ -292,9 +364,25 @@ export default {
 
     deckTools.register({ ctx, vault });
 
+    // Watchtower's findings as planner todos, once a day after 09:00 (ADR 0028, decision 4).
+    const call = (name, input) => (ctx.call ? ctx.call(name, input) : Promise.resolve({ error: { code: "no_such_tool", message: "no planner" } }));
+    tool("vault.remind.run", ["cli", "local", "deck"], "Run the daily reminder pass now: new Watchtower findings become planner todos in the Vault list, fixed ones are marked done. Names only.",
+      obj({}), async () => remindRun(vault, call));
+    rotateTools.register({ vault, tool, presence, quoted, call, endpoints: opts.rotate_endpoints });
+    const reminders = opts.reminders === false || !ctx.call ? { stop() {} }
+      : scheduleReminders(vault, call, { log: ctx.log, local: !(ctx.config && ctx.config.role === "box"),
+        // The same opt-in vault.breach.check asks presence for; a scheduled run has nobody to
+        // ask, so config is the person's standing answer (ADR 0028).
+        breach: { enabled: opts.breach === "ask", fetch: globalThis.fetch },
+        connections: conns.connections });
+
     return {
       ssh: cli.ssh,
+      vault,
+      connections: conns.connections,
       async stop() {
+        reminders.stop();
+        await conns.stop();
         await kits.stop();
         vault.devices.stop();
         await cli.stop();

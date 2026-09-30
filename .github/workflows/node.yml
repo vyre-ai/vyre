@@ -4,6 +4,8 @@
 name: node
 on:
   push:
+    # ci's throwaway proof branches (work/ci-box-*, work/ci-app, ...) prove one other workflow.
+    branches-ignore: ["work/ci-*"]
   pull_request:
   workflow_dispatch:
 permissions:
@@ -29,4 +31,5 @@ jobs:
           cache: npm
       - run: npm ci --no-audit --no-fund
       - run: npm test
+      - run: npm run eval:answer
       - run: npm run perf-check

@@ -18,8 +18,15 @@
       "vault.release",
       "vault.inject",
       "vault.totp",
+      "vault.codes",
+      "vault.codes.import",
+      "vault.sweep",
+      "vault.remind.run",
+      "vault.rotation",
+      "vault.rotate",
       "vault.generate",
       "vault.import",
+      "vault.import.preview",
       "vault.audit",
       "vault.match",
       "vault.unlock",
@@ -31,6 +38,13 @@
       "vault.pass.revoke",
       "vault.pass.accept",
       "vault.relay",
+      "vault.emergency.add",
+      "vault.emergency.refresh",
+      "vault.emergency.deny",
+      "vault.emergency.remove",
+      "vault.emergency.list",
+      "vault.emergency.request",
+      "vault.emergency.status",
       "vault.offboard",
       "vault.backup",
       "vault.restore",
@@ -87,7 +101,22 @@
       "vault.account.status",
       "vault.history",
       "vault.revert",
-      "vault.migrate-key"
+      "vault.migrate-key",
+      "vault.agent.grant",
+      "vault.agent.grants",
+      "vault.agent.revoke",
+      "vault.uses",
+      "vault.need",
+      "vault.connect",
+      "vault.connections.list",
+      "vault.connections.get",
+      "vault.connections.grant",
+      "vault.connections.revoke",
+      "vault.connections.update",
+      "vault.connections.sync",
+      "vault.connections.register",
+      "vault.connections.unregister",
+      "vault.connections.allowed"
     ]
   },
   "watches": {
@@ -122,7 +151,18 @@
       "vault.member-removed",
       "vault.key-rotated",
       "vault.sync-conflicted",
-      "vault.device-joined"
+      "vault.device-joined",
+      "vault.agent-granted",
+      "vault.agent-revoked",
+      "vault.emergency-added",
+      "vault.emergency-requested",
+      "vault.emergency-released",
+      "vault.emergency-denied",
+      "vault.emergency-removed",
+      "vault.connected",
+      "vault.connection-added",
+      "vault.connection-removed",
+      "vault.connection-changed"
     ]
   },
   "shows": {
@@ -164,5 +204,22 @@
     }
   },
   "needs": {},
-  "teaches": {}
+  "teaches": {
+    "tips": [
+      {"id": "put-hidden", "text": "Store a secret with `vyre vault put harlow-stripe`. It asks for the value at a hidden prompt, never on the command line.", "surfaces": ["cli"], "level": "first-use", "trigger": "on-use", "since": "0.1.0", "command": "vyre vault put <name>", "docs": "using/vault.md#store-an-item"},
+      {"id": "host-origin", "text": "Give `--host` a whole origin, like `https://api.stripe.com`. The item is only ever sent there, and a relayed pass needs it.", "surfaces": ["cli"], "level": "first-use", "trigger": "on-use", "since": "0.1.0", "key": "--host", "docs": "using/vault.md#store-an-item"},
+      {"id": "copy-clears", "text": "`vyre vault get harlow-stripe --copy` puts the value on the clipboard after Touch ID, and vyred clears it 90 seconds later.", "surfaces": ["cli"], "level": "first-use", "trigger": "on-use", "since": "0.1.0", "key": "--copy", "docs": "using/vault.md#show-copy-or-fill-a-value-yourself"},
+      {"id": "capsule-fill", "text": "Press Control twice, type a login's name and press Enter to fill it into the app in front. The value never reaches the Capsule.", "surfaces": ["capsule"], "level": "first-use", "trigger": "on-use", "since": "0.1.0", "key": "Control Control", "docs": "using/vault.md#show-copy-or-fill-a-value-yourself"},
+      {"id": "run-with-secret", "text": "`vyre vault run harlow-stripe -- npm run deploy` puts the value in `HARLOW_STRIPE` for that one command and scrubs it from the output.", "surfaces": ["cli"], "level": "power", "trigger": "on-use", "since": "0.1.0", "command": "vyre vault run <item> -- <command>", "docs": "using/vault.md#use-an-item-in-a-script"},
+      {"id": "approve-pending", "text": "When Claude asks for a grant, it only waits. Run `vyre vault pending`, then `vyre vault approve <id>` to allow it.", "surfaces": ["cli", "deck"], "level": "power", "trigger": "on-use", "since": "0.1.0", "command": "vyre vault pending", "docs": "using/vault.md#let-an-agent-module-or-watcher-use-an-item"},
+      {"id": "watchtower", "text": "Open Watchtower in the Deck's Vault to find weak, reused or old passwords, and logins with no two-factor.", "surfaces": ["deck"], "level": "discovery", "trigger": "never-used", "since": "0.1.0", "docs": "using/vault.md#see-what-you-have"},
+      {"id": "lock-now", "text": "Stepping away? `vyre vault lock` ends the reveal session now instead of after 10 idle minutes.", "surfaces": ["cli"], "level": "power", "trigger": "idle", "since": "0.1.0", "command": "vyre vault lock", "docs": "using/vault.md#show-copy-or-fill-a-value-yourself"}
+    ]
+  },
+  "settings": [
+    {"key": "vault.lock_idle", "group": "vault", "label": "Lock after idle", "help": "Like 10m or 1h.", "type": "string", "default": "10m", "levels": ["account"], "apply": "restart", "security": "loosens", "loosens": "Your vault stays unlocked for longer.", "store": {"config": "vault.lock.idle"}},
+    {"key": "vault.lock_max", "group": "vault", "label": "Lock after at most", "type": "string", "default": "12h", "levels": ["account"], "apply": "restart", "security": "loosens", "loosens": "Your vault stays unlocked for longer.", "store": {"config": "vault.lock.max"}},
+    {"key": "vault.lock_on_sleep", "group": "vault", "label": "Lock when the Mac sleeps", "type": "bool", "default": true, "levels": ["account"], "apply": "restart", "security": "loosens", "loosens": "Your vault stays unlocked for longer.", "store": {"config": "vault.lock.onSleep"}},
+    {"key": "vault.lock_on_screen_lock", "group": "vault", "label": "Lock when the screen locks", "type": "bool", "default": true, "levels": ["account"], "apply": "restart", "security": "loosens", "loosens": "Your vault stays unlocked for longer.", "store": {"config": "vault.lock.onScreenLock"}}
+  ]
 }

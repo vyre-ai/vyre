@@ -9,7 +9,7 @@ import { spawn } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { tempHome } from "./helpers.js";
+import { tempHome, upLeader } from "./helpers.js";
 import { open } from "../core/store/index.js";
 import { SESSIONS, HOME, seedRecall } from "./fixtures/corpus.js";
 
@@ -171,4 +171,68 @@ test("cli: vyre start opens a new named thread in the project's home; pick and u
   const u = await w.run(["unpick", "harlow-legal", HUB]);
   assert.match(u.out, /1 unpicked/);
   assert.deepEqual(marker().threads, [INTAKE]);
+});
+
+test("cli: vyre pick takes a live thread id straight away, before Recall has indexed it", async t => {
+  const w = world(t);
+  const harlow = path.join(w.work, "harlow-live");
+  await w.run(["new", "Harlow Legal", "--home", harlow, "--no-pick"]);
+  // A session id that exists nowhere in the seeded corpus: exactly the shape of a chat someone
+  // just started, before the next index run has ever seen it.
+  const LIVE = "22222222-bbbb-4000-8000-000000000099";
+  const p = await w.run(["pick", "harlow-legal", LIVE]);
+  assert.match(p.out, /1 picked into harlow-legal/, p.out);
+  const marker = JSON.parse(fs.readFileSync(path.join(harlow, ".vyre", "project.json"), "utf8"));
+  assert.deepEqual(marker.threads, [LIVE]);
+  // A ref that merely looks close to an id but isn't one is still refused, not swallowed.
+  const bad = await w.run(["pick", "harlow-legal", "not-a-real-id"]);
+  assert.match(bad.out, /no thread matches/);
+});
+
+test("cli: vyre projects move --dry-run on a box says what would move and changes nothing; names and a real move are refused", async t => {
+  const w = world(t);
+  // A box whose homes still sit in the old folder, with a work folder to move them to.
+  const old = path.join(w.root, "home", "Vyre", "projects");
+  const work = path.join(w.root, "work");
+  fs.mkdirSync(old, { recursive: true });
+  fs.mkdirSync(work);
+  w.env.VYRE_OLD_PROJECTS_DIR = old;
+  w.env.VYRE_WORK_DIR = work;
+  delete w.env.VYRE_PROJECTS_MOVE;
+  fs.writeFileSync(path.join(w.root, "config.json"), JSON.stringify({
+    role: "box", projectsDir: old, roots: [w.work], transcripts: [], modules: { disable: ["recall", "memory"] },
+  }));
+  // The real verifier, trusting only the terminal server this test runs under (the testbox's sshd).
+  assert.equal((await upLeader(w.root, w.env)).code, 0);
+  const home = path.join(old, "harlow-legal");
+  const made = await w.run(["new", "Harlow Legal", "--home", home, "--no-pick"]);
+  assert.equal(made.code, 0, made.out);
+
+  const named = await w.run(["projects", "move", "harlow-legal"]);
+  assert.equal(named.code, 2, named.out);
+  assert.match(named.out, /vyre projects move takes no names/);
+  assert.match(named.out, /next: vyre projects move --dry-run shows what would move/);
+
+  const dry = await w.run(["projects", "move", "--dry-run"]);
+  assert.equal(dry.code, 0, dry.out);
+  assert.match(dry.out, /Would move 1 project/);
+  assert.match(dry.out, /harlow-legal/);
+  assert.match(dry.out, /nothing has changed/);
+
+  const j = await w.run(["projects", "move", "--dry-run", "--json"]);
+  assert.equal(j.code, 0, j.out);
+  const r = JSON.parse(j.out);
+  assert.equal(r.dry, true);
+  assert.deepEqual(r.moved, ["harlow-legal"]);
+  assert.equal(r.to, path.join(work, "projects"));
+  assert.ok(Array.isArray(r.rewrites) && r.rewrites.length > 0, "the rewrites are listed");
+  assert.ok(fs.lstatSync(home).isDirectory() && !fs.lstatSync(home).isSymbolicLink(), "the home did not move");
+  assert.equal(fs.existsSync(path.join(work, "projects")), false, "nothing was made in the work folder");
+  assert.equal(fs.existsSync(path.join(w.root, "projects-moved.json")), false, "no record was written");
+
+  // The real move stays off until box-deploy switches it on.
+  const real = await w.run(["projects", "move", "--json"]);
+  assert.equal(real.code, 1, real.out);
+  assert.equal(JSON.parse(real.out).error.code, "move_off");
+  assert.ok(fs.lstatSync(home).isDirectory() && !fs.lstatSync(home).isSymbolicLink());
 });

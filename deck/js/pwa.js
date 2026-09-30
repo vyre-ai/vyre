@@ -4,12 +4,20 @@
 // left off. Everything here is shell; views never import it.
 //
 //   start({ view, deck })  once, before the first route
+//   reopen()               once, at launch: the path to reopen (the shell decides), or null
 //   remember(path)         on every route, so a cold launch from the home screen reopens it
+//
+// start() also tells the box when someone is looking at this app (push.seen), so a push that
+// would only repeat what is on screen can be held back by the box. It reports at launch, on each
+// visibility change, and on the first tap or key after a minute without a report. No timer.
+// It also starts the keyboard inset (js/keyboard.js), so a field on a phone is never under the keys.
 
-import { h, put, go } from "./dom.js";
-import { attempt, reachable } from "./api.js";
+import { h, put, go, isPhone } from "./dom.js";
+import { call, kick, streamState } from "./api.js";
+import { reconnectPill } from "./reconnect.js";
+import { surfaceId } from "../glass/util.js";
 import { icon } from "./icons.js";
-import { when } from "./fmt.js";
+import { watchKeyboard } from "./keyboard.js";
 
 const LAST = "vyre.last";
 const store = (() => { try { return window.localStorage; } catch { return null; } })();
@@ -19,7 +27,7 @@ const session = (() => { try { return window.sessionStorage; } catch { return nu
 export const standalone = () => /** @type {any} */ (navigator).standalone === true || matchMedia("(display-mode: standalone)").matches;
 /** iPhone or iPad Safari, where install is Share, then Add to Home Screen, and push needs it installed. */
 export const ios = () => /iPhone|iPad|iPod/.test(navigator.userAgent) || (navigator.userAgent.includes("Macintosh") && navigator.maxTouchPoints > 1);
-const phone = () => matchMedia("(max-width: 760px)").matches;
+const phone = () => isPhone();
 
 /** Paths worth reopening. Onboarding and a one-off search are not. */
 const keep = (/** @type {string} */ p) => !/^\/(onboard|find|ask)\b/.test(p);
@@ -37,9 +45,37 @@ export function start({ view, deck }) {
   if (ios()) root.dataset.ios = "";
   themeColor();
   new MutationObserver(themeColor).observe(root, { attributes: true, attributeFilter: ["data-theme"] });
-  reopen();
   offlineLine(deck);
   pullToFind(view);
+  seenReports();
+  watchKeyboard();
+}
+
+const SEEN_EVERY = 60_000;
+let seenAt = 0;
+/**
+ * One push.seen report. A box without the tool (no_such_tool), or one out of reach, is fine:
+ * this is a hint, never something to show.
+ * @param {boolean} visible
+ */
+function seen(visible) {
+  seenAt = Date.now();
+  // Hidden: the page may be going away, so the request is sent to outlive it.
+  // standalone: the app runs installed, which `vyre phone add` ticks off (the box says so once per 10 minutes per surface).
+  // device: this app's push device (phone-setup.js keeps it), so `vyre phone add` knows which phone opened installed.
+  let device = null;
+  try { device = store?.getItem("vyre.push.device") || null; } catch {}
+  call("push.seen", { surface: surfaceId(), visible, standalone: standalone(), ...(device ? { device } : {}) }, { keepalive: !visible }).catch(() => {});
+}
+
+/** Launch, visibility changes, and input after a quiet minute. Listeners only, all passive. */
+function seenReports() {
+  const visible = () => document.visibilityState === "visible";
+  if (visible()) seen(true);
+  document.addEventListener("visibilitychange", () => seen(visible()));
+  const touched = () => { if (visible() && Date.now() - seenAt >= SEEN_EVERY) seen(true); };
+  window.addEventListener("pointerdown", touched, { passive: true, capture: true });
+  window.addEventListener("keydown", touched, { passive: true, capture: true });
 }
 
 /** The status bar follows the theme: Graphite in dark, Paper's ground in paper. */
@@ -48,53 +84,42 @@ function themeColor() {
   for (const m of document.querySelectorAll('meta[name="theme-color"]')) m.setAttribute("content", paper ? "#F4F1EA" : "#0E0D0C");
 }
 
-/** A cold launch from the home screen opens at /now (the manifest's start_url); go back to where
- * the user was instead, if that was within the last day. A reload in the same tab keeps its path. */
-function reopen() {
-  if (!standalone() || session?.getItem("vyre.launched")) return;
+/** A cold launch from the home screen opens at /now (the manifest's start_url); the path to go
+ * back to instead, if the user was there within the last day, or null. The shell makes the move
+ * (it stays on Now when something needs the user). A reload in the same tab keeps its path.
+ * @returns {string | null} */
+export function reopen() {
+  if (!standalone() || session?.getItem("vyre.launched")) return null;
   try { session?.setItem("vyre.launched", "1"); } catch {}
-  if (location.pathname !== "/now" && location.pathname !== "/") return;
+  if (location.pathname !== "/now" && location.pathname !== "/") return null;
   let last = null;
   try { last = JSON.parse(store?.getItem(LAST) || "null"); } catch {}
-  if (!last || typeof last.path !== "string" || !last.path.startsWith("/") || last.path.startsWith("//")) return;
-  if (Date.now() - last.at > 86_400_000 || last.path === "/now") return;
-  history.replaceState(null, "", last.path);
+  if (!last || typeof last.path !== "string" || !last.path.startsWith("/") || last.path.startsWith("//")) return null;
+  if (Date.now() - last.at > 86_400_000 || last.path === "/now") return null;
+  return last.path;
 }
 
-/** One line under the status bar while the box does not answer. It never covers the view: the
- * view keeps showing what it last drew, or what the service worker kept. */
+/** One quiet pill under the header (the phone's) while the box does not answer (js/reconnect.js,
+ * ADR 0029 R3). It never covers the view: the view keeps what it last drew, and the stream, when
+ * it is back, replays what was missed from its cursor, so nothing is redrawn or remounted. */
 function offlineLine(/** @type {HTMLElement} */ deck) {
-  const since = { at: 0 };
-  const retry = h("button", { type: "button", class: "btn btn-ghost btn-sm", onclick: check }, "Retry");
+  const retry = h("button", { type: "button", class: "btn btn-ghost btn-sm", onclick: kick }, "Retry");
   const text = h("span", { class: "reach-text" });
-  const bar = h("div", { class: "reach", role: "status", hidden: true }, h("span", { class: "dot beacon" }), text, retry);
-  deck.prepend(bar);
-  const draw = (/** @type {boolean} */ ok) => {
-    if (ok) {
-      if (!bar.hidden) { bar.hidden = true; window.dispatchEvent(new Event("deck:navigate")); } // redraw the view from the box
-      return;
-    }
-    if (bar.hidden) since.at = Date.now();
-    put(text, navigator.onLine === false ? "This phone is offline." : "Your box is not answering.",
-      " ", h("span", { class: "faint" }, `Showing what this phone kept, since ${when(since.at)}.`));
-    bar.hidden = false;
-  };
-  async function check() {
-    put(retry, "Checking");
-    await attempt("system.info");
-    put(retry, "Retry");
-  }
-  window.addEventListener("deck:reach", e => draw(!!/** @type {CustomEvent} */ (e).detail));
-  window.addEventListener("offline", () => draw(false));
-  window.addEventListener("online", check);
-  // Coming back to the app after the phone slept: ask once, not on a timer.
-  document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible" && !bar.hidden) check(); });
-  if (!reachable || navigator.onLine === false) draw(false);
+  const bar = h("div", { class: "reach", role: "status", hidden: true }, h("span", { class: "dot" }), text, retry);
+  const head = deck.querySelector(".ph-head");
+  if (head) head.after(bar); else deck.prepend(bar);
+  const pill = reconnectPill({ show: words => { put(text, words); bar.hidden = false; }, hide: () => { bar.hidden = true; } });
+  window.addEventListener("deck:stream", e => pill.state(/** @type {CustomEvent} */ (e).detail));
+  window.addEventListener("offline", () => pill.net());
+  window.addEventListener("online", () => pill.net());
+  if (streamState) pill.state(streamState);
 }
 
-/** Pull down from the top of any phone screen to open Find. Only when everything under the finger
- * is scrolled to the top, and never from a text field. The page itself does not rubber-band
- * (deck.css), so this is the only thing a pull does. */
+/** Pull down from the top of one of the three pages (Now, Chats, Agents) to open Find, the same
+ * as a tap on the Capsule. Only when everything under the finger is scrolled to the top, never
+ * from a text field or a row that swipes, and never on a pushed screen (a chat pages backwards
+ * when pulled at its top). The page itself does not rubber-band (deck.css), so this is the only
+ * thing a pull does, and a sideways swipe (the pager) cancels it. */
 function pullToFind(/** @type {HTMLElement} */ view) {
   const THRESHOLD = 72;
   const hint = h("div", { class: "pull", "aria-hidden": "true" }, icon("search", 14), h("span", null, "Pull to find"));
@@ -111,7 +136,7 @@ function pullToFind(/** @type {HTMLElement} */ view) {
     pull = null;
     if (!phone() || e.touches.length !== 1 || location.pathname.startsWith("/find")) return;
     const t = /** @type {HTMLElement} */ (e.target);
-    if (t.closest("input, textarea, select, [contenteditable], .no-pull") || !atTop(t)) return;
+    if (!t.closest(".pager") || t.closest("input, textarea, select, [contenteditable], [data-swipe], .no-pull") || !atTop(t)) return;
     pull = { y: e.touches[0].clientY, x: e.touches[0].clientX, dy: 0 };
   }, { passive: true });
   view.addEventListener("touchmove", e => {

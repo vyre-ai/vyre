@@ -80,7 +80,7 @@ export function pickDevices(d) {
   }));
 }
 
-/** Usage rows from vault.usage or vault.audit, names and actions only. */
+/** Usage rows from vault.audit, names and actions only. */
 export function pickUsage(d) {
   const list = Array.isArray(d) ? d : Array.isArray(d?.entries) ? d.entries : [];
   return list.filter(u => u && num(u.at) && u.ok !== false).map(u => ({
@@ -133,6 +133,7 @@ export const REASON = {
   old: ["Old", "Not changed for more than a year."],
   rotate: ["Rotate", "Marked for rotation: a copy left this box."],
   "2fa-available": ["Two-factor available", "This site offers one-time codes. Add the seed and Vyre makes them."],
+  "passkey-available": ["Passkey available", "This site takes a passkey instead of this password. Sign in there and add one."],
   unprotected: ["Not yet protected", "Still opened without your password. Set one to move it to your personal vault."],
 };
 

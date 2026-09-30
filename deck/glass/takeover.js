@@ -1,7 +1,8 @@
 // @ts-check
 // Take-over and private sign-in (ADR 0005, decisions 2 and 3; board GlassTakeover). One keyboard
 // at a time: this surface asks glass.take, and while it holds, noVNC sends input and the control
-// bar counts the time. Hand-back is the button, Ctrl+Enter, or the lease lapsing on the box.
+// bar counts the time. Hand-back is the button, Ctrl+Enter, the lease lapsing on the box, or the
+// owner's idle setting (computers.handback.*): the box warns 10 s before, and the bar counts down.
 //
 // Neither glass.take nor glass.release asks for a passkey: taking the keyboard only pauses the
 // agent, so the owner is never stopped for Touch ID (core/presence PERSON_ONLY). The box still
@@ -9,7 +10,7 @@
 
 import { h, put } from "../js/dom.js";
 import { attempt } from "../js/api.js";
-import { gicon, errText, clock, surfaceKind } from "./util.js";
+import { gicon, errText, clock, yourDevice } from "./util.js";
 
 /**
  * @param {any} s the screen state from watch.js: name, target, surface, holder, phone, visible()
@@ -19,6 +20,7 @@ export function takeover(s, hooks) {
   let busy = false;
   let tick = 0;
   const elapsed = h("span", { class: "gl-elapsed mono" }, "");
+  const idle = h("span", { class: "gl-chip gl-chip-idle", role: "status", "aria-live": "polite", hidden: true }, "");
   const note = /** @type {HTMLInputElement} */ (h("input", { class: "input gl-note", type: "text", maxlength: "280",
     placeholder: `Note for ${s.name} (optional)`, "aria-label": `A note for ${s.name} when you hand back` }));
 
@@ -28,7 +30,12 @@ export function takeover(s, hooks) {
   /** Count the held time once a second, only while this tab is visible and holding. */
   function timer() {
     clearInterval(tick); tick = 0;
-    const draw = () => put(elapsed, s.holder?.since ? clock(Date.now() - Number(s.holder.since)) : "");
+    const draw = () => {
+      put(elapsed, s.holder?.since ? clock(Date.now() - Number(s.holder.since)) : "");
+      const left = s.idleAt ? Math.max(0, Math.ceil((s.idleAt - Date.now()) / 1000)) : 0;
+      idle.hidden = !s.idleAt;
+      put(idle, s.idleAt ? `Handing back to ${s.name} in ${left} s. Type or move to keep control.` : "");
+    };
     draw();
     if (mine() && s.visible() && s.holder?.since) tick = window.setInterval(draw, 1000);
   }
@@ -96,7 +103,7 @@ export function takeover(s, hooks) {
     // While holding, the control bar under the screen has the hand-back button.
     if (mine()) return [];
     const blocked = other() || !s.canTake();
-    const why = other() ? `Someone has control from ${surfaceKind(s.holder.surface)}.` : !s.canTake() ? "The screen is not connected." : "";
+    const why = other() ? `${yourDevice(s.holder.surface)} has control.` : !s.canTake() ? "The screen is not connected." : "";
     return [
       h("button", { type: "button", class: "btn btn-ghost", disabled: busy || blocked, title: why || `Sign in on ${s.name}'s screen without ${s.name} seeing the page`,
         onclick: explainPrivate }, gicon("shield"), "Sign in privately"),
@@ -112,6 +119,7 @@ export function takeover(s, hooks) {
     return h("div", { class: "gl-bar", role: "group", "aria-label": "You have control" },
       h("span", { class: "gl-chip" + (s.holder.private ? " gl-chip-private" : "") }, s.holder.private ? "Signing in privately" : "You have control"),
       elapsed,
+      idle,
       note,
       h("button", { type: "button", class: "btn btn-primary", disabled: busy, onclick: release, "aria-keyshortcuts": "Control+Enter" },
         gicon("back"), `Hand back to ${s.name}`, s.phone ? null : h("span", { class: "gl-kbd-in" }, "⌃⏎")));
@@ -120,9 +128,9 @@ export function takeover(s, hooks) {
   /** What another viewer sees while someone else holds the keyboard. */
   function banner() {
     if (!other()) return null;
-    const since = s.holder.since ? ` · since ${new Date(Number(s.holder.since)).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", hourCycle: "h23" })}` : "";
+    const since = s.holder.since ? ` · ${clock(Date.now() - Number(s.holder.since))}` : "";
     return h("div", { class: "gl-banner", role: "status" }, gicon("pointer"),
-      h("span", null, `Someone has control from ${surfaceKind(s.holder.surface)}${since}. ${s.name} is paused and this view is read-only.`));
+      h("span", null, `${yourDevice(s.holder.surface)} has the keyboard${since}. ${s.name} is paused and this view is read-only.`));
   }
 
   /** The side panel while holding: where the keystrokes go (board GlassTakeover). */
@@ -156,5 +164,10 @@ export function takeover(s, hooks) {
     if (!typing && !mine() && !other() && s.canTake() && (e.key === "t" || e.key === "T") && !e.metaKey && !e.ctrlKey && !e.altKey) { e.preventDefault(); take(false); }
   }
 
-  return { take, release, actions, bar, banner, side, key, timer, mine, other, stop: () => { clearInterval(tick); tick = 0; } };
+  /** The box handed back after the idle time: say so where the bar was. */
+  function idled(ms) {
+    hooks.notice(done(`Handed back to ${s.name} after ${Math.round(Number(ms) / 60_000)} min idle.`));
+  }
+
+  return { take, release, actions, bar, banner, side, key, timer, mine, other, idled, stop: () => { clearInterval(tick); tick = 0; } };
 }

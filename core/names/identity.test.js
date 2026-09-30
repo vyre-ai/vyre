@@ -66,7 +66,7 @@ const WORLD = {
   "100.101.3.2": { login: null, tagged: true, node: "ci", stableId: "nCI", tags: ["tag:ci"], caps: {} },
 };
 
-function kinds({ guests = { enabled: true, people: { "sam@harlow.example": { tools: ["glass.open"] } } }, computers = { enabled: true, tag: "tag:vyre-agent" },
+function kinds({ guests = { enabled: true, people: { "sam@harlow.example": { tools: ["threads.list"] } } }, computers = { enabled: true, tag: "tag:vyre-agent" },
   agentOf = undefined } = {}) {
   return identifier({ whois: async ip => WORLD[ip] || null, selfIps: () => ["100.101.1.1"], owner: () => "alex@example.com",
     network: () => ({ guests }), agentNodes: () => computers, ...(agentOf ? { agentOf } : {}) });
@@ -92,7 +92,7 @@ test("identity: a person the policy grants vyre.run/cap/guest is a guest without
 });
 
 test("identity: with guests off, a listed or granted person is refused as before", async () => {
-  const id = kinds({ guests: { enabled: false, people: { "sam@harlow.example": { tools: ["glass.open"] } } } });
+  const id = kinds({ guests: { enabled: false, people: { "sam@harlow.example": { tools: ["threads.list"] } } } });
   for (const ip of ["100.101.2.7", "100.101.2.8"]) {
     const r = await id(ip);
     assert.deepEqual([r.ok, r.kind, r.why], [false, null, "not the owner"]);
@@ -178,4 +178,24 @@ test("tailscale: under node --test, with no fake and no opt-in, the real CLI is 
     if (saved.bin !== undefined) process.env.VYRE_TAILSCALE_BIN = saved.bin;
     if (saved.real !== undefined) process.env.VYRE_TEST_REAL_TAILSCALE = saved.real;
   }
+});
+
+test("identity: a tag:vyre-device node is the device it was bound to, or bindable, never a person (ADR 0046)", async () => {
+  const { classify } = await import("./identity.js");
+  const node = { login: null, tagged: true, node: "alex-desktop", stableId: "nDESK1", tags: ["tag:vyre-device"], caps: {} };
+  const bound = await classify(node, { owner: "alex@example.com", deviceOf: async () => "abcdefghijklmnop" });
+  assert.equal(bound.ok, true);
+  assert.equal(bound.kind, "device");
+  assert.equal(bound.device, "abcdefghijklmnop");
+  assert.equal(bound.login, null);
+  const unbound = await classify(node, { owner: "alex@example.com", deviceOf: async () => null });
+  assert.equal(unbound.ok, false);
+  assert.equal(unbound.bindable, true);
+  const odd = await classify(node, { owner: "alex@example.com", deviceOf: async () => "../not-an-id" });
+  assert.equal(odd.ok, false, "only a real device id is taken");
+  const without = await classify(node, { owner: "alex@example.com" });
+  assert.equal(without.why, "a tagged node, not a person", "no deviceOf, no device: the old refusal");
+  // A person's own login that also carries the tag string somewhere is still judged as a person.
+  const person = await classify({ login: "alex@example.com", tagged: false, node: "mbp", stableId: "nMBP", tags: [] }, { owner: "alex@example.com", deviceOf: async () => "abcdefghijklmnop" });
+  assert.equal(person.kind, "owner");
 });

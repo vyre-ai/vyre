@@ -102,10 +102,10 @@ Paper version: replace both colours with `#141311`.
 
 ### 18px menu bar, needs you
 
-The dot grows slightly and turns Beacon. Ship as a non-template image (`#FF7A59` on dark bars, `#E5532F` on light bars).
+The dot grows slightly and turns Beacon. Ship as a non-template image (`#B8A4FF` on dark bars, `#5B3FC4` on light bars).
 
 ```html
-<svg width="18" height="18" viewBox="0 0 18 18" fill="none" aria-hidden="true"><path d="M2.8 4.6L9 14.8L13.23 7.85" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/><circle cx="15.2" cy="4.6" r="2.3" fill="#FF7A59"/></svg>
+<svg width="18" height="18" viewBox="0 0 18 18" fill="none" aria-hidden="true"><path d="M2.8 4.6L9 14.8L13.23 7.85" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/><circle cx="15.2" cy="4.6" r="2.3" fill="#B8A4FF"/></svg>
 ```
 
 ### 16px inline (no tile)

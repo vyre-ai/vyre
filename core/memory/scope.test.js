@@ -10,6 +10,7 @@ import path from "node:path";
 import { open } from "../store/index.js";
 import { SESSIONS, HOME, seedRecall } from "../../test/fixtures/corpus.js";
 import { tempHome } from "../../test/helpers.js";
+import { fakeReachCall } from "../../test/fixtures/fake-reach.js";
 import { Curator } from "./curator.js";
 import { Graph } from "./graph.js";
 import memory from "./index.js";
@@ -172,7 +173,7 @@ async function module_(t, { projects, agents = [], sessions = SESSIONS }) {
   const ctx = {
     name: "memory", config: { me: { domains: ["riverastudio.com"] } }, paths: {}, store: { db, migrate: () => {} }, log: () => {},
     events: { on: () => () => {}, emit: (type, payload) => events.push({ type, payload }), since: () => [], prune: () => 0 },
-    call: async tool => tool === "projects.list" ? { data: projects } : tool === "agents.list" ? { data: agents } : { error: { code: "no_such_tool", message: tool } },
+    call: async (tool, input) => fakeReachCall(tool, input, { agents, projects }),
     tool: (name, def) => tools.set(name, def),
   };
   const handle = await memory.start(ctx);
@@ -219,8 +220,12 @@ test("scope: a caller that names no agent and no room reads the main graph only 
   const projects = [{ slug: "northwind", name: "Northwind", home: `${W}/northwind` }];
   const { call } = await module_(t, { projects });
   const reads = [["memory.facts", { about: "Dana Reyes" }], ["memory.relevant", { text: "email Dana Reyes" }], ["memory.why", { fact: "Dana Reyes" }], ["memory.stats", {}]];
+  // "mcp" (a bare session) is the owner as far as projects.reach is concerned, so it still
+  // reaches guard()'s own, more specific refusal; "harness" and "unknown" are refused earlier,
+  // by projects.reach itself, before guard() gets a say (the swap onto the shared door, 35188a38
+  // + 59d6833c: neither is scoped access any looser, only which refusal message fires first).
   for (const caller of ["mcp", "harness", "unknown"]) for (const [tool, input] of reads) {
-    assert.match((await call(tool, input, caller)).error || "", /main graph/, `${tool} from ${caller}`);
+    assert.match((await call(tool, input, caller)).error || "", /main graph|refused for/, `${tool} from ${caller}`);
   }
   for (const caller of ["deck", "cli", "local", "capsule", "module:projects"]) for (const [tool, input] of reads) {
     assert.ok(!(await call(tool, input, caller)).error, `${tool} from ${caller}`);

@@ -33,11 +33,17 @@ async function world(t, { role = "box", tz = "Asia/Karachi", linked = false, rem
   let seq = 0;
   seams.set(root, { now: () => clock.t, setTimer: (fn, ms) => { timers.set(++seq, { at: clock.t + ms, ms, fn }); return seq; }, clearTimer: id => timers.delete(id) });
   t.after(() => seams.delete(root));
-  const logs = [], fired = [], acked = [];
+  const logs = [], fired = [], acked = [], taskRuns = [], calls = [];
+  // Default agent roster for agents.list: juno is the assistant (sees every project); kit is a
+  // named agent scoped to every project too, by default, so existing tests that never touch scope
+  // keep passing - taskScope tests below narrow kit's (or a second agent's) projects explicitly.
   events.on("planner.fired", e => fired.push({ at: clock.t, ...e.payload }));
   events.on("planner.acked", e => acked.push(e.payload));
+  events.on("planner.task-run", e => taskRuns.push(e.payload));
   const w = {
-    db, events, clock, timers, logs, fired, acked, linked, remote, handle: /** @type {any} */ (null),
+    db, events, clock, timers, logs, fired, acked, taskRuns, calls, linked, remote, handle: /** @type {any} */ (null),
+    agents: [{ name: "juno", kind: "assistant" }, { name: "kit", kind: "agent", projects: "*" }],
+    /** @type {(tool: string, input: any) => Promise<any>|any} */ onCall: null,
     /** @type {Map<string, any>} */ tools: new Map(),
     async boot() {
       w.tools = new Map();
@@ -45,13 +51,21 @@ async function world(t, { role = "box", tz = "Asia/Karachi", linked = false, rem
         name: "planner", config: { role, planner: { timezone: tz } }, paths: { root },
         store: { db, migrate: steps => migrate(db, "planner", steps) },
         log: m => logs.push(m),
-        events: { emit: (type, p, where) => events.emit("planner", type, p, where), on: (p, fn) => events.on(p, fn) },
+        events: { emit: (type, p, where) => events.emit("planner", type, p, where), on: (p, fn) => events.on(p, fn), latestId: () => events.latestId() },
         tool: (name, def) => w.tools.set(name, def),
         // No Google account connected: the calendar slice stays asleep (core/planner/calendar.test.js covers it).
-        call: async tool => tool === "link.status" ? { data: { linked: w.linked } } : tool === "google.accounts" ? { data: [] }
-          // juno is the user's assistant; kit is an agent they made.
-          : tool === "agents.list" ? { data: [{ name: "juno", kind: "assistant" }, { name: "kit", kind: "agent" }] }
-          : { error: { code: "no_such_tool", message: "no" } },
+        call: async (tool, input) => {
+          calls.push({ tool, input });
+          if (tool === "link.status") return { data: { linked: w.linked } };
+          if (tool === "google.accounts") return { data: [] };
+          // juno is the user's assistant; kit is an agent they made (w.agents: tests narrow it).
+          if (tool === "agents.list") return { data: w.agents };
+          // /later's own firing (runTask): a test sets w.onCall to answer threads.post/launch
+          // its own way; the default is a plain success, so tests that never touch this still see
+          // nothing different.
+          if (tool === "threads.post" || tool === "threads.launch") return w.onCall ? await w.onCall(tool, input) : { data: { ok: true } };
+          return { error: { code: "no_such_tool", message: "no" } };
+        },
         remote: async (tool, input) => w.remote ? w.remote(tool, input) : { error: { code: "no_link", message: "no link" } },
       };
       w.handle = await planner.start(ctx);
@@ -59,16 +73,18 @@ async function world(t, { role = "box", tz = "Asia/Karachi", linked = false, rem
       return w;
     },
     async stop() { await w.handle.stop(); },
-    /** A call as the registry makes it: the callers list first, then the tool. */
-    async call(name, input = {}, caller = "cli") {
+    /** A call as the registry makes it: the callers list first, then the tool. `meta` extends
+     * `{caller}` - `{thread}` is the one other field the planner's tools read (the caller's own
+     * calling thread, for taskScope). */
+    async call(name, input = {}, caller = "cli", meta = {}) {
       const def = w.tools.get(name);
       if (!def) return { error: { code: "no_such_tool" } };
       if (!callerAllowed(def.callers, caller)) return { error: { code: "denied", message: `${name} is not for ${caller}` } };
-      try { return { data: await def.run(input, { caller }) }; }
+      try { return { data: await def.run(input, { caller, ...meta }) }; }
       catch (e) { const err = /** @type {any} */ (e); return { error: { code: err.code || "failed", message: err.message } }; }
     },
-    async ok(name, input = {}, caller = "cli") {
-      const r = await w.call(name, input, caller);
+    async ok(name, input = {}, caller = "cli", meta = {}) {
+      const r = await w.call(name, input, caller, meta);
       assert.ok(!r.error, `${name}: ${JSON.stringify(r.error)}`);
       return r.data;
     },
@@ -98,7 +114,7 @@ test("planner: a one-off alarm rings at its instant, and not before", async t =>
   assert.equal(w.fired.length, 0);
   w.advanceTo(a.at);
   assert.equal(w.fired.length, 1);
-  assert.deepEqual({ ...w.fired[0], firing: "x" }, { at: a.at, firing: "x", item: a.id, kind: "alarm", title: "Northwind Bakery delivery", due: a.at,
+  assert.deepEqual({ ...w.fired[0], firing: "x" }, { at: a.at, firing: "x", key: `planner-${a.id}-${a.at / 1000}`, item: a.id, kind: "alarm", title: "Northwind Bakery delivery", due: a.at,
     ring: 1, missed: false, actions: ["done", "snooze"] });
   assert.match((await w.call("planner.add", { kind: "alarm", at: new Date(T0 - HOUR).toISOString() })).error.message, /already passed/);
 });
@@ -148,7 +164,7 @@ test("planner: a snoozed reminder rings again after the snooze, as a new firing"
   assert.equal(first.at, T0 + 30 * MIN);
   const s = await w.ok("planner.snooze", { firing: first.firing });
   assert.equal(s.until, T0 + 39 * MIN, "nine minutes by default");
-  assert.deepEqual(w.acked, [{ firing: first.firing, item: r.id, action: "snooze", by: "cli", until: T0 + 39 * MIN }]);
+  assert.deepEqual(w.acked, [{ firing: first.firing, key: `planner-${r.id}-${(T0 + 30 * MIN) / 1000}`, item: r.id, due: T0 + 30 * MIN, action: "snooze", by: "cli", until: T0 + 39 * MIN }]);
   w.advance(9 * MIN - 1000);
   assert.equal(w.fired.length, 1, "no escalation while snoozed");
   w.advance(1000);
@@ -197,7 +213,7 @@ test("planner: an unacknowledged alarm rings escalate_max more times, then stops
   assert.ok(ringing.some(x => x.firing === fb.firing && x.item === b.id && x.kind === "alarm"), "a late surface sees what rings");
   const r = await w.ok("planner.done", { firing: fb.firing }, "capsule");
   assert.equal(r.firing.state, "acked");
-  assert.deepEqual(w.acked.at(-1), { firing: fb.firing, item: b.id, action: "done", by: "capsule" });
+  assert.deepEqual(w.acked.at(-1), { firing: fb.firing, key: `planner-${b.id}-${fb.due / 1000}`, item: b.id, due: fb.due, action: "done", by: "capsule" });
   w.advance(HOUR);
   assert.equal(w.fired.filter(f => f.item === b.id).length, 1, "no ring after the ack");
   assert.ok(!(await w.ok("planner.ringing", {})).some(x => x.firing === fb.firing), "an acked firing is not ringing");
@@ -371,4 +387,288 @@ test("planner: words become items through parse.js, when it is there", async t =
   assert.equal((await w.ok("planner.add", { text: "10 min", kind: "timer" })).at, T0 + 10 * MIN, "kind is a hint to the parser");
   const note = await w.ok("planner.add", { text: "juno's bakery order is 40 rolls", kind: "note" }, "mcp");
   assert.equal(note.kind, "note");
+});
+
+test("planner: at in words is the next such time in the item's zone", async t => {
+  const w = await world(t);
+  const six = await w.ok("planner.add", { kind: "reminder", title: "Call Harlow Legal", at: "6pm" });
+  assert.deepEqual([six.at, six.wall, six.date], [Z(2026, 9, 24, 13), "18:00", "2026-09-24"], "today's 6pm in Karachi");
+  assert.equal((await w.ok("planner.add", { kind: "reminder", title: "Email juno", at: "tomorrow at 9" })).at, Z(2026, 9, 25, 4));
+  assert.equal((await w.ok("planner.add", { kind: "alarm", at: "7:30" })).at, Z(2026, 9, 24, 14, 30), "the next 7:30");
+  assert.equal((await w.ok("planner.add", { kind: "reminder", title: "Oven", at: "in 20 minutes" })).at, T0 + 20 * MIN);
+  assert.equal((await w.ok("planner.add", { text: "call kit", kind: "reminder", at: "6pm" })).at, Z(2026, 9, 24, 13), "cc-plugin's shape");
+  assert.equal((await w.call("planner.add", { kind: "reminder", title: "x", at: "banana" })).error.code, "bad_input");
+  assert.equal((await w.ok("planner.add", { kind: "reminder", title: "ISO still", at: "2026-09-24T20:00:00+05:00" })).at, Z(2026, 9, 24, 15));
+});
+
+test("planner: an idle planner never asks Intl for a zone (ICU's zone data is about 8 MB)", async () => {
+  // A fresh process, since time.js keeps its formatters: start the planner on an empty store, let
+  // its scheduler tick, then add an alarm, counting zoned Intl formatters made on the way.
+  const { execFileSync } = await import("node:child_process");
+  const script = `
+    const Real = Intl.DateTimeFormat; let zoned = 0;
+    Intl.DateTimeFormat = function (l, o) { if (o && o.timeZone) zoned++; return new Real(l, o); };
+    const { DatabaseSync } = await import("node:sqlite");
+    const { migrate } = await import(${JSON.stringify(new URL("../store/index.js", import.meta.url).href)});
+    const planner = (await import(${JSON.stringify(new URL("./index.js", import.meta.url).href)})).default;
+    const db = new DatabaseSync(":memory:");
+    db.exec("CREATE TABLE _migrations (module TEXT NOT NULL, version INTEGER NOT NULL, at INTEGER NOT NULL, PRIMARY KEY (module, version))");
+    const tools = new Map();
+    const h = await planner.start({ name: "planner", config: { role: "box", planner: { timezone: "Asia/Karachi" } }, paths: { root: "/idle" },
+      store: { db, migrate: s => migrate(db, "planner", s) }, log: () => {}, events: { emit: () => {}, on: () => () => {}, latestId: () => 0 },
+      tool: (n, d) => tools.set(n, d), call: async t => t === "google.accounts" ? { data: [] } : { error: { code: "x" } }, remote: async () => ({}) });
+    await tools.get("planner.list").run({}, { caller: "cli" });
+    const idle = zoned;
+    await tools.get("planner.add").run({ kind: "alarm", wall: "07:00" }, { caller: "cli" });
+    console.log(JSON.stringify({ idle, after: zoned }));
+    await h.stop();`;
+  const out = JSON.parse(execFileSync(process.execPath, ["--no-warnings", "--input-type=module", "-e", script], { encoding: "utf8" }).trim());
+  assert.equal(out.idle, 0, "nothing zoned while idle");
+  assert.ok(out.after > 0, "a zone is read once there is something to place");
+});
+
+test("planner: upcoming lists the next 48 hours of rings, each keyed as the box's push will be", async t => {
+  const w = await world(t);
+  const alarm = await w.ok("planner.add", { kind: "alarm", title: "Wake", wall: "07:00", repeat: { every: "day" } });
+  const rem = await w.ok("planner.add", { kind: "reminder", title: "Call Harlow Legal", at: T0 + 3 * HOUR });
+  const timer = await w.ok("planner.add", { kind: "timer", title: "Tea", in_ms: 10 * MIN });
+  const ev = await w.ok("planner.add", { kind: "event", title: "Northwind Bakery tasting", at: T0 + 5 * HOUR });
+  await w.ok("planner.add", { kind: "todo", title: "No time, never rings" });
+  await w.ok("planner.add", { kind: "note", title: "Never rings" });
+  const up = await w.ok("planner.upcoming");
+  assert.ok(up.last_event > 0, "the event cursor the schedule is current to");
+  assert.equal(up.to - up.from, 48 * HOUR);
+  const K = (id, due) => `planner-${id}-${due / 1000}`;
+  assert.deepEqual(up.entries.map(e => [e.key, e.kind, e.at, e.due * 1000, e.loud]), [
+    [K(timer.id, T0 + 10 * MIN), "timer", T0 + 10 * MIN, T0 + 10 * MIN, true],
+    [K(rem.id, T0 + 3 * HOUR), "reminder", T0 + 3 * HOUR, T0 + 3 * HOUR, false],
+    [K(ev.id, T0 + 5 * HOUR - 10 * MIN), "event", T0 + 5 * HOUR - 10 * MIN, T0 + 5 * HOUR - 10 * MIN, false],
+    [K(alarm.id, Z(2026, 9, 25, 2)), "alarm", Z(2026, 9, 25, 2), Z(2026, 9, 25, 2), true],
+    [K(alarm.id, Z(2026, 9, 26, 2)), "alarm", Z(2026, 9, 26, 2), Z(2026, 9, 26, 2), true],
+  ]);
+  assert.equal(up.entries[2].start, T0 + 5 * HOUR, "an event says when it starts");
+  assert.equal(up.entries[1].title, "Call Harlow Legal", "titles stay on the user's devices");
+  assert.equal((await w.ok("planner.upcoming", { hours: 1 })).entries.length, 1);
+  assert.equal((await w.call("planner.upcoming", { hours: 100 })).error.code, "bad_input");
+
+  // The box rings with the same key, and planner.ringing and the ack say it too.
+  w.advance(10 * MIN);
+  assert.equal(w.fired.at(-1).key, K(timer.id, T0 + 10 * MIN));
+  assert.equal((await w.ok("planner.ringing"))[0].key, K(timer.id, T0 + 10 * MIN));
+  const r = await w.ok("planner.ringing", { cursor: true });
+  assert.ok(r.last_event > 0 && r.ringing.length === 1);
+  await w.ok("planner.done", { key: K(timer.id, T0 + 10 * MIN) });
+  assert.deepEqual([w.acked.at(-1).key, w.acked.at(-1).action, w.acked.at(-1).unrung], [K(timer.id, T0 + 10 * MIN), "done", undefined]);
+  assert.equal((await w.ok("planner.done", { key: K(timer.id, T0 + 10 * MIN) })).already, true, "a retried answer is harmless");
+  assert.ok(!(await w.ok("planner.upcoming")).entries.some(e => e.item === timer.id), "a rung moment leaves the schedule");
+  const listed = await w.ok("planner.list", { cursor: true });
+  assert.ok(Array.isArray(listed.items) && listed.last_event > 0);
+  assert.ok(Array.isArray(await w.ok("planner.list")), "without cursor, the list as before");
+});
+
+test("planner: a ring answered by key on a device before the box rang it is never rung by the box", async t => {
+  const w = await world(t);
+  await w.ok("planner.settings", { escalate_max: 0 });
+  const alarm = await w.ok("planner.add", { kind: "alarm", title: "Wake", wall: "07:00", repeat: { every: "day" } });
+  const rem = await w.ok("planner.add", { kind: "reminder", title: "Call kit", at: T0 + HOUR });
+  const snoozed = await w.ok("planner.add", { kind: "reminder", title: "Water the plants", at: T0 + 2 * HOUR });
+  const K = (id, due) => `planner-${id}-${due / 1000}`;
+
+  // The phone rang the reminder itself (the box was out of reach) and the user tapped Done; the
+  // outbox delivers it by key once the box answers.
+  const d = await w.ok("planner.done", { key: K(rem.id, T0 + HOUR) });
+  assert.equal(d.item.state, "done");
+  assert.deepEqual([d.firing.state, d.firing.action, d.firing.key], ["acked", "done", K(rem.id, T0 + HOUR)]);
+  assert.equal(w.acked.at(-1).unrung, true, "the others clear it from their schedules");
+  // Tomorrow's alarm, answered ahead: tomorrow is skipped, the day after rings.
+  await w.ok("planner.dismiss", { key: K(alarm.id, Z(2026, 9, 25, 2)) });
+  // A snooze by key: the moment it was for is skipped, the snooze rings.
+  const s = await w.ok("planner.snooze", { key: K(snoozed.id, T0 + 2 * HOUR), minutes: 30 });
+  assert.equal(s.until, T0 + 30 * MIN);
+  w.advanceTo(Z(2026, 9, 26, 3));
+  assert.deepEqual(w.fired.map(f => [f.item, f.at]), [[snoozed.id, T0 + 30 * MIN], [alarm.id, Z(2026, 9, 26, 2)]]);
+  assert.equal(w.fired[1].key, K(alarm.id, Z(2026, 9, 26, 2)));
+  assert.equal((await w.call("planner.done", { key: "banana" })).error.code, "bad_input");
+  assert.equal((await w.call("planner.done", { key: "planner-i_gone-1790000000" })).error.code, "not_found");
+});
+
+test("planner: a zone or lead change says the schedule moved", async t => {
+  const w = await world(t);
+  const moved = [];
+  w.events.on("planner.schedule", e => moved.push(e.payload.reason));
+  await w.ok("planner.settings", { escalate_max: 1 });
+  assert.deepEqual(moved, []);
+  await w.ok("planner.settings", { timezone: "Europe/London" });
+  await w.ok("planner.settings", { event_lead: 5 });
+  assert.deepEqual(moved, ["settings", "settings"]);
+});
+
+test("planner: a Vyre-owned session's thread is the assistant, whichever thread it is", async t => {
+  const w = await world(t);
+  // Straight to the tool: the registry's callers check for "mcp:thread:<id>" is the sessions team's (ADR 0030).
+  const run = (name, input, caller) => w.tools.get(name).run(input, { caller });
+  const a = await run("planner.add", { kind: "reminder", title: "Call kit", at: T0 + HOUR }, "mcp:thread:t_one");
+  assert.equal(a.source, "mcp");
+  assert.equal(a.added_by, null);
+  const b = await run("planner.update", { item: a.id, title: "Call kit back" }, "mcp:thread:t_two");
+  assert.equal(b.title, "Call kit back");
+  await assert.rejects(run("planner.update", { item: a.id, title: "x" }, "mcp:agent:kit"), /only the items it added/);
+});
+
+test("planner: a task fires by posting into its own thread, or launching a fresh one under its creator's own agent", async t => {
+  const w = await world(t);
+  // A task's firing rings and escalates exactly like an alarm's (nothing here acks it) - not this
+  // test's concern, and past the first ring it would run() a second, third time before the next
+  // task in this test even fires, racing this test's own "last call" assertions. Off, so each of
+  // the three tasks below fires exactly once.
+  await w.ok("planner.settings", { escalate_max: 0 });
+  const kit = "mcp:agent:kit";
+  // With a thread: an existing conversation gets a turn, never a new one. kit is calling FROM s1
+  // itself (meta.thread) - taskScope requires a task's own thread match the creator's own calling
+  // thread, so this is kit's own scope, not a confused deputy posting into someone else's.
+  const withThread = await w.ok("planner.add", { kind: "task", title: "Chase the Northwind invoice", thread: "s1", at: T0 + HOUR }, kit, { thread: "s1" });
+  w.advanceTo(T0 + HOUR);
+  await new Promise(r => setImmediate(r)); // runTask() is async; the scheduler fires it, does not await it
+  assert.equal(w.taskRuns.length, 1);
+  assert.deepEqual([w.taskRuns[0].item, w.taskRuns[0].ok, w.taskRuns[0].result], [withThread.id, true, "ok"]);
+  assert.deepEqual(w.calls.at(-1), { tool: "threads.post", input: { thread: "s1", text: "Chase the Northwind invoice", kind: "scheduled", from: "planner" } });
+  assert.equal((await w.ok("planner.get", { item: withThread.id })).item.run_count, 1);
+
+  // No thread: a fresh one, under the creator's own agent - rule 1, never more than that agent's own scope.
+  const launched = await w.ok("planner.add", { kind: "task", title: "Draft the weekly digest", project: "harlow-legal", at: T0 + 2 * HOUR }, kit);
+  w.advanceTo(T0 + 2 * HOUR);
+  await new Promise(r => setImmediate(r));
+  assert.deepEqual(w.calls.at(-1), { tool: "threads.launch", input: { project: "harlow-legal", prompt: "Draft the weekly digest", purpose: "job", once: true, agent: "kit" } });
+
+  // The person's own task: no agent at all, ambient, same as any session they start themselves.
+  const own = await w.ok("planner.add", { kind: "task", title: "Renew the domain", project: "harlow-legal", at: T0 + 3 * HOUR });
+  w.advanceTo(T0 + 3 * HOUR);
+  await new Promise(r => setImmediate(r));
+  assert.equal(w.calls.at(-1).input.agent, undefined);
+  assert.equal(own.source, "cli");
+});
+
+test("planner: a task runs quietly once per firing - it never rings or escalates like an alarm's unacknowledged one does", async t => {
+  const w = await world(t);
+  // Default settings: escalate_after 5 min, escalate_max 3 - an alarm left unacked would ring 4
+  // times in the next 20 minutes. Nothing here ever acks a task's own firing (planner.done is not
+  // called), so before this fix it would have run the model-written instruction 4 times too.
+  const task = await w.ok("planner.add", { kind: "task", title: "Send the weekly digest", project: "harlow-legal", at: T0 + HOUR });
+  w.advanceTo(T0 + HOUR + 20 * MIN); // past escalate_after (5) x escalate_max (3) = 15 min
+  await new Promise(r => setImmediate(r));
+  assert.equal(w.taskRuns.length, 1, "one firing, one run - never re-run on an escalation ring");
+  assert.equal((await w.ok("planner.get", { item: task.id })).item.run_count, 1);
+  // The firing itself never escalates either (fireItem's own next_ring, not just runTask's guard).
+  assert.equal((await w.ok("planner.get", { item: task.id })).firings.at(-1).ring, 1);
+});
+
+test("planner: reviewer HIGH 1 - only a person or a named agent may add a task; a bare session or a module cannot", async t => {
+  const w = await world(t);
+  // A bare mcp caller (the person's own live Claude session, unnamed) used to become an AMBIENT
+  // task at fire time (no agent, the person's full scope) - exactly the escape the reviewer found.
+  assert.equal((await w.call("planner.add", { kind: "task", title: "x", thread: "s1" }, "mcp", { thread: "s1" })).error.code, "denied");
+  assert.equal((await w.call("planner.add", { kind: "task", title: "x", thread: "s1" }, "mcp:thread:s1", { thread: "s1" })).error.code, "denied");
+  assert.equal((await w.call("planner.add", { kind: "task", title: "x", thread: "s1" }, "harness:thread:s1", { thread: "s1" })).error.code, "denied");
+  // Any module (first-party or not) is refused outright - it is never "an agent the person named".
+  assert.equal((await w.call("planner.add", { kind: "task", title: "x", thread: "s1" }, "module:watchers", { thread: "s1" })).error.code, "denied");
+  // Every other kind is unaffected - only a task fires unattended later.
+  await w.ok("planner.add", { kind: "reminder", title: "x", at: T0 + MIN }, "mcp");
+  await w.ok("planner.add", { kind: "todo", title: "x" }, "module:watchers");
+});
+
+test("planner: reviewer HIGH 2 - a task may only target the creator's OWN calling thread, never any thread it names", async t => {
+  const w = await world(t);
+  const kit = "mcp:agent:kit";
+  // kit is calling from s1, but names s2 (someone else's thread, or one it has no business in):
+  // the confused-deputy escape - module:planner would have posted there as itself, unquestioned.
+  assert.equal((await w.call("planner.add", { kind: "task", title: "x", thread: "s2" }, kit, { thread: "s1" })).error.code, "denied");
+  // Its own calling thread is fine.
+  const ok = await w.ok("planner.add", { kind: "task", title: "x", thread: "s1" }, kit, { thread: "s1" });
+  assert.equal(ok.thread, "s1");
+  // Neither a thread nor a project at all: no scope to check against, refused rather than
+  // defaulting to an ambient launch.
+  assert.equal((await w.call("planner.add", { kind: "task", title: "x" }, kit, { thread: "s1" })).error.code, "denied");
+});
+
+test("planner: reviewer MEDIUM - a task's project must be inside the creator agent's own projects.access, at add, at edit and again at fire", async t => {
+  const w = await world(t);
+  const kit = "mcp:agent:kit";
+  w.agents = [{ name: "juno", kind: "assistant" }, { name: "kit", kind: "agent", projects: ["harlow-legal"] }];
+  // Outside kit's own scope: refused at add time.
+  assert.equal((await w.call("planner.add", { kind: "task", title: "x", project: "northwind" }, kit)).error.code, "denied");
+  const t1 = await w.ok("planner.add", { kind: "task", title: "Draft the weekly digest", project: "harlow-legal", at: T0 + HOUR }, kit);
+
+  // Reviewer HIGH 2's update-time twin: kit cannot redirect its own task to a project outside its
+  // scope after the fact either (planner.update takes the same path as planner.add).
+  assert.equal((await w.call("planner.update", { item: t1.id, project: "northwind" }, kit)).error.code, "denied");
+  await w.ok("planner.update", { item: t1.id, priority: 2 }, kit, { thread: "s1" }); // unrelated field: untouched, no scope check at all
+
+  // MEDIUM: kit's access to harlow-legal is revoked after scheduling, before it ever fires -
+  // caught again at runTask, not just at add/edit time.
+  w.agents = [{ name: "juno", kind: "assistant" }, { name: "kit", kind: "agent", projects: [] }];
+  w.advanceTo(T0 + HOUR);
+  await new Promise(r => setImmediate(r));
+  assert.equal(w.taskRuns[0].ok, false);
+  assert.match(w.taskRuns[0].result, /no longer has access/);
+  assert.equal((await w.ok("planner.get", { item: t1.id })).item.run_count, 1, "an attempt is still recorded (rule 2)");
+});
+
+test("planner: a paused task never runs; a failed run is recorded, not thrown away", async t => {
+  const w = await world(t);
+  const paused = await w.ok("planner.add", { kind: "task", title: "Ping the standup channel", thread: "s1", at: T0 + HOUR, paused: true });
+  w.advanceTo(T0 + HOUR);
+  await new Promise(r => setImmediate(r));
+  assert.equal(w.taskRuns.length, 0);
+  assert.equal((await w.ok("planner.update", { item: paused.id, paused: false })).paused, false);
+
+  const w2 = await world(t);
+  w2.onCall = async () => ({ error: { code: "not_found", message: "no such thread" } });
+  const failing = await w2.ok("planner.add", { kind: "task", title: "Post to a thread that is gone", thread: "s9", at: T0 + HOUR });
+  w2.advanceTo(T0 + HOUR);
+  await new Promise(r => setImmediate(r));
+  assert.equal(w2.taskRuns[0].ok, false);
+  assert.match(w2.taskRuns[0].result, /no such thread/);
+  assert.equal((await w2.ok("planner.get", { item: failing.id })).item.last_result, "error: no such thread");
+});
+
+test("planner: a chained task (waits_on) runs when its dependency is marked done, never on a timer of its own", async t => {
+  const w = await world(t);
+  const first = await w.ok("planner.add", { kind: "todo", title: "Sign the contract", project: "harlow-legal" });
+  const then = await w.ok("planner.add", { kind: "task", title: "Kick off onboarding", thread: "s1", waits_on: first.id });
+  assert.equal(then.at, null, "nothing to schedule: it waits on first, not a time");
+  await new Promise(r => setImmediate(r)); // planner.changed's listener is async
+  assert.equal(w.taskRuns.length, 0, "not yet - first is still open");
+  await w.ok("planner.done", { item: first.id });
+  await new Promise(r => setImmediate(r));
+  assert.equal(w.taskRuns.length, 1);
+  assert.deepEqual(w.calls.at(-1), { tool: "threads.post", input: { thread: "s1", text: "Kick off onboarding", kind: "scheduled", from: "planner" } });
+  // Finishing something unrelated never fires it a second time.
+  const other = await w.ok("planner.add", { kind: "todo", title: "Unrelated", project: "harlow-legal" });
+  await w.ok("planner.done", { item: other.id });
+  await new Promise(r => setImmediate(r));
+  assert.equal(w.taskRuns.length, 1);
+});
+
+test("planner: reopening a chained task's dependency and finishing it again does not re-fire it a second time for the same completion", async t => {
+  const w = await world(t);
+  const first = await w.ok("planner.add", { kind: "todo", title: "Sign the contract", project: "harlow-legal" });
+  await w.ok("planner.add", { kind: "task", title: "Kick off onboarding", thread: "s1", waits_on: first.id });
+  await w.ok("planner.done", { item: first.id });
+  await new Promise(r => setImmediate(r));
+  assert.equal(w.taskRuns.length, 1, "fires once on the first done");
+  // Reopen, then finish it again: still the same underlying completion in spirit, but a NEW
+  // done_at - a person redoing the same dependency is a legitimate second trigger.
+  await w.ok("planner.update", { item: first.id, state: "open" });
+  await new Promise(r => setImmediate(r));
+  assert.equal(w.taskRuns.length, 1, "reopening alone never fires it");
+  w.advanceTo(T0 + 1000); // a distinct done_at from the first completion
+  await w.ok("planner.done", { item: first.id });
+  await new Promise(r => setImmediate(r));
+  assert.equal(w.taskRuns.length, 2, "a genuinely new done_at fires again");
+  // But re-delivering the SAME planner.changed (e.g. a duplicate event, or another field on the
+  // done row changing without a new done_at) must not re-fire it.
+  const before = w.taskRuns.length;
+  await w.ok("planner.update", { item: first.id, title: "Sign the contract (updated)" });
+  await new Promise(r => setImmediate(r));
+  assert.equal(w.taskRuns.length, before, "a change with no new done_at never re-fires it");
 });

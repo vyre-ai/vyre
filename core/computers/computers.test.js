@@ -81,7 +81,10 @@ test("computers: the manifest loads on the box with its tools and the glass stre
   const s = await boot(t);
   const tools = s.d.registry.listTools().map(x => x.name).filter(n => n.startsWith("computers."));
   assert.deepEqual(tools.sort(), ["computers.checkout", "computers.egress.set", "computers.egress.status", "computers.get", "computers.giveback",
-    "computers.limits", "computers.list", "computers.pause", "computers.release", "computers.restart", "computers.resume", "computers.stop",
+    "computers.handback.set", "computers.handback.status",
+    "computers.limits", "computers.list",
+    "computers.member.add", "computers.member.dispose", "computers.member.remove", "computers.member.rotate",
+    "computers.pause", "computers.release", "computers.restart", "computers.resume", "computers.stop",
     "computers.tailnet.set", "computers.tailnet.status", "computers.takeover", "computers.watch"]);
   assert.equal((await s.cli("computers.endpoint", { agent: "kit" })).error.code, "no_such_tool", "an internal tool was reachable from the socket");
   // Glass is another file; whether or not it is there yet, the module runs and says which.
@@ -116,6 +119,12 @@ test("computers: an agent's hands get their own computer; only the assistant may
   assert.deepEqual(mine.data.computers.map(c => c.agent), ["kit"]);
   const all = await s.juno("computers.list");
   assert.deepEqual(all.data.computers.map(c => c.agent), ["kit", "pax"]);
+  // The same self-only filter applies whatever transport vouches the agent's claim, not only
+  // "mcp:agent:<name>": a caller shaped "cli agent:kit" (an agent vouched under the CLI) still
+  // sees only its own computer, and still cannot name pax's (agentClaim, core/modules).
+  const vouched = await s.d.registry.call("computers.list", {}, "cli agent:kit");
+  assert.deepEqual(vouched.data.computers.map(c => c.agent), ["kit"]);
+  assert.match((await s.d.registry.call("computers.checkout", { agent: "pax" }, "cli agent:kit")).error.message, /kit can only use its own computer, not pax's/);
   assert.match((await s.module("computers.may-act", { tool: "chrome.click" })).error.message, /agent is required/);
 });
 
@@ -348,6 +357,18 @@ test("computers: no password or token ever reaches a tool result, an event or a 
   }
 });
 
+test("computers: stats is internal (vitals reads it, never the socket), and null before checkout", async t => {
+  const s = await boot(t);
+  assert.equal((await s.cli("computers.stats", { agent: "kit" })).error.code, "no_such_tool", "an internal tool was reachable from the socket");
+  assert.deepEqual((await s.module("computers.stats", { agent: "kit" })).data, { cpu: null, ram: null, ramLimit: null, netRx: null, netTx: null });
+  await s.kit("computers.checkout", {});
+  const r = await s.module("computers.stats", { agent: "kit" });
+  assert.deepEqual(r.data, { cpu: 12.5, ram: 30, ramLimit: 2 * 1024 * 1024 * 1024, netRx: 1000, netTx: 500 });
+  await s.kit("computers.release", { agent: "kit" });
+  await s.cli("computers.stop", { agent: "kit" });
+  assert.deepEqual((await s.module("computers.stats", { agent: "pax" })).data, { cpu: null, ram: null, ramLimit: null, netRx: null, netTx: null }, "pax never had a computer made");
+});
+
 test("computers: limits are a person's or the assistant's to set, and restart applies them", async t => {
   const s = await boot(t);
   assert.match((await s.kit("computers.limits", { cpus: 8 })).error.message, /kit cannot change a computer's limits/);
@@ -489,9 +510,72 @@ test("computers: tailnet.set and status are the owner's, refused to agents and t
   assert.equal((await s.cli("computers.tailnet.status")).data.enabled, true);
 });
 
+test("computers: idle hand-back is 5 min by default, the owner's to change, live, and ends a take-over with why idle", async t => {
+  const s = await boot(t);
+  assert.deepEqual((await s.cli("computers.handback.status")).data, { minutes: 5, choices: [0, 2, 5, 15], warn_s: 10 });
+  assert.match((await s.kit("computers.handback.set", { minutes: 0 })).error.message, /is an agent/);
+  assert.ok((await s.cli("computers.handback.set", { minutes: 7 })).error, "a minutes value that is not a choice was saved");
+  await s.cli("computers.takeover", { agent: "kit", surface: "glass:laptop" });
+  const ok = await s.cli("computers.handback.set", { minutes: 2 });
+  assert.equal(ok.error, undefined, JSON.stringify(ok.error));
+  assert.equal(ok.data.minutes, 2);
+  const saved = JSON.parse(fs.readFileSync(path.join(s.root, "config.json"), "utf8"));
+  assert.equal(saved.computers.handbackIdleMin, 2);
+  assert.equal(saved.computers.driver, "fake", "saving the setting dropped another computers key");
+  // The stream's pongs keep the lease (renew without input); the idle clock runs regardless.
+  s.clock.t += 60_000; s.h.keyboard.renew("kit", "glass:laptop");
+  s.clock.t += 50_000; await s.h.sweep();
+  const warn = s.events().filter(e => e.type === "computer.idle-warning");
+  assert.deepEqual(warn.map(e => e.payload), [{ agent: "kit", surface: "glass:laptop", at: 1_000 + 120_000 }]);
+  assert.equal(warn[0].thread, s.kitThread);
+  s.clock.t += 10_000; await s.h.sweep();
+  assert.deepEqual((await s.module("computers.may-act", { agent: "kit" })).data, { ok: true });
+  const back = s.events().filter(e => e.type === "computer.handed-back");
+  assert.deepEqual(back.map(e => e.payload), [{ agent: "kit", surface: "glass:laptop", why: "idle", by: "owner", device: "glass", reason: "idle", idle_ms: 120_000 }]);
+  assert.equal((await s.cli("computers.handback.set", { minutes: 0 })).data.minutes, 0);
+});
+
+test("computers: fill.begin and fill.end are the vault's only, and a take-over waits for a fill", async t => {
+  const s = await boot(t);
+  for (const as of [s.cli, s.kit, s.juno]) assert.equal((await as("computers.fill.begin", { agent: "kit", origin: "https://a.test" })).error.code, "no_such_tool");
+  const other = await s.d.registry.call("computers.fill.begin", { agent: "kit", origin: "https://a.test" }, "module:glass");
+  assert.equal(other.error.code, "denied");
+  // The fake driver's computerd does not answer /shield, so a real begin fails closed here; the
+  // fill itself is tested in fill.test.js. The vault reaches the tool and gets that answer.
+  const vault = await s.d.registry.call("computers.fill.begin", { agent: "kit", origin: "https://a.test" }, "module:vault");
+  assert.ok(vault.error, "a fill began with no computerd to cut the agent's sockets");
+  assert.equal(s.h.shield.has("kit"), false);
+  assert.equal((await s.d.registry.call("computers.fill.end", { agent: "kit", fill: "x" }, "module:vault")).data.ended, false);
+  s.h.fills.open.set("kit", { id: "f1", origin: "https://a.test", token: "t".repeat(43), since: 0, expires: 60_000, cancel: () => {} });
+  const take = await s.cli("computers.takeover", { agent: "kit", surface: "glass:laptop" });
+  assert.equal(take.error.code, "busy");
+  s.h.fills.open.delete("kit");
+});
+
 test("computers: node.agent is internal and for modules only, and knows no node that never joined", async t => {
   const s = await boot(t);
   assert.equal((await s.cli("computers.node.agent", { stableId: "nKit7CNTRL" })).error.code, "no_such_tool");
   assert.equal((await s.kit("computers.node.agent", { stableId: "nKit7CNTRL" })).error.code, "no_such_tool");
   assert.deepEqual((await s.module("computers.node.agent", { stableId: "nKit7CNTRL" })).data, { agent: null });
+});
+
+// ---- shared (browser-kind) computers: membership tools ---------------------------------
+
+test("computers: all four member tools are on the PERSON_ONLY floor -- the same protection computers.takeover already stands behind, enforced by the harness's own rules layer and presence checks, not this module", () => {
+  for (const tool of ["computers.member.add", "computers.member.remove", "computers.member.rotate", "computers.member.dispose"]) {
+    assert.ok(PERSON_ONLY.has(tool), `${tool} is not on the PERSON_ONLY floor`);
+  }
+});
+
+test("computers: computers.member.add reaches pool.js and the vault (there is no vault module running here, so it fails there, not at the tool's own gate)", async t => {
+  const s = await boot(t);
+  const r = await s.cli("computers.member.add", { computer: "browser-abc123", agent: "kit-1", name: "alice" });
+  assert.ok(r.error, "add succeeded with no vault running to derive a token from");
+  assert.match(r.error.message, /vault/i);
+  // ensure() itself (seedMembersBeforeStart, before the container ever starts) is what hits the
+  // vault. Since 29 Sep (reviewer LOW 2) a failed add for a brand-new member leaves no trace: the
+  // row it made for this call is rolled back, not left half-built for the next attempt to trip
+  // over -- a retry after fixing the vault starts from nothing, same as the very first try.
+  assert.equal(s.h.pool.row("browser-abc123"), null, "a failed add left a row behind");
+  assert.equal(s.h.pool.members("browser-abc123").length, 0, "a failed add left a member behind");
 });

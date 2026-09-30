@@ -12,7 +12,11 @@ import { fileURLToPath } from "node:url";
 import { install, text, everything, $, $$ } from "./fake-dom.js";
 
 install();
-const { drawConnections, pickServers, pickItems, pickGoogleTest, itemsFor, toolModes, EVENTS } = await import("../views/connections.js");
+// icons.js (the Connections cards' avatars and chip glyphs) parses its drawings with DOMParser,
+// which the fake DOM does not have (deck/test/rail.test.js's own fix).
+/** @type {any} */ (globalThis).DOMParser = class { parseFromString() { const s = document.createElement("svg"); s.append(document.createElement("circle")); return { documentElement: s }; } };
+/** @type {any} */ (document).importNode = (/** @type {any} */ n) => n;
+const { drawConnections, pickServers, pickItems, pickGoogleTest, pickConnections, itemsFor, toolModes, EVENTS } = await import("../views/connections.js");
 
 const DECK = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const FIXTURE = JSON.parse(fs.readFileSync(path.join(DECK, "fixtures", "connections.json"), "utf8"));
@@ -73,6 +77,7 @@ async function render(o = {}, p = fakePresence()) {
 
 const server = (el, name) => $(el, `[data-server=${name}]`);
 const account = (el, name) => $(el, `[data-account=${name}]`);
+const githubAccount = (el, name) => $(el, `[data-github=${name}]`);
 const noLeak = el => assert.ok(!everything(el).includes(LEAK), "a value from a stray reply field reached the page");
 const select = (sel, v) => { sel.value = v; sel.dispatchEvent(new Event("change")); };
 const type = (input, v) => { input.value = v; };
@@ -82,7 +87,7 @@ const submit = form => Promise.all(form.dispatchEvent(new Event("submit")));
 
 test("renders every server and account with names only", async () => {
   const { el, api } = await render();
-  assert.deepEqual(api.calls.map(c => c.tool).sort(), ["google.accounts", "mcp.servers"], "opening makes two calls, and never google.test");
+  assert.deepEqual(api.calls.map(c => c.tool).sort(), ["github.accounts", "google.accounts", "mcp.servers", "vault.connections.list"], "opening makes four calls, and never google.test or github.connect");
 
   const t = text(server(el, "tracker"));
   assert.match(t, /tracker/);
@@ -118,6 +123,91 @@ test("renders every server and account with names only", async () => {
   assert.match(b, /OAuth/);
   assert.match(b, /northwind-google/);
   noLeak(el);
+});
+
+const connection = (el, id) => $(el, `[data-connection=${id}]`);
+
+const chipsOf = c => [...$$(c, ".cn-chip")].map(b => ({ text: text(b).trim(), on: b.getAttribute("aria-pressed") === "true" }));
+const findChip = (c, label) => [...$$(c, ".cn-chip")].find(b => text(b).startsWith(label));
+
+test("Connections cards: one per vault connection, whatever the source, granted chips shown, problem rows simplified", async () => {
+  const { el } = await render();
+  const alex = text(connection(el, "cn_alex"));
+  assert.match(alex, /alex@harlowlegal\.com/, "the account is the heading, not the label (account-row.md)");
+  assert.match(alex, /Google/);
+  assert.match(alex, /Default/, "a default beats Last used (account-row.md's Trailing priority)");
+  assert.doesNotMatch(alex, /min ago/, "Last used is not shown once Default applies");
+  assert.match(alex, /Connected 9 d ago/);
+  assert.match(alex, /Wrong account\?/);
+  // Granted: Capsule and Chat show pressed; Agents and Phone do not. The Agents chip trails a
+  // shield glyph while off (chip.md's Asking state); the others do not.
+  assert.deepEqual(chipsOf(connection(el, "cn_alex")), [
+    { text: "Capsule", on: true }, { text: "Chat", on: true }, { text: "Agents", on: false }, { text: "Phone", on: true } ]);
+  assert.ok($(findChip(connection(el, "cn_alex"), "Agents"), "svg.cn-chip-shield"), "the Agents chip, off, trails the shield glyph");
+  assert.equal($(findChip(connection(el, "cn_alex"), "Capsule"), "svg.cn-chip-shield"), null, "a non-Agents chip never trails one");
+
+  const tracker = text(connection(el, "cn_tracker"));
+  assert.match(tracker, /tracker/, "the account (its own name/ref for an MCP row) is the heading");
+  assert.match(tracker, /Northwind Tracker MCP/, "a distinct label shows in the meta line");
+  assert.match(tracker, /MCP server/);
+
+  const script = connection(el, "cn_appsscript");
+  assert.match(text(script), /Apps Script/);
+  assert.match(text(script), /Needs sign-in/);
+  assert.ok($(script, "button"), "a Sign in button, no chips or footer on a problem row");
+  assert.equal($$(script, ".cn-chip").length, 0);
+
+  assert.ok($(el, ".cn-add"), "Connect another account is offered");
+  noLeak(el);
+});
+
+test("Connections cards: a chip toggle is optimistic for Capsule/Chat/Phone, calls grant or revoke by id and surface, and a failure reverts", async () => {
+  const { el, api } = await render();
+  const chatChip = findChip(connection(el, "cn_tracker"), "Chat");
+  assert.equal(chatChip.getAttribute("aria-pressed"), "false");
+  await Promise.all(chatChip.dispatchEvent(new Event("click")));
+  // Optimistic: the chip flips before the call even resolves (fakeApi is synchronous here, so
+  // check the call was made with the right id/surface, and the chip ends up pressed).
+  assert.deepEqual(api.of("vault.connections.grant"), [{ tool: "vault.connections.grant", input: { id: "cn_tracker", surface: "chat" } }]);
+  assert.equal(findChip(connection(el, "cn_tracker"), "Chat").getAttribute("aria-pressed"), "true");
+
+  const failing = await render({ over: { "vault.connections.grant": { $error: { code: "denied", message: "not your surface" } } } });
+  const chip2 = findChip(connection(failing.el, "cn_tracker"), "Chat");
+  await Promise.all(chip2.dispatchEvent(new Event("click")));
+  assert.equal(findChip(connection(failing.el, "cn_tracker"), "Chat").getAttribute("aria-pressed"), "false", "reverted after the call failed");
+});
+
+test("Connections cards: revoking any surface, including Agents, is one tap through vault.connections.revoke directly, never presence", async () => {
+  const { el, api, p } = await render();
+  const capsuleChip = findChip(connection(el, "cn_alex"), "Capsule");
+  await Promise.all(capsuleChip.dispatchEvent(new Event("click")));
+  assert.deepEqual(api.of("vault.connections.revoke"), [{ tool: "vault.connections.revoke", input: { id: "cn_alex", surface: "capsule" } }]);
+  assert.equal(api.of("vault.connections.grant").length, 0);
+  assert.equal(p.asked.length, 0, "revoke never asks for presence");
+});
+
+test("Connections cards: granting Agents goes through presence (Touch ID or a passkey), not a direct call; a refusal leaves it off with no toast of its own", async () => {
+  const { el, api, p } = await render();
+  const agentsChip = findChip(connection(el, "cn_tracker"), "Agents");
+  assert.equal(agentsChip.getAttribute("aria-pressed"), "false");
+  await Promise.all(agentsChip.dispatchEvent(new Event("click")));
+  // Went through presence(), not a bare attempt(): vault.connections.grant never appears in the
+  // plain API call log for this click, but presence's own asked log has it.
+  assert.equal(api.of("vault.connections.grant").length, 0);
+  assert.deepEqual(p.asked.map(a => [a.tool, a.input]), [["vault.connections.grant", { id: "cn_tracker", surface: "agents" }]]);
+  assert.equal(findChip(connection(el, "cn_tracker"), "Agents").getAttribute("aria-pressed"), "true");
+
+  const refused = await render({}, fakePresence({ fail: true }));
+  const chip2 = findChip(connection(refused.el, "cn_tracker"), "Agents");
+  await Promise.all(chip2.dispatchEvent(new Event("click")));
+  assert.equal(findChip(connection(refused.el, "cn_tracker"), "Agents").getAttribute("aria-pressed"), "false", "a refusal leaves it off");
+  assert.equal(refused.api.of("vault.connections.grant").length, 0);
+});
+
+test("Connections cards: vault.connections.list missing (an older Vyre) draws nothing extra, no error banner", async () => {
+  const { el } = await render({ missing: ["vault"] });
+  assert.equal($(el, ".cn-card"), null);
+  assert.ok(server(el, "tracker"), "the mcp/google groups still work standalone");
 });
 
 test("empty state when neither module runs, and each half on its own", async () => {
@@ -323,6 +413,137 @@ test("Google Remove asks first, then calls google.remove", async () => {
   assert.match(text(account(el, "bakery")), /Disconnect bakery\?/);
   await $(account(el, "bakery"), "button[data-act=remove-yes]").click();
   assert.deepEqual(api.of("google.remove").map(c => c.input), [{ name: "bakery" }]);
+});
+
+// ---- GitHub accounts -----------------------------------------------------------------------------
+
+test("renders the GitHub account with name, login and avatar, never the token", async () => {
+  const { el } = await render();
+  const t = text(githubAccount(el, "work"));
+  assert.match(t, /work/);
+  assert.match(t, /alex-harlow/);
+  const img = $(githubAccount(el, "work"), "img");
+  assert.equal(img.getAttribute("src"), "https://avatars.githubusercontent.com/u/1?v=4");
+  noLeak(el);
+});
+
+test("GitHub Disconnect asks first, then calls github.remove; a failed revoke still shows removed with a warning", async () => {
+  const { el, api } = await render();
+  await $(githubAccount(el, "work"), "button[data-act=remove]").click();
+  assert.equal(api.of("github.remove").length, 0);
+  assert.match(text(githubAccount(el, "work")), /Disconnect work\?/);
+  assert.match(text(githubAccount(el, "work")), /This removes the account from Vyre\. To also cancel access at GitHub, open github\.com\/settings\/applications\./);
+  const settingsLink = [...$$(githubAccount(el, "work"), "a")].find(a => a.getAttribute("href") === "https://github.com/settings/applications");
+  assert.ok(settingsLink, "a real link, not just the words");
+  await $(githubAccount(el, "work"), "button[data-act=remove-yes]").click();
+  assert.deepEqual(api.of("github.remove").map(c => c.input), [{ name: "work" }]);
+
+  const { el: el2, api: api2 } = await render({ over: { "github.remove": { removed: true, revoked: false, warning: "the account was removed, but the token may still work at GitHub: no client secret configured" } } });
+  await $(githubAccount(el2, "work"), "button[data-act=remove]").click();
+  await $(githubAccount(el2, "work"), "button[data-act=remove-yes]").click();
+  assert.deepEqual(api2.of("github.remove").map(c => c.input), [{ name: "work" }]);
+});
+
+test("github.accounts missing draws its own empty state, never blocking mcp/google", async () => {
+  const { el } = await render({ missing: ["github"] });
+  assert.match(text(server(el, "tracker")), /tracker/, "mcp still renders");
+  assert.match(text(account(el, "bakery")), /northwind-google/, "google still renders");
+  assert.equal($(el, "button[data-act=add-github]"), null, "no add button when the module is missing, same as MCP/Google");
+  assert.match(text(el), /GitHub accounts are kept by the github module/);
+});
+
+// ---- Sign in with GitHub --------------------------------------------------------------------------
+
+const GH_CONNECT = FIXTURE["github.connect"];
+
+/** Open the form, name the account, and press Sign in with GitHub. */
+async function startGithubSignIn(o = {}) {
+  const r = await render(o);
+  await $(r.el, "button[data-act=add-github]").click();
+  const form = $(r.el, "form[data-form=github]");
+  type($(form, "#cgh-name"), "work2");
+  await submit(form);
+  return { ...r, form, wait: () => $(r.el, "[data-signin=waiting]") };
+}
+
+test("Add a GitHub account: only a name, no vault choices loaded", async () => {
+  const { el, api } = await render();
+  await $(el, "button[data-act=add-github]").click();
+  const form = $(el, "form[data-form=github]");
+  assert.ok($(form, "#cgh-name"));
+  assert.equal($(form, "#cg-item"), null, "no vault item picker: GitHub sign-in makes its own item");
+  assert.equal(api.of("vault.list").length, 0, "no vault.list call to open this form");
+  assert.match(text($(form, "button[type=submit]")), /^Sign in with GitHub$/);
+});
+
+test("Sign in with GitHub: github.connect with the name, then the code and Open GitHub", async () => {
+  const { api, wait, el } = await startGithubSignIn();
+  assert.deepEqual(api.of("github.connect").map(c => c.input), [{ name: "work2" }]);
+  assert.match(text(wait()), new RegExp(GH_CONNECT.user_code));
+  const open = $(wait(), "a[data-act=open-github]");
+  assert.equal(open.getAttribute("href"), GH_CONNECT.verification_uri_complete);
+  assert.equal(open.getAttribute("target"), "_blank");
+  assert.match(open.getAttribute("rel"), /noopener/);
+  assert.match(text(wait()), /15 minutes/);
+  noLeak(el);
+});
+
+test("Sign in with GitHub: a verification_uri that is not https://github.com/... never reaches the href", async () => {
+  const evil = "https://github.com.evil.example/login/device";
+  const { wait } = await startGithubSignIn({ over: { "github.connect": { ...GH_CONNECT, verification_uri: evil, verification_uri_complete: evil } } });
+  const open = $(wait(), "a[data-act=open-github]");
+  assert.equal(open.getAttribute("href"), "https://github.com/login/device", "falls back to the plain device page rather than an untrusted host");
+});
+
+test("Sign in with GitHub: Copy uses the clipboard", async () => {
+  const wrote = fakeClipboard();
+  const { wait } = await startGithubSignIn();
+  await $(wait(), "button[data-act=copy-code]").click();
+  assert.deepEqual(wrote, [GH_CONNECT.user_code]);
+  assert.match(text($(wait(), "button[data-act=copy-code]")), /Copied/);
+});
+
+test("Sign in with GitHub: github.connected for this id reloads and closes the form", async () => {
+  const { api, emit, el } = await startGithubSignIn();
+  await emit("github.connected", { id: "someone-else", name: "other", login: "other" });
+  assert.equal(api.of("github.accounts").length, 1, "another sign-in's event is not ours, and does not reload");
+  await emit("github.connected", { id: GH_CONNECT.id, name: "work2", login: "alex-harlow" });
+  await tick();
+  assert.equal(api.of("github.accounts").length, 2, "our own event reloads the list");
+  assert.equal($(el, "[data-signin]"), null, "the form closes");
+});
+
+test("Sign in with GitHub: github.connect-failed shows its error and offers to start again", async () => {
+  const { emit, el, api } = await startGithubSignIn();
+  await emit("github.connect-failed", { id: GH_CONNECT.id, error: "The code expired. Start a new one in Vyre." });
+  assert.match(text($(el, "[data-hint=signin-failed]")), /The code expired\. Start a new one in Vyre\./);
+  await $(el, "button[data-act=again]").click();
+  assert.ok($(el, "form[data-form=github]"), "Start again opens the form");
+  assert.equal(api.of("github.connect.cancel").length, 0, "an ended sign-in is not cancelled");
+});
+
+test("Sign in with GitHub: Cancel calls github.connect.cancel, and so does leaving the page or reopening the form", async () => {
+  const a = await startGithubSignIn();
+  await $(a.wait(), "button[data-act=cancel-signin]").click();
+  assert.deepEqual(a.api.of("github.connect.cancel").map(c => c.input), [{ id: GH_CONNECT.id }]);
+  assert.equal(a.wait(), null);
+  await a.emit("github.connect-failed", { id: GH_CONNECT.id, error: "The sign-in was cancelled." });
+  assert.equal($(a.el, "[data-hint=signin-failed]"), null, "our own cancel is not shown as a failure");
+
+  const b = await startGithubSignIn();
+  b.life.alive = false;
+  for (const f of b.cleanups) f();
+  assert.deepEqual(b.api.of("github.connect.cancel").map(c => c.input), [{ id: GH_CONNECT.id }], "unmounting cancels the open sign-in");
+
+  const c = await startGithubSignIn();
+  await $(c.el, "button[data-act=add-github]").click();
+  assert.deepEqual(c.api.of("github.connect.cancel").map(x => x.input), [{ id: GH_CONNECT.id }], "opening the form again cancels the old sign-in");
+});
+
+test("Sign in with GitHub: an error from github.connect is said, and the form stays open", async () => {
+  const { el, api } = await startGithubSignIn({ over: { "github.connect": { $error: { code: "exists", message: "an account named work2 is already connected; remove it first or choose another name" } } } });
+  assert.match(text($(el, "form[data-form=github]")), /already connected/);
+  assert.equal(api.of("github.connect.cancel").length, 0);
 });
 
 // ---- Sign in with Google ------------------------------------------------------------------------
@@ -571,4 +792,34 @@ test("pickers copy named fields only", () => {
   assert.deepEqual(itemsFor(items, "oauth"), []);
   assert.deepEqual(toolModes([{ tool: "b", outward: true }, { tool: "a", outward: false }], { c: "off", a: "write" }).map(t => [t.tool, t.mode]),
     [["a", "write"], ["b", "write"], ["c", "off"]]);
+});
+
+test("pickConnections: one card per row, named fields only, whatever the source", () => {
+  const rows = pickConnections([
+    { id: "c1", source: "google", ref: "alex@harlowlegal.com", provider: "google-oauth", account: "alex@harlowlegal.com",
+      auth: "oauth", label: "alex@harlowlegal.com", capabilities: ["send_mail", "calendar"], state: "ready",
+      surfaces: ["chat", "capsule"], uses: {}, default: ["send_mail"], last_used: 1000, added: 500, value: LEAK },
+    { id: "c2", source: "mcp", ref: "sheets", provider: "mcp", account: "Google Sheets MCP", auth: "env",
+      label: "Google Sheets MCP", capabilities: ["other"], state: "ready", surfaces: ["agents"], uses: {}, default: [], last_used: null, added: 700 },
+    { id: "c3", source: "google-apps-script", ref: "harlow", provider: "google-apps-script", account: "Apps Script",
+      auth: "env", label: "Apps Script", capabilities: ["send_mail"], state: "needs_credential",
+      needs: [{ module: "mail", need: "google-apps-script" }], surfaces: [], uses: {}, default: [], last_used: null, added: 900 },
+  ]);
+  assert.ok(!JSON.stringify(rows).includes(LEAK));
+  assert.deepEqual(rows[0], { id: "c1", provider: "google-oauth", providerWord: "Google", group: "google",
+    account: "alex@harlowlegal.com", label: "alex@harlowlegal.com", ready: true, needs: [],
+    capabilities: ["send_mail", "calendar"], surfaces: ["capsule", "chat"], defaultFor: ["send_mail"], lastUsed: 1000, connected: 500 });
+  assert.deepEqual(rows[1], { id: "c2", provider: "mcp", providerWord: "MCP server", group: "mcp",
+    account: "Google Sheets MCP", label: "Google Sheets MCP", ready: true, needs: [],
+    capabilities: ["other"], surfaces: ["agents"], defaultFor: [], lastUsed: null, connected: 700 });
+  assert.equal(rows[2].ready, false);
+  assert.deepEqual(rows[2].needs, [{ module: "mail", need: "google-apps-script" }]);
+  // A stray surface name (not one of vault's four: "planner" is not a grantable surface yet) is
+  // dropped, not shown as granted.
+  const withStray = pickConnections([{ id: "c4", provider: "mcp", account: "a", label: "a", state: "ready", surfaces: ["chat", "planner", "made-up"], capabilities: [], default: [] }]);
+  assert.deepEqual(withStray[0].surfaces, ["chat"]);
+  // An unrecognized provider still gets a card: the raw name as its word, "other" as its group.
+  assert.deepEqual(pickConnections([{ id: "c5", provider: "stripe", account: "a", label: "a", state: "ready", capabilities: [], default: [] }])[0],
+    { id: "c5", provider: "stripe", providerWord: "stripe", group: "other", account: "a", label: "a", ready: true, needs: [],
+      capabilities: [], surfaces: [], defaultFor: [], lastUsed: null, connected: null });
 });

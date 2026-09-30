@@ -29,7 +29,12 @@ export const MIGRATIONS = [
    );
    CREATE TABLE agents_spend (thread TEXT NOT NULL, agent TEXT NOT NULL, at INTEGER NOT NULL, usd REAL NOT NULL);
    CREATE INDEX agents_spend_agent ON agents_spend (agent);`,
+  // How hard the agent thinks (the Deck's Effort). Empty is the model's own default.
+  `ALTER TABLE agents_agents ADD COLUMN effort TEXT`,
 ];
+
+/** The agent's thinking effort, as sessions.effort names it. */
+export const EFFORTS = ["low", "medium", "high", "xhigh", "max"];
 
 const NAME = /^[a-z][a-z0-9-]{1,30}$/;
 /** How long agents.ask waits for a reply before handing back what it has. */
@@ -69,13 +74,52 @@ export default {
 
     const shape = r => r && ({ name: String(r.name), kind: String(r.kind), projects: JSON.parse(String(r.projects)), auth: JSON.parse(String(r.auth)),
       instructions: r.instructions == null ? null : String(r.instructions), skills: JSON.parse(String(r.skills)), computer: Boolean(r.computer),
-      model: r.model == null ? null : String(r.model), thread: r.thread == null ? null : String(r.thread) });
+      model: r.model == null ? null : String(r.model), effort: r.effort == null ? null : String(r.effort), thread: r.thread == null ? null : String(r.thread) });
     const get = name => shape(db.prepare("SELECT * FROM agents_agents WHERE name = ?").get(name));
-    const must = name => { const a = get(name); if (!a) throw new Error(`no agent ${name}`); return a; };
+    const must = name => { const a = get(name); if (!a) throw Object.assign(new Error(`no agent ${name}`), { code: "not_found" }); return a; };
     const spent = name => Number(/** @type {any} */ (db.prepare("SELECT COALESCE(SUM(usd), 0) AS s FROM agents_spend WHERE agent = ?").get(name)).s);
 
     /** Tool results unwrapped; an error becomes a throw with its message. */
     const use = async (tool, input) => { const r = await ctx.call(tool, input); if (r.error) throw new Error(r.error.message); return r.data; };
+
+    // Option (a) (the lead's decision, on top of the reviewer's drift MEDIUM): projects.access
+    // is kept in step with an agent's own agents.projects as part of the person's already-gated
+    // create/update action, never a separate step and never a model's own. ctx.call sets the
+    // caller "module:agents" (only the loader can), so this reaches projects.access.grant/revoke
+    // (both now list "module" among their callers) with no presence prompt beyond what creating
+    // or editing the agent already asked for. Never for the assistant: its reach is the
+    // assistant rule (core/memory's reach()), not a per-project grant.
+    const BY = `module:${ctx.name}`;
+    const syncAccess = async (name, before, after) => {
+      const pr = await ctx.call("projects.list", {});
+      if (pr.error) return; // projects (or projects.access) is not running: nothing to keep in step with
+      const all = (Array.isArray(pr.data) ? pr.data : pr.data?.projects || []).filter(p => p && p.slug).map(p => String(p.slug));
+      const was = before === "*" ? new Set(all) : new Set((Array.isArray(before) ? before : []).map(String));
+      const now = after === "*" ? new Set(all) : new Set((Array.isArray(after) ? after : []).map(String));
+      const added = [...now].filter(s => !was.has(s)), dropped = [...was].filter(s => !now.has(s));
+      // Checked, and refused, before anything is written: a project the person explicitly
+      // revoked already (by anyone other than this same internal path) is never silently
+      // re-granted just because it landed back on this agent's list.
+      for (const slug of added) {
+        const c = await ctx.call("projects.access.check", { project: slug, agent: name });
+        if (!c.error && c.data && c.data.status === "revoked" && c.data.by !== BY) {
+          throw new Error(`${slug} was explicitly revoked for ${name} (by ${c.data.by}); grant it back on purpose with projects.access.grant, this will not do it silently`);
+        }
+      }
+      for (const slug of added) {
+        const g = await ctx.call("projects.access.grant", { project: slug, agent: name });
+        if (g.error) throw new Error(`could not grant ${name} access to ${slug}: ${g.error.message}`);
+      }
+      for (const slug of dropped) {
+        // Skip a project that is already revoked, rather than writing over it: setAccess is an
+        // upsert, and overwriting `by` here would erase the record that a person, not this
+        // internal path, was the one who revoked it, which the "added" check above depends on.
+        const c = await ctx.call("projects.access.check", { project: slug, agent: name });
+        if (!c.error && c.data && c.data.status === "revoked") continue;
+        const r = await ctx.call("projects.access.revoke", { project: slug, agent: name });
+        if (r.error) throw new Error(`could not revoke ${name}'s access to ${slug}: ${r.error.message}`);
+      }
+    };
 
     // Spend on the API key is counted from each turn's result, per agent, so the budget holds
     // across threads and restarts. Turns on the subscription cost the user nothing extra.
@@ -167,7 +211,7 @@ export default {
       const input = { agent: a.name, agent_kind: a.kind, auth: creds.auth, append: preamble(a), scope: await scope(a),
         ...(creds.env ? { env: creds.env } : {}), ...(creds.fallback ? { fallback: creds.fallback } : {}),
         ...(creds.budget_usd != null ? { budget_usd: creds.budget_usd } : {}), ...(a.model ? { model: a.model } : {}),
-        ...(prompt ? { prompt } : {}) };
+        ...(a.effort ? { effort: a.effort } : {}), ...(prompt ? { prompt } : {}) };
       const t = resume ? await use("threads.launch", { ...input, resume }) : await use("threads.launch", { ...input, ...(await workdir(a)), name: a.name });
       db.prepare("UPDATE agents_agents SET thread = ?, updated_at = ? WHERE name = ?").run(t.id, Date.now(), a.name);
       return t;
@@ -184,7 +228,7 @@ export default {
     };
 
     const fields = { kind: { type: "string", enum: ["assistant", "agent"] }, projects: {}, instructions: { type: "string" },
-      skills: { type: "array", items: { type: "string" } }, computer: { type: "boolean" }, model: { type: "string" },
+      skills: { type: "array", items: { type: "string" } }, computer: { type: "boolean" }, model: { type: "string" }, effort: { type: "string", enum: EFFORTS },
       auth: { type: "object", properties: { vault: { type: "string" }, fallback: { type: "string" }, budget_usd: { type: "number" } } } };
 
     const checkProjects = p => {
@@ -204,7 +248,7 @@ export default {
       run: async (_, { caller }) => {
         guard(caller, "list agents");
         const rows = db.prepare("SELECT * FROM agents_agents ORDER BY kind = 'assistant' DESC, name").all().map(shape);
-        return Promise.all(rows.map(async a => ({ name: a.name, kind: a.kind, projects: a.projects, model: a.model, computer: a.computer,
+        return Promise.all(rows.map(async a => ({ name: a.name, kind: a.kind, projects: a.projects, model: a.model, effort: a.effort, computer: a.computer,
           // The Deck's agent page shows and edits the job from this list.
           instructions: a.instructions,
           auth: a.auth.vault ? "subscription" : a.auth.fallback ? "api-key" : "ambient", ...(await status(a)) })));
@@ -224,16 +268,19 @@ export default {
         if (kind === "assistant" && db.prepare("SELECT 1 FROM agents_agents WHERE kind = 'assistant'").get()) throw new Error("there is already an assistant; agents.update changes it");
         checkProjects(i.projects);
         const projects = kind === "assistant" ? "*" : i.projects ?? [];
+        // Written before the row exists (option (a)): a failed grant means no agent was ever
+        // created, rather than one whose memory access silently does not match what it says.
+        if (kind !== "assistant") await syncAccess(i.name, [], projects);
         const now = Date.now();
-        db.prepare(`INSERT INTO agents_agents (name, kind, projects, auth, instructions, skills, computer, model, created_at, updated_at)
-          VALUES (?,?,?,?,?,?,?,?,?,?)`).run(i.name, kind, JSON.stringify(projects), JSON.stringify(i.auth || {}), i.instructions || null,
-          JSON.stringify(i.skills || []), i.computer ? 1 : 0, i.model || null, now, now);
+        db.prepare(`INSERT INTO agents_agents (name, kind, projects, auth, instructions, skills, computer, model, effort, created_at, updated_at)
+          VALUES (?,?,?,?,?,?,?,?,?,?,?)`).run(i.name, kind, JSON.stringify(projects), JSON.stringify(i.auth || {}), i.instructions || null,
+          JSON.stringify(i.skills || []), i.computer ? 1 : 0, i.model || null, i.effort || null, now, now);
         return get(i.name);
       },
     });
 
     ctx.tool("agents.update", {
-      description: "Change an agent (name it by name or agent): its projects, credentials, instructions, skills, computer or model. Takes effect on its next thread.",
+      description: "Change an agent (name it by name or agent): its projects, credentials, instructions, skills, computer, model or effort. Takes effect on its next thread.",
       // Every other agents.* tool names its agent `agent`, so update takes that too; the Deck's
       // "Give a computer" sent it and got "input.name is required".
       input: { type: "object", properties: { name: { type: "string" }, agent: { type: "string" }, ...fields } },
@@ -255,9 +302,13 @@ export default {
         if (i.kind && i.kind !== a.kind) throw new Error("an agent's kind is fixed when it is made");
         if (a.kind === "assistant" && i.projects !== undefined && i.projects !== "*") throw new Error("the assistant sees every project");
         const next = { ...a, ...Object.fromEntries(Object.entries(i).filter(([k, v]) => v !== undefined && k !== "name" && k !== "agent")) };
-        db.prepare(`UPDATE agents_agents SET projects = ?, auth = ?, instructions = ?, skills = ?, computer = ?, model = ?, updated_at = ? WHERE name = ?`)
+        // Option (a): before the row changes, so a failed grant or an explicit-revoke refusal
+        // means the edit never took either. Never for the assistant (a.kind === "assistant"
+        // above already refuses any real change to its projects, so there is nothing to sync).
+        if (a.kind !== "assistant" && i.projects !== undefined) await syncAccess(a.name, a.projects, next.projects);
+        db.prepare(`UPDATE agents_agents SET projects = ?, auth = ?, instructions = ?, skills = ?, computer = ?, model = ?, effort = ?, updated_at = ? WHERE name = ?`)
           .run(JSON.stringify(next.projects), JSON.stringify(next.auth || {}), next.instructions || null, JSON.stringify(next.skills || []),
-            next.computer ? 1 : 0, next.model || null, Date.now(), a.name);
+            next.computer ? 1 : 0, next.model || null, next.effort || null, Date.now(), a.name);
         return get(a.name);
       },
     });
@@ -275,7 +326,7 @@ export default {
         let finish;
         const done = new Promise(r => { finish = r; });
         const offs = [
-          ctx.events.on("thread.text", e => { if (e.thread === thread && e.payload.done && !e.payload.notice) heard.text = e.payload.text; }),
+          ctx.events.on("thread.text", e => { if (e.thread === thread && e.payload.done && !e.payload.notice && e.payload.kind !== "reasoning") heard.text = e.payload.text; }),
           ctx.events.on("thread.finished", e => { if (e.thread === thread) finish({ ok: e.payload.ok, cost_usd: e.payload.cost_usd, ...(e.payload.error ? { note: e.payload.error } : {}) }); }),
           ctx.events.on("ask.raised", e => { if (e.thread === thread) finish({ ok: false, ask: { id: e.payload.ask, tool: e.payload.tool, summary: e.payload.summary, destination: e.payload.destination }, note: "waiting on your answer" }); }),
           ctx.events.on("thread.stopped", e => { if (e.thread === thread) finish({ ok: false, note: `the thread stopped: ${e.payload.reason}` }); }),
@@ -357,6 +408,11 @@ export default {
         if (a.kind === "assistant") throw new Error(`${a.name} is the assistant; there must be one, so change it with agents.update instead`);
         const running = (await use("threads.list", { agent })).filter(t => t.status !== "stopped");
         if (running.length) throw new Error(`${a.name} has ${running.length} running thread${running.length === 1 ? "" : "s"}; stop ${running.length === 1 ? "it" : "them"} first: vyre agents stop ${a.name}`);
+        // Option (a): the agent is gone, so its projects.access rows are deleted outright, not
+        // merely revoked; there is nothing left for a future re-add to weigh against. Before the
+        // agent's own rows: a failed clear means the delete never happened either.
+        const c = await ctx.call("projects.access.clear", { agent: a.name });
+        if (c.error && c.error.code !== "no_such_tool") throw new Error(`could not clear ${a.name}'s projects.access rows: ${c.error.message}`);
         db.prepare("DELETE FROM agents_spend WHERE agent = ?").run(a.name);
         db.prepare("DELETE FROM agents_agents WHERE name = ?").run(a.name);
         return { agent: a.name, deleted: true };
@@ -377,11 +433,27 @@ export default {
     });
 
     // The switchboard asks for this when someone types into an agent's stopped thread: only
-    // this module can give it the agent's credentials and scope again.
+    // this module can give it the agent's credentials and scope again. A person may ask for it
+    // too (`vyre agents resume`), for the agent's latest thread by default; theirs is checked:
+    // the thread must be the agent's own, and a running one is left as it is. No model may.
     ctx.tool("agents.resume", {
-      description: "Resume one of an agent's threads with its credentials and scope.", internal: true,
-      input: { type: "object", required: ["agent", "thread"], properties: { agent: { type: "string" }, thread: { type: "string" } } },
-      run: async ({ agent, thread }) => launch(must(agent), { resume: thread }),
+      description: "Resume one of an agent's threads (its latest by default) with its credentials and scope. A thread already running is left as it is ({ running: true }).",
+      callers: ["cli", "local", "deck", "capsule", "module"],
+      input: { type: "object", required: ["agent"], properties: { agent: { type: "string" }, thread: { type: "string" } } },
+      run: async ({ agent, thread }, { caller }) => {
+        const a = must(agent);
+        if (String(caller || "").startsWith("module:")) {
+          if (!thread) throw new Error("thread is required");
+          return launch(a, { resume: thread });
+        }
+        const id = thread || a.thread;
+        if (!id) throw new Error(`${a.name} has no thread to resume yet; vyre agents ask ${a.name} <text> starts one`);
+        const r = await ctx.call("threads.get", { thread: id, limit: 1 });
+        const t = r.data && r.data.thread;
+        if (!t || t.agent !== a.name) throw new Error(`${id} is not one of ${a.name}'s threads`);
+        if (t.status !== "stopped") return { ...t, running: true };
+        return launch(a, { resume: id });
+      },
     });
 
     return { async stop() {} };

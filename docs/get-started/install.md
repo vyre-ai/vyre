@@ -362,7 +362,7 @@ Once you approve it, `vyre link` says `linked to` and names your box.
 
 ## 14. Open the Capsule
 
-The Capsule is the command bar on your Mac: press Control twice, anywhere. Install and open it:
+The Capsule is the command bar on your Mac: press Control twice, anywhere. Build and open it:
 
 ```sh
 vyre capsule install
@@ -371,16 +371,18 @@ vyre capsule
 
 ```output
   vyre capsule install builds the Capsule on this Mac; nothing is downloaded.
-  packaged /usr/local/lib/node_modules/vyre/local/capsule/dist/Vyre-darwin-arm64/Vyre.app · source 3f9c2a1b · signed ad hoc, verified
-  Capsule open · press Control twice anywhere · log /Users/alex/.vyre/logs/capsule.out
+  Building the Capsule for this Mac (once, under a minute).
+  Capsule built · /Users/alex/.vyre/capsule/Vyre.app · vyre capsule opens it
+  Capsule open · ⌥Space, or Control twice once it is allowed · /Users/alex/.vyre/capsule/Vyre.app
 ```
 
-![The Capsule just opened: an empty box, and a line saying two things wait on you](../using/shots/capsule-open.png)
+The app is built here with Apple's Command Line Tools, so nothing is downloaded and Gatekeeper
+has nothing to quarantine. If they are missing, `vyre capsule install` says to run
+`xcode-select --install`. The first time, it offers to make a local signing identity so macOS
+keeps the Capsule's permissions across updates.
 
-> [!SNAG] macOS says it cannot check the app for malicious software
-> The app is not signed yet. In Finder, right-click `Vyre.app` in `~/Applications` and choose
-> **Open**, then **Open** again. If the dialog offers only **Done**, open System Settings, then
-> Privacy & Security, and choose **Open Anyway**.
+> [!SNAG] "The Capsule is built with Apple's Command Line Tools, which are not installed"
+> Run `xcode-select --install`, then `vyre capsule install` again.
 
 > [!SNAG] Control twice does nothing
 > Grant Input Monitoring to Vyre in System Settings, Privacy & Security, then run `vyre capsule`

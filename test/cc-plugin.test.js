@@ -43,20 +43,32 @@ function run(args, input, env) {
 }
 const hook = (cache, piece, payload, env) => run([path.join(cache, "hooks", "run.js"), piece], JSON.stringify(payload), env);
 
-/** Speak MCP to a server over stdio until `want` replies arrive. */
+/**
+ * Speak MCP to a server over stdio until `want` replies arrive. Each request waits for the one
+ * before it: the server answers calls concurrently, so a list sent with an add can beat it.
+ */
 async function mcp(file, env, msgs, want) {
   const base = { ...process.env };
   delete base.VYRE_PACKAGE;
   const p = spawn(process.execPath, [file], { env: { ...base, ...env } });
   const replies = new Map();
+  /** @type {Map<any, (m: any) => void>} */
+  const waiting = new Map();
   let buf = "";
-  const done = new Promise(resolve => p.stdout.on("data", c => {
+  p.stdout.on("data", c => {
     buf += c;
-    for (let i; (i = buf.indexOf("\n")) >= 0;) { const m = JSON.parse(buf.slice(0, i)); buf = buf.slice(i + 1); replies.set(m.id, m); }
-    if (replies.size >= want) resolve(null);
-  }));
-  for (const m of msgs) p.stdin.write(JSON.stringify(m) + "\n");
-  await done;
+    for (let i; (i = buf.indexOf("\n")) >= 0;) {
+      const m = JSON.parse(buf.slice(0, i)); buf = buf.slice(i + 1);
+      replies.set(m.id, m);
+      waiting.get(m.id)?.(m);
+    }
+  });
+  for (const m of msgs) {
+    const answered = "id" in m && new Promise(resolve => waiting.set(m.id, resolve));
+    p.stdin.write(JSON.stringify(m) + "\n");
+    if (answered) await answered;
+    if (replies.size >= want) break;
+  }
   p.kill();
   return replies;
 }
@@ -141,6 +153,20 @@ test("Vyre on PATH, vyred up: the copied plugin's hooks and MCP server reach it"
   assert.equal(JSON.parse(replies.get(3).result.content[0].text).text, "hello");
 });
 
+// The registry's own floor refuses harness.rules when the call it describes reaches into the vault
+// (its input holds the path). That refusal is the floor's verdict, so the hook denies too.
+test("Vyre on PATH, vyred up: a Read or a cat into the vault is denied, not waved through", async t => {
+  const { cache, env } = install(t, { withVyre: true });
+  const root = tempHome(t);
+  const d = await start({ root, log: () => {} });
+  t.after(() => d.stop());
+  const e = { ...env, VYRE_HOME: root };
+  for (const [tool_name, tool_input] of [["Read", { file_path: path.join(root, "vault", "x") }], ["Bash", { command: `cat ${path.join(root, "vault", "x")}` }]]) {
+    const r = await hook(cache, "rules", { session_id: "s1", cwd: "/tmp", tool_name, tool_input, tool_use_id: "toolu_1" }, e);
+    assert.equal(r.out ? JSON.parse(r.out).hookSpecificOutput.permissionDecision : "(none)", "deny", tool_name);
+  }
+});
+
 test("no Vyre: the MCP server connects with no tools and says how to install", async t => {
   const { cache, env } = install(t);
   const replies = await mcp(path.join(cache, "mcp", "run.js"), { ...env, VYRE_HOME: path.join(path.dirname(cache), "none") },
@@ -216,6 +242,33 @@ test(`planner: ${REAL_PLANNER ? "the planner's" : "a stand-in planner's"} tools 
   assert.deepEqual(out(7).map(x => x.title), ["buy flour"], "/vyre todo with no text lists the open todos");
   if (new Date(rem.at).toDateString() === new Date().toDateString() || !REAL_PLANNER) assert.ok(agenda.entries.some(e => e.title === "call Harlow Legal"), "today's reminder is on the agenda");
   assert.equal(replies.get(6).result.isError, true, "a reminder with no time is refused, and Claude sees it");
+});
+
+// /vyre remember, then a question, from the user's own Claude Code session (bare "mcp"), through
+// the copied plugin's MCP server. An agent's session is refused both.
+test("memory: the user's own session remembers a fact and is answered from it; an agent's session is refused", async t => {
+  const { cache, env } = install(t, { withVyre: true });
+  const root = tempHome(t);
+  const d = await start({ root, log: () => {} });
+  t.after(() => d.stop());
+  const call = (id, name, args) => ({ jsonrpc: "2.0", id, method: "tools/call", params: { name, arguments: args } });
+  const out = (replies, id) => { const r = replies.get(id).result; assert.ok(!r.isError, r.content[0].text); return JSON.parse(r.content[0].text); };
+  const own = await mcp(path.join(cache, "mcp", "run.js"), { ...env, VYRE_HOME: root }, [INIT, { jsonrpc: "2.0", id: 2, method: "tools/list", params: {} },
+    call(3, "memory_remember", { text: "My wife is Jordan." })], 3);
+  const names = own.get(2).result.tools.map(x => x.name);
+  for (const n of ["memory_remember", "memory_answer"]) assert.ok(names.includes(n), n);
+  assert.ok(out(own, 3).facts.length > 0, "the fact is kept at once");
+  // A fresh server, as the next question would be: the answer comes from vyred, not the process.
+  const ask = await mcp(path.join(cache, "mcp", "run.js"), { ...env, VYRE_HOME: root }, [INIT,
+    call(2, "memory_answer", { q: "who is my wife" }), call(3, "memory_answer", { q: "who is my wife", project_cwds: ["/home/alex/Work/harlow-site"] })], 3);
+  assert.equal(out(ask, 2).answer, "Your wife is Jordan.");
+  assert.equal(out(ask, 3).answer, "Your wife is Jordan.", "from inside a project folder too");
+  const agent = await mcp(path.join(cache, "mcp", "run.js"), { ...env, VYRE_HOME: root, VYRE_AGENT: "kit" }, [INIT,
+    call(2, "memory_remember", { text: "My brother is Max." }), call(3, "memory_answer", { q: "who is my wife" })], 3);
+  for (const id of [2, 3]) {
+    const r = agent.get(id);
+    assert.ok(r.error || r.result.isError, `an agent's session is refused: ${JSON.stringify(r).slice(0, 200)}`);
+  }
 });
 
 test("commands: /vyre covers todo, remind, agenda, remember and lesson", () => {

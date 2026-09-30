@@ -68,7 +68,7 @@ test("talk: the terminal path end to end, with the key saved through the CLI and
     const empty = await vyre(root, ["voice", "key"], "");
     assert.equal(empty.code, 1); assert.match(empty.out, /nothing stored/);
     const bad = await vyre(root, ["voice", "key", "whisper"], "x\n");
-    assert.equal(bad.code, 1); assert.match(bad.out, /usage/);
+    assert.equal(bad.code, 2, "a usage error exits 2 (EXIT.USAGE)"); assert.match(bad.out, /vyre voice key \[deepgram/);
   });
 
   await t.test("utterance: mic PCM streamed, partials heard, done with the words after stop", async () => {
@@ -121,5 +121,9 @@ test("talk: the terminal path end to end, with the key saved through the CLI and
     assert.match(text, /build\.sh/);
   });
 
-  assert.equal(/** @type {any} */ (d.registry.modules.get("voice")).handle.idle().streams, 0, "no stream left open");
+  // The server side of a stream closes when its socket's close reaches vyred, a moment after the
+  // client's: on a slow runner that is later than the last line above.
+  const voice = /** @type {any} */ (d.registry.modules.get("voice")).handle;
+  await until(() => voice.idle().streams === 0, "no stream left open");
+  assert.equal(voice.idle().streams, 0, "no stream left open");
 });

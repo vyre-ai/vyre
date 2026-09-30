@@ -29,7 +29,7 @@ function selfSigned(cn, days = 90) {
 }
 
 /** A world of fakes, and the service built on it. */
-function world(t, { tagged = false, owner = "alex@example.com", ips = ["127.0.0.1"], taken = false, agentOf = undefined } = {}) {
+function world(t, { tagged = false, owner = "alex@example.com", ips = ["127.0.0.1"], taken = false, agentOf = undefined, deviceOf = undefined, call = undefined } = {}) {
   const root = tempHome(t);
   const cfg = config.load(root);
   cfg.network.port = 0;
@@ -37,16 +37,19 @@ function world(t, { tagged = false, owner = "alex@example.com", ips = ["127.0.0.
   const ctx = {
     config: cfg, paths: config.ensure(root), log: () => {},
     events: { emit: (type, payload) => emitted.push({ type, payload }) },
-    handler: () => async (req, res, caller) => { calls.push(caller); res.writeHead(200, { "content-type": "application/json" }); res.end(JSON.stringify({ data: { caller } })); },
+    handler: () => async (req, res, caller, peer) => { calls.push(caller); if (peer && peer.origin) calls.push(`from ${peer.origin}`); res.writeHead(200, { "content-type": "application/json" }); res.end(JSON.stringify({ data: { caller } })); },
     // A stream router that answers every upgrade it is handed, saying who the caller was.
     upgrader: () => (req, socket, head, caller) => { calls.push(`stream ${caller}`); socket.end(`HTTP/1.1 101 Switching Protocols\r\nx-caller: ${caller}\r\n\r\n`); },
+    ...(call ? { call } : {}),
   };
   fs.mkdirSync(ctx.paths.certs, { recursive: true });
   const ts = {
     status: async () => ({ installed: true, running: true, backend: "Running", loginUrl: null, tun: true, why: null,
       node: { name: "box", dnsName: "box.example.ts.net", ips, stableId: "n1", tagged }, owner: tagged ? null : owner, certDomains: ["box.example.ts.net"] }),
     whois: async ip => ({ "100.101.1.2": { login: "alex@example.com", tagged: false, node: "phone" }, "100.101.1.3": { login: "sam@example.com", tagged: false, node: "laptop" },
-      "100.101.3.1": { login: null, tagged: true, node: "kit", stableId: "nKIT", tags: ["tag:vyre-agent"], caps: {} } })[ip] || null,
+      "100.101.3.1": { login: null, tagged: true, node: "kit", stableId: "nKIT", tags: ["tag:vyre-agent"], caps: {} },
+      "100.101.4.1": { login: null, tagged: true, node: "alex-desktop", stableId: "nDESK1", tags: ["tag:vyre-device"], caps: {} },
+      "100.101.4.2": { login: null, tagged: true, node: "new-desktop", stableId: "nDESK2", tags: ["tag:vyre-device"], caps: {} } })[ip] || null,
     up: async () => ({ loginUrl: "https://login.tailscale.com/a/x" }),
     cert: async (host, crt, key) => { const c = selfSigned(host); fs.writeFileSync(crt, c.cert); fs.writeFileSync(key, c.key); },
     operator: async () => ({ ok: true, fix: null }),
@@ -60,7 +63,7 @@ function world(t, { tagged = false, owner = "alex@example.com", ips = ["127.0.0.
     set: async () => "txt", clear: async () => {},
   };
   let issued = 0;
-  const deps = { ctx, ts, certs, ...(agentOf ? { agentOf } : {}), save: p => config.save(p, root, cfg), dns: async () => dns,
+  const deps = { ctx, ts, certs, ...(agentOf ? { agentOf } : {}), ...(deviceOf ? { deviceOf } : {}), save: p => config.save(p, root, cfg), dns: async () => dns,
     issue: async ({ names: list }) => { issued++; return selfSigned(list[0]); } };
   const svc = names(deps);
   t.after(() => svc.close());
@@ -228,6 +231,32 @@ test("names: the owner's browser cannot be made to call a tool from another site
   assert.equal(wrongHost.status, 421);
 });
 
+test("names: whoami answers the owner and a guest minimally, refuses an agent node, and rate-limits", async t => {
+  const w = world(t, { agentOf: async id => (id === "nKIT" ? "kit" : null) });
+  w.cfg.name = "alex";
+  w.ctx.config.computers = { tailnet: { enabled: true, tag: "tag:vyre-agent" } };
+  w.ctx.config.network.guests = { enabled: true, people: { "sam@example.com": { tools: [] } } };
+  await w.svc.tailscale();
+
+  const owner = fakeRes();
+  await w.svc.onRequest(fakeReq("100.101.1.2", "/v1/whoami"), owner);
+  assert.equal(owner.status, 200);
+  assert.deepEqual(JSON.parse(owner.body).data, { kind: "owner", name: "alex" });
+
+  const guest = fakeRes();
+  await w.svc.onRequest(fakeReq("100.101.1.3", "/v1/whoami", "GET", { "tailscale-user-login": "sam@example.com" }), guest);
+  assert.equal(guest.status, 200);
+  assert.deepEqual(JSON.parse(guest.body).data, { kind: "guest", name: null }, "a guest learns it is a guest, never the box's own name");
+
+  const agent = fakeRes();
+  await w.svc.onRequest(fakeReq("100.101.3.1", "/v1/whoami"), agent);
+  assert.equal(agent.status, 403, "an agent's node has no join flow of its own");
+
+  let last;
+  for (let i = 0; i < 11; i++) { last = fakeRes(); await w.svc.onRequest(fakeReq("100.101.1.2", "/v1/whoami"), last); }
+  assert.equal(last.status, 429, "an 11th call in the same minute is rate-limited");
+});
+
 test("names: whois naming this very node is refused even when the address list is stale", async () => {
   const { identifier } = await import("./identity.js");
   const id = identifier({ whois: async () => ({ login: "alex@example.com", tagged: false, node: "box", stableId: "nSELF" }),
@@ -279,11 +308,110 @@ test("names: the owner's WebSockets reach vyred's streams as the owner; nobody e
   assert.equal(await up("100.101.1.2", { host: "evil.example" }), "HTTP/1.1 421 Misdirected Request", "another host name");
   assert.equal(await up("100.101.1.3", { origin: `https://${host}` }), "HTTP/1.1 403 Forbidden", "someone else on the tailnet");
   assert.equal(await up("100.101.9.9", {}), "HTTP/1.1 403 Forbidden", "an address whois does not know");
-  // Streams are the owner's alone: a guest gets none, even one listed for Glass, and nor does an
-  // agent's node, though both are callers the listener knows.
-  w.cfg.network.guests = { enabled: true, people: { "sam@example.com": { tools: ["glass.open"] } } };
-  assert.equal(await up("100.101.1.3", { origin: `https://${host}` }), "HTTP/1.1 403 Forbidden", "a guest listed for Glass");
+  // Streams are the owner's alone: a listed guest gets none, and nor does an agent's node, though
+  // both are callers the listener knows.
+  w.cfg.network.guests = { enabled: true, people: { "sam@example.com": { tools: ["threads.list"] } } };
+  assert.equal(await up("100.101.1.3", { origin: `https://${host}` }), "HTTP/1.1 403 Forbidden", "a listed guest");
   assert.equal(await up("100.101.3.1", {}), "HTTP/1.1 403 Forbidden", "an agent's node");
   assert.deepEqual(w.calls.filter(c => c.startsWith("stream")),
     ["stream tailnet:alex@example.com", "stream tailnet:alex@example.com"]);
+});
+
+test("names: the hosted app's origin gets CORS for the owner, and its calls reach the router marked with it", async t => {
+  const w = world(t);
+  w.cfg.name = "alex";
+  w.cfg.network.guests = { enabled: true, people: { "sam@example.com": { tools: ["threads.list"] } } };
+  await w.svc.tailscale();
+  const app = "https://app.vyre.run";
+  const send = async (ip, url, method, headers) => { const r = fakeRes(); await w.svc.onRequest(fakeReq(ip, url, method, headers), r); return r; };
+  // The preflight: exact origin, the allowed methods and headers, and Chrome's private-network ask.
+  const pre = await send("100.101.1.2", "/v1/tools/threads.list", "OPTIONS", { origin: app, "access-control-request-method": "POST",
+    "access-control-request-headers": "content-type, authorization, x-vyre-proof, x-vyre-presence, idempotency-key, last-event-id", "access-control-request-private-network": "true" });
+  assert.equal(pre.status, 204);
+  assert.equal(pre.headers["access-control-allow-origin"], app);
+  assert.equal(pre.headers["access-control-allow-private-network"], "true");
+  assert.equal(pre.headers.vary, "Origin");
+  assert.equal(pre.headers["access-control-allow-credentials"], undefined, "no cookies, ever");
+  assert.equal((await send("100.101.1.2", "/v1/tools/x", "OPTIONS", { origin: app, "access-control-request-method": "DELETE" })).status, 403, "a method it never needs");
+  for (const h of ["x-vyre-caller", "x-vyre-session"]) {
+    assert.equal((await send("100.101.1.2", "/v1/tools/x", "OPTIONS", { origin: app, "access-control-request-method": "POST", "access-control-request-headers": h })).status, 403, h);
+  }
+  // The probe answers without vyred, and says nothing but that the box is reachable.
+  const probe = await send("100.101.1.2", "/v1/health", "GET", { origin: app });
+  assert.deepEqual([probe.status, JSON.parse(probe.body)], [200, { data: { reachable: true } }]);
+  // A call reaches the router with the origin beside the caller (the router wants the session).
+  const json = { origin: app, "content-type": "application/json" };
+  const r = await send("100.101.1.2", "/v1/tools/threads.list", "POST", json);
+  assert.deepEqual([r.status, r.headers["access-control-allow-origin"]], [200, app]);
+  assert.deepEqual(w.calls, ["tailnet:alex@example.com", "from https://app.vyre.run"]);
+  assert.equal((await send("100.101.1.2", "/v1/tools/threads.list", "POST", { origin: app, "content-type": "text/plain" })).status, 403, "still JSON only");
+  // A guest or an agent's node from the same origin gets no CORS at all.
+  const guest = await send("100.101.1.3", "/v1/tools/threads.list", "POST", json);
+  assert.deepEqual([guest.status, guest.headers["access-control-allow-origin"]], [403, undefined]);
+  const guestPre = await send("100.101.1.3", "/v1/tools/threads.list", "OPTIONS", { origin: app, "access-control-request-method": "POST" });
+  assert.deepEqual([guestPre.status, guestPre.headers["access-control-allow-origin"]], [403, undefined]);
+  // Another site, or the hosted origin once the owner empties the list, is refused as before.
+  assert.equal((await send("100.101.1.2", "/v1/tools/threads.list", "POST", { ...json, origin: "https://app.vyre.run.evil.example" })).status, 403);
+  w.cfg.network.origins = [];
+  assert.equal((await send("100.101.1.2", "/v1/tools/threads.list", "POST", json)).status, 403);
+  assert.equal(w.calls.length, 2);
+});
+
+test("names: a WebSocket from the hosted app is the owner's, like any other", async t => {
+  const w = world(t);
+  w.cfg.name = "alex";
+  await w.svc.tailscale();
+  const up = async (ip, headers) => {
+    let out = "";
+    const socket = { on() {}, end(x) { out = String(x); }, destroy() {} };
+    await w.svc.onUpgrade({ url: "/v1/streams/computers/glass?ticket=x", headers: { host: "alex.vyre.run:0", ...headers }, socket: { remoteAddress: ip } }, socket, Buffer.alloc(0));
+    return out.split("\r\n")[0];
+  };
+  assert.equal(await up("100.101.1.2", { origin: "https://app.vyre.run" }), "HTTP/1.1 101 Switching Protocols");
+  assert.equal(await up("100.101.1.3", { origin: "https://app.vyre.run" }), "HTTP/1.1 403 Forbidden", "not the owner");
+  w.cfg.network.origins = [];
+  assert.equal(await up("100.101.1.2", { origin: "https://app.vyre.run" }), "HTTP/1.1 403 Forbidden", "the list emptied");
+});
+
+test("names: a tag:vyre-device node is its bound paired desktop, device:<id>; unbound, it may only present a bind code (ADR 0046)", async t => {
+  /** @type {any[]} */
+  const binds = [];
+  const w = world(t, {
+    deviceOf: async id => (id === "nDESK1" ? "abcdefghijklmnop" : null),
+    call: async (tool, input) => { binds.push({ tool, input }); return input.code === "good" ? { data: { device: input.device, node: input.stableId } } : { error: { code: "denied", message: "that bind code has expired or was already used" } }; },
+  });
+  w.cfg.name = "alex";
+  await w.svc.tailscale();
+
+  const bound = fakeRes();
+  await w.svc.onRequest(fakeReq("100.101.4.1", "/v1/health"), bound);
+  assert.equal(bound.status, 200);
+  assert.equal(JSON.parse(bound.body).data.caller, "device:abcdefghijklmnop", "never tailnet:<owner>, and never a caller made from the tag");
+
+  const unbound = fakeRes();
+  await w.svc.onRequest(fakeReq("100.101.4.2", "/v1/health"), unbound);
+  assert.equal(unbound.status, 403, "an unbound device node reaches nothing but the bind");
+
+  /** A POST with a JSON body the listener reads as a stream. */
+  const post = (ip, body, headers = { "content-type": "application/json" }) => Object.assign(fakeReq(ip, "/v1/tailnet/bind", "POST", headers), {
+    async *[Symbol.asyncIterator]() { yield Buffer.from(JSON.stringify(body)); },
+  });
+  const ok = fakeRes();
+  await w.svc.onRequest(post("100.101.4.2", { device: "qrstuvwxyzabcdef", code: "good", stableId: "nDESK1" }), ok);
+  assert.equal(ok.status, 200);
+  assert.deepEqual(binds.at(-1), { tool: "relay.devices.bind", input: { stableId: "nDESK2", node: "new-desktop", device: "qrstuvwxyzabcdef", code: "good" } },
+    "the node id is whois's own, never the one in the body");
+
+  const bad = fakeRes();
+  await w.svc.onRequest(post("100.101.4.2", { device: "qrstuvwxyzabcdef", code: "bad" }), bad);
+  assert.equal(bad.status, 403);
+
+  const plain = fakeRes();
+  await w.svc.onRequest(post("100.101.4.2", { device: "qrstuvwxyzabcdef", code: "good" }, { "content-type": "text/plain" }), plain);
+  assert.equal(plain.status, 403, "a bind must be JSON, like every other POST");
+
+  const agent = fakeRes();
+  await w.svc.onRequest(post("100.101.3.1", { device: "qrstuvwxyzabcdef", code: "good" }), agent);
+  assert.equal(agent.status, 403, "only a tag:vyre-device node may present a bind code");
+  assert.equal(binds.length, 2, "neither refused request reached the relay");
 });

@@ -237,6 +237,8 @@ const LOOKAHEAD = 20000;
 
 const REMINDER = /<system-reminder>[\s\S]*?<\/system-reminder>/g;
 const COMMAND = /^\s*<(command-name|command-message|command-args|local-command-stdout|local-command-stderr)>/;
+/** Claude Code's own line when a turn is stopped: never the person steering. */
+const INTERRUPTED = /^\[Request interrupted by user/;
 
 /**
  * Redact, then cap. Slicing a little past the cap first keeps a runaway string cheap to redact,
@@ -279,6 +281,57 @@ function resultText(/** @type {any} */ c) {
   return c.map(p => (p && p.type === "text" ? String(p.text ?? "") : p && p.type === "image" ? "[image]" : "")).filter(Boolean).join("\n");
 }
 
+/** Only these decode reliably everywhere a picture might render (core/switchboard's own list, kept
+ * in step by hand: transcripts never imports another module per docs/SPEC.md principle 1). */
+const IMAGE_MEDIA_TYPES = new Set(["image/png", "image/jpeg", "image/gif", "image/webp"]);
+/** Strict base64 (RFC 4648), no whitespace: a surface builds a `data:` URL straight from this
+ * (CSS url(), a string template), so anything that isn't clean base64 is dropped rather than
+ * risking a break-out of that context. */
+const BASE64_RE = /^[A-Za-z0-9+/]+={0,2}$/;
+/** One image's own ceiling. Base64 length stands in for bytes (data.length * 3/4 ~= decoded size)
+ * so this never has to decode a picture just to measure it. */
+const IMAGE_BYTES_CAP = 2 * 1024 * 1024;
+/** No block carries more pictures than this, however many came with it. */
+const IMAGES_PER_BLOCK = 4;
+/** A block's pictures together stay under this even when each is under IMAGE_BYTES_CAP (four just
+ * under the per-image cap would otherwise be 8 MB of one block). */
+const IMAGES_BYTES_CAP = 6 * 1024 * 1024;
+/** The whole response's pictures together stay under this: a page of `limit` blocks could
+ * otherwise carry IMAGES_BYTES_CAP each, and a Mac read goes back over the link (askMacs) - one
+ * image-heavy page must not become hundreds of MB. Once spent, later blocks in the same read carry
+ * no images at all (same "[image]" text as always); a surface can still fetch one later by seq. */
+const RESPONSE_BYTES_CAP = 12 * 1024 * 1024;
+
+/**
+ * The pictures in a content-parts array (`{type:"image", source:{type:"base64", media_type,
+ * data}}`), within every cap above, including the read's own shared byte budget (`budget.left`,
+ * spent here and never refunded). Never removes or changes a block's existing text: a picture
+ * dropped for being over a cap still reads "[image]" in the text, exactly as before this existed -
+ * this only ever adds `images` alongside it (cohesion item 18).
+ * @param {any[]} parts @param {{ left: number }} budget the read's remaining RESPONSE_BYTES_CAP
+ * @returns {{ media_type: string, data: string }[]}
+ */
+function imagesFrom(parts, budget) {
+  if (!Array.isArray(parts)) return [];
+  const out = [];
+  let bytes = 0;
+  for (const p of parts) {
+    if (out.length >= IMAGES_PER_BLOCK) break;
+    if (!p || p.type !== "image") continue;
+    const src = p.source;
+    if (!src || src.type !== "base64" || typeof src.data !== "string" || !src.data) continue;
+    if (!BASE64_RE.test(src.data)) continue;
+    const media_type = String(src.media_type || "");
+    if (!IMAGE_MEDIA_TYPES.has(media_type)) continue;
+    const size = Math.floor(src.data.length * 3 / 4);
+    if (size > IMAGE_BYTES_CAP || bytes + size > IMAGES_BYTES_CAP || size > budget.left) continue;
+    bytes += size;
+    budget.left -= size;
+    out.push({ media_type, data: src.data });
+  }
+  return out;
+}
+
 /** An Edit's structured patch, redacted and capped: hunks with their lines. */
 function cleanPatch(/** @type {any} */ p) {
   if (!Array.isArray(p) || !p.length) return undefined;
@@ -299,9 +352,18 @@ function cleanPatch(/** @type {any} */ p) {
 }
 
 /**
- * @typedef {{ seq: number, kind: "user", ts: number, text: string, command?: true }
- *   | { seq: number, kind: "text", ts: number, message: string|null, text: string }
- *   | { seq: number, kind: "thinking", ts: number, text: string }
+ * `block` on text and thinking is the content block's index within its message, counted across
+ * every line that shares message.id (Claude Code writes one block per line), so it equals the
+ * index the live stream gives and the Deck can swap a live row for its block in place. `uuid` on
+ * a person's line is the transcript line's own.
+ *
+ * A person's line inside an open turn (the model has called a tool and not yet finished its
+ * reply) is a steer: words typed while it worked, which joined the turn at its next step. It is
+ * `steered: true, step: <tool calls finished in the turn before it>`, it does not start a turn,
+ * and the Deck marks it "Steered at step N" as it did live.
+ * @typedef {{ seq: number, kind: "user", ts: number, text: string, command?: true, uuid?: string, steered?: true, step?: number }
+ *   | { seq: number, kind: "text", ts: number, message: string|null, block?: number, text: string }
+ *   | { seq: number, kind: "thinking", ts: number, block?: number, text: string }
  *   | { seq: number, kind: "tool", ts: number, id: string, tool: string, input: any, output: string|null,
  *       error: boolean, done_ts: number|null, duration_ms: number|null, patch?: any }
  *   | { seq: number, kind: "turn", ts: number, duration_ms: number, tokens: { input: number, output: number },
@@ -318,11 +380,19 @@ class Reader {
     /** @type {Map<string, any>} tool blocks waiting for their result, by tool_use id */
     this.pending = new Map();
     this.turn = this.fresh(null, 0);
+    /** @type {Map<string, number>} content blocks seen so far, by message id */
+    this.counts = new Map();
+    /** @type {((id: string) => number) | null} blocks a message had before the window, while none of its lines may be missed */
+    this.before = null;
+    /** This read's own shared picture-byte budget (RESPONSE_BYTES_CAP), spent across every block. */
+    this.imageBudget = { left: RESPONSE_BYTES_CAP };
   }
 
   /** @param {number|null} seq the human line that starts it (null: it started before the window) @param {number} ts */
   fresh(seq, ts) {
-    return { seq, ts, first: 0, last: 0, lastSeq: -1, any: false, zero: false, model: /** @type {string|null} */ (null), usage: new Map() };
+    return { seq, ts, first: 0, last: 0, lastSeq: -1, any: false, zero: false, model: /** @type {string|null} */ (null), usage: new Map(),
+      // Steering: whether the model's last word was a tool call (so the turn goes on), and how many calls have finished.
+      calling: false, steps: 0 };
   }
 
   /**
@@ -373,14 +443,43 @@ class Reader {
     }
     const text = texts.join("\n").replace(REMINDER, "").trim();
     if (!text) return null;
+    if (this.steers(text)) {
+      if (only) return null;
+      /** @type {any} */
+      const b = { seq, kind: "user", ts, text: clean(text, TEXT_CAP), steered: true, step: this.turn.steps };
+      if (typeof o.uuid === "string" && o.uuid) b.uuid = o.uuid;
+      const imgs = imagesFrom(parts, this.imageBudget);
+      if (imgs.length) b.images = imgs;
+      this.before = null;
+      this.blocks.push(b);
+      return null;
+    }
     if (only) return "human";
     this.closeTurn(seq, false);
     /** @type {any} */
     const b = { seq, kind: "user", ts, text: clean(text, TEXT_CAP) };
     if (COMMAND.test(text)) b.command = true;
+    if (typeof o.uuid === "string" && o.uuid) b.uuid = o.uuid;
+    const imgs = imagesFrom(parts, this.imageBudget);
+    if (imgs.length) b.images = imgs;
+    // A person spoke inside the window, so every message from here on starts inside it too.
+    this.before = null;
     this.blocks.push(b);
     this.turn = this.fresh(seq, ts);
     return "human";
+  }
+
+  /**
+   * Is a person's line with this text a steer? Only inside a turn this read holds, while a tool
+   * call is outstanding or the model's last word was one. A command or Claude Code's own
+   * "[Request interrupted by user]" line never is.
+   * @param {string} text
+   */
+  steers(text) {
+    const t = this.turn;
+    if (!t.any || (t.seq === null && !t.zero)) return false;
+    if (COMMAND.test(text) || INTERRUPTED.test(text)) return false;
+    return t.calling || [...this.pending.values()].some(b => b.seq >= (t.seq ?? 0));
   }
 
   /** @param {any} p @param {any} o @param {number} ts */
@@ -388,12 +487,16 @@ class Reader {
     const b = this.pending.get(p.tool_use_id);
     if (!b) return;
     this.pending.delete(p.tool_use_id);
+    this.turn.steps++;
     b.output = clean(resultText(p.content), BLOCK_CAP);
     b.error = p.is_error === true;
     b.done_ts = ts || null;
     b.duration_ms = ts && b.ts ? Math.max(0, ts - b.ts) : null;
     const patch = o.toolUseResult && typeof o.toolUseResult === "object" ? cleanPatch(o.toolUseResult.structuredPatch) : undefined;
     if (patch) b.patch = patch;
+    // A tool's own picture (a screenshot, a Canva render): cohesion item 18's "agent-made image".
+    const imgs = imagesFrom(Array.isArray(p.content) ? p.content : [], this.imageBudget);
+    if (imgs.length) b.images = imgs;
   }
 
   /** @param {any} m @param {number} seq @param {number} ts @param {boolean} only */
@@ -405,20 +508,38 @@ class Reader {
     if (typeof m.model === "string" && m.model && !m.model.startsWith("<")) t.model = m.model;
     // Every line of one reply repeats its usage, and the last one has the final output count.
     if (m.usage && typeof m.usage === "object") t.usage.set(m.id || `line:${seq}`, m.usage);
-    if (only) return null;
     const c = m.content;
     const parts = typeof c === "string" ? [{ type: "text", text: c }] : Array.isArray(c) ? c : [];
-    /** @type {any} */
-    let prev = null;
+    // The turn goes on while the model's last word is a tool call; text or thinking after one may be its end.
     for (const p of parts) {
       if (!p || typeof p !== "object") continue;
+      if (p.type === "tool_use") t.calling = true;
+      else if ((p.type === "text" && typeof p.text === "string" && p.text.trim()) || p.type === "thinking") t.calling = false;
+    }
+    if (only) return null;
+    // The API's content block index: every block of the message counts, whatever its type, and
+    // the lines of one message each carry the next of its blocks.
+    const key = typeof m.id === "string" && m.id ? m.id : null;
+    let index = 0;
+    if (key) {
+      if (this.counts.has(key)) index = /** @type {number} */ (this.counts.get(key));
+      // Only the window's first message can have begun before it: one message's lines are
+      // written together, so any later message starts inside the window.
+      else if (this.before) { index = this.before(key); this.before = null; }
+      this.counts.set(key, index + parts.length);
+    }
+    /** @type {any} */
+    let prev = null;
+    for (const [i, p] of parts.entries()) {
+      if (!p || typeof p !== "object") continue;
+      const block = key ? index + i : i;
       if (p.type === "text" && typeof p.text === "string" && p.text.trim()) {
         if (prev && prev.kind === "text") { prev.raw += "\n" + p.text; continue; }
-        prev = { seq, kind: "text", ts, message: m.id ?? null, raw: p.text };
+        prev = { seq, kind: "text", ts, message: m.id ?? null, block, raw: p.text };
         this.blocks.push(prev);
       } else if (p.type === "thinking" && typeof p.thinking === "string" && p.thinking.trim()) {
         if (prev && prev.kind === "thinking") { prev.raw += "\n" + p.thinking; continue; }
-        prev = { seq, kind: "thinking", ts, raw: p.thinking };
+        prev = { seq, kind: "thinking", ts, block, raw: p.thinking };
         this.blocks.push(prev);
       } else if (p.type === "tool_use" && typeof p.id === "string") {
         const tool = String(p.name || "tool");
@@ -471,14 +592,95 @@ function lineCount(/** @type {Buffer} */ buf) {
 }
 
 /**
- * Read lines [fromLine, toLine) starting at byte `at`, then read on past toLine for the results
- * and the close of what the window opened.
- * @param {Buffer} buf @param {number} at @param {number} fromLine @param {number} toLine @param {number} limit
+ * How many content blocks message `id` had in the lines just before byte `at`: walk back over its
+ * lines (and anything else between them) until another message, a person's line or LOOKAHEAD
+ * lines.
+ * @param {Buffer} buf @param {number} at @param {string} id
  */
-function scan(buf, at, fromLine, toLine, limit) {
+function blocksBefore(buf, at, id) {
+  let n = 0, end = at - 1, seen = 0;
+  while (end > 0 && seen < LOOKAHEAD) {
+    const start = buf.lastIndexOf(0x0a, end - 1) + 1;
+    const o = parse(buf, start, end);
+    end = start - 1; seen++;
+    if (!o || typeof o !== "object" || o.isSidechain === true || o.parent_tool_use_id) continue;
+    const m = o.message;
+    if (!m || typeof m !== "object") continue;
+    if (o.type === "assistant") {
+      if (m.id !== id) break;                                         // an earlier message: this one started after it
+      n += typeof m.content === "string" ? 1 : Array.isArray(m.content) ? m.content.length : 0;
+      continue;
+    }
+    if (o.type === "user" && !o.isMeta) {
+      const c = m.content;
+      if (typeof c === "string" || (Array.isArray(c) && c.some(p => p && p.type === "text"))) break;
+    }
+  }
+  return n;
+}
+
+const PARENT = Buffer.from('{"parentUuid":"');
+
+/**
+ * Lines a rewind left behind. A rewind (a double Esc in Claude Code, threads.rewind in Vyre)
+ * resumes the session from a message's parent, so the next message the person sends is a second
+ * child of that parent, and everything from the first child up to it is a branch the session no
+ * longer follows. Such a branch is found as two person's lines (text, not a tool result, not meta,
+ * not a sidechain) with the same parentUuid: the lines from the earlier to the later are skipped.
+ * Only the line's start is looked at for the parent (Claude Code writes parentUuid first); only
+ * the few lines that share a parent are parsed. A rewind nothing has been sent after yet is not a
+ * branch in the file: the Deck skips it from the thread.rewound event until then.
+ * @param {Buffer} buf @returns {(line: number) => boolean}
+ */
+function abandonedLines(buf) {
+  /** @type {Map<string, number[]>} */
+  const kids = new Map();
+  let pos = 0, line = 0, twins = false;
+  while (pos < buf.length) {
+    let end = buf.indexOf(0x0a, pos);
+    if (end < 0) end = buf.length;
+    if (end - pos > PARENT.length + 36 && buf.compare(PARENT, 0, PARENT.length, pos, pos + PARENT.length) === 0) {
+      const parent = buf.toString("latin1", pos + PARENT.length, pos + PARENT.length + 36);
+      const list = kids.get(parent);
+      if (list) { list.push(line); twins = true; } else kids.set(parent, [line]);
+    }
+    pos = end + 1; line++;
+  }
+  if (!twins) return () => false;
+  /** @param {number} n */
+  const person = n => {
+    const at = lineStart(buf, n);
+    let end = buf.indexOf(0x0a, at);
+    if (end < 0) end = buf.length;
+    const o = parse(buf, at, end);
+    if (!o || o.type !== "user" || o.isMeta || o.isSidechain === true || o.parent_tool_use_id) return false;
+    const c = o.message && o.message.content;
+    return typeof c === "string" || (Array.isArray(c) && c.some(p => p && p.type === "text") && !c.some(p => p && p.type === "tool_result"));
+  };
+  /** @type {[number, number][]} */
+  const ranges = [];
+  for (const list of kids.values()) {
+    if (list.length < 2) continue;
+    const people = list.filter(person);
+    for (let i = 1; i < people.length; i++) ranges.push([people[i - 1], people[i]]);
+  }
+  if (!ranges.length) return () => false;
+  return n => ranges.some(([a, b]) => n >= a && n < b);
+}
+
+/**
+ * Read lines [fromLine, toLine) starting at byte `at`, then read on past toLine for the results
+ * and the close of what the window opened. Lines on a branch a rewind left are skipped.
+ * @param {Buffer} buf @param {number} at @param {number} fromLine @param {number} toLine @param {number} limit
+ * @param {(line: number) => boolean} [dead] the lines to skip (abandonedLines), when the caller has them
+ */
+function scan(buf, at, fromLine, toLine, limit, dead = abandonedLines(buf)) {
   const r = new Reader();
   // A read from the top of the file owns the turn it starts in, human line or not.
   if (fromLine === 0) r.turn.zero = true;
+  // A window that starts inside a message counts the blocks its earlier lines held, so the index
+  // does not depend on where the read began.
+  else r.before = id => blocksBefore(buf, at, id);
   let seq = fromLine, pos = at, truncated = false, torn = -1;
   while (pos < buf.length && seq < toLine) {
     if (r.blocks.length >= limit) { truncated = true; break; }
@@ -488,7 +690,7 @@ function scan(buf, at, fromLine, toLine, limit) {
     const o = parse(buf, pos, end);
     // A live session's last line is often half written: not read, so the next read starts there.
     if (o === undefined && last) { torn = seq; break; }
-    if (o) r.line(o, seq);
+    if (o && !dead(seq)) r.line(o, seq);
     pos = end + 1; seq++;
   }
   const stop = seq;
@@ -502,7 +704,7 @@ function scan(buf, at, fromLine, toLine, limit) {
       if (last) end = buf.length;
       const o = parse(buf, pos, end);
       if (o === undefined && last) break;
-      if (o && r.line(o, s, true) === "human") {
+      if (o && !dead(s) && r.line(o, s, true) === "human") {
         r.closeTurn(s, false);
         r.turn = r.fresh(s, 0);
         break;
@@ -539,7 +741,7 @@ export function blocks(file, { from, limit = 400, before } = {}) {
 
   if (from !== undefined) {
     from = Math.max(0, Math.floor(Number(from) || 0));
-    const { r, stop, truncated, eof } = scan(buf, lineStart(buf, from), from, Infinity, limit);
+    const { r, stop, truncated, eof } = scan(buf, lineStart(buf, from), from, Infinity, limit, abandonedLines(buf));
     return out(r.blocks, nextOf(r, from, stop, truncated, eof));
   }
 
@@ -548,6 +750,7 @@ export function blocks(file, { from, limit = 400, before } = {}) {
   const end = before === undefined ? total : Math.max(0, Math.min(total, Math.floor(Number(before) || 0)));
   const endAt = before === undefined ? buf.length : lineStart(buf, end);
   let back = limit * 2;
+  const dead = abandonedLines(buf);
   for (;;) {
     let at = endAt, n = 0;
     while (n < back && at > 0) {
@@ -565,7 +768,7 @@ export function blocks(file, { from, limit = 400, before } = {}) {
       at = nl + 1; n++;
     }
     const startLine = end - n;
-    const { r, stop, truncated, eof } = scan(buf, at, startLine, end, Number.MAX_SAFE_INTEGER);
+    const { r, stop, truncated, eof } = scan(buf, at, startLine, end, Number.MAX_SAFE_INTEGER, dead);
     if (r.blocks.length >= limit || startLine === 0) {
       const bs = r.blocks.slice(-limit);
       return out(bs, before === undefined ? nextOf(r, startLine, stop, truncated, eof) : end);

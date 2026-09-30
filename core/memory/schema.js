@@ -182,4 +182,69 @@ export const MIGRATIONS = [
   CREATE INDEX memory_aliases_alias ON memory_aliases (room, alias);
   INSERT OR REPLACE INTO memory_meta (k, v) VALUES ('rederive', 1);
   `,
+  `
+  -- Personal facts (docs/work/memory-iq.md): what the user's own turns say about them and the
+  -- people and things in their life. Claims are per turn; everything below them is derived.
+  CREATE TABLE memory_me_claims (
+    session TEXT NOT NULL, seq INTEGER NOT NULL, ts INTEGER NOT NULL DEFAULT 0,
+    subj TEXT NOT NULL, rel TEXT NOT NULL, obj TEXT NOT NULL,
+    conf REAL NOT NULL, method TEXT NOT NULL,   -- rule | indirect | assistant | model
+    PRIMARY KEY (session, seq, subj, rel, obj)
+  ) WITHOUT ROWID;
+  -- How far each session has been read, and who "she" meant at that point (JSON), so a session
+  -- that grows by one turn carries its focus into it.
+  CREATE TABLE memory_me_cursor (session TEXT PRIMARY KEY, upto INTEGER NOT NULL, at INTEGER NOT NULL, focus TEXT);
+  CREATE TABLE memory_me_entities (id TEXT PRIMARY KEY, kind TEXT NOT NULL, label TEXT NOT NULL, first_seen INTEGER, last_seen INTEGER);
+  CREATE TABLE memory_me_aliases (alias TEXT NOT NULL, entity TEXT NOT NULL, PRIMARY KEY (alias, entity)) WITHOUT ROWID;
+  CREATE TABLE memory_me_facts (
+    id TEXT PRIMARY KEY, subj TEXT NOT NULL, rel TEXT NOT NULL, obj TEXT NOT NULL, obj_label TEXT NOT NULL,
+    confidence REAL NOT NULL, first_seen INTEGER, last_seen INTEGER,
+    mentions INTEGER NOT NULL, sessions INTEGER NOT NULL, current INTEGER NOT NULL
+  );
+  CREATE INDEX memory_me_facts_subj ON memory_me_facts (subj, rel);
+  CREATE INDEX memory_me_facts_obj ON memory_me_facts (obj);
+  CREATE TABLE memory_me_evidence (fact TEXT NOT NULL, session TEXT NOT NULL, seq INTEGER NOT NULL, PRIMARY KEY (fact, session, seq)) WITHOUT ROWID;
+  -- The model pass's spend per day, for its daily cap.
+  CREATE TABLE memory_me_budget (day TEXT PRIMARY KEY, usd REAL NOT NULL DEFAULT 0, calls INTEGER NOT NULL DEFAULT 0);
+  -- Sentences with a personal cue that no rule understood: the model pass's candidates.
+  CREATE TABLE memory_me_cues (session TEXT NOT NULL, seq INTEGER NOT NULL, ts INTEGER NOT NULL DEFAULT 0, text TEXT NOT NULL, PRIMARY KEY (session, seq, text)) WITHOUT ROWID;
+  `,
+  // The model pass (personal/model.js): its runs, and the cues it has read, kept apart from the cues so a full re-read never pays for them twice.
+  `CREATE TABLE memory_me_model (id INTEGER PRIMARY KEY, thread TEXT, started INTEGER NOT NULL, finished INTEGER, status TEXT NOT NULL, cues TEXT NOT NULL, facts INTEGER NOT NULL DEFAULT 0, result TEXT); CREATE TABLE memory_me_cues_done (session TEXT NOT NULL, seq INTEGER NOT NULL, text TEXT NOT NULL, at INTEGER NOT NULL, how TEXT NOT NULL, PRIMARY KEY (session, seq, text)) WITHOUT ROWID;`,
+  // What the person or their assistant told memory outright (memory.remember): read as session told:<id>.
+  `CREATE TABLE memory_me_told (id INTEGER PRIMARY KEY, ts INTEGER NOT NULL, text TEXT NOT NULL, room TEXT, who TEXT);`,
+  // The reader (personal/reader.js): user turns waiting for the fast model, and what it said about
+  // each text, kept by hash so no turn is paid for twice.
+  `CREATE TABLE memory_me_queue (session TEXT NOT NULL, seq INTEGER NOT NULL, ts INTEGER NOT NULL DEFAULT 0, hash TEXT NOT NULL, pri INTEGER NOT NULL DEFAULT 1, PRIMARY KEY (session, seq)) WITHOUT ROWID;
+  CREATE INDEX memory_me_queue_hash ON memory_me_queue (hash);
+  CREATE TABLE memory_me_reads (hash TEXT PRIMARY KEY, v INTEGER NOT NULL, at INTEGER NOT NULL, facts TEXT NOT NULL, usd REAL NOT NULL DEFAULT 0) WITHOUT ROWID;`,
+  // Source trust (personal/trust.js, ADR 0034): which sessions may teach personal facts. Claude's
+  // words no longer do, and every session is read again under the new rules.
+  `CREATE TABLE memory_me_trust (session TEXT PRIMARY KEY, ok INTEGER NOT NULL, why TEXT, dev INTEGER NOT NULL DEFAULT 0, v INTEGER NOT NULL) WITHOUT ROWID;
+  DELETE FROM memory_me_claims WHERE method NOT IN ('model', 'told');
+  DELETE FROM memory_me_cues; DELETE FROM memory_me_cursor;`,
+  // Vyre IQ (core/memory/iq/ask.js): the model's reply to each exact answer prompt, kept by its
+  // hash, so a question over the same passages is answered the same way and never paid twice.
+  `CREATE TABLE memory_iq_asks (hash TEXT PRIMARY KEY, v INTEGER NOT NULL, at INTEGER NOT NULL, reply TEXT NOT NULL, usd REAL NOT NULL DEFAULT 0) WITHOUT ROWID;`,
+  // Correcting IQ where it appears (core/memory/iq/fix.js): the answers given, by id, the person's
+  // fixes (their local log: never exported), and the personal facts a fix says are not true.
+  `CREATE TABLE memory_iq_answers (id TEXT PRIMARY KEY, at INTEGER NOT NULL, question TEXT NOT NULL, answer TEXT NOT NULL, via TEXT, facts TEXT NOT NULL, turns TEXT NOT NULL) WITHOUT ROWID;
+  CREATE TABLE memory_iq_fixes (id INTEGER PRIMARY KEY, at INTEGER NOT NULL, answer TEXT NOT NULL, qkey TEXT NOT NULL, question TEXT NOT NULL, kind TEXT NOT NULL,
+    action TEXT NOT NULL, old TEXT NOT NULL, text TEXT, facts TEXT NOT NULL, turns TEXT NOT NULL, who TEXT, told INTEGER, undone INTEGER);
+  CREATE INDEX memory_iq_fixes_qkey ON memory_iq_fixes (qkey);
+  CREATE TABLE memory_me_denied (fact TEXT NOT NULL, fix INTEGER NOT NULL, PRIMARY KEY (fact, fix)) WITHOUT ROWID;`,
+  // An agent's correction with no words of the person's behind it (core/memory/iq/heard.js): kept
+  // for the person to accept or dismiss in "waiting on you", never applied.
+  `CREATE TABLE memory_iq_suggested (id INTEGER PRIMARY KEY, at INTEGER NOT NULL, caller TEXT NOT NULL, thread TEXT, seq INTEGER, input TEXT NOT NULL, why TEXT NOT NULL,
+    state TEXT NOT NULL DEFAULT 'open', settled INTEGER, target TEXT, seen INTEGER NOT NULL DEFAULT 1);
+  -- The person's turns an agent's correction was applied from: one each, and a cap per thread.
+  CREATE TABLE memory_iq_heard (thread TEXT NOT NULL, seq INTEGER NOT NULL, at INTEGER NOT NULL, caller TEXT NOT NULL, kind TEXT NOT NULL, ref INTEGER NOT NULL, summary TEXT NOT NULL,
+    PRIMARY KEY (thread, seq)) WITHOUT ROWID;`,
+  // Index tweaks (cheap win, no new tables): three hot lookups were full table scans.
+  //   - reader.once() runs "SELECT MAX(started) FROM memory_me_model" on every pump.
+  //   - "waiting on you" (heard.js / suggest) filters memory_iq_suggested by state, and by thread.
+  //   - stats.iq's "since" query scans memory_iq_fixes WHERE at >= ?.
+  `CREATE INDEX memory_me_model_started ON memory_me_model (started);
+  CREATE INDEX memory_iq_suggested_state ON memory_iq_suggested (state, thread);
+  CREATE INDEX memory_iq_fixes_at ON memory_iq_fixes (at);`,
 ];

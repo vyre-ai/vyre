@@ -9,7 +9,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { fakeTerminal } from "../screen/testing.js";
 import { stripAnsi } from "../screen/width.js";
-import { tempHome } from "../../../test/helpers.js";
+import { tempHome, present } from "../../../test/helpers.js";
 import { open } from "../../store/index.js";
 import { SESSIONS, HOME, seedRecall } from "../../../test/fixtures/corpus.js";
 import { homeItems, projectItems, step, initial, visible, keyName, render, plain, interactive } from "./home.js";
@@ -99,7 +99,8 @@ async function world(t) {
   db.close();
   fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ projectsDir: path.join(root, "projects"),
     roots: [path.join(home, "Work")], transcripts: [], modules: { disable: ["recall", "memory"] } }));
-  const d = await start({ root, log: () => {} });
+  // `present`: making an agent needs a person (ADR 0004); these tests are about the screen after.
+  const d = await start({ root, log: () => {}, presence: present });
   t.after(() => d.stop());
   const fake = path.join(root, "fakebin");
   fs.mkdirSync(fake);
@@ -151,8 +152,8 @@ test("home (interactive): New session without a project runs claude in this fold
 test("home (interactive): inside a project folder it is preselected; Enter opens it; a session resumes; Esc goes back", async t => {
   const w = await world(t);
   const harlow = path.join(w.work, "harlow-site");
-  await w.d.registry.call("projects.create", { name: "Harlow Legal", home: harlow, threads: [SESSIONS[3].id] });
-  await w.d.registry.call("projects.create", { name: "Northwind", home: path.join(w.work, "northwind") });
+  await w.d.registry.call("projects.create", { name: "Harlow Legal", home: harlow, threads: [SESSIONS[3].id] }, "cli");
+  await w.d.registry.call("projects.create", { name: "Northwind", home: path.join(w.work, "northwind") }, "cli");
   process.chdir(harlow);
   // Enter on the preselected project; Esc back to the home; Enter again; down past "New
   // session in" and the header to the newest session; Enter resumes it.
@@ -169,7 +170,7 @@ test("home (interactive): inside a project folder it is preselected; Enter opens
 test("home (interactive): New session in a project starts claude in its home; the agents section lists agents", async t => {
   const w = await world(t);
   const harlow = path.join(w.work, "harlow-site");
-  await w.d.registry.call("projects.create", { name: "Harlow Legal", home: harlow });
+  await w.d.registry.call("projects.create", { name: "Harlow Legal", home: harlow }, "cli");
   process.chdir(w.root);
   await drive(["\r", "\r"]);
   const [c] = w.calls();

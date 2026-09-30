@@ -7,7 +7,7 @@ import { execFile } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { tempHome, upPresent } from "./helpers.js";
+import { tempHome, upPresent, upLeader } from "./helpers.js";
 
 const BIN = path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "bin", "vyre");
 const run = (args, env) => new Promise(resolve =>
@@ -52,8 +52,9 @@ test("cli: learn adds, lists, re-levels and retires lessons", async t => {
   const env = { VYRE_HOME: tempHome(t) };
   t.after(() => run(["down"], env));
   assert.match((await run(["learn"], env)).out, /not running/);
-  // The real verifier: nothing here proves a person is present.
-  await run(["up"], env);
+  // The real verifier: nothing here proves a person is present. upLeader only trusts the
+  // terminal server this test runs under (the testbox's sshd), not any tool's own proof.
+  await upLeader(env.VYRE_HOME);
   assert.match((await run(["learn"], env)).out, /no lessons yet/);
   const add = await run(["learn", "add", "never", "use", "em", "dashes"], env);
   assert.equal(add.code, 0);
@@ -64,13 +65,14 @@ test("cli: learn adds, lists, re-levels and retires lessons", async t => {
   assert.match(list.out, /checks an em dash .* applied 0 · caught 0 · broken 0/);
   assert.match((await run(["learn", "level", "1", "block"], env)).out, /\[block\]/, "raising is free");
   assert.equal((await run(["learn", "level", "1", "loud"], env)).code, 2, "a level that is not one is a usage mistake");
-  // Lowering and retiring are the user's: without a person's proof they refuse.
-  for (const args of [["learn", "level", "1", "remind"], ["learn", "retire", "1"], ["call", "learn.retire", '{"id":1}'], ["call", "learn.relax", '{"id":1,"level":"remind"}']]) {
-    const r = await run(args, env);
-    assert.equal(r.code, 3, args.join(" ") + ": a person must prove presence");
-    assert.match(r.out, REFUSED, args.join(" "));
-  }
-  assert.match((await run(["learn"], env)).out, /1 Never use em dashes\. \[block\]/, "nothing changed");
+  // Lowering and retiring are the user's own: from their terminal they ask nothing (the no-nag
+  // rule). A model's shell is stopped by the Harness floor, and agents by the callers list.
+  const lower = await run(["learn", "level", "1", "remind"], env);
+  assert.equal(lower.code, 0, lower.out);
+  assert.doesNotMatch(lower.out, REFUSED);
+  assert.match((await run(["learn"], env)).out, /1 Never use em dashes\. \[remind\]/);
+  const retired = await run(["learn", "retire", "1"], env);
+  assert.equal(retired.code, 0, retired.out);
   const bad = await run(["learn", "accept", "9"], env);
   assert.equal(bad.code, 1);
   assert.match(bad.out, /no lesson 9/);
@@ -79,7 +81,7 @@ test("cli: learn adds, lists, re-levels and retires lessons", async t => {
 test("cli: learn show, scope, relax, stats, signals and skills", async t => {
   const env = { VYRE_HOME: tempHome(t) };
   t.after(() => run(["down"], env));
-  await run(["up"], env);
+  await upLeader(env.VYRE_HOME);
   await run(["learn", "add", "never", "use", "em", "dashes"], env);
   const list = await run(["learn"], env);
   assert.match(list.out, /1 Never use em dashes\. \[block\] measuring/, "the effect column");
@@ -88,12 +90,11 @@ test("cli: learn show, scope, relax, stats, signals and skills", async t => {
   assert.match(show.out, /everywhere · when always/);
   assert.match(show.out, /before \S+ · after \S+ per 100 turns/);
   assert.equal((await run(["learn", "show", "9"], env)).code, 1);
-  assert.match((await run(["learn", "scope", "1", "agent", "kit"], env)).out, REFUSED);
+  // Narrowing is the user's own and asks nothing from their terminal.
+  assert.match((await run(["learn", "scope", "1", "agent", "kit"], env)).out, /changed lesson 1/);
   assert.match((await run(["learn", "scope", "1", "all"], env)).out, /changed lesson 1/, "widening is free");
   assert.equal((await run(["learn", "scope", "1", "sideways"], env)).code, 1);
-  assert.match((await run(["learn", "relax", "1", "paths", "\\.md$"], env)).out, REFUSED);
-  assert.match((await run(["learn", "relax", "1", "level", "ask"], env)).out, REFUSED);
-  assert.match((await run(["learn", "show", "1"], env)).out, /everywhere/, "nothing narrowed");
+  assert.match((await run(["learn", "relax", "1", "level", "ask"], env)).out, /relaxed lesson 1[\s\S]*\[ask\]/);
   assert.equal((await run(["learn", "relax", "1", "sideways"], env)).code, 1);
   assert.match((await run(["learn", "skills", "install", "3"], env)).out, REFUSED);
   assert.match((await run(["learn", "stats"], env)).out, /before .* per 100 turns/);

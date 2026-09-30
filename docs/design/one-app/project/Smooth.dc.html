@@ -1,0 +1,69 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Vyre one app, smooth</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="vyre.css">
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;600&amp;family=JetBrains+Mono:wght@400;600&amp;display=swap">
+<style>
+body{margin:0}
+.mf { border: 1px solid var(--rule-strong); border-radius: 26px; background: var(--bg); width: 190px; height: 380px; overflow: hidden; display: flex; flex-direction: column; flex: none; position: relative; }
+.mf-h { display: flex; gap: 6px; align-items: center; padding: 28px 12px 6px; font-size: 12px; line-height: 16px; }
+.mr { display: flex; gap: 8px; align-items: center; padding: 6px 10px; border-top: 1px solid var(--rule); font-size: 12px; line-height: 16px; }
+.mr:first-child { border-top: 0; }
+.mc { margin: 0 8px; border: 1px solid var(--rule); border-radius: 8px; background: var(--panel); overflow: hidden; }
+.dk { border: 1px solid var(--rule-strong); border-radius: 10px; background: var(--bg); width: 380px; height: 240px; overflow: hidden; display: flex; flex: none; }
+.dk-r { width: 28px; border-right: 1px solid var(--rule); display: flex; flex-direction: column; align-items: center; gap: 7px; padding-top: 10px; flex: none; }
+.dk-r i { width: 12px; height: 12px; border-radius: 3px; background: var(--hover); display: block; }
+.bar { height: 8px; border-radius: 4px; background: var(--hover); display: block; }
+.pro { display: grid; grid-template-columns: 16px minmax(0, 1fr); gap: 8px; font-size: 13px; line-height: 18px; color: var(--text-2); }
+</style>
+</helmet>
+<div class="vy board {{theme}}" style="width: 2200px; height: 800px;">
+
+  <div class="bhead"><div class="col" style="max-width: 1500px;">
+    <span class="lbl">Direction · smoothness is a feature with numbers</span>
+    <h1 class="t28 w6">Smooth on an iPhone web app, measured before we commit. If it misses the bar, the same code ships native.</h1>
+    <p class="t15 t2">Measured on an iPhone 12 with iOS 18 and a Pixel 6a, the installed web app, direct over Tailscale. A one-week spike builds Now, a session and the approve swipe, and a built-in frame meter records every number below.</p>
+  </div></div>
+  <div class="row" style="gap: 24px; align-items: flex-start;">
+    <div class="col" style="gap: 12px; width: 720px; flex: none;">
+      <span class="lbl">The bar</span>
+      <section class="tbl" style="grid-template-columns: 300px minmax(0, 1fr);"><div class="th">What</div><div class="th">Bar</div><div class="rh">Page swipe, list scroll, row swipe</div><div>60 fps, under 1% dropped frames over a 10 s fling</div><div class="rh">Switch Now, Chats, Agents (mounted)</div><div>first content under 100 ms</div><div class="rh">Cold open from the Home Screen, offline</div><div>Needs you from cache under 1 s; warm resume under 300 ms</div><div class="rh">Approve swipe</div><div>row collapses on the commit frame; outbox sends; Undo 4 s</div><div class="rh">Keyboard opens</div><div>0 px jump; composer moves in the same frame</div><div class="rh">Streaming reply</div><div>p95 update gap under 50 ms; no task over 50 ms</div><div class="rh">Long session</div><div>2,000 turns at 60 fps; 1 h under 300 MB, no WebKit reload</div><div class="rh">Terminal</div><div>key to echo under 50 ms, direct path</div></section>
+      <section class="card col" style="padding: 20px 24px; gap: 10px;" aria-label="Fallback">
+        <span class="lbl">If the iPhone web app misses the bar</span>
+        <div class="row" style="align-items: flex-start; gap: 12px;"><span class="anno-n">1</span><span class="t2">Now: the same Expo code as a native build, signed with alex's free Apple ID. It lasts 7 days and has no push, so the web app stays installed for notifications.</span></div>
+        <div class="row" style="align-items: flex-start; gap: 12px;"><span class="anno-n">2</span><span class="t2">At launch: the $99 account. TestFlight and the App Store, APNs push, system password autofill.</span></div>
+        <div class="row" style="align-items: flex-start; gap: 12px;"><span class="anno-n">3</span><span class="t2">Android ships the native build from day one, over adb, updating itself from the box.</span></div>
+      </section>
+    </div>
+    <div class="col grow" style="gap: 12px;">
+      <span class="lbl">iOS web app pitfalls, and what the design does about each</span>
+      <section class="tbl" style="grid-template-columns: 190px minmax(0, 1fr) minmax(0, 1.2fr);"><div class="th">Pitfall</div><div class="th">What goes wrong</div><div class="th">The design</div><div class="rh">The keyboard</div><div>iOS shrinks the visual viewport, not the layout, so fixed composers jump</div><div style="color: var(--text);">A visualViewport listener sets one inset; the composer moves by transform, the transcript padding follows</div><div class="rh">Rubber-banding</div><div>The whole app bounces and drags the header</div><div style="color: var(--text);">A fixed shell at 100dvh; only inner lists scroll, overscroll-behavior: contain</div><div class="rh">100vh</div><div>Includes the toolbar area, so the bottom is cut off</div><div style="color: var(--text);">100dvh and inset 0, never 100vh</div><div class="rh">Safe areas</div><div>Content under the island and the home bar</div><div style="color: var(--text);">viewport-fit=cover and env(safe-area-inset-*) on header, Capsule, sheets</div><div class="rh">No scroll anchoring</div><div>Safari lacks overflow-anchor; streaming and history jump</div><div style="color: var(--text);">An inverted transcript; history loads above without a jump</div><div class="rh">Gestures in JavaScript</div><div>A busy main thread drops frames</div><div style="color: var(--text);">Page and row swipes are CSS scroll-snap, run on WebKit's scrolling thread</div><div class="rh">WebKit memory</div><div>Big pages get reloaded silently</div><div style="color: var(--text);">Virtualize over 100 rows, 3 mounted pages, canvas terminal, sized images</div><div class="rh">No haptics</div><div>Commits feel mute</div><div style="color: var(--text);">Every commit shows: snap, check, collapse. Haptics in native builds and Android</div></section>
+      <section class="card row" style="padding: 16px 20px; gap: 24px; align-items: center;" aria-label="Compositor swipes">
+        <div class="row" style="gap: 0; flex: none; border: 1px solid var(--rule-strong); border-radius: 10px; overflow: hidden;">
+          <div class="col" style="width: 110px; height: 110px; padding: 8px; gap: 5px; background: var(--panel);"><span class="t12 w6">Now</span><span class="bar"></span><span class="bar"></span><span class="bar" style="width: 60%;"></span></div>
+          <div class="col" style="width: 110px; height: 110px; padding: 8px; gap: 5px; border-left: 1px solid var(--focus); box-shadow: inset 1px 0 0 var(--focus);"><span class="t12 w6">Chats</span><span class="bar"></span><span class="bar" style="width: 70%;"></span></div>
+          <div class="col" style="width: 110px; height: 110px; padding: 8px; gap: 5px; border-left: 1px solid var(--rule);"><span class="t12 w6 t3">Agents</span><span class="bar"></span></div>
+        </div>
+        <div class="col" style="gap: 6px;"><span class="w6">Pages and row swipes are scroll-snap strips</span><span class="t2">The finger drives native scrolling, so the swipe stays at 60 fps even while a reply streams. JavaScript only hears where it snapped, then commits the approve and queues it in the outbox.</span><span class="mono t12 t3">scroll-snap-type: x mandatory · overscroll-behavior: contain · touch-action: pan-y on rows</span></div>
+      </section>
+    </div>
+  </div>
+
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"theme":{"editor":"enum","options":["t-dark","t-light"],"default":"t-dark"},"$preview":{"width":2200,"height":800}}'>
+class Component extends DCLogic {
+  renderVals() {
+    return { theme: this.props.theme ?? 't-dark' };
+  }
+}
+</script>
+</body>
+</html>

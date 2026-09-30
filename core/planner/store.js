@@ -38,10 +38,38 @@ export const MIGRATIONS = [
    ALTER TABLE planner_items ADD COLUMN where_ TEXT;`,
   // Who added an item, as the person sees it: an agent's name, or null for the person and their assistant.
   `ALTER TABLE planner_items ADD COLUMN source_name TEXT;`,
+  // /later (the user's decision, 2026-09-28): a "task" item runs an instruction instead of
+  // ringing one. waits_on chains it after another item's own done (rule: "when X finishes, do
+  // Y"), resolved by a listener on planner.changed, not by the scheduler's time-based nextFire.
+  // run_count and last_result make a recurring task's history visible (rule 2: a runaway loop
+  // must be visible), and paused lets a person stop just this one without deleting it.
+  `ALTER TABLE planner_items ADD COLUMN waits_on TEXT;
+   ALTER TABLE planner_items ADD COLUMN run_count INTEGER NOT NULL DEFAULT 0;
+   ALTER TABLE planner_items ADD COLUMN last_result TEXT;
+   ALTER TABLE planner_items ADD COLUMN paused INTEGER NOT NULL DEFAULT 0;`,
+  // Bug fix: a chained task never re-armed itself (the comment above was already the intended
+  // rule), but nothing recorded WHICH of the dependency's done_at instants it already ran for -
+  // the task's own state stays "open" forever (running it does not finish it), so reopening the
+  // dependency and finishing it again re-fired the same chained task a second time. waits_on_fired
+  // is the dependency's done_at at the moment this task last ran for it; a later done with the
+  // same done_at is a no-op, a new (later) done_at fires again.
+  `ALTER TABLE planner_items ADD COLUMN waits_on_fired INTEGER;`,
 ];
 
-export const KINDS = ["alarm", "timer", "reminder", "todo", "note", "event"];
+export const KINDS = ["alarm", "timer", "reminder", "todo", "note", "event", "task"];
 export const STATES = ["open", "done", "cancelled"];
+
+/**
+ * The one name for a ring of an item at a moment: `planner-<item>-<due>`, due in epoch seconds. The
+ * box's push uses it as its tag and each device as its local notification's id, so a ring heard
+ * twice shows once (ADR 0029, R6).
+ */
+export const ringKey = (item, due) => `planner-${item}-${Math.floor(Number(due) / 1000)}`;
+/** A ring key read back into { item, due (ms) }, or null. */
+export const readKey = key => {
+  const m = /^planner-(.+)-(\d{1,12})$/.exec(String(key ?? ""));
+  return m ? { item: m[1], due: Number(m[2]) * 1000 } : null;
+};
 
 /** Short random ids: i_ for items, f_ for firings. */
 export const newId = prefix => `${prefix}_${crypto.randomBytes(6).toString("base64url")}`;
@@ -56,15 +84,18 @@ export function shape(r) {
     repeat: safeJSON(r.repeat, null), due: r.due ?? null, duration_ms: r.duration_ms ?? null, snooze_until: r.snooze_until ?? null,
     next_fire: r.next_fire ?? null, created: r.created, updated: r.updated, done_at: r.done_at ?? null, deleted_at: r.deleted_at ?? null,
     source: r.source ?? null, added_by: r.source_name ?? null, where: r.where_ ?? null,
+    waits_on: r.waits_on ?? null, run_count: r.run_count ?? 0, last_result: r.last_result ?? null, paused: Boolean(r.paused),
+    waits_on_fired: r.waits_on_fired ?? null,
   };
 }
-export const shapeFiring = f => f && ({ id: f.id, item: f.item, kind: f.kind, due: f.due, ring: f.ring, missed: Boolean(f.missed), state: f.state,
+export const shapeFiring = f => f && ({ id: f.id, item: f.item, kind: f.kind, key: ringKey(f.item, f.due), due: f.due, ring: f.ring, missed: Boolean(f.missed), state: f.state,
   fired_at: f.fired_at, next_ring: f.next_ring ?? null, acked_at: f.acked_at ?? null, action: f.action ?? null, by: f.by ?? null, until: f.until ?? null });
 
 function safeJSON(s, fallback) { try { return s == null ? fallback : JSON.parse(String(s)); } catch { return fallback; } }
 
 const COLUMNS = ["kind", "title", "body", "list", "priority", "parent", "project", "thread", "tags", "pinned", "state", "at", "tz", "floating",
-  "wall", "date", "repeat", "due", "duration_ms", "snooze_until", "next_fire", "created", "updated", "done_at", "deleted_at", "source", "source_name", "where_"];
+  "wall", "date", "repeat", "due", "duration_ms", "snooze_until", "next_fire", "created", "updated", "done_at", "deleted_at", "source", "source_name", "where_",
+  "waits_on", "run_count", "last_result", "paused", "waits_on_fired"];
 
 /** Plain values for SQLite: objects as JSON, booleans as 0/1. */
 const cell = (k, v) => v === undefined ? null : (k === "tags" || k === "repeat") ? (v == null ? (k === "tags" ? "[]" : null) : JSON.stringify(v))
@@ -82,6 +113,8 @@ export function store(db) {
     item: id => db.prepare("SELECT * FROM planner_items WHERE id = ?").get(String(id)),
     /** @returns {any} */
     firing: id => db.prepare("SELECT * FROM planner_firings WHERE id = ?").get(String(id)),
+    /** The newest firing of an item for one due moment, whatever its state. @returns {any} */
+    firingAt: (item, due) => db.prepare("SELECT * FROM planner_firings WHERE item = ? AND due = ? ORDER BY fired_at DESC LIMIT 1").get(String(item), Number(due)),
     insert(row) {
       const cols = ["id", ...COLUMNS.filter(k => row[k] !== undefined)];
       db.prepare(`INSERT INTO planner_items (${cols.join(", ")}) VALUES (${cols.map(() => "?").join(", ")})`).run(...cols.map(k => cell(k, row[k])));

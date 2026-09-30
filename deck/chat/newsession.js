@@ -16,6 +16,9 @@ import { icon } from "../js/icons.js";
 import { threadHref } from "./lib/routes.js";
 import { readNames, labelFor } from "./lib/names.js";
 
+/** What the sheet says when threads.start answers "busy", with Try again next to it. */
+export const BUSY_NOTE = "All sessions are busy; one will free up shortly.";
+
 /** The last segment of a path, for a short label. @param {string} p */
 export const baseName = p => String(p).replace(/\/+$/, "").split("/").pop() || p;
 
@@ -38,7 +41,7 @@ export function startCall(where, agent, text, fallback) {
   if (where.kind === "project") input.project = where.slug;
   else if (where.kind === "folder") input.cwd = where.path;
   else if (fallback) input.cwd = fallback;
-  else return { error: "There is no folder to start in: the box has no folders set up for files." };
+  else return { error: "There is no folder to start in: the server has no folders set up for files." };
   return { tool: "threads.start", input };
 }
 
@@ -101,8 +104,14 @@ export function mountNewSession(container, opts) {
   load();
 
   async function load() {
-    const [p, r, a, d, nm] = await Promise.all([attempt("projects.list"), attempt("files.recent", { limit: 8 }), attempt("agents.list"), attempt("files.dirs", {}), readNames(attempt)]);
+    const [p, r, a, d, nm, now] = await Promise.all([attempt("projects.list"), attempt("files.recent", { limit: 8 }), attempt("agents.list"), attempt("files.dirs", {}), readNames(attempt),
+      // What the person is working on now, merged across surfaces (cohesion's context.now {}, not chat's own
+      // last report, which is the thread just left): a new session defaults to its project.
+      // An older box without it answers no_such_tool, and the sheet opens on "none" as before.
+      attempt("context.now", {})]);
     if (!alive) return;
+    const nowProject = typeof now?.data?.project === "string" && now.data.project ? now.data.project : null;
+    if (state.where.kind === "none" && nowProject && (p.data?.projects || []).some(x => x.slug === nowProject)) state.where = { kind: "project", slug: nowProject };
     state.assistant = labelFor({ role: "assistant" }, nm);
     state.projects = p.data?.projects || [];
     state.recent = Array.isArray(r.data) ? r.data : [];
@@ -145,7 +154,8 @@ export function mountNewSession(container, opts) {
         choice(noFolder, null, w.kind === "none", () => { state.where = { kind: "none" }; }, off)),
       !state.loaded ? h("div", { class: "empty" }, "Reading projects and folders...") : null);
 
-    put(note, state.error || "");
+    put(note, state.error || "", state.error === BUSY_NOTE
+      ? [" ", h("button", { class: "btn btn-ghost btn-sm ns-retry", type: "button", disabled: state.starting, onclick: () => start() }, "Try again")] : null);
     note.hidden = !state.error;
     startBtn.disabled = state.starting;
     put(startBtn, state.starting ? "Starting..." : state.agent ? `Ask ${state.agent}` : "Start session");
@@ -159,10 +169,12 @@ export function mountNewSession(container, opts) {
     const r = await attempt(c.tool, c.input);
     if (!alive) return;
     state.starting = false;
+    // Every session slot in use (threads.start code "busy"): not a failure, so say when to try again.
+    if (r.error && r.error.code === "busy") { state.error = BUSY_NOTE; draw(); return; }
     if (r.error) { state.error = `Could not start: ${r.error.message || r.error.code}`; draw(); return; }
     if (r.data && r.data.ok === false) { state.error = r.data.note || "The agent did not take the message."; draw(); return; }
     const href = openHref(r.data, state.where.kind === "project" && !state.agent ? state.where.slug : null);
-    if (!href) { state.error = "The session started, but the box did not say which thread it is."; draw(); return; }
+    if (!href) { state.error = "The session started, but the server did not say which thread it is."; draw(); return; }
     // The shell keeps this page; coming back to it later starts a fresh message, not this one again.
     /** @type {any} */ (text).value = "";
     draw();

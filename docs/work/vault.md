@@ -68,6 +68,40 @@ action. The goal beyond that is that the user can cancel 1Password (spec section
 
 - The relayed pass between two machines on the tailnet, end to end through the box
   workstream's Docker Compose stack and tailscale sidecar. Waiting on that stack reaching main.
+- 2026-09-27: merged main (68463d04) into work/vault-next (51b1d184), then tested 9b (connections)
+  on testbox and fixed what broke: `syncVault`/`syncGoogle`/`syncMcp` called `vault.key()`
+  unconditionally, creating a key and identity in a fresh home with nothing to sync — the exact
+  regression `stop.test.js` exists to catch; now gated on `found.length`. The shared test harness
+  (`testing.js` `recorded()`) never wired `ctx.events.on`, so starting the real vault module under
+  it crashed once connections.js's `register()` subscribed to sync events; added a fake
+  listener/emit pair matching the real `Events` shape. Updated `presence.test.js`'s allowlists for
+  `vault.connections.*` (grant and update declare presence; list/get/revoke/sync/register/
+  unregister/allowed don't) and two CLI tests whose expected output predated main's newer
+  health/history formatting and totp's `next` code. Green sha d6487be9: core/vault (346),
+  core/modules, core/cli/commands/vault* + test/vault-* (25), local/voice, core/mcp, core/google,
+  test/docs-*, test/hygiene — 534 pass, 0 fail. Sent to integrator and e2e; lands with connectors
+  8be461a9.
+- 2026-09-27 (later): e2e reviewed a1a4e0b8 and found 1 HIGH + 2 MEDIUM + 2 LOW on connections
+  (ADR 0028, 9b): a module could register a connection claiming an item it holds no grant on,
+  which made `syncVault`'s "claimed" set delete the real, person-granted vault row for that item
+  and take its place — fixed by honouring an items claim only when actually granted to the
+  claiming source, and by `list()` never offering a non-ready row in a capability pick. Closed the
+  sharper variant too: `register()` now refuses a declared `use.<capability>.tool` that is not the
+  caller's own (`<source>.*`), so a module cannot route mail.send at a borrowed account id.
+  `vault.connections.revoke` is now scoped to the caller's own surface (chat can't revoke the
+  Capsule's); `surfaceOf` now needs a real person session for a tailnet device to count as person
+  (ADR 0032, matches settings.isPerson). New test in connections.test.js reproduces e2e's exact
+  probe. Fix at 4551a530. Then merged main 476fe5fc (0.1.0-rc.1, incl. e2e's daemon label fix) —
+  fixed merge fallout unrelated to the security review (ctx.modules.tools dropped, vault.js's
+  VERBS catalog missing agent/codes/connect/connections/emergency/needs/remind/rotate/sweep/uses,
+  a 9b CLI test asserting the old vault.connect-backed voice-key flow rc.1's extracted key()
+  helper no longer uses). Per the lead: closed the residual gap where a registered row with no
+  item claim at all still defaulted to capsule+chat — a module-registered row now starts with no
+  surface until a person grants one; vault/google/mcp rows (real connected accounts) keep the
+  default. Also ported the unmerged clipboard fix from vault/deck (2c8b1cee, audited by the lead):
+  `vault.clipboard.pasteboard` refuses rather than falling back to real pbcopy when the helper is
+  down. Green sha f3d39f3f: 558 pass, 0 fail on testbox. Sent to e2e for re-review and to the
+  integrator for rc.2.
 
 ## Next
 
@@ -77,6 +111,10 @@ action. The goal beyond that is that the user can cancel 1Password (spec section
 3. A scan for `.env` files in project folders, offering to import each and delete it.
 4. Loading the Chrome extension in a real browser. It is tested only by its manifest and the
    listener's HTTP contract.
+5. e2e's LOW from the connections review (f3d39f3f, not blocking): `connections.allowed()` has no
+   way to be told a caller carries a person session, so a module acting for the owner's tailnet
+   device (e.g. mail on the phone) is always refused rather than allowed - it fails closed today,
+   but thread `meta.person` through once a real caller needs it.
 
 ## Needs from others
 
@@ -102,6 +140,9 @@ action. The goal beyond that is that the user can cancel 1Password (spec section
 
 ## Changed contracts
 
+- `ctx.modules.tools(caller)` (core/modules, kernel): read-only, `structuredClone`d, same shape as
+  `GET /v1/tools`. Landed on main via rc.1, not vault-next's own; flagged here per e2e's review
+  since it widens a kernel ctx surface. `ctx.modules.status()` is also now `structuredClone`d.
 - `ctx.vault.fetch(name, { field?, watcher? })`: the second argument is new and optional.
   `needs.vault` may say "per-agent" as well as "per-watcher".
 - `vault.release {name, field?, watcher?}` (internal) returns `{ value }`. It requires an active
