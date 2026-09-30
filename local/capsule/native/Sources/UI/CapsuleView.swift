@@ -138,6 +138,21 @@ struct CapsuleView: View {
                 .font(Theme.query)
                 .foregroundColor(Theme.bone)
                 .focused($boxFocused)
+            ForEach(model.pickedTags, id: \.key) { h in
+                HStack(spacing: 5) {
+                    Image(systemName: TagResults.symbol(kind: h.kind, icon: h.icon)).imageScale(.small)
+                    Text("#\(h.name)").lineLimit(1).truncationMode(.middle)
+                    Button { model.removeTag(h) } label: { Image(systemName: "xmark").imageScale(.small) }
+                        .buttonStyle(.plain).help("Take this tag off")
+                }
+                .font(Theme.type(Tokens.TypeScale.meta, .medium))
+                .foregroundColor(Theme.bone)
+                .padding(.horizontal, 8).padding(.vertical, 4)
+                .background(RoundedRectangle(cornerRadius: Tokens.Radius.chip + 2, style: .continuous).fill(Theme.raised))
+                .overlay(RoundedRectangle(cornerRadius: Tokens.Radius.chip + 2, style: .continuous).strokeBorder(Theme.rule, lineWidth: 1))
+                .frame(maxWidth: 200)
+                .fixedSize(horizontal: false, vertical: true)
+            }
             ForEach(model.attachments, id: \.id) { a in
                 HStack(spacing: 5) {
                     Image(systemName: "rectangle.dashed.and.paperclip").imageScale(.small)

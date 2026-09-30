@@ -144,6 +144,8 @@ CapsuleSessionWindow(floating: true) is level .floating, movable by background, 
 Controls whose tool the vyred lacks (pause, edit, steer) are not drawn. Typechecked with swiftc (build lock);
 tests in Tests/Oversight run on CI only.
 Enrolment handoff (anywhere, ADR 0040 s4-5): Host/CoreEnroll.swift reads the code from fd 3 first thing in main.swift (6 chars A-Za-z0-9 then EOF, else failed; a closed or non-pipe fd 3 is an ordinary launch), core.json under the readCoreConfig rule, socketProblem before any proof, then CapsulePresence.enroll(client:header:) with `code code=<code>`; fingerprint = sha256(SPKI) 16 hex. Tests/CoreEnrollTests.swift with a fake core. Needs the real-Mac run from anywhere's installer.
+`#` tags (Core/TagPicker.swift, Host/TagMode.swift): mentions.search {q, limit} as the contract says; the chips ride in threads.send as `mentions:[{kind,id,name}]` only (threads.start and agents.ask carry the #Name token in the text).
+Lumen icon and motion: Lumen.icns from docs/design/brand/export (build.sh copies it, CFBundleIconFile), LumenMark in the bar and menu bar, summon arrival in Panel.show, first-launch open in Host/LumenOpen.swift.
 Next: CI result, then reviewer-2; adjust to capsule-sight's answer on the contract; Chrome "being debugged"
 coexistence needs a real-Mac look (panel opens top right, below the menu bar).
 

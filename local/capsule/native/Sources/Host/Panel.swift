@@ -294,6 +294,8 @@ final class PanelController: NSObject, NSWindowDelegate {
             model.removeAttachment(); return true
         case 51 where model.text.isEmpty && model.target != nil: // delete on an empty box drops the chip (a child first)
             model.dropChip(); return true
+        case 48 where model.current?.kind == "tag": // Tab picks the # row
+            model.run(); return true
         case 48 where model.viewSession != nil: // Tab: the row's detail, in a module command
             return model.viewOpenDetail()
         case 48 where model.current?.kind == "mention": // tab picks the @ row
@@ -321,6 +323,8 @@ final class PanelController: NSObject, NSWindowDelegate {
         case 126 where !e.modifierFlags.contains(.command) && !shift && !e.modifierFlags.contains(.option): model.move(-1); return true
         case 36, 76: // return; a held key is one press, so a held Enter never confirms what it showed
             if e.isARepeat { return true }
+            // A # row is listed: ⏎ adds that tag, it does not send the words.
+            if model.current?.kind == "tag" { model.run(); return true }
             // A module command's form, or a previewed send: ⏎ submits (a second ⏎ on a preview sends it).
             if let vs = model.viewSession, vs.isFormOrPreview { Task { await model.viewSubmit() }; return true }
             if model.viewRunDetailAction() { return true }

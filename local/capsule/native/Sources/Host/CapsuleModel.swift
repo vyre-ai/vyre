@@ -19,7 +19,7 @@ public final class CapsuleModel: ObservableObject {
         public var id: String { section.rawValue }
     }
 
-    @Published public var text = "" { didSet { if text != oldValue { userMoved = false; extensionBoxChanged?(); search() } } }
+    @Published public var text = "" { didSet { if text != oldValue { userMoved = false; extensionBoxChanged?(); syncTags(); search() } } }
     /// After an answer, the box is the follow-up box: ⏎ continues the same thread (AutoAsk.swift).
     @Published public internal(set) var followUp = false
     /// How long typing rests before a question is answered on its own (AutoAsk.swift).
@@ -110,6 +110,10 @@ public final class CapsuleModel: ObservableObject {
     /// The module command open in the box (ViewMode.swift), and where commands come from.
     @Published var viewSession: ViewSession?
     var viewProvider: ViewCommandsProvider?
+    /// "#" tags (TagMode.swift): the last search, the ones picked, and the search in flight.
+    var tagHits: [TagHit] = []
+    @Published var pickedTags: [TagHit] = []
+    var tagTask: Task<Void, Never>?
     /// Words a module put in the box (an `ask` effect). They are the module's, not the person's: nothing
     /// is asked, recalled or sent from them until the person changes them or presses Return.
     var prefilled: String?
@@ -322,7 +326,7 @@ public final class CapsuleModel: ObservableObject {
     public func reset() {
         if let r = reply, !r.finished { return }
         followUp = false; autoKey = nil; autoTask?.cancel(); convo = []
-        text = ""; groups = []; selected = 0; line = nil; reply = nil; asked = nil; memory = nil; askedMemory = nil; targetParent = nil; target = nil
+        text = ""; pickedTags = []; groups = []; selected = 0; line = nil; reply = nil; asked = nil; memory = nil; askedMemory = nil; targetParent = nil; target = nil
         iqStage = nil; iqDraft = nil; iqAnswerId = nil; iqCorrecting = nil; iqFixed = nil; iqAbstained = false
         cancelMentionRefresh()
         replySub?.cancel(); replySub = nil
@@ -429,6 +433,9 @@ public final class CapsuleModel: ObservableObject {
             refreshMentions(m, token: t)
             return
         }
+        // A "#" being typed: what can be tagged (TagMode.swift).
+        if let h = hashToken { partial = [:]; searchTags(h, token: t); return }
+        tagTask?.cancel()
         cancelMentionRefresh()
         // The follow-up box: its words go to the answer's thread on ⏎; nothing is searched.
         if followUp && target == nil {
@@ -955,7 +962,10 @@ public final class CapsuleModel: ObservableObject {
             reply = VyState.reply(c.id)
             reply?.model = model
             follow { c.id }
-            let r = await vyred.call("threads.send", ["thread": c.id, "text": withAttachments(words), "surface": "capsule"], presence: false)
+            var sendInput: [String: Any] = ["thread": c.id, "text": withAttachments(words), "surface": "capsule"]
+            let tags = tagsFor(words)
+            if !tags.isEmpty { sendInput["mentions"] = tags }
+            let r = await vyred.call("threads.send", sendInput, presence: false)
             pending = false
             if let why = Bridge.explain(r) { reply = nil; asked = nil; return .failed(why) }
             let d = (r.data as? [String: Any]) ?? [:]

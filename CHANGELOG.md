@@ -4,6 +4,11 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+- Lumen: type "#" and some letters in the box to tag anything in your work: a saved login, a file, an
+  artifact, a repo or a pull request. The list shows names only, in the order the platform gives
+  them; Tab or Return writes the pick as #Name (or #"Name with spaces") and keeps it as a chip. Taking
+  the tag out of the words takes the chip off. A message sent to a session carries the chips that are
+  still in it. Nothing is looked up until you type a "#", and "issue#12" or "C#" stay plain words.
 - Lumen has its icon: the lens, on the app, in the menu bar (a one-colour template that follows light
   and dark, with the bead larger and violet when something waits on you) and in the bar. On every
   summon the bar arrives over 220 ms and the lens draws itself in; the first time Lumen runs, the
