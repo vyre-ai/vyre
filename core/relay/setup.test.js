@@ -445,3 +445,19 @@ test("setup: a hello for a box with no setup session is refused, and so is a pla
   const off = { relay: w.base, route: status.route, box: k.box.pub };
   await assert.rejects(p.connect({ offer: off }), /closed/);
 });
+
+test("route key: only a name-directory message for this box's own route is signed, and the signature verifies", async t => {
+  const w = await world(t);
+  const id = (await w.d.registry.call("relay.route.id", {}, "module:names")).data;
+  assert.match(id.route, /\S/);
+  const pub = crypto.createPublicKey({ key: Buffer.concat([Buffer.from("302a300506032b6570032100", "hex"), Buffer.from(id.pub, "base64url")]), format: "der", type: "spki" });
+  const good = Buffer.from(`vyre-names-v1\n${id.route}\n1\nn\nPOST\n/v1/names/claim\nabc`);
+  const { sig } = (await w.d.registry.call("relay.route.sign", { message: good.toString("base64url") }, "module:names")).data;
+  assert.equal(crypto.verify(null, good, pub, Buffer.from(sig, "base64url")), true);
+  for (const bad of [`vyre-names-v1\n${"x".repeat(26)}\n1`, `vyre-relay-auth\n${id.route}\n1`, ""]) {
+    const r = await w.d.registry.call("relay.route.sign", { message: Buffer.from(bad).toString("base64url") }, "module:names");
+    assert.ok(r.error, "a foreign message is never signed");
+  }
+  const person = await w.d.registry.call("relay.route.id", {}, "cli");
+  assert.ok(person.error, "modules only");
+});

@@ -4,7 +4,7 @@
   "description": "A second way to reach the box besides Tailscale: the box dials out to a relay, and devices paired by QR code reach it over an end-to-end encrypted channel.",
   "roles": ["box", "local"],
   "requires": [],
-  "does": { "tools": ["relay.status", "relay.enable", "relay.disable", "relay.pair.start", "relay.pair.first", "relay.pair.ticket", "relay.join", "relay.devices.list", "relay.devices.rename", "relay.devices.remove", "relay.devices.trust", "relay.devices.path", "relay.devices.node", "relay.device.presence", "relay.web.release", "relay.web.pin", "relay.devices.tailnet", "relay.devices.bind", "relay.tailnet.status", "relay.setup.begin", "relay.setup.end", "relay.setup.status"] },
+  "does": { "tools": ["relay.status", "relay.enable", "relay.disable", "relay.pair.start", "relay.pair.first", "relay.pair.ticket", "relay.join", "relay.devices.list", "relay.devices.rename", "relay.devices.remove", "relay.devices.trust", "relay.devices.path", "relay.devices.node", "relay.device.presence", "relay.web.release", "relay.web.pin", "relay.devices.tailnet", "relay.devices.bind", "relay.tailnet.status", "relay.setup.begin", "relay.setup.end", "relay.setup.status", "relay.route.id", "relay.route.sign"] },
   "watches": { "emits": ["relay.connected", "relay.disconnected", "device.paired", "device.removed", "device.moved", "relay.paired", "device.joined", "tailnet.tried", "tailnet.revoke-failed", "setup.paired", "setup.contested", "setup.ended"] },
   "shows": { "deck": [], "capsule": [], "cli": [] },
   "needs": { "vault": ["tailscale-mint-oauth"] },

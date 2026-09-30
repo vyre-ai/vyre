@@ -859,6 +859,29 @@ export default {
       run: async (_, meta = {}) => { owner(meta.caller, meta, "the setup status"); return setupStatus(); },
     });
 
+    // The route key's two calls for the names directory (core/names cannot import this module).
+    // Modules only. sign refuses any message that does not open with the names tag and this box's
+    // own route, so the key is never a general signing oracle (the relay's own box-auth message
+    // does not begin that way).
+    ctx.tool("relay.route.id", {
+      internal: true,
+      description: "This box's route id and route public key (base64url), for signing into the name directory. Modules only.",
+      input: obj(),
+      run: async () => ({ route: route(), pub: Buffer.from(k().route.pub).toString("base64url") }),
+    });
+
+    ctx.tool("relay.route.sign", {
+      internal: true,
+      description: "Sign a name-directory request with the route key. Only a message that begins vyre-names-v1, a newline and this box's own route is signed. Modules only.",
+      input: obj({ message: str }, ["message"]),
+      run: async input => {
+        const msg = Buffer.from(String(input.message || ""), "base64url");
+        if (!msg.subarray(0, `vyre-names-v1\n${route()}\n`.length).equals(Buffer.from(`vyre-names-v1\n${route()}\n`))) throw fail("bad_input", "only a name-directory message for this box's own route is signed");
+        const priv = crypto.createPrivateKey({ key: Buffer.concat([Buffer.from("302e020100300506032b657004220420", "hex"), Buffer.from(k().route.priv)]), format: "der", type: "pkcs8" });
+        return { sig: crypto.sign(null, msg, priv).toString("base64url") };
+      },
+    });
+
     // The install line's own boot: the code arrives in VYRE_CODE (never argv), is taken once and
     // removed from this process's environment so no child inherits it.
     const bootCode = (seam.env || process.env).VYRE_CODE;
