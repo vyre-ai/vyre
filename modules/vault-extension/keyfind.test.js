@@ -102,7 +102,7 @@ const NEGATIVES = [
   ["a base64 png", join("iVBORw0KGgo", fake(120))],
   ["a base64 jpeg", join("/9j/", fake(120))],
   ["a data uri", join("data:image/png;base64,", fake(80))],
-  ["a masked openai key", "sk-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"],
+  ["a masked openai key", ["sk-", "x".repeat(32)].join("")],
   ["a masked anthropic key", join("sk-", "ant-", "x".repeat(40))],
   ["a masked github key", join("ghp", "_", "x".repeat(36))],
   ["a bullet mask", join("sk-", "•".repeat(30))],

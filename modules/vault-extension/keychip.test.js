@@ -37,6 +37,8 @@ async function worker(t) {
   const db = open(path.join(tmp, "vyre.db"));
   migrate(db, "vault", MIGRATIONS);
   const vault = new Vault({ db, dir: path.join(tmp, "vault"), config: { vault: { keystore: "file" } }, emit: () => {} });
+  // A first item makes the vault's key, which pairing needs.
+  await vault.put({ name: "example-mail", kind: "login", url: "https://mail.example.com", fields: { username: "alex@example.com", password: `fixture-${fake(20)}` } }, "cli");
   const fill = new Fill({ vault });
   const srv = await serveFill({ host: "127.0.0.1", port: 0, fill });
   t.after(async () => { await srv.close(); db.close(); fs.rmSync(tmp, { recursive: true, force: true }); });
@@ -110,6 +112,7 @@ test("worker: raise once per fingerprint, save for the sender's page, undo its o
   assert.equal((await send({ type: "key-save", fp: "abc123", value, label: "API key" }, p)).error.code, "expired", "an offer saves once");
 
   assert.equal((await send({ type: "key-undo", name: "example-mail" }, p)).error.code, "expired", "only its own save");
+  assert.ok(vault.row("example-mail"));
   assert.deepEqual((await send({ type: "key-undo", name: "console.example.com-api-key" }, p)).data, { removed: true });
   assert.equal(vault.row("console.example.com-api-key"), undefined);
   assert.equal((await send({ type: "key-undo", name: "console.example.com-api-key" }, p)).error.code, "expired");
@@ -265,7 +268,7 @@ test("page: a password input, a UUID, a placeholder and an unlabelled random str
   const p = pageWith([
     pwInput(value),
     codeEl("0b1f6c5e-3c1a-4d55-9d47-0e3f9a6f2b11", "API key"),
-    codeEl("sk-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx", "API key"),
+    codeEl(["sk-", "x".repeat(32)].join(""), "API key"),
     codeEl("YOUR_API_KEY_HERE_0123456789", "API key"),
     codeEl(fake(44), "Order reference"),
     codeEl(fake(44), ""),
