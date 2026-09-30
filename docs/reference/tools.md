@@ -3842,7 +3842,7 @@ Fold what Chrome observed into a site's record: { origin, target: 'origin'|'fami
 
 ### `memory.site.report`
 
-One outcome for one item Chrome already holds: { origin, target?, part, id, outcome: 'ok'|'miss', why? } -> { conf, quarantined }. A success raises its trust, a miss cuts it, and three misses over two days quarantine it (kept as 'used to work', dropped after 30 days). Or which rung of the page ladder worked on a page: { origin, target?, template, rung: 1..5, lowerFailed? } -> { rung: { r, n, startRung? } }; the count is the store's own (one per template per 30-minute visit, at most 255), and the page's card carries startRungs once a rung has worked twice.
+One outcome for one item Chrome already holds: { origin, target?, part, id, outcome: 'ok'|'miss', why? } -> { conf, quarantined }. A success raises its trust, a miss cuts it, and three misses over two days quarantine it (kept as 'used to work', dropped after 30 days). Or which rung of the page ladder worked on a page: { origin, target?, template, rung: 1..5, lowerFailed? } -> { rung: { r, n, startRung? } }; the count is the store's own (one per template per 30-minute visit, at most 255; a change of rung once a minute) and only a hint for where to start, never trust; the page's card carries startRungs once a rung has worked twice.
 
 - Input:
   - `origin` string, required

@@ -181,7 +181,7 @@ export function register(ctx, { denied }) {
   });
 
   ctx.tool("memory.site.report", {
-    description: "One outcome for one item Chrome already holds: { origin, target?, part, id, outcome: 'ok'|'miss', why? } -> { conf, quarantined }. A success raises its trust, a miss cuts it, and three misses over two days quarantine it (kept as 'used to work', dropped after 30 days). Or which rung of the page ladder worked on a page: { origin, target?, template, rung: 1..5, lowerFailed? } -> { rung: { r, n, startRung? } }; the count is the store's own (one per template per 30-minute visit, at most 255), and the page's card carries startRungs once a rung has worked twice.",
+    description: "One outcome for one item Chrome already holds: { origin, target?, part, id, outcome: 'ok'|'miss', why? } -> { conf, quarantined }. A success raises its trust, a miss cuts it, and three misses over two days quarantine it (kept as 'used to work', dropped after 30 days). Or which rung of the page ladder worked on a page: { origin, target?, template, rung: 1..5, lowerFailed? } -> { rung: { r, n, startRung? } }; the count is the store's own (one per template per 30-minute visit, at most 255; a change of rung once a minute) and only a hint for where to start, never trust; the page's card carries startRungs once a rung has worked twice.",
     input: { type: "object", required: ["origin"], properties: { origin: { type: "string" }, target: { type: "string", enum: ["origin", "family"] },
       part: { type: "string", enum: PARTS }, id: { type: "string" }, outcome: { type: "string", enum: ["ok", "miss"] }, why: { type: "string" },
       template: { type: "string" }, rung: { type: "integer", minimum: 1, maximum: 5 }, lowerFailed: { type: "boolean" } } },
