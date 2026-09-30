@@ -239,6 +239,24 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 - `threads.lineage {thread}` (internal): the threads a thread was started for, nearest first, up to the person's own. A thread's `parent` is recorded at `threads.start` from the verified calling session, or from a first-party module's `parent`; a claim from anyone else is dropped. The Gate reads it to match what the person said in a parent thread (`core/switchboard/index.js`).
 - vyred: a route that throws after it began a stream no longer throws again from its own catch (`ERR_HTTP_HEADERS_SENT`, an uncaught error that failed whichever test was running, seen as a flaky
   "threads watch" on a vyred restart); the response is ended instead (`core/daemon/index.js`).
+- The person's assistant can now use `projects.rename`, `projects.archive`, `projects.history`,
+  `team.add`, `team.retire`, `team.ask {project}` and `team.list {all: true}` in any project, like the
+  person. It is recognised by vyred's own verified caller identity, never by anything a caller sends.
+
+- Projects and teammates are now tools an agent can use for the person: `projects.rename` (name only;
+  slug, folder, threads and tile stay), `projects.archive` (hides it from the list, `archived: false`
+  brings it back, `projects.list {archived: true}` shows them), and `team.add`, all allowed for a session
+  in that project on the person's request. Never a teammate, never a bare call with no session.
+
+- Projects: version history without GitHub. A new project folder is made a local git repo quietly
+  (through `github.project.local-init`). An existing folder that isn't a repo is offered it once
+  ("Keep version history for this folder?"); the answer, yes or no, is remembered and never asked
+  again. New tool `projects.history {project, keep}` answers it, for the person or their agent.
+
+- Teammates: `team.retire` ends a teammate's life cleanly. A person, or a session in the project
+  acting on the person's request, can retire one: its queued asks are cancelled, its notes and history
+  stay readable, and adding the same role again brings it back. `undo: true` takes back a teammate
+  that was just made and has done nothing yet (the Deck's "Made design" card), removing it entirely.
 - Closed a caller-identity race on macOS: a forged "cli" label from under a claude was believed
   when the caller was forked inside the 250 ms shared process snapshot. A pid the snapshot lacks is
   now read again, retries start from a fresh table, a peer that already exited is a model's, and
