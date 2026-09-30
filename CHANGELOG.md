@@ -4,6 +4,17 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### settings: an agent changes a setting only when you asked, and every change can be undone (PLAN.md C25)
+
+- `settings.request` (agents, inside a conversation): changes or resets a setting only when the
+  person's own words in this conversation asked for it, as vault's `gate.said.match` answers for
+  the calling thread (P17). No match, or no gate yet: refused, with words the agent passes on.
+  Asking is approving, so no confirm step for that change. `settings.set` and `settings.reset`
+  stay the person's.
+- Every change is logged (`settings_changes`: key, level, before and after, who, the turn it was
+  asked in; secret keys log no values). `settings.changes` lists them; `settings.undo {change}`
+  puts the value before back, with no prompt. `settings.changed` now carries `change` and `by`.
+
 #### The desktop shell contract, hardened (PLAN.md C22, reviewer-2 H4)
 
 - deck/js/platform.js: the Windows or Mac app is detected only by a value its host injects

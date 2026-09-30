@@ -457,3 +457,49 @@ test("settings.write: a module's own secret key comes back masked, like settings
   assert.equal(own.error, undefined, JSON.stringify(own.error));
   assert.equal(own.data.value, "northwind-till-1");
 });
+
+test("an agent changes a setting only when the person asked (C25, P17), every change is logged, and undo needs no prompt", { timeout: 30_000 }, async t => {
+  const { c, d } = await world(t);
+  const schema = (await c("settings.schema")).data.keys;
+  const k = schema.find((/** @type {any} */ x) => x.type === "bool" && !x.store && !x.secret && !x.confirm && x.security !== "loosens" && x.levels.includes("account"));
+  assert.ok(k, "a plain on/off setting to try");
+  const want = !(k.default === true);
+  const agent = "mcp:agent:kit", meta = { thread: "t_asked" };
+  const req = (/** @type {any} */ input, /** @type {any} */ m = meta) => d.registry.call("settings.request", input, agent, m);
+
+  // No gate to ask yet: refused, in words the agent can pass on.
+  let r = await req({ key: k.key, value: want });
+  assert.equal(r.error?.code, "denied");
+  assert.match(r.error.message, /changes only when the person asks for it/);
+
+  /** @type {any[]} */ const asked = [];
+  let answer = { matched: false };
+  d.registry.tools.set("gate.said.match", { module: "vault", description: "", input: { type: "object" }, callers: null, internal: false, hook: false, presence: false,
+    run: async (/** @type {any} */ i) => { asked.push(i); return answer; } });
+  r = await req({ key: k.key, value: want });
+  assert.equal(r.error?.code, "denied", "the person's words didn't ask for it");
+  assert.deepEqual({ thread: asked[0].thread, kind: asked[0].kind, key: asked[0].key }, { thread: "t_asked", kind: "setting", key: k.key },
+    "the gate is asked about the calling thread, never a thread the agent names");
+
+  answer = { matched: true, said: { id: "said_1", turn: 3 } };
+  r = await req({ key: k.key, value: want });
+  assert.ok(!r.error, JSON.stringify(r.error));
+  assert.equal(asked.at(-1).thread, "t_asked");
+  assert.equal((await c("settings.get", { key: k.key })).data.value, want);
+  assert.equal((await req({ key: k.key, value: want }, {})).error?.code, "denied", "outside a conversation: refused");
+
+  // The direct path stays the person's.
+  assert.equal((await d.registry.call("settings.set", { key: k.key, value: !want }, agent, meta)).error?.code, "denied");
+
+  const log = (await c("settings.changes", { key: k.key })).data;
+  assert.equal(log[0].by, agent);
+  assert.equal(log[0].said, "said_1");
+  assert.equal(log[0].undone, false);
+
+  const u = await c("settings.undo", { change: log[0].id });
+  assert.ok(!u.error, JSON.stringify(u.error));
+  assert.equal((await c("settings.get", { key: k.key })).data.value, k.default ?? false, "the value before comes back");
+  assert.equal((await c("settings.changes", { key: k.key })).data.find((/** @type {any} */ x) => x.id === log[0].id).undone, true);
+  assert.equal((await c("settings.undo", { change: log[0].id })).error?.code, "bad_input", "once");
+  assert.equal((await d.registry.call("settings.undo", { change: log[0].id }, agent, meta)).error?.code, "denied", "undo is the person's");
+});
