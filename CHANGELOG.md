@@ -187,7 +187,7 @@ Newest first. Every change to code lands here in the same commit. A new dependen
   choice and the steps after "Found" appear when they are built. `site/_headers` gives /setup a CSP that allows only itself and the relay;
   `scripts/build-site.sh` copies the relay client and tokens.css in and serves `/i` as the installer. 5 flow tests against the real relay server.
 - Install script and the setup session (tailnet's 4dc19cc6 merged in): the install line's code (`VYRE_CODE`, the host-side pipe only) lands in `vyre.env` as `VYRE_SETUP_CODE`
-  (the name the box reads, per tailnet's 6e033a7f) with a `# vyre-code-at=` time, and `vyre up` / `vyre update` remove both after an hour so a
+  (the name the box reads, per tailnet's 6e033a7f) with a `# vyre-setup-at=` time, and `vyre up` / `vyre update` remove both after an hour so a
   restart never arms an old code. With a code, each step, each check and any stop is sent as a plain line to the relay's progress
   mailbox (`POST /v1/setup/mbx`, keys derived from the code with openssl, AES-256-CTR plus an HMAC over position, IV and ciphertext, body on
   stdin, never argv), so the setup page shows the install as it happens; without curl or openssl the terminal is the only place. A 409

@@ -339,11 +339,11 @@ test("vyre wrapper: a setup code older than an hour is removed from vyre.env at 
   const fn = fs.readFileSync(BOXVYRE, "utf8").match(/^expire_code\(\) \{[\s\S]*?^\}/m)[0];
   const call = () => spawnSync("sh", ["-c", `DIR='${b.dir}'\n${fn}\nexpire_code`], { encoding: "utf8", env: b.env });
   const now = Math.floor(Date.now() / 1000);
-  fs.writeFileSync(f, `CLOUDFLARE_VYRE_TOKEN=keep\n# vyre-code-at=${now - 4000}\nVYRE_SETUP_CODE=${CODE}\n`, { mode: 0o600 });
+  fs.writeFileSync(f, `CLOUDFLARE_VYRE_TOKEN=keep\n# vyre-setup-at=${now - 4000}\nVYRE_SETUP_CODE=${CODE}\n`, { mode: 0o600 });
   assert.equal(call().status, 0);
   assert.equal(fs.readFileSync(f, "utf8"), "CLOUDFLARE_VYRE_TOKEN=keep\n", "the expired code and its time are gone, the rest is kept");
   assert.equal(fs.statSync(f).mode & 0o777, 0o600);
-  fs.writeFileSync(f, `# vyre-code-at=${now - 100}\nVYRE_SETUP_CODE=${CODE}\n`, { mode: 0o600 });
+  fs.writeFileSync(f, `# vyre-setup-at=${now - 100}\nVYRE_SETUP_CODE=${CODE}\n`, { mode: 0o600 });
   call();
   assert.ok(fs.readFileSync(f, "utf8").includes(`VYRE_SETUP_CODE=${CODE}`), "a code inside its hour stays");
 });
