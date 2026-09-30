@@ -28,9 +28,27 @@ GitHub hosted runners (push work/iq). Never testbox (it is the user's server), n
 ## Done
 - 2. memory.write and provenance: ce39b7f2 (ctx.memory.write in the loader), 3bba435a (tables,
   tools, reads, tests in core/memory/write.test.js).
+- 1. The 0.2 eval world (open half) and the quality-bar harness: b5203ad5 (test/fixtures/iq02-open.js:
+  175 sessions, 414 turns, 4 projects, juno/kit/pax/assistant, all five providers), 9d99aaf6
+  (test/eval/iq02-open.json: 280 questions, personal 30, decision 50, history 25, who 20, where 30,
+  time 20, cross_provider 20, unanswerable 50, leak 25, inject 10), 71fb39ed (scripts/eval-bar.js,
+  test/eval/bar.json, an empty test/eval/asks/iq02-open.json, `npm run eval:bar`), 2b22d805
+  (test/eval/bar.test.js, 0.25 s). First run on the open world, no replies recorded yet (189 of 195
+  answerable unrecorded, so model-dependent numbers are lower bounds), fake embedder, in-process:
+  - accuracy 0.01 (2 of 195) FAIL; confident-wrong 0.015 (3) PASS; abstain 1.0 (free: nothing is
+    answered) PASS; citations 0.40 (2 of 5) FAIL; newest decision wins 0 of 31 FAIL.
+  - project leak 0 of 13, personal leak 0 of 12, planted 0 of 10: PASS (5 leak probes denied, the
+    rest read only their own project's passages; the inject check covers answers only once recorded).
+  - freshness FAIL: the fresh session is retrievable 17 ms after the pass, but not answered
+    (unrecorded). First stage event p95 0.01 ms, fact answers p95 0.6 ms: PASS.
+  - not yet measurable: cross-format invariance (needs every source format and its readers), first
+    text per path (needs local, tailnet, relay), model latency (replay has no model time).
+  - found: the personal fast path still says "Biscuit is a beagle" (0.51) after alex's "no, biscuit's
+    a corgi"; "what were the first pickup slot hours" is answered "You used to have a Honda Civic"
+    (0.7, via fact). Both are confident-wrong and both cite turns that lack the answer.
 
 ## Doing
-- 1 and 2 dispatched in parallel (1 touches scripts/ and test/ only; 2 touches core/memory).
+- (none: 1 and 2 are done)
 
 ## Next
 - Review 1 and 2, then 3.
