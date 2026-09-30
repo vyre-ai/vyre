@@ -4,6 +4,13 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### Connectors: review fixes (reviewer-2 M1, M2, two LOWs)
+
+- Production reads only the shipped catalog: a config file's `connectors.presets` count only when a test sets `VYRE_CONNECTORS_TEST_PRESETS=1`, and then never reuse a shipped id. A person's own connector goes through add-an-MCP-server-by-URL.
+- Discovery is checked before anything is sent: the protected-resource document must be about the service asked (same origin, equal or parent path), the authorization-server document's issuer must be the one it was fetched for, every address it names goes through `checkHttpsUri` (https only for an https vendor), and each own-account preset pins the authorization-server origins it expects (`oauth.as`); anything else is refused before a registration or a code is sent. A path issuer (GitHub's shape) is fetched at its path-aware address. The `open` step reports the sign-in host.
+- `bind()` refuses a same-named server whose url or credential is not this connection's; `connectors.persist` takes only `refresh_token`, `access_token`, `expires_at` and `scope`.
+- Guide text for Google says plainly that the unverified app screen shows once.
+
 #### Connectors: guided own-app sign-ins, Slack and Zoom, Microsoft and Google personal through the vault, the # connector kind
 
 - Presets: `slack` (own internal app, prefilled manifest link, https redirect pasted back; a `xoxp-`

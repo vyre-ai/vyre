@@ -70,6 +70,14 @@ export async function discoverResource(resourceUrl, f = globalThis.fetch) {
   for (const p of paths) {
     const doc = await tryFetchJson(p, f);
     if (doc && Array.isArray(doc.authorization_servers) && doc.authorization_servers.length) {
+      // RFC 9728: the document must be about the service we asked. Vendors often name the origin, so
+      // an equal address or a parent path on the same origin counts; another origin never does.
+      if (doc.resource !== undefined) {
+        let r;
+        try { r = new URL(String(doc.resource)); } catch { throw fail(`${u.origin} names a resource that is not an address`, "resource_mismatch"); }
+        const base = r.pathname.replace(/\/$/, "");
+        if (r.origin !== u.origin || !(u.pathname.replace(/\/$/, "") + "/").startsWith(base + "/")) throw fail(`${u.origin} says its sign-in is for ${r.origin}${r.pathname}, not for ${u.origin}${u.pathname}; refused`, "resource_mismatch");
+      }
       return { issuer: String(doc.authorization_servers[0]), resource: String(doc.resource || resourceUrl) };
     }
   }
@@ -81,18 +89,26 @@ export async function discoverResource(resourceUrl, f = globalThis.fetch) {
  * authorization servers, Google included, publish that shape instead or as well).
  * @param {string} issuer @param {typeof fetch} f
  */
-export async function discoverAuthServer(issuer, f = globalThis.fetch) {
-  const origin = new URL(issuer).origin;
-  for (const p of [`${origin}/.well-known/oauth-authorization-server`, `${origin}/.well-known/openid-configuration`]) {
+export async function discoverAuthServer(issuer, f = globalThis.fetch, { strict = false } = {}) {
+  const iu = new URL(issuer);
+  const path = iu.pathname.replace(/\/$/, "");
+  const cands = [`${iu.origin}/.well-known/oauth-authorization-server${path}`, `${iu.origin}/.well-known/openid-configuration${path}`,
+    `${iu.origin}${path}/.well-known/openid-configuration`];
+  if (path) cands.push(`${iu.origin}/.well-known/oauth-authorization-server`, `${iu.origin}/.well-known/openid-configuration`);
+  for (const p of [...new Set(cands)]) {
     const doc = await tryFetchJson(p, f);
     if (doc && typeof doc.authorization_endpoint === "string" && typeof doc.token_endpoint === "string") {
-      return { issuer: String(doc.issuer || issuer), authorize_uri: doc.authorization_endpoint, token_uri: doc.token_endpoint,
-        registration_endpoint: typeof doc.registration_endpoint === "string" ? doc.registration_endpoint : null,
+      // RFC 8414 3.3: the document's issuer is the one it was fetched for, or it is not about this server.
+      if (doc.issuer !== undefined && String(doc.issuer).replace(/\/$/, "") !== issuer.replace(/\/$/, "")) throw fail(`${iu.origin} published sign-in metadata for a different issuer (${String(doc.issuer).slice(0, 80)}); refused`, "issuer_mismatch");
+      // Every address the vendor's own document names is checked before any code or secret goes to it.
+      const ok = (uri, what) => { const c = checkHttpsUri(uri, what); if (strict && new URL(c).protocol !== "https:") throw fail(`${what} must be https`, "config"); return c; };
+      return { issuer: String(doc.issuer || issuer), authorize_uri: ok(doc.authorization_endpoint, "the sign-in address"), token_uri: ok(doc.token_endpoint, "the token address"),
+        registration_endpoint: typeof doc.registration_endpoint === "string" ? ok(doc.registration_endpoint, "the registration address") : null,
         scopes_supported: Array.isArray(doc.scopes_supported) ? doc.scopes_supported.filter(x => typeof x === "string") : [],
         token_auth_methods: Array.isArray(doc.token_endpoint_auth_methods_supported) ? doc.token_endpoint_auth_methods_supported.filter(x => typeof x === "string") : [] };
     }
   }
-  throw fail(`${origin} does not publish authorization-server metadata (RFC 8414); its OAuth endpoints must be named directly`, "no_metadata");
+  throw fail(`${iu.origin} does not publish authorization-server metadata (RFC 8414); its OAuth endpoints must be named directly`, "no_metadata");
 }
 
 async function tryFetchJson(url, f) {
@@ -290,10 +306,10 @@ export function connector(deps) {
      * with `client_id` and optionally `client_secret`, read through `fetchItem`.
      * `bind` names the resource url(s) the token is minted for when the vendor's authorize call
      * takes no `resource` parameter (Google): it is recorded on the token set (P21) and never sent.
-     * @param {{ name: string, resource?: string, server?: Partial<AuthServer>, client?: string, scopes?: string[], bind?: string[], offline?: boolean, port?: number,
+     * @param {{ name: string, resource?: string, server?: Partial<AuthServer>, client?: string, scopes?: string[], bind?: string[], offline?: boolean, port?: number, pin?: string[],
      *   redirect?: { scheme?: "http" | "https", host?: string, path?: string }, basic?: boolean }} input
      */
-    start: guarded(async ({ name, resource, server, client, scopes: asked = [], bind, offline, port: fixedPort, redirect: redirectSpec, basic }) => {
+    start: guarded(async ({ name, resource, server, client, scopes: asked = [], bind, offline, port: fixedPort, redirect: redirectSpec, basic, pin }) => {
       if (!NAME.test(String(name || ""))) throw fail("name must be lowercase letters, digits and dashes, starting with a letter, at most 32");
       if (!Array.isArray(asked) || !asked.every(s => typeof s === "string" && s)) throw fail("scopes must be a list of strings");
       if (fixedPort !== undefined && !(Number.isInteger(fixedPort) && fixedPort >= 1024 && fixedPort <= 65535)) throw fail("port must be from 1024 to 65535");
@@ -320,9 +336,18 @@ export function connector(deps) {
         const found = await discoverResource(String(resource), f);
         const issuer = found ? found.issuer : String(resource);
         if (found) discoveredResource = found.resource;
-        as = await discoverAuthServer(issuer, f);
+        as = await discoverAuthServer(issuer, f, { strict: new URL(String(resource)).protocol === "https:" });
       }
 
+      // The sign-in servers the catalog expects for this app. The vendor's own document chooses where the
+      // code, and for an own-app sign-in the client secret, are sent, so anything else is refused.
+      if (Array.isArray(pin) && pin.length) {
+        for (const [what, uri] of [["issuer", as.issuer], ["sign-in address", as.authorize_uri], ["token address", as.token_uri], ["registration address", as.registration_endpoint]]) {
+          if (!uri) continue;
+          let o; try { o = new URL(uri).origin; } catch { o = ""; }
+          if (!pin.includes(o)) throw fail(`the ${what} (${o.slice(0, 80)}) is not one of the servers this app signs in with; refused`, "unexpected_server");
+        }
+      }
       // A vendor that keeps refresh tokens behind offline_access gets it, but only if it says it knows it.
       if (offline && (as.scopes_supported || []).includes("offline_access") && !scopes.includes("offline_access")) scopes.push("offline_access");
       const values = [];
@@ -363,7 +388,7 @@ export function connector(deps) {
       flow.timer.unref?.();
       flows.set(flow.id, flow);
       log("connect sign-in started", { id: flow.id, name, issuer: as.issuer });
-      return { id: flow.id, url: url.toString(), redirect: flow.redirect };
+      return { id: flow.id, url: url.toString(), redirect: flow.redirect, host: url.host };
     }),
 
     /** @param {{ id: string, url: string }} input */

@@ -10,7 +10,10 @@
    "who": "Any HighLevel account; you pick the sub-accounts at sign-in.",
    "evidence": "dcr-registered",
    "oauth": {
-    "client": "dcr"
+    "client": "dcr",
+    "as": [
+     "https://services.leadconnectorhq.com"
+    ]
    },
    "token": {
     "label": "Private Integration Token",
@@ -129,7 +132,11 @@
       "Open Basic Information and copy the Client ID and Client Secret. Enter them here.",
       "Vyre then prints a Slack address. Open it and click Allow. Slack sends your browser to a page that cannot load; that is expected. Copy the full address from the browser bar and paste it here."
      ]
-    }
+    },
+    "as": [
+     "https://mcp.slack.com",
+     "https://slack.com"
+    ]
    },
    "token": {
     "label": "User OAuth token",
@@ -229,7 +236,10 @@
       "On the Scopes page click Add Scopes and add: meeting:read:search, meeting:read:assets, meeting:write:meeting, meeting:update:meeting, cloud_recording:read:list_user_recordings, cloud_recording:read:content.",
       "Open Local Test and click Add App Now to allow it on your own account. Then finish the sign-in here."
      ]
-    }
+    },
+    "as": [
+     "https://zoom.us"
+    ]
    },
    "note": "Zoom's docs say loopback redirects work for PKCE apps; a real run confirms it for a development-mode app."
   },
@@ -242,7 +252,10 @@
    "who": "Anyone with a Notion account.",
    "evidence": "dcr-registered",
    "oauth": {
-    "client": "dcr"
+    "client": "dcr",
+    "as": [
+     "https://mcp.notion.com"
+    ]
    }
   },
   {
@@ -254,7 +267,10 @@
    "who": "Anyone with a Linear account.",
    "evidence": "dcr-registered",
    "oauth": {
-    "client": "dcr"
+    "client": "dcr",
+    "as": [
+     "https://mcp.linear.app"
+    ]
    },
    "token": {
     "label": "Linear API key",
@@ -271,7 +287,10 @@
    "evidence": "dcr-registered",
    "oauth": {
     "client": "dcr",
-    "offline": true
+    "offline": true,
+    "as": [
+     "https://auth.atlassian.com"
+    ]
    }
   },
   {
@@ -298,7 +317,10 @@
       "Under OAuth, add {redirect} as the redirect URL.",
       "Copy the Client ID and Client Secret and enter them here."
      ]
-    }
+    },
+    "as": [
+     "https://app.asana.com"
+    ]
    },
    "note": "Asana's discovery names a server with no registration, so this uses your own app."
   },
@@ -311,7 +333,10 @@
    "who": "Anyone with a ClickUp account. The free plan allows 50 calls a day.",
    "evidence": "dcr-registered",
    "oauth": {
-    "client": "dcr"
+    "client": "dcr",
+    "as": [
+     "https://mcp.clickup.com"
+    ]
    }
   },
   {
@@ -323,7 +348,10 @@
    "who": "Anyone with a monday.com account.",
    "evidence": "docs",
    "oauth": {
-    "client": "dcr"
+    "client": "dcr",
+    "as": [
+     "https://auth.monday.com"
+    ]
    },
    "token": {
     "label": "Personal API token",
@@ -341,7 +369,10 @@
    "who": "Any plan.",
    "evidence": "dcr-registered",
    "oauth": {
-    "client": "dcr"
+    "client": "dcr",
+    "as": [
+     "https://airtable.com"
+    ]
    }
   },
   {
@@ -353,7 +384,10 @@
    "who": "Anyone with a Todoist account.",
    "evidence": "dcr-registered",
    "oauth": {
-    "client": "dcr"
+    "client": "dcr",
+    "as": [
+     "https://todoist.com"
+    ]
    }
   },
   {
@@ -365,7 +399,10 @@
    "who": "Anyone with a Trello account. Comments and attachments are not covered.",
    "evidence": "dcr-advertised",
    "oauth": {
-    "client": "dcr"
+    "client": "dcr",
+    "as": [
+     "https://auth.atlassian.com"
+    ]
    }
   },
   {
@@ -377,7 +414,10 @@
    "who": "Any plan.",
    "evidence": "dcr-registered",
    "oauth": {
-    "client": "dcr"
+    "client": "dcr",
+    "as": [
+     "https://mcp.miro.com"
+    ]
    }
   },
   {
@@ -389,7 +429,10 @@
    "who": "Anyone with a Canva account; brand kits need Pro.",
    "evidence": "dcr-registered",
    "oauth": {
-    "client": "dcr"
+    "client": "dcr",
+    "as": [
+     "https://mcp.canva.com"
+    ]
    }
   },
   {
@@ -401,7 +444,11 @@
    "who": "Fathom accounts on a plan that includes it.",
    "evidence": "dcr-registered",
    "oauth": {
-    "client": "dcr"
+    "client": "dcr",
+    "as": [
+     "https://api.fathom.ai",
+     "https://fathom.video"
+    ]
    }
   },
   {
@@ -413,7 +460,10 @@
    "who": "Anyone with a Fireflies account.",
    "evidence": "dcr-registered",
    "oauth": {
-    "client": "dcr"
+    "client": "dcr",
+    "as": [
+     "https://api.fireflies.ai"
+    ]
    },
    "token": {
     "label": "Fireflies API key",
@@ -444,7 +494,10 @@
    "who": "Anyone with a Sentry account.",
    "evidence": "dcr-registered",
    "oauth": {
-    "client": "dcr"
+    "client": "dcr",
+    "as": [
+     "https://mcp.sentry.dev"
+    ]
    }
   },
   {
@@ -456,7 +509,11 @@
    "who": "Anyone with a Vercel account. Vercel lists the apps it allows, so sign-in may refuse Vyre.",
    "evidence": "dcr-registered",
    "oauth": {
-    "client": "dcr"
+    "client": "dcr",
+    "as": [
+     "https://api.vercel.com",
+     "https://vercel.com"
+    ]
    }
   },
   {
@@ -468,7 +525,10 @@
    "who": "Anyone with a Supabase account.",
    "evidence": "dcr-registered",
    "oauth": {
-    "client": "dcr"
+    "client": "dcr",
+    "as": [
+     "https://api.supabase.com"
+    ]
    },
    "token": {
     "label": "Personal access token",
@@ -484,7 +544,10 @@
    "who": "Anyone with a Neon account.",
    "evidence": "dcr-registered",
    "oauth": {
-    "client": "dcr"
+    "client": "dcr",
+    "as": [
+     "https://mcp.neon.tech"
+    ]
    },
    "token": {
     "label": "Neon API key",
@@ -500,7 +563,10 @@
    "who": "Anyone with a Railway account.",
    "evidence": "dcr-registered",
    "oauth": {
-    "client": "dcr"
+    "client": "dcr",
+    "as": [
+     "https://backboard.railway.com"
+    ]
    }
   },
   {
@@ -512,7 +578,12 @@
    "who": "Anyone with a PlanetScale account.",
    "evidence": "dcr-advertised",
    "oauth": {
-    "client": "dcr"
+    "client": "dcr",
+    "as": [
+     "https://api.planetscale.com",
+     "https://app.planetscale.com",
+     "https://auth.planetscale.com"
+    ]
    }
   },
   {
@@ -525,7 +596,10 @@
    "evidence": "dcr-registered",
    "oauth": {
     "client": "dcr",
-    "offline": true
+    "offline": true,
+    "as": [
+     "https://mcp.cloudflare.com"
+    ]
    },
    "token": {
     "label": "Cloudflare API token",
@@ -541,7 +615,10 @@
    "who": "Anyone with a PostHog account.",
    "evidence": "dcr-registered",
    "oauth": {
-    "client": "dcr"
+    "client": "dcr",
+    "as": [
+     "https://oauth.posthog.com"
+    ]
    },
    "token": {
     "label": "Personal API key",
@@ -557,7 +634,11 @@
    "who": "Accounts made after 1 Aug 2026; older ones need an org admin to turn it on.",
    "evidence": "dcr-registered",
    "oauth": {
-    "client": "dcr"
+    "client": "dcr",
+    "as": [
+     "https://mcp.mixpanel.com",
+     "https://mixpanel.com"
+    ]
    }
   },
   {
@@ -569,7 +650,10 @@
    "who": "Anyone with an Amplitude account; an admin can restrict it.",
    "evidence": "dcr-registered",
    "oauth": {
-    "client": "dcr"
+    "client": "dcr",
+    "as": [
+     "https://mcp.amplitude.com"
+    ]
    }
   },
   {
@@ -581,7 +665,11 @@
    "who": "Anyone with an Apify account.",
    "evidence": "dcr-advertised",
    "oauth": {
-    "client": "dcr"
+    "client": "dcr",
+    "as": [
+     "https://console-backend.apify.com",
+     "https://console.apify.com"
+    ]
    },
    "token": {
     "label": "Apify API token",
@@ -597,7 +685,10 @@
    "who": "Site owners and admins.",
    "evidence": "dcr-registered",
    "oauth": {
-    "client": "dcr"
+    "client": "dcr",
+    "as": [
+     "https://mcp.webflow.com"
+    ]
    }
   },
   {
@@ -609,7 +700,10 @@
    "who": "Owners, Admins and Managers.",
    "evidence": "dcr-registered",
    "oauth": {
-    "client": "dcr"
+    "client": "dcr",
+    "as": [
+     "https://mcp.klaviyo.com"
+    ]
    }
   },
   {
@@ -621,7 +715,10 @@
    "who": "Anyone with a Resend account.",
    "evidence": "dcr-registered",
    "oauth": {
-    "client": "dcr"
+    "client": "dcr",
+    "as": [
+     "https://api.resend.com"
+    ]
    }
   },
   {
@@ -633,7 +730,10 @@
    "who": "Anyone with a Wix account.",
    "evidence": "dcr-registered",
    "oauth": {
-    "client": "dcr"
+    "client": "dcr",
+    "as": [
+     "https://mcp.wix.com"
+    ]
    }
   },
   {
@@ -645,7 +745,10 @@
    "who": "Anyone with an Intercom workspace hosted in the US.",
    "evidence": "dcr-registered",
    "oauth": {
-    "client": "dcr"
+    "client": "dcr",
+    "as": [
+     "https://mcp.intercom.com"
+    ]
    },
    "token": {
     "label": "Intercom access token",
@@ -661,7 +764,10 @@
    "who": "Anyone with an Intercom workspace hosted in the EU.",
    "evidence": "dcr-registered",
    "oauth": {
-    "client": "dcr"
+    "client": "dcr",
+    "as": [
+     "https://mcp.eu.intercom.com"
+    ]
    },
    "token": {
     "label": "Intercom access token",
@@ -677,7 +783,10 @@
    "who": "Any active Attio workspace.",
    "evidence": "dcr-registered",
    "oauth": {
-    "client": "dcr"
+    "client": "dcr",
+    "as": [
+     "https://app.attio.com"
+    ]
    }
   },
   {
@@ -704,7 +813,10 @@
       "Under Auth, add {redirect} as the redirect URL and choose a user-level install.",
       "Copy the Client ID and Client Secret and enter them here."
      ]
-    }
+    },
+    "as": [
+     "https://mcp.hubspot.com"
+    ]
    },
    "note": "HubSpot's server has no automatic registration."
   },
@@ -717,7 +829,10 @@
    "who": "Anyone with a Stripe account.",
    "evidence": "dcr-registered",
    "oauth": {
-    "client": "dcr"
+    "client": "dcr",
+    "as": [
+     "https://access.stripe.com"
+    ]
    },
    "token": {
     "label": "Agent API key",
@@ -733,7 +848,10 @@
    "who": "PayPal business accounts.",
    "evidence": "dcr-registered",
    "oauth": {
-    "client": "dcr"
+    "client": "dcr",
+    "as": [
+     "https://mcp.paypal.com"
+    ]
    }
   },
   {
@@ -745,7 +863,10 @@
    "who": "Square accounts. Square lists the apps it allows, so sign-in may refuse Vyre.",
    "evidence": "dcr-registered",
    "oauth": {
-    "client": "dcr"
+    "client": "dcr",
+    "as": [
+     "https://mcp.squareup.com"
+    ]
    }
   },
   {
@@ -757,7 +878,10 @@
    "who": "Zapier plans with tasks; each call costs 2 tasks.",
    "evidence": "dcr-registered",
    "oauth": {
-    "client": "dcr"
+    "client": "dcr",
+    "as": [
+     "https://mcp.zapier.com"
+    ]
    },
    "token": {
     "label": "Connection token",
@@ -773,7 +897,10 @@
    "who": "Anyone with a Perplexity account.",
    "evidence": "dcr-registered",
    "oauth": {
-    "client": "dcr"
+    "client": "dcr",
+    "as": [
+     "https://api.perplexity.ai"
+    ]
    },
    "token": {
     "label": "Perplexity API key",
@@ -789,7 +916,10 @@
    "who": "Anyone; the free tier needs no account.",
    "evidence": "dcr-registered",
    "oauth": {
-    "client": "dcr"
+    "client": "dcr",
+    "as": [
+     "https://auth.exa.ai"
+    ]
    },
    "token": {
     "label": "Exa API key",
@@ -807,7 +937,10 @@
    "who": "Anyone; the free tier needs no account.",
    "evidence": "docs",
    "oauth": {
-    "client": "dcr"
+    "client": "dcr",
+    "as": [
+     "https://clerk.context7.com"
+    ]
    },
    "token": {
     "label": "Context7 API key",
@@ -1079,10 +1212,10 @@
      "steps": [
       "Make a Cloud project and turn on the three APIs with the links.",
       "Set up the OAuth consent screen as External, and add your own address as a test user.",
-      "Publish the app: on the consent screen click Publish app, so its status is In production. Do this, or Google ends your sign-in every 7 days. Unverified is fine for one person; Google shows a warning you click through.",
+      "Publish the app: on the consent screen click Publish app, so its status is In production. Do this, or Google ends your sign-in every 7 days. It stays unverified, which for you alone means Google shows its unverified app screen once when you allow it; click Advanced, then Go to Vyre.",
       "Open Credentials, click Create credentials, OAuth client ID, and choose Desktop app.",
       "Copy the Client ID and Client Secret and enter them here.",
-      "Vyre prints a Google address. Open it, choose your account, click Advanced and Go to Vyre if Google warns, then Allow."
+      "Vyre prints a Google address. Open it, choose your account, click Advanced and Go to Vyre on the unverified app screen, then Allow."
      ]
     }
    },

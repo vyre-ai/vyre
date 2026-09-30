@@ -52,7 +52,7 @@ function rig(t, fake, opts = {}) {
     save: async (item, fields, o) => { saved.push({ item, fields, ...o }); items.set(item, { ...(items.get(item) || {}), ...fields }); },
     addServer: async input => { servers.set(input.name, input); return { name: input.name, test: { ok: true, tools: 3 } }; },
     testServer: async name => ({ ok: true, tools: 3, name }),
-    hasServer: async name => servers.has(name),
+    hasServer: async name => servers.get(name) || null,
     removeServer: async name => { servers.delete(name); },
     putCredential: async (name, cred, as) => { credentials.push({ name, ...cred, as }); },
     storeTokens: async (name, tokens) => { stored.push({ name, tokens }); },
@@ -186,7 +186,9 @@ test("persist: only an item a connection made, only sign-in fields, other fields
   assert.equal(after.client_id, before.client_id);
   assert.equal(after.token_uri, before.token_uri);
   await assert.rejects(r.c.persist({ item: "vault-elsewhere", fields: { refresh_token: "x".repeat(8) } }), /not a connector sign-in/);
-  await assert.rejects(r.c.persist({ item: "notion-auth", fields: { hosts: "evil.example" } }), /not a sign-in field/);
+  await assert.rejects(r.c.persist({ item: "notion-auth", fields: { hosts: "evil.example" } }), /not a field a refresh changes/);
+  for (const f of ["token_uri", "client_id", "issuer", "resource", "client_secret", "token_auth"]) await assert.rejects(r.c.persist({ item: "notion-auth", fields: { [f]: "https://evil.example/x" } }), /not a field a refresh changes/, f);
+  assert.equal(r.items.get("notion-auth").token_uri, before.token_uri, "the token address is untouched");
 });
 
 test("disconnect removes the row and the record and leaves the vault item", async t => {
@@ -325,4 +327,18 @@ test("the # picker: connected apps first, then a Connect row for each app not co
   await assert.rejects(r.c.mentionResolve({ id: "connect:asana", thread: "t-9" }), /no connection/);
   await assert.rejects(r.c.mentionResolve({ id: "nothing", thread: "t-9" }), /no connection/);
   r.leak([]);
+});
+
+test("a sign-in host is shown, and a same-named server that is not this connection is never taken over", async t => {
+  const fake = await startFakeAuthServer(t, { dcr: true });
+  const r = rig(t, fake);
+  r.servers.set("notion", { name: "notion", url: "https://elsewhere.example/mcp", auth: { type: "bearer", item: "other" } });
+  const s = await r.c.start({ preset: "notion", replace: true }, PERSON);
+  assert.equal(s.host, new URL(fake.origin).host);
+  await assert.rejects(r.c.finish({ id: s.id, url: fake.consent(s.url) }), /already exists and is not this Notion connection/);
+  assert.equal(r.c.list().length, 0, "nothing was recorded");
+  // the same row, made by this connection earlier, is fine
+  r.servers.set("notion", { name: "notion", url: `${fake.origin}/mcp`, auth: { type: "oauth", item: "notion-auth" } });
+  const s2 = await r.c.start({ preset: "notion", replace: true }, PERSON);
+  assert.equal((await r.c.finish({ id: s2.id, url: fake.consent(s2.url) })).step, "connected");
 });

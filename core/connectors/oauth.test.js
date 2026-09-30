@@ -44,7 +44,7 @@ test("oauth: server named explicitly, client read from a vault-shaped fetchItem,
   const r = rig(t, { fetchItem: async (item, field) => { const v = items.get(item); if (!v) throw new Error("no such item"); if (!(field in v)) throw new Error("no such field"); return v[field]; } });
 
   const started = await r.keep(r.c.start({ name: "home", server: { authorize_uri: `${fake.origin}/authorize`, token_uri: `${fake.origin}/token` }, client: "my-client", scopes: ["read", "write"] }));
-  assert.deepEqual(Object.keys(started).sort(), ["id", "redirect", "url"]);
+  assert.deepEqual(Object.keys(started).sort(), ["host", "id", "redirect", "url"]);
   const port = r.c.port();
   assert.ok(port);
   const q = new URL(started.url).searchParams;
@@ -73,19 +73,19 @@ test("oauth: server named explicitly, client read from a vault-shaped fetchItem,
 });
 
 test("oauth: a resource url with protected-resource + DCR metadata discovers and self-registers, no client ever supplied", async t => {
-  const fake = await startFakeAuthServer(t, { dcr: true, resource: "https://example-mcp.test/mcp" });
+  const fake = await startFakeAuthServer(t, { dcr: true });
   const r = rig(t);
 
   const started = await r.keep(r.c.start({ name: "work", resource: `${fake.origin}/.well-known/does-not-matter`, scopes: ["mcp.read"] }));
   const q = new URL(started.url).searchParams;
   assert.match(q.get("client_id") || "", /^dcr_/, "the box registered its own client via RFC 7591");
-  assert.equal(q.get("resource"), "https://example-mcp.test/mcp", "RFC 9728's resource is carried into the authorize request");
+  assert.equal(q.get("resource"), fake.origin, "RFC 9728's resource is carried into the authorize request");
 
   const back = fake.consent(started.url);
   await fetch(back);
   assert.equal(r.completed.length, 1);
   const tokens = r.completed[0].tokens;
-  assert.equal(tokens.resource, "https://example-mcp.test/mcp", "P21: the resource the token was minted for is kept");
+  assert.equal(tokens.resource, fake.origin, "P21: the resource the token was minted for is kept");
   assert.equal(tokens.issuer, fake.origin);
   assert.match(tokens.client_id, /^dcr_/);
 });
@@ -136,4 +136,41 @@ test("oauth: PKCE and a declined consent both fail plainly, with nothing saved",
   assert.equal(page.status, 400);
   assert.match(await page.text(), /declined/);
   assert.equal(r.completed.length, 0);
+});
+
+test("oauth: discovery is checked before anything is sent: resource, issuer, https, and the pinned servers", async t => {
+  // a protected-resource document about another service is refused
+  const other = await startFakeAuthServer(t, { dcr: true, resource: "https://example-mcp.test/mcp" });
+  const r0 = rig(t);
+  await assert.rejects(r0.c.start({ name: "a", resource: `${other.origin}/mcp`, scopes: [] }), /says its sign-in is for https:\/\/example-mcp\.test/);
+  assert.equal(r0.c.port(), null, "nothing was opened");
+
+  // an authorization-server document for a different issuer is refused (RFC 8414 3.3)
+  const docs = {
+    "https://v.test/.well-known/oauth-protected-resource/mcp": { resource: "https://v.test/mcp", authorization_servers: ["https://auth.v.test"] },
+    "https://auth.v.test/.well-known/oauth-authorization-server": { issuer: "https://evil.test", authorization_endpoint: "https://auth.v.test/a", token_endpoint: "https://auth.v.test/t" },
+  };
+  const f = async url => (docs[url] ? new Response(JSON.stringify(docs[url]), { status: 200 }) : new Response("", { status: 404 }));
+  const found = await discoverResource("https://v.test/mcp", f);
+  await assert.rejects(discoverAuthServer(found.issuer, f, { strict: true }), /different issuer/);
+
+  // a plain-http token endpoint named by an https vendor is refused; loopback http is only for fakes
+  docs["https://auth.v.test/.well-known/oauth-authorization-server"] = { issuer: "https://auth.v.test", authorization_endpoint: "https://auth.v.test/a", token_endpoint: "http://auth.v.test/t" };
+  await assert.rejects(discoverAuthServer("https://auth.v.test", f, { strict: true }), /must be https/);
+  docs["https://auth.v.test/.well-known/oauth-authorization-server"] = { issuer: "https://auth.v.test", authorization_endpoint: "javascript:alert(1)", token_endpoint: "https://auth.v.test/t" };
+  await assert.rejects(discoverAuthServer("https://auth.v.test", f, { strict: true }), /not a valid address|must be https/);
+  docs["https://auth.v.test/.well-known/oauth-authorization-server"] = { issuer: "https://auth.v.test", authorization_endpoint: "https://auth.v.test/a", token_endpoint: "https://auth.v.test/t", registration_endpoint: "https://auth.v.test/r" };
+  const ok = await discoverAuthServer("https://auth.v.test", f, { strict: true });
+  assert.equal(ok.token_uri, "https://auth.v.test/t");
+  // a path issuer (GitHub's shape) is fetched at its path-aware address
+  docs["https://gh.test/.well-known/oauth-authorization-server/login/oauth"] = { issuer: "https://gh.test/login/oauth", authorization_endpoint: "https://gh.test/login/oauth/authorize", token_endpoint: "https://gh.test/login/oauth/access_token" };
+  assert.equal((await discoverAuthServer("https://gh.test/login/oauth", f, { strict: true })).authorize_uri, "https://gh.test/login/oauth/authorize");
+
+  // the pin: a server whose document sends the code somewhere the catalog did not expect is refused, before any registration
+  const fake = await startFakeAuthServer(t, { dcr: true });
+  const r = rig(t);
+  await assert.rejects(r.c.start({ name: "b", resource: `${fake.origin}/mcp`, scopes: [], pin: ["https://the-real-vendor.test"] }), /is not one of the servers this app signs in with/);
+  assert.ok(!fake.calls.some(c => c.path === "/register"), "nothing was registered at a server the pin refuses");
+  const good = await r.c.start({ name: "c", resource: `${fake.origin}/mcp`, scopes: [], pin: [fake.origin] });
+  assert.equal(good.host, new URL(fake.origin).host, "the sign-in host is reported");
 });

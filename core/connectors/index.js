@@ -41,7 +41,7 @@ export default {
       testServer: async name => data(await ctx.call("mcp.test", { name })),
       hasServer: async name => {
         const list = data(await ctx.call("mcp.servers", {}));
-        return (Array.isArray(list) ? list : list.servers || []).some(s => s.name === name);
+        return (Array.isArray(list) ? list : list.servers || []).find(s => s.name === name) || null;
       },
       removeServer: async name => { data(await ctx.call("mcp.remove", { name })); },
       // An api-credential is made only from a person's own surface, so this is relayed as the person who asked.

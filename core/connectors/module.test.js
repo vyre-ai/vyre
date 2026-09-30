@@ -9,6 +9,9 @@
 // secret reaches a result, an event, a log line or a table.
 
 import { test } from "node:test";
+
+// Presets for fakes on this machine are honoured only under this switch (production reads the shipped catalog).
+process.env.VYRE_CONNECTORS_TEST_PRESETS = "1";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";

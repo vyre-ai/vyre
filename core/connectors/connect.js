@@ -30,6 +30,8 @@ export const MIGRATIONS = [
 /** The item fields a sign-in keeps, so a rotation can rewrite them and a reader can find them. */
 export const TOKEN_FIELDS = ["client_id", "client_secret", "refresh_token", "access_token", "expires_at", "token_uri", "token_auth", "issuer", "resource", "scope"];
 
+/** What a refresh may change in a saved sign-in. */
+export const ROTATED_FIELDS = ["refresh_token", "access_token", "expires_at", "scope"];
 const NAME = /^[a-z][a-z0-9-]{0,31}$/;
 const ITEM = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/;
 const MAX_TOKEN = 4096;
@@ -140,6 +142,10 @@ export function connections(deps) {
   /** Add or refresh the hub row, remember the connection, and try the server once. */
   async function bind(p, name, item, mode, label, auth, headers) {
     const had = await deps.hasServer(name);
+    // A row of this name that is not this connection (another url, another credential) is never taken over.
+    if (had && typeof had === "object" && (String(had.url || "") !== p.url || had.auth?.type !== auth.type || had.auth?.item !== auth.item)) {
+      throw fail(`a server named ${name} already exists and is not this ${p.label} connection; remove it first`, "conflict");
+    }
     /** @type {any} */ let test = null;
     if (had) test = await deps.testServer(name);
     else {
@@ -319,7 +325,7 @@ export function connections(deps) {
         // is still recorded as minted for the server's own address.
         started = await oauth.start({ name, ...(o.server ? { server: o.server, bind: [p.target === "api" ? `https://${p.api.hosts[0]}/` : p.url] } : { resource: p.url }),
           scopes: o.scopes || [], offline: Boolean(o.offline),
-          ...(o.port ? { port: o.port } : {}), ...(client ? { client } : {}),
+          ...(o.port ? { port: o.port } : {}), ...(o.as ? { pin: o.as } : {}), ...(client ? { client } : {}),
           ...(o.redirect ? { redirect: o.redirect } : {}), ...(o.basic ? { basic: true } : {}) });
       } catch (e) {
         const err = /** @type {any} */ (e);
@@ -334,7 +340,7 @@ export function connections(deps) {
       }
       pendingFor.set(started.id, { preset: p.id, name, ...(input.label ? { label: input.label } : {}), ...(who.as ? { as: who.as } : {}) });
       log("connector sign-in started", { name, preset: p.id });
-      return { step: "open", id: started.id, url: started.url, redirect: started.redirect, name, preset: p.id };
+      return { step: "open", id: started.id, url: started.url, redirect: started.redirect, host: started.host, name, preset: p.id };
     },
 
     /** The address the browser landed on, pasted, for a person whose browser is not on this machine. @param {{ id: string, url: string }} input */
@@ -379,7 +385,8 @@ export function connections(deps) {
         if (v === undefined) { try { v = await deps.fetchItem(c.item, f); } catch { v = undefined; } }
         if (typeof v === "string" && v) next[f] = v;
       }
-      for (const k of Object.keys(input.fields || {})) if (!TOKEN_FIELDS.includes(k)) throw fail(`${k.slice(0, 40)} is not a sign-in field`);
+      // The hub sends back only what a refresh produces; the client, token address and issuer stay as the sign-in left them.
+      for (const k of Object.keys(input.fields || {})) if (!ROTATED_FIELDS.includes(k)) throw fail(`${k.slice(0, 40)} is not a field a refresh changes`);
       await deps.save(c.item, /** @type {Record<string, string>} */ (next), { kind: "env-set", description: `${p ? p.label : c.preset} sign-in (made by Vyre)`, hosts: p ? originsOf(p) : [] });
       return { saved: true };
     },
