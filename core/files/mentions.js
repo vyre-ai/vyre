@@ -51,14 +51,14 @@ export function mentions(ctx, { folder, shares, resolveIn }) {
     } catch { return null; }
   };
 
-  // A tag's grant ends with its chat. Sessions emits thread.deleted and thread.archived with the thread's id; the
+  // A tag's grant ends with its chat (an archived chat can come back, so archiving keeps it). Sessions emits thread.deleted with the thread's id; the
   // 30 day sweep is the net for a chat that went away some other way.
   const drop = e => {
     const p = (e && e.payload) || e || {};
     const id = String((e && e.thread) || p.thread || p.uuid || p.id || "");
     if (id) try { db().prepare("DELETE FROM files_mention_grants WHERE thread = ?").run(id); } catch { /* table not there yet */ }
   };
-  try { ctx.events.on("thread.deleted", drop); ctx.events.on("thread.archived", drop); } catch { /* no event bus in a bare test */ }
+  try { ctx.events.on("thread.deleted", drop); } catch { /* no event bus in a bare test */ }
   try { db().prepare("DELETE FROM files_mention_grants WHERE at < ?").run(Date.now() - 30 * 86_400_000); } catch { /* same */ }
 
   ctx.tool("files.mentions.search", {

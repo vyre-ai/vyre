@@ -1004,8 +1004,10 @@ test("drive mentions: search finds files by name; resolve, for the chat only, le
   await ok(reg, "files.drive.read", { share: "work", path: "a/other.md" }, "mcp:agent:kit", { thread: "t3" });
   events.emit("sessions", "thread.deleted", { thread: "t3" }, { thread: "t3" });
   await no(reg, "files.drive.read", { share: "work", path: "a/other.md" }, "mcp:agent:kit", "not_available", { thread: "t3" });
-  // Archiving a chat ends its grants too.
+  // Archiving keeps the grant: an archived chat can come back.
   await ok(reg, "files.mentions.resolve", { id: "work:a/other.md", thread: "t4" }, "module:sessions");
   events.emit("sessions", "thread.archived", { thread: "t4" }, { thread: "t4" });
+  await ok(reg, "files.drive.read", { share: "work", path: "a/other.md" }, "mcp:agent:kit", { thread: "t4" });
+});
   await no(reg, "files.drive.read", { share: "work", path: "a/other.md" }, "mcp:agent:kit", "not_available", { thread: "t4" });
 });
