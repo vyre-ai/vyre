@@ -121,7 +121,7 @@ test("site.report: a success raises trust, misses cut it and quarantine it, an u
   assert.equal(last.data.quarantined, true);
   assert.equal((await w.call("memory.site.report", { origin: ORIGIN, part: "controls", id: "nope", outcome: "ok" })).data.conf, null);
   assert.equal((await w.call("memory.site.list", {})).data.sites[0].used_to_work, 1);
-  assert.equal((await w.call("memory.site.report", { origin: ORIGIN, part: "flows", id: "x", outcome: "sideways" })).error === undefined, true, "the registry validates enums; the tool ignores what it does not know");
+  assert.equal((await w.call("memory.site.report", { origin: ORIGIN, part: "flows", id: "x", outcome: "sideways" })).code, "bad_input", "an outcome is ok or miss");
 });
 
 test("site.list, site.forget and site.restore: one item, a whole site, then the 24-hour undo", async t => {
@@ -526,4 +526,30 @@ test("the two settings are real settings of the memory module (they were once ne
   const plan = m.settings.find(x => x.key === "memory.plan_share");
   assert.deepEqual(plan.enum, ["small", "medium", "large"], "plan_share keeps only its own choices");
   for (const k of ["memory.site.learn", "memory.site.sync"]) { const s = m.settings.find(x => x.key === k); assert.equal(s.type, "bool"); assert.equal(s.default, true); assert.deepEqual(s.levels, ["account"]); }
+});
+
+test("memory.site.report with a rung: the store counts which rung worked per page, and the card says where to start once it has worked twice", async t => {
+  const w = await world(t);
+  await w.call("memory.site.put", { origin: ORIGIN, patch: patch() });
+  const rung = (extra = {}) => w.call("memory.site.report", { origin: ORIGIN, template: "/clients/jane-doe/notes", rung: 3, ...extra });
+  assert.deepEqual((await rung()).data.rung, { r: 3, n: 1 });
+  assert.deepEqual((await rung()).data.rung, { r: 3, n: 1 }, "the same visit counts once, whatever the client sends");
+  assert.equal((await w.call("memory.site.get", { origin: ORIGIN })).data.origin.startRungs["/clients/{id}/notes"], undefined);
+  w.clock.now += 2 * HOUR;
+  assert.deepEqual((await rung()).data.rung, { r: 3, n: 2, startRung: 3 });
+  assert.deepEqual((await w.call("memory.site.get", { origin: ORIGIN })).data.origin.startRungs, { "/clients/{id}/notes": 3 });
+  w.clock.now += 2 * HOUR;
+  assert.deepEqual((await rung({ rung: 4, lowerFailed: true })).data.rung, { r: 4, n: 2, startRung: 4 }, "a heavier rung after the lower ones failed starts at two");
+  const d = (await w.call("memory.site.detail", { key: ORIGIN }, "deck")).data;
+  assert.deepEqual(d.rungs, [{ template: "/clients/{id}/notes", r: 4, n: 2 }]);
+  assert.ok(!JSON.stringify(await w.call("memory.site.get", { origin: ORIGIN, parts: ["controls"] })).includes("jane-doe"), "no slug anywhere");
+  // A bad rung is refused; a patch cannot set them; an unknown site answers null; an agent is denied.
+  assert.equal((await w.call("memory.site.report", { origin: ORIGIN, template: "/w", rung: 9 })).code, "bad_input");
+  await w.call("memory.site.put", { origin: ORIGIN, patch: { rungs: { "/workflows": { r: 5, n: 255, d: 99999 } } } });
+  assert.equal((await w.call("memory.site.detail", { key: ORIGIN }, "deck")).data.rungs.length, 1);
+  assert.deepEqual((await w.call("memory.site.report", { origin: "https://unknown.example", template: "/workflows", rung: 2 })).data, { rung: null });
+  assert.equal((await w.call("memory.site.report", { origin: ORIGIN, template: "/workflows", rung: 2 }, "mcp:agent:juno")).code, "denied");
+  // The old form still works, and needs its fields.
+  assert.ok((await w.call("memory.site.report", { origin: ORIGIN, part: "controls", id: "c1", outcome: "ok" })).data.conf > 0);
+  assert.equal((await w.call("memory.site.report", { origin: ORIGIN, part: "controls" })).code, "bad_input");
 });

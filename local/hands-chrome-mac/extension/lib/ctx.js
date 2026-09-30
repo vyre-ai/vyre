@@ -106,8 +106,10 @@ export function createCtx({ chrome, emit = () => {} }) {
       const scopes = [{ tabIds: [tab] }, ...(hosts.length ? [{ tabIds: [-1], initiatorDomains: hosts }] : [])];
       const blockId = next();
       let first = true;
+      /** @type {number[]} */ const blockIds = [];
       for (const scope of scopes) {
-        rules.push({ id: first ? blockId : next(), priority: 1, action: { type: "block" }, condition: { ...scope, resourceTypes: TYPES } });
+        const bid = first ? blockId : next(); blockIds.push(bid);
+        rules.push({ id: bid, priority: 1, action: { type: "block" }, condition: { ...scope, resourceTypes: TYPES } });
         first = false;
         for (const o of origins) rules.push({ id: next(), priority: 2, action: { type: "allow" }, condition: { ...scope, urlFilter: `|${o}/`, resourceTypes: TYPES } });
       }
@@ -119,19 +121,25 @@ export function createCtx({ chrome, emit = () => {} }) {
       const ids = rules.map(r => r.id);
       try { await api.updateSessionRules({ removeRuleIds: ids, addRules: rules }); } catch (e) { return { id: null, ids: [], ok: false, why: String(/** @type {Error} */ (e).message || e).slice(0, 160) }; }
       // CONFIRMED, not assumed: every rule reads back, and (where the browser offers testMatchOutcome, unpacked extensions) an Image and an XHR to a fresh origin from this tab match the block.
+      let tested = false;
       try {
         const have = new Set((await api.getSessionRules()).map((/** @type {any} */ r) => r.id));
         if (!ids.every(id => have.has(id))) { await this.unblock(ids); return { id: null, ids: [], ok: false, why: "the rules did not read back" }; }
         if (typeof api.testMatchOutcome === "function") {
           const allowIds = new Set(rules.filter(r => r.action.type === "allow").map(r => r.id));
-          for (const type of ["image", "xmlhttprequest"]) {
-            const out = await api.testMatchOutcome({ url: "https://vyre-dnr-probe.invalid/x", type, tabId: tab, initiator: origins[0] || "https://vyre-dnr-probe.invalid" });
+          // The tab's rule with an Image and an XHR, and (when there is one) the tab-less rule with an XHR whose initiator is a page host: each must match its block and no allow rule.
+          const probes = [{ type: "image", tabId: tab, rule: blockIds[0], initiator: origins[0] || "https://vyre-dnr-probe.invalid" }, { type: "xmlhttprequest", tabId: tab, rule: blockIds[0], initiator: origins[0] || "https://vyre-dnr-probe.invalid" }];
+          const ini = hosts.length ? origins.find(o => { try { return hosts.includes(new URL(o).hostname); } catch { return false; } }) || `https://${hosts[0]}` : "";
+          if (blockIds[1] != null) probes.push({ type: "xmlhttprequest", tabId: -1, rule: blockIds[1], initiator: ini });
+          for (const q of probes) {
+            const out = await api.testMatchOutcome({ url: "https://vyre-dnr-probe.invalid/x", type: q.type, tabId: q.tabId, initiator: q.initiator });
             const m = (out && out.matchedRules) || [];
-            if (!m.some((/** @type {any} */ x) => x.ruleId === blockId) || m.some((/** @type {any} */ x) => allowIds.has(x.ruleId))) { await this.unblock(ids); return { id: null, ids: [], ok: false, why: `the ${type} test request was not blocked by the rule` }; }
+            if (!m.some((/** @type {any} */ x) => x.ruleId === q.rule) || m.some((/** @type {any} */ x) => allowIds.has(x.ruleId))) { await this.unblock(ids); return { id: null, ids: [], ok: false, why: `the ${q.type} test request${q.tabId === -1 ? " without a tab" : ""} was not blocked by the rule` }; }
           }
+          tested = true;
         }
       } catch (e) { await this.unblock(ids); return { id: null, ids: [], ok: false, why: "the rules could not be confirmed: " + String(/** @type {Error} */ (e).message || e).slice(0, 120) }; }
-      return { id: blockId, ids, ok: true };
+      return { id: blockId, ids, ok: true, tested };
     },
     /** @param {number|number[]|null} ids */
     async unblock(ids) {
