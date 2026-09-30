@@ -205,7 +205,7 @@ test("open redirects: the response of an allowed host cannot send the credential
 test("redirect then recheck: every hop is checked as the first was, and a chain stops", async t => {
   const { net, state, get } = await mk(t);
   // Hop by hop on the same host, each re-resolved and re-validated.
-  net.script = r => (r.path === "/a" ? redirect("/b") : r.path === "/b" ? redirect("/c") : { status: 200, headers: { "content-type": "text/plain" }, body: Buffer.from("done") });
+  net.script = r => (r.url.pathname === "/a" ? redirect("/b") : r.url.pathname === "/b" ? redirect("/c") : { status: 200, headers: { "content-type": "text/plain" }, body: Buffer.from("done") });
   assert.equal((await get("https://api.harlow.test/a")).body, "done");
   assert.deepEqual(net.calls.map(c => c.path), ["/a", "/b", "/c"]);
   assert.ok(net.lookups.length >= 4, "planned once, then checked at connect time for each of three hops");
