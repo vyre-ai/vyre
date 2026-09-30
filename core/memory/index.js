@@ -26,6 +26,7 @@ import { fixes as fixLog } from "./iq/fix.js";
 import { heard, contentWords } from "./iq/heard.js";
 import { catchCorrection, groundedAnswer } from "./iq/chatfix.js";
 import { userWords, devTalk, vyreFolder, sessionTrust } from "./personal/trust.js";
+import { register as registerSite } from "./site.js";
 import { writeStore, register as registerWrites, passages as writePassages, relevantLines, quoted as quotedWrite } from "./write.js";
 
 /** How long to wait after a session.indexed event before curating, so a burst of turns is one pass. */
@@ -821,6 +822,7 @@ export default {
     };
     /** A retrieval with the writes that bear on its question added as passages, when a scope is given. */
     const withWrites = (base, question, scope) => scope ? { ...base, passages: [...base.passages, ...writePassages(writes, question, scope, 3)] } : base;
+    registerSite(ctx, { denied });
     const { write: fileWrite } = registerWrites(ctx, { store: writes, reach, personWrites, ownSession, reader, denied, plain,
       projects: async () => { try { const l = await projectList(); return l.length ? l.map(p => p.slug) : null; } catch { return null; } } });
     /**
