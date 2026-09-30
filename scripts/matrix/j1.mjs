@@ -88,6 +88,7 @@ try {
   await sees(/Sign in with Claude/i, 30000);
   await click("Sign in with Claude");
   const paste = await sees(/the sign-in page/i, 60000);
+  if (!paste) { r.step("1.8a-claude-signin-offered", false, { shot: await shot("setup-ai-link"), why: hide((await page.evaluate(`document.body.innerText`)).match(/Claude[\\s\\S]{0,120}/)?.[0] || "") }); throw new Error("no sign-in link"); }
   r.step("1.8a-claude-signin-offered", paste, { shot: await shot("setup-ai-link"), why: "fake claude setup-token" });
   await page.evaluate(`(() => { const i = document.querySelector('input[name="code"]'); i.focus(); i.value = "good-code#rc1"; i.dispatchEvent(new Event("input", { bubbles: true })); })()`);
   await click("Finish");
