@@ -2228,6 +2228,9 @@ export async function spendCheck(ctx, caller, provider) {
 }
 const spendDown = { day: "" };
 
+/** Whether a send is the first-party agents module feeding an agent for a person who typed the ask (forPerson); from anyone else the flag means nothing. @param {any} i @param {unknown} caller @param {unknown} firstParty */
+export const forPersonAsk = (i, caller, firstParty) => Boolean(i && i.forPerson === true && caller === "module:agents" && firstParty === true);
+
 export const queuesFor = caller => {
   const c = String(caller || "");
   if (fromLink(c)) return true;
@@ -2478,11 +2481,14 @@ export default {
         mentions: { type: "array", maxItems: 8, items: { type: "object", required: ["kind", "id"], properties: { kind: str, id: str } }, description: "The # tags the composer picked ({kind, id}), from a person's own surface only; a #Name in the text that is exactly one thing is tagged too." },
         pasted: { type: "array", maxItems: 20, items: str, description: "The spans of the text the person pasted (an email, a ticket): a #Name inside one tags nothing, since someone else wrote it; only a picked chip does." },
         model: { type: "string", description: "Switch the thread to this model first (as threads.model): the Capsule's Cmd-Return, deeper. A person's surface only." },
+        forPerson: { type: "boolean", description: "First-party agents module only: the words are for a person's own ask, so the daily spend cap does not hold them. From anyone else it is ignored." },
         effort: { type: "string", enum: EFFORTS, description: "Set this effort first (as threads.effort). A person's surface only." } } },
       // Only a person's words are queued for a session open in a terminal: a model's are refused.
-      async (i, { caller, idempotencyKey }) => {
+      async (i, { caller, idempotencyKey, firstParty }) => {
         guard(caller, "type into sessions");
-        { const rec = sb.record(i.thread); await spendGate(caller, rec && rec.provider); }
+        // forPerson: the first-party agents module feeding an agent's thread for a person who typed the ask. The person
+        // chooses to spend, so the cap does not hold it (agents.ask shows the cap as a notice instead).
+        if (!forPersonAsk(i, caller, firstParty)) { const rec = sb.record(i.thread); await spendGate(caller, rec && rec.provider); }
         // Only the person's own callers reach a Mac; agents, MCP, guests and modules get the box's answer.
         if (wantsMacs(ctx, {}, caller) && !sb.knows(i.thread)) {
           const mac = await sendToMac(i, caller);
