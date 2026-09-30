@@ -862,6 +862,8 @@ export default {
       return tm;
     };
     const CHARTER_CALLERS = ["cli", "local", "deck", "capsule", "mcp"];
+    /** Writing a charter is the person's own: their surfaces and modules, never a model (an agent or a session is mcp). */
+    const CHARTER_WRITERS = ["cli", "local", "deck", "capsule", "module"];
     const charterRef = { teammate: { type: "string" }, project: { type: "string" }, role: { type: "string" } };
 
     ctx.tool("team.charter.get", {
@@ -877,9 +879,9 @@ export default {
       run: async (i, meta = {}) => { const tm = await charterTarget(i, meta, { write: false }); return { agent: tm.agent, versions: charterHistory(tm.agent, Math.min(200, Number(i.limit) || 50)) }; },
     });
     ctx.tool("team.charter.set", {
-      description: `Write a teammate's charter (a new version; the old ones stay). It adds to the teammate's system prompt and never replaces Vyre's own rules; a live thread starts fresh at its next request so the new charter applies. At most ${CHARTER_MAX} characters. A person, the assistant, or a session in that project on the person's request; never a teammate.`,
+      description: `Write a teammate's charter (a new version; the old ones stay). It adds to the teammate's system prompt and never replaces Vyre's own rules; a live thread starts fresh at its next request so the new charter applies. At most ${CHARTER_MAX} characters. Person-only: an agent or a session drafts (team.charter.draft), the person writes.`,
       input: { type: "object", required: ["text"], properties: { ...charterRef, text: { type: "string" }, note: { type: "string" } } },
-      callers: CHARTER_CALLERS,
+      callers: CHARTER_WRITERS,
       run: async (i, meta = {}) => {
         const tm = await charterTarget(i, meta, { write: true });
         return writeCharter(tm.agent, i.text, meta.agent || String(meta.caller || "vyre"), i.note);

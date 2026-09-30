@@ -4175,12 +4175,12 @@ Attach an existing folder to an existing project as one of its workspaces (Vyre 
 
 ### `projects.archive`
 
-Archive a project: it leaves the project list, and its folder, threads, teammates and history are untouched. archived: false brings it back. projects.list {archived: true} includes archived projects. A person, or a session in that project on their request.
+Archive a project: it leaves the project list, and its folder, threads, teammates and history are untouched. archived: false brings it back. projects.list {archived: true} includes archived projects. Person-only: a model (agent or session) is refused.
 
 - Input:
   - `project` string, required
   - `archived` boolean
-- Callers: `capsule`, `cli`, `deck`, `local`, `mcp`
+- Callers: `capsule`, `cli`, `deck`, `local`, `module`
 
 ### `projects.catalog`
 
@@ -4275,12 +4275,12 @@ Remove picks from a project. Threads that ran in the project's folders stay in i
 
 ### `projects.rename`
 
-Rename a project. The slug, folder, threads, teammates and tile stay exactly as they were; only the name changes. A person, or a session in that project on their request.
+Rename a project. The slug, folder, threads, teammates and tile stay exactly as they were; only the name changes. Person-only: a model (agent or session) is refused.
 
 - Input:
   - `name` string, required
   - `project` string, required
-- Callers: `capsule`, `cli`, `deck`, `local`, `mcp`
+- Callers: `capsule`, `cli`, `deck`, `local`, `module`
 
 ### `projects.threads`
 
@@ -5537,7 +5537,7 @@ Make an older charter version the current one again, as a new version so the rev
 
 ### `team.charter.set`
 
-Write a teammate's charter (a new version; the old ones stay). It adds to the teammate's system prompt and never replaces Vyre's own rules; a live thread starts fresh at its next request so the new charter applies. At most 8000 characters. A person, the assistant, or a session in that project on the person's request; never a teammate.
+Write a teammate's charter (a new version; the old ones stay). It adds to the teammate's system prompt and never replaces Vyre's own rules; a live thread starts fresh at its next request so the new charter applies. At most 8000 characters. Person-only: an agent or a session drafts (team.charter.draft), the person writes.
 
 - Input:
   - `text` string, required
@@ -5545,7 +5545,7 @@ Write a teammate's charter (a new version; the old ones stay). It adds to the te
   - `project` string
   - `role` string
   - `teammate` string
-- Callers: `capsule`, `cli`, `deck`, `local`, `mcp`
+- Callers: `capsule`, `cli`, `deck`, `local`, `module`
 
 ### `team.default.get`
 

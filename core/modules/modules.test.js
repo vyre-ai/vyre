@@ -805,6 +805,146 @@ test("modules: an invalid added copy found first never stops the first party mod
   assert.ok([...reg.modules.keys()].some(k => k.startsWith("gate@")), "the broken copy is reported under name@dir");
 });
 
+test("modules v1: an asked tool runs for a model only when vault.said.match says the person asked, and fails closed", async t => {
+  // A stand-in vault: it matches the tool "bakery.target" in thread t-1 only, and records what it was asked.
+  /** @type {any} */ (globalThis).__said = [];
+  t.after(() => { delete /** @type {any} */ (globalThis).__said; });
+  const vault = `export default { async start(ctx) {
+    ctx.tool("vault.said.match", { internal: true, run: async input => { globalThis.__said.push(input); if (input.thread === "boom") throw new Error("locked"); return { matched: input.to[0] === "bakery.target" && input.thread === "t-1" }; } });
+    return {};
+  } };`;
+  const mods = [["bakery", bakeryV1(), bakerySrc], ["notes", good, notesSrc], ["vault", { version: "0.1.0", does: { tools: ["vault.said.match"] } }, vault]];
+  const reg = await registry(t, mods, { builtIn: true });
+  const asAgent = thread => reg.call("bakery.target", {}, "mcp:agent:kit", { thread });
+  assert.equal((await asAgent("t-1")).data.ran, "bakery.target", "the person's words in this thread asked for it");
+  assert.deepEqual(globalThis.__said[0], { kind: "act_out", via: "bakery", to: ["bakery.target"], consume: true, thread: "t-1" });
+  assert.equal((await asAgent("t-2")).error.code, "not_asked", "another thread");
+  assert.equal((await reg.call("bakery.target", {}, "mcp")).error.code, "not_asked", "no thread");
+  assert.equal((await asAgent("boom")).error.code, "not_asked", "a vault that errors (locked) fails closed");
+  assert.equal((await reg.call("bakery.orders", {}, "mcp")).data.ran, "bakery.orders", "anyone reach never asks");
+  // No vault at all: fail closed, as before.
+  const bare = await registry(t, [["bakery", bakeryV1(), bakerySrc], ["notes", good, notesSrc]], { builtIn: true });
+  assert.equal((await bare.call("bakery.target", {}, "mcp:agent:kit", { thread: "t-1" })).error.code, "not_asked");
+});
+
+test("modules v1: an asked tool with a target binds the person's yes to what the call acts on, and fails closed", async t => {
+  /** @type {any} */ (globalThis).__said2 = [];
+  t.after(() => { delete /** @type {any} */ (globalThis).__said2; delete /** @type {any} */ (globalThis).__spent; });
+  // A stand-in vault: it matches only "merge PR 12 of acme/site" in thread t-1, and with no intent at all it matches nothing.
+  const vault = `export default { async start(ctx) {
+    ctx.tool("vault.said.match", { internal: true, run: async input => {
+      globalThis.__said2.push(input);
+      const hit = input.thread === "t-1" && JSON.stringify(input.to) === JSON.stringify(["gh.merge:acme/site#12"]) && !globalThis.__spent;
+      // A plain ask is used up by the match that claims it (consume), as vault's own does.
+      if (hit && input.consume === true) globalThis.__spent = true;
+      return { matched: hit };
+    } });
+    return {};
+  } };`;
+  const gh = { version: "0.1.0", roles: ["local"], does: { tools: [
+    { name: "gh.merge", summary: "merge a PR", reach: "asked", target: "gh.merge.target" },
+    { name: "gh.merge.target", summary: "what a merge acts on", reach: "modules" },
+    { name: "gh.plain", summary: "no target", reach: "asked" }] } };
+  const ghSrc = `export default { async start(ctx) {
+    ctx.tool("gh.merge", { input: { type: "object", required: ["pr"], properties: { pr: { type: "string" } } }, run: async i => ({ merged: i.pr }) });
+    ctx.tool("gh.plain", { input: { type: "object" }, run: async () => ({ ran: true }) });
+    ctx.tool("gh.merge.target", { internal: true, input: { type: "object" }, run: async ({ tool: tool_, input }, meta) => {
+      globalThis.__said2.granted = meta.granted;
+      if (input.pr === "boom") throw new Error("no repo");
+      if (input.pr === "none") return { to: [] };
+      if (input.pr === "slow") { await new Promise(r => { setTimeout(r, 10_000).unref(); }); return { to: [tool_ + ":acme/site#12"] }; }
+      return { to: [tool_ + ":acme/site#" + input.pr] };
+    } });
+    return {};
+  } };`;
+  const reg = await registry(t, [["gh", gh, ghSrc], ["vault", { version: "0.1.0", does: { tools: ["vault.said.match"] } }, vault]], { builtIn: true });
+  const ask = (tool, input, thread = "t-1") => reg.call(tool, input, "mcp:agent:kit", { thread });
+  // A call that is refused before it runs never spends the ask: bad input here.
+  assert.equal((await ask("gh.merge", {})).error.code, "bad_input");
+  assert.equal(globalThis.__spent, undefined, "an invalid call did not use the ask up");
+  assert.deepEqual((await reg.call("gh.merge", { pr: "12" }, "mcp:agent:kit", { thread: "t-1", granted: ["acme"] })).data, { merged: "12" }, "the PR the person said yes to");
+  assert.deepEqual(globalThis.__said2.granted, ["acme"], "the target sees the asking agent's grant in its meta");
+  assert.equal((await ask("gh.merge", { pr: "12" })).error.code, "not_asked", "one ask, one act: a second merge of the same PR is refused");
+  assert.deepEqual(globalThis.__said2.at(-1).to, ["gh.merge:acme/site#12"], "the match is the target's whole answer");
+  assert.equal((await ask("gh.merge", { pr: "40" })).error.code, "not_asked", "a different PR is refused");
+  assert.equal((await ask("gh.merge", { pr: "12" }, "t-2")).error.code, "not_asked", "another thread");
+  assert.equal((await ask("gh.merge", { pr: "boom" })).error.code, "not_asked", "a target that errors is no");
+  assert.equal((await ask("gh.merge", { pr: "none" })).error.code, "not_asked", "an empty target is no");
+  const started = Date.now();
+  assert.equal((await ask("gh.merge", { pr: "slow" })).error.code, "not_asked", "a target that answers late is no");
+  assert.ok(Date.now() - started < 5000, "and the call does not wait for it (a 10 s tool, answered at the 2 s limit)");
+  assert.equal((await ask("gh.plain", {})).error.code, "not_asked");
+  assert.deepEqual(globalThis.__said2.at(-1).to, ["gh.plain"], "a tool with no target matches on its own name, as before");
+  // The manifest: a target is for an asked tool, names one of the module's own internal tools, and is built in only.
+  const base = { name: "gh", version: "0.1.0", apiVersion: 1, description: "x", roles: ["local"] };
+  const bad = (tools, opts) => validate({ ...base, does: { tools } }, opts).join("; ");
+  assert.match(bad([{ name: "gh.merge", reach: "asked", target: "gh.nope" }, { name: "gh.x", reach: "modules" }], { firstParty: true }), /target "gh.nope" is not a tool this module declares/);
+  assert.match(bad([{ name: "gh.merge", reach: "asked", target: "gh.t" }, { name: "gh.t", reach: "anyone" }], { firstParty: true }), /must be reach modules/);
+  assert.match(bad([{ name: "gh.merge", reach: "anyone", target: "gh.t" }, { name: "gh.t", reach: "modules" }], { firstParty: true }), /target is for an asked tool/);
+  assert.equal(bad([{ name: "gh.merge", reach: "asked", target: "gh.t" }, { name: "gh.t", reach: "modules" }], { firstParty: true }), "");
+  assert.match(bad([{ name: "gh.merge", summary: "m", reach: "asked", target: "gh.t" }, { name: "gh.t", summary: "t", reach: "modules" }]), /target is built in only/);
+});
+
+test("modules v1: an asked tool's retry with the same Idempotency-Key returns the stored answer and never spends a second ask, and a not_asked is not kept", async t => {
+  /** @type {any} */ (globalThis).__g = { allow: false, matches: 0 };
+  t.after(() => { delete /** @type {any} */ (globalThis).__g; });
+  const vault = `export default { async start(ctx) {
+    ctx.tool("vault.said.match", { internal: true, run: async input => { const g = globalThis.__g; g.matches++; const hit = g.allow; if (hit && input.consume === true) g.allow = false; return { matched: hit }; } });
+    return {};
+  } };`;
+  const gh = { version: "0.1.0", roles: ["local"], does: { tools: [{ name: "gh.merge", summary: "merge a PR", reach: "asked" }] } };
+  const ghSrc = `export default { async start(ctx) { ctx.tool("gh.merge", { input: { type: "object" }, run: async i => ({ merged: i.pr }) }); return {}; } };`;
+  const reg = await registry(t, [["gh", gh, ghSrc], ["vault", { version: "0.1.0", does: { tools: ["vault.said.match"] } }, vault]], { builtIn: true });
+  const g = () => /** @type {any} */ (globalThis).__g;
+  const call = () => reg.call("gh.merge", { pr: "12" }, "mcp:agent:kit", { thread: "t-1", idempotencyKey: "k1" });
+  assert.equal((await call()).error.code, "not_asked", "no ask yet");
+  g().allow = true; // the person says yes
+  assert.deepEqual((await call()).data, { merged: "12" }, "the retry is not stuck with the stored refusal");
+  assert.equal(g().matches, 2);
+  const again = await call();
+  assert.deepEqual([again.data, again.replayed], [{ merged: "12" }, true], "a replay returns the stored answer");
+  assert.equal(g().matches, 2, "and never asked vault, so it spent nothing");
+});
+
+test("modules v1: a tool's projectArg refuses an agent's call for a project it is not granted, with not_found, before the tool runs", async t => {
+  /** @type {any} */ (globalThis).__ran = [];
+  t.after(() => { delete /** @type {any} */ (globalThis).__ran; });
+  // A stand-in projects.reach: agent kit reaches harlow only; every other caller is the owner.
+  const projects = `export default { async start(ctx) {
+    ctx.tool("projects.reach", { internal: true, input: { type: "object" }, run: async ({ caller }) => /agent:kit/.test(caller) ? { all: false, agent: "kit", projects: [{ slug: "harlow", name: "Harlow Legal" }] } : { all: true, agent: null } });
+    return {};
+  } };`;
+  const notes = { version: "0.1.0", roles: ["local"], does: { tools: [{ name: "notes.read", projectArg: "project" }, { name: "notes.brief", projectArg: ["project", "projects"] }, "notes.plain"] } };
+  const notesSrc = `export default { async start(ctx) {
+    ctx.tool("notes.read", { input: { type: "object" }, run: async (i, meta) => { globalThis.__ran.push(["read", i.project, meta.reach]); return { ok: true }; } });
+    ctx.tool("notes.brief", { input: { type: "object" }, run: async () => ({ ok: true }) });
+    ctx.tool("notes.plain", { input: { type: "object" }, run: async () => ({ ok: true }) });
+    return {};
+  } };`;
+  const reg = await registry(t, [["notes", notes, notesSrc], ["projects", { version: "0.1.0", does: { tools: ["projects.reach"] } }, projects]], { builtIn: true });
+  const kit = (tool, input) => reg.call(tool, input, "mcp:agent:kit");
+  assert.deepEqual((await kit("notes.read", { project: "harlow" })).data, { ok: true }, "its own project");
+  assert.equal((await kit("notes.read", { project: "northwind" })).error.code, "not_found", "another project");
+  assert.equal(globalThis.__ran.length, 1, "the refused call never reached the tool");
+  assert.equal((await kit("notes.read", { project: "Harlow Legal" })).data.ok, true, "a project by its name too");
+  assert.deepEqual(globalThis.__ran.at(-1)[2], { all: false, projects: ["harlow"] }, "the tool gets meta.reach for its listings");
+  assert.deepEqual((await kit("notes.read", {})).data, { ok: true }, "no project named: the tool lists within meta.reach");
+  assert.equal((await kit("notes.brief", { project: "harlow", projects: ["harlow", "northwind"] })).error.code, "not_found", "every entry of a list argument is checked");
+  assert.equal((await kit("notes.brief", { projects: ["harlow"] })).data.ok, true);
+  assert.equal((await kit("notes.plain", { project: "northwind" })).data.ok, true, "a tool with no projectArg is unchanged");
+  for (const caller of ["cli", "deck", "mcp"]) assert.equal((await reg.call("notes.read", { project: "northwind" }, caller)).data.ok, true, `${caller} is the owner's`);
+  // No projects module at all: a named project is refused for an agent (fail closed), the owner is unaffected.
+  const bare = await registry(t, [["notes", notes, notesSrc]], { builtIn: true });
+  assert.equal((await bare.call("notes.read", { project: "harlow" }, "mcp:agent:kit")).error.code, "not_found");
+  assert.equal((await bare.call("notes.read", { project: "harlow" }, "cli")).data.ok, true);
+  await bare.call("notes.read", {}, "mcp:agent:kit");
+  assert.deepEqual(globalThis.__ran.at(-1)[2], { all: false, projects: [] }, "an agent with no answer on its grant lists nothing, never everything");
+  // The manifest: a field name, or a list of them.
+  const base = { name: "notes", version: "0.1.0", apiVersion: 1, description: "x", roles: ["local"] };
+  assert.match(validate({ ...base, does: { tools: [{ name: "notes.read", summary: "r", projectArg: "not a name" }] } }).join(), /projectArg must be an input field name/);
+  assert.deepEqual(validate({ ...base, does: { tools: [{ name: "notes.read", summary: "r", projectArg: ["project", "projects"] }] } }).filter(p => /projectArg/.test(p)), []);
+});
+
 test("modules v1: a required module below the range keeps the module from starting", async t => {
   const reg = await registry(t, [["bakery", { ...bakeryV1(), requires: { notes: ">=0.2.0" } }, bakerySrc], ["notes", good, notesSrc]]);
   assert.equal(reg.modules.get("bakery").state, "failed");

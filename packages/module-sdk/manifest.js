@@ -184,6 +184,8 @@ export function checkManifestFull(m, { firstParty = false, contract } = {}) {
     }
     // The setup channel's allowlist is Vyre's to grow: an added module can't put a tool on it.
     if (m.setupTools !== undefined) out.push(`setupTools is built in only; an added module can't put a tool on the setup channel`);
+    // The per-call target of an asked tool is read by the registry as vyred: Vyre's own modules only.
+    if (toolEntries(m).some(t => t.target)) out.push(`a tool's target is built in only; an added module can't name one`);
     // The # picker's providers are Vyre's own: an added module can't put a kind in it.
     if (m.mentions !== undefined) out.push(`mentions is built in only; an added module can't offer a kind to the # picker`);
     // H2: in 0.2 the allowlist of modules an added module may replace is empty.
@@ -246,6 +248,20 @@ export function checkManifestFull(m, { firstParty = false, contract } = {}) {
       firstParty, moduleName: String(m.name),
     }));
   }
+  // projectArg names the input field(s) holding a project: the registry refuses an agent's call for a project it is not granted.
+  for (const e of toolEntries(m)) {
+    if (e.projectArg == null) continue;
+    const names = Array.isArray(e.projectArg) ? e.projectArg : [e.projectArg];
+    if (!names.length || names.some(n => typeof n !== "string" || !/^[a-zA-Z][a-zA-Z0-9_]{0,30}$/.test(n))) out.push(`tool "${e.name}": projectArg must be an input field name, or a list of them`);
+  }
+  // An asked tool's `target` names one internal tool of this module (built in only, see addedCheck).
+  for (const e of toolEntries(m)) {
+    if (!e.target) continue;
+    const own = toolEntries(m).find(x => x.name === e.target);
+    if (e.reach !== "asked") out.push(`tool "${e.name}": target is for an asked tool`);
+    else if (!own || !String(e.target).startsWith(String(m.name) + ".")) out.push(`tool "${e.name}": target "${e.target}" is not a tool this module declares in does.tools`);
+    else if (own.reach !== "modules") out.push(`tool "${e.name}": target "${e.target}" must be reach modules, an internal tool`);
+  }
   // mentions name this module's own tools, one provider per kind.
   if (Array.isArray(m.mentions)) {
     const own = new Set(toolEntries(m).map(t => t.name));
@@ -277,7 +293,7 @@ export function toolEntries(m) {
   return list.flatMap((/** @type {any} */ t) => {
     if (typeof t === "string") return [{ name: t, summary: "", reach: "anyone", outward: null, cost: null }];
     if (!TYPES.object(t) || typeof t.name !== "string") return [];
-    return [{ name: t.name, summary: typeof t.summary === "string" ? t.summary : "", reach: t.reach || "anyone", outward: t.outward || null, cost: t.cost || null }];
+    return [{ name: t.name, summary: typeof t.summary === "string" ? t.summary : "", reach: t.reach || "anyone", outward: t.outward || null, cost: t.cost || null, target: typeof t.target === "string" ? t.target : null, projectArg: typeof t.projectArg === "string" || Array.isArray(t.projectArg) ? t.projectArg : null }];
   });
 }
 
