@@ -174,9 +174,10 @@ export default {
         const out = await vault.put({ ...input, ...(relayRules ? { relay: relayRules } : {}) }, caller);
         for (const g of grants || []) await vault.grant({ name: input.name, module: g }, caller);
         return { ...out, ...(grants ? { granted: grants } : {}) };
-      }, presence("Save an item in the vault", ({ name, kind }) => {
+      }, presence("Save an item in the vault", ({ name, kind, grants }) => {
         const old = vault.row(name);
-        return `${old ? "Replace" : "Add"} ${kind || (old && old.kind) || "secret"} ${quoted(name)} in the vault`;
+        // The approval is the one the code relies on: when the put also grants, the prompt says so.
+        return `${old ? "Replace" : "Add"} ${kind || (old && old.kind) || "secret"} ${quoted(name)} in the vault${Array.isArray(grants) && grants.length ? ` and let ${grants.join(", ")} use it` : ""}`;
       }));
 
     tool("vault.list", null, "Every item's name, kind, description, field names, hosts and grants. Never a value.",

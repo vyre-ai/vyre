@@ -64,6 +64,7 @@ test("presence: summaries name items and destinations and never a value, and nev
   assert.equal(await sum("vault.put", { name: "billing-key", kind: "api-key", value: canary }), `Add api-key "billing-key" in the vault`);
   await run("vault.put", { name: "billing-key", kind: "api-key", value: canary });
   assert.equal(await sum("vault.put", { name: "billing-key", value: canary }), `Replace api-key "billing-key" in the vault`);
+  assert.equal(await sum("vault.put", { name: "ms-graph", kind: "api-credential", value: canary, grants: ["connectors"] }), `Add api-credential "ms-graph" in the vault and let connectors use it`, "a put that also grants says so");
   assert.match(await sum("vault.inject", { items: [{ name: "billing-key", env: "BILLING_KEY" }] }), /"billing-key" as BILLING_KEY into a program's environment/);
   assert.match(await sum("vault.backup", { file: "/tmp/acme.vyre", passphrase: canary }), /Write a sealed backup of 1 items to \/tmp\/acme.vyre/);
   assert.match(await sum("vault.grant", { name: "billing-key", module: "mail" }), /Let mail use "billing-key"/);
