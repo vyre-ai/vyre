@@ -36,6 +36,7 @@ import { register as registerClaim } from "./claim.js";
 import { Sessions, SESSIONS_MIGRATION, alive } from "./sessions.js";
 import { findSession, sessionInfo, openElsewhere } from "./adopt.js";
 import { wantsMacs, askMacs, mergeRows, gatedAsk } from "../modules/federate.js";
+import { withinOrThrow } from "../../lib/within.js";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 
@@ -1818,11 +1819,7 @@ export class Switchboard {
     if (!warm) id = (await this.spare(purpose, system, model)).id;
     const st = this.live.get(id);
     if (!st) throw new Error(`the ${purpose} session did not start`);
-    const answer = new Promise((resolve, reject) => {
-      st.answered = resolve;
-      const t = setTimeout(() => { st.answered = null; reject(Object.assign(new Error(`no answer within ${timeoutMs} ms`), { code: "timeout" })); }, timeoutMs);
-      t.unref?.();
-    });
+    const answer = new Promise(resolve => { st.answered = resolve; });
     if (onText) st.onText = onText;
     this.write(id, String(prompt));
     // The next question's session starts now, while this one answers.
@@ -1834,7 +1831,7 @@ export class Switchboard {
       this.starting.add(next);
     }
     try {
-      const r = /** @type {any} */ (await answer);
+      const r = /** @type {any} */ (await withinOrThrow(answer, timeoutMs, () => { st.answered = null; return Object.assign(new Error(`no answer within ${timeoutMs} ms`), { code: "timeout" }); }));
       return { ...r, warm, ms: Date.now() - t0, thread: id };
     } finally {
       st.done = true; st.stopping = true;

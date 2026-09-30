@@ -30,6 +30,7 @@ import { registryRules } from "../harness/rules.js";
 // edge (reviewer's MEDIUM, 2026-09-28) and would pull the whole relay module - link, bridge,
 // redeem, tailnet via relay/client - into the kernel just for one constant.
 import { DEFAULT_RELAY } from "../../lib/relay-default.js";
+import { within } from "../../lib/within.js";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 // The SSE heartbeat. Clients call a stream dead after three missed beats (ADR 0029, R1); the
@@ -169,7 +170,7 @@ async function startLocked(opts, root, p, release) {
     // Stop taking calls, and give the ones running up to DRAIN_MS to finish: a write cut off
     // mid-way looks to its client like a failure it will retry (ADR 0029, R7).
     drain.on = true;
-    if (inflight.size) await Promise.race([Promise.allSettled([...inflight]), new Promise(r => setTimeout(r, DRAIN_MS).unref())]);
+    if (inflight.size) await within(Promise.allSettled([...inflight]), DRAIN_MS);
     for (const end of streams) end();
     for (const s of upgraded) s.destroy();
     // A module's own stream (the link's box events) is not in `streams` or `upgraded`; close

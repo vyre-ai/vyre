@@ -1132,7 +1132,6 @@ export default {
         if (i.wait) {
           const done = await new Promise(resolve => {
             const timer = setTimeout(() => { off(); resolve(null); }, ASK_WAIT_MS);
-            timer.unref?.();
             const off = ctx.events.on("summon.finished", e => { if (e.payload.request === id) { clearTimeout(timer); off(); resolve(e); } });
           });
           if (done) { const r = mustR(id); return { request: id, state: r.state, result: r.result }; }

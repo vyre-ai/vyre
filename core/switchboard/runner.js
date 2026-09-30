@@ -140,9 +140,9 @@ export function run(o) {
       if (exited) return Promise.reject(new Error("the session has ended"));
       const rid = `vyre-ctl-${++n}`;
       return new Promise((resolve, reject) => {
-        asked.set(rid, { resolve, reject });
+        const timer = setTimeout(() => { if (asked.delete(rid)) reject(new Error(`Claude Code did not answer ${subtype}`)); }, 15_000);
+        asked.set(rid, { resolve: v => { clearTimeout(timer); resolve(v); }, reject: e => { clearTimeout(timer); reject(e); } });
         write({ type: "control_request", request_id: rid, request: { subtype, ...fields } });
-        setTimeout(() => { if (asked.delete(rid)) reject(new Error(`Claude Code did not answer ${subtype}`)); }, 15_000).unref?.();
       });
     },
     /** Stop the current turn (as Escape does); the session stays. */
