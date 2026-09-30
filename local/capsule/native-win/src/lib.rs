@@ -17,3 +17,4 @@ pub mod hotkey;
 
 pub mod shell;
 pub mod update;
+pub mod drive;

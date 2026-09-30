@@ -8,6 +8,8 @@
     "allow-get-state",
     "allow-save-pairing",
     "allow-set-autostart",
-    "allow-notify"
+    "allow-notify",
+    "allow-mount-drive",
+    "allow-unmount-drive"
   ]
 }
