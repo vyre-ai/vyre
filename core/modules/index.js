@@ -53,7 +53,7 @@ export const firstParty = dir => {
  * @type {Record<string, string[]>}
  */
 // settings passes a person's change on to the module that keeps the value, as that person.
-const CALL_AS = { link: ["link:box"], settings: ["cli", "local", "deck", "capsule"], mentions: (/** @type {string} */ as) => isPerson(as) || as === "module:sessions" || as === "module:assistant",
+const CALL_AS = { agents: (/** @type {string} */ as) => isPerson(as), link: ["link:box"], settings: ["cli", "local", "deck", "capsule"], mentions: (/** @type {string} */ as) => isPerson(as) || as === "module:sessions" || as === "module:assistant",
   // capsule runs a view's declared tool as the asking person (first party modules) or as the added module itself, never as anyone else.
   capsule: (/** @type {string} */ as) => isPerson(as) || /^module:[a-z][a-z0-9-]*$/.test(as),
   // connectors relays the person who asked to one thing: writing an api-credential (a module cannot write one on its own); checked per call below.

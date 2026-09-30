@@ -36,6 +36,11 @@ Talk to an agent: the text goes to its current thread (started if needed) and th
 - Input:
   - `agent` string, required
   - `text` string, required
+  - `mentions` list of object: The # tags the composer picked, from a person's own surface only (as threads.send): each is resolved for the agent's thread.
+    - `id` string, required
+    - `kind` string, required
+    - `name` string
+  - `pasted` list of string: The spans of the text the person pasted: a #Name inside one tags nothing.
   - `surface` string
   - `wait` boolean
 - Callers: any caller
@@ -6266,9 +6271,14 @@ Start a headless Claude Code session in a folder or a project's home, owned by v
   - `cwd` string
   - `effort` one of "low", "medium", "high", "xhigh", "max": Reasoning effort, as /effort: low, medium, high, xhigh or max. Default: the model's own.
   - `lean` boolean: A one-question thread: no Vyre plugin, no tools, no MCP servers, none of the user's settings. Cheap to start.
+  - `mentions` list of object: The # tags the composer picked ({kind, id}) for the first prompt, from a person's own surface only; as threads.send.
+    - `id` string, required
+    - `kind` string, required
+    - `name` string
   - `model` string
   - `name` string
   - `parent` string: First-party modules only: the thread this one is started for (a teammate's thread for a person's). A session starting one is its own parent, from what vyred verified.
+  - `pasted` list of string: The spans of the prompt the person pasted: a #Name inside one tags nothing. As threads.send.
   - `project` string
   - `prompt` string
   - `provider` string: The session provider: claude (the default), or one a module added.
