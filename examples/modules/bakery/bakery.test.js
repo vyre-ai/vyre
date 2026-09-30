@@ -32,14 +32,14 @@ test("a big order becomes a memory note, and reaching the target offers a push",
   const h = await bakery(t, { settings: { "bakery.target": 30 } });
   await h.call("bakery.add", { customer: "Harlow Legal", items: 24 });
   assert.deepEqual(h.memory, [{ kind: "note", text: `Harlow Legal ordered 24 items on ${new Date().toLocaleDateString("en-CA")}.`, subject: "Harlow Legal", source_ref: "bakery:order:1", from: "module:bakery", untrusted: true }]);
-  assert.equal(h.calls.filter(c => c.tool === "push.offer").length, 0);
+  assert.equal(h.calls.filter(c => c.member === "push.offer").length, 0);
   const r = await h.call("bakery.add", { customer: "alex", items: 6 });
   assert.equal(r.data.reached, true);
-  const pushes = h.calls.filter(c => c.tool === "push.offer");
+  const pushes = h.calls.filter(c => c.member === "push.offer");
   assert.equal(pushes.length, 1);
-  assert.equal(pushes[0].input.title, "Daily target reached");
+  assert.deepEqual([pushes[0].input.title, pushes[0].input.kind], ["Daily target reached", "target-reached"]);
   await h.call("bakery.add", { customer: "alex", items: 1 });
-  assert.equal(h.calls.filter(c => c.tool === "push.offer").length, 1, "once a day, when it is crossed");
+  assert.equal(h.calls.filter(c => c.member === "push.offer").length, 1, "once a day, when it is crossed");
 });
 
 test("bakery.target is asked: an agent needs the person's ask, and the change can be undone", async t => {

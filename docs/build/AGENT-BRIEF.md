@@ -39,7 +39,14 @@ A module is a folder: `module.json`, an entry file (`index.js`) whose default ex
 7. **Migrations are forward only.** `ctx.store.migrate([...])` takes an ordered list. Add a step
    to change a table; never edit or remove a step that has run. Tables start with your module's
    name and an underscore.
-8. **Plain words and the sample world.** Summaries are one lowercase line. No em dash, no section
+8. **Each ctx door has one declaration.** `ctx.call` needs the tool in `needs.tools`,
+   `ctx.gate.request` needs `gate.request` there, `ctx.vault.request` a `needs.credentials` id,
+   `ctx.connections.call` a `needs.connections` provider, `ctx.fetch` a `needs.network` host,
+   `ctx.memory.write` its kind in `teaches.memory`, `ctx.ask` and `ctx.spend` a `needs.spend` cap,
+   and `ctx.push.offer` its kind in `shows.notices`. `ctx.undo.record` needs nothing. A call
+   without its declaration throws an error with code `undeclared`. The install card is built from
+   these declarations, so declare only what you use.
+9. **Plain words and the sample world.** Summaries are one lowercase line. No em dash, no section
    sign. Example people and businesses are only alex, Harlow Legal, Northwind Bakery, juno and
    kit, and example hosts end in `.example`.
 
@@ -79,15 +86,15 @@ A module is a folder: `module.json`, an entry file (`index.js`) whose default ex
     "watchers": ["watchers/big-order.json"]
   },
   "watches": { "emits": ["bakery.order-added"], "on": ["memory.written"] },
-  "shows": { "deck": ["now:bakery.today"] },
+  "shows": { "deck": ["now:bakery.today"], "notices": ["target-reached"] },
   "settings": [{ "key": "bakery.target", "label": "Daily target", "type": "int", "default": 40,
                  "levels": ["account"], "apply": "live" }],
   "needs": {
-    "tools": ["memory.write", "push.offer"],
     "credentials": [{ "id": "supplier", "kind": "api-credential", "provider": "flourco", "purpose": "place flour orders" }],
     "network": ["api.flourco.example"],
     "spend": { "dailyUsd": 0.5 }
-  }
+  },
+  "teaches": { "memory": ["note"] }
 }
 ```
 
@@ -106,11 +113,13 @@ A module is a folder: `module.json`, an entry file (`index.js`) whose default ex
 | `watches.on` | Every pattern you subscribe to: a type, `noun.*` or `*`. |
 | `shows.deck` | Slots: `now:<tool>`, `renderer:<tool>`, `slash:<name>`, `settings`, `view:<name>`, `panel:<name>`. |
 | `settings[]` | `{ key: "<module>.<key>", label, type, default, levels, apply }`. |
-| `needs.tools` | Every tool you call with `ctx.call`, including `memory.write` and `push.offer`. `module.*` for all of one module's. <!-- terms: ignore --> |
+| `needs.tools` | Every tool you call with `ctx.call` (`module.*` for all of one module's), and `gate.request` if you use `ctx.gate.request`. <!-- terms: ignore --> |
 | `needs.credentials` | Vault items by `id`, `kind`, `provider`, `purpose`. Used only through `ctx.vault.request`. |
 | `needs.network` | Public hosts `ctx.fetch` may reach without a key. |
 | `needs.connections` | `{ provider, purpose }` for vendor MCP connections. |
-| `needs.spend` | `{ dailyUsd }`, your daily cap. |
+| `needs.spend` | `{ dailyUsd }`, your daily cap. Needed for `ctx.ask` and `ctx.spend`. |
+| `teaches.memory` | The kinds `ctx.memory.write` writes: `fact`, `note` or both. |
+| `shows.notices` | The notice kinds `ctx.push.offer` raises. |
 | Built in only | `does.providers`, `shows.streams`, `needs.vault`. An added module can't use them in 0.2. |
 
 ## ctx cheat sheet
@@ -229,6 +238,7 @@ test("bakery.flour is held for an agent and runs for the person", async t => {
 | `X examples[0] failed: ...` | Make the example valid for `input`, and make `run` throw only Errors with a `code`. |
 | `emitted X, which its manifest does not declare under watches.emits` | Add X to `watches.emits`. |
 | `ctx.call X, which needs.tools does not list` | Add X to `needs.tools`. |
+| `... (undeclared)`, or an error with code `undeclared` | Declare the door: see golden rule 8's list of which key each ctx member needs. |
 | `subscribed to X, which its manifest does not declare under watches.on` | Add X to `watches.on`. |
 | `fetched X, which needs.network does not list` | Add the host to `needs.network`. |
 | `asked the vault for X, which needs.credentials does not declare` | Add X to `needs.credentials`. |

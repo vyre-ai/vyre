@@ -126,6 +126,10 @@ export function checkManifest(m, { firstParty = false } = {}) {
     else if (tools.includes(name)) out.push(`tool "${name}" is declared twice`);
     tools.push(name);
   }
+  // Every module, built in or added: only a person or an asking agent can start an outward tool.
+  for (const t of entries) {
+    if (TYPES.object(t) && typeof t.name === "string" && t.outward !== undefined && !OUTWARD_REACH.includes(t.reach || "anyone")) out.push(`tool "${t.name}": an outward tool must have reach "anyone" or "asked", not "${t.reach}"`);
+  }
   // An added module (ADR 0047): everything the install card shows is declared, and nothing reaches
   // past what a sandboxed host can offer in 0.2.
   if (!firstParty) {
@@ -135,7 +139,6 @@ export function checkManifest(m, { firstParty = false } = {}) {
       if (typeof t === "string") { out.push(`tool "${t}" must be an object like { "name": "${t}", "summary": "...", "reach": "anyone" } in an added module`); continue; }
       if (!TYPES.object(t) || typeof t.name !== "string") continue;
       if (t.reach === "person") out.push(`tool "${t.name}": reach "person" is kept for Vyre's own tools; use "asked", which an agent reaches only when the person's own words asked for it`);
-      if (t.outward !== undefined && !OUTWARD_REACH.includes(t.reach || "anyone")) out.push(`tool "${t.name}": an outward tool must have reach "anyone" or "asked", not "${t.reach}"`);
     }
     for (const [block, key] of BUILT_IN_ONLY) {
       const v = TYPES.object(m[block]) ? m[block][key] : undefined;
@@ -230,7 +233,6 @@ export function capabilities(m) {
     if (t.outward) outward.push({ tool: t.name, kind: t.outward, summary: t.summary, reach: t.reach, ...cost });
     else (tools[t.reach] || (tools[t.reach] = [])).push({ tool: t.name, summary: t.summary, ...cost });
   }
-  const called = list(needs.tools);
   return {
     tools, outward,
     hosts: [...list(needs.network)],
@@ -238,7 +240,9 @@ export function capabilities(m) {
     connections: list(needs.connections).filter(TYPES.object).map((/** @type {any} */ c) => ({ provider: c.provider, purpose: c.purpose })),
     spend: TYPES.object(needs.spend) && TYPES.number(needs.spend.dailyUsd) ? { dailyUsd: needs.spend.dailyUsd } : null,
     slots: [...list(shows.deck), ...list(does.commands).filter(TYPES.object).map((/** @type {any} */ c) => `command:${c.verb}`)],
-    memory: { kinds: [...list(teaches.memory)], writes: called.includes("memory.write") || called.includes("memory.*") },
+    // ctx.memory.write takes a fact or a note kind declared under teaches.memory (ADR 0047 section 3).
+    memory: { kinds: [...list(teaches.memory)], writes: list(teaches.memory).some((/** @type {string} */ k) => k === "fact" || k === "note") },
+    notices: [...list(shows.notices)],
     runs: Array.isArray(m && m.roles) && m.roles.length ? [...m.roles] : ["box"],
   };
 }

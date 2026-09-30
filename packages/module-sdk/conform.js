@@ -74,6 +74,70 @@ export function scanImports(dir) {
   return out;
 }
 
+/** The module's own source files the host loads: every .js but tests, outside node_modules. @param {string} dir */
+function sources(dir) {
+  const root = path.resolve(dir), out = [];
+  /** @param {string} at */
+  const walk = at => {
+    for (const e of fs.readdirSync(at, { withFileTypes: true })) {
+      const p = path.join(at, e.name);
+      if (e.isDirectory()) { if (!["node_modules", ".git"].includes(e.name)) walk(p); continue; }
+      if (/\.(m|c)?js$/.test(e.name) && !/\.test\.(m|c)?js$/.test(e.name)) out.push({ rel: path.relative(root, p), code: fs.readFileSync(p, "utf8").replace(/\/\*[\s\S]*?\*\//g, "").replace(/(^|[^:"'`\\])\/\/.*$/gm, "$1") });
+    }
+  };
+  walk(root);
+  return out;
+}
+
+/**
+ * Each ctx door has one declaration (ADR 0047 section 3). What the source shows statically: a door
+ * used with no declaration at all, and a literal tool, credential, provider, host, memory kind or
+ * notice kind that isn't declared. The harness catches the rest when the examples run.
+ * @param {string} dir @param {any} m @returns {string[]}
+ */
+export function scanDoors(dir, m) {
+  const out = [];
+  const list = (/** @type {any} */ v) => (Array.isArray(v) ? v : []);
+  const needs = m && typeof m.needs === "object" && m.needs ? m.needs : {};
+  const tools = list(needs.tools), own = toolEntries(m).map(t => t.name);
+  const creds = list(needs.credentials).map((/** @type {any} */ c) => c && c.id);
+  const providers = list(needs.connections).map((/** @type {any} */ c) => c && c.provider);
+  const hosts = list(needs.network);
+  const kinds = list(m && m.teaches && m.teaches.memory);
+  const notices = list(m && m.shows && m.shows.notices);
+  const spend = Boolean(needs.spend);
+  const lit = `\\(\\s*["'\`]([^"'\`]+)["'\`]`;
+  const callable = (/** @type {string} */ t) => own.includes(t) || tools.some((/** @type {string} */ p) => p === t || (p.endsWith(".*") && t.startsWith(p.slice(0, -1))));
+  const hostOk = (/** @type {string} */ url) => {
+    let u;
+    try { u = new URL(url); } catch { return true; }
+    return hosts.some((/** @type {string} */ h) => { const [n] = h.split(":"); return n.startsWith("*.") ? u.hostname.endsWith(n.slice(1)) : u.hostname === n; });
+  };
+  for (const { rel, code } of sources(dir)) {
+    const say = (/** @type {string} */ why) => out.push(`${rel}: ${why} (undeclared)`);
+    for (const x of code.matchAll(new RegExp(`\\bctx\\.call${lit}`, "g"))) if (!callable(x[1])) say(`ctx.call("${x[1]}") needs "${x[1]}" in needs.tools`);
+    if (/\bctx\.gate\.request\s*\(/.test(code) && !tools.includes("gate.request")) say(`ctx.gate.request needs "gate.request" in needs.tools`);
+    if (/\bctx\.vault\.request\s*\(/.test(code) && !creds.length) say("ctx.vault.request needs a credential under needs.credentials");
+    for (const x of code.matchAll(new RegExp(`\\bctx\\.vault\\.request${lit}`, "g"))) if (creds.length && !creds.includes(x[1])) say(`ctx.vault.request("${x[1]}") needs the id ${x[1]} under needs.credentials`);
+    if (/\bctx\.connections\.call\s*\(/.test(code) && !providers.length) say("ctx.connections.call needs a provider under needs.connections");
+    for (const x of code.matchAll(new RegExp(`\\bctx\\.connections\\.call${lit}`, "g"))) if (providers.length && !providers.includes(x[1])) say(`ctx.connections.call("${x[1]}") needs ${x[1]} under needs.connections`);
+    if (/\bctx\.fetch\s*\(/.test(code) && !hosts.length) say("ctx.fetch needs a host under needs.network");
+    for (const x of code.matchAll(new RegExp(`\\bctx\\.fetch${lit}`, "g"))) if (hosts.length && !hostOk(x[1])) say(`ctx.fetch("${x[1]}") needs its host under needs.network`);
+    if (/\bctx\.(ask\s*\(|spend\.)/.test(code) && !spend) say("ctx.ask and ctx.spend need needs.spend with a dailyUsd cap");
+    for (const x of code.matchAll(/\bctx\.memory\.write\s*\(([\s\S]{0,300})/g)) {
+      const k = /\bkind\s*:\s*["'](\w+)["']/.exec(x[1]);
+      if (!kinds.includes("fact") && !kinds.includes("note")) say("ctx.memory.write needs \"fact\" or \"note\" under teaches.memory");
+      else if (k && !kinds.includes(k[1])) say(`ctx.memory.write a ${k[1]} needs "${k[1]}" under teaches.memory`);
+    }
+    for (const x of code.matchAll(/\bctx\.push\.offer\s*\(([\s\S]{0,400})/g)) {
+      const k = /\bkind\s*:\s*["']([\w.-]+)["']/.exec(x[1]);
+      if (!notices.length) say("ctx.push.offer needs its kind under shows.notices");
+      else if (k && !notices.includes(k[1])) say(`ctx.push.offer a ${k[1]} notice needs "${k[1]}" under shows.notices`);
+    }
+  }
+  return [...new Set(out)];
+}
+
 /** Problems with a user-facing string: an em dash, a section sign or a guard word. @param {string} where @param {unknown} text */
 function wording(where, text) {
   if (typeof text !== "string") return [];
@@ -166,8 +230,9 @@ export async function conformModule(dir, opts = {}) {
 
   // 1. The manifest, as an added module unless told otherwise.
   for (const p of checkManifest(m, { firstParty })) fails.push(`manifest: ${p}`);
-  // 2. The static import scan.
+  // 2. The static import scan, and the ctx doors the source uses against their declarations.
   fails.push(...scanImports(dir));
+  fails.push(...scanDoors(dir, m));
   // 11. User-facing strings in the manifest.
   fails.push(...wording("description", m.description));
   for (const t of toolEntries(m)) fails.push(...wording(`tool ${t.name} summary`, t.summary));
@@ -222,7 +287,7 @@ export async function conformModule(dir, opts = {}) {
         const bad = checkSchema(def.input, input, `${name} examples[${i}].input`);
         if (bad.length) { fails.push(...bad); continue; }
         const r = await t.call(name, input, { who: callerFor(reach) });
-        if (r.error && ["failed", "bad_input", "no_such_tool"].includes(r.error.code)) fails.push(`${name} examples[${i}] failed: ${r.error.message}${r.error.code === "failed" ? " (throw an Error with a short lowercase code for an expected refusal)" : ""}`);
+        if (r.error && ["failed", "bad_input", "no_such_tool", "undeclared"].includes(r.error.code)) fails.push(`${name} examples[${i}] failed: ${r.error.message}${r.error.code === "failed" ? " (throw an Error with a short lowercase code for an expected refusal)" : ""}`);
         else if (r.data !== undefined && !isJson(r.data)) fails.push(`${name} examples[${i}] answered something that isn't JSON`);
       }
       const input = examples[0] && examples[0].input !== undefined ? examples[0].input : {};

@@ -18,13 +18,13 @@
     "watchers": ["watchers/big-order.json"]
   },
   "watches": { "emits": ["bakery.order-added"], "on": ["memory.written"] },
-  "shows": { "deck": ["now:bakery.today"], "capsule": { "bakery.orders": { "title": "Orders" } } },
+  "shows": { "deck": ["now:bakery.today"], "capsule": { "bakery.orders": { "title": "Orders" } },
+             "notices": ["target-reached"] },
   "settings": [
     { "key": "bakery.target", "label": "Daily target", "type": "int", "default": 40, "min": 1, "max": 10000,
       "levels": ["account"], "apply": "live" }
   ],
   "needs": {
-    "tools": ["memory.write", "push.offer"],
     "credentials": [
       { "id": "supplier", "kind": "api-credential", "provider": "flourco", "purpose": "place flour orders" }
     ],
@@ -32,6 +32,7 @@
     "spend": { "dailyUsd": 0.5 }
   },
   "teaches": {
+    "memory": ["note"],
     "tips": [
       { "id": "orders", "text": "Ask \"how many orders today?\" in any chat.", "surfaces": ["chat"],
         "level": "first-use", "trigger": "never-used", "since": "0.1.0" }

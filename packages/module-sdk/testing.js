@@ -8,7 +8,9 @@
 //
 // createTestContext() builds the ctx a module's start(ctx) gets, held to its manifest the way the
 // loader and the module host hold it: only declared tools, events and settings, ctx.call only to
-// needs.tools, the vault only for needs.credentials, fetch only to needs.network. Everything that
+// needs.tools, the vault only for needs.credentials, fetch only to needs.network, memory only
+// for teaches.memory kinds, push only for shows.notices kinds, ask and spend only with
+// needs.spend. A door used without its declaration throws code "undeclared" (ADR 0047 section 3). Everything that
 // would leave the module (another module's tools, the Gate, the vault, the network, a model, push,
 // spend, undo) is a fake that records what it was asked and answers from opts.
 //
@@ -129,14 +131,20 @@ export function createTestContext(manifest, opts = {}) {
   db.exec("CREATE TABLE IF NOT EXISTS _migrations (module TEXT NOT NULL, version INTEGER NOT NULL, at INTEGER NOT NULL, PRIMARY KEY (module, version))");
   const prefix = name.replace(/-/g, "_");
 
-  /** memory.write and push.offer answer with no setup, so a module that declares them just works. */
+  /** memory.write answers with no setup, so a module that declares its kinds just works. */
   /** @type {Record<string, (input: any) => any>} */
   const fakes = {
     "memory.write": row => { memory.push(row); return { id: `mem-${memory.length}` }; },
-    "push.offer": () => opts.push || "sent",
   };
   /** @param {string} why */
   const violate = why => { violations.push(why); return why; };
+  /**
+   * Each ctx door has one declaration (ADR 0047 section 3); a call without it throws undeclared.
+   * @param {string} why
+   */
+  const undeclared = why => refuse("undeclared", violate(`${name}: ${why}`));
+  const memoryKinds = (m.teaches && Array.isArray(m.teaches.memory)) ? m.teaches.memory : [];
+  const notices = (m.shows && Array.isArray(m.shows.notices)) ? m.shows.notices : [];
   const hold = (/** @type {string} */ kind, /** @type {string} */ via, /** @type {any} */ content, /** @type {string} */ who) => {
     const id = `hold-${++nextHold}`;
     holds.push({ id, kind, via, content, who, state: "held" });
@@ -150,13 +158,20 @@ export function createTestContext(manifest, opts = {}) {
     calls.push({ member: "call", tool, input });
     const own = entries.has(tool);
     if (!own && !needsTools.some((/** @type {string} */ p) => p === tool || (p.endsWith(".*") && tool.startsWith(p.slice(0, -1))))) {
-      violate(`ctx.call ${tool}, which needs.tools does not list`);
-      return { error: { code: "denied", message: `${name} may not call ${tool}: add it to needs.tools in module.json` } };
+      throw undeclared(`ctx.call ${tool}, which needs.tools does not list`);
     }
     if (own) return route(tool, input, { who: "module", module: name });
     const fake = (opts.tools && opts.tools[tool]) || fakes[tool];
     if (!fake) return { error: { code: "no_such_tool", message: `no tool ${tool}` } };
     try { return { data: await fake(input, { caller: `module:${name}`, who: "module" }) }; }
+    catch (e) { return asError(e); }
+  };
+
+  /** A memory row through the memory.write fake, as iq's memory.write takes it. @param {any} row */
+  const writeMemory = async row => {
+    calls.push({ member: "memory.write", input: row });
+    const fake = (opts.tools && opts.tools["memory.write"]) || fakes["memory.write"];
+    try { return { data: await fake(row, { caller: `module:${name}`, who: "module" }) }; }
     catch (e) { return asError(e); }
   };
 
@@ -172,7 +187,7 @@ export function createTestContext(manifest, opts = {}) {
     log: Object.assign((/** @type {string} */ message, /** @type {unknown} */ extra) => { logs.push({ level: "info", message, extra }); },
       Object.fromEntries(["info", "warn", "error", "debug"].map(level => [level, (/** @type {string} */ message, /** @type {unknown} */ extra) => { logs.push({ level, message, extra }); }]))),
     tool(/** @type {string} */ tool, /** @type {any} */ def) {
-      if (!entries.has(tool)) throw new Error(violate(`${name} registered tool ${tool}, which its manifest does not declare under does.tools`));
+      if (!entries.has(tool)) throw undeclared(`registered tool ${tool}, which its manifest does not declare under does.tools`);
       if (tools.has(tool)) throw new Error(`tool ${tool} is already registered`);
       if (!def || typeof def.run !== "function") throw new Error(`tool ${tool} needs a run function`);
       if (!firstParty && def.presence) throw new Error(violate(`tool ${tool} declares presence; presence is never a module's to declare, use reach "asked"`));
@@ -186,12 +201,12 @@ export function createTestContext(manifest, opts = {}) {
     },
     events: {
       emit(/** @type {string} */ type, /** @type {any} */ payload = {}, /** @type {any} */ where = {}) {
-        if (!emits.includes(type)) throw new Error(violate(`${name} emitted ${type}, which its manifest does not declare under watches.emits`));
+        if (!emits.includes(type)) throw undeclared(`emitted ${type}, which its manifest does not declare under watches.emits`);
         if (RESERVED.some(p => type.startsWith(p)) || RESERVED_TYPES.includes(type)) throw new Error(violate(`${name} emitted ${type}, a family only its owner emits`));
         return deliver(type, payload, where, name);
       },
       on(/** @type {string} */ pattern, /** @type {Function} */ fn) {
-        if (!firstParty && !on.some((/** @type {string} */ d) => covers(d, pattern))) throw new Error(violate(`${name} subscribed to ${pattern}, which its manifest does not declare under watches.on`));
+        if (!firstParty && !on.some((/** @type {string} */ d) => covers(d, pattern))) throw undeclared(`subscribed to ${pattern}, which its manifest does not declare under watches.on`);
         if (!listeners.has(pattern)) listeners.set(pattern, new Set());
         /** @type {Set<Function>} */ (listeners.get(pattern)).add(fn);
         return () => listeners.get(pattern)?.delete(fn);
@@ -203,12 +218,12 @@ export function createTestContext(manifest, opts = {}) {
     settings: {
       async get(/** @type {string} */ key) {
         const d = declaredSettings.get(key);
-        if (!d) throw refuse("not_declared", `${name} read setting ${key}, which its manifest does not declare`);
+        if (!d) throw refuse("undeclared", `${name} read setting ${key}, which its manifest does not declare`);
         return settingValues.has(key) ? settingValues.get(key) : d.default;
       },
       async set(/** @type {string} */ key, /** @type {unknown} */ value) {
         const d = declaredSettings.get(key);
-        if (!d) throw refuse("not_declared", `${name} set ${key}, which its manifest does not declare`);
+        if (!d) throw refuse("undeclared", `${name} set ${key}, which its manifest does not declare`);
         if (d.confirm !== undefined || d.security !== undefined) throw refuse("denied", `${key} asks the person before a change; a module can't set it`);
         settingValues.set(key, value);
         for (const fn of settingListeners.get(key) || []) { try { fn(value, { key }); } catch {} }
@@ -241,7 +256,7 @@ export function createTestContext(manifest, opts = {}) {
     paths: { data },
     vault: {
       async request(/** @type {string} */ id, /** @type {any} */ req = {}) {
-        if (!credentials.includes(id)) throw refuse("not_declared", violate(`${name} asked the vault for ${id}, which needs.credentials does not declare`));
+        if (!credentials.includes(id)) throw undeclared(`asked the vault for ${id}, which needs.credentials does not declare`);
         const method = String(req.method || "GET").toUpperCase();
         const write = !["GET", "HEAD"].includes(method);
         calls.push({ member: "vault.request", id, req: { ...req, method } });
@@ -253,7 +268,7 @@ export function createTestContext(manifest, opts = {}) {
     },
     connections: {
       async call(/** @type {string} */ provider, /** @type {string} */ tool, /** @type {any} */ input = {}) {
-        if (!connections.includes(provider)) throw refuse("not_declared", violate(`${name} called the ${provider} connection, which needs.connections does not declare`));
+        if (!connections.includes(provider)) throw undeclared(`called the ${provider} connection, which needs.connections does not declare`);
         calls.push({ member: "connections.call", provider, tool, input });
         try { return { data: opts.connections ? await opts.connections(provider, tool, input) : null }; } catch (e) { return asError(e); }
       },
@@ -262,7 +277,7 @@ export function createTestContext(manifest, opts = {}) {
       let u;
       try { u = new URL(url); } catch { throw refuse("bad_input", `${url} is not a URL`); }
       if (PRIVATE.some(re => re.test(u.hostname))) throw refuse("denied", `${u.hostname} is a private address; ctx.fetch reaches only public hosts`);
-      if (!hostAllowed(network, u)) throw refuse("not_declared", violate(`${name} fetched ${u.host}, which needs.network does not list`));
+      if (!hostAllowed(network, u)) throw undeclared(`fetched ${u.host}, which needs.network does not list`);
       calls.push({ member: "fetch", url, init });
       const r = (opts.fetch && await opts.fetch(url, init)) || {};
       const body = r.body === undefined ? "" : r.body;
@@ -271,6 +286,7 @@ export function createTestContext(manifest, opts = {}) {
     },
     gate: {
       async request(/** @type {any} */ req) {
+        if (!needsTools.includes("gate.request")) throw undeclared("ctx.gate.request, but needs.tools does not list gate.request");
         calls.push({ member: "gate.request", req });
         if (current.getStore()?.asked) return { sent: true };
         return { held: hold(String(req && req.kind), String(req && req.via), req && req.content, current.getStore()?.who || "module") };
@@ -278,15 +294,19 @@ export function createTestContext(manifest, opts = {}) {
     },
     memory: {
       write: async (/** @type {any} */ row) => {
-        const r = await callOut("memory.write", { ...row, from: `module:${name}`, ...(firstParty ? {} : { untrusted: true }) });
-        return r;
+        const kind = row && row.kind;
+        if (!memoryKinds.includes(kind)) throw undeclared(`ctx.memory.write a ${kind}, which teaches.memory does not list`);
+        return writeMemory({ ...row, from: `module:${name}`, ...(firstParty ? {} : { untrusted: true }) });
       },
+      // Deprecated alias: a fact, declared as "fact" or under its old kind in teaches.memory.
       teach: async (/** @type {string} */ kind, /** @type {unknown} */ fact) => {
-        const r = await callOut("memory.write", { kind: "fact", text: typeof fact === "string" ? fact : JSON.stringify(fact), subject: kind, from: `module:${name}`, ...(firstParty ? {} : { untrusted: true }) });
+        if (!memoryKinds.includes("fact") && !memoryKinds.includes(kind)) throw undeclared(`ctx.memory.teach ${kind}, which teaches.memory does not list`);
+        const r = await writeMemory({ kind: "fact", text: typeof fact === "string" ? fact : JSON.stringify(fact), subject: kind, from: `module:${name}`, ...(firstParty ? {} : { untrusted: true }) });
         return !r.error;
       },
     },
     async ask(/** @type {string} */ prompt, /** @type {any} */ o = {}) {
+      if (capUsd === null) throw undeclared("ctx.ask, but needs.spend declares no daily cap");
       if (!o || typeof o.purpose !== "string") throw refuse("bad_input", "ctx.ask needs { purpose }");
       calls.push({ member: "ask", prompt, opts: o });
       if (capUsd !== null && spent >= capUsd) return { error: { code: "capped", message: `${name} reached its $${capUsd} daily cap` } };
@@ -296,21 +316,25 @@ export function createTestContext(manifest, opts = {}) {
     },
     spend: {
       async record(/** @type {any} */ e) {
+        if (capUsd === null) throw undeclared("ctx.spend.record, but needs.spend declares no daily cap");
         if (!e || typeof e.usd !== "number" || e.usd < 0 || typeof e.purpose !== "string") throw refuse("bad_input", "spend.record needs { usd, purpose }");
         calls.push({ member: "spend.record", ...e });
         spent += e.usd;
       },
       async check(/** @type {string} */ purpose) {
+        if (capUsd === null) throw undeclared("ctx.spend.check, but needs.spend declares no daily cap");
         calls.push({ member: "spend.check", purpose });
-        return { ok: capUsd === null || spent < capUsd, spentUsd: spent, capUsd };
+        return { ok: spent < capUsd, spentUsd: spent, capUsd };
       },
     },
     push: {
       async offer(/** @type {any} */ n) {
         if (!n || typeof n.title !== "string" || typeof n.kind !== "string") throw refuse("bad_input", "push.offer needs { title, body, kind }");
-        const r = await callOut("push.offer", n);
-        if (r.error && r.error.code !== "no_such_tool") throw refuse(r.error.code, r.error.message);
-        return r.data === "deferred" || r.data === "sent" ? r.data : opts.push || "sent";
+        if (!notices.includes(n.kind)) throw undeclared(`ctx.push.offer a ${n.kind} notice, which shows.notices does not list`);
+        calls.push({ member: "push.offer", input: n });
+        const fake = opts.tools && opts.tools["push.offer"];
+        const r = fake ? await fake(n, { caller: `module:${name}`, who: "module" }) : opts.push;
+        return r === "deferred" ? "deferred" : "sent";
       },
     },
     undo: {

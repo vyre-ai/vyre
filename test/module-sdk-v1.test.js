@@ -24,16 +24,16 @@ const bakery = () => ({
     watchers: ["watchers/big-order.json"],
   },
   watches: { emits: ["bakery.order-added"], on: ["memory.written"] },
-  shows: { deck: ["now:bakery.today"], capsule: { "bakery.orders": { title: "Orders" } } },
+  shows: { deck: ["now:bakery.today"], capsule: { "bakery.orders": { title: "Orders" } }, notices: ["target-reached"] },
   settings: [{ key: "bakery.target", label: "Daily target", type: "int", default: 40, levels: ["account"], apply: "live" }],
   needs: {
-    tools: ["memory.write", "push.offer"],
+    tools: ["gate.request"],
     credentials: [{ id: "supplier", kind: "api-credential", provider: "flourco", purpose: "place flour orders" }],
     network: ["api.flourco.example"],
     connections: [{ provider: "github", purpose: "read the recipe repo" }],
     spend: { dailyUsd: 0.5 },
   },
-  teaches: { memory: ["order.habit"] },
+  teaches: { memory: ["note"] },
 });
 
 const edit = (/** @type {(m: any) => void} */ fn, firstParty = false) => { const m = bakery(); fn(m); return checkManifest(m, { firstParty }); };
@@ -67,6 +67,8 @@ test("v1: an added module keeps to the stricter rules, and Vyre's own may not ne
   has(edit(m => { m.does.tools[2].reach = "person"; }), /reach "person" is kept for Vyre's own tools; use "asked"/);
   for (const reach of ["modules", "hook", "person"]) has(edit(m => { m.does.tools[3].reach = reach; }), /an outward tool must have reach "anyone" or "asked"/);
   assert.deepEqual(edit(m => { m.does.tools[3].reach = "asked"; }), []);
+  // The outward limit holds for Vyre's own modules too.
+  has(edit(m => { m.does.tools[3].reach = "modules"; }, true), /an outward tool must have reach "anyone" or "asked"/);
   has(edit(m => { m.does.providers = ["oven"]; }), /does\.providers is built in only in 0\.2/);
   has(edit(m => { m.shows.streams = ["live"]; }), /shows\.streams is built in only in 0\.2/);
   has(edit(m => { m.needs.vault = ["bakery-key"]; }), /needs\.vault is built in only in 0\.2/);
@@ -109,7 +111,9 @@ test("v1: capabilities are the install card, from the manifest alone", () => {
   assert.deepEqual(c.connections, [{ provider: "github", purpose: "read the recipe repo" }]);
   assert.deepEqual(c.spend, { dailyUsd: 0.5 });
   assert.deepEqual(c.slots, ["now:bakery.today", "command:orders"]);
-  assert.deepEqual(c.memory, { kinds: ["order.habit"], writes: true });
+  assert.deepEqual(c.memory, { kinds: ["note"], writes: true });
+  assert.deepEqual(capabilities({ ...bakery(), teaches: { memory: ["order.habit"] } }).memory, { kinds: ["order.habit"], writes: false }, "only a fact or a note kind is a memory.write");
+  assert.deepEqual(c.notices, ["target-reached"]);
   assert.deepEqual(c.runs, ["box"]);
   const bare = capabilities({ name: "kit", version: "0.1.0" });
   assert.deepEqual({ spend: bare.spend, runs: bare.runs, memory: bare.memory, outward: bare.outward }, { spend: null, runs: ["box"], memory: { kinds: [], writes: false }, outward: [] });
@@ -119,7 +123,7 @@ test("v1: widened names only what an update adds", () => {
   const before = capabilities(bakery());
   assert.deepEqual(widened(before, capabilities(bakery())), []);
   // Narrowing is quiet: a tool, a host and the spend cap taken away.
-  assert.deepEqual(widened(before, capabilities({ ...bakery(), needs: { tools: ["memory.write"] } })), []);
+  assert.deepEqual(widened(before, capabilities({ ...bakery(), needs: { tools: ["gate.request"] } })), []);
   const m = bakery();
   m.does.tools.push({ name: "bakery.post", summary: "post the menu", outward: "post" }, { name: "bakery.clear", summary: "clear the orders", reach: "asked" });
   m.does.tools[0].outward = "send";

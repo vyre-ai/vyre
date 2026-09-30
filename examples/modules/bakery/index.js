@@ -62,7 +62,7 @@ export default {
         const reached = before < goal && after >= goal;
         if (reached) {
           // A push is an offer: core/push decides against its daily budget and quiet hours.
-          try { await ctx.push.offer({ title: "Daily target reached", body: `${after} items today, over the target of ${goal}.`, kind: "bakery.target" }); }
+          try { await ctx.push.offer({ title: "Daily target reached", body: `${after} items today, over the target of ${goal}.`, kind: "target-reached" }); }
           catch (e) { ctx.log.warn("push offer failed", { message: /** @type {Error} */ (e).message }); }
         }
         return { id, day: d, items: after, target: goal, reached };

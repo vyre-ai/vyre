@@ -7,7 +7,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { conformModule, scanImports, importsOf, GUARD_WORDS } from "../packages/module-sdk/conform.js";
+import { conformModule, scanImports, scanDoors, importsOf, GUARD_WORDS } from "../packages/module-sdk/conform.js";
 import { FORBIDDEN } from "../scripts/lib/hygiene.js";
 
 const base = () => ({
@@ -89,8 +89,8 @@ test("conform: each broken rule is one line that says what to change", async t =
   has(fails, /juno\.share is declared under does\.tools, but start did not register it/);
   has(fails, /start left a 5000 ms interval running/);
   has(fails, /juno\.list has no examples/);
-  has(fails, /juno\.clear examples\[1\] failed: juno emitted juno\.gone/);
-  has(fails, /did something its manifest doesn't declare: juno emitted juno\.gone/);
+  has(fails, /juno\.clear examples\[1\] failed: juno: emitted juno\.gone/);
+  has(fails, /did something its manifest doesn't declare: juno: emitted juno\.gone/);
   has(fails, /a timeout of 30000 ms \(armed during stop\) was still running after stop/);
   has(fails, /an interval of 5000 ms \(armed during start\)/);
   assert.equal(setInterval.name, "setInterval", "the real timers are back");
@@ -118,4 +118,34 @@ test("conform: manifest problems, a slow start, a changing migration and a bad e
   has(fails, /must export default \{ start\(ctx\) \}/);
   fails = await conformModule(folder(t, base(), `export default { start() { throw Object.assign(new Error("no oven"), { code: "no_oven" }); } };\n`));
   has(fails, /start threw: no oven/);
+});
+
+test("conform: the ctx doors the source uses are declared, where the source shows it", t => {
+  const src = `export default { async start(ctx) {
+  await ctx.call("planner.list", {});
+  await ctx.gate.request({ kind: "send", via: "mail.send", content: {} });
+  await ctx.vault.request("mailer", { method: "GET", url: "https://api.juno.example/" });
+  await ctx.connections.call("github", "issues.list", {});
+  await ctx.fetch("https://api.juno.example/list");
+  await ctx.memory.write({ kind: "fact", text: "juno reads on Sundays" });
+  await ctx.ask("what next?", { purpose: "suggest" });
+  await ctx.push.offer({ title: "Due", body: "x", kind: "due" });
+  await ctx.undo.record({ tool: "juno.list", input: {}, inverse: { tool: "juno.list", input: {} } });
+  return { stop() {} };
+} };
+`;
+  const bare = base();
+  const fails = scanDoors(folder(t, bare, src), bare);
+  for (const re of [/ctx\.call\("planner\.list"\) needs "planner\.list" in needs\.tools/, /ctx\.gate\.request needs "gate\.request"/, /ctx\.vault\.request needs a credential/,
+    /ctx\.connections\.call needs a provider/, /ctx\.fetch needs a host/, /ctx\.memory\.write needs "fact" or "note"/, /ctx\.ask and ctx\.spend need needs\.spend/, /ctx\.push\.offer needs its kind/]) has(fails, re);
+  assert.equal(fails.length, 8, fails.join("\n"));
+  assert.ok(fails.every(f => f.startsWith("index.js: ") && f.endsWith("(undeclared)")));
+
+  const declared = { ...base(), needs: { tools: ["planner.*", "gate.request"], credentials: [{ id: "mailer", kind: "api-credential", provider: "juno", purpose: "read" }],
+    connections: [{ provider: "github", purpose: "read issues" }], network: ["api.juno.example"], spend: { dailyUsd: 0.1 } },
+    teaches: { memory: ["fact"] }, shows: { notices: ["due"] } };
+  assert.deepEqual(scanDoors(folder(t, declared, src), declared), []);
+  const wrong = { ...declared, needs: { ...declared.needs, network: ["other.example"], credentials: [{ id: "other", kind: "k", provider: "p", purpose: "x" }] }, teaches: { memory: ["note"] }, shows: { notices: ["late"] } };
+  const w = scanDoors(folder(t, wrong, src), wrong);
+  for (const re of [/needs its host under needs\.network/, /needs the id mailer under needs\.credentials/, /a fact needs "fact" under teaches\.memory/, /a due notice needs "due" under shows\.notices/]) has(w, re);
 });

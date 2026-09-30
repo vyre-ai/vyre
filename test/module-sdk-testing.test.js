@@ -20,12 +20,14 @@ const manifest = () => ({
     { name: "kit.own", summary: "Vyre's own", reach: "person" },
   ] },
   watches: { emits: ["kit.noted"], on: ["memory.*"] },
+  shows: { notices: ["kit-due"] },
+  teaches: { memory: ["note"] },
   settings: [
     { key: "kit.size", label: "Size", type: "int", default: 3, levels: ["account"], apply: "live" },
     { key: "kit.open", label: "Open", type: "bool", levels: ["account"], apply: "live", confirm: true },
   ],
   needs: {
-    tools: ["memory.write", "planner.*"],
+    tools: ["planner.*", "gate.request"],
     credentials: [{ id: "mailer", kind: "api-credential", provider: "juno", purpose: "send mail" }],
     network: ["api.juno.example", "*.kit.example:8443"],
     spend: { dailyUsd: 0.1 },
@@ -94,13 +96,36 @@ test("testing: the module is held to its manifest", async t => {
   assert.deepEqual(got, ["memory.written"]);
   assert.deepEqual(ctx.events.since(1).map(e => e.type), ["kit.noted"]);
   assert.equal(ctx.events.latestId(), 2);
-  assert.deepEqual((await ctx.call("threads.answer", {})).error.code, "denied");
+  const undeclared = (/** @type {RegExp} */ re) => (/** @type {any} */ e) => e.code === "undeclared" && re.test(e.message);
+  await assert.rejects(ctx.call("threads.answer", {}), undeclared(/needs\.tools does not list/));
   assert.equal((await ctx.call("planner.list", {})).error.code, "no_such_tool", "declared, but no fake answers it");
   assert.equal((await ctx.memory.write({ kind: "note", text: "Northwind Bakery wants rye" })).data.id, "mem-1");
   assert.deepEqual(h.memory, [{ kind: "note", text: "Northwind Bakery wants rye", from: "module:kit", untrusted: true }]);
-  await assert.rejects(ctx.push.offer({ title: "x", body: "y", kind: "info" }), /push\.offer/, "push.offer is not in needs.tools");
+  await assert.rejects(ctx.memory.write({ kind: "fact", text: "juno reads on Sundays" }), undeclared(/teaches\.memory does not list/));
+  assert.equal(await ctx.push.offer({ title: "Due", body: "a note is due", kind: "kit-due" }), "sent");
+  await assert.rejects(ctx.push.offer({ title: "x", body: "y", kind: "info" }), undeclared(/shows\.notices does not list/));
+  assert.ok("held" in await ctx.gate.request({ kind: "send", via: "mail.send", content: { to: "alex" } }));
+  assert.throws(() => ctx.events.emit("kit.gone", {}), undeclared(/watches\.emits/));
   assert.throws(() => ctx.route("x", () => {}), /built in only/);
   assert.ok(h.violations.length >= 6, h.violations.join("\n"));
+});
+
+test("testing: each ctx door needs its one declaration, and undo needs none", async t => {
+  const h = createTestContext({ name: "kit", version: "0.1.0", apiVersion: 1, description: "Kit.", does: { tools: [{ name: "kit.read" }] } });
+  t.after(() => h.stop());
+  const { ctx } = h;
+  const undeclared = (/** @type {RegExp} */ re) => (/** @type {any} */ e) => e.code === "undeclared" && re.test(e.message);
+  await assert.rejects(ctx.gate.request({ kind: "send", via: "mail.send", content: {} }), undeclared(/gate\.request/));
+  await assert.rejects(ctx.vault.request("mailer", { method: "GET", url: "https://api.juno.example/" }), undeclared(/needs\.credentials/));
+  await assert.rejects(ctx.connections.call("github", "issues.list", {}), undeclared(/needs\.connections/));
+  await assert.rejects(ctx.fetch("https://api.juno.example/"), undeclared(/needs\.network/));
+  await assert.rejects(ctx.memory.write({ kind: "note", text: "x" }), undeclared(/teaches\.memory/));
+  await assert.rejects(ctx.ask("x", { purpose: "p" }), undeclared(/needs\.spend/));
+  await assert.rejects(ctx.spend.record({ usd: 0.01, purpose: "p" }), undeclared(/needs\.spend/));
+  await assert.rejects(ctx.spend.check("p"), undeclared(/needs\.spend/));
+  await assert.rejects(ctx.push.offer({ title: "x", body: "y", kind: "due" }), undeclared(/shows\.notices/));
+  await ctx.undo.record({ tool: "kit.read", input: {}, inverse: { tool: "kit.read", input: {} } });
+  assert.deepEqual(h.calls.map(c => c.member), ["undo.record"]);
 });
 
 test("testing: settings, vault, fetch, ask and spend", async t => {
