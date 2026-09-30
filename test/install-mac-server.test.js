@@ -300,8 +300,8 @@ function sys(/** @type {import("node:test").TestContext} */ t, /** @type {{ fail
   fs.writeFileSync(path.join(nd, "bin", "node"), `#!/bin/sh\nexec "${process.execPath}" "$@"\n`, { mode: 0o755 });
   execFileSync("tar", ["-czf", path.join(m.base, "node.tgz"), "-C", path.dirname(nd), "node-v0"]);
   // sudo: records that it ran and with what, then runs the command as this user (the test is not root).
-  // FAKE_TAMPER=1: the person's release file changes between the check and root's copy (argv 7 is the release dir).
-  fs.writeFileSync(path.join(bin, "sudo"), `#!/bin/sh\necho "sudo $*" >>"${path.join(m.base, "calls.log")}"\n[ -z "\${FAKE_TAMPER:-}" ] || echo tamper >>"$7/vyre.tgz"\nexec "$@"\n`, { mode: 0o755 });
+  // FAKE_TAMPER=1: the person's release file changes between the check and root's copy (argv 6 is the release dir).
+  fs.writeFileSync(path.join(bin, "sudo"), `#!/bin/sh\necho "sudo $*" >>"${path.join(m.base, "calls.log")}"\n[ -z "\${FAKE_TAMPER:-}" ] || echo tamper >>"$6/vyre.tgz"\nexec "$@"\n`, { mode: 0o755 });
   // The fake root installer.
   const pkg = path.join(m.base, "pkg", "vyre"); fs.mkdirSync(path.join(pkg, "core", "daemon"), { recursive: true }); fs.mkdirSync(path.join(pkg, "core", "vyre-core"), { recursive: true });
   fs.copyFileSync(path.join(m.src, "core", "daemon", "main.js"), path.join(pkg, "core", "daemon", "main.js"));
@@ -508,11 +508,11 @@ test("install-mac-server.sh: a manifest signed by another key is refused before 
   assert.ok(!/^sudo /m.test(m.calls()) && m.rootCalls().length === 0);
 });
 
-test("install-mac-server.sh: a release that changes after it was verified is caught by root's own hash of its copy", t => {
+test("install-mac-server.sh: a release that changes after it was verified is caught by root's own signature check of its copy", t => {
   const m = sys(t);
   const r = run({ ...m.env, FAKE_TAMPER: "1" }, ["--yes", "--system"]);
   assert.notEqual(r.status, 0);
-  assert.match(r.stderr, /changed after it was verified/);
+  assert.match(r.stderr, /does not verify against the release key/);
   assert.equal(m.rootCalls().length, 0, "the installer never ran");
 });
 

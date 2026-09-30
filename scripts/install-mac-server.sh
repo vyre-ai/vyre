@@ -223,11 +223,9 @@ install_app() {
   step "Vyre is in $APP"
 }
 
-# verify_release: BEFORE sudo, the signature on manifest.json against the key embedded above, with
-# the pinned Node and a check written here (no code from the download), then the tarball against the
-# signed manifest. Prints nothing secret; sets RELEASE_VERSION and TGZ_SHA.
-verify_release() {
-  out=$("$NODE_DIST/bin/node" -e '
+# The one signature check, run twice: here before sudo (a friendly early failure) and again by root
+# with the root-owned node, on the root-owned copies, which is the one that counts.
+VERIFY_JS='
 const c = require("crypto"), f = require("fs");
 const [key, mf, sf, tf] = process.argv.slice(1);
 const fail = (m) => { console.error(m); process.exit(1); };
@@ -239,7 +237,13 @@ if (typeof j.version !== "string" || !/^[0-9a-f]{64}$/i.test(String(j.sha256))) 
 const h = c.createHash("sha256").update(f.readFileSync(tf)).digest("hex");
 if (h !== j.sha256.toLowerCase()) fail("the download does not match the signed manifest");
 console.log(j.version + " " + h);
-' "$RELEASE_KEY" "$TMP/release/manifest.json" "$TMP/release/manifest.sig" "$TMP/release/vyre.tgz") || die "the release did not verify; nothing was installed"
+'
+
+# verify_release: BEFORE sudo, the signature on manifest.json against the key embedded above, with
+# the pinned Node and a check written here (no code from the download), then the tarball against the
+# signed manifest. Early, friendly failure only: root repeats the same check (ROOT_SH) with its own node.
+verify_release() {
+  out=$("$NODE_DIST/bin/node" -e "$VERIFY_JS" "$RELEASE_KEY" "$TMP/release/manifest.json" "$TMP/release/manifest.sig" "$TMP/release/vyre.tgz") || die "the release did not verify; nothing was installed"
   RELEASE_VERSION=${out%% *}
   TGZ_SHA=${out##* }
   step "release $RELEASE_VERSION is signed by the Vyre release key"
@@ -492,25 +496,26 @@ start_service() {
 # enrolment consumes the code in a later step; nothing does yet.
 # ROOT_SH is what runs as root, a fixed literal written here and never read from the download. It
 # gets the two expected sums as arguments, copies the release files and the Node tarball out of the
-# person's folders into a fresh root-owned 0700 folder, hashes the ROOT-OWNED COPIES, extracts them
-# with /usr/bin/tar, and runs the installer from that root-owned tree with that root-owned node.
+# person's folders into a fresh root-owned 0700 folder, hashes the root-owned Node copy, and runs the
+# signature check with that node on the ROOT-OWNED COPIES of the release, then extracts with
+# /usr/bin/tar and runs the installer from that root-owned tree with that root-owned node.
 # Nothing root runs is read again from a path the person can write. (sudo drops the environment, so
 # VYRE_ROOT_TMP only reaches this in the tests, whose fake sudo does not.)
 ROOT_SH='set -eu
 PATH=/usr/bin:/bin:/usr/sbin:/sbin
 export PATH
 umask 077
-tsha=$1; nsha=$2; rel=$3; ntgz=$4; shift 4
+nsha=$1; rel=$2; ntgz=$3; key=$4; vjs=$5; shift 5
 d=$(mktemp -d "${VYRE_ROOT_TMP:-/private/var/tmp}/vyre-install.XXXXXX")
 trap '"'"'rm -rf "$d"'"'"' EXIT
 mkdir "$d/rel" "$d/node" "$d/app"
 for f in vyre.tgz manifest.json manifest.sig; do cat "$rel/$f" >"$d/rel/$f"; done
 cat "$ntgz" >"$d/node.tgz"
-[ "$(shasum -a 256 "$d/rel/vyre.tgz" | cut -d" " -f1)" = "$tsha" ] || { echo "vyre-install: the release changed after it was verified; nothing was installed" >&2; exit 1; }
 [ "$(shasum -a 256 "$d/node.tgz" | cut -d" " -f1)" = "$nsha" ] || { echo "vyre-install: the Node download changed after it was checked; nothing was installed" >&2; exit 1; }
 tar -xzf "$d/node.tgz" -C "$d/node" --strip-components=1 --no-same-owner
-tar -xzf "$d/rel/vyre.tgz" -C "$d/app" --strip-components=1 --no-same-owner
 nb=$d/node/bin/node
+"$nb" -e "$vjs" "$key" "$d/rel/manifest.json" "$d/rel/manifest.sig" "$d/rel/vyre.tgz" >/dev/null || { echo "vyre-install: the release does not verify against the release key; nothing was installed" >&2; exit 1; }
+tar -xzf "$d/rel/vyre.tgz" -C "$d/app" --strip-components=1 --no-same-owner
 ns=$(shasum -a 256 "$nb" | cut -d" " -f1)
 "$nb" "$d/app/core/vyre-core/install-main.js" "$@" --release-dir "$d/rel" --node "$nb" --node-sha256 "$ns"'
 
@@ -526,7 +531,7 @@ system_install() {
   fi
   say "Vyre now asks for your Mac password once, to install its system service."
   # && / || rather than `;`: `set -e` reaches into the substitution in some shells and would end it before the status is read.
-  out=$("$SUDO" /bin/sh -c "$ROOT_SH" vyre-root "$TGZ_SHA" "$NODE_TGZ_SHA" "$TMP/release" "$TMP/node.tgz" "$@" && printf 'rc:0' || printf 'rc:%s' "$?")
+  out=$("$SUDO" /bin/sh -c "$ROOT_SH" vyre-root "$NODE_TGZ_SHA" "$TMP/release" "$TMP/node.tgz" "$RELEASE_KEY" "$VERIFY_JS" "$@" && printf 'rc:0' || printf 'rc:%s' "$?")
   rc=${out##*rc:}
   out=${out%rc:*}
   [ "$rc" = 0 ] || { out=""; die "the root installer failed (exit $rc); its message is above"; }
