@@ -40,7 +40,9 @@ export class Routes {
     const entries = i.entries.map(e => {
       const provider = String(e && e.provider || "");
       if (!this.known(provider)) throw bad(`no session provider ${provider}`);
-      return { provider, ...(e.account ? { account: String(e.account) } : {}) };
+      const model = e && e.model ? String(e.model) : "";
+      if (model && !/^[A-Za-z0-9._:\/\[\]-]{1,120}$/.test(model)) throw bad("a model is an id like anthropic/claude-haiku-4.5");
+      return { provider, ...(e.account ? { account: String(e.account) } : {}), ...(model ? { model } : {}) };
     });
     const seen = new Set();
     for (const e of entries) {

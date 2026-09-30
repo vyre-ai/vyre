@@ -390,6 +390,7 @@ for (const driver of ["cli", "sdk"]) {
   test(`${driver}: switching provider mid-session: same thread, a brief of what was said, a notice, and only between turns`, { skip }, async t => {
     const w = await boot(t, { driver });
     withGrok(t, w);
+    assert.equal((await w.tool("sessions.accounts.add", { provider: "grok", label: "Grok", kind: "login" })).error, undefined);
     const th = (await w.tool("threads.start", { cwd: w.work, prompt: "plan the Northwind menu", surface: "deck" })).data;
     await w.finished(th.id);
     const r = await w.tool("threads.switch", { thread: th.id, provider: "grok", text: "now the prices" });
@@ -415,7 +416,14 @@ for (const driver of ["cli", "sdk"]) {
   test(`${driver}: routing: a limit moves the thread to the next entry of its list, and says why`, { skip }, async t => {
     const w = await boot(t, { driver, sessions: { auth: "setup-token" }, vault: { "claude-setup-token": "fake-setup-value" } });
     withGrok(t, w);
-    // No list: nothing changes (the thread stays limited, as before).
+    // A list naming Grok with no Grok account set up: a limit moves nowhere (never onto a login nobody made).
+    assert.equal((await w.tool("sessions.routes.set", { scope: "default", entries: [{ provider: "claude" }, { provider: "grok" }] })).error, undefined);
+    const stuck = (await w.tool("threads.start", { cwd: w.work, prompt: "limit", surface: "deck" })).data;
+    await w.finished(stuck.id);
+    await new Promise(r => setTimeout(r, 300));
+    assert.equal((await w.tool("threads.get", { thread: stuck.id })).data.thread.provider, "claude", "no account, no move");
+    assert.equal((await w.tool("threads.switch", { thread: stuck.id, provider: "grok" })).error.code, "account_required");
+    assert.equal((await w.tool("sessions.accounts.add", { provider: "grok", label: "Grok", kind: "login" })).error, undefined);
     const set = await w.tool("sessions.routes.set", { scope: "default", entries: [{ provider: "claude" }, { provider: "grok" }] });
     assert.equal(set.error, undefined, JSON.stringify(set));
     const two = await w.tool("sessions.routes.set", { scope: "project:harlow-legal", entries: [{ provider: "grok" }, { provider: "grok" }] });
@@ -447,7 +455,7 @@ for (const driver of ["cli", "sdk"]) {
     t.after(() => { process.env.PATH = saved; });
     const started = await w.tool("sessions.accounts.signin", { provider: "codex", label: "Personal" });
     assert.equal(started.error, undefined, JSON.stringify(started));
-    assert.deepEqual([started.data.step, started.data.url, started.data.code], ["code", "https://auth.example/device", "WXYZ-1234"]);
+    assert.deepEqual([started.data.step, started.data.url, started.data.code], ["code", "https://auth.openai.com/device", "WXYZ-1234"]);
     const acct = (id => id)(started.data.account);
     const listed = async () => (await w.tool("providers.list", {})).data.find(p => p.id === "codex").accounts.find(a => a.id === acct);
     await until(async () => (await w.tool("sessions.accounts.signin", { flow: started.data.flow })).data.step === "done", "the login to finish");
@@ -479,11 +487,11 @@ for (const driver of ["cli", "sdk"]) {
     const w = await boot(t, { driver, sessions: { auth: "setup-token" }, vault: { "claude-setup-token": "fake-setup-value", "or-key": "sk-or" } });
     const acct = await w.tool("sessions.accounts.add", { provider: "openrouter", label: "Fallback", kind: "api-key", vault_item: "or-key" });
     assert.equal(acct.error, undefined, JSON.stringify(acct));
-    const direct = (await w.tool("threads.start", { cwd: w.work, provider: "openrouter", prompt: "hello there", surface: "deck" })).data;
+    const direct = (await w.tool("threads.start", { cwd: w.work, provider: "openrouter", model: "x/y", prompt: "hello there", surface: "deck" })).data;
     await w.finished(direct.id);
     assert.deepEqual(await w.said(direct.id), ["router: hello there"]);
     // Claude at its limit moves on to it.
-    assert.equal((await w.tool("sessions.routes.set", { scope: "default", entries: [{ provider: "claude" }, { provider: "openrouter" }] })).error, undefined);
+    assert.equal((await w.tool("sessions.routes.set", { scope: "default", entries: [{ provider: "claude" }, { provider: "openrouter", model: "x/y" }] })).error, undefined);
     const th = (await w.tool("threads.start", { cwd: w.work, prompt: "limit", surface: "deck" })).data;
     await until(async () => (await w.tool("threads.get", { thread: th.id })).data.thread.provider === "openrouter", "the move to OpenRouter");
     await w.finished(th.id, 2);

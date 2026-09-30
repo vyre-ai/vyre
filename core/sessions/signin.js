@@ -24,6 +24,14 @@ export const LOGINS = /** @type {Record<string, { bin: string, args: string[], w
   claude: { bin: "claude", args: ["auth", "login"], wantsPaste: true },
 });
 
+/** Where a provider's sign-in page lives. A printed address on any other host is never shown to the person. */
+export const LOGIN_HOSTS = /** @type {Record<string, string[]>} */ ({
+  codex: ["openai.com", "chatgpt.com"],
+  grok: ["x.ai", "grok.com"],
+  claude: ["claude.ai", "claude.com", "anthropic.com"],
+});
+const onHost = (url, hosts) => { try { const u = new URL(url); return u.protocol === "https:" && !u.username && !u.password && hosts.some(h => u.hostname === h || u.hostname.endsWith("." + h)); } catch { return false; } };
+
 const URL_RE = /https:\/\/[^\s"'<>)]+/;
 // A one-time device code: XXXX-XXXX (letters and digits), the shape RFC 8628 examples and the CLIs print.
 const CODE_RE = /\b([A-Z0-9]{4,5}-[A-Z0-9]{4,5})\b/;
@@ -31,7 +39,8 @@ const TTL_MS = 15 * 60_000;
 
 export class Signins {
   /**
-   * @param {{ spawn: (bin: string, args: string[], o: { account: any }) => any, now?: () => number }} deps
+   * @param {{ spawn: (bin: string, args: string[], o: { account: any }) => any, now?: () => number, hosts?: Record<string, string[]> }} deps
+   *   hosts: the provider's sign-in hosts (LOGIN_HOSTS); a test passes its own
    *   spawn: start a command as the account (core/sessions/spawn.js spawnSession, with the account's uid and HOME)
    */
   constructor(deps) { this.deps = deps; /** @type {Map<string, any>} */ this.flows = new Map(); }
@@ -52,7 +61,7 @@ export class Signins {
     const read = d => {
       f.text = (f.text + String(d)).slice(-8000);
       const clean = f.text.replace(/\x1b\[[0-9;]*[A-Za-z]/g, "");
-      if (!f.url) { const u = URL_RE.exec(clean); if (u) f.url = u[0].replace(/[.,;]+$/, ""); }
+      if (!f.url) { for (const m of clean.matchAll(new RegExp(URL_RE, "g"))) { const u = m[0].replace(/[.,;]+$/, ""); if (onHost(u, (this.deps.hosts || LOGIN_HOSTS)[provider] || [])) { f.url = u; break; } } }
       if (!f.code) { const c = CODE_RE.exec(clean); if (c) f.code = c[1]; }
       if (f.url && (f.code || f.wantsPaste)) this.ping(f);
     };

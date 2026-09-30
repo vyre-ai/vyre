@@ -1034,6 +1034,7 @@ export class Switchboard {
     const st = this.live.get(id);
     if (st && st.turn && reason === "asked") throw Object.assign(new Error("a turn is running: interrupt it or wait for it to end, then switch"), { code: "busy" });
     const acct = await this.accountFor({ provider, account, project: rec.project, agent: rec.agent });
+    if (!acct && provider !== "claude") throw Object.assign(new Error(`${provider} needs an account: add one (sessions.accounts.add or signin) and name it`), { code: "account_required" });
     const from = rec.provider || "claude";
     const brief = this.handoffBrief(id);
     const had = Boolean(this.db.prepare("SELECT 1 FROM threads_providers WHERE thread = ? AND provider = ?").get(id, provider));
@@ -1073,7 +1074,7 @@ export class Switchboard {
     const last = st.lastPrompt || null;
     const tried = new Set([...st.tried, `${rec.provider || "claude"}:${rec.account || ""}`]);
     st.switching = true;
-    try { await this.switchProvider(id, { provider: hit.provider, account: hit.account || null, reason: "limit", text: last }); }
+    try { await this.switchProvider(id, { provider: hit.provider, account: hit.account || null, model: hit.model || null, reason: "limit", text: last }); }
     finally { const now = this.live.get(id); if (now) now.tried = tried; }
     return true;
   }

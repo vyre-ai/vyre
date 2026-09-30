@@ -17,7 +17,7 @@ async function server(t) {
     req.on("data", d => (body += d));
     req.on("end", () => {
       const j = JSON.parse(body || "{}");
-      seen.push({ auth: req.headers.authorization, model: j.model, messages: j.messages });
+      seen.push({ auth: req.headers.authorization, model: j.model, messages: j.messages, provider: j.provider });
       const last = j.messages.at(-1).content;
       if (req.headers.authorization !== "Bearer sk-test") { res.writeHead(401); return res.end("no key"); }
       if (/^limit/.test(last)) { res.writeHead(429); return res.end("rate limit exceeded"); }
@@ -42,7 +42,7 @@ async function server(t) {
 test("openrouter: conform() passes with no process and no tools; the stream, an interrupt of a slow turn, and a resume", async t => {
   const s = await server(t);
   const p = openrouterProvider({ baseUrl: s.url });
-  const fails = await conform(p, { id: crypto.randomUUID(), cwd: "/tmp", env: { OPENROUTER_API_KEY: "sk-test" } });
+  const fails = await conform(p, { id: crypto.randomUUID(), cwd: "/tmp", env: { OPENROUTER_API_KEY: "sk-test" }, extra: { model: "x/y" } });
   assert.deepEqual(fails, []);
 });
 
@@ -63,7 +63,7 @@ test("openrouter: the key is the account's, the model is the one asked for, a re
   assert.equal(s.seen[0].model, "anthropic/claude-haiku-4.5");
   assert.equal(s.seen[0].messages[0].content, "Be brief.");
   assert.deepEqual(s.seen[1].messages.map(m => m.content), ["Be brief.", "first", "echo: first", "second"], "the resumed turn carries the first exchange");
-  assert.ok(Math.abs(got.filter(m => m.type === "result").at(-1).total_cost_usd - 0.0002) < 1e-9, "the two turns' cost added up");
+  assert.ok(Math.abs(got.filter(m => m.type === "result").at(-1).total_cost_usd - 0.0001) < 1e-9, "a run reports its own running total, as Claude Code does per process");
 });
 
 test("openrouter: a missing or wrong key, and a 429, end the turn as errors; a limit says so", async t => {
@@ -71,7 +71,7 @@ test("openrouter: a missing or wrong key, and a 429, end the turn as errors; a l
   const p = openrouterProvider({ baseUrl: s.url });
   const turn = async (env, text) => {
     const got = [];
-    const r = p.run({ id: crypto.randomUUID(), resume: false, env, onMessage: m => got.push(m), onExit() {} });
+    const r = p.run({ id: crypto.randomUUID(), resume: false, model: "x/y", env, onMessage: m => got.push(m), onExit() {} });
     r.write({ type: "user", message: { role: "user", content: text } });
     for (let i = 0; i < 100 && !got.some(m => m.type === "result"); i++) await new Promise(x => setTimeout(x, 20));
     await r.stop();
@@ -82,4 +82,38 @@ test("openrouter: a missing or wrong key, and a 429, end the turn as errors; a l
   const limited = await turn({ OPENROUTER_API_KEY: "sk-test" }, "limit now");
   assert.equal(limited.is_error, true);
   assert.match(limited.result, /usage limit reached/);
+});
+
+test("openrouter: it asks not to be trained on, needs a chosen model and an https address, cuts a huge answer, and ends a stalled one", async t => {
+  const s = await server(t);
+  const turn = async (p, o) => {
+    const got = [];
+    const r = p.run({ id: crypto.randomUUID(), resume: false, env: { OPENROUTER_API_KEY: "sk-test" }, onMessage: m => got.push(m), onExit() {}, ...o });
+    r.write({ type: "user", message: { role: "user", content: o.say || "hi" } });
+    for (let i = 0; i < 150 && !got.some(m => m.type === "result"); i++) await new Promise(x => setTimeout(x, 20));
+    await r.stop();
+    return got.find(m => m.type === "result");
+  };
+  await turn(openrouterProvider({ baseUrl: s.url }), { model: "x/y" });
+  assert.deepEqual(s.seen.at(-1).provider, { data_collection: "deny" });
+  assert.match((await turn(openrouterProvider({ baseUrl: s.url }), {})).result, /choose a model/);
+  assert.match((await turn(openrouterProvider({ baseUrl: "http://example.com/v1" }), { model: "x/y" })).result, /must be https/);
+  // A server that never stops talking is cut at the cap; one that goes quiet is ended.
+  const http = await import("node:http");
+  const big = http.createServer((req, res) => { req.resume(); res.writeHead(200, { "content-type": "text/event-stream" }); const t2 = setInterval(() => res.write(`data: ${JSON.stringify({ choices: [{ delta: { content: "x".repeat(100_000) } }] })}\n\n`), 5); res.on("close", () => clearInterval(t2)); });
+  await new Promise(r => big.listen(0, "127.0.0.1", () => r(undefined)));
+  t.after(() => { big.closeAllConnections?.(); big.close(); });
+  const cut = await turn(openrouterProvider({ baseUrl: `http://127.0.0.1:${/** @type {any} */ (big.address()).port}` }), { model: "x/y" });
+  assert.match(cut.result, /1 MB/);
+  const quiet = http.createServer((req, res) => { req.resume(); res.writeHead(200, { "content-type": "text/event-stream" }); res.write(": hold\n\n"); });
+  await new Promise(r => quiet.listen(0, "127.0.0.1", () => r(undefined)));
+  t.after(() => { quiet.closeAllConnections?.(); quiet.close(); });
+  const stalled = await turn(openrouterProvider({ baseUrl: `http://127.0.0.1:${/** @type {any} */ (quiet.address()).port}`, idleMs: 200 }), { model: "x/y" });
+  assert.match(stalled.result, /stopped answering/);
+});
+
+test("conform: only Vyre's own openrouter driver may skip the process and tool checks", async () => {
+  const p = openrouterProvider({ baseUrl: "http://127.0.0.1:1" });
+  const fails = await conform({ ...p, id: "sneaky" }, { id: crypto.randomUUID(), cwd: "/tmp", env: { OPENROUTER_API_KEY: "sk-test" }, timeout: 500 });
+  assert.ok(fails.length > 0, "a module's provider claiming process:false is checked in full");
 });

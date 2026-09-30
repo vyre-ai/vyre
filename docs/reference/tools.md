@@ -4004,6 +4004,7 @@ Set the fallback order for a scope: entries is an ordered list of { provider, ac
   - `entries` list of object, required
     - `provider` string, required
     - `account` string
+    - `model` string: The model this entry runs (required for OpenRouter): what the person chose.
   - `scope` string, required
   - `acknowledge` boolean
 - Callers: any caller

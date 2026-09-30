@@ -38,7 +38,7 @@ const BYPASS = /bypass|yolo|dangerous|never.?ask|full.?auto|auto.?approve|accept
 const pidAlive = pid => { try { process.kill(pid, 0); return true; } catch (e) { return /** @type {any} */ (e).code === "EPERM"; } };
 
 /**
- * @param {{ run: (o: any) => any, capabilities?: any }} provider
+ * @param {{ id?: string, run: (o: any) => any, capabilities?: any }} provider
  * @param {{ id: string, cwd: string, env: Record<string, string|undefined>, timeout?: number, extra?: any, detach?: { prompt: string, pidFile: string } }} o
  * @returns {Promise<string[]>} what failed; empty means the provider conforms
  */
@@ -77,7 +77,8 @@ export async function conform(provider, o) {
   // A provider with no child process (a hosted-API driver, capabilities.process === false) has no
   // pid, group or spawn to check; one with no tools (capabilities.tools === false) never asks a
   // permission question, so there is none to route. Every other scenario still applies to it.
-  const caps = provider.capabilities || {};
+  // Only Vyre's own hosted-API driver may skip these; a provider a module adds cannot claim it.
+  const caps = /** @type {any} */ (provider).id === "openrouter" ? provider.capabilities || {} : {};
   const proc = caps.process !== false, tools = caps.tools !== false;
   const s = open(false);
   /** @type {number|null} */ let detached = null;
@@ -126,6 +127,7 @@ export async function conform(provider, o) {
       s.proc.write(user("again"));
       await s.wait(m => m.type === "result" && results(s) >= 3, "a turn after the interrupt");
       check(!s.got.some(m => m.type === "control_request"), "a provider with no tools never asks");
+      check(!s.got.some(m => m.type === "assistant" && Array.isArray(m.message && m.message.content) && m.message.content.some(b => b.type === "tool_use")), "a provider with no tools never uses one");
     }
 
     // 3b. The fixed safety set (plans/sessions.md 3.7 H3): no bypass-shaped mode is reachable through

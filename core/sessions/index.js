@@ -215,14 +215,19 @@ export default {
     });
 
     // ---- routing and fallback order (plans/sessions.md 9.4)
+    // A conversation kept for OpenRouter goes with its thread: swept at start, and on thread.deleted.
+    const sweep = () => { try { db.exec("DELETE FROM sessions_openrouter WHERE thread NOT IN (SELECT id FROM threads_runs)"); } catch {} };
+    sweep();
+    try { ctx.events.on("thread.deleted", e => { const t = e && e.payload && e.payload.thread; if (t) db.prepare("DELETE FROM sessions_openrouter WHERE thread = ?").run(String(t)); }); } catch {}
     const routes = new Routes(db, name => PROVIDERS.some(p => p.id === name));
-    const usable = e => { try { accounts.resolve({ provider: e.provider, ...(e.account ? { account: e.account } : {}) }); return true; } catch { return false; } };
+    // Every provider but Claude needs a real, in-scope account: a fallback never runs on a login or key that nobody set up.
+    const usable = e => { try { const a = accounts.resolve({ provider: e.provider, ...(e.account ? { account: e.account } : {}) }); return e.provider === "claude" || Boolean(a && !a.synthetic); } catch { return false; } };
     tool("sessions.routes.get", "The fallback order for a scope (default, project:<slug> or agent:<name>): the ordered (provider, account) list a thread moves down when its turn hits a limit. Without a scope, every list.",
       { type: "object", properties: { scope: str } },
       async i => (i.scope ? routes.get(String(i.scope)) : routes.all()));
     tool("sessions.routes.set", `Set the fallback order for a scope: entries is an ordered list of { provider, account? }, e.g. Claude, then Codex, then Grok. An empty list clears it. Two entries on one provider (two accounts combining one vendor's quota) may break that vendor's terms: it saves only with acknowledge: true, after the person has seen the warning. An agent sets only its own list or a project it is granted.`,
       { type: "object", required: ["scope", "entries"], properties: { scope: str, acknowledge: { type: "boolean" },
-        entries: { type: "array", items: { type: "object", required: ["provider"], properties: { provider: str, account: str } } } } },
+        entries: { type: "array", items: { type: "object", required: ["provider"], properties: { provider: str, account: str, model: { type: "string", description: "The model this entry runs (required for OpenRouter): what the person chose." } } } } } },
       async (i, meta) => {
         const who = meta && meta.agent ? String(meta.agent) : null;
         if (who) {
