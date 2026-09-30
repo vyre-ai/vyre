@@ -201,13 +201,28 @@ test("acting rules: refused on stop and on the floor, checked as net.intercept",
   await assert.rejects(op(k, "net.on", { filter: {}, then: { action: "explode" } }), e => e.code === "bad_request");
 });
 
-test("a rule that throws never leaves the request hanging", async () => {
-  const k = makeCtx({ respond: { "Fetch.failRequest": () => { throw new Error("gone"); } } });
-  await op(k, "net.on", { filter: {}, then: { action: "block" } });
-  paused(k, "x1", "https://bakery.example/a");
+test("a rule that throws never leaves the request hanging, except a BLOCK rule whose stop failed: that request is never let through (failRequest, retry, empty 403)", async () => {
+  // a mock rule that throws: the request is continued rather than left to hang
+  const k1 = makeCtx({ respond: { "Fetch.fulfillRequest": () => { throw new Error("gone"); } } });
+  await op(k1, "net.on", { filter: {}, then: { action: "mock", body: "x" } });
+  paused(k1, "x1", "https://bakery.example/a");
   await tick(); await tick();
-  assert.equal(k.calls("Fetch.continueRequest")[0].params.requestId, "x1");
+  assert.equal(k1.calls("Fetch.continueRequest")[0].params.requestId, "x1");
+  // a block rule whose failRequest throws: fulfilled with a 403 instead, and NEVER continued
+  const k2 = makeCtx({ respond: { "Fetch.failRequest": () => { throw new Error("gone"); } } });
+  await op(k2, "net.on", { filter: {}, then: { action: "block" } });
+  paused(k2, "x2", "https://bakery.example/a");
+  await tick(); await tick(); await tick();
+  assert.equal(k2.calls("Fetch.continueRequest").length, 0, "a blocked request is never continued");
+  assert.equal(k2.calls("Fetch.fulfillRequest")[0].params.responseCode, 403);
+  // everything failing: it stays paused, still not continued
+  const k3 = makeCtx({ respond: { "Fetch.failRequest": () => { throw new Error("gone"); }, "Fetch.fulfillRequest": () => { throw new Error("gone"); } } });
+  await op(k3, "net.on", { filter: {}, then: { action: "block" } });
+  paused(k3, "x3", "https://bakery.example/a");
+  await tick(); await tick(); await tick();
+  assert.equal(k3.calls("Fetch.continueRequest").length, 0);
 });
+
 
 test("rules: ttl removes them and turns Fetch off; net.off removes one; detach and tab close clean up", async () => {
   mock.timers.enable({ apis: ["setTimeout", "Date"], now: 1 });

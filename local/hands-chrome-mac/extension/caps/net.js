@@ -354,8 +354,21 @@ export function present(view) {
 }
 
 /** Pause handling: first matching acting rule wins, emit rules always fire, everything else continues. The reply goes to the session that paused the request. @param {any} ctx @param {TabNet} t @param {any} p @param {string} [session] */
+/**
+ * Stop one request the guard or a block rule judged blocked: failRequest, once more if it rejects, then a local empty 403 (the page gets an answer, the origin gets nothing). Returns
+ * whether any of them was accepted. It never continues the request.
+ * @param {(m: string, x: any) => Promise<any>} send @param {string} id @param {string} reason
+ */
+async function stopRequest(send, id, reason) {
+  let stopped = false;
+  for (let i = 0; i < 2 && !stopped; i++) stopped = await Promise.resolve(send("Fetch.failRequest", { requestId: id, errorReason: reason })).then(() => true, () => false);
+  if (!stopped) stopped = await Promise.resolve(send("Fetch.fulfillRequest", { requestId: id, responseCode: 403, responseHeaders: [{ name: "content-type", value: "text/plain" }], body: "" })).then(() => true, () => false);
+  return stopped;
+}
+
 async function paused(ctx, t, p, session) {
   const id = p.requestId;
+  let judged = false;
   const send = (/** @type {string} */ m, /** @type {any} */ x) => (session ? ctx.cdp.send(t.tab, m, x, session) : ctx.cdp.send(t.tab, m, x));
   try {
     // While a guarded script runs, nothing it does may reach an origin that is not this page's own or
@@ -367,9 +380,8 @@ async function paused(ctx, t, p, session) {
       if (o && !eg.allowed.has(o)) {
         // JUDGED BLOCKED: from here nothing may let this request go. failRequest, once more if it fails, then a fulfilled 403 with an empty body (the page gets an answer, the
         // origin gets nothing). If every attempt fails the request is left paused and the script's eval says a request MAY have been sent: it is never continued.
-        let stopped = false;
-        for (let i = 0; i < 2 && !stopped; i++) stopped = await Promise.resolve(send("Fetch.failRequest", { requestId: id, errorReason: "BlockedByClient" })).then(() => true, () => false);
-        if (!stopped) stopped = await Promise.resolve(send("Fetch.fulfillRequest", { requestId: id, responseCode: 403, responseHeaders: [{ name: "content-type", value: "text/plain" }], body: "" })).then(() => true, () => false);
+        judged = true;
+        const stopped = await stopRequest(send, id, "BlockedByClient");
         if (eg.blocked.length < 20) eg.blocked.push({ method: String(p.request?.method || "GET"), origin: o, ...(stopped ? {} : { leaked: true }) });
         return;
       }
@@ -385,7 +397,8 @@ async function paused(ctx, t, p, session) {
       }
       if (acted) continue;
       if (a.action === "block") {
-        await send("Fetch.failRequest", { requestId: id, errorReason: a.reason || "BlockedByClient" });
+        judged = true; // from here this request is never continued, whatever happens to the commands that stop it
+        await stopRequest(send, id, a.reason || "BlockedByClient");
         acted = true;
       } else if (a.action === "mock") {
         const headers = Object.entries(a.headers || {}).map(([name, value]) => ({ name, value: String(value) }));
@@ -406,7 +419,8 @@ async function paused(ctx, t, p, session) {
     }
     if (!acted) await send("Fetch.continueRequest", { requestId: id });
   } catch {
-    // A request must never hang on a rule that failed.
+    // A request must never hang on a rule that failed: but one judged blocked is never let through (it stays paused rather than go out).
+    if (judged) return;
     await Promise.resolve(session ? ctx.cdp.send(t.tab, "Fetch.continueRequest", { requestId: id }, session) : ctx.cdp.send(t.tab, "Fetch.continueRequest", { requestId: id })).catch(() => {});
   }
 }
@@ -447,6 +461,8 @@ export async function egressGuard(ctx, tab) {
     eg.rule = b && b.id != null ? b.id : null;
     eg.contained = b && b.ok ? "full" : "partial";
     eg.containedWhy = b && !b.ok ? b.why : undefined;
+    // The browser-level rule is half of the containment (websockets, beacons): if it could not be set, the script does not run.
+    if (!(b && b.ok)) { t.egress = null; throw refuse("blocked", `the browser-level network rule could not be set (${String(eg.containedWhy || "unknown").slice(0, 100)}), so a script is not run on this page`); }
   }
   eg.depth++;
   // The Fetch domain does not see a WebSocket handshake and Network.setBlockedURLs did not stop a new one in a real Chrome

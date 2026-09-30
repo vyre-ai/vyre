@@ -125,10 +125,12 @@ export function createSiteCache({ chrome, emit = () => {}, now = Date.now, setT 
         // What goes on the wire is the observation's own items that the allowlist KEPT, with the evidence they carry (two visits, container, siblings): the store cleans them again,
         // and it needs that evidence to keep a label or an identifier. (The cleaned record itself has the evidence stripped, so it cannot be sent.)
         const kept = { key: patch.key, ...(patch.family ? { family: patch.family } : {}), ...(patch.names ? { names: patch.names } : {}), ...(patch.related ? { related: patch.related } : {}) };
+        const EVIDENCE = ["container", "siblings", "nameVisits", "identifierVisits", "choicesContainer", "choicesVisits"];
         for (const part of ["controls", "api", "frames"]) {
-          const ids = new Set((s.record[part] || []).map((/** @type {any} */ x) => x.id));
-          const raw = (Array.isArray(patch[part]) ? patch[part] : []).filter((/** @type {any} */ x) => ids.has(x.id));
-          if (raw.length) /** @type {any} */ (kept)[part] = raw;
+          const rawById = new Map((Array.isArray(patch[part]) ? patch[part] : []).map((/** @type {any} */ x) => [x.id, x]));
+          // The CLEANED item (what the local allowlist kept, a label it dropped stays dropped) with only the evidence fields of the observation put back: the store needs them and cleans again.
+          const items = (s.record[part] || []).map((/** @type {any} */ c) => { const raw = /** @type {any} */ (rawById.get(c.id)) || {}; const ev = /** @type {any} */ ({}); for (const k of EVIDENCE) if (raw[k] !== undefined) ev[k] = raw[k]; return { ...c, ...ev }; });
+          if (items.length) /** @type {any} */ (kept)[part] = items;
         }
         emit({ event: "site.put", origin, patch: kept });
         // What this device just taught the store makes its copy of the card out of date: the next arrival asks again (at once, not after the usual wait).

