@@ -38,6 +38,22 @@ function defaultAccountsHome() {
  * @typedef {{ sessions: number, added: number, appended: number, reindexed: number, skipped: number, failed: number, turns: number, ms: number }} Stats
  */
 
+/**
+ * Text that must never sit in the index, where a later memory_ask could quote it. Each rule is a
+ * bearer credential or invitation: a Tailscale sign-in link (network.tailscale.login hands it to the
+ * person's own session). Add a rule here and every transcript turn is cleaned before it is indexed.
+ * @type {{ name: string, re: RegExp, to: string }[]}
+ */
+export const REDACTIONS = [
+  { name: "tailscale-link", re: /https?:\/\/login\.tailscale\.com\/\S*/gi, to: "[tailscale sign-in link removed]" },
+];
+
+/** @param {string} text */
+export const redact = text => REDACTIONS.reduce((t, r) => t.replace(r.re, r.to), String(text));
+
+/** Kept for the callers that named it first. @param {string} text */
+export const redactLinks = redact;
+
 export class Indexer {
   /**
    * @param {DB} db
@@ -170,6 +186,7 @@ export class Indexer {
     }
     const t = transcripts.read(entry.file, { id: entry.id, parent: entry.parent });
     if (!t) { s.failed++; return; }
+    for (const turn of t.turns) turn.text = redact(turn.text);
 
     const have = prev ? Number(prev.turns) : 0;
     let from = 0, rewritten = false;
