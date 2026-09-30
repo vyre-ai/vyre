@@ -1086,16 +1086,31 @@ export class Registry {
           // A folder belongs to the project that owns it; one in no project is refused for an agent with an explicit list.
           if (folders.length) {
             let scoped = null;
+            /** @type {Map<string, string>} the folder as given -> the real folder projects.of judged */
+            const canonical = new Map();
             for (const cwd of folders) {
               const o = typeof cwd === "string" ? await withinMs(this.call("projects.of", { cwd }, "module:vyred", { door: true }), TARGET_MS) : null;
               const slug = o && o.data && typeof o.data.slug === "string" ? o.data.slug : null;
-              if (slug) { if (!granted.some((/** @type {any} */ p) => p.slug === slug)) return refuse; continue; }
+              if (slug) {
+                if (!granted.some((/** @type {any} */ p) => p.slug === slug)) return refuse;
+                // What was judged is what runs: the tool gets the real folder (no `..`, no symlink), not the string it was sent.
+                if (typeof o.data.folder === "string" && o.data.folder) canonical.set(cwd, o.data.folder);
+                continue;
+              }
               if (scoped === null) {
                 const sc = await withinMs(this.call("agents.scope", { name: String(agentClaim(caller)) }, "module:vyred", { door: true }), TARGET_MS);
                 const who = sc && sc.data ? sc.data : null;
                 scoped = !who || (who.kind !== "assistant" && who.projects !== "*");
               }
               if (scoped) return refuse;
+            }
+            if (canonical.size) {
+              const swap = (/** @type {any} */ v) => (typeof v === "string" && canonical.has(v) ? canonical.get(v) : v);
+              for (const arg of fields(def.cwdArg)) {
+                const v = input && typeof input === "object" ? input[arg] : undefined;
+                if (v === undefined || v === null) continue;
+                input = { ...input, [arg]: Array.isArray(v) ? v.map(swap) : swap(v) };
+              }
             }
           }
         }

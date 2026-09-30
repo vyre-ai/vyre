@@ -13,6 +13,7 @@ import { boxProjectsDir, oldProjectsDir, workDir, home as vyreHome } from "../co
 import { wantsMacs, askMacs, mergeRows, sourcesOf, boxLabel, macLabel } from "../modules/federate.js";
 import { isProjectId } from "../../lib/project-id.js";
 import { ownerDevice } from "../modules/index.js";
+import { real } from "./markers.js";
 
 const str = { type: "string" };
 const strs = { type: "array", items: str };
@@ -250,7 +251,8 @@ export default {
     ctx.tool("projects.of", {
       description: "The project that owns a folder or any folder under it, or null. slug is what the other tools take.",
       input: { type: "object", required: ["cwd"], properties: { cwd: str } },
-      run: async ({ cwd }) => { const p = P.of(cwd); return p ? { slug: p.slug, name: p.name, home: p.home, folders: p.workspaces } : null; },
+      // folder: the real path the answer was judged on (symlinks and `..` resolved), which the registry puts back in an agent's call so the tool runs on what was checked.
+      run: async ({ cwd }) => { const p = P.of(cwd); return p ? { slug: p.slug, name: p.name, home: p.home, folders: p.workspaces, folder: real(cwd) } : null; },
     });
     ctx.tool("projects.threads", {
       description: "The threads in a project, newest first, each saying whether it was picked or ran in the project's folders.",

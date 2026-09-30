@@ -958,7 +958,7 @@ test("modules v1: cwdArg maps a folder to its project and refuses an agent outsi
       const list = grants[who] === "*" ? Object.values(P) : grants[who].map(s => P[s]);
       return { all: false, agent: who, projects: list };
     } });
-    ctx.tool("projects.of", { internal: true, input: { type: "object" }, run: async ({ cwd }) => cwd.startsWith("/w/harlow") ? P.harlow : cwd.startsWith("/w/b2") ? P.b2 : cwd.startsWith("/w/northwind") ? P.northwind : null });
+    ctx.tool("projects.of", { internal: true, input: { type: "object" }, run: async ({ cwd }) => { const p = cwd.startsWith("/w/harlow") ? P.harlow : cwd.startsWith("/w/b2") ? P.b2 : cwd.startsWith("/w/northwind") ? P.northwind : null; return p ? { ...p, folder: "/" + cwd.split("/").filter(x => x && x !== ".").join("/") } : null; } });
     return {};
   } };`;
   const agents = `export default { async start(ctx) {
@@ -971,6 +971,9 @@ test("modules v1: cwdArg maps a folder to its project and refuses an agent outsi
   const as = (who, input) => reg.call("notes.open", input, `mcp:agent:${who}`);
   const first = await as("kit", { cwd: "/w/b2/src" });
   assert.equal(first.data && first.data.ok, true, `a folder in a granted project: ${JSON.stringify(first)}`);
+  globalThis.__seen.length = 0;
+  assert.equal((await as("kit", { cwd: "/w/b2/./src/" })).data.ok, true);
+  assert.equal(globalThis.__seen[0].cwd, "/w/b2/src", "the tool runs on the folder projects.of judged, not the string it was sent");
   assert.equal((await as("kit", { cwd: "/w/northwind" })).error.code, "not_found", "a folder in another project");
   assert.equal((await as("kit", { cwd: "/w/harlow" })).error.code, "not_found", "another project, whatever its slug is called");
   assert.equal((await as("kit", { cwd: "/tmp/scratch" })).error.code, "not_found", "a folder in no project is refused for a scoped agent");
