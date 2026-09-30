@@ -19,6 +19,9 @@ const HEADER = /^(authorization|proxy-authorization|cookie|set-cookie|x-csrf-tok
 /** Object keys (JSON bodies, storage, cookies) that hold a secret whatever their value looks like. */
 const KEY = /(^|[_\-.\s])(pass(word|wd|phrase)?|pwd|secret|token|access[_-]?token|refresh[_-]?token|id[_-]?token|bearer|jwt|session([_-]?id)?|sid|csrf|xsrf|api[_-]?key|apikey|private[_-]?key|client[_-]?secret|auth(orization)?|credential|cookie|otp|pin|cvv|cvc|ssn|signature)([_\-.\s]|$)|(token|secret|password|apikey|api_key|sessionid|authorization)$/i;
 
+/** decodeURIComponent that never throws: a page chooses these names and %zz is a legal thing to name a parameter. */
+const safeDecode = (/** @type {string} */ k) => { const t = String(k).replace(/\+/g, " "); try { return decodeURIComponent(t); } catch { return t; } };
+
 /** Query-string parameters that carry one. */
 const PARAM = KEY;
 
@@ -63,7 +66,7 @@ export function url(u) {
   const base = cut === undefined ? s : s.slice(0, cut);
   let rest = cut === undefined ? "" : s.slice(cut);
   rest = rest.replace(/([?&#;])([^=&#;]+)=([^&#;]*)/g, (m, sep, k, v) =>
-    PARAM.test(decodeURIComponent(k.replace(/\+/g, " "))) || text(v) !== v ? `${sep}${k}=${tag("param", v)}` : m);
+    PARAM.test(safeDecode(k)) || text(v) !== v ? `${sep}${k}=${tag("param", v)}` : m);
   return base.split("/").map(text).join("/") + rest;
 }
 
@@ -100,7 +103,7 @@ export function body(body, mime = "") {
     try { return JSON.stringify(value(JSON.parse(s))); } catch { /* fall through to text */ }
   }
   if (/x-www-form-urlencoded/i.test(mime) || /^[^\s=&]+=[^\s]*(&[^\s=&]+=[^\s]*)*$/.test(s)) {
-    return s.replace(/(^|&)([^=&]+)=([^&]*)/g, (m, sep, k, v) => PARAM.test(decodeURIComponent(k.replace(/\+/g, " "))) || text(v) !== v ? `${sep}${k}=${tag("param", v)}` : m);
+    return s.replace(/(^|&)([^=&]+)=([^&]*)/g, (m, sep, k, v) => PARAM.test(safeDecode(k)) || text(v) !== v ? `${sep}${k}=${tag("param", v)}` : m);
   }
   return text(s);
 }
@@ -133,4 +136,13 @@ function headerOf(h, name) {
   if (Array.isArray(h)) { const f = h.find(x => String(x.name).toLowerCase() === name); return f ? String(f.value) : ""; }
   const k = Object.keys(h).find(x => x.toLowerCase() === name);
   return k ? String(h[k]) : "";
+}
+
+/**
+ * Run a redactor and, if it throws for any reason at all, mask the whole field instead of failing
+ * or (worse) passing the raw value on. Callers on the daemon side wrap every redaction in this.
+ * @param {() => any} fn @param {string} [what]
+ */
+export function guarded(fn, what = "unsafe") {
+  try { return fn(); } catch { return tag(what, ""); }
 }

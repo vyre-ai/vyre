@@ -324,7 +324,7 @@ The page's console: messages, exceptions and log entries kept in a ring buffer, 
 
 ### `chrome.eval`
 
-Run a JavaScript expression in a tab and return its JSON result, redacted. The page's cookies, tokens and storage values are never returned, whatever the expression reads.
+Run a JavaScript expression in a tab and return its JSON result. Values shaped like credentials (tokens, keys, JWTs, values under secret-looking names) are masked; other values come back as the page holds them, so an expression can still read a short cookie or a typed field. Refused on a page with a visible password field. Held at the Gate unless the person asked for it directly, since a script can also send or change things as them.
 
 - Input:
   - `expression` string
@@ -386,7 +386,6 @@ Set up the Vyre Chrome connector: registers the native host with Chrome (and the
   - `extensionDir` string
   - `extensionId` string
 - Callers: `capsule`, `cli`, `deck`, `local`
-- Needs a person present.
 
 ### `chrome.interject`
 

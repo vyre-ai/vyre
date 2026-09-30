@@ -396,12 +396,12 @@ test("find: hands.find through the Registry returns only the matches, and the fl
   const f = fakeApp(chats());
   const reg = new Registry({ db, events: new Events(db), log: () => {}, config: { role: "local", hands: { runner: f.run, sleep: nosleep } } });
   await reg.start(discover([path.dirname(HERE)]).filter(m => m.dir === HERE), { role: "local" });
-  const r = await reg.call("hands.find", { app: "net.whatsapp.WhatsApp", role: "AXTextArea" }, "module:apps");
+  const r = await reg.call("hands.find", { app: "net.whatsapp.WhatsApp", role: "AXTextArea" }, "cli");
   assert.ifError(r.error);
   assert.deepEqual(r.data.elements.map(e => e.selector.name), ["Compose message"]);
   assert.equal(r.data.texts, undefined);
   f.state.bundle = "com.1password.1password"; f.state.app = "1Password";
-  const b = await reg.call("hands.find", { role: "AXTextArea" }, "module:apps");
+  const b = await reg.call("hands.find", { role: "AXTextArea" }, "cli");
   assert.ok(b.data.blind);
   assert.deepEqual(b.data.elements, []);
 });

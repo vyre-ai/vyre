@@ -24,10 +24,10 @@ export const OP_TIMEOUTS = { "batch.run": 120_000, "net.replay": 60_000, "api.ca
 const err = (code, message) => Object.assign(new Error(message || proto.fail(code).message), { code });
 
 /**
- * @param {{ sockPath?: string, timeoutMs?: number, opTimeouts?: Record<string, number>, log?: (m: string) => void }} [o]
+ * @param {{ sockPath?: string, timeoutMs?: number, opTimeouts?: Record<string, number>, log?: (m: string) => void, extensionOrigin?: string|null }} [o] extensionOrigin: when set, only a connection whose host said it was launched by that origin may be the extension
  */
-export function createBridge({ sockPath = socketPath(), timeoutMs = 30_000, opTimeouts = {}, log = () => {} } = {}) {
-  /** @typedef {{ sock: net.Socket, hello: any, pending: Map<string, { resolve: Function, reject: Function, timer: NodeJS.Timeout, op: string }> }} Conn */
+export function createBridge({ sockPath = socketPath(), timeoutMs = 30_000, opTimeouts = {}, log = () => {}, extensionOrigin = null } = {}) {
+  /** @typedef {{ sock: net.Socket, hello: any, origin: string, pending: Map<string, { resolve: Function, reject: Function, timer: NodeJS.Timeout, op: string }> }} Conn */
   /** @type {Conn|null} */
   let live = null;
   /** @type {Set<Conn>} */
@@ -46,13 +46,15 @@ export function createBridge({ sockPath = socketPath(), timeoutMs = 30_000, opTi
   /** @param {net.Socket} sock */
   function accept(sock) {
     /** @type {Conn} */
-    const c = { sock, hello: null, pending: new Map() };
+    const c = { sock, hello: null, origin: "", pending: new Map() };
     conns.add(c);
     const rd = reader();
     sock.on("data", d => {
       let msgs;
       try { msgs = rd.push(d); } catch (e) { log(`bad frame from host: ${/** @type {Error} */ (e).message}`); sock.destroy(); return; }
-      for (const m of msgs) onFrame(c, m);
+      // A frame is data from a page's world (URLs, console lines, headers): whatever is in it, one
+      // bad frame is dropped and logged, and the connection and the daemon carry on.
+      for (const m of msgs) { try { onFrame(c, m); } catch (e) { log(`dropped a frame that could not be handled: ${/** @type {Error} */ (e).message}`); } }
     });
     sock.on("error", () => {});
     sock.on("close", () => {
@@ -65,7 +67,14 @@ export function createBridge({ sockPath = socketPath(), timeoutMs = 30_000, opTi
   /** @param {Conn} c @param {any} m */
   function onFrame(c, m) {
     if (!m || typeof m !== "object") return;
+    // The host (not the page, not the extension) says who launched it, once, before the hello.
+    if (m.event === "host" && !c.origin) { c.origin = typeof m.origin === "string" ? m.origin : ""; return; }
     if (m.event === "hello") {
+      if (extensionOrigin && c.origin !== extensionOrigin) {
+        log(`ignored a hello that did not come from the pinned extension (origin ${JSON.stringify(c.origin || "none")})`);
+        c.sock.destroy();
+        return;
+      }
       if (m.protocol !== proto.PROTOCOL) {
         send(c, { event: "bad_protocol", expected: proto.PROTOCOL, got: m.protocol });
         c.sock.end();
@@ -74,6 +83,8 @@ export function createBridge({ sockPath = socketPath(), timeoutMs = 30_000, opTi
       const { event: _e, ...said } = m;
       c.hello = redact.value(said);
       if (live && live !== c) {
+        log("a new extension connection replaced the live one");
+        fan({ event: "replaced" });
         failAll(live, err("no_extension", "a newer extension connection replaced this one"));
         live.sock.destroy();
       }
@@ -115,6 +126,10 @@ export function createBridge({ sockPath = socketPath(), timeoutMs = 30_000, opTi
 
   /** redact.value, plus redact.url on every field called url (a query parameter named token is a secret whatever its value looks like). @param {any} v */
   function clean(v) {
+    return redact.guarded(() => clean1(v));
+  }
+  /** @param {any} v */
+  function clean1(v) {
     // Screenshot pixels are base64 that the text rules would corrupt; they hold no credential.
     if (v && typeof v === "object" && !Array.isArray(v) && v.image && typeof v.image.data === "string") {
       const { image, ...rest } = v;

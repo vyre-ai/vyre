@@ -114,3 +114,24 @@ it; Windows `HKCU\Software\Google\Chrome\NativeMessagingHosts\run.vyre.chrome`),
   says so.
 - GoHighLevel selectors and internal API shapes are only verifiable against a live account. The
   fixture proves the machinery and the speed; a live run by the person is the acceptance check.
+
+## Hardening after review (reviewer-2, 30 Sep)
+
+- A page chooses the names in the URLs, bodies and console lines Vyre reads, so redaction never
+  throws (`safeDecode`, `guarded`), the bridge drops a bad frame and keeps serving, and a redaction
+  failure masks the whole field.
+- `chrome.release` replays only the record the module itself stored under the Gate's id, after
+  re-checking the causing agent's grant. The card carries only what the person reads.
+- A script, an API call, a replay or a GoHighLevel run is held at the Gate unless the person's own
+  turn asked for it (P17), because it can send or change things through the page's own API. A page
+  with a visible password field is not one `page.eval` runs on.
+- One floor list (`extension/shared/floor.js`) is imported by the module and the extension.
+- The network buffer is judged per record and emptied when a tab navigates to a blind page.
+  Not yet done: the console and script rings are not emptied on such a navigation (scripts are
+  filtered by URL when listed).
+- Only the extension the host says launched it (Chrome passes its origin, pinned to the manifest
+  key's id) can be "the extension". A replacement connection is announced with a `replaced` event.
+- Accepted: the manifest key is public, so anyone can build an unpacked extension with the same id.
+  Reaching the host that way needs the person's own Chrome profile.
+- Not done: failing non-GET requests during a `page.eval` (the hold covers the unasked case), and
+  naming `chrome.sock` in the floor's rule that denies a shell from talking to vyred's sockets.

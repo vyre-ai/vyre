@@ -290,3 +290,18 @@ test("omitted tab uses the active tab", async () => {
   await net.ops["net.start"]({}, k.ctx);
   assert.ok(k.attachedSet.has(9));
 });
+
+test("the buffer never outlives the floor: a navigation to a blind page empties it, and a blind record is never listed", async () => {
+  const { makeCtx } = await import("./devtools-kit.js");
+  const net = (await import("./extension/caps/net.js")).default;
+  const k = makeCtx({ active: 3 });
+  await net.ops["net.start"]({ tab: 3 }, k.ctx);
+  const push = (/** @type {string} */ method, /** @type {any} */ p) => k.push(3, method, p);
+  push("Network.requestWillBeSent", { requestId: "1", type: "XHR", request: { url: "https://harlow.example/api/x", method: "GET", headers: {} } });
+  push("Network.requestWillBeSent", { requestId: "2", type: "XHR", request: { url: "https://chase.com/api/balance", method: "GET", headers: {} } });
+  let list = await net.ops["net.list"]({ tab: 3 }, k.ctx);
+  assert.deepEqual(list.requests.map((/** @type {any} */ r) => r.url), ["https://harlow.example/api/x"], "a blind origin's record is never listed");
+  push("Network.requestWillBeSent", { requestId: "3", type: "Document", request: { url: "https://accounts.google.com/signin", method: "GET", headers: {} } });
+  list = await net.ops["net.list"]({ tab: 3 }, k.ctx);
+  assert.equal(list.requests.length, 0, "going to a blind page empties the buffer");
+});

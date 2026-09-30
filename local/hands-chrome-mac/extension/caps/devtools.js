@@ -14,6 +14,7 @@
 // token that no longer matches a pattern.
 
 import * as redact from "../shared/redact.js";
+import { classify } from "../shared/floor.js";
 import { fail } from "../shared/proto.js";
 
 const IDLE_MS = 5 * 60_000;
@@ -260,6 +261,7 @@ const ops = {
     const needle = typeof f === "string" ? f : f?.url;
     const limit = Math.min(Number(args?.limit) || 200, 1000);
     const rows = st.scripts
+      .filter(s => classify(s.rawUrl, undefined, {}).tier !== "blind")
       .filter(s => !needle || s.rawUrl.toLowerCase().includes(String(needle).toLowerCase()))
       .filter(s => !(f && typeof f === "object" && f.minSize) || (s.length ?? 0) >= f.minSize)
       .slice(-limit)

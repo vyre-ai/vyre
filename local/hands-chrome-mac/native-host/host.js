@@ -58,10 +58,10 @@ function framer() {
  * and rejects when nobody listens. Resolves 0 when done (the exit code).
  * @param {NodeJS.ReadableStream} stdin @param {NodeJS.WritableStream} stdout
  * @param {() => Promise<import("node:stream").Duplex>} connect
- * @param {{ retryMs?: number }} [opts]
+ * @param {{ retryMs?: number, origin?: string|null }} [opts] origin: the extension origin Chrome passed as argv[2]; the host announces it to the module in one frame of its own, so the module can tell the pinned extension from any other process that writes a hello
  * @returns {Promise<number>}
  */
-export function relay(stdin, stdout, connect, { retryMs = RETRY_MS } = {}) {
+export function relay(stdin, stdout, connect, { retryMs = RETRY_MS, origin = null } = {}) {
   return new Promise(resolve => {
     /** @type {import("node:stream").Duplex|null} */
     let sock = null;
@@ -91,6 +91,9 @@ export function relay(stdin, stdout, connect, { retryMs = RETRY_MS } = {}) {
         sock = s;
         // The extension says hello once, when Chrome starts the host. If the module was not up
         // yet that frame had nowhere to go, so it is handed over now, unread and unchanged.
+        // The host's own first word: who launched it. Chrome sets the origin; a process that is not
+        // a host has no way to make the module believe it came from the pinned extension.
+        if (origin) s.write(encode({ event: "host", origin, ppid: process.ppid }));
         if (early) { s.write(early); early = null; }
         s.on("data", d => {
           try { for (const f of fromModule.push(d)) say(f); } catch { finish(); }
@@ -127,7 +130,7 @@ export const connectTo = p => () => new Promise((resolve, reject) => {
 });
 
 if (isMain()) {
-  relay(process.stdin, process.stdout, connectTo(socketPath())).then(code => process.exit(code));
+  relay(process.stdin, process.stdout, connectTo(socketPath()), { origin: process.argv[2] || null }).then(code => process.exit(code));
 }
 
 /** Whether this file is the program being run, following symlinks (a temp dir or an install may be one). */

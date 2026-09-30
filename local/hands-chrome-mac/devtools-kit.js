@@ -3,6 +3,8 @@
 // extension shell so their tests need no Chrome and none of the shell's files: a cdp whose answers
 // a test sets per method, a way to push CDP events, and recorders for emit and every send.
 
+import { classify } from "./extension/shared/floor.js";
+
 /**
  * @param {{ respond?: Record<string, any>, floor?: (tab: number, op: string) => { allow: boolean, why?: string }, stopped?: () => boolean, active?: number }} [o]
  */
@@ -31,6 +33,7 @@ export function makeCtx(o = {}) {
     tabs: { async active() { return { id: o.active ?? 1 }; } },
     emit(/** @type {any} */ e) { emitted.push(e); },
     stopped: () => state.stopped(),
+    floorUrl: async (/** @type {string} */ u, /** @type {string} */ op) => classify(u, op, {}),
     floorAllows: async (/** @type {number} */ t, /** @type {string} */ op) => state.floor(t, op),
   };
   return {

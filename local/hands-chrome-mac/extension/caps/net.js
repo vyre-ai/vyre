@@ -18,6 +18,7 @@
 // anything outside the browser.
 
 import * as redact from "../shared/redact.js";
+import { classify } from "../shared/floor.js";
 import { fail } from "../shared/proto.js";
 
 const DEFAULT_MAX_REQUESTS = 500;
@@ -116,6 +117,17 @@ export async function start(ctx, tab, opts = {}) {
   return t;
 }
 
+/**
+ * The buffer must never outlive the floor (reviewer-2): a tab that goes to a bank or a Vyre surface
+ * and comes back must not hand its traffic to a later net.list, net.get or api.learn. Each record
+ * is judged by its own URL, and a navigation to a blind page empties the tab's buffer.
+ * @param {string} url
+ */
+const blindUrl = url => classify(url, undefined, {}).tier === "blind";
+
+/** @param {TabNet} t */
+function purge(t) { t.recs.clear(); t.bytes = 0; }
+
 /** @param {TabNet} t */
 function evict(t) {
   while (t.recs.size > t.maxRequests || (t.bytes > t.maxBytes && t.recs.size > 1)) {
@@ -145,6 +157,14 @@ function handle(ctx, t, method, p) {
       old.status = p.redirectResponse.status;
       old.done = true;
       t.recs.set(`${p.requestId}#${++t.redirects}`, old);
+    }
+    // A document load is a navigation (a tab or a frame): if it goes somewhere blind, forget the
+    // buffer now, before anything else can be read from it. The built-in list decides here at once;
+    // the person's own blind list is asked right after.
+    if (p.type === "Document" && p.request?.url) {
+      const u = String(p.request.url);
+      if (blindUrl(u)) { purge(t); return; }
+      void ctx.floorUrl(u, "net.list").then((/** @type {any} */ v) => { if (v && v.tier === "blind") purge(t); }, () => {});
     }
     /** @type {Rec} */
     const r = { id: p.requestId, seq: ++t.seq, ts: p.wallTime ? Math.round(p.wallTime * 1000) : Date.now(), method: p.request?.method || "GET", url: p.request?.url || "", type: p.type || "Other", initiator: p.initiator || {}, reqHeaders: { ...(p.request?.headers || {}) }, resHeaders: {}, postData: p.request?.postData, size: 0 };
@@ -231,7 +251,7 @@ export function records(ctx, tab, filter) {
   const t = root(ctx).tabs.get(tab);
   if (!t) return [];
   const m = matcher(filter);
-  return [...t.recs.values()].filter(m);
+  return [...t.recs.values()].filter(r => !blindUrl(r.url)).filter(m);
 }
 
 /** @param {any} ctx @param {TabNet} t @param {Rec} r */
@@ -381,7 +401,7 @@ const ops = {
     const t = await start(ctx, tab);
     const limit = Math.min(Number(args?.limit) || 100, 500);
     const m = matcher(args?.filter);
-    const all = [...t.recs.values()].filter(m);
+    const all = [...t.recs.values()].filter(r => !blindUrl(r.url)).filter(m);
     const rows = all.slice(-limit).map(r => redact.request(summary(r)));
     return { count: rows.length, matched: all.length, buffered: t.recs.size, requests: rows };
   },
@@ -390,10 +410,12 @@ const ops = {
     const tab = await target(ctx, args, "net.get");
     const t = await start(ctx, tab);
     const r = t.recs.get(String(args?.id));
-    if (!r) throw refuse("not_found", "no captured request with that id (it may have been evicted)");
+    if (!r || blindUrl(r.url)) throw refuse("not_found", "no captured request with that id (it may have been evicted)");
     /** @type {any} */
     const view = { ...summary(r), requestHeaders: r.reqHeaders, responseHeaders: r.resHeaders };
-    if (args?.bodies) {
+    const tier = (await ctx.floorUrl(r.url, "net.get")).tier;
+    if (tier === "blind") throw refuse("not_found", "no captured request with that id (it may have been evicted)");
+    if (args?.bodies && tier === "open") {
       if (r.postData !== undefined) view.requestBody = r.postData;
       if (r.done && !r.failed) {
         try {

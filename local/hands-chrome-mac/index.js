@@ -86,7 +86,7 @@ const GHL_OPS = { context: "ghl.context", section: "ghl.section", flows: "ghl.fl
 export default {
   async start(ctx) {
     const cfg = (ctx.config && ctx.config.chrome) || {};
-    const bridge = createBridge({ sockPath: cfg.sockPath, timeoutMs: cfg.timeoutMs, opTimeouts: cfg.opTimeouts, log: m => ctx.log(m) });
+    const bridge = createBridge({ extensionOrigin: cfg.extensionOrigin === undefined ? pinnedOrigin() : cfg.extensionOrigin, sockPath: cfg.sockPath, timeoutMs: cfg.timeoutMs, opTimeouts: cfg.opTimeouts, log: m => ctx.log(m) });
     const host = cfg.nativeHost || nativeHost;
     const floorCfg = cfg.floor || {};
 
@@ -139,12 +139,29 @@ export default {
 
     const denied = (/** @type {string} */ code, /** @type {string} */ message) => Object.assign(new Error(`${code}: ${message}`), { code });
 
+    /**
+     * Ops that can send, post, pay or delete as the person through the page's own API, not through
+     * a button the extension can see: they follow the same rule as a submit (held at the Gate unless
+     * the person's own turn asked, P17). A batch is judged by its steps.
+     * @param {string} op @param {any} args @returns {string|null} words for the card, or null when free
+     */
+    const outwardOp = (op, args) => {
+      if (op === "page.eval" || op === "dev.console.eval") return `run a script on the page: ${scrub(String(args.expression || "").slice(0, 160))}`;
+      if (op === "api.call") return `call the page's own API (${scrub(String(args.entryId || "an entry"))})`;
+      if (op === "net.replay") return `re-send a captured request${args.overrides && args.overrides.method ? ` as ${String(args.overrides.method).toUpperCase()}` : ""}`;
+      if (op === "ghl.run") return `run the GoHighLevel automation ${scrub(String(args.flow || "of your own steps"))}`;
+      if (op === "batch.run" && Array.isArray(args.steps)) {
+        for (const st of args.steps) { const w = st && typeof st.op === "string" ? outwardOp(st.op, st.args || {}) : null; if (w) return w; }
+      }
+      return null;
+    };
+
     /** The one grant lives in the hands module: an agent granted to drive the Mac may drive its Chrome. */
     const requireGrant = async (/** @type {string|null} */ agent) => {
       if (!agent) return;
       const r = await ctx.call("hands.grant.list", {});
       const ok = r && !r.error && Array.isArray(r.data) && r.data.some((/** @type {any} */ g) => g.agent === agent);
-      if (!ok) throw denied("denied", `${agent} is not granted to drive this Mac. Grant it once with hands.grant.add (needs the person present on this Mac), or ask them to.`);
+      if (!ok) throw denied("denied", `${agent} is not granted to drive this Mac. Grant it once with hands.grant.add or ask the person to.`);
     };
 
     /** Refuse when a page is one Vyre may not touch for this op. @param {string|null|undefined} url @param {string|undefined} op */
@@ -229,7 +246,10 @@ export default {
           // The person's own direct turn (their CLI, the Capsule) may run an outward act free; an
           // agent's, or the model's in a Claude session, may not: the extension holds those.
           args.asked = PEOPLE.includes(callerKind(meta.caller)) && !agent;
-          let res = screen(await bridge.call(op, args, { timeoutMs: args.timeoutMs }));
+          const outward = args.asked ? null : outwardOp(op, args);
+          let res = outward
+            ? { held: true, why: `This would ${outward}. It could send or change something as the person, so it waits for their approval.`, control: { role: "action", name: outward }, fields: [], sig: "none" }
+            : screen(await bridge.call(op, args, { timeoutMs: args.timeoutMs }));
           if (isObj(res) && res.held === true) res = await hold(op, args, res, meta, summary);
           else if (op === "batch.run" && isObj(res) && isObj(res.held) && res.held.held === true) {
             // The batch stopped at a held step: the card is for that step, released on its own.
@@ -250,6 +270,9 @@ export default {
       });
     }
 
+    /** @type {Map<string, { op: string, args: any, signature: any, key: string|null }>} */
+    const heldActs = new Map();
+
     /** An outward act the extension held: ask the person at the Gate, with the fields and origin. */
     async function hold(/** @type {string} */ op, /** @type {any} */ args, /** @type {any} */ res, /** @type {any} */ meta, /** @type {string} */ summary, /** @type {any} */ batchTab) {
       const tabId = Number.isInteger(args.tab) ? args.tab : batchTab;
@@ -259,7 +282,10 @@ export default {
       const control = isObj(res.control) ? [res.control.role, res.control.name].filter(Boolean).join(" ") : res.control;
       const origin = originOf(url) || "this page";
       const { asked, release, ...replay } = args;
-      const content = { app: "Chrome", window: scrub(res.title || ""), origin, control: scrub(control || res.why || summary), fields: clipFields(res.fields), op, args: Number.isInteger(tabId) && replay.tab === undefined ? { ...replay, tab: tabId } : replay, signature };
+      // What to replay stays HERE keyed by the Gate's id; the card carries only what the person
+      // reads, so an agent's own gate.request cannot make release run anything (reviewer-2 H2/HIGH).
+      const record = { op, args: Number.isInteger(tabId) && replay.tab === undefined ? { ...replay, tab: tabId } : replay, signature, key: agentOf(meta.caller) };
+      const content = { app: "Chrome", window: scrub(res.title || ""), origin, control: scrub(control || res.why || summary), fields: clipFields(res.fields) };
       // The Gate may have started after this module; offer again before the first card needs it.
       if (!offered) await offer();
       const r = await ctx.call("gate.request", { kind: "act", via: "chrome:mac", to: origin, content, ...(meta && meta.thread ? { thread: String(meta.thread) } : {}) });
@@ -268,6 +294,8 @@ export default {
         acted(meta, agent, op, false, "held, but there is no Gate to ask the person at", summary);
         return { held: true, gate: false, origin, why: "This sends something as the person and there is no Gate to ask them at, so it was not done." };
       }
+      heldActs.set(String(r.data.id), record);
+      while (heldActs.size > 200) heldActs.delete(/** @type {string} */ (heldActs.keys().next().value));
       acted(meta, agent, op, true, "held for the person's approval", summary);
       return { held: true, id: r.data.id, origin, fields: content.fields, why: "This sends something as the person. It waits for their approval at the Gate." };
     }
@@ -286,7 +314,7 @@ export default {
     pass("chrome.act", "page.act", "Do one thing to one control found by selector: click, type (with value), select an option, check a box, or press a key (value: the key). An act that sends something as the person (a real submit, a Send, Pay or Post control, decided from the page itself) is held for their approval at the Gate unless they asked for it directly: the answer has held: true.",
       { selector, kind: { type: "string", enum: ["click", "type", "select", "check", "press"] }, value: { ...str, description: "For type and select: the text or option. For press: the key, e.g. Enter." } });
     pass("chrome.fill", "page.fill", "Set many form fields in one step: fields is a list of {selector, value}. Values a person typed never come back in results. A submit is held like chrome.act's.", { fields: { type: "array", items: obj({ selector, value: str }, ["selector"]) }, submit: bool });
-    pass("chrome.eval", "page.eval", "Run a JavaScript expression in a tab and return its JSON result, redacted. The page's cookies, tokens and storage values are never returned, whatever the expression reads.", { expression: str });
+    pass("chrome.eval", "page.eval", "Run a JavaScript expression in a tab and return its JSON result. Values shaped like credentials (tokens, keys, JWTs, values under secret-looking names) are masked; other values come back as the page holds them, so an expression can still read a short cookie or a typed field. Refused on a page with a visible password field. Held at the Gate unless the person asked for it directly, since a script can also send or change things as them.", { expression: str });
     pass("chrome.wait", "page.wait", "Wait for exactly one thing: a control (selector), the URL to contain some text (url), or the network to be quiet for idleMs, up to timeoutMs.", { selector: { description: "A selector object, or a CSS selector string." }, url: { ...str, description: "Wait until the page URL contains this." }, idleMs: { ...int, description: "Wait until the network has been quiet this long." } });
     pass("chrome.screenshot", "page.screenshot", "A PNG of a tab (or of one control), base64-encoded. Nothing from pages Vyre may not look at.", { agent: str });
     pass("chrome.batch", "batch.run", "Run a list of steps inside the browser with no round trip between them: fastest for a known sequence. It stops at the first failure, on the person's stop, or at a page Vyre may not touch, and says which step.", { steps: { type: "array", items: { type: "object" } } });
@@ -351,8 +379,10 @@ export default {
       input: obj({ id: str, to: { type: "array", items: str }, content: { type: "object" } }, ["id", "content"]),
       run: async (/** @type {any} */ input, /** @type {any} */ meta) => {
         if (!meta || meta.caller !== "module:gate") throw denied("denied", "only the Gate releases a held act");
-        const c = input.content || {};
-        if (!c.op || !c.signature) throw Object.assign(new Error("bad_request: nothing was held here"), { code: "bad_request" });
+        const c = heldActs.get(String(input.id));
+        if (!c || !c.op || c.signature === undefined) throw denied("denied", "that held act is not one Chrome control made, or it was already released");
+        heldActs.delete(String(input.id));
+        await requireGrant(c.key);
         return via.run(meta, async () => {
           const summary = summarize(String(c.op), c.args || {});
           try {
@@ -401,13 +431,21 @@ export default {
         }
         const r = host.install({ home: cfg.home, platform: cfg.platform, vyreHome: cfg.vyreHome, hostDir: cfg.hostDir, registry: cfg.registry, extensionId: id, browsers: i.browsers });
         return { ...r, extensionDir: dir, steps: guide(dir, id, r.written.map((/** @type {any} */ w) => w.browser)) };
-      }, { callers: PEOPLE, presence: { summary: () => "Install the Vyre connector for Chrome (registers a native messaging host with your browser)" } });
+      }, { callers: PEOPLE });
 
     return {
       async stop() { off(); if (typeof offHands === "function") offHands(); await bridge.close(); },
     };
   },
 };
+
+/** The origin of the one extension the native host admits: derived from the manifest's public key. */
+function pinnedOrigin() {
+  try {
+    const k = JSON.parse(fs.readFileSync(path.join(path.dirname(fileURLToPath(import.meta.url)), "extension", "manifest.json"), "utf8")).key;
+    return k ? `chrome-extension://${extensionIdFromKey(k)}/` : null;
+  } catch { return null; }
+}
 
 /** The steps a person does in Chrome, in plain words. @param {string} dir @param {string} id @param {string[]} browsers */
 export function guide(dir, id, browsers) {

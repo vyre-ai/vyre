@@ -43,7 +43,7 @@ async function rig(/** @type {any} */ t, { gate = true, nativeHost = /** @type {
   fs.writeFileSync(path.join(gateDir, "index.js"), GATE_JS);
   const f = fakeApp({ elements: [] });
   const reg = new Registry({ db, events: new Events(db), log: () => {},
-    config: { role: "local", hands: { runner: f.run, sleep: async () => {} }, chrome: { sockPath, nativeHost, floor, home: sockDir, platform: "darwin", hostDir: sockDir } } });
+    config: { role: "local", hands: { runner: f.run, sleep: async () => {} }, chrome: { extensionOrigin: null, sockPath, nativeHost, floor, home: sockDir, platform: "darwin", hostDir: sockDir } } });
   const found = [...discover([path.dirname(HERE)]).filter(m => m.dir === HERE || m.dir === HANDS), ...(gate ? discover([path.join(home, "mods")]) : [])];
   await reg.start(found, { role: "local" });
   t.after(() => reg.stop && reg.stop());
@@ -210,7 +210,7 @@ test("module: a held outward act becomes a Gate card with the fields and origin,
   assert.equal(req.content.app, "Chrome");
   assert.deepEqual(req.content.fields, [{ name: "Email", value: "alex@example.com" }]);
   assert.equal(req.content.control, "button Send inquiry");
-  assert.equal(req.content.op, "page.act");
+  assert.deepEqual([req.content.op, req.content.args, req.content.signature], [undefined, undefined, undefined], "what to replay never rides on the card");
   assert.equal(x.ops("page.act")[0].args.asked, false, "an agent's own act was not asked for by the person");
 
   // Only the Gate releases.
@@ -254,7 +254,8 @@ test("module: a batch that stops at a held step becomes a card for that step", a
   assert.equal(r.data.held, true);
   assert.equal(r.data.failedAt, 1);
   const c = gate().requests[0].content;
-  assert.deepEqual([c.op, c.signature, c.args.tab], ["page.act", "sb", 1]);
+  assert.equal(c.control, "button Submit");
+  assert.deepEqual([c.op, c.signature, c.args], [undefined, undefined, undefined]);
 });
 
 test("module: chrome.click, chrome.type and chrome.open take the box module's input shapes", async t => {
@@ -313,4 +314,29 @@ test("module: the hands' Escape stops Chrome control too, and an act raises the 
   reg.deps.events.emit("hands", "hands.stopped", { by: "person" });
   const r = await reg.call("chrome.act", { selector: { name: "Email" }, kind: "click" }, "cli");
   assert.equal(r.error.code, "stopped");
+});
+
+test("module: an agent's own Gate card releases nothing, and a script or API call is held unless the person asked", async t => {
+  const { reg, gate, connect } = await rig(t);
+  const x = await connect();
+  await reg.call("hands.grant.add", { agent: "kit" }, "cli");
+  await reg.call("chrome.plan", PLAN, KIT);
+  // A forged card: an id chrome never issued, carrying its own op and args.
+  const forged = await reg.call("chrome.release", { id: "held-99", content: { op: "page.eval", args: { expression: "fetch('/send',{method:'POST'})" }, signature: "x" } }, "module:gate");
+  assert.equal(forged.error.code, "denied");
+  assert.equal(x.ops("page.eval").length, 0);
+  // The agent's script does not run: it becomes a card. The person's own turn runs it.
+  const held = await reg.call("chrome.eval", { expression: "document.title", tab: 1 }, KIT);
+  assert.equal(held.data.held, true);
+  assert.equal(x.ops("page.eval").length, 0);
+  assert.equal((await reg.call("chrome.eval", { expression: "document.title", tab: 1 }, "cli")).error, undefined);
+  assert.equal(x.ops("page.eval").length, 1);
+  // Approving the card runs the stored record, and only that.
+  const rel = await reg.call("chrome.release", { id: held.data.id, content: {} }, "module:gate");
+  assert.equal(rel.error, undefined, JSON.stringify(rel));
+  assert.equal(x.ops("page.eval").length, 2);
+  assert.equal(x.ops("page.eval")[1].args.asked, true);
+  // Approving twice does nothing the second time.
+  assert.equal((await reg.call("chrome.release", { id: held.data.id, content: {} }, "module:gate")).error.code, "denied");
+  assert.ok(gate().requests.length >= 1);
 });

@@ -30,13 +30,14 @@ const PEOPLE = ["cli", "local", "deck", "capsule"];
  */
 /** Modules that ship with Vyre and act for the person (the apps adapters press Send through hands.commit; sight reads). A module someone adds is not on it. */
 const FIRST_PARTY = /^module:(apps|sight|gate|chrome)$/;
-const grantKey = caller => {
+const grantKey = (caller, meta) => {
   const claim = agentClaim(caller);
   if (claim) return claim;
-  if (FIRST_PARTY.test(String(caller))) return null;
+  // The name alone is not enough: a module someone adds under a free name (apps, chrome) must not
+  // pass. The loader sets firstParty only for modules the repo ships (reviewer-2).
+  if (FIRST_PARTY.test(String(caller)) && meta && meta.firstParty === true) return null;
   return [...PEOPLE, "mcp"].includes(callerKind(caller)) ? null : `caller:${callerKind(caller)}`;
 };
-const agentOf = grantKey;
 /** The person's own direct turn, which is what asks for an outward act (asking is approving). */
 const asked = caller => PEOPLE.includes(callerKind(caller)) && !agentClaim(caller);
 
@@ -114,11 +115,12 @@ export default {
     const hold = async ({ content, thread }) => {
       const to = (content && content.app) || "the Mac";
       const { input, hash, ...shown } = content || {};
-      const caller = /** @type {any} */ (via.getStore() || {}).caller;
+      const meta = /** @type {any} */ (via.getStore() || {});
+      const caller = meta.caller;
       const r = await ctx.call("gate.request", { kind: "act", via: "hands:mac", to, content: shown, ...(thread ? { thread } : {}) });
       const data = r && !r.error && r.data ? r.data : null;
       if (data && data.id) {
-        heldActs.set(String(data.id), { input, hash, key: grantKey(caller) });
+        heldActs.set(String(data.id), { input, hash, key: grantKey(caller, meta) });
         while (heldActs.size > 200) heldActs.delete(/** @type {string} */ (heldActs.keys().next().value));
       }
       return data;
@@ -144,7 +146,7 @@ export default {
      * person driving their own Mac, which was never what the grant is for.
      */
     const gated = fn => wrap((input, meta) => {
-      const agent = agentOf(meta.caller);
+      const agent = grantKey(meta.caller, meta);
       if (agent && !g.has(agent)) {
         throw Object.assign(new Error(`${agent} is not granted to drive this Mac. Grant it once with hands.grant.add (needs the person), or ask them to.`), { code: "denied" });
       }

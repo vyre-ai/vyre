@@ -549,6 +549,10 @@ export default {
     "page.eval": async (args, ctx) => {
       if (typeof args.expression !== "string" || !args.expression.trim()) throw err("bad_request", "page.eval needs an expression");
       const tabId = await tabOf(args, ctx, "page.eval");
+      // A script can read what redaction cannot recognise (a typed password is just text), so a page
+      // with a visible password field is not one it runs on at all.
+      const pw = await ctx.cdp.send(tabId, "Runtime.evaluate", { expression: "!![...document.querySelectorAll('input[type=password]')].some(e => e.offsetParent !== null || e.getClientRects().length)", returnByValue: true });
+      if (pw && pw.result && pw.result.value === true) throw err("blocked", "this page has a password field, so a script is not run on it");
       const r = await ctx.cdp.send(tabId, "Runtime.evaluate", { expression: args.expression, returnByValue: true, awaitPromise: true, timeout: 10_000 });
       if (r && r.exceptionDetails) {
         const d = r.exceptionDetails;
