@@ -91,6 +91,8 @@ async function main() {
     cleanups.push(registerHost({ manifestObj: hostManifest({ wrapper: launcher, id: ext.id }), dir: tmp, userDataDir: udd }));
 
     fixture = await startFixtureServer();
+    // This harness has no person to ask: a resume after the Esc stage must not wait for one.
+    spawnSync(process.execPath, [cli, "config", "confirm-sends", "off"], { env, encoding: "utf8" });
     const child = spawn(process.execPath, [cli, "mcp"], { env, stdio: ["pipe", "pipe", "pipe"] });
     mcp = mcpClient(child);
     child.stderr.on("data", d => { const s = String(d).trim(); if (s) log(`mcp: ${s.slice(0, 200)}`); });
@@ -137,7 +139,8 @@ async function main() {
         const ms = Math.round(performance.now() - t0);
         const st = await mcp.call("chrome_eval", { tab: gt, expression: "JSON.stringify(window.__state)" });
         const state = JSON.parse(typeof st === "string" ? st : (st.value ?? st.result ?? "null"));
-        for (const [k, v] of Object.entries(GHL_ROBUST.expect.state)) if (JSON.stringify(state[k]) !== JSON.stringify(v)) throw new Error(`state.${k} is ${JSON.stringify(state[k])}, wanted ${JSON.stringify(v)}; run: ${brief(run)}`);
+        const view = { ...state, steps: (state.steps || []).length };
+        for (const [k, v] of Object.entries(GHL_ROBUST.expect.state)) if (JSON.stringify(/** @type {any} */ (view)[k]) !== JSON.stringify(v)) throw new Error(`state.${k} is ${JSON.stringify(/** @type {any} */ (view)[k])}, wanted ${JSON.stringify(v)}; run: ${brief(run)}`);
         return { ms, ok: run.ok !== false, state: { saved: state.saved, steps: (state.steps || []).length, trigger: state.trigger, whatsnewClosed: state.whatsnewClosed, discarded: state.discarded } };
       });
 
