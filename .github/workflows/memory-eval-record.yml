@@ -1,14 +1,18 @@
 # Records the model's replies for the 0.2 open world (scripts/eval-bar.js --record) through
 # OpenRouter. Manual only: never on a pull request, push or schedule. It runs in the protected
-# environment `eval`, whose secret OPENROUTER_EVAL_KEY is a key capped at $20 by the user. The
-# recording stops itself at $15 of spend (exit 3, replies so far saved and uploaded); dispatch it
-# again to continue from what is recorded. Only the open world is recorded, never the sealed one.
+# environment `eval`, whose secret OPENROUTER_EVAL_KEY is a key with its own hard limit of $50 at
+# OpenRouter; the user's budget for this is about $15 in total. Before any call the run reads the key's
+# own usage from OpenRouter (GET /api/v1/key) and refuses to start at $14 or more (or when it cannot
+# read it); during the run it stops cleanly (exit 3, replies so far saved and uploaded) before a call
+# that could pass $15 of the key's total; the job prints the key's usage before and after. The key is
+# never printed and never written to a file. Dispatch it again to continue from what is recorded.
+# Only the open world is recorded, never the sealed one.
 #
-# The $15 cap is cumulative, but only through what is committed: the ledger
-# test/eval/asks/iq02-open.spend.json and the replies test/eval/asks/iq02-open.json are read from
-# the checkout. After EACH dispatch, download the artifact and commit BOTH files before the next
-# dispatch. If you do not, the next run restarts from the committed total (and pays again for
-# questions whose replies were not committed). The summary prints the ledger total the run started from.
+# The committed ledger is a second guard: the ledger test/eval/asks/iq02-open.spend.json and the
+# replies test/eval/asks/iq02-open.json are read from the checkout. After EACH dispatch, download the
+# artifact and commit BOTH files before the next dispatch. If you do not, the next run restarts from
+# the committed total (and pays again for questions whose replies were not committed). The summary
+# prints the ledger total the run started from.
 name: memory-eval-record
 on:
   workflow_dispatch:
