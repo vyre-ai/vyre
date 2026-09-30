@@ -142,5 +142,12 @@ test("a duty shows its title together with the full instruction, trigger and whe
   click($(row(m.el, a), "[data-act=open]")); await settle();
   const t = text(row(m.el, a));
   assert.match(t, /Weekly contrast check.*Check contrast weekly.*every Monday · Only looks and tells you/);
-  assert.ok($(row(m.el, a), "[data-act=duty-card]"), "a duty with a watcher offers its card");
+  assert.equal($(row(m.el, a), "[data-act=duty-card]"), null, "a proposal (not started) has no card to read yet");
+});
+
+test("a started duty offers What it will do", async () => {
+  const m = await mount({ "team.duties.list": { duties: [{ id: "d2", title: "Weekly", instruction: "Check weekly", trigger: "every Monday", act: false, enabled: true, started: true, watcher: "duty-design-weekly" }] } });
+  const a = "design-harlow-legal";
+  click($(row(m.el, a), "[data-act=open]")); await settle();
+  assert.ok($(row(m.el, a), "[data-act=duty-card]"));
 });
