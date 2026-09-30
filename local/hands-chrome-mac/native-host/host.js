@@ -124,6 +124,10 @@ export function relay(stdin, stdout, connect, { retryMs = RETRY_MS, origin = nul
 
 /** The real connect: a unix socket or named pipe at the module's path. @param {string} p */
 export const connectTo = p => () => new Promise((resolve, reject) => {
+  // A unix socket some other user made is not ours to hand the browser's frames to.
+  if (process.platform !== "win32" && typeof process.getuid === "function") {
+    try { const st = fs.lstatSync(p); if (st.uid !== process.getuid()) return reject(new Error("the socket belongs to another user")); } catch { /* not there yet: connect will say so */ }
+  }
   const s = net.connect(p);
   s.once("connect", () => { s.removeAllListeners("error"); resolve(s); });
   s.once("error", e => { s.destroy(); reject(e); });

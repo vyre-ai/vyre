@@ -24,6 +24,7 @@
 import { redact } from "../lib/shared.js";
 import { passwordFieldScript } from "../shared/guards.js";
 import { guardInstall, guardCollect, held as heldRequest } from "../shared/outbound.js";
+import { egressGuard } from "./net.js";
 import { err } from "../lib/err.js";
 import { matchControl, nearMisses, topBlocker, classifyBlocker, describeBlocker, redactDom, whereOf, traceOf, nap } from "../lib/ui.js";
 
@@ -934,13 +935,17 @@ export default {
       // Hands-free, except that a script's own network SENDS (a message, a post, a payment) are held
       // back and reported unless the person asked: the script runs, the send waits at the Gate.
       const guarded = args.asked !== true;
+      const egress = guarded ? await egressGuard(ctx, tabId) : null;
       if (guarded) await ctx.cdp.send(tabId, "Runtime.evaluate", { expression: guardInstall, returnByValue: true });
       /** @type {any} */ let r;
       /** @type {any[]} */ let blocked = [];
+      /** @type {any[]} */ let outside = [];
       try { r = await ctx.cdp.send(tabId, "Runtime.evaluate", { expression: args.expression, returnByValue: true, awaitPromise: true, timeout: 10_000 }); }
       finally {
         if (guarded) { const c = await ctx.cdp.send(tabId, "Runtime.evaluate", { expression: guardCollect, returnByValue: true }).catch(() => null); blocked = (c && c.result && c.result.value) || []; }
+        if (egress) outside = await egress.stop().catch(() => []);
       }
+      if (outside.length) { const b = outside[0]; return heldRequest(b.method, b.origin, `the script tried to reach ${b.origin}, which is not this page or anything it already talks to`, `${args.expression}\n${b.method} ${b.origin}`); }
       if (blocked.length) { const b = blocked[0]; return heldRequest(b.method, b.url, b.why, `${args.expression}\n${b.method} ${b.url}`); }
       if (r && r.exceptionDetails) {
         const d = r.exceptionDetails;

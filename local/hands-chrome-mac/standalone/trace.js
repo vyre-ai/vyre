@@ -18,9 +18,10 @@ import * as redact from "../extension/shared/redact.js";
 const EMAIL = /[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/g;
 // Seven or more digits with the separators a phone number has, or a bare 10 or 11 digits; a longer bare run is an id and is left alone.
 const PHONE = /(?<![\w.])\+?\d[\d ()\-.]{5,}\d(?![\w])/g;
-// values: which typed values a trace keeps. "ghl" (default): only on GoHighLevel pages, where the values are workflow
-// text; everywhere else a typed value is logged as its length. "all": every value. "none": never.
-export const DEFAULTS = Object.freeze({ logs: "on", shots: false, maxMB: 100, fileMB: 10, values: "ghl" });
+// values: which typed values a trace keeps. "builder" (default): only on GoHighLevel automation and workflow-builder
+// pages, where the values are workflow text; everywhere else a typed value is logged as its length. "all": every
+// value. "none": never.
+export const DEFAULTS = Object.freeze({ logs: "on", shots: false, maxMB: 100, fileMB: 10, values: "builder", confirmSends: true });
 
 /**
  * The fallback ladder, one mechanism: which rung a tool call works on, and what to try when it fails.
@@ -103,6 +104,8 @@ export function stripValues(v, depth = 0) {
   return o;
 }
 const GHL_HOST = /(^|\.)(gohighlevel\.com|leadconnectorhq\.com)(:\d+)?$|^127\.0\.0\.1(:\d+)?$/;
+/** GoHighLevel automation and workflow builder pages (and the fixture's /ghl). */
+const BUILDER_PATH = /\/automation|\/workflows?(\/|$)|^\/ghl(\/|$)/i;
 
 /** Host and path of a URL, no query, no login, no fragment. @param {any} u */
 export function hostPath(u) {
@@ -142,7 +145,7 @@ export function createTrace({ dataDir, now = Date.now, pid = process.pid, versio
   let cfg = readConfig(dataDir);
   let cfgAt = now();
   let seq = 0, part = 0, written = 0, file = "";
-  /** @type {Map<number, string>} */ const hostByTab = new Map();
+  /** @type {Map<number, { host: string, path: string }>} */ const hostByTab = new Map();
   const cfgNow = () => { if (now() - cfgAt > 15_000) { cfg = readConfig(dataDir); cfgAt = now(); } return cfg; };
   const pathFor = () => path.join(dir, `session-${id}${part ? `.${part}` : ""}.jsonl`);
 
@@ -178,10 +181,10 @@ export function createTrace({ dataDir, now = Date.now, pid = process.pid, versio
       const mode = cfgNow().values;
       // The host a call ran on: from its own result, or the last one seen for the tab it names.
       const tabId = Number.isInteger(meta.tab) ? meta.tab : Number.isInteger(c.args && c.args.tab) ? c.args.tab : undefined;
-      if (meta.host && tabId !== undefined) hostByTab.set(tabId, meta.host);
-      const host = meta.host || (tabId !== undefined ? hostByTab.get(tabId) : undefined);
-      if (!meta.host && host) meta.host = host;
-      const keep = mode === "all" || (mode !== "none" && host && GHL_HOST.test(String(host)));
+      if (meta.host && tabId !== undefined) hostByTab.set(tabId, { host: meta.host, path: meta.path || "" });
+      const seen = meta.host ? { host: meta.host, path: meta.path || "" } : (tabId !== undefined ? hostByTab.get(tabId) : undefined);
+      if (!meta.host && seen) { meta.host = seen.host; if (seen.path) meta.path = seen.path; }
+      const keep = mode === "all" || (mode !== "none" && seen && GHL_HOST.test(String(seen.host)) && BUILDER_PATH.test(String(seen.path)));
       const args = keep ? c.args : stripValues(c.args);
       const rung = rungOf(c.tool, c.args);
       return write({ kind: "call", tool: c.tool, ...(rung ? { rung, rungName: /** @type {any} */ (RUNGS)[rung] } : {}), args: safeArgs(args), queueMs: Math.round(c.queueMs), runMs: Math.round(c.runMs), ok: c.ok, ...meta });

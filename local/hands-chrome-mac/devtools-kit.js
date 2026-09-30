@@ -30,7 +30,7 @@ export function makeCtx(o = {}) {
       async detach(/** @type {number} */ t) { attachedSet.delete(t); },
       attached() { return [...attachedSet]; },
     },
-    tabs: { async active() { return { id: o.active ?? 1 }; } },
+    tabs: { async active() { return { id: o.active ?? 1 }; }, async get(/** @type {number} */ id) { return { id, url: /** @type {any} */ (o).tabUrl || "https://app.example.com/dashboard" }; } },
     emit(/** @type {any} */ e) { emitted.push(e); },
     stopped: () => state.stopped(),
     floorTier: async () => (/** @type {string} */ u) => classify(u, undefined, {}).tier,

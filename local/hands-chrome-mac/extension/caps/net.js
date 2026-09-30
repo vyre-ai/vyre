@@ -303,6 +303,18 @@ async function paused(ctx, t, p) {
   const id = p.requestId;
   const send = (/** @type {string} */ m, /** @type {any} */ x) => ctx.cdp.send(t.tab, m, x);
   try {
+    // While a guarded script runs, nothing it does may reach an origin that is not this page's own or
+    // one the page already talks to (fetch, XHR, beacons, images, scripts, navigation all pass here).
+    const eg = /** @type {any} */ (t).egress;
+    if (eg) {
+      let o = "";
+      try { const x = new URL(p.request?.url || ""); if (!["data:", "blob:", "about:", "chrome-extension:"].includes(x.protocol)) o = x.origin; } catch { /* not a URL */ }
+      if (o && !eg.allowed.has(o)) {
+        if (eg.blocked.length < 20) eg.blocked.push({ method: String(p.request?.method || "GET"), origin: o });
+        await send("Fetch.failRequest", { requestId: id, errorReason: "BlockedByClient" });
+        return;
+      }
+    }
     const req = { url: p.request?.url || "", method: p.request?.method || "GET", type: p.resourceType || "Other", ts: Date.now() };
     let acted = false;
     for (const rule of [...t.rules.values()]) {
@@ -338,6 +350,40 @@ async function paused(ctx, t, p) {
     // A request must never hang on a rule that failed.
     await Promise.resolve(ctx.cdp.send(t.tab, "Fetch.continueRequest", { requestId: id })).catch(() => {});
   }
+}
+
+/**
+ * The egress guard for a script the person did not ask for by hand (reviewer-2 B1): a script that
+ * reads localStorage or a token can send it anywhere with one fetch, and redaction only masks what
+ * comes BACK. While the guard is up, every request the tab makes to an origin that is neither its
+ * own nor one it already talks to is failed and reported. The known origins are the tab's own, those
+ * in its captured traffic, and those in the page's own resource timing taken before the script runs.
+ * @param {any} ctx @param {number} tab
+ * @returns {Promise<{ stop: () => Promise<Array<{ method: string, origin: string }>> }>}
+ */
+export async function egressGuard(ctx, tab) {
+  const t = /** @type {any} */ (await start(ctx, tab));
+  const eg = t.egress || (t.egress = { depth: 0, allowed: new Set(), blocked: [] });
+  const add = (/** @type {string} */ u) => { try { const x = new URL(String(u)); if (x.origin && x.origin !== "null") eg.allowed.add(x.origin); } catch { /* skip */ } };
+  try { const tb = await ctx.tabs.get(tab); add(tb && (tb.url || tb.pendingUrl)); } catch { /* the tab went away */ }
+  for (const r of t.recs.values()) add(r.url);
+  try {
+    const rt = await ctx.cdp.send(tab, "Runtime.evaluate", { expression: "[...new Set(performance.getEntriesByType('resource').map(e => e.name).concat(location.href))].slice(0, 1000)", returnByValue: true });
+    for (const u of (rt && rt.result && rt.result.value) || []) add(u);
+  } catch { /* the guard still stands with what it has */ }
+  eg.depth++;
+  t.fetchOn = true;
+  await ctx.cdp.send(tab, "Fetch.enable", { patterns: [{ urlPattern: "*", requestStage: "Request" }] });
+  let done = false;
+  return {
+    async stop() {
+      if (done) return [];
+      done = true;
+      const blocked = eg.blocked.splice(0);
+      if (--eg.depth <= 0) { t.egress = null; await syncFetch(ctx, t); }
+      return blocked;
+    },
+  };
 }
 
 /** Re-declare the Fetch patterns from the rules that exist, or switch Fetch off when none do. @param {any} ctx @param {TabNet} t */

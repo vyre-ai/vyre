@@ -3,8 +3,9 @@
 //   vyre-chrome install [--browsers chrome,brave]   register the native host, print the extension folder
 //   vyre-chrome uninstall [--purge]                 remove the host registration (--purge: also the logs)
 //   vyre-chrome mcp                                 the stdio MCP server Claude Code runs
-//   vyre-chrome status | report [--last N] [--out F] | logs on|off|path [--shots on|off]
+//   vyre-chrome status | report [--last N] [--out F] | logs on|off|path|values|shots
 import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { PKG, dataDirOf, sockPathOf, createRuntime } from "./runtime.js";
@@ -15,6 +16,11 @@ import { extensionIdFromKey } from "../native-host/install.js";
 import { guide } from "../index.js";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
+const MARKER = ".vyre-chrome-marker";
+/** Read-only copies: folders 0500, files 0400 (the launcher and the entry points keep their run bit). @param {string} d */
+function lock(d) { if (process.platform === "win32") return; const walk = (/** @type {string} */ p) => { const st = fs.lstatSync(p); if (st.isSymbolicLink()) return; if (st.isDirectory()) { for (const f of fs.readdirSync(p)) walk(path.join(p, f)); fs.chmodSync(p, 0o500); } else fs.chmodSync(p, st.mode & 0o111 ? 0o500 : 0o400); }; walk(d); }
+/** Make a locked copy writable again so it can be replaced or removed. @param {string} d */
+function unlock(d) { if (process.platform === "win32" || !fs.existsSync(d)) return; const walk = (/** @type {string} */ p) => { const st = fs.lstatSync(p); if (st.isSymbolicLink()) return; fs.chmodSync(p, st.isDirectory() ? 0o700 : 0o600); if (st.isDirectory()) for (const f of fs.readdirSync(p)) walk(path.join(p, f)); }; walk(d); }
 const version = (() => { try { return JSON.parse(fs.readFileSync(path.join(PKG, "extension", "manifest.json"), "utf8")).version; } catch { return "0.0.0"; } })();
 const out = (/** @type {string} */ s = "") => process.stdout.write(s + "\n");
 const flag = (/** @type {string[]} */ a, /** @type {string} */ n) => { const i = a.indexOf(`--${n}`); return i >= 0 ? (a[i + 1] && !a[i + 1].startsWith("--") ? a[i + 1] : "true") : undefined; };
@@ -25,8 +31,9 @@ const HELP = `vyre-chrome ${version}: control your own Chrome from Claude Code
   vyre-chrome uninstall [--purge]                 remove the connector (--purge also deletes the logs)
   vyre-chrome status                              is it installed, is logging on
   vyre-chrome report [--last N] [--out FILE]      one redacted bundle of your last N sessions, with a summary
+  vyre-chrome config confirm-sends on|off         ask you before a send and before resuming after Esc (default on)
   vyre-chrome logs on|off|path                    turn the local trace on or off, or print where it is
-  vyre-chrome logs values ghl|all|none            which typed values a trace keeps (default ghl: only on GoHighLevel pages)
+  vyre-chrome logs values builder|all|none        which typed values a trace keeps (default builder: only on GoHighLevel automation pages)
   vyre-chrome logs shots on|off                   keep a small screenshot of a failure (off by default)
   vyre-chrome mcp                                 the MCP server (Claude Code runs this; you do not)
 
@@ -49,37 +56,65 @@ async function main() {
   }
 
   if (cmd === "install") {
-    let id; try { id = extensionIdFromKey(JSON.parse(fs.readFileSync(path.join(extDir, "manifest.json"), "utf8")).key); } catch { throw new Error(`the extension is missing at ${extDir}`); }
     fs.mkdirSync(dataDir, { recursive: true, mode: 0o700 });
-    fs.writeFileSync(path.join(hostDir, "sock-path"), sock);
+    try { fs.chmodSync(dataDir, 0o700); } catch { /* not ours to change */ }
+    fs.writeFileSync(path.join(dataDir, MARKER), "vyre-chrome data folder: safe to delete with `vyre-chrome uninstall --purge`\n", { mode: 0o600 });
+    // The package runs from a private, read-only copy under the data folder, so nothing that later writes to
+    // wherever it was unpacked changes what Chrome and Claude Code run, and moving the download breaks nothing.
+    const appDir = process.env.VYRE_CHROME_NO_COPY ? PKG : path.join(dataDir, "app");
+    if (appDir !== PKG) { unlock(appDir); fs.rmSync(appDir, { recursive: true, force: true }); fs.cpSync(PKG, appDir, { recursive: true, dereference: false, filter: src => !/(^|\/)(node_modules|\.git)(\/|$)/.test(src) }); }
+    const hostDirNow = process.env.VYRE_CHROME_HOST_DIR || path.join(appDir, "native-host");
+    const extDirNow = path.join(appDir, "extension");
+    let id; try { id = extensionIdFromKey(JSON.parse(fs.readFileSync(path.join(extDirNow, "manifest.json"), "utf8")).key); } catch { throw new Error(`the extension is missing at ${extDirNow}`); }
+    fs.writeFileSync(path.join(hostDirNow, "sock-path"), sock);
     const browsers = flag(args, "browsers");
-    const r = nativeHost.install({ vyreHome: dataDir, hostDir, extensionId: id, ...(browsers ? { browsers: /** @type {any} */ (browsers.split(",")) } : {}) });
+    const r = nativeHost.install({ vyreHome: dataDir, hostDir: hostDirNow, extensionId: id, ...(browsers ? { browsers: /** @type {any} */ (browsers.split(",")) } : {}) });
+    if (appDir !== PKG) lock(appDir);
     out(`Registered the connector for: ${r.written.map((/** @type {any} */ w) => w.browser).join(", ")}`);
     out();
-    out(guide(extDir, id, r.written.map((/** @type {any} */ w) => w.browser)).split("\n").slice(1, 5).join("\n"));
+    out(guide(extDirNow, id, r.written.map((/** @type {any} */ w) => w.browser)).split("\n").slice(1, 5).join("\n"));
     out();
     out("Then add it to Claude Code (once):");
-    out(`  claude mcp add vyre-chrome -- "${process.execPath}" "${path.join(HERE, "cli.mjs")}" mcp`);
+    out(`  claude mcp add vyre-chrome -- "${process.execPath}" "${path.join(appDir, "standalone", "cli.mjs")}" mcp`);
     out();
-    out("In Claude Code, allow the read and edit tools if you like, and leave chrome_send and chrome_resume on ask: those are where you approve a send, post or payment, or let it carry on after you pressed Esc.");
+    out("Never put chrome_send or chrome_resume in a Claude Code allow list: they are where you approve. If your Claude Code can show a question from a tool, the server asks you itself before a send, and before it carries on after you pressed Esc. `vyre-chrome config confirm-sends off` turns those questions off.");
     out(`A trace of every session is written to ${path.join(dataDir, "logs")} on this computer only. "vyre-chrome logs off" turns it off.`);
+    out("To update, unpack the new release and run its install again.");
     return;
   }
 
+  if (cmd === "config") {
+    if (args[0] === "confirm-sends" && ["on", "off"].includes(args[1])) { writeConfig(dataDir, { confirmSends: args[1] === "on" }); out(`Asking you before a send or a resume is ${args[1]}.`); return; }
+    throw new Error("config: confirm-sends on|off");
+  }
+
   if (cmd === "uninstall") {
+    const appDirU = path.join(dataDir, "app");
+    const hostDirU = process.env.VYRE_CHROME_HOST_DIR || (fs.existsSync(appDirU) ? path.join(appDirU, "native-host") : hostDir);
     const r = nativeHost.uninstall({ vyreHome: dataDir });
-    for (const f of ["sock-path", "node-path"]) { try { fs.unlinkSync(path.join(hostDir, f)); } catch { /* not there */ } }
+    for (const f of ["sock-path", "node-path"]) { try { fs.unlinkSync(path.join(hostDirU, f)); } catch { /* read-only copy or not there */ } }
+    unlock(appDirU); fs.rmSync(appDirU, { recursive: true, force: true });
     out(`Removed the connector (${(r.removed || []).map((/** @type {any} */ x) => x.browser).join(", ") || "nothing was registered"}).`);
     out("Remove it from Claude Code with: claude mcp remove vyre-chrome");
     out("Remove the extension in chrome://extensions.");
-    if (flag(args, "purge")) { fs.rmSync(dataDir, { recursive: true, force: true }); out(`Deleted ${dataDir}.`); }
+    if (flag(args, "purge")) {
+      // Only ever delete a folder this program made, and never a link, the home folder or a root.
+      const real = (() => { try { return fs.realpathSync(dataDir); } catch { return dataDir; } })();
+      const st = (() => { try { return fs.lstatSync(dataDir); } catch { return null; } })();
+      const home = (() => { try { return fs.realpathSync(os.homedir()); } catch { return os.homedir(); } })();
+      if (!st) out(`${dataDir} does not exist.`);
+      else if (st.isSymbolicLink() || !st.isDirectory()) out(`Not deleting ${dataDir}: it is a link or not a folder.`);
+      else if (!fs.existsSync(path.join(dataDir, MARKER))) out(`Not deleting ${dataDir}: it does not hold this program's marker file, so it is not a folder this program made.`);
+      else if (real === home || real === path.parse(real).root || home.startsWith(real + path.sep)) out(`Not deleting ${dataDir}: it is your home folder or above it.`);
+      else { fs.rmSync(dataDir, { recursive: true, force: true }); out(`Deleted ${dataDir}.`); }
+    }
     else out(`Your logs are still in ${path.join(dataDir, "logs")}. "vyre-chrome uninstall --purge" deletes them.`);
     return;
   }
 
   if (cmd === "status") {
     const c = readConfig(dataDir);
-    let host; try { host = nativeHost.status({ vyreHome: dataDir, hostDir }); } catch (e) { host = { error: /** @type {Error} */ (e).message }; }
+    let host; try { host = nativeHost.status({ vyreHome: dataDir, hostDir: fs.existsSync(path.join(dataDir, "app")) ? path.join(dataDir, "app", "native-host") : hostDir }); } catch (e) { host = { error: /** @type {Error} */ (e).message }; }
     out(JSON.stringify({ version, dataDir, extensionDir: extDir, logs: c.logs, screenshots: c.shots === true, host }, null, 2));
     return;
   }
@@ -87,7 +122,7 @@ async function main() {
   if (cmd === "logs") {
     const sub = args[0];
     if (sub === "on" || sub === "off") { writeConfig(dataDir, { logs: sub }); out(`Logging is ${sub}.`); return; }
-    if (sub === "values") { const v = args[1]; if (!["ghl", "all", "none"].includes(v)) throw new Error("logs values: ghl (default: typed values on GoHighLevel pages only), all, or none"); writeConfig(dataDir, { values: v }); out(`Typed values are kept for: ${v}.`); return; }
+    if (sub === "values") { const v = args[1]; if (!["builder", "all", "none"].includes(v)) throw new Error("logs values: builder (default: typed values on GoHighLevel automation pages only), all, or none"); writeConfig(dataDir, { values: v }); out(`Typed values are kept for: ${v}.`); return; }
     if (sub === "shots") { const v = args[1] === "on"; writeConfig(dataDir, { shots: v }); out(`Failure screenshots are ${v ? "on" : "off"}.`); return; }
     if (sub === "path" || sub === undefined) { out(path.join(dataDir, "logs")); return; }
     throw new Error(`logs: unknown "${sub}"`);

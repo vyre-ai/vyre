@@ -12,6 +12,7 @@ import fs from "node:fs";
 import { fileURLToPath } from "node:url";
 import chromeModule from "../index.js";
 import { createTrace, rungOf, nextRung } from "./trace.js";
+import { callerKind } from "../caller.js";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 export const PKG = path.resolve(HERE, "..");
@@ -72,6 +73,9 @@ export async function createRuntime(o = {}) {
   async function run(name, input, caller) {
     const def = tools.get(name);
     if (!def) throw Object.assign(new Error(`no tool ${name}`), { code: "no_such_tool" });
+    // The module's own caller rules apply here as they do in Vyre: "mcp" is the model, and a tool listed
+    // for the person's surfaces is not the model's to call (reviewer-2 M3).
+    if (Array.isArray(def.callers) && !def.callers.includes(callerKind(caller))) throw Object.assign(new Error(`${name} is for the person, not for a model`), { code: "denied" });
     return def.run(input || {}, { caller });
   }
 
@@ -90,7 +94,7 @@ export async function createRuntime(o = {}) {
         if (!h) throw Object.assign(new Error("no held act with that id (it was already sent, or it is not one this session held)"), { code: "not_found" });
         // The person is asked by the server itself when the client can show a question, so an allow rule
         // for this server never stands in for their yes. Without it, Claude Code's own permission is the approval.
-        if (typeof ask === "function") {
+        if (typeof ask === "function" && trace.config().confirmSends !== false) {
           const c = h.content || {};
           const fields = Array.isArray(c.fields) ? c.fields.slice(0, 12).map((/** @type {any} */ f) => `${f.name || f.label || "field"}: ${String(f.value ?? "").slice(0, 60)}`).join("\n") : "";
           const r = /** @type {any} */ (await ask(`Send this from ${c.origin || "your browser"}?\nControl: ${c.control || "?"}${fields ? "\n" + fields : ""}`));
@@ -98,6 +102,14 @@ export async function createRuntime(o = {}) {
         }
         held.delete(id);
         out = { ok: true, result: await run("chrome.release", { id, content: h.content }, "module:gate") };
+      } else if (name === "chrome.resume") {
+        // Esc is the person's: only they undo it. The server asks them itself; the run is then theirs.
+        const confirm = trace.config().confirmSends !== false;
+        if (confirm && typeof ask === "function") {
+          const r = /** @type {any} */ (await ask("Chrome control was stopped (you pressed Esc, or stopped it). Let it carry on?" + (input && input.answer ? `\nYou told it: ${String(input.answer).slice(0, 200)}` : "")));
+          if (!r || r.action !== "accept" || !r.content || r.content.approve !== true) throw Object.assign(new Error("the person did not let it carry on"), { code: "declined" });
+        }
+        out = { ok: true, result: await run("chrome.resume", input, "cli") };
       } else if (HIDDEN.has(name) || !tools.has(name)) {
         throw Object.assign(new Error(`no tool ${name}`), { code: "no_such_tool" });
       } else {
@@ -126,11 +138,11 @@ export async function createRuntime(o = {}) {
   /** The tools a model sees: name, description, input schema. Dots become underscores (MCP names allow no dots). */
   function list() {
     const rows = [...tools.entries()].filter(([n]) => !HIDDEN.has(n)).map(([n, d]) => ({
-      name: n, description: String(d.description || "").replace(/at the Gate/g, "until the person approves chrome_send"), inputSchema: d.input || { type: "object", properties: {} },
+      name: n, description: (n === "chrome.resume" ? "Never put this tool in an allow list: only the person undoes their Esc. " : "") + String(d.description || "").replace(/at the Gate/g, "until the person approves chrome_send"), inputSchema: d.input || { type: "object", properties: {} },
     }));
     rows.push({
       name: "chrome.send",
-      description: "Never put this tool in an allow list: it is where the person approves. Do an act that sends something as the person (a real submit, a message, a post, a payment) which another chrome tool held and returned an id for. Claude Code asks the person to approve this call; nothing that sends goes out without it. Refused if the page changed since it was held.",
+      description: "Never put this tool in an allow list: it is where the person approves (the server also asks them itself when their client can be asked). Do an act that sends something as the person (a real submit, a message, a post, a payment) which another chrome tool held and returned an id for. Claude Code asks the person to approve this call; nothing that sends goes out without it. Refused if the page changed since it was held.",
       inputSchema: { type: "object", properties: { id: { type: "string", description: "The id from the held answer." } }, required: ["id"] },
     });
     return rows;

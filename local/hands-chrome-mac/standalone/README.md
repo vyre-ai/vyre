@@ -10,26 +10,26 @@ It is built for real GoHighLevel work (see "GoHighLevel" below), but it drives a
 
 ## Install (four steps, about two minutes)
 
-1. Unpack the release somewhere permanent, for example `~/vyre-chrome`. Do not move it later; if you do, run step 2 again.
+1. Unpack the release anywhere, for example `~/Downloads/vyre-chrome`. Step 2 copies it to a private, read-only folder (`~/.vyre-chrome/app`), so you can delete or move the download afterwards.
 2. Register the connector with Chrome:
 
-       node ~/vyre-chrome/standalone/cli.mjs install
+       node ~/.vyre-chrome/app/standalone/cli.mjs install
 
    It prints the extension folder and the exact `claude mcp add` line for your machine.
-3. In Chrome open `chrome://extensions`, turn on Developer mode (top right), press Load unpacked, and choose the folder step 2 printed (the `extension` folder inside the release). Its id must match the one step 2 printed; the connector only talks to that id.
+3. In Chrome open `chrome://extensions`, turn on Developer mode (top right), press Load unpacked, and choose the folder step 2 printed (`~/.vyre-chrome/app/extension`). Its id must match the one step 2 printed; the connector only talks to that id.
 4. Add it to Claude Code, once (copy the line step 2 printed):
 
-       claude mcp add vyre-chrome -- node ~/vyre-chrome/standalone/cli.mjs mcp
+       claude mcp add vyre-chrome -- node ~/.vyre-chrome/app/standalone/cli.mjs mcp
 
 Check it: start Claude Code and ask it to run `chrome_status`. It should say connected. Chrome shows two bars that cannot be hidden: a warning about developer-mode extensions when it starts, and "started debugging this browser" while a tab is being driven.
 
 ## Uninstall
 
-    node ~/vyre-chrome/standalone/cli.mjs uninstall            # keeps your logs
-    node ~/vyre-chrome/standalone/cli.mjs uninstall --purge    # also deletes them
+    node ~/.vyre-chrome/app/standalone/cli.mjs uninstall            # keeps your logs
+    node ~/.vyre-chrome/app/standalone/cli.mjs uninstall --purge    # also deletes them
     claude mcp remove vyre-chrome
 
-Then remove the extension in `chrome://extensions`. Nothing else was installed.
+Then remove the extension in `chrome://extensions`. Nothing else was installed. `--purge` only deletes `~/.vyre-chrome` when it holds this program's own marker file, and never a link or your home folder. To update, unpack the new release and run its `install` again.
 
 ## Who approves what
 
@@ -37,10 +37,10 @@ There is no Gate here. Claude Code's own permissions are the approval.
 
 - Reading, filling and clicking are ordinary tools (`chrome_snapshot`, `chrome_act`, `chrome_fill`, `chrome_batch`, `chrome_ghl`, ...). Allow them in Claude Code if you want it to work without asking.
 - An act that sends something as you (a real submit, a message, a post, a payment, a delete) is not done. It comes back `held: true` with an id and the fields it would send. Doing it is a separate tool, `chrome_send`. Never put `chrome_send` in an allow list: it is where you approve. If your Claude Code supports questions from a tool (MCP elicitation) the server itself asks you, showing the site, the button and the field values, and a no sends nothing; otherwise Claude Code's own permission prompt is the approval. It is refused if the page changed since it was held.
-- `chrome_resume` (carry on after you pressed Esc) also belongs on "ask".
+- `chrome_resume` (carry on after you pressed Esc) also belongs on "ask", and the server asks you itself before it carries on. `node ~/.vyre-chrome/app/standalone/cli.mjs config confirm-sends off` turns those questions off.
 - Esc in Chrome stops everything at once, and it waits until you answer.
 
-Always on, whatever you allow: passwords, cookies, tokens and session ids are masked before Claude sees them; banks, password managers and sign-in pages are never read or touched; a page with a visible password field never runs a script.
+Always on, whatever you allow: passwords, cookies, tokens and session ids are masked before Claude sees them; banks, password managers and sign-in pages are never read or touched; a page with a visible password field never runs a script; and a script that runs without you asking cannot send anything to a site the page does not already talk to (it is held and reported).
 
 ## The tools
 
@@ -60,13 +60,13 @@ Honest limit: the labels come from GoHighLevel's documentation and have not been
 
 ## Logs
 
-Every session writes one trace file, `~/.vyre-chrome/logs/session-<time>-<pid>.jsonl`, on this computer only. Nothing is ever sent anywhere. Each tool call records its arguments (masked), how long it queued, ran and waited on the page, whether it worked, the error and the step that failed, retries, which selector strategy matched and whether a fallback was needed, the page's host and path (no query), the tab, and whether a tab was opened. A failure adds a small masked snippet of the page. Secrets, passwords, tokens and cookies are always masked; card numbers, national ids, emails and phone numbers are masked; on GoHighLevel pages the text you type into workflows stays readable, and on any other site a typed value is logged only as its length (`logs values all` keeps them, `logs values none` drops them everywhere). Field names always stay. Old logs are removed to stay under 100 MB.
+Every session writes one trace file, `~/.vyre-chrome/logs/session-<time>-<pid>.jsonl`, on this computer only. Nothing is ever sent anywhere. Each tool call records its arguments (masked), how long it queued, ran and waited on the page, whether it worked, the error and the step that failed, retries, which selector strategy matched and whether a fallback was needed, the page's host and path (no query), the tab, and whether a tab was opened. A failure adds a small masked snippet of the page. Secrets, passwords, tokens and cookies are always masked; card numbers, national ids, emails and phone numbers are masked; on GoHighLevel automation and workflow-builder pages the text you type stays readable, and on any other site a typed value is logged only as its length (`logs values all` keeps them, `logs values none` drops them everywhere). Field names always stay. Old logs are removed to stay under 100 MB.
 
-    node ~/vyre-chrome/standalone/cli.mjs report --last 5     # one masked bundle plus a summary
-    node ~/vyre-chrome/standalone/cli.mjs logs off            # stop logging (on turns it back on)
-    node ~/vyre-chrome/standalone/cli.mjs logs shots on       # also keep a small screenshot of each failure (off by default)
-    node ~/vyre-chrome/standalone/cli.mjs logs values ghl|all|none   # which typed values are kept
-    node ~/vyre-chrome/standalone/cli.mjs logs path
+    node ~/.vyre-chrome/app/standalone/cli.mjs report --last 5     # one masked bundle plus a summary
+    node ~/.vyre-chrome/app/standalone/cli.mjs logs off            # stop logging (on turns it back on)
+    node ~/.vyre-chrome/app/standalone/cli.mjs logs shots on       # also keep a small screenshot of each failure (off by default)
+    node ~/.vyre-chrome/app/standalone/cli.mjs logs values builder|all|none   # which typed values are kept
+    node ~/.vyre-chrome/app/standalone/cli.mjs logs path
 
 The report prints the slowest steps, failures by kind and the fallback rate, and writes the bundle to `~/.vyre-chrome/reports/`.
 

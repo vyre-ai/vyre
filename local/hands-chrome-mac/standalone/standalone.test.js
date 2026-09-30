@@ -14,6 +14,7 @@ import { serve, wireName } from "./mcp.js";
 import { report, readSessions, pii, safeArgs, rotate, writeConfig } from "./trace.js";
 import { fakeExtension, until } from "../fake-extension.js";
 import { extensionIdFromKey } from "../native-host/install.js";
+import { build } from "./build-release.mjs";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const tmp = (/** @type {any} */ t) => { const d = fs.mkdtempSync(path.join(os.tmpdir(), "vc-sa-")); t.after(() => fs.rmSync(d, { recursive: true, force: true })); return d; };
@@ -175,32 +176,58 @@ test("trace: the size cap deletes the oldest logs and keeps the newest", t => {
   assert.deepEqual(fs.readdirSync(logs).sort(), ["session-2026-03.jsonl", "session-2026-04.jsonl"]);
 });
 
-test("cli: install registers the host in a temp home and prints the extension folder and the claude mcp add line; uninstall removes it; logs off is remembered", t => {
+test("cli: install copies the package read-only under the data folder, registers the host, prints the folder and the claude mcp add line; uninstall removes it; purge only deletes a folder it made", t => {
   const home = tmp(t);
-  const hostDir = path.join(home, "host"); fs.mkdirSync(hostDir);
-  for (const f of ["host.js", "stdio.js", "run-host.sh", "run-host.cmd", "install.js"]) fs.copyFileSync(path.join(HERE, "..", "native-host", f), path.join(hostDir, f));
-  const env = { ...process.env, HOME: home, USERPROFILE: home, VYRE_CHROME_HOME: path.join(home, ".vyre-chrome"), VYRE_CHROME_HOST_DIR: hostDir };
+  const env = { ...process.env, HOME: home, USERPROFILE: home, VYRE_CHROME_HOME: path.join(home, ".vyre-chrome") };
   const run = (/** @type {string[]} */ ...a) => spawnSync(process.execPath, [path.join(HERE, "cli.mjs"), ...a], { env, encoding: "utf8" });
-  const inst = run("install", "--browsers", "chrome");
+  const rel = build({ out: path.join(home, "rel") });
+  const relCli = path.join(rel.dir, "standalone", "cli.mjs");
+  const runRel = (/** @type {string[]} */ ...a) => spawnSync(process.execPath, [relCli, ...a], { env, encoding: "utf8" });
+  t.after(() => { spawnSync("chmod", ["-R", "u+rwX", home]); });
+  const inst = runRel("install", "--browsers", "chrome");
   assert.equal(inst.status, 0, inst.stderr);
-  assert.match(inst.stdout, /claude mcp add vyre-chrome -- /);
+  const app = path.join(home, ".vyre-chrome", "app");
+  assert.match(inst.stdout, new RegExp(`claude mcp add vyre-chrome -- .*${app.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}`));
   assert.match(inst.stdout, /Load unpacked/);
-  assert.match(inst.stdout, /logs/);
-  if (process.platform === "darwin") {
-    const manifest = path.join(home, "Library", "Application Support", "Google", "Chrome", "NativeMessagingHosts", "run.vyre.chrome.json");
-    assert.ok(fs.existsSync(manifest), manifest);
+  assert.ok(inst.stdout.includes(path.join(app, "extension")), "the extension folder printed is the private copy");
+  assert.ok(fs.existsSync(path.join(app, "standalone", "cli.mjs")));
+  if (process.platform !== "win32") {
+    assert.equal(fs.statSync(path.join(app, "extension", "manifest.json")).mode & 0o222, 0, "files are read-only");
+    assert.equal(fs.statSync(path.join(app, "native-host")).mode & 0o222, 0, "folders are read-only");
+    assert.equal(fs.readFileSync(path.join(app, "native-host", "sock-path"), "utf8").includes("chrome.sock"), true);
   }
-  assert.equal(fs.readFileSync(path.join(hostDir, "sock-path"), "utf8").includes("chrome.sock") || process.platform === "win32", true);
-  assert.equal(run("logs", "off").status, 0);
-  assert.equal(JSON.parse(run("status").stdout).logs, "off");
-  const un = run("uninstall");
+  if (process.platform === "darwin") assert.ok(fs.existsSync(path.join(home, "Library", "Application Support", "Google", "Chrome", "NativeMessagingHosts", "run.vyre.chrome.json")));
+  assert.equal(runRel("logs", "off").status, 0);
+  assert.equal(runRel("config", "confirm-sends", "off").status, 0);
+  const st = JSON.parse(runRel("status").stdout);
+  assert.equal(st.logs, "off");
+  // Installing again replaces the copy.
+  assert.equal(runRel("install", "--browsers", "chrome").status, 0);
+  const un = runRel("uninstall");
   assert.equal(un.status, 0, un.stderr);
-  assert.equal(fs.existsSync(path.join(hostDir, "sock-path")), false);
+  assert.equal(fs.existsSync(app), false);
   if (process.platform === "darwin") assert.equal(fs.existsSync(path.join(home, "Library", "Application Support", "Google", "Chrome", "NativeMessagingHosts", "run.vyre.chrome.json")), false);
   assert.ok(fs.existsSync(path.join(home, ".vyre-chrome", "config.json")), "logs are kept without --purge");
-  const r = run("report", "--last", "2");
+  const r = runRel("report", "--last", "2");
   assert.equal(r.status, 0, r.stderr);
   assert.match(r.stdout, /Wrote /);
+  // Purge: a folder without the marker is not ours; the home folder is never deleted; a folder with the marker goes.
+  const other = path.join(home, "precious"); fs.mkdirSync(other); fs.writeFileSync(path.join(other, "keep.txt"), "x");
+  const runOther = (/** @type {Record<string,string>} */ e, /** @type {string[]} */ ...a) => spawnSync(process.execPath, [relCli, ...a], { env: { ...env, ...e }, encoding: "utf8" });
+  const no = runOther({ VYRE_CHROME_HOME: other }, "uninstall", "--purge");
+  assert.match(no.stdout, /Not deleting .*marker/);
+  assert.ok(fs.existsSync(path.join(other, "keep.txt")));
+  fs.writeFileSync(path.join(home, ".vyre-chrome", ".vyre-chrome-marker"), "x"); // ensure marker present
+  const homeTry = runOther({ VYRE_CHROME_HOME: home }, "uninstall", "--purge");
+  assert.match(homeTry.stdout, /Not deleting/);
+  assert.ok(fs.existsSync(home));
+  if (process.platform !== "win32") {
+    const link = path.join(home, "link"); fs.symlinkSync(other, link);
+    assert.match(runOther({ VYRE_CHROME_HOME: link }, "uninstall", "--purge").stdout, /Not deleting .*link/);
+    assert.ok(fs.existsSync(path.join(other, "keep.txt")));
+  }
+  assert.match(runRel("uninstall", "--purge").stdout, /Deleted/);
+  assert.equal(fs.existsSync(path.join(home, ".vyre-chrome")), false);
 });
 
 test("cli: `mcp` as a real process speaks only protocol on stdout, serves a call from a fake extension, and exits when stdin closes", async t => {
@@ -260,7 +287,7 @@ test("ladder: a failure names its rung and the next one, and the trace and repor
   assert.equal(report(dataDir).summary.rungs.dom.failures, 1);
 });
 
-test("privacy: typed values are logged as lengths off GoHighLevel pages, kept on them, and card and SSN numbers are always masked", async t => {
+test("privacy: typed values are logged as lengths off GoHighLevel builder pages, kept on them, and card and SSN numbers are always masked", async t => {
   const { call, dataDir } = await rig(t, (/** @type {string} */ op, /** @type {any} */ a) => ({ ok: true, url: a && a.tabId === 2 ? "https://app.gohighlevel.com/x" : "https://harlow.example/intake" }));
   await call("chrome_fill", { tab: 1, fields: [{ label: "Notes", value: "client Alex Sample owes 4200 for the Harlow matter" }] });
   await call("chrome_fill", { tab: 2, fields: [{ label: "Subject", value: "Welcome to Harlow Legal" }] });
@@ -293,4 +320,19 @@ test("send approval: a client that can ask (MCP elicitation) is asked by the ser
   const yes = await runtime.invoke("chrome.send", { id: held.id }, { ask: async () => ({ action: "accept", content: { approve: true } }) });
   assert.equal(yes.ok, true);
   assert.equal(released, 1);
+});
+
+test("callers: the person's Esc is only undone by the person (asked through the client), and the person's own tools are not the model's", async t => {
+  const dataDir = tmp(t);
+  const runtime = await createRuntime({ dataDir, sockPath: path.join(dataDir, "run", "chrome.sock"), log: () => {}, chrome: { extensionOrigin: null } });
+  t.after(() => runtime.stop());
+  await runtime.invoke("chrome.stop", { by: "user" });
+  const no = await runtime.invoke("chrome.resume", { answer: "go" }, { ask: async () => ({ action: "accept", content: { approve: false } }) });
+  assert.equal(no.ok, false);
+  assert.equal(no.error.code, "declined");
+  const yes = await runtime.invoke("chrome.resume", { answer: "go" }, { ask: async () => ({ action: "accept", content: { approve: true } }) });
+  assert.equal(yes.ok, true, JSON.stringify(yes.error && yes.error.message));
+  for (const hidden of ["chrome.interject", "chrome.install", "chrome.release"]) assert.equal((await runtime.invoke(hidden, { id: "x", content: {} })).error.code, "no_such_tool", hidden);
+  assert.ok(runtime.list().some(x => x.name === "chrome.resume" && /allow list/.test(x.description)));
+  writeConfig(dataDir, { confirmSends: false });
 });
