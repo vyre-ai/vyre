@@ -61,6 +61,7 @@ try {
   await stage("connected", async () => { for (let i = 0; i < 60; i++) { const s = await call("chrome_status"); if (s.connected) return {}; await sleep(500); } throw new Error("never connected"); });
   await stage("open_shell", async () => { const r = await call("chrome_tabs", { action: "open", url: `http://a.localhost:${port}/` }); tab = r.id; await sleep(2500); return { open: r }; });
   await stage("frames_probe", async () => { const r = await call("chrome_frames", { action: "probe", tab }); return { probe: r }; });
+  await stage("click_routing", async () => { const r = await call("chrome_frames", { action: "clicktest", tab, frame: "b.localhost", css: "#create" }); return { clicktest: r }; });
   await stage("frames_list", async () => { const r = await call("chrome_frames", { action: "list", tab }); return { list: r }; });
 } finally { stopProcess(l.child); try { child.kill(); } catch { /* gone */ } server.close(); }
 const p = out.stages.frames_probe;

@@ -915,7 +915,8 @@ async function doAct(ctx, tabId, snap, ctl, kind, value, release, asked = false)
     // The person approved a page state, not a control name. If the page is not that state any more, do nothing.
     if (signatureOf(snap, h.target) !== String(want)) throw err("changed", "the page changed since it was held, so nothing was done; look again and ask again");
   }
-  if (kind === "click") await mouseClick(ctx, tabId, ctl, snap);
+  /** @type {any} */ let point = null;
+  if (kind === "click") point = await mouseClick(ctx, tabId, ctl, snap);
   else if (kind === "press") await pressKey(ctx, tabId, ctl, String(value), snap);
   else if (kind === "check") {
     const { loc } = await locateIn(ctx, tabId, ctl, snap, false);
@@ -926,7 +927,7 @@ async function doAct(ctx, tabId, snap, ctl, kind, value, release, asked = false)
     const r = await applyIn(ctx, tabId, snap, [{ ctl, kind, value }]);
     if (!r || !r[0] || !r[0].ok) return { ok: false, why: (r && r[0] && r[0].why) || "could not set the value", control: brief(ctl) };
   }
-  return { ok: true, did: kind, control: brief(ctl) };
+  return { ok: true, did: kind, control: brief(ctl), ...(point && typeof point.x === "number" ? { point: { x: Math.round(point.x), y: Math.round(point.y), frame: ctl.frame ?? 0 } } : {}) };
 }
 
 
