@@ -16,7 +16,7 @@ read view, closer to `result-card.md`'s Card view. New 30 Sep, the user's chat-c
 |---|---|---|
 | Deck | none | not built |
 | App | none | not built |
-| Capsule | none (compact form only, see Variants) | not built |
+| Lumen | none (compact form only, see Variants) | not built |
 
 ## Anatomy: invite (draft-card.md variant)
 
@@ -54,9 +54,9 @@ part:
 
 - **Invite, desktop / phone**: follows `draft-card.md`'s own desktop/phone variants exactly (field
   hover-to-edit on desktop, `ph-card` fields on phone).
-- **Invite, Capsule (compact)**: title, time, first 2 attendees' names - "Open in the Deck" only,
+- **Invite, Lumen (compact)**: title, time, first 2 attendees' names - "Open in the Deck" only,
   same rule as every other compose-shaped card here.
-- **Event card, Capsule (compact)**: title, time, join link if imminent - no people row.
+- **Event card, Lumen (compact)**: title, time, join link if imminent - no people row.
 - **Recurring**: the header gains a small repeat icon (12, `--label`) beside the date; editing or
   responding asks "This event" or "All events" (a two-option inline choice, not a full sheet).
 

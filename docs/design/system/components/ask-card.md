@@ -17,10 +17,10 @@ resolves the other. Drawn on "Needs you, phone and desktop", "System" (the five 
 |---|---|---|
 | Deck | `deck/chat/ask-item.js` (work/chat); phone sheet `deck/js/need-sheet.js` (work/pwa) | partial |
 | App | `apps/app/src/session/Rows.tsx` AskCard (work/mobile) | partial |
-| Capsule | `local/capsule/native/Sources/UI/AgentDeskView.swift` HeldCardView (work/capsule-pro) | partial |
+| Lumen | `local/capsule/native/Sources/UI/AgentDeskView.swift` HeldCardView (work/capsule-pro) | partial |
 
 Built once: this card is built once in chat-core for the web (the Deck and the PWA) and Expo (the
-app), from this spec, and the Capsule mirrors the same spec in Swift. No surface draws its own
+app), from this spec, and Lumen mirrors the same spec in Swift. No surface draws its own
 version (cohesion, ADR 0036).
 
 ## Anatomy
@@ -54,7 +54,7 @@ A neutral card: `--panel`, 1 px `--rule`, radius `--radius-card` (12; phone `--r
 
 ## Sizes
 
-Buttons 32 (`--control-sm`) on the desktop, 28 in a compact Capsule row; 54 and 44 on the phone.
+Buttons 32 (`--control-sm`) on the desktop, 28 in a compact Lumen row; 54 and 44 on the phone.
 Text: title base 13 desktop, read 17 phone; command mono 13 on both.
 
 ## States
@@ -109,6 +109,6 @@ App (work/mobile)
 - [ ] Border turns `--beacon` while open; spec: neutral border.
 - [ ] Allow once and Deny only; no Always in the project, no reason, no busy state.
 
-Capsule (work/capsule-pro)
+Lumen (work/capsule-pro)
 - [ ] Buttons read "Allow" and "Deny"; no "Always in <project>", no reason line.
 - [ ] Label "HELD FOR YOU" in mono caps, tracked; spec: "Permission", sentence case.

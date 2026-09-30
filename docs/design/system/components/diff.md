@@ -16,7 +16,7 @@ desktop" (the Edited row, opened).
 |---|---|---|
 | Deck | `deck/chat/core/line-diff.js`, `deck/chat/lib/diff.js`, `deck/chat/chat.css` (work/chat) | partial |
 | App | none | not built |
-| Capsule | none | not built |
+| Lumen | none | not built |
 
 ## Anatomy
 
@@ -101,5 +101,5 @@ Deck (work/chat)
 App (work/mobile)
 - [ ] Not built: edits show as a tool row with no diff.
 
-Capsule (work/capsule-pro)
+Lumen (work/capsule-pro)
 - [ ] Not built.

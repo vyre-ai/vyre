@@ -18,7 +18,7 @@ boards "Session, phone and desktop" (thread list), "States, every list, every si
 |---|---|---|
 | Deck | `deck/chat/chat.css` `.thread-row`, `.fb-row` (main); `deck/css/views/find.css`, `deck/css/views/planner.css` `.pl-row` | partial |
 | App | `apps/app/src/ui/Row.tsx` Row, `ROW_HEIGHT` (work/mobile) | partial |
-| Capsule | `local/capsule/native/Sources/UI/CapsuleView.swift` Row (work/capsule-pro) | partial |
+| Lumen | `local/capsule/native/Sources/UI/CapsuleView.swift` Row (work/capsule-pro) | partial |
 
 ## Anatomy
 
@@ -120,6 +120,6 @@ App (work/mobile)
       two-line variants and selected, focused states.
 - [ ] Rows sit on `--bg` with a bottom border, not in a card; the avatar is round, not a tile.
 
-Capsule (work/capsule-pro)
+Lumen (work/capsule-pro)
 - [ ] Row is 40 tall with hand-typed sizes (14, 12, 11.5); selected is a rounded raised fill with a 3 px `--focus` capsule on the left; use
       44, the type steps and the `--hover` fill.

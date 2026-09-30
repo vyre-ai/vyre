@@ -16,7 +16,7 @@ real terminal: xterm, full colour folded onto the tokens, a key bar on the phone
 |---|---|---|
 | Deck | `deck/chat/term.js`, `deck/chat/term.css`, `deck/chat/lib/term-link.js` (work/chat) | partial |
 | App | none | not built |
-| Capsule | not used | not used |
+| Lumen | not used | not used |
 
 ## Anatomy
 
@@ -107,5 +107,5 @@ Deck (work/chat)
 App (work/mobile)
 - [ ] Not built.
 
-Capsule (work/capsule-pro)
-- [ ] Not used: the Capsule opens the terminal in the Deck.
+Lumen (work/capsule-pro)
+- [ ] Not used: Lumen opens the terminal in the Deck.

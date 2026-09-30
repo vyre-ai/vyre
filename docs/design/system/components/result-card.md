@@ -1,6 +1,6 @@
 ---
 title: Command result card
-summary: How a vyre command's result {view, title, rows or text, actions} renders natively in the Capsule, chat and the Deck. Three views (table, text, card), a row cap with Show all, mono only for code and paths, actions as ghost buttons with keys, copy as text, and errors. Also the Answer variant memory.ask draws in Find and the Memory view, with correct-in-place.
+summary: How a vyre command's result {view, title, rows or text, actions} renders natively in Lumen, chat and the Deck. Three views (table, text, card), a row cap with Show all, mono only for code and paths, actions as ghost buttons with keys, copy as text, and errors. Also the Answer variant memory.ask draws in Find and the Memory view, with correct-in-place.
 audience: builders
 owner: app-design
 status: draft
@@ -8,7 +8,7 @@ status: draft
 
 # Command result card
 
-A `vyre` command run from the Capsule, a chat slash command or the Deck returns a result, not
+A `vyre` command run from Lumen, a chat slash command or the Deck returns a result, not
 terminal text: `{view: "table" | "text" | "card", title, rows | text, actions?}` (platform's
 commands field, ADR 0033; polish-cli's `--view` frames; cohesion's item 6). A surface asks for it
 with `render: true` and draws it with this card. It is a card (card.md) holding list rows
@@ -19,7 +19,7 @@ adds no new part. The CLI prints the same result as text. Not drawn on a board y
 |---|---|---|
 | Deck | the chat transcript, as a tool row's body (`deck/chat/core/tool-detail.js`, work/chat); ⌘K Run results (`deck/views/find.js`, work/pwa) | not built |
 | App | the chat-core transcript (work/mobile) | not built |
-| Capsule | the result area under the input (`local/capsule/native/Sources/UI/CapsuleView.swift`, work/capsule-pro) | not built |
+| Lumen | the result area under the input (`local/capsule/native/Sources/UI/CapsuleView.swift`, work/capsule-pro) | not built |
 
 ## Anatomy
 
@@ -35,18 +35,18 @@ A content card: `--panel`, 1 px `--rule`, radius `--radius-card` (12; phone 10).
 
 ## Variants
 
-**Table.** Rows as list rows, dense on the desktop (36), 44 on the phone and in the Capsule:
+**Table.** Rows as list rows, dense on the desktop (36), 44 on the phone and in Lumen:
 
 - The first column is the row's title (base `--text`); the second is its meta (12/16 `--label`);
   further columns join the meta with " · ". A column named `status` draws a status mark before the
   title with its word in the meta (status-mark.md), never a coloured word.
 - On the desktop and in the Deck, a table of 3 or more columns may draw as columns: header row
   12/16 600 `--label`, 32 tall; cells 13/18, left aligned, numbers right aligned with tabular
-  figures; `--rule` between rows. On the phone and in the Capsule it is always rows.
-- At most 8 rows (5 in the Capsule), then "Show all 23" opens the rest in place, in the same card,
+  figures; `--rule` between rows. On the phone and in Lumen it is always rows.
+- At most 8 rows (5 in Lumen), then "Show all 23" opens the rest in place, in the same card,
   which then scrolls inside at 360.
 
-**Text.** The body is prose in 13/18 `--text` (15/22 in the Capsule, 17/24 on the phone), padding
+**Text.** The body is prose in 13/18 `--text` (15/22 in Lumen, 17/24 on the phone), padding
 12 16, paragraphs 8 apart, at most 12 lines then "Show all" (the card grows to fit). A text that
 is code, a log or a config is one code block (card.md, Code): `--code-bg`, radius 8, mono 13.
 
@@ -92,7 +92,7 @@ CLI would print it (a table as aligned columns), "Copied" for 2 s in place.
 
 ## Sizes
 
-| | Deck, desktop | Phone | Capsule |
+| | Deck, desktop | Phone | Lumen |
 |---|---|---|---|
 | Width | the transcript column, up to 820 | full width minus 32 | the panel minus 32 |
 | Row | 36 (32 in columns) | 44 | 44 |
@@ -113,9 +113,9 @@ CLI would print it (a table as aligned columns), "Copied" for 2 s in place.
 
 ## Keyboard and touch
 
-The card is not in the tab order; its buttons are. With the card focused (the Capsule's result, or
+The card is not in the tab order; its buttons are. With the card focused (Lumen's result, or
 a tool row opened in chat), the action keys work (the hint says which), ⌘C copies, and ↑ ↓ move
-through table rows, ⏎ opens a row that has `run`. In the Capsule, ⌘O opens the full result in the
+through table rows, ⏎ opens a row that has `run`. In Lumen, ⌘O opens the full result in the
 Deck. On touch, rows and buttons are 44.
 
 ## Motion
@@ -133,7 +133,7 @@ None on the card. "Show all" grows the card in place over `--motion-panel`; redu
 - The card is a `section` labelled by its title. A table view with columns is a real `table` with
   header cells; as rows it is a `list`.
 - The copy button is named "Copy as text". Status marks carry their word.
-- A new result in the Capsule is announced once, politely: "Devices, 4 rows".
+- A new result in Lumen is announced once, politely: "Devices, 4 rows".
 
 ## Gaps
 
@@ -146,7 +146,7 @@ Deck (work/pwa)
 App (work/mobile)
 - [ ] Nothing built: the three views in the chat-core transcript, rows only.
 
-Capsule (work/capsule-pro)
+Lumen (work/capsule-pro)
 - [ ] Nothing built: the card under the input for a run command, 5 rows, ⌘O to the Deck.
 
 platform

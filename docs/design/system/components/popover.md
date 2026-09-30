@@ -18,7 +18,7 @@ and modes, phone and desktop".
 |---|---|---|
 | Deck | `deck/chat/pickers.js` `.composer-menu`, `.cv-rewind` (main, work/chat); `deck/css/deck.css` `.search-pop` | built |
 | App | none | not built |
-| Capsule | `local/capsule/native/Sources/UI/AgentDeskView.swift` ActionMenuView; `Host/MenuBarItem.swift` MenuBarPopover (work/capsule-pro) | partial |
+| Lumen | `local/capsule/native/Sources/UI/AgentDeskView.swift` ActionMenuView; `Host/MenuBarItem.swift` MenuBarPopover (work/capsule-pro) | partial |
 
 ## Anatomy
 
@@ -90,6 +90,6 @@ Deck
 App (work/mobile)
 - [ ] No popover or picker: mode is plain text in `app/session/[id].tsx`.
 
-Capsule (work/capsule-pro)
+Lumen (work/capsule-pro)
 - [ ] ActionMenuView has a caps title with tracking and a 2 px `Theme.signal` left bar on the
       active row; use the `--signal-wash` fill and a 12/600 sentence-case header.

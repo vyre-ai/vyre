@@ -16,7 +16,7 @@ draft you're about to send. New 30 Sep, the user's chat-components ask.
 |---|---|---|
 | Deck | none | not built |
 | App | none | not built |
-| Capsule | none (compact form only, see Variants) | not built |
+| Lumen | none (compact form only, see Variants) | not built |
 
 ## Anatomy
 
@@ -40,7 +40,7 @@ A neutral card, same shell as every other card here: `--panel`, 1 px `--rule`, r
 
 - **Desktop / phone**: identical structure; the phone caps the newest message at 12 lines with
   "Show all" rather than scrolling the whole card.
-- **Capsule (compact)**: subject, sender of the newest message, its first line, "4 messages" -
+- **Lumen (compact)**: subject, sender of the newest message, its first line, "4 messages" -
   "Open in the Deck" is the only action, same rule `pr-review.md`'s compact form uses for anything
   that needs real reading room.
 - **Single message**: no thread chrome at all - the one message's sender, body and attachments,

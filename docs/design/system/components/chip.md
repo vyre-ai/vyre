@@ -20,7 +20,7 @@ chips are their own component (mode-chip).
 |---|---|---|
 | Deck | `deck/css/deck.css` `.chip` `.tag` (main); `deck/views/settings-keys.js` source labels (work/native-core) | partial |
 | App | inline badge in `apps/app/app/devices.tsx` (work/mobile) | partial |
-| Capsule | inline in `local/capsule/native/Sources/UI/CapsuleView.swift`; `chipView` in `Extensions/sight/SessionPanel.swift` (work/capsule-pro) | partial |
+| Lumen | inline in `local/capsule/native/Sources/UI/CapsuleView.swift`; `chipView` in `Extensions/sight/SessionPanel.swift` (work/capsule-pro) | partial |
 
 ## Anatomy
 
@@ -44,7 +44,7 @@ the setting's value, before the control.
 | Source chip | Claude Code file only (opens the file) | Project, Account, Claude Code file |
 
 **A surface grant** (the Connections card, card.md) is a filter chip, not a new kind: one chip per
-surface the connection can be used from: Capsule, Chat, Agents, Phone, the vault's real surfaces,
+surface the connection can be used from: Lumen, Chat, Agents, Phone, the vault's real surfaces,
 never a made-up list. Leading icon the surface's own glyph, On meaning granted and Off meaning
 not. This is the one place a filter chip's state is not a view filter but a real write.
 
@@ -52,7 +52,7 @@ Revoking (On to Off) is always one tap: no confirm, no proof, the same bar draft
 an in-place field edit. Granting (Off to On) is one tap too, except Agents: handing a credential
 to an autonomous session is a vault write (the no-nag rule's own line: presence for vault
 secrets, pairing and send/post/pay), so the Agents chip asks for Touch ID or a passkey before it
-turns on, the same proof credential-sheet.md's Connect step uses. While a grant to Capsule, Chat
+turns on, the same proof credential-sheet.md's Connect step uses. While a grant to Lumen, Chat
 or Phone can still be seen turning on, the chip shows the undo toast (toast.md, 4 s) instead of
 an in-place undo, since a grant is consequential enough to want the "Undo" word on screen, not
 just "tap it again". A refused proof leaves the Agents chip Off with no error, nothing granted.
@@ -76,7 +76,7 @@ Filter chip:
 - **On.** Border `--focus`, fill `--signal-wash`, ink `--text`; the count steps up to
   `--text-2`. Selection is bone, never violet.
 - **Focus.** 2 px outline `--focus`, offset 2.
-- **On Deep glass** (Capsule 0.2). No wash: a wash lifts the chip text to 3.98:1 over the brightest
+- **On Deep glass** (Lumen 0.2). No wash: a wash lifts the chip text to 3.98:1 over the brightest
   wallpaper. The chip is the glass itself with a 1 px `--rule-strong` border and ink `--text` (4.5:1
   or better over every sampled wallpaper, held by `core/config/palette.test.js`); On is a 2 px
   border. Focus on glass is two-tone: a 2 px `--text` ring inside the 2 px `--focus` ring.
@@ -127,7 +127,7 @@ mono, never a coloured tag.
 - [ ] Deck (work/native-core): source labels include "Default" and "Not set"; show no chip for a
   default value, and add the "Claude Code file" chip.
 - [ ] App: the devices badge is bordered with radius chip; no filter chips, no source chip.
-- [ ] Capsule: chips are capsule-shaped with gold icons (`Theme.recall`); use the tag and filter
+- [ ] Lumen: chips are capsule-shaped with gold icons (`Theme.recall`); use the tag and filter
   shapes and neutral ink.
 - [ ] System: the boards draw tags with radius 5; the token is `--radius-chip` (4).
 

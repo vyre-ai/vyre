@@ -12,7 +12,7 @@ This page sorts the Gaps sections of the [component specs](README.md) by team, s
 list to work from. The specs stay the source of truth: when you close an item, tick it in the spec
 Gaps list in the same commit, and this page follows.
 
-The Capsule redesign is [The Capsule, redesigned](capsule.md). Its Gaps list comes first for
+Lumen redesign is [Lumen, redesigned](capsule.md). Its Gaps list comes first for
 capsule-pro, ahead of the items below.
 
 How items are assigned:
@@ -20,7 +20,7 @@ How items are assigned:
 - Deck items go to pwa (the deck shell, `deck/css`, `deck/js`, `deck/views`, Glass), unless the
   file is chat's (`deck/chat/`) or native-core's (the Settings view). An item that touches files of
   two teams is listed under both and marked shared.
-- App items go to mobile. Capsule items go to capsule-pro.
+- App items go to mobile. Lumen items go to capsule-pro.
 - System items fix a board, `icons.txt` or a token, and go to app-design.
 - One core item has no team yet (see the end).
 
@@ -196,7 +196,7 @@ Phone shell, `deck/js/app.js`, `deck/css/deck.css`, `deck/js/capsule.js`, `deck/
 - [ ] The avatar opens a Settings sheet, not the Places sheet; there is no pin-a-fourth-page.
 - [ ] Header gap is 12 and padding 0 12 0 16 (spec 14 and 0 16).
 - [ ] Push and pop run 300 and 240 ms on their own curves, not `--motion-panel` and `--ease`.
-- [ ] The Capsule hides on every pushed screen, including Planner.
+- [ ] Lumen hides on every pushed screen, including Planner.
 
 Pill, `deck/js/reconnect.js`, `deck/js/pwa.js`, `deck/css/deck.css` ([pill](components/pill.md))
 
@@ -507,7 +507,7 @@ Owns the app (`apps/app`, Expo) on the phone and tablet.
 5. One `Icon` component from the set, with react-native-svg ([icons](components/icons.md)).
 6. Violet only for needs you: the ask card border stays neutral while open
    ([ask card](components/ask-card.md)).
-7. The shell: header labels and page swipe instead of the tab bar, the floating Capsule and Places
+7. The shell: header labels and page swipe instead of the tab bar, the floating Lumen and Places
    as a bottom sheet ([phone shell](components/phone-shell.md), [sheet](components/sheet.md)).
 
 ### All open items
@@ -521,7 +521,7 @@ Owns the app (`apps/app`, Expo) on the phone and tablet.
 - [ ] Button, `src/ui/Button.tsx`: four variants at 44 and 32 only; add 28 and 54, hold, busy, leading icon and key hint; ghost ink is `text2`; screens roll their own buttons. ([button](components/button.md))
 - [ ] Card, `src/session/Rows.tsx`, `src/vault/views.tsx`: AskCard and TrustCard are inline styles; extract one Card with header and footer slots. ([card](components/card.md))
 - [ ] Chip, `app/devices.tsx`: the devices badge is bordered with radius chip; no filter chips, no source chip. ([chip](components/chip.md))
-- [ ] Command bar: no Find, no command bar, no Capsule. ([command bar](components/command-bar.md))
+- [ ] Command bar: no Find, no command bar, no Lumen. ([command bar](components/command-bar.md))
 - [ ] Command result card: nothing built; the three views in the chat-core transcript, rows only. ([command result card](components/result-card.md))
 - [ ] Composer, `src/session/Composer.tsx`: text only; no chips, attach, prefixes, queued row, pills or rewind; input 16 not 17. ([composer](components/composer.md))
 - [ ] Credential sheet: nothing built; the bottom sheet with Paste and Face ID on Connect. ([credential sheet](components/credential-sheet.md))
@@ -531,7 +531,7 @@ Owns the app (`apps/app`, Expo) on the phone and tablet.
 - [ ] Device row: no 40 tile and no right-hand path column; the path is a text line under the name. ([device row](components/device-row.md))
 - [ ] Diff: not built; edits show as a tool row with no diff. ([diff](components/diff.md))
 - [ ] Draft card, `app/need/[id].tsx`: fields are read-only; spec: edit in place. ([draft card](components/draft-card.md))
-- [ ] Draft card: no presence line; no "Send with Face ID" state; sends from the Deck or the Capsule "for now". ([draft card](components/draft-card.md))
+- [ ] Draft card: no presence line; no "Send with Face ID" state; sends from the Deck or Lumen "for now". ([draft card](components/draft-card.md))
 - [ ] Form controls, `src/session/Composer.tsx`: only the composer's text input exists (16 px); build the other eight at touch sizes. ([form controls](components/form-controls.md))
 - [ ] Glass frame: no Glass view. ([glass frame](components/glass-frame.md))
 - [ ] Glass mini-view: nothing built; the card from `sight.frame` stills, the pill when collapsed. ([Glass mini-view](components/glass-mini.md))
@@ -548,12 +548,12 @@ Owns the app (`apps/app`, Expo) on the phone and tablet.
 - [ ] Needs row: rows sit on `--bg` full width, not in a `--panel` card. ([needs row](components/needs-row.md))
 - [ ] Authenticator code: no vault codes. ([otp](components/otp.md))
 - [ ] Phone shell, `app/(tabs)/_layout.tsx`: a bottom tab bar (Now, Chats, Agents) instead of the header labels and page swipe. ([phone shell](components/phone-shell.md))
-- [ ] Phone shell, `app/places.tsx`: no floating Capsule; Places is a modal screen, not a bottom sheet. ([phone shell](components/phone-shell.md))
+- [ ] Phone shell, `app/places.tsx`: no floating Lumen; Places is a modal screen, not a bottom sheet. ([phone shell](components/phone-shell.md))
 - [ ] Phone shell, `app/_layout.tsx`: Instrument Sans is not loaded, so labels render in the system font. ([phone shell](components/phone-shell.md))
 - [ ] Pill, `src/state/connection.ts`: `toConnection` and the outbox list exist; no pill or queued line is drawn. ([pill](components/pill.md))
 - [ ] Plan card: not built. ([plan card](components/plan-card.md))
 - [ ] Popover, `app/session/[id].tsx`: no popover or picker; mode is plain text. ([popover](components/popover.md))
-- [ ] Presence line, `src/state/needs-model.ts`: coverage is computed, nothing is drawn; sends go to the Deck or the Capsule. ([presence line](components/presence-line.md))
+- [ ] Presence line, `src/state/needs-model.ts`: coverage is computed, nothing is drawn; sends go to the Deck or Lumen. ([presence line](components/presence-line.md))
 - [ ] Question card: not built; the ask card sends you to the Deck. ([question card](components/question-card.md))
 - [ ] Rail: no rail at 720 and up; tablets get the phone tab bar. ([rail](components/rail.md))
 - [ ] Settings row, `app/settings.tsx`: no settings rows; build the phone layout (44 controls, reserved line, stepper). ([settings row](components/settings-row.md))
@@ -586,15 +586,15 @@ Files are under `apps/app/` on work/mobile.
 
 ## capsule-pro
 
-Owns the Capsule on the Mac (`local/capsule/native/Sources/`): the panel, the list of what waits,
+Owns Lumen on the Mac (`local/capsule/native/Sources/`): the panel, the list of what waits,
 the session panel, presence and the menu-bar item.
 
 ### Start here
 
 0. The redesign first: the answer card grows then scrolls, no empty headings, the footer states,
-   layered Esc, then Vyre IQ, voice and computer use ([The Capsule, redesigned](capsule.md), Gaps).
+   layered Esc, then Vyre Memory, voice and computer use ([Lumen, redesigned](capsule.md), Gaps).
 1. Tokens, not hand typed values: `Theme.swift` maps tokens to old names and types its own sizes;
-   read `Tokens.generated.swift` ([Capsule on the Mac](components/capsule-mac.md)).
+   read `Tokens.generated.swift` ([Lumen on the Mac](components/capsule-mac.md)).
 2. One button system: `AgentButton` uses `Tokens` primary colours, `Radius.button` and the five
    variants ([button](components/button.md)).
 3. Sentence case: "HELD FOR YOU", "WAITING ON YOU", "OFFLINE" and the mono caps section headers
@@ -603,7 +603,7 @@ the session panel, presence and the menu-bar item.
 4. 44 targets: rows are 40 tall; use 44 ([list row](components/list-row.md),
    [needs row](components/needs-row.md)).
 5. Violet only for needs you: the selected row has a violet left bar; use the `--hover` fill
-   ([needs row](components/needs-row.md), [Capsule on the Mac](components/capsule-mac.md)).
+   ([needs row](components/needs-row.md), [Lumen on the Mac](components/capsule-mac.md)).
 6. Status marks: the ring for Pulse, the badge, neutral relayed health
    ([status mark](components/status-mark.md)).
 7. The icon set as SwiftUI shapes instead of SF Symbols ([icons](components/icons.md)).
@@ -614,18 +614,18 @@ the session panel, presence and the menu-bar item.
 - [ ] Agenda, `Host/Planner.swift`: the banner says "Missed: Timer"; no ring count. ([agenda](components/agenda.md))
 - [ ] Ask card, `UI/AgentDeskView.swift` HeldCardView: buttons read "Allow" and "Deny"; no "Always in <project>", no reason line. ([ask card](components/ask-card.md))
 - [ ] Ask card: label "HELD FOR YOU" in mono caps, tracked; spec: "Permission", sentence case. ([ask card](components/ask-card.md))
-- [ ] Avatar: no avatar; the Capsule board draws 20 tiles with radius 5. ([avatar](components/avatar.md))
-- [ ] Banner, `UI/AgentDeskView.swift` WaitingHint: a 30 tall hint line; banners are not drawn in the Capsule panel. ([banner](components/banner.md))
+- [ ] Avatar: no avatar; Lumen board draws 20 tiles with radius 5. ([avatar](components/avatar.md))
+- [ ] Banner, `UI/AgentDeskView.swift` WaitingHint: a 30 tall hint line; banners are not drawn in Lumen panel. ([banner](components/banner.md))
 - [ ] Button, `UI/AgentDeskView.swift` `AgentButton`: primary is a `bone` (text) fill, radius 6, pressed at 0.8 opacity; use `Tokens` primary colours, `Radius.button`, the five variants and the states. ([button](components/button.md))
-- [ ] Capsule on the Mac, `UI/Theme.swift`: maps tokens to old names and hand-types sizes (query 22, title 14, label 10.5 mono, rows 40); only colours, status and `Radius.card` come from tokens. ([Capsule on the Mac](components/capsule-mac.md))
-- [ ] Capsule on the Mac: placeholder reads "Search, calculate, ask, or @ a session". ([Capsule on the Mac](components/capsule-mac.md))
-- [ ] Capsule on the Mac: list header is "WAITING ON YOU · n" in mono caps in the attention colour; the focused row has a violet left bar instead of `signalWash`. ([Capsule on the Mac](components/capsule-mac.md))
-- [ ] Capsule on the Mac: offline banner reads "OFFLINE" in caps, not "Works offline · 1 queued". ([Capsule on the Mac](components/capsule-mac.md))
-- [ ] Capsule on the Mac: always dark; no `Tokens.paper`. ([Capsule on the Mac](components/capsule-mac.md))
-- [ ] Capsule on the Mac, `UI/PresenceView.swift`: reads "Touch ID to approve exactly this." with no 30 min covered line. ([Capsule on the Mac](components/capsule-mac.md))
-- [ ] Capsule on the Mac: `AgentButton` primary is `primaryBg` (bone) with `primaryInk`, radius 6. ([Capsule on the Mac](components/capsule-mac.md))
-- [ ] Capsule on the Mac, `Host/Panel.swift`: radius is `Tokens.Radius.card` (12), not `sheet`. ([Capsule on the Mac](components/capsule-mac.md))
-- [ ] Capsule on the Mac: `Tokens.generated.swift` has no shadow tokens, so `--float` cannot come from it yet. ([Capsule on the Mac](components/capsule-mac.md))
+- [ ] Lumen on the Mac, `UI/Theme.swift`: maps tokens to old names and hand-types sizes (query 22, title 14, label 10.5 mono, rows 40); only colours, status and `Radius.card` come from tokens. ([Lumen on the Mac](components/capsule-mac.md))
+- [ ] Lumen on the Mac: placeholder reads "Search, calculate, ask, or @ a session". ([Lumen on the Mac](components/capsule-mac.md))
+- [ ] Lumen on the Mac: list header is "WAITING ON YOU · n" in mono caps in the attention colour; the focused row has a violet left bar instead of `signalWash`. ([Lumen on the Mac](components/capsule-mac.md))
+- [ ] Lumen on the Mac: offline banner reads "OFFLINE" in caps, not "Works offline · 1 queued". ([Lumen on the Mac](components/capsule-mac.md))
+- [ ] Lumen on the Mac: always dark; no `Tokens.paper`. ([Lumen on the Mac](components/capsule-mac.md))
+- [ ] Lumen on the Mac, `UI/PresenceView.swift`: reads "Touch ID to approve exactly this." with no 30 min covered line. ([Lumen on the Mac](components/capsule-mac.md))
+- [ ] Lumen on the Mac: `AgentButton` primary is `primaryBg` (bone) with `primaryInk`, radius 6. ([Lumen on the Mac](components/capsule-mac.md))
+- [ ] Lumen on the Mac, `Host/Panel.swift`: radius is `Tokens.Radius.card` (12), not `sheet`. ([Lumen on the Mac](components/capsule-mac.md))
+- [ ] Lumen on the Mac: `Tokens.generated.swift` has no shadow tokens, so `--float` cannot come from it yet. ([Lumen on the Mac](components/capsule-mac.md))
 - [ ] Card, `UI/AgentDeskView.swift` HeldCardView: hand-typed sizes and a caps mono label; use `Tokens.Radius.card` and the 12/600 sentence-case label. ([card](components/card.md))
 - [ ] Chip, `UI/CapsuleView.swift`, `Extensions/sight/SessionPanel.swift`: chips are capsule-shaped with gold icons (`Theme.recall`); use the tag and filter shapes and neutral ink. ([chip](components/chip.md))
 - [ ] Command result card: nothing built; the card under the input for a run command, 5 rows, ⌘O to the Deck. ([command result card](components/result-card.md))
@@ -655,22 +655,22 @@ the session panel, presence and the menu-bar item.
 - [ ] Status mark, WaitingRow, `UI/CapsuleView.swift`, `Host/MenuBarItem.swift`: waiting dot uses `Theme.attention` at 7 px; tool rows use SF Symbols; Pulse is a bone 7 px dot, not the ring; no badge; relayed health is not neutral. ([status mark](components/status-mark.md))
 - [ ] Suggestions, `UI/CapsuleView.swift`: the @ target ranks its own agents and sessions; draw `suggest.query` rows under the local rows, never moving a drawn row; ghost text; `suggest.picked`. ([suggestions](components/suggestions.md))
 - [ ] Tip: nothing built; the line under the empty input, ⌘. to dismiss. ([tip](components/tip.md))
-- [ ] Toast: no toast; add the floating variant under the Capsule's list for answers given there. ([toast](components/toast.md))
+- [ ] Toast: no toast; add the floating variant under Lumen's list for answers given there. ([toast](components/toast.md))
 - [ ] Tool row, `UI/CapsuleView.swift` ToolRows: SF Symbols instead of the stroke set; no folding, no detail. ([tool row](components/tool-row.md))
 - [ ] Turn, `UI/CapsuleView.swift`, `UI/AgentDirectView.swift`, `Extensions/sight/SessionPanel.swift`: three renderers; one turn view. ([turn](components/turn.md))
 - [ ] Turn: author in mono caps; spec: sans 600, sentence case. ([turn](components/turn.md))
 - [ ] Turn: no steer marker, no thinking row, no turn footer. ([turn](components/turn.md))
 
 Paths are under `local/capsule/native/Sources/` on work/capsule-pro. The terminal spec lists the
-Capsule as not used (it opens the terminal in the Deck); that is not an item to build.
+Lumen as not used (it opens the terminal in the Deck); that is not an item to build.
 
 ### Done when
 
 - `npm run tokens -- --check` passes and no Swift view types a size, colour or radius the tokens
   hold.
-- `npm run design:audit` passes for the Capsule boards you changed, and you looked at each PNG.
-- The Capsule tests pass (`local/capsule/native/Tests`).
-- Every Capsule item above is ticked in its spec, and the items capsule.md adds.
+- `npm run design:audit` passes for Lumen boards you changed, and you looked at each PNG.
+- Lumen tests pass (`local/capsule/native/Tests`).
+- Every Lumen item above is ticked in its spec, and the items capsule.md adds.
 
 ## app-design (system items)
 
@@ -679,13 +679,13 @@ These fix the boards, `icons.txt` or the tokens, not a surface.
 - [ ] Account picker row: monochrome provider glyphs (google, microsoft, mail, slack) and a mail icon in `icons.txt`; the AccountRow board. ([account picker row](components/account-row.md))
 - [ ] Chip: the boards draw tags with radius 5; the token is `--radius-chip` (4). ([chip](components/chip.md))
 - [ ] Command result card: the ResultCard board (table, text, card, error). ([command result card](components/result-card.md))
-- [ ] Credential sheet: the CredentialSheet board (key, file, sign-in, the Capsule row). ([credential sheet](components/credential-sheet.md))
+- [ ] Credential sheet: the CredentialSheet board (key, file, sign-in, Lumen row). ([credential sheet](components/credential-sheet.md))
 - [ ] Form controls: the stepper is drawn twice (a `--hover` fill in Settings, a `--rule-strong` outline in Project settings); the spec takes the fill. ([form controls](components/form-controls.md))
 - [ ] Glass mini-view: the GlassMini board. ([Glass mini-view](components/glass-mini.md))
 - [ ] Icons: add minus and unlock to `icons.txt`; the Vault board draws the faceid frame without its face, which is not in the set. ([icons](components/icons.md))
 - [ ] Key hint: the "Settings · account and project scopes" board draws ↵; use ⏎. ([key hint](components/key-hint.md))
 - [ ] Mode chip: the composer chip radius 6 is not a token; add one or use `--radius-button`. ([mode chip](components/mode-chip.md))
-- [ ] Suggestions: the Suggestions board (the three lanes, ghost text, the Capsule groups). ([suggestions](components/suggestions.md))
+- [ ] Suggestions: the Suggestions board (the three lanes, ghost text, Lumen groups). ([suggestions](components/suggestions.md))
 - [ ] Tabs: the teammate phone strip is drawn 40 tall; the spec makes it 44. ([tabs](components/tabs.md))
 - [ ] Tip: the `tip` (lightbulb) icon in `icons.txt`; the TipLine board. ([tip](components/tip.md))
 

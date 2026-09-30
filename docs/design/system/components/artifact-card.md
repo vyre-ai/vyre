@@ -18,7 +18,7 @@ restated here as part of the one chat-components contract. New 30 Sep.
 |---|---|---|
 | Deck | none | not built |
 | App | none | not built |
-| Capsule | none | not built |
+| Lumen | none | not built |
 
 ## Anatomy: chat card
 
@@ -69,7 +69,7 @@ its own tab (artifacts-options.html section 3).
 - **Panel, phone**: full-screen sheet (ADR 0033's `panel:<name>` phone rule), version bar becomes
   a bottom bar (Versions / Changes / Share, per the confirmed mockup) rather than top-of-panel,
   since the phone's safe-area top is precious and the title needs the space instead.
-- **Capsule (compact)**: not drawn at all in the panel/rows/footer shell - "Open in the Deck" only,
+- **Lumen (compact)**: not drawn at all in the panel/rows/footer shell - "Open in the Deck" only,
   same rule as every other rich-content card here (`pr-review.md`, `email-thread.md`,
   `calendar.md`'s compose forms).
 

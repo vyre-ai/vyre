@@ -1,6 +1,6 @@
 ---
 title: Toast
-summary: The one undo toast, 4 s, that follows every optimistic answer, removal or reset, in the row's place or floating above the Capsule.
+summary: The one undo toast, 4 s, that follows every optimistic answer, removal or reset, in the row's place or floating above Lumen.
 audience: builders
 owner: app-design
 status: draft
@@ -18,7 +18,7 @@ phone and desktop" and "Memory, phone and desktop".
 |---|---|---|
 | Deck | `deck/js/now-phone.js`, `deck/css/views/now.css` `.np-toast` (work/pwa); `deck/css/views/vault.css` `.vt-toast` (main) | partial |
 | App | `apps/app/src/ui/UndoToast.tsx` (work/mobile) | built |
-| Capsule | none | not built |
+| Lumen | none | not built |
 
 ## Anatomy
 
@@ -28,7 +28,7 @@ Two placements, one look:
    gap 10, fill `--hover`, `--rule` top border. A 16 check icon in `--text-2`, the words in base
    size `--text` (one line, ellipsis), then "Undo" in base 600 `--text`.
 2. **Floating.** When there is no row to hold it (a send from a sheet, a reset elsewhere): fixed,
-   16 from the sides on the phone and 24 above the Capsule (above the safe area), bottom centre at
+   16 from the sides on the phone and 24 above Lumen (above the safe area), bottom centre at
    max width 480 on the desktop. Min height 44 (`--control-touch`), padding 0 6 0 16, radius
    `--radius-card` (12), fill `--panel`, 1 px `--rule-strong`, shadow `--float`.
 
@@ -87,5 +87,5 @@ App (work/mobile)
 - [ ] Undo text is `--focus` (bone); use `--text`, 600.
 - [ ] Floating only; no in-place variant; no ⌘Z on the web build.
 
-Capsule (work/capsule-pro)
-- [ ] No toast: add the floating variant under the Capsule's list for answers given there.
+Lumen (work/capsule-pro)
+- [ ] No toast: add the floating variant under Lumen's list for answers given there.

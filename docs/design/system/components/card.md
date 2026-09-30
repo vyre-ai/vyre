@@ -18,7 +18,7 @@ and VyreDrive", and the Connections card on the Connections board (below).
 |---|---|---|
 | Deck | `deck/css/views/now.css` `.np-card` (work/pwa), `deck/css/views/planner.css` `.pl-card` (main), `deck/chat/chat.css` `.gate-card` (work/chat) | partial |
 | App | `apps/app/src/session/Rows.tsx` AskCard, `apps/app/src/vault/views.tsx` TrustCard (work/mobile) | partial |
-| Capsule | `local/capsule/native/Sources/UI/AgentDeskView.swift` HeldCardView, `UI/PresenceView.swift` (work/capsule-pro) | partial |
+| Lumen | `local/capsule/native/Sources/UI/AgentDeskView.swift` HeldCardView, `UI/PresenceView.swift` (work/capsule-pro) | partial |
 
 ## Anatomy
 
@@ -49,10 +49,10 @@ and VyreDrive", and the Connections card on the Connections board (below).
      and its meta line (label · provider), then trailing the row's normal state (Default, Last
      used, or the fix button when it needs one) right-aligned.
   2. **Granted to**, padding 0 16 12, wrapped: the label `--label`, then one filter chip
-     (chip.md) per surface that can use this connection (Capsule, Chat, Agents, Phone: the
+     (chip.md) per surface that can use this connection (Lumen, Chat, Agents, Phone: the
      vault's real surfaces, never a made-up list), each with the surface's 12 icon leading.
      Revoking (On to Off) is one tap, always, for every surface. Granting (Off to On) is one tap
-     with the undo toast for Capsule, Chat and Phone; the Agents chip asks Touch ID or a passkey
+     with the undo toast for Lumen, Chat and Phone; the Agents chip asks Touch ID or a passkey
      first (chip.md States, Asking), since that hands a credential to an autonomous session, the
      same no-nag line as pairing and send/post/pay. A row that needs a fix (see account-row.md
      States) skips this part and the footer: just the top row and its Sign in.
@@ -113,7 +113,7 @@ Deck
 App (work/mobile)
 - [ ] AskCard and TrustCard are inline styles; extract one Card with header and footer slots.
 
-Capsule (work/capsule-pro)
+Lumen (work/capsule-pro)
 - [ ] HeldCardView uses hand-typed sizes and a caps mono label; use `Tokens.Radius.card` and the
       12/600 sentence-case label.
 

@@ -17,7 +17,7 @@ app.vyre.run, and the relay. Every row answers three questions: how it reaches t
 |---|---|---|
 | Deck | `deck/views/vault-places.js` devicesView, `deck/css/views/vault.css`, `deck/js/health.js` (work/pwa) | partial |
 | App | `apps/app/app/devices.tsx` DeviceRow, `src/state/devices-model.ts` (work/mobile) | partial |
-| Capsule | not used | |
+| Lumen | not used | |
 
 ## Anatomy
 

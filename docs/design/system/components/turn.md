@@ -16,7 +16,7 @@ boards "Session, phone and desktop" and "Session · the composer, like Claude Co
 |---|---|---|
 | Deck | `deck/chat/session.js`, `deck/chat/core/session-state.js`, `deck/chat/chat.css` (work/chat) | partial |
 | App | `apps/app/src/session/Rows.tsx` (work/mobile) | partial |
-| Capsule | `local/capsule/native/Sources/UI/CapsuleView.swift`, `UI/AgentDirectView.swift`, `Extensions/sight/SessionPanel.swift` (work/capsule-pro) | partial |
+| Lumen | `local/capsule/native/Sources/UI/CapsuleView.swift`, `UI/AgentDirectView.swift`, `Extensions/sight/SessionPanel.swift` (work/capsule-pro) | partial |
 
 ## Anatomy
 
@@ -151,7 +151,7 @@ App (work/mobile)
 - [ ] Thinking reads "Thought · N characters" and never opens; spec: "Thinking · 8 s", expandable.
 - [ ] Steer marker reads "Steering" / "Steered at step N"; spec copy above.
 
-Capsule (work/capsule-pro)
+Lumen (work/capsule-pro)
 - [ ] Three renderers (CapsuleView answer, DirectView message, SessionPanel message); one turn view.
 - [ ] Author in mono caps; spec: sans 600, sentence case.
 - [ ] No steer marker, no thinking row, no turn footer.

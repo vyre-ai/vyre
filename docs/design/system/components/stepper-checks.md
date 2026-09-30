@@ -17,7 +17,7 @@ run" (Onboarding).
 |---|---|---|
 | Deck | `deck/views/pair.js`, `deck/js/pair-steps.js`, `deck/css/pair.css` (work/pwa); `deck/js/phone-setup.js` and `deck/onboard/onboard.js` (main) | partial |
 | App | `apps/app/app/pair.tsx` (work/mobile), a status line only | not built |
-| Capsule | not used | not used |
+| Lumen | not used | not used |
 
 ## Anatomy
 

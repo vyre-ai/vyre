@@ -19,7 +19,7 @@ section 3.6's `said_intents` (reviewed and confirmed with vault, cohesion, sessi
 |---|---|---|
 | Deck | none | not built |
 | App | none | not built |
-| Capsule | none | not built |
+| Lumen | none | not built |
 
 ## Anatomy
 

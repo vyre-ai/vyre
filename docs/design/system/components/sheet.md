@@ -18,7 +18,7 @@ sign in once, prove it rarely" and "Install 1, add your phone from the laptop" (
 |---|---|---|
 | Deck | `deck/js/sheet.js`, `deck/css/sheet.css`, `deck/js/need-sheet.js` (work/pwa) | built |
 | App | none (Places is a modal screen, `apps/app/app/places.tsx`) | not built |
-| Capsule | not used | |
+| Lumen | not used | |
 
 ## Anatomy
 

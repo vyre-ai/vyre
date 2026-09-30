@@ -17,7 +17,7 @@ on the boards "Needs you (home)", "Agents and their computers", "Planner", "Add 
 |---|---|---|
 | Deck | `deck/js/app.js`, `deck/css/deck.css` (main) | partial |
 | App | none in `apps/app` (work/mobile) | not built |
-| Capsule | not used | not used |
+| Lumen | not used | not used |
 
 ## Anatomy
 

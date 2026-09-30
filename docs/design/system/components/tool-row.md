@@ -16,7 +16,7 @@ desktop", "Session · the composer, like Claude Code" and "Plan approval and mod
 |---|---|---|
 | Deck | `deck/chat/core/grouping.js`, `deck/chat/core/tool-detail.js`, `deck/chat/chat.css` (work/chat) | partial |
 | App | `apps/app/src/session/Rows.tsx` RunRow (work/mobile) | partial |
-| Capsule | `local/capsule/native/Sources/UI/CapsuleView.swift` ToolRows (work/capsule-pro) | partial |
+| Lumen | `local/capsule/native/Sources/UI/CapsuleView.swift` ToolRows (work/capsule-pro) | partial |
 
 ## Anatomy
 
@@ -120,5 +120,5 @@ App (work/mobile)
 - [ ] No icon, no elapsed timer, no detail; "Hide"/"Show" text instead of a chevron.
 - [ ] Status mark dot instead of the icon.
 
-Capsule (work/capsule-pro)
+Lumen (work/capsule-pro)
 - [ ] SF Symbols instead of the stroke set; no folding, no detail.

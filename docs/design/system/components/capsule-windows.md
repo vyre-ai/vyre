@@ -1,14 +1,14 @@
 ---
-title: Capsule on Windows
-summary: How the Mac Capsule's Design A translates to a native Windows panel, Mica and Acrylic, Segoe fallback fonts, the tray, system notifications and the Windows Hello prompt.
+title: Lumen on Windows
+summary: How the Mac Lumen's Design A translates to a native Windows panel, Mica and Acrylic, Segoe fallback fonts, the tray, system notifications and the Windows Hello prompt.
 audience: builders
 owner: app-design
 status: draft
 ---
 
-# Capsule on Windows
+# Lumen on Windows
 
-Same job as the [Mac Capsule](capsule-mac.md): a floating panel that opens over whatever you are
+Same job as the [Mac Lumen](capsule-mac.md): a floating panel that opens over whatever you are
 doing, answers the Needs rows, streams the assistant's reply, and works offline. Same content
 model, same tools and events, same tokens. What changes is the shell: the backdrop material, the
 window chrome, the fonts, the tray and how it hands off to the OS when it's not the thing on
@@ -17,7 +17,7 @@ screen. This spec assumes Tier C's shell (`docs/design/windows-plan.md`: Tauri, 
 
 | Surface | Implementing file | Status |
 |---|---|---|
-| Capsule (Windows) | none yet (`local/capsule-win`, Tier C, `docs/design/windows-plan.md`) | not built |
+| Lumen (Windows) | none yet (`local/capsule-win`, Tier C, `docs/design/windows-plan.md`) | not built |
 
 ## The one call to make first: it should look like Windows and still be unmistakably Vyre
 
@@ -27,12 +27,12 @@ role, every card, row, button and status still comes from `tokens.json`, unchang
 should feel like it belongs on this PC (Mica, Segoe fallback, native tray, native corner
 rounding) while its rows, cards and words are identical to the Mac and the Deck, because a person
 who uses Vyre on both should never have to re-learn it. Nothing here re-derives the interaction
-language (`docs/design/interaction.md`, binding for 0.1.1); the Windows Capsule inherits it, same
+language (`docs/design/interaction.md`, binding for 0.1.1); the Windows Lumen inherits it, same
 as the Mac one.
 
 ## Anatomy
 
-Content is byte-for-byte the Mac Capsule's five rows (capsule-mac.md's Anatomy, unchanged): input
+Content is byte-for-byte the Mac Lumen's five rows (capsule-mac.md's Anatomy, unchanged): input
 row, "Sends to," the waiting list, the streaming reply, the footer. Do not re-spec them here; this
 section only covers what's different about the shell around them.
 
@@ -45,7 +45,7 @@ section only covers what's different about the shell around them.
    (`DWM_SYSTEMBACKDROP_TYPE.DWMSBT_MAINWINDOW`), not Acrylic, on the panel itself: Mica is
    Microsoft's own guidance for a persistent app-level surface (it samples the desktop wallpaper
    behind it, tinted, opaque enough to read), where Acrylic is for transient layers (flyouts,
-   context menus) that sit on top of other content and go away fast. The Capsule is persistent
+   context menus) that sit on top of other content and go away fast. Lumen is persistent
    while it's open, so Mica. The tray's right-click menu (below) is transient, so Acrylic there.
    `--panel` stops being a flat fill and becomes a translucent tint over Mica at the same token
    value (roughly 70% alpha; tune so every AA pair in tokens.md's contrast rules still holds
@@ -59,14 +59,14 @@ section only covers what's different about the shell around them.
    Instrument Sans should still be the face a person actually sees.
 4. **Tray.** A system tray (notification area) icon, not a menu-bar item: the Vyre mark, its dot
    turning `--beacon-ink` the same way the Mac menu-bar item's dot does when something waits.
-   Left-click (or the hotkey) opens the Capsule; right-click opens a small native-feeling context
-   menu on Acrylic: "Open Capsule" with the hotkey as its accelerator, a "Needs you" line with the
+   Left-click (or the hotkey) opens Lumen; right-click opens a small native-feeling context
+   menu on Acrylic: "Open Lumen" with the hotkey as its accelerator, a "Needs you" line with the
    live count when non-zero (opens straight to the waiting list), a separator, "Settings," "Quit
    Vyre." Kept close to a stock Windows context menu (system font, system sizing, the accent-free
    neutral palette Windows context menus use), not reskinned in the full token set: a tray menu is
    OS chrome by principle 4, and people expect it to open with zero transition, not a panel
    animation.
-5. **System notifications.** When the Capsule is closed and something new starts waiting, a native
+5. **System notifications.** When Lumen is closed and something new starts waiting, a native
    Windows Toast (Action Center) carries the same words the Needs row would show ("kit needs you ·
    Push q3-report," never different marketing copy), with the row's own actions inline as the
    toast's action buttons where the platform allows it (Allow once / Deny for an ask). This is a
@@ -83,17 +83,17 @@ needed, decided), unchanged. Two Windows-only additions:
 | State | What shows |
 |---|---|
 | Transparency effects off (Windows Settings > Personalization > Colors) | the panel falls back to a fully opaque `--panel` fill, same as the Mac; Mica is a bonus, never load-bearing for legibility |
-| High contrast mode | Mica and Acrylic are both skipped; the panel and tray menu use Windows' high-contrast colour set, which the OS supplies, not `tokens.json` (Windows has no Mac equivalent of this state; the Mac Capsule spec has nothing to port here) |
+| High contrast mode | Mica and Acrylic are both skipped; the panel and tray menu use Windows' high-contrast colour set, which the OS supplies, not `tokens.json` (Windows has no Mac equivalent of this state; the Mac Lumen spec has nothing to port here) |
 
 ## Keyboard and touch
 
-- The global hotkey opens and closes the Capsule from anywhere, mirroring Control-twice on the
+- The global hotkey opens and closes Lumen from anywhere, mirroring Control-twice on the
   Mac. **Open question, flagged for windows to verify before committing to it**: the lead named
   Alt+Space, but Alt+Space is Windows' own reserved shortcut for the active window's system menu
   (minimize/restore/close). A global-hotkey hook (`tauri-plugin-global-shortcut`) may still catch
-  it while another app is focused, but the moment the Capsule panel itself has focus, native
+  it while another app is focused, but the moment Lumen panel itself has focus, native
   Alt+Space could reopen the OS system menu on top of a borderless window that has no menu to
-  show, instead of closing the Capsule. Test that exact case (Capsule open and focused, press
+  show, instead of closing Lumen. Test that exact case (Lumen open and focused, press
   Alt+Space) before shipping it as the default; if it's unreliable, Ctrl+Alt+Space or a
   user-remappable binding (Windows users already expect hotkeys to be configurable, more than Mac
   users do) is the fallback.
@@ -128,7 +128,7 @@ motion`; treat it the same way.
 
 ## Accessibility
 
-- Windows Narrator, not VoiceOver: the panel is a named automation element ("Vyre Capsule"), same
+- Windows Narrator, not VoiceOver: the panel is a named automation element ("Vyre Lumen"), same
   labelling contract as the Mac (the input's placeholder as its accessible name, each waiting row
   reading its full sentence). UI Automation is the target tree (the same technology
   `windows-plan.md` already anchors Tier D's screen-context work on), not MSAA.
@@ -149,8 +149,8 @@ this specific Windows desktop, that's Mica's job, not a colour swap.
 ## Gaps
 
 Windows (work/windows, Tier C, not started)
-- [ ] Everything above: the Windows Capsule does not exist yet. This spec exists so building it
-  starts from Design A and the Mac Capsule's already-built content model, not a blank Tauri app.
+- [ ] Everything above: the Windows Lumen does not exist yet. This spec exists so building it
+  starts from Design A and the Mac Lumen's already-built content model, not a blank Tauri app.
 - [ ] The Alt+Space hotkey conflict (Keyboard and touch, above) needs a hands-on check on a real
   Windows box before it ships as the default binding.
 - [ ] Windows Hello's actual availability and API surface (Windows Hello for Business vs. consumer

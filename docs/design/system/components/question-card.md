@@ -18,10 +18,10 @@ share the `.choice`, `.radio` and `.chk` parts drawn on "Session · the composer
 |---|---|---|
 | Deck | `deck/chat/question.js`, `deck/chat/lib/answers.js` (work/chat) | partial |
 | App | none (the ask card says "Answer it in the Deck for now") | not built |
-| Capsule | none | not built |
+| Lumen | none | not built |
 
 Built once: this card is built once in chat-core for the web (the Deck and the PWA) and Expo (the
-app), from this spec, and the Capsule mirrors the same spec in Swift. No surface draws its own
+app), from this spec, and Lumen mirrors the same spec in Swift. No surface draws its own
 version (cohesion, ADR 0036).
 
 ## Anatomy
@@ -120,5 +120,5 @@ Deck (work/chat)
 App (work/mobile)
 - [ ] Not built: the ask card sends you to the Deck.
 
-Capsule (work/capsule-pro)
+Lumen (work/capsule-pro)
 - [ ] Not built.

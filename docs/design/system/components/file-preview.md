@@ -18,7 +18,7 @@ chat-components ask.
 |---|---|---|
 | Deck | none | not built |
 | App | none | not built |
-| Capsule | none | not built |
+| Lumen | none | not built |
 
 ## Anatomy
 
@@ -36,7 +36,7 @@ it, never forces its own line unless the surrounding text does).
 
 ## Variants
 
-- **File** (as above): tapping opens the file - locally if the surface can (the Capsule opens it
+- **File** (as above): tapping opens the file - locally if the surface can (Lumen opens it
   natively; the Deck downloads or opens a viewer for common types), else offers Download.
 - **Link**: tapping opens the link in a new tab/window; the row carries no favicon-fetch privacy
   leak of its own (the box fetches the favicon/OG image server-side, never the person's own

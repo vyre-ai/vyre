@@ -17,7 +17,7 @@ project scopes" and "Session · the composer, like Claude Code".
 |---|---|---|
 | Deck | `deck/css/deck.css` `.btn` `.btn-primary` `.btn-ghost` `.btn-sm` (main); `deck/css/sheet.css` `.sb` `.sb-primary` (work/pwa) | partial |
 | App | `apps/app/src/ui/Button.tsx` `Button` (work/mobile) | partial |
-| Capsule | `local/capsule/native/Sources/UI/AgentDeskView.swift` `AgentButton` (work/capsule-pro) | partial |
+| Lumen | `local/capsule/native/Sources/UI/AgentDeskView.swift` `AgentButton` (work/capsule-pro) | partial |
 
 ## Anatomy
 
@@ -121,5 +121,5 @@ carries the count. Busy uses the same verb in -ing form. Never "OK", "Yes", "No"
   disabled; fold into the one button at 44 and 54.
 - [ ] App: `Button` has four variants at 44 and 32 only; add 28 and 54, hold, busy, leading icon
   and key hint; ghost ink is `text2`; screens roll their own buttons.
-- [ ] Capsule: `AgentButton` primary is a `bone` (text) fill, radius 6, pressed at 0.8 opacity;
+- [ ] Lumen: `AgentButton` primary is a `bone` (text) fill, radius 6, pressed at 0.8 opacity;
   use `Tokens` primary colours, `Radius.button`, the five variants and the states above.

@@ -17,7 +17,7 @@ reconnecting) and "Planner, phone and desktop".
 |---|---|---|
 | Deck | `deck/js/reconnect.js`, `deck/js/pwa.js` `.reach`, `deck/css/deck.css` (work/pwa); `deck/chat/chat.css` `.cv-queued-row` (work/chat) | partial |
 | App | `apps/app/src/state/connection.ts` (work/mobile): state only, nothing drawn | partial |
-| Capsule | `local/capsule/native/Sources/UI/AgentDeskView.swift` OfflineBanner (work/capsule-pro) | partial |
+| Lumen | `local/capsule/native/Sources/UI/AgentDeskView.swift` OfflineBanner (work/capsule-pro) | partial |
 
 ## Anatomy
 
@@ -96,6 +96,6 @@ Deck (work/pwa, work/chat)
 App (work/mobile)
 - [ ] `toConnection` and the outbox list exist; no pill or queued line is drawn.
 
-Capsule (work/capsule-pro)
+Lumen (work/capsule-pro)
 - [ ] OfflineBanner is a 30 tall line with "OFFLINE" in caps and "vyred is not running on this
       Mac. Start it with vyre up."; use the pill words, sentence case, no caps label.

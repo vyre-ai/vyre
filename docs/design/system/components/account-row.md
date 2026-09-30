@@ -1,6 +1,6 @@
 ---
 title: Account picker row
-summary: The one row for choosing which account does a thing, from vault.connections.list {capability}. Provider tile, account, label, Default or Last used, and its state with the fix inline, in suggestions, the Capsule, chat and a send's draft card, with Connect another at the end.
+summary: The one row for choosing which account does a thing, from vault.connections.list {capability}. Provider tile, account, label, Default or Last used, and its state with the fix inline, in suggestions, Lumen, chat and a send's draft card, with Connect another at the end.
 audience: builders
 owner: app-design
 status: draft
@@ -19,13 +19,13 @@ item 3), and draws each one with this row. It is a list row (list-row.md) with a
 |---|---|---|
 | Deck | the draft card's From row (`deck/chat/gate-item.js`, work/chat); the phone sheet `deck/js/need-sheet.js` (work/pwa) | not built |
 | App | the draft screen `apps/app/app/need/[id].tsx` (work/mobile) | not built |
-| Capsule | a "Send from" group in `local/capsule/native/Sources/UI/CapsuleView.swift` (proposed, work/capsule-pro) | not built |
+| Lumen | a "Send from" group in `local/capsule/native/Sources/UI/CapsuleView.swift` (proposed, work/capsule-pro) | not built |
 
 ## Anatomy
 
 A list row, two line, min height 44, padding 6 16, gap 12:
 
-1. **Provider tile.** An avatar place tile, 24 on the desktop (20 in the Capsule, 32 on the
+1. **Provider tile.** An avatar place tile, 24 on the desktop (20 in Lumen, 32 on the
    phone), fill `--hover`, with the provider's glyph at 16 in `--text-2`: one monochrome glyph per
    provider (Google, Microsoft, a mail login, Slack). Until a provider has a glyph, the tile shows
    the provider's initial at the tile's text size. Never a logo in its brand colours.
@@ -53,7 +53,7 @@ another account" base `--text`, meta 12/16 `--label` naming what can be added fo
 | Where | How it shows |
 |---|---|
 | Suggestions (Words lane) | the account kind's row in suggestions.md, with this row's trailing; ⏎ starts from that account |
-| Capsule | "send an email" (or any words that name a capability) shows a "Send from" group of these rows at 44, ready rows first; ⏎ opens the draft from that account |
+| Lumen | "send an email" (or any words that name a capability) shows a "Send from" group of these rows at 44, ready rows first; ⏎ opens the draft from that account |
 | Chat | an agent that needs an account for a send lists them to the person in a question card whose choices are these rows (radio leading, provider tile after it) |
 | A send's draft card | a From field row (draft-card.md) shows the chosen account in mono 13; clicking it opens a picker popover of these rows (a sheet on the phone). With one ready account there is no picker: the row reads the account and nothing opens |
 | Settings, Vault, Connections | grown into the Connections card (card.md): this row at the top, then a "Granted to" row of filter chips (chip.md) per surface, then a footer with "Wrong account?" and the connected date |
@@ -63,7 +63,7 @@ then Connect another.
 
 ## Sizes
 
-| | Desktop | Phone | Capsule |
+| | Desktop | Phone | Lumen |
 |---|---|---|---|
 | Row | 44 (32 dense in a popover) | 56 | 44 |
 | Tile | 24 | 32 | 20 |
@@ -91,7 +91,7 @@ Hover, focus and active as list-row.md (active in a popover: `--signal-wash`).
 ## Keyboard and touch
 
 ↑ ↓ move, ⏎ picks, Esc closes the picker. On a row that needs a fix, ⏎ opens the credential sheet.
-In the Capsule, ⌘1 to ⌘9 pick the first nine ready rows (the key hint shows on the first three).
+In Lumen, ⌘1 to ⌘9 pick the first nine ready rows (the key hint shows on the first three).
 On touch the whole row is the target, except the fix button, which is its own 44 target.
 
 ## Motion
@@ -127,7 +127,7 @@ Deck (work/pwa)
 App (work/mobile)
 - [ ] Nothing built: the From row and the picker sheet on the draft screen.
 
-Capsule (work/capsule-pro)
+Lumen (work/capsule-pro)
 - [ ] No "Send from" group: read `vault.connections.list {capability, surface: "capsule"}` when
       the words name a capability, with the states, the Sign in fix and Connect another. (The
       "Sends to" row is where a message goes, not which account sends it; it stays.)

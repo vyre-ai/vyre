@@ -19,7 +19,7 @@ desktop" (missed alarm), "Glass · take-over and hand-back states" and "Vault, p
 |---|---|---|
 | Deck | `deck/css/views/planner.css` `.pl-banner` (main); `deck/chat/term.css` `.term-note` (main) | partial |
 | App | `apps/app/src/ui/NotifyBar.tsx`, `apps/app/src/ui/SignInBar.tsx` (work/mobile) | partial |
-| Capsule | `local/capsule/native/Sources/UI/AgentDeskView.swift` WaitingHint (work/capsule-pro) | partial |
+| Lumen | `local/capsule/native/Sources/UI/AgentDeskView.swift` WaitingHint (work/capsule-pro) | partial |
 
 ## Anatomy
 
@@ -100,5 +100,5 @@ App (work/mobile)
 - [ ] NotifyBar and SignInBar are inline bars with their own styles; build one Banner with icon,
       fact, detail and one action.
 
-Capsule (work/capsule-pro)
-- [ ] WaitingHint is a 30 tall hint line; banners are not drawn in the Capsule panel.
+Lumen (work/capsule-pro)
+- [ ] WaitingHint is a 30 tall hint line; banners are not drawn in Lumen panel.

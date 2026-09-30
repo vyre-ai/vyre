@@ -17,7 +17,7 @@ with github's hosted-MCP work (`plans/github.md`).
 |---|---|---|
 | Deck | none | not built |
 | App | none | not built |
-| Capsule | none (compact form only, see Variants) | not built |
+| Lumen | none (compact form only, see Variants) | not built |
 
 ## Anatomy
 
@@ -50,9 +50,9 @@ A neutral card: `--panel`, 1 px `--rule`, radius `--radius-card` (12; phone 10).
 - **Phone**: checks row scrolls sideways; files list is always the multi-file diff's collapsed
   state (no default-expand-first-file, since the phone screen is precious); footer buttons stack,
   Approve and merge 54 full width, then Request changes and Comment at 44 side by side.
-- **Capsule (compact)**: header plus the checks row only, no diff, no comments: title, branch
+- **Lumen (compact)**: header plus the checks row only, no diff, no comments: title, branch
   pair, check chips. "Open in the Deck" (ghost) is the only action; approving a PR is a desktop/
-  phone action, not a Capsule one, the same call `capsule.md`'s panel/rows/footer shell already
+  phone action, not a Lumen one, the same call `capsule.md`'s panel/rows/footer shell already
   makes for anything wider than a quick glance.
 - **Merged / Closed**: the footer collapses to one line, check glyph or x, "Merged into main by
   you · 2 min ago" or "Closed, not merged".

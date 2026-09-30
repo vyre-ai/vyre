@@ -17,12 +17,12 @@ the moment anything else needs the person. The words come from modules' `teaches
 |---|---|---|
 | Deck | the view's footer chip, `deck/js/tips.js` (proposed, work/pwa); chat's composer hint line (work/chat) | not built |
 | App | the Places sheet line and empty screens (work/mobile) | not built |
-| Capsule | the line under the empty input (work/capsule-pro) | not built |
+| Lumen | the line under the empty input (work/capsule-pro) | not built |
 | CLI | the dim "tip:" line on stderr (work/docs, `vyre tips`) | built <!-- terms: ignore --> |
 
 ## Anatomy
 
-**Tip line** (the Capsule, chat's composer hint, the phone). One line, min height 28, gap 8,
+**Tip line** (Lumen, chat's composer hint, the phone). One line, min height 28, gap 8,
 12/16 `--label`:
 
 1. A 12 lightbulb icon in `--label` (the icon set's `tip`).
@@ -54,7 +54,7 @@ The × sits top right, beside the title. One tap on × removes it for good. It n
 
 | Surface | Where | Only when |
 |---|---|---|
-| Capsule | a tip line under the empty input, in the body, padding 0 16, `--label` | the field is empty and nothing waits |
+| Lumen | a tip line under the empty input, in the body, padding 0 16, `--label` | the field is empty and nothing waits |
 | Deck | a tip chip at the bottom left of the view; inside an empty state, the line under the empty state's row of buttons | the view is idle |
 | Chat | the composer's hint line: the tip on the left, the composer's key hints stay on the right | the composer is empty |
 | Phone | a tip line at the bottom of the Places sheet, and on empty screens under the empty state | the sheet or screen is idle |
@@ -80,7 +80,7 @@ A tip never sits over a question, an approval, a plan or the waiting list, and n
 
 - A tip is never in the tab order by default and never takes focus. Its buttons are reachable by
   Tab only after the person moves focus into the footer region (F6 on the Deck).
-- The Capsule: ⌘. dismisses the tip under the input; Show me has no key.
+- Lumen: ⌘. dismisses the tip under the input; Show me has no key.
 - Touch targets 44 on the phone (the drawing stays 28).
 
 ## Motion
@@ -112,7 +112,7 @@ Deck (work/pwa, work/chat)
 App (work/mobile)
 - [ ] Nothing built: the Places sheet line and empty screen lines.
 
-Capsule (work/capsule-pro)
+Lumen (work/capsule-pro)
 - [ ] Nothing built: the line under the empty input, ⌘. to dismiss.
 
 System (app-design)

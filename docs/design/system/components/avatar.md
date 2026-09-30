@@ -17,7 +17,7 @@ person's button to Places. Drawn on almost every board; see "Agents and their co
 |---|---|---|
 | Deck | `deck/css/deck.css` `.initial` `.avatar` (main); `deck/chat/chat.css` `.av-agent` `.av-person` (work/chat); `deck/css/sheet.css` `.nsh-tile` (work/pwa) | partial |
 | App | inline in `apps/app/src/ui/Row.tsx` and `apps/app/src/ui/Screen.tsx` (work/mobile) | partial |
-| Capsule | none (work/capsule-pro) | not built |
+| Lumen | none (work/capsule-pro) | not built |
 
 ## Anatomy
 
@@ -175,7 +175,7 @@ branches: text-only,
 degrades to plain text under `NO_COLOR`, chosen from a fixed set of about 8 pre-picked, AA-tested
 hues (never an arbitrary hash-to-hue) so a hash never lands near bone (`2` in the xterm 256 sense)
 or violet, which would misread as a status signal in a terminal. This stays a CLI-only convention;
-it does not leak into the Deck, the App or the Capsule, where the rule above holds without
+it does not leak into the Deck, the App or Lumen, where the rule above holds without
 exception.
 
 ## Variants
@@ -190,7 +190,7 @@ exception.
 
 | Size | Radius (tile) | Text | Where |
 |---|---|---|---|
-| 20 | 5 | meta 12/16 | Mac Capsule rows |
+| 20 | 5 | meta 12/16 | Mac Lumen rows |
 | 24 | 6 | meta 12/16 | Desktop list rows, inline mentions |
 | 32 | 8 | base 13/18 | Phone rows, rail foot (person) |
 | 40 | 10 | read 15/22 | Detail headers, device and place rows |
@@ -250,7 +250,7 @@ whether or not the artwork itself is original.
 - [ ] Deck (work/pwa): `.nsh-tile` is 22 with radius 6; use 24 with radius 6.
 - [ ] App: the agent tile is a circle (`radius.full`) with `--text-2` ink at 32; it needs the
   rounded square and a shared `Avatar` component with the four sizes.
-- [ ] Capsule: no avatar; the Capsule board draws 20 tiles with radius 5.
+- [ ] Lumen: no avatar; Lumen board draws 20 tiles with radius 5.
 - [ ] The optional stored-pick override (see "Avatar option" above) has no real field yet -
   `onboard.person.avatarOption` or similar, written only by the person, read by every surface
   that draws their avatar including the phone's pairing screen. Not needed for 0.1.1: every
