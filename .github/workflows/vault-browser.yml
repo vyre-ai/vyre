@@ -34,3 +34,7 @@ jobs:
         env:
           CHROME_EXTRA_FLAGS: "--no-sandbox"
         run: node modules/vault-extension/testing/browser-check.mjs
+      - name: The key chip in a real browser, with trusted input
+        env:
+          CHROME_EXTRA_FLAGS: "--no-sandbox"
+        run: node modules/vault-extension/testing/chip-check.mjs
