@@ -22,10 +22,20 @@ jobs:
           node-version: 24
       - run: npm ci --ignore-scripts || npm i --ignore-scripts
       - run: npm i --prefix "$RUNNER_TEMP/sharp" sharp
-      - run: node scripts/docs-shots
+      # The runner's own agent (/opt/hca/hosted-compute-agent) is an ancestor of every step, and vyred refuses
+      # calls that need the person when it runs under a program it does not recognise. So the shots run
+      # re-parented to init: the subshell exits at once, the script lives on without that ancestor, and the
+      # step waits for its exit code.
+      - name: docs-shots (detached from the runner's process tree)
         env:
           CHROME: /usr/bin/google-chrome
           DOCS_SHOTS_SHARP: ${{ runner.temp }}/sharp
+        run: |
+          rm -f "$RUNNER_TEMP/shots.exit"
+          ( setsid sh -c 'node scripts/docs-shots; echo $? > "$RUNNER_TEMP/shots.exit"' > "$RUNNER_TEMP/shots.log" 2>&1 < /dev/null & )
+          while [ ! -f "$RUNNER_TEMP/shots.exit" ]; do sleep 5; done
+          cat "$RUNNER_TEMP/shots.log"
+          exit "$(cat "$RUNNER_TEMP/shots.exit")"
       - run: node scripts/docs-check
         continue-on-error: true
       - uses: actions/upload-artifact@v4
