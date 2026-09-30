@@ -4,6 +4,8 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+- An agent limited to certain projects can no longer read or act on another project's GitHub repo by naming it; the project reads as if it did not exist.
+
 - `#` tags on `threads.start` and `agents.ask`, with `threads.send`'s trust: `mentions: [{kind, id, name}]` and `pasted: [span]` are honoured only from a person's own surface. `threads.start` hears the first prompt as any person's turn (said row, tags resolved for the new thread, the notes beside the prompt for the model only); from a model, a module or a guest the tags are dropped. `agents.ask` from a person with tags sends the words on as that person (`core/modules` `CALL_AS.agents`: person labels only, and only to `threads.send`), so threads.send hears them; any other caller's tags are dropped (`core/switchboard/index.js`, `core/agents/index.js`, `core/modules/index.js`).
 - GitHub reads for you and your agents: where a pull request stands (checks, reviews, ready to merge), its comments, and a project's issues. Text written by others is marked as theirs.
 

@@ -87,12 +87,12 @@ async function world(t, { projectsRows = [], tokens = {}, projectsDir, existingT
   };
   const mod = await github.start(ctx);
   t.after(() => mod.stop());
-  const as = (caller, { firstParty = false, asked = false, door = false } = {}) => async (name, input = {}) => {
+  const as = (caller, { firstParty = false, asked = false, door = false, granted } = {}) => async (name, input = {}) => {
     const def = tools.get(name);
     if (!def) return { error: { code: "no_such_tool" } };
     if (def.callers && !def.callers.some(c => caller === c || caller.startsWith(c + ":"))) return { error: { code: "denied" } };
     if (def.internal && !caller.startsWith("module:")) return { error: { code: "no_such_tool" } };
-    try { return { data: await def.run(input, { caller, firstParty, ...(asked ? { asked: true } : {}), ...(door ? { door: true } : {}) }) }; }
+    try { return { data: await def.run(input, { caller, firstParty, ...(asked ? { asked: true } : {}), ...(door ? { door: true } : {}), ...(granted !== undefined ? { granted } : {}) }) }; }
     catch (e) { const err = /** @type {any} */ (e); return { error: { code: err.code, message: err.message, ...(err.detail ? { detail: err.detail } : {}) } }; }
   };
   return { db, events, calls, as, ctx, mcpRows };
@@ -586,6 +586,30 @@ test("github.session.pr: the open PRs whose head is the session's branch; intern
   assert.deepEqual((await th("github.act.target", { tool: "github.project.pr.merge", input: { project: "app", pr: 7 } })).data, { to: ["github.project.pr.merge:alex/app#7"] });
   assert.deepEqual((await th("github.act.target", { tool: "github.project.pr.open", input: { project: "app", session: "s1" } })).data, { to: ["github.project.pr.open:alex/app@vyre/s1"] });
   assert.ok(w.log.every(l => l.method === "GET"));
+});
+
+test("an agent's project grant bounds which projects it may name: a project outside it is not_found on every project tool, '*' and a listed project pass, the person is unaffected (M-G3)", async t => {
+  const w = await prWorld(t);
+  const calls = [
+    ["github.project.pr.get", { project: "app", pr: 7 }], ["github.project.pr.status", { project: "app", pr: 7 }],
+    ["github.project.pr.comments", { project: "app", pr: 7 }], ["github.project.issue.list", { project: "app" }],
+    ["github.project.issue.get", { project: "app", issue: 3 }], ["github.project.pr.merge", { project: "app", pr: 7 }],
+    ["github.project.pr.review", { project: "app", pr: 7, event: "APPROVE" }], ["github.project.pr.open", { project: "app", session: "s1", title: "t" }],
+    ["github.session.push", { project: "app", session: "s1" }], ["github.session.history", { project: "app", session: "s1" }],
+    ["github.session.undo", { project: "app", session: "s1" }], ["github.session.redo", { project: "app", session: "s1" }],
+    ["github.project.local-init", { project: "app" }],
+  ];
+  const before = w.log.length;
+  for (const [tool, input] of calls) {
+    for (const granted of [["other"], [], "other"]) {
+      assert.equal((await w.as("mcp:agent:kit", { granted })(tool, input)).error.code, "not_found", `${tool} with grant ${JSON.stringify(granted)}`);
+    }
+  }
+  assert.equal(w.log.length, before, "nothing reached GitHub for a project outside the grant");
+  for (const granted of ["*", ["app"], ["x", "app"], ["*"], undefined]) {
+    assert.notEqual((await w.as("mcp:agent:kit", { granted })("github.project.pr.status", { project: "app", pr: 7 })).error?.code, "not_found", JSON.stringify(granted));
+  }
+  assert.equal((await w.as("deck")("github.project.pr.status", { project: "app", pr: 7 })).error, undefined, "the person has no grant to check");
 });
 
 test("github.project.pr.merge / .review: a person runs; a project without a repo is not_found (agents are held by reach: asked, see registry.test.js)", async t => {
