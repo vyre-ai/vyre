@@ -274,6 +274,20 @@ test("a queued message taken back keeps its typed tag and its pasted span, and t
   c.stop();
 });
 
+test("an edit of a queued message always sends pasted, [] when nothing was pasted; threads.send still leaves the key out", async () => {
+  calls.length = 0;
+  const th = thread();
+  const c = mountComposer({ thread: th, session: createSession(th) });
+  const key = (k) => c.input.dispatchEvent(Object.assign(new /** @type {any} */ (globalThis).Event("keydown"), { key: k, target: c.input }));
+  type(c, "Typed words only");
+  key("Enter"); await settle();
+  assert.equal("pasted" in calls.find(x => x.tool === "threads.send").input, false, "a send with nothing pasted leaves the key out");
+  c.editQueued({ uuid: "u2", queued: 4, text: "Typed words only" });
+  key("Enter"); await settle();
+  assert.deepEqual(calls.find(x => x.tool === "threads.edit").input.pasted, [], "an edit sends [] so sessions hears it");
+  c.stop();
+});
+
 // Last: a box with no mentions provider is remembered by the capability cache for the rest of this file.
 test("no mentions provider on the box: no picker, nothing offered", async () => {
   const keep = globalThis.fetch;
@@ -285,4 +299,5 @@ test("no mentions provider on the box: no picker, nothing offered", async () => 
   globalThis.fetch = keep;
   c.stop();
 });
+
 

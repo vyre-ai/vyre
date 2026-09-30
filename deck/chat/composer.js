@@ -1083,10 +1083,11 @@ export function mountComposer(opts) {
     const e = editing;
     if (!e) return;
     const text = ta.value.trim();
-    // The edited words go with the same pasted spans and tags a send carries, so an edit cannot turn pasted text into a tag.
+    // The edited words go with the same pasted spans and tags a send carries, so an edit cannot turn pasted text into a tag. `pasted` is
+    // always sent, [] when nothing was pasted: sessions hears an edited queued message only when the key is an array (an absent key = all not typed).
     const pasted = [...new Set(pastes.of(ta.value).map(x => x.trim()).filter(x => x && text.includes(x)))];
     const mentions = tagUI.chips().map(t => ({ kind: t.kind, id: t.id, name: t.name }));
-    const r = await CAPS.use("threads.edit", () => attempt("threads.edit", { thread, queued: e.queued, text, ...(mentions.length ? { mentions } : {}), ...(pasted.length ? { pasted } : {}) }));
+    const r = await CAPS.use("threads.edit", () => attempt("threads.edit", { thread, queued: e.queued, text, ...(mentions.length ? { mentions } : {}), pasted }));
     if (r.error) { say(r.missing ? NEEDS_UPDATE : "Could not change it: " + r.error.message); return; }
     // thread.queued comes back with the same id and the new words; the row shows them now.
     const q = S?.queued.find(x => x.queued === e.queued);

@@ -4,6 +4,10 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### chat: a queued-message edit always sends `pasted`
+
+- `threads.edit` now carries `pasted` every time, `[]` when nothing was pasted: sessions hears an edited queued message only when the key is an array (an absent key counts the whole edit as not typed). `threads.send` still leaves the key out when nothing was pasted.
+
 #### settings: hidden keys, and the cap over every provider
 
 - The generic Settings groups skip a key its module marks `hidden: true` (iq hides every `spend.*` key: Settings, Spend is their one screen). Settings, Spend and the spend-cap line also handle provider `all`, the cap over every provider together (`spend.summary`'s `all`, `spend.raise {provider: "all"}`).
