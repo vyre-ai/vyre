@@ -4,7 +4,6 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
-<<<<<<< HEAD
 - Artifacts (plans/artifacts.md, approved 30 Sep). A new box module, `artifacts`: documents,
   reports, pages, dashboards, diagrams, decks and small apps that any agent makes with
   `artifacts.create` and `artifacts.update`. Each artifact keeps every version in its own small git
@@ -29,7 +28,7 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 - `lib/secret-text`: finds vendor key shapes in text, without repeating them.
 - The docs reference reads v1 object tool entries.
 
-=======
+
 - Closed a caller-identity race on macOS: a forged "cli" label from under a claude was believed
   when the caller was forked inside the 250 ms shared process snapshot. A pid the snapshot lacks is
   now read again, retries start from a fresh table, a peer that already exited is a model's, and
@@ -44,7 +43,6 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 - The session MCP server answers JSON that is not a request object (null, a number, an array) with
   an invalid-request error; it used to exit. Seeded fuzz tests cover the relay frames and the MCP
   lines (`core/relay/fuzz.test.js`, `core/mcp/fuzz.test.js`).
->>>>>>> origin/work/stage-0.2
 - Module contract v1 (ADR 0047), as a proof on the platform branch. `module.json` says for each
   tool who may call it (`reach`) and whether it acts as you outside (`outward`). Each ctx member a
   module uses has one declaration, and the install card is built from them.
