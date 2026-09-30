@@ -74,6 +74,11 @@ export async function conform(provider, o) {
   const user = text => ({ type: "user", message: { role: "user", content: text }, parent_tool_use_id: null, session_id: o.id });
   const results = s => s.got.filter(m => m.type === "result").length;
 
+  // A provider with no child process (a hosted-API driver, capabilities.process === false) has no
+  // pid, group or spawn to check; one with no tools (capabilities.tools === false) never asks a
+  // permission question, so there is none to route. Every other scenario still applies to it.
+  const caps = provider.capabilities || {};
+  const proc = caps.process !== false, tools = caps.tools !== false;
   const s = open(false);
   /** @type {number|null} */ let detached = null;
   try {
@@ -84,29 +89,44 @@ export async function conform(provider, o) {
     await s.wait(m => m.type === "result", "the first result");
     const text = s.got.filter(m => m.type === "stream_event" && m.event && m.event.delta && m.event.delta.type === "text_delta").map(m => m.event.delta.text).join("");
     check(text === "echo: hello", `text streams as deltas (got "${text}")`);
-    check(Boolean(s.group && s.group.pid && s.group.pgid && s.group.sid), "onSpawn reports pid, pgid and sid");
-    check(s.spawnedBeforeFirst === true, "onSpawn comes before the first message");
-    check(s.proc.pid === (s.group && s.group.pid), "the session's pid is the spawned one");
+    if (proc) {
+      check(Boolean(s.group && s.group.pid && s.group.pgid && s.group.sid), "onSpawn reports pid, pgid and sid");
+      check(s.spawnedBeforeFirst === true, "onSpawn comes before the first message");
+      check(s.proc.pid === (s.group && s.group.pid), "the session's pid is the spawned one");
+    }
 
-    // 2. A permission question, answered, reaches the tool.
-    let n = s.got.length;
-    s.proc.write(user("bash npm test"));
-    const ask = await s.wait(m => m.type === "control_request" && m.request && m.request.subtype === "can_use_tool", "a permission question");
-    check(ask.request.tool_name === "Bash" && ask.request.input && ask.request.input.command === "npm test", "the question names the tool and its input");
-    s.proc.write({ type: "control_response", response: { subtype: "success", request_id: ask.request_id, response: { behavior: "allow", updatedInput: ask.request.input } } });
-    await s.wait(m => m.type === "result" && results(s) >= 2, "the answered turn's result");
-    check(s.since(n).some(m => m.type === "user" && m.message && Array.isArray(m.message.content) && m.message.content.some(b => b.type === "tool_result")), "the tool ran after an allow");
+    if (tools) {
+      // 2. A permission question, answered, reaches the tool.
+      let n = s.got.length;
+      s.proc.write(user("bash npm test"));
+      const ask = await s.wait(m => m.type === "control_request" && m.request && m.request.subtype === "can_use_tool", "a permission question");
+      check(ask.request.tool_name === "Bash" && ask.request.input && ask.request.input.command === "npm test", "the question names the tool and its input");
+      s.proc.write({ type: "control_response", response: { subtype: "success", request_id: ask.request_id, response: { behavior: "allow", updatedInput: ask.request.input } } });
+      await s.wait(m => m.type === "result" && results(s) >= 2, "the answered turn's result");
+      check(s.since(n).some(m => m.type === "user" && m.message && Array.isArray(m.message.content) && m.message.content.some(b => b.type === "tool_result")), "the tool ran after an allow");
 
-    // 3. Interrupt withdraws an open question and ends the turn; the session stays.
-    n = s.got.length;
-    s.proc.write(user("bash rm -rf build"));
-    const ask2 = await s.wait(m => m.type === "control_request" && m.request_id !== ask.request_id && m.request && m.request.subtype === "can_use_tool", "a second question");
-    await s.proc.interrupt();
-    await s.wait(m => m.type === "control_cancel_request" && m.request_id === ask2.request_id, "the question withdrawn");
-    await s.wait(m => m.type === "result" && results(s) >= 3, "the interrupted turn's end");
-    check(s.proc.alive, "the session outlives an interrupt");
-    s.proc.write(user("again"));
-    await s.wait(m => m.type === "result" && results(s) >= 4, "a turn after the interrupt");
+      // 3. Interrupt withdraws an open question and ends the turn; the session stays.
+      n = s.got.length;
+      s.proc.write(user("bash rm -rf build"));
+      const ask2 = await s.wait(m => m.type === "control_request" && m.request_id !== ask.request_id && m.request && m.request.subtype === "can_use_tool", "a second question");
+      await s.proc.interrupt();
+      await s.wait(m => m.type === "control_cancel_request" && m.request_id === ask2.request_id, "the question withdrawn");
+      await s.wait(m => m.type === "result" && results(s) >= 3, "the interrupted turn's end");
+      check(s.proc.alive, "the session outlives an interrupt");
+      s.proc.write(user("again"));
+      await s.wait(m => m.type === "result" && results(s) >= 4, "a turn after the interrupt");
+
+    } else {
+      // No tools: an interrupt aborts a turn that is still streaming, the turn ends, the session goes on.
+      s.proc.write(user("slow please"));
+      await s.wait(m => m.type === "stream_event", "text of a slow turn");
+      await s.proc.interrupt();
+      await s.wait(m => m.type === "result" && results(s) >= 2, "the interrupted turn's end");
+      check(s.proc.alive, "the session outlives an interrupt");
+      s.proc.write(user("again"));
+      await s.wait(m => m.type === "result" && results(s) >= 3, "a turn after the interrupt");
+      check(!s.got.some(m => m.type === "control_request"), "a provider with no tools never asks");
+    }
 
     // 3b. The fixed safety set (plans/sessions.md 3.7 H3): no bypass-shaped mode is reachable through
     // setMode, whatever the provider's own driver reports or a caller asks for. A provider with no
@@ -138,7 +158,7 @@ export async function conform(provider, o) {
     await s.proc.stop(3000);
     check(!s.proc.alive && s.exited !== null, "stop ends the session and reports the exit");
     await new Promise(r => setTimeout(r, 200));
-    check(!groupAlive(pgid), "stop takes the whole process group");
+    if (proc) check(!groupAlive(pgid), "stop takes the whole process group");
     if (detached) check(!pidAlive(detached), "stop takes a tool that detached from the group too");
   } catch (e) { fails.push(String(/** @type {Error} */ (e).message)); try { await s.proc.stop(1000); } catch {} return fails; }
 

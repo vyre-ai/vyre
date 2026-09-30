@@ -349,7 +349,7 @@ for (const driver of ["cli", "sdk"]) {
     assert.equal(back.error && back.error.code, "account_removed", JSON.stringify(back));
   });
 
-  test(`${driver}: providers: Grok runs a thread on the ACP driver, providers.list names all three, and a resume loads the agent's own session`, { skip }, async t => {
+  test(`${driver}: providers: Grok runs a thread on the ACP driver, providers.list names them all, and a resume loads the agent's own session`, { skip }, async t => {
     const w = await boot(t, { driver });
     // A stand-in `grok` first on PATH: the fake ACP agent, its sessions kept in a folder.
     const bin = path.join(w.root, "shim");
@@ -361,7 +361,7 @@ for (const driver of ["cli", "sdk"]) {
     fs.mkdirSync(process.env.FAKE_ACP_STORE);
     t.after(() => { for (const [k, v] of Object.entries(saved)) { if (v === undefined) delete process.env[k]; else process.env[k] = v; } });
     const list = (await w.tool("providers.list", {})).data;
-    assert.deepEqual(list.map(p => p.id), ["claude", "codex", "grok"]);
+    assert.deepEqual(list.map(p => p.id), ["claude", "codex", "grok", "openrouter"]);
     const th = await w.tool("threads.start", { cwd: w.work, provider: "grok", prompt: "hello", surface: "deck" });
     assert.equal(th.error, undefined, JSON.stringify(th));
     await w.finished(th.data.id);
@@ -458,6 +458,36 @@ for (const driver of ["cli", "sdk"]) {
     assert.equal(bad.data.step, "failed");
     assert.deepEqual((await w.tool("sessions.accounts.list", { provider: "codex" })).data.map(a => a.label), ["Personal"]);
     assert.equal((await w.tool("sessions.accounts.signin", { provider: "gemini" })).error.code, "bad_input");
+  });
+
+  test(`${driver}: OpenRouter is the last rung: an API-key account answers a thread with no process, and a limit on Claude reaches it through the routing list`, { skip }, async t => {
+    // A local OpenAI-compatible endpoint standing in for OpenRouter.
+    const http = await import("node:http");
+    const srv = http.createServer((req, res) => {
+      let b = ""; req.on("data", d => (b += d));
+      req.on("end", () => {
+        const last = JSON.parse(b).messages.at(-1).content;
+        res.writeHead(200, { "content-type": "text/event-stream" });
+        res.write(`data: ${JSON.stringify({ choices: [{ delta: { content: `router: ${last.length > 40 ? "brief+" : ""}${last.split("\n").at(-1)}` } }] })}\n\ndata: [DONE]\n\n`); res.end();
+      });
+    });
+    await new Promise(r => srv.listen(0, "127.0.0.1", () => r(undefined)));
+    t.after(() => { srv.closeAllConnections?.(); srv.close(); });
+    const saved = process.env.VYRE_OPENROUTER_URL;
+    process.env.VYRE_OPENROUTER_URL = `http://127.0.0.1:${srv.address().port}`;
+    t.after(() => { if (saved === undefined) delete process.env.VYRE_OPENROUTER_URL; else process.env.VYRE_OPENROUTER_URL = saved; });
+    const w = await boot(t, { driver, sessions: { auth: "setup-token" }, vault: { "claude-setup-token": "fake-setup-value", "or-key": "sk-or" } });
+    const acct = await w.tool("sessions.accounts.add", { provider: "openrouter", label: "Fallback", kind: "api-key", vault_item: "or-key" });
+    assert.equal(acct.error, undefined, JSON.stringify(acct));
+    const direct = (await w.tool("threads.start", { cwd: w.work, provider: "openrouter", prompt: "hello there", surface: "deck" })).data;
+    await w.finished(direct.id);
+    assert.deepEqual(await w.said(direct.id), ["router: hello there"]);
+    // Claude at its limit moves on to it.
+    assert.equal((await w.tool("sessions.routes.set", { scope: "default", entries: [{ provider: "claude" }, { provider: "openrouter" }] })).error, undefined);
+    const th = (await w.tool("threads.start", { cwd: w.work, prompt: "limit", surface: "deck" })).data;
+    await until(async () => (await w.tool("threads.get", { thread: th.id })).data.thread.provider === "openrouter", "the move to OpenRouter");
+    await w.finished(th.id, 2);
+    assert.match((await w.said(th.id)).at(-1), /^router: /);
   });
 
   test(`${driver}: accounts add/remove/bind are "asked": an ordinary agent is refused with no prompt, the assistant and the person are not`, { skip }, async t => {

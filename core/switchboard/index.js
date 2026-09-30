@@ -1976,6 +1976,7 @@ export default {
       claude: { "setup-token": "CLAUDE_CODE_OAUTH_TOKEN", "api-key": "ANTHROPIC_API_KEY" },
       codex: { "api-key": "OPENAI_API_KEY" },
       grok: { "api-key": "XAI_API_KEY" },
+      openrouter: { "api-key": "OPENROUTER_API_KEY" },
     });
     const accountEnv = async (/** @type {any} */ a) => {
       if (a.kind === "login") return { auth: "subscription", env: {} };

@@ -1,0 +1,85 @@
+// @ts-check
+// The OpenRouter driver against a local OpenAI-compatible server: conform() (no process, no tools),
+// the key, history across a resume, and a limit said as one.
+
+import { test } from "node:test";
+import assert from "node:assert/strict";
+import http from "node:http";
+import crypto from "node:crypto";
+import { openrouterProvider } from "./openrouter.js";
+import { conform } from "../conformance.js";
+
+/** A server that answers like /chat/completions: echoes the last user text, "slow" streams for seconds, "limit" is a 429. */
+async function server(t) {
+  const seen = [];
+  const srv = http.createServer((req, res) => {
+    let body = "";
+    req.on("data", d => (body += d));
+    req.on("end", () => {
+      const j = JSON.parse(body || "{}");
+      seen.push({ auth: req.headers.authorization, model: j.model, messages: j.messages });
+      const last = j.messages.at(-1).content;
+      if (req.headers.authorization !== "Bearer sk-test") { res.writeHead(401); return res.end("no key"); }
+      if (/^limit/.test(last)) { res.writeHead(429); return res.end("rate limit exceeded"); }
+      res.writeHead(200, { "content-type": "text/event-stream" });
+      const send = o => res.write(`data: ${JSON.stringify(o)}\n\n`);
+      const words = /^slow/.test(last) ? Array.from({ length: 60 }, () => "word ") : [`echo: ${last}`];
+      let i = 0;
+      const tick = () => {
+        if (res.destroyed) return;
+        if (i < words.length) { send({ choices: [{ delta: { content: words[i++] } }] }); return void setTimeout(tick, /^slow/.test(last) ? 100 : 0); }
+        send({ choices: [{ delta: {} }], usage: { prompt_tokens: 5, completion_tokens: 3, cost: 0.0001 } });
+        res.write("data: [DONE]\n\n"); res.end();
+      };
+      tick();
+    });
+  });
+  await new Promise(r => srv.listen(0, "127.0.0.1", () => r(undefined)));
+  t.after(() => new Promise(r => { srv.closeAllConnections?.(); srv.close(() => r(undefined)); }));
+  return { url: `http://127.0.0.1:${/** @type {any} */ (srv.address()).port}`, seen };
+}
+
+test("openrouter: conform() passes with no process and no tools; the stream, an interrupt of a slow turn, and a resume", async t => {
+  const s = await server(t);
+  const p = openrouterProvider({ baseUrl: s.url });
+  const fails = await conform(p, { id: crypto.randomUUID(), cwd: "/tmp", env: { OPENROUTER_API_KEY: "sk-test" } });
+  assert.deepEqual(fails, []);
+});
+
+test("openrouter: the key is the account's, the model is the one asked for, a resume keeps the conversation, cost comes back", async t => {
+  const s = await server(t);
+  const p = openrouterProvider({ baseUrl: s.url });
+  const id = crypto.randomUUID();
+  const got = [];
+  const run = resume => p.run({ id, resume, model: "anthropic/claude-haiku-4.5", system: { mode: "append", text: "Be brief." }, env: { OPENROUTER_API_KEY: "sk-test" }, onMessage: m => got.push(m), onExit() {} });
+  const a = run(false);
+  a.write({ type: "user", message: { role: "user", content: "first" } });
+  for (let i = 0; i < 100 && !got.some(m => m.type === "result"); i++) await new Promise(r => setTimeout(r, 20));
+  await a.stop();
+  const b = run(true);
+  b.write({ type: "user", message: { role: "user", content: "second" } });
+  for (let i = 0; i < 100 && got.filter(m => m.type === "result").length < 2; i++) await new Promise(r => setTimeout(r, 20));
+  await b.stop();
+  assert.equal(s.seen[0].model, "anthropic/claude-haiku-4.5");
+  assert.equal(s.seen[0].messages[0].content, "Be brief.");
+  assert.deepEqual(s.seen[1].messages.map(m => m.content), ["Be brief.", "first", "echo: first", "second"], "the resumed turn carries the first exchange");
+  assert.ok(Math.abs(got.filter(m => m.type === "result").at(-1).total_cost_usd - 0.0002) < 1e-9, "the two turns' cost added up");
+});
+
+test("openrouter: a missing or wrong key, and a 429, end the turn as errors; a limit says so", async t => {
+  const s = await server(t);
+  const p = openrouterProvider({ baseUrl: s.url });
+  const turn = async (env, text) => {
+    const got = [];
+    const r = p.run({ id: crypto.randomUUID(), resume: false, env, onMessage: m => got.push(m), onExit() {} });
+    r.write({ type: "user", message: { role: "user", content: text } });
+    for (let i = 0; i < 100 && !got.some(m => m.type === "result"); i++) await new Promise(x => setTimeout(x, 20));
+    await r.stop();
+    return got.find(m => m.type === "result");
+  };
+  assert.match((await turn({}, "hi")).result, /no OpenRouter key/);
+  assert.match((await turn({ OPENROUTER_API_KEY: "wrong" }, "hi")).result, /answered 401/);
+  const limited = await turn({ OPENROUTER_API_KEY: "sk-test" }, "limit now");
+  assert.equal(limited.is_error, true);
+  assert.match(limited.result, /usage limit reached/);
+});

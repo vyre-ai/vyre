@@ -26,6 +26,7 @@ import { Routes, ROUTES_MIGRATION } from "./routes.js";
 import { usesSpawner } from "./spawn.js";
 import { grokProvider } from "./drivers/grok.js";
 import { codexProvider } from "./drivers/codex.js";
+import { openrouterProvider } from "./drivers/openrouter.js";
 import { wipeAccount } from "../spawner/client.js";
 
 /** Per-purpose and per-project model overrides a person set from a surface. */
@@ -47,7 +48,8 @@ import { Slots, KINDS, BOX_DEFAULTS } from "./slots.js";
 const LIMITS_MIGRATION = `CREATE TABLE IF NOT EXISTS sessions_limits (project TEXT NOT NULL, kind TEXT NOT NULL, value INTEGER NOT NULL, PRIMARY KEY (project, kind))`;
 
 /** The agent's own session id for a thread on an ACP provider, so a resume after a vyred restart loads it instead of starting fresh. */
-const ACP_MIGRATION = `CREATE TABLE IF NOT EXISTS sessions_acp (thread TEXT PRIMARY KEY, provider TEXT NOT NULL, agent_session TEXT NOT NULL)`;
+const ACP_MIGRATION = `CREATE TABLE IF NOT EXISTS sessions_acp (thread TEXT PRIMARY KEY, provider TEXT NOT NULL, agent_session TEXT NOT NULL);
+CREATE TABLE IF NOT EXISTS sessions_openrouter (thread TEXT PRIMARY KEY, messages TEXT NOT NULL)`;
 
 /**
  * "asked" reach, enforced here until the kernel's own check (P17) lands: the tool runs for the
@@ -190,14 +192,18 @@ export default {
     // the tiny core/providers module since a tool name must start with its own module's name
     // (core/modules/index.js's validation) and "providers" is not this module's name; this is the
     // internal snapshot that module calls through ctx.call.
-    const PROVIDERS = [{ id: "claude", label: "Claude" }, { id: "codex", label: "Codex" }, { id: "grok", label: "Grok" }];
+    const PROVIDERS = [{ id: "claude", label: "Claude" }, { id: "codex", label: "Codex" }, { id: "grok", label: "Grok" }, { id: "openrouter", label: "OpenRouter" }];
     // Codex (through codex-acp) and Grok (its own ACP mode) run on the one generic ACP driver, each
     // with strictest-approval flags at every start and its own sign-in in the account's HOME.
     const acpSessions = provider => ({
       get: id => { const r = /** @type {any} */ (db.prepare("SELECT agent_session FROM sessions_acp WHERE thread = ? AND provider = ?").get(String(id), provider)); return r ? String(r.agent_session) : undefined; },
       set: (id, a) => { db.prepare("INSERT INTO sessions_acp (thread, provider, agent_session) VALUES (?,?,?) ON CONFLICT(thread) DO UPDATE SET agent_session = excluded.agent_session").run(String(id), provider, String(a)); },
     });
-    const drivers = { codex: codexProvider({ sessions: acpSessions("codex") }), grok: grokProvider({ sessions: acpSessions("grok") }) };
+    const drivers = { codex: codexProvider({ sessions: acpSessions("codex") }), grok: grokProvider({ sessions: acpSessions("grok") }),
+      // The last rung: a plain API-key driver, its conversation kept here so a resume carries on.
+      openrouter: openrouterProvider({ ...(process.env.VYRE_OPENROUTER_URL ? { baseUrl: process.env.VYRE_OPENROUTER_URL } : {}), store: {
+        get: id => { const r = /** @type {any} */ (db.prepare("SELECT messages FROM sessions_openrouter WHERE thread = ?").get(String(id))); try { return r ? JSON.parse(String(r.messages)) : undefined; } catch { return undefined; } },
+        set: (id, m) => { db.prepare("INSERT INTO sessions_openrouter (thread, messages) VALUES (?,?) ON CONFLICT(thread) DO UPDATE SET messages = excluded.messages").run(String(id), JSON.stringify(m)); } } }) };
     for (const [name, driver] of Object.entries(drivers)) ctx.provider(name, driver);
     ctx.tool("sessions.providers.snapshot", {
       description: "Every session provider this module speaks for (claude, codex, grok), each with its own accounts and the models it offers. For providers.list (core/providers) to assemble; not a public name itself.", internal: true,
