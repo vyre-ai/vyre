@@ -2,6 +2,6 @@
 export async function boundedWait(promises, ms) {
   let timer;
   try {
-    return await Promise.race([Promise.all(promises).then(() => false), new Promise(r => { timer = setTimeout(() => r(true), ms); timer.unref?.(); })]);
+    return await Promise.race([Promise.all(promises).then(() => false), new Promise(r => { timer = setTimeout(() => r(true), ms); })]);
   } finally { clearTimeout(timer); }
 }
