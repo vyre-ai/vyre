@@ -320,6 +320,23 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 #### tests: every Chrome launch carries the mock-keychain flags
 
 - Chrome on macOS reached for the login Keychain and put a real dialog on the user's screen. `lib/chrome-flags` exports `CHROME_SAFE` (`--use-mock-keychain`, `--password-store=basic`), spread into every Chrome launch in the Deck shot and browser scripts, the native-bar run, the vyrecode harness, hands-chrome's and the onboarding page's tests, the docs build, design-audit, the iOS icon script and the app-perf playwright launch. `test/chrome-flags.test.js` fails on any file that launches Chrome without them (containers' own Chrome and the fakes are listed as exempt, each with why).
+- Undo for a session: see its commits, take them off (all or from one point on) and put them back. Nothing is deleted; the commits stay saved until you say otherwise.
+- Pushing a session's branch now goes only to the project's own GitHub repo, taken from Vyre's own record and never from the repo's git config, so an agent that edits the remote cannot make Vyre send your GitHub token elsewhere. An agent alone can no longer switch off the secret scan; your own "push it anyway" still does.
+- The # picker can tag a GitHub repo, open pull request or open issue from any connected account. Tagging adds it to the chat as read-only context, and the text from GitHub is marked as written by someone else.
+
+- GitHub: open a pull request from a session's branch (or any pushed branch). Opening, merging and reviewing all change GitHub, so an agent does them only when your own words asked for it, and the registry now enforces that (reach: asked) instead of a check inside the module.
+
+- Pushing a session's branch now goes only to the project's own GitHub repo, taken from Vyre's own record, and runs from a fresh temporary repo that has read none of the project's git config, so an agent that edits the remote cannot make Vyre send your GitHub token elsewhere. An agent alone can no longer switch off the secret scan; your own "push it anyway" still does.
+
+- GitHub sign-in now runs GitHub's own CLI (`gh auth login`) on the machine instead of Vyre running the device flow itself. The code and address look the same; the box image and Mac servers need `gh` installed (without it, sign-in says so and a pasted fine-grained token still works). The private folder gh works in is deleted when the sign-in ends.
+
+- Undo while a turn is running stops that turn first, so nothing writes while the commits come off. Bringing an archived chat back reuses its branch with the commits it kept.
+
+- Undo for a session: see its commits, take them off (all or from one point on) and put them back, even with unsaved changes, which come back as unsaved. Deleting a chat keeps its work under the same saved ref. Nothing is deleted.
+
+- Projects without GitHub get undo and per-session isolation: a folder can be made a git repo in one step (secret-looking files stay out of the first commit), so each session works on its own branch.
+
+- GitHub: read a pull request, merge it, and review it (approve, request changes, comment or reply) from a project. Merging and reviewing change GitHub, so an agent does them only when you ask.
 
 - A publishing release now signs the release: `scripts/sign-manifest.mjs` writes `manifest.json`, `SHA256SUMS` (listing every asset including the manifest) and `SHA256SUMS.sig`, the one signature the Mac installer and the Linux updater both verify, with the release workflow's private key (only on a publishing run whose tag commit is on main), and refuses a key that is not the pinned one. The Mac install script is published beside `install-box.sh`.
 - The release public key is pinned (`RELEASE_KEY` in `core/vyre-core/release.js` and in the Mac install script), replacing the placeholder; the release workflow signs with it, and the release gate now refuses the old placeholder.

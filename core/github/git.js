@@ -11,6 +11,7 @@
 // blocked on this, and is fully implemented and tested below.
 
 import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import { gitAsync, gitWithAskpass } from "../../lib/git-safe.js";
 
@@ -168,7 +169,14 @@ export async function worktreeAdd({ repoDir, session, defaultBranch }) {
   ensureExcluded(repoDir);
   const dest = path.join(repoDir, ".sessions", id);
   const branch = `vyre/${id}`;
-  const r = await gitAsync(repoDir, ["worktree", "add", dest, "-b", branch, defaultBranch]);
+  // Unarchive: the session's worktree was removed but its branch (and any commits on it) stays, so
+  // an existing branch is checked out as it is, never reset to the default branch. A worktree that
+  // is still there is returned as it is.
+  if (fs.existsSync(dest)) return { path: dest, branch };
+  const have = await gitAsync(repoDir, ["rev-parse", "--verify", "--quiet", `refs/heads/${branch}`]);
+  const r = await gitAsync(repoDir, have.ok
+    ? ["worktree", "add", dest, branch]
+    : ["worktree", "add", dest, "-b", branch, defaultBranch]);
   if (!r.ok) throw fail(`git worktree add failed: ${r.stderr.trim().slice(0, 300) || "no output"}`, "worktree_failed");
   return { path: dest, branch };
 }
@@ -211,11 +219,26 @@ async function worktreeSafety({ repoDir, dest, branch, defaultBranch }) {
  * a second, independent backstop behind the check above, not a substitute for it.
  * @param {{ repoDir: string, session: string, defaultBranch: string }} p
  */
-export async function worktreeRemove({ repoDir, session, defaultBranch }) {
+export async function worktreeRemove({ repoDir, session, defaultBranch, deleted = false }) {
   const id = safeSegment(session, "session id");
   const dest = path.join(repoDir, ".sessions", id);
   const branch = `vyre/${id}`;
   if (!fs.existsSync(dest)) return { removed: false, existed: false };
+  if (deleted) {
+    // The chat was deleted: keep its work under the undo ref (uncommitted changes as one marked
+    // commit first), then remove the worktree. Ignored files (.env, build output) are the one thing
+    // a commit does not keep, so they still stop the removal and are handed to a person.
+    const ig = await gitAsync(dest, ["ls-files", "--others", "--ignored", "--exclude-standard"]);
+    const ignored = ig.ok ? ig.stdout.split("\n").map(l => l.trim()).filter(Boolean) : ["(could not read the worktree's ignored files)"];
+    if (ignored.length) return { removed: false, needsConfirm: true, path: dest, branch, dirty: ignored, commits: [] };
+    await saveDirty(dest);
+    const ahead = await gitAsync(dest, ["rev-list", "--count", `refs/heads/${defaultBranch}..HEAD`]);
+    const saved = Number(ahead.stdout.trim()) > 0 ? await saveTip(repoDir, dest, id) : null;
+    const rm = await gitAsync(repoDir, ["worktree", "remove", dest]);
+    if (!rm.ok) throw fail(`git worktree remove failed: ${rm.stderr.trim().slice(0, 300) || "no output"}`, "cleanup_failed");
+    const del = await gitAsync(repoDir, ["branch", "-d", branch]);
+    return { removed: true, pruned: del.ok, ...(saved ? { saved_as: saved.ref } : {}) };
+  }
   const safety = await worktreeSafety({ repoDir, dest, branch, defaultBranch });
   if (!safety.safe) return { removed: false, needsConfirm: true, path: dest, branch, dirty: safety.dirty, commits: safety.commits };
   const rm = await gitAsync(repoDir, ["worktree", "remove", dest]);
@@ -225,4 +248,251 @@ export async function worktreeRemove({ repoDir, session, defaultBranch }) {
   // actual protection this call needs.
   const del = await gitAsync(repoDir, ["branch", "-d", branch]);
   return { removed: true, pruned: del.ok };
+}
+
+/**
+ * A repo's own idea of its default branch, for a repo that never went through `github.project`
+ * (0.2, charter "projects work with or without GitHub" - a local-only or hand-cloned repo has no
+ * `github_projects` row to read a `default_branch` from). Prefers `origin/HEAD` (what a real
+ * GitHub/GitLab clone already reports); a repo with no remote falls back to whatever branch is
+ * currently checked out (a fresh `git init`'s first branch). Local-only, no network.
+ * @param {string} repoDir
+ */
+export async function defaultBranchOf(repoDir) {
+  const origin = await gitAsync(repoDir, ["symbolic-ref", "--short", "refs/remotes/origin/HEAD"]);
+  if (origin.ok) return origin.stdout.trim().replace(/^origin\//, "");
+  const head = await gitAsync(repoDir, ["symbolic-ref", "--short", "HEAD"]);
+  return head.ok ? head.stdout.trim() : null;
+}
+
+// Common secret shapes, checked against the *added* lines of an outgoing push before it's ever
+// sent (0.2, reviewer's M8/H0a fix on the review of plans/github.md). Not exhaustive; a real,
+// useful floor, not a promise nothing ever gets through. A future pass can also match known vault
+// values by hash (the reviewer's own suggestion), once vault exposes that; this file doesn't
+// invent an API vault hasn't shipped.
+const SECRET_PATTERNS = [
+  { name: "AWS access key", re: /\bAKIA[0-9A-Z]{16}\b/ },
+  { name: "GitHub token", re: /\b(?:ghp|gho|ghs|ghr|github_pat)_[A-Za-z0-9_]{20,}\b/ },
+  { name: "Slack token", re: /\bxox[baprs]-[A-Za-z0-9-]{10,}\b/ },
+  { name: "private key block", re: /-----BEGIN (?:RSA |EC |OPENSSH |DSA |ENCRYPTED |)PRIVATE KEY-----/ },
+  { name: "a secret-looking assignment", re: /\b(?:SECRET|API_KEY|ACCESS_KEY|ACCESS_TOKEN|PASSWORD|PRIVATE_KEY)\s*[:=]\s*["']?[A-Za-z0-9/+_.-]{16,}["']?/i },
+];
+
+/**
+ * Scan only the lines a push would actually add (`branch` minus `defaultBranch`) for a known
+ * secret shape, before the push happens. Returns the first hit (`{ pattern, file, line }`), or
+ * null. Local-only, no network: reads git's own diff.
+ * @param {{ repoDir: string, branch: string, defaultBranch: string }} p
+ */
+export async function scanOutgoing({ repoDir, branch, defaultBranch }) {
+  const diff = await gitAsync(repoDir, ["diff", "--unified=0", `refs/heads/${defaultBranch}...refs/heads/${branch}`]);
+  if (!diff.ok) return null; // can't diff (no such branch, no such default) - the push call itself will fail plainly next
+  let file = null, line = 0;
+  for (const l of diff.stdout.split("\n")) {
+    if (l.startsWith("+++ ")) { file = l.slice(6).replace(/^b\//, ""); continue; }
+    const hunk = /^@@ -\d+(?:,\d+)? \+(\d+)/.exec(l);
+    if (hunk) { line = Number(hunk[1]); continue; }
+    if (l.startsWith("+++") || !l.startsWith("+")) continue;
+    for (const p of SECRET_PATTERNS) if (p.re.test(l)) return { pattern: p.name, file: file || "(unknown file)", line };
+    line++;
+  }
+  return null;
+}
+
+/**
+ * Push a session's own branch, and only that branch, to the same name on the project's own repo
+ * (`https://github.com/<fullName>.git`, built here from the project's record) - an explicit
+ * refspec, never `--force` (not even with-lease), and never anything but this one branch. Runs
+ * `scanOutgoing` first and refuses on a hit unless `allowSecret` (the caller decides who may set
+ * it; see github.session.push). A non-fast-forward remote (someone else pushed to the same
+ * branch) is reported, never overwritten. fd-3 token only, the same isolation `cloneRepo` has.
+ *
+ * The push runs from a fresh throwaway bare repo, never from the project's own repo: the token
+ * only ever reaches a git that has read no config a shell in the project could have written
+ * (`remote set-url`, `pushurl`, `url.*.insteadOf`, `http.*`, `include.path`, and whatever is
+ * thought of next). The temp repo borrows the project's objects through an alternates file and
+ * gets one ref, the session's branch tip; its own config is git's defaults. Global and system
+ * config are already off (safeGitEnv). Deleted afterwards.
+ * `base` and `inspect` are test seams; the tool passes neither.
+ * @param {{ repoDir: string, session: string, defaultBranch: string, token: string, fullName: string, allowSecret?: boolean, base?: string, inspect?: (tmp: string) => void }} p
+ */
+export async function pushSession({ repoDir, session, defaultBranch, token, fullName, allowSecret = false, base = "https://github.com", inspect }) {
+  const branch = `vyre/${safeSegment(session, "session id")}`;
+  if (!/^[A-Za-z0-9-]{1,39}\/[A-Za-z0-9._-]{1,100}$/.test(String(fullName || "")) || /(^|\/)\.\.?$/.test(fullName)) throw fail("the project's recorded repo name is not owner/name", "bad_input");
+  if (!allowSecret) {
+    const hit = await scanOutgoing({ repoDir, branch, defaultBranch });
+    if (hit) return { pushed: false, blocked: "secret", ...hit };
+  }
+  const url = `${base}/${fullName}.git`;
+  const refspec = `refs/heads/${branch}:refs/heads/${branch}`;
+  const sha = await gitAsync(repoDir, ["rev-parse", "--verify", "--quiet", `refs/heads/${branch}^{commit}`]);
+  if (!sha.ok) throw fail(`git push failed: no branch ${branch} to push`, "push_failed");
+  const objects = await gitAsync(repoDir, ["rev-parse", "--path-format=absolute", "--git-path", "objects"]);
+  const shallow = await gitAsync(repoDir, ["rev-parse", "--path-format=absolute", "--git-path", "shallow"]);
+  if (!objects.ok) throw fail("git push failed: could not find the repo's objects", "push_failed");
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "vyre-push-"));
+  try {
+    const init = await gitAsync(tmp, ["init", "--bare", "-q", "--template=", tmp]);
+    if (!init.ok) throw fail(`git push failed: ${init.stderr.trim().slice(0, 200)}`, "push_failed");
+    fs.mkdirSync(path.join(tmp, "objects", "info"), { recursive: true });
+    fs.writeFileSync(path.join(tmp, "objects", "info", "alternates"), `${objects.stdout.trim()}\n`);
+    if (shallow.ok && fs.existsSync(shallow.stdout.trim())) fs.copyFileSync(shallow.stdout.trim(), path.join(tmp, "shallow"));
+    const ref = await gitAsync(tmp, ["update-ref", `refs/heads/${branch}`, sha.stdout.trim()]);
+    if (!ref.ok) throw fail(`git push failed: ${ref.stderr.trim().slice(0, 200)}`, "push_failed");
+    if (inspect) inspect(tmp);
+    const r = await gitWithAskpass(tmp, ["push", "--", url, refspec], { token, timeout: 120_000 });
+    if (r.ok) {
+      // Keep "is this commit on a remote" (worktree cleanup's safety check) true after a push by URL.
+      await gitAsync(repoDir, ["update-ref", `refs/remotes/origin/${branch}`, sha.stdout.trim()]);
+      return { pushed: true, branch };
+    }
+    if (/\[rejected\]|non-fast-forward|fetch first/i.test(r.stderr)) {
+      return { pushed: false, blocked: "non_fast_forward", detail: r.stderr.trim().slice(0, 300) };
+    }
+    throw fail(`git push failed: ${r.stderr.trim().slice(0, 300) || "no output"}`, "push_failed");
+  } finally {
+    try { fs.rmSync(tmp, { recursive: true, force: true }); } catch {}
+  }
+}
+
+/** File names never swept into the starting commit of a project Vyre turns into a repo. */
+const KEEP_OUT = [".env", ".env.*", "*.pem", "*.key", "*.p12", "id_rsa*", "id_ed25519*", ".sessions/"];
+const IDENT = ["-c", "user.name=Vyre", "-c", "user.email=vyre@localhost", "-c", "commit.gpgsign=false"];
+
+/**
+ * Make a folder a git repo with one starting commit, so a session gets its own worktree and branch
+ * (undo and isolation) with no GitHub involved. Local only, no network, no token, no remote.
+ * - Not a repo: `git init -b main`, then a starting commit of what is there, minus secret-looking
+ *   files (listed in `left_out`, and kept out through the repo's own .git/info/exclude, never a
+ *   committed file).
+ * - A repo with no commit yet: the same starting commit.
+ * - A repo that already has commits: nothing changes (`already: true`).
+ * @param {string} dir
+ */
+export async function localInit(dir) {
+  if (!fs.existsSync(dir) || !fs.statSync(dir).isDirectory()) throw fail(`${dir} is not a folder`, "not_found");
+  const state = await folderGitState(dir);
+  // A folder inside someone else's repo is not this project's repo: only its own top counts.
+  if (state.isRepo) {
+    const top = await gitAsync(dir, ["rev-parse", "--show-toplevel"]);
+    if (!top.ok || fs.realpathSync(top.stdout.trim()) !== fs.realpathSync(dir)) {
+      throw fail(`${dir} is inside another git repo (${top.stdout.trim()}); a project's home has to be its own folder`, "nested_repo");
+    }
+  }
+  const before = state.isRepo ? await gitAsync(dir, ["rev-parse", "--verify", "HEAD"]) : { ok: false };
+  if (before.ok) return { already: true, branch: await defaultBranchOf(dir), left_out: [] };
+  if (!state.isRepo) {
+    const r = await gitAsync(dir, ["init", "-q", "-b", "main"]);
+    if (!r.ok) throw fail(`git init failed: ${r.stderr.trim().slice(0, 300)}`, "init_failed");
+  }
+  const file = path.join(dir, ".git", "info", "exclude");
+  let text = ""; try { text = fs.readFileSync(file, "utf8"); } catch {}
+  const have = new Set(text.split("\n").map(l => l.trim()));
+  const add = KEEP_OUT.filter(l => !have.has(l));
+  if (add.length) {
+    fs.mkdirSync(path.dirname(file), { recursive: true });
+    fs.writeFileSync(file, `${text && !text.endsWith("\n") ? text + "\n" : text}${add.join("\n")}\n`);
+  }
+  const a = await gitAsync(dir, ["add", "-A"]);
+  if (!a.ok) throw fail(`git add failed: ${a.stderr.trim().slice(0, 300)}`, "init_failed");
+  const c = await gitAsync(dir, [...IDENT, "commit", "-q", "--allow-empty", "-m", "Start of project"]);
+  if (!c.ok) throw fail(`git commit failed: ${c.stderr.trim().slice(0, 300)}`, "init_failed");
+  const ig = await gitAsync(dir, ["ls-files", "--others", "--ignored", "--exclude-standard"]);
+  const left_out = ig.ok ? ig.stdout.split("\n").filter(Boolean).filter(f => !f.startsWith(".sessions/")).slice(0, 50) : [];
+  return { already: false, branch: "main", left_out };
+}
+
+const wtPath = (repoDir, session) => path.join(repoDir, ".sessions", safeSegment(session, "session id"));
+const isSha = s => typeof s === "string" && /^[0-9a-f]{7,40}$/i.test(s);
+
+/**
+ * A session branch's own commits, newest first: `[{ sha, subject }]`, everything on it that is not
+ * on the default branch. Read only. `dirty` is whether the worktree has uncommitted changes.
+ * @param {{ repoDir: string, session: string, defaultBranch: string }} p
+ */
+export async function sessionHistory({ repoDir, session, defaultBranch }) {
+  const dest = wtPath(repoDir, session);
+  if (!fs.existsSync(dest)) throw fail(`no worktree for session ${session}`, "not_found");
+  const log = await gitAsync(dest, ["log", "--format=%H%x09%s", `refs/heads/${defaultBranch}..HEAD`]);
+  if (!log.ok) throw fail(`git log failed: ${log.stderr.trim().slice(0, 300)}`, "failed");
+  const commits = log.stdout.split("\n").filter(Boolean).map(l => { const [sha, ...s] = l.split("\t"); return { sha, subject: s.join("\t") }; });
+  const st = await gitAsync(dest, ["status", "--porcelain"]);
+  return { commits, dirty: st.ok ? st.stdout.split("\n").filter(Boolean).length : 0 };
+}
+
+const WIP = "vyre: unsaved changes (kept by undo)";
+
+/** Commit whatever is uncommitted in a session's worktree (tracked or new, not ignored) as one marked commit. True when there was something. */
+async function saveDirty(dest) {
+  const st = await gitAsync(dest, ["status", "--porcelain"]);
+  if (!st.ok || !st.stdout.trim()) return false;
+  const a = await gitAsync(dest, ["add", "-A"]);
+  if (!a.ok) throw fail(`could not keep the unsaved changes first, so nothing was undone: ${a.stderr.trim().slice(0, 200)}`, "failed");
+  const c = await gitAsync(dest, [...IDENT, "commit", "-q", "-m", WIP]);
+  if (!c.ok) throw fail(`could not keep the unsaved changes first, so nothing was undone: ${c.stderr.trim().slice(0, 200)}`, "failed");
+  return true;
+}
+
+/** Save `HEAD` under refs/vyre/undone/<id>/<n> and return that ref and n. */
+async function saveTip(repoDir, dest, id) {
+  const head = (await gitAsync(dest, ["rev-parse", "HEAD"])).stdout.trim();
+  const n = (await gitAsync(repoDir, ["for-each-ref", "--format=%(refname)", `refs/vyre/undone/${id}/`])).stdout.split("\n").filter(Boolean).length + 1;
+  const ref = `refs/vyre/undone/${id}/${n}`;
+  const save = await gitAsync(repoDir, ["update-ref", ref, head]);
+  if (!save.ok) throw fail(`could not save the current state first, so nothing was undone: ${save.stderr.trim().slice(0, 200)}`, "failed");
+  return { ref, n, head };
+}
+
+/**
+ * Undo a session's commits back to `to` (a commit already on the session branch, default: where the
+ * session started, the default branch's tip it was cut from). Nothing is deleted: uncommitted
+ * changes are first committed as one marked commit, the tip is saved as refs/vyre/undone/<session>/<n>,
+ * and `sessionRedo` puts everything back (the unsaved changes as uncommitted again). No refusal.
+ * @param {{ repoDir: string, session: string, defaultBranch: string, to?: string }} p
+ */
+export async function sessionUndo({ repoDir, session, defaultBranch, to }) {
+  const dest = wtPath(repoDir, session);
+  const id = safeSegment(session, "session id");
+  if (!fs.existsSync(dest)) throw fail(`no worktree for session ${session}`, "not_found");
+  const hadDirty = await saveDirty(dest);
+  const h = await sessionHistory({ repoDir, session, defaultBranch });
+  if (!h.commits.length) throw fail("this session has no commits to undo", "nothing_to_undo");
+  let target, undone = h.commits.length;
+  if (to != null) {
+    if (!isSha(to)) throw fail("to must be a commit id from the session's history", "bad_input");
+    const inList = h.commits.find(c => c.sha.startsWith(to.toLowerCase()));
+    if (!inList) throw fail("that commit is not on this session's branch", "bad_input");
+    target = `${inList.sha}^`;
+    undone = h.commits.indexOf(inList) + 1;
+  } else {
+    target = `${h.commits[h.commits.length - 1].sha}^`;
+  }
+  const { ref, n } = await saveTip(repoDir, dest, id);
+  const reset = await gitAsync(dest, ["reset", "--hard", "-q", target]);
+  if (!reset.ok) throw fail(`git reset failed: ${reset.stderr.trim().slice(0, 300)}`, "failed");
+  const now = (await gitAsync(dest, ["rev-parse", "HEAD"])).stdout.trim();
+  return { undone: hadDirty ? undone - 1 : undone, saved_as: ref, n, head: now, kept_unsaved: hadDirty };
+}
+
+/**
+ * Put back what the latest (or numbered) undo took off: fast-forwards the session branch to the saved
+ * tip, only when the branch has not moved on since (else refused, nothing changes).
+ * @param {{ repoDir: string, session: string, n?: number }} p
+ */
+export async function sessionRedo({ repoDir, session, n }) {
+  const dest = wtPath(repoDir, session);
+  const id = safeSegment(session, "session id");
+  if (!fs.existsSync(dest)) throw fail(`no worktree for session ${session}`, "not_found");
+  const refs = (await gitAsync(repoDir, ["for-each-ref", "--format=%(refname)", `refs/vyre/undone/${id}/`])).stdout.split("\n").filter(Boolean);
+  const nums = refs.map(r => Number(r.split("/").pop())).sort((a, b) => a - b);
+  const pick = n ?? nums[nums.length - 1];
+  if (!pick || !nums.includes(pick)) throw fail("nothing to redo", "nothing_to_redo");
+  const st = await gitAsync(dest, ["status", "--porcelain"]);
+  if (st.ok && st.stdout.trim()) throw fail("the session has uncommitted changes; undo or commit them first", "dirty");
+  const m = await gitAsync(dest, ["merge", "--ff-only", "-q", `refs/vyre/undone/${id}/${pick}`]);
+  if (!m.ok) throw fail("the session has moved on since that undo, so it cannot be put back cleanly; its saved commits are still kept", "diverged");
+  // The marked commit was only a way to keep unsaved work: bring it back as uncommitted changes.
+  const subj = (await gitAsync(dest, ["log", "-1", "--format=%s"])).stdout.trim();
+  const restored = subj === WIP && (await gitAsync(dest, ["reset", "-q", "--mixed", "HEAD^"])).ok;
+  return { redone: pick, restored_unsaved: restored, head: (await gitAsync(dest, ["rev-parse", "HEAD"])).stdout.trim() };
 }
