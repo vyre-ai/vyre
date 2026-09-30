@@ -10,6 +10,7 @@ import { Curator } from "./curator.js";
 import { Graph, ago } from "./graph.js";
 import { floorPlan } from "./floor.js";
 import crypto from "node:crypto";
+import { AsyncLocalStorage } from "node:async_hooks";
 import fs from "node:fs";
 import path from "node:path";
 import { retriever } from "./iq/retrieve.js";
@@ -36,7 +37,24 @@ const cwds = { type: "array", items: { type: "string" } };
 
 /** @type {{ start(ctx: any): Promise<{ stop(): Promise<void> }> }} */
 export default {
-  async start(ctx) {
+  async start(rawCtx) {
+    // Every tool of this module runs inside its caller's meta. An agent's calls carry vyred's own
+    // reading of its stored grant (meta.granted, "*" or slugs; sessions 845ae5dc): reach() below
+    // intersects with it, and the input's own agent and project_cwds are dropped for such a caller,
+    // so a tool never scopes by a filter the agent supplies. A via.agent with no granted is granted
+    // nothing. The person's own surfaces (no via.agent) keep input.agent as a convenience.
+    const callMeta = new AsyncLocalStorage();
+    const ctx = Object.assign(Object.create(rawCtx), {
+      tool: (name, def) => rawCtx.tool(name, {
+        ...def,
+        run: (input = {}, extra = {}) => {
+          if (!extra || !extra.agent) return def.run(input, extra);
+          const { agent: _a, project_cwds: _p, ...rest } = input || {};
+          const granted = extra.granted === "*" ? "*" : Array.isArray(extra.granted) ? extra.granted.map(String) : [];
+          return callMeta.run({ granted }, () => def.run(rest, extra));
+        },
+      }),
+    });
     // config.memory.relations: { prefers?, decided? } switches on the relations still under
     // evaluation (docs/adr/0007-intelligence.md, decision 2). Both are off by default.
     const curator = new Curator(ctx.store.db, { me: ctx.config.me, log: ctx.log, relations: ctx.config.memory?.relations });
@@ -264,7 +282,10 @@ export default {
       const r = await ctx.call("projects.reach", { ...(agent ? { agent } : {}), caller, kind: "content" });
       if (r.error) throw Object.assign(new Error(r.error.message), { code: r.error.code });
       const { all, agent: who, projects } = r.data;
-      if (all) return { all: true, agent: who, folders: [], slugs: new Set() };
+      const held = callMeta.getStore();
+      const limit = held && held.granted !== "*" ? new Set(held.granted) : null;
+      // A limited agent is never all: whatever projects.reach said, it keeps only its grant.
+      if (all) return limit ? { all: false, agent: who, folders: [], slugs: new Set() } : { all: true, agent: who, folders: [], slugs: new Set() };
       // Whether `who` is literally the assistant (a different privilege tier: the unscoped grace
       // in guard() below and personalOnly()'s personal facts, neither ever subject to
       // projects.access) is not carried in the content-kind reply just read above — the
@@ -274,7 +295,7 @@ export default {
       // a second door onto agents.list for one bit this door does not need to answer.
       const f = await ctx.call("projects.reach", { agent: who, caller, kind: "facts" });
       const assistant = Boolean(!f.error && f.data && f.data.all === true);
-      const granted = projects || [];
+      const granted = (projects || []).filter(p => !limit || limit.has(p.slug));
       return { all: false, ...(assistant ? { assistant: true } : {}), agent: who, folders: granted.flatMap(p => p.folders), slugs: new Set(granted.map(p => p.slug)) };
     };
     const clean = cwds => (cwds || []).map(c => path.resolve(String(c)));

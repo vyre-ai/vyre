@@ -128,9 +128,9 @@ export function readDecisions(text) {
  * Each decision's state. rows: { id, project, topic, value, at, by: "person"|"agent", ... } of any
  * projects. Returns the rows with state (current|replaced|reverted|note), replaces (an id) and
  * contested (a different decision within an hour of another session's).
- * @template {{ id: string, project: string, topic: string, value: string, at: number, by: string, session?: string|null }} R
+ * @template {{ id: string, project: string, topic: string, value: string, at: number, by: string, session?: string|null, untrusted?: boolean }} R
  * @param {R[]} rows
- * @returns {(R & { state: string, replaces: string|null, contested: boolean })[]}
+ * @returns {(R & { state: string, replaces: string|null, contested: boolean, agentOnly: boolean })[]}
  */
 export function resolve(rows) {
   const out = [];
@@ -143,10 +143,16 @@ export function resolve(rows) {
   for (const list of groups.values()) {
     /** @type {any} */ let current = null;
     const past = [];
+    // Only the person's own trusted words make the line. An agent's decision (or any untrusted
+    // row) never becomes current over them, and never wins a slot they have not spoken for it
+    // unless it is a trusted agent's alone, and then it is marked agentOnly and answered as such.
+    const person = r => r.by === "person" && !r.untrusted;
+    const hasPerson = list.some(person);
+    const inLine = r => (hasPerson ? person(r) : r.by !== "person" && !r.untrusted);
     for (const r of list) {
-      const row = { ...r, state: "current", replaces: /** @type {string|null} */ (null), contested: false };
+      const row = { ...r, state: "current", replaces: /** @type {string|null} */ (null), contested: false, agentOnly: !hasPerson && r.by !== "person" && !r.untrusted };
+      if (!inLine(r)) { out.push({ ...row, state: "note", agentOnly: false }); continue; }
       if (current && current.value === r.value) { out.push({ ...row, state: "note" }); continue; }
-      if (current && current.by === "person" && r.by !== "person") { row.state = "note"; out.push(row); continue; }
       if (current) {
         // Within an hour, from another session, is a disagreement: both stay visible.
         if (r.at - current.at < 3_600_000 && r.session && current.session && r.session !== current.session) { row.contested = true; current.contested = true; }
@@ -210,13 +216,20 @@ export function answerFrom(question, rows, projects = []) {
   const line = pool.filter(r => r.state !== "note").sort((a, b) => a.at - b.at);
   if (!line.length) return null;
   const topic = line[0].topic;
-  const src = r => ({ session: r.session ?? `write:${r.id}`, seq: r.seq ?? 0, role: "user", name: r.name ?? null, quote: String(r.text).replace(/\s+/g, " ").slice(0, 200), ts: r.at });
+  const src = r => ({ session: r.session ?? `write:${r.id}`, seq: r.seq ?? 0, role: r.by === "person" ? "user" : "agent", name: r.name ?? null, quote: String(r.text).replace(/\s+/g, " ").slice(0, 200), ts: r.at });
   const cur = line.find(r => r.state === "current") || line[line.length - 1];
   const before = line.filter(r => r.at < cur.at);
   const prev = before[before.length - 1] || null;
   const valueIn = r => q.includes(String(r.value).toLowerCase());
   const shown = r => r.display || cap(String(r.value));
   const base = { project, topic, confidence: 0.85 };
+  // Only an agent's own word is on this line: say whose, at a lower confidence, and answer nothing
+  // that would pass it off as the person's ("in your words", a history, a first).
+  if (cur.agentOnly) {
+    if (/^why\b|\bwhy did\b|\b(before|previously|used to|prior|formerly|earlier|first|originally|initial|initially|start|started|began|at first)\b/.test(q)) return null;
+    const who = String(cur.name || "agent:agent").split(":").slice(1).join(":") || "agent";
+    return { ...base, confidence: 0.55, answer: `Your agent ${who} recorded: ${shown(cur)} (${day(cur.at)}).`, source: src(cur), history: [] };
+  }
   // Why: the person's own words for the decision the question is about.
   if (/^why\b|\bwhy did\b/.test(q)) {
     const drops = /\b(drop|stop|leave|left|off|quit|abandon|ditch)\b/.test(q);

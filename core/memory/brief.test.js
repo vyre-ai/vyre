@@ -80,7 +80,7 @@ test("memory.brief: an untrusted write never enters it, though it is still answe
   const b = (await call("memory.brief", { for: "project", project: "northwind" }, KIT)).data.text;
   assert.match(b, /square/i);
   assert.doesNotMatch(b, /\bfly\b/i);
-  const listed = (await call("memory.decisions", { topic: "hosting", project: "northwind" }, KIT)).data.decisions;
+  const listed = (await call("memory.decisions", { topic: "hosting", project: "northwind", history: true }, KIT)).data.decisions;
   assert.ok(listed.some(d => d.untrusted));
 });
 

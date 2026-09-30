@@ -276,3 +276,24 @@ test("write: two projects' own watchers matching the same email file one row, li
   assert.deepEqual([e.id, e.linked], [d.id, true]);
   assert.equal(db.prepare("SELECT COUNT(*) n FROM memory_writes WHERE source_ref = 'msg-77'").get()?.n, 1);
 });
+
+test("write: an agent reads and writes only what vyred's meta.granted says, never input.agent or project_cwds", async t => {
+  const { call, write, list } = await module_(t);
+  await write({ kind: "note", project: "harlow", text: "Harlow intake posts to Typeform" }, "deck");
+  await write({ kind: "note", project: "northwind", text: "Northwind flour arrives Tuesday" }, "deck");
+  const juno = granted => ({ agent: "juno", ...(granted === undefined ? {} : { granted }) });
+  // Granted harlow: sees harlow only, even when the input names the assistant or another project's folders.
+  for (const input of [{}, { agent: "pax" }, { agent: "kit" }, { project_cwds: [`${W}/northwind`] }]) {
+    const rows = await list(JUNO, input, juno(["harlow"]));
+    assert.deepEqual(rows.map(r => r.projects[0].project), ["harlow"], JSON.stringify(input));
+  }
+  // Granted nothing, or no grant carried at all: nothing is read, and nothing can be written.
+  for (const g of [[], undefined]) {
+    assert.deepEqual(await list(JUNO, { agent: "pax" }, juno(g)), [], String(g));
+    assert.equal((await call("memory.write", { kind: "note", project: "harlow", text: "x" }, JUNO, juno(g))).code, "denied", String(g));
+  }
+  // A grant of "*" only ever narrows to what the agent's stored row reaches (juno: harlow).
+  assert.deepEqual((await list(JUNO, {}, juno("*"))).map(r => r.projects[0].project), ["harlow"]);
+  // The person's own surface is unchanged.
+  assert.equal((await list("deck")).length, 2);
+});

@@ -4,6 +4,12 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+- Memory scopes an agent's calls by vyred's meta.granted (the stored grant, "*" or slugs; none when
+  absent) and ignores the agent's own input.agent and project_cwds. The person's surfaces are
+  unchanged. Decisions: an agent's or untrusted decision never becomes current over the person's
+  words; a trusted agent's lone decision is answered as "Your agent <name> recorded: X" at
+  confidence 0.55, never as "Now:", with the writer on the source chip; untrusted is only a note.
+  memory.decisions rows carry agentOnly.
 - `memory.brief { for: session|project|teammate|assistant, project?, thread? } -> { text }` (plan 3.1C):
   at most 600 characters, plain words on memory_ask, memory_remember and memory_correct, then the
   project's current decisions (top 5) and what was learned lately, each marked "from memory, not

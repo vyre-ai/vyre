@@ -61,9 +61,13 @@ test("resolve: the newest decision wins, going back marks the undone one reverte
   const st = Object.fromEntries(r.map(x => [x.id, x.state]));
   assert.deepEqual(st, { 1: "replaced", 2: "reverted", 3: "current", 4: "note" });
   assert.equal(r.find(x => x.id === "3")?.replaces, "2");
-  // An agent's decision is current until something newer replaces it, the person's included.
+  // Once the person has spoken, an agent's decision is only a note, before or after.
   const a = resolve([row("1", 1, "netlify", "agent"), row("2", 2 * DAY, "vercel", "agent"), row("3", 3 * DAY, "fly", "person")]);
-  assert.deepEqual(a.map(x => x.state), ["replaced", "replaced", "current"]);
+  assert.deepEqual(a.map(x => x.state), ["note", "note", "current"]);
+  // Alone, a trusted agent's decision is current and marked agentOnly; an untrusted one is only a note.
+  const b = resolve([row("1", 1, "netlify", "agent"), row("2", 2 * DAY, "vercel", "agent"), row("3", 3 * DAY, "render", "agent", { untrusted: true })]);
+  assert.deepEqual(b.map(x => [x.state, x.agentOnly]), [["replaced", true], ["current", true], ["note", false]]);
+  assert.deepEqual(resolve([row("1", 1, "render", "agent", { untrusted: true })]).map(x => x.state), ["note"]);
   // Two sessions disagreeing within the hour are both shown, the newer current.
   const c = resolve([row("1", 1000, "netlify"), row("2", 2000, "vercel")]);
   assert.deepEqual([c[0].state, c[1].state, c[0].contested, c[1].contested], ["replaced", "current", true, true]);
@@ -139,4 +143,36 @@ test("memory.decisions: an agent reads only its projects; an agent's decision st
   assert.equal(h.find(d => d.by === "agent")?.state, "note");
   // A module Vyre does not ship cannot write a decision at all.
   assert.equal((await call("memory.write", { kind: "decision", project: "harlow", text: "host on fly" }, "module:bakery", { firstParty: false })).code, "denied");
+});
+
+test("answerFrom: an agent's lone decision is said to be the agent's, at lower confidence, never as Now", () => {
+  const row = (id, at, value, extra = {}) => ({ id, project: "harlow", topic: "hosting", value, display: value, text: `use ${value}`, at, by: "agent", session: null, seq: null, name: "agent:kit", ...extra });
+  const rows = resolve([row("w1", 5 * DAY, "fly")]);
+  const a = answerFrom("where is harlow hosted", rows, [{ slug: "harlow", name: "Harlow Legal" }]);
+  assert.match(a?.answer || "", /^Your agent kit recorded: fly \(\d+ \w{3}\)\.$/);
+  assert.ok(a && a.confidence <= 0.6);
+  assert.equal(a?.source.name, "agent:kit");
+  assert.equal(a?.source.role, "agent");
+  assert.equal(answerFrom("why did harlow move to fly", rows, [{ slug: "harlow", name: "Harlow Legal" }]), null);
+  // An untrusted row answers nothing.
+  assert.equal(answerFrom("where is harlow hosted", resolve([row("w2", 5 * DAY, "fly", { untrusted: true })]), [{ slug: "harlow", name: "Harlow Legal" }]), null);
+});
+
+test("memory tools: an agent's scope is vyred's meta.granted; input.agent and project_cwds are ignored, no grant means nothing", async t => {
+  const { call } = await module_(t);
+  const as = granted => ({ agent: "juno", ...(granted === undefined ? {} : { granted }) });
+  for (const tool of ["memory.decisions"]) {
+    for (const input of [{}, { agent: "kit" }, { project: "northwind" }, { project_cwds: [`${HOME}/Work/northwind`] }]) {
+      const r = await call(tool, input, JUNO, as(["harlow"]));
+      assert.deepEqual([...new Set((r.data?.decisions || []).map(d => d.project))].filter(p => p !== "harlow"), [], JSON.stringify(input));
+    }
+    for (const g of [[], undefined]) {
+      const r = await call(tool, { agent: "kit" }, JUNO, as(g));
+      assert.deepEqual(r.data?.decisions || [], [], String(g));
+    }
+  }
+  const ask = await call("memory.ask", { question: "what does northwind use for payments", agent: "kit" }, JUNO, as(["harlow"]));
+  assert.doesNotMatch(String(ask.data?.answer || ""), /Square/);
+  const none = await call("memory.ask", { question: "where is the harlow site hosted" }, JUNO, as([]));
+  assert.doesNotMatch(String(none.data?.answer || ""), /Netlify/);
 });
