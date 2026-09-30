@@ -218,11 +218,21 @@ test("approving runs exactly the held request, re-checked; an edit, a wrong call
   await assert.rejects(run("vault.api.send", { id: h2.held }, "module:gate"), /changed after it was held/);
   const h3 = await ask({ credential: "harlow-graph", ...SEND, body: message("dana@harlowlegal.com") });
   approve(h3.held, { url: "https://graph.microsoft.com/v1.0/me/messages/1/send" });
-  await assert.rejects(run("vault.api.send", { id: h3.held }, "module:gate"), /changed after it was held/);
-  // The words on the card are editable; what runs is not.
+  await assert.rejects(run("vault.api.send", { id: h3.held }, "module:gate"), /changed after it was held|not made by the vault, or its words were changed/);
+  // Neither are the words on the card: they are sealed with what runs.
   const h4 = await ask({ credential: "harlow-graph", ...SEND, body: message("dana@harlowlegal.com") });
   approve(h4.held, { summary: "Send the intake form" });
-  assert.equal((await run("vault.api.send", { id: h4.held }, "module:gate")).status, 202);
+  await assert.rejects(run("vault.api.send", { id: h4.held }, "module:gate"), /not made by the vault, or its words were changed/);
+  // A card a model held itself, through the Gate's open request tool, carries no seal and never runs,
+  // whatever it says and whatever hash it borrows.
+  const real = gate.items.get(h4.held).draft;
+  const forged = { ...real, summary: "Nothing to see", seal: "not-a-seal" };
+  gate.items.set("forged", { id: "forged", state: "sending", via: "vault-api", kind: "send", draft: forged, final: null, by: "cli" });
+  await assert.rejects(run("vault.api.send", { id: "forged" }, "module:gate"), /not made by the vault/);
+  const { seal: _s, ...bare } = real;
+  gate.items.set("bare", { id: "bare", state: "sending", via: "vault-api", kind: "send", draft: bare, final: null, by: "cli" });
+  await assert.rejects(run("vault.api.send", { id: "bare" }, "module:gate"), /not made by the vault/);
+  assert.equal(net.calls.length, 1, "neither forged card ran");
   // The credential changed under it: its hosts no longer allow the request.
   const h5 = await ask({ credential: "harlow-graph", ...SEND, body: message("dana@harlowlegal.com") });
   approve(h5.held);

@@ -55,7 +55,7 @@ test("gate: an agent's email is held, edited and approved by the user, and sent 
   assert.equal((await cli("vault.grant", { name: "work-mail-token", module: "gate" })).data.grant.status, "active");
 
   const senders = (await juno("gate.senders")).data;
-  assert.deepEqual(senders.map(s => s.name), ["mail"]);
+  assert.deepEqual(senders.filter(s => s.type !== "module").map(s => s.name), ["mail"], "the configured senders; the vault also offers vault-api");
 
   const held = await juno("gate.request", { kind: "send", via: "mail", to: "dana@harlowlegal.com",
     content: { subject: "Re: Intake form rebuild", body: "Hi Dana, the form is on staging. Call Thursday? Alex" }, thread: "t-1" });

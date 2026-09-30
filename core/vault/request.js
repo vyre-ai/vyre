@@ -32,6 +32,7 @@
 import crypto from "node:crypto";
 import https from "node:https";
 import { defaultField } from "../../lib/vault-kinds/kinds.js";
+import { rowMac, same } from "./crypto.js";
 import {
   checkTarget, classify, presetFor, presetRead, parseFields, summarize, approvalHash, checkHeaders, checkQuery, buildUrl, pinnedOptions,
 } from "./api-request.js";
@@ -379,8 +380,8 @@ export class ApiRequests {
     const r = await this.deps.call("gate.request", {
       kind: GATE_KINDS[plan.kind] || "send", via: GATE_SENDER, to: plan.to, why: `vault.request on ${name}`,
       ...(meta.thread ? { thread: meta.thread } : {}), ...(agent ? { agent } : {}),
-      content: { credential: name, method: plan.method, url: plan.href, summary: plan.summary, hash: plan.hash, kind: plan.kind,
-        request: { headers: plan.headers, ...(plan.body !== undefined ? { body: plan.body } : {}) }, parsed: plan.parsed },
+      content: this.sealed({ credential: name, method: plan.method, url: plan.href, summary: plan.summary, hash: plan.hash, kind: plan.kind,
+        request: { headers: plan.headers, ...(plan.body !== undefined ? { body: plan.body } : {}) }, parsed: plan.parsed }),
     });
     if (r.error) throw bad(r.error.message || "the Gate did not take it", r.error.code || "failed");
     // The Gate matches what the person said as well (a second look at the same words): if it ran
@@ -388,6 +389,22 @@ export class ApiRequests {
     if (r.data.state === "sent") return { ...(isObj(r.data.result) ? r.data.result : {}), kind: plan.kind, said: String(r.data.by || "").replace(/^said:/, "") };
     audit(true, `${plan.method} ${plan.url.hostname} ${plan.kind} held ${r.data.id}`);
     return { held: r.data.id, kind: plan.kind, summary: plan.summary, message: r.data.message, ...(r.data.error ? { error: r.data.error } : {}) };
+  }
+
+  /**
+   * A seal over what a held card says and what it will run, made with the vault's own MAC key. Only
+   * this file holds one item to the Gate, but the Gate's request tool is open to a model, so
+   * without a seal a model could hold a card of its own with a summary it wrote (reviewer M10). An
+   * item with no valid seal is never sent, so a forged card can only ever fail.
+   * @param {any} c
+   */
+  sealed(c) { return { ...c, seal: this.seal(c) }; }
+
+  /** @param {any} c */
+  seal(c) {
+    const key = /** @type {any} */ (this.vault).mkey;
+    if (!key) throw bad("the vault is locked", "locked");
+    return rowMac(key, "vault-api:v1", { credential: c.credential, method: c.method, url: c.url, hash: c.hash, kind: c.kind, summary: c.summary });
   }
 
   /** A module needs an active grant for the credential (a watcher's is its own); a person's surface does not. */
@@ -446,6 +463,9 @@ export class ApiRequests {
     const c = it.final || it.draft;
     if (!isObj(c) || !isStr(c.credential) || !isStr(c.method) || !isStr(c.url) || !isStr(c.hash)) throw bad("the approved content is not a held API request", "bad_input");
     const held = isObj(c.request) ? c.request : {};
+    let sealOk = false;
+    try { sealOk = isStr(c.seal) && same(c.seal, this.seal(c)); } catch { /* locked: not sent */ }
+    if (!sealOk) throw bad("this card was not made by the vault, or its words were changed, so it is not sent", "denied");
     const plan = await this.plan({ credential: c.credential, method: c.method, url: c.url, headers: held.headers, body: held.body }, c.credential);
     if (plan.hash !== c.hash) throw bad("the request was changed after it was held, so it is not sent; ask again", "denied");
     if (plan.kind !== c.kind) throw bad(`this credential now classifies the request as a ${plan.kind}, not a ${c.kind}; ask again`, "denied");
