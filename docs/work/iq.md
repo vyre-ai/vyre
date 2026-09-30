@@ -90,6 +90,14 @@ GitHub hosted runners (push work/iq). Never testbox (it is the user's server), n
 - user (via the lead): $15 of eval recording, O12, throwaway provider accounts.
 
 ## Changed contracts
+- Streaming (task 6), for platform to accept: core/daemon/index.js route() puts `draft(d)` in the tool's meta
+  only for POST /v1/tools/<name> with Accept: application/x-ndjson; the response is then ndjson lines
+  {"draft": d} and a final {"result": {data|error}} (200; the error is in the result). Without that header
+  nothing changes. registry.call takes it as ordinary meta and ctx.call never carries it, so a module
+  never gets one. memory.ask (stream: true) calls it with {id, text}, the whole text so far, at most every
+  100 ms, and "" if the check fails. The runner interface gains optional onText(soFar). Draft text is never
+  emitted as an event. Not yet wired: the real `claude -p` runner does not stream text, so live drafts
+  wait for sessions' threads.quick {stream}; the hook and channel are tested with a fake streaming runner.
 - Decisions (task 3): new tables memory_decisions (id, session, seq, project, cwd, topic, label, value,
   display, statement, revert, decided_at) and memory_decisions_cursor (session, upto, v). State
   (current|replaced|reverted|note) is worked out on read, not stored, so a forget or a later decision is

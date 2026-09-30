@@ -1022,7 +1022,9 @@ export default {
         if (input.stream !== true) return ask({ question: String(input.question || ""), project_cwds: effectiveCwds, personal: sees, thread, screen, writes: writesIn });
         // Streamed: the events carry the id and the step, never the question or the answer.
         const id = typeof input.id === "string" && /^[A-Za-z0-9_-]{1,64}$/.test(input.id) ? input.id : `iq_${crypto.randomBytes(6).toString("hex")}`;
-        const r = await ask({ question: String(input.question || ""), project_cwds: effectiveCwds, personal: sees, thread, screen, writes: writesIn, stage: s => ctx.events.emit("memory.thinking", { id, stage: s }) });
+        const r = await ask({ question: String(input.question || ""), project_cwds: effectiveCwds, personal: sees, thread, screen, writes: writesIn, stage: s => ctx.events.emit("memory.thinking", { id, stage: s }),
+          // The draft goes to the calling connection only (extra.draft, when the caller asked for it): never the events bus.
+          ...(typeof extra.draft === "function" ? { draft: t => extra.draft({ id, text: t }) } : {}) });
         ctx.events.emit("memory.answered", { id, abstained: Boolean(r.abstained), limited: Boolean(r.limited) });
         return { id, ...r };
       },

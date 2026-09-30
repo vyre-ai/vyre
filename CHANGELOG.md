@@ -4,6 +4,12 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+- memory.ask streams a draft of its answer (plan 3.7): the answer so far, at most every 100 ms, from a
+  streaming model runner (its new optional onText hook), and an empty draft when the check fails. It
+  goes to the calling connection only: vyred hands a tool a draft function in its meta only when the
+  caller sent Accept: application/x-ndjson, and answers with {"draft":{id,text}} lines then
+  {"result":...}. It is never an event, and a module's ctx.call or a caller that did not ask gets none.
+  memory.thinking and memory.answered stay on the bus with no text.
 - Memory scopes an agent's calls by vyred's meta.granted (the stored grant, "*" or slugs; none when
   absent) and ignores the agent's own input.agent and project_cwds. The person's surfaces are
   unchanged. Decisions: an agent's or untrusted decision never becomes current over the person's

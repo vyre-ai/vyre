@@ -118,7 +118,7 @@ export function checkAsk(reply, passages, { header: withHeader = true } = {}) {
 
 /**
  * @param {{ db: import("node:sqlite").DatabaseSync, answer: (i: any) => Promise<any>, retrieve: (i: any) => Promise<any>,
- *   runner?: ((r: { system: string, prompt: string, model: string, maxUsd: number }) => Promise<{ text: string, usd: number }>)|null,
+ *   runner?: ((r: { system: string, prompt: string, model: string, maxUsd: number, onText?: (soFar: string) => void }) => Promise<{ text: string, usd: number }>)|null,
  *   model?: () => string, budget?: { allow: (usd: number) => boolean, charge: (usd: number) => void },
  *   fixes?: ReturnType<typeof import("./fix.js").fixes>|null, personalQ?: (q: string) => boolean, trusted?: (session: string) => boolean,
  *   decide?: ((i: { q: string, project_cwds: string[], writes?: any }) => Promise<any>)|null }} deps
@@ -128,6 +128,34 @@ export function checkAsk(reply, passages, { header: withHeader = true } = {}) {
  *   fixes: the person's corrections (iq/fix.js); every answer gets an answer_id they can correct.
  *   runner: null means only kept replies are used (the evaluation's replay, or no model at all).
  */
+/**
+ * The answer's text so far, out of a model reply that is JSON still arriving: what follows "answer": up to
+ * its closing quote. Null until the answer has begun.
+ * @param {string} soFar
+ */
+export function partialAnswer(soFar) {
+  const m = /"answer"\s*:\s*"((?:[^"\\]|\\.)*)/.exec(String(soFar));
+  if (!m) return null;
+  let raw = m[1];
+  if (/(?:^|[^\\])(?:\\\\)*\\$/.test(raw)) raw = raw.slice(0, -1);
+  try { return JSON.parse(`"${raw}"`); } catch { return raw.replace(/\\u[0-9a-fA-F]{0,3}$/, ""); }
+}
+
+/**
+ * A runner's onText that hands `draft` the answer so far, at least 100 ms apart.
+ * @param {(text: string) => void} draft @param {() => void} used
+ */
+export function drafter(draft, used) {
+  let last = 0, sent = "";
+  return soFar => {
+    const t = partialAnswer(soFar);
+    const now = Date.now();
+    if (!t || t === sent || now - last < 100) return;
+    last = now; sent = t; used();
+    try { draft(t); } catch { /* a closed connection never fails the answer */ }
+  };
+}
+
 export function asker({ db, answer, retrieve, runner = null, model = () => "haiku", budget = { allow: () => true, charge: () => {} }, fixes = null, personalQ = () => false, trusted = () => true, decide = null }) {
   const get = db.prepare("SELECT reply FROM memory_iq_asks WHERE hash = ?");
   const put = db.prepare("INSERT OR REPLACE INTO memory_iq_asks (hash, v, at, reply, usd) VALUES (?,?,?,?,?)");
@@ -135,10 +163,12 @@ export function asker({ db, answer, retrieve, runner = null, model = () => "haik
   /**
    * writes: the scope of memory writes (core/memory/write.js) retrieval may add as passages.
    * @param {{ question: string, project_cwds?: string[], personal?: boolean, thread?: string|null, writes?: any,
-   *   stage?: (s: "understanding"|"searching"|"reading"|"checking") => void }} input
+   *   stage?: (s: "understanding"|"searching"|"reading"|"checking") => void, draft?: ((text: string) => void)|null }} input
    *   stage: told as each step starts, so a surface shows what IQ is doing (ADR 0034, stream).
+   *   draft: the answer so far, for the calling connection only (never the events bus), from a streaming runner,
+   *   at most every 100 ms; "" once the check fails, so the surface removes it.
    */
-  return async function ask({ question, project_cwds = [], personal: sees = false, thread = null, stage = () => {}, screen = null, writes = null }) {
+  return async function ask({ question, project_cwds = [], personal: sees = false, thread = null, stage = () => {}, screen = null, writes = null, draft = null }) {
     const t0 = performance.now();
     const q = String(question || "").trim();
     const done = r => {
@@ -192,13 +222,13 @@ export function asker({ db, answer, retrieve, runner = null, model = () => "haik
     // 3. The answer, kept by the prompt's hash.
     const prompt = askPrompt(q, passages, view);
     const hash = askHash(prompt);
-    let text = /** @type {any} */ (get.get(hash))?.reply ?? null, usd = 0;
+    let text = /** @type {any} */ (get.get(hash))?.reply ?? null, usd = 0, shown = false;
     // The day's cap is reached: say so, with where to change it, and never answer quietly with nothing.
     if (text == null && runner && !budget.allow(MAX_USD)) return done({ via: "retrieval", why: "daily limit", limited: true, message: LIMIT_MESSAGE });
     if (text == null && runner) {
       stage("reading");
       try {
-        const r = await runner({ system: SYSTEM, prompt, model: model(), maxUsd: MAX_USD });
+        const r = await runner({ system: SYSTEM, prompt, model: model(), maxUsd: MAX_USD, ...(draft ? { onText: drafter(draft, () => { shown = true; }) } : {}) });
         text = r.text; usd = r.usd || 0;
         budget.charge(usd);
         put.run(hash, VERSION, Date.now(), String(text), usd);
@@ -216,7 +246,7 @@ export function asker({ db, answer, retrieve, runner = null, model = () => "haik
       const again = own.length ? checkAsk({ ...parseAsk(text), cite: own.map((_, i) => i + 1) }, own, { header: false }) : { abstained: true };
       if (again.abstained) c = { abstained: true, known: c.known || [], why: "who someone is to you stands only on your own words" };
     }
-    if (c.abstained) return done({ via: "retrieval", known: c.known || [], cost_usd: usd, why: c.why });
+    if (c.abstained) { if (shown && draft) draft(""); return done({ via: "retrieval", known: c.known || [], cost_usd: usd, why: c.why }); }
     const sources = /** @type {number[]} */ (c.cite).map(n => passages[n - 1]).flatMap(p => [{ session: p.session, seq: p.seq, role: p.role, name: p.name, quote: String(p.text).replace(/\s+/g, " ").slice(0, 200), ts: p.ts || null },
       ...(p.reply ? [{ session: p.session, seq: p.reply.seq, role: "assistant", name: p.name, quote: String(p.reply.text).replace(/\s+/g, " ").slice(0, 200), ts: p.ts || null }] : [])]);
     return refused({ answer: c.answer, confidence: c.confidence, abstained: false, known: c.known, sources, via: "retrieval", cost_usd: usd });
