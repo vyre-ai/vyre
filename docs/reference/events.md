@@ -275,7 +275,7 @@ See [tools and events](../build/tools-and-events.md) for how to listen.
 | `funnel.changed` | `base`, `consentUrl`, `since`, `state`, `wanted`, `why` |
 | `guest.added` | `login`, `tools` |
 | `guest.removed` | `login` |
-| `tailscale.changed` | `ip`, `login`, `state`, `tailnetKind` |
+| `tailscale.changed` | `state`, `tailnetKind` |
 
 ## onboard
 
