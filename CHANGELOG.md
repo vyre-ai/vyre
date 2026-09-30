@@ -4,6 +4,9 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+- Lumen: when a calendar module declares a next-meeting command, the empty box shows one line under
+  it: the next meeting and when ("Harlow Legal call · in 25 min"). It is asked when Lumen shows, at
+  most once a minute, and there is no line when there is no meeting.
 - Lumen: type "#" and some letters in the box to tag anything in your work: a saved login, a file, an
   artifact, a repo or a pull request. The list shows names only, in the order the platform gives
   them; Tab or Return writes the pick as #Name (or #"Name with spaces") and keeps it as a chip. Taking

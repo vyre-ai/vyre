@@ -338,3 +338,29 @@ let viewSessionSuite = Suite("view session") { t in
 }
 
 final class Counter2: @unchecked Sendable { var n = 0 }
+
+// capsule-suite: nextMeetingSuite
+let nextMeetingSuite = Suite("next meeting line") { t in
+    t.test("the next meeting is one line under the empty box, asked once a minute, and absent when there is no such command") {
+        let v = FakeVyred(name: "next-meeting")
+        v.tool("capsule.commands") { _ in ["commands": [["module": "google", "id": "next", "title": "Next meeting", "firstParty": true, "hash": "h"],
+                                                          ["module": "crm", "id": "next", "title": "Their next", "firstParty": false, "hash": "h"]]] }
+        v.tool("capsule.view") { _ in ["v": 1, "kind": "list", "title": "Next", "rows": [["id": "e1", "title": "Harlow Legal call", "subtitle": "in 25 min"]]] }
+        t.ok(v.start()); defer { v.stop() }
+        let r: [String]? = t.wait { @MainActor () -> [String] in
+            let m = CapsuleModel(home: vyScratch("next-\(UUID().uuidString.prefix(6))"), vyred: VyredClient(socket: v.socket), providers: [])
+            let p = ViewCommandsProvider(vyred: m.vyred)
+            m.attach(views: p)
+            m.willShow(front: nil)
+            _ = await poll { m.nextMeeting != nil }
+            var out = [m.nextMeeting ?? "-"]
+            let asked = v.callsOf("capsule.view").count
+            m.loadNextMeeting()
+            try? await Task.sleep(nanoseconds: 150_000_000)
+            out.append("again \(v.callsOf("capsule.view").count - asked)")
+            out.append("module \(v.callsOf("capsule.view").first?["module"] as? String ?? "-")")
+            return out
+        }
+        t.eq(r, ["Harlow Legal call · in 25 min", "again 0", "module google"])
+    }
+}

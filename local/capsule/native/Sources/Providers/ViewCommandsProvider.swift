@@ -39,15 +39,26 @@ public final class ViewCommandsProvider: ResultProvider, ImmediateResults, @unch
         if reading || (!force && (readAt.map { t.timeIntervalSince($0) < Self.readEvery } ?? false)) { lock.unlock(); return }
         reading = true; readAt = t
         lock.unlock()
-        Task { [weak self, vyred] in
-            let r = await vyred.call("capsule.commands", [:], presence: false)
-            guard let self else { return }
-            self.lock.lock(); self.reading = false
-            let changed = r.data != nil && ViewCommand.parse(r.data) != self.list
-            if r.data != nil { self.list = ViewCommand.parse(r.data) }
-            self.lock.unlock()
-            if changed { self.onChange() }
-        }
+        Task { [weak self] in await self?.fetch() }
+    }
+
+    /// Read now and wait for it (the next-meeting line needs the list before it can ask for a row).
+    public func readNow() async {
+        guard vyred.has("capsule.commands") else { return }
+        lock.lock()
+        if reading { lock.unlock(); return }
+        reading = true; readAt = now()
+        lock.unlock()
+        await fetch()
+    }
+
+    private func fetch() async {
+        let r = await vyred.call("capsule.commands", [:], presence: false)
+        lock.lock(); reading = false
+        let changed = r.data != nil && ViewCommand.parse(r.data) != list
+        if r.data != nil { list = ViewCommand.parse(r.data) }
+        lock.unlock()
+        if changed { onChange() }
     }
 
     public func results(for q: Query) async -> [ResultItem] { resultsNow(for: q) }

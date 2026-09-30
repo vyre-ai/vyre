@@ -110,6 +110,9 @@ public final class CapsuleModel: ObservableObject {
     /// The module command open in the box (ViewMode.swift), and where commands come from.
     @Published var viewSession: ViewSession?
     var viewProvider: ViewCommandsProvider?
+    /// "Harlow Legal call · in 25 min": the next meeting, under the empty box (ViewMode.swift).
+    @Published var nextMeeting: String?
+    var nextMeetingAt: Date?
     /// True while the panel is warmed at launch with a search nobody typed: it draws local rows and asks nothing else.
     var warming = false
     /// "#" tags (TagMode.swift): the last search, the ones picked, and the search in flight.
@@ -288,6 +291,7 @@ public final class CapsuleModel: ObservableObject {
         Task { @MainActor [vyred] in
             _ = await vyred.refreshTools()
             guard vyred.isUp else { return }
+            self.loadNextMeeting()
             await self.loadModels()
             await self.loadIdentities()
             self.catalog = await CatalogLoader.load(vyred)

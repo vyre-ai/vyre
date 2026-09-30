@@ -113,3 +113,21 @@ extension CapsuleModel {
         }
     }
 }
+
+extension CapsuleModel {
+    /// The one line under the empty box: the next meeting, from the Calendar command a module declares
+    /// (a first-party command with the id "next"). Asked when Lumen shows, at most once a minute; a vyred
+    /// with no such command, or no meeting, shows no line.
+    func loadNextMeeting() {
+        guard let p = viewProvider, vyred.has("capsule.view") else { nextMeeting = nil; return }
+        if let at = nextMeetingAt, Date().timeIntervalSince(at) < 60 { return }
+        nextMeetingAt = Date()
+        Task { @MainActor [vyred] in
+            if p.commands.isEmpty { await p.readNow() }
+            guard let c = p.commands.first(where: { $0.id == "next" && $0.firstParty }) else { self.nextMeeting = nil; return }
+            let r = await vyred.call("capsule.view", ["module": c.module, "command": c.id, "view": "list"], presence: false)
+            guard case .list(let l) = ViewFrame.parse(r.data), let row = l.rows.first else { self.nextMeeting = nil; return }
+            self.nextMeeting = [row.title, row.subtitle, row.accessory].compactMap { $0 }.joined(separator: " \u{00B7} ")
+        }
+    }
+}
