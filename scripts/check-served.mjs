@@ -8,6 +8,7 @@
 // the pinned release key (lib/release-sig.js, over "vyre-release-sums\n" + SHA256SUMS), setup.json must be the file SHA256SUMS lists,
 // and then every path in it is fetched from the origin and hashed. One mismatch, or a path that does not answer 200, is a failure
 // (exit 1): the origin serves something the release did not sign. PLAN section 5 row 1; run it after a deploy and in the matrix.
+// It is a tamper check for what THIS request gets: an origin can answer another client or network differently, so run it from more than one place.
 
 import crypto from "node:crypto";
 import fs from "node:fs";
@@ -32,8 +33,10 @@ export async function checkServed({ origin, release, key = RELEASE_KEY, fetch: g
   const base = origin.replace(/\/+$/, "");
   /** @type {string[]} */ const problems = [];
   for (const [p, hex] of list.files) {
+    // One leading slash, nothing that could change the host or climb out: the path is signed, but it is built into a URL here.
+    if (typeof p !== "string" || !/^\/(?!\/)[\x21-\x7e]*$/.test(p) || p.includes("..")) { problems.push(`${String(p).slice(0, 60)}: not a plain path`); continue; }
     let res;
-    try { res = await get(base + p, { redirect: "manual", headers: { "cache-control": "no-cache" } }); } catch (e) { problems.push(`${p}: ${/** @type {Error} */ (e).message}`); continue; }
+    try { res = await get(base + p, { redirect: "manual", headers: { "cache-control": "no-cache", "user-agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 14_0) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Safari/605.1.15" } }); } catch (e) { problems.push(`${p}: ${/** @type {Error} */ (e).message}`); continue; }
     if (res.status !== 200) { problems.push(`${p}: answered ${res.status}`); continue; }
     const got = sha(Buffer.from(await res.arrayBuffer()));
     if (got !== hex) problems.push(`${p}: serves ${got.slice(0, 12)}, the release signed ${String(hex).slice(0, 12)}`);

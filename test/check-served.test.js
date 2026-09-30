@@ -79,3 +79,16 @@ test("check-served: a release whose signature is wrong or missing, or whose setu
   fs.appendFileSync(path.join(tampered.rel, "setup.json"), " ");
   await assert.rejects(checkServed({ origin: "http://127.0.0.1:1", release: tampered.rel, key }), /not the file the signed SHA256SUMS lists/);
 });
+
+test("check-served: a path in the signed list that is not a plain one-slash path is refused and never fetched", async t => {
+  const w = world(t);
+  const list = JSON.parse(fs.readFileSync(path.join(w.rel, "setup.json"), "utf8"));
+  list.files.push(["@evil.example/x", "0".repeat(64)], ["//evil.example/x", "0".repeat(64)], ["/a/../etc", "0".repeat(64)]);
+  fs.writeFileSync(path.join(w.rel, "setup.json"), JSON.stringify(list));
+  fs.writeFileSync(path.join(w.rel, "SHA256SUMS"), `${sha(fs.readFileSync(path.join(w.rel, "setup.json")))}  setup.json\n`);
+  fs.writeFileSync(path.join(w.rel, "SHA256SUMS.sig"), signSums(fs.readFileSync(path.join(w.rel, "SHA256SUMS")), KEYS.privateKey));
+  const seen = [];
+  const r = await checkServed({ origin: "http://127.0.0.1:1", release: w.rel, key: spki(KEYS.publicKey), fetch: async (url) => { seen.push(String(url)); return new Response("x", { status: 404 }); } });
+  assert.equal(r.problems.filter(p => /not a plain path/.test(p)).length, 3);
+  assert.ok(!seen.some(u => /evil|\.\./.test(u)), seen.join(","));
+});
