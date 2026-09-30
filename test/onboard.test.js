@@ -627,6 +627,11 @@ test("onboard: tailscale lock reads Tailnet Lock and hands back this box's key a
 });
 
 test("onboard: tailscale policy merges Taildrive, Taildrop and SSH into one snippet, using real names it already knows", async t => {
+  // The paired-desktop join (tag:vyre-device) is the Linux box's today; a Mac server gets the same block once relay.tailnet.status
+  // says available on darwin (tailnet, with vyre-core's keys). Until then this machine poses as Linux, as site/setup/box.test.js does.
+  const realPlatform = Object.getOwnPropertyDescriptor(process, "platform");
+  Object.defineProperty(process, "platform", { value: "linux", configurable: true });
+  t.after(() => Object.defineProperty(process, "platform", /** @type {any} */ (realPlatform)));
   const { root } = await box(t, { network: { onboardPort: 0, owner: "alex@example.com" } });
   const dir = fs.mkdtempSync(path.join(root, "ts-"));
   const bin = path.join(dir, "tailscale");

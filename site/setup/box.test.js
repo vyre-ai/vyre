@@ -39,14 +39,20 @@ test("page connection: connectSetup is admitted with the page's key, calls the a
   const root = tempHome(t);
   fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ role: "box", name: "harlow", transcripts: [],
     network: { name: "harlow" }, relay: { enabled: false, url: base }, modules: { disable: ["names", "onboard"] } }));
-  const d = await start({ presence: lenient, root, log: () => {} });
-  t.after(() => d.stop());
-
+  // The setup session starts the way the install script starts it: the code in the environment at vyred's boot (relay.setup.begin is
+  // for modules only, and this test is not one).
   const key = await client.createSetupKey();
   const secret = crypto.randomBytes(16);
   const code = await client.setupCode(secret, key.spki);
-  const status = (await d.registry.call("relay.setup.begin", { code }, "module:test")).data;
-  assert.equal(status.registered, true);
+  const saved = { code: process.env.VYRE_SETUP_CODE, at: process.env.VYRE_SETUP_CODE_AT };
+  process.env.VYRE_SETUP_CODE = code;
+  process.env.VYRE_SETUP_CODE_AT = String(Math.floor(Date.now() / 1000));
+  t.after(() => { for (const [k, v] of [["VYRE_SETUP_CODE", saved.code], ["VYRE_SETUP_CODE_AT", saved.at]]) { if (v === undefined) delete process.env[k]; else process.env[k] = v; } });
+  const d = await start({ presence: lenient, root, log: () => {} });
+  t.after(() => d.stop());
+  let status;
+  for (let i = 0; i < 100 && !(status && status.registered); i++) { status = (await d.registry.call("relay.setup.status", {}, "cli")).data; if (!(status && status.registered)) await new Promise(r => setTimeout(r, 30)); }
+  assert.equal(status && status.registered, true, "the offer is registered at the relay");
   const { offer, name } = await client.resolveSetup(secret, { relay: base, crypto: nodeCrypto() });
   assert.equal(name, "harlow");
 
