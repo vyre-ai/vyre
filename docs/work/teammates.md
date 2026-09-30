@@ -717,3 +717,17 @@ utilization, resets_at), the slot chip (per project), the waiting queue, "Resume
 - Tests: 2 new in core/team/team.test.js (versions, unchanged, revert, bounds, draft, bare mcp refused); full
   core/team suite 51/51.
 - Next: filler column + team.role.fill (real agent identity), then duties as watchers (waits on work/watchers).
+
+## Role filler (2026-09-30)
+
+- `team_teammates.filler` (null = project-only default helper, else an `agents_agents` name) and
+  `team.role.fill {teammate | project+role, agent?}`; `team.list` rows carry `filler {kind, agent?}`; event
+  `team.role-changed`. Callers as for charters (person, assistant, session in the project; never a teammate).
+- A filled role's first launch prompt carries the agent's own character, then the role's charter, and uses the
+  agent's model/effort. Changing the filler starts a fresh thread at the next request (notes, charter and results
+  stay with the binding). The assistant cannot fill a role. An agent without access to the project is given it only
+  when the person fills the role; an assistant or session gets "denied" (agents.update keeps project grants the person's).
+- Still to do for a true identity: the agent's credentials/account on the launch (agents' `credentials()` is private
+  to core/agents) and per-agent memory scope (iq contract, section 14.3). Both are cross-team; the launch runs in the
+  project thread as the role, never in kit's personal thread.
+- Test: 1 new (52/52 in core/team). Regenerated docs/reference and docs/index.json.

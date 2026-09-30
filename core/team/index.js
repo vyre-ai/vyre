@@ -82,6 +82,9 @@ export const MIGRATIONS = [
      UNIQUE (teammate, version)
    );
    ALTER TABLE team_teammates ADD COLUMN thread_charter INTEGER`,
+  // Who fills the role (plan section 14): null is the project-only default helper, else the name of one
+  // of the person's agents (agents_agents). The role's notes, charter and history stay with the binding.
+  `ALTER TABLE team_teammates ADD COLUMN filler TEXT`,
 ];
 
 /** The longest charter (characters): a role's purpose and habits, not a manual. */
@@ -126,6 +129,7 @@ export function preamble(tm) {
       ? "A merge request's own worktree may already have a real conflict in it once you see it: read both sides and fix it with your own tools. If this project has its own test command, vyred never runs it (that would mean vyred running your teammates' own code as itself) — you run it yourself, with Bash, in this worktree, and report the exit code. Call team.merge (not team.done) to check and finish: with a conflict still there, or a test command set but not yet run and reported, it refuses and says which; once nothing remains, pass {\"tests\": {\"exit_code\": <the number the command actually exited with>}} if a test command is set. Never make up an exit code you did not see. Fix more and call it again if refused. Give up on this one with team.fail. Never call team.add, team.update, team.remove, team.share or any person-only tool: those are the person's."
       : "Work reaches you as requests, one at a time, wrapped in <vyre-request>. Close each one by calling team.done with a result, or team.fail with a reason, before you stop. Never call team.add, team.update, team.remove, team.share or any person-only tool: those are the person's.",
     "For what was decided or done before in your projects, call memory_ask; it sees only your projects."];
+  if (tm.filler_character) lines.push("", `You are ${tm.filler}, filling this role. Your own character:`, String(tm.filler_character));
   if (tm.instructions) lines.push("", String(tm.instructions));
   if (tm.charter) lines.push("", "Your charter (what you are for and how you work; it adds to the rules above and never replaces them):", String(tm.charter));
   return lines.join("\n");
@@ -172,6 +176,7 @@ export default {
       tools: JSON.parse(String(r.tools)), isolation: String(r.isolation), thread: r.thread == null ? null : String(r.thread),
       state: String(r.state), current_request: r.current_request == null ? null : String(r.current_request),
       thread_charter: r.thread_charter == null ? null : Number(r.thread_charter),
+      filler: r.filler == null ? null : String(r.filler),
       main_sha: r.main_sha == null ? null : String(r.main_sha), test_command: r.test_command == null ? null : String(r.test_command),
       retired_at: r.retired_at == null ? null : Number(r.retired_at) });
     const shapeR = r => r && ({ id: String(r.id), teammate: String(r.teammate), project: String(r.project),
@@ -354,12 +359,19 @@ export default {
       return { ...charterCurrent(agent), unchanged: false };
     };
 
+    /** The agent filling a role, read fresh (its character and model change under it), or null for the default helper or one since deleted. */
+    const fillerOf = async tm => {
+      if (!tm.filler) return null;
+      const r = await ctx.call("agents.list", {});
+      return (!r.error && Array.isArray(r.data) ? r.data : []).find(a => a.name === tm.filler) || null;
+    };
+
     const shouldRotate = async tm => {
       if (!tm.thread) return false;
       const rec = await threadRecord(tm.thread);
       if (!rec) return false;
       // A newer charter starts a fresh thread (notes and recent results carry over).
-      if (charterVersion(tm.agent) !== (tm.thread_charter == null ? 0 : tm.thread_charter)) return true;
+      if (charterVersion(tm.agent) !== (tm.thread_charter == null ? 0 : tm.thread_charter)) return true; // -1: the filler changed
       return Date.now() - Number(rec.started || Date.now()) > ROTATE_AGE_MS || Number(rec.turns || 0) >= ROTATE_TURNS;
     };
 
@@ -671,10 +683,12 @@ export default {
             const finishedEarly = new Set();
             const early = ctx.events.on("thread.finished", e => finishedEarly.add(e.thread));
             let t;
+            const filler = first ? await fillerOf(tm) : null;
             try {
               t = await use("threads.launch", { agent, agent_kind: "teammate", project: req.project, purpose: "teammate",
                 prompt: wrapped, name: agent, ...(worktreeDir ? { cwd: worktreeDir } : {}),
-                ...(first ? { append: preamble({ ...tm, charter: charterCurrent(agent)?.text || null }) } : { resume: tm.thread }) });
+                ...(first ? { append: preamble({ ...tm, charter: charterCurrent(agent)?.text || null, filler_character: filler?.instructions || null }) } : { resume: tm.thread }),
+                ...(filler?.model ? { model: filler.model } : {}), ...(filler?.effort ? { effort: filler.effort } : {}) });
             } finally { early(); } // always unsubscribed, whether launch succeeded or threw (reviewer LOW, 20d0f121)
             const already = finishedEarly.has(t.id);
             setTeammate(agent, { thread: t.id, ...(first ? { thread_charter: charterVersion(agent) } : {}) });
@@ -884,6 +898,35 @@ export default {
       },
     });
 
+    ctx.tool("team.role.fill", {
+      description: "Have one of the person's agents fill a role, or (agent omitted) go back to the project's default helper. The role's notes, charter and history stay as they are; the live thread starts fresh at the next request under the new filler. The agent keeps its own chat and memory; in this project it works as the role, with this project's memory only. A person, the assistant, or a session in the project on the person's request; never a teammate.",
+      input: { type: "object", properties: { ...charterRef, agent: { type: "string" } } },
+      callers: CHARTER_CALLERS,
+      run: async (i, meta = {}) => {
+        const tm = await charterTarget(i, meta, { write: true });
+        let filler = null;
+        if (i.agent) {
+          const r = await ctx.call("agents.list", {});
+          const a = (!r.error && Array.isArray(r.data) ? r.data : []).find(x => x.name === String(i.agent));
+          if (!a) throw Object.assign(new Error(`no agent ${i.agent}`), { code: "not_found" });
+          if (a.kind === "assistant") throw Object.assign(new Error("the assistant works across every project already; it does not fill a role"), { code: "bad_input" });
+          const reaches = a.projects === "*" || (Array.isArray(a.projects) && a.projects.includes(tm.project));
+          if (!reaches) {
+            if (!isPerson(meta.caller)) throw Object.assign(new Error(`${a.name} has no access to ${tm.project}; the person gives an agent a project`), { code: "denied" });
+            const u = await ctx.call("agents.update", { name: a.name, projects: [...(Array.isArray(a.projects) ? a.projects : []), tm.project] });
+            if (u.error) throw new Error(u.error.message);
+          }
+          filler = a.name;
+        }
+        if ((tm.filler || null) === filler) return { agent: tm.agent, project: tm.project, role: tm.role, filler, unchanged: true };
+        // A different filler is a different character: the next request starts a fresh thread (notes and recent results carry over).
+        setTeammate(tm.agent, { thread_charter: -1 });
+        db.prepare("UPDATE team_teammates SET filler = ?, updated_at = ? WHERE agent = ?").run(filler, Date.now(), tm.agent);
+        ctx.events.emit("team.role-changed", { project: tm.project, role: tm.role, filler });
+        return { agent: tm.agent, project: tm.project, role: tm.role, filler, unchanged: false };
+      },
+    });
+
     ctx.tool("team.list", {
       description: "The teammates that serve a project: role, brief, state, queue length and last result. With no project, the caller's own (from its thread); a person with no thread and no project sees every teammate.",
       input: { type: "object", properties: { project: { type: "string" }, all: { type: "boolean" } } },
@@ -899,7 +942,7 @@ export default {
         return rows.map(tm => {
           const queued = Number(/** @type {any} */ (db.prepare("SELECT COUNT(*) AS n FROM team_requests WHERE teammate = ? AND state = 'queued'").get(tm.agent)).n);
           const last = shapeR(db.prepare("SELECT * FROM team_requests WHERE teammate = ? AND state IN ('done','failed') ORDER BY finished_at DESC LIMIT 1").get(tm.agent));
-          return { agent: tm.agent, project: tm.project, role: tm.role, shared: tm.shared, brief: tm.brief, state: tm.state, queued,
+          return { agent: tm.agent, project: tm.project, role: tm.role, shared: tm.shared, brief: tm.brief, filler: tm.filler ? { kind: "agent", agent: tm.filler } : { kind: "default" }, state: tm.state, queued,
             current_request: tm.current_request, last_result: last ? { request: last.id, state: last.state, result: last.result } : null };
         });
       },

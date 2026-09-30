@@ -443,6 +443,36 @@ test("charters: draft saves a version composed from the project's own context, a
   assert.equal(bare.error.code, "denied");
 });
 
+// --- role filler (plan section 14): a role filled by one of the person's agents ---------------------
+
+test("team.role.fill: an agent fills a role, its character and the charter ride the first prompt, a change starts a fresh thread, default goes back", async t => {
+  const { tool, raw, root, project, launches } = await boot(t);
+  const agent = `design-${project.slug}`;
+  await tool("agents.create", { name: "kit", projects: [], instructions: "Kit is dry and exact." });
+  await tool("team.add", { project: project.slug, role: "design", brief: "visual design" });
+  assert.deepEqual((await tool("team.list", { project: project.slug }))[0].filler, { kind: "default" });
+  assert.equal((await raw("team.role.fill", { teammate: agent, agent: "nobody" })).error.code, "not_found");
+  assert.equal((await raw("team.role.fill", { teammate: agent, agent: "kit" }, "mcp")).error.code, "denied"); // a bare mcp caller
+  const r = await tool("team.role.fill", { teammate: agent, agent: "kit" }); // the person gives kit the project as they fill it
+  assert.equal(r.filler, "kit");
+  assert.equal((await tool("team.role.fill", { teammate: agent, agent: "kit" })).unchanged, true);
+  assert.deepEqual((await tool("team.list", { project: project.slug }))[0].filler, { kind: "agent", agent: "kit" });
+  await tool("team.charter.set", { teammate: agent, text: "You review the pricing page." });
+  const ask = await tool("team.ask", { to: "design", project: project.slug, wait: true,
+    text: 'vyre team.done {"result":"ok","notes":"unchanged","reason":"test"}' });
+  assert.equal(ask.state, "done");
+  const first = launches().find(l => l.argv.includes("--append-system-prompt"));
+  const append = first.argv[first.argv.indexOf("--append-system-prompt") + 1];
+  assert.ok(append.includes("Kit is dry and exact.") && append.includes("You review the pricing page."));
+  assert.ok(append.indexOf("Kit is dry") < append.indexOf("You review the pricing"), "character first, then the role's charter");
+  await until(async () => (await tool("team.list", { project: project.slug }))[0].state === "idle", "idle");
+  const back = await tool("team.role.fill", { teammate: agent });
+  assert.equal(back.filler, null);
+  const n = launches().filter(l => l.argv.includes("--append-system-prompt")).length;
+  await tool("team.ask", { to: "design", project: project.slug, wait: true, text: 'vyre team.done {"result":"ok","notes":"unchanged","reason":"test"}' });
+  assert.equal(launches().filter(l => l.argv.includes("--append-system-prompt")).length, n + 1, "the new filler started a fresh thread");
+});
+
 // --- step 2: notes-changed enforcement and compaction re-injection ------------------------------
 
 test("team.done refuses to close a request when the notes have not changed since it started; writing them lets it through", async t => {
