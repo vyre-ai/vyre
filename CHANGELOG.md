@@ -8,6 +8,10 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 - Setup page fix (e2e2's B3): after the node joins, the address goes from dns to certificate to serving on the box without a `tailscale.changed`, so the page stayed on "Publishing your address". It now also reads the box's `certificate.issued` and `certificate.failed` events (only this box's own name, from the start of the list so an early one is not missed), shows serving when the certificate is issued and the box's reason when it failed, and stops watching at either.
 - The GitHub CLI ships with Vyre, so "Sign in with GitHub" (which runs the real `gh auth login`) works on a real box: the box image pins gh 2.102.0 and checks each architecture's archive against its published sum before unpacking it (`/usr/local/bin/gh`, found as plain `gh`), and CI runs `gh --version` in the built image and requires the pinned version. The Mac server installer no longer installs gh with Homebrew: it uses a gh already on PATH, else the same pinned version downloaded into Vyre's own bin and checked against its sum. `test/box-gh.test.js` keeps the two pins on one version.
 - The setup page's staging overrides are narrowed: an install URL must be under vyre.run or vyre-site.pages.dev (not any pages.dev name), a relay under vyre.run only.
+- A real race in `vyre backup`: once tar's output ended, the export killed tar if its exit code was not in yet, so a clean
+  exit became "tar exited null" and the backup failed (a loaded machine hit it now and then). tar is now only stopped when
+  the reader gives up early (`core/names/backup.js`, a fake-tar test that fails without the fix). Test-only: the peer
+  detached-call test reads the answer once the file parses, not when curl has created it.
 - A real race in the CDP mux, found as the flaky two-agents computerd test: an agent client's first call could arrive after its
   browser session opened but before its browser context was made, and then ran with no context, so a
   `Target.createTarget` landed in the shared default context, outside every per-agent fence (and the agent never saw its
