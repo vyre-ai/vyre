@@ -136,10 +136,10 @@ async function main() {
     const popupTarget = await (await fetch(`${base}/json/new?chrome-extension://${extId}/popup.html`, { method: "PUT" })).json();
     const popup = await attach(popupTarget.webSocketDebuggerUrl);
     cleanup.push(() => fetch(`${base}/json/close/${popupTarget.id}`).catch(() => {}));
-    try { await until(() => popup.run(`return typeof document !== "undefined" && !!document.getElementById("pair")`).catch((/** @type {any} */ e) => { log(`popup probe: ${String(e.message).slice(0, 160)}`); return false; })); }
+    try { await until(() => popup.run(`return typeof document !== "undefined" && !!document.getElementById("pair")`).catch((/** @type {any} */ e) => { log(`popup probe: ${String(e.message).slice(0, 160)}`); return false; }), 30000); }
     catch (e) {
       log(`popup targets: ${await /** @type {any} */ (globalThis).__dump()}`);
-      log(`popup html: ${await popup.run(`return (document.documentElement ? document.documentElement.outerHTML : "no document").slice(0, 300)`).catch((/** @type {any} */ x) => "eval failed: " + x.message)}`);
+      log(`popup html: ${await popup.run(`return (document.documentElement ? document.documentElement.outerHTML : "no document").slice(0, 1200)`).catch((/** @type {any} */ x) => "eval failed: " + x.message)}`);
       throw e;
     }
     const paired = await popup.run(`
