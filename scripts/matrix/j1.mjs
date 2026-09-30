@@ -119,6 +119,10 @@ try {
   await sees(/Tailscale's sign-in page/i, 60000);
   const login = String(await page.evaluate(`(([...document.querySelectorAll("a[href]")].find(a => /sign-in page/.test(a.textContent))||{}).href)||""`));
   const key = (login.match(/\/register\/([A-Za-z0-9_-]+)/) || [])[1];
+  if (!key) {
+    const dbg = t => spawnSync("docker", ["exec", "-u", "vyre", "vyre-vyre-1", "vyre", "call", t, "{}"], { encoding: "utf8" });
+    fs.writeFileSync(out + "/ts-diag.txt", ["network.tailscale.status", "network.tailscale.login"].map(t => { const x = dbg(t); return `== ${t}\n${hide(x.stdout || "")}${x.stderr || ""}`; }).join("\n"));
+  }
   r.step("1.9a-tailscale-login-link", Boolean(key), { why: key ? "register link shown (headscale stand-in)" : "no register link: " + hide(login).slice(0, 100), shot: await shot("setup-ts-link") });
   if (!key) throw new Error("no tailscale login link");
   const reg = spawnSync("docker", ["exec", "e2e-headscale", "headscale", "nodes", "register", "--user", "marlow", "--key", key], { encoding: "utf8" });
