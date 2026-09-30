@@ -154,11 +154,7 @@ export default {
         if (value !== undefined) input.fields = { ...(input.fields || {}), [defaultField(input.kind || "secret") || "value"]: value };
         if (!input.fields) throw new Error("give the item a value or fields");
         const mod = caller.startsWith("module:") ? caller.slice(7) : null;
-        // A person connecting an account (Microsoft, personal Google) stores its api-credential through the connectors module and that
-        // connect IS the approval: the credential is granted to `connectors` and to no one else, with no second prompt. Anything else a person
-        // grants goes through vault.grant, which asks for presence. The credential's own config (hosts, endpoints) bounds what the grant can do.
-        const connectGrant = !mod && input.kind === "api-credential" && Array.isArray(grants) && grants.length > 0 && grants.every(g => g === "connectors");
-        if (!mod && grants && !connectGrant) throw new Error("grants on put are for modules; people use vault.grant");
+        if (!mod && grants) throw new Error("grants on put are for modules; people use vault.grant");
         // `<vault>/<item>` goes into a shared vault (shared.js); modules put only their own items.
         const slash = String(input.name).indexOf("/");
         if (slash > 0) {
