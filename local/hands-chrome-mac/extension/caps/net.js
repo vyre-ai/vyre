@@ -372,8 +372,8 @@ export async function egressGuard(ctx, tab) {
     for (const u of (rt && rt.result && rt.result.value) || []) add(u);
   } catch { /* the guard still stands with what it has */ }
   eg.depth++;
-  // Fetch does not see a WebSocket handshake; block new ones for the guard window (sockets the page already holds are untouched).
-  await Promise.resolve(ctx.cdp.send(tab, "Network.setBlockedURLs", { urls: ["ws://*", "wss://*"] })).catch(() => {});
+  // The Fetch domain does not see a WebSocket handshake, and Network.setBlockedURLs did not stop a new one in a real Chrome
+  // (measured in CI): a new WebSocket is refused by the page shim in outbound.js instead, in its plain form.
   t.fetchOn = true;
   await ctx.cdp.send(tab, "Fetch.enable", { patterns: [{ urlPattern: "*", requestStage: "Request" }] });
   let done = false;
@@ -382,7 +382,7 @@ export async function egressGuard(ctx, tab) {
       if (done) return [];
       done = true;
       const blocked = eg.blocked.splice(0);
-      if (--eg.depth <= 0) { t.egress = null; await Promise.resolve(ctx.cdp.send(tab, "Network.setBlockedURLs", { urls: [] })).catch(() => {}); await syncFetch(ctx, t); }
+      if (--eg.depth <= 0) { t.egress = null; await syncFetch(ctx, t); }
       return blocked;
     },
   };

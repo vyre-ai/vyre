@@ -114,3 +114,14 @@ test("malformed batches are refused; a batch cannot contain a batch", async () =
   const s = await dispatch("batch.run", { steps: [{ args: {} }] }, ctx);
   assert.equal(s.ok, false);
 });
+
+test("page.act and page.fill steps look for their control for a moment by default; a step's own wait, or wait:false, is respected", async () => {
+  const { ctx } = world();
+  const seen = /** @type {any[]} */ ([]);
+  ctx.call = async (/** @type {string} */ _op, /** @type {any} */ a) => { seen.push(a); return { ok: true }; };
+  await dispatch("batch.run", { steps: [{ op: "page.act", args: { selector: { name: "A" } } }, { op: "page.fill", args: { fields: [] } }, { op: "page.act", args: { selector: { name: "B" }, wait: { timeoutMs: 50 } } }] }, ctx);
+  assert.deepEqual(seen.map(a => a.wait), [{ timeoutMs: 3000 }, { timeoutMs: 3000 }, { timeoutMs: 50 }]);
+  seen.length = 0;
+  await dispatch("batch.run", { wait: false, steps: [{ op: "page.act", args: { selector: { name: "A" } } }] }, ctx);
+  assert.equal(seen[0].wait, undefined);
+});

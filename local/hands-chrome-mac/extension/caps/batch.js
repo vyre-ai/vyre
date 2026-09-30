@@ -63,7 +63,11 @@ export default {
         if (!step || typeof step.op !== "string") { halt(`step ${i} has no op`, "bad_request"); if (stopOnError) break; continue; }
         if (step.op === "batch.run") { halt("a batch cannot contain a batch", "bad_request"); if (stopOnError) break; continue; }
         try {
-          const result = await ctx.call(step.op, { ...(args.asked === true ? { asked: true } : {}), ...subst(step.args || {}, results) });
+          const stepArgs = subst(step.args || {}, results);
+          // A page acts on whatever a person's last click just caused: look for the control for a moment instead of failing on the first
+          // look (a table that fills after its section opens). Set `wait` on a step, or `wait: false` on the batch, to change it.
+          const wants = (step.op === "page.act" || step.op === "page.fill") && stepArgs.wait === undefined && args.wait !== false;
+          const result = await ctx.call(step.op, { ...(args.asked === true ? { asked: true } : {}), ...(wants ? { wait: args.wait && typeof args.wait === "object" ? args.wait : { timeoutMs: 3000 } } : {}), ...stepArgs });
           results.push(result);
           if (result && result.ok === false) {
             if (out.ok) {

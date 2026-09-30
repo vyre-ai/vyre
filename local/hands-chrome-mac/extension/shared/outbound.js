@@ -86,13 +86,20 @@ export const guardInstall = `(() => {
   if (RTC) window.RTCPeerConnection = function () { refuse("WEBRTC", "webrtc"); throw new Error("Vyre held this"); };
   if (WRTC) window.webkitRTCPeerConnection = window.RTCPeerConnection;
   const hint = n => { try { if (!n || n.tagName !== "LINK") return false; const rel = String(n.getAttribute("rel") || n.rel || ""); if (!/(^|\s)(dns-prefetch|preconnect|prefetch|prerender|preload)(\s|$)/i.test(rel)) return false; const h = n.getAttribute("href"); return !h || new URL(h, location.href).origin !== location.origin; } catch { return true; } };
+  // A new WebSocket to another host is refused (a socket the page already holds is untouched). Plain form only.
+  const WS = window.WebSocket;
+  if (WS) {
+    const G = function WebSocket(u, p) { let host = ""; try { host = new URL(String(u), location.href).host; } catch (e) { host = ""; } if (host && host !== location.host) { refuse("WEBSOCKET", u); throw new Error("Vyre held this"); } return p === undefined ? new WS(u) : new WS(u, p); };
+    G.prototype = WS.prototype; for (const k of ["CONNECTING", "OPEN", "CLOSING", "CLOSED"]) G[k] = WS[k];
+    window.WebSocket = G;
+  }
   const P = Node.prototype, E = Element.prototype;
   const oa = P.appendChild, oi = P.insertBefore, oap = E.append, opp = E.prepend;
   P.appendChild = function (n) { if (hint(n)) { refuse("LINK", n.getAttribute("href")); return n; } return oa.apply(this, arguments); };
   P.insertBefore = function (n) { if (hint(n)) { refuse("LINK", n.getAttribute("href")); return n; } return oi.apply(this, arguments); };
   E.append = function () { for (const n of arguments) if (hint(n)) { refuse("LINK", n.getAttribute("href")); return; } return oap.apply(this, arguments); };
   E.prepend = function () { for (const n of arguments) if (hint(n)) { refuse("LINK", n.getAttribute("href")); return; } return opp.apply(this, arguments); };
-  window.__vyreGuard = { blocked, restore() { if (RTC) window.RTCPeerConnection = RTC; if (WRTC) window.webkitRTCPeerConnection = WRTC; P.appendChild = oa; P.insertBefore = oi; E.append = oap; E.prepend = opp; window.fetch = of; XMLHttpRequest.prototype.open = xo; XMLHttpRequest.prototype.send = xs; if (sb) navigator.sendBeacon = sb; } };
+  window.__vyreGuard = { blocked, restore() { if (WS) window.WebSocket = WS; if (RTC) window.RTCPeerConnection = RTC; if (WRTC) window.webkitRTCPeerConnection = WRTC; P.appendChild = oa; P.insertBefore = oi; E.append = oap; E.prepend = opp; window.fetch = of; XMLHttpRequest.prototype.open = xo; XMLHttpRequest.prototype.send = xs; if (sb) navigator.sendBeacon = sb; } };
   return true;
 })()`;
 
