@@ -605,7 +605,7 @@ for (const driver of ["cli", "sdk"]) {
     const r = await w.tool("threads.send", { thread: th.id, text: "Summarise #\"Fee agreement\" against the repo", mentions: [{ kind: "github", id: "harlow/site" }], surface: "deck" });
     assert.equal(r.error, undefined, JSON.stringify(r));
     await w.finished(th.id, 2);
-    const said = (await w.events(th.id)).find(e => e.type === "turn.said");
+    const said = (await w.events(th.id)).filter(e => e.type === "turn.said").at(-1);
     assert.deepEqual(resolved.map(x => [x.kind, x.id, x.thread, x.said]), [["github", "harlow/site", th.id, said.payload.id], ["drive", "f1", th.id, said.payload.id]]);
     const men = (await w.events(th.id)).find(e => e.type === "thread.mentioned");
     assert.deepEqual(men.payload.mentions.map(m => [m.kind, m.id, m.name]), [["github", "harlow/site", "harlow/site"], ["drive", "f1", "Fee agreement"]]);
