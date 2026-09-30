@@ -111,11 +111,19 @@ export default {
       return items.map(it => ({ ...it, presence: { required: OUTBOUND.has(it.kind), ...c } }));
     };
 
-    /** The intent the vault says covers this call, or null: kind, via and every recipient exact, in the call's own thread (or standing). */
-    const said = async (input, thread) => {
+    /**
+     * The intent the vault says covers this call, or null: kind, via and EVERY real destination exact
+     * (an email's cc and bcc too), the sending agent when the intent names agents, in the call's own
+     * thread, its lineage (a teammate working on the person's ask in a parent thread), or standing.
+     * A plain ask is used up by the match (consume). A sender that cannot name its destinations never matches.
+     */
+    const said = async (input, thread, agent) => {
       try {
-        const to = (Array.isArray(input.to) ? input.to : [input.to]).map(String).filter(Boolean);
-        const r = await ctx.call("vault.said.match", { kind: String(input.kind), via: String(input.via), to, ...(thread ? { thread } : {}) });
+        const to = gate.recipients(input);
+        if (!to || !to.length) return null;
+        let lineage = [];
+        if (thread) { const l = await ctx.call("threads.lineage", { thread }); if (l && l.data && Array.isArray(l.data.lineage)) lineage = l.data.lineage.map(String); }
+        const r = await ctx.call("vault.said.match", { kind: String(input.kind), via: String(input.via), to, consume: true, ...(agent ? { agent } : {}), ...(thread ? { thread } : {}), ...(lineage.length ? { lineage } : {}) });
         return r && r.data && r.data.matched === true && typeof r.data.id === "string" ? r.data.id : null;
       } catch { return null; }
     };
@@ -132,7 +140,7 @@ export default {
         const by = { agent: agent || agentOf(caller) || (String(caller || "").startsWith("module:") && typeof input.agent === "string" ? input.agent : null) };
         // Asking is approving (P17): what the person's own words covered goes out now, with no
         // card and no proof; anything else holds. No match, or no vault to ask, is a hold as before.
-        const intent = await said(input, filing.thread);
+        const intent = await said(input, filing.thread, by.agent);
         if (intent) return gate.sendNow({ ...input, ...filing }, { ...by, intent });
         return gate.request({ ...input, ...filing }, by);
       },
@@ -213,18 +221,39 @@ export default {
       return r.data;
     };
 
+    // The person's own surfaces, or the assistant acting for them. Anything else is refused.
+    const isAssistant = caller => String(caller) === "module:assistant";
+
     ctx.tool("gate.said.list", {
-      description: "What you have asked to go out, by voice or in chat: each thing Vyre will send, post or pay without asking again, and standing permissions. Revoked ones with `all`.",
+      description: "What you have asked to go out, by voice or in chat: each thing Vyre will send, post or pay without asking again, and standing permissions. Revoked ones with `all`. The assistant may read it for you.",
       input: obj({ thread: str, all: { type: "boolean" } }),
+      callers: ["cli", "local", "deck", "capsule", "module"],
+      run: (input, { caller }) => { if (!isAssistant(caller)) asPerson(caller); return vaultCall("vault.said.list", input); },
+    });
+
+    ctx.tool("gate.said.add", {
+      description: "Add a standing permission yourself, from Settings: what may go out without asking each time. `kind` send, post or pay; `to` the exact addresses, handles or channels; `agents` to limit it to named agents (none means any of yours); a pay one needs `limits {max_amount, currency}`. Only you, on your own surface, add one; needs no proof, since you asked.",
+      input: obj({ kind: { type: "string", enum: ["send", "post", "pay", "act_out"] }, channel: str, to: { type: "array", items: str }, what: str, agents: { type: "array", items: str }, limits: obj({ max_amount: { type: "number" }, currency: str }) }, ["kind", "to"]),
       callers: ["cli", "local", "deck", "capsule"],
-      run: (input, { caller }) => { asPerson(caller); return vaultCall("vault.said.list", input); },
+      run: (input, { caller }) => { asPerson(caller); return vaultCall("vault.said.add", { ...input, surface: String(caller) }); },
     });
 
     ctx.tool("gate.said.revoke", {
-      description: "Take back something you asked to go out, or a standing permission. It stops covering sends at once. Needs no proof: taking permission away never does.",
-      input: obj({ id: str }, ["id"]),
-      callers: ["cli", "local", "deck", "capsule"],
-      run: (input, { caller }) => { asPerson(caller); return vaultCall("vault.said.revoke", input); },
+      description: "Take back something you asked to go out, or a standing permission. It stops covering sends at once. Needs no proof: taking permission away never does. The assistant may do it only when your own words asked for it (\"stop letting kit post there\").",
+      input: obj({ id: str, thread: str }, ["id"]),
+      callers: ["cli", "local", "deck", "capsule", "module"],
+      run: async (input, { caller }) => {
+        if (!isAssistant(caller)) { asPerson(caller); return vaultCall("vault.said.revoke", { id: input.id }); }
+        // The assistant acts for the person only on an intent of kind "revoke" that names this id,
+        // recorded from the person's own turn in this thread (or its lineage), and used up by this call.
+        if (!input.thread) throw new Error("say which thread the request came from: thread");
+        let lineage = [];
+        const l = await ctx.call("threads.lineage", { thread: input.thread });
+        if (l && l.data && Array.isArray(l.data.lineage)) lineage = l.data.lineage.map(String);
+        const m = await vaultCall("vault.said.match", { kind: "revoke", to: [String(input.id)], thread: input.thread, lineage, consume: true });
+        if (!m || m.matched !== true) throw new Error("only you can take a permission back, unless your own words in this conversation asked for it");
+        return vaultCall("vault.said.revoke", { id: input.id });
+      },
     });
 
     ctx.tool("gate.route", {

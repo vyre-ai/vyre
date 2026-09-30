@@ -2,7 +2,7 @@
 title: "Session credentials: real keys, not narrow tools"
 summary: How a Claude Code session gets vault items as its own environment, how it can ask for more mid-session, and how an "acts as me" key stays behind an egress proxy instead of ever reaching the model.
 audience: builders, agents
-owner: vault
+owner: connectors
 status: draft
 ---
 

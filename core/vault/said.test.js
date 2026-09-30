@@ -188,3 +188,18 @@ test("matchIntent: a setting intent names the setting key in `to` and covers onl
   assert.equal(matchIntent({ kind: "setting", to: ["chat.model"], at: T0 + 1000 }, [it], ["t-1"]), null);
   assert.equal(matchIntent({ kind: "send", to: ["morning.note"], at: T0 + 1000 }, [it], ["t-1"]), null);
 });
+
+test("matchIntent: a used plain ask is spent, a used standing one is not; agents narrow; pay needs currency on both sides", () => {
+  assert.equal(matchIntent(call1(), [intent({ used: T0 + 5 })], ["t-1"]), null, "a plain ask is used up");
+  assert.deepEqual(matchIntent(call1(), [intent({ used: T0 + 5, standing: true })], []), { id: "s_1" });
+  const kit = intent({ standing: true, agents: ["kit"] });
+  assert.deepEqual(matchIntent(call1({ agent: "Kit" }), [kit], []), { id: "s_1" });
+  assert.equal(matchIntent(call1({ agent: "juno" }), [kit], []), null);
+  assert.equal(matchIntent(call1(), [kit], []), null, "a call with no agent is not kit");
+  const pay = intent({ kind: "pay", to: ["acct_1"], limits: { max_amount: 50, currency: "usd" } });
+  const p = o => ({ kind: "pay", payee: "acct_1", amount: 10, at: T0 + 1000, ...o });
+  assert.deepEqual(matchIntent(p({ currency: "USD" }), [pay], ["t-1"]), { id: "s_1" });
+  assert.equal(matchIntent(p({}), [pay], ["t-1"]), null, "no currency on the call");
+  assert.equal(matchIntent(p({ currency: "eur" }), [pay], ["t-1"]), null);
+  assert.equal(matchIntent(p({ currency: "usd" }), [intent({ kind: "pay", to: ["acct_1"], limits: { max_amount: 50 } })], ["t-1"]), null, "no currency on the intent");
+});

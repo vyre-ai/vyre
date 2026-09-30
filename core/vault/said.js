@@ -25,14 +25,14 @@ import crypto from "node:crypto";
 export const SAID_MIGRATION = `CREATE TABLE vault_said_intents (
      id TEXT PRIMARY KEY, thread TEXT NOT NULL, said TEXT NOT NULL, kind TEXT NOT NULL, channel TEXT,
      recipients TEXT NOT NULL, what TEXT NOT NULL, when_text TEXT, standing INTEGER NOT NULL DEFAULT 0,
-     limits TEXT, at INTEGER NOT NULL, revoked INTEGER, mac TEXT
+     limits TEXT, at INTEGER NOT NULL, revoked INTEGER, agents TEXT, used INTEGER, mac TEXT
    );
    CREATE INDEX vault_said_thread ON vault_said_intents (thread, at);`;
 
 /** Every column but the MAC: what was said, where, to whom, how far it reaches and whether it still stands. */
-export const SAID_MACED = ["id", "thread", "said", "kind", "channel", "recipients", "what", "when_text", "standing", "limits", "at", "revoked"];
+export const SAID_MACED = ["id", "thread", "said", "kind", "channel", "recipients", "what", "when_text", "standing", "limits", "at", "revoked", "agents", "used"];
 
-export const INTENT_KINDS = ["send", "post", "pay", "act_out", "setting"];
+export const INTENT_KINDS = ["send", "post", "pay", "act_out", "setting", "revoke"];
 /** The only callers that may record what the person said. */
 export const RECORDERS = ["module:sessions", "module:assistant"];
 const MAX_TO = 20, MAX_TEXT = 500;
@@ -42,7 +42,7 @@ const json = (v, d) => { try { return v == null ? d : JSON.parse(String(v)); } c
 const bad = msg => Object.assign(new Error(msg), { code: "bad_input" });
 
 /** The intent kinds an outward call may be covered by. A Gate `send` may be a post; nothing else crosses. */
-const COVERS = { send: ["send", "post"], post: ["post"], pay: ["pay"], spend: ["pay"], act_out: ["act_out"], delete: ["act_out"], act: ["act_out"], setting: ["setting"] };
+const COVERS = { send: ["send", "post"], post: ["post"], pay: ["pay"], spend: ["pay"], act_out: ["act_out"], delete: ["act_out"], act: ["act_out"], setting: ["setting"], revoke: ["revoke"] };
 
 /** A recipient as compared: trimmed and lower-cased, so an address differs only by what it says. */
 export const norm = s => String(s ?? "").trim().toLowerCase();
@@ -59,7 +59,7 @@ export function ambiguous(s) {
 
 /**
  * Whether one outward call is covered by something the person said.
- * @param {{ kind: string, channel?: string, via?: string, to?: string[], amount?: number, payee?: string, currency?: string, at?: number }} call
+ * @param {{ kind: string, channel?: string, via?: string, to?: string[], amount?: number, payee?: string, currency?: string, agent?: string, at?: number }} call
  * @param {{ id: string, thread: string, kind: string, channel?: string|null, to: string[], standing: boolean, limits?: any, at: number, revoked?: number|null }[]} intents
  * @param {string[]} lineage the call's thread and the threads it descends from
  * @returns {{ id: string } | null} the intent that covers it, the latest when several do
@@ -76,6 +76,10 @@ export function matchIntent(call, intents, lineage = []) {
   let best = null;
   for (const it of intents || []) {
     if (!it || it.revoked || !covers.includes(it.kind)) continue;
+    // A plain ask is used up by the send it asked for; only a standing permission persists.
+    if (it.used && !it.standing) continue;
+    // An intent that names agents covers only them; one that names none covers any of the person's agents.
+    if (it.agents && it.agents.length && !it.agents.map(norm).includes(norm(call.agent))) continue;
     if (!(it.at <= at)) continue;
     if (!it.standing && !lineage.includes(it.thread)) continue;
     if (it.channel && !channels.has(norm(it.channel))) continue;
@@ -85,7 +89,7 @@ export function matchIntent(call, intents, lineage = []) {
     if (pay) {
       const max = it.limits && Number(it.limits.max_amount);
       if (!Number.isFinite(max) || !Number.isFinite(call.amount) || /** @type {number} */ (call.amount) < 0 || /** @type {number} */ (call.amount) > max) continue;
-      if (it.limits.currency && call.currency && norm(it.limits.currency) !== norm(call.currency)) continue;
+      if (!it.limits.currency || !call.currency || norm(it.limits.currency) !== norm(call.currency)) continue;
     }
     if (!best || it.at >= best.at) best = it;
   }
@@ -94,7 +98,8 @@ export function matchIntent(call, intents, lineage = []) {
 
 /** The stored row as a caller sees it. */
 const out = r => ({ id: r.id, thread: r.thread, said: r.said, kind: r.kind, channel: r.channel ?? null, to: json(r.recipients, []), what: r.what,
-  when: r.when_text ?? null, standing: Boolean(r.standing), limits: json(r.limits, null), at: Number(r.at), revoked: r.revoked ? Number(r.revoked) : null });
+  when: r.when_text ?? null, standing: Boolean(r.standing), limits: json(r.limits, null), at: Number(r.at), revoked: r.revoked ? Number(r.revoked) : null,
+  agents: json(r.agents, []), used: r.used ? Number(r.used) : null });
 
 export class SaidIntents {
   /** @param {import("./vault.js").Vault} vault */
@@ -121,13 +126,15 @@ export class SaidIntents {
       if (i.limits.currency !== undefined && (typeof i.limits.currency !== "string" || i.limits.currency.length > 8)) throw bad("limits.currency is a short code");
       limits = { ...(max !== undefined ? { max_amount: max } : {}), ...(i.limits.currency ? { currency: i.limits.currency } : {}) };
     }
-    if (i.kind === "pay" && !(limits && limits.max_amount !== undefined)) throw bad("a pay intent needs limits.max_amount");
+    if (i.kind === "pay" && !(limits && limits.max_amount !== undefined && limits.currency)) throw bad("a pay intent needs limits.max_amount and limits.currency");
+    if (i.agents !== undefined && !(Array.isArray(i.agents) && i.agents.length <= MAX_TO && i.agents.every(x => typeof x === "string" && x.trim() && x.length <= 80))) throw bad("agents is a list of agent names");
+    const agents = (i.agents || []).map(x => x.trim());
     const at = Number.isFinite(i.at) ? Number(i.at) : Date.now();
     await this.vault.key();
     const id = "s_" + crypto.randomBytes(9).toString("base64url");
-    this.vault.db.prepare(`INSERT INTO vault_said_intents (id, thread, said, kind, channel, recipients, what, when_text, standing, limits, at)
-      VALUES (?,?,?,?,?,?,?,?,?,?,?)`).run(id, i.thread, i.said, i.kind, i.channel || null, JSON.stringify(to.map(String)), i.what.trim().slice(0, MAX_TEXT),
-      i.when || null, i.standing === true ? 1 : 0, limits ? JSON.stringify(limits) : null, at);
+    this.vault.db.prepare(`INSERT INTO vault_said_intents (id, thread, said, kind, channel, recipients, what, when_text, standing, limits, at, agents)
+      VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`).run(id, i.thread, i.said, i.kind, i.channel || null, JSON.stringify(to.map(String)), i.what.trim().slice(0, MAX_TEXT),
+      i.when || null, i.standing === true ? 1 : 0, limits ? JSON.stringify(limits) : null, at, agents.length ? JSON.stringify(agents) : null);
     this.vault.sign("vault_said_intents", id);
     this.vault.audit("said-record", null, caller, true, `${i.kind}${i.standing === true ? " standing" : ""} in ${i.thread}`);
     return { id };
@@ -159,11 +166,32 @@ export class SaidIntents {
    * The Gate's question. Reads only rows that pass their MAC and are not revoked.
    * @param {any} call @param {{ thread?: string, lineage?: string[] }} [where]
    */
-  async match(call, where = {}) {
+  async match(call, where = {}, consume = false) {
     await this.vault.key();
     const lineage = [...new Set([...(where.thread ? [where.thread] : []), ...(where.lineage || [])].map(String))];
     const intents = this.rows().map(out);
-    return matchIntent(call, intents, lineage);
+    const m = matchIntent(call, intents, lineage);
+    if (!m || !consume) return m;
+    // A plain ask is used up by the send it asked for: claim it before anything goes out, so two
+    // calls cannot both ride it. A standing permission is never used up.
+    const it = intents.find(x => x.id === m.id);
+    if (it && !it.standing) {
+      const r = this.vault.db.prepare("UPDATE vault_said_intents SET used = ? WHERE id = ? AND used IS NULL").run(Date.now(), m.id);
+      if (!r.changes) return null;
+      this.vault.sign("vault_said_intents", m.id);
+    }
+    return m;
+  }
+
+  /**
+   * A standing permission the person added themselves on a person surface (Settings). The caller,
+   * module:gate, has already checked it acts for a person surface; the row says so in `said`.
+   * @param {any} i @param {string} surface
+   */
+  async add(i, surface) {
+    const to = Array.isArray(i.to) ? i.to : [];
+    return this.record({ thread: "settings", said: `person:${surface}`, kind: i.kind, channel: i.channel, to, what: i.what || `${i.kind} ${to.join(", ")}`, standing: true,
+      limits: i.limits, agents: i.agents }, `module:gate/${surface}`);
   }
 }
 
@@ -179,7 +207,7 @@ export function register({ vault, internal }) {
   const said = new SaidIntents(vault);
 
   internal("vault.said.record", "Store what the person's own turn asked for. Only sessions and the assistant call it, after extracting it from a `said` row; nothing a model, agent, watcher or tool result produces can.",
-    obj({ thread: str, said: str, kind: { type: "string", enum: INTENT_KINDS }, channel: str, to: strs, what: str, when: str, standing: { type: "boolean" },
+    obj({ thread: str, said: str, kind: { type: "string", enum: INTENT_KINDS }, channel: str, to: strs, what: str, when: str, standing: { type: "boolean" }, agents: strs,
       limits: obj({ max_amount: { type: "number" }, currency: str }), at: { type: "integer" } }, ["thread", "said", "kind", "what"]),
     (input, { caller }) => {
       if (!RECORDERS.includes(String(caller))) { vault.audit("said-record", null, caller, false, "not sessions or the assistant"); throw new Error("only sessions and the assistant record what the person said"); }
@@ -187,11 +215,19 @@ export function register({ vault, internal }) {
     });
 
   internal("vault.said.match", "Whether an outward call is covered by something the person said before it: kind, channel and every recipient exact, pay by payee and amount within limits. { matched, id? }. The Gate asks before it holds.",
-    obj({ kind: str, channel: str, via: str, to: strs, amount: { type: "number" }, payee: str, currency: str, thread: str, lineage: strs, at: { type: "integer" } }, ["kind"]),
+    obj({ kind: str, channel: str, via: str, to: strs, amount: { type: "number" }, payee: str, currency: str, agent: str, consume: { type: "boolean" }, thread: str, lineage: strs, at: { type: "integer" } }, ["kind"]),
     async input => {
-      const { thread, lineage, ...call } = input;
-      const m = await said.match(call, { thread, lineage });
+      const { thread, lineage, consume, ...call } = input;
+      const m = await said.match(call, { thread, lineage }, consume === true);
       return m ? { matched: true, id: m.id } : { matched: false };
+    });
+
+  internal("vault.said.add", "The person adds a standing permission from a person surface (Settings). Only the Gate calls it, after it has checked the caller is the person's own surface.",
+    obj({ surface: str, kind: { type: "string", enum: INTENT_KINDS }, channel: str, to: strs, what: str, agents: strs, limits: obj({ max_amount: { type: "number" }, currency: str }) }, ["surface", "kind", "to"]),
+    (input, { caller }) => {
+      if (String(caller) !== "module:gate") { vault.audit("said-add", null, caller, false, "not the gate"); throw new Error("only the Gate adds a permission the person typed in Settings"); }
+      const { surface, ...rest } = input;
+      return said.add(rest, String(surface));
     });
 
   internal("vault.said.list", "The intents the person has voiced, live ones unless `all`; the Gate's gate.said.list shows them to the person.",

@@ -119,6 +119,7 @@
       "vault.connections.allowed",
       "vault.said.record",
       "vault.said.match",
+      "vault.said.add",
       "vault.said.list",
       "vault.said.revoke",
       "vault.request",

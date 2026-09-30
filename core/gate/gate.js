@@ -236,6 +236,19 @@ export class Gate {
     }
   }
 
+  /**
+   * Every real destination of a call, for the asked-for match: the sender type says what they are
+   * (an email's to, cc and bcc). A sender that cannot name them (http, a module's own) answers null,
+   * so nothing the person said ever covers it and it holds as before.
+   * @returns {string[] | null}
+   */
+  recipients({ kind, via, to, content }) {
+    try {
+      const { t, dest } = this.prepare({ kind, via, to, content });
+      return typeof t.recipients === "function" ? t.recipients(dest, content) : null;
+    } catch { return null; }
+  }
+
   /** Held items, oldest first: what has waited longest should be answered first. */
   held({ thread, project } = {}) {
     let sql = "SELECT * FROM gate_items WHERE state = 'held'";

@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "roles": ["box", "local"],
   "requires": [],
-  "does": { "tools": ["gate.request", "gate.senders", "gate.held", "gate.get", "gate.revise", "gate.approve", "gate.reject", "gate.settle", "gate.route", "gate.offer", "gate.said.list", "gate.said.revoke"] },
+  "does": { "tools": ["gate.request", "gate.senders", "gate.held", "gate.get", "gate.revise", "gate.approve", "gate.reject", "gate.settle", "gate.route", "gate.offer", "gate.said.list", "gate.said.add", "gate.said.revoke"] },
   "watches": { "emits": ["gate.held", "gate.revised", "gate.released", "gate.failed", "gate.rejected", "gate.settled"] },
   "shows": { "deck": [], "capsule": [], "cli": [] },
   "needs": { "vault": ["per-sender"] },
