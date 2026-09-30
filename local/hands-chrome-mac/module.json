@@ -1,0 +1,21 @@
+{
+  "name": "chrome",
+  "version": "0.1.0",
+  "description": "Deep control of your own Chrome through the Vyre extension: read a page in one call, fill and act on it, run a batch with no round trips, look at DevTools (DOM, styles, scripts, console, network) and learn an app's API. The agent posts its plan first, you can interject or press Esc, credentials are masked before any model sees them, and an outward act holds at the Gate.",
+  "roles": ["local"],
+  "requires": [],
+  "does": { "tools": ["chrome.tabs", "chrome.snapshot", "chrome.act", "chrome.fill", "chrome.eval", "chrome.wait", "chrome.screenshot", "chrome.batch", "chrome.inspect", "chrome.sources", "chrome.console", "chrome.net", "chrome.api", "chrome.state", "chrome.click", "chrome.type", "chrome.open", "chrome.plan", "chrome.interject", "chrome.stop", "chrome.resume", "chrome.release", "chrome.status", "chrome.install"] },
+  "watches": { "emits": ["chrome.acted", "chrome.plan", "chrome.step", "chrome.interjected", "chrome.stopped", "chrome.resumed", "chrome.waiting", "chrome.connected", "chrome.disconnected"] },
+  "shows": {},
+  "needs": {},
+  "teaches": {
+    "tips": [
+      {"id": "install", "text": "To let Vyre work in your own Chrome, run the Chrome setup once, then load the extension in chrome://extensions with Developer mode on.", "surfaces": ["capsule", "cli"], "level": "discovery", "trigger": "never-used", "since": "0.2.0"},
+      {"id": "stop", "text": "While Vyre works in Chrome a panel shows its plan. Press `Esc` to stop it at once; it waits for you before doing anything else.", "surfaces": ["capsule"], "level": "first-use", "trigger": "on-use", "since": "0.2.0", "key": "Esc"},
+      {"id": "interject", "text": "You can tell Vyre something while it works in Chrome, by typing or by voice. It hears you on its next step and can change course.", "surfaces": ["capsule"], "level": "power", "trigger": "idle", "since": "0.2.0"},
+      {"id": "bars", "text": "Chrome shows a bar saying it is being debugged while Vyre works in a tab. That is Chrome's own notice and it cannot be hidden.", "surfaces": ["capsule", "cli"], "level": "first-use", "trigger": "on-use", "since": "0.2.0"},
+      {"id": "secrets", "text": "Vyre never reads your passwords or cookies in Chrome. Banks, password managers and sign-in pages are off limits: sign in yourself.", "surfaces": ["capsule"], "level": "power", "trigger": "idle", "since": "0.2.0"},
+      {"id": "held", "text": "If a page's Send, Pay or Post button is pressed for you, Vyre holds it at the Gate and shows you the fields first.", "surfaces": ["capsule", "cli"], "level": "first-use", "trigger": "on-use", "since": "0.2.0"}
+    ]
+  }
+}
