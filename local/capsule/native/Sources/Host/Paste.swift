@@ -57,6 +57,17 @@ enum Paster {
 
     private static var askedAccess: Bool { prefs()["askedAccessibility"] as? Bool ?? false }
 
+    /// Is Accessibility on. When it is not, macOS is asked once (never twice: a person who said no
+    /// is not asked again) and this says false. Shared by paste and window moves.
+    static func accessibilityOn() -> Bool {
+        if trusted() { return true }
+        if !askedAccess {
+            var o = prefs(); o["askedAccessibility"] = true; save(o)
+            promptAccessibility()
+        }
+        return false
+    }
+
     // MARK: the actions
 
     /// [Paste, Copy] or [Copy, Paste], by the setting; the first is Return. `write` puts the text
@@ -65,12 +76,7 @@ enum Paster {
         let paste = ResultAction(id: "paste", title: "Paste", symbol: "arrow.down.doc", needsFrontApp: true) { _, ctx in
             if let why = await write() { return .failed(why) }
             guard ctx.frontIsBack else { return .close(copiedNote) }
-            if !trusted() {
-                if askedAccess { return .close(needAccess) }
-                var o = prefs(); o["askedAccessibility"] = true; save(o)
-                promptAccessibility()
-                return .close(needAccess)
-            }
+            if !accessibilityOn() { return .close(needAccess) }
             try? await Task.sleep(nanoseconds: settle)
             post()
             return .close(nil)

@@ -37,7 +37,7 @@ final class CapsuleApp: NSObject, NSApplicationDelegate {
         Paster.prefsPath = (home as NSString).appendingPathComponent("capsule/prefs.json")
         local = LocalAnswersProvider(home: home)
         model = CapsuleModel(home: home, vyred: vyred, providers: [
-            AppsProvider(), SettingsProvider(), FilesProvider(), DictionaryProvider(), local,
+            AppsProvider(), SettingsProvider(), FilesProvider(), DictionaryProvider(), local, WindowsProvider(),
         ] + wiring.providers)
         super.init()
         local.onChange = { [weak self] in Task { @MainActor in self?.model.refresh() } }

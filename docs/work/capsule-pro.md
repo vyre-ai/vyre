@@ -22,8 +22,9 @@ Owns `local/capsule/` (now native Swift, `local/capsule/native/`) and `local/han
    dictionary, settings, clipboard history, the calculator with units, system commands, and (since
    Providers/LocalAnswers.swift) emoji, colours, time zones, money with rates from open.er-api.com,
    snippets, quicklinks and user commands from <home>/capsule/snippets.json. Aliases and per-command hotkeys (Core/Bindings.swift, Host/CommandBindings.swift,
-   <home>/capsule/bindings.json; native-core's settings hub keys can replace the file later). Not built:
-   window management and paste into the front app. The list above is scope,
+   <home>/capsule/bindings.json; native-core's settings hub keys can replace the file later). Window
+   layouts (Core/WindowLayout.swift, Providers/WindowsProvider.swift) and Return-pastes
+   (Host/Paste.swift; Accessibility asked once) are in. Not built: the `view:` mechanism. The list above is scope,
    not what works.
 3. The Capsule gaps from the gallery (brief item 6) and the Capsule items moved here from
    polish-surfaces (items 2, the Capsule half of 3, and 5).

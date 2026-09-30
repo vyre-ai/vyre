@@ -4,6 +4,11 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+- Capsule: move and size the window of the app in front from the box. Type "left half", "right
+  half", "top right", "left third", "two thirds", "maximize", "center", "next display" or
+  "restore" and press Return. It needs Accessibility, which macOS asks for once the first time;
+  until then the row says what to allow. Restore puts a window back where it was before the
+  Capsule last moved it.
 - Capsule: Return now pastes clipboard history, snippets and emoji into the app you were in, instead
   of only copying them. The first time, macOS asks once for Accessibility (until you allow it,
   Return copies and says so). Type "paste" in the box and choose "Make Return copy instead of paste"
