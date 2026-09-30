@@ -108,6 +108,12 @@ round: the Deck's confirm sheet and proof flow (deck/views/settings-keys.js, its
 deck/test/settings-keys.test.js, and deck/test/settings-browser.js's proof checks).
 Next: when sessions ships providers.list caps, wire provider-caps into chat (UI waits for
 app-design).
+RESUME (paused for a usage reset, lead's order): last CI run on GitHub = node.yml run 36658909399 completed failure b8d1b887
+(covers up to the build-id commit). Local commits after it (16b1bddf shell contract, fa492d50
+settings.request, ff7fceb6 no-friction settings, wip docs) are NOT pushed yet. On resume: check
+that run (gh run view <id> --log-failed); fix any failures; push once and wait for node.yml to end
+(pushing again cancels it); when green send the range 258c0ac6..HEAD to reviewer-2 and the
+integrator (onto stage/0.2 when cut). Background watcher task from the old session is gone.
 Needs: assistant+vault the P17 intent kind "setting" and gate.said.match (CHAT.md 07:16).
 
 ## Done
