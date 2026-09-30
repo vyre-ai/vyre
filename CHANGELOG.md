@@ -4,6 +4,11 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### chat: "/" opens the assistant's thread; card review follow-ups
+
+- `deck/js/home.js`: "/" goes to the assistant's current thread (`assistant.daily`, else the assistant's own thread from `agents.list`), else Now. The welcome cards are the first thing after setup.
+- reviewer-2 on 01b46eb8: `firstParty` now refuses the hub's third-party form (`mcp__vyre__<server>__<tool>`, the gate's HUB pattern); only Vyre's own one-segment MCP tools count. The frame nonce is removed (the nonce sits in the frame's own URL, so a hostile page can read it): the guard counts loads as before, and a line drawn by the Deck outside the frame always says "Made by <agent>. It runs on its own and is not part of Vyre."
+
 #### chat: "Charter changed by <agent>", a quiet notice with the diff and a one-tap Revert
 
 - `deck/chat/cards/charter-changed.js` (+ css): in a teammate's own thread, when an agent (not the person's own surface) wrote a new charter version, a quiet row says "Charter changed by <agent>" with the note. "Show changes" opens `team.charter.diff` inline; Revert calls `team.charter.revert` to the version before (itself a new version, so it can be undone the same way); a first version has no Revert. It is a notice, never a prompt, and Dismiss keeps it away for that version.

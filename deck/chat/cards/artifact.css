@@ -45,3 +45,6 @@
 @keyframes cv-art-in { from { transform: translateX(24px); opacity: 0; } to { transform: none; opacity: 1; } }
 @keyframes cv-art-fade { from { opacity: 0; } to { opacity: 1; } }
 @media (prefers-reduced-motion: reduce) { .cv-art-panel, .cv-art-body { animation: none; } }
+
+/* The line above a page in its frame: drawn outside it, always there. */
+.cv-art-origin { margin: 0; padding: 6px 12px; font-size: 12px; line-height: 16px; color: var(--label); border-bottom: 1px solid var(--rule); }

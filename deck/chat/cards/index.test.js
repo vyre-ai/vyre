@@ -49,7 +49,7 @@ const REPORT = { kind: "report", title: "Devices", text: "Two devices.", actions
 
 test("firstParty: a registry name or Vyre's own MCP server, never a shell, a fetch or another server", () => {
   for (const t of ["github.project.pr.review", "report.make", "mcp__vyre__team_list"]) assert.equal(firstParty(t), true, t);
-  for (const t of ["Bash", "WebFetch", "Read", "mcp__gmail__read", "", null, "devices"]) assert.equal(firstParty(t), false, String(t));
+  for (const t of ["mcp__vyre__gmail__read_thread", "mcp__plugin_vyre_vyre__slack__post", "Bash", "WebFetch", "Read", "mcp__gmail__read", "", null, "devices"]) assert.equal(firstParty(t), false, String(t));
 });
 
 test("a report from a page the agent read (Bash) draws with no buttons, and from a Vyre tool only its allowlisted ones", () => {

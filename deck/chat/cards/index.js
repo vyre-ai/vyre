@@ -29,12 +29,16 @@ export function defaultOpen(href) {
   if (h.startsWith("/")) go(h);
 }
 
+const HUB = /^mcp__(?:vyre|plugin_vyre_vyre)__[a-z][a-z0-9-]{0,31}__./;
+
 /** Whether a tool block's name is a Vyre tool (a registry name such as github.project.pr.review, or Vyre's own MCP
  * server). The name comes from the transcript, so a model cannot set it; a page or file an agent read arrives
  * through Bash, WebFetch, Read or another server's tool, and draws read-only (reviewer-2 M1). @param {any} tool */
 export function firstParty(tool) {
   const t = String(tool ?? "");
-  return /^[a-z][a-z0-9-]*(\.[a-z0-9-]+)+$/.test(t) || /^mcp__vyre__/.test(t);
+  // Vyre's own MCP tools are one segment (mcp__vyre__team_list); the hub fronts other servers as mcp__vyre__<server>__<tool>
+  // (core/gate HUB), and those return an email or a page, so they are not first party.
+  return /^[a-z][a-z0-9-]*(\.[a-z0-9-]+)+$/.test(t) || (/^mcp__(?:vyre|plugin_vyre_vyre)__./.test(t) && !HUB.test(t));
 }
 
 /** Non-blocking display kinds. */

@@ -36,6 +36,7 @@ import { installAvatars, setIdentity, personAvatar } from "./avatars.js";
 import { checkBuild } from "./build-check.js";
 import { installed, kbd, mac } from "./platform.js";
 import { reportContext } from "./context-report.js";
+import { homePath } from "./home.js";
 
 /** Routes, most specific first. The name is the file in deck/views/. */
 const ROUTES = [
@@ -412,8 +413,8 @@ function leave(/** @type {string} */ key, /** @type {{ page: HTMLElement, name: 
 }
 
 async function route() {
-  // One address per page: "/" is Now, and the header's "+" asks Agents for its form by event.
-  if (location.pathname === "/") history.replaceState(history.state, "", "/now" + location.search + location.hash);
+  // "/" is the assistant's current thread (js/home.js), else Now; the header's "+" asks Agents for its form by event.
+  if (location.pathname === "/") history.replaceState(history.state, "", (await homePath(attempt)) + location.search + location.hash);
   let newAgent = false;
   if (phone() && location.pathname === "/agents" && new URLSearchParams(location.search).get("new") === "1") {
     history.replaceState(history.state, "", "/agents" + location.hash);

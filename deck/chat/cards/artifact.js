@@ -23,20 +23,12 @@ import { openSheet } from "../../js/sheet.js";
 import { renderMarkdown } from "../lib/markdown.js";
 import { renderUnified } from "../lib/diff.js";
 import { ensureCss, shell, chip, problemText } from "./kit.js";
-import { artifactFrame, newNonce } from "./artifact-frame.js";
+import { artifactFrame } from "./artifact-frame.js";
 
 /** Every artifacts tool the viewer calls, and the render route, in one place. */
 export const TOOLS = { get: "artifacts.get", versions: "artifacts.versions", share: "artifacts.share" };
 /** Where the box serves an artifact version's rendered page (opaque origin, its own CSP). @param {string} id @param {number} v */
 export const renderSrc = (id, v) => `/artifacts/${encodeURIComponent(id)}/v${v}/render`;
-
-/** Whether the render route will post a per-render nonce (reviewer-2 M2): a HEAD answering x-vyre-frame-nonce. Any failure means no. @param {string} src */
-async function wantsNonce(src) {
-  try {
-    const r = await fetch(src, { method: "HEAD", credentials: "same-origin" });
-    return !!r.headers?.get?.("x-vyre-frame-nonce");
-  } catch { return false; }
-}
 
 /** Kinds drawn natively as Markdown; everything else goes to the frame. */
 const TEXT_KINDS = new Set(["doc", "report", "markdown", "note"]);
@@ -202,13 +194,12 @@ export function artifactView(data, ctx = {}, o = {}) {
       return put(body, h("div", { class: "cv-art-changes-view", "aria-label": `Changes from v${prev.version} to v${v}` }, renderUnified(before?.text || "", cur.text)));
     }
     if (TEXT_KINDS.has(S.type)) return put(body, h("div", { class: "cv-art-md md" }, renderMarkdown(cur.text)));
-    const src = renderSrc(a.id, v);
-    // A page that runs scripts gets a nonce only when the route says it will post it back.
-    const nonce = await wantsNonce(src);
-    if (S.dead || seq !== S.seq) return;
-    const frame = artifactFrame({ src, title: S.title, nonce: nonce ? newNonce() : null, onBlank: () => {} });
+    const frame = artifactFrame({ src: renderSrc(a.id, v), title: S.title, onBlank: () => {} });
     S.guard = frame.guard;
-    put(body, frame);
+    // Drawn by the Deck, outside the frame: whatever the page shows inside its border, even a look-alike of
+    // Vyre, sits under this line (reviewer-2 M2: the frame's content is always untrusted and labelled).
+    const by = a.agent || (typeof ctx.agent === "string" ? ctx.agent : ctx.agent?.name);
+    put(body, h("p", { class: "cv-art-origin" }, by ? `Made by ${by}. ` : "Made by an agent. ", "It runs on its own and is not part of Vyre."), frame);
   }
 
   /** @param {number} v */

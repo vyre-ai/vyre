@@ -19,6 +19,7 @@ const REPO = path.join(path.dirname(fileURLToPath(import.meta.url)), "..");
  *  it is expected, not a bug this test should catch. A tool leaves this list the day every box
  *  registers it - it does not grow to paper over a call nothing answers by design. */
 const OPTIONAL = {
+  "assistant.daily": "assistant ships it in work/assistant; homePath() falls back to the assistant's own thread, then Now. Leaves this list when assistant merges.",
   "team.charter.history": "teammates ships it in work/teammates-0.2 (core/team); the charter notice draws only after the event, and says so in a line when a call fails. Leaves this list when teammates merges.",
   "team.charter.diff": "teammates ships it in work/teammates-0.2 (core/team); the charter notice draws only after the event, and says so in a line when a call fails. Leaves this list when teammates merges.",
   "team.charter.revert": "teammates ships it in work/teammates-0.2 (core/team); the charter notice draws only after the event, and says so in a line when a call fails. Leaves this list when teammates merges.",

@@ -250,3 +250,14 @@ test("the share sheet makes a link through artifacts.share and shows a refusal i
   await settle();
   assert.match(text(b2), /Not now/);
 });
+
+test("the frame view carries a line outside the frame saying the page is the agent's own, not Vyre", async () => {
+  const { artifactView } = await import("./artifact.js");
+  globalThis.fetch = /** @type {any} */ (async () => ({ status: 200, statusText: "", json: async () => ({ data: { versions: [{ version: 1, at: 1 }], version: 1, kind: "page", text: "<p>hi</p>" } }) }));
+  const v = artifactView({ artifact: "a1", version: 1, kind: "page", title: "Menu", agent: "kit" }, {}, {});
+  await new Promise(r => setTimeout(r, 20));
+  const { text: t } = await import("../../test/fake-dom.js");
+  const line = v.el.querySelector?.(".cv-art-origin");
+  assert.ok(line, "the origin line is drawn");
+  assert.match(t(line), /Made by kit\. It runs on its own and is not part of Vyre\./);
+});
