@@ -18,7 +18,9 @@ const CHILD = path.join(path.dirname(fileURLToPath(import.meta.url)), "stop-quie
 /** @param {string} root @param {number} after @returns {Promise<{ running: number, late: { module: string, message: string }[] }>} */
 function run(root, after) {
   return new Promise((resolve, reject) => {
-    const p = spawn(process.execPath, [CHILD, root, String(after)], { env: { ...process.env, VYRE_HOME: root, VYRE_NO_DIALOGS: "1" }, stdio: ["ignore", "pipe", "pipe"] });
+    const p = spawn(process.execPath, [CHILD, root, String(after)], { // HOME and the XDG folders sit inside the temp home: the whole module set starts, and some read or write under ~
+    // (the Claude home for imports, ~/Library registrations); on a person's Mac that must never be theirs.
+    env: { ...process.env, VYRE_HOME: root, VYRE_NO_DIALOGS: "1", HOME: root, USERPROFILE: root, XDG_CONFIG_HOME: path.join(root, ".config"), XDG_DATA_HOME: path.join(root, ".local", "share"), XDG_STATE_HOME: path.join(root, ".local", "state"), XDG_CACHE_HOME: path.join(root, ".cache") }, stdio: ["ignore", "pipe", "pipe"] });
     let out = "", err = "";
     p.stdout.on("data", d => { out += d; });
     p.stderr.on("data", d => { err += d; });
