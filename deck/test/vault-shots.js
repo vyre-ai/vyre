@@ -23,6 +23,7 @@ import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { DatabaseSync } from "node:sqlite";
+import { CHROME_SAFE } from "../../lib/chrome-flags/index.js";
 
 const REPO = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
 const OUT = path.resolve(process.argv[2] || path.join(os.tmpdir(), "vault-shots"));
@@ -212,7 +213,7 @@ try {
 
   profile = fs.mkdtempSync(path.join(os.tmpdir(), "vy-vault-chrome-"));
   const dport = 9400 + Math.floor(Math.random() * 400);
-  chrome = spawn(CHROME, ["--headless=new", `--remote-debugging-port=${dport}`, `--user-data-dir=${profile}`, "--use-mock-keychain", "--password-store=basic", "--hide-scrollbars", "--no-first-run",
+  chrome = spawn(CHROME, ["--headless=new", `--remote-debugging-port=${dport}`, ...CHROME_SAFE, `--user-data-dir=${profile}`, "--hide-scrollbars", "--no-first-run",
     "--no-default-browser-check", "--window-size=1440,900", "about:blank"], { stdio: "ignore" });
   let target;
   for (let i = 0; i < 50 && !target; i++) { await sleep(200); try { target = (await (await fetch(`http://127.0.0.1:${dport}/json`)).json()).find(t => t.type === "page"); } catch {} }
