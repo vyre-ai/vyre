@@ -85,7 +85,16 @@ export function signApp({ app, dir, run }) {
   const { sha1, keychain } = ensureIdentity({ dir, run });
   const pw = fs.readFileSync(path.join(dir, "pw"), "utf8").trim();
   run(SECURITY, ["unlock-keychain", "-p", pw, keychain]);
-  run(CODESIGN, ["--force", "--deep", "--keychain", keychain, "--sign", sha1, "--identifier", CAPSULE_ID, "--options", "runtime", "--timestamp=none", app]);
+  // codesign looks identities up through root's own keychain search list, so put ours on it (root's
+  // list only: the person's and _vyre's are never touched).
+  const listed = String(run(SECURITY, ["list-keychains", "-d", "user"])).split("\n").map((l) => l.trim().replace(/^"|"$/g, "")).filter(Boolean);
+  if (!listed.includes(keychain)) run(SECURITY, ["list-keychains", "-d", "user", "-s", keychain, ...listed]);
+  try {
+    run(CODESIGN, ["--force", "--deep", "--keychain", keychain, "--sign", sha1, "--identifier", CAPSULE_ID, "--options", "runtime", "--timestamp=none", app]);
+  } catch (e) {
+    const tryOut = (/** @type {string[]} */ a) => { try { return String(run(SECURITY, a)); } catch (x) { return `(${/** @type {Error} */ (x).message.split("\n")[0]})`; } };
+    throw new Error(`${/** @type {Error} */ (e).message.split("\n").slice(0, 2).join(" ")} | list-keychains: ${tryOut(["list-keychains", "-d", "user"]).trim()} | identities: ${tryOut(["find-identity", "-v", "-p", "codesigning"]).trim()} | in ours: ${tryOut(["find-identity", "-p", "codesigning", keychain]).trim()}`.replace(/\s+/g, " "));
+  }
   run(CODESIGN, ["--verify", "--strict", "--deep", app]);
   const req = run(CODESIGN, ["-d", "-r-", app]);
   const requirement = (String(req).match(/designated => (.*)/) || [])[1] || "";
