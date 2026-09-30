@@ -124,6 +124,9 @@ export const MIGRATIONS = [
   `ALTER TABLE threads_inbox ADD COLUMN request TEXT;`,
   // A thread the person put away (threads.archive): out of the default list, its worktree cleaned up by github.
   `ALTER TABLE threads_runs ADD COLUMN archived_at INTEGER;`,
+  // What the model is told beside a queued message that tags things (the tags were heard when the person sent or edited it),
+  // kept with the words and handed over with them.
+  `ALTER TABLE threads_inbox ADD COLUMN note TEXT;`,
 ];
 
 /** Images kept as JSON (a queued or steered message's), or null. @param {any} v */
@@ -1245,7 +1248,7 @@ export class Switchboard {
       this.emit("thread.turn", { turn: st.turn, uuid, text: cut([text, ...rest.map(r => r[1])].join("\n\n"), 2000), steered: true }, id, project);
       return;
     }
-    const rows = /** @type {any[]} */ (this.db.prepare("SELECT id, text, surface, uuid, kind, images, request FROM threads_inbox WHERE thread = ? AND delivered_at IS NULL ORDER BY id").all(id));
+    const rows = /** @type {any[]} */ (this.db.prepare("SELECT id, text, surface, uuid, kind, images, request, note FROM threads_inbox WHERE thread = ? AND delivered_at IS NULL ORDER BY id").all(id));
     if (!rows.length) return;
     const now = Date.now();
     const mark = this.db.prepare("UPDATE threads_inbox SET delivered_at = ?, via = 'turn' WHERE id = ? AND delivered_at IS NULL");
@@ -1253,7 +1256,8 @@ export class Switchboard {
     if (!taken.length) return;
     for (const r of taken) this.emit("thread.sent", { text: cut(r.text, 2000), surface: r.surface, queued: Number(r.id), uuid: r.uuid || null, via: "turn", ...(r.kind ? { kind: r.kind } : {}), ...(r.request ? { request: r.request } : {}) }, id, project);
     const images = taken.flatMap(r => imagesFrom(r.images) || []);
-    this.write(id, taken.map(r => r.text).join("\n\n"), { uuid: taken[0].uuid || crypto.randomUUID(), images: images.length ? images : null });
+    const note = taken.map(r => r.note).filter(Boolean).join("\n");
+    this.write(id, taken.map(r => r.text).join("\n\n"), { uuid: taken[0].uuid || crypto.randomUUID(), images: images.length ? images : null, ...(note ? { note } : {}) });
   }
 
   /**
@@ -1388,12 +1392,12 @@ export class Switchboard {
     if (!this.live.has(id)) {
       if (!this.record(id)) await this.adopt(id);
       const why = this.elsewhere(id);
-      if (why && queue) return this.queue(id, text, surface, undefined, { ...(uuid ? { uuid } : {}), kind });
+      if (why && queue) return this.queue(id, text, surface, undefined, { ...(uuid ? { uuid } : {}), kind, note });
       if (why) return { sent: false, open_elsewhere: true, note: `This session is open somewhere else: ${why}. Only one keyboard can type into it, so close it there or type there.` };
     }
     const rec = this.must(id);
     const held = wait && this.leases.holder(id);
-    if (held && held.surface !== surface) return this.queue(id, text, surface, held.surface, uuid ? { uuid } : {});
+    if (held && held.surface !== surface) return this.queue(id, text, surface, held.surface, { ...(uuid ? { uuid } : {}), note });
     const lease = this.leases.typing(id, surface);
     if (!lease.ok) return { sent: false, holder: lease.holder, note: `${lease.holder} has the keyboard; threads.lease takes it` };
     if (lease.took) this.emit("lease.changed", { holder: surface, previous: lease.took.previous, ...(lease.took.took ? { took: lease.took.took } : {}) }, id, rec.project);
@@ -1408,7 +1412,7 @@ export class Switchboard {
     // While a turn runs: steer into it (the default, as Claude Code does), or queue for after it.
     const st = this.live.get(id);
     const busy = Boolean(st && st.turn) && ["working", "waiting"].includes(String(this.must(id).status));
-    if (busy && mode === "queue") return this.queue(id, text, surface, null, { owned: true, uuid, kind, images });
+    if (busy && mode === "queue") return this.queue(id, text, surface, null, { owned: true, uuid, kind, images, note });
     if (busy) {
       const w = this.write(id, text, { steer: true, ...(uuid ? { uuid } : {}), images, note });
       this.emit("thread.sent", { text: cut(text, 2000), surface, uuid: w.uuid, via: "steer" }, id, rec.project);
@@ -1449,11 +1453,11 @@ export class Switchboard {
    * the surface holding the keyboard when that is why (a send with `wait`).
    * @param {string} id @param {string} text @param {string} surface @param {string} [holder]
    */
-  queue(id, text, surface, holder, { owned = false, uuid = crypto.randomUUID(), kind = undefined, request = undefined, images = /** @type {any} */ (null) } = {}) {
+  queue(id, text, surface, holder, { owned = false, uuid = crypto.randomUUID(), kind = undefined, request = undefined, images = /** @type {any} */ (null), note = "" } = {}) {
     const rec = this.must(id);
     // A session open elsewhere takes queued words through its hooks, which carry text only.
     if (images && images.length && !owned) throw Object.assign(new Error("images cannot wait for a session open in a terminal; send them when it is free here"), { code: "bad_input" });
-    const r = this.db.prepare("INSERT INTO threads_inbox (thread, text, surface, at, uuid, kind, images, request) VALUES (?,?,?,?,?,?,?,?)").run(id, String(text), surface, Date.now(), uuid, kind || null, imagesJson(images), request || null);
+    const r = this.db.prepare("INSERT INTO threads_inbox (thread, text, surface, at, uuid, kind, images, request, note) VALUES (?,?,?,?,?,?,?,?,?)").run(id, String(text), surface, Date.now(), uuid, kind || null, imagesJson(images), request || null, note || null);
     const queued = Number(r.lastInsertRowid);
     this.emit("thread.queued", { queued, uuid, text: cut(text, 2000), surface, ...(kind ? { kind } : {}), ...(request ? { request } : {}), ...(images && images.length ? { images: images.length } : {}) }, id, rec.project);
     const name = rec.name || id.slice(0, 8);
@@ -1486,11 +1490,15 @@ export class Switchboard {
     return { unqueued: out, ...(note ? { note } : {}) };
   }
 
+  /** Whether words are still queued (not handed over) under this row id. @param {string} id @param {number} queued */
+  hasQueued(id, queued) { return Boolean(this.db.prepare("SELECT 1 FROM threads_inbox WHERE thread = ? AND id = ? AND delivered_at IS NULL").get(id, Number(queued))); }
+
   /** Change queued words before they are handed over. Re-emits thread.queued with the same ids. */
-  edit(id, queued, text, surface) {
+  edit(id, queued, text, surface, { note = "" } = {}) {
     const rec = this.must(id);
     const row = /** @type {any} */ (this.db.prepare("SELECT id, uuid, surface FROM threads_inbox WHERE thread = ? AND id = ? AND delivered_at IS NULL").get(id, Number(queued)));
-    if (!row || !this.db.prepare("UPDATE threads_inbox SET text = ? WHERE id = ? AND delivered_at IS NULL").run(String(text), row.id).changes) {
+    // The note belongs to the words it was made for: an edit replaces it (none when the edited words were not heard).
+    if (!row || !this.db.prepare("UPDATE threads_inbox SET text = ?, note = ? WHERE id = ? AND delivered_at IS NULL").run(String(text), note || null, row.id).changes) {
       return { edited: false, note: "That message was already handed over, or was never queued here." };
     }
     this.emit("thread.queued", { queued: Number(row.id), uuid: row.uuid || null, text: cut(text, 2000), surface: surface || row.surface, edited: true }, id, rec.project);
@@ -1506,12 +1514,12 @@ export class Switchboard {
     const rec = this.must(id);
     const st = this.live.get(id);
     if (!st) return { sent: false, note: "This session is not running here; its words are handed over when its terminal's turn ends." };
-    const row = /** @type {any} */ (this.db.prepare("SELECT id, text, surface, uuid, images, request FROM threads_inbox WHERE thread = ? AND id = ? AND delivered_at IS NULL").get(id, Number(queued)));
+    const row = /** @type {any} */ (this.db.prepare("SELECT id, text, surface, uuid, images, request, note FROM threads_inbox WHERE thread = ? AND id = ? AND delivered_at IS NULL").get(id, Number(queued)));
     if (!row || !this.db.prepare("UPDATE threads_inbox SET delivered_at = ?, via = 'now' WHERE id = ? AND delivered_at IS NULL").run(Date.now(), row.id).changes) {
       return { sent: false, note: "That message was already handed over, or was never queued here." };
     }
     const uuid = row.uuid || crypto.randomUUID();
-    const w = this.write(id, row.text, { uuid, steer: Boolean(st.turn), images: imagesFrom(row.images) });
+    const w = this.write(id, row.text, { uuid, steer: Boolean(st.turn), images: imagesFrom(row.images), ...(row.note ? { note: row.note } : {}) });
     this.emit("thread.sent", { text: cut(row.text, 2000), surface: row.surface, queued: Number(row.id), uuid, via: "now", ...(row.request ? { request: row.request } : {}) }, id, rec.project);
     return { sent: true, thread: id, queued: Number(row.id), uuid, turn: w.turn };
   }
@@ -1522,7 +1530,7 @@ export class Switchboard {
    * @param {string} id @param {"stop"|"prompt"} via
    */
   deliver(id, via) {
-    const rows = /** @type {any[]} */ (this.db.prepare("SELECT id, text, surface, at, request FROM threads_inbox WHERE thread = ? AND delivered_at IS NULL ORDER BY id").all(id));
+    const rows = /** @type {any[]} */ (this.db.prepare("SELECT id, text, surface, at, request, note FROM threads_inbox WHERE thread = ? AND delivered_at IS NULL ORDER BY id").all(id));
     if (!rows.length) return { messages: [] };
     const now = Date.now();
     const mark = this.db.prepare("UPDATE threads_inbox SET delivered_at = ?, via = ? WHERE id = ?");
@@ -1531,7 +1539,7 @@ export class Switchboard {
       mark.run(now, via, m.id);
       this.emit("thread.sent", { text: cut(m.text, 2000), surface: m.surface, queued: m.id, via, ...(m.request ? { request: m.request } : {}) }, id, rec ? rec.project : null);
     }
-    return { messages: rows.map(m => ({ id: m.id, text: m.text, surface: m.surface, at: m.at })) };
+    return { messages: rows.map(m => ({ id: m.id, text: m.note ? `${m.text}\n\n${m.note}` : m.text, surface: m.surface, at: m.at })) };
   }
 
   /**
@@ -2595,11 +2603,20 @@ export default {
       });
 
     tool("threads.edit", "Change queued words before they are handed over (re-emits thread.queued with the same ids). Only a person's surface can.",
-      { type: "object", required: ["thread", "queued", "text"], properties: { thread: str, queued: { type: "integer" }, text: str, surface: str } },
+      { type: "object", required: ["thread", "queued", "text"], properties: { thread: str, queued: { type: "integer" }, text: str, surface: str,
+        mentions: { type: "array", maxItems: 8, items: { type: "object", required: ["kind", "id"], properties: { kind: str, id: str, name: str } }, description: "The # tags the composer picked for the edited words ({kind, id}); as threads.send." },
+        pasted: { type: "array", maxItems: 20, items: str, description: "The spans of the edited words the person pasted. Sending it (even empty) says which words are typed; without it the edited words are not heard as the person's at all, so no tag or ask in them counts." } } },
       async (i, { caller }) => {
         guard(caller, "edit queued words");
         if (!queuesFor(caller)) throw Object.assign(new Error("only a person's surface can edit queued words"), { code: "denied" });
-        return sb.edit(i.thread, i.queued, i.text, surfaceOf(i, caller));
+        // The edited words are the person's new words: heard like a send (a said row, tags, asks), but only when the composer
+        // said which spans were pasted. Without `pasted` the whole text counts as not typed: nothing is heard, no note is kept.
+        let note = "";
+        if (personTurn(caller) && Array.isArray(i.pasted) && sb.hasQueued(i.thread, i.queued)) {
+          const heard = await sb.ingress(i.thread, String(i.text), surfaceOf(i, caller), crypto.randomUUID(), Array.isArray(i.mentions) ? i.mentions : [], i.pasted.filter(x => typeof x === "string").slice(0, 20));
+          if (heard.length) note = tagNote(heard);
+        }
+        return sb.edit(i.thread, i.queued, i.text, surfaceOf(i, caller), { note });
       });
 
     tool("threads.send-now", "Send queued words now: they join the running turn at Claude's next step instead of waiting for it to end. Not for a session busy in a terminal.",

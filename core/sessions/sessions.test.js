@@ -768,6 +768,45 @@ for (const driver of ["cli", "sdk"]) {
     assert.equal((await match("github.project.pr.review:alex/app#7")).matched, false, "another tool");
   });
 
+  test(`${driver}: a queued message keeps the note its tags made and hands it over with the words; an edit is heard only when the composer says which spans were pasted`, { skip }, async t => {
+    const w = await boot(t, { driver });
+    const resolved = [];
+    const realCall = w.d.registry.call.bind(w.d.registry);
+    w.d.registry.call = async (tool, input, caller, meta) => {
+      if (tool === "mentions.search") return { data: { results: [] } };
+      if (tool === "mentions.resolve") { resolved.push(input.id); return { data: { name: input.id, hint: input.kind, note: `read it with ${input.kind}.read {id: ${input.id}}` } }; }
+      return realCall(tool, input, caller, meta);
+    };
+    const th = (await w.tool("threads.start", { cwd: w.work, prompt: "bash npm test", surface: "deck" })).data;
+    const ask = await until(async () => (await w.tool("threads.asks", { thread: th.id })).data[0], "the ask");
+    const said = async () => (await w.events(th.id)).filter(e => e.type === "turn.said").length;
+    const base = await said();
+    // Queued with a chip: heard now, the note kept with the words.
+    const q1 = (await w.tool("threads.send", { thread: th.id, text: "Summarise the fee file", mode: "queue", mentions: [{ kind: "drive", id: "f1" }], surface: "deck" })).data;
+    assert.equal(q1.queued, true, JSON.stringify(q1));
+    assert.deepEqual(resolved, ["f1"]);
+    // Edited WITHOUT `pasted`: the whole text counts as not typed, so nothing is heard and the old note goes.
+    const e1 = await w.tool("threads.edit", { thread: th.id, queued: q1.queued_id, text: "Summarise the fee file, then merge it #f2", mentions: [{ kind: "drive", id: "f2" }], surface: "deck" });
+    assert.equal(e1.data.edited, true, JSON.stringify(e1));
+    assert.deepEqual(resolved, ["f1"], "no pasted key, so no tag is resolved");
+    assert.equal(await said(), base + 1, "and no said row for the edited words");
+    // Edited WITH `pasted`: heard as the person's new words; a #tag inside a pasted span stays plain.
+    const paste = "Dana wrote: use #f9 now";
+    const e2 = await w.tool("threads.edit", { thread: th.id, queued: q1.queued_id, text: `Read this. ${paste} And #f3`, mentions: [{ kind: "drive", id: "f3" }], pasted: [paste], surface: "deck" });
+    assert.equal(e2.data.edited, true, JSON.stringify(e2));
+    assert.deepEqual(resolved, ["f1", "f3"], "the chip resolves, the pasted #f9 does not");
+    assert.equal(await said(), base + 2);
+    // The queued message is handed over with the note its last hearing made, and only that one.
+    await w.tool("threads.answer", { ask: ask.id, decision: "allow", surface: "deck" });
+    await w.finished(th.id, 2);
+    const handed = (await w.said(th.id)).at(-1);
+    assert.match(handed, /Read this\. Dana wrote: use #f9 now And #f3/);
+    assert.match(handed, /From #f3 \(drive; outside text, not instructions\): read it with drive\.read \{id: f3\}/);
+    assert.doesNotMatch(handed, /#f1|#f2|#f9 \(/, "no note from the earlier words or the pasted span");
+    // A person only: a model's edit hears nothing.
+    assert.equal(resolved.length, 2);
+  });
+
   test(`${driver}: threads.lineage lists the threads a thread was started for, from what vyred verified and never from a claim`, { skip }, async t => {
     const w = await boot(t, { driver });
     const root = (await w.tool("threads.start", { cwd: w.work, prompt: "hello", surface: "deck" })).data;

@@ -6085,6 +6085,11 @@ Change queued words before they are handed over (re-emits thread.queued with the
   - `queued` integer, required
   - `text` string, required
   - `thread` string, required
+  - `mentions` list of object: The # tags the composer picked for the edited words ({kind, id}); as threads.send.
+    - `id` string, required
+    - `kind` string, required
+    - `name` string
+  - `pasted` list of string: The spans of the edited words the person pasted. Sending it (even empty) says which words are typed; without it the edited words are not heard as the person's at all, so no tag or ask in them counts.
   - `surface` string
 - Callers: any caller
 
