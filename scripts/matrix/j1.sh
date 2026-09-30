@@ -31,7 +31,8 @@ docker run -d --name e2e-pebble -p 14000:14000 -e PEBBLE_VA_ALWAYS_VALID=1 -e PE
 
 # The box's folder and home volume, made before the install so its first start already points at the stand-ins.
 sudo mkdir -p /srv/vyre && sudo chown "$(id -u):$(id -g)" /srv/vyre
-mkdir -p "$T/fake" && cp scripts/matrix/fake-claude-login.js "$T/fake/claude" && chmod 755 "$T/fake/claude"
+mkdir -p "$T/fake" && cp scripts/matrix/fake-claude-login.js "$T/fake/claude-login.cjs" && chmod 755 "$T/fake/claude-login.cjs"
+printf '#!/bin/sh\nexec node /opt/matrix/claude-login.cjs "$@"\n' >"$T/fake/claude" && chmod 755 "$T/fake/claude"
 cat >/srv/vyre/compose.e2e.yml <<YML
 services:
   vyre:
@@ -41,6 +42,7 @@ services:
       - NODE_TLS_REJECT_UNAUTHORIZED=0
     volumes:
       - $T/fake/claude:/usr/local/bin/claude:ro
+      - $T/fake/claude-login.cjs:/opt/matrix/claude-login.cjs:ro
 YML
 docker volume create --label com.docker.compose.project=vyre --label com.docker.compose.volume=vyre-home vyre_vyre-home >/dev/null
 docker run --rm -v vyre_vyre-home:/home/vyre -e R="$RELAY_BOX_WS" -e N="$NAMES_BOX" busybox sh -c \
