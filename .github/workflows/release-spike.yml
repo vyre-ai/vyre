@@ -1,4 +1,5 @@
-# Spikes for the 0.2 release pipeline (team plan I1, I3, S10). Dispatch only; it pushes nothing
+# Spikes for the 0.2 release pipeline (team plan I1, I3, S10). Runs on a push to work/integrator
+# that touches this file (dispatch needs the file on main, and this never goes to main); it pushes nothing
 # anywhere public. Each job answers one question and writes the answer to the step summary:
 #   arm64-box:      does box/Dockerfile build and boot on linux/arm64 (native arm runner)?
 #   arm64-computer: does core/computers/image build on linux/arm64, with a working Chromium?
@@ -7,7 +8,9 @@
 #                   throwaway registry inside the job, never to ghcr.
 name: release-spike
 on:
-  workflow_dispatch:
+  push:
+    branches: [work/integrator]
+    paths: [.github/workflows/release-spike.yml]
 permissions:
   contents: read
 jobs:
