@@ -21,6 +21,11 @@ struct RefusingKey: CapsuleSigningKey {
 
 import LocalAuthentication
 
+/// A Mac with no fingerprint reader: biometrics cannot be evaluated, the Mac's password can.
+final class NoBiometryContext: LAContext, @unchecked Sendable {
+    override func canEvaluatePolicy(_ policy: LAPolicy, error: NSErrorPointer) -> Bool { policy == .deviceOwnerAuthentication }
+}
+
 let presenceSuite = Suite("presence") { t in
     t.test("canonical JSON matches core/presence: keys sorted at every depth, no spaces, JSON.stringify strings and numbers") {
         let input: [String: Any] = ["id": "h1", "edits": ["to": ["dana@harlowlegal.example"], "subject": "Menu \"v2\"\n", "body": "é ok"], "n": 3, "x": 0.5, "ok": true]
@@ -58,23 +63,40 @@ let presenceSuite = Suite("presence") { t in
         t.eq(CapsulePresence.header(tool: "gate.approve", input: ["id": "h1"], key: RefusingKey(), keyId: "k1", ts: 1_800_000_000_000), nil)
     }
 
-    t.test("enroll refuses off a Mac with no Secure Enclave, never touching the keychain") {
-        let out: (String?, Data?)? = t.wait {
+    t.test("a Mac with no Secure Enclave and no Touch ID still makes a key, kept as a tagged software handle") {
+        let fake = FakeVyred(name: "presence-nobio")
+        fake.tool("presence.enroll") { _ in ["id": "k7", "kind": "capsule"] }
+        t.ok(fake.start())
+        let out: (String?, Data?, String?)? = t.wait {
             let (p, store) = await MainActor.run { () -> (CapsulePresence, MemoryKeyStore) in
                 let store = MemoryKeyStore()
-                let p = CapsulePresence(home: vyScratch("presence-enroll"), vyred: VyredClient(socket: vyScratch("p") + "/none.sock"), store: store)
+                let p = CapsulePresence(home: vyScratch("presence-nobio"), vyred: VyredClient(socket: fake.socket), store: store)
+                p.hasSecureEnclave = { false }
+                p.makeContext = { NoBiometryContext() }
                 return (p, store)
             }
             let why = await p.enroll()
-            return (why, await MainActor.run { store.handle })
+            return (why, await MainActor.run { store.handle }, await MainActor.run { p.enrolled?.id })
         }
-        // A CI runner or a Mac in a VM has no Secure Enclave; a real Mac's own enclave means this
-        // branch is not reached there, but nothing about proof()'s "off under tests" gate (the
-        // other test above) depends on which -- enroll() is never called under real dialogs off.
-        if !SecureEnclave.isAvailable {
-            t.eq(out?.0, "This Mac has no Secure Enclave, so the Capsule cannot make a presence key.")
-            t.eq(out?.1, nil)
-        }
+        t.eq(out?.0, nil)
+        t.eq(out?.2, "k7")
+        t.ok(out?.1?.starts(with: CapsulePresence.softwareTag) == true)
+        fake.stop()
+    }
+
+    t.test("the stored software handle signs a proof that verifies with the enrolled public key") {
+        let made = CapsulePresence.makeDeviceKey(secureEnclave: false)
+        t.ok(made != nil)
+        guard let made, let key = CapsulePresence.signingKey(handle: made.handle, context: NoBiometryContext()) else { t.ok(false, "no key"); return }
+        let h = CapsulePresence.header(tool: "gate.approve", input: ["id": "h1"], key: key, keyId: "k1", ts: 1_800_000_000_000, nonce: "n1") ?? ""
+        let sig = h.split(separator: "=").last.map(String.init) ?? ""
+        var b64 = sig.replacingOccurrences(of: "-", with: "+").replacingOccurrences(of: "_", with: "/")
+        while b64.count % 4 != 0 { b64 += "=" }
+        let pub = try? P256.Signing.PublicKey(derRepresentation: made.der)
+        let ecdsa = Data(base64Encoded: b64).flatMap { try? P256.Signing.ECDSASignature(derRepresentation: $0) }
+        let msg = "vyre-presence-v1\ngate.approve\n\(PresenceCanonical.hash(["id": "h1"]))\n1800000000000\nn1"
+        t.ok(pub != nil && ecdsa != nil && pub!.isValidSignature(ecdsa!, for: Data(msg.utf8)))
+        t.eq(CapsulePresence.signingKey(handle: Data([1, 2, 3]), context: NoBiometryContext()) == nil, true, "a foreign handle is no key")
     }
 
     // CapsulePin.swift: presence.capsule.pin, signed with this same enrolled key. ownCdhash()

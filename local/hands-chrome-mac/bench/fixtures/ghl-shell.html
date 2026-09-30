@@ -1,0 +1,93 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Harlow Legal CRM</title>
+<style>
+  html, body { height: 100%; margin: 0; font: 14px system-ui, sans-serif; }
+  body { display: flex; flex-direction: column; }
+  #topbar { flex: 0 0 56px; box-sizing: border-box; background: #0b2540; color: #fff; display: flex; align-items: center; gap: 12px; padding: 0 12px; overflow: hidden; }
+  #topbar button { padding: 4px 10px; }
+  #topbar iframe { border: 0; background: #fff; height: 40px; }
+  #ticker { width: 220px; }
+  #late-slot { width: 200px; height: 40px; display: inline-block; }
+  #late-slot iframe { width: 200px; }
+  #main { flex: 1 1 auto; display: flex; min-height: 0; }
+  #leftnav { flex: 0 0 150px; background: #123; padding: 8px; display: flex; flex-direction: column; gap: 4px; overflow: auto; }
+  #leftnav button { text-align: left; padding: 6px 10px; }
+  #leftnav iframe { border: 0; background: #fff; width: 134px; height: 90px; margin-top: 8px; flex: 0 0 auto; }
+  #appframe { flex: 1 1 auto; border: 0; min-width: 0; background: #fff; }
+  #helppanel { flex: 0 0 26vw; border: 0; border-left: 1px solid #999; background: #f5f5f5; }
+</style>
+</head>
+<body>
+<!-- The shell of a GoHighLevel-shaped app on SITE A. Its left nav and top bar are the shell's; the Workflows
+     UI is an iframe on SITE B (the app), which renders nothing until this page posts it {type:"auth", token}.
+     A ticker frame (site C) navigates when "Next ticker" is pressed; a live-chat frame (site C) is added 1.5 s
+     after load; a same-origin frame (site A) sits in the left nav; a sandboxed frame (site C, no allow-same-origin)
+     covers the right-hand panel, so tools cannot read it. Query flags pass through to the app:
+     ?slow=600 &whatsnew=1 &guard=1 &stale=1 &toast=2500 -->
+<div id="topbar">
+  <b>Harlow CRM</b>
+  <button type="button" data-testid="quick-search" id="quick-search">Quick search</button>
+  <button type="button" data-testid="next-ticker" id="next-ticker">Next ticker</button>
+  <iframe id="ticker" name="ticker" title="Ticker" src="{{C}}/ticker?n=1"></iframe>
+  <span id="late-slot"></span>
+</div>
+<div id="main">
+  <nav id="leftnav" aria-label="Main navigation">
+    <button type="button" data-testid="nav-dashboard" id="nav-dashboard">Dashboard</button>
+    <button type="button" data-testid="nav-conversations" id="nav-conversations">Conversations</button>
+    <button type="button" data-testid="nav-calendars" id="nav-calendars">Calendars</button>
+    <button type="button" data-testid="nav-contacts" id="nav-contacts">Contacts</button>
+    <button type="button" data-testid="nav-opportunities" id="nav-opportunities">Opportunities</button>
+    <button type="button" data-testid="nav-payments" id="nav-payments">Payments</button>
+    <button type="button" data-testid="nav-marketing" id="nav-marketing">Marketing</button>
+    <button type="button" data-testid="nav-automation" id="nav-automation">Automation</button>
+    <button type="button" data-testid="nav-sites" id="nav-sites">Sites</button>
+    <button type="button" data-testid="nav-reputation" id="nav-reputation">Reputation</button>
+    <button type="button" data-testid="nav-reporting" id="nav-reporting">Reporting</button>
+    <button type="button" data-testid="nav-settings" id="nav-settings">Settings</button>
+    <iframe id="sameorigin" title="Notifications" src="/same-origin-frame"></iframe>
+  </nav>
+  <iframe id="appframe" name="appframe" title="Automation" src="{{APP}}{{APPPATH}}{{QUERY}}"></iframe>
+  <iframe id="helppanel" title="Help center" sandbox="allow-scripts" src="{{C}}/sandboxed"></iframe>
+</div>
+<script>
+  (function () {
+    var APP_ORIGIN = "{{APP}}";
+    var C_ORIGIN = "{{C}}";
+    var QUERY = "{{QUERY}}";
+    var TOKEN = "{{TOKEN}}";
+    var appframe = document.getElementById("appframe");
+    function sendAuth() { try { appframe.contentWindow.postMessage({ type: "auth", token: TOKEN }, APP_ORIGIN); } catch (e) { /* the frame is not there yet */ } }
+    // The app waits for this: on every load of the frame (a route change reloads it) and when it asks.
+    appframe.addEventListener("load", sendAuth);
+    window.addEventListener("message", function (e) {
+      if (e.source === appframe.contentWindow && e.origin === APP_ORIGIN && e.data && e.data.type === "ready") sendAuth();
+    });
+    var ROUTES = { automation: "/automation/workflows", contacts: "/contacts" };
+    // On a GoHighLevel-shaped URL (/v2/location/<id>/<section>) the shell keeps the address bar in step with the nav, as the real one does.
+    var loc = /^(\/v2\/location\/[A-Za-z0-9]+)(\/|$)/.exec(location.pathname);
+    var SECTION_PATH = { automation: "automation/workflows" };
+    ["dashboard", "conversations", "calendars", "contacts", "opportunities", "payments", "marketing", "automation", "sites", "reputation", "reporting", "settings"].forEach(function (k) {
+      document.getElementById("nav-" + k).addEventListener("click", function () {
+        var p = ROUTES[k] || "/" + k;
+        appframe.title = k.charAt(0).toUpperCase() + k.slice(1);
+        appframe.src = APP_ORIGIN + p + QUERY;
+        if (loc) { try { history.pushState(null, "", loc[1] + "/" + (SECTION_PATH[k] || k)); } catch (e) { /* the address bar stays */ } }
+      });
+    });
+    // The ticker frame navigates: its src changes (the server holds the second page back a little).
+    document.getElementById("next-ticker").addEventListener("click", function () { document.getElementById("ticker").src = C_ORIGIN + "/ticker?n=2"; });
+    // A frame that is not there at load: the live-chat widget arrives 1.5 s later.
+    setTimeout(function () {
+      var f = document.createElement("iframe");
+      f.id = "latechat"; f.title = "Live chat"; f.src = C_ORIGIN + "/late";
+      document.getElementById("late-slot").appendChild(f);
+    }, 1500);
+  })();
+</script>
+</body>
+</html>

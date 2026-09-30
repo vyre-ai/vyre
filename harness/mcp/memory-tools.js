@@ -4,7 +4,7 @@
 // maps onto a vyred tool. Nothing here decides what a caller may see: vyred reads the caller's
 // identity and reach itself (memory's guard), so a project named here only ever narrows.
 
-/** @type {Record<string, { tool: string, description: string, input: any, map: (args: any, env: Record<string, string | undefined>) => any }>} */
+/** @type {Record<string, { tool: string, description: string, input: any, map: (args: any, env: Record<string, string | undefined>) => any, route?: { when: (args: any, env: Record<string, string | undefined>) => boolean, tool: string, map: (args: any, env: Record<string, string | undefined>) => any } }>} */
 export const ALIASES = {
   memory_search: {
     tool: "memory.retrieve",
@@ -21,6 +21,9 @@ export const ALIASES = {
       const only = granted && granted !== "*" && !granted.includes(",") ? granted : "";
       return { kind: a.kind || "note", text: String(a.text || ""), project: a.project || only || undefined };
     },
+    // The person's own session (no agent, no project named) is telling memory about their own life: a personal fact, kept
+    // at once (memory.remember), as /vyre remember does. An agent, or anyone naming a project, writes to that project's memory.
+    route: { when: (a, env) => !env.VYRE_AGENT && !a.project, tool: "memory.remember", map: a => ({ text: String(a.text || "") }) },
   },
   memory_correct: {
     tool: "memory.heard",

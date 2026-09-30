@@ -516,3 +516,14 @@ test("the test clock is honoured only when the store's home is under the OS temp
   assert.equal(await at(null), NOW + 20 * DAY, "a temp home takes the test clock");
   assert.equal(await at("/Users/alex/.vyre"), NOW, "a real home ignores it, so a forged clock cannot move its purge or undo windows");
 });
+
+test("the two settings are real settings of the memory module (they were once nested inside another setting's list), and learning defaults on", async () => {
+  const fs = await import("node:fs");
+  const m = JSON.parse(fs.readFileSync(new URL("./module.json", import.meta.url), "utf8"));
+  const keys = m.settings.map(x => x.key);
+  assert.ok(keys.includes("memory.site.learn") && keys.includes("memory.site.sync"), keys.join());
+  for (const x of m.settings) assert.ok(typeof x === "object" && x.key && x.type, JSON.stringify(x).slice(0, 80));
+  const plan = m.settings.find(x => x.key === "memory.plan_share");
+  assert.deepEqual(plan.enum, ["small", "medium", "large"], "plan_share keeps only its own choices");
+  for (const k of ["memory.site.learn", "memory.site.sync"]) { const s = m.settings.find(x => x.key === k); assert.equal(s.type, "bool"); assert.equal(s.default, true); assert.deepEqual(s.levels, ["account"]); }
+});

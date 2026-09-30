@@ -42,7 +42,7 @@ public struct IQAnswer: Sendable, Equatable {
     public static func from(_ question: String, _ data: Any?, now: Double = vyNowMs()) -> IQAnswer {
         let d = (data as? [String: Any]) ?? [:]
         if VJ.truthy(d["limited"]) {
-            return IQAnswer(text: VJ.nonEmpty(d["message"]) ?? "Vyre IQ has reached today's limit.", memory: nil, answerId: nil, abstained: true)
+            return IQAnswer(text: VJ.nonEmpty(d["message"]) ?? "Vyre Memory has reached today's limit.", memory: nil, answerId: nil, abstained: true)
         }
         let known = ((d["known"] as? [Any]) ?? []).compactMap { VJ.nonEmpty($0) }
         let answer = VJ.nonEmpty(d["answer"])

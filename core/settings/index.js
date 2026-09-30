@@ -19,6 +19,7 @@ import fs from "node:fs";
 import { coerce, read, write, whereIs, needsConfirm } from "../config/settings.js";
 import { claudeHome } from "../config/index.js";
 import { readHub, writeHub, hubPath, digest, levelOf } from "./hub.js";
+import { withinOrThrow } from "../../lib/within.js";
 
 const PEOPLE = ["cli", "local", "deck", "capsule"];
 const MIGRATIONS = [
@@ -197,8 +198,7 @@ export default {
 
     // ---- check and choicesFrom: a module's own say, with a deadline --------------------------------
     const DEADLINE = 500;
-    const inTime = (/** @type {Promise<any>} */ p, /** @type {string} */ tool) => Promise.race([p,
-      new Promise((_, no) => { const t = setTimeout(() => no(Object.assign(new Error(`${tool} took too long`), { code: "bad_input" })), DEADLINE); t.unref?.(); })]);
+    const inTime = (/** @type {Promise<any>} */ p, /** @type {string} */ tool) => withinOrThrow(p, DEADLINE, () => Object.assign(new Error(`${tool} took too long`), { code: "bad_input" }));
     /** A key's own check, called as this module: it refuses, never passes by default. */
     const checked = async (/** @type {any} */ d, /** @type {any} */ value, /** @type {Lv} */ lv, /** @type {string|null} */ target) => {
       if (!d.check || !d.check.tool || value === undefined) return;

@@ -19,3 +19,13 @@ test("memory_remember: kind defaults to note, the project to the agent's only on
   assert.equal(map({ text: "x" }, { VYRE_PROJECTS: "*" }).project, undefined);
   assert.equal(map({ text: "x", project: "northwind", kind: "decision" }, { VYRE_PROJECTS: "harlow" }).project, "northwind");
 });
+
+test("memory_remember: the person's own session (no agent, no project) keeps a personal fact; an agent or a named project writes to project memory", () => {
+  const r = ALIASES.memory_remember.route;
+  assert.ok(r, "a route exists");
+  assert.equal(r.when({ text: "My wife is Jordan." }, {}), true);
+  assert.equal(r.tool, "memory.remember");
+  assert.deepEqual(r.map({ text: "My wife is Jordan.", kind: "note" }, {}), { text: "My wife is Jordan." });
+  assert.equal(r.when({ text: "x" }, { VYRE_AGENT: "kit" }), false, "an agent writes to a project");
+  assert.equal(r.when({ text: "x", project: "harlow" }, {}), false, "a named project");
+});

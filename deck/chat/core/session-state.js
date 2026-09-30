@@ -89,7 +89,7 @@ import { toolDetail } from "./tool-detail.js";
  * @typedef {{ key: string, kind: "tool", call: string, name: string, status: "running"|"completed"|"failed"|"canceled", summary?: string,
  *   error?: string|boolean, input?: any, output?: string|null, detail?: import("./tool-detail.js").ToolDetail, duration_ms?: number|null,
  *   patch?: any, images?: import("./composer-state.js").Attachment[], at?: number, seq?: number,
- *   reply?: string }} ToolItem
+ *   reply?: string, render?: Record<string, any> }} ToolItem
  *   reply: a teammate's answer (team_ask/team.ask only, attachHandoffReply below), once it lands.
  * @typedef {{ key: string, kind: "turn", n?: number, ok?: boolean, result?: string, cost_usd?: number, tokens?: any, duration_ms?: number|null,
  *   error?: string, canceled?: boolean, reason?: string|null, model?: string|null, open?: boolean, at?: number, seq?: number }} TurnItem

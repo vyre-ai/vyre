@@ -26,6 +26,7 @@ import * as config from "../config/index.js";
 import zlib from "node:zlib";
 import { seal, open as unseal, checkPassphrase, inspect as inspectV1, isSealed } from "./seal.js";
 import { SealWriter, readRecords, scanPartial, isStream, inspectStream, CHUNK } from "./sealstream.js";
+import { within } from "../../lib/within.js";
 // Re-exported so a caller outside core/names (up.js) needs only this file's own frozen boundary
 // entry (test/boundaries.test.js), not a second one for seal.js. Reads either format's header.
 /** @param {Buffer} buf the file's first bytes (or all of a v1 file) */
@@ -132,10 +133,7 @@ export async function* tarGz(args, warnings, { exitMs = TAR_EXIT_MS } = {}) {
   finally { if (!drained && !child.killed && child.exitCode === null) child.kill(); }
   // Its output has ended, so it should exit now; one that never does (a hung process, a stuck mount) is killed
   // with a plain error, so a backup is never held open by it.
-  let hung;
-  const timeout = new Promise(res => { hung = setTimeout(() => res("hung"), exitMs); hung.unref(); });
-  const code = await Promise.race([closed, failed, timeout]);
-  clearTimeout(hung);
+  const code = await within(Promise.race([closed, failed]), exitMs, "hung");
   if (code === "hung") { try { child.kill("SIGKILL"); } catch {} throw new Error(`tar did not exit ${exitMs >= 1000 ? `${Math.round(exitMs / 1000)} seconds` : `${exitMs} ms`} after its output ended; it was stopped`); }
   if (code === 1) warnings.push("some files changed while they were being read");
   else if (code !== 0) throw new Error(`tar exited ${code}: ${err.trim()}`);

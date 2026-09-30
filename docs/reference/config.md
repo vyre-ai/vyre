@@ -170,7 +170,7 @@ vyred sets these for the threads and helpers it starts, and the Harness reads th
 
 | Variable | What it does | Read in |
 | --- | --- | --- |
-| `VYRE_AGENT` | The agent a thread runs as. | `core/switchboard/index.js`, `harness/hooks/hook.js`, `harness/mcp/server.js` |
+| `VYRE_AGENT` | The agent a thread runs as. | `core/switchboard/index.js`, `harness/hooks/hook.js`, `harness/mcp/memory-tools.js`, `harness/mcp/server.js` |
 | `VYRE_AGENT_KEY` | The key that proves a thread's calls come from its agent. | `core/daemon/client.js`, `core/switchboard/index.js` |
 | `VYRE_AGENT_KIND` | `assistant` or `agent`. Only the assistant is offered the tools that drive other threads. | `core/switchboard/index.js`, `harness/hooks/hook.js`, `harness/mcp/server.js` |
 | `VYRE_CHROME_HOME` | Not described yet. | `local/hands-chrome-mac/standalone/runtime.js` |

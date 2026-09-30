@@ -6,6 +6,7 @@ import assert from "node:assert/strict";
 import { passwordFieldScript } from "./extension/shared/guards.js";
 import dt from "./extension/caps/devtools.js";
 import { makeCtx } from "./devtools-kit.js";
+import { T } from "./test-support/trust.js";
 
 /** A fake element/root just deep enough for the script. */
 function input(/** @type {any} */ o = {}) {
@@ -39,19 +40,19 @@ test("password guard: finds one inside an open shadow root and a same-origin ifr
 test("dev.console.eval refuses on a page with a password field", async () => {
   const k = makeCtx({ active: 3 });
   k.respond["Runtime.evaluate"] = (/** @type {any} */ p) => p.expression === passwordFieldScript ? { result: { value: true } } : { result: { type: "string", value: "leaked" } };
-  await assert.rejects(() => dt.ops["dev.console.eval"]({ tab: 3, expression: "document.querySelector('input').value" }, k.ctx), /password field/);
+  await assert.rejects(() => T(dt.ops["dev.console.eval"])({ tab: 3, expression: "document.querySelector('input').value" }, k.ctx), /password field/);
 });
 
 test("the console ring and script cache go when the page's contexts are cleared", async () => {
   const k = makeCtx({ active: 3 });
-  await dt.ops["dev.console.read"]({ tab: 3 }, k.ctx);
-  await dt.ops["dev.sources.list"]({ tab: 3 }, k.ctx);
+  await T(dt.ops["dev.console.read"])({ tab: 3 }, k.ctx);
+  await T(dt.ops["dev.sources.list"])({ tab: 3 }, k.ctx);
   k.push(3, "Runtime.consoleAPICalled", { type: "log", args: [{ type: "string", value: "balance is 42" }] });
   k.push(3, "Debugger.scriptParsed", { scriptId: "1", url: "https://bank.example/app.js", length: 10 });
-  assert.equal((await dt.ops["dev.console.read"]({ tab: 3 }, k.ctx)).entries.length, 1);
+  assert.equal((await T(dt.ops["dev.console.read"])({ tab: 3 }, k.ctx)).entries.length, 1);
   k.push(3, "Runtime.executionContextsCleared", {});
-  assert.equal((await dt.ops["dev.console.read"]({ tab: 3 }, k.ctx)).entries.length, 0);
-  assert.equal((await dt.ops["dev.sources.list"]({ tab: 3 }, k.ctx)).scripts?.length ?? 0, 0);
+  assert.equal((await T(dt.ops["dev.console.read"])({ tab: 3 }, k.ctx)).entries.length, 0);
+  assert.equal((await T(dt.ops["dev.sources.list"])({ tab: 3 }, k.ctx)).scripts?.length ?? 0, 0);
 });
 
 test("password guard fails closed: a page too big to look through, or one that throws, counts as a password page", () => {
@@ -86,7 +87,7 @@ test("egress guard: a fetch to a fresh origin carrying localStorage is failed an
     pause(kk, "img", "https://img.attacker.example/p.gif", "Image");
     pause(kk, "data", "data:image/gif;base64,R0lGOD");
   });
-  const r = await dt.ops["dev.console.eval"]({ tab: 3, expression: "/*vyre-test-script*/ 1" }, k.ctx);
+  const r = await T(dt.ops["dev.console.eval"])({ tab: 3, expression: "/*vyre-test-script*/ 1" }, k.ctx);
   assert.equal(r.held, true, JSON.stringify(r));
   assert.match(r.why, /attacker\.example/);
   assert.ok(!JSON.stringify(r).includes("token"), "the query never comes back");
@@ -100,35 +101,35 @@ test("egress guard: a fetch to a fresh origin carrying localStorage is failed an
 
 test("egress guard: asked lifts it, and a script that reaches only known origins returns its value", async () => {
   const k = egressRig(async (/** @type {any} */ kk) => { pause(kk, "evil", "https://attacker.example/c"); });
-  const r = await dt.ops["dev.console.eval"]({ tab: 3, expression: "/*vyre-test-script*/ 1", asked: true }, k.ctx);
+  const r = await T(dt.ops["dev.console.eval"])({ tab: 3, expression: "/*vyre-test-script*/ 1", asked: true }, k.ctx);
   assert.equal(r.held, undefined);
   assert.equal(k.calls("Fetch.enable").length, 0, "no guard when the person asked");
   const k2 = egressRig(async (/** @type {any} */ kk) => { pause(kk, "own", "https://app.example.com/api/me"); });
-  const r2 = await dt.ops["dev.console.eval"]({ tab: 3, expression: "/*vyre-test-script*/ 1" }, k2.ctx);
+  const r2 = await T(dt.ops["dev.console.eval"])({ tab: 3, expression: "/*vyre-test-script*/ 1" }, k2.ctx);
   assert.equal(r2.ok, true);
   assert.equal(r2.value, "done");
 });
 
 test("egress guard: a browser-level rule blocks WebSockets and beacons of the tab for the guard window and is removed after", async () => {
   const k = egressRig(async () => {});
-  await dt.ops["dev.console.eval"]({ tab: 3, expression: "/*vyre-test-script*/ 1" }, k.ctx);
+  await T(dt.ops["dev.console.eval"])({ tab: 3, expression: "/*vyre-test-script*/ 1" }, k.ctx);
   const dnr = /** @type {any} */ (k.ctx).dnr;
   assert.equal(dnr.rules.length, 1);
   assert.equal(dnr.rules[0].tab, 3);
   assert.ok(dnr.rules[0].allowHosts.includes("app.example.com") && dnr.rules[0].allowHosts.includes("services.example.com"), "own and known hosts stay allowed");
   assert.deepEqual(dnr.removed, [dnr.rules[0].id], "the rule is removed when the script ends");
   const k2 = egressRig(async () => {});
-  await dt.ops["dev.console.eval"]({ tab: 3, expression: "/*vyre-test-script*/ 1", asked: true }, k2.ctx);
+  await T(dt.ops["dev.console.eval"])({ tab: 3, expression: "/*vyre-test-script*/ 1", asked: true }, k2.ctx);
   assert.equal(/** @type {any} */ (k2.ctx).dnr.rules.length, 0, "no rule when the person asked");
 });
 
 test("egress guard: when the browser-level rule cannot be set, the script still runs but the result says the containment is partial", async () => {
   const k = egressRig(async () => {});
   /** @type {any} */ (k.ctx).dnr.fail = true;
-  const r = await dt.ops["dev.console.eval"]({ tab: 3, expression: "/*vyre-test-script*/ 1" }, k.ctx);
+  const r = await T(dt.ops["dev.console.eval"])({ tab: 3, expression: "/*vyre-test-script*/ 1" }, k.ctx);
   assert.equal(r.ok, true);
   assert.equal(r.contained, "partial");
   assert.ok(r.containedWhy);
   const k2 = egressRig(async () => {});
-  assert.equal((await dt.ops["dev.console.eval"]({ tab: 3, expression: "/*vyre-test-script*/ 1" }, k2.ctx)).contained, undefined, "no flag when the rule holds");
+  assert.equal((await T(dt.ops["dev.console.eval"])({ tab: 3, expression: "/*vyre-test-script*/ 1" }, k2.ctx)).contained, undefined, "no flag when the rule holds");
 });

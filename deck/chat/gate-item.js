@@ -1,7 +1,7 @@
 // @ts-check
 // A held Gate item, inline: exactly what Send will send, editable in place, never behind a
 // separate Edit surface (docs/work/gate-chat.md's pivot note; this carries the Mattermost-era
-// rule forward). Shape matched to the Capsule's (capsule teammate, 2026-09-27): a HELD FOR YOU
+// rule forward). Shape matched to Lumen's (capsule teammate, 2026-09-27): a HELD FOR YOU
 // badge, a To/Subject grid, a hairline, the body, everything contenteditable plaintext-only with
 // a Signal underline on focus, SEND primary with a keycap, DISCARD a ghost button, no Edit button.
 // Edits stay on the card until Send, which passes them as gate.approve's `edited` (only the fields
@@ -12,6 +12,7 @@
 // refused proof says why and leaves the buttons. While a presence session covers this device
 // (js/api.js), one quiet line under the buttons says until when, and Send asks for no passkey.
 
+import { kbd } from "../js/platform.js";
 import { h, put } from "../js/dom.js";
 import { attempt, queued } from "../js/api.js";
 import { icon } from "../js/icons.js";
@@ -105,7 +106,7 @@ export function gateCard(held) {
       it.diff && (it.diff.removed?.length || it.diff.added?.length) ? h("div", null, h("div", { class: "code", style: { marginBottom: "4px" } }, "changed from the draft"), renderDiff(String(it.draft?.body ?? ""), String(it.final?.body ?? content.body ?? ""))) : null,
       it.error ? h("div", { class: "gate-note" }, h("span", { class: "code" }, "failed: " + it.error), " Send tries again.") : null,
       h("div", { class: "gate-actions" },
-        h("button", { class: "btn btn-primary", disabled: state.busy, onclick: send }, "Send", h("span", { class: "kbd" }, "⌘⏎")),
+        h("button", { class: "btn btn-primary", disabled: state.busy, onclick: send }, "Send", h("span", { class: "kbd" }, kbd("Enter"))),
         h("button", { class: "btn btn-ghost", disabled: state.busy, onclick: discard }, "Discard"),
         state.busy ? h("span", { class: "code" }, "…") : null,
       ),

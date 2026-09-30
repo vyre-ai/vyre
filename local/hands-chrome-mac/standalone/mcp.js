@@ -18,7 +18,7 @@ export function serve({ runtime, stdin, stdout, name = "vyre-chrome", version = 
   /** Ask the person through the client (MCP elicitation), or null when the client cannot. @param {string} message */
   const ask = (/** @type {string} */ message) => !clientElicits ? null : new Promise(resolve => {
     const id = `s${nextServerId++}`;
-    const t = setTimeout(() => { asking.delete(/** @type {any} */ (id)); resolve({ action: "cancel" }); }, 5 * 60_000);
+    const t = setTimeout(() => { asking.delete(/** @type {any} */ (id)); resolve({ action: "timeout" }); }, 5 * 60_000);
     asking.set(/** @type {any} */ (id), (/** @type {any} */ m) => { clearTimeout(t); resolve(m && m.result ? m.result : { action: "cancel" }); });
     send({ jsonrpc: "2.0", id, method: "elicitation/create", params: { message, requestedSchema: { type: "object", properties: { approve: { type: "boolean", title: "Send it" } }, required: ["approve"] } } });
   });

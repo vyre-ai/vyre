@@ -21,6 +21,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { isPerson } from "../../lib/caller.js";
+import { within } from "../../lib/within.js";
 
 export const MIGRATIONS = [
   `CREATE TABLE agents_agents (
@@ -382,8 +383,7 @@ export default {
             if (!s.sent) return { agent: a.name, thread, ok: false, text: "", note: s.note };
           }
           if (i.wait === false) return { agent: a.name, thread, ok: true, sent: true, text: "" };
-          const timer = new Promise(r => setTimeout(() => r({ ok: false, note: "still working; the reply will stream to the thread" }), ASK_WAIT_MS).unref?.());
-          const r = await Promise.race([done, timer]);
+          const r = await within(done, ASK_WAIT_MS, { ok: false, note: "still working; the reply will stream to the thread" });
           return { agent: a.name, thread, text: heard.text, ...(/** @type {object} */ (r)) };
         } finally {
           for (const off of offs) off();

@@ -183,6 +183,16 @@ public final class AppsProvider: ResultProvider, @unchecked Sendable {
     }
 }
 
+extension AppsProvider: RowResolver {
+    /// "app:/Applications/Safari.app" again, if the app is still there.
+    func row(forID id: String) -> ResultItem? {
+        guard id.hasPrefix("app:") else { return nil }
+        let path = String(id.dropFirst(4))
+        guard FileManager.default.fileExists(atPath: path) else { return nil }
+        return item(Self.record(path), score: 1)
+    }
+}
+
 extension AppsProvider: ImmediateResults {
     public func resultsNow(for query: Query) -> [ResultItem] { search(query.text) }
 }

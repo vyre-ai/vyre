@@ -39,6 +39,7 @@ import { blocks, find, peek } from "../transcripts/index.js";
 import { transcriptFolders } from "../config/index.js";
 import { wantsMacs, askMacs, mergeRows, boxLabel, macLabel } from "../modules/federate.js";
 import { ownerDevice } from "../modules/index.js";
+import { within } from "../../lib/within.js";
 
 /** @type {import("./embed.js").Embedder | null} */
 let injected = null;
@@ -582,7 +583,7 @@ export default {
         await chain;
         await vec.done;
         // A model load in flight writes into the home; let it settle before the home can go.
-        if (vec.loading) await Promise.race([vec.loading.catch(() => null), new Promise(r => setTimeout(r, 5000).unref())]);
+        if (vec.loading) await within(vec.loading.catch(() => null), 5000);
         const e = /** @type {any} */ (vec.embedder);
         if (e && typeof e.close === "function") e.close();
       },

@@ -13,6 +13,7 @@
 // learn.skills, learn.accept, learn.edit, learn.retire, learn.relax, learn.skill-install,
 // learn.skill_retire.
 
+import { kbd } from "../js/platform.js";
 import { h, put, link, empty } from "../js/dom.js";
 import { attempt } from "../js/api.js";
 import { when, plural } from "../js/fmt.js";
@@ -31,7 +32,7 @@ function style() {
   return styled;
 }
 
-/** "Accept this in a terminal: vyre learn accept 7, or from the Capsule" with the command in mono. */
+/** "Accept this in a terminal: vyre learn accept 7, or from Lumen" with the command in mono. */
 function cmdWords(text) {
   const m = /^(.*?: )(vyre [^,]+)(.*)$/.exec(text);
   return m ? [m[1], h("span", { class: "code" }, m[2]), m[3]] : text;
@@ -232,7 +233,7 @@ export default async function lessons(root, ctx, o) {
           h("div", { class: "ed-row" }, h("span", { class: "lbl ed-lbl" }, "Rule"), rule),
           h("div", { class: "ed-row" }, h("span", { class: "lbl ed-lbl" }, "When"), whenIn),
           h("div", { class: "ml-edit-act" },
-            h("button", { type: "submit", class: "btn btn-sm" }, "Save", h("span", { class: "kbd mem-cx-kbd", "aria-hidden": "true" }, "⌘⏎")),
+            h("button", { type: "submit", class: "btn btn-sm" }, "Save", h("span", { class: "kbd mem-cx-kbd", "aria-hidden": "true" }, kbd("Enter"))),
             h("button", { type: "button", class: "btn btn-ghost btn-sm", onclick: show }, "Cancel"))),
         msg);
       requestAnimationFrame(() => { grow(); rule.focus(); });
