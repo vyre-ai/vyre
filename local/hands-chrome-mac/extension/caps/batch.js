@@ -12,6 +12,10 @@
 // does not resolve fails that step. The batch halts at the first failure or hold, and the result
 // says which step and why so the module can turn a hold into a Gate card and resume from there.
 
+import { toRecipe } from "../lib/recipes.js";
+import { remember } from "./recipe.js";
+import { originOf } from "../lib/observe.js";
+import { records } from "./net.js";
 import { err } from "../lib/err.js";
 
 const MAX_STEPS = 200;
@@ -40,15 +44,40 @@ function subst(v, results, depth = 0) {
   return v;
 }
 
+/**
+ * Is this write one the approved plan covers? It must be made on the plan's own tab, that tab must still be on the plan's site, and the request must go to an
+ * origin that tab's own traffic has talked to (the app's own API), never some other site the step names. A step's own tab wins over the batch's, so it is checked too.
+ * @param {any} ctx @param {any} wb the budget @param {any} merged the step's args as it will be called (the batch's tab filled in) @param {any} res the held write
+ */
+async function budgetFits(ctx, wb, merged, res) {
+  try {
+    // The tab exactly as the op will read it: both spellings present and different is refused, and neither is refused.
+    const a = merged && typeof merged.tabId === "number" ? merged.tabId : undefined, b = merged && typeof merged.tab === "number" ? merged.tab : undefined;
+    if (a !== undefined && b !== undefined && a !== b) return false;
+    const tab = a !== undefined ? a : b;
+    if (typeof tab !== "number") return false;
+    if (wb.tab !== undefined && tab !== wb.tab) return false;
+    if (wb.tabOrigin) { const t = await ctx.tabs.get(tab); if (originOf(String((t && (t.pendingUrl || t.url)) || "")) !== wb.tabOrigin) return false; }
+    const ro = typeof res.origin === "string" ? res.origin : "";
+    if (!ro) return false;
+    if (wb.origin) return ro === wb.origin;
+    const seen = new Set((await records(ctx, tab)).map((/** @type {any} */ r) => { try { return new URL(r.url).origin; } catch { return ""; } }));
+    return seen.has(ro) || ro === wb.tabOrigin;
+  } catch { return false; }
+}
+
 /** @type {{ name: string, ops: Record<string, (args: any, ctx: any) => Promise<any>> }} */
 export default {
   name: "batch",
   ops: {
-    "batch.run": async (args, ctx) => {
+    "batch.run": async (args, ctx, trust = {}) => {
       const steps = args.steps;
       if (!Array.isArray(steps) || !steps.length) throw err("bad_request", "batch.run needs steps: [{op, args}]");
       if (steps.length > MAX_STEPS) throw err("bad_request", `batch.run takes at most ${MAX_STEPS} steps`);
       const stopOnError = args.stopOnError !== false;
+      /** What the module's approved plan still covers, set only by the module. @type {any} */
+      const wb = trust.writeBudget ? { ...trust.writeBudget } : null;
+      /** @type {{ kind: string, res: any }[]} */ const covered = [];
       /** @type {any[]} */
       const results = [];
       /** @type {{ ok: boolean, done: number, results: any[], failedAt?: number, why?: string, code?: string, held?: any, haltMs?: number, detail?: any }} */
@@ -67,7 +96,16 @@ export default {
           // A page acts on whatever a person's last click just caused: look for the control for a moment instead of failing on the first
           // look (a table that fills after its section opens). Set `wait` on a step, or `wait: false` on the batch, to change it.
           const wants = (step.op === "page.act" || step.op === "page.fill") && stepArgs.wait === undefined && args.wait !== false;
-          const result = await ctx.call(step.op, { ...(args.asked === true ? { asked: true } : {}), ...(wants ? { wait: args.wait && typeof args.wait === "object" ? args.wait : { timeoutMs: 3000 } } : {}), ...stepArgs });
+          // A batch that names a tab runs its steps on that tab, not on whichever is in front (the agent's tab need not be the active one).
+          const onTab = typeof args.tabId === "number" && stepArgs.tabId === undefined && stepArgs.tab === undefined && !/^(tabs\.|ghl\.section)/.test(step.op) ? { tabId: args.tabId, tab: args.tabId } : {};
+          let result = await ctx.call(step.op, { ...onTab, ...(wants ? { wait: args.wait && typeof args.wait === "object" ? args.wait : { timeoutMs: 3000 } } : {}), ...stepArgs }, { asked: trust.asked === true });
+          // A write the module's approved plan covers (it sent a budget; a model's input cannot): run it again with writeOk, up to the budget, on the one API origin.
+          if (wb && result && typeof result === "object" && result.held === true && result.write === true && (wb[result.kind] || 0) > 0 && (!wb.origin || result.origin === wb.origin) && await budgetFits(ctx, wb, { ...onTab, ...stepArgs }, result)) {
+            wb[result.kind]--; if (!wb.origin && result.origin) wb.origin = result.origin;
+            const again = await ctx.call(step.op, { ...onTab, ...stepArgs }, { writeOk: true });
+            covered.push({ kind: result.kind, res: again });
+            result = again;
+          }
           results.push(result);
           if (result && result.ok === false) {
             if (out.ok) {
@@ -84,6 +122,17 @@ export default {
           halt(String(/** @type {any} */ (e)?.message || e), code, undefined, /** @type {any} */ (e)?.detail);
           if (stopOnError) break;
         }
+      }
+      if (covered.length) /** @type {any} */ (out).covered = covered.map(c => ({ kind: c.kind, res: c.res }));
+      // A batch that was given a name and did every step is kept as a recipe: its steps with every literal turned into a {parameter}.
+      if (typeof args.saveAs === "string" && args.saveAs && out.ok && out.done === steps.length) {
+        try {
+          const name = args.saveAs.toLowerCase().replace(/[^a-z0-9._-]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 60);
+          const t = typeof args.tabId === "number" && ctx.tabs ? await ctx.tabs.get(args.tabId) : null;
+          const origin = originOf(String((t && (t.pendingUrl || t.url)) || ""));
+          const saved = origin && name ? await remember(ctx, origin, toRecipe(name, steps, results)) : null; // toRecipe refuses a step it cannot make into parameters
+          if (saved) /** @type {any} */ (out).recipe = { name: saved.name, steps: saved.steps.length, params: saved.params.map((/** @type {any} */ p) => p.name) };
+        } catch (e) { /** @type {any} */ (out).recipe = { saved: false, why: String(/** @type {any} */ (e)?.message || e).slice(0, 200) }; /* a recipe that cannot be kept is not a failed batch */ }
       }
       return out;
     },

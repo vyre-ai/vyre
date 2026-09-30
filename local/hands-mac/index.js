@@ -118,7 +118,9 @@ export default {
     const hold = async ({ content, thread }) => {
       // The real destination, as the Gate matches it: the app and the window (a conversation, a document), which is as close to
       // "who or what does this go to" as a screen gives. It has a ":" so it can be named exactly; a plain word never matches.
-      const to = `${(content && content.app) || "the Mac"}: ${(content && content.window) || "window"}`.slice(0, 200);
+      // Screen content is not trusted text: control and bidi marks become spaces so a hostile title cannot spoof what an approval card shows.
+      const plain = (/** @type {unknown} */ t) => String(t ?? "").replace(/[\u0000-\u001f\u007f-\u009f\u2028\u2029\u202a-\u202e\u2066-\u2069\u200e\u200f]/g, " ").replace(/\s+/g, " ").trim();
+      const to = `${plain(content && content.app) || "the Mac"}: ${plain(content && content.window) || "window"}`.slice(0, 200);
       const { input, hash, ...shown } = content || {};
       const meta = /** @type {any} */ (via.getStore() || {});
       const caller = meta.caller;

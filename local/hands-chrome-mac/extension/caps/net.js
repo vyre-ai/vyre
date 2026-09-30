@@ -6,6 +6,12 @@
 // file is raw: every return and every emitted event goes through redact.request. There is no
 // argument that asks for a raw value.
 //
+// FRAMES. A tab is not one session: a cross-origin iframe (and one inside it) has its own CDP session and its
+// own network traffic. Capture, the Fetch interception and the egress guard run on the top session AND every
+// child session of the tab (cdp.children, plus Target.attachedToTarget for late ones). A record is keyed by
+// (session, requestId) so two frames cannot collide, and carries `frame` (the origin of the document that made
+// it). The buffer, its caps and its eviction stay per tab.
+//
 // BOUNDED. A ring keyed by requestId holds at most maxRequests entries and maxBytes of headers,
 // post data and urls; the oldest goes first. Bodies are never buffered: net.get asks Chrome for
 // one on demand, and it comes back bounded to 100 kB with a truncated flag.
@@ -19,7 +25,7 @@
 
 import * as redact from "../shared/redact.js";
 import { classify } from "../shared/floor.js";
-import { classifySend, held } from "../shared/outbound.js";
+import { classifySend, held, writeGate, PASS } from "../shared/outbound.js";
 import { fail } from "../shared/proto.js";
 
 const DEFAULT_MAX_REQUESTS = 500;
@@ -33,10 +39,11 @@ const NO_SET = new Set(["cookie", "host", "content-length", "connection", "user-
 /**
  * @typedef {{ id: string, seq: number, ts: number, method: string, url: string, type: string, initiator: any,
  *   reqHeaders: Record<string, string>, resHeaders: Record<string, string>, postData?: string, status?: number, mime?: string,
- *   timing?: any, sent?: number, encoded?: number, dataLength?: number, done?: boolean, failed?: string, endTs?: number, size: number }} Rec
+ *   timing?: any, sent?: number, encoded?: number, dataLength?: number, done?: boolean, failed?: string, endTs?: number, size: number,
+ *   requestId: string, session?: string, frame?: string }} Rec
  * @typedef {{ id: string, filter: any, then: any, ttlMs: number, expiresAt: number, timer: any }} Rule
  * @typedef {{ tab: number, recs: Map<string, Rec>, bytes: number, maxRequests: number, maxBytes: number, seq: number,
- *   rules: Map<string, Rule>, ruleSeq: number, watchers: Map<string, any>, watchSeq: number, win: number, winCount: number, dropped: number, fetchOn: boolean, redirects: number }} TabNet
+ *   rules: Map<string, Rule>, ruleSeq: number, watchers: Map<string, any>, watchSeq: number, win: number, winCount: number, dropped: number, fetchOn: boolean, redirects: number, sessions: Set<string>, fetchPats: string[]|null }} TabNet
  */
 
 /** @type {WeakMap<object, { tabs: Map<number, TabNet> }>} */
@@ -55,11 +62,11 @@ export function root(ctx) {
   r = { tabs: new Map() };
   perCtx.set(ctx, r);
   const tabs = r.tabs;
-  ctx.cdp.on((/** @type {number} */ tab, /** @type {string} */ method, /** @type {any} */ params) => {
+  ctx.cdp.on((/** @type {number} */ tab, /** @type {string} */ method, /** @type {any} */ params, /** @type {string|undefined} */ session) => {
     const t = tabs.get(tab);
     if (!t) return;
-    if (method === "Inspector.detached") return forget(tabs, tab);
-    try { handle(ctx, t, method, params || {}); } catch { /* one bad event must not break the buffer */ }
+    if (method === "Inspector.detached") { if (!session) forget(tabs, tab); return; }
+    try { handle(ctx, t, method, params || {}, session || undefined); } catch { /* one bad event must not break the buffer */ }
   });
   return r;
 }
@@ -105,7 +112,7 @@ export async function start(ctx, tab, opts = {}) {
   let t = tabs.get(tab);
   const fresh = !t;
   if (!t) {
-    t = { tab, recs: new Map(), bytes: 0, maxRequests: DEFAULT_MAX_REQUESTS, maxBytes: DEFAULT_MAX_BYTES, seq: 0, rules: new Map(), ruleSeq: 0, watchers: new Map(), watchSeq: 0, win: 0, winCount: 0, dropped: 0, fetchOn: false, redirects: 0 };
+    t = { tab, recs: new Map(), bytes: 0, maxRequests: DEFAULT_MAX_REQUESTS, maxBytes: DEFAULT_MAX_BYTES, seq: 0, rules: new Map(), ruleSeq: 0, watchers: new Map(), watchSeq: 0, win: 0, winCount: 0, dropped: 0, fetchOn: false, redirects: 0, sessions: new Set(), fetchPats: null };
     tabs.set(tab, t);
   }
   if (opts.maxRequests) t.maxRequests = Math.max(1, Math.min(5000, Math.floor(opts.maxRequests)));
@@ -113,9 +120,31 @@ export async function start(ctx, tab, opts = {}) {
   evict(t);
   if (fresh) {
     await attachOnce(ctx, tab);
-    await ctx.cdp.send(tab, "Network.enable", { maxTotalBufferSize: 10_000_000, maxResourceBufferSize: 5_000_000 });
+    await ctx.cdp.send(tab, "Network.enable", NETWORK_ARGS);
   }
+  await syncSessions(ctx, t);
   return t;
+}
+
+const NETWORK_ARGS = { maxTotalBufferSize: 10_000_000, maxResourceBufferSize: 5_000_000 };
+
+/** A child session worth capturing: a frame (a cross-origin iframe, nested too). @param {any} k */
+const isFrameTarget = k => k && (k.type === "iframe" || k.type === "page");
+
+/** Turn capture (and interception, if it is up) on for one child session. @param {any} ctx @param {TabNet} t @param {string} session */
+async function enableSession(ctx, t, session) {
+  try {
+    await ctx.cdp.send(t.tab, "Network.enable", NETWORK_ARGS, session);
+    if (t.fetchOn && t.fetchPats) await ctx.cdp.send(t.tab, "Fetch.enable", { patterns: t.fetchPats.map(urlPattern => ({ urlPattern, requestStage: "Request" })) }, session);
+  } catch { t.sessions.delete(session); /* gone, or not ours to enable: tried again on the next start */ }
+}
+
+/** Every child session the tab has now gets capture. Cheap when nothing is new. @param {any} ctx @param {TabNet} t */
+export function syncSessions(ctx, t) {
+  const kids = typeof ctx.cdp.children === "function" ? ctx.cdp.children(t.tab) : [];
+  const fresh = kids.filter((/** @type {any} */ k) => isFrameTarget(k) && !t.sessions.has(k.sessionId));
+  for (const k of fresh) t.sessions.add(k.sessionId);
+  return Promise.all(fresh.map((/** @type {any} */ k) => enableSession(ctx, t, k.sessionId)));
 }
 
 /**
@@ -126,8 +155,11 @@ export async function start(ctx, tab, opts = {}) {
  */
 const blindUrl = url => classify(url, undefined, {}).tier === "blind";
 
-/** @param {TabNet} t */
-function purge(t) { t.recs.clear(); t.bytes = 0; }
+/** Forget the buffer, or (with a session) only what one child frame captured. @param {TabNet} t @param {string} [session] */
+function purge(t, session) {
+  if (!session) { t.recs.clear(); t.bytes = 0; return; }
+  for (const [k, r] of t.recs) if (r.session === session) { t.recs.delete(k); t.bytes -= r.size; }
+}
 
 /** @param {TabNet} t */
 function evict(t) {
@@ -148,35 +180,48 @@ function reweigh(t, r) {
   r.size = n;
 }
 
-/** @param {any} ctx @param {TabNet} t @param {string} method @param {any} p */
-function handle(ctx, t, method, p) {
+/** The key of a request in the buffer: the bare id for the top session (as ever), session-qualified for a child. @param {string|undefined} session @param {string} id */
+const keyOf = (session, id) => (session ? `${session}:${id}` : String(id));
+
+/** @param {string} u */
+const docOrigin = u => { try { const o = new URL(String(u)).origin; return o === "null" ? "" : o; } catch { return ""; } };
+
+/** @param {any} ctx @param {TabNet} t @param {string} method @param {any} p @param {string} [session] */
+function handle(ctx, t, method, p, session) {
+  if (method === "Target.attachedToTarget") {
+    if (p.sessionId && isFrameTarget(p.targetInfo) && !t.sessions.has(p.sessionId)) { t.sessions.add(p.sessionId); void enableSession(ctx, t, p.sessionId); }
+    return;
+  }
+  if (method === "Target.detachedFromTarget") { if (p.sessionId) t.sessions.delete(p.sessionId); return; }
   if (method === "Network.requestWillBeSent") {
-    const old = t.recs.get(p.requestId);
+    const key = keyOf(session, p.requestId);
+    const old = t.recs.get(key);
     if (old && p.redirectResponse) {
       // Keep the hop that redirected under its own key so the chain stays visible.
-      t.recs.delete(p.requestId);
+      t.recs.delete(key);
       old.status = p.redirectResponse.status;
       old.done = true;
-      t.recs.set(`${p.requestId}#${++t.redirects}`, old);
+      t.recs.set(`${key}#${++t.redirects}`, old);
     }
     // A document load is a navigation (a tab or a frame): if it goes somewhere blind, forget the
     // buffer now, before anything else can be read from it. The built-in list decides here at once;
     // the person's own blind list is asked right after.
     if (p.type === "Document" && p.request?.url) {
       const u = String(p.request.url);
-      if (blindUrl(u)) { purge(t); return; }
-      void ctx.floorUrl(u, "net.list").then((/** @type {any} */ v) => { if (v && v.tier === "blind") purge(t); }, () => {});
+      if (blindUrl(u)) { purge(t, session); return; }
+      void ctx.floorUrl(u, "net.list").then((/** @type {any} */ v) => { if (v && v.tier === "blind") purge(t, session); }, () => {});
     }
+    const frame = docOrigin(p.documentURL) || (session ? docOrigin(kidUrl(ctx, t, session)) : "");
     /** @type {Rec} */
-    const r = { id: p.requestId, seq: ++t.seq, ts: p.wallTime ? Math.round(p.wallTime * 1000) : Date.now(), method: p.request?.method || "GET", url: p.request?.url || "", type: p.type || "Other", initiator: p.initiator || {}, reqHeaders: { ...(p.request?.headers || {}) }, resHeaders: {}, postData: p.request?.postData, size: 0 };
+    const r = { id: key, requestId: String(p.requestId), ...(session ? { session } : {}), ...(frame ? { frame } : {}), seq: ++t.seq, ts: p.wallTime ? Math.round(p.wallTime * 1000) : Date.now(), method: p.request?.method || "GET", url: p.request?.url || "", type: p.type || "Other", initiator: p.initiator || {}, reqHeaders: { ...(p.request?.headers || {}) }, resHeaders: {}, postData: p.request?.postData, size: 0 };
     r.size = weigh(r);
     t.recs.set(r.id, r);
     t.bytes += r.size;
     evict(t);
     return;
   }
-  const r = t.recs.get(p.requestId);
-  if (method === "Fetch.requestPaused") { void paused(ctx, t, p); return; }
+  if (method === "Fetch.requestPaused") { void paused(ctx, t, p, session); return; }
+  const r = t.recs.get(keyOf(session, p.requestId));
   if (!r) return;
   if (method === "Network.requestWillBeSentExtraInfo") { Object.assign(r.reqHeaders, p.headers || {}); reweigh(t, r); }
   else if (method === "Network.responseReceived") {
@@ -203,6 +248,12 @@ function handle(ctx, t, method, p) {
   }
 }
 
+/** The url a child session was attached for (cdp.js keeps it current). @param {any} ctx @param {TabNet} t @param {string} session */
+function kidUrl(ctx, t, session) {
+  const k = typeof ctx.cdp.children === "function" ? ctx.cdp.children(t.tab).find((/** @type {any} */ c) => c.sessionId === session) : null;
+  return k ? k.url : "";
+}
+
 /** @param {string} u */
 function safeUrl(u) { return redact.url(String(u)); }
 
@@ -216,6 +267,7 @@ export function summary(r) {
     status: r.status,
     mime: r.mime,
     type: r.type,
+    ...(r.frame ? { frame: r.frame } : {}),
     initiator: { type: r.initiator?.type, ...(r.initiator?.url ? { url: safeUrl(r.initiator.url) } : {}), ...(r.initiator?.lineNumber != null ? { line: r.initiator.lineNumber } : {}) },
     startedAt: r.ts,
     durationMs: t && r.endTs != null && t.requestTime ? Math.max(0, Math.round((r.endTs - t.requestTime) * 1000)) : undefined,
@@ -225,15 +277,17 @@ export function summary(r) {
   };
 }
 
-/** @param {{ url?: string, method?: string, status?: any, type?: string, since?: number } | undefined} f */
+/** @param {{ url?: string, method?: string, status?: any, type?: string, since?: number, frame?: string } | undefined} f */
 export function matcher(f) {
   const url = f?.url ? String(f.url).toLowerCase() : "";
   const method = f?.method ? String(f.method).toUpperCase() : "";
   const type = f?.type ? String(f.type).toLowerCase() : "";
   const status = f?.status;
   const since = Number(f?.since) || 0;
-  /** @param {{ url: string, method: string, type: string, status?: number, ts?: number }} r */
+  const frame = f?.frame != null && f.frame !== "" ? String(f.frame).toLowerCase() : "";
+  /** @param {{ url: string, method: string, type: string, status?: number, ts?: number, frame?: string }} r */
   return r => {
+    if (frame && !String(r.frame || "").toLowerCase().includes(frame)) return false;
     if (url && !r.url.toLowerCase().includes(url)) return false;
     if (method && r.method.toUpperCase() !== method) return false;
     if (type && String(r.type).toLowerCase() !== type) return false;
@@ -298,10 +352,10 @@ export function present(view) {
   return { ...out, ...(a.truncated ? { requestBodyTruncated: true } : {}), ...(b.truncated ? { responseBodyTruncated: true } : {}) };
 }
 
-/** Pause handling: first matching acting rule wins, emit rules always fire, everything else continues. @param {any} ctx @param {TabNet} t @param {any} p */
-async function paused(ctx, t, p) {
+/** Pause handling: first matching acting rule wins, emit rules always fire, everything else continues. The reply goes to the session that paused the request. @param {any} ctx @param {TabNet} t @param {any} p @param {string} [session] */
+async function paused(ctx, t, p, session) {
   const id = p.requestId;
-  const send = (/** @type {string} */ m, /** @type {any} */ x) => ctx.cdp.send(t.tab, m, x);
+  const send = (/** @type {string} */ m, /** @type {any} */ x) => (session ? ctx.cdp.send(t.tab, m, x, session) : ctx.cdp.send(t.tab, m, x));
   try {
     // While a guarded script runs, nothing it does may reach an origin that is not this page's own or
     // one the page already talks to (fetch, XHR, beacons, images, scripts, navigation all pass here).
@@ -318,7 +372,7 @@ async function paused(ctx, t, p) {
     const req = { url: p.request?.url || "", method: p.request?.method || "GET", type: p.resourceType || "Other", ts: Date.now() };
     let acted = false;
     for (const rule of [...t.rules.values()]) {
-      if (!matcher({ ...rule.filter, status: undefined, since: undefined })(req)) continue;
+      if (!matcher({ ...rule.filter, status: undefined, since: undefined, frame: undefined })(req)) continue;
       const a = rule.then || {};
       if (a.action === "emit") {
         ctx.emit({ event: "net.event", tab: t.tab, rule: rule.id, request: redact.request({ id: p.networkId || id, method: req.method, url: req.url, type: req.type, paused: true }) });
@@ -348,7 +402,7 @@ async function paused(ctx, t, p) {
     if (!acted) await send("Fetch.continueRequest", { requestId: id });
   } catch {
     // A request must never hang on a rule that failed.
-    await Promise.resolve(ctx.cdp.send(t.tab, "Fetch.continueRequest", { requestId: id })).catch(() => {});
+    await Promise.resolve(session ? ctx.cdp.send(t.tab, "Fetch.continueRequest", { requestId: id }, session) : ctx.cdp.send(t.tab, "Fetch.continueRequest", { requestId: id })).catch(() => {});
   }
 }
 
@@ -357,7 +411,10 @@ async function paused(ctx, t, p) {
  * reads localStorage or a token can send it anywhere with one fetch, and redaction only masks what
  * comes BACK. While the guard is up, every request the tab makes to an origin that is neither its
  * own nor one it already talks to is failed and reported. The known origins are the tab's own, those
- * in its captured traffic, and those in the page's own resource timing taken before the script runs.
+ * in its captured traffic (every frame's), those in the resource timing of every readable frame taken
+ * before the script runs, and the origins of the tab's own frames (top and children), so a script in a
+ * builder iframe that talks to that frame's own API host is not held wrongly. Interception runs on every
+ * session of the tab, and stop() puts every session back.
  * @param {any} ctx @param {number} tab
  * @returns {Promise<{ contained: "full"|"partial", why?: string, stop: () => Promise<Array<{ method: string, origin: string }>> }>}
  */
@@ -366,11 +423,19 @@ export async function egressGuard(ctx, tab) {
   const eg = t.egress || (t.egress = { depth: 0, allowed: new Set(), blocked: [] });
   const add = (/** @type {string} */ u) => { try { const x = new URL(String(u)); if (x.origin && x.origin !== "null") eg.allowed.add(x.origin); } catch { /* skip */ } };
   try { const tb = await ctx.tabs.get(tab); add(tb && (tb.url || tb.pendingUrl)); } catch { /* the tab went away */ }
-  for (const r of t.recs.values()) add(r.url);
-  try {
-    const rt = await ctx.cdp.send(tab, "Runtime.evaluate", { expression: "[...new Set(performance.getEntriesByType('resource').map(e => e.name).concat(location.href))].slice(0, 1000)", returnByValue: true });
-    for (const u of (rt && rt.result && rt.result.value) || []) add(u);
-  } catch { /* the guard still stands with what it has */ }
+  for (const r of t.recs.values()) { add(r.url); if (r.frame) add(r.frame); }
+  const timing = "[...new Set(performance.getEntriesByType('resource').map(e => e.name).concat(location.href))].slice(0, 1000)";
+  /** @type {any[]} */ let frames = [];
+  try { frames = ctx.frames && typeof ctx.frames.list === "function" ? await ctx.frames.list(tab) : []; } catch { frames = []; }
+  for (const f of frames) { add(f.origin); add(f.url); }
+  const readable = frames.filter(f => f.readable);
+  if (!readable.length) readable.push(null);
+  for (const f of readable) {
+    try {
+      const rt = await runIn(ctx, tab, f, timing, { returnByValue: true });
+      for (const u of (rt && rt.result && rt.result.value) || []) add(u);
+    } catch { /* the guard still stands with what it has */ }
+  }
   if (eg.depth === 0 && ctx.dnr) {
     const hosts = [...eg.allowed].map(o => { try { return new URL(o).hostname; } catch { return ""; } }).filter(Boolean);
     const b = await ctx.dnr.block({ tab, allowHosts: [...new Set(hosts)] });
@@ -382,8 +447,7 @@ export async function egressGuard(ctx, tab) {
   // The Fetch domain does not see a WebSocket handshake and Network.setBlockedURLs did not stop a new one in a real Chrome
   // (measured in CI). Two layers instead: a declarativeNetRequest session rule for this tab (every frame, no page cooperation,
   // set above) and the page shim in outbound.js for the plain forms, which also reports what it refused.
-  t.fetchOn = true;
-  await ctx.cdp.send(tab, "Fetch.enable", { patterns: [{ urlPattern: "*", requestStage: "Request" }] });
+  await syncFetch(ctx, t);
   let done = false;
   return {
     // "partial" when the browser-level rule could not be set: only the plain-form page shim stands for WebSockets and beacons.
@@ -398,20 +462,47 @@ export async function egressGuard(ctx, tab) {
   };
 }
 
-/** Re-declare the Fetch patterns from the rules that exist, or switch Fetch off when none do. @param {any} ctx @param {TabNet} t */
+/** Re-declare the Fetch patterns from the guard and the rules that exist, on the top session and every child session, or switch Fetch off everywhere when none do. @param {any} ctx @param {TabNet} t */
 async function syncFetch(ctx, t) {
-  if (!t.rules.size) {
-    if (t.fetchOn) { t.fetchOn = false; await Promise.resolve(ctx.cdp.send(t.tab, "Fetch.disable", {})).catch(() => {}); }
+  /** @type {(m: string, x: any, session?: string) => Promise<any>} */
+  const send = (m, x, session) => (session ? ctx.cdp.send(t.tab, m, x, session) : ctx.cdp.send(t.tab, m, x));
+  const kids = [...t.sessions];
+  if (!/** @type {any} */ (t).egress && !t.rules.size) {
+    if (t.fetchOn) {
+      t.fetchOn = false; t.fetchPats = null;
+      await Promise.resolve(send("Fetch.disable", {})).catch(() => {});
+      await Promise.all(kids.map(k => Promise.resolve(send("Fetch.disable", {}, k)).catch(() => {})));
+    }
     return;
   }
   const pats = new Set();
+  if (/** @type {any} */ (t).egress) pats.add("*");
   for (const r of t.rules.values()) {
     const u = r.filter?.url;
     pats.add(typeof u === "string" && u && !/[*?]/.test(u) ? `*${u}*` : "*");
   }
   const list = pats.has("*") ? ["*"] : [...pats];
-  t.fetchOn = true;
-  await ctx.cdp.send(t.tab, "Fetch.enable", { patterns: list.map(urlPattern => ({ urlPattern, requestStage: "Request" })) });
+  t.fetchOn = true; t.fetchPats = list;
+  const arg = { patterns: list.map(urlPattern => ({ urlPattern, requestStage: "Request" })) };
+  await send("Fetch.enable", arg);
+  await Promise.all(kids.map(k => Promise.resolve(send("Fetch.enable", arg, k)).catch(() => {})));
+}
+
+/**
+ * Run a script in one frame of a tab: its own session, its own execution context, or the top page (no frame).
+ * @param {any} ctx @param {number} tab @param {any} frame a lib/frames.js Frame, or null for the top page @param {string} expression @param {any} [params]
+ */
+export async function runIn(ctx, tab, frame, expression, params = {}) {
+  if (frame && frame.how !== "top") {
+    if (ctx.frames && typeof ctx.frames.evalIn === "function") return ctx.frames.evalIn(tab, frame, expression, params);
+    if (frame.session) return ctx.cdp.send(tab, "Runtime.evaluate", { expression, ...params }, frame.session);
+  }
+  return ctx.cdp.send(tab, "Runtime.evaluate", { expression, ...params });
+}
+
+/** The frames of a tab, or none when the shell has no frame layer (or the tree cannot be read). @param {any} ctx @param {number} tab @returns {Promise<any[]>} */
+export async function frameList(ctx, tab) {
+  try { return ctx.frames && typeof ctx.frames.list === "function" ? await ctx.frames.list(tab) : []; } catch { return []; }
 }
 
 /**
@@ -420,9 +511,12 @@ async function syncFetch(ctx, t) {
  * credentials somewhere else.
  * @param {any} ctx @param {number} tab
  * @param {{ url: string, method?: string, headers?: Record<string, string>, body?: string }} req
- * @param {{ origin?: string }} [opts]
+ * @param {{ origin?: string, frame?: any, gate?: { pass?: symbol } }} [opts] `gate`: what writeGate() returned. A write without its pass is refused here, whatever the caller did. `frame`: run the fetch INSIDE that frame (lib/frames.js Frame), so its own cookies sign it;
+ *   `origin` is then compared against that frame's origin, not the top page's.
  */
 export async function pageFetch(ctx, tab, req, opts = {}) {
+  // The last line of the write gate: no request that changes anything is issued with the page's credentials without the pass from writeGate().
+  if (!/^(GET|HEAD|OPTIONS)$/i.test(String(req.method || "GET")) && !(opts.gate && opts.gate.pass === PASS)) throw refuse("blocked", "a write was about to be made with the page's login without passing the write gate; nothing was sent");
   const headers = {};
   for (const [k, v] of Object.entries(req.headers || {})) {
     const n = k.toLowerCase();
@@ -437,16 +531,34 @@ export async function pageFetch(ctx, tab, req, opts = {}) {
     return { status: r.status, mime: (r.headers.get("content-type") || "").split(";")[0], headers: Object.fromEntries(r.headers), body: t.slice(0, P.max) };
   })(${JSON.stringify(payload)})`;
   await attachOnce(ctx, tab);
-  const res = await ctx.cdp.send(tab, "Runtime.evaluate", { expression, awaitPromise: true, returnByValue: true, timeout: 30_000 });
+  const res = await runIn(ctx, tab, opts.frame, expression, { awaitPromise: true, returnByValue: true, timeout: 30_000 });
   if (res?.exceptionDetails) throw refuse("bad_request", "the page could not make that request: " + String(res.exceptionDetails.exception?.description || res.exceptionDetails.text || "error").split("\n")[0]);
   const v = res?.result?.value;
   if (!v) throw refuse("bad_request", "the page returned nothing");
-  if (v.originMismatch) throw refuse("bad_request", `the tab is now on ${redact.url(v.originMismatch)}, not the origin this request belongs to`);
+  if (v.originMismatch) throw refuse("bad_request", `${opts.frame && opts.frame.how !== "top" ? "the frame" : "the tab"} is now on ${redact.url(v.originMismatch)}, not the origin this request belongs to`);
   return { status: v.status, mime: v.mime, headers: v.headers, body: v.body, sentHeaders: headers };
 }
 
 /** @param {string} u */
 const originOf = u => { try { return new URL(u).origin; } catch { return ""; } };
+
+/** The filter with the top-level `frame` argument folded in. @param {any} args */
+const withFrame = args => (args?.frame != null && args.frame !== "" ? { ...(args.filter || {}), frame: args.frame } : args?.filter);
+
+/** Where a record's frame sits in ctx.frames.list, when that is known: its own session's frame, else the first frame of that origin in the top session. @param {any[]} frames @param {Rec} r */
+function frameIndex(frames, r) {
+  if (!frames.length || !r.frame) return {};
+  const f = (r.session && frames.find(x => x.session === r.session)) || frames.find(x => !x.session && x.origin === r.frame) || frames.find(x => x.origin === r.frame);
+  return f ? { frameIndex: f.index } : {};
+}
+
+/** The frame a captured request came from, as a lib/frames.js Frame, for running something in it. @param {any} ctx @param {number} tab @param {Rec} r */
+async function frameOfRec(ctx, tab, r) {
+  const frames = await frameList(ctx, tab);
+  if (!frames.length) return null;
+  const f = (r.session && frames.find(x => x.session === r.session)) || (r.frame ? frames.find(x => x.readable && x.origin === r.frame) : null);
+  return f || null;
+}
 
 /** @type {Record<string, (args: any, ctx: any) => Promise<any>>} */
 const ops = {
@@ -460,10 +572,11 @@ const ops = {
     const tab = await target(ctx, args, "net.list");
     const t = await start(ctx, tab);
     const limit = Math.min(Number(args?.limit) || 100, 500);
-    const m = matcher(args?.filter);
+    const m = matcher(withFrame(args));
     const tier = await ctx.floorTier();
     const all = [...t.recs.values()].filter(r => tier(r.url) !== "blind").filter(m);
-    const rows = all.slice(-limit).map(r => redact.request(summary(r)));
+    const frames = all.some(r => r.frame) ? await frameList(ctx, tab) : [];
+    const rows = all.slice(-limit).map(r => redact.request({ ...summary(r), ...frameIndex(frames, r) }));
     return { count: rows.length, matched: all.length, buffered: t.recs.size, requests: rows };
   },
 
@@ -480,7 +593,7 @@ const ops = {
       if (r.postData !== undefined) view.requestBody = r.postData;
       if (r.done && !r.failed) {
         try {
-          const b = await ctx.cdp.send(tab, "Network.getResponseBody", { requestId: r.id });
+          const b = r.session ? await ctx.cdp.send(tab, "Network.getResponseBody", { requestId: r.requestId }, r.session) : await ctx.cdp.send(tab, "Network.getResponseBody", { requestId: r.requestId });
           view.responseBody = b?.base64Encoded ? `[binary ${String(b.body || "").length} base64 characters]` : String(b?.body ?? "");
         } catch (e) {
           view.responseBodyError = "Chrome no longer holds this body";
@@ -494,7 +607,7 @@ const ops = {
     const tab = await target(ctx, args, "net.watch");
     const t = await start(ctx, tab);
     const watchId = `w${++t.watchSeq}`;
-    t.watchers.set(watchId, args?.filter || {});
+    t.watchers.set(watchId, withFrame(args) || {});
     return { watchId, limitPerSecond: WATCH_PER_SECOND };
   },
 
@@ -548,7 +661,7 @@ const ops = {
     return { removed: r.id };
   },
 
-  async "net.replay"(args, ctx) {
+  async "net.replay"(args, ctx, trust = {}) {
     const tab0 = args?.tab;
     // The method decides the floor op: a GET replay reads, anything else is acting.
     const t0 = tab0 == null ? null : root(ctx).tabs.get(tab0);
@@ -568,8 +681,13 @@ const ops = {
     const body = o.body !== undefined ? (typeof o.body === "string" ? o.body : JSON.stringify(o.body)) : r.postData;
     // A replay that SENDS something as the person waits at the Gate unless the person asked (P17).
     const ob = classifySend(m, url, typeof body === "string" ? body : "");
-    if (ob.send && args?.asked !== true) return held(m, url, ob.why, `${m} ${url} ${typeof body === "string" ? body : ""}`);
-    const res = await pageFetch(ctx, tab, { url, method: m, headers, body }, { origin: originOf(r.url) });
+    if (ob.send && trust.asked !== true) return held(m, url, ob.why, `${m} ${url} ${typeof body === "string" ? body : ""}`);
+    // Any other write is a change made with the person's login: the one write gate decides (asked, or a plan the module says covers it).
+    const gate = writeGate(m, url, typeof body === "string" ? body : "", trust);
+    if (gate.held) return gate.held;
+    // A request a child frame made is replayed inside that frame: its own cookies and origin sign it.
+    const frame = r.session || r.frame ? await frameOfRec(ctx, tab, r) : null;
+    const res = await pageFetch(ctx, tab, { url, method: m, headers, body }, { origin: frame ? r.frame || frame.origin : originOf(r.url), frame, gate });
     return present({ method: m, url, status: res.status, mime: res.mime, requestHeaders: res.sentHeaders, requestBody: body, responseHeaders: res.headers, responseBody: res.body, replayOf: r.id });
   },
 };

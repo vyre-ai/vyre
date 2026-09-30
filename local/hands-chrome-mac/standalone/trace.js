@@ -21,7 +21,7 @@ const PHONE = /(?<![\w.])\+?\d[\d ()\-.]{5,}\d(?![\w])/g;
 // values: which typed values a trace keeps. "builder" (default): only on GoHighLevel automation and workflow-builder
 // pages, where the values are workflow text; everywhere else a typed value is logged as its length. "all": every
 // value. "none": never.
-export const DEFAULTS = Object.freeze({ logs: "on", shots: false, maxMB: 100, fileMB: 10, values: "builder", confirmSends: true, ghlHosts: [] });
+export const DEFAULTS = Object.freeze({ logs: "on", shots: false, maxMB: 100, fileMB: 10, values: "builder", confirmSends: true, ghlHosts: [], learn: false });
 
 /**
  * The fallback ladder, one mechanism: which rung a tool call works on, and what to try when it fails.

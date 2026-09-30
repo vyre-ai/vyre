@@ -18,7 +18,7 @@ import * as redact from "./extension/shared/redact.js";
 export { socketPath };
 
 /** Longer ops than the default 30 s: a batch runs many steps, a replay waits on the network. */
-export const OP_TIMEOUTS = { "batch.run": 120_000, "net.replay": 60_000, "api.call": 60_000, "page.wait": 65_000 };
+export const OP_TIMEOUTS = { "batch.run": 120_000, "ghl.run": 120_000, "net.replay": 60_000, "api.call": 60_000, "page.wait": 65_000 };
 
 /** @param {string} code @param {string} [message] */
 const err = (code, message) => Object.assign(new Error(message || proto.fail(code).message), { code });
@@ -208,7 +208,7 @@ export function createBridge({ sockPath = socketPath(), timeoutMs = 30_000, opTi
       return new Promise((resolve, reject) => {
         const timer = setTimeout(() => { c.pending.delete(id); reject(err("timeout", `${op} did not answer in ${ms} ms`)); }, ms);
         c.pending.set(id, { resolve, reject, timer, op });
-        send(c, { id, op, args }).then(ok => { if (!ok) { clearTimeout(timer); c.pending.delete(id); reject(err("no_extension", "could not write to the extension")); } });
+        send(c, { id, op, args, ...(o.trust ? { trust: o.trust } : {}) }).then(ok => { if (!ok) { clearTimeout(timer); c.pending.delete(id); reject(err("no_extension", "could not write to the extension")); } });
       });
     },
     /** Tell the extension something without waiting (stop, resume). Resolves once written. @param {any} frame */

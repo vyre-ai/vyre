@@ -6,13 +6,14 @@ import { test, mock } from "node:test";
 import assert from "node:assert/strict";
 import net from "./extension/caps/net.js";
 import { makeCtx, request } from "./devtools-kit.js";
+import { T } from "./test-support/trust.js";
 
 const JWT = "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJhbGV4In0.c2lnbmF0dXJlMTIzNDU";
 // Built at runtime so no secret-shaped literal sits in shipped source (test/hygiene.test.js).
 const FAKE_KEY = "sk" + "-live-abcdefghijklmnop1234";
 const SECRETS = ["Bearer " + FAKE_KEY, "sessionid=SESSIONCOOKIE99887766", "REFRESHCOOKIE77665544", "hunter2hunter2", JWT, "csrfvalue123456789abc", "SETCOOKIEVALUE123456"];
 const ser = x => JSON.stringify(x);
-const op = (k, name, args = {}) => net.ops[name]({ tab: 1, ...args }, k.ctx);
+const op = (k, name, args = {}) => T(net.ops[name])({ tab: 1, ...args }, k.ctx);
 
 function orderRequest(k, id = "r1", extra = {}) {
   request(k, 1, {
@@ -240,7 +241,7 @@ test("net.replay runs inside the page through Runtime.evaluate, with credentials
   const k = makeCtx({ respond: { "Runtime.evaluate": { result: { value: { status: 200, mime: "application/json", headers: { "content-type": "application/json", "set-cookie": "sessionid=SETCOOKIEVALUE123456" }, body: JSON.stringify({ ok: true, access_token: "REFRESHCOOKIE77665544" }) } } } } });
   await op(k, "net.start");
   orderRequest(k);
-  const out = await op(k, "net.replay", { id: "r1", overrides: { body: { item: "rye", password: "hunter2hunter2" } } });
+  const out = await op(k, "net.replay", { id: "r1", writeOk: true, overrides: { body: { item: "rye", password: "hunter2hunter2" } } });
   const ev = k.calls("Runtime.evaluate");
   assert.equal(ev.length, 1, "replay is one Runtime.evaluate");
   assert.match(ev[0].params.expression, /fetch\(P\.url, P\.init\)/);
@@ -289,7 +290,7 @@ test("floor refusal blocks every net op", async () => {
 
 test("omitted tab uses the active tab", async () => {
   const k = makeCtx({ active: 9 });
-  await net.ops["net.start"]({}, k.ctx);
+  await T(net.ops["net.start"])({}, k.ctx);
   assert.ok(k.attachedSet.has(9));
 });
 
@@ -297,13 +298,13 @@ test("the buffer never outlives the floor: a navigation to a blind page empties 
   const { makeCtx } = await import("./devtools-kit.js");
   const net = (await import("./extension/caps/net.js")).default;
   const k = makeCtx({ active: 3 });
-  await net.ops["net.start"]({ tab: 3 }, k.ctx);
+  await T(net.ops["net.start"])({ tab: 3 }, k.ctx);
   const push = (/** @type {string} */ method, /** @type {any} */ p) => k.push(3, method, p);
   push("Network.requestWillBeSent", { requestId: "1", type: "XHR", request: { url: "https://harlow.example/api/x", method: "GET", headers: {} } });
   push("Network.requestWillBeSent", { requestId: "2", type: "XHR", request: { url: "https://chase.com/api/balance", method: "GET", headers: {} } });
-  let list = await net.ops["net.list"]({ tab: 3 }, k.ctx);
+  let list = await T(net.ops["net.list"])({ tab: 3 }, k.ctx);
   assert.deepEqual(list.requests.map((/** @type {any} */ r) => r.url), ["https://harlow.example/api/x"], "a blind origin's record is never listed");
   push("Network.requestWillBeSent", { requestId: "3", type: "Document", request: { url: "https://accounts.google.com/signin", method: "GET", headers: {} } });
-  list = await net.ops["net.list"]({ tab: 3 }, k.ctx);
+  list = await T(net.ops["net.list"])({ tab: 3 }, k.ctx);
   assert.equal(list.requests.length, 0, "going to a blind page empties the buffer");
 });
