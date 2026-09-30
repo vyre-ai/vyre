@@ -58,22 +58,40 @@ when pairing ends. (c) Hidden `link` window keeps the box channel; tray "Open Vy
 shared folder via files.drive.address. UNVERIFIED: the Tauri event listen from the page, and the shape
 of files.drive.candidates' answer; both need a real PC run.
 
-## Known Windows gaps (files left out of `npm run test:windows`, with the reason)
+## Known Windows gaps (triage of the 70 failures; a Windows PC is a device in 0.2)
 
-The set lists only files that pass on windows-latest, so red means something. Left out, by file:
-- `core/config/claude-home.test.js`: asserts POSIX paths (`/opt/cc`, gets `D:\opt\cc`).
-- `core/config/config.test.js`: POSIX file modes (0600/0700) and the unix-socket path tests. (Its machine
-  default assertion is fixed for win32, which now defaults to `device`.)
-- `core/cli/commands/connect.test.js`, `relay/client/e2e.test.js`: EBUSY, the test cannot delete `vyre.db`
-  while vyred still holds it open (Windows refuses to unlink an open file).
-- `core/vyre-core/release.test.js`: needs `/usr/bin/tar` (the Mac and Linux install path, not used on Windows).
-- `relay/client/nodecrypto.test.js`: a size assertion differs on Windows (438, not 448), not yet traced.
-- `core/cli/commands/box.test.js`, `core/cli/commands/up.test.js`, `local/voice/talk.test.js`,
-  `local/voice/voice.test.js`, `test/docs-check.test.js`, `test/docs-index.test.js`: fail on Windows and are
-  NOT yet diagnosed (box, up and voice drive fake POSIX binaries and a local server; the docs pair is
-  probably line endings or path separators). Owner: windows, to diagnose.
-- Anything needing vyred's peer identity (for example "vault cli: account create") is not in the set at all,
-  see the next section.
+`npm run test:windows` lists only files that pass on windows-latest, and the job now blocks (10 minute cap).
+
+Fixed in this round:
+- **Config and key file permissions (security, was MEDIUM).** Node's 0700/0600 do nothing on Windows; files take
+  the parent's ACL. Private under the user profile, but a home kept elsewhere inherited whoever the parent
+  allows. `lib/owner-only.js` now sets an owner-only ACL (icacls, inheritance removed) on the Vyre home in
+  `config.ensure`/`save`, the pipe token, and the relay device key folder. Tests check the ACL on win32
+  (no Everyone, Users or Authenticated Users) and the mode bits elsewhere. Best effort: a machine without
+  icacls keeps the profile default.
+
+Real gaps, NOT fixed (severity, reason):
+- **`vyre box add` / `box move` from a Windows CLI (MEDIUM, unsupported).** `core/cli/ssh.js` uses a fixed
+  `/tmp` folder and OpenSSH `ControlPath` multiplexing; Windows OpenSSH has no ControlMaster, so it cannot
+  work as written. The Windows path to a server is the setup page and the app. `box.test.js` left out.
+- **`vyre connect` (MEDIUM-low).** The command needs a local vyred. Its test fails with EBUSY deleting
+  `vyre.db` while vyred still holds it (a test cleanup problem on Windows, not a device flaw). Left out.
+- **Path strings (LOW).** `projectsDir` can mix `\` and `/` (a cosmetic join); the claude-home and work-folder
+  tests assert POSIX strings and are skipped on win32 with that named reason.
+- **`relay/client/e2e.test.js` (LOW).** Same EBUSY on `vyre.db`. Left out.
+
+Not things a Windows device does (skipped, named):
+- `core/vyre-core/release.test.js`: vyre-core's tarball install needs `/usr/bin/tar`; a Windows device updates
+  through the signed installer. The tar safety checks (absolute path, `..`, fifo, setuid) guard the Mac and
+  Linux install path, which Windows never runs.
+- `local/voice/*.test.js`, `core/cli/commands/voice.test.js` (the talk/voice services): the voice stream is
+  a Mac-and-box feature, refused to non-Mac callers; the Windows app has no mic path in 0.2.
+- `core/cli/commands/up.test.js`: Mac "up" flow.
+- `test/docs-check.test.js`, `test/docs-index.test.js`: docs build tooling, run on Linux in CI (not diagnosed on
+  Windows; likely line endings).
+
+Peer identity on Windows is in the next section; tests that need it (for example "vault cli: account create")
+are not in the set.
 
 ## Windows peer identity (what vyred can and cannot tell on Windows)
 
