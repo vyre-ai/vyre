@@ -34,7 +34,7 @@ else rec 2.1-install-old false "install or start failed: $(tail -3 "$OUT/install
 vyre call memory.remember '{"text":"My wife is Robin"}' >"$OUT/seed-memory.json" 2>&1
 vyre call planner.add '{"kind":"note","text":"Marlow and Finch retainer draft"}' >"$OUT/seed-note.json" 2>&1
 seen() { vyre call planner.list '{}' 2>&1 | grep -q 'retainer draft'; }
-mem() { vyre call memory.facts '{}' 2>&1 | tee "$OUT/facts-${1:-x}.json" | grep -q 'Robin'; }
+mem() { vyre call memory.facts '{"about":"Robin"}' 2>&1 | tee "$OUT/facts-${1:-x}.json" | grep -q 'Robin'; }
 seen && rec 2.2-seed ok || rec 2.2-seed false "seed not readable. note: $(head -c 150 "$OUT/seed-note.json" | tr '\n' ' ') list: $(vyre call planner.list '{}' 2>&1 | head -c 200 | tr '\n' ' ')"
 
 mem before && rec 2.2b-memory-seed ok || rec 2.2b-memory-seed false "memory.facts does not show the fact: $(head -c 200 "$OUT/facts-before.json" | tr '\n' ' ')"
