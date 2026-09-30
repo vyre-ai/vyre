@@ -25,7 +25,7 @@ for i in $(seq 1 50); do curl -fs http://127.0.0.1:18083/SHA256SUMS >/dev/null &
 CAND=$(tr -d ' \r\n' <"$NEW/VERSION"); OLDV=$(tr -d ' \r\n' <"$OLD/VERSION")
 
 # 2.1 install from the old release
-if VYRE_BOX_URL=http://127.0.0.1:18081/ VYRE_BUILD=tgz sh "$OLD/install-box.sh" --yes --print-link </dev/null >"$OUT/install.log" 2>&1 && ready; then
+if VYRE_BOX_URL=http://127.0.0.1:18081/ VYRE_BUILD=tgz sh "$OLD/install-box.sh" --yes </dev/null >"$OUT/install.log" 2>&1 && ready; then
   v=$(version); [ "$v" = "$OLDV" ] && rec 2.1-install-old ok "$v" || rec 2.1-install-old false "runs '$v', expected $OLDV"
 else rec 2.1-install-old false "install or start failed: $(tail -3 "$OUT/install.log")"; exit 1; fi
 
