@@ -102,10 +102,12 @@ attach from a link); (5) fa492d50 settings.request (agents, P17 gate.said.match,
 settings_changes log, settings.undo, settings.changes; module.json + docs:ref.
 NOTE: pushing again cancels the running node.yml (cancel-in-progress). Push once, then wait.
 Doing: CI for the whole range, then send to reviewer-2 + integrator.
+Also done: ff7fceb6 the person's own settings changes need no confirm and no proof (lead's
+decision 30 Sep); hub.json hand edits that loosen security still wait. UI leftovers for the UI
+round: the Deck's confirm sheet and proof flow (deck/views/settings-keys.js, its fake server in
+deck/test/settings-keys.test.js, and deck/test/settings-browser.js's proof checks).
 Next: when sessions ships providers.list caps, wire provider-caps into chat (UI waits for
-app-design). Open policy question for the lead: C25 says a person's own settings change needs no
-confirm or Touch ID either (security keys included, shown with Undo); settings.set still asks
-confirm/presence and the Deck's confirm sheet is UI, so that removal waits for the UI OK.
+app-design).
 Needs: assistant+vault the P17 intent kind "setting" and gate.said.match (CHAT.md 07:16).
 
 ## Done
