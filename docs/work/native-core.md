@@ -93,8 +93,13 @@ one quiet reload; (4) shell contract: window.__vyreShell presentation only, vyre
 parser + golden vectors in spec/, /chat?term= never acts from a link; (5) settings.set/reset for
 agents on the person's request (P17 match, fail closed until it exists), with by/prev recorded
 for Undo.
-Doing: (1).
-Next: (2)..(5). Needs: assistant+vault a P17 intent kind "setting" and a match call.
+Done (committed, CI on GitHub runners pending): (1) b28be972 fixture-name fixes + vyred refuses
+deck fixtures unless VYRE_DECK_FIXTURES=1 (dev worlds set it); (2) lib/caps-flags + deck/chat/core/
+provider-caps.js (+ tests), served via DECK_LIBS in core/daemon; (3) build id stamped into
+index.html (htmlWithBuild), deck/js/build-check.js checks on every resume (sw.update or quiet reload).
+NOTE: pushing again cancels the running node.yml (cancel-in-progress). Push once, then wait.
+Doing: (4) shell contract.
+Next: (5) settings on request. Needs: assistant+vault a P17 intent kind "setting" and a match call.
 
 ## Done
 - 2026-09-27 77faf1e3: core/settings (registry of ~70 keys, stores: settings_values, config.json,
