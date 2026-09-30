@@ -46,7 +46,7 @@ test("a failed step on a login page: the tab comes to the front, the form is out
   assert.ok(w.st.sent.some(s => s.includes("data-vyre-hl")), "outlined");
   assert.equal(w.st.events.filter(e => e.event === "login.wall").length, 1);
   assert.equal(w.st.events[0].message, "Sign in to GoHighLevel in the window I opened. I'll carry on when you're in.");
-  assert.deepEqual(w.st.presence[0], { waiting: "sign in to GoHighLevel" });
+  assert.deepEqual(w.st.presence[0], { waiting: "sign in to GoHighLevel", login: { site: "GoHighLevel" } });
   // a second failure while they are signing in does not tell them again
   await onFailure("page.act", { tabId: 5 }, { code: "timeout" }, w.ctx);
   assert.equal(w.st.events.filter(e => e.event === "login.wall").length, 1);
@@ -83,4 +83,17 @@ test("login.wait times out honestly and stops when the person presses stop; it n
   await assert.rejects(login.ops["login.wait"]({ tabId: 8, timeoutMs: 3000, pollMs: 10 }, s.ctx), { code: "stopped" });
   for (const m of [w, s]) assert.ok(!m.st.sent.some(x => /Input\.|insertText|\.value\s*=/.test(x)));
   assert.ok(!/\.value\s*=|insertText|dispatchKeyEvent/.test(highlightScript(true)), "the highlight script types nothing");
+});
+
+test("the pill's Continue re-checks at once and Skip gives up; neither can make a wall that is still there count as signed in", async () => {
+  const { signal } = await import("./extension/caps/login.js");
+  const w = world({ wall: "password" });
+  setTimeout(() => signal(11, "continue"), 20);
+  const r = await login.ops["login.wait"]({ tabId: 11, timeoutMs: 400, pollMs: 100000 }, w.ctx);
+  assert.equal(r.signedIn, false, "Continue with the wall still up is not signed in");
+  const k = world({ wall: "password" });
+  setTimeout(() => signal(12, "skip"), 20);
+  const sk = await login.ops["login.wait"]({ tabId: 12, timeoutMs: 5000, pollMs: 100000 }, k.ctx);
+  assert.equal(sk.skipped, true);
+  assert.deepEqual(k.st.presence[k.st.presence.length - 1], { waiting: null });
 });

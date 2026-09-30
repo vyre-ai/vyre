@@ -117,7 +117,7 @@ export async function createRuntime(o = {}) {
           const fields = Array.isArray(c.fields) ? c.fields.slice(0, 12).map((/** @type {any} */ f) => `${f.name || f.label || "field"}: ${String(f.value ?? "").slice(0, 60)}`).join("\n") : "";
           const isPlan = c.kind === "plan";
           const r = /** @type {any} */ (await ask(isPlan
-            ? `Approve this plan once?\n${c.control || "?"}${fields ? "\n" + fields : ""}\nEach create, edit or delete it lists then goes through without asking again. Publishing, messaging and payments still ask one at a time.`
+            ? `Approve this plan once?\n${c.control || "?"}${fields ? "\n" + fields : ""}\nEach create and edit it lists then goes through without asking again, and a publish only if it says "and publish". Deleting, messaging and payments still ask one at a time.`
             : `Send this from ${c.origin || "your browser"}?\nControl: ${c.control || "?"}${fields ? "\n" + fields : ""}`));
           // No answer is not a no: the act stays held, the person was notified in Chrome, and the same id can be asked again.
           if (r && r.action === "timeout") throw Object.assign(new Error(`the person has not answered yet (they were notified in Chrome). Nothing was ${isPlan ? "approved" : "sent"}; it is still waiting. Call chrome_send with the same id to ask again, or carry on with something else.`), { code: "pending" });

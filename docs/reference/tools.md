@@ -541,12 +541,13 @@ An app's own API, learned from its traffic. learn: reduce captured requests to a
 
 ### `chrome.approve`
 
-Ask the person to approve a plan ONCE before a job with many changes, for example "create these 8 workflows as drafts". items is what you will do: {kind: create | edit | delete | publish | send, what, count}. You get an id back; the person approves it by your calling chrome_send with that id. Once approved, that many creates, edits and deletes made with the page's login (chrome_api call writes) go through without asking again, and the page shows step N of M. A publish, a message to a contact and a payment are never covered: each still asks, one at a time, with the exact item. A plan ends after an hour, when the person stops Vyre, or when you approve another. Without a plan, every write asks.
+Ask the person to approve a plan ONCE before a job with many changes, for example "create these 8 workflows as drafts". items is what you will do: {kind: create | edit | delete | publish | send, what, count}. You get an id back; the person approves it by your calling chrome_send with that id. Once approved, that many creates, edits and deletes made with the page's login (chrome_api call writes) go through without asking again, and the page shows step N of M. A delete, a message to a contact and a payment are never covered: each asks one at a time. A publish is covered only when you set asked: true because the person's own words asked for it ("build and publish these"); the card then says "and publish" plainly. A plan ends after an hour, when the person stops Vyre, or when you approve another. Without a plan, every write asks.
 
 - Input:
   - `items` list of object, required
     - `kind` one of "create", "edit", "delete", "publish", "send", required
     - `what` string, required
+    - `asked` boolean: For publish: true only when the person's own words asked for it ("build and publish these"). Without it a publish asks one at a time.
     - `count` number
   - `title` string, required
   - `tab` integer: Tab id from chrome.tabs. Default: the tab Vyre is working in.

@@ -13,5 +13,15 @@ async function draw() {
   $("fix").textContent = e.fix || "";
   $("detail").textContent = e.detail || "";
 }
-void draw();
+/** Continue after a stop or pause: only here, in the extension's own page, which no website can reach. */
+async function drawStopped() {
+  try {
+    const r = await chrome.runtime.sendMessage({ vyre: "state" });
+    $("stopped").hidden = !(r && r.stopped);
+    $("stoppedText").textContent = r && r.stopped ? "Vyre is stopped. Nothing is being done in your browser." : "";
+  } catch { $("stopped").hidden = true; }
+}
+$("cont").addEventListener("click", async () => { try { await chrome.runtime.sendMessage({ vyre: "resume" }); } catch { /* the worker restarted */ } void drawStopped(); });
+void draw(); void drawStopped();
+setInterval(() => { void drawStopped(); }, 1500);
 setInterval(() => { void draw(); }, 1500);

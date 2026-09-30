@@ -519,3 +519,23 @@ test("module: the summary says what a plan's writes changed, what can be undone,
   const again = await reg.call("chrome.summary", {}, KIT);
   assert.equal(again.data.changes.length, 0, "cleared for the next job");
 });
+
+test("module: a publish is covered only when the plan says the person's own words asked for it; a delete never is", async t => {
+  const { reg, gate, connect } = await rig(t);
+  const pubHeld = { ok: false, held: true, kind: "publish", method: "POST", control: { role: "request", name: "POST https://api.example/workflow/w1/publish" }, fields: [], sig: "p", url: "https://app.example/w" };
+  const delHeld = { ok: false, held: true, write: true, kind: "delete", method: "DELETE", control: { role: "request", name: "DELETE https://api.example/workflow/w1" }, fields: [], sig: "d", url: "https://app.example/w" };
+  const x = await connect({ "api.call": (/** @type {any} */ a) => (a.asked || a.writeOk) ? { ok: true, status: 200, method: a.entry === "del" ? "DELETE" : "POST", url: "https://api.example/workflow/w1/publish" } : a.entry === "del" ? delHeld : pubHeld });
+  await reg.call("hands.grant.add", { agent: "kit" }, "cli");
+  await reg.call("chrome.plan", PLAN, KIT);
+  const approve = async (/** @type {any} */ items) => { const p = await reg.call("chrome.approve", { title: "Build", items, tab: 1 }, KIT); const card = gate().requests[gate().requests.length - 1]; await reg.call("chrome.release", { id: p.data.id, content: card.content }, "module:gate"); return card; };
+  // not asked for: the plan lists the publish, but it still asks
+  await approve([{ kind: "publish", what: "the intake workflow" }, { kind: "delete", what: "old draft" }]);
+  assert.equal((await reg.call("chrome.api", { action: "call", entry: "pub", tab: 1 }, KIT)).data.held, true);
+  assert.equal((await reg.call("chrome.api", { action: "call", entry: "del", tab: 1 }, KIT)).data.held, true, "a delete always asks");
+  // asked for ("build and publish these"): the card says so, and the publish goes through once
+  const card = await approve([{ kind: "publish", what: "the intake workflow", asked: true }]);
+  assert.deepEqual(card.content.fields.map((/** @type {any} */ f) => f.name), ["and publish x1"]);
+  assert.equal((await reg.call("chrome.api", { action: "call", entry: "pub", tab: 1 }, KIT)).data.ok, true);
+  assert.equal((await reg.call("chrome.api", { action: "call", entry: "pub", tab: 1 }, KIT)).data.held, true, "only as many as the plan said");
+  assert.equal(x.ops("api.call").filter((/** @type {any} */ o) => o.args.asked === true).length, 1);
+});

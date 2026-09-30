@@ -34,19 +34,17 @@ export const otpScript = `(() => {
   return false;
 })()`;
 
-/** Outline the password or code field's form and scroll it into view; or take the outline away. @param {boolean} on */
+/** Light the password or code field's form (a two-tone ring that reads on light and dark pages, the rest of the page dimmed by half) and bring it into view; or put it back. @param {boolean} on */
 export const highlightScript = (on) => `(() => {
-  const old = document.querySelectorAll("[data-vyre-hl]");
-  for (const e of old) { e.style.outline = e.getAttribute("data-vyre-hl") || ""; e.removeAttribute("data-vyre-hl"); }
+  for (const e of document.querySelectorAll("[data-vyre-hl]")) { e.style.boxShadow = e.getAttribute("data-vyre-hl") || ""; e.removeAttribute("data-vyre-hl"); }
   if (!${on ? "true" : "false"}) return true;
   const vis = e => { try { return !!e.getClientRects().length; } catch { return false; } };
   const f = [...document.querySelectorAll("input")].find(e => vis(e) && (String(e.type).toLowerCase() === "password" || /one-time-code|current-password/.test(String(e.autocomplete || ""))))
     || [...document.querySelectorAll("input")].find(e => vis(e) && /(otp|2fa|mfa|verif|passcode|code)/i.test([e.name, e.id, e.placeholder].join(" ")));
   if (!f) return false;
   const box = f.closest("form") || f.parentElement || f;
-  box.setAttribute("data-vyre-hl", box.style.outline || "");
-  box.style.outline = "3px solid #1a73e8";
-  box.style.outlineOffset = "4px";
+  box.setAttribute("data-vyre-hl", box.style.boxShadow || "");
+  box.style.boxShadow = "0 0 0 3px #171513, 0 0 0 5px #EDE8DC, 0 0 18px 6px rgba(237,232,220,.45), 0 0 0 9999px rgba(0,0,0,.5)";
   try { box.scrollIntoView({ block: "center" }); f.focus({ preventScroll: true }); } catch { /* the page may refuse */ }
   return true;
 })()`;
@@ -86,6 +84,10 @@ export async function check(ctx, tabId) {
 
 /** @type {Map<number, { since: number, app: string }>} tabs the person has been asked to sign in to */
 const waiting = new Map();
+/** What the person pressed on the pill: Continue (look again now) or Skip (give up on this sign-in). A page can press these too; both are harmless, because the wait still checks the wall is really gone. @type {Map<number, string>} */
+const pressed = new Map();
+/** @param {number} tabId @param {string} action */
+export function signal(tabId, action) { if (action === "continue" || action === "skip") pressed.set(tabId, action); }
 
 /**
  * Bring the tab to the front, outline the form, tell the person once.
@@ -99,7 +101,7 @@ export async function handoff(ctx, tabId, wall) {
   try { await ctx.cdp.send(tabId, "Runtime.evaluate", { expression: highlightScript(true), returnByValue: true }); } catch { /* not attached; the front tab is the main thing */ }
   waiting.set(tabId, { since: Date.now(), app: wall.app });
   const message = `Sign in to ${wall.app} in the window I opened. I'll carry on when you're in.`;
-  if (ctx.presence) await ctx.presence.state({ waiting: `sign in to ${wall.app}` });
+  if (ctx.presence) await ctx.presence.state({ waiting: `sign in to ${wall.app}`, login: { site: wall.app } });
   ctx.emit({ event: "login.wall", tab: tabId, app: wall.app, kind: wall.kind, message });
   return { handedOff: true, app: wall.app, message };
 }
@@ -152,7 +154,11 @@ export default {
       let clear = 0;
       while (Date.now() - t0 < limit) {
         if (ctx.stopped()) throw err("stopped");
-        await nap(args.pollMs ? Number(args.pollMs) : POLL_MS);
+        // Sleep in short slices so a press on the pill is heard at once.
+        for (let slept = 0, gap = args.pollMs ? Number(args.pollMs) : POLL_MS; slept < gap && !pressed.has(tabId) && Date.now() - t0 < limit; slept += 100) await nap(Math.min(100, gap - slept));
+        const key = pressed.get(tabId);
+        if (key === "skip") { pressed.delete(tabId); waiting.delete(tabId); try { await ctx.cdp.send(tabId, "Runtime.evaluate", { expression: highlightScript(false), returnByValue: true }); } catch { /* gone */ } if (ctx.presence) await ctx.presence.state({ waiting: null }); return { ok: false, signedIn: false, skipped: true, waitedMs: Date.now() - t0, why: "the person chose to skip this sign-in" }; }
+        if (key === "continue") pressed.delete(tabId);
         let w;
         try { w = await check(ctx, tabId); } catch (e) { if (/** @type {any} */ (e)?.code === "blocked") { clear = 0; continue; } throw e; }
         clear = w.wall ? 0 : clear + 1;

@@ -1,9 +1,10 @@
 // @ts-check
 // presence: what the person sees while Vyre works in their Chrome (team/0.2/chrome-ux.md, section 1).
 //
-//   - the tabs Vyre opens go in a tab group named "Vyre" (a tab the person already put in a group of their own is left there),
-//   - the toolbar badge counts steps, and the icon pulses while a step is in flight,
-//   - a small pill in the tab Vyre is working in says "Vyre is working · step 12 of 20 · Esc to stop".
+//   - the tabs Vyre opens go in a grey tab group titled "Vyre" ("Vyre, your turn" while it waits for the person, "Vyre, done" after),
+//   - the toolbar icon animates (12 frames, 5 fps) only while a run is active and a badge "1" shows only when it is the person's turn,
+//   - a dark glass pill in the tab Vyre is working in says "Step 12 of 20", the step in plain words and "Esc to stop".
+// (Built to team/0.2/chrome-ux.html. One departure: no one-second lead-in before each action, because speed is a goal; the ring flashes as it acts.)
 //
 // It watches every op the shell runs (around()), so background API calls show too. It changes no page state the agent reads:
 // the pill lives in a closed shadow root on an element the snapshot skips, takes no pointer events except its Stop button, and is
@@ -19,37 +20,98 @@ export const IDLE_MS = 30_000;
 export const BEAT_MS = 2000;
 /** An open question is raised again after this long. */
 export const REMIND_MS = 120_000;
-const PULSE_MS = 600;
+/** 12 icon frames at 5 frames a second. */
+const FRAMES = 12;
+export const FRAME_MS = 200;
 export const GROUP_TITLE = "Vyre";
-export const COLORS = { working: "#1a73e8", waiting: "#f29900", failed: "#d93025" };
+export const TITLES = { working: "Vyre", turn: "Vyre, your turn", done: "Vyre, done" };
+export const GROUP_COLOR = "grey";
+export const COLORS = { bone: "#EDE8DC", ink: "#171513" };
+const STILL = { 16: "icons/icon-16.png", 32: "icons/icon-32.png" };
+/** What the step is, in plain words, from the op that ran. @param {string} op @param {any} a */
+export function stepText(op, a) {
+  const args = a || {};
+  const name = (/** @type {any} */ x) => { const n = x && (x.name || x.identifier || x.text); return n ? String(n).slice(0, 40) : ""; };
+  if (op === "page.act") { const n = name(args.selector); const k = String(args.kind || "click"); return n ? `${k === "click" ? "Clicking" : k === "type" ? "Typing in" : k === "select" ? "Choosing in" : k === "check" ? "Ticking" : "Pressing a key in"} "${n}"` : "Acting on the page"; }
+  if (op === "page.fill") return `Filling ${Array.isArray(args.fields) ? args.fields.length : "some"} field${Array.isArray(args.fields) && args.fields.length === 1 ? "" : "s"}`;
+  if (op === "page.wait") return "Waiting for the page";
+  if (op === "tabs.navigate" || op === "tabs.open" || op === "tabs.use") { try { return `Opening ${new URL(String(args.url)).host}`; } catch { return "Opening a page"; } }
+  if (op === "api.call") return "Calling the app's own API";
+  if (op === "batch.run" || op === "ghl.run") return `Running ${Array.isArray(args.steps) ? args.steps.length + " steps" : "a flow"}`;
+  if (op === "ghl.section") return "Going to a section";
+  return "";
+}
 
-/** The page side: one pill per document, updated in place. `text` and `stop` are the only inputs. @param {string} text @param {boolean} waiting */
-export const pillScript = (text, waiting) => `(() => {
-  const T = ${JSON.stringify(String(text).slice(0, 160))}, W = ${waiting ? "true" : "false"};
+/**
+ * The page side: one pill per document, updated in place, always dark glass so it reads on any site (team/0.2/chrome-ux.html).
+ * st = { mode: "working" | "paused" | "stopped" | "login", step, of, text, site }. The only actions a page could trigger by calling the bindings are
+ * stop and pause (harmless) and login continue/skip (harmless: Continue re-checks that the wall is really gone). Nothing here can approve, send or resume:
+ * a page can call any binding, so those live only in trusted surfaces.
+ * @param {{ mode: string, step?: number, of?: number|null, text?: string, site?: string }} st
+ */
+export const pillScript = st => `(() => {
+  const ST = ${JSON.stringify({ mode: String(st.mode || "working"), step: Number(st.step) || 0, of: st.of ? Number(st.of) : null, text: String(st.text || "").slice(0, 120), site: String(st.site || "").slice(0, 60) })};
   const cur = window.__vyrePill;
-  if (cur && cur.host.isConnected) { cur.set(T, W); return true; }
+  if (cur && cur.host.isConnected) { cur.set(ST); return true; }
   const host = document.createElement("vyre-pill");
   host.setAttribute("data-vyre", "pill");
   host.style.cssText = "all:initial;position:fixed;right:16px;bottom:16px;z-index:2147483647;pointer-events:none;";
   const root = host.attachShadow({ mode: "closed" });
-  const box = document.createElement("div");
-  box.style.cssText = "font:500 12px/1.2 -apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;color:#fff;background:#1a73e8;border-radius:999px;padding:8px 12px;display:flex;gap:10px;align-items:center;box-shadow:0 2px 10px rgba(0,0,0,.3);max-width:70vw;";
-  const dot = document.createElement("span");
-  dot.style.cssText = "width:8px;height:8px;border-radius:50%;background:#fff;animation:v 1s ease-in-out infinite;";
-  const st = document.createElement("style");
-  st.textContent = "@keyframes v{0%,100%{opacity:1}50%{opacity:.3}}@media (prefers-reduced-motion:reduce){span{animation:none!important}}";
-  const label = document.createElement("span");
-  const btn = document.createElement("button");
-  btn.type = "button";
-  btn.textContent = "Stop";
-  btn.style.cssText = "pointer-events:auto;font:inherit;color:#1a73e8;background:#fff;border:0;border-radius:999px;padding:3px 10px;cursor:pointer;";
-  btn.addEventListener("click", e => { e.stopPropagation(); if (typeof window.vyreStop === "function") window.vyreStop("pill"); });
-  box.append(dot, label, btn);
-  root.append(st, box);
-  const set = (t, w) => { label.textContent = t; box.style.background = w ? "#f29900" : "#1a73e8"; btn.style.color = w ? "#b06000" : "#1a73e8"; };
-  set(T, W);
-  document.addEventListener("keydown", e => { if (e.key === "Escape" && window.__vyrePill && window.__vyrePill.host.isConnected && typeof window.vyreStop === "function") window.vyreStop("esc"); }, true);
+  const css = document.createElement("style");
+  css.textContent = ".p{font:500 12px/1.35 -apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;color:#EDE8DC;background:rgba(23,21,19,.88);-webkit-backdrop-filter:blur(14px);backdrop-filter:blur(14px);border:1px solid rgba(237,232,220,.22);border-radius:14px;padding:9px 12px 11px;display:flex;flex-direction:column;gap:3px;min-width:200px;max-width:min(360px,80vw);box-shadow:0 0 0 1px rgba(237,232,220,.06),0 6px 22px rgba(0,0,0,.4);position:relative;overflow:hidden}"
+    + ".r{display:flex;align-items:center;gap:9px}.b{width:8px;height:8px;border-radius:50%;background:#EDE8DC;flex:none;animation:v 2.4s ease-in-out infinite}.b.s{animation:none;background:none;border:2px solid #EDE8DC;width:6px;height:6px}"
+    + ".t{font-weight:600}.x{color:rgba(237,232,220,.72);font-weight:400}.k{margin-left:auto;display:flex;gap:6px}"
+    + "button{pointer-events:auto;font:inherit;color:#171513;background:#EDE8DC;border:0;border-radius:999px;padding:3px 10px;cursor:pointer}button.g{background:none;color:#EDE8DC;border:1px solid rgba(237,232,220,.35)}"
+    + ".l{position:absolute;left:0;bottom:0;height:2px;background:#EDE8DC;opacity:.85;transition:width .3s}"
+    + "@keyframes v{0%,100%{opacity:1}50%{opacity:.3}}@media (prefers-reduced-motion:reduce){.b{animation:none!important}}";
+  const box = document.createElement("div"); box.className = "p";
+  root.append(css, box);
+  const btn = (label, cls, fn) => { const x = document.createElement("button"); x.type = "button"; x.textContent = label; if (cls) x.className = cls; x.addEventListener("click", e => { e.stopPropagation(); fn(); }); return x; };
+  const stop = via => { if (typeof window.vyreStop === "function") window.vyreStop(via); };
+  const login = a => { if (typeof window.vyreLogin === "function") window.vyreLogin(a); };
+  const place = () => {
+    const corners = [["right", "bottom"], ["left", "bottom"], ["right", "top"], ["left", "top"]];
+    const hot = "a,button,input,select,textarea,summary,[role=button],[role=link],[role=menuitem],[tabindex]:not([tabindex='-1']),[onclick]";
+    for (const [h, v] of corners) {
+      host.style.cssText = "all:initial;position:fixed;" + h + ":16px;" + v + ":16px;z-index:2147483647;pointer-events:none;";
+      const r = box.getBoundingClientRect();
+      if (!r.width) return;
+      let clear = true;
+      for (const fx of [0.05, 0.5, 0.95]) for (const fy of [0.1, 0.5, 0.9]) {
+        const e = document.elementFromPoint(r.left + r.width * fx, r.top + r.height * fy);
+        if (e && e !== host && e.closest && e.closest(hot)) clear = false;
+      }
+      if (clear) return;
+    }
+    host.style.cssText = "all:initial;position:fixed;right:16px;bottom:16px;z-index:2147483647;pointer-events:none;";
+  };
+  const set = s => {
+    box.textContent = "";
+    const row = document.createElement("div"); row.className = "r";
+    const bead = document.createElement("span"); bead.className = "b" + (s.mode === "working" ? "" : " s");
+    const head = document.createElement("span"); head.className = "t";
+    if (s.mode === "login") head.textContent = "Your turn: sign in" + (s.site ? " to " + s.site : "");
+    else if (s.mode === "paused") head.textContent = "Paused at step " + s.step;
+    else if (s.mode === "stopped") head.textContent = "Stopped at step " + s.step;
+    else head.textContent = "Step " + Math.max(1, s.step) + (s.of ? " of " + s.of : "");
+    row.append(bead, head);
+    const keys = document.createElement("span"); keys.className = "k";
+    if (s.mode === "working") { keys.append(btn("Pause", "g", () => stop("pause"))); }
+    if (s.mode === "login") { keys.append(btn("Continue", "", () => login("continue")), btn("Skip", "g", () => login("skip"))); }
+    row.append(keys); box.append(row);
+    const sub = document.createElement("div"); sub.className = "x";
+    if (s.mode === "login") sub.textContent = "Vyre can't see what you type. It carries on when you press Continue.";
+    else if (s.mode === "paused") sub.textContent = "Nothing is submitted while paused. Continue from Vyre or the toolbar icon.";
+    else if (s.mode === "stopped") sub.textContent = "You pressed Esc. Continue from Vyre or the toolbar icon.";
+    else sub.textContent = (s.text ? s.text + " \u00b7 " : "") + "Esc to stop";
+    box.append(sub);
+    if (s.mode === "working" && s.of) { const l = document.createElement("div"); l.className = "l"; l.style.width = Math.min(100, Math.round(100 * Math.max(0, s.step - 1) / s.of)) + "%"; box.append(l); }
+    place();
+  };
+  set(ST);
+  document.addEventListener("keydown", e => { if (e.key === "Escape" && window.__vyrePill && window.__vyrePill.host.isConnected) stop("esc"); }, true);
   (document.body || document.documentElement).appendChild(host);
+  set(ST);
   window.__vyrePill = { host, set };
   return true;
 })()`;
@@ -89,10 +151,10 @@ export const cardScript = d => `(() => {
 export const pillGone = `(() => { const c = window.__vyrePill; if (c && c.host) c.host.remove(); window.__vyrePill = undefined; return true; })()`;
 
 /**
- * @param {{ chrome: any, cdp?: any, onStop?: (via: string) => void, now?: () => number, setT?: any, clearT?: any, setI?: any, clearI?: any, draw?: (frame: number) => Promise<any>, onFinish?: (run: any) => void }} o
+ * @param {{ chrome: any, cdp?: any, onStop?: (via: string) => void, now?: () => number, setT?: any, clearT?: any, setI?: any, clearI?: any, onLogin?: (action: string, tabId: number) => void, onFinish?: (run: any) => void }} o
  */
-export function createPresence({ chrome, cdp, onStop = () => {}, now = Date.now, setT = setTimeout, clearT = clearTimeout, setI = setInterval, clearI = clearInterval, draw, onFinish = () => {} }) {
-  /** The run in progress, or null. @type {null | { steps: number, of: number|null, label: string, waiting: string|null, failed: boolean, tabs: Set<number>, startedAt: number, changes: any[] }} */
+export function createPresence({ chrome, cdp, onStop = () => {}, now = Date.now, setT = setTimeout, clearT = clearTimeout, setI = setInterval, clearI = clearInterval, onLogin = () => {}, onFinish = () => {} }) {
+  /** The run in progress, or null. @type {null | { steps: number, of: number|null, label: string, text: string, waiting: string|null, site: string, paused: string|null, failed: boolean, tabs: Set<number>, startedAt: number, changes: any[] }} */
   let run = null;
   /** @type {Map<number, number>} window id to the group that holds Vyre's tabs there */
   const groups = new Map();
@@ -120,43 +182,71 @@ export function createPresence({ chrome, cdp, onStop = () => {}, now = Date.now,
   const safe = async (/** @type {() => any} */ f) => { try { return await f(); } catch { return undefined; } };
   const action = () => chrome && chrome.action;
 
+  /** The pill as data. */
+  const view = () => {
+    if (!run) return { mode: "working", step: 0, of: null, text: "", site: "" };
+    const mode = run.paused ? (run.paused === "pause" ? "paused" : "stopped") : run.waiting && run.site ? "login" : "working";
+    return { mode, step: run.steps + (mode === "working" ? 1 : 0), of: run.of, text: run.text || run.label, site: run.site };
+  };
   const text = () => {
     if (!run) return "";
-    const n = run.of ? `step ${Math.min(run.steps + (run.waiting ? 0 : 1), run.of)} of ${run.of}` : `step ${run.steps + 1}`;
-    if (run.waiting) return `Vyre is waiting for you · ${run.waiting}`;
-    return `Vyre is working · ${n} · Esc to stop`;
+    const v = view();
+    if (v.mode === "login") return `Your turn: sign in${v.site ? " to " + v.site : ""}`;
+    if (v.mode === "paused") return `Paused at step ${v.step}`;
+    if (v.mode === "stopped") return `Stopped at step ${v.step}`;
+    if (run.waiting) return `Your turn: ${run.waiting}`;
+    return `Step ${v.step}${v.of ? " of " + v.of : ""} \u00b7 ${v.text ? v.text + " \u00b7 " : ""}Esc to stop`;
   };
 
+  /** The person's turn is the only thing the badge ever says: "1" in Bone on ink. Nothing else is counted there. */
   async function paintBadge() {
     const a = action();
     if (!a || badgeOwned()) return;
-    await safe(() => a.setBadgeText({ text: run ? (run.waiting ? "?" : run.failed ? "!" : String(run.steps)) : "" }));
-    if (run) await safe(() => a.setBadgeBackgroundColor({ color: run && run.waiting ? COLORS.waiting : run && run.failed ? COLORS.failed : COLORS.working }));
+    const turn = !!(run && run.waiting);
+    await safe(() => a.setBadgeText({ text: turn ? "1" : "" }));
+    if (turn) {
+      if (a.setBadgeBackgroundColor) await safe(() => a.setBadgeBackgroundColor({ color: COLORS.bone }));
+      if (a.setBadgeTextColor) await safe(() => a.setBadgeTextColor({ color: COLORS.ink }));
+    }
     if (a.setTitle) await safe(() => a.setTitle({ title: run ? `Vyre for Chrome: ${text()}` : "Vyre for Chrome" }));
+    await retitle();
   }
 
-  function startPulse() {
-    if (pulse || !draw || !action() || !action().setIcon) return;
-    pulse = weak(setI(async () => { frame ^= 1; const img = await safe(() => draw(frame)); if (img) await safe(() => action().setIcon({ imageData: img })); }, PULSE_MS));
+  /** The group says whose turn it is. @param {string} [force] */
+  async function retitle(force) {
+    if (!chrome || !chrome.tabGroups || !chrome.tabGroups.update) return;
+    const t = force || (run && run.waiting ? TITLES.turn : TITLES.working);
+    for (const gid of groups.values()) await safe(() => chrome.tabGroups.update(gid, { title: t, color: GROUP_COLOR }));
   }
-  async function stopPulse() {
-    if (pulse) { clearI(pulse); pulse = null; }
+
+  /** The toolbar icon animates only while Vyre is working; waiting for the person, it holds still. */
+  function paintIcon() {
+    const a = action();
+    if (!a || !a.setIcon) return;
+    const animate = !!run && !run.waiting && !run.paused;
+    if (!animate) {
+      if (pulse) { clearI(pulse); pulse = null; }
+      void safe(() => a.setIcon({ path: STILL }));
+      return;
+    }
+    if (pulse) return;
     frame = 0;
-    if (draw && action() && action().setIcon) { const img = await safe(() => draw(0)); if (img) await safe(() => action().setIcon({ imageData: img })); }
+    pulse = weak(setI(() => { frame = (frame + 1) % FRAMES; void safe(() => a.setIcon({ path: { 16: `frames/working-${String(frame).padStart(2, "0")}.png` } })); }, FRAME_MS));
   }
 
   /** The pill in a tab's top page, through the debugger the agent already holds there. @param {number} tabId */
   async function pill(tabId) {
     if (!run || !cdp || !cdp.attached().includes(tabId)) return;
-    if (!bound.has(tabId)) { bound.add(tabId); await safe(() => cdp.send(tabId, "Runtime.addBinding", { name: "vyreStop" })); }
-    await safe(() => cdp.send(tabId, "Runtime.evaluate", { expression: pillScript(text(), !!(run && run.waiting)), returnByValue: true }));
+    if (!bound.has(tabId)) { bound.add(tabId); await safe(() => cdp.send(tabId, "Runtime.addBinding", { name: "vyreStop" })); await safe(() => cdp.send(tabId, "Runtime.addBinding", { name: "vyreLogin" })); }
+    await safe(() => cdp.send(tabId, "Runtime.evaluate", { expression: pillScript(view()), returnByValue: true }));
   }
   async function unpill(/** @type {number} */ tabId) {
     if (!cdp || !cdp.attached().includes(tabId)) return;
     await safe(() => cdp.send(tabId, "Runtime.evaluate", { expression: pillGone, returnByValue: true }));
   }
   if (cdp && cdp.on) cdp.on((/** @type {number} */ tabId, /** @type {string} */ method, /** @type {any} */ p) => {
-    if (method === "Runtime.bindingCalled" && p && p.name === "vyreStop" && run) onStop(String(p.payload || "pill"));
+    if (method === "Runtime.bindingCalled" && p && p.name === "vyreStop" && run) { const via = String(p.payload || "pill"); if (run) run.paused = via === "pause" ? "pause" : "stop"; onStop(via); void paintBadge(); paintIcon(); for (const t of run ? run.tabs : []) void pill(t); }
+    if (method === "Runtime.bindingCalled" && p && p.name === "vyreLogin" && run && run.waiting) onLogin(String(p.payload || "continue"), tabId);
   });
   if (cdp && cdp.onDetach) cdp.onDetach((/** @type {number} */ tabId) => bound.delete(tabId));
 
@@ -170,18 +260,19 @@ export function createPresence({ chrome, cdp, onStop = () => {}, now = Date.now,
       if (tab.groupId === known) return;
       // In a group the person made: leave it. (A group we made earlier, from before a worker restart, is recognised by its title.)
       const g = chrome.tabGroups && chrome.tabGroups.get ? await safe(() => chrome.tabGroups.get(tab.groupId)) : null;
-      if (g && g.title === GROUP_TITLE) groups.set(tab.windowId, tab.groupId);
+      if (g && Object.values(TITLES).includes(g.title)) groups.set(tab.windowId, tab.groupId);
       return;
     }
     let gid = known;
     if (gid == null && chrome.tabGroups && chrome.tabGroups.query) {
-      const found = await safe(() => chrome.tabGroups.query({ windowId: tab.windowId, title: GROUP_TITLE }));
+      const found = await safe(() => chrome.tabGroups.query({ windowId: tab.windowId, color: GROUP_COLOR }));
+      if (found) for (let i = found.length - 1; i >= 0; i--) if (!Object.values(TITLES).includes(found[i].title)) found.splice(i, 1);
       if (found && found[0]) gid = found[0].id;
     }
     const id = await safe(() => chrome.tabs.group(gid != null ? { tabIds: [tabId], groupId: gid } : { tabIds: [tabId], createProperties: { windowId: tab.windowId } }));
     if (typeof id !== "number") { groups.delete(tab.windowId); return; }
     groups.set(tab.windowId, id);
-    if (chrome.tabGroups && chrome.tabGroups.update) await safe(() => chrome.tabGroups.update(id, { title: GROUP_TITLE, color: "blue", collapsed: false }));
+    if (chrome.tabGroups && chrome.tabGroups.update) await safe(() => chrome.tabGroups.update(id, { title: run && run.waiting ? TITLES.turn : TITLES.working, color: GROUP_COLOR, collapsed: false }));
   }
 
   function arm() {
@@ -191,8 +282,8 @@ export function createPresence({ chrome, cdp, onStop = () => {}, now = Date.now,
 
   async function begin() {
     if (run) return;
-    run = { steps: 0, of: null, label: "", waiting: null, failed: false, tabs: new Set(), startedAt: now(), changes: [] };
-    startPulse();
+    run = { steps: 0, of: null, label: "", text: "", waiting: null, site: "", paused: null, failed: false, tabs: new Set(), startedAt: now(), changes: [] };
+    paintIcon();
     beat = weak(setI(() => { if (run) for (const t of run.tabs) void pill(t); }, BEAT_MS));
     await paintBadge();
   }
@@ -203,8 +294,9 @@ export function createPresence({ chrome, cdp, onStop = () => {}, now = Date.now,
     const done = run; run = null;
     if (idle) { clearT(idle); idle = null; }
     if (beat) { clearI(beat); beat = null; }
-    await stopPulse();
+    paintIcon();
     await paintBadge();
+    await retitle(TITLES.done);
     for (const t of done.tabs) await unpill(t);
     // What the run changed stays on screen as a card, in the last tab it worked in, until the person dismisses it.
     if (done.changes.length && cdp && done.tabs.size) {
@@ -213,7 +305,7 @@ export function createPresence({ chrome, cdp, onStop = () => {}, now = Date.now,
       for (const c of done.changes) counts[c.kind || "change"] = (counts[c.kind || "change"] || 0) + 1;
       if (last !== undefined && cdp.attached().includes(last)) await safe(() => cdp.send(last, "Runtime.evaluate", { expression: cardScript({ counts, items: done.changes, steps: done.steps }), returnByValue: true }));
     }
-    if (chrome && chrome.tabGroups && chrome.tabGroups.update) for (const gid of groups.values()) await safe(() => chrome.tabGroups.update(gid, { collapsed: true }));
+    // The group stays, titled "Vyre, done", for the person to look at; it goes back to plain "Vyre" on the next run. Nothing ever closes a tab.
     try { onFinish({ steps: done.steps, of: done.of, startedAt: done.startedAt, endedAt: now(), tabs: [...done.tabs], changes: done.changes, failed: done.failed }); } catch { /* the card must not break the shell */ }
   }
 
@@ -239,6 +331,7 @@ export function createPresence({ chrome, cdp, onStop = () => {}, now = Date.now,
       await begin();
       if (!run) return fn();
       const pre = tabOfCall(args, undefined);
+      { const tx = stepText(op, args); if (tx) run.text = tx; }
       if (pre !== undefined) { run.tabs.add(pre); void pill(pre); }
       if (idle) { clearT(idle); idle = null; }
       try {
@@ -246,6 +339,7 @@ export function createPresence({ chrome, cdp, onStop = () => {}, now = Date.now,
         if (run) {
           const t = tabOfCall(args, r);
           if (t !== undefined) { run.tabs.add(t); if (/^tabs\.(open|use)/.test(op) && /** @type {any} */ (r) && /** @type {any} */ (r).reused === false) await group(t); void pill(t); }
+          { const tx = stepText(op, args); if (tx) run.text = tx; }
           if (/^(batch\.run|ghl\.run)$/.test(op)) run.steps += Math.max(0, Number(/** @type {any} */ (r) && /** @type {any} */ (r).done) || 0);
           else if (STEP.test(op)) run.steps += 1;
           if (r && typeof r === "object" && /** @type {any} */ (r).ok === false) run.failed = true;
@@ -272,11 +366,15 @@ export function createPresence({ chrome, cdp, onStop = () => {}, now = Date.now,
       }
       if (s.waiting === null && remind) { clearT(remind); remind = null; }
       if (s.change && typeof s.change === "object") run.changes.push({ what: String(s.change.what || "").slice(0, 160), kind: String(s.change.kind || ""), url: s.change.url ? String(s.change.url).slice(0, 300) : "", at: now() });
+      if (typeof s.login === "object" && s.login) run.site = String(s.login.site || "").slice(0, 60);
+      if (s.waiting === null) run.site = "";
+      if (s.stopped !== undefined) run.paused = s.stopped ? (s.stopped === "pause" ? "pause" : "stop") : null;
       if (typeof s.of === "number" && s.of > 0) run.of = s.of;
       if (typeof s.label === "string") run.label = s.label.slice(0, 120);
       if (s.waiting !== undefined) { run.waiting = s.waiting ? String(s.waiting).slice(0, 100) : null; if (run.waiting) { if (idle) { clearT(idle); idle = null; } } else arm(); }
       if (!run.waiting && !idle) arm();
       await paintBadge();
+      paintIcon();
       for (const t of run.tabs) void pill(t);
     },
     /** A change the run made (for the finish card): one line, and where to open it. @param {{ what: string, url?: string, undo?: any }} c */
@@ -284,24 +382,5 @@ export function createPresence({ chrome, cdp, onStop = () => {}, now = Date.now,
     finish,
     /** For tests. */
     groups: () => new Map(groups),
-  };
-}
-
-/** Draw the toolbar icon, frame 1 with a pulse ring, into ImageData at 16 and 32. Null where there is no canvas (the badge still works). @param {string} url32 */
-export function iconDrawer(url32) {
-  /** @type {any} */ let bmp = null;
-  return async (/** @type {number} */ frame) => {
-    const OC = /** @type {any} */ (globalThis).OffscreenCanvas;
-    if (!OC || typeof fetch !== "function" || typeof createImageBitmap !== "function") return null;
-    if (!bmp) bmp = await createImageBitmap(await (await fetch(url32)).blob());
-    const out = {};
-    for (const size of [16, 32]) {
-      const c = new OC(size, size);
-      const g = c.getContext("2d");
-      g.drawImage(bmp, 0, 0, size, size);
-      if (frame) { g.fillStyle = COLORS.working; g.beginPath(); g.arc(size - size * 0.22, size - size * 0.22, size * 0.2, 0, Math.PI * 2); g.fill(); g.strokeStyle = "#fff"; g.lineWidth = Math.max(1, size / 16); g.stroke(); }
-      /** @type {any} */ (out)[size] = g.getImageData(0, 0, size, size);
-    }
-    return out;
   };
 }

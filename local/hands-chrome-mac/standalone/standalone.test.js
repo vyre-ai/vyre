@@ -346,7 +346,7 @@ test("plan approval in standalone: the person is asked once in plain words; no a
   assert.doesNotMatch(String(late.error.message), /ladder/);
   assert.match(asked[0], /Approve this plan once/);
   assert.match(asked[0], /Eight drafts/);
-  assert.match(asked[0], /Publishing, messaging and payments still ask/);
+  assert.match(asked[0], /Deleting, messaging and payments still ask/);
   const no = await runtime.invoke("chrome.send", { id: p.id }, { ask: async () => ({ action: "accept", content: { approve: false } }) });
   assert.equal(no.error.code, "declined");
   assert.match(String(no.error.message), /did not approve this plan/);
@@ -354,6 +354,7 @@ test("plan approval in standalone: the person is asked once in plain words; no a
   assert.equal(yes.ok, true, JSON.stringify(yes.error && yes.error.message));
   assert.equal(yes.result.approved, true);
   assert.equal(yes.result.covers.create, 8);
+  assert.equal(yes.result.covers.publish, 0, "a publish the person did not ask for is not covered");
 });
 
 test("callers: the person's Esc is only undone by the person (asked through the client), and the person's own tools are not the model's", async t => {

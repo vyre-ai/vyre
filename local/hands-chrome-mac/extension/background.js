@@ -24,8 +24,8 @@ import { proto, redact } from "./lib/shared.js";
 import { createCtx } from "./lib/ctx.js";
 import { dispatch, deliver, ready, loadReport, opNames } from "./caps/index.js";
 import { explain } from "./shared/diag.js";
-import { createPresence, iconDrawer } from "./lib/presence.js";
-import { onFailure as loginFailure } from "./caps/login.js";
+import { createPresence } from "./lib/presence.js";
+import { onFailure as loginFailure, signal as loginSignal } from "./caps/login.js";
 
 export const MIN_RETRY_MS = 2500;
 export const FAST_RETRY_MS = 3000;
@@ -111,8 +111,8 @@ export function start(chrome, opts = {}) {
   // What the person sees while Vyre works: a tab group, a step badge, a pulsing icon, a pill in the tab (lib/presence.js).
   const presence = createPresence({
     chrome, cdp: ctx.cdp, setT, clearT,
-    draw: chrome.runtime && chrome.runtime.getURL ? iconDrawer(chrome.runtime.getURL("icons/icon-32.png")) : undefined,
     onStop: via => { ctx.setStopped(true); post({ event: "stop", via }); },
+    onLogin: (action, tabId) => loginSignal(tabId, action),
   });
   /** @type {any} */ (ctx).presence = presence;
   presence.badgeOwnedBy(() => conn.failingSince != null && now() - conn.failingSince >= BADGE_AFTER_MS);
@@ -123,8 +123,8 @@ export function start(chrome, opts = {}) {
     if (!conn.connectedAt || conn.failingSince != null) { conn.connectedAt = now(); conn.everConnected = true; conn.failingSince = null; conn.lastError = null; persist(); }
     if (!msg || typeof msg !== "object") return;
     if (typeof msg.event === "string") {
-      if (msg.event === "stop") ctx.setStopped(true);
-      else if (msg.event === "resume") ctx.setStopped(false);
+      if (msg.event === "stop") { ctx.setStopped(true); void presence.state({ stopped: msg.via === "pause" ? "pause" : "stop" }); }
+      else if (msg.event === "resume") { ctx.setStopped(false); void presence.state({ stopped: false }); }
       else if (msg.event === "presence") { await presence.state(msg); return; }
       await deliver(msg, ctx);
       return;
@@ -186,6 +186,16 @@ export function start(chrome, opts = {}) {
       version: (chrome.runtime.getManifest && chrome.runtime.getManifest().version) || "0",
       ops: opNames(), caps: loadReport(),
     }));
+  }
+
+  // The extension's own popup is the one trusted place to carry on after a stop: a website cannot send this message (there is no externally_connectable and no content script).
+  if (chrome.runtime && chrome.runtime.onMessage) {
+    chrome.runtime.onMessage.addListener((/** @type {any} */ m, /** @type {any} */ sender, /** @type {(r: any) => void} */ reply) => {
+      if (!m || typeof m !== "object" || (sender && sender.id && chrome.runtime.id && sender.id !== chrome.runtime.id)) return;
+      if (sender && sender.tab) return; // a page's own script, never the popup
+      if (m.vyre === "state") { reply({ stopped: ctx.stopped() }); return; }
+      if (m.vyre === "resume") { ctx.setStopped(false); void presence.state({ stopped: false }); post({ event: "resume", by: "person", via: "popup" }); reply({ ok: true }); }
+    });
   }
 
   if (chrome.alarms) {

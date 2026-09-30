@@ -248,11 +248,11 @@ async function main() {
         let st = /** @type {any} */ ({});
         for (let i = 0; i < 20; i++) { st = await mcp.call("chrome_tabs", { action: "presence", tab: pt }); if (st.pill) break; await sleep(250); }
         if (!st.active) throw new Error("the run is not showing as active: " + JSON.stringify(st));
-        if (!/Vyre is working/.test(st.label || "")) throw new Error("the pill label is " + JSON.stringify(st.label));
-        if (!st.group || st.group.title !== "Vyre") throw new Error("the tab is not in a group named Vyre: " + JSON.stringify(st.group));
+        if (!/^Step \d+/.test(st.label || "") || !/Esc to stop/.test(st.label || "")) throw new Error("the pill label is " + JSON.stringify(st.label));
+        if (!st.group || st.group.title !== "Vyre" || st.group.color !== "grey") throw new Error("the tab is not in a grey group titled Vyre: " + JSON.stringify(st.group));
         if (!st.pill) throw new Error("no pill in the page");
         const snap = await mcp.call("chrome_snapshot", { tab: pt });
-        if (/vyre-pill|Vyre is working|Esc to stop/i.test(JSON.stringify(snap))) throw new Error("the snapshot shows the pill");
+        if (/vyre-pill|Esc to stop|Step \d+ of/i.test(JSON.stringify(snap))) throw new Error("the snapshot shows the pill");
         // The pill's Stop is a binding the page calls; the run must halt.
         await mcp.call("chrome_eval", { tab: pt, expression: "window.vyreStop('pill')", asked: true }).catch(() => {});
         let halted = false;

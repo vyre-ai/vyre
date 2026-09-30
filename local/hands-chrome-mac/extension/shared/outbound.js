@@ -51,7 +51,8 @@ export function held(method, url, why, sigSource) {
   let path = url;
   try { const u = new URL(url); path = u.origin + u.pathname; } catch { /* raw */ }
   return { ok: false, held: true, why: `This would ${String(method).toUpperCase()} ${path}: ${why}. It sends something as the person and nobody asked for it, so it waits for their approval.`,
-    control: { role: "request", name: `${String(method).toUpperCase()} ${path}` }, fields: [], sig: digest(sigSource) };
+    control: { role: "request", name: `${String(method).toUpperCase()} ${path}` }, fields: [], sig: digest(sigSource),
+    ...(/(^|\/)(publish|published|activate|go-live|golive)(\/|$)/i.test(path) ? { kind: "publish", method: String(method).toUpperCase() } : {}) };
 }
 
 /** What a write is, in a person's words: POST creates, PUT and PATCH edit, DELETE deletes. @param {string} method */

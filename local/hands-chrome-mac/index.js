@@ -125,6 +125,8 @@ export default {
       else if (e.event === "replaced") emit("chrome.replaced", {});
       // The extension saw the person stop Vyre in the browser itself.
       else if (e.event === "stop") oversight.stop({ by: "esc" });
+      // The person pressed Continue in the extension's own popup: the one place a stop is undone from the browser side.
+      else if (e.event === "resume" && e.by === "person") { try { oversight.resume({ answer: "the person pressed Continue in Chrome" }); } catch { /* not stopped */ } }
       // The page asked the person to sign in: one line for the chat, and one when they are in.
       else if (e.event === "login.wall") emit("chrome.signin-asked", { tab: e.tab, app: e.app || null, kind: e.kind || null, message: scrub(String(e.message || "")) });
       else if (e.event === "login.done") emit("chrome.signin-done", { tab: e.tab, app: e.app || null });
@@ -263,6 +265,14 @@ export default {
             recordChange(res, summary, true);
             showPresence({ of: g.total, label: g.title });
           }
+          // A publish or activate is covered only when the person's own words asked for it and the plan card said "and publish": asking is approving.
+          else if (isObj(res) && res.held === true && res.write !== true && res.kind === "publish" && op === "api.call" && covers("publish")) {
+            const g = /** @type {NonNullable<typeof grant>} */ (grant);
+            g.left.publish--; g.used++;
+            res = screen(await bridge.call(op, { ...args, asked: true }, { timeoutMs: args.timeoutMs }));
+            recordChange(res, summary, true);
+            showPresence({ of: g.total, label: g.title });
+          }
           if (isObj(res) && res.held === true) res = await hold(op, args, res, meta, summary);
           else if (op === "batch.run" && isObj(res) && isObj(res.held) && res.held.held === true) {
             // The batch stopped at a held step: the card is for that step, released on its own.
@@ -291,6 +301,7 @@ export default {
     // A plan the person approved once (chrome.approve, released like a send): it covers that many creates, edits and deletes made with the page's login
     // (api.call writes). A publish, a message and a payment are never covered, whatever the plan says: each asks again.
     const PLAN_KINDS = ["create", "edit", "delete", "publish", "send"];
+    // Covered by a plan: creates and edits, and a publish only when the person's own words asked for it. A delete and a send always ask, one at a time.
     const PLAN_TTL_MS = 60 * 60_000;
     /** @type {null | { id: string, title: string, items: any[], left: Record<string, number>, total: number, used: number, expiresAt: number }} */
     let grant = null;
@@ -422,8 +433,8 @@ export default {
       });
 
     // Oversight: the plan, the person's word, and stop.
-    tool("chrome.approve", "Ask the person to approve a plan ONCE before a job with many changes, for example \"create these 8 workflows as drafts\". items is what you will do: {kind: create | edit | delete | publish | send, what, count}. You get an id back; the person approves it by your calling chrome_send with that id. Once approved, that many creates, edits and deletes made with the page's login (chrome_api call writes) go through without asking again, and the page shows step N of M. A publish, a message to a contact and a payment are never covered: each still asks, one at a time, with the exact item. A plan ends after an hour, when the person stops Vyre, or when you approve another. Without a plan, every write asks.",
-      obj({ title: str, items: { type: "array", items: obj({ kind: { type: "string", enum: PLAN_KINDS }, what: str, count: { type: "number" } }, ["kind", "what"]) }, tab }, ["title", "items"]),
+    tool("chrome.approve", "Ask the person to approve a plan ONCE before a job with many changes, for example \"create these 8 workflows as drafts\". items is what you will do: {kind: create | edit | delete | publish | send, what, count}. You get an id back; the person approves it by your calling chrome_send with that id. Once approved, that many creates, edits and deletes made with the page's login (chrome_api call writes) go through without asking again, and the page shows step N of M. A delete, a message to a contact and a payment are never covered: each asks one at a time. A publish is covered only when you set asked: true because the person's own words asked for it (\"build and publish these\"); the card then says \"and publish\" plainly. A plan ends after an hour, when the person stops Vyre, or when you approve another. Without a plan, every write asks.",
+      obj({ title: str, items: { type: "array", items: obj({ kind: { type: "string", enum: PLAN_KINDS }, what: str, count: { type: "number" }, asked: { type: "boolean", description: "For publish: true only when the person's own words asked for it (\"build and publish these\"). Without it a publish asks one at a time." } }, ["kind", "what"]) }, tab }, ["title", "items"]),
       async (i, meta) => {
         const agent = agentOf(meta.caller);
         await requireGrant(agent);
@@ -434,17 +445,17 @@ export default {
           if (!PLAN_KINDS.includes(kind)) throw denied("bad_request", `an item's kind must be one of ${PLAN_KINDS.join(", ")}`);
           const what = scrub(String(x && x.what || "").slice(0, 160));
           if (!what.trim()) throw denied("bad_request", "every item needs text that says what it does");
-          return { kind, what, count: Math.min(50, Math.max(1, Math.floor(Number(x && x.count) || 1))) };
+          return { kind, what, count: Math.min(50, Math.max(1, Math.floor(Number(x && x.count) || 1))), ...(kind === "publish" && x && x.asked === true ? { asked: true } : {}) };
         });
         const title = scrub(String(i.title || "").slice(0, 120)) || "Plan";
-        const left = { create: 0, edit: 0, delete: 0 };
-        for (const it of items) if (it.kind in left) /** @type {any} */ (left)[it.kind] += it.count;
+        const left = { create: 0, edit: 0, publish: 0 };
+        for (const it of items) if (it.kind in left && (it.kind !== "publish" || it.asked)) /** @type {any} */ (left)[it.kind] += it.count;
         const total = items.reduce((/** @type {number} */ n, /** @type {any} */ it) => n + it.count, 0);
         const plan = { id: crypto.randomBytes(6).toString("hex"), title, items, left, total };
         const tabId = Number.isInteger(i.tab) ? i.tab : undefined;
-        const res = { held: true, sig: "plan", plan, url: tabId !== undefined ? urls.get(tabId) : "", control: `Plan: ${title}`, fields: items.map((/** @type {any} */ it) => ({ name: `${it.kind} x${it.count}`, value: it.what })) };
+        const res = { held: true, sig: "plan", plan, url: tabId !== undefined ? urls.get(tabId) : "", control: `Plan: ${title}`, fields: items.map((/** @type {any} */ it) => ({ name: it.kind === "publish" && it.asked ? `and publish x${it.count}` : `${it.kind} x${it.count}`, value: it.what })) };
         const h = await via.run(meta, async () => hold("chrome.approve", {}, res, meta, `approve plan: ${title}`, tabId));
-        return isObj(h) && h.held && h.id ? { ...h, plan: { title, total, items: items.length }, why: `This plan waits for the person's approval. To start it, call ${cfg.sendTool || "the Gate"} with this id; the person approves that call. Publishing, messaging and payments stay one-at-a-time whatever the plan says.` } : h;
+        return isObj(h) && h.held && h.id ? { ...h, plan: { title, total, items: items.length }, why: `This plan waits for the person's approval. To start it, call ${cfg.sendTool || "the Gate"} with this id; the person approves that call. Deleting, messaging and payments stay one-at-a-time whatever the plan says, and so does publishing unless the plan says the person asked for it.` } : h;
       });
 
     tool("chrome.summary", "Finish a job: what this run changed in the person's Chrome, in words they can read, with what can be undone. Call it when the job is done and show the person the lines. It also puts the same card on their screen. clear (default true) starts the next job's list empty.",
