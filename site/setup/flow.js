@@ -301,7 +301,8 @@ export function createFlow(o) {
   async function watchTailscaleLoop(mine) {
     let stopFollow = () => {};
     let poked = false, over = false;
-    const done = () => Boolean(state.tailscale.address && state.tailscale.address.phase === "serving");
+    // Serving, or failed: either way there is nothing more to wait for (a failed one says why, and Connect tries again).
+    const done = () => Boolean(state.tailscale.address && (state.tailscale.address.phase === "serving" || state.tailscale.address.phase === "failed"));
     const read = async () => {
       const st = await chan.call("network.tailscale.status");
       if (mine !== run) return;
@@ -310,6 +311,27 @@ export function createFlow(o) {
       if (status.state === "connected" && !done()) await publishAddress(mine);
     };
     const live = () => mine === run && state.stage === "tailscale" && chan;
+    // The address goes from dns to certificate to serving on the box without a tailscale.changed: the certificate says so through its own
+    // events. They are read from the start of the list each time (a short read), so one that landed before this page looked is not missed.
+    let lastCert = 0;
+    const certEvery = () => Math.max(pollMs, 1000);
+    const certCheck = async () => {
+      if (!chan || !state.named || !state.tailscale.address || done() || typeof chan.events !== "function") return;
+      lastCert = now();
+      // The backstop: the box's own answer for its name, so a missed event can never strand a person on "Publishing your address".
+      try {
+        const st = await chan.call("names.status");
+        if (mine !== run) return;
+        if (st && st.phase === "serving") return void set({ tailscale: { ...state.tailscale, address: { phase: "serving", why: null } } });
+        if (st && st.phase === "failed") return void set({ tailscale: { ...state.tailscale, address: { phase: "failed", why: st.why ? String(st.why).slice(0, 200) : "the address could not be published" } } });
+      } catch { /* a box that does not answer this (older) leaves it to the events below */ }
+      const mineName = event => { const n = event && event.payload && event.payload.name; return !n || String(n).toLowerCase().startsWith(state.named.name + "."); };
+      const issued = (await chan.events("certificate.issued", 0)).filter(mineName).reduce((n, e) => Math.max(n, e.id), 0);
+      const failed = (await chan.events("certificate.failed", 0)).filter(mineName).reduce((m, e) => (e.id > m.id ? e : m), { id: 0, payload: null });
+      if (mine !== run) return;
+      if (issued > 0 && issued > failed.id) set({ tailscale: { ...state.tailscale, address: { phase: "serving", why: null } } });
+      else if (failed.id > 0) set({ tailscale: { ...state.tailscale, address: { phase: "failed", why: failed.payload && failed.payload.why ? String(failed.payload.why).slice(0, 200) : "the certificate could not be made" } } });
+    };
     try { await read(); } catch (e) { if (live()) set({ tailscale: { ...state.tailscale, error: String(/** @type {Error} */ (e).message).slice(0, 200) } }); return; }
     if (!live() || done()) return;
     // Events first: each one is a reason to read again, and nothing polls while the box is quiet.
@@ -317,6 +339,7 @@ export function createFlow(o) {
     if (!fellBack) {
       stopFollow = chan.follow("tailscale.changed", () => { poked = true; }, err => { if (err && err.status === 401) over = true; fellBack = true; });
       while (live() && !done() && !fellBack && !over) {
+        if (now() - lastCert >= certEvery()) { try { await certCheck(); } catch { /* the next look tries again */ } }
         if (poked) { poked = false; try { await read(); } catch (e) { if (live()) set({ tailscale: { ...state.tailscale, error: String(/** @type {Error} */ (e).message).slice(0, 200) } }); stopFollow(); return; } }
         await sleep(200);
       }
@@ -328,6 +351,8 @@ export function createFlow(o) {
     while (live() && !done() && now() < until) {
       await sleep(Math.max(pollMs, 1000));
       if (!live()) return;
+      if (now() - lastCert >= certEvery()) { try { await certCheck(); } catch { /* the next look tries again */ } }
+      if (done()) return;
       try { await read(); } catch (e) {
         if (!live()) return;
         // Any error ends the watching (setup_over most of all); Connect starts it again.
