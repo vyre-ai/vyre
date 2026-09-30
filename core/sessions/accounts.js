@@ -15,11 +15,21 @@
 
 import crypto from "node:crypto";
 
+// kind: what the credential is. "api-key" and "setup-token" name a vault item; "login" names none:
+// the provider's own sign-in (codex login, grok login) wrote its token into this account's own
+// HOME, which only this account's uid can read. uid: the account's own user on a box (UID_MIN to
+// UID_MAX, the box image's range); a Mac has one user, so there it only numbers the account.
 export const ACCOUNTS_MIGRATION = `CREATE TABLE IF NOT EXISTS sessions_accounts (
-  id TEXT PRIMARY KEY, provider TEXT NOT NULL, label TEXT NOT NULL, vault_item TEXT NOT NULL,
+  id TEXT PRIMARY KEY, provider TEXT NOT NULL, label TEXT NOT NULL, kind TEXT NOT NULL DEFAULT 'api-key', vault_item TEXT,
   scope_projects TEXT NOT NULL, scope_agents TEXT NOT NULL, is_default INTEGER NOT NULL DEFAULT 0,
-  added INTEGER NOT NULL, updated INTEGER NOT NULL
-);`;
+  uid INTEGER, added INTEGER NOT NULL, updated INTEGER NOT NULL
+);
+CREATE TABLE IF NOT EXISTS sessions_uids_dirty (uid INTEGER PRIMARY KEY);`;
+
+/** The box image's account uids (integrator's Wave A0 image): 2000-2063, gid = uid. */
+export const UID_MIN = 2000;
+export const UID_MAX = 2063;
+export const KINDS = ["api-key", "setup-token", "login"];
 
 const PROVIDER = /^[a-z][a-z0-9-]{0,31}$/;
 const ID = /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/;
@@ -45,8 +55,13 @@ function inScope(scope, { project, agent }) {
 }
 
 export class Accounts {
-  /** @param {import("node:sqlite").DatabaseSync} db */
-  constructor(db) { this.db = db; }
+  /**
+   * @param {import("node:sqlite").DatabaseSync} db
+   * @param {{ wipe?: (uid: number) => Promise<any> }} [o] wipe: empty a uid's HOME (the spawner's
+   *   wipe op). A uid whose account was removed is handed to a new account only after this
+   *   succeeds, so nothing of the last account's sign-in is ever there for the next.
+   */
+  constructor(db, o = {}) { this.db = db; this.wipe = o.wipe || null; }
 
   row(id) {
     const r = /** @type {any} */ (this.db.prepare("SELECT * FROM sessions_accounts WHERE id = ?").get(String(id)));
@@ -54,7 +69,7 @@ export class Accounts {
   }
 
   fromRow(r) {
-    return { id: r.id, provider: r.provider, label: r.label, vault_item: r.vault_item,
+    return { id: r.id, provider: r.provider, label: r.label, kind: r.kind || "api-key", vault_item: r.vault_item == null ? null : r.vault_item, uid: r.uid == null ? null : Number(r.uid),
       scope: { projects: JSON.parse(r.scope_projects), agents: JSON.parse(r.scope_agents) },
       is_default: Boolean(r.is_default), added: r.added, updated: r.updated };
   }
@@ -67,33 +82,54 @@ export class Accounts {
       ? /** @type {any[]} */ (this.db.prepare("SELECT * FROM sessions_accounts WHERE provider = ? ORDER BY added").all(String(provider))).map(r => this.fromRow(r))
       : /** @type {any[]} */ (this.db.prepare("SELECT * FROM sessions_accounts ORDER BY provider, added").all()).map(r => this.fromRow(r));
     if (provider === "claude" && !rows.some(r => r.provider === "claude")) {
-      rows.push({ id: "default", provider: "claude", label: "Default", vault_item: null,
+      rows.push({ id: "default", provider: "claude", label: "Default", kind: "login", vault_item: null, uid: null,
         scope: { projects: "*", agents: "*" }, is_default: true, added: 0, updated: 0, synthetic: true });
     }
     return rows;
   }
 
   /**
-   * Add an account: a label and the vault item that already holds its credential (vault's to
-   * fill; this never sees or stores a credential value). Person-only for now (adding a real
-   * account is provisioning access, weighted like vault.grant), even though picking WHICH
-   * already-added account a project uses is not (see resolve/bind) - open question for the
-   * charter's "configurable by agents too", flagged in plans/sessions.md 3.6.
-   * @param {{ provider: string, label: string, vault_item: string, scope?: any, is_default?: boolean }} i
+   * The lowest uid in the box's account range no account holds. One removed earlier is reused only
+   * after its HOME was emptied (a wipe that fails, say because a session of it still runs, leaves
+   * it out for now); a fresh one never held anything.
    */
-  add(i) {
+  async allocate() {
+    const used = new Set(/** @type {any[]} */ (this.db.prepare("SELECT uid FROM sessions_accounts WHERE uid IS NOT NULL").all()).map(r => Number(r.uid)));
+    const dirty = new Set(/** @type {any[]} */ (this.db.prepare("SELECT uid FROM sessions_uids_dirty").all()).map(r => Number(r.uid)));
+    for (let u = UID_MIN; u <= UID_MAX; u++) if (!used.has(u) && !dirty.has(u)) return u;
+    for (const u of [...dirty].sort((a, b) => a - b)) {
+      if (used.has(u) || !this.wipe) continue;
+      try { await this.wipe(u); } catch { continue; }
+      this.db.prepare("DELETE FROM sessions_uids_dirty WHERE uid = ?").run(u);
+      return u;
+    }
+    throw Object.assign(new Error(`this server has ${UID_MAX - UID_MIN + 1} accounts, the most it holds; remove one first`), { code: "too_many" });
+  }
+
+  /**
+   * Add an account: a label, its kind, and (for an api-key or setup-token) the vault item that
+   * already holds its credential (vault's to fill; this never sees or stores a credential value).
+   * A "login" account has no vault item: the provider's own sign-in fills its HOME. Person-only
+   * for now (adding a real account is provisioning access, weighted like vault.grant), even though
+   * picking WHICH already-added account a project uses is not (see resolve/bind).
+   * @param {{ provider: string, label: string, kind?: string, vault_item?: string, scope?: any, is_default?: boolean }} i
+   */
+  async add(i) {
     const provider = String(i.provider || "");
     if (!PROVIDER.test(provider)) throw bad("provider must be a lowercase name like claude, codex or grok");
     const label = String(i.label || "").trim();
     if (!label) throw bad("label is required");
-    const vaultItem = String(i.vault_item || "");
-    if (!VAULT_ITEM.test(vaultItem)) throw bad("vault_item must name an existing vault item");
+    const kind = String(i.kind || (i.vault_item ? "api-key" : "login"));
+    if (!KINDS.includes(kind)) throw bad(`kind is one of ${KINDS.join(", ")}`);
+    const vaultItem = i.vault_item == null ? null : String(i.vault_item);
+    if (kind === "login" ? vaultItem !== null : !vaultItem || !VAULT_ITEM.test(vaultItem)) throw bad(kind === "login" ? "a login account holds no vault item" : "vault_item must name an existing vault item");
     const scope = normalizeScope(i.scope);
     const id = crypto.randomBytes(6).toString("hex");
+    const uid = await this.allocate();
     const now = Date.now();
     if (i.is_default) this.db.prepare("UPDATE sessions_accounts SET is_default = 0 WHERE provider = ?").run(provider);
-    this.db.prepare(`INSERT INTO sessions_accounts (id, provider, label, vault_item, scope_projects, scope_agents, is_default, added, updated)
-      VALUES (?,?,?,?,?,?,?,?,?)`).run(id, provider, label, vaultItem, JSON.stringify(scope.projects), JSON.stringify(scope.agents), i.is_default ? 1 : 0, now, now);
+    this.db.prepare(`INSERT INTO sessions_accounts (id, provider, label, kind, vault_item, scope_projects, scope_agents, is_default, uid, added, updated)
+      VALUES (?,?,?,?,?,?,?,?,?,?,?)`).run(id, provider, label, kind, vaultItem, JSON.stringify(scope.projects), JSON.stringify(scope.agents), i.is_default ? 1 : 0, uid, now, now);
     return this.row(id);
   }
 
@@ -101,6 +137,8 @@ export class Accounts {
     const r = this.row(id);
     if (!r) throw Object.assign(new Error(`no account ${id}`), { code: "not_found" });
     this.db.prepare("DELETE FROM sessions_accounts WHERE id = ?").run(String(id));
+    // Its uid, and the HOME with its sign-in, wait for a wipe before another account takes them.
+    if (r.uid != null) this.db.prepare("INSERT OR IGNORE INTO sessions_uids_dirty (uid) VALUES (?)").run(r.uid);
     return { id: String(id), removed: true };
   }
 

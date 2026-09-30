@@ -321,6 +321,34 @@ for (const driver of ["cli", "sdk"]) {
     assert.ok(!all.includes("fake-setup-value") && !all.includes("fake-api-value"), "no credential reaches an event");
   });
 
+  test(`${driver}: accounts: a session runs on the account it resolves to, its credential from the vault, and a removed account is never a silent fallback`, { skip }, async t => {
+    const w = await boot(t, { driver, vault: { "work-token": "fake-work-value", "other-token": "fake-other-value" } });
+    for (const n of ["Harlow Legal", "Northwind"]) assert.equal((await w.tool("projects.create", { name: n, home: path.join(w.work, n.split(" ")[0].toLowerCase()) })).error, undefined);
+    const wr = await w.tool("sessions.accounts.add", { provider: "claude", label: "Harlow work", kind: "setup-token", vault_item: "work-token", scope: { projects: ["harlow-legal"], agents: "*" } });
+    assert.equal(wr.error, undefined, JSON.stringify(wr));
+    const work = wr.data;
+    const other = (await w.tool("sessions.accounts.add", { provider: "claude", label: "Other", kind: "setup-token", vault_item: "other-token", scope: { projects: ["northwind"], agents: "*" } })).data;
+    assert.equal(work.uid, 2000);
+    assert.equal(other.uid, 2001);
+    // The project's own account, with no account named.
+    const started = await w.tool("threads.start", { cwd: path.join(w.work, "harlow"), project: "harlow-legal", prompt: "whoami", surface: "deck" });
+    assert.equal(started.error, undefined, JSON.stringify(started));
+    const th = started.data;
+    await w.finished(th.id);
+    assert.deepEqual(await w.said(th.id), ["auth=subscription"]);
+    const rec = (await w.tool("threads.get", { thread: th.id })).data.thread;
+    assert.equal(rec.account, work.id);
+    assert.ok(!JSON.stringify(await w.events(th.id)).includes("fake-work-value"), "no credential reaches an event");
+    // H1: naming the other project's account from this project is denied, not a fallback.
+    const denied = await w.tool("threads.start", { cwd: path.join(w.work, "harlow"), project: "harlow-legal", account: other.id, prompt: "whoami", surface: "deck" });
+    assert.equal(denied.error && denied.error.code, "denied");
+    // M3: the account is removed; the thread's next message asks for another instead of running on a default.
+    assert.equal((await w.tool("sessions.accounts.remove", { id: work.id })).error, undefined);
+    await w.tool("threads.stop", { thread: th.id });
+    const back = await w.tool("threads.send", { thread: th.id, text: "again", surface: "deck" });
+    assert.equal(back.error && back.error.code, "account_removed", JSON.stringify(back));
+  });
+
   test(`${driver}: from inside a session, a person-only call is refused, even claiming to be the CLI`, { skip }, async t => {
     const w = await boot(t, { driver });
     const th = (await w.tool("threads.start", { cwd: w.work, prompt: "forge cli sessions.prompt.set", surface: "deck" })).data;
@@ -488,7 +516,8 @@ for (const driver of ["cli", "sdk"]) {
     const th = (await w.tool("threads.start", { cwd: w.work, agent: "kit", prompt: 'vyre-sock whoami.me {"projects":"*"}', surface: "deck" })).data;
     await w.finished(th.id);
     // The input said "*"; the daemon says what agents_agents holds.
-    assert.deepEqual(JSON.parse((await w.said(th.id)).at(-1)).data, { agent: "kit", granted: ["harlow-legal"], kind: "agent", said: "*" });
+    const first = JSON.parse((await w.said(th.id)).at(-1));
+    assert.deepEqual(first.data, { agent: "kit", granted: ["harlow-legal"], kind: "agent", said: "*" }, JSON.stringify(first));
     // Widening the stored grant changes the next thread's meta, nothing else can.
     assert.equal((await w.tool("agents.update", { name: "kit", projects: "*" })).error, undefined);
     await w.tool("threads.send", { thread: th.id, text: "vyre-sock whoami.me {}", surface: "deck" });

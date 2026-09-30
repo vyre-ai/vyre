@@ -16,7 +16,9 @@
 import { Prompts, PROMPTS_MIGRATION, REPLACE_WARNING, MAX_CHARS, scopeOf } from "./prompts.js";
 import { composeIq, factsFrom } from "./iq-prompt.js";
 import { sessionsConfig, sdkDir, claudeBin, configModel, PURPOSES } from "./config.js";
-import { Accounts, ACCOUNTS_MIGRATION } from "./accounts.js";
+import { Accounts, ACCOUNTS_MIGRATION, KINDS as ACCOUNT_KINDS } from "./accounts.js";
+import { usesSpawner } from "./spawn.js";
+import { wipeAccount } from "../spawner/client.js";
 
 /** Per-purpose and per-project model overrides a person set from a surface. */
 const MODELS_MIGRATION = `CREATE TABLE IF NOT EXISTS sessions_models (scope TEXT PRIMARY KEY, model TEXT NOT NULL, by TEXT, at INTEGER NOT NULL)`;
@@ -44,7 +46,9 @@ export default {
   async start(ctx) {
     ctx.store.migrate([PROMPTS_MIGRATION, MODELS_MIGRATION, LIMITS_MIGRATION, MODES_MIGRATION, ACCOUNTS_MIGRATION]);
     const db = ctx.store.db;
-    const accounts = new Accounts(db);
+    // A uid handed to a new account first has its HOME emptied: by the spawner on a box, by
+    // removing the account's folder on a machine without one (there the uid only numbers it).
+    const accounts = new Accounts(db, { wipe: async uid => { if (usesSpawner()) await wipeAccount(uid); } });
     const override = scope => { const r = /** @type {any} */ (db.prepare("SELECT model FROM sessions_models WHERE scope = ?").get(scope)); return r ? String(r.model) : null; };
     /**
      * The model a session runs on: an explicit one, else its agent's, else its project's override,
@@ -171,8 +175,8 @@ export default {
       { type: "object", properties: { provider: str } },
       async i => accounts.list(i.provider ? String(i.provider) : undefined));
 
-    tool("sessions.accounts.add", `Add an account: a label, and the vault item that already holds its credential (add the credential in the Vault first; this never touches its value). scope is { projects: "*"|[slugs], agents: "*"|[names] }, default "*" (every project and agent may use it until it is bound narrower). is_default makes it the provider's pick when nothing else resolves.`,
-      { type: "object", required: ["provider", "label", "vault_item"], properties: { provider: str, label: str, vault_item: str,
+    tool("sessions.accounts.add", `Add an account: a label, its kind, and for an api-key or setup-token the vault item that already holds its credential (add it in the Vault first and grant it to threads; this never touches its value). kind login has no vault item: the provider's own sign-in fills that account's private home. scope is { projects: "*"|[slugs], agents: "*"|[names] }, default "*" (every project and agent may use it until it is bound narrower). is_default makes it the provider's pick when nothing else resolves. Each account runs as its own user on a server, so one account's sign-in is unreadable from another's.`,
+      { type: "object", required: ["provider", "label"], properties: { provider: str, label: str, kind: { type: "string", enum: ACCOUNT_KINDS }, vault_item: str,
         scope: { type: "object", properties: { projects: {}, agents: {} } }, is_default: { type: "boolean" } } },
       async i => accounts.add(i), PEOPLE);
 

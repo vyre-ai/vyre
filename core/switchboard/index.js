@@ -91,6 +91,9 @@ export const MIGRATIONS = [
   // is (chat, agent, project, capsule, job, memory, planner, learn), which picks its model.
   `ALTER TABLE threads_runs ADD COLUMN provider TEXT;
    ALTER TABLE threads_runs ADD COLUMN purpose TEXT;`,
+  // Which account (sessions_accounts, ADR 0030 phase 2) a thread runs on: kept, so a resume never
+  // quietly moves to another person's paid account.
+  `ALTER TABLE threads_runs ADD COLUMN account TEXT;`,
   // Claude Code reports a session's cost as a running total (total_cost_usd, across the turns of
   // one process, continued from the transcript's saved total on a resume): the last one seen, so
   // each turn's own cost is the difference.
@@ -190,7 +193,7 @@ export const LIMIT_NOTICE_AT = 0.8;
 const WATCHED = { "thread.finished": "finished", "ask.raised": "asked", "thread.stopped": "stopped" };
 
 /** Launch options kept with a thread and reused on every resume. */
-const KEPT = ["plugin", "plugins", "tools", "settings", "once", "provider", "purpose", "effort", "quick"];
+const KEPT = ["plugin", "plugins", "tools", "settings", "once", "provider", "purpose", "effort", "quick", "account"];
 
 /** Reasoning effort, as /effort takes it (the Agent SDK's EffortLevel). */
 export const EFFORTS = ["low", "medium", "high", "xhigh", "max"];
@@ -371,7 +374,7 @@ export class Switchboard {
     // is the one person-facing vocabulary (lib/thread-status.js) every surface should read instead.
     return { id: r.id, name: r.name, cwd: r.cwd, project: r.project, agent: r.agent, status: r.status,
       canonical_status: threadStatus(r.status, r.stopped_reason), model: r.model, driver: r.driver || null,
-      provider: r.provider || "claude", purpose: r.purpose || null, mode: r.mode || "default", effort: optsOf(r).effort || null, origin: optsOf(r).origin || null,
+      provider: r.provider || "claude", account: r.account || null, purpose: r.purpose || null, mode: r.mode || "default", effort: optsOf(r).effort || null, origin: optsOf(r).origin || null,
       auth: r.auth, started: r.started_at, last: r.last_at, cost_usd: r.cost_usd, turns: r.turns,
       holder: holder ? holder.surface : null, asks: this.asks.open(id).length, ...(r.stopped_reason ? { stopped_reason: r.stopped_reason } : {}) };
   }
@@ -432,6 +435,21 @@ export class Switchboard {
   }
 
   /**
+   * The account a session on `provider` runs as: sessions.accounts.resolve (scope-checked, never a
+   * guess between two paid accounts). Null when the provider has only this machine's own login.
+   * `resuming`: the thread this is for, whose account must still exist.
+   * @param {{ provider: string, account?: string|null, project?: string|null, agent?: string|null }} q @param {string|null} [resuming]
+   */
+  async accountFor(q, resuming = null) {
+    const r = await this.deps.call("sessions.accounts.resolve", Object.fromEntries(Object.entries(q).filter(([, v]) => v)));
+    if (r.error) {
+      if (resuming && r.error.code === "not_found") throw Object.assign(new Error("the account this session used was removed; pick another to continue it (threads.send with account, or bind one to the project)"), { code: "account_removed", thread: resuming });
+      throw Object.assign(new Error(r.error.message), { code: r.error.code || "bad_input" });
+    }
+    return r.data && !r.data.synthetic ? r.data : null;
+  }
+
+  /**
    * Start a thread, or bring a stopped one back with --resume.
    * @param {{ cwd?: string, project?: string, prompt?: string, name?: string, model?: string, surface?: string,
    *           resume?: string, agent?: string, agent_kind?: string, env?: Record<string,string>, auth?: string,
@@ -468,11 +486,15 @@ export class Switchboard {
         const r = await this.deps.call("sessions.models.resolve", Object.fromEntries(Object.entries({ purpose, project: w.project }).filter(([, v]) => v))).catch(() => null);
         if (r && r.data && r.data.model) o = { ...o, model: r.data.model };
       }
-      o = { ...o, provider, purpose };
+      // Which of the person's accounts on this provider (an explicit one, the teammate's, the
+      // project's, the provider's default), scope-checked however it was chosen. Null: this
+      // machine's own single login, as before accounts existed.
+      const acct = await this.accountFor({ provider, account: o.account, project: w.project, agent: o.agent });
+      o = { ...o, provider, purpose, account: acct ? acct.id : undefined };
       this.db.prepare(`INSERT INTO threads_runs (id, name, cwd, project, agent, agent_kind, status, model, auth, started_at, last_at)
         VALUES (?,?,?,?,?,?, 'starting', ?,?,?,?)`).run(id, o.name || null, w.cwd, w.project, o.agent || null, o.agent_kind || null,
         o.model || null, o.auth || "ambient", now, now);
-      this.db.prepare("UPDATE threads_runs SET provider = ?, purpose = ? WHERE id = ?").run(o.provider, o.purpose, id);
+      this.db.prepare("UPDATE threads_runs SET provider = ?, purpose = ?, account = ? WHERE id = ?").run(o.provider, o.purpose, o.account || null, id);
       // A project's default mode (sessions.mode.set), for a new session a person starts there.
       if (w.project && !o.agent && !o.lean) {
         const m = await this.deps.call("sessions.mode.resolve", { project: w.project }).catch(() => null);
@@ -490,9 +512,19 @@ export class Switchboard {
     }
     await this.room(id);
     if (!this.sdk && this.loadSdk) this.sdk = await this.loadSdk();
+    // The account's own credential, for this child only. On a resume the account must still exist
+    // (a removed one is an ask for another, never the provider's default), and its uid and HOME
+    // are the ones it always had.
+    let acct = null;
+    if (o.account) {
+      acct = await this.accountFor({ provider: rec.provider || o.provider || "claude", account: o.account, project: rec.project, agent: rec.agent }, o.resume ? rec.id : null);
+      const c = this.deps.accountEnv ? await this.deps.accountEnv(acct) : { auth: "subscription", env: {} };
+      o = { ...o, env: { ...(o.env || {}), ...c.env }, accountRun: { id: acct.id, uid: acct.uid, provider: acct.provider, home: this.deps.accountHome ? this.deps.accountHome(acct) : null } };
+      this.db.prepare("UPDATE threads_runs SET auth = ? WHERE id = ?").run(c.auth, id);
+    }
     // A thread no agent runs gets this machine's own Claude credential (sessions.auth): the
     // vault's setup token on a box, Claude Code's login on a Mac. An agent brings its own.
-    if (!o.agent && !(o.env && (o.env.CLAUDE_CODE_OAUTH_TOKEN || o.env.ANTHROPIC_API_KEY)) && this.deps.auth) {
+    if (!o.agent && !acct && !(o.env && (o.env.CLAUDE_CODE_OAUTH_TOKEN || o.env.ANTHROPIC_API_KEY)) && this.deps.auth) {
       const a = await this.deps.auth({ agent: null }).catch(e => { this.deps.log(`threads: ${e.message}; using this machine's own Claude login`); return null; });
       if (a && a.env) { o = { ...o, env: { ...(o.env || {}), ...a.env }, ...(a.fallback && !o.fallback ? { fallback: a.fallback } : {}) }; this.db.prepare("UPDATE threads_runs SET auth = ? WHERE id = ?").run(a.auth, id); }
     }
@@ -721,7 +753,12 @@ export class Switchboard {
     this.live.set(id, state);
     // How the process is spawned (core/sessions/spawn.js): the subreaper, another uid, and its
     // group recorded before it can run anything, for the peer check.
-    const how = { subreaper: this.deps.subreaper || null, ...(this.deps.uid != null ? { uid: this.deps.uid, gid: this.deps.gid } : {}),
+    // An account's own uid where the box can (the spawner); "shared" only for work under /work.
+    // A Mac has one user: a provider that keeps its login in HOME gets one folder per account there.
+    const ar = o.accountRun;
+    if (ar && ar.home) env.HOME = ar.home;
+    const account = ar && ar.uid != null ? { uid: ar.uid, shared: rec.cwd === (process.env.VYRE_WORK || "/work") || String(rec.cwd).startsWith((process.env.VYRE_WORK || "/work") + "/") } : null;
+    const how = { subreaper: this.deps.subreaper || null, ...(this.deps.uid != null ? { uid: this.deps.uid, gid: this.deps.gid } : {}), ...(account ? { account } : {}),
       onSpawn: g => { state.group = g; this.groups.set(g.pgid, g.sid); } };
     const on = { ...how, onMessage: m => { this.touch(id, state); if (!state.pidSet && state.proc && state.proc.pid) { state.pidSet = true; this.set(id, { pid: state.proc.pid }); } this.onMessage(id, state, m); }, onExit: (code, signal, stderr) => this.onExit(id, state, code, signal, stderr) };
     // The Agent SDK when it is loaded (ADR 0030), else the CLI runner: the same protocol, so the
@@ -1836,12 +1873,36 @@ export default {
       const out = { auth: "subscription", env: { CLAUDE_CODE_OAUTH_TOKEN: await fetch("setup-token") } };
       try { return { ...out, fallback: { env: { ANTHROPIC_API_KEY: await fetch("api-key") } } }; } catch { return out; }
     };
+    // An account's credential from the vault (the item must be granted to this module), as the
+    // environment variable its provider's CLI reads. A "login" account has none: its HOME does.
+    const ACCOUNT_ENV = /** @type {Record<string, Record<string, string>>} */ ({
+      claude: { "setup-token": "CLAUDE_CODE_OAUTH_TOKEN", "api-key": "ANTHROPIC_API_KEY" },
+      codex: { "api-key": "OPENAI_API_KEY" },
+      grok: { "api-key": "XAI_API_KEY" },
+    });
+    const accountEnv = async (/** @type {any} */ a) => {
+      if (a.kind === "login") return { auth: "subscription", env: {} };
+      const name = ACCOUNT_ENV[a.provider] && ACCOUNT_ENV[a.provider][a.kind];
+      if (!name) throw Object.assign(new Error(`a ${a.kind} account is not something ${a.provider} takes`), { code: "bad_input" });
+      const v = ctx.vault ? await ctx.vault.fetch(a.vault_item).catch(() => null) : null;
+      if (!v) throw Object.assign(new Error(`the vault has no ${a.vault_item} for ${a.label}, or it is not granted to threads (vyre vault grant ${a.vault_item} threads)`), { code: "no_credential" });
+      return { auth: a.kind === "api-key" ? "api-key" : "subscription", env: { [name]: String(v) } };
+    };
+    // On a box the spawner puts each account in its own uid's HOME. Elsewhere a provider that
+    // keeps its login in HOME (not Claude, whose transcripts Vyre reads from the user's own) gets
+    // one private folder per account.
+    const accountHome = (/** @type {any} */ a) => {
+      if (usesSpawner() || a.provider === "claude") return null;
+      const dir = path.join(root, "accounts", String(a.id));
+      fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
+      return dir;
+    };
     const sb = new Switchboard({
       db: ctx.store.db, call: ctx.call, root,
       transcripts: transcriptFolders((ctx.config && ctx.config.transcripts) || [], root),
       emit: (type, payload, where) => ctx.events.emit(type, payload, where), log: ctx.log,
       prune: (thread, before) => ctx.events.prune("thread.text", { thread, before, has: "delta" }),
-      idleMs: cfg.idle_minutes * 60_000, maxLive: cfg.max_live, auth, providers: ctx.providers,
+      idleMs: cfg.idle_minutes * 60_000, maxLive: cfg.max_live, auth, providers: ctx.providers, accountEnv, accountHome,
       // Each session's own socket (option A): always with "on", with the spawner under "auto".
       // Through the spawner it goes in the box's shared folder; else a private one of this user's.
       threadSocket: cfg.thread_socket === "off" ? null

@@ -11,7 +11,7 @@
   "watches": { "emits": ["thread.started", "thread.sent", "thread.text", "thread.tool", "thread.finished", "thread.stopped",
     "ask.raised", "ask.answered", "lease.changed", "thread.contended", "thread.watched", "thread.limit", "thread.queued", "mode.changed", "thread.turn", "thread.state", "thread.status", "thread.usage", "thread.steered", "thread.unqueued", "thread.rewound", "model.switched", "effort.switched", "thread.task", "thread.thinking", "thinking.switched", "thread.shell", "thread.remembered"] },
   "shows": { "cli": ["threads"] },
-  "needs": { "vault": ["claude-setup-token", "anthropic-api-key"] },
+  "needs": { "vault": ["claude-setup-token", "anthropic-api-key", "per-account"] },
   "teaches": {
     "tips": [
       {"id": "stop-a-turn", "text": "Stop a running turn with `threads.interrupt`, as Escape does in Claude Code. The session stays for your next message.", "surfaces": ["chat", "deck", "cli"], "level": "first-use", "trigger": "on-use", "since": "0.1.0", "docs": "using/sessions.md#stop-a-turn"},
