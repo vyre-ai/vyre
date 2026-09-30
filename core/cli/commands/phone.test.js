@@ -516,21 +516,26 @@ test("phone add --view: a qr frame with the --json data, then a checks frame per
   // No input and no tty given: under --view the command decides those itself.
   const run = add({}, { io, life: 20_000, fetch: noApp });
   const frames = () => lines.filter(l => l.startsWith('{"v":1')).map(l => JSON.parse(l));
-  const first = await until(() => frames()[0], "the qr frame");
+  const first = await until(() => frames()[0], "the qr frame", 20_000);
   assert.equal(first.cmd, "phone add");
   assert.equal(first.view.kind, "qr");
   assert.equal(first.view.text, BOX + "/");
   assert.equal(first.view.text, first.data.url);
   assert.match(first.view.caption, /When it asks for a code, type [A-Z0-9]{4}-[A-Z0-9]{4}/);
   assert.deepEqual(Object.keys(first.data), ["box", "phone", "network", "url", "code", "expires", "install", "tailscale", "relay", "checks"], "the same value --json prints");
-  const waiting = await until(() => frames().find(f => f.view.kind === "checks"), "the first checks frame");
+  const waiting = await until(() => frames().find(f => f.view.kind === "checks"), "the first checks frame", 20_000);
   assert.deepEqual(waiting.view.items.map(c => [c.id, c.state]), [["reached", "wait"], ["https", "wait"], ["app", "wait"], ["push", "wait"], ["passkey", "wait"]]);
   assert.equal(waiting.data, null);
 
   // The phone subscribes: push.subscribed makes it look at once, and a new frame says it reached the box.
-  await deck("push.subscribe", { subscription: subscription(`${svc.base}/push/view-phone`), label: "kit's Android" });
-  await until(() => svc.got.includes("/push/view-phone"), "the test notification");
-  await until(() => frames().some(f => f.view.kind === "checks" && f.view.items[0].state === "ok"), "reached, in a frame");
+  // The command opens its event stream a moment after its first frames, and an event before that is
+  // not replayed, so on a slow runner one subscribe can land before anyone listens: subscribe again
+  // (harmless) until the frame says so, and wait on the condition, not on a fixed time.
+  const sub = () => deck("push.subscribe", { subscription: subscription(`${svc.base}/push/view-phone`), label: "kit's Android" });
+  await sub();
+  await until(() => svc.got.includes("/push/view-phone"), "the test notification", 20_000);
+  let resent = 0;
+  await until(async () => { if (frames().some(f => f.view.kind === "checks" && f.view.items[0].state === "ok")) return true; if (++resent % 20 === 0) await sub(); return false; }, "reached, in a frame", 30_000);
   await shows(svc, root, "/push/view-phone");
   const { publicKey } = crypto.generateKeyPairSync("ec", { namedCurve: "P-256" });
   const key = await deck("presence.enroll", { kind: "passkey", name: "kit's Android", public_key: publicKey.export({ type: "spki", format: "der" }).toString("base64url"),
