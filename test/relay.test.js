@@ -249,10 +249,12 @@ test("relay: an untrusted browser asks to be trusted once, about itself only, an
   // A reloaded Deck can show the ask again: the list carries when it asked, to the owner's surfaces only.
   const listed = (await p.call("relay.devices.list")).data.devices.find(x => x.id === web.reply.device);
   assert.ok(listed.trustAsked > 0 && listed.trustAsked <= Date.now(), JSON.stringify(listed));
+  assert.match(listed.fingerprint, /^[a-z2-7]{4} [a-z2-7]{4}$/);
   assert.equal((await web.call("relay.devices.list")).data.devices.find(x => x.id === web.reply.device).trustAsked, undefined, "a limited browser does not see who is waiting");
   assert.equal((await p.call("relay.devices.list")).data.devices.find(x => x.id === p.reply.device).trustAsked, undefined, "an app device has none");
   assert.deepEqual([asked[0].id, asked[0].name], [web.reply.device, "Harlow Legal laptop"]);
   assert.match(asked[0].fingerprint, /^[a-z2-7]{4} [a-z2-7]{4}$/);
+  assert.equal(listed.fingerprint, asked[0].fingerprint, "the list and the event give the same fingerprint");
   // Again says so and tells nobody twice.
   const second = await web.call("relay.devices.ask-trust");
   assert.deepEqual([second.data.asked, second.data.already], [true, true]);
