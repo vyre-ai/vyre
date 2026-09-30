@@ -4,6 +4,15 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+- The caller check now counts a connection as the person on positive proof only (reviews/platform.md,
+  reviewer-2 and the lead, 30 Sep). Every link up to the top must be readable (a command line, vyred's uid,
+  no child older than its parent), none an agent host (claude, codex, gemini, grok, opencode, cursor-agent,
+  aider, goose, by name) or a thread vyred runs, and the top a root-owned login the kernel names, or a
+  strictly shared ancestor of a terminal-started vyred. Reaching vyred itself or a child of it is a model's
+  (an MCP child, a worker); reaching init proves nothing. Anything else is unreadable, a model's, never
+  cached; a named server (tmux, ssh, an app terminal) stays for the person to prove once. A person's own cron
+  or launchd job calling vyre now reads as a model, which is accepted. Root links are fine in the middle of a chain (login, sshd's privileged half), and a root-owned /usr/bin/login anchors the chain, so Terminal.app and iTerm2 read as the person. A `vyre` the pinned Capsule spawns is proved by the same cdhash at the top of its chain. The test-hosting seam is `setPeerHosting()` (called by test/helpers.js), never read from the environment in shipped code except for a vyred a test starts as a child under node's test runner with a live non-init parent. Tests that host vyred in their own
+  process set VYRE_TEST_HOSTED (`core/daemon/peer.js`, `core/daemon/index.js`, `test/helpers.js`).
 - Closed a second fail-open in the caller check: a forger that sent and exited, and the process above it, were
   exited but not yet reaped, so their command line read as "(node)" (or empty on Linux) and the walk found
   no claude above. A chain through such a process is now unreadable, a model's (`core/daemon/peer.js`).

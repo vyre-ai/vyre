@@ -12,7 +12,11 @@ import path from "node:path";
 import { spawn } from "node:child_process";
 import { tempHome, writeModule } from "./helpers.js";
 import { start, above, asTaken } from "../core/daemon/index.js";
-import { processTable, readPeerPid, insideClaude } from "../core/daemon/peer.js";
+import { processTable, readPeerPid, insideClaude, setPeerHosting } from "../core/daemon/peer.js";
+
+// These prove the production rules: vyred hosted in the test process is not the person's anchor here
+// (setPeerHosting(true) is called by the helpers for the other tests' own clients; the control below sets it).
+setPeerHosting(false);
 
 /** A macOS-shaped snapshot: pid -> row. */
 const rows = obj => new Map(Object.entries(obj).map(([k, v]) => [Number(k), { pgid: Number(k), ...v }]));
@@ -88,7 +92,9 @@ test("peer race: fail closed, an empty ps read or a pid a fresh table lacks is a
   const missing = await one(() => rows(BASE));
   assert.equal(missing.inside, true, "a pid missing from a fresh table");
   // A chain that is whole and holds no claude is read to the top, not failed closed.
-  const person = await one(() => rows({ ...BASE, 700: { ppid: 1, args: "/bin/zsh -l" }, 710: { ppid: 700, args: "vyre call probe.mine" } }));
+  const person = await above({}, registry, "cli", { peerPid: async () => 710, delayMs: 1, alive: () => true,
+    processTable: o => processTable({ ...o, platform: "darwin", read: () => rows({ ...BASE, 700: { ppid: 1, args: "/usr/bin/login -pf alex" }, 710: { ppid: 700, args: "vyre call probe.mine" } }), cache: { at: 0, rows: null } }),
+    insideClaude: (pid, o) => insideClaude(pid, { ...o, exe: () => "/usr/bin/login", started: () => "t" }) });
   assert.equal(person.inside, false, JSON.stringify(person));
   assert.equal(person.unreadable, undefined, "a whole chain is not an unreadable one");
   assert.equal(person.exited, undefined);
@@ -146,13 +152,14 @@ test("peer race: a socket that closed before or during the read gives no pid (it
   assert.equal(await readPeerPid(/** @type {any} */ (closing), seam), null, "closed while the helper ran: its answer is thrown away");
 });
 
-test("peer race: a peer that is vyred itself is a misread and a model's; only an in-process seam lets it through", async () => {
+test("peer race: a peer that is vyred itself is a misread and a model's; only a test hosting vyred lets it through", async () => {
   const deps = { peerPid: async () => process.pid, delayMs: 1, alive: () => true, processTable: () => () => ({ ppid: 1, args: "node" }) };
   const r = await above({}, registry, "cli", deps);
   assert.equal(r.inside, true);
   assert.equal(r.self, true);
-  const seam = await above({}, registry, "cli", { ...deps, self: true });
-  assert.equal(seam.inside, false, "an in-process test client is let through by name");
+  setPeerHosting(true);
+  try { assert.equal((await above({}, registry, "cli", deps)).inside, false, "a test hosting vyred lets its own client through"); }
+  finally { setPeerHosting(false); }
 });
 
 test("peer race: a chain through an exited, unreaped process (no command line) is unreadable, so a model's", async () => {
@@ -164,9 +171,12 @@ test("peer race: a chain through an exited, unreaped process (no command line) i
     assert.equal(r.inside, true, JSON.stringify(args));
     assert.equal(r.unreadable, true);
   }
+  // Parentheses in the middle of a real command line are not an unreaped process (reviewer-2).
+  const paren = insideClaude(20, { look: pid => ({ 20: { ppid: 10, args: "node app.js (x)" }, 10: { ppid: 1, pgid: 10, args: "/usr/bin/login -pf alex" } }[pid] || null), exe: () => "/usr/bin/login", started: () => "t", uid: () => 501, self: 1 });
+  assert.notEqual(paren.unreadable, true, JSON.stringify(paren));
   const live = await above({}, registry, "cli", { peerPid: async () => 20, alive: () => true, delayMs: 1,
-    processTable: () => pid => ({ 20: { ppid: 10, args: "vyre call x", pgid: 10 }, 10: { ppid: 1, args: "/bin/zsh -l", pgid: 10 } }[pid] || null),
-    insideClaude: (pid, o) => insideClaude(pid, { ...o, exe: () => "/bin/zsh", started: () => "t" }) });
+    processTable: () => pid => ({ 20: { ppid: 10, args: "vyre call x", pgid: 10 }, 10: { ppid: 1, args: "/usr/bin/login -pf alex", pgid: 10 } }[pid] || null),
+    insideClaude: (pid, o) => insideClaude(pid, { ...o, exe: () => "/usr/bin/login", started: () => "t" }) });
   assert.equal(live.unreadable, undefined, "readable args are not this case");
 });
 
@@ -211,7 +221,10 @@ test("peer race: 200 forgers under a claude, in bursts, never reach a person's t
   fs.writeFileSync(js, `import http from "node:http";
 const req = http.request({ socketPath: ${JSON.stringify(d.paths.socket)}, path: "/v1/tools/probe.mine", method: "POST", headers: { "content-type": "application/json", "content-length": 2, "x-vyre-caller": "cli" } }, res => { res.resume(); res.on("end", () => process.exit(0)); });
 req.end("{}");`);
-  await new Promise(r => spawn(process.execPath, [js], { stdio: "ignore" }).on("close", r));
+  // The person's own client is this test's child: a test hosting vyred is the one seam that lets it through.
+  setPeerHosting(true);
+  try { await new Promise(r => spawn(process.execPath, [js], { stdio: "ignore" }).on("close", r)); }
+  finally { setPeerHosting(false); }
   assert.equal(globalThis.__probeMineRan, 1, "the person's own cli still runs the tool");
 });
 
