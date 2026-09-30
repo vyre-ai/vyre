@@ -204,3 +204,11 @@ test("assistant.capabilities prompt: the block for the person, never for a proje
   assert.match(ok.data.text, /<install>/);
   assert.equal((await call("assistant.capabilities", { prompt: true }, "mcp:agent:kit")).error.code, "denied");
 });
+
+test("promptBlock: the whole block, header and markers included, is at most 6000 characters", () => {
+  const many = Array.from({ length: 900 }, (_, i) => ({ name: `connector-number-${i}`, working: true }));
+  const b = promptBlock({ connectors: many, teammates: [], agents: [], devices: [], providers: [], not_connected: [] });
+  assert.ok(b.length <= 6000, String(b.length));
+  assert.ok(b.endsWith("</install>"));
+  assert.match(b, /Connected: connector-number-0/);
+});
