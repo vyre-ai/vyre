@@ -19,6 +19,7 @@ const REPO = path.join(path.dirname(fileURLToPath(import.meta.url)), "..");
  *  it is expected, not a bug this test should catch. A tool leaves this list the day every box
  *  registers it - it does not grow to paper over a call nothing answers by design. */
 const OPTIONAL = {
+  "assistant.welcome": "assistant ships it in work/assistant (core/assistant/welcome.js); loadWelcome() treats a missing answer as no welcome row. Leaves this list when assistant merges.",
   "team.retire": "teammates ships it in work/teammates-0.2 (e344434f); the handoff Undo falls back to a plain retire when it is missing or refuses. Leaves this list when teammates merges.",
   "vault.usage": "lives on another machine or module not on every box; falls back when missing.",
   "voice.status": "local/voice is a Mac-local module (deck/chat/core/voice.js); voiceStatus() already treats a missing answer as \"no key\", never assumed present on a box.",

@@ -80,6 +80,12 @@ deck/css/deck.css span.vy-av rules; deck/css/views/agents.css, settings.css.
 - (done by app-design d9f6e445) avatar.md and ADR 0043 should say renaming an agent changes its blob
   (seed = name), and name projectBytes() as the project-tile seed-to-bytes rule for other surfaces.
 
+## 2026-10-01 resume (after a usage-limit restart)
+Doing: CI on 4932f92d (pushed; fixes for the 3 failures on 115745f4: goal chip reads Ctrl+Enter off a Mac, team.retire and thread.artifact listed as ahead of this tree). Range a14ee7bb..4932f92d sent to reviewer-2.
+Done locally (not pushed while CI runs): land cards in deck/chat/cards/land.js, wired into session.js (assistant thread, empty, welcome at the top, refreshed on onboard.stepped); deck tests 934/934 locally in a temp home.
+Next: projects.rename, projects.archive, projects.history (the create result's offer) on the project page; agree sessions' four Deck field shapes in CHAT.md; the route so setup lands on the assistant's thread (launch and assistant own which thread id "/" opens, needs their answer). Merge stage/0.2 when integrator cuts it.
+Needs from others: assistant merges assistant.welcome (contract test lists it optional until then); teammates merges team.retire; launch confirms the onboard.claude result carries state.
+
 ## 0.2 BUILD (started 2026-09-30, lead GO for non-visual work)
 Branch work/native-core-0.2 off origin/main 9381ab15 (stage/0.2 not cut yet; rebase onto it when
 the integrator cuts it). Plan: team/0.2/plans/native-core.md. Contracts: PLAN.md C14/C14b (caps),

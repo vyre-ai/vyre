@@ -4,6 +4,12 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### chat: the land cards, the assistant's first message after setup
+
+- `deck/chat/cards/land.js` (+ `land.css`): `welcomeRow` draws `assistant.welcome` ({text, cards:[{id, title, body, href?}]}) at the top of the assistant's own empty thread, and redraws when `onboard.stepped` says a step finished (its card leaves). A card carries an id and words, never a tool: each known id (`claude`, `tailscale`, `history`, `import`, `phone`) has its own handler here, and an unknown id is drawn only when it carries an https link (reviewer-2's BLOCKER, C21).
+- `claude`: `onboard.claude {mode:"setup-token"}` for the sign-in page (https only), then the pasted code. `history`: `import.scan`, pick folders (suggested ones ticked), `import.plan`, Fast or Gentle with neither preselected, `import.start`. `import`: `import.status` and the `import.progress` event. `phone`: opens Settings > Devices, where the live Vyre code ring already is. `tailscale`: the card's own https link.
+- Tests: `deck/chat/cards/land.test.js` (9). `test/deck-contract.test.js` lists `assistant.welcome` and `team.retire` as optional until assistant and teammates merge; the goal chip test reads `Ctrl+Enter` off a Mac.
+
 #### chat: the common components, designed once (app-design section 10)
 
 - `deck/chat/cards/`: one registry (`index.js`) with two ways in and no third. A blocking ask of kind

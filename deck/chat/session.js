@@ -67,7 +67,8 @@ import { planCard } from "./plan-card.js";
 import { isPlanAsk } from "./core/plan.js";
 import { askCard } from "./ask-item.js";
 import { questionCard } from "./question.js";
-import { askCardFor } from "./cards/index.js";
+import { askCardFor, defaultOpen } from "./cards/index.js";
+import { welcomeRow, loadWelcome } from "./cards/land.js";
 import { macAnswersHeld } from "./presence.js";
 import { mountComposer } from "./composer.js";
 import { duration, elapsed, toolTitle, toolVerb } from "./lib/blocks.js";
@@ -262,6 +263,8 @@ export function mountSession(container, opts) {
   let names = /** @type {{ assistant: string|null, owner: string|null }} */ ({ assistant: null, owner: null });
   let me = /** @type {string|null} */ (null);
   let replaying = false, booted = false;
+  /** The assistant's first message (cards/land.js), only in its own thread and only while nothing was said. */
+  let welcomeEl = /** @type {any} */ (null);
   const early = /** @type {any[]} */ ([]);
   const agentName = () => labelFor({ role: "assistant", agent: record.current?.agent }, names);
   /** Who the replies are from, as an avatar (js/avatars.js threadAvatar): the project's tile, a chat's draft tile, an agent, a teammate or the assistant. */
@@ -1211,6 +1214,7 @@ export function mountSession(container, opts) {
       if (from > 0) timeline.append(earlierTurns(from));
       if (!t.data.turns.length) timeline.append(h("div", { class: "empty th-wait" }, "Nothing was said in this session yet."));
       appendTurns(t.data.turns);
+      if (!t.data.turns.length) void showWelcome();
       booted = true;
       for (const e of early.splice(0)) onLive(e);
       toBottom();
@@ -1221,11 +1225,27 @@ export function mountSession(container, opts) {
     timeline.replaceChildren();
     for (const e of r.data.events) onEvent(e, false);
     for (const a of r.data.asks) upsertAsk(a);
+    if (!r.data.events.length) void showWelcome();
     booted = true;
     for (const e of early.splice(0)) onLive(e);
     toBottom();
     seek();
     fetchMemory();
+  }
+  /** The assistant's welcome, at the top of its own empty thread. It stays at the top of the thread,
+   * and is redrawn when a setup step finishes (its card leaves). Nothing here is an error: no welcome, no row. */
+  async function showWelcome() {
+    if (welcomeEl || !isAssistant({ agent: record.current?.agent }, names)) return;
+    const w = await loadWelcome();
+    if (!w || welcomeEl || !timeline.isConnected) return;
+    welcomeEl = welcomeRow(w, { open: defaultOpen });
+    timeline.querySelector?.(".th-wait")?.remove?.();
+    timeline.prepend(welcomeEl);
+  }
+  async function refreshWelcome() {
+    if (!welcomeEl) return;
+    const w = await loadWelcome();
+    if (w && welcomeEl) welcomeEl.update(w);
   }
   /** "Show earlier" (the older read): the turns before `upto`, read and put above what is on screen. */
   function earlierTurns(/** @type {number} */ upto) {
@@ -1591,6 +1611,7 @@ export function mountSession(container, opts) {
     on("lease.changed", onLive),
     // memory.curated carries no thread: refetch this open thread and let the id dedup filter it.
     on("memory.curated", () => fetchMemory()),
+    on("onboard.stepped", () => { void refreshWelcome(); }),
     // Filed into a project (projects.add-threads, or made into one): the project's tile from now on.
     on("thread.picked", e => { if ((e.payload?.thread || e.thread) === thread) void refile(e.payload?.project); }),
     on("session.indexed", e => { if ((e.thread || e.payload?.session) !== thread) return; if (mode === "blocks") refresh(); else readMoreLegacy(); }),
@@ -1621,6 +1642,7 @@ export function mountSession(container, opts) {
     if (rawTimer) clearTimeout(rawTimer);
     if (tickTimer) clearTimeout(tickTimer);
     for (const el of els.values()) el.stop?.();
+    welcomeEl?.stop?.();
   };
 }
 
