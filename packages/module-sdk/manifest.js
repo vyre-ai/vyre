@@ -13,6 +13,7 @@
 // there is no hand-written capabilities key).
 
 import fs from "node:fs";
+import { CONTRACT, supports, moduleContract } from "./contract.js";
 
 /** The module API majors this Vyre loads. */
 export const API_VERSIONS = [1];
@@ -44,18 +45,23 @@ const resolve = (root, ref) => {
 };
 
 /**
- * Check a value against a schema. Returns problems as readable lines, empty when it passes.
- * @param {any} schema @param {any} value @param {string} [where] @param {any} [root]
+ * Check a value against a schema. Returns problems as readable lines, empty when it passes. An
+ * object marked "x-unknown": "warn" (the manifest's own) doesn't fail on a key it doesn't know:
+ * the key goes to `warn`, since it may be a typo or a key from a newer contract minor (ADR 0047
+ * section 8). Without `warn`, such keys are dropped quietly.
+ * @param {any} schema @param {any} value @param {string} [where] @param {any} [root] @param {string[] | null} [warn]
  * @returns {string[]}
  */
-export function checkSchema(schema, value, where = "manifest", root = schema) {
+export function checkSchema(schema, value, where = "manifest", root = schema, warn = null) {
   if (schema === true || schema === undefined) return [];
   if (schema === false) return [`${where} is not allowed`];
-  if (schema.$ref) return checkSchema(resolve(root, schema.$ref), value, where, root);
+  if (schema.$ref) return checkSchema(resolve(root, schema.$ref), value, where, root, warn);
   const say = (/** @type {string} */ fallback) => `${where} ${schema["x-message"] || fallback}`;
   if (schema.anyOf) {
-    const tries = schema.anyOf.map((/** @type {any} */ s) => checkSchema(s, value, where, root));
-    if (tries.some((/** @type {string[]} */ t) => t.length === 0)) return [];
+    const sinks = schema.anyOf.map(() => /** @type {string[]} */ ([]));
+    const tries = schema.anyOf.map((/** @type {any} */ s, /** @type {number} */ i) => checkSchema(s, value, where, root, sinks[i]));
+    const pass = tries.findIndex((/** @type {string[]} */ t) => t.length === 0);
+    if (pass >= 0) { if (warn) warn.push(...sinks[pass]); return []; }
     // A branch of the value's own type says more than "must be string": an object tool entry
     // missing its name should say so, not that it isn't a name.
     const typed = tries.filter((/** @type {string[]} */ t) => !(t.length === 1 && t[0].startsWith(`${where} must be `) && /must be (object|array|string|number|integer|boolean|null)( or \w+)*$/.test(t[0])));
@@ -81,7 +87,7 @@ export function checkSchema(schema, value, where = "manifest", root = schema) {
   if (Array.isArray(value)) {
     if (schema.minItems !== undefined && value.length < schema.minItems) out.push(`${where} needs at least ${schema.minItems}`);
     if (schema.uniqueItems && new Set(value.map(v => JSON.stringify(v))).size !== value.length) out.push(`${where} has duplicates`);
-    if (schema.items) value.forEach((v, i) => out.push(...checkSchema(schema.items, v, `${where}[${i}]`, root)));
+    if (schema.items) value.forEach((v, i) => out.push(...checkSchema(schema.items, v, `${where}[${i}]`, root, warn)));
   }
   if (TYPES.object(value)) {
     for (const k of schema.required || []) if (value[k] === undefined) out.push(`${where}.${k} is required`);
@@ -90,14 +96,15 @@ export function checkSchema(schema, value, where = "manifest", root = schema) {
     for (const [k, v] of Object.entries(value)) {
       const at = `${where}.${k}`;
       if (schema.propertyNames) {
-        const bad = checkSchema(schema.propertyNames, k, `${where} key "${k}"`, root);
+        const bad = checkSchema(schema.propertyNames, k, `${where} key "${k}"`, root, warn);
         if (bad.length) { out.push(...bad); continue; }
       }
-      if (k in props) { out.push(...checkSchema(props[k], v, at, root)); continue; }
+      if (k in props) { out.push(...checkSchema(props[k], v, at, root, warn)); continue; }
       const matched = patterns.filter(([re]) => re.test(k));
-      if (matched.length) { for (const [, s] of matched) out.push(...checkSchema(s, v, at, root)); continue; }
-      if (schema.additionalProperties === false) out.push(where.startsWith("manifest") ? `${at} is not a manifest key in module API 1` : `${at} is not allowed`);
-      else if (schema.additionalProperties !== undefined) out.push(...checkSchema(schema.additionalProperties, v, at, root));
+      if (matched.length) { for (const [, s] of matched) out.push(...checkSchema(s, v, at, root, warn)); continue; }
+      if (schema["x-unknown"] === "warn") { if (warn) warn.push(`${at} is not a key in module contract ${CONTRACT.current}; it is ignored (a typo, or a key from a newer contract)`); }
+      else if (schema.additionalProperties === false) out.push(where.startsWith("manifest") ? `${at} is not a manifest key in module API 1` : `${at} is not allowed`);
+      else if (schema.additionalProperties !== undefined) out.push(...checkSchema(schema.additionalProperties, v, at, root, warn));
     }
   }
   return out;
@@ -112,8 +119,34 @@ export function checkSchema(schema, value, where = "manifest", root = schema) {
  * @returns {string[]}
  */
 export function checkManifest(m, { firstParty = false } = {}) {
-  const out = checkSchema(SCHEMA, m);
-  if (!TYPES.object(m) || typeof m.name !== "string") return out;
+  return checkManifestFull(m, { firstParty }).problems;
+}
+
+/**
+ * checkManifest with its warnings: unknown keys and deprecated usages, which never fail a check
+ * (ADR 0047 section 8). A module naming a contract this Vyre doesn't speak gets that as its one
+ * problem, and nothing else is read: its keys may be from the newer contract.
+ * @param {any} m
+ * @param {{ firstParty?: boolean, contract?: string }} [opts] contract: the version to check against
+ * @returns {{ problems: string[], warnings: string[] }}
+ */
+export function checkManifestFull(m, { firstParty = false, contract } = {}) {
+  /** @type {string[]} */
+  const warnings = [];
+  if (TYPES.object(m) && (m.vyre !== undefined || m.apiVersion !== undefined)) {
+    const named = moduleContract(m, { assume: false });
+    const s = supports(named, { name: typeof m.name === "string" ? m.name : "this module", ...(contract ? { contract } : {}) });
+    if (!s.ok) return { problems: [s.message], warnings };
+  }
+  const out = checkSchema(SCHEMA, m, "manifest", SCHEMA, warnings);
+  if (!TYPES.object(m) || typeof m.name !== "string") return { problems: out, warnings };
+  // Deprecated: they work, and warn (ADR 0047 section 8).
+  if (m.apiVersion !== undefined) warnings.push(`apiVersion is deprecated; use "vyre": "${m.apiVersion}"${m.vyre !== undefined ? " (vyre is set, so apiVersion can go)" : ""}`);
+  if (TYPES.object(m.does) && m.does.senders !== undefined) warnings.push("does.senders is deprecated; mark each sending tool outward instead");
+  if (TYPES.object(m.shows) && m.shows.cli !== undefined) warnings.push("shows.cli is deprecated; use does.commands");
+  if (firstParty && TYPES.object(m.does) && Array.isArray(m.does.tools) && m.does.tools.some((/** @type {unknown} */ t) => typeof t === "string")) {
+    warnings.push("string tool entries are deprecated; write each as { \"name\": ..., \"reach\": ... } when you next touch it");
+  }
   const own = (/** @type {string} */ t) => t.startsWith(m.name + ".");
   const does = TYPES.object(m.does) ? m.does : {};
   const entries = Array.isArray(does.tools) ? does.tools : [];
@@ -133,7 +166,7 @@ export function checkManifest(m, { firstParty = false } = {}) {
   // An added module (ADR 0047): everything the install card shows is declared, and nothing reaches
   // past what a sandboxed host can offer in 0.2.
   if (!firstParty) {
-    if (m.apiVersion === undefined) out.push(`apiVersion is required outside Vyre's own modules; add "apiVersion": ${API_VERSIONS[API_VERSIONS.length - 1]}`);
+    if (m.vyre === undefined && m.apiVersion === undefined) out.push(`"vyre" is required outside Vyre's own modules; add "vyre": "${CONTRACT.current.split(".")[0]}"`);
     if (m.description === undefined) out.push("description is required outside Vyre's own modules: one plain sentence for the install card");
     for (const t of entries) {
       if (typeof t === "string") { out.push(`tool "${t}" must be an object like { "name": "${t}", "summary": "...", "reach": "anyone" } in an added module`); continue; }
@@ -198,7 +231,7 @@ export function checkManifest(m, { firstParty = false } = {}) {
   // A replacement registers the original's tools, so it carries the original's name; replaces
   // says so out loud, since a duplicate name without it is refused.
   if (typeof m.replaces === "string" && m.replaces !== m.name) out.push(`replaces is "${m.replaces}" but the module is named "${m.name}"; a replacement takes the name of the module it replaces`);
-  return out;
+  return { problems: out, warnings };
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -300,3 +333,5 @@ export function updatePlan(oldLock, newManifest, newTreeSha, { asked = false, st
   const codeChanged = !oldLock || oldLock.sha256 !== newTreeSha;
   return { action: w.length ? "card" : asked || standing ? "install" : "wait", codeChanged, widened: w };
 }
+
+export { CONTRACT, supports, parseContract, moduleContract, adapterFor } from "./contract.js";

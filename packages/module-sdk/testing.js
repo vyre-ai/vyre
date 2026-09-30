@@ -29,6 +29,7 @@ import { AsyncLocalStorage } from "node:async_hooks";
 import { DatabaseSync } from "node:sqlite";
 import { createHash } from "node:crypto";
 import { checkSchema, toolEntries } from "./manifest.js";
+import { CONTRACT, supports, moduleContract, adapterFor } from "./contract.js";
 
 /** Event families only their owner may emit (ADR 0047 section 2). */
 const RESERVED = ["sync.", "gate.", "presence.", "vault."];
@@ -63,7 +64,7 @@ const hostAllowed = (/** @type {string[]} */ list, /** @type {URL} */ u) => list
 /**
  * What the fakes answer. Every key is optional; each fake has a plain default.
  * @typedef {{
- *   home?: string, firstParty?: boolean,
+ *   home?: string, firstParty?: boolean, contract?: string,
  *   tools?: Record<string, ((input: any, meta: any) => any) | { reach?: string, run: (input: any, meta: any) => any }>,
  *   vault?: ((id: string, req: any) => any) | Record<string, any>,
  *   fetch?: (url: string, init: any) => any,
@@ -81,8 +82,15 @@ const hostAllowed = (/** @type {string[]} */ list, /** @type {URL} */ u) => list
  * @param {Options} [opts]
  */
 export function createTestContext(manifest, opts = {}) {
-  const m = manifest;
-  if (!m || typeof m.name !== "string") throw new Error("createTestContext needs a manifest with a name");
+  if (!manifest || typeof manifest.name !== "string") throw new Error("createTestContext needs a manifest with a name");
+  // The contract this harness speaks, and the adapter the module's own contract goes through
+  // (compat/v<major>.js; the identity for contract 1 today).
+  const contract = opts.contract || CONTRACT.current;
+  const named = moduleContract(manifest);
+  const ok = supports(named, { name: manifest.name, contract });
+  if (!ok.ok) throw Object.assign(new Error(ok.message), { code: "unsupported" });
+  const adapter = adapterFor(named);
+  const m = adapter.manifest(manifest);
   const name = m.name, firstParty = Boolean(opts.firstParty);
   const made = !opts.home;
   const home = opts.home || fs.mkdtempSync(path.join(os.tmpdir(), `vyre-module-${name}-`));
@@ -117,6 +125,10 @@ export function createTestContext(manifest, opts = {}) {
   /** What the module did that its manifest doesn't allow: the conformance test reads these. */
   /** @type {string[]} */
   const violations = [];
+  /** Deprecated usages at run time: they work, and warn (ADR 0047 section 8). */
+  /** @type {string[]} */
+  const warnings = [];
+  const warnOnce = (/** @type {string} */ w) => { if (!warnings.includes(w)) warnings.push(w); };
   /** Memory rows written through the default memory.write fake. */
   /** @type {any[]} */
   const memory = [];
@@ -218,7 +230,7 @@ export function createTestContext(manifest, opts = {}) {
   /** @type {import("./index.d.ts").ModuleContext} */
   const ctx = /** @type {any} */ ({
     name, version: m.version,
-    api: { version: 1, has: (/** @type {string} */ f) => FEATURES.includes(f) },
+    api: { version: contract, has: (/** @type {string} */ f) => FEATURES.includes(f) },
     log: Object.assign((/** @type {string} */ message, /** @type {unknown} */ extra) => { logs.push({ level: "info", message, extra }); },
       Object.fromEntries(["info", "warn", "error", "debug"].map(level => [level, (/** @type {string} */ message, /** @type {unknown} */ extra) => { logs.push({ level, message, extra }); }]))),
     tool(/** @type {string} */ tool, /** @type {any} */ def) {
@@ -227,6 +239,8 @@ export function createTestContext(manifest, opts = {}) {
       if (!def || typeof def.run !== "function") throw new Error(`tool ${tool} needs a run function`);
       if (!firstParty && def.presence) throw new Error(violate(`tool ${tool} declares presence; presence is never a module's to declare, use reach "asked"`));
       if (!firstParty && (def.internal || def.hook)) throw new Error(violate(`tool ${tool} sets ${def.internal ? "internal" : "hook"}; declare reach "${def.internal ? "modules" : "hook"}" in module.json instead`));
+      if (!firstParty && def.callers) throw new Error(violate(`tool ${tool} sets callers; declare reach in module.json instead`));
+      if (firstParty && (def.callers || def.internal)) warnOnce(`tool ${tool} sets ${def.callers ? "callers" : "internal"}, which is deprecated; declare reach in module.json`);
       if (def.examples !== undefined && !Array.isArray(def.examples)) throw new Error(`tool ${tool}: examples must be a list of { input }`);
       tools.set(tool, { ...def, input: def.input || { type: "object" }, entry: entries.get(tool), declared: objectForm.has(tool) });
     },
@@ -346,6 +360,7 @@ export function createTestContext(manifest, opts = {}) {
       },
       // Deprecated alias: a fact, declared as "fact" or under its old kind in teaches.memory.
       teach: async (/** @type {string} */ kind, /** @type {unknown} */ fact) => {
+        warnOnce("ctx.memory.teach is deprecated; use ctx.memory.write({ kind: \"fact\", text })");
         if (!memoryKinds.includes("fact") && !memoryKinds.includes(kind)) throw undeclared(`ctx.memory.teach ${kind}, which teaches.memory does not list`);
         const r = await writeMemory({ kind: "fact", text: typeof fact === "string" ? fact : JSON.stringify(fact), subject: kind, from: `module:${name}`, ...(firstParty ? {} : { untrusted: true }) });
         return !r.error;
@@ -456,7 +471,7 @@ export function createTestContext(manifest, opts = {}) {
   }
 
   return {
-    ctx, home, dir: home, holds, calls, events, logs, memory, violations, tools, registered, gateItems,
+    ctx: adapter.context(ctx), home, dir: home, holds, calls, events, logs, memory, violations, warnings, tools, registered, gateItems, adapter,
     /** Call one of this module's tools as the person (default), an agent, another module or the webhook. */
     call: (/** @type {string} */ tool, /** @type {any} */ input = {}, /** @type {As} */ as = {}) => route(tool, input, as),
     /** Approve a held outward call, as the person at the Gate: it runs as module:gate, with content they may have edited. */
@@ -491,6 +506,7 @@ export function createTestContext(manifest, opts = {}) {
  */
 export async function testModule(dir, opts = {}) {
   const manifest = JSON.parse(fs.readFileSync(path.join(dir, "module.json"), "utf8"));
+  // Checked before anything is imported: a module for a newer contract never runs here either.
   const t = createTestContext(manifest, opts);
   const entry = path.resolve(dir, manifest.main || "index.js");
   const mod = (await import(pathToFileURL(entry).href)).default;

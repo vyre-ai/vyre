@@ -16,6 +16,12 @@ Everything an outside author needs to write a Vyre module against module API 1
   card, computed from the manifest alone, `widened(before, after)` lists what an update adds, and
   `updatePlan(lock, manifest, sha, { asked, standing })` says whether to install, show the card or
   wait.
+- `contract.json` and `contract.js` (`@vyre/module-sdk/contract`): the module contract this Vyre
+  speaks (`"current": "1.0"`), the supported majors, and the first release of each minor.
+  `supports(vyre)` answers `{ ok }` or the plain line a person reads. A module names its contract
+  in module.json as `"vyre": "1"`. `compat/` holds the adapter for each supported major.
+  `checkManifestFull()` returns `{ problems, warnings }`: unknown keys and deprecated usages only
+  warn (ADR 0047 section 8).
 - `testing.js` (`@vyre/module-sdk/testing`): `testModule(dir)` starts a module over a temp home
   with a fake registry, Gate, vault, spend and push, and no daemon.
 - `conform.js` (`@vyre/module-sdk/conform`): `conformModule(dir)` runs the checks every module must

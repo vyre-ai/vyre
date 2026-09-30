@@ -9,7 +9,7 @@ import { checkManifest, toolEntries, capabilities, widened, updatePlan, REACHES 
 /** The ADR's example, from the sample world: an added module in v1 shape. */
 const bakery = () => ({
   $schema: "https://vyre.run/schema/module-1.json",
-  name: "bakery", version: "0.1.0", apiVersion: 1,
+  name: "bakery", version: "0.1.0", vyre: "1",
   description: "Northwind Bakery's orders, the daily target and the flour order.",
   roles: ["box"],
   does: {
@@ -53,7 +53,7 @@ test("v1: tool entries in either form, named once, and mapped tools find both fo
   has(edit(m => { m.does.tools[3].outward = "email"; }), /outward must be one of send, post, pay, delete/);
   has(edit(m => { m.does.tools[3].cost = "free"; }), /cost must be "paid"/);
   has(edit(m => { m.does.tools[0].summary = "orders \u2014 today"; }), /no em dash or section sign/);
-  has(edit(m => { m.does.tools[0].colour = "red"; }), /colour is not a manifest key/);
+  assert.deepEqual(edit(m => { m.does.tools[0].colour = "red"; }), [], "an unknown key is a warning");
   assert.deepEqual(edit(m => { m.does.tools[0]["x-note"] = 1; }), []);
   // A string entry and an object entry are both names a command, hook or setting may map to.
   assert.deepEqual(edit(m => { m.does.tools = ["bakery.orders", { name: "bakery.brief" }]; m.does.hooks = { brief: "bakery.brief" }; m.shows = {}; m.settings = []; }, true), []);
@@ -61,7 +61,7 @@ test("v1: tool entries in either form, named once, and mapped tools find both fo
 });
 
 test("v1: an added module keeps to the stricter rules, and Vyre's own may not need to", () => {
-  has(edit(m => { delete m.apiVersion; }), /apiVersion is required outside Vyre's own modules/);
+  has(edit(m => { delete m.vyre; }), /"vyre" is required outside Vyre's own modules; add "vyre": "1"/);
   has(edit(m => { delete m.description; }), /description is required/);
   has(edit(m => { m.does.tools[0] = "bakery.orders"; }), /tool "bakery\.orders" must be an object like/);
   has(edit(m => { m.does.tools[2].reach = "person"; }), /reach "person" is kept for Vyre's own tools; use "asked"/);
@@ -80,7 +80,7 @@ test("v1: an added module keeps to the stricter rules, and Vyre's own may not ne
   assert.deepEqual(edit(m => { m.roles = ["mac", "windows"]; }), []);
   // Built in: string entries, person reach and the built in only keys stay valid.
   assert.deepEqual(edit(m => {
-    delete m.apiVersion; delete m.description;
+    delete m.vyre; delete m.description;
     m.does.tools[0] = "bakery.orders"; m.does.tools[2].reach = "person";
     m.does.providers = ["oven"]; m.shows.streams = ["live"]; m.needs.vault = ["bakery-key"];
   }, true), []);

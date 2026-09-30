@@ -12,6 +12,8 @@
 
 /** The module API major this file describes. */
 export declare const API_VERSION: 1;
+/** The module contract version this file describes (contract.json "current"). */
+export declare const CONTRACT_VERSION: "1.0";
 
 // ---- The manifest (module.json); the schema is manifest.schema.json --------------------------
 
@@ -93,7 +95,12 @@ export interface Manifest {
   $schema?: string;
   name: string;
   version: string;
-  /** The module API major this module is written for. Required for an added module. */
+  /**
+   * The module contract it is written for: the major ("1"), or "1.2" when it needs something added
+   * in minor 2. Required for an added module; a Vyre that doesn't speak it never imports the module.
+   */
+  vyre?: string;
+  /** @deprecated Use vyre. Read as "vyre": "1". */
   apiVersion?: 1;
   /** One plain sentence for the install card. Required for an added module. */
   description?: string;
@@ -366,8 +373,11 @@ export interface ModuleContext {
   readonly name: string;
   /** This module's version, from module.json. */
   readonly version: string;
-  /** The module API this vyred speaks (1), and feature tests for additions inside the major. */
-  readonly api: { version: 1; has(feature: string): boolean };
+  /**
+   * The module contract this Vyre speaks, like "1.0", and feature tests for additions inside the
+   * major: a module that can do without a newer member checks for it and works either way.
+   */
+  readonly api: { version: string; has(feature: string): boolean };
   /** Logs prefixed with the module's name: `vyre logs <module>`. */
   log: ModuleLog;
   /**

@@ -14,7 +14,8 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
-import { checkManifest, checkSchema, toolEntries } from "./manifest.js";
+import { checkManifestFull, checkSchema, toolEntries } from "./manifest.js";
+import { supports, moduleContract } from "./contract.js";
 import { createTestContext } from "./testing.js";
 
 /** Node built ins an added module may not import: a process, a socket or a thread of its own. */
@@ -215,21 +216,49 @@ const schemaOf = db => JSON.stringify(db.prepare("SELECT type, name, sql FROM sq
 const callerFor = (/** @type {string} */ reach) => (reach === "modules" ? "module" : reach === "hook" ? "hook" : "person");
 
 /**
- * Run the conformance checks on a module folder. Empty means it conforms.
+ * Run the conformance checks on a module folder. Empty means it conforms. The array also carries
+ * the warnings (unknown keys, deprecated usages) as a non-enumerable `warnings`; conformModuleFull
+ * returns them side by side. Warnings never fail.
  * @param {string} dir
  * @param {import("./testing.js").Options & { firstParty?: boolean }} [opts]
- * @returns {Promise<string[]>}
+ * @returns {Promise<string[] & { warnings?: string[] }>}
  */
 export async function conformModule(dir, opts = {}) {
+  const { failures, warnings } = await conformModuleFull(dir, opts);
+  return Object.defineProperty(failures, "warnings", { value: warnings, enumerable: false });
+}
+
+/**
+ * The conformance checks, with failures and warnings apart. A module that names a contract this
+ * Vyre (or opts.contract, the version under test) doesn't speak gets that one failure, and its
+ * code is never imported.
+ * @param {string} dir
+ * @param {import("./testing.js").Options & { firstParty?: boolean }} [opts]
+ * @returns {Promise<{ failures: string[], warnings: string[] }>}
+ */
+export async function conformModuleFull(dir, opts = {}) {
+  /** @type {string[]} */
+  const warnings = [];
+  const out = (/** @type {string[]} */ f) => ({ failures: [...new Set(f)], warnings: [...new Set(warnings)] });
+  return out(await checks(dir, opts, warnings));
+}
+
+/** @param {string} dir @param {any} opts @param {string[]} warnings @returns {Promise<string[]>} */
+async function checks(dir, opts, warnings) {
   const fails = [];
   const firstParty = Boolean(opts.firstParty);
   /** @type {any} */
   let m;
   try { m = JSON.parse(fs.readFileSync(path.join(dir, "module.json"), "utf8")); }
   catch (e) { return [`module.json does not read: ${/** @type {Error} */ (e).message}`]; }
+  // 0. A contract this Vyre doesn't speak: the one failure, and nothing is imported (ADR 0047 section 8).
+  const speaks = supports(moduleContract(m), { name: typeof m.name === "string" ? m.name : "this module", ...(opts.contract ? { contract: opts.contract } : {}) });
+  if (!speaks.ok) return [speaks.message];
 
   // 1. The manifest, as an added module unless told otherwise.
-  for (const p of checkManifest(m, { firstParty })) fails.push(`manifest: ${p}`);
+  const checked = checkManifestFull(m, { firstParty, ...(opts.contract ? { contract: opts.contract } : {}) });
+  for (const p of checked.problems) fails.push(`manifest: ${p}`);
+  warnings.push(...checked.warnings);
   // 2. The static import scan, and the ctx doors the source uses against their declarations.
   fails.push(...scanImports(dir));
   fails.push(...scanDoors(dir, m));
@@ -325,6 +354,7 @@ export async function conformModule(dir, opts = {}) {
     }
     for (const x of timers.armed()) fails.push(`${x.kind === "interval" ? "an" : "a"} ${x.kind} of ${x.ms} ms (armed during ${x.phase}) was still running after stop; clear it in stop()`);
     const schema = schemaOf(t.ctx.store.db);
+    warnings.push(...t.warnings);
     await t.stop();
 
     // 10. Migrations run twice leave one schema: start again over the same home.

@@ -7,7 +7,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { checkManifest, checkSchema, SCHEMA, API_VERSIONS } from "../packages/module-sdk/manifest.js";
+import { checkManifest, checkManifestFull, checkSchema, SCHEMA, API_VERSIONS } from "../packages/module-sdk/manifest.js";
 import { validate, Registry } from "../core/modules/index.js";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
@@ -78,13 +78,18 @@ test("module sdk: the checker refuses with a reason a person can act on", () => 
 
   has(bad(m => { m.name = "Bakery"; }), /manifest\.name must be lowercase letters, digits and dashes/);
   has(bad(m => { delete m.version; }), /manifest\.version is required/);
-  has(bad(m => { m.apiVersion = 2; }), /apiVersion must be at most 1/);
-  has(bad(m => { m.color = "red"; }), /manifest\.color is not a manifest key in module API 1/);
-  has(bad(m => { m.does.widgets = []; }), /does\.widgets is not a manifest key/);
+  has(bad(m => { m.apiVersion = 2; }), /bakery needs a newer Vyre \(module contract 2\); this Vyre has 1\.0/);
+  // Unknown keys are warnings, never problems: a typo, or a key from a newer contract (ADR 0047 section 8).
+  const warned = (/** @type {(m: any) => void} */ e) => { const m = full(); e(m); return checkManifestFull(m, { firstParty: true }); };
+  for (const [e, re] of /** @type {[(m: any) => void, RegExp][]} */ ([[m => { m.color = "red"; }, /manifest\.color is not a key in module contract 1\.0; it is ignored/],
+    [m => { m.does.widgets = []; }, /does\.widgets is not a key/], [m => { m.does.hooks.everything = "bakery.brief"; }, /does\.hooks\.everything is not a key/]])) {
+    const r = warned(e);
+    assert.deepEqual(r.problems, []);
+    has(r.warnings, re);
+  }
   has(bad(m => { m.does.tools.push("oven.bake"); }), /tool "oven\.bake" must start with "bakery\."/);
   has(bad(m => { m.does.tools.push("bakery"); }), /must look like module\.verb/);
   has(bad(m => { m.does.hooks.stop = "bakery.missing"; }), /does\.hooks\.stop names bakery\.missing, which is not under does\.tools/);
-  has(bad(m => { m.does.hooks.everything = "bakery.brief"; }), /does\.hooks\.everything is not a manifest key/);
   has(bad(m => { m.does.apps.oven.actions.bake = "bakery.bake"; }), /does\.apps\.oven\.actions\.bake names bakery\.bake/);
   has(bad(m => { m.does.commands[0].tool = "bakery.gone"; }), /does\.commands\[0\] names bakery\.gone, which is not under does\.tools/);
   has(bad(m => { m.does.commands[0].summary = "Today's orders."; }), /must be one lowercase line with no final period/);
