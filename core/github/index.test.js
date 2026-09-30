@@ -687,7 +687,7 @@ test("github.mentions.search / .resolve: the # picker lists repos, open PRs and 
   assert.match(pr.data.text, /form\.js \(\+4 -1\)/);
   assert.match(pr.data.text, /Comment by mallory/);
   assert.match((await w.as("deck")("github.mentions.resolve", { id: "issue:alex/harlow-legal#3" })).data.text, /Labels: bug/);
-  for (const id of ["repo:../x", "pr:alex/harlow-legal#0", "file:/etc/passwd", "repo:alex/x?y=1"]) assert.equal((await w.as("deck")("github.mentions.resolve", { id })).error.code, "bad_input", id);
+  for (const id of ["repo:../x", "repo:alex/..", "pr:alex/.#3", "pr:alex/harlow-legal#0", "file:/etc/passwd", "repo:alex/x?y=1"]) assert.equal((await w.as("deck")("github.mentions.resolve", { id })).error.code, "bad_input", id);
   assert.equal((await w.as("deck")("github.mentions.resolve", { id: "repo:nobody/nothing" })).error.code, "not_found");
   assert.equal((await w.as("module:evil", { firstParty: true })("github.mentions.search", { q: "x" })).error.code, "denied");
   assert.ok(log.every(l => l.auth === "Bearer test-token"), "only the connected account's token, never anything else");
