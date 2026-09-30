@@ -13,7 +13,7 @@
 // · sends when back online". No agent path: only a person's click or key acts (a script-made
 // event, isTrusted false, is ignored), and update() only redraws. A collaborator's comment is
 // outside text: collapsed unless it anchors to a file that is already open, text nodes only.
-// The Capsule's compact form reads data-compact (title, branch, checks, state) off the card.
+// Lumen's compact form reads data-compact (title, branch, checks, state) off the card.
 
 import { h, put, isPhone } from "../../js/dom.js";
 import { queued } from "../../js/api.js";

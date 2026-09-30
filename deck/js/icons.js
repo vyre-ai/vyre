@@ -46,7 +46,7 @@ const P = {
   // Gate"), reused on the Connections card's Agents grant chip when off (chip.md's Asking state:
   // it needs Touch ID or a passkey to turn on).
   shield: '<path d="M8 1.5l5.5 2v4c0 3.5-2.4 6-5.5 7-3.1-1-5.5-3.5-5.5-7v-4z"/>',
-  // The Connections board's own Capsule surface glyph (docs/design/one-app/project/
+  // The Connections board's own Lumen surface glyph (docs/design/one-app/project/
   // Connections.dc.html): not yet in icons.md's table, added here so the chip has one.
   capsule: '<rect x="2" y="6" width="12" height="4" rx="2"/>',
 };

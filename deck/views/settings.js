@@ -356,7 +356,7 @@ const onOff = on => on ? h("span", null, "On") : h("span", { class: "muted" }, "
  * VyreDrive (Taildrive underneath): each folder the box offers, shared or not, its own access, and who the
  * tailnet policy lets reach them. The check runs on demand, and a drive.exposed event (after any
  * share) shows its findings here too, with any shared folder that holds secrets. Sharing stays
- * with the owner's terminal and the Capsule; switching a share between read only and read and
+ * with the owner's terminal and Lumen; switching a share between read only and read and
  * write is the owner's own act (files.drive.access, no proof), offered only where the box has it.
  */
 function drawShares(el, ctx) {

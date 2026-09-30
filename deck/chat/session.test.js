@@ -497,7 +497,7 @@ test("an inline ask: A allows, D denies, and one answered on another screen says
   at("ask.answered", { ask: "ask_n3", decision: "allow", by: "capsule" });
   const last = cards().at(-1);
   assert.match(text(last), /Allowed once/);
-  assert.match(text(last), /Answered from the Capsule · \d\d:\d\d/);
+  assert.match(text(last), /Answered from Lumen · \d\d:\d\d/);
   stop3();
 });
 

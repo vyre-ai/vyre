@@ -4,6 +4,10 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### deck: the Capsule is Lumen
+
+- Every user-facing mention of the Capsule in the Deck now says Lumen (settings, devices, pairing, onboarding, the surfaces list, asks answered from it, the sign-in line). Code identifiers (`capsule`, `capsule.js`, css classes, route and tool names) are unchanged.
+
 #### chat: "#" is one universal tag; "/remember" saves a memory; artifacts render from /v1/artifacts/content
 
 - `#` (anywhere, first character included) opens one picker over everything that can be tagged, through `mentions.search {q, limit}` (vault items, artifacts, files, repos, projects; names and hints only), grouped by kind. A pick writes `#Name` into the words and shows a chip that carries `{kind, id}`; the turn goes out with `mentions: [{kind, id, name}]` for the tags still in the text. The "using #name" line for vault uses stays. The menu gains group headings (`row.group`).

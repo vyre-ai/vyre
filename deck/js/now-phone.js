@@ -1,6 +1,6 @@
 // @ts-check
 // Now on a phone (docs/design/phone.md section 4), drawn by views/now.js under 760 px. The shell
-// (js/app.js) draws the header and the Capsule; this is the page between them:
+// (js/app.js) draws the header and Lumen; this is the page between them:
 //
 //   the setup reminder   one row when something is missing ("Add a passkey to send from this
 //                        phone"), which opens that step in a sheet (js/phone-setup.js,

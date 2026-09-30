@@ -1,5 +1,5 @@
 /* The one toast (Design A v1: docs/design/system/components/toast.md), built by js/toast.js.
-   Two placements, one look: floating (bottom centre on the desktop, above the Capsule on the
+   Two placements, one look: floating (bottom centre on the desktop, above Lumen on the
    phone) and in place (in a collapsed row's slot). Undo is a ghost button, never lime. */
 
 .toast { display: flex; align-items: center; box-sizing: border-box; color: var(--text);
@@ -30,7 +30,7 @@
   transform-origin: left; animation: toast-drain linear forwards; }
 @keyframes toast-drain { from { transform: scaleX(1); } to { transform: scaleX(0); } }
 
-/* On the phone: 16 from the sides and 24 above the Capsule, in the read size. Undo is 44. */
+/* On the phone: 16 from the sides and 24 above Lumen, in the read size. Undo is 44. */
 @media (max-width: 719px), (max-height: 500px) and (pointer: coarse) {
   .toast-float { left: 16px; right: 16px; width: auto; max-width: none; transform: none;
     bottom: calc(var(--cap-bottom, 12px) + var(--cap-h, 56px) + 24px);

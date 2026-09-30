@@ -3,7 +3,7 @@
 // from deck/views/. From 720 px up the rail (js/rail.js) is a 72 px column on the left, and the
 // header, a view's own list column and the view sit to its right. On a phone (under 720 px,
 // docs/design/phone.md section 3) there is no rail and no tab bar: a 48 tall header with the three page labels (Now,
-// Chats, Agents), the three pages side by side in a pager you swipe, the Capsule floating at the
+// Chats, Agents), the three pages side by side in a pager you swipe, Lumen floating at the
 // bottom, and every other address pushed over them from the right. The avatar opens the Places
 // sheet (js/places.js); a place held there becomes a fourth page after Agents.
 //
@@ -133,7 +133,7 @@ const railLower = h("div", { class: "rail-lower-in" });
 const side = h("aside", { class: "rail-lower", "aria-label": "List", hidden: true }, pins, railLower);
 const sideSync = () => { side.hidden = !pins.childNodes.length && !railLower.childNodes.length; };
 const view = h("main", { class: "view", id: "view" });
-// ---- the phone's header, pager and Capsule ---------------------------------------------------
+// ---- the phone's header, pager and Lumen ---------------------------------------------------
 
 const tab = (/** @type {typeof strip[number]} */ p, /** @type {number} */ i) => h("a", { href: p.href, class: "ph-tab", "data-view": p.view,
   onclick: (/** @type {MouseEvent} */ e) => { if (e.metaKey || e.ctrlKey || e.shiftKey || e.button !== 0) return; e.preventDefault(); toPage(i); } }, p.label);
@@ -322,10 +322,10 @@ const reduced = () => matchMedia("(prefers-reduced-motion: reduce)").matches;
 
 // ---- the phone's modes ----------------------------------------------------------------------
 //
-// "page": one of the three pages, in the pager; the header shows the labels and the Capsule floats.
+// "page": one of the three pages, in the pager; the header shows the labels and Lumen floats.
 // "pushed": any other address, slid in from the right over the pager with a back chevron (or the
-//   view's own back, see OWN_BACK), no labels and no Capsule.
-// "find": the Capsule opened, a full-height sheet risen from the bottom, no header and no Capsule.
+//   view's own back, see OWN_BACK), no labels and no Lumen.
+// "find": Lumen opened, a full-height sheet risen from the bottom, no header and no Lumen.
 // "desk": not the phone layout (wider than 760 px, and not a sideways phone); none of the above applies.
 
 /** Pushed screens that draw their own back control, so the shell's back row stays out of the way. */
@@ -442,13 +442,13 @@ async function route() {
   // is not the current one, so a desk navigation (no animation to wait for) really hides it.
   current = key;
   if (was && !again) leave(wasKey, was, from, to, backward);
-  // Agents is where the assistant is made or renamed: the Capsule reads its name again after.
+  // Agents is where the assistant is made or renamed: Lumen reads its name again after.
   if (wasKey === "/agents" && !again && phone()) drawAssistantName();
   setMode(to, name, params, key);
   railOwned = false;
   // The rail is not drawn on a phone (no rail there), which saves a projects.list per tap.
   if (!phone()) drawRail();
-  // The keyboard the Capsule raised belongs to Find; anywhere else it goes down.
+  // The keyboard Lumen raised belongs to Find; anywhere else it goes down.
   if (to !== "find" && document.activeElement?.classList.contains("cap-proxy")) /** @type {HTMLElement} */ (document.activeElement).blur();
   // Back on the pager: slide (or jump) it to the page. A swipe put it there already.
   if (to === "page" && !swiped) toSlot(slot, from === "page" && !again && !reduced());
@@ -673,7 +673,7 @@ matchMedia(PHONE_QUERY).addEventListener("change", () => {
 
 // ---- Find, Places ----------------------------------------------------------------------------
 
-/** The Capsule opened: Find, with the keyboard up; dictated words go into its box, unsent. */
+/** Lumen opened: Find, with the keyboard up; dictated words go into its box, unsent. */
 function openFind(/** @type {string | undefined} */ words) {
   const kept = pages.get("/find");
   if (words && !kept) { go("/find?q=" + encodeURIComponent(words)); return; }
@@ -737,7 +737,7 @@ function keep(t) {
   else if (mode === "page") { mark_(slotOf(current)); toSlot(slotOf(current), false); }
 }
 
-/** The Capsule's placeholder names the assistant: read once, and again after a visit to Agents. */
+/** Lumen's placeholder names the assistant: read once, and again after a visit to Agents. */
 async function drawAssistantName() {
   const r = await attempt("agents.list");
   cap.name(assistantName(r.data));

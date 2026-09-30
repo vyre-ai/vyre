@@ -289,7 +289,7 @@ export async function drawConnections(el, ctx, deps = {}) {
   // anything else the catalog names.
   const GROUP_ICON = { google: "globe", mail: "mail", mcp: "agents", other: "key" };
   /** Surface name to the chip's label and icon, in the order the board draws them. */
-  const SURFACE_META = { capsule: { label: "Capsule", icon: "capsule" }, chat: { label: "Chat", icon: "chat" },
+  const SURFACE_META = { capsule: { label: "Lumen", icon: "capsule" }, chat: { label: "Chat", icon: "chat" },
     agents: { label: "Agents", icon: "agents" }, phone: { label: "Phone", icon: "phone" } };
 
   function drawCards() {

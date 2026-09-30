@@ -30,7 +30,7 @@ function show(text, label, act) {
 }
 
 let where = "the app";
-try { const u = new URL(back); where = u.hostname === "127.0.0.1" ? "The vyre command line and Capsule on this Mac" : u.host; } catch {}
+try { const u = new URL(back); where = u.hostname === "127.0.0.1" ? "The vyre command line and Lumen on this Mac" : u.host; } catch {}
 
 async function go() {
   show("Confirm with your passkey.");

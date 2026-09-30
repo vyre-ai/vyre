@@ -31,7 +31,7 @@ function style() {
   return styled;
 }
 
-/** "Accept this in a terminal: vyre learn accept 7, or from the Capsule" with the command in mono. */
+/** "Accept this in a terminal: vyre learn accept 7, or from Lumen" with the command in mono. */
 function cmdWords(text) {
   const m = /^(.*?: )(vyre [^,]+)(.*)$/.exec(text);
   return m ? [m[1], h("span", { class: "code" }, m[2]), m[3]] : text;

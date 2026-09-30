@@ -27,7 +27,7 @@ pre code { display: block; font-family: var(--mono); font-size: 13px; line-heigh
 .rail-group:last-child { margin-bottom: 0; }
 .rail-sub { display: flex; flex-direction: column; gap: 2px; margin-left: 14px; }
 .rail-sub .rail-a { height: 28px; font-size: 13px; }
-/* Row selection (Capsule shape): Signal wash, the accessory on the right turns Signal too. */
+/* Row selection (Lumen shape): Signal wash, the accessory on the right turns Signal too. */
 .rail-sub .rail-a[aria-current="page"] { background: var(--signal-wash); color: var(--text); }
 .rail-sub .rail-a[aria-current="page"] .count { color: var(--focus); }
 .rail-disclose { display: flex; align-items: center; gap: 6px; width: 100%; height: 26px; padding: 0 6px; background: transparent;
@@ -88,7 +88,7 @@ pre code { display: block; font-family: var(--mono); font-size: 13px; line-heigh
 @keyframes blink { 50% { opacity: 0; } }
 
 /* One line per tool call, mono 11, 44px left gutter to line up under the reply text (msg-av's
-   28px + the 12px gap between it and msg-body), last 6 kept (Capsule shape). */
+   28px + the 12px gap between it and msg-body), last 6 kept (Lumen shape). */
 .tool-row { margin-left: 44px; max-width: calc(100% - 44px); }
 .tool-line { display: block; width: 100%; padding: 2px 0; border: none; background: transparent; text-align: left; cursor: pointer;
   font-family: var(--mono); font-size: 11px; line-height: 16px; color: var(--text-2); }
@@ -107,7 +107,7 @@ pre code { display: block; font-family: var(--mono); font-size: 13px; line-heigh
 .turn-foot { display: flex; align-items: center; gap: 10px; font-family: var(--mono); font-size: 11px; color: var(--label); }
 .turn-foot .err { color: var(--beacon-ink); }
 
-/* Shapes matched to the Capsule's (capsule teammate, 2026-09-27): same tokens, same grid, same
+/* Shapes matched to Lumen's (capsule teammate, 2026-09-27): same tokens, same grid, same
    badge, so a held item or an ask looks the same wherever it appears. */
 
 .memory-fact { display: flex; flex-direction: column; gap: 6px; padding: 10px 12px; border-radius: var(--radius-field, 8px); background: var(--hover);
