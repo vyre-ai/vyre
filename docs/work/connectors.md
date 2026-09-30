@@ -1,6 +1,37 @@
 # connectors
 
-Branch: work/connectors · Worktree: ../vyre-connectors · ADR: 0016
+Branch: work/connectors-0.2 (off work/vault-next; the old work/connectors is 0.1 history) · Worktree: ../vyre-connectors-02 · ADR: 0016
+
+## 0.2 status (updated 2026-09-30)
+
+Owner of the catalog and the connect flows; vault keeps the vault, the Gate, the `#` provider for vault items and the asked-send handshake. Facts: `team/0.2/connectors-catalog.md` (45 vendors probed; 35 of 41 anonymous loopback registrations accepted).
+
+Done, all against fakes (no live vendor, no user account):
+- `lib/connector-presets`: 45 presets as data plus 7 vendors ruled out with the reason. `catalogFrom(config)`.
+- `core/connectors` is a module: `connectors.catalog|list|connect|connect.finish|connect.cancel|disconnect|persist`. One flow: DCR, own OAuth app, or token. Credential = vault item `<name>-auth`, hosts = the vendor origin, granted to `mcp` and `connectors`.
+- `core/connectors/auth.js`: public clients, stored access token used first, rotated refresh token saved via `connectors.persist` (failed save is loud, kept in memory).
+- `core/connectors/oauth.js`: optional scopes, `offline`, fixed loopback `port`.
+- `core/mcp`: preset host binding (longest id wins), hub passes the row url to `creds.headers` (P21 enforced now).
+- CLI: `vyre connect apps`, `vyre connect add app <preset>`, remove/test for apps. Docs: using/connectors.md section.
+- Tests: connect.test.js (10), module.test.js (4, real vyred), connect-app.test.js (3, real `vyre` binary), presets index.test.js (6), auth.test.js (+2).
+
+Doing: send to reviewer-2; agree the Connections view shapes with native-core; `view:` and `#connector` provider once platform's contracts reach stage.
+
+Next:
+- Rebase on stage/0.2 when vault-next lands; then add `mentions` (kind `connector`) and `view:` entries to module.json (platform's fields are not on this base yet).
+- Deck Connections: `connectors.catalog` gives {presets:[{id,label,group,who,setup,modes,prefer,connected[],note,via}], unavailable}; `connectors.connect` answers step open|needs|via|connected.
+- Google: decision pending on whether the BYO "Workspace only" presets ship (lead).
+- GitHub: `via: "github"`, the github team's flow; the preset only supplies url, host binding and the PAT path.
+- Slack/HubSpot/Asana BYO spike with a real person's app (Phase 2 rehearsal, not a test).
+- Assistant caller identity (agentKind) may start a sign-in for the person once it exists; tokens stay person-only.
+
+Needs from others: lead (Google ruling); native-core (Connections view); platform (`view:`/`mentions` on stage); vault (review of the shared hub/oauth changes).
+
+Changed contracts: `mcp` gains a `boundFor` dep (lib preset binding) and passes `url` to `creds.headers`; `Credentials` gains optional `save`; `oauth.start` scopes optional, `offline`, `port`; `fake-mcp` gains `protectedBy`, function `requireAuth`; `fake-oauth` gains `rotate`.
+
+---
+
+## 0.1 record (kept)
 
 ## Scope
 

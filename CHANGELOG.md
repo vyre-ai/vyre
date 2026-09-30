@@ -4,6 +4,35 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### Connectors: a catalog of vendor-hosted apps and one connect flow (charter minimum 9)
+
+- `lib/connector-presets` (`presets.json`, `index.js`): 45 presets, each a vendor's own hosted MCP
+  server as data (url, transport, sign-in shape, token header, who can use it, evidence), plus the
+  vendors checked and ruled out with the reason. Facts and sources: `team/0.2/connectors-catalog.md`.
+  GoHighLevel uses the generic `/mcp/` address; a client-specific one (`/mcp/anthropic`) fails
+  validation. `catalogFrom(config)` adds `connectors.presets` for test fakes on this machine.
+- `core/connectors` is now a module (`connectors`): tools `connectors.catalog`, `.list`, `.connect`,
+  `.connect.finish`, `.connect.cancel`, `.disconnect` and the internal `.persist`; table
+  `connectors_connections`; events `connectors.connected`, `.connect-failed`, `.disconnected`. One flow
+  for every app: dynamic client registration (RFC 7591) when discovery finds it, the person's own OAuth
+  app from a vault item when it does not, a pasted token where the preset offers one. The credential is
+  a vault item `<connection>-auth` bound to the vendor's origin and granted to the hub; a token comes
+  only from a person's surface and never comes back out.
+- `mcp`: a row that names a preset's item is refused for any host but the vendor's (longest preset id
+  wins), and the hub now passes the row's url when it mints a header, so a token is refused for any
+  other address (P21).
+- `core/connectors/auth.js`: an OAuth item may be a public client (no secret), may hold the access
+  token the sign-in just got (used while it is good, so a fresh connection does not spend its refresh
+  token), and a vendor that rotates the refresh token has the new one saved through `connectors.persist`
+  before it is needed again; a failed save is an error, and the new token is kept in memory meanwhile.
+- `core/connectors/oauth.js`: scopes are optional, `offline` asks for `offline_access` only where the
+  vendor lists it, and a fixed loopback `port` serves vendors whose redirect address is typed in ahead
+  of time.
+- `vyre connect apps` and `vyre connect add app <preset> [--label] [--mode] [--client]`; `remove` and
+  `test` accept an app.
+- Tests use fake OAuth and fake MCP servers only (`fake-oauth.js` gains `rotate`, `fake-mcp.js` gains
+  `protectedBy` and a function `requireAuth`).
+
 #### Vault and Gate: what the person said runs at once, and vault.request (plan P17, C25, P5; reviewer N1, N2, N4, N5, M8, M10, M11)
 
 - `said_intents` (`core/vault/said.js`, table `vault_said_intents`, MACed like the vault's other
