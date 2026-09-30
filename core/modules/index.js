@@ -53,7 +53,9 @@ export const firstParty = dir => {
  * @type {Record<string, string[]>}
  */
 // settings passes a person's change on to the module that keeps the value, as that person.
-const CALL_AS = { link: ["link:box"], settings: ["cli", "local", "deck", "capsule"], mentions: (/** @type {string} */ as) => isPerson(as) || as === "module:sessions" || as === "module:assistant" };
+const CALL_AS = { link: ["link:box"], settings: ["cli", "local", "deck", "capsule"], mentions: (/** @type {string} */ as) => isPerson(as) || as === "module:sessions" || as === "module:assistant",
+  // capsule runs a view's declared tool as the asking person (first party modules) or as the added module itself, never as anyone else.
+  capsule: (/** @type {string} */ as) => isPerson(as) || /^module:[a-z][a-z0-9-]*$/.test(as) };
 /**
  * A manifest still says `"roles": ["box"]` or `["local"]` (forty-plus modules across every
  * team; ADR 0039 keeps that vocabulary rather than renaming it everywhere). `start()` is called
@@ -785,15 +787,17 @@ export class Registry {
           return Promise.reject(Object.assign(new Error(`${m.name} called ${tool}, which needs.tools does not list`), { code: "undeclared" }));
         }
         if (!as) return this.call(tool, input, `module:${m.name}`, { firstParty: fp });
-        const core = Boolean(rec && path.resolve(rec.dir).startsWith(CORE_DIR + path.sep));
+        // The capsule module sits in local/capsule (the Mac app's), and is first party there.
+        const core = Boolean(rec && (path.resolve(rec.dir).startsWith(CORE_DIR + path.sep) || (m.name === "capsule" && fp)));
         const allowed = /** @type {any} */ (CALL_AS)[m.name];
         if (!core || !(typeof allowed === "function" ? allowed(String(as)) : (allowed || []).includes(String(as)))) throw new Error(`${m.name} may not call ${tool} as ${as}`);
         // mentions replays the asking person to a provider's search tool, never to any other tool.
+        if (m.name === "capsule" && !this.capsuleMayCall(String(as), tool)) throw new Error(`capsule may not call ${tool} as ${as}: no Capsule view of that module declares it`);
         if (m.name === "mentions" && !this.mentionTools(String(as).startsWith("module:") ? "resolve" : "search").has(tool)) throw new Error(`mentions may not call ${tool} as ${as}: no first-party provider names it`);
         // settings relays a person only to the tools first-party modules declared as their own
         // settings' getters and setters, never to any other tool (e2e review, HIGH 2).
         if (m.name === "settings" && !this.settingTools().has(tool)) throw new Error(`settings may not call ${tool} as ${as}: no first-party setting names it`);
-        return this.call(tool, input, String(as));
+        return this.call(tool, input, String(as), m.name === "capsule" && opts.asked && typeof opts.asked === "object" ? { asked: opts.asked } : {});
       },
       // A long-lived connection (a WebSocket) at /v1/streams/<module>/<name>, for what a tool call
       // cannot carry: Glass streams a screen this way. The name must be declared under
@@ -991,6 +995,41 @@ export class Registry {
     }
   }
 
+  /**
+   * May the capsule module call `tool` as `as`? Only a tool a running module's shows.capsule declares
+   * (a view's list, detail, action or form submit, or the older results: and action: keys). As the
+   * person's surface: a first party module's. As module:<name>: that module's own, and only its own
+   * tools or the ones it listed in needs.tools.
+   * @param {string} as @param {string} tool
+   */
+  capsuleMayCall(as, tool) {
+    const named = as.startsWith("module:") ? as.slice(7) : null;
+    for (const [name, r] of this.modules.entries()) {
+      if (r.state !== "running" || !r.manifest) continue;
+      const cap = r.manifest.shows && r.manifest.shows.capsule;
+      if (!cap || typeof cap !== "object" || Array.isArray(cap)) continue;
+      const fp = this.isFirstParty(r.dir);
+      if (named ? named !== name : !fp) continue;
+      const declared = new Set();
+      for (const [key, v] of Object.entries(cap)) {
+        if (key.startsWith("results:")) declared.add(key.slice(8));
+        else if (key.startsWith("action:")) declared.add(key.slice(7).split("#")[0]);
+        else if (key.startsWith("view:") && v && typeof v === "object") {
+          const e = /** @type {any} */ (v), l = e.list || {};
+          if (l.tool) declared.add(l.tool);
+          if (l.detail && l.detail.tool) declared.add(l.detail.tool);
+          for (const a of Array.isArray(l.actions) ? l.actions : []) if (a && a.tool) declared.add(a.tool);
+          for (const f of Object.values(e.forms || {})) if (f && /** @type {any} */ (f).submit && /** @type {any} */ (f).submit.tool) declared.add(/** @type {any} */ (f).submit.tool);
+        }
+      }
+      if (!declared.has(tool)) continue;
+      if (!named) return true;
+      const needs = r.manifest.needs && Array.isArray(r.manifest.needs.tools) ? r.manifest.needs.tools : [];
+      if (tool.startsWith(name + ".") || needs.includes(tool)) return true;
+    }
+    return false;
+  }
+
   /** The search (or resolve) tools running first-party modules offer the # picker: mentions calls search as the asking person and resolve as sessions or the assistant, nothing else. @param {"search" | "resolve"} [which] */
   mentionTools(which = "search") {
     const out = new Set();
@@ -1028,6 +1067,9 @@ export class Registry {
         ...(m.does && m.does.connections ? { connections: m.does.connections } : {}),
         ...(m.does && m.does.suggest ? { suggest: m.does.suggest } : {}),
         ...(Array.isArray(m.mentions) ? { mentions: m.mentions } : {}),
+        firstParty: this.isFirstParty(r.dir),
+        ...(m.needs && Array.isArray(m.needs.tools) ? { needsTools: m.needs.tools.filter((/** @type {any} */ t) => typeof t === "string") } : {}),
+        ...(m.needs && Array.isArray(m.needs.slots) ? { needsSlots: m.needs.slots.filter((/** @type {any} */ t) => typeof t === "string") } : {}),
         ...(m.shows && m.shows.notices ? { notices: m.shows.notices } : {}),
         ...(m.watches && m.watches.emits ? { emits: m.watches.emits } : {}),
         ...(m.needs && Array.isArray(m.needs.credentials) ? { credentials: m.needs.credentials } : {}),

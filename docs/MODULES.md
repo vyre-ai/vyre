@@ -233,3 +233,41 @@ does at once.
 is typing. Resolve takes `{ id, thread, said }`, runs as sessions or the assistant (never a model), and answers what the tag means for a thread: a `grant` (a use, a
 read) and a `context` (a title, a summary), decided from the person's own turn and never from a
 model. A kind has one provider; a second module that claims it fails to load.
+
+## The Capsule: `view:` entries
+
+A module adds commands to the Capsule by declaring them under `shows.capsule`. The Capsule draws
+them natively; nothing from a module runs inside it.
+
+```json
+"shows": { "capsule": {
+  "view:orders": {
+    "title": "Orders", "keywords": ["bakery"], "icon": "tray", "root": true,
+    "arg": { "name": "q", "placeholder": "customer" },
+    "list": {
+      "tool": "bakery.orders", "input": { "q": "{q}", "limit": 20 },
+      "map": { "rows": "orders", "id": "ref", "title": "name", "subtitle": "note", "url": "link" },
+      "actions": [
+        { "id": "open", "title": "Open", "do": { "open": "{url}" } },
+        { "id": "reply", "title": "Reply", "form": "reply" }
+      ]
+    },
+    "forms": { "reply": { "title": "Reply to {title}", "fields": [{ "name": "body", "label": "Your reply", "type": "multiline", "required": true }],
+      "submit": { "title": "Send", "tool": "bakery.reply", "input": { "ref": "{id}", "body": "{body}" }, "outward": true } } }
+  }
+} }
+```
+
+A view is a `list` (with an optional `detail` and its `actions`) or a `form`. `map` names fields in the
+tool's JSON by plain dotted path: no expressions, no code. Templates fill `{q}`, `{id}`, `{title}`,
+`{subtitle}`, `{accessory}`, `{url}`, a form's field names, and `{front.app}` and `{front.selection}` only
+when the module declares `needs.slots: ["front"]`; any other name is empty. An action ends in `do`
+(`open`, `copy`, `say`, `ask` or `push`), a `tool` of the module's own, or a `form`. An added module opens
+only https, mailto and Vyre links, and may name only its own tools and the ones in `needs.tools`. Its
+tools run as the module, never as you, and its rows say "from" the module. An `outward` action shows the
+exact words first, and a second Enter sends. Icons are system symbol names from a fixed list, or
+`app:<bundle id>`.
+
+The Capsule reads `capsule.commands` for the list of commands, `capsule.view` for a frame and
+`capsule.act` for an action. It sends ids, never tool names. The older `results:<tool>` and
+`action:<tool>` keys keep working and appear as one command.

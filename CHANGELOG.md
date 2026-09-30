@@ -4,6 +4,14 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+- The Capsule's view contract: `view:<id>` entries in shows.capsule (a list with a detail and actions, or a
+  form; `map` by dotted path, a fixed template vocabulary, effects open/copy/say/ask/push, an icon
+  allowlist), checked at load (`packages/module-sdk/capsule-view.js`), and three tools on the capsule module,
+  `capsule.commands`, `capsule.view` and `capsule.act`, that turn a declaration and a tool's answer into
+  small bounded frames (`core/capsule`, `local/capsule`). The Capsule sends ids, never tool names. A first
+  party view's tool runs as the person's surface, an added module's as itself, and only a tool a view of
+  that module declares (its own, or in needs.tools) can be called; an outward action previews the exact
+  words with a hash before a second Enter sends. Status rows gain firstParty, needsTools and needsSlots.
 - The `#` tag mechanism: an optional, built in only `mentions: [{ kind, label, icon?, search, resolve }]` in
   module.json (schema, checker, docs), a new core module `mentions` with `mentions.kinds`, `mentions.search`
   (fans out to every provider as the asking person, 400 ms each, fail-soft, names only, grouped by kind) and

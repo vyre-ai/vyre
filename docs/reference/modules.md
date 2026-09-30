@@ -21,7 +21,7 @@ A module runs on the `box` (the always-on server), on `local` (the Mac), or on b
 | [`agents`](#agents) | `core/agents` | `box`, `local` | 10 | 0 | cli |
 | [`appearance`](#appearance) | `core/appearance` | `box`, `local` | 3 | 1 | cli |
 | [`apps`](#apps) | `local/apps` | `local` | 6 | 2 | none |
-| [`capsule`](#capsule) | `local/capsule` | `local` | 3 | 2 | capsule, cli |
+| [`capsule`](#capsule) | `local/capsule` | `local` | 6 | 2 | capsule, cli |
 | [`chrome`](#chrome) | `modules/hands-chrome` | `box` | 5 | 1 | cli, deck |
 | [`commands`](#commands) | `core/commands` | `box`, `local` | 1 | 0 | none |
 | [`computers`](#computers) | `core/computers` | `box` | 30 | 20 | cli, deck |
@@ -125,7 +125,7 @@ The Mac command bar: press Control twice and talk to the assistant, any agent or
 - Folder: `local/capsule`, version 0.1.0
 - Runs on: `local`
 - Requires: none
-- Tools: [3](tools.md#capsule)
+- Tools: [6](tools.md#capsule)
 - Emits: [2 events](events.md#capsule)
 - Shows on: capsule, cli
 - Teaches tips: `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`

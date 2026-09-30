@@ -14,6 +14,7 @@
 
 import fs from "node:fs";
 import { CONTRACT, supports, moduleContract } from "./contract.js";
+import { checkCapsuleShows } from "./capsule-view.js";
 
 /** The module API majors this Vyre loads. */
 export const API_VERSIONS = [1];
@@ -236,6 +237,14 @@ export function checkManifestFull(m, { firstParty = false, contract } = {}) {
   if (Array.isArray(m.setupTools)) {
     const own = new Set(toolEntries(m).map(t => t.name));
     for (const t of m.setupTools) if (typeof t === "string" && !own.has(t)) out.push(`setupTools "${t}" is not a tool this module declares in does.tools`);
+  }
+  // The Capsule's view: entries name this module's own tools (an added module's needs.tools too), and stay in the fixed vocabulary.
+  if (TYPES.object(m.shows) && TYPES.object(m.shows.capsule)) {
+    out.push(...checkCapsuleShows(m.shows.capsule, {
+      tools: new Set(toolEntries(m).map(t => t.name)),
+      needsTools: new Set(TYPES.object(m.needs) && Array.isArray(m.needs.tools) ? m.needs.tools.filter((/** @type {any} */ t) => typeof t === "string") : []),
+      firstParty, moduleName: String(m.name),
+    }));
   }
   // mentions name this module's own tools, one provider per kind.
   if (Array.isArray(m.mentions)) {
