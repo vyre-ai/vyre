@@ -43,7 +43,7 @@ function makeRepo(t, origin) {
  * and a fake `threads.get` backed by `existingThreads` (a set of ids `checkedThreadId` treats as
  * real chats - everything else answers not-found, the same as a made-up id would for real).
  */
-async function world(t, { projectsRows = [], tokens = {}, projectsDir, existingThreads = new Set(), failCreate = false, failAddWorkspace = false } = {}) {
+async function world(t, { projectsRows = [], tokens = {}, projectsDir, existingThreads = new Set(), failCreate = false, failAddWorkspace = false, interruptIn } = {}) {
   const db = new DatabaseSync(":memory:");
   t.after(() => db.close());
   const tools = new Map(), events = [], calls = [];
@@ -60,6 +60,7 @@ async function world(t, { projectsRows = [], tokens = {}, projectsDir, existingT
       if (toolName === "threads.get") {
         return existingThreads.has(input.thread) ? { data: { thread: { id: input.thread } } } : { error: { code: "not_found", message: `no thread ${input.thread}` } };
       }
+      if (toolName === "threads.interrupt-in" && interruptIn) return interruptIn(input);
       if (toolName === "projects.list") return { data: { projects: rows } };
       if (toolName === "projects.add-workspace") {
         if (failAddWorkspace) return { error: { code: "boom", message: "injected failure" } };
@@ -567,6 +568,24 @@ test("github.session.undo / redo / history: undo takes a session's commits off b
   commit("z.txt", "new");
   assert.equal((await person("github.session.redo", { project: "p", session: "s1" })).error.code, "diverged");
   assert.equal((await w.as("module:evil")("github.session.undo", { project: "p", session: "s1" })).error.code, "denied");
+});
+
+test("github.session.undo mid-turn: threads.interrupt-in {cwd} runs first on the session's worktree; a refusal stops the undo, an idle session or a missing tool does not", async t => {
+  const home = makeRepo(t);
+  let refuse = false;
+  const w = await world(t, { projectsRows: [{ slug: "p", name: "p", home }], interruptIn: () => (refuse ? { error: { code: "busy", message: "still running" } } : { data: { interrupted: [] } }) });
+  const wt = (await w.as("module:sessions", { firstParty: true })("github.session.worktree", { project: "p", session: "s9" })).data;
+  fs.writeFileSync(path.join(wt.path, "a.txt"), "a"); plainGit(wt.path, ["add", "a.txt"]);
+  plainGit(wt.path, ["-c", "user.email=a@example.com", "-c", "user.name=a", "commit", "-q", "-m", "one"]);
+  const person = w.as("deck");
+  refuse = true;
+  assert.equal((await person("github.session.undo", { project: "p", session: "s9" })).error.code, "busy");
+  assert.equal(fs.existsSync(path.join(wt.path, "a.txt")), true, "nothing came off while the turn could not be stopped");
+  refuse = false;
+  const u = await person("github.session.undo", { project: "p", session: "s9" });
+  assert.equal(u.data.undone, 1);
+  const call = w.calls.find(c => c.tool === "threads.interrupt-in");
+  assert.equal(call.input.cwd, wt.path);
 });
 
 test("github.session.cleanup {deleted: true}: a deleted chat's commits and unsaved work are kept under the undo ref, the worktree goes; ignored files still stop it", async t => {

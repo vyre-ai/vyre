@@ -92,6 +92,27 @@ test("worktreeAdd: makes an isolated worktree and branch, invisible to git statu
   assert.ok(fs.readFileSync(path.join(repoDir, ".git", "info", "exclude"), "utf8").includes(".sessions/"));
 });
 
+test("worktreeAdd: unarchive - an existing branch is checked out as it is (commits kept), and a worktree already there is returned unchanged", async t => {
+  const repoDir = makeClonedRepo(t);
+  const remote = fs.mkdtempSync(path.join(os.tmpdir(), "vyre-gh-remote-"));
+  t.after(() => fs.rmSync(remote, { recursive: true, force: true }));
+  plainGit(remote, ["init", "-q", "--bare"]);
+  plainGit(repoDir, ["remote", "set-url", "origin", remote]);
+  const w1 = await worktreeAdd({ repoDir, session: "back1", defaultBranch: "main" });
+  fs.writeFileSync(path.join(w1.path, "kept.md"), "still here\n");
+  plainGit(w1.path, ["add", "kept.md"]);
+  plainGit(w1.path, ["commit", "-q", "-m", "kept"]);
+  plainGit(w1.path, ["push", "-q", "origin", "vyre/back1"]);
+  const rm = await worktreeRemove({ repoDir, session: "back1", defaultBranch: "main" });
+  assert.equal(rm.removed, true);
+  assert.equal(rm.pruned, false, "the branch outlives the worktree: it holds a commit main lacks");
+  const w2 = await worktreeAdd({ repoDir, session: "back1", defaultBranch: "main" });
+  assert.equal(w2.branch, "vyre/back1");
+  assert.equal(fs.readFileSync(path.join(w2.path, "kept.md"), "utf8"), "still here\n");
+  const again = await worktreeAdd({ repoDir, session: "back1", defaultBranch: "main" });
+  assert.deepEqual(again, w2);
+});
+
 test("worktreeRemove: a clean worktree with no commits of its own is removed, and its branch pruned", async t => {
   const repoDir = makeClonedRepo(t);
   await worktreeAdd({ repoDir, session: "clean1", defaultBranch: "main" });

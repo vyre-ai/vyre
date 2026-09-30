@@ -168,7 +168,14 @@ export async function worktreeAdd({ repoDir, session, defaultBranch }) {
   ensureExcluded(repoDir);
   const dest = path.join(repoDir, ".sessions", id);
   const branch = `vyre/${id}`;
-  const r = await gitAsync(repoDir, ["worktree", "add", dest, "-b", branch, defaultBranch]);
+  // Unarchive: the session's worktree was removed but its branch (and any commits on it) stays, so
+  // an existing branch is checked out as it is, never reset to the default branch. A worktree that
+  // is still there is returned as it is.
+  if (fs.existsSync(dest)) return { path: dest, branch };
+  const have = await gitAsync(repoDir, ["rev-parse", "--verify", "--quiet", `refs/heads/${branch}`]);
+  const r = await gitAsync(repoDir, have.ok
+    ? ["worktree", "add", dest, branch]
+    : ["worktree", "add", dest, "-b", branch, defaultBranch]);
   if (!r.ok) throw fail(`git worktree add failed: ${r.stderr.trim().slice(0, 300) || "no output"}`, "worktree_failed");
   return { path: dest, branch };
 }

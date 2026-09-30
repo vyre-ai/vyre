@@ -550,3 +550,11 @@ mcp.connect/oauth.js status have posted (both block the Next list below).
 - Built github.project.local-init (git.js localInit): git init -b main + starting commit minus .env/keys (excluded via .git/info/exclude, listed in left_out); existing commits untouched; nested-repo refused; people, agents, module:projects/sessions/threads. 47/47 in core/github, docs green. Next: pr.open + allowlist (vault), object-entry declarations and drop requireAsked when the Gate lands, rebase before landing.
 - Built github.session.history/.undo/.redo (git.js): undo saves the tip as refs/vyre/undone/<session>/<n> then resets the session worktree only (never main, never a remote); dirty refused; redo is ff-only. 48/48 core/github. Hook proposal to sessions posted in CHAT.md. Note: worktreeSafety checks refs/heads only, so undone commits are kept by the ref, not by the cleanup check.
 - Lead tweaks done: undo never refuses a dirty tree (commits it as a marked WIP commit, saves the tip under refs/vyre/undone, redo restores it as uncommitted); github.session.cleanup gained deleted:true for thread.deleted (keeps commits and unsaved work under the ref, removes the worktree; ignored files such as .env still stop it and go to cleanup-needed). 49/49 core/github.
+
+## 2026-10-01 resume (after the usage-limit restart)
+- Undo mid-turn: github.session.undo calls threads.interrupt-in {cwd} on the session's worktree
+  first; a refusal other than "tool missing" stops the undo. Test in index.test.js.
+- Unarchive: github.session.worktree now accepts an existing branch (checks it out as is, keeps
+  its commits) and returns an existing worktree unchanged. Test in git.test.js. Confirmed to sessions.
+- requireAsked stopgap stays until vault's Gate lands; then declare outward: asked and delete it.
+- pr.open and the hosted-MCP allowlist still wait on vault.

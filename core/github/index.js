@@ -9,10 +9,12 @@
 // two named modules (sessions, threads); the worktree tools are sessions-only and internal. No
 // Gate sender is registered, because nothing here sends anything outward yet (no issues, no PRs).
 
+import fs from "node:fs";
+import path from "node:path";
 import { connector } from "./connect.js";
 import { MIGRATIONS, store, projectStore, forOne } from "./accounts.js";
 import { prView, prMerge, prReview } from "./pr.js";
-import { cloneRepo, worktreeAdd, worktreeRemove, originFullName, folderGitState, sanitizeRemoteUrl, defaultBranchOf, pushSession, localInit, sessionHistory, sessionUndo, sessionRedo } from "./git.js";
+import { safeSegment, cloneRepo, worktreeAdd, worktreeRemove, originFullName, folderGitState, sanitizeRemoteUrl, defaultBranchOf, pushSession, localInit, sessionHistory, sessionUndo, sessionRedo } from "./git.js";
 
 const str = { type: "string" };
 const obj = (properties, required = []) => ({ type: "object", properties, required });
@@ -511,6 +513,17 @@ export default {
         checkModuleCaller("github.session.undo", meta, SESSION_ONLY);
         const repo = await repoOf(project);
         if (!repo) throw fail(`${project} has no git repo`, "not_found");
+        // Undo mid-turn: stop whatever is still working in this session's worktree first, so
+        // nothing writes while the commits come off. threads.interrupt-in stops the turn only (the
+        // chat stays) and waits. A missing tool (sessions not landed) or an idle session is fine;
+        // any other refusal stops the undo rather than racing a running turn.
+        const cwd = path.join(repo.home, ".sessions", safeSegment(session, "session id"));
+        if (fs.existsSync(cwd)) {
+          const stopped = await ctx.call("threads.interrupt-in", { cwd });
+          if (stopped.error && !/unknown|not_found|no_such|no such/i.test(`${stopped.error.code || ""} ${stopped.error.message || ""}`)) {
+            throw fail(`could not stop the running turn before undo: ${stopped.error.message || stopped.error.code}`, stopped.error.code || "failed");
+          }
+        }
         const out = await sessionUndo({ repoDir: repo.home, session, defaultBranch: repo.defaultBranch, to: named(to) });
         ctx.events.emit("github.session.undone", { project, session, undone: out.undone });
         return out;
