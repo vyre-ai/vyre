@@ -92,18 +92,28 @@ export default {
       run: (_, meta) => hub.servers(who(meta)),
     });
 
+    // An added (not first-party) module may put an http server in the hub, but not a process: a stdio row runs
+    // a command with vault items in its environment, so it is for a person or one of Vyre's own modules
+    // (reviewer-2 M-G1: an added module must not be able to put a granted token in a process's env).
+    const refuseProcess = (input, meta, existing) => {
+      if (!String(meta.caller || "").startsWith("module:") || meta.firstParty) return;
+      const stdio = input.transport === "stdio" || input.command !== undefined || existing === "stdio";
+      const env = (input.env && Object.keys(input.env).length) || (input.auth && input.auth.type === "env");
+      if (stdio || env) throw Object.assign(new Error("an added module may add an http or sse server, not a command or an environment from the vault; a person adds those"), { code: "denied" });
+    };
+
     ctx.tool("mcp.add", {
       description: "Add an MCP server: a name ([a-z][a-z0-9-], up to 32), a transport (stdio with command, args, cwd; http or sse with url), credentials as vault item names (auth { type: bearer | env | oauth | service-account, item }, env { VAR: item } for stdio), plain vars and headers that are not secret, a scope { projects, agents } and a tools policy { allow, deny, mode }. It then tries the server once to cache its tools; grant each vault item to mcp first, or run mcp.test after.",
       input: obj({ name: str, ...fields }, ["name", "transport"]),
       callers: PEOPLE,
-      run: input => hub.add(input),
+      run: (input, meta) => { refuseProcess(input, meta); return hub.add(input); },
     });
 
     ctx.tool("mcp.update", {
       description: "Change an MCP server: any field of mcp.add. A new command, url or credential stops the running server and drops its cached tools.",
       input: obj({ name: str, ...fields }, ["name"]),
       callers: PEOPLE,
-      run: input => hub.update(input),
+      run: (input, meta) => { refuseProcess(input, meta, (hub.row(input.name) || {}).transport); return hub.update(input); },
     });
 
     ctx.tool("mcp.remove", {
