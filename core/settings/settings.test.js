@@ -11,7 +11,7 @@ import { call } from "../daemon/client.js";
 import { tempHome } from "../../test/helpers.js";
 import { coerce, validateDecls } from "../config/settings.js";
 import { MASK } from "./index.js";
-import { settingTo } from "../../lib/said/setting.js";
+import { settingTo, settingIntents } from "../../lib/said/setting.js";
 
 /** A vyred with one project (northwind) and Claude Code's folder in the temp home. */
 async function world(t, { disable = [] } = {}) {
@@ -481,7 +481,7 @@ test("an agent changes a setting only when the person asked (C25, P17), every ch
 
   // The real vault keeps what the person said; sessions record it from a `said` row.
   const say = (/** @type {any} */ i) => d.registry.call("vault.said.record", { said: "row-1", what: "use this setting", ...i }, "module:sessions");
-  const to = (/** @type {any} */ v, level = "account") => settingTo(k.key, v, { level });
+  const to = (/** @type {any} */ v, level = "account") => settingTo({ key: k.key, value: v, level });
   assert.ok(!(await say({ thread: "t_other", kind: "setting", to: [to(want)] })).error, "recorded for another thread");
   r = await req({ key: k.key, value: want });
   assert.equal(r.error?.code, "denied", "words in another thread don't count");
@@ -491,7 +491,7 @@ test("an agent changes a setting only when the person asked (C25, P17), every ch
   assert.ok(!(await say({ thread: "t_asked", kind: "setting", to: [to(!want)] })).error);
   r = await req({ key: k.key, value: want });
   assert.equal(r.error?.code, "denied", "an ask for the opposite value doesn't count");
-  assert.ok(!(await say({ thread: "t_asked", kind: "setting", to: [settingTo("some.other.key", want)] })).error);
+  assert.ok(!(await say({ thread: "t_asked", kind: "setting", to: [settingTo({ key: "some.other.key", value: want, level: "account" })] })).error);
   r = await req({ key: k.key, value: want });
   assert.equal(r.error?.code, "denied", "an ask that names a different key doesn't count");
   assert.ok(!(await say({ thread: "t_asked", kind: "send", to: [to(want)] })).error);
@@ -521,4 +521,30 @@ test("an agent changes a setting only when the person asked (C25, P17), every ch
   assert.equal((await c("settings.changes", { key: k.key })).data.find((/** @type {any} */ x) => x.id === log[0].id).undone, true);
   assert.equal((await c("settings.undo", { change: log[0].id })).error?.code, "bad_input", "once");
   assert.equal((await d.registry.call("settings.undo", { change: log[0].id }, agent, meta)).error?.code, "denied", "undo is the person's");
+});
+
+test("the recorder's string for a setting ask is the one settings.request asks for, value and level included (reviewer-2's alignment check)", { timeout: 30_000 }, async t => {
+  const { c, d } = await world(t);
+  const keys = (await c("settings.schema")).data.keys;
+  // A plain on/off setting that is set per project, worded the way a person would say it.
+  let found = null;
+  for (const x of keys) {
+    if (x.type !== "bool" || !x.levels.includes("project") || !x.label || x.secret || x.confirm || x.security === "loosens") continue;
+    const r = settingIntents(`Turn on ${String(x.label).toLowerCase()} in this project.`, keys, { project: "northwind" });
+    if (r.intents.length === 1 && r.intents[0].to[0].startsWith(`${x.key}=`)) { found = { x, intents: r.intents }; break; }
+  }
+  assert.ok(found, "a bool project setting the recorder can name");
+  const { x: m, intents } = found;
+  assert.ok(!(await c("agents.create", { name: "kit", projects: ["northwind"] })).error);
+  const say = (/** @type {any} */ i) => d.registry.call("vault.said.record", { said: "row-1", what: "a setting ask", ...i }, "module:sessions");
+  const agent = "mcp:agent:kit";
+  const req = (/** @type {any} */ input) => d.registry.call("settings.request", input, agent, { thread: "t_rec" });
+  assert.ok(!(await say({ thread: "t_rec", kind: intents[0].kind, to: intents[0].to })).error);
+  // The recorder's ask was for `true` at the project level. Wrong value, wrong level: refused, the intent untouched.
+  assert.equal((await req({ key: m.key, value: false, level: "project", project: "northwind" })).error?.code, "denied", "the opposite value");
+  assert.equal((await req({ key: m.key, value: true, level: "account" })).error?.code, "denied", "another level");
+  // The exact ask: allowed once.
+  const ok = await req({ key: m.key, value: true, level: "project", project: "northwind" });
+  assert.ok(!ok.error, JSON.stringify(ok.error));
+  assert.equal((await req({ key: m.key, value: true, level: "project", project: "northwind" })).error?.code, "denied", "used up");
 });

@@ -460,7 +460,7 @@ export default {
       if (o.ask) {
         // The recorder writes account and project asks with a value; a reset, a device or a session change is never recorded, so it is never covered.
         if (raw === undefined || (lv !== "account" && lv !== "project")) throw Object.assign(new Error(o.refusal || "the person did not ask for this change"), { code: "denied" });
-        intent = (await o.ask(settingTo(d.key, value, { level: lv, project: target == null ? undefined : String(target) }))) || "";
+        intent = (await o.ask(settingTo({ key: d.key, value, level: lv, target: target == null ? undefined : String(target) }))) || "";
         if (!intent) throw Object.assign(new Error(o.refusal || "the person did not ask for this change"), { code: "denied" });
       }
       const whereTo = await whereIs(env, d, lv, target);
