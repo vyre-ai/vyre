@@ -50,7 +50,9 @@ test("presence: every value-out or access-giving tool declares it, with a summar
   // vault.release is internal (modules only) and exempt; everything else registered is listed above.
   const known = new Set([...NEEDS_PRESENCE, ...NO_PRESENCE, "vault.release", "vault.generate", "vault.match", "vault.relay",
     // P17 and vault-routed API access: internal tools other modules call, and a request the Gate holds when nothing the person said covers it.
-    "vault.said.record", "vault.said.add", "vault.items.names", "vault.mention.search", "vault.mention.resolve", "vault.use.check", "vault.use.note", "vault.said.match", "vault.said.list", "vault.said.revoke", "vault.request", "vault.api.send"]);
+    "vault.said.record", "vault.said.add", "vault.items.names", "vault.mention.search", "vault.mention.resolve", "vault.use.check", "vault.use.note", "vault.said.match", "vault.said.list", "vault.said.revoke", "vault.request", "vault.api.send",
+    // Connectors stores a finished sign-in in an oauth api-credential: internal (only module:connectors, and only from the token endpoint the person's own config names), it takes tokens in and gives nothing out, and it runs right after the sign-in the person just did, so it asks for no presence.
+    "vault.credential.tokens"]);
   for (const n of tools.keys()) assert.ok(known.has(n) || tools.get(n).presence, `${n} is new: decide whether it needs presence`);
 });
 
