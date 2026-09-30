@@ -10,6 +10,9 @@
 //   check [dir]     the manifest against the published schema (packages/module-sdk) and the
 //                   loader's own rules (core/modules validate), then the entry file: that it is
 //                   there, and that `node --check` reads it. Exit 0 clean, 1 with problems.
+//   upgrade [dir]   the codemod (ADR 0047 section 8): apiVersion to "vyre", string tool entries to
+//                   objects, simple ctx.memory.teach calls to ctx.memory.write, and a list of what
+//                   it left for a person. Then conformance. --dry-run writes nothing.
 //   test [dir]      conformModule (packages/module-sdk/conform.js), then `node --test` on the
 //                   module's own *.test.js files. Exit 0 when both pass, 1 otherwise.
 //   add <source>    a folder, or a git URL cloned with --depth 1 into a staging folder under the
@@ -27,6 +30,7 @@
 // reaches this branch; swapping to it changes nothing a surface sees.
 
 import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import { execFile } from "node:child_process";
 import { pathToFileURL } from "node:url";
@@ -34,15 +38,16 @@ import * as config from "../../config/index.js";
 import { REPO } from "../../daemon/index.js";
 import { request } from "../../daemon/client.js";
 import { discover, validate } from "../../modules/index.js";
-import { checkManifest, SCHEMA, toolEntries } from "../../../packages/module-sdk/manifest.js";
-import { conformModule } from "../../../packages/module-sdk/conform.js";
+import { checkManifestFull, SCHEMA, toolEntries } from "../../../packages/module-sdk/manifest.js";
+import { conformModuleFull } from "../../../packages/module-sdk/conform.js";
+import { CONTRACT, supports, moduleContract } from "../../../packages/module-sdk/contract.js";
 import { stop, ensureUp } from "../daemonctl.js";
 import { health, waitFor, terminal } from "./up.js";
 import { out, dim, bold, signal, beacon } from "../style.js";
 import { EXIT, UsageError, json, emit, fail, parse, closest } from "../kit.js";
 
-const USAGE = "vyre module new <name> [--dir <parent>] | check [dir] | test [dir] | add <path|git url> [--yes]";
-const SUBS = ["new", "check", "test", "add"];
+const USAGE = "vyre module new <name> [--dir <parent>] | check [dir] | test [dir] | upgrade [dir] [--dry-run] | add <path|git url> [--yes]";
+const SUBS = ["new", "check", "test", "upgrade", "add"];
 /** The loader's module name rule, from the one schema both of them read. */
 const NAME = new RegExp(SCHEMA.$defs.moduleName.pattern);
 /** Vyre's own modules live in these folders of the repo; a module anywhere else is not first party. */
@@ -149,9 +154,18 @@ export async function checkModule(dir, { repo, node, firstParty = firstPartyDir(
     add("manifest", "module.json reads", [err.code === "ENOENT" ? `there is no module.json in ${dir}` : `module.json is not JSON: ${err.message}`]);
   }
   const name = m && typeof m.name === "string" ? m.name : null;
-  if (m) {
-    // The SDK's checker holds an added module to ADR 0047 (apiVersion, object tool entries, reach).
-    add("schema", "matches the module API schema", checkManifest(m, { firstParty }));
+  /** @type {string[]} unknown keys and deprecated usages: shown, never failing (ADR 0047 section 8) */
+  let warnings = [];
+  const speaks = m ? supports(moduleContract(m), { name: name || "this module" }) : { ok: true };
+  if (m && !speaks.ok) {
+    // A contract this Vyre doesn't speak is the one problem; the rest may be newer than this checker.
+    add("schema", "names a module contract this Vyre speaks", [/** @type {any} */ (speaks).message]);
+    for (const [id, label] of [["loader", "passes the loader's rules"], ["entry", "the entry file is there"], ["syntax", "the entry file parses"]]) add(id, label, [], true);
+  } else if (m) {
+    // The SDK's checker holds an added module to ADR 0047 (vyre, object tool entries, reach).
+    const full = checkManifestFull(m, { firstParty });
+    warnings = full.warnings;
+    add("schema", "matches the module API schema", full.problems);
     add("loader", "passes the loader's rules", validate(m, { firstParty }));
     const main = typeof m.main === "string" && m.main ? m.main : "index.js";
     const entry = path.resolve(dir, main);
@@ -165,17 +179,23 @@ export async function checkModule(dir, { repo, node, firstParty = firstPartyDir(
   }
   // The schema and the loader often say one thing twice; each problem is listed once.
   const problems = [...new Set(checks.flatMap(c => c.problems))];
-  return { ok: checks.every(c => c.state === "ok"), module: name, dir, manifest: m, firstParty, problems, checks };
+  return { ok: checks.every(c => c.state === "ok"), module: name, dir, manifest: m, firstParty, problems, warnings, checks };
 }
 
 /** The checks view (platform's Render). @param {Awaited<ReturnType<typeof checkModule>>} r */
 const checksView = r => ({
   kind: "checks", title: r.module ? `module ${r.module}` : "module",
-  items: r.checks.map(c => ({ id: c.id, label: c.label, state: c.state, ...(c.problems.length ? { note: c.problems.join("; ") } : {}) })),
+  items: [...r.checks.map(c => ({ id: c.id, label: c.label, state: c.state, ...(c.problems.length ? { note: c.problems.join("; ") } : {}) })),
+    ...(r.warnings.length ? [{ id: "warnings", label: `${r.warnings.length} warning${r.warnings.length === 1 ? "" : "s"}, none failing`, state: "ok", note: r.warnings.join("; ") }] : [])],
 });
 
 /** The --json shape of a check. @param {Awaited<ReturnType<typeof checkModule>>} r */
-const checkData = r => ({ ok: r.ok, module: r.module, dir: r.dir, problems: r.problems });
+const checkData = r => ({ ok: r.ok, module: r.module, dir: r.dir, problems: r.problems, warnings: r.warnings });
+
+/** Warnings, dimmed: they never fail a check or a test. @param {string[]} warnings @param {(s: string) => void} say */
+function showWarnings(warnings, say) {
+  for (const w of warnings) say(`  ${dim("warn  ")} ${dim(w)}`);
+}
 
 function showChecks(r, say) {
   for (const c of r.checks) {
@@ -193,6 +213,7 @@ async function check(args, flags, o, deps) {
   return o.done(exit, checkData(r), checksView(r), () => {
     out(`  ${bold(r.module || path.basename(dir))} ${dim(dir)}`);
     showChecks(r, out);
+    showWarnings(r.warnings, out);
     // A folder already in the home loads at the next start; one anywhere else goes in with add.
     const inHome = path.dirname(dir) === path.resolve(config.paths(deps.home || config.home()).modules);
     out(dim(!r.ok ? "  next: fix what failed, then vyre module check again" : inHome ? "  next: vyre down && vyre up loads it" : `  next: vyre module add ${args[0] || "."} installs it`));
@@ -226,12 +247,12 @@ function nodeTest(node, dir, files) {
  * @param {string} dir @param {{ repo: string, node: string, firstParty?: boolean }} o
  */
 export async function testModuleDir(dir, { repo, node, firstParty = firstPartyDir(repo, dir) }) {
-  const failures = fs.existsSync(path.join(dir, "module.json")) ? await conformModule(dir, { firstParty }) : [`there is no module.json in ${dir}`];
+  const { failures, warnings } = fs.existsSync(path.join(dir, "module.json")) ? await conformModuleFull(dir, { firstParty }) : { failures: [`there is no module.json in ${dir}`], warnings: [] };
   const files = fs.existsSync(dir) ? fs.readdirSync(dir).filter(f => /\.test\.(m|c)?js$/.test(f)).sort() : [];
   const tests = files.length ? { files, ...(await nodeTest(node, dir, files)) } : { files, ok: true, pass: 0, fail: 0, tail: [] };
   let name = null;
   try { name = JSON.parse(fs.readFileSync(path.join(dir, "module.json"), "utf8")).name || null; } catch {}
-  return { ok: failures.length === 0 && tests.ok, module: name, dir, failures, tests };
+  return { ok: failures.length === 0 && tests.ok, module: name, dir, failures, warnings, tests };
 }
 
 async function runTests(args, flags, o, deps) {
@@ -242,17 +263,133 @@ async function runTests(args, flags, o, deps) {
   const t = r.tests;
   const testNote = !t.files.length ? "no *.test.js files" : `${t.pass ?? "?"} passed, ${t.fail ?? "?"} failed`;
   const view = { kind: "checks", title: r.module ? `module ${r.module}` : "module", items: [
-    { id: "conform", label: "conforms to module API 1", state: r.failures.length ? "failed" : "ok", ...(r.failures.length ? { note: r.failures.join("; ") } : {}) },
+    { id: "conform", label: `conforms to module contract ${CONTRACT.current}`, state: r.failures.length ? "failed" : "ok", ...(r.failures.length ? { note: r.failures.join("; ") } : {}) },
     { id: "tests", label: "its own tests pass", state: t.ok ? "ok" : "failed", note: testNote },
+    ...(r.warnings.length ? [{ id: "warnings", label: `${r.warnings.length} warning${r.warnings.length === 1 ? "" : "s"}, none failing`, state: "ok", note: r.warnings.join("; ") }] : []),
   ] };
-  return o.done(exit, { ok: r.ok, module: r.module, dir, failures: r.failures, tests: { files: t.files, ok: t.ok, pass: t.pass, fail: t.fail } }, view, () => {
+  return o.done(exit, { ok: r.ok, module: r.module, dir, failures: r.failures, warnings: r.warnings, tests: { files: t.files, ok: t.ok, pass: t.pass, fail: t.fail } }, view, () => {
     out(`  ${bold(r.module || path.basename(dir))} ${dim(dir)}`);
-    out(`  ${r.failures.length ? beacon("failed") : signal("ok    ")} conforms to module API 1`);
+    out(`  ${r.failures.length ? beacon("failed") : signal("ok    ")} conforms to module contract ${CONTRACT.current}`);
     for (const f of r.failures) out(dim(`         ${f}`));
+    showWarnings(r.warnings, out);
     out(`  ${t.ok ? signal("ok    ") : beacon("failed")} its own tests ${dim(testNote)}`);
     for (const l of t.tail) out(dim(`         ${l}`));
     out(dim(r.ok ? `  next: vyre module add ${args[0] || "."}` : "  next: fix what failed, then vyre module test again"));
   });
+}
+
+// ---------------------------------------------------------------------------------------------
+// upgrade
+
+/** A module's own source files: every .js outside node_modules and .git. @param {string} dir */
+function jsFiles(dir) {
+  const out = [];
+  /** @param {string} at */
+  const walk = at => {
+    for (const e of fs.readdirSync(at, { withFileTypes: true })) {
+      const p = path.join(at, e.name);
+      if (e.isDirectory()) { if (!["node_modules", ".git"].includes(e.name)) walk(p); }
+      else if (/\.(m|c)?js$/.test(e.name)) out.push(p);
+    }
+  };
+  walk(dir);
+  return out;
+}
+
+/** ctx.memory.teach(kind, fact) with plain arguments (no parentheses or commas inside them). */
+const TEACH = /\bctx\.memory\.teach\(\s*([^(),]+?)\s*,\s*([^(),]+?)\s*\)/g;
+
+/**
+ * The codemod `vyre module upgrade` runs (ADR 0047 section 8): what it changes in module.json and
+ * the source, and what it leaves for a person or an agent. Nothing is written here.
+ * @param {string} dir
+ * @returns {{ files: Record<string, string>, changes: string[], todo: string[] }}
+ */
+export function planUpgrade(dir) {
+  /** @type {Record<string, string>} */
+  const files = {};
+  const changes = [], todo = [];
+  const file = path.join(dir, "module.json");
+  const m = JSON.parse(fs.readFileSync(file, "utf8"));
+  // Rebuilt in order, with "vyre" where apiVersion was (or after version).
+  /** @type {Record<string, any>} */
+  const next = {};
+  const major = CONTRACT.current.split(".")[0];
+  for (const [k, v] of Object.entries(m)) {
+    if (k === "apiVersion") {
+      if (m.vyre === undefined) { next.vyre = String(v); changes.push(`module.json: apiVersion ${v} is now "vyre": "${v}"`); }
+      else changes.push("module.json: removed apiVersion, since vyre is set");
+      continue;
+    }
+    next[k] = v;
+    if (k === "version" && m.vyre === undefined && m.apiVersion === undefined) { next.vyre = major; changes.push(`module.json: added "vyre": "${major}"`); }
+  }
+  if (next.does && Array.isArray(next.does.tools) && next.does.tools.some((/** @type {unknown} */ t) => typeof t === "string")) {
+    next.does = { ...next.does, tools: next.does.tools.map((/** @type {any} */ t) => (typeof t === "string" ? { name: t, reach: "anyone" } : t)) };
+    changes.push(`module.json: string tool entries are objects with reach "anyone"; give each a summary, and "asked" or "outward" where it applies`);
+  }
+  if (next.does && next.does.senders !== undefined) todo.push("module.json: does.senders: mark each sending tool with outward (send, post, pay or delete), then remove does.senders");
+  if (next.shows && next.shows.cli !== undefined) todo.push("module.json: shows.cli: add does.commands entries ({ verb, tool, summary }), then remove shows.cli");
+
+  let taught = false;
+  for (const f of jsFiles(dir)) {
+    const rel = path.relative(dir, f);
+    const src = fs.readFileSync(f, "utf8");
+    let n = 0;
+    const out = src.replace(TEACH, (_all, kind, fact) => { n++; return `ctx.memory.write({ kind: "fact", subject: ${kind}, text: ${fact} })`; });
+    if (n) { files[rel] = out; taught = true; changes.push(`${rel}: ${n} ctx.memory.teach call${n === 1 ? "" : "s"} now ctx.memory.write({ kind: "fact" })`); }
+    out.split("\n").forEach((line, i) => {
+      if (/\bctx\.memory\.teach\s*\(/.test(line)) todo.push(`${rel}:${i + 1}: ctx.memory.teach with complex arguments: rewrite as ctx.memory.write({ kind: "fact", text })`);
+      if (/\b(callers|internal)\s*:/.test(line)) todo.push(`${rel}:${i + 1}: callers or internal on a tool: declare reach in module.json instead`);
+    });
+  }
+  if (taught) {
+    const kinds = Array.isArray(next.teaches && next.teaches.memory) ? next.teaches.memory : [];
+    if (!kinds.includes("fact")) { next.teaches = { ...(next.teaches || {}), memory: [...kinds, "fact"] }; changes.push(`module.json: teaches.memory lists "fact", which ctx.memory.write needs`); }
+  }
+  const json = JSON.stringify(next, null, 2) + "\n";
+  if (JSON.stringify(next) !== JSON.stringify(m)) files["module.json"] = json;
+  return { files, changes, todo };
+}
+
+async function upgrade(args, flags, o, deps) {
+  if (args.length > 1) throw new UsageError("vyre module upgrade takes one folder", "vyre module upgrade [dir] [--dry-run]");
+  const dir = path.resolve(args[0] || ".");
+  if (!fs.existsSync(path.join(dir, "module.json"))) return o.refuse(`there is no module.json in ${dir}`, { code: "not_found", exit: EXIT.USAGE, next: "vyre module upgrade <module folder>" });
+  let plan;
+  try { plan = planUpgrade(dir); } catch (e) { return o.refuse(`module.json does not read: ${/** @type {Error} */ (e).message}`, { code: "bad_manifest" }); }
+  const dry = Boolean(flags["dry-run"]);
+  // Conformance runs on the upgraded module: in place, or on a temp copy for a dry run.
+  let target = dir, tmp = null;
+  if (dry) {
+    tmp = fs.mkdtempSync(path.join(os.tmpdir(), "vyre-module-upgrade-"));
+    target = path.join(tmp, path.basename(dir));
+    fs.cpSync(dir, target, { recursive: true, filter: src => !src.split(path.sep).includes(".git") && !src.split(path.sep).includes("node_modules") });
+  }
+  try {
+    for (const [f, text] of Object.entries(plan.files)) fs.writeFileSync(path.join(target, f), text);
+    const firstParty = firstPartyDir(deps.repo || REPO, dir);
+    const r = await conformModuleFull(target, { firstParty });
+    const exit = r.failures.length && !dry ? EXIT.FAILED : EXIT.OK;
+    const data = { dir, dryRun: dry, changes: plan.changes, todo: plan.todo, conforms: r.failures.length === 0, failures: r.failures, warnings: r.warnings };
+    const view = { kind: "checks", title: `upgrade ${path.basename(dir)}${dry ? " (dry run)" : ""}`, items: [
+      ...plan.changes.map((c, i) => ({ id: `change-${i}`, label: c, state: "ok" })),
+      ...plan.todo.map((c, i) => ({ id: `todo-${i}`, label: c, state: "wait" })),
+      { id: "conform", label: `conforms to module contract ${CONTRACT.current}`, state: r.failures.length ? "failed" : "ok", ...(r.failures.length ? { note: r.failures.join("; ") } : {}) },
+    ] };
+    return o.done(exit, data, view, () => {
+      out(`  ${bold(path.basename(dir))} ${dim(dry ? "dry run: nothing written" : dir)}`);
+      if (!plan.changes.length) out(dim("  nothing to change"));
+      for (const c of plan.changes) out(`  ${signal("done  ")} ${c}`);
+      for (const c of plan.todo) out(`  ${beacon("by hand")} ${c}`);
+      out(`  ${r.failures.length ? beacon("failed") : signal("ok    ")} conforms to module contract ${CONTRACT.current}`);
+      for (const f of r.failures) out(dim(`         ${f}`));
+      showWarnings(r.warnings, out);
+      out(dim(dry ? `  next: vyre module upgrade ${args[0] || "."} writes these changes` : "  next: vyre module test"));
+    });
+  } finally {
+    if (tmp) fs.rmSync(tmp, { recursive: true, force: true });
+  }
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -279,7 +416,7 @@ export function scaffold(name, { repo = REPO } = {}) {
   const sdk = path.join(repo, "packages", "module-sdk");
   const manifest = {
     $schema: "https://vyre.run/schema/module-1.json",
-    name, version: "0.1.0", apiVersion: 1,
+    name, version: "0.1.0", vyre: "1",
     description: `A module made with vyre module new. It says hello.`,
     roles: ["box", "local"],
     does: { tools: [{ name: tool, summary: "say hello", reach: "anyone" }] },
@@ -510,6 +647,14 @@ async function install(args, flags, o, deps) {
     }
     // A folder given through a symlink is copied from where it really is.
     from = fs.realpathSync(from);
+    // A module for a contract this Vyre doesn't speak is refused before anything is staged
+    // (ADR 0047 section 8), with the line a person can act on.
+    let named = null;
+    try { named = JSON.parse(fs.readFileSync(path.join(from, "module.json"), "utf8")); } catch {}
+    if (named) {
+      const speaks = supports(moduleContract(named), { name: typeof named.name === "string" ? named.name : "this module" });
+      if (!speaks.ok) return o.refuse(/** @type {any} */ (speaks).message, { code: "unsupported_contract", next: "vyre update, then vyre module add again" });
+    }
     const staged = path.join(staging, "module");
     const skipped = copyModule(from, staged);
     // Checked as a module from outside Vyre, whatever folder it came from: once added it lives in the home.
@@ -599,16 +744,18 @@ export async function moduleCommand(args, deps = {}) {
   const [sub, ...rest] = args.filter(a => a !== "--view");
   const o = outlet(sub && SUBS.includes(sub) ? `module ${sub}` : "module", view);
   try {
-    if (!sub || sub.startsWith("-")) throw new UsageError("vyre module needs new, check, test or add", USAGE);
-    const { flags, pos } = parse(rest, { bool: ["yes"], values: ["dir"], cmd: "module" });
+    if (!sub || sub.startsWith("-")) throw new UsageError("vyre module needs new, check, test, upgrade or add", USAGE);
+    const { flags, pos } = parse(rest, { bool: ["yes", "dry-run"], values: ["dir"], cmd: "module" });
+    if (flags["dry-run"] && sub !== "upgrade") throw new UsageError("--dry-run goes with vyre module upgrade", "vyre module upgrade [dir] --dry-run");
     if (flags.dir !== undefined && sub !== "new") throw new UsageError("--dir goes with vyre module new", "vyre module new <name> --dir <parent>");
     if (flags.yes && sub !== "add") throw new UsageError("--yes goes with vyre module add", "vyre module add <source> --yes");
     if (sub === "new") return await make(pos, flags, o, deps);
     if (sub === "check") return await check(pos, flags, o, deps);
     if (sub === "test") return await runTests(pos, flags, o, deps);
+    if (sub === "upgrade") return await upgrade(pos, flags, o, deps);
     if (sub === "add") return await install(pos, flags, o, deps);
     const near = closest(sub, SUBS);
-    throw new UsageError(`vyre module ${sub}: not a verb; it is new, check, test or add`, near.length ? `did you mean vyre module ${near[0]}?` : USAGE);
+    throw new UsageError(`vyre module ${sub}: not a verb; it is new, check, test, upgrade or add`, near.length ? `did you mean vyre module ${near[0]}?` : USAGE);
   } catch (e) {
     if (e instanceof UsageError) return o.refuse(e.message, { code: "bad_input", exit: EXIT.USAGE, next: e.next || "vyre help module" });
     throw e;
@@ -624,6 +771,10 @@ export default {
     "  --dir PARENT    make it in PARENT/<name> instead",
     "check [dir]       the manifest (schema and loader rules) and the entry file; exit 1 on a problem",
     "test [dir]        the conformance checks every module passes, then its own *.test.js files",
+    "upgrade [dir]     move a module onto the current contract: apiVersion to vyre, string tools to",
+    "                  objects, ctx.memory.teach to ctx.memory.write; lists what it can't do, then",
+    "                  runs the conformance checks",
+    "  --dry-run       show the changes and check a copy; write nothing",
     "add <source>      a folder or a git URL (https://, git@, file://): check it, show what it asks",
     "                  for, copy it into <home>/modules and restart vyred to load it",
     "  --yes           do not ask first (needed without a terminal, and with --json or --view)",

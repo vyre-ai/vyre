@@ -47,7 +47,7 @@ function world(t, { rows = null, tty = false, answers = [], restart = { ok: true
 
 /** A module folder outside the home, from the sample world. */
 function bakery(root, manifest = {}, source = "export default { async start(ctx) { return { async stop() {} }; } };\n") {
-  const dir = writeModule(root, "bakery", { apiVersion: 1, description: "Northwind Bakery's orders.", does: { tools: [{ name: "bakery.orders", summary: "list today's orders" }] }, watches: { emits: ["bakery.ordered"] }, ...manifest }, source);
+  const dir = writeModule(root, "bakery", { vyre: "1", description: "Northwind Bakery's orders.", does: { tools: [{ name: "bakery.orders", summary: "list today's orders" }] }, watches: { emits: ["bakery.ordered"] }, ...manifest }, source);
   fs.writeFileSync(path.join(dir, "package.json"), JSON.stringify({ type: "module" }));
   return dir;
 }
@@ -95,8 +95,8 @@ test("new writes the files, they pass check, and their own test passes", async t
   const dir = path.join(modules, "bake");
   for (const f of ["module.json", "index.js", "bake.test.js", "README.md", "package.json", "AGENTS.md", "jsconfig.json"]) assert.ok(fs.existsSync(path.join(dir, f)), f);
   const m = JSON.parse(fs.readFileSync(path.join(dir, "module.json"), "utf8"));
-  assert.deepEqual({ name: m.name, version: m.version, apiVersion: m.apiVersion, roles: m.roles, does: m.does, watches: m.watches },
-    { name: "bake", version: "0.1.0", apiVersion: 1, roles: ["box", "local"], does: { tools: [{ name: "bake.hello", summary: "say hello", reach: "anyone" }] }, watches: { emits: ["bake.said"] } });
+  assert.deepEqual({ name: m.name, version: m.version, vyre: m.vyre, roles: m.roles, does: m.does, watches: m.watches },
+    { name: "bake", version: "0.1.0", vyre: "1", roles: ["box", "local"], does: { tools: [{ name: "bake.hello", summary: "say hello", reach: "anyone" }] }, watches: { emits: ["bake.said"] } });
   assert.match(text(c), /vyre module test/);
   assert.match(text(c), /vyre down && vyre up/);
   assert.match(text(c), /vyre call bake\.hello/);
@@ -177,7 +177,7 @@ test("test runs conformance, then the module's own tests", async t => {
   const r = await testModuleDir(dir, { repo: path.resolve(import.meta.dirname, "..", "..", ".."), node: process.execPath });
   assert.deepEqual({ ok: r.ok, failures: r.failures, pass: r.tests.pass, fail: r.tests.fail, files: r.tests.files }, { ok: true, failures: [], pass: 2, fail: 0, files: ["bake.test.js"] });
   assert.equal(await moduleCommand(["test", dir], deps), EXIT.OK);
-  assert.match(text(c), /conforms to module API 1/);
+  assert.match(text(c), /conforms to module contract 1\.0/);
   assert.match(text(c), /2 passed, 0 failed/);
 
   // A tool without examples, and a test that fails: both are reported, and the exit is 1.
@@ -204,11 +204,18 @@ test("check reports a schema problem, a loader problem, a missing entry and a sy
   const node = process.execPath;
   const by = (r, id) => r.checks.find(x => x.id === id);
 
-  // An unknown key: the schema says so, the loader lets it by.
-  const schema = await checkModule(bakery(path.join(root, "a"), { colour: "red" }), { repo, node });
+  // An unknown key is a warning, never a failure (ADR 0047 section 8): a typo, or a newer key.
+  const unknown = await checkModule(bakery(path.join(root, "a0"), { colour: "red" }), { repo, node });
+  assert.equal(unknown.ok, true);
+  assert.ok(unknown.warnings.some(w => /colour is not a key in module contract 1\.0/.test(w)), unknown.warnings.join("; "));
+  // A schema problem: the schema says so, the loader lets it by.
+  const schema = await checkModule(bakery(path.join(root, "a"), { description: "" }), { repo, node });
   assert.equal(by(schema, "schema").state, "failed");
   assert.equal(by(schema, "loader").state, "ok");
-  assert.ok(schema.problems.some(p => /colour is not a manifest key/.test(p)), schema.problems.join("; "));
+  assert.ok(schema.problems.some(p => /description is too short/.test(p)), schema.problems.join("; "));
+  // A contract this Vyre doesn't speak is the one problem.
+  const newer = await checkModule(bakery(path.join(root, "a2"), { vyre: "1.9", widgets: { from: "1.9" } }), { repo, node });
+  assert.deepEqual(newer.problems, ["bakery needs a newer Vyre (module contract 1.9); this Vyre has 1.0. Update Vyre, or ask the module's author for an older version."]);
 
   // requires with ranges is module API 1; a range the loader can't read is its problem.
   const ranged = await checkModule(bakery(path.join(root, "b"), { requires: { memory: ">=0.1" } }), { repo, node });
@@ -230,7 +237,7 @@ test("check reports a schema problem, a loader problem, a missing entry and a sy
 
   // A module from outside Vyre says its apiVersion.
   const noApi = await checkModule(writeModule(path.join(root, "e"), "bakery", {}, "export default {};\n"), { repo, node });
-  assert.ok(noApi.problems.some(p => /apiVersion is required/.test(p)));
+  assert.ok(noApi.problems.some(p => /"vyre" is required/.test(p)));
 
   const noManifest = await checkModule(path.join(root, "nowhere"), { repo, node });
   assert.equal(noManifest.ok, false);
@@ -337,10 +344,10 @@ test("add refuses a failing module, a name that is there, a shipped name, and as
   assert.equal(tty.calls.restart, 1, "restarted only for the one that went in");
 
   // A shipped name is refused, and so is replaces: the 0.2 allowlist is empty (ADR 0047, H2).
-  const shipped = writeModule(path.join(w.home, "shipped"), "commands", { apiVersion: 1, description: "A stand-in for commands.", does: { tools: [{ name: "commands.list" }] } }, "export default {};\n");
+  const shipped = writeModule(path.join(w.home, "shipped"), "commands", { vyre: "1", description: "A stand-in for commands.", does: { tools: [{ name: "commands.list" }] } }, "export default {};\n");
   assert.equal(await moduleCommand(["add", shipped, "--yes"], w.deps), EXIT.FAILED);
   assert.match(text(c), /one of Vyre's own modules/);
-  const replacing = writeModule(path.join(w.home, "replacing"), "commands", { apiVersion: 1, description: "A stand-in for commands.", replaces: "commands", does: { tools: [{ name: "commands.list" }] } }, "export default {};\n");
+  const replacing = writeModule(path.join(w.home, "replacing"), "commands", { vyre: "1", description: "A stand-in for commands.", replaces: "commands", does: { tools: [{ name: "commands.list" }] } }, "export default {};\n");
   assert.equal(await moduleCommand(["add", replacing, "--yes"], w.deps), EXIT.FAILED);
   assert.match(text(c), /the 0\.2 allowlist of replaceable modules is empty/);
   assert.ok(!fs.existsSync(path.join(w.modules, "commands")));
@@ -388,13 +395,13 @@ test("--view prints frames that fit Render, and a prompt instead of asking", asy
   assertFrames(f, 0);
   assert.equal(f[0].view.kind, "checks");
   assert.ok(f[0].view.items.every(i => i.state === "ok"));
-  assert.deepEqual(Object.keys(f[0].data).sort(), ["dir", "module", "ok", "problems"]);
+  assert.deepEqual(Object.keys(f[0].data).sort(), ["dir", "module", "ok", "problems", "warnings"]);
 
-  const bad = bakery(path.join(w.home, "bad"), { colour: "red" });
+  const bad = bakery(path.join(w.home, "bad"), { description: "" });
   assert.equal(await moduleCommand(["check", bad, "--view"], w.deps), EXIT.FAILED);
   f = take();
   assertFrames(f, 1);
-  assert.ok(f[0].view.items.some(i => i.id === "schema" && i.state === "failed" && /colour/.test(i.note)));
+  assert.ok(f[0].view.items.some(i => i.id === "schema" && i.state === "failed" && /description/.test(i.note)));
 
   const good = bakery(path.join(w.home, "good"));
   assert.equal(await moduleCommand(["add", good, "--view"], w.deps), EXIT.USAGE);
@@ -421,4 +428,71 @@ test("--view prints frames that fit Render, and a prompt instead of asking", asy
   assert.equal(await moduleCommand(["frob", "--view"], w.deps), EXIT.USAGE);
   assertFrames(take(), 2);
   assert.deepEqual(c.lines, [], "nothing for a person's eyes under --view");
+});
+
+// ---------------------------------------------------------------------------------------------
+// upgrade, and a newer contract at add
+
+/** A module written before contract 1.0's final shape: apiVersion, string tools, memory.teach. */
+function oldModule(root) {
+  const dir = writeModule(root, "juno-notes", { apiVersion: 1, description: "Juno's reading notes.", does: { tools: ["juno-notes.save", "juno-notes.list"], senders: {} }, teaches: { memory: ["reading.habit"] } },
+    `export default { async start(ctx) {
+  ctx.tool("juno-notes.save", { input: { type: "object" }, examples: [{ input: { text: "rye" } }], run: async ({ text }) => { await ctx.memory.teach("reading.habit", text); await ctx.memory.teach(String(text).trim(), fmt(text)); return { saved: true }; } });
+  ctx.tool("juno-notes.list", { input: { type: "object" }, examples: [{ input: {} }], run: async () => ({ notes: [] }) });
+  return { async stop() {} };
+} };
+const fmt = t => t;
+`);
+  fs.writeFileSync(path.join(dir, "package.json"), JSON.stringify({ type: "module" }));
+  return dir;
+}
+
+test("upgrade moves a module onto the current contract, lists what it left, and --dry-run writes nothing", async t => {
+  const { deps, home } = world(t);
+  const c = capture(t);
+  const dir = oldModule(path.join(home, "src"));
+  const before = fs.readFileSync(path.join(dir, "module.json"), "utf8");
+  setJson(true);
+  t.after(() => setJson(false));
+  assert.equal(await moduleCommand(["upgrade", dir, "--dry-run"], deps), EXIT.OK);
+  const dry = c.json.at(-1);
+  assert.equal(dry.dryRun, true);
+  assert.equal(fs.readFileSync(path.join(dir, "module.json"), "utf8"), before, "a dry run writes nothing");
+  assert.ok(dry.changes.some(x => /apiVersion 1 is now "vyre": "1"/.test(x)), dry.changes.join("; "));
+
+  assert.equal(await moduleCommand(["upgrade", dir], deps), EXIT.OK, "what it left only warns");
+  const r = c.json.at(-1);
+  assert.equal(r.conforms, true, r.failures.join("; "));
+  const m = JSON.parse(fs.readFileSync(path.join(dir, "module.json"), "utf8"));
+  assert.equal(m.vyre, "1");
+  assert.equal(m.apiVersion, undefined);
+  assert.deepEqual(Object.keys(m).slice(0, 3), ["name", "version", "vyre"]);
+  assert.deepEqual(m.does.tools, [{ name: "juno-notes.save", reach: "anyone" }, { name: "juno-notes.list", reach: "anyone" }]);
+  assert.deepEqual(m.teaches.memory, ["reading.habit", "fact"]);
+  const src = fs.readFileSync(path.join(dir, "index.js"), "utf8");
+  assert.match(src, /ctx\.memory\.write\(\{ kind: "fact", subject: "reading\.habit", text: text \}\)/);
+  assert.match(src, /ctx\.memory\.teach\(String\(text\)/, "a call with nested parentheses is left alone");
+  assert.ok(r.todo.some(x => /index\.js:2: ctx\.memory\.teach with complex arguments/.test(x)), r.todo.join("; "));
+  assert.ok(r.todo.some(x => /does\.senders/.test(x)));
+  assert.ok(r.warnings.some(w => /does\.senders is deprecated/.test(w)));
+
+  // By hand: the senders go, and the complex call is rewritten. Then it conforms.
+  delete m.does.senders;
+  fs.writeFileSync(path.join(dir, "module.json"), JSON.stringify(m));
+  fs.writeFileSync(path.join(dir, "index.js"), src.replace(/ctx\.memory\.teach\(String\(text\)\.trim\(\), fmt\(text\)\)/, 'ctx.memory.write({ kind: "fact", text: fmt(text) })'));
+  assert.equal(await moduleCommand(["upgrade", dir], deps), EXIT.OK);
+  const done = c.json.at(-1);
+  assert.deepEqual({ conforms: done.conforms, changes: done.changes, todo: done.todo }, { conforms: true, changes: [], todo: [] });
+  assert.equal(await moduleCommand(["check", dir, "--dry-run"], deps), EXIT.USAGE, "--dry-run goes with upgrade only");
+});
+
+test("add refuses a module for a newer contract before staging anything", async t => {
+  const w = world(t, { rows: [] });
+  const c = capture(t);
+  const newer = bakery(path.join(w.home, "newer"), { vyre: "2" });
+  assert.equal(await moduleCommand(["add", newer, "--yes"], w.deps), EXIT.FAILED);
+  assert.match(text(c), /bakery needs a newer Vyre \(module contract 2\); this Vyre has 1\.0/);
+  assert.deepEqual(fs.readdirSync(w.home).filter(n => n.startsWith(".module-add-")), []);
+  assert.ok(!fs.existsSync(path.join(w.modules, "bakery")));
+  assert.equal(w.calls.restart, 0);
 });
