@@ -4,6 +4,12 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### projects: rename, archive and the history question from the Deck
+
+- `deck/js/project-actions.js`: `renameProject` (the project page's heading becomes a field; `projects.rename {project, name}`, name only, slug and tile stay) and `archiveProject` (`projects.archive`, then the list, with an Undo toast; `archived: false` is Restore). The Projects list gains an Archived view with Restore on each row.
+- `createProject` carries `projects.create`'s history offer (kind `history`, tool `projects.history` only); `historyOffer` and `offerThen` ask the one question, "Keep version history for this folder?", before the person lands in the project: Keep history or No thanks, never asked again. Used by the New project form, the inline create and "New project from this".
+- Tests: `deck/js/project-actions.test.js` (7). `test/deck-contract.test.js` lists `projects.rename`, `projects.archive` and `projects.history` as optional until teammates merges; `deck/test/fake-dom.js` gains `replaceWith`.
+
 #### chat: the land cards, the assistant's first message after setup
 
 - `deck/chat/cards/land.js` (+ `land.css`): `welcomeRow` draws `assistant.welcome` ({text, cards:[{id, title, body, href?}]}) at the top of the assistant's own empty thread, and redraws when `onboard.stepped` says a step finished (its card leaves). A card carries an id and words, never a tool: each known id (`claude`, `tailscale`, `history`, `import`, `phone`) has its own handler here, and an unknown id is drawn only when it carries an https link (reviewer-2's BLOCKER, C21).
