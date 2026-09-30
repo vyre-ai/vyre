@@ -57,3 +57,4 @@ Branch: work/assistant · Worktree: ../vyre-assistant · Owner session: assistan
 - welcome cards carry ids (the contract) and href only; no action/tool (lead, reviewer-2 BLOCKER).
 - lib/said/pr.js (15-minute window, any condition word in the sentence records nothing): act_out intents for "open a PR", "merge it", "review this PR". to = [github.act.target's key], e.g. "github.project.pr.merge:alex/app#7" (one string, tool:repo#pr or tool:repo@branch; not a [tool, target] pair, because that is what the registry's said-match sends). Deterministic, records nothing when ambiguous; the caller passes github.act.target as `target`.
 - welcome: the Tailscale card keeps href only for https on tailscale.com (reviewer-2 LOW).
+- c3f5b8d1 cleared by reviewer-2 to land. Open: the 15-minute window in prIntents only takes effect once vault's said record stores a window (today it has no such field); vault and sessions told.
