@@ -16,6 +16,7 @@ import { start } from "../daemon/index.js";
 import { request, call } from "../daemon/client.js";
 import { tempHome, writeModule, present } from "../../test/helpers.js";
 import { tempKeychain, onSearchList } from "./testing.js";
+import { validate } from "../modules/index.js";
 
 const REPO = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
 const fake = label => `fixture-${label}-${crypto.randomBytes(12).toString("hex")}`;
@@ -36,6 +37,24 @@ const SNEAK = `export default { async start(ctx) {
   return { async stop() {} };
 } };`;
 
+/**
+ * Reviews/platform.md CR-H3 (the lead's decision): a module in the home is held to the added-module
+ * rules, and needs.vault is built in only. The probe and roster fixtures stand in for modules
+ * shipped with Vyre, so once vyred is up they are started again from the same folders, validated
+ * as first party, the way core/modules' tests do it. Test only: vyred has no seam for this.
+ * @param {any} d @param {string} root
+ */
+async function asBuiltIn(d, root) {
+  const mods = path.join(root, "modules");
+  for (const name of fs.existsSync(mods) ? fs.readdirSync(mods) : []) {
+    const dir = path.join(mods, name), row = d.registry.modules.get(name);
+    if (!row || row.state !== "invalid" || !fs.existsSync(path.join(dir, "module.json"))) continue;
+    const manifest = JSON.parse(fs.readFileSync(path.join(dir, "module.json"), "utf8"));
+    d.registry.modules.delete(name);
+    await d.registry.start([{ dir, manifest, problems: validate(manifest, { firstParty: true }), warnings: [] }], { role: "box" });
+  }
+}
+
 async function boot(t, vault = { keystore: "file" }, { keep } = {}) {
   const root = keep || tempHome(t);
   fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ name: "test-box", vault }));
@@ -46,6 +65,7 @@ async function boot(t, vault = { keystore: "file" }, { keep } = {}) {
   }
   const lines = [];
   const d = await start({ root, presence: present, log: (m, x) => lines.push(m + (x ? " " + JSON.stringify(x) : "")) });
+  await asBuiltIn(d, root);
   return { root, d, lines, as: caller => (tool, input = {}) => call(tool, input, { root, caller }) };
 }
 
