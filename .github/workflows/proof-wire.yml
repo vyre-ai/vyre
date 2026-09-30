@@ -29,3 +29,5 @@ jobs:
           echo "$HOME/.grok/bin" >> "$GITHUB_PATH"
       - name: What each CLI proves
         run: node scripts/provider-wire-proof.mjs
+      - name: A tool call, an ask, the floor, an interrupt and a resume on the real CLIs
+        run: node scripts/provider-tool-proof.mjs
