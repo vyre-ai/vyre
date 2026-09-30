@@ -58,7 +58,7 @@ export function register(ctx, { denied }) {
   const personOnly = (caller, what) => { if (!isPerson(caller)) throw denied(`${what} is for the person's own surfaces`); };
 
   /**
-   * A setting, on by default. With no settings hub at all it is the default; if the hub fails, the last value it gave (a
+   * A setting: learning is off until switched on, syncing is on. With no settings hub at all it is the default; if the hub fails, the last value it gave (a
    * person's OFF is never ignored on an error), and with none known, off.
    * @param {string} key
    */
@@ -73,8 +73,10 @@ export function register(ctx, { denied }) {
     if (failed) return last.has(key) ? /** @type {boolean} */ (last.get(key)) : false;
     return dflt(key);
   };
-  const dflt = (/** @type {string} */ key) => { const c = ctx.config && ctx.config.memory && ctx.config.memory.site; const v = c && c[key.split(".").pop() || ""]; return typeof v === "boolean" ? v : true; };
+  const dflt = (/** @type {string} */ key) => { const c = ctx.config && ctx.config.memory && ctx.config.memory.site; const k = key.split(".").pop() || ""; const v = c && c[k]; return typeof v === "boolean" ? v : k === "sync"; };
 
+  /** The ids a record already holds, which a step may refer to. @param {any} rec */
+  const knownIds = rec => (rec ? [...rec.controls, ...rec.frames, ...rec.api].map((/** @type {any} */ x) => x.id).concat(rec.flows.flatMap((/** @type {any} */ f) => (f.steps || []).map((/** @type {any} */ st) => st.id))) : []);
   const load = (/** @type {string} */ key) => { const r = /** @type {any} */ (q.get.get(key)); return r ? JSON.parse(r.record) : null; };
   const save = (/** @type {any} */ rec) => {
     const card = arrivalCard(rec, { now: now() });
@@ -129,7 +131,7 @@ export function register(ctx, { denied }) {
         key = familyKey(id);
       }
       // Notes are the person's own words: only a person's surface may write one, never Chrome's bridge.
-      const clean = sanitize({ ...(i.patch && typeof i.patch === "object" ? i.patch : {}), key }, { now: now(), notes: isPerson(caller) });
+      const clean = sanitize({ ...(i.patch && typeof i.patch === "object" ? i.patch : {}), key }, { now: now(), notes: isPerson(caller), known: knownIds(load(key)) });
       if (!clean.ok) { event(key, "refused", clean.refused.map(r => r.path).slice(0, 5).join(",").slice(0, 120), null); return { accepted: false, refused: clean.refused }; }
       const base = load(key) || emptyRecord(key);
       if (Array.isArray(clean.record.remove) && clean.record.remove.length && i.base_rev !== base.rev) throw bad(`a removal needs base_rev ${base.rev}`, "conflict");

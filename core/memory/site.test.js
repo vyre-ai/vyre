@@ -19,7 +19,7 @@ const AGENTS = [{ name: "juno", kind: "agent", projects: [] }];
 async function world(t, settings = {}) {
   const db = open(path.join(tempHome(t), "vyre.db"));
   t.after(() => db.close());
-  const tools = new Map(), emitted = [], clock = { now: NOW }, set = { ...settings };
+  const tools = new Map(), emitted = [], clock = { now: NOW }, set = { "memory.site.learn": true, ...settings };
   const ctx = {
     name: "memory", config: { me: { domains: [] } }, paths: {}, store: { db, migrate: () => {} }, log: () => {}, now: () => clock.now,
     events: { on: () => () => {}, emit: (type, payload) => emitted.push({ type, payload }), since: () => [], prune: () => 0 },
@@ -147,14 +147,14 @@ test("a removal needs the current base_rev", async t => {
   assert.equal((await w.call("memory.site.get", { origin: ORIGIN })).data.origin.api.length, 0);
 });
 
-test("the learn setting: off means nothing is learned or reported, on is the default", async t => {
+test("the learn setting: off (the default) means nothing is learned or reported; on learns", async t => {
   const w = await world(t, { "memory.site.learn": false });
   assert.deepEqual((await w.call("memory.site.put", { origin: ORIGIN, patch: patch() })).data, { accepted: false, learning: false });
   assert.equal((await w.call("memory.site.get", { origin: ORIGIN })).data.origin, null);
   w.set["memory.site.learn"] = true;
   assert.equal((await w.call("memory.site.put", { origin: ORIGIN, patch: patch() })).data.accepted, true);
   delete w.set["memory.site.learn"];
-  assert.equal((await w.call("memory.site.put", { origin: ORIGIN, patch: patch() })).data.accepted, true, "no value set means on");
+  assert.equal((await w.call("memory.site.put", { origin: ORIGIN, patch: patch() })).data.accepted, false, "no value set means off until the person turns it on");
 });
 
 test("site.sync: a replica's records are folded in by the same allowlist and newest verified, and newer records come back", async t => {
