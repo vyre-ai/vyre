@@ -54,18 +54,56 @@ Branch: work/capsule-sight · Worktree: ../vyre-capsule-sight · ADR 0015 (claim
   compositing is not in the panel number; the SwiftUI updates are. The panel RSS is a harness
   carrying the whole Capsule codebase, not the Capsule's own footprint.
 
-## Doing
-- Stopped (2026-09-27, lead's wrap-up: the user is refocusing on the native core). On main: 876975b
-  (terminal tabs on recall.watch, via capsule-pro batch 2) and hands (ec72d08: hands.find, observe
-  match, needs_front). This branch past main holds docs only (perf numbers, ADR 0030 shapes).
+## 0.2 (30 Sep, lead's GO): computer use and Chrome control
+Plan: team/0.2/plans/capsule-sight.md (with its Review response section). Build order there:
+steps 1-3 first (outward classifier, Gate wiring, the one grant), then deep Chrome control.
+
+### Done
+- Build steps 1-3, e0e39546 (then merged with main's ADR 0036 thread/call/agent labeling, 74642d2b):
+  - floor.js: outward() is a substring/localized-word classifier (English, German, Spanish,
+    French, Portuguese) over the label and AX identifier, not an exact-word regex (reviewer-2 B1).
+    Return in a browser's text field is held too (BROWSERS + TEXT_ROLES), on the safe side until
+    deep Chrome control can see the real DOM.
+  - hands.js/index.js: an unasked outward act holds through the Gate (kind "act", a new sender
+    "hands:mac", gate.offer/gate.request) instead of the old bespoke hold-and-commit path. Held
+    content carries the whole input plus signature(before); hands.release (module:gate only)
+    re-checks that signature and refuses "changed" if the screen moved before replaying the act
+    (reviewer-2 H1). hands.commit stays as a direct, presence-gated path for a caller that wants
+    to drive the approval itself.
+  - grant.js: hands.grant.list/add/remove. A named agent (mcp:agent:<name>: box-side, the
+    assistant, or an ACP provider once sessions ships one) may drive this Mac's
+    hands.observe/find/act/commit only once granted, on the Mac, with presence (reviewer-2 H2).
+    The person's own direct session is not gated.
+  - gate.js/gate/index.js: KINDS and OUTBOUND gain "act".
+  - Tests: local/hands-mac 59/59, local/screen-mac 23/23 (one real-window test flakes alone under
+    load regardless of this change, confirmed by running it against unmodified floor.js too;
+    passes solo), core/gate 30/30, docs-check and the tools-reference test clean. All run on this
+    device's node --test, temp homes, never the test box.
+  - Merge with main's concurrent ADR 0036 (thread/call/agent event labeling via AsyncLocalStorage)
+    resolved by hand: kept both the ALS-based `emit` and the explicit `(input, meta)` plumbing my
+    grant check and gate.request's `thread` need. module.test.js's own thread/agent test needed a
+    `hands.grant.add` call added first, since "kit" is now an ungranted agent name by default.
+
+### Doing
+- Next up: deep Chrome control (user decision, IN 0.2 for both the person's own Chrome and
+  agents'). Design is in the plan (section 3): a chrome.debugger extension + native-messaging
+  host for the person's own Chrome (load-unpacked only in 0.2, Store listing moved to 0.3), a Mac
+  target added to hands-chrome's driver so its existing act/snapshot/selector/verify tools work
+  against either a container or the person's own Chrome, and a URL/origin floor tier. Not started
+  yet in code.
 
 ## Next (when resumed)
-1. Vyre-owned sessions (ADR 0030): the panel's assistant and thread tabs already follow `thread.*`
+1. Deep Chrome control build steps (plan section 7, step 6a): floor's URL/origin tier and the
+   Gate/act wiring first (reuses this session's work), then the extension/native-messaging host,
+   the GitHub Actions macos-latest+windows-latest spike, then the driver-unification refactor
+   folding a Mac target into hands-chrome, then the guided chrome://extensions install screen
+   (waits on app-design).
+2. Vyre-owned sessions (ADR 0030): the panel's assistant and thread tabs already follow `thread.*`
    through threads.get + VyState.applyDm, so they pick up SDK sessions with no new call. When
    sessions lands `thread.turn`, `thread.state` and `thread.tool` {call, status}, check that
    capsule-pro's reducer folds them (tool rows by call id, the working dot from thread.state) and
    add panel tests. Terminal tabs stay on recall.watch (the user's own `claude` sessions).
-2. capsule-apps slice 4 (WhatsApp over hands): answer any further hands asks.
+3. capsule-apps slice 4 (WhatsApp over hands): answer any further hands asks.
 
 ## Try it (the user, own terminal, a vyred from this worktree in a separate home)
     cd <vyre-dir>/vyre-capsule-sight
