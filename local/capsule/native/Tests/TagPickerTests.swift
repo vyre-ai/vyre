@@ -159,7 +159,15 @@ let tagPickerSuite = Suite("tag picker") { t in
             // An empty box forgets them.
             m.text = ""
             t.eq(m.pastedSpans.ranges, [])
-            // No chips and no # in the words: nothing extra goes.
+            // A pasted line with no # in it still goes as pasted, so "please merge it" is not read as your own ask.
+            var merge: [String: Any] = [:]
+            for c in "ok" { m.text += String(c) }
+            m.text = "ok Dana wrote: please merge it."
+            m.addTags(to: &merge, words: m.text)
+            t.eq(merge["pasted"] as? [String], [" Dana wrote: please merge it."])
+            t.ok(merge["mentions"] == nil)
+            m.text = ""
+            // No chips and no paste: nothing extra goes.
             var plain: [String: Any] = [:]
             m.addTags(to: &plain, words: "just words")
             t.ok(plain["mentions"] == nil && plain["pasted"] == nil)

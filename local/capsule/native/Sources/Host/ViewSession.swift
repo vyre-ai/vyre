@@ -197,7 +197,14 @@ final class ViewSession: ObservableObject {
 
     private func askCredential(_ need: ViewNeed?) {
         guard let need else { return }
-        onNeed(CredentialNeed(module: need.module ?? command.module, need: need.need, label: need.label ?? need.need))
+        // An added module's frame cannot name another module or pose as one: the card is for the module
+        // whose command this is, and says so in its label.
+        let label = need.label ?? need.need
+        if command.firstParty {
+            onNeed(CredentialNeed(module: need.module ?? command.module, need: need.need, label: label))
+        } else {
+            onNeed(CredentialNeed(module: command.module, need: need.need, label: "\(label) for \(command.module)"))
+        }
     }
 
     /// Ask for the list again (a credential was just saved).

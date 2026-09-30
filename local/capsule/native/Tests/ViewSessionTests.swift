@@ -339,6 +339,29 @@ let viewSessionSuite = Suite("view session") { t in
 
 final class Counter2: @unchecked Sendable { var n = 0 }
 
+// capsule-suite: needCredentialSuite
+let needCredentialSuite = Suite("needs a credential") { t in
+    t.test("an added module's needs frame asks for its own module's credential, with its name on the card; a first-party one may name its need's module") {
+        MainActor.assumeIsolated {
+            let link = ScriptLink()
+            link.answer["capsule.view"] = { _ in .success(["v": 1, "kind": "needs", "message": "Add your key.", "need": ["kind": "credential", "need": "api", "module": "google", "label": "Google login"]]) }
+            var asked: [CredentialNeed] = []
+            let added = ViewCommand(module: "acme-crm", id: "leads", title: "Leads", keywords: [], alias: nil, icon: nil, root: false, argName: nil, argPlaceholder: nil, firstParty: false, hash: "h")
+            let (s1, _) = session(link, added)
+            s1.onNeed = { asked.append($0) }
+            s1.load(q: "")
+            t.ok(spin { !asked.isEmpty })
+            t.eq(asked.first?.module, "acme-crm", "never the module the frame names"); t.eq(asked.first?.label, "Google login for acme-crm")
+            asked = []
+            let (s2, _) = session(link, MAIL)
+            s2.onNeed = { asked.append($0) }
+            s2.load(q: "")
+            t.ok(spin { !asked.isEmpty })
+            t.eq(asked.first?.module, "google"); t.eq(asked.first?.label, "Google login")
+        }
+    }
+}
+
 // capsule-suite: nextMeetingSuite
 let nextMeetingSuite = Suite("next meeting line") { t in
     t.test("the next meeting is one line under the empty box, asked once a minute, and absent when there is no such command") {

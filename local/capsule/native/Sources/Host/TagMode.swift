@@ -73,7 +73,7 @@ extension CapsuleModel {
         let tags = tagsFor(words)
         if !tags.isEmpty { input["mentions"] = Array(tags.prefix(8)) }
         let pasted = pastedFor(words)
-        if !pasted.isEmpty, !tags.isEmpty || words.contains("#") { input["pasted"] = pasted }
+        if !pasted.isEmpty { input["pasted"] = pasted }   // always: sessions also keeps pasted words out of what it reads as your own asks
     }
 
     /// Take a chip off: its token leaves the words.
