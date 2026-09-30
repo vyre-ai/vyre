@@ -151,9 +151,12 @@ public final class CapsuleModel: ObservableObject {
     var attachedWords = ""
     /// The memory line's sources, shown (a click or ⌘→) or folded.
     @Published var memoryExpanded = false
-    /// Vyre IQ's stage word while memory.ask streams (IQAsk.swift): "Understanding the question",
-    /// etc. Nil outside a streamed ask, or once it answers.
+    /// Vyre IQ's stage word while memory.ask streams (IQAsk.swift): "Understanding", "Searching
+    /// your sessions", etc. Nil outside a streamed ask, or once it answers.
     @Published var iqStage: String?
+    /// memory.draft's text so far while memory.ask streams (C13): drawn dimmed with "Checking",
+    /// replaced by the answer, and removed if the answer abstains or the call fails.
+    @Published var iqDraft: String?
     /// The answer_id memory.ask gave the answer on screen (95b2b891); nil with no memory.ask, an
     /// abstention with nothing to correct, or an already-corrected answer.
     @Published var iqAnswerId: String?
@@ -306,7 +309,7 @@ public final class CapsuleModel: ObservableObject {
         if let r = reply, !r.finished { return }
         followUp = false; autoKey = nil; autoTask?.cancel(); convo = []
         text = ""; groups = []; selected = 0; line = nil; reply = nil; asked = nil; memory = nil; askedMemory = nil; targetParent = nil; target = nil
-        iqStage = nil; iqAnswerId = nil; iqCorrecting = nil; iqFixed = nil; iqAbstained = false
+        iqStage = nil; iqDraft = nil; iqAnswerId = nil; iqCorrecting = nil; iqFixed = nil; iqAbstained = false
         cancelMentionRefresh()
         replySub?.cancel(); replySub = nil
     }
@@ -904,7 +907,7 @@ public final class CapsuleModel: ObservableObject {
         guard !words.isEmpty else { return .said("Type what to send first.") }
         asked = words
         askedMemory = nil
-        iqStage = nil; iqAnswerId = nil; iqCorrecting = nil; iqFixed = nil; iqAbstained = false
+        iqStage = nil; iqDraft = nil; iqAnswerId = nil; iqCorrecting = nil; iqFixed = nil; iqAbstained = false
         pending = true
         switch c.kind {
         case .app:
