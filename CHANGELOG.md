@@ -4,6 +4,10 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+- A real race in `vyre backup`: once tar's output ended, the export killed tar if its exit code was not in yet, so a clean
+  exit became "tar exited null" and the backup failed (a loaded machine hit it now and then). tar is now only stopped when
+  the reader gives up early (`core/names/backup.js`, a fake-tar test that fails without the fix). Test-only: the peer
+  detached-call test reads the answer once the file parses, not when curl has created it.
 - A real race in the CDP mux, found as the flaky two-agents computerd test: an agent client's first call could arrive after its
   browser session opened but before its browser context was made, and then ran with no context, so a
   `Target.createTarget` landed in the shared default context, outside every per-agent fence (and the agent never saw its

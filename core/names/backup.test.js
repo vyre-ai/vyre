@@ -5,10 +5,11 @@ import fs from "node:fs";
 import path from "node:path";
 import { execFileSync, spawn } from "node:child_process";
 import { DatabaseSync } from "node:sqlite";
-import { backup, restore, checkEntries, estimate } from "./backup.js";
+import { backup, restore, checkEntries, estimate, tarGz } from "./backup.js";
 import { seal, open as unsealBytes, isSealed } from "./seal.js";
 import { readRecords, isStream } from "./sealstream.js";
 import { tempHome } from "../../test/helpers.js";
+import { SCRATCH } from "../../test/scratch.mjs";
 
 const mode = p => fs.statSync(p).mode & 0o777;
 const dead = () => false;
@@ -573,4 +574,19 @@ test("export: session transcripts ride along as their own kind, restore to where
   const c = path.join(home, "c");
   const skipped = await restore({ root: c, file, passphrase: PASSPHRASE, skipTranscripts: true, workTo: { work: path.join(home, "w3") }, alive: dead });
   assert.deepEqual(skipped.projects.map(p => p.name), ["work"]);
+});
+
+test("backup: tar that has closed its output but not yet exited is waited for, never killed into an exit of null", async t => {
+  // A fake tar: writes its bytes, closes stdout, and takes a moment to exit, as a busy machine's tar does.
+  const dir = fs.mkdtempSync(path.join(SCRATCH, "fake-tar-"));
+  t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
+  fs.writeFileSync(path.join(dir, "tar"), "#!/bin/sh\nprintf 'hello'\nexec 1>&-\nsleep 0.4\nexit 0\n", { mode: 0o755 });
+  const was = process.env.PATH;
+  process.env.PATH = `${dir}${path.delimiter}${was}`;
+  t.after(() => { process.env.PATH = was; });
+  const warnings = [];
+  const parts = [];
+  for await (const part of tarGz(["-cf", "-", "."], warnings)) parts.push(part);
+  assert.ok(Buffer.concat(parts).length > 0, "the gzip stream came out");
+  assert.deepEqual(warnings, []);
 });
