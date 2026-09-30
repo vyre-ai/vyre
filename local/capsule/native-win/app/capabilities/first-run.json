@@ -1,0 +1,15 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "first-run",
+  "description": "Bundled page only; the main panel has no capability.",
+  "windows": [
+    "first-run"
+  ],
+  "permissions": [
+    "core:default",
+    "allow-get-state",
+    "allow-save-pairing",
+    "allow-begin-pair",
+    "allow-set-autostart"
+  ]
+}

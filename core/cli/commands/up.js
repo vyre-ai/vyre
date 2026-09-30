@@ -14,12 +14,12 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import readline from "node:readline/promises";
-import { execFileSync, spawn } from "node:child_process";
+import { execFileSync } from "node:child_process";
 import { request, call } from "../../daemon/client.js";
 import { ensureUp, stop } from "../daemonctl.js";
 import { REPO, VERSION } from "../../daemon/index.js";
 import { out, dim, bold, signal, beacon } from "../style.js";
-import { json, emit, fail, failTool, usage, viewing } from "../kit.js";
+import { json, emit, fail, failTool, usage, viewing, openInBrowser } from "../kit.js";
 import * as config from "../../config/index.js";
 import { dialogsAllowed, isRealHome, realBoxAllowed } from "../../config/dialogs.js";
 import * as system from "../../names/system.js";
@@ -154,7 +154,7 @@ export const terminal = {
 /** Open a link in the browser. VYRE_OPEN_BIN points tests at a fake `open`; without one, tests open nothing. */
 export function openUrl(url) {
   if (!process.env.VYRE_OPEN_BIN && !dialogsAllowed()) return;
-  try { spawn(process.env.VYRE_OPEN_BIN || "open", [url], { detached: true, stdio: "ignore" }).unref(); } catch {}
+  openInBrowser(url);
 }
 
 /** A box on this machine's own loopback (a dev world or a test's): never the person's real box. */

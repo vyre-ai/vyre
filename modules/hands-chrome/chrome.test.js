@@ -186,10 +186,15 @@ test("hands-chrome: navigates, snapshots, clicks an observable control and sees 
 
   const opened = await s.kit("chrome.open", { url: PAGE });
   assert.equal(opened.error, undefined, opened.error && opened.error.message);
-  assert.equal(opened.data.title, "start");
-
-  const snap = await s.kit("chrome.snapshot", {});
-  const names = snap.data.controls.map(c => c.name).sort();
+  // Wait on the page's real condition (its controls are there), not on time: a slow runner can answer
+  // the open before the document has finished.
+  let snap, names = [];
+  for (const end = Date.now() + 10_000; Date.now() < end;) {
+    snap = await s.kit("chrome.snapshot", {});
+    names = snap.data && snap.data.controls ? snap.data.controls.map(c => c.name).sort() : [];
+    if (names.length >= 3) break;
+    await new Promise(r => setTimeout(r, 100));
+  }
   assert.deepEqual(names, ["Go", "Send message", "say something"]);
 
   const clicked = await s.kit("chrome.click", { selector: { role: "button", name: "Go" } });

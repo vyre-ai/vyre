@@ -389,7 +389,7 @@ export function createFlow(o) {
         try {
           const r = await chan.call("sessions.accounts.signin", { flow: a.flow });
           if (r && r.step === "done") return upd({ step: "done", error: null });
-          if (r && r.step === "failed") return upd({ step: "failed", error: String((r.why || r.error || "the sign-in did not finish")).slice(0, 200) });
+          if (r && r.step === "failed") return upd({ step: "failed", error: String((r.message || r.why || r.error || "the sign-in did not finish")).slice(0, 200) });
         } catch (e) { return upd({ step: "failed", error: String(/** @type {Error} */ (e).message).slice(0, 200) }); }
       } else await sleep(200);
     }
@@ -405,12 +405,12 @@ export function createFlow(o) {
     upd({ step: "waiting", error: null });
     try {
       const r = await chan.call("sessions.accounts.signin", { flow: a.flow, code: text });
-      if (r && r.step === "failed") return upd({ step: "failed", paste: false, error: String(r.why || r.error || "that code did not work").slice(0, 200) });
+      if (r && r.step === "failed") return upd({ step: "failed", paste: false, error: String(r.message || r.why || r.error || "that code did not work").slice(0, 200) });
       // Signed in, or still finishing: ask until it says.
       for (let i = 0; i < 40 && mine === run; i++) {
         const s2 = await chan.call("sessions.accounts.signin", { flow: a.flow });
         if (s2 && s2.step === "done") return upd({ step: "done", paste: false });
-        if (s2 && s2.step === "failed") return upd({ step: "failed", paste: false, error: String(s2.why || s2.error || "the sign-in did not finish").slice(0, 200) });
+        if (s2 && s2.step === "failed") return upd({ step: "failed", paste: false, error: String(s2.message || s2.why || s2.error || "the sign-in did not finish").slice(0, 200) });
         await sleep(pollMs);
       }
     } catch (e) { upd({ step: "failed", paste: false, error: String(/** @type {Error} */ (e).message).slice(0, 200) }); }

@@ -100,6 +100,52 @@ mobile and the Capsule (through their owners).
 
 ## Doing
 
+- 0.2 BUILD STARTED 2026-09-30 (lead's GO, after team/0.2/plans/vault.md and CHAT.md agreement on
+  vault-routed API access P5, token/issuer binding P21, push credentials, the Gate "act" kind
+  fold-in for hands.commit, core/presence's Windows RSA branch, and watchers' {projects,agents}
+  scope on connections). First slice landed:
+  - `core/connectors/oauth.js` (new): the generic OAuth loopback+PKCE connect flow this plan calls
+    for everywhere (google/connect.js's Google-specific version, mcp.connect for hosted-MCP
+    servers, and vault-routed API access's BYO-OAuth credentials all reuse this rather than each
+    growing their own). Adds RFC 9728 protected-resource discovery, RFC 8414 authorization-server
+    metadata (with an OpenID-discovery fallback), and RFC 7591 dynamic client registration when a
+    target offers it; a target with neither DCR nor a supplied client refuses plainly, before any
+    listener opens. Every completed sign-in hands the caller a token set carrying `issuer`,
+    `resource` and `token_uri` (P21's binding data) alongside the tokens themselves; this file does
+    not itself decide where a token may be spent, that is `hub.js`'s job (below) and, later,
+    `vault.request`'s. `complete(flow, tokens)` is caller-supplied, so this file knows nothing about
+    the vault, the hub or google/ - core/google/connect.js is NOT yet repointed to use it (next
+    step, low risk: connect.js's own tests should pass unchanged once it is a thin wrapper).
+    Tests: `core/connectors/oauth.test.js` (5, against a new fake generic OAuth server,
+    `core/connectors/testing/fake-oauth.js`, covering the manual-client shape, the discovery+DCR
+    shape, refusal with neither, the pasted-address finish, a wrong state, PKCE, a declined
+    consent, an already-used code, and a no-leak check). All green locally.
+  - `core/mcp/hub.js` P21 piece: `update()`'s existing reconnect-on-change path now also calls
+    `creds.invalidate()` on the OLD row's auth when the url or transport actually changed (not on
+    a bare scope/policy change), so a repointed server row never has a stale cached access token
+    handed to whatever now sits at that url. New test in `core/mcp/hub.test.js` asserts this fires
+    only on a url/transport change, not on scope alone.
+  - NOT YET DONE from the lead's build order: the P17 provenance store and the Gate `said_intents`
+    match (platform/assistant's piece, not confirmed as vault's to build - flag if it turns out to
+    be), `vault.request` itself (the api-credential item kind, host+SSRF allowlist, endpoint
+    classification, Gate `api` sender), the push credential (vault-held IMAP IDLE connection,
+    `vault.push` event), and core/presence's Windows Hello RSA branch. Next session picks up there,
+    in that rough order, since vault.request and the push credential both depend on oauth.js
+    existing (now true) but are themselves still unbuilt.
+  - TEST NOTE: only `core/mcp`, `core/connectors`, `core/google` ran locally on the person's own
+    computer (72/73 pass; 1 pre-existing failure, `google: a DWD service account reads with
+    read-only tokens...` in core/google/module.test.js, confirmed unrelated - it fails the same way
+    on an unmodified checkout, an event-ordering tie-break flake, not caused by anything in this
+    session). The full core/vault suite (keychain-backed) was started locally by mistake and
+    stopped before it did anything. CORRECTED per the lead: there is no separate "test box" -
+    testbox IS the user's real server, so keychain tests never belong there either. They run on a
+    GitHub-hosted macos-latest runner instead, a throwaway VM discarded after the job (same "never
+    on the person's own account, never on the real server" rule, same pattern capsule-mac.yml
+    already uses for its own keychain-signing step). Added `.github/workflows/vault-mac.yml`: the
+    full targeted set (core/vault, core/connectors, core/mcp, core/google, core/modules,
+    core/cli/commands, local/voice, test/docs-*, test/hygiene) on macos-latest, triggered on a push
+    or PR touching those paths, or by hand (`gh workflow run vault-mac.yml --ref work/vault-next`).
+    Not yet observed green - push the branch and check the run before this lands anywhere.
 - SAVED 27 Sep (restart). Branch head = this commit on work/vault-next (pushed). 9b built: connections
   (4d43906e..6cf9a99f), picker default/last_used (0539a392), thread origin -> surface (d7f09589), merge main
   53cd1326 (9450f5e1), ctx.modules.status() rename for platform b7bbf5d8 (5d7cbd07).
@@ -179,3 +225,9 @@ mobile and the Capsule (through their owners).
 
 - vault.import on a .env file now makes ONE env-set (named after the file's path), holding only
   secrets, instead of one secret per variable. vault.import/preview take a folder and `rewrite`.
+
+## Doing
+
+- Push credential (core/connectors/google.js, imap.js, push.js): one Google consent for hosted MCP and IMAP, one IDLE connection per account, `vault.push` with ids only, reconsent event on an expired token. Runner-tested only. Needs the owning module to wire pushTools and the four event types, and the hub to pass `url` to Credentials.headers for the P21 refusal.
+- One Chrome extension, vault capabilities (plan C26): capsule-sight had no extension skeleton yet, so this extends modules/vault-extension in place. New: API-key offer (keyfind.js pure detection, keychip.js page chip, POST /v1/fill/save-key in core/vault/fill-key.js, popup toggle). Merge points for capsule-sight's shell: manifest (no change: the chip script is registered at runtime like passkeys); background.js has ONE marked block "vault capability: API keys" joined at five searchable places (KEY_TYPES, keys(, syncKeyChip(); popup.js/popup.html carry one more toggle; build.mjs INJECTED lists keyfind.js and keychip.js. Login save (inline.js) and fill are unchanged. Needs from the lead: pass `connect` to `new Fill({...})` in core/vault/index.js (or wherever Fill is built) as a function that grants the saved item to a module whose need names the provider; without it the item is still saved and shows as a vault connection through details.provider. Runner-tested only.
+- P17 provenance store and vault.request (core/vault/said.js, request.js, api-request.js, core/gate hook): built and runner-tested. Open for others: sessions and assistant must call `vault.said.record` (only module:sessions and module:assistant may); sessions should pass a thread lineage to `vault.said.match` if it has one (today the Gate passes the call's own thread, so a child thread does not inherit its parent's non-standing intents); core/mcp hub.hold should read `state: "sent"` from gate.request (a covered call now runs at once and its answer says so in `message`); watchers must pass `watcher` to vault.request for a watcher context and hold a per-watcher grant; oauth signing in for an api-credential is not built. Docs pages for Entra and DWD (plan step 18) are not written.

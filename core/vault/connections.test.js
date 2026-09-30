@@ -13,7 +13,7 @@ import { start } from "../daemon/index.js";
 import { call } from "../daemon/client.js";
 import { tempHome, writeModule } from "../../test/helpers.js";
 import { DatabaseSync } from "node:sqlite";
-import { surfaceOf, words, toolCapabilities, usesOf, checkUse, Connections, moduleOf, CONNECTIONS_MIGRATION, CONNECTIONS_PICKER_MIGRATION, LAST_USED_EVERY_MS } from "./connections.js";
+import { surfaceOf, words, toolCapabilities, usesOf, checkUse, Connections, moduleOf, CONNECTIONS_MIGRATION, CONNECTIONS_PICKER_MIGRATION, DEFAULT_SUGGEST_MIGRATION, LAST_USED_EVERY_MS } from "./connections.js";
 import { needsCredential, needsCredentialError, isNeedsCredential } from "../modules/needs-credential.js";
 import { validate } from "../modules/index.js";
 import { PROVIDERS, checkProviderFields } from "./providers.js";
@@ -493,7 +493,7 @@ test("connections: google.accounts and mcp.servers are read on their events; reg
 /** A Connections over an in-memory table, with a vault that signs nothing and trusts every row. */
 function bare(now) {
   const db = new DatabaseSync(":memory:");
-  db.exec(CONNECTIONS_MIGRATION); db.exec(CONNECTIONS_PICKER_MIGRATION);
+  db.exec(CONNECTIONS_MIGRATION); db.exec(CONNECTIONS_PICKER_MIGRATION); db.exec(DEFAULT_SUGGEST_MIGRATION);
   const vault = { db, key: async () => {}, list: () => ({ items: [] }), rowOk: () => true, sign: () => {}, audit: () => {}, emit: () => {},
     tx: fn => { db.exec("BEGIN"); try { fn(); db.exec("COMMIT"); } catch (e) { db.exec("ROLLBACK"); throw e; } } };
   const c = new Connections(/** @type {any} */ (vault), { now: () => now.t });
@@ -509,6 +509,12 @@ test("connections: one default per capability, the picker's order, and last_used
   // A module's own row starts closed; a person opens each to capsule and chat before it is used.
   for (const { id } of [a, b, z]) { await c.grant({ id, surface: "capsule" }, "cli"); await c.grant({ id, surface: "chat" }, "cli"); }
   const pick = async () => (await c.list({ capability: "send_mail" }, "cli")).connections.map(r => [r.ref, r.is_default]);
+  // Two or more ready, no default: suggest setting one, once ever for this capability.
+  const firstPick = await c.list({ capability: "send_mail" }, "cli");
+  assert.equal(firstPick.suggest_default, true);
+  assert.equal((await c.list({ capability: "send_mail" }, "cli")).suggest_default, false, "asked once already");
+  // A different capability is asked on its own.
+  assert.equal((await c.list({ capability: "read_mail" }, "cli")).suggest_default, true);
   // No default, never used: by label.
   assert.deepEqual(await pick(), [["bravo", false], ["alpha", false], ["zulu", false]]);
   // Used most recently first.
@@ -519,6 +525,7 @@ test("connections: one default per capability, the picker's order, and last_used
   // The default first. Setting it again elsewhere clears it here.
   await c.update({ id: b.id, default_for: ["send_mail", "read_mail"] }, "cli");
   assert.deepEqual(await pick(), [["bravo", true], ["alpha", false], ["zulu", false]]);
+  assert.equal((await c.list({ capability: "send_mail" }, "cli")).suggest_default, false, "a default is set now");
   await c.update({ id: z.id, default_for: ["send_mail"] }, "cli");
   assert.deepEqual(await pick(), [["zulu", true], ["alpha", false], ["bravo", false]]);
   const rows = Object.fromEntries((await c.list({}, "cli")).connections.map(r => [r.ref, r.default]));

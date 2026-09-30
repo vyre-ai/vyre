@@ -73,9 +73,10 @@ addEventListener("beforeunload", e => { if (unsaved) { e.preventDefault(); e.ret
 // The hosts a provider's sign-in page may be on (lib/providers/signin-hosts.json, copied in by build-site.sh). No list yet: any plain https address.
 let signinHosts = null;
 try { const r = await fetch("/setup/signin-hosts.json", { cache: "no-store" }); if (r.ok) { const j = await r.json(); if (Array.isArray(j)) signinHosts = j.map(String); else if (j && Array.isArray(j.hosts)) signinHosts = j.hosts.map(String); } } catch { /* none */ }
-// A staging build points the relay and the install line elsewhere through /setup/config.json (scripts/stage-site.sh); production has none.
+// A staging build points the relay and the install line elsewhere through /setup/config.json (scripts/stage-site.sh); the file is ignored on
+// vyre.run and www.vyre.run, and its hosts must be Vyre's own or a test runner's loopback (site/setup/config.js).
 let over = {};
-try { const r = await fetch("/setup/config.json", { cache: "no-store" }); if (r.ok) over = setupOverrides(await r.json()); } catch { /* none */ }
+try { const r = await fetch("/setup/config.json", { cache: "no-store" }); if (r.ok) over = setupOverrides(await r.json(), location.hostname); } catch { /* none */ }
 const flow = createFlow({ client, relay: over.relay || RELAY, installUrl: over.installUrl, connect, signinHosts, signClaim, onChange: s => { unsaved = Boolean(s.named && s.named.recoveryCode && !s.named.saved); render(s, { doc: document, root, actions }); } });
 render(flow.state, { doc: document, root, actions });
 addEventListener("pagehide", () => flow.stop());

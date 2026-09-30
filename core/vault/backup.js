@@ -72,7 +72,7 @@ export async function backup(vault, passphrase, { params = SCRYPT } = {}) {
   const ok = table => r => vault.rowOk(table, r);
   for (const r of /** @type {any[]} */ (db.prepare("SELECT * FROM vault_items ORDER BY name").all().filter(ok("vault_items")))) {
     items.push({
-      name: r.name, kind: r.kind, description: r.description, fields: await vault.fields(r), order: json(r.fields, []),
+      name: r.name, kind: r.kind, description: r.description, fields: await vault.fields(r, { sealed: true }), order: json(r.fields, []),
       url: r.url ?? null, hosts: json(r.hosts, []), origin: r.origin ?? null, rotate: r.rotate ?? null,
       apps: json(r.apps, []), reprompt: Boolean(r.reprompt), created: r.created, updated: r.updated,
       ...(r.details && r.details !== "{}" ? { details: json(r.details, {}) } : {}),
