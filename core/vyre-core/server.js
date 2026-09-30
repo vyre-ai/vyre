@@ -18,6 +18,7 @@
 //     presence.verify {tool, input, proof} read: does this proof (a header string) prove that call?
 //     presence.enroll / presence.remove    write: needs a proof over this exact input
 //     presence.session.open                write: after a capsule, device or passkey proof only
+//     keys.exists/ensure/box.pub/box.dh/route.pub/route.sign   the relay's keys (phase 5), never a private half
 
 import fs from "node:fs";
 import http from "node:http";
@@ -28,6 +29,7 @@ import { insideClaude, loginOf } from "../daemon/peer.js";
 import { readPeerCred } from "./peercred.js";
 import { procTable } from "./procs.js";
 import { openVault } from "./vault.js";
+import { openKeys } from "./keys.js";
 
 export const PROTOCOL = 1;
 /** The proofs core can check itself. */
@@ -78,8 +80,8 @@ export function openStore(dataDir, o = {}) {
  * Start vyre-core on a unix socket.
  * @param {{ socket: string, dataDir: string, ownerUid: number, version?: string, log?: (m: string) => void, now?: () => number,
  *   peerCred?: (s: import("node:net").Socket) => Promise<{ pid: number, uid: number } | null>,
- *   personOf?: (pid: number) => { person: boolean, why: string }, webauthn?: any }} o
- *   peerCred, personOf and webauthn: tests only.
+ *   personOf?: (pid: number) => { person: boolean, why: string }, notModel?: (pid: number) => boolean, webauthn?: any }} o
+ *   peerCred, personOf, notModel and webauthn: tests only.
  */
 export async function startCore(o) {
   const log = o.log || (() => {});
@@ -110,6 +112,25 @@ export async function startCore(o) {
     for (const w of waiting) w();
   };
   const vaults = openVault({ db, dataDir: o.dataDir, log, emit, testKdf: o.testKdf });
+  const keys = openKeys(o.dataDir);
+  // The relay's keys (phase 5). The private halves never leave; what core offers is below. Any
+  // owner-uid process that is not a model's (inside no Claude session, its ancestry read to the top)
+  // may ask: vyred is a launchd job with no terminal, so the person verdict (which wants a login
+  // terminal) is the wrong test here. A DH answer is an oracle for impersonating the box, so a model
+  // never gets one.
+  const KEYS = {
+    "keys.exists": async () => ({ exists: keys.exists() }),
+    "keys.ensure": async () => keys.ensure(),
+    "keys.box.pub": async () => ({ pub: keys.boxPub() }),
+    "keys.box.dh": async input => ({ secret: keys.boxDh(input.remote) }),
+    "keys.route.pub": async () => ({ pub: keys.routePub() }),
+    "keys.route.sign": async input => ({ sig: keys.routeSign(input.message) }),
+  };
+  const notModel = o.notModel || (pid => {
+    const look = procTable();
+    const inside = insideClaude(pid, { look });
+    return !inside.inside && !inside.unknown;
+  });
 
   /** @type {WeakMap<object, Promise<{ pid: number, uid: number } | null>>} */
   const creds = new WeakMap();
@@ -239,6 +260,10 @@ export async function startCore(o) {
       const tool = m[1];
       const input = await body(req);
       if (READ[tool]) return send(res, 200, { data: await READ[tool](input) });
+      if (KEYS[tool]) {
+        if (!notModel(c.pid)) return send(res, 403, { error: { code: "not_person_side", message: "vyre-core's relay keys answer only a process outside every Claude session" } });
+        return send(res, 200, { data: await KEYS[tool](input) });
+      }
       const header = req.headers["x-vyre-presence"];
       const who = `peer:${c.pid}`;
       const refused = r => send(res, 401, { error: { code: r.code, message: r.message, methods: r.methods } });

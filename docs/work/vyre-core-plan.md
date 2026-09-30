@@ -187,6 +187,20 @@ Also for 2a:
   (names claim) move into core. Unblocks a phone joining a Solo Mac and relay on a Mac.
 - A Mac server (ADR 0039): computers, spawner and dockerproxy tokens also move in (GA blockers).
 
+### Phase 5 status (anywhere, 30 Sep): relay keys in core
+- core/vyre-core/keys.js holds the box's X25519 Noise static key and the Ed25519 route key in
+  `keys.json` (0600) in core's data dir, made once on `keys.ensure` (atomic link, two racing ensures
+  agree). Tools on core's socket: keys.exists, keys.ensure, keys.box.pub, keys.box.dh {remote},
+  keys.route.pub, keys.route.sign {message}. No tool returns a private half.
+- Caller rule: any owner-uid process that is inside no Claude session with its ancestry read to the
+  top (`notModel`). Not the person verdict: vyred is a launchd job with no login terminal. A dh answer
+  is an oracle for impersonating the box, so a model never gets one.
+- Client: lib/vyre-core-keys.js `createCoreKeys()`, async everywhere (dh included), trusted only
+  through root-owned core.json and the socket check; `fakeCoreKeys(seed)` for tests. tailnet's core/relay
+  wraps it as a handle {box:{pub, dh}, route:{pub, sign}} and macCoreRefusal lifts when it answers.
+- Not done: moving an existing Linux keys.json in (a Mac has none), the names directory's route-sign
+  message limit (tailnet enforces vyre-names-v1 on its side).
+
 ## Status
 
 - Phase 1 done on work/vyre-core: core/vyre-core/{server,peercred,strict,main}.js,
