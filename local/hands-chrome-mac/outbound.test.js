@@ -2,7 +2,7 @@
 // Only what SENDS something as the person is held: everything else is hands-free after the grant.
 import test from "node:test";
 import assert from "node:assert/strict";
-import { classifySend, held, digest, guardInstall, guardCollect } from "./extension/shared/outbound.js";
+import { classifySend, held, digest, guardInstall, guardInstallWrites, guardCollect } from "./extension/shared/outbound.js";
 import api from "./extension/caps/api.js";
 import net from "./extension/caps/net.js";
 import { makeCtx } from "./devtools-kit.js";
@@ -84,13 +84,13 @@ test("dev.console.eval: the script runs, its own send is held back, asked runs i
   const dt = (await import("./extension/caps/devtools.js")).default;
   const k = makeCtx({ active: 3 });
   const caught = [{ method: "POST", url: `${GHL}/conversations/messages`, why: "it messages, posts or charges as the person" }];
-  k.respond["Runtime.evaluate"] = (/** @type {any} */ p) => p.expression === guardCollect ? { result: { value: caught } } : p.expression === guardInstall ? { result: { value: true } } : { result: { type: "string", value: "done" } };
+  k.respond["Runtime.evaluate"] = (/** @type {any} */ p) => p.expression === guardCollect ? { result: { value: caught } } : p.expression === guardInstallWrites ? { result: { value: true } } : { result: { type: "string", value: "done" } };
   const h = await dt.ops["dev.console.eval"]({ tab: 3, expression: "fetch('/conversations/messages',{method:'POST'})" }, k.ctx);
   assert.equal(h.held, true);
-  assert.ok(k.sent.some(s => s.params && s.params.expression === guardInstall), "the guard was installed");
+  assert.ok(k.sent.some(s => s.params && s.params.expression === guardInstallWrites), "the guard was installed");
   const plain = makeCtx({ active: 3 });
   plain.respond["Runtime.evaluate"] = () => ({ result: { type: "string", value: "done" } });
   const r = await dt.ops["dev.console.eval"]({ tab: 3, expression: "1", asked: true }, plain.ctx);
   assert.equal(r.ok, true);
-  assert.ok(!plain.sent.some(s => s.params && s.params.expression === guardInstall), "asked runs with no guard");
+  assert.ok(!plain.sent.some(s => s.params && s.params.expression === guardInstallWrites), "asked runs with no guard");
 });

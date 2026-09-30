@@ -22,8 +22,11 @@
 import * as redact from "../shared/redact.js";
 import { classify } from "../shared/floor.js";
 import { passwordFieldScript } from "../shared/guards.js";
-import { guardInstall, guardCollect, held as heldRequest } from "../shared/outbound.js";
+import { guardInstallWrites, guardCollect, held as heldRequest } from "../shared/outbound.js";
 import { egressGuard } from "./net.js";
+
+/** A script that opens the page's auth stores. A tripwire, not a wall: what it stops is the plain way; the write-hold and redaction cover the rest. */
+const CREDENTIAL_STORE = /firebaseLocalStorage|stsTokenManager|firebase:authUser|\b(?:access|refresh|id)[_-]?token\b.{0,80}(?:indexedDB|localStorage|sessionStorage)|(?:indexedDB|localStorage|sessionStorage).{0,200}(?:access|refresh|id)[_-]?token|document\.cookie/is;
 import { fail } from "../shared/proto.js";
 
 const IDLE_MS = 5 * 60_000;
@@ -431,19 +434,22 @@ const ops = {
       catch (e) { throw refuse("blocked", `could not check frame ${f ? f.index : 0} (${(f && f.origin) || "top"}) for a password field, so a script is not run on this page: ${String(/** @type {any} */ (e)?.message || e).slice(0, 100)}`); }
       if (pw && pw.result && pw.result.value === true) throw refuse("blocked", !f || f.index === 0 ? "this page has a password field, so a script is not run on it" : `frame ${f.index} (${f.origin || "?"}) has a password field, so a script is not run on this page`);
     }
+    if (CREDENTIAL_STORE.test(String(args.expression))) throw refuse("blocked", "the script reads the page's stored login (IndexedDB or storage auth tokens). Vyre does not hand a login to a script, and a script should not hold one. Use chrome_api (action \"call\"): it signs the request with the page's own login inside the page, and the token is never in your hands. Prefer api.call over eval-fetch.");
     const guarded = args.asked !== true;
     const egress = guarded ? await egressGuard(ctx, tab) : null;
     // The send-hold shim goes into the SAME frame as the script, and is read back from there.
-    if (guarded) await runIn(ctx, tab, frame, guardInstall, { returnByValue: true });
+    if (guarded) await runIn(ctx, tab, frame, guardInstallWrites, { returnByValue: true });
     /** @type {any} */ let r;
     /** @type {any[]} */ let blocked = [];
     /** @type {any[]} */ let outside = [];
     try { r = await runIn(ctx, tab, frame, args.expression, { returnByValue: true, awaitPromise: true, generatePreview: true, timeout: 5000, userGesture: false, replMode: true }); }
     finally {
-      if (guarded) { const c = await runIn(ctx, tab, frame, guardCollect, { returnByValue: true }).catch(() => null); blocked = (c && c.result && c.result.value) || []; }
+      if (guarded) { const c = await runIn(ctx, tab, frame, guardCollect, { returnByValue: true }).catch(() => null); const bv = c && c.result && c.result.value; blocked = Array.isArray(bv) ? bv : []; }
       if (egress) outside = await egress.stop().catch(() => []);
     }
     if (outside.length) { const b = outside[0]; return heldRequest(b.method, b.origin, `the script tried to reach ${b.origin}, which is not this page or anything it already talks to`, `${args.expression}\n${b.method} ${b.origin}`); }
+    const wrote = blocked.find(b => b.write);
+    if (wrote) throw refuse("blocked", `the script tried to ${wrote.method} ${redact.url(wrote.url)} with the page's own login. Nothing was sent. A script may read with the page's login but not write with it: use chrome_api (action "call"), which makes the same request from inside the page, names it, and is asked first. Prefer api.call over eval-fetch.`);
     if (blocked.length) { const b = blocked[0]; return heldRequest(b.method, b.url, b.why, `${args.expression}\n${b.method} ${b.url}`); }
     if (r?.exceptionDetails) return redact.value({ ok: false, error: clip(String(r.exceptionDetails.exception?.description || r.exceptionDetails.text || "error"), 4000).text });
     const o = r?.result || {};

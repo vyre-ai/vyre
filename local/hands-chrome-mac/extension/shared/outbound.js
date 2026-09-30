@@ -66,7 +66,9 @@ export const guardInstall = `(() => {
   if (window.__vyreGuard) return true;
   const classifySend = ${classifySend.toString()};
   const blocked = [];
-  const hold = (m, u, b) => { const c = classifySend(m, u, b); if (c.send) { blocked.push({ method: String(m).toUpperCase(), url: String(u), why: c.why }); return true; } return false; };
+  // chrome.eval sets __vyreWrites: a script may read with the page's login but not write with it. A write goes through api.call, which is asked first.
+  const writes = window.__vyreWrites === true;
+  const hold = (m, u, b) => { const c = classifySend(m, u, b); if (writes && !c.send && !/^(GET|HEAD|OPTIONS)$/i.test(String(m))) { blocked.push({ method: String(m).toUpperCase(), url: String(u), why: "write", write: true }); return true; } if (c.send) { blocked.push({ method: String(m).toUpperCase(), url: String(u), why: c.why }); return true; } return false; };
   const of = window.fetch, xo = XMLHttpRequest.prototype.open, xs = XMLHttpRequest.prototype.send, sb = navigator.sendBeacon;
   window.fetch = function (i, o) {
     const m = (o && o.method) || (i && i.method) || "GET", u = (i && i.url) || i;
@@ -102,5 +104,8 @@ export const guardInstall = `(() => {
   window.__vyreGuard = { blocked, restore() { if (WS) window.WebSocket = WS; if (RTC) window.RTCPeerConnection = RTC; if (WRTC) window.webkitRTCPeerConnection = WRTC; P.appendChild = oa; P.insertBefore = oi; E.append = oap; E.prepend = opp; window.fetch = of; XMLHttpRequest.prototype.open = xo; XMLHttpRequest.prototype.send = xs; if (sb) navigator.sendBeacon = sb; } };
   return true;
 })()`;
+
+/** The same guard for chrome.eval: a script may read with the page's login but not write with it. */
+export const guardInstallWrites = "window.__vyreWrites = true;" + guardInstall;
 
 export const guardCollect = `(() => { const g = window.__vyreGuard; if (!g) return []; g.restore(); delete window.__vyreGuard; return g.blocked; })()`;

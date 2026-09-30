@@ -213,3 +213,40 @@ test("tab close or detach forgets rings", async () => {
   const r2 = await dev.ops["dev.console.read"]({}, k.ctx);
   assert.equal(r2.count, 0);
 });
+
+const FB_ACCESS = "eyJhbGciOiJSUzI1NiIsImtpZCI6ImFiYzEyMyJ9.eyJ1c2VyX2lkIjoiYWJjMTIzIiwiZW1haWwiOiJhQGIuY29tIn0.c2lnbmF0dXJlZmlyZWJhc2V0b2tlbg";
+const FB_REFRESH = "AMf-vBxQ7k2Zr9Lp0sT3uVwXyA1bC2dE3fG4hI5jK6lM7nO8pQ9rS0tU1vW2xY3z";
+
+test("console.eval: Firebase access and refresh tokens are masked whatever they are returned under", async () => {
+  const k = makeCtx({ respond: { "Runtime.evaluate": { result: { type: "object", value: { a: FB_ACCESS, nested: { stsTokenManager: { accessToken: FB_ACCESS, refreshToken: FB_REFRESH } }, list: [FB_REFRESH], line: `token-id: ${FB_ACCESS}` } } } } });
+  const r = await dev.ops["dev.console.eval"]({ expression: "window.state" }, k.ctx);
+  for (const raw of [FB_ACCESS, FB_REFRESH]) assert.ok(!ser(r).includes(raw), raw.slice(0, 12));
+  const k2 = makeCtx({ respond: { "Runtime.evaluate": { result: { type: "string", value: `${FB_ACCESS} and ${FB_REFRESH}` } } } });
+  const r2 = await dev.ops["dev.console.eval"]({ expression: "window.t" }, k2.ctx);
+  assert.ok(!ser(r2).includes(FB_ACCESS) && !ser(r2).includes(FB_REFRESH));
+});
+
+test("console.eval: a script that opens the page's stored login is refused and points to api.call", async () => {
+  const k = makeCtx({ respond: { "Runtime.evaluate": { result: { type: "string", value: "x" } } } });
+  for (const expression of [
+    "indexedDB.open('firebaseLocalStorageDb')",
+    "(async()=>{const u=x.value.stsTokenManager.accessToken})()",
+    "localStorage.getItem('access_token')",
+    "document.cookie",
+  ]) {
+    await assert.rejects(dev.ops["dev.console.eval"]({ expression }, k.ctx), (/** @type {any} */ e) => e.code === "blocked" && /api\.call|chrome_api/.test(String(e.message)), expression);
+  }
+  assert.equal(k.calls("Runtime.evaluate").filter(s => String(s.params.expression).includes("firebaseLocalStorageDb")).length, 0, "nothing ran");
+  const ok = await dev.ops["dev.console.eval"]({ expression: "document.title" }, k.ctx);
+  assert.equal(ok.ok, true);
+});
+
+test("console.eval: a write the script makes with the page's login is refused, and nothing is sent", async () => {
+  const k = makeCtx({ respond: { "Runtime.evaluate": (/** @type {any} */ p) => {
+    const x = String(p.expression);
+    if (x.includes("__vyreWrites")) return { result: { value: true } };
+    if (x.includes("__vyreGuard") && x.includes("restore")) return { result: { value: [{ method: "DELETE", url: "https://backend.example.com/workflow/abc?token=SECRETSECRETSECRET12", why: "write", write: true }] } };
+    return { result: { type: "string", value: "done" } };
+  } } });
+  await assert.rejects(dev.ops["dev.console.eval"]({ expression: "fetch('https://backend.example.com/workflow/abc',{method:'DELETE'})" }, k.ctx), (/** @type {any} */ e) => e.code === "blocked" && /DELETE/.test(String(e.message)) && /api\.call/.test(String(e.message)) && !/SECRETSECRET/.test(String(e.message)));
+});

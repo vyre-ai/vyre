@@ -527,7 +527,7 @@ Do one thing to one control found by selector, in any frame of the tab (selector
 
 ### `chrome.api`
 
-An app's own API, learned from its traffic. learn: reduce captured requests to a catalog (method, path, query and body shape, auth kind, sample status; values masked). catalog: read it. call: invoke one entry from inside the page. learn sees the calls of every frame, including a cross-origin iframe's (the workflow builder), and each entry records the frame it was learned in; call runs in that frame by default, so its own cookies and auth sign it, or in the frame you name.
+An app's own API, learned from its traffic. learn: reduce captured requests to a catalog (method, path, query and body shape, auth kind, sample status; values masked). catalog: read it. call: invoke one entry from inside the page. learn sees the calls of every frame, including a cross-origin iframe's (the workflow builder), and each entry records the frame it was learned in; call runs in that frame by default, so its own cookies and auth sign it, or in the frame you name. This is the way to call an app's backend with the person's login: prefer call over a fetch in chrome_eval, which cannot write and cannot read the stored login.
 
 - Input:
   - `action` one of "learn", "catalog", "call", required
@@ -577,7 +577,7 @@ The page's console: messages, exceptions and log entries kept in a ring buffer, 
 
 ### `chrome.eval`
 
-Run a JavaScript expression in a tab and return its JSON result. Values shaped like credentials (tokens, keys, JWTs, values under secret-looking names) are masked; other values come back as the page holds them, so an expression can still read a short cookie or a typed field. Runs in the top page unless frame names one (an index, frame id, or a piece of its origin or URL). Refused when a visible password field is in ANY readable frame of the tab. Hands-free, except that a message, post or payment the script tries to send is held for the person's approval unless they asked for it.
+Run a JavaScript expression in a tab and return its JSON result. Values shaped like credentials (tokens, keys, JWTs, values under secret-looking names) are masked; other values come back as the page holds them, so an expression can still read a short cookie or a typed field. Runs in the top page unless frame names one (an index, frame id, or a piece of its origin or URL). Refused when a visible password field is in ANY readable frame of the tab. A script can read with the page's login but cannot write with it: a POST, PUT, PATCH or DELETE it makes is refused and nothing is sent, and a script that opens the page's stored login (IndexedDB or storage auth tokens, cookies) is refused. PREFER chrome_api call OVER eval-fetch: it signs the request with the page's own login inside the page, so the token is never in a script or in your hands, and a write is asked first. A message, post or payment the script tries to send is held for the person's approval.
 
 - Input:
   - `expression` string
@@ -608,10 +608,12 @@ Set many form fields in one step, across the tab's frames: fields is a list of {
 
 ### `chrome.frames`
 
-The tab's frames (iframes, including cross-origin ones that run in their own process): each with its origin, whether Vyre can read it, and which cannot be read and why. list shows them; probe reads each readable frame's title and control count, which is the quick way to see that child frames work here. A modern app (GoHighLevel's workflow builder, embedded editors and payment forms) lives in an iframe, so the top page alone can be only its shell.
+The tab's frames (iframes, including cross-origin ones that run in their own process): each with its origin, whether Vyre can read it, and which cannot be read and why. list shows them; clicktest is a diagnostic that clicks one element both ways Input can be sent and counts what the page received; probe reads each readable frame's title and control count, which is the quick way to see that child frames work here. A modern app (GoHighLevel's workflow builder, embedded editors and payment forms) lives in an iframe, so the top page alone can be only its shell.
 
 - Input:
-  - `action` "list" or "probe"
+  - `action` one of "list", "probe", "clicktest"
+  - `css` string: For clicktest: a CSS selector of the element to click, default button.
+  - `frame` string: For clicktest: the frame (index, id or piece of its origin).
   - `tab` integer: Tab id from chrome.tabs. Default: the tab Vyre is working in.
   - `timeoutMs` integer: Give up after this many ms. Default 30000.
 - Callers: any caller
