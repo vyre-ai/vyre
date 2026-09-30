@@ -172,4 +172,4 @@ redialing on that relay path, and rejects waiting calls with `code: "relay_remov
 whose word it is: the relay's. A compromised relay can send 4401 too, so it is never proof and nothing
 may be wiped on it. An app asks the box directly over a path the relay does not control (the tailnet
 address, or a pairing check) before it acts. A handshake refusal for a stranger's key is the relay's
-generic 4410 "box closed the connection". Pair again to come back.
+generic 4410 "box closed the connection". Pair again to come back. The box keeps a removed device's row (its public key and name, nothing else) for good, nothing prunes it, so a phone that was away for months still hears "device removed" when it returns.
