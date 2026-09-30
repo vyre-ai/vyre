@@ -40,6 +40,8 @@ async function mountDrive() {
     if (!shared) return say("Vyre Drive", "No folder is shared yet. Choose one in Settings, then Drive.");
     const a = await call("files.drive.address", { share: shared.share || shared.name || shared.suggestedName });
     if (!a || !a.unc) return say("Vyre Drive", "The server has no address for that folder yet.");
+    // Name the folder before it opens: the box supplied the path, so the person sees what is mapped.
+    await say("Vyre Drive", "Opening " + a.unc.split("\\").slice(3).join("\\") + " from " + (shared.share || shared.name || shared.suggestedName) + ".");
     await invoke("mount_drive", { unc: a.unc });
   } catch (e) {
     say("Vyre Drive", String((e && e.message) || e));
