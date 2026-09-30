@@ -79,6 +79,18 @@ jobs:
         run: |
           git fetch --no-tags origin main
           git merge-base --is-ancestor HEAD FETCH_HEAD || { echo "the tag's commit is not on main; refusing to sign a release from it"; exit 1; }
+      - name: What changed in the signing path since the last release (for the approver)
+        # The approval on the `sign` job happens BEFORE that job starts, so the look has to be here, in
+        # the build job's summary, which is already written while the approval is pending.
+        run: |
+          prev=$(git describe --tags --abbrev=0 --match 'v[0-9]*' "HEAD^" 2>/dev/null || true)
+          base=${prev:-$(git hash-object -t tree /dev/null)}
+          {
+            echo "### Signing path: $TAG vs ${prev:-nothing (first release)}"
+            echo '```diff'
+            git diff "$base" HEAD -- .github/workflows scripts/sign-manifest.mjs core/vyre-core/release.js scripts/check-release-key.mjs || true
+            echo '```'
+          } | tee -a "$GITHUB_STEP_SUMMARY" | head -n 400
       - name: Box files and vyre.tgz, as build-site.sh makes them (unsigned, this job never sees the signing key)
         run: |
           sh scripts/build-site.sh
