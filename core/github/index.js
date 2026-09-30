@@ -85,6 +85,37 @@ export default {
     // signing in, is the narrower alternative and needs no gh.
     const ghBin = (ctx.config && ctx.config.gh) || process.env.VYRE_GH_BIN || "gh";
 
+    /**
+     * GitHub's own hosted MCP server, for agents: a row in the MCP hub that carries this account's
+     * token (bearer, from the vault item) and goes only to api.githubcopilot.com (the hub binds
+     * github-* items to that host). Its reads run; its writes are held at the Gate like any hub
+     * write. File writes and pushes are denied there: they go through github.session.push, which
+     * scans the outgoing commits for secrets first. Never fails a sign-in.
+     */
+    const HOSTED_URL = "https://api.githubcopilot.com/mcp/";
+    const HOSTED_DENY = ["create_or_update_file", "push_files", "delete_file"];
+    async function hostedRows() {
+      const r = await ctx.call("mcp.servers", {});
+      return Array.isArray(r.data) ? r.data : [];
+    }
+    async function ensureHosted(acct) {
+      try {
+        const rows = await hostedRows();
+        if (rows.some(x => x.auth && x.auth.item === acct.item)) return { added: false };
+        await ctx.call("vault.grant", { name: acct.item, module: "mcp" });
+        const name = rows.some(x => x.name === "github") ? `github-${acct.name}` : "github";
+        const r = await ctx.call("mcp.add", { name, transport: "http", url: HOSTED_URL, auth: { type: "bearer", item: acct.item, field: "token" }, tools: { deny: HOSTED_DENY } });
+        if (r.error) { ctx.log("github hosted mcp not added", { account: acct.name, code: r.error.code }); return { added: false, error: r.error.code }; }
+        return { added: true, server: name };
+      } catch (e) { ctx.log("github hosted mcp not added", { account: acct.name, error: String(/** @type {any} */ (e)?.message || e).slice(0, 120) }); return { added: false, error: "failed" }; }
+    }
+    async function dropHosted(acct) {
+      try {
+        const row = (await hostedRows()).find(x => x.auth && x.auth.item === acct.item);
+        if (row) await ctx.call("mcp.remove", { name: row.name });
+      } catch { /* the account still goes */ }
+    }
+
     const signIn = connector({
       gh: ghBin,
       taken: name => Boolean(accounts.get(name)),
@@ -95,12 +126,13 @@ export default {
         return old && old.origin !== "module:github" ? `the vault already has an item named ${item} that Vyre's GitHub sign-in did not make; rename or delete it first` : null;
       },
       save: async (item, fields) => {
-        const r = await ctx.call("vault.put", { name: item, kind: "pat", description: "GitHub sign-in (made by Vyre)", fields, grants: ["github"] });
+        const r = await ctx.call("vault.put", { name: item, kind: "pat", description: "GitHub sign-in (made by Vyre)", fields, grants: ["github", "mcp"] });
         if (r.error) throw fail(`could not save the sign-in in the vault: ${r.error.message}`, r.error.code || "vault");
       },
       add: async acct => {
         accounts.put(acct, now());
         ctx.events.emit("github.added", { name: acct.name, login: acct.login });
+        await ensureHosted(acct);
       },
       emit: (type, payload) => ctx.events.emit(type, payload),
       log: (m, x) => ctx.log(m, x),
@@ -120,6 +152,17 @@ export default {
       run: input => signIn.cancel(input),
     });
 
+    ctx.tool("github.mcp.sync", {
+      description: "Make sure every connected GitHub account has GitHub's hosted MCP server in the MCP hub (token from its vault item, granted to mcp, file writes denied, other writes held at the Gate). Safe to run again. People only.",
+      input: obj({}),
+      callers: PEOPLE,
+      run: async () => {
+        const out = [];
+        for (const acct of accounts.all()) out.push({ name: acct.name, ...(await ensureHosted(acct)) });
+        return { accounts: out };
+      },
+    });
+
     ctx.tool("github.accounts", {
       description: "The GitHub accounts Vyre can use: name, login and avatar, never a token.",
       input: obj({}),
@@ -134,6 +177,7 @@ export default {
       run: async ({ name }) => {
         const acct = accounts.get(name);
         if (!acct) return { removed: false };
+        await dropHosted(acct);
         await ctx.call("vault.delete", { name: acct.item }).catch(() => {});
         accounts.remove(name);
         ctx.events.emit("github.removed", { name });

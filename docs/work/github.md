@@ -594,3 +594,8 @@ mcp.connect/oauth.js status have posted (both block the Next list below).
   {id} -> {kind, id, name, url, text, outside:true, note}. ids: repo:o/n, pr:o/n#N, issue:o/n#N, strictly parsed.
   Callers: people plus module:mentions/platform/sessions/threads (firstParty). Platform owns the field's schema
   and the fan-out; unknown keys are ignored until it lands.
+- Hosted MCP wired (vault's githubServer row is on stage): connecting an account grants its vault item to mcp
+  and mcp.adds api.githubcopilot.com/mcp/ (bearer from github-<name>.token; row "github", later accounts
+  "github-<name>"; tools.deny create_or_update_file/push_files/delete_file, since pushes go through
+  github.session.push and its secret scan; other writes are classified outward by the hub and held at the Gate).
+  github.remove drops the row; github.mcp.sync (people) adds rows for accounts that predate this. Tests: index.test.js (fake hub) and registry.test.js (the real hub accepts the row, refuses another host).
