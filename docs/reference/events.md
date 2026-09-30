@@ -459,6 +459,12 @@ Listens for: `link.unpaired`
 | --- | --- |
 | `tips.updated` | `count`, `from`, `module`, `to` |
 
+## update
+
+| Event | Fields |
+| --- | --- |
+| `update.available` | `channel`, `current`, `version` |
+
 ## vault
 
 | Event | Fields |

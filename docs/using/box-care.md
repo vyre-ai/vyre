@@ -94,6 +94,8 @@ either. Pick one with `vyre update --channel beta` or `VYRE_CHANNEL=beta`, or a 
 with `--to 0.2.0`. While GitHub has no release yet, or when you set `VYRE_BOX_URL` yourself, it
 uses the site instead (`https://vyre.run/box/` by default), as it always has.
 
+Vyre looks for a newer release once a day and keeps the answer, so Settings can say "Update available" and show what changed without running anything. It only looks: it never downloads or installs, so the update always starts with you running the command above. Set `auto` to `"off"` inside the `update` object in `config.json` to stop the daily look.
+
 Every file comes from the release and is checked against its `SHA256SUMS` before anything on the
 box changes. Then, in order:
 
@@ -187,7 +189,7 @@ your data again on its own.
 
 | Option | Does |
 |---|---|
-| `--channel stable` or `--channel beta` | which releases to follow; the default is `stable`, or `update.channel` in `config.json` |
+| `--channel stable` or `--channel beta` | which releases to follow; the default is `stable`, or `channel` inside the `update` object in `config.json` |
 | `--to <version>` | a given release, when an update says to step through one first |
 | `--yes` | installs without asking; needed when there is no terminal to ask on |
 | `--rollback` | puts the previous release back and keeps your current data |

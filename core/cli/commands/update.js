@@ -26,7 +26,7 @@ import { backup, restore } from "../../names/backup.js";
 import { bring, waitFor, terminal } from "./up.js";
 import { out, dim, bold, signal, beacon } from "../style.js";
 import { EXIT, UsageError, json, emit, fail, usage, parse } from "../kit.js";
-import * as R from "../update/releases.js";
+import * as R from "../../../lib/releases.js";
 
 const REPO_PATH = "repos/vyre-ai/vyre/releases";
 
