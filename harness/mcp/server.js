@@ -123,7 +123,10 @@ async function handle(msg) {
       // link back to the chat row that caused them (vyred reads it as meta.call on a session's paths).
       const meta = params?._meta || {};
       const callId = [meta["claudecode/toolUseId"], meta.toolUseId, meta.tool_use_id].find(v => typeof v === "string" && v);
-      const r = await call(tool, scoped(tool, alias ? alias.map(params?.arguments || {}, process.env) : params?.arguments || {}), { caller: CALLER, session, timeout: tool === "agents.ask" ? 600_000 : 120_000,
+      const args = params?.arguments || {};
+      const via = alias && alias.route && alias.route.when(args, process.env) ? alias.route : null;
+      const sent = via ? via.tool : tool;
+      const r = await call(sent, scoped(sent, via ? via.map(args, process.env) : alias ? alias.map(args, process.env) : args), { caller: CALLER, session, timeout: tool === "agents.ask" ? 600_000 : 120_000,
         ...(callId ? { headers: { "x-vyre-call-id": callId } } : {}) });
       if (r.error) return { content: [{ type: "text", text: `${r.error.code}: ${r.error.message}` }], isError: true };
       return { content: [{ type: "text", text: typeof r.data === "string" ? r.data : JSON.stringify(r.data, null, 2) }], structuredContent: r.data && typeof r.data === "object" && !Array.isArray(r.data) ? r.data : undefined };
