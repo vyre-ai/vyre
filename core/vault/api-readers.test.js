@@ -21,7 +21,7 @@ import { tempHome, present } from "../../test/helpers.js";
 
 const fake = label => `fixture-${label}-${crypto.randomBytes(12).toString("hex")}`;
 const json = (status, body) => ({ status, headers: { "content-type": "application/json" }, body: Buffer.from(JSON.stringify(body)) });
-const CONFIG = { auth: { type: "bearer" }, hosts: ["graph.microsoft.com"], readers: [{ module: "connectors", paths: ["/v1.0/me/calendarView*", "/v1.0/me/events*"] }] };
+const CONFIG = { auth: { type: "bearer" }, hosts: ["graph.microsoft.com"], readers: [{ module: "connectors", paths: ["/v1.0/me/calendarView", "/v1.0/me/events*"] }] };
 
 async function mk(t) {
   const home = fs.mkdtempSync(path.join(SCRATCH, "vyre-readers-"));
@@ -59,8 +59,12 @@ test("readers: the shape is checked", () => {
   // a prefix ends at a segment, and an encoded slash or dot is never a way past it
   const c = normalize(CONFIG);
   assert.equal(readerMayRead(c, "connectors", "/v1.0/me/calendarView"), true);
-  assert.equal(readerMayRead(c, "connectors", "/v1.0/me/calendarView/abc?x=1"), true);
-  assert.equal(readerMayRead(c, "connectors", "/v1.0/me/calendarViewfoo"), false, "a longer name is not under the prefix");
+  assert.equal(readerMayRead(c, "connectors", "/v1.0/me/calendarView?startDateTime=a&$top=5"), true, "the exact path, then its query");
+  assert.equal(readerMayRead(c, "connectors", "/v1.0/me/calendarView/abc?x=1"), false, "no trailing * means exactly that path");
+  assert.equal(readerMayRead(c, "connectors", "/v1.0/me/calendarViewOther"), false, "a sibling is not the path");
+  assert.equal(readerMayRead(c, "connectors", "/v1.0/me/calendarView;jsessionid=x"), false, "a path parameter is refused");
+  assert.equal(readerMayRead(c, "connectors", "/v1.0/me/events/abc"), true, "a trailing * keeps its own subpaths");
+  assert.equal(readerMayRead(c, "connectors", "/v1.0/me/eventsfoo"), false);
   for (const p of ["/v1.0/me/calendarView%2f..%2fmessages", "/v1.0/me/calendarView%2F..%2Fmessages", "/v1.0/me/calendarView/%2e%2e/messages", "/v1.0/me/calendarView/../messages", "/v1.0/me/calendarView%5cmessages", "/v1.0/me/events/%00"])
     assert.equal(readerMayRead(c, "connectors", p), false, p);
   const exact = normalize({ ...CONFIG, readers: [{ module: "connectors", paths: ["/v1.0/me"] }] });

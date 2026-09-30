@@ -1116,7 +1116,7 @@
      {
       "module": "connectors",
       "paths": [
-       "/v1.0/me/calendarView*"
+       "/v1.0/me/calendarView"
       ]
      }
     ]
@@ -1177,7 +1177,7 @@
      {
       "module": "connectors",
       "paths": [
-       "/calendar/v3/calendars/primary/events*"
+       "/calendar/v3/calendars/primary/events"
       ]
      }
     ]

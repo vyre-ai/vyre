@@ -144,7 +144,7 @@ export function readerMayRead(config, mod, pathAndQuery) {
   const q = pathAndQuery.indexOf("?");
   const pathname = q < 0 ? pathAndQuery : pathAndQuery.slice(0, q);
   // Encoded slashes and dots are how a path is smuggled past a prefix (the server may decode %2f, the URL parser does not), so none is allowed.
-  if (/%(2f|5c|2e|00)/i.test(pathname) || /(^|\/)\.\.?(\/|$)/.test(pathname)) return false;
+  if (/%(2f|5c|2e|00)|;/i.test(pathname) || /(^|\/)\.\.?(\/|$)/.test(pathname)) return false;
   return e.paths.some(pat => {
     const prefix = pat.endsWith("*") ? pat.slice(0, -1) : pat;
     if (!pathname.startsWith(prefix)) return false;
