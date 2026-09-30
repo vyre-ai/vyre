@@ -151,8 +151,10 @@ try {
 
   // 1.11 claim: the page mints the passkey link for the server's own address
   const arrive = await sees(/Open your server/i, 60000);
-  const claimHref = String(await page.evaluate(`(([...document.querySelectorAll("a[href]")].find(a => /onboard\\/passkey/.test(a.href))||{}).href)||""`));
-  r.step("1.11-claim-link", arrive && /^https:\/\/marlow-finch\.vyre\.run\/onboard\/passkey#claim=/.test(claimHref), { shot: await shot("setup-claim"), why: hide(claimHref).slice(0, 120) });
+  await click("Get my link");
+  await sleep(3000);
+  const claimHref = String(await page.evaluate(`(() => { const t = [...document.querySelectorAll("a[href],pre,code,input")].map(e => e.href || e.value || e.textContent).find(x => /onboard\\/passkey/.test(x || "")); return t || ""; })()`)).trim();
+  r.step("1.11-claim-link", arrive && /^https:\/\/marlow-finch\.vyre\.run\/onboard\/passkey#claim=\S+/.test(claimHref), { shot: await shot("setup-claim-link"), why: claimHref ? hide(claimHref).slice(0, 100) : "no link on the page after Get my link" });
 } catch (e) {
   r.step("run", false, { why: hide(e.message).slice(0, 300) });
   try { await shot("failure"); } catch {}
