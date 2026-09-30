@@ -174,7 +174,7 @@ test("egress guard: a fetch to a fresh origin from inside a child is held, its o
   assert.ok(seen.ran);
   assert.equal(r.held, true, "the stranger origin is held");
   assert.equal(k.callsIn("Fetch.failRequest", "S-APP").filter(s => s.params.requestId === "evil").length, 1, "failed on the session that paused it");
-  assert.equal(k.calls("Fetch.failRequest").length, 1, "nothing else failed");
+  assert.equal(k.calls("Fetch.failRequest").filter((/** @type {any} */ c) => !c.params.requestId.startsWith("probe")).length, 1, "nothing else failed");
   assert.deepEqual(k.callsIn("Fetch.continueRequest", "S-APP").map(s => s.params.requestId).sort(), ["own", "own2"], "the frame's own origins go through, on its session");
   for (const s of [undefined, "S-APP", "S-INNER"]) assert.ok(k.sent.some(x => x.method === "Fetch.enable" && x.session === s), `Fetch on for ${s || "top"}`);
   for (const s of [undefined, "S-APP", "S-INNER"]) assert.ok(k.sent.some(x => x.method === "Fetch.disable" && x.session === s), `Fetch restored for ${s || "top"}`);

@@ -46,6 +46,11 @@ export function createFakeChrome(seed = []) {
       async sendCommand(/** @type {any} */ t, /** @type {string} */ method, /** @type {any} */ params) {
         counts.sendCommand++;
         commands.push({ tabId: t.tabId, method, params, ...(t.sessionId ? { sessionId: t.sessionId } : {}) });
+        // The guard's readiness probe: Chrome pauses both requests once Fetch is on, so the fake does too.
+        if (method === "Runtime.evaluate" && String(params?.expression || "").includes("vyre-guard-probe")) {
+          for (const [i, type] of ["Image", "Fetch"].entries()) chrome._.onEvent.fire(t, "Fetch.requestPaused", { requestId: "probe" + i, resourceType: type, request: { url: "http://vyre-guard-probe.invalid/" + (i ? "f" : "i"), method: "GET", headers: {} } });
+          return { result: { type: "number", value: 1 } };
+        }
         return chrome._.cdp(t.tabId, method, params, t.sessionId);
       },
     },

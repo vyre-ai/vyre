@@ -91,7 +91,7 @@ test("egress guard: a fetch to a fresh origin carrying localStorage is failed an
   assert.equal(r.held, true, JSON.stringify(r));
   assert.match(r.why, /attacker\.example/);
   assert.ok(!JSON.stringify(r).includes("token"), "the query never comes back");
-  const failed = k.calls("Fetch.failRequest").map((/** @type {any} */ c) => c.params.requestId).sort();
+  const failed = k.calls("Fetch.failRequest").map((/** @type {any} */ c) => c.params.requestId).filter((/** @type {string} */ id) => !id.startsWith("probe")).sort();
   const cont = k.calls("Fetch.continueRequest").map((/** @type {any} */ c) => c.params.requestId).sort();
   assert.deepEqual(failed, ["beacon", "evil", "img"]);
   assert.deepEqual(cont, ["data", "known", "own"]);
@@ -130,4 +130,41 @@ test("egress guard: when the browser-level rule cannot be set, the script does N
   assert.equal(k.sent.some((/** @type {any} */ x) => x.params && x.params.expression === "/*vyre-test-script*/ 1"), false, "the script never ran");
   const k2 = egressRig(async () => {});
   assert.equal((await T(dt.ops["dev.console.eval"])({ tab: 3, expression: "/*vyre-test-script*/ 1" }, k2.ctx)).contained, undefined, "no flag when the rule holds");
+});
+
+test("egress guard: a frame whose interceptor is not live (the probe never arrives at Fetch.requestPaused) refuses the script, and nothing of it runs", async () => {
+  const k = makeCtx({ active: 3, blindProbe: true });
+  let ran = false;
+  k.respond["Runtime.evaluate"] = async (/** @type {any} */ p) => {
+    const e = String(p.expression || "");
+    if (e === passwordFieldScript) return { result: { value: false } };
+    if (e.includes("performance.getEntriesByType")) return { result: { value: [] } };
+    if (e.includes("vyre-test-script")) { ran = true; return { result: { type: "string", value: "done" } }; }
+    return { result: { value: [] } };
+  };
+  await assert.rejects(T(dt.ops["dev.console.eval"])({ tab: 3, expression: "/*vyre-test-script*/ 1" }, k.ctx), /could not be confirmed live/);
+  assert.equal(ran, false);
+  assert.ok(k.calls("Fetch.disable").length >= 1, "the guard is taken down again");
+});
+
+test("ctx.dnr.block: one block rule over every resource type but the main frame, one exact-origin allow rule per origin, all removed by unblock", async () => {
+  const { createCtx } = await import("./extension/lib/ctx.js");
+  const { createFakeChrome } = await import("./test-support/fake-chrome.js");
+  const chrome = createFakeChrome();
+  /** @type {any[]} */ let rules = [];
+  chrome.declarativeNetRequest = /** @type {any} */ ({
+    getSessionRules: async () => rules,
+    updateSessionRules: async (/** @type {any} */ o) => { rules = rules.filter(r => !(o.removeRuleIds || []).includes(r.id)).concat(o.addRules || []); },
+  });
+  const ctx = createCtx({ chrome });
+  const b = await ctx.dnr.block({ tab: 7, allowOrigins: ["https://app.example.com", "https://api.example.com:8443", "https://x.example.com/evil path"] });
+  assert.equal(b.ok, true);
+  const block = rules.find(r => r.action.type === "block");
+  assert.ok(block.condition.resourceTypes.includes("image") && block.condition.resourceTypes.includes("websocket") && block.condition.resourceTypes.includes("sub_frame"));
+  assert.ok(!block.condition.resourceTypes.includes("main_frame"));
+  assert.deepEqual(rules.filter(r => r.action.type === "allow").map(r => r.condition.urlFilter).sort(), ["|https://api.example.com:8443/", "|https://app.example.com/"]);
+  assert.ok(rules.every(r => r.condition.tabIds[0] === 7));
+  assert.ok(rules.filter(r => r.action.type === "allow").every(r => r.priority > block.priority));
+  await ctx.dnr.unblock(b.ids);
+  assert.equal(rules.length, 0);
 });

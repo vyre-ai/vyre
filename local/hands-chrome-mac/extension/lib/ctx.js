@@ -89,22 +89,28 @@ export function createCtx({ chrome, emit = () => {} }) {
       try { const old = (await api.getSessionRules()).map((/** @type {any} */ r) => r.id).filter((/** @type {number} */ id) => id >= RULE_MIN && id <= RULE_MAX); if (old.length) await api.updateSessionRules({ removeRuleIds: old }); } catch { /* nothing to clear */ }
     },
     /**
-     * Block WebSockets, beacons and "other" requests of one tab to any host not in `allowHosts`. `ok` is false when the browser
-     * could not set the rule (no API, or it refused): the caller then reports the containment as partial.
-     * @param {{ tab: number, allowHosts: string[] }} o @returns {Promise<{ id: number|null, ok: boolean, why?: string }>}
+     * Block EVERY request of one tab (all resource types except the main frame's own navigation, which the Fetch guard judges) to anything not in the allow list, at the network
+     * level, in every frame of the tab including one a script just made. The allow list is exact origins (scheme, host AND port) as higher-priority ALLOW rules, not hostnames:
+     * a hostname list would also allow other ports and every subdomain. `ok` is false when the browser could not set the rules (no API, or it refused).
+     * @param {{ tab: number, allowOrigins?: string[], allowHosts?: string[] }} o @returns {Promise<{ id: number|null, ids: number[], ok: boolean, why?: string }>}
      */
-    async block({ tab, allowHosts }) {
+    async block({ tab, allowOrigins = [] }) {
       const api = dnrApi();
-      if (!api) return { id: null, ok: false, why: "this browser has no declarativeNetRequest" };
-      const id = ruleSeq >= RULE_MAX ? (ruleSeq = RULE_MIN) : ++ruleSeq;
-      const rule = { id, priority: 1, action: { type: "block" }, condition: { tabIds: [tab], resourceTypes: ["websocket", "ping", "other"], ...(allowHosts.length ? { excludedRequestDomains: allowHosts } : {}) } };
-      try { await api.updateSessionRules({ removeRuleIds: [id], addRules: [rule] }); return { id, ok: true }; } catch (e) { return { id: null, ok: false, why: String(/** @type {Error} */ (e).message || e).slice(0, 120) }; }
+      if (!api) return { id: null, ids: [], ok: false, why: "this browser has no declarativeNetRequest" };
+      const next = () => (ruleSeq >= RULE_MAX ? (ruleSeq = RULE_MIN) : ++ruleSeq);
+      const TYPES = ["sub_frame", "stylesheet", "script", "image", "font", "object", "xmlhttprequest", "ping", "csp_report", "media", "websocket", "webtransport", "webbundle", "other"];
+      const blockId = next();
+      const rules = [{ id: blockId, priority: 1, action: { type: "block" }, condition: { tabIds: [tab], resourceTypes: TYPES } }];
+      for (const o of [...new Set(allowOrigins)].slice(0, 200)) { if (/^https?:\/\/[^/\s*^|?]+$/.test(o)) rules.push({ id: next(), priority: 2, action: { type: "allow" }, condition: { tabIds: [tab], urlFilter: `|${o}/`, resourceTypes: TYPES } }); }
+      const ids = rules.map(r => r.id);
+      try { await api.updateSessionRules({ removeRuleIds: ids, addRules: rules }); return { id: blockId, ids, ok: true }; } catch (e) { return { id: null, ids: [], ok: false, why: String(/** @type {Error} */ (e).message || e).slice(0, 120) }; }
     },
-    /** @param {number|null} id */
-    async unblock(id) {
+    /** @param {number|number[]|null} ids */
+    async unblock(ids) {
       const api = dnrApi();
-      if (id == null || !api) return;
-      try { await api.updateSessionRules({ removeRuleIds: [id] }); } catch { /* already gone */ }
+      const list = ids == null ? [] : Array.isArray(ids) ? ids : [ids];
+      if (!list.length || !api) return;
+      try { await api.updateSessionRules({ removeRuleIds: list }); } catch { /* already gone */ }
     },
   };
   void dnr.sweep();

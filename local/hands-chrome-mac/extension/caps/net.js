@@ -240,7 +240,7 @@ function handle(ctx, t, method, p, session) {
     }
     const frame = docOrigin(p.documentURL) || (session ? docOrigin(kidUrl(ctx, t, session)) : "");
     /** @type {Rec} */
-    const r = { id: key, requestId: String(p.requestId), ...(session ? { session } : {}), ...(frame ? { frame } : {}), seq: ++t.seq, ts: p.wallTime ? Math.round(p.wallTime * 1000) : Date.now(), method: p.request?.method || "GET", url: p.request?.url || "", type: p.type || "Other", initiator: p.initiator || {}, reqHeaders: { ...(p.request?.headers || {}) }, resHeaders: {}, postData: p.request?.postData, size: 0 };
+    const r = { id: key, requestId: String(p.requestId), ...(p.frameId ? { frameId: String(p.frameId).slice(-6) } : {}), ...(p.loaderId ? { loaderId: String(p.loaderId).slice(-6) } : {}), ...(p.initiator && p.initiator.type ? { initiator: String(p.initiator.type) } : {}), ...(session ? { session } : {}), ...(frame ? { frame } : {}), seq: ++t.seq, ts: p.wallTime ? Math.round(p.wallTime * 1000) : Date.now(), method: p.request?.method || "GET", url: p.request?.url || "", type: p.type || "Other", initiator: p.initiator || {}, reqHeaders: { ...(p.request?.headers || {}) }, resHeaders: {}, postData: p.request?.postData, size: 0 };
     // A request made while the eval guard was up is not evidence that the page talks to that origin (it may be the very request the guard blocks): the guard never learns from it,
     // and an origin first seen HERE, that the guard had not already allowed, is denied for good, whoever blocks the request (DNR, Fetch or nothing).
     if (/** @type {any} */ (t).egress) {
@@ -393,6 +393,28 @@ export function present(view) {
  * whether any of them was accepted. It never continues the request.
  * @param {(m: string, x: any) => Promise<any>} send @param {string} id @param {string} reason
  */
+/** The unroutable host the guard probes its own interception with: it never resolves, so a probe that slips through costs nothing. */
+export const PROBE_ORIGIN = "http://vyre-guard-probe.invalid";
+
+/**
+ * Fetch.enable resolving in the extension does not prove Chrome has put the interceptor into the renderer of a frame that already exists (a slow runner, the first enable for a tab).
+ * So before the script runs, the frame it will run in fires an Image and a fetch at an unroutable host and the guard waits for BOTH to arrive at Fetch.requestPaused; if they do not, it asks
+ * for interception again once, and if they still do not the script is refused. A probe that slips through costs nothing (the host never resolves).
+ * @param {any} ctx @param {any} t @param {any} eg @param {any} frame
+ */
+async function probeGuard(ctx, t, eg, frame) {
+  const fire = `(() => { try { new Image().src = ${JSON.stringify(PROBE_ORIGIN + "/i")}; } catch (e) {} try { fetch(${JSON.stringify(PROBE_ORIGIN + "/f")}, { mode: "no-cors" }).catch(function () {}); } catch (e) {} return 1; })()`;
+  for (let attempt = 0; attempt < 2; attempt++) {
+    eg.probeSeen = new Set();
+    try { await runIn(ctx, t.tab, frame, fire, { returnByValue: true }); } catch { /* the frame may be blind: the probe then says nothing either way */ return true; }
+    const end = Date.now() + 400;
+    while (Date.now() < end && !(eg.probeSeen.has("Image") && eg.probeSeen.has("Fetch"))) await new Promise(r => setTimeout(r, 15));
+    if (eg.probeSeen.has("Image") && eg.probeSeen.has("Fetch")) return true;
+    if (attempt === 0) await syncFetch(ctx, t); // ask again once
+  }
+  return false;
+}
+
 /** The site of an origin, approximately: the registrable domain (last two labels, three under a two-letter TLD with a short second level), or the whole host for an IP or a localhost name. @param {string} origin */
 export function siteOf(origin) {
   let h = ""; try { h = new URL(origin).hostname; } catch { return origin; }
@@ -421,6 +443,13 @@ async function paused(ctx, t, p, session) {
     // one the page already talks to (fetch, XHR, beacons, images, scripts, navigation all pass here).
     const eg = /** @type {any} */ (t).egress;
     if (eg) {
+      eg.pausedCount = (eg.pausedCount || 0) + 1;
+      // The guard's own readiness probe (an unroutable host): proof that Fetch is live in the script's frame. Stopped and not counted as the script's.
+      if (typeof p.request?.url === "string" && p.request.url.startsWith(PROBE_ORIGIN + "/")) {
+        (eg.probeSeen || (eg.probeSeen = new Set())).add(String(p.resourceType || ""));
+        await stopRequest(send, id, "BlockedByClient");
+        return;
+      }
       let o = "";
       try { const x = new URL(p.request?.url || ""); if (!["data:", "blob:", "about:", "chrome-extension:"].includes(x.protocol)) o = x.origin; } catch { /* not a URL */ }
       (eg.decisions || (eg.decisions = [])).length < 40 && eg.decisions.push({ origin: o, type: String(p.resourceType || ""), ...(session ? { session: "child" } : {}), decision: o && !eg.allowed.has(o) ? "block" : "allow" });
@@ -497,7 +526,7 @@ async function paused(ctx, t, p, session) {
 /** The person approved something for this tab (an `asked` call): origins the guard denied are no longer held against it. @param {any} ctx @param {number} tab */
 export async function clearDenied(ctx, tab) { try { const t = /** @type {any} */ (await start(ctx, tab)); if (t.denied) t.denied.clear(); } catch { /* no capture */ } }
 
-export async function egressGuard(ctx, tab) {
+export async function egressGuard(ctx, tab, frame = null) {
   const t = /** @type {any} */ (await start(ctx, tab));
   const eg = t.egress || (t.egress = { depth: 0, allowed: new Set(), blocked: [] });
   /** Origins this guard has ever judged blocked on this tab: they can never become "allowed" by being observed. @type {Set<string>} */
@@ -529,8 +558,8 @@ export async function egressGuard(ctx, tab) {
   for (const f of frames) if (f.how !== "none" && !String(f.frameId).startsWith("element:") && f.origin && !(t.denied && t.denied.has(f.origin))) eg.first.add(f.origin);
   if (eg.depth === 0 && ctx.dnr) {
     const hosts = [...eg.allowed].map(o => { try { return new URL(o).hostname; } catch { return ""; } }).filter(Boolean);
-    const b = await ctx.dnr.block({ tab, allowHosts: [...new Set(hosts)] });
-    eg.rule = b && b.id != null ? b.id : null;
+    const b = await ctx.dnr.block({ tab, allowOrigins: [...eg.allowed, PROBE_ORIGIN], allowHosts: [...new Set(hosts)] });
+    eg.rule = b && b.ids && b.ids.length ? b.ids : b && b.id != null ? b.id : null;
     eg.contained = b && b.ok ? "full" : "partial";
     eg.containedWhy = b && !b.ok ? b.why : undefined;
     // UNTIL the stage has proved zero requests for a worker from a pristine iframe, a mid-script frame, window.open and a script rewriting its allow list, the browser-level rule is REQUIRED:
@@ -551,6 +580,11 @@ export async function egressGuard(ctx, tab) {
     if (--eg.depth <= 0) { const rule = eg.rule; t.egress = null; if (ctx.dnr) await ctx.dnr.unblock(rule ?? null); await syncFetch(ctx, t); }
     throw refuse("blocked", `a frame of this page would not accept the network guard (${failed.length} session${failed.length === 1 ? "" : "s"}), so a script is not run on it`);
   }
+  // PROOF OF LIFE: the interception is confirmed live in the frame the script will run in (an Image and a fetch to an unroutable host are paused) or the script does not run.
+  if (!(await probeGuard(ctx, t, eg, frame))) {
+    if (--eg.depth <= 0) { const rule = eg.rule; t.egress = null; if (ctx.cdp && typeof ctx.cdp.setPause === "function") await ctx.cdp.setPause(tab, false).catch(() => {}); if (ctx.dnr) await ctx.dnr.unblock(rule ?? null); await syncFetch(ctx, t); }
+    throw refuse("blocked", "the network guard could not be confirmed live in this frame (a probe request was not intercepted), so a script is not run on it");
+  }
   let done = false;
   return {
     // "partial" when the browser-level rule could not be set: only the plain-form page shim stands for WebSockets and beacons.
@@ -558,7 +592,7 @@ export async function egressGuard(ctx, tab) {
     /** The origins the script may reach: for the page-level shim, a second layer beside the browser-level guard. */
     allowed: [...eg.allowed],
     /** Everything needed to prove the path of a leak: where each allowed origin came from, every request the guard judged, and which child sessions took the interception. */
-    diag: () => ({ allowed: { ...prov }, decisions: (eg.decisions || []).slice(0, 40), sessions: [...t.sessions].map(k => ({ session: String(k).slice(-6), fetch: !(eg.failedSessions || []).includes(k) })), denied: [...denied] }),
+    diag: () => ({ paused: eg.pausedCount || 0, probe: [...(eg.probeSeen || [])], allowed: { ...prov }, decisions: (eg.decisions || []).slice(0, 40), sessions: [...t.sessions].map(k => ({ session: String(k).slice(-6), fetch: !(eg.failedSessions || []).includes(k) })), denied: [...denied] }),
     async stop() {
       if (done) return [];
       done = true;

