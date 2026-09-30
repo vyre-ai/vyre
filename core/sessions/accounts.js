@@ -22,7 +22,7 @@ import crypto from "node:crypto";
 export const ACCOUNTS_MIGRATION = `CREATE TABLE IF NOT EXISTS sessions_accounts (
   id TEXT PRIMARY KEY, provider TEXT NOT NULL, label TEXT NOT NULL, kind TEXT NOT NULL DEFAULT 'api-key', vault_item TEXT,
   scope_projects TEXT NOT NULL, scope_agents TEXT NOT NULL, is_default INTEGER NOT NULL DEFAULT 0,
-  uid INTEGER, added INTEGER NOT NULL, updated INTEGER NOT NULL
+  uid INTEGER, signed_in_at INTEGER, added INTEGER NOT NULL, updated INTEGER NOT NULL
 );
 CREATE TABLE IF NOT EXISTS sessions_uids_dirty (uid INTEGER PRIMARY KEY);
 CREATE UNIQUE INDEX IF NOT EXISTS sessions_accounts_uid ON sessions_accounts(uid);`;
@@ -70,7 +70,7 @@ export class Accounts {
   }
 
   fromRow(r) {
-    return { id: r.id, provider: r.provider, label: r.label, kind: r.kind || "api-key", vault_item: r.vault_item == null ? null : r.vault_item, uid: r.uid == null ? null : Number(r.uid),
+    return { id: r.id, provider: r.provider, label: r.label, kind: r.kind || "api-key", vault_item: r.vault_item == null ? null : r.vault_item, uid: r.uid == null ? null : Number(r.uid), signed_in_at: r.signed_in_at == null ? null : Number(r.signed_in_at),
       scope: { projects: JSON.parse(r.scope_projects), agents: JSON.parse(r.scope_agents) },
       is_default: Boolean(r.is_default), added: r.added, updated: r.updated };
   }
@@ -142,6 +142,9 @@ export class Accounts {
       VALUES (?,?,?,?,?,?,?,?,?,?,?)`).run(id, provider, label, kind, vaultItem, JSON.stringify(scope.projects), JSON.stringify(scope.agents), i.is_default ? 1 : 0, uid, now, now);
     return this.row(id);
   }
+
+  /** A login account finished its provider's own sign-in. @param {string} id */
+  markSignedIn(id) { this.db.prepare("UPDATE sessions_accounts SET signed_in_at = ?, updated = ? WHERE id = ?").run(Date.now(), Date.now(), String(id)); return this.row(id); }
 
   remove(id) {
     const r = this.row(id);

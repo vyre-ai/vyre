@@ -437,6 +437,29 @@ for (const driver of ["cli", "sdk"]) {
     assert.equal((await w.tool("threads.origin", { session: th.id })).error.code, "no_such_tool", "modules only");
   });
 
+  test(`${driver}: signing in: the provider's own login runs as the account, the code comes back to show, and the account is signed in only when it finishes`, { skip }, async t => {
+    const w = await boot(t, { driver });
+    const bin = path.join(w.root, "shim2");
+    fs.mkdirSync(bin);
+    fs.symlinkSync(path.resolve(path.dirname(fileURLToPath(import.meta.url)), "testing", "fake-login.js"), path.join(bin, "codex"));
+    const saved = process.env.PATH;
+    process.env.PATH = `${bin}:${saved}`;
+    t.after(() => { process.env.PATH = saved; });
+    const started = await w.tool("sessions.accounts.signin", { provider: "codex", label: "Personal" });
+    assert.equal(started.error, undefined, JSON.stringify(started));
+    assert.deepEqual([started.data.step, started.data.url, started.data.code], ["code", "https://auth.example/device", "WXYZ-1234"]);
+    const acct = (id => id)(started.data.account);
+    const listed = async () => (await w.tool("providers.list", {})).data.find(p => p.id === "codex").accounts.find(a => a.id === acct);
+    await until(async () => (await w.tool("sessions.accounts.signin", { flow: started.data.flow })).data.step === "done", "the login to finish");
+    assert.equal((await listed()).signed_in, true);
+    // A login that fails leaves no half-made account behind.
+    fs.writeFileSync(path.join(bin, "mode"), "fail");
+    const bad = await w.tool("sessions.accounts.signin", { provider: "codex", label: "Broken" });
+    assert.equal(bad.data.step, "failed");
+    assert.deepEqual((await w.tool("sessions.accounts.list", { provider: "codex" })).data.map(a => a.label), ["Personal"]);
+    assert.equal((await w.tool("sessions.accounts.signin", { provider: "gemini" })).error.code, "bad_input");
+  });
+
   test(`${driver}: accounts add/remove/bind are "asked": an ordinary agent is refused with no prompt, the assistant and the person are not`, { skip }, async t => {
     const w = await boot(t, { driver, sessions: { thread_socket: "on" }, vault: { "work-token": "fake-work-value" } });
     assert.equal((await w.tool("agents.create", { name: "kit", projects: [] })).error, undefined);

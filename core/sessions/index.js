@@ -17,6 +17,10 @@ import { Prompts, PROMPTS_MIGRATION, REPLACE_WARNING, MAX_CHARS, scopeOf } from 
 import { composeIq, factsFrom } from "./iq-prompt.js";
 import { sessionsConfig, sdkDir, claudeBin, configModel, PURPOSES } from "./config.js";
 import { Accounts, ACCOUNTS_MIGRATION, KINDS as ACCOUNT_KINDS } from "./accounts.js";
+import { Signins, LOGINS } from "./signin.js";
+import { spawnSession } from "./spawn.js";
+import fs from "node:fs";
+import path from "node:path";
 import { isPerson } from "../../lib/caller.js";
 import { Routes, ROUTES_MIGRATION } from "./routes.js";
 import { usesSpawner } from "./spawn.js";
@@ -199,7 +203,7 @@ export default {
       description: "Every session provider this module speaks for (claude, codex, grok), each with its own accounts and the models it offers. For providers.list (core/providers) to assemble; not a public name itself.", internal: true,
       input: { type: "object", properties: {} },
       run: async () => Promise.all(PROVIDERS.map(async p => ({ ...p,
-        accounts: await Promise.all(accounts.list(p.id).map(async a => ({ id: a.id, label: a.label, kind: a.kind, signed_in: a.kind === "login" || !a.vault_item ? true : (await vaultHas(a.vault_item)) !== false, default: a.is_default }))),
+        accounts: await Promise.all(accounts.list(p.id).map(async a => ({ id: a.id, label: a.label, kind: a.kind, signed_in: a.kind === "login" ? (a.synthetic ? true : a.signed_in_at != null) : !a.vault_item ? true : (await vaultHas(a.vault_item)) !== false, default: a.is_default }))),
         models: p.id === "claude" ? MODEL_ALIASES : [],
         capabilities: p.id === "claude" ? { streaming: true, resume: true, interrupt: true, modes: true, questions: true, transcripts: true } : /** @type {any} */ (drivers)[p.id].capabilities }))),
     });
@@ -243,6 +247,33 @@ export default {
       { type: "object", required: ["provider", "label"], properties: { provider: str, label: str, kind: { type: "string", enum: ACCOUNT_KINDS }, vault_item: str,
         scope: { type: "object", properties: { projects: {}, agents: {} } }, is_default: { type: "boolean" } } },
       async (i, meta) => { askedOnly(meta, "Adding an account"); if (i.kind !== "login" && i.vault_item && (await vaultHas(String(i.vault_item))) === false) throw Object.assign(new Error(`the vault has no item ${i.vault_item}; add the credential there first`), { code: "bad_input" }); return accounts.add(i); });
+
+    // ---- signing in (each provider's own login, run as the account; Vyre never sees the token)
+    const signins = new Signins({ spawn: (bin, args, { account }) => {
+      // On a box the spawner puts the account's uid and HOME in place. Elsewhere a provider that
+      // keeps its login in HOME gets one private folder per account.
+      const home = usesSpawner() ? undefined : path.join(root, "accounts", String(account.id));
+      if (home) fs.mkdirSync(home, { recursive: true, mode: 0o700 });
+      const acctHome = usesSpawner() ? path.join(process.env.VYRE_ACCOUNTS_HOME || "/home/acct", String(account.uid)) : /** @type {string} */ (home);
+      return spawnSession(bin, args, { cwd: acctHome, env: { PATH: process.env.PATH, ...(home ? { HOME: home } : {}), TERM: "dumb", NO_COLOR: "1", BROWSER: "none" }, ...(usesSpawner() && account.uid != null ? { account: { uid: account.uid, shared: false } } : {}) });
+    } });
+    tool("sessions.accounts.signin", `Sign an account in with its provider's own login (Codex --device-auth, Grok Build's device code, Claude's login), no token pasted or copied. Start: { provider, label? } makes a login account (or { account } for one that exists) and answers { flow, step: "code", url, code } to show; the person approves on any browser. Then { flow } says waiting, done or failed; for a login that wants a code back ({ step: "url", paste: true }) send { flow, code }. The token is written by the provider's own command into that account's private home; Vyre never reads it.`,
+      { type: "object", properties: { provider: str, label: str, account: str, flow: str, code: str } },
+      async (i, meta) => {
+        askedOnly(meta, "Signing in an account");
+        if (i.flow && i.code) return signins.submit(String(i.flow), String(i.code));
+        if (i.flow) return signins.status(String(i.flow));
+        const provider = String(i.provider || "");
+        if (!LOGINS[provider] || !PROVIDERS.some(p => p.id === provider)) throw Object.assign(new Error(`there is no sign-in for ${provider || "that provider"}`), { code: "bad_input" });
+        if (provider === "claude" && !usesSpawner()) throw Object.assign(new Error("on this machine Claude uses the login already on it (run claude and sign in there)"), { code: "bad_input" });
+        let row = i.account ? accounts.row(String(i.account)) : null;
+        if (i.account && (!row || row.provider !== provider || row.kind !== "login")) throw Object.assign(new Error("that is not a login account on this provider"), { code: "bad_input" });
+        const created = !row;
+        if (!row) row = await accounts.add({ provider, label: String(i.label || PROVIDERS.find(p => p.id === provider)?.label || provider), kind: "login" });
+        const account = row;
+        try { return await signins.start({ provider, account, onDone: ok => { if (ok) accounts.markSignedIn(account.id); else if (created && accounts.row(account.id) && !accounts.row(account.id).signed_in_at) accounts.remove(account.id); } }); }
+        catch (e) { if (created) accounts.remove(account.id); throw e; }
+      });
 
     tool("sessions.accounts.remove", "Remove an account. Threads already resumed on it keep running; the next resume on that thread asks for another (a removed account is never a silent fallback).",
       { type: "object", required: ["id"], properties: { id: str } },
