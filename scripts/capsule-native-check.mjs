@@ -101,7 +101,8 @@ try {
   // The heaviest frames of the main thread: lines of the call graph holding 100 or more of its samples.
   const graph = sampled.split("Call graph:")[1] || "";
   const main = graph.split(/\n\s*\d+ Thread_/)[0] || "";
-  const heavy = main.split("\n").filter(l => { const m = l.match(/^[\s+!:|]*(\d+)\s/); return m && Number(m[1]) >= 100; }).slice(0, 60);
+  const heavy = main.split("\n").filter(l => { const m = l.match(/^[\s+!:|]*(\d+)\s/); return m && Number(m[1]) >= 40; }).slice(0, 60);
+  if (!heavy.length) console.log(`sampler: ${sampled.length} bytes, call graph ${graph.length} bytes, first lines: ${sampled.split("\n").slice(0, 6).join(" | ").slice(0, 300)}`);
   if (heavy.length) console.log(`main thread while typing (samples of 1 ms):\n${heavy.map(l => l.replace(/\s+/g, " ").slice(0, 200)).join("\n")}`);
   const slowest = [...keyDetail].sort((a, b) => b.ms - a.ms).slice(0, 6);
   console.log(`slowest keystrokes: ${slowest.map(k => `"${k.text}" ${k.ms.toFixed(0)} ms (set ${Number(k.set).toFixed(0)})`).join(" · ")}`);
