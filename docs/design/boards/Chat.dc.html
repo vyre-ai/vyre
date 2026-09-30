@@ -15,13 +15,13 @@
     .lbl { font-family: 'JetBrains Mono', ui-monospace, Menlo, monospace; font-size: 11px; line-height: 14px; font-weight: 500; letter-spacing: 0.16em; text-transform: uppercase; color: #8C877D; margin: 0; }
     .kbd { display: inline-flex; align-items: center; height: 20px; padding: 0 6px; border: 1px solid #3A3733; border-radius: 4px; font-family: 'JetBrains Mono', ui-monospace, Menlo, monospace; font-size: 11px; color: #8C877D; }
     .btn { font-family: 'JetBrains Mono', ui-monospace, Menlo, monospace; font-size: 12px; line-height: 16px; font-weight: 500; letter-spacing: 0.12em; text-transform: uppercase; height: 32px; padding: 0 14px; border-radius: 6px; display: inline-flex; align-items: center; gap: 8px; cursor: pointer; box-sizing: border-box; white-space: nowrap; border: 1px solid #3A3733; background: transparent; color: #F1EEE6; }
-    .btn-primary { background: #C6F36B; color: #0E0D0C; border-color: #C6F36B; }
+    .btn-primary { background: #F1EEE6; color: #0E0D0C; border-color: #F1EEE6; }
     .btn-sm { height: 28px; }
     .rail-a { display: flex; align-items: center; gap: 12px; height: 34px; padding: 0 10px; border-radius: 6px; color: #B3AEA4; text-decoration: none; font-size: 14px; line-height: 20px; }
     .rail-a[aria-current] { background: #1E1C1A; color: #F1EEE6; }
     .pin-a { display: flex; align-items: center; gap: 10px; height: 30px; padding: 0 10px; border-radius: 6px; color: #B3AEA4; text-decoration: none; font-size: 13px; line-height: 18px; }
     .rail-sub-a { display: flex; align-items: center; gap: 10px; height: 28px; padding: 0 10px 0 24px; border-radius: 6px; color: #B3AEA4; text-decoration: none; font-size: 13px; line-height: 18px; }
-    .rail-sub-a[aria-current] { background: rgba(198,243,107,0.12); color: #F1EEE6; }
+    .rail-sub-a[aria-current] { background: rgba(241,238,230,0.12); color: #F1EEE6; }
     .needs-pill { display: flex; align-items: center; gap: 8px; height: 28px; padding: 0 12px; border-radius: 14px; background: rgba(184,164,255,0.12); color: #B8A4FF; text-decoration: none; font-size: 13px; line-height: 18px; font-weight: 500; white-space: nowrap; }
     .av-agent { width: 28px; height: 28px; border-radius: 6px; background: #1E1C1A; border: 1px solid #3A3733; display: flex; align-items: center; justify-content: center; font-family: 'JetBrains Mono', ui-monospace, Menlo, monospace; font-size: 11px; font-weight: 500; color: #F1EEE6; flex-shrink: 0; box-sizing: border-box; }
     .av-person { width: 28px; height: 28px; border-radius: 14px; background: #2B2926; display: flex; align-items: center; justify-content: center; font-family: 'JetBrains Mono', ui-monospace, Menlo, monospace; font-size: 10px; font-weight: 500; color: #F1EEE6; flex-shrink: 0; }
@@ -34,7 +34,7 @@
     .input { height: 38px; width: 100%; padding: 0 12px; border-radius: 6px; border: 1px solid #3A3733; background: #0E0D0C; color: #F1EEE6; font-size: 14px; box-sizing: border-box; }
     textarea.input { height: auto; padding: 10px 12px; min-height: 64px; font-family: 'Instrument Sans', sans-serif; line-height: 20px; }
     .tag { display: inline-flex; align-items: center; height: 20px; padding: 0 6px; border: 1px solid #3A3733; border-radius: 4px; font-family: 'JetBrains Mono', ui-monospace, Menlo, monospace; font-size: 11px; color: #B3AEA4; }
-    :focus-visible { outline: 2px solid #C6F36B; outline-offset: 2px; }
+    :focus-visible { outline: 2px solid #F1EEE6; outline-offset: 2px; }
   </style>
 </helmet>
 <div style="width: 1600px; height: 1000px; box-sizing: border-box; background: #0E0D0C; color: #F1EEE6; font-family: 'Instrument Sans', 'Helvetica Neue', Arial, sans-serif; display: flex; flex-direction: column; overflow: hidden;">
@@ -42,7 +42,7 @@
   <!-- The one Deck shell: header, rail, view. Chat is a route, not a separate app. -->
   <header style="height: 48px; flex-shrink: 0; display: flex; align-items: center; gap: 16px; padding: 0 16px 0 0; border-bottom: 1px solid #2B2926; box-sizing: border-box;">
     <a href="#" style="width: 216px; height: 48px; flex-shrink: 0; display: flex; align-items: center; gap: 10px; padding-left: 20px; text-decoration: none;">
-      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M3.5 5.5L12 19.5L17.96 9.69" stroke="#F1EEE6" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/><circle cx="20.5" cy="5.5" r="2.3" fill="#C6F36B"/></svg>
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M3.5 5.5L12 19.5L17.96 9.69" stroke="#F1EEE6" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/><circle cx="20.5" cy="5.5" r="2.3" fill="#F1EEE6"/></svg>
       <svg width="52" height="22" viewBox="-2 3 62 26" fill="none" role="img" aria-label="vyre"><path d="M0 6L6 20L12 6M16 6L22 20M28 6L19.4 26M33 6V20M33 13Q33 6 40 6M43 13H57A7 7 0 1 0 55.36 17.5" stroke="#F1EEE6" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
     </a>
     <div style="display: flex; align-items: center; gap: 8px; height: 28px; padding: 0 12px; border: 1px solid #2B2926; border-radius: 6px; font-family: 'JetBrains Mono', ui-monospace, Menlo, monospace; font-size: 12px; color: #8C877D;">
@@ -83,7 +83,7 @@
           <svg width="11" height="11" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M5 3.5L11 8 5 12.5"/></svg>
           Harlow Legal<span class="mono" style="margin-left: auto; color: #8C877D; font-weight: 400;">3</span>
         </div>
-        <a class="rail-sub-a" href="#" aria-current="page"><span style="width: 8px; height: 8px; border-radius: 4px; background: #C6F36B; flex-shrink: 0;"></span><span style="flex-grow: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">Intake form rebuild</span><span class="mono" style="font-size: 11px; color: #B8A4FF;">1</span></a>
+        <a class="rail-sub-a" href="#" aria-current="page"><span style="width: 8px; height: 8px; border-radius: 4px; background: #F1EEE6; flex-shrink: 0;"></span><span style="flex-grow: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">Intake form rebuild</span><span class="mono" style="font-size: 11px; color: #B8A4FF;">1</span></a>
         <a class="rail-sub-a" href="#"><span style="width: 8px; height: 8px; border-radius: 4px; border: 1.5px solid #8C877D; box-sizing: border-box; flex-shrink: 0;"></span><span style="flex-grow: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">Q3 report</span></a>
         <a class="rail-sub-a" href="#"><span style="width: 8px; height: 8px; border-radius: 4px; border: 1.5px solid #8C877D; box-sizing: border-box; flex-shrink: 0;"></span><span style="flex-grow: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">Ads audit</span></a>
       </div>
@@ -95,7 +95,7 @@
       <div class="lbl" style="padding: 0 10px 6px;">Agents</div>
       <div style="display: flex; align-items: center; gap: 6px; height: 26px; padding: 0 10px; color: #F1EEE6; font-family: 'JetBrains Mono', ui-monospace, Menlo, monospace; font-size: 11px; font-weight: 500; letter-spacing: 0.1em; text-transform: uppercase;">
         <svg width="11" height="11" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M5 3.5L11 8 5 12.5"/></svg>
-        <span style="width: 8px; height: 8px; border-radius: 4px; background: #C6F36B;"></span>pax
+        <span style="width: 8px; height: 8px; border-radius: 4px; background: #F1EEE6;"></span>pax
       </div>
     </nav>
 
@@ -106,7 +106,7 @@
           <div style="font-size: 16px; line-height: 22px; font-weight: 600;">Intake form rebuild</div>
           <div style="font-size: 12px; line-height: 16px; color: #8C877D;">pax &middot; ~/work/harlow/intake</div>
         </div>
-        <span style="width: 8px; height: 8px; border-radius: 4px; background: #C6F36B;" title="running"></span>
+        <span style="width: 8px; height: 8px; border-radius: 4px; background: #F1EEE6;" title="running"></span>
       </div>
 
       <div style="flex-grow: 1; min-height: 0; display: flex; flex-direction: column; gap: 2px; padding: 18px 20px 24px; overflow: hidden;">

@@ -42,7 +42,7 @@
 .button-secondary, .sb { background: var(--hover); border-color: var(--hover); color: var(--text); }
 /* Ghost: Cancel, Deny, Discard, Details, Pause. */
 .button-ghost, .btn-ghost { background: transparent; border-color: transparent; color: var(--text); }
-/* Primary: the one action on the surface. Lime on dark, ink on paper. */
+/* Primary: the one action on the surface. Bone on dark, ink on paper. */
 .button-primary, .btn-primary, .sb.sb-primary { background: var(--primary-bg); border-color: var(--primary-bg); color: var(--primary-ink); }
 /* Hold: destructive. A --hover fill grows from the left while it is held (js/button.js). */
 .button-hold { position: relative; isolation: isolate; overflow: hidden; background: transparent; border-color: var(--text); color: var(--text); }

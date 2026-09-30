@@ -9,7 +9,7 @@ status: draft
 # Needs row
 
 The one-row primitive of Needs you: every kind that waits on you draws as this row, on Now on
-every surface and in the Capsule's list. The rows and the one count come from `waiting.list` and
+every surface and in Lumen's list. The rows and the one count come from `waiting.list` and
 `waiting.count` (see One list and one count, below). Drawn on the boards
 "Needs you, phone and desktop", "Needs you, teammate kinds", "States, every list, every size"
 (decided, many items) and "Devices, trusting a browser for the vault" (device trust).
@@ -19,7 +19,7 @@ every surface and in the Capsule's list. The rows and the one count come from `w
 | Deck, phone | `deck/js/need-rows.js`, `deck/js/now-phone.js`, `deck/css/views/now.css` (work/pwa) | built |
 | Deck, desktop | `deck/views/now.js`, `deck/css/views/now.css` (main) | partial |
 | App | `apps/app/app/(tabs)/index.tsx` NeedRow, `src/ui/Row.tsx`, `src/ui/SwipeRow.native.tsx`, `src/ui/SwipeRow.web.tsx` (work/mobile) | partial |
-| Capsule | `local/capsule/native/Sources/UI/AgentDeskView.swift` WaitingRow, WaitingList (work/capsule-pro) | partial |
+| Lumen | `local/capsule/native/Sources/UI/AgentDeskView.swift` WaitingRow, WaitingList (work/capsule-pro) | partial |
 
 ## Anatomy
 
@@ -99,7 +99,7 @@ Desktop, on the focused list: J and K move, A allows (the primary of any kind), 
 discards, ⌘⏎ sends a draft, F asks a teammate to fix a failed merge. The selection moves to the
 next row after an answer. Footer: "J K move · A allow · D deny · ⌘⏎ send" with key-hint chips.
 
-Capsule: the query field holds focus, so ↑ and ↓ move, ⏎ opens the card, A allows.
+Lumen: the query field holds focus, so ↑ and ↓ move, ⏎ opens the card, A allows.
 
 ## One list and one count: waiting
 
@@ -136,7 +136,7 @@ code for `code` (a pairing). The owner does the work (`threads.answer`, `gate.ap
 | Deck rail, Now | the 18 badge (rail.md, status-mark.md) |
 | Deck top bar, any page but Now | the needs count (top-bar.md) |
 | Phone, the Now page label and the app icon | the 18 badge; the app icon's badge number |
-| Capsule | the group header "Needs you · 3" and the menu-bar mark's dot |
+| Lumen | the group header "Needs you · 3" and the menu-bar mark's dot |
 | Menu bar | the mark's violet dot while the count is above 0 |
 | Status line and CLI | "3 need you" (`vyre needs`) <!-- terms: ignore --> |
 | Favicon | the badge |
@@ -198,7 +198,7 @@ Adopting waiting.list, every surface
       `answer.tool`; add the Pairing row.
 - [ ] App (work/mobile): read `waiting.list` and `waiting.count`; the Now label badge and the app
       icon badge from the one count; the Pairing row with its code field.
-- [ ] Capsule (work/capsule-pro): the list and the "Needs you · n" header from `waiting.list`; the
+- [ ] Lumen (work/capsule-pro): the list and the "Needs you · n" header from `waiting.list`; the
       menu-bar dot from `waiting.changed`; answer through `answer.tool`.
 - [ ] CLI and status line (work/polish-cli): `vyre needs` and the status line count from <!-- terms: ignore -->
       `waiting.count`.
@@ -206,6 +206,6 @@ Adopting waiting.list, every surface
 - [ ] cohesion: merge the kinds waiting does not have yet (Sign-in grant, New teammate, Merge
       failed, Stuck, Usage, Device, Plan), each from its owner's tool.
 
-Capsule (work/capsule-pro)
+Lumen (work/capsule-pro)
 - [ ] Two lines, no kind line, a 7 dot for the tile, 40 tall; header "WAITING ON YOU" in caps.
 - [ ] Selected row has a 2 px violet left bar (violet as a border): use the `--hover` fill only.

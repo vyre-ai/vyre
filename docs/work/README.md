@@ -74,3 +74,4 @@ Claim the next number here before writing the ADR, so two workstreams never take
 | 0046 | tailnet | The relay introduces, Tailscale carries: auth-key auto-join (renumbered from this table's stale "0038", which was relay-first-everywhere, now shelved) |
 | 0042 | federation | The move engine (0041 collided with work/github's "GitHub everywhere", per the reviewer; renumbered) |
 | 0041 | github | GitHub everywhere: device-flow sign-in, repos, projects from a repo, a worktree and branch per session |
+| 0043 | app-design | Identity marks: four families, and the Vyre code (pairing ring) (renumbered 28 Sep from a colliding 0033 - pwa caught it after merging main at 90c6d2c1; picked 0043 as the first number not claimed anywhere across every active worktree at the time, one past federation's 0042) |

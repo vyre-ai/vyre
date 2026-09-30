@@ -5,7 +5,7 @@
 // text, 3:1 for large text and UI marks (dots, rings, borders that carry meaning).
 
 /**
- * "Needs you", the only colour besides lime. It marks a dot and a label, never a card or a wash.
+ * "Needs you", the only hue in the palette. It marks a dot and a label, never a card or a wash.
  * Violet is the pick; teal is the one alternative (honey was dropped by the user, 27 Sep 2026).
  * Coral was retired on 27 Sep 2026; it may not come back (test/hygiene.test.js).
  */
@@ -15,23 +15,23 @@ export const ATTENTION = {
 };
 
 /**
- * The reduced set (deck-design second pass): eight neutrals per theme, lime as the one accent
- * (primary actions, focus, running) and the attention colour. No gold, no red, no other hue.
+ * The reduced set (deck-design second pass): eight neutrals per theme, no accent hue: bone (cream on dark, ink on paper)
+ * carries primary actions, focus and running, plus the attention colour. No gold, no red, no other hue.
  * Memory, success and info are neutrals plus an icon. A removed diff line is a neutral wash.
  */
 export const PALETTE = {
   dark: {
     bg: "#0E0D0C", panel: "#161513", hover: "#1E1C1A", rule: "#2B2926", "rule-strong": "#3A3733",
     text: "#F1EEE6", "text-2": "#B3AEA4", label: "#8C877D",
-    "primary-bg": "#C6F36B", "primary-hover": "#D4F88A", "primary-ink": "#0E0D0C",
-    focus: "#C6F36B", "signal-wash": "rgba(198,243,107,0.12)", "del-wash": "rgba(140,135,125,0.14)",
+    "primary-bg": "#F1EEE6", "primary-hover": "#FFFFFF", "primary-ink": "#0E0D0C",
+    focus: "#F1EEE6", "signal-wash": "rgba(241,238,230,0.12)", "del-wash": "rgba(140,135,125,0.14)",
     "beacon-ink": ATTENTION.violet.dark, "beacon-dot": ATTENTION.violet.dark,
   },
   light: {
     bg: "#F4F1EA", panel: "#FBFAF6", hover: "#EEEAE2", rule: "#DCD7CC", "rule-strong": "#C9C3B7",
     text: "#141311", "text-2": "#4A463F", label: "#6B665D",
     "primary-bg": "#141311", "primary-hover": "#4A463F", "primary-ink": "#F4F1EA",
-    focus: "#46700C", "signal-wash": "rgba(70,112,12,0.10)", "del-wash": "rgba(107,102,93,0.10)",
+    focus: "#141311", "signal-wash": "rgba(20,19,17,0.10)", "del-wash": "rgba(107,102,93,0.10)",
     "beacon-ink": ATTENTION.violet.light, "beacon-dot": ATTENTION.violet.light,
   },
 };

@@ -761,6 +761,12 @@ Newest first. Every change to code lands here in the same commit. A new dependen
   J0 (the onboarding page loads, no errors, no sample-world names, a screenshot) in Chrome.
   `scripts/matrix/report.mjs` folds every device's results into results.json and a results page.
   Nothing runs on the test server, which is now the user's real server.
+- The lime primary is retired everywhere. The user picked Bone: no accent hue, cream is the
+  primary on dark and ink on paper, and focus, washes, chips and the mark dot use the same
+  neutral. Capsule, Deck, phone, Windows, setup, site, docs, brand marks, app icons, splash
+  screens and screenshots all changed. On Deep glass a chip has no wash and focus is two-tone,
+  so text holds 4.5:1 over every sample wallpaper. `test/no-lime.test.js` fails if the old colour
+  or its hex comes back.
 
 ## 0.1.1
 
