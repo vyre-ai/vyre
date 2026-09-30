@@ -2,6 +2,8 @@
 # stage-site.sh: a copy of the built site for a STAGING deploy, with the setup page pointed at another relay and install line.
 #
 #   scripts/stage-site.sh --out DIR [--relay wss://HOST] [--install-url https://HOST/i] [--site DIR]
+#   (or VYRE_SETUP_RELAY and VYRE_SETUP_INSTALL_URL in the environment; a loopback ws:// relay and http:// install URL are
+#    accepted for a test runner's own machine)
 #
 # Run scripts/build-site.sh first. This never changes site/ itself: it copies it to DIR and, there only,
 #   - writes setup/config.json {relay, installUrl}, which site/setup/config.js checks and site/setup/page.js reads
@@ -14,7 +16,7 @@
 set -eu
 
 here=$(cd "$(dirname "$0")/.." && pwd)
-out=""; relay=""; install=""; site="$here/site"
+out=""; relay=${VYRE_SETUP_RELAY:-}; install=${VYRE_SETUP_INSTALL_URL:-}; site="$here/site"
 while [ $# -gt 0 ]; do
   case "$1" in
     --out) [ $# -ge 2 ] || { echo "stage-site: --out needs a folder" >&2; exit 1; }; out=$2; shift ;;
@@ -27,8 +29,8 @@ while [ $# -gt 0 ]; do
   shift
 done
 [ -n "$out" ] || { echo "stage-site: --out DIR is required" >&2; exit 1; }
-case "$relay" in ""|wss://*) ;; *) echo "stage-site: the relay is a wss:// address" >&2; exit 1 ;; esac
-case "$install" in ""|https://*) ;; *) echo "stage-site: the install URL is an https:// address" >&2; exit 1 ;; esac
+case "$relay" in ""|wss://*|ws://127.0.0.1*|ws://localhost*|ws://\[::1\]*) ;; *) echo "stage-site: the relay is a wss:// address (ws:// only for a loopback one)" >&2; exit 1 ;; esac
+case "$install" in ""|https://*|http://127.0.0.1*|http://localhost*|http://\[::1\]*) ;; *) echo "stage-site: the install URL is an https:// address (http:// only for a loopback one)" >&2; exit 1 ;; esac
 [ -d "$site/setup/relay" ] || { echo "stage-site: run scripts/build-site.sh first ($site/setup/relay is missing)" >&2; exit 1; }
 
 rm -rf "$out"
@@ -42,7 +44,7 @@ if [ -n "$relay" ] || [ -n "$install" ]; then
     if (install) cfg.installUrl = install;
     fs.writeFileSync(out + "/setup/config.json", JSON.stringify(cfg) + "\n");
     if (relay) {
-      const https = relay.replace(/^wss:/, "https:");
+      const https = relay.replace(/^wss:/, "https:").replace(/^ws:/, "http:");
       const f = out + "/_headers", h = fs.readFileSync(f, "utf8");
       const from = "connect-src \x27self\x27 https://relay.vyre.run wss://relay.vyre.run;";
       if (!h.includes(from)) { console.error("stage-site: _headers has no connect-src line to widen"); process.exit(1); }
