@@ -34,13 +34,25 @@ const TRAY_LIGHT_TASKBAR: &[u8] = include_bytes!("../icons/lumen-tray-black.ico"
 
 /// The tray glyph that reads on the current taskbar: black on a light one, white on a dark one.
 fn tray_icon() -> Option<tauri::image::Image<'static>> {
-    let mut cmd = std::process::Command::new(sys("System32\\reg.exe"));
-    cmd.args(["query", r"HKCU\Software\Microsoft\Windows\CurrentVersion\Themes\Personalize", "/v", "SystemUsesLightTheme"]);
-    #[cfg(windows)]
-    { use std::os::windows::process::CommandExt; cmd.creation_flags(0x0800_0000); }
-    let out = cmd.output().map(|o| String::from_utf8_lossy(&o.stdout).into_owned()).unwrap_or_default();
-    tauri::image::Image::from_bytes(if shell::taskbar_is_light(&out) { TRAY_LIGHT_TASKBAR } else { TRAY_DARK_TASKBAR }).ok()
+    tauri::image::Image::from_bytes(if taskbar_is_light() { TRAY_LIGHT_TASKBAR } else { TRAY_DARK_TASKBAR }).ok()
 }
+
+/// SystemUsesLightTheme (1 is a light taskbar), read straight from the registry: no process is
+/// started, so there is nothing on the search path to plant. Unreadable counts as dark, the Windows
+/// 11 default.
+#[cfg(windows)]
+fn taskbar_is_light() -> bool {
+    use windows_sys::Win32::System::Registry::{RegGetValueW, HKEY_CURRENT_USER, RRF_RT_REG_DWORD};
+    let sub: Vec<u16> = "Software\\Microsoft\\Windows\\CurrentVersion\\Themes\\Personalize\0".encode_utf16().collect();
+    let val: Vec<u16> = "SystemUsesLightTheme\0".encode_utf16().collect();
+    let mut data: u32 = 0;
+    let mut size: u32 = 4;
+    let rc = unsafe { RegGetValueW(HKEY_CURRENT_USER, sub.as_ptr(), val.as_ptr(), RRF_RT_REG_DWORD, std::ptr::null_mut(), &mut data as *mut u32 as *mut _, &mut size) };
+    rc == 0 && data == 1
+}
+
+#[cfg(not(windows))]
+fn taskbar_is_light() -> bool { false }
 
 const SHELL_SIGNAL: &str = r#"Object.defineProperty(window, "__VYRE_SHELL__", { value: Object.freeze({ platform: "windows" }), writable: false, configurable: false });"#;
 

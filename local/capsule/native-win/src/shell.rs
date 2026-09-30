@@ -88,15 +88,6 @@ pub fn system_path(system_root: Option<&str>, rel: &str) -> String {
     format!("{root}\\{rel}")
 }
 
-/// Whether the taskbar is light, from `reg query ... /v SystemUsesLightTheme` output (the value is
-/// 0x0 for dark, 0x1 for light). Anything unreadable counts as dark, the Windows 11 default.
-pub fn taskbar_is_light(reg_output: &str) -> bool {
-    reg_output.lines().any(|l| {
-        let mut it = l.split_whitespace();
-        it.next() == Some("SystemUsesLightTheme") && it.next() == Some("REG_DWORD") && it.next() == Some("0x1")
-    })
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -161,15 +152,6 @@ mod tests {
         assert_eq!(ok(None, Some("http://box.harlow.example")), Err("bad_address"));
         assert_eq!(ok(None, None), Err("no_address"));
         assert_eq!(ok(Some("-x"), None), Err("bad_handle"));
-    }
-
-    #[test]
-    fn taskbar_theme_from_the_registry_answer() {
-        let light = "\r\nHKEY_CURRENT_USER\\Software\\Microsoft\\Windows\\CurrentVersion\\Themes\\Personalize\r\n    SystemUsesLightTheme    REG_DWORD    0x1\r\n";
-        assert!(taskbar_is_light(light));
-        assert!(!taskbar_is_light(&light.replace("0x1", "0x0")));
-        assert!(!taskbar_is_light(""));
-        assert!(!taskbar_is_light("ERROR: The system was unable to find the specified registry key or value."));
     }
 
     #[test]
