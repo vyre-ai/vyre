@@ -65,7 +65,8 @@ const flat = data => {
  * (mentions.resolve {kind, id, thread, said}), which makes whatever the tag means for this thread (a
  * use grant, read access to a file) and answers { name, hint?, hosts?, note? }; a provider that
  * refuses or is absent means plain text, no grant. Before the mentions mechanism exists, a name is
- * a vault item alone (vault.items.names, then a "use" intent).
+ * a vault item alone (vault.mention.resolve by exact name, which records the "use"
+ * intent with the item's own hosts; sessions never records a use intent itself).
  * @param {{ names: string[], chips?: { kind: string, id: string }[], thread: string, said: string, call: (tool: string, input: any) => Promise<any> }} o
  * @returns {Promise<{ kind: string, id: string, name: string, hint: string|null, hosts: string[], note: string|null, outside: boolean }[]>}
  */
@@ -84,21 +85,20 @@ export async function resolveTags({ names, chips = [], thread, said, call }) {
       if (hits.length === 1) picked.push({ kind: hits[0].kind, id: String(hits[0].id), name: hits[0].name });
       continue;
     }
-    // No mentions mechanism yet: a vault item by its name.
-    const v = await call("vault.items.names", { query: name }).catch(() => null);
-    const list = v && !v.error && v.data && Array.isArray(v.data.names) ? v.data.names : [];
-    const item = list.find(x => x && typeof x.name === "string" && x.name.toLowerCase() === name.toLowerCase());
-    if (!item) continue;
-    const g = await call("vault.said.record", { thread, said, kind: "use", to: [item.name], what: `use #${item.name}` }).catch(() => null);
-    if (g && !g.error) add({ kind: "vault", id: item.name, name: item.name, hint: item.kind ? String(item.kind) : null, hosts: Array.isArray(item.hosts) ? item.hosts.map(String) : [], note: null, outside: false });
+    // No mentions mechanism yet: vault is a provider on its own. Sessions cannot search it (that is for
+    // person surfaces), so the typed name is tried as an item name: vault.mention.resolve matches
+    // exactly and throws not_found for a name that is no item, which then stays plain text.
+    picked.push({ kind: "vault", id: name, name });
   }
   for (const c of picked) {
-    const r = await call("mentions.resolve", { kind: c.kind, id: c.id, thread, said }).catch(() => null);
+    // With no mentions mechanism a vault tag goes to vault directly: it records the "use" intent with the item's own hosts.
+    const direct = c.kind === "vault" && !mentions;
+    const r = await (direct ? call("vault.mention.resolve", { id: c.id, thread, said }) : call("mentions.resolve", { kind: c.kind, id: c.id, thread, said })).catch(() => null);
     const d = r && !r.error && r.data && typeof r.data === "object" ? r.data : null;
     if (!d) continue;
     add({ kind: c.kind, id: c.id, name: String(d.name || c.name || c.id), hint: d.hint ? String(d.hint) : null, hosts: Array.isArray(d.hosts) ? d.hosts.map(String) : [], note: typeof d.note === "string" && d.note ? d.note : null,
       // Outside text (a file, an issue, a page) unless the provider says it is Vyre's own: never instructions.
-      outside: d.outside !== false });
+      outside: c.kind === "vault" && !mentions ? false : d.outside !== false });
   }
   return out;
 }
