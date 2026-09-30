@@ -25,22 +25,42 @@ test("GoHighLevel is recognised by its hosts without the store", () => {
   assert.equal(familyOf("https://example.com"), null);
 });
 
-test("a control found by identifier is learned; a label only with two visits, and only for fixed UI roles", () => {
-  /** @type {string[]} */ const asked = [];
-  const visits = (/** @type {string} */ _o, /** @type {string} */ k) => { asked.push(k); return []; };
-  const a = observeOp({ op: "page.act", tabUrl: GHL, result: act({ role: "button", name: "Save", identifier: "save-workflow" }), nameVisits: visits });
+test("a control found by identifier is learned only after two visits saw that identifier; a label needs its evidence and two visits, and only for fixed UI roles", () => {
+  const one = () => [];
+  const two = () => ["v1", "v2"];
+  assert.equal(observeOp({ op: "page.act", tabUrl: GHL, result: act({ role: "button", name: "Save", identifier: "save-workflow" }), nameVisits: one }), null, "one visit: nothing to send");
+  const a = observeOp({ op: "page.act", tabUrl: GHL, result: act({ role: "button", name: "Save", identifier: "save-workflow" }), nameVisits: two });
   const c = a && a.patch.controls[0];
   assert.equal(c.selector.identifier, "save-workflow");
+  assert.deepEqual(c.identifierVisits, ["v1", "v2"]);
   assert.equal(c.selector.strategy, "identifier");
   assert.equal(c.page, "/v2/location/{id}/automation/workflows");
   assert.equal(a && a.patch.family, "ghl");
   // no identifier, label seen once: nothing to store
-  assert.equal(observeOp({ op: "page.act", tabUrl: GHL, result: act({ role: "button", name: "Save" }, { strategy: "role+name" }), nameVisits: visits }), null);
+  assert.equal(observeOp({ op: "page.act", tabUrl: GHL, result: act({ role: "button", name: "Save" }, { strategy: "role+name" }), nameVisits: one }), null);
   // a link's label is never stored (a link can be a person's name), even after many visits
   assert.equal(observeOp({ op: "page.act", tabUrl: GHL, result: act({ role: "link", name: "Robin Ellis" }, { strategy: "role+name" }), nameVisits: () => ["v1", "v2", "v3"] }), null);
   // a button label after two visits is kept
-  const b = observeOp({ op: "page.act", tabUrl: GHL, result: { ...act({ role: "button", name: "Create Workflow" }, { strategy: "role+name" }), evidence: { container: "none", siblings: 1 } }, nameVisits: () => ["v1", "v2"] });
+  const b = observeOp({ op: "page.act", tabUrl: GHL, result: { ...act({ role: "button", name: "Create Workflow" }, { strategy: "role+name" }), evidence: { container: "none", siblings: 1 } }, nameVisits: two });
   assert.equal(b && b.patch.controls[0].name, "Create Workflow");
+});
+
+test("an identifier that is a person's name in a row (row-jane-doe) is dropped after one visit and kept after two, through the device's own tally", async () => {
+  let t = 1_000_000;
+  const sent = /** @type {any[]} */ ([]);
+  const c = createSiteCache({ emit: e => sent.push(e), now: () => t, setT: () => 1, clearT: () => {} });
+  c.setEnabled(true);
+  const row = () => c.learn({ op: "page.act", tabUrl: "https://crm.example.com/clients", result: act({ role: "button", identifier: "row-jane-doe" }) });
+  row();
+  assert.deepEqual(await c.flush(), [], "one visit: nothing leaves the device");
+  t += 31 * 60_000; // a second, separate visit
+  row();
+  const out = await c.flush();
+  assert.equal(out.length, 1);
+  assert.equal(out[0].patch.controls[0].selector.identifier, "row-jane-doe", "kept on two visits");
+  // and the store itself drops it on one visit whatever a client says
+  const r = sanitize({ key: "https://crm.example.com", controls: [{ id: "c1", page: "/clients", role: "button", selector: { strategy: "identifier", identifier: "row-jane-doe" }, identifierVisits: ["v1"] }] });
+  assert.equal(r.record.controls.length, 0, "the store drops an identifier seen on one visit");
 });
 
 test("nothing is learned from a held, failed or non-http page", () => {
@@ -84,11 +104,14 @@ test("the cache: a known site is read at once from memory or storage; an unknown
 test("learning is batched, cleaned before it leaves, and a secret-shaped field keeps the whole observation in the browser", async () => {
   const sent = /** @type {any[]} */ ([]);
   /** @type {Function[]} */ const timers = [];
-  const c = createSiteCache({ emit: e => sent.push(e), now: () => 5, setT: (/** @type {Function} */ f) => { timers.push(f); return 1; }, clearT: () => {} }); c.setEnabled(true);
-  c.learn({ op: "page.act", tabUrl: GHL, result: act({ role: "button", name: "Save", identifier: "save-workflow" }) });
-  c.learn({ op: "page.act", tabUrl: GHL, result: act({ role: "button", name: "Add Action", identifier: "add-action" }) });
+  let t = 5;
+  const c = createSiteCache({ emit: e => sent.push(e), now: () => t, setT: (/** @type {Function} */ f) => { timers.push(f); return 1; }, clearT: () => {} }); c.setEnabled(true);
+  const both = () => { c.learn({ op: "page.act", tabUrl: GHL, result: act({ role: "button", name: "Save", identifier: "save-workflow" }) }); c.learn({ op: "page.act", tabUrl: GHL, result: act({ role: "button", name: "Add Action", identifier: "add-action" }) }); };
+  both(); both(); // the same visit twice is still one visit
+  assert.deepEqual(await c.flush(), [], "an identifier seen in one visit is not sent");
+  t += 31 * 60_000; both(); // the next visit
   assert.equal(sent.length, 0, "nothing goes out per op");
-  assert.equal(timers.length, 1, "one flush timer for the batch");
+  assert.ok(timers.length >= 1, "a flush timer for the batch");
   const out = await c.flush();
   assert.equal(out.length, 1);
   assert.equal(sent[0].event, "site.put");
@@ -96,7 +119,8 @@ test("learning is batched, cleaned before it leaves, and a secret-shaped field k
   assert.ok(!JSON.stringify(sent[0]).includes('"name":"Save"'), "a label seen once is not sent");
   // a JWT-shaped identifier: refused whole, never emitted
   const JWT = "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJhbGV4In0.c2lnbmF0dXJlMTIzNDU";
-  c.learn({ op: "page.act", tabUrl: "https://other.example/app", result: act({ role: "button", identifier: JWT }) });
+  const jwt = () => c.learn({ op: "page.act", tabUrl: "https://other.example/app", result: act({ role: "button", identifier: JWT }) });
+  jwt(); t += 31 * 60_000; jwt(); // two visits, so it would be sent if it were clean
   await c.flush();
   assert.equal(sent.length, 1, "the secret-shaped observation never left");
   assert.equal(c.stats().refused, 1);
@@ -108,7 +132,7 @@ test("the file store: merges, reads back a card, refuses a secret whole, forgets
   try {
     const st = createSiteStore({ dataDir: dir, now: () => Date.parse("2026-10-01T00:00:00Z") });
     const origin = "https://app.gohighlevel.com";
-    const item = { id: "c_1", page: "/workflows", role: "button", selector: { strategy: "identifier", identifier: "save-workflow" }, outcome: "ok" };
+    const item = { id: "c_1", page: "/workflows", role: "button", selector: { strategy: "identifier", identifier: "save-workflow" }, identifierVisits: ["a", "b"], outcome: "ok" };
     assert.equal(st.put({ origin, patch: { key: origin, controls: [item], family: "ghl", names: ["GoHighLevel"] } }).data.accepted, true);
     assert.equal(st.put({ origin, patch: { key: origin, controls: [{ ...item, outcome: "ok" }] } }).data.rev, 2);
     const g = st.get({ origin }).data;

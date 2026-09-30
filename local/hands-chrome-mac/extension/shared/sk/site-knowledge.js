@@ -1,4 +1,4 @@
-// VENDORED from work/iq (lib/site-knowledge.js, lib/secret-shapes.js, core/vault/detect.js) at 6285de78, import path adjusted. Do not edit here: change it upstream and re-copy (see VERSION).
+// VENDORED from work/iq (lib/site-knowledge.js, lib/secret-shapes.js, core/vault/detect.js) at ee41f250, import path adjusted. Do not edit here: change it upstream and re-copy (see VERSION).
 // @ts-check
 // site-knowledge: what Vyre for Chrome learns about a website, as a record that holds structure and
 // never a value (team/0.2/chrome-learning-plan.md). PURE: no fs, no vyred, no chrome.* API, so the
@@ -235,7 +235,12 @@ function selector(s, path, c) {
   const out = /** @type {Record<string, any>} */ ({ strategy });
   if (o.identifier != null) {
     const id = str(o.identifier, LIMITS.str, path + ".identifier", c, true);
-    if (id && !identifierHasId(id)) out.identifier = id; else if (id) c.dropped.push({ path: path + ".identifier", why: "carries a record id" });
+    // An identifier (a data-testid, an id attribute) can be a person's name in a row (row-jane-doe): like a label, it is kept only
+    // when two separate visits saw it (`identifierVisits`).
+    const seen = Array.isArray(o.identifierVisits) ? new Set(o.identifierVisits.map(String).filter(Boolean)) : new Set();
+    if (id && identifierHasId(id)) c.dropped.push({ path: path + ".identifier", why: "carries a record id" });
+    else if (id && seen.size < 2) c.dropped.push({ path: path + ".identifier", why: "identifier not seen in two visits" });
+    else if (id) out.identifier = id;
   }
   if (o.role != null) { const r = word(o.role, path + ".role", c); if (r) out.role = r; }
   if (o.container != null) { const r = word(o.container, path + ".container", c); if (r) out.container = r; }
@@ -280,10 +285,10 @@ function control(x, path, c) {
   if (!page) { c.dropped.push({ path: path + ".page", why: "not a path template" }); return null; }
   const role = word(o.role, path + ".role", c); if (!role) return null;
   const so = obj(o.selector) || {};
-  // A selector that names a role (role+name, structure) takes the control's role when it gives none.
+  // A selector that names a role (role+name, structure) takes the control's role when it gives none; identifierVisits is evidence.
   const needsRole = so.strategy === "structure" || so.strategy === "role+name";
   const ev = { role, container: so.container ?? o.container, nameVisits: o.nameVisits, siblings: o.siblings };
-  const sel = selector({ ...so, ...(needsRole ? { role: so.role ?? role } : {}), container: so.container ?? (so.strategy === "structure" ? o.container : undefined), nameVisits: o.nameVisits, siblings: o.siblings }, path + ".selector", c);
+  const sel = selector({ ...so, ...(needsRole ? { role: so.role ?? role } : {}), container: so.container ?? (so.strategy === "structure" ? o.container : undefined), nameVisits: o.nameVisits, siblings: o.siblings, identifierVisits: so.identifierVisits ?? o.identifierVisits }, path + ".selector", c);
   if (!sel) { c.dropped.push({ path: path + ".selector", why: "no usable selector" }); return null; }
   const prev = o.prev != null ? selector(o.prev, path + ".prev", c) : null;
   const name = o.name != null ? labelOk(o.name, ev, path + ".name", c) : null;

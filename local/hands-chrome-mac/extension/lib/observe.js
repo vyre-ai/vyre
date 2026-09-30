@@ -70,7 +70,11 @@ export function observeOp(o) {
       const role = String(c.role || "").toLowerCase();
       if (!/^[a-z][a-z0-9+_-]*$/.test(role)) continue;
       const page = pageTemplate(tabUrl);
-      const identifier = typeof c.identifier === "string" && c.identifier ? c.identifier : undefined;
+      // An identifier (a data-testid or id) can be a person's name in a row (row-jane-doe), so like a label it is sent only after two separate visits saw the same one.
+      // The visits are this device's own tally, never anything a tool argument said.
+      const rawId = typeof c.identifier === "string" && c.identifier ? c.identifier : undefined;
+      const idVisits = rawId && o.nameVisits ? o.nameVisits(origin, `${pageTemplate(tabUrl)}|identifier|${rawId}`, rawId) : [];
+      const identifier = rawId && idVisits.length >= 2 ? rawId : undefined;
       const fixed = FIXED_UI_ROLES.has(role);
       // A label travels only for a fixed UI role AND with its full evidence: the container's role, how many controls of the kind share it, and the two visits that saw it.
       const evd = r.evidence && typeof r.evidence === "object" && typeof r.evidence.container === "string" && Number.isFinite(r.evidence.siblings) ? r.evidence : null;
@@ -80,6 +84,7 @@ export function observeOp(o) {
       items.push({
         id: `c_${hash(`${page}|${role}|${identifier || name}`)}`, page, role,
         ...(evd ? { container: evd.container, siblings: evd.siblings } : {}),
+        ...(identifier ? { identifierVisits: idVisits } : {}),
         ...(name ? { name, nameVisits: visits } : {}),
         selector: { strategy: identifier ? "identifier" : strategy, ...(identifier ? { identifier } : {}), ...(name && !identifier ? { role, name } : {}) },
         ...(r.trace.fallback === true ? { outcome: "ok", seen: 1 } : { outcome: "ok" }),

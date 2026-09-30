@@ -1,2 +1,2 @@
-source: work/iq 6285de78 (lib/site-knowledge.js, lib/secret-shapes.js, core/vault/detect.js)
+source: work/iq ee41f250 (lib/site-knowledge.js, lib/secret-shapes.js, core/vault/detect.js)
 import path in secret-shapes.js changed to ./detect.js; nothing else differs
