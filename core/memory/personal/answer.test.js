@@ -542,3 +542,30 @@ test("answer: a correction in chat wins its slot, and the old value becomes hist
     assert.ok(r.confidence >= 0.5, `${q} @${r.confidence}`);
   }
 });
+
+test("answer: a work question never gets a personal fact, however many words it shares with one", async t => {
+  const WORKQ = ["what were the earliest delivery slot hours", "what were the first pickup window hours", "how long are pickup slots", "how many orders per pickup slot",
+    "what's the deploy target for the harlow site", "where do we deploy the bakery app", "where is the invoice template file", "what's the path to the client site template",
+    "how much is the monthly price", "what was the old price before the change", "whats the hourly rate for northwind", "which rate changed in june",
+    "what drive folder has the logos", "which google drive holds the contracts", "why no client calls on friday", "what happened with the bakery contact in june",
+    "what was the previous staging server", "where did the old build live", "what's the wifi at the office", "what makes the invoice pdfs",
+    "where do the invoice rates live", "who made the client site template", "what did we use before the new database", "which port does the api run on"];
+  // No personal kind; at most a thing's fate or a name, which answer only for a thing or person memory knows by exactly that name.
+  for (const q of WORKQ) { const p = parse(q); assert.ok(p === null || p.kind === "carFate" || p.kind === "who", `${q} -> ${JSON.stringify(p)}`); }
+  const { ask } = await world(t);
+  for (const q of WORKQ) {
+    const r = await ask(q);
+    assert.ok(r.kind !== "fact", `${q} -> ${r.answer}`);
+  }
+  // The user's own questions still are.
+  for (const [q, a] of [["what car do i drive", "You drive a blue Volvo XC40."], ["where did i live before seattle", "Before Seattle you lived in Portland."],
+    ["who are my clients", /Harlow Legal/], ["whats my wfie's name", "Your wife is Jordan."], ["where do i work", "You work at Rivera Studio."]]) {
+    const r = await ask(q);
+    if (a instanceof RegExp) assert.match(String(r.answer), a, q); else assert.equal(r.answer, a, q);
+    assert.equal(r.kind, "fact", q);
+  }
+  // A typo is two letters swapped in a short word, not any word one letter away.
+  assert.equal(normalize("whats the rate"), "what is the rate");
+  assert.equal(normalize("home wifi"), "home wifi");
+  assert.equal(normalize("my wfie"), "my wife");
+});
