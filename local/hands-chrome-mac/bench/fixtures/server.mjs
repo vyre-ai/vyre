@@ -61,6 +61,11 @@ export async function startFixtureServer({ port = 0, host = "127.0.0.1" } = {}) 
       res.writeHead(200, { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-store", "Set-Cookie": `sid=${SESSION}; Path=/; HttpOnly; SameSite=Lax` });
       return void res.end(page("ghl.html"));
     }
+    // A page that opens the WebSocket named in ?u= as it loads (no script of ours involved), for the harness's control.
+    if (req.method === "GET" && p === "/wsprobe") {
+      res.writeHead(200, { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-store" });
+      return void res.end(`<!doctype html><title>wsprobe</title><script>window.__wsState = 'connecting'; window.__ws = new WebSocket(${JSON.stringify(url.searchParams.get("u") || "")}); window.__ws.onopen = () => { window.__wsState = 'open'; }; window.__ws.onerror = () => { window.__wsState = 'error'; };</script>`);
+    }
     if (p.startsWith("/api/")) {
       stats.api++;
       if (!authorized(req).ok) { stats.denied++; return json(res, 401, { error: "unauthorized" }); }
