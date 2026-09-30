@@ -4,6 +4,11 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+- Teammates: `team.retire` ends a teammate's life cleanly. A person, or a session in the project
+  acting on the person's request, can retire one: its queued asks are cancelled, its notes and history
+  stay readable, and adding the same role again brings it back. `undo: true` takes back a teammate
+  that was just made and has done nothing yet (the Deck's "Made design" card), removing it entirely.
+
 ## 0.1.1
 
 What's new:

@@ -360,6 +360,50 @@ test("summon: that same session can team.ask, and the result posts back into its
   assert.equal(status.reply_to, session.id); // the request is bound to this session's own thread
 });
 
+// --- team.retire (the Deck's handoff card Undo, and the assistant's own tool) ---------------------
+
+test("team.retire undo: a teammate just made goes away completely and its role is free again", async t => {
+  const { tool, project } = await boot(t);
+  await tool("team.add", { project: project.slug, role: "design", brief: "visual design" });
+  const r = await tool("team.retire", { project: project.slug, role: "design", undo: true });
+  assert.equal(r.undone, true);
+  assert.equal(r.retired, false);
+  assert.deepEqual(await tool("team.list", { project: project.slug }), []);
+  const again = await tool("team.add", { project: project.slug, role: "design", brief: "visual design" });
+  assert.equal(again.revived, undefined);
+});
+
+test("team.retire undo is refused once the teammate has done work; a plain retire hides it and team.add brings it back", async t => {
+  const { tool, raw, project } = await boot(t);
+  await tool("team.add", { project: project.slug, role: "design", brief: "visual design" });
+  const ask = await tool("team.ask", { to: "design", project: project.slug, wait: true,
+    text: 'vyre team.done {"result":"done it","notes":"unchanged","reason":"test"}' });
+  assert.equal(ask.state, "done");
+  await until(async () => { const [x] = await tool("team.list", { project: project.slug }); return x.state === "idle"; }, "idle");
+  const no = await raw("team.retire", { teammate: `design-${project.slug}`, undo: true });
+  assert.equal(no.error.code, "denied");
+  const r = await tool("team.retire", { teammate: `design-${project.slug}`, reason: "not needed" });
+  assert.equal(r.retired, true);
+  assert.deepEqual(await tool("team.list", { project: project.slug }), []);
+  const gone = await raw("team.ask", { to: "design", project: project.slug, text: "hi" });
+  assert.ok(gone.error);
+  const back = await tool("team.add", { project: project.slug, role: "design" });
+  assert.equal(back.revived, true);
+  assert.equal(back.brief, "visual design");
+  assert.equal((await tool("team.status", { request: ask.request })).state, "done");
+});
+
+test("team.retire: a bare mcp caller with no session is refused; a session in the project may, on the person's request", async t => {
+  const { tool, raw, root, project, launches } = await boot(t);
+  await tool("team.add", { project: project.slug, role: "design" });
+  const bare = await call("team.retire", { teammate: `design-${project.slug}` }, { root, caller: "mcp", timeout: 20_000 });
+  assert.equal(bare.error.code, "denied");
+  const { session } = await realSession(root, tool, launches, project.slug);
+  const r = await tool("team.retire", { teammate: `design-${project.slug}` }, "mcp", { session });
+  assert.equal(r.retired, true);
+  assert.equal((await raw("team.retire", { teammate: `design-${project.slug}` })).error.code, "not_found");
+});
+
 // --- step 2: notes-changed enforcement and compaction re-injection ------------------------------
 
 test("team.done refuses to close a request when the notes have not changed since it started; writing them lets it through", async t => {

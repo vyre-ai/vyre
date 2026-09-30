@@ -70,6 +70,9 @@ export const MIGRATIONS = [
   `CREATE TABLE team_project_settings (
      project TEXT PRIMARY KEY, teammate_default INTEGER NOT NULL DEFAULT 1, updated_at INTEGER NOT NULL
    )`,
+  // team.retire: a retired teammate keeps its row (notes, charter history and past requests stay
+  // readable) but is no longer addressable, listed or served; team.add on the same role brings it back.
+  `ALTER TABLE team_teammates ADD COLUMN retired_at INTEGER`,
 ];
 
 const NAME = /^[a-z][a-z0-9-]{0,30}$/;
@@ -152,7 +155,8 @@ export default {
       instructions: r.instructions == null ? null : String(r.instructions), model: String(r.model), helper_model: String(r.helper_model),
       tools: JSON.parse(String(r.tools)), isolation: String(r.isolation), thread: r.thread == null ? null : String(r.thread),
       state: String(r.state), current_request: r.current_request == null ? null : String(r.current_request),
-      main_sha: r.main_sha == null ? null : String(r.main_sha), test_command: r.test_command == null ? null : String(r.test_command) });
+      main_sha: r.main_sha == null ? null : String(r.main_sha), test_command: r.test_command == null ? null : String(r.test_command),
+      retired_at: r.retired_at == null ? null : Number(r.retired_at) });
     const shapeR = r => r && ({ id: String(r.id), teammate: String(r.teammate), project: String(r.project),
       from_kind: String(r.from_kind), from: String(r.from_label), reply_to: r.reply_to == null ? null : String(r.reply_to),
       via: JSON.parse(String(r.via)), text: String(r.text), refs: JSON.parse(String(r.refs)), priority: String(r.priority),
@@ -161,10 +165,11 @@ export default {
       finished: r.finished_at == null ? null : Number(r.finished_at) });
 
     const byAgent = agent => shapeT(db.prepare("SELECT * FROM team_teammates WHERE agent = ?").get(agent));
-    const byRole = (project, role) => shapeT(db.prepare("SELECT * FROM team_teammates WHERE project = ? AND role = ?").get(project, role));
+    const byRole = (project, role) => shapeT(db.prepare("SELECT * FROM team_teammates WHERE project = ? AND role = ? AND retired_at IS NULL").get(project, role));
+    const retiredRole = (project, role) => shapeT(db.prepare("SELECT * FROM team_teammates WHERE project = ? AND role = ? AND retired_at IS NOT NULL").get(project, role));
     const byThread = thread => shapeT(db.prepare("SELECT * FROM team_teammates WHERE thread = ?").get(thread));
     /** Every teammate a project may summon: its own, plus any shared with it or with everyone ("*"). */
-    const serving = project => db.prepare("SELECT * FROM team_teammates").all().map(shapeT)
+    const serving = project => db.prepare("SELECT * FROM team_teammates WHERE retired_at IS NULL").all().map(shapeT)
       .filter(tm => tm.project === project || tm.shared === "*" || (Array.isArray(tm.shared) && tm.shared.includes(project)));
     const mustT = agent => { const tm = byAgent(agent); if (!tm) throw Object.assign(new Error(`no teammate ${agent}`), { code: "not_found" }); return tm; };
     /** docs/design/teammates.md section 1: on unless a person has turned it off for this project. */
@@ -677,6 +682,14 @@ export default {
         if (!(list.projects || list || []).some(p => p.slug === i.project)) throw new Error(`no project ${i.project}`);
         if (byRole(i.project, i.role)) throw new Error(`${i.project} already has a teammate ${i.role}`);
         const agent = agentName(i.role, i.project);
+        const back = retiredRole(i.project, i.role);
+        if (back) {
+          // Bringing a retired teammate back: same agent, so its notes and history are still there.
+          db.prepare("UPDATE team_teammates SET retired_at = NULL, brief = COALESCE(?, brief), instructions = COALESCE(?, instructions), state = 'asleep', updated_at = ? WHERE agent = ?")
+            .run(i.brief || null, i.instructions || null, Date.now(), agent);
+          ctx.events.emit("teammate.created", { agent, project: i.project, role: i.role, revived: true });
+          return { ...byAgent(agent), revived: true };
+        }
         if (byAgent(agent)) throw new Error(`there is already an agent ${agent}`);
         let isolation = i.isolation || "folder";
         let notice;
@@ -708,6 +721,47 @@ export default {
       },
     });
 
+    ctx.tool("team.retire", {
+      description: "Retire a teammate: it stops being addressable and listed, its queued requests are cancelled, and its notes and history stay readable (team.add with the same role brings it back). Give teammate (the agent name) or project and role. undo: true is for taking back a teammate just made: only allowed while nothing has run for it, it removes the teammate and its queued asks entirely so the role is free again. Refused while a request is running. A person, or a session in that project acting on the person's own request; never a teammate. Returns {agent, project, role, retired, undone, cancelled: [request ids], worktree_kept}.",
+      input: { type: "object", properties: { teammate: { type: "string" }, project: { type: "string" }, role: { type: "string" },
+        reason: { type: "string" }, undo: { type: "boolean" } } },
+      callers: ["cli", "local", "deck", "capsule", "mcp", "module"],
+      run: async (i, meta) => {
+        if (meta.agent) throw Object.assign(new Error("a teammate cannot retire teammates; that is the person's, or a session acting on their request"), { code: "denied" });
+        let tm = null;
+        if (i.teammate) tm = byAgent(String(i.teammate));
+        else if (i.project && i.role) tm = byRole(String(i.project), String(i.role));
+        else throw Object.assign(new Error("give teammate, or project and role"), { code: "bad_input" });
+        if (!tm || tm.retired_at) throw Object.assign(new Error(`no teammate ${i.teammate || `${i.role} in ${i.project}`}`), { code: "not_found" });
+        if (!isPerson(meta.caller) && !(await inProject(meta, tm.project)))
+          throw Object.assign(new Error(`team.retire is for a person, or a session in ${tm.project}`), { code: "denied" });
+        if (tm.role === INTEGRATOR_ROLE && !isPerson(meta.caller))
+          throw Object.assign(new Error("only a person retires the integrator"), { code: "denied" });
+        const running = db.prepare("SELECT id FROM team_requests WHERE teammate = ? AND state = 'running'").get(tm.agent);
+        if (running || tm.state === "running") throw Object.assign(new Error(`${tm.agent} is working on a request; wait for it, or stop its session first`), { code: "denied" });
+        const ran = db.prepare("SELECT COUNT(*) AS n FROM team_requests WHERE teammate = ? AND state IN ('done','failed','waiting')").get(tm.agent);
+        const cancelled = db.prepare("SELECT id FROM team_requests WHERE teammate = ? AND state = 'queued'").all(tm.agent).map(r => String(r.id));
+        const now = Date.now();
+        const undone = Boolean(i.undo);
+        if (undone && (Number(ran.n) > 0 || tm.thread)) throw Object.assign(new Error(`${tm.agent} has already done work; retire it instead of undoing its creation`), { code: "denied" });
+        const tx = db.prepare("UPDATE team_requests SET state = 'cancelled', finished_at = ? WHERE teammate = ? AND state = 'queued'");
+        tx.run(now, tm.agent);
+        for (const id of cancelled) ctx.events.emit("summon.cancelled", { request: id, teammate: tm.agent, project: tm.project });
+        if (undone) {
+          db.prepare("DELETE FROM team_requests WHERE teammate = ?").run(tm.agent);
+          db.prepare("DELETE FROM team_notes WHERE teammate = ?").run(tm.agent);
+          db.prepare("DELETE FROM team_teammates WHERE agent = ?").run(tm.agent);
+        } else {
+          db.prepare("UPDATE team_teammates SET retired_at = ?, state = 'asleep', current_request = NULL, updated_at = ? WHERE agent = ?").run(now, now, tm.agent);
+        }
+        ctx.events.emit("teammate.retired", { agent: tm.agent, project: tm.project, role: tm.role, reason: i.reason || null, undone });
+        const home = tm.isolation === "worktree" ? await projectHome(tm.project).catch(() => null) : null;
+        const repo = home && await repoRoot(home).catch(() => null);
+        return { agent: tm.agent, project: tm.project, role: tm.role, retired: !undone, undone, cancelled,
+          ...(repo ? { worktree_kept: worktreePath(repo, tm.role) } : {}) };
+      },
+    });
+
     ctx.tool("team.list", {
       description: "The teammates that serve a project: role, brief, state, queue length and last result. With no project, the caller's own (from its thread); a person with no thread and no project sees every teammate.",
       input: { type: "object", properties: { project: { type: "string" } } },
@@ -718,7 +772,7 @@ export default {
         let project = null;
         try { project = await projectOf(meta, i); } catch { project = null; }
         const rows = project ? serving(project)
-          : isPerson(meta.caller) ? db.prepare("SELECT * FROM team_teammates").all().map(shapeT)
+          : isPerson(meta.caller) ? db.prepare("SELECT * FROM team_teammates WHERE retired_at IS NULL").all().map(shapeT)
           : [];
         return rows.map(tm => {
           const queued = Number(/** @type {any} */ (db.prepare("SELECT COUNT(*) AS n FROM team_requests WHERE teammate = ? AND state = 'queued'").get(tm.agent)).n);
