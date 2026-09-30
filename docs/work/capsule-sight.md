@@ -84,26 +84,44 @@ steps 1-3 first (outward classifier, Gate wiring, the one grant), then deep Chro
     grant check and gate.request's `thread` need. module.test.js's own thread/agent test needed a
     `hands.grant.add` call added first, since "kit" is now an ungranted agent name by default.
 
+### Done (deep Chrome control, ADR 0049, a55b5480)
+- One extension (local/hands-chrome-mac/extension, MV3, fixed manifest key so the id is stable):
+  shell (background.js), lib (cdp, ctx, floor, err), caps tabs, page, batch, devtools, net, api, ghl,
+  shared/ (proto, redact, apilearn). Static imports only (a worker forbids import()). Vault adds
+  caps/vault.js with register() from caps/index.js.
+- Module `chrome` (local/hands-chrome-mac/index.js): chrome.tabs/snapshot/act/fill/eval/wait/screenshot/
+  batch/inspect/sources/console/net/api/ghl/state/plan/interject/stop/resume/status/install plus the box
+  module's chrome.click/type/open shapes. Grant table shared with hands, Gate kind "act" sender chrome:mac,
+  URL floor tier on both sides, second redaction pass on arrival.
+- Native host + installer (native-host/), bridge over a unix socket or named pipe, oversight state machine
+  (plan first, interject deliver-once, Esc idempotent and immediate, resume only after an answer).
+- Redaction (extension/shared/redact.js): cookies, tokens, session ids, CSRF, keys, passwords, JWTs masked
+  by name and shape in headers, URLs, bodies, storage. No argument returns a raw value.
+- Speed design: one attach per tab, page.fill in one evaluate, batch.run and ghl.run as ONE host round trip.
+- Proof harness: .github/workflows/chrome-spike.yml (macos, windows, ubuntu), spike/, bench/ (checkout and
+  GoHighLevel-shaped fixtures, --direct-cdp baseline). Not run yet: needs the branch pushed.
+- Tests: 262 in local/hands-chrome-mac and local/hands-mac, all fake-only, 0 fail. docs-check, module-sdk
+  and tips tests clean.
+
 ### Doing
-- Next up: deep Chrome control (user decision, IN 0.2 for both the person's own Chrome and
-  agents'). Design is in the plan (section 3): a chrome.debugger extension + native-messaging
-  host for the person's own Chrome (load-unpacked only in 0.2, Store listing moved to 0.3), a Mac
-  target added to hands-chrome's driver so its existing act/snapshot/selector/verify tools work
-  against either a container or the person's own Chrome, and a URL/origin floor tier. Not started
-  yet in code.
+- Waiting on a push of work/capsule-sight to run chrome-spike.yml on the runners.
 
 ## Next (when resumed)
-1. Deep Chrome control build steps (plan section 7, step 6a): floor's URL/origin tier and the
-   Gate/act wiring first (reuses this session's work), then the extension/native-messaging host,
-   the GitHub Actions macos-latest+windows-latest spike, then the driver-unification refactor
-   folding a Mac target into hands-chrome, then the guided chrome://extensions install screen
-   (waits on app-design).
-2. Vyre-owned sessions (ADR 0030): the panel's assistant and thread tabs already follow `thread.*`
-   through threads.get + VyState.applyDm, so they pick up SDK sessions with no new call. When
-   sessions lands `thread.turn`, `thread.state` and `thread.tool` {call, status}, check that
-   capsule-pro's reducer folds them (tool rows by call id, the working dot from thread.state) and
-   add panel tests. Terminal tabs stay on recall.watch (the user's own `claude` sessions).
-3. capsule-apps slice 4 (WhatsApp over hands): answer any further hands asks.
+1. Read the spike results (headless new + load-extension + native messaging on mac/windows, attach cost,
+   round-trip p50/p95). If headless cannot load the extension, run headed under xvfb/the runner desktop.
+2. Real-extension mode: bench/bridge-connect.mjs (starts bridge.js, waits for hello, call/close), align
+   extension-driver's step shapes with page.act/page.fill, run the checkout and GHL fixtures through the real
+   extension on the runners. Put the measured per-step and 20-step-workflow numbers here.
+3. Oversight UI seam for capsule-pro: events chrome.plan, chrome.step, chrome.interjected, chrome.stopped,
+   chrome.resumed; tools chrome.plan/interject/stop/resume. Esc key wiring: hands' overlay already owns the
+   stop key on the Mac; make its stop also call chrome.stop.
+4. Vault: tell vault the caps interface (register(), ctx.storage, the shared/ redactor). Their fill, save and
+   API-key capture become caps/vault.js.
+5. Guided load-unpacked install screen (waits on app-design); Windows registry install runs on the
+   windows-latest runner.
+6. GoHighLevel: flows and labels are unverified against a live account. Acceptance is a live run by the
+   person; the fixture proves machinery and speed only.
+7. Reviewer-2: the extension is a new privileged surface (debugger permission, native host, redaction).
 
 ## Try it (the user, own terminal, a vyred from this worktree in a separate home)
     cd <vyre-dir>/vyre-capsule-sight
