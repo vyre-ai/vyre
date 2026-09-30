@@ -79,6 +79,10 @@ try {
   // The quick providers answer in the same frame; the slow ones land after and are not counted here.
   const pct = (xs, q) => { const a = [...xs].sort((x, y) => x - y); return a.length ? a[Math.min(a.length - 1, Math.floor(q * a.length))] : NaN; };
   const words = ["safari", "system settings", "12 * (3 + 4)", "notes", "20 km in miles", "terminal", "a", "mail"];
+  // A profile of the app while it types, so a stall names its own code (macOS `sample`, 1 ms).
+  const sampler = spawn("/usr/bin/sample", [String(child.pid), "9", "1", "-mayDie"], { stdio: ["ignore", "pipe", "ignore"] });
+  let sampled = ""; sampler.stdout.on("data", d => { sampled += d; });
+  await pause(300);
   const keyMs = [], keyDetail = [];
   for (const w of words) {
     await send({ text: "" }); await pause(60);
@@ -93,6 +97,12 @@ try {
   }
   console.log(`typing: ${keyMs.length} keystrokes to rows, median ${pct(keyMs, 0.5).toFixed(1)} ms, 95th ${pct(keyMs, 0.95).toFixed(1)} ms, worst ${Math.max(...keyMs).toFixed(1)} ms`);
   // Which keystrokes were slowest, so a slow one can be traced to its words.
+  await new Promise(r => { if (sampler.exitCode !== null) r(); else { sampler.on("exit", r); setTimeout(r, 12_000); } });
+  // The heaviest frames of the main thread: lines of the call graph holding 100 or more of its samples.
+  const graph = sampled.split("Call graph:")[1] || "";
+  const main = graph.split(/\n\s*\d+ Thread_/)[0] || "";
+  const heavy = main.split("\n").filter(l => { const m = l.match(/^[\s+!:|]*(\d+)\s/); return m && Number(m[1]) >= 100; }).slice(0, 60);
+  if (heavy.length) console.log(`main thread while typing (samples of 1 ms):\n${heavy.map(l => l.replace(/\s+/g, " ").slice(0, 200)).join("\n")}`);
   const slowest = [...keyDetail].sort((a, b) => b.ms - a.ms).slice(0, 6);
   console.log(`slowest keystrokes: ${slowest.map(k => `"${k.text}" ${k.ms.toFixed(0)} ms (set ${Number(k.set).toFixed(0)})`).join(" · ")}`);
   budget(pct(keyMs, 0.95) < BUDGET.keyP95Ms, `keystroke to rows 95th percentile under ${BUDGET.keyP95Ms} ms (one frame)`);
