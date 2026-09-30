@@ -92,6 +92,7 @@ test("module: it offers chrome:mac to the Gate for acts, again before the first 
   await reg.call("chrome.act", { selector: { role: "button", name: "Send" }, kind: "click" }, "cli");
   const o = gate().offers.find((/** @type {any} */ x) => x.name === "chrome:mac");
   assert.deepEqual([o.tool, o.kinds], ["chrome.release", ["act"]]);
+  assert.equal(o.recipients, "to", "the Gate matches an asked send or a standing permission on the site origin, which is `to`");
 });
 
 test("module: with no extension connected, a call says so", async t => {

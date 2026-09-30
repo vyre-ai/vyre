@@ -129,7 +129,7 @@ export default {
 
     let offered = false;
     const offer = async () => {
-      const r = await ctx.call("gate.offer", { name: "chrome:mac", tool: "chrome.release", kinds: ["act"],
+      const r = await ctx.call("gate.offer", { name: "chrome:mac", tool: "chrome.release", kinds: ["act"], recipients: "to",
         content: { app: "string", window: "string?", origin: "string (the page's origin)", control: "string (what will be pressed or sent)", fields: "object? (the values, clipped)" } });
       if (r && r.error) ctx.log(`could not offer the chrome:mac sender: ${r.error.message}`);
       else offered = true;
