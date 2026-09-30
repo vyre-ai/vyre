@@ -15,6 +15,8 @@ import * as config from "../core/config/index.js";
 import { names } from "../core/names/service.js";
 import { HUMAN_ONLY, fingerprint } from "../core/presence/index.js";
 import { COOKIE, signed } from "../core/presence/person.js";
+import { Presence } from "../core/presence/index.js";
+import { open } from "../core/store/index.js";
 import { tempHome } from "./helpers.js";
 
 const MAC_IP = "100.101.1.2", PHONE_IP = "100.101.1.3";
@@ -71,7 +73,7 @@ async function box(t) {
     await handler({})(req, res, `device:${id}`, { kind: "device", stableId: id, node: "alex-phone", login: null, tags: [], caps: {} });
     return { status, ...(out ? JSON.parse(out) : {}) };
   };
-  return { d, send, call, relayed };
+  return { d, send, call, relayed, root };
 }
 
 /** The cookie a presence.person.start answer set, as a request's cookie header. */
@@ -261,4 +263,29 @@ test("person: the native app returns to vyre:// and must sign the trade with the
   const again = await trade(await code());
   assert.deepEqual(again.data.human, { key: ok.data.human.key });
   assert.match(ok.data.token, /^[\w-]+\.[\w-]+$/);
+});
+
+test("person: a device whose passkey was removed is told device_removed, but only when it holds the credential the box issued", async t => {
+  const { call, root } = await box(t);
+  const s = await call(MAC_IP, "presence.person.start", {}, { "x-vyre-presence": "passkey id=x key=pk1" });
+  assert.equal(s.status, 200, JSON.stringify(s));
+  const cookie = { cookie: cookieOf(s) };
+  assert.equal((await call(MAC_IP, "presence.person.status", {}, cookie)).data.signed, true);
+
+  // The real removal, on the same database: the key's sessions end and are remembered for 30 days.
+  const db = open(path.join(root, "vyre.db"));
+  t.after(() => db.close());
+  db.prepare("INSERT INTO presence_keys (id, kind, name, public_key, alg, sign_count, created) VALUES (?,?,?,?,?,0,?)").run("pk1", "passkey", "alex-phone", "x", -7, Date.now());
+  db.prepare("UPDATE presence_people SET key_id = ? WHERE id = ?").run("pk1", s.data.id);
+  assert.equal(Presence.prototype.remove.call({ db, now: Date.now, coreLink: null }, "pk1"), true);
+
+  const gone = await call(MAC_IP, "agents.list", {}, cookie);
+  assert.equal(gone.status, 401);
+  assert.equal(gone.error.code, "device_removed");
+  // A stranger, or a guess at the secret, gets what anyone always got: nothing says that key ever existed.
+  const [id] = cookie.cookie.replace(`${COOKIE}=`, "").split(".");
+  for (const bad of [`${COOKIE}=${id}.${"A".repeat(43)}`, `${COOKIE}=${"B".repeat(16)}.${"A".repeat(43)}`]) {
+    const r = await call(MAC_IP, "agents.create", { name: "juno" }, { cookie: bad });
+    assert.notEqual(r.error && r.error.code, "device_removed", bad);
+  }
 });
