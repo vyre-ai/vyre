@@ -813,7 +813,7 @@ Stop working in Chrome now, as Escape does. The next call is refused and the ext
 The tabs in the person's own Chrome. list: every tab (id, title, URL; pages Vyre may not look at are left out and counted in hidden). find: tabs matching a URL, origin or title. use: reuse a matching tab, and open one only when none matches and url is given (openIfMissing); it never steals focus unless focus is true. open: a new tab (avoid: prefer use). activate: bring a tab to the front. close: only a tab Vyre opened. navigate: send a tab to a URL.
 
 - Input:
-  - `action` one of "list", "find", "use", "open", "activate", "close", "navigate", required
+  - `action` one of "list", "find", "use", "open", "activate", "close", "navigate", "presence", required
   - `focus` boolean
   - `match` object
     - `origin` string

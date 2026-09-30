@@ -240,6 +240,27 @@ async function main() {
         return { refused: true };
       });
 
+      // What the person sees: Vyre's tab is in a group named Vyre, the badge run is on, a pill is in the page (hidden from snapshots), and the pill's Stop stops the run.
+      await stage("presence", async () => {
+        const p0 = await mcp.call("chrome_tabs", { action: "use", url: `${fixture.url}/checkout?presence=1`, openIfMissing: true }); const pt = p0.id ?? (p0.tab && p0.tab.id);
+        await mcp.call("chrome_act", { tab: pt, selector: { identifier: "apply-promo" }, kind: "click" });
+        let st = /** @type {any} */ ({});
+        for (let i = 0; i < 20; i++) { st = await mcp.call("chrome_tabs", { action: "presence", tab: pt }); if (st.pill) break; await sleep(250); }
+        if (!st.active) throw new Error("the run is not showing as active: " + JSON.stringify(st));
+        if (!/Vyre is working/.test(st.label || "")) throw new Error("the pill label is " + JSON.stringify(st.label));
+        if (!st.group || st.group.title !== "Vyre") throw new Error("the tab is not in a group named Vyre: " + JSON.stringify(st.group));
+        if (!st.pill) throw new Error("no pill in the page");
+        const snap = await mcp.call("chrome_snapshot", { tab: pt });
+        if (/vyre-pill|Vyre is working|Esc to stop/i.test(JSON.stringify(snap))) throw new Error("the snapshot shows the pill");
+        // The pill's Stop is a binding the page calls; the run must halt.
+        await mcp.call("chrome_eval", { tab: pt, expression: "window.vyreStop('pill')", asked: true }).catch(() => {});
+        let halted = false;
+        for (let i = 0; i < 20 && !halted; i++) { try { await mcp.call("chrome_act", { tab: pt, selector: { identifier: "apply-promo" }, kind: "click" }); } catch (e) { halted = /stop/i.test(String(e && /** @type {any} */ (e).message || e)); } if (!halted) await sleep(150); }
+        await mcp.call("chrome_resume", { answer: "ok" }).catch(() => {});
+        if (!halted) throw new Error("the pill's Stop did not halt the run");
+        return { label: st.label, group: st.group, pill: st.pill, haltedByPill: halted };
+      });
+
       await stage("trace_and_report", async () => {
         const logs = path.join(data, "logs");
         const files = fs.readdirSync(logs).filter(f => f.endsWith(".jsonl"));

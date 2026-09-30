@@ -121,6 +121,18 @@ function landed(r, asked) {
 export default {
   name: "tabs",
   ops: {
+    // What the person sees of Vyre's work in this tab: the run label, the tab's group, whether the pill is in the page.
+    "tabs.presence": async (args, ctx) => {
+      const tabId = typeof args.tabId === "number" ? args.tabId : undefined;
+      const p = ctx.presence;
+      const out = { active: !!(p && p.active()), label: p ? p.label() : "", group: null, pill: null };
+      if (tabId !== undefined) {
+        try { const t = await ctx.tabs.get(tabId); if (t && t.groupId != null && t.groupId !== -1) { const g = chrome.tabGroups ? await chrome.tabGroups.get(t.groupId) : null; out.group = g ? { id: g.id, title: g.title, color: g.color, collapsed: g.collapsed } : { id: t.groupId }; } } catch { /* no groups API */ }
+        try { const r = await ctx.cdp.send(tabId, "Runtime.evaluate", { expression: "!!(window.__vyrePill && window.__vyrePill.host && window.__vyrePill.host.isConnected)", returnByValue: true }); out.pill = !!(r && r.result && r.result.value); } catch { /* not attached */ }
+      }
+      return out;
+    },
+
     "tabs.list": async (_args, ctx) => ({ tabs: (await survey(ctx)).map(shape) }),
 
     "tabs.find": async (args, ctx) => {

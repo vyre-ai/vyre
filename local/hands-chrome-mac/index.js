@@ -77,7 +77,7 @@ const timeout = { ...int, description: "Give up after this many ms. Default 3000
 const WAIT = obj({ timeoutMs: { ...int, description: "Keep looking for the control this long: it must exist, be enabled and (with stable) hold still, and loading spinners must clear. Default 0: one look." }, stable: bool, busyMs: { ...int, description: "How long to wait for spinners before giving up on them." } });
 
 /** Which tabs.* op an action means. */
-const TAB_OPS = { list: "tabs.list", find: "tabs.find", use: "tabs.use", open: "tabs.open", activate: "tabs.activate", close: "tabs.close", navigate: "tabs.navigate" };
+const TAB_OPS = { list: "tabs.list", find: "tabs.find", use: "tabs.use", open: "tabs.open", activate: "tabs.activate", close: "tabs.close", navigate: "tabs.navigate", presence: "tabs.presence" };
 const SOURCE_OPS = { list: "dev.sources.list", get: "dev.sources.get", search: "dev.sources.search" };
 const NET_OPS = { start: "net.start", list: "net.list", get: "net.get", watch: "net.watch", unwatch: "net.unwatch", on: "net.on", off: "net.off", rules: "net.rules", replay: "net.replay" };
 const API_OPS = { learn: "api.learn", catalog: "api.catalog", call: "api.call" };

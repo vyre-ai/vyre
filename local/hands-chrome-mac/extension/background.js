@@ -24,6 +24,7 @@ import { proto, redact } from "./lib/shared.js";
 import { createCtx } from "./lib/ctx.js";
 import { dispatch, deliver, ready, loadReport, opNames } from "./caps/index.js";
 import { explain } from "./shared/diag.js";
+import { createPresence, iconDrawer } from "./lib/presence.js";
 
 export const MIN_RETRY_MS = 2500;
 export const FAST_RETRY_MS = 3000;
@@ -84,7 +85,7 @@ export function start(chrome, opts = {}) {
       if (chrome.action && chrome.action.setBadgeText) {
         const failingFor = conn.failingSince == null ? 0 : now() - conn.failingSince;
         const bad = !conn.connectedAt || conn.failingSince != null ? failingFor >= BADGE_AFTER_MS : false;
-        chrome.action.setBadgeText({ text: bad ? "!" : "" });
+        if (bad || !presence.active()) chrome.action.setBadgeText({ text: bad ? "!" : "" });
         if (bad && chrome.action.setBadgeBackgroundColor) chrome.action.setBadgeBackgroundColor({ color: "#c0392b" });
         if (chrome.action.setTitle) chrome.action.setTitle({ title: `Vyre for Chrome: ${explain(conn, now()).headline}` });
       }
@@ -106,6 +107,14 @@ export function start(chrome, opts = {}) {
 
   const emit = (/** @type {any} */ evt) => { post(redactResult(evt)); };
   const ctx = createCtx({ chrome, emit });
+  // What the person sees while Vyre works: a tab group, a step badge, a pulsing icon, a pill in the tab (lib/presence.js).
+  const presence = createPresence({
+    chrome, cdp: ctx.cdp, setT, clearT,
+    draw: chrome.runtime && chrome.runtime.getURL ? iconDrawer(chrome.runtime.getURL("icons/icon-32.png")) : undefined,
+    onStop: via => { ctx.setStopped(true); post({ event: "stop", via }); },
+  });
+  /** @type {any} */ (ctx).presence = presence;
+  presence.badgeOwnedBy(() => conn.failingSince != null && now() - conn.failingSince >= BADGE_AFTER_MS);
 
   /** @param {any} msg */
   async function onMessage(msg) {
@@ -115,6 +124,7 @@ export function start(chrome, opts = {}) {
     if (typeof msg.event === "string") {
       if (msg.event === "stop") ctx.setStopped(true);
       else if (msg.event === "resume") ctx.setStopped(false);
+      else if (msg.event === "presence") { await presence.state(msg); return; }
       await deliver(msg, ctx);
       return;
     }
@@ -122,7 +132,7 @@ export function start(chrome, opts = {}) {
     const id = msg.id;
     try {
       if (typeof msg.op !== "string") throw Object.assign(new Error(proto.CODES.bad_request), { code: "bad_request" });
-      const result = await dispatch(msg.op, msg.args, ctx);
+      const result = await presence.around(msg.op, msg.args, () => dispatch(msg.op, msg.args, ctx));
       post({ id, ok: true, result: redactResult(result === undefined ? null : result) });
     } catch (e) {
       const code = /** @type {any} */ (e)?.code;
@@ -173,7 +183,7 @@ export function start(chrome, opts = {}) {
   }
 
   connect();
-  return { ctx, connect, onMessage, port: () => port, attempts: () => attempts, conn: () => ({ ...conn }), stop: () => { if (timer) clearT(timer); timer = null; } };
+  return { ctx, presence, connect, onMessage, port: () => port, attempts: () => attempts, conn: () => ({ ...conn }), stop: () => { if (timer) clearT(timer); timer = null; } };
 }
 
 if (/** @type {any} */ (globalThis).chrome?.runtime?.id) start(/** @type {any} */ (globalThis).chrome);

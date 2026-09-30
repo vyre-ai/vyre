@@ -223,3 +223,8 @@ steps 1-3 first (outward classifier, Gate wiring, the one grant), then deep Chro
 
 ## Test windows
 - Tiny, offscreen or occluded, unfocused, short-lived, titled "vyre-test" only (never sample data).
+
+## 2026-10-01: Vyre for Chrome visible working state (chrome-ux.md section 1)
+- Security (9b5c3324): eval cannot write with the page's login or open its stored login; Firebase token shapes masked; api.call taught as the path. The user's log showed the token never left the page; the hole was un-asked writes.
+- Bug (38535845): batch.run and ghl.run ran on the active tab, not the tab named. Fixed, forwarded.
+- Presence (extension/lib/presence.js): tab group "Vyre" for tabs Vyre opens (a person's own group is left alone), step badge, pulsing icon, page pill in a closed shadow root with Stop and Esc. New op tabs.presence for the proof. Real-Chrome stage "presence" in the real job; nothing counts until CI shows it.
