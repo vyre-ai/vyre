@@ -29,9 +29,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     permissions:
-      contents: write      # the release
-      id-token: write      # the attestation's keyless identity
-      attestations: write
+      contents: read
       actions: read        # app.yml's Android artifact
     env:
       TAG: ${{ github.event_name == 'push' && github.ref_name || inputs.tag }}
@@ -81,24 +79,13 @@ jobs:
         run: |
           git fetch --no-tags origin main
           git merge-base --is-ancestor HEAD FETCH_HEAD || { echo "the tag's commit is not on main; refusing to sign a release from it"; exit 1; }
-      - name: Box files and vyre.tgz, as build-site.sh makes them (signed on a publishing run)
-        env:
-          # The private release key (PKCS8 PEM) exists in this step only on a publishing run.
-          VYRE_SIGNING_KEY: ${{ env.PUBLISH == 'true' && secrets.VYRE_RELEASE_SIGNING_KEY || '' }}
-          VYRE_CHANNEL: ${{ env.CHANNEL }}
+      - name: Box files and vyre.tgz, as build-site.sh makes them (unsigned, this job never sees the signing key)
         run: |
           sh scripts/build-site.sh
           for f in install-box.sh install-mac-server.sh compose.yml compose.build.yml vyre.env.example vyre Dockerfile dockerignore vyre.tgz VERSION; do
             [ -f "site/box/$f" ] || { echo "build-site made no $f"; exit 1; }
             cp "site/box/$f" dist/
           done
-          if [ "$PUBLISH" = true ]; then
-            for f in manifest.json manifest.sig; do
-              [ -f "site/box/$f" ] || { echo "a publishing run made no $f"; exit 1; }
-              cp "site/box/$f" dist/
-            done
-          fi
-          [ "$(cat dist/VERSION)" = "$VERSION" ]
       - name: The Android app from app.yml on this commit, when there is one
         env:
           GH_TOKEN: ${{ github.token }}
@@ -124,22 +111,97 @@ jobs:
               notes: fs.readFileSync("dist/notes.md", "utf8") }, null, 2) + "\n");' "$VERSION" "$CHANNEL" "$(git rev-parse HEAD)" "$MIN_FROM"
           (cd dist && find . -maxdepth 1 -type f ! -name SHA256SUMS ! -name notes.md | sed 's|^\./||' | LC_ALL=C sort | xargs sha256sum > SHA256SUMS)
           cat dist/SHA256SUMS | tee -a "$GITHUB_STEP_SUMMARY"
-      - uses: actions/attest-build-provenance@v2
-        if: env.PUBLISH == 'true'
+      - uses: actions/upload-artifact@v4
         with:
-          subject-path: "dist/*"
-      - name: Publish
-        if: env.PUBLISH == 'true'
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          pre=""; [ "$CHANNEL" = beta ] && pre="--prerelease"
-          assets=$(find dist -maxdepth 1 -type f ! -name notes.md | LC_ALL=C sort)
-          # shellcheck disable=SC2086
-          gh release create "$TAG" --repo "$GITHUB_REPOSITORY" --verify-tag --title "Vyre $VERSION" --notes-file dist/notes.md $pre $assets
+          name: dist-${{ env.TAG }}
+          path: dist/
+          retention-days: 1
       - uses: actions/upload-artifact@v4
         if: env.PUBLISH != 'true'
         with:
           name: release-dry-run-${{ env.TAG }}
           path: dist/
           retention-days: 7
+
+  # The ONLY job that sees the release signing key: the GitHub Environment `release` holds it, needs
+  # the user's approval, and takes deployments only from main or v* tags. It gets the built files as
+  # an artifact, signs the tarball's manifest, and hands back manifest.json and manifest.sig.
+  sign:
+    needs: release
+    if: github.event_name == 'push' && vars.VYRE_RELEASES == 'go'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment: release
+    permissions:
+      contents: read
+    env:
+      TAG: ${{ github.ref_name }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.ref }}
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: The tag's commit is on main
+        run: |
+          git fetch --no-tags origin main
+          git merge-base --is-ancestor HEAD FETCH_HEAD || { echo "the tag's commit is not on main; refusing to sign a release from it"; exit 1; }
+      - uses: actions/download-artifact@v4
+        with:
+          name: dist-${{ env.TAG }}
+          path: dist
+      - name: Sign the manifest
+        env:
+          VYRE_SIGNING_KEY: ${{ secrets.VYRE_RELEASE_SIGNING_KEY }}
+        run: |
+          version=$(cat dist/VERSION)
+          channel=$(node -p 'require("./dist/release.json").channel')
+          node scripts/sign-manifest.mjs dist/vyre.tgz dist "$version" "$channel"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: manifest-${{ env.TAG }}
+          path: |
+            dist/manifest.json
+            dist/manifest.sig
+          retention-days: 1
+
+  publish:
+    needs: [release, sign]
+    if: github.event_name == 'push' && vars.VYRE_RELEASES == 'go'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write      # the release
+      id-token: write      # the attestation's keyless identity
+      attestations: write
+    env:
+      TAG: ${{ github.ref_name }}
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: dist-${{ env.TAG }}
+          path: dist
+      - uses: actions/download-artifact@v4
+        with:
+          name: manifest-${{ env.TAG }}
+          path: dist
+      - name: SHA256SUMS again, now covering the manifest and its signature
+        run: |
+          [ -f dist/manifest.json ] && [ -f dist/manifest.sig ] || { echo "no signed manifest to publish"; exit 1; }
+          (cd dist && find . -maxdepth 1 -type f ! -name SHA256SUMS ! -name notes.md | sed 's|^\./||' | LC_ALL=C sort | xargs sha256sum > SHA256SUMS)
+          cat dist/SHA256SUMS | tee -a "$GITHUB_STEP_SUMMARY"
+      - uses: actions/attest-build-provenance@v2
+        with:
+          subject-path: "dist/*"
+      - name: Publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          CHANNEL=$(node -p 'require("./dist/release.json").channel')
+          VERSION=$(cat dist/VERSION)
+          pre=""; [ "$CHANNEL" = beta ] && pre="--prerelease"
+          assets=$(find dist -maxdepth 1 -type f ! -name notes.md | LC_ALL=C sort)
+          # shellcheck disable=SC2086
+          gh release create "$TAG" --repo "$GITHUB_REPOSITORY" --verify-tag --title "Vyre $VERSION" --notes-file dist/notes.md $pre $assets
