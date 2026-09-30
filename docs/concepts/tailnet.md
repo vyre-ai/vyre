@@ -79,7 +79,7 @@ These live under `network` in `~/.vyre/config.json`. See [config](../reference/c
 ## What it will not do
 
 - No passwords, no login screen, no sessions on the tailnet address.
-- A connection from the box's own tailnet address is refused: it is a local process, not one of your devices. On a headless box nobody browses locally; on a Mac box, use the Capsule and the CLI.
+- A connection from the box's own tailnet address is refused: it is a local process, not one of your devices. On a headless box nobody browses locally; on a Mac box, use Lumen and the CLI.
 - Kernel Tailscale is required on the box. In userspace networking mode there is no interface to bind: the onboarding page marks the Tailscale step blocked and says why.
 - Root on the box, and anyone who can reach its Docker socket, are out of scope.
 

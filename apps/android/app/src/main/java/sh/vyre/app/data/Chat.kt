@@ -76,7 +76,7 @@ object ChatText {
     fun holder(h: String?, me: String): String? = when {
         h.isNullOrBlank() || h == me -> null
         h == "deck" -> "The Deck"
-        h == "capsule" -> "The Capsule"
+        h == "capsule" -> "Lumen"
         h == "ios" -> "Your iPhone"
         h == "android" -> "Your Android phone"
         h == "terminal" || h == "cli" -> "A terminal"

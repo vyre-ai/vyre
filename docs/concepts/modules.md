@@ -8,7 +8,7 @@ status: stable
 
 # Modules
 
-Every service in Vyre is a module on one contract: projects, recall, the vault, the Capsule, and anything you install yourself. A module is a folder with a `module.json` that says what it does, and an entry file that exports `start(ctx)`. Because every module is wired the same way, a new one shows up to Claude (as an MCP tool), to the surfaces (over HTTP) and to the terminal (through `vyre call`) without special cases. The contract itself is on [the module contract](../build/module-contract.md).
+Every service in Vyre is a module on one contract: projects, recall, the vault, Lumen, and anything you install yourself. A module is a folder with a `module.json` that says what it does, and an entry file that exports `start(ctx)`. Because every module is wired the same way, a new one shows up to Claude (as an MCP tool), to the surfaces (over HTTP) and to the terminal (through `vyre call`) without special cases. The contract itself is on [the module contract](../build/module-contract.md).
 
 ## Kinds of module
 

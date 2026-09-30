@@ -251,6 +251,25 @@ export async function callWithCode(name, input, code) {
   throw new ApiError(body?.error?.code || "http_" + res.status, body?.error?.message || res.statusText, name, body?.error);
 }
 
+/**
+ * A tool call authenticated by the one-time enrolment grant a setup claim link earns (relay.setup.claim answers it): for
+ * `presence.enroll` on the first owner passkey, at the person's own address. The grant is good once, for five minutes, on this
+ * browser only. Resolves to the data; throws an ApiError.
+ * @param {string} name @param {Record<string, any>} input @param {string} grant
+ */
+export async function callWithGrant(name, input, grant) {
+  let res, body;
+  try {
+    res = await fetch("/v1/tools/" + encodeURIComponent(name), {
+      method: "POST", headers: { "content-type": "application/json", "x-vyre-caller": "deck", "x-vyre-presence": `grant grant=${grant}` },
+      body: JSON.stringify(input),
+    });
+    body = await res.json().catch(() => null);
+  } catch { throw new ApiError("offline", "vyred did not answer", name); }
+  if (body && "data" in body && !body.error) return body.data;
+  throw new ApiError(body?.error?.code || "http_" + res.status, body?.error?.message || res.statusText, name, body?.error);
+}
+
 /** Sign this device out: POST /v1/person/end, which clears the person session cookie. Resolves
  * true when the box said yes; false when it did not (an old box has no such path). */
 export async function endPerson() {

@@ -145,9 +145,9 @@ Every mail account you connect works the same way: a Google account (OAuth or a 
 service account), an MCP server that reads and sends mail, your own Google Apps Script web app,
 or any mailbox over IMAP and SMTP. You can connect several at once, and several of one kind. Each
 one is a connection in Vault, Connections, where you choose which surfaces may use it: the
-Capsule and chats by default, agents only when you turn them on.
+Lumen and chats by default, agents only when you turn them on.
 
-In the Capsule, type **send an email**. You get one row per account you may send from, such as
+In Lumen, type **send an email**. You get one row per account you may send from, such as
 "Send from alex@harlow.example". Words you add are filled in: "email dana@northwind-bakery.example
 about the order" sets the address and the subject, "write to dana saying the rota is ready" finds
 Dana's address in your mail and sets the body. Press Return on a row and the message waits at the

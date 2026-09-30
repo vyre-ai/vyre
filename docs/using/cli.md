@@ -9,7 +9,7 @@ status: draft
 # The vyre command
 
 `vyre` is Vyre in a terminal. Every command is a call to vyred, the daemon on your machine, so
-the terminal, the [Deck](deck.md) and the [Capsule](capsule.md) never disagree about what is
+the terminal, the [Deck](deck.md) and [Lumen](capsule.md) never disagree about what is
 true. This page is organised by task. Every command and its usage line is in the
 [CLI reference](../reference/cli.md); `vyre help` prints the same list, and `vyre help <command>`
 shows one command's usage and flags.
