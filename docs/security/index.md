@@ -58,6 +58,20 @@ One residual is known and recorded: labels tell an agent's computer apart from e
 
 Chrome's debugging port inside a computer is never exposed without authentication ([ADR 0012](../adr/0012-cdp-proxy.md)). Details: [ADR 0009](../adr/0009-container-hardening.md), and Glass's stream in [ADR 0003](../adr/0003-glass-stream.md).
 
+## Vyre for Chrome: what a script run in your page can reach
+
+`chrome_eval` runs an agent's script in a page where you are signed in. Unless you approved it, the script can read but not send anything out. The network rules hold for the whole run:
+
+- **The browser enforces the limit.** A rule for the tab blocks every request type except the page's own navigation, and allows only exact origins (scheme, host and port): the page's own, and origins that already gave the page a completed response. A second rule covers requests that belong to no tab (shared and service workers), scoped by the page's host. Vyre reads the rules back, and where Chrome allows it test-matches an image and an XHR to a fresh origin, before the script runs. If it cannot confirm them, the script does not run.
+- **Every frame is watched too.** The Fetch domain is on in every frame and worker of the tab, new ones start paused, and a request to an origin outside the list is failed. Before the script runs, its own frame sends an image and a fetch to an unroutable host. Vyre waits for both to be intercepted, asks again once, and refuses the script if they are not.
+- **The page's own code is a third layer.** Under the guard a script cannot start a worker, open a window, or set an image or media source on another origin.
+
+Known residuals:
+- **Third parties the page already uses** (analytics, chat widgets) stay reachable, but only for small requests: 256 bytes each, and 1 KB and 8 requests in total per script. A service many sites share can still receive up to that much.
+- **An oversize request from the page itself** to such an origin is blocked. The origin stays allowed for later scripts.
+- **Which origins count as already used** is seeded at the first guard from what Chrome reports as loaded and from the page's own resource-timing entries. Page script can rewrite those entries before Vyre first runs a script on that tab. Responses seen outside a guard are recorded by Chrome, not the page.
+- **The guard's diagnostics** (what was allowed and why) never go back to the model. Only a test harness reads them.
+
 ## Backups
 
 `vyre backup` writes config, the store, the sealed vault, watchers, modules, certificates and names into one file, mode 0600. It contains the sealed vault. Keep it somewhere only you can read, or encrypt it. `vyre vault backup <file>` seals the whole vault to a passphrase of its own. See [Looking after the box](../using/box-care.md).

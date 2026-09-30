@@ -472,7 +472,8 @@ test("egress: a GHL-style builder iframe calling its own API is allowed; a 1 KB 
   });
   seen("s2", "https://backend.leadconnectorhq.com/workflow/1");
   seen("s3", "https://analytics.thirdparty.example/collect");
-  const eg = await egressGuard(k.ctx, 1);
+  // The script runs IN the builder frame: its site is first party. A third-party iframe the page merely loaded is not (see the next test).
+  const eg = await egressGuard(k.ctx, 1, { index: 1, frameId: "B", how: "session", readable: true, origin: "https://builder.leadconnectorhq.com", url: "https://builder.leadconnectorhq.com/x" });
   assert.ok(eg.allowed.includes("https://builder.leadconnectorhq.com"), "a frame that loaded a document");
   const big = "x".repeat(1024);
   paused1(k, "api1", "https://backend.leadconnectorhq.com/workflow/1", { postData: big });
@@ -502,5 +503,24 @@ test("egress: an asked approval clears the denied origins for the tab", async ()
   k.push(1, "Network.responseReceived", { requestId: "x2", type: "XHR", response: { url: "https://approved.example/b", status: 200, headers: {}, mimeType: "x" } });
   const eg2 = await egressGuard(k.ctx, 1);
   assert.ok(eg2.allowed.includes("https://approved.example"));
+  await eg2.stop();
+});
+
+test("egress: third parties share one budget per guard (1 KB, 8 requests), a loaded third-party iframe is not first party, and a size-capped origin is not denied for the tab", async () => {
+  const { k, seen } = await guardedWorld(async k => {
+    k.ctx.frames = { list: async () => [{ index: 0, frameId: "TOP", how: "top", readable: true, origin: "https://app.example", url: "https://app.example/w" }, { index: 1, frameId: "C", how: "session", readable: true, origin: "https://chat.widget.example", url: "https://chat.widget.example/" }] };
+  });
+  seen("s2", "https://chat.widget.example/api");
+  const eg = await egressGuard(k.ctx, 1);
+  for (let i = 0; i < 9; i++) paused1(k, "c" + i, "https://chat.widget.example/api?i=" + i, { postData: "p" });
+  paused1(k, "big", "https://chat.widget.example/api", { postData: "x".repeat(400) });
+  await tick1();
+  const failed = k.calls("Fetch.failRequest").map(s => s.params.requestId);
+  assert.ok(!failed.includes("c0") && !failed.includes("c7"), "the first eight small requests pass");
+  assert.ok(failed.includes("c8"), "the ninth is over the per-guard count");
+  assert.ok(failed.includes("big"), "an oversize one is held");
+  await eg.stop();
+  const eg2 = await egressGuard(k.ctx, 1);
+  assert.ok(eg2.allowed.includes("https://chat.widget.example"), "a size-capped origin stays allowed for the tab afterwards");
   await eg2.stop();
 });

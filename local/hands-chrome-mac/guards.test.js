@@ -116,7 +116,8 @@ test("egress guard: a browser-level rule blocks WebSockets and beacons of the ta
   const dnr = /** @type {any} */ (k.ctx).dnr;
   assert.equal(dnr.rules.length, 1);
   assert.equal(dnr.rules[0].tab, 3);
-  assert.ok(dnr.rules[0].allowHosts.includes("app.example.com") && dnr.rules[0].allowHosts.includes("services.example.com"), "own and known hosts stay allowed");
+  assert.ok(dnr.rules[0].initiatorHosts.includes("app.example.com") && dnr.rules[0].initiatorHosts.includes("services.example.com"), "own and known hosts scope the worker rule");
+  assert.ok(dnr.rules[0].allowOrigins.includes("https://app.example.com") && dnr.rules[0].allowOrigins.includes("https://services.example.com"), "own and known origins stay allowed");
   assert.deepEqual(dnr.removed, [dnr.rules[0].id], "the rule is removed when the script ends");
   const k2 = egressRig(async () => {});
   await T(dt.ops["dev.console.eval"])({ tab: 3, expression: "/*vyre-test-script*/ 1", asked: true }, k2.ctx);
@@ -147,24 +148,37 @@ test("egress guard: a frame whose interceptor is not live (the probe never arriv
   assert.ok(k.calls("Fetch.disable").length >= 1, "the guard is taken down again");
 });
 
-test("ctx.dnr.block: one block rule over every resource type but the main frame, one exact-origin allow rule per origin, all removed by unblock", async () => {
+test("ctx.dnr.block: a block rule over every resource type but the main frame and exact-origin allows, for the tab and for tab-less worker requests by initiator; confirmed by read-back and test match; all removed by unblock", async () => {
   const { createCtx } = await import("./extension/lib/ctx.js");
   const { createFakeChrome } = await import("./test-support/fake-chrome.js");
-  const chrome = createFakeChrome();
-  /** @type {any[]} */ let rules = [];
-  chrome.declarativeNetRequest = /** @type {any} */ ({
-    getSessionRules: async () => rules,
-    updateSessionRules: async (/** @type {any} */ o) => { rules = rules.filter(r => !(o.removeRuleIds || []).includes(r.id)).concat(o.addRules || []); },
-  });
-  const ctx = createCtx({ chrome });
-  const b = await ctx.dnr.block({ tab: 7, allowOrigins: ["https://app.example.com", "https://api.example.com:8443", "https://x.example.com/evil path"] });
+  const make = (/** @type {{ dropAdds?: boolean, noBlock?: boolean }} */ o = {}) => {
+    const chrome = createFakeChrome();
+    /** @type {any[]} */ const st = { rules: [] };
+    chrome.declarativeNetRequest = /** @type {any} */ ({
+      getSessionRules: async () => st.rules,
+      updateSessionRules: async (/** @type {any} */ x) => { st.rules = st.rules.filter((/** @type {any} */ r) => !(x.removeRuleIds || []).includes(r.id)).concat(o.dropAdds ? [] : x.addRules || []); },
+      testMatchOutcome: async (/** @type {any} */ q) => ({ matchedRules: o.noBlock ? [] : st.rules.filter((/** @type {any} */ r) => r.condition.tabIds.includes(q.tabId) && r.action.type === "block").map((/** @type {any} */ r) => ({ ruleId: r.id })) }),
+    });
+    return { ctx: createCtx({ chrome }), st };
+  };
+  const { ctx, st } = make();
+  const b = await ctx.dnr.block({ tab: 7, allowOrigins: ["https://app.example.com", "https://api.example.com:8443", "https://x.example.com/evil path"], initiatorHosts: ["app.example.com"] });
   assert.equal(b.ok, true);
-  const block = rules.find(r => r.action.type === "block");
-  assert.ok(block.condition.resourceTypes.includes("image") && block.condition.resourceTypes.includes("websocket") && block.condition.resourceTypes.includes("sub_frame"));
-  assert.ok(!block.condition.resourceTypes.includes("main_frame"));
-  assert.deepEqual(rules.filter(r => r.action.type === "allow").map(r => r.condition.urlFilter).sort(), ["|https://api.example.com:8443/", "|https://app.example.com/"]);
-  assert.ok(rules.every(r => r.condition.tabIds[0] === 7));
-  assert.ok(rules.filter(r => r.action.type === "allow").every(r => r.priority > block.priority));
+  const blocks = st.rules.filter((/** @type {any} */ r) => r.action.type === "block");
+  assert.equal(blocks.length, 2, "one for the tab, one for requests that belong to no tab");
+  for (const bl of blocks) { assert.ok(["image", "websocket", "sub_frame", "xmlhttprequest"].every(t => bl.condition.resourceTypes.includes(t))); assert.ok(!bl.condition.resourceTypes.includes("main_frame")); }
+  assert.deepEqual(blocks[1].condition.tabIds, [-1]);
+  assert.deepEqual(blocks[1].condition.initiatorDomains, ["app.example.com"]);
+  const allows = st.rules.filter((/** @type {any} */ r) => r.action.type === "allow");
+  assert.deepEqual(allows.filter((/** @type {any} */ r) => r.condition.tabIds[0] === 7).map((/** @type {any} */ r) => r.condition.urlFilter).sort(), ["|https://api.example.com:8443/", "|https://app.example.com/"]);
+  assert.ok(allows.every((/** @type {any} */ r) => r.priority > 1));
   await ctx.dnr.unblock(b.ids);
-  assert.equal(rules.length, 0);
+  assert.equal(st.rules.length, 0);
+  const lost = make({ dropAdds: true });
+  const r1 = await lost.ctx.dnr.block({ tab: 7, allowOrigins: ["https://app.example.com"] });
+  assert.equal(r1.ok, false, "rules that do not read back are not a guard");
+  const miss = make({ noBlock: true });
+  const r2 = await miss.ctx.dnr.block({ tab: 7, allowOrigins: ["https://app.example.com"] });
+  assert.equal(r2.ok, false, "a test request the rules do not block is not a guard");
+  assert.equal(miss.st.rules.length, 0, "and nothing is left behind");
 });

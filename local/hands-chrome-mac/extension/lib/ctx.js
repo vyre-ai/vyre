@@ -94,16 +94,39 @@ export function createCtx({ chrome, emit = () => {} }) {
      * a hostname list would also allow other ports and every subdomain. `ok` is false when the browser could not set the rules (no API, or it refused).
      * @param {{ tab: number, allowOrigins?: string[], allowHosts?: string[] }} o @returns {Promise<{ id: number|null, ids: number[], ok: boolean, why?: string }>}
      */
-    async block({ tab, allowOrigins = [] }) {
+    async block({ tab, allowOrigins = [], initiatorHosts = [] }) {
       const api = dnrApi();
       if (!api) return { id: null, ids: [], ok: false, why: "this browser has no declarativeNetRequest" };
       const next = () => (ruleSeq >= RULE_MAX ? (ruleSeq = RULE_MIN) : ++ruleSeq);
       const TYPES = ["sub_frame", "stylesheet", "script", "image", "font", "object", "xmlhttprequest", "ping", "csp_report", "media", "websocket", "webtransport", "webbundle", "other"];
+      const origins = [...new Set(allowOrigins)].filter(o => /^https?:\/\/[^/\s*^|?]+$/.test(o)).slice(0, 200);
+      // A second pair for requests that belong to no tab (tabId -1: a shared or service worker's own fetches), scoped by the INITIATOR's host so other sites' workers are left alone.
+      const hosts = [...new Set(initiatorHosts)].filter(h => /^[a-z0-9.\-]+$/i.test(h)).slice(0, 50);
+      /** @type {any[]} */ const rules = [];
+      const scopes = [{ tabIds: [tab] }, ...(hosts.length ? [{ tabIds: [-1], initiatorDomains: hosts }] : [])];
       const blockId = next();
-      const rules = [{ id: blockId, priority: 1, action: { type: "block" }, condition: { tabIds: [tab], resourceTypes: TYPES } }];
-      for (const o of [...new Set(allowOrigins)].slice(0, 200)) { if (/^https?:\/\/[^/\s*^|?]+$/.test(o)) rules.push({ id: next(), priority: 2, action: { type: "allow" }, condition: { tabIds: [tab], urlFilter: `|${o}/`, resourceTypes: TYPES } }); }
+      let first = true;
+      for (const scope of scopes) {
+        rules.push({ id: first ? blockId : next(), priority: 1, action: { type: "block" }, condition: { ...scope, resourceTypes: TYPES } });
+        first = false;
+        for (const o of origins) rules.push({ id: next(), priority: 2, action: { type: "allow" }, condition: { ...scope, urlFilter: `|${o}/`, resourceTypes: TYPES } });
+      }
       const ids = rules.map(r => r.id);
-      try { await api.updateSessionRules({ removeRuleIds: ids, addRules: rules }); return { id: blockId, ids, ok: true }; } catch (e) { return { id: null, ids: [], ok: false, why: String(/** @type {Error} */ (e).message || e).slice(0, 120) }; }
+      try { await api.updateSessionRules({ removeRuleIds: ids, addRules: rules }); } catch (e) { return { id: null, ids: [], ok: false, why: String(/** @type {Error} */ (e).message || e).slice(0, 160) }; }
+      // CONFIRMED, not assumed: every rule reads back, and (where the browser offers testMatchOutcome, unpacked extensions) an Image and an XHR to a fresh origin from this tab match the block.
+      try {
+        const have = new Set((await api.getSessionRules()).map((/** @type {any} */ r) => r.id));
+        if (!ids.every(id => have.has(id))) { await this.unblock(ids); return { id: null, ids: [], ok: false, why: "the rules did not read back" }; }
+        if (typeof api.testMatchOutcome === "function") {
+          const allowIds = new Set(rules.filter(r => r.action.type === "allow").map(r => r.id));
+          for (const type of ["image", "xmlhttprequest"]) {
+            const out = await api.testMatchOutcome({ url: "https://vyre-dnr-probe.invalid/x", type, tabId: tab, initiator: origins[0] || "https://vyre-dnr-probe.invalid" });
+            const m = (out && out.matchedRules) || [];
+            if (!m.some((/** @type {any} */ x) => x.ruleId === blockId) || m.some((/** @type {any} */ x) => allowIds.has(x.ruleId))) { await this.unblock(ids); return { id: null, ids: [], ok: false, why: `the ${type} test request was not blocked by the rule` }; }
+          }
+        }
+      } catch (e) { await this.unblock(ids); return { id: null, ids: [], ok: false, why: "the rules could not be confirmed: " + String(/** @type {Error} */ (e).message || e).slice(0, 120) }; }
+      return { id: blockId, ids, ok: true };
     },
     /** @param {number|number[]|null} ids */
     async unblock(ids) {

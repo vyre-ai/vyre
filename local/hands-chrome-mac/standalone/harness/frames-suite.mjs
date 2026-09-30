@@ -111,7 +111,7 @@ async function main() {
     const rel = build({ out: path.join(tmp, "release") });
     out.release = { version: rel.version, sha256: rel.sha };
     const home = path.join(tmp, "home"); fs.mkdirSync(home);
-    const env = { ...process.env, HOME: home, USERPROFILE: home, VYRE_CHROME_HOME: data };
+    const env = { ...process.env, HOME: home, USERPROFILE: home, VYRE_CHROME_HOME: data, VYRE_CHROME_TEST: "1" };
     const cliInstall = path.join(rel.dir, "standalone", "cli.mjs");
     const app = path.join(data, "app");
     const cli = path.join(app, "standalone", "cli.mjs");

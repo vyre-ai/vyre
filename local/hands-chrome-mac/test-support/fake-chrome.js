@@ -34,7 +34,7 @@ export function createFakeChrome(seed = []) {
   const chrome = {
     _: { tabs, counts, commands, created, ports, store, attached, onEvent, onDetach, onAlarm, cdp: /** @type {(tabId: number, method: string, params: any) => any} */ (() => ({})) },
     // the browser-level network rule the egress guard sets for a tab (session rules); a real Chrome has it, so the fake does
-    declarativeNetRequest: { updateSessionRules: async () => {}, getSessionRules: async () => [] },
+    declarativeNetRequest: (() => { /** @type {any[]} */ let rules = []; return { updateSessionRules: async (/** @type {any} */ o) => { rules = rules.filter(r => !(o.removeRuleIds || []).includes(r.id)).concat(o.addRules || []); }, getSessionRules: async () => rules.slice() }; })(),
     debugger: {
       onEvent, onDetach,
       async attach(/** @type {any} */ t) {

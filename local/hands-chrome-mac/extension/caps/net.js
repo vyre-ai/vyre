@@ -426,6 +426,8 @@ export function siteOf(origin) {
 }
 /** A third party the page talks to may receive only SMALL requests from a guarded script (URL plus body at most this many bytes): a beacon-sized ping, never a dump. */
 export const THIRD_PARTY_MAX_BYTES = 256;
+/** ... and in total, per guarded script: at most this many bytes and requests to ALL capped origins together. */
+export const THIRD_PARTY_TOTAL_BYTES = 1024, THIRD_PARTY_MAX_REQUESTS = 8;
 
 async function stopRequest(send, id, reason) {
   let stopped = false;
@@ -455,19 +457,24 @@ async function paused(ctx, t, p, session) {
       (eg.decisions || (eg.decisions = [])).length < 40 && eg.decisions.push({ origin: o, type: String(p.resourceType || ""), ...(session ? { session: "child" } : {}), decision: o && !eg.allowed.has(o) ? "block" : "allow" });
       // A third party the page uses (allowed, but not the tab's site or a loaded frame's site) may only be sent something SMALL by a guarded script. Residual, written down: a multi-tenant third
       // party (an analytics or storage service many sites share) can still receive up to this much per request; this is a size bound, not a proof of intent.
-      let thirdPartyBig = false;
+      let thirdPartyBig = false, sizeCapped = false;
       if (o && eg.allowed.has(o) && eg.first) {
         const site = siteOf(o);
         const firstParty = [...eg.first].some(f => siteOf(f) === site);
-        const size = String(p.request?.url || "").length + (typeof p.request?.postData === "string" ? p.request.postData.length : p.request?.hasPostData ? THIRD_PARTY_MAX_BYTES + 1 : 0);
-        thirdPartyBig = !firstParty && size > THIRD_PARTY_MAX_BYTES;
+        if (!firstParty) {
+          const size = String(p.request?.url || "").length + (typeof p.request?.postData === "string" ? p.request.postData.length : p.request?.hasPostData ? THIRD_PARTY_MAX_BYTES + 1 : 0);
+          // One budget for the whole guard: thirty small requests do not add up to a dump.
+          thirdPartyBig = size > THIRD_PARTY_MAX_BYTES || (eg.thirdBytes || 0) + size > THIRD_PARTY_TOTAL_BYTES || (eg.thirdCount || 0) >= THIRD_PARTY_MAX_REQUESTS;
+          if (!thirdPartyBig) { eg.thirdBytes = (eg.thirdBytes || 0) + size; eg.thirdCount = (eg.thirdCount || 0) + 1; }
+          else sizeCapped = true;
+        }
       }
       if (o && (!eg.allowed.has(o) || thirdPartyBig)) {
         // JUDGED BLOCKED: from here nothing may let this request go. failRequest, once more if it fails, then a fulfilled 403 with an empty body (the page gets an answer, the
         // origin gets nothing). If every attempt fails the request is left paused and the script's eval says a request MAY have been sent: it is never continued.
         judged = true;
         const stopped = await stopRequest(send, id, "BlockedByClient");
-        try { (/** @type {any} */ (t).denied || (/** @type {any} */ (t).denied = new Set())).add(o); } catch { /* */ }
+        if (!sizeCapped) try { (/** @type {any} */ (t).denied || (/** @type {any} */ (t).denied = new Set())).add(o); } catch { /* */ } // a size-capped third party is not denied for the tab: one big beacon must not cut it off
         if (eg.blocked.length < 20) eg.blocked.push({ method: String(p.request?.method || "GET"), origin: o, type: String(p.resourceType || ""), ...(session ? { session } : {}), ...(stopped ? {} : { leaked: true }) });
         return;
       }
@@ -553,12 +560,13 @@ export async function egressGuard(ctx, tab, frame = null) {
     }
   }
   for (const o of t.seedOrigins) add(o, "first-guard");
-  // The first party: the tab's own site and the sites of frames that loaded a document. Everything else allowed is a third party (see paused()).
-  eg.first = new Set([...eg.allowed].filter(o => prov[o] === "tab" || t.seedFrames?.has?.(o)));
-  for (const f of frames) if (f.how !== "none" && !String(f.frameId).startsWith("element:") && f.origin && !(t.denied && t.denied.has(f.origin))) eg.first.add(f.origin);
+  // The first party: the tab's own origin and the origin of the frame the script runs in. Every other allowed origin (a chat widget's iframe, an analytics host) is a third party
+  // and gets the small-request budget in paused(). A frame the script runs in is named by the caller, so a page's third-party iframe never becomes first party by loading.
+  eg.first = new Set([...eg.allowed].filter(o => prov[o] === "tab"));
+  if (frame && frame.origin && !(t.denied && t.denied.has(frame.origin))) eg.first.add(frame.origin);
   if (eg.depth === 0 && ctx.dnr) {
     const hosts = [...eg.allowed].map(o => { try { return new URL(o).hostname; } catch { return ""; } }).filter(Boolean);
-    const b = await ctx.dnr.block({ tab, allowOrigins: [...eg.allowed, PROBE_ORIGIN], allowHosts: [...new Set(hosts)] });
+    const b = await ctx.dnr.block({ tab, allowOrigins: [...eg.allowed, PROBE_ORIGIN], initiatorHosts: [...new Set(hosts)] });
     eg.rule = b && b.ids && b.ids.length ? b.ids : b && b.id != null ? b.id : null;
     eg.contained = b && b.ok ? "full" : "partial";
     eg.containedWhy = b && !b.ok ? b.why : undefined;

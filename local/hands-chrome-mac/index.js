@@ -266,6 +266,7 @@ export default {
         // Approvals never ride in args, at any depth (a batch step, a recipe, a flow): they are the host's, set below from the real caller.
         { const bad = trustKeyIn(args); if (bad) throw denied("bad_request", `arguments may not carry "${bad}": approvals come from the host, not from arguments`); }
         /** @type {any} */ const trust = {};
+        if (process.env.VYRE_CHROME_TEST) trust.diag = true;
         syncSiteConfig();
         const summary = summarize(op, input);
         /** @type {any} */
