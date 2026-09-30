@@ -28,6 +28,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import crypto from "node:crypto";
+import { boundedWait } from "./bounded.js";
 import { duties as makeDuties, DUTIES_MIGRATION } from "./duties.js";
 import { isPerson } from "../../lib/caller.js";
 import { repoRoot, currentBranch, ensureWorktree, isOwnWorktree, worktreePath, branchOf, mergeBaseIn, aheadOf, shaRange,
@@ -89,6 +90,9 @@ export const MIGRATIONS = [
   // Standing duties (plan section 9.2): identity only; watchers runs them.
   DUTIES_MIGRATION,
 ];
+
+/** How long stop() waits for in-flight dispatch and merge work before it stops anyway (milliseconds). */
+export const STOP_WAIT_MS = 10_000;
 
 /** The longest charter (characters): a role's purpose and habits, not a manual. */
 export const CHARTER_MAX = 8000;
@@ -1291,7 +1295,9 @@ export default {
       offCompact();
       for (const off of [...waiting]) off();
       waiting.clear();
-      while (inflight.size) await Promise.all([...inflight]);
+      // Bounded: a hung job (a stuck git call, say) must never hold daemon shutdown. It is logged, then left behind.
+      const gaveUp = await boundedWait([...inflight], STOP_WAIT_MS);
+      if (gaveUp) ctx.log?.(`team: ${inflight.size} background job(s) still running after ${STOP_WAIT_MS} ms; stopping anyway`);
     } };
   },
 };

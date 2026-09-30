@@ -769,3 +769,4 @@ utilization, resets_at), the slot chip (per project), the waiting queue, "Resume
   thread.finished listener behind it) kept running after stop and hit "database is not open". Now `stop()` sets a flag, drops the
   waiting thread.finished listeners, and awaits every in-flight pump/turn-ended job (tracked), before the daemon closes the store;
   pump does nothing once stopped. Test: stopping right after a worktree merge was queued (fails 3/3 without the fix, passes with it).
+- stop() waits at most STOP_WAIT_MS (10 s, core/team/bounded.js boundedWait), then logs and stops anyway (reviewer-2 LOW).
