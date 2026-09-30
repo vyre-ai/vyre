@@ -125,3 +125,13 @@ test("page.act and page.fill steps look for their control for a moment by defaul
   await dispatch("batch.run", { wait: false, steps: [{ op: "page.act", args: { selector: { name: "A" } } }] }, ctx);
   assert.equal(seen[0].wait, undefined);
 });
+
+test("batch.run: a batch that names a tab runs its page steps on that tab, not the active one; tabs steps keep their own", async () => {
+  const calls = [];
+  const ctx = { stopped: () => false, call: async (op, a) => { calls.push([op, a]); return { ok: true }; } };
+  const { default: batch } = await import("./extension/caps/batch.js");
+  await batch.ops["batch.run"]({ tabId: 7, steps: [{ op: "page.act", args: { selector: { name: "x" } } }, { op: "page.act", args: { tabId: 9, selector: { name: "y" } } }, { op: "tabs.use", args: { url: "https://a.example" } }] }, ctx);
+  assert.equal(calls[0][1].tabId, 7);
+  assert.equal(calls[1][1].tabId, 9, "a step that names its own tab keeps it");
+  assert.equal(calls[2][1].tabId, undefined);
+});

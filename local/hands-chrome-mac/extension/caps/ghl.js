@@ -461,7 +461,7 @@ export default {
       }
       if (!steps.length) throw err("bad_request", "the flow has no steps");
       const t0 = Date.now();
-      const r = await ctx.call("batch.run", { steps, stopOnError: true, asked: args.asked === true });
+      const r = await ctx.call("batch.run", { steps, stopOnError: true, asked: args.asked === true, ...(typeof args.tabId === "number" ? { tabId: args.tabId } : {}) });
       const ms = Date.now() - t0;
       const traces = (Array.isArray(r.results) ? r.results : []).map((/** @type {any} */ x) => x && x.trace).filter(Boolean);
       const trace = traceOf({ strategy: "batch", fallback: traces.some((/** @type {any} */ x) => x.fallback), waitedMs: traces.reduce((/** @type {number} */ a, /** @type {any} */ x) => a + (x.waitedMs || 0), 0), retries: traces.reduce((/** @type {number} */ a, /** @type {any} */ x) => a + (x.retries || 0), 0), newTab: traces.some((/** @type {any} */ x) => x.newTab) });

@@ -239,6 +239,8 @@ async function main() {
         // Fill a field inside the NESTED frame (site C, inside the app on site B) and press its Save.
         const fill = await step("fill the nested editor's field (frame two levels down)", () => mcp.call("chrome_fill", { tab, fields: [{ selector: { name: "Email editor body", identifier: "editor-body" }, value: "hello from kit" }] }));
         need(fill.ok !== false, "fill.frames", `the fill inside the nested frame failed: ${short(fill)}`);
+        // Diagnostic: where does a click in the nested frame land, by the top session and by the frame's own?
+        try { const ct = await step("clicktest the nested editor's Save (both routes)", () => mcp.call("chrome_frames", { action: "clicktest", tab, frame: "c.localhost", css: "#editor-save" })); console.log("[frames-suite] NESTED CLICKTEST " + JSON.stringify(ct).slice(0, 900)); } catch (e) { console.log("[frames-suite] NESTED CLICKTEST failed: " + String(e && e.message || e).slice(0, 300)); }
         const save = await step("click Save design in the nested editor", () => mcp.call("chrome_act", { tab, selector: { name: "Save design", identifier: "editor-save" }, kind: "click" }));
         need(save.ok !== false && !save.held, "act.frames", `the Save click in the nested frame failed: ${short(save)}`);
         const saved = await step("the fixture saw the nested editor's text", () => stateWhere(s => s.editorSaves, v => v.length >= 1, "the nested editor's save"));

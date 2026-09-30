@@ -1265,10 +1265,11 @@ export default {
       const wait = waitOpts(args.wait);
       const t0 = Date.now();
       let retries = 0;
+      /** @type {string[]} */ const retryWhy = [];
       for (;;) {
         const got = await acquire(ctx, tabId, [{ sel, fillable: args.fillable === true }], wait, t0);
         const b = got.bound[0];
-        const trace = { ...got.trace, waitedMs: Date.now() - t0, retries };
+        const trace = { ...got.trace, waitedMs: Date.now() - t0, retries, ...(retryWhy.length ? { retryWhy } : {}) };
         if (!b.control) {
           if (args.optional === true && b.why === "unbound") return { ok: true, skipped: true, why: `no control matches ${JSON.stringify(sel.name || sel.identifier)}, and this step is optional`, trace: traceOf(trace) };
           throw await notFoundError(ctx, tabId, sel, b, got, trace);
@@ -1279,7 +1280,7 @@ export default {
           if (r.ok === false && !r.held) return { ...r, trace: traceOf(trace), ...(await failDetail(ctx, tabId, { path: b.control.path, frame: b.control.frame ?? 0, frameOrigin: b.control.frameOrigin, snap: got.snap })) };
           return { ...r, trace: traceOf(trace) };
         } catch (e) {
-          if (isStale(e) && retries < BACKOFF_MS.length) { await nap(ctx, BACKOFF_MS[retries++]); continue; }
+          if (isStale(e) && retries < BACKOFF_MS.length) { retryWhy.push(`${Date.now() - t0}ms: ${String(/** @type {any} */ (e)?.message || e).slice(0, 140)}`); await nap(ctx, BACKOFF_MS[retries++]); continue; }
           if (e && /** @type {any} */ (e).detail !== undefined) throw e;
           throw err(/** @type {any} */ (e)?.code || "error", String(/** @type {any} */ (e)?.message || e), await failDetail(ctx, tabId, { path: b.control.path, frame: b.control.frame ?? 0, frameOrigin: b.control.frameOrigin, snap: got.snap, trace }));
         }
