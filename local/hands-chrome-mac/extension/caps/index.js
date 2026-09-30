@@ -26,6 +26,7 @@ import ghl from "./ghl.js";
 import login from "./login.js";
 import site from "./site.js";
 import recipe from "./recipe.js";
+import point from "./point.js";
 
 import { TRUST_KEYS, cleanTrust, trustKeyIn } from "../shared/trust.js";
 export { TRUST_KEYS, cleanTrust, trustKeyIn };
@@ -87,7 +88,7 @@ export async function loadOptional(importer = async name => ({ default: /** @typ
   }
 }
 
-for (const c of [tabs, page, batch, frames, login, site, recipe]) register(c);
+for (const c of [tabs, page, batch, frames, login, site, recipe, point]) register(c);
 
 /** Resolves when the optional capabilities have been tried. dispatch waits for it. */
 export let ready = loadOptional();

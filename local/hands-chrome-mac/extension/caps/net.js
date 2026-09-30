@@ -551,6 +551,7 @@ async function paused(ctx, t, p, session) {
         // origin gets nothing). If every attempt fails the request is left paused and the script's eval says a request MAY have been sent: it is never continued.
         judged = true;
         const stopped = await stopRequest(send, id, "BlockedByClient");
+        if (!stopped) (eg.stuck || (eg.stuck = [])).push({ id, session }); // tried again just before Fetch goes off (stop())
         if (!sizeCapped) try { (/** @type {any} */ (t).denied || (/** @type {any} */ (t).denied = new Set())).add(o); } catch { /* */ } // a size-capped third party is not denied for the tab: one big beacon must not cut it off
         if (eg.blocked.length < 20) eg.blocked.push({ method: String(p.request?.method || "GET"), origin: o, type: String(p.resourceType || ""), ...(session ? { session } : {}), ...(stopped ? {} : { leaked: true }) });
         return;
@@ -704,6 +705,12 @@ export async function egressGuard(ctx, tab, frame = null, opts = {}) {
     async stop() {
       if (done) return [];
       done = true;
+      // A request judged blocked whose failRequest never took is tried once more now, while Fetch is still on: once it is off the request would be released to the network.
+      for (const sr of (eg.stuck || []).splice(0)) {
+        const send2 = (/** @type {string} */ m, /** @type {any} */ x) => (sr.session ? ctx.cdp.send(t.tab, m, x, sr.session) : ctx.cdp.send(t.tab, m, x));
+        const ok = await stopRequest(send2, sr.id, "BlockedByClient").catch(() => false);
+        if (ok) for (const b of eg.blocked) if (b.leaked && !b.retried) { b.leaked = false; b.retried = true; break; }
+      }
       const blocked = eg.blocked.splice(0);
       /** @type {any} */ (t).lastGuard = { paused: eg.pausedCount || 0, blocked: blocked.slice(0, 8), decisions: (eg.decisions || []).slice(0, 40), failedSessions: eg.failedSessions || [], noFetch: !!eg.noFetch, rule: eg.rule, failed: eg.failed || 0, enableErrors: eg.enableErrors || [], noFetchTargets: eg.noFetchTargets || 0, neutralized: eg.neutralized || 0, leftPaused: eg.leftPaused || 0, swFrames: eg.swFrames || [], attached: eg.attached || [] }; // read back by the test harness only (net.list under trust.diag)
       // A frame or worker that started during the script and could not be guarded is reported like a leak: it MAY have sent requests.

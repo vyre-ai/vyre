@@ -78,6 +78,16 @@ Known residuals:
 - **Which origins count as already used** is seeded at the first guard from what Chrome reports as loaded and from the page's own resource-timing entries. Page script can rewrite those entries before Vyre first runs a script on that tab. Responses seen outside a guard are recorded by Chrome, not the page.
 - **The guard's diagnostics** (what was allowed and why) never go back to the model. Only a test harness reads them.
 
+## Vyre for Chrome: acting on a picture
+
+`chrome_point` clicks, types, scrolls, hovers and drags at a point of a screenshot, for a surface with no controls in the page (a canvas, a video, a frame Vyre cannot read into). It is the last rung, and a new write path, so:
+
+- **The point comes from the shot Vyre kept** (an unguessable id, 60 seconds), never from numbers in the call. The page must still match the picture: scroll, zoom, size, address and open dialogs are compared, and right before the click the same element must still be under the point.
+- **What is under the point is read by its text**, through open shadow roots and into iframes: the node's own text, aria-label, title, alt and value, and those of its ancestors up to the nearest clickable. A Send, Delete, publish or payment holds for the person exactly as `chrome_act` would, even when drawn as a bare div, and no plan lifts that.
+- **A target with no text at all** (a canvas, a video, a closed shadow root, a frame Vyre cannot see into) is a drawn surface. It waits for the person, unless the person approved a plan that names that kind of pointing (click, type, drag), for this tab and this origin. The plan card says plainly that Vyre cannot tell what a click on a drawn surface does. A click in a cross-origin frame is covered only when the plan names the frame's origin. A double click costs two.
+- **Typing** refuses line breaks, tabs and control characters (Enter sends), refuses password and one-time-code fields, and refuses when the field that has focus cannot be read, unless a plan covers it.
+- **Residual:** a plan that covers a drawn surface cannot see a painted "Send" button, so a click there goes through. That is the consent the plan asks for.
+
 ## Backups
 
 `vyre backup` writes config, the store, the sealed vault, watchers, modules, certificates and names into one file, mode 0600. It contains the sealed vault. Keep it somewhere only you can read, or encrypt it. `vyre vault backup <file>` seals the whole vault to a passphrase of its own. See [Looking after the box](../using/box-care.md).

@@ -34,6 +34,7 @@ import { guardInstall, guardInstallWrites, guardCollect, held as heldRequest } f
 import { egressGuard, clearDenied } from "./net.js";
 import { isGhlHost } from "../shared/ghlhosts.js";
 import { err } from "../lib/err.js";
+import { METRICS, imageSize, putShot, SHOT_TTL_SECONDS } from "../lib/shots.js";
 import { matchControl, norm, nearMisses, topBlocker, classifyBlocker, describeBlocker, redactDom, whereOf, traceOf, nap } from "../lib/ui.js";
 
 const sleep = (/** @type {number} */ ms) => new Promise(r => setTimeout(r, ms));
@@ -100,7 +101,17 @@ const CONSEQUENTIAL = [
 export function consequence(ctl) {
   const name = String((ctl && ctl.name) || "").trim();
   if (!name || (ctl && ctl.nameless)) return { consequential: true, why: "cannot read what this control does, so it is treated as one that matters" };
-  for (const re of CONSEQUENTIAL) if (re.test(name)) return { consequential: true, why: JSON.stringify(name) + " looks like an action that cannot be undone by doing it again" };
+  return classifyText(name);
+}
+
+/**
+ * The one text classifier for anything a click can land on: a snapshot control's name (consequence, above) and a node found at a point (chrome_point, which joins the node's own
+ * text, aria-label, title, alt and value with those of its ancestors up to the nearest clickable). The patterns are the same, so "Send" and "Delete" mean the same through every door.
+ * @param {string} text
+ */
+export function classifyText(text) {
+  const name = String(text || "").trim();
+  for (const re of CONSEQUENTIAL) if (re.test(name)) return { consequential: true, why: JSON.stringify(name.length > 60 ? name.slice(0, 57) + "..." : name) + " looks like an action that cannot be undone by doing it again" };
   return { consequential: false, why: "navigating, focusing or selecting" };
 }
 
@@ -111,7 +122,7 @@ const IMPLICIT = { A: "link", BUTTON: "button", SUMMARY: "button", INPUT: "textb
 const INPUT_TYPE_ROLE = { button: "button", submit: "button", reset: "button", image: "button", checkbox: "checkbox", radio: "radio", range: "slider", search: "searchbox" };
 
 /** A script tagged with its kind and arguments in a leading comment so a test double can tell scripts apart (a comment terminator inside the JSON is escaped). */
-const script = (/** @type {string} */ kind, /** @type {any} */ args, /** @type {string} */ body) =>
+export const script = (/** @type {string} */ kind, /** @type {any} */ args, /** @type {string} */ body) =>
   `/*vyre:${kind} ${JSON.stringify(args ?? {}).replace(/\*\//g, "*\\/")}*/(() => { const ARGS = ${JSON.stringify(args ?? {})}; ${body} })()`;
 
 // Shared by every script: the same path function the snapshot uses, and its inverse.
@@ -474,7 +485,7 @@ const TOP_ONLY = Object.freeze({ index: 0, frameId: "", parentId: null, depth: 0
 const noQuery = (/** @type {any} */ u) => String(u || "").split(/[?#]/)[0];
 
 /** Every frame of the tab, top first, in tree order. Never empty: the top page is always there. @param {any} ctx @param {number} tabId @returns {Promise<any[]>} */
-async function framesOf(ctx, tabId) {
+export async function framesOf(ctx, tabId) {
   if (!ctx.frames || typeof ctx.frames.list !== "function") return [TOP_ONLY];
   try { const l = await ctx.frames.list(tabId); if (Array.isArray(l) && l.length) return l; } catch { /* no frame tree to read: the top page is what there is */ }
   return [TOP_ONLY];
@@ -501,7 +512,7 @@ export function pinIndexes(frames, ref) {
  * Run a script inside one frame (the top page when frame is absent), returning its value. A script that throws is an error.
  * @param {any} ctx @param {number} tabId @param {string} expression @param {any} [extra] @param {any} [frame]
  */
-async function evaluate(ctx, tabId, expression, extra = {}, frame) {
+export async function evaluate(ctx, tabId, expression, extra = {}, frame) {
   const params = { returnByValue: true, timeout: 10_000, ...extra };
   const r = frame && frame.how !== "top" && ctx.frames ? await ctx.frames.evalIn(tabId, frame, expression, params) : await ctx.cdp.send(tabId, "Runtime.evaluate", { expression, ...params });
   if (r && r.exceptionDetails) {
@@ -702,7 +713,7 @@ async function snapshot(ctx, tabId, o = {}) {
 }
 
 /** The tab an op means: the one named, else the one in front (floor-checked here, since dispatch only sees args.tabId). */
-async function tabOf(/** @type {any} */ args, /** @type {any} */ ctx, /** @type {string} */ op) {
+export async function tabOf(/** @type {any} */ args, /** @type {any} */ ctx, /** @type {string} */ op) {
   if (typeof args.tabId === "number") return args.tabId;
   const a = await ctx.tabs.active();
   if (!a) throw err("no_tab");
@@ -714,7 +725,7 @@ async function tabOf(/** @type {any} */ args, /** @type {any} */ ctx, /** @type 
 // ---------------------------------------------------------------- holds and signatures
 
 /** cyrb53: a short, stable, non-cryptographic digest. The signature is a change detector, not a secret. @param {string} s */
-function digest(s) {
+export function digest(s) {
   let h1 = 0xdeadbeef, h2 = 0x41c6ce57;
   for (let i = 0; i < s.length; i++) { const ch = s.charCodeAt(i); h1 = Math.imul(h1 ^ ch, 2654435761); h2 = Math.imul(h2 ^ ch, 1597334677); }
   h1 = Math.imul(h1 ^ (h1 >>> 16), 2246822507) ^ Math.imul(h2 ^ (h2 >>> 13), 3266489909);
@@ -1437,7 +1448,14 @@ export default {
       const data = String((r && r.data) || "");
       // Chrome caps one native message at 1 MB toward the host; refuse rather than lose the frame.
       if (data.length > 900_000) throw err("bad_request", "the screenshot is too large for one message; use jpeg with a lower quality");
-      return { ok: true, image: { mime: `image/${format}`, bytes: data.length, data } };
+      // What the picture is OF, kept here for chrome_point: image pixels per CSS pixel, and the page numbers that would make a point mean something else later.
+      /** @type {any} */ let shot;
+      try {
+        const m = await evaluate(ctx, tabId, METRICS);
+        const size = imageSize(data);
+        if (m && typeof m === "object" && size && m.w > 0) { const scale = size.w / (m.vw || m.w); shot = { id: putShot(tabId, scale, m), scale: Math.round(scale * 1000) / 1000, image: { w: size.w, h: size.h }, viewport: { w: m.w, h: m.h, dpr: m.dpr, scrollX: m.sx, scrollY: m.sy }, expiresInSeconds: SHOT_TTL_SECONDS }; }
+      } catch { /* no numbers to keep: the picture still comes back, it just cannot be pointed at */ }
+      return { ok: true, image: { mime: `image/${format}`, bytes: data.length, data }, ...(shot ? { shot } : {}) };
     },
   },
 };

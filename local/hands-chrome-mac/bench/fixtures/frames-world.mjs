@@ -58,6 +58,7 @@ export function createFramesWorld() {
     acks: /** @type {number[]} */ ([]),
     collected: /** @type {any[]} */ ([]),
     api: { ok: 0, denied: 0 },
+    canvas: { go: 0, slider: 0, sent: 0, divSent: 0, divDeleted: 0, frameGo: 0, typed: "" },
     hits: /** @type {Record<string, number>} */ ({}),
   };
 
@@ -67,7 +68,7 @@ export function createFramesWorld() {
   const isFrameHost = (/** @type {string} */ h) => Object.values(SITES).includes(h);
 
   /** The JSON /__state serves. */
-  const snapshot = () => ({ workflows: [...workflows.values()], sent: state.sent, editorSaves: state.editorSaves, acks: state.acks, collected: state.collected, api: state.api, hits: state.hits });
+  const snapshot = () => ({ workflows: [...workflows.values()], sent: state.sent, editorSaves: state.editorSaves, acks: state.acks, collected: state.collected, api: state.api, hits: state.hits, canvas: state.canvas });
 
   /**
    * Answer a request if it is ours: /__state on any host, or anything on one of the four site hostnames.
@@ -115,6 +116,37 @@ export function createFramesWorld() {
             e.respondWith(fetch(e.request));
           });`);
         return true;
+      }
+      if (req.method === "GET" && p === "/canvas-page") { html(res, `<!doctype html><html><head><meta charset="utf-8"><title>Canvas board</title><style>body{margin:0;font-family:sans-serif}#box{position:absolute;left:0;top:320px}.dv{display:inline-block;width:110px;height:36px;margin:4px;background:#ddd;line-height:36px;text-align:center;cursor:pointer}</style></head><body>
+<canvas id="c" width="600" height="300" style="position:absolute;left:0;top:0"></canvas>
+<div id="box"><div class="dv" id="dsend">Send</div><div class="dv" id="ddel">Delete account</div></div>
+<iframe src="{{C}}/canvas-frame" style="position:absolute;left:0;top:400px;width:300px;height:120px;border:0"></iframe>
+<input id="typed" style="position:absolute;left:320px;top:330px;width:200px" aria-label="Notes">
+<script>
+var c = document.getElementById('c'), g = c.getContext('2d'), val = 0;
+function paint() {
+  g.fillStyle = '#f4f1ea'; g.fillRect(0, 0, 600, 300);
+  g.fillStyle = '#2a6'; g.fillRect(40, 40, 120, 50); g.fillStyle = '#fff'; g.font = '20px sans-serif'; g.fillText('Go', 85, 72);
+  g.fillStyle = '#c33'; g.fillRect(200, 40, 120, 50); g.fillStyle = '#fff'; g.fillText('Send', 240, 72);
+  g.fillStyle = '#888'; g.fillRect(40, 200, 300, 8); g.fillStyle = '#226'; g.beginPath(); g.arc(40 + val * 3, 204, 12, 0, 6.3); g.fill();
+}
+paint();
+var drag = false;
+function pos(e) { var r = c.getBoundingClientRect(); return { x: e.clientX - r.left, y: e.clientY - r.top }; }
+c.addEventListener('click', function (e) { var p = pos(e); if (p.x >= 40 && p.x <= 160 && p.y >= 40 && p.y <= 90) fetch('/api/canvas/go', { method: 'POST' }); if (p.x >= 200 && p.x <= 320 && p.y >= 40 && p.y <= 90) fetch('/api/canvas/send', { method: 'POST' }); });
+c.addEventListener('mousedown', function (e) { var p = pos(e); if (Math.abs(p.x - (40 + val * 3)) <= 14 && Math.abs(p.y - 204) <= 14) drag = true; });
+window.addEventListener('mousemove', function (e) { if (!drag) return; var p = pos(e); val = Math.max(0, Math.min(100, Math.round((p.x - 40) / 3))); paint(); });
+window.addEventListener('mouseup', function () { if (drag) { drag = false; fetch('/api/canvas/slider?v=' + val, { method: 'POST' }); } });
+document.getElementById('dsend').addEventListener('click', function () { fetch('/api/canvas/divsend', { method: 'POST' }); });
+document.getElementById('ddel').addEventListener('click', function () { fetch('/api/canvas/divdelete', { method: 'POST' }); });
+document.getElementById('typed').addEventListener('input', function (e) { fetch('/api/canvas/typed?t=' + encodeURIComponent(e.target.value), { method: 'POST' }); });
+document.getElementById('c').tabIndex = 0;
+</script></body></html>`.replaceAll("{{C}}", o(SITES.widgets))); return true; }
+      if (req.method === "POST" && p.startsWith("/api/canvas/")) {
+        const k = p.slice("/api/canvas/".length);
+        if (k === "go") state.canvas.go++; else if (k === "send") state.canvas.sent++; else if (k === "divsend") state.canvas.divSent++; else if (k === "divdelete") state.canvas.divDeleted++;
+        else if (k === "slider") state.canvas.slider = Number(url.searchParams.get("v")) || 0; else if (k === "typed") state.canvas.typed = String(url.searchParams.get("t") || "").slice(0, 100);
+        json(res, 200, { data: { ok: true } }); return true;
       }
       if (req.method === "GET" && p === "/csp-page") {
         res.writeHead(200, { "Content-Type": "text/html; charset=utf-8", "Content-Security-Policy": "default-src 'none'; script-src 'unsafe-inline'; img-src 'none'; connect-src 'none'" });
@@ -197,6 +229,11 @@ export function createFramesWorld() {
         return true;
       }
     }
+    if (host === SITES.widgets && req.method === "POST" && p === "/api/canvas/framego") { state.canvas.frameGo++; json(res, 200, { data: { ok: true } }); return true; }
+    if (host === SITES.widgets && req.method === "GET" && p === "/canvas-frame") { html(res, `<!doctype html><html><head><meta charset="utf-8"><title>canvas frame</title></head><body style="margin:0"><canvas id="c" width="300" height="120" style="display:block"></canvas><script>
+var c = document.getElementById('c'), g = c.getContext('2d'); g.fillStyle = '#eee'; g.fillRect(0, 0, 300, 120); g.fillStyle = '#2a6'; g.fillRect(20, 30, 120, 50); g.fillStyle = '#fff'; g.font = '18px sans-serif'; g.fillText('Go', 65, 62);
+c.addEventListener('click', function (e) { var r = c.getBoundingClientRect(), x = e.clientX - r.left, y = e.clientY - r.top; if (x >= 20 && x <= 140 && y >= 30 && y <= 80) fetch('/api/canvas/framego', { method: 'POST' }); });
+</script></body></html>`); return true; }
     if (host === SITES.widgets && req.method === "POST") {
       if (p === "/api/editor/save") { readJson(req).then(b => { state.editorSaves.push({ body: String(b.body ?? "") }); json(res, 200, { data: { saved: true } }); }, () => json(res, 400, { error: "bad json" })); return true; }
       if (p === "/api/ticker/ack") { state.acks.push(Number(url.searchParams.get("n")) || 0); json(res, 200, { data: { ok: true } }); return true; }
