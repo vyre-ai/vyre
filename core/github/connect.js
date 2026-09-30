@@ -252,8 +252,19 @@ export function connector(deps) {
       const flow = /** @type {Flow} */ ({ id: `gh_${crypto.randomBytes(9).toString("base64url")}`, name, dir: "", child: null, expires: 0, values: [clean], timer: null, output: "", gh: "", pasted: true });
       try { await complete(flow, clean); }
       catch (e) { const clean2 = scrub(String(/** @type {any} */ (e)?.message || e), [clean]); throw Object.assign(new Error(clean2), { code: typeof /** @type {any} */ (e)?.code === "string" ? /** @type {any} */ (e).code : "failed" }); }
-      const acct = { name, login: /** @type {any} */ (flow).login };
-      return { connected: true, id: flow.id, name, login: acct.login };
+      // What the token can really reach is GitHub's to say: one cheap call (a page of one repo and
+      // the Link header's last page) gives the count, shown beside the login. Best effort.
+      let repos = null;
+      try {
+        const r = await f(`${API}/user/repos?per_page=1&affiliation=owner,collaborator,organization_member`, { headers: { authorization: `Bearer ${clean}`, accept: "application/vnd.github+json" }, signal: AbortSignal.timeout(TIMEOUT_MS) });
+        if (r.ok) {
+          const link = r.headers && typeof r.headers.get === "function" ? String(r.headers.get("link") || "") : "";
+          const last = /[?&]page=(\d+)>;\s*rel="last"/.exec(link);
+          const page = await r.json().catch(() => []);
+          repos = last ? Number(last[1]) : Array.isArray(page) ? page.length : null;
+        }
+      } catch { /* the count is a courtesy */ }
+      return { connected: true, id: flow.id, name, login: /** @type {any} */ (flow).login, repos };
     }),
 
     /** @param {{ id: string }} input */

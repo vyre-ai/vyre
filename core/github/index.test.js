@@ -827,6 +827,7 @@ test("github.connect with a pasted token: checked with GitHub, saved under the a
   const r = await w.as("deck")("github.connect", { name: "work", token: tok });
   assert.equal(r.error, undefined, JSON.stringify(r.error));
   assert.deepEqual([r.data.connected, r.data.login], [true, "sam"]);
+  assert.equal(r.data.repos, null, "the count is a courtesy: absent when the repo call gives nothing usable");
   const put = w.calls.find(c => c.tool === "vault.put");
   assert.deepEqual([put.input.name, put.input.fields, put.input.grants], ["github-work", { token: tok }, ["github"]]);
   assert.deepEqual((await w.as("deck")("github.accounts", {})).data, [{ name: "work", login: "sam", avatar_url: null }]);
