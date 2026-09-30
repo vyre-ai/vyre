@@ -8,6 +8,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { start, retryUnknown } from "../core/daemon/index.js";
+import { htmlWithBuild } from "../core/daemon/build.js";
 import { request, call } from "../core/daemon/client.js";
 import { tempHome, writeModule } from "./helpers.js";
 
@@ -219,7 +220,7 @@ test("daemon: a real directory under deck/ with no index.html of its own still g
   t.after(() => d.stop());
   const get = p => new Promise(resolve => http.get({ socketPath: d.paths.socket, path: p }, res => { let b = ""; res.on("data", c => { b += c; }); res.on("end", () => resolve({ status: res.statusCode, body: b })); }));
 
-  const shell = fs.readFileSync(path.join(dir, "index.html"), "utf8");
+  const shell = htmlWithBuild(fs.readFileSync(path.join(dir, "index.html"), "utf8"));
   const r = await get("/_daemon-test-no-index");
   assert.equal(r.status, 200);
   assert.equal(r.body, shell);
