@@ -365,8 +365,12 @@ async function paused(ctx, t, p, session) {
       let o = "";
       try { const x = new URL(p.request?.url || ""); if (!["data:", "blob:", "about:", "chrome-extension:"].includes(x.protocol)) o = x.origin; } catch { /* not a URL */ }
       if (o && !eg.allowed.has(o)) {
-        if (eg.blocked.length < 20) eg.blocked.push({ method: String(p.request?.method || "GET"), origin: o });
-        await send("Fetch.failRequest", { requestId: id, errorReason: "BlockedByClient" });
+        // JUDGED BLOCKED: from here nothing may let this request go. failRequest, once more if it fails, then a fulfilled 403 with an empty body (the page gets an answer, the
+        // origin gets nothing). If every attempt fails the request is left paused and the script's eval says a request MAY have been sent: it is never continued.
+        let stopped = false;
+        for (let i = 0; i < 2 && !stopped; i++) stopped = await Promise.resolve(send("Fetch.failRequest", { requestId: id, errorReason: "BlockedByClient" })).then(() => true, () => false);
+        if (!stopped) stopped = await Promise.resolve(send("Fetch.fulfillRequest", { requestId: id, responseCode: 403, responseHeaders: [{ name: "content-type", value: "text/plain" }], body: "" })).then(() => true, () => false);
+        if (eg.blocked.length < 20) eg.blocked.push({ method: String(p.request?.method || "GET"), origin: o, ...(stopped ? {} : { leaked: true }) });
         return;
       }
     }
@@ -448,7 +452,12 @@ export async function egressGuard(ctx, tab) {
   // The Fetch domain does not see a WebSocket handshake and Network.setBlockedURLs did not stop a new one in a real Chrome
   // (measured in CI). Two layers instead: a declarativeNetRequest session rule for this tab (every frame, no page cooperation,
   // set above) and the page shim in outbound.js for the plain forms, which also reports what it refused.
-  await syncFetch(ctx, t);
+  const failed = await syncFetch(ctx, t);
+  // A child frame that would not take the interception is a way out: the script does not run, and the guard is taken down again.
+  if (failed && failed.length) {
+    if (--eg.depth <= 0) { const rule = eg.rule; t.egress = null; if (ctx.dnr) await ctx.dnr.unblock(rule ?? null); await syncFetch(ctx, t); }
+    throw refuse("blocked", `a frame of this page would not accept the network guard (${failed.length} session${failed.length === 1 ? "" : "s"}), so a script is not run on it`);
+  }
   let done = false;
   return {
     // "partial" when the browser-level rule could not be set: only the plain-form page shim stands for WebSockets and beacons.
@@ -467,6 +476,7 @@ export async function egressGuard(ctx, tab) {
 
 /** Re-declare the Fetch patterns from the guard and the rules that exist, on the top session and every child session, or switch Fetch off everywhere when none do. @param {any} ctx @param {TabNet} t */
 async function syncFetch(ctx, t) {
+  /** @type {string[]} */ const none = [];
   /** @type {(m: string, x: any, session?: string) => Promise<any>} */
   const send = (m, x, session) => (session ? ctx.cdp.send(t.tab, m, x, session) : ctx.cdp.send(t.tab, m, x));
   if (!/** @type {any} */ (t).egress && !t.rules.size) {
@@ -476,7 +486,7 @@ async function syncFetch(ctx, t) {
       await Promise.resolve(send("Fetch.disable", {})).catch(() => {});
       await Promise.all(kids.map(k => Promise.resolve(send("Fetch.disable", {}, k)).catch(() => {})));
     }
-    return;
+    return none;
   }
   // Every child session the tab has RIGHT NOW joins the guard, not only the ones capture already knew about (a frame that attached a moment ago is a way out).
   await syncSessions(ctx, t);
@@ -491,7 +501,9 @@ async function syncFetch(ctx, t) {
   const arg = { patterns: list.map(urlPattern => ({ urlPattern, requestStage: "Request" })) };
   await send("Fetch.enable", arg);
   const kids = [...t.sessions];
-  await Promise.all(kids.map(k => Promise.resolve(send("Fetch.enable", arg, k)).catch(() => {})));
+  /** @type {string[]} */ const failed = [];
+  await Promise.all(kids.map(k => Promise.resolve(send("Fetch.enable", arg, k)).catch((/** @type {any} */ e) => { if (!/not found|no session|closed|detached|gone|target/i.test(String(e && e.message || e))) failed.push(k); })));
+  return failed;
 }
 
 /**

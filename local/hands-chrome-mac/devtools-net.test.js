@@ -319,3 +319,34 @@ test("egress guard: a child frame that attached a moment ago (capture had not se
   assert.equal(fetchOn.length >= 1, true, "Fetch is on for the new session");
   await eg.stop();
 });
+
+test("egress guard fails CLOSED: a request judged blocked is never continued, whatever failRequest does; it is failed, retried, fulfilled as an empty 403, and marked leaked only if everything failed (looped)", async () => {
+  let seed = 7;
+  const rnd = () => { seed = (seed * 1103515245 + 12345) & 0x7fffffff; return seed / 0x7fffffff; };
+  for (let n = 0; n < 150; n++) {
+    const k = makeCtx({ active: 1 });
+    await net.ops["net.start"]({ tab: 1 }, k.ctx);
+    const eg = await egressGuard(k.ctx, 1);
+    const failFail = rnd() < 0.5, failFulfill = rnd() < 0.4;
+    let failCalls = 0;
+    k.respond["Fetch.failRequest"] = () => { failCalls++; if (failFail) throw new Error("Timed out (unacknowledged)"); return {}; };
+    k.respond["Fetch.fulfillRequest"] = () => { if (failFulfill) throw new Error("session gone"); return {}; };
+    k.push(1, "Fetch.requestPaused", { requestId: `evil${n}`, request: { url: "https://collector.example/steal?d=secret", method: "GET" }, resourceType: "Fetch" });
+    await new Promise(r => setTimeout(r, 0));
+    await new Promise(r => setTimeout(r, 0));
+    const continued = k.sent.filter(s => s.method === "Fetch.continueRequest" && s.params.requestId === `evil${n}`);
+    assert.equal(continued.length, 0, `never continued (run ${n}, failFail ${failFail}, failFulfill ${failFulfill})`);
+    const out = await eg.stop();
+    assert.equal(out.length, 1);
+    assert.equal(!!out[0].leaked, failFail && failFulfill, "marked leaked only when the request could not be stopped by any means");
+    if (failFail) assert.equal(failCalls, 2, "failRequest was tried twice before the fulfilled 403");
+  }
+});
+
+test("egress guard refuses to run a script when a child frame will not take the interception", async () => {
+  const k = makeCtx({ active: 1 });
+  await net.ops["net.start"]({ tab: 1 }, k.ctx);
+  k.children.push({ sessionId: "S-STUCK", targetId: "F1", type: "iframe", url: "https://b.example/x" });
+  k.respond["Fetch.enable"] = (/** @type {any} */ _p, /** @type {number} */ _t, /** @type {string|undefined} */ session) => { if (session === "S-STUCK") throw new Error("Timed out waiting for a response"); return {}; };
+  await assert.rejects(egressGuard(k.ctx, 1), { code: "blocked" });
+});

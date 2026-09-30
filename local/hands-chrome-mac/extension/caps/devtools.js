@@ -445,7 +445,7 @@ const ops = {
       if (guarded) { const c = await runIn(ctx, tab, frame, guardCollect, { returnByValue: true }).catch(() => null); const bv = c && c.result && c.result.value; blocked = Array.isArray(bv) ? bv : []; }
       if (egress) outside = await egress.stop().catch(() => []);
     }
-    if (outside.length) { const b = outside[0]; return heldRequest(b.method, b.origin, `the script tried to reach ${b.origin}, which is not this page or anything it already talks to`, `${args.expression}\n${b.method} ${b.origin}`); }
+    if (outside.length) { const b = outside[0]; return heldRequest(b.method, b.origin, `the script tried to reach ${b.origin}, which is not this page or anything it already talks to${b.leaked ? ". The request could not be stopped in time and MAY HAVE BEEN SENT" : ""}`, `${args.expression}\n${b.method} ${b.origin}`); }
     const wrote = blocked.find(b => b.write);
     if (wrote) throw refuse("blocked", `the script tried to ${wrote.method} ${redact.url(wrote.url)} with the page's own login. Nothing was sent. A script may read with the page's login but not write with it: use chrome_api (action "call"), which makes the same request from inside the page, names it, and is asked first. Prefer api.call over eval-fetch.`);
     if (blocked.length) { const b = blocked[0]; return heldRequest(b.method, b.url, b.why, `${args.expression}\n${b.method} ${b.url}`); }
