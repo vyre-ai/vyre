@@ -209,7 +209,13 @@ export default {
     /** Start the agent's thread, or bring its current one back, with its credentials and scope. */
     const launch = async (a, { prompt, resume, job, project } = {}) => {
       const creds = await credentials(a);
-      const input = { agent: a.name, agent_kind: a.kind, auth: creds.auth, append: preamble(a), scope: await scope(a),
+      // The assistant starts each thread knowing what works on this install right now (a quoted block, never instructions).
+      let caps = "";
+      if (a.kind === "assistant") {
+        const c = await ctx.call("assistant.capabilities", { prompt: true }).catch(() => null);
+        if (c && !c.error && c.data && typeof c.data.text === "string") caps = "\n\n" + c.data.text;
+      }
+      const input = { agent: a.name, agent_kind: a.kind, auth: creds.auth, append: preamble(a) + caps, scope: await scope(a),
         ...(creds.env ? { env: creds.env } : {}), ...(creds.fallback ? { fallback: creds.fallback } : {}),
         ...(creds.budget_usd != null ? { budget_usd: creds.budget_usd } : {}), ...(a.model ? { model: a.model } : {}),
         ...(a.effort ? { effort: a.effort } : {}), ...(prompt ? { prompt } : {}), ...(job ? { purpose: "job", once: true } : {}) };

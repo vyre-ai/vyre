@@ -470,11 +470,12 @@ One paragraph: what's waiting on you, how many agents are working, and any patte
 
 ### `assistant.capabilities`
 
-What the assistant can do on this install right now: tools, connectors, devices, agents and teammates, providers. Only working things; a missing one is listed under not_connected with what to say. area narrows it; compact: true returns the short text for the prompt.
+What the assistant can do on this install right now: tools, connectors, devices, agents and teammates, providers. Only working things; a missing one is listed under not_connected with what to say. area narrows it; compact: true returns the short text; prompt: true returns it as the quoted block the assistant's own prompt carries.
 
 - Input:
   - `area` one of "tools", "connectors", "devices", "agents", "providers"
   - `compact` boolean
+  - `prompt` boolean
 - Callers: any caller
 
 ### `assistant.daily`
