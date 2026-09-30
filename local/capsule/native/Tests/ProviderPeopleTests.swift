@@ -134,7 +134,7 @@ let providerPeopleSuite = Suite("provider people") { t in
             log.append("after purge:\(c.count)")
             return log
         }
-        t.eq(r, ["1 40x40 20pt", "same:true renders:1", "swatch:255,0", "signal:198,243,107", "initials:32", "bundle:true", "none:true",
+        t.eq(r, ["1 40x40 20pt", "same:true renders:1", "swatch:255,0", "signal:241,238,230", "initials:32", "bundle:true", "none:true",
                  "glyph:true mark:true", "after cool:5", "after purge:0"])
     }
 
