@@ -172,15 +172,15 @@ export function asker({ db, answer, retrieve, site = null, runner = null, model 
     const t0 = performance.now();
     const q = String(question || "").trim();
     // A site Vyre for Chrome learned, when the question names it ("what do you know about GoHighLevel?"), is worked out in code,
-    // for the person's own surfaces only. It never decides anything: the normal answer always runs, and what it finds wins; the site
-    // summary goes after it, or answers alone when the normal answer found nothing.
+    // for the person's own surfaces only. It never decides anything: the normal answer always runs, and what it finds answers alone; the
+    // site summary answers only when nothing else did.
     const siteAns = site && siteOk && q ? await Promise.resolve(site(q)).catch(() => null) : null;
     const done = r => {
       let out = { answer: null, confidence: 0, abstained: true, known: [], sources: [], via: null, cost_usd: 0, ...r, latency_ms: Math.round(performance.now() - t0) };
       if (siteAns && siteAns.answer && out.via !== "corrected") {
-        if (out.answer && !out.abstained) out = { ...out, answer: `${out.answer}\n\n${siteAns.answer}`, sources: [...(out.sources || []), ...siteAns.sources] };
-        else { const { limited, message, why, ...rest } = out; out = { ...rest, answer: siteAns.answer, confidence: siteAns.confidence, abstained: false, known: [], sources: siteAns.sources, via: "site" }; }
-        // Said to be wrong: that whole answer, the site's part included, is never given again for this question.
+        // What the normal answer finds answers alone; the site summary speaks only when nothing else did.
+        if (!(out.answer && !out.abstained)) { const { limited, message, why, ...rest } = out; out = { ...rest, answer: siteAns.answer, confidence: siteAns.confidence, abstained: false, known: [], sources: siteAns.sources, via: "site" }; }
+        // Said to be wrong: the site summary is never given again for this question either.
         if (fix && fix.action === "wrong" && out.answer === fix.old) out = { answer: null, confidence: 0, abstained: true, known: [`You said "${fix.old}" is wrong.`], sources: [], via: "corrected", why: "corrected", cost_usd: 0, latency_ms: out.latency_ms };
       }
       // An answer the person can correct where it appears, by this id.
@@ -199,7 +199,7 @@ export function asker({ db, answer, retrieve, site = null, runner = null, model 
     }
     // Said to be wrong: that answer is never given again for this question.
     const notThis = fix && fix.action === "wrong" ? fix.old : null;
-    const refused = r => notThis && (r.answer === notThis || (siteAns && siteAns.answer && r.answer && `${r.answer}\n\n${siteAns.answer}` === notThis)) ? done({ via: "corrected", known: [`You said "${notThis}" is wrong.`], why: "corrected" }) : done(r);
+    const refused = r => notThis && r.answer === notThis ? done({ via: "corrected", known: [`You said "${notThis}" is wrong.`], why: "corrected" }) : done(r);
     // 1. The fast path: a personal fact memory is sure of.
     if (sees) {
       const f = await answer({ q, project_cwds });
