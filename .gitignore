@@ -1,6 +1,16 @@
-node_modules/
+node_modules
 .DS_Store
 *.log
 .env
 .env.*
 coverage/
+site/box/
+site/install.sh
+site/_redirects
+__pycache__/
+docs-site/
+build.json
+modules/vault-extension/dist/
+# Old Electron-era helper builds (hotkey, local, vyre-launcher); never committed.
+local/capsule/bin/
+app-out/

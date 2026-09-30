@@ -1,0 +1,63 @@
+#!/bin/sh
+# rc-smoke's docker for box/vyre (the wrapper `vyre update` runs): the calls it makes, done for
+# real on the smoke's own throwaway container, image tags and volume. The wrapper's fixed names
+# (vyre:local, vyre:prev, vyre:next, the compose project) are mapped to rc-smoke's own, so a live
+# box on the same server is never touched. Anything else is refused.
+# Needs RC_DOCKER (the real docker), RC_ID, RC_C (container), RC_RUN (starts the container from an
+# image), and VYRE_DIR.
+set -u
+D=$RC_DOCKER
+map() {
+  case "$1" in
+    vyre:local) echo "$RC_ID:local" ;;
+    vyre:prev) echo "$RC_ID:prev" ;;
+    vyre:next) echo "$RC_ID:next" ;;
+    *) echo "rc-smoke docker: refusing image $1" >&2; exit 97 ;;
+  esac
+}
+echo "docker $*" >>"$RC_LOG"
+if [ "${1:-}" = image ]; then
+  case "${2:-}" in
+    inspect) exec "$D" image inspect "$(map "$3")" ;;
+    tag) exec "$D" image tag "$(map "$3")" "$(map "$4")" ;;
+    rm) exec "$D" image rm "$(map "$3")" ;;
+  esac
+  echo "rc-smoke docker: refusing image ${2:-}" >&2; exit 97
+fi
+[ "${1:-}" = compose ] || { echo "rc-smoke docker: refusing $*" >&2; exit 97; }
+shift
+sub=${1:-}; shift
+case "$sub" in
+  build)
+    exec "$D" build -q -t "$RC_ID:local" -f "$VYRE_DIR/src/box/Dockerfile" "$VYRE_DIR/src" ;;
+  pull) echo "rc-smoke docker: this box builds, it never pulls" >&2; exit 97 ;;
+  up)
+    case " $* " in *" tailscale "*) exit 0 ;; esac
+    want=$("$D" image inspect -f '{{.Id}}' "$RC_ID:local" 2>/dev/null) || exit 1
+    have=$("$D" inspect -f '{{.Image}}' "$RC_C" 2>/dev/null || true)
+    run=$("$D" inspect -f '{{.State.Running}}' "$RC_C" 2>/dev/null || true)
+    if [ "$have" = "$want" ] && [ "$run" = true ]; then exit 0; fi
+    "$D" rm -f "$RC_C" >/dev/null 2>&1
+    exec "$RC_RUN" "$RC_ID:local" >/dev/null ;;
+  stop) exec "$D" stop "$RC_C" ;;
+  logs) exec "$D" logs "$RC_C" ;;
+  exec|run)
+    opts=""
+    while [ $# -gt 0 ]; do
+      case "$1" in
+        -T|--rm|--no-deps|-d) shift ;;
+        -u|--user) opts="$opts -u $2"; shift 2 ;;
+        -e) opts="$opts -e $2"; shift 2 ;;
+        vyre) shift; break ;;
+        *) echo "rc-smoke docker: refusing compose $sub option $1" >&2; exit 97 ;;
+      esac
+    done
+    if [ "$sub" = exec ]; then
+      # shellcheck disable=SC2086
+      exec "$D" exec -i $opts "$RC_C" "$@"
+    fi
+    # shellcheck disable=SC2086
+    exec "$RC_RUN" --once $opts "$RC_ID:local" "$@" ;;
+esac
+echo "rc-smoke docker: refusing compose $sub" >&2
+exit 97

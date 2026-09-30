@@ -1,0 +1,20 @@
+{
+  "name": "push",
+  "version": "0.1.0",
+  "roles": ["box", "local"],
+  "requires": [],
+  "does": { "tools": ["push.key", "push.subscribe", "push.unsubscribe", "push.devices", "push.settings", "push.seen", "push.test", "push.receipt"] },
+  "watches": { "emits": ["push.subscribed", "push.delivered", "push.seen"] },
+  "shows": { "deck": ["settings:notifications"], "capsule": [], "cli": [] },
+  "needs": { "vault": ["push-vapid"] },
+  "teaches": {},
+  "settings": [
+    {"key": "push.ask", "group": "notifications", "label": "Notify for permission questions", "type": "bool", "default": true, "levels": ["account"], "apply": "live", "store": {"tool": {"get": {"tool": "push.settings", "input": {}, "read": "kinds.ask"}, "set": {"tool": "push.settings", "input": {"kinds": {"ask": "$value"}}}}}},
+    {"key": "push.draft", "group": "notifications", "label": "Notify for held drafts", "type": "bool", "default": true, "levels": ["account"], "apply": "live", "store": {"tool": {"get": {"tool": "push.settings", "input": {}, "read": "kinds.draft"}, "set": {"tool": "push.settings", "input": {"kinds": {"draft": "$value"}}}}}},
+    {"key": "push.watch", "group": "notifications", "label": "Notify for threads you watch", "type": "bool", "default": true, "levels": ["account"], "apply": "live", "store": {"tool": {"get": {"tool": "push.settings", "input": {}, "read": "kinds.watch"}, "set": {"tool": "push.settings", "input": {"kinds": {"watch": "$value"}}}}}},
+    {"key": "push.lesson", "group": "notifications", "label": "Notify for lessons", "type": "bool", "default": true, "levels": ["account"], "apply": "live", "store": {"tool": {"get": {"tool": "push.settings", "input": {}, "read": "kinds.lesson"}, "set": {"tool": "push.settings", "input": {"kinds": {"lesson": "$value"}}}}}},
+    {"key": "push.planner", "group": "notifications", "label": "Notify for alarms, timers and reminders", "type": "bool", "default": true, "levels": ["account"], "apply": "live", "store": {"tool": {"get": {"tool": "push.settings", "input": {}, "read": "kinds.planner"}, "set": {"tool": "push.settings", "input": {"kinds": {"planner": "$value"}}}}}},
+    {"key": "push.planner_label", "group": "notifications", "label": "Show a reminder's own words on the lock screen", "type": "bool", "default": false, "levels": ["account"], "apply": "live", "store": {"tool": {"get": {"tool": "push.settings", "input": {}, "read": "planner_label"}, "set": {"tool": "push.settings", "input": {"planner_label": "$value"}}}}},
+    {"key": "push.goal", "group": "notifications", "label": "Notify for goal milestones", "type": "bool", "default": true, "levels": ["account"], "apply": "live", "store": {"tool": {"get": {"tool": "push.settings", "input": {}, "read": "kinds.goal"}, "set": {"tool": "push.settings", "input": {"kinds": {"goal": "$value"}}}}}}
+  ]
+}

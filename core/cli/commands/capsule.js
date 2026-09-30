@@ -1,144 +1,118 @@
 // @ts-check
 // `vyre capsule`: open the Capsule on this Mac, or build it.
 //
-//   vyre capsule            open it (starting vyred and the app when they are not running)
-//   vyre capsule --dev      run it from source in this terminal, with its log here; ctrl-C quits
-//   vyre capsule build      build the Swift helpers; --app also packages Vyre.app
+//   vyre capsule            open it (starting vyred and the app when they are not running). The
+//                           Capsule is the native app (local/capsule/native, Swift, ADR 0017),
+//                           built here on first run and again when its source changes
+//                           (capsule-native.js). --hidden starts it in the menu bar only.
+//   vyre capsule install    build it on this Mac now, without opening it. Nothing is downloaded:
+//                           the app is built here, from this package. `vyre capsule build` is
+//                           the same command.
 //
-// The trap this command exists to close: a packaged Electron app runs app.asar, so an edit to
-// the source does nothing until the app is packaged again, and nothing says so. The prototype
-// lost an afternoon to it, and twelve days to a packaged build that was older than its source.
-// So a package records a hash of the source it was made from, and `vyre capsule` runs the
-// package only when that hash still matches. Otherwise it runs the source and says why.
+// --json prints { opened, app, built, hidden } for open and { built, app } for install, and a
+// refusal as {"error":{code,message,next?}}: not_mac, no_dialogs, no_source, build_failed,
+// open_failed. Under --view the one-time signing question is never asked (no terminal to ask on).
 
-import crypto from "node:crypto";
-import fs from "node:fs";
 import path from "node:path";
-import { spawn, spawnSync } from "node:child_process";
-import { createRequire } from "node:module";
-import { pathToFileURL } from "node:url";
+import fs from "node:fs";
+import { spawnSync } from "node:child_process";
 import * as config from "../../config/index.js";
+import { dialogsAllowed } from "../../config/dialogs.js";
 import { REPO } from "../../daemon/index.js";
 import { ensureUp } from "../daemonctl.js";
 import { out, dim, signal, beacon } from "../style.js";
+import * as native from "./capsule-native.js";
+import { usage, json, emit, fail, viewing } from "../kit.js";
 
 export const CAPSULE = path.join(REPO, "local", "capsule");
-const DIST = path.join(CAPSULE, "dist");
-const APP = path.join(DIST, "Vyre-darwin-" + process.arch, "Vyre.app");
+export const NATIVE = path.join(CAPSULE, "native");
 
-/** The Electron binary installed for the Capsule, or null. Never the root package's. */
-export function electron(dir = CAPSULE) {
-  try { return String(createRequire(path.join(dir, "package.json"))("electron")); } catch { return null; }
+/** Whether the Capsule can run here: a Mac, and the native app's source to build it from. */
+export function nativeAvailable({ platform = process.platform, dir = NATIVE } = {}) {
+  return platform === "darwin" && fs.existsSync(path.join(dir, "build.sh"));
 }
 
-/** A hash of everything that goes into the app, so a package can say what source it was made from. */
-export function sourceHash(dir = CAPSULE) {
-  const h = crypto.createHash("sha256");
-  const walk = d => {
-    for (const e of fs.readdirSync(d, { withFileTypes: true }).sort((a, b) => a.name.localeCompare(b.name))) {
-      const p = path.join(d, e.name);
-      if (e.isDirectory()) walk(p);
-      else if (!e.name.endsWith(".test.js")) { h.update(path.relative(dir, p)); h.update(fs.readFileSync(p)); }
-    }
-  };
-  for (const sub of ["app", "lib"]) if (fs.existsSync(path.join(dir, sub))) walk(path.join(dir, sub));
-  h.update(fs.readFileSync(path.join(dir, "package.json")));
-  return h.digest("hex").slice(0, 16);
-}
+/** Every verb run() handles, for `vyre commands --json`; run() refuses any other word. */
+export const VERBS = [
+  { verb: "open", summary: "open the Capsule, building it first when its source changed (the default)", usage: "[--hidden] [--json]" },
+  { verb: "install", aliases: ["build"], summary: "build the Capsule on this Mac now, without opening it; nothing is downloaded", usage: "[--json]" },
+];
 
-/** Is there a package, and was it made from the source as it is now? */
-export function packaged(dir = CAPSULE, app = APP) {
-  const bin = path.join(app, "Contents", "MacOS", "Vyre");
-  if (!fs.existsSync(bin)) return { bin: null, fresh: false };
-  let stamp = null;
-  try { stamp = JSON.parse(fs.readFileSync(path.join(path.dirname(app), "stamp.json"), "utf8")).source; } catch {}
-  return { bin, fresh: stamp === sourceHash(dir) };
-}
+const NOT_MAC = "The Capsule runs on macOS. On this machine, use vyre or the Deck.";
 
-/** What the app is told: where vyred is, and where its helpers are. */
-function env() {
-  return { ...process.env, VYRE_SOCKET: config.paths().socket, VYRE_CAPSULE_BIN: path.join(CAPSULE, "bin") };
-}
+/** A line a person reads; nothing under --json, where stdout holds only the answer. @param {string} line */
+const say = line => { if (!json()) out(line); };
 
-function helpersBuilt() { return fs.existsSync(path.join(CAPSULE, "bin", "hotkey")); }
+/** A refusal: words for a person, the error object under --json. Exit 1. */
+const refuse = (/** @type {string} */ code, /** @type {string} */ message, /** @type {string} */ shown = message, /** @type {string} */ next = "") => {
+  if (json()) return fail(message, { code, ...(next ? { next } : {}) });
+  out(shown);
+  return 1;
+};
 
 async function open(flags) {
-  if (process.platform !== "darwin") { out("  The Capsule runs on macOS. On this machine, use vyre or the Deck."); return 1; }
+  if (process.platform !== "darwin") return refuse("not_mac", NOT_MAC, "  " + NOT_MAC);
+  if (!dialogsAllowed()) return refuse("no_dialogs", "The Capsule does not open under tests (VYRE_TEST_DIALOGS=1 to allow it).", "  The Capsule does not open under tests (VYRE_TEST_DIALOGS=1 to allow it).");
+  if (!nativeAvailable()) return refuse("no_source", "The Capsule's source is missing from this package", beacon("  The Capsule's source is missing from this package") + dim(` · ${path.relative(process.cwd(), NATIVE) || NATIVE}`));
   const up = await ensureUp();
-  if (!up.ok) out(dim("  vyred did not start; the Capsule will open and say it is offline."));
-  const e = electron();
-  if (!helpersBuilt()) out(dim("  The double-Control helper is not built yet: vyre capsule build"));
-  const args = [...(flags.hidden ? ["--hidden"] : [])];
+  if (!up.ok) say(dim("  vyred did not start; the Capsule will open and say it is offline."));
+  return openNative(flags);
+}
 
-  if (flags.dev) {
-    if (!e) return missingElectron();
-    out(`  Capsule ${signal("from source")} ${dim("· " + path.relative(process.cwd(), CAPSULE) + " · ctrl-C quits")}`);
-    const child = spawn(e, [CAPSULE, ...args], { stdio: "inherit", env: { ...env(), VYRE_CAPSULE_LOG: "1" } });
-    const quit = () => { try { child.kill("SIGTERM"); } catch {} };
-    process.on("SIGINT", quit); process.on("SIGTERM", quit);
-    return await new Promise(r => child.on("exit", code => r(code ?? 0)));
-  }
+/** The signing question, once, on a terminal; never under --view, where no one can answer it. */
+const identityOffer = (/** @type {string} */ home) => native.offerIdentity({ home, ask: askYesNo, ...(viewing() || json() ? { tty: false } : {}) });
 
-  const pkg = packaged();
-  let bin = null, argv = args;
-  if (pkg.bin && pkg.fresh) bin = pkg.bin;
-  else if (e) {
-    if (pkg.bin) out(dim("  The packaged app is older than its source, so this runs the source. vyre capsule build --app repackages it."));
-    bin = e; argv = [CAPSULE, ...args];
-  } else if (pkg.bin) {
-    out(beacon("  The packaged app is older than its source") + dim(", and Electron is not installed to run the source. Running the package."));
-    bin = pkg.bin;
-  }
-  if (!bin) return missingElectron();
-  const log = path.join(config.paths().logs, "capsule.out");
-  const fd = fs.openSync(log, "a");
-  // Detached: the Capsule lives in the menu bar and outlasts this terminal. If one is already
-  // running, this second launch tells it to show itself and exits.
-  const child = spawn(bin, argv, { detached: true, stdio: ["ignore", fd, fd], env: env() });
-  child.unref();
-  out(`  Capsule ${signal("open")} ${dim("· press Control twice anywhere · log " + log)}`);
+/**
+ * `vyre capsule install`: the local build, and nothing downloaded. It was a zip from vyre.run;
+ * now the app is built here with swiftc (capsule-native.js), so install means build now.
+ */
+async function installNative() {
+  if (process.platform !== "darwin") return refuse("not_mac", NOT_MAC, "  " + NOT_MAC);
+  say(dim("  vyre capsule install builds the Capsule on this Mac; nothing is downloaded."));
+  const home = config.paths().root;
+  const said = await identityOffer(home);
+  if (said) say(dim("  " + said));
+  const b = native.ensureBuilt({ dir: NATIVE, home, say: s => say(dim("  " + s)) });
+  if (!b.ok) return refuse("build_failed", b.message, beacon("  " + b.message));
+  if (json()) return emit({ built: Boolean(b.built), app: b.app });
+  out(`  Capsule ${signal(b.built ? "built" : "up to date")} ${dim("· " + b.app + " · vyre capsule opens it")}`);
   return 0;
 }
 
-function missingElectron() {
-  out(`  Electron is not installed for the Capsule. ${dim("vyre capsule build")} installs it into local/capsule.`);
-  return 1;
+/** The native Capsule: build it if it is missing or stale, then launch it (or show it). */
+async function openNative(flags) {
+  const home = config.paths().root;
+  const said = await identityOffer(home);
+  if (said) say(dim("  " + said));
+  const b = native.ensureBuilt({ dir: NATIVE, home, say: s => say(dim("  " + s)) });
+  if (!b.ok) return refuse("build_failed", b.message, beacon("  " + b.message));
+  if (b.built) say(dim(`  ${b.message}`));
+  const env = { VYRE_SOCKET: config.paths().socket, VYRE_HOME: home, ...(flags.hidden ? {} : { VYRE_CAPSULE_OPEN: "1" }) };
+  const r = spawnSync("open", native.launchArgs(b.app, env), { encoding: "utf8" });
+  if (r.status !== 0) return refuse("open_failed", `The Capsule did not open: ${String(r.stderr || "").trim()}`, beacon("  The Capsule did not open: ") + dim(String(r.stderr || "").trim()));
+  if (json()) return emit({ opened: true, app: b.app, built: Boolean(b.built), hidden: Boolean(flags.hidden) });
+  out(`  Capsule ${signal("open")} ${dim("· ⌥Space, or Control twice once it is allowed · " + b.app)}`);
+  return 0;
 }
 
-async function build(flags) {
-  if (process.platform !== "darwin") { out("  The Capsule builds on macOS only."); return 1; }
-  if (!electron()) {
-    out(dim("  installing the Capsule's Electron (a devDependency of local/capsule only)"));
-    const r = spawnSync("npm", ["install", "--no-audit", "--no-fund"], { cwd: CAPSULE, stdio: "inherit" });
-    if (r.status !== 0) return 1;
-  }
-  const r = spawnSync("sh", [path.join(CAPSULE, "build.sh")], { stdio: "inherit" });
-  if (r.status !== 0) return r.status || 1;
-  if (!flags.app) { out(dim("  helpers built. vyre capsule build --app also packages Vyre.app")); return 0; }
-  let packager;
-  try { packager = (await import(pathToFileURL(createRequire(path.join(CAPSULE, "package.json")).resolve("@electron/packager")).href)).packager; }
-  catch { out("  @electron/packager is not installed in local/capsule (npm install there)."); return 1; }
-  const source = sourceHash();
-  const [made] = await packager({
-    dir: CAPSULE, name: "Vyre", out: DIST, overwrite: true, platform: "darwin", arch: process.arch, appBundleId: "run.vyre.capsule",
-    // Only what the app runs. The helpers ride along as resources, outside app.asar, because an
-    // executable cannot be run from inside an archive.
-    ignore: [/^\/(dist|swift|bin)(\/|$)/, /\.test\.js$/, /^\/build\.sh$/, /^\/module\.json$/, /^\/index\.js$/],
-    extraResource: [path.join(CAPSULE, "bin")],
-    asar: true, prune: true, quiet: true,
-    extendInfo: { LSUIElement: true },
-  });
-  fs.writeFileSync(path.join(made, "stamp.json"), JSON.stringify({ source, at: new Date().toISOString() }) + "\n");
-  out(`  packaged ${made}/Vyre.app ${dim("· source " + source)}`);
-  return 0;
+/** A y/N on this terminal; null when there is none. @param {string} question */
+async function askYesNo(question) {
+  if (!process.stdin.isTTY || viewing()) return null;
+  const rl = (await import("node:readline/promises")).createInterface({ input: process.stdin, output: process.stdout });
+  try { return /^y(es)?$/i.test((await rl.question(`  ${question} [y/N] `)).trim()); }
+  finally { rl.close(); }
 }
 
 export default {
-  name: "capsule", order: 30, usage: "vyre capsule [--dev] | build [--app]", summary: "the Mac command bar: Control twice, anywhere",
+  name: "capsule", order: 30, usage: "vyre capsule [open [--hidden] | install | build] [--json]", summary: "the Mac command bar: Control twice, anywhere",
+  verbs: VERBS,
   /** @param {string[]} args */
   async run(args) {
-    const flags = { dev: args.includes("--dev"), hidden: args.includes("--hidden"), app: args.includes("--app") };
-    if (args[0] === "build") return build(flags);
+    const flags = { hidden: args.includes("--hidden") };
+    const verb = args.find(a => !a.startsWith("--"));
+    if (verb === "install" || verb === "build") return installNative();
+    // A mistyped word ("biuld") used to open the Capsule; now it says so.
+    if (verb && verb !== "open") return usage(`vyre capsule ${verb}: not a subcommand`, "vyre capsule, vyre capsule open or vyre capsule install");
     return open(flags);
   },
 };

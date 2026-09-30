@@ -59,12 +59,22 @@ test("gate: a request is held, listed and never sent on its own", async () => {
   assert.match(r.id, /^[0-9a-f]{18}$/);
   const held = gate.held();
   assert.equal(held.length, 1);
-  assert.deepEqual({ ...held[0], at: 0 }, { id: r.id, kind: "send", via: "mail", to: ["dana@harlowlegal.com"], summary: "Re: Intake form rebuild",
-    why: "Dana asked for an update", agent: "juno", thread: "t-1", project: "harlow-legal", at: 0 });
+  assert.deepEqual({ ...held[0], at: 0, anchor: { ...held[0].anchor, at: 0 } }, { id: r.id, kind: "send", via: "mail", to: ["dana@harlowlegal.com"], summary: "Re: Intake form rebuild",
+    why: "Dana asked for an update", agent: "juno", thread: "t-1", project: "harlow-legal", at: 0,
+    anchor: { tool_use_id: null, event: null, thread: "t-1", at: 0 } });
+  assert.equal(held[0].anchor.at, held[0].at, "without a tool_use_id, the thread and the time find it");
   assert.equal(gate.held({ thread: "other" }).length, 0);
   assert.equal(sent.length, 0);
   assert.equal(events[0].type, "gate.held");
   assert.deepEqual(events[0].where, { thread: "t-1", project: "harlow-legal" });
+});
+
+test("gate: a held item is anchored to the tool call that asked and its gate.held event", () => {
+  const { gate } = setup();
+  // The module's emit returns the stored event; its id is where the item sits in the log.
+  gate.deps.emit = () => ({ id: 4242 });
+  ask(gate, { tool_use_id: "toolu_01Harlow" });
+  assert.deepEqual({ ...gate.held()[0].anchor, at: 0 }, { tool_use_id: "toolu_01Harlow", event: 4242, thread: "t-1", at: 0 });
 });
 
 test("gate: unknown senders, wrong kinds and bad content are refused at request time", () => {
@@ -147,6 +157,23 @@ test("gate: reject discards, and a discarded item cannot be approved", async () 
   assert.equal(sent.length, 0);
 });
 
+test("gate: settle marks a failed send sent with its evidence, once, and only after an approval failed", async () => {
+  const { gate, events, sent, failNext } = setup();
+  const { id } = ask(gate);
+  assert.throws(() => gate.settle({ id, outcome: "sent", by: "capsule" }), /never approved/, "an item never approved is the person's to decide");
+  failNext("connection closed");
+  assert.equal((await gate.approve({ id })).state, "failed");
+  assert.throws(() => gate.settle({ id, outcome: "rejected" }), /outcome must be/);
+  assert.deepEqual(gate.settle({ id, outcome: "sent", evidence: { ts: "1727431200.000200" }, by: "capsule" }), { id, state: "sent", settled: true });
+  assert.deepEqual(events.at(-1), { type: "gate.settled", payload: { id, kind: "send", via: "mail", outcome: "sent", by: "capsule" }, where: { thread: "t-1", project: "harlow-legal" } });
+  const it = gate.get({ id });
+  assert.deepEqual([it.state, it.result], ["sent", { settled: true, evidence: { ts: "1727431200.000200" } }]);
+  assert.equal(gate.held().length, 0);
+  await assert.rejects(gate.approve({ id }), /already sent/, "a settled item is never sent again");
+  assert.throws(() => gate.settle({ id, outcome: "sent" }), /already sent/);
+  assert.equal(sent.length, 0);
+});
+
 test("gate: a failed send goes back to held with its error, keeps the edits, and can be retried", async () => {
   const { gate, events, sent, failNext } = setup();
   const { id } = ask(gate);
@@ -180,6 +207,21 @@ test("gate: route denies a sending MCP tool inside an agent's thread and leaves 
   assert.deepEqual(gate.route({ tool: "mcp__mail__send_message" }), { decision: null });
   assert.deepEqual(gate.route({ tool: "mcp__mail__list_drafts", agent: "juno" }), { decision: null });
   assert.deepEqual(gate.route({ tool: "Bash", agent: "juno" }), { decision: null });
+});
+
+test("gate: route leaves the MCP hub's own tools to the hub, and denies the rest as before", () => {
+  const { gate } = setup();
+  const route = tool => gate.route({ tool, agent: "juno" }).decision;
+  assert.equal(route("mcp__vyre__mail__send_email"), null);
+  assert.equal(route("mcp__plugin_vyre_vyre__harlow-slack__post_message"), null);
+  assert.equal(route("mcp__vyre__threads_send"), "deny");
+  assert.equal(route("mcp__plugin_vyre_vyre__threads_send"), "deny");
+  assert.equal(route("mcp__other__x__send_email"), "deny");
+  assert.equal(route("mcp__vyre__Mail__send_email"), "deny");
+  // google.mail.send holds at the Gate itself, so an agent is not turned away from it.
+  assert.equal(route("mcp__vyre__google_mail_send"), null);
+  assert.equal(route("mcp__plugin_vyre_vyre__google_mail_send"), null);
+  assert.equal(route("mcp__other__google_mail_send"), "deny");
 });
 
 test("gate: diff is word level and capped", () => {
@@ -286,4 +328,85 @@ test("gate: a revision the sender would refuse is refused, and a sent item canno
   assert.throws(() => gate.revise({ id, edited: { to: "" } }), /say where it is going/);
   await gate.approve({ id });
   assert.throws(() => gate.revise({ id, edited: { body: "late" } }), /already sent/);
+});
+
+/** A Gate whose module senders call a fake module tool that records what it got. */
+function withModule({ db, fail } = {}) {
+  db = db || new DatabaseSync(":memory:");
+  if (!db.prepare("SELECT name FROM sqlite_master WHERE name = 'gate_items'").get()) for (const m of MIGRATIONS) db.exec(m);
+  const calls = [];
+  const gate = new Gate({ db, types: fakeTypes().types, senders: { mail: { type: "fake", vault: "work-mail-token" } },
+    emit: () => {}, fetchCredential: async () => "", relay: async () => ({}),
+    call: async (tool, input) => { calls.push({ tool, input }); return fail ? { error: { code: "failed", message: fail } } : { data: { posted: input.id } }; } });
+  return { gate, calls, db };
+}
+const offerBoard = gate => gate.offer({ name: "courier:board", tool: "courier.release", content: { summary: "string", text: "string" } }, "module:courier");
+
+test("gate: a module's sender is held, edited, approved and sent through the module's own tool", async () => {
+  const { gate, calls } = withModule();
+  assert.deepEqual(offerBoard(gate), { name: "courier:board", kinds: ["send", "spend", "delete"] });
+  assert.deepEqual(gate.senders().find(s => s.name === "courier:board"),
+    { name: "courier:board", type: "module", module: "courier", kinds: ["send", "spend", "delete"], content: { summary: "string", text: "string" } });
+  const { id } = gate.request({ kind: "send", via: "courier:board", to: "#northwind", content: { summary: "Weekly update for Northwind Bakery", text: "Ovens are in." } }, { agent: "kit" });
+  assert.equal(gate.held()[0].summary, "Weekly update for Northwind Bakery");
+  assert.equal(calls.length, 0);
+  const out = await gate.approve({ id, edited: { text: "Ovens are in, and the new mixer ships Friday." } });
+  assert.deepEqual(out, { id, state: "sent", result: { posted: id } });
+  assert.deepEqual(calls, [{ tool: "courier.release", input: { id, to: ["#northwind"], content: { summary: "Weekly update for Northwind Bakery", text: "Ovens are in, and the new mixer ships Friday." } } }]);
+});
+
+test("gate: summary falls back from summary to subject to tool to the sender's name", () => {
+  const { gate } = withModule();
+  offerBoard(gate);
+  const at = content => gate.brief(gate.row(gate.request({ kind: "send", via: "courier:board", to: "x", content }).id)).summary;
+  assert.equal(at({ subject: "A subject" }), "A subject");
+  assert.equal(at({ tool: "board_post" }), "board_post");
+  assert.equal(at({}), "courier:board");
+  assert.equal(at({ summary: "x".repeat(300) }).length, 120);
+});
+
+test("gate: a module offers only its own names and tools, never a configured sender's", () => {
+  const { gate } = withModule();
+  assert.throws(() => gate.offer({ name: "mail", tool: "mail.release" }, "module:mail"), /configured in config.json/);
+  assert.throws(() => gate.offer({ name: "google:mail", tool: "courier.release" }, "module:courier"), /may offer only a sender named courier/);
+  assert.throws(() => gate.offer({ name: "courierx", tool: "courier.release" }, "module:courier"), /may offer only a sender named courier/);
+  assert.throws(() => gate.offer({ name: "courier-x", tool: "vault.release" }, "module:courier"), /one of its own tools/);
+  assert.throws(() => gate.offer({ name: "courier", tool: "courier.release" }, "mcp"), /only a module/);
+  assert.throws(() => gate.offer({ name: "courier", tool: "courier.release", kinds: ["broadcast"] }, "module:courier"), /kinds must be/);
+  // Offering again at the next start replaces the last.
+  offerBoard(gate);
+  gate.offer({ name: "courier:board", tool: "courier.post", kinds: ["send"] }, "module:courier");
+  assert.equal(gate.senders().filter(s => s.name === "courier:board").length, 1);
+  assert.deepEqual(gate.senders().find(s => s.name === "courier:board").kinds, ["send"]);
+  assert.throws(() => gate.request({ kind: "delete", via: "courier:board", to: "x", content: {} }), /does not delete/);
+  assert.throws(() => gate.request({ kind: "send", via: "courier:board", to: "x", content: [] }), /content must be an object/);
+});
+
+test("gate: a module sender's error sends it back to held, and reject never calls it", async () => {
+  const { gate, calls } = withModule({ fail: "the board is read-only today" });
+  offerBoard(gate);
+  const { id } = gate.request({ kind: "send", via: "courier:board", to: "#northwind", content: { text: "hi" } });
+  const out = await gate.approve({ id });
+  assert.equal(out.state, "failed");
+  assert.equal(out.error, "the board is read-only today");
+  assert.equal(gate.held()[0].error, "the board is read-only today");
+  const { id: id2 } = gate.request({ kind: "send", via: "courier:board", to: "#northwind", content: { text: "hi" } });
+  const before = calls.length;
+  gate.reject({ id: id2 });
+  assert.equal(calls.length, before);
+});
+
+test("gate: after a restart, an item held under a module sender not yet offered stays listed and held", async () => {
+  const first = withModule();
+  offerBoard(first.gate);
+  const { id } = first.gate.request({ kind: "send", via: "courier:board", to: "#northwind", content: { summary: "Weekly update", text: "hi" } });
+  const { gate, calls } = withModule({ db: first.db });
+  assert.equal(gate.held()[0].summary, "");
+  assert.equal(gate.get({ id }).state, "held");
+  await assert.rejects(gate.approve({ id }), /the courier:board sender is not available; is the courier module running\?/);
+  assert.equal(gate.get({ id }).state, "held");
+  assert.equal(calls.length, 0);
+  offerBoard(gate);
+  assert.equal(gate.held()[0].summary, "Weekly update");
+  assert.equal((await gate.approve({ id })).state, "sent");
 });

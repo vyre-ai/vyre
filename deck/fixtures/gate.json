@@ -1,0 +1,25 @@
+{
+  "gate.held": [
+    { "id": "held-q3-report", "kind": "send", "via": "mail", "to": ["dana@harlowlegal.com"], "summary": "Email to dana@harlowlegal.com: Q3 report, the short version",
+      "why": "It is juno's first email to a client this week, so I stopped before sending.", "agent": "juno", "thread": "t-juno-q3", "project": "harlow-legal", "at": "$ago:22m" },
+    { "id": "held-ads-topup", "kind": "spend", "via": "billing", "to": ["https://api.example.com"], "summary": "POST https://api.example.com/v1/topups",
+      "why": "Spending money always waits for you.", "agent": "kit", "thread": "t-kit-ads", "project": "northwind-bakery", "at": "$ago:6m" }
+  ],
+  "gate.get": { "$by": "id", "cases": {
+    "held-q3-report": { "id": "held-q3-report", "kind": "send", "via": "mail", "to": ["dana@harlowlegal.com"], "toName": "Dana Reyes", "state": "held",
+      "summary": "Email to dana@harlowlegal.com: Q3 report, the short version", "why": "It is juno's first email to a client this week, so I stopped before sending.",
+      "agent": "juno", "thread": "t-juno-q3", "project": "harlow-legal", "at": "$ago:22m",
+      "draft": { "subject": "Q3 report, the short version",
+        "body": "Hi Dana,\n\nThe Q3 report is attached. Consult bookings rose every month this quarter, and the new intake form goes live next week. Theo has the full numbers on page 2.\n\nAlex" },
+      "final": null, "diff": { "removed": [], "added": [] }, "result": null, "error": null,
+      "sources": [ { "text": "Dana prefers short weekly summaries.", "from": "Call notes 12 Sep · Dana" },
+        { "text": "The new intake form goes live on 1 Oct.", "from": "Intake form rebuild · kit, 24 Sep" } ] },
+    "held-ads-topup": { "id": "held-ads-topup", "kind": "spend", "via": "billing", "to": ["https://api.example.com"], "state": "held",
+      "summary": "POST https://api.example.com/v1/topups", "why": "Spending money always waits for you.",
+      "agent": "kit", "thread": "t-kit-ads", "project": "northwind-bakery", "at": "$ago:6m",
+      "draft": { "method": "POST", "url": "https://api.example.com/v1/topups", "body": { "account": "northwind-ads", "amount_usd": 150 } },
+      "final": null, "diff": { "removed": [], "added": [] }, "result": null, "error": null },
+    "*": null } },
+  "gate.approve": { "id": "held-q3-report", "state": "sent" },
+  "gate.reject": { "id": "held-q3-report", "state": "rejected" }
+}

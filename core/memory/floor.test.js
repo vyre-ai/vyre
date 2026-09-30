@@ -11,12 +11,14 @@ import { open } from "../store/index.js";
 import { start } from "../daemon/index.js";
 import { call } from "../daemon/client.js";
 import { SESSIONS, HOME, seedRecall } from "../../test/fixtures/corpus.js";
-import { tempHome, writeModule } from "../../test/helpers.js";
+import { tempHome, writeModule, present } from "../../test/helpers.js";
 import { Curator } from "./curator.js";
 import { Graph } from "./graph.js";
 import { floorPlan } from "./floor.js";
 
 const W = `${HOME}/Work`;
+/** The fixtures are dated, so the clock that ages them is too. */
+const NOW = Date.parse("2026-10-01T09:00:00Z");
 const NORTHWIND = [`${W}/northwind`], HARLOW = [`${W}/harlow-site`, `${W}/harlow-intake`];
 const PROJECTS = [
   { slug: "harlow", name: "Harlow Legal", folders: HARLOW },
@@ -34,7 +36,7 @@ async function world(t, sessions = [...SESSIONS, CROSSOVER]) {
   seedRecall(db, sessions);
   const curator = new Curator(db, { me: { domains: ["riverastudio.com"] } });
   await curator.curate();
-  return { db, curator, graph: new Graph(db, curator), add: list => seedRecall(db, list) };
+  return { db, curator, graph: new Graph(db, curator, { now: () => NOW }), add: list => seedRecall(db, list) };
 }
 const plan = (g, input = {}) => floorPlan(g, { projects: PROJECTS, ...input });
 const byLabel = (p, label) => p.nodes.find(n => n.label === label);
@@ -151,16 +153,18 @@ test("graph: the main graph is only for the user and the assistant; an agent see
   // The corpus, moved under the temp home so real projects can own its folders.
   const moved = [...SESSIONS, CROSSOVER].map(s => ({ ...s, cwd: s.cwd.replace(W, work) }));
   const db = open(path.join(root, "vyre.db")); seedRecall(db, moved); db.close();
-  writeModule(path.join(root, "modules"), "agents", { does: { tools: ["agents.list"] } },
-    `export default { async start(ctx) {
-      ctx.tool("agents.list", { run: async () => [{ name: "juno", kind: "assistant", projects: "*" }, { name: "kit", kind: "agent", projects: ["northwind"] }] });
-      return {};
-    } };`);
   const d = await start({ root, log: () => {} });
   t.after(() => d.stop());
   const opts = { root };
   assert.ok(!(await call("projects.create", { name: "Northwind", home: path.join(work, "northwind") }, opts)).error);
   assert.ok(!(await call("projects.create", { name: "Harlow", home: path.join(work, "harlow-site"), workspaces: [path.join(work, "harlow-intake")] }, opts)).error);
+  // The real agents module: the assistant, and an agent with one project.
+  assert.ok(!(await call("agents.create", { name: "juno", kind: "assistant" }, opts)).error);
+  assert.ok(!(await call("agents.create", { name: "kit", projects: ["northwind"] }, opts)).error);
+  // memory's guard now also checks projects.access (Vyre Drive step 3, one source of truth):
+  // an agent's agents.projects entry alone is not enough. migrate seeds it from what agents.create
+  // just set, the way an upgrade would, so kit's existing grant keeps working here.
+  assert.ok(!(await call("projects.access.migrate", {}, opts)).error);
   await call("memory.curate", {}, opts);
 
   const main = (await call("memory.graph", {}, opts)).data;
@@ -183,17 +187,170 @@ test("graph: the main graph is only for the user and the assistant; an agent see
   }
   assert.equal((await call("memory.pin", { node: "Sam Okafor", scope: path.join(work, "northwind"), agent: "kit" }, opts)).data?.mode, "pin");
   assert.match((await call("memory.mute", { node: "Harlow Legal", scope: path.join(work, "northwind"), agent: "kit" }, opts)).error?.message || "", /nothing in memory/);
-  // The agent can also be named by the caller; the two must agree.
-  assert.match((await call("memory.graph", {}, { ...opts, caller: "mcp agent:kit" })).error?.message || "", /main graph is for the assistant/);
-  assert.match((await call("memory.graph", { agent: "juno" }, { ...opts, caller: "mcp agent:kit" })).error?.message || "", /came from agent kit/);
+  // The agent can also be named by the caller; the two must agree. Over HTTP vyred takes that
+  // name only with the key of the agent's live thread, so Memory's part is checked in-process.
+  assert.match((await call("memory.graph", {}, { ...opts, caller: "mcp:agent:kit" })).error?.message || "", /no thread of that agent/);
+  for (const caller of ["mcp agent:kit", "mcp:agent:kit"]) {
+    assert.match((await d.registry.call("memory.graph", {}, caller)).error?.message || "", /main graph is for the assistant/, caller);
+    assert.match((await d.registry.call("memory.graph", { agent: "juno" }, caller)).error?.message || "", /came from agent kit/, caller);
+  }
   // A session that has not said who it is gets a project's graph, not the main one.
   assert.match((await call("memory.graph", {}, { ...opts, caller: "mcp" })).error?.message || "", /drawn for the Deck/);
   assert.equal((await call("memory.graph", { project_cwds: [path.join(work, "northwind")] }, { ...opts, caller: "mcp" })).data?.scope, "project");
   assert.equal((await call("memory.graph", {}, { ...opts, caller: "deck" })).data?.scope, "main");
 });
 
+test("graph: a projects: \"*\" agent is not the assistant — every mapped project's room, never the main graph, unfiled, or personal facts", async t => {
+  const root = fs.realpathSync(tempHome(t));
+  const work = path.join(root, "Work");
+  const moved = [...SESSIONS, CROSSOVER].map(s => ({ ...s, cwd: s.cwd.replace(W, work) }));
+  const db = open(path.join(root, "vyre.db")); seedRecall(db, moved); db.close();
+  const d = await start({ presence: present, root, log: () => {} });
+  t.after(() => d.stop());
+  const opts = { root };
+  assert.ok(!(await call("projects.create", { name: "Northwind", home: path.join(work, "northwind") }, opts)).error);
+  assert.ok(!(await call("projects.create", { name: "Harlow", home: path.join(work, "harlow-site"), workspaces: [path.join(work, "harlow-intake")] }, opts)).error);
+  assert.ok(!(await call("agents.create", { name: "wilma", projects: "*" }, opts)).error);
+  // A projects: "*" agent gets no seed from migrate (its "*" is not per-project, same as the
+  // assistant): projects.access still has to grant it each mapped project by name.
+  assert.ok(!(await call("projects.access.grant", { project: "northwind", agent: "wilma" }, opts)).error);
+  assert.ok(!(await call("projects.access.grant", { project: "harlow", agent: "wilma" }, opts)).error);
+  await call("memory.curate", {}, opts);
+
+  // Every mapped project, one room at a time: granted.
+  const nw = await call("memory.graph", { agent: "wilma", project_cwds: [path.join(work, "northwind")] }, opts);
+  assert.equal(nw.data?.scope, "project");
+  const hl = await call("memory.graph", { agent: "wilma", project_cwds: [path.join(work, "harlow-site")] }, opts);
+  assert.equal(hl.data?.scope, "project");
+
+  // Never the main graph (the assistant's alone) or the unfiled room (nobody's but the true
+  // owner's now, THE assistant rule: not even the assistant reads raw unmapped content).
+  assert.match((await call("memory.graph", { agent: "wilma" }, opts)).error?.message || "", /main graph is for the assistant/);
+  assert.match((await call("memory.facts", { agent: "wilma", room: "unfiled" }, opts)).error?.message || "", /unfiled room is for the user only/);
+  // Personal facts are refused too now (the user's 2026-09-28 decision, narrowing
+  // docs/adr/0007-intelligence.md decision 1): a wildcard agent is no longer the assistant's
+  // equal there either.
+  assert.match((await call("memory.answer", { agent: "wilma", q: "who is my wife" }, opts)).error?.message || "", /only the assistant reads them/);
+
+  // A project.access revoke narrows it immediately, same as a named-projects agent.
+  assert.ok(!(await call("projects.access.revoke", { project: "harlow", agent: "wilma" }, opts)).error);
+  assert.match((await call("memory.graph", { agent: "wilma", project_cwds: [path.join(work, "harlow-site")] }, opts)).error?.message || "", /not granted/);
+});
+
+test("graph: THE assistant rule — every mapped project and the main graph, personal facts kept, never the unfiled room", async t => {
+  const root = fs.realpathSync(tempHome(t));
+  const work = path.join(root, "Work");
+  const moved = [...SESSIONS, CROSSOVER].map(s => ({ ...s, cwd: s.cwd.replace(W, work) }));
+  const db = open(path.join(root, "vyre.db")); seedRecall(db, moved); db.close();
+  const d = await start({ root, log: () => {} });
+  t.after(() => d.stop());
+  const opts = { root };
+  assert.ok(!(await call("projects.create", { name: "Northwind", home: path.join(work, "northwind") }, opts)).error);
+  assert.ok(!(await call("projects.create", { name: "Harlow", home: path.join(work, "harlow-site"), workspaces: [path.join(work, "harlow-intake")] }, opts)).error);
+  assert.ok(!(await call("agents.create", { name: "juno", kind: "assistant" }, opts)).error);
+  await call("memory.curate", {}, opts);
+
+  // The main graph, every mapped project's room, unconditional (never checked against
+  // projects.access: the assistant is not subject to a per-agent revoke).
+  const main = (await call("memory.graph", { agent: "juno" }, opts)).data;
+  assert.equal(main.scope, "main");
+  assert.ok(main.rooms.some(r => r.id === "project:northwind") && main.rooms.some(r => r.id === "project:harlow"), JSON.stringify(main.rooms));
+  // Never the unfiled room, in the main graph's own rooms list or as a direct ask: the fixture's
+  // `${HOME}/Work` session belongs to neither project, so this is a real exclusion, not a no-op.
+  assert.ok(!main.rooms.some(r => r.id === "unfiled"), JSON.stringify(main.rooms));
+  assert.match((await call("memory.facts", { agent: "juno", room: "unfiled" }, opts)).error?.message || "", /unfiled room is for the user only/);
+  // Any one mapped project's room, the same door a named-projects or wildcard agent uses.
+  const nw = await call("memory.graph", { agent: "juno", project_cwds: [path.join(work, "northwind")] }, opts);
+  assert.equal(nw.data?.scope, "project");
+  // Personal facts are the one thing it keeps despite no longer reading the unfiled room most
+  // of them are drawn from: distilled facts, not raw transcripts.
+  assert.ok(!(await call("memory.answer", { agent: "juno", q: "who is my wife" }, opts)).error);
+
+  // Reviewer's MEDIUM on f8330ccc: floorPlan's excludeUnfiled closed the leak for memory.graph's
+  // own drawing, but relevant/why/facts read raw content straight from graph.js's own
+  // view()/edgeIn(), which treats an unscoped call (project_cwds and room both empty) as "no
+  // scope at all", not "every mapped project, unfiled excluded" — so a session that ran in no
+  // project (this fixture's hub session, "11111111-aaaa-4000-8000-000000000004", cwd
+  // ${HOME}/Work, which mentions Dana Reyes: "Dana is waiting on the intake form") still had its
+  // turns and facts surface to the assistant asking unscoped. guard() now hands back r.cwds
+  // (every mapped project's folders) for exactly this case, and every reader below uses it.
+  const HUB = "11111111-aaaa-4000-8000-000000000004";
+  const why = await call("memory.why", { agent: "juno", fact: "Dana Reyes" }, opts);
+  assert.ok(!why.error, JSON.stringify(why.error));
+  assert.ok(!why.data.turns.some(t => t.session === HUB), JSON.stringify(why.data.turns));
+  const relevant = await call("memory.relevant", { agent: "juno", text: "what does Dana need this week" }, opts);
+  assert.ok(!relevant.error, JSON.stringify(relevant.error));
+  const facts = await call("memory.facts", { agent: "juno", about: "Dana Reyes" }, opts);
+  assert.ok(!facts.error, JSON.stringify(facts.error));
+});
+
+test("graph: an assistant with ZERO mapped projects reads nothing, never everything (reviewer's MEDIUM 1 on db2d94fd)", async t => {
+  const root = fs.realpathSync(tempHome(t));
+  const work = path.join(root, "Work");
+  const moved = [...SESSIONS, CROSSOVER].map(s => ({ ...s, cwd: s.cwd.replace(W, work) }));
+  const db = open(path.join(root, "vyre.db")); seedRecall(db, moved); db.close();
+  const d = await start({ root, log: () => {} });
+  t.after(() => d.stop());
+  const opts = { root };
+  assert.ok(!(await call("agents.create", { name: "juno", kind: "assistant" }, opts)).error);
+  // No project created at all: a fresh install, r.folders === []. graph.view/scoped read an
+  // empty cwds array as "no scope at all" (the main graph, unlimited) -- so before this fix an
+  // assistant asking unscoped here, with nothing yet mapped, still read every session raw,
+  // unfiled included, the exact leak already fixed above for a NON-empty r.folders.
+  const why = await call("memory.why", { agent: "juno", fact: "Dana Reyes" }, opts);
+  assert.ok(!why.error, JSON.stringify(why.error));
+  assert.equal(why.data.turns.length, 0, JSON.stringify(why.data.turns));
+  const relevant = await call("memory.relevant", { agent: "juno", text: "Dana Reyes" }, opts);
+  assert.ok(!relevant.error, JSON.stringify(relevant.error));
+  assert.equal(relevant.data.length, 0, JSON.stringify(relevant.data));
+  const facts = await call("memory.facts", { agent: "juno", about: "Dana Reyes" }, opts);
+  assert.ok(!facts.error, JSON.stringify(facts.error));
+  assert.equal(facts.data.facts.length, 0, JSON.stringify(facts.data));
+  const retrieve = await call("memory.retrieve", { agent: "juno", question: "what does Dana need this week" }, opts);
+  assert.ok(!retrieve.error, JSON.stringify(retrieve.error));
+  assert.equal(retrieve.data.passages.length, 0, JSON.stringify(retrieve.data.passages));
+  // Personal facts still answer: the assistant's other privilege (personalOnly), untouched by
+  // this fix, which is only ever about raw project/session content.
+  assert.ok(!(await call("memory.answer", { agent: "juno", q: "who is my wife" }, opts)).error);
+});
+
+test("graph: the assistant's own caller-supplied project_cwds are checked against its mapped projects too, not passed through unchecked (reviewer's MEDIUM 2 on db2d94fd)", async t => {
+  const root = fs.realpathSync(tempHome(t));
+  const work = path.join(root, "Work");
+  const moved = [...SESSIONS, CROSSOVER].map(s => ({ ...s, cwd: s.cwd.replace(W, work) }));
+  const db = open(path.join(root, "vyre.db")); seedRecall(db, moved); db.close();
+  const d = await start({ root, log: () => {} });
+  t.after(() => d.stop());
+  const opts = { root };
+  assert.ok(!(await call("projects.create", { name: "Northwind", home: path.join(work, "northwind") }, opts)).error);
+  assert.ok(!(await call("agents.create", { name: "juno", kind: "assistant" }, opts)).error);
+  await call("memory.curate", {}, opts);
+  // A real, mapped folder still works, exactly as before this fix.
+  assert.ok(!(await call("memory.retrieve", { agent: "juno", question: "Dana Reyes", project_cwds: [path.join(work, "northwind")] }, opts)).error);
+  // "/" (or any real folder outside every project the assistant is mapped to) used to pass
+  // straight through unchecked here: memory.answer/retrieve/ask/suggest only narrowed an EMPTY
+  // project_cwds to r.folders, never checked one the assistant supplied itself. scoped() reads
+  // "/" as "every session on the machine" (its own explicit root special case), so this was a
+  // full bypass of the assistant's own project scope, unfiled sessions included.
+  for (const [tool, input] of [
+    ["memory.retrieve", { question: "Dana Reyes" }],
+    ["memory.ask", { question: "who is Dana Reyes" }],
+    ["memory.answer", { q: "who is Dana Reyes" }],
+    ["memory.suggest", { prefix: "dana" }],
+  ]) {
+    const r = await call(tool, { ...input, agent: "juno", project_cwds: ["/"] }, opts);
+    assert.equal(r.error?.code, "denied", `${tool} with project_cwds ["/"] should have been refused; got ${JSON.stringify(r)}`);
+  }
+  // A folder outside every mapped project (not "/" itself, just not granted) is refused the
+  // same way, not silently narrowed to nothing.
+  const outside = await call("memory.retrieve", { agent: "juno", question: "Dana Reyes", project_cwds: [path.join(work, "some-other-client")] }, opts);
+  assert.equal(outside.error?.code, "denied", JSON.stringify(outside));
+});
+
 test("graph: a named agent is refused when agents cannot be checked", async t => {
   const root = tempHome(t);
+  // Agents is a core module now; switch it off to see Memory refuse rather than trust.
+  fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ modules: { enable: [], disable: ["agents"] } }));
   const db = open(path.join(root, "vyre.db")); seedRecall(db); db.close();
   const d = await start({ root, log: () => {} });
   t.after(() => d.stop());

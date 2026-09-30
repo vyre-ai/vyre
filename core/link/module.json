@@ -1,0 +1,26 @@
+{
+  "name": "link",
+  "version": "0.1.0",
+  "description": "Makes the Mac and the box one system: pairing, box tools from the Mac, box events on the Mac, and the Mac's sessions read from the box.",
+  "roles": ["box", "local"],
+  "requires": [],
+  "does": { "tools": ["link.status", "link.find", "link.pair", "link.unpair", "link.call", "link.remote", "link.upload",
+    "link.pair.request", "link.pair.poll", "link.pair.approve", "link.pair.deny", "link.pending", "link.peers", "link.hello", "link.health",
+    "link.serve", "link.reply", "link.macs", "link.macs.call", "link.events", "link.signin", "link.signout", "link.peer-of"] },
+  "watches": { "emits": ["link.pair-requested", "link.paired", "link.unpaired", "link.connected", "link.lost", "link.signed-in", "link.signed-out",
+    "thread.queued", "thread.sent", "thread.text", "thread.finished", "thread.stopped", "thread.contended", "thread.limit",
+    "ask.raised", "ask.answered"] },
+  "shows": { "deck": [], "capsule": [], "cli": ["link"] },
+  "needs": {},
+  "teaches": {
+    "tips": [
+      {"id": "status", "text": "Run `vyre link` on your Mac to see whether it is paired with the box and can reach it now.", "surfaces": ["cli"], "level": "first-use", "trigger": "on-use", "since": "0.1.0", "command": "vyre link", "docs": "using/tailscale.md#connect-your-mac-to-the-box"},
+      {"id": "pair", "text": "Run `vyre link pair <address>` on your Mac, then type the code it shows into the card on Now.", "surfaces": ["cli", "deck"], "level": "first-use", "trigger": "on-use", "since": "0.1.0", "command": "vyre link pair <address>", "docs": "using/tailscale.md#connect-your-mac-to-the-box"},
+      {"id": "approve-elsewhere", "text": "Approve a Mac's pairing from your phone or another device with your passkey; a box terminal can't approve it.", "surfaces": ["deck", "phone"], "level": "power", "trigger": "on-use", "since": "0.1.0", "docs": "using/tailscale.md#connect-your-mac-to-the-box"},
+      {"id": "box-list", "text": "Run `vyre link` on the box to list the paired Macs and any Mac waiting to be approved.", "surfaces": ["cli"], "level": "power", "trigger": "on-use", "since": "0.1.0", "command": "vyre link"},
+      {"id": "unpair", "text": "Run `vyre link unpair` on the Mac to forget the box, or `vyre link unpair <id>` on the box to drop a Mac.", "surfaces": ["cli"], "level": "power", "trigger": "on-use", "since": "0.1.0", "command": "vyre link unpair", "docs": "using/tailscale.md#connect-your-mac-to-the-box"},
+      {"id": "signin", "text": "Run `vyre link signin` so this Mac's CLI and Capsule can answer and approve on the box for 30 days.", "surfaces": ["cli", "capsule"], "level": "discovery", "trigger": "never-used", "since": "0.1.0", "command": "vyre link signin"},
+      {"id": "mac-read-only", "text": "Continue a thread marked alex-mac on that Mac; the box's Deck shows it read-only and keeps no copy.", "surfaces": ["deck", "chat"], "level": "first-use", "trigger": "idle", "since": "0.1.0", "docs": "using/deck.md#your-macs-sessions-on-the-box"}
+    ]
+  }
+}

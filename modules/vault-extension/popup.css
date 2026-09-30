@@ -17,3 +17,6 @@ li small { display: block; color: var(--muted); }
 #msg { min-height: 1em; margin: 8px 0 0; color: var(--muted); }
 #msg.bad { color: var(--bad); }
 footer { display: flex; justify-content: space-between; margin-top: 8px; }
+label.check { display: flex; align-items: center; gap: 6px; font-weight: 400; margin-top: 8px; }
+label.check input { width: auto; }
+h2 { font-size: 12px; font-weight: 600; color: var(--muted); margin: 10px 0 2px; text-transform: none; }

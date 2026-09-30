@@ -11,7 +11,7 @@ import path from "node:path";
 import { open, migrate } from "../store/index.js";
 import { MIGRATIONS } from "./schema.js";
 import { Indexer } from "./indexer.js";
-import { search, thread, sessions, anyOf, floorFor } from "./search.js";
+import { search, thread, sessions, anyOf, floorFor, prefixOf } from "./search.js";
 import { Dense } from "./dense.js";
 import { chunks, encode, decode, cosine, CHUNK } from "./embed.js";
 import { SESSIONS, writeTranscripts, seedRecall } from "../../test/fixtures/corpus.js";
@@ -258,6 +258,12 @@ test("recall: search filters by role, by project folders and caps hits per sessi
   assert.equal((await search(e.db, { q: "intake", project_cwds: ["/home/alex/Work/harlow"] })).hits.length, 0, "a folder matched another folder that only starts with the same letters");
   const one = (await search(e.db, { q: "intake form", per_session: 1 })).hits;
   assert.equal(new Set(one.map(h => h.session)).size, one.length);
+  // A project's attached sessions count wherever they ran; alone they scope as tightly.
+  const outside = under.find(h => h.cwd !== "/home/alex/Work/harlow-site");
+  const joined = (await search(e.db, { q: "intake", project_cwds: ["/home/alex/Work/harlow-site/"], sessions: [outside.session] })).hits;
+  assert.ok(joined.some(h => h.session === outside.session), "an attached session outside the folder was missed");
+  assert.ok(joined.every(h => h.cwd === "/home/alex/Work/harlow-site" || h.session === outside.session));
+  assert.ok((await search(e.db, { q: "intake", sessions: [outside.session] })).hits.every(h => h.session === outside.session));
 });
 
 test("recall: FTS grammar in a query is a search, not a crash", async t => {
@@ -329,6 +335,12 @@ test("recall: sessions lists newest first, by folder, time and who started them"
   assert.equal(sessions(e.db, { human: false }).length, 2);
   assert.equal(sessions(e.db, { human: true, limit: 2 }).length, 2);
   assert.equal(sessions(e.db, { since: Date.parse("2026-09-01T11:30:00Z") }).length, 2);
+  // ids: exact ids only, never a prefix, and an empty list is no sessions rather than all of them.
+  const one = "11111111-aaaa-4000-8000-000000000003", four = "11111111-aaaa-4000-8000-000000000004";
+  assert.deepEqual(sessions(e.db, { ids: [one, four, "nope"] }).map(s => s.id).sort(), [one, four]);
+  assert.deepEqual(sessions(e.db, { ids: ["11111111"] }), []);
+  assert.deepEqual(sessions(e.db, { ids: [] }), []);
+  assert.deepEqual(sessions(e.db, { ids: [one, four], cwd: "/home/alex/Work/northwind" }).map(s => s.id), [one]);
 });
 
 // ------------------------------------------------------------------ dense retrieval
@@ -371,6 +383,12 @@ test("recall: dense retrieval honours role and project folders", async t => {
   assert.ok(asst.every(h => h.role === "assistant"));
   const elsewhere = (await search(e.db, { q: "blind visitors", project_cwds: ["/home/alex/Work/northwind"] }, emb, dense)).hits;
   assert.ok(elsewhere.every(h => h.cwd === "/home/alex/Work/northwind"), "a dense hit came from outside the project");
+  const all = (await search(e.db, { q: "blind visitors" }, emb, dense)).hits;
+  const far = all.find(h => h.cwd !== "/home/alex/Work/northwind");
+  if (far) {
+    const joined = (await search(e.db, { q: "blind visitors", project_cwds: ["/home/alex/Work/northwind"], sessions: [far.session] }, emb, dense)).hits;
+    assert.ok(joined.some(h => h.session === far.session), "dense missed an attached session");
+  }
 });
 
 test("recall: the exact keyword matches stay pinned when meaning disagrees", async t => {
@@ -420,4 +438,74 @@ test("recall: the real model finds both questions and returns nothing for nonsen
   for (const q of ["zygomorphic flux capacitor", "asdf qwerty", "purple elephants dancing on the moon"]) {
     assert.deepEqual((await search(e.db, { q }, embedder, dense)).hits, [], `nonsense returned hits: ${q}`);
   }
+});
+
+test("recall: new vectors are appended to the dense index in place, and a rewrite still rebuilds it", async t => {
+  const e = setup(t);
+  const emb = fakeEmbedder({ same: SAME });
+  const dense = new Dense(e.db);
+  const ix = new Indexer(e.db, { onVector: item => dense.add(item) });
+  e.writeTurns(["the intake form question", "the intake form answer"]);
+  await ix.run([e.dir]);
+  await ix.vectorize(emb);
+  await dense.build();
+  assert.equal(dense.builds, 1);
+  assert.equal(dense.stats()?.chunks, 2);
+
+  // Many new turns: the arrays have to grow, and nothing is rebuilt.
+  const more = ["the intake form question", "the intake form answer"];
+  for (let i = 0; i < 100; i++) more.push(i === 99 ? "the accessibility problems in the audit" : `filler turn number ${i}`);
+  e.writeTurns(more);
+  await ix.run([e.dir]);
+  await ix.vectorize(emb);
+  assert.equal(dense.builds, 1, "appending new vectors rebuilt the whole index");
+  assert.equal(dense.stats()?.chunks, 102);
+  const hit = (await search(e.db, { q: "blind visitors" }, emb, dense)).hits[0];
+  assert.equal(hit?.seq, 101, "an appended vector was not searchable");
+  assert.equal(dense.builds, 1);
+
+  // A new session is appended with its folder, so project filters still apply to it.
+  fs.writeFileSync(path.join(e.dir, "-tmp-p", "s9.jsonl"), JSON.stringify({ type: "user", cwd: "/tmp/other", message: { role: "user", content: "accessibility problems elsewhere" } }) + "\n");
+  await ix.run([e.dir]);
+  await ix.vectorize(emb);
+  const other = (await search(e.db, { q: "blind visitors", project_cwds: ["/tmp/other"] }, emb, dense)).hits;
+  assert.deepEqual(other.map(h => h.session), ["s9"]);
+  assert.equal(dense.builds, 1);
+
+  // A rewrite deletes turns: that is the one thing that must rebuild.
+  e.writeTurns(["a different opening", "and a different answer"]);
+  await ix.run([e.dir]);
+  await search(e.db, { q: "blind visitors" }, emb, dense);
+  assert.equal(dense.builds, 2, "a rewrite did not rebuild the index");
+});
+
+test("recall: vectors that arrive during a build are not lost", async t => {
+  const e = setup(t);
+  const emb = fakeEmbedder({ same: SAME });
+  const dense = new Dense(e.db);
+  const ix = new Indexer(e.db, { onVector: item => dense.add(item) });
+  e.writeTurns(["one", "two"]);
+  await ix.run([e.dir]);
+  await ix.vectorize(emb);
+  const building = dense.build();
+  e.writeTurns(["one", "two", "the accessibility problems"]);
+  await ix.run([e.dir]);
+  await ix.vectorize(emb);
+  await building;
+  assert.equal(dense.stats()?.chunks, 3);
+  assert.equal((await search(e.db, { q: "blind visitors" }, emb, dense)).hits[0]?.seq, 2);
+});
+
+test("recall: prefix mode completes what is typed: every word a prefix, keyword only", async t => {
+  const db = open(path.join(tempHome(t), "vyre.db"));
+  t.after(() => db.close());
+  seedRecall(db, SESSIONS);
+  assert.equal(prefixOf("harl inta"), '"harl"* "inta"*');
+  assert.equal(prefixOf("  "), null);
+  const hits = (await search(db, { q: "harl inta", prefix: true, per_session: 1 })).hits;
+  assert.ok(hits.length > 0);
+  assert.ok(hits.every(h => /harl/i.test(h.text) && /inta/i.test(h.text)), JSON.stringify(hits.map(h => h.text)));
+  // A half word in FTS5's grammar is still a prefix, never an error.
+  assert.deepEqual((await search(db, { q: "north-(", prefix: true })).hybrid, false);
+  assert.deepEqual((await search(db, { q: "zzzqx", prefix: true })).hits, []);
 });

@@ -8,12 +8,12 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import crypto from "node:crypto";
 import fs from "node:fs";
-import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { open, migrate } from "../store/index.js";
 import { Vault, MIGRATIONS } from "./vault.js";
-import { Fill, FILL_MIGRATION, FILL_TOOLS, serveFill } from "./fill.js";
+import { Fill, FILL_MIGRATION, FILL_TOOLS, FILL_WINDOW_MIN, fillWindowMs, serveFill } from "./fill.js";
+import { SCRATCH } from "../../test/scratch.mjs";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const EXT = "chrome-extension://abcdefghijklmnopabcdefghijklmnop";
@@ -21,8 +21,8 @@ const PASSWORD = `fixture-pw-${crypto.randomBytes(12).toString("hex")}`;
 const UNLOCK = `fixture-unlock-${crypto.randomBytes(8).toString("hex")}`;
 const SEED = "JBSWY3DPEHPK3PXP";
 
-async function setup(t, { now } = {}) {
-  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "vyre-fill-"));
+async function setup(t, { now, config } = {}) {
+  const tmp = fs.mkdtempSync(path.join(SCRATCH, "vyre-fill-"));
   const db = open(path.join(tmp, "vyre.db"));
   migrate(db, "vault", MIGRATIONS);
   const events = [];
@@ -31,15 +31,17 @@ async function setup(t, { now } = {}) {
     fields: { username: "someone@example.com", password: PASSWORD, totp: SEED } }, "cli");
   await vault.put({ name: "other-site", kind: "login", url: "https://other.example.org", fields: { username: "u2", password: "fixture-other" } }, "cli");
   const clock = { t: Date.now() };
-  const fill = new Fill({ vault, now: now || (() => clock.t) });
+  const fill = new Fill({ vault, now: now || (() => clock.t), config });
   const srv = await serveFill({ host: "127.0.0.1", port: 0, fill });
   t.after(async () => { await srv.close(); db.close(); fs.rmSync(tmp, { recursive: true, force: true }); });
 
   /** @param {string} route @param {any} [body] @param {Record<string,string>} [headers] */
   const call = async (route, body, headers = {}) => {
     const [method, name] = route.split(" ");
+    // Pairing needs the extension's Origin; the other routes are tested with and without one.
+    const pairing = name === "pair" && !("origin" in headers) ? { origin: EXT } : {};
     const res = await fetch(`${srv.url}/v1/fill/${name}`, {
-      method, headers: { ...(body ? { "content-type": "application/json" } : {}), ...headers },
+      method, headers: { ...(body ? { "content-type": "application/json" } : {}), ...pairing, ...headers },
       ...(body ? { body: JSON.stringify(body) } : {}),
     });
     return { status: res.status, headers: res.headers, body: await res.json() };
@@ -64,6 +66,8 @@ test("FILL_MIGRATION creates only vault_ tables and FILL_TOOLS name real methods
   for (const n of ["vault.device.code", "vault.device.unlock", "vault.unlock-passphrase"]) {
     assert.deepEqual(FILL_TOOLS.find(x => x.name === n)?.callers, ["cli", "local"]);
   }
+  // Listing and unpairing browsers are the person's surfaces, never a model or a guest.
+  for (const n of ["vault.devices", "vault.device.revoke"]) assert.deepEqual(FILL_TOOLS.find(x => x.name === n)?.callers, ["cli", "local", "deck", "capsule"]);
 });
 
 test("pairing: a code works once, a used, expired or unknown code fails", async t => {
@@ -107,8 +111,11 @@ test("a web page Origin is refused; the extension Origin gets CORS for itself on
   const ext = await call("GET status", null, { ...bearer(token), origin: EXT });
   assert.equal(ext.status, 200);
   assert.equal(ext.headers.get("access-control-allow-origin"), EXT);
-  const moz = await call("GET status", null, { ...bearer(token), origin: "moz-extension://0f1e2d3c-4b5a-6978-8796-a5b4c3d2e1f0" });
-  assert.equal(moz.status, 200);
+  // Another extension gets CORS for itself, and never this one's token: a paired Origin is kept.
+  const MOZ = "moz-extension://0f1e2d3c-4b5a-6978-8796-a5b4c3d2e1f0";
+  const moz = await call("GET status", null, { ...bearer(token), origin: MOZ });
+  assert.equal(moz.status, 401);
+  assert.equal(moz.headers.get("access-control-allow-origin"), MOZ);
 });
 
 test("OPTIONS preflight answers the extension and refuses a page", async t => {
@@ -129,7 +136,7 @@ test("no token, wrong route, wrong method and an oversized body are refused", as
   assert.equal((await fetch(`${srv.url}/v1/fill/nope`)).status, 404);
   assert.equal((await fetch(`${srv.url}/v1/relay`, { method: "POST" })).status, 404);
   assert.equal((await fetch(`${srv.url}/v1/fill/fill`)).status, 405);
-  const big = await fetch(`${srv.url}/v1/fill/pair`, { method: "POST", body: "x".repeat(70 * 1024) }).catch(e => e);
+  const big = await fetch(`${srv.url}/v1/fill/match`, { method: "POST", body: "x".repeat(70 * 1024) }).catch(e => e);
   assert.ok(big instanceof Error || big.status === 413);
 });
 
@@ -187,7 +194,7 @@ test("fill is refused for a lookalike origin, another scheme or port, and anothe
   assert.equal(cross.body.error.code, "wrong_origin");
 });
 
-test("fill needs a session, and an idle or over-age session ends", async t => {
+test("fill needs a session, and a session ends 30 minutes after its proof, used or not (ADR 0028, decision 5)", async t => {
   const { fill, call, pairNew, clock } = await setup(t);
   const { token } = await pairNew();
   await fill.setUnlockPassphrase({ passphrase: UNLOCK });
@@ -198,20 +205,84 @@ test("fill needs a session, and an idle or over-age session ends", async t => {
   const bogus = await call("POST fill", { name: "example-mail", url }, { ...bearer(token), "x-vyre-session": "A".repeat(43) });
   assert.equal(bogus.body.error.code, "session_expired");
 
-  let { session } = (await call("POST unlock", { passphrase: UNLOCK }, bearer(token))).body.data;
-  clock.t += 10 * 60_000 + 1;
-  const idle = await call("POST fill", { name: "example-mail", url }, { ...bearer(token), "x-vyre-session": session });
-  assert.equal(idle.status, 401);
-  assert.equal(idle.body.error.code, "session_expired");
+  // The passphrase path (a machine with no Touch ID) opens the same 30-minute window.
+  const opened = clock.t;
+  const u = (await call("POST unlock", { passphrase: UNLOCK }, bearer(token))).body.data;
+  assert.equal(u.expires, opened + 30 * 60_000);
 
-  // Kept busy, a session still ends at twelve hours.
-  ({ session } = (await call("POST unlock", { passphrase: UNLOCK }, bearer(token))).body.data);
-  for (let i = 0; i < 12 * 7; i++) {
-    clock.t += 9 * 60_000;
+  // Untouched, it still works just before the 30 minutes are up: there is no idle limit.
+  clock.t = opened + 29 * 60_000;
+  const late = await call("POST fill", { name: "example-mail", url }, { ...bearer(token), "x-vyre-session": u.session });
+  assert.equal(late.status, 200);
+  const st = await call("GET status", null, { ...bearer(token), "x-vyre-session": u.session });
+  assert.equal(st.body.data.expires, opened + 30 * 60_000, "use does not move the end");
+  clock.t = opened + 30 * 60_000;
+  const over = await call("POST fill", { name: "example-mail", url }, { ...bearer(token), "x-vyre-session": u.session });
+  assert.equal(over.status, 401);
+  assert.equal(over.body.error.code, "session_expired");
+
+  // Kept busy with a fill every minute, a session still ends at 30 minutes.
+  const start = clock.t;
+  const { session } = (await call("POST unlock", { passphrase: UNLOCK }, bearer(token))).body.data;
+  for (let i = 1; i <= 40; i++) {
+    clock.t = start + i * 60_000;
     const r = await call("POST fill", { name: "example-mail", url }, { ...bearer(token), "x-vyre-session": session });
-    if (r.status !== 200) { assert.equal(r.body.error.code, "session_expired"); assert.equal(i, 79, "ended at twelve hours"); return; }
+    if (r.status !== 200) { assert.equal(r.body.error.code, "session_expired"); assert.equal(i, 30, "ended at 30 minutes"); return; }
   }
-  assert.fail("the session outlived its hard cap");
+  assert.fail("use extended the session");
+});
+
+test("vault.fill.window shortens the window and can never lengthen it", async t => {
+  assert.equal(FILL_WINDOW_MIN, 30);
+  const w = v => fillWindowMs({ vault: { fill: { window: v } } });
+  assert.equal(fillWindowMs(null), 30 * 60_000);
+  assert.equal(fillWindowMs({}), 30 * 60_000);
+  assert.equal(fillWindowMs({ vault: { fill: { port: 7788 } } }), 30 * 60_000);
+  assert.equal(w(10), 10 * 60_000);
+  assert.equal(w("5"), 5 * 60_000);
+  assert.equal(w(1), 60_000);
+  assert.equal(w(0), 60_000, "clamped up to 1 minute");
+  assert.equal(w(-4), 60_000);
+  assert.equal(w(31), 30 * 60_000, "clamped down to 30 minutes");
+  assert.equal(w(720), 30 * 60_000);
+  assert.equal(w(Infinity), 30 * 60_000);
+  for (const bad of ["", "soon", null, true, {}, [], NaN]) assert.equal(w(bad), 30 * 60_000, JSON.stringify(bad));
+
+  const { fill, call, pairNew, clock, db } = await setup(t, { config: { vault: { fill: { window: 5 } } } });
+  const { token, device } = await pairNew();
+  await fill.setUnlockPassphrase({ passphrase: UNLOCK });
+  const opened = clock.t;
+  const { session, expires } = (await call("POST unlock", { passphrase: UNLOCK }, bearer(token))).body.data;
+  assert.equal(expires, opened + 5 * 60_000);
+  clock.t = opened + 5 * 60_000 - 1;
+  assert.equal((await call("POST fill", { name: "example-mail", url: "https://mail.example.com/" }, { ...bearer(token), "x-vyre-session": session })).status, 200);
+  clock.t = opened + 5 * 60_000;
+  assert.equal((await call("POST fill", { name: "example-mail", url: "https://mail.example.com/" }, { ...bearer(token), "x-vyre-session": session })).body.error.code, "session_expired");
+
+  // A row written under the old 12-hour rule ends at its proof plus the window all the same.
+  const touch = fill.unlockDevice({ device });
+  assert.equal(touch.expires, clock.t + 5 * 60_000);
+  db.prepare("UPDATE vault_sessions SET expires = ? WHERE device = ?").run(clock.t + 12 * 3600_000, device);
+  const picked = (await call("GET status", null, bearer(token))).body.data;
+  assert.equal(picked.expires, clock.t + 5 * 60_000);
+  clock.t += 5 * 60_000;
+  assert.equal((await call("GET status", null, { ...bearer(token), "x-vyre-session": picked.session })).body.data.unlocked, false);
+  assert.equal(fill.devices().devices[0].sessions, 0);
+});
+
+test("endAll closes every window at once (sleep, screen lock, vault.lock) and says so without a token", async t => {
+  const { fill, call, pairNew, db } = await setup(t);
+  const a = await pairNew("browser a"), b = await pairNew("browser b");
+  await fill.setUnlockPassphrase({ passphrase: UNLOCK });
+  const sa = (await call("POST unlock", { passphrase: UNLOCK }, bearer(a.token))).body.data.session;
+  fill.unlockDevice({ device: b.device });
+  assert.equal(fill.endAll("sleep"), 2);
+  assert.equal((await call("POST fill", { name: "example-mail", url: "https://mail.example.com/" }, { ...bearer(a.token), "x-vyre-session": sa })).body.error.code, "session_expired");
+  assert.equal((await call("GET status", null, bearer(b.token))).body.data.unlocked, false, "a Touch ID session waiting for pick-up is gone too");
+  assert.equal(fill.endAll("sleep"), 0);
+  const rows = JSON.stringify(db.prepare("SELECT * FROM vault_audit").all());
+  assert.match(rows, /fill-lock/);
+  assert.ok(!rows.includes(sa));
 });
 
 test("a session belongs to its device only", async t => {
@@ -278,6 +349,7 @@ test("Touch ID style: unlockDevice opens a session the extension picks up once t
   assert.equal(before.body.data.unlocked, false);
   const u = fill.unlockDevice({ device }, "local");
   assert.deepEqual(Object.keys(u).sort(), ["expires", "ok"]);
+  assert.ok(u.expires - Date.now() <= 30 * 60_000 && u.expires - Date.now() > 29 * 60_000, "30 minutes from the proof");
   const first = await call("GET status", null, { ...bearer(token), origin: EXT });
   assert.equal(first.body.data.unlocked, true);
   const session = first.body.data.session;
@@ -333,4 +405,72 @@ test("the extension manifest parses, is MV3 and keeps its permissions narrow", (
 
 test("the vault's own migrations include the fill tables", () => {
   assert.ok(MIGRATIONS.includes(FILL_MIGRATION));
+});
+
+test("pairing without an extension Origin is refused, so a script cannot pair itself", async t => {
+  const { fill, srv, db } = await setup(t);
+  const { code } = fill.code({ name: "agent" });
+  const r = await fetch(`${srv.url}/v1/fill/pair`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ code }) });
+  assert.equal(r.status, 403);
+  assert.equal((await r.json()).error.code, "origin_required");
+  assert.equal(db.prepare("SELECT COUNT(*) AS n FROM vault_devices").get().n, 0);
+  // The code was not spent: the extension can still use it.
+  const ok = await fetch(`${srv.url}/v1/fill/pair`, { method: "POST", headers: { "content-type": "application/json", origin: EXT }, body: JSON.stringify({ code }) });
+  assert.equal(ok.status, 200);
+});
+
+test("a Host that is not loopback or a configured name is refused (DNS rebinding)", async t => {
+  const { fill, pairNew } = await setup(t);
+  const { token } = await pairNew();
+  const http = await import("node:http");
+  const named = await serveFill({ host: "127.0.0.1", port: 0, fill, names: ["vault.acme.test"] });
+  t.after(() => named.close());
+  const port = Number(new URL(named.url).port);
+  const get = host => new Promise((resolve, reject) => {
+    const req = http.request({ host: "127.0.0.1", port, path: "/v1/fill/status", method: "GET", headers: { host, authorization: `Bearer ${token}` } }, res => {
+      let b = ""; res.on("data", d => { b += d; }); res.on("end", () => resolve({ status: res.statusCode, body: JSON.parse(b) }));
+    });
+    req.on("error", reject); req.end();
+  });
+  const evil = /** @type {any} */ (await get(`rebind.example.com:${port}`));
+  assert.equal(evil.status, 421);
+  assert.equal(evil.body.error.code, "host_refused");
+  for (const h of [`127.0.0.1:${port}`, `localhost:${port}`, `vault.acme.test:${port}`, "LOCALHOST"]) {
+    assert.equal((/** @type {any} */ (await get(h))).status, 200, h);
+  }
+});
+
+test("a key-bound extension signs every request: a copied token, a replay or another extension is refused", async t => {
+  const { fill, call } = await setup(t);
+  const { publicKey, privateKey } = crypto.generateKeyPairSync("ec", { namedCurve: "P-256" });
+  const { code } = fill.code({ name: "work chrome" });
+  const paired = await call("POST pair", { code, key: publicKey.export({ format: "jwk" }) });
+  assert.equal(paired.status, 200, JSON.stringify(paired.body));
+  const token = paired.body.data.token;
+  const sign = (method, name, body, { t = Date.now(), n = crypto.randomBytes(12).toString("base64url"), k = privateKey } = {}) => {
+    const raw = body ? JSON.stringify(body) : "";
+    const msg = `${method}\n/v1/fill/${name}\n${crypto.createHash("sha256").update(raw).digest("base64url")}\n${t}\n${n}`;
+    return { "x-vyre-proof": `t=${t} n=${n} sig=${crypto.sign("sha256", Buffer.from(msg), { key: k, dsaEncoding: "ieee-p1363" }).toString("base64url")}` };
+  };
+  const signedStatus = await call("GET status", undefined, { ...bearer(token), origin: EXT, ...sign("GET", "status") });
+  assert.equal(signedStatus.status, 200, JSON.stringify(signedStatus.body));
+  // The token alone, as a script that copied it would send it, with or without the right Origin.
+  assert.equal((await call("GET status", undefined, bearer(token))).status, 401);
+  assert.equal((await call("GET status", undefined, { ...bearer(token), origin: EXT })).status, 401);
+  const once = sign("GET", "status");
+  assert.equal((await call("GET status", undefined, { ...bearer(token), origin: EXT, ...once })).status, 200);
+  assert.equal((await call("GET status", undefined, { ...bearer(token), origin: EXT, ...once })).status, 401, "a replay");
+  const other = crypto.generateKeyPairSync("ec", { namedCurve: "P-256" }).privateKey;
+  assert.equal((await call("GET status", undefined, { ...bearer(token), origin: EXT, ...sign("GET", "status", null, { k: other }) })).status, 401);
+  assert.equal((await call("GET status", undefined, { ...bearer(token), origin: "chrome-extension://zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz", ...sign("GET", "status") })).status, 401, "another extension");
+  assert.equal((await call("POST unlock", { passphrase: "x" }, { ...bearer(token), origin: EXT, ...sign("POST", "unlock", { passphrase: "y" }) })).status, 401, "signed for another body");
+});
+
+test("pairing takes only the listed extensions when vault.fill.extensions names them", async t => {
+  const { vault } = await setup(t);
+  const fill = new Fill({ vault, extensions: [EXT] });
+  const other = fill.pair({ code: fill.code({ name: "b" }).code }, { origin: "chrome-extension://zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz" });
+  assert.equal(other.status, 403);
+  const mine = fill.pair({ code: fill.code({ name: "b" }).code }, { origin: EXT });
+  assert.equal(mine.status, 200, JSON.stringify(mine.body));
 });

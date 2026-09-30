@@ -1,0 +1,23 @@
+{
+  "name": "sideview",
+  "version": "0.1.0",
+  "description": "The side view on macOS: a session on the left and Chrome (or Glass on the box) filling the rest, tiled through the accessibility API in one call, and put back on close.",
+  "roles": ["local"],
+  "requires": [],
+  "does": { "tools": ["sideview.open", "sideview.close", "sideview.status"] },
+  "watches": { "emits": [] },
+  "shows": {},
+  "needs": {},
+  "teaches": {
+    "tips": [
+      {"id": "try", "text": "Type `side view` in the Capsule: your assistant on the left, Chrome filling the rest.", "surfaces": ["capsule"], "level": "discovery", "trigger": "never-used", "since": "0.1.0"},
+      {"id": "cli-open", "text": "Run `vyre sideview` to put this terminal session on the left and Chrome beside it.", "surfaces": ["cli"], "level": "first-use", "trigger": "on-use", "since": "0.1.0", "command": "vyre sideview", "docs": "reference/cli.md#vyre-sideview"},
+      {"id": "close", "text": "Type `close side view`, or run `vyre sideview close`, to put the windows back where they were.", "surfaces": ["capsule", "cli"], "level": "first-use", "trigger": "on-use", "since": "0.1.0", "command": "vyre sideview close", "docs": "reference/cli.md#vyre-sideview"},
+      {"id": "grant", "text": "The side view moves windows through Accessibility. If nothing moves, turn it on in System Settings.", "surfaces": ["capsule", "cli"], "level": "first-use", "trigger": "on-use", "since": "0.1.0"},
+      {"id": "ratio", "text": "Run `vyre sideview --ratio 0.4` to give the session more room. Any share from 0.2 to 0.5 works.", "surfaces": ["cli"], "level": "power", "trigger": "on-use", "since": "0.1.0", "command": "vyre sideview --ratio", "docs": "reference/cli.md#vyre-sideview"},
+      {"id": "glass", "text": "Run `vyre sideview --glass kit` to put kit's Glass beside your session instead of Chrome.", "surfaces": ["cli"], "level": "power", "trigger": "on-use", "since": "0.1.0", "command": "vyre sideview --glass", "docs": "reference/cli.md#vyre-sideview"},
+      {"id": "other-session", "text": "Type `side view` and a session's name to put that session on the left instead of your assistant.", "surfaces": ["capsule"], "level": "power", "trigger": "idle", "since": "0.1.0"},
+      {"id": "terminal", "text": "Pick `Side view with this terminal` in the Capsule to tile the terminal in front beside Chrome.", "surfaces": ["capsule"], "level": "power", "trigger": "idle", "since": "0.1.0"}
+    ]
+  }
+}

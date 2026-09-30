@@ -4,6 +4,15 @@
 // Deck: the only markup parsed is the constant icon drawings in icons.js, through DOMParser.
 
 /**
+ * The phone layout's question, asked in one place. Narrow windows, and short wide touch screens (a
+ * phone turned sideways), get the phone shell; a short desktop window does not. The CSS phone
+ * blocks use the same query text (deck/test/pwa.test.js checks they match).
+ */
+export const PHONE_QUERY = "(max-width: 719px), (max-height: 500px) and (pointer: coarse)";
+/** @param {any} [win] */
+export const isPhone = (win = globalThis) => !!win.matchMedia?.(PHONE_QUERY).matches;
+
+/**
  * h("div", { class: "row", onclick }, "text", child, [more]) → an element.
  * Props: class, style (string or object), on<event> handlers, aria-*, data-*, and anything else
  * as an attribute (true → present, false/null → absent). Children: strings and numbers as text,
@@ -48,10 +57,16 @@ export function link(href, props, ...kids) {
   } }, ...kids);
 }
 
-/** Navigate inside the Deck. app.js listens for this. */
+/** Navigate inside the Deck. app.js listens for this. The state counts how deep inside the Deck
+ * this entry is, so a Back button can go back (see back()) instead of pushing another entry. */
 export function go(href) {
-  history.pushState(null, "", href);
+  history.pushState({ deck: (history.state?.deck || 0) + 1 }, "", href);
   window.dispatchEvent(new Event("deck:navigate"));
+}
+
+/** A Back button: the previous screen in the Deck, exactly as it was, else `fallback`. */
+export function back(fallback) {
+  if (history.state?.deck) history.back(); else go(fallback);
 }
 
 /** A labelled section heading row (engraved label on the left, optional extra on the right). */

@@ -1,0 +1,28 @@
+{
+  "name": "github",
+  "version": "0.1.0",
+  "roles": ["box", "local"],
+  "requires": ["vault"],
+  "does": {
+    "tools": [
+      "github.connect", "github.connect.cancel", "github.accounts", "github.remove",
+      "github.repos", "github.project", "github.project.add-repo", "github.project.of",
+      "github.project.detect",
+      "github.session.worktree", "github.session.cleanup"
+    ]
+  },
+  "watches": { "emits": ["github.added", "github.removed", "github.connected", "github.connect-failed", "github.cleanup-needed", "github.token-invalid"] },
+  "shows": {
+    "deck": ["settings:connections"],
+    "cli": ["connect"]
+  },
+  "needs": { "vault": ["per-connection"] },
+  "teaches": {
+    "tips": [
+      {"id": "sign-in", "text": "Connect a GitHub account with a short code at github.com/login/device, no token to paste.", "surfaces": ["cli", "deck"], "level": "first-use", "trigger": "on-use", "since": "0.1.0", "docs": "reference/tools.md#github"},
+      {"id": "scope", "text": "GitHub's device flow asks for repo (full read/write on every repo the account reaches). A later release narrows this per-repo.", "surfaces": ["deck", "cli"], "level": "first-use", "trigger": "on-use", "since": "0.1.0", "docs": "reference/tools.md#github"},
+      {"id": "worktree", "text": "Each session in a GitHub project works on its own worktree and branch, so two sessions never fight over the same working tree.", "surfaces": ["chat", "deck"], "level": "discovery", "trigger": "on-use", "since": "0.1.0", "docs": "reference/tools.md#github"},
+      {"id": "fine-grained", "text": "Prefer a narrower token? Add a fine-grained personal access token by hand instead of signing in.", "surfaces": ["cli", "deck"], "level": "power", "trigger": "idle", "since": "0.1.0", "docs": "reference/tools.md#github"}
+    ]
+  }
+}

@@ -1,0 +1,35 @@
+{
+  "computers.get": {"$by": "agent", "cases": {"kit": {"agent": "kit", "state": "running", "screen": 1, "screens": 2, "thread": null, "viewers": 1, "takeover": null, "paused": false, "size": {"w": 1440, "h": 900}, "since": 1790000000000, "cpus": 2, "memory_gb": 3}, "*": null}},
+  "computers.restart": {"agent": "kit", "state": "running", "screen": 1, "screens": 2, "thread": null, "viewers": 0, "takeover": null, "paused": false, "size": {"w": 1440, "h": 900}, "since": 1790000000000, "cpus": 2, "memory_gb": 3},
+  "computers.limits": {"agent": "kit", "state": "running", "screen": 1, "screens": 2, "thread": null, "viewers": 0, "takeover": null, "paused": false, "size": {"w": 1440, "h": 900}, "since": 1790000000000, "cpus": 2, "memory_gb": 3},
+  "computers.tailnet.status": {
+    "enabled": true,
+    "tag": "tag:vyre-agent",
+    "applies": "applies to computers that start or thaw after the change; one already running keeps what it has until computers.stop, and turning it off never logs a running node out early",
+    "problem": "the computer image does not carry the tailnet side yet, so no computer joins the tailnet even with this on",
+    "vault": {
+      "item": "tailscale-agent-authkey",
+      "exists": true,
+      "granted": false
+    },
+    "computers": [
+      {
+        "agent": "kit",
+        "running": true,
+        "node": null,
+        "stableId": null
+      },
+      {
+        "agent": "juno",
+        "running": false,
+        "node": null,
+        "stableId": null
+      }
+    ]
+  },
+  "computers.egress.status": {
+    "enabled": true, "sites": ["portal.northwind.example", "*.harlow.example"], "proxy": "egress:1055",
+    "applies": "applies to computers started after the change: a stopped computer is made again with it on its next start (its home stays); a running or frozen one keeps its old setting until computers.stop",
+    "sidecar": { "answers": false, "why": "the Mac is asleep or away" }
+  }
+}

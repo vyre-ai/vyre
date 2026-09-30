@@ -1,0 +1,136 @@
+# The egress sidecar: a few sites, in the agents' computers, go out through the user's own Mac.
+#
+#   COMPOSE_FILE=box/compose.yml:box/compose.egress.yml   (in /srv/vyre/.env, with the rest)
+#
+# A bank or a court that sees a datacenter address asks questions, or refuses. With config
+# glass.egress on, Chrome in each computer gets a proxy script (core/computers/egress.js): the
+# listed sites go to SOCKS5 egress:1055, here, and everything else goes out directly as before.
+# A listed site has no direct fallback, so when the Mac is asleep or away it fails to load rather
+# than showing the datacenter's address after all.
+#
+# Two services:
+#
+#   egress       the gate (core/computers/egressgate.js, in the vyre image). It answers as
+#                egress:1055 on the computers network and lets a SOCKS5 CONNECT through only
+#                while the Mac is in use as the exit node right now, which it reads from
+#                egress-node's tailscaled status. Otherwise it refuses (SOCKS5 reply 0x02) and
+#                logs why, once per change. It never dials a site itself.
+#   egress-node  a second tailnet node, in userspace (no tun device, no capability), using the
+#                Mac as its exit node and offering SOCKS5 on :1056, on an internal network that
+#                only the gate shares. It is not on the computers network at all.
+#
+# Why the gate: when the Mac stops offering the exit node, or its route is unapproved, tailscaled
+# has no exit route and its SOCKS5 server dials the site directly from the box, and the site sees
+# the datacenter after all. Only a Mac off the tailnet fails closed on its own. The gate makes
+# every case fail closed.
+#
+# Why a sidecar and not the box's own tailscaled: an exit node applies to a whole node. Set on
+# the tailscale service, it would send vyred, its certificates, every agent's model traffic and
+# every computer through the Mac. egress-node does nothing but use the Mac as its exit node.
+#
+# Its identity is a Tailscale OAuth client secret with ?ephemeral=true&preauthorized=true
+# (preferred: it does not expire), or a reusable, ephemeral, pre-authorized auth key; either
+# tagged tag:vyre-egress, which the node advertises. State lives in memory, so every start is a
+# fresh ephemeral node and a stopped sidecar leaves nothing behind in the tailnet. That is also
+# why a single-use key does not work: the first restart fails with "authkey already used" and
+# the sidecar never comes back. The tailnet's ACL decides where the tag may go:
+# autogroup:internet through the exit node, and nothing else.
+#
+# The key and the exit node come from /srv/vyre/.env (or the shell), like TS_AUTHKEY and
+# DOCKER_GID, and not from vyre.env: the vyre service reads the whole of vyre.env into its own
+# environment, where every Claude session would see the key.
+#
+# Any process in any computer can reach egress:1055, not only Chrome for the listed sites: the
+# proxy script is routing, and the ACL is the fence.
+#
+# Check it: `vyre call computers.egress.status` shows the gate's verdict and reason (the gate
+# answers GET /status on egress:1057), and `docker compose logs egress` shows each change.
+
+services:
+  egress:
+    image: ${VYRE_IMAGE:-ghcr.io/vyre-ai/vyre:latest}
+    command: ["node", "/opt/vyre/core/computers/egressgate.js"]
+    # Only where computers run: without them nothing would use it.
+    profiles: ["computers"]
+    restart: unless-stopped
+    # No `init: true`: the image's tini is PID 1 (box/Dockerfile, ADR 0029 R4).
+    user: "1000:1000"
+    read_only: true
+    cap_drop: [ALL]
+    security_opt:
+      - no-new-privileges:true
+    labels:
+      run.vyre: "1"
+    depends_on:
+      - egress-node
+    environment:
+      - VYRE_EGRESS_GATE_PORT=1055
+      - VYRE_EGRESS_GATE_STATUS_PORT=1057
+      - VYRE_EGRESS_UPSTREAM=egress-node:1056
+      - VYRE_EGRESS_SOCKET=/var/run/egress-node/tailscaled.sock
+    volumes:
+      # egress-node's tailscaled socket, to read its status. Read-only here; a status read is
+      # what tailscaled allows any local user, and the gate asks for nothing else.
+      - egress-sock:/var/run/egress-node:ro
+    networks:
+      # vyred and the computers reach the gate here, as egress:1055 (and egress:1057 for status).
+      computers:
+        aliases:
+          - egress
+      egress: {}
+
+  egress-node:
+    image: ${VYRE_TAILSCALE_IMAGE:-tailscale/tailscale:stable}
+    profiles: ["computers"]
+    hostname: vyre-egress
+    restart: unless-stopped
+    labels:
+      run.vyre: "1"
+    environment:
+      - TS_AUTHKEY=${VYRE_EGRESS_AUTHKEY:?set VYRE_EGRESS_AUTHKEY in /srv/vyre/.env to an OAuth client secret tskey-client-...?ephemeral=true&preauthorized=true (or a reusable ephemeral pre-authorized key) for tag:vyre-egress; a single-use key breaks on the first restart}
+      - TS_HOSTNAME=vyre-egress
+      # No tun device: tailscaled's own network stack, which needs no NET_ADMIN.
+      - TS_USERSPACE=true
+      # Only the gate reaches this, on the egress network.
+      - TS_SOCKS5_SERVER=:1056
+      # containerboot's default is /tmp/tailscaled.sock; here it is in the volume the gate reads.
+      - TS_SOCKET=/var/run/tailscale/tailscaled.sock
+      # Names are looked up through the exit node too, so the box's resolver never sees which
+      # listed site a computer opened.
+      - TS_ACCEPT_DNS=true
+      # No TS_STATE_DIR: containerboot keeps state in memory (mem:), right for an ephemeral node.
+      # An OAuth client secret must be told which tag to mint the key for, so the tag is always
+      # advertised; with a tagged auth key it is the same tag and changes nothing.
+      - TS_EXTRA_ARGS=--advertise-tags=tag:vyre-egress --exit-node=${VYRE_EGRESS_EXIT_NODE:?set VYRE_EGRESS_EXIT_NODE in /srv/vyre/.env to the Mac's tailnet name or 100.x address} --exit-node-allow-lan-access=false
+    read_only: true
+    tmpfs:
+      # tailscaled's scratch; the socket is in the egress-sock volume.
+      - /tmp
+      - /var/lib/tailscale
+    volumes:
+      - egress-sock:/var/run/tailscale
+    cap_drop: [ALL]
+    security_opt:
+      - no-new-privileges:true
+    networks:
+      # The project's default network, for the internet (the control plane, DERP and the Mac).
+      default:
+        gw_priority: 1
+      # The gate's side. Nothing else is on it.
+      egress: {}
+
+volumes:
+  egress-sock:
+    labels:
+      run.vyre: "1"
+
+networks:
+  # Compose's own default network for this project; only egress-node joins it.
+  default:
+    labels:
+      run.vyre: "1"
+  egress:
+    name: vyre-egress
+    internal: true
+    labels:
+      run.vyre: "1"

@@ -1,0 +1,543 @@
+// @ts-check
+// Vyre-owned sessions (ADR 0030), end to end: vyred in a temp home, the fake `claude`
+// (core/switchboard/testing/fake-claude.js), and every tool called as a surface calls it.
+//
+// The tests marked "sdk" run the real Claude Agent SDK against the fake. They need the pinned SDK
+// installed somewhere (VYRE_SESSIONS_SDK_DIR, as on testbox) and are skipped without it, so the
+// suite never downloads anything. Everything else runs on either driver.
+//
+// Split from one file (2026-09-28): the driver-parametrized tests continue in
+// sessions-turns.test.js, sharing boot()/until()/terminalSession() from testing/boot.js. One file
+// of ~80 real subprocess-spawning tests sat right at the edge of the full suite's 90s file
+// timeout under concurrency-4 contention; two files parallelize instead of raising the ceiling.
+
+import { test } from "node:test";
+import assert from "node:assert/strict";
+import fs from "node:fs";
+import path from "node:path";
+import crypto from "node:crypto";
+import { fileURLToPath } from "node:url";
+import { tempHome } from "../../test/helpers.js";
+import { SCRATCH } from "../../test/scratch.mjs";
+import { optionsFor } from "./claude.js";
+import { sessionsConfig } from "./config.js";
+import { resume } from "../cli/commands/projects.js";
+import { safePermissions, MODES, PERSON_MODES, MIGRATIONS, purposeOf } from "../switchboard/index.js";
+import { conform } from "./conformance.js";
+import { claudeProvider } from "./providers.js";
+import { load as loadSdk } from "./sdk.js";
+import { Sessions, shellCommand } from "../switchboard/sessions.js";
+import { callerKind, callerAllowed } from "../modules/index.js";
+import { open as openStore } from "../store/index.js";
+import { paths } from "../config/index.js";
+import { FAKE, TINI, SDK, noSdk, until, boot, terminalSession } from "./testing/boot.js";
+
+// ------------------------------------------------------------ pure parts
+
+test("config: the approved defaults per machine, and overrides", () => {
+  const was = process.env.VYRE_SESSIONS_DRIVER;
+  delete process.env.VYRE_SESSIONS_DRIVER;
+  try {
+    assert.deepEqual((({ auth, claude, idle_minutes, max_live }) => ({ auth, claude, idle_minutes, max_live }))(sessionsConfig({ role: "box" })),
+      { auth: "setup-token", claude: "bundled", idle_minutes: 10, max_live: 6 });
+    assert.deepEqual((({ auth, claude, max_live }) => ({ auth, claude, max_live }))(sessionsConfig({ role: "local" })), { auth: "login", claude: "installed", max_live: 0 });
+    const c = sessionsConfig({ role: "box", sessions: { driver: "sdk", auth: "api-key", idle_minutes: 0, max_live: 2, claude: "/opt/claude" } });
+    assert.deepEqual([c.driver, c.auth, c.idle_minutes, c.max_live, c.claude], ["sdk", "api-key", 0, 2, "/opt/claude"]);
+    assert.equal(sessionsConfig({ role: "box", sessions: { auth: "nonsense", idle_minutes: -1 } }).auth, "setup-token");
+    assert.equal(sessionsConfig({ role: "box" }).driver, "sdk", "the Agent SDK is the default");
+    assert.equal(sessionsConfig({ role: "local", sessions: { driver: "cli" } }).driver, "cli");
+    // The spawner is on by default on a box (used only where one runs), off on a Mac; each
+    // session's own socket follows it unless set.
+    const sp = process.env.VYRE_SESSIONS_SPAWNER, ts = process.env.VYRE_SESSIONS_THREAD_SOCKET;
+    delete process.env.VYRE_SESSIONS_SPAWNER; delete process.env.VYRE_SESSIONS_THREAD_SOCKET;
+    try {
+      assert.deepEqual([sessionsConfig({ role: "box" }).spawner, sessionsConfig({ role: "local" }).spawner, sessionsConfig({ role: "box", sessions: { spawner: "off" } }).spawner], ["on", "off", "off"]);
+      assert.deepEqual([sessionsConfig({ role: "box" }).thread_socket, sessionsConfig({ role: "local", sessions: { thread_socket: "on" } }).thread_socket, sessionsConfig({ sessions: { thread_socket: "x" } }).thread_socket], ["auto", "on", "auto"]);
+    } finally {
+      if (sp !== undefined) process.env.VYRE_SESSIONS_SPAWNER = sp;
+      if (ts !== undefined) process.env.VYRE_SESSIONS_THREAD_SOCKET = ts;
+    }
+  } finally { if (was !== undefined) process.env.VYRE_SESSIONS_DRIVER = was; }
+});
+
+test("sdk options: the same launch the CLI runner turns into flags", () => {
+  const base = { id: "11111111-2222-3333-4444-555555555555", cwd: "/w", env: {} };
+  const o = optionsFor({ ...base, plugin: "/h", plugins: ["/l"], model: "m", name: "Intake", system: { mode: "append", text: "Your name is juno." }, budgetUsd: 2, bin: "/c" });
+  assert.equal(o.sessionId, base.id);
+  assert.deepEqual(o.systemPrompt, { type: "preset", preset: "claude_code", append: "Your name is juno." });
+  assert.deepEqual(o.plugins, [{ type: "local", path: "/h" }, { type: "local", path: "/l" }]);
+  assert.deepEqual([o.model, o.maxBudgetUsd, o.pathToClaudeCodeExecutable, o.extraArgs.name], ["m", 2, "/c", "Intake"]);
+  assert.deepEqual(o.settingSources, ["user", "project", "local"]);
+  const r = optionsFor({ ...base, resume: true, system: { mode: "replace", text: "Only this." }, tools: "none", settings: false });
+  assert.equal(r.resume, base.id);
+  assert.equal(r.sessionId, undefined);
+  assert.equal(r.systemPrompt, "Only this.");
+  assert.deepEqual([r.tools, r.strictMcpConfig, r.settingSources, r.extraArgs], [[], true, [], undefined]);
+});
+
+test("modes: an answer never hands back bypassPermissions; only a person picks it (Doesn't ask)", () => {
+  assert.deepEqual(MODES, ["default", "acceptEdits", "plan"]);
+  assert.deepEqual(PERSON_MODES, ["default", "acceptEdits", "plan", "bypassPermissions"]);
+  const offered = [{ type: "setMode", mode: "bypassPermissions", destination: "session" }, { type: "setMode", mode: "acceptEdits", destination: "session" },
+    { type: "addRules", rules: [{ toolName: "Bash", ruleContent: "npm test:*" }], behavior: "allow", destination: "localSettings" }, { type: "setMode", mode: "dontAsk" }, null];
+  assert.deepEqual(safePermissions(offered).map(x => x.mode || x.type), ["acceptEdits", "addRules"]);
+});
+
+test("bind: on Linux the hook's parent is dash's `sh -c`, and the claude above it is bound", t => {
+  const root = tempHome(t);
+  const db = openStore(path.join(root, "vyre.db"));
+  t.after(() => db.close());
+  db.exec(MIGRATIONS[1]);
+  const procs = { 300: { ppid: 200, args: "/bin/sh -c node /opt/vyre/harness/hooks/run.js brief" }, 200: { ppid: 1, args: "/usr/bin/claude" },
+    400: { ppid: 1, args: "/bin/sh -c sleep 5" }, 500: { ppid: 300, args: "node run.js" } };
+  const s = new Sessions(db, { children: () => [], alive: pid => Boolean(procs[pid]), isClaude: pid => procs[pid] && procs[pid].args === "/usr/bin/claude",
+    proc: pid => procs[pid] || null });
+  const b = s.bind("11111111-2222-3333-4444-555555555555", 300);
+  assert.equal(b.pid, 200, "the claude above the shell");
+  assert.equal(s.boundPid("11111111-2222-3333-4444-555555555555"), 200);
+  assert.throws(() => s.bind("22222222-2222-3333-4444-555555555555", 400), /not a running claude/, "a shell under no claude");
+  assert.throws(() => s.bind("33333333-2222-3333-4444-555555555555", 500), /not a running claude/, "only a shell is walked past");
+  assert.ok(shellCommand("/bin/sh -c x") && shellCommand("dash -c x") && !shellCommand("/bin/sh script.sh"));
+});
+
+test("callers: a Vyre-owned session's MCP caller is an mcp caller, like an agent's", () => {
+  assert.equal(callerKind("mcp:thread:0f3a-11"), "mcp");
+  assert.equal(callerKind("mcp:agent:juno"), "mcp");
+  assert.equal(callerAllowed(["cli", "mcp"], "mcp:thread:0f3a-11"), true);
+  assert.equal(callerAllowed(["cli", "deck"], "mcp:thread:0f3a-11"), false);
+});
+
+test("models: Opus for real work, the fast model for quick answers and jobs; purpose from the launch", () => {
+  assert.equal(purposeOf({}, null), "chat");
+  assert.equal(purposeOf({}, "harlow-legal"), "project");
+  assert.equal(purposeOf({ agent: "kit" }, null), "agent");
+  assert.equal(purposeOf({ lean: true }, null), "job");
+  assert.equal(purposeOf({ once: true, tools: "none" }, "harlow-legal"), "job");
+  assert.equal(purposeOf({ purpose: "capsule", lean: true }, null), "capsule");
+});
+
+test("conformance: the CLI runner passes the provider contract", async t => {
+  const cwd = fs.mkdtempSync(path.join(SCRATCH, "vyre-conform-"));
+  t.after(() => fs.rmSync(cwd, { recursive: true, force: true }));
+  const fails = await conform(claudeProvider({ sdk: null, bin: FAKE }), { id: crypto.randomUUID(), cwd, env: { ...process.env } });
+  assert.deepEqual(fails, []);
+});
+
+test("conformance: the Agent SDK driver passes the provider contract", { skip: noSdk }, async t => {
+  const cwd = fs.mkdtempSync(path.join(SCRATCH, "vyre-conform-"));
+  t.after(() => fs.rmSync(cwd, { recursive: true, force: true }));
+  const module = await loadSdk(SDK);
+  const fails = await conform(claudeProvider({ sdk: { module, bin: null }, bin: FAKE }), { id: crypto.randomUUID(), cwd, env: { ...process.env } });
+  assert.deepEqual(fails, []);
+});
+
+test("providers: a module adds one through its manifest, with no core change, and a session runs on it", async t => {
+  const runner = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "switchboard", "runner.js");
+  const w = await boot(t, { modules: [{ name: "echo-provider", manifest: { does: { providers: ["echo"] } }, source: `
+    import { argsFor, run } from ${JSON.stringify(runner)};
+    export default { async start(ctx) {
+      ctx.provider("echo", { id: "echo", capabilities: { streaming: true }, run: o => run({ ...o, bin: ${JSON.stringify(FAKE)}, args: argsFor(o) }) });
+      return { async stop() {} };
+    } };` }] });
+  const th = (await w.tool("threads.start", { cwd: w.work, prompt: "hello", surface: "deck", provider: "echo" })).data;
+  await w.finished(th.id);
+  const rec = (await w.tool("threads.get", { thread: th.id })).data.thread;
+  assert.deepEqual([rec.provider, rec.driver], ["echo", "echo"]);
+  assert.deepEqual(await w.said(th.id), ["echo: hello"]);
+  const none = await w.tool("threads.start", { cwd: w.work, prompt: "hello", provider: "codex" });
+  assert.match(none.error.message, /no session provider codex; this machine has claude, echo/);
+});
+
+test("slots: a terminal session's subagent takes a slot through the plugin's hooks, refused at once with its place when full", async t => {
+  const w = await boot(t, { sessions: { limits: { max_subagents: 1 } } });
+  const rules = (session, id) => w.tool("harness.rules", { tool_name: "Agent", tool_input: { description: "read the menu", prompt: "read the menu" }, session, tool_use_id: id, cwd: w.work }, "harness");
+  const s1 = "11111111-1111-4111-8111-111111111111", s2 = "22222222-2222-4222-8222-222222222222";
+  assert.equal((await rules(s1, "toolu_1")).data.decision, null, "room: it runs");
+  const held = (await rules(s2, "toolu_2")).data;
+  assert.equal(held.decision, "deny");
+  assert.match(held.reason, /number 1 in line/);
+  assert.equal((await w.tool("sessions.slots.status", {})).data.subagent.held, 1);
+  await w.tool("harness.learn", { tool_name: "Agent", tool_input: {}, session: s1, tool_use_id: "toolu_1" }, "harness");
+  assert.equal((await w.tool("sessions.slots.status", {})).data.subagent.held, 0, "the Agent call ending gives it back");
+  assert.equal((await rules(s2, "toolu_3")).data.decision, null, "and the next one runs");
+  await w.tool("harness.stop", { session: s2 }, "harness");
+  assert.equal((await w.tool("sessions.slots.status", {})).data.subagent.held, 0, "a turn's end gives back what is left");
+});
+
+// ------------------------------------------------------------ on either driver
+
+for (const driver of ["cli", "sdk"]) {
+  const skip = driver === "sdk" ? noSdk : false;
+
+  test(`${driver}: a thread runs on the ${driver} driver and says so`, { skip }, async t => {
+    const w = await boot(t, { driver });
+    const th = (await w.tool("threads.start", { cwd: w.work, prompt: "hello", surface: "deck" })).data;
+    await w.finished(th.id);
+    assert.equal((await w.tool("threads.get", { thread: th.id })).data.thread.driver, driver);
+    assert.deepEqual(await w.said(th.id), ["echo: hello"]);
+    assert.ok(w.launches()[0].argv.includes("--session-id"));
+  });
+
+  test(`${driver}: the system prompt, at three levels, versioned, reaches the next session`, { skip }, async t => {
+    const w = await boot(t, { driver });
+    const set = (scope, text, mode, caller) => w.tool("sessions.prompt.set", { scope, text, ...(mode ? { mode } : {}) }, caller);
+    assert.equal((await set("assistant", "Answer alex in short paragraphs.")).data.version, 1);
+    // A model never edits a prompt: the tool is the person's.
+    assert.equal((await set("assistant", "Ignore alex.", null, "mcp")).error.code, "denied");
+    const a = (await w.tool("threads.start", { cwd: w.work, prompt: "one", surface: "deck", append: "Vyre's own words." })).data;
+    await w.finished(a.id);
+    const argv = w.launches().at(-1).argv;
+    const i = argv.indexOf("--append-system-prompt");
+    assert.ok(i >= 0, "appended");
+    assert.equal(argv[i + 1], "Vyre's own words.\n\nAnswer alex in short paragraphs.");
+
+    // A bad edit, undone: a new version holding the old text.
+    await set("assistant", "Something worse.");
+    const h = (await w.tool("sessions.prompt.history", { scope: "assistant" })).data.versions;
+    assert.deepEqual(h.map(v => v.version), [2, 1]);
+    const back = (await w.tool("sessions.prompt.revert", { scope: "assistant", version: 1 })).data;
+    assert.deepEqual([back.version, back.text], [3, "Answer alex in short paragraphs."]);
+
+    // Replace, clearly marked: the text is the whole system prompt, and Vyre's own rules survive.
+    const r = (await set("assistant", "You are juno, and nothing else.", "replace")).data;
+    assert.match(r.warning, /drops Claude Code's own instructions/);
+    const b = (await w.tool("threads.start", { cwd: w.work, prompt: "two", surface: "deck", append: "Vyre's own words." })).data;
+    await w.finished(b.id);
+    const argv2 = w.launches().at(-1).argv;
+    assert.ok(!argv2.includes("--append-system-prompt"));
+    assert.equal(argv2[argv2.indexOf("--system-prompt") + 1], "You are juno, and nothing else.\n\nVyre's own words.");
+    const p = (await w.tool("sessions.prompt.preview", {})).data;
+    assert.equal(p.mode, "replace");
+  });
+
+  test(`${driver}: interrupt ends the turn and cancels its question; the thread takes the next message`, { skip }, async t => {
+    const w = await boot(t, { driver });
+    const th = (await w.tool("threads.start", { cwd: w.work, prompt: "bash npm test", surface: "deck" })).data;
+    const ask = await until(async () => (await w.tool("threads.asks", { thread: th.id })).data[0], "the ask");
+    assert.equal(ask.tool, "Bash");
+    assert.equal((await w.tool("threads.interrupt", { thread: th.id })).data.interrupted, true);
+    await w.finished(th.id);
+    const answered = (await w.events(th.id)).find(e => e.type === "ask.answered");
+    assert.equal(answered.payload.decision, "cancelled");
+    await w.tool("threads.send", { thread: th.id, text: "still here", surface: "deck" });
+    await w.finished(th.id, 2);
+    assert.ok((await w.said(th.id)).includes("echo: still here"));
+  });
+
+  // native-core: does a message queued (mode "queue") for after a turn still reach Claude when
+  // that turn ends by Stop instead of finishing on its own? turnEnded (core/switchboard) hands
+  // queued words over on any thread.finished, cancelled or not, unless st.stopping is set (a
+  // hard threads.stop, not this soft threads.interrupt) - so it should, but nothing tested the
+  // combination end to end.
+  test(`${driver}: a message queued while a turn runs is still handed over when Stop ends that turn`, { skip }, async t => {
+    const w = await boot(t, { driver });
+    const th = (await w.tool("threads.start", { cwd: w.work, prompt: "bash npm test", surface: "deck" })).data;
+    await until(async () => (await w.tool("threads.asks", { thread: th.id })).data[0], "the ask");
+    const queued = (await w.tool("threads.send", { thread: th.id, text: "check the hours too", surface: "deck", mode: "queue" })).data;
+    assert.equal(queued.queued, true, JSON.stringify(queued));
+    assert.deepEqual((await w.tool("threads.queue", { thread: th.id })).data.queued.map(r => r.queued), [queued.queued_id]);
+    assert.equal((await w.tool("threads.interrupt", { thread: th.id })).data.interrupted, true);
+    await w.finished(th.id);
+    const handed = await until(async () => (await w.events(th.id)).find(e => e.type === "thread.sent" && e.payload.queued === queued.queued_id), "the queued words handed over");
+    assert.equal(handed.payload.via, "turn");
+    await w.finished(th.id, 2);
+    assert.ok((await w.said(th.id)).includes("echo: check the hours too"));
+    assert.deepEqual((await w.tool("threads.queue", { thread: th.id })).data.queued, [], "nothing left waiting");
+  });
+
+  test(`${driver}: an idle session is closed and comes back on the next message`, { skip }, async t => {
+    const w = await boot(t, { driver, sessions: { idle_minutes: 0.02 } });           // 1.2 s
+    const th = (await w.tool("threads.start", { cwd: w.work, prompt: "hello", surface: "deck" })).data;
+    await w.finished(th.id);
+    await w.tool("threads.release", { thread: th.id, surface: "deck" });
+    const stopped = await until(async () => (await w.events(th.id)).find(e => e.type === "thread.stopped"), "the idle close");
+    assert.equal(stopped.payload.reason, "idle");
+    // thread.status: paused, not stopped or failed - nothing wrong happened, threads.send resumes it.
+    const paused = (await w.events(th.id)).filter(e => e.type === "thread.status").at(-1);
+    assert.equal(paused.payload.status, "paused", JSON.stringify(paused));
+    const before = Date.now();
+    await w.tool("threads.send", { thread: th.id, text: "back", surface: "deck" });
+    await w.finished(th.id, 2);
+    // Resume reliability (task 1, measured on testbox): time to first token after an idle close
+    // is Vyre's own spawn/resume overhead against the fake claude, typically 200-300ms; 5s is a
+    // generous ceiling that only trips on a real regression, not testbox load noise.
+    assert.ok(Date.now() - before < 5000, `resuming after an idle close took ${Date.now() - before}ms`);
+    assert.ok((await w.said(th.id)).includes("echo: back"));
+    const resumed = w.launches().at(-1).argv;
+    assert.equal(resumed[resumed.indexOf("--resume") + 1], th.id, "resumed, same session");
+  });
+
+  test(`${driver}: a real crash (killed, not stopped) is said as failed, and the next message still resumes it`, { skip }, async t => {
+    const w = await boot(t, { driver });
+    const th = (await w.tool("threads.start", { cwd: w.work, prompt: "hello", surface: "deck" })).data;
+    await w.finished(th.id);
+    const pids = (await w.tool("probe.pids", {})).data;
+    const pid = Array.isArray(pids && pids.pids) ? pids.pids[0] : null;
+    assert.ok(pid, "a pid to kill");
+    process.kill(pid, "SIGKILL");
+    const stopped = await until(async () => (await w.events(th.id)).find(e => e.type === "thread.stopped"), "the crash");
+    assert.match(stopped.payload.reason, /SIGKILL|exited/, JSON.stringify(stopped.payload));
+    // Canonically "failed", never "paused" - a real crash must not read as an ordinary idle close.
+    const status = (await w.events(th.id)).filter(e => e.type === "thread.status").at(-1);
+    assert.equal(status.payload.status, "failed", JSON.stringify(status));
+    // Resume reliability: the next message still resumes it, and does so quickly (Vyre's own
+    // spawn overhead against the fake claude; 5s is a generous ceiling, not a tight budget).
+    const before = Date.now();
+    await w.tool("threads.send", { thread: th.id, text: "back after the crash", surface: "deck" });
+    await w.finished(th.id, 2);
+    assert.ok(Date.now() - before < 5000, `resuming after a crash took ${Date.now() - before}ms`);
+    assert.ok((await w.said(th.id)).includes("echo: back after the crash"));
+  });
+
+  test(`${driver}: the cap closes the longest-idle session to make room, and refuses when all are busy`, { skip }, async t => {
+    const w = await boot(t, { driver, sessions: { max_live: 1 } });
+    const a = (await w.tool("threads.start", { cwd: w.work, prompt: "hello" })).data;
+    await w.finished(a.id);
+    // Someone at its keyboard keeps a session open; nobody is.
+    await w.tool("threads.release", { thread: a.id });
+    const b = (await w.tool("threads.start", { cwd: w.work, prompt: "bash npm test" })).data;
+    assert.ok(b.id, "made room");
+    const gone = await until(async () => (await w.events(a.id)).find(e => e.type === "thread.stopped"), "a closed");
+    assert.equal(gone.payload.reason, "idle");
+    await until(async () => (await w.tool("threads.asks", { thread: b.id })).data[0], "b asks");
+    const c = await w.tool("threads.start", { cwd: w.work, prompt: "hello" });
+    assert.equal(c.error.code, "busy");
+    assert.match(c.error.message, /sessions\.max_live/);
+  });
+
+  test(`${driver}: the box's own credential: the vault's setup token, the API key behind it`, { skip }, async t => {
+    const w = await boot(t, { driver, sessions: { auth: "setup-token" },
+      vault: { "claude-setup-token": "fake-setup-value", "anthropic-api-key": "fake-api-value" } });
+    const th = (await w.tool("threads.start", { cwd: w.work, prompt: "whoami", surface: "deck" })).data;
+    await w.finished(th.id);
+    assert.deepEqual(await w.said(th.id), ["auth=subscription"]);
+    assert.equal((await w.tool("threads.get", { thread: th.id })).data.thread.auth, "subscription");
+    // The limit: the thread goes on under the API key, resumed.
+    await w.tool("threads.send", { thread: th.id, text: "limit", surface: "deck" });
+    await until(async () => (await w.tool("threads.get", { thread: th.id })).data.thread.auth === "api-key", "the fallback");
+    const onKey = await until(() => w.launches().find(l => l.auth === "api-key"), "the API-key launch");
+    assert.equal(onKey.key_in_env, false, "the API key reaches Claude Code on fd 3, never its environment (a session's Bash would read it)");
+    const all = JSON.stringify(await w.events(th.id));
+    assert.ok(!all.includes("fake-setup-value") && !all.includes("fake-api-value"), "no credential reaches an event");
+  });
+
+  test(`${driver}: from inside a session, a person-only call is refused, even claiming to be the CLI`, { skip }, async t => {
+    const w = await boot(t, { driver });
+    const th = (await w.tool("threads.start", { cwd: w.work, prompt: "forge cli sessions.prompt.set", surface: "deck" })).data;
+    await w.finished(th.id);
+    await w.tool("threads.send", { thread: th.id, text: "forge cli threads.answer", surface: "deck" });
+    await w.finished(th.id, 2);
+    const [edit, answer] = await w.said(th.id);
+    for (const r of [edit, answer]) assert.match(r, /^403 .*denied/, r);
+    assert.equal((await w.tool("sessions.prompt.get", { scope: "assistant" })).data.prompt, null, "nothing was set");
+  });
+
+  test(`${driver}: open in terminal hands an idle session over to claude --resume, and a busy one is left alone`, { skip }, async t => {
+    const w = await boot(t, { driver });
+    const bin = path.join(w.root, "fakebin");
+    fs.mkdirSync(bin);
+    const calls = path.join(w.root, "terminal.jsonl");
+    fs.writeFileSync(path.join(bin, "claude"), `#!${process.execPath}\nrequire("node:fs").appendFileSync(${JSON.stringify(calls)}, JSON.stringify(process.argv.slice(2)) + "\\n");\n`, { mode: 0o755 });
+    const PATH = process.env.PATH;
+    process.env.PATH = bin + path.delimiter + PATH;
+    t.after(() => { process.env.PATH = PATH; });
+    const th = (await w.tool("threads.start", { cwd: w.work, prompt: "bash npm test", surface: "deck" })).data;
+    await until(async () => (await w.tool("threads.asks", { thread: th.id })).data[0], "the ask");
+    assert.notEqual(await resume({ id: th.id, label: "Intake", cwd: w.work }), 0, "a session waiting on a question is not taken");
+    assert.ok(!fs.existsSync(calls));
+    await w.tool("threads.interrupt", { thread: th.id });
+    await w.finished(th.id);
+    assert.equal(await resume({ id: th.id, label: "Intake", cwd: w.work }), 0);
+    const argv = JSON.parse(fs.readFileSync(calls, "utf8").trim());
+    assert.deepEqual(argv.slice(0, 2), ["--resume", th.id]);
+    assert.equal((await w.tool("threads.get", { thread: th.id })).data.thread.status, "stopped", "vyred let go of it first");
+  });
+
+  test(`${driver}: the floor refuses a session's write to its own permission settings before anyone is asked`, { skip }, async t => {
+    const w = await boot(t, { driver });
+    const th = (await w.tool("threads.start", { cwd: w.work, prompt: "settings", surface: "deck" })).data;
+    await w.finished(th.id);
+    assert.equal((await w.events(th.id)).filter(e => e.type === "ask.raised").length, 0, "nobody was asked");
+    assert.ok(!fs.existsSync(path.join(w.work, ".claude", "settings.local.json")), "nothing was written");
+    const said = (await w.events(th.id)).filter(e => e.type === "thread.text" && e.payload.done).map(e => e.payload.text);
+    assert.ok(said.some(x => /^Refused Write: Claude Code's permission and settings files are changed by the person/.test(x)), said.join(" | "));
+    assert.ok(said.includes("I was not allowed to."));
+  });
+
+  test(`${driver}: only a person changes a session's mode; no answer and no model ever reaches bypassPermissions`, { skip }, async t => {
+    const w = await boot(t, { driver });
+    const th = (await w.tool("threads.start", { cwd: w.work, prompt: "hello", surface: "deck" })).data;
+    await w.finished(th.id);
+    const r = (await w.tool("threads.mode", { thread: th.id, mode: "acceptEdits" }, "deck")).data;
+    assert.deepEqual(r, { thread: th.id, mode: "acceptEdits" });
+    await until(() => w.launches().some(l => l.mode === "acceptEdits"), "the mode to reach Claude Code");
+    assert.ok((await w.events(th.id)).some(e => e.type === "mode.changed" && e.payload.mode === "acceptEdits"));
+    for (const caller of ["mcp", "mcp:agent:juno", "mcp:thread:abc", "harness"]) {
+      for (const mode of ["plan", "bypassPermissions"]) assert.equal((await w.tool("threads.mode", { thread: th.id, mode }, caller)).error.code, "denied", `${caller} ${mode}`);
+    }
+    await w.tool("threads.send", { thread: th.id, text: "forge cli threads.mode", surface: "deck" });
+    await w.finished(th.id, 2);
+    assert.match((await w.said(th.id)).at(-1), /^403 .*denied/, "from inside the session, even as the CLI");
+  });
+
+  test(`${driver}: "Doesn't ask": a person turns it on with no prompt, nothing is asked, and the floor still refuses`, { skip }, async t => {
+    const w = await boot(t, { driver });
+    const th = (await w.tool("threads.start", { cwd: w.work, prompt: "hello", surface: "deck" })).data;
+    await w.finished(th.id);
+    assert.ok(w.launches().at(-1).argv.includes("--allow-dangerously-skip-permissions"), "a session with the plugin may be switched to it");
+    assert.deepEqual((await w.tool("threads.mode", { thread: th.id, mode: "bypassPermissions" }, "deck")).data, { thread: th.id, mode: "bypassPermissions" });
+    await until(() => w.launches().some(l => l.mode === "bypassPermissions"), "the mode to reach Claude Code");
+    const changed = (await w.events(th.id)).find(e => e.type === "mode.changed" && e.payload.mode === "bypassPermissions");
+    assert.equal(changed.payload.label, "Doesn't ask");
+    // A write to its own permission settings: nobody is asked, and the floor refuses it at PreToolUse.
+    await w.tool("threads.send", { thread: th.id, text: "settings", surface: "deck" });
+    await w.finished(th.id, 2);
+    assert.equal((await w.events(th.id)).filter(e => e.type === "ask.raised").length, 0, "nothing was asked");
+    assert.ok(!fs.existsSync(path.join(w.work, ".claude", "settings.local.json")), "nothing was written");
+    assert.ok((await w.said(th.id)).includes("I was not allowed to."));
+    // It carries over an idle close: the next start is launched in it.
+    await w.tool("threads.stop", { thread: th.id });
+    await w.tool("threads.send", { thread: th.id, text: "hello", surface: "deck" });
+    await w.finished(th.id, 3);
+    const l = w.launches().filter(x => x.argv).at(-1).argv;
+    assert.equal(l[l.indexOf("--permission-mode") + 1], "bypassPermissions");
+
+    // Without Vyre's plugin (a lean thread) it is refused, and the launch never allows it.
+    const lean = (await w.tool("threads.start", { cwd: w.work, prompt: "hello", surface: "deck", lean: true })).data;
+    await w.finished(lean.id);
+    assert.ok(!w.launches().filter(x => x.argv).at(-1).argv.includes("--allow-dangerously-skip-permissions"));
+    assert.equal((await w.tool("threads.mode", { thread: lean.id, mode: "bypassPermissions" }, "deck")).error.code, "refused");
+  });
+
+  test(`${driver}: a project's default mode: set by the person, taken by new sessions there`, { skip }, async t => {
+    const w = await boot(t, { driver });
+    assert.ok(!(await w.tool("projects.create", { name: "Harlow Legal", home: w.work })).error);
+    assert.equal((await w.tool("sessions.mode.set", { project: "harlow-legal", mode: "bypassPermissions" }, "mcp")).error.code, "denied", "a model never sets it");
+    assert.deepEqual((await w.tool("sessions.mode.set", { project: "harlow-legal", mode: "bypassPermissions" }, "deck")).data, { project: "harlow-legal", mode: "bypassPermissions" });
+    assert.equal((await w.tool("sessions.mode.get", { project: "harlow-legal" })).data.mode, "bypassPermissions");
+    const th = (await w.tool("threads.start", { project: "harlow-legal", prompt: "hello", surface: "deck" })).data;
+    await w.finished(th.id);
+    assert.equal((await w.events(th.id)).find(e => e.type === "thread.started").payload.mode, "bypassPermissions");
+    const argv = w.launches().filter(x => x.argv).at(-1).argv;
+    assert.equal(argv[argv.indexOf("--permission-mode") + 1], "bypassPermissions");
+    // Cleared: new sessions ask again.
+    assert.equal((await w.tool("sessions.mode.set", { project: "harlow-legal" }, "deck")).data.mode, null);
+    const b = (await w.tool("threads.start", { project: "harlow-legal", prompt: "hello", surface: "deck" })).data;
+    await w.finished(b.id);
+    assert.equal((await w.events(b.id)).find(e => e.type === "thread.started").payload.mode, "default");
+  });
+
+  test(`${driver}: sessions run under the subreaper, and their group is reported until the last process in it is gone`, { skip }, async t => {
+    const w = await boot(t, { driver, sessions: { subreaper: TINI } });
+    const th = (await w.tool("threads.start", { cwd: w.work, prompt: "hello", surface: "deck" })).data;
+    await w.finished(th.id);
+    const launch = w.launches().find(l => l.argv);
+    const pids = (await w.tool("probe.pids", {})).data;
+    assert.ok(pids.pids.includes(launch.ppid), "the subreaper's pid is a session pid");
+    assert.ok(pids.pgids.includes(launch.ppid) && pids.sids.includes(launch.ppid), "its group and session are reported");
+    // A process left in the group outlives the session: the group is still reported.
+    await w.tool("threads.send", { thread: th.id, text: "orphan", surface: "deck" });
+    await until(async () => (await w.events(th.id)).some(e => e.type === "thread.stopped"), "the session to end");
+    const after = (await w.tool("probe.pids", {})).data;
+    assert.ok(!after.pids.includes(launch.ppid), "the session itself is gone");
+    assert.ok(after.pgids.includes(launch.ppid), "its group is still reported while the orphan runs");
+    await until(async () => !(await w.tool("probe.pids", {})).data.pgids.includes(launch.ppid), "the group to end", 10_000);
+  });
+
+  test(`${driver}: a session has its own socket (option A): its calls are that thread's, never a person's, and it goes when the thread stops`, { skip }, async t => {
+    const whoami = { name: "whoami", manifest: { does: { tools: ["whoami.me"] } }, source: `
+      export default { async start(ctx) {
+        ctx.tool("whoami.me", { input: { type: "object" }, run: async (_, meta) => ({ caller: meta.caller, thread: meta.thread || null, agent: meta.agent || null }) });
+        return { async stop() {} };
+      } };` };
+    const w = await boot(t, { driver, sessions: { thread_socket: "on" }, modules: [whoami] });
+    const th = (await w.tool("threads.start", { cwd: w.work, prompt: "vyre-sock whoami.me {}", surface: "deck" })).data;
+    await w.finished(th.id);
+    const sock = w.launches().at(-1).socket;
+    assert.ok(sock && sock.endsWith(".sock"), "VYRE_SOCKET is the thread's own");
+    assert.notEqual(sock, paths(w.root).socket, "not vyred's own socket");
+    assert.equal(fs.statSync(sock).mode & 0o777, 0o660);
+    // It said "cli"; vyred bound it to the thread.
+    assert.deepEqual(JSON.parse((await w.said(th.id)).at(-1)).data, { caller: `mcp:thread:${th.id}`, thread: th.id, agent: null });
+    // A person's tool is refused on it, whatever the session says it is.
+    await w.tool("threads.send", { thread: th.id, text: "vyre-sock threads.answer {}", surface: "deck" });
+    await w.finished(th.id, 2);
+    assert.equal(JSON.parse((await w.said(th.id)).at(-1)).error.code, "denied");
+    // Stopped: the socket is gone; the next start gets a new one.
+    await w.tool("threads.stop", { thread: th.id });
+    await until(() => !fs.existsSync(sock), "the socket to go");
+    // Off: no socket, and vyred's own VYRE_SOCKET is never handed down.
+    const saved = process.env.VYRE_SOCKET;
+    process.env.VYRE_SOCKET = "/nowhere/vyred.sock";
+    t.after(() => { if (saved === undefined) delete process.env.VYRE_SOCKET; else process.env.VYRE_SOCKET = saved; });
+    const w2 = await boot(t, { driver, sessions: { thread_socket: "off" } });
+    const b = (await w2.tool("threads.start", { cwd: w2.work, prompt: "hello", surface: "deck" })).data;
+    await w2.finished(b.id);
+    assert.equal(w2.launches().at(-1).socket, null);
+  });
+
+  test(`${driver}: the Capsule's quick answer is Vyre IQ: the whole prompt, its facts numbered, thinking off, the version on the chip`, { skip }, async t => {
+    const w = await boot(t, { driver });
+    // What an older Capsule sends: its own instruction lines around the facts (dropped).
+    const append = "Answer briefly, in markdown. You have no tools here; if the question needs the user's files or accounts, say so in one line.\n\n"
+      + "What the user's own notes say:\n- Your partner is Sam (noted 2 weeks ago)\n- The user said, 3 days ago: \"the bakery is Northwind\"\n\n"
+      + "If these answer the question, answer from them and say when the user said it.";
+    const q = (await w.tool("threads.start", { cwd: w.work, prompt: "who is my partner", lean: true, purpose: "capsule", surface: "capsule", append })).data;
+    await w.finished(q.id);
+    const l = w.launches().at(-1);
+    assert.ok(!l.argv.includes("--append-system-prompt"), "nothing of Claude Code's own prompt is kept");
+    const sys = l.argv[l.argv.indexOf("--system-prompt") + 1];
+    assert.match(sys, /^You are Vyre IQ/);
+    assert.match(sys, /IQ facts:\n\[1\] Your partner is Sam \(noted 2 weeks ago\)\n\[2\] The user said, 3 days ago: "the bakery is Northwind"$/);
+    assert.doesNotMatch(sys, /no tools here|in markdown|What the user's own notes say/, "the Capsule's old instructions are gone");
+    assert.doesNotMatch(sys, /\u2014/, "no em dash in the prompt itself");
+    assert.equal(l.max_thinking, "0", "thinking off");
+    const started = (await w.events(q.id)).find(e => e.type === "thread.started").payload;
+    assert.equal(started.prompt, "capsule@1");
+    assert.equal((await w.tool("threads.get", { thread: q.id })).data.thread.origin, "capsule", "the thread says the Capsule started it");
+
+    // A person's own version at scope capsule, versioned; an agent never edits it.
+    assert.equal((await w.tool("sessions.prompt.set", { scope: "capsule", text: "Call alex by name." }, "mcp")).error.code, "denied");
+    assert.equal((await w.tool("sessions.prompt.set", { scope: "capsule", text: "Call alex by name." })).data.version, 1);
+    const r = (await w.tool("threads.start", { cwd: w.work, prompt: "who is my partner", lean: true, purpose: "capsule", surface: "capsule" })).data;
+    await w.finished(r.id);
+    const sys2 = w.launches().at(-1).argv[w.launches().at(-1).argv.indexOf("--system-prompt") + 1];
+    assert.match(sys2, /^You are Vyre IQ[\s\S]*Call alex by name\.\n\nIQ facts:\n\(none\)$/);
+    assert.equal((await w.events(r.id)).find(e => e.type === "thread.started").payload.prompt, "capsule@own-1");
+    const p = (await w.tool("sessions.prompt.preview", { purpose: "capsule" })).data;
+    assert.deepEqual(p.parts.map(x => [x.scope, x.version, x.builtin || false]), [["capsule", 1, true], ["capsule", 1, false]]);
+    assert.equal(p.temperature, 0);
+
+    // A chat thread is untouched: Claude Code's own prompt, nothing of Vyre IQ.
+    const c = (await w.tool("threads.start", { cwd: w.work, prompt: "hello", surface: "deck", append: "Vyre's own words." })).data;
+    await w.finished(c.id);
+    const cl = w.launches().at(-1);
+    assert.ok(!cl.argv.includes("--system-prompt"));
+    assert.equal(cl.max_thinking, null);
+  });
+
+  test(`${driver}: the model comes from the purpose map, a project override and an agent, and the chip says it`, { skip }, async t => {
+    const w = await boot(t, { driver, sessions: { models: { capsule: "claude-haiku-4-5" } } });
+    const a = (await w.tool("threads.start", { cwd: w.work, prompt: "hello", surface: "deck" })).data;
+    await w.finished(a.id);
+    const started = (await w.events(a.id)).find(e => e.type === "thread.started").payload;
+    assert.deepEqual([started.provider, started.model, started.purpose, started.auth], ["claude", "opus", "chat", "ambient"]);
+    assert.equal(w.launches().at(-1).argv[w.launches().at(-1).argv.indexOf("--model") + 1], "opus");
+    const q = (await w.tool("threads.start", { cwd: w.work, prompt: "hello", lean: true, purpose: "capsule" })).data;
+    assert.equal(q.model, "claude-haiku-4-5", "config overrides a purpose");
+    const job = (await w.tool("threads.start", { cwd: w.work, prompt: "hello", lean: true })).data;
+    assert.equal(job.model, "haiku", "a lean thread is a job, on the fast model");
+    assert.ok(!(await w.tool("projects.create", { name: "Harlow Legal", home: w.work })).error);
+    assert.equal((await w.tool("sessions.models.set", { scope: "project:harlow-legal", model: "sonnet" })).data.model, "sonnet");
+    assert.equal((await w.tool("sessions.models.set", { scope: "project:harlow-legal", model: "opus" }, "mcp")).error.code, "denied", "a model never picks models");
+    const p = (await w.tool("threads.start", { project: "harlow-legal", prompt: "hello" })).data;
+    assert.equal(p.model, "sonnet");
+    const e = (await w.tool("threads.start", { cwd: w.work, prompt: "hello", model: "haiku" })).data;
+    assert.equal(e.model, "haiku", "an explicit model wins");
+    const map = (await w.tool("sessions.models.get", {})).data;
+    assert.deepEqual([map.purposes.chat.model, map.purposes.memory.model, map.purposes.capsule.model, map.projects["harlow-legal"]], ["opus", "haiku", "claude-haiku-4-5", "sonnet"]);
+    // The box's one list of aliases, for every surface's model picker (test/cohesion-drift.test.js).
+    assert.deepEqual(map.aliases.map((/** @type {any} */ m) => m.id), ["opus", "sonnet", "haiku"]);
+  });
+
+}

@@ -1,0 +1,209 @@
+/* Now. Boards: DeckNow (desktop), PhoneNow (phone). */
+
+.now { min-height: 100%; }
+.now-col { width: 880px; max-width: 100%; margin: 0 auto; padding: 28px 24px 48px; }
+.now-head { display: flex; flex-direction: column; gap: 10px; padding-left: 64px; padding-bottom: 22px; }
+.now-assistant { font-size: 13px; line-height: 18px; color: var(--text-2); }
+.now-assistant:empty { display: none; }
+.now-assistant b { color: var(--text); font-weight: 500; }
+/* No assistant yet: the Create your assistant card (js/assistant-setup.js) stands in for the line.
+   The same rules are in agents.css, since each view loads only its own stylesheet. */
+.now-assistant.has-card { font-size: inherit; line-height: inherit; color: var(--text); margin-top: 8px; }
+.asst-card { padding: 20px 24px 18px; border: 1px solid var(--rule-strong); border-radius: var(--radius-card, 12px); background: var(--panel); }
+.asst-title { font-size: 20px; line-height: 26px; font-weight: 600; letter-spacing: -0.01em; margin: 0; color: var(--text); }
+.asst-lede { margin: 4px 0 0; font-size: 14px; line-height: 20px; }
+.asst-form { display: flex; flex-direction: column; gap: 6px; margin-top: 16px; max-width: 480px; }
+.asst-label { color: var(--text-2); }
+.asst-row { display: flex; gap: 8px; }
+.asst-row .input { flex: 1; min-width: 0; }
+.asst-go { height: 40px; flex-shrink: 0; }
+.asst-status { margin: 2px 0 0; color: var(--beacon-ink); }
+.asst-status:empty { display: none; }
+.now-needs { display: flex; flex-direction: column; gap: 12px; }
+.now-label { display: flex; align-items: center; gap: 10px; padding-left: 64px; }
+.now-sec { margin-top: 26px; padding-left: 64px; }
+.now-sec .section-head { padding-bottom: 12px; }
+.phone-only { display: none; }
+.nowrap { white-space: nowrap; }
+
+.need-row { display: flex; }
+.need-time { width: 64px; flex-shrink: 0; padding-top: 18px; font-size: 12px; line-height: 16px; color: var(--beacon-ink); }
+.need { flex-grow: 1; min-width: 0; display: flex; flex-direction: column; padding: 15px 19px; }
+.need-top { display: flex; justify-content: space-between; align-items: baseline; gap: 16px; }
+.need h3 { font-size: 17px; line-height: 24px; font-weight: 600; }
+.need-cmd { font-size: 15px; font-weight: 500; padding: 1px 6px; border-radius: var(--radius-chip, 4px); background: var(--code-bg); }
+.need-why { margin-top: 4px; font-size: 14px; line-height: 20px; color: var(--text-2); }
+/* Send was approved and the sender failed: still needs the user, so it takes the Beacon colour. */
+.need-error { margin-top: 0; color: var(--beacon-ink); }
+.need-body:not(:empty) { margin-top: 14px; padding: 12px 0; border-top: 1px solid var(--rule); border-bottom: 1px solid var(--rule);
+  display: flex; flex-direction: column; gap: 8px; }
+.need-meta { display: flex; gap: 20px; flex-wrap: wrap; }
+.need-text { font-size: 14px; line-height: 21px; color: var(--text); max-width: 700px; white-space: pre-wrap; }
+.need-recalled { display: flex; align-items: center; gap: 8px; font-size: 13px; line-height: 18px; color: var(--text-2); }
+.need-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; padding-top: 14px; }
+.need .need-body:empty + .need-actions { padding-top: 8px; }
+.need [role=status]:not(:empty) { margin-top: 10px; }
+.need-compact { display: none; }
+
+.work-row { display: flex; align-items: center; gap: 16px; min-height: 48px; padding: 6px 0; }
+.work-agent { width: 44px; font-size: 14px; line-height: 20px; color: var(--text-2); }
+.work-main { flex-grow: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.work-title { display: flex; gap: 10px; align-items: baseline; min-width: 0; font-size: 14px; line-height: 20px; }
+.work-since { width: 56px; text-align: right; flex-shrink: 0; }
+.work-title .tag.machine { align-self: center; }
+
+.fact-row { display: flex; align-items: center; gap: 14px; min-height: 44px; padding: 4px 0; }
+.fact-main { flex-grow: 1; min-width: 0; display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; row-gap: 0; }
+.fact-text { font-size: 14px; line-height: 20px; }
+
+@media (max-width: 719px), (max-height: 500px) and (pointer: coarse) {
+  .now-col { padding: 12px 16px 24px; }
+  .now-head { padding-left: 0; padding-bottom: 20px; gap: 6px; }
+  .now-head .lbl { display: none; }
+  .now-title { font-size: 28px; line-height: 34px; letter-spacing: -0.02em; }
+  .now-head .muted { display: none; }
+  .now-label { padding-left: 0; }
+  .now-label .dot { display: none; }
+  .now-sec { padding-left: 0; margin-top: 24px; }
+  .phone-only { display: inline; }
+  .need-row .need-time, .need-row .need { display: none; }
+  .need-compact { display: flex; flex-direction: column; gap: 4px; padding: 13px 15px; text-decoration: none; color: var(--text); flex-grow: 1; }
+  .need-compact-top { display: flex; justify-content: space-between; align-items: center; }
+  .need-compact-top .lbl { display: flex; align-items: center; gap: 8px; }
+  .need-compact-top .dot { width: 6px; height: 6px; }
+  .need-compact-title { display: flex; justify-content: space-between; align-items: center; gap: 8px; font-size: 16px; line-height: 22px; font-weight: 600; }
+  .need-compact-title code { font-size: 14px; font-weight: 500; }
+  .need-compact-title svg { color: var(--text-2); flex-shrink: 0; }
+  .now-needs { gap: 8px; }
+  .work-agent, .work-watch { display: none; }
+  .work-row { gap: 12px; min-height: 56px; }
+  .work-title { flex-direction: column; align-items: stretch; gap: 0; }
+  .work-title .small { display: none; }
+  .work-since { display: none; }
+  .work-chev { color: var(--text-2); display: flex; }
+  .now-sec .section-head .lbl + .lbl { display: none; }
+  .now-sec .section-head .now-count { display: none; }
+  .work-title .tag.machine { align-self: flex-start; }
+  .fact-row .ibtn { display: none; }
+  .now-assistant.has-card { margin-top: 4px; }
+  .asst-card { padding: 16px 16px 14px; }
+  /* 16px keeps iOS from zooming into the field; 44px is a thumb. */
+  .asst-card .input { font-size: 16px; height: 44px; }
+  .asst-go { height: 44px; }
+}
+.asst-check { display: flex; align-items: flex-start; gap: 10px; margin-top: 12px; color: var(--text); cursor: pointer; }
+.asst-check input { width: 18px; height: 18px; margin: 1px 0 0; flex-shrink: 0; accent-color: var(--primary-bg); }
+
+/* ---- Now on a phone (js/now-phone.js; docs/design/phone.md sections 4, 9, 11, 12) ------------ */
+
+.np { padding: 0 16px calc(56px + 16px + env(safe-area-inset-bottom, 0px)); }
+.np-sec { margin-top: 24px; }
+.np-remind-slot:empty { display: none; }
+.np-remind-slot { margin-top: 12px; }
+.np-remind { display: flex; align-items: center; gap: 12px; width: 100%; min-height: 52px; padding: 12px 14px; text-align: left; cursor: pointer;
+  background: var(--panel); color: var(--text); border: 1px solid var(--rule); border-radius: 10px; font-family: var(--sans); }
+.np-remind-t { flex: 1 1 auto; font-size: 16px; line-height: 21px; font-weight: 600; }
+.np-remind svg, .np-chev { color: var(--label); flex-shrink: 0; }
+.np-remind + * { margin-top: 0; }
+
+.np-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; margin-bottom: 8px; }
+.np-h { display: flex; align-items: center; gap: 8px; margin: 0; font-size: 20px; line-height: 25px; font-weight: 600; letter-spacing: 0; color: var(--text); }
+.np-beacon { width: 8px; height: 8px; border-radius: 50%; background: var(--beacon-dot); flex-shrink: 0; }
+.np-count { font-size: 15px; line-height: 20px; color: var(--label); font-variant-numeric: tabular-nums; }
+.np-card { background: var(--panel); border: 1px solid var(--rule); border-radius: 10px; overflow: hidden; }
+.np-nothing, .np-sub { margin: 0; font-size: 15px; line-height: 20px; color: var(--label); }
+.np-sub { margin-bottom: 8px; }
+.np-hint { margin: 8px 0 0; font-size: 13px; line-height: 18px; color: var(--label); }
+
+/* One row: the revealed actions sit under the face, which slides. */
+.np-row { position: relative; overflow: hidden; touch-action: pan-y; }
+.np-row + .np-row, .np-card > * + .np-row { border-top: 1px solid var(--rule); }
+.np-rev { position: absolute; inset: 0; display: flex; align-items: center; border: 0; padding: 0; margin: 0; cursor: pointer; visibility: hidden;
+  font-family: var(--sans); font-size: 13px; line-height: 16px; font-weight: 600; }
+.np-rev-r { justify-content: flex-start; background: var(--primary-bg); color: var(--primary-ink); }
+.np-rev-l { justify-content: flex-end; background: var(--hover); color: var(--text); }
+.np-rev-in { width: 100px; display: flex; flex-direction: column; align-items: center; gap: 4px; }
+.np-show-r .np-rev-r, .np-show-l .np-rev-l { visibility: visible; }
+.np-face { position: relative; background: var(--panel); touch-action: pan-y; }
+/* Promoted to its own layer only while it moves (js/now-phone.js), not for every row at rest. */
+.np-face.np-drag, .np-face.np-spring { will-change: transform; }
+.np-face.np-spring { transition: transform 350ms cubic-bezier(0.25, 1, 0.5, 1); }
+.np-main { display: flex; align-items: flex-start; gap: 12px; width: 100%; padding: 12px 14px; text-align: left; border: 0; margin: 0;
+  background: var(--panel); color: var(--text); font-family: var(--sans); cursor: pointer; transition: background-color 120ms ease-out; }
+.np-main:active { background: var(--hover); transition: none; }
+.np-main:focus-visible { outline: 2px solid var(--focus); outline-offset: -2px; }
+.np-tile { flex-shrink: 0; display: grid; place-items: center; width: 32px; height: 32px; border-radius: 8px; background: var(--hover);
+  border: 1px solid var(--rule-strong); color: var(--text); font-size: 15px; line-height: 1; font-weight: 600; }
+.np-lines { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; }
+.np-l1 { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
+.np-t1 { font-size: 16px; line-height: 21px; font-weight: 600; color: var(--text); min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.np-time { flex-shrink: 0; font-size: 13px; line-height: 18px; color: var(--label); }
+.np-t2 { font-size: 15px; line-height: 20px; color: var(--text-2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.np-t2.np-mono { font-family: var(--mono); font-size: 13px; line-height: 20px; }
+.np-t2:empty { display: none; }
+.np-t3 { font-size: 13px; line-height: 18px; color: var(--label); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.np-err:empty { display: none; }
+.np-err { font-size: 13px; line-height: 18px; color: var(--text); margin-top: 2px; }
+.np-failed { color: var(--label); }
+.np-chev { display: flex; align-self: center; }
+.np-collapsing { transition: height 180ms ease-out; }
+.np-collapsing + .np-row { border-top-color: transparent; }
+
+/* The row's actions as real buttons: for a keyboard (shown while focused) and a screen reader. */
+.np-kb { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+.np-kb:focus-within { position: static; width: auto; height: auto; clip: auto; overflow: visible; display: flex; gap: 8px; padding: 0 14px 12px 58px; background: var(--panel); }
+/* .np-kb-b is the secondary touch button (css/buttons.css). */
+
+.np-skel { padding: 0; }
+.np-skel-row { height: 78px; background: var(--hover); opacity: 0.6; }
+.np-skel-row + .np-skel-row { border-top: 1px solid var(--rule); }
+
+/* The Undo toast is the Deck's one toast (js/toast.js, css/toast.css). */
+
+/* Working. */
+.np-wrow { display: flex; align-items: flex-start; gap: 12px; padding: 12px 14px; text-decoration: none; color: var(--text); }
+.np-wrow + .np-wrow { border-top: 1px solid var(--rule); }
+.np-wrow:active { background: var(--hover); }
+.np-tile svg { color: var(--text-2); }
+.np-bar { height: 3px; margin-top: 8px; border-radius: 2px; background: var(--rule); overflow: hidden; }
+.np-bar > span { display: block; height: 100%; background: var(--text); border-radius: 2px; }
+
+/* From memory. */
+.np-mem { display: flex; flex-direction: column; gap: 6px; padding: 12px 14px; border-radius: 10px; background: var(--hover); text-decoration: none; color: var(--text); }
+.np-mem-h { display: flex; align-items: center; gap: 6px; font-size: 13px; line-height: 18px; font-weight: 600; color: var(--text-2); }
+.np-mem-t { font-size: 15px; line-height: 21px; color: var(--text); }
+.np-mem-s { font-size: 13px; line-height: 18px; color: var(--text-2); }
+.np-mem-sec:empty { display: none; }
+
+@media (prefers-reduced-motion: reduce) {
+  .np-face.np-spring, .np-collapsing, .np-main { transition: none; }
+}
+
+/* What each agent's computer is doing now (js/glass-mini.js, glass-mini.md's pill variant). */
+.gm { display: flex; flex-direction: column; gap: 8px; margin: 0 0 24px; }
+.gm[hidden] { display: none; }
+.gm-pill { display: flex; align-items: center; flex-wrap: wrap; gap: 4px 8px; min-height: 28px; padding: 4px 12px; border: 1px solid var(--rule);
+  border-radius: var(--radius-full, 999px); color: var(--text); text-decoration: none; font-size: var(--size-base, 13px); line-height: var(--line-base, 18px); }
+.gm-pill:hover { background: var(--hover); }
+.gm-pill:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+.gm-agent { font-weight: 600; flex-shrink: 0; }
+.gm-step { min-width: 0; flex: 1 1 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; transition: opacity 150ms var(--ease, ease); }
+.gm-age { flex-shrink: 0; font-size: var(--size-meta, 12px); color: var(--label); }
+.gm-why { flex-basis: 100%; font-size: var(--size-meta, 12px); color: var(--text-2); }
+/* The card: a still of the agent's screen, 16:10, letterboxed, never cropped; the step line under it. */
+.gm-card { display: flex; flex-direction: column; gap: 8px; width: 240px; max-width: 100%; color: var(--text); text-decoration: none; }
+.gm-card:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; border-radius: 8px; }
+.gm-frame { position: relative; aspect-ratio: 16 / 10; border-radius: 8px; overflow: hidden; background: var(--code-bg); border: 1px solid var(--rule-strong); }
+.gm-frame img { display: block; width: 100%; height: 100%; object-fit: contain; }
+.gm-frame.paused img { opacity: 0.6; }
+.gm-live { position: absolute; top: 8px; left: 8px; height: 20px; padding: 0 8px; display: inline-flex; align-items: center; border-radius: 10px;
+  background: var(--bg); color: var(--text); font-size: 12px; line-height: 16px; font-weight: 600; }
+.gm-paused { font-size: var(--size-meta, 12px); line-height: var(--line-meta, 16px); color: var(--label); }
+.gm-line { display: flex; align-items: center; flex-wrap: wrap; gap: 4px 8px; font-size: var(--size-base, 13px); line-height: var(--line-base, 18px); }
+.gm-say { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
+.np-gm { margin: 0 16px 16px; }
+@media (max-width: 719px), (max-height: 500px) and (pointer: coarse) {
+  .gm-pill { min-height: 44px; border-radius: var(--radius-card, 12px); }
+  .gm-card { width: 100%; }
+}
+@media (prefers-reduced-motion: reduce) { .gm-step { transition: none; } }

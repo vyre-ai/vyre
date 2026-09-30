@@ -49,6 +49,53 @@
     });
   });
 
+  // Install tabs: Linux box / Mac / What it needs. One group can appear more than once on the
+  // page (the hero and the end-of-page install both use it), so this wires every `.itabs` found.
+  // Each tab's id ends in a stable key ("linux", "mac", "needs") shared across both groups; that
+  // key is what a remembered choice and the OS guess are stored and matched by.
+  const tabKey = (el) => el.id.split('-').pop();
+  const STORE_KEY = 'vyre-install-os';
+  const readStored = () => { try { return localStorage.getItem(STORE_KEY); } catch { return null; } };
+  const writeStored = (key) => { try { localStorage.setItem(STORE_KEY, key); } catch {} };
+  // A guess only, and only for the default: Mac reads as "mac" (checked in both platform and the
+  // UA string, since navigator.platform can be frozen or absent and a --user-agent override does
+  // not always change it), anything else stays "linux". A person can always click a different tab.
+  const platform = (navigator.userAgentData && navigator.userAgentData.platform) || navigator.platform || '';
+  const guessOs = /mac/i.test(platform) || /mac/i.test(navigator.userAgent || '') ? 'mac' : 'linux';
+
+  document.querySelectorAll('.itabs').forEach((tabs) => {
+    const tabEls = [...tabs.querySelectorAll('.itab')];
+    const select = (tab, { remember = true } = {}) => {
+      tabEls.forEach((t) => {
+        const on = t === tab;
+        t.setAttribute('aria-selected', String(on));
+        t.tabIndex = on ? 0 : -1;
+        const panel = document.getElementById(t.getAttribute('aria-controls'));
+        if (panel) panel.hidden = !on;
+      });
+      if (remember) writeStored(tabKey(tab));
+    };
+    tabs.addEventListener('click', (e) => {
+      const tab = e.target.closest('.itab');
+      if (tab) select(tab);
+    });
+    tabs.addEventListener('keydown', (e) => {
+      if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(e.key)) return;
+      const at = tabEls.indexOf(document.activeElement);
+      if (at < 0) return;
+      e.preventDefault();
+      const next = e.key === 'ArrowLeft' ? Math.max(0, at - 1) : e.key === 'ArrowRight' ? Math.min(tabEls.length - 1, at + 1)
+        : e.key === 'Home' ? 0 : tabEls.length - 1;
+      tabEls[next].focus();
+      select(tabEls[next]);
+    });
+    // Default: a remembered choice wins, then the OS guess, then whatever the markup already
+    // marks selected. Silent (does not re-write the choice a person didn't just make).
+    const want = readStored() || guessOs;
+    const initial = tabEls.find((t) => tabKey(t) === want);
+    if (initial && !initial.matches('[aria-selected="true"]')) select(initial, { remember: false });
+  });
+
   // The demo.
   const demo = document.getElementById('demo');
   if (!demo || typeof demo.showModal !== 'function') return;
@@ -111,7 +158,15 @@
     status.textContent = 'Demo: on your Mac this sends the final words you see. Nothing left this page.';
   }));
 
-  // Control pressed twice, with no other key in between, toggles the Capsule.
+  // Option-Space toggles the Capsule, same as the real default. Control pressed twice, with no
+  // other key in between, does too: that's the optional toggle a person turns on from the
+  // menu-bar mark, kept here so the demo matches either way someone tries it.
+  document.addEventListener('keydown', (e) => {
+    if (e.altKey && e.code === 'Space') {
+      e.preventDefault();
+      if (demo.open) close(); else open();
+    }
+  });
   let last = 0;
   document.addEventListener('keydown', (e) => {
     if (e.key !== 'Control') { last = 0; return; }

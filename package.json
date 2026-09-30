@@ -1,30 +1,70 @@
 {
   "name": "vyre",
-  "version": "0.0.1",
+  "version": "0.1.1",
   "description": "Agents with their own computers, on your own box. Runs Claude Code on a machine you own and adds structure, memory, a vault and a private address.",
   "type": "module",
   "bin": {
-    "vyre": "bin/vyre"
+    "vyre": "bin/vyre",
+    "git-credential-vyre": "bin/git-credential-vyre"
   },
   "engines": {
     "node": ">=22.5"
   },
   "scripts": {
-    "test": "node --test --test-reporter=spec \"core/**/*.test.js\" \"test/**/*.test.js\" \"deck/**/*.test.js\" \"modules/**/*.test.js\" \"local/*/*.test.js\" \"local/*/lib/*.test.js\""
-  },
-  "optionalDependencies": {
-    "@huggingface/transformers": "^4.3.0"
+    "postinstall": "node scripts/postinstall.mjs",
+    "pretest": "node test/tmp-guard.mjs before",
+    "test": "node --test --test-reporter=spec \"core/**/*.test.js\" \"test/**/*.test.js\" \"deck/**/*.test.js\" \"modules/**/*.test.js\" \"local/*/*.test.js\" \"relay/**/*.test.js\" \"apps/test/*.test.js\" \"apps/app/**/*.test.js\" \"lib/**/*.test.js\"",
+    "posttest": "node test/tmp-guard.mjs after",
+    "perf-check": "node scripts/perf-check",
+    "eval:memory": "node scripts/eval-memory.js",
+    "eval:answer": "node scripts/eval-answer.js",
+    "eval:iq": "node scripts/eval-iq-prompt.js --live",
+    "docs:check": "node scripts/docs-check",
+    "docs:build": "node scripts/build-docs",
+    "docs:ref": "node scripts/gen-docs-reference",
+    "tokens": "node scripts/gen-tokens",
+    "design:audit": "node scripts/design-audit",
+    "docs:shots": "node scripts/docs-shots",
+    "stress-drive": "nice -n 10 node scripts/stress-drive"
   },
   "files": [
     "bin",
+    "build.json",
     "core",
     "harness",
+    "lib",
+    "relay/client",
+    "packages/module-sdk",
     "local",
     "deck",
     "modules",
+    "box",
+    "apps/app/dist",
+    "scripts/install-box.sh",
+    "scripts/postinstall.mjs",
     "docs",
+    "!docs/work",
+    "!docs/proposals",
+    "!docs/design",
+    "!docs/**/*.png",
+    "CHANGELOG.md",
     "LICENSE",
-    "README.md"
+    "NOTICE",
+    "README.md",
+    "!**/*.test.js",
+    "!**/fixtures/**",
+    "!deck/test/**",
+    "!**/node_modules/**",
+    "!local/capsule/native/.build/**",
+    "!local/capsule/bin/**",
+    "!**/.build/**",
+    "!**/*.app/**",
+    "!**/DerivedData/**",
+    "!local/capsule/native/Tests/**",
+    "!**/.DS_Store",
+    "!**/testing.js",
+    "!**/testing/**",
+    "packages/module-sdk/testing.js"
   ],
   "homepage": "https://vyre.run",
   "repository": {

@@ -14,8 +14,9 @@
 // so a CLI can say "backup from <date>, 42 items" before it asks for the passphrase.
 
 import crypto from "node:crypto";
-import { canonical, sealItem } from "./crypto.js";
-import { readSealed, writeSealed } from "./store.js";
+import { canonical } from "./crypto.js";
+import { readSealed } from "./store.js";
+import { cleanDetails } from "../../lib/vault-kinds/kinds.js";
 
 const PREFIX = "vyre-backup:v1:";
 const AAD = "vyre:backup:v1";
@@ -51,6 +52,9 @@ function outer(blob) {
   return o;
 }
 
+/** Only the details this Vyre can check. @param {Record<string, any>} d */
+const knownDetails = d => Object.fromEntries(Object.entries(d).filter(([k, v]) => { try { cleanDetails({ [k]: v }); return true; } catch { return false; } }));
+
 /**
  * Seal the whole vault under a passphrase.
  * @param {import("./vault.js").Vault} vault
@@ -63,19 +67,23 @@ export async function backup(vault, passphrase, { params = SCRYPT } = {}) {
   checkPassphrase(passphrase);
   const db = vault.db;
   const items = [];
-  for (const r of /** @type {any[]} */ (db.prepare("SELECT * FROM vault_items ORDER BY name").all())) {
+  await vault.key();
+  // Rows that fail their check are left out: a backup carries only what this vault wrote.
+  const ok = table => r => vault.rowOk(table, r);
+  for (const r of /** @type {any[]} */ (db.prepare("SELECT * FROM vault_items ORDER BY name").all().filter(ok("vault_items")))) {
     items.push({
       name: r.name, kind: r.kind, description: r.description, fields: await vault.fields(r), order: json(r.fields, []),
       url: r.url ?? null, hosts: json(r.hosts, []), origin: r.origin ?? null, rotate: r.rotate ?? null,
-      created: r.created, updated: r.updated,
+      apps: json(r.apps, []), reprompt: Boolean(r.reprompt), created: r.created, updated: r.updated,
+      ...(r.details && r.details !== "{}" ? { details: json(r.details, {}) } : {}),
     });
   }
   const at = Date.now();
   const payload = {
     from: vault.name, at, items,
-    grants: db.prepare("SELECT * FROM vault_grants WHERE status = 'active' ORDER BY id").all().map(r => ({ ...r })),
+    grants: db.prepare("SELECT * FROM vault_grants WHERE status = 'active' ORDER BY id").all().filter(ok("vault_grants")).map(({ mac, ...r }) => r),
     people: db.prepare("SELECT * FROM vault_people ORDER BY name").all().map(r => ({ ...r })),
-    passes: db.prepare("SELECT * FROM vault_passes ORDER BY id").all().map(r => ({ ...r })),
+    passes: db.prepare("SELECT * FROM vault_passes ORDER BY id").all().filter(ok("vault_passes")).map(({ mac, ...r }) => r),
     held: db.prepare("SELECT * FROM vault_held ORDER BY id").all().map(r => ({ ...r })),
     identity: await vault.identity(),
   };
@@ -124,28 +132,40 @@ export async function restore(vault, blob, passphrase, { mode = "merge", who = "
   if (mode === "replace" && db.prepare("SELECT 1 FROM vault_items LIMIT 1").get()) {
     throw new Error("replace needs an empty vault; this one has items · restore with merge instead");
   }
-  const mk = await vault.key();
+  await vault.key();
+
+  // Every restored grant and pass row is signed as it goes in, as if this vault had written it.
+  const insert = (table, cols, rows) => {
+    const stmt = db.prepare(`INSERT OR IGNORE INTO ${table} (${cols.join(", ")}) VALUES (${cols.map(() => "?").join(",")})`);
+    let n = 0;
+    for (const r of rows || []) {
+      const c = Number(stmt.run(...cols.map(c => r[c] ?? null)).changes);
+      if (c && cols[0] === "id" && table !== "vault_held") vault.sign(table, r.id);
+      n += c;
+    }
+    return n;
+  };
+  // Grants go in before items, so a granted login lands in the agent vault, where its module can use it.
+  const grants = insert("vault_grants", ["id", "item", "module", "watcher", "status", "by", "at"],
+    (payload.grants || []).map(g => ({ ...g, watcher: g.watcher ?? "" })));
 
   const added = [], kept = [];
   for (const it of payload.items) {
     if (vault.row(it.name)) { kept.push(it.name); continue; }
     await vault.put({ name: it.name, kind: it.kind, description: it.description, fields: it.fields,
-      url: it.url || undefined, hosts: it.hosts, origin: it.origin || undefined }, "restore");
+      url: it.url || undefined, hosts: it.hosts, origin: it.origin || undefined,
+      ...(Array.isArray(it.apps) ? { apps: it.apps } : {}), ...(typeof it.reprompt === "boolean" ? { reprompt: it.reprompt } : {}),
+      // A detail from a newer Vyre that this one does not know is dropped, not a failed restore.
+      ...(it.details && typeof it.details === "object" ? { details: knownDetails(it.details) } : {}) }, "restore");
     // Canonical JSON sorts keys, so the listed field order is carried separately and put back.
-    const names = json(vault.row(it.name).fields, []);
+    const row = vault.row(it.name);
+    const names = json(row.fields, []);
     const order = Array.isArray(it.order) && it.order.length === names.length && it.order.every(k => names.includes(k)) ? it.order : names;
-    db.prepare("UPDATE vault_items SET fields=?, rotate=?, created=?, updated=? WHERE name=?").run(JSON.stringify(order), it.rotate ?? null, it.created, it.updated, it.name);
+    db.prepare("UPDATE vault_items SET fields=?, rotate=?, created=?, updated=? WHERE id=?").run(JSON.stringify(order), it.rotate ?? null, it.created, it.updated, row.id);
+    vault.sign("vault_items", row.id);
     added.push(it.name);
   }
 
-  const insert = (table, cols, rows) => {
-    const stmt = db.prepare(`INSERT OR IGNORE INTO ${table} (${cols.join(", ")}) VALUES (${cols.map(() => "?").join(",")})`);
-    let n = 0;
-    for (const r of rows || []) n += Number(stmt.run(...cols.map(c => r[c] ?? null)).changes);
-    return n;
-  };
-  const grants = insert("vault_grants", ["id", "item", "module", "watcher", "status", "by", "at"],
-    (payload.grants || []).map(g => ({ ...g, watcher: g.watcher ?? "" })));
   const people = insert("vault_people", ["name", "sign", "box", "relay", "login", "added"], payload.people);
   const passes = insert("vault_passes", ["id", "holder", "holder_sign", "holder_box", "holder_login", "items", "mode", "hosts", "expires", "note", "status", "by", "created", "issued", "revoked"],
     (payload.passes || []).map(p => ({ ...p, note: p.note ?? "" })));
@@ -156,7 +176,7 @@ export async function restore(vault, blob, passphrase, { mode = "merge", who = "
   // replace, where the vault is being made into the one that was backed up.
   let identity = "kept";
   if (payload.identity && (mode === "replace" || !readSealed(vault.dir, IDENTITY))) {
-    writeSealed(vault.dir, IDENTITY, sealItem(mk, IDENTITY, IDENTITY, payload.identity));
+    await vault.writeIdentity(payload.identity);
     identity = "restored";
   }
 

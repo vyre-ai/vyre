@@ -161,18 +161,18 @@
           <sc-if value="{{ isHeld }}" hint-placeholder-val="{{ false }}">
             <div style="display: flex; align-items: center; gap: 12px; height: 48px; padding: 0 14px 0 16px;"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M2.5 4L8 13L11.52 7.24" stroke="#F1EEE6" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><circle cx="13.5" cy="4" r="1.8" fill="#C6F36B"/></svg>
               <span style="font-size: 15px; line-height: 20px; color: #F1EEE6; flex-grow: 1;">juno drafted a reply to Dana</span>
-              <span class="mono" style="display: inline-flex; align-items: center; gap: 6px; padding: 2px 8px; border-radius: 4px; background: rgba(255,122,89,0.12); color: #FF7A59; font-size: 11px; line-height: 14px; font-weight: 500; letter-spacing: 0.16em;"><span style="width: 6px; height: 6px; border-radius: 3px; background: #FF7A59;"></span>HELD FOR YOU</span>
+              <span class="mono" style="display: inline-flex; align-items: center; gap: 6px; padding: 2px 8px; border-radius: 4px; background: rgba(184,164,255,0.12); color: #B8A4FF; font-size: 11px; line-height: 14px; font-weight: 500; letter-spacing: 0.16em;"><span style="width: 6px; height: 6px; border-radius: 3px; background: #B8A4FF;"></span>HELD FOR YOU</span>
             </div>
             <div style="border-top: 1px solid #2B2926; padding: 12px 16px 14px 44px; display: flex; flex-direction: column; gap: 10px;">
               <div style="display: grid; grid-template-columns: 56px minmax(0, 1fr); row-gap: 4px; font-size: 12px; line-height: 16px;">
-                <span style="color: #8C877D;">To</span><span class="mono" style="font-size: 12px; color: #B3AEA4;">Dana Reyes &lt;dana@harlow.example&gt;</span>
-                <span style="color: #8C877D;">Subject</span><span style="color: #B3AEA4;">Re: Q3 report</span>
+                <span style="color: #8C877D;">To</span><span class="mono" style="font-size: 12px; color: #F1EEE6; justify-self: start; box-shadow: inset 0 -1px 0 #C6F36B; outline: none;"><span contenteditable="plaintext-only" style="outline: none;">Dana Reyes &lt;dana@harlow.example&gt;</span><span aria-hidden="true" style="display: inline-block; width: 2px; height: 16px; margin-left: 1px; background: #C6F36B; vertical-align: middle;"></span></span>
+                <span style="color: #8C877D;">Subject</span><span contenteditable="plaintext-only" style="color: #B3AEA4; outline: none;">Re: Q3 report</span>
               </div>
-              <div style="font-size: 14px; line-height: 21px; color: #F1EEE6; padding-top: 10px; border-top: 1px solid #2B2926; display: flex; flex-direction: column; gap: 4px;"><span>Hi Dana,</span><span>The Q3 numbers are in the deck now, slide 6. Signed leads came in at $171 each, under your $180 target.</span><span>Alex</span></div>
+              <div contenteditable="plaintext-only" style="font-size: 14px; line-height: 21px; color: #F1EEE6; padding-top: 10px; border-top: 1px solid #2B2926; display: flex; flex-direction: column; gap: 4px; outline: none;"><span>Hi Dana,</span><span>The Q3 numbers are in the deck now, slide 6. Signed leads came in at $171 each, under your $180 target.</span><span>Alex</span></div>
+              <div style="font-family: 'Instrument Sans', 'Helvetica Neue', Arial, sans-serif; font-size: 12px; line-height: 16px; color: #8C877D;">Click any line to change it. ⌘⏎ sends what you see. Esc leaves a field.</div>
             </div>
             <div style="display: flex; align-items: center; gap: 8px; padding: 10px 14px 12px 44px; border-top: 1px solid #2B2926;">
               <button type="button" class="cbtn cbtn-primary">Send <span style="font-size: 11px; letter-spacing: 0;">⌘⏎</span></button>
-              <button type="button" class="cbtn cbtn-ghost">Edit</button>
               <button type="button" class="cbtn cbtn-ghost" style="color: #B3AEA4;">Discard</button>
               <span style="flex-grow: 1;"></span>
               <span style="font-size: 12px; color: #8C877D;">Rule: email to a client waits for you</span>
@@ -181,17 +181,17 @@
           <sc-if value="{{ isWaiting }}" hint-placeholder-val="{{ false }}">
             <div style="display: flex; align-items: center; gap: 12px; height: 52px; padding: 0 14px 0 16px;"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M2.5 4L8 13L11.52 7.24" stroke="#F1EEE6" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><circle cx="13.5" cy="4" r="1.8" fill="#C6F36B"/></svg><div style="flex-grow: 1; font-size: 16px; line-height: 22px; color: #8C877D;">Ask, or @agent</div><span class="kbd" style="color: #F1EEE6; border-color: #8C877D;">&#8593;</span></div>
             <div style="border-top: 1px solid #2B2926; padding: 12px 16px 4px 16px; display: flex; align-items: center; justify-content: space-between;">
-              <span class="lbl" style="color: #FF7A59;">Waiting on you &#183; 2</span>
+              <span class="lbl" style="color: #B8A4FF;">Waiting on you &#183; 2</span>
               <span style="font-size: 12px; color: #8C877D;">oldest first</span>
             </div>
             <div style="padding: 4px 6px 6px 6px; display: flex; flex-direction: column;">
               <div style="display: flex; align-items: flex-start; gap: 12px; padding: 12px 10px; border-radius: 6px;">
-                <span style="width: 8px; height: 8px; border-radius: 4px; background: #FF7A59; margin-top: 6px; flex-shrink: 0;"></span>
+                <span style="width: 8px; height: 8px; border-radius: 4px; background: #B8A4FF; margin-top: 6px; flex-shrink: 0;"></span>
                 <span style="display: flex; flex-direction: column; gap: 3px; flex-grow: 1; min-width: 0;"><span style="font-size: 14px; line-height: 20px; color: #F1EEE6;">pax wants to email 14 clients the new intake form</span><span style="font-size: 12px; line-height: 16px; color: #8C877D;">Harlow Legal &#183; held by rule: bulk email over 10</span></span>
                 <span class="mono" style="font-size: 11px; line-height: 20px; color: #B3AEA4; white-space: nowrap;">18 min</span>
               </div>
               <div style="display: flex; align-items: flex-start; gap: 12px; padding: 12px 10px; border-radius: 6px; background: rgba(198,243,107,0.12);">
-                <span style="width: 8px; height: 8px; border-radius: 4px; background: #FF7A59; margin-top: 6px; flex-shrink: 0;"></span>
+                <span style="width: 8px; height: 8px; border-radius: 4px; background: #B8A4FF; margin-top: 6px; flex-shrink: 0;"></span>
                 <span style="display: flex; flex-direction: column; gap: 3px; flex-grow: 1; min-width: 0;"><span style="font-size: 14px; line-height: 20px; color: #F1EEE6;">juno drafted a reply to Dana Reyes</span><span style="font-size: 12px; line-height: 16px; color: #8C877D;">Harlow Legal &#8250; Q3 report &#183; email to a client</span></span>
                 <span class="mono" style="font-size: 11px; line-height: 20px; color: #B3AEA4; white-space: nowrap;">6 min</span><span class="kbd" style="color: #F1EEE6;">⏎</span>
               </div>

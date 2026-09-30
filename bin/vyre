@@ -5,5 +5,14 @@ if (major < 22 || (major === 22 && minor < 5)) {
   console.error(`  Vyre needs Node 22.5 or newer; this is ${process.version}.`);
   process.exit(1);
 }
+// In the box's container the first process is root (the spawner, ADR 0032), so `docker compose
+// exec vyre vyre ...` and the healthcheck arrive as root. vyred is uid vyre, and so is its CLI.
+if (process.env.VYRE_SUPERVISOR === "docker" && process.getuid && process.getuid() === 0) {
+  const { spawnSync } = await import("node:child_process");
+  const r = spawnSync("/usr/bin/setpriv", ["--reuid=1000", "--regid=1000", `--groups=${process.env.VYRE_WORK_GID || 1002}`, "--inh-caps=-all", "--",
+    process.execPath, process.argv[1], ...process.argv.slice(2)], { stdio: "inherit", env: { ...process.env, HOME: "/home/vyre" } });
+  process.exit(r.status ?? 1);
+}
+await import("../core/quiet.js");
 const { main } = await import("../core/cli/index.js");
 process.exitCode = await main(process.argv.slice(2));

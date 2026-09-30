@@ -1,0 +1,38 @@
+{
+  "name": "google",
+  "version": "0.1.0",
+  "roles": ["box", "local"],
+  "requires": ["vault", "gate"],
+  "does": {
+    "tools": [
+      "google.accounts", "google.add", "google.remove", "google.test",
+      "google.connect", "google.connect.finish", "google.connect.cancel",
+      "google.calendar.next", "google.calendar.list", "google.calendar.search", "google.calendar.create", "google.calendar.update",
+      "google.mail.search", "google.mail.read", "google.mail.draft", "google.mail.send",
+      "google.find", "google.open", "google.release"
+    ]
+  },
+  "watches": { "emits": ["google.added", "google.removed", "google.drafted", "google.scheduled", "google.sent", "google.connected", "google.connect-failed"] },
+  "shows": {
+    "deck": ["settings:connections"],
+    "capsule": {
+      "results:google.find": { "title": "Google" },
+      "action:google.open": { "title": "Open" },
+      "action:google.open#reply": { "title": "Draft a reply", "input": { "as": "reply" } }
+    },
+    "cli": ["connect"]
+  },
+  "needs": { "vault": ["per-connection"] },
+  "teaches": {
+    "tips": [
+      {"id": "sign-in", "text": "Connect a Google account in a browser with `vyre connect add google home --sign-in`.", "surfaces": ["cli"], "level": "first-use", "trigger": "on-use", "since": "0.1.0", "command": "vyre connect add google home --sign-in", "docs": "using/connectors.md#connect-google-calendar-and-gmail"},
+      {"id": "mail-held", "text": "Mail from `google.mail.send` always waits at the Gate. A draft goes straight to Gmail and sends nothing.", "surfaces": ["chat", "deck", "phone"], "level": "first-use", "trigger": "on-use", "since": "0.1.0", "docs": "using/connectors.md#connect-google-calendar-and-gmail"},
+      {"id": "invite-held", "text": "An event with attendees waits at the Gate, since Calendar emails each an invite. One with none is written at once.", "surfaces": ["chat", "deck", "phone"], "level": "first-use", "trigger": "on-use", "since": "0.1.0", "docs": "using/connectors.md#connect-google-calendar-and-gmail"},
+      {"id": "dwd", "text": "Act as alex@harlowlegal.com through a Workspace service account: add the account with `--dwd`.", "surfaces": ["cli"], "level": "power", "trigger": "on-use", "since": "0.1.0", "command": "vyre connect add google work --email alex@harlowlegal.com --item <sa> --dwd", "docs": "using/connectors.md#connect-google-calendar-and-gmail"},
+      {"id": "test-scopes", "text": "Test lists the scopes Google refused, and for a service account, which to allow in the admin console.", "surfaces": ["deck", "cli"], "level": "power", "trigger": "on-use", "since": "0.1.0", "docs": "using/connectors.md#connect-google-calendar-and-gmail"},
+      {"id": "capsule-reply", "text": "A Google row in the Capsule opens the event or mail, or puts an empty reply in Gmail's drafts.", "surfaces": ["capsule"], "level": "discovery", "trigger": "never-used", "since": "0.1.0", "docs": "using/connectors.md#connect-google-calendar-and-gmail"},
+      {"id": "no-polling", "text": "Vyre reads your calendar and mail only when asked, with the narrowest scope. Nothing polls or syncs.", "surfaces": ["deck", "chat"], "level": "discovery", "trigger": "idle", "since": "0.1.0", "docs": "using/connectors.md#connect-google-calendar-and-gmail"},
+      {"id": "sender-per-account", "text": "Each Google account is its own sender at the Gate, so a held email shows the address it leaves from.", "surfaces": ["deck", "phone", "capsule"], "level": "power", "trigger": "idle", "since": "0.1.0", "docs": "using/connectors.md#connect-google-calendar-and-gmail"}
+    ]
+  }
+}

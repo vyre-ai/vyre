@@ -1,0 +1,126 @@
+/* Settings. No board of its own: TOKENS.md, the rule-separated sections of DeckAgent and
+   DeckVault, and the onboarding's step list. One column, about 760px, with a section sub-nav on
+   wide screens. */
+
+.set { min-height: 100%; }
+.set-wrap { display: flex; justify-content: center; gap: 48px; padding: 36px 40px 72px; }
+.set-col { width: 760px; min-width: 0; max-width: 100%; }
+.set-nav { width: 184px; flex-shrink: 0; position: sticky; top: 36px; align-self: flex-start; display: flex; flex-direction: column; gap: 2px;
+  padding-top: 124px; }
+.set-nav-a { display: block; padding: 6px 10px; border-radius: var(--radius-field, 8px); font-size: 13px; line-height: 18px; color: var(--label);
+  text-decoration: none; }
+.set-nav-a:hover { color: var(--text); background: var(--hover); }
+.set-nav-a[aria-current="true"] { color: var(--text); }
+.set-nav { max-height: calc(100vh - 72px); overflow-y: auto; }
+.set-nav-grp:not(:empty) { display: flex; flex-direction: column; gap: 2px; padding: 12px 0 12px; }
+.set-nav-h { padding: 4px 10px 6px; color: var(--label); }
+/* Under 1180 px the rail is hidden and this select jumps to a section. */
+.set-jump { display: none; margin-top: 8px; width: 100%; max-width: 520px; }
+
+.set-top { display: flex; flex-direction: column; gap: 6px; padding-bottom: 8px; }
+.set-top p { max-width: 620px; }
+
+.set-sec { padding-top: 40px; scroll-margin-top: 16px; }
+.set-sec .section-head { padding-bottom: 12px; }
+.set-body > .empty:first-child { padding-top: 16px; }
+.set-note { padding: 12px 0 4px; max-width: 620px; }
+.set-sub { margin-top: 28px; }
+.set-h3 { font-size: 15px; line-height: 22px; font-weight: 600; padding: 14px 0 6px; border-bottom: 1px solid var(--rule); }
+
+/* A row: label left, value right. */
+.set-row { display: grid; grid-template-columns: 200px minmax(0, 1fr); gap: 24px; padding: 13px 0; align-items: baseline; }
+.set-k { font-size: 14px; line-height: 20px; color: var(--text-2); }
+.set-v { min-width: 0; display: flex; flex-direction: column; align-items: flex-start; gap: 4px; font-size: 14px; line-height: 20px; }
+.set-v > .btn { margin-top: 6px; }
+.set-inline { display: inline-flex; align-items: center; gap: 10px; }
+.set-v .seg { margin-top: -4px; }
+.set-mono { font-family: var(--mono); font-size: 13px; line-height: 20px; color: var(--text); overflow-wrap: anywhere; }
+.set-list { display: flex; flex-direction: column; gap: 2px; min-width: 0; max-width: 100%; }
+.set-prose { font-size: 14px; line-height: 21px; max-width: 520px; white-space: pre-wrap; }
+.set-tags { display: flex; flex-wrap: wrap; gap: 6px; }
+.set-state { font-family: var(--mono); font-size: 11px; line-height: 14px; font-weight: 500; letter-spacing: 0.16em; text-transform: uppercase; color: var(--text-2); }
+.set-state.faint { color: var(--label); }
+.set-actions { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; padding-top: 16px; }
+.set-lock-steps { margin: 12px 0 8px; padding-left: 20px; display: flex; flex-direction: column; gap: 10px; }
+.set-lock-steps code { display: block; margin-top: 4px; overflow-wrap: anywhere; }
+/* A command the person runs themselves, with its copy button; lists inside a row; a finding. */
+.set-cmd { display: flex; align-items: flex-start; gap: 6px; max-width: 100%; margin-top: 2px; }
+.set-cmd code { flex: 1 1 auto; min-width: 0; padding: 5px 8px; border-radius: var(--radius-chip, 4px); background: var(--code-bg); font-size: 12px; line-height: 18px; }
+.set-cmd .ibtn { width: 28px; height: 28px; }
+.set-plain { list-style: none; margin: 2px 0; padding: 0; display: flex; flex-direction: column; gap: 6px; min-width: 0; max-width: 100%; }
+.set-warn { color: var(--beacon-ink); }
+.set-status:not(:empty) { margin-top: 10px; }
+.set-form .input { max-width: 520px; }
+.set-form .rows > .set-row { align-items: start; }
+.set-form .set-k { padding-top: 10px; }
+.set-form .set-row:last-child .set-k { padding-top: 0; }
+
+/* Setup: the onboarding's step list, one row per step. */
+.set-step { display: flex; align-items: center; gap: 14px; min-height: 60px; padding: 10px 0; }
+.set-check { width: 22px; height: 22px; flex-shrink: 0; display: inline-flex; align-items: center; justify-content: center;
+  border: 1px solid var(--rule-strong); border-radius: var(--radius-chip, 4px); color: var(--text-2); }
+.set-check.done { color: var(--text); }
+.set-step-main { flex-grow: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.set-step-title { display: flex; align-items: baseline; gap: 12px; font-size: 14px; line-height: 20px; }
+.set-step .set-mono { font-size: 12px; line-height: 16px; color: var(--text-2); }
+.set-step .btn { flex-shrink: 0; }
+
+/* Lessons */
+.set-lesson { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 6px 16px; padding: 14px 0; }
+.set-lesson .set-status { grid-column: 1 / -1; }
+.set-lesson-main { min-width: 0; display: flex; flex-direction: column; gap: 6px; }
+.set-lesson-rule { font-size: 15px; line-height: 22px; }
+.set-lesson-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 12px; }
+.set-level.strong { color: var(--text); border-color: var(--text-2); }
+.set-lesson-act { display: flex; align-items: flex-start; gap: 4px; }
+.set-lesson-edit { grid-column: 1 / -1; display: flex; flex-direction: column; gap: 10px; }
+.set-lesson-edit .set-actions { padding-top: 2px; }
+.set-lesson-fields { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; }
+.set-select { width: auto; height: 32px; font-size: 13px; padding: 0 10px; }
+
+/* Modules */
+.set-table { width: 100%; border-collapse: collapse; margin-top: 8px; }
+.set-table th { text-align: left; padding: 10px 0; border-bottom: 1px solid var(--rule); font-weight: 500; }
+.set-table td { padding: 12px 0; border-bottom: 1px solid var(--rule); vertical-align: baseline; }
+.set-table tr:last-child td { border-bottom: none; }
+.set-table th:nth-child(2), .set-table td:nth-child(2) { width: 120px; }
+.set-table th:nth-child(3), .set-table td:nth-child(3) { width: 120px; text-align: right; }
+.set-mod { font-size: 13px; line-height: 20px; color: var(--text); }
+.set-problem { margin-top: 2px; }
+
+@media (max-width: 1180px) {
+  .set-nav { display: none; }
+  .set-jump { display: block; }
+}
+@media (max-width: 719px), (max-height: 500px) and (pointer: coarse) {
+  .set-wrap { padding: 12px 16px 32px; }
+  .set-top { padding-top: 8px; }
+  .set-sec { padding-top: 32px; }
+  .set-row { grid-template-columns: minmax(0, 1fr); gap: 4px; padding: 12px 0; }
+  .set-k { font-size: 13px; line-height: 18px; color: var(--label); }
+  .set-form .set-k { padding-top: 0; }
+  .set-step { align-items: flex-start; }
+  .set-step .btn { margin-top: 2px; }
+  .set-lesson { grid-template-columns: minmax(0, 1fr); }
+  .set-lesson-act { justify-content: flex-start; margin-left: -8px; }
+  .set-table th:nth-child(2), .set-table td:nth-child(2) { width: 64px; }
+  .set-table th:nth-child(3), .set-table td:nth-child(3) { width: 84px; }
+}
+
+/* Your devices: a phone or tablet Tailscale reports offline. */
+.set-off { display: flex; align-items: flex-start; gap: 8px; margin-top: 4px; padding: 7px 11px; border: 1px solid var(--rule); border-radius: var(--radius-field, 8px); max-width: 520px; }
+.set-off svg { flex-shrink: 0; margin-top: 1px; color: var(--beacon-ink); }
+
+/* Server: the "Move to a server" card, and the per-piece progress row inside it
+ * (projects/memory/vault/sessions), app-design's screenshot pass. */
+.set-server-card { border: 1px solid var(--rule); border-radius: var(--radius-card, 12px); padding: 16px; display: flex; flex-direction: column; gap: 14px; }
+.set-move-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 6px 0; }
+.set-move-row .set-move-main { flex-grow: 1; min-width: 0; }
+.set-meter { height: 6px; border-radius: 3px; background: var(--rule-strong); overflow: hidden; margin-top: 8px; }
+.set-meter > span { display: block; height: 100%; border-radius: 3px; background: var(--focus); transition: width 480ms cubic-bezier(.2, .7, .2, 1); }
+@media (prefers-reduced-motion: reduce) { .set-meter > span { transition: none; } }
+.set-vault-note { display: flex; align-items: flex-start; gap: 8px; }
+.set-vault-note svg { flex-shrink: 0; margin-top: 2px; color: var(--text-2); }
+
+/* Your own avatar, large, with its Vyre code ring (js/avatars.js). */
+.set-you-av { display: flex; margin: 4px 0 20px; }

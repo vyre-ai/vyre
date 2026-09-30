@@ -1,0 +1,339 @@
+{
+  "about": "Held-out questions for memory.answer on test/fixtures/personal-heldout.js, written before reading the rules. expect: acceptable answers, matched case-insensitively as whole words or phrases; null means the right output is no answer.",
+  "questions": [
+    {
+      "q": "whats my husband's name",
+      "expect": [
+        "robin"
+      ],
+      "kind": "spouse"
+    },
+    {
+      "q": "who is my partner",
+      "expect": [
+        "robin"
+      ],
+      "kind": "spouse"
+    },
+    {
+      "q": "hubby's name?",
+      "expect": [
+        "robin"
+      ],
+      "kind": "spouse-typo"
+    },
+    {
+      "q": "husbands name",
+      "expect": [
+        "robin"
+      ],
+      "kind": "spouse-typo"
+    },
+    {
+      "q": "my husband",
+      "expect": [
+        "robin"
+      ],
+      "kind": "spouse"
+    },
+    {
+      "q": "who's robin",
+      "expect": [
+        "husband",
+        "partner",
+        "spouse"
+      ],
+      "kind": "person"
+    },
+    {
+      "q": "when is robin's birthday",
+      "expect": [
+        "2 june",
+        "june 2",
+        "2nd of june",
+        "june 2nd",
+        "2nd june",
+        "02-06",
+        "06-02"
+      ],
+      "kind": "birthday"
+    },
+    {
+      "q": "husband bday?",
+      "expect": [
+        "2 june",
+        "june 2",
+        "2nd of june",
+        "june 2nd",
+        "2nd june",
+        "02-06",
+        "06-02"
+      ],
+      "kind": "birthday-typo"
+    },
+    {
+      "q": "when's my partner's birthday",
+      "expect": [
+        "2 june",
+        "june 2",
+        "2nd of june",
+        "june 2nd",
+        "2nd june",
+        "02-06",
+        "06-02"
+      ],
+      "kind": "birthday"
+    },
+    {
+      "q": "what are my kids called",
+      "expect": [
+        "theo",
+        "isla"
+      ],
+      "kind": "children"
+    },
+    {
+      "q": "whats my son's name",
+      "expect": [
+        "theo"
+      ],
+      "kind": "children"
+    },
+    {
+      "q": "my daughter's name",
+      "expect": [
+        "isla"
+      ],
+      "kind": "children"
+    },
+    {
+      "q": "who is theo",
+      "expect": [
+        "son"
+      ],
+      "kind": "person"
+    },
+    {
+      "q": "who is isla",
+      "expect": [
+        "daughter"
+      ],
+      "kind": "person"
+    },
+    {
+      "q": "what's my dad's name",
+      "expect": [
+        "graham"
+      ],
+      "kind": "family"
+    },
+    {
+      "q": "who is graham",
+      "expect": [
+        "father",
+        "dad"
+      ],
+      "kind": "person"
+    },
+    {
+      "q": "where do i live",
+      "expect": [
+        "leeds"
+      ],
+      "kind": "place"
+    },
+    {
+      "q": "which city am i in now",
+      "expect": [
+        "leeds"
+      ],
+      "kind": "place"
+    },
+    {
+      "q": "where did i live before leeds",
+      "expect": [
+        "bristol"
+      ],
+      "kind": "history"
+    },
+    {
+      "q": "what car do i drive",
+      "expect": [
+        "mazda",
+        "cx-5",
+        "cx5"
+      ],
+      "kind": "vehicle"
+    },
+    {
+      "q": "wat car have i got",
+      "expect": [
+        "mazda",
+        "cx-5",
+        "cx5"
+      ],
+      "kind": "vehicle-typo"
+    },
+    {
+      "q": "what colour is my car",
+      "expect": [
+        "red"
+      ],
+      "kind": "vehicle"
+    },
+    {
+      "q": "what did i drive before the mazda",
+      "expect": [
+        "honda",
+        "civic"
+      ],
+      "kind": "history"
+    },
+    {
+      "q": "what's my cat called",
+      "expect": [
+        "pepper"
+      ],
+      "kind": "pet"
+    },
+    {
+      "q": "cat name",
+      "expect": [
+        "pepper"
+      ],
+      "kind": "pet"
+    },
+    {
+      "q": "who is pepper",
+      "expect": [
+        "cat"
+      ],
+      "kind": "pet"
+    },
+    {
+      "q": "what do i do for work",
+      "expect": [
+        "designer",
+        "freelance"
+      ],
+      "kind": "work"
+    },
+    {
+      "q": "what's my job",
+      "expect": [
+        "designer"
+      ],
+      "kind": "work"
+    },
+    {
+      "q": "who are my clients",
+      "expect": [
+        "harlow",
+        "northwind"
+      ],
+      "kind": "client"
+    },
+    {
+      "q": "who is my contact at harlow legal",
+      "expect": [
+        "owen"
+      ],
+      "kind": "client"
+    },
+    {
+      "q": "who is bea",
+      "expect": [
+        "northwind"
+      ],
+      "kind": "person"
+    },
+    {
+      "q": "who is owen price",
+      "expect": [
+        "harlow"
+      ],
+      "kind": "person"
+    },
+    {
+      "q": "what design tool do i use",
+      "expect": [
+        "figma"
+      ],
+      "kind": "tool"
+    },
+    {
+      "q": "what app do i keep my notes in",
+      "expect": [
+        "obsidian"
+      ],
+      "kind": "tool"
+    },
+    {
+      "q": "what is my name",
+      "expect": [
+        "juno"
+      ],
+      "kind": "identity"
+    },
+    {
+      "q": "what's my wife's name",
+      "expect": null,
+      "kind": "unknown"
+    },
+    {
+      "q": "whats my dog called",
+      "expect": null,
+      "kind": "unknown"
+    },
+    {
+      "q": "what is my mum's name",
+      "expect": null,
+      "kind": "unknown"
+    },
+    {
+      "q": "what's my sister's name",
+      "expect": null,
+      "kind": "unknown"
+    },
+    {
+      "q": "my brother's name",
+      "expect": null,
+      "kind": "unknown"
+    },
+    {
+      "q": "which bank am i with",
+      "expect": null,
+      "kind": "unknown"
+    },
+    {
+      "q": "where was i born",
+      "expect": null,
+      "kind": "unknown"
+    },
+    {
+      "q": "what gym do i go to",
+      "expect": null,
+      "kind": "unknown"
+    },
+    {
+      "q": "what phone have i got",
+      "expect": null,
+      "kind": "unknown"
+    },
+    {
+      "q": "who is my dentist",
+      "expect": null,
+      "kind": "unknown"
+    },
+    {
+      "q": "what's my favourite restaurant",
+      "expect": null,
+      "kind": "unknown"
+    },
+    {
+      "q": "what is my blood type",
+      "expect": null,
+      "kind": "unknown"
+    }
+  ]
+}

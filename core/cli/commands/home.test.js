@@ -7,8 +7,9 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
-import { PassThrough, Writable } from "node:stream";
-import { tempHome } from "../../../test/helpers.js";
+import { fakeTerminal } from "../screen/testing.js";
+import { stripAnsi } from "../screen/width.js";
+import { tempHome, present } from "../../../test/helpers.js";
 import { open } from "../../store/index.js";
 import { SESSIONS, HOME, seedRecall } from "../../../test/fixtures/corpus.js";
 import { homeItems, projectItems, step, initial, visible, keyName, render, plain, interactive } from "./home.js";
@@ -98,7 +99,8 @@ async function world(t) {
   db.close();
   fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ projectsDir: path.join(root, "projects"),
     roots: [path.join(home, "Work")], transcripts: [], modules: { disable: ["recall", "memory"] } }));
-  const d = await start({ root, log: () => {} });
+  // `present`: making an agent needs a person (ADR 0004); these tests are about the screen after.
+  const d = await start({ root, log: () => {}, presence: present });
   t.after(() => d.stop());
   const fake = path.join(root, "fakebin");
   fs.mkdirSync(fake);
@@ -119,34 +121,22 @@ require("node:fs").appendFileSync(${JSON.stringify(log)}, JSON.stringify({ argv:
 }
 
 /**
- * A stand-in terminal. Each time the screen is drawn, the next key is typed, the way a person
- * waits to see the list before pressing anything. Keys typed while no list is waiting are held,
- * as a real terminal holds them, until the next list reads.
+ * Run the live screen on a stand-in terminal: wait for its first frame, type the keys, and
+ * resolve to the exit code and the terminal (whose `raw` holds everything drawn).
  */
-function terminal(keys) {
-  const input = /** @type {any} */ (new PassThrough());
-  input.setRawMode = () => input;
-  input.isTTY = true;
-  let screen = "";
-  const output = /** @type {any} */ (new Writable({ write(chunk, _e, cb) {
-    const s = String(chunk);
-    screen += s;
-    // A draw clears to the end of the screen; the clean-up when a list closes also shows the
-    // cursor again, and is not a list waiting for a key.
-    const key = s.includes("\x1b[J") && !s.endsWith("\x1b[?25h") ? keys.shift() : undefined;
-    if (key !== undefined) setImmediate(() => input.write(key));
-    cb();
-  } }));
-  output.columns = 100;
-  output.rows = 30;
-  return { input, output, screen: () => screen.replace(/\x1b\[[0-9;?]*[A-Za-z]/g, "") };
+async function drive(keys) {
+  const term = fakeTerminal({ columns: 100, rows: 30 });
+  const done = interactive(term);
+  await term.waitFor(/vyre/);
+  term.type(...keys);
+  const code = await done;
+  return { code, term, drawn: stripAnsi(term.raw) };
 }
 
 test("home (interactive): New session without a project runs claude in this folder, with the Harness when there is one", async t => {
   const w = await world(t);
   process.chdir(w.root);
-  const term = terminal([..."without", "\r"]);
-  assert.equal(await interactive(term), 0);
+  assert.equal((await drive(["without", "\r"])).code, 0);
   const [c] = w.calls();
   assert.deepEqual(c.argv, [], "no brief and no plugin: plain claude");
   assert.equal(fs.realpathSync(c.cwd), w.root);
@@ -155,41 +145,44 @@ test("home (interactive): New session without a project runs claude in this fold
   fs.mkdirSync(path.join(harness, ".claude-plugin"), { recursive: true });
   fs.writeFileSync(path.join(harness, ".claude-plugin", "plugin.json"), "{}");
   process.env.VYRE_HARNESS_DIR = harness;
-  await interactive(terminal([..."without", "\r"]));
+  await drive(["without", "\r"]);
   assert.deepEqual(w.calls()[1].argv, ["--plugin-dir", harness]);
 });
 
 test("home (interactive): inside a project folder it is preselected; Enter opens it; a session resumes; Esc goes back", async t => {
   const w = await world(t);
   const harlow = path.join(w.work, "harlow-site");
-  await w.d.registry.call("projects.create", { name: "Harlow Legal", home: harlow, threads: [SESSIONS[3].id] });
-  await w.d.registry.call("projects.create", { name: "Northwind", home: path.join(w.work, "northwind") });
+  await w.d.registry.call("projects.create", { name: "Harlow Legal", home: harlow, threads: [SESSIONS[3].id] }, "cli");
+  await w.d.registry.call("projects.create", { name: "Northwind", home: path.join(w.work, "northwind") }, "cli");
   process.chdir(harlow);
   // Enter on the preselected project; Esc back to the home; Enter again; down past "New
   // session in" and the header to the newest session; Enter resumes it.
-  const term = terminal(["\r", "\x1b", "\r", "\x1b[B", "\r"]);
-  assert.equal(await interactive(term), 0);
-  const screen = term.screen();
-  assert.match(screen, /New session in Harlow Legal/);
-  assert.match(screen, /Sessions \(2\)/);
+  // The screen paints at most 30 times a second, so keys typed at once may never show every
+  // step; what they chose is in the calls below.
+  const { code } = await drive(["\r", "\x1b", "\r", "\x1b[B", "\r"]);
+  assert.equal(code, 0);
   const [c] = w.calls();
   assert.deepEqual(c.argv.slice(0, 2), ["--resume", SESSIONS[3].id], "the newest session was not the one resumed");
   assert.equal(fs.realpathSync(c.cwd), w.work);
   assert.ok(c.argv.includes("--append-system-prompt"));
 });
 
-test("home (interactive): New session in a project starts claude in its home; an agent without the switchboard says so", async t => {
+test("home (interactive): New session in a project starts claude in its home; the agents section lists agents", async t => {
   const w = await world(t);
   const harlow = path.join(w.work, "harlow-site");
-  await w.d.registry.call("projects.create", { name: "Harlow Legal", home: harlow });
+  await w.d.registry.call("projects.create", { name: "Harlow Legal", home: harlow }, "cli");
   process.chdir(w.root);
-  await interactive(terminal(["\r", "\r"]));
+  await drive(["\r", "\r"]);
   const [c] = w.calls();
   assert.equal(fs.realpathSync(c.cwd), fs.realpathSync(harlow));
   assert.match(c.argv[c.argv.indexOf("--append-system-prompt") + 1], /"Harlow Legal"/);
 
-  // There is no agents tool yet: the section says so, and q still quits.
-  const term = terminal(["q"]);
-  assert.equal(await interactive(term), 0);
-  assert.match(term.screen(), /agents arrive with the switchboard/);
+  // The switchboard's agents.list answers: none yet, then the one made; q still quits.
+  const first = await drive(["q"]);
+  assert.equal(first.code, 0);
+  assert.match(first.term.screen(), /Agents[^\n]*\n\s+none yet/);
+  await w.d.registry.call("agents.create", { name: "juno", kind: "assistant" }, "local");
+  const again = await drive(["q"]);
+  assert.equal(again.code, 0);
+  assert.match(again.term.screen(), /juno\s+not started/);
 });

@@ -9,8 +9,12 @@
 
 import { Runtime, MIGRATIONS } from "./runtime.js";
 
-/** How often vyred looks for due watchers. Cron is minute-grained, so this is plenty. */
-const TICK_MS = 15_000;
+/**
+ * How often vyred looks for due watchers. Cron is minute-grained, so a tick faster than that
+ * finds nothing new; docs/SPEC.md section 2, principle 8 caps idle polling at once a minute, so
+ * this sits right at that floor rather than four times past it.
+ */
+const TICK_MS = 60_000;
 
 const str = { type: "string" };
 const named = { type: "object", required: ["name"], properties: { name: str } };
@@ -25,7 +29,9 @@ export default {
       call: ctx.call, fetch: (name, watcher, field) => ctx.vault.fetch(name, { watcher, ...(field ? { field } : {}) }),
       teach: (kind, fact) => ctx.memory.teach(kind, fact),
       log: ctx.log,
+      listen: (type, fn) => ctx.events.on(type, fn),
     });
+    rt.subscribe();
 
     ctx.tool("watchers.list", {
       description: "Every watcher: drafts Claude wrote, and those turned on, with state (draft, on, paused, changed, invalid), schedule, next and last run, and items filed. dir is the folder watchers are written in.",
@@ -33,9 +39,14 @@ export default {
       run: async () => rt.list(),
     });
     ctx.tool("watchers.test", {
-      description: "Dry-run a watcher folder once, from since (default null), filing nothing. Returns the items it would emit and its logs, or what to fix. Required before watchers.create.",
-      input: { type: "object", required: ["name"], properties: { name: str, since: {} } },
-      run: async ({ name, since = null }) => rt.test(name, { since }),
+      description: "Dry-run a watcher folder once, from since (default null), filing nothing. Returns the items it would emit and its logs, or what to fix. Required before watchers.create. For a watcher that runs on an event, event is a real event's payload to run it on (for hook.received, { route, id } from hooks.list); it must match the watcher's where.",
+      input: { type: "object", required: ["name"], properties: { name: str, since: {}, event: { type: "object" } } },
+      run: async ({ name, since = null, event = null }, { caller } = {}) => {
+        // A dry run on a hook.received hands the watcher a webhook's body, which an agent may
+        // not read (hooks.delivery refuses agents); the watcher's logs and items would show it.
+        if (event && /(?:^|[\s:])agent:/.test(String(caller || ""))) throw new Error("a dry run on a real event is the owner's; an agent dry-runs without event");
+        return rt.test(name, { since, event });
+      },
     });
     ctx.tool("watchers.create", {
       description: "Turn on a watcher exactly as it was last dry-run. Runs once now, then on its schedule. Only after the user has seen the dry run's items and agreed.",
@@ -45,7 +56,7 @@ export default {
     ctx.tool("watchers.pause", { description: "Stop a watcher running until it is resumed.", input: named, run: async ({ name }) => rt.pause(name) });
     ctx.tool("watchers.resume", { description: "Resume a paused watcher, clearing its failure count.", input: named, run: async ({ name }) => rt.resume(name) });
     ctx.tool("watchers.logs", {
-      description: "A watcher's recent runs, newest first: when, why (schedule, retry, create, hook, test), items seen and filed, error and log lines.",
+      description: "A watcher's recent runs, newest first: when, why (schedule, retry, create, hook, event, test), items seen and filed, error and log lines.",
       input: { type: "object", required: ["name"], properties: { name: str, limit: { type: "integer" } } },
       run: async ({ name, limit = 10 }) => rt.logs(name, Math.min(200, Math.max(1, limit))),
     });

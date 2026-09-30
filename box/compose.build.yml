@@ -1,0 +1,19 @@
+# Builds the vyre image from source instead of pulling it. For development, and for
+# installing before an image is published:
+#
+#   docker compose -f box/compose.yml -f box/compose.build.yml up -d --build
+
+services:
+  vyre:
+    image: vyre:local
+    # Never look for vyre:local on a registry; it only ever exists here. Missing, it is built;
+    # present, it is used ("build" would rebuild on every up). `vyre update` rebuilds.
+    pull_policy: never
+    build:
+      context: ${VYRE_SOURCE:-..}
+      dockerfile: box/Dockerfile
+  # The computers' Docker proxy runs from the same image (core/dockerproxy), so it uses the one
+  # built above rather than pulling. No build of its own: vyre's build makes vyre:local.
+  docker-api:
+    image: vyre:local
+    pull_policy: never

@@ -1,45 +1,34 @@
-# Vyre tokens
+---
+title: Design tokens
+summary: The colour, type, shape and mark tokens every Vyre surface uses, with the values to paste verbatim.
+audience: builders
+owner: docs
+status: stable
+---
+
+# Design tokens
 
 Direction: Instrument, reduced. Mark: **Lead** (one wire bent into a v, with the signal dot leaving its end).
-Paste values verbatim. Do not add colours. Artboards: `project/IdMarks`, `IdSystem`, `IdVoice`.
+Take values from the palette, never retype them. Do not add colours. Artboards: `project/IdMarks`, `IdSystem`, `IdVoice`.
 
 ## Colour: dark (default)
 
-| Token | Hex | Meaning / use |
-|---|---|---|
-| `--graphite` | `#0E0D0C` | Page ground. Warm graphite black. |
-| `--carbon` | `#161513` | Panels, windows, app-icon tile. One step up from ground. |
-| `--raised` | `#1E1C1A` | Hover rows, popovers, tab strips. Use rarely. |
-| `--rule` | `#2B2926` | Hairline rules and dividers (1px). The default separator. |
-| `--rule-strong` | `#3A3733` | Input borders, swatch outlines, vertical rules in lockups. |
-| `--ash` | `#8C877D` | Engraved labels, captions, placeholders. 5.4:1 on graphite. Smallest text colour allowed. |
-| `--stone` | `#B3AEA4` | Secondary text. 9:1 on graphite. |
-| `--bone` | `#F1EEE6` | Primary text, the wire in the mark. |
-| `--signal` | `#C6F36B` | **Focus and the one primary action per view.** The mark's dot. Never decoration, never a large fill. |
-| `--signal-hover` | `#D4F88A` | Hover on signal-filled buttons. |
-| `--signal-ink` | `#0E0D0C` | Text on a signal fill. |
-| `--signal-wash` | `rgba(198,243,107,0.12)` | Selected row / focus ring fill. |
-| `--recall` | `#EBC76B` | **Came from your memory; no model was used.** Only where memory surfaces: recalled facts, enrichment lines, memory-graph nodes. |
-| `--recall-wash` | `rgba(235,199,107,0.10)` | Background behind a recalled block. |
-| `--beacon` | `#FF7A59` | **Needs you.** Held tool calls, approvals, the menu-bar dot. Nothing else. |
-| `--beacon-wash` | `rgba(255,122,89,0.12)` | Background behind a held item. |
+The palette lives in `core/config/theme.js`, and these tables are drawn from it. The Deck paints
+the same values (a test holds `deck/css/deck.css` to them). To change a colour on your box, set
+it under `theme.colors` in `~/.vyre/config.json`, for example
+`"theme": { "colors": { "dark": { "signal": "#B8E65A" } } }`, and reload the Deck: the box
+serves your overrides as `/theme.css`. A value that is not a plain CSS colour is ignored.
+
+<!-- colors: dark -->
 
 Errors are not coral. A failed run is Bone text with an Ash `failed` label; if it needs the user's action, it becomes Beacon.
 
 ## Colour: light (paper)
 
-| Token | Hex | Use |
-|---|---|---|
-| `--paper` | `#F4F1EA` | Ground |
-| `--paper-raised` | `#FBFAF6` | Panels |
-| `--paper-rule` | `#DCD7CC` | Hairlines |
-| `--paper-rule-strong` | `#C9C3B7` | Input borders |
-| `--ink` | `#141311` | Primary text, mark |
-| `--ink-2` | `#4A463F` | Secondary text |
-| `--ink-3` | `#6B665D` | Labels (5.0:1 on paper) |
-| `--signal-deep` | `#46700C` | Signal on paper: focus rings, primary text links. Primary buttons on paper stay `--ink` fill with `--paper` text. |
-| `--recall-deep` | `#7E5B0C` | Recall on paper |
-| `--beacon-deep` | `#C2411F` | Beacon on paper (text); `#E5532F` for the dot graphic |
+Paper swaps the roles the views use, so its names are roles (`bg`, `text`, `focus`), and these are
+the keys for `theme.colors.light`.
+
+<!-- colors: light -->
 
 On paper the mark is one colour: ink wire and ink dot.
 
@@ -113,10 +102,10 @@ Paper version: replace both colours with `#141311`.
 
 ### 18px menu bar, needs you
 
-The dot grows slightly and turns Beacon. Ship as a non-template image (`#FF7A59` on dark bars, `#E5532F` on light bars).
+The dot grows slightly and turns Beacon. Ship as a non-template image (`#B8A4FF` on dark bars, `#5B3FC4` on light bars).
 
 ```html
-<svg width="18" height="18" viewBox="0 0 18 18" fill="none" aria-hidden="true"><path d="M2.8 4.6L9 14.8L13.23 7.85" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/><circle cx="15.2" cy="4.6" r="2.3" fill="#FF7A59"/></svg>
+<svg width="18" height="18" viewBox="0 0 18 18" fill="none" aria-hidden="true"><path d="M2.8 4.6L9 14.8L13.23 7.85" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/><circle cx="15.2" cy="4.6" r="2.3" fill="#B8A4FF"/></svg>
 ```
 
 ### 16px inline (no tile)

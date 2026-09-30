@@ -1,0 +1,223 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Capsule · search, the first keystroke</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="vyre.css">
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;600&amp;family=JetBrains+Mono:wght@400;600&amp;display=swap">
+<style>body{margin:0}</style>
+</helmet>
+<div class="vy board {{theme}}" style="width: 2504px; height: 1090px;">
+
+  <div class="bhead">
+    <div class="col" style="max-width: 1500px;">
+      <span class="lbl">Surfaces · the Mac Capsule, Design A</span>
+      <h1 class="t28 w6">Capsule search: the first keystroke paints local results, grouped, and nothing waits on the network.</h1>
+      <p class="t15 t2">Control twice opens the Capsule over any app. One field asks Vyre, finds anything on this Mac and the box, or runs a command. Every result is the app's list row, and the footer carries only the keys.</p>
+    </div>
+  </div>
+
+  <div class="frames" style="gap: 48px;">
+
+    <!-- (a) First open -->
+    <div class="cap">
+      <span class="cap-t">First open · nothing typed · 2 need you</span>
+      <div class="kc-desk" style="height: 640px;">
+        <div class="kc-mb"><span class="grow"></span><svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-label="Vyre, 2 need you"><path class="mk-w" d="M3.5 5.5L12 19.5L17.96 9.69" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"></path><circle cx="20.5" cy="5.5" r="2.3" style="fill: var(--beacon-dot);"></circle></svg><span class="t12 t2">Sun 27 Sep 14:22</span></div>
+        <div class="kc-win" style="left: 20px; top: 44px; width: 470px; height: 576px;"></div>
+        <div class="kc-blk" style="right: 20px; bottom: 20px; width: 240px; height: 220px;"></div>
+
+        <div class="kc-p">
+          <div class="kc-in">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path class="mk-w" d="M3.5 5.5L12 19.5L17.96 9.69" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"></path><circle cx="20.5" cy="5.5" r="2.3" style="fill: var(--beacon-dot);"></circle></svg>
+            <span class="kc-q"><span class="caret" style="margin: 0 2px 0 0;"></span><span class="kc-ph">Ask Vyre, find, or run</span></span>
+          </div>
+          <div class="kc-body">
+            <div class="kc-r kc-r-on" style="margin-top: 4px;">
+              <span class="kc-lead"><span class="dot dot-need"></span></span>
+              <div class="col grow" style="gap: 0;"><span class="t13 w6 bea">2 need you</span><span class="t12 t3 trunc">Oldest: Send email to Sam · kit · Harlow Legal</span></div>
+              <span class="t12 t3">12m</span>
+              <svg class="ic ic-12 t3" viewBox="0 0 16 16"><path d="M6 3.5l4.5 4.5-4.5 4.5"></path></svg>
+            </div>
+            <div class="kc-g" style="margin-top: 4px;">Recent</div>
+            <div class="kc-r">
+              <span class="kc-lead"><svg class="ic" viewBox="0 0 16 16"><path d="M2.5 3.5h11v7h-6l-3 2.5v-2.5h-2z"></path></svg></span>
+              <div class="col grow" style="gap: 0;"><span class="t13 trunc">Northwind inbox summary</span><span class="t12 t3 trunc">Session · juno · Northwind Bakery</span></div>
+              <span class="st"><span class="ring"></span>running</span>
+            </div>
+            <div class="kc-r">
+              <span class="kc-lead"><svg class="ic" viewBox="0 0 16 16"><path d="M2.5 3.5h11v7h-6l-3 2.5v-2.5h-2z"></path></svg></span>
+              <div class="col grow" style="gap: 0;"><span class="t13 trunc">Q3 report and Estate intake</span><span class="t12 t3 trunc">Session · kit · Harlow Legal</span></div>
+              <span class="t12 t3">Tue</span>
+            </div>
+            <div class="kc-r" style="margin-bottom: 4px;">
+              <span class="kc-lead"><svg class="ic" viewBox="0 0 16 16"><rect x="1.5" y="2.5" width="13" height="11" rx="1.5"></rect><path d="M4.5 6l2 2-2 2M8.5 10.5h3"></path></svg></span>
+              <div class="col grow" style="gap: 0;"><span class="t13 mono trunc">code northwind</span><span class="t12 t3 trunc">Command · Vault</span></div>
+              <span class="t12 t3">yesterday</span>
+            </div>
+          </div>
+          <div class="kc-f">
+            <span class="kc-k"><span class="kbd">↑↓</span>Move</span>
+            <span class="kc-k"><span class="kbd">⏎</span>Open</span>
+            <span class="kc-k" style="margin-left: auto;"><span class="kbd">Esc</span>Hide</span>
+          </div>
+        </div>
+      </div>
+      <span class="note">Paints from the local cache on open: the waiting count first, then 3 recent items. Nothing else until you type.</span>
+    </div>
+
+    <!-- (b) Typing "north" -->
+    <div class="cap">
+      <span class="cap-t">One word typed · local results painted on the first keystroke</span>
+      <div class="kc-desk" style="height: 640px;">
+        <div class="kc-mb"><span class="grow"></span><svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-label="Vyre, 2 need you"><path class="mk-w" d="M3.5 5.5L12 19.5L17.96 9.69" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"></path><circle cx="20.5" cy="5.5" r="2.3" style="fill: var(--beacon-dot);"></circle></svg><span class="t12 t2">Sun 27 Sep 14:22</span></div>
+        <div class="kc-win" style="left: 20px; top: 44px; width: 470px; height: 576px;"></div>
+        <div class="kc-blk" style="right: 20px; bottom: 20px; width: 240px; height: 220px;"></div>
+
+        <div class="kc-p" style="height: 560px;">
+          <div class="kc-in">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path class="mk-w" d="M3.5 5.5L12 19.5L17.96 9.69" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"></path><circle cx="20.5" cy="5.5" r="2.3" style="fill: var(--beacon-dot);"></circle></svg>
+            <span class="kc-q">north<span class="caret"></span></span>
+          </div>
+          <div class="kc-body" data-scrolls="">
+            <div class="kc-g"><span class="dot dot-need"></span><span class="bea">Needs you</span><span class="t3" style="font-weight: 400;">1</span></div>
+            <div class="kc-r kc-r-on">
+              <span class="av">k</span>
+              <div class="col grow" style="gap: 0;"><span class="t13 trunc">Reply to <span class="w6">North</span>wind wholesale order</span><span class="t12 t3 trunc">Draft · kit · Northwind Bakery · 6 orders for Saturday</span></div>
+              <span class="t12 t3">12m</span>
+            </div>
+            <div class="kc-g">Sessions</div>
+            <div class="kc-r">
+              <span class="kc-lead"><svg class="ic" viewBox="0 0 16 16"><path d="M2.5 3.5h11v7h-6l-3 2.5v-2.5h-2z"></path></svg></span>
+              <div class="col grow" style="gap: 0;"><span class="t13 trunc"><span class="w6">North</span>wind inbox summary</span><span class="t12 t3 trunc">juno · Northwind Bakery</span></div>
+              <span class="st"><span class="ring"></span>running</span>
+            </div>
+            <div class="kc-r">
+              <span class="kc-lead"><svg class="ic" viewBox="0 0 16 16"><path d="M2.5 3.5h11v7h-6l-3 2.5v-2.5h-2z"></path></svg></span>
+              <div class="col grow" style="gap: 0;"><span class="t13 trunc"><span class="w6">North</span>wind pre-order window</span><span class="t12 t3 trunc">kit · Northwind Bakery</span></div>
+              <span class="t12 t3">Fri</span>
+            </div>
+            <div class="kc-g">Agents</div>
+            <div class="kc-r">
+              <span class="av">j</span>
+              <div class="col grow" style="gap: 0;"><span class="t13 trunc">juno</span><span class="t12 t3 trunc">Summarising the <span class="w6">North</span>wind inbox · 3m</span></div>
+              <span class="st"><span class="ring"></span>running</span>
+            </div>
+            <div class="kc-g">Projects</div>
+            <div class="kc-r">
+              <span class="kc-lead"><svg class="ic" viewBox="0 0 16 16"><path d="M1.5 4.5v8h13v-6.5h-6.5l-1.5-1.5z"></path></svg></span>
+              <div class="col grow" style="gap: 0;"><span class="t13 trunc"><span class="w6">North</span>wind Bakery</span><span class="t12 t3 trunc">Project · 9 threads · 2 unread</span></div>
+              <span class="t12 t3">3m</span>
+            </div>
+            <div class="kc-g">Files</div>
+            <div class="kc-r">
+              <span class="kc-lead"><svg class="ic" viewBox="0 0 16 16"><path d="M4 1.5h5l3 3v10H4z"></path><path d="M9 1.5v3h3"></path></svg></span>
+              <div class="col grow" style="gap: 0;"><span class="t13 mono trunc"><span class="w6">north</span>wind-price-list.pdf</span><span class="t12 t3 mono trunc">~/Documents/Northwind</span></div>
+              <span class="t12 t3">Aug</span>
+            </div>
+            <div class="kc-g">Apps</div>
+            <div class="kc-r">
+              <span class="kc-lead"><svg class="ic" viewBox="0 0 16 16"><rect x="3" y="3" width="10" height="7" rx="1"></rect><path d="M1.5 12.5h13"></path></svg></span>
+              <div class="col grow" style="gap: 0;"><span class="t13 trunc"><span class="w6">North</span>wind Till</span><span class="t12 t3 trunc">App</span></div>
+            </div>
+            <div class="kc-g">Commands</div>
+            <div class="kc-r">
+              <span class="kc-lead"><svg class="ic" viewBox="0 0 16 16"><rect x="1.5" y="2.5" width="13" height="11" rx="1.5"></rect><path d="M4.5 6l2 2-2 2M8.5 10.5h3"></path></svg></span>
+              <div class="col grow" style="gap: 0;"><span class="t13 mono trunc">code <span class="w6">north</span>wind</span><span class="t12 t3 trunc">Vault · the Northwind orders code</span></div>
+            </div>
+            <span class="kc-thumb" style="top: 3px; height: 400px;"></span>
+          </div>
+          <div class="kc-f">
+            <span class="kc-k"><span class="kbd">↑↓</span>Move</span>
+            <span class="kc-k"><span class="kbd">⏎</span>Open</span>
+            <span class="kc-k"><span class="kbd">⌘O</span>Open in Vyre</span>
+            <span class="kc-k" style="margin-left: auto;"><span class="kbd">Esc</span>Clear</span>
+          </div>
+        </div>
+      </div>
+      <span class="note">Painted 38 ms after the keystroke, from the local index. The panel stops at 560 and the results scroll inside.</span>
+    </div>
+
+    <!-- (c) Exact match: a vault code -->
+    <div class="cap">
+      <span class="cap-t">Exact match · a command answers in the row</span>
+      <div class="kc-desk" style="height: 640px;">
+        <div class="kc-mb"><span class="grow"></span><svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-label="Vyre, 2 need you"><path class="mk-w" d="M3.5 5.5L12 19.5L17.96 9.69" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"></path><circle cx="20.5" cy="5.5" r="2.3" style="fill: var(--beacon-dot);"></circle></svg><span class="t12 t2">Sun 27 Sep 14:22</span></div>
+        <div class="kc-win" style="left: 20px; top: 44px; width: 470px; height: 576px;"></div>
+        <div class="kc-blk" style="right: 20px; bottom: 20px; width: 240px; height: 220px;"></div>
+
+        <div class="kc-p">
+          <div class="kc-in">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path class="mk-w" d="M3.5 5.5L12 19.5L17.96 9.69" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"></path><circle cx="20.5" cy="5.5" r="2.3" style="fill: var(--beacon-dot);"></circle></svg>
+            <span class="kc-q"><span class="mono">code northwind</span><span class="caret"></span></span>
+          </div>
+          <div class="kc-body">
+            <div class="kc-g">Vault</div>
+            <div class="kc-r kc-r-on" style="align-items: flex-start; padding: 10px 16px 12px;">
+              <span class="kc-lead"><svg class="ic" viewBox="0 0 16 16"><circle cx="5" cy="11" r="2.5"></circle><path d="M6.8 9.2l6.2-6.2M11 5l2 2M9.5 6.5l1.5 1.5"></path></svg></span>
+              <div class="col grow" style="gap: 4px;">
+                <div class="col" style="gap: 0;"><span class="t13 trunc">Northwind orders</span><span class="t12 t3 trunc">Authenticator · Northwind Bakery</span></div>
+                <div class="row" style="gap: 12px; align-items: baseline;"><span class="t20 w6 otp">482 913</span><span class="t12 t3 otp">next 031 775</span></div>
+              </div>
+              <div class="row" style="gap: 12px; align-self: center;">
+                <div class="row" style="gap: 6px;"><svg class="cd" viewBox="0 0 22 22"><circle class="trk" cx="11" cy="11" r="9"></circle><circle class="arc" cx="11" cy="11" r="9" stroke-dasharray="33.9 56.5" transform="rotate(-90 11 11)"></circle></svg><span class="t12 t2">18 s</span></div>
+                <span class="kc-k t12 t2"><span class="kbd">⏎</span>Copy</span>
+              </div>
+            </div>
+            <div class="kc-more">
+              <svg class="ic ic-12" viewBox="0 0 16 16"><path d="M8 1.5l5.5 2v4c0 3.5-2.4 6-5.5 7-3.1-1-5.5-3.5-5.5-7v-4z"></path></svg>
+              <span>Touch ID confirmed 4 min ago · covers secrets for 30 min</span>
+            </div>
+            <div class="kc-r">
+              <span class="kc-lead"><svg class="ic" viewBox="0 0 16 16"><circle cx="5" cy="11" r="2.5"></circle><path d="M6.8 9.2l6.2-6.2M11 5l2 2M9.5 6.5l1.5 1.5"></path></svg></span>
+              <div class="col grow" style="gap: 0;"><span class="t13 trunc"><span class="w6">Northwind</span> payments admin</span><span class="t12 t3 trunc">Authenticator · Northwind Bakery</span></div>
+            </div>
+            <div class="kc-g">Commands</div>
+            <div class="kc-r" style="margin-bottom: 4px;">
+              <span class="kc-lead"><svg class="ic" viewBox="0 0 16 16"><rect x="1.5" y="2.5" width="13" height="11" rx="1.5"></rect><path d="M4.5 6l2 2-2 2M8.5 10.5h3"></path></svg></span>
+              <div class="col grow" style="gap: 0;"><span class="t13 mono trunc">vault open <span class="w6">northwind</span></span><span class="t12 t3 trunc">Opens the Northwind items in Vyre</span></div>
+            </div>
+          </div>
+          <div class="kc-f">
+            <span class="kc-k"><span class="kbd">⏎</span>Copy</span>
+            <span class="kc-k"><span class="kbd">↑↓</span>Move</span>
+            <span class="kc-k"><span class="kbd">⌘O</span>Open in Vyre</span>
+            <span class="kc-k" style="margin-left: auto;"><span class="kbd">Esc</span>Clear</span>
+          </div>
+        </div>
+      </div>
+      <span class="note">After ⏎ the row reads "Copied · clears in 30 s" in place and the panel hides. Outside the 30 min, ⏎ reads "Copy with Touch ID".</span>
+    </div>
+
+  </div>
+
+  <div class="anno" style="width: 2376px;">
+    <span class="lbl">How it works</span>
+    <div style="display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 14px 48px;">
+      <div class="anno-i"><span class="anno-n">1</span><span>Speed: local results paint under 50 ms after each keystroke, from the index on this Mac (sessions, agents, projects, files, apps, commands). Nothing waits on the network before they show. No spinner wall, ever.</span></div>
+      <div class="anno-i"><span class="anno-n">2</span><span>The panel: 680 wide, radius 14, panel fill, 1 px rule-strong, the float shadow, opaque. Input 56 (mark 20, field 15/22), group header 28, row 44 (tile or icon 24, title 13, meta 12), footer 32. It grows to 560, then the results scroll inside.</span></div>
+      <div class="anno-i"><span class="anno-n">3</span><span>Groups keep one order: Needs you, Sessions, Agents, Projects, Files, Apps, Commands. The first row is selected at once; the matched part is 600. Violet is only the Needs dot, label and the mark's dot.</span></div>
+      <div class="anno-i"><span class="anno-n">4</span><span>Keys: ↑↓ move, ⏎ opens the selected result (or copies, for a code), ⌘O opens it in Vyre, Esc clears, a second Esc hides. The footer holds only these hints, never a status line.</span></div>
+      <div class="anno-i"><span class="anno-n">5</span><span>An exact command match answers in its own row: the code, the next code and the ring. Touch ID releases the secret once and covers secrets for 30 min, so ⏎ copies with no prompt.</span></div>
+      <div class="anno-i"><span class="anno-n">6</span><span>Single words and exact matches never start a Vyre IQ answer; they stay plain search (see "Capsule · Vyre IQ answers"). The mic and the "@kit" chip sit at the input's right only when set or installed.</span></div>
+      <div class="anno-i"><span class="anno-n">7</span><span>Follows the system appearance: dark here, paper on the -paper board, the same tokens. Mono only for commands, paths and codes.</span></div>
+      <div class="anno-i"><span class="anno-n">8</span><span>Smooth: one paint per keystroke, no skeleton for local rows. Rows keep their slots as you type and groups shrink from the bottom, so the selection never jumps. The panel height eases once (150 ms) and never while a key repeats.</span></div>
+    </div>
+  </div>
+
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"theme":{"editor":"enum","options":["t-dark","t-light"],"default":"t-dark"},"$preview":{"width":2504,"height":1090}}'>
+class Component extends DCLogic {
+  renderVals() {
+    return { theme: this.props.theme ?? 't-dark' };
+  }
+}
+</script>
+</body>
+</html>

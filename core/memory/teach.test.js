@@ -20,7 +20,7 @@ function world(t, { recall = true } = {}) {
   t.after(() => db.close());
   if (recall) seedRecall(db, SESSIONS);
   const curator = new Curator(db, { me: { domains: ["riverastudio.com"] } });
-  return { db, curator, graph: new Graph(db, curator) };
+  return { db, curator, graph: new Graph(db, curator, { now: () => Date.parse("2026-09-20T09:00:00Z") }) };
 }
 const dump = db => ["memory_nodes", "memory_edges", "memory_evidence", "memory_lessons", "memory_shortforms", "memory_taught"]
   .map(t => db.prepare(`SELECT * FROM ${t}`).all().map(r => JSON.stringify({ ...r, observed: undefined, at: undefined })).sort());
@@ -70,7 +70,7 @@ test("teach: a lesson that agrees with the transcripts adds provenance and keeps
   assert.equal(after?.source, before?.source, "a turn beats a lesson as the source a person reads");
   const why = graph.why({ fact: after.id });
   assert.ok(why.turns.length > 0 && why.taught.length === 1);
-  assert.equal(db.prepare("SELECT COUNT(*) n FROM memory_edges WHERE src = 'name:Dana Reyes' AND rel = 'works_at'").get()?.n, 1);
+  assert.equal(db.prepare("SELECT COUNT(*) n FROM memory_edges WHERE room = '*' AND src = 'name:Dana Reyes' AND rel = 'works_at'").get()?.n, 1);
   // Derived edges do not borrow a lesson when turns already support them.
   const domain = graph.why({ fact: "name:Harlow Legal|has_domain|domain:harlowlegal.com" });
   assert.deepEqual(domain.taught, []);
@@ -172,4 +172,16 @@ test("teach: through ctx.memory.teach in a real vyred, and never from outside a 
   const spoof = await d.registry.call("memory.teach", { kind: "people.person", fact: { subject: "A" }, from: "people" }, "module:other");
   assert.match(spoof.error.message, /arrived as module:other/);
   assert.ok(fs.existsSync(d.paths.db));
+});
+
+test("teach: a preference about the user lands on the user's own node", async t => {
+  const { db, curator, graph } = world(t);
+  await curator.curate();
+  curator.teach("learn", "preference", { subject: { kind: "me" }, rel: "prefers", object: { name: "pnpm" }, key: "lesson:7" });
+  await curator.curate();
+  const edge = db.prepare("SELECT src, rel FROM memory_edges WHERE rel = 'prefers'").get();
+  assert.equal(edge?.src, "me:you");
+  assert.equal(db.prepare("SELECT COUNT(*) AS n FROM memory_nodes WHERE label = 'the user'").get().n, 0);
+  // The main list ranks by sessions; the user's own view has it, in the user's grammar.
+  assert.ok(graph.facts({ about: "me:you" }).facts.some(f => f.rel === "prefers" && f.text === "you prefer pnpm"), "the preference is a fact about the user");
 });

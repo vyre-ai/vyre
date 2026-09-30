@@ -14,7 +14,7 @@ import { spawn } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { start } from "../daemon/index.js";
 import { request, call } from "../daemon/client.js";
-import { tempHome, writeModule } from "../../test/helpers.js";
+import { tempHome, writeModule, present } from "../../test/helpers.js";
 import { tempKeychain, onSearchList } from "./testing.js";
 
 const REPO = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
@@ -45,7 +45,9 @@ async function boot(t, vault = { keystore: "file" }, { keep } = {}) {
     writeModule(mods, "sneak", { does: { tools: ["sneak.try"] } }, SNEAK);
   }
   const lines = [];
-  const d = await start({ root, log: (m, x) => lines.push(m + (x ? " " + JSON.stringify(x) : "")) });
+  // The fixtures stand in for Vyre's own modules using the built in only vault.fetch
+  // (needs.vault, ADR 0047), so the home's modules folder loads as first party. Test only.
+  const d = await start({ root, presence: present, firstPartyRoots: [mods], log: (m, x) => lines.push(m + (x ? " " + JSON.stringify(x) : "")) });
   return { root, d, lines, as: caller => (tool, input = {}) => call(tool, input, { root, caller }) };
 }
 
@@ -229,13 +231,14 @@ test("vault: no value appears in events, logs, listings, the MCP server, the HTT
   await cli("vault.put", { name: "site-login", kind: "login", fields: { username: v("user"), password: v("pw"), totp: "JBSWY3DPEHPK3PXP" }, url: "https://mail.example.com" });
   await cli("vault.put", { name: "team-card", kind: "card", fields: { holder: "A Person", number: v("card"), expiry: "01/30", cvv: v("cvv") } });
   const envFile = path.join(root, "fixture.env");
-  fs.writeFileSync(envFile, `FIXTURE_KEY=${v("env")}\n`);
-  await cli("vault.import", { file: envFile });
+  fs.writeFileSync(envFile, `FIXTURE_API_KEY=${v("env")}\n`);
+  const envItem = (await cli("vault.import", { file: envFile })).data.added[0];
+  assert.ok(envItem, "the .env file became an env-set");
   fs.rmSync(envFile);
 
   await cli("vault.grant", { name: "api-token", module: "probe" });
   await cli("probe.use", { name: "api-token" });
-  await cli("vault.inject", { items: [{ name: "FIXTURE_KEY" }] });
+  await cli("vault.inject", { items: [{ name: envItem }] });
   await cli("vault.totp", { name: "site-login" });
   await cli("sneak.try", { name: "site-login" });
   await mcp("vault.put", { name: "x", fields: { value: "not stored" } });
@@ -281,25 +284,26 @@ test("vault: no value appears in events, logs, listings, the MCP server, the HTT
 test("vault: a module may put its own items and grant them, and nothing else", async t => {
   const { root, d, as } = await boot(t);
   t.after(() => d.stop());
-  writeModule(path.join(root, "modules"), "onboard", { does: { tools: ["onboard.store"] } }, `export default { async start(ctx) {
-    ctx.tool("onboard.store", { input: { type: "object", properties: { name: { type: "string" }, value: { type: "string" }, grants: { type: "array" } } },
+  writeModule(path.join(root, "modules"), "stash", { does: { tools: ["stash.store"] } }, `export default { async start(ctx) {
+    ctx.tool("stash.store", { input: { type: "object", properties: { name: { type: "string" }, value: { type: "string" }, grants: { type: "array" } } },
       run: async input => { const r = await ctx.call("vault.put", { kind: "api-key", ...input }); return r.error ? { error: r.error.message } : r.data; } });
     return { async stop() {} };
   } };`);
+  // "stash", not "onboard": onboard is a core module on a box and would shadow this one.
   await d.stop();
   const again = await boot(t, { keystore: "file" }, { keep: root });
   t.after(() => again.d.stop());
   const cli = again.as("cli");
   const token = fake("setup");
 
-  const stored = (await cli("onboard.store", { name: "api-token", value: token, grants: ["probe"] })).data;
+  const stored = (await cli("stash.store", { name: "api-token", value: token, grants: ["probe"] })).data;
   assert.deepEqual(stored, { name: "api-token", kind: "api-key", created: true, granted: ["probe"] });
   assert.equal((await cli("probe.use", { name: "api-token" })).data.sha, sha(token));
-  assert.equal((await cli("vault.list")).data.items[0].origin, "module:onboard");
-  assert.equal((await cli("onboard.store", { name: "api-token", value: fake("again") })).data.created, false, "it may replace what it made");
+  assert.equal((await cli("vault.list")).data.items[0].origin, "module:stash");
+  assert.equal((await cli("stash.store", { name: "api-token", value: fake("again") })).data.created, false, "it may replace what it made");
 
   await cli("vault.put", { name: "site-login", kind: "login", fields: { password: fake("pw"), username: "a" } });
-  assert.match((await cli("onboard.store", { name: "site-login", value: "x" })).data.error, /was not made by onboard/);
+  assert.match((await cli("stash.store", { name: "site-login", value: "x" })).data.error, /was not made by stash/);
   assert.match((await cli("sneak.try", { name: "api-token" })).data.message, /not granted to sneak/);
   assert.equal((await again.as("mcp")("vault.put", { name: "z", value: "y" })).error.code, "denied");
   assert.match((await cli("vault.put", { name: "q", value: "y", grants: ["probe"] })).error.message, /people use vault.grant/);
@@ -307,8 +311,8 @@ test("vault: a module may put its own items and grant them, and nothing else", a
 
 test("vault: a per-agent module fetches dynamic names, still only with a grant per item", async t => {
   const { root, d } = await boot(t);
-  writeModule(path.join(root, "modules"), "agents", { does: { tools: ["agents.probe"] }, needs: { vault: ["per-agent"] } }, `export default { async start(ctx) {
-    ctx.tool("agents.probe", { input: { type: "object", properties: { name: { type: "string" } } },
+  writeModule(path.join(root, "modules"), "roster", { does: { tools: ["roster.fetch"] }, needs: { vault: ["per-agent"] } }, `export default { async start(ctx) {
+    ctx.tool("roster.fetch", { input: { type: "object", properties: { name: { type: "string" } } },
       run: async ({ name }) => { try { const v = await ctx.vault.fetch(name); return { length: v.length }; } catch (e) { return { error: e.message }; } } });
     return { async stop() {} };
   } };`);
@@ -318,9 +322,9 @@ test("vault: a per-agent module fetches dynamic names, still only with a grant p
   const cli = again.as("cli");
   const token = fake("setup");
   await cli("vault.put", { name: "juno-setup-token", value: token });
-  assert.match((await cli("agents.probe", { name: "juno-setup-token" })).data.error, /not granted to agents/);
-  await cli("vault.grant", { name: "juno-setup-token", module: "agents" });
-  assert.deepEqual((await cli("agents.probe", { name: "juno-setup-token" })).data, { length: token.length });
+  assert.match((await cli("roster.fetch", { name: "juno-setup-token" })).data.error, /not granted to roster/);
+  await cli("vault.grant", { name: "juno-setup-token", module: "roster" });
+  assert.deepEqual((await cli("roster.fetch", { name: "juno-setup-token" })).data, { length: token.length });
 });
 
 test("vault: behind tailscale serve, a relayed pass answers only its holder's Tailscale login", async t => {
@@ -364,4 +368,25 @@ test("vault: behind tailscale serve, a relayed pass answers only its holder's Ta
   assert.match((await use()).error.message, /only through tailscale serve/);
   const trail = (await o("vault.audit", { name: "api-token" })).data.entries;
   assert.ok(trail.some(e => e.action === "relay" && e.ok && /as mate@example\.com/.test(e.why)));
+});
+
+test("vault: on the box (identity whois), a relay ignores the identity header and refuses non-tailnet peers", async t => {
+  const token = fake("token");
+  const free = await new Promise(r => { const s = http.createServer().listen(0, "127.0.0.1", () => { const p = /** @type {any} */ (s.address()).port; s.close(() => r(p)); }); });
+  // The relay is on loopback here, so every peer is off the tailnet and whois is never asked.
+  const owner = await boot(t, { keystore: "file", relay: { host: "127.0.0.1", port: free, identity: "whois" } });
+  t.after(() => owner.d.stop());
+  const mate = await boot(t, { keystore: "file", login: "mate@example.com" });
+  t.after(() => mate.d.stop());
+  const o = owner.as("cli"), m = mate.as("cli");
+  await o("vault.put", { name: "api-token", kind: "api-key", value: token, hosts: ["https://api.example.com"] });
+  const card = (await m("vault.identity")).data.card;
+  const { ticket } = (await o("vault.pass.create", { holder: "teammate", card, items: ["api-token"] })).data;
+  await m("vault.pass.accept", { ticket });
+  // A forged header, as any local process could send it, counts for nothing.
+  const res = await fetch(`http://127.0.0.1:${free}/v1/relay`, { method: "POST", headers: { "content-type": "application/json", "tailscale-user-login": "mate@example.com" },
+    body: JSON.stringify({ pass: "none" }) });
+  assert.equal(res.status, 403);
+  const use = await m("vault.relay", { item: "api-token", request: { url: "https://api.example.com/", headers: { authorization: "Bearer {{vault}}" } } });
+  assert.match(JSON.stringify(use), /only people on the tailnet/);
 });

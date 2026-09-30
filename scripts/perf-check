@@ -1,0 +1,439 @@
+#!/usr/bin/env node
+// @ts-check
+// perf-check — holds vyred to docs/SPEC.md section 2, principle 8 ("Light by default"):
+//
+//   scripts/perf-check                     vyred idle (below)
+//   scripts/perf-check --first-run [--real-model] [--seconds N]
+//                                          the first index of a whole history (lib/first-run.mjs)
+//
+//   vyred idle: under 0.5% of one core and under 150 MB resident, with no polling faster than
+//   once a minute when nothing is happening; work is driven by events and file-system notice.
+//   The 150 MB is the SETTLED size: after the startup indexing pass V8 keeps its heap for a
+//   while (about 160 MB for ~20 s on the synthetic corpus) and gives it back once idle, so the
+//   idle budget is read once RSS has been flat for RSS_FLAT_SAMPLES samples at the end of the
+//   window (the window runs on, up to IDLE_MAX_SECONDS, until it is). A separate startup budget
+//   (200 MB, the first 30 s from spawn) still fails a real indexing blowup. Both RSS budgets gate on
+//   the Node the box ships; the heap after a forced GC (scripts/lib/gc-hook.mjs) gates everywhere.
+//
+// Builds a throwaway VYRE_HOME (never the real ~/.vyre), seeds it with the small fixture corpus
+// plus a synthetic ~20,000-turn one so Recall has real work to do, starts a real vyred as a
+// child process, waits for its startup indexing pass to finish, then samples the process for 60
+// seconds of true idle: no requests, nothing but whatever vyred does on its own. It also loads a
+// timer-hook (scripts/lib/timer-hook.mjs) into that child via `node --import` so every
+// setInterval/setTimeout the process registers — including ones inside a module vyred loads,
+// not just vyred's own code — is on record, not just the ones this script happened to guess.
+//
+// Exits 0 if every budget holds, 1 if any is broken. Cleans up the temp home and kills vyred
+// either way.
+//
+// Deliberate scope choice: this run sets `recall.vectors: false` in the synthetic home's
+// config.json. The embedding model is an optional dependency that downloads weights over the
+// network on first use and then does real CPU work (about 11ms/turn) in the background for as
+// long as there is unembedded backlog — for 20,000 turns that is minutes, not the 60-90s this
+// check budgets for, and it depends on network access CI may not have. That background work is
+// real and worth budgeting separately (SPEC's "heavy work... yields, pauses on battery" bullet),
+// but it is not what "vyred idle" means here. Turning vectors off keeps this check about the
+// daemon's idle footprint, deterministically, offline. See the bottom of this file for the
+// follow-up this implies.
+
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
+import { spawn, spawnSync } from "node:child_process";
+import { fileURLToPath } from "node:url";
+
+const HERE = path.dirname(fileURLToPath(import.meta.url));
+const REPO = path.resolve(HERE, "..");
+
+const IDLE_SECONDS = 60;
+const IDLE_MAX_SECONDS = 120;
+const SAMPLE_MS = 1500;
+const RSS_FLAT_SAMPLES = 8;
+const RSS_FLAT_MB = 3;
+const STARTUP_SECONDS = 30;
+const STARTUP_TIMEOUT_MS = 60_000;
+const SETTLE_MS = 3000;
+
+// cpuPct/rssMB gate the steady state (p95 of the samples — one noisy `ps` tick, or a GC pause,
+// shouldn't fail the whole check when 39 of 40 samples are clean). cpuSustainedPct/window catch
+// the failure mode p95 alone would miss: real ongoing load that just isn't the single worst
+// sample, e.g. a leftover polling loop running the whole 60s at 1-2%.
+// heapMB gates what vyred really holds once idle: the V8 heap right after a forced full GC
+// (scripts/lib/gc-hook.mjs), about 20 MB on the synthetic corpus. The RSS budgets gate only on the
+// Node major the box image ships (box/Dockerfile's FROM node:N): on Node 22 an idle vyred gives its
+// startup heap back (RSS about 85 MB), while Node 24 keeps it (186 to 260 MB, depending on the
+// run) with a heap V8 simply hasn't collected yet, so there RSS is informational.
+const BUDGET = { cpuPct: 0.5, rssMB: 150, startupRssMB: 200, heapMB: 50, minTimerMs: 60_000, cpuSustainedPct: 1.0, cpuSustainedWindow: 5 };
+
+/** The Node major the box image runs, from box/Dockerfile, or null. */
+function shippedNodeMajor() {
+  try { return Number(/^FROM node:(\d+)/m.exec(fs.readFileSync(path.join(REPO, "box", "Dockerfile"), "utf8"))?.[1]) || null; } catch { return null; }
+}
+
+function log(msg) { process.stderr.write(`perf-check: ${msg}\n`); }
+
+async function main() {
+  // --first-run: what the first index of a whole history costs (scripts/lib/first-run.mjs).
+  if (process.argv.includes("--first-run")) {
+    const { firstRun } = await import(path.join(HERE, "lib", "first-run.mjs"));
+    process.exitCode = await firstRun({ repo: REPO, log, real: process.argv.includes("--real-model"),
+      seconds: Number(process.argv[process.argv.indexOf("--seconds") + 1]) || 60 });
+    return;
+  }
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), "vyre-perf-"));
+  const transcriptsDir = path.join(home, "transcripts");
+  fs.mkdirSync(transcriptsDir, { recursive: true });
+
+  let expected;
+  let child;
+  let timersFile;
+  let gcFile;
+  try {
+    expected = await seed(home, transcriptsDir);
+    timersFile = path.join(home, "timers.json");
+    gcFile = path.join(home, "gc.json");
+    child = spawnDaemon(home, timersFile, gcFile);
+    log(`vyred starting (pid ${child.pid}), home ${home}`);
+    const startup = watchStartup(child.pid, STARTUP_SECONDS, 500);
+
+    await waitForHealth(home, child, STARTUP_TIMEOUT_MS);
+    log("vyred is up; waiting for the startup indexing pass to finish");
+    await waitForIndexing(home, expected, STARTUP_TIMEOUT_MS);
+    // Memory's curation of the indexed turns runs after indexing and takes seconds on 20,000
+    // turns, longer than the settle below on a loaded host or with more modules starting.
+    // memory.curate waits for that pass and then answers, so idle starts after it, not during.
+    await waitForMemory(home);
+    // Let things settle: Memory's post-index curation debounces 250ms behind the last indexed
+    // session (core/memory/index.js), so the tail of startup work is still draining for a
+    // moment after recall.status says indexing is done. Starting the idle window here would
+    // count that drain as "idle activity" it is not.
+    await sleep(SETTLE_MS);
+    const idleStart = Date.now();
+    log("indexing done; sampling idle for " + IDLE_SECONDS + "s");
+
+    const samples = await sampleIdle(child.pid, IDLE_SECONDS, SAMPLE_MS);
+    // The settled size: run on until the last RSS_FLAT_SAMPLES samples sit within RSS_FLAT_MB.
+    while (!rssFlat(samples) && Date.now() - idleStart < IDLE_MAX_SECONDS * 1000) samples.push(...await sampleIdle(child.pid, SAMPLE_MS / 1000, SAMPLE_MS));
+    // The idle window ends here: the GC snapshot and the shutdown below set timers of their own
+    // (Registry.stop races each module's stop() against a 5 s bound), which are not idle polling.
+    const idleEnd = Date.now();
+    const startupPeakMB = await startup;
+    const afterGc = await gcSnapshot(child, gcFile);
+    // Stop vyred BEFORE reading the timer dump: timer-hook.mjs only writes it on process exit
+    // (see that file), so reading it any earlier always finds nothing.
+    await stopChild(child);
+    const timers = readTimers(timersFile);
+
+    const exitCode = report(samples, timers, idleStart, idleEnd, startupPeakMB, afterGc);
+    process.exitCode = exitCode;
+  } finally {
+    if (child && child.exitCode === null) await stopChild(child);
+    fs.rmSync(home, { recursive: true, force: true });
+  }
+}
+
+/**
+ * Seed the temp VYRE_HOME: config.json pointed at a temp transcripts folder, the small fixture
+ * corpus every module test already trusts, and a much larger synthetic one for realistic scale.
+ * @returns {Promise<{ sessions: number, turns: number }>}
+ */
+async function seed(home, transcriptsDir) {
+  const { writeTranscripts, SESSIONS } = await import(path.join(REPO, "test", "fixtures", "corpus.js"));
+  const { writeSyntheticCorpus } = await import(path.join(HERE, "lib", "perf-corpus.mjs"));
+
+  writeTranscripts(transcriptsDir);
+  const fixtureTurns = SESSIONS.reduce((n, s) => n + s.turns.length, 0);
+
+  const synth = writeSyntheticCorpus(transcriptsDir, { sessions: 250, turnsPerSession: 80, projects: 25 });
+  log(`seeded ${SESSIONS.length} fixture sessions + ${synth.sessions} synthetic sessions ` +
+    `(${fixtureTurns + synth.turns} turns total)`);
+
+  // vectors: false — see the file header for why this check does not wait out the embedder.
+  // recall.every is left at its default (5 minutes) deliberately: that is the real interval
+  // vyred runs at, and it is itself part of what this check is confirming stays under budget.
+  const config = { transcripts: [transcriptsDir], recall: { vectors: false } };
+  fs.writeFileSync(path.join(home, "config.json"), JSON.stringify(config));
+
+  return { sessions: SESSIONS.length + synth.sessions, turns: fixtureTurns + synth.turns };
+}
+
+function spawnDaemon(home, timersFile, gcFile) {
+  const entry = path.join(REPO, "core", "daemon", "main.js");
+  const hook = path.join(HERE, "lib", "timer-hook.mjs");
+  const gcHook = path.join(HERE, "lib", "gc-hook.mjs");
+  const child = spawn(process.execPath, ["--expose-gc", `--import=${pathToImportSpecifier(hook)}`, `--import=${pathToImportSpecifier(gcHook)}`, entry], {
+    cwd: REPO,
+    env: { ...process.env, VYRE_HOME: home, VYRE_PERF_TIMERS_FILE: timersFile, VYRE_PERF_GC_FILE: gcFile },
+    stdio: ["ignore", "pipe", "pipe"],
+  });
+  let out = "";
+  child.stdout.on("data", d => { out += d; });
+  child.stderr.on("data", d => { out += d; });
+  child.on("exit", (code, signal) => {
+    if (code !== 0 && code !== null) log(`vyred exited early (code ${code}, signal ${signal}):\n${out.slice(-2000)}`);
+  });
+  child.__output = () => out;
+  // Run at low priority so this check doesn't compete with — or get crowded out by — whatever
+  // else is on the box; also keeps the sampled numbers closer to what an idle daemon actually
+  // costs rather than what it costs under contention. Best-effort: os.setPriority can fail
+  // (e.g. no permission, or platforms that don't support it), which shouldn't fail the check.
+  try { os.setPriority(child.pid, 10); } catch { /* best effort */ }
+  return child;
+}
+
+/** `--import` wants a specifier node's ESM loader accepts; an absolute POSIX path works, a bare
+ * Windows path does not, so go through a file:// URL, which works everywhere. */
+function pathToImportSpecifier(p) {
+  return new URL("file://" + p.split(path.sep).map(encodeURIComponent).join("/")).href;
+}
+
+/**
+ * vyred's memory right after a full GC (scripts/lib/gc-hook.mjs, on SIGUSR2), in MB, or null.
+ * @returns {Promise<{ rss: number, heapTotal: number, heapUsed: number, external: number, arrayBuffers: number } | null>}
+ */
+async function gcSnapshot(child, file) {
+  try { process.kill(child.pid, "SIGUSR2"); } catch { return null; }
+  for (let i = 0; i < 50; i++) {
+    await sleep(100);
+    try { return JSON.parse(fs.readFileSync(file, "utf8")); } catch { /* not written yet */ }
+  }
+  return null;
+}
+
+/** daemon/client.js, imported with the temp home baked in via its own `root` option. */
+async function daemonClient(home) {
+  const mod = await import(path.join(REPO, "core", "daemon", "client.js"));
+  return {
+    request: (method, p, payload) => mod.request(method, p, payload, { root: home }),
+    call: (tool, input) => mod.call(tool, input, { root: home }),
+  };
+}
+
+async function waitForHealth(home, child, timeoutMs) {
+  const { request } = await daemonClient(home);
+  const t0 = Date.now();
+  while (Date.now() - t0 < timeoutMs) {
+    if (child.exitCode !== null) throw new Error(`vyred exited before it came up (code ${child.exitCode})\n${child.__output?.() || ""}`);
+    const r = await request("GET", "/v1/health");
+    if (!r.error) return r.data;
+    await sleep(250);
+  }
+  throw new Error(`vyred did not answer /v1/health within ${timeoutMs}ms`);
+}
+
+/** Wait for Memory's startup curation pass to finish. Without the memory module there is none. */
+async function waitForMemory(home) {
+  const { call } = await daemonClient(home);
+  const r = await call("memory.curate", {});
+  if (r.error && r.error.code !== "no_such_tool") throw new Error(`memory.curate failed: ${r.error.message}`);
+}
+
+/** Poll recall.status until the startup pass has indexed everything and is not running. */
+async function waitForIndexing(home, expected, timeoutMs) {
+  const { call } = await daemonClient(home);
+  const t0 = Date.now();
+  for (;;) {
+    const r = await call("recall.status", {});
+    if (r.error) throw new Error(`recall.status failed: ${r.error.message}`);
+    const st = r.data;
+    if (!st.indexing && st.sessions >= expected.sessions && st.turns >= expected.turns) return st;
+    if (Date.now() - t0 > timeoutMs) {
+      throw new Error(`indexing did not finish within ${timeoutMs}ms (sessions ${st.sessions}/${expected.sessions}, ` +
+        `turns ${st.turns}/${expected.turns}, indexing=${st.indexing})`);
+    }
+    await sleep(500);
+  }
+}
+
+/**
+ * Sample the process's CPU% and resident memory over `seconds`, roughly every `intervalMs`.
+ *
+ * `ps`'s own %cpu column is NOT used for the CPU number: on macOS (and on Linux, depending on
+ * the ps implementation) it is a decayed average dominated by recent history, not a live
+ * instantaneous reading, so right after the startup indexing burst it read 69% and only drifted
+ * down over the following tens of seconds — a true reading of "idle" would have had to wait out
+ * that decay rather than measure it. Instead, this reads `ps -o time=` (the process's total
+ * accumulated CPU time) at each sample and turns the DELTA between two samples, divided by the
+ * wall-clock time between them, into that interval's real CPU%. `ps -o time,rss` is available on
+ * both macOS (BSD ps) and Linux (procps/util-linux), which is why it is used instead of
+ * anything platform-specific like /proc.
+ */
+async function sampleIdle(pid, seconds, intervalMs) {
+  const samples = [];
+  let prev = psSample(pid);
+  let prevT = Date.now();
+  const t0 = prevT;
+  while (Date.now() - t0 < seconds * 1000) {
+    await sleep(intervalMs);
+    const now = psSample(pid);
+    const nowT = Date.now();
+    if (now && prev) {
+      const dCpuSec = Math.max(0, now.cpuSec - prev.cpuSec);
+      const dWallSec = Math.max(0.001, (nowT - prevT) / 1000);
+      samples.push({ cpuPct: (dCpuSec / dWallSec) * 100, rssKB: now.rssKB });
+    }
+    prev = now; prevT = nowT;
+  }
+  return samples;
+}
+
+/** The highest RSS (MB) seen in the first `seconds` from spawn, sampled every `intervalMs`. */
+async function watchStartup(pid, seconds, intervalMs) {
+  let peak = 0;
+  const t0 = Date.now();
+  while (Date.now() - t0 < seconds * 1000) {
+    const s = psSample(pid);
+    if (s) peak = Math.max(peak, s.rssKB / 1024);
+    await sleep(intervalMs);
+  }
+  return peak;
+}
+
+/** The last RSS_FLAT_SAMPLES samples within RSS_FLAT_MB of each other. */
+function rssFlat(samples) {
+  if (samples.length < RSS_FLAT_SAMPLES) return false;
+  const tail = samples.slice(-RSS_FLAT_SAMPLES).map(s => s.rssKB / 1024);
+  return Math.max(...tail) - Math.min(...tail) <= RSS_FLAT_MB;
+}
+
+function psSample(pid) {
+  const r = spawnSync("ps", ["-o", "time=,rss=", "-p", String(pid)], { encoding: "utf8" });
+  if (r.status !== 0 || !r.stdout.trim()) return null;
+  const line = r.stdout.trim().split("\n")[0];
+  const m = /^(\S+)\s+(\d+)$/.exec(line.trim());
+  if (!m) return null;
+  const cpuSec = parseCpuTime(m[1]);
+  const rssKB = Number(m[2]);
+  if (!Number.isFinite(cpuSec) || !Number.isFinite(rssKB)) return null;
+  return { cpuSec, rssKB };
+}
+
+/** "[[HH:]MM:]SS[.cc]" (both BSD and GNU ps use colon-separated time, seconds may be fractional). */
+function parseCpuTime(s) {
+  return s.split(":").map(Number).reduce((acc, part) => acc * 60 + part, 0);
+}
+
+function readTimers(file) {
+  try {
+    const j = JSON.parse(fs.readFileSync(file, "utf8"));
+    return { setInterval: j.setInterval || [], setTimeout: j.setTimeout || [] };
+  } catch {
+    return null; // vyred did not exit cleanly in time to dump it; reported as a problem below.
+  }
+}
+
+/** period_ms -> count, from a raw {period_ms, t}[] list. */
+function byPeriod(calls) {
+  const m = new Map();
+  for (const c of calls) m.set(c.period_ms, (m.get(c.period_ms) || 0) + 1);
+  return [...m.entries()].map(([period_ms, count]) => ({ period_ms, count })).sort((a, b) => a.period_ms - b.period_ms);
+}
+
+async function stopChild(child) {
+  child.kill("SIGTERM");
+  const t0 = Date.now();
+  while (child.exitCode === null && Date.now() - t0 < 5000) await sleep(100);
+  if (child.exitCode === null) child.kill("SIGKILL");
+}
+
+function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
+
+/** Print the pass/fail table and return the process exit code. */
+function report(samples, timers, idleStart, idleEnd, startupPeakMB, afterGc) {
+  const shipped = shippedNodeMajor();
+  const node = Number(process.versions.node.split(".")[0]);
+  // No box/Dockerfile (a packed tree): gate RSS as before.
+  const rssGates = shipped === null || node === shipped;
+  const rssBudget = b => (rssGates ? `< ${b} MB` : `informational (Node ${node}; the box runs ${shipped})`);
+  const cpu = samples.map(s => s.cpuPct);
+  const rssMB = samples.map(s => s.rssKB / 1024);
+  const meanCpu = mean(cpu), maxCpu = Math.max(...cpu), p95Cpu = percentile(cpu, 95);
+  const meanRss = mean(rssMB), maxRss = Math.max(...rssMB);
+  const flat = rssFlat(samples), settledRss = Math.max(...rssMB.slice(-RSS_FLAT_SAMPLES));
+  const sustainedCpu = maxWindowMean(cpu, BUDGET.cpuSustainedWindow);
+
+  // setInterval: ANY call anywhere in the process's life is a standing recurring timer for as
+  // long as vyred runs (see timer-hook.mjs), so every one under budget counts, whenever it was
+  // registered.
+  const badIntervals = byPeriod(timers?.setInterval || []).filter(t => t.period_ms > 0 && t.period_ms < BUDGET.minTimerMs);
+  // setTimeout: one-shot by construction, so only what recurred DURING the idle window this run
+  // actually sampled counts as polling; a startup debounce that fired many times while a burst
+  // of indexing events came in, then went silent, is not that (see timer-hook.mjs).
+  const idleTimeouts = (timers?.setTimeout || []).filter(t => t.t >= idleStart && t.t <= idleEnd);
+  const badTimeouts = byPeriod(idleTimeouts).filter(t => t.period_ms > 0 && t.period_ms < BUDGET.minTimerMs && t.count >= 3);
+  const fastestMs = Math.min(
+    ...badIntervals.map(t => t.period_ms),
+    ...badTimeouts.map(t => t.period_ms),
+    Infinity,
+  );
+
+  const rows = [
+    // Gating: p95, not max — a single sampling-noise spike (GC, a scheduler blip, another
+    // process on a shared/CI host) shouldn't fail the check when the steady state is clean.
+    { name: "CPU (p95)", value: `${p95Cpu.toFixed(2)}%`, budget: `< ${BUDGET.cpuPct}%`, pass: p95Cpu < BUDGET.cpuPct, gate: true },
+    // Gating: catches sustained load that p95 alone can miss (e.g. a steady 1-2% the whole
+    // window — no single sample is the "worst" by much, but it's still a real, ongoing cost).
+    { name: `CPU (sustained, ${BUDGET.cpuSustainedWindow}-sample mean)`, value: `${sustainedCpu.toFixed(2)}%`,
+      budget: `< ${BUDGET.cpuSustainedPct}%`, pass: sustainedCpu < BUDGET.cpuSustainedPct, gate: true },
+    // Informational only: raw mean/max are still useful to see, but neither gates on its own —
+    // mean hides a real spike, max fails on one noisy tick. See docs/PERF.md for why.
+    { name: "CPU (mean)", value: `${meanCpu.toFixed(2)}%`, budget: "informational", pass: true, gate: false },
+    { name: "CPU (max)", value: `${maxCpu.toFixed(2)}%`, budget: "informational", pass: true, gate: false },
+    // Gating: the settled size, once RSS is flat; a size that never settles fails too.
+    // Gating everywhere: the live heap once idle, after a full GC; a missing snapshot fails.
+    { name: "heap used (after a full GC)", value: afterGc ? `${afterGc.heapUsed.toFixed(1)} MB` : "no snapshot",
+      budget: `< ${BUDGET.heapMB} MB`, pass: !!afterGc && afterGc.heapUsed < BUDGET.heapMB, gate: true },
+    { name: "RSS (after a full GC)", value: afterGc ? `${afterGc.rss.toFixed(1)} MB` : "no snapshot", budget: "informational", pass: true, gate: false },
+    // Gating on the shipped Node: the settled size, once RSS is flat; a size that never settles fails too.
+    { name: `RSS (settled, last ${RSS_FLAT_SAMPLES})`, value: flat ? `${settledRss.toFixed(1)} MB` : `not flat in ${IDLE_MAX_SECONDS}s`,
+      budget: rssBudget(BUDGET.rssMB), pass: !rssGates || (flat && settledRss < BUDGET.rssMB), gate: rssGates },
+    // Gating on the shipped Node: the first 30 s from spawn, indexing included, so a real blowup still fails.
+    { name: `RSS (startup peak, ${STARTUP_SECONDS}s)`, value: `${startupPeakMB.toFixed(1)} MB`, budget: rssBudget(BUDGET.startupRssMB),
+      pass: !rssGates || startupPeakMB < BUDGET.startupRssMB, gate: rssGates },
+    { name: "RSS (mean)", value: `${meanRss.toFixed(1)} MB`, budget: "informational", pass: true, gate: false },
+    { name: "RSS (max)", value: `${maxRss.toFixed(1)} MB`, budget: "informational", pass: true, gate: false },
+    { name: "fastest recurring timer", value: fastestMs === Infinity ? "none under 60s" : `${fastestMs} ms`,
+      budget: `>= ${BUDGET.minTimerMs} ms`, pass: fastestMs >= BUDGET.minTimerMs, gate: true },
+  ];
+
+  const w = Math.max(...rows.map(r => r.name.length));
+  const load = os.loadavg().map(n => n.toFixed(1)).join(", ");
+  process.stdout.write("\nvyred idle budget check (docs/SPEC.md section 2, principle 8)\n");
+  process.stdout.write(`  samples: ${samples.length} over ~${Math.round(samples.length * SAMPLE_MS / 1000)}s\n`);
+  // A loaded host inflates every number here, especially CPU max — report it next to the
+  // results so a failure caused by machine contention isn't read as a regression.
+  process.stdout.write(`  host load average (1m, 5m, 15m): ${load}\n\n`);
+  for (const r of rows) {
+    process.stdout.write(`  ${r.pass ? "PASS" : "FAIL"}  ${r.name.padEnd(w)}  ${String(r.value).padEnd(14)} budget ${r.budget}\n`);
+  }
+  if (badIntervals.length || badTimeouts.length) {
+    process.stdout.write("\n  recurring timers under 60s:\n");
+    for (const t of badIntervals) process.stdout.write(`    setInterval every ${t.period_ms}ms (registered ${t.count}x)\n`);
+    for (const t of badTimeouts) process.stdout.write(`    setTimeout ~every ${t.period_ms}ms (seen ${t.count}x, looks recurring)\n`);
+  }
+  if (!timers) process.stdout.write("\n  note: could not read the timer dump; vyred may not have exited cleanly.\n");
+  process.stdout.write("\n");
+
+  return rows.every(r => r.pass) ? 0 : 1;
+}
+
+function mean(xs) { return xs.length ? xs.reduce((a, b) => a + b, 0) / xs.length : 0; }
+
+/** Nearest-rank percentile (p in 0-100) over a copy of xs, sorted ascending. */
+function percentile(xs, p) {
+  if (!xs.length) return 0;
+  const sorted = [...xs].sort((a, b) => a - b);
+  const idx = Math.min(sorted.length - 1, Math.ceil((p / 100) * sorted.length) - 1);
+  return sorted[Math.max(0, idx)];
+}
+
+/** The highest mean CPU% over any `window`-sample consecutive slice — sustained load, not a
+ * single spike. With fewer samples than `window`, falls back to the mean of everything. */
+function maxWindowMean(xs, window) {
+  if (xs.length <= window) return mean(xs);
+  let best = 0;
+  for (let i = 0; i + window <= xs.length; i++) best = Math.max(best, mean(xs.slice(i, i + window)));
+  return best;
+}
+
+main().catch(e => { log(`FAILED: ${e.stack || e.message}`); process.exitCode = 1; });

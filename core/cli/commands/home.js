@@ -5,18 +5,22 @@
 // Inside a project's folder that project is preselected, not opened: a person who typed `vyre`
 // there may still want a different project, and opening it straight away hid the rest.
 //
-// In a terminal it is an arrow-key list with type-to-filter, drawn with plain ANSI on raw-mode
-// stdin: no dependencies, and nothing that assumes a local terminal, so it behaves the same over
-// SSH. Piped, it prints the same list as plain text and exits.
+// In a terminal it is the live screen (core/cli/screen): the Inbox, projects, sessions and
+// agents on the left, the selected session streaming on the right, drawn with plain ANSI on
+// raw-mode stdin, so it behaves the same over SSH. Piped, it prints the list below as plain text
+// and exits; --json prints the same data as JSON.
 //
-// The list itself (what is on it, how a key moves through it, how it is drawn) is pure functions,
-// tested without a terminal. Only `choose` touches one.
+// The plain list (homeItems, projectItems, render, choose) predates the screen and is kept for
+// the pipe and for anything that wants a one-shot picker.
 
 import os from "node:os";
 import readline from "node:readline/promises";
-import { call, request } from "../../daemon/client.js";
+import { call } from "../../daemon/client.js";
 import { out, dim, bold, signal, beacon } from "../style.js";
 import { up, claude, resume, startThread } from "./projects.js";
+import { runScreen } from "../screen/index.js";
+import { load } from "../screen/live.js";
+import { EXIT, emit } from "../kit.js";
 
 // ------------------------------------------------------------ what is on the list
 
@@ -254,47 +258,24 @@ async function talk(agent, io) {
 }
 
 /**
- * The interactive home. Returns an exit code. io is the terminal; tests pass streams.
+ * The interactive home: the live screen (core/cli/screen). Returns an exit code. io is the
+ * terminal; tests pass streams.
  * @param {{ input: any, output: any }} io
+ * @param {{ real?: boolean, onFrame?: (lines: string[]) => void }} [o]
  */
-export async function interactive(io) {
-  let data = await homeData();
-  let selectedSlug = data.here;
-  let status = "";
-  for (;;) {
-    const home = homeItems({ ...data, selected: selectedSlug });
-    // Coming back from a project keeps it selected, so Esc is a real "back".
-    const r = await choose({ ...home, title: bold("vyre"), status }, io);
-    status = "";
-    if (r.quit || r.back) return 0;
-    const it = /** @type {Item} */ (r.pick);
-    if (it.kind === "new") return newSession();
-    if (it.kind === "agent") {
-      // Asked of the tool list, not by calling agents.ask: an empty ask could start a thread.
-      const tools = await request("GET", "/v1/tools");
-      if (!(tools.data || []).some(t => t.name === "agents.ask")) { status = "talking to agents arrives with the switchboard"; continue; }
-      await talk(it, io);
-      data = await homeData();
-      continue;
-    }
-    if (it.kind === "project") {
-      selectedSlug = it.value;
-      const ts = await call("projects.threads", { project: it.value });
-      const p = data.projects.find(x => x.slug === it.value);
-      const inner = await choose({ ...projectItems(p, ts.data || []), title: `${bold(p.name)}  ${dim(tilde(p.home))}` }, io);
-      if (inner.quit) return 0;
-      if (inner.back) continue;
-      const pick = /** @type {Item} */ (inner.pick);
-      if (pick.kind === "new-in") return startThread(["--project", pick.value]);
-      return resume(pick.value, { project: it.value });
-    }
-  }
+export function interactive(io, o = {}) {
+  return runScreen(io, { ...o, newSession, startThread, resume, talk: (agent, tio) => talk({ label: agent, value: agent }, tio) });
 }
 
 export default {
   name: "home", hidden: true, summary: "your projects, a new session, and your agents",
-  async run() {
-    if (!(await up())) return 1;
+  /** @param {string[]} args */
+  async run(args = []) {
+    if (!(await up())) return EXIT.UNREACHABLE;
+    if (args.includes("--json")) {
+      const d = await load();
+      return emit({ projects: d.projects, agents: d.agents, here: d.here, threads: d.threads, asks: d.asks, drafts: d.drafts });
+    }
     // Both ends must be a terminal: raw mode needs the input, and the drawing needs the output.
     if (!process.stdin.isTTY || !process.stdout.isTTY) {
       const d = await homeData();
@@ -303,6 +284,6 @@ export default {
       out("");
       return 0;
     }
-    return interactive({ input: process.stdin, output: process.stdout });
+    return interactive({ input: process.stdin, output: process.stdout }, { real: true });
   },
 };

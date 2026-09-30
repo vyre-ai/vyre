@@ -1,20 +1,49 @@
 {
   "manifest_version": 3,
   "name": "Vyre Vault",
-  "version": "0.1.0",
-  "description": "Fill logins from your own Vyre Vault. Talks only to the vyred fill address you configure.",
+  "version": "0.3.0",
+  "description": "Fill logins and passkeys from your own Vyre Vault. Talks only to the vyred fill address you configure.",
   "minimum_chrome_version": "116",
   "action": {
     "default_title": "Vyre Vault",
     "default_popup": "popup.html"
   },
   "background": {
-    "service_worker": "background.js"
+    "service_worker": "background.js",
+    "scripts": ["background.js"]
   },
-  "permissions": ["storage", "activeTab", "scripting"],
-  "host_permissions": ["http://127.0.0.1/*"],
-  "optional_host_permissions": ["http://localhost/*", "https://*.vyre.run/*", "https://*.ts.net/*"],
+  "browser_specific_settings": {
+    "gecko": {
+      "id": "vault@vyre.sh",
+      "strict_min_version": "121.0",
+      "data_collection_permissions": { "required": ["none"] }
+    }
+  },
+  "permissions": [
+    "storage",
+    "activeTab",
+    "scripting"
+  ],
+  "host_permissions": [
+    "http://127.0.0.1/*"
+  ],
+  "optional_host_permissions": [
+    "http://localhost/*",
+    "https://*.vyre.run/*",
+    "https://*.ts.net/*",
+    "https://*/*",
+    "http://*/*"
+  ],
   "content_security_policy": {
     "extension_pages": "default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self'; connect-src http://127.0.0.1:* http://localhost:* https://*.vyre.run https://*.ts.net; object-src 'none'; base-uri 'none'; form-action 'none'"
+  },
+  "commands": {
+    "fill-login": {
+      "suggested_key": {
+        "default": "Ctrl+Shift+L",
+        "mac": "Command+Shift+L"
+      },
+      "description": "Fill the login for this page"
+    }
   }
 }

@@ -1,0 +1,21 @@
+{
+  "network.guests.list": {
+    "enabled": true,
+    "safe": [
+      "threads.list"
+    ],
+    "people": [
+      {
+        "login": "office@harlow.example",
+        "tools": [
+          "glass.open",
+          "threads.list",
+          "vault.get"
+        ],
+        "allowed": [
+          "threads.list"
+        ]
+      }
+    ]
+  }
+}

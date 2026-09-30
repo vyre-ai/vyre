@@ -1,0 +1,567 @@
+#!/usr/bin/env node
+// @ts-check
+// stress-drive — drives headless threads through the real `vyre threads` CLI for a long stretch
+// and checks that nothing is lost, stuck, orphaned or leaking.
+//
+//   scripts/stress-drive [--minutes N] [--quick] [--threads N] [--report file.json] [--keep]
+//
+// Builds a throwaway VYRE_HOME under the test scratch folder (never ~/.vyre, never the user's
+// Claude sessions: config.json points transcripts, projects and roots inside the temp home),
+// starts vyred with the test presence verifier (so answering an ask needs no Touch ID or code),
+// and runs every thread on the fake Claude (core/switchboard/testing/fake-claude.js).
+//
+// For the whole run, each thread in turn is sent a line and must echo it back; is asked to
+// write a file and must raise an ask, which is answered allow or deny through the CLI; is stopped
+// and resumed by the next send; or has its keyboard taken by a second surface and taken back. A
+// `vyre threads watch` per thread is killed and restarted at random. One SSE client holds the
+// stream from the start to the end; two more drop and reconnect with Last-Event-ID at random.
+//
+// Checked at the end (exit 1 on any failure):
+//   events   every id in the event log reached the long-lived client once and in order, and
+//            the reconnecting clients saw exactly the same sequence; ids missing from the final
+//            log are only pruned partial text. Every send got its reply; every ask was answered.
+//   leases   no send was refused for a holder whose process is gone; at checkpoints no
+//            cli:<pid> holder is a dead pid.
+//   orphans  after the threads and vyred stop, no process the run started remains.
+//   rss      vyred's resident size stays flat over the second half of the run (slope under 1 MB
+//            per 10 minutes, on runs of 10 minutes or more) and under 150 MB. The first half is
+//            warmup: runs of 20 and 30 minutes both rose about 8 MB over 13 to 15 minutes with the
+//            JS heap flat, then held.
+//
+// Manual: `npm run stress-drive -- --quick`. Not part of `npm test`.
+
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
+import http from "node:http";
+import { spawn, execFileSync } from "node:child_process";
+import { fileURLToPath } from "node:url";
+
+const REPO = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+const { SCRATCH } = await import(path.join(REPO, "test", "scratch.mjs"));
+const FAKE = path.join(REPO, "core", "switchboard", "testing", "fake-claude.js");
+const VYRE = path.join(REPO, "bin", "vyre");
+
+// ------------------------------------------------------------ options
+
+const argv = process.argv.slice(2);
+const opt = n => { const i = argv.indexOf(n); return i >= 0 ? argv[i + 1] : undefined; };
+const QUICK = argv.includes("--quick");
+const MINUTES = Number(opt("--minutes") || (QUICK ? 2 : 30));
+const THREADS = Number(opt("--threads") || 4);
+const KEEP = argv.includes("--keep");
+// Half the run, at least 2 minutes: SQLite's page cache and V8's heap reservation fill for the
+// first 13 to 15 minutes of a 4-thread run, with no JS heap growth, then stay put.
+const WARMUP_MS = Math.max(120_000, MINUTES * 60_000 / 2);
+const SAMPLE_MS = QUICK ? 10_000 : 30_000;
+const RSS_MAX_MB = 150;
+const SLOPE_MB_PER_10MIN = 1;
+if (!(MINUTES > 0) || !(THREADS > 0)) { console.error("  usage: scripts/stress-drive [--minutes N] [--quick] [--threads N] [--report file] [--keep]"); process.exit(2); }
+
+// ------------------------------------------------------------ the temp home
+
+const HOME = fs.mkdtempSync(path.join(SCRATCH, "stress-"));
+if (path.resolve(HOME).startsWith(path.resolve(os.homedir(), ".vyre"))) throw new Error("refusing the real ~/.vyre");
+const REPORT = opt("--report") || path.join(SCRATCH, `stress-drive-${Date.now()}.json`);
+for (const d of ["transcripts", "projects", "work", "files"]) fs.mkdirSync(path.join(HOME, d), { recursive: true });
+fs.writeFileSync(path.join(HOME, "config.json"), JSON.stringify({
+  transcripts: [path.join(HOME, "transcripts")], projectsDir: path.join(HOME, "projects"), roots: [], recall: { vectors: false },
+  // Never the login keychain, and never a dialog on the person's screen (team rules).
+  vault: { keystore: "file" },
+}));
+const ENV = { ...process.env, VYRE_HOME: HOME, VYRE_CLAUDE_BIN: FAKE, VYRE_TAILSCALE_BIN: path.join(HOME, "no-tailscale"),
+  FAKE_CLAUDE_LOG: path.join(HOME, "fake-claude.log"), NO_COLOR: "1", VYRE_NO_DIALOGS: "1" };
+delete ENV.VYRE_AGENT_KEY; delete ENV.VYRE_AGENT; delete ENV.VYRE_THREAD;
+const config = await import(path.join(REPO, "core", "config", "index.js"));
+const SOCKET = config.paths(HOME).socket;
+
+// ------------------------------------------------------------ bookkeeping
+
+const T0 = Date.now();
+const END = T0 + MINUTES * 60_000;
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+const rnd = (a, b) => a + Math.floor(Math.random() * (b - a + 1));
+const failures = [];
+const fail = msg => { failures.push(msg); log("FAIL " + msg); };
+const log = m => process.stdout.write(`  [${((Date.now() - T0) / 1000).toFixed(0).padStart(5)}s] ${m}\n`);
+const stats = { cli_calls: 0, cli_ms: 0, sends: 0, replies: 0, asks: 0, allowed: 0, denied: 0, stops: 0, resumes: 0,
+  lease_moves: 0, refused_live: 0, refused_dead: 0, watch_restarts: 0, watch_rearms: 0, sse_reconnects: 0, watch_checks: 0 };
+/** Every pid this run started, with what it was. */
+const started = new Map();
+
+// ------------------------------------------------------------ talking to vyred
+
+/** Run the real CLI. Never throws; a stack trace in its output is a failure. */
+function cli(args, { timeout = 60_000 } = {}) {
+  return new Promise(resolve => {
+    const t = Date.now();
+    const child = spawn(process.execPath, [VYRE, ...args], { env: ENV, cwd: HOME, stdio: ["ignore", "pipe", "pipe"] });
+    let stdout = "", stderr = "";
+    child.stdout.on("data", c => { stdout += c; });
+    child.stderr.on("data", c => { stderr += c; });
+    const timer = setTimeout(() => { fail(`vyre ${args.join(" ")} took over ${timeout} ms`); child.kill("SIGKILL"); }, timeout);
+    child.on("close", code => {
+      clearTimeout(timer);
+      stats.cli_calls++; stats.cli_ms += Date.now() - t;
+      if (/\n\s+at .+:\d+:\d+/.test(stdout + stderr)) fail(`vyre ${args.join(" ")} printed a stack trace: ${(stdout + stderr).slice(0, 300)}`);
+      let json = null;
+      try { json = JSON.parse(stdout.trim().split("\n").pop() || "null"); } catch {}
+      resolve({ code, stdout, stderr, json, pid: child.pid });
+    });
+  });
+}
+
+/** One tool call over the socket, as a surface other than this terminal. */
+function tool(name, input, caller = "cli") {
+  return new Promise(resolve => {
+    const body = JSON.stringify(input);
+    const req = http.request({ socketPath: SOCKET, path: "/v1/tools/" + name, method: "POST", agent: false, timeout: 30_000,
+      headers: { "content-type": "application/json", "content-length": Buffer.byteLength(body), "x-vyre-caller": caller } }, res => {
+      let raw = ""; res.setEncoding("utf8"); res.on("data", c => { raw += c; });
+      res.on("end", () => { try { resolve(JSON.parse(raw)); } catch { resolve({ error: { code: "bad_response", message: raw.slice(0, 200) } }); } });
+    });
+    req.on("error", e => resolve({ error: { code: "unreachable", message: e.message } }));
+    req.on("timeout", () => { req.destroy(); resolve({ error: { code: "timeout", message: "no answer in 30s" } }); });
+    req.end(body);
+  });
+}
+
+function getJSON(p) {
+  return new Promise(resolve => {
+    const req = http.request({ socketPath: SOCKET, path: p, method: "GET", agent: false }, res => {
+      let raw = ""; res.setEncoding("utf8"); res.on("data", c => { raw += c; });
+      res.on("end", () => { try { resolve(JSON.parse(raw)); } catch { resolve({ error: { message: raw.slice(0, 200) } }); } });
+    });
+    req.on("error", e => resolve({ error: { message: e.message } }));
+    req.end();
+  });
+}
+
+/**
+ * An SSE client on the whole stream. `reconnect` makes it drop at random and come back with
+ * Last-Event-ID, as a surface on a flaky link would.
+ */
+function sseClient(name, { reconnect = false } = {}) {
+  const c = { name, ids: /** @type {number[]} */ ([]), types: new Map(), deltas: new Set(), last: 0, req: /** @type {any} */ (null), closed: false, listeners: new Set(), connects: 0 };
+  const open = () => {
+    if (c.closed) return;
+    c.connects++;
+    const headers = { accept: "text/event-stream", "x-vyre-caller": "cli", ...(c.last ? { "last-event-id": String(c.last) } : {}) };
+    const req = http.request({ socketPath: SOCKET, path: "/v1/events/stream?type=*" + (c.last ? "" : "&since=0"), method: "GET", agent: false, headers }, res => {
+      res.setEncoding("utf8");
+      let buf = "";
+      res.on("data", chunk => {
+        buf += chunk;
+        const parts = buf.replace(/\r\n?/g, "\n").split("\n\n");
+        buf = parts.pop() || "";
+        for (const block of parts) {
+          const data = block.split("\n").filter(l => l.startsWith("data:")).map(l => l.slice(5).replace(/^ /, "")).join("\n");
+          if (!data) continue;
+          let e; try { e = JSON.parse(data); } catch { fail(`${name}: unparseable frame ${data.slice(0, 80)}`); continue; }
+          if (e.id <= c.last) fail(`${name}: event ${e.id} after ${c.last} (duplicate or out of order)`);
+          c.last = Math.max(c.last, e.id);
+          c.ids.push(e.id);
+          c.types.set(e.id, e.type);
+          if (e.type === "thread.text" && e.payload && e.payload.delta) c.deltas.add(e.id);
+          for (const l of c.listeners) l(e);
+        }
+      });
+      res.on("end", () => { if (!c.closed) setTimeout(open, 200); });
+    });
+    req.on("error", () => { if (!c.closed) setTimeout(open, 500); });
+    req.end();
+    c.req = req;
+  };
+  open();
+  if (reconnect) {
+    const drop = () => {
+      if (c.closed) return;
+      c.req && c.req.destroy();
+      stats.sse_reconnects++;
+      setTimeout(() => { open(); c.timer = setTimeout(drop, rnd(5_000, 40_000)); }, rnd(50, 3_000));
+    };
+    c.timer = setTimeout(drop, rnd(5_000, 40_000));
+  }
+  c.close = () => { c.closed = true; clearTimeout(c.timer); c.req && c.req.destroy(); };
+  return c;
+}
+
+/** Wait for an event on the long-lived client that matches, or null after the timeout. */
+function waitFor(client, match, timeout = 30_000) {
+  return new Promise(resolve => {
+    const done = e => { client.listeners.delete(l); clearTimeout(timer); resolve(e); };
+    const l = e => { if (match(e)) done(e); };
+    const timer = setTimeout(() => done(null), timeout);
+    client.listeners.add(l);
+  });
+}
+
+const threadOf = e => e.thread ?? (e.payload && e.payload.thread);
+
+// ------------------------------------------------------------ processes
+
+function psRows() {
+  try {
+    return execFileSync("ps", ["-axww", "-o", "pid=,ppid=,rss=,time=,command="], { encoding: "utf8" }).split("\n").filter(Boolean).map(l => {
+      const m = /^\s*(\d+)\s+(\d+)\s+(\d+)\s+(\S+)\s+(.*)$/.exec(l);
+      return m ? { pid: Number(m[1]), ppid: Number(m[2]), rss: Number(m[3]), time: m[4], cmd: m[5] } : null;
+    }).filter(Boolean);
+  } catch { return []; }
+}
+const alive = pid => { try { process.kill(pid, 0); return true; } catch (e) { return /** @type {any} */ (e).code !== "ESRCH"; } };
+const cpuSeconds = t => { const p = t.split(":").map(Number); return p.length === 3 ? p[0] * 3600 + p[1] * 60 + p[2] : p[0] * 60 + p[1]; };
+
+/** Remember every descendant of vyred (the fake Claudes), so the end can check each is gone. */
+function noteChildren(root) {
+  const rows = psRows();
+  const kids = new Set([root]);
+  let grew = true;
+  while (grew) { grew = false; for (const r of rows) if (kids.has(r.ppid) && !kids.has(r.pid)) { kids.add(r.pid); grew = true; if (!started.has(r.pid)) started.set(r.pid, "vyred child: " + r.cmd.slice(0, 80)); } }
+}
+
+// ------------------------------------------------------------ vyred
+
+async function startVyred() {
+  const { ping } = await import(path.join(REPO, "core", "daemon", "index.js"));
+  config.ensure(HOME);
+  const fd = fs.openSync(path.join(HOME, "vyred.log"), "a");
+  const child = spawn("nice", ["-n", "10", process.execPath, path.join(REPO, "test", "fixtures", "vyred-present.js")], { env: ENV, stdio: ["ignore", fd, fd] });
+  started.set(child.pid, "nice (vyred)");
+  // Up to a minute: on a loaded machine (other suites running) vyred's first start takes a while.
+  for (let i = 0; i < 600; i++) {
+    await sleep(100);
+    if (await ping(SOCKET)) {
+      // nice execs node in place, so the pid is vyred's.
+      return { child, pid: child.pid };
+    }
+    if (child.exitCode !== null) break;
+  }
+  throw new Error("vyred did not start; see " + path.join(HOME, "vyred.log"));
+}
+
+// ------------------------------------------------------------ the drive
+
+/** @typedef {{ n: number, id: string, cwd: string, watch: any, watchLog: { start: number, end: number, out: string }[], seq: number, sent: { token: string, at: number, replied: number }[] }} Thread */
+
+async function main() {
+  log(`home ${HOME}`);
+  log(`${THREADS} threads for ${MINUTES} min on the fake Claude`);
+  const vy = await startVyred();
+  const VPID = vy.pid;
+  log(`vyred pid ${VPID}`);
+  const main = sseClient("long-lived");
+  const flaky = [sseClient("reconnecting-1", { reconnect: true }), sseClient("reconnecting-2", { reconnect: true })];
+  await sleep(300);
+
+  // Samples of vyred's size and CPU time.
+  const samples = [];
+  const sample = () => {
+    const r = psRows().find(x => x.pid === VPID);
+    if (r) {
+      const at = { t: Date.now() - T0, rss_mb: r.rss / 1024, cpu_s: cpuSeconds(r.time) };
+      samples.push(at);
+      // vyred's own view: JS heap against native (SQLite's page cache, buffers), so growth has a name.
+      http.get({ socketPath: SOCKET, path: "/v1/health", headers: { "x-vyre-caller": "cli" } }, res => {
+        let b = ""; res.on("data", d => (b += d)); res.on("end", () => { try { const m = JSON.parse(b).data.memory; if (m) Object.assign(at, { heap_mb: m.heapUsed, heap_total_mb: m.heapTotal, external_mb: m.external }); } catch {} });
+      }).on("error", () => {});
+    }
+    noteChildren(VPID);
+  };
+  sample();
+  const sampler = setInterval(sample, SAMPLE_MS);
+
+  /** @type {Thread[]} */
+  const threads = [];
+  for (let n = 0; n < THREADS; n++) {
+    const cwd = path.join(HOME, "work", "t" + n);
+    fs.mkdirSync(cwd, { recursive: true });
+    const r = await cli(["threads", "start", "--json", "--cwd", cwd, "--name", "stress " + n]);
+    if (r.code !== 0 || !r.json || !r.json.id) { fail(`threads start ${n}: exit ${r.code} ${r.stdout.slice(0, 200)}`); continue; }
+    threads.push({ n, id: r.json.id, cwd, watch: null, watchLog: [], seq: 0, sent: [] });
+    log(`thread ${n} ${r.json.id.slice(0, 8)}`);
+  }
+
+  // A watch per thread, killed and restarted at random.
+  const startWatch = th => {
+    const child = spawn(process.execPath, [VYRE, "threads", "watch", th.id], { env: ENV, cwd: HOME, stdio: ["ignore", "pipe", "pipe"] });
+    started.set(child.pid, `watch ${th.n}`);
+    const entry = { start: Date.now(), end: 0, out: "", pid: child.pid, code: /** @type {number|null} */ (null), killedAt: 0 };
+    child.stdout.on("data", c => { entry.out += c; });
+    child.stderr.on("data", c => { entry.out += c; });
+    child.on("close", code => {
+      entry.end = Date.now(); entry.code = code;
+      // It ended by itself (its thread stopped): a person would run it again, so do the same.
+      if (!entry.killedAt && th.watch && th.watch.entry === entry) {
+        if (code !== 0) fail(`watch ${th.n} pid ${entry.pid} exited ${code} by itself: ${entry.out.slice(-200)}`);
+        if (!/stopped/.test(entry.out)) fail(`watch ${th.n} pid ${entry.pid} ended without its thread stopping: ${entry.out.slice(-200)}`);
+        th.watch = null;
+        if (watching) setTimeout(() => { if (watching && !th.watch) { startWatch(th); stats.watch_rearms++; } }, 300);
+      }
+    });
+    th.watch = { child, entry };
+    th.watchLog.push(entry);
+  };
+  const stopWatch = async th => {
+    if (!th.watch) return;
+    const { child, entry } = th.watch;
+    th.watch = null;
+    // Ctrl-C before the watch has drawn anything lands before its handler is set and kills it by
+    // signal, as it would for a person: give a fresh one a moment to start first.
+    for (let i = 0; i < 60 && !entry.out && entry.end === 0; i++) await sleep(50);
+    entry.killedAt = Date.now();
+    child.kill("SIGINT");
+    for (let i = 0; i < 40 && entry.end === 0; i++) await sleep(50);
+    if (entry.end === 0) { fail(`watch ${th.n} pid ${child.pid} ignored SIGINT for 2 s`); child.kill("SIGKILL"); await sleep(100); }
+    else if (entry.code !== 0) fail(`watch ${th.n} exited ${entry.code} on SIGINT: ${entry.out.slice(-200)}`);
+  };
+  let watching = true;
+  for (const th of threads) startWatch(th);
+  const churn = (async () => {
+    while (watching) {
+      await sleep(rnd(10_000, 60_000));
+      if (!watching) break;
+      const th = threads[rnd(0, threads.length - 1)];
+      await stopWatch(th);
+      await sleep(rnd(100, 3_000));
+      if (watching) { startWatch(th); stats.watch_restarts++; }
+    }
+  })();
+
+  // A send, and its echo.
+  const send = async (th, text, expect) => {
+    const r = await cli(["threads", "send", th.id, text, "--json"]);
+    if (r.code !== 0) {
+      const holder = r.json && r.json.holder;
+      const m = holder && /^cli:(\d+)$/.exec(holder);
+      if (m && !alive(Number(m[1]))) { stats.refused_dead++; fail(`send to ${th.n} refused for dead holder ${holder}`); }
+      else fail(`send to ${th.n} failed: exit ${r.code} ${r.stdout.slice(0, 200)}`);
+      return false;
+    }
+    stats.sends++;
+    return true;
+  };
+
+  const echo = async th => {
+    const token = `ping-${th.n}-${++th.seq}`;
+    const at = Date.now();
+    const got = waitFor(main, e => threadOf(e) === th.id && e.type === "thread.text" && e.payload.done && e.payload.text === `echo: ${token}`, 45_000);
+    if (!(await send(th, token))) return;
+    const e = await got;
+    if (!e) { fail(`no echo for ${token}`); return; }
+    stats.replies++;
+    th.sent.push({ token, at, replied: Date.now() });
+  };
+
+  const ask = async th => {
+    const token = `file-${th.n}-${++th.seq}`;
+    const file = path.join(HOME, "files", token + ".txt");
+    const raised = waitFor(main, e => threadOf(e) === th.id && e.type === "ask.raised", 45_000);
+    if (!(await send(th, `write ${file}`))) return;
+    const e = await raised;
+    if (!e) { fail(`no ask for ${token}`); return; }
+    stats.asks++;
+    const decision = Math.random() < 0.6 ? "allow" : "deny";
+    const answered = waitFor(main, x => x.type === "ask.answered" && x.payload.ask === e.payload.ask, 30_000);
+    const finished = waitFor(main, x => threadOf(x) === th.id && x.type === "thread.finished", 45_000);
+    const r = await cli(["threads", "answer", e.payload.ask, decision, "--json"]);
+    if (r.code !== 0 || !r.json || !r.json.answered) { fail(`answer ${e.payload.ask} ${decision}: exit ${r.code} ${r.stdout.slice(0, 200)}`); return; }
+    const a = await answered;
+    if (!a || a.payload.decision !== decision) { fail(`no ask.answered ${decision} for ${e.payload.ask}`); return; }
+    if (!(await finished)) { fail(`turn after ${decision} on ${token} never finished`); return; }
+    stats[decision === "allow" ? "allowed" : "denied"]++;
+    if (fs.existsSync(file) !== (decision === "allow")) fail(`${token}: ${decision} but the file ${fs.existsSync(file) ? "exists" : "is missing"}`);
+  };
+
+  const stopResume = async th => {
+    const stopped = waitFor(main, e => threadOf(e) === th.id && e.type === "thread.stopped", 20_000);
+    const r = await cli(["threads", "stop", th.id, "--json"]);
+    if (r.code !== 0 || !r.json || !r.json.stopped) { fail(`stop ${th.n}: exit ${r.code} ${r.stdout.slice(0, 200)}`); return; }
+    if (!(await stopped)) { fail(`thread ${th.n} never said thread.stopped`); return; }
+    stats.stops++;
+    const resumed = waitFor(main, e => threadOf(e) === th.id && e.type === "thread.started" && e.payload.resumed, 20_000);
+    await echo(th);
+    if (!(await resumed)) fail(`thread ${th.n} was not resumed by the send after stop`);
+    else stats.resumes++;
+  };
+
+  // A second surface takes the keyboard; the terminal is refused, takes it back, and types.
+  const leaseDance = async th => {
+    const deck = `deck:stress-${th.n}`;
+    const t = await tool("threads.lease", { thread: th.id, surface: deck }, "deck");
+    if (t.error || t.data.holder !== deck) { fail(`deck lease on ${th.n}: ${JSON.stringify(t).slice(0, 200)}`); return; }
+    const r = await cli(["threads", "send", th.id, "should be refused", "--json"]);
+    if (r.code === 0 || !r.json || r.json.holder !== deck) fail(`send while ${deck} holds ${th.n} was not refused with its name: ${r.stdout.slice(0, 200)}`);
+    else stats.refused_live++;
+    const back = await cli(["threads", "lease", th.id, "--json"]);
+    if (back.code !== 0 || !back.json || back.json.previous !== deck) {
+      fail(`taking ${th.n} back: ${back.stdout.slice(0, 200)}`);
+      await tool("threads.release", { thread: th.id, surface: deck }, "deck");     // so one failure does not cascade
+      return;
+    }
+    stats.lease_moves++;
+    // The terminal that took it back has exited, so the next terminal types freely.
+    await echo(th);
+    const rel = await tool("threads.release", { thread: th.id, surface: deck }, "deck");
+    if (rel.error || rel.data.released) fail(`${deck} released a lease it no longer held on ${th.n}`);
+  };
+
+  // Checkpoints: no dead terminal holds a lease.
+  const checkLeases = async label => {
+    const l = await tool("threads.list", { all: true });
+    for (const t of l.data || []) {
+      const m = t.holder && /^cli:(\d+)$/.exec(t.holder);
+      if (m && !alive(Number(m[1]))) fail(`${label}: ${String(t.id).slice(0, 8)} held by dead ${t.holder}`);
+    }
+  };
+  let checkpoints = 0;
+  const leaseTimer = setInterval(() => { checkpoints++; checkLeases("checkpoint " + checkpoints); }, 60_000);
+
+  const driver = async th => {
+    while (Date.now() < END) {
+      const roll = Math.random();
+      if (roll < 0.62) await echo(th);
+      else if (roll < 0.80) await ask(th);
+      else if (roll < 0.88) await stopResume(th);
+      else await leaseDance(th);
+      await sleep(rnd(500, 4_000));
+    }
+  };
+  let lastBeat = 0;
+  const beat = setInterval(() => {
+    if (Date.now() - lastBeat < 60_000) return;
+    lastBeat = Date.now();
+    const s = samples[samples.length - 1];
+    log(`sends ${stats.sends} replies ${stats.replies} asks ${stats.asks} stops ${stats.stops} leases ${stats.lease_moves} watch restarts ${stats.watch_restarts} sse reconnects ${stats.sse_reconnects} events ${main.ids.length} rss ${s ? s.rss_mb.toFixed(1) : "?"} MB failures ${failures.length}`);
+  }, 5_000);
+  await Promise.all(threads.map(driver));
+  clearInterval(beat);
+  clearInterval(leaseTimer);
+  await checkLeases("end");
+
+  // Watches: each one, while it was up, printed every echo that completed well inside its window.
+  watching = false;
+  await churn;
+  await sleep(1_500);
+  for (const th of threads) await stopWatch(th);
+  for (const th of threads) {
+    for (const w of th.watchLog) {
+      // A watch ends on its own when its thread stops (stop and resume does that); its window ends there.
+      const end = w.end && (!w.killedAt || w.end < w.killedAt) ? w.end : w.killedAt || Date.now();
+      for (const s of th.sent) {
+        if (s.replied > w.start + 1_500 && s.replied < end - 500) {
+          stats.watch_checks++;
+          if (!w.out.includes(s.token)) fail(`watch ${th.n} (pid ${w.pid}) was up when ${s.token} was echoed and never printed it`);
+        }
+      }
+      if (/lost vyred|closed the stream/.test(w.out)) fail(`watch ${th.n} lost its stream: ${w.out.slice(-200)}`);
+    }
+  }
+
+  // Events: the whole log, against every client.
+  await sleep(1_000);
+  const log_ = [];
+  for (let since = 0; ;) {
+    const page = /** @type {any} */ (await getJSON(`/v1/events?since=${since}&limit=1000`));
+    const rows = page.data || [];
+    log_.push(...rows);
+    if (rows.length < 1000) break;
+    since = rows[rows.length - 1].id;
+  }
+  const seen = new Set(main.ids);
+  const missing = log_.filter(e => !seen.has(e.id));
+  if (missing.length) fail(`${missing.length} logged events never reached the long-lived client (first ${missing[0].id} ${missing[0].type})`);
+  const inLog = new Set(log_.map(e => e.id));
+  const unlogged = main.ids.filter(id => !inLog.has(id));
+  // What the client saw that the log no longer has must be pruned partial text, and nothing else.
+  const gone = unlogged.filter(id => !(main.types.get(id) === "thread.text" && main.deltas.has(id)));
+  if (gone.length) fail(`${gone.length} streamed events are missing from the log and are not pruned partial text (first ${gone[0]} ${main.types.get(gone[0])})`);
+  for (const c of flaky) {
+    const lo = c.ids[0], hi = c.ids[c.ids.length - 1];
+    const expect = main.ids.filter(id => id >= lo && id <= hi);
+    if (expect.length !== c.ids.length || expect.some((id, i) => id !== c.ids[i])) {
+      const have = new Set(c.ids);
+      const lost = expect.filter(id => !have.has(id));
+      fail(`${c.name}: across ${c.connects} connects saw ${c.ids.length} events, the long-lived client ${expect.length} (lost ${lost.length}, first ${lost[0]})`);
+    }
+  }
+  main.close(); flaky.forEach(c => c.close());
+
+  // Stop everything, then look for anything left.
+  for (const th of threads) await cli(["threads", "stop", th.id, "--json"]);
+  noteChildren(VPID);
+  clearInterval(sampler);
+  sample();
+  const vyredGone = new Promise(r => vy.child.on("exit", r));
+  process.kill(VPID, "SIGTERM");
+  await Promise.race([vyredGone, sleep(5_000)]);
+  await sleep(500);
+  const left = [...started].filter(([pid]) => alive(pid));
+  const stray = psRows().filter(r => r.pid !== process.pid && r.cmd.includes(HOME));
+  for (const [pid, what] of left) fail(`orphan: pid ${pid} (${what}) still running`);
+  for (const r of stray) if (!started.has(r.pid)) fail(`orphan: pid ${r.pid} names the temp home: ${r.cmd.slice(0, 100)}`);
+  for (const [pid] of left) { try { process.kill(pid, "SIGKILL"); } catch {} }
+
+  // Size: flat after warmup.
+  // Only the drive itself: after END the check reads the whole event log back, which is not the
+  // steady state (it put 8 MB on the last sample of a 30 minute run and failed the slope alone).
+  const warm = samples.filter(s => s.t >= WARMUP_MS && s.t <= END - T0);
+  const heaps = warm.filter(s => typeof s.heap_mb === "number");
+  const heapFit = heaps.length > 2 ? linear(heaps.map(s => [s.t / 60_000, s.heap_mb])) : null;
+  const fit = linear(warm.map(s => [s.t / 60_000, s.rss_mb]));
+  const slope10 = fit ? fit.slope * 10 : null;
+  const maxRss = Math.max(...samples.map(s => s.rss_mb));
+  const cpu = samples.length > 1 ? (samples[samples.length - 1].cpu_s - samples[0].cpu_s) / ((samples[samples.length - 1].t - samples[0].t) / 1000) * 100 : null;
+  if (maxRss > RSS_MAX_MB) fail(`vyred reached ${maxRss.toFixed(1)} MB (budget ${RSS_MAX_MB})`);
+  if (MINUTES >= 10 && slope10 !== null && slope10 > SLOPE_MB_PER_10MIN) fail(`vyred grew ${slope10.toFixed(2)} MB per 10 min after warmup (budget ${SLOPE_MB_PER_10MIN}; JS heap ${heapFit ? (heapFit.slope * 10).toFixed(2) : "?"} of it)`);
+
+  const report = {
+    ok: failures.length === 0, minutes: MINUTES, threads: THREADS, duration_s: Math.round((Date.now() - T0) / 1000),
+    stats: { ...stats, cli_avg_ms: stats.cli_calls ? Math.round(stats.cli_ms / stats.cli_calls) : 0 },
+    events: { logged: log_.length, streamed: main.ids.length, pruned_or_unlogged: unlogged.length, reconnecting: flaky.map(c => ({ name: c.name, connects: c.connects, events: c.ids.length })) },
+    vyred: { rss_start_mb: round(samples[0]?.rss_mb), rss_end_mb: round(samples[samples.length - 1]?.rss_mb), rss_max_mb: round(maxRss),
+      rss_slope_mb_per_10min_after_warmup: round(slope10), heap_slope_mb_per_10min_after_warmup: heapFit ? round(heapFit.slope * 10) : null, cpu_avg_pct: round(cpu), samples },
+    orphans: left.length + stray.filter(r => !started.has(r.pid)).length,
+    failures,
+  };
+  fs.writeFileSync(REPORT, JSON.stringify(report, null, 2));
+  console.log("");
+  console.log(`  stress-drive ${report.ok ? "passed" : "FAILED"} · ${report.duration_s}s · ${THREADS} threads`);
+  console.log(`    sends ${stats.sends}, replies ${stats.replies}, asks ${stats.asks} (${stats.allowed} allowed, ${stats.denied} denied), stops ${stats.stops}, resumes ${stats.resumes}`);
+  console.log(`    lease moves ${stats.lease_moves}, refused while held ${stats.refused_live}, refused for a dead holder ${stats.refused_dead}`);
+  console.log(`    watch restarts ${stats.watch_restarts}, re-runs after a stop ${stats.watch_rearms}, watch checks ${stats.watch_checks}, sse reconnects ${stats.sse_reconnects}`);
+  console.log(`    events logged ${log_.length}, streamed ${main.ids.length}, pruned partial text ${unlogged.length}`);
+  console.log(`    vyred rss ${report.vyred.rss_start_mb} -> ${report.vyred.rss_end_mb} MB (max ${report.vyred.rss_max_mb}), slope ${report.vyred.rss_slope_mb_per_10min_after_warmup} MB/10min (JS heap ${report.vyred.heap_slope_mb_per_10min_after_warmup ?? "?"}), cpu ${report.vyred.cpu_avg_pct}%`);
+  console.log(`    cli calls ${stats.cli_calls}, avg ${report.stats.cli_avg_ms} ms · orphans ${report.orphans}`);
+  for (const f of failures.slice(0, 30)) console.log(`    FAIL ${f}`);
+  if (failures.length > 30) console.log(`    ... ${failures.length - 30} more in the report`);
+  console.log(`    report ${REPORT}`);
+  return report.ok ? 0 : 1;
+}
+
+function round(x) { return x == null || !Number.isFinite(x) ? null : Math.round(x * 100) / 100; }
+
+/** Least-squares line through [x, y] points, or null with fewer than 3. */
+function linear(pts) {
+  if (pts.length < 3) return null;
+  const n = pts.length, mx = pts.reduce((a, p) => a + p[0], 0) / n, my = pts.reduce((a, p) => a + p[1], 0) / n;
+  const sxx = pts.reduce((a, p) => a + (p[0] - mx) ** 2, 0), sxy = pts.reduce((a, p) => a + (p[0] - mx) * (p[1] - my), 0);
+  return sxx ? { slope: sxy / sxx, intercept: my - (sxy / sxx) * mx } : null;
+}
+
+/** Kill what this run started and remove the temp home, whatever happened. */
+function cleanup() {
+  for (const [pid] of started) { try { process.kill(pid, "SIGKILL"); } catch {} }
+  if (!KEEP) { try { fs.rmSync(HOME, { recursive: true, force: true }); } catch {} }
+  else console.log(`  kept ${HOME}`);
+}
+// Ctrl-C, a closed terminal, or a pkill: every one ends the run without leaving vyred behind.
+// (A pkill once left a vyred running with its home deleted under it.)
+for (const [sig, code] of [["SIGINT", 130], ["SIGTERM", 143], ["SIGHUP", 129]]) {
+  process.on(sig, () => { console.log(`\n  interrupted (${sig})`); cleanup(); process.exit(code); });
+}
+
+let code = 1;
+try { code = await main(); }
+catch (e) { console.error("  stress-drive: " + /** @type {Error} */ (e).message); if (process.env.VYRE_DEBUG) console.error(e); }
+finally { cleanup(); }
+process.exit(code);

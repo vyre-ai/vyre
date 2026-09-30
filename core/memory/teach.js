@@ -27,7 +27,7 @@ const DOMAIN = /^(?:[a-z0-9-]+\.)+[a-z]{2,}$/i;
 const REPO = /^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/;
 const REL = /^[a-z][a-z_]{1,40}$/;
 /** What each known relation says about the kinds at its two ends. */
-const ENDS = { works_at: ["person", "org"], has_email: ["person", "email"], has_domain: ["org", "domain"], owned_by: ["repo", "org"] };
+export const ENDS = { works_at: ["person", "org"], has_email: ["person", "email"], has_domain: ["org", "domain"], owned_by: ["repo", "org"] };
 
 /** @typedef {{ id: string, kind: string|null }} Ref */
 /** @typedef {{ src: Ref, rel: string|null, dst: Ref|null }} Claim */
@@ -39,6 +39,8 @@ const ENDS = { works_at: ["person", "org"], has_email: ["person", "email"], has_
 export function ref(x, where = "subject") {
   if (typeof x === "string") x = { name: x };
   if (!x || typeof x !== "object") throw new Error(`${where} must be a name or { name, email, domain, repo }`);
+  // The user themself: the node the curator keeps for "me" (config.me), never a person named "the user".
+  if (x.kind === "me") return { id: "me:you", kind: "me" };
   const hint = ["person", "org"].includes(x.kind) ? x.kind : null;
   if (x.repo) { if (!REPO.test(String(x.repo))) throw new Error(`${where}.repo must look like owner/name`); return { id: "repo:" + x.repo, kind: "repo" }; }
   const name = typeof x.name === "string" ? x.name.replace(/\s+/g, " ").trim() : "";

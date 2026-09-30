@@ -1,0 +1,34 @@
+{
+  "name": "onboard",
+  "version": "0.1.0",
+  "roles": [
+    "box",
+    "local"
+  ],
+  "requires": [],
+  "does": {
+    "tools": [
+      "onboard.status",
+      "onboard.you",
+      "onboard.machine",
+      "onboard.name",
+      "onboard.claude",
+      "onboard.tailscale",
+      "onboard.join",
+      "onboard.history",
+      "onboard.skip",
+      "onboard.finish",
+      "onboard.passkey",
+      "onboard.link"
+    ]
+  },
+  "watches": {
+    "emits": [
+      "onboard.stepped",
+      "onboard.finished"
+    ]
+  },
+  "shows": {},
+  "needs": {},
+  "teaches": {}
+}

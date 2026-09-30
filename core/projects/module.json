@@ -5,12 +5,29 @@
   "requires": [],
   "does": {
     "tools": [
-      "projects.list", "projects.create", "projects.add-threads", "projects.remove-threads",
-      "projects.catalog", "projects.of", "projects.threads", "projects.context"
+      "projects.list", "projects.create", "projects.add-threads", "projects.remove-threads", "projects.add-workspace",
+      "projects.watchers.add", "projects.watchers.remove",
+      "projects.catalog", "projects.of", "projects.threads", "projects.context", "projects.move",
+      "projects.access.grant", "projects.access.revoke", "projects.access.check", "projects.access.list", "projects.access.migrate", "projects.access.clear", "projects.reach"
     ]
   },
-  "watches": { "emits": ["project.created", "project.changed", "thread.picked", "thread.unpicked"] },
+  "watches": { "emits": ["project.created", "project.changed", "thread.picked", "thread.unpicked", "projects.moved"] },
   "shows": { "cli": ["projects", "new", "open", "resume", "start", "context", "threads", "pick", "unpick"] },
   "needs": {},
-  "teaches": {}
+  "teaches": {
+    "tips": [
+      {"id": "new", "text": "Make a project with `vyre new \"Harlow Legal\"`, then pick the sessions that belong in it.", "surfaces": ["cli"], "level": "first-use", "trigger": "on-use", "since": "0.1.0", "command": "vyre new \"Harlow Legal\"", "docs": "using/projects-and-threads.md#make-a-project"},
+      {"id": "search", "text": "Search every session by what was said: `vyre threads harlow invoice`.", "surfaces": ["cli"], "level": "first-use", "trigger": "on-use", "since": "0.1.0", "command": "vyre threads harlow invoice", "docs": "using/projects-and-threads.md#find-a-session-and-pick-it-into-a-project"},
+      {"id": "pick", "text": "Put a session in a project with `vyre pick harlow-legal 3f2a9c1e`. A pick stays until a person removes it.", "surfaces": ["cli"], "level": "first-use", "trigger": "on-use", "since": "0.1.0", "command": "vyre pick harlow-legal 3f2a9c1e", "docs": "using/projects-and-threads.md#find-a-session-and-pick-it-into-a-project"},
+      {"id": "deck-add", "text": "A session in no project opens in the Deck with Add to a project.", "surfaces": ["deck"], "level": "first-use", "trigger": "on-use", "since": "0.1.0", "docs": "using/projects-and-threads.md#find-a-session-and-pick-it-into-a-project"},
+      {"id": "context", "text": "See what a new thread in Harlow Legal is told with `vyre context harlow-legal`.", "surfaces": ["cli"], "level": "power", "trigger": "on-use", "since": "0.1.0", "command": "vyre context harlow-legal", "docs": "using/projects-and-threads.md#see-a-project-and-its-brief"},
+      {"id": "start-named", "text": "Start a named thread in a project: `vyre start --project harlow-legal \"engagement letter\"`.", "surfaces": ["cli"], "level": "power", "trigger": "on-use", "since": "0.1.0", "command": "vyre start --project harlow-legal \"engagement letter\"", "docs": "using/projects-and-threads.md#resume-a-thread-or-start-a-new-one"},
+      {"id": "resume", "text": "Open any thread in Claude Code where it ran, brief included, with `vyre resume 3f2a9c1e`.", "surfaces": ["cli"], "level": "power", "trigger": "on-use", "since": "0.1.0", "command": "vyre resume 3f2a9c1e", "docs": "using/projects-and-threads.md#resume-a-thread-or-start-a-new-one"},
+      {"id": "workspaces", "text": "List a folder under `workspaces` in `.vyre/project.json` and its sessions join the project on the next read.", "surfaces": ["cli", "deck"], "level": "discovery", "trigger": "idle", "since": "0.1.0", "docs": "using/projects-and-threads.md#where-a-project-lives"},
+      {"id": "many-projects", "text": "One thread can sit in several projects, like a weekly planning session for Harlow Legal and Northwind Bakery.", "surfaces": ["cli", "deck", "chat"], "level": "power", "trigger": "idle", "since": "0.1.0", "docs": "using/projects-and-threads.md#projects-and-threads"}
+    ]
+  },
+  "settings": [
+    {"key": "projects.folder", "group": "files", "label": "Where new projects go", "type": "string", "levels": ["account"], "apply": "restart", "store": {"config": "projectsDir"}}
+  ]
 }

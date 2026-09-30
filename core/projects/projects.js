@@ -19,10 +19,57 @@
 // with less, when Recall or Memory is not running.
 
 import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import * as M from "./markers.js";
 import { untilde } from "../config/index.js";
 import { compose, label } from "./brief.js";
+
+/** A chat's session id, as Claude Code and the switchboard both mint it (crypto.randomUUID). A
+ * subagent's "<parent>/agent-<id>" is not a chat, so it is refused. */
+export const THREAD_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/** from_thread as the one form every check and the marker use (trimmed, lower case), or null
+ * when it is not a chat's session id. The index and the switchboard store ids in lower case. */
+export const threadId = (/** @type {unknown} */ v) => { const s = String(v ?? "").trim().toLowerCase(); return THREAD_ID.test(s) ? s : null; };
+
+// Reviewer's LOW on 7021d4e1: a project's home or workspace must never be the whole disk, the
+// whole home account, or one of the credential/vault folders under it — granting an agent
+// projects.access on a project scoped that wide hands it the person's real keys and vault the
+// moment the grant lands (create()'s own wildcard-agent grant, and any add-workspace after).
+// Names mirror core/files/safety.js's HOME_DENIED so the two lists never disagree about what is
+// sensitive; kept as its own short list here rather than imported, since core/projects may not
+// import core/files (test/boundaries.test.js — no such edge is allowlisted, and this is three
+// names, not worth a new one). Reviewer's MEDIUM 3 (second pass): "Library" added (Keychains,
+// Mail, Cookies and more all live under it, not just Keychains), and the check below now also
+// refuses an ANCESTOR of any of these, not only the folder itself or something inside it: "/Users"
+// (or whatever holds the real home) contains the home directory, and so every credential folder
+// under it, as a subfolder the moment IT becomes a project's own folder; "~/.config" is the parent
+// of gcloud's own creds the same way.
+const SENSITIVE = [".vyre", ".claude", ".ssh", ".gnupg", ".aws", path.join(".config", "gcloud"), ".docker", ".kube", ".netrc", "Library"];
+/** Throws when p, resolved, is "/", the real home directory, one of SENSITIVE below it, or an
+ * ancestor of any of those three (which contains it as a subfolder once granted). */
+function refuseSensitiveRoot(p) {
+  const abs = M.real(String(p));
+  const home = M.real(os.homedir());
+  const root = path.parse(abs).root;
+  // Reviewer's HIGH on 13e7b0e8: root and home themselves are refused only as an exact match or
+  // an ANCESTOR of them (which would enclose them, and so every credential folder they hold, as
+  // one of the project's own subfolders) - never merely for sitting INSIDE them, which is where
+  // almost every real project actually lives (~/Work, ~/Projects, ...). The earlier version's
+  // single "inside-or-ancestor" check applied to home too, refusing every real project under it.
+  for (const b of [root, home]) {
+    if (abs === b || b.startsWith(abs + path.sep)) throw new Error(`${p} cannot be a project's folder`);
+  }
+  // Each named SENSITIVE folder, unlike root/home above, IS refused for sitting inside it too
+  // (a project must never be nested inside ~/.ssh, say), on top of being it or an ancestor of it.
+  for (const d of SENSITIVE) {
+    const full = path.join(home, d);
+    if (abs === full || abs.startsWith(full + path.sep) || full.startsWith(abs + path.sep)) {
+      throw new Error(`${p} cannot be a project's folder`);
+    }
+  }
+}
 
 export const MIGRATIONS = [
   `
@@ -34,6 +81,33 @@ export const MIGRATIONS = [
     home TEXT NOT NULL UNIQUE,
     spec TEXT NOT NULL,
     at   INTEGER NOT NULL
+  );
+  `,
+  // Step 1 (federation, Vyre Drive step 3): which agent may reach a project's data at all. Deny
+  // by default; Drive, sync and anything else that serves a project's files or sessions to an
+  // agent asks projects.access.check before serving. Lives here, not appended in index.js, so
+  // core/store's migrate() (which numbers steps by array index) never collides with a step
+  // another team adds to this array later — sessions' next MIGRATIONS step (after e87f63df,
+  // still just the projects_projects table on main as of this write) is told this slot is taken.
+  `
+  CREATE TABLE projects_access (
+    id      TEXT PRIMARY KEY,
+    project TEXT NOT NULL,
+    agent   TEXT NOT NULL DEFAULT '',
+    status  TEXT NOT NULL,
+    by      TEXT NOT NULL,
+    at      INTEGER NOT NULL,
+    UNIQUE (project, agent)
+  );
+  `,
+  // Step 2 (federation, reviewer's MEDIUM 2 on 656b3f79): a single-row sentinel recording that
+  // the one-time auto-seed of projects_access from agents.projects has run (core/projects/
+  // index.js), so an upgrade never has to be told about the manual projects.access.migrate tool
+  // for a scoped agent to keep reading what it already could.
+  `
+  CREATE TABLE projects_access_seeded (
+    id INTEGER PRIMARY KEY CHECK (id = 1),
+    at INTEGER NOT NULL
   );
   `,
 ];
@@ -109,20 +183,27 @@ export class Projects {
    * Make a project from what a person chose. The home defaults to a new folder in the projects
    * folder. A folder that already has a marker is refused, not overwritten.
    */
-  create({ name, home, org, workspaces = [], threads = [], people = [], watchers = [] }) {
+  create({ name, home, org, workspaces = [], threads = [], people = [], watchers = [], from_thread }) {
     const clean = String(name || "").trim();
     if (!clean) throw new Error("a project needs a name");
     const slug = M.slugify(clean);
     if (!slug) throw new Error(`"${clean}" has no letters or digits to make a slug from`);
     this.refresh({ walk: true });
     const where = M.real(home ? untilde(home) : path.join(this.config.projectsDir, slug));
+    refuseSensitiveRoot(where);
+    for (const w of workspaces) refuseSensitiveRoot(w);
     const clash = this.valid().find(p => p.slug === slug);
     if (clash) throw new Error(`a project called ${clash.name} already exists at ${clash.home}`);
     if (fs.existsSync(path.join(where, M.MARKER))) throw new Error(`${where} is already a project home`);
     fs.mkdirSync(where, { recursive: true });
-    const ids = [...new Set(threads.map(M.parentOf))];
+    // A chat made into a project (from_thread) is picked into it and gives it its avatar seed, so
+    // the chat's draft tile carries over and turns solid (ADR 0043 section 6). Otherwise the seed
+    // is the slug at creation, stored, so a later rename never changes the tile.
+    const from = from_thread != null ? threadId(from_thread) : null;
+    if (from_thread != null && !from) throw Object.assign(new Error("from_thread must be a chat's session id (a UUID)"), { code: "bad_input" });
+    const ids = [...new Set([...threads, ...(from ? [from] : [])].map(M.parentOf))];
     const p = /** @type {Project} */ (M.write(where, {
-      name: clean, ...(org ? { org: String(org) } : {}),
+      name: clean, ...(org ? { org: String(org) } : {}), avatar_seed: from || slug,
       workspaces: M.relative(where, workspaces).filter(w => w !== "."),
       threads: ids, people, watchers,
     }));
@@ -148,6 +229,34 @@ export class Projects {
   }
 
   /**
+   * Attach an existing folder to an existing project as one of its workspaces (Vyre Drive step
+   * 4): the folder starts counting as the project's own, the same as one listed at create()
+   * time. Person-only (core/presence PERSON_ONLY), the same weight a pick carries: attaching a
+   * folder to a project is a placement decision. Mirrors create()'s own workspaces handling
+   * exactly (sessions' review of this shape, 2026-09-28): M.relative drops the home folder
+   * itself (relative() turns it into "."), and an already-listed folder is left alone rather
+   * than duplicated, the same as addThreads dedupes against p.threads.
+   */
+  addWorkspace(ref, folder) {
+    refuseSensitiveRoot(folder);
+    this.refresh();
+    const p = this.resolve(ref);
+    const rel = M.relative(p.home, [folder]).filter(w => w !== ".");
+    if (!rel.length) return { project: p.slug, added: null, workspaces: p.workspaces }; // the folder IS the project's home
+    const [add] = rel;
+    // p.workspaces (loaded) is absolute and home-prefixed; the marker stores relative paths
+    // without the home, the same shape create() writes. existing strips the load()-added home
+    // (always index 0) and re-derives the relative list, so this never writes p.workspaces'
+    // resolved form back onto disk.
+    const existing = M.relative(p.home, p.workspaces.slice(1));
+    if (existing.includes(add)) return { project: p.slug, added: null, workspaces: p.workspaces };
+    const next = /** @type {Project} */ (M.write(p.home, { workspaces: [...existing, add] }));
+    this.refresh();
+    this.emit("project.changed", { project: p.slug, fields: ["workspaces"] }, { project: p.slug });
+    return { project: p.slug, added: add, workspaces: next.workspaces };
+  }
+
+  /**
    * Remove picks. A thread that ran in one of the project's folders stays in it by folder; that
    * is a fact about where the work happened, not a choice, so it is reported rather than hidden.
    */
@@ -166,16 +275,54 @@ export class Projects {
     return { project: p.slug, removed, stillByFolder: byFolder };
   }
 
+  /**
+   * Add watchers: names on the marker (spec 7.2) for someone who should hear about this
+   * project's Needs without running a session in it — core/waiting's rows already carry
+   * `project`, so a surface that knows who watches what can filter on it once this exists.
+   * Person-only (core/presence PERSON_ONLY), same shape as addThreads.
+   */
+  addWatchers(ref, names) {
+    this.refresh();
+    const p = this.resolve(ref);
+    const clean = [...new Set(names.map(n => String(n).trim()).filter(Boolean))];
+    const add = clean.filter(n => !p.watchers.includes(n));
+    if (!add.length) return { project: p.slug, added: [], watchers: p.watchers };
+    const next = /** @type {Project} */ (M.write(p.home, { watchers: [...p.watchers, ...add] }));
+    this.refresh();
+    this.emit("project.changed", { project: p.slug, fields: ["watchers"] }, { project: p.slug });
+    return { project: p.slug, added: add, watchers: next.watchers };
+  }
+
+  /** Remove watchers. Removing a name nobody has does nothing and reports no removal. */
+  removeWatchers(ref, names) {
+    this.refresh();
+    const p = this.resolve(ref);
+    const drop = new Set(names.map(n => String(n).trim()));
+    const removed = p.watchers.filter(n => drop.has(n));
+    if (!removed.length) return { project: p.slug, removed: [], watchers: p.watchers };
+    const next = /** @type {Project} */ (M.write(p.home, { watchers: p.watchers.filter(n => !drop.has(n)) }));
+    this.refresh();
+    this.emit("project.changed", { project: p.slug, fields: ["watchers"] }, { project: p.slug });
+    return { project: p.slug, removed, watchers: next.watchers };
+  }
+
   // ------------------------------------------------------------ reading sessions
 
   hasIndex() {
     return Boolean(this.db.prepare("SELECT 1 FROM sqlite_master WHERE name = 'recall_sessions'").get());
   }
 
+  /** Whether the Recall index has this session (any turns), for from_thread's existence check. `id` in any case. */
+  hasSession(id) {
+    const tid = threadId(id);
+    return !!tid && this.hasIndex() && !!this.db.prepare("SELECT 1 FROM recall_sessions WHERE id = ?").get(tid);
+  }
+
   /**
    * Every top-level session with its subagents folded in. A subagent is work done on its
    * parent's behalf: listing it separately would double every thread that used one.
    */
+
   sessions() {
     if (!this.hasIndex()) return [];
     const list = this.valid();
@@ -317,7 +464,8 @@ export class Projects {
     let facts = [];
     // Only the project's own folders: a hub session picked into it ran somewhere shared, and
     // asking for that folder's facts would bring the other projects' memory in with it.
-    const r = await this.call("memory.facts", { project_cwds: p.workspaces, limit: 10 });
+    // The project's room by slug: its folders alone could name a project that holds this one.
+    const r = await this.call("memory.facts", { room: p.slug, project_cwds: p.workspaces, limit: 10 });
     if (!r.error) facts = Array.isArray(r.data) ? r.data : Array.isArray(r.data?.facts) ? r.data.facts : [];
     const text = compose({ project: p, threads, facts });
     return { project: p.slug, candidates: [], text };
@@ -336,8 +484,10 @@ export class Projects {
         if (how.has("picked")) picked++; else folder++;
         last = Math.max(last, sessions.get(id)?.last || 0);
       }
+      // picks: the picked session ids themselves (subagents folded to their parent), for Memory's
+      // rooms. threads and picked stay counts: the CLI and the Deck print them.
       return { slug: p.slug, name: p.name, org: p.org, home: p.home, workspaces: p.workspaces, people: p.people,
-        watchers: p.watchers, threads: picked + folder, picked, folder, last };
+        watchers: p.watchers, avatar_seed: p.avatar_seed, threads: picked + folder, picked, folder, picks: [...new Set(p.threads.map(M.parentOf))], last };
     });
     out.sort((a, b) => b.last - a.last || a.name.localeCompare(b.name));
     const problems = this.all.filter(p => p.error).map(p => ({ home: p.home, error: p.error }));

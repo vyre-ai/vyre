@@ -1,0 +1,21 @@
+{
+  "name": "screen",
+  "version": "0.1.0",
+  "description": "Screen context on macOS: the front app, window, focused control, URL and visible text, kept current by accessibility notifications, redacted in secure fields and blind in the floor's places. On demand screenshots.",
+  "roles": ["local"],
+  "requires": [],
+  "does": { "tools": ["screen.context", "screen.shot"] },
+  "watches": { "emits": [] },
+  "shows": {},
+  "needs": {},
+  "teaches": {
+    "tips": [
+      {"id": "ask-screen", "text": "Type `ask about my screen` in the Capsule to read the window in front and ask about it.", "surfaces": ["capsule"], "level": "discovery", "trigger": "never-used", "since": "0.1.0"},
+      {"id": "this", "text": "Type `summarize this` and the Capsule adds your screen as a chip, shown before anything is sent.", "surfaces": ["capsule"], "level": "first-use", "trigger": "on-use", "since": "0.1.0"},
+      {"id": "selection", "text": "Select text in any app, then open the Capsule: your words go with the selection attached.", "surfaces": ["capsule"], "level": "first-use", "trigger": "on-use", "since": "0.1.0"},
+      {"id": "drop-chip", "text": "Press `⌘⌫` to take the screen chip off before you send.", "surfaces": ["capsule"], "level": "power", "trigger": "on-use", "since": "0.1.0", "key": "⌘⌫"},
+      {"id": "blind", "text": "Password fields, password managers and sign-in dialogs stay blind: the Capsule sees the app and window title only.", "surfaces": ["capsule"], "level": "power", "trigger": "idle", "since": "0.1.0"},
+      {"id": "shot", "text": "Grant Screen Recording to let Vyre take a screenshot. Each PNG is deleted after 60 seconds.", "surfaces": ["capsule", "cli"], "level": "power", "trigger": "idle", "since": "0.1.0"}
+    ]
+  }
+}

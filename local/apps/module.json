@@ -1,0 +1,23 @@
+{
+  "name": "apps",
+  "version": "0.1.0",
+  "description": "Drive the Mac's apps from the Capsule, the CLI and the phone: Clock timers and alarms, notes, reminders, the weather, Slack and WhatsApp. Actions that send as the person go through apps.send, with a proof per call (WhatsApp, through the hands), or are held at the Gate for the person to approve (Slack).",
+  "roles": ["local"],
+  "requires": [],
+  "does": { "tools": ["apps.list", "apps.targets", "apps.act", "apps.send", "apps.route", "apps.setup"] },
+  "watches": { "emits": ["apps.acted", "apps.sent"] },
+  "shows": {},
+  "needs": {},
+  "teaches": {
+    "tips": [
+      {"id": "try", "text": "Type `timer 10 min` in the Capsule and press `⏎`. It is set at once, with no app to open.", "surfaces": ["capsule"], "level": "discovery", "trigger": "never-used", "since": "0.1.0", "key": "⏎"},
+      {"id": "setup-clock", "text": "Run `vyre apps setup clock` once so Vyre can set timers and alarms in the Mac's Clock.", "surfaces": ["cli"], "level": "first-use", "trigger": "on-use", "since": "0.1.0", "command": "vyre apps setup clock", "docs": "reference/cli.md#vyre-apps"},
+      {"id": "cli-note", "text": "Run `vyre apps note: call Northwind Bakery on Friday` to jot a note without leaving the terminal.", "surfaces": ["cli"], "level": "first-use", "trigger": "on-use", "since": "0.1.0", "command": "vyre apps", "docs": "reference/cli.md#vyre-apps"},
+      {"id": "send-twice", "text": "Messages show before they go: type `whatsapp juno: running late`, press `⏎` to check, `⏎` again to send.", "surfaces": ["capsule"], "level": "first-use", "trigger": "on-use", "since": "0.1.0", "key": "⏎"},
+      {"id": "scope", "text": "Type `@Notes` and your words to make a note of them, no keyword needed.", "surfaces": ["capsule"], "level": "power", "trigger": "on-use", "since": "0.1.0", "key": "@"},
+      {"id": "apple-clock", "text": "Add `in Apple Clock` to a timer to ring the Mac's Clock. Without it, the Planner keeps the timer on every device.", "surfaces": ["capsule", "cli"], "level": "power", "trigger": "on-use", "since": "0.1.0"},
+      {"id": "weather", "text": "Type `weather tomorrow` in the Capsule, or run `vyre apps weather tomorrow`, for the forecast.", "surfaces": ["capsule", "cli"], "level": "power", "trigger": "idle", "since": "0.1.0", "command": "vyre apps weather tomorrow"},
+      {"id": "list", "text": "Run `vyre apps` to list the apps on this Mac and how Vyre reaches each one.", "surfaces": ["cli"], "level": "power", "trigger": "idle", "since": "0.1.0", "command": "vyre apps", "docs": "reference/cli.md#vyre-apps"}
+    ]
+  }
+}

@@ -1,0 +1,25 @@
+{
+  "name": "presence",
+  "version": "0.1.0",
+  "main": "module.js",
+  "roles": ["box", "local"],
+  "requires": [],
+  "does": { "tools": ["presence.keys", "presence.enroll", "presence.remove", "presence.capsule.pin", "presence.code", "presence.session.open", "presence.session.close", "presence.covered",
+    "presence.person.start", "presence.person.status", "presence.person.sessions", "presence.person.revoke"] },
+  "watches": { "emits": ["presence.proved", "presence.refused", "presence.enrolled", "presence.removed", "presence.signed-in", "presence.signed-out"] },
+  "shows": { "deck": [], "capsule": [], "cli": [] },
+  "needs": {},
+  "teaches": {
+    "tips": [
+      {"id": "what-asks", "text": "Vyre asks you to prove you are there for pairing a Mac, vault secrets, and sending, posting or paying.", "surfaces": ["deck", "capsule", "phone", "cli"], "level": "first-use", "trigger": "on-use", "since": "0.1.0", "docs": "concepts/presence.md#which-tools-need-it"},
+      {"id": "thirty-minutes", "text": "One proof covers the next 30 minutes on this device, so the sends after it ask for nothing.", "surfaces": ["deck", "phone", "chat", "cli"], "level": "first-use", "trigger": "on-use", "since": "0.1.0", "docs": "concepts/presence.md#sessions-in-the-deck"},
+      {"id": "own-screen-free", "text": "Answering a permission ask, editing a draft or discarding it asks for no proof. It is your own screen.", "surfaces": ["deck", "chat", "capsule", "phone"], "level": "first-use", "trigger": "on-use", "since": "0.1.0", "docs": "concepts/presence.md#which-tools-need-it"},
+      {"id": "keys", "text": "Run `vyre presence` to list the keys that can prove you are here, and `vyre presence remove <id>` to drop one.", "surfaces": ["cli"], "level": "power", "trigger": "on-use", "since": "0.1.0", "command": "vyre presence", "docs": "concepts/presence.md#enroll-your-keys"},
+      {"id": "code", "text": "Enroll a Deck passkey with a one-time code from `vyre presence code`. It works once, for 10 minutes.", "surfaces": ["cli", "deck"], "level": "power", "trigger": "on-use", "since": "0.1.0", "command": "vyre presence code", "docs": "concepts/presence.md#enroll-your-keys"},
+      {"id": "tty", "text": "Prefer a typed code to Touch ID with `vyre call --tty`. The code goes straight to your login terminal.", "surfaces": ["cli"], "level": "power", "trigger": "on-use", "since": "0.1.0", "command": "vyre call --tty gate.approve '{\"id\":\"h_12\"}'", "docs": "concepts/presence.md#how-each-surface-proves-it"},
+      {"id": "icloud-passkey", "text": "A passkey made in Safari on your Mac reaches your iPhone through iCloud Keychain, ready to approve with Face ID.", "surfaces": ["phone"], "level": "discovery", "trigger": "never-used", "since": "0.1.0", "docs": "using/mobile.md#approving-from-the-phone"},
+      {"id": "bound-proof", "text": "A proof is bound to one tool and one input and lasts 2 minutes, so approving item A never approves item B.", "surfaces": ["deck", "cli"], "level": "discovery", "trigger": "idle", "since": "0.1.0", "docs": "concepts/presence.md#what-a-presence-tool-does"},
+      {"id": "restart-asks", "text": "The terminal's 30-minute window lives in vyred's memory, so after a restart the next approval asks again.", "surfaces": ["cli"], "level": "power", "trigger": "idle", "since": "0.1.0", "docs": "concepts/presence.md#sessions-in-the-deck"}
+    ]
+  }
+}

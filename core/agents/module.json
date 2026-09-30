@@ -1,0 +1,24 @@
+{
+  "name": "agents",
+  "version": "0.1.0",
+  "roles": ["box", "local"],
+  "requires": ["threads"],
+  "does": { "tools": ["agents.list", "agents.create", "agents.update", "agents.ask", "agents.threads", "agents.stop", "agents.resume", "agents.history", "agents.usage", "agents.delete"] },
+  "watches": { "emits": [] },
+  "shows": { "cli": ["agents"] },
+  "needs": { "vault": ["per-agent"] },
+  "teaches": {
+    "tips": [
+      {"id": "ask-cli", "text": "Ask an agent from the terminal: `vyre agents ask juno \"What changed in Harlow Legal this week?\"`.", "surfaces": ["cli"], "level": "first-use", "trigger": "on-use", "since": "0.1.0", "command": "vyre agents ask juno \"What changed in Harlow Legal this week?\"", "docs": "using/agents.md#talk-to-the-assistant-or-an-agent"},
+      {"id": "at-agent-capsule", "text": "Press Control twice and type `@kit` to send to kit instead of your assistant. Sends to shows where Enter goes.", "surfaces": ["capsule"], "level": "first-use", "trigger": "on-use", "since": "0.1.0", "key": "Control Control", "docs": "using/agents.md#talk-to-the-assistant-or-an-agent"},
+      {"id": "list", "text": "Run `vyre agents` for every agent, the assistant first, with what each is doing now.", "surfaces": ["cli"], "level": "first-use", "trigger": "on-use", "since": "0.1.0", "command": "vyre agents", "docs": "using/agents.md#see-what-agents-are-doing-and-what-they-cost"},
+      {"id": "usage", "text": "See turns, time, tokens and dollars against each budget with `vyre agents usage`.", "surfaces": ["cli"], "level": "power", "trigger": "on-use", "since": "0.1.0", "command": "vyre agents usage", "docs": "using/agents.md#see-what-agents-are-doing-and-what-they-cost"},
+      {"id": "scope-projects", "text": "Keep kit inside two clients: `vyre agents create kit --projects harlow-legal,northwind-bakery`.", "surfaces": ["cli"], "level": "power", "trigger": "on-use", "since": "0.1.0", "command": "vyre agents create kit --projects harlow-legal,northwind-bakery", "docs": "using/agents.md#make-an-agent"},
+      {"id": "budget", "text": "Cap kit's API spend with `vyre agents update kit --budget 20`. At 80% its thread is told; at 100% it stops.", "surfaces": ["cli"], "level": "power", "trigger": "on-use", "since": "0.1.0", "command": "vyre agents update kit --budget 20", "docs": "using/agents.md#run-an-agent-on-your-own-quota"},
+      {"id": "stop", "text": "`vyre agents stop kit` stops every running thread of kit. Its record and transcripts stay.", "surfaces": ["cli"], "level": "power", "trigger": "on-use", "since": "0.1.0", "command": "vyre agents stop kit", "docs": "using/agents.md#see-what-agents-are-doing-and-what-they-cost"},
+      {"id": "computer", "text": "Give an agent its own computer, with a desktop, Chrome and a terminal, from its board, then watch it in Glass.", "surfaces": ["deck", "glass"], "level": "discovery", "trigger": "never-used", "since": "0.1.0", "docs": "using/agents.md#give-an-agent-a-computer"},
+      {"id": "phone-at", "text": "On the phone, Find asks your assistant, and `@kit ...` there asks kit.", "surfaces": ["phone"], "level": "discovery", "trigger": "idle", "since": "0.1.0", "docs": "using/agents.md#talk-to-the-assistant-or-an-agent"},
+      {"id": "change-next-thread", "text": "A change to an agent applies from its next thread, so a running one finishes with what it had.", "surfaces": ["cli", "deck"], "level": "power", "trigger": "idle", "since": "0.1.0", "docs": "using/agents.md#make-an-agent"}
+    ]
+  }
+}
