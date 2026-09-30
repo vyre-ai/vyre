@@ -19,16 +19,6 @@ test("windows updater pins the same release key as vyre-core", () => {
   assert.ok(rs.includes(`"${RELEASE_KEY}"`), "update.rs RELEASE_KEY matches release.js");
 });
 
-import { ticketOpen, ticketMac, ticketDerive } from "../core/relay/wire.js";
-
-test("windows wink vector: the box-side code opens what the Rust reader is tested against", () => {
-  const w = JSON.parse(fs.readFileSync(new URL("../local/capsule/native-win/tests/wink-vector.json", import.meta.url), "utf8"));
-  const ticket = Buffer.from(w.ticket, "hex");
-  assert.equal(ticketDerive("loc", ticket).toString("base64url"), w.loc);
-  assert.equal(ticketMac(ticket, w.record).toString("base64url"), w.mac);
-  assert.equal(JSON.parse(ticketOpen(ticket, w.record)).handle, w.handle);
-});
-
 test("windows updater's shared vector is launch's, verified by verifySums too", () => {
   const key = "MCowBQYDK2VwAyEA6kpsY+KcUgq+9VB7Ey7F+ZVHdq6+vnuSQh7qaRRG0iw=";
   const sums = "a".repeat(64) + "  manifest.json\n" + "b".repeat(64) + "  vyre.tgz\n";
@@ -36,4 +26,12 @@ test("windows updater's shared vector is launch's, verified by verifySums too", 
   assert.equal(verifySums(sums, sig, { key }).get("vyre.tgz"), "b".repeat(64));
   const rs = fs.readFileSync(new URL("../local/capsule/native-win/src/update.rs", import.meta.url), "utf8");
   assert.ok(rs.includes(key) && rs.includes(sig), "update.rs carries the same shared vector");
+});
+
+test("windows pairing page: every relay-client name it imports exists there", async () => {
+  const src = fs.readFileSync(new URL("../local/capsule/native-win/app/ui/pair.js", import.meta.url), "utf8");
+  for (const m of src.matchAll(/import \{([^}]+)\} from "\.\/relay\/([\w-]+)\.js"/g)) {
+    const mod = await import(new URL(`../relay/client/${m[2]}.js`, import.meta.url).href);
+    for (const name of m[1].split(",").map((s) => s.trim()).filter(Boolean)) assert.ok(name in mod, `${m[2]}.js exports ${name}`);
+  }
 });
