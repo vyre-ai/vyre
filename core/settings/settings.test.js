@@ -473,25 +473,29 @@ test("an agent changes a setting only when the person asked (C25, P17), every ch
   const agent = "mcp:agent:kit", meta = { thread: "t_asked" };
   const req = (/** @type {any} */ input, /** @type {any} */ m = meta) => d.registry.call("settings.request", input, agent, m);
 
-  // No gate to ask yet: refused, in words the agent can pass on.
+  // Nothing the person said yet: refused, in words the agent can pass on.
   let r = await req({ key: k.key, value: want });
   assert.equal(r.error?.code, "denied");
   assert.match(r.error.message, /changes only when the person asks for it/);
 
-  /** @type {any[]} */ const asked = [];
-  let answer = { matched: false };
-  d.registry.tools.set("gate.said.match", { module: "vault", description: "", input: { type: "object" }, callers: null, internal: false, hook: false, presence: false,
-    run: async (/** @type {any} */ i) => { asked.push(i); return answer; } });
+  // The real vault keeps what the person said; sessions record it from a `said` row.
+  const say = (/** @type {any} */ i) => d.registry.call("vault.said.record", { said: "row-1", what: "use this setting", ...i }, "module:sessions");
+  assert.ok(!(await say({ thread: "t_other", kind: "setting", to: [k.key] })).error, "recorded for another thread");
   r = await req({ key: k.key, value: want });
-  assert.equal(r.error?.code, "denied", "the person's words didn't ask for it");
-  assert.deepEqual({ thread: asked[0].thread, kind: asked[0].kind, key: asked[0].key }, { thread: "t_asked", kind: "setting", key: k.key },
-    "the gate is asked about the calling thread, never a thread the agent names");
+  assert.equal(r.error?.code, "denied", "words in another thread don't count");
+  assert.ok(!(await say({ thread: "t_asked", kind: "setting", to: ["some.other.key"] })).error);
+  r = await req({ key: k.key, value: want });
+  assert.equal(r.error?.code, "denied", "an ask that names a different key doesn't count");
+  assert.ok(!(await say({ thread: "t_asked", kind: "send", to: [k.key] })).error);
+  r = await req({ key: k.key, value: want });
+  assert.equal(r.error?.code, "denied", "an ask of another kind doesn't count");
 
-  answer = { matched: true, said: { id: "said_1", turn: 3 } };
+  const asked = await say({ thread: "t_asked", kind: "setting", to: [k.key] });
+  assert.ok(!asked.error, JSON.stringify(asked.error));
   r = await req({ key: k.key, value: want });
   assert.ok(!r.error, JSON.stringify(r.error));
-  assert.equal(asked.at(-1).thread, "t_asked");
   assert.equal((await c("settings.get", { key: k.key })).data.value, want);
+  assert.equal((await req({ key: k.key, value: !want })).error?.code, "denied", "one ask, one change: it was used up");
   assert.equal((await req({ key: k.key, value: want }, {})).error?.code, "denied", "outside a conversation: refused");
 
   // The direct path stays the person's.
@@ -499,7 +503,7 @@ test("an agent changes a setting only when the person asked (C25, P17), every ch
 
   const log = (await c("settings.changes", { key: k.key })).data;
   assert.equal(log[0].by, agent);
-  assert.equal(log[0].said, "said_1");
+  assert.equal(log[0].said, asked.data.id, "the change carries the intent that covered it");
   assert.equal(log[0].undone, false);
 
   const u = await c("settings.undo", { change: log[0].id });

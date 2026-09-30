@@ -12,7 +12,7 @@
 // and can be undone instead. A preview still says what a change loosens or widens, so a surface can
 // show it. Agents may read settings, and settings.resolve hands a starting session its Vyre-owned values. An agent changes
 // one only through settings.request, and only when the person asked for that change in their own
-// words in this conversation (PLAN.md C25 and P17: vault's gate.said.match); otherwise never.
+// words in this conversation (PLAN.md C25 and P17: vault.said.match); otherwise never.
 // Every change is logged, and settings.undo reverses one with no prompt.
 
 import fs from "node:fs";
@@ -503,7 +503,7 @@ export default {
 
     // An agent changing a setting for the person (PLAN.md C25): only when the person asked for this
     // change in their own words in this conversation. vyred decides that from the person's own
-    // turns (P17), never from the agent's say-so: gate.said.match answers for the calling thread.
+    // turns (P17), never from the agent's say-so: vault.said.match answers for the calling thread.
     // No match, or no gate to ask: refused, and the agent tells the person to ask.
     ctx.tool("settings.request", {
       description: "Change or reset a setting because the person asked you to in this conversation (for example \"use Sonnet by default in this project\"). It works only when the person's own words asked for this change; otherwise it is refused and you should tell them they can change it in Settings or ask you directly. Give value to set it, or reset: true to clear it. The person sees who changed it and can undo it.",
@@ -516,8 +516,12 @@ export default {
         const d = declOf(String(i.key));
         if (i.reset !== true && !("value" in i)) throw Object.assign(new Error("give value, or reset: true"), { code: "bad_input" });
         if (i.reset !== true && i.value === null) throw Object.assign(new Error("use reset: true to clear a setting"), { code: "bad_input" });
-        const m = await ctx.call("gate.said.match", { thread, kind: "setting", key: d.key, before: Date.now() }).catch(() => ({ error: { code: "unavailable" } }));
-        const said = !m.error && m.data && m.data.matched === true && m.data.said && typeof m.data.said.id === "string" ? m.data.said.id : null;
+        // The key is the one destination the person's words must name, and a plain ask is used up by this one change (consume).
+        /** @type {string[]} */ let lineage = [];
+        try { const l = await ctx.call("threads.lineage", { thread }); if (l && l.data && Array.isArray(l.data.lineage)) lineage = l.data.lineage.map(String); } catch {}
+        const agent = meta && typeof (/** @type {any} */ (meta)).agent === "string" ? (/** @type {any} */ (meta)).agent : "";
+        const m = await ctx.call("vault.said.match", { kind: "setting", to: [d.key], consume: true, thread, ...(lineage.length ? { lineage } : {}), ...(agent ? { agent } : {}) }).catch(() => ({ error: { code: "unavailable" } }));
+        const said = !m.error && m.data && m.data.matched === true && typeof m.data.id === "string" ? m.data.id : null;
         if (!said) refuse(`${d.label || d.key} changes only when the person asks for it. Tell them they can change it in Settings, or ask you to in their own words.`);
         const { reset, ...rest } = i;
         return change({ ...rest, preview: false }, meta, reset === true ? undefined : i.value, { said: /** @type {string} */ (said) });
