@@ -4,6 +4,21 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### release: v2 pipeline (0.2 PLAN R1, R5, R7)
+
+- release.yml builds the box and computer images natively for linux/amd64 and linux/arm64 and
+  pushes them to ghcr by digest. It joins each into one list tagged vX.Y.Z (and latest on stable),
+  signs it keyless with cosign, and attaches an SPDX SBOM and a provenance attestation.
+- The released compose.yml pins both images by digest. release.json gains `images` (additive).
+  SHA256SUMS is signed with minisign from the protected `release` environment, and with cosign
+  sign-blob.
+- Release notes come from release/notes/<version>.md, read by the lead before the tag. The
+  Android APK is no longer a release asset (phones use the web app).
+- vyre.tgz, compose.build.yml and the Dockerfile stay in every release, so a 0.1.1 box can still
+  update by building.
+- A dry run (any dispatch, or a tag without VYRE_RELEASES=go) builds and boots both arches and
+  pushes nothing.
+
 #### box: a uid and a 0700 HOME per AI account, and a no-network uid for watchers (0.2, Wave A0)
 
 - box/Dockerfile makes uids 2000-2063 their own HOMEs at /home/acct/<uid> (0700, owned by that
