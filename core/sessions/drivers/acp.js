@@ -40,12 +40,20 @@ import fs from "node:fs";
 import path from "node:path";
 import { execFileSync } from "node:child_process";
 import { spawnSession, killGroup } from "../spawn.js";
+import { redact } from "../../transcripts/sanitize.js";
+import { within } from "../../../lib/within.js";
 
 /** How long a turn waits for memory before it goes without. */
 const MEMORY_MS = 3000;
 
 /** A mode name that would let the agent stop asking. Never offered, never set. */
-export const BYPASS_MODE = /bypass|yolo|dangerous|never.?ask|full.?auto|auto.?approve|accept.?all|skip.?perm/i;
+/**
+ * The modes Vyre permits by name: the ones where the agent keeps asking (or cannot write). Anything else an agent reports is
+ * refused, never listed and never entered, including a mode a later release adds: an allowlist, because a denylist of bypass
+ * words let Codex's "agent-full-access" through once. An entry may narrow it (`allowModes`, intersected with this list), never widen it.
+ */
+export const ALLOWED_MODES = /^(default|ask|untrusted|on-request|read-?only|plan|agent)$/i;
+export const BYPASS_MODE = /bypass|yolo|dangerous|never.?ask|full.?auto|full.?access|auto.?approve|accept.?all|skip.?perm/i;
 
 /** ACP tool kind -> the Claude tool name the floor's rules know (rules.js is Claude-tool-name shaped until build step 8). */
 const KIND_TOOL = { read: "Read", edit: "Write", delete: "Write", move: "Write", search: "Grep", execute: "Bash", fetch: "WebFetch" };
@@ -87,6 +95,9 @@ const remembered = new Map();
 /**
  * @param {{ id: string, bin: string, askMode?: RegExp, seed?: Record<string, string> | ((o: any) => Record<string, string>), secretEnv?: string[] | ((o: any) => string[]), args?: string[] | ((o: any) => string[]), env?: Record<string, string> | ((o: any) => Record<string, string>),
  *   capabilities?: Record<string, any>, floor?: (call: { tool: string, input: any, cwd?: string }) => { decision: "deny"|"ask"|null, reason?: string },
+ *   allowModes?: RegExp, pinMode?: string[],
+ *   authMethod?: (methods: { id: string, name?: string }[], run: any) => string|null, authTimeoutMs?: number,
+ *   authFirst?: boolean, clientCapabilities?: Record<string, any>, authParams?: (methodId: string, run: any) => Record<string, any>,
  *   sessions?: { get(id: string): string|undefined, set(id: string, agent: string): void } }} entry
  */
 export function acpProvider(entry) {
@@ -111,6 +122,12 @@ function runAcp(entry, known, o) {
   const seed = typeof entry.seed === "function" ? entry.seed(o) : entry.seed || undefined;
   // The provider's key is the CLI's own; the shells it asks Vyre to run (terminal/create) never get it.
   const secretEnv = new Set(typeof entry.secretEnv === "function" ? entry.secretEnv(o) : entry.secretEnv || []);
+  /** Anything that leaves for a person or a transcript (an error, the agent's stderr tail) is stripped of credential shapes and of this run's own secret values. */
+  const scrub = t => {
+    let out = redact(String(t ?? "")).text;
+    for (const n of secretEnv) { const v = o.env && o.env[n]; if (typeof v === "string" && v.length >= 6) out = out.split(v).join("[secret]"); }
+    return out;
+  };
   const child = spawnSession(entry.bin, args, { cwd, env: { ...(o.env || {}), ...extra }, subreaper: o.subreaper, uid: o.uid, gid: o.gid, account: o.account, ...(seed ? { seed } : {}), onSpawn: o.onSpawn });
   const say = m => { try { o.onMessage(m); } catch {} };
 
@@ -124,10 +141,11 @@ function runAcp(entry, known, o) {
   let firstPrompt = true;
 
   const send = obj => { if (!exited && child.stdin.writable) child.stdin.write(JSON.stringify({ jsonrpc: "2.0", ...obj }) + "\n"); };
-  const request = (method, params) => new Promise((resolve, reject) => {
+  const request = (method, params, timeoutMs = 0) => new Promise((resolve, reject) => {
     const id = ++rpcId;
     calls.set(id, { resolve, reject });
     send({ id, method, params });
+    if (timeoutMs > 0) setTimeout(() => { if (calls.delete(id)) reject(Object.assign(new Error(`${method} did not answer in ${Math.round(timeoutMs / 1000)} s`), { code: "timeout" })); }, timeoutMs).unref?.();
   });
   const respond = (id, result) => send({ id, result });
   const fail = (id, code, message) => send({ id, error: { code, message } });
@@ -151,7 +169,7 @@ function runAcp(entry, known, o) {
     for (const t of terminals.values()) { try { killGroup(t.child, "SIGKILL"); } catch {} }
     for (const p of tree) kill(p, "SIGKILL");
     for (const c of calls.values()) c.reject(new Error("the agent ended"));
-    o.onExit(code, signal, err);
+    o.onExit(code, signal, scrub(err));
   };
   child.on("exit", done);
   child.on("error", e => { err = e.message; done(null, null); });
@@ -180,6 +198,24 @@ function runAcp(entry, known, o) {
     return id;
   }
 
+  /**
+   * The agent says it changed its own mode. A listed mode is recorded; an unlisted one (a bypass mode, one a new release added, one
+   * its own config chose) is never recorded and is reverted with session/set_mode to the last listed mode, or the session is stopped.
+   * An agent that lists no modes at all (Grok) has nothing to enforce, but a bypass-shaped name still stops it.
+   * @param {string} id
+   */
+  function modeUpdate(id) {
+    if (modes.some(x => x.id === id)) { mode = id; return; }
+    if (!modes.length && !BYPASS_MODE.test(id)) return;
+    const back = mode && modes.some(x => x.id === mode) ? mode : (Array.isArray(entry.pinMode) ? entry.pinMode.find(m => modes.some(x => x.id === m)) : null) || (modes[0] && modes[0].id) || null;
+    const halt = () => {
+      say({ type: "result", subtype: "error", is_error: true, result: `${entry.id[0].toUpperCase() + entry.id.slice(1)} switched itself to a mode Vyre does not permit (${String(id).slice(0, 60)}) and could not be put back; Vyre stopped it`, total_cost_usd: 0 });
+      try { killGroup(child, "SIGKILL"); } catch {}
+    };
+    if (!back) return halt();
+    request("session/set_mode", { sessionId: sid, modeId: back }, 10_000).then(() => { mode = back; }, halt);
+  }
+
   function update(u) {
     const kind = u.sessionUpdate;
     if (kind === "agent_message_chunk") {
@@ -195,7 +231,7 @@ function runAcp(entry, known, o) {
       if (!announced.has(String(u.toolCallId))) announce(u);
       if (u.status === "completed" || u.status === "failed") toolDone(u);
     } else if (kind === "current_mode_update" && typeof u.currentModeId === "string") {
-      if (!BYPASS_MODE.test(u.currentModeId)) mode = u.currentModeId;
+      modeUpdate(u.currentModeId);
     } else if (kind === "plan" && Array.isArray(u.entries)) {
       say({ type: "system", subtype: "vyre_plan", entries: u.entries });
     } else if (kind === "usage_update") {
@@ -336,41 +372,75 @@ function runAcp(entry, known, o) {
 
   // ---------------------------------------------------------------- the session
   async function open() {
-    const init = await request("initialize", { protocolVersion: 1, clientCapabilities: { fs: { readTextFile: true, writeTextFile: true }, terminal: true }, clientInfo: { name: "vyre", version: "0.2" } });
+    const init = await request("initialize", { protocolVersion: 1, clientCapabilities: { fs: { readTextFile: true, writeTextFile: true }, terminal: true, ...(entry.clientCapabilities || {}) }, clientInfo: { name: "vyre", version: "0.2" } });
     const caps = init.agentCapabilities || {};
     const prior = o.resume ? known.get(o.id) : undefined;
     const servers = Array.isArray(o.mcpServers) ? o.mcpServers : [];
+    // Real agents (codex-acp, Grok Build) answer session/new with "Authentication required" (-32000) until the client calls
+    // authenticate {methodId}. The entry names the method it wants from what the agent offers (never a prompt to the person):
+    // an API key method when the key is in the environment, else the stored login. An agent that then waits for a browser
+    // sign-in is a session that is not signed in, said plainly.
+    const methods = Array.isArray(init.authMethods) ? init.authMethods.filter(x => x && typeof x.id === "string") : [];
+    const label = entry.id[0].toUpperCase() + entry.id.slice(1);
+    const withAuth = async (method, params) => {
+      try { return await request(method, params); } catch (e) {
+        const err = /** @type {any} */ (e);
+        if (err.code !== -32000 || !methods.length || typeof entry.authMethod !== "function") throw e;
+        const methodId = entry.authMethod(methods, o);
+        if (!methodId) throw new Error(`${label} needs a sign-in and offers no way Vyre can use: ${methods.map(x => x.id).join(", ")}`);
+        try { await request("authenticate", { methodId, ...(typeof entry.authParams === "function" ? entry.authParams(methodId, o) : {}) }, entry.authTimeoutMs || 20_000); } catch (a) {
+          throw new Error(/** @type {any} */ (a).code === "timeout" ? `${label} is waiting for a sign-in in a browser: sign this account in first` : `${label} did not accept its sign-in (${scrub(String(/** @type {any} */ (a).message)).slice(0, 200)})`);
+        }
+        return request(method, params);
+      }
+    };
+    // An entry that must configure the agent before any session exists (Codex's gateway: where the model is) authenticates first.
+    if (entry.authFirst && methods.length && typeof entry.authMethod === "function") {
+      const methodId = entry.authMethod(methods, o);
+      if (!methodId) throw new Error(`${label} needs a sign-in and offers no way Vyre can use: ${methods.map(x => x.id).join(", ")}`);
+      try { await request("authenticate", { methodId, ...(typeof entry.authParams === "function" ? entry.authParams(methodId, o) : {}) }, entry.authTimeoutMs || 20_000); } catch (a) {
+        throw new Error(/** @type {any} */ (a).code === "timeout" ? `${label} is waiting for a sign-in in a browser: sign this account in first` : `${label} did not accept its sign-in (${scrub(String(/** @type {any} */ (a).message)).slice(0, 200)})`);
+      }
+    }
     let r;
     if (prior && (caps.loadSession || (caps.sessionCapabilities && caps.sessionCapabilities.resume))) {
       const method = caps.loadSession ? "session/load" : "session/resume";
-      r = await request(method, { sessionId: prior, cwd, mcpServers: servers });
+      r = await withAuth(method, { sessionId: prior, cwd, mcpServers: servers });
       sid = prior; loaded = true;
     } else {
-      r = await request("session/new", { cwd, mcpServers: servers });
+      r = await withAuth("session/new", { cwd, mcpServers: servers });
       sid = String(r.sessionId || "");
     }
     if (!sid) throw new Error("the agent gave no session id");
     known.set(o.id, sid);
     const m = r.modes || {};
-    modes = (Array.isArray(m.availableModes) ? m.availableModes : []).filter(x => x && typeof x.id === "string" && !BYPASS_MODE.test(x.id + " " + (x.name || "")));
-    mode = typeof m.currentModeId === "string" && !BYPASS_MODE.test(m.currentModeId) ? m.currentModeId : null;
-    // Fail closed: an agent that starts in a mode that approves everything (its own config file,
-    // which the agent can edit, may say so) is moved to an ask mode, or the session does not run.
+    const allow = entry.allowModes || ALLOWED_MODES;
+    const permitted = x => Boolean(x) && typeof x.id === "string" && allow.test(x.id) && ALLOWED_MODES.test(x.id) && !BYPASS_MODE.test(x.id + " " + (x.name || ""));
+    modes = (Array.isArray(m.availableModes) ? m.availableModes : []).filter(permitted);
+    mode = typeof m.currentModeId === "string" && modes.some(x => x.id === m.currentModeId) ? m.currentModeId : null;
+    // Fail closed: an agent that starts in a mode Vyre does not list (one that approves everything, a mode a new release added, or
+    // one its own config file, which the agent can edit, chose) is moved to an ask mode, or the session does not run.
     const rawMode = String(m.currentModeId || "");
-    const current = (Array.isArray(m.availableModes) ? m.availableModes : []).find(x => x && x.id === rawMode);
-    if (rawMode && BYPASS_MODE.test(rawMode + " " + (current && current.name || ""))) {
-      const ask = entry.askMode || /^(default|ask|untrusted|on-request|read-?only|plan)$/i;
+    if (rawMode && !modes.some(x => x.id === rawMode)) {
+      const ask = entry.askMode || /^(default|ask|untrusted|on-request|read-?only|plan|agent)$/i;
       const to = modes.find(x => ask.test(x.id));
       let ok = false;
       if (to) { try { await request("session/set_mode", { sessionId: sid, modeId: to.id }); mode = to.id; ok = true; } catch {} }
-      if (!ok) throw new Error(`${entry.id[0].toUpperCase() + entry.id.slice(1)} is set to approve everything; Vyre did not start it`);
+      if (!ok) throw new Error(`${entry.id[0].toUpperCase() + entry.id.slice(1)} starts in a mode Vyre does not permit (${rawMode}) and could not be moved to one it does; Vyre did not start it`);
+    }
+    // An entry can pin the start mode to an explicit list, on every start (and a resume): the agent's own config cannot choose it.
+    if (Array.isArray(entry.pinMode)) {
+      const want = entry.pinMode.find(id => modes.some(x => x.id === id));
+      if (!want) throw new Error(`${entry.id[0].toUpperCase() + entry.id.slice(1)} offers none of the modes Vyre starts it in (${entry.pinMode.join(", ")}); Vyre did not start it`);
+      if (mode !== want) await request("session/set_mode", { sessionId: sid, modeId: want });
+      mode = want;
     }
     const model = r.models && r.models.currentModelId || o.model || null;
     ready = true;
-    say({ type: "system", subtype: "init", session_id: o.id, agent_session_id: sid, model, modes: modes.map(x => x.id), resumed: loaded });
+    say({ type: "system", subtype: "init", session_id: o.id, agent_session_id: sid, model, modes: modes.map(x => x.id), mode, resumed: loaded });
     pump();
   }
-  open().catch(e => { err = String(e && e.message || e); say({ type: "result", subtype: "error", is_error: true, result: err, total_cost_usd: 0 }); });
+  open().catch(e => { err = scrub(String(e && e.message || e)); say({ type: "result", subtype: "error", is_error: true, result: err, total_cost_usd: 0 }); });
 
   function pump() {
     if (!ready || busy || exited || !queue.length) return;
@@ -384,7 +454,7 @@ function runAcp(entry, known, o) {
     // Memory, as Claude gets it: the brief on the first prompt and up to 5 quoted lines on every one,
     // ahead of the person's words, scoped by vyred to this thread's own agent and project (the
     // caller passes memory(); a slow or failing memory adds nothing and never holds the turn).
-    const memory = o.memory ? Promise.race([Promise.resolve().then(() => o.memory({ prompt: words, first })), new Promise(r => setTimeout(() => r([]), MEMORY_MS).unref())]).catch(() => []) : Promise.resolve([]);
+    const memory = o.memory ? within(Promise.resolve().then(() => o.memory({ prompt: words, first })), MEMORY_MS, []).catch(() => []) : Promise.resolve([]);
     memory.then(extra => request("session/prompt", { sessionId: sid, prompt: [...sys, ...(Array.isArray(extra) ? extra : []), ...blocks] })).then(r => r, e => ({ error: e })).then(r => {
       withdrawAsks();
       if (turnText) say({ type: "assistant", message: { id: `acp-turn-${Date.now()}`, content: [{ type: "text", text: turnText }] } });
@@ -421,7 +491,7 @@ function runAcp(entry, known, o) {
     /** Change the agent's mode. A bypass-shaped or unknown one is refused, whatever asked. */
     async setMode(id) {
       const want = String(id || "");
-      if (BYPASS_MODE.test(want) || !modes.some(x => x.id === want)) throw Object.assign(new Error(`mode ${want} is not available here`), { code: "denied" });
+      if (!modes.some(x => x.id === want)) throw Object.assign(new Error(`mode ${want} is not available here`), { code: "denied" });
       await request("session/set_mode", { sessionId: sid, modeId: want });
       mode = want;
       return { mode };

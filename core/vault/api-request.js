@@ -112,7 +112,46 @@ export function normalize(i) {
   if (!Array.isArray(i.hosts) || !i.hosts.length) throw bad("hosts must be a non-empty list (an exact hostname, or one leading \"*.\")");
   const hosts = i.hosts.map(normalizeHost);
   const endpoints = Array.isArray(i.endpoints) ? i.endpoints.map(normalizeEndpoint) : [];
-  return { auth, hosts, endpoints };
+  const readers = i.readers === undefined ? undefined : normalizeReaders(i.readers);
+  return { auth, hosts, endpoints, ...(readers ? { readers } : {}) };
+}
+
+/**
+ * `readers`: the modules the person let read through this credential, each for named paths only
+ * (a calendar, not a mailbox). Written with the credential, which only a person's own surface can
+ * do, so it is the person's own act and needs no second grant. A reader may only make calls the
+ * credential classifies as reads; anything outward is refused to it, never held.
+ * @param {any} r @returns {{ module: string, paths: string[] }[]}
+ */
+function normalizeReaders(r) {
+  if (!Array.isArray(r) || r.length > 8) throw bad("readers is a short list of { module, paths }");
+  return r.map(e => {
+    if (!isObj(e) || typeof e.module !== "string" || !/^[a-z][a-z0-9-]{0,31}$/.test(e.module)) throw bad("a reader names a module");
+    // A path is a literal prefix, optionally ending in one `*`; no other wildcard, and no encoded characters.
+    if (!Array.isArray(e.paths) || !e.paths.length || e.paths.length > 16 || !e.paths.every(p => typeof p === "string" && /^\/[A-Za-z0-9._~\/-]{0,200}\*?$/.test(p) && !/(^|\/)\.\.?(\/|$)/.test(p))) throw bad("a reader lists the paths it may read: each starts with /, is plain text and may end in one *");
+    return { module: e.module, paths: [...new Set(e.paths)] };
+  });
+}
+
+/**
+ * Whether a module may read this request through the credential: it is a listed reader, the call is
+ * a read, and the path is one the person named for it.
+ * @param {{ readers?: { module: string, paths: string[] }[] }} config @param {string} mod @param {string} pathAndQuery
+ */
+export function readerMayRead(config, mod, pathAndQuery) {
+  const e = (config.readers || []).find(x => x.module === mod);
+  if (!e) return false;
+  const q = pathAndQuery.indexOf("?");
+  const pathname = q < 0 ? pathAndQuery : pathAndQuery.slice(0, q);
+  // Encoded slashes and dots are how a path is smuggled past a prefix (the server may decode %2f, the URL parser does not), so none is allowed.
+  if (/%(2f|5c|2e|00)|;/i.test(pathname) || /(^|\/)\.\.?(\/|$)/.test(pathname)) return false;
+  return e.paths.some(pat => {
+    const prefix = pat.endsWith("*") ? pat.slice(0, -1) : pat;
+    if (!pathname.startsWith(prefix)) return false;
+    const rest = pathname.slice(prefix.length);
+    // The prefix ends at a segment: the path is the prefix itself or goes on under it, never a longer name (calendarViewfoo).
+    return pat.endsWith("*") ? rest === "" || prefix.endsWith("/") || rest.startsWith("/") : rest === "";
+  });
 }
 
 // ---- classify ----

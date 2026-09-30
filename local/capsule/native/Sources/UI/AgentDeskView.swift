@@ -147,6 +147,7 @@ struct AgentButton: ButtonStyle {
     /// The compact panel's agent half: the offline line, then the first few rows that wait.
     static func compactHeight(_ m: CapsuleModel) -> CGFloat {
         (m.offline ? OfflineBanner.height : 0)
+            + (nextMeetingShown(m) ? CapsuleLayout.lineHeight : 0)
             + (hintShown(m) ? Theme.headerHeight + CGFloat(min(m.desk.waiting.count, compactRows)) * Theme.rowHeight : 0)
     }
 
@@ -166,9 +167,21 @@ struct AgentButton: ButtonStyle {
         if directShown(m) { DirectView(direct: m.direct, desk: m.desk, who: m.identities, assistant: m.catalog.assistant?.name); Rule() }
     }
 
-    /// Under the bar in the compact panel: offline, then what waits (compactHeight).
+    /// The next-meeting line shows under an empty box, once there is one.
+    static func nextMeetingShown(_ m: CapsuleModel) -> Bool { m.text.isEmpty && !(m.nextMeeting ?? "").isEmpty }
+
+    /// Under the bar in the compact panel: offline, the next meeting, then what waits (compactHeight).
     @ViewBuilder static func compact(_ m: CapsuleModel) -> some View {
         if m.offline { OfflineBanner(model: m) }
+        if nextMeetingShown(m), let line = m.nextMeeting {
+            HStack(spacing: 8) {
+                Image(systemName: "calendar").font(Theme.subtitle).foregroundColor(Theme.ash)
+                Text(line).font(Theme.subtitle).foregroundColor(Theme.stone).lineLimit(1).truncationMode(.tail)
+                Spacer(minLength: 0)
+            }
+            .padding(.horizontal, Theme.inset).frame(height: CapsuleLayout.lineHeight)
+            .accessibilityLabel("Next meeting: \(line)")
+        }
         if hintShown(m) { WaitingList(desk: m.desk, limit: compactRows) }
     }
 }

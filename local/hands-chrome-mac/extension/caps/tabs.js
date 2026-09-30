@@ -103,7 +103,7 @@ async function open(ctx, url, focus, timeoutMs = 15_000) {
   await saveOpened(ctx, set);
   // Resolve only when the tab has committed to the page and finished loading (or the time is up), so the next call sees the real page,
   // never a tab that is still loading or already sitting on Chrome's error page.
-  const s = ctx.tabs.settle ? await ctx.tabs.settle(tab.id, timeoutMs) : { tab, settled: true, waitedMs: 0 };
+  const s = ctx.tabs.settle ? await ctx.tabs.settle(tab.id, Math.min(60_000, Math.max(0, Number(timeoutMs) || 15_000))) : { tab, settled: true, waitedMs: 0 };
   return { created: tab, tab: s.tab || tab, settled: s.settled, waitedMs: s.waitedMs };
 }
 
@@ -121,6 +121,30 @@ function landed(r, asked) {
 export default {
   name: "tabs",
   ops: {
+    // What the person sees of Vyre's work in this tab: the run label, the tab's group, whether the pill is in the page.
+    "tabs.presence": async (args, ctx) => {
+      const tabId = typeof args.tabId === "number" ? args.tabId : undefined;
+      const p = ctx.presence;
+      const out = { active: !!(p && p.active()), label: p ? p.label() : "", group: null, pill: null, card: null, exposedToPage: null };
+      if (tabId !== undefined) {
+        try { const t = await ctx.tabs.get(tabId); if (t && t.groupId != null && t.groupId !== -1) { const g = chrome.tabGroups ? await chrome.tabGroups.get(t.groupId) : null; out.group = g ? { id: g.id, title: g.title, color: g.color, collapsed: g.collapsed } : { id: t.groupId }; } } catch { /* no groups API */ }
+        try {
+          const r = await ctx.cdp.send(tabId, "Runtime.evaluate", { expression: "JSON.stringify({ pill: !!document.querySelector('vyre-pill'), card: !!document.querySelector('vyre-card'), stop: typeof window.vyreStop, login: typeof window.vyreLogin, state: typeof window.__vyrePill })", returnByValue: true });
+          const v = JSON.parse(r && r.result ? r.result.value : "{}");
+          out.pill = !!v.pill; out.card = !!v.card;
+          // What a website's own script can see of Vyre: nothing should be there.
+          out.exposedToPage = { vyreStop: v.stop !== "undefined", vyreLogin: v.login !== "undefined", pillState: v.state !== "undefined" };
+        } catch { /* not attached */ }
+        // A real mouse click on one of the pill's own buttons, to prove the button reaches the stop. The same as the person clicking it.
+        if (args.press && ["Stop", "Pause"].includes(String(args.press)) && p && p.buttonPoint) {
+          const pt = await p.buttonPoint(tabId, String(args.press));
+          out.pressed = !!pt;
+          if (pt) for (const type of ["mousePressed", "mouseReleased"]) await ctx.cdp.send(tabId, "Input.dispatchMouseEvent", { type, x: pt.x, y: pt.y, button: "left", clickCount: 1 });
+        }
+      }
+      return out;
+    },
+
     "tabs.list": async (_args, ctx) => ({ tabs: (await survey(ctx)).map(shape) }),
 
     "tabs.find": async (args, ctx) => {
@@ -197,7 +221,7 @@ export default {
       const target = await ctx.floorUrl(args.url, "tabs.open");
       if (!target.allow) throw err("blocked", `${target.why} (${target.tier})`);
       await ctx.tabs.update(id, { url: args.url });
-      const st = ctx.tabs.settle ? await ctx.tabs.settle(id, Number(args.timeoutMs) || 15_000) : null;
+      const st = ctx.tabs.settle ? await ctx.tabs.settle(id, Math.min(60_000, Math.max(0, Number(args.timeoutMs) || 15_000))) : null;
       const now = st && st.tab ? String(st.tab.url || "") : "";
       const failed = now.startsWith("chrome-error:");
       return { id, url: redact.url(now || args.url), ...(st ? { loaded: st.settled && !failed, waitedMs: st.waitedMs } : {}), ...(failed ? { failed: "the page did not load: Chrome is showing its own error page. Check the address and try again." } : {}) };

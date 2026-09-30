@@ -132,7 +132,10 @@ export function itemPane(app, panel, name, focus) {
   // ---- head actions ----
   const favOn = st.fav.has(it.name);
   const acts = h("div", { class: "vt-pacts" },
-    h("button", { type: "button", class: "btn btn-sm", onclick: () => app.open({ mode: "edit", name: it.name }) }, icon("edit", 13), "Edit"),
+    // An API credential is never read back, so it cannot be edited: its key is replaced, and everything else about it stays.
+    it.kind === "api-credential"
+      ? h("button", { type: "button", class: "btn btn-sm", onclick: () => app.open({ mode: "replace", name: it.name }) }, icon("edit", 13), "Replace the key")
+      : h("button", { type: "button", class: "btn btn-sm", onclick: () => app.open({ mode: "edit", name: it.name }) }, icon("edit", 13), "Edit"),
     h("button", { type: "button", class: "btn btn-sm", onclick: () => app.share([it.name]) }, icon("pass", 13), "Share"),
     h("button", { type: "button", class: "ibtn", "aria-pressed": favOn ? "true" : "false", "aria-label": favOn ? "Remove from favorites" : "Add to favorites", onclick: () => app.favorite(it.name) }, icon(favOn ? "starOn" : "star", 15)));
 

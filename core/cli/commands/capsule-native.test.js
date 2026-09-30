@@ -55,7 +55,7 @@ test("capsule native: built on first run, not again while the source is the same
   assert.equal(a.built, true);
   assert.equal(a.app, appPath(home));
   assert.ok(fs.existsSync(path.join(a.app, "Contents", "MacOS", "Vyre")));
-  assert.match(said[0], /Building the Capsule/);
+  assert.match(said[0], /Building Lumen/);
   assert.deepEqual(state(dir, a.app).fresh, true);
 
   const b = ensureBuilt({ dir, home, runner: r });

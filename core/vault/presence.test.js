@@ -61,9 +61,9 @@ test("presence: summaries name items and destinations and never a value, and nev
   const canary = `fixture-canary-${crypto.randomBytes(12).toString("hex")}`;
   const sum = (n, input) => tools.get(n).presence.summary(input);
 
-  assert.equal(await sum("vault.put", { name: "billing-key", kind: "api-key", value: canary }), `Add api-key "billing-key" in the vault`);
+  assert.equal(await sum("vault.put", { name: "billing-key", kind: "api-key", value: canary }), `Add a key "billing-key" to your vault`);
   await run("vault.put", { name: "billing-key", kind: "api-key", value: canary });
-  assert.equal(await sum("vault.put", { name: "billing-key", value: canary }), `Replace api-key "billing-key" in the vault`);
+  assert.equal(await sum("vault.put", { name: "billing-key", value: canary }), `Replace the key "billing-key" in your vault`);
   assert.match(await sum("vault.inject", { items: [{ name: "billing-key", env: "BILLING_KEY" }] }), /"billing-key" as BILLING_KEY into a program's environment/);
   assert.match(await sum("vault.backup", { file: "/tmp/acme.vyre", passphrase: canary }), /Write a sealed backup of 1 items to \/tmp\/acme.vyre/);
   assert.match(await sum("vault.grant", { name: "billing-key", module: "mail" }), /Let mail use "billing-key"/);

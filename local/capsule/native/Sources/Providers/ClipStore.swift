@@ -10,8 +10,8 @@
 // looks like a secret (looksSecret below). The filter errs on skipping: a clip history that lost a
 // commit hash is a small cost; one that kept an API key is not.
 //
-// Picking a clip writes it back to the pasteboard. Pasting it into the front app is the user's
-// own Command-V. The Capsule never types or pastes for them.
+// Picking a clip writes it back to the pasteboard. Return then pastes it into the app in front, or
+// only copies it, by the setting (Host/Paste.swift).
 
 import CryptoKit
 import Foundation

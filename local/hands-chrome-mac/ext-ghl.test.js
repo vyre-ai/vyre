@@ -8,14 +8,15 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import vm from "node:vm";
 import ghl, { parse, FLOWS, SECTIONS, actionOf, STEP_WAIT } from "./extension/caps/ghl.js";
-import { dispatch, register } from "./extension/caps/index.js";
+import { dispatch, register  } from "./extension/caps/index.js";
 import { createCtx } from "./extension/lib/ctx.js";
 import { start } from "./extension/background.js";
 import { err } from "./extension/lib/err.js";
 import { matchControl, classifyBlocker, redactDom, scrub, wordsWithin } from "./extension/lib/ui.js";
 import { resolve } from "./extension/caps/page.js";
-import { createFakeChrome, createFakePage } from "./test-support/fake-chrome.js";
+import { createFakeChrome, createFakePage, createFakeFrames } from "./test-support/fake-chrome.js";
 import { allSelectors, GHL_ROBUST } from "./bench/scenarios.mjs";
+import { dispatchT, T } from "./test-support/trust.js";
 
 const LOC = "MRKcUjapWpnOvQslF3Pc";
 const HOME = `https://app.gohighlevel.com/v2/location/${LOC}/contacts`;
@@ -46,8 +47,8 @@ function world(o = {}) {
   const clickOf = (/** @type {number} */ x, /** @type {number} */ y) => model.controls.find((/** @type {any} */ c) => { const p = centre(c); return p.x === x && p.y === y; });
   return { chrome, model, fake, ctx, clickOf, t0: Date.now() };
 }
-const act = (/** @type {any} */ ctx, /** @type {any} */ args) => dispatch("page.act", { tabId: 1, ...args }, ctx);
-const fillOp = (/** @type {any} */ ctx, /** @type {any} */ args) => dispatch("page.fill", { tabId: 1, ...args }, ctx);
+const act = (/** @type {any} */ ctx, /** @type {any} */ args) => dispatchT("page.act", { tabId: 1, ...args }, ctx);
+const fillOp = (/** @type {any} */ ctx, /** @type {any} */ args) => dispatchT("page.fill", { tabId: 1, ...args }, ctx);
 const quietState = (/** @type {any} */ extra = {}) => ({ busy: 0, domQuietMs: 5000, netPending: 0, netQuietMs: 5000, blockers: [], toasts: [], ...extra });
 
 // ---------------------------------------------------------------- parse, flows, registry
@@ -75,7 +76,7 @@ const fakeCtx = (/** @type {any} */ o = {}) => {
 
 test("ghl.run compiles a flow into ONE batch call, labels every step, and reports its timing and trace", async () => {
   const ctx = fakeCtx({ result: { ok: true, done: 3, results: [{ ok: true, trace: { strategy: "identifier", fallback: false, waitedMs: 30, retries: 1, newTab: false } }, { ok: true, trace: { strategy: "text", fallback: true, waitedMs: 20, retries: 0, newTab: false } }] } });
-  const r = await ghl.ops["ghl.run"]({ flow: "create-workflow", params: { name: "Welcome flow", trigger: "contact-created", actions: [{ type: "send-email", config: { subject: "Hi", messageBody: "Welcome" } }, { type: "wait", config: { duration: 15 } }] } }, ctx);
+  const r = await T(ghl.ops["ghl.run"])({ flow: "create-workflow", params: { name: "Welcome flow", trigger: "contact-created", actions: [{ type: "send-email", config: { subject: "Hi", messageBody: "Welcome" } }, { type: "wait", config: { duration: 15 } }] } }, ctx);
   assert.equal(ctx.calls.length, 1);
   assert.equal(ctx.calls[0][0], "batch.run");
   const steps = ctx.calls[0][1].steps;
@@ -96,13 +97,13 @@ test("ghl.run compiles a flow into ONE batch call, labels every step, and report
 
 test("ghl.run takes inline steps with {param} templates, gives them the flow's patience, and names a failed step", async () => {
   const ctx = fakeCtx({ result: { ok: false, done: 1, failedAt: 1, why: "nothing matches", results: [] } });
-  const r = await ghl.ops["ghl.run"]({ steps: [{ op: "page.fill", args: { fields: [{ selector: { name: "Tag" }, value: "{tag}" }] } }, { op: "page.act", label: "press Go", args: { selector: "Go", wait: { timeoutMs: 1 } } }], params: { tag: "new-lead" } }, ctx);
+  const r = await T(ghl.ops["ghl.run"])({ steps: [{ op: "page.fill", args: { fields: [{ selector: { name: "Tag" }, value: "{tag}" }] } }, { op: "page.act", label: "press Go", args: { selector: "Go", wait: { timeoutMs: 1 } } }], params: { tag: "new-lead" } }, ctx);
   const sent = ctx.calls[0][1].steps;
   assert.equal(sent[0].args.fields[0].value, "new-lead");
   assert.deepEqual(sent[0].args.wait, STEP_WAIT, "no wait given: the flow's default is added");
   assert.deepEqual(sent[1].args.wait, { timeoutMs: 1 }, "a wait the caller set is kept");
   assert.deepEqual(r.failed, { step: 1, label: "press Go", op: "page.act" });
-  await assert.rejects(() => ghl.ops["ghl.run"]({ flow: "nope" }, ctx), /no such flow/);
+  await assert.rejects(() => T(ghl.ops["ghl.run"])({ flow: "nope" }, ctx), /no such flow/);
   assert.ok(Object.keys(FLOWS).length >= 7);
 });
 
@@ -132,9 +133,9 @@ test("action types accept plain names, and a config string keeps the old single-
 
 test("the registry knows the ghl ops and treats a run and a save as acting", async () => {
   const stopped = { ...fakeCtx(), stopped: () => true };
-  await assert.rejects(() => dispatch("ghl.run", { flow: "open-contact", params: { row: 0 } }, stopped), e => /** @type {any} */ (e).code === "stopped");
-  await assert.rejects(() => dispatch("ghl.save", {}, stopped), e => /** @type {any} */ (e).code === "stopped");
-  const r = await dispatch("ghl.flows", {}, fakeCtx());
+  await assert.rejects(() => dispatchT("ghl.run", { flow: "open-contact", params: { row: 0 } }, stopped), e => /** @type {any} */ (e).code === "stopped");
+  await assert.rejects(() => dispatchT("ghl.save", {}, stopped), e => /** @type {any} */ (e).code === "stopped");
+  const r = await dispatchT("ghl.flows", {}, fakeCtx());
   assert.ok(r.flows.some((/** @type {any} */ f) => f.name === "create-workflow"));
   assert.ok(r.actions.some((/** @type {any} */ a) => a.id === "webhook"));
 });
@@ -142,8 +143,8 @@ test("the registry knows the ghl ops and treats a run and a save as acting", asy
 test("dispatch gives every capability both spellings of the tab", async () => {
   const seen = /** @type {any[]} */ ([]);
   register({ name: "spelltest", ops: { "spelltest.echo": async a => { seen.push(a); return {}; } } });
-  await dispatch("spelltest.echo", { tab: 5 }, fakeCtx());
-  await dispatch("spelltest.echo", { tabId: 6 }, fakeCtx());
+  await dispatchT("spelltest.echo", { tab: 5 }, fakeCtx());
+  await dispatchT("spelltest.echo", { tabId: 6 }, fakeCtx());
   assert.deepEqual(seen.map(a => [a.tab, a.tabId]), [[5, 5], [6, 6]]);
 });
 
@@ -375,20 +376,20 @@ test("page.wait settled: waits for the DOM and network to go quiet and reports s
   const { ctx, model, fake } = world({ controls: [ctl("button", "Save")], state: quietState({ domQuietMs: 0, netPending: 1, netQuietMs: 0 }) });
   const t0 = Date.now();
   fake.onSnapshot = () => { const el = Date.now() - t0; model.state.domQuietMs = el > 250 ? 400 : 0; model.state.netPending = el > 250 ? 0 : 1; model.state.netQuietMs = el > 250 ? 400 : 0; };
-  const r = await dispatch("page.wait", { tabId: 1, settled: true, timeoutMs: 5000 }, ctx);
+  const r = await dispatchT("page.wait", { tabId: 1, settled: true, timeoutMs: 5000 }, ctx);
   assert.equal(r.ok, true);
   assert.ok(r.waitedMs >= 240, String(r.waitedMs));
   assert.equal(r.trace.strategy, "settled");
   // a page that never quiets is given up on after the grace period, with a flag
   fake.onSnapshot = undefined;
   model.state = quietState({ domQuietMs: 0 });
-  const s = await dispatch("page.wait", { tabId: 1, settled: true, timeoutMs: 400 }, ctx);
+  const s = await dispatchT("page.wait", { tabId: 1, settled: true, timeoutMs: 400 }, ctx);
   assert.equal(s.trace.domNeverQuiet, true);
-  const w = await dispatch("page.wait", { tabId: 1, selector: { name: "Save" }, enabled: true, stable: true, timeoutMs: 2000 }, ctx);
+  const w = await dispatchT("page.wait", { tabId: 1, selector: { name: "Save" }, enabled: true, stable: true, timeoutMs: 2000 }, ctx);
   assert.deepEqual([w.ok, w.trace.strategy, typeof w.waitedMs], [true, "name", "number"]);
-  const g = await dispatch("page.wait", { tabId: 1, selector: { name: "Ghost" }, gone: true, timeoutMs: 300 }, ctx);
+  const g = await dispatchT("page.wait", { tabId: 1, selector: { name: "Ghost" }, gone: true, timeoutMs: 300 }, ctx);
   assert.equal(g.trace.strategy, "absent");
-  await assert.rejects(dispatch("page.wait", { tabId: 1, selector: { name: "Ghost" }, timeoutMs: 150 }, ctx), e => /** @type {any} */ (e).code === "timeout" && /** @type {any} */ (e).detail.trace.strategy === "");
+  await assert.rejects(dispatchT("page.wait", { tabId: 1, selector: { name: "Ghost" }, timeoutMs: 150 }, ctx), e => /** @type {any} */ (e).code === "timeout" && /** @type {any} */ (e).detail.trace.strategy === "");
 });
 
 // ---------------------------------------------------------------- sections
@@ -405,7 +406,7 @@ const sectionWorld = (/** @type {any} */ o = {}) => {
 
 test("ghl.section clicks the left nav inside the app, waits until the section is really loaded, and never opens a tab", async () => {
   const { ctx, chrome, fake, nav } = sectionWorld();
-  const r = await dispatch("ghl.section", { section: "workflows" }, ctx);
+  const r = await dispatchT("ghl.section", { section: "workflows" }, ctx);
   assert.deepEqual([r.ok, r.via, r.loaded, r.landmark], [true, "nav", true, true]);
   assert.deepEqual([r.trace.strategy, r.trace.fallback, r.trace.newTab], ["nav", false, false]);
   assert.equal(chrome._.counts.create, 0);
@@ -418,7 +419,7 @@ test("ghl.section waits through a slow route: skeleton on screen, landmark absen
   const t0 = Date.now();
   const prev = fake.onSnapshot;
   fake.onSnapshot = (/** @type {any} */ i, /** @type {any} */ m) => { prev(i, m); if (Date.now() - t0 > 450) { model.state.busy = 0; model.state.domQuietMs = 5000; } else model.state.domQuietMs = 0; };
-  const r = await dispatch("ghl.section", { section: "workflows", timeoutMs: 8000 }, ctx);
+  const r = await dispatchT("ghl.section", { section: "workflows", timeoutMs: 8000 }, ctx);
   assert.equal(r.loaded, true);
   assert.ok(Date.now() - t0 >= 440, "not returned while the skeleton was still on screen");
   assert.equal(r.trace.busyIgnored, undefined);
@@ -428,7 +429,7 @@ test("ghl.section falls back to a URL change on the same tab when the nav contro
   const w = sectionWorld({ noNav: true, noLandmark: false });
   const { ctx, chrome, model } = w;
   const stop = setInterval(() => { if (chrome._.tabs[0].url === WF) { model.controls.push(ctl("button", "Create Workflow", { identifier: "create-workflow" })); clearInterval(stop); } }, 20);
-  const r = await dispatch("ghl.section", { section: "workflows" }, ctx);
+  const r = await dispatchT("ghl.section", { section: "workflows" }, ctx);
   clearInterval(stop);
   assert.deepEqual([r.via, r.trace.fallback, r.trace.newTab], ["url", true, false]);
   assert.equal(chrome._.counts.create, 0);
@@ -437,32 +438,32 @@ test("ghl.section falls back to a URL change on the same tab when the nav contro
 
 test("ghl.section: a default landmark that never shows is a warning; a landmark the caller named is required", async () => {
   const { ctx } = sectionWorld({ noLandmark: true });
-  const r = await dispatch("ghl.section", { section: "workflows", timeoutMs: 3000 }, ctx);
+  const r = await dispatchT("ghl.section", { section: "workflows", timeoutMs: 3000 }, ctx);
   assert.equal(r.landmark, false);
   assert.match(r.warning, /landmark/);
   const w2 = sectionWorld({ noLandmark: true });
-  await assert.rejects(dispatch("ghl.section", { section: "workflows", landmark: "Workflow Templates", timeoutMs: 1500 }, w2.ctx), e => /** @type {any} */ (e).code === "timeout" && !!/** @type {any} */ (e).detail.tab);
+  await assert.rejects(dispatchT("ghl.section", { section: "workflows", landmark: "Workflow Templates", timeoutMs: 1500 }, w2.ctx), e => /** @type {any} */ (e).code === "timeout" && !!/** @type {any} */ (e).detail.tab);
 });
 
 test("ghl.section already there loads without a click; the tab is picked by location; a missing tab is opened only with a locationId", async () => {
   const OTHER = "ZZZZZZZZZZ1111111111";
   const ctxW = world({ url: WF, controls: [ctl("button", "Create Workflow", { identifier: "create-workflow" })], state: quietState(), tabs: [{ url: `https://app.gohighlevel.com/v2/location/${OTHER}/contacts`, title: "other", active: true }, { url: WF, title: "mine" }] });
   ctxW.fake.onSnapshot = () => { ctxW.model.url = ctxW.chrome._.tabs[1].url; };
-  const r = await dispatch("ghl.section", { section: "workflows", locationId: LOC, tabId: 2 }, ctxW.ctx);
+  const r = await dispatchT("ghl.section", { section: "workflows", locationId: LOC, tabId: 2 }, ctxW.ctx);
   assert.deepEqual([r.via, r.tab], ["already", 2]);
   assert.equal(ctxW.fake.clicks.length, 0);
   // no GoHighLevel tab, no location: refuse
   const none = world({ url: "https://example.com/", tabs: [{ url: "https://example.com/", active: true }] });
-  await assert.rejects(dispatch("ghl.section", { section: "workflows" }, none.ctx), /no GoHighLevel tab is open/);
-  await assert.rejects(dispatch("ghl.section", { section: "nope" }, none.ctx), /unknown section/);
+  await assert.rejects(dispatchT("ghl.section", { section: "workflows" }, none.ctx), /no GoHighLevel tab is open/);
+  await assert.rejects(dispatchT("ghl.section", { section: "nope" }, none.ctx), /unknown section/);
   // with a locationId one tab is opened (tabs.use), flagged in the trace, and a second call reuses it
   none.fake.onSnapshot = () => { none.model.url = none.chrome._.tabs.at(-1).url; };
   none.model.controls.push(ctl("button", "Create Workflow", { identifier: "create-workflow" }));
   none.model.state = quietState();
-  const first = await dispatch("ghl.section", { section: "workflows", locationId: LOC }, none.ctx);
+  const first = await dispatchT("ghl.section", { section: "workflows", locationId: LOC }, none.ctx);
   assert.equal(none.chrome._.counts.create, 1);
   assert.equal(first.trace.newTab, true);
-  const again = await dispatch("ghl.section", { section: "workflows", locationId: LOC }, none.ctx);
+  const again = await dispatchT("ghl.section", { section: "workflows", locationId: LOC }, none.ctx);
   assert.equal(none.chrome._.counts.create, 1, "the second call reuses the tab it opened");
   assert.equal(again.trace.newTab, false);
 });
@@ -478,7 +479,7 @@ const saveWorld = (/** @type {any} */ o = {}) => {
 
 test("ghl.save verifies by a success toast and returns the evidence; the trace says how", async () => {
   const w = saveWorld({ onSave: (/** @type {any} */ x) => setTimeout(() => { x.model.state.toasts = [{ ageMs: 5, text: "Workflow saved successfully" }]; }, 60) });
-  const r = await dispatch("ghl.save", { tabId: 1 }, w.ctx);
+  const r = await dispatchT("ghl.save", { tabId: 1 }, w.ctx);
   assert.deepEqual([r.ok, r.saved, r.evidence.kind], [true, true, "toast"]);
   assert.equal(r.evidence.text, "Workflow saved successfully");
   assert.equal(r.trace.evidence, "toast");
@@ -487,40 +488,40 @@ test("ghl.save verifies by a success toast and returns the evidence; the trace s
 
 test("ghl.save: an error toast, a silent save and a disabled-then-nothing are all errors that name the step", async () => {
   const bad = saveWorld({ onSave: (/** @type {any} */ x) => { x.model.state.toasts = [{ ageMs: 1, text: "Could not save the workflow" }]; } });
-  await assert.rejects(dispatch("ghl.save", { tabId: 1 }, bad.ctx), e => { const x = /** @type {any} */ (e); assert.equal(x.code, "not_saved"); assert.match(x.message, /save step: the app reported a problem/); assert.equal(x.detail.toast, "Could not save the workflow"); return true; });
+  await assert.rejects(dispatchT("ghl.save", { tabId: 1 }, bad.ctx), e => { const x = /** @type {any} */ (e); assert.equal(x.code, "not_saved"); assert.match(x.message, /save step: the app reported a problem/); assert.equal(x.detail.toast, "Could not save the workflow"); return true; });
   const silent = saveWorld();
-  await assert.rejects(dispatch("ghl.save", { tabId: 1, timeoutMs: 600 }, silent.ctx), e => { const x = /** @type {any} */ (e); assert.equal(x.code, "not_saved"); assert.match(x.message, /save step: not confirmed after 600 ms/); assert.ok(x.detail.dom && x.detail.tab && x.detail.trace); return true; });
+  await assert.rejects(dispatchT("ghl.save", { tabId: 1, timeoutMs: 600 }, silent.ctx), e => { const x = /** @type {any} */ (e); assert.equal(x.code, "not_saved"); assert.match(x.message, /save step: not confirmed after 600 ms/); assert.ok(x.detail.dom && x.detail.tab && x.detail.trace); return true; });
   // an old toast that was already on screen before the click is not evidence
   const stale = saveWorld();
   stale.model.state.toasts = [{ ageMs: null, text: "Workflow saved successfully" }];
-  await assert.rejects(dispatch("ghl.save", { tabId: 1, timeoutMs: 500 }, stale.ctx), { code: "not_saved" });
+  await assert.rejects(dispatchT("ghl.save", { tabId: 1, timeoutMs: 500 }, stale.ctx), { code: "not_saved" });
 });
 
 test("ghl.save accepts a disabled Save, a URL change or a list item as evidence", async () => {
   const dis = saveWorld({ onSave: (/** @type {any} */ x, /** @type {any} */ save) => { save.enabled = false; } });
-  const d = await dispatch("ghl.save", { tabId: 1 }, dis.ctx);
+  const d = await dispatchT("ghl.save", { tabId: 1 }, dis.ctx);
   assert.equal(d.evidence.kind, "save-disabled");
   const url = saveWorld({ onSave: (/** @type {any} */ x) => { x.model.url = WF + "/wf_123"; } });
-  assert.equal((await dispatch("ghl.save", { tabId: 1 }, url.ctx)).evidence.kind, "url");
+  assert.equal((await dispatchT("ghl.save", { tabId: 1 }, url.ctx)).evidence.kind, "url");
   const list = saveWorld({ onSave: (/** @type {any} */ x) => { x.model.controls.push(ctl("button", "Welcome flow")); } });
-  const l = await dispatch("ghl.save", { tabId: 1, expect: { listItem: "Welcome flow" } }, list.ctx);
+  const l = await dispatchT("ghl.save", { tabId: 1, expect: { listItem: "Welcome flow" } }, list.ctx);
   assert.deepEqual([l.evidence.kind, l.evidence.text], ["list", "Welcome flow"]);
 });
 
 test("ghl.save: a confirm dialog after Save is surfaced, not dismissed; a held Save is passed up; status is verified", async () => {
   const conf = saveWorld({ onSave: (/** @type {any} */ x) => { x.model.state.blockers = [{ i: 0, path: "div[1]", role: "alertdialog", modal: true, title: "Confirm", text: "Are you sure you want to publish this workflow?" }]; } });
-  await assert.rejects(dispatch("ghl.save", { tabId: 1 }, conf.ctx), e => { const x = /** @type {any} */ (e); assert.equal(x.code, "modal"); assert.match(x.message, /saving opened a dialog/); assert.equal(x.detail.blockers[0].kind, "unsafe"); return true; });
+  await assert.rejects(dispatchT("ghl.save", { tabId: 1 }, conf.ctx), e => { const x = /** @type {any} */ (e); assert.equal(x.code, "modal"); assert.match(x.message, /saving opened a dialog/); assert.equal(x.detail.blockers[0].kind, "unsafe"); return true; });
   // a Save the page module holds for the person is passed up as held, not reported as a failed save
   const heldW = saveWorld();
   heldW.save.name = "Send workflow";
-  const heldR = await dispatch("ghl.save", { tabId: 1, name: "Send workflow" }, heldW.ctx);
+  const heldR = await dispatchT("ghl.save", { tabId: 1, name: "Send workflow" }, heldW.ctx);
   assert.equal(heldR.held, true);
   assert.equal(heldW.fake.clicks.length, 0);
   const toggle = ctl("switch", "Publish", { identifier: "publish-toggle", checked: false });
   const st = saveWorld({ extra: [toggle], onSave: (/** @type {any} */ x) => { x.model.state.toasts = [{ ageMs: 1, text: "Saved" }]; } });
-  await assert.rejects(dispatch("ghl.save", { tabId: 1, expect: { status: "published" } }, st.ctx), /workflow status is draft, not published/);
+  await assert.rejects(dispatchT("ghl.save", { tabId: 1, expect: { status: "published" } }, st.ctx), /workflow status is draft, not published/);
   toggle.checked = true;
-  const ok = await dispatch("ghl.save", { tabId: 1, expect: { status: "published" } }, saveWorld({ extra: [toggle], onSave: (/** @type {any} */ x) => { x.model.state.toasts = [{ ageMs: 1, text: "Saved" }]; } }).ctx);
+  const ok = await dispatchT("ghl.save", { tabId: 1, expect: { status: "published" } }, saveWorld({ extra: [toggle], onSave: (/** @type {any} */ x) => { x.model.state.toasts = [{ ageMs: 1, text: "Saved" }]; } }).ctx);
   assert.equal(ok.status, "published");
 });
 
@@ -562,7 +563,7 @@ test("a failure's error detail carries the tab's host and path (no query) and a 
 test("the detail survives batch.run (thrown steps carry it), the shell's error frame, and gets redacted on the way out", async () => {
   register({ name: "ghldetail", ops: { "ghldetail.fail": async () => { throw err("modal", "a dialog is blocking", { blockers: [{ text: "mail alex@example.com" }], dom: "<b>hi</b>" }); } } });
   const w = world({ controls: [ctl("button", "Go")], state: quietState() });
-  const b = await dispatch("batch.run", { steps: [{ op: "ghldetail.fail", args: {} }] }, w.ctx);
+  const b = await dispatchT("batch.run", { steps: [{ op: "ghldetail.fail", args: {} }] }, w.ctx);
   assert.equal(b.ok, false);
   assert.equal(b.code, "modal");
   assert.equal(b.detail.dom, "<b>hi</b>");
@@ -615,4 +616,107 @@ test("popups: a dialog that asks for agreement is never closed with OK, Got it, 
   const tour = classifyBlocker({ i: 0, title: "Welcome tour", text: "Take a tour of the new builder" }, snap);
   assert.equal(tour.kind, "safe");
   assert.equal(classifyBlocker({ i: 0, title: "Consent", text: "consent to marketing" }, snap).kind, "unknown", "bare consent is no longer a safe popup");
+});
+
+// ---------------------------------------------------------------- the builder in a cross-origin iframe (real-use finding)
+
+const SHELL = "https://crm.harlow.example";
+const BUILDER = "https://client-app-automation-workflows.leadconnectorhq.com";
+let fn = 0;
+/** A control with a box inside a 600 x 400 iframe. */
+const fctl = (/** @type {string} */ role, /** @type {string} */ name, /** @type {any} */ extra = {}) => { fn++; return { path: `${role}[${fn}]`, role, name, enabled: true, box: { x: 10, y: 10 + (fn % 9) * 30, w: 120, h: 24 }, ...extra }; };
+
+/**
+ * A white-label shell (its host is the person's own) whose Workflows UI is the builder iframe, as on a real account: the shell holds
+ * the left nav, the iframe holds every control of the builder.
+ * @param {{ url?: string, builder?: any[], builderState?: any }} [o]
+ */
+async function iframeWorld(o = {}) {
+  const url = o.url || `${SHELL}/v2/location/${LOC}/contacts`;
+  const chrome = createFakeChrome([{ url, title: "Harlow CRM", active: true }]);
+  chrome._.store.local["ghl.hosts"] = ["crm.harlow.example"];
+  const nav = fctl("link", "Automation", { identifier: "nav-automation" });
+  const top = { url, title: "Harlow CRM", text: "Harlow Legal", controls: [nav], state: quietState() };
+  const builder = { url: `${BUILDER}/builder?token=abc`, title: "Workflows", text: "Workflows", controls: o.builder || [], state: o.builderState || quietState() };
+  const fx = createFakeFrames(chrome, { top, frames: [{ id: "APP", origin: BUILDER, url: builder.url, box: { x: 300, y: 60, w: 600, h: 400 }, model: builder }] });
+  const ctx = createCtx({ chrome });
+  await fx.attach(ctx);
+  const topPage = fx.page("TOP");
+  topPage.onSnapshot = () => { top.url = chrome._.tabs[0].url; };
+  return { chrome, ctx, fx, top, builder, nav, topPage, app: fx.page("APP") };
+}
+
+test("ghl.section in a white-label shell: the nav is clicked in the top frame, the landmark is waited for in the iframe, and the result says which frame", async () => {
+  const create = fctl("button", "Create Workflow", { identifier: "create-workflow" });
+  const w = await iframeWorld({ builderState: quietState({ netPending: 3, netQuietMs: 0 }) });
+  w.topPage.onClick = () => setTimeout(() => { w.chrome._.tabs[0].url = `${SHELL}/v2/location/${LOC}/automation/workflows`; w.builder.controls.push(create); }, 30);
+  const t0 = Date.now();
+  const r = await dispatchT("ghl.section", { section: "workflows" }, w.ctx);
+  const took = Date.now() - t0;
+  assert.deepEqual([r.ok, r.via, r.landmark], [true, "nav", true]);
+  assert.deepEqual(r.landmarkFrame, { frame: 1, frameOrigin: BUILDER });
+  assert.deepEqual([r.trace.frame, r.trace.frameOrigin], [1, BUILDER]);
+  assert.equal(w.fx.raw.clicks[0].frame, "TOP", "the shell's nav is in the top frame");
+  assert.ok(took < 1500, `with the landmark in hand a busy network is not waited for (took ${took} ms; the old settle step alone soft-waited 2500 ms)`);
+  assert.equal(r.trace.netIgnored, true, "and it says the network was not quiet");
+});
+
+test("ghl.section still waits for the iframe's own spinner to clear before it says loaded", async () => {
+  const create = fctl("button", "Create Workflow", { identifier: "create-workflow" });
+  const w = await iframeWorld({ url: `${SHELL}/v2/location/${LOC}/automation/workflows`, builder: [create], builderState: quietState({ busy: 2 }) });
+  const t0 = Date.now();
+  w.app.onSnapshot = () => { if (Date.now() - t0 > 350) w.builder.state.busy = 0; };
+  const r = await dispatchT("ghl.section", { section: "workflows", timeoutMs: 8000 }, w.ctx);
+  assert.equal(r.loaded, true);
+  assert.ok(Date.now() - t0 >= 340);
+  assert.equal(r.trace.busyIgnored, undefined);
+});
+
+test("ghl.section with a landmark that never shows in any frame: a default one is a warning after a short grace", async () => {
+  const w = await iframeWorld({ url: `${SHELL}/v2/location/${LOC}/automation/workflows`, builder: [fctl("button", "Something else")] });
+  const t0 = Date.now();
+  const r = await dispatchT("ghl.section", { section: "workflows", timeoutMs: 6000 }, w.ctx);
+  assert.equal(r.landmark, false);
+  assert.match(r.warning, /landmark/);
+  assert.ok(Date.now() - t0 < 2500);
+});
+
+test("create-workflow runs when the builder controls live in the iframe: every step in frame 1, and the result lists them", async () => {
+  const name = fctl("textbox", "Workflow Name", { identifier: "workflow-name" });
+  const create = fctl("button", "Create Workflow", { identifier: "create-workflow" });
+  const scratch = fctl("button", "Start from Scratch");
+  const w = await iframeWorld({ url: `${SHELL}/v2/location/${LOC}/automation/workflows`, builder: [create, scratch, name] });
+  const r = await dispatchT("ghl.run", { flow: "create-workflow", params: { name: "Welcome flow", save: false } }, w.ctx);
+  assert.equal(r.ok, true, JSON.stringify(r.detail || r.why));
+  assert.equal(name.value, "Welcome flow");
+  assert.deepEqual(r.stepFrames.map((/** @type {any} */ x) => [x.frame, x.frameOrigin]), [[1, BUILDER], [1, BUILDER], [1, BUILDER]]);
+  assert.equal(w.fx.raw.clicks.every((/** @type {any} */ c) => c.frame === "APP"), true);
+  assert.equal(r.failed, undefined);
+});
+
+test("a builder tile in the iframe runs without a hold inside a white-label shell, and a real Send in it is still held", async () => {
+  const tile = fctl("button", "Send Email", { container: "Add Action drawer" });
+  const send = fctl("button", "Send", { container: "Add Action drawer" });
+  const w = await iframeWorld({ url: `${SHELL}/v2/location/${LOC}/automation/workflows`, builder: [tile, send] });
+  const ok = await act(w.ctx, { selector: { name: "Send Email" }, kind: "click" });
+  assert.equal(ok.ok, true);
+  const held = await act(w.ctx, { selector: { name: "Send" }, kind: "click" });
+  assert.equal(held.held, true);
+  const r = await dispatchT("ghl.context", { tabId: 1 }, w.ctx);
+  assert.deepEqual([r.builderFrame.index, r.builderFrame.origin, r.builderFrame.readable], [1, BUILDER, true]);
+  assert.equal(r.isGhl, true);
+});
+
+test("ghl.save: a toast inside the iframe is the evidence, and the builder navigating inside its frame counts as a URL change", async () => {
+  const save = fctl("button", "Save", { identifier: "save-workflow" });
+  const w = await iframeWorld({ url: `${SHELL}/v2/location/${LOC}/automation/workflows`, builder: [save] });
+  w.app.onClick = () => setTimeout(() => { w.builder.state.toasts = [{ ageMs: 5, text: "Workflow saved successfully" }]; }, 40);
+  const r = await dispatchT("ghl.save", { tabId: 1 }, w.ctx);
+  assert.deepEqual([r.ok, r.evidence.kind, r.trace.frame], [true, "toast", 1]);
+  // the same, but the iframe moves to the saved workflow's own address
+  const save2 = fctl("button", "Save", { identifier: "save-workflow" });
+  const w2 = await iframeWorld({ url: `${SHELL}/v2/location/${LOC}/automation/workflows`, builder: [save2] });
+  w2.app.onClick = () => setTimeout(() => w2.fx.navigate("APP", { id: "APP2", url: `${BUILDER}/builder/wf_123` }), 40);
+  const u = await dispatchT("ghl.save", { tabId: 1 }, w2.ctx);
+  assert.equal(u.evidence.kind, "url");
 });

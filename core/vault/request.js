@@ -35,6 +35,7 @@ import { defaultField } from "../../lib/vault-kinds/kinds.js";
 import { rowMac, same } from "./crypto.js";
 import {
   checkTarget, classify, presetFor, presetRead, parseFields, summarize, approvalHash, checkHeaders, checkQuery, buildUrl, pinnedOptions,
+  readerMayRead,
 } from "./api-request.js";
 
 const GATE_SENDER = "vault-api";
@@ -435,11 +436,21 @@ export class ApiRequests {
     // Only a module vouches for a watcher; a model's claim in its input is not heard.
     const watcher = mod && isStr(input.watcher) && input.watcher ? input.watcher : "";
     const audit = (ok, why) => this.vault.audit("api-request", name || null, watcher ? `${caller}/${watcher}` : caller, ok, why);
-    // A module's right to use the credential is checked before anything else, the network included.
-    if (mod) this.granted(name, mod, watcher, audit);
+    // A module's right to use the credential is checked before anything else, the network included. A
+    // module the person named as a reader when they made the credential needs no grant, for reads of
+    // the paths named for it and nothing else.
+    let reader = false;
+    if (mod && !watcher) {
+      try { reader = (((await this.vault.apiCredential(name)).config.readers) || []).some(x => x.module === mod); } catch { reader = false; }
+    }
+    if (mod && !reader) this.granted(name, mod, watcher, audit);
     let plan;
     try { plan = await this.plan(input, name); }
     catch (e) { audit(false, printable(/** @type {Error} */ (e).message, 160)); throw e; }
+    if (reader && !(plan.kind === "read" && readerMayRead(plan.config, String(mod), plan.url.pathname + plan.url.search))) {
+      audit(false, `${plan.method} ${plan.url.hostname} refused: ${mod} may only read the paths named for it`);
+      throw bad(`${mod} may only read ${plan.config.readers.find(x => x.module === mod).paths.join(", ")} through ${name}`, "denied");
+    }
 
     // A thread the person tagged with #<this credential> uses it by right: note it quietly (vault.used), and the hosts the item has now must be the ones it had at the tag.
     if (meta.thread && this.deps.said && this.deps.call) {

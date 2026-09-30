@@ -85,7 +85,8 @@ export async function drawKeys(el, ctx, deps = {}) {
     return { groups: [], reveal: () => false };
   }
   /** @type {Def[]} */
-  const defs = Array.isArray(sc.data?.keys) ? sc.data.keys : [];
+  // A key its module marks `hidden` has a screen of its own (Spend) and is not drawn in the generic groups.
+  const defs = (Array.isArray(sc.data?.keys) ? sc.data.keys : []).filter((/** @type {any} */ k) => k && k.hidden !== true);
   // A group an older section already draws in full (Notifications, with its devices) stays there.
   const skip = deps.skip || new Set();
   const groups = (Array.isArray(sc.data?.groups) ? sc.data.groups : []).filter(g => !skip.has(g.id) && defs.some(k => k.group === g.id));

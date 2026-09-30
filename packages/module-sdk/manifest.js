@@ -293,7 +293,12 @@ export function toolEntries(m) {
   return list.flatMap((/** @type {any} */ t) => {
     if (typeof t === "string") return [{ name: t, summary: "", reach: "anyone", outward: null, cost: null }];
     if (!TYPES.object(t) || typeof t.name !== "string") return [];
-    return [{ name: t.name, summary: typeof t.summary === "string" ? t.summary : "", reach: t.reach || "anyone", outward: t.outward || null, cost: t.cost || null, target: typeof t.target === "string" ? t.target : null, projectArg: typeof t.projectArg === "string" || Array.isArray(t.projectArg) ? t.projectArg : null, cwdArg: typeof t.cwdArg === "string" || Array.isArray(t.cwdArg) ? t.cwdArg : null }];
+    // target, projectArg and cwdArg are in the entry only when set, so the v1 shape is unchanged.
+    const extra = {};
+    if (typeof t.target === "string") extra.target = t.target;
+    if (typeof t.projectArg === "string" || Array.isArray(t.projectArg)) extra.projectArg = t.projectArg;
+    if (typeof t.cwdArg === "string" || Array.isArray(t.cwdArg)) extra.cwdArg = t.cwdArg;
+    return [{ name: t.name, summary: typeof t.summary === "string" ? t.summary : "", reach: t.reach || "anyone", outward: t.outward || null, cost: t.cost || null, ...extra }];
   });
 }
 

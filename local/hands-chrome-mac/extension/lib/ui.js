@@ -105,7 +105,7 @@ export function matchControl(sel, controls, strict, o = {}) {
 export function nearMisses(want, controls, n = 6) {
   const w = new Set(tokens(want));
   const scored = controls.filter(c => c.name).map(c => ({ c, s: tokens(c.name).filter(t => w.has(t)).length })).sort((a, b) => b.s - a.s);
-  return scored.slice(0, n).map(x => ({ role: x.c.role, name: String(x.c.name).slice(0, 60) }));
+  return scored.slice(0, n).map(x => ({ role: x.c.role, name: String(x.c.name).slice(0, 60), ...(typeof x.c.frame === "number" ? { frame: x.c.frame } : {}) }));
 }
 
 // ---------------------------------------------------------------- blockers
@@ -118,17 +118,38 @@ const SAFE = /what'?s new|new features?|product (update|tour)|announcement|relea
 const CLOSERS = [/^(close|dismiss|close dialog|close modal|close popup)$/i, /^(skip|skip tour|skip for now)$/i, /^(no thanks|not now|maybe later|remind me later|later)$/i, /^(got it|ok|okay)$/i, /^(x|×|✕|✖)$/, /^(decline|reject( all)?|necessary only)$/i, /^(accept( all)?( cookies)?|allow)$/i];
 
 /**
- * @typedef {{ i: number, path?: string, role?: string, title?: string, text?: string, modal?: boolean }} Blocker
+ * @typedef {{ i: number, path?: string, role?: string, title?: string, text?: string, modal?: boolean, frame?: number }} Blocker
  */
 
 /**
+ * Frame indexes a frame sits inside: itself, its parent, and so on up to the top page. A dialog in one of these is in front of it.
+ * @param {any[]} frames snapshot.frames entries: {index, parent?}
+ * @param {number} idx
+ */
+export function frameChain(frames, idx) {
+  const out = new Set([idx]);
+  let cur = (frames || []).find(f => f.index === idx);
+  for (let guard = 0; cur && typeof cur.parent === "number" && guard < 20; guard++) {
+    out.add(cur.parent);
+    const up = cur.parent;
+    cur = frames.find(f => f.index === up);
+  }
+  return out;
+}
+
+/**
  * The modal blocker in front of the page that does not hold this control, or null. The top one is
- * the last in document order.
+ * the last in document order. With frames: a dialog in the top page (the shell) is in front of every frame; a dialog inside a
+ * frame is in front of that frame and the frames inside it, and not of the shell or of a sibling frame.
  * @param {any} snap @param {any} [ctl]
  * @returns {Blocker|null}
  */
 export function topBlocker(snap, ctl) {
-  const list = /** @type {Blocker[]} */ ((snap && snap.state && snap.state.blockers) || []).filter(b => b.modal);
+  let list = /** @type {Blocker[]} */ ((snap && snap.state && snap.state.blockers) || []).filter(b => b.modal);
+  if (ctl && typeof ctl.frame === "number" && snap.frames) {
+    const chain = frameChain(snap.frames, ctl.frame);
+    list = list.filter(b => typeof (/** @type {any} */ (b)).frame !== "number" || chain.has(/** @type {any} */ (b).frame));
+  }
   if (!list.length) return null;
   const top = list[list.length - 1];
   if (ctl && ctl.blk === top.i) return null;

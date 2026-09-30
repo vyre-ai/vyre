@@ -1111,7 +1111,15 @@
     "hosts": [
      "graph.microsoft.com"
     ],
-    "use": "Ask your agent to use vault.request with the credential microsoft against https://graph.microsoft.com/v1.0: GET /me/messages, POST /me/sendMail, GET /me/calendarView, POST /me/events. Reads run; sending mail waits for your approval unless you asked for it."
+    "use": "Ask your agent to use vault.request with the credential microsoft against https://graph.microsoft.com/v1.0: GET /me/messages, POST /me/sendMail, GET /me/calendarView, POST /me/events. Reads run; sending mail waits for your approval unless you asked for it.",
+    "readers": [
+     {
+      "module": "connectors",
+      "paths": [
+       "/v1.0/me/calendarView"
+      ]
+     }
+    ]
    },
    "oauth": {
     "client": "byo",
@@ -1164,7 +1172,15 @@
      "gmail.googleapis.com",
      "www.googleapis.com"
     ],
-    "use": "Ask your agent to use vault.request with the credential google-personal: GET https://gmail.googleapis.com/gmail/v1/users/me/messages, GET https://www.googleapis.com/calendar/v3/calendars/primary/events, GET https://www.googleapis.com/drive/v3/files. Reads run; sending mail waits for your approval unless you asked for it."
+    "use": "Ask your agent to use vault.request with the credential google-personal: GET https://gmail.googleapis.com/gmail/v1/users/me/messages, GET https://www.googleapis.com/calendar/v3/calendars/primary/events, GET https://www.googleapis.com/drive/v3/files. Reads run; sending mail waits for your approval unless you asked for it.",
+    "readers": [
+     {
+      "module": "connectors",
+      "paths": [
+       "/calendar/v3/calendars/primary/events"
+      ]
+     }
+    ]
    },
    "oauth": {
     "client": "byo",

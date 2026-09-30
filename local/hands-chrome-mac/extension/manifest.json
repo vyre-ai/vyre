@@ -8,14 +8,38 @@
   "permissions": [
     "debugger",
     "tabs",
+    "tabGroups",
+    "notifications",
     "nativeMessaging",
     "storage",
     "alarms",
     "declarativeNetRequest"
   ],
-  "action": { "default_title": "Vyre for Chrome", "default_popup": "popup.html" },
+  "icons": {
+    "16": "icons/icon-16.png",
+    "32": "icons/icon-32.png",
+    "48": "icons/icon-48.png",
+    "128": "icons/icon-128.png"
+  },
+  "action": {
+    "default_title": "Vyre for Chrome",
+    "default_popup": "popup.html",
+    "default_icon": {
+      "16": "icons/icon-16.png",
+      "32": "icons/icon-32.png"
+    }
+  },
   "background": {
     "service_worker": "background.js",
     "type": "module"
+  },
+  "commands": {
+    "stop-vyre": {
+      "suggested_key": {
+        "default": "Ctrl+Shift+E",
+        "mac": "Command+Shift+E"
+      },
+      "description": "Stop Vyre now"
+    }
   }
 }

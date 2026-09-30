@@ -10,6 +10,10 @@
 //   What:  the first message. Cmd/Ctrl+Enter starts; Esc closes the sheet.
 // On success the new thread opens; a failure is shown as the box said it.
 
+import { kbd } from "../js/platform.js";
+import { pasteTracker, NOT_TYPED } from "./core/paste-spans.js";
+import { tagPicker } from "./tag-picker.js";
+import { listMenu } from "./pickers.js";
 import { h, put, go } from "../js/dom.js";
 import { attempt } from "../js/api.js";
 import { icon } from "../js/icons.js";
@@ -28,16 +32,22 @@ export const baseName = p => String(p).replace(/\/+$/, "").split("/").pop() || p
  * @param {string|null} agent null for a plain session ("Vyre")
  * @param {string} text the first message
  * @param {string|null} fallback the folder "No folder" starts in (the first root)
+ * @param {string[]} [pasted] the stretches of the first message the person pasted: a #Name inside one never tags
+ * @param {{ kind: string, id: string, name: string }[]} [mentions] the # tags picked in the first message
  * @returns {{ tool: string, input: Record<string, any> } | { error: string }}
  */
-export function startCall(where, agent, text, fallback) {
+export function startCall(where, agent, text, fallback, pasted = [], mentions = []) {
   const prompt = String(text || "").trim();
   if (agent) {
     if (!prompt) return { error: `Write the first message for ${agent}.` };
-    return { tool: "agents.ask", input: { agent, text: prompt, surface: "deck", wait: false } };
+    const held = [...new Set(pasted.map(x => String(x).trim()).filter(x => x && prompt.includes(x)))];
+    return { tool: "agents.ask", input: { agent, text: prompt, surface: "deck", wait: false, ...(held.length ? { pasted: held } : {}), ...(mentions.length ? { mentions } : {}) } };
   }
   const input = /** @type {Record<string, any>} */ ({ surface: "deck" });
   if (prompt) input.prompt = prompt;
+  const spans = [...new Set(pasted.map(x => String(x).trim()).filter(x => x && prompt.includes(x)))];
+  if (spans.length) input.pasted = spans;
+  if (mentions.length) input.mentions = mentions;
   if (where.kind === "project") input.project = where.slug;
   else if (where.kind === "folder") input.cwd = where.path;
   else if (fallback) input.cwd = fallback;
@@ -75,8 +85,33 @@ export function mountNewSession(container, opts) {
     loaded: false, starting: false, /** @type {string|null} */ error: null,
   };
 
-  const text = h("textarea", { class: "input ns-text", rows: 4, placeholder: "What should this session start with?", "aria-label": "First message",
-    onkeydown: (/** @type {KeyboardEvent} */ e) => { if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) { e.preventDefault(); start(); } } });
+  const pastes = pasteTracker();
+  let prevText = "", pendingPaste = false;
+  const menu = listMenu("Tags");
+  const chipsBox = h("div", { class: "ns-tags" });
+  const caretAt = () => (typeof text.selectionStart === "number" ? text.selectionStart : text.value.length);
+  /** Words put in by the picker (a pick, a chip's x): tracked like an edit that was not typing, and the chips redrawn. */
+  function setText(/** @type {string} */ v, at = v.length) {
+    text.value = v; try { text.setSelectionRange?.(at, at); } catch { /* no caret to set */ }
+    pastes.edit(prevText, v, false); prevText = v; drawTags();
+  }
+  const drawTags = () => put(chipsBox, tagUI.chipsEl("ns-tags-row"));
+  const text = /** @type {HTMLTextAreaElement} */ (h("textarea", { class: "input ns-text", id: "ns-text", rows: 4, placeholder: "What should this session start with?", "aria-label": "First message",
+    onpaste: () => { pendingPaste = true; setTimeout(() => { pendingPaste = false; }, 0); },
+    oninput: (/** @type {any} */ e) => {
+      const v = text.value; pastes.edit(prevText, v, pendingPaste || !e?.inputType || NOT_TYPED.has(e.inputType)); prevText = v; pendingPaste = false;
+      if (!tagUI.suggest() && menu.kind === "vault") menu.close();
+      drawTags();
+    },
+    onkeydown: (/** @type {KeyboardEvent} */ e) => {
+      if (menu.isOpen()) {
+        if (e.key === "ArrowDown" || e.key === "ArrowUp") { e.preventDefault(); menu.move(e.key === "ArrowDown" ? 1 : -1); return; }
+        if ((e.key === "Enter" || e.key === "Tab") && !e.shiftKey && !e.metaKey && !e.ctrlKey && menu.pick()) { e.preventDefault(); return; }
+        if (e.key === "Escape") { e.preventDefault(); e.stopPropagation(); menu.close(); return; }
+      }
+      if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) { e.preventDefault(); start(); }
+    } }));
+  const tagUI = tagPicker({ ta: text, menu, caret: () => caretAt(), setValue: (v, at) => setText(v, at), attempt });
   const whereBox = h("div", { class: "ns-where" });
   const whoBox = h("div", { class: "ns-who" });
   const note = h("div", { class: "ns-error", role: "alert" });
@@ -88,12 +123,12 @@ export function mountNewSession(container, opts) {
       h("button", { class: "ibtn", type: "button", "aria-label": "Close", title: "Close (Esc)", onclick: () => opts.onDone() }, icon("close", 16))),
     h("section", { class: "ns-section", "aria-labelledby": "ns-who-h" }, h("h2", { class: "lbl", id: "ns-who-h" }, "Who"), whoBox),
     h("section", { class: "ns-section", "aria-labelledby": "ns-where-h" }, h("h2", { class: "lbl", id: "ns-where-h" }, "Where"), whereBox),
-    h("section", { class: "ns-section" }, h("label", { class: "lbl", for: "ns-text" }, "First message"), text),
+    h("section", { class: "ns-section" }, h("label", { class: "lbl", for: "ns-text" }, "First message"), h("div", { class: "ns-textwrap" }, menu.el, text), chipsBox),
     note,
     h("div", { class: "ns-actions" },
       startBtn,
       h("button", { class: "btn btn-ghost", type: "button", onclick: () => opts.onDone() }, "Cancel"),
-      h("span", { class: "ns-hint faint" }, h("span", { class: "kbd" }, "Cmd/Ctrl+Enter"), " to start, ", h("span", { class: "kbd" }, "Esc"), " to close"))));
+      h("span", { class: "ns-hint faint" }, h("span", { class: "kbd" }, kbd("Enter")), " to start, ", h("span", { class: "kbd" }, "Esc"), " to close"))));
   text.setAttribute("id", "ns-text");
 
   const shown = opts.shown || (() => true);
@@ -163,7 +198,7 @@ export function mountNewSession(container, opts) {
 
   async function start() {
     if (state.starting) return;
-    const c = startCall(state.where, state.agent, /** @type {any} */ (text).value, state.root);
+    const c = startCall(state.where, state.agent, text.value, state.root, pastes.of(text.value), tagUI.chips().map(t => ({ kind: t.kind, id: t.id, name: t.name })));
     if ("error" in c) { state.error = c.error; draw(); return; }
     state.starting = true; state.error = null; draw();
     const r = await attempt(c.tool, c.input);
@@ -176,7 +211,8 @@ export function mountNewSession(container, opts) {
     const href = openHref(r.data, state.where.kind === "project" && !state.agent ? state.where.slug : null);
     if (!href) { state.error = "The session started, but the server did not say which thread it is."; draw(); return; }
     // The shell keeps this page; coming back to it later starts a fresh message, not this one again.
-    /** @type {any} */ (text).value = "";
+    text.value = ""; tagUI.clear(); pastes.reset(); prevText = "";
+    drawTags();
     draw();
     go(href);
   }

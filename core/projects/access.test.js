@@ -344,3 +344,18 @@ test("projects.create/add-workspace: github's own door (module:github) is allowe
     assert.equal(r.code, "denied", tool);
   }
 });
+
+test("projects: stop() ends the auto-seed's retries, waits for its step, and nothing touches the database after it", async t => {
+  const w = world(t, { agents: null, failFirst: 1000 }); // agents never answers: the seed keeps retrying
+  migrate(w.db, "projects", MIGRATIONS);
+  const handle = await mod.start(w.ctx);
+  await new Promise(r => setTimeout(r, 30)); // let it retry a few times
+  const before = w.state.calls;
+  assert.ok(before >= 1, "the seed was retrying");
+  const t0 = Date.now();
+  await handle.stop();
+  assert.ok(Date.now() - t0 < 2000, "stop is bounded");
+  const at = w.state.calls;
+  await new Promise(r => setTimeout(r, 60));
+  assert.equal(w.state.calls, at, "no retry after stop");
+});

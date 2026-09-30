@@ -1,5 +1,5 @@
 // @ts-check
-// iq/retrieve: the passages Vyre IQ reads (ADR 0034, phase 2).
+// iq/retrieve: the passages Vyre Memory reads (ADR 0034, phase 2).
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { retriever, timeWindow, contentWords } from "./retrieve.js";
