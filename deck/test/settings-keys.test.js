@@ -15,7 +15,7 @@ import { install, text, $, $$ } from "./fake-dom.js";
 const doc = install();
 // The fake's focus() does nothing; here it moves document.activeElement, for J, K and /.
 Element.prototype.focus = function () { /** @type {any} */ (doc).activeElement = this; };
-const { drawKeys, APPLY, needsConfirm } = await import("../views/settings-keys.js");
+const { drawKeys, APPLY } = await import("../views/settings-keys.js");
 
 const SCHEMA = {
   groups: [{ id: "models", label: "Models and thinking" }, { id: "permissions", label: "Permissions" }, { id: "sessions", label: "Sessions" },
@@ -91,12 +91,8 @@ function fakeSettings(o = {}) {
       if (input.preview) {
         return { data: { key: d.key, level, ...(input.project ? { project: input.project } : {}),
           where: d.owner === "C" ? `/home/alex/${input.project || ".claude"}/settings.local.json permissions.allow` : "vyre",
-          before: bag[d.key], after: value, ...(needsConfirm(d, value) ? { confirm: d.loosens } : {}) } };
+          before: bag[d.key], after: value } };
       }
-      if (d.security === "loosens" && !opts.presence) return { error: { code: "presence_required", message: `${d.key} needs a person`, methods: ["passkey"] } };
-      if (d.security === "loosens" && o.noPasskey) return { error: { code: "bad_input", message: "no passkey is enrolled; enroll one with presence.enroll" } };
-      if (d.security === "loosens" && o.noProof) return { error: { code: "cancelled", message: "The passkey was cancelled or timed out." } };
-      if (value !== undefined && needsConfirm(d, value) && input.confirm !== true) return { error: { code: "confirm_required", message: `${d.loosens} Show the person and send confirm: true.` } };
       if (hold) await new Promise(r => waiting.push(() => r(undefined)));
       if (refuse) { const m = refuse; refuse = ""; return { error: { code: "bad_input", message: m } }; }
       if (tool === "settings.set") bag[input.key] = input.value; else delete bag[input.key];
@@ -334,16 +330,7 @@ test("settings keys: model Other, list add and remove, JSON checked before it is
   assert.deepEqual(api.account["sessions.env"], { NODE_ENV: "test" });
 });
 
-test("settings keys: needsConfirm follows the contract", () => {
-  const mode = BY.get("sessions.mode");
-  assert.equal(needsConfirm(mode, "plan"), false);
-  assert.equal(needsConfirm(mode, "bypassPermissions"), true);
-  assert.equal(needsConfirm(BY.get("sessions.allow"), ["Edit"]), true);
-  assert.equal(needsConfirm(BY.get("vault.lock_idle"), "1h"), true);
-  assert.equal(needsConfirm(BY.get("sessions.fast"), true), false);
-});
-
-test("settings keys: a confirm value previews, asks on its row, and Confirm sends confirm: true", async () => {
+test("settings keys: a change that widens or loosens saves at once, with no preview, no confirm and no proof", async () => {
   const api = fakeSettings();
   const { el } = await render(api);
   const row = rowOf(el, "sessions.mode");
@@ -351,119 +338,35 @@ test("settings keys: a confirm value previews, asks on its row, and Confirm send
   // the declaration's words, not the raw value; a value with none shows as it is
   const words = $$(sel, "option").map(o => text(o));
   assert.deepEqual([words[0], words.at(-1), words[3]], ["Default (Asks first)", "Doesn't ask", "plan"]);
-  // a plain value saves with no question
-  sel.value = "plan"; sel.dispatchEvent(new Event("change")); await tick();
-  assert.equal(api.account["sessions.mode"], "plan");
-  assert.equal($(row, ".sk-ask").hidden, true);
-  // a widening one previews first and writes nothing yet
   sel.value = "bypassPermissions"; sel.dispatchEvent(new Event("change")); await tick();
-  assert.deepEqual(api.of("settings.set").at(-1).input, { key: "sessions.mode", level: "account", value: "bypassPermissions", preview: true });
-  assert.equal(api.account["sessions.mode"], "plan", "nothing written by the preview");
-  const ask = $(row, ".sk-ask");
-  assert.equal(ask.hidden, false);
-  assert.match(text(ask), /New sessions will run tools without asking you first\./);
-  assert.equal($(ask, ".sk-where"), null, "where it lands is shown only when it is a file");
-  assert.equal(sel.value, "bypassPermissions", "the control shows what is being asked about");
-  assert.equal(slot(el, "sessions.mode"), "", "the slot keeps quiet while asking");
-  await $(ask, "button.sk-yes").click(); await tick();
+  assert.equal($(row, ".sk-ask"), null, "there is no confirm line any more");
+  assert.equal(api.of("settings.set").filter(c => c.input.preview).length, 0, "no preview call");
   const w = api.writes("settings.set").at(-1);
-  assert.deepEqual(w.input, { key: "sessions.mode", level: "account", value: "bypassPermissions", confirm: true });
-  assert.equal(w.opts.presence, undefined, "a confirm key is not a loosening one: no proof");
+  assert.deepEqual(w.input, { key: "sessions.mode", level: "account", value: "bypassPermissions" });
+  assert.equal(w.opts.presence, undefined);
   assert.equal(api.account["sessions.mode"], "bypassPermissions");
-  assert.equal(ask.hidden, true);
   assert.equal(slot(el, "sessions.mode"), "Saved");
-});
 
-test("settings keys: Cancel puts the control back and writes nothing", async () => {
-  const api = fakeSettings({ account: { "sessions.allow": ["Edit"] } });
-  const { el } = await render(api);
-  const row = rowOf(el, "sessions.allow");
-  const add = $(row, "input.sk-input");
+  // a list whose every change used to ask
+  const lrow = rowOf(el, "sessions.allow");
+  const add = $(lrow, "input.sk-input");
   add.value = "Bash(npm test:*)"; add.dispatchEvent(new Event("input")); add.dispatchEvent(ev("keydown", { key: "Enter" }));
   await tick();
-  assert.equal($(row, ".sk-ask").hidden, false, "a confirm: true list asks for every change");
-  assert.match(text($(row, ".sk-ask")), /Claude will run these without asking, here and in the terminal\./);
-  assert.match(text($(row, ".sk-where")), /settings\.local\.json permissions\.allow/);
-  assert.equal($$(row, ".sk-chip").length, 2, "shown while asking");
-  await $(row, "button.sk-no").click(); await tick();
-  assert.equal($(row, ".sk-ask").hidden, true);
-  assert.equal($$(row, ".sk-chip").length, 1, "back to the one rule");
-  assert.deepEqual(api.account["sessions.allow"], ["Edit"]);
-  assert.equal(api.writes("settings.set").length, 0);
+  assert.deepEqual(api.account["sessions.allow"], ["Bash(npm test:*)"]);
 
-  // a select goes back too
-  const sel = $(rowOf(el, "sessions.mode"), "select");
-  sel.value = "dontAsk"; sel.dispatchEvent(new Event("change")); await tick();
-  await $(rowOf(el, "sessions.mode"), "button.sk-no").click(); await tick();
-  assert.equal(sel.value, "default");
-});
-
-test("settings keys: a loosening key goes through the presence path", async () => {
-  const api = fakeSettings();
-  const { el } = await render(api);
-  const row = rowOf(el, "vault.lock_idle");
-  const inp = $(row, "input");
+  // a security key, and the reset of one, with no proof either
+  const inp = $(rowOf(el, "vault.lock_idle"), "input");
   inp.value = "4h"; inp.dispatchEvent(new Event("input")); inp.dispatchEvent(new Event("blur"));
   await tick(); await tick();
-  const pre = api.of("settings.set").at(-1);
-  assert.equal(pre.input.preview, true);
-  assert.equal(pre.opts.presence, undefined, "a preview needs no proof");
-  assert.match(text($(row, ".sk-ask")), /Your vault stays unlocked for longer\./);
-  await $(row, "button.sk-yes").click(); await tick();
-  const w = api.writes("settings.set").at(-1);
-  assert.deepEqual(w.input, { key: "vault.lock_idle", level: "account", value: "4h", confirm: true });
-  assert.equal(w.opts.presence, true, "sent through api.js's presence proof");
-  assert.equal(api.account["vault.lock_idle"], "4h");
-
-  // a cancelled passkey puts it back and says so
-  const sw = $(rowOf(el, "vault.lock_on_sleep"), "button.sw");
-  const api2 = fakeSettings({ noProof: true });
-  const { el: el2 } = await render(api2);
-  const sw2 = $(rowOf(el2, "vault.lock_on_sleep"), "button.sw");
-  await sw2.click(); await tick();
-  await $(rowOf(el2, "vault.lock_on_sleep"), "button.sk-yes").click(); await tick();
-  assert.equal(api2.writes("settings.set").at(-1).opts.presence, true);
-  assert.equal(sw2.getAttribute("aria-checked"), "true", "back to on");
-  assert.match(text(rowOf(el2, "vault.lock_on_sleep")), /Not saved\s+The passkey was cancelled/);
-  assert.equal(sw.getAttribute("aria-checked"), "true");
-
-  // no passkey yet: the row says where to add one, in plain words, never a tool name
-  const api3 = fakeSettings({ noPasskey: true });
-  const { el: el3 } = await render(api3);
-  await $(rowOf(el3, "vault.lock_on_sleep"), "button.sw").click(); await tick();
-  await $(rowOf(el3, "vault.lock_on_sleep"), "button.sk-yes").click(); await tick();
-  const said = text(rowOf(el3, "vault.lock_on_sleep"));
-  assert.match(said, /Not saved\s+This needs your passkey, and none is set up yet\. Add one in Settings, Your devices/);
-  assert.doesNotMatch(said, /presence\./);
-
-  // resetting a loosening key also asks, and proves presence
+  const sec = api.writes("settings.set").at(-1);
+  assert.deepEqual(sec.input, { key: "vault.lock_idle", level: "account", value: "4h" });
+  assert.equal(sec.opts.presence, undefined);
   await wait(60);
-  await $(row, "button.sk-reset").click(); await tick();
-  assert.equal(api.of("settings.reset").at(-1).input.preview, true);
-  assert.match(text($(row, ".sk-ask")), /Reset to default needs your passkey\./);
-  await $(row, "button.sk-yes").click(); await tick();
+  await $(rowOf(el, "vault.lock_idle"), "button.sk-reset").click(); await tick();
   const r = api.writes("settings.reset").at(-1);
   assert.deepEqual(r.input, { key: "vault.lock_idle", level: "account" });
-  assert.equal(r.opts.presence, true);
+  assert.equal(r.opts.presence, undefined);
   assert.equal(api.account["vault.lock_idle"], undefined);
-});
-
-test("settings keys: a key the box asks about that the schema did not mark still asks on the row", async () => {
-  const api = fakeSettings();
-  // This page's copy of the schema lost the confirm; the box still has it.
-  const orig = api.attempt;
-  const attempt = async (tool, input, opts) => {
-    const x = await orig(tool, input, opts);
-    if (tool === "settings.schema") for (const k of x.data.keys) if (k.key === "sessions.mode") delete k.confirm;
-    return x;
-  };
-  const { el } = await render({ ...api, attempt });
-  const sel = $(rowOf(el, "sessions.mode"), "select");
-  sel.value = "auto"; sel.dispatchEvent(new Event("change")); await tick(); await tick();
-  assert.equal($(rowOf(el, "sessions.mode"), ".sk-ask").hidden, false, "confirm_required opens the line");
-  assert.equal(sel.value, "auto");
-  await $(rowOf(el, "sessions.mode"), "button.sk-yes").click(); await tick();
-  assert.equal(api.account["sessions.mode"], "auto");
 });
 
 test("settings keys: reset names where it goes, Undo stays 4 s and sets the old value again", async () => {

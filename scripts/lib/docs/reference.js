@@ -238,6 +238,7 @@ const ENV_MEANING = {
   HARNESS_DIR: "The Harness plugin folder threads load. Default the one beside this install.",
   HOME: "Where Vyre keeps its data. Default `~/.vyre`.",
   HOST_USER: "The user name in the `ssh -L` line `vyre up` prints for reaching the box.",
+  MODULE_SDK: "A folder holding the module SDK's testing.js, for a module's own tests made by `vyre module new` before the SDK is on npm.",
   NO_DIALOGS: "`1`: never raise anything on screen (Touch ID, a keychain prompt, a browser tab).",
   NO_OPEN: "Never open a browser tab from the terminal.",
   NO_UP: "`vyre box add` installs Vyre without starting it.",
@@ -404,7 +405,7 @@ function collectTools(root, mods, harvested) {
     const local = new Map((harvested.local[m.name]?.tools || []).map(t => [t.name, t]));
     const both = (m.roles || ["box", "local"]).length > 1;
     const out = [];
-    for (const name of [...new Set(m.does?.tools || [])].sort(byName)) {
+    for (const name of [...new Set((m.does?.tools || []).map(t => typeof t === "string" ? t : t.name))].sort(byName)) {
       const t = box.get(name) || local.get(name);
       if (t) out.push({ ...t, only: both && !(box.has(name) && local.has(name)) ? (box.has(name) ? "box" : "local") : null });
       else out.push({ name, description: staticDescription(root, dir, name), input: null, callers: null, internal: false, hook: false, presence: false, only: null, unregistered: true });

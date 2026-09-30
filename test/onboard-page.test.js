@@ -14,6 +14,10 @@ import { start } from "../core/daemon/index.js";
 import { call } from "../core/daemon/client.js";
 import * as config from "../core/config/index.js";
 import { tempHome } from "./helpers.js";
+import { CHROME_SAFE } from "../lib/chrome-flags/index.js";
+
+// This test drives the Deck through its sample data (?fixtures=1), which a box serves only to dev worlds.
+process.env.VYRE_DECK_FIXTURES = "1";
 
 // An explicit override, then a real Chrome for local Mac use, then testbox's own
 // chrome-headless-shell (deck/test's own default path, e.g. deck/test/settings-browser.js):
@@ -39,7 +43,7 @@ function fakeBin(dir, name, out) {
 async function chrome(t, dir) {
   const isShell = /headless-shell/.test(CHROME_BIN);
   const profile = fs.mkdtempSync(path.join(dir, "chrome-"));
-  const args = [...(isShell ? [] : ["--headless=new"]), "--remote-debugging-port=0", `--user-data-dir=${profile}`, "--no-first-run", "--no-sandbox",
+  const args = [...(isShell ? [] : ["--headless=new"]), "--remote-debugging-port=0", ...CHROME_SAFE, `--user-data-dir=${profile}`, "--no-first-run", "--no-sandbox",
     ...(isShell ? [] : ["--no-default-browser-check"]), "--window-size=1280,900", "about:blank"];
   const child = spawn(CHROME_BIN, args, { stdio: "ignore", detached: true });
   // Chrome writes its profile until it exits, and tempHome's own cleanup may already have run:

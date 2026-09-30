@@ -929,3 +929,8 @@ pre code { display: block; font-family: var(--mono); font-size: 13px; line-heigh
 .cv-num { flex-shrink: 0; font-size: 11px; }
 .cv-head-av { flex-shrink: 0; }
 .nav-pj-av { margin-right: 2px; }
+
+/* "@role" made a teammate: the line under the handoff card, and the near-miss chip in the composer's note. */
+.cv-made { display: flex; align-items: center; gap: 8px; padding: 4px 0 0 36px; font-size: 12px; line-height: 16px; color: var(--text-2); }
+.cv-made .btn-sm { height: 24px; padding: 0 8px; }
+.cv-near { height: 24px; padding: 0 8px; font-weight: 600; }
