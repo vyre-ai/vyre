@@ -247,4 +247,16 @@ export const MIGRATIONS = [
   `CREATE INDEX memory_me_model_started ON memory_me_model (started);
   CREATE INDEX memory_iq_suggested_state ON memory_iq_suggested (state, thread);
   CREATE INDEX memory_iq_fixes_at ON memory_iq_fixes (at);`,
+  // Agent, module and watcher writes (core/memory/write.js, plan 3.4): live the moment they land,
+  // attributed from the caller (never the input), read back only as quoted text. One row per
+  // item, linked into each project it was filed to; "you" is the person's own room. A row is
+  // forgotten when its last link is; nothing is deleted, so every forget can be undone.
+  `CREATE TABLE memory_writes (id TEXT PRIMARY KEY, kind TEXT NOT NULL CHECK (kind IN ('fact','note','decision','correction')), text TEXT NOT NULL, subject TEXT, source_ref TEXT,
+    from_kind TEXT NOT NULL CHECK (from_kind IN ('person','agent','teammate','assistant','module','watcher','duty')), from_name TEXT NOT NULL, provider TEXT, thread TEXT, seq INTEGER,
+    untrusted INTEGER NOT NULL DEFAULT 0, state TEXT NOT NULL DEFAULT 'live' CHECK (state IN ('live','corrected','forgotten')), at INTEGER NOT NULL, updated INTEGER NOT NULL) WITHOUT ROWID;
+  CREATE INDEX memory_writes_ref ON memory_writes (source_ref, from_kind, from_name);
+  CREATE INDEX memory_writes_at ON memory_writes (at);
+  CREATE TABLE memory_write_links (write TEXT NOT NULL, project TEXT NOT NULL, state TEXT NOT NULL DEFAULT 'live' CHECK (state IN ('live','forgotten')), at INTEGER NOT NULL,
+    PRIMARY KEY (write, project)) WITHOUT ROWID;
+  CREATE INDEX memory_write_links_project ON memory_write_links (project, state);`,
 ];

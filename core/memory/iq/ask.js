@@ -131,11 +131,12 @@ export function asker({ db, answer, retrieve, runner = null, model = () => "haik
   const put = db.prepare("INSERT OR REPLACE INTO memory_iq_asks (hash, v, at, reply, usd) VALUES (?,?,?,?,?)");
 
   /**
-   * @param {{ question: string, project_cwds?: string[], personal?: boolean, thread?: string|null,
+   * writes: the scope of memory writes (core/memory/write.js) retrieval may add as passages.
+   * @param {{ question: string, project_cwds?: string[], personal?: boolean, thread?: string|null, writes?: any,
    *   stage?: (s: "understanding"|"searching"|"reading"|"checking") => void }} input
    *   stage: told as each step starts, so a surface shows what IQ is doing (ADR 0034, stream).
    */
-  return async function ask({ question, project_cwds = [], personal: sees = false, thread = null, stage = () => {}, screen = null }) {
+  return async function ask({ question, project_cwds = [], personal: sees = false, thread = null, stage = () => {}, screen = null, writes = null }) {
     const t0 = performance.now();
     const q = String(question || "").trim();
     const done = r => {
@@ -175,7 +176,7 @@ export function asker({ db, answer, retrieve, runner = null, model = () => "haik
     // and the model sees it, marked as never a source. Never for a question about the user's life,
     // never as evidence, never cited.
     const view = !mine && screen && POINTS.test(q) ? screenText(screen) : "";
-    let passages = (await retrieve({ question: q, project_cwds, k: 8, personal: sees, thread, hint: view })).passages.filter(p => !forgotten.has(`${p.session}:${p.seq}`));
+    let passages = (await retrieve({ question: q, project_cwds, k: 8, personal: sees, thread, hint: view, ...(writes ? { writes } : {}) })).passages.filter(p => !forgotten.has(`${p.session}:${p.seq}`));
     if (mine) passages = passages.filter(p => p.role === "user" && trusted(p.session) && !devTalk(String(p.text)))
       .map(p => ({ ...p, reply: undefined, text: userWords(String(p.text)) })).filter(p => p.text.trim());
     if (!passages.length) return done({ via: "retrieval" });

@@ -23,6 +23,7 @@ import { asker, ASK_DAILY_USD } from "./iq/ask.js";
 import { fixes as fixLog } from "./iq/fix.js";
 import { heard, contentWords } from "./iq/heard.js";
 import { userWords, devTalk, vyreFolder } from "./personal/trust.js";
+import { writeStore, register as registerWrites, passages as writePassages, relevantLines, quoted as quotedWrite } from "./write.js";
 
 /** How long to wait after a session.indexed event before curating, so a burst of turns is one pass. */
 const SETTLE_MS = 250;
@@ -398,10 +399,16 @@ export default {
       input: { type: "object", required: ["text"], properties: { text: { type: "string" }, project_cwds: cwds, ...roomField, limit: { type: "integer" }, ...agentField } },
       // The owner on a phone reads it too: Find searches memory by meaning with it, account-wide,
       // as the Deck does on the Mac. A session still names its room.
-      run: async ({ text, project_cwds = [], limit = 5, agent, ...rest }, { caller } = {}) => {
+      run: async ({ text, project_cwds = [], limit = 5, agent, ...rest }, extra = {}) => {
+        const { caller } = extra;
         const room = roomOf(rest);
         const r = await guard({ agent, project_cwds, room }, caller, { tailnet: true });
-        return graph.relevant({ text, project_cwds: r.cwds, room, limit: Math.min(20, Math.max(1, limit)) });
+        const lim = Math.min(20, Math.max(1, limit));
+        // Writes that bear on it, trusted ones only, quoted and attributed (core/memory/write.js).
+        const scope = await writeScope(agent, caller, extra, { room, cwds: clean(project_cwds) });
+        const written = scope ? relevantLines(writes, text, scope, Math.min(2, lim)) : [];
+        const facts = graph.relevant({ text, project_cwds: r.cwds, room, limit: lim });
+        return written.length ? [...facts.slice(0, lim - written.length), ...written] : facts;
       },
     });
     ctx.tool("memory.why", {
@@ -710,6 +717,35 @@ export default {
         throw denied(r.agent ? `personal facts are not a project's: only the assistant reads them, not ${r.agent}` : `${name} is for the user's own surfaces and the assistant, not ${plain(caller || "an unnamed caller", 60)}`);
       }
     };
+    // ---- agent, module and watcher writes (core/memory/write.js, plan 3.4)
+    const writes = writeStore({ db: ctx.store.db });
+    /** The rooms some folders are: the project that owns them, else every project with a folder among them. */
+    const roomsOf = cwds => {
+      try { const sc = graph.view(cwds); if (sc?.room && sc.room !== "unfiled") return [String(sc.room)]; } catch { /* no graph yet */ }
+      return curator.rooms().filter(rm => (rm.folders || []).some(f => within(f, cwds) || cwds.some(c => within(c, [f])))).map(rm => rm.slug);
+    };
+    /**
+     * Which writes a reader sees: every project in its reach (slugs null for the owner), narrowed to
+     * the room or folders it asked about; the "you" room only unscoped, and only for the person,
+     * their own session, a first-party module or the assistant. null when the caller reaches nothing.
+     * @returns {Promise<{ slugs: Set<string>|null, you: boolean }|null>}
+     */
+    const writeScope = async (agent, caller, extra, { room = null, cwds = [] } = {}) => {
+      let r;
+      try { r = await reach(agent, caller); } catch { return null; }
+      const c = String(caller || "");
+      const person = !r.agent && ((reader(c) && !c.startsWith("module:")) || ownSession(c) || (c.startsWith("module:") && extra?.firstParty === true));
+      const you = r.all ? person : Boolean(r.assistant);
+      const visible = r.all ? null : r.slugs;
+      if (room === "unfiled") return { slugs: new Set(), you: false };
+      const target = room && room !== "*" ? [String(room)] : cwds.length ? roomsOf(cwds) : null;
+      if (!target) return { slugs: visible, you };
+      return { slugs: new Set(target.filter(x => !visible || visible.has(x))), you: false };
+    };
+    /** A retrieval with the writes that bear on its question added as passages, when a scope is given. */
+    const withWrites = (base, question, scope) => scope ? { ...base, passages: [...base.passages, ...writePassages(writes, question, scope, 3)] } : base;
+    registerWrites(ctx, { store: writes, reach, personWrites, ownSession, reader, denied, plain,
+      projects: async () => { try { const l = await projectList(); return l.length ? l.map(p => p.slug) : null; } catch { return null; } } });
     /**
      * The project_cwds a reader should actually pass to graph.relevant/why/facts or retrieve's
      * own search, for a tool that reads personal facts (sees) alongside project content and so
@@ -765,13 +801,16 @@ export default {
       input: { type: "object", required: ["question"], properties: { question: { type: "string" }, project_cwds: cwds, k: { type: "integer", minimum: 1, maximum: 30 },
         expand: { type: "boolean" }, when: { type: "boolean" }, recency: { type: "boolean" }, hybrid: { type: "boolean" }, replies: { type: "boolean" },
         knobs: { type: "object", description: "evaluation only: passed to recall.search" }, ...agentField } },
-      run: async (input, { caller } = {}) => {
+      run: async (input, extra = {}) => {
+        const { caller } = extra;
         const project_cwds = clean(input.project_cwds);
         let sees = true;
         try { await personalOnly(input, caller, "memory.retrieve"); } catch { sees = false; }
         const effectiveCwds = await scopedCwds(sees, input.agent, caller, project_cwds);
-        return retrieve({ question: String(input.question || ""), project_cwds: effectiveCwds, k: input.k ?? 8, personal: sees,
-          expand: input.expand !== false, when: input.when !== false, recency: input.recency !== false, hybrid: input.hybrid !== false, replies: input.replies !== false, knobs: input.knobs || {} });
+        const scope = await writeScope(input.agent, caller, extra, { cwds: project_cwds });
+        return withWrites(await retrieve({ question: String(input.question || ""), project_cwds: effectiveCwds, k: input.k ?? 8, personal: sees,
+          expand: input.expand !== false, when: input.when !== false, recency: input.recency !== false, hybrid: input.hybrid !== false, replies: input.replies !== false, knobs: input.knobs || {} }),
+          String(input.question || ""), scope);
       },
     });
     // Vyre IQ's answer (ADR 0034, core/memory/iq/ask.js): a personal fact, else the fast model over
@@ -792,7 +831,7 @@ export default {
     const LIFE = new Set(["kin", "of", "birthday", "car", "carFate", "diet", "lives", "born", "myname", "owns"]);
     const trustOf = ctx.store.db.prepare("SELECT ok FROM memory_me_trust WHERE session = ?");
     const humanOf = () => { try { return ctx.store.db.prepare("SELECT human FROM recall_sessions WHERE id = ?"); } catch { return null; } };
-    const ask = asker({ db: ctx.store.db, answer, retrieve, fixes: fixed,
+    const ask = asker({ db: ctx.store.db, answer, retrieve: async i => withWrites(await retrieve(i), i.question, i.writes || null), fixes: fixed,
       personalQ: q => {
         // About the user's own life: a relative, their car, home, diet, birthday, name. Work
         // questions that the personal parser also reads ("who's priya") stay work questions.
@@ -817,18 +856,20 @@ export default {
       input: { type: "object", required: ["question"], properties: { question: { type: "string" }, project_cwds: cwds,
         context: { type: "object", properties: { project: { type: "string" }, thread: { type: "string" } } }, stream: { type: "boolean" }, id: { type: "string", maxLength: 64 },
         screen: { type: "object", description: "what the person is looking at (the Capsule, floor-redacted): only to understand a question that points at it; never evidence, never a source", properties: { app: { type: "string" }, title: { type: "string" }, selection: { type: "string" }, text: { type: "string" } } }, ...agentField } },
-      run: async (input, { caller } = {}) => {
+      run: async (input, extra = {}) => {
+        const { caller } = extra;
         const project_cwds = [...clean(input.project_cwds), ...(typeof input.context?.project === "string" && input.context.project ? [input.context.project] : [])];
         let sees = true;
         try { await personalOnly(input, caller, "memory.ask"); } catch { sees = false; }
         const effectiveCwds = await scopedCwds(sees, input.agent, caller, project_cwds);
+        const writesIn = await writeScope(input.agent, caller, extra, { cwds: project_cwds });
         const thread = typeof input.context?.thread === "string" ? input.context.thread : null;
         // The screen is the person's own: only their surfaces send it, never an agent.
         const screen = sees && input.screen && typeof input.screen === "object" ? input.screen : null;
-        if (input.stream !== true) return ask({ question: String(input.question || ""), project_cwds: effectiveCwds, personal: sees, thread, screen });
+        if (input.stream !== true) return ask({ question: String(input.question || ""), project_cwds: effectiveCwds, personal: sees, thread, screen, writes: writesIn });
         // Streamed: the events carry the id and the step, never the question or the answer.
         const id = typeof input.id === "string" && /^[A-Za-z0-9_-]{1,64}$/.test(input.id) ? input.id : `iq_${crypto.randomBytes(6).toString("hex")}`;
-        const r = await ask({ question: String(input.question || ""), project_cwds: effectiveCwds, personal: sees, thread, screen, stage: s => ctx.events.emit("memory.thinking", { id, stage: s }) });
+        const r = await ask({ question: String(input.question || ""), project_cwds: effectiveCwds, personal: sees, thread, screen, writes: writesIn, stage: s => ctx.events.emit("memory.thinking", { id, stage: s }) });
         ctx.events.emit("memory.answered", { id, abstained: Boolean(r.abstained), limited: Boolean(r.limited) });
         return { id, ...r };
       },
@@ -1039,6 +1080,8 @@ export default {
           .filter(f => f.rel !== "mentioned_in" && !f.stale && Number(f.seen) >= since && own(f))
           .sort((a, b) => Number(b.seen) - Number(a.seen) || (a.id < b.id ? -1 : 1));
         for (const f of learned.slice(0, 3)) lines.push(`${plain(f.text, 90)} (${f.seen_age} ago).`);
+        // What agents and modules wrote here this week, trusted only, quoted and attributed.
+        if (sc.room && sc.room !== "unfiled") for (const w of writes.list({ slugs: new Set([String(sc.room)]), you: false }, { trusted: true, since, limit: 2 })) lines.push(plain(quotedWrite(w), 140));
         const out = [];
         let n = 0;
         for (const l of lines) { if (n + l.length > 300) break; out.push(l); n += l.length + 1; }
