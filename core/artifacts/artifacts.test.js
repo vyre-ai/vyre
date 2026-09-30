@@ -389,6 +389,8 @@ test("artifacts: a # tag lets one thread read exactly one artifact, in any proje
   assert.equal((await juno("artifacts.versions", { id: far.id })).error, undefined);
   assert.equal((await juno("artifacts.get", { id: near.id })).error.code, "not_found", "exactly that item");
   assert.equal((await juno("artifacts.update", { id: far.id, content: "changed" })).error.code, "not_found", "read only");
+  assert.equal((await juno("artifacts.move", { id: far.id, project: "harlow-legal" })).error.code, "not_found", "a read grant never moves, archives, shares or deletes it");
+  for (const tool of ["artifacts.archive", "artifacts.delete", "artifacts.share", "artifacts.export"]) assert.notEqual((await juno(tool, { id: far.id })).error, undefined, tool);
   assert.equal((await juno("artifacts.get", { id: far.id }, "t9")).error.code, "not_found", "only that thread");
   assert.equal((await juno("artifacts.search", { q: "Lease" })).data?.length ?? 0, 0, "search stays in scope");
   await assert.rejects(asVyre("artifacts.mention.resolve", { id: near.id, thread: "t1" }, "mentions"), /only Vyre's session and assistant/, "the mentions core forwards the caller, it does not record");
