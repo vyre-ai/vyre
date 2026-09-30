@@ -816,7 +816,7 @@ const SCREENS = {
       h("p", { class: "small muted" }, "Point a domain you already own at this server instead of a ts.net address: a Cloudflare API token scoped to one zone, and a hostname in it. Set this in the server's own configuration, then come back and reserve again.")));
   },
 
-  // Import your sessions: discover, choose, watch Vyre IQ learn (docs/design/import.md,
+  // Import your sessions: discover, choose, watch Vyre Memory learn (docs/design/import.md,
   // memory-iq; docs/design/onboarding-v2.md step 4). Three phases in one step: discover (scan,
   // nothing leaves the device), choose (a plan, "keep in sync" unticked, a Fast/Gentle reading
   // pace with neither preselected), watch (live progress in three plain-language stages, and a
@@ -935,7 +935,7 @@ const SCREENS = {
         const r = await attempt("import.status");
         if (r.error) return;
         const st = r.data;
-        // Vyre IQ's own stages, in plain language (memory-iq): upload gets it to the server
+        // Vyre Memory's own stages, in plain language (memory-iq): upload gets it to the server
         // (skipped when local-only); search makes it findable; meaning makes it understood
         // (personal facts keep reading in the background for days, so they never gate this
         // checkmark); graph keeps growing after, with no total to reach.
@@ -962,7 +962,7 @@ const SCREENS = {
     // not answer from the sessions just read, which is the whole point of this box (memory-iq).
     // No stream: true here, a plain request/reply is enough for onboarding.
     const drawAsk = (/** @type {HTMLElement} */ ask) => {
-      const qIn = /** @type {HTMLInputElement} */ (h("input", { class: "input", placeholder: "Ask about your own history", "aria-label": "Ask Vyre IQ" }));
+      const qIn = /** @type {HTMLInputElement} */ (h("input", { class: "input", placeholder: "Ask about your own history", "aria-label": "Ask Vyre Memory" }));
       const out = h("div", { class: "small muted", style: { marginTop: "8px" } });
       const go = async () => {
         const q = qIn.value.trim();
@@ -971,7 +971,7 @@ const SCREENS = {
         const r = await attempt("memory.ask", { question: q });
         if (r.error) { put(out, String(r.error.message)); return; }
         const d = r.data;
-        if (d.limited) { put(out, d.message || "Vyre IQ has reached today's limit. Try again tomorrow."); return; }
+        if (d.limited) { put(out, d.message || "Vyre Memory has reached today's limit. Try again tomorrow."); return; }
         if (d.abstained) {
           put(out, "Not sure yet.", d.known ? h("span", null, " ", d.known) : null);
           return;

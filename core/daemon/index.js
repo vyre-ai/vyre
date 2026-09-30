@@ -708,7 +708,17 @@ async function route(req, res, { registry, events, cfg, started, streams, root, 
     // presence.capsule.pin judges the calling binary's own signature, read here from the socket's
     // pid: only vyred's router can hand a tool this (a module's ctx.call carries no meta).
     const signed = socket && name === "presence.capsule.pin" ? await signedBy(req.socket) : undefined;
-    const result = await registry.call(name, input, caller, { ...via, proof, ...(terminal ? { terminal } : {}), ...(call ? { call } : {}), ...(signed !== undefined ? { codeSignature: signed } : {}),
+    // A caller that asks for application/x-ndjson gets the tool's live draft on this connection only:
+    // one {"draft":...} line per update, then {"result":...}. No draft function for anyone else, and
+    // a draft is never an event. Only the router sets this; a module's ctx.call carries no meta.
+    const ndjson = /application\/x-ndjson/.test(String(req.headers.accept || "")) && typeof res.writeHead === "function";
+    let live = false;
+    const draft = ndjson ? d => {
+      if (res.writableEnded || res.destroyed) return;
+      if (!live) { live = true; res.writeHead(200, { "content-type": "application/x-ndjson", "cache-control": "no-store" }); }
+      res.write(JSON.stringify({ draft: d }) + "\n");
+    } : null;
+    const result = await registry.call(name, input, caller, { ...via, proof, ...(draft ? { draft } : {}), ...(terminal ? { terminal } : {}), ...(call ? { call } : {}), ...(signed !== undefined ? { codeSignature: signed } : {}),
       keep: req.headers["x-vyre-presence-keep"] === "1", idempotencyKey: idemKey(req) });
     // A new person session for the Deck goes in the cookie, never in the body a script could read.
     if (name === "presence.person.start" && result.data && result.data.kind === "cookie" && result.data.token) {
@@ -723,6 +733,7 @@ async function route(req, res, { registry, events, cfg, started, streams, root, 
     }
     const status = !result.error ? 200 : result.error.code === "person_session_required" ? 401 : ["no_such_tool", "not_found"].includes(result.error.code) ? 404 : ["denied", "presence_required", "no_dialog"].includes(result.error.code) ? 403 : result.error.code === "bad_input" ? 400
       : result.error.code === "idempotency_conflict" ? 409 : 500;
+    if (live) { res.end(JSON.stringify({ result }) + "\n"); return; }
     return send(res, status, result);
   }
   // A presence proof that needs a challenge first: tty writes a code to a login terminal, passkey

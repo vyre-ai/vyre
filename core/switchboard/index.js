@@ -26,6 +26,7 @@ import { openThreadSocket, DIR as THREAD_SOCKETS } from "../daemon/threadsock.js
 import { keyUuid } from "../modules/idempotency.js";
 import { rules as floorRules } from "../harness/rules.js";
 import { personTurn, mentionsOf, resolveTags, textHash, tagNote } from "./said.js";
+import { prIntents } from "../../lib/said/pr.js";
 import { threadStatus, LIVE_STATUSES } from "../../lib/thread-status.js";
 import { load as loadSdk, install as installSdk, installed as sdkInstalled, autoInstallAllowed, abortInstalls } from "../sessions/sdk.js";
 import { Leases } from "./lease.js";
@@ -480,7 +481,12 @@ export class Switchboard {
    *           append?: string, budget_usd?: number, fallback?: { env: Record<string,string>, budget_usd?: number },
    *           scope?: { projects: string[]|"*", cwds?: string[] } }} o
    */
-  async launch(o) {
+  /**
+   * @param {any} o
+   * @param {{ chips?: { kind: string, id: string }[], pasted?: string[] }|null} [person] set only by threads.start for a person's own
+   *   turn (never read from `o`): the first prompt is then heard as any person's turn is (said row, # tags).
+   */
+  async launch(o, person = null) {
     let id, rec;
     if (o.effort !== undefined) o = { ...o, effort: effortOf(o.effort) || undefined };
     if (o.lean) o = { ...o, plugin: false, tools: "none", settings: false };
@@ -582,8 +588,12 @@ export class Switchboard {
     // A resume first hands over what was steered in and never taken (a stop or a restart mid-turn).
     if (o.resume) this.restoreSteers(id);
     if (o.prompt) {
-      if (o.surface) await this.send(id, o.prompt, o.surface);
-      else { this.write(id, o.prompt); this.emit("thread.sent", { text: cut(o.prompt, 2000), surface: o.agent ? `agent:${o.agent}` : null }, id, rec.project); }
+      // A person's own first words are heard like any turn of theirs: before any provider sees them.
+      const said = crypto.randomUUID();
+      const heard = person ? await this.ingress(id, String(o.prompt), o.surface || "vyre", said, person.chips || [], person.pasted || []) : [];
+      const note = heard.length ? tagNote(heard) : "";
+      if (o.surface) await this.send(id, o.prompt, o.surface, { ...(person ? { uuid: said } : {}), ...(note ? { note } : {}) });
+      else { this.write(id, o.prompt, { ...(person ? { uuid: said } : {}), ...(note ? { note } : {}) }); this.emit("thread.sent", { text: cut(o.prompt, 2000), surface: o.agent ? `agent:${o.agent}` : null }, id, rec.project); }
     }
     return this.launched(id);
   }
@@ -805,8 +815,11 @@ export class Switchboard {
       ...(o.scope ? { VYRE_PROJECTS: o.scope.projects === "*" ? "*" : o.scope.projects.join(","), VYRE_SCOPE_CWDS: JSON.stringify(o.scope.cwds || []) } : {}) };
     // Memory for a prompt (memory.prompt, iq): blocks of text, scoped by vyred to this thread's own agent
     // and project. The scope is the thread's record, never anything the session says. Nothing if iq is absent.
+    // memory.prompt gives a module caller nothing unless it names the thread's agent (then only that agent's grant) or says the
+    // thread is the person's own (no agent, and a chat, project or capsule thread): both come from this record, never from the session.
+    const personal = !rec.agent && ["chat", "project", "capsule"].includes(String(rec.purpose || "chat"));
     const memory = async ({ prompt, first }) => {
-      const r = await this.deps.call("memory.prompt", { prompt, first: Boolean(first), thread: id, ...(rec.project ? { project: rec.project } : {}), ...(rec.agent ? { agent: rec.agent } : {}) }).catch(() => null);
+      const r = await this.deps.call("memory.prompt", { prompt, first: Boolean(first), thread: id, ...(rec.project ? { project: rec.project } : {}), ...(rec.agent ? { agent: rec.agent } : personal ? { person: true } : {}) }).catch(() => null);
       return r && !r.error && r.data && Array.isArray(r.data.blocks) ? r.data.blocks.filter(b => b && b.type === "text" && typeof b.text === "string").map(b => ({ type: "text", text: b.text })) : [];
     };
     const foreignOpts = foreign ? { floor, memory, ...(sock ? { mcpServers: [{ name: "vyre", command: process.execPath, args: [MCP_SERVER], env: Object.entries(mcpEnv).map(([name, value]) => ({ name, value: String(value) })) }] } : {}) } : {};
@@ -1334,11 +1347,38 @@ export class Switchboard {
     // A terminal session Vyre has not adopted yet has no record; it is adopted by the send that follows.
     const rec = this.record(id) || { project: null };
     this.emit("turn.said", { id: uuid, surface, at: Date.now(), text_hash: textHash(text) }, id, rec.project);
+    await this.hearActs(id, text, uuid, pasted, rec.project);
     const names = mentionsOf(text, pasted);
     if (!names.length && !chips.length) return [];
     const tags = await resolveTags({ names, chips, thread: id, said: uuid, call: (tool, input) => this.deps.call(tool, input) });
     if (tags.length) this.emit("thread.mentioned", { uuid, mentions: tags.map(({ note, ...t }) => t) }, id, rec.project);
     return tags;
+  }
+
+  /**
+   * What the person asked GitHub to do in their own words ("open a PR", "merge it", "review this PR"): the assistant's
+   * prIntents (lib/said/pr.js) decides what is a real ask and binds it to ONE target, github.act.target's composite key for
+   * this thread's project and PR; each intent it returns is recorded as the person (vault.said.record). Doubt records
+   * nothing. The thread's own PR is github.session.pr's answer, used only when it is exactly one. Pasted spans are taken
+   * out first, so someone else's words never ask.
+   * @param {string} id @param {string} text @param {string} uuid @param {string[]} pasted @param {string|null|undefined} project
+   */
+  async hearActs(id, text, uuid, pasted, project) {
+    if (!project || !/\b(?:prs?|pull[\s-]+requests?|merge|merging)\b/i.test(text)) return;
+    let typed = String(text);
+    for (const span of pasted || []) if (typeof span === "string" && span) typed = typed.split(span).join(" ");
+    const where = /** @type {{ project: string, session: string, pr?: number }} */ ({ project, session: id });
+    const cur = await this.deps.call("github.session.pr", { project, session: id }).catch(() => null);
+    const prs = cur && !cur.error && cur.data && Array.isArray(cur.data.prs) ? cur.data.prs : [];
+    if (prs.length === 1 && Number.isInteger(Number(prs[0]))) where.pr = Number(prs[0]);
+    const target = async (tool, input) => {
+      const r = await this.deps.call("github.act.target", { tool, input }).catch(() => null);
+      return r && !r.error && r.data && Array.isArray(r.data.to) ? r.data.to : null;
+    };
+    const { intents } = await prIntents(typed, where, target).catch(() => ({ intents: [] }));
+    for (const it of intents) {
+      await this.deps.call("vault.said.record", { thread: id, said: uuid, kind: "act_out", channel: "github", to: it.to, what: it.what, standing: false }).catch(() => null);
+    }
   }
 
   async send(id, text, surface, { queue = true, wait = false, mode = "steer", uuid = undefined, kind = undefined, images = null, note = "" } = {}) {
@@ -2168,6 +2208,30 @@ export const fromLink = caller => /^link:/.test(String(caller || ""));
  * the Harness, or anything speaking as an agent, an agent's own tailnet node included.
  * @param {string} [caller]
  */
+/**
+ * The provider's daily cap (core/spend): an agent, a module or an automation does not start or feed a
+ * thread on a provider that is at its cap; the answer is the cap line, which says how to raise it. The
+ * person's own surfaces are never held, nor is their own Claude session (an mcp or harness caller that
+ * carries no agent claim), so nothing ever prompts. No spend module, or no answer from it, means no cap,
+ * and says so once a day in the log so a broken ledger is visible.
+ * @param {{ call: (tool: string, input: any) => Promise<any>, log?: (m: string) => void }} ctx @param {unknown} caller @param {unknown} [provider]
+ */
+export async function spendCheck(ctx, caller, provider) {
+  const c = String(caller || "");
+  if (!(/^(module|hook)/.test(c) || /(^|[\s:])agent:/.test(c))) return;
+  let r = null, why = "";
+  try { r = await ctx.call("spend.check", { provider: String(provider || "claude") }); } catch (e) { why = /** @type {Error} */ (e).message; }
+  const d = r && (r.data || r);
+  if (r && r.error) why = String(r.error.message || r.error.code || "an error");
+  if (d && d.capped === true) throw Object.assign(new Error(String(d.line || "the daily spend cap for this provider is reached")), { code: "spend_capped" });
+  if (why || !d || typeof d.capped !== "boolean") {
+    const day = new Date().toISOString().slice(0, 10);
+    if (spendDown.day !== day) { spendDown.day = day; try { ctx.log?.(`spend: the ledger did not answer (${why || "no answer"}); agents and automation are not held at a cap until it does`); } catch { /* a log never fails a send */ } }
+  }
+}
+const spendDown = { day: "" };
+
+
 export const queuesFor = caller => {
   const c = String(caller || "");
   if (fromLink(c)) return true;
@@ -2289,19 +2353,28 @@ export default {
     };
     const tool = (name, description, input, run, callers, extra = {}) => ctx.tool(name, { description, input, run, callers, ...extra });
 
+    const spendGate = (caller, provider) => spendCheck(ctx, caller, provider);
+
     tool("threads.start", "Start a headless Claude Code session in a folder or a project's home, owned by vyred so it outlives every surface. The calling surface gets the keyboard. Returns the thread; its id is the Claude Code session id.",
       { type: "object", properties: { project: str, cwd: str, prompt: str, name: str, model: str, surface: str, append: str,
         purpose: { type: "string", enum: ["chat", "agent", "project", "teammate", "capsule", "job", "memory", "planner", "learn", "helper"], description: "What kind of session: picks its model (sessions.models.get). Default: chat, or project in a project." },
         provider: { type: "string", description: "The session provider: claude (the default), or one a module added." },
         effort: { type: "string", enum: EFFORTS, description: "Reasoning effort, as /effort: low, medium, high, xhigh or max. Default: the model's own." },
         lean: { type: "boolean", description: "A one-question thread: no Vyre plugin, no tools, no MCP servers, none of the user's settings. Cheap to start." },
+        mentions: { type: "array", maxItems: 8, items: { type: "object", required: ["kind", "id"], properties: { kind: str, id: str, name: str } }, description: "The # tags the composer picked ({kind, id}) for the first prompt, from a person's own surface only; as threads.send." },
+        pasted: { type: "array", maxItems: 20, items: str, description: "The spans of the prompt the person pasted: a #Name inside one tags nothing. As threads.send." },
         parent: { type: "string", description: "First-party modules only: the thread this one is started for (a teammate's thread for a person's). A session starting one is its own parent, from what vyred verified." } } },
       async (i, { caller, thread, firstParty }) => {
         guard(caller, "start sessions");
+        await spendGate(caller, i.provider);
         // The parent is the calling session's own verified thread, or (a first-party module starting it
         // on a thread's behalf) the id it names. Anyone else's claim is dropped, never believed.
         const parent = thread ? String(thread) : (firstParty && typeof i.parent === "string" ? i.parent : undefined);
-        return sb.launch({ ...i, parent, surface: surfaceOf(i, caller) });
+        // The first prompt is a person's own turn only when a person's surface started the thread; tags and pasted
+        // spans ride with it from there and from nowhere else.
+        const { mentions, pasted, ...rest } = i;
+        const person = personTurn(caller) && i.prompt ? { chips: Array.isArray(mentions) ? mentions : [], pasted: Array.isArray(pasted) ? pasted.filter(x => typeof x === "string").slice(0, 20) : [] } : null;
+        return sb.launch({ ...rest, parent, surface: surfaceOf(i, caller) }, person);
       });
 
     /**
@@ -2413,6 +2486,7 @@ export default {
       // Only a person's words are queued for a session open in a terminal: a model's are refused.
       async (i, { caller, idempotencyKey }) => {
         guard(caller, "type into sessions");
+        { const rec = sb.record(i.thread); await spendGate(caller, rec && rec.provider); }
         // Only the person's own callers reach a Mac; agents, MCP, guests and modules get the box's answer.
         if (wantsMacs(ctx, {}, caller) && !sb.knows(i.thread)) {
           const mac = await sendToMac(i, caller);

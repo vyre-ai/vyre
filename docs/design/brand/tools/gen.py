@@ -13,7 +13,7 @@ def squircle(n=5.0, N=240):
     return 'M'+' L'.join(pts)+' Z'
 SQ=squircle()
 
-ACC={'lumen':'#FFDFA8','drive':'#BFDCF0','vault':'#F3A25E','memory':'#F4C4B4','chrome':'#EDE8DC'}
+ACC={'lumen':'#FFDFA8','drive':'#BFDCF0','vault':'#F3A25E','memory':'#F4C4B4','chrome':'#EDE8DC','vyre':'#F3EBDD'}
 def radials():
     o=''
     for k,c in ACC.items():
@@ -232,6 +232,24 @@ def C1():
     s+=f'<rect x="256" y="582" width="400" height="22" rx="11" fill="#fff" opacity=".24"/><rect x="256" y="636" width="300" height="22" rx="11" fill="#fff" opacity=".15"/><rect x="256" y="690" width="230" height="22" rx="11" fill="#fff" opacity=".1"/>'
     return s,k
 
+def V0():
+    k='vyre'
+    d='M256 320 L496 720 L634 490'; W=112
+    def mk(i,extra): return f'<mask id="{i}" maskUnits="userSpaceOnUse" x="0" y="0" width="1024" height="1024">{extra}</mask>'
+    mid=uid('m'); rid=uid('m')
+    s=mk(mid,f'<path d="{d}" fill="none" stroke="#fff" stroke-width="{W}" stroke-linecap="round" stroke-linejoin="round"/>')
+    s+=mk(rid,f'<path d="{d}" fill="none" stroke="#fff" stroke-width="{W}" stroke-linecap="round" stroke-linejoin="round"/><path d="{d}" fill="none" stroke="#000" stroke-width="{W-8}" stroke-linecap="round" stroke-linejoin="round"/>')
+    bead=(736,320)
+    glow=f'<circle cx="634" cy="490" r="240" fill="url(#g_{k})"/><circle cx="{bead[0]}" cy="{bead[1]}" r="420" fill="url(#g_{k})"/><circle cx="{bead[0]}" cy="{bead[1]}" r="60" fill="#fff"/>'
+    o=s+f'<circle cx="{bead[0]}" cy="{bead[1]}" r="360" fill="url(#g_{k})" opacity=".5"/>'
+    o+=f'<g mask="url(#{mid})"><g transform="translate(496 480) scale(1.08) translate(-496 -480)" filter="url(#b14)">{glow}</g></g>'
+    o+=f'<g mask="url(#{mid})"><rect width="1024" height="1024" fill="url(#gfill)"/><path d="{d}" fill="none" stroke="#fff" stroke-opacity=".3" stroke-width="56" stroke-linecap="round" stroke-linejoin="round" filter="url(#b8)" transform="translate(7 11)"/></g>'
+    o+=f'<g mask="url(#{rid})"><rect width="1024" height="1024" fill="url(#rim)"/></g>'
+    o+=f'<path d="M288 324 L498 676" fill="none" stroke="#fff" stroke-opacity=".55" stroke-width="10" stroke-linecap="round" filter="url(#b2)" transform="translate(-18 -14)" />'
+    o+=sphere(bead[0],bead[1],92,f'<circle cx="{bead[0]}" cy="{bead[1]}" r="70" fill="{ACC[k]}"/>',1.0)
+    o+=f'<circle cx="{bead[0]}" cy="{bead[1]}" r="44" fill="#fff" opacity=".95" filter="url(#b8)"/><circle cx="{bead[0]}" cy="{bead[1]}" r="24" fill="#fff"/>'
+    return o,k
+
 CONCEPTS={
  'L1':('Lens',L1,'A glass lens catching one point of light on its rim. The core flips the image, as a real lens does.'),
  'L2':('Bar of light',L2,'The summoned bar as a glass pill with a bead of light waiting inside, ready to be asked.'),
@@ -244,10 +262,11 @@ CONCEPTS={
  'V3':('Keyhole',V3,'An arched slab with a keyhole that lets a little light through onto the floor.'),
  'M1':('Sheets and thread',M1,'Layers of glass pierced by one glowing thread. Every session, stitched together.'),
  'M2':('Strata',M2,'Bands of glass like sediment, with one luminous vein running through. Time, with a trace of what mattered.'),
+ 'V0':('Wire and light',V0,'The Vyre wire, drawn as a glass tube, ending in a bead of light.'),
  'C1':('Window',C1,'A glass browser window with a bead of light waiting in its address bar. Vyre, inside your Chrome.'),
  'M3':('Pearls',M3,'Glass pearls on a lit thread, the largest holding a glow. What Vyre keeps, and how it connects.'),
 }
-SC={'L1':(1.16,520),'L2':(1.3,512),'L3':(.84,512),'D1':(1.12,470),'D2':(1.2,560),'D3':(1.04,550),'V1':(1.14,515),'V2':(1.12,512),'V3':(.98,560),'M1':(1.0,540),'M2':(1.06,500),'M3':(1.02,540),'C1':(1.12,545)}
+SC={'L1':(1.16,520),'L2':(1.3,512),'L3':(.84,512),'D1':(1.12,470),'D2':(1.2,560),'D3':(1.04,550),'V1':(1.14,515),'V2':(1.12,512),'V3':(.98,560),'M1':(1.0,540),'M2':(1.06,500),'M3':(1.02,540),'C1':(1.12,545),'V0':(1.12,490)}
 SIG='<g transform="translate(482 916) scale(1.9)" fill="none" stroke="#F1EEE6" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round" opacity=".55"><path d="M8 10L15.5 22.5L19.81 15.31"/><circle cx="23" cy="10" r="3" fill="#F1EEE6" stroke="none"/></g>'
 def icon(key,size,sig=None,cls=''):
     body,k=CONCEPTS[key][1]()

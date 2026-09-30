@@ -594,3 +594,13 @@ mcp.connect/oauth.js status have posted (both block the Next list below).
   {id} -> {kind, id, name, url, text, outside:true, note}. ids: repo:o/n, pr:o/n#N, issue:o/n#N, strictly parsed.
   Callers: people plus module:mentions/platform/sessions/threads (firstParty). Platform owns the field's schema
   and the fan-out; unknown keys are ignored until it lands.
+- Hosted MCP wired (vault's githubServer row is on stage): connecting an account grants its vault item to mcp
+  and mcp.adds api.githubcopilot.com/mcp/ (bearer from github-<name>.token; row "github", later accounts
+  "github-<name>"; tools.deny create_or_update_file/push_files/delete_file, since pushes go through
+  github.session.push and its secret scan; other writes are classified outward by the hub and held at the Gate).
+  github.remove drops the row; github.mcp.sync (people) adds rows for accounts that predate this. Tests: index.test.js (fake hub) and registry.test.js (the real hub accepts the row, refuses another host).
+- Read tools built: github.project.pr.status (checks, latest reviews, ready verdict; no outside text), .pr.comments (conversation + inline + review bodies, person/outside), .issue.list (state/q/limit, PRs filtered out), .issue.get. Agents may call them; reads need no Gate. Tests in index.test.js.
+- Said-match binds the target (lead): manifest entries for pr.open/merge/review carry `target: "github.act.target"`; that internal tool (callers module:vyred/platform) answers the whole `to`: {to:["<tool>:owner/name#PR"]} for merge and review and {to:["<tool>:owner/name@branch"]} for open (lead ruling: one composite key). The registry is to pass it as-is to vault.said.match, so "merge it" about #12 never covers #40. Needs platform's `target` field; real-registry test follows when it lands.
+- For sessions' pr.* intents: github.act.target also answers module:threads; new internal github.session.pr {project, session} -> {prs:[numbers]} (open PRs whose head is vyre/<session>; callers module:sessions/threads).
+- reviewer-2 M-G3: every project tool an agent can call (pr.get/status/comments/open/merge/review, issue.list/get, session.push/history/undo/redo, local-init) checks meta.granted (the verified agent's project grant, "*" or slugs) and answers not_found for a project outside it (inGrant in index.js). act.target is asked by the registry as module:vyred, which carries no grant, so the tool itself is where the guard runs.
+- inGrant: a claimed agent (caller label with an `agent:<name>` claim) with no meta.granted is denied (not_found); the person and an unnamed mcp caller have none to check.

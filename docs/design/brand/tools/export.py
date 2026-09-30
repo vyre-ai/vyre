@@ -6,7 +6,7 @@ from gen import ACC, SC, SQ, CONCEPTS, SIG, circ, rr, poly, sphere, orb, uid
 OUT=sys.argv[1]
 TMP=os.path.join(os.path.dirname(os.path.abspath(__file__)),'tmp'); os.makedirs(TMP,exist_ok=True)
 CHROME="/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
-PROD={'lumen':('Lumen','L1'),'drive':('Drive','D2'),'vault':('Vault','V3'),'memory':('Memory','M3'),'chrome':('for Chrome','C1')}
+PROD={'lumen':('Lumen','L1'),'drive':('Drive','D2'),'vault':('Vault','V3'),'memory':('Memory','M3'),'chrome':('for Chrome','C1'),'vyre':('Vyre','V0')}
 D=gen.DEFS; DEFS_INNER=D[D.index('<defs>')+6:D.index('</defs>')]
 EXTRA='<filter id="ms" filterUnits="userSpaceOnUse" x="-100" y="-100" width="1224" height="1224"><feDropShadow dx="0" dy="16" stdDeviation="16" flood-color="#000" flood-opacity=".5"/></filter>'
 NS='xmlns="http://www.w3.org/2000/svg"'
@@ -71,6 +71,11 @@ def small_art(key,micro=False,clip=True,sig=False):
         L.append(f'<circle cx="512" cy="{560-40*g:.0f}" r="{260*g:.0f}" fill="{a}" opacity=".3" filter="url(#b40)"/>')
         L.append(f'<path d="{arch}" fill="url(#ar)" stroke="#fff" stroke-opacity=".6" stroke-width="14" stroke-linejoin="round"/>')
         L.append(f'<path d="{key_}" fill="{a}" filter="url(#b14)"/><path d="{key_}" fill="#fff"/>')
+    elif key=='vyre':
+        rg='<linearGradient id="vg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#FFFFFF"/><stop offset="1" stop-color="#B9B3A8"/></linearGradient>'
+        L.append(f'<circle cx="736" cy="320" r="220" fill="{a}" opacity=".4" filter="url(#b40)"/>')
+        L.append(f'<path d="M256 330 L496 720 L634 490" fill="none" stroke="url(#vg)" stroke-width="{128 if micro else 112}" stroke-linecap="round" stroke-linejoin="round"/>')
+        L.append(f'<circle cx="736" cy="320" r="{112 if micro else 96}" fill="#fff"/><circle cx="736" cy="320" r="150" fill="{a}" opacity=".4" filter="url(#b14)"/>')
     elif key=='chrome':
         rg='<linearGradient id="wg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#4A443F"/><stop offset="1" stop-color="#1B1917"/></linearGradient>'
         SIL="M180 440 V322 A70 70 0 0 1 250 252 H404 A70 70 0 0 1 474 322 V352 H774 A70 70 0 0 1 844 422 V722 A70 70 0 0 1 774 792 H250 A70 70 0 0 1 180 722 Z"
@@ -100,6 +105,8 @@ def template(key,col='#000'):
         pl=lambda pts:'M'+' L'.join(f'{x} {y}' for x,y in pts)+' Z'
         lid=[(x,y-70) for x,y in top]
         return (f'<g fill="none" stroke="{col}" stroke-width="70" stroke-linejoin="round" stroke-linecap="round"><path d="M244 462 V706 L512 862 L780 706 V462"/><path d="M512 574 V862"/><path d="{pl(lid)}"/></g>')
+    if key=='vyre':
+        return f'<path d="M256 330 L496 720 L634 490" fill="none" stroke="{col}" stroke-width="112" stroke-linecap="round" stroke-linejoin="round"/><circle cx="736" cy="320" r="96" fill="{col}"/>'
     if key=='chrome':
         return (f'<g fill="none" stroke="{col}" stroke-width="60" stroke-linejoin="round" stroke-linecap="round"><path d="M200 440 V322 A62 62 0 0 1 262 260 H394 A62 62 0 0 1 456 322 V368 H762 A62 62 0 0 1 824 430 V716 A62 62 0 0 1 762 778 H262 A62 62 0 0 1 200 716 Z"/><path d="M210 560 H814"/></g><circle cx="318" cy="464" r="60" fill="{col}"/><rect x="420" y="438" width="270" height="52" rx="26" fill="{col}"/>')
     if key=='vault':
@@ -128,9 +135,10 @@ def art_svg(art,size,vb='0 0 1024 1024'): return wrap(art,size,size,vb)
 
 def job(p,kind,size,out,extra=None):
     """kind: sq, square, mac, fg, bg, small, smallsq, tpl(color)"""
-    if kind=='sq': art=full_sq(p,sig=size>=100)
-    elif kind=='square': art=full_sq(p,sig=size>=100,clip=False)
-    elif kind=='mac': art=mac_art(p,size>=100)
+    ns=(p=='vyre')
+    if kind=='sq': art=full_sq(p,sig=size>=100 and not ns)
+    elif kind=='square': art=full_sq(p,sig=size>=100 and not ns,clip=False)
+    elif kind=='mac': art=mac_art(p,size>=100 and not ns)
     elif kind=='fg': art=fg_art(p)
     elif kind=='bg': art=bg_art(p)
     elif kind=='small': art=small_art(p,micro=(size<=20))
@@ -142,7 +150,7 @@ def job(p,kind,size,out,extra=None):
 def main():
     jobs=[]; svgs={}
     for p,(name,ck) in PROD.items():
-        if p=='chrome': continue
+        if p in ('chrome','vyre'): continue
         R=os.path.join(OUT,p); N=name
         # masters
         open(os.path.join(R,'master.svg'),'w') if False else None
@@ -207,5 +215,26 @@ def main_chrome():
     for px in (16,32): jobs.append(job(p,'small',px,f'{R}/web/favicon-{px}.png'))
     with ThreadPoolExecutor(4) as ex: list(ex.map(lambda j: render_png(*j),jobs))
 
+def main_vyre():
+    p='vyre'; R=os.path.join(OUT,p); os.makedirs(R,exist_ok=True)
+    open(os.path.join(R,'vyre-master.svg'),'w').write(art_svg(full_sq(p,sig=False),1024))
+    open(os.path.join(R,'vyre-small.svg'),'w').write(art_svg(small_art(p),1024))
+    open(os.path.join(R,'vyre-template.svg'),'w').write(art_svg(template(p,'#000'),1024))
+    jobs=[job(p,'sq',1024,f'{R}/vyre-master-1024.png'),job(p,'square',1024,f'{R}/vyre-master-square-1024.png')]
+    for px in (20,29,40,58,60,76,80,87,120,152,167,180,1024): jobs.append(job(p,'smallsq' if px<=60 else 'square',px,f'{R}/ios/AppIcon-{px}.png'))
+    dens={'mdpi':(48,108),'hdpi':(72,162),'xhdpi':(96,216),'xxhdpi':(144,324),'xxxhdpi':(192,432)}
+    for d,(l,f) in dens.items():
+        jobs.append(job(p,'sq',l,f'{R}/android/mipmap-{d}/ic_launcher.png'))
+        jobs.append(job(p,'fg',f,f'{R}/android/mipmap-{d}/ic_launcher_foreground.png'))
+        jobs.append(job(p,'tpl',f,f'{R}/android/mipmap-{d}/ic_launcher_monochrome.png','#000'))
+    jobs.append(job(p,'bg',432,f'{R}/android/drawable-nodpi/ic_launcher_background.png'))
+    jobs.append(job(p,'square',512,f'{R}/android/playstore-512.png'))
+    for px in (16,32,48): jobs.append(job(p,'small',px,f'{R}/web/favicon-{px}.png'))
+    jobs.append(job(p,'square',180,f'{R}/web/apple-touch-icon.png'))
+    for px in (192,512): jobs.append(job(p,'sq',px,f'{R}/web/icon-{px}.png'))
+    for px in (192,512):
+        body,k=body_of(p,.8); jobs.append((art_svg(tile_layers(k)+body+top_layers(),px),px,px,f'{R}/web/maskable-{px}.png'))
+    with ThreadPoolExecutor(4) as ex: list(ex.map(lambda j: render_png(*j),jobs))
+
 if __name__=='__main__':
-    (main_chrome if len(sys.argv)>2 and sys.argv[2]=='chrome' else main)()
+    {'chrome':main_chrome,'vyre':main_vyre}.get(sys.argv[2] if len(sys.argv)>2 else '',main)()

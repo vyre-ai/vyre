@@ -133,6 +133,9 @@
       "design/teammates.md",
       "design/tailscale-plan.md",
       "design/vitals.md",
+      "design/assistant.md",
+      "design/said.md",
+      "design/undo.md",
       "design/windows-plan.md"
     ]},
     { "title": "Design system", "pages": [

@@ -44,7 +44,7 @@ const str = { type: "string" };
 export const GROUPS = [
   ["models", "Models and thinking"], ["permissions", "Permissions"], ["sessions", "Sessions"], ["teammates", "Teammates"],
   ["notifications", "Notifications"], ["tips", "Tips"], ["appearance", "Appearance"], ["planner", "Planner"], ["memory", "Memory"], ["vault", "Vault"], ["files", "Files and terminal"],
-  ["tools", "Tools"], ["updates", "Updates"], ["devices", "Devices"],
+  ["tools", "Tools"], ["updates", "Updates"], ["devices", "Devices"], ["assistant", "Assistant"],
 ];
 
 /** What a secret setting's value reads as to anyone but the person. */
@@ -91,11 +91,11 @@ export const asPerson = caller => {
 };
 
 /** What a caller may see about one key, without its value. @param {any} d */
-const describe = d => ({
+export const describe = d => ({
   key: d.key, module: d.module, group: d.group || d.module, label: d.label, ...(d.help ? { help: d.help } : {}), type: d.type,
   ...(d.enum ? { enum: d.enum } : {}), ...(d.labels ? { labels: d.labels } : {}), ...(d.choices ? { choices: d.choices } : {}),
   ...(d.min !== undefined ? { min: d.min } : {}), ...(d.max !== undefined ? { max: d.max } : {}),
-  levels: d.levels, apply: d.apply, owner: d.store && d.store.claude ? "C" : "V", ...(d.advanced ? { advanced: true } : {}),
+  levels: d.levels, apply: d.apply, owner: d.store && d.store.claude ? "C" : "V", ...(d.advanced ? { advanced: true } : {}), ...(d.hidden ? { hidden: true } : {}),
   ...(d.security ? { security: d.security } : {}), ...(d.confirm ? { confirm: d.confirm } : {}), ...(d.loosens ? { loosens: d.loosens } : {}),
   ...(d.default !== undefined ? { default: d.default } : {}), ...(d.secret ? { secret: true } : {}),
 });

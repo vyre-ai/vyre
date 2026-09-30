@@ -13,6 +13,7 @@ import { boxProjectsDir, oldProjectsDir, workDir, home as vyreHome } from "../co
 import { wantsMacs, askMacs, mergeRows, sourcesOf, boxLabel, macLabel } from "../modules/federate.js";
 import { isProjectId } from "../../lib/project-id.js";
 import { ownerDevice } from "../modules/index.js";
+import { real } from "./markers.js";
 
 const str = { type: "string" };
 const strs = { type: "array", items: str };
@@ -57,6 +58,8 @@ export async function withLive(ctx, cat) {
 }
 /** The person's own surfaces. The loader refuses every other caller (agents' MCP, models' harness, guests, modules). */
 const OWNER = ["cli", "local", "capsule", "deck"];
+/** The person's own surfaces and modules acting for them: never a model (an agent or a session is mcp). */
+const PERSON_ONLY = [...OWNER, "module"];
 // Reviewer's MEDIUM 2 on f8330ccc: callers: ["module"] alone lets ANY module reach these three,
 // third-party ones installed into the modules folder included — modules skip presence entirely,
 // so an installed module could grant an agent any project, or clear a person's explicit revokes
@@ -188,16 +191,16 @@ export default {
         throw refuse("this is the person's, or a session in that project acting on their request", "denied");
     };
     ctx.tool("projects.rename", {
-      description: "Rename a project. The slug, folder, threads, teammates and tile stay exactly as they were; only the name changes. A person, or a session in that project on their request.",
+      description: "Rename a project. The slug, folder, threads, teammates and tile stay exactly as they were; only the name changes. Person-only: a model (agent or session) is refused.",
       input: { type: "object", required: ["project", "name"], properties: { project: str, name: str } },
-      callers: [...OWNER, "mcp"],
-      run: async ({ project, name }, meta = {}) => { const p = P.resolve(project); await ownOrSession(meta, p.slug); return P.rename(p.slug, name); },
+      callers: PERSON_ONLY,
+      run: async ({ project, name }) => P.rename(P.resolve(project).slug, name),
     });
     ctx.tool("projects.archive", {
-      description: "Archive a project: it leaves the project list, and its folder, threads, teammates and history are untouched. archived: false brings it back. projects.list {archived: true} includes archived projects. A person, or a session in that project on their request.",
+      description: "Archive a project: it leaves the project list, and its folder, threads, teammates and history are untouched. archived: false brings it back. projects.list {archived: true} includes archived projects. Person-only: a model (agent or session) is refused.",
       input: { type: "object", required: ["project"], properties: { project: str, archived: { type: "boolean" } } },
-      callers: [...OWNER, "mcp"],
-      run: async ({ project, archived = true }, meta = {}) => { const p = P.resolve(project); await ownOrSession(meta, p.slug); return P.archive(p.slug, archived); },
+      callers: PERSON_ONLY,
+      run: async ({ project, archived = true }) => P.archive(P.resolve(project).slug, archived),
     });
     ctx.tool("projects.add-threads", {
       description: "Pick threads (Claude Code session ids) into a project. A thread can be in several projects.",
@@ -250,7 +253,8 @@ export default {
     ctx.tool("projects.of", {
       description: "The project that owns a folder or any folder under it, or null. slug is what the other tools take.",
       input: { type: "object", required: ["cwd"], properties: { cwd: str } },
-      run: async ({ cwd }) => { const p = P.of(cwd); return p ? { slug: p.slug, name: p.name, home: p.home, folders: p.workspaces } : null; },
+      // folder: the real path the answer was judged on (symlinks and `..` resolved), which the registry puts back in an agent's call so the tool runs on what was checked.
+      run: async ({ cwd }) => { const p = P.of(cwd); return p ? { slug: p.slug, name: p.name, home: p.home, folders: p.workspaces, folder: real(cwd) } : null; },
     });
     ctx.tool("projects.threads", {
       description: "The threads in a project, newest first, each saying whether it was picked or ran in the project's folders.",
@@ -454,8 +458,12 @@ export default {
     // now seeded too, one row per project, the same as a named-projects agent, just for every
     // project instead of a named few (reviewer's follow-up on d897210d: without this, a wildcard
     // agent read nothing until someone granted it by hand, project by project).
+    // Set by stop(): nothing below touches the database once the module has been stopped.
+    let stopped = false;
     const seedFromAgents = async () => {
+      if (stopped) return { error: { code: "stopped", message: "projects stopped" } };
       const r = await ctx.call("agents.list", {});
+      if (stopped) return { error: { code: "stopped", message: "projects stopped" } };
       if (r.error) return { error: r.error };
       const list = Array.isArray(r.data) ? r.data : r.data?.agents || [];
       let seeded = 0;
@@ -510,14 +518,24 @@ export default {
     // and core/recall/index.js use, never in production.
     const RETRY_MS = process.env.NODE_TEST_CONTEXT ? 5 : 500;
     const autoSeed = db.prepare("SELECT 1 FROM projects_access_seeded").get() ? Promise.resolve() : (async () => {
-      for (let i = 0; i < 6; i++) {
+      for (let i = 0; i < 6 && !stopped; i++) {
         const r = await seedFromAgents();
+        if (stopped) return;
         if (!r.error) { db.prepare("INSERT OR IGNORE INTO projects_access_seeded (id, at) VALUES (1, ?)").run(Date.now()); return; }
         await new Promise(res => setTimeout(res, RETRY_MS));
       }
-      ctx.log("projects.access: could not auto-seed from agents.projects after 6 tries; run projects.access.migrate by hand once agents is up");
+      if (!stopped) ctx.log("projects.access: could not auto-seed from agents.projects after 6 tries; run projects.access.migrate by hand once agents is up");
     })();
 
-    return { async stop() {}, seeded: autoSeed };
+    return {
+      // Stops the auto-seed and waits (two seconds at most) for the step it is in, so nothing writes after the database closes.
+      async stop() {
+        stopped = true;
+        let timer;
+        await Promise.race([autoSeed.catch(() => {}), new Promise(res => { timer = setTimeout(res, 2000); if (timer.unref) timer.unref(); })]);
+        clearTimeout(timer);
+      },
+      seeded: autoSeed,
+    };
   },
 };
