@@ -371,3 +371,36 @@ test("codex entry: only read-only and agent are permitted; workspace-write is no
   assert.match(got.find(m => m.type === "result").result, /Codex starts in a mode Vyre does not permit \(workspace-write\)/, "no ask-shaped mode to move to: refused");
   await proc.stop(500);
 });
+
+test("acp: an entry can pin the start mode on every start; one that offers none of the pinned modes does not run", async t => {
+  const w = world(t, { pinMode: ["turbo", "plan"] });
+  const s = open(w);
+  const init = await s.until(m => m.type === "system" && m.subtype === "init", "init");
+  assert.equal(init.mode, "plan", "turbo is not offered (and would not be permitted): the next on the list");
+  assert.ok(w.launches().some(l => l.set_mode === "plan"), "set_mode sent, whatever the agent started in");
+  await s.proc.stop(500);
+  const w2 = world(t, { pinMode: ["agent"] });
+  const s2 = open(w2);
+  assert.match((await s2.until(m => m.type === "result", "refused")).result, /offers none of the modes Vyre starts it in \(agent\)/);
+});
+
+test("acp: what leaves for a person (an authenticate error, an open failure) has credential shapes and this run's secret values stripped", async t => {
+  const secret = "s3cr3t-value-for-this-run";
+  const w = world(t, { authMethod: () => "api-key", secretEnv: () => ["MY_KEY"] });
+  const s = open(w, { env: { ...w.env, MY_KEY: secret, FAKE_ACP_AUTH: "refuse", FAKE_ACP_AUTH_ERR: `bad key ${secret} and sk-ant-abcdefghijklmnopqrstuvwxyz0123` } });
+  const r = (await s.until(m => m.type === "result", "the refusal")).result;
+  assert.doesNotMatch(r, new RegExp(secret));
+  assert.doesNotMatch(r, /sk-ant-abcdefghijklmnop/);
+  assert.match(r, /did not accept its sign-in \(bad key \[secret\]/);
+});
+
+test("codex entry: a custom endpoint with no key in the environment fails plainly, never with an empty Bearer", async t => {
+  const w = world(t);
+  const p = codexProvider({ bin: FAKE, custom: { id: "mockmodel", baseUrl: "http://127.0.0.1:9/v1", envKey: "MOCK_MODEL_KEY", model: "m" } });
+  const got = [];
+  const proc = p.run({ id: crypto.randomUUID(), resume: false, cwd: w.cwd, env: { ...w.env, HOME: path.join(w.store, "h"), FAKE_ACP_AUTH: "ok", FAKE_ACP_EXTRA_MODE: "agent", FAKE_ACP_START_MODE: "agent" }, onSpawn() {}, onMessage: m => got.push(m), onExit() {} });
+  for (let i = 0; i < 200 && !got.find(m => m.type === "result"); i++) await new Promise(r => setTimeout(r, 30));
+  assert.match(got.find(m => m.type === "result").result, /no key for mockmodel in the environment \(MOCK_MODEL_KEY\)/);
+  assert.equal(w.launches().some(l => l.authenticate), false, "nothing was sent to the agent");
+  await proc.stop(500);
+});

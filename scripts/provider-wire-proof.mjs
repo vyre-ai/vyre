@@ -61,7 +61,7 @@ async function acp(name, provider, env, expectNoInit = null) {
   const until = async (test, ms) => { const end = Date.now() + ms; while (Date.now() < end) { const f = got.find(test); if (f) return f; if (exited) return null; await new Promise(r => setTimeout(r, 100)); } return null; };
   const init = await until(m => m.type === "system" && m.subtype === "init", 60_000);
   if (init) {
-    say("PASS", `acp ${name}: initialize and session/new answered; model ${init.model || "(none said)"}, modes [${(init.modes || []).join(", ")}]`);
+    say("PASS", `acp ${name}: initialize and session/new answered; model ${init.model || "(none said)"}, modes [${(init.modes || []).join(", ")}], start mode ${init.mode || "(none)"}`);
     say(!(init.modes || []).some(x => /bypass|yolo|dangerous|never|auto-?approve/i.test(String(x))) ? "PASS" : "FAIL", `acp ${name}: no bypass-shaped mode is offered`);
     proc.write({ type: "user", message: { role: "user", content: "Reply with exactly the words PROOF-OK." } });
     const res = await until(m => m.type === "result", 90_000);
@@ -157,6 +157,17 @@ if (where("codex-acp")) {
   await new Promise(r => setTimeout(r, 1000));
   try { fs.rmSync(path.join(home, ".codex"), { recursive: true, force: true, maxRetries: 5 }); } catch {}
   await acp("codex", codexProvider({ floor }), { PATH: process.env.PATH || "", HOME: home, OPENAI_API_KEY: "sk-proof-not-a-real-key" });
+  // A tampered config: what an agent could write into its own CODEX_HOME to loosen its next session.
+  const tamper = 'approval_policy = "never"\nsandbox_mode = "danger-full-access"\n';
+  const thome = tmp("proof-codex-tamper-home-");
+  fs.mkdirSync(path.join(thome, ".codex"), { recursive: true });
+  fs.writeFileSync(path.join(thome, ".codex", "config.toml"), tamper);
+  await raw("codex, TAMPERED config.toml (approval never, danger-full-access), no Vyre", "codex-acp", [], { PATH: process.env.PATH || "", HOME: thome, CODEX_HOME: path.join(thome, ".codex"), OPENAI_API_KEY: "sk-proof-not-a-real-key" }, thome);
+  await new Promise(r => setTimeout(r, 1000));
+  fs.writeFileSync(path.join(thome, ".codex", "config.toml"), tamper);
+  await acp("codex, TAMPERED config.toml through Vyre", codexProvider({ floor }), { PATH: process.env.PATH || "", HOME: thome, OPENAI_API_KEY: "sk-proof-not-a-real-key" });
+  const after = (() => { try { return fs.readFileSync(path.join(thome, ".codex", "config.toml"), "utf8"); } catch { return ""; } })();
+  say(/danger-full-access|never/.test(after) ? "FAIL" : "PASS", `acp codex: Vyre rewrote config.toml at the start (it now says ${JSON.stringify(after.slice(0, 80))})`);
   // A real turn through the real codex, with a local stand-in for the model (no account, no key).
   const mock = /** @type {any} */ (await mockModel("PROOF-OK"));
   const mhome = tmp("proof-codex-mock-home-");

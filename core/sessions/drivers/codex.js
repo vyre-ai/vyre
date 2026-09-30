@@ -35,9 +35,12 @@ export function codexProvider(o = {}) {
     args: () => [],
     // Only the modes where Codex asks or cannot write: "workspace-write" is not listed until measured, "agent-full-access" never.
     allowModes: /^(read-only|agent)$/i,
+    // Pinned on every start: "agent" (Codex's approval and sandbox preset), else "read-only". Codex's own config cannot choose it.
+    pinMode: ["agent", "read-only"],
+    askMode: /^(agent|read-only)$/i,
     // HOME is the account's (the spawner sets it on a box, the Switchboard on a Mac); the sign-in lives under it.
     env: run => { const home = run.env && run.env.HOME; return home ? { CODEX_HOME: path.join(String(home), ".codex") } : {}; },
-    secretEnv: () => ["OPENAI_API_KEY", ...(o.custom ? [o.custom.envKey] : [])],
+    secretEnv: () => ["OPENAI_API_KEY", "CODEX_API_KEY", ...(o.custom ? [o.custom.envKey] : [])],
     // codex-acp answers session/new "Authentication required" until authenticate. A custom OpenAI-compatible endpoint (the
     // OpenRouter rung, a test stand-in) goes through its "gateway" method, which the client must advertise
     // (auth._meta.gateway) and which carries the base URL and headers in _meta: the only way measured to point Codex elsewhere.
@@ -49,10 +52,16 @@ export function codexProvider(o = {}) {
       if (o.custom) return pick("gateway");
       return env.OPENAI_API_KEY || env.CODEX_API_KEY ? pick("api-key") : pick("chat-gpt");
     },
-    authParams: (methodId, run) => (methodId === "gateway" && o.custom
-      ? { _meta: { gateway: { baseUrl: o.custom.baseUrl, headers: { Authorization: `Bearer ${String((run.env || {})[o.custom.envKey] || "")}` }, providerName: o.custom.id } } } : {}),
+    authParams: (methodId, run) => {
+      if (methodId !== "gateway" || !o.custom) return {};
+      const key = String((run.env || {})[o.custom.envKey] || "");
+      if (!key) throw new Error(`no key for ${o.custom.id} in the environment (${o.custom.envKey})`);
+      return { _meta: { gateway: { baseUrl: o.custom.baseUrl, headers: { Authorization: `Bearer ${key}` }, providerName: o.custom.id } } };
+    },
     // codex-acp exits at once if CODEX_HOME does not exist, so the folder is made (as the account) with every start.
-    seed: { ".codex/.vyre": "" },
+    // The account's config.toml is written from Vyre's own settings at every start (never read from what is there, which the agent
+    // could have edited to loosen its next session).
+    seed: { ".codex/config.toml": 'approval_policy = "on-request"\nsandbox_mode = "workspace-write"\n' },
     capabilities: { steering: false, usage: "coarse", rewind: false },
     ...(o.floor ? { floor: o.floor } : {}),
     ...(o.sessions ? { sessions: o.sessions } : {}),

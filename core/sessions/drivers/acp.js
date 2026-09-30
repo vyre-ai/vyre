@@ -40,6 +40,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { execFileSync } from "node:child_process";
 import { spawnSession, killGroup } from "../spawn.js";
+import { redact } from "../../transcripts/sanitize.js";
 import { within } from "../../../lib/within.js";
 
 /** How long a turn waits for memory before it goes without. */
@@ -94,7 +95,7 @@ const remembered = new Map();
 /**
  * @param {{ id: string, bin: string, askMode?: RegExp, seed?: Record<string, string> | ((o: any) => Record<string, string>), secretEnv?: string[] | ((o: any) => string[]), args?: string[] | ((o: any) => string[]), env?: Record<string, string> | ((o: any) => Record<string, string>),
  *   capabilities?: Record<string, any>, floor?: (call: { tool: string, input: any, cwd?: string }) => { decision: "deny"|"ask"|null, reason?: string },
- *   allowModes?: RegExp,
+ *   allowModes?: RegExp, pinMode?: string[],
  *   authMethod?: (methods: { id: string, name?: string }[], run: any) => string|null, authTimeoutMs?: number,
  *   authFirst?: boolean, clientCapabilities?: Record<string, any>, authParams?: (methodId: string, run: any) => Record<string, any>,
  *   sessions?: { get(id: string): string|undefined, set(id: string, agent: string): void } }} entry
@@ -121,6 +122,12 @@ function runAcp(entry, known, o) {
   const seed = typeof entry.seed === "function" ? entry.seed(o) : entry.seed || undefined;
   // The provider's key is the CLI's own; the shells it asks Vyre to run (terminal/create) never get it.
   const secretEnv = new Set(typeof entry.secretEnv === "function" ? entry.secretEnv(o) : entry.secretEnv || []);
+  /** Anything that leaves for a person or a transcript (an error, the agent's stderr tail) is stripped of credential shapes and of this run's own secret values. */
+  const scrub = t => {
+    let out = redact(String(t ?? "")).text;
+    for (const n of secretEnv) { const v = o.env && o.env[n]; if (typeof v === "string" && v.length >= 6) out = out.split(v).join("[secret]"); }
+    return out;
+  };
   const child = spawnSession(entry.bin, args, { cwd, env: { ...(o.env || {}), ...extra }, subreaper: o.subreaper, uid: o.uid, gid: o.gid, account: o.account, ...(seed ? { seed } : {}), onSpawn: o.onSpawn });
   const say = m => { try { o.onMessage(m); } catch {} };
 
@@ -162,7 +169,7 @@ function runAcp(entry, known, o) {
     for (const t of terminals.values()) { try { killGroup(t.child, "SIGKILL"); } catch {} }
     for (const p of tree) kill(p, "SIGKILL");
     for (const c of calls.values()) c.reject(new Error("the agent ended"));
-    o.onExit(code, signal, err);
+    o.onExit(code, signal, scrub(err));
   };
   child.on("exit", done);
   child.on("error", e => { err = e.message; done(null, null); });
@@ -364,7 +371,7 @@ function runAcp(entry, known, o) {
         const methodId = entry.authMethod(methods, o);
         if (!methodId) throw new Error(`${label} needs a sign-in and offers no way Vyre can use: ${methods.map(x => x.id).join(", ")}`);
         try { await request("authenticate", { methodId, ...(typeof entry.authParams === "function" ? entry.authParams(methodId, o) : {}) }, entry.authTimeoutMs || 20_000); } catch (a) {
-          throw new Error(/** @type {any} */ (a).code === "timeout" ? `${label} is waiting for a sign-in in a browser: sign this account in first` : `${label} did not accept its sign-in (${String(/** @type {any} */ (a).message).slice(0, 200)})`);
+          throw new Error(/** @type {any} */ (a).code === "timeout" ? `${label} is waiting for a sign-in in a browser: sign this account in first` : `${label} did not accept its sign-in (${scrub(String(/** @type {any} */ (a).message)).slice(0, 200)})`);
         }
         return request(method, params);
       }
@@ -374,7 +381,7 @@ function runAcp(entry, known, o) {
       const methodId = entry.authMethod(methods, o);
       if (!methodId) throw new Error(`${label} needs a sign-in and offers no way Vyre can use: ${methods.map(x => x.id).join(", ")}`);
       try { await request("authenticate", { methodId, ...(typeof entry.authParams === "function" ? entry.authParams(methodId, o) : {}) }, entry.authTimeoutMs || 20_000); } catch (a) {
-        throw new Error(/** @type {any} */ (a).code === "timeout" ? `${label} is waiting for a sign-in in a browser: sign this account in first` : `${label} did not accept its sign-in (${String(/** @type {any} */ (a).message).slice(0, 200)})`);
+        throw new Error(/** @type {any} */ (a).code === "timeout" ? `${label} is waiting for a sign-in in a browser: sign this account in first` : `${label} did not accept its sign-in (${scrub(String(/** @type {any} */ (a).message)).slice(0, 200)})`);
       }
     }
     let r;
@@ -403,12 +410,19 @@ function runAcp(entry, known, o) {
       if (to) { try { await request("session/set_mode", { sessionId: sid, modeId: to.id }); mode = to.id; ok = true; } catch {} }
       if (!ok) throw new Error(`${entry.id[0].toUpperCase() + entry.id.slice(1)} starts in a mode Vyre does not permit (${rawMode}) and could not be moved to one it does; Vyre did not start it`);
     }
+    // An entry can pin the start mode to an explicit list, on every start (and a resume): the agent's own config cannot choose it.
+    if (Array.isArray(entry.pinMode)) {
+      const want = entry.pinMode.find(id => modes.some(x => x.id === id));
+      if (!want) throw new Error(`${entry.id[0].toUpperCase() + entry.id.slice(1)} offers none of the modes Vyre starts it in (${entry.pinMode.join(", ")}); Vyre did not start it`);
+      if (mode !== want) await request("session/set_mode", { sessionId: sid, modeId: want });
+      mode = want;
+    }
     const model = r.models && r.models.currentModelId || o.model || null;
     ready = true;
-    say({ type: "system", subtype: "init", session_id: o.id, agent_session_id: sid, model, modes: modes.map(x => x.id), resumed: loaded });
+    say({ type: "system", subtype: "init", session_id: o.id, agent_session_id: sid, model, modes: modes.map(x => x.id), mode, resumed: loaded });
     pump();
   }
-  open().catch(e => { err = String(e && e.message || e); say({ type: "result", subtype: "error", is_error: true, result: err, total_cost_usd: 0 }); });
+  open().catch(e => { err = scrub(String(e && e.message || e)); say({ type: "result", subtype: "error", is_error: true, result: err, total_cost_usd: 0 }); });
 
   function pump() {
     if (!ready || busy || exited || !queue.length) return;

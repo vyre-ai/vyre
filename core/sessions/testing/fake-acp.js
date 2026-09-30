@@ -82,7 +82,7 @@ readline.createInterface({ input: process.stdin }).on("line", async line => {
     log({ authenticate: m.params && m.params.methodId, gateway: m.params && m.params._meta && m.params._meta.gateway ? { baseUrl: m.params._meta.gateway.baseUrl, headers: Object.keys(m.params._meta.gateway.headers || {}), providerName: m.params._meta.gateway.providerName } : undefined });
     if (process.env.FAKE_ACP_AUTH === "hang") return;                                   // waits for a browser sign-in
     authed = process.env.FAKE_ACP_AUTH !== "refuse";
-    return out({ id: m.id, ...(authed ? { result: {} } : { error: { code: -32000, message: "sign-in refused" } }) });
+    return out({ id: m.id, ...(authed ? { result: {} } : { error: { code: -32000, message: process.env.FAKE_ACP_AUTH_ERR || "sign-in refused" } }) });
   }
   if (m.method === "session/new" && process.env.FAKE_ACP_AUTH && !authed) return out({ id: m.id, error: { code: -32000, message: "Authentication required" } });
   if (m.method === "session/new") {
