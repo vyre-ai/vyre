@@ -4,7 +4,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import { tempHome } from "../../test/helpers.js";
-import { Budget, BudgetStop, openrouterOnce, marginFor, MARGIN_BY_MODEL } from "./eval-openrouter.js";
+import { Budget, BudgetStop, StartRefused, openrouterOnce, marginFor, MARGIN_BY_MODEL, keyUsage, START_LIMIT_USD } from "./eval-openrouter.js";
 
 const reply = (text, cost) => async (url, init) => ({ ok: true, status: 200, json: async () => ({ choices: [{ message: { content: text } }], usage: { cost, prompt_tokens: 10, completion_tokens: 5 } }), url, init });
 
@@ -65,4 +65,66 @@ test("margin: each model keeps its own per-call maximum, an unknown model the de
   assert.equal(marginFor("anthropic/claude-sonnet-4.6"), 0.25);
   assert.equal(marginFor("someone/else"), Math.max(...Object.values(MARGIN_BY_MODEL)));
   assert.equal(marginFor(undefined), 0.25);
+});
+
+
+const KEY = "sk-or-" + "v1-" + "abcdef0123456789".repeat(3);
+const usageReply = (usage, limit = 50, status = 200) => async (url, init) => ({ ok: status < 400, status, json: async () => ({ data: { usage, limit } }), url, init });
+
+test("key usage: read from OpenRouter with the key, never echoed, and any failure throws so nothing starts", async () => {
+  let seen;
+  const u = await keyUsage({ key: KEY, fetch: async (url, init) => { seen = { url, init }; return usageReply(3.25)(url, init); } });
+  assert.deepEqual(u, { usage: 3.25, limit: 50 });
+  assert.equal(seen.url, "https://openrouter.ai/api/v1/key");
+  assert.equal(seen.init.headers.authorization, `Bearer ${KEY}`);
+  for (const bad of [usageReply(undefined), usageReply("x"), async () => ({ ok: false, status: 401, json: async () => ({ error: { message: `bad key ${KEY}` } }) }), async () => { throw new Error(`network ${KEY}`); }, async () => ({ ok: true, status: 200, json: async () => { throw new Error("not json"); } })]) {
+    await assert.rejects(keyUsage({ key: KEY, fetch: bad }), e => /could not read the key's usage/.test(e.message) && !e.message.includes(KEY), "the failure never carries the key");
+  }
+  await assert.rejects(keyUsage({ key: "" }), /not set/);
+});
+
+test("start guard: $14 or more on the key refuses to start; below it the run goes on", () => {
+  assert.equal(START_LIMIT_USD, 14);
+  const e = new StartRefused(14.2);
+  assert.match(e.message, /refusing to start.*\$14\.2000.*\$14/);
+  assert.ok(!e.message.includes(KEY));
+});
+
+test("in a run the key's own usage counts: stops before a call that could pass $15 of the key's total, even when the ledger is empty", async t => {
+  const b = new Budget({ file: path.join(tempHome(t), "spend.json"), limit: 15, margin: 0.25 });
+  b.setKeyBase(11);
+  let calls = 0;
+  const run = openrouterOnce({ key: "k", budget: b, fetch: async (u, i) => { calls++; return reply("ok", 1.5)(u, i); } });
+  await run({ system: "s", prompt: "p", model: "m", maxUsd: 1 });   // 11 + 0 + 0.25 <= 15
+  await run({ system: "s", prompt: "p", model: "m", maxUsd: 1 });   // 11 + 1.5 + 0.25 <= 15
+  await run({ system: "s", prompt: "p", model: "m", maxUsd: 1 });   // 11 + 3 + 0.25 <= 15
+  await assert.rejects(run({ system: "s", prompt: "p", model: "m", maxUsd: 1 }), e => e instanceof BudgetStop);   // 11 + 4.5 + 0.25 > 15
+  assert.equal(calls, 3, "no call is made once the key's total would pass the limit");
+  assert.equal(b.stopped, true);
+  assert.equal(b.total, 4.5, "the ledger keeps this run's spend for the partial results");
+  // Without a key base only the ledger guards, as before.
+  const plain = new Budget({ file: path.join(tempHome(t), "s2.json"), limit: 15, margin: 0.25 });
+  await openrouterOnce({ key: "k", budget: plain, fetch: reply("ok", 1.5) })({ system: "s", prompt: "p", model: "m", maxUsd: 1 });
+  assert.equal(plain.stopped, false);
+});
+
+test("the key base is refreshed every N calls: spend by something else on the same key is seen mid-run, and a failed refresh stops", async t => {
+  const b = new Budget({ file: path.join(tempHome(t), "spend.json"), limit: 15, margin: 0.05 });
+  b.setKeyBase(2);
+  let chat = 0, usage = 2;
+  const f = async (url, init) => url.endsWith("/key") ? usageReply(usage)(url, init) : (chat++, reply("ok", 0.1)(url, init));
+  const run = openrouterOnce({ key: KEY, budget: b, fetch: f, refreshEvery: 5 });
+  for (let i = 0; i < 5; i++) await run({ system: "s", prompt: "p", model: "m", maxUsd: 1 });
+  usage = 14.98;                                  // another workflow spent on the key
+  await assert.rejects(run({ system: "s", prompt: "p", model: "m", maxUsd: 1 }), e => e instanceof BudgetStop);
+  assert.equal(chat, 5, "no sixth call: the refresh saw the key near its limit");
+  // A refresh that cannot be read stops the run too.
+  const c = new Budget({ file: path.join(tempHome(t), "s2.json"), limit: 15, margin: 0.05 });
+  c.setKeyBase(2);
+  let n = 0;
+  const g = async (url, init) => url.endsWith("/key") ? { ok: false, status: 500, json: async () => ({}) } : (n++, reply("ok", 0.1)(url, init));
+  const run2 = openrouterOnce({ key: KEY, budget: c, fetch: g, refreshEvery: 2 });
+  await run2({ system: "s", prompt: "p", model: "m", maxUsd: 1 }); await run2({ system: "s", prompt: "p", model: "m", maxUsd: 1 });
+  await assert.rejects(run2({ system: "s", prompt: "p", model: "m", maxUsd: 1 }), e => e instanceof BudgetStop);
+  assert.equal(n, 2);
 });

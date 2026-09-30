@@ -366,9 +366,9 @@ test("failures say which frame they looked in, the page snippet comes from that 
 test("eval: `frame` picks where the script runs (index, id or a piece of the origin); the guard shim goes in and comes out of that same frame", async () => {
   /** @type {any[]} */ const seen = [];
   const w = await world({ userEval: (/** @type {string} */ id, /** @type {string} */ expr) => {
-    seen.push([id, expr === passwordFieldScript ? "password" : (expr === guardInstall || expr === guardInstallWrites) ? "install" : expr === guardCollect ? "collect" : expr]);
+    seen.push([id, expr === passwordFieldScript ? "password" : (expr === guardInstall || String(expr).endsWith(guardInstallWrites)) ? "install" : expr === guardCollect ? "collect" : expr]);
     if (expr === passwordFieldScript) return { result: { type: "boolean", value: false } };
-    if (expr === guardInstall || expr === guardInstallWrites) return { result: { type: "boolean", value: true } };
+    if (expr === guardInstall || String(expr).endsWith(guardInstallWrites)) return { result: { type: "boolean", value: true } };
     if (expr === guardCollect) return { result: { type: "object", value: [] } };
     return { result: { type: "string", value: "ran in " + id } };
   } });
@@ -451,18 +451,18 @@ test("page.eval (the op chrome_eval calls): a script's write with the page's log
   const w = await world({ userEval: (/** @type {string} */ _id, /** @type {string} */ expr) => {
     ran.push(expr);
     if (expr === passwordFieldScript) return { result: { type: "boolean", value: false } };
-    if (expr === guardInstallWrites) return { result: { type: "boolean", value: true } };
+    if (String(expr).endsWith(guardInstallWrites)) return { result: { type: "boolean", value: true } };
     if (expr === guardCollect) return { result: { type: "object", value: [{ method: "POST", url: "https://backend.example.com/workflow/w1?token=SECRETSECRETSECRET12", why: "write", write: true }] } };
     return { result: { type: "string", value: "done" } };
   } });
   await assert.rejects(dispatchT("page.eval", { tabId: 1, expression: "fetch('https://backend.example.com/workflow/w1',{method:'POST'})" }, w.ctx), (/** @type {any} */ e) => e.code === "blocked" && /POST/.test(e.message) && /api\.call/.test(e.message) && !/SECRETSECRET/.test(e.message));
-  assert.ok(ran.includes(guardInstallWrites), "the write guard is what was installed");
+  assert.ok(ran.some(e => String(e).endsWith(guardInstallWrites)), "the write guard is what was installed");
   ran.length = 0;
   for (const expression of ["indexedDB.open('firebaseLocalStorageDb')", "x.stsTokenManager.accessToken", "document.cookie"]) {
     await assert.rejects(dispatchT("page.eval", { tabId: 1, expression }, w.ctx), (/** @type {any} */ e) => e.code === "blocked" && /chrome_api/.test(e.message), expression);
   }
   assert.ok(!ran.some(e => /firebaseLocalStorageDb|stsTokenManager|document\.cookie/.test(e)), "a script that opens the stored login is refused before it runs");
-  assert.ok(!ran.includes(guardInstallWrites), "and before the guard is even installed");
+  assert.ok(!ran.some(e => String(e).endsWith(guardInstallWrites)), "and before the guard is even installed");
 });
 
 test("act: a mouseMoved is never awaited, on the top session either (a macOS runner never acknowledged it: 5005 ms)", async () => {
@@ -473,4 +473,54 @@ test("act: a mouseMoved is never awaited, on the top session either (a macOS run
   const r = await act(w.ctx, { selector: { name: "Contacts" }, kind: "click", asked: true });
   assert.equal(r.ok, true);
   assert.ok(Date.now() - t0 < 1500);
+});
+
+test("a frame replaced by a navigation: when the old session lingers and answers LAST, the newest session is still the one input goes to", async () => {
+  const w = await world();
+  const inner = w.chrome._.cdp;
+  // an old session for the same frame, attached before the navigation, that is slow to go away and still names the frame
+  w.chrome._.cdp = async (/** @type {number} */ tab, /** @type {string} */ method, /** @type {any} */ p, /** @type {string|undefined} */ session) => {
+    if (session === "S-ZOMBIE") { if (method === "Runtime.enable" || method === "Runtime.disable") return {}; await new Promise(r => setTimeout(r, 40)); return inner(tab, method, p, "S-APP"); }
+    return inner(tab, method, p, session);
+  };
+  w.chrome.emit ? void 0 : void 0;
+  const fire = w.fx.fire || ((/** @type {any} */ _a) => {});
+  void fire;
+  // attach the lingering session for frame APP, then navigate the frame (new session), then look
+  w.fx.announceExtra("S-ZOMBIE", "APP");
+  w.fx.navigate("APP", { url: `${APP}/builder2` });
+  const list = await w.ctx.frames.list(1);
+  const app = list.find((/** @type {any} */ f) => f.frameId === "APP");
+  assert.equal(app && app.session, "S-APP", "the newest session, not the one that answered last");
+});
+
+test("batch: the editor frame is detached and reattached between the fill and the Save click; the Save click resolves the frame fresh and lands in the NEW frame on its NEW session", async () => {
+  const save = ctl("button", "Save design", { identifier: "editor-save" });
+  const body = ctl("textbox", "Email editor body", { identifier: "editor-body" });
+  const saves = /** @type {any[]} */ ([]);
+  const w = await world({ frames: [{ id: "ED", origin: APP, url: `${APP}/email-editor`, box: { x: 10, y: 20, w: 600, h: 300 }, model: { url: `${APP}/email-editor`, title: "editor", text: "", controls: [body, save], state: quiet() } }] });
+  w.fx.page("ED").onClick = () => saves.push({ at: "ED" });
+  const inner = w.chrome._.cdp;
+  let moved = false;
+  w.chrome._.cdp = async (/** @type {number} */ tab, /** @type {string} */ method, /** @type {any} */ p, /** @type {string|undefined} */ session) => {
+    const r = await inner(tab, method, p, session);
+    // the moment the fill has been applied in the editor frame, the frame is replaced: a new frame id and a new session, the old session gone
+    if (!moved && method === "Runtime.evaluate" && session === "S-ED" && String(p.expression).startsWith("/*vyre:apply")) {
+      moved = true;
+      w.fx.page("ED").onClick = undefined;
+      w.fx.navigate("ED", { id: "ED2", url: `${APP}/email-editor` });
+      w.fx.page("ED2").onClick = () => saves.push({ at: "ED2" });
+    }
+    return r;
+  };
+  const r = await dispatchT("batch.run", { asked: true, steps: [
+    { op: "page.fill", args: { tabId: 1, fields: [{ selector: { identifier: "editor-body" }, value: "batch text" }] } },
+    { op: "page.act", args: { tabId: 1, selector: { identifier: "editor-save" }, kind: "click" } },
+  ] }, w.ctx);
+  assert.equal(r.ok, true, JSON.stringify(r.detail || r.why));
+  assert.equal(moved, true, "the frame was replaced mid-batch");
+  assert.deepEqual(saves, [{ at: "ED2" }], "the Save landed once, in the new frame");
+  const last = w.fx.raw.clicks[w.fx.raw.clicks.length - 1];
+  assert.equal(last.frame, "ED2");
+  assert.equal(last.sessionId, "S-ED2", "on the new frame's own session, not the old one");
 });

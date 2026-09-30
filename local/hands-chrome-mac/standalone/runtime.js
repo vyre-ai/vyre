@@ -17,6 +17,8 @@ import { createSiteStore } from "./sitestore.js";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 export const PKG = path.resolve(HERE, "..");
+/** A "visit" for the two-visit evidence: the person's setting, never under 5 minutes unless a test flag is on (a tiny window would make "seen twice" true within seconds). @param {any} minutes @param {Record<string, string|undefined>} [env] */
+export const visitMsFrom = (minutes, env = process.env) => Math.max(env.NODE_ENV === "test" || env.VYRE_CHROME_TEST ? 1000 : 5 * 60_000, Math.round((Number(minutes) || 30) * 60_000));
 export const dataDirOf = (/** @type {Record<string, string|undefined>} */ env = process.env) => env.VYRE_CHROME_HOME || path.join(os.homedir(), ".vyre-chrome");
 export const sockPathOf = (/** @type {string} */ dataDir, platform = process.platform) =>
   platform === "win32" ? `\\\\.\\pipe\\vyre-chrome-standalone-${safeUser()}` : path.join(dataDir, "run", "chrome.sock");
@@ -63,13 +65,14 @@ export async function createRuntime(o = {}) {
     // Vyre Memory's site knowledge, answered from files in this folder when there is no Vyre to ask.
     if (tool === "memory.site.get") return sites.get(input || {});
     if (tool === "memory.site.put") return readConfig(dataDir).learn !== true ? { data: { accepted: false, refused: [{ path: "", why: "learning is off" }] } } : sites.put(input || {});
+    if (tool === "memory.site.report") return readConfig(dataDir).learn !== true ? { data: { known: false } } : sites.report(input || {});
     if (tool === "memory.site.list") return sites.list();
     if (tool === "memory.site.forget") return sites.forget(input || {});
     return { error: { code: "no_such_tool", message: `no tool ${tool}` } };
   }
 
   const ctx = {
-    config: { chrome: { sockPath: o.sockPath || sockPathOf(dataDir), vyreHome: dataDir, hostDir: o.hostDir || path.join(PKG, "native-host"), extensionDir: o.extensionDir || path.join(PKG, "extension"), sendTool: "chrome_send", learn: () => readConfig(dataDir).learn === true, ghlHosts: () => { const h = trace.config().ghlHosts; return Array.isArray(h) ? h : []; }, ...(o.chrome || {}) } },
+    config: { chrome: { sockPath: o.sockPath || sockPathOf(dataDir), vyreHome: dataDir, hostDir: o.hostDir || path.join(PKG, "native-host"), extensionDir: o.extensionDir || path.join(PKG, "extension"), sendTool: "chrome_send", learn: () => readConfig(dataDir).learn === true, learnVisitMs: () => visitMsFrom(readConfig(dataDir).learnVisitMinutes), ghlHosts: () => { const h = trace.config().ghlHosts; return Array.isArray(h) ? h : []; }, ...(o.chrome || {}) } },
     log,
     events,
     call,

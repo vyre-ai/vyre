@@ -33,6 +33,8 @@ export function createFakeChrome(seed = []) {
 
   const chrome = {
     _: { tabs, counts, commands, created, ports, store, attached, onEvent, onDetach, onAlarm, cdp: /** @type {(tabId: number, method: string, params: any) => any} */ (() => ({})) },
+    // the browser-level network rule the egress guard sets for a tab (session rules); a real Chrome has it, so the fake does
+    declarativeNetRequest: (() => { /** @type {any[]} */ let rules = []; return { updateSessionRules: async (/** @type {any} */ o) => { rules = rules.filter(r => !(o.removeRuleIds || []).includes(r.id)).concat(o.addRules || []); }, getSessionRules: async () => rules.slice() }; })(),
     debugger: {
       onEvent, onDetach,
       async attach(/** @type {any} */ t) {
@@ -44,6 +46,12 @@ export function createFakeChrome(seed = []) {
       async sendCommand(/** @type {any} */ t, /** @type {string} */ method, /** @type {any} */ params) {
         counts.sendCommand++;
         commands.push({ tabId: t.tabId, method, params, ...(t.sessionId ? { sessionId: t.sessionId } : {}) });
+        // The guard's readiness probe: Chrome pauses both requests once Fetch is on, so the fake does too.
+        const pm = method === "Runtime.evaluate" ? /__vyre_probe_([a-z0-9]+_\d+)/.exec(String(params?.expression || "")) : null;
+        if (pm) {
+          for (const type of ["Image", "Fetch"]) chrome._.onEvent.fire(t, "Fetch.requestPaused", { requestId: "probe-" + type + pm[1], resourceType: type, request: { url: "https://app.example.com/__vyre_probe_" + pm[1], method: "GET", headers: {} } });
+          return { result: { type: "number", value: 1 } };
+        }
         return chrome._.cdp(t.tabId, method, params, t.sessionId);
       },
     },
@@ -280,6 +288,11 @@ export function createFakeFrames(chrome, spec, o = {}) {
       if (to.model) pages.set(f.id, pageFor(f.id, to.model));
       announce(f);
       return f;
+    },
+    /** A session that lingers for a frame (attached earlier, slow to go away): it is announced like any other, for tests of which session wins. */
+    announceExtra(/** @type {string} */ sessionId, /** @type {string} */ targetId) {
+      const f = frames.find(k => k.id === targetId);
+      fire({ tabId: TAB }, "Target.attachedToTarget", { sessionId, targetInfo: { targetId, type: "iframe", url: f ? f.url : "", parentFrameId: f ? f.parent : undefined } });
     },
     removeFrame(/** @type {string} */ id) { const i = frames.findIndex(k => k.id === id); if (i < 0) return; retract(frames[i]); frames.splice(i, 1); pages.delete(id); },
     /** Make a frame that was "none" readable, as when Chrome finally hands over its session. */

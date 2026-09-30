@@ -131,20 +131,24 @@ export function start(chrome, opts = {}) {
       if (msg.event === "stop") { ctx.setStopped(true); void presence.state({ stopped: msg.via === "pause" ? "pause" : "stop" }); }
       else if (msg.event === "resume") { ctx.setStopped(false); void presence.state({ stopped: false }); }
       else if (msg.event === "presence") { await presence.state(msg); return; }
-      else if (msg.event === "site.config") { sites.setEnabled(msg.learn === true); return; }
+      else if (msg.event === "site.config") { sites.setEnabled(msg.learn === true); sites.setVisitMs(Number(msg.visitMs)); return; }
       else if (msg.event === "site.card") { await sites.setCard(String(msg.origin || ""), msg.card, Number(msg.rev)); return; }
       await deliver(msg, ctx);
       return;
     }
     if (msg.id === undefined || msg.id === null) return;
     const id = msg.id;
+    /** @type {Promise<string>} the page the op started on, for what it learns or misses */
+    let startUrl = Promise.resolve("");
     try {
       if (typeof msg.op !== "string") throw Object.assign(new Error(proto.CODES.bad_request), { code: "bad_request" });
       const tabArg = msg.args && typeof msg.args === "object" ? (typeof msg.args.tabId === "number" ? msg.args.tabId : typeof msg.args.tab === "number" ? msg.args.tab : undefined) : undefined;
       // Arriving on a site: its card is read from this device at once (no wait), and asked of the server in the background when there is none.
-      if (tabArg !== undefined && !/^(site|caps|status)/.test(msg.op)) void ctx.tabs.get(tabArg).then((/** @type {any} */ t) => sites.arrive(String(t && (t.pendingUrl || t.url) || ""))).catch(() => {});
+      // The page the op STARTED on: what it learns or misses is about that page, not whatever the tab became while it ran (a page could navigate the tab in between).
+      startUrl = tabArg !== undefined && !/^(site|caps|status)/.test(msg.op) ? ctx.tabs.get(tabArg).then((/** @type {any} */ t) => String(t && (t.pendingUrl || t.url) || "")).catch(() => "") : Promise.resolve("");
+      void startUrl.then(u => { if (u) return sites.arrive(u); return undefined; }).catch(() => {});
       const result = await presence.around(msg.op, msg.args, () => dispatch(msg.op, msg.args, ctx, msg.trust));
-      if (tabArg !== undefined && result && typeof result === "object" && /^(page\.(act|fill)|api\.learn|frames\.(list|probe))/.test(msg.op)) void ctx.tabs.get(tabArg).then((/** @type {any} */ t) => sites.learn({ op: msg.op, args: msg.args, result, tabUrl: String(t && (t.pendingUrl || t.url) || "") })).catch(() => {});
+      if (tabArg !== undefined && result && typeof result === "object" && /^(page\.(act|fill)|api\.learn|frames\.(list|probe))/.test(msg.op)) void startUrl.then(u => { if (u) sites.learn({ op: msg.op, args: msg.args, result, tabUrl: u }); }).catch(() => {});
       // A batch or flow that stopped on a login page is the person's to fix, not the page's fault.
       if (result && typeof result === "object" && result.ok === false && result.code && /^(batch|ghl)\./.test(msg.op)) {
         const a = msg.args && typeof msg.args === "object" ? { ...msg.args, ...(typeof msg.args.tab === "number" && msg.args.tabId === undefined ? { tabId: msg.args.tab } : {}) } : {};
@@ -156,6 +160,8 @@ export function start(chrome, opts = {}) {
       let e = e0;
       const a = msg.args && typeof msg.args === "object" ? { ...msg.args, ...(typeof msg.args.tab === "number" && msg.args.tabId === undefined ? { tabId: msg.args.tab } : {}) } : {};
       const lf = await loginFailure(msg.op, a, /** @type {any} */ (e0), ctx).catch(() => null);
+      // A step that could not find a control this device knows is a miss for that stored fact (lib/sitecache.js).
+      if (a.tabId !== undefined && /^page\.(act|fill)$/.test(msg.op) && /** @type {any} */ (e0)?.code === "not_found") void startUrl.then(u => { if (u) sites.miss({ op: msg.op, args: a, error: e0, tabUrl: u }); }).catch(() => {});
       if (lf) e = Object.assign(new Error(lf.message), { code: "login_required", detail: lf.detail });
       const code = /** @type {any} */ (e)?.code;
       const known = typeof code === "string" && code in proto.CODES;

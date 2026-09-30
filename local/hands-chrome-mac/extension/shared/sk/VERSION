@@ -1,2 +1,2 @@
-source: work/iq e3bb3bc8 (lib/site-knowledge.js, lib/secret-shapes.js, core/vault/detect.js)
+source: work/iq-s2 1690366d (lib/site-knowledge.js, lib/secret-shapes.js, core/vault/detect.js): two-day quarantine, one miss per 30 minutes, patches cannot carry miss state, testNow only in a temp home
 import path in secret-shapes.js changed to ./detect.js; nothing else differs

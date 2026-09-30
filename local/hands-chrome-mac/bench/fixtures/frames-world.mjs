@@ -97,6 +97,30 @@ export function createFramesWorld() {
         html(res, page("ghl-shell.html").replaceAll("{{APP}}", o(SITES.app)).replaceAll("{{C}}", o(SITES.widgets)).replaceAll("{{APPPATH}}", /\/contacts\/?$/.test(p) ? "/contacts" : "/automation/workflows").replaceAll("{{QUERY}}", q).replaceAll("{{TOKEN}}", FRAME_TOKEN));
         return true;
       }
+      // A page whose origin runs a service worker with a fetch handler (many apps do), and a page under a strict CSP: a guarded eval must still run on both, and still hold an exfiltration.
+      if (req.method === "GET" && p === "/sw-page") {
+        html(res, `<!doctype html><html><head><meta charset="utf-8"><title>SW page</title></head><body><h1 id="h">service worker page</h1><script>
+          navigator.serviceWorker.register('/sw.js').then(function () { return navigator.serviceWorker.ready; }).then(function () { if (navigator.serviceWorker.controller) document.title = 'SW controlled'; else navigator.serviceWorker.addEventListener('controllerchange', function () { document.title = 'SW controlled'; }); });
+        </script></body></html>`);
+        return true;
+      }
+      if (req.method === "GET" && p === "/sw.js") {
+        // Answers every same-origin GET and every cross-origin GET through the worker's own fetch, and a /sw-cached path from its cache without the network.
+        res.writeHead(200, { "Content-Type": "text/javascript", "Cache-Control": "no-store" });
+        res.end(`self.addEventListener('install', function () { self.skipWaiting(); });
+          self.addEventListener('activate', function (e) { e.waitUntil(self.clients.claim()); });
+          self.addEventListener('fetch', function (e) {
+            var u = new URL(e.request.url);
+            if (u.pathname.indexOf('/sw-cached') === 0) { e.respondWith(new Response('cached', { status: 200 })); return; }
+            e.respondWith(fetch(e.request));
+          });`);
+        return true;
+      }
+      if (req.method === "GET" && p === "/csp-page") {
+        res.writeHead(200, { "Content-Type": "text/html; charset=utf-8", "Content-Security-Policy": "default-src 'none'; script-src 'unsafe-inline'; img-src 'none'; connect-src 'none'" });
+        res.end('<!doctype html><html><head><meta charset="utf-8"><title>CSP page</title></head><body><h1>strict csp page</h1></body></html>');
+        return true;
+      }
       if (req.method === "GET" && p === "/same-origin-frame") {
         html(res, small("notifications", `<p>Notifications</p><button type="button" data-testid="mark-read" id="mark-read">Mark all read</button>`));
         return true;

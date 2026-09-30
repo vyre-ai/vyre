@@ -92,15 +92,15 @@ test("dev.console.eval: the script runs, its own send is held back, asked runs i
   const dt = (await import("./extension/caps/devtools.js")).default;
   const k = makeCtx({ active: 3 });
   const caught = [{ method: "POST", url: `${GHL}/conversations/messages`, why: "it messages, posts or charges as the person" }];
-  k.respond["Runtime.evaluate"] = (/** @type {any} */ p) => p.expression === guardCollect ? { result: { value: caught } } : p.expression === guardInstallWrites ? { result: { value: true } } : { result: { type: "string", value: "done" } };
+  k.respond["Runtime.evaluate"] = (/** @type {any} */ p) => p.expression === guardCollect ? { result: { value: caught } } : String(p.expression).endsWith(guardInstallWrites) ? { result: { value: true } } : { result: { type: "string", value: "done" } };
   const h = await T(dt.ops["dev.console.eval"])({ tab: 3, expression: "fetch('/conversations/messages',{method:'POST'})" }, k.ctx);
   assert.equal(h.held, true);
-  assert.ok(k.sent.some(s => s.params && s.params.expression === guardInstallWrites), "the guard was installed");
+  assert.ok(k.sent.some(s => s.params && String(s.params.expression).endsWith(guardInstallWrites)), "the guard was installed");
   const plain = makeCtx({ active: 3 });
   plain.respond["Runtime.evaluate"] = () => ({ result: { type: "string", value: "done" } });
   const r = await T(dt.ops["dev.console.eval"])({ tab: 3, expression: "1", asked: true }, plain.ctx);
   assert.equal(r.ok, true);
-  assert.ok(!plain.sent.some(s => s.params && s.params.expression === guardInstallWrites), "asked runs with no guard");
+  assert.ok(!plain.sent.some(s => s.params && String(s.params.expression).endsWith(guardInstallWrites)), "asked runs with no guard");
 });
 
 test("net.replay: a method override to DELETE or PUT is held, a GET replay is not, and nothing is sent until the gate passes", async () => {

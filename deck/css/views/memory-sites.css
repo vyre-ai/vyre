@@ -1,0 +1,28 @@
+/* Sites, a tab in Memory (views/memory-sites.js): the Lessons rows' shape (memory-lessons.css) plus what a site adds. Bone tokens only. */
+.ms .ml-act { display: flex; align-items: center; gap: 6px; }
+.ms-host { font-size: 12px; line-height: 16px; color: var(--label); }
+.ms-chev svg { transition: transform var(--motion-tap, 120ms) ease; }
+.ms-chev[aria-expanded="true"] svg { transform: rotate(90deg); }
+.ms-part-head { display: flex; align-items: baseline; justify-content: space-between; padding: 4px 0; }
+.ms-part-name { margin: 0; font-size: 12px; line-height: 16px; font-weight: 600; color: var(--text-2); }
+.ms-part-n { font-size: 12px; color: var(--label); }
+.ms-item-label.mono { font-family: var(--mono); font-size: 12px; }
+.ms-stopped { color: var(--text-2); }
+.ms-wrong { color: var(--label); }
+.ms-forgot .ml-main { justify-content: center; }
+.ms-undo { text-decoration: underline; }
+.ms-confirm .ml-rule { font-weight: 600; }
+.ms-detail { display: flex; flex-direction: column; gap: 10px; margin-top: 8px; }
+.ms-part { display: flex; flex-direction: column; }
+.ms-item { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 12px; padding: 6px 0; border-top: 1px solid var(--rule); }
+.ms-item-label { flex: 1 1 240px; min-width: 0; font-size: 13px; line-height: 18px; color: var(--text); overflow-wrap: anywhere; }
+.ms-ask { display: inline-flex; align-items: center; gap: 8px; }
+.ms-kept { display: flex; flex-direction: column; gap: 6px; padding: 10px 0; }
+.ms-kept-row { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; }
+@media (max-width: 719px), (max-height: 500px) and (pointer: coarse) { .ms .ml-row { grid-template-columns: 1fr; } .ms .btn, .ms .ibtn { min-height: 44px; min-width: 44px; } }
+.ms-dismiss { color: var(--label); }
+.ms-forgot-line { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 6px; }
+.ms-recent { margin-top: 20px; padding-top: 8px; border-top: 1px solid var(--rule); }
+.ms-recent-head { color: var(--label); }
+.ms-recent-head svg { transition: transform var(--motion-tap, 120ms) ease; }
+.ms-recent-head[aria-expanded="true"] svg { transform: rotate(90deg); }

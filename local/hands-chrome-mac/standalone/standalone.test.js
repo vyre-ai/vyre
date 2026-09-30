@@ -531,11 +531,20 @@ test("site knowledge in standalone is off until the person turns it on, and then
   const dataDir = tmp(t);
   const runtime = await createRuntime({ dataDir, sockPath: path.join(dataDir, "run", "chrome.sock"), log: () => {}, chrome: { extensionOrigin: null } });
   t.after(() => runtime.stop());
-  const put = async () => (await runtime.call("memory.site.put", { origin: "https://app.example.com", patch: { key: "https://app.example.com", controls: [{ id: "c1", page: "/w", role: "button", selector: { strategy: "identifier", identifier: "save" } }] } }));
+  const put = async () => (await runtime.call("memory.site.put", { origin: "https://app.example.com", patch: { key: "https://app.example.com", controls: [{ id: "c1", page: "/w", role: "button", selector: { strategy: "identifier", identifier: "save" }, identifierVisits: ["a", "b"] }] } }));
   assert.equal((await put()).data.accepted, false, "off by default");
   assert.ok(!fs.existsSync(path.join(dataDir, "sites")), "nothing written");
   const { writeConfig } = await import("./trace.js");
   writeConfig(dataDir, { learn: true });
   assert.equal((await put()).data.accepted, true);
   assert.equal((await runtime.call("memory.site.get", { origin: "https://app.example.com" })).data.origin.controls[0].selector.identifier, "save");
+});
+
+test("the visit window for the two-visit evidence is floored at 5 minutes unless a test flag is on", async () => {
+  const { visitMsFrom } = await import("./runtime.js");
+  assert.equal(visitMsFrom(undefined, {}), 30 * 60_000, "default 30 minutes");
+  assert.equal(visitMsFrom(0.02, {}), 5 * 60_000, "a tiny setting is floored");
+  assert.equal(visitMsFrom(10, {}), 10 * 60_000);
+  assert.equal(visitMsFrom(0.02, { VYRE_CHROME_TEST: "1" }), 1200, "the harness may use a short window");
+  assert.equal(visitMsFrom(0.0001, { NODE_ENV: "test" }), 1000);
 });

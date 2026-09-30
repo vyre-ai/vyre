@@ -44,7 +44,7 @@ import { chunks, encode } from "../core/recall/embed.js";
 import { fakeEmbedder } from "../core/recall/testing.js";
 import { claudeOnce, modelFor } from "../core/memory/personal/reader.js";
 import { VERSION as ASK_VERSION } from "../core/memory/iq/ask.js";
-import { Budget, openrouterOnce, marginFor } from "./lib/eval-openrouter.js";
+import { Budget, openrouterOnce, marginFor, keyUsage, StartRefused, START_LIMIT_USD } from "./lib/eval-openrouter.js";
 import { embedAll, correct, CONFIDENT } from "./eval-answer.js";
 import * as open02 from "../test/fixtures/iq02-open.js";
 
@@ -145,10 +145,13 @@ async function timedAsk(mem, q, caller, input) {
 export const DEFAULT_OR_MODEL = "anthropic/claude-haiku-4.5";
 /** The spend guard of an OpenRouter recording run (null for `claude -p` or a replay). @type {Budget|null} */
 let budget = null;
+/** What the key had spent when this run started, read from OpenRouter before any call (null when not recording through OpenRouter). @type {number|null} */
+let keyBase = null;
 /** The recording runner: `claude -p`, or OpenRouter with a $15 stop when VYRE_EVAL_RUNNER=openrouter. @param {string} dir */
 function recorder(dir) {
   if (process.env.VYRE_EVAL_RUNNER !== "openrouter") return claudeOnce({ cwd: dir });
   budget = new Budget({ file: process.env.VYRE_EVAL_SPEND_FILE || path.join(ROOT, "test/eval/asks/iq02-open.spend.json"), limit: Number(process.env.VYRE_EVAL_LIMIT_USD) || undefined, margin: marginFor(process.env.VYRE_EVAL_MODEL || DEFAULT_OR_MODEL) });
+  if (keyBase != null) budget.setKeyBase(keyBase);
   return openrouterOnce({ key: String(process.env.OPENROUTER_EVAL_KEY || ""), model: process.env.VYRE_EVAL_MODEL || DEFAULT_OR_MODEL, budget });
 }
 
@@ -378,7 +381,27 @@ async function main(argv) {
     process.stderr.write("eval-bar: only the open world is recorded here; a sealed world is never recorded by a workflow.\n");
     process.exit(2);
   }
+  // The budget guard: a recording through OpenRouter reads the key's own usage first and refuses to start at $14 or more (or when it cannot
+  // read it). While it runs it stops before a call that could pass $15 of the key's total; after, the usage is printed again. Never the key.
+  const key = String(process.env.OPENROUTER_EVAL_KEY || "");
+  const viaOpenRouter = argv.includes("--record") && process.env.VYRE_EVAL_RUNNER === "openrouter";
+  const usd = (/** @type {number} */ n) => `$${n.toFixed(4)}`;
+  if (viaOpenRouter) {
+    try {
+      const before = await keyUsage({ key });
+      process.stdout.write(`eval-bar: key usage before: ${usd(before.usage)}${before.limit != null ? ` of the key's $${before.limit} limit` : ""}\n`);
+      if (before.usage >= START_LIMIT_USD) throw new StartRefused(before.usage);
+      keyBase = before.usage;
+    } catch (e) {
+      process.stderr.write(`eval-bar: ${/** @type {Error} */ (e).message}; nothing was sent to the model.\n`);
+      process.exit(3);
+    }
+  }
   const r = await runBar({ world: /** @type {any} */ (wi >= 0 ? argv[wi + 1] : "open"), record: argv.includes("--record"), explain: argv.includes("--explain") });
+  if (viaOpenRouter) {
+    try { const after = await keyUsage({ key }); process.stdout.write(`eval-bar: key usage after: ${usd(after.usage)}${keyBase != null ? ` (this run ${usd(after.usage - keyBase)})` : ""}\n`); }
+    catch (e) { process.stdout.write(`eval-bar: key usage after: unavailable (${/** @type {Error} */ (e).message})\n`); }
+  }
   if (argv.includes("--json")) process.stdout.write(JSON.stringify(r, null, 1) + "\n"); else print(r);
   if (argv.includes("--gate") && !r.pass) process.exitCode = 1;
   if (r.spend) process.stdout.write(`  spend: $${r.spend.usd} of $${r.spend.limit} over ${r.spend.calls} calls\n`);

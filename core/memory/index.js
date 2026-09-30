@@ -26,6 +26,7 @@ import { fixes as fixLog } from "./iq/fix.js";
 import { heard, contentWords } from "./iq/heard.js";
 import { catchCorrection, groundedAnswer } from "./iq/chatfix.js";
 import { userWords, devTalk, vyreFolder, sessionTrust } from "./personal/trust.js";
+import { register as registerSite } from "./site.js";
 import { writeStore, register as registerWrites, passages as writePassages, relevantLines, quoted as quotedWrite } from "./write.js";
 
 /** How long to wait after a session.indexed event before curating, so a burst of turns is one pass. */
@@ -517,6 +518,8 @@ export default {
       }
       if (fix.facts.length) personal.derive({ force: true });
       if (a?.via === "decision") await tieDecision(fix, a, input);
+      // A site answer the person said to forget: the sites it cited are forgotten (kept 24 hours for an undo, and a replica cannot bring them back).
+      if (a?.via === "site" && fix.action === "forget") for (const t of a.turns || []) { const m = /^site:(.+):\d+$/.exec(String(t)); if (m) siteStore.forgetKey(m[1], undefined, "forgot-by-answer", String(fix.id)); }
       ctx.events.emit("memory.fixed", { id: fix.id, action: fix.action, kind: fix.kind, source: fix.source });
       return { fix };
     };
@@ -821,6 +824,7 @@ export default {
     };
     /** A retrieval with the writes that bear on its question added as passages, when a scope is given. */
     const withWrites = (base, question, scope) => scope ? { ...base, passages: [...base.passages, ...writePassages(writes, question, scope, 3)] } : base;
+    const siteStore = registerSite(ctx, { denied });
     const { write: fileWrite } = registerWrites(ctx, { store: writes, reach, personWrites, ownSession, reader, denied, plain,
       projects: async () => { try { const l = await projectList(); return l.length ? l.map(p => p.slug) : null; } catch { return null; } } });
     /**
@@ -1017,7 +1021,7 @@ export default {
     const LIFE = new Set(["kin", "of", "birthday", "car", "carFate", "diet", "lives", "born", "myname", "owns"]);
     const trustOf = ctx.store.db.prepare("SELECT ok FROM memory_me_trust WHERE session = ?");
     const humanOf = () => { try { return ctx.store.db.prepare("SELECT human FROM recall_sessions WHERE id = ?"); } catch { return null; } };
-    const ask = asker({ db: ctx.store.db, answer, decide, retrieve: async i => withWrites(await retrieve(i), i.question, i.writes || null), fixes: fixed,
+    const ask = asker({ db: ctx.store.db, answer, decide, site: q => siteStore.answer(q), retrieve: async i => withWrites(await retrieve(i), i.question, i.writes || null), fixes: fixed,
       personalQ: q => {
         // About the user's own life: a relative, their car, home, diet, birthday, name. Work
         // questions that the personal parser also reads ("who's priya") stay work questions.
@@ -1056,10 +1060,10 @@ export default {
         const thread = typeof input.context?.thread === "string" ? input.context.thread : null;
         // The screen is the person's own: only their surfaces send it, never an agent.
         const screen = sees && input.screen && typeof input.screen === "object" ? input.screen : null;
-        if (input.stream !== true) return ask({ question: String(input.question || ""), project_cwds: effectiveCwds, personal: sees, thread, screen, writes: writesIn });
+        if (input.stream !== true) return ask({ question: String(input.question || ""), project_cwds: effectiveCwds, personal: sees, siteOk: siteStore.isPerson(caller), thread, screen, writes: writesIn });
         // Streamed: the events carry the id and the step, never the question or the answer.
         const id = typeof input.id === "string" && /^[A-Za-z0-9_-]{1,64}$/.test(input.id) ? input.id : `iq_${crypto.randomBytes(6).toString("hex")}`;
-        const r = await ask({ question: String(input.question || ""), project_cwds: effectiveCwds, personal: sees, thread, screen, writes: writesIn, stage: s => ctx.events.emit("memory.thinking", { id, stage: s }),
+        const r = await ask({ question: String(input.question || ""), project_cwds: effectiveCwds, personal: sees, siteOk: siteStore.isPerson(caller), thread, screen, writes: writesIn, stage: s => ctx.events.emit("memory.thinking", { id, stage: s }),
           // The draft goes to the calling connection only (extra.draft, when the caller asked for it): never the events bus.
           ...(typeof extra.draft === "function" ? { draft: t => extra.draft({ id, text: t }) } : {}) });
         ctx.events.emit("memory.answered", { id, abstained: Boolean(r.abstained), limited: Boolean(r.limited) });
@@ -1165,6 +1169,7 @@ export default {
             ctx.store.db.prepare("DELETE FROM memory_me_told WHERE id = ?").run(f.told);
           }
           ctx.store.db.prepare("UPDATE memory_decision_fixes SET undone = ? WHERE fix = ? AND undone IS NULL").run(Date.now(), Number(fix));
+          for (const key of siteStore.forgottenBy(Number(fix))) siteStore.restoreKey(key);
           personal.derive({ force: true });
           return { fix: f };
         }

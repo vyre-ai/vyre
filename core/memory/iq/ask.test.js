@@ -195,3 +195,29 @@ test("ask: the screen helps understand a question that points at it, and is neve
   await ask({ question: "who handles the harlow intake forms", personal: true, screen: trap });
   assert.doesNotMatch(prompts.at(-1), /<screen/);
 });
+
+
+test("ask: a site the question names never decides: what the normal answer finds answers alone; the site summary answers only when nothing else does", async t => {
+  const d = db(t);
+  const SITE = { answer: "From what Vyre for Chrome learned: GoHighLevel (app.ghl.example). Last worked 30 Sep.", confidence: 0.9, sources: [{ session: "site:https://app.ghl.example", seq: 0, role: "site", name: "GoHighLevel", site: "https://app.ghl.example" }] };
+  const fact = { answer: async () => ({ answer: "Your wife is Jordan.", kind: "fact", confidence: 0.9, facts: [{ id: "f1" }], sources: [{ session: "told:1", seq: 0, name: "told to memory" }] }) };
+  const none = { answer: async () => ({}), retrieve: async () => ({ passages: [] }) };
+  const withSite = (deps, site = async () => SITE) => asker({ db: d, site, ...deps });
+  // The meeting question: a normal answer exists, so it answers alone, with no site text.
+  const a = await withSite(fact)({ question: "what do you remember about my GoHighLevel meeting with Jordan", personal: true, siteOk: true });
+  assert.equal(a.via, "fact");
+  assert.equal(a.answer, "Your wife is Jordan.");
+  assert.deepEqual(a.sources.map(s => s.session), ["told:1"]);
+  // Nothing else answers: the summary does.
+  const b = await withSite(none)({ question: "what do you know about GoHighLevel", personal: true, siteOk: true });
+  assert.deepEqual([b.via, b.abstained, b.answer], ["site", false, SITE.answer]);
+  // Not the person's surface: never.
+  const c = await withSite(none)({ question: "what do you know about GoHighLevel", personal: true, siteOk: false });
+  assert.equal(c.answer, null);
+  assert.equal(c.abstained, true);
+  // The site has nothing to say: the normal answer, unchanged.
+  const e = await withSite(fact, async () => null)({ question: "who is my wife", personal: true, siteOk: true });
+  assert.equal(e.answer, "Your wife is Jordan.");
+  // A site that throws never breaks an answer.
+  assert.equal((await withSite(fact, async () => { throw new Error("x"); })({ question: "who is my wife", personal: true, siteOk: true })).answer, "Your wife is Jordan.");
+});

@@ -6,12 +6,18 @@
 // (memory.site.sync, union by newest verified, tombstones win). Nothing here holds a value: a patch with anything secret-shaped is refused whole.
 
 import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import crypto from "node:crypto";
-import { sanitize, emptyRecord, mergeRecord, arrivalCard, keyOk } from "../extension/shared/sk/site-knowledge.js";
+import { sanitize, emptyRecord, mergeRecord, arrivalCard, keyOk, heal, itemId, testNow } from "../extension/shared/sk/site-knowledge.js";
 
 /** @param {{ dataDir: string, now?: () => number }} o */
-export function createSiteStore({ dataDir, now = Date.now }) {
+export function createSiteStore({ dataDir, now: clock = Date.now, env = process.env }) {
+  // The store's ONE clock. Under a test flag (NODE_ENV=test or VYRE_CHROME_TEST), and ONLY when this store's folder is under the OS temp directory, VYRE_SITE_TEST_CLOCK may
+  // name a file holding an ISO time, so a harness can put misses on different days; in a person's real folder it is ignored, and it is never a setting.
+  const real = (/** @type {string} */ p) => { try { return fs.realpathSync(p); } catch { return path.resolve(p); } };
+  const where = { home: real(dataDir), tmp: real(os.tmpdir()) };
+  const now = () => { const t = testNow(env, (/** @type {string} */ p) => fs.readFileSync(p, "utf8"), where); return t ?? clock(); };
   const dir = path.join(dataDir, "sites");
   const fileOf = (/** @type {string} */ key) => path.join(dir, `${crypto.createHash("sha256").update(key).digest("hex").slice(0, 16)}.json`);
   /** @param {string} key @returns {any} */
@@ -43,6 +49,20 @@ export function createSiteStore({ dataDir, now = Date.now }) {
       const rec = mergeRecord(base, s.record, { now: now() });
       write(rec);
       return { data: { accepted: true, rev: rec.rev, dropped: s.dropped.length } };
+    },
+    /** A stored fact worked or did not: its confidence moves (lib heal). @param {{ origin: string, part: string, id: string, outcome: string }} i */
+    report(i) {
+      const key = String(i && i.origin || "");
+      if (!keyOk(key)) return { error: { code: "bad_request", message: "not an origin" } };
+      if (!["controls", "api", "frames", "flows"].includes(String(i.part)) || !["ok", "miss"].includes(String(i.outcome))) return { error: { code: "bad_request", message: "bad part or outcome" } };
+      const rec = read(key);
+      const list = rec && rec[i.part];
+      const at = Array.isArray(list) ? list.findIndex((/** @type {any} */ x) => itemId(i.part, x) === String(i.id)) : -1;
+      if (at < 0) return { data: { known: false } };
+      list[at] = heal(list[at], /** @type {"ok"|"miss"} */ (i.outcome), now());
+      rec.rev = (rec.rev || 0) + 1; rec.updated = new Date(now()).toISOString();
+      write(rec);
+      return { data: { known: true, conf: list[at].conf, misses: list[at].misses || 0, quarantined: !!list[at].qAt } };
     },
     /** What is known, by origin. */
     list() {

