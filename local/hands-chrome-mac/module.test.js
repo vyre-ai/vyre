@@ -539,3 +539,22 @@ test("module: a publish is covered only when the plan says the person's own word
   assert.equal((await reg.call("chrome.api", { action: "call", entry: "pub", tab: 1 }, KIT)).data.held, true, "only as many as the plan said");
   assert.equal(x.ops("api.call").filter((/** @type {any} */ o) => o.args.asked === true).length, 1);
 });
+
+test("module: the finish card and summary link each created item to its own builder page on the person's own host", async t => {
+  const { reg, gate, connect } = await rig(t);
+  let n = 0;
+  await connect({
+    "tabs.list": () => ({ tabs: [{ id: 1, title: "Workflows", url: "https://crm.harlowlaw.example/v2/location/LOC1234/automation/workflows", active: true }] }),
+    "api.call": (/** @type {any} */ a) => (a.writeOk || a.asked)
+      ? { ok: true, status: 201, method: "POST", url: "https://backend.example.com/workflow/LOC1234", responseBody: JSON.stringify({ id: `wfid${++n}abc` }) }
+      : { ok: false, held: true, write: true, kind: "create", method: "POST", control: { role: "request", name: "POST https://backend.example.com/workflow/LOC1234" }, fields: [], sig: "s", url: "https://crm.harlowlaw.example/x" } });
+  await reg.call("hands.grant.add", { agent: "kit" }, "cli");
+  await reg.call("chrome.plan", PLAN, KIT);
+  await reg.call("chrome.tabs", { action: "list" }, KIT);
+  const p = await reg.call("chrome.approve", { title: "Two", items: [{ kind: "create", what: "workflow", count: 2 }], tab: 1 }, KIT);
+  await reg.call("chrome.release", { id: p.data.id, content: gate().requests[gate().requests.length - 1].content }, "module:gate");
+  await reg.call("chrome.api", { action: "call", entry: "a", tab: 1 }, KIT);
+  const s = await reg.call("chrome.summary", {}, KIT);
+  assert.equal(s.data.changes[0].open, "https://crm.harlowlaw.example/v2/location/LOC1234/automation/workflows/wfid1abc", JSON.stringify(s.data));
+  assert.match(s.data.lines.join("\n"), /open: https:\/\/crm\.harlowlaw\.example\/v2\/location\/LOC1234\/automation\/workflows\/wfid1abc/);
+});

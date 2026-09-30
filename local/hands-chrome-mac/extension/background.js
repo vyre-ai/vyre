@@ -198,6 +198,11 @@ export function start(chrome, opts = {}) {
     });
   }
 
+  // A keyboard shortcut that a web page cannot intercept (unlike Esc in the page): stops Vyre wherever the focus is.
+  if (chrome.commands && chrome.commands.onCommand) {
+    chrome.commands.onCommand.addListener((/** @type {string} */ c) => { if (c === "stop-vyre") { ctx.setStopped(true); post({ event: "stop", via: "command" }); void presence.state({ stopped: "stop" }); } });
+  }
+
   if (chrome.alarms) {
     chrome.alarms.create(ALARM, { periodInMinutes: 1 });
     chrome.alarms.onAlarm.addListener((/** @type {any} */ a) => { if (a.name === ALARM && !port && !timer) connect(); });

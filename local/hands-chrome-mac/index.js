@@ -262,7 +262,7 @@ export default {
             const g = /** @type {NonNullable<typeof grant>} */ (grant);
             g.left[String(res.kind)]--; g.used++;
             res = screen(await bridge.call(op, { ...args, writeOk: true }, { timeoutMs: args.timeoutMs }));
-            recordChange(res, summary, true);
+            recordChange(res, summary, true, urls.get(Number(args.tab)) || "");
             showPresence({ of: g.total, label: g.title });
           }
           // A publish or activate is covered only when the person's own words asked for it and the plan card said "and publish": asking is approving.
@@ -270,7 +270,7 @@ export default {
             const g = /** @type {NonNullable<typeof grant>} */ (grant);
             g.left.publish--; g.used++;
             res = screen(await bridge.call(op, { ...args, asked: true }, { timeoutMs: args.timeoutMs }));
-            recordChange(res, summary, true);
+            recordChange(res, summary, true, urls.get(Number(args.tab)) || "");
             showPresence({ of: g.total, label: g.title });
           }
           if (isObj(res) && res.held === true) res = await hold(op, args, res, meta, summary);
@@ -315,8 +315,23 @@ export default {
     };
     /** Tell the extension what to show: a step count, a waiting state, a notification. @param {any} s */
     const showPresence = s => { try { void bridge.push({ event: "presence", ...s }); } catch { /* no extension connected */ } };
-    /** A change the run made with the page's login, for the summary and the card. @param {any} res @param {string} summary @param {boolean} covered */
-    const recordChange = (res, summary, covered) => {
+    /**
+     * Where to open one created thing, from ids the response gave and a URL shape we KNOW: GoHighLevel's builder, /v2/location/<loc>/automation/workflows/<id>, on the shell host the person is using
+     * (white-label included). Nothing is guessed for other sites: no link is better than a wrong one. (Learned per site in the site record, chrome-learning-plan.md.)
+     * @param {string} tabUrl @param {string} apiPath @param {string} id @param {string} method
+     */
+    const openLink = (tabUrl, apiPath, id, method) => {
+      if (!tabUrl || !id || method === "DELETE") return "";
+      try {
+        const u = new URL(tabUrl);
+        const loc = /\/v2\/location\/([A-Za-z0-9]+)\//.exec(u.pathname);
+        if (!loc || !/^https?:$/.test(u.protocol) || !/^[A-Za-z0-9_-]{6,64}$/.test(id)) return "";
+        if (/(^|\/)workflows?(\/|$)/i.test(apiPath)) return `${u.origin}/v2/location/${loc[1]}/automation/workflows/${id}`;
+      } catch { /* not a URL */ }
+      return "";
+    };
+    /** A change the run made with the page's login, for the summary and the card. @param {any} res @param {string} summary @param {boolean} covered @param {string} [tabUrl] the page the call was made from */
+    const recordChange = (res, summary, covered, tabUrl = "") => {
       if (!isObj(res) || res.ok === false || res.held) return;
       const method = String(res.method || "").toUpperCase();
       if (!method || /^(GET|HEAD|OPTIONS)$/.test(method)) return;
@@ -325,9 +340,10 @@ export default {
       try { const b = JSON.parse(String(res.responseBody || "null")); const d = b && (b.data || b); id = String((d && (d.id || d._id)) || "").slice(0, 80); } catch { /* not JSON */ }
       const where = originOf(String(res.url || "")) || "";
       let path = ""; try { path = new URL(String(res.url || "")).pathname; } catch { /* no url */ }
-      const c = { at: Date.now(), kind, method, what: scrub(`${kind} ${path || summary}${id ? ` (${id})` : ""}`).slice(0, 160), ...(id ? { id } : {}), ...(where ? { origin: where } : {}), ...(path ? { path } : {}), ...(res.status ? { status: res.status } : {}), covered };
+      const open = openLink(tabUrl, path, id, method);
+      const c = { at: Date.now(), ...(open ? { url: open } : {}), kind, method, what: scrub(`${kind} ${path || summary}${id ? ` (${id})` : ""}`).slice(0, 160), ...(id ? { id } : {}), ...(where ? { origin: where } : {}), ...(path ? { path } : {}), ...(res.status ? { status: res.status } : {}), covered };
       changes.push(c); while (changes.length > 200) changes.shift();
-      showPresence({ change: { kind, what: c.what } });
+      showPresence({ change: { kind, what: c.what, ...(open ? { url: open } : {}) } });
     };
     // The person pressing stop ends the plan: what they approved was for a run they have now halted.
     const offStop = ctx.events.on("chrome.stopped", () => { grant = null; });
@@ -463,11 +479,11 @@ export default {
       async (i, meta) => {
         const counts = { create: 0, edit: 0, delete: 0 };
         for (const c of changes) if (c.kind in counts) /** @type {any} */ (counts)[c.kind]++;
-        const list = changes.map(c => ({ kind: c.kind, what: c.what, ...(c.id ? { id: c.id } : {}), covered: c.covered,
+        const list = changes.map(c => ({ kind: c.kind, what: c.what, ...(c.id ? { id: c.id } : {}), ...(c.url ? { open: c.url } : {}), covered: c.covered,
           undo: c.kind === "create" && c.id ? `delete ${c.id}` : c.kind === "create" ? "delete it by hand (its id was not returned)" : c.kind === "edit" ? "no automatic undo: Vyre did not keep the old value" : "cannot be undone" }));
         const lines = [
           list.length ? `${list.length} change${list.length === 1 ? "" : "s"} made: ${counts.create} created, ${counts.edit} edited, ${counts.delete} deleted.` : "Nothing was changed with the page's login.",
-          ...list.map(c => `- ${c.what}${c.undo && !/^cannot/.test(c.undo) ? ` (undo: ${c.undo})` : ""}`),
+          ...list.map(c => `- ${c.what}${c.open ? ` (open: ${c.open})` : ""}${c.undo && !/^cannot/.test(c.undo) ? ` (undo: ${c.undo})` : ""}`),
           heldActs.size ? `${heldActs.size} action${heldActs.size === 1 ? " is" : "s are"} still waiting for the person's approval.` : "",
           grant ? `Plan "${grant.title}": ${grant.used} of ${grant.total} used.` : "",
         ].filter(Boolean);
@@ -539,7 +555,7 @@ export default {
             if (on) floor(on, String(c.op));
             const res = screen(await bridge.call(String(c.op), { ...(c.args || {}), asked: true, release: { sig: c.signature, signature: c.signature } }, { timeoutMs: (c.args || {}).timeoutMs }));
             acted(meta, null, String(c.op), true, undefined, `released ${summary}`);
-            if (String(c.op) === "api.call") recordChange(res, summary, false);
+            if (String(c.op) === "api.call") recordChange(res, summary, false, urls.get(Number((c.args || {}).tab)) || "");
             return res;
           } catch (e) {
             const x = /** @type {any} */ (e);
