@@ -4,6 +4,10 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### connections: connectors' default scope, and Turn back on carries the hash
+
+- A server whose scope is connectors' default (`{projects: "*", agents: [], assistant: true}`) reads "Just you and the assistant" in Settings, Connections, not "Every project". Turn back on on a watcher card sends `watchers.resume {name, hash}` (watchers accepts it now).
+
 #### chat and projects: the watcher card
 
 - `deck/chat/cards/watcher.js` (+ css; app-design's section 16): a card for a watcher or duty before it runs on its own. `watchers.card {name}` gives three plain sentences (When, Check, Then or Do, in the author's words when it has them) and the runtime's own facts drawn exactly as given (Reads, Uses as credential chips, Acts, Cost, Runs), with the provenance line. Turn on is `watchers.create {name, hash}` with the card's own hash; if the box says the code changed after the card was shown, the card says so and offers "Show the new card" and never turns on a different version. On shows Turn off (`watchers.pause`), paused shows Turn back on (`watchers.resume`). It draws as render kind `watcher` ({kind, name}), read-only when the result is not from a Vyre tool. The project Team tab's duty rows show the title together with the full instruction, trigger and whether it acts (never the title alone) and open the same card, starting the duty through `team.duties.enable {id, expect}`.

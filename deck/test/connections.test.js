@@ -858,3 +858,10 @@ test("pickConnections: one card per row, named fields only, whatever the source"
     { id: "c5", provider: "stripe", providerWord: "stripe", group: "other", account: "a", label: "a", ready: true, needs: [],
       capabilities: [], surfaces: [], defaultFor: [], lastUsed: null, connected: null });
 });
+
+test("a server with connectors' default scope reads Just you and the assistant, not 'Every project'", () => {
+  const s = pickServers([{ name: "notion", transport: "http", scope: { projects: "*", agents: [], assistant: true } }]);
+  assert.deepEqual(s[0].scope, { projects: "*", agents: [], assistant: true });
+  const widened = pickServers([{ name: "linear", transport: "http", scope: { projects: "*", agents: "*" } }]);
+  assert.equal(widened[0].scope.assistant, false);
+});

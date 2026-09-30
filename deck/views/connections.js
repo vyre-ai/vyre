@@ -92,7 +92,9 @@ export function pickServers(d) {
       tools: num(s.tools), lastUsed: num(s.lastUsed),
       auth: { type: str(s.auth?.type) || "none", item: str(s.auth?.item) }, env,
       scope: { projects: s.scope?.projects === "*" || !Array.isArray(s.scope?.projects) ? "*" : strs(s.scope.projects),
-        agents: s.scope?.agents === "*" || !Array.isArray(s.scope?.agents) ? "*" : strs(s.scope.agents) },
+        agents: s.scope?.agents === "*" || !Array.isArray(s.scope?.agents) ? "*" : strs(s.scope.agents),
+        // connectors' default for a server nobody widened: no project's agents, only the person and the assistant.
+        assistant: s.scope?.assistant === true && Array.isArray(s.scope?.agents) && s.scope.agents.length === 0 },
       command: str(s.command), args: strs(s.args), url: str(s.url),
       policy: { ...(Array.isArray(s.policy?.allow) ? { allow: strs(s.policy.allow) } : {}), ...(Array.isArray(s.policy?.deny) ? { deny: strs(s.policy.deny) } : {}), mode },
     };
@@ -447,7 +449,7 @@ export async function drawConnections(el, ctx, deps = {}) {
         meta("Runs", h("code", { class: "set-mono" }, how || "")),
         meta("Tools", s.tools === null ? h("span", { class: "muted" }, "Not listed yet. Test lists them.") : String(s.tools)),
         meta("Auth", authWords(s)),
-        meta("Scope", `${scopeWords(s.scope.projects, "Every project", "project")} · ${scopeWords(s.scope.agents, "every agent", "agent")}`),
+        meta("Scope", s.scope.assistant ? "Just you and the assistant" : `${scopeWords(s.scope.projects, "Every project", "project")} · ${scopeWords(s.scope.agents, "every agent", "agent")}`),
         meta("Last used", s.lastUsed ? `${since(s.lastUsed)} ago` : h("span", { class: "muted" }, "Never"))),
       st.tested.has(s.name) ? testedPanel(s) : null,
       st.confirming === `mcp:${s.name}`
