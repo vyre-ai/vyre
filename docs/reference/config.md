@@ -196,5 +196,6 @@ vyred sets these for the threads and helpers it starts, and the Harness reads th
 | Variable | What it does | Read in |
 | --- | --- | --- |
 | `VYRE_TEST_DIALOGS` | `1`: allow dialogs under tests, for a person at the machine running one test on purpose. | `core/config/dialogs.js`, `core/files/drive.js`, `local/screen-mac/screen.js` |
-| `VYRE_TEST_HOSTED` | `1`: for a vyred a test starts over a temp home, count its parent test process as the person's side. Never read for `~/.vyre`. | `core/daemon/peer.js` |
+| `VYRE_TEST_HOST` | Not described yet. | `core/daemon/host-guard.js` |
+| `VYRE_TEST_HOSTED` | `1`: for a vyred a test starts over a temp home, count its parent test process as the person's side. Never read for `~/.vyre`. | `core/daemon/host-guard.js`, `core/daemon/peer.js` |
 | `VYRE_TEST_REAL_TAILSCALE` | `1`: let a test use the real tailscale binary. | `core/link/transport.js`, `core/relay/tailnet.js` |
