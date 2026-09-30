@@ -46,7 +46,7 @@ const URL_RE = /(https:\/\/github\.com\/login\/device\S*)/;
 
 /**
  * @typedef {{ id: string, name: string, dir: string, child: any, expires: number,
- *   values: string[], timer: any, cancelled?: boolean, output: string }} Flow
+ *   values: string[], timer: any, cancelled?: boolean, output: string, gh: string }} Flow
  * @typedef {{
  *   taken: (name: string) => boolean | Promise<boolean>,
  *   blocked?: (item: string) => Promise<string | null>,
@@ -60,11 +60,32 @@ const URL_RE = /(https:\/\/github\.com\/login\/device\S*)/;
 
 const fail = (msg, code = "bad_input") => Object.assign(new Error(msg), { code });
 
+/** Where a system-installed gh lives; a hit here is trusted even if the person owns the folder (Homebrew). */
+const GH_DIRS = ["/usr/bin", "/usr/local/bin", "/opt/homebrew/bin", "/bin", "/usr/local/sbin"];
+
+/**
+ * gh as an absolute path: the configured one if it is absolute, else the first executable `gh` in
+ * a short list of system folders, else one in a PATH folder the person's own user cannot write to.
+ * A `gh` planted in a user-writable PATH folder is never run (it would run as the person).
+ * @param {string | undefined} configured @returns {string | null}
+ */
+export function resolveGh(configured) {
+  if (configured && path.isAbsolute(configured)) return configured;
+  const name = configured || "gh";
+  if (name.includes("/")) return null;
+  const exec = file => { try { fs.accessSync(file, fs.constants.X_OK); return fs.statSync(file).isFile(); } catch { return false; } };
+  const locked = dir => { try { fs.accessSync(dir, fs.constants.W_OK); return false; } catch { return true; } };
+  for (const dir of GH_DIRS) if (exec(path.join(dir, name))) return path.join(dir, name);
+  for (const dir of String(process.env.PATH || "").split(path.delimiter)) {
+    if (dir && path.isAbsolute(dir) && locked(dir) && exec(path.join(dir, name))) return path.join(dir, name);
+  }
+  return null;
+}
+
 /** @param {ConnectDeps} deps */
 export function connector(deps) {
   const log = deps.log || (() => {});
   const f = deps.fetch || globalThis.fetch;
-  const gh = deps.gh || "gh";
   const expiresMs = deps.expiresMs || EXPIRES_S * 1000;
   /** @type {Map<string, Flow>} */ const flows = new Map();
   /** How each recent sign-in ended, by id, so a stale id gets a plain answer instead of "no such sign-in". */
@@ -84,7 +105,7 @@ export function connector(deps) {
   });
 
   /** Run `gh` to completion and return its output (used for `auth token`). */
-  function runGh(dir, args) {
+  function runGh(dir, args, gh) {
     return new Promise((resolve, reject) => {
       let out = "", err = "";
       const c = spawn(gh, args, { env: envFor(dir), stdio: ["ignore", "pipe", "pipe"] });
@@ -135,7 +156,7 @@ export function connector(deps) {
       return;
     }
     let token;
-    try { token = (await runGh(flow.dir, ["auth", "token", "--hostname", "github.com"])).trim(); }
+    try { token = (await runGh(flow.dir, ["auth", "token", "--hostname", "github.com"], flow.gh)).trim(); }
     catch (e) { end(flow, "failed"); failed(flow, String(/** @type {any} */ (e)?.message || e)); return; }
     if (!token) { end(flow, "failed"); failed(flow, "GitHub CLI sent no token. Start a new one in Vyre."); return; }
     flow.values.push(token);
@@ -175,6 +196,8 @@ export function connector(deps) {
       if (!NAME.test(String(name || ""))) throw fail("name must be lowercase letters, digits and dashes, starting with a letter, at most 32");
       if (await deps.taken(name)) throw fail(`an account named ${name} is already connected; remove it first or choose another name`, "exists");
       if ([...flows.values()].some(x => x.name === name)) throw fail(`a sign-in for ${name} is already open; finish or cancel it first`, "exists");
+      const gh = resolveGh(deps.gh);
+      if (!gh) throw fail("Sign-in needs the GitHub CLI (gh), which is not installed here. Install it, or add a fine-grained token instead.", "gh_missing");
       const dir = fs.mkdtempSync(path.join(deps.tmpRoot || os.tmpdir(), "vyre-gh-"));
       const id = `gh_${crypto.randomBytes(9).toString("base64url")}`;
       const drop = () => { try { fs.rmSync(dir, { recursive: true, force: true }); } catch {} };
@@ -183,7 +206,7 @@ export function connector(deps) {
         child = spawn(gh, ["auth", "login", "--hostname", "github.com", "--git-protocol", "https", "--web",
           "--scopes", SCOPE, "--skip-ssh-key", "--insecure-storage"], { env: envFor(dir), stdio: ["ignore", "pipe", "pipe"] });
       } catch (e) { drop(); throw fail(`GitHub CLI could not be started: ${/** @type {any} */ (e)?.message || e}`, "gh_missing"); }
-      const flow = /** @type {Flow} */ ({ id, name, dir, child, expires: Date.now() + expiresMs, values: [], timer: null, output: "" });
+      const flow = /** @type {Flow} */ ({ id, name, dir, child, expires: Date.now() + expiresMs, values: [], timer: null, output: "", gh });
       // Wait for the code (or the CLI giving up) before answering.
       const shown = await new Promise((resolve, reject) => {
         const wait = setTimeout(() => reject(fail("GitHub CLI did not show a sign-in code in time.", "refused")), deps.codeWaitMs || CODE_WAIT_MS);

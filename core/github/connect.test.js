@@ -9,7 +9,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { connector } from "./connect.js";
+import { connector, resolveGh } from "./connect.js";
 
 const TOKEN = "gho_faketoken1234567890";
 
@@ -183,3 +183,15 @@ test("connect: a name taken by another sign-in finishing first is caught at the 
 
 // No revoke() test here: 0.2 dropped server-side revoke entirely (connect.js's own comment says
 // why). github.remove's own test covers local-only removal.
+
+test("resolveGh: an absolute path is used as given; a bare name is found only in system folders or a PATH folder the user cannot write, never a user-writable one", t => {
+  assert.equal(resolveGh("/opt/tools/gh"), "/opt/tools/gh");
+  assert.equal(resolveGh("sub/gh"), null);
+  const planted = fs.mkdtempSync(path.join(os.tmpdir(), "vyre-planted-"));
+  t.after(() => fs.rmSync(planted, { recursive: true, force: true }));
+  fs.writeFileSync(path.join(planted, "vyre-planted-gh"), "#!/bin/sh\n", { mode: 0o755 });
+  const was = process.env.PATH;
+  t.after(() => { process.env.PATH = was; });
+  process.env.PATH = `${planted}${path.delimiter}${was}`;
+  assert.equal(resolveGh("vyre-planted-gh"), null, "a planted binary in a writable PATH folder is ignored");
+});

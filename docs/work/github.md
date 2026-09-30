@@ -578,3 +578,4 @@ mcp.connect/oauth.js status have posted (both block the Next list below).
   off with -c; records origin/<branch> after a push so cleanup still sees it as on a remote.
   allow_secret counts only for a non-model caller or meta.asked. cloneRepo left (fresh dir, no local
   config: reviewer's LOW). Tests in git.test.js and index.test.js.
+- reviewer-2 LOW on 622904e8: gh is resolved to an absolute path (config/VYRE_GH_BIN if absolute, else /usr/bin, /usr/local/bin, /opt/homebrew/bin, /bin, else a PATH folder the user cannot write); a planted gh in a writable PATH folder is never run.
