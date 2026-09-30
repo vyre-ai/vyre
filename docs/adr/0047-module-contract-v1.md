@@ -64,7 +64,7 @@ the deprecation rules (section 8). `x-` keys are free.
   "$schema": "https://vyre.run/schema/module-1.json",
   "name": "bakery",
   "version": "0.1.0",
-  "apiVersion": 1,
+  "vyre": "1",
   "description": "Northwind Bakery's orders, the daily target and the flour order.",
   "roles": ["box"],
   "requires": { "memory": ">=0.1.0" },
@@ -103,7 +103,7 @@ the deprecation rules (section 8). `x-` keys are free.
 |---|---|---|
 | `name` | yes | `^[a-z][a-z0-9-]{1,40}$`. It prefixes every tool, event, setting and table. |
 | `version` | yes | semver of the module itself |
-| `apiVersion` | yes for added modules | the module API major, `1`. Built in modules get a grace default of 1. |
+| `vyre` | yes for added modules | the contract version it's written for: `"1"`, or `"1.2"` to need minor 2 (section 8). Built in modules get a grace default of `"1"`. |
 | `description` | added: yes | one plain sentence, shown on the install card |
 | `main` | no | entry file, default `index.js`, inside the folder |
 | `roles` | no | where it runs, default `["box"]` for added modules. `box` is the server, Linux or Mac. `local` is any device's local node. `mac` and `windows` narrow `local` to one OS. In 0.2 only the Mac has a local node (C1, C1w), so `windows` loads nowhere yet, and `vyre module check` says so. |
@@ -390,7 +390,7 @@ Runs: on your server, sandboxed
 
 | Piece | What it does | Status |
 |---|---|---|
-| `vyre module new <name>` | scaffolds `module.json` (v1, object tools, `apiVersion`), `index.js`, a test, `AGENTS.md` (the agent brief), README, `jsconfig.json` | on main, template updated to v1 |
+| `vyre module new <name>` | scaffolds `module.json` (v1, object tools, `vyre`), `index.js`, a test, `AGENTS.md` (the agent brief), README, `jsconfig.json` | on main, template updated to v1 |
 | `vyre module check [dir]` | schema, loader rules, reach and outward rules for added modules, entry file parses, static import scan (nothing outside the folder, nothing under `core/`, and none of `child_process`, `net`, `http`, `https`, `http2`, `tls`, `dns`, `dgram`, `worker_threads`, `cluster`, `inspector`, with or without `node:`) | on main, rules added |
 | `@vyre/module-sdk/testing` | `testModule(dir, opts)`: a fake registry and ctx over a temp home, with fake tools, a fake Gate (records holds), a fake vault.request, a fake spend and a fake push. The module's own tests import it. No daemon. | new |
 | `@vyre/module-sdk/conform` | `conformModule(dir)`: the checks every module must pass (below). `vyre module test` runs it, then the module's own tests. | new |
@@ -419,33 +419,85 @@ Runs: on your server, sandboxed
 
 **How updates keep added modules working (the ratchet):**
 
-- API 1 is frozen. Additions arrive only as optional keys and new ctx members found with
-  `ctx.api.has`.
-- `test/module-api-compat.test.js` runs conformance on `examples/modules/*` and on one frozen
-  fixture module per released minor (`test/fixtures/modules/api1-0.2/`...). A release that breaks
-  one fails CI. Fixtures are never edited, only added.
+- The contract changes by the rules in section 8: additive inside a major, deprecations that warn
+  and never fail, an adapter for the old major, pinned fixtures per version, every example against
+  every supported version in CI.
 - Built in modules move onto the same contract as they are touched. `test/boundaries.test.js`
   gains a second frozen list, built in modules still using internal ctx members, and it only
   shrinks (ADR 0033 section 6's kernel thinning).
 - `vyre doctor` and `vyre module list` name any module on a deprecated member, and any `replaces`
   module whose original gained tools.
 
-### 8. Versions and deprecation (unchanged from ADR 0033, restated as binding)
+### 8. Versions: the contract can change without breaking modules
 
-- `apiVersion` is an integer that moves only on a breaking change. Vyre loads the current major and
-  the one before. A module asking for a newer one isn't loaded, and `vyre module list` says "needs
-  Vyre with module API 2; you have 1".
-- A key or member is deprecated in a minor release, with a working replacement in the same
-  release. It keeps working for at least 90 days and two minor releases. The loader logs it once
-  per start and names it in `vyre doctor`. It's removed only when the major moves, listed under
-  "Module API" in the changelog.
-- Deprecated by this ADR, working through 0.3: string tool entries for added modules (built in
-  modules keep them until they are touched), `does.senders` (use `outward`), `shows.cli` (use
-  `does.commands`), `ctx.memory.teach` (use `ctx.memory.write`), and `callers: [...]` and
-  `internal` on built in modules' tools (use `reach`). Roles meaning only `box` or `local` stay
-  valid; `mac` and `windows` are additions. On added modules, `presence`, `callers`, `internal` and
-  `hook` in a tool definition are refused now, not deprecated: added modules never had them in a
-  release.
+The person's rule (30 Sep, binding): "make it so the module contract can later be updated without
+breaking every module built on it."
+
+**1. A module names its contract.** `module.json` carries `"vyre": "1"`, the contract major it is
+written for, or `"vyre": "1.2"` when it needs something added in minor 2. It's a string, and it's
+required for added modules. `apiVersion: 1` (on main from ADR 0033, never in a release to outside
+authors) is read as `"vyre": "1"` and warned as deprecated. The running contract is
+`ctx.api.version` (for example `"1.0"`). `packages/module-sdk/contract.json` maps each contract
+version to the first Vyre release that speaks it, and lists the supported majors.
+
+**2. Inside a major, changes are additive only.**
+- New manifest keys and new ctx members are optional, and a module that doesn't use them never
+  changes.
+- Nothing is removed, renamed or retyped. A value's meaning never narrows. A default never changes
+  what an existing module does.
+- **Unknown keys are ignored at load**, so a module written for 1.3 that uses a 1.3 key loads its
+  1.0 parts on a Vyre that only has 1.0 up to the version check below. `vyre module check` and
+  `vyre module test` show an unknown key as a warning, never a failure. That's how a typo gets
+  caught without an old Vyre refusing a new module.
+- A module finds a newer member with `ctx.api.has("<feature>")` and works without it when it
+  can.
+- The safety rules of 1.0 (reach, outward, the doors, default-deny) are part of the major. A later
+  minor may add a new door, never loosen an existing one.
+
+**3. Deprecation warns and never fails.** A deprecated key or member keeps working for at least two
+Vyre releases or six months, whichever is longer, with a working replacement in the same release.
+Until it is removed, it warns in `vyre module test`, `vyre module check`, `vyre doctor` and once per
+start in the log, and it never fails a check, a test or a load. It's removed only with a new major,
+listed under "Module contract" in the changelog.
+
+Deprecated by this ADR, working through at least two releases:
+- `apiVersion` (use `vyre`);
+- string tool entries for added modules (built in modules keep them until they're touched);
+- `does.senders` (use `outward`);
+- `shows.cli` (use `does.commands`);
+- `ctx.memory.teach` (use `ctx.memory.write`);
+- `callers: [...]` and `internal` on built in modules' tools (use `reach`).
+
+On added modules, `presence`, `callers`, `internal`, `hook` and `replaces` are refused from 1.0,
+because added modules never had them in a release, so refusing them breaks nobody.
+
+**4. A new major keeps the old one running.** When v2 ships:
+- v2 ships a **compatibility adapter**. The loader gives a `"vyre": "1"` module the v1 ctx and reads
+  its v1 manifest, translated onto v2 inside the adapter, so the module runs unchanged. The
+  adapter lives in `packages/module-sdk/compat/v1.js`, and conformance runs through it.
+- v2 ships **`vyre module upgrade`**, a codemod that rewrites a module's manifest and the ctx calls
+  it can rewrite safely, then runs `vyre module test` and lists what it couldn't do by hand. It
+  exists from 1.0: today it moves `apiVersion` to `vyre`, string tool entries to objects, and
+  `ctx.memory.teach` to `ctx.memory.write`.
+- v2 ships an updated agent brief, with the v1 brief kept beside it.
+- **v1 stays supported for at least 12 months after v2's first release.** Vyre loads every
+  supported major at once. After that window, a v1 module gets a plain "needs the v1 adapter,
+  removed in Vyre X: run vyre module upgrade" row, never a crash.
+
+**5. Pinned fixtures, every example against every supported version.**
+- `test/fixtures/modules/v<major>.<minor>/` holds one frozen module per contract minor, written
+  against exactly that minor. It's added when the minor ships and never edited afterwards.
+- `test/module-api-compat.test.js` runs `conformModule` on every example in `examples/modules/`
+  and every pinned fixture, against every contract version in `contract.json`'s supported list.
+  A module that declares a newer minor than the one under test must be refused cleanly (point 6),
+  not run. CI runs it on every change and in the release gate. A release that breaks one doesn't
+  ship.
+
+**6. Newer than this Vyre: a clear message, never a crash.** When a module's `vyre` is a newer
+minor, or a major this Vyre doesn't support, the loader never imports its code. Its row says, in
+the person's words, "bakery needs Vyre 0.4 or later (module contract 1.2); this Vyre has 1.0.
+Update Vyre, or ask the module's author for an older version." `vyre module add` says the same
+before staging anything, and `vyre module check` reports it as the one problem.
 
 ### 9. What each 0.2 team does so its modules match v1
 

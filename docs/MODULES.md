@@ -39,7 +39,7 @@ modules run inside vyred and use the same contract.
   "$schema": "https://vyre.run/schema/module-1.json",
   "name": "bakery",
   "version": "0.1.0",
-  "apiVersion": 1,
+  "vyre": "1",
   "description": "Northwind Bakery's orders, the daily target and the flour order.",
   "roles": ["box"],
   "does": {
@@ -71,7 +71,7 @@ Point `$schema` at it for editor help. `x-` keys are free for experiments.
 |---|---|
 | `name` | lowercase letters, digits and dashes. It prefixes every tool, event, setting and table. |
 | `version` | the module's own semver |
-| `apiVersion` | `1`. Required for a module you add. |
+| `vyre` | the contract version it's written for: `"1"`, or `"1.2"` if it needs something added in 1.2. Required for a module you add. |
 | `description` | one plain sentence, shown on the install card |
 | `main` | the entry file, default `index.js` |
 | `roles` | where it runs: `box` (the server, the default), `local` (a device's own node), `mac` or `windows` (`local` on that OS only; only the Mac has a local node in 0.2) |
@@ -195,12 +195,22 @@ do updates with it. An agent is only shown the tools it can actually use.
 
 ## Versions
 
-API 1 is frozen for Vyre 0.x. New things arrive as optional keys and as ctx members you test with
-`ctx.api.has`. A deprecated key or member keeps working for at least 90 days and two minor releases,
-and `vyre doctor` names every module still using it. It is removed only with a new API major, and
-Vyre loads the current major and the one before. Every release runs the conformance test on the
-example modules and on frozen modules from earlier releases, so a release that would break yours
-doesn't ship.
+Your module keeps working when Vyre updates. The rules:
+
+- **You name the contract.** `"vyre": "1"` in module.json.
+- **Inside a major, nothing breaks.** New keys and ctx members are optional. Nothing is removed,
+  renamed or retyped. Unknown keys are ignored when a module loads, and `vyre module check` shows
+  them as warnings. Use `ctx.api.has("<feature>")` for anything newer than your `vyre` version.
+- **Deprecation warns, never fails.** A deprecated key or member keeps working for at least two
+  releases or six months, whichever is longer. Until then, `vyre module test`, `vyre doctor` and the
+  log warn about it, and nothing fails.
+- **A new major keeps yours running.** Vyre 2 will run `"vyre": "1"` modules unchanged through an
+  adapter for at least 12 months. `vyre module upgrade` rewrites a module for the new major and
+  tests it. It already exists and moves older manifests to today's shape.
+- **Every release tests old modules.** Pinned modules for every contract version and every example
+  run against every supported version in CI, and a release that breaks one doesn't ship.
+- **Too new for this Vyre?** You get a plain message, "bakery needs Vyre 0.4 or later (module
+  contract 1.2); this Vyre has 1.0", and nothing crashes.
 
 ## What's built in only, for now
 
