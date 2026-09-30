@@ -11,6 +11,12 @@ this round; verification leans on windows-latest CI.
 verifies SHA256SUMS.sig with the Vyre release key (release.js scheme), the file hash, and refuses
 downgrades; fixture `tests/sums-vector.json` is checked by test/windows-sums-vector.test.js.
 
+**Drive (CI green):** `src/drive.rs` ports core/files/drive-windows.js (UNC, net use args, letter
+pick, error text, only 100.100.100.100@8080 shares) with `mount_drive`/`unmount_drive` commands for
+bundled pages. OPEN: the remote panel has no IPC, so how the box's files.drive.address reaches the
+shell needs a decision with drive/native-core (the shell calling the box itself needs the pairing
+session, which is the next step). Unverified on real Windows: WebClient service, 50 MB limit.
+
 **RESUMED 2026-09-30 (relaunch).** Merged origin/work/stage-0.2 into work/windows (a merge, not a
 rebase: 32 old commits, six conflicts, all union-resolved; win32 fresh default is role local,
 machine device). Docs and config tests pass locally. Scaffolded the Tauri shell in
