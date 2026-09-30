@@ -31,7 +31,7 @@
 import { redact } from "../lib/shared.js";
 import { passwordFieldScript, CREDENTIAL_STORE } from "../shared/guards.js";
 import { guardInstall, guardInstallWrites, guardCollect, held as heldRequest } from "../shared/outbound.js";
-import { egressGuard } from "./net.js";
+import { egressGuard, clearDenied } from "./net.js";
 import { isGhlHost } from "../shared/ghlhosts.js";
 import { err } from "../lib/err.js";
 import { matchControl, norm, nearMisses, topBlocker, classifyBlocker, describeBlocker, redactDom, whereOf, traceOf, nap } from "../lib/ui.js";
@@ -1402,7 +1402,7 @@ export default {
       // A script that opens the page's stored login is refused, and one that WRITES with it (fetch, XHR, beacon, form submit) is refused: nothing is sent.
       if (CREDENTIAL_STORE.test(String(args.expression))) throw err("blocked", "the script reads the page's stored login (IndexedDB or storage auth tokens, cookies). Vyre does not hand a login to a script, and a script should not hold one. Use chrome_api (action \"call\"): it signs the request with the page's own login inside the page, and the token is never in your hands. Prefer api.call over eval-fetch.");
       const guarded = trust.asked !== true;
-      const egress = guarded ? await egressGuard(ctx, tabId) : null;
+      const egress = guarded ? await egressGuard(ctx, tabId) : (await clearDenied(ctx, tabId), null);
       if (guarded) await run(frame, `window.__vyreAllow = ${JSON.stringify(egress && egress.allowed || [])};` + guardInstallWrites, {});
       /** @type {any} */ let r;
       /** @type {any[]} */ let blocked = [];

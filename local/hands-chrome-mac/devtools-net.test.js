@@ -4,7 +4,7 @@
 
 import { test, mock } from "node:test";
 import assert from "node:assert/strict";
-import net, { egressGuard } from "./extension/caps/net.js";
+import net, { egressGuard, clearDenied, siteOf } from "./extension/caps/net.js";
 import { makeCtx, request } from "./devtools-kit.js";
 import { T } from "./test-support/trust.js";
 
@@ -397,7 +397,7 @@ test("egress guard: the diagnostics name where each allowed origin came from, wh
   k.push(1, "Network.requestWillBeSent", { requestId: "a2", type: "XHR", documentURL: "https://app.example/", request: { url: "https://unanswered.example/x", method: "GET", headers: {} } });
   const eg = await egressGuard(k.ctx, 1);
   const d = /** @type {any} */ (eg).diag();
-  assert.ok(d.allowed["https://api.example"] === "capture", JSON.stringify(d.allowed));
+  assert.ok(d.allowed["https://api.example"] === "response", JSON.stringify(d.allowed));
   assert.equal(d.allowed["https://unanswered.example"], undefined, "a request that never got an answer is not evidence");
   await eg.stop();
 });
@@ -422,4 +422,85 @@ test("egress guard: what the guard blocked never becomes allowed by being observ
   const out2 = await eg2.stop();
   assert.equal(out2.length, 1);
   assert.equal(out2[0].type, "Fetch", "the blocked entry says what kind of request it was");
+});
+
+
+/** A world with a page on app.example that has talked to api.example (and, optionally, more), then a guard. */
+async function guardedWorld(extra = async (/** @type {any} */ _k) => {}) {
+  const k = makeCtx({ active: 1 });
+  k.ctx.tabs = { ...k.ctx.tabs, get: async () => ({ id: 1, url: "https://app.example/w" }) };
+  await net.ops["net.start"]({ tab: 1 }, k.ctx);
+  const seen = (/** @type {string} */ id, /** @type {string} */ url) => { k.push(1, "Network.requestWillBeSent", { requestId: id, type: "XHR", documentURL: "https://app.example/w", request: { url, method: "GET", headers: {} } }); k.push(1, "Network.responseReceived", { requestId: id, type: "XHR", response: { url, status: 200, headers: {}, mimeType: "application/json" } }); };
+  seen("s1", "https://api.example/x");
+  await extra(k);
+  return { k, seen };
+}
+const paused1 = (/** @type {any} */ k, /** @type {string} */ id, /** @type {string} */ url, /** @type {any} */ extra = {}) => { k.push(1, "Fetch.requestPaused", { requestId: id, request: { url, method: "POST", ...extra }, resourceType: "Fetch" }); };
+const tick1 = () => new Promise(r => setTimeout(r, 5));
+
+test("egress: two evals in a row to a never-seen origin are BOTH held (the first attempt never vouches for the origin)", async () => {
+  const { k } = await guardedWorld();
+  for (const n of [1, 2]) {
+    const eg = await egressGuard(k.ctx, 1);
+    // the attempt is captured (requestWillBeSent) and reaches the guard
+    k.push(1, "Network.requestWillBeSent", { requestId: `e${n}`, type: "Fetch", documentURL: "https://app.example/w", request: { url: `https://collector.example/steal?n=${n}`, method: "GET", headers: {} } });
+    paused1(k, `p${n}`, `https://collector.example/steal?n=${n}`);
+    await tick1();
+    assert.equal(k.calls("Fetch.failRequest").filter(s => s.params.requestId === `p${n}`).length, 1, `held on run ${n}`);
+    assert.equal((await eg.stop()).length, 1);
+  }
+});
+
+test("egress: a script-made <iframe src=fresh> stays in the DOM after it is blocked, and a second eval still holds that origin", async () => {
+  const { k } = await guardedWorld();
+  const eg1 = await egressGuard(k.ctx, 1);
+  // the script's iframe: a frame stub with that origin shows up in the frame list afterwards, but it never loaded a document
+  k.push(1, "Network.requestWillBeSent", { requestId: "f1", type: "Document", documentURL: "https://app.example/w", request: { url: "https://fresh.example/page", method: "GET", headers: {} } });
+  await eg1.stop();
+  /** @type {any} */ (k.ctx).frames = { list: async () => [{ index: 0, frameId: "TOP", how: "top", readable: true, origin: "https://app.example", url: "https://app.example/w" }, { index: 1, frameId: "element:TOP:1", how: "none", readable: false, origin: "https://fresh.example", url: "https://fresh.example/page" }] };
+  const eg2 = await egressGuard(k.ctx, 1);
+  assert.ok(!eg2.allowed.includes("https://fresh.example"), "the DOM's stub and the attempt vouch for nothing");
+  paused1(k, "pf", "https://fresh.example/steal");
+  await tick1();
+  assert.equal(k.calls("Fetch.failRequest").filter(s => s.params.requestId === "pf").length, 1);
+  await eg2.stop();
+});
+
+test("egress: a GHL-style builder iframe calling its own API is allowed; a 1 KB request to a third-party analytics origin the page uses is held; a small one is not", async () => {
+  const { k, seen } = await guardedWorld(async k => {
+    k.ctx.frames = { list: async () => [{ index: 0, frameId: "TOP", how: "top", readable: true, origin: "https://app.example", url: "https://app.example/w" }, { index: 1, frameId: "B", how: "session", readable: true, origin: "https://builder.leadconnectorhq.com", url: "https://builder.leadconnectorhq.com/x" }] };
+  });
+  seen("s2", "https://backend.leadconnectorhq.com/workflow/1");
+  seen("s3", "https://analytics.thirdparty.example/collect");
+  const eg = await egressGuard(k.ctx, 1);
+  assert.ok(eg.allowed.includes("https://builder.leadconnectorhq.com"), "a frame that loaded a document");
+  const big = "x".repeat(1024);
+  paused1(k, "api1", "https://backend.leadconnectorhq.com/workflow/1", { postData: big });
+  paused1(k, "an1", "https://analytics.thirdparty.example/collect", { postData: big });
+  paused1(k, "an2", "https://analytics.thirdparty.example/collect", { postData: "ping" });
+  await tick1();
+  const failed = k.calls("Fetch.failRequest").map(s => s.params.requestId);
+  assert.ok(!failed.includes("api1"), "the builder's own API gets any size: same site as the frame");
+  assert.ok(failed.includes("an1"), "1 KB to a third party is held");
+  assert.ok(!failed.includes("an2"), "a beacon-sized request to it is not");
+  await eg.stop();
+  assert.equal(siteOf("https://backend.leadconnectorhq.com"), siteOf("https://builder.leadconnectorhq.com"));
+  assert.equal(siteOf("https://a.example.co.uk"), siteOf("https://b.example.co.uk"));
+  assert.notEqual(siteOf("https://a.example.co.uk"), siteOf("https://a.other.co.uk"));
+});
+
+test("egress: an asked approval clears the denied origins for the tab", async () => {
+  const { k } = await guardedWorld();
+  const eg = await egressGuard(k.ctx, 1);
+  k.push(1, "Network.requestWillBeSent", { requestId: "x1", type: "Fetch", documentURL: "https://app.example/w", request: { url: "https://approved.example/a", method: "GET", headers: {} } });
+  await eg.stop();
+  const t = /** @type {any} */ (k.ctx).__t;
+  void t;
+  await clearDenied(k.ctx, 1);
+  // the page later really talks to it (a completed response outside a guard): now it is allowed
+  k.push(1, "Network.requestWillBeSent", { requestId: "x2", type: "XHR", documentURL: "https://app.example/w", request: { url: "https://approved.example/b", method: "GET", headers: {} } });
+  k.push(1, "Network.responseReceived", { requestId: "x2", type: "XHR", response: { url: "https://approved.example/b", status: 200, headers: {}, mimeType: "x" } });
+  const eg2 = await egressGuard(k.ctx, 1);
+  assert.ok(eg2.allowed.includes("https://approved.example"));
+  await eg2.stop();
 });

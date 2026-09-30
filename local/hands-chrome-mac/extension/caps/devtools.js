@@ -23,7 +23,7 @@ import * as redact from "../shared/redact.js";
 import { classify } from "../shared/floor.js";
 import { passwordFieldScript, CREDENTIAL_STORE } from "../shared/guards.js";
 import { guardInstallWrites, guardCollect, held as heldRequest } from "../shared/outbound.js";
-import { egressGuard } from "./net.js";
+import { egressGuard, clearDenied } from "./net.js";
 
 import { fail } from "../shared/proto.js";
 
@@ -434,7 +434,7 @@ const ops = {
     }
     if (CREDENTIAL_STORE.test(String(args.expression))) throw refuse("blocked", "the script reads the page's stored login (IndexedDB or storage auth tokens). Vyre does not hand a login to a script, and a script should not hold one. Use chrome_api (action \"call\"): it signs the request with the page's own login inside the page, and the token is never in your hands. Prefer api.call over eval-fetch.");
     const guarded = trust.asked !== true;
-    const egress = guarded ? await egressGuard(ctx, tab) : null;
+    const egress = guarded ? await egressGuard(ctx, tab) : (await clearDenied(ctx, tab), null);
     // The send-hold shim goes into the SAME frame as the script, and is read back from there.
     if (guarded) await runIn(ctx, tab, frame, `window.__vyreAllow = ${JSON.stringify(egress && egress.allowed || [])};` + guardInstallWrites, { returnByValue: true });
     /** @type {any} */ let r;

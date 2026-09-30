@@ -241,8 +241,12 @@ function handle(ctx, t, method, p, session) {
     const frame = docOrigin(p.documentURL) || (session ? docOrigin(kidUrl(ctx, t, session)) : "");
     /** @type {Rec} */
     const r = { id: key, requestId: String(p.requestId), ...(session ? { session } : {}), ...(frame ? { frame } : {}), seq: ++t.seq, ts: p.wallTime ? Math.round(p.wallTime * 1000) : Date.now(), method: p.request?.method || "GET", url: p.request?.url || "", type: p.type || "Other", initiator: p.initiator || {}, reqHeaders: { ...(p.request?.headers || {}) }, resHeaders: {}, postData: p.request?.postData, size: 0 };
-    // A request made while the eval guard was up is not evidence that the page talks to that origin (it may be the very request the guard blocks): the guard never learns from it.
-    if (/** @type {any} */ (t).egress) /** @type {any} */ (r).guarded = true;
+    // A request made while the eval guard was up is not evidence that the page talks to that origin (it may be the very request the guard blocks): the guard never learns from it,
+    // and an origin first seen HERE, that the guard had not already allowed, is denied for good, whoever blocks the request (DNR, Fetch or nothing).
+    if (/** @type {any} */ (t).egress) {
+      /** @type {any} */ (r).guarded = true;
+      try { const o = new URL(String(r.url)).origin; if (o && o !== "null" && !/** @type {any} */ (t).egress.allowed.has(o)) (t.denied || (t.denied = new Set())).add(o); } catch { /* not a URL */ }
+    }
     r.size = weigh(r);
     t.recs.set(r.id, r);
     t.bytes += r.size;
@@ -255,6 +259,8 @@ function handle(ctx, t, method, p, session) {
   if (method === "Network.requestWillBeSentExtraInfo") { Object.assign(r.reqHeaders, p.headers || {}); reweigh(t, r); }
   else if (method === "Network.responseReceived") {
     r.status = p.response?.status;
+    // ONE RULE for what the page "talks to": an origin that returned a completed response to a request made OUTSIDE any guard. Nothing else vouches for an origin.
+    if (!(/** @type {any} */ (r)).guarded && Number(r.status) > 0) { try { const o = new URL(String(r.url)).origin; if (o && o !== "null") (t.okOrigins || (t.okOrigins = new Set())).add(o); } catch { /* not a URL */ } }
     r.mime = p.response?.mimeType;
     r.timing = p.response?.timing;
     if (p.type) r.type = p.type;
@@ -387,6 +393,18 @@ export function present(view) {
  * whether any of them was accepted. It never continues the request.
  * @param {(m: string, x: any) => Promise<any>} send @param {string} id @param {string} reason
  */
+/** The site of an origin, approximately: the registrable domain (last two labels, three under a two-letter TLD with a short second level), or the whole host for an IP or a localhost name. @param {string} origin */
+export function siteOf(origin) {
+  let h = ""; try { h = new URL(origin).hostname; } catch { return origin; }
+  if (/^[\d.]+$/.test(h) || h.includes(":") || h.endsWith(".localhost") || h === "localhost") return h;
+  const p = h.split(".");
+  if (p.length <= 2) return h;
+  const tld = p[p.length - 1], sld = p[p.length - 2];
+  return tld.length === 2 && ["co", "com", "org", "net", "gov", "ac", "edu"].includes(sld) ? p.slice(-3).join(".") : p.slice(-2).join(".");
+}
+/** A third party the page talks to may receive only SMALL requests from a guarded script (URL plus body at most this many bytes): a beacon-sized ping, never a dump. */
+export const THIRD_PARTY_MAX_BYTES = 256;
+
 async function stopRequest(send, id, reason) {
   let stopped = false;
   for (let i = 0; i < 2 && !stopped; i++) stopped = await Promise.resolve(send("Fetch.failRequest", { requestId: id, errorReason: reason })).then(() => true, () => false);
@@ -406,7 +424,16 @@ async function paused(ctx, t, p, session) {
       let o = "";
       try { const x = new URL(p.request?.url || ""); if (!["data:", "blob:", "about:", "chrome-extension:"].includes(x.protocol)) o = x.origin; } catch { /* not a URL */ }
       (eg.decisions || (eg.decisions = [])).length < 40 && eg.decisions.push({ origin: o, type: String(p.resourceType || ""), ...(session ? { session: "child" } : {}), decision: o && !eg.allowed.has(o) ? "block" : "allow" });
-      if (o && !eg.allowed.has(o)) {
+      // A third party the page uses (allowed, but not the tab's site or a loaded frame's site) may only be sent something SMALL by a guarded script. Residual, written down: a multi-tenant third
+      // party (an analytics or storage service many sites share) can still receive up to this much per request; this is a size bound, not a proof of intent.
+      let thirdPartyBig = false;
+      if (o && eg.allowed.has(o) && eg.first) {
+        const site = siteOf(o);
+        const firstParty = [...eg.first].some(f => siteOf(f) === site);
+        const size = String(p.request?.url || "").length + (typeof p.request?.postData === "string" ? p.request.postData.length : p.request?.hasPostData ? THIRD_PARTY_MAX_BYTES + 1 : 0);
+        thirdPartyBig = !firstParty && size > THIRD_PARTY_MAX_BYTES;
+      }
+      if (o && (!eg.allowed.has(o) || thirdPartyBig)) {
         // JUDGED BLOCKED: from here nothing may let this request go. failRequest, once more if it fails, then a fulfilled 403 with an empty body (the page gets an answer, the
         // origin gets nothing). If every attempt fails the request is left paused and the script's eval says a request MAY have been sent: it is never continued.
         judged = true;
@@ -467,6 +494,9 @@ async function paused(ctx, t, p, session) {
  * @param {any} ctx @param {number} tab
  * @returns {Promise<{ contained: "full"|"partial", why?: string, stop: () => Promise<Array<{ method: string, origin: string }>> }>}
  */
+/** The person approved something for this tab (an `asked` call): origins the guard denied are no longer held against it. @param {any} ctx @param {number} tab */
+export async function clearDenied(ctx, tab) { try { const t = /** @type {any} */ (await start(ctx, tab)); if (t.denied) t.denied.clear(); } catch { /* no capture */ } }
+
 export async function egressGuard(ctx, tab) {
   const t = /** @type {any} */ (await start(ctx, tab));
   const eg = t.egress || (t.egress = { depth: 0, allowed: new Set(), blocked: [] });
@@ -475,21 +505,28 @@ export async function egressGuard(ctx, tab) {
   /** Where each allowed origin came from, for the diagnostics of a leak. @type {Record<string, string>} */
   const prov = eg.prov || (eg.prov = {});
   const add = (/** @type {string} */ u, /** @type {string} */ why = "?") => { try { const x = new URL(String(u)); if (x.origin && x.origin !== "null" && !denied.has(x.origin)) { eg.allowed.add(x.origin); if (!prov[x.origin]) prov[x.origin] = why; } } catch { /* skip */ } };
+  // THE RULE. Allowed = the tab's own origin + origins that returned a completed response to a request made outside any guard + (at the first guard only) what the browser itself reports as
+  // loaded: frames that actually have a document (the CDP frame tree, never the DOM's iframe elements or their `element:` stubs) and resource-timing entries with a response status.
+  // The DOM, frame stubs, attempts and anything a guarded script made can never vouch for an origin.
   try { const tb = await ctx.tabs.get(tab); add(tb && (tb.url || tb.pendingUrl), "tab"); } catch { /* the tab went away */ }
-  // Only requests that COMPLETED with a response and were not made under a guard say "the page talks to this origin".
-  for (const r of t.recs.values()) { if (/** @type {any} */ (r).guarded || !(/** @type {any} */ (r).status)) continue; add(r.url, "capture"); if (r.frame) add(r.frame, "capture-frame"); }
-  const timing = "[...new Set(performance.getEntriesByType('resource').map(e => e.name).concat(location.href))].slice(0, 1000)";
+  for (const o of (t.okOrigins || [])) add(o, "response");
   /** @type {any[]} */ let frames = [];
   try { frames = ctx.frames && typeof ctx.frames.list === "function" ? await ctx.frames.list(tab) : []; } catch { frames = []; }
-  for (const f of frames) { add(f.origin, "frame"); add(f.url, "frame"); }
-  const readable = frames.filter(f => f.readable);
-  if (!readable.length) readable.push(null);
-  for (const f of readable) {
-    try {
-      const rt = await runIn(ctx, tab, f, timing, { returnByValue: true });
-      for (const u of (rt && rt.result && rt.result.value) || []) add(u, "timing");
-    } catch { /* the guard still stands with what it has */ }
+  const readable = frames.filter(f => f.readable && !String(f.frameId).startsWith("element:"));
+  if (!t.seeded) {
+    t.seeded = true;
+    t.seedOrigins = new Set();
+    for (const f of frames) if (f.how !== "none" && !String(f.frameId).startsWith("element:") && f.origin) t.seedOrigins.add(f.origin);
+    // What the page's own resource timing says got a response (responseStatus > 0, Chrome 109+; an engine without the field is taken at its word).
+    const timing = "[...new Set(performance.getEntriesByType('resource').filter(e => e.responseStatus === undefined || e.responseStatus > 0).map(e => e.name))].slice(0, 1000)";
+    for (const f of (readable.length ? readable : [null])) {
+      try { const rt = await runIn(ctx, tab, f, timing, { returnByValue: true }); for (const u of (rt && rt.result && rt.result.value) || []) { try { t.seedOrigins.add(new URL(String(u)).origin); } catch { /* */ } } } catch { /* the guard still stands with what it has */ }
+    }
   }
+  for (const o of t.seedOrigins) add(o, "first-guard");
+  // The first party: the tab's own site and the sites of frames that loaded a document. Everything else allowed is a third party (see paused()).
+  eg.first = new Set([...eg.allowed].filter(o => prov[o] === "tab" || t.seedFrames?.has?.(o)));
+  for (const f of frames) if (f.how !== "none" && !String(f.frameId).startsWith("element:") && f.origin && !(t.denied && t.denied.has(f.origin))) eg.first.add(f.origin);
   if (eg.depth === 0 && ctx.dnr) {
     const hosts = [...eg.allowed].map(o => { try { return new URL(o).hostname; } catch { return ""; } }).filter(Boolean);
     const b = await ctx.dnr.block({ tab, allowHosts: [...new Set(hosts)] });

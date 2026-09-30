@@ -330,6 +330,8 @@ async function main() {
           "iframe SharedWorker (Blob URL)": `(async () => { const f = document.createElement('iframe'); document.body.appendChild(f); try { const b = new f.contentWindow.Blob(["fetch('" + ${L} + "shared').catch(function () {});"]); const w = new f.contentWindow.SharedWorker(f.contentWindow.URL.createObjectURL(b)); await new Promise(function (r) { setTimeout(r, 500); }); } catch (e) {} return 1; })()`,
           "script rewrites its own allow list": `(async () => { window.__vyreAllow = [${L}.split('/collect')[0]]; try { await fetch(${L} + 'rewrite'); } catch (e) {} return 1; })()`,
           "frame attached mid-script": `(async () => { const f = document.createElement('iframe'); f.srcdoc = "<script>fetch('" + ${L} + "late').catch(function () {});<\/script>"; document.body.appendChild(f); await new Promise(function (r) { setTimeout(r, 600); }); return 1; })()`,
+          "script-made iframe src=fresh": `(async () => { const f = document.createElement('iframe'); f.src = ${L} + 'frame'; document.body.appendChild(f); await new Promise(function (r) { setTimeout(r, 400); }); return 1; })()`,
+          "second eval fetches fresh after that iframe": `(async () => { try { await fetch(${L} + 'second'); } catch (e) {} return 1; })()`,
           "window.open": `(() => { try { window.open(${L} + 'open'); } catch (e) {} return 1; })()`,
         });
         for (const [name, expression] of Object.entries(escapes)) {
