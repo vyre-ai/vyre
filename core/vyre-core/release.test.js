@@ -25,7 +25,8 @@ function signed(kp, obj = { version: "1.2.3", tarball: "core.tgz", sha256: HASH 
   const bytes = Buffer.from(JSON.stringify(obj));
   return { bytes, sig: crypto.sign(null, bytes, kp.priv).toString("base64") };
 }
-const tar = (cwd, args) => execFileSync("tar", args, { cwd, stdio: "pipe" });
+// COPYFILE_DISABLE: macOS tar would add ._ AppleDouble entries beside every file.
+const tar = (cwd, args) => execFileSync("tar", args, { cwd, stdio: "pipe", env: { ...process.env, COPYFILE_DISABLE: "1" } });
 
 test("the baked-in key is a valid Ed25519 SPKI constant", () => {
   assert.ok(crypto.createPublicKey({ key: Buffer.from(RELEASE_KEY, "base64"), format: "der", type: "spki" }));
@@ -191,4 +192,19 @@ test("a corrupt or non-gzip file is refused", (t) => {
   const f = path.join(d, "bad.tgz");
   fs.writeFileSync(f, "not a tarball");
   assert.throws(() => listTar(f), /gzip/);
+});
+
+test("a lone package/ folder (npm pack) is stripped on extract; any other single folder is kept", (t) => {
+  const pkg = build(t, (s) => { fs.mkdirSync(path.join(s, "package", "core"), { recursive: true }); fs.writeFileSync(path.join(s, "package", "core", "a.js"), "x"); }, ["package"]);
+  const a = path.join(pkg.d, "out", "v1");
+  extract(pkg.out, a);
+  assert.equal(fs.readFileSync(path.join(a, "core", "a.js"), "utf8"), "x");
+  const other = build(t, (s) => { fs.mkdirSync(path.join(s, "core"), { recursive: true }); fs.writeFileSync(path.join(s, "core", "a.js"), "y"); }, ["core"]);
+  const b = path.join(other.d, "out", "v1");
+  extract(other.out, b);
+  assert.equal(fs.readFileSync(path.join(b, "core", "a.js"), "utf8"), "y", "a flat tarball with one folder is not stripped");
+  const dot = build(t, (s) => { fs.mkdirSync(path.join(s, "package"), { recursive: true }); fs.writeFileSync(path.join(s, "package", "b.js"), "z"); }, ["."]);
+  const c = path.join(dot.d, "out", "v1");
+  extract(dot.out, c);
+  assert.equal(fs.readFileSync(path.join(c, "b.js"), "utf8"), "z", "the same layout written with a ./ prefix strips too");
 });

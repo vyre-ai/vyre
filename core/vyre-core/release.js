@@ -305,21 +305,27 @@ function normalize(dir) {
 }
 
 /**
- * Extract a vetted tarball into a fresh directory that must not exist yet. Extracts beside
+ * Extract a vetted tarball into a fresh directory that must not exist yet (a lone `package/` folder,
+ * as npm pack makes, is stripped). Extracts beside
  * `destDir`, normalizes modes, then renames into place in one step.
  * @param {string} file
  * @param {string} destDir
  * @param {{ tar?: string }} [opts]
  */
 export function extract(file, destDir, { tar = "tar" } = {}) {
-  checkEntries(listTar(file));
+  const entries = listTar(file);
+  checkEntries(entries);
+  // `npm pack` (what vyre.tgz is) puts everything under one `package/` folder; a hand-built tarball
+  // is flat. Exactly one top-level entry named package/ is stripped; nothing else ever is.
+  const tops = new Set(entries.map((e) => e.path.replace(/^\.\//, "").split("/")[0]).filter(Boolean));
+  const strip = tops.size === 1 && tops.has("package") ? [`--strip-components=${entries.some((e) => e.path.startsWith("./")) ? 2 : 1}`] : [];
   const dest = path.resolve(destDir);
   if (fs.existsSync(dest)) throw new Error(`destination already exists: ${dest}`);
   fs.mkdirSync(path.dirname(dest), { recursive: true });
   const stage = `${dest}.tmp-${process.pid}-${crypto.randomBytes(4).toString("hex")}`;
   fs.mkdirSync(stage, { mode: 0o700 });
   try {
-    execFileSync(tar, ["-xzf", file, "-C", stage, "--no-same-owner"], { stdio: ["ignore", "ignore", "pipe"] });
+    execFileSync(tar, ["-xzf", file, "-C", stage, "--no-same-owner", ...strip], { stdio: ["ignore", "ignore", "pipe"] });
     normalize(stage);
     fs.renameSync(stage, dest);
   } catch (e) {
