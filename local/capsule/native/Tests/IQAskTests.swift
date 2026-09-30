@@ -31,6 +31,13 @@ private func until(_ cond: @escaping @MainActor () -> Bool) async -> Bool {
     }
 }
 
+/// Holds a fake tool until the test has seen what it streamed (at most 4 s, so a failure cannot hang).
+private final class Gate: @unchecked Sendable {
+    private let sem = DispatchSemaphore(value: 0)
+    func open() { sem.signal() }
+    func wait() { _ = sem.wait(timeout: .now() + 4) }
+}
+
 let iqAskSuite = Suite("iq ask") { t in
     t.test("words that point at the screen, and ones that do not") {
         for w in ["what is this error", "what am I looking at", "explain the selected text", "summarize what's on screen", "what does this mean",
@@ -132,10 +139,11 @@ let iqAskSuite = Suite("iq ask") { t in
         t.eq(limited.text, "Vyre IQ used today's $0.50. It resets at midnight.")
         t.eq(limited.answerId, nil)
 
-        t.eq(IQAnswer.stageWord("understanding"), "Understanding the question")
-        t.eq(IQAnswer.stageWord("searching"), "Searching your sessions and memory")
-        t.eq(IQAnswer.stageWord("reading"), "Reading 8 passages")
-        t.eq(IQAnswer.stageWord("checking"), "Checking the answer")
+        // C13's stages, each a short plain word; an unknown stage shows nothing new.
+        t.eq(["understand", "search", "read", "answer", "check"].map { IQAnswer.stageWord($0) ?? "nil" },
+             ["Understanding", "Searching your sessions", "Reading", "Writing", "Checking"])
+        t.eq(IQAnswer.stageWord("ponder"), nil)
+        t.eq(IQAnswer.stageWord("understanding"), nil, "the pre-C13 names are not stages")
     }
 
     t.test("a quick question goes to memory.ask, not a session; a follow-up starts one told the conversation") {
@@ -165,10 +173,13 @@ let iqAskSuite = Suite("iq ask") { t in
     t.test("streaming: memory.thinking stages show as words while memory.ask is out, then clear") {
         let v = FakeVyred(); v.start(); defer { v.stop() }
         v.tool("memory.ask") { input in
-            v.emit("memory.thinking", ["id": VJ.s(input["id"]), "stage": "understanding"])
-            v.emit("memory.thinking", ["id": VJ.s(input["id"]), "stage": "searching"])
-            v.emit("memory.thinking", ["id": VJ.s(input["id"]), "stage": "reading"])
-            v.emit("memory.thinking", ["id": VJ.s(input["id"]), "stage": "checking"])
+            v.emit("memory.thinking", ["id": VJ.s(input["id"]), "stage": "understand"])
+            v.emit("memory.thinking", ["id": VJ.s(input["id"]), "stage": "search"])
+            v.emit("memory.thinking", ["id": VJ.s(input["id"]), "stage": "read"])
+            v.emit("memory.thinking", ["id": VJ.s(input["id"]), "stage": "check"])
+            // Another ask's stage, and a stage this Capsule does not know: neither shows.
+            v.emit("memory.thinking", ["id": "cap_other", "stage": "answer"])
+            v.emit("memory.thinking", ["id": VJ.s(input["id"]), "stage": "ponder"])
             // A real answer takes seconds; give the SSE thread (a separate connection) time to
             // read and dispatch these before the call itself resolves, as it always does live.
             Thread.sleep(forTimeInterval: 0.06)
@@ -183,16 +194,77 @@ let iqAskSuite = Suite("iq ask") { t in
             _ = await until { !v.callsOf("memory.ask").isEmpty }
             let id = VJ.s(v.callsOf("memory.ask").first?["id"])
             let stream = VJ.truthy(v.callsOf("memory.ask").first?["stream"])
-            let stage = await until { m.iqStage == "Checking the answer" }
+            let stage = await until { m.iqStage == "Checking" }
             _ = await until { m.reply?.finished == true }
             let cleared = await MainActor.run { m.iqStage == nil }
             let answerId = await MainActor.run { m.iqAnswerId }
             await MainActor.run { m.didHide() }
-            return (id.isEmpty || !stream ? "" : id, stage ? "Checking the answer" : nil, cleared && answerId == "a1")
+            return (id.isEmpty || !stream ? "" : id, stage ? "Checking" : nil, cleared && answerId == "a1")
         }
         t.ok(r?.id.hasPrefix("cap_") == true, "the call's own id, cap_<n>: \(r?.id ?? "nil")")
-        t.eq(r?.stage, "Checking the answer")
+        t.eq(r?.stage, "Checking", "the last known stage stays; another id's and an unknown stage change nothing")
         t.eq(r?.done, true, "iqStage clears once the answer is in, answer_id kept")
+    }
+
+    t.test("streaming: memory.draft frames show dimmed, the whole text so far, then the answer replaces them") {
+        let v = FakeVyred(); v.start(); defer { v.stop() }
+        let seen = Gate()
+        v.tool("memory.ask") { input in
+            let id = VJ.s(input["id"])
+            v.emit("memory.thinking", ["id": id, "stage": "answer"])
+            v.emit("memory.draft", ["id": id, "text": "You drive"])
+            Thread.sleep(forTimeInterval: 0.12)
+            v.emit("memory.draft", ["id": id, "text": "You drive a blue Volvo"])
+            v.emit("memory.draft", ["id": "cap_other", "text": "someone else's draft"])
+            v.emit("memory.thinking", ["id": id, "stage": "check"])
+            // Held until the test has seen the second frame, as a real check takes seconds.
+            seen.wait()
+            v.emit("memory.answered", ["id": id, "abstained": false])
+            Thread.sleep(forTimeInterval: 0.06)
+            return ["answer": "You drive a blue Volvo XC40.", "answer_id": "a4", "confidence": 0.9, "abstained": false, "known": [Any](),
+                    "sources": [["session": "s1", "seq": 4, "name": "Insurance renewal", "quote": "I drive a blue Volvo XC40"]], "via": "fact"]
+        }
+        let r: [String]? = t.wait(timeout: 40) {
+            let m = await MainActor.run { () -> CapsuleModel in let m = model(v); m.willShow(front: nil); return m }
+            _ = await until { m.vyred.isUp && m.vyred.has("memory.ask") }
+            await MainActor.run { m.text = "which car do I drive" }
+            _ = await MainActor.run { m.handleReturn(command: false) }
+            let first = await until { m.iqDraft == "You drive" }
+            let second = await until { m.iqDraft == "You drive a blue Volvo" && m.iqStage == "Checking" }
+            let during = await MainActor.run { [m.replyText.isEmpty ? "no reply yet" : m.replyText, "\(m.pending)"] }
+            seen.open()
+            _ = await until { m.reply?.finished == true }
+            let after = await MainActor.run { [m.replyText, m.iqDraft ?? "no draft"] }
+            await MainActor.run { m.didHide() }
+            return ["\(first)", "\(second)"] + during + after
+        }
+        t.eq(r, ["true", "true", "no reply yet", "true", "You drive a blue Volvo XC40.", "no draft"])
+    }
+
+    t.test("streaming: a draft is removed when the answer abstains") {
+        let v = FakeVyred(); v.start(); defer { v.stop() }
+        let seen = Gate()
+        v.tool("memory.ask") { input in
+            let id = VJ.s(input["id"])
+            v.emit("memory.draft", ["id": id, "text": "Priya signed off on"])
+            seen.wait()
+            v.emit("memory.answered", ["id": id, "abstained": true])
+            Thread.sleep(forTimeInterval: 0.06)
+            return ["answer": NSNull(), "answer_id": "a5", "abstained": true, "confidence": 0.2, "known": [Any](), "sources": [Any]()]
+        }
+        let r: [String]? = t.wait(timeout: 40) {
+            let m = await MainActor.run { () -> CapsuleModel in let m = model(v); m.willShow(front: nil); return m }
+            _ = await until { m.vyred.isUp && m.vyred.has("memory.ask") }
+            await MainActor.run { m.text = "who signed off on the homepage" }
+            _ = await MainActor.run { m.handleReturn(command: false) }
+            let drew = await until { m.iqDraft == "Priya signed off on" }
+            seen.open()
+            _ = await until { m.reply?.finished == true }
+            let after = await MainActor.run { [m.iqDraft ?? "no draft", "\(m.replyText.hasPrefix(IQAnswer.notSure))", "\(m.replyText.contains("Priya"))"] }
+            await MainActor.run { m.didHide() }
+            return ["\(drew)"] + after
+        }
+        t.eq(r, ["true", "no draft", "true", "false"])
     }
 
     t.test("bad_input from an older vyred: retried once without stream or id") {

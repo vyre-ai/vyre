@@ -2,7 +2,10 @@
 //
 // memory.ask answers from the person's own sessions with its sources, or abstains; nothing the
 // Capsule composes is sent with it. What is drawn (memory-iq's spec for the Capsule, capsule.md):
-//   thinking   memory.thinking {id, stage} as each step starts: "Understanding the question", ...
+//   thinking   memory.thinking {id, stage} as each step starts: "Understanding", "Searching your
+//              sessions", "Reading", "Writing", "Checking" (C13)
+//   draft      memory.draft {id, text}: the whole text so far, dimmed with "Checking"; the reply
+//              replaces it, or removes it when it abstains or the check fails
 //   answered   the answer, "confidence 0.82 · from 2 sessions", then up to three source chips
 //              (⌘1..⌘3), each opening that turn in Vyre; "+N more" past three
 //   abstained  "Not sure yet.", what memory does know, then "Ask Claude instead" (⌘⏎, the deeper model)
@@ -70,14 +73,16 @@ public struct IQAnswer: Sendable, Equatable {
         return "confidence \(String(format: "%.2f", c)) · \(from)"
     }
 
-    /// The stage word for memory.thinking {stage} (capsule.md's thinking states, k=8 in retrieve).
-    public static func stageWord(_ stage: String) -> String {
+    /// The stage line's word for memory.thinking {stage} (C13: understand|search|read|answer|check);
+    /// nil for a stage this Capsule does not know, which shows nothing new.
+    public static func stageWord(_ stage: String) -> String? {
         switch stage {
-        case "understanding": return "Understanding the question"
-        case "searching": return "Searching your sessions and memory"
-        case "reading": return "Reading 8 passages"
-        case "checking": return "Checking the answer"
-        default: return "Thinking"
+        case "understand": return "Understanding"
+        case "search": return "Searching your sessions"
+        case "read": return "Reading"
+        case "answer": return "Writing"
+        case "check": return "Checking"
+        default: return nil
         }
     }
 }
@@ -126,17 +131,31 @@ extension CapsuleModel {
         }
         asked = words
         askedMemory = nil
-        iqStage = nil; iqAnswerId = nil; iqCorrecting = nil; iqFixed = nil; iqAbstained = false
+        iqStage = nil; iqDraft = nil; iqAnswerId = nil; iqCorrecting = nil; iqFixed = nil; iqAbstained = false
         pending = true
         reply = nil
         replySub?.cancel(); replySub = nil
         doing = false
         iqAskSeq += 1
         let id = "cap_\(iqAskSeq)"
-        var thinkSub: VyredSubscription? = vyred.on("memory.thinking") { [weak self] e in
+        // C13: memory.thinking {id, stage} names each step; memory.draft {id, text} is the whole
+        // text so far; memory.answered {id, abstained} ends it. Only this ask's id, and only
+        // while these words are still the ones asked.
+        var subs: [VyredSubscription] = []
+        subs.append(vyred.on("memory.thinking") { [weak self] e in
+            guard let self, VJ.s(e.payload["id"]) == id, self.pending, self.asked == words else { return }
+            // An unknown stage shows nothing new.
+            if let w = IQAnswer.stageWord(VJ.s(e.payload["stage"])) { self.iqStage = w }
+        })
+        subs.append(vyred.on("memory.draft") { [weak self] e in
+            guard let self, VJ.s(e.payload["id"]) == id, self.pending, self.asked == words else { return }
+            self.iqDraft = VJ.nonEmpty(e.payload["text"])
+        })
+        subs.append(vyred.on("memory.answered") { [weak self] e in
             guard let self, VJ.s(e.payload["id"]) == id else { return }
-            self.iqStage = IQAnswer.stageWord(VJ.s(e.payload["stage"]))
-        }
+            // The check failed or it abstained: the draft was never the answer.
+            if VJ.truthy(e.payload["abstained"]) || VJ.truthy(e.payload["limited"]) { self.iqDraft = nil }
+        })
         var input: [String: Any] = ["question": words, "stream": true, "id": id]
         if let c = askContext { input["context"] = c }
         var r = await vyred.call("memory.ask", input, presence: false)
@@ -145,8 +164,10 @@ extension CapsuleModel {
             input["stream"] = nil; input["id"] = nil
             r = await vyred.call("memory.ask", input, presence: false)
         }
-        thinkSub?.cancel(); thinkSub = nil
+        for sub in subs { sub.cancel() }
         iqStage = nil
+        // The reply replaces the draft (the answer), or removes it (abstained, limited, failed).
+        iqDraft = nil
         pending = false
         if r.errorCode == "no_such_tool" { return nil }
         // The words changed while it answered: this answer is not theirs.

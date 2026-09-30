@@ -215,6 +215,19 @@ struct CapsuleView: View {
                       systemImage: q.delivered ? "checkmark.circle" : "clock")
                     .font(Theme.subtitle).foregroundColor(Theme.stone)
             }
+            // Vyre IQ's draft (C13 memory.draft): dimmed, with "Checking", until the answer replaces it.
+            if model.pending, model.replyText.isEmpty, let draft = model.iqDraft {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Checking").font(Theme.subtitle).foregroundColor(Theme.ash)
+                    Text(draft)
+                        .font(Theme.reply).foregroundColor(Theme.stone)
+                        .lineSpacing(Theme.lineGap(Tokens.TypeScale.read))
+                        .fixedSize(horizontal: false, vertical: true)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
+                .opacity(0.6)
+                .accessibilityLabel("Checking: \(draft)")
+            }
             if !model.replyText.isEmpty {
                 Text(markdown(model.shownReplyText))
                     .font(Theme.reply).foregroundColor(Theme.bone)

@@ -4,6 +4,13 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+- Capsule: Vyre IQ answers stream. While it works, the answer card names each step in a word
+  (Understanding, Searching your sessions, Reading, Writing, Checking) and shows the draft
+  dimmed under "Checking" until the checked answer replaces it; an answer that ends "Not sure
+  yet." drops the draft. Up to three sources sit under the answer as chips, opened with ⌘1 to ⌘3.
+  "Wrong?" under an answer lets you mark it wrong, forget it, or type the right one, with Undo.
+  Questions asked with a session open carry that session's thread as well as its project.
+
 ## 0.1.1
 
 What's new:
