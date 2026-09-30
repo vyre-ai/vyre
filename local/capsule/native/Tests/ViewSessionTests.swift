@@ -124,7 +124,7 @@ let viewSessionSuite = Suite("view session") { t in
             out.append("\(sent["module"] as? String ?? "-")/\(sent["command"] as? String ?? "-")/\(sent["action"] as? String ?? "-")/\(sent["id"] as? String ?? "-")")
             return out
         }
-        t.eq(r, ["close(nil)", "failed(\"That link is not one Lumen opens.\")", "close(Optional(\"Copied\"))", "said(\"Marked read.\")", "said(\"\")",
+        t.eq(r, ["close(nil)", "failed(\"That link is not one Lumen opens.\")", "close(Optional(\"Copied \u{201C}Menu v2\u{201D}\"))", "said(\"Marked read.\")", "said(\"\")",
                  "copied Menu v2", "asked reply to alex about ", "google/mail/open/t1"])
         t.eq(opened.count, 1)
     }
@@ -284,11 +284,35 @@ let viewSessionSuite = Suite("view session") { t in
         }
     }
 
+    t.test("an ask effect only puts the words in the box: nothing is asked, recalled or sent until the person acts") {
+        MainActor.assumeIsolated {
+            let v = FakeVyred(name: "view-prefill")
+            for tool in ["memory.answer", "memory.ask", "threads.start", "threads.send", "agents.ask"] { v.tool(tool) { _ in ["ok": true] } }
+            v.tool("sessions.models.get") { _ in [:] }
+            t.ok(v.start())
+            defer { v.stop() }
+            let m = CapsuleModel(home: vyScratch("view-prefill-\(UUID().uuidString.prefix(6))"), vyred: VyredClient(socket: v.socket), providers: [])
+            m.autoDelay = 0.05
+            m.prefill("reply to alex about the menu for Northwind Bakery")
+            t.eq(m.text, "reply to alex about the menu for Northwind Bakery")
+            let before = v.callNames.count
+            RunLoop.main.run(until: Date().addingTimeInterval(1.0))
+            let after = Array(v.callNames.dropFirst(before))
+            t.ok(!after.contains { ["memory.answer", "memory.ask", "threads.start", "threads.send", "agents.ask"].contains($0) }, "\(after)")
+            t.eq(m.asked, nil); t.ok(m.reply == nil)
+            // The person edits them: from then on they are theirs.
+            m.text += "!"
+            t.ok(m.prefilled != m.text)
+        }
+    }
+
     t.test("in the box: Return enters the command, the list is the results, Esc leaves one step at a time") {
         MainActor.assumeIsolated {
             let link = ScriptLink()
-            link.answer["capsule.view"] = { i in .success(list(["for-\(i["q"] as? String ?? "?")"], from: "acme-crm")) }
-            let v = FakeVyred()
+            let v = FakeVyred(name: "view-box")
+            v.tool("capsule.view") { i in list(["for-\(i["q"] as? String ?? "?")"], from: "acme-crm") }
+            t.ok(v.start())
+            defer { v.stop() }
             let m = CapsuleModel(home: vyScratch("view-box-\(UUID().uuidString.prefix(6))"), vyred: VyredClient(socket: v.socket), providers: [])
             let p = ViewCommandsProvider(vyred: link)
             m.attach(views: p)

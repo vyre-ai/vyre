@@ -246,7 +246,12 @@ final class ViewSession: ObservableObject {
         case .open(let s)?:
             guard let u = Self.safeLink(s) else { return .failed("That link is not one Lumen opens.") }
             return openURL(u) ? .close(said) : .failed("Nothing opened it.")
-        case .copy(let s)?: copy(s); return .close(said ?? "Copied")
+        case .copy(let s)?:
+            copy(s)
+            // Say what went on the pasteboard, in a few words of it.
+            let one = s.split(whereSeparator: \.isNewline).first.map(String.init) ?? s
+            let shown = one.count > 40 ? String(one.prefix(39)) + "\u{2026}" : one
+            return .close(said ?? "Copied \u{201C}\(shown)\u{201D}")
         case .say(let s)?: return .said(s)
         case .ask(let s)?: onAsk(s); return .said("")
         case nil: return said.map { .said($0) } ?? .close(nil)

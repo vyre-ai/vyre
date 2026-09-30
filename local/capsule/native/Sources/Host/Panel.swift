@@ -110,6 +110,16 @@ final class PanelController: NSObject, NSWindowDelegate {
         onShownChange?(true)
     }
 
+    /// Build and draw the panel's view once while it is hidden, so the first summon after launch does
+    /// not pay for the first layout, first fonts and first render. Nothing is shown, no key is taken.
+    func prewarm() {
+        guard !panel.isVisible else { return }
+        let size = NSSize(width: Theme.width, height: height())
+        host.frame = NSRect(origin: .zero, size: size)
+        host.layoutSubtreeIfNeeded()
+        if let rep = host.bitmapImageRepForCachingDisplay(in: host.bounds) { host.cacheDisplay(in: host.bounds, to: rep) }
+    }
+
     /// For the typing check: shown far off screen, never key, no global monitors, so a test types
     /// into its own window and nothing on the user's screen changes.
     func showOffscreen() {

@@ -175,7 +175,7 @@ public final class LocalAnswersProvider: ResultProvider, ImmediateResults, @unch
     static func pasting(_ r: ResultItem) -> ResultItem {
         guard let text = r.copyText, !text.isEmpty else { return r }
         var x = r
-        x.actions = Paster.actions(text: text)
+        x.actions = Paster.actions(text: text, noun: r.kind == "emoji" ? "emoji" : "text")
         return x
     }
 
@@ -192,7 +192,7 @@ public final class LocalAnswersProvider: ResultProvider, ImmediateResults, @unch
     func snippetRow(_ s: Snippet, score: Double) -> ResultItem {
         var r = snippetResult(s, score: score)
         let now = self.now
-        r.actions = Paster.actions {
+        r.actions = Paster.actions(noun: "snippet") {
             let clip: String? = s.usesClipboard ? await MainActor.run { NSPasteboard.general.string(forType: .string) } : nil
             let text = UserSnippets.expand(s.text, now: now(), clipboard: clip).text
             return await MainActor.run {

@@ -125,6 +125,10 @@ final class CapsuleApp: NSObject, NSApplicationDelegate {
         // A module says its commands changed: read them again (never polled).
         viewSub = vyred.on("capsule.changed") { [weak self] _ in self?.viewCommands.read(force: true) }
         enrolWithCore()
+        // Once the launch has settled, draw the panel once in the dark (never shown): the first summon is then warm.
+        if ProcessInfo.processInfo.environment["VYRE_CAPSULE_NO_PREWARM"] != "1" {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) { [weak self] in MainActor.assumeIsolated { self?.panel.prewarm() } }
+        }
         if ProcessInfo.processInfo.environment["VYRE_CAPSULE_OPEN"] == "1" { panel.show(front: PanelController.frontApp()) }
     }
 

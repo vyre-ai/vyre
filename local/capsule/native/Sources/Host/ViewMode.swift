@@ -20,12 +20,20 @@ extension CapsuleModel {
             guard let self, let c2 = self.viewProvider?.command(module: c.module, id: id) else { self?.line = "That command is not here."; return }
             self.enterView(c2)
         }
-        s.onAsk = { [weak self] words in self?.exitView(clear: true); self?.text = words }
+        s.onAsk = { [weak self] words in self?.prefill(words) }
         viewSession = s
         line = nil
         groups = []
         selected = 0
         if text != words { text = words } else { s.load(q: words) }
+    }
+
+    /// A module's `ask` effect: the words go in the box and stop there. Nothing is asked, recalled or
+    /// sent from them (no quick answer, no memory lookup) until the person edits them or presses Return.
+    func prefill(_ words: String) {
+        exitView(clear: true)
+        prefilled = words
+        text = words
     }
 
     /// Leave the command. `clear` also empties the box.

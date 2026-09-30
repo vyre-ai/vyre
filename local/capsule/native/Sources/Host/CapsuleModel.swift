@@ -110,6 +110,9 @@ public final class CapsuleModel: ObservableObject {
     /// The module command open in the box (ViewMode.swift), and where commands come from.
     @Published var viewSession: ViewSession?
     var viewProvider: ViewCommandsProvider?
+    /// Words a module put in the box (an `ask` effect). They are the module's, not the person's: nothing
+    /// is asked, recalled or sent from them until the person changes them or presses Return.
+    var prefilled: String?
     /// The agent, project or thread picked with `@`: a chip before the box, where Enter sends.
     @Published public var target: VyreCandidate? {
         didSet {
@@ -850,6 +853,7 @@ public final class CapsuleModel: ObservableObject {
     /// on this vyred there is no memory box at all. An answer for older words is dropped.
     func recall(_ raw: String, token t: Int) {
         recallTask?.cancel()
+        if raw == prefilled { memory = nil; return }
         let words = raw.trimmingCharacters(in: .whitespacesAndNewlines)
         if memory?.text != words { memory = nil }
         guard words.count >= 3, vyred.isUp, vyred.has("memory.answer") else { return }

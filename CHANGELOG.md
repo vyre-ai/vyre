@@ -4,6 +4,13 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+- Lumen: icons for files and apps are made off the main thread, so a first letter no longer waits on
+  the system for a dozen pictures; a row draws without its icon and the icon appears when ready. The
+  panel is drawn once, hidden, shortly after launch, so the first summon is warm.
+- Lumen: words a module puts in the box (an ask effect) only sit there. Nothing is asked, looked up
+  or sent from them until you edit them or press Return. "Copy" says what it copies.
+- CLI: `vyre capsule` says Lumen ("Lumen built", "Lumen open", "Building Lumen for this Mac"). The
+  command name stays.
 - Lumen: commands that modules declare (Gmail, Calendar, Drive, GitHub, the vault and any module
   you add) show up in the box as commands. Press Return on one and the box searches it: its list
   is the results, Tab opens a row's detail, Command-K lists a row's actions, and Esc goes back one

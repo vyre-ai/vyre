@@ -72,8 +72,8 @@ enum Paster {
 
     /// [Paste, Copy] or [Copy, Paste], by the setting; the first is Return. `write` puts the text
     /// on the pasteboard and says why not, or nil.
-    static func actions(write: @escaping @Sendable () async -> String?) -> [ResultAction] {
-        let paste = ResultAction(id: "paste", title: "Paste", symbol: "arrow.down.doc", needsFrontApp: true) { _, ctx in
+    static func actions(noun: String = "text", write: @escaping @Sendable () async -> String?) -> [ResultAction] {
+        let paste = ResultAction(id: "paste", title: "Paste \(noun)", symbol: "arrow.down.doc", needsFrontApp: true) { _, ctx in
             if let why = await write() { return .failed(why) }
             guard ctx.frontIsBack else { return .close(copiedNote) }
             if !accessibilityOn() { return .close(needAccess) }
@@ -81,7 +81,7 @@ enum Paster {
             post()
             return .close(nil)
         }
-        let copy = ResultAction(id: "copy", title: "Copy", symbol: "doc.on.clipboard", shortcut: KeyShortcut("return", command: true)) { _, _ in
+        let copy = ResultAction(id: "copy", title: "Copy \(noun)", symbol: "doc.on.clipboard", shortcut: KeyShortcut("return", command: true)) { _, _ in
             if let why = await write() { return .failed(why) }
             return .close(copiedNote)
         }
@@ -89,8 +89,8 @@ enum Paster {
     }
 
     /// Text on the general pasteboard, marked as the Capsule's own so the history does not take it back.
-    static func actions(text: String) -> [ResultAction] {
-        actions {
+    static func actions(text: String, noun: String = "text") -> [ResultAction] {
+        actions(noun: noun) {
             await MainActor.run {
                 CapsuleModel.replyBoard.clearContents()
                 let ok = CapsuleModel.replyBoard.setString(text, forType: .string)

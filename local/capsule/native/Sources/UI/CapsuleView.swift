@@ -890,6 +890,10 @@ struct Row: View, Equatable {
                 .overlay(RoundedRectangle(cornerRadius: Tokens.Radius.chip, style: .continuous).strokeBorder(Theme.rule, lineWidth: 1))
                 .overlay(Image(systemName: name).font(Theme.type(top ? Tokens.TypeScale.read : Tokens.TypeScale.base, .medium)).foregroundColor(Theme.tint(tint)))
                 .padding(1)
+        } else if IconCache.isSlow(item.icon) {
+            // A file's or an app's own icon is made off the main thread; the row draws without it
+            // and it appears when ready, so no keystroke waits on the system for a picture.
+            AsyncIcon(icons: icons, spec: item.icon, points: iconSize, scale: scale)
         } else if let img = icons.image(item.icon, points: iconSize, scale: scale) {
             Image(nsImage: img).resizable().interpolation(.high)
         } else {
@@ -937,5 +941,30 @@ struct MarkView: View {
             ctx.fill(Path(ellipseIn: CGRect(x: 13.5 * k - r, y: 4 * k - r, width: 2 * r, height: 2 * r)), with: .color(Theme.signal))
         }
         .frame(width: size, height: size)
+    }
+}
+
+
+/// A file's or app's icon: what is cached now, else nothing until the picture is made off the main thread.
+struct AsyncIcon: View {
+    let icons: IconCache
+    let spec: IconSpec
+    let points: CGFloat
+    let scale: CGFloat
+    @State private var made: NSImage?
+
+    var body: some View {
+        Group {
+            if let img = made ?? icons.cachedNow(spec, points: points, scale: scale) {
+                Image(nsImage: img).resizable().interpolation(.high)
+            } else {
+                Color.clear
+            }
+        }
+        .task(id: spec) {
+            if icons.cachedNow(spec, points: points, scale: scale) == nil {
+                made = icons.imageAsync(spec, points: points, scale: scale) { img in made = img }
+            }
+        }
     }
 }

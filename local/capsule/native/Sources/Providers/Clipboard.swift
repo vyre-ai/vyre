@@ -181,7 +181,7 @@ public final class ClipboardProvider: ResultProvider, @unchecked Sendable {
         let id = "clip:" + c.h
         let store = self.store, watcher = self.watcher
         return ResultItem(id: id, kind: "clip", title: ClipText.label(c), subtitle: c.app.map { "\($0) · \(when)" } ?? when, icon: icon,
-                          section: .clipboard, score: hit.score, actions: Paster.actions {
+                          section: .clipboard, score: hit.score, actions: Paster.actions(noun: c.kind == .files ? "files" : c.kind == .image ? "image" : "clip") {
                                 await MainActor.run {
                                     switch store.pick(id, write: { watcher.write($0) }) {
                                     case .success: return nil
