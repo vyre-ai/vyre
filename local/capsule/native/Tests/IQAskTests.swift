@@ -172,17 +172,18 @@ let iqAskSuite = Suite("iq ask") { t in
 
     t.test("streaming: memory.thinking stages show as words while memory.ask is out, then clear") {
         let v = FakeVyred(); v.start(); defer { v.stop() }
+        let seenChecking = Gate()
         v.tool("memory.ask") { input in
             v.emit("memory.thinking", ["id": VJ.s(input["id"]), "stage": "understand"])
             v.emit("memory.thinking", ["id": VJ.s(input["id"]), "stage": "search"])
             v.emit("memory.thinking", ["id": VJ.s(input["id"]), "stage": "read"])
-            v.emit("memory.thinking", ["id": VJ.s(input["id"]), "stage": "check"])
-            // Another ask's stage, and a stage this Capsule does not know: neither shows.
+            // Another ask's stage, and a stage this Capsule does not know: neither shows. They come
+            // before "check", so seeing "Checking" means they were already dispatched.
             v.emit("memory.thinking", ["id": "cap_other", "stage": "answer"])
             v.emit("memory.thinking", ["id": VJ.s(input["id"]), "stage": "ponder"])
-            // A real answer takes seconds; give the SSE thread (a separate connection) time to
-            // read and dispatch these before the call itself resolves, as it always does live.
-            Thread.sleep(forTimeInterval: 0.06)
+            v.emit("memory.thinking", ["id": VJ.s(input["id"]), "stage": "check"])
+            // A real answer takes seconds: held until the test has seen the last stage, not a timer.
+            seenChecking.wait()
             return ["answer": "You drive a blue Volvo XC40.", "answer_id": "a1", "confidence": 0.9, "abstained": false, "known": [Any](),
                     "sources": [["session": "s1", "seq": 4, "name": "Insurance renewal", "quote": "I drive a blue Volvo XC40"]], "via": "fact"]
         }
@@ -195,6 +196,7 @@ let iqAskSuite = Suite("iq ask") { t in
             let id = VJ.s(v.callsOf("memory.ask").first?["id"])
             let stream = VJ.truthy(v.callsOf("memory.ask").first?["stream"])
             let stage = await until { m.iqStage == "Checking" }
+            seenChecking.open()
             _ = await until { m.reply?.finished == true }
             let cleared = await MainActor.run { m.iqStage == nil }
             let answerId = await MainActor.run { m.iqAnswerId }
@@ -206,21 +208,20 @@ let iqAskSuite = Suite("iq ask") { t in
         t.eq(r?.done, true, "iqStage clears once the answer is in, answer_id kept")
     }
 
-    t.test("streaming: memory.draft frames show dimmed, the whole text so far, then the answer replaces them") {
+    t.test("streaming: draft lines show dimmed, the whole text so far, then the answer replaces them") {
         let v = FakeVyred(); v.start(); defer { v.stop() }
         let seen = Gate()
-        v.tool("memory.ask") { input in
+        let sawFirst = Gate()
+        v.draftTool("memory.ask") { input, draft in
             let id = VJ.s(input["id"])
             v.emit("memory.thinking", ["id": id, "stage": "answer"])
-            v.emit("memory.draft", ["id": id, "text": "You drive"])
-            Thread.sleep(forTimeInterval: 0.12)
-            v.emit("memory.draft", ["id": id, "text": "You drive a blue Volvo"])
-            v.emit("memory.draft", ["id": "cap_other", "text": "someone else's draft"])
+            draft(id, "You drive")
+            sawFirst.wait()
+            draft("cap_other", "someone else's draft")
+            draft(id, "You drive a blue Volvo")
             v.emit("memory.thinking", ["id": id, "stage": "check"])
             // Held until the test has seen the second frame, as a real check takes seconds.
             seen.wait()
-            v.emit("memory.answered", ["id": id, "abstained": false])
-            Thread.sleep(forTimeInterval: 0.06)
             return ["answer": "You drive a blue Volvo XC40.", "answer_id": "a4", "confidence": 0.9, "abstained": false, "known": [Any](),
                     "sources": [["session": "s1", "seq": 4, "name": "Insurance renewal", "quote": "I drive a blue Volvo XC40"]], "via": "fact"]
         }
@@ -230,6 +231,7 @@ let iqAskSuite = Suite("iq ask") { t in
             await MainActor.run { m.text = "which car do I drive" }
             _ = await MainActor.run { m.handleReturn(command: false) }
             let first = await until { m.iqDraft == "You drive" }
+            sawFirst.open()
             let second = await until { m.iqDraft == "You drive a blue Volvo" && m.iqStage == "Checking" }
             let during = await MainActor.run { [m.replyText.isEmpty ? "no reply yet" : m.replyText, "\(m.pending)"] }
             seen.open()
@@ -244,12 +246,10 @@ let iqAskSuite = Suite("iq ask") { t in
     t.test("streaming: a draft is removed when the answer abstains") {
         let v = FakeVyred(); v.start(); defer { v.stop() }
         let seen = Gate()
-        v.tool("memory.ask") { input in
+        v.draftTool("memory.ask") { input, draft in
             let id = VJ.s(input["id"])
-            v.emit("memory.draft", ["id": id, "text": "Priya signed off on"])
+            draft(id, "Priya signed off on")
             seen.wait()
-            v.emit("memory.answered", ["id": id, "abstained": true])
-            Thread.sleep(forTimeInterval: 0.06)
             return ["answer": NSNull(), "answer_id": "a5", "abstained": true, "confidence": 0.2, "known": [Any](), "sources": [Any]()]
         }
         let r: [String]? = t.wait(timeout: 40) {

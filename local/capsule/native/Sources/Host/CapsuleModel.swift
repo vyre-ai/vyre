@@ -154,7 +154,7 @@ public final class CapsuleModel: ObservableObject {
     /// Vyre IQ's stage word while memory.ask streams (IQAsk.swift): "Understanding", "Searching
     /// your sessions", etc. Nil outside a streamed ask, or once it answers.
     @Published var iqStage: String?
-    /// memory.draft's text so far while memory.ask streams (C13): drawn dimmed with "Checking",
+    /// the draft text so far (memory.ask's ndjson lines) while memory.ask streams (C13): drawn dimmed with "Checking",
     /// replaced by the answer, and removed if the answer abstains or the call fails.
     @Published var iqDraft: String?
     /// The answer_id memory.ask gave the answer on screen (95b2b891); nil with no memory.ask, an

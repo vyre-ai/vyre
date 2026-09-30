@@ -20,6 +20,7 @@ struct CapsuleView: View {
     /// Drawn off screen for a picture: a solid ground, since a window's material needs a window.
     var snapshot = false
     @FocusState private var boxFocused: Bool
+    @Environment(\.colorScheme) private var scheme
 
     var body: some View {
         let open = CapsuleLayout.isOpen(model)
@@ -80,11 +81,11 @@ struct CapsuleView: View {
         .frame(width: Theme.width, height: CapsuleLayout.panelHeight(model), alignment: .top)
         .background { if snapshot { Theme.carbon } else { Backdrop() } }
         .clipShape(RoundedRectangle(cornerRadius: Theme.radius, style: .continuous))
-        .overlay(RoundedRectangle(cornerRadius: Theme.radius, style: .continuous).strokeBorder(DeepGlass.border, lineWidth: 1))
+        .overlay(RoundedRectangle(cornerRadius: Theme.radius, style: .continuous).strokeBorder(DeepGlass.border(dark: scheme == .dark), lineWidth: 1))
         .overlay(alignment: .top) {
             // A hairline of light along the top edge, as on the Mac's own panels.
             RoundedRectangle(cornerRadius: Theme.radius, style: .continuous)
-                .strokeBorder(LinearGradient(colors: [Theme.bone.opacity(DeepGlass.topEdgeAlpha), .clear], startPoint: .top, endPoint: .center), lineWidth: 1)
+                .strokeBorder(LinearGradient(colors: [DeepGlass.topEdge(dark: scheme == .dark), .clear], startPoint: .top, endPoint: .center), lineWidth: 1)
                 .allowsHitTesting(false)
         }
         .onChange(of: focus.count) { boxFocused = true }
@@ -215,7 +216,7 @@ struct CapsuleView: View {
                       systemImage: q.delivered ? "checkmark.circle" : "clock")
                     .font(Theme.subtitle).foregroundColor(Theme.stone)
             }
-            // Vyre IQ's draft (C13 memory.draft): dimmed, with "Checking", until the answer replaces it.
+            // Vyre IQ's draft (C13, the draft lines of memory.ask): dimmed, with "Checking", until the answer replaces it.
             if model.pending, model.replyText.isEmpty, let draft = model.iqDraft {
                 VStack(alignment: .leading, spacing: 4) {
                     Text("Checking").font(Theme.subtitle).foregroundColor(Theme.ash)

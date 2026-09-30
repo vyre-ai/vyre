@@ -11,21 +11,32 @@ public enum Theme {
         Color(.sRGB, red: Double((v >> 16) & 0xFF) / 255, green: Double((v >> 8) & 0xFF) / 255, blue: Double(v & 0xFF) / 255)
     }
 
-    // Colours, dark (the Capsule is always dark, like Spotlight over a dark desktop).
-    static let c = Tokens.dark
-    public static let graphite = c.bg
-    public static let carbon = c.panel
-    public static let raised = c.hover
-    public static let rule = c.rule
-    public static let ruleStrong = c.ruleStrong
-    public static let ash = c.label
-    public static let stone = c.text2
-    public static let bone = c.text
-    public static let signal = c.focus
+    /// True when an appearance is one of the dark ones.
+    static func isDark(_ a: NSAppearance) -> Bool { a.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua }
+
+    /// A token as a colour that follows the system appearance: the dark scheme in dark, paper in
+    /// light (Deep glass has both). Views read these and never pick a scheme themselves.
+    static func dyn(_ k: KeyPath<Tokens.Colors, Color>) -> Color { Color(nsColor: nsDyn(k)) }
+
+    static func nsDyn(_ k: KeyPath<Tokens.Colors, Color>) -> NSColor {
+        let d = NSColor(Tokens.dark[keyPath: k]), p = NSColor(Tokens.paper[keyPath: k])
+        return NSColor(name: nil) { isDark($0) ? d : p }
+    }
+
+    // Colours: dark and paper (light), from the tokens; the system appearance picks.
+    public static let graphite = dyn(\.bg)
+    public static let carbon = dyn(\.panel)
+    public static let raised = dyn(\.hover)
+    public static let rule = dyn(\.rule)
+    public static let ruleStrong = dyn(\.ruleStrong)
+    public static let ash = dyn(\.label)
+    public static let stone = dyn(\.text2)
+    public static let bone = dyn(\.text)
+    public static let signal = dyn(\.focus)
     /// Memory's colour. Design A retired the gold: memory is drawn in neutral text.
-    public static let recall = c.text2
+    public static let recall = dyn(\.text2)
     /// The "needs you" colour: beacon (violet), the same as the Deck and the phone.
-    public static let attention = c.beacon
+    public static let attention = dyn(\.beacon)
 
     /// A status row's word and colour from the shared status model, most urgent first.
     public static func status(_ key: String) -> (word: String, color: Color)? {
@@ -36,12 +47,12 @@ public enum Theme {
     /// A colour by its tokens.json key (the status model names them).
     public static func color(_ key: String) -> Color {
         switch key {
-        case "beacon": return c.beacon
-        case "focus": return c.focus
-        case "text": return c.text
-        case "text2": return c.text2
-        case "label": return c.label
-        default: return c.text2
+        case "beacon": return attention
+        case "focus": return signal
+        case "text": return bone
+        case "text2": return stone
+        case "label": return ash
+        default: return stone
         }
     }
 

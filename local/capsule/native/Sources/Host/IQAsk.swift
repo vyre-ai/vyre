@@ -4,7 +4,7 @@
 // Capsule composes is sent with it. What is drawn (memory-iq's spec for the Capsule, capsule.md):
 //   thinking   memory.thinking {id, stage} as each step starts: "Understanding", "Searching your
 //              sessions", "Reading", "Writing", "Checking" (C13)
-//   draft      memory.draft {id, text}: the whole text so far, dimmed with "Checking"; the reply
+//   draft      {"draft":{id,text}} lines on memory.ask's ndjson response: the whole text so far, dimmed with "Checking"; the reply
 //              replaces it, or removes it when it abstains or the check fails
 //   answered   the answer, "confidence 0.82 · from 2 sessions", then up to three source chips
 //              (⌘1..⌘3), each opening that turn in Vyre; "+N more" past three
@@ -138,18 +138,14 @@ extension CapsuleModel {
         doing = false
         iqAskSeq += 1
         let id = "cap_\(iqAskSeq)"
-        // C13: memory.thinking {id, stage} names each step; memory.draft {id, text} is the whole
-        // text so far; memory.answered {id, abstained} ends it. Only this ask's id, and only
+        // C13: memory.thinking {id, stage} names each step; the draft {id, text} (the whole
+        // text so far) arrives on the call itself; memory.answered {id, abstained} ends it. Only this ask's id, and only
         // while these words are still the ones asked.
         var subs: [VyredSubscription] = []
         subs.append(vyred.on("memory.thinking") { [weak self] e in
             guard let self, VJ.s(e.payload["id"]) == id, self.pending, self.asked == words else { return }
             // An unknown stage shows nothing new.
             if let w = IQAnswer.stageWord(VJ.s(e.payload["stage"])) { self.iqStage = w }
-        })
-        subs.append(vyred.on("memory.draft") { [weak self] e in
-            guard let self, VJ.s(e.payload["id"]) == id, self.pending, self.asked == words else { return }
-            self.iqDraft = VJ.nonEmpty(e.payload["text"])
         })
         subs.append(vyred.on("memory.answered") { [weak self] e in
             guard let self, VJ.s(e.payload["id"]) == id else { return }
@@ -158,7 +154,14 @@ extension CapsuleModel {
         })
         var input: [String: Any] = ["question": words, "stream": true, "id": id]
         if let c = askContext { input["context"] = c }
-        var r = await vyred.call("memory.ask", input, presence: false)
+        // The draft comes on this call's own ndjson response, never the events bus: {"draft":{id,text}}
+        // lines (the whole text so far; empty text means the check failed, so drop it), then the result.
+        var r = await vyred.call("memory.ask", input, timeout: 30) { [weak self] did, text in
+            Task { @MainActor [weak self] in
+                guard let self, did == id, self.pending, self.asked == words else { return }
+                self.iqDraft = VJ.nonEmpty(text)
+            }
+        }
         // An older vyred may not know stream/id: retry once, plain (ADR 0034, capsule-pro's brief).
         if r.errorCode == "bad_input" {
             input["stream"] = nil; input["id"] = nil
