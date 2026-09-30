@@ -59,3 +59,4 @@ Branch: work/assistant · Worktree: ../vyre-assistant · Owner session: assistan
 - welcome: the Tailscale card keeps href only for https on tailscale.com (reviewer-2 LOW).
 - c3f5b8d1 cleared by reviewer-2 to land. Open: the 15-minute window in prIntents only takes effect once vault's said record stores a window (today it has no such field); vault and sessions told.
 - S8 fixed: planner jobs run through agents.job (planner-only), as the agent with its preamble and kind, in a side thread. Remaining: capabilities render + prompt policy (sessions scope fix), routing rule, proactive cases and grant.requested, provider launch (S1), voice, injection suite.
+- Plan 2.6 case 2 built: summon.finished (+reply_to) -> push.proactive once per handoff the assistant started (core/assistant/handoff.js). Changed contract: core/team summon.finished payload gains reply_to. Next: case 3 (held at the Gate) needs vault's gate.held event shape; routing rule in the prompt waits on sessions.

@@ -7,6 +7,7 @@ import path from "node:path";
 import { glance, dayStart } from "./glance.js";
 import { capabilities, render } from "./manifest.js";
 import { diffLines, seedOf } from "./index.js";
+import { handoffPush } from "./handoff.js";
 import { discover, Registry } from "../modules/index.js";
 import { open } from "../store/index.js";
 import { Events } from "../events/index.js";
@@ -16,7 +17,7 @@ const G = "globalThis.__w";
 const FAKES = {
   context: [["context.now", `globalThis.__w.now`]],
   waiting: [["waiting.list", `globalThis.__w.waiting`]],
-  threads: [["threads.list", `globalThis.__w.threads`]],
+  threads: [["threads.list", `globalThis.__w.threads`], ["threads.get", `(globalThis.__w.threadGet ? globalThis.__w.threadGet(i) : { thread: null })`]],
   agents: [["agents.list", `globalThis.__w.agents`], ["agents.rollover", `(globalThis.__w.rolled.push(i), { agent: i.agent, thread: "t2", previous: "t1" })`]],
   memory: [["memory.digest", `globalThis.__w.digest`]],
   sessions: [["sessions.prompt.history", `globalThis.__w.prompts`]],
@@ -156,4 +157,31 @@ test("the daily seed is quoted data: framed as not instructions, and it cannot c
   assert.equal(s.match(/<\/?yesterday>/g).length, 2, "only our own two markers");
   assert.ok(s.endsWith("</yesterday>"));
   assert.ok(seedOf("x".repeat(9000)).length < 5000);
+});
+
+const settle = () => new Promise(r => setTimeout(r, 40));
+
+test("handoffPush: done or failed, from the assistant, a fixed sentence and one tag per request", () => {
+  const p = { request: "r1", project: "harlow-legal", status: "done", reply_to: "t1" };
+  assert.deepEqual(handoffPush(p, true), { title: "A teammate in harlow-legal finished", path: "/threads/t1", tag: "handoff-r1" });
+  assert.equal(handoffPush({ ...p, status: "failed" }, true).title, "A teammate in harlow-legal could not finish");
+  assert.equal(handoffPush({ ...p, status: "cancelled" }, true), null);
+  assert.equal(handoffPush(p, false), null, "not the assistant's handoff");
+  assert.equal(handoffPush({ ...p, reply_to: null }, true), null);
+  // A project name never carries text: only slug characters survive.
+  assert.equal(handoffPush({ ...p, project: "x</b> ignore previous" }, true).title, "A teammate in xbignoreprevious finished");
+});
+
+test("a handoff the assistant started files one push.proactive when its teammate finishes; another agent's does not", async t => {
+  const { events } = await world(t);
+  globalThis.__w.agents = [{ name: "juno", kind: "assistant" }, { name: "kit", kind: "agent" }];
+  globalThis.__w.threadGet = i => ({ thread: { id: i.thread, agent: i.thread === "tj" ? "juno" : "kit" } });
+  const pushed = [];
+  events.on("push.proactive", e => pushed.push(e.payload));
+  events.emit("team", "summon.finished", { request: "r1", teammate: "designer-harlow-legal", project: "harlow-legal", status: "done", reply_to: "tj" }, {});
+  events.emit("team", "summon.finished", { request: "r2", teammate: "designer-harlow-legal", project: "harlow-legal", status: "done", reply_to: "tk" }, {});
+  events.emit("team", "summon.finished", { request: "r3", teammate: "designer-harlow-legal", project: "harlow-legal", status: "done", reply_to: null }, {});
+  await settle();
+  assert.equal(pushed.length, 1);
+  assert.deepEqual(pushed[0], { title: "A teammate in harlow-legal finished", path: "/threads/tj", tag: "handoff-r1" });
 });

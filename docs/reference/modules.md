@@ -22,7 +22,7 @@ A module runs on the `box` (the always-on server), on `local` (the Mac), or on b
 | [`appearance`](#appearance) | `core/appearance` | `box`, `local` | 3 | 1 | cli |
 | [`apps`](#apps) | `local/apps` | `local` | 6 | 2 | none |
 | [`artifacts`](#artifacts) | `core/artifacts` | `box` | 21 | 10 | capsule, cli, deck |
-| [`assistant`](#assistant) | `core/assistant` | `box`, `local` | 8 | 3 | cli |
+| [`assistant`](#assistant) | `core/assistant` | `box`, `local` | 8 | 4 | cli |
 | [`capsule`](#capsule) | `local/capsule` | `local` | 6 | 2 | capsule, cli |
 | [`chrome`](#chrome) | `local/hands-chrome-mac` | `local` | 28 | 12 | none |
 | [`chrome`](#chrome) | `modules/hands-chrome` | `box` | 5 | 1 | cli, deck |
@@ -146,7 +146,7 @@ The one assistant's own tools: a daily digest and triage from waiting.list and a
 - Runs on: `box`, `local`
 - Requires: none
 - Tools: [8](tools.md#assistant)
-- Emits: [3 events](events.md#assistant)
+- Emits: [4 events](events.md#assistant)
 - Shows on: cli
 
 ## capsule

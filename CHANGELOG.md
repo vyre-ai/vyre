@@ -4,6 +4,7 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+- assistant: one notification per handoff. When a teammate request the assistant's own thread asked for ends (done or failed), the assistant files one `push.proactive` with a fixed sentence and never the teammate's result text. `summon.finished` now carries `reply_to`.
 - planner: a scheduled job for an agent runs through the new `agents.job`, so it keeps the agent's credentials, project scope, preamble and kind (an assistant's job is still the assistant). The job is a side thread and never replaces the agent's current one.
 - said: `prIntents` records act_out intents for "open a PR", "merge it" and "review this PR", bound to the exact key github.act.target answers with. Nothing is recorded when the PR or branch is ambiguous or the sentence carries a condition (if, when, once, unless, after, before, until, only, as long as, provided, assuming). A plain ask covers 15 minutes.
 

@@ -1,7 +1,7 @@
 {
   "generated": "scripts/gen-docs-reference",
   "about": "Every Vyre command, tool, event, config key, environment variable, screen and concept, where the code defines it, the docs page that explains it, and every page, line and heading anchor that mentions it.",
-  "counts": {"command":333,"tool":789,"event":325,"config":235,"env":170,"screen":18,"concept":43},
+  "counts": {"command":333,"tool":789,"event":326,"config":235,"env":170,"screen":18,"concept":43},
   "things": [
     {"kind":"screen","name":"/a/:id","definedIn":"deck/views/artifact.js","page":"using/deck.md#what-is-on-each-view","label":"Artifact","routes":["/a/:id"],"mentions":[]},
     {"kind":"tool","name":"about.text","definedIn":"core/about/index.js","page":"reference/tools.md#abouttext","module":"about","mentions":[]},
@@ -821,6 +821,7 @@
     {"kind":"tool","name":"push.devices","definedIn":"core/push/index.js","page":"reference/tools.md#pushdevices","module":"push","mentions":[]},
     {"kind":"config","name":"push.hosts","definedIn":"core/push/index.js","page":null,"mentions":[]},
     {"kind":"tool","name":"push.key","definedIn":"core/push/index.js","page":"reference/tools.md#pushkey","module":"push","mentions":[]},
+    {"kind":"event","name":"push.proactive","definedIn":"core/assistant/index.js","page":"reference/events.md#assistant","module":"assistant","mentions":[]},
     {"kind":"tool","name":"push.receipt","definedIn":"core/push/index.js","page":"reference/tools.md#pushreceipt","module":"push","mentions":[]},
     {"kind":"tool","name":"push.seen","definedIn":"core/push/index.js","page":"reference/tools.md#pushseen","module":"push","mentions":[{"page":"adr/0011-web-push.md","line":66,"anchor":"amendment-27-sep-2026-needs-you-only-and-never-while-you-are-at-a-screen"},{"page":"adr/0011-web-push.md","line":69,"anchor":"amendment-27-sep-2026-needs-you-only-and-never-while-you-are-at-a-screen"},{"page":"adr/0011-web-push.md","line":71,"anchor":"amendment-27-sep-2026-needs-you-only-and-never-while-you-are-at-a-screen"}]},
     {"kind":"event","name":"push.seen","definedIn":"core/push/index.js","page":"reference/tools.md#pushseen","module":"push","mentions":[{"page":"adr/0011-web-push.md","line":66,"anchor":"amendment-27-sep-2026-needs-you-only-and-never-while-you-are-at-a-screen"},{"page":"adr/0011-web-push.md","line":69,"anchor":"amendment-27-sep-2026-needs-you-only-and-never-while-you-are-at-a-screen"},{"page":"adr/0011-web-push.md","line":71,"anchor":"amendment-27-sep-2026-needs-you-only-and-never-while-you-are-at-a-screen"}]},
