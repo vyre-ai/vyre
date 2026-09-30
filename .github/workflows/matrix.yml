@@ -1,0 +1,86 @@
+# The real-device rehearsal matrix (e2e2, docs/work/e2e2.md). Every target is a fresh hosted
+# runner: nothing here ever reaches the user's server or Mac. Dispatch it for a branch:
+#   gh workflow run matrix.yml --ref work/<team> -f journeys=J0 -f on=all
+name: matrix
+on:
+  workflow_dispatch:
+    inputs:
+      journeys: { description: "Journeys to run (J0 for now)", default: "J0" }
+      on: { description: "Targets: all, or a comma list of linux,arm64,android,windows,mac,ios", default: "all" }
+  push:
+    branches: ["work/e2e2"]
+permissions:
+  contents: read
+concurrency:
+  group: matrix-${{ github.ref }}
+  cancel-in-progress: false
+env:
+  WANT: ${{ github.event.inputs.on || 'all' }}
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22 }
+      - run: npm ci --no-audit --no-fund
+      - name: The box files, as vyre.run serves them
+        run: sh scripts/build-site.sh
+      - uses: actions/upload-artifact@v4
+        with: { name: box, path: site/box, retention-days: 7 }
+
+  rc-smoke:
+    needs: build
+    if: contains(github.event.inputs.on || 'all', 'all') || contains(github.event.inputs.on, 'linux') || contains(github.event.inputs.on, 'arm64')
+    strategy:
+      fail-fast: false
+      matrix:
+        runner: [ubuntu-24.04, ubuntu-24.04-arm]
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22 }
+      - uses: actions/download-artifact@v4
+        with: { name: box, path: box }
+      - name: rc-smoke, the release smoke on a throwaway box in Docker
+        run: sh scripts/rc-smoke.sh box/vyre.tgz </dev/null
+
+  linux:
+    needs: build
+    if: contains(github.event.inputs.on || 'all', 'all') || contains(github.event.inputs.on, 'linux')
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22 }
+      - uses: actions/download-artifact@v4
+        with: { name: box, path: box }
+      - name: Install a box with the real installer
+        run: sh scripts/matrix/box-up.sh box link.txt
+      - name: J0 in desktop Chrome
+        run: |
+          google-chrome --headless=new --remote-debugging-port=9222 --user-data-dir="$RUNNER_TEMP/chrome" --no-first-run about:blank >/dev/null 2>&1 &
+          for i in $(seq 1 50); do curl -fs http://127.0.0.1:9222/json/version >/dev/null && break; sleep 0.2; done
+          node scripts/matrix/j0.mjs --link-file link.txt --device linux-chrome --out results/linux
+          node scripts/matrix/j0.mjs --link-file link.txt --device linux-chrome-phone --out results/linux --mobile || true
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with: { name: results-linux, path: results, retention-days: 14 }
+
+  report:
+    needs: [linux]
+    if: always()
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with: { pattern: results-*, path: results, merge-multiple: true }
+      - name: The results page
+        run: node scripts/matrix/report.mjs results --sha "${{ github.sha }}" --run "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with: { name: matrix-results, path: results, retention-days: 30 }

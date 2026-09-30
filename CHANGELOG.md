@@ -4,6 +4,14 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### matrix: the real-device rehearsal matrix on GitHub-hosted runners (e2e2, 0.2)
+
+- `.github/workflows/matrix.yml` builds the box files, runs rc-smoke on x64 and arm64 runners,
+  installs a box on a fresh runner with the real installer (`scripts/matrix/box-up.sh`) and runs
+  J0 (the onboarding page loads, no errors, no sample-world names, a screenshot) in Chrome.
+  `scripts/matrix/report.mjs` folds every device's results into results.json and a results page.
+  Nothing runs on the test server, which is now the user's real server.
+
 ## 0.1.1
 
 What's new:
