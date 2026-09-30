@@ -9,10 +9,10 @@
       "github.repos", "github.project", "github.project.add-repo", "github.project.of",
       "github.project.detect",
       "github.session.worktree", "github.session.cleanup", "github.session.push",
-      "github.project.pr.get", "github.project.pr.merge", "github.project.pr.review"
+      "github.project.pr.get", "github.project.pr.merge", "github.project.pr.review", "github.project.local-init"
     ]
   },
-  "watches": { "emits": ["github.added", "github.removed", "github.connected", "github.connect-failed", "github.cleanup-needed", "github.token-invalid"] },
+  "watches": { "emits": ["github.added", "github.removed", "github.connected", "github.connect-failed", "github.cleanup-needed", "github.local-init", "github.token-invalid"] },
   "shows": {
     "deck": ["settings:connections"],
     "cli": ["connect"]

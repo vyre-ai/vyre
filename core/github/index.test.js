@@ -504,3 +504,25 @@ test("github.project.pr.merge: GitHub's refusal is reported as refused; an asked
   const ok = await w.as("mcp:agent:kit", { asked: true })("github.project.pr.review", { project: "app", pr: 7, event: "APPROVE" });
   assert.equal(ok.data.id, 9, "an asked agent call reaches GitHub");
 });
+
+test("github.project.local-init: an empty or plain folder becomes a repo whose sessions get worktrees; secrets stay out; an existing repo is untouched; a nested folder is refused", async t => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "vyre-gh-li-"));
+  t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
+  fs.writeFileSync(path.join(dir, "notes.md"), "hi\n");
+  fs.writeFileSync(path.join(dir, ".env"), "API_KEY=abcdefghijklmnop1234\n");
+  const w = await world(t, { projectsRows: [{ slug: "plain", name: "plain", home: dir }] });
+  const r = await w.as("deck")("github.project.local-init", { project: "plain" });
+  assert.equal(r.error, undefined);
+  assert.deepEqual([r.data.already, r.data.branch, r.data.left_out], [false, "main", [".env"]]);
+  assert.equal(plainGit(dir, ["ls-files"]).trim(), "notes.md");
+  assert.equal(w.events.at(-1).type, "github.local-init");
+  const wt = await w.as("module:sessions", { firstParty: true })("github.session.worktree", { project: "plain", session: "s1" });
+  assert.equal(fs.existsSync(path.join(wt.data.path, "notes.md")), true);
+  const again = await w.as("mcp:agent:kit")("github.project.local-init", { project: "plain" });
+  assert.equal(again.data.already, true);
+  // a folder inside the repo just made is not its own repo
+  const sub = path.join(dir, "sub"); fs.mkdirSync(sub);
+  const w2 = await world(t, { projectsRows: [{ slug: "sub", name: "sub", home: sub }] });
+  assert.equal((await w2.as("deck")("github.project.local-init", { project: "sub" })).error.code, "nested_repo");
+  assert.equal((await w.as("module:evil")("github.project.local-init", { project: "plain" })).error.code, "denied");
+});

@@ -299,3 +299,50 @@ export async function pushSession({ repoDir, session, defaultBranch, token, allo
   }
   throw fail(`git push failed: ${r.stderr.trim().slice(0, 300) || "no output"}`, "push_failed");
 }
+
+/** File names never swept into the starting commit of a project Vyre turns into a repo. */
+const KEEP_OUT = [".env", ".env.*", "*.pem", "*.key", "*.p12", "id_rsa*", "id_ed25519*", ".sessions/"];
+const IDENT = ["-c", "user.name=Vyre", "-c", "user.email=vyre@localhost", "-c", "commit.gpgsign=false"];
+
+/**
+ * Make a folder a git repo with one starting commit, so a session gets its own worktree and branch
+ * (undo and isolation) with no GitHub involved. Local only, no network, no token, no remote.
+ * - Not a repo: `git init -b main`, then a starting commit of what is there, minus secret-looking
+ *   files (listed in `left_out`, and kept out through the repo's own .git/info/exclude, never a
+ *   committed file).
+ * - A repo with no commit yet: the same starting commit.
+ * - A repo that already has commits: nothing changes (`already: true`).
+ * @param {string} dir
+ */
+export async function localInit(dir) {
+  if (!fs.existsSync(dir) || !fs.statSync(dir).isDirectory()) throw fail(`${dir} is not a folder`, "not_found");
+  const state = await folderGitState(dir);
+  // A folder inside someone else's repo is not this project's repo: only its own top counts.
+  if (state.isRepo) {
+    const top = await gitAsync(dir, ["rev-parse", "--show-toplevel"]);
+    if (!top.ok || fs.realpathSync(top.stdout.trim()) !== fs.realpathSync(dir)) {
+      throw fail(`${dir} is inside another git repo (${top.stdout.trim()}); a project's home has to be its own folder`, "nested_repo");
+    }
+  }
+  const before = state.isRepo ? await gitAsync(dir, ["rev-parse", "--verify", "HEAD"]) : { ok: false };
+  if (before.ok) return { already: true, branch: await defaultBranchOf(dir), left_out: [] };
+  if (!state.isRepo) {
+    const r = await gitAsync(dir, ["init", "-q", "-b", "main"]);
+    if (!r.ok) throw fail(`git init failed: ${r.stderr.trim().slice(0, 300)}`, "init_failed");
+  }
+  const file = path.join(dir, ".git", "info", "exclude");
+  let text = ""; try { text = fs.readFileSync(file, "utf8"); } catch {}
+  const have = new Set(text.split("\n").map(l => l.trim()));
+  const add = KEEP_OUT.filter(l => !have.has(l));
+  if (add.length) {
+    fs.mkdirSync(path.dirname(file), { recursive: true });
+    fs.writeFileSync(file, `${text && !text.endsWith("\n") ? text + "\n" : text}${add.join("\n")}\n`);
+  }
+  const a = await gitAsync(dir, ["add", "-A"]);
+  if (!a.ok) throw fail(`git add failed: ${a.stderr.trim().slice(0, 300)}`, "init_failed");
+  const c = await gitAsync(dir, [...IDENT, "commit", "-q", "--allow-empty", "-m", "Start of project"]);
+  if (!c.ok) throw fail(`git commit failed: ${c.stderr.trim().slice(0, 300)}`, "init_failed");
+  const ig = await gitAsync(dir, ["ls-files", "--others", "--ignored", "--exclude-standard"]);
+  const left_out = ig.ok ? ig.stdout.split("\n").filter(Boolean).filter(f => !f.startsWith(".sessions/")).slice(0, 50) : [];
+  return { already: false, branch: "main", left_out };
+}

@@ -12,7 +12,7 @@
 import { connector } from "./connect.js";
 import { MIGRATIONS, store, projectStore, forOne } from "./accounts.js";
 import { prView, prMerge, prReview } from "./pr.js";
-import { cloneRepo, worktreeAdd, worktreeRemove, originFullName, folderGitState, sanitizeRemoteUrl, defaultBranchOf, pushSession } from "./git.js";
+import { cloneRepo, worktreeAdd, worktreeRemove, originFullName, folderGitState, sanitizeRemoteUrl, defaultBranchOf, pushSession, localInit } from "./git.js";
 
 const str = { type: "string" };
 const obj = (properties, required = []) => ({ type: "object", properties, required });
@@ -40,6 +40,7 @@ const PEOPLE_AND_AGENTS = [...PEOPLE, "mcp"];
 const MODULE_CALLERS = {
   "github.repos": new Set(["module:sessions"]),
   "github.project.of": new Set(["module:sessions", "module:threads"]),
+  "github.project.local-init": new Set(["module:projects", "module:sessions", "module:threads"]),
 };
 // Also accepted on `.session.worktree`/`.cleanup`, since the switchboard (`threads`) is the one
 // that actually resolves a session's cwd through them (ADR 0041 section 5); kept alongside
@@ -475,6 +476,19 @@ export default {
         requireAsked("github.project.pr.review", meta);
         const t = await prTarget(project);
         try { return await prReview({ ...t, pr, event, body, in_reply_to }); } catch (e) { throw prErr(e, t); }
+      },
+    });
+    ctx.tool("github.project.local-init", {
+      description: "Give a project undo and per-session isolation with no GitHub: make its folder a git repo (main, one starting commit, no remote) so each session gets its own worktree and branch. A folder that already has commits is left exactly as it is. Secret-looking files (.env, keys) are kept out of the starting commit and listed in left_out. Refuses a folder that sits inside another repo. People, their agents, and projects/sessions when they create one.",
+      input: obj({ project: str }, ["project"]),
+      callers: [...PEOPLE_AND_AGENTS, "module"],
+      run: async ({ project }, meta = {}) => {
+        checkModuleCaller("github.project.local-init", meta, MODULE_CALLERS["github.project.local-init"]);
+        const row = await projectRow(project);
+        if (!row) throw fail(`no project named ${project}`, "not_found");
+        const out = await localInit(row.home);
+        if (!out.already) ctx.events.emit("github.local-init", { project, branch: out.branch });
+        return out;
       },
     });
 
