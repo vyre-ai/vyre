@@ -2,6 +2,8 @@
 # so the test that never finishes is named. Run by hand; remove once the hang is fixed.
 name: vault-mac-diag
 on:
+  push:
+    paths: [".github/workflows/vault-mac-diag.yml"]
   workflow_dispatch:
 permissions:
   contents: read
