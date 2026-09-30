@@ -22,7 +22,7 @@ import { nodeCrypto, fileKeyStore } from "../relay/client/nodecrypto.js";
 import { fromBase64url } from "../relay/client/bytes.js";
 import crypto from "node:crypto";
 import { tempHome } from "./helpers.js";
-import { fakeCoreKeys } from "./fake-core-keys.js";
+import { fakeCoreKeys, macCore } from "./fake-core-keys.js";
 
 /** Asks for a proof on every human-only tool and takes any proof: refusals below are about who is calling. */
 const lenient = {
@@ -47,7 +47,7 @@ async function world(t, relayConfig = {}, startOpts = {}) {
   const root = tempHome(t);
   fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ role: "box", name: "alex", transcripts: [],
     network: { name: "alex" }, relay: { enabled: false, url, ...relayConfig }, modules: { disable: ["names", "onboard"] } }));
-  const d = await start({ presence: lenient, root, log: () => {}, ...startOpts });
+  const d = await start({ presence: lenient, root, log: () => {}, coreKeys: macCore(), ...startOpts });
   t.after(() => d.stop());
   return { d, relay, url, root };
 }
@@ -341,7 +341,7 @@ test("relay: the pairing offer names the box as configured, never the machine's 
   for (const [cfg, want] of [[{ name: "Northwind Bakery" }, "Northwind Bakery"], [{}, "Vyre box"]]) {
     const root = tempHome(t);
     fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ role: "box", transcripts: [], ...cfg, relay: { enabled: false, url }, modules: { disable: ["names", "onboard"] } }));
-    const d = await start({ presence: lenient, root, log: () => {} });
+    const d = await start({ presence: lenient, root, log: () => {}, coreKeys: macCore() });
     t.after(() => d.stop());
     const offer = /** @type {any} */ (parsePairUrl((await firstPairing(d))));
     assert.equal(offer.name, want);
@@ -359,7 +359,7 @@ test("relay: loads on a Solo Mac (role local) but opens no connection until the 
   fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ role: "local", transcripts: [],
     modules: { disable: ["names", "onboard"] } }));
   const events = [];
-  const d = await start({ presence: lenient, root, log: () => {} });
+  const d = await start({ presence: lenient, root, log: () => {}, coreKeys: macCore() });
   t.after(() => d.stop());
   const off = d.events.on("relay.connected", () => events.push("connected"));
   const off2 = d.events.on("relay.disconnected", () => events.push("disconnected"));
@@ -384,14 +384,14 @@ test("relay: relay.join redeems a code minted on another box, and this device sh
   const boxRoot = tempHome(t);
   fs.writeFileSync(path.join(boxRoot, "config.json"), JSON.stringify({ role: "box", name: "alex", transcripts: [],
     network: { name: "alex" }, relay: { enabled: false, url }, modules: { disable: ["names", "onboard"] } }));
-  const box = await start({ presence: lenient, root: boxRoot, log: () => {} });
+  const box = await start({ presence: lenient, root: boxRoot, log: () => {}, coreKeys: macCore() });
   t.after(() => box.stop());
   const pairUrl = (await box.registry.call("relay.pair.first", {}, "onboard", PROOF)).data.url;
 
   const deviceRoot = tempHome(t);
   fs.writeFileSync(path.join(deviceRoot, "config.json"), JSON.stringify({ role: "local", transcripts: [],
     modules: { disable: ["names", "onboard"] } }));
-  const device = await start({ presence: lenient, root: deviceRoot, log: () => {} });
+  const device = await start({ presence: lenient, root: deviceRoot, log: () => {}, coreKeys: macCore() });
   t.after(() => device.stop());
   const r = await device.registry.call("relay.join", { url: pairUrl, name: "kit's laptop" }, "cli", PROOF);
   assert.equal(r.error, undefined, JSON.stringify(r.error));
@@ -422,7 +422,7 @@ test("relay: relay.join refuses a guest, an agent's own claim, and a bad code, b
   t.after(() => relay.close());
   const root = tempHome(t);
   fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ role: "local", transcripts: [], modules: { disable: ["names", "onboard"] } }));
-  const d = await start({ presence: lenient, root, log: () => {} });
+  const d = await start({ presence: lenient, root, log: () => {}, coreKeys: macCore() });
   t.after(() => d.stop());
   const bogus = `https://vyre.run/pair#${Buffer.from(JSON.stringify({ v: 1, r: url, i: "a".repeat(26), k: Buffer.alloc(32).toString("base64url"), s: "x", n: "test" })).toString("base64url")}`;
   const bad = await d.registry.call("relay.join", { url: bogus }, "cli", PROOF);
@@ -485,7 +485,7 @@ test("relay: relay.join's presence prompt names the box, its relay host and a ke
   assert.ok(hostPart.length <= 64, hostPart);
 });
 
-test("relay: relay.join is not available on a Mac until vyre-core holds its own device key", async t => {
+test("relay: relay.join is not available on a Mac without vyre-core to hold its device key", async t => {
   // A pure function of an explicit platform (like installCommand/operator elsewhere), so this
   // does not depend on the OS running the suite: darwin always refuses, every other platform
   // (this test box's own linux included) never does.
@@ -503,7 +503,7 @@ test("relay: relay.join is not available on a Mac until vyre-core holds its own 
   const real = Object.getOwnPropertyDescriptor(process, "platform");
   Object.defineProperty(process, "platform", { value: "darwin", configurable: true });
   t.after(() => Object.defineProperty(process, "platform", real));
-  const { d } = await world(t);
+  const { d } = await world(t, {}, { coreKeys: null });
   const def = d.registry.tools.get("relay.join");
   assert.equal(await def.presence.when({ url: "https://vyre.run/pair#anything" }), false, "no prompt on darwin: the call can only refuse");
   const bogus = `https://vyre.run/pair#${Buffer.from(JSON.stringify({ v: 1, r: "wss://relay.example.com", i: "a".repeat(26), k: Buffer.alloc(32).toString("base64url"), s: "x", n: "test" })).toString("base64url")}`;
@@ -620,7 +620,7 @@ test("relay: resolveTicket's handle is null when no vyre.run name is claimed, no
   t.after(() => relay.close());
   const root = tempHome(t);
   fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ role: "box", transcripts: [], relay: { enabled: false, url }, modules: { disable: ["names", "onboard"] } }));
-  const d = await start({ presence: lenient, root, log: () => {} });
+  const d = await start({ presence: lenient, root, log: () => {}, coreKeys: macCore() });
   t.after(() => d.stop());
   const minted = (await d.registry.call("relay.pair.ticket", {}, "cli", PROOF)).data;
   const status = (await d.registry.call("relay.status", {}, "cli", PROOF)).data;
@@ -637,7 +637,7 @@ test("relay: resolveTicket's identity fingerprint is sha256(\"vyre:person:v1:\" 
   const root = tempHome(t);
   const ownerId = "0123456789abcdef0123456789abcdef";
   fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ role: "box", name: "alex", transcripts: [], network: { name: "alex" }, owner: { id: ownerId }, relay: { enabled: false, url }, modules: { disable: ["names", "onboard"] } }));
-  const d = await start({ presence: lenient, root, log: () => {} });
+  const d = await start({ presence: lenient, root, log: () => {}, coreKeys: macCore() });
   t.after(() => d.stop());
   const minted = (await d.registry.call("relay.pair.ticket", {}, "cli", PROOF)).data;
   const status = (await d.registry.call("relay.status", {}, "cli", PROOF)).data;
@@ -698,7 +698,7 @@ test("relay: relay.pair.ticket refuses on darwin, before any Touch ID prompt, th
   const real = Object.getOwnPropertyDescriptor(process, "platform");
   Object.defineProperty(process, "platform", { value: "darwin", configurable: true });
   t.after(() => Object.defineProperty(process, "platform", real));
-  const { d } = await world(t);
+  const { d } = await world(t, {}, { coreKeys: null });
   const def = d.registry.tools.get("relay.pair.ticket");
   assert.equal(await def.presence.when(), false, "no prompt on darwin: the call can only refuse");
   const r = await d.registry.call("relay.pair.ticket", {}, "cli", PROOF);
@@ -723,9 +723,12 @@ test("relay: on a Mac with vyre-core holding the keys, the box pairs a phone end
   assert.equal(fs.existsSync(path.join(root, "relay", "keys.json")), false, "no key file at the login uid");
   const status = (await d.registry.call("relay.status", {}, "cli", PROOF)).data;
   assert.equal(status.connected, true);
-  // relay.join keeps its device key at the login uid, so it stays refused on a Mac even with core
+  const ts = (await d.registry.call("relay.tailnet.status", {}, "cli", PROOF)).data;
+  assert.equal(ts.available, true, "a Mac server can hand paired desktops a tailnet key once core holds its keys");
+  assert.equal(ts.why, null);
+  // relay.join is offered too: its device key is core's as well, so a garbage code is refused as garbage, not as "not on a Mac"
   const j = await d.registry.call("relay.join", { url: "vyre://x" }, "cli", PROOF);
-  assert.equal(j.error.code, "not_available_here");
+  assert.equal(j.error.code, "bad_input");
 });
 
 test("relay: /v1/pair is rate-limited per IP", async t => {

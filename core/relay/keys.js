@@ -61,6 +61,8 @@ export function keyHandle(o) {
   return {
     /** Whether this handle's keys are held by vyre-core. */
     core: Boolean(core),
+    /** vyre-core's key store itself, for the one other key it holds here: this machine's device key (./devicekey.js). */
+    client: core,
     /** Whether the public keys are read (and so the keys exist). */
     get loaded() { return Boolean(pubs); },
     /** Whether keys exist yet, without making them. */

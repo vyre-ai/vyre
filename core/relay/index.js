@@ -83,7 +83,7 @@ const fail = (code, message) => Object.assign(new Error(message), { code });
 
 /**
  * Shared by every relay tool that would create or persist a new key on this Mac before vyre-core
- * (ADR 0040) exists to hold it instead: `relay.join` (this device's own identity key,
+ * (ADR 0040) holds it instead: `relay.join` (this device's own identity key,
  * relay-device/key.json, core/relay/redeem.js) and `relay.pair.ticket` (a pairing whose secret and
  * MAC key derive from a ticket held only in this box's process, same as relay.pair.start's own
  * secret in relay/keys.json). All of it sits at the person's own login uid today, readable and
@@ -93,7 +93,8 @@ const fail = (code, message) => Object.assign(new Error(message), { code });
  *
  * A pure function of an explicit platform, like installCommand/operator in core/names/tailscale.js,
  * so a test can assert the darwin case without depending on the OS it happens to run on.
- * @param {string} platform @param {boolean} [core] whether vyre-core holds this box's keys (keyHandle's `core`), which lifts it for every path whose only key is the box's own; relay.join and the desktop join keep a device key at the login uid, so they call it without
+ * With vyre-core holding the keys (`core`, keyHandle's flag) it lifts for every path: the box's own keys and this machine's device key (./devicekey.js) both stay in core.
+ * @param {string} platform @param {boolean} [core]
  */
 export function macCoreRefusal(platform, core = false) {
   return platform === "darwin" && !core
@@ -444,8 +445,8 @@ export default {
     // pairing and once at each start until it has joined. Never on a Mac before vyre-core.
     let joining = null;
     const joinTailnet = () => {
-      if (joining || macCoreRefusal(platform) || !pairedBox(ctx.paths.root)) return;
-      joining = desktopJoin({ root: ctx.paths.root, hostname: String(ctx.config.name || "").toLowerCase().replace(/[^a-z0-9-]/g, "").slice(0, 63) || undefined, log: m => ctx.log(m) })
+      if (joining || macCoreRefusal(platform, keys.core) || !pairedBox(ctx.paths.root)) return;
+      joining = desktopJoin({ root: ctx.paths.root, coreKeys: keys.client, hostname: String(ctx.config.name || "").toLowerCase().replace(/[^a-z0-9-]/g, "").slice(0, 63) || undefined, log: m => ctx.log(m) })
         .then(r => { if (r.state !== "unpaired") ctx.events.emit("tailnet.tried", { state: r.state, ...(r.why ? { why: r.why } : {}) }); return r; })
         .catch(e => ctx.log(`relay: tailnet join: ${e.message}`))
         .finally(() => { joining = null; });
@@ -605,7 +606,7 @@ export default {
       // On darwin this always refuses (see macCoreRefusal above), so presence is not required
       // there either: no Touch ID prompt for a call that can only ever fail.
       presence: {
-        when: () => !macCoreRefusal(platform),
+        when: () => !macCoreRefusal(platform, keys.core),
         summary: async i => {
           const offer = parsePairUrl(i && i.url);
           if (!offer) return "This does not look like a real Vyre pairing code; refusing to pair.";
@@ -617,12 +618,12 @@ export default {
         },
       },
       run: async ({ url, name, becomeDevice = false }, meta = {}) => {
-        const refusal = macCoreRefusal(platform);
+        const refusal = macCoreRefusal(platform, keys.core);
         if (refusal) throw refusal;
         owner(meta.caller, meta, "joining another box");
         if (!parsePairUrl(url)) throw fail("bad_input", "that does not look like a real Vyre pairing code");
         let paired;
-        try { paired = await redeem(url, { root: ctx.paths.root, name, tailnet: true }); }
+        try { paired = await redeem(url, { root: ctx.paths.root, name, tailnet: true, coreKeys: keys.client }); }
         catch (e) { throw fail("bad_input", /** @type {Error} */ (e).message); }
         if (becomeDevice) await ctx.call("onboard.machine", { machine: "device" }).catch(() => {});
         // The tailnet upgrade (ADR 0046) runs on its own: pairing already worked over the relay.

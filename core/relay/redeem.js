@@ -13,18 +13,18 @@
 import fs from "node:fs";
 import path from "node:path";
 import { pair } from "../../relay/client/client.js";
-import { nodeCrypto, fileKeyStore } from "../../relay/client/nodecrypto.js";
+import { deviceKeyFor } from "./devicekey.js";
 
 /**
  * @param {string} url the pairing URL a box's relay.pair.start (or onboard.join{action:"relay"}) minted
- * @param {{ root: string, name?: string, tailnet?: boolean }} o
+ * @param {{ root: string, name?: string, tailnet?: boolean, coreKeys?: any }} o `coreKeys`: vyre-core's key store, which then holds this device's key
  */
-export async function redeem(url, { root, name, tailnet = false }) {
-  const file = path.join(root, "relay-device", "key.json");
-  const paired = await pair(url, { crypto: nodeCrypto(), keyStore: fileKeyStore(file), name, tailnet });
+export async function redeem(url, { root, name, tailnet = false, coreKeys }) {
+  const paired = await pair(url, { ...deviceKeyFor(root, coreKeys), name, tailnet });
   // What connect() needs later (no secret in it), so the tailnet join (ADR 0046) can reach this
   // box again after a restart. A new pairing replaces the old record whole.
   const box = path.join(root, "relay-device", "box.json");
+  fs.mkdirSync(path.dirname(box), { recursive: true, mode: 0o700 });
   fs.writeFileSync(`${box}.tmp`, JSON.stringify({ relay: paired.relay, route: paired.route, box: paired.box, device: paired.device, name: paired.name }), { mode: 0o600 });
   fs.renameSync(`${box}.tmp`, box);
   return paired;

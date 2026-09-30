@@ -77,3 +77,21 @@ test("key handle, core-backed: nothing is written under the root, keys are made 
   assert.ok(crypto.verify(null, msg, spki, await h.route.sign(msg)));
   assert.deepEqual([core.calls.boxDh, core.calls.routeSign], [1, 1]);
 });
+
+test("device key in core: the relay client runs Noise as the initiator with a marker private key, and core answers the DH", async t => {
+  const { coreDeviceKey } = await import("./devicekey.js");
+  const core = fakeCoreKeys({ made: false });
+  const { crypto: c, keyStore } = coreDeviceKey(core);
+  const kp = /** @type {any} */ (await keyStore.get());
+  assert.equal(kp.publicKey.length, 32);
+  assert.ok(!Buffer.isBuffer(kp.privateKey) && !(kp.privateKey instanceof Uint8Array), "the private key is a marker, never bytes");
+  const other = crypto.generateKeyPairSync("x25519");
+  const remote = other.publicKey.export({ format: "der", type: "spki" }).subarray(-32);
+  const a = await c.dh(kp.privateKey, new Uint8Array(remote));
+  const b = crypto.diffieHellman({ privateKey: other.privateKey, publicKey: crypto.createPublicKey({ key: Buffer.concat([Buffer.from("302a300506032b656e032100", "hex"), Buffer.from(kp.publicKey)]), format: "der", type: "spki" }) });
+  assert.deepEqual(Buffer.from(a), b, "core's DH is the same X25519 the peer computes");
+  assert.equal(core.calls.deviceDh, 1);
+  // a raw private key still goes to the ordinary provider
+  const fresh = await c.generateKeyPair();
+  assert.equal((await c.dh(fresh.privateKey, new Uint8Array(remote))).length, 32);
+});

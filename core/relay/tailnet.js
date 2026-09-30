@@ -20,7 +20,7 @@ import os from "node:os";
 import path from "node:path";
 import { execFile } from "node:child_process";
 import { connect } from "../../relay/client/client.js";
-import { nodeCrypto, fileKeyStore } from "../../relay/client/nodecrypto.js";
+import { deviceKeyFor } from "./devicekey.js";
 
 export const MINT_ITEM = "tailscale-mint-oauth";
 export const DEVICE_TAG = "tag:vyre-device";
@@ -213,7 +213,7 @@ function note(root, patch) {
  * key over the paired channel, join the tailnet with it, then bind the new node by presenting the
  * bind code to the box over the tailnet itself. Any step that cannot happen leaves the device on
  * the relay, which already works; the next start tries again. Never throws.
- * @param {{ root: string, hostname?: string, fetch?: typeof fetch, connect?: typeof connect, log?: (m: string) => void, wait?: (ms: number) => Promise<void> }} o
+ * @param {{ root: string, coreKeys?: any, hostname?: string, fetch?: typeof fetch, connect?: typeof connect, log?: (m: string) => void, wait?: (ms: number) => Promise<void> }} o
  * @returns {Promise<{ state: string, why?: string, install?: string, node?: string }>}
  */
 export async function desktopJoin(o) {
@@ -226,7 +226,7 @@ export async function desktopJoin(o) {
   if (!ready.ready) return done(ready.why === "not_installed" ? "relay_only" : "own_tailnet", { why: ready.why, ...(ready.install ? { install: ready.install } : {}) });
 
   let grant = null;
-  const conn = (o.connect || connect)({ relay: b.relay, route: b.route, box: b.box, crypto: nodeCrypto(), keyStore: fileKeyStore(path.join(o.root, "relay-device", "key.json")) });
+  const conn = (o.connect || connect)({ relay: b.relay, route: b.route, box: b.box, ...deviceKeyFor(o.root, o.coreKeys) });
   try {
     const res = await conn.fetch(JOIN_PATH, { method: "POST", headers: { "content-type": "application/json" }, body: "{}" });
     const body = /** @type {any} */ (await res.json());
