@@ -40,7 +40,9 @@ lead's 0.2 BUILD GO.
 
 ## Doing
 
-- Nothing in progress; picking the next item below.
+- Install script v2 core is built and tested (10 new tests, look tests green): see the CHANGELOG entry.
+  Still open in it: the terminal's own check code (B3) waits for tailnet's definition of the check
+  code; the Mac path and Windows are anywhere's and windows' scripts.
 
 ## Next
 
@@ -68,6 +70,13 @@ lead's 0.2 BUILD GO.
   can truthfully offer "starts at boot with no login" rather than the "sign in first" fallback.
 
 ## Changed contracts
+
+- Setup code handoff: install-box.sh writes `VYRE_SETUP_CODE=<43 chars>` into `$VYRE_DIR/vyre.env`
+  (0600, already the vyre service's optional env_file, so no compose change). tailnet: vyred reads it at
+  first start, and after the claim (or expiry) something must clear that line (proposal: `vyre` removes it
+  on `relay.setup.end`). launch will not invent the check-code derivation; tailnet defines it.
+- release.json's `images.box.ref` and `images.computer.ref` (integrator's release.yml) are now READ by
+  the installer and must stay `ghcr.io/vyre-ai/<name>@sha256:<64 hex>` and also appear in the released compose.yml.
 
 - `vyre backup`/`vyre restore` (up.js) and the library functions in `core/names/backup.js` now
   REQUIRE a `passphrase`; any caller not already updated in this commit will start throwing
