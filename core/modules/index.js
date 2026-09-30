@@ -515,7 +515,8 @@ export class Registry {
       if (this.modules.has(name)) {
         const prev = this.modules.get(name);
         if (!on) { this.modules.set(`${name}@${f.dir}`, { manifest: f.manifest, dir: f.dir, state: "off" }); continue; }
-        if (prev.state === "off") { this.modules.set(`${name}@${prev.dir}`, prev); }
+        // Only between Vyre's own modules: an added module never takes the name of one that is merely off on this machine.
+        if (prev.state === "off" && this.isFirstParty(f.dir) && this.isFirstParty(prev.dir)) { this.modules.set(`${name}@${prev.dir}`, prev); }
         else {
           const error = `a module named ${name} is already loaded from ${prev.dir}; this one is ignored`;
           this.modules.set(`${name}@${f.dir}`, { manifest: f.manifest, dir: f.dir, state: "invalid", error });

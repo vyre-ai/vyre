@@ -285,14 +285,29 @@ test("modules: two modules that share a name for different machines: the one tha
     writeModule(dirs.b, "notes", { ...good, roles: ["box"], does: { tools: ["notes.add"] } }, `export default { async start(ctx) { ctx.tool("notes.add", { run: async () => ({ from: "box" }) }); return {}; } };`);
     const db = open(path.join(home, `vyre-${order.join("")}.db`));
     t.after(() => db.close());
-    const reg = new Registry({ db, events: new Events(db), config: { role: "box" }, log: () => {} });
-    await reg.start(discover(order.map(k => dirs[/** @type {"a"|"b"} */ (k)])), { role: "box" });
+    const reg = new Registry({ db, events: new Events(db), config: { role: "box" }, log: () => {}, firstPartyRoots: [dirs.a, dirs.b] });
+    await reg.start(discover(order.map(k => dirs[/** @type {"a"|"b"} */ (k)]), { firstPartyRoots: [dirs.a, dirs.b] }), { role: "box" });
     const st = reg.status();
     assert.equal(st.find(m => m.name === "notes").state, "running", order.join());
     assert.equal(path.dirname(reg.modules.get("notes").dir), dirs.b, "the box copy is the one that runs");
     assert.equal((await reg.call("notes.add", {})).data.from, "box");
     assert.ok(st.filter(m => m.name.startsWith("notes@")).every(m => m.state === "off"), "the other stays listed as off, not invalid");
   }
+});
+
+test("modules: an added module never takes the name of a core module that is only off on this machine", async t => {
+  const home = tempHome(t);
+  const a = path.join(home, "a"), b = path.join(home, "b");
+  writeModule(a, "notes", { ...good, roles: ["box"] }, echo);
+  writeModule(b, "notes", { ...good, roles: ["local"], does: { tools: ["notes.add"] } }, `export default { async start(ctx) { ctx.tool("notes.add", { run: async () => ({ from: "added" }) }); return {}; } };`);
+  const db = open(path.join(home, "vyre.db"));
+  t.after(() => db.close());
+  const reg = new Registry({ db, events: new Events(db), config: { role: "local" }, log: () => {} });
+  await reg.start(discover([a, b]), { role: "local" });
+  // Neither folder is one of Vyre's own here, so the old rule holds: the first found keeps the name, the other is reported.
+  assert.equal(reg.modules.get("notes").state, "off");
+  assert.equal(path.dirname(reg.modules.get("notes").dir), a);
+  assert.equal(reg.status().find(m => m.name.startsWith("notes@")).state, "invalid");
 });
 
 test("modules: a bad manifest is logged at warn level, not silently dropped, and status() still carries it", async t => {
