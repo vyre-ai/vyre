@@ -296,11 +296,25 @@ test("phone add: push.subscribed re-reads at once and push.seen from an installe
   // No Enter at all: only the events move the checks (and the 60 s re-read, too slow for this test).
   const run = add({ android: true }, { io, input: null, tty: false, life: 20_000, fetch: noApp });
   const code = await until(() => lines.map(l => /type ([A-Z0-9]{4}-[A-Z0-9]{4})/.exec(l)).find(Boolean)?.[1], "the code");
-  const device = (await deck("push.subscribe", { subscription: subscription(`${svc.base}/push/pixel`), label: "alex's Pixel" })).data.device;
+  const subscribe = async () => (await deck("push.subscribe", { subscription: subscription(`${svc.base}/push/pixel`), label: "alex's Pixel" })).data.device;
+  const arrivals = () => svc.got.filter(p => p === "/push/pixel").length;
+  const device = await subscribe();
   // push.subscribed from the push module moves the check, with no Enter.
-  await until(() => svc.got.includes("/push/pixel"), "the test notification, without Enter");
+  await until(() => svc.got.includes("/push/pixel"), "the test notification, without Enter", 20_000);
   await shows(svc, root, "/push/pixel");
-  await until(() => lines.some(l => /✓ Test notification arrived/.test(l)), "the push check");
+  // The command opens its event stream a moment after its code line, and an event before that is not
+  // replayed, so on a slow runner the first subscribe can land before anyone listens: subscribe
+  // again (harmless), and answer its new test notification, until the line says so.
+  const arrived = () => lines.some(l => /✓ Test notification arrived/.test(l));
+  for (let tries = 0; !arrived() && tries < 8; tries++) {
+    try { await until(arrived, "the push check", 4_000); } catch {
+      const before = arrivals();
+      await subscribe();
+      await until(() => arrivals() > before, "the next test notification", 10_000);
+      await shows(svc, root, "/push/pixel");
+    }
+  }
+  await until(arrived, "the push check", 20_000);
   assert.ok(lines.some(l => /\? Opened as an app/.test(l)));
   await keep(() => deck("push.seen", { surface: "now", standalone: true, device }), () => lines.some(l => /✓ Opened as an app, not a browser tab · Vyre said it runs installed/.test(l)), "the app check");
   const { publicKey } = crypto.generateKeyPairSync("ec", { namedCurve: "P-256" });
