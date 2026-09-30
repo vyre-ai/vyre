@@ -21,9 +21,10 @@ import { scrub } from "./scrub.js";
 export const DEVICE_CODE_URI = "https://github.com/login/device/code";
 export const TOKEN_URI = "https://github.com/login/oauth/access_token";
 export const API = "https://api.github.com";
-export const REVOKE_URI = client_id => `${API}/applications/${client_id}/token`;
-/** Requested once, at sign-in: full read/write on every repo the account can reach (ADR 0041
- * decision 3 has no narrower device-flow option; 0.1.2's GitHub App is the real fix). */
+/** Requested once, at sign-in: full read/write on every repo the account can reach. GitHub's
+ * device flow has no narrower option; a fine-grained personal access token, pasted by hand
+ * instead of signing in, is the narrower alternative offered alongside this (0.2 charter minimum
+ * 9, lead ruling 30 Sep). */
 export const SCOPE = "repo";
 const TIMEOUT_MS = 15_000;
 const MAX_ENDED = 200;
@@ -198,23 +199,9 @@ export function connector(deps) {
   };
 }
 
-/**
- * Revoke a token at GitHub: the one call that reads the OAuth App's client secret. A failure
- * (unreachable, already revoked, wrong secret) is reported, never thrown past the caller's
- * control: `github.remove` removes the local account and item either way, so a person is never
- * stuck with a connected-looking account whose token doesn't work.
- * @param {{ clientId: string, clientSecret: string, token: string, fetch?: typeof fetch }} p
- */
-export async function revoke({ clientId, clientSecret, token, fetch: f = globalThis.fetch }) {
-  const basic = Buffer.from(`${clientId}:${clientSecret}`).toString("base64");
-  try {
-    const res = await f(REVOKE_URI(clientId), { method: "DELETE", signal: AbortSignal.timeout(TIMEOUT_MS),
-      headers: { authorization: `Basic ${basic}`, "content-type": "application/json", accept: "application/vnd.github+json" },
-      body: JSON.stringify({ access_token: token }) });
-    // 204 No Content is success; GitHub answers 404 for an already-invalid token, which is also "gone".
-    if (res.status === 204 || res.status === 404) return { revoked: true };
-    return { revoked: false, error: `GitHub answered ${res.status} revoking the token.` };
-  } catch (e) {
-    return { revoked: false, error: scrub(String(/** @type {any} */ (e)?.message || e), [token, clientSecret]) };
-  }
-}
+// There is no revoke() here on purpose (0.2, lead ruling 30 Sep). The client id below is
+// GitHub CLI's own, shared with every `gh` install everywhere; revoking a token under it revokes
+// the app-wide grant, which would sign the person's own real `gh` out on every other machine and
+// CI runner too. `github.remove` only ever deletes Vyre's own local vault item and account row;
+// the token itself, and whether it still works elsewhere, is the person's own business, at
+// github.com/settings/applications if they ever want it gone entirely.

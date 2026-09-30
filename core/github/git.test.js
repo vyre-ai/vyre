@@ -18,7 +18,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { gitSync } from "../../lib/git-safe.js";
-import { cloneRepo, worktreeAdd, worktreeRemove, freeFolder, safeSegment, originFullName, sanitizeRemoteUrl, remoteUrl, listRemotes, folderGitState } from "./git.js";
+import { cloneRepo, worktreeAdd, worktreeRemove, freeFolder, safeSegment, originFullName, sanitizeRemoteUrl, remoteUrl, listRemotes, folderGitState, defaultBranchOf, scanOutgoing, pushSession } from "./git.js";
 
 const plainGit = (dir, args) => execFileSync("git", args, { cwd: dir, encoding: "utf8", env: { ...process.env, GIT_CONFIG_NOSYSTEM: "1", GIT_CONFIG_GLOBAL: os.devNull } });
 
@@ -256,4 +256,90 @@ test("folderGitState: isRepo:false with no remotes outside a repo, isRepo:true p
   const state = await folderGitState(repoDir);
   assert.equal(state.isRepo, true);
   assert.deepEqual(state.remotes, [{ name: "origin", url: await remoteUrl(repoDir, "origin") }]);
+});
+
+test("defaultBranchOf: prefers origin/HEAD when there's a remote, falls back to the checked-out branch when there isn't (0.2: any repo, GitHub's or local-only)", async t => {
+  const repoDir = makeClonedRepo(t);
+  // makeClonedRepo's plain clone sets origin/HEAD via the clone itself.
+  assert.equal(await defaultBranchOf(repoDir), "main");
+
+  const plain = fs.mkdtempSync(path.join(os.tmpdir(), "vyre-gh-defbranch-"));
+  t.after(() => fs.rmSync(plain, { recursive: true, force: true }));
+  plainGit(plain, ["init", "-q", "-b", "trunk"]);
+  plainGit(plain, ["config", "user.email", "a@example.com"]);
+  plainGit(plain, ["config", "user.name", "a"]);
+  fs.writeFileSync(path.join(plain, "f"), "x\n");
+  plainGit(plain, ["add", "f"]);
+  plainGit(plain, ["commit", "-q", "-m", "first"]);
+  assert.equal(await defaultBranchOf(plain), "trunk", "no remote at all - falls back to whatever's checked out");
+
+  const noRepo = fs.mkdtempSync(path.join(os.tmpdir(), "vyre-gh-defbranch-none-"));
+  t.after(() => fs.rmSync(noRepo, { recursive: true, force: true }));
+  assert.equal(await defaultBranchOf(noRepo), null);
+});
+
+test("scanOutgoing: finds a known secret shape only in the ADDED lines of a branch, not in the default branch's own history, and reports the file and an approximate line", async t => {
+  const repoDir = makeClonedRepo(t);
+  plainGit(repoDir, ["checkout", "-q", "-b", "vyre/s1"]);
+  fs.writeFileSync(path.join(repoDir, "config.env"), "PORT=3000\nAWS_KEY=AKIAABCDEFGHIJKLMNOP\n");
+  plainGit(repoDir, ["add", "config.env"]);
+  plainGit(repoDir, ["commit", "-q", "-m", "add config"]);
+
+  const hit = await scanOutgoing({ repoDir, branch: "vyre/s1", defaultBranch: "main" });
+  assert.equal(hit.pattern, "AWS access key");
+  assert.equal(hit.file, "config.env");
+  assert.equal(hit.line, 2);
+
+  // a branch with nothing secret-shaped in it: no hit.
+  plainGit(repoDir, ["checkout", "-q", "-b", "vyre/s2", "main"]);
+  fs.writeFileSync(path.join(repoDir, "readme.txt"), "just some notes\n");
+  plainGit(repoDir, ["add", "readme.txt"]);
+  plainGit(repoDir, ["commit", "-q", "-m", "notes"]);
+  assert.equal(await scanOutgoing({ repoDir, branch: "vyre/s2", defaultBranch: "main" }), null);
+});
+
+test("pushSession: refuses on a secret hit before ever attempting the network push, and the override skips the scan", async t => {
+  const repoDir = makeClonedRepo(t);
+  const w = await worktreeAdd({ repoDir, session: "secret1", defaultBranch: "main" });
+  fs.writeFileSync(path.join(w.path, "keys.txt"), "github_pat_11AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA\n");
+  plainGit(w.path, ["add", "keys.txt"]);
+  plainGit(w.path, ["commit", "-q", "-m", "oops"]);
+
+  const blocked = await pushSession({ repoDir, session: "secret1", defaultBranch: "main", token: "not-a-real-token" });
+  assert.equal(blocked.pushed, false);
+  assert.equal(blocked.blocked, "secret");
+  assert.equal(blocked.pattern, "GitHub token");
+  assert.equal(blocked.file, "keys.txt");
+
+  // allowSecret skips the scan and reaches the actual push attempt - which then hits the same
+  // https-only protocol restriction every other network call in this module has (git.test.js's
+  // own cloneRepo test proves the same thing for clone; makeClonedRepo's origin is a plain local
+  // path, so this proves the restriction holds for push too, without needing a real network call).
+  await assert.rejects(
+    pushSession({ repoDir, session: "secret1", defaultBranch: "main", token: "not-a-real-token", allowSecret: true }),
+    /push failed/,
+  );
+});
+
+test("pushSession: a session with nothing secret-shaped still hits the same https-only protocol restriction against a local remote (no real network needed to prove the isolation holds)", async t => {
+  const repoDir = makeClonedRepo(t);
+  const w = await worktreeAdd({ repoDir, session: "clean1", defaultBranch: "main" });
+  fs.writeFileSync(path.join(w.path, "notes.md"), "nothing secret here\n");
+  plainGit(w.path, ["add", "notes.md"]);
+  plainGit(w.path, ["commit", "-q", "-m", "notes"]);
+
+  await assert.rejects(
+    pushSession({ repoDir, session: "clean1", defaultBranch: "main", token: "not-a-real-token" }),
+    /push failed/,
+  );
+});
+
+test("pushSession: a hostile session id can't push anything but its own sanitized vyre/<id> branch", async t => {
+  const repoDir = makeClonedRepo(t);
+  // No worktree/branch exists for this id at all (safeSegment already proves the sanitizing
+  // itself elsewhere) - the push fails outright, never reaching or affecting any other branch.
+  await assert.rejects(
+    pushSession({ repoDir, session: "../../etc/passwd", defaultBranch: "main", token: "not-a-real-token" }),
+    /push failed/,
+  );
 });

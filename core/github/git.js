@@ -226,3 +226,76 @@ export async function worktreeRemove({ repoDir, session, defaultBranch }) {
   const del = await gitAsync(repoDir, ["branch", "-d", branch]);
   return { removed: true, pruned: del.ok };
 }
+
+/**
+ * A repo's own idea of its default branch, for a repo that never went through `github.project`
+ * (0.2, charter "projects work with or without GitHub" - a local-only or hand-cloned repo has no
+ * `github_projects` row to read a `default_branch` from). Prefers `origin/HEAD` (what a real
+ * GitHub/GitLab clone already reports); a repo with no remote falls back to whatever branch is
+ * currently checked out (a fresh `git init`'s first branch). Local-only, no network.
+ * @param {string} repoDir
+ */
+export async function defaultBranchOf(repoDir) {
+  const origin = await gitAsync(repoDir, ["symbolic-ref", "--short", "refs/remotes/origin/HEAD"]);
+  if (origin.ok) return origin.stdout.trim().replace(/^origin\//, "");
+  const head = await gitAsync(repoDir, ["symbolic-ref", "--short", "HEAD"]);
+  return head.ok ? head.stdout.trim() : null;
+}
+
+// Common secret shapes, checked against the *added* lines of an outgoing push before it's ever
+// sent (0.2, reviewer's M8/H0a fix on the review of plans/github.md). Not exhaustive; a real,
+// useful floor, not a promise nothing ever gets through. A future pass can also match known vault
+// values by hash (the reviewer's own suggestion), once vault exposes that; this file doesn't
+// invent an API vault hasn't shipped.
+const SECRET_PATTERNS = [
+  { name: "AWS access key", re: /\bAKIA[0-9A-Z]{16}\b/ },
+  { name: "GitHub token", re: /\b(?:ghp|gho|ghs|ghr|github_pat)_[A-Za-z0-9_]{20,}\b/ },
+  { name: "Slack token", re: /\bxox[baprs]-[A-Za-z0-9-]{10,}\b/ },
+  { name: "private key block", re: /-----BEGIN (?:RSA |EC |OPENSSH |DSA |ENCRYPTED |)PRIVATE KEY-----/ },
+  { name: "a secret-looking assignment", re: /\b(?:SECRET|API_KEY|ACCESS_KEY|ACCESS_TOKEN|PASSWORD|PRIVATE_KEY)\s*[:=]\s*["']?[A-Za-z0-9/+_.-]{16,}["']?/i },
+];
+
+/**
+ * Scan only the lines a push would actually add (`branch` minus `defaultBranch`) for a known
+ * secret shape, before the push happens. Returns the first hit (`{ pattern, file, line }`), or
+ * null. Local-only, no network: reads git's own diff.
+ * @param {{ repoDir: string, branch: string, defaultBranch: string }} p
+ */
+export async function scanOutgoing({ repoDir, branch, defaultBranch }) {
+  const diff = await gitAsync(repoDir, ["diff", "--unified=0", `refs/heads/${defaultBranch}...refs/heads/${branch}`]);
+  if (!diff.ok) return null; // can't diff (no such branch, no such default) - the push call itself will fail plainly next
+  let file = null, line = 0;
+  for (const l of diff.stdout.split("\n")) {
+    if (l.startsWith("+++ ")) { file = l.slice(6).replace(/^b\//, ""); continue; }
+    const hunk = /^@@ -\d+(?:,\d+)? \+(\d+)/.exec(l);
+    if (hunk) { line = Number(hunk[1]); continue; }
+    if (l.startsWith("+++") || !l.startsWith("+")) continue;
+    for (const p of SECRET_PATTERNS) if (p.re.test(l)) return { pattern: p.name, file: file || "(unknown file)", line };
+    line++;
+  }
+  return null;
+}
+
+/**
+ * Push a session's own branch, and only that branch, to the same name on origin - an explicit
+ * refspec, never `--force` (not even with-lease), and never anything but this one branch. Runs
+ * `scanOutgoing` first and refuses on a hit unless `allowSecret` (the person's own override, ADR
+ * 0041 addendum: "push it anyway" is the approval, no presence needed - reviewer's M8). A
+ * non-fast-forward remote (someone else pushed to the same branch) is reported, never overwritten
+ * (reviewer's M2). fd-3 token only, the same isolation `cloneRepo` already has (reviewer's H0a).
+ * @param {{ repoDir: string, session: string, defaultBranch: string, token: string, allowSecret?: boolean }} p
+ */
+export async function pushSession({ repoDir, session, defaultBranch, token, allowSecret = false }) {
+  const branch = `vyre/${safeSegment(session, "session id")}`;
+  if (!allowSecret) {
+    const hit = await scanOutgoing({ repoDir, branch, defaultBranch });
+    if (hit) return { pushed: false, blocked: "secret", ...hit };
+  }
+  const refspec = `refs/heads/${branch}:refs/heads/${branch}`;
+  const r = await gitWithAskpass(repoDir, ["push", "--", "origin", refspec], { token, timeout: 120_000 });
+  if (r.ok) return { pushed: true, branch };
+  if (/\[rejected\]|non-fast-forward|fetch first/i.test(r.stderr)) {
+    return { pushed: false, blocked: "non_fast_forward", detail: r.stderr.trim().slice(0, 300) };
+  }
+  throw fail(`git push failed: ${r.stderr.trim().slice(0, 300) || "no output"}`, "push_failed");
+}

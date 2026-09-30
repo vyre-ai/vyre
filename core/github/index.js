@@ -9,15 +9,20 @@
 // two named modules (sessions, threads); the worktree tools are sessions-only and internal. No
 // Gate sender is registered, because nothing here sends anything outward yet (no issues, no PRs).
 
-import { connector, revoke } from "./connect.js";
+import { connector } from "./connect.js";
 import { MIGRATIONS, store, projectStore, forOne } from "./accounts.js";
-import { cloneRepo, worktreeAdd, worktreeRemove, originFullName, folderGitState, sanitizeRemoteUrl } from "./git.js";
+import { cloneRepo, worktreeAdd, worktreeRemove, originFullName, folderGitState, sanitizeRemoteUrl, defaultBranchOf, pushSession } from "./git.js";
 
 const str = { type: "string" };
 const obj = (properties, required = []) => ({ type: "object", properties, required });
 const PEOPLE = ["cli", "local", "deck", "capsule"];
 /** Coarse gate: any person, or any module (narrowed per-tool below by exact caller name). */
 const PEOPLE_AND_MODULES = [...PEOPLE, "module"];
+// Agents can do everything the person can (0.2 charter, 30 Sep binding): an MCP caller ("mcp", or
+// "mcp:agent:<name>" for a specific agent/teammate) is the person's own agent acting for them,
+// never a cross-module call - this is a different axis from PEOPLE_AND_MODULES above, which is
+// about which other Vyre MODULE may call a tool, not whether a model may.
+const PEOPLE_AND_AGENTS = [...PEOPLE, "mcp"];
 // "launch" is a team, not a module - no module.json in this repo is named that (core/switchboard's
 // is "threads"). Named an allowlist entry that way once, on a guess; the reviewer caught that a
 // third-party module could just name itself "sessions" or "threads" too, since a module's *name*
@@ -66,7 +71,12 @@ export default {
     const accounts = store(ctx.store.db);
     const projects = projectStore(ctx.store.db);
     const now = () => Date.now();
-    const clientId = process.env.VYRE_GITHUB_OAUTH_CLIENT_ID || "Ov23ct6h9OU5wJHjbqBl";
+    // GitHub CLI's own public client id (0.2, lead ruling 30 Sep - "the user asked for GitHub's
+    // own managed app"): declared safe to embed in GitHub CLI's own source, the same id every
+    // `gh auth login` uses. No app of Vyre's, no secret to hold, and no verification question,
+    // since it's GitHub's own first-party app, not ours. A fine-grained personal access token,
+    // pasted instead of signing in, is the narrower alternative (github.connect's own docs).
+    const clientId = process.env.VYRE_GITHUB_OAUTH_CLIENT_ID || "178c6fc778ccc68e1d6a";
 
     const signIn = connector({
       clientId,
@@ -111,23 +121,16 @@ export default {
     });
 
     ctx.tool("github.remove", {
-      description: "Disconnect a GitHub account: revokes the token at GitHub, then removes the vault item and the account. A failed revoke still removes the account locally and says so, rather than leaving a connected-looking account with a token that may not work.",
+      description: "Disconnect a GitHub account: removes Vyre's own vault item and account row. Never revokes the token at GitHub (0.2, lead ruling 30 Sep): the sign-in shares GitHub CLI's own client id with every real `gh` install, so revoking it would sign the person's own gh out on every other machine and CI runner too. The token itself, and whether it still works elsewhere, stays the person's own business, at github.com/settings/applications if they ever want it gone entirely.",
       input: obj({ name: str }, ["name"]),
       callers: PEOPLE,
       run: async ({ name }) => {
         const acct = accounts.get(name);
         if (!acct) return { removed: false };
-        let revoked = { revoked: false, error: "no client secret configured" };
-        const clientSecret = process.env.VYRE_GITHUB_OAUTH_CLIENT_SECRET;
-        if (clientSecret) {
-          let token;
-          try { token = await ctx.vault.fetch(acct.item, { field: "token" }); } catch {}
-          if (token) revoked = await revoke({ clientId, clientSecret, token });
-        }
         await ctx.call("vault.delete", { name: acct.item }).catch(() => {});
         accounts.remove(name);
         ctx.events.emit("github.removed", { name });
-        return revoked.revoked ? { removed: true, revoked: true } : { removed: true, revoked: false, warning: `the account was removed, but the token may still work at GitHub: ${revoked.error}` };
+        return { removed: true };
       },
     });
 
@@ -353,16 +356,35 @@ export default {
       },
     });
 
+    /**
+     * A project's repo folder and default branch, for the worktree tools below - ANY git repo,
+     * not just one `github.project` cloned (0.2, charter "projects work with or without GitHub").
+     * A `github_projects` row (has `default_branch` recorded already) is used when there is one;
+     * otherwise the project's own home folder is read directly: `folderGitState` says whether
+     * it's a repo at all, `defaultBranchOf` reads its own default branch off disk. Returns null
+     * when the project doesn't exist, isn't a repo yet, or has no resolvable default branch.
+     */
+    async function repoOf(project) {
+      const known = projects.get(project);
+      if (known) return { home: known.home, defaultBranch: known.default_branch };
+      const row = await projectRow(project);
+      if (!row) return null;
+      const state = await folderGitState(row.home);
+      if (!state.isRepo) return null;
+      const defaultBranch = await defaultBranchOf(row.home);
+      return defaultBranch ? { home: row.home, defaultBranch } : null;
+    }
+
     ctx.tool("github.session.worktree", {
       internal: true,
-      description: "Sessions only: a worktree and branch for a session in a GitHub project, or null when the project has no repo.",
+      description: "Sessions only: a worktree and branch for a session in any project whose home is a git repo (GitHub's or local-only), or null when the project has no repo yet.",
       input: obj({ project: str, session: str }, ["project", "session"]),
       callers: ["module"],
       run: async ({ project, session }, meta = {}) => {
         checkModuleCaller("github.session.worktree", meta, SESSION_ONLY);
-        const repo = projects.get(project);
+        const repo = await repoOf(project);
         if (!repo) return null;
-        return worktreeAdd({ repoDir: repo.home, session, defaultBranch: repo.default_branch });
+        return worktreeAdd({ repoDir: repo.home, session, defaultBranch: repo.defaultBranch });
       },
     });
 
@@ -373,12 +395,29 @@ export default {
       callers: ["module"],
       run: async ({ project, session }, meta = {}) => {
         checkModuleCaller("github.session.cleanup", meta, SESSION_ONLY);
-        const repo = projects.get(project);
+        const repo = await repoOf(project);
         if (!repo) return { removed: false };
-        const out = await worktreeRemove({ repoDir: repo.home, session, defaultBranch: repo.default_branch });
+        const out = await worktreeRemove({ repoDir: repo.home, session, defaultBranch: repo.defaultBranch });
         if (out.needsConfirm) {
           ctx.events.emit("github.cleanup-needed", { project, session, path: out.path, branch: out.branch, dirty: out.dirty, commits: out.commits });
         }
+        return out;
+      },
+    });
+
+    ctx.tool("github.session.push", {
+      description: "Push a session's own branch, and only that branch, to the same name on the project's primary GitHub repo (github_projects, not a workspace repo - only the account recorded there is ever used, never `.git/config`, which an agent's own shell can edit). Never force, refuses a non-fast-forward remote rather than overwrite it, and scans the outgoing commits for a known secret shape first, refusing with the file and line on a hit; pass allow_secret: true (the person's own \"push it anyway\") to push past that specific check once. People and their agents; a model caller pushes only its own session, never another one.",
+      input: obj({ project: str, session: str, allow_secret: { type: "boolean" } }, ["project", "session"]),
+      callers: PEOPLE_AND_AGENTS,
+      run: async ({ project, session, allow_secret }) => {
+        const repo = projects.get(project);
+        if (!repo) throw fail(`${project} has no primary GitHub repo to push to (a workspace repo added with github.project.add-repo isn't pushed through this tool yet)`, "not_found");
+        const acct = accounts.get(repo.account);
+        if (!acct) throw fail(`the account that made this project (${repo.account}) isn't connected anymore; reconnect it`, "no_account");
+        const token = await ctx.vault.fetch(acct.item, { field: "token" });
+        const out = await pushSession({ repoDir: repo.home, session, defaultBranch: repo.default_branch, token, allowSecret: Boolean(allow_secret) });
+        if (out.blocked === "secret") throw fail(`a ${out.pattern} was found in the outgoing commits, at ${out.file}:${out.line}; push again with allow_secret: true if this is really meant to go`, "secret_found", out);
+        if (out.blocked === "non_fast_forward") throw fail(`the remote branch has commits this one doesn't; pull or rebase before pushing: ${out.detail}`, "non_fast_forward");
         return out;
       },
     });

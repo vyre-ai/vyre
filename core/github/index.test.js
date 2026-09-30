@@ -371,3 +371,67 @@ test("github.session.worktree/.cleanup: the switchboard (module:threads) can cal
   const viaSessions = await w.as("module:sessions", { firstParty: true })("github.session.worktree", { project: "harlow", session: "s3" });
   assert.equal(viaSessions.error, undefined, JSON.stringify(viaSessions));
 });
+
+test("github.session.worktree: works for ANY git repo, not just one github.project made (0.2 charter, \"projects work with or without GitHub\") - no github_projects row at all, default branch read straight off the repo", async t => {
+  const home = makeRepo(t); // a plain local repo, "main" branch, no GitHub remote, no github_projects row
+  const w = await world(t, { projectsRows: [{ slug: "local", name: "Local", home }] });
+
+  const r = await w.as("module:threads", { firstParty: true })("github.session.worktree", { project: "local", session: "s1" });
+  assert.equal(r.error, undefined, JSON.stringify(r));
+  assert.match(r.data.branch, /^vyre\/s1$/);
+  assert.ok(fs.existsSync(r.data.path));
+
+  const cleaned = await w.as("module:threads", { firstParty: true })("github.session.cleanup", { project: "local", session: "s1" });
+  assert.equal(cleaned.data.removed, true);
+});
+
+test("github.session.worktree: a project whose folder isn't a git repo at all, or doesn't exist, answers null - not an error (teammates' local-init, not github's, gives it a repo)", async t => {
+  const notARepo = fs.mkdtempSync(path.join(os.tmpdir(), "vyre-gh-notrepo-idx-"));
+  t.after(() => fs.rmSync(notARepo, { recursive: true, force: true }));
+  const w = await world(t, { projectsRows: [{ slug: "bare", name: "Bare", home: notARepo }] });
+
+  const r = await w.as("module:threads", { firstParty: true })("github.session.worktree", { project: "bare", session: "s1" });
+  assert.equal(r.error, undefined, JSON.stringify(r));
+  assert.equal(r.data, null);
+
+  const noProject = await w.as("module:threads", { firstParty: true })("github.session.worktree", { project: "does-not-exist", session: "s1" });
+  assert.equal(noProject.data, null);
+});
+
+test("github.session.push: validates before ever touching git - no primary repo, account disconnected - and people/agents may call it, a wrong-name module may not", async t => {
+  const home = makeRepo(t);
+  const w = await world(t, { projectsRows: [{ slug: "harlow", name: "Harlow", home }] });
+
+  const noRepo = await w.as("cli")("github.session.push", { project: "harlow", session: "s1" });
+  assert.equal(noRepo.error.code, "not_found", "no github_projects row at all yet - add-repo/github.project never ran");
+
+  projectStore(w.db).put({ project: "harlow", account: "ghost", full_name: "alex/harlow-legal", default_branch: "main", home }, Date.now());
+  const noAccount = await w.as("cli")("github.session.push", { project: "harlow", session: "s1" });
+  assert.equal(noAccount.error.code, "no_account", "the recorded account isn't connected (anymore)");
+
+  const deniedModule = await w.as("module:someone-else")("github.session.push", { project: "harlow", session: "s1" });
+  assert.equal(deniedModule.error.code, "denied");
+
+  const viaAgent = await w.as("mcp:agent:kit")("github.session.push", { project: "harlow", session: "s1" });
+  assert.notEqual(viaAgent.error && viaAgent.error.code, "denied", "an agent (mcp caller) may call this tool at all - agent parity");
+});
+
+test("github.session.push: refuses a secret in the outgoing commits before ever attempting the network push, names the file and line", async t => {
+  const home = makeRepo(t);
+  const w = await world(t, { projectsRows: [{ slug: "harlow", name: "Harlow", home }] });
+  seedAccount(w.db);
+  projectStore(w.db).put({ project: "harlow", account: "home", full_name: "alex/harlow-legal", default_branch: "main", home }, Date.now());
+
+  const wt = await w.as("module:threads", { firstParty: true })("github.session.worktree", { project: "harlow", session: "s1" });
+  assert.equal(wt.error, undefined, JSON.stringify(wt));
+  execFileSync("git", ["-C", wt.data.path, "config", "user.email", "a@example.com"]);
+  execFileSync("git", ["-C", wt.data.path, "config", "user.name", "a"]);
+  fs.writeFileSync(path.join(wt.data.path, "keys.env"), "AWS_KEY=AKIAABCDEFGHIJKLMNOP\n");
+  execFileSync("git", ["-C", wt.data.path, "add", "keys.env"]);
+  execFileSync("git", ["-C", wt.data.path, "commit", "-q", "-m", "oops"]);
+
+  const r = await w.as("cli")("github.session.push", { project: "harlow", session: "s1" });
+  assert.equal(r.error.code, "secret_found");
+  assert.match(r.error.message, /keys\.env/);
+  assert.equal(r.error.detail.pattern, "AWS access key");
+});

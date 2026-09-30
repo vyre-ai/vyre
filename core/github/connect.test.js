@@ -2,11 +2,11 @@
 // "Sign in with GitHub" (connect.js) against a fake GitHub (no real network, no listener - device
 // flow has none): the happy path (pending, pending, then a token), slow_down, expiry, decline, a
 // name race, cancel, and that no token or device code ever reaches a result, an event or a log
-// line. revoke() is tested separately against its own fake.
+// line.
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { connector, revoke, DEVICE_CODE_URI, TOKEN_URI, REVOKE_URI } from "./connect.js";
+import { connector, DEVICE_CODE_URI, TOKEN_URI } from "./connect.js";
 
 const CLIENT_ID = "Ov23test0000000000";
 
@@ -147,29 +147,6 @@ test("connect: a name taken by another sign-in finishing first is caught at the 
   assert.equal(r.saved.length, 0);
 });
 
-test("revoke: a 204 or a 404 (already gone) both count as revoked; another status or a network error do not, and never carries the token or secret in the message", async () => {
-  const secret = "supersecretclientsecret";
-  const token = "gho_revokeme1234567890";
-  const calls = [];
-  const fetch204 = async (url, opts) => { calls.push({ url, opts }); return { status: 204 }; };
-  const out204 = await revoke({ clientId: CLIENT_ID, clientSecret: secret, token, fetch: fetch204 });
-  assert.deepEqual(out204, { revoked: true });
-  assert.equal(calls[0].url, REVOKE_URI(CLIENT_ID));
-  assert.equal(calls[0].opts.method, "DELETE");
-  assert.match(calls[0].opts.headers.authorization, /^Basic /);
-  assert.equal(JSON.parse(calls[0].opts.body).access_token, token);
-
-  const fetch404 = async () => ({ status: 404 });
-  assert.deepEqual(await revoke({ clientId: CLIENT_ID, clientSecret: secret, token, fetch: fetch404 }), { revoked: true });
-
-  const fetch401 = async () => ({ status: 401 });
-  const out401 = await revoke({ clientId: CLIENT_ID, clientSecret: secret, token, fetch: fetch401 });
-  assert.equal(out401.revoked, false);
-  assert.doesNotMatch(out401.error, new RegExp(token));
-
-  const fetchDown = async () => { throw new Error(`could not reach ${token} with secret ${secret}`); };
-  const outDown = await revoke({ clientId: CLIENT_ID, clientSecret: secret, token, fetch: fetchDown });
-  assert.equal(outDown.revoked, false);
-  assert.doesNotMatch(outDown.error, new RegExp(token));
-  assert.doesNotMatch(outDown.error, new RegExp(secret));
-});
+// No revoke() test here: 0.2 dropped server-side revoke entirely (connect.js's own comment says
+// why - the client id is shared with every real `gh` install, so revoking it would sign the
+// person's own gh out everywhere else too). github.remove's own test covers local-only removal.
