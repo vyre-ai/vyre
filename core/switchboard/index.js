@@ -225,6 +225,9 @@ const STATE = { starting: "starting", working: "running", waiting: "waiting", id
  * The Harness plugin every thread loads. VYRE_HARNESS_DIR points elsewhere (tests, a user's own
  * copy); a missing plugin means the thread runs without Vyre's hooks rather than not at all.
  */
+/** The one MCP bridge (every module tool, scoped by vyred): Claude's plugin runs it, and so does every other provider. */
+const MCP_SERVER = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..", "harness", "mcp", "server.js");
+
 export function pluginDir() {
   const dir = process.env.VYRE_HARNESS_DIR || path.resolve(HERE, "..", "..", "harness");
   return fs.existsSync(path.join(dir, ".claude-plugin", "plugin.json")) ? dir : null;
@@ -758,7 +761,15 @@ export class Switchboard {
     const ar = o.accountRun;
     if (ar && ar.home) env.HOME = ar.home;
     const account = ar && ar.uid != null ? { uid: ar.uid, shared: rec.cwd === (process.env.VYRE_WORK || "/work") || String(rec.cwd).startsWith((process.env.VYRE_WORK || "/work") + "/") } : null;
-    const how = { subreaper: this.deps.subreaper || null, ...(this.deps.uid != null ? { uid: this.deps.uid, gid: this.deps.gid } : {}), ...(account ? { account } : {}),
+    // What a provider that is not Claude gets: the floor as a function (its file and shell methods
+    // are served through it), and the same MCP bridge Claude's plugin uses (harness/mcp/server.js),
+    // scoped by vyred on the thread's own socket, never by anything the session could forge.
+    const foreign = o.provider && o.provider !== "claude";
+    const floor = call => floorRules({ ...call, cwd: call.cwd || rec.cwd, home: this.deps.root || undefined, agent: rec.agent || null });
+    const mcpEnv = { VYRE_THREAD: id, ...(sock ? { VYRE_SOCKET: sock.path } : {}), ...(o.agent ? { VYRE_AGENT: o.agent, VYRE_AGENT_KIND: o.agent_kind || "agent" } : {}),
+      ...(o.scope ? { VYRE_PROJECTS: o.scope.projects === "*" ? "*" : o.scope.projects.join(","), VYRE_SCOPE_CWDS: JSON.stringify(o.scope.cwds || []) } : {}) };
+    const foreignOpts = foreign ? { floor, ...(sock ? { mcpServers: [{ name: "vyre", command: process.execPath, args: [MCP_SERVER], env: Object.entries(mcpEnv).map(([name, value]) => ({ name, value: String(value) })) }] } : {}) } : {};
+    const how = { ...foreignOpts, subreaper: this.deps.subreaper || null, ...(this.deps.uid != null ? { uid: this.deps.uid, gid: this.deps.gid } : {}), ...(account ? { account } : {}),
       onSpawn: g => { state.group = g; this.groups.set(g.pgid, g.sid); } };
     const on = { ...how, onMessage: m => { this.touch(id, state); if (!state.pidSet && state.proc && state.proc.pid) { state.pidSet = true; this.set(id, { pid: state.proc.pid }); } this.onMessage(id, state, m); }, onExit: (code, signal, stderr) => this.onExit(id, state, code, signal, stderr) };
     // The Agent SDK when it is loaded (ADR 0030), else the CLI runner: the same protocol, so the

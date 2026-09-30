@@ -349,6 +349,32 @@ for (const driver of ["cli", "sdk"]) {
     assert.equal(back.error && back.error.code, "account_removed", JSON.stringify(back));
   });
 
+  test(`${driver}: providers: Grok runs a thread on the ACP driver, providers.list names all three, and a resume loads the agent's own session`, { skip }, async t => {
+    const w = await boot(t, { driver });
+    // A stand-in `grok` first on PATH: the fake ACP agent, its sessions kept in a folder.
+    const bin = path.join(w.root, "shim");
+    fs.mkdirSync(bin);
+    fs.symlinkSync(path.resolve(path.dirname(fileURLToPath(import.meta.url)), "testing", "fake-acp.js"), path.join(bin, "grok"));
+    const saved = { PATH: process.env.PATH, FAKE_ACP_STORE: process.env.FAKE_ACP_STORE };
+    process.env.PATH = `${bin}:${process.env.PATH}`;
+    process.env.FAKE_ACP_STORE = path.join(w.root, "acp-store");
+    fs.mkdirSync(process.env.FAKE_ACP_STORE);
+    t.after(() => { for (const [k, v] of Object.entries(saved)) { if (v === undefined) delete process.env[k]; else process.env[k] = v; } });
+    const list = (await w.tool("providers.list", {})).data;
+    assert.deepEqual(list.map(p => p.id), ["claude", "codex", "grok"]);
+    const th = await w.tool("threads.start", { cwd: w.work, provider: "grok", prompt: "hello", surface: "deck" });
+    assert.equal(th.error, undefined, JSON.stringify(th));
+    await w.finished(th.data.id);
+    assert.deepEqual(await w.said(th.data.id), ["echo: hello"]);
+    const rec = (await w.tool("threads.get", { thread: th.data.id })).data.thread;
+    assert.equal(rec.provider, "grok");
+    // Stopped, then a message: the agent's own session comes back (the fake says "echo" either way; the store proves the load).
+    await w.tool("threads.stop", { thread: th.data.id });
+    await w.tool("threads.send", { thread: th.data.id, text: "again", surface: "deck" });
+    await w.finished(th.data.id, 2);
+    assert.deepEqual(await w.said(th.data.id), ["echo: hello", "echo: again"]);
+  });
+
   test(`${driver}: from inside a session, a person-only call is refused, even claiming to be the CLI`, { skip }, async t => {
     const w = await boot(t, { driver });
     const th = (await w.tool("threads.start", { cwd: w.work, prompt: "forge cli sessions.prompt.set", surface: "deck" })).data;

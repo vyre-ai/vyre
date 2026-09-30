@@ -3959,7 +3959,7 @@ Set the system prompt at one level. mode "append" (the default) adds it after Cl
 
 ### `sessions.providers.snapshot`
 
-Every session provider this module speaks for (claude), each with its own accounts and the models it offers. For providers.list (core/providers) to assemble; not a public name itself.
+Every session provider this module speaks for (claude, codex, grok), each with its own accounts and the models it offers. For providers.list (core/providers) to assemble; not a public name itself.
 
 - Input: none
 - Callers: other modules only (internal: `vyre call` answers no_such_tool)

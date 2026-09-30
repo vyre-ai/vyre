@@ -18,6 +18,8 @@ import { composeIq, factsFrom } from "./iq-prompt.js";
 import { sessionsConfig, sdkDir, claudeBin, configModel, PURPOSES } from "./config.js";
 import { Accounts, ACCOUNTS_MIGRATION, KINDS as ACCOUNT_KINDS } from "./accounts.js";
 import { usesSpawner } from "./spawn.js";
+import { grokProvider } from "./drivers/grok.js";
+import { codexProvider } from "./drivers/codex.js";
 import { wipeAccount } from "../spawner/client.js";
 
 /** Per-purpose and per-project model overrides a person set from a surface. */
@@ -38,13 +40,16 @@ import { Slots, KINDS, BOX_DEFAULTS } from "./slots.js";
 /** Per-project concurrency limits a person set (sessions.limits.set). */
 const LIMITS_MIGRATION = `CREATE TABLE IF NOT EXISTS sessions_limits (project TEXT NOT NULL, kind TEXT NOT NULL, value INTEGER NOT NULL, PRIMARY KEY (project, kind))`;
 
+/** The agent's own session id for a thread on an ACP provider, so a resume after a vyred restart loads it instead of starting fresh. */
+const ACP_MIGRATION = `CREATE TABLE IF NOT EXISTS sessions_acp (thread TEXT PRIMARY KEY, provider TEXT NOT NULL, agent_session TEXT NOT NULL)`;
+
 const PEOPLE = ["cli", "local", "deck", "capsule"];
 const str = { type: "string" };
 const scope = { type: "string", description: "assistant, agent:<name>, project:<slug> or capsule (the Capsule's quick answer, Vyre IQ)" };
 
 export default {
   async start(ctx) {
-    ctx.store.migrate([PROMPTS_MIGRATION, MODELS_MIGRATION, LIMITS_MIGRATION, MODES_MIGRATION, ACCOUNTS_MIGRATION]);
+    ctx.store.migrate([PROMPTS_MIGRATION, MODELS_MIGRATION, LIMITS_MIGRATION, MODES_MIGRATION, ACCOUNTS_MIGRATION, ACP_MIGRATION]);
     const db = ctx.store.db;
     // A uid handed to a new account first has its HOME emptied: by the spawner on a box, by
     // removing the account's folder on a machine without one (there the uid only numbers it).
@@ -162,13 +167,22 @@ export default {
     // the tiny core/providers module since a tool name must start with its own module's name
     // (core/modules/index.js's validation) and "providers" is not this module's name; this is the
     // internal snapshot that module calls through ctx.call.
-    const PROVIDERS = [{ id: "claude", label: "Claude" }];
+    const PROVIDERS = [{ id: "claude", label: "Claude" }, { id: "codex", label: "Codex" }, { id: "grok", label: "Grok" }];
+    // Codex (through codex-acp) and Grok (its own ACP mode) run on the one generic ACP driver, each
+    // with strictest-approval flags at every start and its own sign-in in the account's HOME.
+    const acpSessions = provider => ({
+      get: id => { const r = /** @type {any} */ (db.prepare("SELECT agent_session FROM sessions_acp WHERE thread = ? AND provider = ?").get(String(id), provider)); return r ? String(r.agent_session) : undefined; },
+      set: (id, a) => { db.prepare("INSERT INTO sessions_acp (thread, provider, agent_session) VALUES (?,?,?) ON CONFLICT(thread) DO UPDATE SET agent_session = excluded.agent_session").run(String(id), provider, String(a)); },
+    });
+    const drivers = { codex: codexProvider({ sessions: acpSessions("codex") }), grok: grokProvider({ sessions: acpSessions("grok") }) };
+    for (const [name, driver] of Object.entries(drivers)) ctx.provider(name, driver);
     ctx.tool("sessions.providers.snapshot", {
-      description: "Every session provider this module speaks for (claude), each with its own accounts and the models it offers. For providers.list (core/providers) to assemble; not a public name itself.", internal: true,
+      description: "Every session provider this module speaks for (claude, codex, grok), each with its own accounts and the models it offers. For providers.list (core/providers) to assemble; not a public name itself.", internal: true,
       input: { type: "object", properties: {} },
       run: async () => PROVIDERS.map(p => ({ ...p,
-        accounts: accounts.list(p.id).map(a => ({ id: a.id, label: a.label, signed_in: true, default: a.is_default })),
-        models: MODEL_ALIASES, capabilities: { streaming: true, resume: true, interrupt: true, modes: true, questions: true, transcripts: true } })),
+        accounts: accounts.list(p.id).map(a => ({ id: a.id, label: a.label, kind: a.kind, signed_in: true, default: a.is_default })),
+        models: p.id === "claude" ? MODEL_ALIASES : [],
+        capabilities: p.id === "claude" ? { streaming: true, resume: true, interrupt: true, modes: true, questions: true, transcripts: true } : /** @type {any} */ (drivers)[p.id].capabilities })),
     });
 
     tool("sessions.accounts.list", "Every account on a provider, or every account on every provider. Each names a vault item (never a value) and its scope: which projects and agents it is granted to.",
