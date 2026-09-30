@@ -353,6 +353,7 @@ for (const driver of ["cli", "sdk"]) {
 
   test(`${driver}: providers: Grok runs a thread on the ACP driver, providers.list names them all, and a resume loads the agent's own session`, { skip }, async t => {
     const w = await boot(t, { driver });
+    noMemoryBlocks(w);
     // A stand-in `grok` first on PATH: the fake ACP agent, its sessions kept in a folder.
     const bin = path.join(w.root, "shim");
     fs.mkdirSync(bin);
@@ -378,6 +379,12 @@ for (const driver of ["cli", "sdk"]) {
   });
 
   /** A stand-in `grok` first on PATH: the fake ACP agent. */
+  // These tests are about the provider, not memory: the real memory module would put its brief (memory.prompt) ahead of
+  // the words, so they answer it with nothing. The tests that are about memory.prompt stub it themselves.
+  const noMemoryBlocks = w => {
+    const realCall = w.d.registry.call.bind(w.d.registry);
+    w.d.registry.call = async (tool, input, caller, meta) => tool === "memory.prompt" ? { data: { text: "", blocks: [] } } : realCall(tool, input, caller, meta);
+  };
   const withGrok = (t, w) => {
     const bin = path.join(w.root, "shim");
     fs.mkdirSync(bin, { recursive: true });
@@ -441,6 +448,7 @@ for (const driver of ["cli", "sdk"]) {
   test(`${driver}: switching provider mid-session: same thread, a brief of what was said, a notice, and only between turns`, { skip }, async t => {
     const w = await boot(t, { driver });
     withGrok(t, w);
+    noMemoryBlocks(w);
     assert.equal((await w.tool("sessions.accounts.add", { provider: "grok", label: "Grok", kind: "login" })).error, undefined);
     const th = (await w.tool("threads.start", { cwd: w.work, prompt: "plan the Northwind menu", surface: "deck" })).data;
     await w.finished(th.id);
