@@ -305,15 +305,15 @@ function alive(pid) {
  * Whether the process on a socket runs under a Claude session or a thread vyred started.
  * `deps` are test seams.
  * @param {import("node:net").Socket} socket @param {any} registry @param {string} [caller]
- * @param {{ self?: boolean, peerPid?: typeof peerPid, insideClaude?: typeof insideClaude, processTable?: typeof processTable, alive?: (pid: number) => boolean, delayMs?: number }} [deps]
+ * @param {{ peerPid?: typeof peerPid, insideClaude?: typeof insideClaude, processTable?: typeof processTable, alive?: (pid: number) => boolean, delayMs?: number }} [deps]
  */
 export async function above(socket, registry, caller, deps = {}) {
   const pid = await (deps.peerPid || peerPid)(socket);
   if (!pid) return { inside: false, nopid: true };
   // vyred never connects to its own socket: a peer that is vyred itself is a misread (a recycled
-  // descriptor), never the person. Only an in-process test client, which `deps.self` names, is let
-  // through.
-  if (!deps.self && pid === process.pid) return { inside: true, by: pid, self: true };
+  // descriptor), never the person. Only a test hosting vyred in its own process (VYRE_TEST_HOSTED)
+  // is let through.
+  if (process.env.VYRE_TEST_HOSTED !== "1" && pid === process.pid) return { inside: true, by: pid, self: true };
   const r = await registry.call("threads.pids", {}, "module:vyred");
   // The processes vyred runs threads in, their process groups and sessions (core/sessions/spawn.js
   // keeps a group listed until its last process is gone, so an orphan is still caught).
@@ -325,17 +325,19 @@ export async function above(socket, registry, caller, deps = {}) {
   const table = deps.processTable || processTable;
   const check = deps.insideClaude || insideClaude;
   let result = await retryUnknown(() => check(pid, { threads, look: table({ fresh: looks++ > 0 }) }), 2, deps.delayMs);
+  // The pin lives in vyred's own db (presence.capsulePin()), never a file the same uid a model's
+  // shell runs as could write to directly. The Capsule (launchd-started, its own session, not on
+  // the terminal list) is the one positive proof besides the walk's own.
+  if (result.unknown && caller === "capsule" && registry.deps.presence
+    && await verifiedCapsule(socket, pid, registry.deps.presence.capsulePin())) return { inside: false };
   // Still unreadable and the caller is gone: it connected, sent and exited before the walk (a
   // forger's fire-and-forget). A real CLI waits for its answer, so it is alive here. Gone counts
   // as a model's, never as the person's.
   if (result.unknown && !result.server && !(deps.alive || alive)(pid)) result = { inside: true, by: pid, exited: true };
-  // Fail closed: a chain still unreadable after a fresh table (a pid it lacks, an empty or timed-out
-  // ps read) is a model's, never the person's. The one gap left as it was is a docker exec.
+  // Fail closed: a chain the walk cannot rely on (a pid it lacks, an empty or timed-out ps read, an
+  // unreaped link, a foreign uid, a pid reused, a top that proves nothing) is a model's, never the
+  // person's. What stays unknown: a named server (the person proves it once) and a docker exec.
   else if (result.unreadable && !result.server) result = { inside: true, by: pid, unreadable: true };
-  // The pin lives in vyred's own db (presence.capsulePin()), never a file the same uid a model's
-  // shell runs as could write to directly.
-  if (result.unknown && caller === "capsule" && registry.deps.presence
-    && await verifiedCapsule(socket, pid, registry.deps.presence.capsulePin())) return { inside: false };
   return result;
 }
 

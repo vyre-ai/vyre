@@ -8,6 +8,12 @@ import os from "node:os";
 import path from "node:path";
 import { SCRATCH, HOMES } from "./scratch.mjs";
 
+// A test starts vyred in its own process and runs the person's client as that process or its child.
+// vyred counts a caller as the person on positive proof only, and a descendant of vyred is a model's
+// in production (core/daemon/peer.js insideClaude); this lets the tests' own clients through. The
+// forger tests unset it, so they prove the production rule.
+process.env.VYRE_TEST_HOSTED = "1";
+
 // No test may run the machine's real tailscale: `vyre up` on a Mac with no box looks for one on
 // the tailnet (ADR 0008). A path that does not exist reads as "Tailscale is not installed". A test
 // that needs Tailscale sets its own fake, which replaces this.
