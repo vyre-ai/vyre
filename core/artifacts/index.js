@@ -79,6 +79,10 @@ export const MIGRATIONS = [
   ALTER TABLE artifacts_capture_dirs ADD COLUMN uid INTEGER;
   ALTER TABLE artifacts_shares ADD COLUMN published INTEGER;
   `,
+  // A # tag from the person's own turn: this thread may read exactly this artifact (lead, 30 Sep).
+  `
+  CREATE TABLE artifacts_grants (thread TEXT NOT NULL, artifact TEXT NOT NULL, at INTEGER NOT NULL, PRIMARY KEY (thread, artifact));
+  `,
 ];
 
 /** Seams for tests only, never reachable from outside this process: vyred's own uid, and a hook
@@ -201,11 +205,15 @@ export default {
     };
 
     /** An artifact the caller may reach, or a refusal that says nothing about others. @param {string} id @param {any} meta
-     * @param {{ deleted?: boolean }} [o] */
+     * @param {{ deleted?: boolean, read?: boolean }} [o] */
     const reach = async (id, meta, o = {}) => {
       const r = typeof id === "string" ? row(id) : null;
       if (!r || (r.deleted_at && !o.deleted)) throw refuse(`no artifact ${id}`, "not_found");
-      if (!inScope(r, await scopeOf(meta))) throw refuse(`no artifact ${id}`, "not_found");
+      if (!inScope(r, await scopeOf(meta))) {
+        // Read only: a thread the person tagged this artifact into reads exactly it, in any project.
+        const t = o.read && meta && !addedModule(meta) && !/^module:/.test(String(meta.caller || "")) ? meta.thread : null;
+        if (!(t && db.prepare("SELECT 1 FROM artifacts_grants WHERE thread = ? AND artifact = ?").get(String(t), r.id))) throw refuse(`no artifact ${id}`, "not_found");
+      }
       return r;
     };
 
@@ -357,6 +365,7 @@ export default {
         await store.purge(r.project, r.id);
         db.prepare("DELETE FROM artifacts_versions WHERE artifact = ?").run(r.id);
         db.prepare("DELETE FROM artifacts_capture_files WHERE artifact = ?").run(r.id);
+        db.prepare("DELETE FROM artifacts_grants WHERE artifact = ?").run(r.id);
         db.prepare("DELETE FROM artifacts_items WHERE id = ?").run(r.id);
       }
     };
@@ -524,12 +533,16 @@ export default {
       },
     });
     ctx.tool("artifacts.mention.resolve", {
-      description: "What a thread gets when the person tags an artifact with #: a reference to its latest version and how to read it. The content is read with artifacts.get.",
-      input: { type: "object", required: ["id"], properties: { id: str } },
-      examples: [{ id: "a_3fK2x9LqWm1p" }],
+      description: "What a thread gets when the person tags an artifact with #: a reference to its latest version and how to read it. With a thread, from Vyre's own session module on the person's turn, that thread may also read exactly this artifact, in any project (artifacts.get, versions, diff); it never gains edit or share.",
+      input: { type: "object", required: ["id"], properties: { id: str, thread: str } },
+      examples: [{ id: "a_3fK2x9LqWm1p", thread: "t1" }],
       run: async (i, meta) => {
         const r = await reach(i.id, meta);
-        return { kind: "artifact", id: r.id, name: r.title, version: r.head, format: r.format, untrusted: Boolean(r.untrusted), read: { tool: "artifacts.get", input: { id: r.id } } };
+        if (i.thread !== undefined) {
+          if (!trustedCaller(meta) || !/^module:/.test(String((meta && meta.caller) || ""))) throw refuse("only Vyre's session module records a tag", "denied");
+          db.prepare("INSERT OR IGNORE INTO artifacts_grants (thread, artifact, at) VALUES (?, ?, ?)").run(String(i.thread), r.id, Date.now());
+        }
+        return { kind: "artifact", id: r.id, name: r.title, version: r.head, format: r.format, untrusted: Boolean(r.untrusted), read: { tool: "artifacts.get", input: { id: r.id } }, ...(i.thread !== undefined ? { granted: { thread: String(i.thread), access: "read" } } : {}) };
       },
     });
     ctx.tool("artifacts.get", {
@@ -537,7 +550,7 @@ export default {
       input: { type: "object", required: ["id"], properties: { id: str, version: { type: "integer", minimum: 1 } } },
       examples: [{ id: "a_3fK2x9LqWm1p" }],
       run: async (i, meta) => {
-        const r = await reach(i.id, meta);
+        const r = await reach(i.id, meta, { read: true });
         const { v, files } = await filesAt(r, i.version);
         return { ...shape(r), at_version: v.n, files, ...(trustedCaller(meta) ? {} : { note: QUOTED }) };
       },
@@ -591,7 +604,7 @@ export default {
       description: "An artifact's versions, newest first: number, when, who and the note.",
       input: idIn, examples: [{ id: "a_3fK2x9LqWm1p" }],
       run: async (i, meta) => {
-        const r = await reach(i.id, meta);
+        const r = await reach(i.id, meta, { read: true });
         return /** @type {any[]} */ (db.prepare("SELECT n, at, by, message, size FROM artifacts_versions WHERE artifact = ? ORDER BY n DESC").all(r.id))
           .map(v => ({ version: v.n, at: v.at, by: JSON.parse(v.by), message: v.message, size: v.size }));
       },
@@ -602,7 +615,7 @@ export default {
       input: { type: "object", required: ["id"], properties: { id: str, from: { type: "integer", minimum: 1 }, to: { type: "integer", minimum: 1 } } },
       examples: [{ id: "a_3fK2x9LqWm1p", from: 1, to: 2 }],
       run: async (i, meta) => {
-        const r = await reach(i.id, meta);
+        const r = await reach(i.id, meta, { read: true });
         const to = i.to ?? r.head, from = i.from ?? Math.max(1, to - 1);
         const a = versionRow(r.id, from), b = versionRow(r.id, to);
         if (!a || !b) throw refuse(`${r.id} has versions 1 to ${r.head}`, "not_found");

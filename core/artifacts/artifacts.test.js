@@ -370,3 +370,24 @@ test("artifacts: the # picker finds titles within the caller's reach and resolve
   assert.equal((await call("artifacts.mention.resolve", { id: a.id })).error.code, "no_such_tool", "the person never calls it");
   await assert.rejects(asVyre("artifacts.mention.resolve", { id: "a_nope" }), /not_found|no artifact|not found/i);
 });
+
+test("artifacts: a # tag lets one thread read exactly one artifact, in any project, and nothing more", async t => {
+  const { ok, call, asVyre } = await boot(t);
+  const far = await ok("artifacts.create", { project: "other", kind: "doc", title: "Lease notes", content: "# Lease notes\n\nx" });
+  const near = await ok("artifacts.create", { project: "other", kind: "doc", title: "Other notes", content: "# Other notes\n\ny" });
+  const juno = (tool, input, thread = "t1") => call(tool, input, "mcp:agent:juno", { thread });
+  assert.equal((await juno("artifacts.get", { id: far.id })).error.code, "not_found", "before the tag");
+  assert.notEqual((await call("artifacts.mention.resolve", { id: far.id, thread: "t1" }, "module:bakery")).error, undefined, "a tag is recorded only by first-party modules");
+  assert.notEqual((await call("artifacts.mention.resolve", { id: far.id, thread: "t1" }, "mcp:agent:juno", { thread: "t1" })).error, undefined, "never by an agent for itself");
+  const r = await asVyre("artifacts.mention.resolve", { id: far.id, thread: "t1" });
+  assert.deepEqual(r.granted, { thread: "t1", access: "read" });
+  const got = await juno("artifacts.get", { id: far.id });
+  assert.equal(got.error, undefined, JSON.stringify(got.error));
+  assert.equal((await juno("artifacts.versions", { id: far.id })).error, undefined);
+  assert.equal((await juno("artifacts.get", { id: near.id })).error.code, "not_found", "exactly that item");
+  assert.equal((await juno("artifacts.update", { id: far.id, content: "changed" })).error.code, "not_found", "read only");
+  assert.equal((await juno("artifacts.get", { id: far.id }, "t9")).error.code, "not_found", "only that thread");
+  assert.equal((await juno("artifacts.search", { q: "Lease" })).data?.length ?? 0, 0, "search stays in scope");
+  await ok("artifacts.delete", { id: far.id });
+  assert.equal((await juno("artifacts.get", { id: far.id })).error.code, "not_found");
+});
