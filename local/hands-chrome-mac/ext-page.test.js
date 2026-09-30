@@ -253,3 +253,18 @@ test("acting ops on a read-only page are refused, reading ops are not", async ()
 test("the page capability's op names are valid protocol ops", () => {
   assert.deepEqual(Object.keys(page.ops).sort(), ["page.act", "page.eval", "page.fill", "page.screenshot", "page.snapshot", "page.wait"]);
 });
+
+test("holdFor: a workflow builder's action tiles (Send Email, Remove Tag) are not held, a real Send or Delete still is", async () => {
+  const { holdFor } = await import("./extension/caps/page.js");
+  const snap = (/** @type {string} */ url) => ({ url, controls: [] });
+  const tile = (/** @type {string} */ name, extra = {}) => ({ role: "button", name, container: "Pick an action", ...extra });
+  const url = "https://app.gohighlevel.com/v2/location/abcdefghij12/automation/workflows/wf1";
+  assert.equal(holdFor(snap(url), tile("Send Email"), "click", undefined).held, false);
+  assert.equal(holdFor(snap(url), tile("Remove Tag"), "click", undefined).held, false);
+  assert.equal(holdFor(snap("http://127.0.0.1:1/ghl"), tile("Send SMS"), "click", undefined).held, false);
+  assert.equal(holdFor(snap(url), tile("Send Email", { submit: true }), "click", undefined).held, true, "a submit is a send");
+  assert.equal(holdFor(snap(url), { role: "button", name: "Send Email" }, "click", undefined).held, true, "not inside a dialog or drawer");
+  assert.equal(holdFor(snap(url), tile("Delete workflow"), "click", undefined).held, true);
+  assert.equal(holdFor(snap(url), tile("Publish"), "click", undefined).held, true);
+  assert.equal(holdFor(snap("https://mail.example.com/compose"), tile("Send Email"), "click", undefined).held, true, "not a workflow page");
+});

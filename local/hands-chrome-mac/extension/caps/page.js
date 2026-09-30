@@ -512,6 +512,21 @@ export function signatureOf(snap, ctl) {
 }
 
 /**
+ * An action-type tile in a workflow builder's picker ("Send Email", "Remove Tag"): choosing it adds a
+ * step to a draft, it sends nothing. It is a plain (non-submit) button inside a dialog or drawer, on
+ * a workflow page, whose whole name is an action type. A real "Send" or "Delete" button is not one.
+ * @param {any} snap @param {any} ctl
+ */
+export function builderTile(snap, ctl) {
+  if (!ctl || ctl.submit || !ctl.container || !["button", "option", "menuitem"].includes(String(ctl.role))) return false;
+  let path = "";
+  try { path = new URL(String(snap && snap.url)).pathname; } catch { return false; }
+  if (!/\/automation\/workflows|\/workflows?(\/|$)|^\/ghl(\/|$)/i.test(path)) return false;
+  const name = String(ctl.name || "").trim();
+  return /^send [a-z][a-z .&/-]{1,30}$/i.test(name) || /^remove (tag|contact tag|from [a-z ]{2,30}|contact from [a-z ]{2,30})$/i.test(name);
+}
+
+/**
  * Which control decides whether this act is held, and is it? Enter inside a form presses the
  * form's submit button, so that button is the control that matters.
  * @param {any} snap @param {any} ctl @param {string} kind @param {any} value
@@ -525,6 +540,7 @@ export function holdFor(snap, ctl, kind, value) {
     else return { target: ctl, held: false, why: "" };
   } else if (kind !== "click" && kind !== "press") return { target: ctl, held: false, why: "" };
   if (kind === "press" && String(value) !== "Enter") return { target: ctl, held: false, why: "" };
+  if (builderTile(snap, target)) return { target, held: false, why: "" };
   const c = consequence(target);
   if (c.consequential) return { target, held: true, why: c.why };
   if (target.submit) return { target, held: true, why: "a submit button sends its form" };
