@@ -24,6 +24,9 @@ use vyre_capsule_win::shell;
 /// The data-only signal native-core reads (C22). A value, never a callable host object.
 /// The product name the person sees (window titles, toasts, the tray tooltip). The installer and the
 /// update file keep the plain "Vyre" name, which the updater matches on.
+/// A Windows tool by full path from the Windows folder, never by name (no planting from the working directory).
+fn sys(rel: &str) -> String { shell::system_path(std::env::var("SystemRoot").ok().as_deref(), rel) }
+
 const APP_NAME: &str = "Vyre Lumen";
 
 const TRAY_DARK_TASKBAR: &[u8] = include_bytes!("../icons/lumen-tray-white.ico");
@@ -31,7 +34,7 @@ const TRAY_LIGHT_TASKBAR: &[u8] = include_bytes!("../icons/lumen-tray-black.ico"
 
 /// The tray glyph that reads on the current taskbar: black on a light one, white on a dark one.
 fn tray_icon() -> Option<tauri::image::Image<'static>> {
-    let mut cmd = std::process::Command::new("reg");
+    let mut cmd = std::process::Command::new(sys("System32\\reg.exe"));
     cmd.args(["query", r"HKCU\Software\Microsoft\Windows\CurrentVersion\Themes\Personalize", "/v", "SystemUsesLightTheme"]);
     #[cfg(windows)]
     { use std::os::windows::process::CommandExt; cmd.creation_flags(0x0800_0000); }
@@ -190,7 +193,7 @@ fn save_pairing(app: AppHandle, address: String) -> Result<(), String> {
 fn set_autostart(enabled: bool) -> Result<(), String> {
     use std::process::Command;
     let exe = std::env::current_exe().map_err(|e| e.to_string())?;
-    let mut cmd = Command::new("schtasks");
+    let mut cmd = Command::new(sys("System32\\schtasks.exe"));
     if enabled {
         cmd.args(["/Create", "/TN", "Vyre", "/TR", &format!("\"{}\"", exe.display()), "/SC", "ONLOGON", "/RL", "LIMITED", "/F"]);
     } else {
@@ -247,7 +250,7 @@ fn spawn_update_loop(app: AppHandle) {
 }
 
 fn net_use(args: &[String]) -> Result<String, String> {
-    let mut cmd = std::process::Command::new("net");
+    let mut cmd = std::process::Command::new(sys("System32\\net.exe"));
     cmd.args(args);
     #[cfg(windows)]
     { use std::os::windows::process::CommandExt; cmd.creation_flags(0x0800_0000); }
@@ -264,7 +267,7 @@ fn mount_drive(unc: String) -> Result<String, String> {
     let used = net_use(&[]).map(|o| drive::used_letters(&o)).unwrap_or_default();
     let letter = drive::free_letter(&used, |l| std::path::Path::new(&format!("{l}\\")).exists()).ok_or("No free drive letter.")?;
     net_use(&drive::map_args(&letter, &unc))?;
-    let _ = std::process::Command::new("explorer").arg(format!("{letter}\\")).spawn();
+    let _ = std::process::Command::new(sys("explorer.exe")).arg(format!("{letter}\\")).spawn();
     Ok(letter)
 }
 

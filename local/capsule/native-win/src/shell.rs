@@ -78,6 +78,16 @@ pub fn pin_from_offer(handle: Option<&str>, address: Option<&str>) -> Result<Pin
     }
 }
 
+/// A Windows tool's full path under the Windows folder, so the shell never runs a same-named file
+/// from the working directory. `system_root` is the SystemRoot variable, trusted only as a drive path.
+pub fn system_path(system_root: Option<&str>, rel: &str) -> String {
+    let root = match system_root {
+        Some(r) if r.len() >= 3 && r.as_bytes()[0].is_ascii_alphabetic() && &r[1..3] == ":\\" => r.trim_end_matches('\\'),
+        _ => "C:\\Windows",
+    };
+    format!("{root}\\{rel}")
+}
+
 /// Whether the taskbar is light, from `reg query ... /v SystemUsesLightTheme` output (the value is
 /// 0x0 for dark, 0x1 for light). Anything unreadable counts as dark, the Windows 11 default.
 pub fn taskbar_is_light(reg_output: &str) -> bool {
@@ -160,5 +170,13 @@ mod tests {
         assert!(!taskbar_is_light(&light.replace("0x1", "0x0")));
         assert!(!taskbar_is_light(""));
         assert!(!taskbar_is_light("ERROR: The system was unable to find the specified registry key or value."));
+    }
+
+    #[test]
+    fn windows_tools_run_by_full_path() {
+        assert_eq!(system_path(Some("D:\\Win"), "System32\\reg.exe"), "D:\\Win\\System32\\reg.exe");
+        assert_eq!(system_path(Some("D:\\Win\\"), "explorer.exe"), "D:\\Win\\explorer.exe");
+        assert_eq!(system_path(Some(".\\evil"), "System32\\reg.exe"), "C:\\Windows\\System32\\reg.exe");
+        assert_eq!(system_path(None, "System32\\net.exe"), "C:\\Windows\\System32\\net.exe");
     }
 }
