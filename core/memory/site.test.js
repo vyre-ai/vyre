@@ -267,3 +267,86 @@ test("a phone paired through the relay (device:<id>) is a person's surface", asy
   assert.equal((await w.call("memory.site.list", {}, "device:phone-1")).data.sites.length, 1);
   assert.equal((await w.call("memory.site.forget", { key: ORIGIN }, "device:phone-1")).data.forgotten, 1);
 });
+
+const Q = "what do you know about GoHighLevel?";
+
+test("memory.ask: a question about a known site is answered in code, with its sources, for the person only", async t => {
+  const w = await world(t);
+  await w.call("memory.site.put", { origin: ORIGIN, patch: patch({ flows: [{ name: "create-workflow", src: "shipped", runs: 4, fails: 1, expects: [{ kind: "selector", arg: "toast" }] }] }) });
+  const a = await w.call("memory.ask", { question: Q }, "deck");
+  assert.ok(!a.error, a.error);
+  assert.equal(a.data.via, "site");
+  assert.equal(a.data.abstained, false);
+  assert.match(a.data.answer, /^From what Vyre for Chrome learned: GoHighLevel \(app\.ghl\.example\)\./);
+  assert.match(a.data.answer, /1 control known on 1 page/);
+  assert.match(a.data.answer, /1 endpoint of its own API/);
+  assert.match(a.data.answer, /create-workflow \(learned, 4 runs, 1 failed\)/);
+  assert.deepEqual(a.data.sources.map(s => [s.site, s.session, s.role]), [[ORIGIN, `site:${ORIGIN}`, "site"]]);
+  assert.equal(typeof a.data.answer_id, "string");
+  // The name, the family id and the host all find it; a question that merely names it does not.
+  for (const q of ["what do you know about ghl", "what have you learned about app.ghl.example", "tell me about GoHighLevel"]) assert.equal((await w.call("memory.ask", { question: q }, "deck")).data.via, "site", q);
+  assert.notEqual((await w.call("memory.ask", { question: "open GoHighLevel and make a workflow" }, "deck")).data.via, "site");
+  assert.notEqual((await w.call("memory.ask", { question: "what do you know about Northwind Bakery" }, "deck")).data.via, "site");
+  // An agent in a project never gets it, whatever it asks.
+  const agent = await w.call("memory.ask", { question: Q }, "mcp:agent:juno", { agent: "juno", granted: [] });
+  assert.notEqual(agent.data && agent.data.via, "site");
+  assert.ok(!JSON.stringify(agent).includes("Vyre for Chrome learned"));
+});
+
+test("memory.ask: a family answers for all its origins, and what used to work is said", async t => {
+  const w = await world(t);
+  await w.call("memory.site.put", { origin: AGENCY, patch: { family: "ghl", names: ["GoHighLevel"] } });
+  await w.call("memory.site.put", { origin: AGENCY, target: "family", patch: patch() });
+  const a = (await w.call("memory.ask", { question: "what do you know about agency.example" }, "deck")).data;
+  assert.equal(a.via, "site");
+  assert.match(a.answer, /GoHighLevel \(agency\.example\)/);
+  assert.match(a.answer, /1 endpoint/, "the family's API is the agency host's too");
+  // Three misses over two days set a control aside.
+  const miss = () => w.call("memory.site.report", { origin: ORIGIN, part: "controls", id: "c1", outcome: "miss" });
+  await w.call("memory.site.put", { origin: ORIGIN, patch: patch() });
+  await miss(); w.clock.now += 3 * 24 * HOUR; await miss(); await miss();
+  assert.match((await w.call("memory.ask", { question: Q }, "deck")).data.answer, /used to work and were set aside/);
+});
+
+test("Wrong? and Forget: wrong never gives that answer again; forget removes the site, a replica cannot bring it back, and undo restores it", async t => {
+  const w = await world(t);
+  await w.call("memory.site.put", { origin: ORIGIN, patch: patch() });
+  const a = (await w.call("memory.ask", { question: Q }, "deck")).data;
+  const wrong = await w.call("memory.correct", { answer: a.answer_id, action: "wrong" }, "deck");
+  assert.ok(!wrong.error, wrong.error);
+  const again = (await w.call("memory.ask", { question: Q }, "deck")).data;
+  assert.notEqual(again.answer, a.answer);
+  assert.equal(again.via, "corrected");
+  assert.ok((await w.call("memory.site.get", { origin: ORIGIN })).data.origin, "wrong does not delete what is known");
+  await w.call("memory.uncorrect", { fix: wrong.data.fix.id }, "deck");
+  const b = (await w.call("memory.ask", { question: Q }, "deck")).data;
+  assert.equal(b.via, "site");
+  const fx = await w.call("memory.correct", { answer: b.answer_id, action: "forget" }, "deck");
+  assert.ok(!fx.error, fx.error);
+  assert.equal((await w.call("memory.site.get", { origin: ORIGIN })).data.origin, null, "the site is forgotten");
+  assert.notEqual((await w.call("memory.ask", { question: Q }, "deck")).data.via, "site");
+  const copy = { key: ORIGIN, names: ["GoHighLevel"], controls: [{ id: "c1", page: "/workflows", role: "button", selector: { strategy: "identifier", identifier: "create-workflow" }, verified: new Date(NOW - HOUR).toISOString() }] };
+  assert.equal((await w.call("memory.site.sync", { push: [copy] })).data.skipped, 1, "an older replica copy does not bring it back");
+  await w.call("memory.uncorrect", { fix: fx.data.fix.id }, "deck");
+  assert.equal((await w.call("memory.ask", { question: Q }, "deck")).data.via, "site", "undo brings it back");
+});
+
+test("memory.site.detail: the Sites list's rows, each with the id its Forget needs; structure only, person only", async t => {
+  const w = await world(t);
+  await w.call("memory.site.put", { origin: ORIGIN, patch: patch({ flows: [{ name: "create-workflow", src: "shipped", runs: 2, fails: 0 }] }) });
+  const d = (await w.call("memory.site.detail", { key: ORIGIN }, "deck")).data;
+  assert.equal(d.found, true);
+  assert.deepEqual(d.names, ["GoHighLevel"]);
+  assert.equal(d.parts.controls[0].id, "c1");
+  assert.equal(d.parts.controls[0].label, "button on /workflows");
+  assert.equal(d.parts.api[0].label, "GET /workflows/{id}");
+  assert.equal(d.parts.flows[0].runs, 2);
+  assert.ok(d.events.some(e => e.kind === "put"));
+  assert.ok(!JSON.stringify(d).includes("create-workflow\"}"), "no selector in a row");
+  assert.ok(!("selector" in d.parts.controls[0]));
+  // Its Forget works on the id it gave.
+  assert.equal((await w.call("memory.site.forget", { key: ORIGIN, part: "controls", id: d.parts.controls[0].id }, "deck")).data.forgotten, 1);
+  assert.equal((await w.call("memory.site.detail", { key: ORIGIN }, "deck")).data.parts.controls.length, 0);
+  assert.equal((await w.call("memory.site.detail", { key: "https://none.example" }, "deck")).data.found, false);
+  for (const who of ["mcp:agent:juno", "mcp", "module:hands-chrome"]) assert.equal((await w.call("memory.site.detail", { key: ORIGIN }, who, who.startsWith("module") ? { firstParty: true } : {})).code, "denied", who);
+});

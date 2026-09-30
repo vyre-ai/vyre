@@ -10,6 +10,7 @@
 // does (Chrome's own tools read it on the person's behalf). Two settings, both on by default: memory.site.learn
 // (learn at all) and memory.site.sync (take what standalone Vyre for Chrome learned on its own).
 
+import { answerSite } from "./site-answer.js";
 import {
   sanitize, emptyRecord, mergeRecord, mergeFamily, union, arrivalCard, heal, itemId, keyOk, isFamilyKey, isQuarantined, readConf, LIMITS,
 } from "../../lib/site-knowledge.js";
@@ -90,6 +91,23 @@ export function register(ctx, { denied }) {
   /** Forgotten records leave the disk after 24 hours, whenever the store is used, not only at start. */
   const purge = () => { q.purge.run(now() - UNDO_MS); q.gonePurge.run(now() - GONE_MS); };
   purge();
+
+  /** Forget a whole record: kept for 24 hours for an undo, and remembered as forgotten so a replica cannot bring it back. @param {string} key @param {any} [rec] @param {string} [why] @param {string|null} [item] */
+  const forgetKey = (key, rec = load(key), why = "forgot", item = null) => {
+    if (!rec) return 0;
+    q.forgot.run(key, JSON.stringify(rec), now()); q.gone.run(key, now()); q.del.run(key); event(key, why, item, null);
+    return 1;
+  };
+  /** Bring back a record forgotten in the last 24 hours. @param {string} key */
+  const restoreKey = key => {
+    purge();
+    const r = /** @type {any} */ (q.unforget.get(String(key)));
+    if (!r || now() - Number(r.at) > UNDO_MS) return 0;
+    const rec = JSON.parse(r.record);
+    const have = load(rec.key);
+    save(have ? union(have, rec, { now: now() }) : rec); q.unforgot.run(String(key)); q.goneDel.run(String(key)); event(rec.key, "restored", null, null);
+    return 1;
+  };
 
   ctx.tool("memory.site.get", {
     description: "What Vyre for Chrome knows about a site: { origin, family?, rev, family_rev } cards (the small record Chrome reads on every page), or { not_modified: true } when since_rev and family_rev are current. parts: [controls|api|flows|notes|frames] returns the full record's named parts instead of the card. Structure only, never a value. For the person's surfaces and Vyre's own modules.",
@@ -209,7 +227,7 @@ export function register(ctx, { denied }) {
         save(rec); event(i.key, "forgot", `${i.part}:${String(i.id).slice(0, 60)}`, null);
         return { forgotten: 1 };
       }
-      q.forgot.run(i.key, JSON.stringify(rec), now()); q.gone.run(i.key, now()); q.del.run(i.key); event(i.key, "forgot", null, null);
+      forgetKey(i.key, rec);
       return { forgotten: 1, undo_ms: UNDO_MS };
     },
   });
@@ -219,14 +237,7 @@ export function register(ctx, { denied }) {
     input: { type: "object", required: ["key"], properties: { key: { type: "string" } } },
     run: async (i, { caller } = {}) => {
       personOnly(caller, "restoring a site");
-      purge();
-      const r = /** @type {any} */ (q.unforget.get(String(i.key)));
-      if (!r || now() - Number(r.at) > UNDO_MS) return { restored: 0 };
-      const rec = JSON.parse(r.record);
-      const have = load(rec.key);
-      const out = have ? union(have, rec, { now: now() }) : rec;
-      save(out); q.unforgot.run(String(i.key)); q.goneDel.run(String(i.key)); event(rec.key, "restored", null, null);
-      return { restored: 1 };
+      return { restored: restoreKey(String(i.key)) };
     },
   });
 
@@ -245,6 +256,32 @@ export function register(ctx, { denied }) {
     for (const [part, l] of partsOf(out)) for (const x of l) if (!held.has(`${part}|${itemId(part, x)}`) && x.conf > 0.5) x.conf = 0.5;
     return out;
   };
+
+  ctx.tool("memory.site.detail", {
+    description: "One site in full, for the Sites list: { key, kind, names, family, related, rev, updated, verified, used_to_work, events, parts: { frames, controls, api, flows, notes, ready, wall, signedIn } } where each item is { id, label, conf, verified, quarantined, src } and never a selector, a value or page text beyond what the record holds (structure only). Each item's id is what memory.site.forget { key, part, id } removes. The person's own surfaces only.",
+    input: { type: "object", required: ["key"], properties: { key: { type: "string" } } },
+    run: async (i, { caller } = {}) => {
+      personOnly(caller, "a site's detail");
+      if (!keyOk(i.key)) throw bad("key is an origin or family:<id>");
+      const rec = load(i.key);
+      if (!rec) return { key: i.key, found: false };
+      const row = (/** @type {any} */ x, /** @type {string} */ label) => ({ id: null, label, conf: readConf(x, now()), verified: x.verified || null, quarantined: isQuarantined(x), src: x.src });
+      const parts = {
+        frames: rec.frames.map((/** @type {any} */ x) => ({ ...row(x, `${x.role} frame`), id: itemId("frames", x) })),
+        controls: rec.controls.map((/** @type {any} */ x) => ({ ...row(x, `${x.name || x.role} on ${x.page}`), id: itemId("controls", x) })),
+        api: rec.api.map((/** @type {any} */ x) => ({ ...row(x, `${x.method} ${x.pathTemplate}`), id: itemId("api", x) })),
+        flows: rec.flows.map((/** @type {any} */ x) => ({ ...row(x, x.title || x.name), id: itemId("flows", x), runs: x.runs, fails: x.fails })),
+        notes: rec.notes.map((/** @type {any} */ x) => ({ ...row(x, x.name), id: itemId("notes", x) })),
+        ready: rec.ready.map((/** @type {any} */ x) => ({ ...row(x, `ready: ${x.kind}${x.arg ? ` ${x.arg}` : ""}`), id: itemId("ready", x) })),
+        wall: rec.login.wall.map((/** @type {any} */ x) => ({ ...row(x, `sign-in: ${x.kind}${x.arg ? ` ${x.arg}` : ""}`), id: itemId("wall", x) })),
+        signedIn: rec.login.signedIn.map((/** @type {any} */ x) => ({ ...row(x, `signed in: ${x.kind}${x.arg ? ` ${x.arg}` : ""}`), id: itemId("signedIn", x) })),
+      };
+      const all = Object.values(parts).flat();
+      const events = /** @type {any[]} */ (db.prepare("SELECT at, kind, outcome FROM memory_site_events WHERE key = ? ORDER BY id DESC LIMIT 10").all(i.key)).map(e => ({ at: Number(e.at), kind: String(e.kind), ...(e.outcome ? { outcome: String(e.outcome) } : {}) }));
+      return { key: rec.key, found: true, kind: isFamilyKey(rec.key) ? "family" : "origin", names: rec.names, family: rec.family, related: rec.related, rev: rec.rev, updated: rec.updated,
+        verified: all.map(x => x.verified).filter(Boolean).sort().pop() || null, used_to_work: all.filter(x => x.quarantined).length, events, parts };
+    },
+  });
 
   ctx.tool("memory.site.sync", {
     description: "Two-way sync with a replica (standalone Vyre for Chrome on a computer, once it reaches this box): { have: { key: rev }, push: [records] } -> { accepted, skipped, refused, pull: [records newer than have], forgotten: [{ key, at }] }. Each pushed record goes through the same allowlist and is folded in by per-item newest-verified, never overwriting; items the store did not hold start at 0.5 at most; items older than a forget the person made are dropped, and the replica is told what was forgotten. Off when memory.site.sync is off. The person's own surfaces and Chrome's bridge.",
@@ -279,4 +316,12 @@ export function register(ctx, { denied }) {
       return { accepted, skipped, refused, pull, forgotten };
     },
   });
+  return {
+    isPerson,
+    /** memory.ask's step: what Vyre for Chrome knows about a site the question names, or null. */
+    answer: (/** @type {string} */ question) => answerSite(question, /** @type {any[]} */ (q.all.all()).map(r => JSON.parse(r.record)), { now: now() }),
+    forgetKey, restoreKey,
+    /** The record keys whose forgetting a correction of an answer caused, for undoing it. */
+    forgottenBy: (/** @type {number} */ fix) => /** @type {any[]} */ (db.prepare("SELECT key FROM memory_site_events WHERE kind = 'forgot-by-answer' AND item = ?").all(String(fix))).map(r => String(r.key)),
+  };
 }

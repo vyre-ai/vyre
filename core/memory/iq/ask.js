@@ -156,7 +156,7 @@ export function drafter(draft, used) {
   };
 }
 
-export function asker({ db, answer, retrieve, runner = null, model = () => "haiku", budget = { allow: () => true, charge: () => {} }, fixes = null, personalQ = () => false, trusted = () => true, decide = null }) {
+export function asker({ db, answer, retrieve, site = null, runner = null, model = () => "haiku", budget = { allow: () => true, charge: () => {} }, fixes = null, personalQ = () => false, trusted = () => true, decide = null }) {
   const get = db.prepare("SELECT reply FROM memory_iq_asks WHERE hash = ?");
   const put = db.prepare("INSERT OR REPLACE INTO memory_iq_asks (hash, v, at, reply, usd) VALUES (?,?,?,?,?)");
 
@@ -168,7 +168,7 @@ export function asker({ db, answer, retrieve, runner = null, model = () => "haik
    *   draft: the answer so far, for the calling connection only (never the events bus), from a streaming runner,
    *   at most every 100 ms; "" once the check fails, so the surface removes it.
    */
-  return async function ask({ question, project_cwds = [], personal: sees = false, thread = null, stage = () => {}, screen = null, writes = null, draft = null }) {
+  return async function ask({ question, project_cwds = [], personal: sees = false, siteOk = false, thread = null, stage = () => {}, screen = null, writes = null, draft = null }) {
     const t0 = performance.now();
     const q = String(question || "").trim();
     const done = r => {
@@ -203,6 +203,12 @@ export function asker({ db, answer, retrieve, runner = null, model = () => "haik
       if (d && d.answer) {
         return refused({ answer: d.answer, confidence: d.confidence, abstained: false, sources: [d.source], history: d.history, via: "decision" });
       }
+    }
+    // 1c. A site Vyre for Chrome learned ("what do you know about GoHighLevel?"): answered in code from what it keeps, for the
+    // person's own surfaces only, never an agent in a project.
+    if (site && siteOk) {
+      const w = await Promise.resolve(site(q)).catch(() => null);
+      if (w && w.answer) return refused({ answer: w.answer, confidence: w.confidence, abstained: false, sources: w.sources, via: "site" });
     }
     // 2. The passages.
     stage("searching");
