@@ -151,6 +151,12 @@ test("relay: a pairing that asks for it is handed the one-time enrolment grant f
   const plain = await phone((await d.registry.call("relay.pair.start", {}, "cli", PROOF)).data.url, { presence: false });
   assert.equal(plain.reply.enroll, undefined, "a pairing that did not ask gets none");
   asked.ws.close(); plain.ws.close();
+  // The shared client library asks and validates the same way.
+  const viaClient = await pairOffer(/** @type {any} */ (parsePairUrl((await d.registry.call("relay.pair.start", {}, "cli", PROOF)).data.url)), { enroll: true, crypto: nodeCrypto(), keyStore: fileKeyStore(path.join(tempHome(t), "k.json")) });
+  assert.equal(viaClient.enroll?.rpId, "alex.vyre.run");
+  assert.match(String(viaClient.enroll?.grant), /^[A-Za-z0-9_-]{40,}$/);
+  const noAsk = await pairOffer(/** @type {any} */ (parsePairUrl((await d.registry.call("relay.pair.start", {}, "cli", PROOF)).data.url)), { crypto: nodeCrypto(), keyStore: fileKeyStore(path.join(tempHome(t), "k2.json")) });
+  assert.equal(noAsk.enroll, null);
 });
 
 test("relay: a relayed device is a device; a person's action needs its person session, then presence", async t => {
