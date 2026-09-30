@@ -160,6 +160,11 @@ test("memory.prompt: a module caller naming no agent, and not the person's own t
   const { call } = await module_(t);
   const none = await call("memory.prompt", { first: true, prompt: "where do we host the harlow site", project: "harlow" }, "module:sessions");
   assert.deepEqual(none.data, { text: "", blocks: [] });
-  const own = await call("memory.prompt", { first: true, prompt: "where do we host the harlow site", project: "harlow", person: true }, "module:sessions");
+  const own = await call("memory.prompt", { first: true, prompt: "where do we host the harlow site", project: "harlow", person: true }, "module:sessions", { firstParty: true });
   assert.match(own.data.text, /netlify/i);
+  // An added module cannot ask for the person's view by saying so.
+  for (const meta of [{}, { firstParty: false }]) {
+    const added = await call("memory.prompt", { first: true, prompt: "where do we host the harlow site", project: "harlow", person: true }, "module:bakery", meta);
+    assert.deepEqual(added.data, { text: "", blocks: [] });
+  }
 });

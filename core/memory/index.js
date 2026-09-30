@@ -1325,11 +1325,11 @@ export default {
     // first prompt, then up to 5 relevant lines on every prompt, each quoted and attributed as data.
     // It runs the two tools it is built from with the caller's own extra, so scope is the caller's.
     ctx.tool("memory.prompt", {
-      description: "Text blocks for a provider's prompt: { blocks: [{ type: 'text', text }], text }. first: true adds memory.brief; prompt adds up to 5 relevant lines, quoted as memory and never as instructions. Empty when the caller may read nothing. Only the caller's reach; never an untrusted write. A module calling for a thread (sessions, feeding an ACP prompt) must pass that thread's agent, or person: true for the person's own thread; a module call with neither gets nothing (never the owner's view).",
+      description: "Text blocks for a provider's prompt: { blocks: [{ type: 'text', text }], text }. first: true adds memory.brief; prompt adds up to 5 relevant lines, quoted as memory and never as instructions. Empty when the caller may read nothing. Only the caller's reach; never an untrusted write. A module calling for a thread (sessions, feeding an ACP prompt) must pass that thread's agent, or person: true for the person's own thread (honored only from Vyre's own first-party modules); a module call with neither gets nothing (never the owner's view).",
       input: { type: "object", properties: { prompt: { type: "string" }, first: { type: "boolean" }, person: { type: "boolean" }, project: { type: "string" }, thread: { type: "string" }, project_cwds: cwds, ...agentField } },
       run: async (input, extra = {}) => {
         // Fail closed: a module that names no agent and does not say the thread is the person's own gets nothing.
-        if (String(extra.caller || "").startsWith("module:") && !input.agent && input.person !== true) return { text: "", blocks: [] };
+        if (String(extra.caller || "").startsWith("module:") && !input.agent && !(input.person === true && extra.firstParty === true)) return { text: "", blocks: [] };
         const parts = [];
         const slug = typeof input.project === "string" && input.project ? input.project : null;
         const scoped = { ...(input.agent ? { agent: input.agent } : {}), ...(slug ? { project: slug } : {}), ...(input.project_cwds ? { project_cwds: input.project_cwds } : {}) };

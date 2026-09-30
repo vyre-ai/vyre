@@ -4,6 +4,7 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+- memory.prompt: person: true is honored only from a first-party module (meta.firstParty, the registry's own mark); an added module setting it gets nothing.
 - recall: a key in a URL's query or fragment (`?api_key=sk-...`) is redacted, the URL kept. recall.watch does one catch-up read 300 ms after it starts watching a file: on macOS fs.watch delivers nothing for a line appended in its first moments, which then waited for the 60 s sweep (the test of it was red on the Mac only). The recall module test no longer assumes $HOME is the person's home (it uses realHome()).
 - recall: the re-clean of stored turns is bounded (500 turns a batch, yielding between) and resumable (the last rowid is kept with REDACT_VERSION), run at the start of each index pass until done; pairing tickets (43 base64url characters after wink, ticket, pair or offer) are redacted too. memory.prompt fails closed: a module caller that names no agent and does not pass person: true gets nothing.
 - recall (reviewer-2 M-I1): the redaction list also removes `#claim=` codes, `vyre-pc:` pairing seeds, private key blocks and pasted keys or tokens by the shapes core/vault/detect.js names (not its random-looking fallback, so hashes and ids stay); turns already stored are cleaned once per REDACT_VERSION at the next pass and their vectors dropped. Wink tickets have no fixed shape and are not matched. memory.prompt's description says a module caller must pass the thread's agent (test added).
