@@ -8,6 +8,7 @@
 // JSON), the same as native-host/stdio.js. It is re-implemented so the spike does not break when
 // the real host's file changes; spike-lib.test.js cross-checks the two byte for byte.
 
+import { CHROME_SAFE } from "../../../../lib/chrome-flags/index.js";
 import { spawn, spawnSync } from "node:child_process";
 import crypto from "node:crypto";
 import fs from "node:fs";
@@ -215,8 +216,8 @@ export function parseInstallOutput(out) {
 export function launchChrome({ chrome, userDataDir, url = "about:blank", extraArgs = [], env = {}, headless = "new", logFile }) {
   const args = [];
   if (headless) args.push(`--headless=${headless}`);
-  args.push(`--user-data-dir=${userDataDir}`, "--no-first-run", "--no-default-browser-check", "--disable-gpu",
-    "--password-store=basic", "--use-mock-keychain", "--disable-search-engine-choice-screen", "--remote-allow-origins=*");
+  args.push(...CHROME_SAFE, `--user-data-dir=${userDataDir}`, "--no-first-run", "--no-default-browser-check", "--disable-gpu",
+    "--disable-search-engine-choice-screen", "--remote-allow-origins=*");
   if (process.platform === "linux" || process.env.CI) args.push("--no-sandbox");
   if (process.platform === "linux") args.push("--disable-dev-shm-usage");
   args.push(...extraArgs, url);

@@ -82,6 +82,7 @@ Vyre reads these when they are set. None is needed for normal use.
 | `VYRE_BOX_WAIT_MS` | How long `vyre box` waits for an install to finish. Default 65 minutes. | `core/cli/commands/box.js` |
 | `VYRE_CHECK_VIEWS` | Not described yet. | `core/cli/view.js` |
 | `VYRE_CHROME_HOST_DIR` | Not described yet. | `local/hands-chrome-mac/standalone/cli.mjs` |
+| `VYRE_CHROME_NO_COPY` | Not described yet. | `local/hands-chrome-mac/standalone/cli.mjs` |
 | `VYRE_CLAUDE_BIN` | The `claude` binary to run. Default `claude` on the PATH. | `core/memory/index.js`, `core/memory/personal/reader.js`, `core/onboard/index.js`, `core/onboard/setup-token.js`, `core/switchboard/index.js` |
 | `VYRE_CLAUDE_HOME` | Claude Code's folder for a home other than `~/.vyre`. Without it such a home uses its own `claude` folder and never reads `~/.claude`. | `core/config/dialogs.js` |
 | `VYRE_CLOUDFLARE_API` | The Cloudflare API base URL, in place of the real one. | `core/names/index.js` |

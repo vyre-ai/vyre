@@ -502,19 +502,27 @@ export class Registry {
         this.deps.log(`warn: module ${name || f.dir} invalid: ${error}`);
         continue;
       }
-      // Two modules with one name: the first found wins (Vyre's own folders come before the
-      // user's), and the other is reported, never silently dropped. A user's module named like a
-      // core one once vanished without a word, and so did every tool it offered.
-      if (this.modules.has(name)) {
-        const error = `a module named ${name} is already loaded from ${this.modules.get(name).dir}; this one is ignored`;
-        this.modules.set(`${name}@${f.dir}`, { manifest: f.manifest, dir: f.dir, state: "invalid", error });
-        this.deps.log(`warn: module ${name}@${f.dir} invalid: ${error}`);
-        continue;
-      }
       const roles = f.manifest.roles || ["box", "local"];
       // "mac" and "windows" are "local" on that OS only (roleBuckets); box and local are themselves.
       const here = roleBuckets(role, platform);
       const on = !disable.includes(name) && (roles.some(r => (r === "mac" || r === "windows" ? roleBuckets(r, platform) : [r]).some(b => here.includes(b))) || enable.includes(name));
+      // Two modules with one name: the first found wins (Vyre's own folders come before the
+      // user's), and the other is reported, never silently dropped. A user's module named like a
+      // core one once vanished without a word, and so did every tool it offered.
+      // The exception is a name two of Vyre's own modules share on purpose for different machines
+      // (the box's chrome and the Mac's chrome): a copy that is not on for this machine steps aside
+      // for one that is, and stays listed as off, so which one runs never depends on folder order.
+      if (this.modules.has(name)) {
+        const prev = this.modules.get(name);
+        if (!on) { this.modules.set(`${name}@${f.dir}`, { manifest: f.manifest, dir: f.dir, state: "off" }); continue; }
+        if (prev.state === "off") { this.modules.set(`${name}@${prev.dir}`, prev); }
+        else {
+          const error = `a module named ${name} is already loaded from ${prev.dir}; this one is ignored`;
+          this.modules.set(`${name}@${f.dir}`, { manifest: f.manifest, dir: f.dir, state: "invalid", error });
+          this.deps.log(`warn: module ${name}@${f.dir} invalid: ${error}`);
+          continue;
+        }
+      }
       this.modules.set(name, { manifest: f.manifest, dir: f.dir, state: on ? "pending" : "off" });
     }
     const candidates = found.filter(f => { const r = this.modules.get(f.manifest && f.manifest.name); return r?.state === "pending" && r.dir === f.dir; });

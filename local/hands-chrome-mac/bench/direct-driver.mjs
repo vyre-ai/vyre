@@ -6,6 +6,7 @@
 // are one evaluate each; a batch is one evaluate; net.list reads an in-process ring buffer.
 // Throwaway runner only: it launches its own Chrome with a remote debugging port.
 
+// Chrome here is always launched through launchChrome (spike/harness/lib.mjs), which spreads CHROME_SAFE (lib/chrome-flags).
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";

@@ -276,6 +276,25 @@ test("modules: a second module with a name already loaded is reported, and the f
   assert.equal((await reg.call("notes.other", {})).error.code, "no_such_tool");
 });
 
+test("modules: two modules that share a name for different machines: the one that is on for this machine runs, whichever folder is found first", async t => {
+  for (const order of [["a", "b"], ["b", "a"]]) {
+    const home = tempHome(t);
+    const dirs = { a: path.join(home, "a"), b: path.join(home, "b") };
+    // a is the Mac's copy (local), b is the box's copy.
+    writeModule(dirs.a, "notes", { ...good, roles: ["local"] }, echo);
+    writeModule(dirs.b, "notes", { ...good, roles: ["box"], does: { tools: ["notes.add"] } }, `export default { async start(ctx) { ctx.tool("notes.add", { run: async () => ({ from: "box" }) }); return {}; } };`);
+    const db = open(path.join(home, `vyre-${order.join("")}.db`));
+    t.after(() => db.close());
+    const reg = new Registry({ db, events: new Events(db), config: { role: "box" }, log: () => {} });
+    await reg.start(discover(order.map(k => dirs[/** @type {"a"|"b"} */ (k)])), { role: "box" });
+    const st = reg.status();
+    assert.equal(st.find(m => m.name === "notes").state, "running", order.join());
+    assert.equal(path.dirname(reg.modules.get("notes").dir), dirs.b, "the box copy is the one that runs");
+    assert.equal((await reg.call("notes.add", {})).data.from, "box");
+    assert.ok(st.filter(m => m.name.startsWith("notes@")).every(m => m.state === "off"), "the other stays listed as off, not invalid");
+  }
+});
+
 test("modules: a bad manifest is logged at warn level, not silently dropped, and status() still carries it", async t => {
   // A camelCase tool name once failed validate() and took the whole module with it, with no line
   // in the log to say so - found only by calling discover() by hand (teammates, 2026-09-28).

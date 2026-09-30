@@ -18,6 +18,7 @@
 // to tabs.list and page.eval). --diag adds a remote debugging port so a failed run can report the
 // worker's own log. Never run this on a person's machine: it launches Chrome and registers a host.
 
+// Chrome here is always launched through launchChrome (spike/harness/lib.mjs), which spreads CHROME_SAFE (lib/chrome-flags).
 import fs from "node:fs";
 import net from "node:net";
 import os from "node:os";

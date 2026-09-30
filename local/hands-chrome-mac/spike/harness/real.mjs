@@ -12,6 +12,7 @@
 //
 //   node spike/harness/real.mjs [--iters 30] [--out file] [--chrome path] [--headless new|false]
 
+// Chrome here is always launched through launchChrome (spike/harness/lib.mjs), which spreads CHROME_SAFE (lib/chrome-flags).
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
