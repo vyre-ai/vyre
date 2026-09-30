@@ -79,6 +79,8 @@ export function sshLine(port, user, env = process.env) {
 }
 
 const UNIT = path.join(system.ETC, "vyre.service");
+/** The folders that hold this machine's session transcripts, as config.json names them, the ones that exist. */
+const transcriptRoots = () => (config.load().transcripts || []).filter(r => { try { return fs.statSync(r).isDirectory(); } catch { return false; } });
 const systemdManaged = () => process.platform === "linux" && fs.existsSync(UNIT);
 
 /** vyred's /v1/health, or null when it does not answer. */
@@ -574,8 +576,8 @@ export default [
     async run() { await import("../../daemon/main.js"); return new Promise(() => {}); },
   },
   {
-    name: "backup", order: 80, usage: "vyre backup [file] [--skip-projects] [--work DIR] [--with-provider-logins]",
-    summary: "seal your data and project files into one passphrase-locked file (an unfinished one resumes)",
+    name: "backup", order: 80, usage: "vyre backup [file] [--skip-projects] [--skip-transcripts] [--work DIR] [--with-provider-logins]",
+    summary: "seal your data, project files and session transcripts into one passphrase-locked file (an unfinished one resumes)",
     async run(args) {
       const { flags, rest } = parse(args, ["user", "connect", "work"]);
       const target = path.resolve(rest[0] || `vyre-backup-${new Date().toISOString().slice(0, 10)}.vyre`);
@@ -583,11 +585,15 @@ export default [
       const skip = Boolean(flags["skip-projects"]) || process.env.VYRE_BACKUP_SKIP_PROJECTS === "1";
       const workRoot = typeof flags.work === "string" ? path.resolve(flags.work) : config.workDir();
       const roots = fs.existsSync(workRoot) && fs.statSync(workRoot).isDirectory() ? [workRoot] : [];
-      const est = estimate({ root: config.home(), workRoots: skip ? [] : roots });
+      // The folders holding session transcripts (Claude Code's, and the synced copies) ride along unless left out.
+      const skipT = Boolean(flags["skip-transcripts"]) || process.env.VYRE_BACKUP_SKIP_TRANSCRIPTS === "1";
+      const tRoots = skipT ? [] : transcriptRoots();
+      const est = estimate({ root: config.home(), workRoots: [...(skip ? [] : roots), ...tRoots] });
       const mb = n => n < 1024 * 1024 ? `${Math.max(1, Math.round(n / 1024))} KB` : n < 1024 ** 3 ? `${Math.round(n / 1024 / 1024)} MB` : `${(n / 1024 ** 3).toFixed(1)} GB`;
       if (!json()) {
-        out(dim(`  your data: ${mb(est.state)}` + (skip ? " · project files skipped" : roots.length ? ` · project files in ${workRoot}: ${mb(est.total - est.state)} (${est.work[0].files} files)` : " · no project folder here")));
-        if (!skip && roots.length && est.total - est.state > 1024 ** 3) out(dim("  that is a lot: add --skip-projects if they live in git or Drive"));
+        out(dim(`  your data: ${mb(est.state)}` + (skip ? " · project files skipped" : roots.length ? ` · project files in ${workRoot}: ${mb(est.work[0].bytes)} (${est.work[0].files} files)` : " · no project folder here")
+          + (skipT ? " · transcripts skipped" : tRoots.length ? ` · transcripts: ${mb(est.work.slice(skip ? 0 : roots.length).reduce((n, w) => n + w.bytes, 0))}` : " · no transcripts found")));
+        if (est.total - est.state > 1024 ** 3) out(dim("  that is a lot: add --skip-projects if they live in git or Drive, or --skip-transcripts"));
       }
       let passphrase;
       try { passphrase = await readPassphrase("backup passphrase (12 characters or more): ", { confirm: true }); }
@@ -595,7 +601,7 @@ export default [
       let last = 0;
       const onProgress = process.stderr.isTTY && !json() ? p => { const now = Date.now(); if (p.total && now - last > 2000) { last = now; process.stderr.write(`\r  ${Math.min(100, Math.round(p.done / p.total * 100))}% of the project files `); } } : undefined;
       let r;
-      try { r = await backup({ root: config.home(), file: target, passphrase, includeProviderLogins: Boolean(flags["with-provider-logins"]), work: { roots, skip }, onProgress }); }
+      try { r = await backup({ root: config.home(), file: target, passphrase, includeProviderLogins: Boolean(flags["with-provider-logins"]), work: { roots, skip, transcripts: tRoots, skipTranscripts: skipT }, onProgress }); }
       finally { passphrase = ""; if (onProgress) process.stderr.write("\r\x1b[K"); }
       const holds = r.included.join(", ") + (r.projects.length ? `, project files (${r.projects.map(p => p.name).join(", ")})` : "")
         + (r.excludedLogins.length ? ` (left out: ${r.excludedLogins.join(", ")}, sign in again after restoring, or pass --with-provider-logins next time)` : "");
@@ -611,7 +617,7 @@ export default [
     },
   },
   {
-    name: "restore", order: 81, hidden: true, usage: "vyre restore <file> [--force] [--skip-projects] [--work-to DIR]", summary: "put a backup back (vyred must be stopped)",
+    name: "restore", order: 81, hidden: true, usage: "vyre restore <file> [--force] [--skip-projects] [--skip-transcripts] [--work-to DIR]", summary: "put a backup back (vyred must be stopped)",
     async run(args) {
       const { flags, rest } = parse(args, ["user", "connect", "work-to"]);
       if (!rest[0]) return usage("vyre restore needs the backup file", "vyre restore <file> [--force]");
@@ -634,10 +640,10 @@ export default [
         const workTo = typeof flags["work-to"] === "string" ? new Proxy({}, { get: (_, name) => typeof name === "string" ? path.resolve(String(flags["work-to"]), name) : undefined }) : undefined;
         // Where the project files will go, said before anything is written (and refused if it is not allowed).
         if (v2) {
-          const plan = planRestore({ file, passphrase, workTo, skipProjects: Boolean(flags["skip-projects"]) });
+          const plan = planRestore({ file, passphrase, workTo, skipProjects: Boolean(flags["skip-projects"]), skipTranscripts: Boolean(flags["skip-transcripts"]), projectRoots: [config.workDir(), ...transcriptRoots()] });
           if (!json()) for (const p of plan.projects) out(dim(`  project files "${p.name}" -> ${p.to} (${p.files} files)`));
         }
-        r = await restore({ root: config.home(), file, passphrase, force: Boolean(flags.force), skipProjects: Boolean(flags["skip-projects"]), workTo });
+        r = await restore({ root: config.home(), file, passphrase, force: Boolean(flags.force), skipProjects: Boolean(flags["skip-projects"]), skipTranscripts: Boolean(flags["skip-transcripts"]), projectRoots: [config.workDir(), ...transcriptRoots()], workTo });
       }
       catch (e) {
         const m = String(/** @type {Error} */ (e).message);

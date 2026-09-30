@@ -152,16 +152,20 @@ async function* verifyPrefix(source, n, sha256) {
  * archive is ever whole in memory or in the clear on disk. An unfinished export (`<file>.partial`)
  * is picked up where it stopped when the same passphrase opens it and the project files are unchanged.
  * @param {{ root?: string, file: string, db?: import("node:sqlite").DatabaseSync, passphrase: string,
- *   includeProviderLogins?: boolean, work?: { roots?: string[], skip?: boolean },
+ *   includeProviderLogins?: boolean, work?: { roots?: string[], skip?: boolean, transcripts?: string[], skipTranscripts?: boolean },
  *   onProgress?: (p: { phase: string, done: number, total: number }) => void,
  *   sealParams?: { N: number, r: number, p: number }, chunk?: number }} o
  * @returns {Promise<{ file: string, bytes: number, included: string[], excludedLogins: string[],
- *   projects: { name: string, files: number, bytes: number }[], resumed: boolean, warnings: string[] }>}
+ *   projects: { name: string, kind: string, files: number, bytes: number }[], resumed: boolean, warnings: string[] }>}
  */
 export async function backup({ root = config.home(), file, db, passphrase, includeProviderLogins = false, work = {}, onProgress, sealParams, chunk = CHUNK }) {
   if (!file) throw new Error("backup needs a file to write");
   checkPassphrase(passphrase);
-  const roots = work.skip ? [] : (work.roots || []).filter(r => { try { return fs.statSync(r).isDirectory(); } catch { return false; } });
+  const isDir = r => { try { return fs.statSync(r).isDirectory(); } catch { return false; } };
+  // Project folders, then the folders holding the person's session transcripts (Claude Code's own, and the synced copies): the
+  // same tar segments, told apart in the manifest so a restore can leave either out.
+  const roots = [...(work.skip ? [] : (work.roots || []).filter(isDir)).map(r => ({ path: r, kind: "project" })),
+    ...(work.skipTranscripts ? [] : (work.transcripts || []).filter(isDir)).map(r => ({ path: r, kind: "transcripts" }))];
   // VYRE_TMPDIR moves the staging folder (the tests point it at their own scratch folder).
   const staging = fs.mkdtempSync(path.join(process.env.VYRE_TMPDIR || os.tmpdir(), "vyre-backup-"));
   const target = path.resolve(file);
@@ -172,7 +176,7 @@ export async function backup({ root = config.home(), file, db, passphrase, inclu
   try {
     fs.mkdirSync(path.dirname(target), { recursive: true });
     // What is there to export, listed up front and in a fixed order.
-    const walks = roots.map(r => ({ path: r, name: path.basename(r) || "work", ...walkWork(r) }));
+    const walks = roots.map(r => ({ path: r.path, kind: r.kind, name: path.basename(r.path) || "work", ...walkWork(r.path) }));
     const names = new Set();
     for (const w of walks) { let n = w.name, i = 2; while (names.has(n)) n = `${w.name}-${i++}`; w.name = n; names.add(n); }
     const total = walks.reduce((n, w) => n + w.bytes, 0);
@@ -190,7 +194,7 @@ export async function backup({ root = config.home(), file, db, passphrase, inclu
       if (!scanned || scanned.complete || scanned.header.chunk !== chunk) { fs.rmSync(partial, { force: true }); scanned = null; }
     }
     const seg = i => (scanned && scanned.segments[i]) || null;
-    const manifest = () => Buffer.from(JSON.stringify({ v: 2, at: Date.now(), projects: walks.map((w, i) => ({ seg: 2 + i, name: w.name, path: w.path, files: w.files, bytes: w.bytes, links: w.links })), skippedProjects: Boolean(work.skip) }));
+    const manifest = () => Buffer.from(JSON.stringify({ v: 2, at: Date.now(), projects: walks.map((w, i) => ({ seg: 2 + i, kind: w.kind, name: w.name, path: w.path, files: w.files, bytes: w.bytes, links: w.links })), skippedProjects: Boolean(work.skip), skippedTranscripts: Boolean(work.skipTranscripts) }));
 
     if (scanned) {
       // Whole segments already in the file stay; a half-written manifest or state is redone, and
@@ -292,7 +296,7 @@ export async function backup({ root = config.home(), file, db, passphrase, inclu
     fs.chmodSync(partial, 0o600);
     fs.renameSync(partial, target);
     return { file: target, bytes: fs.statSync(target).size, included, excludedLogins,
-      projects: walks.map(p => ({ name: p.name, files: p.files, bytes: p.bytes })), resumed, warnings };
+      projects: walks.map(p => ({ name: p.name, kind: p.kind, files: p.files, bytes: p.bytes })), resumed, warnings };
   } catch (e) {
     // The partial file stays: that is what a resume continues from.
     writer?.close();
@@ -435,21 +439,21 @@ function checkRoom(needs) {
  * changing anything. A folder is put back where it came from only when that is under this box's project
  * folder (or `projectRoots`); anywhere else it must be named with `workTo`.
  * @param {{ file: string, passphrase: string, workTo?: Record<string,string>, skipProjects?: boolean, projectRoots?: string[] }} o
- * @returns {{ at: number, projects: { name: string, from: string, to: string, files: number, bytes: number, seg: number }[] }}
+ * @returns {{ at: number, projects: { name: string, kind: string, from: string, to: string, files: number, bytes: number, seg: number }[] }}
  */
-export function planRestore({ file, passphrase, workTo, skipProjects = false, projectRoots = [config.workDir()] }) {
+export function planRestore({ file, passphrase, workTo, skipProjects = false, skipTranscripts = false, projectRoots = [config.workDir()] }) {
   const parts = [];
   for (const r of readRecords(path.resolve(file), passphrase)) { if (r.seg !== 0) break; parts.push(r.plain); if (r.last) break; }
   let manifest;
   try { manifest = JSON.parse(Buffer.concat(parts).toString("utf8")); } catch { throw new Error("this backup has no readable manifest"); }
   const inside = (p, root) => { const rel = path.relative(path.resolve(root), path.resolve(p)); return rel === "" || (!rel.startsWith("..") && !path.isAbsolute(rel)); };
   const projects = [];
-  for (const pr of skipProjects ? [] : manifest.projects || []) {
+  for (const pr of (manifest.projects || []).filter(x => (x.kind === "transcripts" ? !skipTranscripts : !skipProjects))) {
     const chosen = workTo && workTo[pr.name];
     if (chosen === undefined && (typeof pr.path !== "string" || !path.isAbsolute(pr.path) || !projectRoots.some(r => inside(pr.path, r)))) {
       throw new Error(`the project files "${pr.name}" came from ${String(pr.path).slice(0, 120)}, which is not this device's project folder; say where they go with --work-to DIR (or skip them with --skip-projects)`);
     }
-    projects.push({ name: pr.name, from: pr.path, to: path.resolve(chosen ?? pr.path), files: pr.files, bytes: pr.bytes, seg: pr.seg });
+    projects.push({ name: pr.name, kind: pr.kind === "transcripts" ? "transcripts" : "project", from: pr.path, to: path.resolve(chosen ?? pr.path), files: pr.files, bytes: pr.bytes, seg: pr.seg });
   }
   return { at: manifest.at, projects };
 }
@@ -458,9 +462,9 @@ export function planRestore({ file, passphrase, workTo, skipProjects = false, pr
  * Put a v2 backup back: every segment is decrypted and checked to its end record before anything on
  * disk changes, then the box's data goes into `root` and each project folder into its own place.
  */
-async function restoreV2({ root, file, passphrase, force, workTo, skipProjects, projectRoots }) {
+async function restoreV2({ root, file, passphrase, force, workTo, skipProjects, skipTranscripts, projectRoots }) {
   // Where things go is settled, and refused if it is not allowed, before a byte is written.
-  const plan = planRestore({ file, passphrase, workTo, skipProjects, projectRoots });
+  const plan = planRestore({ file, passphrase, workTo, skipProjects, skipTranscripts, projectRoots });
   const sealedSize = fs.statSync(path.resolve(file)).size;
   checkRoom([{ at: root, need: Math.ceil(sealedSize * 1.1) + 64 * 1048576 }, ...plan.projects.map(p => ({ at: p.to, need: Math.ceil(p.bytes * 1.05) }))]);
   fs.mkdirSync(root, { recursive: true, mode: 0o700 });
@@ -535,7 +539,7 @@ async function restoreV2({ root, file, passphrase, force, workTo, skipProjects, 
  *   skipProjects?: boolean, projectRoots?: string[], alive?: (o: { pid: number, socket: string }) => boolean | Promise<boolean> }} o
  * @returns {Promise<{ restored: string[], projects: { name: string, to: string, files: number, bytes: number }[] }>}
  */
-export async function restore({ root = config.home(), file, passphrase, force = false, workTo, skipProjects = false, projectRoots, alive = defaultAlive }) {
+export async function restore({ root = config.home(), file, passphrase, force = false, workTo, skipProjects = false, skipTranscripts = false, projectRoots, alive = defaultAlive }) {
   const p = config.paths(root);
   let pid = 0;
   try { pid = Number(fs.readFileSync(p.pid, "utf8").trim()) || 0; } catch {}
@@ -547,6 +551,6 @@ export async function restore({ root = config.home(), file, passphrase, force = 
   const fd = fs.openSync(path.resolve(file), "r");
   let n = 0;
   try { n = fs.readSync(fd, head, 0, head.length, 0); } finally { fs.closeSync(fd); }
-  if (isStream(head.subarray(0, n))) return restoreV2({ root, file, passphrase, force, workTo, skipProjects, projectRoots });
+  if (isStream(head.subarray(0, n))) return restoreV2({ root, file, passphrase, force, workTo, skipProjects, skipTranscripts, projectRoots });
   return { ...(await restoreV1({ root, file, passphrase })), projects: [] };
 }

@@ -548,3 +548,29 @@ test("restore: a link inside either tar is refused before any project folder or 
     assert.ok(!fs.existsSync(path.join(dest, "notes.md")), `${where}: no project file was moved`);
   }
 });
+
+test("export: session transcripts ride along as their own kind, restore to where they came from, and either kind can be left out", async t => {
+  const home = tempHome(t);
+  const a = path.join(home, "a"), work = path.join(home, "work"), claude = path.join(home, "claude", "projects");
+  fs.mkdirSync(a); seed(a); fs.mkdirSync(work); seedWork(work);
+  fs.mkdirSync(path.join(claude, "-work-harlow-intake"), { recursive: true });
+  fs.writeFileSync(path.join(claude, "-work-harlow-intake", "s1.jsonl"), '{"type":"user","message":{"content":"hello"}}\n');
+  const file = path.join(home, "all.vyre");
+  const r = await backup({ root: a, file, passphrase: PASSPHRASE, work: { roots: [work], transcripts: [claude] }, ...FAST });
+  assert.deepEqual(r.projects.map(p => [p.name, p.kind]), [["work", "project"], ["projects", "transcripts"]]);
+
+  // Back to where they came from, when that is a folder this device names; anywhere else needs saying.
+  const b = path.join(home, "b");
+  await assert.rejects(restore({ root: b, file, passphrase: PASSPHRASE, alive: dead }), /not this device's project folder/);
+  fs.rmSync(claude, { recursive: true });
+  const out = await restore({ root: b, file, passphrase: PASSPHRASE, workTo: { work: path.join(home, "w2") }, projectRoots: [path.dirname(claude)], alive: dead });
+  assert.equal(out.projects.length, 2);
+  assert.equal(fs.readFileSync(path.join(claude, "-work-harlow-intake", "s1.jsonl"), "utf8"), '{"type":"user","message":{"content":"hello"}}\n');
+
+  // Left out at either end.
+  const noT = await backup({ root: a, file: path.join(home, "no-t.vyre"), passphrase: PASSPHRASE, work: { roots: [work], transcripts: [claude], skipTranscripts: true }, ...FAST });
+  assert.deepEqual(noT.projects.map(p => p.kind), ["project"]);
+  const c = path.join(home, "c");
+  const skipped = await restore({ root: c, file, passphrase: PASSPHRASE, skipTranscripts: true, workTo: { work: path.join(home, "w3") }, alive: dead });
+  assert.deepEqual(skipped.projects.map(p => p.name), ["work"]);
+});

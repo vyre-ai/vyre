@@ -23,3 +23,18 @@ export function updateCard(s) {
   return { headline: `Vyre ${current} is up to date`, detail, command: null, app, notes: [], version: null };
 }
 
+
+/** @type {{ title: string, says: string[], commands: { line: string, note: string }[] }[]} */
+export const COMMAND_CARDS = [
+  { title: "Export everything",
+    says: ["One sealed file with your settings, memory, projects, teammates, conversations, session transcripts, project files and your vault.",
+      "It opens only with the passphrase you type when you make it. Sign-ins to Claude, ChatGPT and Grok are left out and made again by signing in after a restore. A cut-off export picks up where it stopped when you run it again."],
+    commands: [{ line: "vyre backup", note: "shows the sizes first, then asks for a passphrase" },
+      { line: "vyre backup --skip-projects --skip-transcripts", note: "your data only, without the files" }] },
+  { title: "Uninstall",
+    says: ["Stops Vyre, removes its containers and its agents' computers, and takes the vyre command off. Your data stays unless you say to delete it.",
+      "It never touches your Docker, your Tailscale, or Claude, Codex and Gemini on any device. The server still shows in your Tailscale machines list: remove it there."],
+    commands: [{ line: "vyre uninstall", note: "on the server; asks whether to delete your data too" },
+      { line: "vyre uninstall --keep-data", note: "removes Vyre and keeps everything, so a fresh install picks up where this left off" },
+      { line: "vyre uninstall --delete-data", note: "removes Vyre and all of its data for good: make an export first" }] },
+];

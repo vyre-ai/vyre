@@ -6,11 +6,29 @@
 //
 // Light: nothing on a timer. It loads when Settings opens, after each action, and on update.available.
 //
+// Export and Uninstall are the same kind of card: what it does in plain words and the one command that
+// does it. Sealing a whole export under a passphrase and stopping a stack are done where the data is, on
+// the machine's own terminal, so they are never a button in a page that a stolen session could press.
+//
 // Tools: update.status, update.check.
 
 import { h, put, empty } from "../js/dom.js";
 import { attempt, on } from "../js/api.js";
-import { updateCard } from "../js/update-card.js";
+import { updateCard, COMMAND_CARDS } from "../js/update-card.js";
+
+/** @param {typeof COMMAND_CARDS[number]} c */
+function commandCard(c) {
+  return h("div", { class: "set-card" },
+    h("h3", { class: "set-h" }, c.title),
+    ...c.says.map(t => h("p", { class: "muted" }, t)),
+    ...c.commands.map(m => {
+      const copy = h("button", { class: "btn secondary", type: "button", onclick: async (/** @type {MouseEvent} */ e) => {
+        const b = /** @type {HTMLElement} */ (e.currentTarget);
+        try { await navigator.clipboard.writeText(m.line); put(b, "Copied"); } catch { put(b, "Copy"); }
+      } }, "Copy");
+      return h("div", null, h("div", { class: "cmd" }, h("pre", null, h("code", null, m.line)), copy), h("p", { class: "muted" }, m.note));
+    }));
+}
 
 /**
  * @param {HTMLElement} root
@@ -18,7 +36,7 @@ import { updateCard } from "../js/update-card.js";
  */
 export async function drawData(root, ctx) {
   const box = h("div", { class: "set-card" });
-  put(root, box);
+  put(root, box, ...COMMAND_CARDS.map(c => commandCard(c)));
   const load = async (check = false) => {
     const r = await attempt(check ? "update.check" : "update.status");
     if (!ctx.alive()) return;
