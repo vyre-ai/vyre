@@ -68,6 +68,7 @@ their wider imports). "Becomes" says where each remaining one should go:
 | `core/switchboard -> core/transcripts` | sanitize.js | keeps credentials out of what it builds from transcripts | lib |
 | `core/term -> core/computers` | ws.js | the RFC 6455 framing sliver Glass wrote, a pure helper | lib |
 | `core/term -> core/files` | safety.js | the path gate every file path passes through | ctx.call |
+| `core/vyre-core -> core/vault` | vault.js | vyre-core hosts the vault's store and crypto in its own process and db (ADR 0040 phase 2) | host |
 | `core/vault -> core/link` | transport.js | the vault relay between the Mac and the box | lib |
 | `core/vault -> core/names` | identity.js, tailscale.js | who is on the other end of a vault relay, and the tailscale CLI | lib |
 | `local/capsule -> core/cli` | commands/capsule-native.js | where the native Capsule app is built, shared with `vyre capsule` | lib |

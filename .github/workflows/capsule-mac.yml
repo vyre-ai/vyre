@@ -12,7 +12,35 @@ concurrency:
   group: capsule-mac-${{ github.ref }}
   cancel-in-progress: true
 jobs:
+  detect:
+    runs-on: ubuntu-latest
+    outputs:
+      run: ${{ steps.mine.outputs.run }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: local
+          fetch-depth: 0
+      - id: mine
+        # A team branch that merged stage sees everyone's files in the push diff, so the path filter
+        # alone would build the Mac and Android apps for it. Ask instead what the branch itself changed
+        # relative to stage; stage, pull requests and manual runs are not filtered.
+        run: |
+          echo run=true >> "$GITHUB_OUTPUT"
+          case "$GITHUB_REF" in
+            refs/heads/work/stage-0.2) exit 0 ;;
+            refs/heads/work/*) ;;
+            *) exit 0 ;;
+          esac
+          [ "$GITHUB_EVENT_NAME" = push ] || exit 0
+          git fetch --no-tags origin work/stage-0.2:refs/remotes/origin/work/stage-0.2 || exit 0
+          base=$(git merge-base HEAD origin/work/stage-0.2) || exit 0
+          if git diff --name-only "$base" HEAD | grep -Eq '^(local/|core/vault/native|core/cli/commands/capsule|scripts/capsule-native-check\.mjs|package.*\.json|\.github/workflows/capsule-mac\.yml)'; then exit 0; fi
+          echo "this branch changed nothing under the Capsule relative to stage: skipping"
+          echo run=false >> "$GITHUB_OUTPUT"
   build:
+    needs: detect
+    if: needs.detect.outputs.run == 'true'
     runs-on: macos-latest
     timeout-minutes: 45
     env:

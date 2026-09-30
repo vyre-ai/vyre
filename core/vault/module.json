@@ -81,7 +81,7 @@
       "vault.caps",
       "vault.health",
       "vault.breach.check",
-      "vault.update",
+      "vault.update", "vault.verify",
       "vault.clipboard.clear",
       "vault.vaults.create",
       "vault.vaults.list",

@@ -193,7 +193,7 @@ test("presence: capsule and device rows always store alg -7; old rows are refuse
   t.after(() => db.close());
   const { migrate } = await import("../store/index.js");
   const { MIGRATIONS } = await import("./index.js");
-  migrate(db, "presence", MIGRATIONS.slice(0, -2));
+  migrate(db, "presence", MIGRATIONS.slice(0, MIGRATIONS.findIndex(m => m.includes("presence_keys_signer_alg"))));
   const spkiOf = k => k.export({ format: "der", type: "spki" }).toString("base64url");
   const ed = crypto.generateKeyPairSync("ed25519");
   const phone = crypto.generateKeyPairSync("ec", { namedCurve: "P-256" });
@@ -625,4 +625,28 @@ test("presence: a passkey a relayed browser enrolled proves only for that device
   // Removing the key removes its binding.
   assert.equal(p.remove("webcredential1"), true);
   assert.equal(db.prepare("SELECT COUNT(*) AS n FROM presence_key_devices").get().n, 0);
+});
+
+test("presence: a grant enrolls the first passkey and nothing else, once, for five minutes, from the node it was made for", async t => {
+  const { p, tick } = setup(t);
+  p.role = "box";
+  p.network = () => ({ owner: "me@example.com" });
+  const peer = { stableId: "n-laptop", node: "laptop" };
+  const enroll = (grant, extra = {}) => p.verify({ tool: "presence.enroll", input: { kind: "passkey", rp_id: "alex.vyre.run" }, caller: "tailnet:me@example.com", peer, proof: { method: "grant", grant }, ...extra });
+  const { grant, expires } = p.mintGrant(peer, "alex.vyre.run");
+  assert.ok(expires > 0 && grant.length >= 40);
+  assert.equal((await p.verify({ ...APPROVE, caller: "tailnet:me@example.com", peer, proof: { method: "grant", grant } })).ok, false, "a grant approved a gate item");
+  assert.equal((await enroll("WRONG")).ok, false);
+  assert.equal((await enroll(grant, { peer: { stableId: "n-other" } })).ok, false, "another node's browser");
+  assert.equal((await enroll(grant, { caller: "tailnet:other@example.com" })).ok, false, "not the owner's login");
+  assert.equal((await enroll(grant, { caller: "cli" })).ok, false);
+  assert.equal((await enroll(grant, { input: { kind: "device", rp_id: "alex.vyre.run" } })).ok, false, "only a passkey");
+  assert.equal((await enroll(grant, { input: { kind: "passkey", rp_id: "evil.vyre.run" } })).ok, false, "only for the address it was claimed at");
+  assert.equal((await enroll(grant, { input: { kind: "passkey" } })).ok, false, "an rp_id is needed");
+  assert.deepEqual(await enroll(grant), { ok: true, method: "grant", keyId: null });
+  assert.equal((await enroll(grant)).ok, false, "a grant was used twice");
+  const late = p.mintGrant(peer, "alex.vyre.run");
+  tick(5 * 60_000 + 1);
+  assert.equal((await enroll(late.grant)).ok, false, "expired");
+  assert.equal(p.db.prepare("SELECT hash FROM presence_grants WHERE hash = ?").get(grant), undefined, "only its hash is stored");
 });

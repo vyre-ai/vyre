@@ -27,7 +27,9 @@ function fakeBin(dir, name, out) {
 async function box(t, extra = {}, presence = undefined) {
   const root = tempHome(t);
   const bins = fs.mkdtempSync(path.join(root, "bin-"));
-  const env = { VYRE_TAILSCALE_BIN: process.env.VYRE_TAILSCALE_BIN, VYRE_CLAUDE_BIN: process.env.VYRE_CLAUDE_BIN, CLOUDFLARE_VYRE_TOKEN: process.env.CLOUDFLARE_VYRE_TOKEN };
+  const env = { VYRE_TAILSCALE_BIN: process.env.VYRE_TAILSCALE_BIN, VYRE_CLAUDE_BIN: process.env.VYRE_CLAUDE_BIN, CLOUDFLARE_VYRE_TOKEN: process.env.CLOUDFLARE_VYRE_TOKEN, VYRE_NAMES_DEV_CLOUDFLARE: process.env.VYRE_NAMES_DEV_CLOUDFLARE };
+  // These tests serve a vyre.run name through a fake Cloudflare zone: the development path (core/names), not the hosted directory.
+  process.env.VYRE_NAMES_DEV_CLOUDFLARE = "1";
   process.env.VYRE_TAILSCALE_BIN = fakeBin(bins, "tailscale", JSON.stringify({ BackendState: "NeedsLogin", AuthURL: "https://login.tailscale.com/a/fake", TUN: true,
     // Also the answer to `debug prefs`, which Linux asks for the operator.
     OperatorUser: os.userInfo().username }));

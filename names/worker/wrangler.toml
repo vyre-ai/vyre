@@ -1,0 +1,44 @@
+# The Vyre name directory on Cloudflare (plan section 3.1). No account id here: wrangler takes it
+# from the logged-in account at deploy. Deploying needs the lead's approval, and so do the two
+# secrets below. The API token can edit DNS on the vyre.run zone and nothing else, and it lives
+# here only: a box never sees it.
+#
+#   npx wrangler secret put CF_API_TOKEN     (Zone.DNS edit, scoped to vyre.run)
+#   npx wrangler secret put CF_ZONE_ID
+name = "vyre-names"
+main = "index.js"
+compatibility_date = "2026-09-01"
+
+# The directory's one hostname, as a Worker custom domain (it makes the DNS record and the
+# certificate). No workers.dev address.
+workers_dev = false
+routes = [{ pattern = "names.vyre.run", custom_domain = true }]
+
+[vars]
+ZONE = "vyre.run"
+ORIGIN = "https://names.vyre.run"
+GLOBAL_CLAIMS_PER_DAY = "500"
+
+# One object holds every name (claims, limits and recoveries must not race). The free plan needs
+# SQLite-backed Durable Objects.
+[[durable_objects.bindings]]
+name = "DIRECTORY"
+class_name = "Directory"
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["Directory"]
+
+# Per-address limiting in front of everything. The namespace_id is this account's own choice
+# (an integer unique across its Workers); 27xxx is this Worker's block, the relay has 26xxx.
+[[ratelimits]]
+name = "NAMES_LIMITER"
+namespace_id = "27001"
+simple = { limit = 30, period = 60 }
+
+# Finish due recoveries, lapse names that were never pointed, retry DNS cleanups, drop old counters.
+[triggers]
+crons = ["17 * * * *"]
+
+[observability]
+enabled = true

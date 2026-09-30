@@ -21,6 +21,11 @@ import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { SESSIONS, HOME, writeTranscripts } from "../../test/fixtures/corpus.js";
 import { SCRATCH } from "../../test/scratch.mjs";
+import { setPeerHosting } from "../../core/daemon/peer.js";
+
+// This world hosts vyred in its own process and drives it from that process and its children:
+// the one seam the caller check keeps for a test (core/daemon/peer.js).
+setPeerHosting(true);
 
 const REPO = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
 const BIN = path.join(REPO, "bin", "vyre");

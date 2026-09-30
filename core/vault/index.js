@@ -10,6 +10,8 @@
 // The relay listener, when `vault.relay` is set in config.json, is the one door other people's
 // Vyre come through. It serves a single route and only answers signed requests for live passes.
 
+import { core as coreHolder } from "../presence/index.js";
+import { startForwarder } from "./forward.js";
 import { Vault, MIGRATIONS, KINDS, parseExpiry, ensureMacColumns } from "./vault.js";
 import { DETAILS, defaultField } from "../../lib/vault-kinds/kinds.js";
 import { codes, importCodes } from "./codes.js";
@@ -53,6 +55,8 @@ const obj = (properties, required = []) => ({ type: "object", properties, requir
 /** @type {{ start(ctx: any): Promise<{ stop(): Promise<void> }> }} */
 export default {
   async start(ctx) {
+    // On a Mac with vyre-core, core holds the vault: forward, and never open the old store.
+    if (coreHolder.link && typeof coreHolder.link.call === "function") return startForwarder(ctx, /** @type {any} */ (coreHolder.link));
     ctx.store.migrate(MIGRATIONS);
     ensureMacColumns(ctx.store.db);
     const vault = new Vault({ db: ctx.store.db, dir: ctx.paths.vault, config: ctx.config, emit: (t, p) => ctx.events.emit(t, p), log: ctx.log });
