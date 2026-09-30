@@ -588,3 +588,9 @@ mcp.connect/oauth.js status have posted (both block the Next list below).
 - Hosted MCP: vault's githubServer row (c78e6f9d on work/vault-next, api.githubcopilot.com/mcp/, bearer from
   github-<login>.token). Wiring mcp.add on connect (grant the item to mcp first) waits for that to reach
   stage; pr.status/comments/issue reads are next.
+- "#" mentions provider (lead, 1 Oct): module.json `mentions: [{kind: "github", label, search, resolve}]`, tools
+  github.mentions.search {q, kinds?} -> {results:[{kind, id, name, hint, icon}]} (repos by name, open PRs and
+  issues via /search/issues involves:<login>, across connected accounts; names only) and github.mentions.resolve
+  {id} -> {kind, id, name, url, text, outside:true, note}. ids: repo:o/n, pr:o/n#N, issue:o/n#N, strictly parsed.
+  Callers: people plus module:mentions/platform/sessions/threads (firstParty). Platform owns the field's schema
+  and the fan-out; unknown keys are ignored until it lands.
