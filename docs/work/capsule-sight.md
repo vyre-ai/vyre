@@ -103,6 +103,26 @@ steps 1-3 first (outward classifier, Gate wiring, the one grant), then deep Chro
 - Tests: 262 in local/hands-chrome-mac and local/hands-mac, all fake-only, 0 fail. docs-check, module-sdk
   and tips tests clean.
 
+### Done (30 Sep, reviewer-2's invisible-guard list, one commit)
+- Password-field guard (extension/shared/guards.js) on page.eval AND dev.console.eval: type=password, autocomplete
+  current/new-password, a "show password" field switched to type=text (by name, id, label, placeholder), open
+  shadow roots and same-origin iframes. Closed shadow roots and cross-origin frames are unreadable to a script too.
+- Console ring and sources cache purged when a page's execution contexts clear (any navigation, reload), so a blind
+  page leaves nothing behind. Broader than "blind navigation only": a normal reload also clears the console, as
+  DevTools does by default.
+- net.list and records() (api.learn) filter by the floor tier with the person's own blind list, read once per call.
+- "replaced" (a second connection took over) is emitted as chrome.replaced, a quiet event, never a prompt.
+- Pinned-origin comments reworded (bridge.js, host.js, index.js): a sanity check, not authentication.
+- Seeded bridge fuzz (bridge-fuzz.test.js, VYRE_FUZZ_SEED): garbage bytes plus hostile frames from a connection and
+  from the live extension; bridge keeps serving, nothing uncaught, no prototype pollution. Seeds 1,2,3 and the default pass.
+- Socket path confirmed: <VYRE_HOME or ~/.vyre>/run/chrome.sock (VYRE_CHROME_SOCK overrides). The shell-rule line in
+  core/harness/rules.js is harness's file: sent to platform.
+- Standing permissions: the vault Gate (work/vault-next) matches inside gate.request and releases at once, BEFORE
+  gate.request returns an id. That would have failed chrome.release and hands.release (record keyed by id). Both now
+  file the record under a random single-use ref carried on the card, look it up by id or ref, and return the
+  released result to the caller (state "sent") instead of a held answer. Tests: module.test.js (chrome), control.test.js (hands).
+- Tests: local/hands-chrome-mac + local/hands-mac 285 pass, 0 fail; docs tests clean.
+
 ### Doing
 - Waiting on a push of work/capsule-sight to run chrome-spike.yml on the runners (now includes spike/harness/real.mjs: the real extension + host + bridge, the bench, stop-halts-batch and blind-refused checks).
 - Esc: hands.indicator (new hands tool) raises the shared pill before every Chrome act, and the hands overlay's stop (Esc or double Control) stops Chrome control through oversight.

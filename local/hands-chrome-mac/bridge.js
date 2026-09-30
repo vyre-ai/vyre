@@ -67,7 +67,9 @@ export function createBridge({ sockPath = socketPath(), timeoutMs = 30_000, opTi
   /** @param {Conn} c @param {any} m */
   function onFrame(c, m) {
     if (!m || typeof m !== "object") return;
-    // The host (not the page, not the extension) says who launched it, once, before the hello.
+    // The host says which origin Chrome launched it for, once, before the hello. Not authentication
+    // (any process of this user can write the same frame): it only tells our extension's host from
+    // a host some other extension or profile started.
     if (m.event === "host" && !c.origin) { c.origin = typeof m.origin === "string" ? m.origin : ""; return; }
     if (m.event === "hello") {
       if (extensionOrigin && c.origin !== extensionOrigin) {

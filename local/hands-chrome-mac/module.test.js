@@ -26,7 +26,12 @@ const PLAN = { steps: [{ id: "1", text: "Read the intake page" }, { id: "2", tex
 const GATE_JS = `export default { async start(ctx) {
   const seen = globalThis.__gate = { offers: [], requests: [] };
   ctx.tool("gate.offer", { description: "x", input: { type: "object" }, run: async i => { seen.offers.push(i); return { ok: true }; } });
-  ctx.tool("gate.request", { description: "x", input: { type: "object" }, run: async i => { seen.requests.push(i); return { id: "held-" + seen.requests.length }; } });
+  ctx.tool("gate.request", { description: "x", input: { type: "object" }, run: async i => {
+    seen.requests.push(i);
+    // A person's own words or a standing permission cover it: the real Gate releases at once, from inside gate.request, before any id is returned.
+    if (globalThis.__gateSaid) { const r = await ctx.call("chrome.release", { id: "sent-1", to: [i.to], content: i.content }); return r.error ? { id: "sent-1", state: "held", error: r.error.message } : { id: "sent-1", state: "sent", result: r.data }; }
+    return { id: "held-" + seen.requests.length };
+  } });
   return {};
 } };`;
 
@@ -222,6 +227,22 @@ test("module: a held outward act becomes a Gate card with the fields and origin,
   assert.equal(sent.release.sig, "sig-1");
   assert.equal(sent.selector.name, "Send inquiry");
   assert.ok(events("chrome.acted").some((/** @type {any} */ e) => /released/.test(e.payload.summary)));
+});
+
+test("module: a send the person's words or a standing permission cover is released by the Gate at once, and the call returns its result", async t => {
+  const { reg, gate, connect } = await rig(t);
+  t.after(() => { delete /** @type {any} */ (globalThis).__gateSaid; });
+  const x = await connect({ "page.act": (/** @type {any} */ a) => a.release
+    ? { ok: true, sent: true }
+    : { ok: false, held: true, control: { role: "button", name: "Send inquiry" }, fields: [], sig: "sig-9", url: "https://harlow.example/intake" } });
+  /** @type {any} */ (globalThis).__gateSaid = true;
+  const r = await reg.call("chrome.act", { selector: { role: "button", name: "Send inquiry" }, kind: "click", tab: 1 }, "cli");
+  assert.equal(r.error, undefined, JSON.stringify(r));
+  assert.equal(r.data.sent, true, "the act went out and its result came back");
+  assert.equal(x.ops("page.act")[1].args.release.sig, "sig-9", "release replayed what was held, found by its ref");
+  // The ref is single-use: replaying it later finds nothing.
+  const again = await reg.call("chrome.release", { id: "sent-1", content: gate().requests.at(-1).content }, "module:gate");
+  assert.equal(again.error.code, "denied");
 });
 
 test("module: a release the extension refuses as changed comes back as changed and nothing is sent", async t => {

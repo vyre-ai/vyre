@@ -248,11 +248,12 @@ export function matcher(f) {
 }
 
 /** Raw records, for api.js to learn from. Never returned to a caller. @param {any} ctx @param {number} tab @param {any} [filter] */
-export function records(ctx, tab, filter) {
+export async function records(ctx, tab, filter) {
   const t = root(ctx).tabs.get(tab);
   if (!t) return [];
   const m = matcher(filter);
-  return [...t.recs.values()].filter(r => !blindUrl(r.url)).filter(m);
+  const tier = await ctx.floorTier();
+  return [...t.recs.values()].filter(r => tier(r.url) !== "blind").filter(m);
 }
 
 /** @param {any} ctx @param {TabNet} t @param {Rec} r */
@@ -402,7 +403,8 @@ const ops = {
     const t = await start(ctx, tab);
     const limit = Math.min(Number(args?.limit) || 100, 500);
     const m = matcher(args?.filter);
-    const all = [...t.recs.values()].filter(r => !blindUrl(r.url)).filter(m);
+    const tier = await ctx.floorTier();
+    const all = [...t.recs.values()].filter(r => tier(r.url) !== "blind").filter(m);
     const rows = all.slice(-limit).map(r => redact.request(summary(r)));
     return { count: rows.length, matched: all.length, buffered: t.recs.size, requests: rows };
   },

@@ -43,7 +43,7 @@ function store(ctx) {
 }
 
 /** @param {any} ctx @param {number} tab */
-const bufferOrigins = (ctx, tab) => [...new Set(records(ctx, tab).map(r => { try { return new URL(r.url).origin; } catch { return ""; } }).filter(Boolean))];
+const bufferOrigins = async (ctx, tab) => [...new Set((await records(ctx, tab)).map(r => { try { return new URL(r.url).origin; } catch { return ""; } }).filter(Boolean))];
 
 /** @param {string} u @param {string} o */
 const sameOrigin = (u, o) => { try { return new URL(u).origin === o; } catch { return false; } };
@@ -53,7 +53,7 @@ const ops = {
   async "api.learn"(args, ctx) {
     const tab = await target(ctx, args, "api.learn");
     await start(ctx, tab);
-    const recs = records(ctx, tab, { since: args?.since });
+    const recs = await records(ctx, tab, { since: args?.since });
     const fresh = learn(recs.map(r => ({ method: r.method, url: r.url, status: r.status, type: r.type, requestHeaders: r.reqHeaders, postData: r.postData })));
     const st = store(ctx);
     const all = await st.load();
@@ -74,7 +74,7 @@ const ops = {
     const all = await store(ctx).load();
     let origins = Object.keys(all);
     if (args?.origin) origins = origins.filter(o => o === args.origin);
-    else if (tab != null) { const seen = bufferOrigins(ctx, tab); if (seen.length) origins = origins.filter(o => seen.includes(o)); }
+    else if (tab != null) { const seen = await bufferOrigins(ctx, tab); if (seen.length) origins = origins.filter(o => seen.includes(o)); }
     return { origins, entries: origins.flatMap(o => all[o].entries) };
   },
 
@@ -92,7 +92,7 @@ const ops = {
     if (entry.authKind === "bearer" || entry.authKind.startsWith("header:")) {
       // The credential comes from the newest captured request that carried it, inside the worker.
       const want = entry.authKind === "bearer" ? "authorization" : entry.authKind.slice(7);
-      const src = records(ctx, tab).reverse().find(r => sameOrigin(r.url, entry.origin) && Object.keys(r.reqHeaders).some(k => k.toLowerCase() === want));
+      const src = (await records(ctx, tab)).reverse().find(r => sameOrigin(r.url, entry.origin) && Object.keys(r.reqHeaders).some(k => k.toLowerCase() === want));
       const k = src && Object.keys(src.reqHeaders).find(x => x.toLowerCase() === want);
       if (src && k) headers[k] = src.reqHeaders[k];
       else authNote = "no captured request carries this credential any more; trigger the app once, then call again";

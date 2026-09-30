@@ -289,6 +289,8 @@ export class Hands {
         content: { app: before.app, window: before.window, control: summary, value: input.value !== undefined ? clip(input.value) : undefined, hash: signature(before), input },
         thread,
       }).catch(() => null);
+      // The person's own words (or a standing permission) covered it: the Gate already replayed the act.
+      if (held && held.sent) return held.result;
       const use = held && held.id ? "gate.approve" : "hands.commit";
       const reason = held && held.id
         ? `${out}, so it was held for the person to approve (${held.id}). Nothing was done.`

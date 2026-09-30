@@ -15,6 +15,7 @@
 
 import * as redact from "../shared/redact.js";
 import { classify } from "../shared/floor.js";
+import { passwordFieldScript } from "../shared/guards.js";
 import { guardInstall, guardCollect, held as heldRequest } from "../shared/outbound.js";
 import { fail } from "../shared/proto.js";
 
@@ -69,6 +70,9 @@ function drop(tabs, tab) {
 
 /** @param {TabState} st @param {string} method @param {any} p */
 function route(st, method, p) {
+  // A page went away (navigation or reload): what it logged and loaded goes with it, so a page that
+  // was blind for a moment leaves nothing behind in the rings (reviewer-2).
+  if (method === "Runtime.executionContextsCleared") { st.scripts.length = 0; st.byId.clear(); st.console.length = 0; return; }
   if (method === "Debugger.scriptParsed") {
     if (st.byId.has(p.scriptId)) return;
     const rec = { scriptId: String(p.scriptId), rawUrl: String(p.url || ""), length: p.length ?? null, sourceMapURL: p.sourceMapURL ? String(p.sourceMapURL) : "", seq: ++st.seq };
@@ -324,6 +328,9 @@ const ops = {
     const tab = await target(ctx, args, "dev.console.eval", true);
     if (typeof args?.expression !== "string" || !args.expression) throw refuse("bad_request", "expression is required");
     await ensure(ctx, tab, "console");
+    // Same invisible rule as page.eval: a script is not run on a page with a visible password field.
+    const pw = await ctx.cdp.send(tab, "Runtime.evaluate", { expression: passwordFieldScript, returnByValue: true });
+    if (pw && pw.result && pw.result.value === true) throw refuse("blocked", "this page has a password field, so a script is not run on it");
     const guarded = args.asked !== true;
     if (guarded) await ctx.cdp.send(tab, "Runtime.evaluate", { expression: guardInstall, returnByValue: true });
     /** @type {any} */ let r;

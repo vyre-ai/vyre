@@ -22,6 +22,7 @@
 // release accepts either spelling.
 
 import { redact } from "../lib/shared.js";
+import { passwordFieldScript } from "../shared/guards.js";
 import { guardInstall, guardCollect, held as heldRequest } from "../shared/outbound.js";
 import { err } from "../lib/err.js";
 
@@ -552,7 +553,7 @@ export default {
       const tabId = await tabOf(args, ctx, "page.eval");
       // A script can read what redaction cannot recognise (a typed password is just text), so a page
       // with a visible password field is not one it runs on at all.
-      const pw = await ctx.cdp.send(tabId, "Runtime.evaluate", { expression: "!![...document.querySelectorAll('input[type=password]')].some(e => e.offsetParent !== null || e.getClientRects().length)", returnByValue: true });
+      const pw = await ctx.cdp.send(tabId, "Runtime.evaluate", { expression: passwordFieldScript, returnByValue: true });
       if (pw && pw.result && pw.result.value === true) throw err("blocked", "this page has a password field, so a script is not run on it");
       // Hands-free, except that a script's own network SENDS (a message, a post, a payment) are held
       // back and reported unless the person asked: the script runs, the send waits at the Gate.

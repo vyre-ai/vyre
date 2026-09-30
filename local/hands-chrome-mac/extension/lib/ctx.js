@@ -71,6 +71,8 @@ export function createCtx({ chrome, emit = () => {} }) {
       const tab = await tabs.get(tabId);
       return floor.decide(tab.pendingUrl || tab.url, op, await floorConfig());
     },
+    /** The floor's tier for many URLs at once: the person's lists are read once, not per URL. */
+    async floorTier() { const cfg = await floorConfig(); return (/** @type {string} */ url) => floor.tierOf(url, cfg).tier; },
     /** @param {string} url @param {string} op */
     async floorUrl(url, op) { return floor.decide(url, op, await floorConfig()); },
     /** @param {string} op @param {any} [args] */

@@ -14,6 +14,7 @@
 // Starting costs nothing: it listens on a private socket and waits. No extension connected means
 // tools say so on the call, in words that say what to do.
 
+import crypto from "node:crypto";
 import path from "node:path";
 import fs from "node:fs";
 import os from "node:os";
@@ -109,6 +110,9 @@ export default {
     const off = bridge.on(e => {
       if (e.event === "hello") emit("chrome.connected", { version: e.version || null, browser: e.browser || null });
       else if (e.event === "disconnected") emit("chrome.disconnected", {});
+      // A second connection took over from the live extension. A quiet notice for the panel to show
+      // if it wants to, never a prompt: the person may simply have restarted Chrome.
+      else if (e.event === "replaced") emit("chrome.replaced", {});
       // The extension saw the person stop Vyre in the browser itself.
       else if (e.event === "stop") oversight.stop({ by: "esc" });
     });
@@ -269,14 +273,28 @@ export default {
       // reads, so an agent's own gate.request cannot make release run anything (reviewer-2 H2/HIGH).
       const record = { op, args: Number.isInteger(tabId) && replay.tab === undefined ? { ...replay, tab: tabId } : replay, signature, key: agentOf(meta.caller) };
       const content = { app: "Chrome", window: scrub(res.title || ""), origin, control: scrub(control || res.why || summary), fields: clipFields(res.fields) };
+      // The Gate sends at once what the person's own words or a standing permission covered, and it
+      // calls release before gate.request has returned an id. So the record is filed under a fresh
+      // random ref first, and release finds it by that ref as well as by id. The ref rides on the
+      // card and nowhere an agent reads, and it is deleted on use.
+      const ref = crypto.randomBytes(9).toString("hex");
+      heldActs.set(ref, record);
       // The Gate may have started after this module; offer again before the first card needs it.
       if (!offered) await offer();
-      const r = await ctx.call("gate.request", { kind: "act", via: "chrome:mac", to: origin, content, ...(meta && meta.thread ? { thread: String(meta.thread) } : {}) });
+      const r = await ctx.call("gate.request", { kind: "act", via: "chrome:mac", to: origin, content: { ...content, ref }, ...(meta && meta.thread ? { thread: String(meta.thread) } : {}) });
       const agent = agentOf(meta.caller);
+      // Covered by what the person said (asked, or a standing permission): the Gate already released it.
+      if (r && !r.error && r.data && r.data.state === "sent") {
+        heldActs.delete(ref);
+        acted(meta, agent, op, true, "the person's own words covered it, so it went out", summary);
+        return r.data.result;
+      }
       if (!r || r.error || !r.data) {
+        heldActs.delete(ref);
         acted(meta, agent, op, false, "held, but there is no Gate to ask the person at", summary);
         return { held: true, gate: false, origin, why: "This sends something as the person and there is no Gate to ask them at, so it was not done." };
       }
+      heldActs.delete(ref);
       heldActs.set(String(r.data.id), record);
       while (heldActs.size > 200) heldActs.delete(/** @type {string} */ (heldActs.keys().next().value));
       acted(meta, agent, op, true, "held for the person's approval", summary);
@@ -362,9 +380,11 @@ export default {
       input: obj({ id: str, to: { type: "array", items: str }, content: { type: "object" } }, ["id", "content"]),
       run: async (/** @type {any} */ input, /** @type {any} */ meta) => {
         if (!meta || meta.caller !== "module:gate") throw denied("denied", "only the Gate releases a held act");
-        const c = heldActs.get(String(input.id));
+        const ref = input.content && typeof input.content.ref === "string" ? input.content.ref : "";
+        const rkey = heldActs.has(String(input.id)) ? String(input.id) : ref;
+        const c = heldActs.get(rkey);
         if (!c || !c.op || c.signature === undefined) throw denied("denied", "that held act is not one Chrome control made, or it was already released");
-        heldActs.delete(String(input.id));
+        heldActs.delete(rkey);
         await requireGrant(c.key);
         return via.run(meta, async () => {
           const summary = summarize(String(c.op), c.args || {});
@@ -422,7 +442,13 @@ export default {
   },
 };
 
-/** The origin of the one extension the native host admits: derived from the manifest's public key. */
+/**
+ * The origin the native host is expected to name, derived from the manifest's public key. This is
+ * NOT authentication: the host reports the origin Chrome gave it, but any process of this user can
+ * write the same bytes to the socket. It keeps a host started by some other extension or browser
+ * profile from being taken for ours; the socket's 0600 mode inside a 0700 folder is what keeps other
+ * users out, and the floor, the grant and the Gate are what keep a same-user process honest.
+ */
 function pinnedOrigin() {
   try {
     const k = JSON.parse(fs.readFileSync(path.join(path.dirname(fileURLToPath(import.meta.url)), "extension", "manifest.json"), "utf8")).key;

@@ -132,14 +132,22 @@ it; Windows `HKCU\Software\Google\Chrome\NativeMessagingHosts\run.vyre.chrome`),
   `sendBeacon` sends are held back and reported while the rest of the script runs (a shim installed
   around the evaluation, not a wrapper around the script, so a page's CSP cannot break it); the held
   card is released by re-running with `asked`. The person's own turn (`asked`) runs everything free.
-  A page with a visible password field is still not one `page.eval` runs on, because that rule is
-  invisible.
+  A page with a visible password field is still not one `page.eval` or `dev.console.eval` runs on,
+  because that rule is invisible: it counts type=password, fields that declare a password
+  autocomplete, and fields a show-password toggle switched to type=text (by name, id, label or
+  placeholder), and looks inside open shadow roots and same-origin iframes. Closed shadow roots and
+  cross-origin frames cannot be read from the page and are the one blind spot.
 - One floor list (`extension/shared/floor.js`) is imported by the module and the extension.
 - The network buffer is judged per record and emptied when a tab navigates to a blind page.
-  Not yet done: the console and script rings are not emptied on such a navigation (scripts are
-  filtered by URL when listed).
-- Only the extension the host says launched it (Chrome passes its origin, pinned to the manifest
-  key's id) can be "the extension". A replacement connection is announced with a `replaced` event.
+  The console ring and the script cache are emptied whenever a page's execution contexts are cleared
+  (a navigation or reload), and the person's own blind list is applied to the buffer, not only the
+  built-in one.
+- The host tells the module which origin Chrome launched it for, and the bridge only takes a hello
+  from a host that named the manifest key's id. This is not authentication (any process of this user
+  can write the same bytes to the socket); it keeps a host started by another extension or profile
+  from being taken for ours. The socket's 0600 mode in a 0700 folder keeps other users out, and the
+  floor, the grant and the Gate keep a same-user process honest. A replacement connection raises a
+  quiet `chrome.replaced` event, never a prompt.
 - Accepted: the manifest key is public, so anyone can build an unpacked extension with the same id.
   Reaching the host that way needs the person's own Chrome profile.
 - Not done: naming `chrome.sock` in the floor's rule that denies a shell from talking to vyred's sockets.

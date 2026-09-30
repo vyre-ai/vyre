@@ -13,6 +13,7 @@
 // cannot hold the functions an overlay is made of, so the only way to act without the indicator
 // is to not act on the real Mac at all.
 
+import crypto from "node:crypto";
 import { AsyncLocalStorage } from "node:async_hooks";
 import { Hands, KINDS, ACTIONS } from "./hands.js";
 import { makeRunner, HandsError } from "./runner.js";
@@ -117,8 +118,15 @@ export default {
       const { input, hash, ...shown } = content || {};
       const meta = /** @type {any} */ (via.getStore() || {});
       const caller = meta.caller;
-      const r = await ctx.call("gate.request", { kind: "act", via: "hands:mac", to, content: shown, ...(thread ? { thread } : {}) });
+      // The Gate releases at once what the person's own words or a standing permission covered, and
+      // calls hands.release before gate.request returns an id: file the record under a random ref
+      // first (it rides on the card, never where an agent reads) and let release find it by either.
+      const ref = crypto.randomBytes(9).toString("hex");
+      heldActs.set(ref, { input, hash, key: grantKey(caller, meta) });
+      const r = await ctx.call("gate.request", { kind: "act", via: "hands:mac", to, content: { ...shown, ref }, ...(thread ? { thread } : {}) });
       const data = r && !r.error && r.data ? r.data : null;
+      heldActs.delete(ref);
+      if (data && data.state === "sent") return { sent: true, id: data.id, result: data.result };
       if (data && data.id) {
         heldActs.set(String(data.id), { input, hash, key: grantKey(caller, meta) });
         while (heldActs.size > 200) heldActs.delete(/** @type {string} */ (heldActs.keys().next().value));
@@ -190,9 +198,11 @@ export default {
       input: { type: "object", properties: { id: str, to: { type: "array", items: str }, content: { type: "object" } }, required: ["id", "content"] },
       run: wrap((input, meta) => {
         if (meta.caller !== "module:gate") throw Object.assign(new Error("only the Gate releases a held act"), { code: "denied" });
-        const rec = heldActs.get(String(input.id));
+        const ref = input.content && typeof input.content.ref === "string" ? input.content.ref : "";
+        const rkey = heldActs.has(String(input.id)) ? String(input.id) : ref;
+        const rec = heldActs.get(rkey);
         if (!rec || !rec.hash || !rec.input) throw Object.assign(new Error("that held act is not one hands made, or it was already released"), { code: "denied" });
-        heldActs.delete(String(input.id));
+        heldActs.delete(rkey);
         // The agent that caused the hold must still be granted when the person approves it.
         if (rec.key && !g.has(rec.key)) throw Object.assign(new Error(`${rec.key} is no longer granted to drive this Mac. Nothing was done.`), { code: "denied" });
         return hands.release({ input: rec.input, hash: rec.hash });

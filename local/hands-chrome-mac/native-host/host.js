@@ -91,8 +91,8 @@ export function relay(stdin, stdout, connect, { retryMs = RETRY_MS, origin = nul
         sock = s;
         // The extension says hello once, when Chrome starts the host. If the module was not up
         // yet that frame had nowhere to go, so it is handed over now, unread and unchanged.
-        // The host's own first word: who launched it. Chrome sets the origin; a process that is not
-        // a host has no way to make the module believe it came from the pinned extension.
+        // The host's own first word: the origin Chrome launched it for. Not authentication (any
+        // process of this user could write it); it tells our extension's host from another's.
         if (origin) s.write(encode({ event: "host", origin, ppid: process.ppid }));
         if (early) { s.write(early); early = null; }
         s.on("data", d => {

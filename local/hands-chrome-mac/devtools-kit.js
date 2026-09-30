@@ -33,6 +33,7 @@ export function makeCtx(o = {}) {
     tabs: { async active() { return { id: o.active ?? 1 }; } },
     emit(/** @type {any} */ e) { emitted.push(e); },
     stopped: () => state.stopped(),
+    floorTier: async () => (/** @type {string} */ u) => classify(u, undefined, {}).tier,
     floorUrl: async (/** @type {string} */ u, /** @type {string} */ op) => classify(u, op, {}),
     floorAllows: async (/** @type {number} */ t, /** @type {string} */ op) => state.floor(t, op),
   };

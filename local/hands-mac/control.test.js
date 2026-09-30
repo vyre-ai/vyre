@@ -94,6 +94,15 @@ test("secure: a password field is refused for every kind, pointing at vault.fill
 
 // ---------------------------------------------------------------- outward acts are held
 
+test("outward: a send the Gate already released (the person's words covered it) returns the released act's result and holds nothing", async () => {
+  const f = fakeApp(composer(), () => ({ acted: true }));
+  const released = { acted: true, verified: true, reason: "released" };
+  const h = new Hands({ run: f.run, sleep: nosleep, overlay: fakeOverlay(), hold: async () => ({ sent: true, id: "g1", result: released }) });
+  const r = await h.act({ selector: { role: "AXButton", name: "Send" }, kind: "press" });
+  assert.deepEqual(r, released);
+  assert.equal(counts(f.calls, "act"), 0, "hands did not press it a second time");
+});
+
 test("outward: Send is held, not pressed, and the answer says to use hands.commit", async () => {
   const events = [];
   const f = fakeApp(composer(), (req, s) => { s.texts = ["sent"]; return { acted: true }; });
