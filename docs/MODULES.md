@@ -110,6 +110,10 @@ A module you add can't use it: pick `asked`. An agent that calls an `asked` tool
 A module never asks for Touch ID. Vyre asks for it only when pairing a device, revealing a vault
 secret, or sending something you didn't ask for.
 
+An asked tool of Vyre's own may carry `target`, the name of one internal tool of the same module that answers
+`{ to: [...] }`: what this one call acts on (a pull request, a recipient). Your yes then binds that thing and not the
+whole tool, so "merge it" about one pull request never lets an agent merge another.
+
 ## Acting as you outside: `outward`
 
 Mark a tool `"outward": "send" | "post" | "pay" | "delete"` when it reaches the world as you: an

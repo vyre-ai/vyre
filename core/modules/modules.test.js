@@ -776,6 +776,48 @@ test("modules v1: an asked tool runs for a model only when vault.said.match says
   assert.equal((await bare.call("bakery.target", {}, "mcp:agent:kit", { thread: "t-1" })).error.code, "not_asked");
 });
 
+test("modules v1: an asked tool with a target binds the person's yes to what the call acts on, and fails closed", async t => {
+  /** @type {any} */ (globalThis).__said2 = [];
+  t.after(() => { delete /** @type {any} */ (globalThis).__said2; });
+  // A stand-in vault: it matches only "merge PR 12 of acme/site" in thread t-1.
+  const vault = `export default { async start(ctx) {
+    ctx.tool("vault.said.match", { internal: true, run: async input => { globalThis.__said2.push(input); return { matched: input.thread === "t-1" && JSON.stringify(input.to) === JSON.stringify(["gh.merge", "acme/site#12"]) }; } });
+    return {};
+  } };`;
+  const gh = { version: "0.1.0", roles: ["local"], does: { tools: [
+    { name: "gh.merge", summary: "merge a PR", reach: "asked", target: "gh.merge.target" },
+    { name: "gh.merge.target", summary: "what a merge acts on", reach: "modules" },
+    { name: "gh.plain", summary: "no target", reach: "asked" }] } };
+  const ghSrc = `export default { async start(ctx) {
+    ctx.tool("gh.merge", { input: { type: "object" }, run: async i => ({ merged: i.pr }) });
+    ctx.tool("gh.plain", { input: { type: "object" }, run: async () => ({ ran: true }) });
+    ctx.tool("gh.merge.target", { internal: true, input: { type: "object" }, run: async ({ input }) => {
+      if (input.pr === "boom") throw new Error("no repo");
+      if (input.pr === "none") return { to: [] };
+      return { to: ["acme/site#" + input.pr] };
+    } });
+    return {};
+  } };`;
+  const reg = await registry(t, [["gh", gh, ghSrc], ["vault", { version: "0.1.0", does: { tools: ["vault.said.match"] } }, vault]], { builtIn: true });
+  const ask = (tool, input, thread = "t-1") => reg.call(tool, input, "mcp:agent:kit", { thread });
+  assert.deepEqual((await ask("gh.merge", { pr: "12" })).data, { merged: "12" }, "the PR the person said yes to");
+  assert.deepEqual(globalThis.__said2.at(-1).to, ["gh.merge", "acme/site#12"], "the match names the tool and the target");
+  assert.equal((await ask("gh.merge", { pr: "40" })).error.code, "not_asked", "a different PR is refused");
+  assert.equal((await ask("gh.merge", { pr: "12" }, "t-2")).error.code, "not_asked", "another thread");
+  assert.equal((await ask("gh.merge", { pr: "boom" })).error.code, "not_asked", "a target that errors is no");
+  assert.equal((await ask("gh.merge", { pr: "none" })).error.code, "not_asked", "an empty target is no");
+  assert.equal((await ask("gh.plain", {})).error.code, "not_asked");
+  assert.deepEqual(globalThis.__said2.at(-1).to, ["gh.plain"], "a tool with no target matches on its own name, as before");
+  // The manifest: a target is for an asked tool, names one of the module's own internal tools, and is built in only.
+  const base = { name: "gh", version: "0.1.0", apiVersion: 1, description: "x", roles: ["local"] };
+  const bad = (tools, opts) => validate({ ...base, does: { tools } }, opts).join("; ");
+  assert.match(bad([{ name: "gh.merge", reach: "asked", target: "gh.nope" }, { name: "gh.x", reach: "modules" }], { firstParty: true }), /target "gh.nope" is not a tool this module declares/);
+  assert.match(bad([{ name: "gh.merge", reach: "asked", target: "gh.t" }, { name: "gh.t", reach: "anyone" }], { firstParty: true }), /must be reach modules/);
+  assert.match(bad([{ name: "gh.merge", reach: "anyone", target: "gh.t" }, { name: "gh.t", reach: "modules" }], { firstParty: true }), /target is for an asked tool/);
+  assert.equal(bad([{ name: "gh.merge", reach: "asked", target: "gh.t" }, { name: "gh.t", reach: "modules" }], { firstParty: true }), "");
+  assert.match(bad([{ name: "gh.merge", summary: "m", reach: "asked", target: "gh.t" }, { name: "gh.t", summary: "t", reach: "modules" }]), /target is built in only/);
+});
+
 test("modules v1: a required module below the range keeps the module from starting", async t => {
   const reg = await registry(t, [["bakery", { ...bakeryV1(), requires: { notes: ">=0.2.0" } }, bakerySrc], ["notes", good, notesSrc]]);
   assert.equal(reg.modules.get("bakery").state, "failed");

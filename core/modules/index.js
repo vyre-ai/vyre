@@ -210,6 +210,14 @@ export function validate(m, { firstParty = false } = {}) {
     if (!Array.isArray(m.setupTools) || m.setupTools.some(/** @param {any} t */ t => typeof t !== "string")) out.push("setupTools must be a list of tool names");
     else for (const t of m.setupTools) if (!own.has(t)) out.push(`setupTools "${t}" is not a tool this module declares in does.tools`);
   }
+  // An asked tool's target: one internal tool of this module, answering what one call acts on (built in only, see addedCheck).
+  for (const e of toolEntries(m)) {
+    if (!e.target) continue;
+    const own = toolEntries(m).find(x => x.name === e.target);
+    if (e.reach !== "asked") out.push(`tool "${e.name}": target is for an asked tool`);
+    else if (!own || !String(e.target).startsWith(String(m.name) + ".")) out.push(`tool "${e.name}": target "${e.target}" is not a tool this module declares in does.tools`);
+    else if (own.reach !== "modules") out.push(`tool "${e.name}": target "${e.target}" must be reach modules, an internal tool`);
+  }
   // mentions: the # picker's kinds, each naming this module's own search and resolve tools (built in only, see addedCheck).
   if (Array.isArray(m.mentions)) {
     const own = new Set(toolEntries(m).map(t => t.name));
@@ -906,7 +914,7 @@ export class Registry {
           internal: Boolean(def.internal) || reach === "modules",
           callers: reach === "person" ? [...PERSON_CALLERS] : Array.isArray(def.callers) ? def.callers : null,
           hook: Boolean(def.hook) || reach === "hook", presence: def.presence || false, core: Boolean(def.core),
-          reach, outward: (e && e.outward) || null, declaredReach: objectForm.has(name) });
+          reach, outward: (e && e.outward) || null, target: (e && e.target) || null, declaredReach: objectForm.has(name) });
       },
     };
   }
@@ -915,18 +923,28 @@ export class Registry {
    * Did the person's own words ask for this tool (reach "asked")? Asks vault.said.match, which
    * matches the person's turn in this thread or its lineage, or a standing permission, and uses a
    * plain ask up. Fails closed: no vault, a locked vault, an error or no thread answers no.
-   * @param {string} tool @param {{ thread?: string, agent?: string }} meta
+   * A tool with a `target` (an internal tool of its own module) binds the yes to what the call acts on: the target
+   * answers { to: [string] } for this call's input, and the match names the tool AND every one of those. An error or
+   * an empty answer is no.
+   * @param {string} tool @param {{ thread?: string, agent?: string }} meta @param {any} [def] @param {any} [input]
    */
-  async saidMatch(tool, meta) {
+  async saidMatch(tool, meta, def, input) {
     if (!this.tools.has("vault.said.match")) return false;
     try {
+      /** @type {string[]} */ let to = [tool];
+      if (def && def.target) {
+        const t = await this.call(def.target, { tool, input }, "module:vyred", { door: true });
+        const extra = t && t.data && Array.isArray(t.data.to) ? t.data.to.filter((/** @type {any} */ x) => typeof x === "string" && x) : [];
+        if (!extra.length) return false;
+        to = [tool, ...extra];
+      }
       const thread = typeof meta.thread === "string" ? meta.thread : undefined;
       let lineage;
       if (thread && this.tools.has("threads.lineage")) {
         const l = await this.call("threads.lineage", { thread }, "module:vyred", { door: true });
         if (l.data && Array.isArray(l.data.lineage)) lineage = l.data.lineage;
       }
-      const r = await this.call("vault.said.match", { kind: "act_out", via: tool.split(".")[0], to: [tool], ...(thread ? { thread } : {}), ...(lineage ? { lineage } : {}), ...(meta.agent ? { agent: meta.agent } : {}) }, "module:vyred", { door: true });
+      const r = await this.call("vault.said.match", { kind: "act_out", via: tool.split(".")[0], to, ...(thread ? { thread } : {}), ...(lineage ? { lineage } : {}), ...(meta.agent ? { agent: meta.agent } : {}) }, "module:vyred", { door: true });
       return Boolean(r.data && r.data.matched === true);
     } catch { return false; }
   }
@@ -969,7 +987,7 @@ export class Registry {
       return { error: { code: "held_unavailable", message: `${tool} acts as you outside. A call from anyone but you is held at the Gate, and that routing lands with the Gate wiring; until then it runs only from your own surface.` } };
     }
     if (def.reach === "asked" && (["mcp", "harness", "module"].includes(callerKind(caller)) || agentClaim(caller) !== null)) {
-      if (!(await this.saidMatch(tool, meta))) {
+      if (!(await this.saidMatch(tool, meta, def, input))) {
         return { error: { code: "not_asked", message: `${tool} runs for an agent only when your own words asked for it; tell the person what you would do` } };
       }
     }
