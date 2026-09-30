@@ -371,8 +371,11 @@ Runs: on your server, sandboxed
   `modules.add`. It's an `asked` tool, and the card shows in the same turn. **When an agent decides
   on its own**, the same card waits in the person's waiting list and nothing runs.
 - **Updates never happen on their own.** `modules.update` is `asked`: the person's words or their
-  CLI command run it, and an agent's own-initiative update waits in the list like an add. There is
-  no auto-update for added modules. The new tree's sha256 is pinned in `modules.lock.json`.
+  CLI command run it, and an agent's own-initiative update waits in the list like an add. The new
+  tree's sha256 is pinned in `modules.lock.json`. The person may also grant a standing "keep
+  bakery updated" in their own words (a P17 intent with `standing: true`, naming the module). The
+  module then updates on its own only while its capabilities stay the same, and any widening stops
+  and shows the card. There is no other auto-update (the lead, 30 Sep).
 - An update with the same capabilities installs with no card. When its code changed, the log and
   the module's row say "code changed, same permissions". Any widening shows the card again with
   only the difference: a new outward tool, host, credential, connection, `needs.tools` entry or

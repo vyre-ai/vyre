@@ -178,7 +178,7 @@ Runs: on your server, sandboxed
 ```
 
 One tap turns it on. If an agent thought of it on its own, the card waits in your list instead.
-Updates run only when you ask (or type `vyre module update`), never on their own. An update that asks
+Updates run when you ask (or type `vyre module update`). Say "keep bakery updated" once and it updates itself for as long as it asks for nothing new. An update that asks
 for nothing new installs with no card, and its row says when the code changed. One that asks for
 more shows the card again with only what changed. A module may carry an optional signature: the card names who signed it, and a
 later update from a different signer shows the card again.
