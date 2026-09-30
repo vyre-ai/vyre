@@ -146,14 +146,37 @@ export function formFrame(form, vars, formId) {
     submit: { title: clip(form.submit.title, 60), ...(form.submit.outward ? { outward: true } : {}) } };
 }
 
+/** This process's secret for preview tokens: never written anywhere, gone on restart. */
+const SECRET = crypto.randomBytes(32);
+/** How long a preview may be confirmed. */
+export const PREVIEW_MS = 2 * 60_000;
+
+/**
+ * A token proving a preview was made by this vyred for this caller and hash, valid for a couple of
+ * minutes. The hash alone is public and repeatable; this is what the second Enter must carry.
+ * @param {string} hash @param {string} caller @param {number} [now]
+ */
+export function previewToken(hash, caller, now = Date.now()) {
+  const exp = now + PREVIEW_MS;
+  return `${exp}.${crypto.createHmac("sha256", SECRET).update(`${hash}|${exp}|${caller}`).digest("hex").slice(0, 32)}`;
+}
+
+/** Does this token belong to a preview of this hash, for this caller, and is it still fresh? @param {string} hash @param {string} caller @param {any} token @param {number} [now] */
+export function previewOk(hash, caller, token, now = Date.now()) {
+  const [exp, mac] = String(token || "").split(".");
+  if (!/^\d{10,16}$/.test(exp || "") || !mac || Number(exp) < now || Number(exp) > now + PREVIEW_MS + 1000) return false;
+  const want = crypto.createHmac("sha256", SECRET).update(`${hash}|${exp}|${caller}`).digest("hex").slice(0, 32);
+  return want.length === mac.length && crypto.timingSafeEqual(Buffer.from(want), Buffer.from(mac));
+}
+
 /** The hash an asked send is bound to: the exact tool and input, in a fixed key order. @param {string} module @param {string} tool @param {any} input */
 export function askedHash(module, tool, input) {
   const canon = (/** @type {any} */ v) => Array.isArray(v) ? v.map(canon) : isObj(v) ? Object.fromEntries(Object.keys(v).sort().map(k => [k, canon(v[k])])) : v;
   return crypto.createHash("sha256").update(JSON.stringify([module, tool, canon(input)])).digest("hex").slice(0, 32);
 }
 
-/** Schemes an added module may open. */
-const ADDED_SCHEMES = new Set(["https:", "mailto:", "vyre:"]);
+/** Schemes an added module may open: links that go somewhere. A vyre: link can act (pair, sign in, approve), so it is a first party module's alone. */
+const ADDED_SCHEMES = new Set(["https:", "mailto:"]);
 
 /**
  * A finished `do` effect, filled and checked. An added module may open https, mailto and Vyre links only.
@@ -166,7 +189,7 @@ export function effectOf(effect, vars, names, firstParty) {
   if (kind === "open") {
     let u;
     try { u = new URL(value); } catch { return { error: error("bad_url", "That link is not one Vyre opens.") }; }
-    const ok = ADDED_SCHEMES.has(u.protocol) || (firstParty && (u.protocol === "http:" || u.protocol === "file:" || u.protocol === "x-apple.systempreferences:"));
+    const ok = ADDED_SCHEMES.has(u.protocol) || (firstParty && (u.protocol === "vyre:" || u.protocol === "http:" || u.protocol === "file:" || u.protocol === "x-apple.systempreferences:"));
     if (!ok) return { error: error("bad_url", `Vyre does not open ${u.protocol} links from a module.`) };
   }
   return { effect: { [kind]: clip(value, kind === "copy" || kind === "say" || kind === "ask" ? 4000 : 2000) } };

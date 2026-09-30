@@ -12,7 +12,7 @@
 
 import crypto from "node:crypto";
 import { SURFACE_LABELS } from "../modules/index.js";
-import { allowed, fill, fillDeep, dataOf, listFrame, detailFrame, formFrame, askedHash, effectOf, error, clip, actionsOf, LIMITS } from "./frames.js";
+import { allowed, fill, fillDeep, dataOf, listFrame, detailFrame, formFrame, askedHash, previewToken, previewOk, effectOf, error, clip, actionsOf, LIMITS } from "./frames.js";
 
 const PERSON = [...SURFACE_LABELS, "tailnet"];
 /** How long the fields of the last list's rows are kept, for the templates of an action on one. */
@@ -187,7 +187,7 @@ export function registerViews(ctx) {
       if (t.outward) {
         const hash = askedHash("mcp", `${cmd.server}__${t.tool}`, parsed.args);
         const asked = input.asked && typeof input.asked === "object" ? input.asked : null;
-        if (!asked || asked.hash !== hash) return { v: 1, kind: "preview", title: clip(`${cmd.server}: ${t.tool}`, 60), words: Object.entries(parsed.args).slice(0, 12).map(([k, v]) => ({ label: clip(k, 40), value: clip(typeof v === "string" ? v : JSON.stringify(v), 2000) })), hash };
+        if (!asked || asked.hash !== hash || !previewOk(hash, caller, asked.token)) return { v: 1, kind: "preview", title: clip(`${cmd.server}: ${t.tool}`, 60), words: Object.entries(parsed.args).slice(0, 12).map(([k, v]) => ({ label: clip(k, 40), value: clip(typeof v === "string" ? v : JSON.stringify(v), 2000) })), hash, token: previewToken(hash, caller) };
       }
       const r = await run(cmd, "mcp.call", { server: cmd.server, tool: t.tool, arguments: parsed.args }, caller, null);
       const bad = problem(r);
@@ -274,9 +274,14 @@ export function registerViews(ctx) {
           if (!a) return error("not_found", "That action is gone.");
           if (a.do) {
             const kind = Object.keys(a.do)[0];
-            if (kind === "push") return { v: 1, kind: "push", command: fill(a.do.push, vars, names) };
+            if (kind === "push") {
+              // A module goes only to its own commands, first party or not.
+              const target = fill(a.do.push, vars, names);
+              return (await allCommands(String(meta.caller))).has(`${cmd.module}/${target}`) ? { v: 1, kind: "push", command: target } : error("not_found", "That command is not this module's.");
+            }
             const r = effectOf(a.do, vars, names, cmd.firstParty);
-            return "error" in r ? r.error : { v: 1, kind: "done", effect: r.effect };
+            // ask only prefills the box: the Capsule never sends it and never records it as the person's words; text from a module or a row is a stranger's until the person edits it.
+            return "error" in r ? r.error : { v: 1, kind: "done", effect: r.effect, ...(kind === "ask" ? { prefill: true } : {}), ...(cmd.firstParty ? {} : { from: cmd.module }) };
           }
           if (a.form) {
             const form = decl.forms && decl.forms[a.form];
@@ -291,8 +296,8 @@ export function registerViews(ctx) {
         if (outward) {
           const hash = askedHash(cmd.module, tool, toolInput);
           const asked = input.asked && typeof input.asked === "object" ? input.asked : null;
-          if (!asked || asked.hash !== hash) {
-            return { v: 1, kind: "preview", title: clip(title, 60), words: Object.entries(toolInput).slice(0, 12).map(([k, v]) => ({ label: clip(k, 40), value: clip(typeof v === "string" ? v : JSON.stringify(v), 2000) })), hash };
+          if (!asked || asked.hash !== hash || !previewOk(hash, String(meta.caller), asked.token)) {
+            return { v: 1, kind: "preview", title: clip(title, 60), words: Object.entries(toolInput).slice(0, 12).map(([k, v]) => ({ label: clip(k, 40), value: clip(typeof v === "string" ? v : JSON.stringify(v), 2000) })), hash, token: previewToken(hash, String(meta.caller)) };
           }
           const r = await run(cmd, tool, toolInput, String(meta.caller), { surface: String(meta.caller), hash, at: Date.now() });
           return problem(r) || { v: 1, kind: "done", said: clip((dataOf(r) && (dataOf(r).said || dataOf(r).message)) || `${clip(title, 40)} done.`, 300) };

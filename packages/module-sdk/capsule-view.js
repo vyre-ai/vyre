@@ -75,6 +75,7 @@ function checkAction(at, a, c, out) {
   if (a.do !== undefined) {
     if (!isObj(a.do) || Object.keys(a.do).length !== 1 || !EFFECTS.includes(Object.keys(a.do)[0])) out.push(`${at}.do must be one of ${EFFECTS.join(", ")}`);
     else if (typeof Object.values(a.do)[0] !== "string") out.push(`${at}.do.${Object.keys(a.do)[0]} must be a string template`);
+    else if (a.do.push !== undefined && !/^[a-z][a-z0-9-]{0,30}$/.test(a.do.push)) out.push(`${at}.do.push must be the id of one of this module's own commands`);
     if (a.outward) out.push(`${at}: outward is for a tool or a form; a do effect sends nothing`);
   }
   if (a.tool !== undefined) { checkTool(`${at}.tool`, a.tool, c, out); if (a.input !== undefined && !isObj(a.input)) out.push(`${at}.input must be an object`); }

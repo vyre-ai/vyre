@@ -58,7 +58,7 @@ const kit = () => ({
   name: "kit", version: "0.1.0", apiVersion: 1, description: "Kit's list.", roles: ["local"],
   does: { tools: [{ name: "kit.list", summary: "the list" }, { name: "kit.send", summary: "send it", outward: "send" }] },
   shows: { capsule: { "view:things": { title: "Things", root: true, list: { tool: "kit.list", input: { q: "{q}" }, map: { rows: "items", id: "id", title: "name", url: "url" },
-    actions: [{ id: "open", title: "Open", do: { open: "{url}" } }, { id: "web", title: "Web", do: { open: "javascript:alert(1)" } }, { id: "send", title: "Send", tool: "kit.send", input: { id: "{id}" }, outward: true }] } } } },
+    actions: [{ id: "open", title: "Open", do: { open: "{url}" } }, { id: "web", title: "Web", do: { open: "javascript:alert(1)" } }, { id: "vyre", title: "Pair", do: { open: "vyre://pair" } }, { id: "ask", title: "Ask", do: { ask: "kit, do it" } }, { id: "elsewhere", title: "Away", do: { push: "orders" } }, { id: "mine", title: "Mine", do: { push: "things" } }, { id: "send", title: "Send", tool: "kit.send", input: { id: "{id}" }, outward: true }] } } } },
 });
 const kitSrc = `export default { async start(ctx) {
   ctx.tool("kit.list", { input: { type: "object" }, run: async (i, meta) => { globalThis.__cap.push({ tool: "kit.list", caller: meta.caller }); return { items: [{ id: "k1", name: "Thing", url: "https://kit.example/1" }] }; } });
@@ -140,6 +140,10 @@ test("capsule: detail and effects; an added module opens https only", async t =>
   await reg.call("capsule.view", { module: "kit", command: "things" }, "capsule");
   const kact = (a, extra = {}) => reg.call("capsule.act", { module: "kit", command: "things", action: a, id: "k1", ...extra }, "capsule").then(r => r.data);
   assert.deepEqual((await kact("open")).effect, { open: "https://kit.example/1" });
+  assert.equal((await kact("vyre")).kind, "error", "an added module opens no vyre: link, which can act");
+  assert.deepEqual((await kact("ask")), { v: 1, kind: "done", effect: { ask: "kit, do it" }, prefill: true, from: "kit" }, "ask only prefills, and says whose words they are");
+  assert.equal((await kact("elsewhere")).code, "not_found", "an added module pushes only to its own commands");
+  assert.deepEqual(await kact("mine"), { v: 1, kind: "push", command: "things" });
   assert.equal((await kact("web")).kind, "error", "an added module cannot open a javascript: link");
 });
 
@@ -157,8 +161,10 @@ test("capsule: an outward action previews the exact words, and only the same has
   assert.deepEqual(p.words, [{ label: "ref", value: "o1" }, { label: "body", value: "Thanks!" }, { label: "app", value: "Mail" }]);
   assert.equal(globalThis.__cap.some(c => c.tool === "north.send"), false, "nothing sent by a preview");
   assert.equal((await submit({ asked: { hash: "0".repeat(32) } })).kind, "preview", "a wrong hash previews again");
-  assert.equal((await submit({ fields: { body: "Changed" }, asked: { hash: p.hash } })).kind, "preview", "the hash is bound to the exact words");
-  const sent = await submit({ asked: { hash: p.hash } });
+  assert.equal((await submit({ fields: { body: "Changed" }, asked: { hash: p.hash, token: p.token } })).kind, "preview", "the hash is bound to the exact words");
+  assert.equal((await submit({ asked: { hash: p.hash } })).kind, "preview", "the public hash alone sends nothing: the token from the preview is needed");
+  assert.equal((await submit({ asked: { hash: p.hash, token: "9999999999999.deadbeef" } })).kind, "preview", "a made-up token");
+  const sent = await submit({ asked: { hash: p.hash, token: p.token } });
   assert.deepEqual([sent.kind, sent.said], ["done", "Sent."]);
   const call = globalThis.__cap.find(c => c.tool === "north.send");
   assert.equal(call.caller, "capsule");
@@ -167,7 +173,7 @@ test("capsule: an outward action previews the exact words, and only the same has
   await reg.call("capsule.view", { module: "kit", command: "things" }, "capsule");
   const kp = await k();
   assert.equal(kp.kind, "preview", "an added module's outward action previews too");
-  const held = await k({ asked: { hash: kp.hash } });
+  const held = await k({ asked: { hash: kp.hash, token: kp.token } });
   assert.equal(held.kind, "held", "an outward tool of an added module is held at the Gate, never sent by a declaration");
   assert.equal(globalThis.__cap.some(c => c.tool === "kit.send"), false, "it never ran as the person or as the module");
 });
@@ -232,7 +238,7 @@ test("capsule: each MCP hub server gets a Tools command: its tools listed, a for
   const pv = await run("post", { body: "Hello" });
   assert.equal(pv.kind, "preview");
   assert.equal(globalThis.__cap.filter(c => c.tool === "mcp.call").length, 1, "a preview calls nothing");
-  const held = await run("post", { body: "Hello" }, { asked: { hash: pv.hash } });
+  const held = await run("post", { body: "Hello" }, { asked: { hash: pv.hash, token: pv.token } });
   assert.equal(held.kind, "held", "the hub holds a write at the Gate; the Capsule never says sent");
   assert.equal(reg.capsuleMayCall("module:kit", "mcp.call"), false, "an added module can never reach the hub through a view");
 });

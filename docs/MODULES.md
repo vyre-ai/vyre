@@ -263,9 +263,11 @@ tool's JSON by plain dotted path: no expressions, no code. Templates fill `{q}`,
 `{subtitle}`, `{accessory}`, `{url}`, a form's field names, and `{front.app}` and `{front.selection}` only
 when the module declares `needs.slots: ["front"]`; any other name is empty. An action ends in `do`
 (`open`, `copy`, `say`, `ask` or `push`), a `tool` of the module's own, or a `form`. An added module opens
-only https, mailto and Vyre links, and may name only its own tools and the ones in `needs.tools`. Its
+only https and mailto links (a `vyre:` link can act, so it is Vyre's own), pushes only to its own commands,
+and may name only its own tools and the ones in `needs.tools`. Its
 tools run as the module, never as you, and its rows say "from" the module. An `outward` action shows the
-exact words first, and a second Enter sends. Icons are system symbol names from a fixed list, or
+exact words first, and a second Enter sends; the preview carries a token good for two minutes that the
+second call must return. Icons are system symbol names from a fixed list, or
 `app:<bundle id>`.
 
 The Capsule reads `capsule.commands` for the list of commands, `capsule.view` for a frame and

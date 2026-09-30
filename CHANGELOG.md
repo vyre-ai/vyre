@@ -4,6 +4,11 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+- Capsule view effects (reviewer-2): an added module opens https and mailto only (a vyre: link can act) and
+  pushes only to its own commands; `ask` answers `prefill: true` (the Capsule only fills the box, never sends
+  or records it as the person's words) and `from` for an added module; a preview carries an HMAC token (two
+  minutes, bound to the caller and the exact words) that the second Enter must return
+  (`core/capsule/frames.js`, `views.js`).
 - `mentions.resolve` reads a provider's `text` as its context, forwards an `outside` mark (true unless the kind is vault, so sessions frames third-party text as data), and keeps a grant only in the shape sessions understands (`core/mentions/index.js`).
 - Each MCP hub server gets a Tools command in the Capsule (`capsule.commands`/`view`/`act`): its tools listed,
   a form built from a tool's input schema (text, number, bool, choice, JSON), a read runs as the person, and a
