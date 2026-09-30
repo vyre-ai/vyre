@@ -519,6 +519,10 @@ export function names(deps) {
    */
   async function watch() {
     if (!dir) return null;
+    // Only a box that holds a name here, or is taking one back, has anything to watch. A box that
+    // never claimed one makes no request to the directory, and starts nothing (no route key made,
+    // no signature, no outbound connection) just because vyred is running.
+    if (net().via !== "vyre.run" && !net().recovering) return null;
     const m = await dir.mine();
     if (m.name && m.pending) {
       const fqdn = m.fqdn || `${m.name}.${domain()}`;

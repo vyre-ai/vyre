@@ -355,3 +355,16 @@ test("own domain: a certificate within 30 days is renewed through the same deleg
   assert.equal(await a.svc.renew(), true, a.log.join("; "));
   assert.ok(a.emitted.some(e => e.type === "certificate.issued" && /** @type {any} */ (e.payload).name === "example.com" && /** @type {any} */ (e.payload).renewed));
 });
+
+test("names.watch: a box with no name and no recovery under way asks the directory nothing, and makes no route key", { skip }, async t => {
+  const h = hosted(t), a = boxService(t, h);
+  let asked = 0, identity = 0;
+  const mine = a.box.client.mine;
+  a.box.client.mine = async () => { asked++; return mine(); };
+  a.box.signer.identity = async () => { identity++; throw new Error("no"); };
+  assert.equal(await a.svc.watch(), null);
+  assert.deepEqual([asked, identity], [0, 0]);
+  a.cfg.network.via = "vyre.run";
+  await a.svc.watch().catch(() => {});
+  assert.equal(asked, 1, "once a name is held here it does watch");
+});
