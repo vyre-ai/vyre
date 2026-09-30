@@ -372,7 +372,7 @@ test("artifacts: the # picker finds titles within the caller's reach and resolve
 });
 
 test("artifacts: a # tag lets one thread read exactly one artifact, in any project, and nothing more", async t => {
-  const { ok, call, asVyre } = await boot(t);
+  const { ok, call, asVyre, events } = await boot(t);
   const far = await ok("artifacts.create", { project: "other", kind: "doc", title: "Lease notes", content: "# Lease notes\n\nx" });
   const near = await ok("artifacts.create", { project: "other", kind: "doc", title: "Other notes", content: "# Other notes\n\ny" });
   const juno = (tool, input, thread = "t1") => call(tool, input, "mcp:agent:juno", { thread });
@@ -388,6 +388,12 @@ test("artifacts: a # tag lets one thread read exactly one artifact, in any proje
   assert.equal((await juno("artifacts.update", { id: far.id, content: "changed" })).error.code, "not_found", "read only");
   assert.equal((await juno("artifacts.get", { id: far.id }, "t9")).error.code, "not_found", "only that thread");
   assert.equal((await juno("artifacts.search", { q: "Lease" })).data?.length ?? 0, 0, "search stays in scope");
+  await asVyre("artifacts.mention.resolve", { id: near.id, thread: "t1" }, "mentions");
+  assert.equal((await juno("artifacts.get", { id: near.id })).error, undefined, "the mentions module may record one too");
+  events.emit("threads", "thread.deleted", { thread: "t1" });
+  await new Promise(r => setTimeout(r, 100));
+  assert.equal((await juno("artifacts.get", { id: far.id })).error.code, "not_found", "a deleted thread's tags end");
+  await asVyre("artifacts.mention.resolve", { id: far.id, thread: "t1" });
   await ok("artifacts.delete", { id: far.id });
   assert.equal((await juno("artifacts.get", { id: far.id })).error.code, "not_found");
 });

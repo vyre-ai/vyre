@@ -38,7 +38,7 @@
   ],
   "watches": {
     "emits": ["artifact.created", "artifact.updated", "artifact.moved", "artifact.archived", "artifact.deleted", "artifact.restored", "artifact.shared", "artifact.unshared", "artifact-links.changed", "thread.artifact"],
-    "on": ["floor.wrote"]
+    "on": ["floor.wrote", "thread.deleted"]
   },
   "shows": { "deck": [], "capsule": [], "cli": ["artifacts"] },
   "needs": { "tools": ["threads.get", "agents.list"] },

@@ -105,6 +105,8 @@ const newId = () => `a_${crypto.randomBytes(9).toString("base64url")}`;
 
 /** The person, or one of Vyre's own modules (meta.firstParty is set by the registry, never the
  * caller). An added module gets an agent's rules (reviewer-2 M1). @param {any} meta */
+/** Who may record a # tag's read grant: the modules that turn the person's own words into one. */
+const TAG_RECORDERS = new Set(["module:sessions", "module:assistant", "module:mentions"]);
 const trustedCaller = meta => isPerson(meta) || (/^module:/.test(String((meta && meta.caller) || "")) && meta.firstParty === true);
 /** An added module's name, when the caller is one. @param {any} meta */
 const addedModule = meta => { const c = String((meta && meta.caller) || ""); return /^module:/.test(c) && !(meta && meta.firstParty === true) ? c.slice(7) : null; };
@@ -496,6 +498,12 @@ export default {
     };
     const offWrote = ctx.events.on("floor.wrote", (/** @type {any} */ ev) => { capture(ev && ev.payload ? ev.payload : ev).catch(err => ctx.log(`artifacts: capture: ${err.message}`)); });
 
+    // A tag's grant ends with its thread (reviewer-2 LOW).
+    const offThreadGone = ctx.events.on("thread.deleted", (/** @type {any} */ ev) => {
+      const p = ev && ev.payload ? ev.payload : ev, t = (p && p.thread) || (ev && ev.thread);
+      if (t) db.prepare("DELETE FROM artifacts_grants WHERE thread = ?").run(String(t));
+    });
+
     // ---- tools --------------------------------------------------------------------------------
 
     const idIn = { type: "object", required: ["id"], properties: { id: str } };
@@ -539,7 +547,7 @@ export default {
       run: async (i, meta) => {
         const r = await reach(i.id, meta);
         if (i.thread !== undefined) {
-          if (!trustedCaller(meta) || !/^module:/.test(String((meta && meta.caller) || ""))) throw refuse("only Vyre's session module records a tag", "denied");
+          if (!trustedCaller(meta) || !TAG_RECORDERS.has(String((meta && meta.caller) || ""))) throw refuse("only Vyre's session, assistant and mentions modules record a tag", "denied");
           db.prepare("INSERT OR IGNORE INTO artifacts_grants (thread, artifact, at) VALUES (?, ?, ?)").run(String(i.thread), r.id, Date.now());
         }
         return { kind: "artifact", id: r.id, name: r.title, version: r.head, format: r.format, untrusted: Boolean(r.untrusted), read: { tool: "artifacts.get", input: { id: r.id } }, ...(i.thread !== undefined ? { granted: { thread: String(i.thread), access: "read" } } : {}) };
@@ -836,6 +844,7 @@ export default {
       async stop() {
         clearInterval(sweeper);
         if (typeof offWrote === "function") offWrote();
+        if (typeof offThreadGone === "function") offThreadGone();
       },
     };
   },

@@ -43,7 +43,7 @@ See [tools and events](../build/tools-and-events.md) for how to listen.
 | `artifact.updated` | built in a variable before the emit; see the source |
 | `thread.artifact` | built in a variable before the emit; see the source |
 
-Listens for: `floor.wrote`
+Listens for: `floor.wrote`, `thread.deleted`
 
 ## capsule
 
