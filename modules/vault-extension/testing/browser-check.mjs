@@ -115,7 +115,7 @@ async function main() {
     log(`fill listener at ${srv.url}, page at ${pageUrl}`);
     log("starting Chromium with the extension loaded");
     const profile = fs.mkdtempSync(path.join(tmp, "chrome-"));
-    const child = spawn(CHROME, ["--headless=new", ...CHROME_SAFE, "--remote-debugging-port=0", `--user-data-dir=${profile}`, `--load-extension=${distDir}`,
+    const child = spawn(CHROME, ["--headless=new", ...CHROME_SAFE, ...(process.env.CHROME_EXTRA_FLAGS ? process.env.CHROME_EXTRA_FLAGS.split(" ").filter(Boolean) : []), "--remote-debugging-port=0", `--user-data-dir=${profile}`, `--load-extension=${distDir}`,
       "--no-first-run", "--no-default-browser-check", "--disable-background-networking", "--force-color-profile=srgb",
       "--window-size=1280,900", "about:blank"], { stdio: "ignore" });
     cleanup.push(() => { child.kill(); });
