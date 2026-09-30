@@ -2669,6 +2669,7 @@ For a session's brief: the project's last session and the few things memory lear
 - Input:
   - `agent` string
   - `days` integer
+  - `person_only` boolean: leave out what agents and modules wrote (the brief asks for this)
   - `project` string
   - `project_cwds` list of string
   - `room` string

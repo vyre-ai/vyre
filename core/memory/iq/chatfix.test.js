@@ -144,7 +144,7 @@ test("memory.heard: the person's own turn applies as theirs (source chat:<thread
   const filed = (await call("memory.writes", { project: "harlow" }, JUNO)).data.writes;
   assert.equal(filed[0].kind, "correction");
   assert.equal(filed[0].from.name, "juno");
-  assert.match(filed[0].text, /the person corrected/);
+  assert.match(filed[0].text, /an agent reports the person corrected/);
   // Not applied: the person's answer stands.
   assert.match((await call("memory.ask", { question: Q }, "deck")).data.answer, /^Now: Netlify/);
   // An agent granted no project of that name files nothing, and still suggests.

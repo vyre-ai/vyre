@@ -715,7 +715,7 @@ export default {
         try { target = aboutOf(input); } catch { /* nothing to quote */ }
         if (!target) return out;
         try {
-          const w = await fileWrite({ kind: "correction", project, text: plain(`the person corrected: ${target.summary}`, 400), subject: plain(target.about.join(" "), 100) || undefined,
+          const w = await fileWrite({ kind: "correction", project, text: plain(`an agent reports the person corrected: ${target.summary}`, 400), subject: plain(target.about.join(" "), 100) || undefined,
             ...(Number.isInteger(input.from_turn?.seq) ? { seq: input.from_turn.seq } : {}) }, extra);
           return { ...out, filed: { id: w.id, project } };
         } catch (e) { return { ...out, filed: null, filed_why: plain(/** @type {Error} */ (e).message, 160) }; }
@@ -895,7 +895,16 @@ export default {
       // drops the current one they said was wrong (unless undone).
       const dfx = /** @type {any[]} */ (ctx.store.db.prepare("SELECT f.* FROM memory_decision_fixes f JOIN memory_iq_fixes x ON x.id = f.fix WHERE f.undone IS NULL AND x.undone IS NULL ORDER BY f.id").all());
       let base = rows;
+      // A fix belongs to one project: the reader sees it only if that project is within what it may read.
+      const mayRead = slug => {
+        if (!cwds.length) return true;
+        // Either the registry places the project inside the reader's folders, or a decision the
+        // reader was already allowed to see (rows above are scope-filtered) belongs to it.
+        const p = list.find(x => x && x.slug === slug);
+        return (Boolean(p) && [p.home, ...(p.workspaces || [])].filter(Boolean).some(h => within(h, cwds))) || rows.some(r => r.project === slug);
+      };
       for (const f of dfx) {
+        if (!mayRead(String(f.project))) continue;
         if (f.action === "replace") base.push({ id: `fix:${f.fix}`, project: String(f.project), cwd: "", topic: String(f.topic), value: String(f.value), display: String(f.display || f.value), text: String(f.statement || ""),
           at: Number(f.at), by: "person", session: null, seq: null, name: null, label: (TOPICS[String(f.topic)] || {}).label || String(f.topic), untrusted: false });
         else {
@@ -1222,7 +1231,7 @@ export default {
     // personal facts: a project's room only, for its brief.
     const todayDef = {
       description: "For a session's brief: the project's last session and the few things memory learned about the project this week from the person's own words, as short lines (at most 300 characters in all). { lines: string[] }. Empty outside a project. No personal facts, and never a fact only Claude, tool output or a module stands behind.",
-      input: { type: "object", properties: { project_cwds: cwds, ...roomField, session: { type: "string", description: "the session starting, left out" }, days: { type: "integer", minimum: 1, maximum: 30 }, ...agentField } },
+      input: { type: "object", properties: { project_cwds: cwds, ...roomField, session: { type: "string", description: "the session starting, left out" }, days: { type: "integer", minimum: 1, maximum: 30 }, person_only: { type: "boolean", description: "leave out what agents and modules wrote (the brief asks for this)" }, ...agentField } },
       run: async (input, { caller } = {}) => {
         const room = roomOf(input);
         const project_cwds = clean(input.project_cwds);
@@ -1260,7 +1269,7 @@ export default {
           .sort((a, b) => Number(b.seen) - Number(a.seen) || (a.id < b.id ? -1 : 1));
         for (const f of learned.slice(0, 3)) lines.push(`${plain(f.text, 90)} (${f.seen_age} ago).`);
         // What agents and modules wrote here this week, trusted only, quoted and attributed.
-        if (sc.room && sc.room !== "unfiled") for (const w of writes.list({ slugs: new Set([String(sc.room)]), you: false }, { trusted: true, since, limit: 2 })) lines.push(plain(quotedWrite(w), 140));
+        if (!input.person_only && sc.room && sc.room !== "unfiled") for (const w of writes.list({ slugs: new Set([String(sc.room)]), you: false }, { trusted: true, since, limit: 2 })) lines.push(plain(quotedWrite(w), 140));
         const out = [];
         let n = 0;
         for (const l of lines) { if (n + l.length > 300) break; out.push(l); n += l.length + 1; }
@@ -1288,9 +1297,9 @@ export default {
         if (slug || (input.project_cwds && input.project_cwds.length)) {
           try {
             const d = await decisionsDef.run({ ...base, limit: 20 }, extra);
-            decided = d.decisions.filter(x => x.state === "current" && !x.untrusted).slice(0, 5);
+            decided = d.decisions.filter(x => x.state === "current" && !x.untrusted && x.by === "person").slice(0, 5);
           } catch { /* nothing the caller may read: no decisions line */ }
-          try { lately = (await todayDef.run({ ...base, ...(input.thread ? { session: input.thread } : {}) }, extra)).lines || []; } catch { /* same */ }
+          try { lately = (await todayDef.run({ ...base, person_only: true, ...(input.thread ? { session: input.thread } : {}) }, extra)).lines || []; } catch { /* same */ }
         }
         const clip = (t, n) => { const x = String(t).replace(/\s+/g, " ").trim(); return x.length > n ? x.slice(0, n - 1) + "…" : x; };
         let text = intro;

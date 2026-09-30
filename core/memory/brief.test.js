@@ -91,3 +91,26 @@ test("memory.brief: an agent asking for another project's brief gets none of it"
   assert.doesNotMatch(text, /netlify|vercel/i);
   assert.doesNotMatch(text, /Harlow/);
 });
+
+test("memory.brief: a decision only an agent wrote (not marked untrusted) stays out of it", async t => {
+  const { call } = await module_(t);
+  const w = await call("memory.write", { kind: "decision", project: "northwind", text: "host the bakery on fly" }, KIT);
+  assert.ok(!w.error, w.error);
+  const b = (await call("memory.brief", { for: "project", project: "northwind" }, KIT)).data.text;
+  assert.doesNotMatch(b, /\bfly\b/i);
+});
+
+test("decision corrections in one project never reach an agent granted another", async t => {
+  const { call, db } = await module_(t);
+  const fix = db.prepare("INSERT INTO memory_iq_fixes (at, answer, qkey, question, kind, action, old, text, facts, turns, who) VALUES (?,?,?,?,?,?,?,?,?,?,?)")
+    .run(Date.now(), "a1", "q", "how do northwind take payments", "decision", "replace", "square", "Clover", "[]", "[]", "deck").lastInsertRowid;
+  db.prepare("INSERT INTO memory_decision_fixes (fix, at, project, topic, action, value, display, statement) VALUES (?,?,?,?,?,?,?,?)")
+    .run(fix, Date.now(), "northwind", "payments", "replace", "clover", "Clover", "You said: use clover");
+  const seen = async caller => JSON.stringify([
+    await call("memory.decisions", { history: true }, caller),
+    await call("memory.decisions", { project: "northwind", history: true }, caller),
+    await call("memory.brief", { for: "project", project: "northwind" }, caller),
+  ]);
+  assert.match(await seen("cli"), /clover/i, "the person sees their own correction");
+  assert.doesNotMatch(await seen(JUNO), /clover/i);
+});

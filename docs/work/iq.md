@@ -69,6 +69,11 @@ GitHub hosted runners (push work/iq). Never testbox (it is the user's server), n
 - TODO: harness.brief (core/harness/index.js) still builds its own memory.today block; swap it for memory.brief once the harness owner agrees the budget (the brief also carries decisions). The ACP driver sends memory.brief as a resource block on the first session/prompt (wave B).
 - TODO: scoping is server-side (memory's guard on the caller) but the MCP server's client-side project default for memory_remember reads VYRE_PROJECTS; sessions' meta.grantedProjects should replace it when it lands.
 
+## HOLD fixes (reviewer-2, 30 Sep, on 70b38d91 and d552748e)
+- HIGH: decisionRows keeps a decision-fix row only when its project is inside the reader's folders (registry) or already visible through a scoped row. Test: brief.test.js, a correction in northwind never reaches juno.
+- MEDIUM: memory.brief keeps only decisions with by person, and asks memory.today for person_only (no agent or module write lines).
+- MEDIUM: memory.heard with no evidence files "an agent reports the person corrected: ...".
+
 ## Doing
 - Decisions MEDIUM and meta.granted (reviews/iq.md): cherry-picked sessions' e18148c2 (845ae5dc); every memory tool now runs through a wrapper in core/memory/index.js that, for a caller with via.agent, drops input.agent and project_cwds and intersects reach() with meta.granted (none when absent). decisions.resolve: an agent or untrusted row never becomes current over the person's; a trusted agent's lone decision is current with agentOnly and answered "Your agent <name> recorded: X (date)" at 0.55, never "Now:"; untrusted is always a note. Open-world eval-bar (replayed): decision 33/50, history 16/25, confident-wrong 0/195.
 - Fixed reviewer-2 H1 at 22ad3f07 (my ctx.memory.write door reverted at cece5c54; platform owns the door).

@@ -4,6 +4,7 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+- memory (iq, reviewer-2 hold): a decision correction in one project no longer reaches an agent granted another; memory.brief keeps only decisions the person wrote and no agent write lines (memory.today person_only); memory.heard's unproven filing reads "an agent reports the person corrected: ...".
 - memory.ask streams a draft of its answer (plan 3.7): the answer so far, at most every 100 ms, from a
   streaming model runner (its new optional onText hook), and an empty draft when the check fails. It
   goes to the calling connection only: vyred hands a tool a draft function in its meta only when the
