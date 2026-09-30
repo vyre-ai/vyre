@@ -17,6 +17,7 @@
       "connectors.connect.finish",
       "connectors.connect.cancel",
       "connectors.disconnect",
+      "connectors.calendar.today",
       "connectors.mention.search",
       "connectors.mention.resolve",
       "connectors.persist"
@@ -35,7 +36,43 @@
     ],
     "cli": [
       "connect"
-    ]
+    ],
+    "capsule": {
+      "view:next": {
+        "title": "Next meeting",
+        "keywords": [
+          "calendar",
+          "agenda",
+          "meeting",
+          "join"
+        ],
+        "icon": "calendar",
+        "root": true,
+        "list": {
+          "tool": "connectors.calendar.today",
+          "input": {
+            "limit": 3
+          },
+          "map": {
+            "rows": "events",
+            "id": "id",
+            "title": "title",
+            "subtitle": "when",
+            "accessory": "account",
+            "url": "link"
+          },
+          "actions": [
+            {
+              "id": "open",
+              "title": "Open",
+              "do": {
+                "open": "{url}"
+              }
+            }
+          ]
+        }
+      }
+    }
   },
   "needs": {
     "vault": [

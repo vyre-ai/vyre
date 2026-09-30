@@ -112,7 +112,34 @@ export function normalize(i) {
   if (!Array.isArray(i.hosts) || !i.hosts.length) throw bad("hosts must be a non-empty list (an exact hostname, or one leading \"*.\")");
   const hosts = i.hosts.map(normalizeHost);
   const endpoints = Array.isArray(i.endpoints) ? i.endpoints.map(normalizeEndpoint) : [];
-  return { auth, hosts, endpoints };
+  const readers = i.readers === undefined ? undefined : normalizeReaders(i.readers);
+  return { auth, hosts, endpoints, ...(readers ? { readers } : {}) };
+}
+
+/**
+ * `readers`: the modules the person let read through this credential, each for named paths only
+ * (a calendar, not a mailbox). Written with the credential, which only a person's own surface can
+ * do, so it is the person's own act and needs no second grant. A reader may only make calls the
+ * credential classifies as reads; anything outward is refused to it, never held.
+ * @param {any} r @returns {{ module: string, paths: string[] }[]}
+ */
+function normalizeReaders(r) {
+  if (!Array.isArray(r) || r.length > 8) throw bad("readers is a short list of { module, paths }");
+  return r.map(e => {
+    if (!isObj(e) || typeof e.module !== "string" || !/^[a-z][a-z0-9-]{0,31}$/.test(e.module)) throw bad("a reader names a module");
+    if (!Array.isArray(e.paths) || !e.paths.length || e.paths.length > 16 || !e.paths.every(p => typeof p === "string" && /^\/[^\s]{0,200}$/.test(p))) throw bad("a reader lists the paths it may read, each starting with /");
+    return { module: e.module, paths: [...new Set(e.paths)] };
+  });
+}
+
+/**
+ * Whether a module may read this request through the credential: it is a listed reader, the call is
+ * a read, and the path is one the person named for it.
+ * @param {{ readers?: { module: string, paths: string[] }[] }} config @param {string} mod @param {string} pathAndQuery
+ */
+export function readerMayRead(config, mod, pathAndQuery) {
+  const e = (config.readers || []).find(x => x.module === mod);
+  return Boolean(e && e.paths.some(p => pathMatches(p, pathAndQuery)));
 }
 
 // ---- classify ----

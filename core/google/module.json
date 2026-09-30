@@ -16,14 +16,6 @@
   "shows": {
     "deck": ["settings:connections"],
     "capsule": {
-      "view:next": {
-        "title": "Next meeting", "keywords": ["calendar", "agenda", "meeting", "join"], "icon": "calendar", "root": true,
-        "list": {
-          "tool": "google.calendar.today", "input": { "limit": 3 },
-          "map": { "rows": "events", "id": "id", "title": "title", "subtitle": "when", "accessory": "account", "url": "link" },
-          "actions": [ { "id": "open", "title": "Open", "do": { "open": "{url}" } } ]
-        }
-      },
       "results:google.find": { "title": "Google" },
       "action:google.open": { "title": "Open" },
       "action:google.open#reply": { "title": "Draft a reply", "input": { "as": "reply" } }

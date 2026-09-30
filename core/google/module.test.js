@@ -446,7 +446,7 @@ test("google: on_behalf files a first-party module's held send under the thread 
   assert.equal(fake.mail.sent.length, 0, "a held send reached Gmail");
 });
 
-test("google: the Capsule's `next` command lists today's next meetings, with a join link, cached for a minute, and nothing without a calendar", async t => {
+test("google: google.calendar.today lists today's next meetings, with a join link, cached for a minute, and nothing without a calendar (the Capsule's `next` command reads it through connectors)", async t => {
   const fake = await startFakeGoogle(t);
   const v = await vyred(t);
   // Nothing connected: an empty list, not an error.
@@ -484,23 +484,5 @@ test("google: the Capsule's `next` command lists today's next meetings, with a j
   // A model may read it too (it is read only) and `limit` narrows it.
   assert.equal((await v.model("google.calendar.today", { limit: 1 })).data.events.length, 1);
 
-  // The Capsule command is declared by the module, over this tool.
-  const manifest = JSON.parse(fs.readFileSync(new URL("./module.json", import.meta.url), "utf8"));
-  const view = manifest.shows.capsule["view:next"];
-  assert.equal(view.list.tool, "google.calendar.today");
-  assert.deepEqual(view.list.map, { rows: "events", id: "id", title: "title", subtitle: "when", accessory: "account", url: "link" });
-  // If the Capsule module is running here, it lists the command with no tool name in it.
-  const cmds = await v.cli("capsule.commands", {});
-  if (cmds.data) {
-    const next = cmds.data.commands.find(c => c.module === "google" && c.id === "next");
-    assert.ok(next, JSON.stringify(cmds.data.commands.map(c => `${c.module}:${c.id}`)));
-    assert.equal(next.title, "Next meeting");
-    assert.equal(next.firstParty, true);
-    assert.ok(!JSON.stringify(next).includes("google.calendar"), "no tool names reach the Capsule");
-    const frame = await v.cli("capsule.view", { module: "google", command: "next" });
-    assert.equal(frame.data.kind, "list", JSON.stringify(frame));
-    assert.equal(frame.data.rows[0].title, "Kit and Alex, menu call");
-    assert.equal(frame.data.rows[0].subtitle.startsWith("in "), true);
-  }
   assertNoLeak(v, secretsOf(fake, [sa]));
 });
