@@ -448,7 +448,10 @@ try {
           ? `try { localStorage.setItem("vyre.theme", "paper"); } catch {}` : `try { localStorage.removeItem("vyre.theme"); } catch {}` });
         await save(shot, theme, await capture(page, shot, { navigate: base + shot.url, homes }));
         report(shot, page);
-      } catch (e) { log(`  ${shot.name}: FAILED: ${/** @type {Error} */ (e).message}`); process.exitCode = 1; }
+      } catch (e) {
+        log(`  ${shot.name}: FAILED: ${/** @type {Error} */ (e).message}`); process.exitCode = 1;
+        log("  at " + String(await page.run("return location.href").catch(() => "")) + ", the page said: " + String(await page.run("return document.body.innerText").catch(() => "")).slice(0, 1500).replace(/\n+/g, " | "));
+      }
       finally { await page.close(); }
     }
   } };
