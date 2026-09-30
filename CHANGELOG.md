@@ -4,6 +4,10 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### lib/caps-flags: the one provider capability list (C14b), on its own for sessions
+
+- `lib/caps-flags/index.js`: `FLAGS` (steer, queue, interrupt, resume, fork, rewind {conversation, code}, modes, plan, questions, permissions, thinking, effort, images, commands, tasks, subagents, model_switch, usage none|coarse|detailed, remember null|CLAUDE.md|AGENTS.md|GEMINI.md), `TOOL_KINDS` (read, edit, write, run, search, fetch, mcp, task, other), `normalizeCaps(raw)` (every flag present and typed, unknown keys dropped) and `checkCaps(raw)` (the problems, [] when exact). No imports. Extracted from work/native-core-0.2 (5a9d5f96) so sessions can import it in conform() and threads.get's `caps`; `task` added to the tool kinds as sessions' shapes say.
+
 - Closed a caller-identity race on macOS: a forged "cli" label from under a claude was believed
   when the caller was forked inside the 250 ms shared process snapshot. A pid the snapshot lacks is
   now read again, retries start from a fresh table, a peer that already exited is a model's, and
