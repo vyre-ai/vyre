@@ -12,20 +12,37 @@
 //
 // Audio and transcripts are never logged and never emitted. Errors are fixed words and a
 // status; none echoes a value, the key least of all.
+//
+// A browser's WebSocket can't set x-vyre-caller (native-core, 28 Sep), so the Deck mints a
+// one-use ticket first, through voice.listen (index.js), the same shape as term.attach/Glass: an
+// ordinary tool call vyred's usual caller/ancestry checks already gate, minting a 30 s ticket
+// this stream spends on the handshake. A caller that CAN set the header (the native Capsule)
+// skips the round trip and connects directly, as it always has; the ticket is the whole
+// authority when one is given, same as term's, and is checked before the label/peer fallback.
 
+import crypto from "node:crypto";
 import { accept, connect, refuse } from "./ws.js";
 import { DEFAULTS, VoiceError, deepgramListen, offline, origin, settings, statusError, transcribe } from "./providers.js";
 
-/** Callers on this Mac that may talk to it. A tailnet peer never may: the mic is this machine's. */
-export const LOCAL = ["capsule", "local", "cli"];
+/** Callers on this Mac that may talk to it. A tailnet peer never may: the mic is this machine's.
+ *  "deck" (chat's push-to-talk, native-core, 28 Sep) is the Deck served locally on this same Mac,
+ *  never a remote one: `info.peer` below refuses those regardless of what they claim as caller. */
+export const LOCAL = ["capsule", "local", "cli", "deck"];
 /** Five minutes of 16 kHz linear16. One held key is one utterance, not a recording session. */
 export const MAX_BYTES = 5 * 60 * 32_000;
 /** How long a stream may sit with no frame at all before it is closed. Only while one is open. */
 const IDLE_MS = 30_000;
 /** How long to wait for the provider's last words after the key comes up. */
 const TAIL_MS = 5_000;
+/** A ticket's life, same as term's (core/term/index.js). */
+const TICKET_MS = 30_000;
 
 const kindOf = caller => String(caller || "").replace(/[\s:]agent:.*$/s, "");
+/** The mic is the person's, physically: "cli agent:kit" is a model running under a CLI wrapper,
+ *  not the person, whatever kindOf() would otherwise call it (reviewer, 28 Sep). Checked at both
+ *  gates: voice.listen (index.js, the ticket-minting tool call) and here, for a direct connect. */
+export const isAgentCaller = caller => /(?:^|[\s:])agent:/.test(String(caller || ""));
+const token = () => crypto.randomBytes(24).toString("base64url");
 
 /**
  * @param {{ vault: { fetch(name: string): Promise<string> }, config: any, log: (m: string) => void }} deps
@@ -33,11 +50,30 @@ const kindOf = caller => String(caller || "").replace(/[\s:]agent:.*$/s, "");
 export function listener({ vault, config, log }) {
   /** @type {Set<() => void>} */
   const open = new Set();
+  /** @type {Map<string, number>} one-use tickets from voice.listen, ticket -> expires. */
+  const tickets = new Map();
+
+  /** A fresh one-use ticket and the path a WebSocket connects to with it (index.js's voice.listen). */
+  const issue = () => {
+    for (const [k, exp] of tickets) if (exp <= Date.now()) tickets.delete(k);
+    const ticket = token();
+    tickets.set(ticket, Date.now() + TICKET_MS);
+    return { path: `/v1/streams/voice/listen?ticket=${encodeURIComponent(ticket)}` };
+  };
 
   /** The upgrade handler: vyred calls it with the raw socket and the caller it established. */
   const handle = (req, socket, head, info = {}) => {
-    const kind = kindOf(info.caller);
-    if (info.peer || !LOCAL.includes(kind)) {
+    const tk = info.url ? info.url.searchParams.get("ticket") : null;
+    if (tk) {
+      // The ticket is the whole authority, as for term's (core/term/index.js): spent the moment
+      // it is seen, whatever the outcome, so a retried or observed ticket never works twice.
+      const exp = tickets.get(tk);
+      tickets.delete(tk);
+      if (info.peer || !exp || exp <= Date.now()) {
+        refuse(socket, 403, "Forbidden", { error: { code: "denied", message: "that ticket is spent, expired, or this is not a local connection" } });
+        return;
+      }
+    } else if (info.peer || isAgentCaller(info.caller) || !LOCAL.includes(kindOf(info.caller))) {
       refuse(socket, 403, "Forbidden", { error: { code: "denied", message: "voice listens only for this Mac's own Capsule, not for a peer" } });
       return;
     }
@@ -175,6 +211,7 @@ export function listener({ vault, config, log }) {
 
   return {
     handle,
+    issue,
     /** Streams open right now. Zero means nothing of this module is running. */
     get open() { return open.size; },
     /** End every open stream, for the module's stop(). */

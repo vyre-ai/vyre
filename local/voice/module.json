@@ -4,10 +4,17 @@
   "description": "Push-to-talk for the Capsule: streams the mic to a speech provider and relays the words back, with optional spoken replies.",
   "roles": ["local"],
   "requires": [],
-  "does": { "tools": ["voice.status", "voice.settings", "voice.speak"] },
+  "does": { "tools": ["voice.status", "voice.settings", "voice.speak", "voice.listen"] },
   "watches": { "emits": [] },
   "shows": { "capsule": ["settings:voice"], "streams": ["listen"] },
-  "needs": { "vault": ["voice-deepgram-key", "voice-openai-key", "voice-elevenlabs-key"] },
+  "needs": {
+    "vault": ["voice-deepgram-key", "voice-openai-key", "voice-elevenlabs-key"],
+    "credentials": [
+      { "id": "deepgram", "kind": "api-key", "provider": "deepgram", "purpose": "push-to-talk words, streamed as you speak", "item": "voice-deepgram-key", "group": "speech" },
+      { "id": "openai", "kind": "api-key", "provider": "openai", "purpose": "push-to-talk words, transcribed on release", "item": "voice-openai-key", "group": "speech" },
+      { "id": "elevenlabs", "kind": "api-key", "provider": "elevenlabs", "purpose": "push-to-talk words and spoken replies", "item": "voice-elevenlabs-key", "group": "speech" }
+    ]
+  },
   "teaches": {
     "tips": [
       {"id": "talk-key", "text": "Press `⌥⏎` in the Capsule and talk: your words fill the box as you say them.", "surfaces": ["capsule"], "level": "discovery", "trigger": "never-used", "since": "0.1.0", "key": "⌥⏎"},

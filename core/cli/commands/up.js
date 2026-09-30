@@ -5,6 +5,10 @@
 // then prints one thing: the onboarding link, the box's address, or on a Mac the box it talks to.
 // `vyre up --system` (as root) installs the systemd units; `vyre uninstall --system` removes them.
 // Both print every change and make none with --dry-run. See docs/INSTALL.md and ADR 0002.
+//
+// --json shapes: up {role, version, url, port, ssh, address, box, ready, ...} or {error} ·
+// backup {file, bytes, included} · restore {restored} · name {address, phase, owner?, why?} and
+// name check {name, valid, available, address?, why?} · owner {owner}. Only `vyre name` has verbs.
 
 import fs from "node:fs";
 import os from "node:os";
@@ -15,7 +19,7 @@ import { request, call } from "../../daemon/client.js";
 import { ensureUp, stop } from "../daemonctl.js";
 import { REPO, VERSION } from "../../daemon/index.js";
 import { out, dim, bold, signal, beacon } from "../style.js";
-import { json, emit, fail, failTool, usage } from "../kit.js";
+import { json, emit, fail, failTool, usage, viewing } from "../kit.js";
 import * as config from "../../config/index.js";
 import { dialogsAllowed, isRealHome, realBoxAllowed } from "../../config/dialogs.js";
 import * as system from "../../names/system.js";
@@ -145,7 +149,32 @@ export async function up(args, deps = {}) {
   if (!parse(args).flags.json) return run(args, deps);
   // A caller parsing --json gets one object whatever happens, so a throw anywhere is an error object too.
   try { return await run(args, deps); }
-  catch (e) { out(JSON.stringify({ error: { code: "failed", message: String((e && /** @type {Error} */ (e).message) || e) } })); return 1; }
+  catch (e) { one({ error: { code: "failed", message: String((e && /** @type {Error} */ (e).message) || e) } }); return 1; }
+}
+
+/** Common, obviously-not-a-secret .env values: no point nudging over these. */
+const ENV_NOT_SECRET = new Set(["true", "false", "development", "production", "test", "staging", "localhost", "debug", "info", "warn", "error"]);
+
+/**
+ * A rough, local count of .env values in `dir` that look like secrets and are not already a
+ * vault:// reference - no vault call, so no presence and no network: just enough to nudge
+ * (vault sweep and vault import do the real, careful work). Top-level .env* files only.
+ * @param {string} dir
+ */
+export function envCandidates(dir) {
+  let n = 0;
+  for (const name of [".env", ".env.local", ".env.development", ".env.production"]) {
+    let text;
+    try { text = fs.readFileSync(path.join(dir, name), "utf8"); } catch { continue; }
+    for (const line of text.split("\n")) {
+      const m = /^\s*(?:export\s+)?[A-Za-z_][A-Za-z0-9_]*\s*=\s*(.*)$/.exec(line);
+      if (!m) continue;
+      const v = m[1].trim().replace(/^["']|["']$/g, "");
+      if (v.length < 10 || v.startsWith("vault://") || /^\d+$/.test(v) || ENV_NOT_SECRET.has(v.toLowerCase())) continue;
+      n++;
+    }
+  }
+  return n;
 }
 
 /**
@@ -157,7 +186,7 @@ async function run(args, deps) {
   const json = Boolean(flags.json);
   if (flags.system) {
     // --system prints the plan it applies as it goes; there is no single object to give.
-    if (json) { out(JSON.stringify({ error: { code: "bad_input", message: "--json does not go with --system" } })); return 1; }
+    if (json) { one({ error: { code: "bad_input", message: "--json does not go with --system" } }); return 1; }
     return upSystem(flags);
   }
   const callTool = deps.call || call;
@@ -165,8 +194,9 @@ async function run(args, deps) {
   // In JSON mode the one object is the whole output: no prose, no colour, and no questions.
   const say = json ? () => {} : out;
   /** @param {Record<string, any>} o */
-  const done = (o, code = 0) => { if (json) out(JSON.stringify({ role, version: VERSION, url: null, port: null, ssh: null, address: null, box: null, ready: false, ...o })); return code; };
-  const fail = (code, message) => { if (json) out(JSON.stringify({ error: { code, message } })); else out(beacon("  " + message)); return 1; };
+  // Under --view the one object is a frame: the link, the box or where things stand, as a card.
+  const done = (o, code = 0) => { if (json) { const d = { role, version: VERSION, url: null, port: null, ssh: null, address: null, box: null, ready: false, ...o }; one(d, upView(d)); } return code; };
+  const fail = (code, message) => { if (json) one({ error: { code, message } }); else out(beacon("  " + message)); return 1; };
 
   if (flags.connect !== undefined && (flags.connect === true || !String(flags.connect).trim())) {
     return fail("no_address", "--connect needs your box's address: vyre up --connect https://vyre.<tailnet>.ts.net");
@@ -199,6 +229,10 @@ async function run(args, deps) {
     say("  address. Setting it up takes about ten minutes, one step at a time.");
     say(dim(`\n  vyred running in the background · your data lives in ${config.home().replace(os.homedir(), "~")}`));
   } else say(b.note ? `  vyred ${signal("running")} ${dim(`· ${VERSION} · ${role} · ${b.note}`)}` : `  vyred is already running ${dim(`· ${VERSION} · ${role}`)}`);
+  if (!first) {
+    const found = envCandidates(process.cwd());
+    if (found) say(dim(`  found ${found} secret-looking value${found === 1 ? "" : "s"} in .env here, not in the vault yet · vyre vault import . --rewrite brings them in`));
+  }
 
   if (systemdManaged()) {
     // An upgrade can change the units; only root can rewrite them.
@@ -261,6 +295,19 @@ async function run(args, deps) {
     (deps.openUrl || openUrl)(d.url);
   }
   return 0;
+}
+
+/** The view of vyre up's one object: the onboarding link, the box, or where things stand. @param {any} d */
+function upView(d) {
+  const fields = [{ label: "vyred", value: `${d.version} · ${d.role}` }];
+  if (d.url) fields.push({ label: "Open this link to set up Vyre", value: String(d.url) });
+  if (d.ssh) fields.push({ label: "This box is headless: on your own computer, first", value: String(d.ssh) });
+  if (d.address) fields.push({ label: "Address", value: String(d.address) });
+  if (d.box) fields.push({ label: "Your box", value: String(d.box) });
+  if (d.pairing) fields.push({ label: "Pairing", value: String(d.pairing) });
+  if (d.passkeyUrl) fields.push({ label: "Make your passkey", value: String(d.passkeyUrl) });
+  if (!d.url && !d.box && !d.address && d.role === "local") fields.push({ label: "No box yet", value: "vyre box add user@host, vyre up --box, or vyre up --connect <address>" });
+  return { kind: "card", title: d.ready ? "Vyre is ready" : "Vyre", state: d.ready ? "ok" : "wait", fields };
 }
 
 /**
@@ -442,6 +489,16 @@ async function where(io, deps) {
   return 1;
 }
 
+/**
+ * vyre up's one JSON object: a line through out (as its tests read it), or under --view a frame
+ * with `view` (derived when left out, so an {error} is an error frame).
+ * @param {any} d @param {any} [view]
+ */
+function one(d, view) {
+  if (viewing()) emit(d, view);
+  else out(JSON.stringify(d));
+}
+
 /** Look up a local account: its home and primary group. */
 function account(user) {
   if (process.platform === "linux") {
@@ -473,7 +530,7 @@ async function upSystem(flags) {
 
 export default [
   {
-    name: "up", order: 10, usage: "vyre up [--box|--connect <addr>] [--json] [--no-capsule] [--keep-link]", summary: "start vyred and print the onboarding link, or this box's address",
+    name: "up", order: 10, usage: "vyre up [--box] [--connect <addr>] [--no-capsule] [--keep-link] [--dry-run] [--json]", summary: "start vyred and print the onboarding link, or this box's address",
     run: args => up(args),
   },
   {
@@ -500,7 +557,10 @@ export default [
       const [file] = args.filter(a => a !== "--json");
       const target = path.resolve(file || `vyre-backup-${new Date().toISOString().slice(0, 10)}.tar.gz`);
       const r = await backup({ root: config.home(), file: target });
-      if (json()) return emit(r);
+      if (json()) {
+        return emit(r, { kind: "card", title: "Backup", state: "ok", fields: [{ label: "File", value: String(r.file) }, { label: "Size", value: `${Math.round(r.bytes / 1024)} KB` },
+          { label: "Holds", value: r.included.join(", ") }, { label: "Keep it", value: "somewhere only you can read: it holds the sealed vault" }] });
+      }
       out(`  ${signal(r.file)} ${dim(`· ${Math.round(r.bytes / 1024)} KB · ${r.included.join(", ")}`)}`);
       out(dim("  it holds the sealed vault: keep it somewhere only you can read"));
       return 0;
@@ -516,29 +576,42 @@ export default [
         const m = String(/** @type {Error} */ (e).message);
         return fail(m, { next: /already exists/.test(m) ? `vyre restore ${rest[0]} --force, to replace it` : /is running/.test(m) ? "vyre down, then try again" : undefined });
       }
+      if (json()) return emit({ restored: path.resolve(rest[0]) });
       out("  restored · vyre up to start");
       return 0;
     },
   },
   {
-    name: "name", order: 30, usage: "vyre name [check <n>|claim <n>|ts.net|release] [--json]", summary: "this box's address: <you>.vyre.run",
+    name: "name", order: 30, usage: "vyre name [status|check <n>|claim <n>|ts.net|release] [--json]", summary: "this box's address: <you>.vyre.run",
+    verbs: [
+      { verb: "status", summary: "this box's address and where it stands", usage: "", read: true },
+      { verb: "check", summary: "whether a name is free", usage: "<n>", read: true },
+      { verb: "claim", summary: "take <n>.vyre.run for this box", usage: "<n>" },
+      { verb: "ts.net", summary: "use the tailnet's own ts.net address instead", usage: "" },
+      { verb: "release", summary: "give the name back", usage: "", person: true },
+    ],
     async run(args) {
-      const [action, name] = args.filter(a => a !== "--json");
+      const [action0, name] = args.filter(a => a !== "--json");
+      const action = action0 === "status" ? undefined : action0;
       const TOOLS = { check: "names.check", claim: "names.claim", "ts.net": "names.fallback", release: "names.release" };
-      if (action && !(action in TOOLS)) return usage(`vyre name ${action}: not a subcommand`, "vyre name [check <n>|claim <n>|ts.net|release]");
+      if (action && !(action in TOOLS)) return usage(`vyre name ${action}: not a subcommand`, "vyre name [status|check <n>|claim <n>|ts.net|release]");
       if ((action === "check" || action === "claim") && !name) return usage(`vyre name ${action} needs a name`, `vyre name ${action} alex`);
       const tool = TOOLS[/** @type {keyof typeof TOOLS} */ (action || "")] || "names.status";
       const r = await call(tool, name ? { name } : {});
       if (r.error) return failTool(r.error);
       const d = r.data;
-      if (json()) return emit(d);
+      if (json()) {
+        if (tool === "names.check") return emit(d, { kind: "card", title: String(d.name), state: d.valid && d.available ? "ok" : "failed", fields: [{ label: d.valid && d.available ? "Free" : "Not free", value: d.valid && d.available ? String(d.address) : String(d.why || "") }] });
+        return emit(d, { kind: "card", title: "Address", state: d.phase === "serving" ? "ok" : "wait", fields: [{ label: "Address", value: d.address || "no address" }, { label: "Phase", value: String(d.phase || "") },
+          ...(d.owner ? [{ label: "Owner", value: String(d.owner) }] : []), ...(d.why ? [{ label: "Why", value: String(d.why) }] : [])] });
+      }
       if (tool === "names.check") out(d.valid && d.available ? `  ${signal(d.address)} is free` : beacon(`  ${d.name}: ${d.why}`));
       else out(`  ${d.address ? signal(d.address) : dim("no address")} ${dim(`· ${d.phase}${d.owner ? " · owner " + d.owner : ""}${d.why ? " · " + d.why : ""}`)}`);
       return 0;
     },
   },
   {
-    name: "owner", order: 31, hidden: true, usage: "vyre owner <tailscale login>", summary: "the one Tailscale login this box serves",
+    name: "owner", order: 31, hidden: true, usage: "vyre owner [<tailscale-login>]", summary: "the one Tailscale login this box serves",
     async run(args) {
       // --json is a flag, never a login: `vyre owner --json` once made "--json" the owner.
       const [login] = args.filter(a => a !== "--json");

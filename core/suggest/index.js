@@ -120,7 +120,9 @@ export const SOURCES = {
       const label = one(c.label || c.account || c.provider) || String(c.id);
       const parts = [one(c.provider), c.account && one(c.account) !== label ? one(c.account) : ""].filter(Boolean);
       return cand({ kind: "account", source: "vault", id: String(c.id), label, insert: label, ...(parts.length ? { detail: parts.join(" · ") } : {}),
-        ...(c.use && typeof c.use.tool === "string" ? { action: { tool: c.use.tool, input: c.use.input || {} } } : {}), last: 0, bias: 0 });
+        ...(c.use && typeof c.use.tool === "string" ? { action: { tool: c.use.tool, input: c.use.input || {} } } : {}),
+        // The person's default for some capability first, then the most recently used (vault 9b).
+        last: Number(c.last_used) || 0, bias: c.is_default || (Array.isArray(c.default) && c.default.length) ? 1 : 0 });
     }),
   },
 };
@@ -339,6 +341,8 @@ export default {
       run: async (/** @type {any} */ input) => picked(input),
     });
 
+    // Modules that started first offer their sources again now (memory's names, for one).
+    ctx.events.emit("suggest.ready", {});
     return {
       async stop() {
         stopped = true; off();

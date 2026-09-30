@@ -70,9 +70,30 @@ Start vyred if needed with `ensureUp()` from `core/cli/daemonctl.js`.
   without a project, agents; arrow keys and type-to-filter; plain list when piped.
 
 ## Doing
-- Nothing.
+- Picked back up 2026-09-28 (sessions' lead handed core/projects its first active owner since
+  cohesion's one-product audit flagged it unowned). Built both items the lead approved for 0.1.1:
+  1. `lib/project-id.js`: the canonical project-id shape (`SLUG_RE`, `slugify`, `isProjectId`) as
+     a pure library, so memory's rooms, a teammate's `<role>-<project>` agent name and vault's
+     forthcoming grants `project` column all derive from the one shape instead of each growing its
+     own. `core/projects/markers.js` now imports `slugify` from the lib and re-exports it, so
+     `M.slugify` and every existing caller keep working unchanged. Teammates' `core/team/index.js`
+     still carries its own `SLUG` regex (predates this lib) — flagged for them to swap to
+     `lib/project-id.js` when convenient, not blocking.
+  2. Watchers: the marker field already existed (`markers.js`'s `Project.watchers`, read into the
+     brief by `brief.js`) but nothing could add or remove one after creation. Added
+     `projects.watchers.add` / `projects.watchers.remove` (person-only: `callers: OWNER` plus both
+     names in `core/presence`'s `PERSON_ONLY`), backed by `Projects.addWatchers`/`removeWatchers`
+     (same shape as `addThreads`/`removeThreads`: dedupe, write the marker, refresh, emit
+     `project.changed {fields: ["watchers"]}`). `core/waiting` needed no change — its rows already
+     carry `project`, so a surface that reads a project's `watchers` can filter on it.
+- Tested on testbox: 67/67 (`lib/project-id.test.js`, `projects.test.js`, `move.test.js`,
+  `presence.test.js`, `mcp-server-tools.test.js`, `boundaries.test.js`, `cohesion-drift.test.js`),
+  then `docs:ref` regenerated and `docs-*.test.js` 61/61. Sent to the reviewer, then the
+  integrator.
 
 ## Next
+- The canonical-id lib is built; teammates' and vault's side of "derive from it" (dropping their
+  own copies) is theirs to do on their own schedule.
 - Test `vyre resume` against real Claude Code once before merge (spec section 14). It has only
   run against the fake so far.
 - Once Recall merges, check that `recall.search` returns `[{session, ...}]` as its brief says,
@@ -126,3 +147,9 @@ Start vyred if needed with `ensureUp()` from `core/cli/daemonctl.js`.
   cannot be removed.
 - Events carry `{project, thread}` with `where.project` and `where.thread` set:
   `project.created {project, name, home, threads}` and `project.changed {project, fields}`.
+- New lib `lib/project-id.js` (`SLUG_RE`, `slugify`, `isProjectId`): the canonical project-id
+  shape, importable by any part with no boundaries exception. `core/projects/markers.js` re-
+  exports it (`M.slugify` unchanged for existing callers).
+- New tools `projects.watchers.add {project, watchers}` and `projects.watchers.remove
+  {project, watchers}`, both `{project, added|removed, watchers}`. Person-only: `callers: OWNER`
+  and added to `core/presence`'s `PERSON_ONLY`. Emit `project.changed {fields: ["watchers"]}`.

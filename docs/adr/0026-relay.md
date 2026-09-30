@@ -366,8 +366,10 @@ effect. They cannot rule it out.
 trusts no origin by itself. The app signs the person in on the box's own page with a passkey
 and holds a session bound to a non-extractable key. Every call is signed with that key. The
 e2e team owns this; tailnet answers CORS for `https://app.vyre.run` only. On the relay path
-there is no CORS, because the browser opens one WebSocket to the relay and every request
-travels inside the channel. The box's sign-in page cannot be reached there either. For a relayed
+the channel itself needs no CORS, because the browser opens one WebSocket to the relay and every
+request travels inside it. The one exception is Wink's ticket lookup, `POST /v1/pair`, a plain
+cross-origin fetch made before any channel exists: it answers `Access-Control-Allow-Origin: *`
+with no credentials, and no other relay route sends CORS headers (ADR 0045). The box's sign-in page cannot be reached there either. For a relayed
 web device, pairing stands in for signing in: the device key is non-extractable, Noise binds
 every request to it, the pairing enrolls a passkey under `app.vyre.run` as its presence key, and
 the session is the device's pairing, with a 30-day sliding expiry, revoked by removing the
@@ -391,6 +393,7 @@ check.
 | A stolen `box.key` later | nothing against recorded traffic | the ee DH gives forward secrecy |
 | A malicious web page in the owner's browser | nothing | the device key belongs to the `app.vyre.run` origin and cannot be exported; other origins cannot reach it |
 | Whoever controls the code served at `app.vyre.run` | act as that browser's web device while the tab is open, read what it shows | section 10: non-extractable keys, a biometric per approval, fewer powers for web devices, a signed and pinned release, the build check, the pairing notice, 30-day expiry. The native app and the tailnet Deck do not carry this risk |
+| The relay operator, on a Wink pairing (ADR 0045) | see the ticket record: the box's name, the owner's `<handle>.vyre.run`, a stable per-person identity fingerprint (`sha256("vyre:person:v1:"+owner.id)`) and the box's key, and so link every box and pairing that owner appears on over time | mitigated, 28 Sep (the lead's ruling on the reviewer's LOW): the box seals the whole record with AES-256-GCM under a fourth key derived from the ticket (tag `vyre-pair-enc`, separate from the locator, secret and MAC keys), so the relay stores and hands back ciphertext only, and both relays refuse a record that is not opaque base64url. What remains is the metadata row above: the relay sees a locator, a size and a time, never who the record names |
 
 Residual risks, stated: the first-device path during onboarding (section 6), availability of the
 one hosted relay, traffic analysis by the relay, and hosted code in the web app (section 10).

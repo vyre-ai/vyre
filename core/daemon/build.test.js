@@ -23,14 +23,14 @@ test("build: a release's stamp wins, a checkout asks git, and neither is nulls",
   const git = (...a) => execFileSync("git", ["-C", checkout, "-c", "user.name=alex", "-c", "user.email=alex@example.com", ...a], { stdio: "pipe" }).toString().trim();
   git("init", "-q"); git("add", "package.json"); git("commit", "-qm", "one");
   const head = git("rev-parse", "HEAD");
-  assert.deepEqual(build(checkout), { version: "9.9.9", commit: head, dirty: false });
+  assert.deepEqual(build(checkout), { version: "9.9.9", commit: head, dirty: false, stamped: false });
   fs.appendFileSync(path.join(checkout, "package.json"), "\n");
   assert.equal(build(checkout).dirty, true);
   assert.equal(label(build(checkout)), `9.9.9 · ${head.slice(0, 7)}+dirty`);
 
   const bare = tempHome(t);
   pkg(bare);
-  assert.deepEqual(build(bare), { version: "9.9.9", commit: null, dirty: null });
+  assert.deepEqual(build(bare), { version: "9.9.9", commit: null, dirty: null, stamped: false });
   assert.equal(label(build(bare)), "9.9.9");
 });
 
@@ -45,6 +45,9 @@ test("build: /v1/health and system.info report version and commit", async t => {
   assert.deepEqual([h.version, h.commit, h.dirty], [b.version, b.commit, b.dirty]);
   assert.deepEqual([i.version, i.commit, i.dirty], [b.version, b.commit, b.dirty]);
   assert.ok("commit" in h && "commit" in i);
+  // The Capsule runs this vyred's own CLI by argv: node, then bin/vyre in the same tree.
+  assert.equal(h.cli[0], process.execPath);
+  assert.ok(h.cli[1].endsWith(path.join("bin", "vyre")) && fs.existsSync(h.cli[1]));
   assert.deepEqual(i.network, { origins: ["https://app.vyre.run"] }, "the hosted app's origin, when config names none");
 });
 

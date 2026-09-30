@@ -86,7 +86,7 @@ echo "$SESS" | grep -q 'sock=EACCES' && ok "a session cannot open vyred's socket
 if echo "$SESS" | grep -q '^SDK none'; then echo "skip the Agent SDK is not in this image (sessions installs it on first use)"
 else echo "$SESS" | grep -qE '^SDK .*code=0 group=true' && ok "the Agent SDK's Claude Code runs through the spawner" || no "sdk: $(echo "$SESS" | grep '^SDK')"; fi
 
-# With sessions.spawner off (tonight's default, until ADR 0030 phase 3), sessions run as vyre, as
+# With sessions.spawner off, sessions run as vyre, as
 # the live box does today, with the key still on fd 3 only.
 OFF=$(session off)
 echo "$OFF" | grep -q '^SH uid=1000 key=sk-test-northwind env=none' && ok "spawner off: a session runs as vyre, the key on fd 3 only" || no "off: $(echo "$OFF" | grep '^SH\|ERR')"

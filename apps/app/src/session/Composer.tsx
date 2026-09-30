@@ -143,9 +143,10 @@ export const Composer = memo(function Composer({
     }
   }
 
-  function runLocal(what: "model" | "rewind") {
+  function runLocal(what: "model" | "rewind" | "find" | "goal") {
     if (what === "model") void openModels();
-    else onRewind();
+    else if (what === "rewind") onRewind();
+    else setNote(`/${what} works in the Deck for now.`);
   }
 
   async function openModels() {

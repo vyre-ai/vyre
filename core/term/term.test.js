@@ -166,6 +166,17 @@ const lastAt = async c => { await wait(1300); const all = c.msgs.filter(m => m.t
 const alive = pid => { try { process.kill(pid, 0); return true; } catch { return false; } };
 const wait = ms => new Promise(r => setTimeout(r, ms));
 
+test("term: a surface is <kind>:<name>; the CLI opens as cli:<name>, and a bare kind says what is missing", async t => {
+  const { reg, work } = await registry(t);
+  const bare = await reg.call("term.open", { cwd: work, surface: "cli" }, "cli");
+  assert.equal(bare.error?.code, "bad_input");
+  assert.match(bare.error.message, /"cli" needs a name after it, such as cli:<tty or pid>/);
+  assert.match((await reg.call("term.open", { cwd: work, surface: "laptop" }, "cli")).error?.message, /deck, phone, capsule, glass or cli/);
+  const o = await ok(reg, "term.open", { cwd: work, surface: "cli:ttys007" }, "cli");
+  await ok(reg, "term.attach", { term: o.term, surface: "cli:ttys007" }, "cli");
+  assert.equal((await reg.call("term.attach", { term: o.term, surface: "cli:ttys008" }, "cli")).error?.code, "not_found", "another terminal is another screen");
+});
+
 test("term: only a person's surfaces may use it; a tailnet guest and an agent are refused", async t => {
   const { reg, work } = await registry(t);
   for (const caller of ["tailnet-guest:someone@example.com", "mcp", "mcp:agent:kit", "anonymous"]) {
@@ -465,10 +476,10 @@ test("term: a terminal the box lost while vyred was down (a deploy) answers term
     pid: 999_999, sock: path.join(dir, "tlost.sock"), left: Date.now(), cols: 80, rows: 24 }] }));
   const { reg, events, work, stop } = await registry(t, {}, { root });
   const closed = events.since(0, { type: "term.closed", limit: 10 });
-  assert.deepEqual(closed.map(e => e.payload), [{ term: "tlost", reason: "box updated" }]);
+  assert.deepEqual(closed.map(e => e.payload), [{ term: "tlost", reason: "server updated" }]);
   const r = await reg.call("term.attach", { term: "tlost", surface: DECK }, "tailnet:alex", { peer: { stableId: "nLaptop" }, person: PERSON });
   assert.equal(r.error?.code, "terminal_closed");
-  assert.match(r.error.message, /box was updated/);
+  assert.match(r.error.message, /server was updated/);
   // Another screen still learns nothing about it.
   assert.equal((await reg.call("term.attach", { term: "tlost", surface: DECK }, "tailnet:alex", { peer: { stableId: "nPhone" }, person: PERSON })).error?.code, "not_found");
   // And it is remembered across the next restart, without a second announcement.

@@ -3,8 +3,9 @@
 // Claude Code in the terminal, defined once here so both surfaces read one map.
 //
 // - What the draft is, by its first character: "/" a command, "!" a shell command run in the
-//   session's folder, "#" something to remember (CLAUDE.md), anything else a message. An "@"
-//   mention is found anywhere at the caret.
+//   session's folder, "#" something to remember (CLAUDE.md), "@role " a project teammate's own
+//   turn (teammates.md section 2 - team_ask, not this session's), anything else a message. An "@"
+//   mention is also found anywhere at the caret (a different feature: inserting a reference).
 // - Enter: idle sends; while a turn runs a message steers it (joins at its next step) unless
 //   Alt+Enter, or the "Queue for after this turn" toggle, queues it for after. A command typed
 //   while a turn runs is queued (a command is not something to steer with). Shift+Enter is a new
@@ -17,32 +18,27 @@
 //   the queue, the newest of those to edit.
 // - Pasted images: a count cap and a size cap, png, jpeg, gif and webp only.
 
-/** @typedef {"message"|"command"|"shell"|"memory"} DraftKind */
+/** @typedef {"message"|"command"|"shell"|"memory"|"teammate"} DraftKind */
 /** @typedef {"steer"|"queue"} SendMode */
 
 // ---- models --------------------------------------------------------------------------------
 
-/** The aliases Claude Code takes, offered first. */
-export const MODEL_ALIASES = Object.freeze([
-  { id: "opus", label: "Opus", description: "The most capable" },
-  { id: "sonnet", label: "Sonnet", description: "Fast and capable" },
-  { id: "haiku", label: "Haiku", description: "The fastest" },
-]);
-
-/** The model's family name, never the vendor's: "claude-opus-4-5" reads "opus". @param {string|null|undefined} m */
+/** The model's family name, never the vendor's: a full Opus id reads as opus. @param {string|null|undefined} m */
 export const shortModel = m => (m ? (/(opus|sonnet|haiku|fable)/i.exec(m)?.[1]?.toLowerCase() || String(m).replace(/^claude-/i, "")) : null);
 
 /**
- * The model picker's rows. The box has no list of models (no sessions.models): the aliases, then
- * every other id it names, from sessions.models.get's per-purpose map ({purposes: {chat: {model},
- * ...}}, "Used for chat, agent") and this thread's own (thread.started, the record). "now" marks
- * the thread's model: the exact id, else its family's alias.
- * @param {{ current?: string|null, purposes?: any, seen?: (string|null|undefined)[] }} o
+ * The model picker's rows: the box's aliases (sessions.models.get's `aliases`, its one list), then
+ * every other id it names, from its per-purpose map ({purposes: {chat: {model}, ...}}, "Used for
+ * chat, agent") and this thread's own (thread.started, the record). "now" marks the thread's
+ * model: the exact id, else its family's alias. No list lives here (test/cohesion-drift.test.js).
+ * @param {{ current?: string|null, purposes?: any, aliases?: any, seen?: (string|null|undefined)[] }} o
  * @returns {{ id: string, label: string, description?: string, now: boolean }[]}
  */
 export function modelChoices(o = {}) {
+  /** @type {any[]} */
+  const aliases = Array.isArray(o.aliases) ? o.aliases.filter((/** @type {any} */ m) => m && typeof m.id === "string" && /^[a-z][a-z0-9-]{0,31}$/.test(m.id)) : [];
   /** @type {Map<string, { id: string, label: string, description?: string, now: boolean }>} */
-  const rows = new Map(MODEL_ALIASES.map(m => [m.id, { ...m, now: false }]));
+  const rows = new Map(aliases.map((/** @type {any} */ m) => [m.id, { id: m.id, label: String(m.label || m.id), ...(m.description ? { description: String(m.description) } : {}), now: false }]));
   /** @type {Map<string, string[]>} */
   const uses = new Map();
   const purposes = o.purposes && typeof o.purposes === "object" ? o.purposes : {};
@@ -90,24 +86,40 @@ export function nextMode(current, offered) {
 
 // ---- the draft -----------------------------------------------------------------------------
 
+/**
+ * An "@role" at the very start of the draft, lowercased - the SLUG charset agentName already uses
+ * (core/computers', core/sight's AGENT regex: a-z first, then a-z0-9-, 41 chars). Followed by
+ * whitespace and the rest of the message, or nothing yet (still typing the name) - existence in
+ * the project is a send-time question (team.ask's own not_found), not this function's.
+ * @param {string} text @returns {string|null}
+ */
+export function teammateRole(text) {
+  const m = /^@([A-Za-z][A-Za-z0-9-]{0,40})(?=\s|$)/.exec(String(text ?? ""));
+  return m ? m[1].toLowerCase() : null;
+}
+
 /** @param {string} text @returns {DraftKind} */
 export function draftKind(text) {
-  const c = String(text ?? "")[0];
+  const t = String(text ?? "");
+  const c = t[0];
   if (c === "/") return "command";
   if (c === "!") return "shell";
   if (c === "#") return "memory";
+  if (c === "@" && teammateRole(t)) return "teammate";
   return "message";
 }
 
-/** The draft without its mode character (shell and memory), trimmed. @param {string} text */
+/** The draft without its mode character or, for a teammate, the "@role " itself, trimmed. @param {string} text */
 export function draftBody(text) {
   const t = String(text ?? "");
   const k = draftKind(t);
-  return (k === "shell" || k === "memory" ? t.slice(1) : t).trim();
+  if (k === "shell" || k === "memory") return t.slice(1).trim();
+  if (k === "teammate") return t.replace(/^@[A-Za-z][A-Za-z0-9-]{0,40}\s*/, "").trim();
+  return t.trim();
 }
 
 /** What the composer calls each mode, for its label ("Shell", "Memory"); null for a message. @param {DraftKind} kind */
-export const kindLabel = kind => ({ command: "Command", shell: "Shell", memory: "Memory", message: null })[kind] ?? null;
+export const kindLabel = kind => ({ command: "Command", shell: "Shell", memory: "Memory", teammate: "Teammate", message: null })[kind] ?? null;
 
 /** @typedef {{ start: number, end: number, query: string }} MentionRange */
 
@@ -290,7 +302,7 @@ export function enterAction(o) {
   const text = String(o.text ?? "");
   if (!text.trim() && !(o.images && o.images > 0)) return { do: "none" };
   const kind = draftKind(text);
-  if (kind === "shell" || kind === "memory") return draftBody(text) ? { do: "send", kind, mode: null } : { do: "none" };
+  if (kind === "shell" || kind === "memory" || kind === "teammate") return draftBody(text) ? { do: "send", kind, mode: null } : { do: "none" };
   if (!o.running) return { do: "send", kind, mode: null };
   if (kind === "command") return o.images && o.images > 0 ? { do: "refuse", why: "images-queue" } : { do: "send", kind, mode: "queue" };
   const queue = !!(o.alt || o.queueToggle || o.hold);
@@ -325,7 +337,7 @@ export function escape(st, o) {
   st.last = o.now;
   if (o.running) return "interrupt";
   const kind = draftKind(text);
-  if (kind === "shell" || kind === "memory") return "leave-mode";
+  if (kind === "shell" || kind === "memory" || kind === "teammate") return "leave-mode";
   if (o.recalled) return "clear";
   return "none";
 }
@@ -349,6 +361,7 @@ export const KEYMAP = Object.freeze([
   { id: "thinking", keys: ["Alt+T"], label: "⌥T", does: "Thinking on or off", tap: "The thinking chip" },
   { id: "thinking-view", keys: ["Ctrl+O"], label: "⌃O", does: "Show or hide the thinking" },
   { id: "tasks", keys: ["Ctrl+B"], label: "⌃B", does: "Background tasks", tap: "The tasks pill" },
+  { id: "voice", keys: ["Ctrl+M"], label: "⌃M", does: "Tap to talk, hold to push-to-talk", tap: "The mic button" },
   { id: "paste", keys: ["Mod+V"], label: "⌘V", does: "Paste an image" },
   { id: "command", keys: [], prefix: "/", label: "/", does: "Commands and skills" },
   { id: "mention", keys: [], prefix: "@", label: "@", does: "Files in the project" },

@@ -42,6 +42,13 @@ const P = {
   planner: '<rect x="2.5" y="3.2" width="11" height="10.3" rx="1.2"/><path d="M2.5 6.7h11M5.5 1.8v2.6M10.5 1.8v2.6M5.3 9.6h1.4M9.3 9.6h1.4"/>',
   devices: '<rect x="1.5" y="3.5" width="8.5" height="6.2" rx="1"/><path d="M1.2 12.5h8.6"/><rect x="11.5" y="5.5" width="3.5" height="8" rx="0.9"/>',
   bell: '<path d="M8 2.3a3.8 3.8 0 00-3.8 3.8v2.1L2.8 10.5h10.4L11.8 8.2V6.1A3.8 3.8 0 008 2.3z"/><path d="M6.5 12.5a1.5 1.5 0 003 0"/>',
+  // From docs/design/system/components/icons.md's canonical set ("shield: the floor and the
+  // Gate"), reused on the Connections card's Agents grant chip when off (chip.md's Asking state:
+  // it needs Touch ID or a passkey to turn on).
+  shield: '<path d="M8 1.5l5.5 2v4c0 3.5-2.4 6-5.5 7-3.1-1-5.5-3.5-5.5-7v-4z"/>',
+  // The Connections board's own Capsule surface glyph (docs/design/one-app/project/
+  // Connections.dc.html): not yet in icons.md's table, added here so the chip has one.
+  capsule: '<rect x="2" y="6" width="12" height="4" rx="2"/>',
 };
 
 const parser = new DOMParser();
@@ -51,9 +58,21 @@ const parser = new DOMParser();
  * @param {keyof typeof P} name @param {number} [size]
  */
 export function icon(name, size = 16) {
-  const src = `<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${P[name] || ""}</svg>`;
-  return /** @type {SVGElement} */ (document.importNode(parser.parseFromString(src, "image/svg+xml").documentElement, true));
+  // Parsed once per name and size, then cloned: a fast scroll through a long transcript mounts
+  // many rows a frame, each with its icons (chat, native bar budget 6).
+  const key = name + "@" + size;
+  let made = ICONS.get(key);
+  if (!made) {
+    const src = `<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${P[name] || ""}</svg>`;
+    made = /** @type {SVGElement} */ (document.importNode(parser.parseFromString(src, "image/svg+xml").documentElement, true));
+    // A DOM without cloneNode (the tests' fake) gets a fresh parse each time.
+    if (typeof made.cloneNode !== "function") return made;
+    ICONS.set(key, made);
+  }
+  return /** @type {SVGElement} */ (made.cloneNode(true));
 }
+/** @type {Map<string, SVGElement>} */
+const ICONS = new Map();
 
 function parse(src) {
   return /** @type {SVGElement} */ (document.importNode(parser.parseFromString(src, "image/svg+xml").documentElement, true));

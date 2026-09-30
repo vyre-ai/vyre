@@ -182,6 +182,22 @@ export class Indexer {
    * `pace` is awaited after each turn with how long its embedding took (pace.js).
    * @param {{ limit?: number, stopped?: () => boolean, onProgress?: (done: number, total: number) => void, pace?: (spentMs: number) => Promise<void> }} [opts]
    */
+  /**
+   * Forget sessions outright: their turns, vectors and rows (a revoked device's synced sessions).
+   * @param {string[]} ids @returns {number} how many sessions were there
+   */
+  forget(ids) {
+    const del = this.db.prepare("DELETE FROM recall_sessions WHERE id = ?");
+    let n = 0;
+    this.db.exec("BEGIN");
+    try {
+      for (const id of ids) { this.q.delVectors.run(id); this.q.delTurns.run(id); n += Number(del.run(id).changes); }
+      if (n) this.q.generation.run();
+      this.db.exec("COMMIT");
+    } catch (e) { this.db.exec("ROLLBACK"); throw e; }
+    return n;
+  }
+
   async vectorize(embedder, { limit = 0, stopped = () => false, onProgress, pace } = {}) {
     const t0 = Date.now();
     let rids = this.pending();

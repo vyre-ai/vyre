@@ -37,7 +37,7 @@ async function world(t, { version = "0.1.0", hub = {}, extra = [] } = {}) {
   seams.set(root, { now: () => clock.t });
   t.after(() => seams.delete(root));
   const w = {
-    db, events, clock, version, hub, logs: /** @type {string[]} */ ([]), declared: [
+    db, events, clock, version, hub, logs: /** @type {string[]} */ ([]), /** @type {Record<string, (i: any) => any>} */ others: {}, declared: [
       { module: "planner", version: "0.1.0", firstParty: true, tips: planner },
       { module: "recall", version: "0.1.0", firstParty: true, tips: recall },
       ...extra,
@@ -52,7 +52,8 @@ async function world(t, { version = "0.1.0", hub = {}, extra = [] } = {}) {
         log: (/** @type {string} */ m) => w.logs.push(m),
         events: { emit: (/** @type {string} */ type, /** @type {any} */ p) => events.emit("tips", type, p), on: (/** @type {string} */ p, /** @type {any} */ fn) => events.on(p, fn) },
         tool: (/** @type {string} */ name, /** @type {any} */ def) => w.tools.set(name, def),
-        call: async (/** @type {string} */ tool, /** @type {any} */ input) => (tool === "settings.get" && input.key in w.hub ? { data: { value: w.hub[input.key] } } : { error: { code: "no_such_tool" } }),
+        call: async (/** @type {string} */ tool, /** @type {any} */ input) => (tool === "settings.get" && input.key in w.hub ? { data: { value: w.hub[input.key] } }
+          : w.others[tool] ? { data: w.others[tool](input) } : { error: { code: "no_such_tool" } }),
         declaredTips: () => w.declared,
       };
       w.handle = await tips.start(ctx);
@@ -192,4 +193,14 @@ test("tips module: the welcome tip is spent on a surface's first open, and not w
   assert.equal((await w.call("tips.next", { surface: "deck", context: { first: true } })).data.why, "none");
   await w.call("tips.reset");
   assert.equal((await w.call("tips.next", { surface: "deck", context: { first: true } })).data.why, "welcome");
+});
+
+test("tips module: without a module or busy, it reads cohesion's context.now view and waiting.count", async t => {
+  const w = await world(t);
+  w.others["context.now"] = i => ({ surface: i.surface, view: "planner" });
+  w.others["waiting.count"] = () => ({ count: 1, by_kind: { draft: 1 } });
+  assert.equal((await w.call("tips.next", { surface: "deck", context: {} })).data.why, "busy");
+  w.others["waiting.count"] = () => ({ count: 0, by_kind: {} });
+  assert.equal((await w.call("tips.next", { surface: "deck", context: {} })).data.tip.id, "planner/remind");
+  assert.equal((await w.call("tips.next", { surface: "deck", context: { module: "recall", idle: true } })).data.why, "none", "a surface's own module was overridden");
 });

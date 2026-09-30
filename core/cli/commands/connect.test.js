@@ -13,7 +13,7 @@ import { fileURLToPath } from "node:url";
 import { start } from "../../daemon/index.js";
 import { tempHome, present } from "../../../test/helpers.js";
 import { startFakeMcpHttp } from "../../mcp/testing/fake-mcp.js";
-import { startFakeGoogle } from "../../connectors/testing/fake-google.js";
+import { startFakeGoogle } from "../../../lib/connectors/testing/fake-google.js";
 import { INSTALL_LINE } from "./mcp.js";
 import { CLIENT_PUT } from "./connect.js";
 
@@ -208,7 +208,7 @@ test("connect: a Google account with domain-wide delegation, and the scopes Work
 test("vyre mcp: serves JSON-RPC and nothing else on stdout; install prints the line and runs claude only with --yes", async t => {
   const v = await vyred(t);
   const help = await vyre(v.root, ["help"]);
-  assert.match(help.out, /vyre mcp \[install \[--yes\]\]\s+the Vyre MCP server on stdio, for plain claude/);
+  assert.match(help.out, /vyre mcp \[serve \| install \[--yes\]\] \[--json\]\s+the Vyre MCP server on stdio, for plain claude/);
   assert.match(help.out, /vyre connect/);
 
   // A fake claude that writes down what it was asked to do.
@@ -377,4 +377,37 @@ test("connect rm: the short name for remove, a usage mistake without a name, and
   const again = await vyre(v.root, ["connect", "rm", "northwind"]);
   assert.equal(again.code, 1);
   assert.match(again.out, /nothing connected is named northwind · vyre connect list/);
+});
+
+test("connect: vyre commands lists every verb run() handles; help is reachable as vyre help connect and as a table", async t => {
+  const root = tempHome(t);
+  const verbs = JSON.parse((await vyre(root, ["commands", "connect", "--json"])).out).commands[0].verbs;
+  assert.deepEqual(verbs.map(v => [v.verb, v.aliases || []]), [["list", []], ["add", []], ["remove", ["rm"]], ["test", []], ["help", []]]);
+  assert.deepEqual(verbs.filter(v => v.read).map(v => v.verb), ["list", "help"]);
+  const add = verbs.find(v => v.verb === "add");
+  assert.deepEqual(add.args.slice(0, 2), [{ name: "choice", required: true, choices: ["mcp", "google"] }, { name: "name", required: true }]);
+  assert.ok(["url", "auth", "item", "env", "email", "dwd", "sign-in", "client"].every(n => add.flags.some(f => f.name === n)), "add names its flags");
+
+  // vyre help connect prints every form, like vyre connect help, without starting vyred.
+  const h = await vyre(root, ["help", "connect"]);
+  assert.equal(h.code, 0, h.all);
+  assert.match(h.out, /vyre connect list\|add\|remove\|rm\|test\|help/);
+  assert.match(h.out, /vyre connect add google <name> --sign-in/);
+  assert.match(h.out, /vyre connect remove \[mcp\|google\] <name>/);
+  const hj = JSON.parse((await vyre(root, ["connect", "help", "--json"])).out);
+  assert.ok(hj.verbs.some(v => v.usage.startsWith("vyre connect test")), "help --json lists the forms");
+  const hv = (await vyre(root, ["connect", "help", "--view"])).out.trim().split("\n").map(l => JSON.parse(l));
+  assert.deepEqual([hv[0].cmd, hv[0].view.kind, hv[0].view.title], ["connect help", "table", "vyre connect"]);
+  assert.deepEqual(hv.at(-1), { v: 1, done: true, exit: 0 });
+
+  // Any other verb is a usage mistake, exit 2, before vyred is asked anything.
+  const bad = await vyre(root, ["connect", "frob", "--json"]);
+  assert.equal(bad.code, 2, bad.all);
+  assert.equal(JSON.parse(bad.out).error.code, "bad_input");
+  assert.equal((await vyre(root, ["connect", "add", "slack", "x"])).code, 2);
+  // The read with no vyred: exit 5, an error frame under --view.
+  const down = await vyre(root, ["connect", "list", "--view"]);
+  assert.equal(down.code, 5, down.all);
+  assert.equal(JSON.parse(down.out.split("\n")[0]).view.code, "unreachable");
+  assert.ok(!fs.existsSync(path.join(root, "vyred.pid")));
 });

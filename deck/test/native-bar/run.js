@@ -356,7 +356,9 @@ async function reconnectBudget(/** @type {string} */ thread) {
   await tab.send("Network.emulateNetworkConditions", { offline: true, latency: 0, downloadThroughput: -1, uploadThroughput: -1 });
   await sleep(400);
   let how = "Network.emulateNetworkConditions offline";
-  const dropped = await B(`return B.esError.length > B.errFrom || (B.es && B.es.readyState !== 1);`);
+  // An EventSource Deck says it lost the stream; a fetch-stream Deck (work/pwa) may not notice an
+  // offline emulation at all, so cut it at the proxy then.
+  const dropped = await B(`return B.via !== "fetch" && (B.esError.length > B.errFrom || (B.es && B.es.readyState !== 1));`);
   if (!dropped) {
     // Offline emulation did not cut the open stream in this Chrome: cut it at the proxy, as a lost network would.
     await tab.send("Network.emulateNetworkConditions", { offline: false, latency: 0, downloadThroughput: -1, uploadThroughput: -1 });
@@ -377,7 +379,8 @@ async function reconnectBudget(/** @type {string} */ thread) {
     const count = s => txt.split(s).length - 1;
     const users = [...tl.querySelectorAll(".cv-user")].filter(u => u.textContent.includes("burst 13")).length;
     return { ev, jumps: S.jumps, blank: S.blank, rowsMin: S.rowsMin, rowsAtDrop: B.rowsAtDrop, done: count("Done with [bar-13]."), starts: count("[bar-13] Here is the plan"),
-      users, jumpAt: S.firstJumpAt == null ? null : S.firstJumpAt - ${tRestore}, finAt: (B.events.find(e => e.type === "thread.finished" && e.arrive >= ${tRestore}) || {}).arrive - ${tRestore}, tlMove: S.tlMove || 0, stMove: S.stMove || 0, opens: B.esOpen.length - B.openFrom, errors: B.esError.length - B.errFrom };`);
+      users, jumpAt: S.firstJumpAt == null ? null : S.firstJumpAt - ${tRestore}, finAt: (B.events.find(e => e.type === "thread.finished" && e.arrive >= ${tRestore}) || {}).arrive - ${tRestore}, tlMove: S.tlMove || 0, stMove: S.stMove || 0, opens: B.esOpen.length - B.openFrom, errors: B.esError.length - B.errFrom, via: B.via,
+      states: B.streamStates.filter(x => x.t >= ${tRestore} - ${DOWN} - 500).map(x => x.state + "@" + Math.round(x.t - ${tRestore})).join(" ") };`);
   const after = r.ev.find((/** @type {any} */ e) => e.at >= restoreServer - 5 && e.arrive >= tRestore);
   const catchup = after ? after.arrive - tRestore : null;
   const ids = r.ev.map((/** @type {any} */ e) => e.id);
@@ -390,7 +393,7 @@ async function reconnectBudget(/** @type {string} */ thread) {
   const pulled = up.kept < 100;
   const pass = catchup != null && catchup <= 1000 && !dups && !missing && !r.blank && !blankRows && !pulled && maxJump != null && maxJump <= 1;
   report("8", "reconnect, network back to caught up (ms)", catchup ?? "n/a", "caught up within 1 s; no blank, no duplicate row, no scroll jump", catchup == null ? null : pass,
-    `${how} for ${DOWN} ms; reader scrolled up ${up.kept} px${pulled ? " (pulled back to the bottom)" : ""}; stream reopened ${r.opens}x (${r.errors} errors); duplicate rows ${dups} (reply end marker x${r.done}, start marker x${r.starts}, user row x${r.users}); `
+    `${how} for ${DOWN} ms; the Deck reads the stream by ${r.via}${r.states ? ` (deck:stream ${r.states} ms after restore)` : ""}; reader scrolled up ${up.kept} px${pulled ? " (pulled back to the bottom)" : ""}; stream reopened ${r.opens}x (${r.errors} errors); duplicate rows ${dups} (reply end marker x${r.done}, start marker x${r.starts}, user row x${r.users}); `
     + `duplicate events ${dupEvents}; blank frames ${r.blank}${blankRows ? `, rows fell to ${r.rowsMin} of ${r.rowsAtDrop}` : ""}; anchor moved at most ${maxJump == null ? "n/a" : maxJump.toFixed(1)} px (the timeline box itself moved ${Math.round(r.tlMove)} px, scrollTop changed ${Math.round(r.stMove)} px${r.jumpAt != null ? `; first moved ${Math.round(r.jumpAt)} ms after the network came back, thread.finished at ${Number.isFinite(r.finAt) ? Math.round(r.finAt) : "?"} ms` : ""})`);
   await B(`const tl = B.timeline(); tl.scrollTop = tl.scrollHeight; return true;`);
   await sleep(800);
@@ -401,30 +404,48 @@ async function sendBudget(/** @type {string} */ thread) {
   if (!has) return na("9", "send, Enter to user row painted (ms)", "< 50 ms, no flicker or re-order", `no composer textarea (${composerSel})`);
   const text = `note from alex ${Date.now() % 100000}`;
   await B(`const ta = document.querySelector(${JSON.stringify(composerSel)}); ta.focus(); ta.value = ${JSON.stringify(text)}; ta.dispatchEvent(new Event("input", { bubbles: true }));
-    const W = B.send = { t0: null, first: null, frames: [], stop: false };
+    const W = B.send = { t0: null, first: null, frames: [], stop: false, userRow: null, anchor: null, anchorText: null };
     document.addEventListener("keydown", e => { if (e.key === "Enter" && W.t0 == null) W.t0 = e.timeStamp; }, { capture: true, once: true });
+    // Node identity, not position: a steer/queue marker inserting itself right above the user
+    // row (session-state.js) is expected and moves what "previousElementSibling" reads without
+    // touching either node's own text. The only real flicker/re-order is the SAME already-seen
+    // node (the user row itself, or the row that was above it before anything else arrived)
+    // changing its own textContent, or the user row's node identity being swapped out.
     const tick = () => { if (W.stop) return;
       const m = [...document.querySelectorAll(".thread-view .cv-user")].filter(u => (u.querySelector(".cv-user-text") || u).textContent.trim() === ${JSON.stringify(text)});
       const at = performance.now();
-      if (m.length && W.first == null && W.t0 != null) W.first = at;
-      const prev = m[0] && m[0].previousElementSibling ? (m[0].previousElementSibling.textContent || "").slice(0, 60) : null;
-      if (W.t0 != null) W.frames.push({ n: m.length, prev });
+      if (m.length && W.first == null && W.t0 != null) { W.first = at; W.userRow = m[0]; W.anchor = m[0].previousElementSibling; W.anchorText = W.anchor ? W.anchor.textContent : null; }
+      // A swapped userRow node with the same matched text (m.length still 1) is the window-view
+      // recycling DOM nodes on its per-frame remeasure (budget 6's own open finding), never a
+      // visible change: matching by content already proves the right words are on screen, so
+      // node-identity churn on the user's own row isn't counted. The anchor (the row above) is
+      // watched two ways (reviewer-2, 2026-09-28): while it's still the node we first saw, a real
+      // re-order/flicker is THAT node's own text changing, not a new sibling (a steer marker)
+      // landing beside it (still connected, untouched). If window-view recycles the anchor away
+      // (disconnects it, same as the user row above), a benign recycle puts an equal-text node
+      // back in the same slot; only different text there is a real, visible re-order.
+      let anchorMutated = false, anchorNow = null;
+      if (W.anchor) {
+        if (W.anchor.isConnected) { anchorNow = W.anchor.textContent; anchorMutated = anchorNow !== W.anchorText; }
+        else if (m.length) { const cur = m[0].previousElementSibling; anchorNow = cur ? cur.textContent : null; anchorMutated = anchorNow !== W.anchorText; }
+      }
+      if (W.t0 != null) W.frames.push({ n: m.length, anchorMutated, anchorNow });
       requestAnimationFrame(tick); };
     requestAnimationFrame(tick); return true;`);
   await key("Enter", { text: "\r", code: "Enter", vk: 13 });
   await sleep(4000);
-  const r = await B(`const W = B.send; W.stop = true; return { t0: W.t0, first: W.first, frames: W.frames };`);
+  const r = await B(`const W = B.send; W.stop = true; return { t0: W.t0, first: W.first, frames: W.frames, anchorFrom: W.anchorText, anchorTo: W.anchor ? W.anchor.textContent : null };`);
   if (r.first == null) return report("9", "send, Enter to user row painted (ms)", "timeout", "< 50 ms, no flicker or re-order", false, "no user row with the sent words within 4 s");
-  let seen = false, flicker = 0, dup = 0, reorder = 0, prev = null;
-  /** @type {string[]} */ const changes = [];
+  let seen = false, flicker = 0, dup = 0, reorder = 0, lastMutated = /** @type {any} */ (null);
   for (const f of r.frames) {
-    if (f.n > 0) { if (seen && prev != null && f.prev !== prev) { reorder++; changes.push(`"${String(prev).slice(0, 30)}" to "${String(f.prev).slice(0, 30)}"`); } prev = f.prev; seen = true; }
+    if (f.n > 0) seen = true;
     if (seen && f.n === 0) flicker++;
     if (f.n > 1) dup++;
+    if (seen && f.anchorMutated) { reorder++; lastMutated = f; }
   }
   const ms = r.first - r.t0;
   report("9", "send, Enter to user row painted (ms)", ms, "< 50 ms, no flicker or re-order", ms < 50 && !flicker && !dup && !reorder,
-    `over ${r.frames.length} frames after Enter: ${flicker} frames without the row, ${dup} frames with two, the row above it changed ${reorder}x${changes.length ? ` (${changes.slice(0, 2).join("; ")})` : ""}`);
+    `over ${r.frames.length} frames after Enter: ${flicker} frames without the row, ${dup} frames with two, the row above it (by node identity, not position, and past a recycle) changed ${reorder}x${reorder ? ` (from ${JSON.stringify(r.anchorFrom)} to ${JSON.stringify(lastMutated.anchorNow)})` : ""}`);
   await waitEvent(thread, "thread.finished", 0, 10_000);
   await sleep(1500);
 }

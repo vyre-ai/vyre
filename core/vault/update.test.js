@@ -11,6 +11,8 @@ import path from "node:path";
 import { start } from "../daemon/index.js";
 import { call } from "../daemon/client.js";
 import { tempHome, writeModule, present } from "../../test/helpers.js";
+import { Helper } from "./mac/helper.js";
+import { writeFakes } from "./mac/fakes.js";
 
 const fake = label => `fixture-${label}-${crypto.randomBytes(12).toString("hex")}`;
 const sha = v => crypto.createHash("sha256").update(v).digest("hex");
@@ -89,7 +91,7 @@ test("vault.health, vault.caps and the breach switch through vyred", async t => 
   const h = (await mcp("vault.health")).data;
   const by = Object.fromEntries(h.items.map(i => [i.name, i.reasons]));
   assert.deepEqual(by.forum, ["weak"]);
-  assert.deepEqual(by.gh, ["reused", "2fa-available"]);
+  assert.deepEqual(by.gh, ["reused", "2fa-available", "passkey-available"]);
   assert.deepEqual(by.deploy, ["reused"]);
   assert.ok(!JSON.stringify(h).includes(shared));
   assert.ok(mcpTools(await mcp("vault.caps")));
@@ -101,6 +103,32 @@ test("vault.health, vault.caps and the breach switch through vyred", async t => 
 test("vault.caps follows config", async t => {
   const { as } = await boot(t, { keystore: "file", breach: "ask" });
   assert.deepEqual((await as("deck")("vault.caps")).data, { reveal: true, breach: "ask", host: "test-box" });
+});
+
+test("vault.health nudges Touch ID only when a Mac has the enclave and a personal vault to unlock", async t => {
+  const { d, as, root } = await boot(t);
+  const cli = as("cli"), deck = as("deck");
+
+  // No personal vault yet: nothing to unlock with Touch ID, so no nudge even with an enclave.
+  const vaultMod = d.registry.modules.get("vault").handle.vault;
+  const f = writeFakes(path.join(root, "fakes"), { enclaveMode: "ok" });
+  const enclave = () => new Helper({ name: "enclave", dir: path.join(root, "helpers"), command: f.helpers.enclave });
+  vaultMod.enclave = enclave();
+  assert.deepEqual((await deck("vault.health")).data.touchid, { enrolled: false, available: false });
+
+  // A personal vault exists, no enclave: available is false regardless.
+  const pw = fake("acct");
+  await cli("vault.account.create", { password: pw });
+  vaultMod.enclave = null;
+  assert.deepEqual((await deck("vault.health")).data.touchid, { enrolled: false, available: false });
+
+  // Both: available, not yet enrolled.
+  vaultMod.enclave = enclave();
+  assert.deepEqual((await deck("vault.health")).data.touchid, { enrolled: false, available: true });
+
+  // Enrolled: the nudge clears.
+  await cli("vault.account.enroll-touchid", { password: pw });
+  assert.deepEqual((await deck("vault.health")).data.touchid, { enrolled: true, available: true });
 });
 
 const mcpTools = r => !r.error;

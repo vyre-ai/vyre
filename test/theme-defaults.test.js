@@ -8,7 +8,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { THEME_COLORS, THEME_USE } from "../core/config/theme.js";
+import { THEME_COLORS, THEME_USE, ROLES_OF } from "../core/config/theme.js";
 
 const REPO = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const DECK = fs.readFileSync(path.join(REPO, "deck/css/deck.css"), "utf8");
@@ -26,16 +26,18 @@ function block(selector, css = DECK) {
 
 /** What tokens.css then deck.css paint under a selector (deck.css's own literals win). */
 const painted = (/** @type {string} */ sel) => ({ ...block(sel, TOKENS), ...block(sel) });
+/** A swatch's value: its own custom property, or else its role's (tokens.css paints roles only). */
+const swatch = (/** @type {Record<string, string>} */ all, /** @type {string} */ k) => all[k] ?? (ROLES_OF[k] ? all[ROLES_OF[k][0]] : undefined);
 
 test("theme: THEME_COLORS.dark is what tokens.css and deck.css paint on :root", () => {
   const all = painted(":root");
-  for (const [k, v] of Object.entries(THEME_COLORS.dark)) assert.equal(all[k], v, `--${k}`);
-  for (const k of Object.keys(block(":root"))) assert.ok(k in THEME_COLORS.dark, `deck.css paints --${k}, missing from THEME_COLORS.dark`);
+  for (const [k, v] of Object.entries(THEME_COLORS.dark)) assert.equal(swatch(all, k), v, `--${k}`);
+  for (const k of Object.keys(block(":root")).filter(k => !k.startsWith("swatch-"))) assert.ok(k in THEME_COLORS.dark, `deck.css paints --${k}, missing from THEME_COLORS.dark`);
 });
 
 test("theme: THEME_COLORS.light is what tokens.css and deck.css paint for Paper", () => {
   const all = painted(':root[data-theme="paper"]');
-  for (const [k, v] of Object.entries(THEME_COLORS.light)) assert.equal(all[k], v, `--${k}`);
+  for (const [k, v] of Object.entries(THEME_COLORS.light)) assert.equal(swatch(all, k), v, `--${k}`);
   for (const k of Object.keys(block(':root[data-theme="paper"]'))) assert.ok(k in THEME_COLORS.light, `deck.css paints --${k} on paper, missing from THEME_COLORS.light`);
 });
 

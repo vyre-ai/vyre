@@ -6,7 +6,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import path from "node:path";
-import { clean, tally } from "./index.js";
+import { clean, tally, fromPending } from "./index.js";
 import { discover, Registry } from "../modules/index.js";
 import { open } from "../store/index.js";
 import { Events } from "../events/index.js";
@@ -31,7 +31,7 @@ const fake = (name, tool, key, extra = "") => [name, [tool],
     const v = globalThis.fake[${JSON.stringify(key)}]; if (v instanceof Error) throw v; return v; } }); return {}; } };`];
 const ALL = [fake("threads", "threads.asks", "asks"), fake("gate", "gate.held", "held"), fake("planner", "planner.ringing", "ringing"), fake("link", "link.pending", "pending")];
 
-async function world(t, fakes = ALL, data = {}) {
+async function world(t, fakes = ALL, data = {}, role = "box") {
   /** @type {any} */ (globalThis).fake = { asks: [], held: [], ringing: [], pending: [], ...data };
   /** @type {any} */ (globalThis).calls = {};
   const home = tempHome(t);
@@ -41,9 +41,9 @@ async function world(t, fakes = ALL, data = {}) {
   const events = new Events(db);
   const said = [];
   events.on("waiting.changed", e => said.push(e.payload));
-  const reg = new Registry({ db, events, config: { role: "local" }, paths: { root: home }, log: () => {} });
+  const reg = new Registry({ db, events, config: { role }, paths: { root: home }, log: () => {} });
   const core = discover([path.join(path.dirname(new URL(import.meta.url).pathname), "..")]).filter(f => f.manifest?.name === "waiting");
-  await reg.start([...core, ...discover([root])], { role: "local" });
+  await reg.start([...core, ...discover([root])], { role });
   t.after(async () => { await reg.stop?.(); db.close(); });
   const call = async (tool, input = {}, caller = "cli") => (await reg.call(tool, input, caller));
   return { reg, events, said, call, calls: /** @type {any} */ (globalThis).calls, data: /** @type {any} */ (globalThis).fake };
@@ -78,8 +78,18 @@ test("waiting.list: each kind says which owner tool answers it and what the pers
   assert.equal(by["planner:f1"].title, "Call alex about the bakery lease");
   assert.equal(by["planner:f1"].at, T + 2000, "a ring is dated by when it was due");
   assert.equal(by["link:p1"].title, `Pair the Mac "alex's MacBook"`);
-  assert.equal(by["link:p1"].at, T, "a pairing is dated by when it was asked, its expiry less the box's ten minutes");
+  assert.equal(by["link:p1"].at, T, "no created field yet: falls back to its expiry less the box's ten minutes");
   assert.ok(!JSON.stringify(by["link:p1"]).includes("code\":\""), "never a code");
+});
+
+test("fromPending: a box's real created time wins over the expiry-minus-TTL guess", () => {
+  // core/link/box.js now sends `created`, so the exact request time shows even when it does not
+  // land exactly ten minutes before `expires` (a clock skew, a future TTL change on the box).
+  const withCreated = fromPending([{ id: "p2", name: "alex's iMac", login: "alex@example.com", node: "alex-imac", created: T + 500, expires: T + 900_000 }]);
+  assert.equal(withCreated[0].at, T + 500);
+  // An older box that has not shipped `created` yet still falls back to the ten-minute guess.
+  const withoutCreated = fromPending([{ id: "p3", name: "alex's iPad", login: "alex@example.com", node: "alex-ipad", expires: T + 600_000 }]);
+  assert.equal(withoutCreated[0].at, T);
 });
 
 test("waiting.list: a failing, refused or missing source leaves its name in partial and the rest still show", async t => {
@@ -162,4 +172,25 @@ test("waiting.changed: after the owners' events, coalesced, and only when the co
   await wait(450);
   assert.equal(w.said.at(-1).by_kind.pairing, 0);
   assert.equal(w.said.length, 5);
+});
+
+test("fromAsks: an ask from a session on the paired Mac names its machine and is answered there", async () => {
+  const { fromAsks } = await import("./index.js");
+  const [mac, box] = fromAsks([
+    { id: "a1", kind: "permission", tool: "Bash", summary: "npm test", source: "mac", machine: "alex-mbp", at: 2 },
+    { id: "a2", kind: "permission", tool: "Bash", summary: "ls", at: 1 },
+  ]);
+  assert.equal(mac.machine, "alex-mbp");
+  assert.deepEqual(mac.answer, { tool: null, input: null, fill: [], on: "alex-mbp" }, "answered on the Mac until federation lands");
+  assert.equal(fromAsks([{ id: "a3", kind: "question", source: "mac", at: 3 }])[0].answer.on, "your Mac");
+  assert.equal(box.machine, undefined);
+  assert.deepEqual(box.answer.input, { ask: "a2" });
+});
+
+test("waiting.list on a Mac leaves out the planner, which is the box's over the link", async t => {
+  const w = await world(t, ALL, { ringing: [RING], pending: [PAIR] }, "local");
+  const r = (await w.call("waiting.list")).data;
+  assert.ok(!r.rows.some(x => x.source === "planner"));
+  assert.ok(r.rows.some(x => x.source === "link"));
+  assert.equal(w.calls["planner.ringing"] || 0, 0, "a Mac's vyred never asks the box's planner on its own");
 });

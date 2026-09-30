@@ -23,9 +23,10 @@ export const userWords = (/** @type {string} */ text) => {
 
 /**
  * Words of building or testing memory itself: a turn with one is someone writing examples, not
- * someone talking about their life. Specific on purpose: "test" alone is an ordinary word.
+ * someone talking about their life. Specific on purpose: "test" alone is an ordinary word, and so
+ * are a dev job's own words ("seed data", "assert"): a work session is not about memory.
  */
-const DEV = /\b(?:fixtures?|test (?:worlds?|cases?|sentences?|data|examples?|inputs?|users?)|(?:sample|sealed|gold|held-?out|synthetic|fake|made-up|invented) (?:worlds?|persons?|people|users?|data|sessions?)|evals?|eval harness|evaluation (?:worlds?|cases?|sets?)|memory\.(?:answer|remember|profile|context)|iq\.ask|personal facts?|extract(?:ion|or|s)? (?:rules?|pass)|checkread|confident[- ]wrong|recall@\d|expected (?:answer|output)s?|seed(?:ed)? (?:data|world)|assert(?:s|ion|ions)?|should (?:answer|return|extract))\b/i;
+const DEV = /\b(?:fixtures?|test (?:worlds?|cases?|sentences?|examples?|inputs?)|(?:sample|sealed|gold|held-?out|synthetic|fake|made-up|invented) (?:worlds?|persons?|people|users?|sessions?)|evals?|eval harness|evaluation (?:worlds?|cases?|sets?)|memory\.(?:answer|remember|profile|context|retrieve)|iq\.ask|personal facts?|extract(?:ion|or|s)? (?:rules?|pass)|checkread|confident[- ]wrong|recall@\d|expected (?:answer|output)s?|seed(?:ed)? worlds?|should (?:answer|return|extract))\b/i;
 
 /** A user turn that is about building or testing memory. */
 export const devTalk = (/** @type {string} */ text) => DEV.test(userWords(text));
@@ -35,11 +36,14 @@ export const DEV_TURNS = 2;
 
 /** A folder of Vyre itself: the repo or one of its worktrees. */
 const VYRE_DIR = /(?:^|\/)vyre(?:[-_.][\w.-]*)?(?:\/|$)/i;
+/** A folder of Vyre itself. @param {string|null|undefined} cwd */
+export const vyreFolder = cwd => VYRE_DIR.test(String(cwd || ""));
 
 /**
  * Whether a session may teach personal facts, from what Recall knows of it.
  * @param {{ cwd?: string|null, human?: number|boolean|null, parent?: string|null, name?: string|null, title?: string|null }} s
- * @param {{ scratch?: string|null, skip?: string[] }} [o]  scratch: the Capsule's ask folder; skip: folders the user excluded
+ * @param {{ scratch?: string|null, quick?: string|null, skip?: string[] }} [o]  scratch: the Capsule's ask folder; quick: the
+ *   warm sessions' folder (threads.quick, <home>/quick); skip: folders the user excluded
  * @returns {{ ok: boolean, why: "program"|"ask"|"dev"|"skipped"|null }}
  */
 export function sessionTrust(s, o = {}) {
@@ -47,7 +51,7 @@ export function sessionTrust(s, o = {}) {
   if (s.parent || s.human === 0 || s.human === false) return { ok: false, why: "program" };
   const label = String(s.name || s.title || "");
   const cwd = String(s.cwd || "");
-  if (/^Capsule: /.test(label) || (o.scratch && cwd.startsWith(o.scratch))) return { ok: false, why: "ask" };
+  if (/^Capsule: /.test(label) || (o.scratch && cwd.startsWith(o.scratch)) || (o.quick && cwd.startsWith(o.quick))) return { ok: false, why: "ask" };
   if (VYRE_DIR.test(cwd)) return { ok: false, why: "dev" };
   if (o.skip?.some(p => p && (cwd === p || cwd.startsWith(p.endsWith("/") ? p : p + "/")))) return { ok: false, why: "skipped" };
   return { ok: true, why: null };

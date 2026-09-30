@@ -14,6 +14,8 @@
 /** The Deck's own surface names: a lease or a message from these is this screen's, so it reads "you". */
 export const OURS = new Set(["deck", "chat"]);
 
+import { setIdentity } from "../../js/avatars.js";
+
 const clean = v => (v == null ? "" : String(v).trim());
 
 /**
@@ -51,6 +53,7 @@ export function readNames(attempt) {
   if (!reading) {
     reading = attempt("system.info").then(r => {
       if (r.error) reading = null; // ask again next time rather than keep a failure
+      else setIdentity(r.data || {}); // the avatars' fingerprints ride on the same read
       return { assistant: r.data?.assistant?.name || null, owner: r.data?.owner?.name || null };
     });
   }

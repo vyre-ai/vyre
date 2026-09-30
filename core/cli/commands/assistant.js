@@ -41,9 +41,15 @@ export async function findAssistant(t) {
   return { agent: list.find(a => a.kind === "assistant") || null };
 }
 
+/** The assistant as a card for --view. @param {any} a */
+const card = a => ({ kind: "card", title: "Your assistant", state: a.status || "ready",
+  fields: [{ label: "Name", value: a.name }, { label: "Doing", value: a.doing || a.status || "ready" }, { label: "Projects", value: "every project" }] });
+
 export default {
   name: "assistant", order: 34, usage: "vyre assistant [name] [--json]",
   summary: "your assistant, or make one: vyre assistant Juno",
+  // No verbs: the one word it takes is a name.
+  verbs: [],
   help: "With no name: who your assistant is. With a name: make it, as onboarding does, if there is none yet.\nOn a Mac paired with a box, the assistant lives on the box.",
   /** @param {string[]} args */
   async run(args = []) {
@@ -54,13 +60,13 @@ export default {
     if (f.error) return failTool(f.error);
     const display = words.join(" ").trim();
     if (f.agent) {
-      if (json()) return emit(f.agent);
+      if (json()) return emit(f.agent, card(f.agent));
       if (display) out(dim(`  you already have an assistant; the Deck's Agents page renames it`));
       out(`  your assistant  ${bold(f.agent.name)} ${dim(`· ${f.agent.doing || f.agent.status || "ready"} · every project`)}`);
       return 0;
     }
     if (!display) {
-      if (json()) return emit(null);
+      if (json()) return emit(null, { kind: "text", lines: ["You have no assistant yet. Give it a name and Vyre makes it: vyre assistant Juno"] });
       out("  You have no assistant yet. Give it a name and Vyre makes it:");
       out(`    ${signal("vyre assistant Juno")}`);
       return 0;
@@ -80,7 +86,7 @@ export default {
       return fail("making the assistant needs you on the box", { code: r.error.code, exit: 3, next: `open ${remote} on your phone: Now, Create your assistant` });
     }
     if (r.error) return failTool(r.error);
-    if (json()) return emit(r.data);
+    if (json()) return emit(r.data, card(r.data));
     out(`  made your assistant ${bold(display)} ${dim(`(${input.name}) · every project${via ? "" : " · on this machine's own Claude login until Claude is signed in"}`)}`);
     out(dim("  talk to it: vyre, then pick it under Agents"));
     return 0;

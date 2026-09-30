@@ -1,6 +1,6 @@
 {
   "name": "vyre",
-  "version": "0.0.1",
+  "version": "0.1.1",
   "description": "Agents with their own computers, on your own box. Runs Claude Code on a machine you own and adds structure, memory, a vault and a private address.",
   "type": "module",
   "bin": {
@@ -32,6 +32,9 @@
     "build.json",
     "core",
     "harness",
+    "lib",
+    "relay/client",
+    "packages/module-sdk",
     "local",
     "deck",
     "modules",
@@ -53,6 +56,10 @@
     "!deck/test/**",
     "!**/node_modules/**",
     "!local/capsule/native/.build/**",
+    "!local/capsule/bin/**",
+    "!**/.build/**",
+    "!**/*.app/**",
+    "!**/DerivedData/**",
     "!local/capsule/native/Tests/**",
     "!**/.DS_Store",
     "!**/testing.js",

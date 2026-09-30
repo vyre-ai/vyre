@@ -1,8 +1,8 @@
 /* A Mac asking to pair (js/pair.js): Beacon, because it waits on the person. */
 .pair-list:empty { display: none; }
 .pair-list { display: flex; flex-direction: column; gap: 12px; margin-bottom: 24px; }
-.pair-card { display: flex; flex-direction: column; gap: 8px; padding: 16px; border-radius: var(--radius-card, 12px); background: var(--beacon-wash);
-  border: 1px solid var(--beacon-rule); }
+.pair-card { display: flex; flex-direction: column; gap: 8px; padding: 16px; border-radius: var(--radius-card, 12px);
+  border: 1px solid var(--rule); }
 .pair-card.paired { background: var(--signal-wash); border-color: var(--rule-strong); }
 .pair-card.denied { background: var(--panel); border-color: var(--rule); }
 .pair-top { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
@@ -24,8 +24,36 @@
 
 /* No passkey on the box yet (js/first-passkey.js). Loaded with the pairing styles, since Now uses both. */
 .first-passkey { display: flex; flex-direction: column; gap: 8px; padding: 16px; margin-bottom: 24px; border-radius: var(--radius-card, 12px);
-  background: var(--beacon-wash); border: 1px solid var(--beacon-rule); }
+  border: 1px solid var(--rule); }
 .first-passkey .lbl { display: inline-flex; align-items: center; gap: 6px; }
 .fp-cmds { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 8px; }
 .fp-cmds > div { display: flex; flex-direction: column; gap: 4px; padding: 10px 12px; border-radius: var(--radius-field, 8px); background: var(--code-bg); }
 .fp-cmds code { font-size: 14px; color: var(--text); }
+
+/* Scan to pair (js/pair-scan.js): the camera sheet and its states. */
+.scan-sheet { display: flex; flex-direction: column; gap: 12px; align-items: center; padding: 16px; }
+.scan-title { display: flex; align-items: center; gap: 6px; font-weight: 600; }
+.scan-frame { position: relative; width: 260px; height: 260px; border-radius: 50%; overflow: hidden; background: #000; }
+.scan-video { width: 100%; height: 100%; object-fit: cover; }
+.scan-ring { position: absolute; inset: 0; border-radius: 50%; border: 2px solid var(--rule-strong); pointer-events: none; }
+.scan-status { text-align: center; min-height: 20px; }
+.scan-actions { display: flex; gap: 8px; }
+.scan-actions .btn { height: 44px; }
+
+/* The success screen (js/pair-scan.js "done" state): the same avatar that was just scanned
+   (a photo of it, not a redrawn copy - see scan.js's cropAvatar), a short celebratory dance
+   (the "goal done" hop from ui-ux's motion prototype), then a redirect to the person's own
+   <handle>.vyre.run. Both keyframes respect prefers-reduced-motion (celebrate() in
+   js/pair-scan.js skips adding .ms-done and skips confetti entirely when it's set; the position
+   is unaffected either way, so the layout never depends on the animation running). */
+.scan-avatar { position: relative; width: 88px; height: 88px; border-radius: 50%; object-fit: cover; margin: 0 auto 8px; display: block; }
+.scan-avatar-fallback { display: flex; align-items: center; justify-content: center; background: var(--code-bg); color: var(--label); }
+@keyframes vyreMsDone {
+  0% { transform: translateY(0) scale(1); }
+  30% { transform: translateY(-10px) scale(1.08); }
+  55% { transform: translateY(2px) scale(0.97); }
+  100% { transform: translateY(0) scale(1); }
+}
+.scan-avatar.ms-done { animation: vyreMsDone 0.6s ease-out 1; }
+@keyframes vyreConfettiBit { 0% { transform: translate(0,0) rotate(0deg); opacity: 1; } 100% { transform: translate(var(--cx), var(--cy)) rotate(var(--cr)); opacity: 0; } }
+.confetti-bit { position: absolute; width: 5px; height: 5px; border-radius: 1px; pointer-events: none; left: 50%; top: 38%; animation: vyreConfettiBit 0.6s ease-out forwards; }

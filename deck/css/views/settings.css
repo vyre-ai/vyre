@@ -108,5 +108,19 @@
 }
 
 /* Your devices: a phone or tablet Tailscale reports offline. */
-.set-off { display: flex; align-items: flex-start; gap: 8px; margin-top: 4px; padding: 8px 12px; background: var(--beacon-wash); border-radius: var(--radius-field, 8px); max-width: 520px; }
+.set-off { display: flex; align-items: flex-start; gap: 8px; margin-top: 4px; padding: 7px 11px; border: 1px solid var(--rule); border-radius: var(--radius-field, 8px); max-width: 520px; }
 .set-off svg { flex-shrink: 0; margin-top: 1px; color: var(--beacon-ink); }
+
+/* Server: the "Move to a server" card, and the per-piece progress row inside it
+ * (projects/memory/vault/sessions), app-design's screenshot pass. */
+.set-server-card { border: 1px solid var(--rule); border-radius: var(--radius-card, 12px); padding: 16px; display: flex; flex-direction: column; gap: 14px; }
+.set-move-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 6px 0; }
+.set-move-row .set-move-main { flex-grow: 1; min-width: 0; }
+.set-meter { height: 6px; border-radius: 3px; background: var(--rule-strong); overflow: hidden; margin-top: 8px; }
+.set-meter > span { display: block; height: 100%; border-radius: 3px; background: var(--focus); transition: width 480ms cubic-bezier(.2, .7, .2, 1); }
+@media (prefers-reduced-motion: reduce) { .set-meter > span { transition: none; } }
+.set-vault-note { display: flex; align-items: flex-start; gap: 8px; }
+.set-vault-note svg { flex-shrink: 0; margin-top: 2px; color: var(--text-2); }
+
+/* Your own avatar, large, with its Vyre code ring (js/avatars.js). */
+.set-you-av { display: flex; margin: 4px 0 20px; }

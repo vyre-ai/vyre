@@ -8,6 +8,7 @@ import path from "node:path";
 import { open } from "../../store/index.js";
 import { seedRecall } from "../../../test/fixtures/corpus.js";
 import { tempHome } from "../../../test/helpers.js";
+import { fakeReachCall } from "../../../test/fixtures/fake-reach.js";
 import { Personal } from "./store.js";
 import memory from "../index.js";
 
@@ -93,7 +94,8 @@ test("personal store: a sold car no longer holds; a make alone is the model said
   const volvo = owns.find(f => f.object.startsWith("Volvo"));
   const tesla = owns.find(f => f.object === "Tesla Model 3");
   assert.equal(volvo?.object, "Volvo XC90");
-  assert.equal(volvo?.mentions, 2, "the passing mention is the same car");
+  // Owned, serviced, and sold: selling it says it was the user's too.
+  assert.equal(volvo?.mentions, 3, "the passing mention and the sale are the same car");
   assert.equal(volvo?.current, false);
   assert.equal(tesla?.current, true);
   assert.equal(me.entity("my car")?.id, "vehicle:Tesla Model 3");
@@ -218,7 +220,7 @@ test("personal store: memory.me through the module, for the user and never for a
   const ctx = {
     name: "memory", config: {}, paths: {}, store: { db, migrate: () => {} }, log: () => {},
     events: { on: (type, fn) => { handlers.set(type, fn); return () => {}; }, emit: () => {}, since: () => [], prune: () => 0 },
-    call: async tool => tool === "agents.list" ? { data: [{ name: "kit", projects: ["northwind"] }] } : { error: { code: "no_such_tool", message: tool } },
+    call: async (tool, input) => fakeReachCall(tool, input, { agents: [{ name: "kit", projects: ["northwind"] }] }),
     tool: (name, def) => tools.set(name, def),
   };
   const handle = await memory.start(ctx);

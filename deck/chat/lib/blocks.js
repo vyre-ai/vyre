@@ -125,15 +125,18 @@ export function cost(usd) {
   return usd < 0.1 ? `$${usd.toFixed(3)}` : `$${usd.toFixed(2)}`;
 }
 
-/** A turn block (plus a cost, when thread.finished gave one) as its footer's parts. */
+/**
+ * A turn block as its footer's parts: time, tokens, and a $ figure only when the turn really is
+ * billed by it (auth "api-key"). A subscription runs on the person's Claude plan; no screen shows
+ * a dollar amount for that, since it reads as a charge that never happens (the user's rule).
+ */
 export function turnParts(t) {
   const parts = [];
   const d = duration(t.duration_ms);
   if (d) parts.push(d);
   const tk = t.tokens || {};
   if (tk.input || tk.output) parts.push(`${tokens((tk.input || 0) + (tk.output || 0))} tokens`);
-  const c = cost(t.cost_usd);
-  if (c) parts.push(c);
+  if (t.auth === "api-key") { const c = cost(t.cost_usd); if (c) parts.push(c); }
   return parts;
 }
 
@@ -179,8 +182,8 @@ export function toolTitle(tool, input, cwd = null) {
 
 /**
  * A path as the session reads it: relative to the session's folder when inside it ("menu.md",
- * "src/app.js", "." for the folder itself), else the whole path, shortened to its last three
- * parts past five ("…/alex/Work/other/notes.md"). The full path goes in a title.
+ * "src/app.js", "." for the folder itself), else the whole path (the row's ellipsis cuts it).
+ * The full path goes in a title.
  * @param {string|null|undefined} path @param {string|null|undefined} [cwd]
  */
 export function shortPath(path, cwd = null) {
@@ -189,8 +192,7 @@ export function shortPath(path, cwd = null) {
   const base = cwd ? String(cwd).replace(/\/+$/, "") : "";
   if (base && s === base) return ".";
   if (base && s.startsWith(base + "/")) return s.slice(base.length + 1);
-  const parts = s.split("/").filter(Boolean);
-  return s.startsWith("/") && parts.length > 5 ? "…/" + parts.slice(-3).join("/") : s;
+  return s;
 }
 
 /** A command with the session's folder dropped where it names a path inside it ("cat src/a.js"). */
@@ -234,16 +236,18 @@ export function toolState(b) {
 const q = s => JSON.stringify(String(s ?? ""));
 
 /** "Bash(npm test)", "Update(src/app.js)", "Search(pattern: "x", path: "src")". */
-export function rawToolHead(tool, input) {
+export function rawToolHead(tool, input, cwd = null) {
   const i = input || {};
   const first = s => String(s ?? "").split("\n")[0].slice(0, 160);
+  // Claude Code prints paths relative to the session's folder.
+  const fp = s => shortPath(first(s), cwd);
   switch (tool) {
     case "Bash": return `Bash(${first(i.command)})`;
-    case "Read": return `Read(${first(i.file_path)})`;
-    case "Write": return `Write(${first(i.file_path)})`;
-    case "Edit": case "MultiEdit": return `Update(${first(i.file_path)})`;
-    case "NotebookEdit": return `Edit Notebook(${first(i.notebook_path)})`;
-    case "Grep": case "Glob": return `Search(pattern: ${q(first(i.pattern))}${i.path ? `, path: ${q(first(i.path))}` : ""})`;
+    case "Read": return `Read(${fp(i.file_path)})`;
+    case "Write": return `Write(${fp(i.file_path)})`;
+    case "Edit": case "MultiEdit": return `Update(${fp(i.file_path)})`;
+    case "NotebookEdit": return `Edit Notebook(${fp(i.notebook_path)})`;
+    case "Grep": case "Glob": return `Search(pattern: ${q(first(i.pattern))}${i.path ? `, path: ${q(fp(i.path))}` : ""})`;
     case "WebFetch": return `Fetch(${first(i.url)})`;
     case "WebSearch": return `Web Search(${q(first(i.query))})`;
     case "TodoWrite": return "Update Todos";
@@ -271,8 +275,9 @@ function rawToolBody(b) {
     return (("Error: " + c.shown).split("\n")).map((l, n) => (n ? MORE : OUT) + l).concat(c.hidden ? [MORE + `… +${c.hidden} lines`] : []);
   }
   if (b.tool === "Read") { const n = clip(text, 1).total; return [OUT + `Read ${n} ${n === 1 ? "line" : "lines"}`]; }
-  if (b.tool === "Edit" || b.tool === "MultiEdit") return [OUT + `Updated ${i.file_path || "the file"}`];
-  if (b.tool === "Write") { const n = clip(i.content, 1).total; return [OUT + `Wrote ${n} ${n === 1 ? "line" : "lines"} to ${i.file_path || "the file"}`]; }
+  const fp = shortPath(i.file_path, b.cwd) || "the file";
+  if (b.tool === "Edit" || b.tool === "MultiEdit") return [OUT + `Updated ${fp}`];
+  if (b.tool === "Write") { const n = clip(i.content, 1).total; return [OUT + `Wrote ${n} ${n === 1 ? "line" : "lines"} to ${fp}`]; }
   const c = clip(text, 4);
   if (!c.total) return [OUT + "(No content)"];
   return c.shown.split("\n").map((l, n) => (n ? MORE : OUT) + l).concat(c.hidden ? [MORE + `… +${c.hidden} lines`] : []);
@@ -291,7 +296,7 @@ export function rawLines(blocks) {
     if (b.kind === "user") lines = String(b.command ? commandText(b.text) : b.text ?? "").split("\n").map((l, n) => (n ? "  " : "> ") + l);
     else if (b.kind === "text") lines = String(b.text ?? "").replace(/\n+$/, "").split("\n").map((l, n) => (n ? "  " : "⏺ ") + l);
     else if (b.kind === "thinking") lines = ["✻ Thinking…"];
-    else if (b.kind === "tool") lines = ["⏺ " + (b.input ? rawToolHead(b.tool, b.input) : `${b.tool}(${b.summary || ""})`), ...rawToolBody(b)];
+    else if (b.kind === "tool") lines = ["⏺ " + (b.input ? rawToolHead(b.tool, b.input, b.cwd) : `${b.tool}(${b.summary || ""})`), ...rawToolBody(b)];
     else continue;
     if (out.length) out.push("");
     out.push(...lines);

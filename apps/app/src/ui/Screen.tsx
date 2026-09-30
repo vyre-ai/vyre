@@ -7,14 +7,16 @@ import { useTheme } from "../theme/theme";
 import { tokens } from "../theme/tokens";
 import { type } from "../theme/type";
 import { Avatar } from "./Avatar";
-import { Button, focusData } from "./Button";
+import { BackButton } from "./BackButton";
+import { focusData } from "./Button";
 
 /**
  * A page: the phone header and a body. Layout branches on width only, never the platform. A tab
  * page carries the person's avatar that opens the Places sheet (Vault, Devices, Settings); a
- * pushed place carries Back instead.
+ * pushed place carries Back instead, named for `backTo` (the page it came from) when the caller
+ * knows it, else for the page under it in the stack.
  */
-export function Screen({ title, back, children }: { title: string; back?: boolean; children?: ReactNode }) {
+export function Screen({ title, back, backTo, children }: { title: string; back?: boolean; backTo?: string; children?: ReactNode }) {
   const { color } = useTheme();
   const insets = useSafeAreaInsets();
   const router = useRouter();
@@ -22,7 +24,7 @@ export function Screen({ title, back, children }: { title: string; back?: boolea
   return (
     <View style={[styles.page, { backgroundColor: color.bg, paddingTop: insets.top }]}>
       <View style={[styles.header, { borderBottomColor: color.rule }]}>
-        {back ? <BackButton /> : null}
+        {back ? <BackButton to={backTo} /> : null}
         <Text accessibilityRole="header" numberOfLines={1} style={[type.title, styles.title, { color: color.text }]}>
           {title}
         </Text>
@@ -31,12 +33,6 @@ export function Screen({ title, back, children }: { title: string; back?: boolea
       <View style={styles.body}>{children}</View>
     </View>
   );
-}
-
-/** Back: a ghost button at 44, the one way back on every pushed screen. */
-export function BackButton() {
-  const router = useRouter();
-  return <Button kind="ghost" size="touch" label="Back" onPress={() => (router.canGoBack() ? router.back() : router.replace("/"))} />;
 }
 
 /** The person's avatar as the button to Places: 34 visible in a 44 target, `rule` fill on hover and press (avatar spec). */

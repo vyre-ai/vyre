@@ -50,6 +50,115 @@ MARK="vyre on a Docker box"
 say() { if [ "$LINK_ONLY" = 1 ]; then printf '%s\n' "$*" >&2; else printf '%s\n' "$*"; fi; }
 die() { printf 'vyre: %s\n' "$*" >&2; exit 1; }
 
+# The look. Colour and Unicode only on a terminal, with NO_COLOR and CI unset and TERM not dumb;
+# plain ASCII otherwise, so a CI log reads cleanly. Set once in main() by pick_look. The words are
+# the same either way: only escape codes and the check mark differ.
+COLOR=0
+BONE=""
+SIGNAL=""
+ASH=""
+BEACON=""
+BOLD=""
+RESET=""
+OK="ok"
+STEP=0
+STEPS=5
+
+pick_look() {
+  fd=1
+  [ "$LINK_ONLY" = 1 ] && fd=2
+  [ -t "$fd" ] || return 0
+  [ -z "${NO_COLOR+x}" ] || return 0
+  [ -z "${CI+x}" ] || return 0
+  [ "${TERM:-dumb}" != dumb ] || return 0
+  COLOR=1
+  e=$(printf '\033')
+  BONE="${e}[38;2;241;238;230m"
+  SIGNAL="${e}[38;2;198;243;107m"
+  ASH="${e}[38;2;140;135;125m"
+  BEACON="${e}[38;2;184;164;255m"
+  BOLD="${e}[1m"
+  RESET="${e}[0m"
+  OK=$(printf '\342\234\223')
+}
+
+# hello: the mark, the name, the version when the checkout has one, and what is about to happen.
+hello() {
+  v=""
+  if [ -n "$FROM" ] && [ -f "$FROM/package.json" ]; then
+    v=$(sed -n 's/^  "version": "\([^"]*\)".*/\1/p' "$FROM/package.json" | head -n 1)
+  fi
+  if [ "$COLOR" = 1 ]; then
+    dot=$(printf '\342\200\242')
+    say ""
+    say "  $BOLD${BONE}v$RESET$SIGNAL$dot$RESET  $BOLD${BONE}Vyre$RESET${v:+ $ASH$v$RESET}"
+  else
+    say "  Vyre${v:+ $v}"
+  fi
+  say "  Let's set up your server. A few minutes, and nothing changes without asking."
+  say ""
+}
+
+# step TITLE: the next numbered step, as "[1/5] Checking Docker".
+step() {
+  STEP=$((STEP + 1))
+  [ "$STEP" = 1 ] || say ""
+  say "${ASH}[$STEP/$STEPS]$RESET $BOLD$1$RESET"
+}
+
+# done_step TEXT: the step finished, with a check mark (or "ok" in plain text).
+done_step() { say "  $SIGNAL$OK$RESET $1"; }
+
+# WAITS: one quiet line for the one real wait in this installer (Docker's own script). Picked by
+# pid, not by odds, since something has to show while it's genuinely quiet: this is look only,
+# never invented data, never a name or anything a person typed.
+WAITS="this part is Docker's own installer, not ours
+nothing is stuck: it's just quiet before apt gets going
+the next lines on screen are curl's, not ours
+a fine moment for a coffee"
+
+wait_line() {
+  n=$(printf '%s\n' "$WAITS" | wc -l)
+  i=$(( ($$ % n) + 1 ))
+  printf '%s\n' "$WAITS" | sed -n "${i}p"
+}
+
+# rule: a short line across, before the finish.
+rule() {
+  if [ "$COLOR" = 1 ]; then
+    r=$(printf '\342\224\200')
+    say "  $ASH$r$r$r$r$r$r$r$r$r$r$r$r$r$r$r$r$r$r$r$r$r$r$r$r$RESET"
+  else
+    say "  ------------------------"
+  fi
+}
+
+# finish: what just happened, the one next step, and a sign-off.
+finish() {
+  say ""
+  rule
+  if [ "$DRY" = 1 ]; then
+    say "  $BOLD${BONE}That's the whole plan.$RESET Nothing on this server changed."
+    say "  Run it again without --dry-run when you're ready."
+  elif [ "${VYRE_NO_UP:-0}" = 1 ]; then
+    say "  $BOLD${BONE}Installed.$RESET Start it when you're ready: ${SIGNAL}vyre up$RESET"
+  else
+    say "  $BOLD${BONE}Your server is ready.$RESET"
+    if [ "$LINK_ONLY" = 1 ]; then
+      say "  The setup link went to stdout for the program that asked."
+    else
+      say "  Next: open the link above. If it came with an ssh -L line,"
+      say "  run that on your own computer first, then open the link there."
+    fi
+  fi
+  say ""
+  say "  Go do your best work. We'll keep the thread."
+  if [ "$COLOR" = 1 ] && [ "$(date +%u 2>/dev/null || true)" = 5 ]; then
+    say "  ${ASH}Nice way to end the week.$RESET"
+  fi
+  say ""
+}
+
 # show CMD...: the command as one line, for "would run:" and prompts.
 show() {
   line=""
@@ -85,7 +194,7 @@ dk() {
 ask() {
   [ "$YES" = 1 ] && return 0
   if ! (: </dev/tty) 2>/dev/null; then return 1; fi
-  printf '%s [y/N] ' "$1" >/dev/tty
+  printf '%s%s%s [y/N] ' "$BEACON" "$1" "$RESET" >/dev/tty
   read -r answer </dev/tty || return 1
   case "$answer" in y|Y|yes|YES|Yes) return 0 ;; *) return 1 ;; esac
 }
@@ -113,6 +222,10 @@ need_docker() {
   cmd="curl -fsSL https://get.docker.com | sh"
   if ! command -v docker >/dev/null 2>&1; then
     if ask "Docker is not installed. Install it now with: $cmd ?"; then
+      # The one real silent gap in this installer: Docker's own script takes a minute or two
+      # before it says anything. One quiet line so it doesn't look stuck; --dry-run never gets
+      # here for real, so it stays out of that output.
+      [ "$DRY" = 1 ] || say "  $ASH$(wait_line)...$RESET"
       priv sh -c "$cmd"
       [ "$DRY" = 1 ] && return 0
     else
@@ -124,7 +237,7 @@ need_docker() {
   fi
   if ! compose_ok; then
     if docker compose version >/dev/null 2>&1; then
-      say "Vyre needs Docker Compose 2.24 or newer; this box has $(docker compose version --short)."
+      say "Vyre needs Docker Compose 2.24 or newer; this server has $(docker compose version --short)."
     else
       say "Vyre needs Docker Compose v2 (the \`docker compose\` plugin)."
     fi
@@ -142,7 +255,7 @@ need_docker() {
 # Tailscale runs in its own container with kernel networking, which needs the TUN device.
 need_tun() {
   [ -c "$TUN" ] && return 0
-  say "This box has no /dev/net/tun, which the Tailscale container needs."
+  say "This server has no /dev/net/tun, which the Tailscale container needs."
   say "Try: sudo modprobe tun. On a VPS or LXC container, enable TUN in the provider's panel."
   exit 1
 }
@@ -245,6 +358,9 @@ mkdir_owned() {
 # The box files: from a checkout with --from, else downloaded from BASE.
 write_stack() {
   if [ -n "$FROM" ]; then
+    done_step "using the box files in $FROM"
+    step "Laying out $DIR"
+    say "the stack goes in $DIR, owned by $OWNER"
     mkdir_owned "$DIR"
     put "$FROM/box/compose.yml" "$DIR/compose.yml" 0644
     put "$FROM/box/compose.build.yml" "$DIR/compose.build.yml" 0644
@@ -257,10 +373,14 @@ write_stack() {
     if [ "$DRY" = 1 ]; then
       say "would download: $BASE""SHA256SUMS"
       for f in $files; do say "would download and verify: $BASE$f"; done
+      done_step "nothing downloaded (dry run)"
     else
       get_sums
       for f in $files; do get "$f"; done
+      done_step "every file matches SHA256SUMS"
     fi
+    step "Laying out $DIR"
+    say "the stack goes in $DIR, owned by $OWNER"
     # Only once everything has verified, so a failed run leaves no empty stack folder behind.
     mkdir_owned "$DIR"
     for f in compose.yml compose.build.yml vyre.env.example; do
@@ -361,7 +481,7 @@ uninstall() {
   fi
   if [ -e "$WRAPPER" ]; then
     if grep -q "$MARK" "$WRAPPER" 2>/dev/null; then priv rm -f "$WRAPPER"
-    else say "$WRAPPER is not the box wrapper; leaving it"
+    else say "$WRAPPER is not the server wrapper; leaving it"
     fi
   fi
   if [ "$PURGE" = 1 ]; then
@@ -379,7 +499,7 @@ uninstall() {
       fi
     fi
   fi
-  say "Vyre is off this box. $DIR stays (with its .env); remove it with: sudo rm -rf $DIR"
+  say "Vyre is off this server. $DIR stays (with its .env); remove it with: sudo rm -rf $DIR"
   [ "$PURGE" = 1 ] || say "The volumes stay too, so a reinstall picks up where it left off."
 }
 
@@ -407,8 +527,11 @@ main() {
 
   case "$(uname -s)" in
     Linux) ;;
-    Darwin) say "on a Mac: npm install -g vyre && vyre up"; exit 0 ;;
-    *) die "this installer is for Linux boxes; on a Mac: npm install -g vyre && vyre up" ;;
+    Darwin)
+      say "This installer is for a Linux server. On a Mac, Vyre installs with npm:"
+      say "  npm install -g https://vyre.run/box/vyre.tgz && vyre up"
+      exit 0 ;;
+    *) die "this installer is for Linux boxes; on a Mac: npm install -g https://vyre.run/box/vyre.tgz && vyre up" ;;
   esac
 
   if [ "$(id -u)" != 0 ]; then
@@ -421,7 +544,9 @@ main() {
   fi
   case "$BASE" in */) ;; *) BASE="$BASE/" ;; esac
   trap cleanup EXIT
-  [ "$DRY" = 1 ] && say "dry run: nothing on this box will change"
+  pick_look
+  [ "$UNINSTALL" = 1 ] || hello
+  [ "$DRY" = 1 ] && say "dry run: nothing on this server will change"
 
   if [ "$UNINSTALL" = 1 ]; then
     command -v docker >/dev/null 2>&1 || die "Docker is not installed, so there is no stack to stop"
@@ -430,16 +555,30 @@ main() {
     exit 0
   fi
 
+  [ "${VYRE_NO_UP:-0}" = 1 ] && STEPS=4
+  step "Checking Docker"
   pick_owner
   need_docker
   need_tun
   pick_build
-  say "the stack goes in $DIR, owned by $OWNER"
+  if command -v docker >/dev/null 2>&1; then done_step "Docker, Compose and the TUN device are there"
+  else done_step "Docker would be installed first (dry run)"
+  fi
+  if [ -n "$FROM" ]; then step "Reading the box files"; else step "Downloading and verifying"; fi
   write_stack
   write_env
+  if [ "$DRY" = 1 ]; then done_step "nothing written (dry run)"; else done_step "$DIR is laid out"; fi
+  step "Installing the vyre command"
   install_wrapper
+  if [ "$DRY" = 1 ]; then done_step "nothing installed (dry run)"; else done_step "vyre is at $WRAPPER"; fi
   # VYRE_NO_UP=1: everything but starting it, for `vyre box move`, which streams the volumes in first.
-  if [ "${VYRE_NO_UP:-0}" = 1 ]; then say "installed in $DIR; not started (VYRE_NO_UP=1). Start it with: vyre up"; else start; fi
+  if [ "${VYRE_NO_UP:-0}" = 1 ]; then say "installed in $DIR; not started (VYRE_NO_UP=1). Start it with: vyre up"
+  else
+    step "Starting Vyre"
+    start
+    if [ "$DRY" = 1 ]; then done_step "nothing started (dry run)"; else done_step "Vyre is up"; fi
+  fi
+  finish
 }
 
 main "$@"

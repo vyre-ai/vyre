@@ -9,12 +9,16 @@ struct SightPanel: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             if model.talking || !model.heard.isEmpty {
-                label(model.talking ? "LISTENING" : "HEARD")
+                if model.talking {
+                    HStack(spacing: 6) { VoiceLevelRing(level: model.level); label("Listening") }
+                } else {
+                    label("Heard")
+                }
                 Text(model.heard.isEmpty ? "Say it now. Option-Return to stop." : model.heard)
                     .font(Theme.reply).foregroundColor(model.heard.isEmpty ? Theme.ash : Theme.bone)
             }
             if let s = model.summary {
-                label("ON SCREEN")
+                label("On screen")
                 Text(s.window.isEmpty ? s.app : s.window).font(Theme.title).foregroundColor(Theme.bone).lineLimit(2)
                 if !s.window.isEmpty && !s.app.isEmpty { Text(s.app).font(Theme.subtitle).foregroundColor(Theme.stone) }
                 if let url = s.url { Text(url).font(Theme.subtitle).foregroundColor(Theme.ash).lineLimit(1).truncationMode(.middle) }
@@ -41,5 +45,24 @@ struct SightPanel: View {
 
     private func note(_ symbol: String, _ s: String) -> some View {
         Label(s, systemImage: symbol).font(Theme.subtitle).foregroundColor(Theme.recall)
+    }
+}
+
+/// The real mic level (SightModel.level, 0 to 1, throttled ~10 Hz by Talk.swift), next to
+/// "Listening": a plain outline that a filled dot grows and brightens inside of. Functional, not
+/// the final look -- app-design's own pass names the ring elsewhere (Design A, the beauty pass).
+private struct VoiceLevelRing: View {
+    var level: Double
+    private var clamped: Double { min(1, max(0, level)) }
+
+    var body: some View {
+        ZStack {
+            Circle().strokeBorder(Theme.rule, lineWidth: 1.5)
+            Circle().fill(Theme.signal)
+                .scaleEffect(0.35 + clamped * 0.65)
+                .opacity(0.3 + clamped * 0.7)
+        }
+        .frame(width: 10, height: 10)
+        .animation(.easeOut(duration: 0.08), value: level)
     }
 }

@@ -1,5 +1,4 @@
-/* Lessons, a tab in Memory. Beacon marks only what waits for the user (a proposal); gold is not
-   used here, since a lesson is the user's own rule, not something recalled. */
+/* Lessons, a tab in Memory. Beacon marks only what waits for the user (a proposal). */
 
 .ml-pad { max-width: 920px; }
 .ml { display: flex; flex-direction: column; }

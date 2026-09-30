@@ -43,7 +43,7 @@ export const CREDENTIALS = { "setup-token": "claude-setup-token", "api-key": "an
 /**
  * @param {any} config the loaded config (role, sessions)
  * @returns {{ driver: "sdk"|"cli", auth: "login"|"setup-token"|"api-key", claude: string, idle_minutes: number, max_live: number, install: boolean, dir: string|null,
- *   subreaper: boolean|string, spawner: "on"|"off", uid?: number, gid?: number }}
+ *   subreaper: boolean|string, spawner: "on"|"off", thread_socket: "auto"|"on"|"off", uid?: number, gid?: number }}
  */
 export function sessionsConfig(config) {
   const box = !config || config.role !== "local";
@@ -63,10 +63,15 @@ export function sessionsConfig(config) {
     dir: typeof s.dir === "string" && s.dir ? s.dir : process.env.VYRE_SESSIONS_SDK_DIR || null,
     // true or absent: tini where there is one (the box); false: none; a path: that one.
     subreaper: s.subreaper === false ? false : typeof s.subreaper === "string" ? s.subreaper : true,
-    // "on": sessions start through the box's spawner as uid vyre-agent (ADR 0032 part 3). Off by
-    // default until owned sessions reach Vyre's tools in process (ADR 0030 phase 3); the
-    // environment's VYRE_SESSIONS_SPAWNER wins.
-    spawner: ["on", "off"].includes(String(process.env.VYRE_SESSIONS_SPAWNER)) ? String(process.env.VYRE_SESSIONS_SPAWNER) : s.spawner === "on" ? "on" : "off",
+    // "on": sessions start through the box's spawner as uid vyre-agent (ADR 0032 part 3), where
+    // there is one (Linux, its socket there): on by default on a box now that each session has
+    // its own socket to vyred (thread_socket); off on a Mac. VYRE_SESSIONS_SPAWNER wins.
+    spawner: ["on", "off"].includes(String(process.env.VYRE_SESSIONS_SPAWNER)) ? String(process.env.VYRE_SESSIONS_SPAWNER) : s.spawner === "on" || s.spawner === "off" ? s.spawner : box ? "on" : "off",
+    // One socket per session (ADR 0030 phase 3, option A; core/daemon/threadsock.js): "auto" opens
+    // one when the session runs through the spawner (it cannot open vyred's own); "on" always;
+    // "off" never. VYRE_SESSIONS_THREAD_SOCKET wins.
+    thread_socket: ["auto", "on", "off"].includes(String(process.env.VYRE_SESSIONS_THREAD_SOCKET)) ? String(process.env.VYRE_SESSIONS_THREAD_SOCKET)
+      : ["on", "off"].includes(s.thread_socket) ? s.thread_socket : "auto",
     ...(typeof s.uid === "number" ? { uid: s.uid, ...(typeof s.gid === "number" ? { gid: s.gid } : {}) } : {}),
   };
 }

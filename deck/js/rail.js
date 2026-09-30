@@ -79,7 +79,7 @@ export function nowLabel(/** @type {number} */ n) {
 
 /**
  * The rail's elements. setNeeds(n) moves the badge and the mark's dot; setCurrent(view, hash)
- * marks the place; setOwner(name) puts the person's initial and name on the avatar.
+ * marks the place; setOwner(name, letter, face) puts the person's avatar (else initial) and name on it.
  */
 export function rail() {
   const count = /** @type {HTMLElement} */ (badge(0));
@@ -109,8 +109,9 @@ export function rail() {
       if (label === here) a.setAttribute("aria-current", "page"); else a.removeAttribute("aria-current");
     }
   }
-  function setOwner(/** @type {string | null | undefined} */ name, /** @type {string} */ letter) {
-    initial.replaceChildren(letter || "V");
+  /** `face`: the person's avatar (js/avatars.js), which takes the initial's place once system.info has answered. */
+  function setOwner(/** @type {string | null | undefined} */ name, /** @type {string} */ letter, /** @type {Element | null} */ face = null) {
+    initial.replaceChildren(face || letter || "V");
     avatar.setAttribute("title", name || "Account");
   }
   return { el, links, avatar, home, count, setNeeds, setCurrent, setOwner };

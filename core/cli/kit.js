@@ -10,10 +10,13 @@
 //   --json       reads print their data as one line of JSON and nothing else on stdout. A
 //                failure prints {"error":{code,message,next?}} there instead, with the same exit
 //                code. core/cli/index.js turns the mode on when --json is anywhere before a `--`.
+//   --view       the same data, each line a frame with how to draw it (core/cli/view.js), for
+//                the Capsule, chat and the phone. It implies --json.
 //
 // Colours come from style.js only.
 
 import { out, dim, beacon } from "./style.js";
+import { frame } from "./view.js";
 
 export const EXIT = Object.freeze({ OK: 0, FAILED: 1, USAGE: 2, PRESENCE: 3, LOCKED: 4, UNREACHABLE: 5 });
 
@@ -26,14 +29,42 @@ export const json = () => JSON_MODE;
 /** @param {boolean} on */
 export function setJson(on) { JSON_MODE = Boolean(on); }
 
+/** @type {{ cmd: string, frames: number, argv: string[] } | null} */
+let VIEW = null;
+/** Whether this run prints frames (--view). */
+export const viewing = () => Boolean(VIEW);
+/**
+ * Turn frames on for `cmd` ("threads list"), or off. `argv` is the run's words after `vyre`,
+ * without --view or --json: what a prompt frame's args start from (again()).
+ * @param {string|null} cmd @param {string[]} [argv]
+ */
+export function setView(cmd, argv = []) { VIEW = cmd ? { cmd, frames: 0, argv } : null; if (cmd) JSON_MODE = true; }
+/** The words of this run after `vyre`, without --view or --json, for a prompt frame to rerun. */
+export const again = () => (VIEW ? [...VIEW.argv] : []);
+/** How many frames this run printed. */
+export const framesOut = () => (VIEW ? VIEW.frames : 0);
+
+/** --view anywhere before a `--`. */
+export function wantsView(argv) {
+  const at = argv.indexOf("--");
+  return (at < 0 ? argv : argv.slice(0, at)).includes("--view");
+}
+
 /** --json anywhere before a `--` (after it, the words belong to a child command). */
 export function wantsJson(argv) {
   const at = argv.indexOf("--");
   return (at < 0 ? argv : argv.slice(0, at)).includes("--json");
 }
 
-/** One line of JSON on stdout. */
-export function emit(data) { process.stdout.write(JSON.stringify(data) + "\n"); return EXIT.OK; }
+/**
+ * One line of JSON on stdout: the data, or under --view a frame with the data and how to draw it.
+ * @param {any} data @param {any} [view] a view from core/cli/view.js; derived from the data when left out
+ */
+export function emit(data, view) {
+  if (VIEW) { VIEW.frames++; process.stdout.write(JSON.stringify(frame(VIEW.cmd, data, view)) + "\n"); }
+  else process.stdout.write(JSON.stringify(data) + "\n");
+  return EXIT.OK;
+}
 
 /** A usage mistake: bad or missing arguments, an unknown flag. Thrown by parse, caught by index.js. */
 export class UsageError extends Error {

@@ -1,0 +1,18 @@
+{
+  "name": "sync",
+  "version": "0.1.0",
+  "description": "A paired device (a Mac or a Windows PC) sends its own Claude Code session files to the box, once its person turns import on for it (ADR 0008 5a).",
+  "roles": ["box", "local"],
+  "requires": ["link"],
+  "does": { "tools": ["sync.consent", "sync.delete", "sync.delete.import", "sync.scan", "sync.upload.plan", "sync.upload.start", "sync.upload.chunk", "sync.upload.cancel", "sync.upload.finish", "sync.send"] },
+  "watches": { "emits": ["sync.progress", "sync.revoked", "sync.deleted", "sync.sending", "sync.sent"], "on": ["link.unpaired"] },
+  "shows": { "deck": [], "capsule": [], "cli": ["sync"] },
+  "needs": {},
+  "teaches": {
+    "tips": [
+      {"id": "sync-scan", "text": "Before turning a device's import on, `vyre call sync.scan` lists the project folders it would send, with sizes, so you can leave any out.", "surfaces": ["cli", "deck"], "level": "power", "trigger": "on-use", "since": "0.1.1", "command": "vyre call sync.scan", "docs": "using/tailscale.md#connect-your-mac-to-the-box"},
+      {"id": "sync-consent", "text": "A paired device's Claude Code sessions come to your box only once you turn its import on; off by default.", "surfaces": ["cli", "deck"], "level": "power", "trigger": "on-use", "since": "0.1.1", "command": "vyre call sync.consent", "docs": "using/tailscale.md#connect-your-mac-to-the-box"},
+      {"id": "sync-delete", "text": "Turning a device's import off keeps what it sent: that data is yours. Delete it on purpose from its Settings page or the unpair dialog.", "surfaces": ["cli", "deck"], "level": "power", "trigger": "on-use", "since": "0.1.1", "command": "vyre call sync.delete", "docs": "using/tailscale.md#connect-your-mac-to-the-box"}
+    ]
+  }
+}

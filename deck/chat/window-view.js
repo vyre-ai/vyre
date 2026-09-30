@@ -79,7 +79,14 @@ export function createWindowView(box, opts) {
     let changed = false, prevTop = null;
     for (let i = range.end - 1; i >= range.start; i--) {
       const el = mounted.get(keys[i]);
-      if (!el) { prevTop = null; continue; }
+      // A row the caller swapped in place (session.js's patch(), for a changed turn/tool/user row,
+      // replaces the element directly in the DOM and in its own cache before calling layout()) leaves
+      // this Map holding the old, now-detached node until the mount() a few lines below refreshes it.
+      // A detached element's rect is all zeros in every browser; trusting it corrupts the chain this
+      // loop builds (each row's slot is the next mounted row's top), moving rows above it that never
+      // changed. Treat it exactly like "not mounted yet": skip it, break the chain, remeasure once
+      // mount() has put the real element back.
+      if (!el || (typeof el.isConnected === "boolean" && !el.isConnected)) { prevTop = null; continue; }
       const r = rect(el);
       if (!r) return false;
       // The next element's top: the next row, or the bottom spacer (or the row's own height when last).
@@ -148,7 +155,7 @@ export function createWindowView(box, opts) {
     // A short session stuck to the bottom has nothing to window or keep: no layout reads at all.
     const reads = !follow || !!range?.windowed || rows.length > threshold;
     // 1. What is on screen now, in the old model, measured.
-    if (reads) measure();
+    let changed = reads ? measure() : false;
     const o0 = reads ? origin() : 0;
     const anchor = follow ? null : captureAnchor(keys, offs, scrollTop() - o0);
     // 2. The new model.
@@ -161,9 +168,16 @@ export function createWindowView(box, opts) {
     const at = pin != null && index.has(pin) ? index.get(pin) : null;
     const y = follow ? tailScroll(offs, vp) : (restoreAnchor(anchor, index, offs) ?? scrollTop() - o0);
     const next = at != null ? rangeAround(offs, /** @type {number} */ (at), vp, { threshold }) : windowRange({ offs, scrollTop: y, viewport: vp, threshold });
-    if (fresh || !sameRange(range, next) || range?.windowed !== next.windowed) mount(next);
-    // 3. The rows just mounted, measured; the spacers from the new heights; the position kept.
-    if (reads && measure()) setSpacers();
+    const remounted = fresh || !sameRange(range, next) || range?.windowed !== next.windowed;
+    if (remounted) mount(next);
+    // 3. The rows just mounted, measured - but only when mount() could have changed anything. A
+    // plain scroll within the same range mounts nothing new, so the boxes read here would be
+    // exactly what step 1 just read: a second forced layout (getBoundingClientRect) for no new
+    // information, on every scroll frame. (Profiled: 2.2 s of it in one fling pass.) Earlier this
+    // measure was dropped unconditionally and that broke real remounts under load; gating it on
+    // `remounted` keeps the case that mattered and only skips the case that was pure waste.
+    if (reads && remounted && measure()) changed = true;
+    if (reads && changed) setSpacers();
     if (at != null || !reads) return;
     if (follow) {
       // Stuck to the bottom: stay there through whatever was measured.

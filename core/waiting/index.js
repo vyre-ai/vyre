@@ -53,8 +53,15 @@ export const fromAsks = rows => rows.map(a => {
   const first = question && Array.isArray(a.questions) && a.questions[0] ? a.questions[0].question : "";
   const title = clean(a.summary) || clean(first) || (question ? "A question from a session" : `Allow ${clean(a.tool, 40) || "a tool"}?`);
   const who = [clean(a.agent, 40), clean(a.thread_name, 80)].filter(Boolean).join(" in ");
+  // An ask from a session on the paired Mac is answered on that Mac: the box cannot forward an
+  // answer yet (threads.answer {machine} arrives with federation, after 0.1.0). Until then the
+  // row names the machine and its answer has no tool, so a surface says "Answer it on <mac>".
+  const mac = a.source === "mac";
+  const machine = mac && a.machine ? clean(a.machine, 80) : "";
   return { id: `threads:${a.id}`, kind: "ask", title, ...opt("detail", cap(who, DETAIL_MAX)), ...opt("project", a.project), ...opt("thread", a.thread),
-    at: at(a.at), source: "threads", answer: { tool: "threads.answer", input: { ask: a.id }, fill: question ? ["decision", "answers"] : ["decision"] } };
+    ...(mac ? { machine: machine || "your Mac" } : {}), at: at(a.at), source: "threads",
+    answer: mac ? { tool: null, input: null, fill: [], on: machine || "your Mac" }
+      : { tool: "threads.answer", input: { ask: a.id }, fill: question ? ["decision", "answers"] : ["decision"] } };
 });
 
 /** gate.held rows. Only the sender's own summary and where it goes, never the draft. */
@@ -73,12 +80,14 @@ export const fromRinging = rows => rows.map(r => ({
   ...opt("detail", r.missed ? "missed" : ""), at: at(r.due), source: "planner",
   answer: { tool: "planner.done", input: { firing: r.firing }, fill: [] } }));
 
-/** link.pending rows. The code is on the Mac's screen only, so the person types it in. */
+/** link.pending rows. The code is on the Mac's screen only, so the person types it in. `created` is
+ * the request's real timestamp (core/link/box.js); a box that has not shipped it yet falls back to
+ * the fixed TTL subtracted from `expires`, which only holds while both sides agree on the TTL. */
 export const fromPending = rows => rows.map(p => {
   const name = clean(p.name, 80);
   return { id: `link:${p.id}`, kind: "pairing", title: name ? `Pair the Mac "${name}"` : "Pair a new Mac",
     ...opt("detail", clean([p.node, p.login].filter(Boolean).join(" · "), DETAIL_MAX)),
-    at: typeof p.expires === "number" ? p.expires - PAIR_TTL_MS : 0, source: "link",
+    at: at(typeof p.created === "number" ? p.created : typeof p.expires === "number" ? p.expires - PAIR_TTL_MS : 0), source: "link",
     answer: { tool: "link.pair.approve", input: {}, fill: ["code"] } };
 });
 
@@ -115,9 +124,12 @@ export default {
       } catch { return null; }
     };
 
+    // On a Mac the planner is the box's, reached over the link: a Mac's vyred never asks its box
+    // on its own (test/federation-reads.test.js), and the Mac hears rings through the link's events.
+    const sources = ctx.config && ctx.config.role === "box" ? SOURCES : SOURCES.filter(([name]) => name !== "planner");
     const compute = async () => {
-      const got = await Promise.all(SOURCES.map(([, tool, map]) => read(tool, map)));
-      const partial = SOURCES.filter((_, i) => got[i] === null).map(([name]) => name);
+      const got = await Promise.all(sources.map(([, tool, map]) => read(tool, map)));
+      const partial = sources.filter((_, i) => got[i] === null).map(([name]) => name);
       const rows = got.flatMap(g => g || []).sort(order);
       return { rows, ...tally(rows), partial };
     };

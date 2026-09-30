@@ -14,8 +14,21 @@ import { tempHome, present } from "./helpers.js";
 
 const REPO = path.join(path.dirname(fileURLToPath(import.meta.url)), "..");
 
-/** Tools the Deck calls that live on another machine or module not on a box, and fall back when missing. */
-const ELSEWHERE = new Set(["vault.usage"]);
+/** Tools the Deck calls that are not on every box, each with why: the Deck must treat it as
+ *  optional (a CAPS.use-style missing-tool fallback, never assumed present), so a box that lacks
+ *  it is expected, not a bug this test should catch. A tool leaves this list the day every box
+ *  registers it - it does not grow to paper over a call nothing answers by design. */
+const OPTIONAL = {
+  "vault.usage": "lives on another machine or module not on every box; falls back when missing.",
+  "voice.status": "local/voice is a Mac-local module (deck/chat/core/voice.js); voiceStatus() already treats a missing answer as \"no key\", never assumed present on a box.",
+  "voice.listen": "local/voice is a Mac-local module (deck/chat/core/voice.js); listen() already turns a missing answer into \"cannot use voice yet\", never assumed present on a box.",
+  "federation.move.plan": "Move to a server is 0.1.2, not 0.1.1 (team/BACKLOG-0.1.2.md); settings.js's drawServer checks modules() for \"federation\" live before ever calling it, so the flow stays off until that module ships.",
+  "federation.move.start": "Move to a server is 0.1.2, not 0.1.1 (team/BACKLOG-0.1.2.md); gated the same way as federation.move.plan.",
+  "federation.move.status": "Move to a server is 0.1.2, not 0.1.1 (team/BACKLOG-0.1.2.md); gated the same way as federation.move.plan.",
+  "federation.move.cancel": "Move to a server is 0.1.2, not 0.1.1 (team/BACKLOG-0.1.2.md); gated the same way as federation.move.plan.",
+  "federation.move.confirm": "Move to a server is 0.1.2, not 0.1.1 (team/BACKLOG-0.1.2.md); gated the same way as federation.move.plan.",
+  "federation.move.forget": "Move to a server is 0.1.2, not 0.1.1 (team/BACKLOG-0.1.2.md); gated the same way as federation.move.plan.",
+};
 
 /** Every .js file under deck/, but not its tests or vendored code. */
 function files(dir) {
@@ -56,7 +69,7 @@ test("deck: every tool the Deck calls exists on a box and gets its required inpu
     for (const m of s.matchAll(/\b(?:attempt|call|callWithCode)\(\s*"([a-z][a-z0-9-]*\.[a-z0-9.-]+)"\s*(,\s*)?/g)) {
       const [, name] = m;
       const where = `${path.relative(REPO, file)}:${s.slice(0, m.index).split("\n").length}`;
-      if (ELSEWHERE.has(name)) continue;
+      if (name in OPTIONAL) continue;
       const schema = tools.get(name);
       if (!schema) { bad.push(`${where} calls ${name}, which no module on a box registers`); continue; }
       const at = (m.index ?? 0) + m[0].length;

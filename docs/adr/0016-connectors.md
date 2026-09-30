@@ -169,7 +169,7 @@ Scopes are the narrowest per call: `calendar.readonly` and `gmail.readonly` for 
 must be allowed those scopes in the Workspace admin console; `google.test` names any that are
 refused.
 
-Sign-in. `google.connect {name, client}` (people only) runs Google's installed-app flow: the
+Sign-in. `google.connect {name, client?}` (people only; `client` defaults to `google-oauth-client`) runs Google's installed-app flow: the
 person keeps an OAuth client (`client_id`, `client_secret`, optionally `auth_uri` and
 `token_uri`, both https) as a vault env-set granted to google, and Vyre returns the consent
 address, with PKCE S256 and a random state, redirecting to a loopback listener on 127.0.0.1 port
@@ -202,6 +202,98 @@ terminal: it grants the client (default `google-oauth-client`) to google, prints
 address, and waits on the event stream for the loopback, or for the landed address pasted on
 stdin. Ctrl-C cancels it, and so does end of input at a terminal (piped or empty stdin only
 stops the paste reader); it gives up after 10 minutes.
+
+### 8. Mail: one capability over every account
+
+"Send an email" works from the Capsule, a chat and an agent through any account the person
+connected, and several at once. A module, `mail` (`core/mail/`), is the one contract. It never
+imports `google`, `mcp` or `vault`: it reaches them through `ctx.call`, and it serves two kinds of
+account itself.
+
+A mail account is a vault connection (ADR 0028 decision 9b). The vault keeps the list, the items
+and the surfaces each connection is granted to; `mail` keeps nothing about an account except the
+tool map of one served by an MCP server. Every mail tool's `account` is the connection's id.
+
+| Adapter | Connection | Where it runs | Held at the Gate by |
+|---|---|---|---|
+| `google` | source `google` (OAuth or DWD) | the `google` module, through `google.mail.*` | `google`, sender `google:<account>` |
+| `mcp` | source `mcp`, one per hub server | the hub, through `mcp.call` and a tool map | the hub, sender `mcp:<server>`, always held |
+| `apps-script` | provider `google-apps-script`: `{url, token}` | `mail`: HTTPS POST to the person's web app | `mail`, sender `mail:<connection>` |
+| `imap` | provider `imap-smtp`: hosts, ports, username, password, security | `mail`: IMAP reads, SMTP sends, TLS required | `mail`, sender `mail:<connection>` |
+
+Tools (callers as in decision 3):
+
+| Tool | Callers | Input | Returns |
+|---|---|---|---|
+| `mail.accounts` | all | `{}` | the accounts this caller may use: `[{account, adapter, address, label, provider, source}]`, never a value |
+| `mail.map` | people | `{account, map?}` | an MCP account's tool map, guessed the first time; with `map`, the person's correction |
+| `mail.test` | people | `{account}` | `{ok, can: {send, search, read}, error?}`: a harmless check, never a send |
+| `mail.send` | all | `{account?, to, subject, body, cc?, bcc?, in_reply_to?, why?}` | `{held, account, via, message}`: always held |
+| `mail.search` | all | `{q, account?, limit?}` | `{messages: [{account, id, thread_id?, from, to, subject, date, snippet}], errors?}` |
+| `mail.read` | all | `{account, id}` | one message as text |
+| `mail.find` | capsule, people | `{q}` | Capsule rows (below) |
+| `mail.compose` | capsule, people | `{id, to?, subject?, body?}` | a held message, or a message read |
+| `mail.release` | internal, gate only | `{id, to, content}` | sends an approved item of a `mail:<connection>` sender |
+
+Rules, and why:
+
+- **The vault decides who may use which account.** `mail` asks `vault.connections.list` for the
+  caller vyred verified (the Capsule is `capsule`, a person's session `mcp:thread:<id>`, an agent
+  `mcp:agent:<name>`) and acts only on what comes back. An account a surface may not use is
+  invisible to it, and a refusal lists only the accounts it may use.
+- **Every send is held.** `mail.send` never sends. A Google account holds through
+  `google.mail.send`, an MCP account through `mcp.call` with `hold: true` (a new input heard from
+  module callers only, which forces the Gate whatever the tool's mode or name says, so a mapped
+  tool called `compose` or marked `read` still waits), and the two native adapters through
+  `gate.request` as `mail:<connection>`. Approving needs presence (Touch ID), as every outbound
+  item does; nothing else here asks for it (the no-nag rule). A connection without the
+  `send_mail` capability never sends.
+- **The thread and the agent follow the call.** `mail` passes what vyred verified as
+  `on_behalf: {thread, agent}` to `google.mail.send` and `mcp.call`. They hear it only from one of
+  Vyre's own modules: the registry sets `meta.firstParty` by the loader's own first-party rule,
+  over anything passed in, and anyone else who passes `on_behalf` is refused. The thread must
+  exist in the Switchboard, and when it is an agent's, the agent named must be that one; a
+  mismatch is refused, never filed (`core/connectors/behalf.js`). In the hub, a call on behalf of
+  a thread or an agent is scoped as that thread or agent, not as the person. A module calling
+  `mail` may say whom it acts for the same way; a home module is refused it, and sees no mail
+  account at all.
+- **Which account.** `mail.send` with no `account` uses the only account the caller may use;
+  with several it answers `ambiguous` and lists them, never a guess. Reads fan out over every
+  account the caller may use, newest first; one failing account is an entry in `errors`, not a
+  failed search.
+- **One query language.** `q` takes words, `from:`, `to:`, `subject:`, `newer_than:<n>d` and
+  `is:unread`. Google and Apps Script pass it to Gmail as is; IMAP translates it to `SEARCH`
+  and never marks a message read; an MCP account passes it to the mapped argument.
+- **Needs a credential.** A missing or ungranted item answers
+  `{code: "needs_credential", detail: {module: "mail", need, account: <connection>}}`, where `need`
+  is `imap` or `apps-script` from `needs.credentials` in the manifest (both `multiple: true`), so
+  surfaces call `vault.connect {module: "mail", need, label}`. Never a value.
+- **Native adapters.** IMAP and SMTP need TLS (implicit or STARTTLS), except to a loopback host,
+  which exists for the test fakes. SMTP never carries Bcc in the headers. Apps Script is a POST
+  with the token in the body, and one redirect is followed only to
+  `https://script.googleusercontent.com`, as a GET without the token, which is how Apps Script
+  returns its answer. The script to paste is `core/mail/apps-script.gs`. No dependencies. Every
+  result and error is scrubbed of every value used.
+- **MCP tool map.** The first use reads the server's cached tools and guesses the send, search
+  and read tools and their arguments (`to` or `recipients`, `subject`, `body` or `text`), and
+  stores that map; `mail.map` shows and corrects it. Several instances of one server
+  (`gmail-home`, `gmail-work`) are several hub servers, each with its own items, and so several
+  connections.
+- **Restarts.** A held `mail:<connection>` item survives a restart of vyred: at start `mail`
+  offers the sender of every such item still waiting.
+
+The Capsule. `shows.capsule` lists `results:mail.find` and `action:mail.compose`. "send an
+email", "email dana@northwind-bakery.example about the order" or "write to dana" gives one row per
+account the Capsule may send from ("Send from alex@harlow.example"), with what the words named
+filled in; a name is resolved from the person's own mail. "email from dana" gives messages across
+accounts. `mail.compose` on a send row holds the message at once, so the person finishes it in the
+Gate card and approves it there; the Capsule's deeper path (an agent) writes the body and calls
+`mail.send` with the row's account.
+
+What the vault serves for this (ADR 0028 decision 9): `vault.connections.list {caller}` from a
+module caller, answering for that caller's surface; `vault.connections.get {id}` for
+`mail.release`, with no surface filter, since the person already approved; and `use` entries that point `send_mail` and
+`read_mail` of every source at `mail.send` and `mail.search`.
 
 ## Consequences
 

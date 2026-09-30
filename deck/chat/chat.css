@@ -6,7 +6,7 @@ pre { margin: 0; padding: 12px 14px; border-radius: var(--radius-field, 8px); ba
 pre code { display: block; font-family: var(--mono); font-size: 13px; line-height: 20px; color: var(--text); white-space: pre; }
 
 .tok-keyword { color: var(--focus); }
-.tok-string { color: var(--recall-ink); }
+.tok-string { color: var(--text-2); }
 .tok-comment { color: var(--label); font-style: italic; }
 .tok-number { color: var(--beacon-ink); }
 .tok-function { color: var(--text); font-weight: 500; }
@@ -45,6 +45,11 @@ pre code { display: block; font-family: var(--mono); font-size: 13px; line-heigh
 .session-head .sub { font-size: 12px; line-height: 16px; color: var(--label); }
 .session-back { display: none; }
 @media (max-width: 719px), (max-height: 500px) and (pointer: coarse) { .session-back { display: inline-flex; } }
+
+/* A running step's screen (cohesion item 1/18: sight.frame, through sight.targets), quiet and
+   small, never a live video - it refreshes on sight.stepped, never a timer. */
+.cv-sight { display: flex; padding: 8px 20px; border-bottom: 1px solid var(--rule); }
+.cv-sight[hidden] { display: none; }
 
 .thread-view { flex-grow: 1; min-height: 0; overflow: auto; display: flex; flex-direction: column; gap: 2px; padding: 16px 20px 24px;
   /* The scrollbar's room is kept from the start: a session that grows past one screen does not
@@ -105,9 +110,9 @@ pre code { display: block; font-family: var(--mono); font-size: 13px; line-heigh
 /* Shapes matched to the Capsule's (capsule teammate, 2026-09-27): same tokens, same grid, same
    badge, so a held item or an ask looks the same wherever it appears. */
 
-.memory-fact { display: flex; flex-direction: column; gap: 6px; padding: 10px 12px; border-radius: var(--radius-field, 8px); background: var(--recall-wash);
+.memory-fact { display: flex; flex-direction: column; gap: 6px; padding: 10px 12px; border-radius: var(--radius-field, 8px); background: var(--hover);
   align-self: flex-start; max-width: 100%; }
-.memory-fact .lbl { color: var(--recall-ink); margin: 0; }
+.memory-fact .lbl { color: var(--text-2); margin: 0; }
 .memory-fact .fact { font-size: 13px; line-height: 18px; color: var(--text); }
 .memory-fact .sources { display: flex; flex-wrap: wrap; gap: 10px; }
 .memory-fact .source { display: flex; align-items: center; gap: 5px; font-size: 12px; color: var(--text-2); }
@@ -120,8 +125,8 @@ pre code { display: block; font-family: var(--mono); font-size: 13px; line-heigh
 .ask-card { background: var(--panel); border: 1px solid var(--rule); }
 .gate-row { display: flex; align-items: baseline; gap: 8px; }
 .gate-title, .ask-title { font-size: 15px; line-height: 20px; color: var(--text); flex-grow: 1; }
-.gate-badge { display: inline-flex; align-items: center; gap: 6px; height: 20px; padding: 0 8px; border-radius: var(--radius-chip, 4px);
-  background: var(--beacon-wash); color: var(--beacon-ink); font-family: var(--mono); font-size: 11px; line-height: 14px;
+.gate-badge { display: inline-flex; align-items: center; gap: 6px; height: 20px; padding: 0 7px; border-radius: var(--radius-chip, 4px);
+  border: 1px solid var(--rule); color: var(--beacon-ink); font-family: var(--mono); font-size: 11px; line-height: 14px;
   font-weight: 500; letter-spacing: 0.16em; text-transform: uppercase; flex-shrink: 0; white-space: nowrap; }
 .gate-grid { display: grid; grid-template-columns: max-content 1fr; gap: 6px 12px; align-items: baseline; }
 .gate-grid-row { display: contents; }
@@ -143,6 +148,9 @@ pre code { display: block; font-family: var(--mono); font-size: 13px; line-heigh
 
 .lease-bar { display: flex; align-items: center; gap: 10px; height: 28px; padding: 0 20px; font-size: 12px; color: var(--label);
   border-top: 1px solid var(--rule); flex-shrink: 0; }
+/* Nobody holds the keyboard, nothing to resume, no error (the common solo-session case): hidden
+   rather than a chat-presence "No one is typing" with nothing to report (session.js drawHead). */
+.lease-bar[hidden] { display: none; }
 .lease-bar .who { color: var(--text); }
 .lease-bar button { margin-left: auto; }
 
@@ -151,7 +159,7 @@ pre code { display: block; font-family: var(--mono); font-size: 13px; line-heigh
   border-radius: var(--radius-card, 12px); background: var(--panel); }
 .composer textarea { flex-grow: 1; min-width: 0; min-height: 32px; max-height: 200px; field-sizing: content; background: transparent; border: none; outline: none; resize: none;
   color: var(--text); font: inherit; font-size: 14px; line-height: 20px; padding: 6px 0; }
-.composer-hint { font-size: 11px; color: var(--label); padding: 0 2px; }
+.composer-hint { display: flex; align-items: center; gap: 12px; min-width: 0; font-size: 11px; color: var(--label); padding: 0 2px; }
 .composer-menu { position: absolute; bottom: 100%; left: 20px; right: 20px; margin-bottom: 6px; background: var(--panel);
   border: 1px solid var(--rule-strong); border-radius: var(--radius-card, 12px); box-shadow: var(--popover); max-height: 240px; overflow: auto; padding: 6px; z-index: 20; }
 .composer-menu button { display: flex; width: 100%; align-items: center; gap: 8px; padding: 8px 10px; border: none; background: transparent;
@@ -178,7 +186,7 @@ pre code { display: block; font-family: var(--mono); font-size: 13px; line-heigh
   .session-head { flex-wrap: wrap; height: auto; min-height: 56px; padding-top: 4px; padding-bottom: 8px; column-gap: 10px; row-gap: 2px; }
   .session-head > .cv-head-text { flex: 1 1 calc(100% - 64px); }
   .session-head > :not(.session-back):not(.cv-head-text) { flex-shrink: 0; }
-  .session-head .cv-chip, .session-head .cv-context, .session-head .cv-state { font-size: 12px; }
+  .session-head .cv-chip, .session-head .cv-context, .session-head .cv-state, .session-head .cv-project { font-size: 12px; }
   .composer-menu { left: 16px; right: 16px; }
   /* The header keeps the title: the phone's 44 buttons stay 44 tall but read at base size, and the
      model chip (the composer names the model too) and the state word give way. */
@@ -213,6 +221,17 @@ pre code { display: block; font-family: var(--mono); font-size: 13px; line-heigh
 .lease-bar .lease-note { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
 .composer-note { font-size: 12px; line-height: 16px; color: var(--beacon-ink); padding: 0 2px; }
 .composer-note:empty { display: none; }
+/* "From your past sessions" (recall.related): quiet, dismissible, never focused on its own. */
+.composer-hints { display: flex; flex-direction: column; gap: 2px; margin-bottom: 6px;
+  border-radius: var(--radius-field, 8px); border: 1px solid var(--rule); padding: 6px 8px; }
+.composer-hints[hidden] { display: none; }
+.composer-hints-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.composer-hints-close { width: 20px; height: 20px; color: var(--label); }
+.composer-hint-row { display: flex; align-items: baseline; gap: 8px; width: 100%; min-width: 0; padding: 3px 2px;
+  border: none; border-radius: 6px; background: transparent; color: var(--text); text-align: left; font: inherit; cursor: pointer; }
+.composer-hint-row:hover, .composer-hint-row:focus-visible { background: var(--hover); }
+.composer-hint-snip { flex: 1 1 auto; min-width: 0; font-size: 13px; line-height: 18px; }
+.composer-hint-meta { flex-shrink: 0; font-size: 12px; line-height: 16px; white-space: nowrap; }
 /* {sent: false, note}: the session is busy elsewhere, not broken. Quiet, with a way to retry. */
 .composer-note.soft { display: flex; align-items: center; flex-wrap: wrap; gap: 4px 8px; color: var(--text-2); }
 .composer-retry { margin-left: -4px; }
@@ -396,6 +415,22 @@ pre code { display: block; font-family: var(--mono); font-size: 13px; line-heigh
 .cv-tool-inner > .cv-diff { margin-left: 0; margin-right: 0; }
 @media (prefers-reduced-motion: reduce) { .cv-tool-body, .cv-chev { transition: none; } .cv-spin { animation: none; } }
 
+/* A teammate handoff (teammates.md section 3, tool-row.md's Handoff variant): the teammate's own
+   avatar tile (never the generic sub-agent icon), never coloured (avatar.md's "no per-teammate
+   hue" ruling - distinct comes from the tile+name+tag, not a hue). Always its own line
+   (core/grouping.js exempts it from folding into a run), collapsed by default; the reply is turn
+   prose, not a code block, so it drops cv-tool-inner's mono/--code-bg open styling. */
+.cv-handoff-head { gap: 8px; }
+.cv-handoff-head .av-agent { margin: 0; }
+.cv-handoff-head:disabled { cursor: default; }
+.cv-handoff-head:disabled .cv-chev { opacity: 0.35; }
+.cv-handoff-line { flex-grow: 1; min-width: 0; display: flex; align-items: baseline; gap: 6px; flex-wrap: wrap; font-size: 13px; line-height: 18px; }
+.cv-handoff-name { font-weight: 600; color: var(--text); }
+.cv-handoff-tag { font-family: var(--sans); font-size: 12px; line-height: 16px; font-weight: 400; color: var(--text-2); background: var(--hover); border: 0; height: auto; padding: 1px 6px; }
+.cv-handoff-sum { color: var(--text-2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+.cv-tool[data-open] .cv-handoff-reply { background: none; font-family: var(--sans); font-size: 15px; line-height: 22px; }
+.cv-tool[data-open] .cv-handoff-reply > * { margin-left: 0; margin-right: 0; }
+
 .cv-cmd, .cv-out, .cv-raw { margin: 0; padding: 10px 12px; border-radius: 6px; background: var(--code-bg); overflow-x: auto; }
 .cv-tool-inner .cv-cmd, .cv-tool-inner .cv-out { padding: 0; background: transparent; border-radius: 0; }
 .cv-cmd code, .cv-out code { font-family: var(--mono); font-size: 12.5px; line-height: 20px; white-space: pre; }
@@ -444,8 +479,12 @@ pre code { display: block; font-family: var(--mono); font-size: 13px; line-heigh
 .cv-todo-in_progress .cv-todo-text { color: var(--text); font-weight: 600; }
 .cv-todo-in_progress .cv-todo-box { border-color: var(--focus); background: var(--signal-wash); }
 
-.cv-turn { padding: 2px 0 8px; font-family: var(--sans, inherit); font-size: 12px; line-height: 16px; color: var(--label); }
-.cv-turn:empty { display: none; }
+/* An open turn's footer (blocks.js turnRow) draws no text until it ends, but the space is kept
+   from the first frame (min-height: its own line box, padding included) so the row that ends up
+   holding "18s · 4.2k tokens · $0.04" never pushes the reply below it down when it arrives
+   (native-bar budget 5: a bare `display: none` while :empty cost a 26 px shift right there). */
+.cv-turn { padding: 2px 0 8px; font-family: var(--sans, inherit); font-size: 12px; line-height: 16px; color: var(--label); min-height: 26px; }
+.cv-turn:empty { visibility: hidden; }
 .cv-earlier { display: flex; justify-content: center; padding: 4px 0 8px; }
 .cv-earlier[hidden] { display: none; }
 .cv-earlier-turns { display: flex; flex-direction: column; gap: 2px; }
@@ -527,7 +566,7 @@ pre code { display: block; font-family: var(--mono); font-size: 13px; line-heigh
 .cv-q-review dt, .cv-q-done dt { color: var(--label); }
 .cv-q-review dd, .cv-q-done dd { margin: 0; color: var(--text); }
 
-/* Permission card: a beacon-wash block with a dot, no border and no stripe; what runs in a mono
+/* Permission card: a 1 px --rule edge with a violet dot, no fill and no stripe; what runs in a mono
    box, why in one line, then Allow once / Always in <project> / Deny. */
 .cv-ask.ask-card { padding: 0; gap: 8px; border: 1px solid var(--rule); border-radius: 12px; background: var(--panel); flex-shrink: 0; }
 .cv-ask > * { margin-left: 16px; margin-right: 16px; }
@@ -546,10 +585,9 @@ pre code { display: block; font-family: var(--mono); font-size: 13px; line-heigh
 .cv-ask-what > .cv-cmd, .cv-ask-what > .cv-out, .cv-ask-what .cv-out-wrap > .cv-out { background: var(--code-bg); border: 0; border-radius: 8px; padding: 8px 12px; }
 .cv-ask-what .cv-cmd code { font-size: 13px; line-height: 18px; color: var(--text); }
 .cv-ask-why { font-size: 13px; line-height: 18px; color: var(--text-2); overflow: hidden; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; }
-/* Footer buttons in both cards: the key as plain text inside (button.md), disabled as label ink on
-   no fill (never opacity alone), and the pressed one busy with its spinner and verb. */
-.cv-ask-key { font-family: var(--sans); font-size: 12px; line-height: 16px; font-weight: 400; letter-spacing: 0; text-transform: none; color: var(--label); }
-.btn-primary .cv-ask-key { color: var(--primary-ink); }
+/* Footer buttons in both cards: the key as the shared kbd chip (key-hint.md), disabled as label
+   ink on no fill (never opacity alone), and the pressed one busy with its spinner and verb. */
+.btn-primary .cv-ask-key { color: var(--primary-ink); border-color: var(--primary-hover); }
 .ask-card .btn:disabled { opacity: 1; background: transparent; color: var(--label); }
 .ask-card .btn.cv-always:disabled { border-color: var(--rule); }
 .ask-card .btn-primary:disabled { background: var(--hover); border-color: var(--hover); color: var(--label); }
@@ -640,16 +678,21 @@ pre code { display: block; font-family: var(--mono); font-size: 13px; line-heigh
   .cv-run-body { padding-left: 8px; margin-left: 7px; }
 }
 
+/* The project a thread is in (cv-project): the one visible sign for an agent's own thread, whose
+   project the composer never chose (cohesion's one-product-audit finding 6). Quiet, not a status. */
+.cv-project { flex-shrink: 0; max-width: 20ch; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-2); }
 .cv-chip { font-family: var(--mono); font-size: 11px; white-space: nowrap; }
 .cv-context { font-family: var(--mono); font-size: 11px; white-space: nowrap; }
 .cv-context.high { color: var(--beacon-ink); }
 .cv-state { font-family: var(--mono); font-size: 11px; color: var(--label); white-space: nowrap; }
-/* Session state words beside their status mark (status-mark.md): the word in --text-2, the mark
-   drawn before it and hidden from readers (the word is printed). Running: the 10 ring in --focus.
-   Waiting on you: the 8 needs-you dot. Failed: the 12 crossed circle, never the attention colour. */
-.cv-state-running, .cv-state-starting, .cv-state-waiting, .cv-state-failed { display: inline-flex; align-items: center; gap: 6px; color: var(--text-2); }
-.cv-state-running::before, .cv-state-starting::before { content: ""; flex: none; width: 10px; height: 10px; box-sizing: border-box; border-radius: 50%; border: 1.5px solid var(--focus); }
-.cv-state-waiting::before { content: ""; flex: none; width: 8px; height: 8px; border-radius: 50%; background: var(--beacon-dot); }
+/* Session state words beside their status mark (status-mark.md), sessions' canonical vocabulary
+   (lib/thread-status.js): the word in --text-2, the mark drawn before it and hidden from readers
+   (the word is printed). Working: the 10 ring in --focus. Asking (a permission or question is
+   open): the 8 needs-you dot. Failed: the 12 crossed circle, never the attention colour. Waiting
+   (idle, ready for you), paused, stopped and finished get no mark: plain text via .cv-state alone. */
+.cv-state-working, .cv-state-starting, .cv-state-asking, .cv-state-failed { display: inline-flex; align-items: center; gap: 6px; color: var(--text-2); }
+.cv-state-working::before, .cv-state-starting::before { content: ""; flex: none; width: 10px; height: 10px; box-sizing: border-box; border-radius: 50%; border: 1.5px solid var(--focus); }
+.cv-state-asking::before { content: ""; flex: none; width: 8px; height: 8px; border-radius: 50%; background: var(--beacon-dot); }
 .cv-state-failed::before { content: ""; flex: none; width: 12px; height: 12px; background: currentColor;
   -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12' fill='none' stroke='black' stroke-width='1.5' stroke-linecap='round'%3E%3Ccircle cx='6' cy='6' r='5.25'/%3E%3Cpath d='M4.25 4.25l3.5 3.5M7.75 4.25l-3.5 3.5'/%3E%3C/svg%3E") center / 12px 12px no-repeat;
   mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12' fill='none' stroke='black' stroke-width='1.5' stroke-linecap='round'%3E%3Ccircle cx='6' cy='6' r='5.25'/%3E%3Cpath d='M4.25 4.25l3.5 3.5M7.75 4.25l-3.5 3.5'/%3E%3C/svg%3E") center / 12px 12px no-repeat; }
@@ -747,14 +790,36 @@ pre code { display: block; font-family: var(--mono); font-size: 13px; line-heigh
 .cv-task[data-status="running"] .cv-task-meta { color: var(--focus); }
 .cv-task-err { font-size: 11px; }
 .cv-task-summary { font-size: 11px; max-width: 40%; }
-.cv-user-images { font-size: 11px; margin-top: 4px; }
+.cv-user-images { font-size: 11px; margin-top: 4px; display: flex; flex-wrap: wrap; gap: 6px; }
+/* A picture inline in a message (cohesion item 18): the box is fixed before the picture decodes,
+   so a slow load never shifts the rows around it (interaction.md section 1, never a layout jump). */
+.cv-pic { width: var(--pic-w); height: var(--pic-h); max-width: 100%; padding: 0; border: 1px solid var(--rule-strong);
+  border-radius: var(--radius-chip, 4px); overflow: hidden; background: var(--panel); cursor: pointer; }
+.cv-pic-img { display: block; width: 100%; height: 100%; object-fit: cover; }
+.cv-pic-file { display: inline-flex; align-items: center; gap: 6px; height: 26px; padding: 0 8px; border: 1px solid var(--rule-strong);
+  border-radius: var(--radius-chip, 4px); font-size: 12px; color: var(--text-2); }
+.lightbox { position: fixed; inset: 0; z-index: 60; display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: 12px; padding: 32px; background: var(--scrim); }
+.lightbox[hidden] { display: none; }
+.lightbox-img { max-width: min(92vw, 1100px); max-height: 80vh; object-fit: contain; border-radius: 6px; box-shadow: 0 12px 40px var(--scrim); }
+.lightbox-cap { font-size: 13px; color: var(--text); background: var(--panel); padding: 4px 10px; border-radius: var(--radius-chip, 4px); }
+.lightbox-cap[hidden] { display: none; }
+.lightbox-close { position: absolute; top: 16px; right: 16px; background: var(--panel); }
 
 .cv-queued-local { border-style: dotted; }
 
-.cv-rewind-box { padding: 6px 20px 0; flex-shrink: 0; }
+/* A real overlay (sheet.css's tokens, loaded transitively via gate-item.js -> need-sheet.js ->
+   js/sheet.js's import-time style(); the fallbacks below hold even if that chain ever changes),
+   not drawn in the transcript's own flow above the composer - a phone stacked the lease bar,
+   todos, queued row and this above the composer, pushing its mode row off the bottom of the
+   viewport (app-design's review). A tap on the scrim closes it (session.js), matching the
+   tap-on-backdrop convention elsewhere (lightbox.js). */
+.cv-rewind-scrim { position: fixed; inset: 0; z-index: 40; background: var(--scrim, rgba(0,0,0,0.5)); }
+.cv-rewind-scrim[hidden] { display: none; }
+.cv-rewind-box { position: fixed; left: 0; right: 0; bottom: 0; z-index: 41; padding: 0 20px max(20px, env(safe-area-inset-bottom, 0px)); }
 .cv-rewind-box[hidden] { display: none; }
-.cv-rewind { display: flex; flex-direction: column; gap: 4px; padding: 6px; border: 1px solid var(--rule-strong); border-radius: 10px;
-  background: var(--panel); outline: none; }
+.cv-rewind { display: flex; flex-direction: column; gap: 4px; padding: 6px; max-height: 70vh; border: 1px solid var(--rule-strong);
+  border-radius: 14px 14px 0 0; background: var(--panel); box-shadow: var(--float, 0 24px 48px -24px rgba(0,0,0,0.6)); outline: none; }
 .cv-rewind-head { display: flex; align-items: center; justify-content: space-between; padding: 4px 6px; font-size: 12px; color: var(--text-2); }
 .cv-rewind-list { display: flex; flex-direction: column; gap: 2px; max-height: 240px; overflow-y: auto; }
 .cv-rewind-row { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; width: 100%; padding: 6px 8px; border: 0; border-radius: 6px;
@@ -770,6 +835,12 @@ pre code { display: block; font-family: var(--mono); font-size: 13px; line-heigh
 .cv-rw-opt[disabled] { opacity: 0.5; cursor: not-allowed; }
 .cv-rewind-note { padding: 0 6px 4px; font-size: 12px; color: var(--beacon-ink); }
 .cv-rewind-note:empty { display: none; }
+/* Desktop: a centred floating dialog (sheet.css's own convention for the same width/pointer
+   combination), not a full-width bottom banner. */
+@media (min-width: 720px) and (min-height: 501px), (min-width: 720px) and (pointer: fine), (min-width: 720px) and (pointer: none) {
+  .cv-rewind-box { left: 50%; right: auto; bottom: 24px; width: 420px; margin-left: -210px; padding: 0; }
+  .cv-rewind { border-radius: 14px; }
+}
 
 @media (max-width: 720px) {
   .cv-pin, .cv-tasks { margin-left: 16px; margin-right: 16px; }
@@ -779,3 +850,82 @@ pre code { display: block; font-family: var(--mono); font-size: 13px; line-heigh
 @media (pointer: coarse) { .composer-chip .kbd, .cv-rewind-acts .btn .kbd { display: none; } }
 .composer-attach { width: 36px; height: 44px; flex-shrink: 0; }
 .composer-attach[hidden] { display: none; }
+/* Tap-to-talk / push-to-talk (voice): a placeholder look, app-design to refine the ring and pill
+   in Design A. --voice-level (0-1, set live from the real mic level) drives the ring's spread. */
+.composer-mic { width: 36px; height: 44px; flex-shrink: 0; position: relative; --voice-level: 0; }
+.composer-mic.on { color: var(--beacon-ink); box-shadow: 0 0 0 calc(2px + 6px * var(--voice-level)) var(--beacon-ink, currentColor); opacity: 1; }
+.composer-mic.held { color: var(--primary-ink, var(--beacon-ink)); }
+/* Stopping (a stop tap sent, waiting on done/error - "session-view voice states"): the ring
+   freezes instead of tracking --voice-level, since no more audio is being heard. */
+.composer-mic.stopping { color: var(--text-2); box-shadow: 0 0 0 4px var(--text-2); opacity: 0.7; }
+@media (prefers-reduced-motion: no-preference) { .composer-mic { transition: box-shadow 80ms linear; } }
+.composer-voice-pill { display: flex; align-items: center; gap: 6px; margin-bottom: 6px; padding: 4px 10px;
+  border-radius: var(--radius-chip, 4px); background: var(--hover); color: var(--text-2); font-size: 12px; line-height: 16px; width: fit-content; }
+.composer-voice-pill[hidden] { display: none; }
+.composer-voice-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--beacon-dot, var(--beacon-ink)); flex-shrink: 0; }
+@media (prefers-reduced-motion: no-preference) { .composer-voice-dot { animation: composer-voice-pulse 1.6s ease-in-out infinite; } }
+@keyframes composer-voice-pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.35; } }
+
+/* Plan card (plan-card.md, plan-card.js): the ask card's frame and header; the body a short
+   document (title, numbered steps, what it will not touch, the files it expects), the mode it
+   continues in as a segmented control, then Start building, Revise and Keep planning. */
+.cv-plan-body { display: flex; flex-direction: column; gap: 12px; padding: 4px 16px 16px; }
+.cv-plan-title { font-size: 15px; line-height: 22px; font-weight: 600; }
+.cv-plan-steps { margin: 0; padding-left: 22px; display: flex; flex-direction: column; gap: 6px; font-size: 15px; line-height: 22px; color: var(--text); }
+.cv-plan-steps li::marker { color: var(--label); }
+.cv-plan-code { font-family: var(--mono); font-size: 13px; padding: 0 4px; border-radius: 4px; background: var(--hover); }
+.cv-plan-not { font-size: 13px; line-height: 18px; color: var(--text-2); }
+.cv-plan-not .cv-plan-code { font-size: 12px; }
+.cv-plan-rest { font-size: 13px; line-height: 18px; color: var(--text-2); white-space: pre-wrap; }
+.cv-plan-more { align-self: flex-start; }
+.cv-plan-fileset { display: flex; flex-direction: column; gap: 4px; }
+.cv-plan-files-head { display: flex; align-items: center; gap: 8px; min-height: 20px; padding: 0; border: 0; background: none; font: inherit; font-size: 12px;
+  line-height: 16px; color: var(--text-2); text-align: left; }
+.cv-plan-lbl { font-weight: 600; color: var(--label); }
+.cv-plan-counts { margin-left: auto; font-size: 12px; color: var(--text-2); white-space: nowrap; font-variant-numeric: tabular-nums; }
+.cv-plan-file { display: flex; align-items: center; gap: 10px; min-height: 20px; }
+.cv-plan-path { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-family: var(--mono); font-size: 12px; color: var(--text); }
+.cv-plan-then { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.cv-plan-then-l { font-size: 12px; color: var(--text-2); }
+.cv-plan-seg { display: inline-flex; padding: 2px; gap: 2px; border: 1px solid var(--rule); border-radius: 8px; height: 32px; box-sizing: border-box; }
+.cv-plan-opt { height: 26px; padding: 0 12px; border: 0; border-radius: 6px; background: none; font: inherit; font-size: 13px; color: var(--text-2); cursor: pointer; }
+.cv-plan-opt[aria-checked="true"] { background: var(--hover); color: var(--text); font-weight: 600; }
+.cv-plan-opt:focus-visible { outline: 2px solid var(--focus); outline-offset: 1px; }
+.cv-plan-actions { padding: 12px 16px; border-top: 1px solid var(--rule); }
+.cv-plan-revise-row { padding: 0 16px 8px; }
+.cv-plan-building { display: flex; align-items: center; gap: 8px; padding: 0 16px; font-size: 13px; font-weight: 600; }
+.cv-plan-err { padding: 0 16px 8px; font-size: 12px; color: var(--text); }
+@media (max-width: 719px), (max-height: 500px) and (pointer: coarse) {
+  .cv-plan-title, .cv-plan-steps { font-size: 17px; line-height: 24px; }
+  .cv-plan-then, .cv-plan-seg { width: 100%; }
+  .cv-plan-seg { height: 40px; }
+  .cv-plan-opt { flex: 1; height: 34px; }
+  .cv-plan-file { min-height: 24px; }
+  .cv-plan-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  .cv-plan-actions > [data-act="start"] { grid-column: 1 / -1; min-height: 54px; }
+  .cv-plan-actions > .btn:not([data-act="start"]) { min-height: 44px; }
+}
+
+/* The tip on the composer's hint line (tip.md, tip-line.js): left, the key hints right. Muted,
+   never the attention colour, never in the tab order; gone while anything else wants you. */
+.composer-keys { margin-left: auto; flex-shrink: 0; }
+.composer-tip { min-width: 0; flex: 1 1 auto; }
+.composer-tip[hidden] { display: none; }
+.cv-tip { display: flex; align-items: center; gap: 8px; min-height: 28px; min-width: 0; font-size: 12px; line-height: 16px; color: var(--label);
+  animation: cv-tip-in 150ms ease-out; }
+.cv-tip-icon { display: inline-flex; flex-shrink: 0; }
+.cv-tip-text { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cv-tip-code { font-family: var(--mono); font-size: 12px; color: var(--text-2); }
+.cv-tip-key { margin: 0 2px; }
+.cv-tip-show { flex-shrink: 0; height: 24px; font-size: 12px; font-weight: 600; color: var(--text-2); }
+.cv-tip-x { flex-shrink: 0; width: 24px; height: 24px; color: var(--label); }
+@keyframes cv-tip-in { from { opacity: 0; } to { opacity: 1; } }
+@media (prefers-reduced-motion: reduce) { .cv-tip { animation: none; } }
+
+/* The header's title with the session's short id beside it: sessions in one project wear the same
+   project tile (ADR 0043 section 6), so the title and the id tell them apart. */
+.cv-head-line { display: flex; align-items: baseline; gap: 8px; min-width: 0; }
+.cv-head-line > .title { min-width: 0; }
+.cv-num { flex-shrink: 0; font-size: 11px; }
+.cv-head-av { flex-shrink: 0; }
+.nav-pj-av { margin-right: 2px; }

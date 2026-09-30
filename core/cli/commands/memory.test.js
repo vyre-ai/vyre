@@ -17,12 +17,16 @@ import { tempHome, present } from "../../../test/helpers.js";
 
 const BIN = path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "..", "..", "bin", "vyre");
 
-/** @returns {Promise<{ code: number, out: string }>} */
+/** @returns {Promise<{ code: number, out: string, stdout: string }>} */
 const run = (root, args) => new Promise(resolve =>
   execFile(process.execPath, [BIN, ...args], { env: { ...process.env, VYRE_HOME: root, NO_COLOR: "1", VYRE_NO_DIALOGS: "1" }, timeout: 30_000 },
-    (err, stdout, stderr) => resolve({ code: err ? Number(/** @type {any} */ (err).code ?? 1) : 0, out: stdout + stderr })));
+    (err, stdout, stderr) => resolve({ code: err ? Number(/** @type {any} */ (err).code ?? 1) : 0, out: stdout + stderr, stdout })));
 
-test("memory mute: a node is muted and unmuted, the about view says so, and a missing node is a usage mistake", async t => {
+/** Every stdout line of a --view run, parsed as a frame. @param {string} s */
+const frames = s => s.trim().split("\n").map(l => JSON.parse(l));
+
+/** A vyred in a temp home whose memory has been curated from the synthetic corpus. */
+async function world(t) {
   const root = tempHome(t);
   fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ transcripts: [path.join(root, "no-transcripts")], vault: { keystore: "file" }, modules: { disable: ["learn"] } }));
   const db = open(path.join(root, "vyre.db"));
@@ -31,7 +35,11 @@ test("memory mute: a node is muted and unmuted, the about view says so, and a mi
   const d = await start({ root, presence: present, log: () => {} });
   t.after(() => d.stop());
   assert.ok((await call("memory.curate", {}, { root })).data.nodes > 0);
-  const vyre = (/** @type {string[]} */ ...args) => run(root, args);
+  return (/** @type {string[]} */ ...args) => run(root, args);
+}
+
+test("memory mute: a node is muted and unmuted, the about view says so, and a missing node is a usage mistake", async t => {
+  const vyre = await world(t);
 
   const muted = await vyre("memory", "mute", "Sam", "Okafor");
   assert.equal(muted.code, 0, muted.out);
@@ -53,4 +61,73 @@ test("memory mute: a node is muted and unmuted, the about view says so, and a mi
   const nothing = await vyre("memory", "mute", "Juno Nobody", "--json");
   assert.equal(nothing.code, 1);
   assert.match(JSON.parse(nothing.out).error.message, /nothing in memory/);
+});
+
+test("memory ask: Vyre IQ answers from what the user said, with where; else not sure, exit 1", async t => {
+  const root = tempHome(t);
+  fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ transcripts: [path.join(root, "no-transcripts")], vault: { keystore: "file" }, modules: { disable: ["learn"] } }));
+  const db = open(path.join(root, "vyre.db"));
+  seedRecall(db);
+  db.close();
+  const d = await start({ root, presence: present, log: () => {} });
+  t.after(() => d.stop());
+  await call("memory.curate", {}, { root });
+  assert.ok((await call("memory.remember", { text: "my wife is Juno" }, { root })).data.facts.length > 0);
+  const vyre = (/** @type {string[]} */ ...args) => run(root, args);
+
+  const wife = await vyre("memory", "ask", "what is my wife's name");
+  assert.equal(wife.code, 0, wife.out);
+  assert.match(wife.out, /Juno/);
+  assert.match(wife.out, /confidence 0\.\d+ · from what you have said/);
+  const j = JSON.parse((await vyre("memory", "ask", "what is my wife's name", "--json")).out);
+  assert.equal(j.via, "fact");
+  assert.equal(j.abstained, false);
+
+  // Wrong? Fix it where it is shown, and the next ask has it.
+  assert.match(wife.out, /wrong\? vyre memory fix a_[0-9a-f]{16} wrong/);
+  const fixed = await vyre("memory", "fix", j.answer_id, "Your", "wife", "is", "Kit.");
+  assert.equal(fixed.code, 0, fixed.out);
+  assert.match(fixed.out, /remembered · what is my wife's name · undo with vyre memory fix undo 1/);
+  assert.match((await vyre("memory", "ask", "what is my wife's name")).out, /Your wife is Kit\.[\s\S]*you corrected this/);
+  assert.match((await vyre("memory", "fix")).out, /1 answer corrected this week · people 1/);
+  assert.equal((await vyre("memory", "fix", "undo", "1")).code, 0);
+  assert.match((await vyre("memory", "ask", "what is my wife's name")).out, /Juno/);
+  assert.equal((await vyre("memory", "fix", j.answer_id)).code, 2);
+
+  // No model under node --test: a question only a session could answer is not sure.
+  const unsure = await vyre("memory", "ask", "which port did the Northwind staging deploy use");
+  assert.equal(unsure.code, 1, unsure.out);
+  assert.match(unsure.out, /not sure yet/);
+  assert.equal((await vyre("memory", "ask")).code, 2);
+});
+
+test("memory cli: vyre commands lists every verb run() handles, and why's flags, without vyred", async t => {
+  const root = tempHome(t);
+  const r = await run(root, ["commands", "memory", "--json"]);
+  assert.equal(r.code, 0, r.out);
+  const verbs = JSON.parse(r.stdout).commands[0].verbs;
+  assert.deepEqual(verbs.map(v => v.verb), ["about", "ask", "fix", "correct", "corrections", "uncorrect", "merge", "split", "pin", "mute"]);
+  assert.deepEqual(verbs.filter(v => v.read).map(v => v.verb), ["about", "ask", "corrections"]);
+  assert.deepEqual(verbs.find(v => v.verb === "about").args, [{ name: "thing", required: false, repeat: true }]);
+  const why = JSON.parse((await run(root, ["commands", "why", "--json"])).stdout).commands[0];
+  assert.deepEqual(why.verbs, []);
+  assert.deepEqual(why.flags.map(f => f.name), ["project", "json"]);
+});
+
+test("memory cli: --view draws the overview and one thing as tables of facts; about <thing> is the same as memory <thing>", async t => {
+  const vyre = await world(t);
+  const a = await vyre("memory", "about", "Sam", "Okafor", "--view");
+  assert.equal(a.code, 0, a.out);
+  const f = frames(a.stdout);
+  assert.deepEqual([f[0].cmd, f[0].view.kind], ["memory about", "table"]);
+  assert.match(f[0].view.title, /^Sam Okafor/);
+  assert.deepEqual(f[0].view.columns.map(c => c.key), ["text", "confidence", "source", "age"]);
+  assert.ok(f[0].view.rows.length && f[0].view.rows.every(r => r.id), "each row keeps its fact's id");
+  assert.deepEqual(f[0].data, JSON.parse((await vyre("memory", "Sam Okafor", "--json")).stdout));
+  assert.deepEqual(f.at(-1), { v: 1, done: true, exit: 0 });
+
+  const o = frames((await vyre("memory", "--view")).stdout);
+  assert.equal(o[0].view.kind, "table");
+  assert.match(o[0].view.title, /^\d+ facts · \d+ things · \d+ sessions read/);
+  assert.deepEqual(o[0].data, JSON.parse((await vyre("memory", "about", "--json")).stdout), "about with no thing is the overview");
 });

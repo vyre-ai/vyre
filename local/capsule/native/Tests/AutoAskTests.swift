@@ -42,7 +42,8 @@ let autoAskSuite = Suite("auto ask") { t in
     t.test("the pause: typing on waits, and only the words at rest are asked, once") {
         let v = quietVyred(); defer { v.stop() }
         let r: [String]? = t.wait {
-            let m = await MainActor.run { () -> CapsuleModel in let m = askModel(v); m.willShow(front: nil); return m }
+            // A pause long enough that a slow CI machine's 30 ms between keys never counts as rest.
+            let m = await MainActor.run { () -> CapsuleModel in let m = askModel(v); m.autoDelay = 0.4; m.willShow(front: nil); return m }
             _ = await until { m.vyred.isUp }
             await MainActor.run { m.text = "what is arch" }
             try? await Task.sleep(nanoseconds: 30_000_000)
@@ -155,7 +156,22 @@ let autoAskSuite = Suite("auto ask") { t in
                  "and in Greece?", "starts 1", "thinking on q1"])
     }
 
-    t.test("voice: partial words ask nothing; the final words are asked at once, as ⏎ would") {
+    t.test("⌘⏎ has one meaning: words that are not a question think deeper, never computer use") {
+        let v = quietVyred(); defer { v.stop() }
+        v.tool("hands.stop") { _ in ["stopped": true] }
+        let r: [String]? = t.wait {
+            let m = await MainActor.run { () -> CapsuleModel in let m = askModel(v); m.willShow(front: nil); return m }
+            _ = await until { m.vyred.isUp }
+            await MainActor.run { m.text = "open Notes and add milk"; _ = m.handleReturn(command: true) }
+            _ = await until { !v.callsOf("threads.start").isEmpty }
+            let s = v.callsOf("threads.start").first
+            let doing = await MainActor.run { m.doing }
+            return [VJ.s(s?["prompt"]), VJ.s(s?["model"]), VJ.s(s?["purpose"]), "\(doing)"]
+        }
+        t.eq(r, ["open Notes and add milk", CapsuleModel.deeperModel, "capsule", "false"])
+    }
+
+    t.test("voice: partial words ask nothing; final: true stops without asking; submitDictated() then asks, as ⏎ would") {
         let v = quietVyred(); defer { v.stop() }
         let r: [String]? = t.wait {
             let m = await MainActor.run { () -> CapsuleModel in let m = askModel(v); m.autoDelay = 0.05; m.willShow(front: nil); return m }
@@ -165,12 +181,20 @@ let autoAskSuite = Suite("auto ask") { t in
             await MainActor.run { m.dictate("what is an archipelago", final: false) }
             try? await Task.sleep(nanoseconds: 200_000_000)
             let before = v.callsOf("threads.start").count
+            // Stopping (tap-to-stop, hold-release, silence auto-stop) never asks on its own -- the
+            // user's spec, 28 Sep, matching chat's tap-to-talk: the words stay in the box to edit.
             await MainActor.run { m.dictate("what is an archipelago", final: true) }
+            try? await Task.sleep(nanoseconds: 150_000_000)
+            let afterStop = v.callsOf("threads.start").count
+            let stillDictating = await MainActor.run { m.dictating }
+            let text = await MainActor.run { m.text }
+            // ⏎ while listening, or "send it": submitDictated() asks with the box's current words.
+            await MainActor.run { m.submitDictated() }
             _ = await until { !v.callsOf("threads.start").isEmpty }
             let state = await MainActor.run { "\(m.followUp) \(m.voiceTurn)" }
-            return ["\(before)"] + v.callsOf("threads.start").map { VJ.s($0["prompt"]) } + [state]
+            return ["\(before)", "\(afterStop)", "\(stillDictating)", text] + v.callsOf("threads.start").map { VJ.s($0["prompt"]) } + [state]
         }
-        t.eq(r, ["0", "what is an archipelago", "true true"])
+        t.eq(r, ["0", "0", "false", "what is an archipelago", "what is an archipelago", "true true"])
     }
 
     t.test("computer use: \"do …\" starts a full session told how to act; Esc stops the hands too") {

@@ -15,6 +15,7 @@
 //     applies under tests, and VYRE_NO_DIALOGS still wins.
 //   - otherwise: yes.
 
+import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 
@@ -46,6 +47,71 @@ export function claudeHome(root, env = process.env) {
   if (env.VYRE_CLAUDE_HOME) return path.resolve(env.VYRE_CLAUDE_HOME.replace(/^~(?=$|\/)/, os.homedir()));
   if (isRealHome(root)) return env.CLAUDE_CONFIG_DIR ? path.resolve(env.CLAUDE_CONFIG_DIR.replace(/^~(?=$|\/)/, os.homedir())) : path.join(os.homedir(), ".claude");
   return path.join(path.resolve(String(root)), "claude");
+}
+
+/**
+ * Claude Code's `.claude.json` (MCP servers at user and local scope, onboarding state) for the
+ * Vyre home at `root`. Ordinarily it sits beside `~/.claude`, not inside it, so this is its own
+ * function rather than a path built from claudeHome(); but when CLAUDE_CONFIG_DIR is set, Claude
+ * Code itself moves `.claude.json` inside that folder (not beside it), so this follows suit for
+ * the person's real ~/.vyre. Any other home (a dev world, a demo, a temp home, a test) gets
+ * `<root>/claude.json`, empty until a fixture puts one there, the same rule claudeHome follows for
+ * the folder next to it (e2e review, 2026-09-28, after discover.js read os.homedir() directly;
+ * corrected 2026-09-28, e2e LOW: CLAUDE_CONFIG_DIR does move .claude.json too).
+ * @param {string} root @param {NodeJS.ProcessEnv} [env]
+ */
+export function claudeJson(root, env = process.env) {
+  if (env.VYRE_CLAUDE_HOME) return path.join(path.dirname(path.resolve(env.VYRE_CLAUDE_HOME.replace(/^~(?=$|\/)/, os.homedir()))), ".claude.json");
+  if (isRealHome(root)) {
+    if (env.CLAUDE_CONFIG_DIR) return path.join(path.resolve(env.CLAUDE_CONFIG_DIR.replace(/^~(?=$|\/)/, os.homedir())), ".claude.json");
+    return path.join(os.homedir(), ".claude.json");
+  }
+  return path.join(path.resolve(String(root)), "claude.json");
+}
+
+const untilde = (/** @type {string} */ p) => String(p).replace(/^~(?=$|\/)/, os.homedir());
+
+/**
+ * A path with its symlinks resolved as far as it exists: the deepest existing folder's real path,
+ * and the rest as written. So a link to ~/.claude, or a ~/.claude that is itself a link, compares
+ * as where it really is.
+ * @param {string} p
+ */
+function realish(p) {
+  let head = path.resolve(untilde(p)), tail = "";
+  for (;;) {
+    try { return path.join(fs.realpathSync(head), tail); } catch {}
+    const up = path.dirname(head);
+    if (up === head) return path.resolve(untilde(p));
+    tail = path.join(path.basename(head), tail);
+    head = up;
+  }
+}
+
+/** Is `p` the folder `dir` or inside it, by the paths as written or as they really are? */
+const within = (/** @type {string} */ p, /** @type {string} */ dir) => {
+  const ps = [path.resolve(untilde(p)), realish(p)], ds = [path.resolve(untilde(dir)), realish(dir)];
+  return ps.some(a => ds.some(d => a === d || a.startsWith(d + path.sep)));
+};
+
+/**
+ * The transcript folders a Vyre home may read. The person's own Claude Code folder (~/.claude, or
+ * CLAUDE_CONFIG_DIR) is read only by their own ~/.vyre: a dev world, a demo, a trial or a temp home
+ * indexing every real conversation on the machine is how a trial Capsule once answered from the
+ * person's dev sessions. Such a home keeps its own folders (claudeHome(root)) and anything outside
+ * the person's, or the real one when VYRE_ALLOW_REAL_TRANSCRIPTS=1 says so on purpose. Under
+ * node --test the real one is never read, whatever the config or the environment says. Symlinks
+ * are followed both ways. Recall and the Switchboard both read through this.
+ * @param {string[]} folders @param {string} [root] the Vyre home @param {NodeJS.ProcessEnv} [env]
+ */
+export function transcriptFolders(folders, root = "", env = process.env) {
+  const theirs = [path.join(os.homedir(), ".claude"), ...(env.CLAUDE_CONFIG_DIR ? [env.CLAUDE_CONFIG_DIR] : [])];
+  const personal = (/** @type {string} */ f) => theirs.some(d => within(f, d));
+  if (env.NODE_TEST_CONTEXT) return folders.filter(f => !personal(f));
+  if (root && isRealHome(root)) return folders;
+  if (env.VYRE_ALLOW_REAL_TRANSCRIPTS === "1") return folders;
+  const own = root ? claudeHome(root, env) : null;
+  return folders.filter(f => !personal(f) || Boolean(own && within(f, own)));
 }
 
 /** @param {NodeJS.ProcessEnv} [env] */

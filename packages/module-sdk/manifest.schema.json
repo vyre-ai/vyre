@@ -185,7 +185,7 @@
         "type": { "enum": ["enum", "bool", "int", "number", "string", "list", "object", "model"] },
         "enum": { "type": "array", "items": { "type": "string" } },
         "choices": { "type": "array", "items": { "type": "number" } },
-        "choicesFrom": { "$ref": "#/$defs/toolRef", "description": "One of this module's own tools that lists the choices when the schema is read, within 500 ms; otherwise the enum or no choices (ADR 0035)." },
+        "choicesFrom": { "type": "object", "required": ["tool"], "additionalProperties": false, "properties": { "tool": { "$ref": "#/$defs/tool" }, "read": { "type": "string", "minLength": 1, "description": "A dotted path into the tool's answer that holds the list." } }, "description": "One of this module's own tools that lists the choices when the schema is read, within 500 ms; otherwise the enum or no choices (ADR 0035)." },
         "check": { "$ref": "#/$defs/toolRef", "description": "One of this module's own tools, asked { ok } or { ok: false, message } before a value is stored, within 500 ms; off or late refuses the change (ADR 0035)." },
         "min": { "type": "number" },
         "max": { "type": "number" },
@@ -199,7 +199,7 @@
         "loosens": { "type": "string", "description": "What it loosens, in a few words." },
         "confirm": {
           "description": "Ask the person before a change: always, or only for these values.",
-          "anyOf": [{ "const": true }, { "type": "object", "required": ["values"], "additionalProperties": false, "properties": { "values": { "type": "array" } } }]
+          "anyOf": [{ "const": true }, { "type": "object", "required": ["values"], "additionalProperties": false, "properties": { "values": { "type": "array" } } }, { "type": "object", "required": ["drops"], "additionalProperties": false, "properties": { "drops": { "const": true } }, "description": "A list: ask when an entry is taken out." }]
         },
         "store": { "$ref": "#/$defs/settingStore" }
       }

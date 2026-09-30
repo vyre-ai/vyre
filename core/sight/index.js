@@ -16,6 +16,8 @@
 // path, never its query or fragment; from hands.acted only the control's role is kept, never its
 // name or identifier; and a blind place (the floor) stays blind in every part.
 
+import { agentClaim } from "../modules/index.js";
+
 export const KEEP = 500;
 const AGENT = /^[a-z][a-z0-9-]{0,40}$/;
 const SUMMARY_MAX = 200;
@@ -70,6 +72,26 @@ export function parseTarget(t) {
  * @param {any} meta
  */
 export const offMac = meta => Boolean(meta && (meta.peer || /^(tailnet|tailnet-guest|device):/.test(String(meta.caller || ""))));
+
+/**
+ * The agent name this call's real caller claims to be, when it is not the assistant, or null.
+ * sight.watch forwards to computers.watch as "module:sight" (core/modules/index.js's call
+ * wrapper), so computers.js's own ownSurface floor (which refuses an ordinary agent claiming a
+ * person's surface) never sees who really called; from computers' side every sight-proxied watch
+ * looks like the same trusted module, whoever asked. sight still has meta.caller before that
+ * relabeling happens, so it checks the same thing itself and refuses before forwarding. The claim
+ * parse itself is `agentClaim` (core/modules, shared with computers.js's ownSurface and
+ * hands-desktop's resolveAgent, 2026-09-28: one parser instead of three copies of the regex).
+ * @param {any} ctx @param {any} meta
+ */
+export const agentCaller = async (ctx, meta) => {
+  const claim = agentClaim((meta && meta.caller) || "");
+  if (!claim) return null;
+  const r = await ctx.call("agents.list", {});
+  if (r.error) return claim; // can't tell who this is: fail closed, treat it as an ordinary agent
+  const a = (r.data || []).find(x => x && x.name === claim);
+  return a && String(a.kind) === "assistant" ? null : claim;
+};
 
 /**
  * One acted event as a step, or null when it is not one. Only the named fields are read, so
@@ -260,13 +282,35 @@ export default {
         target: { type: "string" }, surface: { type: "string" }, slow: { type: "boolean" },
       } },
       callers: CALLERS,
-      run: async i => {
+      run: async (i, meta) => {
         const t = parseTarget(i.target);
         if (t.kind === "mac") throw fail("local_only", "this Mac's pixels never leave this Mac");
+        const claimant = await agentCaller(ctx, meta);
+        if (claimant) throw fail("denied", `"${claimant}" is an agent, not a person's screen; sight.watch opens a screen for a person, not for an agent to watch itself`);
         const r = await ctx.call("computers.watch", { agent: t.agent, ...(i.surface !== undefined ? { surface: i.surface } : {}), ...(i.slow !== undefined ? { slow: i.slow } : {}) });
         if (r && r.error && r.error.code === "no_such_tool") return { target: i.target, ticket: null, why: "this machine runs no agent computers" };
         if (!r || r.error) throw fail((r && r.error && r.error.code) || "failed", (r && r.error && r.error.message) || "computers.watch failed");
         return { target: i.target, ...r.data };
+      },
+    });
+
+    ctx.tool("sight.frame", {
+      description: "One still of an agent's screen: a JPEG scaled to maxWidth (160-1280, default 480), base64. For a small \"what the agent is doing now\" view that refreshes on sight.stepped, never on a timer; the live view is sight.watch. Refused while a person is signing in on that computer (the shield). The Mac answers local_only.",
+      input: { type: "object", required: ["target"], properties: {
+        target: { type: "string" }, maxWidth: { type: "integer", minimum: 160, maximum: 1280 },
+      } },
+      callers: CALLERS,
+      run: async (i, meta) => {
+        const t = parseTarget(i.target);
+        if (t.kind === "mac") throw fail("local_only", "this Mac's pixels never leave this Mac");
+        const claimant = await agentCaller(ctx, meta);
+        if (claimant) throw fail("denied", `"${claimant}" is an agent, not a person's screen; sight.frame opens a screen for a person, not for an agent to watch itself`);
+        const maxWidth = Number.isInteger(i.maxWidth) ? i.maxWidth : 480;
+        const r = await ctx.call("hands-desktop.screenshot", { agent: t.agent, format: "jpeg", maxWidth });
+        if (r && r.error && r.error.code === "no_such_tool") return { target: i.target, image: null, why: "this machine runs no agent computers" };
+        if (!r || r.error) throw fail((r && r.error && r.error.code) || "failed", (r && r.error && r.error.message) || "the screenshot failed");
+        const last = db.prepare("SELECT * FROM sight_steps WHERE target = ? ORDER BY id DESC LIMIT 1").get(String(i.target));
+        return { target: i.target, image: r.data.image, mime: r.data.mime, maxWidth, at: Date.now(), step: last ? stepOf(last) : null };
       },
     });
 

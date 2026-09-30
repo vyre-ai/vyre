@@ -85,10 +85,13 @@ test("link: a device that is not the owner is refused, and a Mac cannot approve 
   // Claude on the box through MCP cannot approve, and a tailnet caller without a known node cannot.
   assert.ok((await s.boxCall("link.pair.approve", { code: p.code }, "mcp")).error);
   assert.ok((await s.boxCall("link.pair.approve", { code: p.code }, `tailnet:${OWNER}`)).error);
-  // The code is never listed on the box.
+  // The code is never listed on the box. It carries the request's real created time, not just
+  // when it expires, so waiting dates it exactly instead of guessing from the TTL.
   const pending = (await s.boxCall("link.pending")).data;
   assert.equal(pending.length, 1);
   assert.ok(!JSON.stringify(pending).includes(p.code.replace("-", "")));
+  assert.equal(typeof pending[0].created, "number");
+  assert.ok(pending[0].created <= pending[0].expires && pending[0].expires - pending[0].created <= 600_000);
   // Five wrong codes cancel every request.
   for (let i = 0; i < 4; i++) assert.match((await s.boxCall("link.pair.approve", { code: "000-000" === p.code ? "111-111" : "000-000" })).error.message, /no pairing request/);
   assert.match((await s.boxCall("link.pair.approve", { code: "000-000" === p.code ? "111-111" : "000-000" })).error.message, /too many wrong codes/);

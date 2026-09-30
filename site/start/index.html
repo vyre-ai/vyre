@@ -86,7 +86,7 @@
 
     http://127.0.0.1:7300/onboard?t=...
 
-  This box is headless. On your own computer, run this first, then open the link there:
+  This server is headless. On your own computer, run this first, then open the link there:
     ssh -N -L 7300:127.0.0.1:7300 &lt;you&gt;@&lt;server&gt;</pre>
         </div>
         <p>If your account is not in the <code>docker</code> group, every <code>vyre</code> command on the server needs <code>sudo</code>.</p>
@@ -119,13 +119,13 @@
         <div class="term-row"><pre>npm i -g https://vyre.run/box/vyre.tgz</pre><button class="btn btn-line btn-sm" type="button" data-copy="npm i -g https://vyre.run/box/vyre.tgz" aria-label="Copy the command npm i -g https://vyre.run/box/vyre.tgz"><svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true"><rect x="4.5" y="4.5" width="7" height="7" rx="1.5" stroke="currentColor" stroke-width="1.4"/><path d="M9.5 2.5H3.5A1 1 0 0 0 2.5 3.5V9.5" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg><span class="txt" data-copy-label>Copy</span></button></div>
         <div class="term-row"><pre>vyre up</pre><button class="btn btn-line btn-sm" type="button" data-copy="vyre up" aria-label="Copy the command vyre up"><svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true"><rect x="4.5" y="4.5" width="7" height="7" rx="1.5" stroke="currentColor" stroke-width="1.4"/><path d="M9.5 2.5H3.5A1 1 0 0 0 2.5 3.5V9.5" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg><span class="txt" data-copy-label>Copy</span></button></div>
       </div>
-        <p><code>vyre up</code> starts vyred for this Mac and looks for your box on the tailnet (the Mac must be signed in to Tailscale). When it asks where Vyre should run, pick <strong>3, I already set up a box</strong>, and give it your address, <code>https://vyre.&lt;your-tailnet&gt;.ts.net</code>. Then it asks the box to pair this Mac and prints a code:</p>
+        <p><code>vyre up</code> starts vyred for this Mac and looks for your server on the tailnet (the Mac must be signed in to Tailscale). When it asks where Vyre should run, pick <strong>3, I already set up a box</strong> (the CLI's own wording, not yet renamed), and give it your address, <code>https://vyre.&lt;your-tailnet&gt;.ts.net</code>. Then it asks the server to pair this Mac and prints a code:</p>
         <div class="term-block">
           <div class="term-cap"><span class="lbl">Output of vyre up</span></div>
 <pre class="term-out">  Approve this Mac in your Deck: it names this Mac (alex-mac) and asks for your passkey. Code: 123-456
   vyre link shows when it is done.</pre>
         </div>
-        <p>Approve it in your Deck and confirm with your passkey. A terminal on the box cannot approve a Mac on its own: <code>vyre link approve</code> there points you to the Deck. The Deck screen that approves a Mac is not built yet (see Known gaps below). <code>vyre link</code> on the Mac says when it is paired.</p>
+        <p>Approve it in your Deck and confirm with your passkey. A terminal on the server cannot approve a Mac on its own: <code>vyre link approve</code> there points you to the Deck. The Deck screen that approves a Mac is not built yet (see Known gaps below). <code>vyre link</code> on the Mac says when it is paired.</p>
         <p>The install is about 480 MB, most of it the optional local embedding model that lets search find things by meaning. Search still works without it, as full text.</p>
         <p>To use Vyre's tools inside Claude Code on the Mac:</p>
       <div class="term-block">
@@ -143,7 +143,7 @@
         <div class="term-row"><pre>vyre capsule</pre><button class="btn btn-line btn-sm" type="button" data-copy="vyre capsule" aria-label="Copy the command vyre capsule"><svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true"><rect x="4.5" y="4.5" width="7" height="7" rx="1.5" stroke="currentColor" stroke-width="1.4"/><path d="M9.5 2.5H3.5A1 1 0 0 0 2.5 3.5V9.5" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg><span class="txt" data-copy-label>Copy</span></button></div>
       </div>
         <p>The first run builds the Capsule on this Mac, in under a minute. If it says the Command Line Tools are not installed, run <code>xcode-select --install</code>, then <code>vyre capsule</code> again.</p>
-        <p>Grant Input Monitoring when it asks: Control twice opens the Capsule from any app, and macOS needs that permission to see the key. Contacts is optional, for contact results. Then press Control twice anywhere.</p>
+        <p>Option-Space opens the Capsule from any app by default, no extra permission needed. If you turn on Control twice instead from the menu-bar mark, grant Input Monitoring when it asks: macOS needs that permission to see the key. Contacts is optional, for contact results.</p>
       </div>
     </section>
 
@@ -157,8 +157,8 @@
             <li><strong>The server install.</strong> The one line installs Docker if you agree, verifies every file against a published SHA-256, builds the image from main, and prints the onboarding link. Tested end to end on a fresh Linux server.</li>
             <li><strong>Onboarding in the browser.</strong> The one-time link over the <code>ssh -L</code> tunnel, with the Claude, Tailscale and name steps.</li>
             <li><strong>The Mac CLI and Claude Code plugin.</strong> <code>npm install -g</code> from the tarball, <code>vyre up</code>, and Vyre's tools inside Claude Code.</li>
-            <li><strong>The Capsule.</strong> Control twice, built on your Mac from the npm install with <code>vyre capsule</code>.</li>
-            <li><strong>Finding the box.</strong> <code>vyre up</code> on the Mac finds the box on your tailnet, or takes its address.</li>
+            <li><strong>The Capsule.</strong> Option-Space by default (or Control twice, if you turn that on), built on your Mac from the npm install with <code>vyre capsule</code>.</li>
+            <li><strong>Finding the server.</strong> <code>vyre up</code> on the Mac finds the server on your tailnet, or takes its address.</li>
           </ul>
           <p>Not yet checked on a real server: the Tailscale sign-in, the certificate for your address, and pairing against it. Each works in tests with a simulated tailnet.</p>
           <h2 class="h2">What's coming</h2>

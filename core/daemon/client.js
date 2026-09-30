@@ -12,10 +12,13 @@ import * as config from "../config/index.js";
  * were not installed. `opts.headers` adds headers, such as a presence proof; the caller header
  * and the body's own headers win on a clash.
  * @param {string} method @param {string} path @param {any} [payload]
- * @param {{ root?: string, caller?: string, timeout?: number, session?: { id: string, key: string } | null, headers?: Record<string, string> }} [opts]
+ * @param {{ root?: string, caller?: string, timeout?: number, session?: { id: string, key: string } | null, headers?: Record<string, string>, socket?: string }} [opts]
  */
-export function request(method, path, payload, { root = config.home(), caller = "cli", timeout = 10_000, session = null, headers = {} } = {}) {
-  const socketPath = config.paths(root).socket;
+export function request(method, path, payload, { root, caller = "cli", timeout = 10_000, session = null, headers = {}, socket } = {}) {
+  // Inside a session Vyre started, VYRE_SOCKET is that session's own socket (ADR 0030 phase 3):
+  // vyred binds the caller there, so what this says it is changes nothing. An explicit root or
+  // socket wins, so a test or a CLI aimed at another home is never sent to the session's vyred.
+  const socketPath = socket || (root === undefined && process.env.VYRE_SOCKET) || config.paths(root ?? config.home()).socket;
   return new Promise(resolve => {
     const data = payload === undefined ? undefined : JSON.stringify(payload);
     // agent: false, so no connection is pooled. A pooled one outlives a vyred restart, and the

@@ -18,15 +18,9 @@
      (css/views/agents.css), whose terminal stays graphite on paper. Not a role; nothing else uses them. */
   --swatch-graphite: #0E0D0C; --swatch-raised: #1E1C1A; --swatch-ash: #8C877D; --swatch-stone: #B3AEA4;
 
-  /* Deck-only, no token yet: asked of app-design. */
-  --recall: #EBC76B; --recall-wash: rgba(235,199,107,0.10); --recall-ink: var(--recall);
-  --beacon-wash: rgba(184,164,255,0.12); --beacon-rule: rgba(184,164,255,0.28);
-
   --light-top: var(--float);
 }
 :root[data-theme="paper"] {
-  --recall-ink: #7E5B0C; --recall-wash: rgba(126,91,12,0.08); --recall: #7E5B0C;
-  --beacon-wash: rgba(91,63,196,0.08); --beacon-rule: rgba(91,63,196,0.28);
 }
 
 * { box-sizing: border-box; }
@@ -54,10 +48,13 @@ code, .mono { font-family: var(--mono); }
 .small { font-size: 13px; line-height: 18px; }
 .muted { color: var(--text-2); }
 .faint { color: var(--label); }
-.lbl { font-family: var(--mono); font-size: 11px; line-height: 14px; font-weight: 500; letter-spacing: 0.16em;
-  text-transform: uppercase; color: var(--label); margin: 0; }
+/* A second line of meta, not a caption (copy.md: sentence case everywhere, no caps labels and no
+   letter-spaced mono - Design A retires the old mono/uppercase/tracked look). */
+.lbl { font-size: var(--size-meta, 12px); line-height: var(--line-meta, 16px); font-weight: 500; color: var(--label); margin: 0; }
 .lbl.beacon { color: var(--beacon-ink); }
-.lbl.recall { color: var(--recall-ink); }
+/* A memory source ("From memory"): a source chip, 1 px --rule-strong, at the start. Never gold. */
+.lbl.recall { display: inline-flex; align-items: center; gap: 6px; align-self: flex-start; width: fit-content; padding: 0 6px;
+  border: 1px solid var(--rule-strong); border-radius: var(--radius-chip, 4px); color: var(--text-2); }
 .code { font-family: var(--mono); font-size: 12px; line-height: 16px; color: var(--text-2); }
 .ellipsis { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
 
@@ -86,13 +83,32 @@ textarea.input { height: auto; padding: 10px 12px; resize: vertical; line-height
 .initial { width: 24px; height: 24px; flex-shrink: 0; display: inline-flex; align-items: center; justify-content: center;
   border-radius: var(--radius-chip, 4px); background: var(--hover); border: 1px solid var(--rule-strong); color: var(--text);
   font-family: var(--mono); font-size: 11px; font-weight: 500; }
+/* The four avatar families (js/avatars.js, ADR 0043): the SVG fills a box of --av. Only the
+   teammate sits on a tile; the person's circle, the assistant's creature and an agent's blob carry
+   their own shape. span.vy-av outranks the older .av-agent/.av-person/.initial boxes it replaces,
+   while a place's own size rule (.thread-row .av-agent on a phone) still wins. */
+span.vy-av { width: var(--av, 24px); height: var(--av, 24px); flex-shrink: 0; display: inline-flex; align-items: center;
+  justify-content: center; background: none; border: none; border-radius: 0; padding: 0; overflow: visible; cursor: pointer;
+  color: var(--text-2); font-size: 11px; line-height: 1; }
+span.vy-av > svg { width: 100%; height: 100%; display: block; }
+span.vy-av-teammate { background: var(--hover); border-radius: calc(var(--av, 24px) / 4); overflow: hidden; }
+span.vy-av-person { border-radius: 9999px; }
+span.vy-av-ring { border-radius: 9999px; overflow: hidden; }
+.vy-av-play { animation: vy-av-hop 420ms cubic-bezier(.3, 1.5, .5, 1); transform-origin: 50% 90%; }
+@keyframes vy-av-hop {
+  0% { transform: none; }
+  35% { transform: translateY(-12%) scale(1.1) rotate(-6deg); }
+  65% { transform: translateY(0) scale(.96, 1.04) rotate(3deg); }
+  100% { transform: none; }
+}
+@media (prefers-reduced-motion: reduce) { .vy-av-play { animation: none; } }
 .sw { position: relative; width: 34px; height: 20px; border-radius: 10px; border: none; padding: 0; cursor: pointer; flex-shrink: 0;
   background: var(--rule-strong); }
 .sw::after { content: ""; position: absolute; top: 3px; left: 3px; width: 14px; height: 14px; border-radius: 7px; background: var(--label); }
 .sw[aria-checked="true"] { background: var(--text); }
 .sw[aria-checked="true"]::after { left: 17px; background: var(--bg); }
 .dot { width: 8px; height: 8px; border-radius: 4px; flex-shrink: 0; display: inline-block; }
-.dot.recall { background: var(--recall); }
+.dot.recall { background: var(--text-2); }
 .dot.signal { background: var(--focus); }
 /* .dot.beacon (needs you) and the path dots .dot.health-* (deck/js/health.js) are drawn in css/marks.css. */
 .bar { height: 4px; border-radius: 2px; background: var(--rule); overflow: hidden; }
@@ -107,8 +123,8 @@ textarea.input { height: auto; padding: 10px 12px; resize: vertical; line-height
 .rows > *:last-child { border-bottom: none; }
 .section-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; padding-bottom: 12px;
   border-bottom: 1px solid var(--rule); }
-.recalled { background: var(--recall-wash); border-radius: var(--radius-card, 12px); padding: 12px 14px; }
-.held { background: var(--beacon-wash); border-radius: var(--radius-card, 12px); }
+.recalled { background: var(--hover); border-radius: var(--radius-card, 12px); padding: 12px 14px; }
+.held { border: 1px solid var(--rule); border-radius: var(--radius-card, 12px); }
 .empty { padding: 20px 0; color: var(--text-2); font-size: 14px; line-height: 20px; }
 .empty .code { display: block; margin-top: 6px; }
 .fixture-note { font-family: var(--mono); font-size: 11px; color: var(--label); }
@@ -137,7 +153,7 @@ textarea.input { height: auto; padding: 10px 12px; resize: vertical; line-height
   border-radius: var(--radius-card, 12px); box-shadow: var(--popover); max-height: 420px; overflow: auto; z-index: 20; padding: 6px; }
 .search-pop a { display: block; padding: 8px 10px; border-radius: var(--radius-field, 8px); text-decoration: none; }
 .search-pop a:hover, .search-pop a.on { background: var(--hover); }
-.needs-pill { display: flex; align-items: center; gap: 8px; height: 28px; padding: 0 12px; border-radius: 14px; background: var(--beacon-wash);
+.needs-pill { display: flex; align-items: center; gap: 8px; height: 28px; padding: 0 12px; border-radius: 14px;
   color: var(--beacon-ink); text-decoration: none; font-size: 13px; line-height: 18px; font-weight: 500; white-space: nowrap; }
 /* From 720 up: the rail (72), then the stage: the header over the list column and the view. */
 .body { flex-grow: 1; min-height: 0; display: flex; }
@@ -170,7 +186,7 @@ textarea.input { height: auto; padding: 10px 12px; resize: vertical; line-height
 .rail-place:focus-visible, .rail-home:focus-visible, .rail-avatar:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
 .rail-avatar { width: 32px; height: 32px; flex-shrink: 0; margin-top: 8px; border-radius: 16px; display: inline-flex; align-items: center; justify-content: center;
   background: var(--hover); color: var(--text); text-decoration: none; }
-.rail-initial { font-size: 13px; line-height: 16px; font-weight: 600; }
+.rail-initial { display: inline-flex; font-size: 13px; line-height: 16px; font-weight: 600; }
 @media (prefers-reduced-motion: reduce) { .rail-home, .rail-place { transition: none; } }
 
 /* The list column right of the rail: a view's own list (ctx.rail: Chat's sessions; deck:rail:
@@ -258,7 +274,8 @@ textarea.input { height: auto; padding: 10px 12px; resize: vertical; line-height
   /* The header replaces each view's own phone heading. */
   .phone-head { display: none; }
 
-  /* Header: the mark, Now Chats Agents in Page type, the avatar (or "+" on Agents). It never collapses. */
+  /* Header: the mark, Now Chats Agents (and a kept fourth place) in Page type, the avatar (or "+"
+     on Agents). It never collapses; labels that overflow scroll sideways and never shrink. */
   .ph-head { display: flex; align-items: center; gap: 12px; height: 48px; flex-shrink: 0; padding: 0 12px 0 16px; background: var(--bg); position: relative; z-index: 3; }
   .ph-mark { display: inline-flex; flex-shrink: 0; }
   .ph-mark circle { fill: var(--mark-dot) !important; }
@@ -266,7 +283,7 @@ textarea.input { height: auto; padding: 10px 12px; resize: vertical; line-height
   .ph-tabs { display: flex; align-items: center; gap: 16px; min-width: 0; overflow-x: auto; scrollbar-width: none; }
   .ph-tabs::-webkit-scrollbar { display: none; }
   .ph-tab { display: inline-flex; align-items: center; min-height: 44px; font-size: 22px; line-height: 28px; font-weight: 600; letter-spacing: -0.015em;
-    color: var(--label); text-decoration: none; white-space: nowrap; transition: color 160ms ease-out; -webkit-touch-callout: none; user-select: none; }
+    color: var(--label); text-decoration: none; white-space: nowrap; flex-shrink: 0; transition: color 160ms ease-out; -webkit-touch-callout: none; user-select: none; }
   .ph-tab[aria-current="page"] { color: var(--text); }
   .ph-grow { flex-grow: 1; }
   .ph-avatar, .ph-plus { width: 44px; height: 44px; margin-right: -5px; flex-shrink: 0; display: inline-flex; align-items: center; justify-content: center;
@@ -334,8 +351,6 @@ textarea.input { height: auto; padding: 10px 12px; resize: vertical; line-height
   .pull.ready { color: var(--text); }
   .reach { min-height: 44px; font-size: 15px; line-height: 20px; }
   .reach .btn { padding: 0 8px; }
-  /* Settings, from the avatar, inside a sheet: the sheet's title stands in for the page's. */
-  .ph-settings .set-top h1 { display: none; }
 }
 @keyframes ph-push { from { transform: translateX(100%); } }
 @keyframes ph-pop { to { transform: translateX(100%); } }

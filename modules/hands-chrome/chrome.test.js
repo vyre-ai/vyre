@@ -18,6 +18,7 @@ import { call } from "../../core/daemon/client.js";
 import { tempHome, present } from "../../test/helpers.js";
 import { FakeDriver } from "../../core/computers/driver/fake.js";
 import { SCRATCH } from "../../test/scratch.mjs";
+import { scrub, bareUrl } from "./index.js";
 
 const CHROME_BIN = process.env.CHROME_BIN || "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome";
 const HAVE_CHROME = fs.existsSync(CHROME_BIN);
@@ -303,4 +304,46 @@ test("hands-chrome: Chrome is reached only through the authenticated proxy, neve
   assert.ok(r.ok, "the port is real Chrome, reachable directly only because this is a Mac test, not a container");
   const endpoint = await s.d.registry.call("computers.endpoint", { agent: "kit" }, "module:hands-chrome");
   assert.equal(endpoint.data.cdp, undefined, "computers.endpoint must never hand out a raw Chrome address");
+});
+
+test("scrub and bareUrl: a URL keeps its origin and path only, however it is written", () => {
+  assert.equal(scrub("https://harlowlegal.example/sign-in?token=abc123&next=%2F#frag"), "https://harlowlegal.example/sign-in");
+  assert.equal(scrub("opened http://alex:pw@northwind.example/a/b?x=1 then more"), "opened http://northwind.example/a/b then more");
+  // A quote does not end the URL early and leave its query behind (e2e review).
+  assert.equal(scrub(`https://x.test/cb?t="SECRET1`), "https://x.test/cb");
+  assert.equal(scrub(`see 'https://x.test/cb?t=<SECRET2>'`), "see 'https://x.test/cb");
+  assert.equal(scrub("HTTPS://X.TEST/cb?t=SECRET3"), "https://x.test/cb");
+  // What URL() refuses still loses everything from the first ? or #, and its login.
+  assert.equal(bareUrl("http://al ex:pw@bad host/p?SECRET4"), "http://bad host/p");
+  assert.equal(bareUrl("https://[oops/path#SECRET5"), "https://[oops/path");
+  // Token-shaped path segments: reset links, magic links, signed downloads.
+  assert.equal(bareUrl("https://harlow.example/reset/Zx9_Qw3-Lk7PmN2vB8tRy4/done"), "https://harlow.example/reset/\u2026/done");
+  assert.equal(bareUrl("https://harlow.example/t/abcdefghijklmnopqrstuvwxyz"), "https://harlow.example/t/\u2026");
+  assert.equal(bareUrl("https://harlow.example/intake/step-two"), "https://harlow.example/intake/step-two");
+  assert.equal(bareUrl("http://northwindbakerystaging01:8080/menu"), "http://northwindbakerystaging01:8080/menu", "a long host is not a token");
+  assert.equal(scrub("12 controls on Start"), "12 controls on Start");
+  assert.equal(scrub("line one\n  line two"), "line one line two");
+  assert.ok(scrub("x".repeat(500)).length <= 200);
+});
+
+test("hands-chrome: chrome.acted never stores a query string, and carries the thread and tool call", { skip: !HAVE_CHROME && "no Chrome binary at " + CHROME_BIN }, async t => {
+  const { port } = await launchChrome(t);
+  const s = await boot(t, { port });
+  const PAGE = await servePage(t);
+  const r = await s.d.registry.call("chrome.open", { url: `${PAGE}?token=abc123#frag` }, "mcp:agent:kit", { thread: "t-kit-1", call: "toolu_01" });
+  assert.equal(r.error, undefined, r.error && r.error.message);
+  const e = s.events().find(x => x.payload.action === "open");
+  assert.ok(e, "an open step");
+  assert.equal(e.payload.summary, PAGE);
+  assert.ok(!JSON.stringify(e.payload).includes("abc123"), "no query in the event");
+  for (const [n, tail] of [[1, `?t="SECRET_Q`], [2, "?q=a SECRET_S"]]) {
+    const again = await s.d.registry.call("chrome.open", { url: `${PAGE}${tail}` }, "mcp:agent:kit", { thread: "t-kit-1", call: `toolu_0${n + 1}` });
+    assert.equal(again.error, undefined, again.error && again.error.message);
+  }
+  const all = JSON.stringify(s.events().map(x => x.payload));
+  assert.ok(!/SECRET_Q|SECRET_S/.test(all), "neither a quote nor a space in the URL leaves its query in an event");
+  assert.equal(e.payload.thread, "t-kit-1");
+  assert.equal(e.payload.call, "toolu_01");
+  assert.equal(e.payload.app, "Chrome");
+  assert.equal(e.thread, "t-kit-1", "scoped to the thread");
 });

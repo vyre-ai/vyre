@@ -87,6 +87,9 @@ const b = makeBox(async () => {
     visibility,
   });
   pathNow = () => p.current;
+  // Which path answers, for what may not go over the relay (Glass stills).
+  p.onstate = (st) => connection.path(st.kind);
+  connection.path(p.current);
   transport = (path, init) => p.fetch(path, init);
   // A proof sent with x-vyre-presence-keep opens a presence session; the box names it in a header
   // the tool caller does not pass on, so it is read here.

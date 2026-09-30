@@ -88,6 +88,15 @@ export function surfaceKind(surface) {
   return k === "phone" ? "a phone" : k === "capsule" ? "the Capsule" : k === "deck" ? "a laptop" : k ? k : "another screen";
 }
 
+/**
+ * "Your phone", "Your laptop" or "Your Capsule": only the owner can take over or watch, so another
+ * screen holding the keyboard is always one of theirs.
+ */
+export function yourDevice(surface) {
+  const k = String(surface || "").split(":")[0];
+  return k === "phone" ? "Your phone" : k === "capsule" ? "Your Capsule" : k === "deck" || k === "glass" ? "Your laptop" : "Your other screen";
+}
+
 const store = (() => { try { return window.localStorage; } catch { return null; } })();
 
 /** This browser's surface id: deck:<id>, or phone:<id> on a narrow or touch screen. */

@@ -15,8 +15,9 @@ import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { migrate } from "../store/index.js";
 import { Idempotency } from "./idempotency.js";
-import { PERSON_ONLY } from "../presence/index.js";
+import { PERSON_ONLY, machineSelf } from "../presence/index.js";
 import { validateDecls } from "../config/settings.js";
+import * as config from "../config/index.js";
 
 /** Tools a tailnet device reaches without a person session: signing in, and the first passkey. */
 const PERSON_FREE = new Set(["presence.person.start", "presence.enroll"]);
@@ -26,7 +27,19 @@ const NAME = /^[a-z][a-z0-9-]{1,40}$/;
 const CORE_DIR = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 /** Vyre's own modules are the ones shipped in the repo (core, local, modules); a home's never are. */
 const REPO_DIR = path.resolve(CORE_DIR, "..");
-const firstParty = (/** @type {string} */ dir) => path.resolve(dir).startsWith(REPO_DIR + path.sep);
+const SHIPPED = ["core", "local", "modules"].map(x => path.join(REPO_DIR, x));
+/**
+ * Shipped with Vyre: a module folder directly in the repo's core/, local/ or modules/, and never
+ * one inside the home, even a dev home kept inside a checkout (VYRE_HOME=<repo>/.dev): a home
+ * module is the person's or a third party's, whatever folder it sits in (e2e review).
+ * @param {string} dir
+ */
+export const firstParty = dir => {
+  const d = path.resolve(dir);
+  if (!SHIPPED.includes(path.dirname(d))) return false;
+  const home = config.home();
+  return !(home !== REPO_DIR && (d + path.sep).startsWith(home + path.sep));
+};
 /**
  * The only caller labels a module may call under, and who may. A person's labels ("cli", "deck")
  * are never here: a module that could call as one would act as the person. The link on a Mac types
@@ -35,16 +48,40 @@ const firstParty = (/** @type {string} */ dir) => path.resolve(dir).startsWith(R
  */
 // settings passes a person's change on to the module that keeps the value, as that person.
 const CALL_AS = { link: ["link:box"], settings: ["cli", "local", "deck", "capsule"] };
+/**
+ * A manifest still says `"roles": ["box"]` or `["local"]` (forty-plus modules across every
+ * team; ADR 0039 keeps that vocabulary rather than renaming it everywhere). `start()` is called
+ * with `config.machine` -- the person's actual choice, "solo", "server" or "device" -- and this
+ * is where the two meet: which manifest buckets are active for it. A raw "box" or "local" (a
+ * caller, mostly tests, that still passes one directly) passes straight through unchanged.
+ * @param {string} role @returns {string[]}
+ */
+export function roleBuckets(role, platform = process.platform) {
+  if (role === "box" || role === "local") return [role];
+  const out = [];
+  if (config.isServer(role)) out.push("box");
+  // A Mac chosen as the server is still, often, someone's own desk: Capsule, voice and the
+  // rest of the local core stay (team-lead, 28 Sep). A Linux box never had those anyway.
+  if (config.isDevice(role) || (role === "server" && platform === "darwin")) out.push("local");
+  return out;
+}
 const TOOL = /^[a-z][a-z0-9-]*\.[a-z][a-z0-9.-]*$/;
 const VERBS = ["does", "watches", "shows", "needs", "teaches"];
 /** Use counts reach vyre.db at most this often; nothing is written while nothing was used. */
 const USE_FLUSH = 60_000;
+/** How long one module's own stop() may take before Registry.stop() gives up on it and moves on
+ * to the next (matches core/daemon/index.js's DRAIN_MS for the same reason: a hang in one place
+ * must never become a hang everywhere). */
+const MODULE_STOP_MS = 5_000;
 
 /**
  * Check a manifest. Returns a list of problems; empty means valid. `firstParty` is true for a
  * module shipped with Vyre; a module from anywhere else is held to more (its settings' stores).
  * @param {any} m @param {{ firstParty?: boolean }} [opts]
  */
+/** Event families only their first-party owners may declare: device sync is federation's. */
+export const RESERVED_EVENTS = { sync: ["sync"] };
+
 export function validate(m, { firstParty = false } = {}) {
   const out = [];
   if (!m || typeof m !== "object") return ["module.json is not an object"];
@@ -57,7 +94,13 @@ export function validate(m, { firstParty = false } = {}) {
     if (!TOOL.test(t)) out.push(`tool "${t}" must look like module.verb`);
     else if (!t.startsWith(m.name + ".")) out.push(`tool "${t}" must start with "${m.name}."`);
   }
-  for (const e of (m.watches && m.watches.emits) || []) if (!/^[a-z][a-z0-9-]*\.[a-z][a-z0-9-]*$/.test(e)) out.push(`event "${e}" must look like noun.past-verb`);
+  for (const e of (m.watches && m.watches.emits) || []) {
+    if (!/^[a-z][a-z0-9-]*\.[a-z][a-z0-9-]*$/.test(e)) out.push(`event "${e}" must look like noun.past-verb`);
+    // Events that make other modules act on the person's data (sync.deleted forgets a device's
+    // history) come only from the first-party module that owns them.
+    const owners = RESERVED_EVENTS[e.split(".")[0]];
+    if (owners && !(firstParty && owners.includes(String(m.name)))) out.push(`event "${e}" is reserved for ${owners.join(" or ")}`);
+  }
   out.push(...validateDecls(String(m.name), m.settings, { firstParty, tools: (m.does && m.does.tools) || [] }));
   // Session providers (ADR 0030): drivers the Switchboard can run a session on, besides Claude.
   const providers = m.does && m.does.providers;
@@ -85,14 +128,21 @@ function checkCredentials(list) {
     for (const k of ["kind", "provider", "purpose"]) if (typeof c[k] !== "string" || !c[k]) out.push(`${at}.${k} must be a string`);
     if (c.item !== undefined && !/^[A-Za-z0-9_.-]{1,128}$/.test(String(c.item))) out.push(`${at}.item must be a vault item name`);
     if (c.group !== undefined && !NEED.test(String(c.group))) out.push(`${at}.group must be a lowercase name`);
-    for (const k of ["optional", "multiple"]) if (c[k] !== undefined && typeof c[k] !== "boolean") out.push(`${at}.${k} must be true or false`);
+    if (c.optional !== undefined && typeof c.optional !== "boolean") out.push(`${at}.optional must be true or false`);
+    // multiple: one item per account, named <module>-<label> when the person connects it.
+    if (c.multiple !== undefined && typeof c.multiple !== "boolean") out.push(`${at}.multiple must be true or false`);
+    if (c.multiple === true && c.item !== undefined) out.push(`${at}.item cannot be set with multiple: each item is named <module>-<label>`);
   }
   return out;
 }
 
 /** The vault items a module's needs.credentials names: `item`, or `<module>-<id>`. @param {any} m */
 export const credentialItems = m => (Array.isArray(m && m.needs && m.needs.credentials) ? m.needs.credentials : [])
-  .map(c => (c && c.item) || `${m.name}-${c && c.id}`);
+  .filter(c => !(c && c.multiple === true)).map(c => (c && c.item) || `${m.name}-${c && c.id}`);
+
+/** Whether an item is one of a `multiple` need's items: `<module>-<label>`. @param {any} m @param {string} name */
+export const multipleItem = (m, name) => (Array.isArray(m && m.needs && m.needs.credentials) ? m.needs.credentials : [])
+  .some(c => c && c.multiple === true) && String(name).startsWith(`${m.name}-`);
 
 /** Every folder under the given roots that holds a module.json. */
 export function discover(roots) {
@@ -161,10 +211,41 @@ export function checkInput(schema, value, where = "input") {
  * that names an agent ("mcp:agent:kit", "harness:agent:kit") is the kind before the name, so an
  * agent's MCP server is still "mcp" to every allowlist and rule. vyred has already checked the name.
  */
+/**
+ * The surfaces' own labels: the person at a terminal (cli, local), their Deck and Capsule, and
+ * the phone app (mobile). The one list; a module that trusts a surface's label imports it rather
+ * than keeping its own copy. On the socket every such label is only a claim, and vyred takes any
+ * label but a model's own (mcp, harness) from under a `claude` or a thread as that session's
+ * (core/daemon asTaken), whether or not it is listed here.
+ */
+export const SURFACE_LABELS = Object.freeze(["cli", "local", "deck", "capsule", "mobile"]);
+
 export const callerKind = caller => {
   const c = String(caller);
   // "mcp:agent:<name>" and "mcp:thread:<id>" (a Vyre-owned session, ADR 0030) are both "mcp".
   return c.startsWith("module:") ? "module" : c.replace(/[\s:](agent|thread):.*$/s, "");
+};
+
+/**
+ * The agent name a caller claims, in any transport shape: "mcp:agent:kit", "harness:agent:kit",
+ * "cli:agent:kit", "module:agent:kit", or just "agent:kit". Null when the caller makes no such
+ * claim. computers, hands-desktop and sight each used to write their own version of this regex;
+ * one of them (hands-desktop's resolveAgent) matched only the narrower "mcp:agent:" shape, so a
+ * claim shaped "cli:agent:kit" fell through to full trust instead of being checked at all (e2e
+ * review, 2026-09-28). One parser here, so a fix to it reaches every caller at once and a new
+ * module never re-derives it. This only says what the caller *claims*; the daemon's own socket
+ * layer is what actually refuses an unvouched claim (ADR 0031's agent-claim work).
+ *
+ * A claim with no name or an odd one ("cli agent:", "cli agent:???") still counts as a claim: it
+ * must never come back as "" or another value every caller's `if (claim)` treats as no claim at
+ * all, which would make an empty-named claim fully trusted instead of refused (e2e review,
+ * 2026-09-28: the daemon's own socket vouch fails such a claim today, but an in-process caller
+ * does not go through that layer, so this helper has to fail closed on its own).
+ */
+export const AGENT_CLAIM = /(?:^|[\s:])agent:([A-Za-z0-9_-]*)/;
+export const agentClaim = caller => {
+  const m = AGENT_CLAIM.exec(String(caller ?? ""));
+  return m ? m[1] || "(unnamed)" : null;
 };
 
 /**
@@ -271,26 +352,39 @@ export class Registry {
     } catch { /* the counts stay in memory for status(); the next change tries again */ }
   }
 
-  /** Start every discovered module that is enabled for this machine's role. */
-  async start(found, { role, enable = [], disable = [] }) {
+  /** Start every discovered module that is enabled for this machine's role. `platform` is
+   * injectable (default process.platform) so a test can cover the darwin server case on any CI
+   * machine, same as roleBuckets() and core/config's defaults(). */
+  async start(found, { role, enable = [], disable = [], platform = process.platform }) {
     for (const f of found) {
       const name = f.manifest && f.manifest.name;
-      if (f.problems.length) { this.modules.set(name || f.dir, { manifest: f.manifest, dir: f.dir, state: "invalid", error: f.problems.join("; ") }); continue; }
+      // A module with a problem never starts, but it never disappears without a word either: it
+      // used to (a camelCase tool or event name failed validate() and the whole module just
+      // was not there, with no line in the log to say why - found only by calling discover() by
+      // hand). Every problem, and the two below, are logged at warn level as they happen, and
+      // status() (vyre modules, /v1/modules) already carries the same reason for later.
+      if (f.problems.length) {
+        const error = f.problems.join("; ");
+        this.modules.set(name || f.dir, { manifest: f.manifest, dir: f.dir, state: "invalid", error });
+        this.deps.log(`warn: module ${name || f.dir} invalid: ${error}`);
+        continue;
+      }
       // Two modules with one name: the first found wins (Vyre's own folders come before the
       // user's), and the other is reported, never silently dropped. A user's module named like a
       // core one once vanished without a word, and so did every tool it offered.
       if (this.modules.has(name)) {
-        this.modules.set(`${name}@${f.dir}`, { manifest: f.manifest, dir: f.dir, state: "invalid",
-          error: `a module named ${name} is already loaded from ${this.modules.get(name).dir}; this one is ignored` });
+        const error = `a module named ${name} is already loaded from ${this.modules.get(name).dir}; this one is ignored`;
+        this.modules.set(`${name}@${f.dir}`, { manifest: f.manifest, dir: f.dir, state: "invalid", error });
+        this.deps.log(`warn: module ${name}@${f.dir} invalid: ${error}`);
         continue;
       }
       const roles = f.manifest.roles || ["box", "local"];
-      const on = !disable.includes(name) && (roles.includes(role) || enable.includes(name));
+      const on = !disable.includes(name) && (roles.some(r => roleBuckets(role, platform).includes(r)) || enable.includes(name));
       this.modules.set(name, { manifest: f.manifest, dir: f.dir, state: on ? "pending" : "off" });
     }
     const candidates = found.filter(f => { const r = this.modules.get(f.manifest && f.manifest.name); return r?.state === "pending" && r.dir === f.dir; });
     const { ordered, problems } = order(candidates);
-    for (const [n, why] of problems) Object.assign(this.modules.get(n), { state: "failed", error: why });
+    for (const [n, why] of problems) { Object.assign(this.modules.get(n), { state: "failed", error: why }); this.deps.log(`warn: module ${n} invalid: ${why}`); }
     for (const f of ordered) await this.startOne(f);
     return this.status();
   }
@@ -366,7 +460,7 @@ export class Registry {
       vault: {
         fetch: async (name, { field, watcher } = {}) => {
           const declared = [...((m.needs && m.needs.vault) || []), ...credentialItems(m)];
-          if (!declared.includes(name) && !declared.some(d => d.startsWith("per-"))) throw new Error(`${m.name} asked the vault for ${name}, which its manifest does not declare under needs.vault or needs.credentials`);
+          if (!declared.includes(name) && !declared.some(d => d.startsWith("per-")) && !multipleItem(m, name)) throw new Error(`${m.name} asked the vault for ${name}, which its manifest does not declare under needs.vault or needs.credentials`);
           const r = await this.call("vault.release", { name, ...(field ? { field } : {}), ...(watcher ? { watcher } : {}) }, `module:${m.name}`);
           if (r.error) throw new Error(r.error.code === "no_such_tool" ? "the vault is not running on this machine" : r.error.message);
           return r.data && r.data.value;
@@ -388,8 +482,11 @@ export class Registry {
       // gives it. A manifest cannot grant this, so a module installed into a home never can.
       call: (tool, input, opts) => {
         const as = opts && opts.as;
-        if (!as) return this.call(tool, input, `module:${m.name}`);
         const rec = this.modules.get(m.name);
+        // firstParty: the loader's word that this module ships in the repo, for a tool that must
+        // trust a first-party caller only (a home module could take a free name). Same mechanism
+        // as memory-iq's 2ecf79ba (reviewer-cleared, 0.1.1 batch) — kept identical, not a second one.
+        if (!as) return this.call(tool, input, `module:${m.name}`, { firstParty: Boolean(rec && firstParty(rec.dir)) });
         const core = Boolean(rec && path.resolve(rec.dir).startsWith(CORE_DIR + path.sep));
         if (!core || !(CALL_AS[m.name] || []).includes(String(as))) throw new Error(`${m.name} may not call ${tool} as ${as}`);
         // settings relays a person only to the tools first-party modules declared as their own
@@ -446,6 +543,15 @@ export class Registry {
         if (!driver || typeof driver.run !== "function") throw new Error(`provider ${name} needs a run function`);
         this.providers.set(name, { module: m.name, driver });
       },
+      // What every module is, read only: the rows GET /v1/modules gives, including what each
+      // declares (commands, connections, suggest, notices, emits) and how much it is used. A copy,
+      // so nothing a module does to it changes the registry.
+      modules: {
+        status: () => structuredClone(this.status()),
+        // The tools a caller may use, as GET /v1/tools gives them to it. For a module that lists
+        // what a surface can run (commands.list), never for deciding a call: the registry does that.
+        tools: caller => structuredClone(this.listTools(caller ? String(caller) : undefined)),
+      },
       providers: {
         get: name => { const p = this.providers.get(String(name)); return p ? p.driver : null; },
         list: () => [...this.providers.keys()],
@@ -498,7 +604,7 @@ export class Registry {
     // own actions there need the person's session too (core/presence/person.js),
     // which only vyred's router sets, from a cookie or a signed bearer token. Signing in is the one
     // way to get it, and the first passkey is enrolled with onboarding's code.
-    if (ownerDevice(caller) && !meta.person && !PERSON_FREE.has(tool)
+    if (ownerDevice(caller) && !meta.person && !PERSON_FREE.has(tool) && !machineSelf(tool, input)
       && (PERSON_ONLY.has(tool) || (this.deps.presence ? this.deps.presence.required(tool, def, input) : Boolean(def.presence)))) {
       return { error: { code: "person_session_required", message: `${tool} is the person's own action: sign in on this device with your passkey first` } };
     }
@@ -524,8 +630,12 @@ export class Registry {
     // above never ran, and neither does a replayed answer. One module calling another is plumbing,
     // not use, and nor is a webhook.
     const counted = !["module", "hook"].includes(callerKind(caller));
+    // meta.firstParty: the caller is one of Vyre's own modules, by the loader's one rule
+    // (firstParty above). Set here, over anything a caller passed, so no module can claim it.
+    const rec = String(caller).startsWith("module:") ? this.modules.get(String(caller).slice(7)) : null;
+    const fp = Boolean(rec && rec.dir && firstParty(rec.dir));
     const run = async () => {
-      try { return await this.run(def, input, { ...meta, caller, ...(idempotencyKey ? { idempotencyKey } : {}) }); }
+      try { return await this.run(def, input, { ...meta, caller, firstParty: fp, ...(idempotencyKey ? { idempotencyKey } : {}) }); }
       finally { if (counted) this.countUse(def.module); }
     };
     const result = idempotencyKey && this.idempotency ? await this.idempotency.once({ caller, tool, key: idempotencyKey, input }, run) : await run();
@@ -603,9 +713,21 @@ export class Registry {
   }
 
   async stop() {
-    for (const [, r] of [...this.modules.entries()].reverse()) {
+    for (const [name, r] of [...this.modules.entries()].reverse()) {
       if (r.state === "running" && r.handle && typeof r.handle.stop === "function") {
-        try { await r.handle.stop(); } catch {}
+        try {
+          // A module whose own stop() never settles (an open handle, an awaited promise nothing
+          // ever resolves) used to hang every caller of this method forever, with nothing to say
+          // why: a real vyred shutdown, and any test that starts one in-process (core/settings/
+          // settings.test.js, among others) and stops it in t.after. Race it against the same
+          // bound the daemon already gives its own drain (DRAIN_MS), and say so loudly rather
+          // than hang silently at 0% CPU.
+          const timedOut = await Promise.race([
+            r.handle.stop().then(() => false),
+            new Promise(resolve => { const t = setTimeout(() => resolve(true), MODULE_STOP_MS); t.unref && t.unref(); }),
+          ]);
+          if (timedOut) this.deps.log(`warn: module ${name} did not stop within ${MODULE_STOP_MS}ms; moving on`);
+        } catch {}
       }
     }
     // Last, so a call a module made while stopping is counted too. vyred closes the database after.

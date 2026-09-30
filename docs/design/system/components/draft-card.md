@@ -27,7 +27,8 @@ A neutral card: `--panel`, 1 px `--rule`, radius 12 (phone 10).
    `--beacon-ink`), right "Gate · outbound email" (meta, `--label`).
 2. **Field rows** (`df`), padding 0 16: a grid of 64 and the rest, gap 12, baseline aligned,
    7 top and bottom, 1 px `--rule` top border:
-   - key in meta, `--label`: To, Cc, Subject, Message, Attached;
+   - key in meta, `--label`: From, To, Cc, Subject, Message, Attached; From shows only when more
+     than one account can send, and opens the account picker (account-row.md);
    - value in base (read on the phone), `--text`; addresses and paths in mono 13; the message as
      prose paragraphs 8 apart; an attachment as file icon, name, size in meta `--label`.
 3. **Footer**, padding 12 16, 1 px `--rule` top, gap 8, in this order: **Send** `⌘⏎` (primary),
