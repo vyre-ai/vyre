@@ -934,3 +934,4 @@ pre code { display: block; font-family: var(--mono); font-size: 13px; line-heigh
 .cv-made { display: flex; align-items: center; gap: 8px; padding: 4px 0 0 36px; font-size: 12px; line-height: 16px; color: var(--text-2); }
 .cv-made .btn-sm { height: 24px; padding: 0 8px; }
 .cv-near { height: 24px; padding: 0 8px; font-weight: 600; }
+.composer-vault-chip { display: inline-flex; align-items: center; gap: 4px; }
