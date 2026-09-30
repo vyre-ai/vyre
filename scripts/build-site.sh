@@ -18,6 +18,7 @@
 #   site/box/vyre.tgz             `npm pack` of --src, until the package is on npm, with the web
 #                                 app scripts/build-app.sh exports into <src>/apps/app/dist first
 #   site/box/SHA256SUMS           sha256 of every file above, `sha256sum -c` format
+#   site/setup/relay/, tokens.css the setup page's relay client and shared tokens
 #   site/_redirects               /box to install-box.sh, and /download/mac (onboarding's Capsule
 #                                 link) to /start#mac
 #   <src>/build.json              version, commit and dirty, for vyre status and /v1/health
@@ -62,9 +63,22 @@ cp "$src/scripts/install-box.sh" "$here/site/install.sh"
 
 {
   printf '/box /box/install-box.sh 200\n'
+  # The install line the setup page shows: curl -fsSL https://vyre.run/i | VYRE_CODE=... sh
+  printf '/i /install.sh 200\n'
   # Onboarding links here for the Capsule, which the Mac builds from the npm install.
   printf '/download/mac /start#mac 302\n'
 } >"$here/site/_redirects"
+
+# The setup page (site/setup, checked in) runs the same relay client the phone app does, and the one token
+# file every surface shares: both are copied here, never edited here (so the call-to-action colour changes in
+# lib/theme/tokens.json alone).
+rm -rf "$here/site/setup/relay"
+mkdir -p "$here/site/setup/relay"
+for f in "$src"/relay/client/*.js; do
+  case "$f" in *.test.js) continue ;; esac
+  cp "$f" "$here/site/setup/relay/"
+done
+cp "$src/deck/css/tokens.css" "$here/site/setup/tokens.css"
 
 # A checksum an older build-site packed for the retired Capsule zip.
 rm -f "$src/box/Vyre-mac.sha256"
@@ -73,7 +87,7 @@ rm -f "$src/box/Vyre-mac.sha256"
 # build.json), so a clean checkout stamps clean however often this runs.
 if git -C "$src" rev-parse --verify HEAD >/dev/null 2>&1; then
   commit=$(git -C "$src" rev-parse HEAD)
-  if [ -n "$(git -C "$src" status --porcelain --untracked-files=no -- . ':!site/_redirects' ':!site/install.sh' ':!site/box' ':!build.json' ':!box/Vyre-mac.sha256')" ]; then dirty=true; else dirty=false; fi
+  if [ -n "$(git -C "$src" status --porcelain --untracked-files=no -- . ':!site/_redirects' ':!site/install.sh' ':!site/box' ':!site/setup/relay' ':!site/setup/tokens.css' ':!build.json' ':!box/Vyre-mac.sha256')" ]; then dirty=true; else dirty=false; fi
   printf '{"version":"%s","commit":"%s","dirty":%s}\n' \
     "$(node -p 'require(process.argv[1]).version' "$src/package.json")" "$commit" "$dirty" >"$src/build.json"
 else

@@ -1,0 +1,7 @@
+# The setup page makes a key that only it can use and holds a one-time code in memory: no other origin's
+# script runs there, and it talks to Vyre's relay only. (Cloudflare Pages reads this file.)
+/setup/*
+  Content-Security-Policy: default-src 'none'; script-src 'self'; style-src 'self' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; connect-src https://relay.vyre.run wss://relay.vyre.run; img-src 'self' data:; base-uri 'none'; form-action 'none'; frame-ancestors 'none'
+  Referrer-Policy: no-referrer
+  X-Content-Type-Options: nosniff
+  Cache-Control: no-store
