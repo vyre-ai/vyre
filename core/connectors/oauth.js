@@ -87,7 +87,8 @@ export async function discoverAuthServer(issuer, f = globalThis.fetch) {
     const doc = await tryFetchJson(p, f);
     if (doc && typeof doc.authorization_endpoint === "string" && typeof doc.token_endpoint === "string") {
       return { issuer: String(doc.issuer || issuer), authorize_uri: doc.authorization_endpoint, token_uri: doc.token_endpoint,
-        registration_endpoint: typeof doc.registration_endpoint === "string" ? doc.registration_endpoint : null };
+        registration_endpoint: typeof doc.registration_endpoint === "string" ? doc.registration_endpoint : null,
+        scopes_supported: Array.isArray(doc.scopes_supported) ? doc.scopes_supported.filter(x => typeof x === "string") : [] };
     }
   }
   throw fail(`${origin} does not publish authorization-server metadata (RFC 8414); its OAuth endpoints must be named directly`, "no_metadata");
@@ -121,7 +122,7 @@ export async function registerClient(registrationEndpoint, redirectUri, f = glob
 // ---- the loopback connect flow ----
 
 /**
- * @typedef {{ issuer: string, authorize_uri: string, token_uri: string, registration_endpoint?: string|null }} AuthServer
+ * @typedef {{ issuer: string, authorize_uri: string, token_uri: string, registration_endpoint?: string|null, scopes_supported?: string[] }} AuthServer
  * @typedef {{ access_token: string, refresh_token?: string, expires_in?: number, scope?: string,
  *   id_token?: string, issuer: string, resource?: string, token_uri: string, client_id: string, obtained_at: number }} TokenSet
  * @typedef {{ id: string, name: string, state: string, verifier: string, redirect: string,
@@ -173,13 +174,17 @@ export function connector(deps) {
     log("connect listener closed");
   }
 
-  async function listen() {
-    if (server) return port;
+  /** @param {number} [want] a fixed port for a vendor app whose redirect address was typed in ahead of time; 0 picks a free one */
+  async function listen(want = 0) {
+    if (server) {
+      if (want && port !== want) throw fail(`another sign-in is using port ${port}; finish or cancel it first`, "exists");
+      return port;
+    }
     if (opening) return opening;
     opening = new Promise((resolve, reject) => {
       const s = http.createServer((req, res) => { onRequest(req, res).catch(() => { if (!res.headersSent) answer(res, 500, "Something went wrong; go back and try again."); }); });
       s.on("error", e => { if (!server) reject(e); else log("connect listener failed", { error: String(/** @type {any} */ (e)?.code || "error") }); });
-      s.listen(0, "127.0.0.1", () => { server = s; port = /** @type {import("node:net").AddressInfo} */ (s.address()).port; log("connect listener open", { port }); resolve(port); });
+      s.listen(want, "127.0.0.1", () => { server = s; port = /** @type {import("node:net").AddressInfo} */ (s.address()).port; log("connect listener open", { port }); resolve(port); });
     });
     try { return await opening; } finally { opening = null; }
   }
@@ -282,11 +287,13 @@ export function connector(deps) {
      * with `client_id` and optionally `client_secret`, read through `fetchItem`.
      * `bind` names the resource url(s) the token is minted for when the vendor's authorize call
      * takes no `resource` parameter (Google): it is recorded on the token set (P21) and never sent.
-     * @param {{ name: string, resource?: string, server?: Partial<AuthServer>, client?: string, scopes: string[], bind?: string[] }} input
+     * @param {{ name: string, resource?: string, server?: Partial<AuthServer>, client?: string, scopes?: string[], bind?: string[], offline?: boolean, port?: number }} input
      */
-    start: guarded(async ({ name, resource, server, client, scopes, bind }) => {
+    start: guarded(async ({ name, resource, server, client, scopes: asked = [], bind, offline, port: fixedPort }) => {
       if (!NAME.test(String(name || ""))) throw fail("name must be lowercase letters, digits and dashes, starting with a letter, at most 32");
-      if (!Array.isArray(scopes) || !scopes.length || !scopes.every(s => typeof s === "string" && s)) throw fail("scopes must be a non-empty list of strings");
+      if (!Array.isArray(asked) || !asked.every(s => typeof s === "string" && s)) throw fail("scopes must be a list of strings");
+      if (fixedPort !== undefined && !(Number.isInteger(fixedPort) && fixedPort >= 1024 && fixedPort <= 65535)) throw fail("port must be from 1024 to 65535");
+      const scopes = [...asked];
       if ([...flows.values()].some(x => x.name === name)) throw fail(`a sign-in for ${name} is already open; finish or cancel it first`, "exists");
       if (!resource && !(server && server.authorize_uri && server.token_uri)) throw fail("say either resource (a url to discover) or server (authorize_uri and token_uri)");
 
@@ -303,6 +310,8 @@ export function connector(deps) {
         as = await discoverAuthServer(issuer, f);
       }
 
+      // A vendor that keeps refresh tokens behind offline_access gets it, but only if it says it knows it.
+      if (offline && (as.scopes_supported || []).includes("offline_access") && !scopes.includes("offline_access")) scopes.push("offline_access");
       const values = [];
       let clientId, clientSecret = null;
       if (client) {
@@ -316,7 +325,7 @@ export function connector(deps) {
         clientId = await read("client_id", false);
         clientSecret = (await read("client_secret", true)) || null;
       } else if (as.registration_endpoint) {
-        const p = await listen();
+        const p = await listen(fixedPort);
         const redirect = `http://127.0.0.1:${p}${CALLBACK}`;
         const reg = await registerClient(as.registration_endpoint, redirect, f);
         clientId = reg.client_id;
@@ -326,15 +335,15 @@ export function connector(deps) {
       }
       if (clientSecret) values.push(clientSecret);
 
-      const p = await listen();
+      const p = await listen(fixedPort);
       const flow = /** @type {Flow} */ ({ id: `oa_${crypto.randomBytes(9).toString("base64url")}`, name, state: random(), verifier: random(),
         redirect: `http://127.0.0.1:${p}${CALLBACK}`, server: as, ...(discoveredResource ? { resource: discoveredResource } : {}),
         client: { client_id: clientId, client_secret: clientSecret }, scopes, values, ...(Array.isArray(bind) && bind.length ? { bind: bind.map(String) } : {}), timer: null });
       values.push(flow.verifier);
       const challenge = crypto.createHash("sha256").update(flow.verifier).digest("base64url");
       const url = new URL(as.authorize_uri);
-      for (const [k, v] of Object.entries({ response_type: "code", client_id: clientId, redirect_uri: flow.redirect, scope: scopes.join(" "),
-        access_type: "offline", prompt: "consent", code_challenge: challenge, code_challenge_method: "S256", state: flow.state, ...(discoveredResource ? { resource: discoveredResource } : {}) })) {
+      for (const [k, v] of Object.entries({ response_type: "code", client_id: clientId, redirect_uri: flow.redirect, ...(scopes.length ? { scope: scopes.join(" ") } : {}),
+        ...(offline ? { access_type: "offline", prompt: "consent" } : {}), code_challenge: challenge, code_challenge_method: "S256", state: flow.state, ...(discoveredResource ? { resource: discoveredResource } : {}) })) {
         url.searchParams.set(k, v);
       }
       flow.timer = setTimeout(() => { if (flows.get(flow.id) !== flow) return; end(flow, "expired"); failed(flow, "The sign-in expired after 10 minutes. Start a new one."); }, expiresMs);

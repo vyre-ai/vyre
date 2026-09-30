@@ -30,6 +30,7 @@ const MAX_KNOWN = 2000;
  * @typedef {{ type: "none" } | { type: "bearer", item: string, field?: string, header?: string, format?: string }
  *   | { type: "oauth", item: string } | { type: "service-account", item: string, field?: string, subject?: string }} Auth
  * @typedef {{ fetchItem: (item: string, field?: string) => Promise<string>, fetch?: typeof fetch,
+ *   save?: (item: string, fields: Record<string, string>) => Promise<void>,
  *   now?: () => number, log?: (message: string, fields?: Record<string, unknown>) => void }} CredentialDeps
  */
 
@@ -104,6 +105,11 @@ export class Credentials {
   /** @type {typeof fetch} */ #fetch;
   /** @type {() => number} */ #now;
   /** @type {(m: string, f?: Record<string, unknown>) => void} */ #log;
+  /** @type {CredentialDeps["save"]} */ #save;
+  /** A rotated refresh token whose save failed, kept so the connection keeps working while vyred runs and the save is tried again. */
+  /** @type {Map<string, string>} */ #rotated = new Map();
+  /** Items whose stored access token was refused (a 401), so the next mint refreshes instead. */
+  /** @type {Set<string>} */ #stale = new Set();
   /** @type {Map<string, { token: string, expires: number }>} */ #cache = new Map();
   /** @type {Map<string, Promise<string>>} */ #inflight = new Map();
   /** Every value this instance has touched, in insertion order, for scrubbing. */
@@ -116,6 +122,7 @@ export class Credentials {
     this.#fetch = deps.fetch || globalThis.fetch;
     this.#now = deps.now || Date.now;
     this.#log = deps.log || (() => {});
+    this.#save = deps.save;
   }
 
   /** Every value currently known: raw tokens, refresh tokens, keys, assertions, access tokens. */
@@ -180,6 +187,7 @@ export class Credentials {
   /** Drop a cached access token, so the next call mints a new one (after a 401). */
   invalidate(auth, scopes) {
     if (!auth || auth.type === "none" || auth.type === "bearer") return;
+    if (auth.type === "oauth") this.#stale.add(auth.item);
     this.#cache.delete(this.#key(auth, scopeList(scopes)));
   }
 
@@ -245,11 +253,47 @@ export class Credentials {
 
   async #refresh(auth, scopes) {
     const fields = {};
-    for (const f of ["client_id", "client_secret", "refresh_token", "token_uri"]) fields[f] = await this.#item(auth.item, f);
+    for (const f of ["client_id", "token_uri"]) fields[f] = await this.#item(auth.item, f);
+    // A public client (dynamic registration) has no secret; a vendor may also send no refresh token
+    // and rely on a long-lived access token, which the sign-in stored with its expiry.
+    fields.client_secret = await this.#optional(auth.item, "client_secret");
+    fields.refresh_token = this.#rotated.get(auth.item) || await this.#optional(auth.item, "refresh_token");
+    // The token the sign-in just stored is used while it is good, so a fresh connection does not
+    // spend (and, at a vendor that rotates, replace) its refresh token before it has to.
+    if (!this.#stale.has(auth.item)) {
+      const access = await this.#optional(auth.item, "access_token");
+      const at = Number(await this.#optional(auth.item, "expires_at"));
+      if (access && at && at - EARLY_MS > this.#now()) return { token: access, expiresIn: Math.floor((at - this.#now()) / 1000) };
+      if (access && !at && !fields.refresh_token) return { token: access, expiresIn: 3600 };
+    }
+    if (!fields.refresh_token) {
+      throw new CredentialError(`vault item ${auth.item} has no refresh token and its access token has ended; sign in again`, { code: "refused", oauthError: "invalid_grant" });
+    }
     const uri = checkTokenUri(fields.token_uri, `vault item ${auth.item}`);
-    const body = new URLSearchParams({ grant_type: "refresh_token", client_id: fields.client_id,
-      client_secret: fields.client_secret, refresh_token: fields.refresh_token });
-    return this.#exchange(uri, body, { scopes, what: `vault item ${auth.item}` });
+    const body = new URLSearchParams({ grant_type: "refresh_token", client_id: fields.client_id, refresh_token: fields.refresh_token });
+    if (fields.client_secret) body.set("client_secret", fields.client_secret);
+    const out = await this.#exchange(uri, body, { scopes, what: `vault item ${auth.item}` });
+    this.#stale.delete(auth.item);
+    // Many vendors rotate the refresh token on every use, so the new one replaces the old or the
+    // next refresh fails. A rotation that cannot be saved is an error, never silent.
+    if (out.refresh && out.refresh !== fields.refresh_token) {
+      this.#rotated.set(auth.item, out.refresh);
+      this.#remember(out.refresh);
+      if (!this.#save) throw new CredentialError(`the vendor rotated the refresh token for ${auth.item} but nothing can save it`, { code: "config" });
+      try { await this.#save(auth.item, { refresh_token: out.refresh, access_token: out.token, expires_at: String(this.#now() + out.expiresIn * 1000) }); }
+      catch (e) { throw new CredentialError(`the new sign-in for ${auth.item} could not be saved: ${scrub(String(/** @type {any} */ (e)?.message || e), this.secrets())}`, { code: "vault" }); }
+    }
+    this.#rotated.delete(auth.item);
+    return { token: out.token, expiresIn: out.expiresIn };
+  }
+
+  /** One vault field that may be absent: an empty string when it is not there. */
+  async #optional(item, field) {
+    try {
+      const v = await this.#fetchItem(item, field);
+      if (isStr(v) && v) { this.#remember(v); return v; }
+    } catch {}
+    return "";
   }
 
   async #serviceAccount(auth, scopes) {
@@ -300,7 +344,7 @@ export class Credentials {
     this.#remember(token);
     if (isStr(json.refresh_token)) this.#remember(json.refresh_token);
     const expiresIn = Number(json.expires_in) > 0 ? Number(json.expires_in) : 3600;
-    return { token, expiresIn };
+    return { token, expiresIn, refresh: isStr(json.refresh_token) ? json.refresh_token : "" };
   }
 }
 

@@ -1,0 +1,103 @@
+// @ts-check
+// connectors: the module. The catalog of vendors that run their own hosted MCP server, and the one
+// connect flow for all of them (work in connect.js, data in lib/connector-presets). Connecting adds
+// a server to the MCP hub and a bound credential to the vault; after that the hub, the Gate and the
+// vault do everything, as for any hand-added server.
+//
+// Who may call what, and why:
+// - The catalog and the list of connections are open to every caller: they hold no value, and an
+//   agent can tell the person what they could connect.
+// - Connecting, finishing, cancelling and disconnecting are for the person's own surfaces. A model
+//   never adds a connection, and a token is only ever accepted from a person's surface.
+// - `connectors.persist` is internal and answers only the MCP hub, which calls it when a vendor
+//   rotates a refresh token.
+
+import { connections, MIGRATIONS } from "./connect.js";
+import { catalogFrom } from "../../lib/connector-presets/index.js";
+
+const str = { type: "string" };
+const obj = (properties, required = []) => ({ type: "object", properties, required });
+const PEOPLE = ["cli", "local", "deck", "capsule"];
+
+/** @type {{ start(ctx: any): Promise<{ stop(): Promise<void> }> }} */
+export default {
+  async start(ctx) {
+    ctx.store.migrate(MIGRATIONS);
+    const data = r => { if (r.error) throw Object.assign(new Error(r.error.message), { code: r.error.code }); return r.data; };
+    const fail = (msg, code) => Object.assign(new Error(msg), { code });
+
+    const conn = connections({
+      db: ctx.store.db,
+      catalog: catalogFrom(ctx.config),
+      fetchItem: (item, field) => ctx.vault.fetch(item, field ? { field } : {}),
+      // The vault item is this module's own: one it did not make is never replaced.
+      save: async (item, fields, { kind, description, hosts }) => {
+        const old = (await ctx.call("vault.list", { filter: item })).data?.items?.find(x => x.name === item);
+        if (old && old.origin !== "module:connectors") throw fail(`the vault already has an item named ${item} that Vyre's connectors did not make; rename or delete it first`, "exists");
+        const r = await ctx.call("vault.put", { name: item, kind, description, fields, hosts, grants: ["mcp", "connectors"] });
+        if (r.error) throw fail(`could not save the sign-in in the vault: ${r.error.message}`, r.error.code || "vault");
+      },
+      addServer: async input => data(await ctx.call("mcp.add", input)),
+      testServer: async name => data(await ctx.call("mcp.test", { name })),
+      hasServer: async name => {
+        const list = data(await ctx.call("mcp.servers", {}));
+        return (Array.isArray(list) ? list : list.servers || []).some(s => s.name === name);
+      },
+      removeServer: async name => { data(await ctx.call("mcp.remove", { name })); },
+      emit: (type, payload) => ctx.events.emit(type, payload),
+      log: (m, x) => ctx.log(m, x),
+    });
+
+    ctx.tool("connectors.catalog", {
+      description: "Every app Vyre can connect, each run by the vendor's own hosted server: id, label, group, who can use it, how the sign-in goes (setup: none, app or token; modes oauth and token), and which of the person's connections already use it. { all: true } adds the vendors checked and ruled out, each with the reason. Never a value.",
+      input: obj({ group: str, all: { type: "boolean" } }),
+      run: input => conn.catalog(input),
+    });
+
+    ctx.tool("connectors.list", {
+      description: "The person's connections: name, the app, how it signs in, and when it was made.",
+      input: obj({}),
+      run: () => conn.list(),
+    });
+
+    ctx.tool("connectors.connect", {
+      description: "Connect an app from the catalog. { preset, label? } starts the sign-in. It answers { step: \"open\", id, url }: open the address in a browser and the sign-in finishes when the vendor sends the browser back (connectors.connect.finish takes the address for a browser on another device). Or { step: \"needs\", needs: \"token\" | \"client\", ... }: ask the person for a token (pass it as `token`, with `extra` for any extra fields) or for the vault item holding their own OAuth app (pass it as `client`). `label` makes a second account of the same app. `mode` picks oauth or token when both exist.",
+      input: obj({ preset: str, label: str, name: str, mode: { type: "string", enum: ["oauth", "token"] }, client: str, token: str, extra: { type: "object" }, replace: { type: "boolean" } }, ["preset"]),
+      callers: PEOPLE,
+      run: input => conn.start(input, { person: true }),
+    });
+
+    ctx.tool("connectors.connect.finish", {
+      description: "Finish a sign-in with the whole address the browser landed on (for a browser on another device).",
+      input: obj({ id: str, url: str }, ["id", "url"]),
+      callers: PEOPLE,
+      run: input => conn.finish(input),
+    });
+
+    ctx.tool("connectors.connect.cancel", {
+      description: "Cancel an open sign-in.",
+      input: obj({ id: str }, ["id"]),
+      callers: PEOPLE,
+      run: input => conn.cancel(input),
+    });
+
+    ctx.tool("connectors.disconnect", {
+      description: "Disconnect an app: its server leaves the hub. The vault item stays; the vault removes items.",
+      input: obj({ name: str }, ["name"]),
+      callers: PEOPLE,
+      run: input => conn.disconnect(input),
+    });
+
+    ctx.tool("connectors.persist", {
+      internal: true,
+      description: "The MCP hub saves a rotated refresh token into the item a connection made.",
+      input: obj({ item: str, fields: { type: "object" } }, ["item", "fields"]),
+      run: (input, { caller }) => {
+        if (caller !== "module:mcp") throw fail("only the MCP hub saves a rotated sign-in", "denied");
+        return conn.persist(input);
+      },
+    });
+
+    return { async stop() { conn.stop(); } };
+  },
+};

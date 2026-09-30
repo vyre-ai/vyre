@@ -1,0 +1,713 @@
+{
+ "checked": "2026-09-30",
+ "presets": [
+  {
+   "id": "ghl",
+   "label": "GoHighLevel",
+   "group": "crm",
+   "url": "https://services.leadconnectorhq.com/mcp/",
+   "transport": "http",
+   "who": "Any HighLevel account; you pick the sub-accounts at sign-in.",
+   "evidence": "dcr-registered",
+   "oauth": {
+    "client": "dcr"
+   },
+   "token": {
+    "label": "Private Integration Token",
+    "help": "In HighLevel: Settings, Private Integrations, create a token. Untested against HighLevel's server, so try the sign-in first.",
+    "extra": [
+     {
+      "name": "locationId",
+      "header": "locationId",
+      "label": "Location ID",
+      "required": false
+     }
+    ]
+   },
+   "note": "Works across many sub-accounts at once. Do not use the /mcp/anthropic address: it accepts only Claude."
+  },
+  {
+   "id": "notion",
+   "label": "Notion",
+   "group": "work",
+   "url": "https://mcp.notion.com/mcp",
+   "transport": "http",
+   "who": "Anyone with a Notion account.",
+   "evidence": "dcr-registered",
+   "oauth": {
+    "client": "dcr"
+   }
+  },
+  {
+   "id": "linear",
+   "label": "Linear",
+   "group": "work",
+   "url": "https://mcp.linear.app/mcp",
+   "transport": "http",
+   "who": "Anyone with a Linear account.",
+   "evidence": "dcr-registered",
+   "oauth": {
+    "client": "dcr"
+   },
+   "token": {
+    "label": "Linear API key",
+    "help": "In Linear: Settings, Security and access, Personal API keys."
+   }
+  },
+  {
+   "id": "atlassian",
+   "label": "Atlassian (Jira, Confluence)",
+   "group": "work",
+   "url": "https://mcp.atlassian.com/v2/mcp",
+   "transport": "http",
+   "who": "Anyone with an Atlassian cloud site.",
+   "evidence": "dcr-registered",
+   "oauth": {
+    "client": "dcr",
+    "offline": true
+   }
+  },
+  {
+   "id": "asana",
+   "label": "Asana",
+   "group": "work",
+   "url": "https://mcp.asana.com/v2/mcp",
+   "transport": "http",
+   "who": "Anyone with an Asana account; you make one small app first.",
+   "evidence": "docs",
+   "oauth": {
+    "client": "byo",
+    "help": "In Asana open app.asana.com/0/my-apps, make an MCP app, copy its client ID and secret into a vault item, and add http://127.0.0.1:53682/connect/callback as its redirect address.",
+    "port": 53682
+   },
+   "note": "Asana's discovery names a server with no registration, so this uses your own app."
+  },
+  {
+   "id": "clickup",
+   "label": "ClickUp",
+   "group": "work",
+   "url": "https://mcp.clickup.com/mcp",
+   "transport": "http",
+   "who": "Anyone with a ClickUp account. The free plan allows 50 calls a day.",
+   "evidence": "dcr-registered",
+   "oauth": {
+    "client": "dcr"
+   }
+  },
+  {
+   "id": "monday",
+   "label": "monday.com",
+   "group": "work",
+   "url": "https://mcp.monday.com/mcp",
+   "transport": "http",
+   "who": "Anyone with a monday.com account.",
+   "evidence": "docs",
+   "oauth": {
+    "client": "dcr"
+   },
+   "token": {
+    "label": "Personal API token",
+    "help": "In monday.com: profile picture, Developers, My access tokens."
+   },
+   "prefer": "token",
+   "note": "monday reserves its sign-in for marketplace partners, so a personal token is the sure way."
+  },
+  {
+   "id": "airtable",
+   "label": "Airtable",
+   "group": "work",
+   "url": "https://mcp.airtable.com/mcp",
+   "transport": "http",
+   "who": "Any plan.",
+   "evidence": "dcr-registered",
+   "oauth": {
+    "client": "dcr"
+   }
+  },
+  {
+   "id": "todoist",
+   "label": "Todoist",
+   "group": "work",
+   "url": "https://ai.todoist.net/mcp",
+   "transport": "http",
+   "who": "Anyone with a Todoist account.",
+   "evidence": "dcr-registered",
+   "oauth": {
+    "client": "dcr"
+   }
+  },
+  {
+   "id": "trello",
+   "label": "Trello",
+   "group": "work",
+   "url": "https://mcp.trello.com/v1",
+   "transport": "http",
+   "who": "Anyone with a Trello account. Comments and attachments are not covered.",
+   "evidence": "dcr-advertised",
+   "oauth": {
+    "client": "dcr"
+   }
+  },
+  {
+   "id": "miro",
+   "label": "Miro",
+   "group": "work",
+   "url": "https://mcp.miro.com",
+   "transport": "http",
+   "who": "Any plan.",
+   "evidence": "dcr-registered",
+   "oauth": {
+    "client": "dcr"
+   }
+  },
+  {
+   "id": "canva",
+   "label": "Canva",
+   "group": "work",
+   "url": "https://mcp.canva.com/mcp",
+   "transport": "http",
+   "who": "Anyone with a Canva account; brand kits need Pro.",
+   "evidence": "dcr-registered",
+   "oauth": {
+    "client": "dcr"
+   }
+  },
+  {
+   "id": "fathom",
+   "label": "Fathom",
+   "group": "work",
+   "url": "https://api.fathom.ai/mcp",
+   "transport": "http",
+   "who": "Fathom accounts on a plan that includes it.",
+   "evidence": "dcr-registered",
+   "oauth": {
+    "client": "dcr"
+   }
+  },
+  {
+   "id": "fireflies",
+   "label": "Fireflies",
+   "group": "work",
+   "url": "https://api.fireflies.ai/mcp",
+   "transport": "http",
+   "who": "Anyone with a Fireflies account.",
+   "evidence": "dcr-registered",
+   "oauth": {
+    "client": "dcr"
+   },
+   "token": {
+    "label": "Fireflies API key",
+    "help": "In Fireflies: Integrations, Fireflies API."
+   }
+  },
+  {
+   "id": "github",
+   "label": "GitHub",
+   "group": "dev",
+   "url": "https://api.githubcopilot.com/mcp/",
+   "transport": "http",
+   "who": "Anyone with a GitHub account.",
+   "evidence": "docs",
+   "token": {
+    "label": "Personal access token",
+    "help": "In GitHub: Settings, Developer settings, Fine-grained tokens."
+   },
+   "note": "Signing in goes through GitHub's own login on the GitHub card. A pasted token works too.",
+   "via": "github"
+  },
+  {
+   "id": "sentry",
+   "label": "Sentry",
+   "group": "dev",
+   "url": "https://mcp.sentry.dev/mcp",
+   "transport": "http",
+   "who": "Anyone with a Sentry account.",
+   "evidence": "dcr-registered",
+   "oauth": {
+    "client": "dcr"
+   }
+  },
+  {
+   "id": "vercel",
+   "label": "Vercel",
+   "group": "dev",
+   "url": "https://mcp.vercel.com",
+   "transport": "http",
+   "who": "Anyone with a Vercel account. Vercel lists the apps it allows, so sign-in may refuse Vyre.",
+   "evidence": "dcr-registered",
+   "oauth": {
+    "client": "dcr"
+   }
+  },
+  {
+   "id": "supabase",
+   "label": "Supabase",
+   "group": "dev",
+   "url": "https://mcp.supabase.com/mcp",
+   "transport": "http",
+   "who": "Anyone with a Supabase account.",
+   "evidence": "dcr-registered",
+   "oauth": {
+    "client": "dcr"
+   },
+   "token": {
+    "label": "Personal access token",
+    "help": "In Supabase: Account, Access tokens."
+   }
+  },
+  {
+   "id": "neon",
+   "label": "Neon",
+   "group": "dev",
+   "url": "https://mcp.neon.tech/mcp",
+   "transport": "http",
+   "who": "Anyone with a Neon account.",
+   "evidence": "dcr-registered",
+   "oauth": {
+    "client": "dcr"
+   },
+   "token": {
+    "label": "Neon API key",
+    "help": "In Neon: Account settings, API keys."
+   }
+  },
+  {
+   "id": "railway",
+   "label": "Railway",
+   "group": "dev",
+   "url": "https://mcp.railway.com",
+   "transport": "http",
+   "who": "Anyone with a Railway account.",
+   "evidence": "dcr-registered",
+   "oauth": {
+    "client": "dcr"
+   }
+  },
+  {
+   "id": "planetscale",
+   "label": "PlanetScale",
+   "group": "dev",
+   "url": "https://mcp.pscale.dev/mcp/planetscale",
+   "transport": "http",
+   "who": "Anyone with a PlanetScale account.",
+   "evidence": "dcr-advertised",
+   "oauth": {
+    "client": "dcr"
+   }
+  },
+  {
+   "id": "cloudflare",
+   "label": "Cloudflare",
+   "group": "dev",
+   "url": "https://mcp.cloudflare.com/mcp",
+   "transport": "http",
+   "who": "Anyone with a Cloudflare account.",
+   "evidence": "dcr-registered",
+   "oauth": {
+    "client": "dcr",
+    "offline": true
+   },
+   "token": {
+    "label": "Cloudflare API token",
+    "help": "In Cloudflare: My Profile, API Tokens."
+   }
+  },
+  {
+   "id": "posthog",
+   "label": "PostHog",
+   "group": "dev",
+   "url": "https://mcp.posthog.com/mcp",
+   "transport": "http",
+   "who": "Anyone with a PostHog account.",
+   "evidence": "dcr-registered",
+   "oauth": {
+    "client": "dcr"
+   },
+   "token": {
+    "label": "Personal API key",
+    "help": "In PostHog: Account settings, Personal API keys."
+   }
+  },
+  {
+   "id": "mixpanel",
+   "label": "Mixpanel (US)",
+   "group": "dev",
+   "url": "https://mcp.mixpanel.com/mcp",
+   "transport": "http",
+   "who": "Accounts made after 1 Aug 2026; older ones need an org admin to turn it on.",
+   "evidence": "dcr-registered",
+   "oauth": {
+    "client": "dcr"
+   }
+  },
+  {
+   "id": "amplitude",
+   "label": "Amplitude (US)",
+   "group": "dev",
+   "url": "https://mcp.amplitude.com/mcp",
+   "transport": "http",
+   "who": "Anyone with an Amplitude account; an admin can restrict it.",
+   "evidence": "dcr-registered",
+   "oauth": {
+    "client": "dcr"
+   }
+  },
+  {
+   "id": "apify",
+   "label": "Apify",
+   "group": "dev",
+   "url": "https://mcp.apify.com",
+   "transport": "http",
+   "who": "Anyone with an Apify account.",
+   "evidence": "dcr-advertised",
+   "oauth": {
+    "client": "dcr"
+   },
+   "token": {
+    "label": "Apify API token",
+    "help": "In Apify: Settings, API and Integrations."
+   }
+  },
+  {
+   "id": "webflow",
+   "label": "Webflow",
+   "group": "marketing",
+   "url": "https://mcp.webflow.com/sse",
+   "transport": "sse",
+   "who": "Site owners and admins.",
+   "evidence": "dcr-registered",
+   "oauth": {
+    "client": "dcr"
+   }
+  },
+  {
+   "id": "klaviyo",
+   "label": "Klaviyo",
+   "group": "marketing",
+   "url": "https://mcp.klaviyo.com/mcp",
+   "transport": "http",
+   "who": "Owners, Admins and Managers.",
+   "evidence": "dcr-registered",
+   "oauth": {
+    "client": "dcr"
+   }
+  },
+  {
+   "id": "resend",
+   "label": "Resend",
+   "group": "marketing",
+   "url": "https://mcp.resend.com/mcp",
+   "transport": "http",
+   "who": "Anyone with a Resend account.",
+   "evidence": "dcr-registered",
+   "oauth": {
+    "client": "dcr"
+   }
+  },
+  {
+   "id": "wix",
+   "label": "Wix",
+   "group": "marketing",
+   "url": "https://mcp.wix.com/mcp",
+   "transport": "http",
+   "who": "Anyone with a Wix account.",
+   "evidence": "dcr-registered",
+   "oauth": {
+    "client": "dcr"
+   }
+  },
+  {
+   "id": "intercom",
+   "label": "Intercom (US)",
+   "group": "marketing",
+   "url": "https://mcp.intercom.com/mcp",
+   "transport": "http",
+   "who": "Anyone with an Intercom workspace hosted in the US.",
+   "evidence": "dcr-registered",
+   "oauth": {
+    "client": "dcr"
+   },
+   "token": {
+    "label": "Intercom access token",
+    "help": "In Intercom: Settings, Developers, your app's access token."
+   }
+  },
+  {
+   "id": "intercom-eu",
+   "label": "Intercom (EU)",
+   "group": "marketing",
+   "url": "https://mcp.eu.intercom.com/mcp",
+   "transport": "http",
+   "who": "Anyone with an Intercom workspace hosted in the EU.",
+   "evidence": "dcr-registered",
+   "oauth": {
+    "client": "dcr"
+   },
+   "token": {
+    "label": "Intercom access token",
+    "help": "In Intercom: Settings, Developers, your app's access token."
+   }
+  },
+  {
+   "id": "attio",
+   "label": "Attio",
+   "group": "crm",
+   "url": "https://mcp.attio.com/mcp",
+   "transport": "http",
+   "who": "Any active Attio workspace.",
+   "evidence": "dcr-registered",
+   "oauth": {
+    "client": "dcr"
+   }
+  },
+  {
+   "id": "hubspot",
+   "label": "HubSpot",
+   "group": "crm",
+   "url": "https://mcp.hubspot.com",
+   "transport": "http",
+   "who": "HubSpot account admins; you make one small app first.",
+   "evidence": "docs",
+   "oauth": {
+    "client": "byo",
+    "help": "In HubSpot open Development, create an app with a user-level install, copy its client ID and secret into a vault item, and add http://127.0.0.1:53682/connect/callback as its redirect address.",
+    "port": 53682
+   },
+   "note": "HubSpot's server has no automatic registration."
+  },
+  {
+   "id": "stripe",
+   "label": "Stripe",
+   "group": "finance",
+   "url": "https://mcp.stripe.com",
+   "transport": "http",
+   "who": "Anyone with a Stripe account.",
+   "evidence": "dcr-registered",
+   "oauth": {
+    "client": "dcr"
+   },
+   "token": {
+    "label": "Agent API key",
+    "help": "In Stripe: Developers, API keys, make a key with the Agent tag."
+   }
+  },
+  {
+   "id": "paypal",
+   "label": "PayPal",
+   "group": "finance",
+   "url": "https://mcp.paypal.com/http",
+   "transport": "http",
+   "who": "PayPal business accounts.",
+   "evidence": "dcr-registered",
+   "oauth": {
+    "client": "dcr"
+   }
+  },
+  {
+   "id": "square",
+   "label": "Square",
+   "group": "finance",
+   "url": "https://mcp.squareup.com/mcp",
+   "transport": "http",
+   "who": "Square accounts. Square lists the apps it allows, so sign-in may refuse Vyre.",
+   "evidence": "dcr-registered",
+   "oauth": {
+    "client": "dcr"
+   }
+  },
+  {
+   "id": "zapier",
+   "label": "Zapier",
+   "group": "work",
+   "url": "https://mcp.zapier.com/api/v1/connect",
+   "transport": "http",
+   "who": "Zapier plans with tasks; each call costs 2 tasks.",
+   "evidence": "dcr-registered",
+   "oauth": {
+    "client": "dcr"
+   },
+   "token": {
+    "label": "Connection token",
+    "help": "In Zapier: mcp.zapier.com, make a server, copy its token."
+   }
+  },
+  {
+   "id": "perplexity",
+   "label": "Perplexity",
+   "group": "search",
+   "url": "https://api.perplexity.ai/mcp",
+   "transport": "http",
+   "who": "Anyone with a Perplexity account.",
+   "evidence": "dcr-registered",
+   "oauth": {
+    "client": "dcr"
+   },
+   "token": {
+    "label": "Perplexity API key",
+    "help": "In Perplexity: Settings, API keys."
+   }
+  },
+  {
+   "id": "exa",
+   "label": "Exa",
+   "group": "search",
+   "url": "https://mcp.exa.ai/mcp",
+   "transport": "http",
+   "who": "Anyone; the free tier needs no account.",
+   "evidence": "dcr-registered",
+   "oauth": {
+    "client": "dcr"
+   },
+   "token": {
+    "label": "Exa API key",
+    "help": "In Exa: dashboard, API keys.",
+    "header": "x-api-key",
+    "format": "{value}"
+   }
+  },
+  {
+   "id": "context7",
+   "label": "Context7",
+   "group": "search",
+   "url": "https://mcp.context7.com/mcp",
+   "transport": "http",
+   "who": "Anyone; the free tier needs no account.",
+   "evidence": "docs",
+   "oauth": {
+    "client": "dcr"
+   },
+   "token": {
+    "label": "Context7 API key",
+    "help": "In Context7: dashboard, API keys."
+   }
+  },
+  {
+   "id": "google-gmail",
+   "label": "Google Mail",
+   "group": "google",
+   "url": "https://gmailmcp.googleapis.com/mcp/v1",
+   "transport": "http",
+   "who": "Google Workspace accounts in Google's Developer Preview only. Personal Gmail is not supported by Google's server.",
+   "evidence": "docs",
+   "oauth": {
+    "client": "byo",
+    "offline": true,
+    "scopes": [
+     "https://www.googleapis.com/auth/gmail.readonly",
+     "https://www.googleapis.com/auth/gmail.compose"
+    ],
+    "help": "In Google Cloud make a Desktop OAuth client, copy its client ID and secret into a vault item, then sign in.",
+    "server": {
+     "issuer": "https://accounts.google.com",
+     "authorize_uri": "https://accounts.google.com/o/oauth2/v2/auth",
+     "token_uri": "https://oauth2.googleapis.com/token"
+    }
+   },
+   "note": "Google's server has no send tool: it drafts."
+  },
+  {
+   "id": "google-calendar",
+   "label": "Google Calendar",
+   "group": "google",
+   "url": "https://calendarmcp.googleapis.com/mcp/v1",
+   "transport": "http",
+   "who": "Google Workspace accounts in Google's Developer Preview only.",
+   "evidence": "docs",
+   "oauth": {
+    "client": "byo",
+    "offline": true,
+    "scopes": [
+     "https://www.googleapis.com/auth/calendar.calendarlist.readonly",
+     "https://www.googleapis.com/auth/calendar.events.freebusy",
+     "https://www.googleapis.com/auth/calendar.events.readonly"
+    ],
+    "help": "In Google Cloud make a Desktop OAuth client, copy its client ID and secret into a vault item, then sign in.",
+    "server": {
+     "issuer": "https://accounts.google.com",
+     "authorize_uri": "https://accounts.google.com/o/oauth2/v2/auth",
+     "token_uri": "https://oauth2.googleapis.com/token"
+    }
+   }
+  },
+  {
+   "id": "google-drive",
+   "label": "Google Drive",
+   "group": "google",
+   "url": "https://drivemcp.googleapis.com/mcp/v1",
+   "transport": "http",
+   "who": "Google Workspace accounts in Google's Developer Preview only.",
+   "evidence": "docs",
+   "oauth": {
+    "client": "byo",
+    "offline": true,
+    "scopes": [
+     "https://www.googleapis.com/auth/drive.readonly",
+     "https://www.googleapis.com/auth/drive.file"
+    ],
+    "help": "In Google Cloud make a Desktop OAuth client, copy its client ID and secret into a vault item, then sign in.",
+    "server": {
+     "issuer": "https://accounts.google.com",
+     "authorize_uri": "https://accounts.google.com/o/oauth2/v2/auth",
+     "token_uri": "https://oauth2.googleapis.com/token"
+    }
+   }
+  },
+  {
+   "id": "meta-ads",
+   "label": "Meta Ads",
+   "group": "marketing",
+   "url": "https://mcp.facebook.com/ads",
+   "transport": "http",
+   "who": "Anyone with access to an ad account.",
+   "evidence": "docs",
+   "token": {
+    "label": "Meta access token",
+    "help": "In Meta for Developers: Tools, Graph API Explorer or a System User token with ads_management."
+   }
+  }
+ ],
+ "unavailable": [
+  {
+   "id": "slack",
+   "label": "Slack",
+   "status": "unavailable",
+   "reason": "Slack's server accepts only directory or internal apps that a workspace admin approves. It has no automatic registration."
+  },
+  {
+   "id": "dropbox",
+   "label": "Dropbox",
+   "status": "unavailable",
+   "reason": "Dropbox allows only its trusted partners to register."
+  },
+  {
+   "id": "figma",
+   "label": "Figma",
+   "status": "unavailable",
+   "reason": "Figma limits its server to apps in its own catalog."
+  },
+  {
+   "id": "box",
+   "label": "Box",
+   "status": "unavailable",
+   "reason": "Box needs an administrator to switch its server on."
+  },
+  {
+   "id": "calendly",
+   "label": "Calendly",
+   "status": "unavailable",
+   "reason": "Calendly refused a sign-in from a local address on 30 Sep 2026 with no reason given."
+  },
+  {
+   "id": "wordpress-com",
+   "label": "WordPress.com",
+   "status": "unavailable",
+   "reason": "WordPress.com refused a sign-in from a local address on 30 Sep 2026, and needs a paid plan."
+  },
+  {
+   "id": "microsoft",
+   "label": "Microsoft 365",
+   "status": "unavailable",
+   "reason": "Microsoft's servers need a work tenant and an administrator. Use an API credential in the vault instead."
+  }
+ ]
+}

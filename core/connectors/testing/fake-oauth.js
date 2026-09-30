@@ -10,7 +10,7 @@
 import crypto from "node:crypto";
 import http from "node:http";
 
-/** @param {{ after: (fn: () => any) => void }} t @param {{ dcr?: boolean, resource?: string, email?: string }} [opts] */
+/** @param {{ after: (fn: () => any) => void }} t @param {{ dcr?: boolean, resource?: string, email?: string, rotate?: boolean }} [opts] */
 export async function startFakeAuthServer(t, opts = {}) {
   /** @type {Map<string, { client_secret: string|null }>} */ const clients = new Map();
   /** @type {Map<string, { client_id: string, redirect_uri: string, challenge: string, scope: string }>} */ const codes = new Map();
@@ -49,6 +49,12 @@ export async function startFakeAuthServer(t, opts = {}) {
         if (!c || refreshes.get(rt) !== body.get("client_id") || (c.client_secret && c.client_secret !== body.get("client_secret"))) return json(res, 400, { error: "invalid_client" });
         const access = "at_" + crypto.randomBytes(12).toString("hex");
         tokens.set(access, { client_id: String(body.get("client_id")), scope: "" });
+        // A vendor that rotates: the refresh token works once and a new one comes back.
+        if (opts.rotate) {
+          const next = "rt_" + crypto.randomBytes(12).toString("hex");
+          refreshes.delete(rt); refreshes.set(next, String(body.get("client_id")));
+          return json(res, 200, { access_token: access, refresh_token: next, expires_in: 3600, token_type: "Bearer" });
+        }
         return json(res, 200, { access_token: access, expires_in: 3600, token_type: "Bearer" });
       }
       if (body.get("grant_type") !== "authorization_code") return json(res, 400, { error: "unsupported_grant_type" });

@@ -1,0 +1,265 @@
+// @ts-check
+// The connect flows, as ONE mechanism (0.2 charter minimum 9). A person picks a preset (lib/
+// connector-presets) and this file turns it into a hub server row plus a vault item bound to the
+// vendor's host. There is no code per vendor: the sign-in shape comes from the preset and from what
+// discovery finds at connect time.
+//
+//   oauth, automatic   the vendor advertises dynamic client registration (RFC 7591): register, sign in
+//   oauth, own app     it does not: the person's own client id (and secret) in a vault item, then sign in
+//   token              a personal token, PAT or API key the person pastes, sent as a header
+//
+// Rules, and why:
+// - Every credential is a vault item named <connection>-auth, granted to the hub and to this module,
+//   with `hosts` set to the vendor's own host. The hub refuses to put that item on a row for any other
+//   host (lib/connector-presets boundFor), and refuses to send its token to any other address.
+// - The token a person pastes goes straight into the vault from this module's call; it is never logged,
+//   never put in an event, and never comes back out of any tool here.
+// - This file has no ctx. Everything it needs is injected, so the tests run it against fake OAuth and
+//   fake MCP servers and never a real vendor.
+
+import { connector } from "./oauth.js";
+import { makeCatalog, connectionName, itemName, originsOf, SHIPPED_DATA } from "../../lib/connector-presets/index.js";
+
+export const MIGRATIONS = [
+  `CREATE TABLE connectors_connections (
+     name TEXT PRIMARY KEY, preset TEXT NOT NULL, item TEXT NOT NULL, mode TEXT NOT NULL,
+     label TEXT, created INTEGER NOT NULL
+   );`,
+];
+
+/** The item fields a sign-in keeps, so a rotation can rewrite them and a reader can find them. */
+export const TOKEN_FIELDS = ["client_id", "client_secret", "refresh_token", "access_token", "expires_at", "token_uri", "issuer", "resource", "scope"];
+
+const NAME = /^[a-z][a-z0-9-]{0,31}$/;
+const ITEM = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/;
+const MAX_TOKEN = 4096;
+
+/** @param {string} msg @param {string} [code] */
+const fail = (msg, code = "bad_input") => Object.assign(new Error(msg), { code });
+
+/**
+ * @typedef {{
+ *   db: import("node:sqlite").DatabaseSync,
+ *   fetchItem: (item: string, field?: string) => Promise<string>,
+ *   save: (item: string, fields: Record<string, string>, opts: { kind: string, description: string, hosts: string[] }) => Promise<void>,
+ *   addServer: (input: Record<string, unknown>) => Promise<any>,
+ *   testServer: (name: string) => Promise<any>,
+ *   hasServer: (name: string) => Promise<boolean>,
+ *   removeServer: (name: string) => Promise<void>,
+ *   emit: (type: string, payload: Record<string, unknown>) => void,
+ *   log?: (message: string, fields?: Record<string, unknown>) => void,
+ *   fetch?: typeof fetch, now?: () => number, expiresMs?: number,
+ *   catalog?: ReturnType<typeof makeCatalog>,
+ * }} ConnectDeps
+ */
+
+/** @param {ConnectDeps} deps */
+export function connections(deps) {
+  const now = deps.now || Date.now;
+  const log = deps.log || (() => {});
+  const db = deps.db;
+  const { preset, presets, unavailable, presetOfName, checked } = deps.catalog || makeCatalog(SHIPPED_DATA);
+
+  const rowOf = name => db.prepare("SELECT * FROM connectors_connections WHERE name = ?").get(name);
+
+  // The oauth engine. Its `complete` runs once the vendor sends the person back with a code.
+  const oauth = connector({
+    fetchItem: deps.fetchItem,
+    fetch: deps.fetch,
+    expiresMs: deps.expiresMs,
+    log,
+    emit: (type, payload) => deps.emit(type === "connect.connected" ? "connectors.connected" : "connectors.connect-failed", payload),
+    complete: async (flow, tokens) => {
+      const pending = /** @type {any} */ (pendingFor.get(flow.id));
+      if (!pending) throw fail("that sign-in is no longer open; start a new one");
+      pendingFor.delete(flow.id);
+      const p = preset(pending.preset);
+      if (!p) throw fail("that connector is no longer in the catalog", "not_found");
+      const item = itemName(pending.name);
+      /** @type {Record<string, string>} */
+      const fields = { client_id: tokens.client_id, token_uri: tokens.token_uri, issuer: tokens.issuer,
+        // The token is bound to the address we connect to, which is what discovery started from.
+        resource: p.url, access_token: tokens.access_token };
+      if (flow.client.client_secret) fields.client_secret = flow.client.client_secret;
+      if (tokens.refresh_token) fields.refresh_token = tokens.refresh_token;
+      if (tokens.expires_in) fields.expires_at = String(tokens.obtained_at + tokens.expires_in * 1000);
+      if (tokens.scope) fields.scope = tokens.scope;
+      await deps.save(item, fields, { kind: "env-set", description: `${p.label} sign-in (made by Vyre)`, hosts: originsOf(p) });
+      const out = await bind(p, pending.name, item, "oauth", pending.label, { type: "oauth", item }, {});
+      return { name: pending.name, item, ...out };
+    },
+  });
+  /** @type {Map<string, { preset: string, name: string, label?: string }>} */
+  const pendingFor = new Map();
+
+  /** Add or refresh the hub row, remember the connection, and try the server once. */
+  async function bind(p, name, item, mode, label, auth, headers) {
+    const had = await deps.hasServer(name);
+    /** @type {any} */ let test = null;
+    if (had) test = await deps.testServer(name);
+    else {
+      const r = await deps.addServer({ name, transport: p.transport, url: p.url, auth, ...(Object.keys(headers).length ? { headers } : {}) });
+      test = r && r.test;
+    }
+    db.prepare("INSERT OR REPLACE INTO connectors_connections (name, preset, item, mode, label, created) VALUES (?,?,?,?,?,?)")
+      .run(name, p.id, item, mode, label || null, now());
+    return { tools: test && typeof test.tools === "number" ? test.tools : Array.isArray(test?.tools) ? test.tools.length : undefined,
+      ...(test && test.ok === false ? { warning: String(test.error || "the server did not answer yet").slice(0, 300) } : {}) };
+  }
+
+  const modeOf = (p, want) => {
+    const m = want || p.prefer || (p.oauth ? "oauth" : "token");
+    if (!["oauth", "token"].includes(m)) throw fail("mode is oauth or token");
+    if (!p[m]) throw fail(`${p.label} has no ${m} sign-in; it offers ${p.oauth ? "oauth" : "token"}`);
+    return m;
+  };
+
+  return {
+    /**
+     * The catalog: every preset with its modes and which of the person's connections use it, and the
+     * vendors that were ruled out with the reason. Never a value.
+     * @param {{ group?: string, all?: boolean }} [input]
+     */
+    catalog(input = {}) {
+      const mine = db.prepare("SELECT name, preset, mode, label, created FROM connectors_connections ORDER BY name").all();
+      const list = presets().filter(p => !input.group || p.group === input.group).map(p => ({
+        id: p.id, label: p.label, group: p.group, who: p.who, evidence: p.evidence,
+        modes: [p.oauth ? "oauth" : null, p.token ? "token" : null].filter(Boolean),
+        prefer: p.prefer || (p.oauth ? "oauth" : "token"),
+        // what the person must bring: nothing, their own app, or a token
+        setup: p.via ? "via" : (p.prefer === "token" || !p.oauth) ? "token" : p.oauth.client === "byo" ? "app" : "none",
+        ...(p.note ? { note: p.note } : {}), ...(p.via ? { via: p.via } : {}),
+        connected: mine.filter(c => c.preset === p.id).map(c => ({ name: c.name, mode: c.mode, ...(c.label ? { label: c.label } : {}) })),
+      }));
+      return { checked: checked(), presets: list, ...(input.all ? { unavailable: unavailable() } : {}) };
+    },
+
+    /** The connections this box has made. */
+    list() {
+      return db.prepare("SELECT name, preset, mode, label, created FROM connectors_connections ORDER BY name").all()
+        .map(c => ({ ...c, label: preset(c.preset)?.label || c.preset }));
+    },
+
+    /**
+     * Connect a preset. Answers one of: { step: "open", id, url } (open this address, the sign-in
+     * finishes on its own or with `finish`), { step: "needs", needs: "token" | "client", ... } (ask the
+     * person for it and call again), { step: "via", via } (another module owns this sign-in), or
+     * { step: "connected", name, tools } (a token was stored and the server answered).
+     * `token` is accepted only when the caller says it is a person's own surface.
+     * @param {{ preset: string, label?: string, name?: string, mode?: string, client?: string, token?: string, extra?: Record<string, string>, replace?: boolean }} input
+     * @param {{ person: boolean }} who
+     */
+    async start(input, who) {
+      const wanted = String(input.preset || "");
+      const gone = unavailable().find(u => u.id === wanted);
+      if (gone) throw fail(`${gone.label} cannot be connected: ${gone.reason}`, "unavailable");
+      const p = preset(wanted);
+      if (!p) throw fail(`no connector named ${wanted.slice(0, 40)}; connectors.catalog lists them`, "not_found");
+      const name = input.name ? String(input.name) : connectionName(p.id, input.label);
+      if (!NAME.test(name)) throw fail("name is lowercase letters, digits and dashes, starting with a letter, at most 32");
+      if (presetOfName(name)?.id !== p.id) throw fail(`a ${p.label} connection is named ${p.id} or starts with ${p.id}-`);
+      if (rowOf(name) && !input.replace) throw fail(`${name} is already connected; disconnect it first, add a label for a second account, or pass replace`, "conflict");
+      const mode = modeOf(p, input.mode);
+
+      if (mode === "token") {
+        const t = p.token;
+        const need = { step: "needs", needs: "token", preset: p.id, name, label: t.label, help: t.help,
+          extra: (t.extra || []).map(x => ({ name: x.name, label: x.label, required: x.required !== false })) };
+        if (input.token === undefined) return need;
+        if (!who.person) throw fail("a token is pasted by the person, on their own screen", "denied");
+        const value = String(input.token).trim();
+        if (!value || value.length > MAX_TOKEN || /[\r\n]/.test(value)) throw fail("the token must be one line, up to 4096 characters");
+        /** @type {Record<string, string>} */ const headers = {};
+        for (const x of t.extra || []) {
+          const v = input.extra && input.extra[x.name] !== undefined ? String(input.extra[x.name]).trim() : "";
+          if (!v && x.required !== false) throw fail(`${x.label} is needed`);
+          if (v) { if (/[\r\n]/.test(v) || v.length > 200) throw fail(`${x.label} must be one short line`); headers[x.header] = v; }
+        }
+        const item = itemName(name);
+        await deps.save(item, { value }, { kind: "api-key", description: `${p.label} token (made by Vyre)`, hosts: originsOf(p) });
+        const auth = { type: "bearer", item, field: "value", ...(t.header ? { header: String(t.header).toLowerCase() } : {}), ...(t.format ? { format: t.format } : {}) };
+        const out = await bind(p, name, item, "token", input.label, auth, headers);
+        deps.emit("connectors.connected", { name, preset: p.id, mode });
+        log("connector connected", { name, preset: p.id, mode });
+        return { step: "connected", name, ...out };
+      }
+
+      if (p.via) return { step: "via", via: p.via, preset: p.id, name, message: p.note || `${p.label} signs in through its own module.` };
+
+      // oauth
+      const o = p.oauth;
+      if (o.client === "byo" && !input.client) {
+        return { step: "needs", needs: "client", preset: p.id, name, help: o.help, ...(o.port ? { redirect: `http://127.0.0.1:${o.port}/connect/callback` } : {}) };
+      }
+      if (input.client !== undefined && !ITEM.test(String(input.client))) throw fail("client names a vault item");
+      /** @type {any} */ let started;
+      try {
+        // A vendor whose authorize call takes no `resource` (Google) names its endpoints; the token
+        // is still recorded as minted for the server's own address.
+        started = await oauth.start({ name, ...(o.server ? { server: o.server, bind: [p.url] } : { resource: p.url }),
+          scopes: o.scopes || [], offline: Boolean(o.offline),
+          ...(o.port ? { port: o.port } : {}), ...(input.client ? { client: String(input.client) } : {}) });
+      } catch (e) {
+        const err = /** @type {any} */ (e);
+        // The vendor stopped offering automatic registration since the catalog was checked.
+        if (err && err.code === "no_dcr") {
+          if (p.token) return { step: "needs", needs: "token", preset: p.id, name, label: p.token.label, help: `${p.label} no longer registers apps automatically. ${p.token.help}`,
+            extra: (p.token.extra || []).map(x => ({ name: x.name, label: x.label, required: x.required !== false })) };
+          return { step: "needs", needs: "client", preset: p.id, name, help: `${p.label} no longer registers apps automatically. Make an OAuth app in your ${p.label} account and put its client ID and secret in a vault item.` };
+        }
+        throw e;
+      }
+      pendingFor.set(started.id, { preset: p.id, name, ...(input.label ? { label: input.label } : {}) });
+      log("connector sign-in started", { name, preset: p.id });
+      return { step: "open", id: started.id, url: started.url, redirect: started.redirect, name, preset: p.id };
+    },
+
+    /** The address the browser landed on, pasted, for a person whose browser is not on this machine. @param {{ id: string, url: string }} input */
+    async finish(input) {
+      const r = await oauth.finish(input);
+      return { step: "connected", ...r };
+    },
+
+    /** @param {{ id: string }} input */
+    async cancel(input) {
+      pendingFor.delete(String(input.id));
+      return oauth.cancel(input);
+    },
+
+    /**
+     * Disconnect: the hub row goes, the connection record goes. The vault item is left where it is
+     * (a person removes items in the vault), as `mcp.remove` does.
+     * @param {{ name: string }} input
+     */
+    async disconnect(input) {
+      const name = String(input.name || "");
+      if (!rowOf(name)) throw fail(`no connection ${name.slice(0, 40)}`, "not_found");
+      if (await deps.hasServer(name)) await deps.removeServer(name);
+      db.prepare("DELETE FROM connectors_connections WHERE name = ?").run(name);
+      deps.emit("connectors.disconnected", { name });
+      return { name, removed: true };
+    },
+
+    /**
+     * A rotated refresh token, from the hub, into the item this module made. Only fields a sign-in
+     * keeps are accepted, and only for an item of one of this module's own connections.
+     * @param {{ item: string, fields: Record<string, string> }} input
+     */
+    async persist(input) {
+      const c = db.prepare("SELECT * FROM connectors_connections WHERE item = ?").get(String(input.item || ""));
+      if (!c) throw fail("that item is not a connector sign-in", "not_found");
+      const p = preset(c.preset);
+      const next = {};
+      for (const f of TOKEN_FIELDS) {
+        let v = input.fields && input.fields[f];
+        if (v === undefined) { try { v = await deps.fetchItem(c.item, f); } catch { v = undefined; } }
+        if (typeof v === "string" && v) next[f] = v;
+      }
+      for (const k of Object.keys(input.fields || {})) if (!TOKEN_FIELDS.includes(k)) throw fail(`${k.slice(0, 40)} is not a sign-in field`);
+      await deps.save(c.item, /** @type {Record<string, string>} */ (next), { kind: "env-set", description: `${p ? p.label : c.preset} sign-in (made by Vyre)`, hosts: p ? originsOf(p) : [] });
+      return { saved: true };
+    },
+
+    stop: () => oauth.stop(),
+  };
+}
