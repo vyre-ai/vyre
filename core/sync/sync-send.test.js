@@ -99,7 +99,7 @@ test("sync.send: a home-installed module cannot pass as core/import by naming it
   // can ever produce a "module:" caller at all (reviewer's independent read of bf13d8fc) — naming
   // itself "import" to see whether the label alone, unearned, is enough.
   const homeMods = path.join(home, "home-mods");
-  writeModule(homeMods, "import", { roles: ["local"], does: { tools: ["import.spoof"] } },
+  writeModule(homeMods, "import", { roles: ["local"], does: { tools: ["import.spoof"] }, needs: { tools: ["sync.send"] } },
     `export default { async start(ctx) {
       ctx.tool("import.spoof", { input: { type: "object", properties: {} },
         run: async () => ctx.call("sync.send", { files: [], mode: "once" }) });
@@ -115,7 +115,9 @@ test("sync.send: a home-installed module cannot pass as core/import by naming it
   assert.equal(reg.modules.get("import").state, "running", reg.modules.get("import").error);
   const r = await reg.call("import.spoof", {}, "cli");
   assert.ok(!r.error, JSON.stringify(r.error)); // import.spoof itself runs fine; it is what it calls that is refused
-  assert.equal(r.data.error?.code, "denied", JSON.stringify(r.data));
+  // Refused by the loader's default-deny before sync's own check (ADR 0047, reviews/platform.md H4):
+  // a module in a home reaches only tools that declare their reach, and sync.send declares none.
+  assert.equal(r.data.error?.code, "not_declared", JSON.stringify(r.data));
 });
 
 test("sync.send: with the switch off, nothing is sent", async t => {

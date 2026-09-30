@@ -76,7 +76,7 @@ In the order `vyre help` lists them.
 | [`vyre backup`](#vyre-backup) | copy config, store, vault, watchers and certificates into one file |
 | [`vyre presence`](#vyre-presence) | the keys that prove you are here, and a code to enroll a passkey |
 | [`vyre tips`](#vyre-tips) | short tips on using each part of Vyre |
-| [`vyre module`](#vyre-module) | make, check and add a module of your own |
+| [`vyre module`](#vyre-module) | make, check, test and add a module of your own |
 | [`vyre modules`](#vyre-modules) | every module and whether it started |
 | [`vyre tools`](#vyre-tools) | every tool Claude and the surfaces can call |
 | [`vyre call`](#vyre-call) | run any tool, e.g. vyre call system.echo '{"text":"hi"}' |
@@ -739,21 +739,27 @@ vyre tips [module | new | reset] [--json]
 
 ### vyre module
 
-Make, check and add a module of your own.
+Make, check, test and add a module of your own.
 
 ```
-vyre module new <name> [--dir <parent>] | check [dir] | add <path|git url> [--yes]
+vyre module new <name> [--dir <parent>] | check [dir] | test [dir] | upgrade [dir] [--dry-run] | add <path|git url> [--yes]
 ```
 
-new <name>        a module that passes check and its own test, in <home>/modules/<name>
+new <name>        a module on module API 1 that passes check, test and its own test, in
+                  <home>/modules/<name>, with AGENTS.md: the brief to hand an agent
   --dir PARENT    make it in PARENT/<name> instead
 check [dir]       the manifest (schema and loader rules) and the entry file; exit 1 on a problem
+test [dir]        the conformance checks every module passes, then its own *.test.js files
+upgrade [dir]     move a module onto the current contract: apiVersion to vyre, string tools to
+                  objects, ctx.memory.teach to ctx.memory.write; lists what it can't do, then
+                  runs the conformance checks
+  --dry-run       show the changes and check a copy; write nothing
 add <source>      a folder or a git URL (https://, git@, file://): check it, show what it asks
                   for, copy it into <home>/modules and restart vyred to load it
   --yes           do not ask first (needed without a terminal, and with --json or --view)
 
 A module runs inside vyred, trusted like an npm package. A module named like one of Vyre's
-own is refused, unless its module.json says "replaces" with that name and you pass --yes.
+own is refused, and in 0.2 an added module may not say "replaces".
 In the box's container, the host restarts vyred: docker compose restart vyre.
 --view prints frames for the Capsule and the phone (docs/reference/cli-json.md).
 
