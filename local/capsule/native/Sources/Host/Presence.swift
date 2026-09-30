@@ -272,7 +272,20 @@ public final class CapsulePresence {
     /// change, so a stolen unlocked Mac still cannot sign with someone else's finger), keep its
     /// opaque handle, and enroll the public half with vyred, which shows its own Touch ID dialog
     /// for this one call. Returns why not, or nil when enrolled.
-    func enroll() async -> String? {
+    func enroll() async -> String? { await enroll(client: vyred, header: "touchid") }
+
+    /// For tests: a key made without the Secure Enclave (a runner has none). The handle is what the
+    /// store keeps; `der` is the public half as SPKI.
+    var makeKey: (() -> (handle: Data, der: Data)?)?
+
+    /// The same, sent to `client` with `header` as x-vyre-presence: vyre-core's socket with the
+    /// installer's one-time code (Host/CoreEnroll.swift), or vyred with Touch ID.
+    func enroll(client: VyredClient, header: String) async -> String? {
+        var made: (handle: Data, der: Data)?
+        if let makeKey {
+            guard let m = makeKey() else { return "The Capsule could not make a key." }
+            made = m
+        } else {
         guard SecureEnclave.isAvailable else { return "This Mac has no Secure Enclave, so the Capsule cannot make a presence key." }
         // biometryCurrentSet demands a live fingerprint on every single use; a key made without
         // one enrolled would never sign again (e2e2's ask, 28 Sep: never offer the capsule method
@@ -287,10 +300,13 @@ public final class CapsulePresence {
         guard let key = try? SecureEnclave.P256.Signing.PrivateKey(accessControl: access) else {
             return "The Capsule could not make a Secure Enclave key on this Mac."
         }
-        guard store.save(key.dataRepresentation) else { return "The Capsule could not keep its key in your keychain." }
-        let pub = PresenceCanonical.b64url(key.publicKey.derRepresentation)
-        let r = await vyred.call("presence.enroll", ["kind": "capsule", "name": "Capsule on \(Host.current().localizedName ?? "this Mac")", "public_key": pub, "alg": -7],
-                                 timeout: 120, headers: ["x-vyre-presence": "touchid"])
+        made = (key.dataRepresentation, key.publicKey.derRepresentation)
+        }
+        guard let made else { return "The Capsule could not make a key." }
+        guard store.save(made.handle) else { return "The Capsule could not keep its key in your keychain." }
+        let pub = PresenceCanonical.b64url(made.der)
+        let r = await client.call("presence.enroll", ["kind": "capsule", "name": "Capsule on \(Host.current().localizedName ?? "this Mac")", "public_key": pub, "alg": -7],
+                                 timeout: 120, headers: ["x-vyre-presence": header])
         guard let d = r.data as? [String: Any], let id = VJ.nonEmpty(d["id"]) else {
             store.delete()
             return Bridge.explain(r).map { "The Capsule's key was not enrolled: \($0)" } ?? "The Capsule's key was not enrolled."

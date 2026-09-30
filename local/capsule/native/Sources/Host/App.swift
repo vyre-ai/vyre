@@ -104,7 +104,23 @@ final class CapsuleApp: NSObject, NSApplicationDelegate {
         Drive.start(self)
         // Kept open while hidden, on purpose: a timer on the box has to ring here.
         if !headless { planner.start() }
+        enrolWithCore()
         if ProcessInfo.processInfo.environment["VYRE_CAPSULE_OPEN"] == "1" { panel.show(front: PanelController.frontApp()) }
+    }
+
+    /// The first key on a Mac that runs vyre-core: the installer's code from fd 3 (CoreEnroll.swift).
+    /// The result is said in the panel, and in a notification if it is hidden.
+    func enrolWithCore() {
+        let handoff = CoreEnroll.handoff
+        guard handoff != .none else { return }
+        let presence = self.presence
+        Task { [weak self] in
+            guard let out = await CoreEnroll.enrol(handoff, presence: presence, config: CoreEnroll.readConfig()) else { return }
+            guard let self else { return }
+            self.model.line = out.words
+            if !self.panel.isShown { self.panel.show(front: PanelController.frontApp()) }
+            if !out.enrolled { Notifier.shared.post(title: "Vyre", body: out.words) }
+        }
     }
 
     /// `open Vyre.app` while it runs opens the Capsule: a way in that needs no hot key at all.

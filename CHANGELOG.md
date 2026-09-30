@@ -4,6 +4,10 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+- Capsule: on a Mac that runs vyre-core, the installer starts the Capsule with a one-time code on a
+  private channel. The Capsule makes its key, enrols it with vyre-core using that code, and tells
+  you the key's fingerprint to compare with the installer's. The code is used once, never written
+  down, and is sent only to a socket that really is vyre-core's.
 - Capsule: a small floating panel shows what an agent is doing while it drives your Mac or Chrome.
   It lists the plan with the step it is on, and you can drag it anywhere (it remembers where) or
   make it small. Change a step that has not started by double-clicking it, tell the agent what to
