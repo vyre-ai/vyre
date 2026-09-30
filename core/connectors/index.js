@@ -101,7 +101,13 @@ export default {
       description: "Change who may use a connection: { name, scope } where scope is { projects: \"*\" | [ids], agents: \"*\" | [names] }, or null for the default (a hub server open to every project and agent, an api credential for you and the assistant only). Rewrites the hub row or the credential's config; the credential's stored sign-in is kept.",
       input: obj({ name: str, scope: { type: ["object", "null"] } }, ["name"]),
       callers: PEOPLE,
-      run: (input, meta) => conn.setScope(input, { as: String(meta && meta.caller || "") }),
+      run: (input, meta) => {
+        // Widening who may use a connection is the person's act: the registry already limits `callers`, and this says it again
+        // where it matters, so no change to the list above can let a model, an agent's thread or a module in.
+        const who = String(meta && meta.caller || "");
+        if (!PEOPLE.includes(who)) throw fail("only you change who may use a connection, from your own screen", "denied");
+        return conn.setScope(input, { as: who });
+      },
     });
 
     ctx.tool("connectors.disconnect", {
