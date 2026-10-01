@@ -97,7 +97,7 @@ test("media: a provider's image is kept with its provider, model, prompt and ses
   assert.equal(got.media.prompt, "a harbour at dusk, oil painting");
   // Only Vyre's session and assistant modules register; nobody else, and not a model.
   assert.notEqual((await call("artifacts.media.register", { thread: "t1", name: "harbour.png" }, "mcp:agent:juno", { thread: "t1" })).error, undefined);
-  await assert.rejects(asVyre("artifacts.media.register", { thread: "t1", name: "harbour.png" }, "bakery"), /only Vyre's session and assistant/);
+  await assert.rejects(asVyre("artifacts.media.register", { thread: "t1", name: "harbour.png" }, "bakery"), /only Vyre's session, switchboard \(threads\) and assistant/);
 });
 
 test("media: a file the folder watcher sees is kept once, and a later register fills in the prompt instead of making a second", async t => {
@@ -296,7 +296,7 @@ test("media: bytes handed over directly (a provider's content block) are kept wi
   assert.ok(Buffer.from(chunk.bytes_b64, "base64").equals(PNG), "the bytes are what was handed over");
   assert.deepEqual((await ok("artifacts.search", { q: "lighthouse" })).map(x => x.id), [made.id], "the prompt is searchable");
   // The same bytes again for the thread are the same artifact, with what is now known filled in.
-  const again = await asVyre("artifacts.media.register", { thread: "t1", name: "x.png", data_b64: b64, model: "gpt-image" });
+  const again = await asVyre("artifacts.media.register", { thread: "t1", name: "x.png", data_b64: b64, model: "gpt-image" }, "threads");
   assert.equal(again.id, made.id);
   assert.equal(again.media.model, "gpt-image");
   assert.equal((await ok("artifacts.list", { kind: "image" })).length, 1);
