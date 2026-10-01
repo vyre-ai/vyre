@@ -180,15 +180,23 @@ test("redteam G-D2: a model cannot claim the person's own confirmation, and a wr
   const req = MAIL({});
   const hash = inputHash({ kind: req.kind, via: req.via, to: [req.to], content: req.content });
   const fresh = () => ({ surface: "capsule", hash, at: Date.now() });
-  // Held or refused outright are both refusals; what must never happen is a send.
-  const notSent = (r, why) => assert.ok(r.error || (r.data && r.data.state === "held"), `${why}: ${JSON.stringify(r)}`);
-  notSent(await agent("kit", "t-1", "gate.request", { ...req, asked: fresh() }), "a model's claim");
-  notSent(await reg("gate.request", { ...req, asked: fresh() }, "mcp"), "a bare mcp caller");
-  notSent(await reg("gate.request", { ...req, asked: fresh() }, "module:watchers"), "a module");
-  notSent(await reg("gate.request", { ...req, asked: { ...fresh(), hash: "x" + hash } }, "capsule"), "a hash that does not match");
-  notSent(await reg("gate.request", { ...req, asked: { ...fresh(), at: Date.now() - 61_000 } }, "capsule"), "stale");
-  notSent(await reg("gate.request", { ...req, asked: { ...fresh(), surface: "deck" } }, "capsule"), "another surface's claim");
+  // The guard's answer is a hold. Where the registry refuses the caller outright (a bare model naming a thread it cannot prove, a module
+  // that is not running) the refusal must say why, so an unrelated failure cannot pass for one.
+  const held = (r, why) => assert.equal(r.data && r.data.state, "held", `${why}: ${JSON.stringify(r)}`);
+  const refusedFor = (r, re, why) => assert.ok(r.error && re.test(String(r.error.message)), `${why}: ${JSON.stringify(r)}`);
+  held(await agent("kit", "t-1", "gate.request", { ...req, asked: fresh() }), "a model's claim");
+  refusedFor(await reg("gate.request", { ...req, asked: fresh() }, "mcp"), /thread/i, "a bare mcp caller naming a thread it cannot prove");
+  const { thread: _unproven, ...noThread } = req;
+  held(await reg("gate.request", { ...noThread, asked: fresh() }, "mcp"), "a bare mcp caller with no thread");
+  held(await reg("gate.request", { ...req, asked: { ...fresh(), hash: "x" + hash } }, "capsule"), "a hash that does not match");
+  held(await reg("gate.request", { ...req, asked: { ...fresh(), at: Date.now() - 61_000 } }, "capsule"), "stale");
+  held(await reg("gate.request", { ...req, asked: { ...fresh(), surface: "deck" } }, "capsule"), "another surface's claim");
   assert.equal(gmail.got.length, 0, "nothing reached the sender");
+  // Positive control: the same request with a fresh, matching claim from the capsule's own surface does send, so a world where
+  // everything errors cannot look green.
+  const ok = await reg("gate.request", { ...req, asked: fresh() }, "capsule");
+  assert.equal(ok.data && ok.data.state, "sent", JSON.stringify(ok));
+  assert.equal(gmail.got.length, 1);
 });
 
 test("redteam G-L1: a spoken ask is spent by its send, and one past its window never matches", async t => {
