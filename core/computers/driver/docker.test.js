@@ -41,6 +41,7 @@ async function engine(t) {
         NetworkSettings: { Networks: { [body.HostConfig.NetworkMode]: { IPAddress: "172.20.0.5" } } } });
       return send(201, { Id: id, Warnings: [] });
     }
+    if (req.method === "GET" && url.pathname === "/v1.43/events" && url.searchParams.get("since") === "7") { res.writeHead(404); res.end(); return; }
     if (req.method === "GET" && url.pathname === "/v1.43/events") {
       seen.push({ method: "EVENTS", path: String(req.url), body: undefined });
       res.writeHead(200, { "content-type": "application/json" });
@@ -314,4 +315,16 @@ test("docker: watchEvents hands over each death with its agent and exit code, re
   const evs = e.seen.filter(x => x.method === "EVENTS");
   assert.equal(evs[0].path, "/v1.43/events");
   assert.equal(evs[1].path, "/v1.43/events?since=200");
+});
+
+test("docker: watchEvents asks for a look at every computer when /events answers with anything but a stream", async t => {
+  const server = http.createServer((req, res) => { res.writeHead(404); res.end(); });
+  await new Promise(r => server.listen(0, "127.0.0.1", r));
+  t.after(() => server.close());
+  const d = new DockerDriver({ url: `http://127.0.0.1:${/** @type {any} */ (server.address()).port}`, bearer: "b".repeat(20) });
+  let gaps = 0;
+  const w = d.watchEvents(() => {}, { onGap: () => gaps++ });
+  t.after(() => w.stop());
+  for (let i = 0; i < 30 && gaps < 1; i++) await new Promise(r => setTimeout(r, 50));
+  assert.equal(gaps, 1);
 });

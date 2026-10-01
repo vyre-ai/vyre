@@ -42,6 +42,7 @@ import crypto from "node:crypto";
 const MAX_BODY = 256 * 1024;
 // A list of every computer on the box; far more than any real one, and bounded all the same.
 const MAX_LIST = 16 * 1024 * 1024;
+const MAX_EVENT_STREAMS = 4;
 const NAME = "[A-Za-z0-9][A-Za-z0-9_.-]{0,127}";
 const HOP = new Set(["connection", "keep-alive", "proxy-connection", "proxy-authenticate", "proxy-authorization",
   "te", "trailer", "transfer-encoding", "upgrade", "content-length"]);
@@ -194,6 +195,8 @@ export function createProxy({ socket = "/var/run/docker.sock", policy, config, b
     return given.length === bearerBuf.length && crypto.timingSafeEqual(given, bearerBuf);
   };
   const prefix = config.labelPrefix;
+  /** Each /events caller holds a connection to the Engine open; only a few at once. */
+  let eventStreams = 0;
 
   /** Is this label set, as the Engine reports it, one of this box's computers? */
   const computer = labels => {
@@ -343,6 +346,11 @@ export function createProxy({ socket = "/var/run/docker.sock", policy, config, b
     }
 
     if (name === "events") {
+      if (eventStreams >= MAX_EVENT_STREAMS) refuse(`at most ${MAX_EVENT_STREAMS} event streams at once`, 429);
+      eventStreams++;
+      let counted = true;
+      const done = () => { if (counted) { counted = false; eventStreams--; } };
+      res.on("close", done);
       const since = q.get("since");
       if (since !== null && !/^\d{1,12}(\.\d{1,9})?$/.test(since)) refuse("since is a unix time in seconds", 400);
       const ev = new URLSearchParams({ filters: JSON.stringify({ type: ["container"], event: ["die", "oom", "kill", "stop"], label: [`${prefix}.managed=true`, "run.vyre=1"] }) });

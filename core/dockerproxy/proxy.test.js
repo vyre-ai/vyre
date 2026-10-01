@@ -94,6 +94,7 @@ async function engine(t) {
       res.write("hel"); setTimeout(() => res.end("lo"), 5);
       return;
     }
+    if (req.method === "GET" && p === "/events" && u.searchParams.get("since") === "999") { res.writeHead(200, { "content-type": "application/json" }); res.write("{}\n"); return; }
     if (req.method === "GET" && p === "/events") {
       res.writeHead(200, { "content-type": "application/json" });
       res.write(JSON.stringify({ Type: "container", Action: "die", Actor: { ID: "kitfull0001", Attributes: { exitCode: "137" } }, time: 101 }) + "\n");
@@ -141,7 +142,7 @@ async function proxy(t, policy = stub, bearer = BEARER) {
     req.end(data || undefined);
   });
   const sent = () => e.seen.filter(s => !(s.method === "GET" && /\/(json|volumes\/[^/]+)$/.test(new URL(s.url, "http://d").pathname)));
-  return { call, seen: e.seen, sent, logs };
+  return { call, seen: e.seen, sent, logs, port };
 }
 
 const CREATE = () => ({
@@ -437,4 +438,21 @@ test("dockerproxy: /events streams this box's computers' deaths, with the type, 
     assert.ok(x.status === 403 || x.status === 400, `${bad} -> ${x.status}`);
   }
   assert.equal((await px.call("POST", "/v1.43/events")).status, 403);
+});
+
+test("dockerproxy: at most four /events streams at once; a closed one frees its place", async t => {
+  const px = await proxy(t);
+  const held = [];
+  for (let i = 0; i < 4; i++) {
+    held.push(await new Promise(resolve => {
+      const req = http.request({ host: "127.0.0.1", port: px.port, method: "GET", path: "/v1.43/events?since=999", headers: { authorization: `Bearer ${BEARER}` } }, res => { res.once("data", () => resolve(req)); });
+      req.end();
+    }));
+  }
+  assert.equal((await px.call("GET", "/v1.43/events?since=999")).status, 429);
+  held[0].destroy();
+  let ok = false;
+  for (let i = 0; i < 40 && !ok; i++) { await new Promise(r => setTimeout(r, 50)); const r = await px.call("GET", "/v1.43/events?since=100"); ok = r.status === 200; }
+  assert.ok(ok, "a place is free again once a stream closes");
+  for (const h of held) h.destroy();
 });

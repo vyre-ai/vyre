@@ -39,6 +39,7 @@
 // report to the lead for what needs checking once the box is up.
 
 import { createServer } from "node:http";
+import net from "node:net";
 import { spawn } from "node:child_process";
 import crypto from "node:crypto";
 import fs from "node:fs";
@@ -308,6 +309,22 @@ function freezeAgent(on) {
   try { fs.writeSync(FREEZE_FD, on ? "stop\n" : "cont\n"); return true; }
   catch (e) { console.error(`computerd: could not ${on ? "stop" : "continue"} the agent's processes: ${/** @type {any} */ (e).code || e}`); return false; }
 }
+
+// ---- who may connect: vyred, and nothing else on the network -------------------------------
+// Every computer shares one Docker network, and agent code is model-controlled, so another computer must not be able to
+// dial this one's ports. Once vyred has shown the computer's own token (the owner's, or an identified CDP client's), its
+// address is pinned: from then on a connection to 7000 or to the screen's 5900 from any other address, loopback aside (this
+// computer's own processes), is closed before a byte is read. Any later valid token re-pins, so a vyred that comes back at a
+// new address is let in; a wrong token never pins. Before the first valid token anything may connect, and anything that does
+// can only be told 401: the pool pins right after a computer starts (GET /ping).
+/** @type {string|null} */
+let vyredAddr = null;
+const plainAddr = a => String(a || "").replace(/^::ffff:/, "");
+const isLoopback = a => plainAddr(a) === "127.0.0.1" || plainAddr(a) === "::1";
+/** @param {string|undefined} addr */
+function peerAllowed(addr) { return isLoopback(addr) || vyredAddr === null || plainAddr(addr) === vyredAddr; }
+/** @param {string|undefined} addr */
+function pinPeer(addr) { if (!isLoopback(addr)) vyredAddr = plainAddr(addr); }
 
 /** Constant-time token comparison; hashing first hides the length too. */
 function sameToken(given, expected) {
@@ -667,6 +684,7 @@ const server = createServer(async (req, res) => {
     // opens /cdp/json/version (and the upgrade) and nothing else, same as before.
     const isOwner = sameToken(bearer, TOKEN);
     const cdpId = isVersion ? identifyClient(bearer) : null;
+    if (isOwner || cdpId) pinPeer(req.socket.remoteAddress);
     // For isVersion, kind comes from cdpId alone (identifyClient), even when isOwner is also
     // true: in legacy/non-shared mode identifyClient already answers "agent" for the owner token
     // too (agent and owner are the same secret there), so this changes nothing for today's
@@ -678,6 +696,7 @@ const server = createServer(async (req, res) => {
     // was valid; every other route stays isOwner-only, exactly as before.
     if (isVersion ? !cdpId : !isOwner) return send(401, { error: { message: "missing or wrong bearer token" } });
 
+    if (req.method === "GET" && pathname === "/ping") return send(200, { ok: true });
     if (pathname.startsWith("/fs/")) return files(req, res, url);
     if (req.method === "POST" && pathname === "/shield") {
       const body = await readBody(req);
@@ -772,9 +791,25 @@ const server = createServer(async (req, res) => {
 // since a plain WebSocket cannot set a header.
 server.on("upgrade", (req, socket, head) => cdpUpgrade(req, socket, head));
 
+server.on("connection", sock => { if (!peerAllowed(sock.remoteAddress)) sock.destroy(); });
 server.listen(PORT, "0.0.0.0", () => {
   console.log(`computerd listening on :${PORT}`);
 });
+
+// The screen. Xvnc listens on a unix socket only the vyre uid can open (VNC_SOCKET), so nothing in the agent's or the
+// browser's uid can reach it, and this gate answers on 5900 for vyred alone, with the same address rule as above.
+const VNC_SOCKET = process.env.VNC_SOCKET || "";
+const VNC_PORT = Number(process.env.VNC_PORT || 5900);
+if (VNC_SOCKET) {
+  const gate = net.createServer(sock => {
+    if (!peerAllowed(sock.remoteAddress)) { sock.destroy(); return; }
+    const up = net.connect(VNC_SOCKET);
+    sock.pipe(up); up.pipe(sock);
+    const end = () => { sock.destroy(); up.destroy(); };
+    sock.on("error", end); up.on("error", end); sock.on("close", end); up.on("close", end);
+  });
+  gate.listen(VNC_PORT, "0.0.0.0", () => console.log(`computerd: the screen answers on :${VNC_PORT} for vyred only`));
+}
 
 launchChrome();
 

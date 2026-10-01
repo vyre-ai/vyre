@@ -747,3 +747,16 @@ test("pool: a failed addAgent for an ALREADY-existing member restores its previo
   assert.equal(after.agent_name, before.agent_name, "the rename from the failed call stuck anyway");
   assert.equal(after.generation, before.generation, "the failed call's generation bump stuck anyway");
 });
+
+test("pool: when the runtime cannot be asked, the computer reads unknown, never running, until a check succeeds", async t => {
+  const { pool, driver } = setup(t);
+  await pool.checkout("kit");
+  const real = driver.inspect.bind(driver);
+  driver.inspect = async () => { throw new Error("the Engine is not answering"); };
+  assert.equal(await pool.verifyAlive("kit"), false, "not dead either");
+  assert.equal(pool.view("kit").state, "unknown");
+  assert.equal(pool.died.has("kit"), false);
+  driver.inspect = real;
+  assert.equal(await pool.verifyAlive("kit"), false);
+  assert.equal(pool.view("kit").state, "running");
+});

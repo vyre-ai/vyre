@@ -187,22 +187,23 @@ fi
 # would otherwise reach every watcher's browser (ADR 0005, decision 1). Nobody resizes the
 # agent's screen under it (-AcceptSetDesktopSize=0), and 24 frames a second is plenty. X itself
 # listens on its unix socket only (-nolisten tcp); -localhost=no is about VNC's 5900, for vyred.
-# BlacklistThreshold: Xvnc blacklists a host after 5 unauthenticated connections (default), and the pool's own
-# readiness probes of 5900 are such connections from vyred's address. On a slower host the probes alone reach 5
-# and Glass then gets Xvnc's "RFB 003.003" refusal ("Too many security failures") instead of a handshake, so Glass
-# fails with "does not speak RFB 3.8" (seen on a GitHub runner, J7). Only vyred can reach 5900 (the network is
-# internal), so a threshold well above the probes loses nothing. (That is NOT true today: all computers share
-# one Docker network with inter-container traffic on, so one computer can dial another's 5900 and 7000. The
-# VNC password and computerd's token are the only walls; the J7 matrix step 7.4 proves the reach.)
+# The screen is not on a TCP port at all (-rfbport -1): Xvnc listens on a unix socket in vyre's own home
+# (-rfbunixpath), which only uid 1001 can open, so the agent's and Chrome's uids cannot reach it. computerd
+# (uid 1001) answers on 5900 and forwards to that socket, for vyred's address only (computerd/index.js, "who may
+# connect"): another computer on the shared network is refused at the connection. -BlacklistThreshold stays
+# raised because every connection Xvnc now sees comes from that one forwarder, so a few abandoned handshakes
+# must not blacklist the only caller there is.
 as_vyre sh -c 'test -r "$0"' "${BOOT_FILE}" || { log "no ${BOOT_FILE}: vyred seeds it before start"; exit 1; }
 as_vyre sh -c 'umask 077; sed -n "s/^VNC_PASSWORD=//p" "$0" | tr -d "\n" | vncpasswd -f > "$HOME/.vnc/passwd"' "${BOOT_FILE}"
 # A fresh trusted cookie every start, known only to vyre's processes.
 as_vyre sh -c 'umask 077; rm -f "$XAUTHORITY"; xauth -q add "$DISPLAY" . "$(mcookie)"'
 
+VNC_SOCKET="${VYRE_HOME}/vnc.sock"
 log "starting Xvnc ${DISPLAY} at ${GEOMETRY}"
 as_vyre Xvnc "${DISPLAY}" \
   -geometry "${GEOMETRY}" \
-  -rfbport 5900 \
+  -rfbport -1 \
+  -rfbunixpath "${VNC_SOCKET}" \
   -rfbauth "${VYRE_HOME}/.vnc/passwd" \
   -auth "${VYRE_XAUTH}" \
   +extension SECURITY \
@@ -379,5 +380,5 @@ exec setpriv --reuid=1001 --regid=1001 --init-groups --inh-caps=-all -- \
     CHROME_IN="${CHROME_IN}" CHROME_OUT="${CHROME_OUT}" COMPUTERD_FS_ROOT="${AGENT_HOME}" \
     AGENT_TOKENS_FILE="${VYRE_HOME}/.agent-tokens" \
     AGENT_DOWNLOADS="${BROWSER_HOME}/downloads" \
-    VYRE_FREEZE_FD=9 \
+    VYRE_FREEZE_FD=9 VNC_SOCKET="${VNC_SOCKET}" \
   node /opt/computerd/index.js

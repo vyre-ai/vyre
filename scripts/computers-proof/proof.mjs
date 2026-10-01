@@ -256,7 +256,12 @@ try {
     r2 = await person("computers.checkout", { agent: other, why: "csproof" });
     if (r2.error) throw new Error("computers.checkout pax: " + r2.error.message);
     const ipOf = c => sh(["inspect", "-f", "{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}", c]).trim();
-    const dial = (from, ip, port) => shOk(["exec", "-u", "1000:1000", from, "bash", "-c", `timeout 4 bash -c 'exec 3<>/dev/tcp/${ip}/${port}' 2>&1 && echo CONNECTED || echo REFUSED`]).split("\n").pop();
+    // "Refused" means no byte comes back: the connection may open at the TCP level, but it is closed before anything is said
+    // (the screen's greeting, or an HTTP answer to a ping). vyred, from outside, gets 12 bytes from both.
+    const dial = (from, ip, port) => {
+      const out = shOk(["exec", "-u", "1000:1000", from, "bash", "-c", `timeout 6 bash -c 'exec 3<>/dev/tcp/${ip}/${port} || exit 7; printf "GET /ping HTTP/1.0\\r\\n\\r\\n" >&3; head -c 12 <&3 | wc -c' 2>&1`]).split("\n").pop().trim();
+      return /^\d+$/.test(out) && Number(out) > 0 ? `ANSWERED (${out} bytes)` : "REFUSED";
+    };
     const a = ipOf(CONTAINER), b = ipOf(otherC);
     for (const [from, to, ip] of [[CONTAINER, other, b], [otherC, AGENT, a]]) {
       for (const port of [5900, 7000]) {

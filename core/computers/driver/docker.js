@@ -88,7 +88,8 @@ export class DockerDriver {
       if (stopped) return;
       const path = `${API}/events${last ? `?since=${last}` : ""}`;
       req = http.request({ ...this.target, method: "GET", path, headers: { host: "docker", authorization: `Bearer ${this.bearer}` } }, res => {
-        if (res.statusCode !== 200) { res.resume(); retry(`status ${res.statusCode}`); return; }
+        // An answer that is not a stream (an older proxy, an error): nothing is being heard, so look at every computer once now.
+        if (res.statusCode !== 200) { res.resume(); if (o.onGap) o.onGap(); retry(`status ${res.statusCode}`); return; }
         delay = 1000;
         if (!first && o.onGap) o.onGap();
         first = false;

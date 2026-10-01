@@ -16,7 +16,7 @@
 // it cannot gate. A ticket marked slow (the viewer is relayed or far away, per link.health) has
 // its incremental update requests paced to 5 a second (Pacer); nothing else is held back.
 
-import { STOPPED } from "./pool.js";
+import { STOPPED, UNKNOWN } from "./pool.js";
 import net from "node:net";
 import { Bytes, ClientParser, INPUT, clientHandshake, serverHandshake } from "./rfb.js";
 import { acceptKey, encodeFrame, FrameParser } from "./ws.js";
@@ -212,6 +212,9 @@ export class Glass {
     const vnc = this.pool.vnc(agent);
     if (!vnc) { closeWith(socket, 4001, ""); closeAll(`${agent}'s computer is not running`, true); return; }
 
+    // The computer answers vyred's address alone; show it this vyred's address before dialling (it can change when vyred is recreated).
+    if (typeof this.pool.pin === "function") await this.pool.pin(agent).catch(() => {});
+    if (closed) return;
     xvnc = net.connect(vnc.port, vnc.host);
     this.sockets.add(xvnc);
     const xvncBytes = new Bytes();
@@ -223,6 +226,7 @@ export class Glass {
       const dead = typeof this.pool.verifyAlive === "function" ? await this.pool.verifyAlive(agent).catch(() => false) : false;
       if (closed) return;
       if (dead) { closeWith(socket, 4001, STOPPED); closeAll("the computer stopped", true); return; }
+      if (this.pool.unknown && this.pool.unknown.has(agent)) { closeWith(socket, 4001, UNKNOWN); closeAll("the runtime could not be asked", true); return; }
       closeAll("the computer's screen closed");
     });
     xvnc.on("error", e => closeAll(scrub(e.message, vnc.password)));

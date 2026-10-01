@@ -4,6 +4,14 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+- Computers can no longer reach each other's screen or computerd. Every computer shares one Docker network, and
+  the J7 matrix step 7.4 showed one computer's agent could dial another's ports 5900 and 7000. Xvnc now listens
+  on a unix socket only the vyre uid can open, computerd answers on 5900 and forwards to it, and both of its
+  ports close any connection that is not from vyred's address once vyred has shown the computer's token (the
+  pool does this right after a start and before a screen is opened: `GET /ping`, `pool.pin`). The restricted
+  proxy caps `/events` at four streams, a non-stream answer from it triggers a check of every running computer,
+  the sweep's backstop runs at 55 s so a tick of drift cannot skip a minute, and when the runtime cannot be
+  asked a computer reads "unknown" ("Can't check this computer right now.") and never "running".
 - Computers: a computer that dies (killed, out of memory, crashed) is marked stopped as soon as the container
   runtime says so. The docker driver watches the Engine's die/oom/kill/stop events through a new `GET /events`
   route on the restricted proxy (type, events and labels forced to this box's computers; only since= is the
