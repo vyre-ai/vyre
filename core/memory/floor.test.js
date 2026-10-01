@@ -190,10 +190,11 @@ test("graph: the main graph is only for the user and the assistant; an agent see
   // The agent can also be named by the caller; the two must agree. Over HTTP vyred takes that
   // name only with the key of the agent's live thread, so Memory's part is checked in-process.
   assert.match((await call("memory.graph", {}, { ...opts, caller: "mcp:agent:kit" })).error?.message || "", /no thread of that agent/);
-  for (const caller of ["mcp agent:kit", "mcp:agent:kit"]) {
-    assert.match((await d.registry.call("memory.graph", {}, caller)).error?.message || "", /main graph is for the assistant/, caller);
-    assert.match((await d.registry.call("memory.graph", { agent: "juno" }, caller)).error?.message || "", /came from agent kit/, caller);
-  }
+  // A model session's own label names kit; a claim in any other shape names nobody (canonicalCaller) and is refused as unnamed.
+  assert.match((await d.registry.call("memory.graph", {}, "mcp:agent:kit")).error?.message || "", /main graph is for the assistant/);
+  assert.match((await d.registry.call("memory.graph", { agent: "juno" }, "mcp:agent:kit")).error?.message || "", /came from agent kit/);
+  assert.match((await d.registry.call("memory.graph", {}, "mcp agent:kit")).error?.message || "", /no agent \(unnamed\)/);
+  assert.match((await d.registry.call("memory.graph", { agent: "juno" }, "mcp agent:kit")).error?.message || "", /came from agent \(unnamed\)/);
   // A session that has not said who it is gets a project's graph, not the main one.
   assert.match((await call("memory.graph", {}, { ...opts, caller: "mcp" })).error?.message || "", /drawn for the Deck/);
   assert.equal((await call("memory.graph", { project_cwds: [path.join(work, "northwind")] }, { ...opts, caller: "mcp" })).data?.scope, "project");

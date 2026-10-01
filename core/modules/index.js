@@ -15,7 +15,7 @@ import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { migrate } from "../store/index.js";
 import { Idempotency } from "./idempotency.js";
-import { PERSON_ONLY, machineSelf, core as coreHolder, format as formatProof } from "../presence/index.js";
+import { PERSON_ONLY, machineSelf, terminalAsks, core as coreHolder, format as formatProof } from "../presence/index.js";
 import { validateDecls } from "../config/settings.js";
 import * as config from "../config/index.js";
 import { toolEntries, checkManifestFull } from "../../packages/module-sdk/manifest.js";
@@ -979,7 +979,8 @@ export class Registry {
           internal: Boolean(def.internal) || reach === "modules",
           callers: reach === "person" ? [...PERSON_CALLERS] : Array.isArray(def.callers) ? def.callers : null,
           hook: Boolean(def.hook) || reach === "hook", presence: def.presence || false, core: Boolean(def.core),
-          reach, outward: (e && e.outward) || null, target: (e && e.target) || null, projectArg: (e && e.projectArg) || null, cwdArg: (e && e.cwdArg) || null, declaredReach: objectForm.has(name) });
+          reach, outward: (e && e.outward) || null, target: (e && e.target) || null, projectArg: (e && e.projectArg) || null, cwdArg: (e && e.cwdArg) || null, declaredReach: objectForm.has(name), addedModules: Boolean(def.addedModules) || Boolean(e && e.addedModules),
+          terminalAsk: typeof def.terminalAsk === "function" ? def.terminalAsk : null });
       },
     };
   }
@@ -1056,9 +1057,13 @@ export class Registry {
     if (!door && String(caller).startsWith("module:")) {
       const from = this.modules.get(String(caller).slice(7));
       // A module's own tools are its own business, in either form.
-      // A tool whose code limits `callers` keeps that limit for an added module: declaring "anyone" is for what the manifest alone says, and a
-      // list that names "module" means Vyre's own modules (reach sweep, vault, 2 Oct 2026).
-      if (from && from.dir && def.module !== from.manifest?.name && !this.isFirstParty(from.dir) && (!def.declaredReach || def.reach === "modules" || (def.reach !== "person" && Array.isArray(def.callers)))) {
+      // One rule, whatever "anyone" says (reach sweep, vault, 2 Oct 2026): a tool of Vyre's own is open to an added module only when the tool
+      // opts in (`addedModules: true`, in its manifest entry or its code). An added module's own tools keep the older rule: a declared reach,
+      // never "modules", and no `callers` list in code that keeps them for the person.
+      const owner = this.modules.get(def.module);
+      const ownerFirstParty = Boolean(owner && owner.dir && this.isFirstParty(owner.dir));
+      const closed = ownerFirstParty ? !def.addedModules : (!def.declaredReach || def.reach === "modules" || (def.reach !== "person" && Array.isArray(def.callers)));
+      if (from && from.dir && def.module !== from.manifest?.name && !this.isFirstParty(from.dir) && closed) {
         return { error: { code: "not_declared", message: `${tool} is not open to added modules` } };
       }
     }
@@ -1167,9 +1172,9 @@ export class Registry {
     // spending) it first. Only when core is linked; everywhere else the floor below applies.
     if (def.core && coreHolder.link) {
       meta = { ...meta, coreProof: proof ? formatProof(proof) : undefined };
-    } else if (presence && callerKind(caller) !== "module" && presence.required(tool, def, input)) {
+    } else if (presence && callerKind(caller) !== "module" && (presence.required(tool, def, input) || (meta.terminalAsk === true && terminalAsks(tool, def, input)))) {
       const v = await presence.verify({ tool, input, caller, proof, def, peer: meta.peer || null, terminal: typeof terminal === "string" || (terminal && typeof terminal === "object") ? terminal : null });
-      if (!v.ok) return { error: { code: v.code === "no_dialog" ? "no_dialog" : "presence_required", message: v.message, methods: v.methods } };
+      if (!v.ok) return { error: { code: v.code === "no_dialog" ? "no_dialog" : "presence_required", message: v.message, methods: v.methods, ...(meta.terminalAsk === true ? { terminal: true } : {}) } };
       // The tool learns how the person proved it (and with which enrolled key), never the proof.
       meta = { ...meta, presence: { method: v.method, keyId: v.keyId ?? null, ...(v.where ? { where: v.where } : {}) } };
     }

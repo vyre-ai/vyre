@@ -22,7 +22,7 @@
 
 import fs from "node:fs";
 
-const AGENT_RE = /(?:^|[\s:])agent:([A-Za-z0-9_-]+)/;
+const AGENT_RE = /(?:^|[\s:])agent:(\(unnamed\)|[A-Za-z0-9_-]+)/;
 
 /** Is folder `p` one of these folders, or under one? */
 export function within(p, folders) {
