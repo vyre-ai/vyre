@@ -95,6 +95,9 @@ jobs:
           "pid=$($proc.Id)" >> $env:GITHUB_OUTPUT
           # win32's socket is a named pipe (core/config/index.js's socketPath), not a filesystem
           # path; NPFS still answers Test-Path against \\.\pipe\<name>.
+          # vyred makes the pipe's random token when it first asks for the socket path. Wait for it, so this
+          # probe reads vyred's token instead of racing it to make its own (a race made this flaky).
+          for ($i = 0; $i -lt 150 -and -not (Test-Path "$env:VYRE_HOME\pipe-token"); $i++) { Start-Sleep -Milliseconds 200 }
           $sockPath = (node -e "import('./core/config/index.js').then(c => console.log(c.paths(process.env.VYRE_HOME).socket))").Trim()
           "sock=$sockPath" >> $env:GITHUB_OUTPUT
           $found = $false
