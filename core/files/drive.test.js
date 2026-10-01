@@ -96,7 +96,7 @@ process.stderr.write("unexpected"); process.exit(2);
 }
 
 /** A registry with the files module, and on the Mac a fake link module (status and remote). */
-async function registry(t, { role, cfg = {}, link = undefined, seam = undefined, peers = [], presence = undefined, agents = undefined, projects = undefined, access = undefined }) {
+async function registry(t, { role, cfg = {}, link = undefined, seam = undefined, peers = [], presence = undefined, agents = undefined, projects = undefined, access = undefined, media = undefined }) {
   /** @type {any} */ let reg = null, db = null;
   const root = tmp(t, "vyre-home-");
   const p = config.ensure(root);
@@ -109,6 +109,27 @@ async function registry(t, { role, cfg = {}, link = undefined, seam = undefined,
     const mods = tmp(t, "vyre-fake-agents-");
     installFakeReach(mods, root, { agents: agents || [], projects: projects || [], access: access || {} });
     t.after(() => clearFakeReach(root));
+    found.push(...discover([mods]));
+  }
+  if (media) {
+    // A stand-in for the artifacts module: the generated media of each project, and their bytes.
+    const mods = tmp(t, "vyre-artifacts-");
+    globalThis.__driveMedia = globalThis.__driveMedia || new Map();
+    globalThis.__driveMedia.set(root, media);
+    t.after(() => globalThis.__driveMedia.delete(root));
+    writeModule(mods, "artifacts", { roles: ["box"], does: { tools: [{ name: "artifacts.list", reach: "anyone" }, { name: "artifacts.media.read", reach: "modules" }] } },
+      `export default { async start(ctx) {
+        const m = () => globalThis.__driveMedia.get(ctx.paths.root);
+        ctx.tool("artifacts.list", { run: async ({ kind, project }) => ({ artifacts: m().filter(a => a.kind === kind && a.project === project).map(({ bytes_b64, ...a }) => a) }) });
+        ctx.tool("artifacts.media.read", { run: async ({ id, offset = 0, length = 1048576 }) => {
+          const a = m().find(x => x.id === id);
+          if (!a) throw Object.assign(new Error("no such artifact"), { code: "not_found" });
+          const all = Buffer.from(a.bytes_b64, "base64");
+          const part = all.subarray(offset, offset + length);
+          return { mime: a.mime, size: all.length, offset, length: part.length, eof: offset + part.length >= all.length, bytes_b64: part.toString("base64") };
+        } });
+        return { async stop() {} };
+      } };`);
     found.push(...discover([mods]));
   }
   if (link) {
@@ -1031,4 +1052,62 @@ test("drive mentions: search finds files by name; resolve, for the chat only, le
   await ok(reg, "files.mentions.resolve", { id: "work:a/other.md", thread: "t4" }, "module:sessions");
   events.emit("sessions", "thread.archived", { thread: "t4" }, { thread: "t4" });
   await ok(reg, "files.drive.read", { share: "work", path: "a/other.md" }, "mcp:agent:kit", { thread: "t4" });
+});
+
+// ---- Generated: the media models made, inside the project's folder ----------------------------
+
+test("drive generated: a project's folder shows a Generated folder with its images and video, read through artifacts and scoped like the project", async t => {
+  fakeTailscale(t, { status: statusJson({ selfCaps: { "drive:share": null } }), list: "" });
+  const { work } = boxWorld(t);
+  const a = path.join(work, "a"), b = path.join(work, "b");
+  for (const d of [a, b]) fs.mkdirSync(d, { recursive: true });
+  fs.writeFileSync(path.join(a, "notes.md"), "n");
+  const png = Buffer.from("PNGDATA-0123456789");
+  const media = [
+    { id: "art-aaaaaaaa1", kind: "image", format: "png", mime: "image/png", bytes: png.length, title: "Harbour: dawn/1", created_at: "2026-10-01T10:00:00Z", project: "a", bytes_b64: png.toString("base64") },
+    { id: "art-bbbbbbbb2", kind: "image", format: "png", mime: "image/png", bytes: 3, title: "Harbour: dawn/1", created_at: "2026-10-01T09:00:00Z", project: "a", bytes_b64: Buffer.from("xyz").toString("base64") },
+    { id: "art-cccccccc3", kind: "video", format: "mp4", mime: "video/mp4", bytes: 4, title: "Clip", created_at: "2026-10-01T08:00:00Z", project: "a", bytes_b64: Buffer.from("MP4!").toString("base64") },
+    { id: "art-dddddddd4", kind: "image", format: "jpeg", mime: "image/jpeg", bytes: 2, title: "Other project", created_at: "2026-10-01T07:00:00Z", project: "b", bytes_b64: Buffer.from("zz").toString("base64") },
+  ];
+  const { reg } = await registry(t, { role: "box", media,
+    agents: [{ name: "kit", kind: "agent", projects: ["a"] }],
+    projects: [{ slug: "a", name: "A", home: a, workspaces: [] }, { slug: "b", name: "B", home: b, workspaces: [] }], access: { "a:kit": true },
+    cfg: { files: { roots: [work], drive: { shares: { projects: null, work } } } } });
+  // The project's folder: the real files, and a Generated folder because it has media. A folder with none shows no such entry.
+  const top = await ok(reg, "files.drive.list", { share: "work", path: "a" });
+  assert.deepEqual(top.entries.map(e => [e.name, e.dir, e.virtual === true]), [["Generated", true, true], ["notes.md", false, false]]);
+  assert.deepEqual((await ok(reg, "files.drive.list", { share: "work", path: "b" })).entries.map(e => e.name), ["Generated"]);
+  const g = await ok(reg, "files.drive.list", { share: "work", path: "a/Generated" });
+  assert.deepEqual(g.entries.map(e => [e.name, e.kind, e.mime, e.size, e.artifact]), [
+    ["Clip.mp4", "video", "video/mp4", 4, "art-cccccccc3"],
+    ["Harbour- dawn-1 (art-bb).png", "image", "image/png", 3, "art-bbbbbbbb2"],
+    ["Harbour- dawn-1.png", "image", "image/png", 18, "art-aaaaaaaa1"]]);
+  // Reading goes through artifacts.media.read, in chunks.
+  const r1 = await ok(reg, "files.drive.read", { share: "work", path: "a/Generated/Harbour- dawn-1.png", offset: 0, length: 6 });
+  assert.deepEqual([Buffer.from(r1.base64, "base64").toString(), r1.size, r1.done, r1.virtual], ["PNGDAT", 18, false, true]);
+  const r2 = await ok(reg, "files.drive.read", { share: "work", path: "a/Generated/Harbour- dawn-1.png", offset: 6 });
+  assert.deepEqual([Buffer.from(r2.base64, "base64").toString(), r2.done], ["A-0123456789", true]);
+  await no(reg, "files.drive.read", { share: "work", path: "a/Generated/nope.png" }, "cli", "not_available");
+  await no(reg, "files.drive.list", { share: "work", path: "a/Generated/Clip.mp4" }, "cli", "bad_input");
+  // An agent granted project a sees a's media, never b's, and cannot get at b's folder.
+  assert.deepEqual((await ok(reg, "files.drive.list", { share: "work", path: "a/Generated" }, "mcp:agent:kit")).entries.length, 3);
+  assert.equal(Buffer.from((await ok(reg, "files.drive.read", { share: "work", path: "a/Generated/Clip.mp4" }, "mcp:agent:kit")).base64, "base64").toString(), "MP4!");
+  await no(reg, "files.drive.list", { share: "work", path: "b/Generated" }, "mcp:agent:kit", "not_available");
+  await no(reg, "files.drive.read", { share: "work", path: "b/Generated/Other project.jpg" }, "mcp:agent:kit", "not_available");
+});
+
+test("drive generated: a real Generated folder is shown together with the media, and a folder that is no project's gets no virtual one", async t => {
+  fakeTailscale(t, { status: statusJson({ selfCaps: { "drive:share": null } }), list: "" });
+  const { work } = boxWorld(t);
+  const a = path.join(work, "a"), plain = path.join(work, "plain");
+  fs.mkdirSync(path.join(a, "Generated"), { recursive: true }); fs.mkdirSync(plain, { recursive: true });
+  fs.writeFileSync(path.join(a, "Generated", "mine.png"), "real");
+  const media = [{ id: "art-eeeeeeee5", kind: "image", format: "png", mime: "image/png", bytes: 2, title: "mine", created_at: "2026-10-01T10:00:00Z", project: "a", bytes_b64: Buffer.from("ai").toString("base64") }];
+  const { reg } = await registry(t, { role: "box", media, projects: [{ slug: "a", name: "A", home: a, workspaces: [] }], cfg: { files: { roots: [work], drive: { shares: { projects: null, work } } } } });
+  const top = await ok(reg, "files.drive.list", { share: "work", path: "a" });
+  assert.deepEqual(top.entries.filter(e => e.name === "Generated").map(e => e.virtual === true), [false], "the real folder is the one listed, not a second");
+  const g = await ok(reg, "files.drive.list", { share: "work", path: "a/Generated" });
+  assert.deepEqual(g.entries.map(e => [e.name, e.virtual === true]).sort(), [["mine (art-ee).png", true], ["mine.png", false]]);
+  assert.deepEqual((await ok(reg, "files.drive.list", { share: "work", path: "plain" })).entries, []);
+  await no(reg, "files.drive.list", { share: "work", path: "plain/Generated" }, "cli", "not_available");
 });

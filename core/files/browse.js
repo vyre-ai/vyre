@@ -56,6 +56,66 @@ export function browse(ctx, { g, folder, shares, tagged = () => null }) {
     return { top, rs, safe, scope };
   }
 
+  // ---- Generated: images, video and audio the models made, shown inside the project's own folder ----
+  // They are artifacts (artifacts owns the bytes and who may see them), so nothing is copied here: a virtual "Generated"
+  // folder inside each project's folder lists them through artifacts.list as the asker, and a read goes to
+  // artifacts.media.read. A real folder named Generated, if the project has one, is shown together with them.
+  const MEDIA_EXT = { png: "png", jpeg: "jpg", webp: "webp", gif: "gif", mp4: "mp4", webm: "webm", mp3: "mp3", wav: "wav", ogg: "ogg", m4a: "m4a" };
+  const GENERATED = "Generated";
+  const realOf = p => { try { return fs.realpathSync(p); } catch { return null; } };
+
+  /** The slug of the project whose home is this folder, or null. */
+  async function projectAt(dirReal) {
+    try {
+      const r = await ctx.call("projects.list", {});
+      for (const p of (r && r.data && r.data.projects) || []) {
+        const h = typeof p.home === "string" ? realOf(p.home) : null;
+        if (h && h === dirReal) return String(p.slug);
+      }
+    } catch { /* no projects module: nothing is generated here */ }
+    return null;
+  }
+
+  /**
+ * The project's generated media, newest first, each with the name it is shown under. The asker's right to the project is
+ * decided before this runs (generated() goes through resolve() on the project's folder, the same grant), and artifacts' own
+ * scope for a project is that project's grant, so listing as this module for the one project loses nothing.
+ */
+  async function mediaOf(slug, meta) {
+    const rows = [];
+    for (const kind of ["image", "video", "audio"]) {
+      const r = await ctx.call("artifacts.list", { kind, project: slug }).catch(() => null);
+      const list = r && !r.error && r.data ? (Array.isArray(r.data) ? r.data : r.data.artifacts || r.data.items || []) : [];
+      for (const a of list) if (a && a.id) rows.push(a);
+    }
+    rows.sort((a, b) => String(b.created_at || "").localeCompare(String(a.created_at || "")));
+    const used = new Set();
+    return rows.map(a => {
+      const ext = MEDIA_EXT[String(a.format || "").toLowerCase()] || String(a.mime || "").split("/")[1] || "bin";
+      const base = String(a.title || a.id).replace(/[\\/:*?"<>|\0\r\n]+/g, "-").replace(/^\.+/, "").trim().slice(0, 80) || String(a.id).slice(0, 8);
+      let name = `${base}.${ext}`;
+      if (used.has(name.toLowerCase())) name = `${base} (${String(a.id).slice(0, 6)}).${ext}`;
+      used.add(name.toLowerCase());
+      return { name, a, ext };
+    });
+  }
+
+  /**
+   * Is this path inside the virtual Generated folder of a project? The folder above it goes through resolve() first (the
+   * same scope and guard as any listing), so an asker who cannot see the project's folder sees nothing here either.
+   */
+  async function generated(share, rel, meta) {
+    const segs = String(rel || "").replace(/^\/+/, "").split("/").filter(Boolean);
+    const i = segs.lastIndexOf(GENERATED);
+    if (i < 0 || segs.length - i > 2) return null;
+    let parent;
+    try { parent = await resolve(share, segs.slice(0, i).join("/"), meta); } catch { return null; }
+    if (!fs.statSync(parent.safe.real).isDirectory()) return null;
+    const slug = await projectAt(parent.safe.real);
+    if (!slug) return null;
+    return { slug, parent, name: segs.length - i === 2 ? segs[i + 1] : null, rel: segs.slice(0, i + 1).join("/") };
+  }
+
   const describe = (rs, p) => {
     const safe = g.resolveSafe(p, rs);
     const st = fs.statSync(safe.real);
@@ -68,17 +128,42 @@ export function browse(ctx, { g, folder, shares, tagged = () => null }) {
     description: "What is inside a folder of one of the box's VyreDrive shares: name, kind, size and date for each entry, folders first, a page at a time. The phone's Files view uses it, since a phone cannot mount a share. Only a folder the box offers as a share; secrets, dot folders and links leading out never appear. A named agent sees only what its own granted projects reach.",
     input: { type: "object", required: ["share"], properties: { share: { type: "string" }, path: { type: "string" }, limit: { type: "integer" }, offset: { type: "integer" } } },
     run: async ({ share, path: rel = "", limit = PAGE, offset = 0 }, meta = {}) => {
-      const { rs, safe, scope } = await resolve(share, rel, meta);
-      if (!fs.statSync(safe.real).isDirectory()) throw refuse("that is a file; read it with files.drive.read", "bad_input");
       limit = clamp(Number(limit) || PAGE, 1, PAGE_MAX);
       offset = Math.max(0, Number(offset) || 0);
+      const g_ = await generated(share, rel, meta);
+      if (g_ && g_.name) throw refuse("that is a file; read it with files.drive.read", "bad_input");
       const entries = [];
+      let rs, safe, scope;
+      if (g_) {
+        // The virtual folder: whatever real Generated folder there is (when the guard lets the asker see it), then the media.
+        try { ({ rs, safe, scope } = await resolve(share, rel, meta)); } catch { safe = null; }
+        if (safe) for (const name of fs.readdirSync(safe.real)) {
+          try { const p = path.join(safe.path, name); if (scope.all || withinReal(p, scope.folders)) entries.push(describe(rs, p)); } catch { /* hidden */ }
+        }
+        const have = new Set(entries.map(e => e.name.toLowerCase()));
+        for (const m of await mediaOf(g_.slug, meta)) {
+          let name = m.name;
+          if (have.has(name.toLowerCase())) name = name.replace(/(\.[^.]+)$/, ` (${String(m.a.id).slice(0, 6)})$1`);
+          have.add(name.toLowerCase());
+          entries.push({ name, dir: false, kind: String(m.a.kind || "file"), mime: String(m.a.mime || ""), size: Number(m.a.bytes || 0), mtime: String(m.a.created_at || ""), virtual: true, artifact: String(m.a.id) });
+        }
+        entries.sort((a, b) => a.name.localeCompare(b.name));
+        const page = entries.slice(offset, offset + limit);
+        return { share, path: "/" + g_.rel, entries: page, total: entries.length, ...(offset + limit < entries.length ? { next: offset + limit } : {}) };
+      }
+      ({ rs, safe, scope } = await resolve(share, rel, meta));
+      if (!fs.statSync(safe.real).isDirectory()) throw refuse("that is a file; read it with files.drive.read", "bad_input");
       for (const name of fs.readdirSync(safe.real)) {
         try {
           const p = path.join(safe.path, name);
           if (!scope.all && !withinReal(p, scope.folders)) continue;
           entries.push(describe(rs, p));
         } catch { /* the guard or a race hid it */ }
+      }
+      // A project's own folder gets a Generated folder when the project has any generated media and no real folder of that name.
+      if (!entries.some(e => e.name === GENERATED)) {
+        const slug = await projectAt(safe.real);
+        if (slug && (await mediaOf(slug, meta)).length) entries.push({ name: GENERATED, dir: true, kind: "folder", mime: "inode/directory", size: 0, mtime: new Date().toISOString(), virtual: true });
       }
       entries.sort((a, b) => Number(b.dir) - Number(a.dir) || a.name.localeCompare(b.name));
       const page = entries.slice(offset, offset + limit);
@@ -92,6 +177,18 @@ export function browse(ctx, { g, folder, shares, tagged = () => null }) {
     input: { type: "object", required: ["share", "path"], properties: { share: { type: "string" }, path: { type: "string" }, offset: { type: "integer" }, length: { type: "integer" } } },
     run: async ({ share, path: rel, offset = 0, length = CHUNK }, meta = {}) => {
       if (!rel) throw refuse("path is required", "bad_input");
+      const g_ = await generated(share, rel, meta);
+      if (g_ && g_.name) {
+        // A generated item: found among what the asker may see, then read as this module (artifacts.media.read is not asker-scoped).
+        const m = (await mediaOf(g_.slug, meta)).find(x => x.name === g_.name);
+        if (!m) throw refuse("not available", "not_available");
+        const off = Math.max(0, Number(offset) || 0), len = clamp(Number(length) || CHUNK, 1, CHUNK);
+        const r = await ctx.call("artifacts.media.read", { id: m.a.id, offset: off, length: len });
+        if (r.error) throw refuse("not available", "not_available");
+        const d = r.data || {};
+        return { share, path: "/" + String(rel).replace(/^\/+/, ""), kind: String(m.a.kind || "file"), mime: String(d.mime || m.a.mime || ""), size: Number(d.size || m.a.bytes || 0),
+          mtime: String(m.a.created_at || ""), offset: Number(d.offset ?? off), length: Number(d.length || 0), base64: String(d.bytes_b64 || ""), done: d.eof === true, virtual: true, artifact: String(m.a.id) };
+      }
       const { safe } = await resolve(share, rel, meta, { file: true });
       offset = Number(offset) || 0;
       if (offset < 0) throw refuse("offset must not be negative", "bad_input");

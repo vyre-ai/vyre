@@ -4,6 +4,10 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+- Generated media in Drive's own browse: a project's folder lists a virtual `Generated` folder with the images,
+  video and audio models made for it (from `artifacts.list`, read in chunks through `artifacts.media.read`), under
+  the project's own grant, merged with a real folder of that name when there is one. Nothing is copied or stored
+  by Drive. Taildrive mounts (Finder) cannot show it; `artifacts.media.copy` is the way to a real file there.
 - Only the person lifts a pause: `computers.resume` is reach person (an agent may still pause its own hands). An
   agent's `computers.checkout` takes its thread from the verified call, never from its input, and `computers.list`
   shows an ordinary agent only its own computer.
