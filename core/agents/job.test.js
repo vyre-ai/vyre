@@ -24,11 +24,17 @@ const PROJECTS = `export default { async start(ctx) {
   return {};
 } };`;
 
+const ASSISTANT = `export default { async start(ctx) {
+  ctx.tool("assistant.capabilities", { run: async () => ({ text: "CAPS-BLOCK" }) });
+  return {};
+} };`;
+
 async function world(t) {
   const home = tempHome(t);
   const root = path.join(home, "mods");
   writeModule(root, "threads", { roles: ["box", "local"], does: { tools: ["threads.launch", "threads.get"] } }, THREADS);
   writeModule(root, "projects", { roles: ["box", "local"], does: { tools: ["projects.list", "projects.access.check", "projects.access.grant", "projects.access.revoke", "projects.access.clear"] } }, PROJECTS);
+  writeModule(root, "assistant", { roles: ["box", "local"], does: { tools: ["assistant.capabilities"] } }, ASSISTANT);
   const db = open(path.join(home, "vyre.db"));
   const events = new Events(db);
   const reg = new Registry({ db, events, config: { role: "local" }, paths: { root: home }, log: () => {} });
@@ -52,6 +58,7 @@ test("agents.job: a side thread as the agent, its own preamble and kind, the age
   assert.equal(l.once, true);
   assert.equal(l.project, "harlow-legal");
   assert.match(l.append, /juno/i);
+  assert.match(l.append, /CAPS-BLOCK$/, "the assistant's thread starts with what works on this install");
   const a = (await call("agents.list")).data.find(x => x.name === "juno");
   assert.ok(!a.thread, "the job is not the agent's own thread");
 });
@@ -65,4 +72,7 @@ test("agents.job: only the planner, and never a project the agent does not reach
   const out = await call("agents.job", { agent: "kit", prompt: "x", project: "harlow-legal" }, "module:planner");
   assert.equal(out.error?.code, "denied");
   assert.equal(globalThis.__launched, undefined);
+  await call("agents.create", { name: "kit2", kind: "agent", projects: ["harlow-legal"] });
+  await call("agents.job", { agent: "kit2", prompt: "x" }, "module:planner");
+  assert.doesNotMatch(globalThis.__launched.at(-1).append, /CAPS-BLOCK/, "only the assistant gets it");
 });
