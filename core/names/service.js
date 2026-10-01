@@ -160,7 +160,6 @@ export function names(deps) {
     return { set: async (fqdn, value) => { const n = label(fqdn); await dir.acme(n, value); return n; }, clear: n => dir.acmeClear(n) };
   };
   const v4 = s => s.node && s.node.ips.find(a => a.includes("."));
-  const v6 = s => s.node && s.node.ips.find(a => a.includes(":"));
   /** 128 bits, in the same shape the directory hands out: abcd-efgh-... */
   const newCode = () => base32(crypto.randomBytes(16)).slice(0, 26).replace(/(.{4})(?=.)/g, "$1-");
 

@@ -149,6 +149,10 @@ test("point: a tailnet A record, never an AAAA, and never anything else", async 
   // a new address updates the one record
   data(await a.post("/v1/names/point", { name: "alex", ip: "100.101.1.9" }));
   assert.deepEqual(w.dns.at("alex.vyre.run", "A").map(r => r.content), ["100.101.1.9"]);
+  // A name pointed before this rule still carries an AAAA: pointing it again removes it.
+  w.dns.records.push({ id: "old6", type: "AAAA", name: "alex.vyre.run", content: "fd7a:115c:a1e0:ab12:4843:cd96:6265:f9d0", ttl: 60, proxied: false });
+  data(await a.post("/v1/names/point", { name: "alex", ip: "100.101.1.9" }));
+  assert.equal(w.dns.at("alex.vyre.run", "AAAA").length, 0, "the stale AAAA is cleared by the next point");
   // The tailnet's IPv6 address is refused: a resolver that filters rebinds drops it (T2b), and IPv4 always works.
   assert.equal(code(await a.post("/v1/names/point", { name: "alex", ip: "fd7a:115c:a1e0:ab12:4843:cd96:6265:f9d0" })), "ipv4_only");
   assert.equal(w.dns.at("alex.vyre.run", "AAAA").length, 0);
