@@ -242,19 +242,19 @@ enum Answer {
 fn latest_check() -> Answer {
     let current = option_env!("VYRE_APP_VERSION").unwrap_or(env!("CARGO_PKG_VERSION"));
     let run = || -> Result<Answer, String> {
-        let list = String::from_utf8(fetch("https://api.github.com/repos/vyre-ai/vyre/releases?per_page=50", 4 << 20)?).map_err(|_| "the releases list is not text")?;
-        let pick = update::pick_release(&list).ok_or("no stable release found")?;
-        // A release this app cannot verify is refused, never read part way.
-        for need in ["SHA256SUMS", "SHA256SUMS.sig"] {
-            if !pick.assets.iter().any(|a| a == need) { return Ok(Answer::Refused(format!("{} has no {need}, so it is unsigned", pick.tag))); }
-        }
-        let base = update::release_base(&pick.tag);
-        let sums = fetch(&format!("{base}/SHA256SUMS"), 1 << 20)?;
-        let sig = String::from_utf8(fetch(&format!("{base}/SHA256SUMS.sig"), 4096)?).map_err(|_| "signature is not text")?;
+        let feed = String::from_utf8(fetch("https://github.com/vyre-ai/vyre/releases.atom", 4 << 20)?).map_err(|_| "the releases feed is not text")?;
+        let tag = update::pick_tag(&feed).ok_or("no stable release found")?;
+        let base = update::release_base(&tag);
+        // A release this app cannot verify is refused, never read part way: no signature file, no update.
+        let sums = fetch(&format!("{base}/SHA256SUMS"), 1 << 20).map_err(|e| format!("{tag}: no SHA256SUMS ({e})"))?;
+        let sig = match fetch(&format!("{base}/SHA256SUMS.sig"), 4096) {
+            Ok(b) => String::from_utf8(b).map_err(|_| "signature is not text")?,
+            Err(_) => return Ok(Answer::Refused(format!("{tag} has no SHA256SUMS.sig, so it is unsigned"))),
+        };
         let listed = update::verify_sums(&sums, &sig, update::RELEASE_KEY)?;
         Ok(match update::newer_installer(&listed, current) {
             Some((name, version)) => Answer::Newer { name, version, base, listed },
-            None => Answer::Current(pick.tag),
+            None => Answer::Current(tag),
         })
     };
     run().unwrap_or_else(|e| Answer::Refused(e))

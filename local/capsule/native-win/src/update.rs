@@ -64,30 +64,21 @@ pub fn is_newer(current: &str, candidate: &str) -> bool {
     match (parts(current), parts(candidate)) { (Some(a), Some(b)) => b > a, _ => false }
 }
 
-/// The release to read: the newest stable `vX.Y.Z` tag in GitHub's releases list. The repository's
-/// "Latest" release is often an Android one (`android-0.1.0-...`), which has no SHA256SUMS, so
-/// `releases/latest/download` cannot be used. Drafts, prereleases and tags that are not plain versions are skipped.
-#[derive(Debug, PartialEq, Eq)]
-pub struct Pick {
-    pub tag: String,
-    pub assets: Vec<String>,
-}
-
-pub fn pick_release(list_json: &str) -> Option<Pick> {
-    let v: serde_json::Value = serde_json::from_str(list_json).ok()?;
-    v.as_array()?
-        .iter()
-        .filter(|r| r["draft"] != true && r["prerelease"] != true)
-        .filter_map(|r| {
-            let tag = r["tag_name"].as_str()?;
-            let plain = tag.strip_prefix('v')?;
-            if plain.split('.').count() != 3 || plain.contains(['-', '+']) { return None; }
-            let key = parts(plain)?;
-            let assets = r["assets"].as_array()?.iter().filter_map(|a| a["name"].as_str().map(str::to_string)).collect();
-            Some((key, Pick { tag: tag.to_string(), assets }))
-        })
-        .max_by_key(|(k, _)| *k)
-        .map(|(_, p)| p)
+/// The release to read: the newest stable `vX.Y.Z` tag in GitHub's public releases feed
+/// (https://github.com/vyre-ai/vyre/releases.atom). The repository's "Latest" release is often an Android one
+/// (`android-0.1.0-...`) with no SHA256SUMS, so `releases/latest/download` cannot be used, and the REST API
+/// answers 403 once a shared address has made 60 calls an hour, which a person's PC cannot be asked to risk.
+/// Tags that are not plain versions (android-..., -rc.N) are skipped; the signature check is what trusts a release.
+pub fn pick_tag(atom: &str) -> Option<String> {
+    let mut best: Option<((u64, u64, u64), String)> = None;
+    for part in atom.split("/releases/tag/").skip(1) {
+        let tag: String = part.chars().take_while(|c| !matches!(c, '"' | '<' | '&' | '\'' | ' ' | '#' | '?')).collect();
+        let Some(plain) = tag.strip_prefix('v') else { continue };
+        if plain.split('.').count() != 3 || plain.contains(['-', '+']) { continue; }
+        let Some(key) = parts(plain) else { continue };
+        if best.as_ref().map_or(true, |(k, _)| key > *k) { best = Some((key, tag)); }
+    }
+    best.map(|(_, t)| t)
 }
 
 /// Where a tag's files live.
@@ -173,17 +164,14 @@ mod tests {
 
     #[test]
     fn the_release_is_the_newest_stable_version_tag_never_an_android_one() {
-        let list = r#"[
-          {"tag_name":"android-0.1.0-ebcb0b0","prerelease":false,"draft":false,"assets":[{"name":"vyre.apk"}]},
-          {"tag_name":"v0.1.1","prerelease":false,"draft":false,"assets":[{"name":"SHA256SUMS"}]},
-          {"tag_name":"v0.2.0-rc.1","prerelease":true,"draft":false,"assets":[]},
-          {"tag_name":"v0.10.0","prerelease":false,"draft":true,"assets":[]},
-          {"tag_name":"v0.1.10","prerelease":false,"draft":false,"assets":[{"name":"SHA256SUMS"},{"name":"SHA256SUMS.sig"}]},
-          {"tag_name":"v0.1.9","prerelease":false,"draft":false,"assets":[]}
-        ]"#;
-        assert_eq!(pick_release(list), Some(Pick { tag: "v0.1.10".into(), assets: vec!["SHA256SUMS".into(), "SHA256SUMS.sig".into()] }));
-        assert_eq!(pick_release("[]"), None);
-        assert_eq!(pick_release("not json"), None);
+        let atom = r#"<feed><entry><link href="https://github.com/vyre-ai/vyre/releases/tag/android-0.1.0-ebcb0b0"/></entry>
+          <entry><link rel="alternate" href="https://github.com/vyre-ai/vyre/releases/tag/v0.1.1"/></entry>
+          <entry><link href="https://github.com/vyre-ai/vyre/releases/tag/v0.2.0-rc.1"/></entry>
+          <entry><link href="https://github.com/vyre-ai/vyre/releases/tag/v0.1.10"/></entry>
+          <entry><link href="https://github.com/vyre-ai/vyre/releases/tag/v0.1.9"/></entry></feed>"#;
+        assert_eq!(pick_tag(atom), Some("v0.1.10".into()));
+        assert_eq!(pick_tag("<feed></feed>"), None);
+        assert_eq!(pick_tag("not xml"), None);
         assert_eq!(release_base("v0.1.1"), "https://github.com/vyre-ai/vyre/releases/download/v0.1.1");
     }
 }

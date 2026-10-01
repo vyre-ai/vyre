@@ -142,13 +142,17 @@ New-Item -ItemType Directory -Path $InstallDir -Force | Out-Null
 
 $releaseBase = $env:VYRE_RELEASE_BASE
 if (-not $releaseBase) {
-    # GitHub's "latest" release is often an Android one with no Windows files, so name the newest stable
-    # vX.Y.Z release that actually carries the installer and its checksums.
-    $list = Invoke-RestMethod "https://api.github.com/repos/vyre-ai/vyre/releases?per_page=50" -Headers @{ "User-Agent" = "vyre-install" }
-    $best = $list | Where-Object { -not $_.draft -and -not $_.prerelease -and $_.tag_name -match '^v\d+\.\d+\.\d+$' -and ($_.assets.name -contains 'VyreSetup.exe') -and ($_.assets.name -contains 'SHA256SUMS') } |
-        Sort-Object { [version]($_.tag_name.TrimStart('v')) } -Descending | Select-Object -First 1
-    if (-not $best) { throw "No Windows release has been published yet." }
-    $releaseBase = "https://github.com/vyre-ai/vyre/releases/download/$($best.tag_name)"
+    # GitHub's "latest" release is often an Android one with no Windows files, and the REST API answers 403 to a
+    # shared address after 60 calls an hour. So read the public releases feed, take the newest plain vX.Y.Z tag,
+    # and use it only if it carries the installer and its checksums.
+    $feed = (Invoke-WebRequest "https://github.com/vyre-ai/vyre/releases.atom" -UseBasicParsing).Content
+    $tag = [regex]::Matches($feed, '/releases/tag/(v\d+\.\d+\.\d+)(?=["<&])') | ForEach-Object { $_.Groups[1].Value } |
+        Sort-Object { [version]($_.TrimStart('v')) } -Descending -Unique | Select-Object -First 1
+    if (-not $tag) { throw "No release found." }
+    $releaseBase = "https://github.com/vyre-ai/vyre/releases/download/$tag"
+    foreach ($f in "VyreSetup.exe", "SHA256SUMS") {
+        try { Invoke-WebRequest "$releaseBase/$f" -Method Head -UseBasicParsing | Out-Null } catch { throw "No Windows release has been published yet ($tag has no $f)." }
+    }
 }
 
 $exe = Get-VerifiedInstaller -ReleaseBase $releaseBase -Dest $InstallDir
