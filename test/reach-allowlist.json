@@ -2660,6 +2660,18 @@
    "module": "threads",
    "default": "open to any caller"
   },
+  "update.apply": {
+   "module": "update",
+   "default": "limited by callers in code"
+  },
+  "update.check": {
+   "module": "update",
+   "default": "open to any caller"
+  },
+  "update.status": {
+   "module": "update",
+   "default": "open to any caller"
+  },
   "vault.account.create": {
    "module": "vault",
    "default": "limited by callers in code"
