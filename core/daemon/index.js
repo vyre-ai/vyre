@@ -191,7 +191,7 @@ async function startLocked(opts, root, p, release) {
 }
 
 /** Any label that names an agent, in whatever form: "mcp:agent:kit", "cli agent:kit", "deck:agent:kit". */
-const AGENT_CLAIM = /(?:^|[\s:])agent:([A-Za-z0-9_-]*)/;
+const AGENT_CLAIM = /(?:^|[\s:])agent:([A-Za-z0-9_-]*)/i;
 /**
  * The only forms a socket caller may name an agent in: its MCP server's and its hooks' (harness
  * mcp/server.js, hooks/hook.js). A surface's label with an agent in it ("cli:agent:kit") would be

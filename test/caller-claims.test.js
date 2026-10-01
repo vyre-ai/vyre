@@ -87,23 +87,20 @@ test("a person tool and an explicit callers list refuse every claim shape, and k
   assert.ok((await reg.call("bakery.agents", {}, "cli")).error, "a person's surface is not an agent session");
 });
 
-test("canonicalCaller rewrites a claim on any other label to the model session's own shape", () => {
-  for (const l of SHAPES.filter(l => /agent:/i.test(l) && !/thread:/i.test(l))) assert.match(canonicalCaller(l), /^mcp:agent:[A-Za-z0-9_-]+$/, JSON.stringify(l));
-  for (const l of SHAPES.filter(l => /thread:/i.test(l) && !/agent:/i.test(l))) assert.match(canonicalCaller(l), /^mcp:thread:[A-Za-z0-9_.-]+$/, JSON.stringify(l));
-  assert.equal(canonicalCaller("cli:agent:kit"), "mcp:agent:kit");
-  assert.equal(canonicalCaller("capsule thread:t1"), "mcp:thread:t1");
-  assert.equal(canonicalCaller("CLI:AGENT:Kit"), "mcp:agent:Kit");
-  assert.equal(canonicalCaller("cli:agent:"), "mcp:agent:unnamed", "an empty name never reads as no agent");
-  assert.equal(canonicalCaller("cli agent:???"), "mcp:agent:unnamed");
-  assert.equal(canonicalCaller("cli:agent:a:thread:b"), "mcp:agent:a");
-  assert.equal(canonicalCaller("tailnet:alex@example.com agent:kit"), "mcp:agent:kit");
-  assert.equal(canonicalCaller("device:abcdefghijklmnop agent:kit"), "mcp:agent:kit");
+test("canonicalCaller makes a claim on any other label an unnamed model session", () => {
+  for (const l of SHAPES.filter(l => /agent:/i.test(l))) assert.equal(canonicalCaller(l), "mcp:agent:(unnamed)", JSON.stringify(l));
+  for (const l of SHAPES.filter(l => /thread:/i.test(l) && !/agent:/i.test(l))) assert.equal(canonicalCaller(l), "mcp:thread:(unnamed)", JSON.stringify(l));
+  assert.equal(canonicalCaller("cli:agent:juno"), "mcp:agent:(unnamed)", "no name survives: the claimed name is never looked up");
+  assert.equal(canonicalCaller("CLI:AGENT:Kit"), "mcp:agent:(unnamed)");
+  assert.equal(canonicalCaller("tailnet:alex@example.com agent:kit"), "mcp:agent:(unnamed)");
+  assert.equal(canonicalCaller("device:abcdefghijklmnop agent:kit"), "mcp:agent:(unnamed)");
+  assert.equal(agentClaim("mcp:agent:(unnamed)"), "(unnamed)");
   // Real callers and a model session's own shapes come back untouched.
   for (const l of ["cli", "local", "deck", "capsule", "mobile", "mcp", "harness", "mcp:agent:kit", "mcp:thread:t1", "harness:agent:kit", "tailnet:agent:kit", "tailnet:alex@example.com", "module:gate", "module:agent:kit", "link:box", "anonymous", ""]) assert.equal(canonicalCaller(l), l, JSON.stringify(l));
   assert.equal(canonicalCaller(undefined), undefined);
 });
 
-test("a tool sees the canonical caller, so a guard on mcp:agent:<name> refuses cli:agent:kit", async t => {
+test("a tool sees the neutral caller, so a guard on mcp:agent:<name> refuses cli:agent:kit and cannot look up its name", async t => {
   const home = tempHome(t);
   const root = path.join(home, "mods");
   writeModule(root, "bakery", { version: "0.1.0", roles: ["local"], does: { tools: [{ name: "bakery.who", summary: "w", reach: "anyone" }] } },
@@ -117,11 +114,32 @@ test("a tool sees the canonical caller, so a guard on mcp:agent:<name> refuses c
   await reg.start(found, { role: "local" });
   t.after(() => db.close());
   const seen = async c => (await reg.call("bakery.who", {}, c)).data?.caller;
-  assert.equal(await seen("cli:agent:kit"), "mcp:agent:kit");
-  assert.equal(await seen("capsule:thread:t9"), "mcp:thread:t9");
+  assert.equal(await seen("cli:agent:kit"), "mcp:agent:(unnamed)");
+  assert.equal(await seen("capsule:thread:t9"), "mcp:thread:(unnamed)");
   assert.equal(await seen("cli"), "cli");
   assert.equal(await seen("mcp:agent:kit"), "mcp:agent:kit");
   // The shape every guard in the tree reads.
   const guard = c => /^mcp:agent:(.+)$/.exec(String(c || ""));
   for (const c of ["cli:agent:kit", "deck agent:kit", "local:agent:", "CAPSULE:AGENT:x"]) assert.ok(guard(await seen(c)), c);
+});
+
+test("a rewritten claim loses what vyred verified, keeps its raw label, and a name that disagrees with the verified agent is refused", async t => {
+  const home = tempHome(t);
+  const root = path.join(home, "mods");
+  writeModule(root, "bakery", { version: "0.1.0", roles: ["local"], does: { tools: [{ name: "bakery.meta", summary: "m", reach: "anyone" }] } },
+    `export default { async start(ctx) {
+      ctx.tool("bakery.meta", { input: { type: "object" }, run: async (i, meta) => ({ caller: meta.caller, raw: meta.callerRaw || null, agent: meta.agent || null, kind: meta.agentKind || null }) });
+      return {};
+    } };`);
+  const db = open(path.join(home, "vyre.db"));
+  const reg = new Registry({ db, events: new Events(db), config: { role: "local" }, log: () => {} });
+  const found = discover([root]).map(f => ({ ...f, problems: validate(f.manifest, { firstParty: true }), warnings: [] }));
+  await reg.start(found, { role: "local" });
+  t.after(() => db.close());
+  // A surface label that claims the assistant, with an agent identity attached: the identity is not trusted.
+  const r = (await reg.call("bakery.meta", {}, "cli:agent:juno", { agent: "juno", agentKind: "assistant", granted: "*" })).data;
+  assert.deepEqual(r, { caller: "mcp:agent:(unnamed)", raw: "cli:agent:juno", agent: null, kind: null });
+  // A real model-session label with its verified agent keeps it; a different verified agent is a refusal.
+  assert.deepEqual((await reg.call("bakery.meta", {}, "mcp:agent:juno", { agent: "juno", agentKind: "assistant" })).data, { caller: "mcp:agent:juno", raw: null, agent: "juno", kind: "assistant" });
+  assert.equal((await reg.call("bakery.meta", {}, "mcp:agent:juno", { agent: "kit", agentKind: "agent" })).error?.code, "denied");
 });

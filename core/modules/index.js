@@ -400,20 +400,19 @@ const MODEL_LABEL = /^(?:mcp|harness|tailnet):(?:agent|thread):[A-Za-z0-9_.-]+$/
 
 /**
  * A caller that carries an agent or thread claim, on any label that is not already a model session's own
- * ("cli:agent:kit", "capsule thread:t1", "CLI:AGENT:x"), is rewritten to the canonical session shape
- * ("mcp:agent:kit", "mcp:thread:t1") before a tool sees it, so every tool that reads the shape
- * `mcp:agent:<name>` (the agents guard, vault, mail, planner) refuses it the same way it refuses the real
- * thing. An empty or odd name becomes "unnamed", never empty: an empty name would read as no agent. A
- * module's label and a caller with no claim come back unchanged (reviewer-2, 2 Oct 2026).
+ * ("cli:agent:kit", "capsule thread:t1", "CLI:AGENT:x"), is an unverified claim. It is rewritten to the
+ * model session's shape with no name ("mcp:agent:(unnamed)", "mcp:thread:(unnamed)"; the name agentClaim
+ * returns for an empty claim, which no agent can have), so every tool that reads the shape `mcp:agent:<name>`
+ * (the agents guard, vault, mail, planner) refuses it as an agent, and none can look up the claimed name and
+ * grant the assistant's powers to a label alone. The original label is kept in meta.callerRaw. A module's
+ * label, a caller with no claim, and a model session's own exact shape come back unchanged (reviewer-2 and
+ * the lead, 2 Oct 2026).
  * @param {any} caller
  */
 export const canonicalCaller = caller => {
   const c = String(caller);
   if (typeof caller !== "string" || c.startsWith("module:") || !CLAIM.test(c) || MODEL_LABEL.test(c)) return caller;
-  const a = /(?:^|[\s:])agent:([A-Za-z0-9_-]*)/i.exec(c);
-  if (a) return `mcp:agent:${a[1] || "unnamed"}`;
-  const th = /(?:^|[\s:])thread:([A-Za-z0-9_.-]*)/i.exec(c);
-  return `mcp:thread:${(th && th[1]) || "unnamed"}`;
+  return /(?:^|[\s:])agent:/i.test(c) ? "mcp:agent:(unnamed)" : "mcp:thread:(unnamed)";
 };
 
 /**
@@ -1034,7 +1033,17 @@ export class Registry {
    *   input filter. Any other key a caller of this method adds reaches the tool the same way.
    */
   async call(tool, input = {}, caller = "unknown", { proof = null, keep = false, terminal = null, idempotencyKey = undefined, door = false, ...meta } = {}) {
+    const callerRaw = caller;
     caller = canonicalCaller(caller);
+    if (caller !== callerRaw) {
+      // A claim on a label that is not a model session's own was rewritten (canonicalCaller). It is an unverified
+      // claim, so nothing vyred verified about an agent rides with it, and the original label is kept for the audit.
+      delete meta.agent; delete meta.agentKind; delete meta.granted;
+      meta.callerRaw = callerRaw; meta.claimUnverified = true;
+    }
+    // A caller that names an agent while vyred verified another one is refused: the label is only ever a claim.
+    const named = agentClaim(caller);
+    if (named !== null && typeof meta.agent === "string" && meta.agent && named !== meta.agent) return { error: { code: "denied", message: `the call names agent ${named}, but the agent vyred verified is ${meta.agent}` } };
     const def = this.tools.get(tool);
     if (!def) return { error: { code: "no_such_tool", message: `no tool ${tool}` } };
     // Default-deny for an added module (ADR 0047, reviews/platform.md H4): it reaches only a tool
@@ -1121,7 +1130,7 @@ export class Registry {
                 continue;
               }
               if (scoped === null) {
-                const sc = await within(this.call("agents.scope", { name: String(agentClaim(caller)) }, "module:vyred", { door: true }), TARGET_MS);
+                const sc = await within(this.call("agents.scope", { name: String(typeof meta.agent === "string" && meta.agent ? meta.agent : agentClaim(caller)) }, "module:vyred", { door: true }), TARGET_MS);
                 const who = sc && sc.data ? sc.data : null;
                 scoped = !who || (who.kind !== "assistant" && who.projects !== "*");
               }
