@@ -22,6 +22,7 @@ export const MESSAGES = Object.freeze({
   out_of_order: "The progress lines arrived out of order, so this page stopped listening. Start again.",
   bad_record: "The answer for this code did not check out. Start again.",
   unauthorized: "The relay would not give this page the progress. Start again.",
+  browser: "This browser is too old for the setup. It needs Chrome 133 or newer, Safari 17 or newer, Edge 133 or newer or Firefox 130 or newer.",
   key: "This browser could not make the key the setup needs. Try a current Chrome, Safari, Edge or Firefox.",
   relay: "This page could not reach Vyre's relay. Check your connection, then start again.",
   connect: "This page could not open a connection to your server. Start again.",
@@ -35,7 +36,7 @@ export function suggestName(text) {
 }
 
 /**
- * @typedef {{ stage: "start"|"install"|"found"|"named"|"tailscale"|"ai"|"devices"|"claim"|"done"|"stopped", installLine: string, code: string, lines: string[],
+ * @typedef {{ machine: "linux"|"mac", stage: "start"|"install"|"found"|"named"|"tailscale"|"ai"|"devices"|"claim"|"done"|"stopped", installLine: string, code: string, lines: string[],
  *   box: null | { name: string, fingerprint: string, words: string[], handle: string|null },
  *   confirm: "none"|"pending"|"matched",
  *   channel: "none"|"connecting"|"ready"|"failed",
@@ -71,7 +72,7 @@ export function createFlow(o) {
   const blankDevices = () => ({ phone: "idle", expiresAt: 0, error: null, paired: null });
   const blankDomain = () => ({ open: false, input: "", checking: false, error: null, result: null });
   const blankNaming = () => ({ input: "", check: null, checking: false, claiming: false, error: null });
-  let state = { stage: "start", installLine: "", code: "", lines: [], box: null, confirm: "none", channel: "none", naming: blankNaming(), named: null, domain: blankDomain(), tailscale: blankTs(), ai: blankAi(), devices: blankDevices(), claim: blankClaim(), error: null, expiresAt: 0, listening: false };
+  let state = { machine: "linux", stage: "start", installLine: "", code: "", lines: [], box: null, confirm: "none", channel: "none", naming: blankNaming(), named: null, domain: blankDomain(), tailscale: blankTs(), ai: blankAi(), devices: blankDevices(), claim: blankClaim(), error: null, expiresAt: 0, listening: false };
   let run = 0;
   /** @type {BoxChannel|null} */
   let chan = null;
@@ -90,9 +91,13 @@ export function createFlow(o) {
   /** The install line, exactly as it must be run: the variable goes on sh, the reader of the script. */
   const lineFor = code => `curl -fsSL ${installUrl} | VYRE_CODE=${code} sh`;
 
-  async function begin() {
+  /** @param {"linux"|"mac"} [machine] where Vyre will live; left out, the last choice stands (Start again keeps it). */
+  async function begin(machine) {
     const mine = ++run;
+    if (machine === "linux" || machine === "mac") state = { ...state, machine };
     let key, secret, code;
+    // A browser with no X25519 would only fail later, at the connection, with a message about the server.
+    if (o.supported && !(await Promise.resolve(o.supported()).catch(() => false))) return fail("browser");
     try {
       key = await o.client.createSetupKey();
       secret = random(16);

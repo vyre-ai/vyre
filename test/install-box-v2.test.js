@@ -308,6 +308,26 @@ test("install-box.sh v2: with a code the steps are sent sealed to the relay mail
   await assert.rejects(mailboxReader({ relay: base, secret, key: other, wait: 0 }).then(x => x.next(0)), /would not give this page/);
 });
 
+test("install-box.sh v2: a second paste of the same code on a running install posts nothing to the mailbox", async t => {
+  const relay = createRelay({});
+  const base = await relay.listen();
+  t.after(() => relay.close());
+  const b = box(t);
+  const key = await createSetupKey();
+  const secret = crypto.randomBytes(16);
+  const code = await setupCode(secret, key.spki);
+  const first = await runAsync({ ...b.env, VYRE_CODE: code, VYRE_RELAY: base }, ["--yes", "--from", REPO]);
+  assert.equal(first.status, 0, first.stdout + first.stderr);
+  const before = (await (await mailboxReader({ relay: base, secret, key, wait: 0 })).next(0)).length;
+  // Now the stack is up: the fake docker answers `compose -p vyre ps -q` with a container id.
+  fs.writeFileSync(path.join(b.base, "bin", "docker"), `#!/bin/sh\ncase "$1 $2" in "compose version") echo 2.29.1 ;; "compose -p") echo abc123 ;; esac\nexit 0\n`, { mode: 0o755 });
+  const second = await runAsync({ ...b.env, VYRE_CODE: code, VYRE_RELAY: base }, ["--yes", "--from", REPO]);
+  assert.equal(second.status, 0, second.stdout + second.stderr);
+  assert.match(second.stdout, /already running/);
+  const after = (await (await mailboxReader({ relay: base, secret, key, wait: 0 })).next(0)).length;
+  assert.equal(after, before, "the second paste wrote no lines, so the page's reader stays in order");
+});
+
 test("install-box.sh v2: a code another server already used stops with the plain refusal", async t => {
   const relay = createRelay({});
   const base = await relay.listen();

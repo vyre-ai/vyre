@@ -921,3 +921,43 @@ test("steps: a sign-in link that is not Tailscale's is shown as a refusal with t
     assert.ok(!root.all().some(e => e.tag === "a" && /evil\\.example/.test(String(e.attrs.href))), "the link is never an anchor");
   } finally { flow.stop(); }
 });
+
+test("a browser with no X25519 stops at the start with a named message, not a server error", async t => {
+  const w = await world(t);
+  const flow = createFlow({ client: clientWith(async () => offer()), relay: w.base, sleep: fastSleep, pollMs: 5, debounceMs: 1, supported: async () => { throw new Error("NotSupportedError"); } });
+  await flow.begin();
+  assert.equal(flow.state.stage, "stopped");
+  assert.equal(flow.state.error.code, "browser");
+  assert.match(flow.state.error.message, /Chrome 133/);
+  flow.stop();
+});
+
+test("machine: the start screen offers a Linux server or a Mac, the choice reaches the install screen, and Start again keeps it", async t => {
+  const w = await world(t);
+  const flow = createFlow({ client: clientWith(async () => { throw Object.assign(new Error("gone"), { code: "ticket_gone" }); }), relay: w.base, sleep: fastSleep, pollMs: 5 });
+  const doc = new FakeDoc();
+  const root = doc.createElement("main");
+  /** @type {any[]} */ const begun = [];
+  const actions = { begin: m => begun.push(m), copy() {}, setName() {}, claim() {}, confirmWords() {}, denyWords() {}, markSaved() {} };
+  const draw = () => render(flow.state, { doc: /** @type {any} */ (doc), root: /** @type {any} */ (root), actions });
+  draw();
+  const buttons = () => root.all().filter(e => e.tag === "button");
+  const labels = buttons().map(b => b.textContent);
+  assert.deepEqual(labels, ["A Linux server", "A Mac that stays on"]);
+  buttons()[1].listeners.click();
+  assert.deepEqual(begun, ["mac"], "the Mac button asks for the Mac");
+  await flow.begin("mac");
+  assert.equal(flow.state.machine, "mac");
+  draw();
+  assert.match(root.textContent, /Run this on the Mac/);
+  assert.match(root.textContent, /FileVault on, after a power cut/);
+  assert.match(root.textContent, /anyone who takes the Mac can read/);
+  assert.ok(flow.state.installLine.startsWith("curl -fsSL "), "the same one line: the script on the Mac picks the Mac install");
+  await flow.begin();
+  assert.equal(flow.state.machine, "mac", "Start again keeps the choice");
+  await flow.begin("linux");
+  draw();
+  assert.match(root.textContent, /Run this on your server/);
+  assert.ok(!/FileVault/.test(root.textContent), "no Mac words on a Linux install");
+  flow.stop();
+});

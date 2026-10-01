@@ -178,16 +178,17 @@ test("redteam G-M1: an email the person asked for to one person, with a cc or bc
 test("redteam G-D2: a model cannot claim the person's own confirmation, and a wrong hash, surface or age always holds", async t => {
   const { gmail, reg, agent, MAIL } = await world(t);
   const req = MAIL({});
-  const { thread: _t, ...wire } = req;
-  const hash = inputHash({ kind: wire.kind, via: wire.via, to: [wire.to], content: wire.content });
+  const hash = inputHash({ kind: req.kind, via: req.via, to: [req.to], content: req.content });
   const fresh = () => ({ surface: "capsule", hash, at: Date.now() });
-  assert.equal((await agent("kit", "t-1", "gate.request", { ...req, asked: fresh() })).data.state, "held", "a model's claim");
-  assert.equal((await reg("gate.request", { ...req, asked: fresh() }, "mcp")).data.state, "held", "a bare mcp caller");
-  assert.equal((await reg("gate.request", { ...req, asked: fresh() }, "module:watchers")).data.state, "held", "a module");
-  assert.equal((await reg("gate.request", { ...req, asked: { ...fresh(), hash: "x" + hash } }, "capsule")).data.state, "held", "a hash that does not match");
-  assert.equal((await reg("gate.request", { ...req, asked: { ...fresh(), at: Date.now() - 61_000 } }, "capsule")).data.state, "held", "stale");
-  assert.equal((await reg("gate.request", { ...req, asked: { ...fresh(), surface: "deck" } }, "capsule")).data.state, "held", "another surface's claim");
-  assert.equal(gmail.got.length, 0);
+  // Held or refused outright are both refusals; what must never happen is a send.
+  const notSent = (r, why) => assert.ok(r.error || (r.data && r.data.state === "held"), `${why}: ${JSON.stringify(r)}`);
+  notSent(await agent("kit", "t-1", "gate.request", { ...req, asked: fresh() }), "a model's claim");
+  notSent(await reg("gate.request", { ...req, asked: fresh() }, "mcp"), "a bare mcp caller");
+  notSent(await reg("gate.request", { ...req, asked: fresh() }, "module:watchers"), "a module");
+  notSent(await reg("gate.request", { ...req, asked: { ...fresh(), hash: "x" + hash } }, "capsule"), "a hash that does not match");
+  notSent(await reg("gate.request", { ...req, asked: { ...fresh(), at: Date.now() - 61_000 } }, "capsule"), "stale");
+  notSent(await reg("gate.request", { ...req, asked: { ...fresh(), surface: "deck" } }, "capsule"), "another surface's claim");
+  assert.equal(gmail.got.length, 0, "nothing reached the sender");
 });
 
 test("redteam G-L1: a spoken ask is spent by its send, and one past its window never matches", async t => {

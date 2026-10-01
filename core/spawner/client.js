@@ -22,13 +22,14 @@ const connect = socket => new Promise((resolve, reject) => {
 
 /**
  * Start argv as the agent. Resolves once the child runs, with its handle.
- * @param {string[]} argv @param {{ env?: Record<string, string|undefined>, cwd?: string, fd3?: string, socket?: string, account?: number, shared?: boolean, seed?: Record<string, string> }} [o]
+ * @param {string[]} argv @param {{ env?: Record<string, string|undefined>, cwd?: string, fd3?: string, socket?: string, account?: number, shared?: boolean, seed?: Record<string, string>, role?: "watcher", ro?: string[] }} [o]
  *   fd3: written once to the child's fd 3 (an API key, CLAUDE_CODE_API_KEY_FILE_DESCRIPTOR=3)
  *   account: run as that account's own uid (the spawner checks its range and its private HOME)
  *   seed: files (relative path -> text) the spawner writes in the account's HOME as that uid, 0600, before it starts
+ *   role "watcher" (the watcher wall): runs as a pool uid with no group and an empty environment; ro lists the absolute paths it may read
  *   shared: with account, also join the /work group (project work needs it; nothing else does)
  */
-export async function spawnAsAgent(argv, { env = {}, cwd, fd3, socket = SOCKET, account, shared, seed } = {}) {
+export async function spawnAsAgent(argv, { env = {}, cwd, fd3, socket = SOCKET, account, shared, seed, role, ro } = {}) {
   const control = /** @type {net.Socket} */ (await connect(socket));
   const lines = [];
   /** @type {((l: any) => void) | null} */
@@ -51,7 +52,7 @@ export async function spawnAsAgent(argv, { env = {}, cwd, fd3, socket = SOCKET, 
   const next = () => new Promise(r => { if (lines.length) r(lines.shift()); else waiting = r; });
   control.on("error", e => proc.emit("error", e));
 
-  control.write(JSON.stringify({ op: "spawn", argv, env, cwd, ...(typeof fd3 === "string" ? { fd3 } : {}), ...(account !== undefined ? { account, ...(shared ? { shared: true } : {}), ...(seed ? { seed } : {}) } : {}) }) + "\n");
+  control.write(JSON.stringify({ op: "spawn", argv, ...(role === "watcher" ? { role, ...(ro ? { ro } : {}) } : {}), ...(role !== "watcher" || Object.keys(env).length ? { env } : {}), cwd, ...(typeof fd3 === "string" ? { fd3 } : {}), ...(account !== undefined ? { account, ...(shared ? { shared: true } : {}), ...(seed ? { seed } : {}) } : {}) }) + "\n");
   const first = await next();
   if (first.error || !first.id) { control.destroy(); throw new Error(`spawner: ${first.error || "no answer"}`); }
   const stdio = /** @type {net.Socket} */ (await connect(socket));
@@ -87,3 +88,6 @@ export async function wipeAccount(account, { socket = SOCKET } = {}) {
   if (r.error) throw new Error(`spawner: ${r.error}`);
   return true;
 }
+
+/** Start a watcher's runner behind the wall: argv[0] is node, ro the paths it reads, and nothing else reaches it. @param {string[]} argv @param {{ ro?: string[], cwd?: string, socket?: string }} [o] */
+export const spawnAsWatcher = (argv, { ro, cwd, socket } = {}) => spawnAsAgent(argv, { role: "watcher", ro, cwd, ...(socket ? { socket } : {}) });
