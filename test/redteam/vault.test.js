@@ -188,6 +188,10 @@ test("redteam G-D2: a model cannot claim the person's own confirmation, and a wr
   refusedFor(await reg("gate.request", { ...req, asked: fresh() }, "mcp"), /thread/i, "a bare mcp caller naming a thread it cannot prove");
   const { thread: _unproven, ...noThread } = req;
   held(await reg("gate.request", { ...noThread, asked: fresh() }, "mcp"), "a bare mcp caller with no thread");
+  // A module claiming the person's confirmation: the registry may hold it or refuse it, and either is fine. What it must never do
+  // is send, and the closing check shows nothing reached the sender.
+  const fromModule = await reg("gate.request", { ...req, asked: fresh() }, "module:watchers");
+  assert.notEqual(fromModule.data && fromModule.data.state, "sent", `a module's claim: ${JSON.stringify(fromModule)}`);
   held(await reg("gate.request", { ...req, asked: { ...fresh(), hash: "x" + hash } }, "capsule"), "a hash that does not match");
   held(await reg("gate.request", { ...req, asked: { ...fresh(), at: Date.now() - 61_000 } }, "capsule"), "stale");
   held(await reg("gate.request", { ...req, asked: { ...fresh(), surface: "deck" } }, "capsule"), "another surface's claim");
