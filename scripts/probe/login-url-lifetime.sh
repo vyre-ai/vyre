@@ -16,12 +16,18 @@ for _ in $(seq 1 30); do url=$(grep -o 'https://login.tailscale.com/a/[A-Za-z0-9
 echo "tailscale $(tailscale version | head -1); link host login.tailscale.com, id length ${#url}"
 first=""; changed=""
 for m in $(seq 0 $((MAX_MIN))); do
-  out=$(curl -s -o "$tmp/body" -w '%{http_code} %{size_download}' --max-time 15 "$url")
+  # follow redirects: the link itself answers 302 whether or not it is still good; the page it lands on says which
+  out=$(curl -sL -o "$tmp/body" -w '%{http_code} %{size_download}' --max-time 20 "$url")
+  title=$(grep -o '<title>[^<]*</title>' "$tmp/body" | head -1 | cut -c1-80)
+  hint=$(grep -oiE 'expired|no longer valid|invalid|not found|log in|sign in|Connect' "$tmp/body" | sort -u | tr '\n' ',' | cut -c1-80)
+  [ "$m" = 0 ] && { echo "first page title: $title; words: $hint"; cp "$tmp/body" "$tmp/first.body"; }
+  [ -n "$title" ] && out="$out $title"
   echo "minute $m: $out"
   [ -z "$first" ] && first="$out"
   # the link stopped being the page it was: a different status, or a much smaller body
-  code=${out% *}; size=${out#* }; fcode=${first% *}; fsize=${first#* }
-  if [ "$code" != "$fcode" ] || [ "$size" -lt $((fsize / 2)) ]; then changed=$m; break; fi
+  code=${out%% *}; rest=${out#* }; size=${rest%% *}; fcode=${first%% *}; frest=${first#* }; fsize=${frest%% *}
+  if [ "$code" != "$fcode" ] || [ "$size" -lt $((fsize / 2)) ] || [ "$size" -gt $((fsize * 2)) ] || [ "$hint" != "${fhint:-$hint}" ]; then changed=$m; break; fi
+  [ "$m" = 0 ] && fhint=$hint
   sleep $STEP
 done
 if [ -n "$changed" ]; then echo "RESULT: the link changed at minute $changed (first: $first, then: $out)"; else echo "RESULT: still the same page after $MAX_MIN minutes (first: $first, last: $out)"; fi
