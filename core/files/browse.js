@@ -87,7 +87,7 @@ export function browse(ctx, { g, folder, shares, tagged = () => null }) {
  * private item within a project. Only real project slugs are listed, never the person's own space (project null). Per-item
  * privacy, and forwarding the asker to artifacts, come with Spaces (0.2.5); then this must call as the asker.
  */
-  async function mediaOf(slug, meta) {
+  async function mediaOf(slug, meta, realNames = new Set()) {
     const rows = [];
     for (const kind of ["image", "video", "audio"]) {
       const r = await ctx.call("artifacts.list", { kind, project: slug }).catch(() => null);
@@ -95,7 +95,8 @@ export function browse(ctx, { g, folder, shares, tagged = () => null }) {
       for (const a of list) if (a && a.id) rows.push(a);
     }
     rows.sort((a, b) => String(b.created_at || "").localeCompare(String(a.created_at || "")));
-    const used = new Set();
+    // A name that is already a real file in the folder, or an earlier item's, gets the item's short id before the extension: one rule, used by the listing and the read alike.
+    const used = new Set(realNames);
     return rows.map(a => {
       const ext = MEDIA_EXT[String(a.format || "").toLowerCase()] || mimeOf(a).split("/")[1] || "bin";
       const base = String(a.title || a.id).replace(/[\\/:*?"<>|\0\r\n]+/g, "-").replace(/^\.+/, "").trim().slice(0, 80) || String(a.id).slice(0, 8);
@@ -120,9 +121,16 @@ export function browse(ctx, { g, folder, shares, tagged = () => null }) {
     const slug = await projectAt(parent.safe.real);
     if (!slug) return null;
     const name = segs.length - i === 2 ? segs[i + 1] : null;
-    // A name inside Generated that is not a media item is an ordinary path (the project's own real Generated folder).
-    if (name && !(await mediaOf(slug, meta)).some(m => m.name === name)) return null;
-    return { slug, parent, name, rel: segs.slice(0, i + 1).join("/") };
+    // The project's own real Generated folder, when it has one and the asker may see it: its names are taken first.
+    let realNames = new Set();
+    try {
+      const real = await resolve(share, segs.slice(0, i + 1).join("/"), meta);
+      if (fs.statSync(real.safe.real).isDirectory()) realNames = new Set(fs.readdirSync(real.safe.real).map(n => n.toLowerCase()));
+    } catch { /* none */ }
+    const media = await mediaOf(slug, meta, realNames);
+    // A name inside Generated that is not a media item is an ordinary path (a real file or folder of the project's own).
+    if (name && !media.some(m => m.name === name)) return null;
+    return { slug, parent, name, media, rel: segs.slice(0, i + 1).join("/") };
   }
 
   const describe = (rs, p) => {
@@ -149,12 +157,8 @@ export function browse(ctx, { g, folder, shares, tagged = () => null }) {
         if (safe) for (const name of fs.readdirSync(safe.real)) {
           try { const p = path.join(safe.path, name); if (scope.all || withinReal(p, scope.folders)) entries.push(describe(rs, p)); } catch { /* hidden */ }
         }
-        const have = new Set(entries.map(e => e.name.toLowerCase()));
-        for (const m of await mediaOf(g_.slug, meta)) {
-          let name = m.name;
-          if (have.has(name.toLowerCase())) name = name.replace(/(\.[^.]+)$/, ` (${String(m.a.id).slice(0, 6)})$1`);
-          have.add(name.toLowerCase());
-          entries.push({ name, dir: false, kind: String(m.a.kind || "file"), mime: mimeOf(m.a), size: bytesOf(m.a), mtime: String(m.a.created_at || ""), virtual: true, artifact: String(m.a.id) });
+        for (const m of g_.media) {
+          entries.push({ name: m.name, dir: false, kind: String(m.a.kind || "file"), mime: mimeOf(m.a), size: bytesOf(m.a), mtime: String(m.a.created_at || ""), virtual: true, artifact: String(m.a.id) });
         }
         entries.sort((a, b) => a.name.localeCompare(b.name));
         const page = entries.slice(offset, offset + limit);
@@ -189,7 +193,7 @@ export function browse(ctx, { g, folder, shares, tagged = () => null }) {
       const g_ = await generated(share, rel, meta);
       if (g_ && g_.name) {
         // A generated item: found among what the asker may see, then read as this module (artifacts.media.read is not asker-scoped).
-        const m = (await mediaOf(g_.slug, meta)).find(x => x.name === g_.name);
+        const m = g_.media.find(x => x.name === g_.name);
         if (!m) throw refuse("not available", "not_available");
         const off = Math.max(0, Number(offset) || 0), len = clamp(Number(length) || CHUNK, 1, CHUNK);
         const r = await ctx.call("artifacts.media.read", { id: m.a.id, offset: off, length: len });

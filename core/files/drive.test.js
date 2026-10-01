@@ -1109,6 +1109,9 @@ test("drive generated: a real Generated folder is shown together with the media,
   assert.deepEqual(top.entries.filter(e => e.name === "Generated").map(e => e.virtual === true), [false], "the real folder is the one listed, not a second");
   const g = await ok(reg, "files.drive.list", { share: "work", path: "a/Generated" });
   assert.deepEqual(g.entries.map(e => [e.name, e.virtual === true]).sort(), [["mine (art-ee).png", true], ["mine.png", false], ["notes.txt", false], ["sub", false]]);
+  // A media item whose name is a real file's: the real file keeps its name and the item is shown, and read, with its short id.
+  assert.equal(Buffer.from((await ok(reg, "files.drive.read", { share: "work", path: "a/Generated/mine.png" })).base64, "base64").toString(), "real");
+  assert.equal(Buffer.from((await ok(reg, "files.drive.read", { share: "work", path: "a/Generated/mine (art-ee).png" })).base64, "base64").toString(), "ai");
   // The project's own real files inside Generated are read and listed as ordinary files.
   assert.equal(Buffer.from((await ok(reg, "files.drive.read", { share: "work", path: "a/Generated/notes.txt" })).base64, "base64").toString(), "plain");
   assert.deepEqual((await ok(reg, "files.drive.list", { share: "work", path: "a/Generated/sub" })).entries.map(e => e.name), ["inner.txt"]);
