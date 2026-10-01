@@ -16,6 +16,7 @@ const BOX = process.env.BOX || "/srv/vyre-test/box";
 if (BOX === "/srv/vyre" || BOX.startsWith("/srv/vyre/")) throw new Error("the test box never lives under /srv/vyre");
 const root = path.join(BOX, "home");
 const RELAY = process.env.BOX_RELAY || "wss://relay.vyre.run";
+// No network.name: a box with a claimed handle AND an own-domain address is refused by the app (handle and address disagree).
 const ADDRESS = process.env.BOX_ADDRESS || "https://vyre-lab.invalid";   // an own-domain style address, so the confirm window shows its own-domain line
 // The box's checkout is a throwaway copy: its core/files is swapped for a stand-in that answers the two Drive
 // tools, because shipped module names cannot be shadowed. (Never run this against a real checkout.)
@@ -27,7 +28,7 @@ fs.copyFileSync(path.join(here, "box", "fake-drive-module.json"), path.join(repo
 fs.copyFileSync(path.join(here, "box", "fake-drive-index.js"), path.join(repo, "core", "files", "index.js"));
 fs.mkdirSync(root, { recursive: true });
 fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({
-  role: "box", name: "winlab", transcripts: [], network: { name: "winlab", address: ADDRESS },
+  role: "box", name: "winlab", transcripts: [], network: { address: ADDRESS },
   relay: { enabled: false, url: RELAY }, modules: { disable: ["names", "onboard"] },
 }));
 
