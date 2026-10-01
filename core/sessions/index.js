@@ -224,6 +224,34 @@ export default {
         capabilities: p.id === "claude" ? { streaming: true, resume: true, interrupt: true, modes: true, questions: true, transcripts: true } : /** @type {any} */ (drivers)[p.id].capabilities }))),
     });
 
+    // ---- the "@" picker's Accounts kind: the AI accounts that are signed in, so "@codex" picks who answers one turn
+    /** Is this account one a turn could run on now: not waiting on a person, and signed in or holding its key. @param {any} a */
+    const signedIn = async a => !a.pending && (a.kind === "login" ? (a.synthetic ? true : a.signed_in_at != null) : !a.vault_item ? true : (await vaultHas(a.vault_item)) !== false);
+    /** One row per signed-in account: the provider's own name when it has one, "Name (label)" when it has several. */
+    const accountChoices = async () => {
+      const out = [];
+      for (const p of PROVIDERS) {
+        const ok = [];
+        for (const a of accounts.list(p.id)) if (await signedIn(a)) ok.push(a);
+        for (const a of ok) out.push({ kind: "account", id: ok.length === 1 ? p.id : `${p.id}:${a.id}`, name: ok.length === 1 ? p.label : `${p.label} (${a.label})`, hint: `${p.label} account, ${a.kind === "login" ? "signed in" : a.kind}`, provider: p.id, account: ok.length === 1 ? null : a.id });
+      }
+      return out;
+    };
+    tool("sessions.mention.search", "The @ picker's Accounts results: the AI accounts that are signed in (Claude, Codex, Grok, OpenRouter), by provider name. Names and a short hint only.",
+      { type: "object", properties: { q: str, limit: { type: "integer", minimum: 1, maximum: 50 } } },
+      async i => {
+        const q = String(i.q || "").trim().toLowerCase();
+        const rows = (await accountChoices()).filter(r => !q || r.name.toLowerCase().includes(q) || r.provider.includes(q));
+        return rows.slice(0, i.limit || 12).map(({ provider: _p, account: _a, ...r }) => r);
+      });
+    tool("sessions.mention.resolve", "What an account tagged with @ means for a thread: the person asked this one turn to run on it. No grant; threads.send reads the tag. Called by the mentions core.",
+      { type: "object", required: ["id"], properties: { id: str, thread: str, said: str } },
+      async i => {
+        const hit = (await accountChoices()).find(r => r.id === String(i.id));
+        if (!hit) throw Object.assign(new Error("that account is not signed in"), { code: "not_found" });
+        return { name: hit.name, hint: hit.hint, outside: false, note: `The person asked ${hit.name} to answer this one turn. The session keeps its own provider.` };
+      });
+
     // ---- routing and fallback order (plans/sessions.md 9.4)
     // A conversation kept for OpenRouter goes with its thread: swept at start, and on thread.deleted.
     const sweep = () => { try { db.exec("DELETE FROM sessions_openrouter WHERE thread NOT IN (SELECT id FROM threads_runs); DELETE FROM sessions_acp WHERE thread NOT IN (SELECT id FROM threads_runs)"); } catch {} };

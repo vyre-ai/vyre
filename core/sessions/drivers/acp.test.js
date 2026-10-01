@@ -236,6 +236,25 @@ test("codex entry: starts in workspace-write (or read-only), never agent (Auto r
   assert.match(String(auto.result && auto.result.result), /Codex starts in a mode Vyre does not permit \(agent\)/);
 });
 
+test("acp: Codex's plan question (switch_mode) is a question card with the plan text and two buttons, Implement and Revise, answered as the matching option", async t => {
+  for (const [how, answer, want] of [["Implement", a => ({ behavior: "allow", updatedInput: { ...a.request.input, answers: { "Implement this plan?": "Implement" } } }), "plan: implement_plan"],
+    ["Revise", a => ({ behavior: "allow", updatedInput: { ...a.request.input, answers: { "Implement this plan?": "Revise" } } }), "plan: revise_plan"],
+    ["declined", () => ({ behavior: "deny", message: "no" }), "plan: revise_plan"]]) {
+    const w = world(t);
+    const s = open(w);
+    s.proc.write({ type: "user", message: { role: "user", content: "planask" } });
+    const ask = await s.until(m => m.type === "control_request", `the plan question (${how})`);
+    assert.equal(ask.request.tool_name, "AskUserQuestion");
+    const q = ask.request.input.questions[0];
+    assert.deepEqual([q.question, q.header, q.multiSelect, q.options.map(o => o.label)], ["Implement this plan?", "Plan", false, ["Implement", "Revise"]]);
+    assert.equal(q.options[0].preview, "1. Create hello.txt.\n2. Read it back.\n", "the plan text is on the Implement button");
+    s.proc.write({ type: "control_response", response: { request_id: ask.request_id, response: answer(ask) } });
+    await s.until(m => m.type === "result", "the result");
+    assert.match(s.got.filter(m => m.type === "stream_event").map(m => m.event.delta.text).join(""), new RegExp(want), how);
+    await s.proc.stop(500);
+  }
+});
+
 test("acp: fs/read_text_file goes past the floor first: a vault path is refused and its bytes never leave the disk", async t => {
   const w = world(t);
   const s = open(w);

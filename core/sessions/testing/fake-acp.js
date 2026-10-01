@@ -49,6 +49,12 @@ async function prompt(id, blocks) {
       { optionId: "allow_once", name: "Allow", kind: "allow_once" }, { optionId: "allow_always", name: "Always allow", kind: "allow_always" }, { optionId: "cancel", name: "Cancel", kind: "reject_once" }] });
     const oc = r.outcome || {};
     say(oc.outcome === "selected" ? `mcp: ${oc.optionId}` : "mcp: not allowed");
+  } else if (t === "planask") {
+    // codex-acp 2.1.0 in plan collaboration mode: the plan as a switch_mode permission question, not a `plan` update.
+    const r = await call("session/request_permission", { sessionId: session, toolCall: { toolCallId: "plan-review:1", kind: "switch_mode", status: "pending", title: "Implement this plan?", rawInput: { plan: "1. Create hello.txt.\n2. Read it back.\n" } },
+      options: [{ optionId: "implement_plan", name: "Yes, implement this plan", kind: "allow_once" }, { optionId: "revise_plan", name: "No, and tell Codex what to do differently", kind: "reject_once" }] });
+    const oc = r.outcome || {};
+    say(oc.outcome === "selected" ? `plan: ${oc.optionId}` : "plan: cancelled");
   } else if (t === "plan") {
     out({ method: "session/update", params: { sessionId: session, update: { sessionUpdate: "plan", entries: [{ content: "read it", priority: "high", status: "completed" }, { content: "change it", priority: "high", status: "in_progress" }, { content: "test it", priority: "low", status: "pending" }] } } });
     const tc = { toolCallId: `call-${crypto.randomUUID().slice(0, 8)}`, title: "Delete build", kind: "delete", status: "completed", rawInput: { path: "/w/build" } };

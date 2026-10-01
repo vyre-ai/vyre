@@ -266,6 +266,8 @@ export function translate(m) {
     // A turn that failed on the subscription's limit reads as an error result naming the limit.
     if (m.is_error && /usage limit|rate limit|limit reached|out of (extra )?usage/i.test(text)) out.limited = true;
     out.turn = { ok: !m.is_error, text, cost_usd: typeof m.total_cost_usd === "number" ? m.total_cost_usd : 0 };
+    // An agent that names the model per turn (Grok Build, Codex) says so on the result: the reply's events carry it.
+    if (typeof m.model === "string" && m.model) out.model = m.model;
     if (Array.isArray(m.user_message_uuids)) out.folded = m.user_message_uuids.map(String);
     // The model's context window, from the result's per-model usage.
     const windows = m.modelUsage && typeof m.modelUsage === "object" ? Object.values(m.modelUsage).map(x => Number(x && x.contextWindow) || 0).filter(Boolean) : [];

@@ -473,13 +473,107 @@ for (const driver of ["cli", "sdk"]) {
     const rec = (await w.tool("threads.get", { thread: th.id })).data;
     assert.equal(rec.thread.provider, "grok");
     assert.ok(rec.events.some(e => e.type === "thread.provider" && e.payload.from === "claude" && e.payload.to === "grok"));
-    assert.ok(rec.events.some(e => e.type === "thread.text" && e.payload.notice && e.payload.text === "continued on Grok"));
+    assert.ok(rec.events.some(e => e.type === "thread.text" && e.payload.notice && /^Switched to Grok\. It has this session's memory and files\. It starts from what was said so far, not from Claude's own working notes\./.test(e.payload.text)));
+    const sw = rec.events.find(e => e.type === "thread.provider" && e.payload.to === "grok");
+    assert.match(sw.payload.text, /^Switched to Grok\./, "the switch event says the same line");
     // Back to Claude: it ran this thread before, so its own session returns, with no brief.
     const back = await w.tool("threads.switch", { thread: th.id, provider: "claude", text: "and the hours" });
     assert.equal(back.error, undefined, JSON.stringify(back));
     assert.equal(back.data.resumed, true);
     // An unknown provider is refused, and a switch mid-turn says busy.
     assert.equal((await w.tool("threads.switch", { thread: th.id, provider: "gemini" })).error.code, "bad_input");
+  });
+
+  test(`${driver}: one turn on another provider: refused when signed out, runs there with the session's history, the session stays, and goes back told`, { skip }, async t => {
+    const w = await boot(t, { driver });
+    withGrok(t, w);
+    noMemoryBlocks(w);
+    const db = w.d.registry.deps.db;
+    const added = (await w.tool("sessions.accounts.add", { provider: "grok", label: "Grok", kind: "login" })).data;
+    const th = (await w.tool("threads.start", { cwd: w.work, prompt: "plan the Northwind menu", surface: "deck" })).data;
+    await w.finished(th.id);
+    const events = async () => (await w.tool("threads.get", { thread: th.id, limit: 200 })).data.events;
+    const before = (await events()).length;
+    // Signed out: refused in plain words, nothing sent, no other provider answers, the session untouched.
+    const out = await w.tool("threads.send", { thread: th.id, text: "and the prices", surface: "deck", provider: "grok" });
+    assert.equal(out.error.code, "account_unavailable");
+    assert.match(out.error.message, /Grok is signed out here\. .*Nothing was sent, and the turn did not move to another provider\./);
+    assert.equal((await events()).length, before, "a refused ask leaves no event");
+    assert.equal((await w.tool("threads.get", { thread: th.id })).data.thread.provider, "claude");
+    // Signed in: the turn runs on Grok, the session stays on Claude.
+    db.prepare("UPDATE sessions_accounts SET signed_in_at = ? WHERE id = ?").run(Date.now(), added.id);
+    const r = await w.tool("threads.send", { thread: th.id, text: "and the prices", surface: "deck", provider: "grok" });
+    assert.equal(r.error, undefined, JSON.stringify(r));
+    assert.equal(r.data.provider, "grok");
+    await w.finished(th.id, 2);
+    let rec;
+    for (let n = 0; n < 100; n++) { rec = (await w.tool("threads.get", { thread: th.id, limit: 200 })).data; if (rec.thread.provider === "claude" && rec.events.some(e => e.type === "thread.provider" && e.payload.reason === "back")) break; await new Promise(x => setTimeout(x, 100)); }
+    assert.equal(rec.thread.provider, "claude", "the session's own provider is unchanged afterwards");
+    const ev = rec.events;
+    const once = ev.find(e => e.type === "thread.provider" && e.payload.reason === "once");
+    assert.equal(once.payload.to, "grok");
+    assert.match(once.payload.text, /^This turn runs on Grok\. It has this session's memory and files\. The session stays on Claude\. Grok cannot do these here: /);
+    const turn = ev.filter(e => e.type === "thread.turn").at(-1);
+    assert.equal(turn.payload.provider, "grok", JSON.stringify(ev.filter(e => /^thread\.(turn|provider|text)$/.test(e.type)).map(e => [e.type, e.payload.provider, e.payload.reason, String(e.payload.text || "").slice(0, 30)])));
+    assert.equal(ev.find(e => e.type === "thread.provider" && e.payload.reason === "back").payload.to, "claude");
+    const said = await w.said(th.id);
+    assert.match(said.at(-1), /^echo: \[Vyre handoff/);
+    assert.match(said.at(-1), /plan the Northwind menu/, "the one-turn provider gets the session's history");
+    assert.match(said.at(-1), /and the prices/);
+    // The session's own provider is told what was said while it was away, once, in front of the next turn.
+    const next = await w.tool("threads.send", { thread: th.id, text: "thanks", surface: "deck" });
+    assert.equal(next.error, undefined, JSON.stringify(next));
+    await w.finished(th.id, 3);
+    assert.match((await w.said(th.id)).at(-1), /\[Vyre: while this session was on Grok[\s\S]*and the prices[\s\S]*thanks$/);
+  });
+
+  test(`${driver}: the @ Accounts kind lists signed-in providers, and an account chip is the same ask as provider`, { skip }, async t => {
+    const w = await boot(t, { driver });
+    withGrok(t, w);
+    noMemoryBlocks(w);
+    const db = w.d.registry.deps.db;
+    const added = (await w.tool("sessions.accounts.add", { provider: "grok", label: "Grok", kind: "login" })).data;
+    const names = async q => ((await w.tool("sessions.mention.search", { q })).data || []).map(x => x.name);
+    assert.deepEqual(await names("grok"), [], "signed out is not listed");
+    db.prepare("UPDATE sessions_accounts SET signed_in_at = ? WHERE id = ?").run(Date.now(), added.id);
+    assert.deepEqual(await names("gr"), ["Grok"]);
+    assert.ok((await names("")).includes("Claude"));
+    const hit = (await w.tool("sessions.mention.search", { q: "grok" })).data[0];
+    assert.equal(hit.kind, "account");
+    assert.equal(hit.id, "grok");
+    const res = await w.d.registry.call("sessions.mention.resolve", { id: "grok" }, "module:mentions");
+    assert.equal(res.error, undefined, JSON.stringify(res));
+    assert.equal(res.data.name, "Grok");
+    assert.equal((await w.d.registry.call("sessions.mention.resolve", { id: "codex" }, "module:mentions")).error.code, "not_found");
+    const th = (await w.tool("threads.start", { cwd: w.work, prompt: "hello", surface: "deck" })).data;
+    await w.finished(th.id);
+    const r = await w.tool("threads.send", { thread: th.id, text: "ask grok", surface: "deck", mentions: [{ kind: "account", id: "grok" }] });
+    assert.equal(r.error, undefined, JSON.stringify(r));
+    assert.equal(r.data.provider, "grok");
+    await w.finished(th.id, 2);
+    // Two accounts in one ask is not one provider answering.
+    assert.equal((await w.tool("threads.send", { thread: th.id, text: "x", surface: "deck", mentions: [{ kind: "account", id: "grok" }, { kind: "account", id: "claude" }] })).error.code, "bad_input");
+  });
+
+  test(`${driver}: a # media item in a turn is copied into the thread's folder at turn start`, { skip }, async t => {
+    const w = await boot(t, { driver });
+    withGrok(t, w);
+    noMemoryBlocks(w);
+    const copies = [];
+    const realCall = w.d.registry.call.bind(w.d.registry);
+    w.d.registry.call = async (tool, input, caller, meta) => {
+      if (tool === "mentions.search") return { data: { results: [] } };
+      if (tool === "mentions.resolve") return { data: { name: "harbour", hint: "image", note: "copy it" } };
+      if (tool === "artifacts.media.copy") { copies.push(input); return { data: { path: "/work/from-artifacts/a_1.png", mime: "image/png" } }; }
+      return realCall(tool, input, caller, meta);
+    };
+    const th = (await w.tool("threads.start", { cwd: w.work, prompt: "hello", surface: "deck" })).data;
+    await w.finished(th.id);
+    const r = await w.tool("threads.send", { thread: th.id, text: "use this", surface: "deck", mentions: [{ kind: "artifact", id: "a_1" }] });
+    assert.equal(r.error, undefined, JSON.stringify(r));
+    await w.finished(th.id, 2);
+    assert.deepEqual(copies, [{ id: "a_1", thread: th.id }]);
+    assert.match((await w.said(th.id)).at(-1), /#harbour is a file now in your folder: \/work\/from-artifacts\/a_1\.png \(image\/png\)/);
   });
 
   test(`${driver}: two switches of one thread at once make one process: the second is busy`, { skip }, async t => {
@@ -515,7 +609,7 @@ for (const driver of ["cli", "sdk"]) {
     await until(async () => (await w.tool("threads.get", { thread: th.id })).data.thread.provider === "grok", "the move to Grok");
     await w.finished(th.id, 2);
     const ev = (await w.tool("threads.get", { thread: th.id })).data.events;
-    assert.ok(ev.some(e => e.type === "thread.text" && e.payload.notice && /moved to Grok: Claude's limit was reached/.test(e.payload.text)), JSON.stringify(ev.filter(e => e.payload && e.payload.notice)));
+    assert.ok(ev.some(e => e.type === "thread.text" && e.payload.notice && /^Claude's limit was reached\. Switched to Grok\. It has this session's memory and files\./.test(e.payload.text)), JSON.stringify(ev.filter(e => e.payload && e.payload.notice)));
   });
 
   test(`${driver}: threads.busy says whether a turn streams in a folder, for github's Undo; a session's worktree branch is kept on its record`, { skip }, async t => {

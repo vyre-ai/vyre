@@ -118,6 +118,17 @@ export function seedTampered(home, seed) {
   }
   return false;
 }
+/**
+ * The model that answered a turn, as the agent says it on the prompt response: Grok Build `_meta.modelId`, Codex
+ * `_meta.quota.model_usage[0].model` (the base id: the session's own id carries an effort suffix). Null when it says nothing.
+ * @param {any} r @returns {string|null}
+ */
+export function promptModel(r) {
+  const m = r && r._meta && typeof r._meta === "object" ? r._meta : {};
+  const q = m.quota && Array.isArray(m.quota.model_usage) && m.quota.model_usage[0] && m.quota.model_usage[0].model;
+  const id = typeof m.modelId === "string" && m.modelId ? m.modelId : typeof q === "string" && q ? q : null;
+  return id ? id.slice(0, 80) : null;
+}
 const kill = (pid, sig) => { try { process.kill(pid, sig); } catch {} };
 const alive = pid => { try { process.kill(pid, 0); return true; } catch (e) { return /** @type {any} */ (e).code === "EPERM"; } };
 
@@ -309,6 +320,24 @@ function runAcp(entry, known, o) {
       }
       return;
     }
+    // MEASURED on codex-acp 2.1.0 in plan collaboration mode: the plan is a permission question of kind "switch_mode" ("Implement this plan?",
+    // rawInput.plan, options implement_plan / revise_plan), never a `plan` update. It is drawn as the question it is: the plan text with two
+    // buttons, Implement and Revise, through the same question ask Claude's own plan approval uses (AskUserQuestion), and answered back
+    // as the matching option. Anything else with a switch_mode kind and no plan text is an ordinary ask.
+    if (tc.kind === "switch_mode" && tc.rawInput && typeof tc.rawInput.plan === "string" && tc.rawInput.plan.trim()) {
+      const opts = Array.isArray(p.options) ? p.options : [];
+      const yes = opts.find(x => x && x.kind === "allow_once"), no = opts.find(x => x && x.kind === "reject_once");
+      if (yes && no) {
+        const question = String(tc.title || "Implement this plan?").slice(0, 200);
+        const rid = `acp-perm-${++askN}`;
+        asks.set(rid, { rpc: m.id, options: opts, plan: { question, yes: yes.optionId, no: no.optionId } });
+        say({ type: "control_request", request_id: rid, request: { subtype: "can_use_tool", tool_name: "AskUserQuestion", tool_use_id: String(tc.toolCallId || ""), input: { questions: [{
+          question, header: "Plan", multiSelect: false,
+          options: [{ label: "Implement", description: "Leave plan mode and carry it out", preview: String(tc.rawInput.plan) },
+            { label: "Revise", description: "Stay in plan mode; say what to change in your next message" }] }] } } });
+        return;
+      }
+    }
     announce(tc);
     const a = askFor(tc);
     const rid = `acp-perm-${++askN}`;
@@ -321,7 +350,9 @@ function runAcp(entry, known, o) {
     const a = asks.get(r.request_id); if (!a) return;
     asks.delete(r.request_id);
     const body = r.response || {};
-    const want = body.behavior === "allow" ? "allow_once" : "reject_once";
+    // A plan question: the person's choice of button is the label under the question's own text; declining it, or any other word, is Revise.
+    const chosen = a.plan && body.behavior === "allow" && body.updatedInput && body.updatedInput.answers ? body.updatedInput.answers[a.plan.question] : null;
+    const want = a.plan ? (chosen === "Implement" ? "allow_once" : "reject_once") : body.behavior === "allow" ? "allow_once" : "reject_once";
     const opt = a.options.find(x => x && x.kind === want);
     respond(a.rpc, { outcome: opt ? { outcome: "selected", optionId: opt.optionId } : { outcome: "cancelled" } });
   }
