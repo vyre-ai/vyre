@@ -681,6 +681,8 @@ export default {
           const p = lb.pending();
           return { url: null, address, passkeyUrl: null, port: p ? p.port : null, expires: p ? p.expires : null, pending: Boolean(p), user: os.userInfo().username };
         }
+        // The audit trail says who minted it and whether the daemon had capped the peer (the first-run carve-out above), so a review can see it.
+        ctx.events.emit("onboard.linked", { caller: String(caller), capped: socketCapped === true, firstRun });
         return { ...(await lb.link()), address, user: os.userInfo().username };
       },
     });

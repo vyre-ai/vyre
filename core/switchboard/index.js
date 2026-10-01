@@ -2279,7 +2279,7 @@ export const fromLink = caller => /^link:/.test(String(caller || ""));
  */
 export async function spendCheck(ctx, caller, provider) {
   const c = String(caller || "");
-  if (!(/^(module|hook)/.test(c) || /(^|[\s:])(agent|thread):/i.test(c))) return;
+  if (!(/^(module|hook)/.test(c) || /(^|[\s:])agent:/i.test(c))) return;
   let r = null, why = "";
   try { r = await ctx.call("spend.check", { provider: String(provider || "claude") }); } catch (e) { why = /** @type {Error} */ (e).message; }
   const d = r && (r.data || r);

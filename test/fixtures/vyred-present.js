@@ -7,6 +7,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { start } from "../../core/daemon/index.js";
+import { setSocketTrust } from "../../core/daemon/peer.js";
 import { home } from "../../core/config/index.js";
 import { present } from "../helpers.js";
 
@@ -17,6 +18,8 @@ if (!(real(root) + path.sep).startsWith(real(os.tmpdir()) + path.sep) || real(ro
   console.error("vyred-present: only for a temp VYRE_HOME");
   process.exit(1);
 }
+// A test vyred (temp home only, checked above) has no terminal in front of its CLI children: the label is trusted as it was before the socket inversion.
+setSocketTrust("label");
 process.env.VYRE_NO_DIALOGS = "1";
 // A test's fixture modules in this temp home stand in for Vyre's own (a probe using the built in
 // only vault.fetch, ADR 0047), so they load as first party. This launcher decides that itself;

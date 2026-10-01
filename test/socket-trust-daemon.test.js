@@ -77,3 +77,29 @@ test("the installer without a terminal (CI, docker exec) can mint the first-run 
   const plain = await d.registry.call("onboard.link", {}, "mcp");
   assert.equal(plain.error && plain.error.code !== undefined, true, JSON.stringify(plain));
 });
+
+test("once an owner exists, a capped peer cannot mint the onboarding link, and a first-run mint is on the audit trail", async t => {
+  if (process.platform === "win32" || !fs.existsSync("/usr/bin/setsid") && !fs.existsSync("/bin/setsid")) return t.skip("needs setsid");
+  const was = socketTrust();
+  setSocketTrust("strict");
+  t.after(() => setSocketTrust(was));
+  const base = { role: "box", transcripts: [], vault: { keystore: "file" }, modules: { enable: [], disable: ["recall", "memory", "learn"] } };
+  // Owned: the owner has been seen, so the carve-out is closed.
+  const owned = tempHome(t);
+  fs.writeFileSync(path.join(owned, "config.json"), JSON.stringify({ ...base, network: { tailscale: true, ownerSeen: true } }));
+  const d1 = await start({ root: owned, log: () => {} });
+  t.after(() => d1.stop());
+  const refused = await detachedCall(fs.mkdtempSync(path.join(owned, "trust-")), d1.paths.socket, "onboard.link", {}, "cli");
+  assert.notEqual(refused.status, 200, JSON.stringify(refused.body));
+  assert.match(JSON.stringify(refused.body), /only from the box's own terminal|not available to mcp/);
+  // Fresh: the mint is recorded with the caller and the capped flag.
+  const fresh = tempHome(t);
+  fs.writeFileSync(path.join(fresh, "config.json"), JSON.stringify(base));
+  const d2 = await start({ root: fresh, log: () => {} });
+  t.after(() => d2.stop());
+  const seen = [];
+  d2.events.on("onboard.linked", e => seen.push(e.payload));
+  const ok = await detachedCall(fs.mkdtempSync(path.join(fresh, "trust-")), d2.paths.socket, "onboard.link", {}, "cli");
+  assert.equal(ok.status, 200, JSON.stringify(ok.body));
+  assert.deepEqual(seen, [{ caller: "mcp", capped: true, firstRun: true }]);
+});

@@ -328,8 +328,6 @@ test("sight.frame refuses a surface-prefixed agent claim, not only \"mcp:agent:\
   const { reg } = await world(t, [["hands-desktop", ["hands-desktop.screenshot"], ["desktop.acted"], shotSrc], FAKES.agents]);
   const r = await reg.call("sight.frame", { target: "agent:kit" }, "cli:agent:kit");
   assert.equal(r.error?.code, "denied");
-  assert.match(r.error?.message, /"kit" is an agent/);
-  // The assistant still reaches it under the same shape.
-  const ok = data(await reg.call("sight.frame", { target: "agent:kit" }, "cli:agent:vyre"));
-  assert.equal(ok.mime, "image/jpeg");
+  // A claim on a surface label names nobody (canonicalCaller): it is refused as a program, whatever agent it names.
+  assert.match(r.error?.message, /not available to mcp callers/);
 });
