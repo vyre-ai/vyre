@@ -4,7 +4,7 @@
   "description": "Where the user is now: the project, folder, thread, app, window and page each surface last reported, merged into one answer (ADR 0036, part 2).",
   "roles": ["box", "local"],
   "requires": [],
-  "does": { "tools": [{ "name": "context.report", "reach": "person" }, { "name": "context.now", "reach": "person" }] },
+  "does": { "tools": [{ "name": "context.report", "reach": "person" }, { "name": "context.now", "reach": "anyone" }] },
   "watches": { "emits": ["context.changed"] },
   "shows": { "cli": [] },
   "needs": {},
