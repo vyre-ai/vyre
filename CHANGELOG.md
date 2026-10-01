@@ -4,6 +4,10 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+- test: the reach suite. reach-registry (runs on a runner or the test box) counts an explicit callers list, internal and hook as declared and fails on an open tool that is not on the allowlist; reach-person-only fails on a PERSON_ONLY tool that does not say reach person (57 listed to shrink); reach-asked fails on an asked tool with no said-intent recorder (artifacts.public.set is pending); reach-module-calls (from sessions) fails when a first-party module calls a tool whose reach refuses modules. scripts/reach-dump.mjs boots a registry in a temp home and prints each tool's reach and callers.
+
+- platform modules declare an explicit reach: link, projects, presence, sync, mentions, releases and events (74 tools). Tools whose code already restricts `callers` keep `anyone` (the list governs), internal and module-only tools are `modules`, person-surface-only tools are `person`; the mutating presence and link tools stay `anyone` because they are HUMAN_ONLY (a presence proof) or PERSON_ONLY by name. `presence.test.js` reads tool names from object entries, and `sync-send.test.js` expects `no_such_tool` for a surface calling a `modules` tool.
+
 - test: a tool must declare an explicit `reach`. test/reach-explicit.test.js reads every module.json and fails on a tool with no `reach` that is not in test/reach-allowlist.json (799 tools today: 457 open to any caller by default, 342 limited only by `callers` in code), and on an allowlist line that is stale, so each owner shrinks the list by writing `{ "name", "reach" }`. The registry default is unchanged.
 - Every watchers tool names its reach (ADR 0047): reads and `watchers.pause` are anyone's (stopping
   is the safe direction); `watchers.create` and `watchers.preset` are asked, so a model turns a
