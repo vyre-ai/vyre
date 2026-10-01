@@ -48,3 +48,28 @@ test("only the first 20000 characters are read, so a huge reply is quick and sti
   assert.ok(r.cut && r.text.length <= MAX_SPOKEN);
   assert.equal(MAX_INPUT, 20_000);
 });
+
+test("a reply of nothing but blanks, newlines or fences cannot stall the loop (reviewer-2: 20000 spaces took 23 s)", () => {
+  const shapes = {
+    spaces: " ".repeat(MAX_INPUT) + "x",
+    newlines: "\n".repeat(MAX_INPUT),
+    ticks: "`".repeat(MAX_INPUT),
+    tabs: "\t".repeat(MAX_INPUT) + "x",
+    pipes: "|".repeat(MAX_INPUT),
+    rules: "- ".repeat(MAX_INPUT / 2),
+    quotes: "> ".repeat(MAX_INPUT / 2),
+    spacedNewlines: " \n".repeat(MAX_INPUT / 2) + "x",
+  };
+  for (const [name, text] of Object.entries(shapes)) {
+    const t0 = performance.now();
+    spoken(text);
+    const ms = performance.now() - t0;
+    assert.ok(ms < 50, `${name} took ${ms.toFixed(1)} ms`);
+  }
+});
+
+test("indented table rules and list markers still go", () => {
+  const r = spoken("Intro line.\n  | a | b |\n  |---|---|\n  - one\n  > quoted\nDone.");
+  assert.doesNotMatch(r.text, /\||---/);
+  assert.match(r.text, /Intro line\. one quoted Done\./);
+});

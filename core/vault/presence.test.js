@@ -161,3 +161,16 @@ test("account tools: five wrong passwords in a row slow every try, a right one r
   await assert.rejects(wrong(), /does not open/);
   assert.equal((await run("vault.account.unlock", { password: pw })).unlocked, true, "the count was reset by the success");
 });
+
+test("account tools: guesses made in parallel are counted one by one, so the sixth is refused (reviewer-2)", async t => {
+  const { run } = await recorded(t);
+  const pw = `fixture-pw-${crypto.randomBytes(12).toString("hex")}`;
+  await run("vault.account.create", { password: pw });
+  await run("vault.account.lock", {}, "mcp");
+  t.mock.timers.enable({ apis: ["Date"], now: 1_800_000_000_000 });
+  const results = await Promise.allSettled(Array.from({ length: 12 }, () => run("vault.account.unlock", { password: "fixture-wrong-password" })));
+  const wrong = results.filter(r => r.status === "rejected" && /does not open/.test(String(r.reason && r.reason.message))).length;
+  const refused = results.filter(r => r.status === "rejected" && /too many wrong passwords/.test(String(r.reason && r.reason.message))).length;
+  assert.equal(wrong, 5, "only five are ever tested against the key");
+  assert.equal(refused, 7, "the other seven are refused without being tested");
+});

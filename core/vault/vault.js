@@ -670,7 +670,15 @@ export class Vault {
    * The account unlock key from the password and this device's Secret Key. A wrong password
    * throws in words and is audited.
    */
-  async deriveAuk(password, who) {
+  deriveAuk(password, who) {
+    // One attempt at a time: the throttle below reads the count before the key derivation and writes it after, so
+    // guesses made in parallel would all pass the check before the first failure counted (reviewer-2).
+    const run = (this.unlockChain || Promise.resolve()).then(() => this.deriveAukNow(password, who));
+    this.unlockChain = run.catch(() => {});
+    return run;
+  }
+
+  async deriveAukNow(password, who) {
     // Every password attempt comes through here (unlock and enrolling Touch ID), so the guess limit lives here. The password is its own
     // proof (no separate presence prompt), so after 5 wrong tries in a row every try is refused for 30 s, doubling to 15 minutes; a right
     // password resets it. A refused try is not tested against the key at all.
