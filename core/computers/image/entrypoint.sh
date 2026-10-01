@@ -200,6 +200,7 @@ as_vyre Xvnc "${DISPLAY}" \
   -auth "${VYRE_XAUTH}" \
   +extension SECURITY \
   -SecurityTypes VncAuth \
+  -Protocol3.3=0 \
   -localhost=no \
   -nolisten tcp \
   -AlwaysShared \
