@@ -27,6 +27,8 @@ import { keyUuid } from "../modules/idempotency.js";
 import { rules as floorRules } from "../harness/rules.js";
 import { personTurn, mentionsOf, resolveTags, textHash, tagNote } from "./said.js";
 import { prIntents } from "../../lib/said/pr.js";
+import { teamIntents } from "../../lib/said/team.js";
+import { watchersIntents } from "../../lib/said/watchers.js";
 import { threadStatus, LIVE_STATUSES } from "../../lib/thread-status.js";
 import { load as loadSdk, install as installSdk, installed as sdkInstalled, autoInstallAllowed, abortInstalls } from "../sessions/sdk.js";
 import { Leases } from "./lease.js";
@@ -1369,20 +1371,44 @@ export class Switchboard {
    * @param {string} id @param {string} text @param {string} uuid @param {string[]} pasted @param {string|null|undefined} project
    */
   async hearActs(id, text, uuid, pasted, project) {
-    if (!project || !/\b(?:prs?|pull[\s-]+requests?|merge|merging)\b/i.test(text)) return;
+    const pr = /\b(?:prs?|pull[\s-]+requests?|merge|merging)\b/i.test(text);
+    const team = /\b(?:retire|retiring|duty|duties|fill|staff|role|teammate)\b/i.test(text);
+    const watch = /\bwatchers?\b/i.test(text);
+    if (!project || (!pr && !team && !watch)) return;
     let typed = String(text);
     for (const span of pasted || []) if (typeof span === "string" && span) typed = typed.split(span).join(" ");
-    const where = /** @type {{ project: string, session: string, pr?: number }} */ ({ project, session: id });
-    const cur = await this.deps.call("github.session.pr", { project, session: id }).catch(() => null);
-    const prs = cur && !cur.error && cur.data && Array.isArray(cur.data.prs) ? cur.data.prs : [];
-    if (prs.length === 1 && Number.isInteger(Number(prs[0]))) where.pr = Number(prs[0]);
-    const target = async (tool, input) => {
-      const r = await this.deps.call("github.act.target", { tool, input }).catch(() => null);
-      return r && !r.error && r.data && Array.isArray(r.data.to) ? r.data.to : null;
-    };
-    const { intents } = await prIntents(typed, where, target).catch(() => ({ intents: [] }));
+    /** @type {any[]} */ let intents = [];
+    if (pr) {
+      const where = /** @type {{ project: string, session: string, pr?: number }} */ ({ project, session: id });
+      const cur = await this.deps.call("github.session.pr", { project, session: id }).catch(() => null);
+      const prs = cur && !cur.error && cur.data && Array.isArray(cur.data.prs) ? cur.data.prs : [];
+      if (prs.length === 1 && Number.isInteger(Number(prs[0]))) where.pr = Number(prs[0]);
+      const target = async (tool, input) => {
+        const r = await this.deps.call("github.act.target", { tool, input }).catch(() => null);
+        return r && !r.error && r.data && Array.isArray(r.data.to) ? r.data.to : null;
+      };
+      intents = intents.concat((await prIntents(typed, where, target).catch(() => ({ intents: [] }))).intents);
+    }
+    if (team) {
+      // What the project really has (core/team's roster, the person's agents that may fill a role): the words name none of it.
+      const roster = await this.deps.call("team.roster", { project }).catch(() => null);
+      const agents = await this.deps.call("agents.list", {}).catch(() => null);
+      if (roster && !roster.error && roster.data) {
+        const rd = roster.data;
+        const fillers = agents && !agents.error && Array.isArray(agents.data)
+          ? agents.data.filter(a => a && a.kind !== "assistant" && (a.projects === "*" || (Array.isArray(a.projects) && (a.projects.includes("*") || a.projects.includes(project))))).map(a => String(a.name)) : [];
+        intents = intents.concat(teamIntents(typed, { project, roles: Array.isArray(rd.roles) ? rd.roles : [], agents: fillers, duties: Array.isArray(rd.duties) ? rd.duties : [] }).intents);
+      }
+    }
+    if (watch) {
+      // Only the watchers whose card the person has been shown in THIS thread, each with the card's hash as it is now: watchers.shown
+      // answers from its own record of watchers.card calls made from this thread. No such tool, or no card shown, records nothing.
+      const shown = await this.deps.call("watchers.shown", { thread: id }).catch(() => null);
+      const cards = shown && !shown.error && shown.data && Array.isArray(shown.data.watchers) ? shown.data.watchers : [];
+      if (cards.length) intents = intents.concat(watchersIntents(typed, { watchers: cards }).intents);
+    }
     for (const it of intents) {
-      await this.deps.call("vault.said.record", { thread: id, said: uuid, kind: "act_out", channel: "github", to: it.to, what: it.what, standing: false,
+      await this.deps.call("vault.said.record", { thread: id, said: uuid, kind: "act_out", channel: it.channel || "github", to: it.to, what: it.what, standing: false,
         ...(it.when && Number.isInteger(it.when.window_minutes) ? { window_minutes: it.when.window_minutes } : {}) }).catch(() => null);
     }
   }
