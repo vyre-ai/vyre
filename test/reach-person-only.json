@@ -3,19 +3,15 @@
  "tools": {
   "agents.create": {
    "module": "agents",
-   "why": "pending"
-  },
-  "agents.delete": {
-   "module": "agents",
-   "why": "pending"
+   "why": "onboard (first-party module) creates the assistant for the person; the socket peer check and harness floor keep a model out"
   },
   "agents.resume": {
    "module": "agents",
-   "why": "pending"
+   "why": "switchboard resumes an agent's thread for the person's own send; the socket peer check and harness floor keep a model out"
   },
   "agents.update": {
    "module": "agents",
-   "why": "pending"
+   "why": "core/team gives an agent a project for a person's role fill; the socket peer check and harness floor keep a model out"
   },
   "capsule.report": {
    "module": "capsule",
@@ -85,10 +81,6 @@
    "module": "glass",
    "why": "pending"
   },
-  "goals.accept": {
-   "module": "goals",
-   "why": "pending"
-  },
   "learn.accept": {
    "module": "learn",
    "why": "pending"
@@ -125,30 +117,6 @@
    "module": "projects",
    "why": "core/github and core/sync attach a folder to a project as modules; reach person admits no module. The callers list in code keeps agents and models out."
   },
-  "sessions.limits.set": {
-   "module": "sessions",
-   "why": "pending"
-  },
-  "sessions.mode.set": {
-   "module": "sessions",
-   "why": "pending"
-  },
-  "sessions.models.set": {
-   "module": "sessions",
-   "why": "pending"
-  },
-  "sessions.prompt.revert": {
-   "module": "sessions",
-   "why": "pending"
-  },
-  "sessions.prompt.set": {
-   "module": "sessions",
-   "why": "pending"
-  },
-  "sessions.usage.resume": {
-   "module": "sessions",
-   "why": "pending"
-  },
   "settings.reset": {
    "module": "settings",
    "why": "pending"
@@ -163,22 +131,6 @@
   },
   "term.open": {
    "module": "term",
-   "why": "pending"
-  },
-  "threads.answer": {
-   "module": "threads",
-   "why": "pending"
-  },
-  "threads.mode": {
-   "module": "threads",
-   "why": "pending"
-  },
-  "threads.remember": {
-   "module": "threads",
-   "why": "pending"
-  },
-  "threads.shell": {
-   "module": "threads",
    "why": "pending"
   },
   "vault.device.join": {

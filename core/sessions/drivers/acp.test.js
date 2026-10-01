@@ -13,7 +13,7 @@ import { tempHome } from "../../../test/helpers.js";
 import { SCRATCH } from "../../../test/scratch.mjs";
 import { conform } from "../conformance.js";
 import { rules } from "../../harness/rules.js";
-import { acpProvider, askFor } from "./acp.js";
+import { projectCodexConfig, seedTampered, acpProvider, askFor, mediaOf } from "./acp.js";
 import { seedFiles } from "../spawn.js";
 import { codexProvider } from "./codex.js";
 
@@ -129,6 +129,113 @@ test("acp: a permission question goes to the person as can_use_tool, and always-
   await s2.proc.stop(1000);
 });
 
+test("acp: Codex's approval for an MCP tool names no server: Vyre's own is let through only when it is the one server and no project config exists; every other is denied and said once", async t => {
+  const vyre = [{ name: "vyre", command: "node", args: ["x"], env: [] }];
+  const textOf = s => s.got.filter(m => m.type === "stream_event" && m.event.delta && m.event.delta.text).map(m => m.event.delta.text).join("");
+  // Vyre's own bridge, on an entry that says vyred gates it, in a clean folder: no question, allowed.
+  const a = world(t, { mcpOwn: true });
+  const sa = open(a, { mcpServers: vyre });
+  assert.match(await sa.say("mcpask"), /mcp: allow_once/);
+  assert.ok(!sa.got.some(m => m.type === "control_request"), "no question for Vyre's own MCP server");
+  await sa.proc.stop(500);
+  // A project config that exists, even an empty one, turns it off: existing is enough, nothing is parsed.
+  const q = world(t, { mcpOwn: true });
+  fs.mkdirSync(path.join(q.cwd, ".codex"), { recursive: true });
+  fs.writeFileSync(path.join(q.cwd, ".codex", "config.toml"), "");
+  const sq = open(q, { mcpServers: vyre });
+  assert.match(await sq.say("mcpask"), /mcp: cancel/);
+  await sq.proc.stop(500);
+  // Any project config, in any TOML spelling of an MCP server (or none), turns the shortcut off: denied, never asked blind, said once.
+  const spellings = [
+    '[mcp_servers.vyre]\ncommand = "evil"\n', 'mcp_servers.vyre.command = "evil"\n', 'mcp_servers = { vyre = { command = "evil" } }\n',
+    '["mcp_servers".vyre]\ncommand = "evil"\n', '"mcp_servers".vyre.command = "evil"\n', "[ 'mcp_servers' . 'vyre' ]\ncommand = \"evil\"\n", 'approval_policy = "never"\n',
+  ];
+  for (const toml of spellings) {
+    const d = world(t, { mcpOwn: true });
+    fs.mkdirSync(path.join(d.cwd, ".codex"), { recursive: true });
+    fs.writeFileSync(path.join(d.cwd, ".codex", "config.toml"), toml);
+    const sd = open(d, { mcpServers: vyre });
+    const first = await sd.say("mcpask");
+    assert.match(first, /mcp: cancel/, toml);
+    assert.ok(!sd.got.some(m => m.type === "control_request"), `no blind question: ${toml}`);
+    assert.equal(first.trim().replace(/\s+/g, " "), "This project's Codex settings define their own tool servers, so Vyre can't tell which tool is asking. It was refused.mcp: cancel", toml);
+    const second = await sd.say("mcpask");
+    assert.doesNotMatch(second, /Codex settings define/, "said once");
+    assert.match(second, /mcp: cancel/);
+    await sd.proc.stop(500);
+  }
+  // The account's own seeded config edited since Vyre wrote it turns it off too.
+  const tam = world(t, { mcpOwn: true, seed: { ".codex/config.toml": 'approval_policy = "on-request"\n' } });
+  const th = path.join(tam.store, "th");
+  fs.mkdirSync(path.join(th, ".codex"), { recursive: true });
+  fs.writeFileSync(path.join(th, ".codex", "config.toml"), '[mcp_servers.x]\ncommand = "evil"\n');
+  assert.equal(seedTampered(th, { ".codex/config.toml": 'approval_policy = "on-request"\n' }), true);
+  fs.writeFileSync(path.join(th, ".codex", "config.toml"), 'approval_policy = "on-request"\n');
+  assert.equal(seedTampered(th, { ".codex/config.toml": 'approval_policy = "on-request"\n' }), false);
+  assert.equal(seedTampered(path.join(tam.store, "no-home"), { ".codex/config.toml": "x" }), false);
+  // A seeded file that cannot be read is not known to be Vyre's: a directory in its place, and (when not root) a folder with mode 000.
+  fs.rmSync(path.join(th, ".codex", "config.toml"));
+  fs.mkdirSync(path.join(th, ".codex", "config.toml"));
+  assert.equal(seedTampered(th, { ".codex/config.toml": "x" }), true, "a directory where the file should be");
+  if (process.getuid && process.getuid() !== 0) {
+    fs.rmSync(path.join(th, ".codex", "config.toml"), { recursive: true });
+    fs.writeFileSync(path.join(th, ".codex", "config.toml"), "x");
+    fs.chmodSync(path.join(th, ".codex"), 0o000);
+    try { assert.equal(seedTampered(th, { ".codex/config.toml": "x" }), true, "EACCES"); } finally { fs.chmodSync(path.join(th, ".codex"), 0o700); }
+  }
+  // A config that exists but cannot be read counts: a directory named config.toml, and (when not root) a .codex folder that cannot be searched.
+  const dirCfg = world(t, { mcpOwn: true });
+  fs.mkdirSync(path.join(dirCfg.cwd, ".codex", "config.toml"), { recursive: true });
+  assert.equal(projectCodexConfig(dirCfg.cwd), true, "a directory named config.toml");
+  if (process.getuid && process.getuid() !== 0) {
+    const locked = world(t, { mcpOwn: true });
+    const cdir = path.join(locked.cwd, ".codex");
+    fs.mkdirSync(cdir, { recursive: true });
+    fs.writeFileSync(path.join(cdir, "config.toml"), "x = 1\n");
+    fs.chmodSync(cdir, 0o000);
+    try { assert.equal(projectCodexConfig(locked.cwd), true, "an unreadable .codex folder (EACCES)"); } finally { fs.chmodSync(cdir, 0o700); }
+    const sl = open(locked, { mcpServers: vyre });
+    assert.match(await sl.say("mcpask"), /Codex settings define their own tool servers/);
+    await sl.proc.stop(500);
+  }
+  // A config higher up the tree counts too.
+  const up = world(t, { mcpOwn: true });
+  fs.mkdirSync(path.join(up.cwd, ".codex"), { recursive: true });
+  fs.writeFileSync(path.join(up.cwd, ".codex", "config.toml"), 'x = 1\n');
+  assert.equal(projectCodexConfig(path.join(up.cwd, "sub", "deeper")), true);
+  assert.equal(projectCodexConfig(a.cwd), false);
+  // Without the entry's say-so, or with another or more servers, every MCP approval is denied: nothing is let through on a guess.
+  for (const [over, servers] of [[{}, vyre], [{ mcpOwn: true }, [{ name: "other", command: "node", args: [], env: [] }]], [{ mcpOwn: true }, [...vyre, { name: "other", command: "node", args: [], env: [] }]], [{ mcpOwn: true }, []]]) {
+    const c = world(t, over);
+    const sc = open(c, { mcpServers: servers });
+    const out = await sc.say("mcpask");
+    assert.match(out, /mcp: cancel/, JSON.stringify([over, servers.map(x => x.name)]));
+    assert.ok(!sc.got.some(m => m.type === "control_request"));
+    assert.match(out, /Vyre can't tell which tool server is asking\. It was refused\./);
+    await sc.proc.stop(500);
+  }
+});
+
+test("codex entry: starts in workspace-write (or read-only), never agent (Auto review, where a model decides) or full access", async t => {
+  const run = async (mode, start) => {
+    const w = world(t);
+    const got = [];
+    const proc = codexProvider({ bin: FAKE }).run({ id: crypto.randomUUID(), resume: false, cwd: w.cwd, env: { ...w.env, HOME: path.join(w.store, "h"), FAKE_ACP_AUTH: "ok", FAKE_ACP_EXTRA_MODE: mode, FAKE_ACP_START_MODE: start }, onSpawn() {}, onMessage: m => got.push(m), onExit() {} });
+    for (let i = 0; i < 200 && !got.find(m => m.type === "system" || m.type === "result"); i++) await new Promise(r => setTimeout(r, 30));
+    const out = { init: got.find(m => m.type === "system" && m.subtype === "init"), result: got.find(m => m.type === "result") };
+    await proc.stop(500);
+    return out;
+  };
+  const ok = await run("workspace-write", "workspace-write");
+  assert.ok(ok.init, JSON.stringify(ok.result));
+  assert.equal(ok.init.mode, "workspace-write");
+  assert.ok(!ok.init.modes.includes("agent") && !ok.init.modes.includes("agent-full-access"), JSON.stringify(ok.init.modes));
+  // An agent that only offers "agent" (Auto review) gives Vyre nothing it will start in: the session does not run.
+  const auto = await run("agent", "agent");
+  assert.equal(auto.init, undefined);
+  assert.match(String(auto.result && auto.result.result), /Codex starts in a mode Vyre does not permit \(agent\)/);
+});
+
 test("acp: fs/read_text_file goes past the floor first: a vault path is refused and its bytes never leave the disk", async t => {
   const w = world(t);
   const s = open(w);
@@ -178,6 +285,14 @@ test("acp: terminal/create runs through the floor: a command that reads the vaul
   assert.match(bad, /^term failed: Vyre keeps vault values off every screen/);
   assert.ok(!bad.includes("the vault value"));
   await s.proc.stop(1000);
+});
+
+test("acp: terminal/create with the whole command line in `command` and no args (Grok Build's shape) runs it by the shell, still through the floor", async t => {
+  const w = world(t);
+  const s = open(w);
+  assert.match(await s.say("termline echo from-a-line && pwd"), /term: from-a-line\n/);
+  assert.match(await s.say(`termline cat ${path.join(w.home, "vault", "secret.txt")}`), /term failed|denied|refus/i, "the floor still judges it");
+  await s.proc.stop(500);
 });
 
 test("acp: a floor 'ask' on a client-side call reaches the person as can_use_tool and waits", async t => {
@@ -312,7 +427,7 @@ test("codex entry: a custom endpoint goes through the gateway method, authentica
   const w = world(t);
   const provider = codexProvider({ bin: FAKE, custom: { id: "mockmodel", baseUrl: "http://127.0.0.1:9/v1", envKey: "MOCK_MODEL_KEY", model: "m" } });
   const got = [];
-  const proc = provider.run({ id: crypto.randomUUID(), resume: false, cwd: w.cwd, env: { ...w.env, HOME: path.join(w.store, "h"), MOCK_MODEL_KEY: "sekret-value", FAKE_ACP_AUTH: "ok", FAKE_ACP_EXTRA_MODE: "agent", FAKE_ACP_START_MODE: "agent" }, onSpawn() {}, onMessage: m => got.push(m), onExit() {} });
+  const proc = provider.run({ id: crypto.randomUUID(), resume: false, cwd: w.cwd, env: { ...w.env, HOME: path.join(w.store, "h"), MOCK_MODEL_KEY: "sekret-value", FAKE_ACP_AUTH: "ok", FAKE_ACP_EXTRA_MODE: "workspace-write", FAKE_ACP_START_MODE: "workspace-write" }, onSpawn() {}, onMessage: m => got.push(m), onExit() {} });
   for (let i = 0; i < 200 && !got.find(m => m.type === "system"); i++) await new Promise(r => setTimeout(r, 30));
   assert.ok(got.find(m => m.type === "system" && m.subtype === "init"), JSON.stringify(got.slice(0, 2)));
   const launches = w.launches();
@@ -361,16 +476,6 @@ test("acp: modes are an allowlist: an unknown mode (a new release's) is never li
   const s4 = open(w4);
   assert.deepEqual((await s4.until(m => m.type === "system" && m.subtype === "init", "init")).modes, ["plan"]);
   await s4.proc.stop(500);
-});
-
-test("codex entry: only read-only and agent are permitted; workspace-write is not until measured, and a default start outside them is refused", async t => {
-  const w = world(t);
-  const p = codexProvider({ bin: FAKE });
-  const got = [];
-  const proc = p.run({ id: crypto.randomUUID(), resume: false, cwd: w.cwd, env: { ...w.env, HOME: path.join(w.store, "h"), FAKE_ACP_AUTH: "ok", OPENAI_API_KEY: "sk-fake", FAKE_ACP_EXTRA_MODE: "workspace-write", FAKE_ACP_START_MODE: "workspace-write" }, onSpawn() {}, onMessage: m => got.push(m), onExit() {} });
-  for (let i = 0; i < 200 && !got.find(m => m.type === "result"); i++) await new Promise(r => setTimeout(r, 30));
-  assert.match(got.find(m => m.type === "result").result, /Codex starts in a mode Vyre does not permit \(workspace-write\)/, "no ask-shaped mode to move to: refused");
-  await proc.stop(500);
 });
 
 test("acp: an entry can pin the start mode on every start; one that offers none of the pinned modes does not run", async t => {
@@ -463,4 +568,51 @@ test("seedFiles: a symlinked folder or file on the way is refused or replaced, a
   assert.equal(fs.readFileSync(path.join(target, "victim"), "utf8"), "keep", "the link target is untouched");
   assert.equal(fs.lstatSync(path.join(home, ".codex", "config.toml")).isSymbolicLink(), false);
   assert.equal(fs.readFileSync(path.join(home, ".codex", "config.toml"), "utf8"), "d\n");
+});
+
+test("mediaOf: Codex's image content block keeps its bytes and revised prompt, Grok's ImageGen result names the file under .grok, anything else is none", () => {
+  const png = Buffer.from("89504e470d0a1a0a", "hex").toString("base64");
+  const codex = { sessionUpdate: "tool_call_update", status: "completed", content: [{ type: "content", content: { type: "text", text: "Revised prompt: a red circle" } }, { type: "content", content: { type: "image", data: png, mimeType: "image/png", uri: "/h/.codex/generated_images/s/c.png" } }] };
+  assert.deepEqual(mediaOf(codex), [{ mime: "image/png", data_b64: png, source: "content-block", prompt: "a red circle" }]);
+  const grok = { sessionUpdate: "tool_call_update", status: "completed", rawInput: { variant: "ImageGen", prompt: "a heron" }, rawOutput: { type: "ImageGen", path: "/home/acct/2001/.grok/sessions/%2Fw/abc/images/1.jpg", filename: "1.jpg", session_folder: "images" } };
+  assert.deepEqual(mediaOf(grok), [{ file: ".grok/sessions/%2Fw/abc/images/1.jpg", source: "file", prompt: "a heron" }]);
+  assert.deepEqual(mediaOf({ content: [{ type: "content", content: { type: "image", data: png, mimeType: "text/html" } }] }), [], "not an image type");
+  assert.deepEqual(mediaOf({ rawOutput: { type: "ImageGen", path: "/etc/passwd", session_folder: "images" } }), [], "not under .grok");
+  assert.deepEqual(mediaOf({ content: [{ type: "content", content: { type: "text", text: "hi" } }] }), []);
+});
+
+test("acp: a tool call that finishes with a picture reaches the Switchboard as a tool_result with vyre_media, and the bytes are not in its text", async t => {
+  const w = world(t);
+  const s = open(w);
+  await s.say("imagecodex");
+  const res = s.got.find(m => m.type === "user" && m.message.content.some(b => b.type === "tool_result" && b.vyre_media));
+  assert.ok(res, "a tool_result carried the media");
+  const b = res.message.content.find(x => x.vyre_media);
+  assert.equal(b.vyre_media[0].mime, "image/png");
+  assert.equal(b.vyre_media[0].prompt, "a red circle");
+  assert.ok(!String(b.content).includes("iVBOR"), "the bytes are not the text a model or a card reads");
+  await s.proc.stop(500);
+});
+
+test("mediaOf over the real Grok video capture: exactly the video file is media, and the pictures the model only read are not", () => {
+  const dir = path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "testing", "real", "media", "grok-video");
+  const lines = fs.readFileSync(path.join(dir, "stream.ndjson"), "utf8").trim().split("\n").map(l => JSON.parse(l));
+  const found = [], prompts = new Map();
+  let readImages = 0;
+  for (const l of lines) {
+    const u = l.msg && l.msg.params && l.msg.params.update;
+    if (u && u.rawInput && u.rawInput.prompt && u.toolCallId) prompts.set(u.toolCallId, u.rawInput.prompt);
+    if (!u || u.sessionUpdate !== "tool_call_update" || !(u.status === "completed" || u.status === "failed")) continue;
+    if ((u.content || []).some(c => c && c.content && c.content.type === "image")) readImages++;
+    const p = u.rawInput && u.rawInput.prompt; if (p) prompts.set(u.toolCallId, p);
+    found.push(...mediaOf(u, prompts.get(u.toolCallId)));
+  }
+  assert.ok(readImages >= 2, "the capture has pictures the model read back");
+  assert.equal(found.length, 1);
+  assert.match(found[0].file, /^\.grok\/sessions\/[^/]+\/[^/]+\/videos\/1\.mp4$/);
+  assert.equal(found[0].source, "file");
+  assert.match(found[0].prompt, /red circle/);
+  const mp4 = fs.readFileSync(path.join(dir, "video.mp4"));
+  assert.equal(mp4.subarray(4, 8).toString("latin1"), "ftyp", "the captured video is a real mp4");
+  assert.ok(mp4.length < 20 * 1024 * 1024);
 });

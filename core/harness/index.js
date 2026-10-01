@@ -85,11 +85,35 @@ export default {
       return msgs.map(m => `Message from the user via ${surfaceName(m.surface)}: ${m.text}`).join("\n\n");
     };
 
+    /**
+     * A hook may name only the session it belongs to, as vyred verified it (meta.thread, from the session's own socket or key), never
+     * another's: a call that carries someone else's session id could drain its queued words, release its slots or end its turn. A call with
+     * no verified thread (a terminal session's first hook, before it binds) may name only a session this Vyre has no thread record of.
+     * Person, module and link callers are not hooks and pass.
+     * @param {any} meta @param {any} session
+     */
+    const own = async (meta, session, { brief = false } = {}) => {
+      const m = meta || {};
+      if (!/^(?:mcp|harness)(?::|$)/.test(String(m.caller || "")) || session === undefined || session === null || session === "") return;
+      const refuse = () => { throw Object.assign(new Error("a hook names only its own session"), { code: "denied" }); };
+      if (typeof m.thread === "string" && m.thread) { if (String(session) !== m.thread) refuse(); return; }
+      // No verified thread. The SessionStart brief only informs (a terminal resuming a live headless thread is warned), so it may name any session.
+      // Anything else may not name a session that has its own verified channel: a live headless thread of Vyre's (its socket) or a bound terminal
+      // session (its key). A terminal session that is neither has no way to be verified, and keeps working.
+      if (brief) return;
+      const [claimed, o] = await Promise.all([ask("threads.claimed", { session: String(session) }), ask("threads.origin", { session: String(session) })]);
+      if ((claimed && claimed.headless) || (o && o.bound)) refuse();
+    };
+
     ctx.tool("harness.brief", {
       description: "SessionStart: what Claude should know about the project this thread is in. Empty outside a project.",
       input: { type: "object", properties: { cwd: { type: "string" }, session: { type: "string" }, source: { type: "string" }, project: { type: "string" }, projects: { type: "string" }, headless: { type: "boolean" } } },
-      run: async ({ cwd, session, source, project, projects, headless }) => {
-        if (session) ctx.events.emit("thread.started", { session, cwd: cwd || null, source: source || null });
+      run: async ({ cwd, session, source, project, projects, headless }, meta) => {
+        await own(meta, session, { brief: true });
+        // thread.started is said only for the hook's own verified session; an unverified caller gets just the warning below.
+        const mine = Boolean(meta && typeof meta.thread === "string" && meta.thread === session);
+        const verified = mine || !/^(?:mcp|harness)(?::|$)/.test(String((meta || {}).caller || ""));
+        if (session && verified) ctx.events.emit("thread.started", { session, cwd: cwd || null, source: source || null });
         const warning = session && !headless ? await secondWriter(session) : "";
         const withWarning = (/** @type {string} */ t) => [warning, t].filter(Boolean).join("\n\n");
         // Projects decides which project this is: from the folder first, then from the session's
@@ -134,7 +158,8 @@ export default {
       description: "UserPromptSubmit: memory relevant to this prompt, marked as memory with its source. Empty when nothing is relevant.",
       input: { type: "object", required: ["prompt"], properties: { prompt: { type: "string" }, cwd: { type: "string" }, session: { type: "string" }, prompt_id: { type: "string" }, agent: { type: "string" }, projects: { type: "string" },
         interactive: { type: "boolean" } } },
-      run: async ({ prompt, cwd, session, prompt_id, agent: named, projects, interactive }, { caller } = {}) => {
+      run: async ({ prompt, cwd, session, prompt_id, agent: named, projects, interactive }, { caller, ...meta } = {}) => {
+        await own({ caller, ...meta }, session);
         const agent = agentOf(named, caller);
         // Every prompt starts a turn for Learning, slash commands included; it may also be a correction.
         // interactive: the hook saw a person's Claude Code (a terminal, no -p); only then may a
@@ -180,7 +205,8 @@ export default {
       description: "PreToolUse: the security floor's verdict on a tool call, then the lessons'. null means no opinion; Claude Code's own permissions decide.",
       input: { type: "object", required: ["tool_name"], properties: { tool_name: { type: "string" }, tool_input: { type: "object" }, cwd: { type: "string" }, session: { type: "string" }, prompt_id: { type: "string" }, agent: { type: "string" }, tool_use_id: { type: "string" },
         plugin_root: { type: "string" } } },
-      run: async ({ tool_name, tool_input, cwd, session, prompt_id, agent: named, tool_use_id, plugin_root }, { caller } = {}) => {
+      run: async ({ tool_name, tool_input, cwd, session, prompt_id, agent: named, tool_use_id, plugin_root }, { caller, ...meta } = {}) => {
+        await own({ caller, ...meta }, session);
         const agent = agentOf(named, caller);
         /** @type {{ decision: "deny"|"ask"|null, reason?: string, rule?: number, lesson?: number }} */
         // Only an agent vyred vouched for (its key, harness:agent:<name>) gets its own folder as a
@@ -217,7 +243,8 @@ export default {
       description: "PostToolUse and PostToolUseFailure: record which files a tool changed, so every change is visible (security floor rule 5), and tell Learning what became of the call (ok false: it failed).",
       input: { type: "object", required: ["tool_name"], properties: { tool_name: { type: "string" }, tool_input: { type: "object" }, cwd: { type: "string" }, session: { type: "string" },
         tool_use_id: { type: "string" }, ok: { type: "boolean" }, error_head: { type: "string" }, interrupted: { type: "boolean" } } },
-      run: async ({ tool_name, tool_input, cwd, session, tool_use_id, ok = true, error_head, interrupted }) => {
+      run: async ({ tool_name, tool_input, cwd, session, tool_use_id, ok = true, error_head, interrupted }, meta) => {
+        await own(meta, session);
         if (SUBAGENT.test(String(tool_name)) && session && tool_use_id) await releaseSlots(session, tool_use_id);
         const key = WRITERS[/** @type {keyof typeof WRITERS} */ (tool_name)];
         const raw = key && tool_input ? tool_input[key] : null;
@@ -241,15 +268,15 @@ export default {
     ctx.tool("harness.touched", {
       description: "Files changed in a thread, newest first.",
       input: { type: "object", required: ["session"], properties: { session: { type: "string" }, limit: { type: "integer" } } },
-      run: async ({ session, limit }) =>
-        db.prepare("SELECT path, tool, at FROM harness_files WHERE session = ? ORDER BY at DESC LIMIT ?").all(session, limit || 100),
+      run: async ({ session, limit }, meta) => { await own(meta, session); return db.prepare("SELECT path, tool, at FROM harness_files WHERE session = ? ORDER BY at DESC LIMIT ?").all(session, limit || 100); },
     });
 
     ctx.tool("harness.stop", {
       description: "Stop: the lessons' output checks, then words queued for this session from another surface, then the turn is complete for every surface watching this thread. decision block sends the turn back to Claude with the reason.",
       input: { type: "object", properties: { session: { type: "string" }, prompt_id: { type: "string" }, cwd: { type: "string" }, agent: { type: "string" }, text: { type: "string" }, stop_hook_active: { type: "boolean" },
         headless: { type: "boolean" } } },
-      run: async ({ session, ...turn }, { caller } = {}) => {
+      run: async ({ session, ...turn }, { caller, ...meta } = {}) => {
+        await own({ caller, ...meta }, session);
         if (session) await releaseSlots(session);                       // a turn's end gives its subagent slots back
         const agent = agentOf(turn.agent, caller);
         const check = session ? await ask("learn.check", { stage: "stop", session, ...turn, ...(agent ? { agent } : {}) }) : null;

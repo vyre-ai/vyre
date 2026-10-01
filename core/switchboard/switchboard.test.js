@@ -719,7 +719,7 @@ test("threads.unqueue: a person takes back words not yet handed over; handed-ove
   const a = (await tool("threads.send", { thread: busy.id, text: "first", surface: "capsule" }, "capsule")).data;
   const b = (await tool("threads.send", { thread: busy.id, text: "second", surface: "capsule" }, "capsule")).data;
   assert.ok(Number.isInteger(a.queued_id) && b.queued_id > a.queued_id, JSON.stringify(b));
-  assert.match((await tool("threads.unqueue", { thread: busy.id, queued: a.queued_id }, "mcp")).error.message, /only a person's surface/);
+  assert.match((await tool("threads.unqueue", { thread: busy.id, queued: a.queued_id }, "mcp")).error.message, /only a person's surface|not available to mcp callers/);
   assert.deepEqual((await tool("threads.unqueue", { thread: busy.id, queued: a.queued_id }, "capsule")).data, { unqueued: [a.queued_id] });
   // Only "second" is handed over at the Stop.
   const stop = (await tool("harness.stop", { session: busy.id, text: "Done.", stop_hook_active: false }, "harness")).data;

@@ -27,6 +27,12 @@ export const ACCOUNTS_MIGRATION = `CREATE TABLE IF NOT EXISTS sessions_accounts 
 CREATE TABLE IF NOT EXISTS sessions_uids_dirty (uid INTEGER PRIMARY KEY);
 CREATE UNIQUE INDEX IF NOT EXISTS sessions_accounts_uid ON sessions_accounts(uid);`;
 
+/** An account a non-person caller started: unusable (pending) until a person finishes the step on their own device (the person's own confirm on their surface, after a login's sign-in has finished or for a key's account). */
+export const ACCOUNTS_PENDING_MIGRATION = `ALTER TABLE sessions_accounts ADD COLUMN pending INTEGER NOT NULL DEFAULT 0`;
+
+/** Whether the provider keeps and may train on this account's sessions (1: privacy mode on, it does not; 0: off). Only Grok has such a setting, held by xAI for the account; this is Vyre's record of the person's choice. */
+export const ACCOUNTS_PRIVACY_MIGRATION = `ALTER TABLE sessions_accounts ADD COLUMN privacy INTEGER NOT NULL DEFAULT 1`;
+
 /** The box image's account uids (integrator's Wave A0 image): 2000-2063, gid = uid. */
 export const UID_MIN = 2000;
 export const UID_MAX = 2063;
@@ -72,7 +78,7 @@ export class Accounts {
   fromRow(r) {
     return { id: r.id, provider: r.provider, label: r.label, kind: r.kind || "api-key", vault_item: r.vault_item == null ? null : r.vault_item, uid: r.uid == null ? null : Number(r.uid), signed_in_at: r.signed_in_at == null ? null : Number(r.signed_in_at),
       scope: { projects: JSON.parse(r.scope_projects), agents: JSON.parse(r.scope_agents) },
-      is_default: Boolean(r.is_default), added: r.added, updated: r.updated };
+      is_default: Boolean(r.is_default), pending: Boolean(r.pending), privacy: r.provider === "grok" ? Boolean(r.privacy ?? 1) : null, needs: (r.kind || "api-key") === "login" && r.signed_in_at == null ? "sign-in" : (r.pending ? "confirm" : null), added: r.added, updated: r.updated };
   }
 
   /** Every account for a provider (or every account, provider omitted), plus a synthesized
@@ -138,8 +144,17 @@ export class Accounts {
     const uid = await this.allocate();
     const now = Date.now();
     if (i.is_default) this.db.prepare("UPDATE sessions_accounts SET is_default = 0 WHERE provider = ?").run(provider);
-    this.db.prepare(`INSERT INTO sessions_accounts (id, provider, label, kind, vault_item, scope_projects, scope_agents, is_default, uid, added, updated)
-      VALUES (?,?,?,?,?,?,?,?,?,?,?)`).run(id, provider, label, kind, vaultItem, JSON.stringify(scope.projects), JSON.stringify(scope.agents), i.is_default ? 1 : 0, uid, now, now);
+    this.db.prepare(`INSERT INTO sessions_accounts (id, provider, label, kind, vault_item, scope_projects, scope_agents, is_default, uid, added, updated, pending)
+      VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`).run(id, provider, label, kind, vaultItem, JSON.stringify(scope.projects), JSON.stringify(scope.agents), i.is_default ? 1 : 0, uid, now, now, i.pending ? 1 : 0);
+    return this.row(id);
+  }
+
+  /** The person's privacy choice for an account on a provider that has one. @param {string} id @param {boolean} on */
+  setPrivacy(id, on) {
+    const r = this.row(id);
+    if (!r || r.synthetic) throw Object.assign(new Error(`no account ${id}`), { code: "not_found" });
+    if (r.provider !== "grok") throw Object.assign(new Error(`${r.provider} has no privacy setting`), { code: "bad_input" });
+    this.db.prepare("UPDATE sessions_accounts SET privacy = ?, updated = ? WHERE id = ?").run(on ? 1 : 0, Date.now(), String(id));
     return this.row(id);
   }
 
@@ -165,8 +180,8 @@ export class Accounts {
     if (i.agent) scope.agents = add(scope.agents, String(i.agent));
     const now = Date.now();
     if (i.is_default) this.db.prepare("UPDATE sessions_accounts SET is_default = 0 WHERE provider = ?").run(r.provider);
-    this.db.prepare("UPDATE sessions_accounts SET scope_projects = ?, scope_agents = ?, is_default = ?, updated = ? WHERE id = ?")
-      .run(JSON.stringify(scope.projects), JSON.stringify(scope.agents), i.is_default ? 1 : (r.is_default ? 1 : 0), now, r.id);
+    this.db.prepare("UPDATE sessions_accounts SET scope_projects = ?, scope_agents = ?, is_default = ?, pending = ?, updated = ? WHERE id = ?")
+      .run(JSON.stringify(scope.projects), JSON.stringify(scope.agents), i.is_default ? 1 : (r.is_default ? 1 : 0), i.confirm && !(r.kind === "login" && r.signed_in_at == null) ? 0 : (r.pending ? 1 : 0), now, r.id);
     return this.row(r.id);
   }
 
@@ -183,10 +198,14 @@ export class Accounts {
   resolve(i) {
     const provider = String(i.provider || "");
     const target = { project: i.project || null, agent: i.agent || null };
-    const all = this.list(provider);
+    const listed = this.list(provider);
+    // An account a non-person started is not usable until the person finishes it on their own device: never chosen, never a fallback.
+    const all = listed.filter(a => !a.pending);
     const real = all.filter(a => !a.synthetic);
 
     if (i.account) {
+      const waiting = listed.find(a => a.id === i.account && a.pending);
+      if (waiting) throw Object.assign(new Error(`${waiting.label} is waiting for the person to finish setting it up on their own device`), { code: "pending" });
       const chosen = all.find(a => a.id === i.account);
       if (!chosen) throw Object.assign(new Error(`no account ${i.account} on ${provider}`), { code: "not_found" });
       if (!inScope(chosen.scope, target)) throw Object.assign(new Error(`${chosen.label} is not granted to ${target.project ? "project " + target.project : target.agent ? "agent " + target.agent : "this call"}`), { code: "denied" });

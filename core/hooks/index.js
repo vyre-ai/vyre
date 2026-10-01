@@ -254,7 +254,7 @@ export default {
       description: "One stored delivery by id (from a hook.received event or hooks.list): route, at, the allowlisted headers, bytes, and the body as text. For watchers and the owner; never an agent, a guest or the internet.",
       input: obj({ id: str }, ["id"]),
       run: async ({ id }, { caller }) => {
-        if (isAgent(caller)) throw refuse(`"${caller}" is an agent; a webhook's body is read by the owner's watchers`);
+        if (isAgent(caller) || /^(?:mcp|harness)(?::|$)/.test(String(caller || ""))) throw refuse(`"${caller}" is a model's call; a webhook's body is read by the owner's watchers`);
         reader(caller);
         const d = store.get(id);
         if (!d) throw refuse(`no delivery ${id}; deliveries are kept for 7 days, the newest 500`, "not_found");

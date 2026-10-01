@@ -6,7 +6,7 @@
 // MEASURED on a hosted runner (scripts/provider-wire-proof.mjs, codex-cli 0.159.2 and codex-acp 2.0.1, 1 Oct 2026):
 //  - initialize offers api-key and chat-gpt (and gateway when the client says it supports it); session/new answers
 //    "Authentication required" (-32000) until authenticate {methodId}; the api-key method reads OPENAI_API_KEY or CODEX_API_KEY.
-//  - a session starts in mode "agent" (modes read-only, workspace-write, agent, agent-full-access); `-c key=value` flags on the
+//  - a session starts in mode "agent" (modes read-only, workspace-write, agent, agent-full-access), which Vyre moves to "workspace-write"; `-c key=value` flags on the
 //    adapter's argv change neither the mode nor the model provider, so none are passed.
 //  - the gateway method (client capability auth._meta.gateway, authenticate _meta.gateway {baseUrl, headers, providerName}) does
 //    point Codex at another OpenAI-compatible endpoint: a real turn ran end to end against a local stand-in (POST /v1/responses).
@@ -33,11 +33,20 @@ export function codexProvider(o = {}) {
     // asking is the adapter's own mode: it starts in "agent" (approval and sandbox preset), "agent-full-access" is filtered
     // not allowed (acp.js ALLOWED_MODES is an allowlist, narrowed here to read-only and agent), and a start mode not allowed is moved or the session does not run.
     args: () => [],
-    // Only the modes where Codex asks or cannot write: "workspace-write" is not listed until measured, "agent-full-access" never.
-    allowModes: /^(read-only|agent)$/i,
-    // Pinned on every start: "agent" (Codex's approval and sandbox preset), else "read-only". Codex's own config cannot choose it.
-    pinMode: ["agent", "read-only"],
-    askMode: /^(agent|read-only)$/i,
+    // MEASURED on codex-cli 0.159.3 and codex-acp 2.1.0 (a real Codex against a scripted stand-in for the model, scripts/provider-tool-proof.mjs):
+    //  - "workspace-write" ("ask before writing outside the workspace or accessing the network") and "read-only" ("requires approval to edit
+    //    files and access the internet") send the person's client a session/request_permission for a command that must leave the
+    //    sandbox, and the command runs only if the client allows it;
+    //  - "agent" is now named "Auto review" ("only ask for actions detected as potentially unsafe"): a MODEL (the guardian, on the same
+    //    gateway) decides, and no question reaches the client at all, so neither a person nor Vyre's floor sees the command. It is never
+    //    listed or started in. (Before codex-acp 2.1.0 "agent" was the approval preset; its id stayed and its meaning did not.)
+    //  - "agent-full-access" never asks.
+    // Vyre's own MCP server is gated by vyred on every call, so Codex's per-call approval for it (which names no tool) is let through (acp.js).
+    mcpOwn: true,
+    allowModes: /^(read-only|workspace-write)$/i,
+    // Pinned on every start: "workspace-write" (Codex's own sandbox plus a question for what leaves it), else "read-only". Codex's own config cannot choose it.
+    pinMode: ["workspace-write", "read-only"],
+    askMode: /^(workspace-write|read-only)$/i,
     // HOME is the account's (the spawner sets it on a box, the Switchboard on a Mac); the sign-in lives under it.
     env: run => { const home = run.env && run.env.HOME; return home ? { CODEX_HOME: path.join(String(home), ".codex") } : {}; },
     secretEnv: () => ["OPENAI_API_KEY", "CODEX_API_KEY", ...(o.custom ? [o.custom.envKey] : [])],

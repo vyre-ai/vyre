@@ -23,7 +23,7 @@ import { serveApp } from "./app.js";
 import { acquire } from "./lock.js";
 import { Presence, PERSON_ONLY, HUMAN_ONLY, SESSIONABLE, personOnly, fingerprint, parse as parsePresence, core as coreHolder } from "../presence/index.js";
 import { readCoreConfig, coreLink } from "../../lib/vyre-core-client.js";
-import { peerPid, peerHosting, insideClaude, processTable, loginOf, tmuxClients, controllingTty, canReadPeers, verifiedCapsule, signatureOf } from "./peer.js";
+import { peerPid, peerHosting, insideClaude, processTable, ancestry, peerIdentity, loginOf, tmuxClients, controllingTty, canReadPeers, verifiedCapsule, signatureOf } from "./peer.js";
 import { PersonSessions, COOKIE, MAX as PERSON_MAX, carried } from "../presence/person.js";
 import { allowedTools } from "../names/guests.js";
 import { registryRules } from "../harness/rules.js";
@@ -591,6 +591,13 @@ async function route(req, res, { registry, events, cfg, started, streams, root, 
     if (!(v && v.data && v.data.thread)) return send(res, 403, { error: { code: "denied", message: `the caller says it is in session ${session.slice(0, 8)}, and vyred has no running session bound with this key` } });
     via.thread = v.data.thread;
   }
+  // A plain model caller (Claude Code through Vyre's MCP, no verified thread or agent): who it is, from the kernel, for the threads tools that
+  // narrow it. Set here only, over anything a client could send: meta.peerSession "<claude pid>:<start>" and meta.peerCwd, null where unreadable.
+  if (socket && !via.thread && !via.agent && MODEL_LABEL.test(caller)) {
+    const pid = await peerPid(req.socket).catch(() => null);
+    const who = pid ? peerIdentity(pid, processTable()) : { session: null, cwd: null };
+    Object.assign(via, { peerSession: who.session, peerCwd: who.cwd });
+  }
   // What a verified agent is really granted, from its stored row (agents.scope), never from
   // anything the caller sent: a tool that scopes by project reads meta.granted ("*" or slugs).
   // A named agent with no row is granted nothing.
@@ -725,6 +732,24 @@ async function route(req, res, { registry, events, cfg, started, streams, root, 
       if (!live) { live = true; res.writeHead(200, { "content-type": "application/x-ndjson", "cache-control": "no-store" }); }
       res.write(JSON.stringify({ draft: d }) + "\n");
     } : null;
+    // threads.bind names a claude process: it must be the caller's own, or one above it (the hook runs under its claude). A session
+    // cannot bind another running claude's pid and so take its key. Where the OS cannot say who is calling, the tool's own claudeOf check stands.
+    if (socket && name === "threads.bind" && input && Number.isInteger(Number(input.pid))) {
+      const caller_pid = await peerPid(req.socket).catch(() => null);
+      if (!caller_pid) { try { /** @type {any} */ (registry).deps.log("daemon: threads.bind from a peer the OS cannot name; only the tool's own claude check applies"); } catch { /* no log */ } }
+      if (caller_pid) {
+        const mine = ancestry(caller_pid, processTable()).chain.map(c => c.pid);
+        let ok = mine.includes(Number(input.pid)); // the caller's own process or one above it: a hook under its claude
+        // Tests only: a test process stands in for the hook and binds the fake claude it started (its descendant). In production a descendant never counts.
+        if (!ok && process.env.NODE_TEST_CONTEXT) ok = ancestry(Number(input.pid), processTable()).chain.some(c => c.pid === caller_pid);
+        if (!ok) {
+          // Or a process vyred itself started (a headless thread's claude), for a session id nothing is bound to yet.
+          const [pids, origin] = await Promise.all([registry.call("threads.pids", {}, "module:vyred"), registry.call("threads.origin", { session: String(input.session || "") }, "module:vyred")]);
+          ok = Boolean(pids.data && Array.isArray(pids.data.pids) && pids.data.pids.includes(Number(input.pid)) && origin.data && !origin.data.bound);
+        }
+        if (!ok) return send(res, 403, { error: { code: "denied", message: "a session binds only its own process or one vyred started, not another's" } });
+      }
+    }
     const result = await registry.call(name, input, caller, { ...via, proof, ...(draft ? { draft } : {}), ...(terminal ? { terminal } : {}), ...(call ? { call } : {}), ...(signed !== undefined ? { codeSignature: signed } : {}),
       keep: req.headers["x-vyre-presence-keep"] === "1", idempotencyKey: idemKey(req) });
     // A new person session for the Deck goes in the cookie, never in the body a script could read.

@@ -8,8 +8,8 @@
   },
   "core/agents/index.js": {
    "count": 1,
-   "owner": "module's own team",
-   "note": "computed tool name: reviewed by the owner against the callee's reach (pending)"
+   "owner": "sessions",
+   "note": "reviewed (sessions, 1 Oct): use() calls threads.launch, send, list, usage, history, stop, none asked or person; all reach anyone or modules"
   },
   "core/assistant/index.js": {
    "count": 5,
@@ -33,8 +33,8 @@
   },
   "core/harness/index.js": {
    "count": 1,
-   "owner": "module's own team",
-   "note": "computed tool name: reviewed by the owner against the callee's reach (pending)"
+   "owner": "sessions",
+   "note": "reviewed (sessions, 1 Oct): ask() calls learn.*, memory.*, team.project-append, threads.get/replied, projects.*, sessions.slots, gate.route; none is asked, person or hook (style.append is absent and tolerated)"
   },
   "core/learn/index.js": {
    "count": 1,
