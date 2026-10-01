@@ -197,6 +197,14 @@ try {
     try { await shot("failure"); } catch {}
   }
 } finally {
-  if (page) await page.close();
+  if (page) {
+    // The setup page never asks for a private address (launch's invariant): every request goes to the page's own site or the relay,
+    // the two stand-in origins here, or to a public host. Anything in RFC1918, loopback, link-local or tailnet space beyond those is a leak.
+    const own = new Set([new URL(site).origin, new URL(site).origin.replace(/^http/, "ws"), ...(arg("relay") ? [`http://${new URL(arg("relay").replace(/^ws/, "http")).host}`, `ws://${new URL(arg("relay").replace(/^ws/, "http")).host}`] : [])]);
+    const priv = h => /^(127\.|10\.|192\.168\.|169\.254\.|172\.(1[6-9]|2\d|3[01])\.|100\.(6[4-9]|[7-9]\d|1[01]\d|12[0-7])\.|0\.0\.0\.0$)/.test(h) || /^\[?(::1|fe80:|fc|fd)/i.test(h) || h === "localhost";
+    const bad = [...new Set(page.requests.filter(u => { try { const x = new URL(u); return /^(https?|wss?):$/.test(x.protocol) && priv(x.hostname.replace(/^\[|\]$/g, "")) && !own.has(x.origin); } catch { return false; } }).map(u => new URL(u).origin))];
+    r.step("1.12-no-private-address-requested", bad.length === 0, { why: bad.length ? "the page requested " + bad.join(", ") : `${page.requests.length} requests, none to a private address beyond the stand-in origins` });
+    await page.close();
+  }
 }
 process.exit(r.failed ? 1 : 0);
