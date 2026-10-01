@@ -129,6 +129,31 @@ export function promptModel(r) {
   const id = typeof m.modelId === "string" && m.modelId ? m.modelId : typeof q === "string" && q ? q : null;
   return id ? id.slice(0, 80) : null;
 }
+/**
+ * What a turn used, from the session/prompt RESPONSE, shaped as the Switchboard reads Claude's usage (input_tokens without the cached part,
+ * output_tokens, cache_read_input_tokens, cache_creation_input_tokens), so agents.usage and a budget work for every provider.
+ * MEASURED: neither Codex nor Grok sends a usage_update for tokens. Codex puts the standard ACP `usage` on the response
+ * ({inputTokens, outputTokens, cachedReadTokens, thoughtTokens, totalTokens}); Grok Build puts the same names in `_meta` (also under
+ * `_meta.usage`, with `modelId` and `costUsdTicks`, a cost whose unit xAI does not document, passed on as `cost_usd_ticks` and never
+ * turned into dollars here). Both count the cached part INSIDE inputTokens (total = input + output), so the plain input is input minus cached.
+ * Nothing is invented: a response that says nothing gives no keys.
+ * @param {any} r @returns {Record<string, any>}
+ */
+export function promptTokens(r) {
+  const n = v => (Number.isFinite(Number(v)) && Number(v) >= 0 ? Number(v) : null);
+  const m = r && r._meta && typeof r._meta === "object" ? r._meta : {};
+  const u = (r && r.usage && typeof r.usage === "object" ? r.usage : null) || (m.usage && typeof m.usage === "object" ? m.usage : null) || m;
+  const input = n(u.inputTokens), output = n(u.outputTokens);
+  if (input === null && output === null) return {};
+  const cached = n(u.cachedReadTokens) ?? 0;
+  const out = { input_tokens: Math.max(0, (input ?? 0) - cached), output_tokens: output ?? 0, cache_read_input_tokens: cached, cache_creation_input_tokens: n(u.cacheCreationTokens) ?? n(u.cachedWriteTokens) ?? 0 };
+  const reasoning = n(u.reasoningTokens) ?? n(u.thoughtTokens);
+  if (reasoning !== null) out.reasoning_tokens = reasoning;
+  if (typeof m.modelId === "string") out.model = m.modelId.slice(0, 80);
+  const ticks = n(u.costUsdTicks);
+  if (ticks !== null) out.cost_usd_ticks = ticks;
+  return out;
+}
 const kill = (pid, sig) => { try { process.kill(pid, sig); } catch {} };
 const alive = pid => { try { process.kill(pid, 0); return true; } catch (e) { return /** @type {any} */ (e).code === "EPERM"; } };
 
@@ -621,7 +646,7 @@ function runAcp(entry, known, o) {
       if (turnText) say({ type: "assistant", message: { id: `acp-turn-${Date.now()}`, content: [{ type: "text", text: turnText }] } });
       const bad = r && r.error;
       say({ type: "result", subtype: bad ? "error" : "success", is_error: Boolean(bad), result: bad ? String(r.error.message || r.error) : turnText,
-        stop_reason: r && r.stopReason || null, total_cost_usd: usage && usage.cost || 0, usage: usage || {} });
+        stop_reason: r && r.stopReason || null, total_cost_usd: usage && usage.cost || 0, usage: { ...(usage || {}), ...(bad ? {} : promptTokens(r)) }, ...(!bad && promptModel(r) ? { model: promptModel(r) } : {}) });
       busy = false; pump();
     });
   }

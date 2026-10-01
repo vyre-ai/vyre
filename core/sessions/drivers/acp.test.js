@@ -13,7 +13,7 @@ import { tempHome } from "../../../test/helpers.js";
 import { SCRATCH } from "../../../test/scratch.mjs";
 import { conform } from "../conformance.js";
 import { rules } from "../../harness/rules.js";
-import { projectCodexConfig, seedTampered, acpProvider, askFor, mediaOf, modelsOf } from "./acp.js";
+import { projectCodexConfig, seedTampered, promptTokens, acpProvider, askFor, mediaOf, modelsOf } from "./acp.js";
 import { seedFiles } from "../spawn.js";
 import { codexProvider } from "./codex.js";
 
@@ -253,6 +253,26 @@ test("acp: Codex's plan question (switch_mode) is a question card with the plan 
     assert.match(s.got.filter(m => m.type === "stream_event").map(m => m.event.delta.text).join(""), new RegExp(want), how);
     await s.proc.stop(500);
   }
+});
+
+test("acp: a turn's tokens come from the prompt response (Codex's usage, Grok's _meta), shaped as Claude's usage, with the cached part split out", async t => {
+  for (const [mode, extra] of [["acp", {}], ["grok", { model: "grok-x", cost_usd_ticks: 113859200 }]]) {
+    const w = world(t);
+    const s = open(w, { env: { ...w.env, FAKE_ACP_USAGE: mode } });
+    s.proc.write({ type: "user", message: { role: "user", content: "hello" } });
+    const r = await s.until(m => m.type === "result", "the result");
+    assert.deepEqual({ ...r.usage }, { input_tokens: 70, output_tokens: 20, cache_read_input_tokens: 30, cache_creation_input_tokens: 0, reasoning_tokens: 5, ...extra }, mode);
+    assert.equal(r.model, mode === "grok" ? "grok-x" : undefined, "Grok's model rides on the result, Codex's none in this fake");
+    await s.proc.stop(500);
+  }
+  const w = world(t);
+  const s = open(w);
+  s.proc.write({ type: "user", message: { role: "user", content: "hello" } });
+  assert.deepEqual((await s.until(m => m.type === "result", "the result")).usage, {}, "a response that says nothing gives no tokens");
+  await s.proc.stop(500);
+  assert.deepEqual(promptTokens(null), {});
+  assert.deepEqual(promptTokens({ usage: { inputTokens: "x" } }), {});
+  assert.equal(promptTokens({ usage: { inputTokens: 10, cachedReadTokens: 50, outputTokens: 1 } }).input_tokens, 0, "never negative");
 });
 
 test("acp: fs/read_text_file goes past the floor first: a vault path is refused and its bytes never leave the disk", async t => {
