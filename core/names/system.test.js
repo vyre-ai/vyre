@@ -484,10 +484,6 @@ test("install-box.sh: a web page where SHA256SUMS should be is refused", t => {
   assert.ok(!fs.existsSync(r.wrapper));
 });
 
-/** The box wrapper checks a release signature with the host's openssl (Ed25519 needs OpenSSL, not the LibreSSL a Mac has in /usr/bin). */
-const ED25519 = /^OpenSSL/.test(spawnSync("/usr/bin/openssl", ["version"], { encoding: "utf8" }).stdout || "");
-const NO_ED25519 = !ED25519 && "the host's /usr/bin/openssl is not OpenSSL (a Mac's LibreSSL), which the box wrapper's signature check needs; runs on Linux";
-
 /** A box built from $DIR/src, ready for `vyre update`. */
 function builtBox(t) {
   const box = setup(t);
@@ -507,7 +503,7 @@ function builtBox(t) {
   return { ...box, env, update };
 }
 
-test("box/vyre: update refetches a verified vyre.tgz into DIR/src, then builds", { skip: NO_ED25519 }, t => {
+test("box/vyre: update refetches a verified vyre.tgz into DIR/src, then builds", t => {
   const box = builtBox(t);
   const r = box.update();
   assert.equal(r.status, 0, r.stderr);
@@ -521,7 +517,7 @@ test("box/vyre: update refetches a verified vyre.tgz into DIR/src, then builds",
   assert.ok(calls.includes("docker compose up -d"));
 });
 
-test("box/vyre: update with a tampered vyre.tgz keeps DIR/src and does not build", { skip: NO_ED25519 }, t => {
+test("box/vyre: update with a tampered vyre.tgz keeps DIR/src and does not build", t => {
   const box = builtBox(t);
   fs.appendFileSync(path.join(box.site, "vyre.tgz"), "x");
   const r = box.update();

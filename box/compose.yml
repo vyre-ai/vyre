@@ -108,10 +108,7 @@ services:
     # container drops to uid vyre by itself.
     user: "0:0"
     cap_drop: [ALL]
-    # NET_ADMIN and SETPCAP are for the entry script's one-shot step only (core/spawner/wall-entry.sh): it installs the
-    # watcher wall's outbound REJECT rule on this namespace, probes it, and replaces itself with the spawner under a bounding
-    # set without both, so the serving spawner holds neither. vyred (uid vyre) and every child hold no capability at all.
-    cap_add: [SETUID, SETGID, KILL, NET_ADMIN, SETPCAP]
+    cap_add: [SETUID, SETGID, KILL]
     security_opt:
       - no-new-privileges:true
     labels:

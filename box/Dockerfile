@@ -1,9 +1,7 @@
 # The Vyre box image. Build context is the repo root:
 #   docker build -f box/Dockerfile .
 # Normally built through box/compose.build.yml, or pulled as ghcr.io/vyre-ai/vyre.
-# Base images are pinned by digest, so `compose build --pull` (a source build) cannot be handed other bytes under the same tag. Bump a pin on purpose,
-# with the tag it was taken from in the comment (test/box-init.test.js fails an unpinned FROM or COPY --from).
-FROM node:22-bookworm-slim@sha256:43ac6c60b8f89723f746e8a92ce91abd5017e627ce1ddfe4238355d3a30b772c
+FROM node:22-bookworm-slim
 
 ARG CLAUDE_CODE_VERSION=latest
 
@@ -11,12 +9,12 @@ LABEL run.vyre="1" \
       org.opencontainers.image.source="https://github.com/vyre-ai/vyre"
 
 RUN apt-get update \
- && apt-get install -y --no-install-recommends ca-certificates git tar openssl curl procps dtach tini iptables \
+ && apt-get install -y --no-install-recommends ca-certificates git tar openssl curl procps dtach tini \
  && rm -rf /var/lib/apt/lists/*
 
 # The tailscale CLI only. tailscaled runs in the tailscale container; the CLI talks to it
 # through the shared socket at /var/run/tailscale/tailscaled.sock.
-COPY --from=tailscale/tailscale:stable@sha256:c507f3a2a6ab1cabd8d809b98edeb41edbd5c3fb6ad9632ffd098b4c7d0b4065 /usr/local/bin/tailscale /usr/local/bin/tailscale
+COPY --from=tailscale/tailscale:stable /usr/local/bin/tailscale /usr/local/bin/tailscale
 
 # The GitHub CLI, for "Sign in with GitHub": vyred runs the real `gh auth login --web` (core/github), so gh is in the image at
 # /usr/local/bin/gh, where vyred finds it as plain `gh`. Pinned, and the release archive is checked against the sum in the release's
@@ -63,7 +61,7 @@ RUN groupadd -g 1002 vyre-work \
  && groupadd -g 1001 vyre-agent \
  && useradd -u 1001 -g 1001 -G vyre-work -m -d /home/vyre-agent -s /bin/sh vyre-agent \
  && usermod -aG vyre-work vyre \
- && chown 1000:1002 /work && chmod 2770 /work \
+ && chown 1000:1002 /work && chmod 2775 /work \
  && chmod 700 /home/vyre \
  && chown 1001:1002 /home/vyre-agent && chmod 2750 /home/vyre-agent \
  && mkdir -p /run/vyre && chown 0:1000 /run/vyre && chmod 2750 /run/vyre \
@@ -106,5 +104,4 @@ WORKDIR /home/vyre
 # docker run), the spawner runs the loop itself. A vyred restart keeps every terminal (ADR 0029,
 # R4); a deploy recreates the container, and its terminals end; the Deck says so (term.closed).
 ENTRYPOINT ["/usr/bin/tini", "--"]
-# core/spawner/wall-entry.sh installs and probes the watcher wall as root, drops NET_ADMIN, and execs the spawner.
-CMD ["/bin/sh", "/opt/vyre/core/spawner/wall-entry.sh"]
+CMD ["node", "/opt/vyre/core/spawner/main.js"]

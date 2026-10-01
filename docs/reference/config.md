@@ -160,11 +160,6 @@ Vyre reads these when they are set. None is needed for normal use.
 | `VYRE_UPDATE_STATE` | Not described yet. | `core/update/index.js` |
 | `VYRE_UP_WAIT_MS` | Not described yet. | `core/cli/daemonctl.js` |
 | `VYRE_USER_HOME` | Not described yet. | `core/spawner/main.js` |
-| `VYRE_WALL_STATUS` | Not described yet. | `core/spawner/main.js` |
-| `VYRE_WATCH_HOME` | Not described yet. | `core/spawner/main.js` |
-| `VYRE_WATCH_NODE` | Not described yet. | `core/spawner/main.js` |
-| `VYRE_WATCH_UID_MAX` | Not described yet. | `core/spawner/main.js` |
-| `VYRE_WATCH_UID_MIN` | Not described yet. | `core/spawner/main.js` |
 | `VYRE_WORK` | Not described yet. | `core/spawner/main.js`, `core/switchboard/index.js` |
 | `VYRE_WORK_DIR` | Not described yet. | `core/config/index.js` |
 | `VYRE_WORK_GID` | Not described yet. | `bin/vyre`, `core/spawner/main.js` |

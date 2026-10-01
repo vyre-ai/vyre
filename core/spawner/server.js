@@ -22,10 +22,6 @@
 //   owned by that uid, and be closed to every other user: it is checked before every spawn.
 //   {"op":"wipe","account":<uid>}                               -> {"wiped":true}: empties that account's HOME (as that uid)
 //                                                                 so a uid handed to a new account holds nothing of the last
-//   spawn may instead carry "role":"watcher" (the watcher wall, core/spawner/wall.js): argv[0] must be the watcher program
-//   (node), the child runs as a uid taken from a pool (one per concurrent run, never shared), with no supplementary group, an
-//   empty environment but HOME and TMPDIR inside a fresh 0700 folder that is emptied when it ends, and "ro": [absolute
-//   paths it may read] checked. Refused while the wall's status file says it is not in place, and while NET_ADMIN is held.
 // The child starts once both io connections are attached; a spawn nobody attaches to in 10 s ends.
 
 import crypto from "node:crypto";
@@ -48,7 +44,6 @@ const MAX_LIVE = 16;
  *   accounts?: { min: number, max: number, home: string, shared?: number[], stat?: (dir: string) => import("node:fs").Stats|null, wipe?: (dir: string, who: Who) => void } }} o
  *   allow: programs argv[0] may name (absolute paths). wrap: how the child is started as its user;
  *   the default is setpriv plus umask 002 plus tini as a subreaper. A test passes identity.
- *   watcher: the watcher wall (role "watcher"): { min, max, home, allow, status, reprobe?, heldCap?, wrap?, makeDir?, wipe? }; without it a watcher spawn is refused
  *   accounts: the per-account uid range and where each HOME lives (ADR 0030 phase 2); without it
  *   a spawn naming an account is refused. shared: the groups an account joins only when asked
  *   (the /work group).
@@ -91,11 +86,6 @@ export async function serve(o) {
   // Programs by their real path, so a symlink (/bin/sh to dash) is the program it names.
   const real = p => { try { return fs.realpathSync(p); } catch { return p; } };
   const allowed = new Set(o.allow.map(real));
-  const wl = o.watcher || null;
-  const watcherAllowed = new Set((wl ? wl.allow : []).map(real));
-  /** The pool uids in use; one run holds one, and nothing else shares it. */
-  const taken = new Set();
-  const takeUid = () => { if (!wl) return null; for (let u = wl.min; u <= wl.max; u++) if (!taken.has(u)) { taken.add(u); return u; } return null; };
   /** @type {Map<string, { req: any, control: net.Socket, stdio?: net.Socket, stderr?: net.Socket, child?: import("node:child_process").ChildProcess, timer: NodeJS.Timeout }>} */
   const live = new Map();
 
@@ -115,29 +105,8 @@ export async function serve(o) {
     sock.once("error", reject);
   });
 
-  /** A watcher spawn: why not, or null. Reserves nothing (the handler takes the uid). */
-  function refuseWatcher(req) {
-    if (!wl) return "this box has no watcher wall";
-    const st = wl.status();
-    if (!st.ok) return `the watcher wall is not in place${st.why ? ": " + st.why : ""}`;
-    if (wl.heldCap && wl.heldCap()) return "the watcher wall is not in place: the spawner still holds NET_ADMIN";
-    if (!Array.isArray(req.argv) || !req.argv.length || !req.argv.every(a => typeof a === "string" && !a.includes("\0"))) return "argv must be strings";
-    if (!path.isAbsolute(req.argv[0]) || !watcherAllowed.has(real(req.argv[0]))) return `${req.argv[0]} is not a program a watcher may run`;
-    for (const k of ["account", "shared", "seed", "fd3", "env"]) if (req[k] !== undefined) return `a watcher spawn takes no ${k}`;
-    if (req.ro !== undefined && (!Array.isArray(req.ro) || req.ro.length > 16 || !req.ro.every(/** @param {any} r */ r => typeof r === "string" && path.isAbsolute(r) && !r.includes("\0") && r.length < 1024))) return "ro is a short list of absolute paths";
-    if (live.size >= MAX_LIVE) return "too many sessions are running";
-    if (taken.size >= wl.max - wl.min + 1) return "every watcher slot is busy";
-    if (req.cwd !== undefined) {
-      const cwd = path.resolve(String(req.cwd));
-      const roots = [path.resolve(wl.home), ...(Array.isArray(req.ro) ? req.ro.map(r => path.resolve(r)) : [])];
-      if (!roots.some(r => cwd === r || cwd.startsWith(r + path.sep))) return "cwd must be under a watcher folder or one of its ro paths";
-    }
-    return null;
-  }
-
   /** Is this a spawn we will run? Returns why not, or null. */
   function refuse(req) {
-    if (req.role !== undefined) { if (req.role !== "watcher") return "role is watcher or left out"; return refuseWatcher(req); }
     if (!Array.isArray(req.argv) || !req.argv.length || !req.argv.every(a => typeof a === "string" && !a.includes("\0"))) return "argv must be strings";
     if (!path.isAbsolute(req.argv[0]) || !allowed.has(real(req.argv[0]))) return `${req.argv[0]} is not a program the spawner starts`;
     if (req.fd3 !== undefined && (typeof req.fd3 !== "string" || req.fd3.length > 4096)) return "fd3 must be a short string";
@@ -158,39 +127,17 @@ export async function serve(o) {
     return null;
   }
 
-  /** A watcher's pool uid goes back only after everything of it is gone: its processes, its folder and its files in /tmp. */
-  function releaseWatcher(s) {
-    if (!s.watcher || s.watcher.released) return;
-    s.watcher.released = true;
-    const { uid, who } = s.watcher;
-    try { (wl.wipe || defaultWatchWipe)(who.home, who); } catch (e) { log(`spawner: cannot empty watcher folder ${who.home}: ${/** @type {Error} */ (e).message}`); }
-    taken.delete(uid);
-  }
-  const asUid = (who, ...argv) => execFileSync("/usr/bin/setpriv", [`--reuid=${who.uid}`, `--regid=${who.gid}`, "--clear-groups", "--inh-caps=-all", "--", ...argv], { stdio: "ignore" });
-  const defaultWatchDir = (dir, who) => asUid(who, "/bin/sh", "-c", 'umask 077; mkdir -p "$1"', "sh", dir);
-  const defaultWatchWipe = (home, who) => {
-    try { asUid(who, "/bin/sh", "-c", "kill -KILL -1"); } catch {}
-    try { asUid(who, "/bin/rm", "-rf", home); } catch {}
-    try { asUid(who, "/usr/bin/find", "/tmp", "/var/tmp", "-mindepth", "1", "-user", String(who.uid), "-delete"); } catch {}
-  };
-  const watcherWrap = (argv, cwd, who) => ["/usr/bin/setpriv", `--reuid=${who.uid}`, `--regid=${who.gid}`, "--clear-groups", "--inh-caps=-all", "--bounding-set=-all", "--", "/bin/sh", "-c",
-    'umask 077; cd "$1" || exit 126; shift; exec "$@"', "sh", cwd, "/usr/bin/tini", "-s", "--", ...argv];
-
   function start(id) {
     const s = live.get(id);
     if (!s || !s.stdio || !s.stderr || s.child) return;
     clearTimeout(s.timer);
     const env = {};
-    for (const [k, v] of Object.entries(s.watcher ? {} : s.req.env || {})) if (ENV_KEYS.test(k) && typeof v === "string" && !v.includes("\0")) env[k] = v;
+    for (const [k, v] of Object.entries(s.req.env || {})) if (ENV_KEYS.test(k) && typeof v === "string" && !v.includes("\0")) env[k] = v;
     // Checked again here, at the moment of starting, not only when the request came in.
-    const w = s.watcher ? { who: s.watcher.who, why: null } : whoFor(s.req);
+    const w = whoFor(s.req);
     if (!w.who) { try { s.control.end(JSON.stringify({ error: w.why }) + "\n"); } catch {} end(id, w.why || "refused"); return; }
     const who = w.who;
-    if (s.watcher) {
-      // Its own fresh folder, made as that uid (root here has no right to write into one it does not own).
-      env.HOME = who.home; env.TMPDIR = path.join(who.home, "tmp");
-      try { (wl.makeDir || defaultWatchDir)(env.TMPDIR, who); } catch (e) { log(`spawner: cannot make ${env.TMPDIR}: ${/** @type {Error} */ (e).message}`); try { s.control.end(JSON.stringify({ error: "the watcher's folder could not be made" }) + "\n"); } catch {} end(id, "no folder"); return; }
-    } else if (who.home) { env.HOME = who.home; env.USER = who.account !== undefined ? `acct${who.account}` : "vyre-agent"; }
+    if (who.home) { env.HOME = who.home; env.USER = who.account !== undefined ? `acct${who.account}` : "vyre-agent"; }
     // The HOME's group can walk in (710): see whoFor. Done as that uid, which owns it.
     if (who.account !== undefined && who.home && o.grantGroup) { try { o.grantGroup(who.home, who); } catch (e) { log(`spawner: cannot open ${who.home} to its group: ${/** @type {Error} */ (e).message}`); } }
     // Config the provider reads, written fresh as the account's uid at every start.
@@ -202,11 +149,11 @@ export async function serve(o) {
       env.TMPDIR = path.join(who.home, ".tmp");
       if (o.makeDir) { try { o.makeDir(env.TMPDIR, who); } catch (e) { log(`spawner: cannot make ${env.TMPDIR}: ${/** @type {Error} */ (e).message}`); } }
     }
-    const cwd = path.resolve(String(s.req.cwd || (s.watcher ? who.home : work)));
-    const argv = s.watcher ? (wl.wrap || watcherWrap)(s.req.argv, cwd, who) : wrap(s.req.argv, cwd, who);
+    const cwd = path.resolve(String(s.req.cwd || work));
+    const argv = wrap(s.req.argv, cwd, who);
     // A folder in the runner's home is made as that user, which owns that home (mkdir -p: root
     // here cannot even look inside it).
-    if (!s.watcher && who.home && cwd.startsWith(path.resolve(who.home) + path.sep) && o.makeDir) {
+    if (who.home && cwd.startsWith(path.resolve(who.home) + path.sep) && o.makeDir) {
       try { o.makeDir(cwd, who); } catch (e) { log(`spawner: cannot make ${cwd}: ${/** @type {Error} */ (e).message}`); }
     }
     const fd3 = typeof s.req.fd3 === "string";
@@ -227,7 +174,6 @@ export async function serve(o) {
       for (const c of [s.stdio, s.stderr]) { try { c && c.end(); } catch {} setTimeout(() => { try { c && c.destroy(); } catch {} }, 1000).unref(); }
       setTimeout(() => { try { s.control.destroy(); } catch {} }, 1000).unref();
       live.delete(id);
-      releaseWatcher(s);
     });
   }
 
@@ -238,7 +184,6 @@ export async function serve(o) {
     live.delete(id);
     if (s.child && s.child.exitCode === null) { try { process.kill(-(/** @type {number} */ (s.child.pid)), "SIGKILL"); } catch {} }
     for (const c of [s.control, s.stdio, s.stderr]) try { c && c.destroy(); } catch {}
-    releaseWatcher(s);
     if (why) log(`spawner: ended ${id}: ${why}`);
   }
 
@@ -252,23 +197,11 @@ export async function serve(o) {
     let req;
     try { req = await line(sock); } catch (e) { sock.end(JSON.stringify({ error: /** @type {Error} */ (e).message }) + "\n"); return; }
     if (req.op === "spawn") {
-      // A watcher: the wall is checked again right now. The rule lives in a namespace this container shares, so a status file that said ok at
-      // start proves nothing about this moment. A failed check refuses the spawn in plain words and changes nothing.
-      if (req.role === "watcher" && wl && wl.reprobe && wl.status().ok) {
-        const again = await wl.reprobe();
-        if (!again.ok) { sock.end(JSON.stringify({ error: `the watcher wall is not in place: ${again.why}` }) + "\n"); return; }
-      }
       const why = refuse(req);
       if (why) { sock.end(JSON.stringify({ error: why }) + "\n"); return; }
       const id = crypto.randomBytes(16).toString("hex");
       const timer = setTimeout(() => end(id, "nobody attached"), ATTACH_MS);
-      /** @type {any} */ let watcher = null;
-      if (req.role === "watcher") {
-        const uid = takeUid();
-        if (uid === null) { clearTimeout(timer); sock.end(JSON.stringify({ error: "every watcher slot is busy" }) + "\n"); return; }
-        watcher = { uid, who: /** @type {Who} */ ({ uid, gid: uid, groups: [], home: path.join(path.resolve(/** @type {any} */ (wl).home), String(uid)) }) };
-      }
-      live.set(id, { req, control: sock, timer, watcher });
+      live.set(id, { req, control: sock, timer });
       sock.write(JSON.stringify({ id }) + "\n");
       sock.resume();
       // Signals for the whole group: tini and the session under it, and what they started.
@@ -317,9 +250,6 @@ export async function serve(o) {
 
   // Only vyred may connect. In the image the folder is root:vyre, 2750: the socket takes the vyre
   // group from it, with no capability to chown, and vyre-agent cannot even enter the folder.
-  // The watchers' folders live under one sticky, world-writable parent: root cannot make a folder for another uid (no
-  // capability to chown), so each child makes its own, and the sticky bit stops one from touching another's.
-  if (wl) { try { fs.mkdirSync(wl.home, { recursive: true }); fs.chmodSync(wl.home, 0o1777); } catch (e) { log(`spawner: cannot make ${wl.home}: ${/** @type {Error} */ (e).message}`); } }
   fs.mkdirSync(path.dirname(o.socket), { recursive: true, mode: 0o700 });
   try { fs.rmSync(o.socket, { force: true }); } catch {}
   await new Promise((resolve, reject) => { server.once("error", reject); server.listen(o.socket, () => resolve(undefined)); });

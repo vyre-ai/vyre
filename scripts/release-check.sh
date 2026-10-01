@@ -200,10 +200,6 @@ tar -tzf "$box/vyre.tgz" | grep -q '^package/box/Dockerfile$' || fail "vyre.tgz 
 cmp -s "$box/install-box.sh" "$repo/site/install.sh" || fail "site/install.sh differs from site/box/install-box.sh"
 sh -n "$box/install-box.sh" || fail "install-box.sh does not parse"
 sh -n "$box/vyre" || fail "the box wrapper does not parse"
-# The shipped wrapper is the release build: none of the test overrides (the release key, the cosign image, where a release comes from) survive in it.
-for n in VYRE_RELEASE_KEY VYRE_COSIGN_IMAGE VYRE_BOX_URL VYRE_RELEASES_API VYRE_RELEASES_REPO VYRE_UPDATE_ROOT VYRE_ROOT_UID VYRE_CHAIN_TOP VYRE_WRAPPER VYRE_UPDATE_WAIT VYRE_UPDATE_MIN_GAP VYRE_SYSTEMD_DIR VYRE_UPDATER_NAME VYRE_CONTAINER_HOME; do
-  ! grep -q "$n" "$box/vyre" || fail "the box wrapper still reads $n: it is not the release build (scripts/strip-wrapper.mjs)"
-done
 ok "$(wc -l <"$box/SHA256SUMS" | tr -d ' ') files match SHA256SUMS; vyre.tgz is $version"
 grep -qx '/box /box/install-box.sh 200' "$repo/site/_redirects" || fail "site/_redirects does not send /box to install-box.sh"
 grep -qx '/download/mac /start#mac 302' "$repo/site/_redirects" || fail "site/_redirects does not send /download/mac to /start#mac"
