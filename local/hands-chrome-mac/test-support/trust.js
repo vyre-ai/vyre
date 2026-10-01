@@ -3,7 +3,7 @@
 // them in the args object of a call gets them moved into the trust the host would have set.
 import { dispatch } from "../extension/caps/index.js";
 
-const KEYS = ["asked", "writeOk", "release", "writeBudget"];
+const KEYS = ["asked", "writeOk", "release", "writeBudget", "pointBudget"];
 /** @param {any} args @returns {[any, any]} */
 export function split(args) {
   const rest = { ...(args || {}) }; /** @type {any} */ const trust = {};
