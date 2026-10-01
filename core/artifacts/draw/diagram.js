@@ -9,7 +9,7 @@
 // single nodes (fill, stroke, stroke-width, stroke-dasharray, color). Checked in theme.js.
 
 import { esc } from "../render.js";
-import { cleanSvg, removedSentence } from "./svg.js";
+import { cleanSvg, removedSentence, MAX_SVG } from "./svg.js";
 import { themeCss, colorOf, lengthOf } from "./theme.js";
 
 /** @param {string} title @param {string} body */
@@ -415,6 +415,7 @@ export function drawMermaid(title, src) {
 export function drawSvg(title, src) {
   const head = `<h1>${esc(title)}</h1>`;
   if (!src.trim()) return head + state("Nothing to draw yet", "The SVG is empty.");
+  if (src.length > MAX_SVG) return head + state("Cannot draw this SVG", `It is larger than ${MAX_SVG / 1024} KB, which Vyre will not clean and draw. The start of the source is below.`) + `<pre class="src">${esc(src.slice(0, 20000))}</pre>`;
   const { svg, removed } = cleanSvg(src);
   if (!svg) return head + state("Cannot draw this SVG", "It has no drawing Vyre can show after cleaning. The source is below.") + `<pre class="src">${esc(src)}</pre>`;
   const said = removedSentence(removed);

@@ -248,6 +248,8 @@ test("hostile input is cleaned or refused in linear time (reviewer-2: a quadrati
   assert.ok(ms80 < 200, `80 KB of <a took ${Math.round(ms80)} ms`);
   assert.match(text(drawMermaid("t", "flowchart TD\n" + Array.from({ length: 400 }, (_, i) => `N${i}-->N${i + 1}`).join("\n"))), /too many to draw/);
   assert.match(text(drawMermaid("t", "x".repeat(300_000))), /longer than 200 KB/);
+  assert.match(text(drawSvg("t", "<svg>" + "<a".repeat(150_000) + "</svg>")), /larger than 256 KB/, "a 256 KB cap on SVG input");
+  assert.ok(cleanSvg("<svg>" + "x".repeat(400_000) + "</svg>").svg.length <= 256 * 1024 + 100, "the cleaner itself never reads past the cap");
 });
 
 test("names that exist on every object are not themes, dashes, markers or positions", () => {

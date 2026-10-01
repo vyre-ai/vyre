@@ -7,6 +7,9 @@
 // The panel says when something was removed. The result is only ever shown through <img>, which
 // runs nothing and loads nothing, so this is a second lock, not the only one.
 
+/** The most SVG source Vyre cleans or draws. */
+export const MAX_SVG = 256 * 1024;
+
 /** Allowed elements, lowercase to the case SVG needs. A Map: no inherited names. `use` is not here: chains of references can expand without bound. */
 const ELEMENTS = new Map(["svg", "g", "path", "rect", "circle", "ellipse", "line", "polyline", "polygon", "text", "tspan", "textPath", "defs", "linearGradient", "radialGradient", "stop", "title", "desc", "marker", "clipPath", "mask", "pattern", "symbol", "filter", "feGaussianBlur", "feOffset", "feFlood", "feComposite", "feMerge", "feMergeNode", "feColorMatrix", "feBlend", "feDropShadow", "image", "style"].map(n => [n.toLowerCase(), n]));
 const DROP_WITH_CONTENT = new Set(["script", "foreignobject", "iframe", "object", "embed", "audio", "video", "animate", "set", "animatetransform", "animatemotion", "animatecolor", "handler", "listener"]);
@@ -57,7 +60,7 @@ function* tokens(text) {
 export function cleanSvg(src) {
   const removed = { scripts: 0, links: 0, other: 0 };
   const out = [];
-  const text = String(src).slice(0, 5 * 1024 * 1024);
+  const text = String(src).slice(0, MAX_SVG);
   let skipDepth = 0, skipName = "", styleBuf = /** @type {string|null} */ (null);
   for (const m of tokens(text)) {
     if (m.text !== undefined) {
