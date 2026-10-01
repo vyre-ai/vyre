@@ -9,7 +9,7 @@ status: draft
 # Provider badge
 
 A session belongs to Vyre, not to a model: any of the person's signed-in AI accounts can answer in it.
-The badge says which one wrote a reply. Drawn in team/0.2/group-chat.html (section 1). New 1 Oct 2026,
+The badge says which one wrote a reply, with the provider's own mark. Drawn in team/0.2/group-chat.html (section 1). New 1 Oct 2026,
 for 0.2.0.
 
 | Surface | Implementing file | Status |
@@ -20,18 +20,27 @@ for 0.2.0.
 
 ## Anatomy
 
-A round or rounded-square mark with a two-letter monogram in mono 600, `-0.04em`, set in the provider's
-own shape so it never relies on colour:
+A circular tile (diameter = the badge size) holding the provider's own official mark, unmodified, centred
+at 62 percent of the tile's diameter (the mark's wider side; OpenRouter's glyph is wide and fits by width).
+The tile is `--hover` with a 1 px `--rule-strong` inner ring on dark, `--hover` on paper with the same
+ring, so a mark always sits on a neutral ground and never touches the page.
 
-| Provider | Shape | Fill | Monogram |
+| Provider | Mark (docs/design/brand/providers/) | On dark | On paper |
 |---|---|---|---|
-| Claude | circle | `--hover`, 1 px `--rule-strong` inner ring | Cl in `--text` |
-| Codex | rounded square, radius 4 | `--text`, no ring | Cx in `--bg` |
-| Grok | teardrop (radius 50% except the lower left, 4) | `--panel`, 1 px `--rule-strong` inner ring | Gk in `--text` |
+| Claude | Claude Spark | claude-spark-clay.svg (published colour, #D97757) | same |
+| Codex (OpenAI) | OpenAI Blossom | openai-blossom-white.svg | openai-blossom-black.svg |
+| OpenRouter (the driver) | OpenRouter glyph | openrouter-glyph-cloud.svg | openrouter-glyph-ink.svg |
+| Grok (xAI) | not yet obtained, see SOURCES.md | neutral monogram "Gk": mono 600, `-0.04em`, `--text` on a `--panel` tile | same |
+| Any other provider | none | monogram of the provider's first two letters, same style as Grok's | same |
 
-These are neutral stand-ins. The user has not yet decided whether the vendors' own marks may be used;
-until then ship these, and keep the mark behind one function (`providerMark(provider, size)`) so swapping
-is a one-file change. A provider Vyre does not know gets a circle with the first two letters of its name.
+Rules for the official marks (from the providers' own guidelines): use the SVGs as published, with no
+recolouring beyond the published variants above, no outline, crop, shadow, glow or animation, and leave the
+clear space the tile already gives. They identify the provider only: never use them as Vyre branding, never
+combine them with Vyre's mark, and never imply the provider made or endorses Vyre. Source URL of every
+file and the retrieval date are in docs/design/brand/providers/SOURCES.md.
+
+Keep the mark behind one function (`providerMark(provider, size)`) that picks the file by provider and
+theme; native-core's deck/js/provider-mark.js already has that shape, so this is a swap of what it draws.
 
 ## Placement
 
