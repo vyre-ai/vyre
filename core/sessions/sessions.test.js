@@ -955,6 +955,11 @@ for (const driver of ["cli", "sdk"]) {
     await say("Retire the design teammate.");
     assert.deepEqual(recorded.map(r => [r.kind, r.channel, r.to]), [["act_out", "team", ["team.retire:harlow-legal/design"]]]);
     recorded.length = 0;
+    await say("Add a researcher teammate to this project.");
+    assert.deepEqual(recorded.map(r => [r.kind, r.channel, r.to]), [["act_out", "team", ["team.add:harlow-legal/researcher"]]]);
+    recorded.length = 0;
+    await say("Add a design teammate.");                // already live in this project
+    assert.equal(recorded.length, 0);
     await say("Fill the design role with kit.");
     assert.deepEqual(recorded.map(r => r.to), [["team.role.fill:harlow-legal/design/kit"]]);
     recorded.length = 0;
@@ -977,7 +982,7 @@ for (const driver of ["cli", "sdk"]) {
   test(`${driver}: a person's "turn on the inbox watcher" records an act_out for watchers.create bound to the card shown in this thread (name and hash), through the assistant's watchersIntents, and nothing for a card not shown, a model's call or pasted words`, { skip }, async t => {
     const w = await boot(t, { driver });
     const recorded = [], fresh = [];
-    let shown = { watchers: [{ name: "inbox-mail", hash: "aaaa1111bbbb", title: "Important mail" }] };
+    let shown = { kinds: ["mail", "calendar", "repo", "slack", "feed"], watchers: [{ name: "inbox-mail", hash: "aaaa1111bbbb", title: "Important mail", state: "draft", project: "harlow-legal", at: Date.now() - 60_000 }] };
     const realCall = w.d.registry.call.bind(w.d.registry);
     w.d.registry.call = async (tool, input, caller, meta) => {
       if (tool === "vault.said.record") { recorded.push(input); return { data: { id: `i${recorded.length}` } }; }
@@ -994,7 +999,7 @@ for (const driver of ["cli", "sdk"]) {
       await w.finished(th.id, turns + 1);
     };
     await say("Turn on the important mail watcher.");
-    assert.deepEqual(recorded.map(r => [r.kind, r.channel, r.to]), [["act_out", "watchers", ["watchers.create:inbox-mail@aaaa1111bbbb"]]]);
+    assert.deepEqual(recorded.map(r => [r.kind, r.channel, r.to]), [["act_out", "watchers", ["watchers.create:harlow-legal/inbox-mail@aaaa1111bbbb"]]]);
     assert.deepEqual(fresh, [], "never a fresh watchers.card or watchers.list when the turn is heard: the card as shown (hash A) is the only one, so the changed folder (hash B) is never licensed");
     recorded.length = 0;
     await say("Turn on the payroll watcher.");          // no such card shown in this thread
