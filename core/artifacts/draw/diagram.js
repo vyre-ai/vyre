@@ -15,6 +15,8 @@ import { themeCss, colorOf, lengthOf } from "./theme.js";
 /** @param {string} title @param {string} body */
 const state = (title, body) => `<div class="state" role="status"><b>${esc(title)}</b><span>${body}</span></div>`;
 
+const MAX_SOURCE = 200_000, MAX_LINE = 2000, MAX_NODES = 300, MAX_EDGES = 800, MAX_SEQ = 400;
+
 class MermaidError extends Error {
   /** @param {number} line @param {string} msg */
   constructor(line, msg) { super(msg); this.line = line; }
@@ -82,7 +84,7 @@ export function parseFlow(text) {
   let dir = "TD", seenHead = false;
   /** @type {any} */ let theme = null;
   for (const l of lines) { const m = /^\s*%%theme\s+(\{.*\})\s*$/.exec(l); if (m && !theme) try { theme = JSON.parse(m[1]); } catch {} }
-  /** @type {Record<string, Record<string,string>>} */ const classDefs = {};
+  /** @type {Record<string, Record<string,string>>} */ const classDefs = Object.create(null);
   /** @type {Map<string, string[]>} */ const classOf = new Map();
   /** @type {Map<string, Record<string,string>>} */ const styleOf = new Map();
   /** @type {Map<string, any>} */ const nodes = new Map();
@@ -97,6 +99,7 @@ export function parseFlow(text) {
   };
   for (let li = 0; li < lines.length; li++) {
     const no = li + 1;
+    if (lines[li].length > MAX_LINE) throw new MermaidError(no, "this line is too long to read");
     for (let stmt of lines[li].replace(/%%.*$/, "").split(";")) {
       stmt = stmt.trim();
       if (!stmt) continue;
@@ -228,6 +231,7 @@ function arrowHead(p0, p1) {
 /** @param {ReturnType<typeof parseFlow>} g */
 function svgFlow(g) {
   if (!g.nodes.size) throw new MermaidError(1, "the diagram has no nodes");
+  if (g.nodes.size > MAX_NODES || g.edges.length > MAX_EDGES) throw new MermaidError(1, `the diagram has more than ${MAX_NODES} nodes or ${MAX_EDGES} arrows, which is too many to draw legibly`);
   const { box, back, horiz } = layoutFlow(g);
   const M = 18;
   let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
@@ -313,6 +317,7 @@ export function parseSeq(text) {
 function svgSeq(s) {
   const ids = [...s.parts.keys()];
   if (!ids.length) throw new MermaidError(1, "the diagram has no participants");
+  if (ids.length > 30 || s.items.length > MAX_SEQ) throw new MermaidError(1, "the diagram has too many participants or messages to draw legibly");
   const COL = 150, X0 = 70, TOP = 14, HD = 32;
   const xs = new Map(ids.map((id, i) => [id, X0 + i * COL]));
   let y = TOP + HD + 26;
@@ -388,6 +393,7 @@ function themeOf(src) {
  * @param {string} title @param {string} src
  */
 export function drawMermaid(title, src) {
+  if (src.length > MAX_SOURCE) return `<h1>${esc(title)}</h1>` + state("Cannot draw this diagram", `The source is longer than ${MAX_SOURCE / 1000} KB, which Vyre will not draw. The source is below.`) + `<pre class="src">${esc(src.slice(0, 20000))}</pre>`;
   const theme = themeOf(src);
   const head = themeCss(theme) + `<h1>${esc(title)}</h1>`;
   if (!src.trim()) return head + state("Nothing to draw yet", "The diagram source is empty.");

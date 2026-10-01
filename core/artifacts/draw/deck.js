@@ -50,7 +50,8 @@ function logoOf(t) {
   const l = t && typeof t === "object" ? t.logo : null;
   const src = l && dataImageOf(l.src);
   if (!src) return "";
-  const pos = { "top-left": "tl", "top-right": "tr", "bottom-left": "bl", "bottom-right": "br" }[/** @type {"top-left"} */ (l.position)] || "br";
+  const POS = /** @type {Record<string,string>} */ ({ "top-left": "tl", "top-right": "tr", "bottom-left": "bl", "bottom-right": "br" });
+  const pos = Object.hasOwn(POS, l.position) ? POS[l.position] : "br";
   const size = lengthOf(l.size, 2, 40);
   return `<img class="logo ${pos}" alt="${esc(String(l.alt || "").slice(0, 80))}" src="${src}" style="width:${size ? parseFloat(size) : 8}cqw">`;
 }
@@ -97,7 +98,7 @@ export function drawDeck(title, src) {
   /** @type {any} */ let theme = null;
   const lines = String(src).replace(/\r\n?/g, "\n").split("\n").filter(l => { const m = /^@theme\s+(\{.*\})\s*$/.exec(l.trim()); if (!m) return true; if (!theme) try { theme = JSON.parse(m[1]); } catch {} return false; });
   const logo = logoOf(theme);
-  const parts = lines.join("\n").replace(/\r\n?/g, "\n").split(/\n-{3,}[ \t]*(?:\n|$)/).map(s => s.trim()).filter(Boolean);
+  const parts = lines.join("\n").replace(/\r\n?/g, "\n").split(/\n-{3,}[ \t]*(?:\n|$)/).map(s => s.trim()).filter(Boolean).slice(0, 200);
   const slides = parts.map((p, i) => drawOne(p, i === 0)).filter(s => !s.empty);
   if (!slides.length) return `<h1>${esc(title)}</h1><div class="state" role="status"><b>No slides yet</b><span>The deck has no slide separators or text.</span></div>`;
   const n = slides.length;

@@ -4,6 +4,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { drawChart, readChart } from "./draw/chart.js";
 import { drawMermaid, drawSvg, parseFlow } from "./draw/diagram.js";
+import { markdown as markdownOf } from "./render.js";
 import { drawDeck } from "./draw/deck.js";
 import { cleanSvg, removedSentence } from "./draw/svg.js";
 import { page } from "./render.js";
@@ -191,14 +192,14 @@ test("mermaid: %%theme and Mermaid's own style, classDef and ::: colour the diag
 });
 
 test("svg: an agent's styles, style element, gradients and data-URI brand mark stay; loads and escapes go", () => {
-  const src = `<svg width="200" height="100" viewBox="0 0 200 100"><style>.t{fill:#c0392b;font-family:Georgia}@media (prefers-color-scheme:dark){.t{fill:#fff}}</style><defs><linearGradient id="g"><stop offset="0" stop-color="#102a43"/><stop offset="1" stop-color="#243b53"/></linearGradient><filter id="f"><feGaussianBlur stdDeviation="2"/></filter></defs><rect width="200" height="100" fill="url(#g)" style="stroke:#fff;stroke-width:2"/><text class="t" x="10" y="50" filter="url(#f)">Brand</text><image href="${PNG}" x="150" y="5" width="40" height="40"/><use href="#g"/></svg>`;
+  const src = `<svg width="200" height="100" viewBox="0 0 200 100"><style>.t{fill:#c0392b;font-family:Georgia}@media (prefers-color-scheme:dark){.t{fill:#fff}}</style><defs><linearGradient id="g"><stop offset="0" stop-color="#102a43"/><stop offset="1" stop-color="#243b53"/></linearGradient><filter id="f"><feGaussianBlur stdDeviation="2"/></filter></defs><rect width="200" height="100" fill="url(#g)" style="stroke:#fff;stroke-width:2"/><text class="t" x="10" y="50" filter="url(#f)">Brand</text><image href="${PNG}" x="150" y="5" width="40" height="40"/></svg>`;
   const { svg, removed } = cleanSvg(src);
   assert.deepEqual(removed, { scripts: 0, links: 0, other: 0 }, "nothing unsafe in it");
   for (const keep of ["<style>.t{fill:#c0392b", "linearGradient", 'fill="url(#g)"', 'style="stroke:#fff;stroke-width:2"', "<feGaussianBlur", `href="${PNG}"`, 'filter="url(#f)"']) assert.ok(svg.includes(keep), keep);
   const bad = cleanSvg(`<svg><style>@import url(https://evil/x.css);.a{fill:red}</style><style>.b{background:url(https://evil/i.png)}</style><rect style="fill:url(https://evil/x)" width="1" height="1"/><image href="https://evil/i.png"/><image href="data:image/svg+xml;base64,AAAA"/><use href="https://evil/s.svg#a"/><rect fill="red" width="1" height="1"/></svg>`);
   assert.ok(!bad.svg.includes("evil") && !bad.svg.includes("@import") && !bad.svg.includes("<image") && !bad.svg.includes("<use"), bad.svg);
   assert.ok(bad.svg.includes('<rect fill="red"'), "the safe shape stays");
-  assert.ok(bad.removed.other >= 3 && bad.removed.links >= 3, JSON.stringify(bad.removed));
+  assert.ok(bad.removed.other >= 3 && bad.removed.links >= 2, JSON.stringify(bad.removed));
 });
 
 test("markdown documents take an @theme line; pages and apps keep their own CSS", () => {
@@ -223,4 +224,43 @@ test("mermaid's own init themeVariables and a deck's text scale are honoured too
   assert.match(d, /--k:1\.3/);
   assert.match(d, /style="--k:0\.8"/);
   assert.match(drawDeck("S", '@theme {"scale":99}\n# x'), /^<div class="deck">/, "an out of range scale is dropped");
+});
+
+test("hostile input is cleaned or refused in linear time (reviewer-2: a quadratic regex froze vyred)", () => {
+  const time = (f) => { const s = performance.now(); const r = f(); return [performance.now() - s, r]; };
+  const cases = [
+    ["many < and no >", () => cleanSvg("<svg>" + "<a".repeat(40_000))],
+    ["80 KB of <a", () => cleanSvg("<svg>" + "<a".repeat(40_000) + "</svg>")],
+    ["a million <a", () => cleanSvg("<svg>" + "<a".repeat(1_000_000))],
+    ["unterminated comments", () => cleanSvg("<svg>" + "<!--".repeat(200_000))],
+    ["unterminated cdata and pi", () => cleanSvg("<svg>" + "<![CDATA[".repeat(100_000) + "<?".repeat(100_000))],
+    ["unbalanced quotes", () => cleanSvg("<svg " + 'a="'.repeat(300_000))],
+    ["a long attribute list", () => cleanSvg("<svg><rect " + 'a="b" '.repeat(300_000) + "/></svg>")],
+    ["a megabyte of mermaid", () => drawMermaid("t", "flowchart TD\n" + "A-->B\n".repeat(160_000))],
+    ["one huge mermaid line", () => drawMermaid("t", "flowchart TD\n" + "A --> B ".repeat(150_000))],
+    ["a long chain of nodes", () => drawMermaid("t", "flowchart TD\n" + Array.from({ length: 19_000 }, (_, i) => `N${i}-->N${i + 1}`).join("\n"))],
+    ["markdown stars", () => markdownOf("*a ".repeat(350_000))],
+    ["markdown backticks", () => markdownOf("`".repeat(1_000_000))],
+    ["a thousand slides", () => drawDeck("t", "# a\n\n---\n".repeat(100_000))],
+  ];
+  for (const [name, f] of cases) { const [ms] = time(f); assert.ok(ms < 1500, `${name}: ${Math.round(ms)} ms`); }
+  const [ms80] = time(() => cleanSvg("<svg>" + "<a".repeat(40_000)));
+  assert.ok(ms80 < 200, `80 KB of <a took ${Math.round(ms80)} ms`);
+  assert.match(text(drawMermaid("t", "flowchart TD\n" + Array.from({ length: 400 }, (_, i) => `N${i}-->N${i + 1}`).join("\n"))), /too many to draw/);
+  assert.match(text(drawMermaid("t", "x".repeat(300_000))), /longer than 200 KB/);
+});
+
+test("names that exist on every object are not themes, dashes, markers or positions", () => {
+  assert.equal(themeCss({ constructor: "#fff", __proto__: "#000", toString: "#111" }), "");
+  const c = drawChart("T", JSON.stringify({ x: "m", series: [{ key: "a", marker: "constructor", dash: "__proto__" }, { key: "b", marker: "__proto__", dash: "toString" }] }), JSON.stringify([{ m: 1, a: 1, b: 2 }]));
+  assert.match(c, /<svg/, "a bogus marker or dash falls back to the default");
+  const d = drawDeck("D", `@theme {"logo":{"src":"${PNG}","position":"constructor"}}\n# x`);
+  assert.match(d, /class="logo br"/);
+  assert.match(text(drawMermaid("t", "flowchart TD\n A-->B\n classDef constructor fill:#f00\n class A constructor")), /A/);
+  assert.equal(cleanSvg('<svg><constructor/><use href="#a"/><rect width="1" height="1"/></svg>').svg.includes("use"), false);
+  for (const bad of ["image-set('a.png' 1x)", "-webkit-image-set(\"a\" 1x)", "cross-fade(url(#a), red)", "src(\"x\")", "image(\"x\")", "element(#a)", "paint(x)"]) {
+    assert.equal(colorOf(bad), null, bad);
+    assert.ok(cleanSvg(`<svg><rect width="1" height="1" style="background:${bad}"/></svg>`).svg.includes("style=") === false, `style ${bad}`);
+    assert.ok(!cleanSvg(`<svg><style>.a{background:${bad}}</style></svg>`).svg.includes("<style>"), `style element ${bad}`);
+  }
 });

@@ -5,7 +5,7 @@
 // a style, so a theme can colour and lay out but never load anything, close a rule, or carry markup.
 // Values that fail the check are dropped, never repaired, and the page says nothing about them.
 
-const CUSS = /url|expression|image-set|attr\s*\(|var\s*\(|env\s*\(|@|\\|;|\{|\}|<|>|\/\*|"|'|javascript|behavior|binding/i;
+const CUSS = /url|expression|image-set|cross-fade|\b(?:src|image|element|paint)\s*\(|attr\s*\(|var\s*\(|env\s*\(|@|\\|;|\{|\}|<|>|\/\*|"|'|javascript|behavior|binding/i;
 
 /** A CSS colour or gradient: a hex, a colour function or name, or a gradient of those. @param {unknown} v */
 export function colorOf(v) {
@@ -54,7 +54,7 @@ function vars(t) {
   /** @type {string[]} */ const out = [];
   if (!t || typeof t !== "object" || Array.isArray(t)) return out;
   for (const [k, v] of Object.entries(t)) {
-    const token = KEYS[k.toLowerCase()];
+    const token = Object.hasOwn(KEYS, k.toLowerCase()) ? KEYS[k.toLowerCase()] : undefined;
     const c = token ? colorOf(v) : null;
     if (token && c) out.push(`--${token}:${c}`);
   }

@@ -79,8 +79,8 @@ const DEFAULT_COLOR = ["var(--s1)", "var(--s2)", "var(--t2)"];
 /** How series i is drawn: the agent's choice, else Vyre's default. @param {any} s @param {number} i */
 const looks = (s, i) => ({
   color: s.color || DEFAULT_COLOR[i % 3],
-  dash: DASHES[s.dash] !== undefined ? DASHES[s.dash] : DASHES[DEFAULT_DASH[i % 3]],
-  marker: MARKERS[s.marker] ? s.marker : DEFAULT_MARK[i % 3],
+  dash: Object.hasOwn(DASHES, s.dash) ? DASHES[s.dash] : DASHES[DEFAULT_DASH[i % 3]],
+  marker: Object.hasOwn(MARKERS, s.marker) ? s.marker : DEFAULT_MARK[i % 3],
   width: s.width || 2,
 });
 
