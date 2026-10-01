@@ -44,8 +44,14 @@ export VYRE_HOME="$HOME/.vyre-proof"
 export VYRE_SERVER_DIR="$HOME/.vyre-server"
 
 echo "::group::install"
-env PATH="$PATH_MIN" VYRE_CODE="" sh "$script" --yes
+env PATH="$PATH_MIN" VYRE_CODE="" sh "$script" --yes >"$work/install.out" 2>&1 || { cat "$work/install.out"; bad "the install failed"; }
+cat "$work/install.out"
+install_out=$(cat "$work/install.out")
 echo "::endgroup::"
+
+# FileVault: read in plain words, never changed.
+echo "$install_out" | grep -qE "FileVault is (on|off)\." || bad "the installer did not say whether FileVault is on or off"
+ok "the installer states FileVault ($(echo "$install_out" | grep -oE 'FileVault is (on|off)\.' | head -n 1)) and only read it"
 
 # Account and tree.
 dscl . -read /Users/_vyre UniqueID >/dev/null || bad "no _vyre account"

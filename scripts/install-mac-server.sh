@@ -567,6 +567,18 @@ capsule_note() {
   esac
 }
 
+# filevault_note: read-only. FileVault decides what happens after a power cut, so the person is told which
+# way theirs is set, in the same words as the setup screen. Never changed here (VYRE_FDESETUP: tests).
+filevault_note() {
+  [ "$DRY" = 0 ] || return 0
+  fv=$("${VYRE_FDESETUP:-/usr/bin/fdesetup}" status 2>/dev/null || true)
+  case "$fv" in
+    *"FileVault is On"*) say "FileVault is on. After a power cut the Mac waits for someone to unlock it at the screen, and Vyre is off until then." ;;
+    *"FileVault is Off"*) say "FileVault is off. After a power cut the Mac starts by itself and Vyre comes back, but anyone who takes the Mac can read what Vyre keeps on it." ;;
+    *) : ;;
+  esac
+}
+
 # wait_system: vyred answers (its pid file, as in login-only) and vyre-core's socket file exists
 # (the path is in core.json; it is checked, never connected to).
 wait_system() {
@@ -655,11 +667,13 @@ main() {
     capsule_note
     say "Vyre is running. Back in your browser, it will find this Mac."
     say "It starts when this Mac boots, with nobody signed in, and stays awake while it runs. Its command is $BIN/vyre"
+    filevault_note
   else
     write_plist
     start_service
     say "Vyre is running. Back in your browser, it will find this Mac."
     say "It starts when you sign in to this Mac and stays awake while it runs. Its command is $BIN/vyre"
+    filevault_note
   fi
 }
 

@@ -17,6 +17,8 @@ import path from "node:path";
 export const IDENTITY = "Vyre Core Capsule";
 export const CAPSULE_ID = "sh.vyre.capsule"; // the Capsule's bundle id (local/capsule/native/build.sh)
 export const CAPSULE_APP = "Vyre.app"; // the product name; the binary is Contents/MacOS/Vyre
+/** The p12 is a scratch file that exists for moments inside root's 0700 folder; this is not a secret. */
+const P12_PASS = "vyre-scratch";
 const OPENSSL = "/usr/bin/openssl";
 const SECURITY = "/usr/bin/security";
 const CODESIGN = "/usr/bin/codesign";
@@ -41,20 +43,22 @@ export function ensureIdentity({ dir, run, systemKeychain = SYSTEM_KEYCHAIN }) {
   const tmp = fs.mkdtempSync(path.join(dir, ".make-"));
   fs.chmodSync(tmp, 0o700);
   const keychain = path.join(dir, "vyre-core.keychain-db");
-  // No secret ever goes in an argument: a password in argv shows in `ps`. The keychain and the p12 carry an
-  // EMPTY password, and the protection is the folder (root:wheel 0700), which is also where a password file
-  // would have had to live.
+  // No secret ever goes in an argument: a password in argv shows in `ps`. The keychain carries an EMPTY
+  // password, and the protection is the folder (root:wheel 0700), which is also where a password file would
+  // have had to live. (`security import` refuses a p12 with an empty password, so the p12 carries a fixed,
+  // public one: the file lives for milliseconds in the 0700 scratch folder and is deleted, so the password
+  // protects nothing and hides nothing.)
   const pw = "";
   const key = path.join(tmp, "key.pem"), cert = path.join(tmp, "cert.pem"), p12 = path.join(tmp, "id.p12"), cnf = path.join(tmp, "req.cnf");
   fs.writeFileSync(cnf, `[req]\ndistinguished_name=dn\nx509_extensions=v3\nprompt=no\n[dn]\nCN=${IDENTITY}\n[v3]\nkeyUsage=critical,digitalSignature\nextendedKeyUsage=critical,codeSigning\nbasicConstraints=critical,CA:false\n`, { mode: 0o600 });
   try {
     run(OPENSSL, ["req", "-x509", "-newkey", "rsa:2048", "-sha256", "-days", "3650", "-nodes", "-keyout", key, "-out", cert, "-config", cnf]);
-    run(OPENSSL, ["pkcs12", "-export", "-inkey", key, "-in", cert, "-out", p12, "-name", IDENTITY, "-passout", "pass:"]);
+    run(OPENSSL, ["pkcs12", "-export", "-inkey", key, "-in", cert, "-out", p12, "-name", IDENTITY, "-passout", `pass:${P12_PASS}`]);
     fs.rmSync(keychain, { force: true });
     run(SECURITY, ["create-keychain", "-p", pw, keychain]);
     run(SECURITY, ["set-keychain-settings", keychain]); // no auto-lock, no timeout
     run(SECURITY, ["unlock-keychain", "-p", pw, keychain]);
-    run(SECURITY, ["import", p12, "-k", keychain, "-P", pw, "-T", CODESIGN]);
+    run(SECURITY, ["import", p12, "-k", keychain, "-P", P12_PASS, "-T", CODESIGN]);
     // Without this, codesign asks for the keychain password on a GUI prompt nobody is there to answer.
     run(SECURITY, ["set-key-partition-list", "-S", "apple-tool:,apple:,codesign:", "-s", "-k", pw, keychain]);
     // Trusted for code signing only, in the system domain (root can, with no prompt).

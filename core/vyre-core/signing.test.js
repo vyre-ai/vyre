@@ -40,8 +40,8 @@ test("signing: the identity is made once, in a folder only root can read, truste
   assert.equal(fs.statSync(dir).mode & 0o777, 0o700);
   assert.ok(!fs.existsSync(path.join(dir, "pw")), "no password file: the keychain's password is empty and the folder is the protection");
   const arg = (/** @type {string} */ sub, /** @type {string} */ flag) => f.calls.filter(c => c.args[0] === sub).map(c => c.args[c.args.indexOf(flag) + 1]);
-  assert.deepEqual([...arg("create-keychain", "-p"), ...arg("unlock-keychain", "-p"), ...arg("import", "-P"), ...arg("set-key-partition-list", "-k")], ["", "", "", ""], "every keychain and p12 password argument is empty: nothing secret in `ps`");
-  assert.ok(f.calls.filter(c => c.cmd.endsWith("openssl")).every(c => !c.args.some(a => /^pass:./.test(a))));
+  assert.deepEqual([...arg("create-keychain", "-p"), ...arg("unlock-keychain", "-p"), ...arg("import", "-P"), ...arg("set-key-partition-list", "-k")], ["", "", "vyre-scratch", ""], "the keychain passwords are empty and the scratch p12 carries a fixed public one: nothing secret in `ps`");
+  assert.ok(f.calls.filter(c => c.cmd.endsWith("openssl")).every(c => !c.args.some(a => /^pass:./.test(a) && a !== "pass:vyre-scratch")));
   assert.equal(fs.statSync(path.join(dir, "identity.json")).mode & 0o777, 0o600);
   assert.deepEqual(fs.readdirSync(dir).filter(n => n.startsWith(".make-")), [], "no scratch left");
   const trust = f.calls.find(c => c.args[0] === "add-trusted-cert");
