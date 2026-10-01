@@ -77,18 +77,6 @@
    "module": "learn",
    "why": "pending"
   },
-  "link.pair": {
-   "module": "link",
-   "why": "pending"
-  },
-  "link.signout": {
-   "module": "link",
-   "why": "pending"
-  },
-  "link.unpair": {
-   "module": "link",
-   "why": "pending"
-  },
   "memory.correct": {
    "module": "memory",
    "why": "pending"
@@ -105,29 +93,13 @@
    "module": "onboard",
    "why": "pending"
   },
-  "presence.person.revoke": {
-   "module": "presence",
-   "why": "pending"
-  },
   "projects.access.revoke": {
    "module": "projects",
-   "why": "pending"
+   "why": "the agents module revokes an agent's grant when its project list shrinks (module:agents), and presence calls it; reach person admits no module. The callers list in code keeps agents and models out."
   },
   "projects.add-workspace": {
    "module": "projects",
-   "why": "pending"
-  },
-  "projects.move": {
-   "module": "projects",
-   "why": "pending"
-  },
-  "projects.watchers.add": {
-   "module": "projects",
-   "why": "pending"
-  },
-  "projects.watchers.remove": {
-   "module": "projects",
-   "why": "pending"
+   "why": "core/github and core/sync attach a folder to a project as modules; reach person admits no module. The callers list in code keeps agents and models out."
   },
   "sessions.limits.set": {
    "module": "sessions",
