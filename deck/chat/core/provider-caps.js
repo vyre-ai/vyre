@@ -29,8 +29,9 @@ export const HIDE = new Set(["modes", "plan", "thinking", "effort", "tasks", "su
  * @param {string|null|undefined} provider
  */
 export function liveCaps(providers, provider) {
-  const row = (providers || []).find(p => p && p.provider === provider);
-  return normalizeCaps(row ? row.caps : null);
+  // providers.list answers { id, capabilities, ... } per provider (sessions, 1 Oct); an earlier draft said { provider, caps }: both read.
+  const row = (providers || []).find(p => p && (p.id ?? p.provider) === provider);
+  return normalizeCaps(row ? (row.capabilities ?? row.caps) : null);
 }
 
 /** A thread's snapshot caps from threads.get, normalized; for rendering past items only. @param {any} thread */

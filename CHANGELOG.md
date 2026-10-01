@@ -4,6 +4,10 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### chat: provider caps read providers.list's real rows
+
+- `liveCaps` (`deck/chat/core/provider-caps.js`) now reads `{ id, capabilities }`, the shape `providers.list` really answers, as well as the earlier draft's `{ provider, caps }`. Nothing in the Deck reads it yet, so no screen changed.
+
 #### chat: replies wear the provider badge
 
 - Each reply's `thread.text` now carries `provider` and `model` (sessions' event tag, on every driver), and the session core keeps them on the reply. The header that starts an assistant run wears the badge at its avatar's lower right (55 percent of it, with a ring in the ground colour) and names "Provider, model" beside the name. A reply whose event says nothing, from an older box, gets no badge and no guess; a later reply that does fills it in. The badge's accessible name is "Written by Codex, GPT-5". Account labels for two accounts of one provider, and the switch line, wait on the box's wording.
