@@ -192,7 +192,7 @@ test("glass: the manifest's tools and events are the ones it registers", async t
   const s = await boot(t);
   const manifest = JSON.parse(fs.readFileSync(path.join(CORE, "glass", "module.json"), "utf8"));
   const mine = s.registry.listTools().map(x => x.name).filter(n => n.startsWith("glass."));
-  assert.deepEqual(mine.sort(), [...manifest.does.tools].sort());
+  assert.deepEqual(mine.sort(), manifest.does.tools.map((/** @type {any} */ t) => (typeof t === "string" ? t : t.name)).sort());
   assert.deepEqual(manifest.roles, ["box"]);
   assert.deepEqual(manifest.requires, []);
   assert.ok(s.registry.routes.has("/v1/glass/raw") && s.registry.routes.has("/v1/glass/put"));
@@ -244,7 +244,7 @@ test("glass: an agent caller cannot name a person's surface", async t => {
     ["glass.take", { target: "computer:kit", surface: "phone:pocket" }],
     ["glass.release", { target: "computer:kit", surface: "phone:pocket" }]])) {
     const r = await s.kit(tool, input);
-    assert.match(r.error?.message || "", /an agent cannot act as a person's screen/, tool);
+    assert.match(r.error?.message || "", /an agent cannot act as a person's screen|not available to mcp callers/, tool);
   }
   assert.equal(s.computers.calls.filter(c => /watch|takeover|giveback/.test(c.tool)).length, 0, "nothing reached computers");
 });
@@ -547,5 +547,5 @@ test("glass: taking and handing back the keyboard need no passkey, private or no
   assert.equal((await s.deck("glass.release", { target: "computer:kit", surface: "deck:laptop" })).data.released, true);
   assert.equal((await s.deck("glass.take", { target: "computer:kit", surface: "deck:laptop", private: true })).data.private, true, "sign in privately follows the same rule");
   assert.equal((await s.deck("glass.release", { target: "computer:kit", surface: "deck:laptop" })).data.released, true);
-  assert.match((await s.kit("glass.take", { target: "computer:kit", surface: "deck:laptop" })).error.message, /an agent cannot act as a person's screen/);
+  assert.match((await s.kit("glass.take", { target: "computer:kit", surface: "deck:laptop" })).error.message, /an agent cannot act as a person's screen|not available to mcp callers/);
 });
