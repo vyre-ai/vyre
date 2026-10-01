@@ -636,16 +636,12 @@ export function mountSession(container, opts) {
     rewind.el.setAttribute("tabindex", "-1");
     rewind.el.focus?.();
   }
-  /** "Use in <model>" on a media card: hand the session to that provider when it is not the one answering, copy the item into the
-   * session's folder, and tag it in the composer so the next message carries it. Each step says why in words if it fails. */
-  async function useMedia(/** @type {{ id: string, title: string, provider: string, name: string }} */ d) {
+  /** "Use in <model>" on a media card: address that model for ONE turn, never switching the session. The composer is filled with
+   * "@<provider> #<item>" and the person sends when ready; the item is copied into the session's folder when that turn starts, by the box. */
+  function useMedia(/** @type {{ id: string, title: string, provider: string, name: string }} */ d) {
     if (!switchboard()) return;
-    if (d.provider && d.provider !== S.provider) {
-      const sw = await attempt("threads.switch", { thread, provider: d.provider });
-      if (sw.error) return void patch(applyStateEvent(S, { type: "thread.text", at: Date.now(), payload: { message: "deck", text: `Could not switch to ${d.name}: ${sw.error.message || sw.error.code}`, done: true, notice: true } }));
-    }
-    const cp = await attempt("artifacts.media.copy", { id: d.id, thread });
-    if (cp.error) return void patch(applyStateEvent(S, { type: "thread.text", at: Date.now(), payload: { message: "deck", text: `Could not copy it into this session: ${cp.error.message || cp.error.code}`, done: true, notice: true } }));
+    const cur = composer.value().trim();
+    composer.setText(`@${d.name}${cur ? " " + cur : ""} `);
     composer.tag({ kind: "artifact", id: d.id, name: d.title });
   }
   container.addEventListener("deck:media-use", e => { e.stopPropagation(); useMedia(/** @type {any} */ (e).detail); });
