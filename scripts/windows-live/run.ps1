@@ -6,7 +6,8 @@ $ErrorActionPreference = "Continue"
 $ProgressPreference = "SilentlyContinue"
 $out = $env:OUT_DIR; New-Item -ItemType Directory -Force -Path $out | Out-Null
 $log = Join-Path $out "live.log"
-function Say($m) { $l = "{0:HH:mm:ss} {1}" -f (Get-Date), $m; Write-Host $l; Add-Content $log $l }
+function Scrub($t) { foreach ($v in $env:BOX_SSH_HOST, $env:BOX_SSH_USER) { if ($v) { $t = $t.Replace($v, "***") } }; $t }
+function Say($m) { $l = Scrub ("{0:HH:mm:ss} {1}" -f (Get-Date), $m); Write-Host $l; Add-Content $log $l }
 function Result($name, $ok, $detail) { Say ("{0,-5} {1}: {2}" -f $(if ($ok) { "PASS" } else { "FAIL" }), $name, $detail); Add-Content (Join-Path $out "results.txt") ("{0} {1} {2}" -f $(if ($ok) { "PASS" } else { "FAIL" }), $name, $detail) }
 
 Add-Type -AssemblyName System.Windows.Forms, System.Drawing
@@ -103,7 +104,7 @@ if ($first) {
 
   # ---- 4. hand the words to the throwaway box (a key restricted to writing words.txt) ----------------------
   if ($words -and $env:BOX_SSH_KEY) {
-    $key = Join-Path $env:RUNNER_TEMP "box_key"; Set-Content $key $env:BOX_SSH_KEY -NoNewline -Encoding ASCII
+    $key = Join-Path $env:RUNNER_TEMP "box_key"; [IO.File]::WriteAllText($key, (($env:BOX_SSH_KEY -replace "`r", "").Trim() + "`n"))
     icacls $key /inheritance:r /grant:r "$($env:USERNAME):R" | Out-Null
     $kh = Join-Path $env:RUNNER_TEMP "known_hosts"; Set-Content $kh $env:BOX_SSH_HOSTKEY -Encoding ASCII
     $words | & ssh -i $key -o UserKnownHostsFile=$kh -o StrictHostKeyChecking=yes -o ConnectTimeout=20 "$($env:BOX_SSH_USER)@$($env:BOX_SSH_HOST)" 2>&1 | ForEach-Object { Say "ssh: $_" }
