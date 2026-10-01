@@ -424,6 +424,28 @@ test("update-from-request: only the word update starts anything; a link or anoth
   assert.ok(!fs.existsSync(path.join(b.U, "status", "status.json")));
 });
 
+test("redteam U-fifo: a request that is a named pipe or a folder is dropped without blocking and nothing runs", { timeout: 30_000 }, async t => {
+  const b = await box(t, { releases: [{ tag: "v0.2.0", sign: RELEASE.privateKey }] });
+  units_dirs(b);
+  const req = path.join(b.U, "request", "request");
+  // A named pipe would hang a plain `head` forever: it is not a regular file, so it is never opened.
+  const mk = spawnSync("mkfifo", [req]);
+  // On CI a missing mkfifo is a failure, never a silent skip of the pipe half.
+  if (process.env.CI) assert.equal(mk.status, 0, "mkfifo is needed for the named-pipe attack");
+  if (mk.status === 0) {
+    const r = /** @type {any} */ (await b.run(["update-from-request"], KEY));
+    assert.equal(r.code, 0);
+    assert.ok(!fs.existsSync(req), "the pipe is removed");
+  }
+  // The folder half is a regression case, not proof: it is refused with or without the regular-file guard.
+  fs.mkdirSync(req);
+  fs.writeFileSync(path.join(req, "update"), "update\n");
+  const r2 = /** @type {any} */ (await b.run(["update-from-request"], KEY));
+  assert.equal(r2.code, 0);
+  assert.equal(b.calls().length, 0, "no docker call: " + b.calls().join("\n"));
+  assert.ok(!fs.existsSync(path.join(b.U, "status", "status.json")));
+});
+
 test("update-from-request: an unsigned release, or one signed by another key, installs nothing", async t => {
   const b = await box(t, { releases: [{ tag: "v0.2.0", sign: false }] });
   ask(b);
@@ -521,6 +543,30 @@ test("vyre updater install: writes a path unit watching vyred's request file and
   await b.run(["updater", "remove"], { VYRE_SYSTEMD_DIR: units });
   assert.ok(!fs.existsSync(path.join(units, "vyre-update.path")));
   assert.ok(!fs.existsSync(path.join(b.U, "status", "ready")));
+});
+
+test("vyre updater remove: units a person cannot write are removed through sudo, and when that fails the command says plainly they remain", { skip: process.getuid() === 0 }, async t => {
+  const b = await box(t, { releases: [] });
+  const units = path.join(b.DIR, "units");
+  fs.mkdirSync(units);
+  fs.writeFileSync(path.join(units, "vyre-update.path"), "x");
+  fs.writeFileSync(path.join(units, "vyre-update.service"), "x");
+  fs.chmodSync(units, 0o555);
+  fs.writeFileSync(path.join(b.FAKE, "bin", "sudo"), `#!/bin/sh\necho "$@" >>"$FAKE/sudo"\nexit 1\n`, { mode: 0o755 });
+  let r;
+  try { r = /** @type {any} */ (await b.run(["updater", "remove"], { VYRE_SYSTEMD_DIR: units, VYRE_ROOT_UID: String(process.getuid()) })); } finally { fs.chmodSync(units, 0o755); }
+  assert.notEqual(r.code, 0, `a failed removal is not a success: ${r.out}`);
+  assert.match(r.out, /still on this server/, r.out);
+  assert.match(r.out, /sudo .* updater remove/);
+  assert.match(fs.readFileSync(path.join(b.FAKE, "sudo"), "utf8"), /updater remove/, "it asked for root");
+  assert.ok(fs.existsSync(path.join(units, "vyre-update.path")), "nothing was claimed removed");
+  // A wrapper that is not root's is never handed to sudo: the manual command is printed instead.
+  fs.rmSync(path.join(b.FAKE, "sudo"));
+  fs.chmodSync(units, 0o555);
+  try { r = /** @type {any} */ (await b.run(["updater", "remove"], { VYRE_SYSTEMD_DIR: units, VYRE_ROOT_UID: "0" })); } finally { fs.chmodSync(units, 0o755); }
+  assert.notEqual(r.code, 0);
+  assert.match(r.out, /still on this server/);
+  assert.ok(!fs.existsSync(path.join(b.FAKE, "sudo")), "sudo was not asked to run a wrapper root does not own");
 });
 
 test("compose: vyred gets only its own request folder (writable) and the state folder read-only", () => {

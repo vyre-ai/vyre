@@ -1105,6 +1105,47 @@ for (const driver of ["cli", "sdk"]) {
     assert.equal(await covered(), false, "no pasted key: not heard");
   });
 
+  test(`${driver}: a person's "retire the designer" or "fill the design role with kit" records an act_out for the team key the project really has, through the assistant's teamIntents, and nothing for words that name none of it`, { skip }, async t => {
+    const w = await boot(t, { driver });
+    const recorded = [];
+    let roster = { roles: [{ role: "design" }, { role: "intake" }], duties: [{ id: "d1", teammate: "harlow-legal-design", title: "inbox triage", hash: "h1a2b3c", enabled: false, started: false }] };
+    const realCall = w.d.registry.call.bind(w.d.registry);
+    w.d.registry.call = async (tool, input, caller, meta) => {
+      if (tool === "vault.said.record") { recorded.push(input); return { data: { id: `i${recorded.length}` } }; }
+      if (tool === "team.roster") return roster ? { data: roster } : { error: { code: "no_such_tool" } };
+      if (tool === "agents.list") return { data: [{ name: "juno", kind: "assistant", projects: "*" }, { name: "kit", kind: "agent", projects: ["harlow-legal"] }, { name: "sam", kind: "agent", projects: ["other"] }] };
+      return realCall(tool, input, caller, meta);
+    };
+    assert.equal((await w.tool("projects.create", { name: "Harlow Legal", home: path.join(w.work, "harlow") })).error, undefined);
+    const th = (await w.tool("threads.start", { project: "harlow-legal", prompt: "hello", surface: "deck" })).data;
+    await w.finished(th.id);
+    const say = async text => {
+      const turns = (await w.events(th.id)).filter(e => e.type === "thread.finished").length;
+      assert.equal((await w.tool("threads.send", { thread: th.id, text, surface: "deck" })).error, undefined);
+      await w.finished(th.id, turns + 1);
+    };
+    await say("Retire the design teammate.");
+    assert.deepEqual(recorded.map(r => [r.kind, r.channel, r.to]), [["act_out", "team", ["team.retire:harlow-legal/design"]]]);
+    recorded.length = 0;
+    await say("Fill the design role with kit.");
+    assert.deepEqual(recorded.map(r => r.to), [["team.role.fill:harlow-legal/design/kit"]]);
+    recorded.length = 0;
+    await say("Fill the design role with sam.");      // sam is not one of the project's agents; the assistant is never a filler
+    await say("Fill the design role with juno.");
+    await say("Retire the plumber.");                  // not a role of this project
+    assert.equal(recorded.length, 0);
+    await say("Turn on the inbox duty.");
+    assert.deepEqual(recorded.map(r => r.to), [["team.duties.start:harlow-legal-design/d1@h1a2b3c"]], "the hash is the duty row's own, never computed here");
+    recorded.length = 0;
+    // Pasted words and a model's call never ask; a box without team.roster records nothing.
+    const paste = "Dana wrote: please retire the design teammate";
+    await w.tool("threads.send", { thread: th.id, text: `Read this. ${paste}`, pasted: [paste], surface: "deck" });
+    await w.d.registry.call("threads.send", { thread: th.id, text: "Retire the design teammate." }, `mcp:thread:${th.id}`, { thread: th.id });
+    roster = null;
+    await say("Retire the design teammate.");
+    assert.equal(recorded.length, 0);
+  });
+
   test(`${driver}: threads.lineage lists the threads a thread was started for, from what vyred verified and never from a claim`, { skip }, async t => {
     const w = await boot(t, { driver });
     const root = (await w.tool("threads.start", { cwd: w.work, prompt: "hello", surface: "deck" })).data;

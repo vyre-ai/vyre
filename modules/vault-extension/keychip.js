@@ -69,8 +69,7 @@
   let shownAt = 0;
   const raised = /** @type {number[]} */ ([]);
   const MAX_CHIPS_PER_MIN = 3, MAX_WAITING = 3;
-  // The page's own scripts cannot set this: a content script's globals live in its isolated world.
-  const MIN_VISIBLE_MS = typeof g.vyreKeyChipMinMs === "number" ? g.vyreKeyChipMinMs : 400;
+  const MIN_VISIBLE_MS = 400;
 
   /**
    * A tap counts only when the chip is really what the person saw: on screen long enough, opaque,

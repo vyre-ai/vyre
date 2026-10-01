@@ -1,0 +1,50 @@
+# The import of other agents' sessions against the REAL tools' own files. Codex CLI runs once in a
+# throwaway CODEX_HOME against a local mock of the Responses API (no account, no key, no network),
+# and the import's reader must list, place and convert the rollout file it wrote.
+name: import-real
+on:
+  workflow_dispatch:
+  push:
+    paths: ["core/import/**", "scripts/import-real-check.mjs", "scripts/import-real-claude-check.mjs", ".github/workflows/import-real.yml"]
+permissions:
+  contents: read
+concurrency:
+  group: import-real-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  codex:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Install Codex CLI into a temp prefix
+        run: npm install --prefix "$RUNNER_TEMP/codex" @openai/codex@0.159.3
+      - name: Import reads a real Codex session file
+        run: node scripts/import-real-check.mjs "$RUNNER_TEMP/codex/node_modules/.bin/codex"
+  claude:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Install Claude Code into a temp prefix
+        run: npm install --prefix "$RUNNER_TEMP/claude" @anthropic-ai/claude-code@2.1.286
+      - name: Import reads a real Claude Code transcript
+        run: node scripts/import-real-claude-check.mjs "$RUNNER_TEMP/claude/node_modules/.bin/claude"

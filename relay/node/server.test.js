@@ -279,3 +279,22 @@ test("the setup mailbox has a global cap on live mailboxes, whoever asks", async
   assert.equal((await post(3)).status, 429);
   assert.equal((await post(1)).status, 200, "the ones already there keep working");
 });
+
+test("a box that closes a data socket with 4401 'device removed' tells the device exactly that; any other close is the generic 4410", async t => {
+  const relay = createRelay();
+  const base = await relay.listen();
+  t.after(() => relay.close());
+  const b = await box(base);
+  const ready = await b.s.json();
+  for (const [code, reason, want] of [[CLOSE.refused, "device removed", { code: CLOSE.refused, reason: "device removed" }],
+    [CLOSE.refused, "not a paired device", { code: CLOSE.boxGone, reason: "box closed the connection" }],
+    [3456, "device removed", { code: CLOSE.boxGone, reason: "box closed the connection" }]]) {
+    const dev = sock(`${base}/v1/device?route=${b.route}`);
+    await dev.open();
+    const { c } = await b.s.json();
+    const data = sock(`${base}/v1/box?route=${b.route}&c=${c}&t=${ready.ticket}`);
+    await data.open();
+    data.ws.close(code, reason);
+    assert.deepEqual(await dev.closed(), want, `${code} ${reason}`);
+  }
+});

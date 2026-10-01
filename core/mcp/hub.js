@@ -32,6 +32,9 @@ export const MIGRATIONS = [
      idle INTEGER, tools_cache TEXT, cached_at INTEGER, last_used INTEGER,
      added INTEGER NOT NULL, updated INTEGER NOT NULL
    );`,
+  // One meaning of "no scope": the person and the assistant only. A server stored before that has an explicit open scope
+  // (the old default was written out on every row); any row without one is kept open, so nothing that works breaks.
+  `UPDATE mcp_servers SET scope = '{"projects":"*","agents":"*"}' WHERE scope IS NULL OR scope = '' OR scope = '{}' OR scope = 'null';`,
 ];
 
 export const NAME = /^[a-z][a-z0-9-]{0,31}$/;
@@ -333,11 +336,14 @@ function normalizeAuth(a, out) {
   return r;
 }
 
+/** No scope: you and the assistant only (and your own unnamed sessions); a named agent needs a scope naming it, or a #tag on its thread. */
+export const DEFAULT_SCOPE = Object.freeze({ projects: "*", agents: /** @type {string[]} */ ([]), assistant: true });
+
 function normalizeScope(s) {
-  if (s === undefined || s === null) return { projects: "*", agents: "*" };
+  if (s === undefined || s === null) return { projects: "*", agents: [], assistant: true };
   if (!isObj(s)) throw bad("scope is { projects: \"*\" | [ids], agents: \"*\" | [names] }");
   const one = (v, what) => { if (v === undefined || v === "*") return "*"; if (!Array.isArray(v) || !v.every(x => typeof x === "string" && x)) throw bad(`scope.${what} must be "*" or a list`); return [...new Set(v)]; };
-  return { projects: one(s.projects, "projects"), agents: one(s.agents, "agents") };
+  return { projects: one(s.projects, "projects"), agents: one(s.agents, "agents"), ...(s.assistant === true ? { assistant: true } : {}) };
 }
 
 function normalizePolicy(t) {
@@ -374,6 +380,7 @@ const MODULE_CLAIM = /(?:^|[\s:])(agent|thread):/;
  *   request?: (input: any) => Promise<{ id: string, message: string }>,
  *   item?: (id: string) => Promise<any>,
  *   agentProjects?: (agent: string) => Promise<"*"|string[]>,
+ *   agentKind?: (agent: string) => Promise<string|null>,
  *   threadProject?: (thread: string) => Promise<string|null>,
  *   idle?: number, httpHosts?: string[], boundFor?: (item: string) => ({ prefix: string, hosts: string[] } | null), lineage?: (thread: string) => Promise<string[]>, maxResult?: number, timeout?: number }} HubDeps
  */
@@ -586,6 +593,8 @@ export class Hub {
     }
     const { projects, agents } = r.scope;
     if (who.agent) {
+      // The default scope (no scope written) names the assistant, by what vyred says the agent is, never by its name.
+      if (r.scope.assistant && this.deps.agentKind && await this.deps.agentKind(who.agent).catch(() => null) === "assistant") return true;
       if (agents !== "*" && !agents.includes(who.agent)) return false;
       if (projects === "*") return true;
       if (memo.agentProjects === undefined) memo.agentProjects = this.deps.agentProjects ? await this.deps.agentProjects(who.agent).catch(() => []) : [];
