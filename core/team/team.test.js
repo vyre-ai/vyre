@@ -672,6 +672,7 @@ test("isolation: worktree makes the teammate's own worktree and branch, and brin
   const { tool, project, repo } = await bootGit(t);
   const tm = await tool("team.add", { project: project.slug, role: "design", isolation: "worktree" });
   assert.equal(tm.isolation, "worktree");
+  assert.match(tm.notice, /"integrator" teammate was added too/, "the answer says one add made two teammates");
   const dir = worktreePath(repo, "design");
   assert.ok(fs.existsSync(dir), "design's worktree should exist");
   assert.equal(git(dir, ["rev-parse", "--abbrev-ref", "HEAD"]).trim(), branchOf("design"));

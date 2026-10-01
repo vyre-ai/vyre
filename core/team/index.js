@@ -846,9 +846,13 @@ export default {
             if (!w.ok) throw new Error(`could not make ${i.role}'s worktree: ${w.stderr || "unknown git error"}`);
             if (!byRole(i.project, INTEGRATOR_ROLE)) {
               const iw = await ensureWorktree(repo, INTEGRATOR_ROLE, base);
-              if (iw.ok) insertTeammate({ project: i.project, role: INTEGRATOR_ROLE, isolation: "worktree",
-                brief: "Merges other teammates' finished work into this project's own branch once the tests pass.",
-                main_sha: await headSha(repo, B(base)), test_command: await detectTestCommand(repo) });
+              if (iw.ok) {
+                insertTeammate({ project: i.project, role: INTEGRATOR_ROLE, isolation: "worktree",
+                  brief: "Merges other teammates' finished work into this project's own branch once the tests pass.",
+                  main_sha: await headSha(repo, B(base)), test_command: await detectTestCommand(repo) });
+                // One add made two teammates: say so, so the person sees the integrator it brought along.
+                notice = `${i.role} works in its own worktree, so an "${INTEGRATOR_ROLE}" teammate was added too: it merges finished work into ${base} once the tests pass`;
+              }
               else ctx.log?.(`team: ${i.project}'s integrator worktree failed, so it was not added: ${iw.stderr}`);
             }
           }
