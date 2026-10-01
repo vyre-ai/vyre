@@ -4,6 +4,10 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### connections: an entry with no scope is "not recorded", not the default
+
+- A connected entry that carries no `scope` key at all (a box from before scopes) reads "Scope not recorded" instead of "Just you and the assistant", since the hub reads such a row as open to all. Only an explicit `scope: null` from the box reads as the default.
+
 #### connections: say what a connection already grants
 
 - "Who can use it" now reads "All projects, every agent" for the wide choice, and each connected row shows its scope in words beside its name ("Just you and the assistant", "All projects, every agent", or the projects), so a person sees what a migrated connection had been granting and can narrow it.

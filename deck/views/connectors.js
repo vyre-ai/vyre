@@ -26,6 +26,8 @@ const SETUP_WORD = { none: "", app: "Needs an app from the vendor", token: "Need
 export const WHO = [["me", "Just me and the assistant"], ["all", "All projects, every agent"], ["some", "Only these projects"]];
 /** What a connection carries, in words: the default, everything it granted before, or named projects. @param {any} scope */
 export function scopeLine(scope) {
+  // An entry that carries no scope at all (a box from before scopes) is unknown, not the default: the hub reads such a row as open to all.
+  if (scope === undefined) return "Scope not recorded";
   if (!scope || typeof scope !== "object") return "Just you and the assistant";
   const agents = scope.agents === "*" ? "every agent" : Array.isArray(scope.agents) && scope.agents.length ? scope.agents.join(", ") : "";
   if (scope.projects === "*") return agents === "every agent" ? "All projects, every agent" : `All projects${agents ? `, ${agents}` : ""}`;
@@ -53,7 +55,7 @@ export function groupsOf(d) {
   for (const p of list) {
     if (!p || typeof p.id !== "string" || !p.label) continue;
     const row = { id: p.id, label: String(p.label), group: String(p.group || "Other"), who: p.who ? String(p.who) : "", note: p.note ? String(p.note) : "", setup: String(p.setup || "none"),
-      via: p.via ? String(p.via) : "", connected: (Array.isArray(p.connected) ? p.connected : []).filter((/** @type {any} */ c) => c && c.name).map((/** @type {any} */ c) => ({ name: String(c.name), mode: c.mode ? String(c.mode) : "", label: c.label ? String(c.label) : "", scope: c.scope && typeof c.scope === "object" ? c.scope : null })) };
+      via: p.via ? String(p.via) : "", connected: (Array.isArray(p.connected) ? p.connected : []).filter((/** @type {any} */ c) => c && c.name).map((/** @type {any} */ c) => ({ name: String(c.name), mode: c.mode ? String(c.mode) : "", label: c.label ? String(c.label) : "", scope: "scope" in c ? (c.scope && typeof c.scope === "object" ? c.scope : null) : undefined })) };
     (by.get(row.group) || by.set(row.group, []).get(row.group))?.push(row);
   }
   return [...by].map(([group, presets]) => ({ group, presets }));

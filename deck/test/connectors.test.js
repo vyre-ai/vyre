@@ -195,7 +195,8 @@ test("an error that echoes a typed token is shown with it hidden", async () => {
 });
 
 test("a connection's scope in words: the default, everything it granted before, named projects", async () => {
-  assert.equal(scopeLine(null), "Just you and the assistant");
+  assert.equal(scopeLine(null), "Just you and the assistant", "null is the box saying: the default");
+  assert.equal(scopeLine(undefined), "Scope not recorded", "no scope key at all is unknown, never presented as the safe default");
   assert.equal(scopeLine({ projects: "*", agents: "*" }), "All projects, every agent");
   assert.equal(scopeLine({ projects: ["northwind", "harlow"], agents: "*" }), "northwind, harlow");
   assert.equal(scopeLine({ projects: "*", agents: ["kit"] }), "All projects, kit");
