@@ -233,7 +233,7 @@
   },
   "chrome.release": {
    "module": "chrome",
-   "default": "open to any caller",
+   "default": "internal or hook in code",
    "internal": true
   },
   "chrome.resume": {
@@ -306,17 +306,17 @@
   },
   "computers.endpoint": {
    "module": "computers",
-   "default": "open to any caller",
+   "default": "internal or hook in code",
    "internal": true
   },
   "computers.fill.begin": {
    "module": "computers",
-   "default": "open to any caller",
+   "default": "internal or hook in code",
    "internal": true
   },
   "computers.fill.end": {
    "module": "computers",
-   "default": "open to any caller",
+   "default": "internal or hook in code",
    "internal": true
   },
   "computers.get": {
@@ -337,7 +337,7 @@
   },
   "computers.helper": {
    "module": "computers",
-   "default": "open to any caller",
+   "default": "internal or hook in code",
    "internal": true
   },
   "computers.limits": {
@@ -350,7 +350,7 @@
   },
   "computers.may-act": {
    "module": "computers",
-   "default": "open to any caller",
+   "default": "internal or hook in code",
    "internal": true
   },
   "computers.member.add": {
@@ -371,7 +371,7 @@
   },
   "computers.node.agent": {
    "module": "computers",
-   "default": "open to any caller",
+   "default": "internal or hook in code",
    "internal": true
   },
   "computers.pause": {
@@ -392,12 +392,12 @@
   },
   "computers.shield": {
    "module": "computers",
-   "default": "open to any caller",
+   "default": "internal or hook in code",
    "internal": true
   },
   "computers.stats": {
    "module": "computers",
-   "default": "open to any caller",
+   "default": "internal or hook in code",
    "internal": true
   },
   "computers.stop": {
@@ -450,7 +450,7 @@
   },
   "connectors.mention.resolve": {
    "module": "connectors",
-   "default": "open to any caller",
+   "default": "internal or hook in code",
    "internal": true
   },
   "connectors.mention.search": {
@@ -459,7 +459,7 @@
   },
   "connectors.persist": {
    "module": "connectors",
-   "default": "open to any caller",
+   "default": "internal or hook in code",
    "internal": true
   },
   "context.now": {
@@ -596,7 +596,7 @@
   },
   "gate.offer": {
    "module": "gate",
-   "default": "open to any caller",
+   "default": "internal or hook in code",
    "internal": true
   },
   "gate.reject": {
@@ -613,7 +613,7 @@
   },
   "gate.route": {
    "module": "gate",
-   "default": "open to any caller",
+   "default": "internal or hook in code",
    "internal": true
   },
   "gate.said.add": {
@@ -881,7 +881,7 @@
   },
   "google.release": {
    "module": "google",
-   "default": "open to any caller",
+   "default": "internal or hook in code",
    "internal": true
   },
   "google.remove": {
@@ -946,7 +946,7 @@
   },
   "hands.release": {
    "module": "hands",
-   "default": "open to any caller",
+   "default": "internal or hook in code",
    "internal": true
   },
   "hands.resume": {
@@ -1051,7 +1051,7 @@
   },
   "learn.observe": {
    "module": "learn",
-   "default": "open to any caller",
+   "default": "internal or hook in code",
    "internal": true
   },
   "learn.relax": {
@@ -1064,7 +1064,7 @@
   },
   "learn.signal": {
    "module": "learn",
-   "default": "open to any caller",
+   "default": "internal or hook in code",
    "internal": true
   },
   "learn.signals": {
@@ -1113,7 +1113,7 @@
   },
   "mail.release": {
    "module": "mail",
-   "default": "open to any caller",
+   "default": "internal or hook in code",
    "internal": true
   },
   "mail.search": {
@@ -1138,12 +1138,12 @@
   },
   "mcp.grant": {
    "module": "mcp",
-   "default": "open to any caller",
+   "default": "internal or hook in code",
    "internal": true
   },
   "mcp.release": {
    "module": "mcp",
-   "default": "open to any caller",
+   "default": "internal or hook in code",
    "internal": true
   },
   "mcp.remove": {
@@ -1240,7 +1240,7 @@
   },
   "memory.pace": {
    "module": "memory",
-   "default": "open to any caller",
+   "default": "internal or hook in code",
    "internal": true
   },
   "memory.pin": {
@@ -1321,7 +1321,7 @@
   },
   "memory.teach": {
    "module": "memory",
-   "default": "open to any caller",
+   "default": "internal or hook in code",
    "internal": true
   },
   "memory.today": {
@@ -1362,7 +1362,7 @@
   },
   "names.claim-code": {
    "module": "names",
-   "default": "open to any caller",
+   "default": "internal or hook in code",
    "internal": true
   },
   "names.connect": {
@@ -1391,7 +1391,7 @@
   },
   "names.recover.code": {
    "module": "names",
-   "default": "open to any caller",
+   "default": "internal or hook in code",
    "internal": true
   },
   "names.release": {
@@ -1588,7 +1588,7 @@
   },
   "recall.forget": {
    "module": "recall",
-   "default": "open to any caller",
+   "default": "internal or hook in code",
    "internal": true
   },
   "recall.index": {
@@ -1633,7 +1633,7 @@
   },
   "relay.device.presence": {
    "module": "relay",
-   "default": "open to any caller",
+   "default": "internal or hook in code",
    "internal": true
   },
   "relay.devices.ask-trust": {
@@ -1642,7 +1642,7 @@
   },
   "relay.devices.bind": {
    "module": "relay",
-   "default": "open to any caller",
+   "default": "internal or hook in code",
    "internal": true
   },
   "relay.devices.list": {
@@ -1651,7 +1651,7 @@
   },
   "relay.devices.node": {
    "module": "relay",
-   "default": "open to any caller",
+   "default": "internal or hook in code",
    "internal": true
   },
   "relay.devices.path": {
@@ -1668,7 +1668,7 @@
   },
   "relay.devices.tailnet": {
    "module": "relay",
-   "default": "open to any caller",
+   "default": "internal or hook in code",
    "internal": true
   },
   "relay.devices.trust": {
@@ -1701,17 +1701,17 @@
   },
   "relay.route.id": {
    "module": "relay",
-   "default": "open to any caller",
+   "default": "internal or hook in code",
    "internal": true
   },
   "relay.route.sign": {
    "module": "relay",
-   "default": "open to any caller",
+   "default": "internal or hook in code",
    "internal": true
   },
   "relay.setup.begin": {
    "module": "relay",
-   "default": "open to any caller",
+   "default": "internal or hook in code",
    "internal": true
   },
   "relay.setup.claim": {
@@ -1724,7 +1724,7 @@
   },
   "relay.setup.end": {
    "module": "relay",
-   "default": "open to any caller",
+   "default": "internal or hook in code",
    "internal": true
   },
   "relay.setup.status": {
@@ -1773,7 +1773,7 @@
   },
   "sessions.accounts.resolve": {
    "module": "sessions",
-   "default": "open to any caller",
+   "default": "internal or hook in code",
    "internal": true
   },
   "sessions.accounts.signin": {
@@ -1794,7 +1794,7 @@
   },
   "sessions.mode.resolve": {
    "module": "sessions",
-   "default": "open to any caller",
+   "default": "internal or hook in code",
    "internal": true
   },
   "sessions.mode.set": {
@@ -1811,7 +1811,7 @@
   },
   "sessions.models.resolve": {
    "module": "sessions",
-   "default": "open to any caller",
+   "default": "internal or hook in code",
    "internal": true
   },
   "sessions.models.set": {
@@ -1820,7 +1820,7 @@
   },
   "sessions.prompt.compose": {
    "module": "sessions",
-   "default": "open to any caller",
+   "default": "internal or hook in code",
    "internal": true
   },
   "sessions.prompt.get": {
@@ -1845,7 +1845,7 @@
   },
   "sessions.providers.snapshot": {
    "module": "sessions",
-   "default": "open to any caller",
+   "default": "internal or hook in code",
    "internal": true
   },
   "sessions.routes.get": {
@@ -1854,7 +1854,7 @@
   },
   "sessions.routes.next": {
    "module": "sessions",
-   "default": "open to any caller",
+   "default": "internal or hook in code",
    "internal": true
   },
   "sessions.routes.set": {
@@ -1867,7 +1867,7 @@
   },
   "sessions.slots": {
    "module": "sessions",
-   "default": "open to any caller",
+   "default": "internal or hook in code",
    "internal": true
   },
   "sessions.slots.status": {
@@ -1884,7 +1884,7 @@
   },
   "sessions.usage.report": {
    "module": "sessions",
-   "default": "open to any caller",
+   "default": "internal or hook in code",
    "internal": true
   },
   "sessions.usage.resume": {
@@ -1909,7 +1909,7 @@
   },
   "settings.resolve": {
    "module": "settings",
-   "default": "open to any caller",
+   "default": "internal or hook in code",
    "internal": true
   },
   "settings.schema": {
@@ -1975,7 +1975,7 @@
   },
   "spend.record": {
    "module": "spend",
-   "default": "open to any caller",
+   "default": "internal or hook in code",
    "internal": true
   },
   "spend.summary": {
@@ -1988,7 +1988,7 @@
   },
   "suggest.offer": {
    "module": "suggest",
-   "default": "open to any caller",
+   "default": "internal or hook in code",
    "internal": true
   },
   "suggest.picked": {
@@ -2158,7 +2158,7 @@
   },
   "threads.claimed": {
    "module": "threads",
-   "default": "open to any caller",
+   "default": "internal or hook in code",
    "internal": true
   },
   "threads.commands": {
@@ -2167,7 +2167,7 @@
   },
   "threads.contend": {
    "module": "threads",
-   "default": "open to any caller",
+   "default": "internal or hook in code",
    "internal": true
   },
   "threads.delete": {
@@ -2192,17 +2192,17 @@
   },
   "threads.halt": {
    "module": "threads",
-   "default": "open to any caller",
+   "default": "internal or hook in code",
    "internal": true
   },
   "threads.history": {
    "module": "threads",
-   "default": "open to any caller",
+   "default": "internal or hook in code",
    "internal": true
   },
   "threads.inbox": {
    "module": "threads",
-   "default": "open to any caller",
+   "default": "internal or hook in code",
    "internal": true
   },
   "threads.interrupt": {
@@ -2224,7 +2224,7 @@
   },
   "threads.launch": {
    "module": "threads",
-   "default": "open to any caller",
+   "default": "internal or hook in code",
    "internal": true
   },
   "threads.lease": {
@@ -2242,7 +2242,7 @@
   },
   "threads.live": {
    "module": "threads",
-   "default": "open to any caller",
+   "default": "internal or hook in code",
    "internal": true
   },
   "threads.mode": {
@@ -2255,7 +2255,7 @@
   },
   "threads.notice": {
    "module": "threads",
-   "default": "open to any caller",
+   "default": "internal or hook in code",
    "internal": true
   },
   "threads.origin": {
@@ -2265,12 +2265,12 @@
   },
   "threads.pids": {
    "module": "threads",
-   "default": "open to any caller",
+   "default": "internal or hook in code",
    "internal": true
   },
   "threads.post": {
    "module": "threads",
-   "default": "open to any caller",
+   "default": "internal or hook in code",
    "internal": true
   },
   "threads.queue": {
@@ -2279,7 +2279,7 @@
   },
   "threads.quick": {
    "module": "threads",
-   "default": "open to any caller",
+   "default": "internal or hook in code",
    "internal": true
   },
   "threads.release": {
@@ -2292,7 +2292,7 @@
   },
   "threads.replied": {
    "module": "threads",
-   "default": "open to any caller",
+   "default": "internal or hook in code",
    "internal": true
   },
   "threads.rewind": {
@@ -2345,12 +2345,12 @@
   },
   "threads.usage": {
    "module": "threads",
-   "default": "open to any caller",
+   "default": "internal or hook in code",
    "internal": true
   },
   "threads.vouch": {
    "module": "threads",
-   "default": "open to any caller",
+   "default": "internal or hook in code",
    "internal": true
   },
   "threads.watch": {
@@ -2431,7 +2431,7 @@
   },
   "vault.api.send": {
    "module": "vault",
-   "default": "open to any caller",
+   "default": "internal or hook in code",
    "internal": true
   },
   "vault.approve": {
@@ -2512,7 +2512,7 @@
   },
   "vault.credential.tokens": {
    "module": "vault",
-   "default": "open to any caller",
+   "default": "internal or hook in code",
    "internal": true
   },
   "vault.delete": {
@@ -2677,7 +2677,7 @@
   },
   "vault.mention.resolve": {
    "module": "vault",
-   "default": "open to any caller",
+   "default": "internal or hook in code",
    "internal": true
   },
   "vault.mention.search": {
@@ -2742,7 +2742,7 @@
   },
   "vault.release": {
    "module": "vault",
-   "default": "open to any caller",
+   "default": "internal or hook in code",
    "internal": true
   },
   "vault.remind.run": {
@@ -2787,27 +2787,27 @@
   },
   "vault.said.add": {
    "module": "vault",
-   "default": "open to any caller",
+   "default": "internal or hook in code",
    "internal": true
   },
   "vault.said.list": {
    "module": "vault",
-   "default": "open to any caller",
+   "default": "internal or hook in code",
    "internal": true
   },
   "vault.said.match": {
    "module": "vault",
-   "default": "open to any caller",
+   "default": "internal or hook in code",
    "internal": true
   },
   "vault.said.record": {
    "module": "vault",
-   "default": "open to any caller",
+   "default": "internal or hook in code",
    "internal": true
   },
   "vault.said.revoke": {
    "module": "vault",
-   "default": "open to any caller",
+   "default": "internal or hook in code",
    "internal": true
   },
   "vault.search": {
@@ -2872,12 +2872,12 @@
   },
   "vault.use.check": {
    "module": "vault",
-   "default": "open to any caller",
+   "default": "internal or hook in code",
    "internal": true
   },
   "vault.use.note": {
    "module": "vault",
-   "default": "open to any caller",
+   "default": "internal or hook in code",
    "internal": true
   },
   "vault.uses": {
@@ -2954,7 +2954,7 @@
   },
   "watchers.hook": {
    "module": "watchers",
-   "default": "open to any caller",
+   "default": "internal or hook in code",
    "hook": true
   },
   "watchers.items": {
