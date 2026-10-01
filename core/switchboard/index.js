@@ -2331,7 +2331,7 @@ export const fromLink = caller => /^link:/.test(String(caller || ""));
  */
 export async function spendCheck(ctx, caller, provider) {
   const c = String(caller || "");
-  if (!(/^(module|hook)/.test(c) || /(^|[\s:])agent:/.test(c))) return;
+  if (!(/^(module|hook)/.test(c) || /(^|[\s:])(agent|thread):/i.test(c))) return;
   let r = null, why = "";
   try { r = await ctx.call("spend.check", { provider: String(provider || "claude") }); } catch (e) { why = /** @type {Error} */ (e).message; }
   const d = r && (r.data || r);
@@ -2348,7 +2348,7 @@ const spendDown = { day: "" };
 export const queuesFor = caller => {
   const c = String(caller || "");
   if (fromLink(c)) return true;
-  return !/^(mcp|harness|hook)/.test(c) && !/(^|[\s:])agent:/.test(c) && c !== "tailnet:";
+  return !/^(mcp|harness|hook)/.test(c) && !/(^|[\s:])(agent|thread):/i.test(c) && c !== "tailnet:";
 };
 
 export default {
