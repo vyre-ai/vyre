@@ -335,8 +335,26 @@ jobs:
         if: always()
         with: { name: results-update-refusals, path: results, retention-days: 14 }
 
+  threads:
+    needs: build
+    if: contains(github.event.inputs.on || 'all', 'all') || contains(github.event.inputs.on, 'threads')
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with: { name: box, path: box }
+      - name: J10, threads on a real box with a stand-in claude
+        run: bash scripts/matrix/j10-threads.sh box results/threads
+      - name: Diagnostics
+        if: failure()
+        run: tail -20 results/threads/install.log; for f in results/threads/*.json; do echo "== $f"; head -c 600 "$f"; echo; done
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with: { name: results-threads, path: results, retention-days: 14 }
+
   report:
-    needs: [linux, android, windows, mac, upgrade, data, j1, j6, j7, refusals]
+    needs: [threads, linux, android, windows, mac, upgrade, data, j1, j6, j7, refusals]
     if: always()
     runs-on: ubuntu-24.04
     steps:

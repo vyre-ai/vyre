@@ -1,0 +1,54 @@
+#!/bin/bash
+# J10: threads on a real box, with a stand-in `claude` (the stream-json fake the switchboard tests use).
+#   bash scripts/matrix/j10-threads.sh <box-dir> <out-dir>
+# As the person at the command line: start, send, stop and delete a thread. Then a thread whose agent
+# calls tools the way the MCP server does (as an agent caller), so the reach rules (asked or anyone) are
+# seen on a real install, not only in unit tests. Calls an agent makes whose answer the rules leave to the
+# team are recorded as "observed" with the answer, for the owner to judge. CI runners only.
+set -u
+[ -n "${CI:-}" ] || { echo "j10-threads.sh: runs on a CI runner only (CI is unset)" >&2; exit 2; }
+BOX=$(cd "$1" && pwd); mkdir -p "$2"; OUT=$(cd "$2" && pwd); DIR=/srv/vyre; FAILED=0
+rec() { ok=$2; case "$ok" in ok) ok=true;; observed) ok='"observed"';; *) ok=false; FAILED=$((FAILED + 1));; esac
+  printf '{"journey":"J10","device":"linux","step":"%s","ok":%s,"why":"%s"}\n' "$1" "$ok" "$(printf %s "${3:-}" | tr -d '"\\' | tr '\n' ' ' | cut -c1-400)" >>"$OUT/results.jsonl"
+  echo "$1 $2 ${3:-}"; }
+T=$RUNNER_TEMP/j10; mkdir -p "$T"
+cp scripts/../core/switchboard/testing/fake-claude.js "$T/fake-claude.cjs.js" 2>/dev/null || cp core/switchboard/testing/fake-claude.js "$T/fake-claude.js"
+mv "$T/fake-claude.cjs.js" "$T/fake-claude.js" 2>/dev/null
+printf '#!/bin/sh\nFAKE_CLAUDE_LOG=/tmp/fake-claude.log exec node /opt/matrix/fake-claude.mjs "$@"\n' >"$T/claude"; cp "$T/fake-claude.js" "$T/fake-claude.mjs"; chmod 755 "$T/claude" "$T/fake-claude.mjs"
+sudo mkdir -p $DIR && sudo chown "$(id -u):$(id -g)" $DIR
+cat >$DIR/compose.e2e.yml <<YML
+services:
+  vyre:
+    volumes:
+      - $T/claude:/usr/local/bin/claude:ro
+      - $T/fake-claude.mjs:/opt/matrix/fake-claude.mjs:ro
+YML
+python3 -m http.server 18080 --bind 127.0.0.1 --directory "$BOX" >/dev/null 2>&1 & SRV=$!
+for i in $(seq 1 50); do curl -fs http://127.0.0.1:18080/SHA256SUMS >/dev/null && break; sleep 0.2; done
+VYRE_BOX_URL=http://127.0.0.1:18080/ VYRE_BUILD=tgz COMPOSE_FILE=$DIR/compose.yml:$DIR/compose.build.yml:$DIR/compose.e2e.yml sh "$BOX/install-box.sh" --yes --print-link </dev/null >"$OUT/install.log" 2>&1
+i=0; until vyre status 2>/dev/null | grep -q 'vyred running'; do i=$((i + 1)); [ $i -ge 120 ] && break; sleep 1; done
+vyre status 2>&1 | grep -q 'vyred running' && rec 10.0-install ok || { rec 10.0-install false "$(tail -4 "$OUT/install.log")"; exit 1; }
+vyre call threads.list '{}' >/dev/null 2>&1; rec 10.0b-fake-claude-in-box ok "$(docker compose -f $DIR/compose.yml exec -T vyre claude --version 2>&1 | head -1)"
+call() { vyre call "$@" 2>&1; }
+# 10.1 the person starts a thread
+S=$(call threads.start '{"cwd":"/work","prompt":"hello from the matrix","surface":"deck"}'); echo "$S" >"$OUT/start.json"
+ID=$(printf '%s' "$S" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{try{const j=JSON.parse(s);console.log((j.data||j).id||(j.data||j).thread||"")}catch{console.log("")}})')
+[ -n "$ID" ] && rec 10.1-person-starts-thread ok "$ID" || { rec 10.1-person-starts-thread false "$(printf %s "$S" | head -c 300)"; ID=""; }
+wait_reply() { # wait until the thread's text contains $2, up to 60 s
+  for i in $(seq 1 30); do call threads.get "{\"thread\":\"$1\"}" >"$OUT/get-$3.json"; grep -q "$2" "$OUT/get-$3.json" && return 0; sleep 2; done; return 1; }
+if [ -n "$ID" ]; then
+  wait_reply "$ID" "hello from the matrix" first && rec 10.2-agent-answers ok || rec 10.2-agent-answers false "no reply: $(head -c 300 "$OUT/get-first.json")"
+  # 10.3 an agent inside the thread calls tools as an agent caller (what the MCP server does)
+  for tool in 'threads.list {}' 'threads.start {"cwd":"/work","prompt":"child thread"}' 'agents.ask {"agent":"nobody","prompt":"hi"}' 'threads.stop {"thread":"none"}' 'threads.delete {"thread":"none"}'; do
+    n=$(printf '%s' "${tool%% *}" | tr . -)
+    call threads.send "{\"thread\":\"$ID\",\"text\":\"vyre $tool\"}" >/dev/null
+    sleep 8
+    call threads.get "{\"thread\":\"$ID\"}" >"$OUT/get-$n.json"
+    rec "10.3-agent-calls-${tool%% *}" observed "$(grep -o 'refus[^"]*\|not allowed[^"]*\|reach[^"]*\|"error"[^}]*\|"data"[^}]*' "$OUT/get-$n.json" | tail -2 | tr '\n' ' ')"
+  done
+  call threads.stop "{\"thread\":\"$ID\"}" >"$OUT/stop.json"; grep -qi '"error"' "$OUT/stop.json" && rec 10.4-person-stops-thread false "$(head -c 200 "$OUT/stop.json")" || rec 10.4-person-stops-thread ok
+  call threads.delete "{\"thread\":\"$ID\"}" >"$OUT/delete.json"; grep -qi '"error"' "$OUT/delete.json" && rec 10.5-person-deletes-thread false "$(head -c 200 "$OUT/delete.json")" || rec 10.5-person-deletes-thread ok
+  call threads.list '{}' | grep -q "$ID" && rec 10.6-deleted-thread-gone false "still listed" || rec 10.6-deleted-thread-gone ok
+fi
+kill $SRV 2>/dev/null
+exit $([ $FAILED -eq 0 ] && echo 0 || echo 1)
