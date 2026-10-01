@@ -10,7 +10,7 @@
 // Labels: a control's label goes on the wire only when this device has seen the same text on two separate visits (the 30-minute windows a person's
 // use of a site falls in); a label seen once is remembered here and never sent.
 
-import { sanitize, arrivalCard } from "../shared/sk/site-knowledge.js";
+import { sanitize, arrivalCard, canonTemplate } from "../shared/sk/site-knowledge.js";
 import { observeOp, observeMiss, originOf } from "./observe.js";
 
 export const FLUSH_MS = 10_000;
@@ -28,6 +28,8 @@ export function createSiteCache({ chrome, emit = () => {}, now = Date.now, setT 
   /** @type {Map<string, number>} */ const asked = new Map();
   /** Misses of facts the device knows, waiting to be reported: one per origin and item. @type {Map<string, { origin: string, part: string, id: string }>} */ const reports = new Map();
   /** label text by origin and key: the visits that saw it. @type {Map<string, Map<string, { text: string, visits: Set<string> }>>} */ const labels = new Map();
+  /** Which rung of the ladder worked on a page template, waiting to be reported; and when each was last sent (the store counts, and throttles, on its own clock). @type {Map<string, { origin: string, template: string, rung: number, lowerFailed: boolean }>} */ const rungPending = new Map();
+  /** @type {Map<string, number>} */ const rungSent = new Map();
   /** @type {any} */ let timer = null;
   /** @type {any} */ let this_ = null;
   /** Off until the server says learning is on (site.config): nothing is read from storage, asked, queued, sent or written. */
@@ -111,12 +113,38 @@ export function createSiteCache({ chrome, emit = () => {}, now = Date.now, setT 
       reports.set(`${r.origin}|${r.part}|${r.id}`, r);
       if (!timer) timer = weak(setT(() => { timer = null; void this_.flush(); }, FLUSH_MS));
     },
+    /**
+     * A rung worked on this page (1 api, 2 dom, 3 devtools, 4 ax, 5 picture): structure only, the page's own path reduced to a template and an integer. lowerFailed is true only when the lower
+     * rungs really failed in this call chain. The store does the counting; a rung is re-sent at most every 10 minutes from here.
+     * @param {{ tabUrl?: string, rung: number, lowerFailed?: boolean }} o
+     */
+    rung(o) {
+      if (!enabled || !Number.isInteger(o.rung) || o.rung < 1 || o.rung > 5) return;
+      let u; try { u = new URL(String(o.tabUrl || "")); } catch { return; }
+      const origin = originOf(u.href), template = canonTemplate(u.pathname);
+      if (!origin || !template) return;
+      const key = `${origin}|${template}|${o.rung}`;
+      if (now() - (rungSent.get(key) || 0) < 10 * 60_000 && !o.lowerFailed) return;
+      rungPending.set(key, { origin, template, rung: o.rung, lowerFailed: o.lowerFailed === true });
+      if (!timer) timer = weak(setT(() => { timer = null; void this_.flush(); }, FLUSH_MS));
+    },
+    /** Where the ladder started last time on this page template, from the card: a HINT for where to begin, never a permission (every check applies whatever rung is used). @param {string} url @returns {number|null} */
+    startRung(url) {
+      if (!enabled) return null;
+      let u; try { u = new URL(String(url)); } catch { return null; }
+      const origin = originOf(u.href), template = canonTemplate(u.pathname);
+      const c = origin ? cards.get(origin) : null;
+      const r = c && c.card && c.card.startRungs && template ? c.card.startRungs[template] : null;
+      return Number.isInteger(r) && r >= 1 && r <= 5 ? r : null;
+    },
     /** Clean and send every origin's queue. Returns what was sent, for tests. */
     async flush() {
       if (timer) { clearT(timer); timer = null; }
       /** @type {Array<{ origin: string, patch: any }>} */ const out = [];
       for (const r of [...reports.values()].slice(0, 20)) { emit({ event: "site.report", origin: r.origin, part: r.part, id: r.id, outcome: "miss" }); stats.sent++; }
       reports.clear();
+      for (const [k, r] of [...rungPending]) { emit({ event: "site.report", origin: r.origin, template: r.template, rung: r.rung, lowerFailed: r.lowerFailed }); rungSent.set(k, now()); stats.sent++; }
+      rungPending.clear();
       for (const [origin, patch] of [...pending]) {
         pending.delete(origin);
         const s = sanitize(patch);

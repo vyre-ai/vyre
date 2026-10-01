@@ -10,6 +10,7 @@
 import os from "node:os";
 import dns from "node:dns";
 import * as config from "../config/index.js";
+import { agentClaim, ownerDevice } from "../modules/index.js";
 import * as ts from "./tailscale.js";
 import * as acme from "./acme.js";
 import * as certs from "./certs.js";
@@ -72,6 +73,20 @@ export default {
     });
 
     const person = caller => !["onboard"].includes(String(caller));
+    // Who may change a box's name, owner or sign-in: the person's own surfaces and their devices (the setup page's device
+    // included), and only the named modules that run those steps for them (onboard, launch, and network adopting the owner
+    // during a live setup). A model session, an agent, a hook, a guest or any other module is refused, so no session can
+    // claim <name>.vyre.run for the box for good, release it or reassign its owner. Declared with the surface kinds the router
+    // lets through (callers); this is the check that narrows "a module" to the three that may.
+    const SURFACES = ["cli", "local", "deck", "capsule", "mobile"];
+    const WHO = ["cli", "local", "deck", "capsule", "mobile", "tailnet", "module"];
+    const steward = (/** @type {string[]} */ modules) => (/** @type {any} */ meta) => {
+      const c = String((meta && meta.caller) || "");
+      const ok = !(meta && meta.agent) && agentClaim(c) === null
+        && (c.startsWith("module:") ? modules.includes(c.slice(7)) : SURFACES.includes(c) || ownerDevice(c));
+      if (!ok) throw Object.assign(new Error("changing the box's name or owner is the person's own"), { code: "denied" });
+    };
+    const ownerOnly = steward([]), setupSteps = steward(["onboard", "launch"]), adoptsOwner = steward(["network"]);
     ctx.tool("names.status", {
       description: "This box's address, how it is served, its owner, its certificate, and what Tailscale says.",
       input: obj(),
@@ -88,13 +103,15 @@ export default {
     ctx.tool("names.claim", {
       description: "Claim <name>.vyre.run for this box for good, then point it at the tailnet address, get its certificate and serve the Deck there. Answers at once with the one-time recovery code (shown only here) when the name is new; the rest runs in the background, watch names.status. Run it again once Tailscale is connected if it says it is waiting.",
       input: obj({ name: { type: "string" } }),
-      run: async ({ name }) => svc.claim(name),
+      callers: WHO,
+      run: async ({ name }, meta = {}) => { setupSteps(meta); return svc.claim(name); },
     });
     ctx.tool("names.recover", {
       description: "Take this box's name back with its recovery code after a reinstall. A 72-hour pending rebind: the old box, if still online, cancels it by itself, and its owner's devices are told. Returns the new recovery code, shown once.",
       input: obj({ name: { type: "string" }, code: { type: "string" } }, ["code"]),
       presence: true,
-      run: async (input, { caller }) => { if (!person(caller)) throw new Error("not from the onboarding page"); return svc.recover(input); },
+      callers: WHO,
+      run: async (input, meta = {}) => { ownerOnly(meta); if (!person(meta.caller)) throw new Error("not from the onboarding page"); return svc.recover(input); },
     });
     // A new install has no owner yet, so the recovery code is its authority. Internal: the setup
     // channel's allowlist wires it, nothing else calls it.
@@ -112,28 +129,34 @@ export default {
     ctx.tool("names.domain.serve", {
       description: "Serve this box at your own domain: after names.domain.check passes, get its certificate through the _acme-challenge CNAME, and answer at the domain as at the box's name. Runs in the background; watch names.status (domain) or the domain.ready event.",
       input: obj({ domain: { type: "string" } }, ["domain"]),
-      run: async ({ domain }, { caller }) => { if (!person(caller)) throw new Error("not from the onboarding page"); return svc.serveDomain(domain); },
+      callers: WHO,
+      run: async ({ domain }, meta = {}) => { ownerOnly(meta); if (!person(meta.caller)) throw new Error("not from the onboarding page"); return svc.serveDomain(domain); },
     });
     ctx.tool("names.fallback", {
       description: "Serve at the tailnet's own ts.net name with a `tailscale cert` certificate instead of a vyre.run name.",
       input: obj(),
-      run: async () => svc.fallback(),
+      callers: WHO,
+      run: async (_, meta = {}) => { setupSteps(meta); return svc.fallback(); },
     });
     ctx.tool("names.release", {
       description: "Remove this box's vyre.run record and stop serving on the tailnet.",
       input: obj(),
-      run: async (_, { caller }) => { if (!person(caller)) throw new Error("not from the onboarding page"); return svc.release(); },
+      callers: WHO,
+      run: async (_, meta = {}) => { ownerOnly(meta); if (!person(meta.caller)) throw new Error("not from the onboarding page"); return svc.release(); },
     });
     ctx.tool("names.connect", {
       description: "Start `tailscale up`. Returns the sign-in link to open, or nothing when already signed in.",
       input: obj(),
-      run: async () => svc.connect(),
+      callers: WHO,
+      run: async (_, meta = {}) => { setupSteps(meta); return svc.connect(); },
     });
     ctx.tool("names.owner", {
       description: "Set the one Tailscale login this box serves.",
       input: obj({ login: { type: "string" } }, ["login"]),
-      run: async ({ login }, { caller }) => {
-        if (!person(caller)) throw new Error("the owner cannot be changed from the onboarding page");
+      callers: WHO,
+      run: async ({ login }, meta = {}) => {
+        adoptsOwner(meta);
+        if (!person(meta.caller)) throw new Error("the owner cannot be changed from the onboarding page");
         svc.setOwner(login);
         return svc.status();
       },

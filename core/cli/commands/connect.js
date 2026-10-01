@@ -29,7 +29,7 @@ const HELP = [
   ["add mcp <name> [--project p]... [--agent a]... [--auth bearer|env|oauth|service-account] [--item <vault item>] [--env VAR=item]... [--var VAR=value]... [--header Name:Value]... -- <command> [args...]", "a stdio server; --var is a plain setting, never a secret"],
   ["add mcp <name> --url <url> [--sse] [--auth ...] [--item ...] [--header ...]", "an http or sse server"],
   ["apps [--all]", "the catalog of apps Vyre can connect, each run by the vendor's own hosted server"],
-  ["add app <preset> [--label <name>] [--mode oauth|token] [--client <vault item>]", "connect an app from the catalog: a browser sign-in, or a token typed at a hidden prompt"],
+  ["add app <preset> [--label <name>] [--mode oauth|token] [--client <vault item>] [--project p]... [--agent a]...", "connect an app from the catalog: a browser sign-in, or a token typed at a hidden prompt"],
   ["add google <name> --email <address> --item <vault item> [--dwd]", "a Google account; --dwd for a service account acting as the address"],
   ["add google <name> --sign-in [--client <vault item>]", "Sign in with Google in a browser; the client defaults to google-oauth-client"],
   ["remove [mcp|google|app] <name>", "disconnect it; its vault items stay"],
@@ -66,6 +66,7 @@ function itemsOf(s) {
 }
 const scopeText = sc => {
   if (!sc) return "";
+  if (sc.assistant && Array.isArray(sc.agents) && !sc.agents.length) return "you and the assistant only";
   const p = sc.projects === "*" ? "every project" : `projects ${sc.projects.join(", ")}`;
   const a = sc.agents === "*" ? "every agent" : `agents ${sc.agents.join(", ")}`;
   return `${p} · ${a}`;

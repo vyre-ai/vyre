@@ -119,6 +119,7 @@ Listens for: `floor.wrote`, `thread.deleted`
 | `connectors.connect-failed` | not found in the source (the type is built at run time) |
 | `connectors.connected` | not found in the source (the type is built at run time) |
 | `connectors.disconnected` | not found in the source (the type is built at run time) |
+| `connectors.scope-changed` | not found in the source (the type is built at run time) |
 
 ## context
 
