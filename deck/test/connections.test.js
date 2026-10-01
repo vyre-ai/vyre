@@ -432,7 +432,7 @@ test("GitHub Disconnect asks first, then calls github.remove; a failed revoke st
   await $(githubAccount(el, "work"), "button[data-act=remove]").click();
   assert.equal(api.of("github.remove").length, 0);
   assert.match(text(githubAccount(el, "work")), /Disconnect work\?/);
-  assert.match(text(githubAccount(el, "work")), /This removes the account from Vyre\. To also cancel access at GitHub, open github\.com\/settings\/applications\./);
+  assert.match(text(githubAccount(el, "work")), /This removes its token from your vault and the account from Vyre\. It does not revoke the token at GitHub\. To do that, delete it at github\.com\/settings\/applications \(signed in with GitHub\) or github\.com\/settings\/tokens \(a token you pasted\)\./);
   const settingsLink = [...$$(githubAccount(el, "work"), "a")].find(a => a.getAttribute("href") === "https://github.com/settings/applications");
   assert.ok(settingsLink, "a real link, not just the words");
   await $(githubAccount(el, "work"), "button[data-act=remove-yes]").click();

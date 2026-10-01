@@ -299,6 +299,10 @@ Newest first. Every change to code lands here in the same commit. A new dependen
   dropped; the credential never reaches the watcher's code.
 
 - settings.loosened: when an agent changes a guard because the person asked (settings.request, a loosening key or a change that needed a confirm, a reset of a loosening key included), settings emits `settings.loosened { change, key, label, level, project|device|session?, by, said }` with no value. core/push turns it into a loud `notice` push (not in the daily budget, rings through quiet hours, on by default) with the fixed sentence "<label> changed, as you asked. Undo" and the path /settings?change=<id>; the change's Undo (settings.undo) needs no proof.
+#### connections: disconnecting GitHub says what it does
+
+- The Disconnect confirmation for a GitHub account now reads "This removes its token from your vault and the account from Vyre. It does not revoke the token at GitHub. To do that, delete it at github.com/settings/applications (signed in with GitHub) or github.com/settings/tokens (a token you pasted)." The file's header comment no longer says `github.remove` revokes at GitHub; it never does.
+
 #### fix: the app typecheck
 
 - `PlanItem` (the plan checklist's row) declares `seq?`, like every other item the session core sorts by, so `deck/chat/core/session-state.js` typechecks in the app. The app's slash-command runner (`apps/app/src/session/Composer.tsx`) accepts the new `undo` command and says it works in the Deck for now, as it does for `/find` and `/goal`.
