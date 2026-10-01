@@ -504,7 +504,7 @@ async function probeGuard(ctx, t, eg, frame) {
     // no Fetch interception to probe and rests on the browser-level rules alone, narrowed to the first party and required to be TESTED (see egressGuard), so a false claim only makes it stricter.
     const swOf = (/** @type {number} */ n) => eg.probeSw.has(n) || eg.probeClaim.has(n);
     const covered = (/** @type {number} */ n) => expect(n).every(k => eg.probeSeen.has(k)) || swOf(n);
-    const end = Date.now() + (attempt ? 1000 : 400);
+    const end = Date.now() + (attempt ? 2500 : 400); // a slow runner or a busy event loop can take a second to deliver the pauses
     const done = () => targets.every((f, n) => !f || covered(n));
     while (Date.now() < end && !done()) await new Promise(r => setTimeout(r, 15));
     if (done()) {
