@@ -405,7 +405,7 @@ test("team.retire: a bare mcp caller is refused; a session in the project only w
   const { tool, raw, root, project, launches } = await boot(t);
   await tool("team.add", { project: project.slug, role: "design" });
   const bare = await call("team.retire", { teammate: `design-${project.slug}` }, { root, caller: "mcp", timeout: 20_000 });
-  assert.equal(bare.error.code, "denied");
+  assert.equal(bare.error.code, "not_asked"); // the registry's asked gate comes first
   const { session } = await realSession(root, tool, launches, project.slug);
   const viaSession = await call("team.retire", { teammate: `design-${project.slug}` }, { root, caller: "mcp", timeout: 20_000, session });
   assert.equal(viaSession.error.code, "not_asked"); // the registry asks vault.said.match: nothing the person said matches, so a session cannot retire it
@@ -476,7 +476,7 @@ test("team.role.fill: an agent fills a role, its character and the charter ride 
   await tool("team.add", { project: project.slug, role: "design", brief: "visual design" });
   assert.deepEqual((await tool("team.list", { project: project.slug }))[0].filler, { kind: "default" });
   assert.equal((await raw("team.role.fill", { teammate: agent, agent: "nobody" })).error.code, "not_found");
-  assert.equal((await raw("team.role.fill", { teammate: agent, agent: "kit" }, "mcp")).error.code, "denied"); // a bare mcp caller
+  assert.equal((await raw("team.role.fill", { teammate: agent, agent: "kit" }, "mcp")).error.code, "not_asked"); // a bare mcp caller: the asked gate first
   const r = await tool("team.role.fill", { teammate: agent, agent: "kit" }); // the person gives kit the project as they fill it
   assert.equal(r.filler, "kit");
   assert.equal((await tool("team.role.fill", { teammate: agent, agent: "kit" })).unchanged, true);
