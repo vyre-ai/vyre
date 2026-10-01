@@ -714,3 +714,25 @@ test("watchers: under the machine's real wall a watcher still runs, reads its fo
     export default async function watch() { fs.writeSync(1, "not json\\n"); await new Promise(r => setTimeout(r, 200)); }`);
   assert.match((await rt.test("forger")).error, /not a message/);
 });
+
+test("watchers: every schedule form a duty offers runs once when it is created and files an item; event and push forms wait for their event", async t => {
+  const forms = ["daily 07:00", "weekdays 09:30", "hourly", "every 30 minutes", "every 5 minutes", "every 2 hours", "15 7 * * 1-5"];
+  const { rt } = setup(t);
+  let n = 0;
+  for (const when of forms) {
+    const name = `duty-reviewer-f${++n}`;
+    const made = await rt.createDuty({ name, project: "harlow-legal", owner: { kind: "teammate", teammate: "reviewer-harlow-legal" }, when, instruction: `Check in (${when}).`, act: false });
+    assert.equal(made.state, "on", when);
+    await rt.settle();
+    const items = rt.items({ name });
+    assert.equal(items.length, 1, `"${when}" filed ${items.length} items on its first run; logs: ${JSON.stringify(rt.logs(name, 2))}`);
+    assert.match(items[0].title, /^Check in/);
+  }
+  // An event or a push duty has nothing to run on until it happens.
+  for (const when of ["thread.finished", "push gmail"]) {
+    const name = `duty-reviewer-e${++n}`;
+    await rt.createDuty({ name, project: "harlow-legal", owner: { kind: "teammate", teammate: "reviewer-harlow-legal" }, when, instruction: "On an event.", act: false });
+    await rt.settle();
+    assert.equal(rt.items({ name }).length, 0, `"${when}" ran before its event`);
+  }
+});

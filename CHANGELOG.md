@@ -73,6 +73,29 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 - platform modules declare an explicit reach: link, projects, presence, sync, mentions, releases and events (74 tools). Tools whose code already restricts `callers` keep `anyone` (the list governs), internal and module-only tools are `modules`, person-surface-only tools are `person`; the mutating presence and link tools stay `anyone` because they are HUMAN_ONLY (a presence proof) or PERSON_ONLY by name. `presence.test.js` reads tool names from object entries, and `sync-send.test.js` expects `no_such_tool` for a surface calling a `modules` tool.
 
 - test: a tool must declare an explicit `reach`. test/reach-explicit.test.js reads every module.json and fails on a tool with no `reach` that is not in test/reach-allowlist.json (799 tools today: 457 open to any caller by default, 342 limited only by `callers` in code), and on an allowlist line that is stale, so each owner shrinks the list by writing `{ "name", "reach" }`. The registry default is unchanged.
+- A verified Vyre thread session (a chat session: `meta.thread`, no peer keys, no stored grant) sees
+  only its own thread's project's watchers, through `threads.get`, as sessions' `sessionMay` does;
+  none if the thread has no project or the lookup fails. Tested through the real module and registry.
+
+- A plain model session (the person's own Claude Code through MCP, no verified thread or agent) now
+  sees only its folder's project's watchers, like sessions narrows its thread reads: vyred sets
+  `meta.peerSession` and `meta.peerCwd` for it (sessions' work), and the watchers tools resolve the
+  folder with `projects.of`; where the OS will not say who or where, or the folder is in no project, it
+  sees none. A person, a module and a hook still see all. Covered through the real module and
+  registry in `core/watchers/reach.test.js`.
+
+- A test through the real watchers module and the real registry (`core/watchers/reach.test.js`): an
+  agent with a grant to one project lists, reads cards, logs and items of, and pauses only that
+  project's watchers (`not_found` for another's); an agent with no grant sees none; a person and an
+  agent granted everything see all. `core/watchers/scope.js` records the open question for plain
+  model sessions (they see every project's watchers today).
+
+- watchers.list, card, logs, test, pause and items now show an agent only the projects it is granted
+  (reviewer-2): each declares `projectArg`, and the tool filters by the registry's `meta.reach` (a
+  person, a module and a hook see all; an agent with no known grant sees none). `watchers.pause`
+  records who paused ("paused by <agent>"), so a person sees it was an agent. `core/watchers/shown.js`
+  notes that "shown to the thread" means "shown to the person" only because every surface draws the card.
+
 - The person's own words can now let the assistant act on watchers (reach asked had no recorder, so
   it could never pass). The assistant's `lib/said/watchers.js` records `watchers.create:<project>/
   <name>@<hash>` for "turn on the mail watcher" and `watchers.preset:<project>/<kind>` for "watch my

@@ -36,6 +36,8 @@ test("reach holds against the real registry: asked for a model, person for delet
     for (const name of ${JSON.stringify(names)}) ctx.tool(name, { input: { type: "object" }, run: async (input, meta) => ({ ran: name, caller: meta.caller }) });
     return { async stop() {} };
   } };`);
+  writeModule(root, "projects", { name: "projects", version: "0.1.0", does: { tools: [{ name: "projects.reach", reach: "modules" }] } },
+    `export default { async start(ctx) { ctx.tool("projects.reach", { input: { type: "object" }, run: async () => ({ all: true }) }); return {}; } };`);
   writeModule(root, "team", { name: "team", version: "0.1.0", does: { tools: [{ name: "team.x", reach: "anyone" }] } }, `export default { async start(ctx) { ctx.tool("team.x", { run: async () => ({}) }); return {}; } };`);
   const db = open(path.join(home, "vyre.db")); t.after(() => db.close());
   const reg = new Registry({ db, events: new Events(db), config: { role: "local" }, log: () => {} });
@@ -97,6 +99,8 @@ export default { async start(ctx) {
   ctx.tool("watchers.preset.target", { input: { type: "object" }, run: async call => presetTarget(call) });
   return { async stop() {} };
 } };`);
+  writeModule(root, "projects", { name: "projects", version: "0.1.0", does: { tools: [{ name: "projects.reach", reach: "modules" }] } },
+    `export default { async start(ctx) { ctx.tool("projects.reach", { input: { type: "object" }, run: async () => ({ all: true }) }); return {}; } };`);
   // A stand-in for vault.said.match: it holds what the person's own words recorded and uses each one up.
   writeModule(root, "vault", { name: "vault", version: "0.1.0", does: { tools: [{ name: "vault.said.match", reach: "modules" }] } },
     `export default { async start(ctx) { ctx.tool("vault.said.match", { input: { type: "object" }, run: async i => {
@@ -145,4 +149,72 @@ export default { async start(ctx) {
   say("Watch my inbox for important mail.");
   assert.equal(await call("watchers.preset", { kind: "calendar", project: "harlow-legal" }, model), "not_asked", "another kind");
   assert.equal(await call("watchers.preset", { kind: "mail", project: "harlow-legal" }, model), "ran");
+});
+
+test("through the real module and the real registry: an agent with a grant sees only its project's watchers, by name and in lists", async t => {
+  const home = tempHome(t);
+  const root = path.join(home, "mods");
+  // The real watchers code and manifest, loaded by the real registry (nothing runs until a watcher does).
+  const real = new URL("./index.js", import.meta.url).href;
+  writeModule(root, "watchers", { ...manifest, requires: [], needs: {}, teaches: {} }, `export { default } from ${JSON.stringify(real)};`);
+  writeModule(root, "projects", { name: "projects", version: "0.1.0", does: { tools: [{ name: "projects.reach", reach: "modules" }, { name: "projects.list", reach: "modules" }, { name: "projects.of", reach: "modules" }] } },
+    `export default { async start(ctx) {
+      ctx.tool("projects.of", { input: { type: "object" }, run: async i => ({ slug: String(i.cwd).startsWith("/work/h") ? "harlow-legal" : String(i.cwd).startsWith("/work/n") ? "northwind" : null }) });
+      ctx.tool("projects.reach", { input: { type: "object" }, run: async i => /juno/.test(String(i.caller)) ? { all: true } : /kit/.test(String(i.caller)) ? { all: false, projects: [{ slug: "harlow-legal", name: "Harlow Legal" }] } : { all: false, projects: [] } });
+      ctx.tool("projects.list", { input: { type: "object" }, run: async () => ({ projects: [{ slug: "harlow-legal", name: "Harlow Legal", home: "/work/h", workspaces: ["/work/h"] }, { slug: "northwind", name: "Northwind", home: "/work/n", workspaces: ["/work/n"] }] }) });
+      return {}; } };`);
+  writeModule(root, "threads", { name: "threads", version: "0.1.0", does: { tools: [{ name: "threads.get", reach: "modules" }] } },
+    `export default { async start(ctx) { ctx.tool("threads.get", { input: { type: "object" }, run: async i => {
+      if (i.thread === "t-harlow") return { thread: { id: i.thread, project: "harlow-legal" } };
+      if (i.thread === "t-none") return { thread: { id: i.thread, project: null } };
+      throw new Error("no such thread"); } }); return {}; } };`);
+  const wdir = path.join(home, "watchers");
+  const mk = (name, project) => {
+    fs.mkdirSync(path.join(wdir, name), { recursive: true });
+    fs.writeFileSync(path.join(wdir, name, "watcher.json"), JSON.stringify({ name, project, schedule: "*/15 * * * *" }));
+    fs.writeFileSync(path.join(wdir, name, "watch.js"), "export default async function watch() {}");
+  };
+  mk("mail-harlow-legal", "harlow-legal"); mk("feed-northwind", "northwind");
+  const db = open(path.join(home, "vyre.db")); t.after(() => db.close());
+  const reg = new Registry({ db, events: new Events(db), config: { role: "local" }, log: () => {}, paths: { watchers: wdir, modules: path.join(home, "none") }, firstPartyRoots: [root] });
+  await reg.start(discover([root], { firstPartyRoots: [root] }).map(f => ({ ...f, problems: validate(f.manifest, { firstParty: true }), warnings: [] })), { role: "local" });
+  t.after(() => reg.stop && reg.stop());
+  assert.equal(reg.modules.get("watchers").state, "running", reg.modules.get("watchers").error);
+
+  const names = r => (r.data?.watchers || []).map(w => w.name).sort();
+  const kit = "mcp:agent:kit", juno = "mcp:agent:juno", nobody = "mcp:agent:ghost";
+  assert.deepEqual(names(await reg.call("watchers.list", {}, kit)), ["mail-harlow-legal"], "kit is granted harlow-legal only");
+  assert.deepEqual(names(await reg.call("watchers.list", {}, juno)), ["feed-northwind", "mail-harlow-legal"], "juno is granted everything");
+  assert.deepEqual(names(await reg.call("watchers.list", {}, nobody)), [], "an agent whose grant is empty sees none");
+  assert.deepEqual(names(await reg.call("watchers.list", {}, "cli")), ["feed-northwind", "mail-harlow-legal"], "the person sees all");
+
+  const code = async (tool, name, caller) => { const r = await reg.call(tool, { name }, caller); return r.error ? r.error.code : "ok"; };
+  for (const tool of ["watchers.card", "watchers.logs", "watchers.items"]) {
+    assert.equal(await code(tool, "feed-northwind", kit), "not_found", `${tool}: another project's watcher`);
+    assert.equal(await code(tool, "mail-harlow-legal", kit), "ok", `${tool}: its own project's watcher`);
+    assert.equal(await code(tool, "feed-northwind", juno), "ok", tool);
+    assert.equal(await code(tool, "feed-northwind", "cli"), "ok", tool);
+  }
+  assert.equal(await code("watchers.pause", "feed-northwind", kit), "not_found", "an agent cannot stop another project's watcher");
+  const card = await reg.call("watchers.card", { name: "mail-harlow-legal" }, kit);
+  assert.equal(card.data.project, "harlow-legal");
+
+  // A plain model session (the person's own Claude Code through MCP): vyred sets meta.peerSession and meta.peerCwd for it;
+  // it sees its folder's project's watchers, and none where the folder is unknown. (A call without those keys is not one.)
+  const plain = async (peerCwd, tool = "watchers.list", input = {}) => reg.call(tool, input, "mcp", { peerSession: "4242:1790000000", peerCwd });
+  assert.deepEqual(names(await plain("/work/h/site")), ["mail-harlow-legal"], "a session in a harlow-legal folder");
+  assert.deepEqual(names(await plain("/work/n")), ["feed-northwind"], "a session in a northwind folder");
+  assert.deepEqual(names(await plain(null)), [], "where the OS will not say who or where, it reads nothing");
+  assert.deepEqual(names(await plain("/elsewhere")), [], "a folder in no project");
+  assert.equal((await plain("/work/h", "watchers.card", { name: "feed-northwind" })).error.code, "not_found");
+  assert.equal((await plain("/work/n", "watchers.card", { name: "feed-northwind" })).data.name, "feed-northwind");
+  assert.deepEqual(names(await reg.call("watchers.list", {}, "mcp")), ["feed-northwind", "mail-harlow-legal"], "a build that does not set the peer leaves it as before");
+
+  // A verified Vyre thread session (meta.thread, no peer keys, no stored-grant agent): its own thread's project, and nothing otherwise.
+  const thread = async (id, tool = "watchers.list", input = {}) => reg.call(tool, input, "mcp:thread:" + id, { thread: id });
+  assert.deepEqual(names(await thread("t-harlow")), ["mail-harlow-legal"], "a chat in a harlow-legal project");
+  assert.deepEqual(names(await thread("t-none")), [], "a thread with no project");
+  assert.deepEqual(names(await thread("t-gone")), [], "a thread that cannot be looked up");
+  assert.equal((await thread("t-harlow", "watchers.card", { name: "feed-northwind" })).error.code, "not_found");
+  assert.equal((await thread("t-harlow", "watchers.card", { name: "mail-harlow-legal" })).data.name, "mail-harlow-legal");
 });
