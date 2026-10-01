@@ -35,6 +35,7 @@ export function stepText(op, a) {
   const args = a || {};
   const name = (/** @type {any} */ x) => { const n = x && (x.name || x.identifier || x.text); return n ? String(n).slice(0, 40) : ""; };
   if (op === "page.act") { const n = name(args.selector); const k = String(args.kind || "click"); return n ? `${k === "click" ? "Clicking" : k === "type" ? "Typing in" : k === "select" ? "Choosing in" : k === "check" ? "Ticking" : "Pressing a key in"} "${n}"` : "Acting on the page"; }
+  if (op === "point.act") { const k = String(args.action || "click"); return k === "type" ? "Typing on the screen" : k === "scroll" ? "Scrolling" : k === "hover" ? "Pointing at the screen" : k === "drag" ? "Dragging on the screen" : "Clicking on the screen"; }
   if (op === "page.fill") return `Filling ${Array.isArray(args.fields) ? args.fields.length : "some"} field${Array.isArray(args.fields) && args.fields.length === 1 ? "" : "s"}`;
   if (op === "page.wait") return "Waiting for the page";
   if (op === "tabs.navigate" || op === "tabs.open" || op === "tabs.use") { try { return `Opening ${new URL(String(args.url)).host}`; } catch { return "Opening a page"; } }
