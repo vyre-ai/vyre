@@ -86,6 +86,6 @@ test("vyre setup --name --yes names a real box through the directory: the recove
   const bad = await vyre(b, ["setup", "--name", "Not A Name!", "--yes"]);
   assert.equal(bad.code, 1, bad.out);
   assert.match(bad.out, /is not a name Vyre can use/);
-  const none = await vyre(b, ["setup", "--name", name]);
+  const none = await vyre(b, ["setup", "--name", `${name}-b`]);
   assert.equal(none.code, 2, "without --yes a script is refused before anything is asked of the directory");
 });
