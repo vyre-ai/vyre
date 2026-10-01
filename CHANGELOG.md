@@ -4,6 +4,10 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### chat: /undo takes a session's changes back, and Put back returns them
+
+- New `/undo` in the composer opens a sheet (`deck/chat/undo-sheet.js`, drawn in the rewind sheet's box) over `github.session.history`, `.undo` and `.redo`. It lists the session's own changes, newest first; you pick the one to go back past ("take off this and N newer changes") or take off everything. Nothing is deleted, unsaved files are kept with it, and "Put back" returns it, or says why it cannot when the session has moved on. A session that is not in a project folder of its own says so. The session is the folder it works in under its project's `.sessions`.
+
 #### chat: the agent's plan shows as a checklist
 
 - `thread.plan` (Claude's todo list, or a provider's own plan) was dropped by the Deck. The shared session core (`deck/chat/core/session-state.js`) now keeps it as one "plan" row where it first appeared and updates it in place; the chat draws it as "Plan, 2 of 5 done" with each step done, in progress or not started. An empty or malformed list never clears a plan already shown. A cold open gets it from the stored events the same way.

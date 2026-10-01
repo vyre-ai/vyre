@@ -82,6 +82,7 @@ import { isMac, machineChip } from "../js/machine.js";
 import { blockRow, headRow, userRow, liveTextRow, thinkingRow, toolCard, handoffCard, turnRow, rawView, outputEl, pictureThumb } from "./blocks.js";
 import { frameToPicture } from "./core/images.js";
 import { textItemRow } from "./live-text.js";
+import { undoSheet } from "./undo-sheet.js";
 import { createSession, applyEvent as applyStateEvent, applyBlocks, checkpoints, noteRewind, contextLabel, filesNote, seedTasks, pendingEvents } from "./core/session-state.js";
 import { CAPS, NEEDS_UPDATE, REWIND_CODE } from "./core/caps.js";
 import { rewindSheet } from "./pickers.js";
@@ -212,6 +213,7 @@ export function mountSession(container, opts) {
     name: () => agentName(),
     project: () => record.current?.project || opts.project || null,
     onRewind: () => openRewind(),
+    onUndo: () => openUndo(),
     // "/find [words]" (native-core/commands.js): the existing Find page already queries
     // recall.search + memory.relevant and has its own scoping rules; the composer just gets there fast.
     onFind: q => go("/find" + (q ? "?q=" + encodeURIComponent(q) : "")),
@@ -631,6 +633,27 @@ export function mountSession(container, opts) {
     put(rewindBox, rewind.el);
     rewind.el.setAttribute("tabindex", "-1");
     rewind.el.focus?.();
+  }
+  /** /undo: this session's own changes, over github.session.history/undo/redo. The session is the folder it works in, under its project's .sessions. */
+  async function openUndo() {
+    if (rewind || !switchboard()) return;
+    const project = record.current?.project || opts.project || null;
+    const cwd = String(sessionCwd() || "");
+    const at = cwd.lastIndexOf("/.sessions/");
+    const session = at >= 0 ? cwd.slice(at + "/.sessions/".length).split("/")[0] : "";
+    const sheet = undoSheet({
+      load: () => project && session ? attempt("github.session.history", { project, session }) : Promise.resolve({ error: { message: "This session is not working in a project folder of its own." } }),
+      undo: to => attempt("github.session.undo", { project, session, ...(to ? { to } : {}) }),
+      redo: n => attempt("github.session.redo", { project, session, ...(n ? { n } : {}) }),
+      onClose: closeRewind,
+      say: e => e?.missing ? NEEDS_UPDATE : String(e?.message || e?.code || "That did not work."),
+    });
+    rewind = /** @type {any} */ ({ el: sheet.el, key: () => false, refresh() {}, restore: () => "conversation" });
+    rewindScrim.hidden = false; rewindBox.hidden = false;
+    put(rewindBox, sheet.el);
+    sheet.el.setAttribute("tabindex", "-1");
+    sheet.el.focus?.();
+    await sheet.load();
   }
   function closeRewind() {
     rewind = null;

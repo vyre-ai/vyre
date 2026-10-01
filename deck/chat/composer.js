@@ -115,7 +115,7 @@ const COMMANDS_RETRY_MS = 15_000;
  * @param {{ thread: string, agents?: string[], threads?: { id: string, name: string|null }[], holder?: string|null, surface?: string,
  *   machine?: string|null, onOffline?: (machine: string|null) => void, onQueue?: (n: number, name: string) => void, onStop?: () => void,
  *   session?: import("./core/session-state.js").Session, patch?: (keys: string[]) => void, cwd?: () => string|null, name?: () => string,
- *   project?: () => string|null, onRewind?: () => void, onTasks?: () => void, onThinkingView?: () => void, onOverlayEscape?: () => boolean, onFind?: (query: string) => void,
+ *   project?: () => string|null, onRewind?: () => void, onUndo?: () => void, onTasks?: () => void, onThinkingView?: () => void, onOverlayEscape?: () => boolean, onFind?: (query: string) => void,
  *   onRecall?: (hit: { session: string, seq: number, role: string, ts: number, name: string|null, title: string|null, cwd: string|null, snippet: string }) => void }} opts
  * session and patch: the view's session-state and how it redraws what changed (steers, queue rows and shell rows are drawn
  * here, on send). onOffline: called with the Mac's name when a send finds it offline, with null when a send goes through.
@@ -405,6 +405,7 @@ export function mountComposer(opts) {
   function runLocal(/** @type {string} */ what, query = "") {
     if (what === "model") openModels();
     else if (what === "rewind") opts.onRewind?.();
+    else if (what === "undo") opts.onUndo?.();
     else if (what === "find") opts.onFind?.(query);
     else if (what === "goal") { goal = { title: query, milestones: [] }; setValue(""); drawChips(); }
   }

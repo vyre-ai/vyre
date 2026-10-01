@@ -21,7 +21,7 @@ import { scoreFields, compareScores } from "./match.js";
 /**
  * source: "session" (built in), "project", "user", "plugin", "skill", "vyre". local: the composer
  * does it itself, nothing is sent.
- * @typedef {{ name: string, description: string, hint?: string, aliases?: string[], source: string, local?: "model"|"rewind"|"find"|"goal" }} Command
+ * @typedef {{ name: string, description: string, hint?: string, aliases?: string[], source: string, local?: "model"|"rewind"|"undo"|"find"|"goal" }} Command
  */
 
 /** @type {readonly Command[]} */
@@ -35,6 +35,7 @@ export const COMMANDS = Object.freeze([
   { name: "rename", description: "Rename this session", hint: "<name>", source: "session" },
   { name: "model", description: "Switch the model for this session", hint: "[model]", source: "session", local: "model" },
   { name: "rewind", description: "Go back to an earlier message", source: "session", local: "rewind" },
+  { name: "undo", description: "Take this session's changes back", source: "session", local: "undo" },
   { name: "find", description: "Search every session, file and memory", hint: "[words]", aliases: ["search"], source: "session", local: "find" },
   { name: "remember", description: "Save a note to memory", hint: "<note>", source: "session" },
   { name: "later", description: "Schedule a follow-up message for later", hint: "\"at 5pm\" | \"every weekday 9am\" | \"when this finishes\"", aliases: ["remind"], source: "session" },
