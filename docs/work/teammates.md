@@ -832,3 +832,5 @@ utilization, resets_at), the slot chip (per project), the waiting queue, "Resume
 - Merged work/watchers 1dbed8c3: the duty calls are now watchers.duty.create/update/delete/run/resume (watchers.pause unchanged); the real watchers module accepts duties, so the daemon duty tests use an unreadable trigger to get watchers' clean refusal without creating a real watcher.
 
 - team.add is person-only (reach person; ADR 0031 section 4 and the daemon's PERSON_ONLY floor: a session's own socket refuses it, threadsock.js). The session path I built earlier could never be reached by a real session (my test called it through the client's session headers). A model asks the person; making it asked (key team.add:<project>/<role>, off PERSON_ONLY, recorder in lib/said/team.js) is the follow-up if wanted.
+
+- team.add is reach asked again (lead's call): target team.act.target answers team.add:<project>/<role> (the teammate does not exist yet), recorder lib/said/team.js (assistant), still on PERSON_ONLY until platform takes it off, so a session's own socket refuses it until then.

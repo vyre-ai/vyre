@@ -196,6 +196,10 @@
   "voice.speak": {
    "module": "voice",
    "why": "pending"
+  },
+  "team.add": {
+   "module": "team",
+   "why": "asked: a session or the assistant adds a teammate once, on the person's own words (team.add:<project>/<role>, lib/said/team.js); the person's surfaces never ask. Still on PERSON_ONLY until platform takes it off."
   }
  }
 }

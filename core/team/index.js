@@ -786,11 +786,14 @@ export default {
       input: { type: "object", required: ["project", "role"], properties: { project: { type: "string" }, role: { type: "string" },
         brief: { type: "string" }, instructions: { type: "string" }, tools: { type: "array", items: { type: "string" } },
         isolation: { type: "string", enum: ["worktree", "folder", "none"] }, model: { type: "string" }, helper_model: { type: "string" } } },
-      // The person's own (ADR 0031 section 4, and the daemon's PERSON_ONLY floor: a session's own socket refuses it outright). The Deck's
-      // @role create and the CLI are the person's surfaces; a model that thinks a teammate is needed asks the person to make one.
-      callers: ["cli", "local", "deck", "capsule"],
+      // The person's act, and their agent's only on their own words: reach asked (the registry asks vault.said.match for team.add:<project>/<role>,
+      // team.act.target), so a model, the assistant included, adds a teammate once when the person said to. A person's surface (the Deck's @role, the CLI)
+      // is never asked. Never a teammate. The project check below stays as the second guard.
+      callers: ["cli", "local", "deck", "capsule", "mcp"],
       run: async (i, meta = {}) => {
-        if (!isPerson(meta.caller)) throw Object.assign(new Error("a teammate is made by a person; ask them to add one"), { code: "denied" });
+        if (callerTeammate(meta.agent)) throw Object.assign(new Error("a teammate cannot add teammates; that is the person's, or a session acting on their request"), { code: "denied" });
+        if (!isPerson(meta.caller) && !isAssistant(meta) && !(SLUG.test(String(i.project || "")) && await inProject(meta, i.project)))
+          throw Object.assign(new Error("team.add is for a person, or a session in that project"), { code: "denied" });
         if (!SLUG.test(String(i.project || ""))) throw new Error("project must be a project slug");
         if (!NAME.test(i.role)) throw new Error("a role is lowercase letters, digits and dashes");
         if (i.role === INTEGRATOR_ROLE) throw Object.assign(new Error(`"${INTEGRATOR_ROLE}" is reserved: it comes on its own with a project's first isolation: worktree teammate`), { code: "denied" });
@@ -1103,6 +1106,11 @@ export default {
       callers: ["module"],
       run: async ({ tool, input }) => {
         const i = input || {};
+        if (tool === "team.add") {
+          // The teammate does not exist yet: the words name the project and the role.
+          if (!SLUG.test(String(i.project || "")) || !NAME.test(String(i.role || ""))) throw Object.assign(new Error("a project slug and a role"), { code: "bad_input" });
+          return { to: [`team.add:${i.project}/${i.role}`] };
+        }
         if (tool === "team.duties.start") {
           const d = dutyApi.get(String(i.id || ""));
           if (!d) throw Object.assign(new Error("no such duty"), { code: "not_found" });

@@ -106,13 +106,13 @@ test("team.add makes a teammate; team.list shows it asleep with an empty queue",
   assert.equal(row.state, "asleep");
 });
 
-test("team.add is the person's (ADR 0031 section 4): a bare mcp caller, a session and an agent are refused, the person's surface adds", async t => {
+test("team.add is asked: a bare mcp caller, a session and an agent get nothing without the person's words; the person's surface adds", async t => {
   const { tool, root, project, launches } = await boot(t);
   const bare = await call("team.add", { project: project.slug, role: "design" }, { root, caller: "mcp", timeout: 20_000 });
-  assert.ok(bare.error);
+  assert.equal(bare.error.code, "not_asked");
   const { session } = await realSession(root, tool, launches, project.slug);
   const viaSession = await call("team.add", { project: project.slug, role: "design" }, { root, caller: "mcp", session, timeout: 20_000 });
-  assert.ok(viaSession.error, "a session never makes a teammate");
+  assert.equal(viaSession.error.code, "not_asked", "a session cannot add on its own say-so");
   assert.ok((await call("team.add", { project: project.slug, role: "design" }, { root, caller: "mcp:agent:kit", timeout: 20_000 })).error);
   assert.equal((await tool("team.list", { project: project.slug })).length, 0);
   assert.equal((await tool("team.add", { project: project.slug, role: "design" })).role, "design");
