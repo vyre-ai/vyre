@@ -23,3 +23,4 @@ printf '{"t":"run","entry":"file://%s/watch.js","since":null,"hook":null}\n' "$W
 echo "=== exit $?"
 echo "=== sandbox denials since $START"
 log show --start "$START" --style compact --predicate 'eventMessage CONTAINS "deny(" AND eventMessage CONTAINS "Sandbox"' 2>&1 | head -80 || true
+# rerun marker: 1dbed8c3
