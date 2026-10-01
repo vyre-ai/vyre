@@ -2309,34 +2309,6 @@
    "module": "threads",
    "default": "open to any caller"
   },
-  "tips.dismiss": {
-   "module": "tips",
-   "default": "limited by callers in code"
-  },
-  "tips.list": {
-   "module": "tips",
-   "default": "limited by callers in code"
-  },
-  "tips.next": {
-   "module": "tips",
-   "default": "limited by callers in code"
-  },
-  "tips.reset": {
-   "module": "tips",
-   "default": "limited by callers in code"
-  },
-  "tips.seen": {
-   "module": "tips",
-   "default": "limited by callers in code"
-  },
-  "tips.used": {
-   "module": "tips",
-   "default": "limited by callers in code"
-  },
-  "tips.whatsnew": {
-   "module": "tips",
-   "default": "limited by callers in code"
-  },
   "update.apply": {
    "module": "update",
    "default": "limited by callers in code"
