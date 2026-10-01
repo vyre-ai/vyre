@@ -402,7 +402,7 @@ export default {
             ...(byPerson ? {} : { scope: { projects: project ? [project] : [], agents: "*" }, pending: true }) });
         }
         const account = row;
-        try { return await signins.start({ provider, account, onDone: ok => { if (ok) accounts.markSignedIn(account.id); else if (created && accounts.row(account.id) && !accounts.row(account.id).signed_in_at) accounts.remove(account.id); } }); }
+        try { return await signins.start({ provider, account, onDone: ok => { if (ok) { accounts.markSignedIn(account.id); ctx.call("threads.providers.learn", { provider, account: account.id }).catch(() => {}); } else if (created && accounts.row(account.id) && !accounts.row(account.id).signed_in_at) accounts.remove(account.id); } }); }
         catch (e) { if (created) accounts.remove(account.id); throw e; }
       });
 
