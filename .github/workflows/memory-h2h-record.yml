@@ -13,6 +13,33 @@
 name: memory-h2h-record
 on:
   workflow_dispatch:
+    inputs:
+      run_h2h:
+        description: run the head-to-head (cached replies cost nothing; only what is missing is paid for)
+        type: boolean
+        default: true
+      cap_usd:
+        description: the head-to-head's ledger cap in USD (the ledger already holds what earlier dispatches spent)
+        default: "3.5"
+      spot_claude:
+        description: real claude on 10 questions
+        type: boolean
+        default: true
+      spot_codex:
+        description: real codex on 10 questions
+        type: boolean
+        default: true
+      spike_cache:
+        description: additionalContext cache spike
+        type: boolean
+        default: true
+      spike_meter:
+        description: Codex and Grok usage_update and seed spike
+        type: boolean
+        default: true
+      job_stop_usd:
+        description: the most the spot checks and spikes may spend in this dispatch, read from the key
+        default: "4.6"
 permissions:
   contents: read
 concurrency:
@@ -48,7 +75,9 @@ jobs:
           curl -fsSL https://x.ai/cli/install.sh | bash
           echo "$HOME/.grok/bin" >> "$GITHUB_PATH"
       - name: Run the head-to-head
+        if: inputs.run_h2h
         env:
+          H2H_CAP_USD: ${{ inputs.cap_usd }}
           VYRE_EVAL_RECORD: "1"
           VYRE_EVAL_MODEL: anthropic/claude-haiku-4.5
           OPENROUTER_EVAL_KEY: ${{ secrets.OPENROUTER_EVAL_KEY }}
@@ -58,28 +87,36 @@ jobs:
           echo "code=${PIPESTATUS[0]}" >> "$GITHUB_ENV"
           exit 0
       - name: Real claude on 10 questions (auto memory)
+        if: inputs.spot_claude
         continue-on-error: true
         env:
+          H2H_JOB_STOP_USD: ${{ inputs.job_stop_usd }}
           OPENROUTER_EVAL_KEY: ${{ secrets.OPENROUTER_EVAL_KEY }}
         run: node scripts/eval-cli-spot.mjs claude | tee -a "$RUNNER_TEMP/summary.txt"
       - name: Real codex on 10 questions (AGENTS.md)
+        if: inputs.spot_codex
         continue-on-error: true
         env:
+          H2H_JOB_STOP_USD: ${{ inputs.job_stop_usd }}
           OPENROUTER_EVAL_KEY: ${{ secrets.OPENROUTER_EVAL_KEY }}
         run: node scripts/eval-cli-spot.mjs codex | tee -a "$RUNNER_TEMP/summary.txt"
       - name: Spike, does additionalContext keep the cache hit
+        if: inputs.spike_cache
         continue-on-error: true
         env:
+          H2H_JOB_STOP_USD: ${{ inputs.job_stop_usd }}
           OPENROUTER_EVAL_KEY: ${{ secrets.OPENROUTER_EVAL_KEY }}
         run: node scripts/eval-cli-spot.mjs cache | tee -a "$RUNNER_TEMP/summary.txt"
       - name: Spike, do Codex and Grok send usage_update, does a fresh session take a seed
+        if: inputs.spike_meter
         continue-on-error: true
         env:
+          H2H_JOB_STOP_USD: ${{ inputs.job_stop_usd }}
           OPENROUTER_EVAL_KEY: ${{ secrets.OPENROUTER_EVAL_KEY }}
         run: node scripts/eval-cli-spot.mjs meter | tee -a "$RUNNER_TEMP/summary.txt"
       - name: Summary
         run: |
-          { echo '### memory-h2h-record'; echo '```'; cat "$RUNNER_TEMP/summary.txt"; echo '```'; echo "Ledger: $(cat test/eval/h2h/spend.json 2>/dev/null || echo missing)"; } >> "$GITHUB_STEP_SUMMARY"
+          { echo '### memory-h2h-record'; echo '```'; cat "$RUNNER_TEMP/summary.txt" 2>/dev/null; echo '```'; echo "Ledger: $(cat test/eval/h2h/spend.json 2>/dev/null || echo missing)"; } >> "$GITHUB_STEP_SUMMARY"
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: h2h-results
@@ -93,5 +130,5 @@ jobs:
             test/eval/h2h/notes-agents.md
           if-no-files-found: warn
       - name: Fail when the run stopped or failed
-        if: env.code != '0'
+        if: env.code != '' && env.code != '0'
         run: echo "eval-h2h exited with ${{ env.code }} (3 means a refusal or the spend stop; replies so far are in the artifact)"; exit 1

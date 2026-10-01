@@ -33,7 +33,7 @@ const DIR = process.env.VYRE_H2H_DIR || path.join(ROOT, "test/eval/h2h");
 /** A test may point the key-usage read at a local stand-in; any other address is ignored, so the key never goes elsewhere. */
 const KEY_ENDPOINT = /^http:\/\/127\.0\.0\.1[:/]/.test(String(process.env.VYRE_EVAL_KEY_ENDPOINT || "")) ? String(process.env.VYRE_EVAL_KEY_ENDPOINT) : undefined;
 const usageNow = async () => (await keyUsage({ key, ...(KEY_ENDPOINT ? { endpoint: KEY_ENDPOINT } : {}) })).usage;
-export const JOB_STOP_USD = 4.6;
+export const JOB_STOP_USD = Number(process.env.H2H_JOB_STOP_USD) > 0 ? Number(process.env.H2H_JOB_STOP_USD) : 4.6;
 const MODEL = process.env.VYRE_EVAL_MODEL || "anthropic/claude-haiku-4.5";
 const key = String(process.env.OPENROUTER_EVAL_KEY || process.env.OPENROUTER_API_KEY || "");
 const scrub = (/** @type {any} */ s) => String(s ?? "").split(key || "\u0000").join("[key]").replace(/sk-[A-Za-z0-9_-]{8,}/g, "[key]");

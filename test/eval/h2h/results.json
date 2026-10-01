@@ -1,0 +1,282 @@
+{
+ "model": "anthropic/claude-haiku-4.5",
+ "questions": 80,
+ "main": {
+  "vyre": {
+   "n": 80,
+   "ok": 66,
+   "by": {
+    "personal": {
+     "n": 10,
+     "ok": 6
+    },
+    "decision": {
+     "n": 10,
+     "ok": 9
+    },
+    "history": {
+     "n": 10,
+     "ok": 10
+    },
+    "who": {
+     "n": 10,
+     "ok": 5
+    },
+    "where": {
+     "n": 10,
+     "ok": 9
+    },
+    "time": {
+     "n": 10,
+     "ok": 8
+    },
+    "cross_provider": {
+     "n": 10,
+     "ok": 10
+    },
+    "unanswerable": {
+     "n": 10,
+     "ok": 9
+    }
+   },
+   "answerable": {
+    "n": 70,
+    "ok": 57
+   },
+   "unanswerable": {
+    "n": 10,
+    "ok": 9
+   }
+  },
+  "claude-auto": {
+   "n": 80,
+   "ok": 64,
+   "by": {
+    "personal": {
+     "n": 10,
+     "ok": 9
+    },
+    "decision": {
+     "n": 10,
+     "ok": 10
+    },
+    "history": {
+     "n": 10,
+     "ok": 8
+    },
+    "who": {
+     "n": 10,
+     "ok": 7
+    },
+    "where": {
+     "n": 10,
+     "ok": 4
+    },
+    "time": {
+     "n": 10,
+     "ok": 8
+    },
+    "cross_provider": {
+     "n": 10,
+     "ok": 10
+    },
+    "unanswerable": {
+     "n": 10,
+     "ok": 8
+    }
+   },
+   "answerable": {
+    "n": 70,
+    "ok": 56
+   },
+   "unanswerable": {
+    "n": 10,
+    "ok": 8
+   },
+   "confidentWrong": 6,
+   "memory_tokens": 6172,
+   "note_lines": 270,
+   "kept": 200
+  },
+  "agents-md": {
+   "n": 80,
+   "ok": 58,
+   "by": {
+    "personal": {
+     "n": 10,
+     "ok": 9
+    },
+    "decision": {
+     "n": 10,
+     "ok": 10
+    },
+    "history": {
+     "n": 10,
+     "ok": 9
+    },
+    "who": {
+     "n": 10,
+     "ok": 2
+    },
+    "where": {
+     "n": 10,
+     "ok": 5
+    },
+    "time": {
+     "n": 10,
+     "ok": 8
+    },
+    "cross_provider": {
+     "n": 10,
+     "ok": 5
+    },
+    "unanswerable": {
+     "n": 10,
+     "ok": 10
+    }
+   },
+   "answerable": {
+    "n": 70,
+    "ok": 48
+   },
+   "unanswerable": {
+    "n": 10,
+    "ok": 10
+   },
+   "confidentWrong": 3,
+   "memory_tokens": 1151
+  },
+  "full-context": {
+   "n": 80,
+   "ok": 71,
+   "by": {
+    "personal": {
+     "n": 10,
+     "ok": 10
+    },
+    "decision": {
+     "n": 10,
+     "ok": 10
+    },
+    "history": {
+     "n": 10,
+     "ok": 10
+    },
+    "who": {
+     "n": 10,
+     "ok": 6
+    },
+    "where": {
+     "n": 10,
+     "ok": 10
+    },
+    "time": {
+     "n": 10,
+     "ok": 7
+    },
+    "cross_provider": {
+     "n": 10,
+     "ok": 8
+    },
+    "unanswerable": {
+     "n": 10,
+     "ok": 10
+    }
+   },
+   "answerable": {
+    "n": 70,
+    "ok": 61
+   },
+   "unanswerable": {
+    "n": 10,
+    "ok": 10
+   },
+   "confidentWrong": 0,
+   "memory_tokens": 9952
+  }
+ },
+ "long": {
+  "compaction": {
+   "n": 29,
+   "ok": 17
+  },
+  "compaction+search": {
+   "n": 29,
+   "ok": 19
+  },
+  "vyre-window": {
+   "n": 29,
+   "ok": 19
+  }
+ },
+ "long_common": {
+  "n": 19,
+  "compaction": 16,
+  "compaction+search": 19,
+  "vyre-window": 19
+ },
+ "long_meta": {
+  "turns": 480,
+  "cut": 400,
+  "questions": 29,
+  "summary_tokens": 785,
+  "pinned_tokens": 914
+ },
+ "spend": {
+  "vyre": {
+   "calls": 59,
+   "tokens_in": 56722,
+   "tokens_out": 7347,
+   "usd": 0.0935
+  },
+  "claude-auto": {
+   "calls": 255,
+   "tokens_in": 607615,
+   "tokens_out": 10162,
+   "usd": 0.6584
+  },
+  "agents-md": {
+   "calls": 81,
+   "tokens_in": 146722,
+   "tokens_out": 4436,
+   "usd": 0.1689
+  },
+  "full-context": {
+   "calls": 80,
+   "tokens_in": 994986,
+   "tokens_out": 3221,
+   "usd": 1.0111
+  },
+  "long-setup": {
+   "calls": 2,
+   "tokens_in": 192922,
+   "tokens_out": 2151,
+   "usd": 0.2037
+  },
+  "long-compaction": {
+   "calls": 20,
+   "tokens_in": 433035,
+   "tokens_out": 772,
+   "usd": 0.4369
+  },
+  "long-compaction+search": {
+   "calls": 19,
+   "tokens_in": 418861,
+   "tokens_out": 640,
+   "usd": 0.4221
+  },
+  "long-vyre-window": {
+   "calls": 19,
+   "tokens_in": 453346,
+   "tokens_out": 730,
+   "usd": 0.457
+  }
+ },
+ "total_usd": 3.4515,
+ "replayed": true,
+ "missing": {
+  "long-compaction+search": 10,
+  "long-vyre-window": 10,
+  "long-compaction": 9
+ }
+}

@@ -180,6 +180,30 @@ test("config: the win32 pipe name is not derivable from root alone; two differen
   assert.ok(fs.existsSync(path.join(root, "pipe-token")), "the token lives beside config.json, inside the home, never a shared folder");
 });
 
+test("config: processes starting at once on one home agree on the win32 pipe token", async t => {
+  const root = path.join(tempHome(t), "race");
+  const code = `import("${new URL("./index.js", import.meta.url).href}").then(c => console.log(c.socketPath(process.argv[1], { platform: "win32" })))`;
+  const { spawn } = await import("node:child_process");
+  const run = () => new Promise((resolve, reject) => {
+    const p = spawn(process.execPath, ["-e", code, root], { stdio: ["ignore", "pipe", "inherit"] });
+    let out = ""; p.stdout.on("data", d => out += d); p.on("error", reject); p.on("close", () => resolve(out.trim()));
+  });
+  const names = await Promise.all(Array.from({ length: 8 }, run));
+  assert.equal(new Set(names).size, 1, `one pipe name, got ${[...new Set(names)].join(" and ")}`);
+  assert.match(names[0], /^\\\\\.\\pipe\\vyre-/);
+});
+
+test("config: an empty pipe-token left by a writer that died is replaced, not fatal", t => {
+  const root = tempHome(t);
+  const f = path.join(root, "pipe-token");
+  fs.writeFileSync(f, "");
+  const old = new Date(Date.now() - 60_000);
+  fs.utimesSync(f, old, old);
+  const name = config.socketPath(root, { platform: "win32" });
+  assert.match(name, /-[0-9a-f]{32}$/);
+  assert.equal(config.socketPath(root, { platform: "win32" }), name, "and it is stable afterwards");
+});
+
 test("config: two different homes never share a win32 pipe token, even with colliding hash prefixes forced", t => {
   const a = config.socketPath(tempHome(t), { platform: "win32" });
   const b = config.socketPath(tempHome(t), { platform: "win32" });
