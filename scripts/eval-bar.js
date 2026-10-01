@@ -51,8 +51,22 @@ import * as open02 from "../test/fixtures/iq02-open.js";
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 export const BAR_FILE = path.join(ROOT, "test/eval/bar.json");
 export const WORLDS = {
+  real: () => worldFromFile(String(process.env.VYRE_EVAL_REAL_WORLD || "")),
   open: () => ({ world: open02, gold: JSON.parse(fs.readFileSync(path.join(ROOT, "test/eval/iq02-open.json"), "utf8")), asks: path.join(ROOT, "test/eval/asks/iq02-open.json"), sealed: false }),
 };
+/**
+ * A world from a file of { sessions: [{ id, start, turns }], questions: [{ q, class, expect }] }: the real-use test's scrubbed corpus
+ * (scripts/eval-realuse.mjs). The file is data the caller holds, never part of this repository.
+ * @param {string} file
+ */
+export function worldFromFile(file) {
+  const j = JSON.parse(fs.readFileSync(file, "utf8"));
+  const sessions = j.sessions.map((/** @type {any} */ s) => ({ id: s.id, cwd: "/home/user/vyre", name: undefined, human: true, provider: "claude", start: s.start, turns: s.turns }));
+  const last = Math.max(...sessions.map((/** @type {any} */ s) => s.start)) + 86_400_000;
+  const world = { HOME: "/home/user", ME: { name: "the owner", domains: [], emails: [] }, T0: Math.min(...sessions.map((/** @type {any} */ s) => s.start)), NOW: last,
+    PROJECTS: [], AGENTS: [], SESSIONS: sessions };
+  return { world, gold: { questions: j.questions }, asks: path.join(path.dirname(file), "real-asks.json"), sealed: false };
+}
 export const ANSWERABLE = ["personal", "decision", "history", "who", "where", "time", "cross_provider"];
 export const CLASSES = [...ANSWERABLE, "unanswerable", "leak", "inject"];
 
