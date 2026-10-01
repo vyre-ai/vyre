@@ -4,16 +4,22 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
-- The wall: a watcher child now runs with no way to open a socket. `lib/sandbox/wall.js` picks, and
-  probes for real (a child must fail to connect to a listener the parent holds), a Linux network
-  namespace (`unshare --user --map-root-user --net`, or plain `--net` as root) or a macOS
-  `sandbox-exec` profile that denies the network. No root and no install. If no wall passes, a
-  watcher does not run: the error says the machine cannot keep a watcher off the network, the
-  watcher is not counted as failing or paused, and it is tried again in an hour. The child talks to
-  its parent in lines of JSON on stdin and stdout (not fork's channel), so any launcher works.
-  Dry runs report `wall`. `core/watchers/isolation.test.js` and the `watchers-isolation` workflow
-  prove it on Linux and macOS runners against a real vyred.
-
+- The wall: a watcher child runs where it can reach nothing but its parent: no network (no
+  loopback, no unix socket), a view of the filesystem with only its own folder, the node binary and
+  the system libraries (nothing of the home or run directories), no sight of or signal to other
+  processes, no inherited fds. Linux: bubblewrap (`--unshare-all --die-with-parent`); macOS: a
+  `sandbox-exec` profile (network, signals, writes and the home, temp and run areas denied).
+  `lib/sandbox/wall.js` probes each wall with the child's own attempts (a TCP listener, a unix
+  socket, a file in the home directory, a signal to a same-user process, and a read of its folder
+  that must work) and accepts it only if all hold. No wall, no watcher: the refusal says the machine
+  cannot keep a watcher off the network, with the one fix (install bubblewrap; on Ubuntu 23.10 and
+  later, the AppArmor profile that lets bwrap use user namespaces, which `vyre up --system` installs
+  and `vyre uninstall --system` removes). A watcher refused this way is not counted as failing or
+  paused and is tried again in an hour. The channel to the child is lines of JSON on stdin and
+  stdout, at most 1 MB a line and 64 MB in all; anything else on it fails the run; the child's
+  console and `log()` go to stderr. Dry runs report `wall`. `core/watchers/isolation.test.js` and
+  the `watchers-isolation` workflow prove it against a real vyred on Ubuntu (no bubblewrap,
+  restricted, with the installer's profile) and macOS runners.
 - Presets for a repo (`kind: "repo"`: issues and pull requests of an owner/name, with or without a
   GitHub credential), a Slack channel (`kind: "slack"`: new messages, by channel id) and a public
   feed (`kind: "feed"`: RSS, Atom or JSON feed, with a conditional request so an unchanged feed
