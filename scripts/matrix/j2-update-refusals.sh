@@ -92,7 +92,7 @@ vyre updater status 2>&1 | grep -q installed && rec 3-updater ok || rec 3-update
 # refused before anything is fetched, whatever else is set, and the box is exactly as it was.
 rootreq() { sudo sh -c "printf 'update\\n' >$ST/request/request"; out=$(sudo "$(command -v vyre)" update-from-request 2>&1 </dev/null); rc=$?; }
 printf 'services:\n  vyre:\n    privileged: true\n' | sudo tee "$DIR/compose.override.yml" >/dev/null
-rootreq; hv_now=$(hv)
+rootreq; ready; hv_now=$(hv)
 if [ $rc -ne 0 ] && [ "$hv_now" = "$V0" ] && seen && mem && printf '%s' "$out" | grep -q 'does not read override files' && printf '%s' "$(statusf)" | grep -q '"state":"failed"'; then rec H1-override-file-refused ok "$(printf %s "$out" | tail -1)"
 else rec H1-override-file-refused false "rc $rc, runs '$hv_now': $(printf %s "$out" | tail -2)"; fi
 sudo rm -f "$DIR/compose.override.yml"
