@@ -3,15 +3,15 @@
  "tools": {
   "artifacts.archive": {
    "module": "artifacts",
-   "reason": "PENDING: mutating, no mechanical guard: the owner names the guard it relies on"
+   "reason": "own-scope check: scopeOf(meta) limits an agent to its own project or what it made, never the person's own artifacts; the person and modules reach all (core/artifacts scopeOf). Least sure: the artifacts owner confirms each tool calls it"
   },
   "artifacts.create": {
    "module": "artifacts",
-   "reason": "PENDING: mutating, no mechanical guard: the owner names the guard it relies on"
+   "reason": "own-scope check: scopeOf(meta) limits an agent to its own project or what it made, never the person's own artifacts; the person and modules reach all (core/artifacts scopeOf). Least sure: the artifacts owner confirms each tool calls it"
   },
   "artifacts.delete": {
    "module": "artifacts",
-   "reason": "PENDING: mutating, no mechanical guard: the owner names the guard it relies on"
+   "reason": "own-scope check: scopeOf(meta) limits an agent to its own project or what it made, never the person's own artifacts; the person and modules reach all (core/artifacts scopeOf). Least sure: the artifacts owner confirms each tool calls it"
   },
   "artifacts.diff": {
    "module": "artifacts",
@@ -19,7 +19,7 @@
   },
   "artifacts.export": {
    "module": "artifacts",
-   "reason": "PENDING: mutating, no mechanical guard: the owner names the guard it relies on"
+   "reason": "own-scope check: scopeOf(meta) limits an agent to its own project or what it made, never the person's own artifacts; the person and modules reach all (core/artifacts scopeOf). Least sure: the artifacts owner confirms each tool calls it"
   },
   "artifacts.get": {
    "module": "artifacts",
@@ -31,7 +31,7 @@
   },
   "artifacts.move": {
    "module": "artifacts",
-   "reason": "PENDING: mutating, no mechanical guard: the owner names the guard it relies on"
+   "reason": "own-scope check: scopeOf(meta) limits an agent to its own project or what it made, never the person's own artifacts; the person and modules reach all (core/artifacts scopeOf). Least sure: the artifacts owner confirms each tool calls it"
   },
   "artifacts.public.status": {
    "module": "artifacts",
@@ -59,7 +59,7 @@
   },
   "artifacts.update": {
    "module": "artifacts",
-   "reason": "PENDING: mutating, no mechanical guard: the owner names the guard it relies on"
+   "reason": "own-scope check: scopeOf(meta) limits an agent to its own project or what it made, never the person's own artifacts; the person and modules reach all (core/artifacts scopeOf). Least sure: the artifacts owner confirms each tool calls it"
   },
   "artifacts.versions": {
    "module": "artifacts",
@@ -99,11 +99,11 @@
   },
   "link.pair.poll": {
    "module": "link",
-   "reason": "PENDING: mutating, no mechanical guard: the owner names the guard it relies on"
+   "reason": "tailnetLogin(caller) check plus a secret compared in constant time and the asking node pinned (peer.stableId): the link key goes once to the node that asked"
   },
   "link.pair.request": {
    "module": "link",
-   "reason": "PENDING: mutating, no mechanical guard: the owner names the guard it relies on"
+   "reason": "tailnetLogin(caller) check in the tool: only the owner's own device over the tailnet may start a pairing, the code shows on that device only, and pending requests are capped"
   },
   "link.peers": {
    "module": "link",
@@ -180,14 +180,6 @@
   "projects.access.migrate": {
    "module": "projects",
    "reason": "callers limited in code to capsule, cli, deck, local"
-  },
-  "projects.access.revoke": {
-   "module": "projects",
-   "reason": "callers limited in code to capsule, cli, deck, local, module"
-  },
-  "projects.add-workspace": {
-   "module": "projects",
-   "reason": "callers limited in code to capsule, cli, deck, local, module"
   },
   "projects.archive": {
    "module": "projects",
@@ -275,7 +267,7 @@
   },
   "undo.run": {
    "module": "undo",
-   "reason": "PENDING: mutating, no mechanical guard: the owner names the guard it relies on"
+   "reason": "own-action check in the tool: the person, or whoever did the action (sameActor); the inverse runs as module:undo, never as the person, and only a declared inverse that is not outward or person-only is replayed"
   }
  }
 }
