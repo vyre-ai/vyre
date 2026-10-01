@@ -195,3 +195,37 @@ test("resolveGh: an absolute path is used as given; a bare name is found only in
   process.env.PATH = `${planted}${path.delimiter}${was}`;
   assert.equal(resolveGh("vyre-planted-gh"), null, "a planted binary in a writable PATH folder is ignored");
 });
+
+const PAT = "github_pat_11ABCDEFG0abcdefghijkl_mnopqrstuvwxyz0123456789ABCDEFGH";
+
+test("paste: a pasted token is checked with GitHub first, then saved and the account added, with no gh and no leak", async t => {
+  const r = rig(t, { bin: path.join(os.tmpdir(), "vyre-no-such-gh-binary") }, {
+    fetch: /** @type {any} */ (async (url, opts) => {
+      assert.equal(opts.headers.authorization, `Bearer ${PAT}`);
+      if (String(url).startsWith("https://api.github.com/user/repos")) return { ok: true, status: 200, headers: { get: () => '<https://api.github.com/user/repos?per_page=1&page=7>; rel="next", <https://api.github.com/user/repos?per_page=1&page=7>; rel="last"' }, json: async () => [{}] };
+      assert.equal(url, "https://api.github.com/user");
+      return { ok: true, status: 200, json: async () => ({ login: "sam", avatar_url: "https://avatars.example/sam.png" }) };
+    }),
+  });
+  const out = await r.keep(r.c.paste({ name: "work", token: `  ${PAT}\n` }));
+  assert.deepEqual([out.connected, out.name, out.login, out.repos], [true, "work", "sam", 7]);
+  assert.deepEqual(r.saved, [{ item: "github-work", fields: { token: PAT } }]);
+  assert.deepEqual(r.accounts[0], { name: "work", login: "sam", avatar_url: "https://avatars.example/sam.png", item: "github-work" });
+  assert.ok(r.events.some(e => e.type === "github.connected" && e.payload.login === "sam"));
+  assertNoLeak(r, [PAT]);
+});
+
+test("paste: a token GitHub rejects saves nothing and says so plainly; a malformed one or a taken name is refused before any request", async t => {
+  let requests = 0;
+  const r = rig(t, { bin: "/none" }, { fetch: /** @type {any} */ (async () => { requests++; return { ok: false, status: 401, json: async () => ({ message: `Bad credentials ${PAT}` }) }; }) });
+  await assert.rejects(r.keep(r.c.paste({ name: "work", token: PAT })), e => e.code === "refused" && /did not accept that token/.test(e.message) && !e.message.includes(PAT));
+  assert.equal(r.saved.length, 0);
+  assert.equal(r.accounts.length, 0);
+  await assert.rejects(r.c.paste({ name: "work", token: "short" }), /does not look like a GitHub token/);
+  await assert.rejects(r.c.paste({ name: "work", token: `${PAT} extra words` }), /does not look like a GitHub token/);
+  await assert.rejects(r.c.paste({ name: "Bad Name", token: PAT }), /name must be/);
+  const taken = rig(t, { bin: "/none" }, { taken: n => n === "work" });
+  await assert.rejects(taken.c.paste({ name: "work", token: PAT }), /already connected/);
+  assert.equal(requests, 1, "only the well-formed paste for a free name reached GitHub");
+  assertNoLeak(r, [PAT]);
+});
