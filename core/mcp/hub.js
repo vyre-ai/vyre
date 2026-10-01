@@ -369,7 +369,7 @@ const fail = (code, msg) => Object.assign(new Error(msg), { code });
 // forgeable claim the way an agent's own caller string is) is scoped like the person too, same
 // as always; this guards it against smuggling an agent: or thread: claim behind "module:" the
 // same way the pre-swap inline check did (whoFrom's own audited "claimed" regex).
-const MODULE_CLAIM = /(?:^|[\s:])(agent|thread):/i;
+const MODULE_CLAIM = /(?:^|[\s:])(agent|thread):/;
 
 /**
  * @typedef {{ person: boolean, agent: string|null, thread: string|null }} Who

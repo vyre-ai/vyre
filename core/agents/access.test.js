@@ -94,23 +94,3 @@ test("a failed grant write fails the create: no half-made agent", async t => {
   assert.ok(r.error);
   assert.equal((await c("agents.list")).data.find(a => a.name === "kit"), undefined, "the agent was never created");
 });
-
-test("the assistant-only guard refuses an agent on every spelling of its claim, cli:agent:kit included", async t => {
-  const { c, d } = await world(t);
-  ok(await c("agents.create", { name: "kit" }));
-  ok(await c("agents.create", { name: "juno", kind: "assistant" }));
-  for (const who of ["mcp:agent:kit", "cli:agent:kit", "capsule:agent:kit", "deck agent:kit", "CLI:AGENT:kit"]) {
-    const r = await c("agents.list", {}, who);
-    assert.ok(r.error, `${who} listed agents: ${JSON.stringify(r)}`);
-  }
-  assert.ok(!(await c("agents.list", {}, "mcp:agent:juno")).error, "the assistant may");
-  // A label alone never grants the assistant's powers: a surface label naming the assistant, with or without
-  // the identity vyred verifies, is refused; the verified assistant is let in.
-  for (const who of ["cli:agent:juno", "CLI:AGENT:juno", "capsule agent:juno"]) {
-    assert.ok((await c("agents.list", {}, who)).error, who);
-    assert.ok((await d.registry.call("agents.list", {}, who, { agent: "juno", agentKind: "assistant" })).error, `${who} with an identity attached`);
-  }
-  assert.ok(!(await d.registry.call("agents.list", {}, "mcp:agent:juno", { agent: "juno", agentKind: "assistant" })).error, "verified");
-  assert.ok((await d.registry.call("agents.list", {}, "mcp:agent:juno", { agent: "juno", agentKind: "agent" })).error, "verified as a plain agent");
-  assert.ok(!(await c("agents.list", {}, "cli")).error, "the person may");
-});

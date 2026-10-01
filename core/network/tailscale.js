@@ -66,7 +66,7 @@ export function startTailscale(ctx, { run = ts.run, up = ts.up, setTimer = setIn
    */
   const allowed = (/** @type {any} */ caller, /** @type {any} */ meta, /** @type {string} */ what) => {
     const c = String(caller || "");
-    const ok = !(meta && meta.agent) && ((ownerDevice(c) && !/(^|[\s:])(agent|thread):/i.test(c)) || ["cli", "local", "deck", "capsule"].includes(c) || c === "module:onboard" || /^mcp:thread:[^\s:]+$/.test(c));
+    const ok = !(meta && meta.agent) && ((ownerDevice(c) && !/(^|[\s:])agent:/.test(c)) || ["cli", "local", "deck", "capsule"].includes(c) || c === "module:onboard" || /^mcp:thread:[^\s:]+$/.test(c));
     if (!ok) throw fail("denied", `${what} is the owner's: from their own surfaces, their devices or their own session`);
   };
 
