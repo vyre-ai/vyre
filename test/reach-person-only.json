@@ -125,10 +125,6 @@
    "module": "settings",
    "why": "pending"
   },
-  "team.add": {
-   "module": "team",
-   "why": "pending"
-  },
   "term.attach": {
    "module": "term",
    "why": "pending"
