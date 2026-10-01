@@ -1,0 +1,185 @@
+{
+ "_comment": "PERSON_ONLY (core/presence) is enforced by the daemon socket-peer check and the harness floor, not by the registry, so every such tool must also say reach person in its manifest. Each line is a tool that does not yet. The owner sets reach person and deletes the line, or replaces pending with the reason module callers need it (reach person admits only the persons surfaces and devices). test/reach-person-only.test.js fails on a PERSON_ONLY tool that is neither reach person nor listed, and on a stale line.",
+ "tools": {
+  "agents.create": {
+   "module": "agents",
+   "why": "onboard (first-party module) creates the assistant for the person; the socket peer check and harness floor keep a model out"
+  },
+  "agents.resume": {
+   "module": "agents",
+   "why": "switchboard resumes an agent's thread for the person's own send; the socket peer check and harness floor keep a model out"
+  },
+  "agents.update": {
+   "module": "agents",
+   "why": "core/team gives an agent a project for a person's role fill; the socket peer check and harness floor keep a model out"
+  },
+  "capsule.report": {
+   "module": "capsule",
+   "why": "pending"
+  },
+  "computers.giveback": {
+   "module": "computers",
+   "why": "pending"
+  },
+  "computers.member.add": {
+   "module": "computers",
+   "why": "pending"
+  },
+  "computers.member.dispose": {
+   "module": "computers",
+   "why": "pending"
+  },
+  "computers.member.remove": {
+   "module": "computers",
+   "why": "pending"
+  },
+  "computers.member.rotate": {
+   "module": "computers",
+   "why": "pending"
+  },
+  "computers.takeover": {
+   "module": "computers",
+   "why": "pending"
+  },
+  "files.drive.access": {
+   "module": "files",
+   "why": "pending"
+  },
+  "files.drive.mount": {
+   "module": "files",
+   "why": "pending"
+  },
+  "files.drive.open": {
+   "module": "files",
+   "why": "pending"
+  },
+  "files.drive.unmount": {
+   "module": "files",
+   "why": "pending"
+  },
+  "files.receive": {
+   "module": "files",
+   "why": "pending"
+  },
+  "files.send": {
+   "module": "files",
+   "why": "pending"
+  },
+  "gate.reject": {
+   "module": "gate",
+   "why": "pending"
+  },
+  "gate.revise": {
+   "module": "gate",
+   "why": "pending"
+  },
+  "glass.release": {
+   "module": "glass",
+   "why": "pending"
+  },
+  "glass.take": {
+   "module": "glass",
+   "why": "pending"
+  },
+  "learn.accept": {
+   "module": "learn",
+   "why": "pending"
+  },
+  "learn.relax": {
+   "module": "learn",
+   "why": "pending"
+  },
+  "learn.retire": {
+   "module": "learn",
+   "why": "pending"
+  },
+  "link.pair": {
+   "module": "link",
+   "why": "pending"
+  },
+  "link.signout": {
+   "module": "link",
+   "why": "pending"
+  },
+  "link.unpair": {
+   "module": "link",
+   "why": "pending"
+  },
+  "memory.correct": {
+   "module": "memory",
+   "why": "pending"
+  },
+  "memory.merge": {
+   "module": "memory",
+   "why": "pending"
+  },
+  "memory.split": {
+   "module": "memory",
+   "why": "pending"
+  },
+  "onboard.machine": {
+   "module": "onboard",
+   "why": "pending"
+  },
+  "presence.person.revoke": {
+   "module": "presence",
+   "why": "pending"
+  },
+  "projects.access.revoke": {
+   "module": "projects",
+   "why": "pending"
+  },
+  "projects.add-workspace": {
+   "module": "projects",
+   "why": "pending"
+  },
+  "projects.move": {
+   "module": "projects",
+   "why": "pending"
+  },
+  "projects.watchers.add": {
+   "module": "projects",
+   "why": "pending"
+  },
+  "projects.watchers.remove": {
+   "module": "projects",
+   "why": "pending"
+  },
+  "settings.reset": {
+   "module": "settings",
+   "why": "pending"
+  },
+  "settings.set": {
+   "module": "settings",
+   "why": "pending"
+  },
+  "team.add": {
+   "module": "team",
+   "why": "pending"
+  },
+  "term.attach": {
+   "module": "term",
+   "why": "pending"
+  },
+  "term.open": {
+   "module": "term",
+   "why": "pending"
+  },
+  "vault.device.join": {
+   "module": "vault",
+   "why": "pending"
+  },
+  "vault.device.revoke": {
+   "module": "vault",
+   "why": "pending"
+  },
+  "vault.vaults.create": {
+   "module": "vault",
+   "why": "pending"
+  },
+  "voice.speak": {
+   "module": "voice",
+   "why": "pending"
+  }
+ }
+}
