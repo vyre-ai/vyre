@@ -21,7 +21,7 @@ import path from "node:path";
 import crypto from "node:crypto";
 import { spawn } from "node:child_process";
 import { fileURLToPath } from "node:url";
-import { keyUsage } from "./lib/eval-openrouter.js";
+import { keyUsage, modelListed } from "./lib/eval-openrouter.js";
 import { WORLDS } from "./eval-bar.js";
 import { correct } from "./eval-answer.js";
 import { pickQuestions, abstains } from "./lib/h2h.js";
@@ -33,7 +33,7 @@ const DIR = process.env.VYRE_H2H_DIR || path.join(ROOT, "test/eval/h2h");
 /** A test may point the key-usage read at a local stand-in; any other address is ignored, so the key never goes elsewhere. */
 const KEY_ENDPOINT = /^http:\/\/127\.0\.0\.1[:/]/.test(String(process.env.VYRE_EVAL_KEY_ENDPOINT || "")) ? String(process.env.VYRE_EVAL_KEY_ENDPOINT) : undefined;
 const usageNow = async () => (await keyUsage({ key, ...(KEY_ENDPOINT ? { endpoint: KEY_ENDPOINT } : {}) })).usage;
-export const JOB_STOP_USD = 4.6;
+export const JOB_STOP_USD = Number(process.env.H2H_JOB_STOP_USD) > 0 ? Number(process.env.H2H_JOB_STOP_USD) : 4.6;
 const MODEL = process.env.VYRE_EVAL_MODEL || "anthropic/claude-haiku-4.5";
 const key = String(process.env.OPENROUTER_EVAL_KEY || process.env.OPENROUTER_API_KEY || "");
 const scrub = (/** @type {any} */ s) => String(s ?? "").split(key || "\u0000").join("[key]").replace(/sk-[A-Za-z0-9_-]{8,}/g, "[key]");
@@ -213,7 +213,9 @@ async function meterSpike() {
     const home = tmp(`spot-meter-${which}-home-`), cwd = tmp(`spot-meter-${which}-work-`);
     const custom = which === "codex"
       ? { id: "openrouter", baseUrl: "https://openrouter.ai/api/v1", envKey: "OPENROUTER_API_KEY", model: "openai/gpt-5.1-codex-mini" }
-      : { id: "proof", baseUrl: "https://openrouter.ai/api/v1", envKey: "OPENROUTER_API_KEY", model: "x-ai/grok-code-fast-1" };
+      : { id: "proof", baseUrl: "https://openrouter.ai/api/v1", envKey: "OPENROUTER_API_KEY", model: "x-ai/grok-build-0.1" };
+    // A model OpenRouter no longer lists fails every turn; Grok Build shows that as "Internal error", so say what it is.
+    if ((await modelListed(custom.model)) === false) { say("FAIL", `meter ${which}: ${custom.model} is not on OpenRouter any more, so every turn would fail (Grok Build reports that as "Internal error"); nothing was sent`); continue; }
     const provider = which === "codex" ? codexProvider({ custom }) : grokProvider({ custom });
     const env = { PATH: process.env.PATH || "", HOME: home, OPENROUTER_API_KEY: key };
     /** @type {any[]} */ const got = [];

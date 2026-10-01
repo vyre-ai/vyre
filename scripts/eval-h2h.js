@@ -6,6 +6,7 @@
 //   node scripts/eval-h2h.js --estimate     builds every prompt, counts tokens, prints the cost; no key, no model
 //   node scripts/eval-h2h.js --record       runs it for real through OpenRouter (VYRE_EVAL_RECORD=1, the workflow only)
 //   node scripts/eval-h2h.js --report       prints the saved results as a table
+//   node scripts/eval-h2h.js --replay       scores a run from its replies cache alone (no key, no model): for a run that stopped before it wrote results
 //
 // Main arms, over the first 10 questions of each answerable class and of the unanswerable class:
 //   vyre          Vyre Memory's memory.ask (hybrid retrieval, then one model call), through eval-bar's own path
@@ -33,9 +34,9 @@ import * as H from "./lib/h2h.js";
 import * as long from "../test/fixtures/long-session.js";
 
 const ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), "..");
-const DIR = path.join(ROOT, "test/eval/h2h");
+const DIR = process.env.VYRE_H2H_DIR || path.join(ROOT, "test/eval/h2h");
 /** The round's hard cap is $5 across everything: the head-to-head itself stops at 3.5, the real-CLI spot checks and spikes (eval-cli-spot.mjs) share the rest. */
-export const CAP_USD = 3.5;
+export const CAP_USD = Number(process.env.H2H_CAP_USD) > 0 ? Number(process.env.H2H_CAP_USD) : 3.5;
 /** The key's own hard limit is $50; a run refuses to start when it has already spent this much. */
 export const START_REFUSE_USD = 45;
 const PER_CLASS = 10;
@@ -55,6 +56,26 @@ export function countingModel(model) {
       const r = rows.get(c.arm) || { calls: 0, tin: 0, tout: 0, usd: 0 };
       r.calls++; r.tin += tin; r.tout += tout; r.usd += usd; rows.set(c.arm, r);
       return { text: c.kind === "answer" ? "I don't know." : "- a note\n".repeat(c.kind === "notes" ? 1 : 1), usd, tin, tout };
+    },
+  };
+}
+
+/**
+ * A model that only replays the replies cache of an earlier run (no key, no network): the way to score a run that stopped before it wrote
+ * its results. A call with no cached reply answers nothing and is counted as missing for its arm. @param {Record<string, any>} cache @param {string} model
+ * @returns {H.Model & { rows: Map<string, { calls: number, tin: number, tout: number, usd: number }>, missing: Map<string, number> }}
+ */
+export function replayModel(cache, model) {
+  const rows = new Map(), missing = new Map();
+  return {
+    rows, missing,
+    async call(c) {
+      const k = crypto.createHash("sha256").update(JSON.stringify([model, c.system, c.prompt, c.maxTokens || 0])).digest("hex");
+      const hit = cache[k];
+      if (!hit) { missing.set(c.arm, (missing.get(c.arm) || 0) + 1); return { text: c.kind === "answer" ? "" : "- a note\n", usd: 0, tin: 0, tout: 0 }; }
+      const row = rows.get(c.arm) || { calls: 0, tin: 0, tout: 0, usd: 0 };
+      row.calls++; row.tin += hit.tin; row.tout += hit.tout; row.usd += hit.usd; rows.set(c.arm, row);
+      return { ...hit, cached: true };
     },
   };
 }
@@ -111,6 +132,9 @@ export async function experiment(model, o) {
 
   const L = await H.runLong(model, long.TURNS, long.CUT, long.QUESTIONS);
   for (const [arm, got] of Object.entries(L.out)) results.long[arm] = H.scoreLong(correct, long.QUESTIONS, got);
+  // A run that stopped part way leaves later questions unanswered ("" ): the like-for-like figure is over the questions every arm answered.
+  const answeredAll = long.QUESTIONS.map((_, i) => Object.values(L.out).every(got => got[i] && got[i].answer !== ""));
+  results.long_common = { n: answeredAll.filter(Boolean).length, ...Object.fromEntries(Object.entries(L.out).map(([arm, got]) => [arm, got.reduce((n, a, i) => n + (answeredAll[i] && correct(a.answer, long.QUESTIONS[i].expect) ? 1 : 0), 0)])) };
   results.long_meta = { turns: long.TURNS.length, cut: long.CUT, questions: long.QUESTIONS.length, summary_tokens: L.summaryTokens, pinned_tokens: L.pinnedTokens };
   results.spend = Object.fromEntries([...model.rows].map(([k, v]) => [k, { calls: v.calls, tokens_in: v.tin, tokens_out: v.tout, usd: Math.round(v.usd * 1e4) / 1e4 }]));
   results.total_usd = Math.round([...model.rows.values()].reduce((n, v) => n + v.usd, 0) * 1e4) / 1e4;
@@ -124,6 +148,8 @@ export function table(r) {
   for (const [k, v] of Object.entries(r.main)) out.push(`| ${k} | ${pc(/** @type {any} */ (v).answerable)} | ${pc(/** @type {any} */ (v).unanswerable)} |`);
   out.push("", `Long session (${r.long_meta ? `${r.long_meta.turns} turns, cut at ${r.long_meta.cut}, ${r.long_meta.questions} questions about turns before the cut` : ""})`, "", "| arm | right |", "|---|---|");
   for (const [k, v] of Object.entries(r.long)) out.push(`| ${k} | ${pc(v)} |`);
+  if (r.long_common && r.long_common.n < (r.long_meta ? r.long_meta.questions : 0)) out.push("", `Like for like, over the ${r.long_common.n} long-session questions every arm answered: ${Object.entries(r.long_common).filter(([k]) => k !== "n").map(([k, v]) => `${k} ${v}/${r.long_common.n}`).join(", ")}`);
+  if (r.spend) out.push("", "Cost by arm: " + Object.entries(r.spend).map(([k, v]) => `${k} $${/** @type {any} */ (v).usd}`).join(", "));
   out.push("", `Spend this run: $${r.total_usd}`);
   return out.join("\n");
 }
@@ -132,6 +158,18 @@ async function main(argv) {
   const modelId = process.env.VYRE_EVAL_MODEL || H.DEFAULT_MODEL;
   fs.mkdirSync(DIR, { recursive: true });
   if (argv.includes("--report")) { process.stdout.write(table(JSON.parse(fs.readFileSync(path.join(DIR, "results.json"), "utf8"))) + "\n"); return; }
+  if (argv.includes("--replay")) {
+    const cache = JSON.parse(fs.readFileSync(path.join(DIR, "replies.json"), "utf8"));
+    const m = replayModel(cache, modelId);
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "vyre-h2h-"));
+    const r = await experiment(m, { model: modelId, tmp });
+    const { notes, ...rest } = r;
+    fs.writeFileSync(path.join(DIR, "results.json"), JSON.stringify({ ...rest, replayed: true, missing: Object.fromEntries(m.missing) }, null, 1) + "\n");
+    fs.writeFileSync(path.join(DIR, "notes-auto.md"), notes.auto + "\n");
+    fs.writeFileSync(path.join(DIR, "notes-agents.md"), notes.agents + "\n");
+    process.stdout.write(table(r) + "\nMissing replies per arm (not yet paid for): " + JSON.stringify(Object.fromEntries(m.missing)) + "\n");
+    return;
+  }
   if (argv.includes("--estimate")) {
     const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "vyre-h2h-"));
     const m = countingModel(modelId);

@@ -17,7 +17,7 @@ import { acpProvider } from "../core/sessions/drivers/acp.js";
 import { codexProvider } from "../core/sessions/drivers/codex.js";
 import { grokProvider } from "../core/sessions/drivers/grok.js";
 import { rules } from "../core/harness/rules.js";
-import { keyUsage, START_LIMIT_USD } from "./lib/eval-openrouter.js";
+import { keyUsage, START_LIMIT_USD, modelListed } from "./lib/eval-openrouter.js";
 
 const which = process.argv[2];
 const key = process.env.OPENROUTER_API_KEY || "";
@@ -32,13 +32,18 @@ try {
   if (usageBefore >= START_LIMIT_USD) { console.error(`provider-proof: refusing to start: the key has already spent $${usageBefore.toFixed(4)} (a run starts only below $${START_LIMIT_USD})`); process.exit(3); }
 } catch (e) { console.error(`provider-proof: ${/** @type {Error} */ (e).message}; nothing was sent to a model.`); process.exit(3); }
 
+// A model OpenRouter no longer lists fails every turn, and Grok Build shows that as "Internal error": say so before spending anything.
+{
+  const slug = process.env.PROOF_MODEL || (which === "codex" ? "openai/gpt-5.1-codex-mini" : "x-ai/grok-build-0.1");
+  if ((await modelListed(slug)) === false) { console.error(`provider-proof: ${slug} is not on OpenRouter any more; set PROOF_MODEL to a listed model (https://openrouter.ai/api/v1/models). Nothing was sent to a model.`); process.exit(3); }
+}
 const home = fs.mkdtempSync(path.join(os.tmpdir(), "proof-home-"));
 const cwd = fs.mkdtempSync(path.join(os.tmpdir(), "proof-work-"));
 const floor = c => rules({ tool: c.tool, input: c.input, cwd: c.cwd, home: path.join(home, ".vyre") });
 const baseUrl = "https://openrouter.ai/api/v1";
 const custom = which === "codex"
   ? { id: "openrouter", baseUrl, envKey: "OPENROUTER_API_KEY", model: process.env.PROOF_MODEL || "openai/gpt-5.1-codex-mini" }
-  : { id: "proof", baseUrl, envKey: "OPENROUTER_API_KEY", model: process.env.PROOF_MODEL || "x-ai/grok-code-fast-1" };
+  : { id: "proof", baseUrl, envKey: "OPENROUTER_API_KEY", model: process.env.PROOF_MODEL || "x-ai/grok-build-0.1" };
 const provider = which === "codex" ? codexProvider({ floor, custom }) : grokProvider({ floor, custom });
 
 /** @type {string[]} */ const results = [];
