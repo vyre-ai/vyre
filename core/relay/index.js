@@ -61,6 +61,8 @@ export const MIGRATIONS = [
   // A removed device's tagged node still waiting on its API delete (the reviewer's LOW): kept
   // apart from node_id, so nothing can admit it, and retried until Tailscale confirms.
   `ALTER TABLE relay_devices ADD COLUMN orphan_node TEXT;`,
+  // relay.devices.ask-trust: when an untrusted browser last asked to be trusted (once per limit).
+  `ALTER TABLE relay_devices ADD COLUMN trust_asked INTEGER;`,
 ];
 /** A direct report counts as the device's path for this long; the app reports on every switch. */
 const DIRECT_FRESH = 10 * 60_000;
@@ -244,7 +246,7 @@ export default {
       }).catch(() => {});
     };
 
-    const active = () => /** @type {any[]} */ (db.prepare("SELECT id, name, pub, presence_key, paired_at, last_seen, kind, release, manifest, trusted, node_id, node_name, last_path, path_at, rtt FROM relay_devices WHERE removed_at IS NULL AND kind != 'setup' ORDER BY paired_at").all());
+    const active = () => /** @type {any[]} */ (db.prepare("SELECT id, name, pub, presence_key, paired_at, last_seen, kind, release, manifest, trusted, trust_asked, node_id, node_name, last_path, path_at, rtt FROM relay_devices WHERE removed_at IS NULL AND kind != 'setup' ORDER BY paired_at").all());
     const expired = d => d.kind === "web" && now() - (d.last_seen || d.paired_at) > Number(settings().web_expiry_days) * DAY;
     const personExists = () => active().length > 0 || Boolean(ctx.config.network && ctx.config.network.owner);
 
@@ -337,7 +339,13 @@ export default {
         return { v: 1, box: { name: boxName() }, device: id, paired: true, presence, ...(enroll ? { enroll } : {}) };
       }
       const row = /** @type {any} */ (db.prepare("SELECT id, pub, kind, paired_at, last_seen FROM relay_devices WHERE id = ? AND removed_at IS NULL").get(id));
-      if (!row || !crypto.timingSafeEqual(Buffer.from(row.pub, "base64url"), pub)) throw new Error("not a paired device");
+      if (!row || !crypto.timingSafeEqual(Buffer.from(row.pub, "base64url"), pub)) {
+        // A device the owner removed hears exactly that, on the same code (4401) as when its open channel was
+        // closed, so an app can tell "removed" from "box unreachable" and stop retrying (pwa).
+        const gone = /** @type {any} */ (db.prepare("SELECT pub FROM relay_devices WHERE id = ? AND removed_at IS NOT NULL").get(id));
+        if (gone && crypto.timingSafeEqual(Buffer.from(gone.pub, "base64url"), pub)) throw new Error("device removed");
+        throw new Error("not a paired device");
+      }
       if (expired(row)) { forget(id, "expired"); throw new Error("this browser went unused too long and was removed; pair it again from another device"); }
       const release = hello && typeof hello.release === "string" && BUILD.test(hello.release) ? hello.release : null;
       const manifest = hello && typeof hello.manifest === "string" && /^[a-f0-9]{64}$/.test(hello.manifest) ? hello.manifest : null;
@@ -478,11 +486,13 @@ export default {
 
     /** Where a device is now: connected through the relay, or reporting from its tailnet node lately. */
     const pathOf = d => ((live.get(d.id)?.size || 0) > 0 ? "relay" : d.last_path === "direct" && now() - (d.path_at || 0) < DIRECT_FRESH ? "direct" : null);
-    const view = (d, rtt = null) => ({ id: d.id, name: d.name, kind: d.kind, pairedAt: d.paired_at, lastSeen: d.last_seen, presence: Boolean(d.presence_key),
+    const view = (d, rtt = null, withAsk = false) => ({ id: d.id, name: d.name, kind: d.kind, pairedAt: d.paired_at, lastSeen: d.last_seen, presence: Boolean(d.presence_key),
       online: pathOf(d) !== null, path: pathOf(d), rtt: pathOf(d) === "relay" ? rtt : pathOf(d) === "direct" ? d.rtt : null,
       ...(d.node_id ? { node: d.node_name || d.node_id } : {}),
       ...(d.kind === "web" ? { trusted: Boolean(d.trusted), release: d.release, build: knownBuild(d.release, d.manifest) ? "known" : "unknown",
-        expiresAt: (d.last_seen || d.paired_at) + Number(settings().web_expiry_days) * DAY } : {}) });
+        expiresAt: (d.last_seen || d.paired_at) + Number(settings().web_expiry_days) * DAY,
+        // When this browser asked to be trusted and is still waiting: what a surface reloaded later needs to show the ask again.
+        ...(withAsk && d.trust_asked && !d.trusted ? { trustAsked: d.trust_asked, fingerprint: keyFingerprint(Buffer.from(d.pub, "base64url")) } : {}) } : {}) });
 
     /** Remove a device: close its channels, drop its presence key, tell every surface. */
     function forget(id, why) {
@@ -492,7 +502,8 @@ export default {
       // again (a re-pairing included), and the node itself is deleted from the tailnet, retried
       // until Tailscale confirms. A failed delete is logged and shown, never a half-trusted device.
       const orphan = row.node_tagged && row.node_id ? row.node_id : null;
-      db.prepare("UPDATE relay_devices SET removed_at = ?, join_grant = 0, node_id = NULL, node_name = NULL, node_tagged = 0, orphan_node = COALESCE(?, orphan_node) WHERE id = ?").run(now(), orphan, id);
+      // Only what the 4401 answer needs stays (the key and the time): the name the person deleted, the presence key id, the build and the path are blanked.
+      db.prepare("UPDATE relay_devices SET removed_at = ?, name = '', presence_key = NULL, release = NULL, manifest = NULL, trusted = 0, last_path = NULL, rtt = NULL, join_grant = 0, node_id = NULL, node_name = NULL, node_tagged = 0, orphan_node = COALESCE(?, orphan_node) WHERE id = ?").run(now(), orphan, id);
       binding.delete(id);
       if (orphan) deleteOrphans();
       for (const ch of live.get(id) || []) ch.close(4401, "device removed");
@@ -684,7 +695,11 @@ export default {
           const chans = [...(live.get(d.id) || [])];
           return chans.length ? chans[chans.length - 1].ping(1000) : null;
         }));
-        return { devices: rows.map((d, i) => view(d, rtts[i])) };
+        // A limited browser (a web device not yet trusted) sees the list but not who else is waiting to be trusted.
+        const c = String((meta && meta.caller) || "");
+        const me = c.startsWith("device:") ? /** @type {any} */ (db.prepare("SELECT kind, trusted FROM relay_devices WHERE id = ? AND removed_at IS NULL").get(c.slice(7))) : null;
+        const withAsk = !(me && me.kind === "web" && !me.trusted);
+        return { devices: rows.map((d, i) => view(d, rtts[i], withAsk)) };
       },
     });
 
@@ -867,6 +882,24 @@ export default {
       },
     });
 
+    ctx.tool("relay.devices.ask-trust", {
+      description: "A browser paired from the hosted web app asks the owner to trust it fully. Only that browser, about itself; it tells every surface once (device.trust-asked) and the owner's own relay.devices.trust, with presence, is the approval.",
+      input: obj(),
+      run: async (_, meta = {}) => {
+        const c = String((meta && meta.caller) || "");
+        if (!c.startsWith("device:") || agentClaim(c) || (meta && meta.agent)) throw fail("denied", "only a paired browser can ask to be trusted, about itself");
+        const id = c.slice("device:".length);
+        const row = /** @type {any} */ (db.prepare("SELECT id, name, kind, pub, trusted, trust_asked FROM relay_devices WHERE id = ? AND removed_at IS NULL").get(id));
+        if (!row) throw fail("not_found", "this browser is not paired");
+        if (row.kind !== "web") throw fail("bad_input", "only a browser from the web app has limits to lift");
+        if (row.trusted) return { id, trusted: true, asked: false };
+        if (row.trust_asked) return { id, trusted: false, asked: true, already: true };
+        db.prepare("UPDATE relay_devices SET trust_asked = ? WHERE id = ?").run(now(), id);
+        ctx.events.emit("device.trust-asked", { id, name: row.name, fingerprint: keyFingerprint(Buffer.from(row.pub, "base64url")) });
+        return { id, trusted: false, asked: true, already: false };
+      },
+    });
+
     ctx.tool("relay.devices.trust", {
       description: "Give a browser paired from the hosted web app the full powers of the owner's app (pairing devices, vault secrets), or take them back. Not callable from a web device that is not trusted.",
       input: obj({ id: str, trusted: { type: "boolean" } }, ["id", "trusted"]),
@@ -877,7 +910,7 @@ export default {
         const row = /** @type {any} */ (db.prepare("SELECT kind FROM relay_devices WHERE id = ? AND removed_at IS NULL").get(id));
         if (!row) throw fail("not_found", `no paired device ${id}`);
         if (row.kind !== "web") throw fail("bad_input", "only a browser from the web app has limits to lift");
-        db.prepare("UPDATE relay_devices SET trusted = ? WHERE id = ?").run(input.trusted ? 1 : 0, id);
+        db.prepare("UPDATE relay_devices SET trusted = ?, trust_asked = NULL WHERE id = ?").run(input.trusted ? 1 : 0, id);
         // Open channels keep the handler they started with: close them so the next one gets the new one.
         for (const ch of live.get(id) || []) ch.close(1000, "trust changed");
         live.delete(id);
@@ -978,6 +1011,15 @@ export default {
       else beginSetup(String(bootCode)).catch(e => ctx.log(`relay: setup code not used: ${/** @type {Error} */ (e).message}`));
     }
 
-    return { async stop() { stopLink(); if (setup) clearTimeout(setup.timer); for (const set of live.values()) for (const ch of set) ch.close(1001, "box stopping"); live.clear(); } };
+    // Taking a device's presence key away (presence.remove) takes the device away too: its open
+    // channel closes with 4401 "device removed" and it is refused on reconnect, the same as relay.devices.remove.
+    const offPresence = ctx.events.on("presence.removed", (/** @type {any} */ ev) => {
+      const keyId = ev && ev.payload && ev.payload.id;
+      if (!keyId) return;
+      const row = /** @type {any} */ (db.prepare("SELECT id FROM relay_devices WHERE presence_key = ? AND removed_at IS NULL").get(String(keyId)));
+      if (row) forget(row.id, "presence key removed");
+    });
+
+    return { async stop() { try { offPresence(); } catch {} stopLink(); if (setup) clearTimeout(setup.timer); for (const set of live.values()) for (const ch of set) ch.close(1001, "box stopping"); live.clear(); } };
   },
 };

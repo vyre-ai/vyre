@@ -279,3 +279,26 @@ test("reader: its dollars go to the one ledger, and it waits while the provider'
   assert.ok(w.recorded.length >= 1);
   assert.deepEqual([w.recorded[0].provider, w.recorded[0].purpose, w.recorded[0].usd], ["claude", "memory.read", 0.003]);
 });
+
+test("reader: a model binary that exits before reading its prompt fails that read cleanly, and never crashes the process (EPIPE)", async t => {
+  const dir = tempHome(t), bin = path.join(dir, "dead-claude");
+  // Says why it cannot run and exits at once, without touching its stdin: the prompt write meets a closed pipe.
+  fs.writeFileSync(bin, `#!/usr/bin/env node\nprocess.stderr.write("not logged in: run claude login\\n"); process.exit(1);\n`, { mode: 0o755 });
+  let crashed = null;
+  const onCrash = e => { crashed = e; };
+  process.on("uncaughtException", onCrash);
+  t.after(() => process.off("uncaughtException", onCrash));
+  const big = "x".repeat(4 * 1024 * 1024);
+  const run = claudeOnce({ bin, cwd: dir, env: { ...process.env } });
+  for (let i = 0; i < 3; i++) {
+    await assert.rejects(run({ system: "s", prompt: big, model: "haiku", maxUsd: 0.01 }), e => /not logged in/.test(e.message), "the binary's own words are the failure");
+  }
+  await new Promise(r => setTimeout(r, 200));
+  assert.equal(crashed, null, crashed ? String(crashed.code || crashed.message) : "");
+  // A binary that says nothing still fails the read, naming the closed input.
+  const mute = path.join(dir, "mute-claude");
+  fs.writeFileSync(mute, `#!/usr/bin/env node\nprocess.exit(2);\n`, { mode: 0o755 });
+  await assert.rejects(claudeOnce({ bin: mute, cwd: dir, env: { ...process.env } })({ system: "s", prompt: big, model: "haiku", maxUsd: 0.01 }), e => /exit 2/.test(e.message));
+  await new Promise(r => setTimeout(r, 200));
+  assert.equal(crashed, null);
+});

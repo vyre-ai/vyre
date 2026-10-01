@@ -787,7 +787,7 @@ export default {
         isolation: { type: "string", enum: ["worktree", "folder", "none"] }, model: { type: "string" }, helper_model: { type: "string" } } },
       // The person's act, and their agent's on their behalf (charter: agents can do everything the
       // person can): a session in that project. Never a teammate, never a bare mcp call with no session.
-      // TODO(P17): for a non-person caller (the assistant included), also require the person's own words asked for it (gate.said.match).
+      // TODO(P17): for a non-person caller (the assistant included), also require the person's own words asked for it (vault.said.match).
       callers: ["cli", "local", "deck", "capsule", "mcp"],
       run: async (i, meta = {}) => {
         if (callerTeammate(meta.agent)) throw Object.assign(new Error("a teammate cannot add teammates; that is the person's, or a session acting on their request"), { code: "denied" });
@@ -987,7 +987,7 @@ export default {
           if (a.kind === "assistant") throw Object.assign(new Error("the assistant works across every project already; it does not fill a role"), { code: "bad_input" });
           const reaches = a.projects === "*" || (Array.isArray(a.projects) && a.projects.includes(tm.project));
           if (!reaches) {
-            // The person, or the assistant acting on their words (TODO with the P17 gate: require gate.said.match for the assistant).
+            // The person, or the assistant acting on their words (TODO with the P17 gate: require vault.said.match for the assistant).
             if (!isPerson(meta.caller) && !isAssistant(meta)) throw Object.assign(new Error(`${a.name} has no access to ${tm.project}; the person, or their assistant on their request, gives an agent a project`), { code: "denied" });
             const u = await ctx.call("agents.update", { name: a.name, projects: [...(Array.isArray(a.projects) ? a.projects : []), tm.project] });
             if (u.error) throw new Error(u.error.message);
@@ -1019,7 +1019,7 @@ export default {
       return { tm: await charterTarget(ref, meta, { write }), propose: false };
     };
     /**
-     * Whether the person's own words, in this thread, asked for this duty to run. TODO(P17): answer with gate.said.match (act_out,
+     * Whether the person's own words, in this thread, asked for this duty to run. TODO(P17): answer with vault.said.match (act_out,
      * lineage-aware). Until it lands nobody but the person's own surface can start an unattended worker, so a session's or the
      * assistant's duty is stored as a proposal (off, no watcher) and the person turns it on.
      */
@@ -1047,7 +1047,7 @@ export default {
       run: async (i, meta = {}) => {
         await dutyTarget(i, meta, { write: true, id: i.id });
         const { id, ...patch } = i;
-        // Turning on, or changing what a running duty does, is starting code the person has not seen: theirs until gate.said.match.
+        // Turning on, or changing what a running duty does, is starting code the person has not seen: theirs until vault.said.match.
         const cur = dutyApi.get(id);
         const widens = patch.enabled === true || (cur.started && (patch.when !== undefined || patch.instruction !== undefined || patch.act !== undefined));
         if (widens && !personAsked(meta)) throw Object.assign(new Error("turning a duty on, or changing one that is running, is the person's"), { code: "denied" });

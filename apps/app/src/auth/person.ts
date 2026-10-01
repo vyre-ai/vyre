@@ -347,10 +347,11 @@ export const SESSIONABLE = new Set(["vault.reveal", "vault.copy", "vault.totp", 
 
 /**
  * HUMAN_ONLY tools that ask only for some inputs (core/presence/index.js NARROWABLE): gate.approve
- * asks only for what goes out as the person. These go without a prompt first, and prompt only
- * when the box answers presence_required (the no-nag rule).
+ * asks only for what goes out as the person, and vault.account.unlock only when no vault password
+ * comes with it (Touch ID). These go without a prompt first, and prompt only when the box answers
+ * presence_required (the no-nag rule).
  */
-export const NARROWABLE = new Set(["gate.approve"]);
+export const NARROWABLE = new Set(["gate.approve", "vault.account.unlock"]);
 
 /** The tool a `/v1/tools/<name>` URL calls, or null for any other path. */
 export function toolOf(url: string): string | null {

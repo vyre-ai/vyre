@@ -79,15 +79,16 @@ export class PersonSessions {
   /**
    * A new session on this node. `cookie` for the Deck at the box's address; `bearer` only
    * through exchange(), which binds the app's key.
-   * @param {{ node: string, kind?: "cookie"|"bearer", label?: string|null, key?: any }} o
+   * `keyId` is the presence key whose proof opened it, so removing that key ends the session.
+   * @param {{ node: string, kind?: "cookie"|"bearer", label?: string|null, key?: any, keyId?: string|null }} o
    */
-  start({ node, kind = "cookie", label = null, key = null }) {
+  start({ node, kind = "cookie", label = null, key = null, keyId = null }) {
     if (!node) throw Object.assign(new Error("a person session is made on a tailnet device, and this request has none"), { code: "denied" });
     const now = this.now();
     this.prune();
     const id = b64url(12), secret = b64url(32);
-    this.db.prepare("INSERT INTO presence_people (id, hash, kind, node, label, key, created, last_used, max) VALUES (?,?,?,?,?,?,?,?,?)")
-      .run(id, hash(secret), kind, node, label ? String(label).slice(0, 80) : null, key ? JSON.stringify(key) : null, now, now, now + MAX);
+    this.db.prepare("INSERT INTO presence_people (id, hash, kind, node, label, key, created, last_used, max, key_id) VALUES (?,?,?,?,?,?,?,?,?,?)")
+      .run(id, hash(secret), kind, node, label ? String(label).slice(0, 80) : null, key ? JSON.stringify(key) : null, now, now, now + MAX, keyId ? String(keyId) : null);
     return { id, secret, token: `${id}.${secret}`, expires: Math.min(now + IDLE, now + MAX) };
   }
 
@@ -149,14 +150,23 @@ export class PersonSessions {
    * Does this request carry a live session made on this node? For a bearer, the request must
    * also be signed by the session's key, fresh and never seen before.
    * @param {{ headers: any, node: string|null, method?: string, path?: string, raw?: string }} r
-   * @returns {{ ok: true, id: string, kind: string } | { ok: false, why: string } | null} null when none is carried
+   * A session whose presence key was removed (Presence.remove) is gone, but the credential it held
+   * still checks against what was remembered for 30 days: the answer is `removed: true`, and only a
+   * holder of that real credential gets it. Anything else, a guess or a stranger's cookie, gets the
+   * same "no such session" as before, so nothing says which keys or sessions ever existed.
+   * @returns {{ ok: true, id: string, kind: string } | { ok: false, why: string, removed?: true } | null} null when none is carried
    */
   check({ headers, node, method = "GET", path = "/", raw = "" }) {
     const c = carried(headers);
     if (!c) return null;
     const now = this.now();
     const row = /** @type {any} */ (this.db.prepare("SELECT * FROM presence_people WHERE id = ?").get(c.id));
-    if (!row || !same(hash(c.secret), row.hash)) return { ok: false, why: "no such session; sign in again" };
+    if (!row) {
+      const gone = /** @type {any} */ (this.db.prepare("SELECT hash FROM presence_removed WHERE id = ? AND kind = 'session' AND removed > ?").get(c.id, now - 30 * DAY));
+      if (gone && gone.hash && same(hash(c.secret), gone.hash)) return { ok: false, removed: true, why: "this device was removed" };
+      return { ok: false, why: "no such session; sign in again" };
+    }
+    if (!same(hash(c.secret), row.hash)) return { ok: false, why: "no such session; sign in again" };
     if (row.kind !== c.kind) return { ok: false, why: "that session is not carried that way" };
     if (row.max <= now || row.last_used + IDLE <= now) return { ok: false, why: "the session has lapsed; sign in again" };
     if (!node || row.node !== node) return { ok: false, why: "that session was made on another device" };
@@ -196,5 +206,6 @@ export class PersonSessions {
   prune() {
     const now = this.now();
     this.db.prepare("DELETE FROM presence_people WHERE max <= ? OR last_used <= ?").run(now, now - IDLE);
+    this.db.prepare("DELETE FROM presence_removed WHERE removed <= ?").run(now - 30 * DAY);
   }
 }

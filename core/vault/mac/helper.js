@@ -74,6 +74,7 @@ export class Helper {
       const code = await new Promise(resolve => {
         const c = execFile(this.swiftc, ["-O", "-o", tmp, this.source], { timeout: 300_000, killSignal: "SIGKILL", maxBuffer: 1 << 20 },
           err => resolve(err ? (typeof /** @type {any} */ (err).code === "number" ? /** @type {any} */ (err).code : -1) : 0));
+        c.stdin?.on("error", () => {});
         c.stdin?.end();
       });
       if (code !== 0) { fs.rmSync(tmp, { force: true }); throw new Error(`swiftc could not build the ${this.name} helper (${code})`); }

@@ -57,12 +57,12 @@ export async function call(name, input = {}) {
 
 /** Open a session with a presence proof. Returns { data } or { error }. */
 export async function unlock() {
-  if (!has("vault.session.open")) return { error: { code: "missing", message: "This vyred has no vault.session.open yet, so the Deck cannot unlock." } };
+  if (!has("vault.session.open")) return { error: { code: "missing", message: "This box cannot unlock the vault from the Deck yet." } };
   const r = await withPresence("vault.session.open", { surface: "deck" }, { confirm: confirmer });
   if (r.data) {
     const token = String(r.data.session || r.data.token || "");
     const expires = Number(r.data.expires || r.data.expiresAt || 0) || Date.now() + 10 * 60_000;
-    if (!token) return { error: { code: "bad_reply", message: "vyred opened no session" } };
+    if (!token) return { error: { code: "bad_reply", message: "The box did not open a session" } };
     session = { token, expires };
     changed();
   }

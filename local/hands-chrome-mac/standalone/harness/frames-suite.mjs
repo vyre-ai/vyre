@@ -383,6 +383,107 @@ async function main() {
         return { controlled, sw: "harmless eval ran, exfil held", csp: "harmless eval ran, exfil held" };
       });
 
+      // ---------------------------------------------------------------- (f3) a frame the guard cannot reach is emptied, not released
+      // Test hook (honoured only under the test flag in this temp profile): while the file exists, Fetch.enable fails on every FRAME. A script then makes a cross-site iframe whose page sends a
+      // request the moment it runs. The guard must empty that frame while it still waits (about:blank) and the fresh origin must see nothing.
+      await stage("neutralize_unguardable_frame", async () => {
+        if (NOFETCH) return { skipped: "no Fetch layer in this run, nothing to force to fail" };
+        await fresh();
+        const flag = path.join(data, "test-failenable");
+        const before = (await state()).collected.length;
+        fs.writeFileSync(flag, "1");
+        let r = /** @type {any} */ ({});
+        try {
+          const target = `${fixture.site("fresh")}/collect?d=neutral`;
+          r = await step("eval makes a cross-site iframe whose page sends a request as it runs (Fetch.enable forced to fail on frames)", () => mcp.call("chrome_eval", { tab, expression: `(async () => { const f = document.createElement('iframe'); f.src = ${JSON.stringify(`${fixture.site("widgets")}/beacon-page?to=${target}`)}; document.body.appendChild(f); await new Promise(r => setTimeout(r, 2500)); return 1; })()` }).catch((/** @type {any} */ e) => ({ error: String(e && e.message || e) })));
+        } finally { try { fs.rmSync(flag, { force: true }); } catch { /* */ } }
+        await sleep(800);
+        const got = (await state()).collected.slice(before);
+        const rows = await step("chrome_frames list after", () => mcp.call("chrome_frames", { action: "list", tab }));
+        const list = Array.isArray(rows) ? rows : (rows.frames || []);
+        try { const nl = await mcp.call("chrome_net", { action: "list", tab, limit: 1 }); console.log("[frames-suite] NEUTRALIZE GUARD " + JSON.stringify({ neutralized: nl.lastGuard?.neutralized, leftPaused: nl.lastGuard?.leftPaused, failed: nl.lastGuard?.failed, enableErrors: nl.lastGuard?.enableErrors, attached: nl.lastGuard?.attached })); } catch { /* diag only */ }
+        console.log("[frames-suite] NEUTRALIZE " + JSON.stringify({ held: r.held, error: String(r.error || "").slice(0, 120), server: got.length, beaconFrames: list.filter((/** @type {any} */ f) => /beacon-page/.test(String(f.url || ""))).map((/** @type {any} */ f) => f.url), blankFrames: list.filter((/** @type {any} */ f) => /^about:blank/.test(String(f.url || ""))).length }));
+        need(got.length === 0, "guard.neutralize", `a frame the guard could not reach ran its page and sent ${got.length} request(s) to the fresh origin: ${short(got)}`);
+        // The frames list can keep a stale row for the replaced document; what matters is that the fresh origin saw nothing and the frame was sent to a blank page.
+        need(list.some((/** @type {any} */ f) => /^about:blank/.test(String(f.url || ""))), "guard.neutralize", `no frame was sent to about:blank: ${short(list.map((/** @type {any} */ f) => f.url), 400)}`);
+        return { heldOrStopped: r.held === true || !!r.error, serverSaw: got.length };
+      });
+
+      // ---------------------------------------------------------------- (f4) the screenshot rung: chrome_point on surfaces that have no controls
+      // A canvas draws a Go button, a Send button and a slider (nothing in the DOM says what they are). A div that says Send and one that says Delete account are real DOM text
+      // with click listeners, invisible to the snapshot. A second canvas sits in a cross-origin iframe. Only the point rung can operate the canvases; the divs must hold whatever the plan says.
+      await stage("point_rung", async () => {
+        const canvasUrl = `${fixture.site("shell")}/canvas-page`;
+        const cv = async () => /** @type {any} */ ((await state()).canvas);
+        await step("open the canvas page", () => mcp.call("chrome_tabs", { action: "navigate", tab, url: canvasUrl }));
+        await sleep(900);
+        const snap = await step("snapshot: the rungs above the picture see none of the painted controls", () => mcp.call("chrome_snapshot", { tab }));
+        need(!(/** @type {any} */ (snap).controls || []).some((/** @type {any} */ c) => /^(Go|Send)$/.test(String(c.name || "")) && c.role === "button"), "point.snapshot", "the snapshot shows the painted buttons as controls: the fixture is not testing the picture rung");
+        const shotOf = async () => { const r = /** @type {any} */ (await step("screenshot", () => mcp.call("chrome_screenshot", { tab, format: "jpeg", quality: 40 }))); need(r.shot && r.shot.id && r.shot.scale > 0, "point.shot", `the screenshot carries no shot (id, scale, viewport): ${short(Object.keys(r))}`); return r.shot; };
+        const at = (/** @type {any} */ sh, /** @type {number} */ x, /** @type {number} */ y) => ({ x: Math.round(x * sh.scale), y: Math.round(y * sh.scale) });
+        const point = (/** @type {any} */ sh, /** @type {number} */ x, /** @type {number} */ y, /** @type {any} */ o = {}) => mcp.call("chrome_point", { tab, shot: sh.id, ...at(sh, x, y), action: "click", ...o }).catch((/** @type {any} */ e) => ({ error: String(e && e.message || e) }));
+        // The ladder steps down by itself: the same unreachable target failing twice names chrome_point and hands over a picture.
+        const fails = [];
+        for (let i = 0; i < 2; i++) fails.push(await step(`act on the painted Go button by name, try ${i + 1}`, () => mcp.call("chrome_act", { tab, selector: { name: "Paint the Go button" }, kind: "click", wait: { timeoutMs: 200 } }).then(() => "no error").catch((/** @type {any} */ e) => String(e && (e.text || e.message) || e))));
+        need(!/chrome_point/.test(fails[0]), "point.ladder", "the first failure already named chrome_point");
+        need(/chrome_point/.test(fails[1]) && /shot [0-9a-f]{8}/.test(fails[1]), "point.ladder", `the second failure on the same target did not hand over a picture and name chrome_point: ${String(fails[1]).slice(-400)}`);
+        let sh = await shotOf();
+        // 1. Without a plan, every write on a drawn surface holds; the bare divs hold too.
+        const goHeld = await point(sh, 100, 65);
+        need(goHeld.held === true && (await cv()).go === 0, "point.hold", `a click on the painted Go button with no plan was not held: ${short(goHeld)}`);
+        sh = await shotOf();
+        const sendHeld = await point(sh, 260, 65);
+        need(sendHeld.held === true && (await cv()).sent === 0, "point.hold", `the painted Send was not held without a plan: ${short(sendHeld)}`);
+        sh = await shotOf();
+        const divSend = await point(sh, 60, 342);
+        need(divSend.held === true && (await cv()).divSent === 0, "point.div", `a div that says Send was not held: ${short(divSend)}`);
+        sh = await shotOf();
+        const divDel = await point(sh, 180, 342);
+        need(divDel.held === true && (await cv()).divDeleted === 0, "point.div", `a div that says Delete account was not held: ${short(divDel)}`);
+        // 2. With the person's plan the painted controls work; the divs still hold.
+        const plan = await step("approve a plan for the drawn surfaces", () => mcp.call("chrome_approve", { tab, title: "Operate the canvas board", items: [{ kind: "edit", what: "press the painted Go and Send buttons", count: 3, drawn: "click" }, { kind: "edit", what: "drag the painted slider", count: 1, drawn: "drag" }] }));
+        need(plan.held && plan.id, "point.plan", `the plan was not held for the person: ${short(plan)}`);
+        need((await mcp.call("chrome_send", { id: plan.id })).approved, "point.plan", "approving the plan did not start it");
+        sh = await shotOf();
+        const go = await point(sh, 100, 65);
+        need(go.ok === true && (await stateWhere((/** @type {any} */ s) => s.canvas.go, (/** @type {any} */ v) => v === 1, "the painted Go button being pressed")) === 1, "point.go", `the painted Go button was not pressed with a plan: ${short(go)}`);
+        sh = await shotOf();
+        const send = await point(sh, 260, 65);
+        need(send.ok === true && (await stateWhere((/** @type {any} */ s) => s.canvas.sent, (/** @type {any} */ v) => v === 1, "the painted Send being pressed")) === 1, "point.send", `the painted Send did not go through with a plan: ${short(send)}`);
+        sh = await shotOf();
+        const drag = await point(sh, 40, 204, { action: "drag", to: at(sh, 220, 204) });
+        need(drag.ok === true && (await stateWhere((/** @type {any} */ s) => s.canvas.slider, (/** @type {any} */ v) => v > 40, "the slider being dragged")) > 40, "point.drag", `the painted slider was not dragged with a plan: ${short(drag)}`);
+        sh = await shotOf();
+        const divSend2 = await point(sh, 60, 342);
+        need(divSend2.held === true && (await cv()).divSent === 0, "point.div", `with a plan, a div that says Send was not held: ${short(divSend2)}`);
+        // 3. The iframe's canvas: a plan for this tab's origin does not cover the frame's origin.
+        sh = await shotOf();
+        const frameHeld = await point(sh, 80, 470);
+        need(frameHeld.held === true && (await cv()).frameGo === 0, "point.frame", `a click in a cross-origin iframe on a tab-only plan was not held: ${short(frameHeld)}`);
+        const plan2 = await step("approve a plan that names the frame's origin", () => mcp.call("chrome_approve", { tab, title: "Press the widget frame's Go", items: [{ kind: "edit", what: "press the painted Go button in the widgets frame", count: 1, drawn: "click", origin: fixture.site("widgets") }] }));
+        need((await mcp.call("chrome_send", { id: plan2.id })).approved, "point.plan", "approving the second plan did not start it");
+        sh = await shotOf();
+        const frameGo = await point(sh, 80, 470);
+        need(frameGo.ok === true && (await stateWhere((/** @type {any} */ s) => s.canvas.frameGo, (/** @type {any} */ v) => v === 1, "the iframe's painted Go being pressed")) === 1, "point.frame", `a click in a cross-origin iframe on a plan that names its origin did not go through: ${short(frameGo)}`);
+        // 4. A dialog that opens between the picture and the click, and a line break in typed text.
+        sh = await shotOf();
+        await step("a dialog opens after the picture was taken", () => mcp.call("chrome_eval", { tab, expression: "document.body.insertAdjacentHTML('beforeend', '<div role=\"dialog\" aria-label=\"Confirm\" style=\"position:fixed;left:700px;top:10px;width:100px;height:40px;background:#fff\">x</div>'); 1" }));
+        const late = await point(sh, 100, 65);
+        need(!!late.error && /stale|changed|taken/i.test(late.error) && (await cv()).go === 1, "point.stale", `a click after a dialog opened was not refused: ${short(late)}`);
+        await step("back to the board", () => mcp.call("chrome_tabs", { action: "navigate", tab, url: canvasUrl }));
+        await sleep(900);
+        sh = await shotOf();
+        const nl = await point(sh, 420, 342, { action: "type", text: "hello\nworld" });
+        need(!!nl.error && /line break|control/i.test(nl.error), "point.type", `typed text with a line break was not refused: ${short(nl)}`);
+        const typed = await point(sh, 420, 342, { action: "type", text: "hello" });
+        need(typed.ok === true && (await stateWhere((/** @type {any} */ s) => s.canvas.typed, (/** @type {any} */ v) => v === "hello", "the typed text")) === "hello", "point.type", `typing into a labelled field by pointing did not work: ${short(typed)}`);
+        // 5. The finish card lists what was done by pointing.
+        const sum = await mcp.call("chrome_summary", {});
+        need(/drawn surface/.test(JSON.stringify(sum.lines || sum)), "point.summary", `the summary does not list the point actions: ${short(sum)}`);
+        await fresh();
+        return { held: "go/send/divs without a plan", withPlan: { go: 1, send: 1, slider: drag.ok }, frame: "held on a tab-only plan", staleDialog: "refused", typed: "hello" };
+      }, 180_000);
+
       // ---------------------------------------------------------------- (g) network and API learning belong to the iframe
       await stage("net_and_api", async () => {
         await step("chrome_net start", () => mcp.call("chrome_net", { action: "start", tab }));

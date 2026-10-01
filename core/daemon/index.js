@@ -547,6 +547,9 @@ async function route(req, res, { registry, events, cfg, started, streams, root, 
     }
     const c = people.check({ headers: req.headers, node: nodeId, method: req.method, path: url.pathname + url.search, raw });
     if (c && c.ok) person = { id: c.id, kind: c.kind };
+    // The credential this box issued, for a device whose key was since removed: said once, in plain
+    // words, with its own code (only the holder of the real credential gets it, person.js check).
+    else if (c && c.removed) return send(res, 401, { error: { code: "device_removed", message: c.why } });
     // A bad bearer is refused outright; a lapsed cookie is only a device, and the tool decides.
     else if (c && String(req.headers.authorization || "").startsWith("Vyre ")) return send(res, 401, { error: { code: "person_session_required", message: c.why } });
   }

@@ -8,6 +8,9 @@ on:
     paths: ["core/spawner/**", ".github/workflows/accounts-isolation.yml"]
 permissions:
   contents: read
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ startsWith(github.ref_name, 'work/') && github.ref_name != 'work/stage-0.2' }}
 jobs:
   isolation:
     runs-on: ubuntu-latest

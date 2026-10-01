@@ -671,6 +671,15 @@ export class Vault {
    * throws in words and is audited.
    */
   async deriveAuk(password, who) {
+    // Every password attempt comes through here (unlock and enrolling Touch ID), so the guess limit lives here. The password is its own
+    // proof (no separate presence prompt), so after 5 wrong tries in a row every try is refused for 30 s, doubling to 15 minutes; a right
+    // password resets it. A refused try is not tested against the key at all.
+    const f = this.unlockFails || (this.unlockFails = { n: 0, until: 0 });
+    const t0 = now();
+    if (t0 < f.until) {
+      this.audit("account-unlock", null, who, false, "throttled after wrong passwords");
+      throw Object.assign(new Error(`too many wrong passwords in a row · try again in ${Math.ceil((f.until - t0) / 1000)} seconds`), { code: "throttled" });
+    }
     const rec = readJsonFile(this.dir, ACCOUNT);
     if (!rec) throw new Error("this vault has no account password yet · vyre vault account create");
     await this.key();
@@ -682,9 +691,12 @@ export class Vault {
     try {
       const auk = accountUnlockKey({ password: String(password ?? ""), secretKey: bytes, acct, salt: Buffer.from(String(rec.salt), "base64"), params });
       unwrapVaultKey(auk, rec.personal, vkAad(PERSONAL, Number(rec.personal && rec.personal.kv), acct));
+      f.n = 0; f.until = 0;
       return { auk, rec, acct };
     } catch {
-      this.audit("account-unlock", null, who, false, "wrong password");
+      f.n++;
+      if (f.n >= 5) f.until = now() + Math.min(30_000 * 2 ** (f.n - 5), 15 * 60_000);
+      this.audit("account-unlock", null, who, false, `wrong password (${f.n} in a row)`);
       throw new Error("that password does not open your personal vault");
     } finally { bytes.fill(0); }
   }
@@ -1115,12 +1127,25 @@ export class Vault {
       if (v.length > MAX_VALUE) throw new Error(`field ${k} is larger than 64 KB`);
       clean[k] = v;
     }
-    // Replacing only the key of an api-credential the person already made keeps everything they wrote into it (hosts, endpoints, readers):
-    // a put with a secret and no config carries the stored config over. Only a person's own surface may; the check below still refuses the rest.
-    if (kind === "api-credential" && clean.config === undefined && (clean.secret !== undefined || clean.value !== undefined)
-        && (["cli", "local", "deck", "capsule"].includes(callerKind(who)) || ownerDevice(who))) {
+    // Replacing only the key of an api-credential the person already made keeps everything they wrote into it (hosts, endpoints, readers,
+    // scope): a put with a secret and no config carries the stored config over. The mirror: a put with a config and no secret carries the
+    // stored secret over (and with it an oauth sign-in's sealed tokens), so who may use a connection can change without anyone knowing the
+    // secret. Only a person's own surface may; the check below still refuses the rest, and a new name with no secret is still refused.
+    if (kind === "api-credential" && (["cli", "local", "deck", "capsule"].includes(callerKind(who)) || ownerDevice(who))) {
       const had = /** @type {any} */ (this.db.prepare("SELECT kind FROM vault_items WHERE name = ?").get(String(name)));
-      if (had && had.kind === "api-credential") clean.config = JSON.stringify((await this.apiCredential(String(name))).config);
+      if (had && had.kind === "api-credential") {
+        if (clean.config === undefined && (clean.secret !== undefined || clean.value !== undefined)) clean.config = JSON.stringify((await this.apiCredential(String(name))).config);
+        else if (clean.config !== undefined && clean.secret === undefined && clean.value === undefined) {
+          const before = await this.apiCredential(String(name));
+          // The stored secret goes along only when what decides where and how it is sent is unchanged (hosts and the whole auth: token and
+          // authorize addresses, header, format, item, client, scopes). A config that points the key somewhere else needs the key again.
+          let next;
+          try { next = normalizeApiCredential(JSON.parse(clean.config)); } catch { next = null; }
+          const where = c => JSON.stringify({ auth: c.auth, hosts: [...c.hosts].sort() });
+          if (next && where(next) !== where(before.config)) throw new Error("this changes where or how the key is sent, so give the key again (fields.secret)");
+          if (typeof before.secret === "string" && before.secret) clean.secret = before.secret;
+        }
+      }
     }
     checkFields(kind, clean);
     // An api-credential's hosts and endpoints decide what runs unasked and what holds, so only a
