@@ -245,6 +245,27 @@ try {
   console.log((bc.stdout || "").split("\n").filter(l => /^(PASS|FAIL)/.test(l)).map(l => "  " + l.replace(ep.data.token, "[token]").slice(0, 200)).join("\n"));
   check(bc.status === 0, "3 browser-checks (file://, chrome://, download folder)", { exit: bc.status });
 
+  // ---- 4g. one computer cannot reach another's ports (the matrix's J7 step 7.4) ----------------
+  // Agent code is model-controlled, so what runs in kit's computer must not be able to dial pax's screen (5900) or computerd (7000).
+  // The login on each is the second wall; this is the first. Findings are recorded and the run goes on.
+  if (process.env.PROOF_ISOLATION === "1") {
+    const note = (ok, name, evidence) => { results.push({ ok, name }); console.log(`${ok ? "PASS" : "FAIL"} ${name}${evidence !== undefined ? `: ${typeof evidence === "string" ? evidence : JSON.stringify(evidence)}` : ""}`); if (!ok) failed = true; };
+    const other = "pax", otherC = `${PREFIX}-computer-${other}`;
+    let r2 = await person("agents.create", { name: other, computer: true });
+    if (r2.error) throw new Error("agents.create pax: " + r2.error.message);
+    r2 = await person("computers.checkout", { agent: other, why: "csproof" });
+    if (r2.error) throw new Error("computers.checkout pax: " + r2.error.message);
+    const ipOf = c => sh(["inspect", "-f", "{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}", c]).trim();
+    const dial = (from, ip, port) => shOk(["exec", "-u", "1000:1000", from, "bash", "-c", `timeout 4 bash -c 'exec 3<>/dev/tcp/${ip}/${port}' 2>&1 && echo CONNECTED || echo REFUSED`]).split("\n").pop();
+    const a = ipOf(CONTAINER), b = ipOf(otherC);
+    for (const [from, to, ip] of [[CONTAINER, other, b], [otherC, AGENT, a]]) {
+      for (const port of [5900, 7000]) {
+        const got = dial(from, ip, port);
+        note(got === "REFUSED", `4g ${from.replace(`${PREFIX}-computer-`, "")}'s computer cannot connect to ${to}'s port ${port}`, got);
+      }
+    }
+  }
+
   // ---- 4f. the computer dies mid-task (PROOF_KILL=1, the matrix's J7 step 7.3) ----------------
   // Kill the container the way a crash would. The pool's monitor must notice, say stopped, and Glass must answer
   // with a named refusal, not hang; nothing may be left running.

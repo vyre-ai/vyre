@@ -18,7 +18,7 @@ const work = fs.mkdtempSync(path.join(os.tmpdir(), "j7-"));
 const r = recorder(out, "J7", "linux-docker");
 
 const t0 = Date.now();
-const run = spawnSync("sh", ["scripts/computers-proof/run.sh", work, "47111"], { env: { ...process.env, PROOF_KILL: "1", KEEP_IMAGE: "0" }, encoding: "utf8", maxBuffer: 64 * 1024 * 1024, timeout: 25 * 60_000 });
+const run = spawnSync("sh", ["scripts/computers-proof/run.sh", work, "47111"], { env: { ...process.env, PROOF_KILL: "1", PROOF_ISOLATION: "1", KEEP_IMAGE: "0" }, encoding: "utf8", maxBuffer: 64 * 1024 * 1024, timeout: 25 * 60_000 });
 const log = (run.stdout || "") + (run.stderr || "");
 fs.writeFileSync(path.join(out, "j7-proof.log"), log);
 const lines = log.split("\n").map(l => /^(PASS|FAIL) (\S+) (.*)$/.exec(l)).filter(Boolean).map(m => ({ ok: m[1] === "PASS", tag: m[2], text: m[3] }));
@@ -37,6 +37,9 @@ fold("7.1d-hand-back", ["4d"], "the keyboard was handed back, the agent's hands 
 fold("7.1e-agent-cdp", ["4e"], "the agent acts through computerd's authenticated route, no raw Chrome port");
 fold("7.1f-isolation", ["3"], "the image's isolation checks and the browser policy hold on the pool's own container");
 r.step("7.2-three-app-plan-oversight", "by-hand", { why: "needs a model run and the oversight panel (capsule-pro's UI); not scriptable on a runner without a vendor account" });
+const iso = lines.filter(l => l.tag === "4g");
+if (!iso.length) r.step("7.4-computers-cannot-reach-each-other", "skip", { why: "the proof stopped before this step" });
+else r.step("7.4-computers-cannot-reach-each-other", iso.every(l => l.ok), { why: iso.map(l => `${l.ok ? "refused" : "REACHED"}: ${l.text.replace(/^[^ ]+ /, "")}`).join("; ").slice(0, 400) });
 const kill = lines.filter(l => l.tag === "4f");
 for (const [i, step] of ["7.3a-killed-computer-reported-stopped", "7.3b-glass-says-so-plainly", "7.3c-nothing-left-running"].entries()) {
   const l = kill[i];
