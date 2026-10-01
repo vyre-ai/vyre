@@ -1,0 +1,47 @@
+# The Windows app on a real, hosted Windows runner, paired with a throwaway Vyre box that runs on the testbox and
+# is reached through the hosted relay. Manual only (Windows minutes cost double). Installs the app from a
+# capsule-win build, runs --selftest, pairs, and exercises the confirm window, the link window and the hotkey,
+# with screenshots. See scripts/windows-live/run.ps1.
+name: windows-live
+on:
+  workflow_dispatch:
+    inputs:
+      run_id:
+        description: "capsule-win run to take the installer from (blank: the newest green one on this branch)"
+        required: false
+        type: string
+permissions:
+  contents: read
+  actions: read
+jobs:
+  live:
+    runs-on: windows-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - name: The installer from a capsule-win build
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $id = "${{ inputs.run_id }}"
+          if (-not $id) { $id = gh run list --workflow capsule-win.yml --branch "${{ github.ref_name }}" --status success --limit 1 --json databaseId --jq '.[0].databaseId' }
+          $sha = gh run view $id --json headSha --jq .headSha
+          "capsule-win run $id on $sha"
+          gh run download $id -n "app-windows-$sha" -D "$env:RUNNER_TEMP\installer"
+          $f = Get-ChildItem "$env:RUNNER_TEMP\installer\Vyre_*_x64-setup.exe" | Select-Object -First 1
+          "VYRE_INSTALLER=$($f.FullName)" >> $env:GITHUB_ENV
+          "OUT_DIR=$env:RUNNER_TEMP\live-out" >> $env:GITHUB_ENV
+      - name: Install, pair with the testbox box, and check
+        shell: pwsh
+        env:
+          BOX_SSH_KEY: ${{ secrets.BOX_SSH_KEY }}
+          BOX_SSH_HOST: ${{ secrets.BOX_SSH_HOST }}
+          BOX_SSH_USER: ${{ secrets.BOX_SSH_USER }}
+          BOX_SSH_HOSTKEY: ${{ secrets.BOX_SSH_HOSTKEY }}
+        run: ./scripts/windows-live/run.ps1
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: windows-live
+          path: ${{ runner.temp }}/live-out
