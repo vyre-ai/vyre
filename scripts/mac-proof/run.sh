@@ -166,7 +166,7 @@ if dscl . -read /Users/_vyre >/dev/null 2>&1; then bad "_vyre is still there"; f
 [ ! -e "/Library/LaunchDaemons/com.vyre.core.plist" ] || bad "core's plist is still there"
 [ ! -e "$base/signing" ] || bad "the signing identity is still there"
 if security find-certificate -c "Vyre Core Capsule" /Library/Keychains/System.keychain >/dev/null 2>&1; then bad "the signing certificate is still in the System keychain after uninstall"; fi
-if sudo env HOME=/var/root security list-keychains -d user | grep -q vyre-core.keychain; then bad "root's keychain search list still names core's keychain"; fi
+if sudo env HOME=/var/root security list-keychains -d user | grep -q vyre-core.keychain; then bad "root's keychain search list still names core's keychain: $(sudo env HOME=/var/root security list-keychains -d user | tr '\n' ' ') / default: $(sudo env HOME=/var/root security default-keychain -d user)"; fi
 [ ! -e "$base/.signing-cert-retry" ] || bad "a certificate removal is still pending after uninstall: $(cat "$base/.signing-cert-retry")"
 [ ! -e "$VYRE_SERVER_DIR" ] || bad "the app folder is still there"
 ok "uninstall --purge removed the daemons, the account and the files"

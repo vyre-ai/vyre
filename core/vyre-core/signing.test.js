@@ -77,7 +77,7 @@ test("signing: removeIdentity deletes the certificate and its trust by sha1, tak
   };
   ensureIdentity({ dir, run, systemKeychain: "/tmp/System.keychain" });
   const r = removeIdentity({ dir, run, systemKeychain: "/tmp/System.keychain" });
-  assert.deepEqual(r, { pending: null, command: null });
+  assert.deepEqual(r, { pending: null, command: null, listNote: null });
   assert.ok(!fs.existsSync(dir));
   assert.ok(f.calls.some(c => c.args[0] === "delete-certificate" && c.args.join(" ") === `delete-certificate -Z ${SHA1} /tmp/System.keychain`), "the certificate itself, by sha1");
   assert.ok(f.calls.some(c => c.args[0] === "remove-trusted-cert"), "and its trust settings, best effort");

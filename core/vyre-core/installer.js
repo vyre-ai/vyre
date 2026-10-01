@@ -527,6 +527,7 @@ export function uninstall(opts = {}, seams = {}) {
   for (const d of [p.coreJson, p.versions, p.current, p.currentNew, p.node, `${p.node}.new`, p.socketDir, p.staging]) fs.rmSync(d, { recursive: true, force: true });
   const gone = removeIdentity({ dir: p.signing, run });
   step("removed the code, the bundled node, the socket folder and the signing identity");
+  if (gone.listNote) step(`  note  ${gone.listNote}`);
   if (gone.pending) step(`  note  macOS did not remove the signing certificate (it is inert: its key is gone); it is retried on the next install or uninstall, or run: ${gone.command}`);
   if (opts.purge) {
     fs.rmSync(p.data, { recursive: true, force: true });

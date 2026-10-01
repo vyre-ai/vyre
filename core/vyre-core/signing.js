@@ -147,7 +147,7 @@ export function retryPending({ dir, run, systemKeychain = SYSTEM_KEYCHAIN }) {
  * sha1 is written down (root's folder, outside the one deleted) so the next install or uninstall retries,
  * and the exact command is returned.
  * @param {{ dir: string, run: Run, systemKeychain?: string }} o
- * @returns {{ pending: string | null, command: string | null }}
+ * @returns {{ pending: string | null, command: string | null, listNote: string | null }}
  */
 export function removeIdentity({ dir, run, systemKeychain = SYSTEM_KEYCHAIN }) {
   let sha1 = null;
@@ -159,13 +159,18 @@ export function removeIdentity({ dir, run, systemKeychain = SYSTEM_KEYCHAIN }) {
     fs.writeFileSync(pendingFile(dir), JSON.stringify({ sha1 }) + "\n", { mode: 0o600 });
     if (dropCertificate(sha1, systemKeychain, run, path.join(dir, "cert.pem"))) { fs.rmSync(pendingFile(dir), { force: true }); pending = null; } else pending = sha1;
   }
+  let listNote = null;
   if (keychain) {
-    // Root's own search list only; a failure here must not stop the removal.
+    // Root's own search list only; a failure here must not stop the removal, but it is said, not swallowed.
     try {
       const listed = String(run(SECURITY, ["list-keychains", "-d", "user"])).split("\n").map((l) => l.trim().replace(/^"|"$/g, "")).filter(Boolean);
-      if (listed.includes(keychain)) run(SECURITY, ["list-keychains", "-d", "user", "-s", ...listed.filter((k) => k !== keychain)]);
-    } catch { /* the keychain file is deleted below either way */ }
+      if (listed.includes(keychain)) {
+        run(SECURITY, ["list-keychains", "-d", "user", "-s", ...listed.filter((k) => k !== keychain)]);
+        const after = String(run(SECURITY, ["list-keychains", "-d", "user"]));
+        if (after.includes(keychain)) listNote = `root's keychain list still names ${keychain} after the update; list was: ${listed.join(" | ")}`;
+      }
+    } catch (e) { listNote = `could not update root's keychain list: ${String(/** @type {Error} */ (e).message).split("\n")[0]}`; }
   }
   fs.rmSync(dir, { recursive: true, force: true });
-  return { pending, command: pending ? removeCommand(pending, systemKeychain) : null };
+  return { pending, command: pending ? removeCommand(pending, systemKeychain) : null, listNote };
 }
