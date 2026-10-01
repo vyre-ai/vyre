@@ -1,0 +1,29 @@
+# First-load proof for the hosted app: a fresh headless Chrome profile opens the loader's own
+# adopt.js against a real release.js build, and the build's run-time /app/assets requests must all
+# come back from the verified build on that first load. Throwaway GitHub runner, never a Mac.
+name: app-boot
+on:
+  push:
+    paths: ["relay/app/**", ".github/workflows/app-boot.yml"]
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: app-boot-${{ github.ref }}
+  cancel-in-progress: ${{ startsWith(github.ref_name, 'work/') && github.ref_name != 'work/stage-0.2' }}
+jobs:
+  chrome:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Chrome for Testing (stable, for Ed25519 in WebCrypto)
+        run: |
+          npx --yes @puppeteer/browsers install chrome@stable --path "$RUNNER_TEMP/cft" | tee "$RUNNER_TEMP/cft.out"
+          echo "CHROME=$(awk '{print $2}' "$RUNNER_TEMP/cft.out" | tail -1)" >> "$GITHUB_ENV"
+      - run: node --test relay/app/app.test.js
+      - name: First load in a fresh profile
+        run: node relay/app/testing/boot-chrome.mjs

@@ -116,6 +116,7 @@ test("worker: strict headers everywhere, immutable folders, the loader for any a
   assert.equal(await app.text(), "app");
   assert.match(String(app.headers.get("cache-control")), /immutable/);
   assert.equal((await get("/v/nothex/app.js")).status, 404);
+  assert.equal((await get("/app/assets/font.ttf")).status, 404, "the built app's files are never the loader page");
   assert.equal((await get("/sw.js")).headers.get("cache-control"), "no-cache");
   assert.equal((await get("/", { method: "POST" })).status, 405);
 });
@@ -231,4 +232,39 @@ test("service worker: content-addressed folders are cached as fetched", async t 
   const n = w.fetched.length;
   assert.match(await (await w.fire("fetch", { request: new Request(url) })).text(), /^[A-Za-z0-9_-]{86}\n$/);
   assert.equal(w.fetched.length, n, "the second read came from the cache");
+});
+
+test("service worker: /app/<path> is answered from the build the loader named, hash-checked", async t => {
+  const dir = scratch(t);
+  const key = path.join(dir, "release.key");
+  keygen(key);
+  const out = path.join(dir, "out");
+  await loader({ release: "1.0.0", key, out });
+  const { sha, manifest } = await build({ dist: fakeDist(path.join(dir, "dist")), release: "0.4.2", key, out });
+  const w = swWorld(() => out);
+  await w.fire("install");
+  await w.fire("activate");
+  const ask = p => w.fire("fetch", { request: new Request(`https://app.vyre.run/app/${p}`) });
+
+  assert.equal((await ask("app.css")).status, 404, "nothing is served before a build is adopted");
+  await w.fire("message", { data: { type: "vyre-build", sha, manifest } });
+  assert.deepEqual({ ...w.messages.at(-1) }, { type: "vyre-build", ok: true, sha }, "the loader is told the build is adopted, so it can start the app");
+  assert.equal((await w.fire("fetch", { request: new Request("https://app.vyre.run/app/%E0%A4%A") })).status, 404, "a malformed escape is a 404, not a thrown error");
+  const ok = await ask("app.css");
+  assert.equal(await ok.text(), "body{margin:0}");
+  assert.equal((await ask("_expo/static/js/web/entry-0.4.2.js")).status, 200, "expo's own path under /app/");
+  assert.equal((await ask("nope.png")).status, 404, "a file the manifest does not list");
+
+  // A page that names a manifest the worker cannot verify adopts nothing new.
+  const before = w.messages.length;
+  await w.fire("message", { data: { type: "vyre-build", sha, manifest: "b".repeat(64) } });
+  assert.equal(w.messages.length, before + 1);
+  assert.equal(w.messages.at(-1).refused, true);
+
+  // A file changed at the CDN after adoption is refused, not served.
+  fs.appendFileSync(path.join(out, "v", sha, "app.css"), "x");
+  const w2 = swWorld(() => out);
+  await w2.fire("install"); await w2.fire("activate");
+  await w2.fire("message", { data: { type: "vyre-build", sha, manifest } });
+  assert.equal((await w2.fire("fetch", { request: new Request("https://app.vyre.run/app/app.css") })).status, 404);
 });

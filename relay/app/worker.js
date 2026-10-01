@@ -38,6 +38,9 @@ export default {
   async fetch(req, env) {
     const url = new URL(req.url);
     if (req.method !== "GET" && req.method !== "HEAD") return dress(new Response("method not allowed", { status: 405 }), REVALIDATE);
+    // The built app's own files are answered by the service worker, from the verified build. A
+    // request that reaches here (no worker yet) is a 404, never the loader page.
+    if (url.pathname.startsWith("/app/")) return dress(new Response("not found", { status: 404 }), REVALIDATE);
     if (url.pathname.startsWith("/v/")) {
       if (!/^\/v\/[a-f0-9]{40}\/[\w./@-]+$/.test(url.pathname) || url.pathname.includes("..")) return dress(new Response("not found", { status: 404 }), REVALIDATE);
       return dress(await env.ASSETS.fetch(req), IMMUTABLE);
