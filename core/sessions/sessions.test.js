@@ -976,12 +976,13 @@ for (const driver of ["cli", "sdk"]) {
 
   test(`${driver}: a person's "turn on the inbox watcher" records an act_out for watchers.create bound to the card shown in this thread (name and hash), through the assistant's watchersIntents, and nothing for a card not shown, a model's call or pasted words`, { skip }, async t => {
     const w = await boot(t, { driver });
-    const recorded = [];
+    const recorded = [], fresh = [];
     let shown = { watchers: [{ name: "inbox-mail", hash: "aaaa1111bbbb", title: "Important mail" }] };
     const realCall = w.d.registry.call.bind(w.d.registry);
     w.d.registry.call = async (tool, input, caller, meta) => {
       if (tool === "vault.said.record") { recorded.push(input); return { data: { id: `i${recorded.length}` } }; }
       if (tool === "watchers.shown") return shown ? { data: shown } : { error: { code: "no_such_tool" } };
+      if (tool === "watchers.card" || tool === "watchers.list") { fresh.push(tool); return { data: { name: "inbox-mail", hash: "ffff9999eeee" } }; } // the folder changed after the card: B
       return realCall(tool, input, caller, meta);
     };
     assert.equal((await w.tool("projects.create", { name: "Harlow Legal", home: path.join(w.work, "harlow") })).error, undefined);
@@ -994,6 +995,7 @@ for (const driver of ["cli", "sdk"]) {
     };
     await say("Turn on the important mail watcher.");
     assert.deepEqual(recorded.map(r => [r.kind, r.channel, r.to]), [["act_out", "watchers", ["watchers.create:inbox-mail@aaaa1111bbbb"]]]);
+    assert.deepEqual(fresh, [], "never a fresh watchers.card or watchers.list when the turn is heard: the card as shown (hash A) is the only one, so the changed folder (hash B) is never licensed");
     recorded.length = 0;
     await say("Turn on the payroll watcher.");          // no such card shown in this thread
     assert.equal(recorded.length, 0);
