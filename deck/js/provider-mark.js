@@ -1,7 +1,6 @@
 // @ts-check
 // The provider badge (docs/design/system/components/provider-badge.md): the small circular tile that says which AI
-// account wrote a reply, holding the provider's own official mark at 62 percent (provider-art.js). Grok's asset is not
-// obtained yet and an unknown provider has none: both get a monogram tile. Everything that draws a provider goes
+// account wrote a reply, holding the provider's own official mark at 62 percent (provider-art.js). An unknown provider has no mark and gets a monogram tile. Everything that draws a provider goes
 // through providerMark(), so a change of look is a change in this file only.
 import { h } from "./dom.js";
 import * as ART from "./provider-art.js";
@@ -15,7 +14,7 @@ const KNOWN = {
   claude: { name: "Claude", mono: "Cl", dark: ART.CLAUDE, paper: ART.CLAUDE },
   codex: { name: "Codex", mono: "Cx", dark: ART.OPENAIDARK, paper: ART.OPENAIPAPER },
   openrouter: { name: "OpenRouter", mono: "Or", dark: ART.OPENROUTERDARK, paper: ART.OPENROUTERPAPER },
-  grok: { name: "Grok", mono: "Gk" },
+  grok: { name: "Grok", mono: "Gk", dark: ART.GROKDARK, paper: ART.GROKPAPER },
 };
 
 /** The provider's display name: "codex" is "Codex", an unknown one is capitalised as given. @param {string|null|undefined} provider */

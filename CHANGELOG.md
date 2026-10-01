@@ -6,7 +6,7 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 #### chat: the provider badge, with the providers' own marks
 
-- `providerMark(provider, size, { model })` in `deck/js/provider-mark.js`, from app-design's provider-badge spec: a neutral circular tile (`--hover`, 1 px ring) holding the provider's own official mark at 62 percent. Claude is its spark (one colour on both themes), Codex the OpenAI blossom (white on dark, black on paper) and OpenRouter its glyph (cloud on dark, ink on paper), all unmodified from `docs/design/brand/providers/` (`deck/js/provider-art.js`, sources in that folder's SOURCES.md). Grok's asset is not obtained yet, so Grok and any unknown provider get a monogram tile. It draws nothing for a turn that does not say its provider. Not placed on replies yet: that needs the provider and model on each turn from sessions.
+- `providerMark(provider, size, { model })` in `deck/js/provider-mark.js`, from app-design's provider-badge spec: a neutral circular tile (`--hover`, 1 px ring) holding the provider's own official mark at 62 percent. Claude is its spark (one colour on both themes), Codex the OpenAI blossom (white on dark, black on paper) Grok its logomark (light on dark, dark on paper) and OpenRouter its glyph (cloud on dark, ink on paper), all unmodified from `docs/design/brand/providers/` (`deck/js/provider-art.js`, sources in that folder's SOURCES.md). An unknown provider gets a monogram tile. It draws nothing for a turn that does not say its provider. Not placed on replies yet: that needs the provider and model on each turn from sessions.
 
 #### chat: /undo takes a session's changes back, and Put back returns them
 
