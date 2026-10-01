@@ -113,7 +113,8 @@ export function projectCodexConfig(dir) {
 export function seedTampered(home, seed) {
   if (!home) return false;
   for (const [rel, want] of Object.entries(seed || {})) {
-    try { if (fs.readFileSync(path.join(home, rel), "utf8") !== want) return true; } catch { /* not there: nothing extra */ }
+    // Not there (ENOENT) is nothing extra; a file that cannot be read (EACCES, a directory) is not known to be what Vyre wrote.
+    try { if (fs.readFileSync(path.join(home, rel), "utf8") !== want) return true; } catch (e) { if (/** @type {any} */ (e).code !== "ENOENT") return true; }
   }
   return false;
 }

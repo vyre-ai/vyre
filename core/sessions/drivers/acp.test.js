@@ -173,6 +173,16 @@ test("acp: Codex's approval for an MCP tool names no server: Vyre's own is let t
   fs.writeFileSync(path.join(th, ".codex", "config.toml"), 'approval_policy = "on-request"\n');
   assert.equal(seedTampered(th, { ".codex/config.toml": 'approval_policy = "on-request"\n' }), false);
   assert.equal(seedTampered(path.join(tam.store, "no-home"), { ".codex/config.toml": "x" }), false);
+  // A seeded file that cannot be read is not known to be Vyre's: a directory in its place, and (when not root) a folder with mode 000.
+  fs.rmSync(path.join(th, ".codex", "config.toml"));
+  fs.mkdirSync(path.join(th, ".codex", "config.toml"));
+  assert.equal(seedTampered(th, { ".codex/config.toml": "x" }), true, "a directory where the file should be");
+  if (process.getuid && process.getuid() !== 0) {
+    fs.rmSync(path.join(th, ".codex", "config.toml"), { recursive: true });
+    fs.writeFileSync(path.join(th, ".codex", "config.toml"), "x");
+    fs.chmodSync(path.join(th, ".codex"), 0o000);
+    try { assert.equal(seedTampered(th, { ".codex/config.toml": "x" }), true, "EACCES"); } finally { fs.chmodSync(path.join(th, ".codex"), 0o700); }
+  }
   // A config that exists but cannot be read counts: a directory named config.toml, and (when not root) a .codex folder that cannot be searched.
   const dirCfg = world(t, { mcpOwn: true });
   fs.mkdirSync(path.join(dirCfg.cwd, ".codex", "config.toml"), { recursive: true });
