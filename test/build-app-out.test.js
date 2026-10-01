@@ -8,7 +8,7 @@ import crypto from "node:crypto";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { buildAppOut } from "../scripts/build-app-out.mjs";
+import { buildAppOut, baseUrlOf } from "../scripts/build-app-out.mjs";
 import { verify } from "../relay/app/release.js";
 
 function tmp() { return fs.mkdtempSync(path.join(os.tmpdir(), "app-out-")); }
@@ -42,6 +42,7 @@ test("an export built with a base URL (apps/app: /app) seals: index.html names /
   fs.writeFileSync(path.join(d, "_expo", "static", "js", "web", "entry-e5632a79.js"), "console.log('app');");
   fs.writeFileSync(path.join(d, "assets", "font.woff2"), "font");
   const out = path.join(tmp(), "app-out");
+  assert.equal(baseUrlOf(), "/app", "the base is read from apps/app/app.json, not written here");
   const r = await buildAppOut({ dist: d, release: "0.2.0", out, throwaway: true });
   const m = JSON.parse(fs.readFileSync(path.join(out, "v", r.line.sha, "release-manifest.json"), "utf8"));
   assert.deepEqual(m.entry, ["_expo/static/js/web/entry-e5632a79.js"], "the entry is the build's own file, without the base");

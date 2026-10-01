@@ -22,11 +22,16 @@ import path from "node:path";
 import { build, loader, verify, rawKey, publicOf } from "../relay/app/release.js";
 import { RELEASE_KEY } from "../core/vyre-core/release.js";
 
+/** The base URL the phone export is built with: apps/app/app.json experiments.baseUrl ("/app"), or none. */
+export function baseUrlOf(file = path.join(path.dirname(new URL(import.meta.url).pathname), "..", "apps", "app", "app.json")) {
+  try { const j = JSON.parse(fs.readFileSync(file, "utf8")); return String((j.expo || j).experiments?.baseUrl || ""); } catch { return ""; }
+}
+
 /**
- * @param {{ dist: string, release: string, out: string, pem?: string, throwaway?: boolean }} o
+ * @param {{ dist: string, release: string, out: string, pem?: string, throwaway?: boolean, base?: string }} o
  * @returns {Promise<{ line: any, pub: string, folders: string[], throwaway: boolean }>}
  */
-export async function buildAppOut({ dist, release, out, pem = "", throwaway = false }) {
+export async function buildAppOut({ dist, release, out, pem = "", throwaway = false, base = baseUrlOf() }) {
   if (!fs.existsSync(path.join(dist, "index.html"))) throw new Error(`${dist} has no index.html: build the web export first`);
   if (!/^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/.test(release)) throw new Error(`release must be x.y.z, got "${release}"`);
   /** @type {string} */ let key = pem;
@@ -41,7 +46,7 @@ export async function buildAppOut({ dist, release, out, pem = "", throwaway = fa
   fs.mkdirSync(out, { recursive: true });
   const created = Date.now();
   await loader({ release, key, out, created });
-  const line = await build({ dist, release, key, out, created });
+  const line = await build({ dist, release, key, out, created, base });
   const folders = [out, path.join(out, "v", line.sha)];
   for (const f of folders) await verify(f, pub);
   return { line, pub: Buffer.from(pub).toString("base64url"), folders, throwaway };
@@ -51,7 +56,7 @@ if (process.argv[1] && import.meta.url === new URL(`file://${path.resolve(proces
   const a = process.argv.slice(2);
   const flag = (/** @type {string} */ n) => { const i = a.indexOf(`--${n}`); return i >= 0 ? a[i + 1] : undefined; };
   try {
-    const r = await buildAppOut({ dist: flag("dist") || "apps/app/dist", release: flag("release") || "", out: flag("out") || "app-out", pem: process.env.VYRE_SIGNING_KEY || "", throwaway: a.includes("--throwaway") });
+    const r = await buildAppOut({ dist: flag("dist") || "apps/app/dist", release: flag("release") || "", out: flag("out") || "app-out", pem: process.env.VYRE_SIGNING_KEY || "", throwaway: a.includes("--throwaway"), ...(flag("base") !== undefined ? { base: flag("base") } : {}) });
     console.log(JSON.stringify(r.line));
     console.error(`app-out: sealed ${r.folders.length} folders, signed by ${r.throwaway ? "a throwaway key" : "the release key"} (${r.pub})`);
   } catch (e) { console.error(`build-app-out: ${/** @type {Error} */ (e).message}`); process.exit(1); }

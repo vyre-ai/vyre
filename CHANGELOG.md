@@ -6,7 +6,7 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 #### release: the app-out step seals an export built with a base URL
 
-- apps/app builds with `experiments.baseUrl: "/app"`, so its index.html names `/app/_expo/static/js/web/entry-<hash>.js` while the files are keyed `_expo/static/js/web/...`. `relay/app/release.js` `entriesOf` now strips leading folders until the path is one of the build's own files, so `build-app-out` seals the real export (found by launch's dry run; checked against the real app-web artifact). Test fixture with `/app/` paths added. Not solved here: the built app still asks for `/app/assets/...` at run time (fonts, images), which app.vyre.run does not serve (see the note to tailnet and launch).
+- apps/app builds with `experiments.baseUrl: "/app"`, so its index.html names `/app/_expo/static/js/web/entry-<hash>.js` while the files are keyed `_expo/static/js/web/...`. `relay/app/release.js` `build-app-out` reads the configured base URL (apps/app/app.json `experiments.baseUrl`, not written in the script) and `entriesOf` strips it before the file lookup (an export of unknown base falls back to stripping leading folders), so `build-app-out` seals the real export (found by launch's dry run; checked against the real app-web artifact). Test fixture with `/app/` paths added. Not solved here: the built app still asks for `/app/assets/...` at run time (fonts, images), which app.vyre.run does not serve (see the note to tailnet and launch).
 
 #### release: the hosted phone app is sealed and signed by one script
 
