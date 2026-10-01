@@ -65,6 +65,13 @@ export function createOversight({ emit: rawEmit = () => {}, push = () => false, 
     for (const [agent, p] of plans) if (p.thread === String(run) || agent === String(run)) return agent;
     return null;
   };
+  /** An optional `run` on stop, resume and interject: it must be the run that is active now (parallel runs come later); omitted means the active run. @param {string|undefined} run */
+  const checkRun = run => {
+    if (!run) return;
+    const a = agentOfRun(run);
+    if (!a) throw refuse("not_found", "there is no run with that id");
+    if (a !== active) throw refuse("not_found", "that run is not the active one");
+  };
   /** The whole plan as the panel draws it. @param {string} agent */
   const planFrame = agent => {
     const p = /** @type {any} */ (plans.get(agent));
@@ -129,7 +136,7 @@ export function createOversight({ emit: rawEmit = () => {}, push = () => false, 
      * @param {{ run?: string }} [o]
      */
     pause({ run } = {}) {
-      if (run && !agentOfRun(run)) throw refuse("not_found", "there is no run with that id");
+      checkRun(run);
       if (state === "stopped") return Promise.resolve({ ok: true, paused: true, already: true });
       const t0 = now();
       state = "stopped";
@@ -166,7 +173,8 @@ export function createOversight({ emit: rawEmit = () => {}, push = () => false, 
      * The person says something to the agent mid-run. Kept until the agent's next call takes it.
      * @param {{ from?: "prompt"|"voice", text: string }} o
      */
-    interject({ from = "prompt", text }) {
+    interject({ from = "prompt", text, run }) {
+      checkRun(run);
       const t = clean(clip(text, 1000));
       if (!t) throw refuse("bad_request", "say what to tell the agent");
       const f = from === "voice" ? "voice" : "prompt";
@@ -180,7 +188,8 @@ export function createOversight({ emit: rawEmit = () => {}, push = () => false, 
      * awaited, so the next op is already refused when this returns its promise.
      * @param {{ by?: "esc"|"user"|"agent-error" }} [o]
      */
-    stop({ by = "user" } = {}) {
+    stop({ by = "user", run } = {}) {
+      checkRun(run);
       if (state === "stopped") return Promise.resolve({ ok: true, stopped: true, already: true, by: stoppedBy });
       const t0 = now();
       state = "stopped";
@@ -195,7 +204,8 @@ export function createOversight({ emit: rawEmit = () => {}, push = () => false, 
     },
 
     /** The person answered; carry on. Only from stopped or waiting_input. @param {{ answer?: string }} [o] */
-    resume({ answer } = {}) {
+    resume({ answer, run } = {}) {
+      checkRun(run);
       if (state !== "stopped" && state !== "waiting_input") throw refuse("not_stopped", `nothing to resume: the state is ${state}`);
       const a = clean(clip(answer, 1000));
       state = active && plans.get(active) ? "running" : "idle";

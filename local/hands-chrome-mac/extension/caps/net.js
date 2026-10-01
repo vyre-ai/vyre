@@ -243,8 +243,8 @@ function handle(ctx, t, method, p, session) {
   { const egP = /** @type {any} */ (t).egress; if (egP && egP.nonce && /^Network\.(requestWillBeSent|responseReceived|loadingFailed)$/.test(method)) probeNetwork(egP, method, p, session); }
   if (method === "Target.attachedToTarget") {
     { const eg0 = /** @type {any} */ (t).egress; if (eg0 && eg0.live && p.sessionId) (eg0.kidSessions || (eg0.kidSessions = new Map())).set(p.sessionId, String(p.targetInfo?.type || ""));
-      // Under a sticky guard a worker made from a Blob and attached after the call returned is the script's most likely (a slow runner starts one late): it joins the guarded children.
-      const st0 = /** @type {any} */ (t).sticky; if (!eg0 && st0 && p.sessionId && p.targetInfo && p.targetInfo.type === "worker" && String(p.targetInfo.url || "").startsWith("blob:")) { st0.kids.set(p.sessionId, "worker"); } }
+      // Under a sticky guard a worker made from a Blob or a data: URL and attached after the call returned is the script's most likely (a slow runner starts one late): it joins the guarded children.
+      const st0 = /** @type {any} */ (t).sticky; if (!eg0 && st0 && p.sessionId && p.targetInfo && p.targetInfo.type === "worker" && /^(blob|data):/.test(String(p.targetInfo.url || ""))) { st0.kids.set(p.sessionId, "worker"); } }
     { const eg0 = /** @type {any} */ (t).egress; if (eg0 && eg0.live) eg0.lateChildren = (eg0.lateChildren || 0) + 1; if (eg0) (eg0.attached || (eg0.attached = [])).length < 12 && eg0.attached.push({ type: String(p.targetInfo?.type || ""), url: String(p.targetInfo?.url || "").slice(0, 60), wait: !!p.waitingForDebugger, guardTarget: isGuardTarget(p.targetInfo), known: t.sessions.has(p.sessionId), from: session ? "child" : "top" }); }
     if (p.sessionId && isGuardTarget(p.targetInfo) && !t.sessions.has(p.sessionId)) {
       t.sessions.add(p.sessionId);

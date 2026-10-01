@@ -340,6 +340,7 @@ async function main() {
           ...(NOFETCH ? {} : {
             "deferred timer fetch": `(() => { setTimeout(function () { fetch(${L} + 'timer').catch(function () {}); }, 400); return 1; })()`,
             "deferred promise chain": `(() => { new Promise(function (r) { setTimeout(r, 300); }).then(function () { return fetch(${L} + 'promise'); }).catch(function () {}); return 1; })()`,
+            "late data: URL worker (fetches 2.5 s later)": `(async () => { const f = document.createElement('iframe'); document.body.appendChild(f); try { new f.contentWindow.Worker("data:text/javascript," + encodeURIComponent("setTimeout(function () { fetch('" + ${L} + "datalateworker').catch(function () {}); }, 2500);")); } catch (e) {} return 1; })()`,
             "late worker (fetches 2.5 s later)": `(async () => { const f = document.createElement('iframe'); document.body.appendChild(f); try { const b = new f.contentWindow.Blob(["setTimeout(function () { fetch('" + ${L} + "lateworker').catch(function () {}); }, 2500);"]); new f.contentWindow.Worker(f.contentWindow.URL.createObjectURL(b)); } catch (e) {} return 1; })()`,
           }),
           "window.open": `(() => { try { window.open(${L} + 'open'); } catch (e) {} return 1; })()`,
@@ -347,7 +348,7 @@ async function main() {
         for (const [name, expression] of Object.entries(escapes)) {
           const r = await step(`escape attempt: ${name}`, () => mcp.call("chrome_eval", { tab, frame: "b.localhost", expression })).catch(async (/** @type {any} */ e) => { try { const nl = await mcp.call("chrome_net", { action: "list", tab, limit: 1 }); console.log("[frames-suite] ESCAPE HUNG " + JSON.stringify({ name, trail: nl.trail, sticky: nl.sticky ? { kids: nl.sticky.kids.length } : null })); } catch { /* diag only */ } throw e; });
           console.log("[frames-suite] ESCAPE " + JSON.stringify({ name, held: r.held, contained: r.contained, why: String(r.why || r.error || "").slice(0, 140), ...(r.diag ? { diag: JSON.stringify(r.diag).slice(0, 1500) } : {}), ...(r.egress ? { egress: JSON.stringify(r.egress).slice(0, 400) } : {}) }));
-          await sleep(/^(deferred|late worker)/.test(name) ? 3800 : 500);
+          await sleep(/^(deferred|late )/.test(name) ? 3800 : 500);
           if ((await state()).collected.length !== before) { try { const nl = await mcp.call("chrome_net", { action: "list", tab, limit: 1 }); console.log("[frames-suite] ESCAPE LEAKED GUARD " + JSON.stringify({ name, lastGuard: nl.lastGuard, sticky: nl.sticky })); const got = (await state()).collected; console.log("[frames-suite] ESCAPE LEAKED SERVER " + JSON.stringify(got.slice(before).map((/** @type {any} */ c) => JSON.stringify(c).slice(0, 300)))); } catch (e) { console.log("[frames-suite] ESCAPE LEAKED diag failed " + String(e && e.message || e).slice(0, 200)); } }
           need((await state()).collected.length === before, "eval.frame.guard", `escape "${name}" reached the fresh origin (${(await state()).collected.length - before} request(s)): ${short(r)}`);
         }

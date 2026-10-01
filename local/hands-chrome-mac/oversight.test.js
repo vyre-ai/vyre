@@ -195,3 +195,17 @@ test("oversight: a finished run emits chrome.finished {agent, run, ok}; a stop e
   const last = got.filter(e => e.type === "chrome.finished").pop();
   assert.deepEqual([last.run, last.ok, last.stopped], ["t-9", false, true]);
 });
+
+test("oversight: stop, resume, interject and pause take an optional run: the active run or nothing, never another", () => {
+  const { os } = rig();
+  os.plan("kit", STEPS, { thread: "t-A" });
+  os.plan("pax", STEPS, { thread: "t-B" });
+  // the active run is the one that planned last
+  assert.throws(() => os.interject({ text: "hi", run: "t-A" }), { code: "not_found" });
+  assert.doesNotThrow(() => os.interject({ text: "hi", run: "t-B" }));
+  assert.doesNotThrow(() => os.interject({ text: "again" }), "omitted means the active run");
+  assert.throws(() => os.interject({ text: "x", run: "nope" }), { code: "not_found" });
+  assert.throws(() => os.pause({ run: "t-A" }), { code: "not_found" });
+  assert.throws(() => os.stop({ run: "t-A" }), { code: "not_found" });
+  return os.stop({ run: "t-B" }).then(() => { assert.throws(() => os.resume({ run: "t-A" }), { code: "not_found" }); assert.doesNotThrow(() => os.resume({ run: "t-B" })); });
+});
