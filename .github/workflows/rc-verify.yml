@@ -1,0 +1,68 @@
+# Checks of a PUBLISHED release, run from the outside (launch): the image signatures and attestations, and a beta-channel
+# pulled update from the previous prerelease. Push-triggered on this file only; TAG and FROM below are the two releases.
+name: rc-verify
+on:
+  push:
+    paths: [".github/workflows/rc-verify.yml"]
+  workflow_dispatch:
+permissions:
+  contents: read
+  packages: read
+env:
+  TAG: v0.2.0-rc.2
+  FROM: v0.2.0-rc.1
+  ID: '^https://github\.com/vyre-ai/vyre/\.github/workflows/release\.yml@refs/tags/v[0-9]+\.[0-9]+\.[0-9]+(-[a-z]+\.[0-9]+)?$'
+  ISSUER: https://token.actions.githubusercontent.com
+jobs:
+  anon:
+    runs-on: ubuntu-24.04
+    outputs:
+      public: ${{ steps.p.outputs.public }}
+    steps:
+      - id: p
+        name: Can a stranger pull the images?
+        run: |
+          for n in vyre vyre-computer; do
+            t=$(curl -s "https://ghcr.io/token?scope=repository:vyre-ai/$n:pull&service=ghcr.io" | sed -n 's/.*"token":"\([^"]*\)".*/\1/p')
+            c=$(curl -s -o /dev/null -w '%{http_code}' -H "Authorization: Bearer $t" -H 'Accept: application/vnd.oci.image.index.v1+json' "https://ghcr.io/v2/vyre-ai/$n/manifests/latest" || true)
+            echo "anonymous manifest read for $n: HTTP $c"
+            [ "$c" = 200 ] || [ "$c" = 404 ] || pub=no
+          done
+          echo "public=${pub:-yes}" >>"$GITHUB_OUTPUT"
+  images:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: sigstore/cosign-installer@398d4b0eeef1380460a10c8013a76f728fb906ac # v3
+      - name: Both image digests, signature and SBOM attestation
+        run: |
+          echo "$GH_TOKEN" | docker login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
+          d=$(mktemp -d); gh release download "$TAG" --repo "$GITHUB_REPOSITORY" -p release.json -D "$d"
+          for k in box computer; do
+            ref=$(node -e 'const j=JSON.parse(require("fs").readFileSync(process.argv[1]));console.log(j.images[process.argv[2]].ref)' "$d/release.json" "$k")
+            echo "== $k $ref"
+            cosign verify --certificate-identity-regexp "$ID" --certificate-oidc-issuer "$ISSUER" "$ref" >/dev/null && echo "signature ok"
+            cosign verify-attestation --type spdxjson --certificate-identity-regexp "$ID" --certificate-oidc-issuer "$ISSUER" "$ref" >/dev/null && echo "sbom attestation ok"
+          done
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+  update:
+    needs: anon
+    if: needs.anon.outputs.public == 'yes'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    steps:
+      - name: Install the previous prerelease the way a person does, then update on the beta channel
+        run: |
+          set -eu
+          B=https://github.com/vyre-ai/vyre/releases/download
+          export VYRE_BOX_URL=$B/$FROM/
+          curl -fsSL "$B/$FROM/install-box.sh" -o /tmp/install-box.sh
+          sh /tmp/install-box.sh --yes </dev/null
+          unset VYRE_BOX_URL
+          echo "installed: $(vyre version)"
+          echo "VYRE_CHANNEL=beta" | sudo tee -a /srv/vyre/.env >/dev/null
+          VYRE_CHANNEL=beta vyre update </dev/null
+          i=0; until vyre status 2>/dev/null | grep -q 'vyred running'; do i=$((i+1)); [ $i -ge 120 ] && { echo "vyred did not come back"; exit 1; }; sleep 1; done
+          got=$(tr -d ' \r\n' </srv/vyre/VERSION)
+          echo "after update: $got"
+          [ "$got" = "${TAG#v}" ]
