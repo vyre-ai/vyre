@@ -12,10 +12,10 @@
 import fs from "node:fs";
 import path from "node:path";
 import { connector } from "./connect.js";
-import { MIGRATIONS, store, projectStore, forOne } from "./accounts.js";
+import { MIGRATIONS, store, projectStore, forOne, commitIdentity } from "./accounts.js";
 import { prNumber, openPrsForBranch, prView, prMerge, prReview, prOpen, prStatus, prComments, issueList, issueGet } from "./pr.js";
 import { searchMentions, resolveMention, parseId } from "./mentions.js";
-import { safeSegment, cloneRepo, worktreeAdd, worktreeRemove, originFullName, folderGitState, sanitizeRemoteUrl, defaultBranchOf, pushSession, localInit, sessionHistory, sessionUndo, sessionRedo } from "./git.js";
+import { safeSegment, cloneRepo, worktreeAdd, sessionEnv, worktreeRemove, originFullName, folderGitState, sanitizeRemoteUrl, defaultBranchOf, pushSession, localInit, sessionHistory, sessionUndo, sessionRedo } from "./git.js";
 
 const str = { type: "string" };
 const obj = (properties, required = []) => ({ type: "object", properties, required });
@@ -195,14 +195,20 @@ export default {
     });
 
     ctx.tool("github.remove", {
-      description: "Disconnect a GitHub account: removes Vyre's own vault item and account row. Never revokes the token at GitHub (0.2, lead ruling 30 Sep): the token belongs to GitHub CLI's own app grant, shared with every real `gh` install, so revoking it would sign the person's own gh out on every other machine and CI runner too. The token itself, and whether it still works elsewhere, stays the person's own business, at github.com/settings/applications if they ever want it gone entirely.",
+      description: "Disconnect a GitHub account: deletes its token from the vault, drops its hosted MCP row and removes the account. If the token cannot be deleted it says so and keeps the account. Never revokes the token at GitHub (0.2, lead ruling 30 Sep): the token belongs to GitHub CLI's own app grant, shared with every real `gh` install, so revoking it would sign the person's own gh out on every other machine and CI runner too. The token itself, and whether it still works elsewhere, stays the person's own business, at github.com/settings/applications if they ever want it gone entirely.",
       input: obj({ name: str }, ["name"]),
       callers: PEOPLE,
       run: async ({ name }) => {
         const acct = accounts.get(name);
         if (!acct) return { removed: false };
+        // The token item goes first, and a refusal is said plainly: swallowing it left a live token in
+        // the vault after the person disconnected. "No item" means it is already gone. On any other
+        // failure the account stays listed so the person can retry or remove the item themselves.
+        const del = await ctx.call("vault.delete", { name: acct.item }).catch(e => ({ error: { message: String(e && e.message || e) } }));
+        if (del.error && !/no item named|not_found/i.test(`${del.error.code || ""} ${del.error.message || ""}`)) {
+          throw fail(`could not delete the saved GitHub token (${String(del.error.message || del.error.code).slice(0, 160)}); ${name} is still connected. Try again, or delete the vault item ${acct.item} yourself.`, "vault_delete_failed");
+        }
         await dropHosted(acct);
-        await ctx.call("vault.delete", { name: acct.item }).catch(() => {});
         accounts.remove(name);
         ctx.events.emit("github.removed", { name });
         return { removed: true };
@@ -450,16 +456,59 @@ export default {
       return defaultBranch ? { home: row.home, defaultBranch } : null;
     }
 
+    /**
+     * The identity a project's session commits as: its recorded account's name and email. An account
+     * connected before ids were kept is filled in once from GitHub (best effort); a project with no
+     * GitHub account, or an account GitHub cannot be asked about, sets none and git's own applies.
+     */
+    async function identityFor(project) {
+      const proj = projects.get(project);
+      const acct = proj && accounts.get(proj.account);
+      if (!acct) return null;
+      let a = acct;
+      if (!a.user_id) {
+        try {
+          const token = await ctx.vault.fetch(a.item, { field: "token" });
+          const res = await fetch("https://api.github.com/user", { headers: { authorization: `Bearer ${token}`, accept: "application/vnd.github+json" }, signal: AbortSignal.timeout(10_000) });
+          const j = res.ok ? await res.json() : null;
+          if (j && Number.isInteger(j.id)) {
+            a = accounts.put({ name: a.name, login: a.login, avatar_url: a.avatar_url, item: a.item, user_id: j.id, display_name: typeof j.name === "string" ? j.name.trim().slice(0, 100) : null,
+              email: typeof j.email === "string" && /^[^\s@<>]+@[^\s@<>]+$/.test(j.email) ? j.email : null }, now());
+          }
+        } catch { /* no identity this time */ }
+      }
+      return commitIdentity(a);
+    }
+
+    /** The Vyre-Session trailer is on unless the person sets github.session_trailer to false in Vyre's config. */
+    const trailerOn = () => {
+      const c = ctx.config || {};
+      return !(c.github && c.github.session_trailer === false) && c.githubSessionTrailer !== false;
+    };
+
+    ctx.tool("github.session.env", {
+      internal: true,
+      description: "Sessions only: the environment a session's process must carry so its commits are made as the connected account (GIT_AUTHOR_*, GIT_COMMITTER_*) and run its hooks (GIT_CONFIG_COUNT, KEY, VALUE for core.hooksPath), with no repo config written. Answers { env } (empty on a git older than 2.31, where the worktree's own config carries it, or when the project has no repo). Safe to call on every launch and resume. The identity and the Vyre-Session trailer are an audit aid, not a control: a model can unset GIT_* in its own shell. The hooks it names act only for this project's repo; any other repo the session touches runs its own.",
+      input: obj({ project: str, session: str }, ["project", "session"]),
+      callers: ["module"],
+      run: async ({ project, session }, meta = {}) => {
+        checkModuleCaller("github.session.env", meta, SESSION_ONLY);
+        const repo = await repoOf(project);
+        if (!repo) return { env: {} };
+        return { env: await sessionEnv({ repoDir: repo.home, session, identity: await identityFor(project), trailer: trailerOn() }) };
+      },
+    });
+
     ctx.tool("github.session.worktree", {
       internal: true,
-      description: "Sessions only: a worktree and branch for a session in any project whose home is a git repo (GitHub's or local-only), or null when the project has no repo yet.",
+      description: "Sessions only: a worktree and branch for a session in any project whose home is a git repo (GitHub's or local-only), or null when the project has no repo yet. Answers { path, branch, env? }: env, when present, is what the session's process must carry (see github.session.env).",
       input: obj({ project: str, session: str }, ["project", "session"]),
       callers: ["module"],
       run: async ({ project, session }, meta = {}) => {
         checkModuleCaller("github.session.worktree", meta, SESSION_ONLY);
         const repo = await repoOf(project);
         if (!repo) return null;
-        return worktreeAdd({ repoDir: repo.home, session, defaultBranch: repo.defaultBranch });
+        return worktreeAdd({ repoDir: repo.home, session, defaultBranch: repo.defaultBranch, identity: await identityFor(project), trailer: trailerOn() });
       },
     });
 

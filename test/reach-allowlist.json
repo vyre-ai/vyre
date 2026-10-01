@@ -586,119 +586,6 @@
    "module": "files",
    "default": "callers admit a model"
   },
-  "gate.offer": {
-   "module": "gate",
-   "default": "internal or hook in code",
-   "internal": true
-  },
-  "gate.route": {
-   "module": "gate",
-   "default": "internal or hook in code",
-   "internal": true
-  },
-  "github.accounts": {
-   "module": "github",
-   "default": "limited by callers in code"
-  },
-  "github.connect": {
-   "module": "github",
-   "default": "limited by callers in code"
-  },
-  "github.connect.cancel": {
-   "module": "github",
-   "default": "limited by callers in code"
-  },
-  "github.mcp.sync": {
-   "module": "github",
-   "default": "limited by callers in code"
-  },
-  "github.mentions.resolve": {
-   "module": "github",
-   "default": "limited by callers in code"
-  },
-  "github.mentions.search": {
-   "module": "github",
-   "default": "limited by callers in code"
-  },
-  "github.project": {
-   "module": "github",
-   "default": "limited by callers in code"
-  },
-  "github.project.add-repo": {
-   "module": "github",
-   "default": "limited by callers in code"
-  },
-  "github.project.detect": {
-   "module": "github",
-   "default": "limited by callers in code"
-  },
-  "github.project.issue.get": {
-   "module": "github",
-   "default": "callers admit a model"
-  },
-  "github.project.issue.list": {
-   "module": "github",
-   "default": "callers admit a model"
-  },
-  "github.project.local-init": {
-   "module": "github",
-   "default": "callers admit a model"
-  },
-  "github.project.of": {
-   "module": "github",
-   "default": "limited by callers in code"
-  },
-  "github.project.pr.comments": {
-   "module": "github",
-   "default": "callers admit a model"
-  },
-  "github.project.pr.get": {
-   "module": "github",
-   "default": "callers admit a model"
-  },
-  "github.project.pr.status": {
-   "module": "github",
-   "default": "callers admit a model"
-  },
-  "github.remove": {
-   "module": "github",
-   "default": "limited by callers in code"
-  },
-  "github.repos": {
-   "module": "github",
-   "default": "limited by callers in code"
-  },
-  "github.session.cleanup": {
-   "module": "github",
-   "default": "internal or hook in code",
-   "internal": true
-  },
-  "github.session.history": {
-   "module": "github",
-   "default": "callers admit a model"
-  },
-  "github.session.pr": {
-   "module": "github",
-   "default": "internal or hook in code",
-   "internal": true
-  },
-  "github.session.push": {
-   "module": "github",
-   "default": "callers admit a model"
-  },
-  "github.session.redo": {
-   "module": "github",
-   "default": "callers admit a model"
-  },
-  "github.session.undo": {
-   "module": "github",
-   "default": "callers admit a model"
-  },
-  "github.session.worktree": {
-   "module": "github",
-   "default": "internal or hook in code",
-   "internal": true
-  },
   "glass.close": {
    "module": "glass",
    "default": "open to any caller"
@@ -770,11 +657,6 @@
   "goals.set": {
    "module": "goals",
    "default": "callers admit a model"
-  },
-  "google.release": {
-   "module": "google",
-   "default": "internal or hook in code",
-   "internal": true
   },
   "hands-desktop.act": {
    "module": "hands-desktop",
@@ -974,11 +856,6 @@
   "learn.stats": {
    "module": "learn",
    "default": "open to any caller"
-  },
-  "mail.release": {
-   "module": "mail",
-   "default": "internal or hook in code",
-   "internal": true
   },
   "mcp.add": {
    "module": "mcp",
@@ -1204,6 +1081,16 @@
    "module": "memory",
    "default": "callers admit a model"
   },
+  "names.claim-code": {
+   "module": "names",
+   "default": "internal or hook in code",
+   "internal": true
+  },
+  "names.recover.code": {
+   "module": "names",
+   "default": "internal or hook in code",
+   "internal": true
+  },
   "onboard.claude": {
    "module": "onboard",
    "default": "open to any caller"
@@ -1400,6 +1287,46 @@
   "recall.watch": {
    "module": "recall",
    "default": "limited by callers in code"
+  },
+  "relay.device.presence": {
+   "module": "relay",
+   "default": "internal or hook in code",
+   "internal": true
+  },
+  "relay.devices.bind": {
+   "module": "relay",
+   "default": "internal or hook in code",
+   "internal": true
+  },
+  "relay.devices.node": {
+   "module": "relay",
+   "default": "internal or hook in code",
+   "internal": true
+  },
+  "relay.devices.tailnet": {
+   "module": "relay",
+   "default": "internal or hook in code",
+   "internal": true
+  },
+  "relay.route.id": {
+   "module": "relay",
+   "default": "internal or hook in code",
+   "internal": true
+  },
+  "relay.route.sign": {
+   "module": "relay",
+   "default": "internal or hook in code",
+   "internal": true
+  },
+  "relay.setup.begin": {
+   "module": "relay",
+   "default": "internal or hook in code",
+   "internal": true
+  },
+  "relay.setup.end": {
+   "module": "relay",
+   "default": "internal or hook in code",
+   "internal": true
   },
   "screen.context": {
    "module": "screen",
@@ -2050,141 +1977,6 @@
   "update.status": {
    "module": "update",
    "default": "open to any caller"
-  },
-  "vault.agent.grant": {
-   "module": "vault",
-   "default": "callers admit a model"
-  },
-  "vault.api.send": {
-   "module": "vault",
-   "default": "internal or hook in code",
-   "internal": true
-  },
-  "vault.connections.list": {
-   "module": "vault",
-   "default": "callers admit a model"
-  },
-  "vault.connections.revoke": {
-   "module": "vault",
-   "default": "callers admit a model"
-  },
-  "vault.credential.tokens": {
-   "module": "vault",
-   "default": "internal or hook in code",
-   "internal": true
-  },
-  "vault.device.sync": {
-   "module": "vault",
-   "default": "callers admit a model"
-  },
-  "vault.generate": {
-   "module": "vault",
-   "default": "callers admit a model"
-  },
-  "vault.grant": {
-   "module": "vault",
-   "default": "callers admit a model"
-  },
-  "vault.grants.status": {
-   "module": "vault",
-   "default": "callers admit a model"
-  },
-  "vault.import": {
-   "module": "vault",
-   "default": "callers admit a model"
-  },
-  "vault.import.preview": {
-   "module": "vault",
-   "default": "callers admit a model"
-  },
-  "vault.mention.resolve": {
-   "module": "vault",
-   "default": "internal or hook in code",
-   "internal": true
-  },
-  "vault.offboard": {
-   "module": "vault",
-   "default": "callers admit a model"
-  },
-  "vault.pass.accept": {
-   "module": "vault",
-   "default": "callers admit a model"
-  },
-  "vault.pass.create": {
-   "module": "vault",
-   "default": "callers admit a model"
-  },
-  "vault.pending": {
-   "module": "vault",
-   "default": "callers admit a model"
-  },
-  "vault.person.add": {
-   "module": "vault",
-   "default": "callers admit a model"
-  },
-  "vault.relay": {
-   "module": "vault",
-   "default": "callers admit a model"
-  },
-  "vault.release": {
-   "module": "vault",
-   "default": "internal or hook in code",
-   "internal": true
-  },
-  "vault.request": {
-   "module": "vault",
-   "default": "callers admit a model"
-  },
-  "vault.rotation": {
-   "module": "vault",
-   "default": "callers admit a model"
-  },
-  "vault.said.add": {
-   "module": "vault",
-   "default": "internal or hook in code",
-   "internal": true
-  },
-  "vault.said.list": {
-   "module": "vault",
-   "default": "internal or hook in code",
-   "internal": true
-  },
-  "vault.said.match": {
-   "module": "vault",
-   "default": "internal or hook in code",
-   "internal": true
-  },
-  "vault.said.record": {
-   "module": "vault",
-   "default": "internal or hook in code",
-   "internal": true
-  },
-  "vault.said.revoke": {
-   "module": "vault",
-   "default": "internal or hook in code",
-   "internal": true
-  },
-  "vault.ssh.generate": {
-   "module": "vault",
-   "default": "callers admit a model"
-  },
-  "vault.sweep": {
-   "module": "vault",
-   "default": "callers admit a model"
-  },
-  "vault.use.check": {
-   "module": "vault",
-   "default": "internal or hook in code",
-   "internal": true
-  },
-  "vault.use.note": {
-   "module": "vault",
-   "default": "internal or hook in code",
-   "internal": true
-  },
-  "vault.vaults.sync": {
-   "module": "vault",
-   "default": "callers admit a model"
   },
   "vitals.advice": {
    "module": "vitals",
