@@ -4,7 +4,7 @@
   "roles": ["box"],
   "requires": [],
   "does": {
-    "tools": ["hands-desktop.tree", "hands-desktop.apps", "hands-desktop.screenshot", "hands-desktop.act"]
+    "tools": [{ "name": "hands-desktop.tree", "reach": "anyone" }, { "name": "hands-desktop.apps", "reach": "anyone" }, { "name": "hands-desktop.screenshot", "reach": "anyone" }, { "name": "hands-desktop.act", "reach": "anyone" }]
   },
   "watches": { "emits": ["desktop.acted"] },
   "shows": { "deck": [], "capsule": [], "cli": ["hands-desktop"] },

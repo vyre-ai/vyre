@@ -155,7 +155,7 @@ async function main() {
       /** Open the shell in the tab (fresh: the app reboots, the late frame is re-added, the ticker resets) and wait until the app has drawn. @param {string} [url] @param {{ noApp?: boolean }} [o] */
       const fresh = async (url = shellUrl, o = {}) => {
         await step("navigate the tab to the shell", () => mcp.call("chrome_tabs", { action: "navigate", tab, url }));
-        if (!o.noApp) await step("wait for the app's Create Workflow control (inside the iframe)", async () => { const t = performance.now(); await mcp.call("chrome_wait", { tab, selector: { name: "Create Workflow", identifier: "create-workflow" }, timeoutMs: 20_000 }, 30_000); return Math.round(performance.now() - t); });
+        if (!o.noApp) await step("wait for the app's Create Workflow control (inside the iframe)", async () => { const t = performance.now(); await mcp.call("chrome_wait", { tab, selector: { name: "Create Workflow", identifier: "create-workflow" }, timeoutMs: 20_000 }, 30_000); return Math.round(performance.now() - t); }).catch(async (/** @type {any} */ e) => { try { const nl = await mcp.call("chrome_net", { action: "list", tab, limit: 40 }); console.log("[frames-suite] FRESH FAILED sticky " + JSON.stringify(nl.sticky) + " recent " + JSON.stringify((nl.requests || []).slice(-12).map((/** @type {any} */ r) => `${r.method} ${String(r.url).replace(/^http:\/\//, "")} ${r.status ?? r.state ?? ""}`))); } catch { /* diag only */ } throw e; });
       };
       await stage("open_shell", async () => { const r = await mcp.call("chrome_tabs", { action: "use", url: shellUrl, openIfMissing: true }); tab = tabIdOf(r); need(tab !== undefined, "tabs.use", "no tab id came back: " + short(r, 200)); return { tab }; });
 
@@ -336,13 +336,20 @@ async function main() {
           "second eval fetches fresh after that iframe": `(async () => { try { await fetch(${L} + 'second'); } catch (e) {} return 1; })()`,
           "iframe Image": `(async () => { const f = document.createElement('iframe'); document.body.appendChild(f); try { new f.contentWindow.Image().src = ${L} + 'iframeimage'; } catch (e) {} await new Promise(r => setTimeout(r, 300)); return 1; })()`,
           "own-frame Image": `(async () => { try { new Image().src = ${L} + 'ownimage'; } catch (e) {} await new Promise(r => setTimeout(r, 300)); return 1; })()`,
+          // The clock-free rule: what a call leaves running is still judged after it returns (Fetch layer, so not in the DNR-alone run).
+          ...(NOFETCH ? {} : {
+            "deferred timer fetch": `(() => { setTimeout(function () { fetch(${L} + 'timer').catch(function () {}); }, 400); return 1; })()`,
+            "deferred promise chain": `(() => { new Promise(function (r) { setTimeout(r, 300); }).then(function () { return fetch(${L} + 'promise'); }).catch(function () {}); return 1; })()`,
+            "late data: URL worker (fetches 2.5 s later)": `(async () => { const f = document.createElement('iframe'); document.body.appendChild(f); try { new f.contentWindow.Worker("data:text/javascript," + encodeURIComponent("setTimeout(function () { fetch('" + ${L} + "datalateworker').catch(function () {}); }, 2500);")); } catch (e) {} return 1; })()`,
+            "late worker (fetches 2.5 s later)": `(async () => { const f = document.createElement('iframe'); document.body.appendChild(f); try { const b = new f.contentWindow.Blob(["setTimeout(function () { fetch('" + ${L} + "lateworker').catch(function () {}); }, 2500);"]); new f.contentWindow.Worker(f.contentWindow.URL.createObjectURL(b)); } catch (e) {} return 1; })()`,
+          }),
           "window.open": `(() => { try { window.open(${L} + 'open'); } catch (e) {} return 1; })()`,
         });
         for (const [name, expression] of Object.entries(escapes)) {
-          const r = await step(`escape attempt: ${name}`, () => mcp.call("chrome_eval", { tab, frame: "b.localhost", expression }));
+          const r = await step(`escape attempt: ${name}`, () => mcp.call("chrome_eval", { tab, frame: "b.localhost", expression })).catch(async (/** @type {any} */ e) => { try { const nl = await mcp.call("chrome_net", { action: "list", tab, limit: 1 }); console.log("[frames-suite] ESCAPE HUNG " + JSON.stringify({ name, trail: nl.trail, sticky: nl.sticky ? { kids: nl.sticky.kids.length } : null })); } catch { /* diag only */ } throw e; });
           console.log("[frames-suite] ESCAPE " + JSON.stringify({ name, held: r.held, contained: r.contained, why: String(r.why || r.error || "").slice(0, 140), ...(r.diag ? { diag: JSON.stringify(r.diag).slice(0, 1500) } : {}), ...(r.egress ? { egress: JSON.stringify(r.egress).slice(0, 400) } : {}) }));
-          await sleep(500);
-          if ((await state()).collected.length !== before) { try { const nl = await mcp.call("chrome_net", { action: "list", tab, limit: 1 }); console.log("[frames-suite] ESCAPE LEAKED GUARD " + JSON.stringify({ name, lastGuard: nl.lastGuard })); const got = (await state()).collected; console.log("[frames-suite] ESCAPE LEAKED SERVER " + JSON.stringify(got.slice(before).map((/** @type {any} */ c) => JSON.stringify(c).slice(0, 300)))); } catch (e) { console.log("[frames-suite] ESCAPE LEAKED diag failed " + String(e && e.message || e).slice(0, 200)); } }
+          await sleep(/^(deferred|late )/.test(name) ? 3800 : 500);
+          if ((await state()).collected.length !== before) { try { const nl = await mcp.call("chrome_net", { action: "list", tab, limit: 1 }); console.log("[frames-suite] ESCAPE LEAKED GUARD " + JSON.stringify({ name, lastGuard: nl.lastGuard, sticky: nl.sticky })); const got = (await state()).collected; console.log("[frames-suite] ESCAPE LEAKED SERVER " + JSON.stringify(got.slice(before).map((/** @type {any} */ c) => JSON.stringify(c).slice(0, 300)))); } catch (e) { console.log("[frames-suite] ESCAPE LEAKED diag failed " + String(e && e.message || e).slice(0, 200)); } }
           need((await state()).collected.length === before, "eval.frame.guard", `escape "${name}" reached the fresh origin (${(await state()).collected.length - before} request(s)): ${short(r)}`);
         }
         const own = await step("the iframe's own API call is not held", () => mcp.call("chrome_eval", { tab, frame: "b.localhost", expression: "window.__api('GET', '/api/workflows').then(function (r) { return r.status; })" }));

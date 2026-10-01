@@ -79,143 +79,6 @@
    "module": "capsule",
    "default": "limited by callers in code"
   },
-  "chrome.act": {
-   "module": "chrome",
-   "default": "open to any caller"
-  },
-  "chrome.api": {
-   "module": "chrome",
-   "default": "open to any caller"
-  },
-  "chrome.approve": {
-   "module": "chrome",
-   "default": "open to any caller"
-  },
-  "chrome.batch": {
-   "module": "chrome",
-   "default": "open to any caller"
-  },
-  "chrome.click": {
-   "module": "chrome",
-   "default": "open to any caller"
-  },
-  "chrome.console": {
-   "module": "chrome",
-   "default": "open to any caller"
-  },
-  "chrome.eval": {
-   "module": "chrome",
-   "default": "open to any caller"
-  },
-  "chrome.fill": {
-   "module": "chrome",
-   "default": "open to any caller"
-  },
-  "chrome.frames": {
-   "module": "chrome",
-   "default": "open to any caller"
-  },
-  "chrome.ghl": {
-   "module": "chrome",
-   "default": "open to any caller"
-  },
-  "chrome.inspect": {
-   "module": "chrome",
-   "default": "open to any caller"
-  },
-  "chrome.install": {
-   "module": "chrome",
-   "default": "limited by callers in code"
-  },
-  "chrome.interject": {
-   "module": "chrome",
-   "default": "limited by callers in code"
-  },
-  "chrome.login": {
-   "module": "chrome",
-   "default": "open to any caller"
-  },
-  "chrome.net": {
-   "module": "chrome",
-   "default": "open to any caller"
-  },
-  "chrome.open": {
-   "module": "chrome",
-   "default": "open to any caller"
-  },
-  "chrome.pause": {
-   "module": "chrome",
-   "default": "limited by callers in code"
-  },
-  "chrome.plan": {
-   "module": "chrome",
-   "default": "open to any caller"
-  },
-  "chrome.plan.edit": {
-   "module": "chrome",
-   "default": "limited by callers in code"
-  },
-  "chrome.recipe": {
-   "module": "chrome",
-   "default": "open to any caller"
-  },
-  "chrome.release": {
-   "module": "chrome",
-   "default": "internal or hook in code",
-   "internal": true
-  },
-  "chrome.resume": {
-   "module": "chrome",
-   "default": "limited by callers in code"
-  },
-  "chrome.screenshot": {
-   "module": "chrome",
-   "default": "open to any caller"
-  },
-  "chrome.site": {
-   "module": "chrome",
-   "default": "open to any caller"
-  },
-  "chrome.snapshot": {
-   "module": "chrome",
-   "default": "open to any caller"
-  },
-  "chrome.sources": {
-   "module": "chrome",
-   "default": "open to any caller"
-  },
-  "chrome.state": {
-   "module": "chrome",
-   "default": "open to any caller"
-  },
-  "chrome.status": {
-   "module": "chrome",
-   "default": "open to any caller"
-  },
-  "chrome.stop": {
-   "module": "chrome",
-   "default": "open to any caller"
-  },
-  "chrome.summary": {
-   "module": "chrome",
-   "default": "open to any caller"
-  },
-  "chrome.tabs": {
-   "module": "chrome",
-   "default": "open to any caller"
-  },
-  "chrome.type": {
-   "module": "chrome",
-   "default": "open to any caller"
-  },
-  "chrome.voice": {
-   "module": "chrome",
-   "default": "limited by callers in code"
-  },
-  "chrome.wait": {
-   "module": "chrome",
-   "default": "open to any caller"
-  },
   "commands.list": {
    "module": "commands",
    "default": "open to any caller"
@@ -273,6 +136,22 @@
   "context.report": {
    "module": "context",
    "default": "limited by callers in code"
+  },
+  "files.fetch": {
+   "module": "files",
+   "default": "callers admit a model"
+  },
+  "files.preview": {
+   "module": "files",
+   "default": "callers admit a model"
+  },
+  "files.search": {
+   "module": "files",
+   "default": "callers admit a model"
+  },
+  "files.stat": {
+   "module": "files",
+   "default": "callers admit a model"
   },
   "gate.offer": {
    "module": "gate",
@@ -359,71 +238,6 @@
    "module": "google",
    "default": "internal or hook in code",
    "internal": true
-  },
-  "hands-desktop.act": {
-   "module": "hands-desktop",
-   "default": "open to any caller"
-  },
-  "hands-desktop.apps": {
-   "module": "hands-desktop",
-   "default": "open to any caller"
-  },
-  "hands-desktop.screenshot": {
-   "module": "hands-desktop",
-   "default": "open to any caller"
-  },
-  "hands-desktop.tree": {
-   "module": "hands-desktop",
-   "default": "open to any caller"
-  },
-  "hands.act": {
-   "module": "hands",
-   "default": "open to any caller"
-  },
-  "hands.commit": {
-   "module": "hands",
-   "default": "open to any caller"
-  },
-  "hands.find": {
-   "module": "hands",
-   "default": "open to any caller"
-  },
-  "hands.grant.add": {
-   "module": "hands",
-   "default": "limited by callers in code"
-  },
-  "hands.grant.list": {
-   "module": "hands",
-   "default": "limited by callers in code"
-  },
-  "hands.grant.remove": {
-   "module": "hands",
-   "default": "limited by callers in code"
-  },
-  "hands.indicator": {
-   "module": "hands",
-   "default": "limited by callers in code"
-  },
-  "hands.observe": {
-   "module": "hands",
-   "default": "open to any caller"
-  },
-  "hands.pause": {
-   "module": "hands",
-   "default": "limited by callers in code"
-  },
-  "hands.release": {
-   "module": "hands",
-   "default": "internal or hook in code",
-   "internal": true
-  },
-  "hands.resume": {
-   "module": "hands",
-   "default": "limited by callers in code"
-  },
-  "hands.stop": {
-   "module": "hands",
-   "default": "open to any caller"
   },
   "import.cancel": {
    "module": "import",
@@ -983,14 +797,6 @@
    "default": "internal or hook in code",
    "internal": true
   },
-  "screen.context": {
-   "module": "screen",
-   "default": "callers admit a model"
-  },
-  "screen.shot": {
-   "module": "screen",
-   "default": "callers admit a model"
-  },
   "sessions.accounts.resolve": {
    "module": "sessions",
    "default": "internal or hook in code",
@@ -1072,38 +878,6 @@
    "module": "settings",
    "default": "internal or hook in code",
    "internal": true
-  },
-  "sideview.close": {
-   "module": "sideview",
-   "default": "callers admit a model"
-  },
-  "sideview.open": {
-   "module": "sideview",
-   "default": "callers admit a model"
-  },
-  "sideview.status": {
-   "module": "sideview",
-   "default": "callers admit a model"
-  },
-  "sight.frame": {
-   "module": "sight",
-   "default": "limited by callers in code"
-  },
-  "sight.now": {
-   "module": "sight",
-   "default": "limited by callers in code"
-  },
-  "sight.steps": {
-   "module": "sight",
-   "default": "limited by callers in code"
-  },
-  "sight.targets": {
-   "module": "sight",
-   "default": "limited by callers in code"
-  },
-  "sight.watch": {
-   "module": "sight",
-   "default": "limited by callers in code"
   },
   "spend.check": {
    "module": "spend",
@@ -1258,22 +1032,6 @@
   "team.status": {
    "module": "team",
    "default": "open to any caller"
-  },
-  "term.attach": {
-   "module": "term",
-   "default": "limited by callers in code"
-  },
-  "term.close": {
-   "module": "term",
-   "default": "limited by callers in code"
-  },
-  "term.list": {
-   "module": "term",
-   "default": "limited by callers in code"
-  },
-  "term.open": {
-   "module": "term",
-   "default": "limited by callers in code"
   },
   "threads.bind": {
    "module": "threads",
@@ -1563,22 +1321,6 @@
   "vitals.watch": {
    "module": "vitals",
    "default": "open to any caller"
-  },
-  "voice.listen": {
-   "module": "voice",
-   "default": "limited by callers in code"
-  },
-  "voice.settings": {
-   "module": "voice",
-   "default": "limited by callers in code"
-  },
-  "voice.speak": {
-   "module": "voice",
-   "default": "limited by callers in code"
-  },
-  "voice.status": {
-   "module": "voice",
-   "default": "limited by callers in code"
   },
   "waiting.count": {
    "module": "waiting",

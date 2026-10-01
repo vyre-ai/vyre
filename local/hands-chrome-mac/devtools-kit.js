@@ -96,3 +96,16 @@ export function realisticFrameTree(tree, kids) {
     return { frameTree: prune(n, true) };
   };
 }
+
+/**
+ * The page navigates its main frame: the sticky guard (what judges a call's leftovers until then) ends and Fetch and pausing go off. For tests that assert the restore.
+ * @param {ReturnType<typeof makeCtx>} k @param {number} [tab]
+ */
+export async function navigateAway(k, tab = 1) {
+  const c = /** @type {any} */ (k.ctx);
+  if (!c.frames) c.frames = { list: async () => [{ index: 0, how: "top", frameId: "TOP", readable: true, origin: "https://app.example.com", url: "https://app.example.com/" }] };
+  const list = await c.frames.list(tab);
+  const top = list.find((/** @type {any} */ f) => f.how === "top") || { frameId: "TOP" };
+  k.push(tab, "Network.requestWillBeSent", { requestId: "nav-away", loaderId: "nav-away", type: "Document", frameId: top.frameId, documentURL: "https://app.example.com/next", request: { url: "https://app.example.com/next", method: "GET", headers: {} } });
+  await new Promise(r => setTimeout(r, 30));
+}

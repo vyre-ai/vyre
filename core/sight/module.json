@@ -9,11 +9,11 @@
   "requires": [],
   "does": {
     "tools": [
-      "sight.targets",
-      "sight.now",
-      "sight.watch",
-      "sight.frame",
-      "sight.steps"
+      { "name": "sight.targets", "reach": "anyone" },
+      { "name": "sight.now", "reach": "anyone" },
+      { "name": "sight.watch", "reach": "anyone" },
+      { "name": "sight.frame", "reach": "anyone" },
+      { "name": "sight.steps", "reach": "anyone" }
     ]
   },
   "watches": {

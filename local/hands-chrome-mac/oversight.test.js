@@ -178,3 +178,34 @@ test("voice: a live phrase is shown, and only a final phrase reaches the agent, 
   assert.equal(os.guard("kit", AGENT).interjection, "skip the phone number");
   assert.equal(os.guard("kit", AGENT).interjection, undefined, "once");
 });
+
+test("oversight: a finished run emits chrome.finished {agent, run, ok}; a stop emits it with ok false; a run that was never planned emits nothing on stop", () => {
+  /** @type {any[]} */ const got = [];
+  const o = createOversight({ emit: (/** @type {string} */ type, /** @type {any} */ p) => got.push({ type, ...p }) });
+  o.plan("kit", [{ id: "1", text: "read" }], { thread: "t-7" });
+  o.finish("kit");
+  const fin = got.filter(e => e.type === "chrome.finished");
+  assert.equal(fin.length, 1);
+  assert.deepEqual([fin[0].agent, fin[0].run, fin[0].ok], ["kit", "t-7", true]);
+  o.plan("kit", [{ id: "1", text: "read" }], { thread: "t-8" });
+  o.finish("kit", { ok: false });
+  assert.equal(got.filter(e => e.type === "chrome.finished").pop().ok, false);
+  o.plan("kit", [{ id: "1", text: "read" }], { thread: "t-9" });
+  o.stop({ by: "esc" });
+  const last = got.filter(e => e.type === "chrome.finished").pop();
+  assert.deepEqual([last.run, last.ok, last.stopped], ["t-9", false, true]);
+});
+
+test("oversight: stop, resume, interject and pause take an optional run: the active run or nothing, never another", () => {
+  const { os } = rig();
+  os.plan("kit", STEPS, { thread: "t-A" });
+  os.plan("pax", STEPS, { thread: "t-B" });
+  // the active run is the one that planned last
+  assert.throws(() => os.interject({ text: "hi", run: "t-A" }), { code: "not_found" });
+  assert.doesNotThrow(() => os.interject({ text: "hi", run: "t-B" }));
+  assert.doesNotThrow(() => os.interject({ text: "again" }), "omitted means the active run");
+  assert.throws(() => os.interject({ text: "x", run: "nope" }), { code: "not_found" });
+  assert.throws(() => os.pause({ run: "t-A" }), { code: "not_found" });
+  assert.throws(() => os.stop({ run: "t-A" }), { code: "not_found" });
+  return os.stop({ run: "t-B" }).then(() => { assert.throws(() => os.resume({ run: "t-A" }), { code: "not_found" }); assert.doesNotThrow(() => os.resume({ run: "t-B" })); });
+});

@@ -527,17 +527,18 @@ test("doctor: finds the main process of each running browser and when it started
   assert.deepEqual(runningBrowsers("win32", ps), []);
 });
 
-test("site knowledge in standalone is off until the person turns it on, and then needs no server", async t => {
+test("site knowledge in standalone is on by default (the user's ruling, 1 Oct 2026), needs no server, and stops when the person turns it off", async t => {
   const dataDir = tmp(t);
   const runtime = await createRuntime({ dataDir, sockPath: path.join(dataDir, "run", "chrome.sock"), log: () => {}, chrome: { extensionOrigin: null } });
   t.after(() => runtime.stop());
   const put = async () => (await runtime.call("memory.site.put", { origin: "https://app.example.com", patch: { key: "https://app.example.com", controls: [{ id: "c1", page: "/w", role: "button", selector: { strategy: "identifier", identifier: "save" }, identifierVisits: ["a", "b"] }] } }));
-  assert.equal((await put()).data.accepted, false, "off by default");
-  assert.ok(!fs.existsSync(path.join(dataDir, "sites")), "nothing written");
-  const { writeConfig } = await import("./trace.js");
-  writeConfig(dataDir, { learn: true });
-  assert.equal((await put()).data.accepted, true);
+  assert.equal((await put()).data.accepted, true, "on by default");
   assert.equal((await runtime.call("memory.site.get", { origin: "https://app.example.com" })).data.origin.controls[0].selector.identifier, "save");
+  const { writeConfig } = await import("./trace.js");
+  writeConfig(dataDir, { learn: false });
+  const off = await put();
+  assert.equal(off.data.accepted, false, "off when the person turns it off");
+  assert.match(JSON.stringify(off.data.refused), /learning is off/);
 });
 
 test("the visit window for the two-visit evidence is floored at 5 minutes unless a test flag is on", async () => {

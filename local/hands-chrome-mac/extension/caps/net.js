@@ -160,7 +160,7 @@ async function enableSession(ctx, t, session) {
 /** Every child session the tab has now gets capture. Cheap when nothing is new. @param {any} ctx @param {TabNet} t */
 export function syncSessions(ctx, t) {
   const kids = typeof ctx.cdp.children === "function" ? ctx.cdp.children(t.tab) : [];
-  const fresh = kids.filter((/** @type {any} */ k) => isGuardTarget(k) && !t.sessions.has(k.sessionId));
+  const fresh = kids.filter((/** @type {any} */ k) => isGuardTarget(k) && !t.sessions.has(k.sessionId) && !(/** @type {any} */ (t).closed && /** @type {any} */ (t).closed.has(k.sessionId)));
   for (const k of fresh) { t.sessions.add(k.sessionId); (t.sessionTypes || (t.sessionTypes = new Map())).set(k.sessionId, String(k.type || "")); }
   return Promise.all(fresh.map((/** @type {any} */ k) => enableSession(ctx, t, k.sessionId)));
 }
@@ -242,7 +242,10 @@ function probeNetwork(eg, method, p, session) {
 function handle(ctx, t, method, p, session) {
   { const egP = /** @type {any} */ (t).egress; if (egP && egP.nonce && /^Network\.(requestWillBeSent|responseReceived|loadingFailed)$/.test(method)) probeNetwork(egP, method, p, session); }
   if (method === "Target.attachedToTarget") {
-    { const eg0 = /** @type {any} */ (t).egress; if (eg0) (eg0.attached || (eg0.attached = [])).length < 12 && eg0.attached.push({ type: String(p.targetInfo?.type || ""), url: String(p.targetInfo?.url || "").slice(0, 60), wait: !!p.waitingForDebugger, guardTarget: isGuardTarget(p.targetInfo), known: t.sessions.has(p.sessionId), from: session ? "child" : "top" }); }
+    { const eg0 = /** @type {any} */ (t).egress; if (eg0 && eg0.live && p.sessionId) (eg0.kidSessions || (eg0.kidSessions = new Map())).set(p.sessionId, String(p.targetInfo?.type || ""));
+      // Under a sticky guard a worker made from a Blob or a data: URL and attached after the call returned is the script's most likely (a slow runner starts one late): it joins the guarded children.
+      const st0 = /** @type {any} */ (t).sticky; if (!eg0 && st0 && p.sessionId && p.targetInfo && p.targetInfo.type === "worker" && /^(blob|data):/.test(String(p.targetInfo.url || ""))) { st0.kids.set(p.sessionId, "worker"); } }
+    { const eg0 = /** @type {any} */ (t).egress; if (eg0 && eg0.live) eg0.lateChildren = (eg0.lateChildren || 0) + 1; if (eg0) (eg0.attached || (eg0.attached = [])).length < 12 && eg0.attached.push({ type: String(p.targetInfo?.type || ""), url: String(p.targetInfo?.url || "").slice(0, 60), wait: !!p.waitingForDebugger, guardTarget: isGuardTarget(p.targetInfo), known: t.sessions.has(p.sessionId), from: session ? "child" : "top" }); }
     if (p.sessionId && isGuardTarget(p.targetInfo) && !t.sessions.has(p.sessionId)) {
       t.sessions.add(p.sessionId);
       (t.sessionTypes || (t.sessionTypes = new Map())).set(p.sessionId, String(p.targetInfo?.type || ""));
@@ -265,7 +268,10 @@ function handle(ctx, t, method, p, session) {
     }
     return;
   }
-  if (method === "Target.detachedFromTarget") { if (p.sessionId) t.sessions.delete(p.sessionId); return; }
+  if (method === "Target.detachedFromTarget") {
+    if (p.sessionId) { t.sessions.delete(p.sessionId); if (/** @type {any} */ (t).closed) /** @type {any} */ (t).closed.delete(p.sessionId); const st = /** @type {any} */ (t).sticky; if (st) st.kids.delete(p.sessionId); }
+    return;
+  }
   if (method === "Network.requestWillBeSent") {
     const key = keyOf(session, p.requestId);
     const old = t.recs.get(key);
@@ -279,6 +285,7 @@ function handle(ctx, t, method, p, session) {
     // A document load is a navigation (a tab or a frame): if it goes somewhere blind, forget the
     // buffer now, before anything else can be read from it. The built-in list decides here at once;
     // the person's own blind list is asked right after.
+    if (t.sticky && !session && p.type === "Document" && p.loaderId && String(p.loaderId) === String(p.requestId)) void clearStickyIfTop(ctx, t, p.frameId);
     if (p.type === "Document" && p.request?.url) {
       const u = String(p.request.url);
       if (blindUrl(u)) { purge(t, session); return; }
@@ -292,6 +299,12 @@ function handle(ctx, t, method, p, session) {
     if (/** @type {any} */ (t).egress) {
       /** @type {any} */ (r).guarded = true;
       try { const o = new URL(String(r.url)).origin; if (o && o !== "null" && !/** @type {any} */ (t).egress.allowed.has(o)) (t.denied || (t.denied = new Set())).add(o); } catch { /* not a URL */ }
+    }
+    if ((/** @type {any} */ (t)).evalTag && p.initiator && p.initiator.stack) {
+      // Does a script this tab's guarded calls compiled sit anywhere in the stack that started the request (including the async parents of a timer or a promise)?
+      let st = p.initiator.stack, hops = 0, hit = false;
+      while (st && hops++ < 8 && !hit) { for (const f of st.callFrames || []) if (String(f.url || "").includes(/** @type {any} */ (t).evalTag)) { hit = true; break; } st = st.parent; }
+      if (hit) /** @type {any} */ (r).tagged = true;
     }
     r.size = weigh(r);
     t.recs.set(r.id, r);
@@ -524,6 +537,30 @@ async function stopRequest(send, id, reason) {
   return stopped;
 }
 
+/** The pseudo-guard for a request judged after the call returned, or null when the request is not the script's. @param {any} t @param {any} p @param {string|undefined} session */
+/** A command that must not hold the call: it answers within `ms` or is given up on (the answer, if it comes, is ignored). @param {any} promise @param {number} ms */
+/** Run first in every document made while a guard is up (see egressGuard). */
+const NO_WORKERS_SRC = `(() => { const no = function () { throw new Error("Vyre held this: a script may not start a worker"); }; for (const k of ["Worker", "SharedWorker"]) { try { Object.defineProperty(window, k, { value: no, configurable: false, writable: false }); } catch (e) {} } try { if (navigator.serviceWorker) navigator.serviceWorker.register = no; } catch (e) {} })();`;
+
+/** A breadcrumb of what the guard last did, for the harness to read when a call hangs. @param {any} t @param {string} what */
+const mark = (t, what) => { try { (t.trail || (t.trail = [])).push([Date.now() % 1000000, what]); if (t.trail.length > 40) t.trail.shift(); } catch { /* */ } };
+
+const bounded = (promise, ms = 500) => Promise.race([Promise.resolve(promise).catch(() => {}), new Promise(res => setTimeout(res, ms))]);
+
+async function stickyJudge(t, p, session) {
+  const st = t.sticky;
+  let judge = !!(session && st.kids.has(session));
+  if (!judge && p.networkId && st.tag) {
+    // Network.requestWillBeSent carries the initiator stack and is joined to this pause by networkId; give it a moment to arrive first.
+    let rec = t.recs.get(keyOf(session, p.networkId));
+    for (let i = 0; !rec && i < 20; i++) { await new Promise(res => setTimeout(res, 5)); rec = t.recs.get(keyOf(session, p.networkId)); }
+    judge = !!(rec && /** @type {any} */ (rec).tagged);
+  }
+  if (!judge) return null;
+  st.judged = (st.judged || 0) + 1;
+  return st.pseudo || (st.pseudo = { allowed: st.allowed, first: st.first, blocked: [], decisions: [], sticky: true, depth: 1 });
+}
+
 async function paused(ctx, t, p, session) {
   const id = p.requestId;
   let judged = false;
@@ -531,7 +568,10 @@ async function paused(ctx, t, p, session) {
   try {
     // While a guarded script runs, nothing it does may reach an origin that is not this page's own or
     // one the page already talks to (fetch, XHR, beacons, images, scripts, navigation all pass here).
-    const eg = /** @type {any} */ (t).egress;
+    let eg = /** @type {any} */ (t).egress;
+    // AFTER a guarded call has returned: a request that a script of that call started (its initiator stack names the eval's sourceURL: a timer, a promise chain) and every request of a child
+    // that attached while the guard was up is still judged, against the allowed set as it stood when the call returned, until the page navigates. Everything else is continued.
+    if (!eg && t.sticky) eg = await stickyJudge(t, p, session);
     if (eg) {
       eg.pausedCount = (eg.pausedCount || 0) + 1;
       // The guard's own readiness probe: a request for a nonce path on a frame's own origin. Proof that Fetch is live in that frame. Stopped, not counted as the script's.
@@ -658,6 +698,7 @@ export async function egressGuard(ctx, tab, frame = null, opts = {}) {
   // and gets the small-request budget in paused(). A frame the script runs in is named by the caller, so a page's third-party iframe never becomes first party by loading.
   eg.first = new Set([...eg.allowed].filter(o => prov[o] === "tab"));
   if (frame && frame.origin && !(t.denied && t.denied.has(frame.origin))) eg.first.add(frame.origin);
+  if (!eg.noFetch) (/** @type {any} */ (t)).evalTag = (/** @type {any} */ (t)).evalTag || "vyre-eval-" + Math.random().toString(36).slice(2, 10) + Date.now().toString(36);
   if (eg.depth === 0 && ctx.dnr) {
     const hosts = [...eg.allowed].map(o => { try { return new URL(o).hostname; } catch { return ""; } }).filter(Boolean);
     // New WebSockets: only the FIRST PARTY's host (any port; ws and wss), never a third party's. Existing sockets are not touched by any of this.
@@ -677,7 +718,7 @@ export async function egressGuard(ctx, tab, frame = null, opts = {}) {
   // (measured in CI). Two layers instead: a declarativeNetRequest session rule for this tab (every frame, no page cooperation,
   // set above) and the page shim in outbound.js for the plain forms, which also reports what it refused.
   // New children start PAUSED while the guard is up: interception goes on before they run a line. If the tab would not accept that, the guard says so (a frame could start unpaused).
-  if (eg.depth === 1 && !eg.noFetch && ctx.cdp && typeof ctx.cdp.setPause === "function") { const okPause = await ctx.cdp.setPause(tab, true); if (!okPause) eg.pauseWhy = "a new frame could start before the guard reached it"; }
+  if (eg.depth === 1 && !eg.noFetch && ctx.cdp && typeof ctx.cdp.setPause === "function") { const okPause = await Promise.race([ctx.cdp.setPause(tab, true), new Promise(res => setTimeout(() => res(false), 2500))]); if (!okPause) eg.pauseWhy = "a new frame could start before the guard reached it"; }
   const failed = eg.noFetch ? [] : await syncFetch(ctx, t);
   eg.failedSessions = failed || [];
   // A child frame that would not take the interception is a way out: the script does not run, and the guard is taken down again.
@@ -687,7 +728,7 @@ export async function egressGuard(ctx, tab, frame = null, opts = {}) {
   }
   // PROOF OF LIFE: the interception is confirmed live in the frame the script will run in (an Image and a fetch to an unroutable host are paused) or the script does not run.
   if (!eg.noFetch && !(await probeGuard(ctx, t, eg, frame))) {
-    if (--eg.depth <= 0) { const rule = eg.rule; t.egress = null; if (ctx.cdp && typeof ctx.cdp.setPause === "function") await ctx.cdp.setPause(tab, false).catch(() => {}); if (ctx.dnr) await ctx.dnr.unblock(rule ?? null); await syncFetch(ctx, t); }
+    if (--eg.depth <= 0) { const rule = eg.rule; t.egress = null; if (ctx.cdp && typeof ctx.cdp.setPause === "function") await bounded(ctx.cdp.setPause(tab, false), 2500); if (ctx.dnr) await ctx.dnr.unblock(rule ?? null); await syncFetch(ctx, t); }
     throw refuse("blocked", "the network guard could not be confirmed live in this frame (a probe request was not intercepted), so a script is not run on it" + (opts && opts.diag ? ` [diag ${JSON.stringify({ paused: eg.pausedCount || 0, seen: [...(eg.probeSeen || [])], netSeen: eg.netSeen || [], sw: [...(eg.probeSw || [])], skipped: eg.probeSkipped || 0, sessions: [...t.sessions].length, failed: eg.failedSessions || [], rule: eg.rule })}]` : ""));
   }
   // A frame a service worker controls has no Fetch interception (so no size cap or third-party budget either): it rests on the browser-level rules alone. Those must have been proven by
@@ -695,7 +736,7 @@ export async function egressGuard(ctx, tab, frame = null, opts = {}) {
   // so a script cannot send an unbounded amount to a third party on the page's list.
   if (eg.swFrames && eg.swFrames.length && !eg.noFetch) {
     const fail = async (/** @type {string} */ why) => {
-      if (--eg.depth <= 0) { const rule = eg.rule; t.egress = null; if (ctx.cdp && typeof ctx.cdp.setPause === "function") await ctx.cdp.setPause(tab, false).catch(() => {}); if (ctx.dnr) await ctx.dnr.unblock(rule ?? null); await syncFetch(ctx, t); }
+      if (--eg.depth <= 0) { const rule = eg.rule; t.egress = null; if (ctx.cdp && typeof ctx.cdp.setPause === "function") await bounded(ctx.cdp.setPause(tab, false), 2500); if (ctx.dnr) await ctx.dnr.unblock(rule ?? null); await syncFetch(ctx, t); }
       throw refuse("blocked", why);
     };
     if (!eg.dnrTested) await fail("a service worker answers this page's requests and this browser cannot test the network rules against it, so a script is not run on it");
@@ -707,17 +748,33 @@ export async function egressGuard(ctx, tab, frame = null, opts = {}) {
     eg.rule = narrow.ids;
     eg.allowed = new Set(eg.first);
   }
+  // From here on the script runs: a frame or worker that attaches now was made by it (or by the page while it ran).
+  eg.live = true; mark(t, "start:live");
+  // A same-origin frame the script makes starts with a window of its own that the page shim never saw: its Worker would be an unguarded route out. Every new document made while the guard is up
+  // gets the same refusal before any script of it runs (removed again at stop). Not used in the test-only DNR-alone mode.
+  if (!eg.noFetch && eg.depth === 1) { try { const nd = await bounded(ctx.cdp.send(tab, "Page.addScriptToEvaluateOnNewDocument", { source: NO_WORKERS_SRC })); eg.newDoc = nd && nd.identifier; } catch { /* the shim and the closing of a worker at return remain */ } }
   let done = false;
   return {
     // "partial" when the browser-level rule could not be set: only the plain-form page shim stands for WebSockets and beacons.
     contained: eg.contained || (ctx.dnr ? "full" : "partial"), why: eg.containedWhy,
+    /** The sourceURL the caller puts on the script it runs, so a request it starts later names it in its initiator stack. */
+    tag: eg.noFetch ? "" : /** @type {any} */ (t).evalTag,
     /** The origins the script may reach: for the page-level shim, a second layer beside the browser-level guard. */
     allowed: [...eg.allowed],
     /** Everything needed to prove the path of a leak: where each allowed origin came from, every request the guard judged, and which child sessions took the interception. */
     diag: () => ({ paused: eg.pausedCount || 0, probe: [...(eg.probeSeen || [])], allowed: { ...prov }, decisions: (eg.decisions || []).slice(0, 40), sessions: [...t.sessions].map(k => ({ session: String(k).slice(-6), fetch: !(eg.failedSessions || []).includes(k) })), denied: [...denied] }),
     async stop() {
       if (done) return [];
-      done = true;
+      done = true; mark(t, "stop:begin");
+      // A BARRIER, not a clock: a worker or frame the script made is announced to us by the browser (Target.attachedToTarget) and may still be on its way when the script returns. A command answered
+      // by the browser process queues behind every event the browser has already sent, so what the script created before it returned has attached by the time these answer.
+      if (eg.depth <= 1 && !eg.noFetch) {
+        await bounded(ctx.cdp.send(tab, "Target.getTargetInfo", {}));
+        await bounded(ctx.cdp.send(tab, "Runtime.evaluate", { expression: "1", returnByValue: true }));
+        await new Promise(r => setTimeout(r, 0));
+        if (eg.newDoc) await bounded(ctx.cdp.send(tab, "Page.removeScriptToEvaluateOnNewDocument", { identifier: eg.newDoc }));
+        mark(t, "stop:barrier-done");
+      }
       // A request judged blocked whose failRequest never took is tried once more now, while Fetch is still on: once it is off the request would be released to the network.
       for (const sr of (eg.stuck || []).splice(0)) {
         const send2 = (/** @type {string} */ m, /** @type {any} */ x) => (sr.session ? ctx.cdp.send(t.tab, m, x, sr.session) : ctx.cdp.send(t.tab, m, x));
@@ -725,18 +782,36 @@ export async function egressGuard(ctx, tab, frame = null, opts = {}) {
         if (ok) for (const b of eg.blocked) if (b.leaked && !b.retried) { b.leaked = false; b.retried = true; break; }
       }
       const blocked = eg.blocked.splice(0);
-      /** @type {any} */ (t).lastGuard = { paused: eg.pausedCount || 0, blocked: blocked.slice(0, 8), decisions: (eg.decisions || []).slice(0, 40), failedSessions: eg.failedSessions || [], noFetch: !!eg.noFetch, rule: eg.rule, failed: eg.failed || 0, enableErrors: eg.enableErrors || [], noFetchTargets: eg.noFetchTargets || 0, neutralized: eg.neutralized || 0, leftPaused: eg.leftPaused || 0, swFrames: eg.swFrames || [], attached: eg.attached || [] }; // read back by the test harness only (net.list under trust.diag)
+      /** @type {any} */ (t).lastGuard = { paused: eg.pausedCount || 0, blocked: blocked.slice(0, 8), decisions: (eg.decisions || []).slice(0, 40), failedSessions: eg.failedSessions || [], noFetch: !!eg.noFetch, rule: eg.rule, failed: eg.failed || 0, enableErrors: eg.enableErrors || [], noFetchTargets: eg.noFetchTargets || 0, closedWorkers: eg.closedWorkers || 0, neutralized: eg.neutralized || 0, leftPaused: eg.leftPaused || 0, swFrames: eg.swFrames || [], attached: eg.attached || [] }; // read back by the test harness only (net.list under trust.diag)
       // A frame or worker that started during the script and could not be guarded is reported like a leak: it MAY have sent requests.
       if (eg.failed) blocked.push({ method: "GUARD", origin: "stopped: a frame could not be guarded", stopped: true });
       if (eg.pauseWhy && !blocked.length) blocked.push({ method: "GUARD", origin: eg.pauseWhy, leaked: true });
       if (eg.depth <= 1) { for (const [key, r] of [...t.recs]) { if ((/** @type {any} */ (t).denied || new Set()).has(docOrigin(r.url))) t.recs.delete(key); } }
       if (--eg.depth <= 0) {
-        const rule = eg.rule; t.egress = null;
-        if (ctx.cdp && typeof ctx.cdp.setPause === "function") await ctx.cdp.setPause(tab, false).catch(() => {});
+        const rule = eg.rule;
+        // THE CLOCK-FREE RULE. The call has returned, but what it started has not stopped: a timer, a promise chain, a worker or a frame it made. From here until the page navigates, a request whose
+        // initiator stack names the eval's sourceURL, and every request of a child that attached while the guard was up, is still judged against the allowed set as it stood now (frozen); Fetch
+        // stays on for that, and so does pausing new children at birth, so a worker that attaches late is caught before its first line. While a worker lives the tab-less DNR rule stays up too.
+        if (!eg.noFetch && /** @type {any} */ (t).evalTag) {
+          const prev = /** @type {any} */ (t).sticky;
+          const kids = new Map(prev ? prev.kids : []);
+          for (const [k, v] of (eg.kidSessions || [])) {
+            if (!t.sessions.has(k)) continue;
+            // Chrome has no Fetch interception on a dedicated worker, and the browser rules cannot tell a worker's request from the page's: a worker the script made does not outlive the call.
+            if (/worker/.test(String(v))) { eg.closedWorkers = (eg.closedWorkers || 0) + 1; await bounded(ctx.cdp.send(tab, "Runtime.evaluate", { expression: "self.close()", returnByValue: true }, k)); t.sessions.delete(k); (/** @type {any} */ (t).closed || (/** @type {any} */ (t).closed = new Set())).add(k); }
+            else kids.set(k, v);
+          }
+          /** @type {any} */ (t).sticky = { tag: /** @type {any} */ (t).evalTag, allowed: new Set(eg.allowed), first: new Set(eg.first), kids, hosts: (eg.dnrArgs && eg.dnrArgs.initiatorHosts) || (prev ? prev.hosts : []) };
+        }
+        t.egress = null; mark(t, "stop:egress-null");
+        if (ctx.cdp && typeof ctx.cdp.setPause === "function") await bounded(ctx.cdp.setPause(tab, false), 2500);
         // A child that could not be guarded was held paused; it starts running now, and the browser-level rules stay up while it does (a worker's first fetch runs within milliseconds of its release).
         if (eg.failed) await new Promise(r => setTimeout(r, 400));
+        mark(t, "stop:pause-done");
         if (ctx.dnr) await ctx.dnr.unblock(rule ?? null);
+        mark(t, "stop:dnr-off");
         await syncFetch(ctx, t);
+        mark(t, "stop:syncfetch-done");
       }
       return blocked;
     },
@@ -744,11 +819,26 @@ export async function egressGuard(ctx, tab, frame = null, opts = {}) {
 }
 
 /** Re-declare the Fetch patterns from the guard and the rules that exist, on the top session and every child session, or switch Fetch off everywhere when none do. @param {any} ctx @param {TabNet} t */
+/** End the sticky guard: the page navigated away from the scripts it was watching. @param {any} ctx @param {any} t */
+async function clearSticky(ctx, t) {
+  const st = t.sticky; if (!st) return;
+  t.sticky = null;
+  if (!t.egress) { if (ctx.cdp && typeof ctx.cdp.setPause === "function") await bounded(ctx.cdp.setPause(t.tab, false), 2500); await syncFetch(ctx, t); }
+}
+/** A main-frame navigation ends it; a sub-frame's document load does not. @param {any} ctx @param {any} t @param {string} frameId */
+async function clearStickyIfTop(ctx, t, frameId) {
+  try {
+    const list = ctx.frames && typeof ctx.frames.list === "function" ? await ctx.frames.list(t.tab) : [];
+    const top = list.find((/** @type {any} */ f) => f.how === "top");
+    if (top && String(top.frameId) === String(frameId)) await clearSticky(ctx, t);
+  } catch { /* the frame list is gone: the next navigation tries again */ }
+}
+
 async function syncFetch(ctx, t) {
   /** @type {string[]} */ const none = [];
   /** @type {(m: string, x: any, session?: string) => Promise<any>} */
   const send = (m, x, session) => (session ? ctx.cdp.send(t.tab, m, x, session) : ctx.cdp.send(t.tab, m, x));
-  const guardOn = /** @type {any} */ (t).egress && !/** @type {any} */ (t).egress.noFetch;
+  const guardOn = (/** @type {any} */ (t).egress && !/** @type {any} */ (t).egress.noFetch) || /** @type {any} */ (t).sticky;
   if (!guardOn && !t.rules.size) {
     const kids = [...t.sessions];
     if (t.fetchOn) {
@@ -774,7 +864,7 @@ async function syncFetch(ctx, t) {
   /** @type {string[]} */ const failed = [];
   // A worker that was already running when the guard went up is the page's own and cannot be reached by the script (new ones are refused by the shim and paused at birth).
   const workerSessions = new Set((typeof ctx.cdp.children === "function" ? ctx.cdp.children(t.tab) : []).filter((/** @type {any} */ c) => /worker/.test(String(c.type))).map((/** @type {any} */ c) => c.sessionId));
-  await Promise.all(kids.map(k => Promise.resolve(send("Fetch.enable", arg, k)).catch((/** @type {any} */ e) => { if (!/not found|no session|closed|detached|gone|target/i.test(String(e && e.message || e)) && !workerSessions.has(k)) failed.push(k); })));
+  await Promise.all(kids.map(k => Promise.race([Promise.resolve(send("Fetch.enable", arg, k)), new Promise((_, rej) => setTimeout(() => rej(new Error("timed out")), 1500))]).catch((/** @type {any} */ e) => { if (!/not found|no session|closed|detached|gone|target/i.test(String(e && e.message || e)) && !workerSessions.has(k)) failed.push(k); })));
   return failed;
 }
 
@@ -867,7 +957,7 @@ const ops = {
     const all = [...t.recs.values()].filter(r => tier(r.url) !== "blind").filter(m);
     const frames = all.some(r => r.frame) ? await frameList(ctx, tab) : [];
     const rows = all.slice(-limit).map(r => redact.request({ ...summary(r), ...frameIndex(frames, r) }));
-    return { count: rows.length, matched: all.length, buffered: t.recs.size, requests: rows, ...(trust.diag === true && /** @type {any} */ (t).lastGuard ? { lastGuard: /** @type {any} */ (t).lastGuard } : {}) };
+    return { count: rows.length, matched: all.length, buffered: t.recs.size, requests: rows, ...(trust.diag === true && /** @type {any} */ (t).lastGuard ? { lastGuard: /** @type {any} */ (t).lastGuard } : {}), ...(trust.diag === true ? { trail: /** @type {any} */ (t).trail || [] } : {}), ...(trust.diag === true ? { sticky: /** @type {any} */ (t).sticky ? { kids: [...(/** @type {any} */ (t).sticky.kids)], judged: /** @type {any} */ (t).sticky.judged || 0, hosts: /** @type {any} */ (t).sticky.hosts || [], allowed: [...(/** @type {any} */ (t).sticky.allowed)] } : null } : {}) };
   },
 
   async "net.get"(args, ctx) {

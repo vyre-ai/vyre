@@ -19,11 +19,11 @@
   },
   "computers.giveback": {
    "module": "computers",
-   "why": "pending"
+   "why": "the assistant is an mcp caller and the owner's way to these from chat (computers ownSurface exempts it); reach person admits only the person's surfaces and devices, so it would lose them. Agents are refused in code (ownSurface) and the presence floor still applies."
   },
   "computers.takeover": {
    "module": "computers",
-   "why": "pending"
+   "why": "the assistant is an mcp caller and the owner's way to these from chat (computers ownSurface exempts it); reach person admits only the person's surfaces and devices, so it would lose them. Agents are refused in code (ownSurface) and the presence floor still applies."
   },
   "gate.reject": {
    "module": "gate",
@@ -77,14 +77,6 @@
    "module": "settings",
    "why": "pending"
   },
-  "term.attach": {
-   "module": "term",
-   "why": "pending"
-  },
-  "term.open": {
-   "module": "term",
-   "why": "pending"
-  },
   "vault.device.join": {
    "module": "vault",
    "why": "callers list in code, narrower than person: it is callers list in code (cli, local): no model caller"
@@ -92,10 +84,6 @@
   "vault.vaults.create": {
    "module": "vault",
    "why": "callers list in code, narrower than person: it is callers list in code (cli, local): no model caller"
-  },
-  "voice.speak": {
-   "module": "voice",
-   "why": "pending"
   }
  }
 }

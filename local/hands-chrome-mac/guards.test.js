@@ -5,7 +5,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { passwordFieldScript } from "./extension/shared/guards.js";
 import dt from "./extension/caps/devtools.js";
-import { makeCtx } from "./devtools-kit.js";
+import { navigateAway, makeCtx } from "./devtools-kit.js";
 import { T } from "./test-support/trust.js";
 
 /** A fake element/root just deep enough for the script. */
@@ -96,7 +96,8 @@ test("egress guard: a fetch to a fresh origin carrying localStorage is failed an
   assert.deepEqual(failed, ["beacon", "evil", "img"]);
   assert.deepEqual(cont, ["data", "known", "own"]);
   assert.ok(k.calls("Fetch.enable").length >= 1);
-  assert.ok(k.calls("Fetch.disable").length >= 1, "Fetch is switched off again when the script ends");
+  await navigateAway(k, 3);
+  assert.ok(k.calls("Fetch.disable").length >= 1, "Fetch is switched off again once the page navigates (the sticky guard ends)");
 });
 
 test("egress guard: asked lifts it, and a script that reaches only known origins returns its value", async () => {
