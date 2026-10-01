@@ -37,7 +37,8 @@ const I = {
   modules: ic('<rect x="4" y="12" width="9" height="9" rx="1.4"/><rect x="15" y="12" width="9" height="9" rx="1.4"/><rect x="9.5" y="4" width="9" height="9" rx="1.4"/><path d="M12 4v-.01M17 4v-.01"/>'),
   people: ic('<circle cx="14" cy="9.5" r="4"/><path d="M5.5 23c.8-4.6 4-7 8.5-7s7.7 2.4 8.5 7"/>'),
 };
-const COPY_SVG = '';
+const STAR = `<svg class="star-ic" width="14" height="14" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M8 .25a.75.75 0 0 1 .673.418l1.882 3.815 4.21.612a.75.75 0 0 1 .416 1.279l-3.046 2.97.719 4.192a.75.75 0 0 1-1.088.791L8 12.347l-3.766 1.98a.75.75 0 0 1-1.088-.79l.72-4.194L.818 6.374a.75.75 0 0 1 .416-1.28l4.21-.611L7.327.668A.75.75 0 0 1 8 .25Z"/></svg>`;
+const REPO = 'https://github.com/vyre-ai/vyre';
 
 // ---------- layout ----------
 const NAV = [
@@ -50,7 +51,7 @@ function nav(slug) {
   const links = NAV.map(([t, h]) => {
     const cur = (slug === 'direction' && h === '/direction/') ? ' aria-current="page"' : '';
     return `<a href="${h}"${cur}>${t}</a>`;
-  }).join('') + '<a href="https://github.com/vyre-ai/vyre">GitHub</a>';
+  }).join('') + `<a href="${REPO}">GitHub</a><a class="star" href="${REPO}" aria-label="Star Vyre on GitHub">${STAR}<span>Star on GitHub</span></a>`;
   return `<a class="skip" href="#main">Skip to content</a>
 <header class="nav">
   <div class="wrap">
@@ -73,7 +74,7 @@ const FOOT = `<footer class="foot">
       </div>
       <div><p class="fh">Devices</p><ul><li><a href="/mac/">Mac</a></li><li><a href="/windows/">Windows</a></li><li><a href="/linux/">Linux server</a></li><li><a href="/phone/">Phone</a></li></ul></div>
       <div><p class="fh">Learn</p><ul><li><a href="/direction/">Direction</a></li><li><a href="/start/">Get started</a></li><li><a href="/setup/">Setup</a></li><li><a href="https://github.com/vyre-ai/vyre/blob/main/docs/known-gaps.md">Known gaps</a></li></ul></div>
-      <div><p class="fh">Open source</p><ul><li><a href="https://github.com/vyre-ai/vyre">GitHub</a></li><li><a href="https://github.com/vyre-ai/vyre/releases">Releases</a></li><li><a href="https://github.com/vyre-ai/vyre/blob/main/LICENSE">License</a></li><li><a href="https://github.com/vyre-ai/vyre#readme">Docs</a></li></ul></div>
+      <div><p class="fh">Open source</p><ul><li><a href="https://github.com/vyre-ai/vyre">GitHub</a></li><li><a class="star-link" href="https://github.com/vyre-ai/vyre">${STAR}Star on GitHub</a></li><li><a href="https://github.com/vyre-ai/vyre/releases">Releases</a></li><li><a href="https://github.com/vyre-ai/vyre/blob/main/LICENSE">License</a></li><li><a href="https://github.com/vyre-ai/vyre#readme">Docs</a></li></ul></div>
       <div><p class="fh">For machines</p><ul><li><a href="/llms.txt">llms.txt</a></li><li><a href="/llms-full.txt">llms-full.txt</a></li><li><a href="/agents.md">agents.md</a></li><li><a href="/sitemap.xml">Sitemap</a></li></ul></div>
     </div>
     <div class="foot-base"><span>Vyre ${VERSION} &middot; Apache 2.0</span><span>No trackers. No cookies. One stylesheet, one script.</span></div>
@@ -461,7 +462,7 @@ const homeBody = `
 <section class="closing" aria-labelledby="end-h">
   <div class="wrap">
     <h2 id="end-h" class="display">Let’s get <b>to work.</b></h2>
-    <div class="btn-row"><a class="btn btn-fill" href="/setup/">Set up Vyre</a><a class="btn" href="https://github.com/vyre-ai/vyre">Read the source</a></div>
+    <div class="btn-row"><a class="btn btn-fill" href="/setup/">Set up Vyre</a><a class="btn" href="${REPO}">${STAR}Star on GitHub</a><a class="btn" href="${REPO}">Read the source</a></div>
   </div>
 </section>`;
 
@@ -657,7 +658,7 @@ const DIR = `
     <h2 id="road-h" class="lbl" style="margin-bottom:28px">The road from ${VERSION}</h2>
     <div class="road">
       <div class="stop now rv"><p class="ver">${VERSION} &middot; Out now</p><h3>Your own command center</h3><p>One session across Claude, Codex, Grok and OpenRouter. Teammates, watchers, a vault, memory with sources, Vyre Lumen on Mac and Windows, and a phone app. Signed releases and updates.</p></div>
-      <div class="stop rv"><p class="ver">0.2.1</p><h3>Hardening</h3><p>The first release after 0.2.0 makes what is there sturdier.</p><ul><li><b>Touch ID</b>For sensitive terminal actions.</li><li><b>Fixes</b>Safari and interactive pages, a signature-checked first Windows install.</li><li><b>Real devices</b>Passes on real Macs, PCs and phones.</li></ul></div>
+      <div class="stop rv"><p class="ver">0.2.1</p><h3>Hardening</h3><p>The first release after 0.2.0 makes what is there sturdier.</p><ul><li><b>Touch ID</b>For sensitive terminal actions.</li><li><b>Fixes</b>Safari and interactive pages, a signature-checked first Windows install.</li><li><b>Real devices</b>Passes on real Macs, PCs and phones.</li><li><b>Star Vyre from the app</b>A star button sits at the top of the Deck, and disappears once you’ve starred.</li></ul></div>
       <div class="stop rv"><p class="ver">0.2.2</p><h3>Sessions</h3><p>Sessions become something you can trust with long work, and share.</p><ul><li><b>Version history</b>For every project, without git.</li><li><b>One writer per file</b>Two agents cannot overwrite each other.</li><li><b>Memory that carries</b>Vyre owns the memory, so it carries across resets and model switches.</li><li><b>Two models at once</b>Give one task to two, and see each answer in its own block.</li><li><b>Group chats</b>People and agents are equal participants, and a chat can have no AI at all.</li><li><b>Wink cards</b>A scannable identity for every person and agent.</li><li><b>One screen kit</b>Lists, records, boards, timelines, forms and the composer, drawn the same everywhere.</li></ul></div>
       <div class="stop rv"><p class="ver">0.2.3</p><h3>Scale</h3><p>More of your work, running at once.</p><ul><li><b>Many sessions on one server</b>With a scheduler that gives each person a fair share.</li><li><b>Your own computer pitches in</b>Your Mac or PC lends spare compute, running only your own work, while it is awake.</li><li><b>Chrome for many agents</b>Parallel tabs and runs.</li><li><b>Idle sessions sleep</b>When memory runs low, and wake when you write.</li></ul></div>
       <div class="stop rv"><p class="ver">0.2.5</p><h3>Spaces</h3><p>A space is yours, and a space can be shared.</p><ul><li><b>Your space</b>Holds all your devices and compute. You reach every one of them from your own Vyre as if it were one.</li><li><b>Shared spaces</b>For teams, with quotas by grant. Each person keeps their own space, and shares only what they put in the shared one.</li><li><b>Add any machine</b>A server or cloud machine plugs in like a brick.</li></ul></div>
@@ -822,7 +823,7 @@ Vyre is free and open source. You pay your AI providers (Claude, Codex, Grok, Op
 Sessions, memory and the vault stay on your machines. vyre.run holds your name's DNS record and runs the relay (relay.vyre.run), which carries setup progress and phone pairing, end-to-end encrypted. Prompts go to your AI provider the way they would from that provider's own app.
 
 ## Direction (not a promise of dates)
-- 0.2.1 Hardening: Touch ID for sensitive terminal actions, fixes, real-device passes.
+- 0.2.1 Hardening: Touch ID for sensitive terminal actions, fixes, real-device passes, and a star button at the top of the Deck that disappears once you have starred Vyre.
 - 0.2.2 Sessions: version history for every project without git, one writer per file, memory that Vyre owns and carries across resets and model switches, giving one task to two models, group chats where people and agents are equal participants, Wink identity cards, one screen kit.
 - 0.2.3 Scale: many sessions on one server with a fair-share scheduler, your own computer lending spare compute to run only your own work, Chrome for many agents, idle sessions that sleep when memory runs low.
 - 0.2.5 Spaces: your space holds all your devices and compute, shared spaces for teams with quotas by grant, add any server or cloud machine.
