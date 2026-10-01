@@ -316,7 +316,7 @@ export default {
         // assistant started can tell whose it is; null reads as "account not identified".
         const PRIVACY_ON = "Privacy mode on: xAI does not keep this account's sessions; Grok cannot make video.";
         const PRIVACY_OFF = "Privacy mode off: xAI keeps this account's sessions and may train on them; Grok can make video.";
-        const rows = await Promise.all(listed.map(async a0 => { const a = a0.provider === "grok" && !a0.synthetic ? { ...a0, privacy_label: a0.privacy ? PRIVACY_ON : PRIVACY_OFF } : a0;
+        const rows = await Promise.all(listed.map(async a0 => { const a = a0.provider === "grok" && !a0.synthetic ? { ...a0, privacy_label: a0.privacy ? PRIVACY_ON : PRIVACY_OFF, privacy_note: "Change it in Grok's /privacy settings; Vyre shows what you chose." } : a0;
           return a.kind === "login" && !a.synthetic && a.signed_in_at != null ? { ...a, identity: await identityOf(a) } : a; }));
         // Vault item names go to people, modules and the assistant; another agent sees the accounts without them.
         const seesItems = !meta || !meta.agent || /** @type {any} */ (meta).agentKind === "assistant";

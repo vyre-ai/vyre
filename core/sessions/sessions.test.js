@@ -1248,6 +1248,7 @@ for (const driver of ["cli", "sdk"]) {
     const row = async id => (await w.tool("sessions.accounts.list", {})).data.find(a => a.id === id);
     assert.equal((await row(g.id)).privacy, true, "new accounts keep privacy mode on");
     assert.match((await row(g.id)).privacy_label, /^Privacy mode on: xAI does not keep this account's sessions; Grok cannot make video\.$/);
+    assert.equal((await row(g.id)).privacy_note, "Change it in Grok's /privacy settings; Vyre shows what you chose.");
     assert.equal((await row(c.id)).privacy, null, "only Grok has the setting");
     assert.equal((await w.tool("sessions.accounts.set", { account: g.id, privacy: false })).data.privacy, false);
     assert.equal((await row(g.id)).privacy, false);
