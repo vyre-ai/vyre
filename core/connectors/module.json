@@ -16,7 +16,7 @@
       "connectors.connect",
       "connectors.connect.finish",
       "connectors.connect.cancel",
-      "connectors.disconnect",
+      "connectors.disconnect", "connectors.scope",
       "connectors.calendar.today",
       "connectors.mention.search",
       "connectors.mention.resolve",
@@ -27,7 +27,8 @@
     "emits": [
       "connectors.connected",
       "connectors.connect-failed",
-      "connectors.disconnected"
+      "connectors.disconnected",
+      "connectors.scope-changed"
     ]
   },
   "shows": {
