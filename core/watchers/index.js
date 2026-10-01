@@ -89,10 +89,10 @@ export default {
       input: { type: "object", required: ["name"], properties: { name: str, since: {}, event: { type: "object" } } },
       run: async ({ name, since = null, event = null }, meta = {}) => {
         const { caller } = meta;
-        await mustSee(meta, name);
         // A dry run on a hook.received hands the watcher a webhook's body, which an agent may
         // not read (hooks.delivery refuses agents); the watcher's logs and items would show it.
         if (event && /(?:^|[\s:])agent:/.test(String(caller || ""))) throw new Error("a dry run on a real event is the owner's; an agent dry-runs without event");
+        await mustSee(meta, name);
         return rt.test(name, { since, event });
       },
     });
