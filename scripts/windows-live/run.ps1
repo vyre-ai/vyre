@@ -45,6 +45,18 @@ function Cdp($page, $expr) {
 }
 function WaitPage($pat, $secs) { $end = (Get-Date).AddSeconds($secs); while ((Get-Date) -lt $end) { $p = PageLike $pat; if ($p) { return $p }; Start-Sleep 2 }; return $null }
 
+# Fallback when DevTools gives no answer for a window: press a button by its visible name through UI Automation.
+Add-Type -AssemblyName UIAutomationClient, UIAutomationTypes
+function UiaPress($name) {
+  $cond = New-Object System.Windows.Automation.PropertyCondition ([System.Windows.Automation.AutomationElement]::NameProperty), $name
+  $found = [System.Windows.Automation.AutomationElement]::RootElement.FindAll([System.Windows.Automation.TreeScope]::Descendants, $cond)
+  Say "uia: $($found.Count) element(s) named '$name'"
+  foreach ($e in $found) {
+    try { ($e.GetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern)).Invoke(); Say "uia: pressed '$name'"; return $true } catch { Say "uia: could not invoke: $($_.Exception.Message)" }
+  }
+  $false
+}
+
 # ---- 1. install with the real install script, from a local release ------------------------------------
 $rel = Join-Path $env:RUNNER_TEMP "rel"; New-Item -ItemType Directory -Force -Path $rel | Out-Null
 Copy-Item $env:VYRE_INSTALLER (Join-Path $rel "VyreSetup.exe")
@@ -119,14 +131,17 @@ if ($first) {
   if (-not $confirm) { Say ("first-run page state: err='{0}' status='{1}'" -f (Cdp $first "document.getElementById('err').textContent"), (Cdp $first "document.getElementById('seed').textContent")) }
   Result "confirm-window" ($null -ne $confirm) $(if ($confirm) { "appeared" } else { "no confirm window in 120 s" })
   if ($confirm) {
+    Say ("pages now: " + ((Pages | ForEach-Object { "$($_.type) $($_.url) $($_.id)" }) -join " ; "))
+    Say ("cdp 1+1 on confirm: " + (Cdp $confirm "1+1"))
     $detail = $null
-    for ($i = 0; $i -lt 20 -and -not $detail; $i++) { Start-Sleep 2; $d = Cdp $confirm "document.getElementById('detail').textContent"; if ($d) { $detail = (Cdp $confirm "document.getElementById('title').textContent") + " | " + $d } }
+    for ($i = 0; $i -lt 3 -and -not $detail; $i++) { Start-Sleep 2; $d = Cdp $confirm "document.getElementById('detail').textContent"; if ($d) { $detail = (Cdp $confirm "document.getElementById('title').textContent") + " | " + $d } }
     Say "confirm shows: $detail"
     Result "confirm-shows-host" ($detail -match "vyre-lab.invalid" -and $detail -match "not on vyre.run") $detail
     Shot "03-confirm"
     # Press Pair; if the window is still there a few seconds later, press again (the click can land before the page is ready).
     for ($i = 0; $i -lt 6; $i++) {
-      Cdp $confirm "document.getElementById('yes').click(); 'clicked'" | Out-Null
+      $r = Cdp $confirm "document.getElementById('yes').click(); 'clicked'"
+      if (-not $r) { UiaPress "Pair" | Out-Null }
       Start-Sleep 5
       if (-not (PageLike "*confirm.html*")) { Say "confirm window closed after the click"; break }
     }
