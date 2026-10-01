@@ -45,7 +45,17 @@ jobs:
           sudo aa-remove-unknown || true
       - name: the installer's wall steps (what vyre up --system runs as root)
         if: matrix.mode == 'profile'
-        run: sudo env "PATH=$PATH" node --input-type=module -e 'import { wallSteps } from "./lib/sandbox/index.js"; import * as s from "./core/names/system.js"; const steps = wallSteps(); console.log(JSON.stringify(steps.map(x => x.do + " " + (x.path || (x.argv || []).join(" "))))); if (!steps.some(x => x.do === "write")) throw new Error("the installer wrote no profile"); await s.apply(steps, { out: console.log });'
+        run: |
+          cat > /tmp/wall-install.mjs <<'JS'
+          import { wallSteps } from "/home/runner/work/vyre/vyre/lib/sandbox/index.js";
+          import * as s from "/home/runner/work/vyre/vyre/core/names/system.js";
+          const steps = wallSteps();
+          console.log(JSON.stringify(steps.map(x => x.do + " " + (x.path || (x.argv || []).join(" ")))));
+          if (!steps.some(x => x.do === "write")) throw new Error("the installer wrote no profile");
+          await s.apply(steps, { out: console.log });
+          JS
+          sed -i "s#/home/runner/work/vyre/vyre#$GITHUB_WORKSPACE#g" /tmp/wall-install.mjs
+          sudo env "PATH=$PATH" node /tmp/wall-install.mjs
       - name: a loopback alias in the tailnet range
         if: runner.os == 'Linux'
         run: sudo ip addr add 100.100.100.100/32 dev lo
@@ -60,5 +70,11 @@ jobs:
       - name: uninstall removes the profile
         if: matrix.mode == 'profile'
         run: |
-          sudo env "PATH=$PATH" node --input-type=module -e 'import { wallUninstallSteps } from "./lib/sandbox/index.js"; import * as s from "./core/names/system.js"; await s.apply(wallUninstallSteps(), { out: console.log });'
+          cat > /tmp/wall-uninstall.mjs <<'JS'
+          import { wallUninstallSteps } from "WS/lib/sandbox/index.js";
+          import * as s from "WS/core/names/system.js";
+          await s.apply(wallUninstallSteps(), { out: console.log });
+          JS
+          sed -i "s#WS#$GITHUB_WORKSPACE#g" /tmp/wall-uninstall.mjs
+          sudo env "PATH=$PATH" node /tmp/wall-uninstall.mjs
           test ! -e /etc/apparmor.d/vyre-bwrap
