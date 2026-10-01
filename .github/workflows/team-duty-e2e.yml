@@ -1,0 +1,39 @@
+# A teammate's standing duty end to end, against the real product on a hosted runner: a person turns it on, the real watchers
+# module writes it, the real wall (bubblewrap with the installer's own profile) runs it once, and the item it files lands in the
+# project; a model (mcp) cannot turn it on (core/team/duty-e2e.test.js). Never the person's Mac.
+name: team-duty-e2e
+on:
+  workflow_dispatch:
+  push:
+    branches: ["work/teammates-0.2", "work/teammates"]
+    paths: ["core/team/**", "core/watchers/**", "lib/sandbox/**", ".github/workflows/team-duty-e2e.yml"]
+permissions:
+  contents: read
+jobs:
+  duty:
+    name: linux-profile
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: bubblewrap, with the restriction on and no profile
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y bubblewrap
+          sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=1
+          sudo rm -f /etc/apparmor.d/bwrap /etc/apparmor.d/bwrap-userns-restrict /etc/apparmor.d/vyre-bwrap
+      - name: the product's own installer (sudo vyre up --system) loads the profile
+        run: |
+          PKG=$(npm pack --silent --pack-destination /tmp | tail -1)
+          sudo env "PATH=$PATH" npm install -g --no-audit --no-fund --omit=dev "/tmp/$PKG"
+          sudo env "PATH=$PATH" vyre up --system --user runner
+          test -e /etc/apparmor.d/vyre-bwrap
+      - run: npm ci --omit=dev || npm install --omit=dev --no-audit --no-fund
+      - name: the duty, end to end
+        env:
+          VYRE_WALL_CHECK: "1"
+          VYRE_EXPECT_WALL: bwrap
+        run: node --test --test-reporter=spec core/team/duty-e2e.test.js
