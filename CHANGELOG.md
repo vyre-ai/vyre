@@ -4,6 +4,10 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### chat: replies wear the provider badge
+
+- Each reply's `thread.text` now carries `provider` and `model` (sessions' event tag, on every driver), and the session core keeps them on the reply. The header that starts an assistant run wears the badge at its avatar's lower right (55 percent of it, with a ring in the ground colour) and names "Provider, model" beside the name. A reply whose event says nothing, from an older box, gets no badge and no guess; a later reply that does fills it in. The badge's accessible name is "Written by Codex, GPT-5". Account labels for two accounts of one provider, and the switch line, wait on the box's wording.
+
 #### chat: static artifacts run no script, interactive ones say so
 
 - The artifact frame's sandbox is now empty for a static kind (doc, report, dashboard, diagram, deck, image, video, audio) and `allow-scripts` only when the box marks the artifact `interactive` (a page or an app; an older box that says nothing is read by kind). Never allow-same-origin, top-navigation, popups, forms or downloads. An interactive artifact shows one fixed line under the origin line, "Runs its own code and can reach the internet", with no dialog. When it navigates itself away (the frame is already blanked), the Deck tells the box that it happened with `artifacts.activity.log {id, kind: "navigated-away"}`; the destination cannot be read, so none is sent.

@@ -85,7 +85,7 @@ import { toolDetail } from "./tool-detail.js";
  *   images?: number|import("./composer-state.js").Attachment[] }} UserItem
  * @typedef {{ key: string, kind: "steer", uuid: string|null, user: string|null, step: number|null, turn: string|null, pending: boolean,
  *   taken?: boolean, at?: number, seq?: number }} SteerItem
- * @typedef {{ key: string, kind: "text"|"reasoning", message: string|null, block: number, text: string, streaming: boolean, at?: number, seq?: number }} TextItem
+ * @typedef {{ key: string, kind: "text"|"reasoning", message: string|null, block: number, text: string, streaming: boolean, at?: number, seq?: number, provider?: string, model?: string|null }} TextItem
  * @typedef {{ key: string, kind: "tool", call: string, name: string, status: "running"|"completed"|"failed"|"canceled", summary?: string,
  *   error?: string|boolean, input?: any, output?: string|null, detail?: import("./tool-detail.js").ToolDetail, duration_ms?: number|null,
  *   patch?: any, images?: import("./composer-state.js").Attachment[], at?: number, seq?: number,
@@ -790,7 +790,9 @@ function onText(s, p, at, e, out) {
   }
   if (!item) {
     const block = typeof p.block === "number" ? p.block : nextBlock(s, kind, message);
-    item = /** @type {TextItem} */ ({ key: `${prefix}:${message}:${block}`, kind, message, block, text: "", streaming: true, ...(at !== undefined ? { at } : {}) });
+    // Who wrote it, when the box says (every reply's event carries provider and model): taken once, never guessed.
+    item = /** @type {TextItem} */ ({ key: `${prefix}:${message}:${block}`, kind, message, block, text: "", streaming: true, ...(at !== undefined ? { at } : {}),
+      ...(typeof p.provider === "string" && p.provider ? { provider: p.provider } : {}), ...(typeof p.model === "string" && p.model ? { model: p.model } : {}) });
     insert(s, item);
   }
   if (delta !== null) item.text += delta;

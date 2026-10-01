@@ -918,3 +918,13 @@ test("thread.plan is one row kept where it first appeared and updated in place; 
   applyEvent(s, { type: "thread.plan", at: 4, payload: { items: [] } });
   assert.equal(/** @type {any} */ (s.items[0]).items.length, 3);
 });
+
+test("a reply takes provider and model from its event once, and a reply whose event says nothing carries none", () => {
+  const s = createSession(T);
+  applyEvent(s, { type: "thread.text", at: 1, payload: { message: "m1", block: 0, delta: "hi", provider: "codex", model: "gpt-5" } });
+  applyEvent(s, { type: "thread.text", at: 2, payload: { message: "m1", block: 0, delta: " there", provider: "claude", model: "opus" } });
+  applyEvent(s, { type: "thread.text", at: 3, payload: { message: "m2", block: 0, delta: "old box" } });
+  const [a, b] = /** @type {any[]} */ (s.items);
+  assert.deepEqual([a.provider, a.model], ["codex", "gpt-5"]);
+  assert.deepEqual([b.provider, b.model], [undefined, undefined]);
+});

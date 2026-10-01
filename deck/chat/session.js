@@ -275,7 +275,9 @@ export function mountSession(container, opts) {
   /** Who the replies are from, as an avatar (js/avatars.js threadAvatar): the project's tile, a chat's draft tile, an agent, a teammate or the assistant. */
   const whoAv = (size = 24, cls = "av-agent msg-av cv-av") => threadAvatar({ agent: record.current?.agent, project: record.current?.project || opts.project || null, thread },
     { size, cls, title: agentName() });
-  const headFor = ts => headRow(agentName(), ts, isAssistant({ agent: record.current?.agent }, names), whoAv());
+  const headFor = (ts, prov = null) => headRow(agentName(), ts, isAssistant({ agent: record.current?.agent }, names), whoAv(), prov);
+  /** Who wrote a run, from its first reply that says: provider and model as the box tagged the event, else nothing. */
+  const provOf = (/** @type {any} */ r) => { for (const k of r.type === "run" ? r.keys : [r.key]) { const it = /** @type {any} */ (S.byKey.get(k)); if (it?.provider) return { provider: it.provider, model: it.model || null }; } return null; };
   /** This page is the one on screen, and the tab is visible. */
   const visible = () => {
     try { if (typeof document !== "undefined" && document.visibilityState === "hidden") return false; } catch {}
@@ -1032,7 +1034,7 @@ export function mountSession(container, opts) {
         day(at);
         const rk = r.key;
         usedHeads.add(rk);
-        want.push({ key: "h:" + rk, kind: "head", make: () => { let hd = headEls.get(rk); if (!hd) { hd = headFor(at); headEls.set(rk, hd); } return hd; } });
+        want.push({ key: "h:" + rk, kind: "head", make: () => { let hd = headEls.get(rk); if (!hd) { hd = headFor(at, provOf(r)); headEls.set(rk, hd); } else if (!hd.querySelector?.(".pmark")) hd.setProv?.(provOf(r)); return hd; } });
       }
       if (side) prevSide = side;
       if (r.type === "run") {

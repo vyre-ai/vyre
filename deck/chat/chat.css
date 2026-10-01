@@ -949,3 +949,11 @@ pre code { display: block; font-family: var(--mono); font-size: 13px; line-heigh
 .cv-plan-step[data-status="running"] .cv-plan-mark { border-color: var(--signal); background: var(--signal); }
 .cv-plan-step[data-status="done"] .cv-plan-mark { border-color: transparent; color: var(--signal); }
 .cv-plan-step[data-status="done"] .cv-plan-text { color: var(--label); text-decoration: line-through; }
+
+/* Which AI wrote a run (provider-badge.md): the badge at the avatar's lower right with a ring in the ground colour, "Provider, model" beside the name. */
+.msg-av-wrap { position: relative; display: inline-flex; flex-shrink: 0; }
+.msg-av-wrap .pmark-on-av { position: absolute; right: -4px; bottom: -4px; box-shadow: 0 0 0 2px var(--bg), inset 0 0 0 1px var(--rule-strong); }
+.msg-prov { font-size: 12px; line-height: 16px; color: var(--label); }
+.msg-prov:empty { display: none; }
+.cv-head .msg-av-wrap { margin-right: 4px; }
+.cv-head .msg-av-wrap .msg-av { margin-right: 0; }
