@@ -532,12 +532,19 @@ test("vyre updater remove: units a person cannot write are removed through sudo,
   fs.chmodSync(units, 0o555);
   fs.writeFileSync(path.join(b.FAKE, "bin", "sudo"), `#!/bin/sh\necho "$@" >>"$FAKE/sudo"\nexit 1\n`, { mode: 0o755 });
   let r;
-  try { r = /** @type {any} */ (await b.run(["updater", "remove"], { VYRE_SYSTEMD_DIR: units })); } finally { fs.chmodSync(units, 0o755); }
+  try { r = /** @type {any} */ (await b.run(["updater", "remove"], { VYRE_SYSTEMD_DIR: units, VYRE_ROOT_UID: String(process.getuid()) })); } finally { fs.chmodSync(units, 0o755); }
   assert.notEqual(r.code, 0, `a failed removal is not a success: ${r.out}`);
   assert.match(r.out, /still on this server/, r.out);
   assert.match(r.out, /sudo .* updater remove/);
   assert.match(fs.readFileSync(path.join(b.FAKE, "sudo"), "utf8"), /updater remove/, "it asked for root");
   assert.ok(fs.existsSync(path.join(units, "vyre-update.path")), "nothing was claimed removed");
+  // A wrapper that is not root's is never handed to sudo: the manual command is printed instead.
+  fs.rmSync(path.join(b.FAKE, "sudo"));
+  fs.chmodSync(units, 0o555);
+  try { r = /** @type {any} */ (await b.run(["updater", "remove"], { VYRE_SYSTEMD_DIR: units, VYRE_ROOT_UID: "0" })); } finally { fs.chmodSync(units, 0o755); }
+  assert.notEqual(r.code, 0);
+  assert.match(r.out, /still on this server/);
+  assert.ok(!fs.existsSync(path.join(b.FAKE, "sudo")), "sudo was not asked to run a wrapper root does not own");
 });
 
 test("compose: vyred gets only its own request folder (writable) and the state folder read-only", () => {

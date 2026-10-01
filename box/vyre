@@ -674,7 +674,10 @@ updater() {
       # The units and the ready file are root's: a person's uninstall asks for root, as install does, and says so when it cannot.
       if [ "$(id -u)" != 0 ] && [ ! -w "$units" ]; then
         { [ -f "$units/$un.path" ] || [ -f "$units/$un.service" ]; } || return 0
-        if [ -t 0 ]; then sudo "$WRAPPER" updater remove; else sudo -n "$WRAPPER" updater remove; fi && return 0
+        # Root runs the wrapper only when it is root's and nobody else can write it (VYRE_WRAPPER can point anywhere).
+        if own_ok "$WRAPPER" "${VYRE_ROOT_UID:-0}" strict; then
+          if [ -t 0 ]; then sudo "$WRAPPER" updater remove; else sudo -n "$WRAPPER" updater remove; fi && return 0
+        fi
         echo "vyre: the update units $un.path and $un.service are still on this server; remove them with: sudo $WRAPPER updater remove" >&2
         return 1
       fi
