@@ -43,6 +43,14 @@ async function prompt(id, blocks) {
       out({ method: "session/update", params: { sessionId: session, update: { sessionUpdate: "tool_call_update", toolCallId: tc.toolCallId, status: "completed", content: [{ type: "content", content: { type: "text", text: "ok" } }] } } });
       say("Ran it.");
     } else say("I was not allowed to.");
+  } else if (t === "imagecodex") {
+    // Codex's image generation: a completed tool call whose content carries the picture (a 1x1 PNG) and the prompt it revised.
+    const tc = { toolCallId: `exec-${crypto.randomUUID().slice(0, 8)}`, kind: "other", title: "Image generation", status: "in_progress", rawInput: {} };
+    out({ method: "session/update", params: { sessionId: session, update: { sessionUpdate: "tool_call", ...tc } } });
+    out({ method: "session/update", params: { sessionId: session, update: { sessionUpdate: "tool_call_update", toolCallId: tc.toolCallId, status: "completed", content: [
+      { type: "content", content: { type: "text", text: "Revised prompt: a red circle" } },
+      { type: "content", content: { type: "image", mimeType: "image/png", data: "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGP4z8DwHwAFAAH/q842iQAAAABJRU5ErkJggg==", uri: "/h/.codex/generated_images/s/c.png" } }] } } });
+    say("drew it");
   } else if (t === "mcpask") {
     // codex-acp 2.1.0's approval for an MCP tool: kind execute, no title, no rawInput, _meta.is_mcp_tool_approval.
     const r = await call("session/request_permission", { sessionId: session, toolCall: { toolCallId: `call-${crypto.randomUUID().slice(0, 8)}`, kind: "execute", status: "pending" }, _meta: { is_mcp_tool_approval: true }, options: [

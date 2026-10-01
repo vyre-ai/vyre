@@ -157,6 +157,7 @@ export function planItems(list) {
  */
 export function translate(m) {
   /** @type {{ events: { type: string, payload: any }[], session?: string, model?: string|null, message?: string, ask?: any, cancel?: string, delta?: string, block?: number, limited?: boolean, turn?: any,
+   *   media?: { mime?: string, data_b64?: string, file?: string, source: string, prompt?: string }[],
    *   providerMeta?: { models?: { id: string, label?: string }[], plan?: string },
    *   folded?: string[], blocks?: number, used?: number, window?: number, commands?: string[], reasoning?: string, task?: any,
    *   limit?: { status: string, kind: string|null, resets_at: number|null, utilization?: number } }} */
@@ -213,6 +214,7 @@ export function translate(m) {
 
   if (m.type === "user" && m.message && Array.isArray(m.message.content) && !m.parent_tool_use_id) {
     for (const b of m.message.content) {
+      if (b.type === "tool_result" && Array.isArray(b.vyre_media) && b.vyre_media.length) (out.media ||= []).push(...b.vyre_media.slice(0, 4));
       if (b.type === "tool_result") out.events.push({ type: "thread.tool", payload: { id: b.tool_use_id, call: b.tool_use_id, phase: "done", status: b.is_error ? "failed" : "completed", error: Boolean(b.is_error) } });
     }
     return out;

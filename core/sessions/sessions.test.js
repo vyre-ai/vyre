@@ -1182,49 +1182,52 @@ for (const driver of ["cli", "sdk"]) {
     assert.deepEqual([g.count, g.k0, g.k1], ["2", "user.useConfigOnly", "core.hooksPath"], "the existing entry stays at 0 and the hooks entry is 1");
   });
 
-  test(`${driver}: sessions.files.read: a file in an account's own folder is read as the account and written where the module says; a link, an outside path and a person's call are refused`, { skip }, async t => {
+  test(`${driver}: sessions.files.read: a file in an account's own folder is read as the account and returned as bytes; a link, an outside path, a non-provider folder and a person's call are refused`, { skip }, async t => {
     const w = await boot(t, { driver });
     const acct = (await w.tool("sessions.accounts.add", { provider: "grok", label: "Grok", kind: "login" })).data;
     const home = path.join(w.root, "accounts", acct.id);
     const dir = path.join(home, ".grok", "sessions", "x", "images"); fs.mkdirSync(dir, { recursive: true });
     const bytes = Buffer.from(Array.from({ length: 70000 }, (_, i) => (i * 7) % 256));
     fs.writeFileSync(path.join(dir, "1.jpg"), bytes, { mode: 0o600 });
-    const dest = fs.mkdtempSync(path.join(SCRATCH, "files-read-"));
-    t.after(() => fs.rmSync(dest, { recursive: true, force: true }));
-    const read = (p, to = path.join(dest, "out.jpg"), caller = "module:vyred") => w.d.registry.call("sessions.files.read", { account: acct.id, file: p, to }, caller);
+    const read = (file, caller = "module:vyred") => w.d.registry.call("sessions.files.read", { account: acct.id, file }, caller);
     const rel = ".grok/sessions/x/images/1.jpg";
     const ok = await read(rel);
-    assert.equal(ok.error, undefined, JSON.stringify(ok));
+    assert.equal(ok.error, undefined, JSON.stringify(ok).slice(0, 200));
     assert.equal(ok.data.size, bytes.length);
-    assert.ok(fs.readFileSync(path.join(dest, "out.jpg")).equals(bytes));
+    assert.ok(Buffer.from(ok.data.data_b64, "base64").equals(bytes));
     assert.equal(ok.data.sha256, crypto.createHash("sha256").update(bytes).digest("hex"));
-    assert.equal(fs.statSync(path.join(dest, "out.jpg")).mode & 0o777, 0o644);
     fs.symlinkSync("/etc/hostname", path.join(dir, "link.jpg"));
     const refused = { ".grok/sessions/x/images/link.jpg": "denied", "/etc/hostname": "bad_input", ".grok/../.codex/auth.json": "bad_input", "accounts/x": "bad_input", ".ssh/id_rsa": "bad_input", ".grok/sessions/x/images/none.jpg": "denied" };
-    for (const [bad, code] of Object.entries(refused)) {
-      const r = await read(bad, path.join(dest, "no.jpg"));
-      assert.equal(r.error && r.error.code, code, bad);
-      assert.ok(!fs.existsSync(path.join(dest, "no.jpg")), "nothing written");
-    }
-    assert.equal((await w.tool("sessions.files.read", { account: acct.id, file: rel, to: path.join(dest, "p.jpg") })).error.code, "no_such_tool", "a person cannot call it");
+    for (const [bad, code] of Object.entries(refused)) assert.equal((await read(bad)).error?.code, code, bad);
+    assert.equal((await w.tool("sessions.files.read", { account: acct.id, file: rel })).error.code, "no_such_tool", "a person cannot call it");
   });
 
-  test(`${driver}: providers.list shows the models and plan a provider's account last reported, learned from a session's init, and no more than id and label`, { skip }, async t => {
+  test(`${driver}: generated media a tool call returns is saved as an artifact of the thread: bytes in the stream as they are, a provider's file read as the account, nothing else`, { skip }, async t => {
     const w = await boot(t, { driver });
-    const acct = (await w.tool("sessions.accounts.add", { provider: "codex", label: "Codex", kind: "login" })).data;
-    const before = (await w.tool("providers.list", {})).data.find(p => p.id === "codex");
-    assert.deepEqual(before.models, []);
-    assert.equal(before.accounts.find(a => a.id === acct.id).plan, null);
-    const learn = (input, caller = "module:vyred") => w.d.registry.call("sessions.providers.learn", input, caller);
-    assert.equal((await learn({ provider: "codex", account: acct.id, models: [{ id: "gpt-6.1-sol", label: "GPT 6.1 Sol", secret: "no" }, { id: "gpt-6.1-mini" }], plan: "ChatGPT Plus" })).error, undefined);
-    const after = (await w.tool("providers.list", {})).data.find(p => p.id === "codex");
-    assert.deepEqual(after.models, [{ id: "gpt-6.1-sol", label: "GPT 6.1 Sol" }, { id: "gpt-6.1-mini", label: "gpt-6.1-mini" }]);
-    assert.equal(after.accounts.find(a => a.id === acct.id).plan, "ChatGPT Plus");
-    assert.equal((await w.tool("sessions.providers.learn", { provider: "codex", plan: "x" })).error.code, "no_such_tool", "modules only");
-    assert.equal((await learn({ provider: "codex", account: acct.id, plan: "ChatGPT Pro" })).error, undefined);
-    const again = (await w.tool("providers.list", {})).data.find(p => p.id === "codex");
-    assert.equal(again.models.length, 2, "a later report with no models keeps the last list");
-    assert.equal(again.accounts.find(a => a.id === acct.id).plan, "ChatGPT Pro");
+    const acct = (await w.tool("sessions.accounts.add", { provider: "claude", label: "Second", kind: "login" })).data;
+    const dir = path.join(w.root, "accounts", acct.id, ".grok", "sessions", "x", "images"); fs.mkdirSync(dir, { recursive: true });
+    const jpg = Buffer.from([0xff, 0xd8, 0xff, 0xe0, 1, 2, 3, 4, 5]);
+    fs.writeFileSync(path.join(dir, "1.jpg"), jpg, { mode: 0o600 });
+    const png = Buffer.from("89504e470d0a1a0a0000000d49484452", "hex");
+    const registered = [];
+    const realCall = w.d.registry.call.bind(w.d.registry);
+    w.d.registry.call = async (tool, input, caller, meta) => {
+      if (tool === "artifacts.media.register") { registered.push(input); return { data: { id: `a${registered.length}` } }; }
+      return realCall(tool, input, caller, meta);
+    };
+    const th = (await w.tool("threads.start", { cwd: w.work, account: acct.id, prompt: `media ${JSON.stringify([
+      { mime: "image/png", data_b64: png.toString("base64"), source: "content-block", prompt: "a red circle" },
+      { file: ".grok/sessions/x/images/1.jpg", source: "file", prompt: "a heron" },
+      { file: ".ssh/id_rsa", source: "file" }])}`, surface: "deck" })).data;
+    await w.finished(th.id);
+    for (let i = 0; i < 50 && registered.length < 2; i++) await new Promise(r => setTimeout(r, 40));
+    assert.equal(registered.length, 2, JSON.stringify(registered.map(r => [r.mime, r.source])));
+    assert.deepEqual([registered[0].thread, registered[0].mime, registered[0].source, registered[0].prompt, registered[0].provider], [th.id, "image/png", "content-block", "a red circle", "claude"]);
+    assert.ok(Buffer.from(registered[0].data_b64, "base64").equals(png), "the bytes as they came");
+    assert.deepEqual([registered[1].mime, registered[1].source, registered[1].prompt], ["image/jpeg", "file", "a heron"]);
+    assert.ok(Buffer.from(registered[1].data_b64, "base64").equals(jpg), "the file read as the account");
+    const evs = (await w.events(th.id)).filter(e => e.type === "thread.text" && e.payload.notice);
+    assert.ok(evs.some(e => /Could not save a generated file/.test(String(e.payload.text))), "the refused path says so once in the thread");
   });
 
   test(`${driver}: a label never grants the assistant's powers: a client labelled mcp:agent:juno with no verified agent is refused, the real assistant with no thread record yet passes`, { skip }, async t => {

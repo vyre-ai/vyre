@@ -20,7 +20,6 @@ import { Accounts, ACCOUNTS_MIGRATION, ACCOUNTS_PENDING_MIGRATION, KINDS as ACCO
 import { Signins, LOGINS } from "./signin.js";
 import { spawnSession } from "./spawn.js";
 import { readIdentity } from "./identity.js";
-import { MAX_BYTES as MAX_READ_BYTES } from "./readfile.js";
 import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
@@ -389,11 +388,12 @@ export default {
         return accounts.bind({ id: i.id, project });
       });
 
-    // A file a provider left in an account's own folder (Grok Build's generated images are 0600 there), read as that account and written where the caller
-    // says. Internal: only Vyre's modules (artifacts, the Switchboard) call it, and `to` is theirs to choose. The read runs as the account's uid on a box.
+    // A file a provider left in an account's own folder (Grok Build's generated images are 0600 there), read as that account and returned as base64, for
+    // the Switchboard to hand to artifacts. Internal: only Vyre's modules call it. The read runs as the account's uid on a box.
+    const MEDIA_MAX = 20 * 1024 * 1024;
     ctx.tool("sessions.files.read", {
-      description: "Read one regular file from inside an account's own folder, as that account (`file` is relative to the account's HOME, under a provider's own folder such as .grok or .codex, no links, at most 100 MB), and write it to `to` (vyred's own file, mode 0644, atomically). Answers { size, sha256 }. Not a public name.", internal: true,
-      input: { type: "object", required: ["account", "file", "to"], properties: { account: str, file: str, to: str, max: { type: "integer" } } },
+      description: "Read one regular file from inside an account's own folder, as that account (`file` is relative to the account's HOME, under a provider's own folder such as .grok or .codex, no links, at most 20 MB). Answers { size, sha256, data_b64 }. Not a public name.", internal: true,
+      input: { type: "object", required: ["account", "file"], properties: { account: str, file: str } },
       run: async i => {
         const a = accounts.row(String(i.account));
         if (!a) throw Object.assign(new Error(`no account ${i.account}`), { code: "not_found" });
@@ -401,25 +401,17 @@ export default {
         // own folder (.grok, .codex) is the only place a generated file is read from, and nothing else of the HOME.
         const rel = String(i.file);
         if (path.isAbsolute(rel) || rel.includes("\0") || rel.split("/").includes("..") || !/^\.(?:grok|codex)\//.test(rel)) throw Object.assign(new Error("file must be a path under .grok or .codex in the account's folder"), { code: "bad_input" });
-        const to = path.resolve(String(i.to));
-        if (!path.isAbsolute(String(i.to))) throw Object.assign(new Error("to must be an absolute path"), { code: "bad_input" });
-        try { if (fs.lstatSync(path.dirname(to)).isSymbolicLink()) throw new Error("link"); } catch { throw Object.assign(new Error("the folder to write into must exist and not be a link"), { code: "bad_input" }); }
         const home = usesSpawner() && a.uid != null ? path.join(process.env.VYRE_ACCOUNTS_HOME || "/home/acct", String(a.uid)) : path.join(root, "accounts", String(a.id));
-        const max = Math.min(Number(i.max) || MAX_READ_BYTES, MAX_READ_BYTES);
-        const child = spawnSession(process.execPath, [fileURLToPath(new URL("./readfile.js", import.meta.url)), home, path.join(home, rel), String(max)],
+        const child = spawnSession(process.execPath, [fileURLToPath(new URL("./readfile.js", import.meta.url)), home, path.join(home, rel), String(MEDIA_MAX)],
           { cwd: home, env: { PATH: process.env.PATH, HOME: home }, ...(usesSpawner() && a.uid != null ? { account: { uid: a.uid, shared: false } } : {}) });
-        const tmp = `${to}.${crypto.randomBytes(4).toString("hex")}.part`;
-        const hash = crypto.createHash("sha256");
+        /** @type {Buffer[]} */ const chunks = [];
         let size = 0, err = "";
-        const out = fs.createWriteStream(tmp, { mode: 0o644 });
         child.stderr && child.stderr.on("data", d => { err = (err + d).slice(-300); });
-        child.stdout.on("data", d => { size += d.length; hash.update(d); });
-        child.stdout.pipe(out);
+        child.stdout.on("data", d => { size += d.length; if (size <= MEDIA_MAX) chunks.push(d); });
         const code = await new Promise(r => { child.on("close", c => r(c)); child.on("error", () => r(127)); });
-        await new Promise(r => out.end(r));
-        if (code !== 0) { try { fs.unlinkSync(tmp); } catch { /* none */ } throw Object.assign(new Error(err.trim() || "the file could not be read"), { code: "denied" }); }
-        fs.renameSync(tmp, to);
-        return { size, sha256: hash.digest("hex") };
+        if (code !== 0 || size > MEDIA_MAX) throw Object.assign(new Error(err.trim() || "the file could not be read"), { code: "denied" });
+        const bytes = Buffer.concat(chunks);
+        return { size, sha256: crypto.createHash("sha256").update(bytes).digest("hex"), data_b64: bytes.toString("base64") };
       },
     });
     ctx.tool("sessions.accounts.resolve", {

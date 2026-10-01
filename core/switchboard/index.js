@@ -479,6 +479,35 @@ export class Switchboard {
   }
 
   /**
+   * Generated media a provider's tool call returned (an image or audio block with its bytes, or a file Grok left in the account's folder) is saved as an
+   * artifact of the thread (artifacts.media.register, which keeps the bytes and the provenance). A file is read as the account by sessions.files.read.
+   * Quiet when artifacts is not here; a failure says so once in the thread, never breaks the turn.
+   * @param {string} id @param {any} rec @param {{ mime?: string, data_b64?: string, file?: string, source: string, prompt?: string }[]} media
+   */
+  async saveMedia(id, rec, media) {
+    const MIME = { jpg: "image/jpeg", jpeg: "image/jpeg", png: "image/png", webp: "image/webp", gif: "image/gif", mp4: "video/mp4", webm: "video/webm", mp3: "audio/mpeg", wav: "audio/wav", ogg: "audio/ogg", m4a: "audio/mp4" };
+    for (const m of media.slice(0, 4)) {
+      try {
+        let data = m.data_b64, mime = m.mime;
+        if (!data && m.file) {
+          if (!rec.account) continue;
+          const r = await this.deps.call("sessions.files.read", { account: rec.account, file: m.file });
+          if (r.error) throw new Error(r.error.message || r.error.code);
+          data = r.data.data_b64;
+          mime = mime || MIME[String(m.file).split(".").pop().toLowerCase()];
+        }
+        if (!data || !mime) continue;
+        const r = await this.deps.call("artifacts.media.register", { thread: id, data_b64: data, mime, source: m.source, provider: rec.provider || "claude", ...(rec.model ? { model: rec.model } : {}), ...(m.prompt ? { prompt: m.prompt } : {}) });
+        if (r.error && r.error.code === "no_such_tool") return;
+        if (r.error) throw new Error(r.error.message || r.error.code);
+      } catch (e) {
+        this.emit("thread.text", { message: "vyre", text: `Could not save a generated file as an artifact: ${String(/** @type {Error} */ (e).message).slice(0, 160)}`, done: true, notice: true }, id, rec.project);
+        return;
+      }
+    }
+  }
+
+  /**
    * A GitHub session's commit identity and hooks are its environment (github.session.env: GIT_AUTHOR_* and GIT_COMMITTER_* names and emails, and one
    * GIT_CONFIG_* entry for the hooks folder), put in the session process on every launch AND resume. {} when the project has no repo, git is older than
    * 2.31, or github is not here. Only those keys, only strings.
@@ -897,6 +926,7 @@ export class Switchboard {
     const t = translate(m, st.seen);
     const rec = this.record(id);
     const project = rec ? rec.project : null;
+    if (t.media && rec) this.saveMedia(id, rec, t.media).catch(() => {});
     if (t.providerMeta && rec && rec.provider && rec.provider !== "claude") this.deps.call("sessions.providers.learn", { provider: rec.provider, ...(rec.account ? { account: rec.account } : {}), ...t.providerMeta }).catch(() => {});
     if (t.model) this.set(id, { model: t.model, status: rec && rec.status === "starting" ? "idle" : rec ? rec.status : "idle" });
     if (t.message !== undefined) { this.flush(id, st); st.message = t.message; }

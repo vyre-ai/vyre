@@ -13,7 +13,7 @@ import { tempHome } from "../../../test/helpers.js";
 import { SCRATCH } from "../../../test/scratch.mjs";
 import { conform } from "../conformance.js";
 import { rules } from "../../harness/rules.js";
-import { projectCodexConfig, seedTampered, acpProvider, askFor } from "./acp.js";
+import { projectCodexConfig, seedTampered, acpProvider, askFor, mediaOf } from "./acp.js";
 import { seedFiles } from "../spawn.js";
 import { codexProvider } from "./codex.js";
 
@@ -568,4 +568,28 @@ test("seedFiles: a symlinked folder or file on the way is refused or replaced, a
   assert.equal(fs.readFileSync(path.join(target, "victim"), "utf8"), "keep", "the link target is untouched");
   assert.equal(fs.lstatSync(path.join(home, ".codex", "config.toml")).isSymbolicLink(), false);
   assert.equal(fs.readFileSync(path.join(home, ".codex", "config.toml"), "utf8"), "d\n");
+});
+
+test("mediaOf: Codex's image content block keeps its bytes and revised prompt, Grok's ImageGen result names the file under .grok, anything else is none", () => {
+  const png = Buffer.from("89504e470d0a1a0a", "hex").toString("base64");
+  const codex = { sessionUpdate: "tool_call_update", status: "completed", content: [{ type: "content", content: { type: "text", text: "Revised prompt: a red circle" } }, { type: "content", content: { type: "image", data: png, mimeType: "image/png", uri: "/h/.codex/generated_images/s/c.png" } }] };
+  assert.deepEqual(mediaOf(codex), [{ mime: "image/png", data_b64: png, source: "content-block", prompt: "a red circle" }]);
+  const grok = { sessionUpdate: "tool_call_update", status: "completed", rawInput: { variant: "ImageGen", prompt: "a heron" }, rawOutput: { type: "ImageGen", path: "/home/acct/2001/.grok/sessions/%2Fw/abc/images/1.jpg", filename: "1.jpg" } };
+  assert.deepEqual(mediaOf(grok), [{ file: ".grok/sessions/%2Fw/abc/images/1.jpg", source: "file", prompt: "a heron" }]);
+  assert.deepEqual(mediaOf({ content: [{ type: "content", content: { type: "image", data: png, mimeType: "text/html" } }] }), [], "not an image type");
+  assert.deepEqual(mediaOf({ rawOutput: { type: "ImageGen", path: "/etc/passwd" } }), [], "not under .grok");
+  assert.deepEqual(mediaOf({ content: [{ type: "content", content: { type: "text", text: "hi" } }] }), []);
+});
+
+test("acp: a tool call that finishes with a picture reaches the Switchboard as a tool_result with vyre_media, and the bytes are not in its text", async t => {
+  const w = world(t);
+  const s = open(w);
+  await s.say("imagecodex");
+  const res = s.got.find(m => m.type === "user" && m.message.content.some(b => b.type === "tool_result" && b.vyre_media));
+  assert.ok(res, "a tool_result carried the media");
+  const b = res.message.content.find(x => x.vyre_media);
+  assert.equal(b.vyre_media[0].mime, "image/png");
+  assert.equal(b.vyre_media[0].prompt, "a red circle");
+  assert.ok(!String(b.content).includes("iVBOR"), "the bytes are not the text a model or a card reads");
+  await s.proc.stop(500);
 });

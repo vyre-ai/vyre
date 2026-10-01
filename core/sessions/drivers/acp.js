@@ -144,6 +144,30 @@ export function acpProvider(entry) {
 }
 
 /** @param {any} entry @param {any} known @param {any} o */
+/**
+ * Generated media a finished tool call carries, for the Switchboard to save as artifacts: an image or audio content block (Codex's image generation puts
+ * the bytes in the stream, with the prompt it revised), or, from Grok's image generation, the path of a file the agent wrote in the account's own folder
+ * (nothing of the image is in the stream). Only the shape is read; the file is read later, as the account, by sessions.files.read.
+ * @param {any} u a tool_call_update with a final status
+ * @returns {{ mime?: string, data_b64?: string, file?: string, source: string, prompt?: string }[]}
+ */
+export function mediaOf(u) {
+  const out = [];
+  const items = Array.isArray(u && u.content) ? u.content : [];
+  const said = items.map(c => c && c.content && c.content.type === "text" ? String(c.content.text || "") : "").find(t => /^Revised prompt:/i.test(t));
+  const prompt = said ? said.replace(/^Revised prompt:\s*/i, "").slice(0, 2000) : (u && u.rawInput && typeof u.rawInput.prompt === "string" ? u.rawInput.prompt.slice(0, 2000) : undefined);
+  for (const c of items) {
+    const x = c && c.content;
+    if (x && (x.type === "image" || x.type === "audio") && typeof x.data === "string" && /^(?:image|audio)\/[a-z0-9.+-]+$/i.test(String(x.mimeType || "")) && x.data.length < 28_000_000) out.push({ mime: String(x.mimeType).toLowerCase(), data_b64: x.data, source: "content-block", ...(prompt ? { prompt } : {}) });
+  }
+  const ro = u && u.rawOutput;
+  if (ro && ro.type === "ImageGen" && typeof ro.path === "string") {
+    const i = ro.path.indexOf("/.grok/");
+    if (i >= 0) out.push({ file: ro.path.slice(i + 1), source: "file", ...(prompt ? { prompt } : {}) });
+  }
+  return out.slice(0, 4);
+}
+
 function runAcp(entry, known, o) {
   const floor = o.floor || entry.floor || null;
   const args = typeof entry.args === "function" ? entry.args(o) : entry.args || [];
@@ -278,8 +302,10 @@ function runAcp(entry, known, o) {
   /** Whether a .codex/config.toml from the session folder up exists (set at every start). */
   let projectConfig = false;
   function toolDone(u) {
-    const body = Array.isArray(u.content) ? u.content.map(c => text(c && c.content !== undefined ? c.content : c)).join("") : "";
-    say({ type: "user", message: { content: [{ type: "tool_result", tool_use_id: String(u.toolCallId), is_error: u.status === "failed", content: body }] } });
+    // An image or audio block is media, saved by the Switchboard; its bytes are never part of the text a model or a card reads.
+    const body = Array.isArray(u.content) ? u.content.filter(c => !(c && c.content && (c.content.type === "image" || c.content.type === "audio"))).map(c => text(c && c.content !== undefined ? c.content : c)).join("") : "";
+    const media = mediaOf(u);
+    say({ type: "user", message: { content: [{ type: "tool_result", tool_use_id: String(u.toolCallId), is_error: u.status === "failed", content: body, ...(media.length ? { vyre_media: media } : {}) }] } });
   }
 
   /** A permission question: to the person as can_use_tool; the answer picks an allow_once or reject_once option. */

@@ -454,6 +454,14 @@ async function turn(prompt, uuid = null) {
     await say(text);
     return result(true, text);
   }
+  // "media <json array>": a finished tool call that returned generated media (vyre_media, as the ACP drivers put it on a tool_result), then a reply.
+  const media = /^media (\[.*\])$/s.exec(p);
+  if (media) {
+    out({ type: "assistant", message: { id: "m-media", role: "assistant", content: [{ type: "tool_use", id: "tu-media", name: "image_gen", input: {} }] } });
+    out({ type: "user", message: { role: "user", content: [{ type: "tool_result", tool_use_id: "tu-media", content: "done", vyre_media: JSON.parse(media[1]) }] } });
+    await say("made it");
+    return result(true, "made it");
+  }
   const spend = /^spend (\d+(?:\.\d+)?)$/i.exec(p);
   if (spend) { await say(`spent ${spend[1]}`); return result(true, `spent ${spend[1]}`, Number(spend[1])); }
   // A subagent (Claude Code's Agent tool), which Vyre's concurrency slots hold back when full.
