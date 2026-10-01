@@ -53,8 +53,10 @@ BRIDGE=$(ip -4 addr show docker0 | sed -n 's/.*inet \([0-9.]*\)\/.*/\1/p' | head
 printf 'FROM alpine:3.20\nRUN apk add --no-cache ca-certificates\nCOPY cosign /usr/local/bin/cosign\nCOPY ca.crt /usr/local/share/ca-certificates/vyre-test-ca.crt\nRUN update-ca-certificates\nCOPY entry.sh /entry.sh\nENTRYPOINT ["/entry.sh"]\n' >"$WORK/Dockerfile.cosign"
 printf '#!/bin/sh\necho "%s ghcr.io" >> /etc/hosts\nexec /usr/local/bin/cosign "$@"\n' "$BRIDGE" >"$WORK/entry.sh"; chmod +x "$WORK/entry.sh" "$WORK/cosign"; cp "$P/ca.crt" "$WORK/ca.crt"
 docker build -q -t vyre-cosign-test:1 -f "$WORK/Dockerfile.cosign" "$WORK" >/dev/null && rec 3-cosign-image ok "the pinned cosign binary with the test CA" || { rec 3-cosign-image false "could not build the cosign test image"; exit 1; }
-docker run -d --name vyre-testreg -p 443:5000 -v "$P:/certs:ro" -e REGISTRY_HTTP_TLS_CERTIFICATE=/certs/reg.crt -e REGISTRY_HTTP_TLS_KEY=/certs/reg.key registry:2 >/dev/null
 echo "127.0.0.1 ghcr.io" | sudo tee -a /etc/hosts >/dev/null
+# dockerd keeps the auth challenge it got from the real ghcr.io when it pulled the pinned cosign image, and would then ask our registry for a token; a restart forgets it
+sudo systemctl restart docker && sleep 3
+docker run -d --name vyre-testreg -p 443:5000 -v "$P:/certs:ro" -e REGISTRY_HTTP_TLS_CERTIFICATE=/certs/reg.crt -e REGISTRY_HTTP_TLS_KEY=/certs/reg.key registry:2 >/dev/null
 up=0; for i in $(seq 1 60); do curl -fs --cacert "$P/ca.crt" https://ghcr.io/v2/ >/dev/null 2>&1 && { up=1; break; }; sleep 1; done
 [ $up = 1 ] && rec 4-registry ok "a TLS registry answers as ghcr.io" || { rec 4-registry false "the local registry did not come up"; docker logs vyre-testreg 2>&1 | tail -3; exit 1; }
 
