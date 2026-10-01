@@ -18,7 +18,7 @@ import { execFileSync } from "node:child_process";
 export const ETC = "/etc/systemd/system";
 
 /** @typedef {{ do: "write", path: string, content: string, mode: number }
- *   | { do: "run", argv: string[], why: string, optional?: boolean }
+ *   | { do: "run", argv: string[], why: string, optional?: boolean, ifFails?: string }
  *   | { do: "mkdir", path: string, mode: number, owner: string }
  *   | { do: "remove", path: string }
  *   | { do: "note", text: string }} Step */
@@ -195,6 +195,7 @@ export async function apply(steps, { dryRun = true, out = console.log, exec = ru
         if (!step.optional) throw e;
         failed.push(step.argv.join(" "));
         out(`  (did not succeed, carrying on: ${/** @type {Error} */ (e).message.split("\n")[0]})`);
+        if (step.ifFails) out(`  ${step.ifFails}`);
       }
     }
   }

@@ -202,6 +202,7 @@ turns on exactly the code the card described; if the files change first, it asks
 
 ## What it will not do
 
+- Be turned on by Claude on its own. `watchers.create` runs for a model only when your own words asked for it, after you have seen the card; deleting, running and resuming a watcher are yours.
 - Send, post or reply to anything. A watcher reads. Anything outbound goes through you.
 - Run a watcher that changed since you saw its dry run.
 - Hand a watcher a credential at all. Vyre attaches a Vault item to the one host a watcher names under `net`, and only if the item was granted to that watcher; the watcher's code never sees the value.

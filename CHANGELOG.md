@@ -4,6 +4,19 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+- Every watchers tool names its reach (ADR 0047): reads and `watchers.pause` are anyone's (stopping
+  is the safe direction); `watchers.create` and `watchers.preset` are asked, so a model turns a
+  watcher on only when the person's own words asked for it, after the card; `watchers.resume`,
+  `watchers.delete` and `watchers.run` are the person's; `watchers.hook` is the webhook's. The duty
+  operations moved to `watchers.duty.create`, `.update`, `.delete`, `.run` and `.resume`, reach
+  modules (the teammates module's, for a duty a person turned on), so a model's asked gate never
+  stands in a teammate's way; `core/team/duties.js` calls the new names. `watchers.create` no longer
+  takes owner, when or instruction. `watchers.preset` is no longer limited to the person and the
+  assistant: asked covers a model. `core/watchers/reach.test.js` checks all of it against the real
+  registry.
+- `vyre uninstall --system`: if the AppArmor profile will not unload, it says the profile file is
+  removed but the profile may stay loaded until the next reboot.
+
 - The macOS wall is `(deny default)` with Apple's BSD baseline (`bsd.sb`) and only what node needs:
   exec of the node binary and nothing else, reads of the watcher's folder, node and its parents'
   names, no writes (but /dev/null), no signals to others, no network. A child cannot run pbpaste,

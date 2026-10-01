@@ -25,10 +25,15 @@ let cachedWall = null;
 
 const str = { type: "string" };
 
-/** Deleting or running a watcher on demand: a duty by teammates' module or the person, any other only by the person. */
+/** Deleting, running or resuming a watcher on demand is the person's (reach person); a duty is managed by the teammates module through watchers.duty.*, or by the person. */
 function owned(name, caller) {
   if (DUTY_NAME.test(String(name))) return dutyCaller(caller);
   if (!isPerson(caller)) throw Object.assign(new Error("deleting, running or resuming a watcher is the person's; an agent asks them"), { code: "denied" });
+}
+
+/** The duty tools act on duties only. */
+function dutyName(name) {
+  if (!DUTY_NAME.test(String(name))) throw Object.assign(new Error("watchers.duty.* acts on a teammate's duty (a name starting duty-)"), { code: "bad_input" });
 }
 
 /** Duties are made and changed by teammates' module, for a person who turned them on, or by the person. */
@@ -76,20 +81,26 @@ export default {
       },
     });
     ctx.tool("watchers.create", {
-      description: "Turn on a watcher exactly as it was last dry-run. Runs once now, then on its schedule. Only after the user has seen the dry run's items and agreed. With owner, when and instruction it creates a teammate's standing duty instead (teammates' call only): when is an event like thread.finished, a schedule like daily 07:00, or push gmail.",
-      input: { type: "object", required: ["name"], properties: { name: str, hash: str, project: str, owner: { type: "object" }, when: str, instruction: str, act: { type: "boolean" } } },
-      run: async (i, { caller } = {}) => {
-        if (i.owner === undefined && i.when === undefined && i.instruction === undefined) return rt.create(i.name, { hash: i.hash || null });
-        dutyCaller(caller);
-        for (const k of ["project", "owner", "when", "instruction"]) if (i[k] === undefined) throw new Error(`a duty needs ${k}`);
-        return rt.createDuty(i);
-      },
+      description: "Turn on a watcher exactly as it was last dry-run (pass the card's hash). Runs once now, then on its schedule. For a model it runs only when the person's own words asked for it, after they have seen the card.",
+      input: { type: "object", required: ["name"], properties: { name: str, hash: str } },
+      run: async (i) => rt.create(i.name, { hash: i.hash || null }),
     });
-    ctx.tool("watchers.update", {
-      description: "Change a teammate's duty: when, instruction or act. It keeps its cursor and stays on or paused as it was. Teammates' call only.",
+
+    // A teammate's standing duty is a watcher the teammates module manages for a person who turned it on (CHAT 09:21).
+    // Its own tools, reach modules, so a model's "asked" gate on watchers.create never stands in a teammate's way.
+    ctx.tool("watchers.duty.create", {
+      description: "Create and turn on a teammate's standing duty: name duty-<role>-<id>, project, owner {kind: teammate, teammate}, when (an event like thread.finished, a schedule like daily 07:00, or push gmail), instruction, act. The teammates module's call, for a duty a person turned on.",
+      input: { type: "object", required: ["name", "project", "owner", "when", "instruction"], properties: { name: str, project: str, owner: { type: "object" }, when: str, instruction: str, act: { type: "boolean" } } },
+      run: async (i, { caller } = {}) => { dutyCaller(caller); return rt.createDuty(i); },
+    });
+    ctx.tool("watchers.duty.update", {
+      description: "Change a teammate's duty: when, instruction or act. It keeps its cursor and stays on or paused as it was. The teammates module's call.",
       input: { type: "object", required: ["name"], properties: { name: str, when: str, instruction: str, act: { type: "boolean" } } },
       run: async (i, { caller } = {}) => { dutyCaller(caller); return rt.updateDuty(i); },
     });
+    ctx.tool("watchers.duty.delete", { description: "Stop and forget a teammate's duty; its folder goes and its filed items stay. The teammates module's call.", input: named, run: async ({ name }, { caller } = {}) => { dutyCaller(caller); dutyName(name); return rt.remove(name); } });
+    ctx.tool("watchers.duty.run", { description: "Run a teammate's turned-on duty now and return what happened. The teammates module's call.", input: named, run: async ({ name }, { caller } = {}) => { dutyCaller(caller); dutyName(name); return rt.run(name); } });
+    ctx.tool("watchers.duty.resume", { description: "Resume a paused duty of a teammate that a person turned on. The teammates module's call.", input: { type: "object", required: ["name"], properties: { name: str, hash: str } }, run: async ({ name, hash }, { caller } = {}) => { dutyCaller(caller); dutyName(name); return rt.resume(name, { hash: hash || null }); } });
     ctx.tool("watchers.delete", { description: "Stop and forget a watcher; a duty's folder goes too and its filed items stay.", input: named, run: async ({ name }, { caller } = {}) => { owned(name, caller); return rt.remove(name); } });
     ctx.tool("watchers.run", { description: "Run a turned-on watcher now and return what happened.", input: named, run: async ({ name }, { caller } = {}) => { owned(name, caller); return rt.run(name); } });
     ctx.tool("watchers.card", {
@@ -100,11 +111,8 @@ export default {
     ctx.tool("watchers.preset", {
       description: "Write a watcher for a common source from a few fields, left off with its card. kind \"mail\": project, credential (the Google api-credential in the vault), connection (default gmail), instruction (what counts as important, optional); files short quoted notes for the important mail a Gmail push announces. kind \"calendar\": project, credential, calendar (default primary), match (words to look for, optional), days (default 14), when (default hourly); files a note for each new or changed matching event. kind \"repo\": project, repo (owner/name), credential (a GitHub api-credential, optional for a public repo), match, only (issues, pulls or both), when (default every 30 minutes). kind \"slack\": project, credential, channel (the channel id), match, when (default every 15 minutes). kind \"feed\": project, url, match, when (default hourly). None sends or changes anything. The answer carries the grant command the person runs once, then watchers.create {name, hash} turns it on.",
       input: { type: "object", required: ["kind", "project"], properties: { kind: str, project: str, credential: str, connection: str, instruction: str, dailyUsd: { type: "number" }, calendar: str, match: { type: "array", items: str }, days: { type: "integer" }, when: str, label: str, repo: str, only: str, channel: str, url: str } },
-      run: async (i, meta = {}) => {
-        // The person, or their assistant on their word (verified agent kind, never the caller string).
-        if (!isPerson(meta.caller) && /** @type {any} */ (meta).agentKind !== "assistant") throw Object.assign(new Error("a preset watcher is set up by the person or their assistant"), { code: "denied" });
-        return rt.createPreset(i);
-      },
+      // Reach "asked": for a model it runs only on the person's own words; it writes a draft and never turns it on.
+      run: async i => rt.createPreset(i),
     });
     ctx.tool("watchers.pause", { description: "Stop a watcher running until it is resumed.", input: named, run: async ({ name }) => rt.pause(name) });
     ctx.tool("watchers.resume", { description: "Resume a paused watcher, clearing its failure count. The person's (or teammates' for a duty): an agent cannot undo a pause the person made.", input: { type: "object", required: ["name"], properties: { name: str, hash: str } }, run: async ({ name, hash }, { caller } = {}) => { owned(name, caller); return rt.resume(name, { hash: hash || null }); } });
