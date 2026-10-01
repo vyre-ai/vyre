@@ -52,3 +52,19 @@ test("card A shown, folder edited: shown still says A, and neither a yes for A n
   assert.equal(forB, `watchers.create:harlow-legal/mail-harlow@${B}`);
   assert.ok(!recorded.includes(forB), "the yes was for A, not B");
 });
+
+test("the recorder's own key is exactly what the target answers for an unchanged folder, and a pronoun several turns later records nothing", t => {
+  const home = tempHome(t);
+  const dir = path.join(home, "watchers");
+  fs.mkdirSync(path.join(dir, "mail-harlow"), { recursive: true });
+  fs.writeFileSync(path.join(dir, "mail-harlow", "watcher.json"), JSON.stringify({ name: "mail-harlow", project: "harlow-legal", schedule: "*/15 * * * *" }));
+  fs.writeFileSync(path.join(dir, "mail-harlow", "watch.js"), "export default async function watch() {}");
+  const hash = String(folder.read(dir, "mail-harlow").hash);
+  const card = { name: "mail-harlow", hash, title: "Files mail", state: "draft" };
+  const said = turnsAgo => watchersIntents("Yes, turn it on.", { project: "harlow-legal", kinds: ["mail"], watchers: [{ ...card, shownTurnsAgo: turnsAgo }] }).intents.map(i => i.to[0]);
+  const asked = createTarget({ tool: "watchers.create", input: { name: "mail-harlow", hash } }, { read: n => folder.read(dir, n) }).to;
+  assert.deepEqual(said(0), asked, "the recorder's key and the target's key are the same string");
+  assert.deepEqual(said(1), asked);
+  assert.deepEqual(said(3), [], "the same words several turns later record nothing");
+  assert.deepEqual(watchersIntents("Turn on the mail watcher.", { project: "harlow-legal", watchers: [{ ...card, shownTurnsAgo: 9 }] }).intents.map(i => i.to[0]), asked, "a named watcher works at any age");
+});
