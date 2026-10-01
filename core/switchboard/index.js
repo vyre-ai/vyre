@@ -810,7 +810,8 @@ export class Switchboard {
     if (o.env && (o.env.CLAUDE_CODE_OAUTH_TOKEN || o.env.ANTHROPIC_API_KEY)) { delete env.CLAUDE_CODE_OAUTH_TOKEN; delete env.ANTHROPIC_API_KEY; }
     Object.assign(env, o.env || {});
     // The session's commit identity and hooks (github.session.env). If the child already carries GIT_CONFIG_COUNT (vyred's own environment), the hooks entry
-    // is appended after it, never over it.
+    // is appended after it, never over it. github's hook wrappers unset GIT_CONFIG_COUNT, KEY_0 and VALUE_0 when they run in another repo, which clears any entries the
+    // person's own environment carried for that hook run only (nothing outside the hook), so appending at KEY_<n> stays correct.
     if (o.gitEnv) {
       const { GIT_CONFIG_COUNT: n, GIT_CONFIG_KEY_0: k, GIT_CONFIG_VALUE_0: v, ...ident } = o.gitEnv;
       Object.assign(env, ident);
