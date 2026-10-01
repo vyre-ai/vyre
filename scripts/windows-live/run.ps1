@@ -113,6 +113,7 @@ if ($first) {
 
   # ---- 5. the confirm window appears once the app resolves the ticket at the relay -----------------------
   $confirm = WaitPage "*confirm.html*" 120
+  if (-not $confirm) { Say ("first-run page state: err='{0}' status='{1}'" -f (Cdp $first "document.getElementById('err').textContent"), (Cdp $first "document.getElementById('seed').textContent")) }
   Result "confirm-window" ($null -ne $confirm) $(if ($confirm) { "appeared" } else { "no confirm window in 120 s" })
   if ($confirm) {
     Start-Sleep 3
