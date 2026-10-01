@@ -181,3 +181,10 @@ Concrete first steps once unblocked:
 - Events: `watcher.created {name, project, schedule}`, `watcher.fired {name, items, seen,
   trigger}` (items = newly filed), `watcher.failed {name, error, failures, paused}`,
   `watcher.paused {name, why}`, `watcher.resumed {name}`. Each carries the project.
+
+## PAUSE (2026-10-01, usage limit)
+work/watchers pushed. Done since the last note: lib/sandbox (wall: bwrap, macOS deny-default, spawner candidate), net/credentials/ask, presets
+(mail, calendar, repo, slack, feed), card, duties (watchers.duty.*), reach (asked recorder path, targets, shown), project/thread/peer scoping.
+Open: node run on 14d3b504c (36824583908) result not read; windows-socket-acl failed once (pipe Test-Path, looks like a flake, rerun not done);
+spend_purpose switch waits on sessions; 11b authenticated trigger waits on C25; cli:agent:kit case waits on platform's caller fix
+(work/plat-caller d7e63b20); mac-trace and isolation workflows are green on their last runs.
