@@ -86,19 +86,35 @@ function descendants(pid) {
     return out;
   } catch { return []; }
 }
-/** Does a .codex/config.toml in this folder or any above it define an MCP server? Codex loads those on top of the account's own config. @param {string} dir */
-export function projectDefinesMcp(dir) {
-  // Conservative on purpose: any .codex/config.toml from here up that contains the text "mcp" anywhere, or any \u escape (a key can be spelled through
-  // escapes), counts, whatever the TOML form, and so does one that exists but cannot be read. A TOML parser disagreeing with a regex is the bypass; a substring is not.
+/**
+ * Does a .codex/config.toml exist in this folder or any above it? Codex loads those on top of the account's own config, and one can add
+ * or replace an MCP server (and change approval and sandbox) in many TOML spellings, so this does not parse: existing is enough, and so
+ * is anything that stops it being checked.
+ * @param {string} dir
+ */
+export function projectCodexConfig(dir) {
   let d = path.resolve(dir);
   for (let i = 0; i < 40; i++) {
-    const file = path.join(d, ".codex", "config.toml");
-    let text = null;
-    try { text = fs.readFileSync(file, "utf8"); } catch (e) { if (/** @type {any} */ (e).code !== "ENOENT" && /** @type {any} */ (e).code !== "ENOTDIR") return true; }
-    if (text !== null && /mcp|\\u[0-9a-f]{4}|\\U[0-9a-f]{8}/i.test(text)) return true; // the text mcp anywhere, or any unicode escape (which can spell the key without it)
+    // Only "not there" (ENOENT, ENOTDIR) is none: a file that exists but cannot be read (EACCES, a folder owned by another uid, a directory
+    // named config.toml) counts as a config, since what it holds is unknown.
+    try { fs.accessSync(path.join(d, ".codex", "config.toml")); return true; } catch (e) { const c = /** @type {any} */ (e).code; if (c !== "ENOENT" && c !== "ENOTDIR") return true; }
     const up = path.dirname(d);
     if (up === d) break;
     d = up;
+  }
+  return false;
+}
+
+/**
+ * Is a file Vyre seeds in the account's HOME anything but what Vyre wrote? (An agent's edit to it is overwritten at every start, so at a
+ * start this is false unless something else changed it in between.)
+ * @param {string|undefined} home @param {Record<string, string>} seed
+ */
+export function seedTampered(home, seed) {
+  if (!home) return false;
+  for (const [rel, want] of Object.entries(seed || {})) {
+    // Not there (ENOENT) is nothing extra; a file that cannot be read (EACCES, a directory) is not known to be what Vyre wrote.
+    try { if (fs.readFileSync(path.join(home, rel), "utf8") !== want) return true; } catch (e) { if (/** @type {any} */ (e).code !== "ENOENT") return true; }
   }
   return false;
 }
@@ -257,6 +273,10 @@ function runAcp(entry, known, o) {
   let usage = /** @type {any} */ (null);
   /** Whether the shortcut for Vyre's own MCP server may be used in this session (set at every start). */
   let ownMcpSafe = false;
+  /** The refusal of an MCP approval is said once per session. */
+  let mcpDenied = false;
+  /** Whether a .codex/config.toml from the session folder up exists (set at every start). */
+  let projectConfig = false;
   function toolDone(u) {
     const body = Array.isArray(u.content) ? u.content.map(c => text(c && c.content !== undefined ? c.content : c)).join("") : "";
     say({ type: "user", message: { content: [{ type: "tool_result", tool_use_id: String(u.toolCallId), is_error: u.status === "failed", content: body }] } });
@@ -267,23 +287,26 @@ function runAcp(entry, known, o) {
     const p = m.params || {};
     const tc = p.toolCall || {};
     // MEASURED on codex-acp 2.1.0: before an MCP tool runs, Codex asks with kind "execute", NO title and NO rawInput, and says only
-    // _meta.is_mcp_tool_approval. It names neither the server nor the tool, so asking the person "run this command" with a blank command
-    // would be a lie. The session's own MCP servers are known here (mcpServers in session/new): with exactly one, the question is about
-    // one of ITS tools. Vyre's own server ("vyre") is gated by vyred itself on every call (reach, the Gate, presence), so an entry that
-    // says so (`mcpOwn`) lets that approval through at once; any other server's is put to the person, named by its server.
-    // BUT the approval cannot say WHICH server it is for, and Codex also loads MCP servers from a project's own .codex/config.toml, which
-    // an agent with workspace write can create for the next start (measured: a project config that redefines "vyre" replaces it, runs
-    // unsandboxed, and inherits the approval setting). So the shortcut holds only when no .codex/config.toml from the session folder up
-    // defines an MCP server, checked at every start (ownMcpSafe); otherwise every MCP approval goes to the person.
+    // _meta.is_mcp_tool_approval. It names neither the server nor the tool, so the person could not judge it (a blank Bash command, or
+    // "an MCP tool"), and Vyre cannot tell whose it is. Codex also loads MCP servers from a project's own .codex/config.toml, which an
+    // agent with workspace write can create for the next start: a project config that redefines "vyre" replaces it, runs unsandboxed and
+    // inherits the approval setting. So: Vyre's own server ("vyre") is gated by vyred on every call (reach, the Gate, presence), and an
+    // entry that says so (`mcpOwn`) has its approval let through, but only when "vyre" is the one server Vyre passed and NO
+    // .codex/config.toml exists from the session folder up (not a parse of it: existing is enough, since it can add a server in any TOML
+    // spelling and change approval and sandbox) and the account's own seeded config is as Vyre wrote it, checked at every start. Every other MCP approval is DENIED, and said once in words.
     if (p._meta && p._meta.is_mcp_tool_approval === true) {
       const servers = (Array.isArray(o.mcpServers) ? o.mcpServers : []).map(x => String((x && x.name) || ""));
-      const only = servers.length === 1 ? servers[0] : "";
+      const only = servers.length === 1 && servers[0] === "vyre";
       const opts = Array.isArray(p.options) ? p.options : [];
       const once = opts.find(x => x && x.kind === "allow_once");
-      if (entry.mcpOwn && only === "vyre" && once && ownMcpSafe) { respond(m.id, { outcome: { outcome: "selected", optionId: once.optionId } }); return; }
-      const rid = `acp-perm-${++askN}`;
-      asks.set(rid, { rpc: m.id, options: opts });
-      say({ type: "control_request", request_id: rid, request: { subtype: "can_use_tool", tool_name: only ? `mcp__${only}` : "mcp", input: { note: "an MCP tool; the agent did not say which" }, tool_use_id: String(tc.toolCallId || "") } });
+      if (entry.mcpOwn && only && once && ownMcpSafe) { respond(m.id, { outcome: { outcome: "selected", optionId: once.optionId } }); return; }
+      const no = opts.find(x => x && x.kind === "reject_once");
+      respond(m.id, { outcome: no ? { outcome: "selected", optionId: no.optionId } : { outcome: "cancelled" } });
+      if (!mcpDenied) {
+        mcpDenied = true;
+        const t = projectConfig ? "This project's Codex settings define their own tool servers, so Vyre can't tell which tool is asking. It was refused." : "Vyre can't tell which tool server is asking. It was refused.";
+        say({ type: "stream_event", event: { type: "content_block_delta", index: 0, delta: { type: "text_delta", text: t } } });
+      }
       return;
     }
     announce(tc);
@@ -419,7 +442,9 @@ function runAcp(entry, known, o) {
     const caps = init.agentCapabilities || {};
     const prior = o.resume ? known.get(o.id) : undefined;
     const servers = Array.isArray(o.mcpServers) ? o.mcpServers : [];
-    ownMcpSafe = !projectDefinesMcp(cwd);
+    const seeded = typeof entry.seed === "function" ? entry.seed(o) : entry.seed;
+    projectConfig = projectCodexConfig(cwd);
+    ownMcpSafe = !projectConfig && !seedTampered(o.env && o.env.HOME, seeded || {});
     // Real agents (codex-acp, Grok Build) answer session/new with "Authentication required" (-32000) until the client calls
     // authenticate {methodId}. The entry names the method it wants from what the agent offers (never a prompt to the person):
     // an API key method when the key is in the environment, else the stored login. An agent that then waits for a browser
