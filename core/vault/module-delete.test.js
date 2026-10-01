@@ -32,8 +32,8 @@ test("a first-party module deletes its own item without presence, and nothing el
   const has = async name => Boolean((await as("vault.list")).data.items.find(i => i.name === name));
 
   assert.equal((await as("vault.put", { name: "persons-key", value: "p" })).error, undefined);
-  assert.equal((await as("ghub.put", { name: "gh-token" })).data.error, undefined);
-  assert.equal((await as("other.put", { name: "other-token" })).data.error, undefined);
+  const g = await as("ghub.put", { name: "gh-token" }), o = await as("other.put", { name: "other-token" });
+  assert.deepEqual([g.error, g.data && g.data.error, o.error, o.data && o.data.error], [undefined, undefined, undefined, undefined], JSON.stringify({ g, o, status: d.registry.status().map(m => [m.name, m.state, m.error]) }));
   for (const n of ["persons-key", "gh-token", "other-token"]) assert.ok(await has(n), `${n} exists`);
 
   // Refusals first: a person's item, another module's item, an item that is not there, an added module.
