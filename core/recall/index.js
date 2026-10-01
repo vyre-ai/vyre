@@ -502,6 +502,7 @@ export default {
     ctx.tool("recall.index", {
       description: "Index new and changed transcripts now. Returns what the pass did.",
       input: { type: "object", properties: {} },
+      callers: own,
       run: async () => pass(),
     });
     ctx.tool("recall.status", {

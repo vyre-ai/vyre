@@ -91,15 +91,15 @@
   },
   "learn.accept": {
    "module": "learn",
-   "why": "pending"
+   "why": "written anyone on purpose: the HUMAN callers list in code (cli, deck, capsule) leaves out \"local\", which any socket client gets by sending no header, and reach person admits local; the tool also declares presence"
   },
   "learn.relax": {
    "module": "learn",
-   "why": "pending"
+   "why": "written anyone on purpose: the HUMAN callers list in code (cli, deck, capsule) leaves out \"local\", which any socket client gets by sending no header, and reach person admits local; the tool also declares presence"
   },
   "learn.retire": {
    "module": "learn",
-   "why": "pending"
+   "why": "written anyone on purpose: the HUMAN callers list in code (cli, deck, capsule) leaves out \"local\", which any socket client gets by sending no header, and reach person admits local; the tool also declares presence"
   },
   "link.pair": {
    "module": "link",
@@ -115,15 +115,7 @@
   },
   "memory.correct": {
    "module": "memory",
-   "why": "pending"
-  },
-  "memory.merge": {
-   "module": "memory",
-   "why": "pending"
-  },
-  "memory.split": {
-   "module": "memory",
-   "why": "pending"
+   "why": "written anyone on purpose: an agent may call it and its proposal is stored as a suggestion for the person (never a correction); the person-only write is decided in code (ownerWrite)"
   },
   "onboard.machine": {
    "module": "onboard",
