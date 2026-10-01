@@ -11,7 +11,7 @@ import { fileURLToPath } from "node:url";
 
 const root = path.join(path.dirname(fileURLToPath(import.meta.url)), "..");
 const reasons = JSON.parse(fs.readFileSync(path.join(root, "test", "reach-anyone.json"), "utf8")).tools;
-const MUTATING = /\.(set|write|delete|remove|revoke|grant|create|update|point|release|claim|reveal|send|exec|run|open|start|stop|kill|take|reset|wipe|export|import|add|move|archive|rename|pair|unpair|enroll|sign|signin|signout|post|apply|fill|edit|answer|approve|reject|forget|accept|retire|merge|connect|disconnect)(\.|$)/;
+const MUTATING = /\.(set|write|delete|remove|revoke|grant|create|update|point|release|claim|reveal|send|exec|run|open|start|stop|kill|take|reset|wipe|export|import|add|move|archive|rename|pair|unpair|enroll|sign|signin|signout|post|apply|fill|edit|answer|approve|reject|forget|accept|retire|merge|connect|disconnect|share|unshare|restore|undelete|close|resume|pause|cancel|enable|disable|publish|upload|mkdir|trash|rotate|consent|undo|redo|push|login|logout|dismiss|mute|toggle|schedule|rollover|install|uninstall|register|unregister|subscribe|unsubscribe|poll|hook|capture|record|clear|purge|prune)(\.|$)/;
 const GUARD = /(callers|gate|held|presence|proof|scope|owner|guard|check|refuse|internal|modules only|assistant|person)/i;
 function* manifests(dir) {
   for (const e of fs.readdirSync(dir, { withFileTypes: true })) {

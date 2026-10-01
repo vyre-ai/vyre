@@ -157,10 +157,6 @@
    "module": "settings",
    "why": "the callers list in code (cli, local, deck, capsule) is narrower than the person list; an agent uses settings.request, which needs the person's own words"
   },
-  "team.add": {
-   "module": "team",
-   "why": "pending"
-  },
   "term.attach": {
    "module": "term",
    "why": "pending"
