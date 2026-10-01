@@ -13,8 +13,7 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { spawnSync } from "node:child_process";
-import { gitAsync, gitWithAskpass } from "../../lib/git-safe.js";
+import { gitAsync, gitRead, gitWithAskpass } from "../../lib/git-safe.js";
 
 const fail = (msg, code = "bad_input") => Object.assign(new Error(msg), { code });
 
@@ -167,9 +166,8 @@ function ensureExcluded(repoDir) {
  * @param {string} repoDir @param {string} commonDir
  */
 function effectiveHooksDir(repoDir, commonDir) {
-  const env = Object.fromEntries(Object.entries(process.env).filter(([k]) => !/^GIT_/.test(k)));
-  const r = spawnSync("git", ["-C", repoDir, "config", "--includes", "--get", "core.hooksPath"], { encoding: "utf8", env, timeout: 5000 });
-  const v = r.status === 0 ? String(r.stdout || "").trim() : "";
+  const r = gitRead(["-C", repoDir, "config", "--includes", "--get", "core.hooksPath"]);
+  const v = r.ok ? String(r.stdout).trim() : "";
   if (!v) return path.join(commonDir, "hooks");
   return path.isAbsolute(v) ? v : path.resolve(repoDir, v.replace(/^~(?=\/|$)/, process.env.HOME || "~"));
 }
@@ -180,7 +178,7 @@ export function _setGitVersion(v) { gitVersion = v; }
 /** git's own version as [major, minor], read once (it only reports itself). */
 function gitAtLeast(major, minor) {
   if (!gitVersion) {
-    const r = spawnSync("git", ["--version"], { encoding: "utf8", timeout: 5000 });
+    const r = gitRead(["--version"]);
     const m = /(\d+)\.(\d+)/.exec(String(r.stdout || ""));
     gitVersion = m ? [Number(m[1]), Number(m[2])] : [0, 0];
   }
