@@ -635,6 +635,15 @@ export default {
       (i, m) => via.run(m, async () => oversight.voice({ run: i.run, text: i.text, final: i.final === true })).catch(e => { throw wrapErr(e); }), { callers: PEOPLE });
 
     // The Gate's own call once the person approved a held act.
+    // Asked by other modules (screen) before they show an agent the person's screen: has this agent posted a plan, and is Vyre not stopped? Only modules call it.
+    ctx.tool("chrome.plan.check", {
+      internal: true,
+      description: "Whether an agent has posted a plan and the person has not stopped Vyre. Internal: other modules ask it before showing an agent the person's screen.",
+      input: obj({ agent: str }, ["agent"]),
+      callers: ["module"],
+      run: async (/** @type {any} */ input) => ({ planned: oversight.planned(String(input && input.agent || "")) }),
+    });
+
     ctx.tool("chrome.release", {
       internal: true,
       description: "The Gate's own call once a person approved a held act in Chrome: sends it again with the page signature it was held under, and the extension refuses it (changed) if the page moved since. Never called directly.",

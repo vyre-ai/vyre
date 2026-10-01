@@ -78,13 +78,14 @@ const ext = (/** @type {string} */ sockPath, /** @type {any} */ over = {}) => fa
 });
 
 test("module: the manifest is valid and every tool it declares is registered", async t => {
-  assert.deepEqual(validate(JSON.parse(fs.readFileSync(path.join(HERE, "module.json"), "utf8"))), []);
+  assert.deepEqual(validate(JSON.parse(fs.readFileSync(path.join(HERE, "module.json"), "utf8")), { firstParty: true }), []);
   const { reg, connect } = await rig(t);
   assert.equal(reg.status().find((/** @type {any} */ m) => m.name === "chrome")?.state, "running");
-  const declared = JSON.parse(fs.readFileSync(path.join(HERE, "module.json"), "utf8")).does.tools.filter((/** @type {string} */ n) => n !== "chrome.release");
+  const declared = JSON.parse(fs.readFileSync(path.join(HERE, "module.json"), "utf8")).does.tools.map((/** @type {any} */ t) => (typeof t === "string" ? t : t.name)).filter((/** @type {string} */ n) => n !== "chrome.release" && n !== "chrome.plan.check");
   const listed = reg.listTools().map((/** @type {any} */ x) => x.name);
   for (const name of declared) assert.ok(listed.includes(name), name);
   assert.ok(!listed.includes("chrome.release"), "release is internal: only the Gate calls it");
+  assert.ok(!listed.includes("chrome.plan.check"), "plan.check is internal: other modules ask it before showing an agent the screen");
 });
 
 test("module: it offers chrome:mac to the Gate for acts, again before the first card if the Gate started late", async t => {
@@ -668,4 +669,28 @@ test("module: the write budget is reserved when handed out: parallel batches can
   await lost;
   await reg.call("chrome.batch", { tab: 1, steps: [{ op: "page.act", args: {} }] }, KIT);
   assert.equal(seen[seen.length - 1].writeBudget, undefined, "what a lost batch held is counted as spent");
+});
+
+test("chrome.fill: an agent caller (mcp, a vouched \"cli agent:\" spelling, a harness caller) cannot call it unprompted: it needs the person's grant, then a posted plan, and what reaches Chrome carries asked false", async t => {
+  const { reg, sockPath, connect } = await rig(t);
+  /** @type {any[]} */ const seen = [];
+  const x = await connect({ "page.fill": (/** @type {any} */ a) => { seen.push(a); return { ok: true, filled: 1 }; } });
+  const fill = { fields: [{ label: "Email", value: "a@b.example" }] };
+  for (const caller of [KIT, "cli agent:kit", "harness"]) {
+    const r = await reg.call("chrome.fill", fill, caller);
+    assert.equal(r.error && r.error.code, "denied", `${caller}: refused without a grant`);
+    assert.match(r.error.message, /not granted/);
+  }
+  assert.equal(x.ops("page.fill").length, 0, "nothing reached Chrome");
+  // The person's grant (hands.grant.add is the person's own tool, never an agent's):
+  assert.equal((await reg.call("hands.grant.add", { agent: "kit" }, KIT)).error ? "refused" : "allowed", "refused", "an agent cannot grant itself");
+  assert.ok((await reg.call("hands.grant.add", { agent: "kit" }, "cli")).data.granted);
+  const noPlan = await reg.call("chrome.fill", fill, KIT);
+  assert.ok(noPlan.error, "granted but no plan posted yet");
+  assert.equal(x.ops("page.fill").length, 0);
+  assert.ok(!(await reg.call("chrome.plan", PLAN, KIT)).error);
+  const ok = await reg.call("chrome.fill", fill, KIT);
+  assert.equal(ok.error, undefined);
+  assert.equal(x.ops("page.fill").length, 1);
+  assert.notEqual(seen[0] && seen[0].asked, true, "the agent's call never carries the person's approval");
 });

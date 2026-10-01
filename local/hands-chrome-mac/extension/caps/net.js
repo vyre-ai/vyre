@@ -242,7 +242,7 @@ function probeNetwork(eg, method, p, session) {
 function handle(ctx, t, method, p, session) {
   { const egP = /** @type {any} */ (t).egress; if (egP && egP.nonce && /^Network\.(requestWillBeSent|responseReceived|loadingFailed)$/.test(method)) probeNetwork(egP, method, p, session); }
   if (method === "Target.attachedToTarget") {
-    { const eg0 = /** @type {any} */ (t).egress; if (eg0) (eg0.attached || (eg0.attached = [])).length < 12 && eg0.attached.push({ type: String(p.targetInfo?.type || ""), url: String(p.targetInfo?.url || "").slice(0, 60), wait: !!p.waitingForDebugger, guardTarget: isGuardTarget(p.targetInfo), known: t.sessions.has(p.sessionId), from: session ? "child" : "top" }); }
+    { const eg0 = /** @type {any} */ (t).egress; if (eg0 && eg0.live) eg0.lateChildren = (eg0.lateChildren || 0) + 1; if (eg0) (eg0.attached || (eg0.attached = [])).length < 12 && eg0.attached.push({ type: String(p.targetInfo?.type || ""), url: String(p.targetInfo?.url || "").slice(0, 60), wait: !!p.waitingForDebugger, guardTarget: isGuardTarget(p.targetInfo), known: t.sessions.has(p.sessionId), from: session ? "child" : "top" }); }
     if (p.sessionId && isGuardTarget(p.targetInfo) && !t.sessions.has(p.sessionId)) {
       t.sessions.add(p.sessionId);
       (t.sessionTypes || (t.sessionTypes = new Map())).set(p.sessionId, String(p.targetInfo?.type || ""));
@@ -707,6 +707,8 @@ export async function egressGuard(ctx, tab, frame = null, opts = {}) {
     eg.rule = narrow.ids;
     eg.allowed = new Set(eg.first);
   }
+  // From here on the script runs: a frame or worker that attaches now was made by it (or by the page while it ran).
+  eg.live = true;
   let done = false;
   return {
     // "partial" when the browser-level rule could not be set: only the plain-form page shim stands for WebSockets and beacons.
@@ -718,6 +720,9 @@ export async function egressGuard(ctx, tab, frame = null, opts = {}) {
     async stop() {
       if (done) return [];
       done = true;
+      // A worker or frame the script made may not have run its first line when the script returns (a slow runner starts it late): the guard, Fetch included, stays up a little longer for those, so
+      // what they send in their first moments is still judged and stopped. (A timer the script left in the page itself is not contained past the call: written in the security doc.)
+      if (eg.depth <= 1 && eg.lateChildren) await new Promise(r => setTimeout(r, 1500));
       // A request judged blocked whose failRequest never took is tried once more now, while Fetch is still on: once it is off the request would be released to the network.
       for (const sr of (eg.stuck || []).splice(0)) {
         const send2 = (/** @type {string} */ m, /** @type {any} */ x) => (sr.session ? ctx.cdp.send(t.tab, m, x, sr.session) : ctx.cdp.send(t.tab, m, x));

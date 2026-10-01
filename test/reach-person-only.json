@@ -23,27 +23,11 @@
   },
   "computers.giveback": {
    "module": "computers",
-   "why": "pending"
-  },
-  "computers.member.add": {
-   "module": "computers",
-   "why": "pending"
-  },
-  "computers.member.dispose": {
-   "module": "computers",
-   "why": "pending"
-  },
-  "computers.member.remove": {
-   "module": "computers",
-   "why": "pending"
-  },
-  "computers.member.rotate": {
-   "module": "computers",
-   "why": "pending"
+   "why": "the assistant is an mcp caller and the owner's way to these from chat (computers ownSurface exempts it); reach person admits only the person's surfaces and devices, so it would lose them. Agents are refused in code (ownSurface) and the presence floor still applies."
   },
   "computers.takeover": {
    "module": "computers",
-   "why": "pending"
+   "why": "the assistant is an mcp caller and the owner's way to these from chat (computers ownSurface exempts it); reach person admits only the person's surfaces and devices, so it would lose them. Agents are refused in code (ownSurface) and the presence floor still applies."
   },
   "files.drive.access": {
    "module": "files",
@@ -75,14 +59,6 @@
   },
   "gate.revise": {
    "module": "gate",
-   "why": "pending"
-  },
-  "glass.release": {
-   "module": "glass",
-   "why": "pending"
-  },
-  "glass.take": {
-   "module": "glass",
    "why": "pending"
   },
   "goals.accept": {
@@ -157,14 +133,6 @@
    "module": "settings",
    "why": "pending"
   },
-  "term.attach": {
-   "module": "term",
-   "why": "pending"
-  },
-  "term.open": {
-   "module": "term",
-   "why": "pending"
-  },
   "threads.answer": {
    "module": "threads",
    "why": "pending"
@@ -191,10 +159,6 @@
   },
   "vault.vaults.create": {
    "module": "vault",
-   "why": "pending"
-  },
-  "voice.speak": {
-   "module": "voice",
    "why": "pending"
   }
  }
