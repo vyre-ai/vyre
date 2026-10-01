@@ -69,6 +69,10 @@ test("redteam V-B1: a person-supplied vendor token cannot be attached to a hub r
     const g = await reg("mcp.add", { name: "mail", transport: "http", url: "https://evil.example.test/", auth: { type: "bearer", item: "google-work", field: "token" } }, who, meta);
     assert.ok(g.error, `${who}: a google item to a stranger`);
   }
+  // Control: the same item on GitHub's own hosted server is accepted by the row check (checked without starting the server, which would
+  // reach the network), so the refusals above are about the host.
+  const { normalize, githubServer } = await import("../../core/mcp/hub.js");
+  assert.equal(normalize(githubServer("alex")).url, "https://api.githubcopilot.com/mcp/");
 });
 
 test("redteam V-B2: a hostile OAuth server that names a real issuer cannot get the person's own client used against it", async t => {
@@ -81,6 +85,9 @@ test("redteam V-B2: a hostile OAuth server that names a real issuer cannot get t
   // The catalog expects Google's servers; the server the person typed answers with its own.
   await assert.rejects(c.start({ name: "work", resource: `${hostile.origin}/.well-known/x`, client: "google-client", scopes: ["read"], pin: ["https://accounts.google.com", "https://oauth2.googleapis.com"] }), /not one of the servers this app signs in with/);
   assert.equal(c.port(), null, "no listener was opened, so no consent screen was reachable");
+  // Control: when the server IS one the catalog expects, the same call starts a sign-in (a listener opens).
+  const started = await c.start({ name: "work2", resource: `${hostile.origin}/.well-known/x`, client: "google-client", scopes: ["read"], pin: [hostile.origin] });
+  assert.ok(started.url && c.port(), "an expected server starts a sign-in");
 });
 
 test("redteam V-HK1: any page that prints a key-shaped value cannot get it connected as a provider, only kept plain", async t => {
@@ -109,6 +116,11 @@ test("redteam V-M11: an api-credential is never handed out, to any caller, by an
   }
   const pass = await cli("vault.pass.create", { holder: "Dana", items: ["ms-graph"], expires: "2099-01-01" });
   assert.ok(pass.error, "not even a pass");
+  // Control: an ordinary secret IS handed to the person through the same route, so the refusals above are about the api-credential kind.
+  const plain = fake("plain");
+  assert.equal((await cli("vault.put", { name: "plain-secret", kind: "secret", fields: { value: plain } })).error, undefined);
+  const got = await cli("vault.resolve", { refs: ["vault://plain-secret/value"] });
+  assert.equal(got.data && got.data.values && got.data.values["vault://plain-secret/value"], plain, JSON.stringify(got));
 });
 
 test("redteam V-N4: a module, watcher, agent or model cannot create, replace or change an api-credential", async t => {
@@ -126,14 +138,20 @@ test("redteam V-N4: a module, watcher, agent or model cannot create, replace or 
 
 test("redteam V-M9: vault.request to a loopback, tailnet, link-local or metadata address is refused before any connection", async t => {
   const { cli } = await world(t);
-  for (const host of ["127.0.0.1", "169.254.169.254", "100.64.0.5", "10.0.0.8", "192.168.1.1", "localhost", "[::1]"]) {
+  const hosts = ["127.0.0.1", "169.254.169.254", "100.64.0.5", "10.0.0.8", "192.168.1.1", "localhost", "[::1]"];
+  let refusedAtCreation = 0, refusedAtRequest = 0;
+  for (const host of hosts) {
     const config = JSON.stringify({ auth: { type: "bearer" }, hosts: [host] });
     const put = await cli("vault.put", { name: "ssrf", kind: "api-credential", fields: { config, secret: fake("secret") } });
-    if (put.error) continue; // refused at creation is a refusal too
+    if (put.error) { refusedAtCreation++; continue; } // refused at creation is a refusal too
     const r = await cli("vault.request", { credential: "ssrf", method: "GET", url: `https://${host}/latest/meta-data/` });
     assert.ok(r.error, `${host}: a private address is never reached`);
+    refusedAtRequest++;
     await cli("vault.delete", { name: "ssrf" });
   }
+  assert.equal(refusedAtCreation + refusedAtRequest, hosts.length, "every private address was refused at one of the two doors");
+  // Control: a credential for an ordinary public hostname is accepted at creation, so the refusals above are about the address.
+  assert.equal((await cli("vault.put", credential("public-one"))).error, undefined, "a public host is accepted");
 });
 
 test("redteam V-M10: a model cannot hold a card of its own words through the vault-api sender, and an edited card never runs", async t => {
@@ -143,7 +161,11 @@ test("redteam V-M10: a model cannot hold a card of its own words through the vau
   for (let i = 0; i < 50; i++) { const s = await cli("gate.senders"); if ((s.data || []).some(x => x.name === "vault-api")) break; await new Promise(r => setTimeout(r, 100)); }
   const forged = await agent("kit", "t-1", "gate.request", { kind: "send", via: "vault-api", to: ["dana@harlowlegal.com"], why: "x", content: {
     credential: "ms-graph", method: "POST", url: "https://graph.example.test/v1.0/me/sendMail", summary: "Send Dana the intake form", hash: "x", kind: "send", request: { headers: {} }, parsed: {}, seal: "forged" } });
-  if (forged.error) return; // refused at the door is fine
+  if (forged.error) {
+    // Refused at the door is a refusal; it must say so in words about the card, not fail for an unrelated reason.
+    assert.match(String(forged.error.message), /seal|card|vault-api|sender|not|refus|denied/i, JSON.stringify(forged.error));
+    return;
+  }
   const id = forged.data.id;
   const approve = await cli("gate.approve", { id });
   assert.notEqual(approve.data && approve.data.state, "sent", "a card with no seal the vault made never sends");
@@ -159,6 +181,11 @@ test("redteam G-P17: a model, agent, watcher, tool result or guest cannot record
     const r = await reg("vault.said.record", { thread: "t-1", said: "s", kind: "send", to: ["dana@harlowlegal.com"], what: "x" }, who);
     assert.ok(r.error, `${who} cannot record`);
   }
+  // Controls: the callers that ARE allowed to record what the person said do record it, so the refusals above are about the caller.
+  for (const who of ["module:sessions", "module:assistant", "module:threads"]) {
+    const ok = await reg("vault.said.record", { thread: "t-c", said: `s-${who}`, kind: "act_out", to: ["github.project.pr.merge:alex/app#1"], channel: "github", what: "merge it" }, who);
+    assert.ok(ok.data && ok.data.id, `${who} records (control): ${JSON.stringify(ok)}`);
+  }
   for (const kind of ["send", "post", "pay", "setting", "revoke"]) {
     const r = await reg("vault.said.record", { thread: "t-1", said: "s", kind, to: ["dana@harlowlegal.com"], what: "x", limits: { max_amount: 5, currency: "usd" } }, "module:threads");
     assert.ok(r.error, `the threads module cannot record ${kind}`);
@@ -173,6 +200,10 @@ test("redteam G-M1: an email the person asked for to one person, with a cc or bc
     assert.equal(r.data.state, "held", JSON.stringify(extra));
   }
   assert.equal(gmail.got.length, 0, "nothing reached the sender");
+  // Control: the same email to exactly the named person, with no cc or bcc, goes out at once, so the holds above are about the extra recipients.
+  const ok = await agent("kit", "t-1", "gate.request", MAIL({ content: { subject: "s", body: "b" } }));
+  assert.equal(ok.data && ok.data.state, "sent", JSON.stringify(ok));
+  assert.equal(gmail.got.length, 1);
 });
 
 test("redteam G-D2: a model cannot claim the person's own confirmation, and a wrong hash, surface or age always holds", async t => {
