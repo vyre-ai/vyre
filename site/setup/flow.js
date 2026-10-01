@@ -55,7 +55,7 @@ export function suggestName(text) {
  */
 
 /**
- * @param {{ client: SetupClient, relay: string, connect?: (o: { offer: any, key: any, secret: Uint8Array }) => Promise<BoxChannel>, installUrl?: string, random?: (n: number) => Uint8Array,
+ * @param {{ client: SetupClient, relay: string, pinRelay?: boolean, connect?: (o: { offer: any, key: any, secret: Uint8Array }) => Promise<BoxChannel>, installUrl?: string, random?: (n: number) => Uint8Array,
  *   now?: () => number, sleep?: (ms: number) => Promise<void>, pollMs?: number, debounceMs?: number, signinHosts?: string[]|null, signClaim?: (o: { privateKey: any, route: string, challenge: string, host: string }) => Promise<string>, onChange?: (s: FlowState) => void }} o
  */
 export function createFlow(o) {
@@ -178,6 +178,12 @@ export function createFlow(o) {
   /** Open the page's own connection to the server it found, then offer a first name. */
   async function openBox(mine, offer, key, secret, boxName) {
     if (!o.connect) return;
+    // The page talks to the box only through the relay it was built for. An offer naming any other host (a private address or a name that
+    // resolves to one) would make the browser ask for Local Network Access and hang on its prompt; it is refused before anything connects.
+    if (o.pinRelay) {
+      const hostOf = u => { try { return new URL(String(u).replace(/^ws/, "http")).host; } catch { return null; } };
+      if (hostOf(offer.relay) === null || hostOf(offer.relay) !== hostOf(o.relay)) { set({ channel: "failed", error: { code: "connect", message: MESSAGES.connect } }); return; }
+    }
     set({ channel: "connecting" });
     let c;
     try { c = await o.connect({ offer, key, secret }); } catch { if (mine === run) set({ channel: "failed", error: { code: "connect", message: MESSAGES.connect } }); return; }
