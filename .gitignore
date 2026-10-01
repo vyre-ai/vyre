@@ -6,6 +6,7 @@ node_modules
 coverage/
 site/box/
 site/install.sh
+site/w
 site/_redirects
 __pycache__/
 docs-site/

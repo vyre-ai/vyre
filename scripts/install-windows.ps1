@@ -2,10 +2,14 @@
 # self-update -- docs/design/windows-plan.md section 9, plans/windows.md sections 2-4). This is
 # what `$env:VYRE_CODE='...'; irm https://vyre.run/w | iex` runs (PLAN-setup-redo.md blocker B2).
 #
-# STATUS (2026-09-30): the app ships unsigned for 0.2 (Authenticode later). This script checks the
-# installer's SHA-256 against the release SHA256SUMS and tells the person about "More info, then
-# Run anyway". Updates are verified by the app against the Vyre release key. Not yet pointed at a
-# real release: $ReleaseBase is still the default GitHub path.
+# STATUS (2026-10-02): the app ships unsigned for 0.2 (Authenticode later). release.yml builds VyreSetup.exe
+# into every release (and Vyre_<version>_x64-setup.exe, the same bytes, which the app's updater reads), and
+# lists both in the release's SHA256SUMS. This script takes the newest plain stable vX.Y.Z release that carries
+# VyreSetup.exe and SHA256SUMS (a prerelease tag is never chosen; VYRE_RELEASE_BASE names another one), checks
+# the installer's SHA-256 against its line there, and tells the person about "More info, then Run anyway".
+# It does NOT check SHA256SUMS.sig (Ed25519): Windows PowerShell 5.1 cannot, so the first install trusts
+# GitHub's https for SHA256SUMS; every later update is verified by the app against the Vyre release key, and
+# anything unsigned is refused there. This file is also what https://vyre.run/w serves (scripts/build-site.sh).
 #
 # Env: VYRE_CODE (the single-use setup ticket, plans/windows.md section 3 "Pairing" -- read from
 # the environment or a prompt, NEVER written to a file or passed as an argv token per reviewer
@@ -36,7 +40,7 @@ function Test-ConstrainedLanguageMode {
         Write-Host "organization's security policy. This installer needs FullLanguage mode." -ForegroundColor Yellow
         Write-Host ""
         Write-Host "Download the signed installer instead:" -ForegroundColor Yellow
-        Write-Host "  https://vyre.run/download/VyreSetup.msi"
+        Write-Host "  https://github.com/vyre-ai/vyre/releases (the newest stable release, file VyreSetup.exe)"
         Write-Host ""
         exit 1
     }
