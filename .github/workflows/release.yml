@@ -102,7 +102,10 @@ jobs:
           else prev=""; base=$(git hash-object -t tree /dev/null); fi
           paths=".github/workflows scripts/sign-manifest.mjs scripts/write-release-json.mjs scripts/pin-release-compose.mjs scripts/check-release-dist.mjs scripts/check-release-key.mjs scripts/build-app-out.mjs scripts/lock-changes.mjs scripts/strip-wrapper.mjs scripts/build-site.sh core/vyre-core/release.js lib/release-sig.js box/vyre apps/app/package.json apps/app/package-lock.json"
           {
-            echo "### Signing path: $TAG vs ${prev:-nothing (no published release yet)}"
+            # The right side is what is being released: the tag on a publishing run, the tag name and the commit on a dry run.
+            if [ "${{ github.event_name }}" = push ]; then head_label="$TAG"; else head_label="$TAG (dry run, commit $(git rev-parse --short=8 HEAD))"; fi
+            echo "### Signing path: ${prev:-nothing (no published release yet)} -> $head_label"
+            [ "$prev" != "$TAG" ] || echo "_The base is the same tag as the release: a rehearsal, so the diff below is what changed since that tag._"
             # The phone app's dependencies, as a short list first (its build is signed with the release key): the raw lockfile diff below is long.
             git show "$base:apps/app/package-lock.json" > "$RUNNER_TEMP/old-lock.json" 2>/dev/null || : > "$RUNNER_TEMP/old-lock.json"
             node scripts/lock-changes.mjs "$RUNNER_TEMP/old-lock.json" apps/app/package-lock.json > "$RUNNER_TEMP/lock-changes.txt"
@@ -121,6 +124,9 @@ jobs:
               echo '```'
               # shellcheck disable=SC2086
               git diff "$base" HEAD -- $paths > "$RUNNER_TEMP/signing.diff" || true
+              # The WHOLE diff, uncut, goes to a run artifact (signing-diff.txt) beside this summary.
+              mkdir -p signing-diff
+              { echo "Signing path: ${prev:-nothing (no published release yet)} -> $head_label"; echo; echo "apps/app dependency changes:"; cat "$RUNNER_TEMP/lock-changes.txt"; echo; git diff --stat "$base" HEAD -- $paths; echo; cat "$RUNNER_TEMP/signing.diff"; } > signing-diff/signing-diff.txt
               n=$(wc -l < "$RUNNER_TEMP/signing.diff" | tr -d ' ')
               echo "full diff: $n lines"
               echo '```diff'
@@ -129,6 +135,16 @@ jobs:
               if [ "$n" -gt 600 ]; then echo "**TRUNCATED: $((n - 600)) more lines. Read the full diff before approving.**"; fi
             fi
           } | tee -a "$GITHUB_STEP_SUMMARY"
+      - name: The whole signing-path diff, uncut, as a run artifact
+        if: always()
+        run: |
+          mkdir -p signing-diff
+          [ -f signing-diff/signing-diff.txt ] || echo "no changes to the signing path since the base" > signing-diff/signing-diff.txt
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: signing-diff
+          path: signing-diff/signing-diff.txt
+          retention-days: 14
       - name: Box files and vyre.tgz, as build-site.sh makes them
         run: |
           sh scripts/build-site.sh

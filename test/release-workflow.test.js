@@ -70,3 +70,13 @@ test("release.yml: no step needs a secret or a file that does not exist: the onl
   // Every repo path a step reads exists in the tree (release/notes is optional on a dry run; the publish path checks it itself).
   for (const f of ["release/min_from", "scripts/sign-manifest.mjs", "scripts/write-release-json.mjs", "scripts/pin-release-compose.mjs", "scripts/check-release-dist.mjs", "scripts/build-app-out.mjs", "scripts/lock-changes.mjs"]) assert.ok(yml.includes(f) ? fs.existsSync(path.join(REPO, f)) : true, `${f} is referenced and missing`);
 });
+
+test("release.yml: the approver summary names what is being released on its right side, and the whole diff is uploaded uncut as signing-diff.txt", () => {
+  const i = yml.indexOf("What changed in the signing path since the last published release, for the approver");
+  const step = yml.slice(i, yml.indexOf("\n      - name: The whole signing-path diff", i));
+  assert.match(step, /echo "### Signing path: \$\{prev:-nothing \(no published release yet\)\} -> \$head_label"/, "base -> release, not base against itself");
+  assert.match(step, /dry run, commit \$\(git rev-parse --short=8 HEAD\)/, "a dry run names its commit");
+  assert.match(step, /signing-diff\/signing-diff\.txt/);
+  assert.match(yml, /name: signing-diff\n\s+path: signing-diff\/signing-diff\.txt/);
+  assert.ok(yml.indexOf("name: signing-diff") < yml.indexOf("- name: Box files and vyre.tgz"), "uploaded from the prepare job, before any approval");
+});
