@@ -44,6 +44,15 @@ try {
   r.step("1.2-install-line", okLine, { why: okLine ? undefined : hide(line).slice(0, 200), shot: await shot("setup-install") });
   if (!okLine) throw new Error("no install line");
 
+  // 1.2b A hostile box (J1_HOSTILE): someone who copied the install line from a screenshot runs it on their own
+  // server first. It is installed to another folder and not started, but it opens the relay mailbox for this code
+  // and writes its own lines there. The real server's run follows. The page must either still reach the real
+  // server or stop with a plain "start again"; it must never show the hostile box as the server.
+  if (process.env.J1_HOSTILE) {
+    const h = spawnSync("sh", ["-c", line], { env: { ...process.env, ...extraEnv, VYRE_DIR: "/srv/vyre-other", VYRE_NO_UP: "1" }, encoding: "utf8" });
+    r.step("1.2b-hostile-box-ran-first", "fake", { why: `a second server with the same line, exit ${h.status} (stand-in for someone holding the screenshot)` });
+  }
+
   // 1.3 run the line on the runner, as a person pastes it
   const t0 = Date.now();
   const words = await new Promise(resolve => {
@@ -57,10 +66,37 @@ try {
       resolve({ code, words: m ? m[1].split(" ") : null, tail: hide(all).split("\n").slice(-6).join(" | ") });
     });
   });
+  if (process.env.J1_EXPECT_REFUSE) {
+    // A server the installer must turn away (snap, rootless or Podman Docker): it stops in plain words, names the fix,
+    // exits non-zero and starts nothing. The rest of the journey is not reachable, by design.
+    const log = fs.readFileSync(out + "/install.log", "utf8");
+    const plain = new RegExp(process.env.J1_EXPECT_REFUSE, "i").test(log) && /docker\.com/.test(log);
+    r.step("1.3-install-refuses", words.code !== 0 && plain, { ms: Date.now() - t0, why: words.code === 0 ? "the installer went ahead on a Docker it should refuse" : plain ? `exit ${words.code}, plain words and the fix` : `exit ${words.code}: ${words.tail}`.slice(0, 300) });
+    const ps = spawnSync("docker", ["ps", "-a", "--format", "{{.Names}}"], { encoding: "utf8" });
+    const left = String(ps.stdout || "").split("\n").filter(n => /^vyre/.test(n));
+    r.step("1.3c-nothing-started", left.length === 0, { why: left.length ? "containers left: " + left.join(", ") : "no Vyre container was made" });
+    for (const st of ["1.4-page-found-box", "1.5-words-match", "1.6-channel-ready", "1.7-address", "1.8-claude", "1.9-tailscale", "1.11-claim-link"]) r.step(st, "skip", { why: "refused by design on this Docker" });
+    throw Object.assign(new Error("done"), { expected: true });
+  }
   r.step("1.3-install-runs", words.code === 0, { ms: Date.now() - t0, why: words.code === 0 ? undefined : `exit ${words.code}: ${words.tail}`.slice(0, 300) });
   if (words.code !== 0) throw new Error("install failed");
+  if (process.env.J1_TWICE) {
+    // The line pasted a second time (on the same server, or a screenshotted one): it leaves the running box alone.
+    const again = spawnSync("sh", ["-c", line], { env: { ...process.env, ...extraEnv }, encoding: "utf8" });
+    const said = hide((again.stdout || "") + (again.stderr || ""));
+    r.step("1.3d-line-twice-is-harmless", again.status === 0 && /already running/i.test(said) && !/Check words/.test(said), { why: `exit ${again.status}: ${said.split("\n").slice(-4).join(" | ")}`.slice(0, 300) });
+  }
   r.step("1.3b-terminal-words", Boolean(words.words), { why: words.words ? undefined : "the terminal printed no four check words" });
 
+  if (process.env.J1_HOSTILE) {
+    // Someone else's server used the same code first, so the mailbox holds lines this page cannot trust. Safe is: the
+    // page stops with a plain "Start again" and never offers the other server's words. (A holder of the code can stop
+    // a setup this way; they cannot become the server.)
+    const seen = await page.waitText(/Setup stopped|Found your server/i, 90000);
+    const stopped = /Setup stopped/i.test(seen) && /Start again/i.test(seen);
+    r.step("1.4h-hostile-box-stops-the-page", stopped, { shot: await shot("setup-hostile"), why: stopped ? "plain Start again, no words offered" : "the page showed: " + seen.replace(/\s+/g, " ").slice(0, 160) });
+    throw Object.assign(new Error("done"), { expected: true });
+  }
   // 1.4 the page finds the box
   const found = await sees(/Found your server/i, 90000);
   r.step("1.4-page-found-box", found, { shot: await shot("setup-found") });
@@ -156,8 +192,10 @@ try {
   const claimHref = String(await page.evaluate(`(() => { const t = [...document.querySelectorAll("a[href],pre,code,input")].map(e => e.href || e.value || e.textContent).find(x => /onboard\\/passkey/.test(x || "")); return t || ""; })()`)).trim();
   r.step("1.11-claim-link", arrive && /^https:\/\/marlow-finch\.vyre\.run\/onboard\/passkey#claim=\S+/.test(claimHref), { shot: await shot("setup-claim-link"), why: claimHref ? hide(claimHref).slice(0, 100) : "no link on the page after Get my link" });
 } catch (e) {
-  r.step("run", false, { why: hide(e.message).slice(0, 300) });
-  try { await shot("failure"); } catch {}
+  if (!(e && /** @type {any} */ (e).expected)) {
+    r.step("run", false, { why: hide(e.message).slice(0, 300) });
+    try { await shot("failure"); } catch {}
+  }
 } finally {
   if (page) await page.close();
 }
