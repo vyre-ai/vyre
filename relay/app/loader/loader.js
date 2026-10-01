@@ -13,6 +13,7 @@ import { pair, connect, PAIR_BASE } from "./client/client.js";
 import { webCrypto, indexedDbKeyStore } from "./client/webcrypto.js";
 import { verifyManifest, folderOf, MANIFEST, SIGNATURE } from "./manifest.js";
 import { fromBase64url } from "./client/bytes.js";
+import { registerWorker, adoptInWorker } from "./adopt.js";
 
 const RELEASE_PUB = "{{RELEASE_PUB}}";
 const BOX = "vyre.box";
@@ -70,31 +71,8 @@ function inject(base, manifest) {
   }
 }
 
-/** @type {Promise<unknown>} */
-let registered = Promise.resolve();
-
-const within = (p, ms) => Promise.race([p, new Promise(res => setTimeout(res, ms))]);
-
-/**
- * Start the app only once the worker controls this page and has re-verified the build, so the
- * app's first /app/<path> requests (fonts, icons) are answered from it. A browser without a
- * worker, or one that is slow to take control, boots anyway after a few seconds.
- */
-async function adoptInWorker(want) {
-  if (!("serviceWorker" in navigator)) return;
-  const sw = navigator.serviceWorker;
-  await within(registered.then(() => sw.ready), 8000);
-  if (!sw.controller) await within(new Promise(res => sw.addEventListener("controllerchange", res, { once: true })), 4000);
-  if (!sw.controller) return;
-  const done = new Promise(res => sw.addEventListener("message", function on(e) {
-    if (e.data && e.data.type === "vyre-build") { sw.removeEventListener("message", on); res(undefined); }
-  }));
-  sw.controller.postMessage({ type: "vyre-build", sha: want.sha, manifest: want.manifest });
-  await within(done, 5000);
-}
-
 async function main() {
-  if ("serviceWorker" in navigator) registered = navigator.serviceWorker.register("/sw.js").catch(() => {});
+  const registered = registerWorker();
   const crypto = webCrypto();
   const keyStore = indexedDbKeyStore();
   const last = load(LAST) || {};
@@ -115,7 +93,7 @@ async function main() {
   if (shell) shell.hidden = true;
   // Tell the worker which build this is, so it can answer the app's own /app/<path> requests
   // from that build, hash-checked, after it re-verifies the signed manifest itself.
-  await adoptInWorker(want);
+  await adoptInWorker(want, registered);
   inject(base, manifest);
 }
 

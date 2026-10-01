@@ -23,7 +23,7 @@ import { buildManifest, signManifest, verifyManifest, sha256Hex, folderOf, sri, 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const PKCS8 = Buffer.from("302e020100300506032b657004220420", "hex");
 /** The loader's own files: the page, its module and the device client it imports. */
-export const LOADER_FILES = ["index.html", "loader.js", "loader.css", "manifest.js",
+export const LOADER_FILES = ["index.html", "loader.js", "loader.css", "adopt.js", "manifest.js",
   ...["bytes.js", "channel.js", "client.js", "noise.js", "paths.js", "response.js", "sse.js", "webcrypto.js"].map(f => `client/${f}`)];
 
 /** @param {string} dir @returns {Record<string, Uint8Array>} relative path -> bytes */

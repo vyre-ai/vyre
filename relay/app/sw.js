@@ -126,7 +126,7 @@ if (typeof self !== "undefined" && self.addEventListener) {
   self.addEventListener("activate", e => e.waitUntil(activateLoader().then(() => clients.claim())));
   self.addEventListener("fetch", e => e.respondWith(respond(e.request)));
   self.addEventListener("message", e => {
-    if (e.data && e.data.type === "vyre-build") e.waitUntil(adoptBuild(String(e.data.sha), String(e.data.manifest)).then(() => tell({ type: "vyre-build", ok: true, sha: String(e.data.sha) })).catch(err => tell({ type: "vyre-build", refused: true, why: String(err.message || err) })));
+    if (e.data && e.data.type === "vyre-build") e.waitUntil(adoptBuild(String(e.data.sha), String(e.data.manifest)).then(() => tell({ type: "vyre-build", ok: true, sha: String(e.data.sha) })).catch(err => tell({ type: "vyre-build", refused: true, sha: String(e.data.sha), why: String(err.message || err) })));
     if (e.data && e.data.type === "vyre-release?") e.waitUntil(active().then(a => e.source && e.source.postMessage({ type: "vyre-release", ...(a || {}) })));
   });
 }
