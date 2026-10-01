@@ -144,28 +144,6 @@ export function acpProvider(entry) {
 }
 
 /** @param {any} entry @param {any} known @param {any} o */
-/**
- * A raw ACP recorder, for fixtures and the provider study: with VYRE_ACP_RECORD=<dir> every JSON-RPC line, both ways, is appended to
- * <dir>/<provider>-<thread>.jsonl as { t, dir: "in"|"out", msg }. Values under key-like names and anything shaped like a token are
- * replaced before they are written; prompts and replies stay, since they are what a fixture is. Off unless the variable is set, never in a session's own env.
- * @param {string} provider @param {string} thread
- */
-function recorder(provider, thread) {
-  const dir = process.env.VYRE_ACP_RECORD;
-  if (!dir) return () => {};
-  const file = path.join(dir, `${provider}-${String(thread).replace(/[^A-Za-z0-9._-]/g, "_")}.jsonl`);
-  try { fs.mkdirSync(dir, { recursive: true }); } catch { return () => {}; }
-  const KEYISH = /key|token|secret|authorization|password|bearer|cookie|credential/i;
-  const TOKENISH = /\b(?:sk-[A-Za-z0-9_-]{12,}|xai-[A-Za-z0-9_-]{12,}|eyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{5,})/g;
-  const clean = (v, k = "") => {
-    if (typeof v === "string") return KEYISH.test(k) ? "[redacted]" : v.replace(TOKENISH, "[redacted]");
-    if (Array.isArray(v)) return v.map(x => clean(x, k));
-    if (v && typeof v === "object") return Object.fromEntries(Object.entries(v).map(([kk, vv]) => [kk, clean(vv, kk)]));
-    return v;
-  };
-  return (dirn, msg) => { try { fs.appendFileSync(file, JSON.stringify({ t: Date.now(), dir: dirn, msg: clean(msg) }) + "\n"); } catch { /* recording never breaks a session */ } };
-}
-
 function runAcp(entry, known, o) {
   const floor = o.floor || entry.floor || null;
   const args = typeof entry.args === "function" ? entry.args(o) : entry.args || [];
@@ -194,8 +172,7 @@ function runAcp(entry, known, o) {
   let modes = /** @type {{ id: string, name?: string }[]} */ ([]), mode = null, turnText = "", askN = 0, tn = 0, cancelling = false, tree = /** @type {number[]} */ ([]);
   let firstPrompt = true;
 
-  const record = recorder(entry.id, o.id);
-  const send = obj => { if (!exited && child.stdin.writable) { record("out", obj); child.stdin.write(JSON.stringify({ jsonrpc: "2.0", ...obj }) + "\n"); } };
+  const send = obj => { if (!exited && child.stdin.writable) child.stdin.write(JSON.stringify({ jsonrpc: "2.0", ...obj }) + "\n"); };
   const request = (method, params, timeoutMs = 0) => new Promise((resolve, reject) => {
     const id = ++rpcId;
     calls.set(id, { resolve, reject });
@@ -213,7 +190,6 @@ function runAcp(entry, known, o) {
       const line = buf.slice(0, i); buf = buf.slice(i + 1);
       if (!line.trim()) continue;
       let m; try { m = JSON.parse(line); } catch { continue; }
-      record("in", m);
       handle(m).catch(e => { if (m && m.id !== undefined && m.method) fail(m.id, -32603, String(e && e.message || e)); });
     }
   });
