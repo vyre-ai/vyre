@@ -1,0 +1,142 @@
+# The one gated deploy of the three Cloudflare Workers 0.2.0 needs: the relay (relay.vyre.run), the name directory (names.vyre.run)
+# and the hosted web app (app.vyre.run). Nothing here runs until a person dispatches it, and the real deploy waits for the
+# `deploy` environment's required reviewer (the same reviewer as `release`) after the dry runs have been read.
+#
+#   gh workflow run relay-deploy.yml --ref work/stage-0.2 -f sha=<the stage sha> -f relay=true -f names=true
+#
+# The Cloudflare token is the environment secret CLOUDFLARE_API_TOKEN, and the account id is the repository or environment
+# variable CLOUDFLARE_ACCOUNT_ID (an id is not a secret). Exact token scopes are in docs/work/tailnet.md ("Cloudflare token").
+name: relay-deploy
+on:
+  workflow_dispatch:
+    inputs:
+      sha:
+        description: "The stage commit to deploy (40 hex). It must be on work/stage-0.2."
+        required: true
+        type: string
+      relay:
+        description: "Deploy relay/worker (relay.vyre.run)"
+        type: boolean
+        default: false
+      names:
+        description: "Deploy names/worker (names.vyre.run)"
+        type: boolean
+        default: false
+      app:
+        description: "Deploy relay/app (app.vyre.run). Needs app_out_run."
+        type: boolean
+        default: false
+      app_out_run:
+        description: "The run id of the release run that uploaded the signed `app-out` artifact (for app)"
+        required: false
+        type: string
+      names_secrets:
+        description: "Also set the names Worker's runtime secrets CF_API_TOKEN and CF_ZONE_ID from the environment's NAMES_CF_API_TOKEN and NAMES_CF_ZONE_ID (first deploy only)"
+        type: boolean
+        default: false
+permissions:
+  contents: read
+  actions: read
+concurrency:
+  group: relay-deploy
+  cancel-in-progress: false
+env:
+  WRANGLER: wrangler@4.145.0
+jobs:
+  dry-run:
+    name: dry run (no credentials, nothing is changed)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.sha }}
+          fetch-depth: 0
+      - name: the sha is on stage
+        env:
+          SHA: ${{ inputs.sha }}
+        run: |
+          printf %s "$SHA" | grep -Eq '^[0-9a-f]{40}$' || { echo "::error::sha must be 40 hex characters"; exit 1; }
+          git fetch -q origin work/stage-0.2
+          git merge-base --is-ancestor "$SHA" origin/work/stage-0.2 || { echo "::error::$SHA is not on work/stage-0.2"; exit 1; }
+          echo "deploying $(git rev-parse --short=12 HEAD): $(git log -1 --format=%s)"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: relay/worker, dry run
+        if: ${{ inputs.relay }}
+        working-directory: relay/worker
+        run: npx --yes "$WRANGLER" deploy --dry-run --outdir /tmp/relay-out 2>&1 | tee /tmp/relay-dry.txt; grep -E "ROUTES|TICKETS|DEVICE_LIMITER|PAIR_LIMITER|SETUP_" /tmp/relay-dry.txt
+      - name: names/worker, dry run
+        if: ${{ inputs.names }}
+        working-directory: names/worker
+        run: npx --yes "$WRANGLER" deploy --dry-run --outdir /tmp/names-out 2>&1 | tee /tmp/names-dry.txt; grep -E "DIRECTORY|NAMES_LIMITER|ZONE|ORIGIN" /tmp/names-dry.txt
+      - name: relay/app, the signed build to deploy
+        if: ${{ inputs.app }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RUN: ${{ inputs.app_out_run }}
+        run: |
+          printf %s "$RUN" | grep -Eq '^[0-9]+$' || { echo "::error::app needs app_out_run (a run id)"; exit 1; }
+          gh run download "$RUN" --name app-out --dir app-out
+          ls app-out | head; test -d app-out
+      - name: relay/app, dry run
+        if: ${{ inputs.app }}
+        working-directory: relay/app
+        run: npx --yes "$WRANGLER" deploy --dry-run --outdir /tmp/app-out-bundle 2>&1 | tee /tmp/app-dry.txt; grep -E "ASSETS|Assets|assets" /tmp/app-dry.txt
+  deploy:
+    name: deploy (waits for the deploy environment's reviewer)
+    needs: dry-run
+    runs-on: ubuntu-24.04
+    environment: deploy
+    timeout-minutes: 20
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.sha }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: the credentials are there
+        run: |
+          [ -n "$CLOUDFLARE_API_TOKEN" ] || { echo "::error::the deploy environment has no CLOUDFLARE_API_TOKEN secret"; exit 1; }
+          [ -n "$CLOUDFLARE_ACCOUNT_ID" ] || { echo "::error::CLOUDFLARE_ACCOUNT_ID is not set (a variable, not a secret)"; exit 1; }
+          npx --yes "$WRANGLER" whoami 2>&1 | sed -E 's/[A-Za-z0-9._-]*@[A-Za-z0-9._-]*/<email>/' | head -12
+      - name: relay/worker
+        if: ${{ inputs.relay }}
+        working-directory: relay/worker
+        run: npx --yes "$WRANGLER" deploy
+      - name: names/worker
+        if: ${{ inputs.names }}
+        working-directory: names/worker
+        run: npx --yes "$WRANGLER" deploy
+      - name: names/worker secrets (first deploy only)
+        if: ${{ inputs.names && inputs.names_secrets }}
+        working-directory: names/worker
+        env:
+          NAMES_CF_API_TOKEN: ${{ secrets.NAMES_CF_API_TOKEN }}
+          NAMES_CF_ZONE_ID: ${{ secrets.NAMES_CF_ZONE_ID }}
+        run: |
+          [ -n "$NAMES_CF_API_TOKEN" ] && [ -n "$NAMES_CF_ZONE_ID" ] || { echo "::error::NAMES_CF_API_TOKEN and NAMES_CF_ZONE_ID must be environment secrets"; exit 1; }
+          printf %s "$NAMES_CF_API_TOKEN" | npx --yes "$WRANGLER" secret put CF_API_TOKEN
+          printf %s "$NAMES_CF_ZONE_ID" | npx --yes "$WRANGLER" secret put CF_ZONE_ID
+      - name: relay/app, the signed build
+        if: ${{ inputs.app }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RUN: ${{ inputs.app_out_run }}
+        run: |
+          printf %s "$RUN" | grep -Eq '^[0-9]+$' || { echo "::error::app needs app_out_run (a run id)"; exit 1; }
+          gh run download "$RUN" --name app-out --dir app-out
+      - name: relay/app
+        if: ${{ inputs.app }}
+        working-directory: relay/app
+        run: npx --yes "$WRANGLER" deploy
+      - name: what is live
+        run: |
+          for u in ${{ inputs.relay && 'https://relay.vyre.run/' || '' }} ${{ inputs.names && 'https://names.vyre.run/v1/names/check?name=probe-deploy' || '' }} ${{ inputs.app && 'https://app.vyre.run/' || '' }}; do
+            [ -n "$u" ] && printf '%s -> HTTP %s\n' "$u" "$(curl -s -o /dev/null -w '%{http_code}' --max-time 20 "$u")"
+          done
