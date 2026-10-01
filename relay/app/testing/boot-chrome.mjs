@@ -44,6 +44,7 @@ const manifestHex = built.manifest;
 const page = `<!doctype html><meta charset="utf-8"><body><script type="module">
 import { registerWorker, adoptInWorker } from "/adopt.js";
 const post = o => fetch("/__report", { method: "POST", body: JSON.stringify(o) });
+post({ stage: "started" });
 const t0 = performance.now();
 const hadController = !!navigator.serviceWorker.controller;
 const registered = registerWorker();
@@ -62,6 +63,7 @@ const env = { ASSETS: { fetch: async req => {
 } } };
 const server = http.createServer(async (rq, rs) => {
   const url = new URL(rq.url, "http://localhost");
+  console.log("request", rq.method, rq.url);
   if (url.pathname === "/__report") { let b = ""; for await (const c of rq) b += c; reports.push(JSON.parse(b)); rs.end("ok"); return; }
   if (url.pathname === "/boot.html") { rs.setHeader("content-type", "text/html"); rs.end(page); return; }
   const r = await worker.fetch(new Request(`http://localhost:${port}${rq.url}`), env);
@@ -71,7 +73,7 @@ await new Promise(r => server.listen(0, "127.0.0.1", () => r(undefined)));
 const port = /** @type {any} */ (server.address()).port;
 
 // /adopt.js is served by the real Worker from the sealed loader tree; /boot.html is the harness page.
-const c = spawn(CHROME, ["--headless=new", "--disable-gpu", "--no-sandbox", `--user-data-dir=${path.join(tmp, "profile")}`, `http://localhost:${port}/boot.html`], { stdio: "ignore" });
+const c = spawn(CHROME, ["--headless=new", "--disable-gpu", "--no-sandbox", "--enable-logging=stderr", "--v=0", `--user-data-dir=${path.join(tmp, "profile")}`, `http://localhost:${port}/boot.html`], { stdio: ["ignore", "inherit", "inherit"] });
 const end = Date.now() + 60000;
 while (!reports.some(r => r.stage === "app") && Date.now() < end) await new Promise(r => setTimeout(r, 300));
 c.kill();
