@@ -51,7 +51,7 @@ fs.writeFileSync(path.join(VHOME, "config.json"), JSON.stringify({
   // Off on purpose: nothing here dials out. The computers, agents, chrome and desktop hands are what is under test.
   modules: { disable: ["names", "network", "hooks", "apps", "relay", "releases", "link", "sync", "push", "github", "google", "mail", "import", "sessions", "chat", "sight"] },
   computers: { docker: PROXY, dockerBearerFile: BEARER, image: "csproof-computer:test", network: "csproof-net", labelPrefix: PREFIX,
-    cpus: 2, memoryMb: 2048, screens: 2, bootMs: 120_000, waitMs: 30_000, freezeMs: 600_000, idleMs: 600_000, handbackIdleMin: 15 },
+    cpus: 2, memoryMb: 2048, screens: 2, sweepMs: 0, bootMs: 120_000, waitMs: 30_000, freezeMs: 600_000, idleMs: 600_000, handbackIdleMin: 15 },
 }, null, 2));
 
 const { start } = await import("../../core/daemon/index.js");
@@ -252,9 +252,11 @@ try {
     // Findings here are recorded and the run goes on, so one stale answer does not hide the next check.
     const note = (ok, name, evidence) => { results.push({ ok, name }); console.log(`${ok ? "PASS" : "FAIL"} ${name}${evidence !== undefined ? `: ${typeof evidence === "string" ? evidence : JSON.stringify(evidence)}` : ""}`); if (!ok) failed = true; };
     sh(["kill", CONTAINER]);
+    const t0k = Date.now();
     let st = null;
     for (let i = 0; i < 30; i++) { const g = await person("computers.get", { agent: AGENT }); st = g.data && g.data.state; if (st && st !== "running") break; await sleep(1000); }
-    note(st === "stopped" || st === "none", "4f a killed computer is reported stopped within 30 s, not running", { state: st });
+    const tKill = Math.round((Date.now() - t0k) / 100) / 10;
+    note(st === "stopped" || st === "none", "4f a killed computer is reported stopped within 30 s from the runtime's event stream (the sweep is off in this proof)", { state: st, seconds: tKill }));
     const w = await person("computers.watch", { agent: AGENT, surface: "deck:laptop" });
     let said = w.error ? String(w.error.message) : "";
     if (!w.error) {
