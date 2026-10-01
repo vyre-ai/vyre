@@ -122,6 +122,9 @@ export function start(chrome, opts = {}) {
   /** @type {any} */ (ctx).sites = sites;
   presence.badgeOwnedBy(() => conn.failingSince != null && now() - conn.failingSince >= BADGE_AFTER_MS);
 
+  /** When a page control last failed on a tab: a picture act soon after is a step DOWN the ladder. @type {Map<number, number>} */
+  const lowerFail = new Map();
+
   /** @param {any} msg */
   async function onMessage(msg) {
     attempts = 0; streak = 0;
@@ -148,6 +151,17 @@ export function start(chrome, opts = {}) {
       startUrl = tabArg !== undefined && !/^(site|caps|status)/.test(msg.op) ? ctx.tabs.get(tabArg).then((/** @type {any} */ t) => String(t && (t.pendingUrl || t.url) || "")).catch(() => "") : Promise.resolve("");
       void startUrl.then(u => { if (u) return sites.arrive(u); return undefined; }).catch(() => {});
       const result = await presence.around(msg.op, msg.args, () => dispatch(msg.op, msg.args, ctx, msg.trust));
+      // Which rung of the ladder worked on this page: the picture (point.act) after a lower rung failed on this tab, or the page's own controls. A record only; it never changes what a call may do.
+      if (tabArg !== undefined && result && typeof result === "object" && result.ok === true && !result.held && /^(point\.act|page\.(act|fill))$/.test(msg.op)) {
+        const pic = msg.op === "point.act", failedAt = lowerFail.get(tabArg) || 0;
+        void startUrl.then(u => { if (u) sites.rung({ tabUrl: u, rung: pic ? 5 : 2, lowerFailed: pic && Date.now() - failedAt < 120_000 }); }).catch(() => {});
+        if (!pic) lowerFail.delete(tabArg);
+      }
+      // A page template that has needed the picture before says so in the snapshot, as a hint for where to start (advisory: chrome_point holds and asks whatever got the model there).
+      if (tabArg !== undefined && msg.op === "page.snapshot" && result && typeof result === "object" && !Array.isArray(result)) {
+        const u = await startUrl; const sr = u ? sites.startRung(u) : null;
+        if (sr && sr >= 3) /** @type {any} */ (result).ladder = { startRung: sr, hint: sr === 5 ? "on this kind of page the picture rung (chrome_screenshot, then chrome_point) is what worked before; try the page's controls first if they are listed here. This is a hint only." : "on this kind of page a lower rung worked before. This is a hint only." };
+      }
       if (tabArg !== undefined && result && typeof result === "object" && /^(page\.(act|fill)|api\.learn|frames\.(list|probe))/.test(msg.op)) void startUrl.then(u => { if (u) sites.learn({ op: msg.op, args: msg.args, result, tabUrl: u }); }).catch(() => {});
       // A batch or flow that stopped on a login page is the person's to fix, not the page's fault.
       if (result && typeof result === "object" && result.ok === false && result.code && /^(batch|ghl)\./.test(msg.op)) {
@@ -161,6 +175,7 @@ export function start(chrome, opts = {}) {
       const a = msg.args && typeof msg.args === "object" ? { ...msg.args, ...(typeof msg.args.tab === "number" && msg.args.tabId === undefined ? { tabId: msg.args.tab } : {}) } : {};
       const lf = await loginFailure(msg.op, a, /** @type {any} */ (e0), ctx).catch(() => null);
       // A step that could not find a control this device knows is a miss for that stored fact (lib/sitecache.js).
+      if (a.tabId !== undefined && /^page\.(act|fill)$/.test(msg.op)) lowerFail.set(a.tabId, Date.now());
       if (a.tabId !== undefined && /^page\.(act|fill)$/.test(msg.op) && /** @type {any} */ (e0)?.code === "not_found") void startUrl.then(u => { if (u) sites.miss({ op: msg.op, args: a, error: e0, tabUrl: u }); }).catch(() => {});
       if (lf) e = Object.assign(new Error(lf.message), { code: "login_required", detail: lf.detail });
       const code = /** @type {any} */ (e)?.code;

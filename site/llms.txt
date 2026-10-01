@@ -8,7 +8,7 @@
 Vyre is a Claude Code plugin plus one small daemon. It does not fork or wrap Claude Code.
 
 ## What runs where
-- The daemon (`vyred`) runs on a Linux server you control.
+- Vyre runs on a Linux server you control.
 - The Deck (the web app) is served from your own address, `<you>.vyre.run`.
 - The Mac Capsule is a small always-on helper on your Mac; press Option-Space to reach it.
 - Your Mac reaches your server over Tailscale, which you install and sign in to yourself; Vyre

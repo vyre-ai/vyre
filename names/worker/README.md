@@ -18,7 +18,7 @@ All JSON. Success is `{ "data": ... }`, failure `{ "error": { "code", "message" 
 | Call | Does |
 | --- | --- |
 | `POST /v1/names/claim {name}` | Binds the name to the caller's route for good. Returns a one-time 128-bit recovery code (only its hash is stored). |
-| `POST /v1/names/point {name, ip}` | Sets the A record (100.64.0.0/10) or AAAA (fd7a:115c:a1e0::/48). Everything else is refused, IPv4-mapped and private ranges included. |
+| `POST /v1/names/point {name, ip}` | Sets the A record (100.64.0.0/10). The tailnet's IPv6 address is refused (`ipv4_only`): resolvers that filter DNS rebinding drop it. Everything else is refused, IPv4-mapped and private ranges included. |
 | `POST /v1/names/acme {name, token}` | Sets `_acme-challenge.<name>` TXT, for a name the route holds. `{own: true, token}` writes under `<routehash>.acme.vyre.run` instead, for the person's own domain. |
 | `DELETE /v1/names/acme {name}` or `{own: true}` | Clears it. |
 | `POST /v1/names/recover {name, code, next}` | A 72-hour pending rebind to the caller's route. `next` is the hash of the new recovery code the box chose. |

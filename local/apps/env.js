@@ -61,7 +61,7 @@ export function realExec(execFile = childExecFile) {
         }
         ok({ code: err ? (typeof err.code === "number" ? err.code : 1) : 0, stdout: String(stdout ?? ""), stderr: String(stderr ?? "") });
       });
-    if (child && child.stdin) child.stdin.end(input === undefined ? undefined : input);
+    if (child && child.stdin) { child.stdin.on("error", () => {}); child.stdin.end(input === undefined ? undefined : input); }
   });
 }
 

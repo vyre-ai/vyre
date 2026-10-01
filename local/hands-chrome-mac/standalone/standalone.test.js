@@ -548,3 +548,31 @@ test("the visit window for the two-visit evidence is floored at 5 minutes unless
   assert.equal(visitMsFrom(0.02, { VYRE_CHROME_TEST: "1" }), 1200, "the harness may use a short window");
   assert.equal(visitMsFrom(0.0001, { NODE_ENV: "test" }), 1000);
 });
+
+test("ladder: the same target failing twice in one chain hands over a small picture and names chrome_point; a success on it, a blind page and a first failure do not", async t => {
+  const PNG = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==";
+  let blind = false; let okNow = false;
+  const { call } = await rig(t, (/** @type {string} */ op) => {
+    if (op === "page.act") { if (okNow) return { ok: true, did: "click" }; throw Object.assign(new Error("nothing matches"), { code: "not_found" }); }
+    if (op === "page.screenshot") { if (blind) throw Object.assign(new Error("a password field is on this page"), { code: "blocked" }); return { ok: true, image: { mime: "image/jpeg", bytes: 10, data: PNG }, shot: { id: "abc123", scale: 1, image: { w: 640, h: 400 }, viewport: { w: 640, h: 400, dpr: 1, scrollX: 0, scrollY: 0 } } }; }
+    return { ok: true };
+  });
+  const a1 = await call("chrome_act", { selector: { name: "Paint tool" }, kind: "click", tab: 1 });
+  assert.equal(a1.isError, true);
+  assert.ok(!a1.content.some((/** @type {any} */ c) => c.type === "image"), "a first failure: no picture yet");
+  const a2 = await call("chrome_act", { selector: { name: "Paint tool" }, kind: "click", tab: 1 });
+  assert.equal(a2.content[0].type, "image", "the second failure on the same target carries the picture");
+  assert.match(a2.content.find((/** @type {any} */ c) => c.type === "text").text, /shot abc123.*chrome_point/s);
+  const other = await call("chrome_act", { selector: { name: "Something else" }, kind: "click", tab: 1 });
+  assert.ok(!other.content.some((/** @type {any} */ c) => c.type === "image"), "another target starts its own count");
+  okNow = true;
+  await call("chrome_act", { selector: { name: "Paint tool" }, kind: "click", tab: 1 });
+  okNow = false;
+  const again = await call("chrome_act", { selector: { name: "Paint tool" }, kind: "click", tab: 1 });
+  assert.ok(!again.content.some((/** @type {any} */ c) => c.type === "image"), "a success clears the chain");
+  blind = true;
+  await call("chrome_act", { selector: { name: "Hidden" }, kind: "click", tab: 1 });
+  const b2 = await call("chrome_act", { selector: { name: "Hidden" }, kind: "click", tab: 1 });
+  assert.ok(!b2.content.some((/** @type {any} */ c) => c.type === "image"), "a refused picture (blind page, credential field) means no picture and no chrome_point hint");
+  assert.doesNotMatch(b2.content[b2.content.length - 1].text, /shot abc/);
+});

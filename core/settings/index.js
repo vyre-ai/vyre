@@ -12,7 +12,7 @@
 // and can be undone instead. A preview still says what a change loosens or widens, so a surface can
 // show it. Agents may read settings, and settings.resolve hands a starting session its Vyre-owned values. An agent changes
 // one only through settings.request, and only when the person asked for that change in their own
-// words in this conversation (PLAN.md C25 and P17: vault's gate.said.match); otherwise never.
+// words in this conversation (PLAN.md C25 and P17: vault.said.match); otherwise never.
 // Every change is logged, and settings.undo reverses one with no prompt.
 
 import fs from "node:fs";
@@ -20,6 +20,7 @@ import { coerce, read, write, whereIs, needsConfirm } from "../config/settings.j
 import { claudeHome } from "../config/index.js";
 import { readHub, writeHub, hubPath, digest, levelOf } from "./hub.js";
 import { withinOrThrow } from "../../lib/within.js";
+import { settingTo } from "../../lib/said/setting.js";
 
 const PEOPLE = ["cli", "local", "deck", "capsule"];
 const MIGRATIONS = [
@@ -436,11 +437,12 @@ export default {
 
     /**
      * @param {any} i @param {any} meta @param {any} raw the new value, undefined to reset
-     * @param {{ said?: string }} [o] said: the person's turn this agent change was matched to (settings.request)
+     * @param {{ said?: string, ask?: (to: string) => Promise<string | null>, refusal?: string }} [o] settings.request passes `ask`: it matches the person's words to the change once its level, target and value are known, and returns the intent that covered it
      */
     const change = async (i, meta, raw, o = {}) => {
       const caller = String(meta && meta.caller);
-      const asked = typeof o.said === "string" && o.said !== "";
+      let intent = typeof o.said === "string" && o.said !== "" ? o.said : "";
+      const asked = intent !== "" || typeof o.ask === "function";
       // A caller vouched as an agent ("cli agent:kit", "mcp:agent:kit") is never the person,
       // whatever surface kind it rides on. It changes a setting only through settings.request.
       if (!asked && /(?:^|[\s:])agent:/.test(caller)) throw Object.assign(new Error("settings are the person's own; an agent never changes one"), { code: "denied" });
@@ -455,6 +457,12 @@ export default {
       const target = targetOf(lv, at);
       if (lv !== "account" && !target) throw Object.assign(new Error(`a ${lv} setting needs ${lv}`), { code: "bad_input" });
       const value = raw === undefined ? undefined : coerce(d, raw);
+      if (o.ask) {
+        // The recorder writes account and project asks with a value; a reset, a device or a session change is never recorded, so it is never covered.
+        if (raw === undefined || (lv !== "account" && lv !== "project")) throw Object.assign(new Error(o.refusal || "the person did not ask for this change"), { code: "denied" });
+        intent = (await o.ask(settingTo({ key: d.key, value, level: lv, target: target == null ? undefined : String(target) }))) || "";
+        if (!intent) throw Object.assign(new Error(o.refusal || "the person did not ask for this change"), { code: "denied" });
+      }
       const whereTo = await whereIs(env, d, lv, target);
       const before = await level(d, lv, target);
       const tag = target ? { [lv]: target } : {};
@@ -466,7 +474,7 @@ export default {
       // setter call it as vyred acting for them ("local"), and the log names the agent.
       await write(env, d, lv, target, value, asked ? "local" : asPerson(caller), caller);
       const r = mirror(d, lv, target, value);
-      const id = logChange(d, lv, target, before.value, value, caller, asked ? o.said : null);
+      const id = logChange(d, lv, target, before.value, value, caller, asked ? intent : null);
       ctx.events.emit("settings.changed", { key: d.key, level: lv, ...tag, apply: d.apply, rev: r, change: id, by: asked ? caller : "person", ...said(d, value) });
       ctx.log(`${d.key} ${raw === undefined ? "reset" : "set"} at ${lv}${target ? " " + target : ""} by ${caller} (${whereTo})`);
       return effective(d, at);
@@ -503,7 +511,7 @@ export default {
 
     // An agent changing a setting for the person (PLAN.md C25): only when the person asked for this
     // change in their own words in this conversation. vyred decides that from the person's own
-    // turns (P17), never from the agent's say-so: gate.said.match answers for the calling thread.
+    // turns (P17), never from the agent's say-so: vault.said.match answers for the calling thread.
     // No match, or no gate to ask: refused, and the agent tells the person to ask.
     ctx.tool("settings.request", {
       description: "Change or reset a setting because the person asked you to in this conversation (for example \"use Sonnet by default in this project\"). It works only when the person's own words asked for this change; otherwise it is refused and you should tell them they can change it in Settings or ask you directly. Give value to set it, or reset: true to clear it. The person sees who changed it and can undo it.",
@@ -516,11 +524,17 @@ export default {
         const d = declOf(String(i.key));
         if (i.reset !== true && !("value" in i)) throw Object.assign(new Error("give value, or reset: true"), { code: "bad_input" });
         if (i.reset !== true && i.value === null) throw Object.assign(new Error("use reset: true to clear a setting"), { code: "bad_input" });
-        const m = await ctx.call("gate.said.match", { thread, kind: "setting", key: d.key, before: Date.now() }).catch(() => ({ error: { code: "unavailable" } }));
-        const said = !m.error && m.data && m.data.matched === true && m.data.said && typeof m.data.said.id === "string" ? m.data.said.id : null;
-        if (!said) refuse(`${d.label || d.key} changes only when the person asks for it. Tell them they can change it in Settings, or ask you to in their own words.`);
+        if (d.secret) refuse(`${d.label || d.key} holds a secret; the person changes it in Settings`);
+        // The match is made inside change(), once the level, the project and the value are resolved: the person's words must name the key, the value and the level, and a plain ask is used up by this one change (consume).
+        const ask = async (/** @type {string} */ to) => {
+          /** @type {string[]} */ let lineage = [];
+          try { const l = await ctx.call("threads.lineage", { thread }); if (l && l.data && Array.isArray(l.data.lineage)) lineage = l.data.lineage.map(String); } catch {}
+          const agent = meta && typeof (/** @type {any} */ (meta)).agent === "string" ? (/** @type {any} */ (meta)).agent : "";
+          const m = await ctx.call("vault.said.match", { kind: "setting", to: [to], consume: true, thread, ...(lineage.length ? { lineage } : {}), ...(agent ? { agent } : {}) }).catch(() => ({ error: { code: "unavailable" } }));
+          return !m.error && m.data && m.data.matched === true && typeof m.data.id === "string" ? m.data.id : null;
+        };
         const { reset, ...rest } = i;
-        return change({ ...rest, preview: false }, meta, reset === true ? undefined : i.value, { said: /** @type {string} */ (said) });
+        return change({ ...rest, preview: false }, meta, reset === true ? undefined : i.value, { ask, refusal: `${d.label || d.key} changes only when the person asks for it, to that value and at that level. Tell them they can change it in Settings, or ask you to in their own words.` });
       },
     });
 
