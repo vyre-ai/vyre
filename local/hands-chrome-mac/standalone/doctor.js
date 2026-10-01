@@ -96,6 +96,7 @@ export async function doctor({ dataDir, appDir, extensionId, selftest = true, pl
       let hello = false;
       bridge.on(e => { if (e.event === "hello") hello = true; });
       const child = spawn(process.execPath, [path.join(hostDir, "host.js")], { env: { ...process.env, VYRE_CHROME_SOCK: sock }, stdio: ["pipe", "pipe", "ignore"] });
+      child.stdin.on("error", () => {});
       child.stdin.write(encode({ event: "hello", protocol: 1, version: "doctor", ops: [], caps: {} }));
       const end = Date.now() + 5000;
       while (!hello && Date.now() < end) await new Promise(r => setTimeout(r, 50));

@@ -336,6 +336,9 @@ function run(cmd, args, { input, timeout = 15_000, binary = false } = {}) {
       if (code !== 0) return reject(new Error(stderr || `${cmd} exited ${code}`));
       resolve(binary ? stdout : stdout.toString("utf8"));
     });
+    // A command that exits before it reads its input closes the pipe (EPIPE); its exit code above reports the failure, so the write error
+    // must not reach the process as an uncaught exception.
+    child.stdin.on("error", () => {});
     if (input !== undefined) child.stdin.end(input);
     else child.stdin.end();
   });

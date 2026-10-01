@@ -5,6 +5,128 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 ## Unreleased
 
 - test: a tool must declare an explicit `reach`. test/reach-explicit.test.js reads every module.json and fails on a tool with no `reach` that is not in test/reach-allowlist.json (799 tools today: 457 open to any caller by default, 342 limited only by `callers` in code), and on an allowlist line that is stale, so each owner shrinks the list by writing `{ "name", "reach" }`. The registry default is unchanged.
+- Every watchers tool names its reach (ADR 0047): reads and `watchers.pause` are anyone's (stopping
+  is the safe direction); `watchers.create` and `watchers.preset` are asked, so a model turns a
+  watcher on only when the person's own words asked for it, after the card; `watchers.resume`,
+  `watchers.delete` and `watchers.run` are the person's; `watchers.hook` is the webhook's. The duty
+  operations moved to `watchers.duty.create`, `.update`, `.delete`, `.run` and `.resume`, reach
+  modules (the teammates module's, for a duty a person turned on), so a model's asked gate never
+  stands in a teammate's way; `core/team/duties.js` calls the new names. `watchers.create` no longer
+  takes owner, when or instruction. `watchers.preset` is no longer limited to the person and the
+  assistant: asked covers a model. `core/watchers/reach.test.js` checks all of it against the real
+  registry.
+- `vyre uninstall --system`: if the AppArmor profile will not unload, it says the profile file is
+  removed but the profile may stay loaded until the next reboot.
+
+- The macOS wall is `(deny default)` with Apple's BSD baseline (`bsd.sb`) and only what node needs:
+  exec of the node binary and nothing else, reads of the watcher's folder, node and its parents'
+  names, no writes (but /dev/null), no signals to others, no network. A child cannot run pbpaste,
+  open, osascript or any other program, and cannot list the keychains or ~/Library. Its probe now
+  tries each of those (reviewer-2). Every test that spawns a child or listens skips on a Mac unless
+  GITHUB_ACTIONS is true (`lib/sandbox/test-host.js`), not on a bare CI=1.
+
+- The box's wall for watchers: a `spawner` candidate for `lib/sandbox/wall.js`, used when a spawner
+  socket exists and its client has `spawnAsWatcher` (launch's pool-uid wall). A launched child cannot
+  read the person's folders, so the watcher's files are handed to it over its channel and written
+  into its own private TMPDIR, the only place node's permission flags let it read or write. It is
+  probed like the others, with the child's own attempts; a spawner that refuses (its rule is not in
+  place) is a refusal in words, not a failed watcher. Frozen edge: `core/watchers -> core/spawner`.
+
+- The wall: a watcher child runs where it can reach nothing but its parent: no network (no
+  loopback, no unix socket), a view of the filesystem with only its own folder, the node binary and
+  the system libraries (nothing of the home or run directories), no sight of or signal to other
+  processes, no inherited fds. Linux: bubblewrap (`--unshare-all --die-with-parent`); macOS: a
+  `sandbox-exec` profile (network, signals, writes and the home, temp and run areas denied).
+  `lib/sandbox/wall.js` probes each wall with the child's own attempts (a TCP listener, a unix
+  socket, a file in the home directory, a signal to a same-user process, and a read of its folder
+  that must work) and accepts it only if all hold. No wall, no watcher: the refusal says the machine
+  cannot keep a watcher off the network, with the one fix (install bubblewrap; on Ubuntu 23.10 and
+  later, the AppArmor profile that lets bwrap use user namespaces, which `vyre up --system` installs
+  and `vyre uninstall --system` removes; the profile lets any user on that machine create user
+  namespaces through bwrap). A watcher refused this way is not counted as failing or
+  paused and is tried again in an hour. The channel to the child is lines of JSON on stdin and
+  stdout, at most 1 MB a line and 64 MB in all; anything else on it fails the run; the child's
+  console and `log()` go to stderr. Dry runs report `wall`. `core/watchers/isolation.test.js` and
+  the `watchers-isolation` workflow prove it against a real vyred on Ubuntu (no bubblewrap,
+  restricted, with the installer's profile) and macOS runners.
+- Presets for a repo (`kind: "repo"`: issues and pull requests of an owner/name, with or without a
+  GitHub credential), a Slack channel (`kind: "slack"`: new messages, by channel id) and a public
+  feed (`kind: "feed"`: RSS, Atom or JSON feed, with a conditional request so an unchanged feed
+  costs one 304). Each is written off with its card like mail and calendar, files short quoted
+  notes marked as from outside, filters by a plain text match with no model, and starts quietly
+  (repo and Slack file nothing on the first run; the feed files up to its latest matches once and
+  never twice). Schedules are never faster than 15 minutes (Slack 5).
+
+- Calendar preset: `watchers.preset {kind: "calendar", project, credential, calendar?, match?, days?,
+  when?}` writes an off-by-default watcher that reads the next N days of a Google Calendar through
+  `vault.request` (GET only), starts quietly (the first run files nothing), then files a short note
+  for each new or changed event that matches, by a plain text match with no model. `watcher.json`
+  gains `params`, a small object of a preset's settings.
+
+- Mail preset hardening (reviewer-2): a Message-ID the sender chose is searched in Gmail only when
+  it is a plain id (never OR, from:, quotes), and the message found must carry exactly that id;
+  `gmailId` from the push is used when present. A duty files at most 25 items per push.
+  `watchers.preset` is the person's or their assistant's, and refuses a name that already exists.
+
+- `watchers.resume {name, hash?}` takes the card's hash and refuses with "changed after its card
+  was shown" when the code moved; with no hash it still resumes unchanged code (a code change
+  since it was turned on is refused either way).
+
+- Mail preset: `watchers.preset {kind: "mail", project, credential}` writes a watcher (fixed code)
+  that runs on `vault.push`, reads each pushed message's sender, subject and first lines through
+  `vault.request` with the person's Google api-credential (a read, through the vault, scoped to
+  that watcher by its grant), asks a model for a yes or no against the person's own words on what
+  counts as important, and files only the important ones as short quoted notes marked as from
+  outside. It is left off with its card and the exact grant command; `watchers.create {name, hash}`
+  turns it on. `net.<host>.credential` names an api-credential the vault calls with itself (reads
+  only), beside `net.<host>.vault` for a plain item Vyre attaches. A filed item's `quote` goes into
+  the taught fact in quotation marks.
+
+- `watchers.card {name}`: what the person sees before turning a watcher on. Three plain lines
+  (when, check, do) from the author's `summary` in `watcher.json` (or derived for a duty and for a
+  summary-less watcher), plus facts Vyre works out from the folder itself and never from the
+  summary: hosts it reads, credentials attached per host, whether it can act, model cost cap. It
+  returns the code's hash; `watchers.create {name, hash}` refuses if the code moved since the card.
+
+- `ask(prompt)` for watchers: a model judgment with no tools (through `threads.quick`), only when `watcher.json` declares `ask: { dailyUsd }`. The budget is
+  tallied per watcher per day for that cap, while the dollars reach core/spend by themselves (the
+  quick session's thread.finished) and the provider's own cap is checked first with spend.check;
+  with the ledger off a watcher cannot ask; 20 asks and 8000 characters per run; a prompt
+  that carries an attached credential is refused; the reply is scrubbed.
+
+- A duty on `push <connection>` runs on vault's `vault.push` event: one item per message id, only
+  for projects the connection's `scope` covers (no scope, no run), keeping no sender or subject.
+
+- lib/sandbox follow-ups from review: a redirect may not leave the watcher's declared hosts; a
+  credential goes to the exact declared host over https only and is dropped when a redirect changes
+  origin; one overall deadline per fetch; the credential is scrubbed from response headers; 6to4
+  relay anycast and site-local IPv6 are refused; hosts under `net` are exact names, not subdomains;
+  a dry run reports `networkIsolated` (false unless vyred runs as root with the sandbox user).
+
+- Raw vault values no longer reach a watcher (reviewer-2 H1). `needs` is refused in `watcher.json`
+  and `vault.fetch` in a watcher is refused; a credential goes under `net` and the parent attaches
+  it to that host's requests. A watcher reads only the hosts it lists under `net` (none listed means
+  no network). The parent scrubs an attached credential, and its base64, hex and URL forms, from
+  the response, the logs and the error.
+
+- Duties on the watchers runtime: `watchers.create {name: "duty-<role>-<id>", project, owner:
+  {kind: "teammate", teammate}, when, instruction, act}` writes a watcher folder from plain words
+  (fixed template code, never model-written), turns it on and files one item per firing.
+  `watchers.update`, `watchers.delete` and `watchers.run` complete the set; duty calls are refused
+  unless they come from the teammates module or the person. `when` reads an event
+  (`thread.finished`, with optional `where k=v`), a schedule (`daily 07:00`, `weekdays 09:30`,
+  `hourly`, `every 30 minutes`, cron; never faster than 5 minutes) or `push <connection>` (runs on
+  the `vault.push` event, which vault has yet to emit). `watcher.json` gains `owner`, `instruction`,
+  `act` and `when`; `watcher.deleted` is a new event.
+
+- `lib/sandbox` (watchers, shared with platform's module host): a sandboxed child has no network of
+  its own and reaches the web through its parent's `fetch`, GET and HEAD only, ports 80 and 443,
+  public addresses only (private, CGNAT, Tailscale, loopback, link-local and IPv6 forms that
+  embed an IPv4 are refused after DNS and on every redirect; the connection goes to the checked
+  address). When vyred is root the child runs as the `vyre-sandbox` uid (`VYRE_SANDBOX_UID`).
+- `watcher.json` gains `net`: the hosts a watcher reads, each with an optional vault item the
+  parent attaches to that host's requests only. A watcher's own `Authorization` header is
+  dropped; the credential never reaches the watcher's code.
 
 - eval: the relevant-p95 measurement (scripts/eval-memory.js) takes the best p95 of five warm rounds, and up to fifteen when the best is still within half of the bar, so a loaded CI runner's spikes (Node 24 under load) can no longer fail a 5 ms bound the code meets by 35 times (p95 is 0.13 ms), while a real regression slows every round and still fails. The bar is unchanged.
 #### A test never boots a vyred on the person's Mac
@@ -18,7 +140,13 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 - docs-shots: the onboarding history shot waits for the step's folder list ("N sessions") instead of the old meter, and writes a temp-folder path in the list as the sample person's own Claude Code folder before the picture, so no temp path is in a screenshot.
 - ci: a new push to a team branch (work/*, never work/stage-0.2 or main) cancels that branch's older run of each push workflow. The workflows that had their own group keep it; accounts-isolation and proof-wire gain one; memory-eval-record and release keep cancel-in-progress false.
 - test: chaos R7 waits until the slow write is running in vyred (a chaos.started event) before it stops the daemon, instead of a fixed 100 ms sleep that let stop win the race on a loaded machine; the drive refusal test looks for a drive or whois call, not any tailscale call, since another module's late status --json landed in the window.
+- settings.request binds the person's yes to the key, the canonical value and the level (and project): the assistant's settingTo (lib/said/setting.js) gives `<key>=<canonical json value>@<level>[/<id>]`, matched inside change() once those are resolved, so "use Sonnet here" no longer licenses the opposite value, another level or another project. A reset, a device or session change and a secret setting are never covered, so agents are refused them.
 
+- settings.request asked a tool that does not exist (gate.said.match), so an agent could never change a setting even when the person asked. It now asks vault.said.match (kind setting, the key as the one destination, consumed by the change), and its test records a real intent through the vault instead of faking the wrong name. The TODOs in projects and team name the real tool.
+
+- A child that exits before it reads its stdin made the write fail with EPIPE as an unhandled stream error, which took vyred down (found when the docs world's fake claude exited early; any real box with claude logged out or crashing would hit it). The model reader, the Secure Enclave and Touch ID helpers, the swift build, computerd exec, the apps env runner, the hands helper, sign-in and the Chrome doctor now listen for stdin errors (app-design found it and fixed the reader at 5ef4d5ca). test/stdin-hygiene.test.js fails on any source that writes a child's stdin with no error listener; iq's reader and sign-in tests prove those two survive an early exit.
+
+- fix: a spawned command that exits before it reads its input closes the pipe, and the write fails with EPIPE; with no `error` listener on stdin that killed vyred. The memory reader's model binary (core/memory/personal/reader.js; claude not logged in, or crashing at start), computerd's command runner (core/computers/image/computerd/index.js) and the sign-in flow's pasted code (core/sessions/signin.js) now handle it: the read fails cleanly with the binary's own words (or that its input closed), the command's exit reports the failure. Tests with a binary that exits at once, and a sign-in command that closed its stdin. The other spawn stdin writes in core/ already had a listener.
 - rungs (reviewer-2 LOWs): a replica's rung time is clamped to now, a change of rung is throttled to one per template per minute, and the count is documented as a hint for where to start, never trust.
 - site knowledge: rungs for capsule-sight's page ladder. The record holds `rungs: { <canonical page template>: { r: 1..5, n: 0..255, d: day, at } }`, at most 40 templates, integers only and never a string from the page; the store alone counts it (lib applyRung): one count per template per 30-minute visit window on its own clock, capped at 255, a different rung starts over (at 2 when the lower rungs were seen to fail). memory.site.report takes { origin, template, rung, lowerFailed? } beside its old { part, id, outcome } form; a patch from Chrome cannot set rungs (only a replica's sync can); the arrival card carries `startRungs` ({ template: r } once a rung has worked twice); union and mergeFamily fold them; memory.site.detail lists them.
 - `relay.devices.list` carries `trustAsked` (ms epoch) for a browser that asked to be trusted and is still waiting, so a reloaded Deck shows the ask again. A limited browser (an untrusted web device) reading the list does not see it.
@@ -319,6 +447,7 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 - An agent limited to certain projects can no longer read or act on another project's GitHub repo by naming it; the project reads as if it did not exist.
 
 - A person's own "open a PR", "merge it" or "review this PR" becomes an `act_out` intent at `threads.send` and on `threads.start`'s first prompt, through the assistant's `prIntents` (`lib/said/pr.js`, copied here identically until assistant lands): it keeps only real asks (no questions, conditions, negations or standing permissions), binds each to github's composite key (`github.act.target`: `github.project.pr.merge:alex/app#7`) for the thread's project and one PR, and the switchboard records it as the person with `vault.said.record`. The thread's own PR is `github.session.pr`'s answer, used only when it is exactly one; pasted spans are removed first (`core/switchboard/index.js` `hearActs`). Two tests use the real vault and skip until vault lists `module:threads` as a recorder and resolver.
+- said: the injection suite (`test/said-injection.test.js`, S4 and S9): 17 ways someone else's words, or the person's own musing, reach a turn (forwarded and quoted mail, headers, code fences, long quotes, inline "said", HTML comments, conditionals, questions, reminders, negations, text past the 2 KB cut) times 9 payloads (send, pay, post, merge, retire, fill, duty start, two settings), run through the hostile-model extractor and the PR, team and setting recorders against a simulated Gate: zero intents, zero releases. The same words typed by the person are the control: one intent, released once, for that call only, inside 15 minutes. Two real gaps it found are closed: pasted HTML comments and script, style and blockquote elements are now quoted, and "please" no longer hides a note to self ("I might need to please reply").
 - voice: `voice.speak {text, reply: true}` makes a written reply speakable first (`local/voice/spoken.js`): markdown reduced to its words, code, tables and markup dropped, a link said as "a link", and a long reply cut at a sentence end inside 600 characters with "The rest is on your screen." A surface calls it when the person's own question was spoken; a typed one gets text only.
 - assistant: the capabilities block as a whole, header and markers included, is capped at 6000 characters.
 - said: the injection suite (`test/said-injection.test.js`, S4 and S9): 25 ways someone else's words, or the person's own musing, reach a turn (forwarded and quoted mail, headers, code fences, long quotes, inline "said", HTML comments, conditionals, questions, reminders, negations, text past the 2 KB cut) times 9 payloads (send, pay, post, merge, retire, fill, duty start, two settings), run through the hostile-model extractor and the PR, team and setting recorders against a simulated Gate: zero intents, zero releases. The same words typed by the person are the control: one intent, released once, for that call only, inside 15 minutes. Three real gaps it found are closed: "do what this says:" followed by someone else's words is now quoted, pasted HTML comments and script, style and blockquote elements are now quoted, and "please" no longer hides a note to self ("I might need to please reply").

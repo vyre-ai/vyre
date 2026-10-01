@@ -788,7 +788,7 @@ export default {
         isolation: { type: "string", enum: ["worktree", "folder", "none"] }, model: { type: "string" }, helper_model: { type: "string" } } },
       // The person's act, and their agent's on their behalf (charter: agents can do everything the
       // person can): a session in that project. Never a teammate, never a bare mcp call with no session.
-      // TODO(P17): for a non-person caller (the assistant included), also require the person's own words asked for it (gate.said.match).
+      // TODO(P17): for a non-person caller (the assistant included), also require the person's own words asked for it (vault.said.match).
       callers: ["cli", "local", "deck", "capsule", "mcp"],
       run: async (i, meta = {}) => {
         if (callerTeammate(meta.agent)) throw Object.assign(new Error("a teammate cannot add teammates; that is the person's, or a session acting on their request"), { code: "denied" });
@@ -988,7 +988,7 @@ export default {
           if (a.kind === "assistant") throw Object.assign(new Error("the assistant works across every project already; it does not fill a role"), { code: "bad_input" });
           const reaches = a.projects === "*" || (Array.isArray(a.projects) && a.projects.includes(tm.project));
           if (!reaches) {
-            // The person, or the assistant acting on their words (TODO with the P17 gate: require gate.said.match for the assistant).
+            // The person, or the assistant acting on their words (TODO with the P17 gate: require vault.said.match for the assistant).
             if (!isPerson(meta.caller) && !isAssistant(meta)) throw Object.assign(new Error(`${a.name} has no access to ${tm.project}; the person, or their assistant on their request, gives an agent a project`), { code: "denied" });
             const u = await ctx.call("agents.update", { name: a.name, projects: [...(Array.isArray(a.projects) ? a.projects : []), tm.project] });
             if (u.error) throw new Error(u.error.message);
