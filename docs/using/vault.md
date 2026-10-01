@@ -15,23 +15,30 @@ hold and lists what to rotate. It is also a password manager for you: logins wit
 cards, notes, API keys, env sets and SSH keys, with a generator, import, and autofill in the
 browser.
 
-## The floor rule
+## The rule that has no off switch
 
 No value from the Vault appears on any screen, log or event, except to a person who has just
 proved presence on their own device, for that one value. Never to a model, an agent, a log or an
-event. This is floor rule 8 in the [security floor](../concepts/floor.md), and it cannot be
+event. This is rule 8 of Vyre's nine [security rules](../concepts/floor.md), and it cannot be
 switched off.
 
 In practice:
 
 - `vault.list`, `vault.item`, `vault.search`, `vault.audit`, `vault.history`, events, logs, errors
   and the MCP listing carry names, kinds, field names and hosts. Never a value.
-- `vault.put` refuses Claude. Values come from `vyre vault put`'s hidden prompt, from a file vyred
+- `vault.put` refuses Claude. Values come from `vyre vault put`'s hidden prompt, from a file Vyre
   reads itself (`vault.import`), or from a module. Claude is never the channel a value travels
   through.
 - Showing, copying or filling a value needs you to prove you are present, with Touch ID, a
   passkey or a code typed in your terminal. See [presence](../concepts/presence.md). A call from
   Claude alone cannot pass it.
+
+Vyre asks you to prove you are there (Touch ID on a Mac, a passkey in the Deck or on the phone)
+for three kinds of thing: pairing a new Mac, releasing a vault secret (show, copy, fill, a
+one-time code, a backup), and anything that goes out as you, which is a send, a post, a payment or
+a delete. Reading a list of names asks for nothing. Unlocking your personal vault with its password
+asks for the password itself and nothing else, and Touch ID unlock asks for Touch ID; either one
+only opens the vault, and a secret still needs its own proof to be released.
 
 ## Store an item
 
@@ -93,7 +100,7 @@ vyre vault generate --words 5 harlow-wifi             # stored, never printed, b
 vyre vault ssh generate deploy-key                    # prints only the public key
 ```
 
-`import` reads the file inside vyred, so the values never pass through Claude, and it leaves the
+`import` reads the file inside Vyre, so the values never pass through Claude, and it leaves the
 file alone. It reads 1Password (.1pux and CSV), Bitwarden (JSON and CSV), LastPass, Dashlane (the
 zip or its CSVs), Keeper (CSV and JSON), NordPass, Proton Pass (the unencrypted zip, JSON or CSV),
 Enpass, KeePass and KeePassXC (XML or CSV; export a .kdbx first), Chrome, Edge, Brave, Arc,
@@ -199,7 +206,7 @@ terminal code. There, only a passkey from the Deck proves you are there. Use the
 Mac.
 :::
 
-- **Deck**: Copy asks vyred to write the clipboard; the value never comes back to the page.
+- **Deck**: Copy asks Vyre to write the clipboard; the value never comes back to the page.
   Reveal shows one field in the item pane and hides it again after 30 seconds, when the window
   loses focus, or when you leave the item.
 - **Lumen**: press Control twice, type the item's name, and choose **Fill in the front app**,
@@ -242,7 +249,7 @@ Taking access away never needs presence; giving it does.
 
 > [!WHY] What happens when a module uses its grant?
 > At use time the module calls `ctx.vault.fetch("<name>")` (a watcher calls `vault.fetch`), and
-> vyred checks the grant and hands that one value to that one caller. The internal tool is
+> Vyre checks the grant and hands that one value to that one caller. The internal tool is
 > `vault.release`, which no surface or model can call. Every use is written to the audit log, by
 > name.
 
@@ -296,7 +303,7 @@ vyre vault connections --surface agents
                   can send_mail, read_mail · capsule, chat
 ```
 
-A surface is `capsule`, `chat` (Claude in a thread), `agents` or `phone`. A new connection is
+A surface is `capsule` (that is Lumen), `chat` (Claude in a thread), `agents` or `phone`. A new connection is
 granted to Lumen and chat, so "send an email" in Lumen offers every account that can
 send, and Claude in a chat thread sees the same list. Agents see nothing until you grant it:
 
@@ -332,7 +339,7 @@ environment and scrubs them from its output:
 ```
 vyre vault run STRIPE_KEY=stripe-live -- npm run charge
 vyre vault run --env-file .env.vyre -- node server.js      # KEY=vault://item/field lines
-vyre vault inject -i config.tpl -o config.json              # {{ vault://item/field }}; vyred writes the file, 0600
+vyre vault inject -i config.tpl -o config.json              # {{ vault://item/field }}; Vyre writes the file, 0600
 ```
 
 An item before `--` is `<name>`, `<name>.<field>`, `VAR=<name>` or `VAR=<name>.<field>`; without `VAR=`, the
@@ -429,7 +436,7 @@ what you wanted.
 The Chrome extension in `modules/vault-extension/` fills logins from your Vault.
 
 1. Set `vault.fill` in `config.json`, for example `{ "host": "127.0.0.1", "port": 7788 }` (the
-   extension looks at `http://127.0.0.1:7788` unless you change it), and restart vyred.
+   extension looks at `http://127.0.0.1:7788` unless you change it), and restart Vyre (`vyre down`, then `vyre up`).
 2. In `chrome://extensions` (Chrome, Arc, Edge, Brave), turn on Developer mode and **Load
    unpacked** that folder. In Firefox 121 or later, open `about:debugging`, choose **Load
    Temporary Add-on** and pick its `manifest.json`.
@@ -506,7 +513,7 @@ Inside a Claude Code session, the `use-the-vault` skill tells Claude these rules
 - Take a value from Claude. `vault.put` refuses it.
 - Let Claude approve its own grant or pass.
 - Fill a login on a page whose origin is not one of the item's hosts.
-- Store passkeys. That is not built yet.
+- Hand out a passkey's private key. A passkey only signs inside the vault.
 
 ## Next
 

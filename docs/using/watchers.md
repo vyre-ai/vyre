@@ -10,10 +10,14 @@ status: stable
 
 A watcher is a small program that checks a source on a schedule (an inbox, an API, a page, a
 feed) and files one item per new thing into a project. Vyre is the runtime, not a set of
-integrations: Claude writes each watcher, and vyred runs it after the session that wrote it has
+integrations: Claude writes each watcher, and Vyre runs it after the session that wrote it has
 ended. The runtime handles the schedule, credentials from the [Vault](vault.md), the `since`
 cursor, dedupe, retries with backoff, filing items into the project and teaching them to its
 [memory](memory.md), logs, pause and resume.
+
+A watcher belongs to one project. A session or an agent sees only the watchers of its own project (or
+the projects it was given), and you see all of them. Its items are filed into that project's memory
+room and nowhere else.
 
 ## Ask for a watcher
 
@@ -68,8 +72,11 @@ export default async function watch({ since, emit, log, hook }) {
 ```
 
 Each run happens in a child process with no environment variables, read access to its own folder
-only, and no writes or child processes. It has no network of its own: it runs inside a wall (bubblewrap on Linux, a sandbox profile on a Mac) so it cannot open a socket, see your home, or reach other processes, and `fetch` is run by Vyre, GET and HEAD only, to the public hosts listed under `net`. If a machine cannot build that wall, no watcher runs there and Vyre says why. Every item needs a stable `id`,
-so a repeat is never filed twice.
+only, and no writes or child processes. It has no network of its own: it runs inside a wall
+(bubblewrap on Linux, a sandbox profile on a Mac) so it cannot open a socket, see your home, or
+reach other processes. `fetch` is run by Vyre for it, GET and HEAD only, to the public hosts listed
+under `net`. If a machine cannot build that wall, no watcher runs there and Vyre says why. Every item
+needs a stable `id`, so a repeat is never filed twice.
 
 ## Ask a model for a judgment
 
@@ -154,10 +161,26 @@ it and turns it back on. Filed items appear in the project and in its memory roo
 ## Standing duties are watchers too
 
 A teammate's standing duty ("review every finished session", "note each morning what is stale") is a
-watcher owned by that teammate, not a second system. The teammate's own tools create and change it;
-Vyre writes the watcher folder from the plain words, runs it on the same runtime, and shows it on
-the same card. A duty that may act (`act`) still holds anything outward you did not ask for, exactly
-as a watcher would. Delete a duty from its teammate, or pause it with `vyre watchers pause`.
+watcher owned by that teammate, not a second system. It lives in the same project as the teammate.
+Vyre writes the watcher folder from the plain words and fixed code, so no model writes duty code; it
+runs on the same runtime and the same wall, and shows the same card.
+
+- **A duty is off until you turn it on, if a model proposed it.** A duty a teammate, an agent or a
+  session creates is a proposal: it has no watcher at all, so it cannot run or spend anything. You
+  turn it on from the card in the project's **Team** tab, or a model turns it on only when your own
+  words asked for exactly that duty. A duty you create yourself starts at once.
+- **Enable and pause.** In the **Team** tab, a duty's button switches it on or off, and **Run now**
+  fires an enabled duty once. `vyre watchers pause <name>` and `vyre watchers resume <name>` work on
+  its watcher too (its name is `duty-<role>-<id>`). Changing a running duty asks you again.
+- **What a firing does.** The duty's fixed code files one item per firing, so what it did shows in
+  `vyre watchers items` like any watcher's. The teammate reads what its duties filed with its next
+  request. A firing does not start the teammate by itself.
+- **It still cannot reach out.** A duty marked "Can make changes" still holds anything outward you did
+  not ask for, exactly as a watcher would, and every duty runs inside the wall.
+- **Deleting.** Delete a duty from its teammate, which removes its watcher. Retiring a teammate
+  switches its duties off.
+
+See [Teammates](teammates.md).
 
 ## Vyre does not poll where it can listen
 

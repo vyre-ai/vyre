@@ -8,7 +8,7 @@ status: draft
 
 # Your first day
 
-Onboarding left you with a box at your own address, a paired Mac, and an assistant. This page walks through the five things most people do next, each in the fewest steps. Most steps work from the terminal as well as from a screen; both are shown. The examples use a project called `harlow-legal` and an agent called `kit`.
+Setup left you with a server at your own address, such as `https://alex.vyre.run`, your phone on it, and a Mac paired with it. If Now still shows **Create your assistant**, press it first and give your assistant a name such as `juno`. This page walks through the five things most people do next, each in the fewest steps. Most steps work from the terminal as well as from a screen; both are shown. The examples use a project called `harlow-legal` and an agent called `kit`.
 
 ## Check that everything is up
 
@@ -19,13 +19,7 @@ vyre status
 vyre link
 ```
 
-```output
-  vyred running · 0.0.1 · local · pid 4242 · up 380s
-  17 modules running
-  ● linked to vyre.tail1234.ts.net
-```
-
-`vyre status` says whether `vyred` is running and how many modules started (a failed one is named with `vyre modules`). `vyre link` says whether this Mac is paired with your box and whether the box answers. If either is wrong, see [Troubleshooting](troubleshooting.md).
+`vyre status` says whether Vyre is running on this Mac and how many of its modules started (a failed one is named with `vyre modules`). `vyre link` says whether this Mac is paired with your server and whether the server answers; paired and answering, it prints `●` and `linked to` with your server's name. If either is wrong, see [Troubleshooting](troubleshooting.md).
 
 ## Open Lumen
 
@@ -39,7 +33,7 @@ Press Control twice, in any app. Lumen opens over what you are doing, with the c
 > [!SNAG] Control twice does nothing
 > Click Lumen's menu bar icon. If a line there starts `Double-Control is off:`, it says why.
 > Grant Input Monitoring in System Settings, Privacy & Security, then run `vyre capsule` to open
-> it wired to this Mac's `vyred`. Option-Space opens it meanwhile.
+> it again. Option-Space opens it meanwhile.
 
 More in [Lumen](../using/capsule.md).
 
@@ -64,6 +58,8 @@ To see what a new thread will be told before you start one:
 ```
 vyre context harlow-legal
 ```
+
+A thread can run on Claude, Codex, Grok or OpenRouter, from the accounts you signed in to at setup. In Chat, the chip above the message box shows who answers, with its model and effort, and opens a menu to change them. Starting a message with `@codex` or `@grok` sends only that message to that provider, and the thread keeps its own. More in [Sessions](../using/sessions.md#one-message-on-another-provider).
 
 More in [Projects and threads](../using/projects-and-threads.md).
 
@@ -95,7 +91,7 @@ Put a credential in the vault once, and never paste it into a session again. Cla
 vyre vault put harlow-stripe --kind api-key --description "Harlow Legal billing key"
 ```
 
-It prompts for the value without echoing it. Putting a value is a human-only action, so the command asks you to prove you are there: Touch ID on the Mac, or the code vyred writes to your terminal. In the Deck, it is your passkey.
+It prompts for the value without echoing it. Putting a value is a human-only action, so the command asks you to prove you are there: Touch ID on the Mac, or the code Vyre writes to your terminal. In the Deck, it is your passkey.
 
 To use it from a script outside Vyre, let the vault hand it to that one process:
 
@@ -132,9 +128,9 @@ You can also ask for it in words. In Lumen, ask your assistant ("what did we dec
 ## What is not here yet
 
 - A date filter for recall, as above.
-- A native phone app. On the phone, open your address in Safari and add it to the Home Screen: it runs full screen, with notifications. See [On your phone](../using/mobile.md).
+- A phone app from an app store. Native iPhone and Android builds exist, but you build and install them yourself. On the phone, open your address in Safari or Chrome and add it to the Home Screen: it runs full screen, with notifications. See [On your phone](../using/mobile.md).
 - Replying to a Mac session from the box. The Deck shows the Mac's sessions read-only, with "Open it there to continue."; reply in the Mac's terminal or its Lumen.
-- Automatic updates. On the box run `vyre update`; on the Mac run the install line again. See [Looking after the box](../using/box-care.md).
+- Updates on a Mac by themselves. Run `vyre update` on the Mac. A server updates from Settings, with `vyre update`, or by itself between 2 and 5 in the morning if you turn on **Update automatically** (off by default). Updates are signed. See [Looking after the box](../using/box-care.md).
 
 ## Where to go next
 

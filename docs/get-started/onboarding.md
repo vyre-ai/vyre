@@ -8,12 +8,23 @@ status: stable
 
 # Onboarding
 
-Onboarding is the browser half of setting up a box: six screens that name you and your
-assistant, sign the box in to Claude and Tailscale, give it an HTTPS address, read your Claude
-Code history and put Vyre on your other devices. It opens by itself when `vyre up` or
-`vyre box add` gets the server ready. The terminal side (installing the `vyre` command, choosing
-the server, approving your Mac, Lumen) is in [Install](install.md); this page is the
-reference for the screens.
+Vyre has two setup pages, and which one you meet depends on how you started.
+
+- **Setup at vyre.run/setup** is where most people start. It runs in your browser while the
+  installer runs on your server, and it ends at your own address, such as `https://alex.vyre.run`.
+  Its screens, in order, are: where Vyre will live, the install line, the four check words, your
+  address, your AI sign-in, Tailscale, your phone, and opening your server. Each is described in
+  [Install](install.md), steps 1 to 8.
+- **The server's own setup** is six screens at `http://127.0.0.1:7300/onboard?t=...`: they name
+  you and your assistant, sign the server in to Claude and Tailscale, give it an HTTPS address on
+  your tailnet, read your Claude Code history and put Vyre on your other devices. You meet them
+  when you set up from your Mac with `vyre box add`, when you run `vyre up --box` on a Mac, or
+  when you run the installer on the server without a setup code. The rest of this page is the
+  reference for those six screens.
+
+The terminal side of the six screens (choosing the server, approving your Mac, the Lumen) is in
+[Install](install.md#other-ways-to-install) and
+[Install, step 10](install.md#10-put-the-lumen-on-your-mac).
 
 ::: demo onboarding
 1. ![Step 1 of 6, You: the name alex and the assistant's name filled in, with Skip for now and Continue](shots/onboarding-you.png "You")
@@ -24,7 +35,7 @@ reference for the screens.
 6. ![Step 6 of 6, Your devices: Pair this Mac, with the install command, vyre up and a field for the Mac's code, and Open Vyre on your phone, with QR codes for Tailscale and for the address](shots/onboarding-devices.png "Your devices")
 :::
 
-> [!WHY] Why start on the Mac and not on the server?
+> [!WHY] Why does `vyre box add` start on the Mac?
 > The Mac already has your SSH key, your browser and your Tailscale sign-in. Starting there means
 > you never copy a link or open a tunnel by hand: the Mac holds the tunnel to the server's setup
 > page and opens it for you. The full reasoning is in [ADR 0008](../adr/0008-install-journey.md).
@@ -33,7 +44,7 @@ reference for the screens.
 
 - The page opens at `http://127.0.0.1:7300/onboard?t=...`. The link works once, for an hour, and
   the page listens only on the box's own loopback: from a Mac it runs through the SSH tunnel
-  that `vyre box add` holds open. See [Install, step 4](install.md#4-let-vyre-set-up-the-server).
+  that `vyre box add` holds open. See [Install](install.md#other-ways-to-install).
 - The list on the left shows the six steps, with **Done** under each finished one. Click a step
   to go back to it.
 - Every screen but the first has **Back**. Every screen but the last has **Skip for now**.
@@ -129,7 +140,7 @@ The passkey approves anything important on your box from now on, including a new
 
 When the Mac started the setup, its terminal moves on by itself as soon as the address works. It
 closes the tunnel, asks your box to pair with this Mac, and prints "Vyre is ready." That part is
-in [Install, step 8](install.md#8-your-address).
+in [Install](install.md#other-ways-to-install).
 
 > [!SNAG] "HTTPS certificates are off for your tailnet"
 > Tailscale has HTTPS off for new tailnets. Press **Turn on HTTPS**: Tailscale's DNS settings
@@ -150,12 +161,12 @@ in [Install, step 8](install.md#8-your-address).
 > the passkey for now; `vyre box add alex@192.0.2.10` from the Mac prints a fresh passkey link
 > later.
 
-> [!WHY] What about my own domain?
-> The address step has a collapsed **Your own domain** section. A domain of your own, or a
-> `<you>.vyre.run` name, needs a Cloudflare API token set in the box's configuration
-> (`CLOUDFLARE_VYRE_TOKEN` in `/srv/vyre/vyre.env` for `vyre.run`) until the hosted name
-> directory exists. That directory is not built yet. The tailnet name needs nothing. The steps
-> are in [Troubleshooting](troubleshooting.md).
+> [!WHY] What about a `vyre.run` name or my own domain?
+> On this path the address is your tailnet's name. A `<you>.vyre.run` name comes from the setup
+> page at vyre.run/setup ([Install, step 4](install.md#4-choose-your-address)), or from the
+> terminal on the server: `vyre setup --name alex --yes` claims `alex.vyre.run` with no browser,
+> and prints a recovery code once. `vyre name ts.net` goes back to the tailnet name. Your own
+> domain is added on the setup page, as one DNS record.
 
 ## 5. Your history
 
@@ -197,17 +208,13 @@ screen and stacked on a narrow one.
    Mac**, **Approve** and **Deny**. Type the code, press **Approve**, and confirm with your
    passkey. The card counts down the request's ten minutes.
 
-When it is done the card says "Mac paired:" and the name, and "Press Control twice to open the
-Lumen." Lumen itself is in [Install, step 14](install.md#14-open-lumen).
+When it is done the card says the Mac's name "is paired", and "press Control twice on it to open
+Lumen." Lumen itself is in [Install, step 10](install.md#10-put-the-lumen-on-your-mac).
 
-> [!SNAG] "The Mac that is asking cannot approve itself. Open Vyre on your phone and approve it there."
-> You are on the Mac you are pairing. The box takes the approval only from another of your
-> devices. Open Vyre on your phone (the card beside this one), and approve the request on Now.
-
-> [!GAP]
-> The Deck approves a pairing, but not from the Mac being paired. Approve it from your phone
-> (or another device on your tailnet) with your passkey. See
-> [known gaps](../known-gaps.md#approving-a-mac-in-the-deck).
+> [!SNAG] "The Mac that is asking can approve itself only with a passkey."
+> You are on the Mac you are pairing. The box takes its approval only with a fresh passkey made
+> on that Mac. Approve again and use Touch ID, or open Vyre on your phone (the card beside this
+> one) and approve the request on Now.
 
 **Open Vyre on your phone**:
 
