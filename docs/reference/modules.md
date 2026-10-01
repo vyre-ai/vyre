@@ -18,11 +18,11 @@ A module runs on the `box` (the always-on server), on `local` (the Mac), or on b
 | Module | Folder | Runs on | Tools | Events | Shows on |
 | --- | --- | --- | --- | --- | --- |
 | [`about`](#about) | `core/about` | `box`, `local` | 1 | 0 | cli |
-| [`agents`](#agents) | `core/agents` | `box`, `local` | 12 | 0 | cli |
+| [`agents`](#agents) | `core/agents` | `box`, `local` | 13 | 0 | cli |
 | [`appearance`](#appearance) | `core/appearance` | `box`, `local` | 3 | 1 | cli |
 | [`apps`](#apps) | `local/apps` | `local` | 6 | 2 | none |
 | [`artifacts`](#artifacts) | `core/artifacts` | `box` | 21 | 10 | capsule, cli, deck |
-| [`assistant`](#assistant) | `core/assistant` | `box`, `local` | 8 | 3 | cli |
+| [`assistant`](#assistant) | `core/assistant` | `box`, `local` | 8 | 4 | cli |
 | [`capsule`](#capsule) | `local/capsule` | `local` | 6 | 2 | capsule, cli |
 | [`chrome`](#chrome) | `local/hands-chrome-mac` | `local` | 34 | 15 | none |
 | [`chrome`](#chrome) | `modules/hands-chrome` | `box` | 5 | 1 | cli, deck |
@@ -69,13 +69,13 @@ A module runs on the `box` (the always-on server), on `local` (the Mac), or on b
 | [`suggest`](#suggest) | `core/suggest` | `box`, `local` | 3 | 1 | cli |
 | [`sync`](#sync) | `core/sync` | `box`, `local` | 10 | 5 | capsule, cli, deck |
 | [`system`](#system) | `core/system` | `box`, `local` | 2 | 1 | cli |
-| [`team`](#team) | `core/team` | `box`, `local` | 26 | 10 | cli |
+| [`team`](#team) | `core/team` | `box`, `local` | 28 | 10 | cli |
 | [`term`](#term) | `core/term` | `box`, `local` | 4 | 2 | none |
 | [`threads`](#threads) | `core/switchboard` | `box`, `local` | 51 | 35 | cli |
 | [`tips`](#tips) | `core/tips` | `box`, `local` | 7 | 1 | cli |
 | [`undo`](#undo) | `core/undo` | `box`, `local` | 3 | 3 | cli |
 | [`update`](#update) | `core/update` | `box`, `local` | 3 | 2 | cli |
-| [`vault`](#vault) | `core/vault` | `box`, `local` | 123 | 43 | capsule, cli, deck |
+| [`vault`](#vault) | `core/vault` | `box`, `local` | 124 | 43 | capsule, cli, deck |
 | [`vitals`](#vitals) | `core/vitals` | `box`, `local` | 5 | 2 | capsule, cli, deck |
 | [`voice`](#voice) | `local/voice` | `local` | 4 | 0 | capsule |
 | [`waiting`](#waiting) | `core/waiting` | `box`, `local` | 2 | 1 | cli |
@@ -97,7 +97,7 @@ A few lines on who the user is, cached for every Claude Code session to start wi
 - Folder: `core/agents`, version 0.1.0
 - Runs on: `box`, `local`
 - Requires: `threads`
-- Tools: [12](tools.md#agents), 1 of them only for other modules
+- Tools: [13](tools.md#agents), 2 of them only for other modules
 - Emits: no events
 - Shows on: cli
 - Needs vault: `per-agent`
@@ -147,7 +147,7 @@ The one assistant's own tools: a daily digest and triage from waiting.list and a
 - Runs on: `box`, `local`
 - Requires: none
 - Tools: [8](tools.md#assistant)
-- Emits: [3 events](events.md#assistant)
+- Emits: [4 events](events.md#assistant)
 - Shows on: cli
 
 ## capsule
@@ -667,7 +667,7 @@ Project teammates (ADR 0031): a named, persistent agent per role per project, a 
 - Folder: `core/team`, version 0.1.0
 - Runs on: `box`, `local`
 - Requires: `threads`, `projects`, `sessions`
-- Tools: [26](tools.md#team)
+- Tools: [28](tools.md#team)
 - Emits: [10 events](events.md#team)
 - Shows on: cli
 - Teaches tips: `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`
@@ -733,7 +733,7 @@ Is a newer Vyre out: one daily look at the releases, one answer every surface dr
 - Folder: `core/vault`, version 0.1.0
 - Runs on: `box`, `local`
 - Requires: none
-- Tools: [123](tools.md#vault), 11 of them only for other modules
+- Tools: [124](tools.md#vault), 11 of them only for other modules
 - Emits: [43 events](events.md#vault)
 - Shows on: capsule, cli, deck
 - Teaches tips: `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`

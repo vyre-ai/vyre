@@ -14,6 +14,7 @@ import { fileURLToPath } from "node:url";
 import * as config from "../config/index.js";
 import { themeCss } from "../config/theme.js";
 import { isRealHome } from "../config/dialogs.js";
+import { assertDaemonHost } from "./host-guard.js";
 import { open } from "../store/index.js";
 import { Events } from "../events/index.js";
 import { Registry, discover, ownerDevice } from "../modules/index.js";
@@ -59,6 +60,8 @@ export function moduleRoots(root) {
  */
 export async function start(opts = {}) {
   const root = opts.root || config.home();
+  // A test daemon never boots on the person's Mac (host-guard.js): one place, every boot passes it.
+  assertDaemonHost({ root, real: isRealHome(root) });
   // A vyred on any home but ~/.vyre (a demo or dev world started in-process with `root`) raises
   // nothing on screen: every dialog gate reads the environment, so say it there.
   // VYRE_ALLOW_DIALOGS=1 is a person's deliberate custom home (core/config/dialogs.js).
