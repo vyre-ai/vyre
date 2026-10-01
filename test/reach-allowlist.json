@@ -420,48 +420,6 @@
    "module": "computers",
    "default": "open to any caller"
   },
-  "connectors.calendar.today": {
-   "module": "connectors",
-   "default": "open to any caller"
-  },
-  "connectors.catalog": {
-   "module": "connectors",
-   "default": "open to any caller"
-  },
-  "connectors.connect": {
-   "module": "connectors",
-   "default": "limited by callers in code"
-  },
-  "connectors.connect.cancel": {
-   "module": "connectors",
-   "default": "limited by callers in code"
-  },
-  "connectors.connect.finish": {
-   "module": "connectors",
-   "default": "limited by callers in code"
-  },
-  "connectors.disconnect": {
-   "module": "connectors",
-   "default": "limited by callers in code"
-  },
-  "connectors.list": {
-   "module": "connectors",
-   "default": "open to any caller"
-  },
-  "connectors.mention.resolve": {
-   "module": "connectors",
-   "default": "internal or hook in code",
-   "internal": true
-  },
-  "connectors.mention.search": {
-   "module": "connectors",
-   "default": "limited by callers in code"
-  },
-  "connectors.persist": {
-   "module": "connectors",
-   "default": "internal or hook in code",
-   "internal": true
-  },
   "context.now": {
    "module": "context",
    "default": "limited by callers in code"
@@ -1126,48 +1084,6 @@
   },
   "mail.test": {
    "module": "mail",
-   "default": "limited by callers in code"
-  },
-  "mcp.add": {
-   "module": "mcp",
-   "default": "limited by callers in code"
-  },
-  "mcp.call": {
-   "module": "mcp",
-   "default": "open to any caller"
-  },
-  "mcp.grant": {
-   "module": "mcp",
-   "default": "internal or hook in code",
-   "internal": true
-  },
-  "mcp.release": {
-   "module": "mcp",
-   "default": "internal or hook in code",
-   "internal": true
-  },
-  "mcp.remove": {
-   "module": "mcp",
-   "default": "limited by callers in code"
-  },
-  "mcp.restart": {
-   "module": "mcp",
-   "default": "limited by callers in code"
-  },
-  "mcp.servers": {
-   "module": "mcp",
-   "default": "open to any caller"
-  },
-  "mcp.test": {
-   "module": "mcp",
-   "default": "limited by callers in code"
-  },
-  "mcp.tools": {
-   "module": "mcp",
-   "default": "open to any caller"
-  },
-  "mcp.update": {
-   "module": "mcp",
    "default": "limited by callers in code"
   },
   "memory.answer": {

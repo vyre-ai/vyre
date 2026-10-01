@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "roles": ["box", "local"],
   "requires": ["vault", "gate"],
-  "does": { "tools": ["mcp.servers", "mcp.add", "mcp.update", "mcp.remove", "mcp.test", "mcp.restart", "mcp.tools", "mcp.call", "mcp.grant", "mcp.release"] },
+  "does": { "tools": [{"name": "mcp.servers", "reach": "anyone"}, {"name": "mcp.add", "reach": "anyone"}, {"name": "mcp.update", "reach": "anyone"}, {"name": "mcp.remove", "reach": "anyone"}, {"name": "mcp.test", "reach": "anyone"}, {"name": "mcp.restart", "reach": "anyone"}, {"name": "mcp.tools", "reach": "anyone"}, {"name": "mcp.call", "reach": "anyone"}, {"name": "mcp.grant", "reach": "modules"}, {"name": "mcp.release", "reach": "modules"}] },
   "watches": { "emits": ["mcp.added", "mcp.updated", "mcp.removed", "mcp.started", "mcp.stopped", "mcp.failed", "mcp.refreshed", "mcp.called", "mcp.held"] },
   "shows": { "deck": ["settings:connections"], "cli": ["connect"] },
   "needs": { "vault": ["per-connection"] },

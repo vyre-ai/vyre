@@ -65,6 +65,14 @@
    "module": "artifacts",
    "reason": "read-only, scoped by the module itself"
   },
+  "connectors.catalog": {
+   "module": "connectors",
+   "reason": "read-only: the catalog of apps and which are connected, with each connection's scope; no value and nothing a caller can change"
+  },
+  "connectors.list": {
+   "module": "connectors",
+   "reason": "read-only: the connections made (name, app, mode, scope); no value"
+  },
   "events.catalog": {
    "module": "events",
    "reason": "read-only, scoped by the module itself"
@@ -128,6 +136,38 @@
   "link.status": {
    "module": "link",
    "reason": "read-only, scoped by the module itself"
+  },
+  "mcp.add": {
+   "module": "mcp",
+   "reason": "callers in code: the person's surfaces and Vyre's modules, never a model (mcp); a non-first-party module may add an http server only, not a command or a vault environment (refuseProcess); the host binding refuses a vendor credential on another host"
+  },
+  "mcp.call": {
+   "module": "mcp",
+   "reason": "scoped by the hub to what vyred verified for the caller; a tool that sends or changes something is held at the Gate and runs only on the person's approval or their own words (callers and the gate in code)"
+  },
+  "mcp.remove": {
+   "module": "mcp",
+   "reason": "callers in code: the person's surfaces and Vyre's modules, never a model (mcp); removes a row only, its vault items stay"
+  },
+  "mcp.restart": {
+   "module": "mcp",
+   "reason": "callers in code: the person's surfaces and Vyre's modules, never a model (mcp); stops and starts the server the person added"
+  },
+  "mcp.servers": {
+   "module": "mcp",
+   "reason": "read-only, scoped by the hub to what vyred verified for the caller (agent, project, thread, #tag); never a value"
+  },
+  "mcp.test": {
+   "module": "mcp",
+   "reason": "callers in code: the person's surfaces and Vyre's modules, never a model (mcp); starts a server the person added and lists its tools"
+  },
+  "mcp.tools": {
+   "module": "mcp",
+   "reason": "read-only, scoped by the hub to what vyred verified for the caller; never a value"
+  },
+  "mcp.update": {
+   "module": "mcp",
+   "reason": "callers in code: the person's surfaces and Vyre's modules, never a model (mcp); refuseProcess stops an added module turning a row into a process; the host binding refuses a vendor credential on another host"
   },
   "presence.capsule.pin": {
    "module": "presence",
