@@ -1,0 +1,60 @@
+// @ts-check
+// The shipped extension carries no test seam. The real-Chrome runs (testing/browser-check.mjs, chip-check.mjs) drive the extension from
+// OUTSIDE, through DevTools into the worker's own functions, and add nothing to the product: the build is a plain copy of the source
+// files and a manifest transform. This test builds the way a release does and proves it: every packaged file is byte-identical to its
+// source, no file the testing folder owns is in the package, and no test-only name or override appears in any packaged file.
+
+import { test } from "node:test";
+import assert from "node:assert/strict";
+import crypto from "node:crypto";
+import fs from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+import { build, packageFiles } from "./build.mjs";
+import { SCRATCH } from "../../test/scratch.mjs";
+
+const HERE = path.dirname(fileURLToPath(import.meta.url));
+const sha = f => crypto.createHash("sha256").update(fs.readFileSync(f)).digest("hex");
+/** Names and overrides that exist only in tests. Not one may appear in a packaged file. */
+const TEST_ONLY = [/__vyreTest/, /vyreKeyChipMinMs/, /test-pair/, /testPair/, /browser-check/, /chip-check/, /permissions\.contains\s*=/, /unlockPass/, /VYRE_TEST/, /CHROME_EXTRA_FLAGS/];
+
+test("the release build is a plain copy: byte-identical files, nothing from testing/, no test-only name or override", t => {
+  const out = fs.mkdtempSync(path.join(SCRATCH, "vyre-extbuild-"));
+  t.after(() => fs.rmSync(out, { recursive: true, force: true }));
+  const dirs = build(out);
+  const source = packageFiles(HERE);
+  assert.ok(!source.some(f => /testing|\.test\./.test(f)), "the package list never includes tests");
+  for (const target of /** @type {const} */ (["chrome", "firefox"])) {
+    const got = fs.readdirSync(dirs[target]).sort();
+    assert.deepEqual(got, source, `${target}: exactly the packaged source files, nothing added`);
+    for (const f of got) {
+      if (f === "manifest.json") continue;
+      assert.equal(sha(path.join(dirs[target], f)), sha(path.join(HERE, f)), `${target}/${f} is byte-identical to its source`);
+      const text = fs.readFileSync(path.join(dirs[target], f), "utf8");
+      for (const re of TEST_ONLY) assert.ok(!re.test(text), `${target}/${f} carries ${re}`);
+    }
+  }
+  assert.ok(!fs.existsSync(path.join(out, "chrome", "testing")), "no testing folder in the package");
+});
+
+test("the keychip reads no knob from its global: only its own two markers, so no test hook can be set from anywhere", () => {
+  const src = fs.readFileSync(path.join(HERE, "keychip.js"), "utf8");
+  // The 400 ms visible-time guard is a constant. The browser run (testing/chip-check.mjs) proves an early tap saves nothing at that value.
+  assert.equal((src.match(/g\.vyre[A-Za-z]*/g) || []).filter(x => x !== "g.vyreKeyChip" && x !== "g.vyreKeyFind").length, 0, "no other g.vyre* global is read");
+});
+
+test("the packaged manifest adds no permission, host or content script beyond the source manifest", t => {
+  const out = fs.mkdtempSync(path.join(SCRATCH, "vyre-extmanifest-"));
+  t.after(() => fs.rmSync(out, { recursive: true, force: true }));
+  const dirs = build(out);
+  const source = JSON.parse(fs.readFileSync(path.join(HERE, "manifest.json"), "utf8"));
+  // Only the background entry and the per-browser keys differ between the two packages.
+  const strip = m => { const { background: _b, browser_specific_settings: _s, minimum_chrome_version: _c, ...rest } = m; return rest; };
+  for (const target of /** @type {const} */ (["chrome", "firefox"])) {
+    const got = JSON.parse(fs.readFileSync(path.join(dirs[target], "manifest.json"), "utf8"));
+    assert.deepEqual(strip(got), strip(source), `${target}: the manifest differs from the source only in its background and per-browser keys`);
+    for (const key of ["permissions", "host_permissions", "optional_permissions", "optional_host_permissions", "content_scripts", "web_accessible_resources", "externally_connectable"]) {
+      assert.deepEqual(got[key], source[key], `${target}: ${key} is exactly the source's`);
+    }
+  }
+});

@@ -41,6 +41,11 @@ export function verifyAssertion(a) {
     const signed = Buffer.concat([ad, sha256(cdBytes)]);
     const key = { key: b64(publicKey), format: /** @type {const} */ ("der"), type: /** @type {const} */ ("spki") };
     const sig = b64(signature);
+    // The alg is bound to the key's type: an assertion never verifies as another algorithm.
+    const type = crypto.createPublicKey(key).asymmetricKeyType;
+    const want = alg === -7 ? "ec" : alg === -8 ? "ed25519" : alg === -257 ? "rsa" : null;
+    if (!want) return { ok: false, reason: "unsupported alg" };
+    if (type !== want) return { ok: false, reason: "alg does not match the enrolled key" };
     let good;
     if (alg === -7) good = crypto.verify("sha256", signed, { ...key, dsaEncoding: "der" }, sig);
     else if (alg === -8) good = crypto.verify(null, signed, key, sig);

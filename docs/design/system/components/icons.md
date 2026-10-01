@@ -16,7 +16,7 @@ Drawn on "Vyre one app, the system" and used on every board.
 |---|---|---|
 | Deck | `deck/js/icons.js` `icon(name, size)` (main; same on work/pwa, work/chat, work/native-core) | partial |
 | App | none (work/mobile) | not built |
-| Capsule | SF Symbols inline in `local/capsule/native/Sources/UI/CapsuleView.swift` and others (work/capsule-pro) | not built |
+| Lumen | SF Symbols inline in `local/capsule/native/Sources/UI/CapsuleView.swift` and others (work/capsule-pro) | not built |
 
 ## Anatomy
 
@@ -133,7 +133,7 @@ glyph is the one exception when it stands alone: its label is "failed" (see stat
 - [ ] Deck: `mark()` fills the dot with `--signal`, which the tokens no longer define; use
   `--mark-dot` and `--beacon-dot`.
 - [ ] App: no icon component; build one `Icon` from this table with react-native-svg.
-- [ ] Capsule: SF Symbols everywhere (xmark, chevron.down, sparkle.magnifyingglass, mic.fill);
+- [ ] Lumen: SF Symbols everywhere (xmark, chevron.down, sparkle.magnifyingglass, mic.fill);
   draw this set as SwiftUI `Shape`s from the same path data.
 - [ ] System: add minus and unlock to `icons.txt`; the Vault board draws the faceid frame without
   its face, which is not in the set.

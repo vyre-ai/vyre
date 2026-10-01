@@ -57,7 +57,12 @@ say "1. $ref at $short"
 git -C "$repo" worktree add --detach --quiet "$build/tree" "$commit"
 tree=$build/tree
 
+say "1b. release key"
+# Never overridable here: publishing with the placeholder key would put a key nobody vouched for on Macs.
+env -u VYRE_ALLOW_PLACEHOLDER_KEY node "$tree/scripts/check-release-key.mjs" "$tree"
+
 say "2. site"
+[ -z "${VYRE_TEST_UNSTRIPPED_WRAPPER:-}" ] || { echo "release.sh: VYRE_TEST_UNSTRIPPED_WRAPPER is set; a release ships the stripped wrapper" >&2; exit 1; }
 "$tree/scripts/build-site.sh"
 
 say "3. release check"

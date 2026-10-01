@@ -16,6 +16,8 @@ import { createRelay } from "../../relay/node/server.js";
 import { connect } from "../../relay/client/client.js";
 import { nodeCrypto, fileKeyStore } from "../../relay/client/nodecrypto.js";
 import { tempHome } from "../../test/helpers.js";
+import { macCore, fakeCoreKeys } from "../../test/fake-core-keys.js";
+import { deviceKeyFor } from "./devicekey.js";
 
 const KEY = "tskey-auth-kFAKE0CNTRL-0123456789abcdef";
 const CRED = JSON.stringify({ client_id: "kFAKEid", client_secret: "tskey-client-kFAKEid-secret" });
@@ -183,14 +185,14 @@ const lenient = {
 const PROOF = { proof: { method: "passkey", id: "x" } };
 const MINTED = { "POST /api/v2/tailnet/-/keys": [200, { id: "k1", key: KEY, expires: new Date(Date.now() + 300_000).toISOString() }], "DELETE /api/v2/device/nDESK1CNTRL": [200, {}] };
 
-async function box(t, { address = "https://alex.example.ts.net" } = {}) {
+async function box(t, { address = "https://alex.example.ts.net", core = macCore() } = {}) {
   const relay = createRelay();
   const url = await relay.listen();
   t.after(() => relay.close());
   const root = tempHome(t);
   fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ role: "box", name: "alex", transcripts: [],
     network: { name: "alex", ...(address ? { address } : {}) }, relay: { enabled: false, url }, modules: { disable: ["names", "onboard"] } }));
-  const d = await start({ presence: lenient, root, log: () => {} });
+  const d = await start({ presence: lenient, root, log: () => {}, coreKeys: core });
   t.after(() => d.stop());
   return d;
 }
@@ -201,11 +203,12 @@ async function desktop(t, d, { tailnet = true } = {}) {
   assert.ok(minted.data, JSON.stringify(minted.error));
   const url = minted.data.url;
   const root = tempHome(t);
-  const paired = await redeem(url, { root, name: "alex's desktop", tailnet });
-  const conn = connect({ relay: paired.relay, route: paired.route, box: paired.box, crypto: nodeCrypto(), keyStore: fileKeyStore(path.join(root, "relay-device", "key.json")) });
+  const core = macCore();
+  const paired = await redeem(url, { root, name: "alex's desktop", tailnet, coreKeys: core });
+  const conn = connect({ relay: paired.relay, route: paired.route, box: paired.box, ...deviceKeyFor(root, core) });
   t.after(() => conn.close());
   const askKey = async () => { const r = await conn.fetch(JOIN_PATH, { method: "POST", headers: { "content-type": "application/json" }, body: "{}" }); return { status: r.status, body: /** @type {any} */ (await r.json()) }; };
-  return { root, paired, conn, askKey };
+  return { root, paired, conn, askKey, core };
 }
 
 test("tailnet: a desktop whose pairing asked to join gets one key over its own channel; nothing else gets one", async t => {
@@ -227,7 +230,8 @@ test("tailnet: a desktop whose pairing asked to join gets one key over its own c
   assert.equal(refused.status, 403, "a pairing that did not ask (a phone) never gets a key");
 
   // Minting is not a tool: no registry name reaches it, from any caller.
-  const tools = [...d.registry.tools.keys()];
+  // (presence.grant.mint is the first owner passkey's five-minute grant, not a tailnet key.)
+  const tools = [...d.registry.tools.keys()].filter(n => n !== "presence.grant.mint");
   assert.ok(tools.length > 20, "the registry lists its tools");
   assert.ok(!tools.some(n => /tailnet\.key|mint/i.test(n)), tools.join(","));
   const viaRouter = await desk.conn.fetch("/v1/tools/relay.tailnet.key", { method: "POST", headers: { "content-type": "application/json" }, body: "{}" });
@@ -276,7 +280,7 @@ test("tailnet: a Mac box never mints, before vyre-core", async t => {
   const real = /** @type {PropertyDescriptor} */ (Object.getOwnPropertyDescriptor(process, "platform"));
   Object.defineProperty(process, "platform", { value: "darwin", configurable: true });
   t.after(() => Object.defineProperty(process, "platform", real));
-  const d = await box(t);
+  const d = await box(t, { core: null });
   Object.defineProperty(process, "platform", real);
   const desk = await desktop(t, d);
   const r = await desk.askKey();
@@ -289,11 +293,12 @@ test("tailnet: desktopJoin asks, joins with the key in a file, binds through the
   const d = await box(t);
   const url = (await d.registry.call("relay.pair.start", {}, "cli", PROOF)).data.url;
   const root = tempHome(t);
-  await redeem(url, { root, name: "alex's desktop", tailnet: true });
+  const core = macCore();
+  await redeem(url, { root, name: "alex's desktop", tailnet: true, coreKeys: core });
   assert.equal(pairedBox(root).route, (await d.registry.call("relay.status", {}, "cli")).data.route);
 
   // Not installed: stays on the relay, with this OS's install line.
-  const none = await desktopJoin({ root });
+  const none = await desktopJoin({ root, coreKeys: core });
   assert.equal(none.state, "relay_only");
   assert.equal(none.install, installCommand());
 
@@ -307,7 +312,7 @@ test("tailnet: desktopJoin asks, joins with the key in a file, binds through the
     const r = await d.registry.call("relay.devices.bind", { stableId: "nDESK1CNTRL", node: "alex-desktop", device: b.device, code: b.code }, "module:names");
     return { ok: !r.error, status: r.error ? 403 : 200, json: async () => r };
   });
-  const r = await desktopJoin({ root, fetch: listener, wait: async () => {} });
+  const r = await desktopJoin({ root, coreKeys: core, fetch: listener, wait: async () => {} });
   assert.equal(r.state, "joined", JSON.stringify(r));
   assert.deepEqual(asked, ["https://alex.example.ts.net/v1/tailnet/bind"]);
   const [up] = ts.ups();
@@ -315,7 +320,7 @@ test("tailnet: desktopJoin asks, joins with the key in a file, binds through the
   assert.equal(pairedBox(root).tailnet.state, "joined");
   assert.ok(!fs.readFileSync(path.join(root, "relay-device", "box.json"), "utf8").includes(KEY), "the key is never written down");
   assert.equal((await d.registry.call("relay.devices.tailnet", { stableId: "nDESK1CNTRL" }, "module:names")).data.device, pairedBox(root).device);
-  assert.equal((await desktopJoin({ root })).state, "joined", "a joined desktop does not ask again");
+  assert.equal((await desktopJoin({ root, coreKeys: core })).state, "joined", "a joined desktop does not ask again");
   assert.equal(ts.ups().length, 1);
 });
 
@@ -345,7 +350,7 @@ test("tailnet: a failed node delete never lets the old node back in, even when t
 
   // The same desktop pairs again (same key, same device id): its old node is not admitted.
   const url = (await d.registry.call("relay.pair.start", {}, "cli", PROOF)).data.url;
-  const again = await redeem(url, { root: desk.root, name: "alex's desktop", tailnet: true });
+  const again = await redeem(url, { root: desk.root, name: "alex's desktop", tailnet: true, coreKeys: desk.core });
   assert.equal(again.device, device, "the same device id");
   assert.equal((await d.registry.call("relay.devices.tailnet", { stableId: "nDESK1CNTRL" }, "module:names")).data.device, null, "the old node needs a new bind");
 
@@ -358,4 +363,22 @@ test("tailnet: a failed node delete never lets the old node back in, even when t
   await d.registry.call("relay.devices.list", {}, "cli");
   await new Promise(r => setTimeout(r, 50));
   assert.equal(deletes.length, 2, "once deleted, never asked again");
+});
+
+test("redeem with vyre-core: a key file left by an earlier pairing is deleted, and the old device is named for the box to remove", async t => {
+  const d = await box(t);
+  const root = tempHome(t);
+  // As an earlier pairing left it: the file key and the record of its device.
+  const first = await redeem((await d.registry.call("relay.pair.start", {}, "cli", PROOF)).data.url, { root, name: "old desktop" });
+  const keyFile = path.join(root, "relay-device", "key.json");
+  assert.ok(fs.existsSync(keyFile), "the file key exists before core");
+  const core = macCore() || fakeCoreKeys();
+  const next = await redeem((await d.registry.call("relay.pair.start", {}, "cli", PROOF)).data.url, { root, name: "new desktop", coreKeys: core });
+  assert.equal(fs.existsSync(keyFile), false, "the old key file is gone");
+  assert.notEqual(next.device, first.device, "core's key is a new device");
+  assert.equal(/** @type {any} */ (next).superseded.device, first.device);
+  assert.match(/** @type {any} */ (next).superseded.note, /relay\.devices\.remove/);
+  // A pairing that never had a file says nothing.
+  const clean = await redeem((await d.registry.call("relay.pair.start", {}, "cli", PROOF)).data.url, { root: tempHome(t), name: "third", coreKeys: core });
+  assert.equal(/** @type {any} */ (clean).superseded, undefined);
 });

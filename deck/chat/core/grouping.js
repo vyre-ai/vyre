@@ -36,7 +36,7 @@ const BY_NAME = /** @type {Record<string, string>} */ ({
 const typeOf = item => (item.detail && item.detail.type) || BY_NAME[item.name] || "unknown";
 
 /** @param {any} item */
-const foldable = item => item && item.kind === "tool" && typeOf(item) !== "plan" && typeOf(item) !== "todo" && typeOf(item) !== "handoff";
+const foldable = item => item && item.kind === "tool" && !item.render && typeOf(item) !== "plan" && typeOf(item) !== "todo" && typeOf(item) !== "handoff";
 
 /** @param {number} n @param {string} one @param {string} [many] */
 const count = (n, one, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;

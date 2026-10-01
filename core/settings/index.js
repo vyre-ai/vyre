@@ -7,15 +7,20 @@
 // project's value beats the account's, which beats the default. A session's own chips (model,
 // effort, mode) beat all three, but those live with the session, not here.
 //
-// Only a person changes settings. A key that loosens security (security: "loosens") also needs a
-// fresh presence proof; one that widens what Claude may do without asking (confirm) needs the
-// caller to pass confirm: true after showing the person what changes. Agents may read settings,
-// and settings.resolve hands a starting session its Vyre-owned values.
+// A person changes settings on their own surfaces, with no confirm step and no presence proof, security
+// settings included (the charter's "security without friction", PLAN.md C25): every change is logged
+// and can be undone instead. A preview still says what a change loosens or widens, so a surface can
+// show it. Agents may read settings, and settings.resolve hands a starting session its Vyre-owned values. An agent changes
+// one only through settings.request, and only when the person asked for that change in their own
+// words in this conversation (PLAN.md C25 and P17: vault.said.match); otherwise never.
+// Every change is logged, and settings.undo reverses one with no prompt.
 
 import fs from "node:fs";
 import { coerce, read, write, whereIs, needsConfirm } from "../config/settings.js";
 import { claudeHome } from "../config/index.js";
 import { readHub, writeHub, hubPath, digest, levelOf } from "./hub.js";
+import { withinOrThrow } from "../../lib/within.js";
+import { settingTo } from "../../lib/said/setting.js";
 
 const PEOPLE = ["cli", "local", "deck", "capsule"];
 const MIGRATIONS = [
@@ -23,6 +28,11 @@ const MIGRATIONS = [
      PRIMARY KEY (scope, key))`,
   // The hub's revision (ADR 0035): one more on every change, whoever made it.
   `CREATE TABLE settings_meta (k TEXT PRIMARY KEY, v TEXT NOT NULL)`,
+  // Every change, so each can be shown ("Changed by kit, just now") and undone without a prompt
+  // (PLAN.md C25). prev and next are JSON, or NULL for "no value at this level". Secret keys keep
+  // no values here, only that they changed.
+  `CREATE TABLE settings_changes (id TEXT PRIMARY KEY, key TEXT NOT NULL, level TEXT NOT NULL, target TEXT,
+     prev TEXT, next TEXT, by TEXT NOT NULL, said TEXT, at INTEGER NOT NULL, undone INTEGER NOT NULL DEFAULT 0)`,
 ];
 const SLUG = /^[a-z0-9][a-z0-9._-]{0,63}$/;
 /** A device's id: the owner's tailnet node ("tailnet:<login>"), a relay device, or "mac:<host>". */
@@ -36,7 +46,7 @@ const str = { type: "string" };
 export const GROUPS = [
   ["models", "Models and thinking"], ["permissions", "Permissions"], ["sessions", "Sessions"], ["teammates", "Teammates"],
   ["notifications", "Notifications"], ["tips", "Tips"], ["appearance", "Appearance"], ["planner", "Planner"], ["memory", "Memory"], ["vault", "Vault"], ["files", "Files and terminal"],
-  ["tools", "Tools"], ["devices", "Devices"],
+  ["tools", "Tools"], ["updates", "Updates"], ["devices", "Devices"], ["assistant", "Assistant"],
 ];
 
 /** What a secret setting's value reads as to anyone but the person. */
@@ -83,11 +93,11 @@ export const asPerson = caller => {
 };
 
 /** What a caller may see about one key, without its value. @param {any} d */
-const describe = d => ({
+export const describe = d => ({
   key: d.key, module: d.module, group: d.group || d.module, label: d.label, ...(d.help ? { help: d.help } : {}), type: d.type,
   ...(d.enum ? { enum: d.enum } : {}), ...(d.labels ? { labels: d.labels } : {}), ...(d.choices ? { choices: d.choices } : {}),
   ...(d.min !== undefined ? { min: d.min } : {}), ...(d.max !== undefined ? { max: d.max } : {}),
-  levels: d.levels, apply: d.apply, owner: d.store && d.store.claude ? "C" : "V", ...(d.advanced ? { advanced: true } : {}),
+  levels: d.levels, apply: d.apply, owner: d.store && d.store.claude ? "C" : "V", ...(d.advanced ? { advanced: true } : {}), ...(d.hidden ? { hidden: true } : {}),
   ...(d.security ? { security: d.security } : {}), ...(d.confirm ? { confirm: d.confirm } : {}), ...(d.loosens ? { loosens: d.loosens } : {}),
   ...(d.default !== undefined ? { default: d.default } : {}), ...(d.secret ? { secret: true } : {}),
 });
@@ -189,8 +199,7 @@ export default {
 
     // ---- check and choicesFrom: a module's own say, with a deadline --------------------------------
     const DEADLINE = 500;
-    const inTime = (/** @type {Promise<any>} */ p, /** @type {string} */ tool) => Promise.race([p,
-      new Promise((_, no) => { const t = setTimeout(() => no(Object.assign(new Error(`${tool} took too long`), { code: "bad_input" })), DEADLINE); t.unref?.(); })]);
+    const inTime = (/** @type {Promise<any>} */ p, /** @type {string} */ tool) => withinOrThrow(p, DEADLINE, () => Object.assign(new Error(`${tool} took too long`), { code: "bad_input" }));
     /** A key's own check, called as this module: it refuses, never passes by default. */
     const checked = async (/** @type {any} */ d, /** @type {any} */ value, /** @type {Lv} */ lv, /** @type {string|null} */ target) => {
       if (!d.check || !d.check.tool || value === undefined) return;
@@ -426,11 +435,17 @@ export default {
       },
     });
 
-    const change = async (/** @type {any} */ i, /** @type {any} */ meta, /** @type {any} */ raw) => {
+    /**
+     * @param {any} i @param {any} meta @param {any} raw the new value, undefined to reset
+     * @param {{ said?: string, ask?: (to: string) => Promise<string | null>, refusal?: string }} [o] settings.request passes `ask`: it matches the person's words to the change once its level, target and value are known, and returns the intent that covered it
+     */
+    const change = async (i, meta, raw, o = {}) => {
       const caller = String(meta && meta.caller);
+      let intent = typeof o.said === "string" && o.said !== "" ? o.said : "";
+      const asked = intent !== "" || typeof o.ask === "function";
       // A caller vouched as an agent ("cli agent:kit", "mcp:agent:kit") is never the person,
-      // whatever surface kind it rides on.
-      if (/(?:^|[\s:])agent:/.test(caller)) throw Object.assign(new Error("settings are the person's own; an agent never changes one"), { code: "denied" });
+      // whatever surface kind it rides on. It changes a setting only through settings.request.
+      if (!asked && /(?:^|[\s:])agent:/.test(caller)) throw Object.assign(new Error("settings are the person's own; an agent never changes one"), { code: "denied" });
       const d = declOf(i.key);
       const at = atOf(i, meta);
       // A level said, or the narrowest one this call names: a session, a device named outright
@@ -442,35 +457,45 @@ export default {
       const target = targetOf(lv, at);
       if (lv !== "account" && !target) throw Object.assign(new Error(`a ${lv} setting needs ${lv}`), { code: "bad_input" });
       const value = raw === undefined ? undefined : coerce(d, raw);
+      if (o.ask) {
+        // The recorder writes account and project asks with a value; a reset, a device or a session change is never recorded, so it is never covered.
+        if (raw === undefined || (lv !== "account" && lv !== "project")) throw Object.assign(new Error(o.refusal || "the person did not ask for this change"), { code: "denied" });
+        intent = (await o.ask(settingTo({ key: d.key, value, level: lv, target: target == null ? undefined : String(target) }))) || "";
+        if (!intent) throw Object.assign(new Error(o.refusal || "the person did not ask for this change"), { code: "denied" });
+      }
       const whereTo = await whereIs(env, d, lv, target);
       const before = await level(d, lv, target);
       const tag = target ? { [lv]: target } : {};
       // What would change, for the person to see first. Nothing is written.
       if (i.preview) return { key: d.key, level: lv, ...tag, where: whereTo, before: before.value, after: value,
         ...(needsConfirm(d, value, before.value) ? { confirm: d.loosens || `This lets Claude do more without asking: ${d.label}.` } : {}) };
-      if (needsConfirm(d, value, before.value) && i.confirm !== true) {
-        throw Object.assign(new Error(`${d.loosens || `This lets Claude do more without asking: ${d.label}.`} Show the person and send confirm: true.`), { code: "confirm_required" });
-      }
       await checked(d, value, lv, target);
-      await write(env, d, lv, target, value, asPerson(caller), caller);
+      // A change the person asked an agent for is still the person's: stores that call a module's
+      // setter call it as vyred acting for them ("local"), and the log names the agent.
+      await write(env, d, lv, target, value, asked ? "local" : asPerson(caller), caller);
       const r = mirror(d, lv, target, value);
-      ctx.events.emit("settings.changed", { key: d.key, level: lv, ...tag, apply: d.apply, rev: r, ...said(d, value) });
+      const id = logChange(d, lv, target, before.value, value, caller, asked ? intent : null);
+      ctx.events.emit("settings.changed", { key: d.key, level: lv, ...tag, apply: d.apply, rev: r, change: id, by: asked ? caller : "person", ...said(d, value) });
       ctx.log(`${d.key} ${raw === undefined ? "reset" : "set"} at ${lv}${target ? " " + target : ""} by ${caller} (${whereTo})`);
       return effective(d, at);
     };
 
-    // A fresh proof only for keys that loosen security; everything else is a person's plain act.
-    const presence = {
-      when: (/** @type {any} */ i) => { try { return declOf(String(i && i.key)).security === "loosens" && !(i && i.preview); } catch { return false; } },
-      summary: (/** @type {any} */ i) => `Change ${i && i.key}`,
+    /** Record one change; its id. Secret keys record that they changed, never their values. */
+    const logChange = (/** @type {any} */ d, /** @type {string} */ lv, /** @type {any} */ target, /** @type {any} */ prev, /** @type {any} */ next, /** @type {string} */ by, /** @type {string|null} */ saidId) => {
+      const id = "chg_" + Math.random().toString(36).slice(2, 10) + Date.now().toString(36);
+      const js = (/** @type {any} */ v) => d.secret || v === undefined ? null : JSON.stringify(v);
+      ctx.store.db.prepare("INSERT INTO settings_changes (id, key, level, target, prev, next, by, said, at) VALUES (?,?,?,?,?,?,?,?,?)")
+        .run(id, d.key, lv, target == null ? null : String(target), js(prev), js(next), by, saidId, Date.now());
+      return id;
     };
+
     const LEVEL = { type: "string", enum: ["account", "project", "device", "session"] };
 
     ctx.tool("settings.set", {
-      description: "Change a setting at account level, or for one project, device or session (give it). The value is checked against the setting's type, and by its module when it names a check. preview: true returns what would change and writes nothing. A key that widens what Claude may do needs confirm: true; one that loosens security needs a presence proof. Returns the value now in effect.",
+      description: "Change a setting at account level, or for one project, device or session (give it). The value is checked against the setting's type, and by its module when it names a check. preview: true returns what would change and writes nothing, with confirm naming what it widens or loosens. No confirm step and no proof: every change is logged (settings.changes) and can be undone (settings.undo). Returns the value now in effect.",
       input: { type: "object", required: ["key", "value"], properties: { key: str, value: {}, level: LEVEL, ...where,
         preview: { type: "boolean" }, confirm: { type: "boolean" } } },
-      callers: PEOPLE, presence,
+      callers: PEOPLE,
       run: async (i, meta) => {
         if (i.value === null) throw Object.assign(new Error("use settings.reset to remove a value"), { code: "bad_input" });
         return change(i, meta, i.value);
@@ -478,10 +503,70 @@ export default {
     });
 
     ctx.tool("settings.reset", {
-      description: "Remove a setting's value at one level, so the next level down (then the default) applies again. Removing entries from a list that keeps Claude asking or refusing (sessions.deny, sessions.ask) needs confirm: true.",
+      description: "Remove a setting's value at one level, so the next level down (then the default) applies again. Logged and undoable like settings.set.",
       input: { type: "object", required: ["key"], properties: { key: str, level: LEVEL, ...where, preview: { type: "boolean" }, confirm: { type: "boolean" } } },
-      callers: PEOPLE, presence,
+      callers: PEOPLE,
       run: async (i, meta) => change(i, meta, undefined),
+    });
+
+    // An agent changing a setting for the person (PLAN.md C25): only when the person asked for this
+    // change in their own words in this conversation. vyred decides that from the person's own
+    // turns (P17), never from the agent's say-so: vault.said.match answers for the calling thread.
+    // No match, or no gate to ask: refused, and the agent tells the person to ask.
+    ctx.tool("settings.request", {
+      description: "Change or reset a setting because the person asked you to in this conversation (for example \"use Sonnet by default in this project\"). It works only when the person's own words asked for this change; otherwise it is refused and you should tell them they can change it in Settings or ask you directly. Give value to set it, or reset: true to clear it. The person sees who changed it and can undo it.",
+      input: { type: "object", required: ["key"], properties: { key: str, value: {}, reset: { type: "boolean" }, level: LEVEL, ...where } },
+      callers: ["mcp"],
+      run: async (i, meta) => {
+        const refuse = (/** @type {string} */ m) => { throw Object.assign(new Error(m), { code: "denied" }); };
+        const thread = meta && typeof meta.thread === "string" && meta.thread ? meta.thread : null;
+        if (!thread) refuse("settings.request works only inside a conversation with the person");
+        const d = declOf(String(i.key));
+        if (i.reset !== true && !("value" in i)) throw Object.assign(new Error("give value, or reset: true"), { code: "bad_input" });
+        if (i.reset !== true && i.value === null) throw Object.assign(new Error("use reset: true to clear a setting"), { code: "bad_input" });
+        if (d.secret) refuse(`${d.label || d.key} holds a secret; the person changes it in Settings`);
+        // The match is made inside change(), once the level, the project and the value are resolved: the person's words must name the key, the value and the level, and a plain ask is used up by this one change (consume).
+        const ask = async (/** @type {string} */ to) => {
+          /** @type {string[]} */ let lineage = [];
+          try { const l = await ctx.call("threads.lineage", { thread }); if (l && l.data && Array.isArray(l.data.lineage)) lineage = l.data.lineage.map(String); } catch {}
+          const agent = meta && typeof (/** @type {any} */ (meta)).agent === "string" ? (/** @type {any} */ (meta)).agent : "";
+          const m = await ctx.call("vault.said.match", { kind: "setting", to: [to], consume: true, thread, ...(lineage.length ? { lineage } : {}), ...(agent ? { agent } : {}) }).catch(() => ({ error: { code: "unavailable" } }));
+          return !m.error && m.data && m.data.matched === true && typeof m.data.id === "string" ? m.data.id : null;
+        };
+        const { reset, ...rest } = i;
+        return change({ ...rest, preview: false }, meta, reset === true ? undefined : i.value, { ask, refusal: `${d.label || d.key} changes only when the person asks for it, to that value and at that level. Tell them they can change it in Settings, or ask you to in their own words.` });
+      },
+    });
+
+    // Undo one change: the value before it comes back at the same level, with no prompt (C25).
+    ctx.tool("settings.undo", {
+      description: "Undo one settings change (its id from settings.changed or settings.changes): the value before it comes back at the same level. No confirm and no proof.",
+      input: { type: "object", required: ["change"], properties: { change: str } },
+      callers: PEOPLE,
+      run: async (i, meta) => {
+        const row = /** @type {any} */ (ctx.store.db.prepare("SELECT * FROM settings_changes WHERE id = ?").get(String(i.change)));
+        if (!row) throw Object.assign(new Error(`no change ${i.change}`), { code: "not_found" });
+        if (row.undone) throw Object.assign(new Error("that change is already undone"), { code: "bad_input" });
+        const d = declOf(row.key);
+        if (d.secret) throw Object.assign(new Error(`${d.key} is secret; set it again in Settings`), { code: "bad_input" });
+        const at = { [row.level]: row.target };
+        const prev = row.prev === null ? undefined : JSON.parse(row.prev);
+        const r = await change({ key: row.key, level: row.level, ...(row.target ? at : {}), confirm: true }, meta, prev);
+        ctx.store.db.prepare("UPDATE settings_changes SET undone = 1 WHERE id = ?").run(row.id);
+        return r;
+      },
+    });
+
+    // Recent changes, newest first: what the Deck shows as "Changed by <who>, <when>" with Undo.
+    ctx.tool("settings.changes", {
+      description: "Recent settings changes, newest first: {id, key, level, target, by, said, at, undone}. Give key for one setting's history.",
+      input: { type: "object", properties: { key: str, limit: { type: "number" } } },
+      run: async (i) => {
+        const limit = Math.min(Math.max(Number(i.limit) || 20, 1), 200);
+        const rows = i.key ? ctx.store.db.prepare("SELECT id, key, level, target, by, said, at, undone FROM settings_changes WHERE key = ? ORDER BY at DESC LIMIT ?").all(String(i.key), limit)
+          : ctx.store.db.prepare("SELECT id, key, level, target, by, said, at, undone FROM settings_changes ORDER BY at DESC LIMIT ?").all(limit);
+        return rows.map((/** @type {any} */ r) => ({ ...r, undone: Boolean(r.undone) }));
+      },
     });
 
     // A module writing its own settings (ADR 0033), the only path that isn't a person's. It is

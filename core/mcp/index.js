@@ -20,6 +20,7 @@
 
 import { Credentials } from "../../lib/connectors/auth.js";
 import { checkBehalf } from "../../lib/connectors/behalf.js";
+import { catalogFrom } from "../../lib/connector-presets/index.js";
 import { connect } from "./client.js";
 import { Hub, MIGRATIONS, TRANSPORTS, AUTH_TYPES, whoFrom } from "./hub.js";
 
@@ -32,7 +33,7 @@ const fields = {
   transport: { type: "string", enum: TRANSPORTS }, command: str, args: { type: "array", items: str }, cwd: str,
   env: { type: "object" }, vars: { type: "object" }, url: str, headers: { type: "object" },
   auth: { type: "object", properties: { type: { type: "string", enum: AUTH_TYPES } } },
-  scope: { type: "object" }, tools: { type: "object" }, idle: { type: "integer" },
+  scope: { type: ["object", "null"] }, tools: { type: "object" }, idle: { type: "integer" },
 };
 
 /** @type {{ start(ctx: any): Promise<{ stop(): Promise<void> }> }} */
@@ -42,7 +43,11 @@ export default {
     const opts = (ctx.config && ctx.config.mcp) || {};
     const data = r => { if (r.error) throw Object.assign(new Error(r.error.message), { code: r.error.code }); return r.data; };
 
-    const creds = new Credentials({ fetchItem: (item, field) => ctx.vault.fetch(item, field ? { field } : {}) });
+    const creds = new Credentials({
+      fetchItem: (item, field) => ctx.vault.fetch(item, field ? { field } : {}),
+      // A vendor that rotates its refresh token on every use: the connectors module made the item, so it saves the new one.
+      save: async (item, fields) => { data(await ctx.call("connectors.persist", { item, fields })); },
+    });
     const offer = async name => {
       const r = await ctx.call("gate.offer", { name: `mcp:${name}`, tool: "mcp.release", kinds: KINDS,
         content: { server: "the hub server", tool: "the server's own tool name", arguments: "object: exactly what the tool is called with", summary: "string" } });
@@ -58,6 +63,11 @@ export default {
       // runs as module:mcp, which would lose them, so the hub puts them in the request itself.
       request: async input => data(await ctx.call("gate.request", input)),
       item: async id => data(await ctx.call("gate.get", { id })),
+      agentKind: async agent => {
+        const list = data(await ctx.call("agents.list", {}));
+        const a = (Array.isArray(list) ? list : []).find(x => x.name === agent);
+        return a ? String(a.kind || "") : null;
+      },
       agentProjects: async agent => {
         const list = data(await ctx.call("agents.list", {}));
         const a = (Array.isArray(list) ? list : []).find(x => x.name === agent);
@@ -69,6 +79,12 @@ export default {
       },
       idle: Number.isInteger(opts.idle) ? opts.idle : undefined,
       httpHosts: Array.isArray(opts.httpHosts) ? opts.httpHosts.map(String) : [],
+      boundFor: catalogFrom(ctx.config).boundFor,
+      lineage: async thread => {
+        const r = await ctx.call("threads.lineage", { thread });
+        const d = r && r.data;
+        return Array.isArray(d) ? d.map(x => String(x && x.thread || x)) : Array.isArray(d && d.ancestors) ? d.ancestors.map(x => String(x && x.thread || x)) : [];
+      },
     });
 
     for (const r of hub.rows()) await offer(r.name);
@@ -81,18 +97,28 @@ export default {
       run: (_, meta) => hub.servers(who(meta)),
     });
 
+    // An added (not first-party) module may put an http server in the hub, but not a process: a stdio row runs
+    // a command with vault items in its environment, so it is for a person or one of Vyre's own modules
+    // (reviewer-2 M-G1: an added module must not be able to put a granted token in a process's env).
+    const refuseProcess = (input, meta, existing) => {
+      if (!String(meta.caller || "").startsWith("module:") || meta.firstParty) return;
+      const stdio = input.transport === "stdio" || input.command !== undefined || existing === "stdio";
+      const env = (input.env && Object.keys(input.env).length) || (input.auth && input.auth.type === "env");
+      if (stdio || env) throw Object.assign(new Error("an added module may add an http or sse server, not a command or an environment from the vault; a person adds those"), { code: "denied" });
+    };
+
     ctx.tool("mcp.add", {
-      description: "Add an MCP server: a name ([a-z][a-z0-9-], up to 32), a transport (stdio with command, args, cwd; http or sse with url), credentials as vault item names (auth { type: bearer | env | oauth | service-account, item }, env { VAR: item } for stdio), plain vars and headers that are not secret, a scope { projects, agents } and a tools policy { allow, deny, mode }. It then tries the server once to cache its tools; grant each vault item to mcp first, or run mcp.test after.",
+      description: "Add an MCP server: a name ([a-z][a-z0-9-], up to 32), a transport (stdio with command, args, cwd; http or sse with url), credentials as vault item names (auth { type: bearer | env | oauth | service-account, item }, env { VAR: item } for stdio), plain vars and headers that are not secret, a scope { projects, agents } (none means you and the assistant only; a named agent needs a scope that names it, or a #tag on its thread) and a tools policy { allow, deny, mode }. It then tries the server once to cache its tools; grant each vault item to mcp first, or run mcp.test after.",
       input: obj({ name: str, ...fields }, ["name", "transport"]),
       callers: PEOPLE,
-      run: input => hub.add(input),
+      run: (input, meta) => { refuseProcess(input, meta); return hub.add(input); },
     });
 
     ctx.tool("mcp.update", {
       description: "Change an MCP server: any field of mcp.add. A new command, url or credential stops the running server and drops its cached tools.",
       input: obj({ name: str, ...fields }, ["name"]),
       callers: PEOPLE,
-      run: input => hub.update(input),
+      run: (input, meta) => { refuseProcess(input, meta, (hub.row(input.name) || {}).transport); return hub.update(input); },
     });
 
     ctx.tool("mcp.remove", {
@@ -143,6 +169,16 @@ export default {
           w.person = false;
         }
         return hub.call({ ...rest, ...(mod && hold === true ? { hold: true } : {}) }, w);
+      },
+    });
+
+    ctx.tool("mcp.grant", {
+      internal: true,
+      description: "The connectors module lets one thread use a server after the person tagged it (#Slack) in their own turn.",
+      input: obj({ server: str, thread: str }, ["server", "thread"]),
+      run: (input, { caller }) => {
+        if (caller !== "module:connectors") throw Object.assign(new Error("only the connectors module grants a thread"), { code: "denied" });
+        return hub.grantThread(input);
       },
     });
 

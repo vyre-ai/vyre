@@ -1,0 +1,74 @@
+# Proof that deep Chrome control (ADR 0049) works with a real Chrome, and a baseline speed number.
+# On each of macOS, Windows and Linux (control) it installs Chrome for Testing into a temp
+# user-data-dir and runs two things:
+#   1. spike/harness/run.mjs: an unpacked MV3 spike extension attaches chrome.debugger to a fixture
+#      tab, connects to a native-messaging host registered for that profile, and round-trips framed
+#      JSON to a node process over a unix socket (Windows: named pipe). p50/p95 over 200 calls.
+#   2. bench/chrome-bench.mjs --direct-cdp: p50/p95 of snapshot, fill, click, tabs, batch, net and
+#      API learning against local fixture pages (no real extension needed).
+# Touches only the runner: no secrets, no external sites, nothing pushed. Read the results in the
+# job's step summary and the chrome-spike-<os> artifact.
+name: chrome-spike
+on:
+  workflow_dispatch:
+  push:
+    branches: [work/capsule-sight]
+    paths:
+      - local/hands-chrome-mac/spike/**
+      - local/hands-chrome-mac/bench/**
+      - local/hands-chrome-mac/extension/**
+      - local/hands-chrome-mac/native-host/**
+      - local/hands-chrome-mac/bridge.js
+      - .github/workflows/chrome-spike.yml
+permissions:
+  contents: read
+concurrency:
+  group: chrome-spike-${{ github.ref }}
+  cancel-in-progress: ${{ startsWith(github.ref_name, 'work/') && github.ref_name != 'work/stage-0.2' }}
+jobs:
+  chrome:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, windows-latest, ubuntu-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Spike (extension, native host, socket)
+        id: spike
+        continue-on-error: true
+        run: node local/hands-chrome-mac/spike/harness/run.mjs --out "results/spike-${{ runner.os }}.json"
+      - name: Spike again with diagnostics (only if it failed)
+        if: steps.spike.outcome == 'failure'
+        continue-on-error: true
+        run: node local/hands-chrome-mac/spike/harness/run.mjs --diag --out "results/spike-diag-${{ runner.os }}.json"
+      - name: Bench (direct CDP baseline)
+        id: bench
+        continue-on-error: true
+        run: node local/hands-chrome-mac/bench/chrome-bench.mjs --direct-cdp --iters 30 --out "results/bench-${{ runner.os }}.json"
+      - name: Real extension, native host and bridge (the bench through the product)
+        id: real
+        continue-on-error: true
+        timeout-minutes: 8
+        run: node local/hands-chrome-mac/spike/harness/real.mjs --iters 30 --out "results/real-${{ runner.os }}.json"
+      - name: Results
+        if: always()
+        run: |
+          ls -la results || true
+          for f in results/*.json; do echo "== $f"; head -c 6000 "$f"; echo; done
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: chrome-spike-${{ runner.os }}
+          path: results/*.json
+          if-no-files-found: warn
+      - name: Fail the job if a step failed
+        if: steps.spike.outcome == 'failure' || steps.bench.outcome == 'failure' || steps.real.outcome == 'failure'
+        run: exit 1

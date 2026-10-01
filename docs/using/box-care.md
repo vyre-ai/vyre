@@ -94,8 +94,12 @@ either. Pick one with `vyre update --channel beta` or `VYRE_CHANNEL=beta`, or a 
 with `--to 0.2.0`. While GitHub has no release yet, or when you set `VYRE_BOX_URL` yourself, it
 uses the site instead (`https://vyre.run/box/` by default), as it always has.
 
+Vyre looks for a newer release once a day and keeps the answer, so Settings can say "Update available" and show what changed. On a server set up by the install line, Settings also has an **Update to 0.x** button. It does not run anything itself: it drops a one-line request into `/var/lib/vyre-update/request`, a folder that only Vyre can write to and that root owns along with every folder above it, and a small systemd unit on the host (`vyre-update.path`, owned by root) runs `vyre update` for it. That update never accepts `--allow-unsigned`, never goes back to an older version than the newest this server has had (a version the host keeps in a file only root writes), waits at least ten minutes between updates, backs up your data first, and puts the old version back on its own if the new one does not start. The card shows each step and the result. The command above always works too, and a server with no systemd shows only the command.
+
+Turn on **Update automatically** in Settings (off by default) and Vyre asks for a new release by itself between 2 and 5 in the morning, once per version, the same way. The channel is the host's own: set `VYRE_CHANNEL=beta` in the server's `.env`, or leave it on stable. Set `auto` to `"off"` inside the `update` object in `config.json` to stop the daily look. A Mac server updates through the app's own signed updater instead.
+
 Every file comes from the release and is checked against its `SHA256SUMS` before anything on the
-box changes. Then, in order:
+box changes. The `SHA256SUMS` list itself is checked against its signature (`SHA256SUMS.sig`) from Vyre's release key, which is built into the `vyre` command. An unsigned or badly signed release is refused, and `vyre update --allow-unsigned` installs it anyway after a plain warning that nothing proves it came from Vyre. The same holds for `vyre update` on a Mac. Then, in order:
 
 1. It backs up the database with `vyre backup`, into `/home/vyre/.vyre/backups/pre-<version>.tar.gz`
    in the container, with a copy in `/srv/vyre/backups/` that only you can read. It holds the
@@ -187,7 +191,7 @@ your data again on its own.
 
 | Option | Does |
 |---|---|
-| `--channel stable` or `--channel beta` | which releases to follow; the default is `stable`, or `update.channel` in `config.json` |
+| `--channel stable` or `--channel beta` | which releases to follow; the default is `stable`, or `channel` inside the `update` object in `config.json` |
 | `--to <version>` | a given release, when an update says to step through one first |
 | `--yes` | installs without asking; needed when there is no terminal to ask on |
 | `--rollback` | puts the previous release back and keeps your current data |
@@ -418,3 +422,11 @@ A Linux box installed from npm with systemd units is upgraded with
   who can reach the box.
 - [Troubleshooting](../get-started/troubleshooting.md), when something does not start.
 - [CLI reference](../reference/cli.md#vyre-box), every `vyre box` form.
+
+## What root runs, and what it reads
+
+Updates that run as root (the automatic path from Settings and `sudo vyre update`) never read a file you or an agent on your account can write as configuration. Root starts compose from its own copies of the released compose.yml, in a folder only root can write, with a root-written env file and every file, project and folder named explicitly. It refuses an override file or a COMPOSE_* setting, takes how the box is built (pulled, built from the released source, or from your own checkout) from a record it made when the updater was installed, and checks every ghcr.io/vyre-ai image of a release with cosign before pulling. `sudo vyre up` and the other root commands use the same copies once the updater is installed. A host with no updater (no systemd) keeps the stack folder's files, as the installer laid them down.
+
+One thing no script can fix: if your account may run `sudo` without a password, anything running as you can already become root, and none of this protects you from it. Keep `sudo` asking for a password on a box where agents run as your account.
+
+Being in the docker group is equivalent to root on that host, so only the owner should be in it. The installer's own first `vyre up` runs as you, straight after it lays down the files it just verified; root's copies exist from the next step, when the updater is installed.

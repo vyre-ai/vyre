@@ -16,7 +16,7 @@ boards "Session, phone and desktop" and "Session · the composer, like Claude Co
 |---|---|---|
 | Deck | `deck/chat/session.js`, `deck/chat/core/session-state.js`, `deck/chat/chat.css` (work/chat) | partial |
 | App | `apps/app/src/session/Rows.tsx` (work/mobile) | partial |
-| Capsule | `local/capsule/native/Sources/UI/CapsuleView.swift`, `UI/AgentDirectView.swift`, `Extensions/sight/SessionPanel.swift` (work/capsule-pro) | partial |
+| Lumen | `local/capsule/native/Sources/UI/CapsuleView.swift`, `UI/AgentDirectView.swift`, `Extensions/sight/SessionPanel.swift` (work/capsule-pro) | partial |
 
 ## Anatomy
 
@@ -35,6 +35,19 @@ boards "Session, phone and desktop" and "Session · the composer, like Claude Co
    you", or the error in plain words.
 8. Asks, questions and plans that open in the turn sit at its tail (see ask-card, question-card,
    plan-card).
+9. **Picture.** A person's pasted or dropped image, or a tool's own (a screenshot, a read file,
+   sight's still): a fixed 240x180 thumbnail (never a layout jump while it loads), tap opens it
+   full size in the one shared lightbox (`deck/chat/lightbox.js`), a single overlay mounted once
+   per page, not a per-picture dialog. Esc or a tap on the backdrop closes it and returns focus to
+   the thumbnail that opened it. Past 4 MB a picture is a file chip (name, size), never inline.
+10. **Session header** (the top of the session, not a turn, but every turn sits under it): the
+    title and its folder, then a row of tags and the state: project (see chip.md, a Tag, the
+    thread's project, e.g. "harlow-legal", no icon, title attribute names it in full), provider ·
+    model (Tag, "Claude · opus"), the state word (mode-chip.md, "running"/"waiting"/"stopped"). A
+    **sight strip** below the header, only for a thread with a computer running and only once one
+    is found (`sight.targets`, then `sight.frame` on `sight.stepped`): the picture-thumb pattern
+    above at 160x120, captioned "<agent>'s screen", inside a full-width band with a `--rule`
+    bottom border; hidden entirely (no empty band) when there is no target.
 
 Items stack with 10 gap in the transcript column; padding 8 top, 24 sides (16 on the phone).
 
@@ -106,6 +119,31 @@ Deck (work/chat)
 - [ ] Turn footer `.cv-turn` is mono 11 px; spec: meta 12 sans.
 - [ ] `.cv-text` is 15/24; spec: 15/22.
 - [ ] Thinking body border 2 px `--rule-strong`; spec: 1 px `--rule`.
+- [ ] The "lease bar" above the composer (`deck/chat/session.js` `drawHead`, icon lock) falls back
+      to "No one is typing" when no other device holds or resumes the session, copy that reads as
+      a chat-presence indicator, not a keyboard-lease one, and shows on every solo, single-device
+      session (the common case), not just a real handoff. Either hide the row entirely with
+      nothing to say, or give the idle-solo state its own quiet copy, not the multi-device word.
+- [x] CLOSED same day: Esc Esc's rewind sheet's missing "Fork from here" (flagged in this review)
+      landed on native-core (`6fb2e02a`, merged `912216cc`): `rewindSheet` takes `onFork`/`canFork`,
+      a fourth item beside Restore, `Choice = Restore | "fork"`, gated the same way `codeOk` gates
+      the code restores. Still open: chat's session.js side (the `onFork` handler itself, calling
+      `threads.fork {at}` and opening the result - the answer's new session id is `.id`, not
+      `.thread`, per native-core's correction). Not a design gap once that lands.
+- [ ] On the phone, the rewind sheet draws in the transcript's own flow (pushed down by the lease
+      bar and the queued/todos rows already stacked above the composer), not as an overlay sheet:
+      sheet.md's own pattern (a raised card over the page, not inline). At a typical phone height
+      "Rewind here" sits at the very bottom of the viewport and the composer's mode row scrolls
+      off entirely.
+- [ ] `deck/chat/ask-item.js`'s Allow once / Deny key hints (`keyHint()`, class `.cv-ask-key`) are
+      a local one-off: plain 12 px text next to the label, `aria-hidden`, no border or background.
+      Every other shortcut in the same view (Send `⌘⏎`, Stop `Esc`, the composer's `Enter`/`Shift+
+      Enter`/`/`/`@`/`!`/`#` row) is the bordered `.kbd` chip from key-hint.md. Reuse it here too,
+      or the reader has no visual cue "A" and "D" are shortcuts at all.
+- [ ] The lightbox (`deck/chat/lightbox.js`) is `role="dialog"` `aria-modal="true"` but its own
+      comment says it "never traps focus outside itself"; under `aria-modal="true"`, assistive
+      tech treats the rest of the page as inert, so Tab should cycle inside the lightbox while
+      it's open (or drop `aria-modal` if that's intentionally out of scope for now).
 
 App (work/mobile)
 - [ ] No author line (tile, name, time).
@@ -113,7 +151,7 @@ App (work/mobile)
 - [ ] Thinking reads "Thought · N characters" and never opens; spec: "Thinking · 8 s", expandable.
 - [ ] Steer marker reads "Steering" / "Steered at step N"; spec copy above.
 
-Capsule (work/capsule-pro)
+Lumen (work/capsule-pro)
 - [ ] Three renderers (CapsuleView answer, DirectView message, SessionPanel message); one turn view.
 - [ ] Author in mono caps; spec: sans 600, sentence case.
 - [ ] No steer marker, no thinking row, no turn footer.

@@ -66,6 +66,27 @@ action. The goal beyond that is that the user can cancel 1Password (spec section
 
 ## Doing
 
+- 2026-10-01 state: Gate, said intents (send, post, pay, act_out, setting, revoke, use; windows 15 min act_out and 60 min plain; standing permissions; agents field; threads kinds), module-sender recipients (first-party flag), D2 asked handshake, # vault provider, revoke and list scoping, plain-words prompts, Replace the key, key chip hardening with a real-Chrome proof (chip-check.mjs in vault-browser), connect flow left to connectors' readers, and the .env scan (vault.env.scan, vyre vault scan-env) are built and reviewer-2 cleared. Open: step 12 (Capsule calls vault.device.unlock after Touch ID, asked capsule-pro), pairing and fill through the toolbar popup (by-hand check on e2e2's list), and connectors' readers round trip test (theirs). Step 18 docs: connectors put the Entra and Google step lists inside the presets (lib/connector-presets/presets.json guide.steps), so the Deck shows them at connect time; docs/using/connectors.md covers the service account.
+
+- 2026-09-30 (CI): work/vault-next e5974bed is pushed and merged with work/stage-0.2 (connectors now under lib/connectors; presence kept stage's ES256 Capsule pin and my RS256 device keys, new migration widens the alg trigger). vault-mac is green (per-file with alarms; 5 files that hang on macOS without output are reported, not failing: core/vault/module.test.js, surfaces.test.js, tools/cli.test.js, core/cli/commands/home.test.js, threads-sessions.test.js; the same tests pass on Linux). node.yml: waiting on the e5974bed run; earlier failures not mine were shellcheck of install-box.sh (launch) and phone-add push and vyred SIGTERM tests. Chrome launch in browser-check.mjs now spreads CHROME_SAFE; key chip test waits on its worker reply.
+
+- 2026-09-30 (later): reviewer-2 M1 fixed (Gate matches EVERY real destination: email to+cc+bcc via sender `recipients`; http and module senders name none so nothing covers them). Lead rulings built: plain ask single-use (`consume` on vault.said.match, `used` column), standing persists; `agents` field on intents (named agents only, none = any); lineage passed from `threads.lineage {thread}` (OWED by sessions, fails soft to []); pay needs currency on both sides (cap/single-use for pay covered by consume). Person-only Settings tools: gate.said.add / list / revoke; assistant may list and may revoke only with a recorded `revoke` intent naming the id in the same thread lineage. GitHub connector: hub BOUND_ITEMS binds `github-*` items to api.githubcopilot.com (and `google-*` to Google's hosted hosts); `githubServer(login)` gives the mcp.add row. Known flake: core/google module.test.js DWD event order (pre-existing).
+
+- 2026-09-30 relaunch: Gate (asked via said_intents, gate.said.*) is built and on work/vault-next 1b01a6f8. Added intent kind
+  "setting" (`to: [key]`) so native-core's C25 check is `vault.said.match {kind:"setting", to:[key], thread}` (internal, module
+  callers). CI on 1b01a6f8: node job fails only on shellcheck of scripts/install-box.sh (launch's file, not mine); vault-mac still
+  running, so NOT pushing yet. Next: push when vault-mac finishes, send to reviewer-2 and integrator.
+
+- 0.1.1 (lead approved, see message log): 7 of 8 items shipped and green on testbox, each its own
+  commit on this branch (boundary fix f3d39f3f..2ee3e337 range - check `git log --oneline` for
+  exact shas): kinds.js/ssh-setup.js to lib/ (clears the two frozen boundary edges), scheduled
+  breach check, needs-credential reminders, Touch ID nudge, expiring-pass reminder, `vyre up`
+  .env nudge, suggest-a-default, passkey coverage in Watchtower. Item #9 (a real Chromium pass
+  for the autofill extension, not the vm+stub-chrome extension.test.js uses): wrote
+  `modules/vault-extension/testing/browser-check.mjs` (builds the extension, loads it into real
+  headless Chromium via CDP, pairs against a real fill listener, fills a real page). NOT YET RUN:
+  testbox already had two other Chromium trees running when I checked (ports 9222 and 9450, load
+  5.6) and "one Chrome at a time" - waiting on the lead before adding a third.
 - The relayed pass between two machines on the tailnet, end to end through the box
   workstream's Docker Compose stack and tailscale sidecar. Waiting on that stack reaching main.
 - 2026-09-27: merged main (68463d04) into work/vault-next (51b1d184), then tested 9b (connections)
@@ -140,6 +161,12 @@ action. The goal beyond that is that the user can cancel 1Password (spec section
 
 ## Changed contracts
 
+- `vault.connections.list` with a `capability` adds `suggest_default: boolean` (0.1.1 #7): true
+  the first time that capability has two or more ready connections and no default, then never
+  again for that capability (`vault_default_asked`, new table, `DEFAULT_SUGGEST_MIGRATION`).
+  `vault.health` adds `touchid: {enrolled, available}` (0.1.1 #4), advisory only. `judge()` adds
+  `passkey-available` (0.1.1 #8, `core/vault/passkeys.json`), Watchtower-only like
+  `2fa-available` - remind.js's REASONS doesn't list it, so it is never a planner todo.
 - `ctx.modules.tools(caller)` (core/modules, kernel): read-only, `structuredClone`d, same shape as
   `GET /v1/tools`. Landed on main via rc.1, not vault-next's own; flagged here per e2e's review
   since it widens a kernel ctx surface. `ctx.modules.status()` is also now `structuredClone`d.

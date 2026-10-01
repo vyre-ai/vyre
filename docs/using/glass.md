@@ -43,7 +43,7 @@ Press **Open Glass** at the top of the agent page, or the screen picture in the 
 Other ways to the same page:
 
 - The path `/agents/<name>/glass`, or `/glass/<name>`.
-- In the [Capsule](capsule.md), type `glass kit`, or pick Open Glass on one of kit's threads.
+- In the [Lumen](capsule.md), type `glass kit`, or pick Open Glass on one of kit's threads.
 - `/glass/box` opens the box itself, which has files and no screen.
 
 The first time, the computer is made and starts, which takes a few seconds. Then the screen

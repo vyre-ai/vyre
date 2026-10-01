@@ -1,7 +1,7 @@
 // Round 3b: warm, realistic skin tones on the head (light to deep, 6-8 tones), pastel colour
 // moved to clothes/accessories only, and friendly-only expressions (no open-mouth or startled
 // faces). Everything else (hair, headwear, glasses, earrings, role props) is round 3 unchanged.
-// Agents' blobs are untouched. Still fully original, still off-limits for lime and violet.
+// Agents' blobs are untouched. Still fully original, still off-limits for bone and violet.
 //
 // Visibility fix (28 Sep, lead's ruling, ADR 0043): the darkest tones were reading as "not clearly
 // visible" - measured as two separate contrast failures (round4/identity.js has the numbers and
@@ -22,11 +22,11 @@ function hashSeed(seed) {
   for (let i = 0; i < seed.length; i++) { h ^= seed.charCodeAt(i); h = Math.imul(h, 16777619); }
   return () => { h ^= h << 13; h ^= h >>> 17; h ^= h << 5; h >>>= 0; return h / 4294967296; };
 }
-// Pastel palette, kept well away from lime (#C6F36B) and violet (#B8A4FF/#5B3FC4); swept
+// Pastel palette, kept well away from violet (#B8A4FF/#5B3FC4); swept
 // per-seed in round 2's check, no hue here landed within a safe distance of either.
 const PASTELS = ["#F4B8A0", "#F6D186", "#9FD8C8", "#D98E52", "#E8A6C7", "#D9C9A8", "#F0A8A8", "#A8D9C0"];
 const HAIR_COLORS = ["#5A4632", "#8A5A3B", "#2B2320", "#C79A5B", "#7A4A2E", "#3A3733"];
-// SKIN_TONES itself (light to deep, swept against lime/violet, none land close) now lives in
+// SKIN_TONES itself (light to deep, swept against bone/violet, none land close) now lives in
 // identity.js as the canonical copy - imported above, not restated here.
 const pick = (rnd, arr) => arr[Math.floor(rnd() * arr.length)];
 const chance = (rnd, p) => rnd() < p;

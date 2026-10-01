@@ -80,6 +80,62 @@ deck/css/deck.css span.vy-av rules; deck/css/views/agents.css, settings.css.
 - (done by app-design d9f6e445) avatar.md and ADR 0043 should say renaming an agent changes its blob
   (seed = name), and name projectBytes() as the project-tile seed-to-bytes rule for other surfaces.
 
+## 2026-10-01 # vault picker built (composer-state findVaultMention etc, composer.js showVault, cards/vault-used.js); shapes proposed in CHAT 02:40, waiting on vault's confirm and lead's # first-char ruling.
+
+## 2026-10-01 "/" = assistant's thread (js/home.js); reviewer-2 on 01b46eb8: hub-form MCP names not first party, nonce removed, origin line above the artifact frame.
+
+## 2026-10-01 charter-changed notice built (cards/charter-changed.js, wired in session.js), local.
+
+## 2026-10-01 reviewer-2's two MEDIUMs (fixed locally): M1 firstParty + readOnly cards + ACTION_TOOLS; M2 nonce in artifact-frame.js (client half; artifacts owns the route's script and x-vyre-frame-nonce header).
+
+## 2026-10-01 resume (after a usage-limit restart)
+Doing: CI on 4932f92d (pushed; fixes for the 3 failures on 115745f4: goal chip reads Ctrl+Enter off a Mac, team.retire and thread.artifact listed as ahead of this tree). Range a14ee7bb..4932f92d sent to reviewer-2.
+Done locally (not pushed while CI runs): land cards in deck/chat/cards/land.js, wired into session.js (assistant thread, empty, welcome at the top, refreshed on onboard.stepped); deck tests 934/934 locally in a temp home.
+Done locally too: projects.rename, projects.archive, projects.history wired (deck/js/project-actions.js, offerThen on every create path, an Archived view with Restore); deck tests 941/941.
+Next: agree sessions' four Deck field shapes in CHAT.md; the route so setup lands on the assistant's thread (launch and assistant own which thread id "/" opens, needs their answer). Merge stage/0.2 when integrator cuts it.
+Needs from others: assistant merges assistant.welcome (contract test lists it optional until then); teammates merges team.retire; launch confirms the onboard.claude result carries state.
+
+## 0.2 BUILD (started 2026-09-30, lead GO for non-visual work)
+Branch work/native-core-0.2 off origin/main 9381ab15 (stage/0.2 not cut yet; rebase onto it when
+the integrator cuts it). Plan: team/0.2/plans/native-core.md. Contracts: PLAN.md C14/C14b (caps),
+C21 (landing cards, ids only), C22 (shell contract), C25/P17 (settings on request), D2 (fixture
+names). Tests ONLY on GitHub hosted runners (push -> node.yml) or temp homes; never the test box or the live server;
+Mac tests only as vyretest. New UI (components, artifact card, @role flows, /quick) WAITS for
+app-design's contract and the user's OK.
+Order: (1) fixture-name leak fixes; (2) lib/caps-flags.js + deck/chat/core/provider-caps.js
+(pure: live caps for actions, snapshot for rendering, per-control state); (3) build-id check and
+one quiet reload; (4) shell contract: window.__vyreShell presentation only, vyre://open route
+parser + golden vectors in spec/, /chat?term= never acts from a link; (5) settings.set/reset for
+agents on the person's request (P17 match, fail closed until it exists), with by/prev recorded
+for Undo.
+Done (committed; CI on GitHub runners): (1) b28be972 fixture-name fixes + vyred refuses deck
+fixtures unless VYRE_DECK_FIXTURES=1; (2) caps: lib/caps-flags + deck/chat/core/provider-caps.js,
+served via DECK_LIBS; (3) build id in index.html (htmlWithBuild) + deck/js/build-check.js on resume;
+(4) 16b1bddf shell contract: deck/js/platform.js (injected __vyreShell, kbd(), rail keys only when
+installed), lib/deeplink + spec/deeplink/open.json vectors, deck/chat/lib/opened-here.js (no terminal
+attach from a link); (5) fa492d50 settings.request (agents, P17 gate.said.match, fails closed),
+settings_changes log, settings.undo, settings.changes; module.json + docs:ref.
+NOTE: pushing again cancels the running node.yml (cancel-in-progress). Push once, then wait.
+Doing: CI for the whole range, then send to reviewer-2 + integrator.
+Also done: ff7fceb6 the person's own settings changes need no confirm and no proof (lead's
+decision 30 Sep); hub.json hand edits that loosen security still wait. UI leftovers for the UI
+round: the Deck's confirm sheet and proof flow (deck/views/settings-keys.js, its fake server in
+deck/test/settings-keys.test.js, and deck/test/settings-browser.js's proof checks).
+Next: when sessions ships providers.list caps, wire provider-caps into chat (UI waits for
+app-design).
+RESUME (1 Oct restart): CI fixes done (daemon test stamps the build id, docs regenerated, settings change id and the
+rail/platform/goal tests aligned; core/google flaked on stage and is fixed there). Built the user-approved common chat
+components under deck/chat/cards/ (registry index.js: askCardFor for blocking kinds, toolDisplay for a tool block's
+`render` payload, thread.artifact -> one card per version): pr_review, diff (multi-file), report, email_thread,
+email_draft and calendar_draft, calendar_event, survey (+ isSurvey on a question ask), confirmation, file and link
+preview, artifact card + viewer + /a/<id> + frame guard (M5). @role makes a teammate at once (made.js, near-miss chip,
+Undo via team.retire), @agent goes to agents.ask; the settings confirm sheet is removed. Open contract questions to
+confirm with owners: pr_review/draft/confirmation payload field names (github, sessions, vault), `compose:reply` href
+handler, calendar.respond input (connector owner), artifacts render route and tool shapes, team.retire (teammates),
+ctx.goto(turn) from session.js for confirmation's "You said to". Not yet wired: ctx.open/goto in session.js, Capsule
+compact forms (data-compact on pr-review), real-browser screenshots (headless Chrome on a runner).
+Next: push, wait for node.yml, send 258c0ac6..HEAD to reviewer-2 and the integrator.
+
 ## Done
 - 2026-09-27 77faf1e3: core/settings (registry of ~70 keys, stores: settings_values, config.json,
   module tools, Claude Code files), settings.schema/get/set/reset/resolve, settings.changed,

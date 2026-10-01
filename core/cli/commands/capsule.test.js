@@ -1,5 +1,5 @@
 // @ts-check
-// `vyre capsule`: the native app is the Capsule. Where it can run, and what the command accepts.
+// `vyre capsule`: the native app is Lumen. Where it can run, and what the command accepts.
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
@@ -61,12 +61,12 @@ test("capsule install --json: off a Mac, one error object", { skip: process.plat
   assert.equal(JSON.parse(r.stdout).error.code, "not_mac");
 });
 
-test("capsule install: builds here and downloads nothing; off a Mac it says the Capsule runs on macOS", { skip: process.platform === "darwin" }, t => {
+test("capsule install: builds here and downloads nothing; off a Mac it says Lumen runs on macOS", { skip: process.platform === "darwin" }, t => {
   const root = tempHome(t);
   const bin = path.join(path.dirname(new URL(import.meta.url).pathname), "..", "..", "..", "bin", "vyre");
   const r = spawnSync(process.execPath, [bin, "capsule", "install"], { encoding: "utf8", env: { ...process.env, VYRE_HOME: root } });
   assert.equal(r.status, 1);
-  assert.match(r.stdout, /The Capsule runs on macOS/);
+  assert.match(r.stdout, /Lumen runs on macOS/);
   assert.doesNotMatch(r.stdout + r.stderr, /Vyre-mac\.zip|download/i);
   assert.doesNotMatch(fs.readFileSync(new URL("./capsule.js", import.meta.url), "utf8"), /Vyre-mac\.zip|capsule-install\.js/);
 });

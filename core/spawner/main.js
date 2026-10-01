@@ -13,6 +13,7 @@ import path from "node:path";
 import { spawn, execFileSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { serve } from "./server.js";
+import { readStatus, holdsNetAdmin, recheck, POOL } from "./wall.js";
 
 const env = process.env;
 const num = (v, d) => (/^\d+$/.test(String(v || "")) ? Number(v) : d);
@@ -49,6 +50,9 @@ if (!process.getuid || process.getuid() !== 0) {
       asVyre("chmod", "-R", "g+rwX", WORK);
       asVyre("find", WORK, "-type", "d", "-exec", "chmod", "g+s", "{}", "+");
     }
+    // Closed to every other uid (2770): the watcher pool and anything else that is not vyred or the shared group cannot enter it.
+    // Only the folder itself: whatever is inside is unreachable without passing through it.
+    if ((st.mode & 0o007) !== 0) asVyre("chmod", "o-rwx", WORK);
   } catch (e) { log(`spawner: ${WORK} is not fully shared: ${/** @type {Error} */ (e).message}`); }
   try { asVyre("chmod", "700", env.VYRE_USER_HOME || "/home/vyre"); } catch {}
 
@@ -61,14 +65,23 @@ if (!process.getuid || process.getuid() !== 0) {
   }
   const allow = ["/usr/local/bin/claude", ...bundled, ...String(env.VYRE_SPAWNER_ALLOW || "").split(":").filter(p => p.startsWith("/"))];
   const home = env.VYRE_AGENT_HOME || "/home/vyre-agent";
-  const makeDir = dir => execFileSync("/usr/bin/setpriv", [`--reuid=${AGENT.uid}`, `--regid=${AGENT.gid}`, `--groups=${SHARED}`, "--inh-caps=-all", "--",
+  const makeDir = (dir, who) => execFileSync("/usr/bin/setpriv", [`--reuid=${who.uid}`, `--regid=${who.gid}`, who.groups.length ? `--groups=${who.groups.join(",")}` : "--clear-groups", "--inh-caps=-all", "--",
     "/bin/sh", "-c", 'umask 002; exec mkdir -p "$1"', "sh", dir], { stdio: "ignore" });
-  const srv = await serve({ socket: SOCKET, mode: 0o660, allow, work: WORK, agent: AGENT, home, makeDir, log });
+  // One uid per account, 2000-2063 in the image, each with a private HOME in the vyre-accounts volume.
+  const accounts = { min: num(env.VYRE_ACCOUNT_UID_MIN, 2000), max: num(env.VYRE_ACCOUNT_UID_MAX, 2063), home: env.VYRE_ACCOUNTS_HOME || "/home/acct", shared: [SHARED] };
+  const grantGroup = (dir, who) => execFileSync("/usr/bin/setpriv", [`--reuid=${who.uid}`, `--regid=${who.gid}`, "--clear-groups", "--inh-caps=-all", "--", "/bin/chmod", "710", dir], { stdio: "ignore" });
+  // The watcher wall: pool uids, their folders, and the status the entry script wrote after installing and probing the rule.
+  const watcher = { min: num(env.VYRE_WATCH_UID_MIN, POOL.min), max: num(env.VYRE_WATCH_UID_MAX, POOL.max), home: env.VYRE_WATCH_HOME || "/run/vyre-watch",
+    allow: [env.VYRE_WATCH_NODE || "/usr/local/bin/node"], status: () => readStatus(env.VYRE_WALL_STATUS), heldCap: holdsNetAdmin, reprobe: () => recheck() };
+  const srv = await serve({ socket: SOCKET, mode: 0o660, allow, work: WORK, agent: AGENT, home, makeDir, grantGroup, accounts, watcher, log });
 
   // The loop, and so vyred, as uid vyre, in the shared group, with no capabilities, and knowing
   // where to ask. Its umask is 002, so what it writes in /work the agent can change too; its own
   // files take group vyre, which the agent is not in, behind a home only vyre enters.
-  const child = runLoop(["/usr/bin/setpriv", `--reuid=${VYRE}`, `--regid=${VYRE}`, `--groups=${SHARED}`, "--inh-caps=-all", "--",
+  // vyred is in every account's group (gid = uid, 2000-2063), so it can read each account's
+  // transcripts through the group and no account can read another's.
+  const accountGids = []; for (let g = accounts.min; g <= accounts.max; g++) accountGids.push(g);
+  const child = runLoop(["/usr/bin/setpriv", `--reuid=${VYRE}`, `--regid=${VYRE}`, `--groups=${[SHARED, ...accountGids].join(",")}`, "--inh-caps=-all", "--",
     "/bin/sh", "-c", 'umask 002; exec "$@"', "sh", "/bin/sh", LOOP], { ...env, HOME: env.VYRE_USER_HOME || "/home/vyre", VYRE_SPAWNER_SOCKET: SOCKET });
   child.on("exit", async (code, signal) => { await srv.close(); process.exit(code ?? (signal ? 1 : 0)); });
 }

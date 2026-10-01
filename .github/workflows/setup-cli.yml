@@ -1,0 +1,21 @@
+# `vyre setup --name --yes` against a real vyred and the real name directory code, on a runner (boots daemons, so never on a Mac).
+name: setup-cli
+on:
+  workflow_dispatch:
+  push:
+    paths: ["core/cli/commands/setup*", "core/cli/commands/up.js", "core/names/**", "names/worker/**", "test/setup-cli-names.test.js", ".github/workflows/setup-cli.yml"]
+permissions:
+  contents: read
+concurrency:
+  group: setup-cli-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  setup-cli:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22 }
+      - run: npm ci --no-audit --no-fund
+      - run: node --test core/cli/commands/setup.test.js test/setup-cli-names.test.js

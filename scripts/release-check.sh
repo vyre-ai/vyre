@@ -5,12 +5,13 @@
 #
 #   1. the suite (npm test) and scripts/perf-check (idle budgets, SPEC section 2 principle 8;
 #      about a minute), unless --skip-tests or --skip-perf
-#   2. npm pack, and the tarball holds what it should and nothing it should not
-#   3. a global install of that tarball into a temp prefix, never the real one
-#   4. vyre up, status, modules, call and down, in a temp HOME and VYRE_HOME
-#   5. the Harness from the installed folder: its MCP server lists tools over stdio, and with
+#   2. docs-check --release: the docs tree is clean and no screenshot is older than the code it shows
+#   3. npm pack, and the tarball holds what it should and nothing it should not
+#   4. a global install of that tarball into a temp prefix, never the real one
+#   5. vyre up, status, modules, call and down, in a temp HOME and VYRE_HOME
+#   6. the Harness from the installed folder: its MCP server lists tools over stdio, and with
 #      --claude a real `claude -p --plugin-dir` session calls one (uses your Claude sign-in)
-#   6. site/box (from scripts/build-site.sh): every file there matches SHA256SUMS, and vyre.tgz
+#   7. site/box (from scripts/build-site.sh): every file there matches SHA256SUMS, and vyre.tgz
 #      is this version; with --live, https://vyre.run/box serves exactly those bytes
 #
 # Nothing outside the temp folders is written, except the one throwaway session transcript
@@ -27,7 +28,7 @@ for a in "$@"; do
     --skip-perf) PERF=0 ;;
     --claude) CLAUDE=1 ;;
     --live) LIVE=1 ;;
-    -h|--help) sed -n '2,19p' "$0"; exit 0 ;;
+    -h|--help) sed -n '2,20p' "$0"; exit 0 ;;
     *) echo "release-check: unknown option $a" >&2; exit 1 ;;
   esac
 done
@@ -59,6 +60,11 @@ if [ "$TESTS" = 1 ]; then
   (cd "$repo" && sh -c "$cmd" >"$work/test.log" 2>&1) || { grep -B2 -A12 -E '^✖|failing tests' "$work/test.log" | tail -n 60; fail "the suite (log above)"; }
   ok "$(grep -E '^[^ ]+ (tests|pass|fail) ' "$work/test.log" | tr '\n' ' ')"
 fi
+
+step "docs"
+# Stale screenshots only warn while people work; they block a release (docs-check --release).
+(cd "$repo" && node scripts/docs-check --release >"$work/docs.log" 2>&1) || { tail -n 30 "$work/docs.log"; fail "docs-check --release (log above; run npm run docs:shots for stale screenshots)"; }
+ok "docs are clean, screenshots are fresh"
 
 if [ "$PERF" = 1 ]; then
   step "perf"
@@ -194,6 +200,10 @@ tar -tzf "$box/vyre.tgz" | grep -q '^package/box/Dockerfile$' || fail "vyre.tgz 
 cmp -s "$box/install-box.sh" "$repo/site/install.sh" || fail "site/install.sh differs from site/box/install-box.sh"
 sh -n "$box/install-box.sh" || fail "install-box.sh does not parse"
 sh -n "$box/vyre" || fail "the box wrapper does not parse"
+# The shipped wrapper is the release build: none of the test overrides (the release key, the cosign image, where a release comes from) survive in it.
+for n in VYRE_RELEASE_KEY VYRE_COSIGN_IMAGE VYRE_BOX_URL VYRE_RELEASES_API VYRE_RELEASES_REPO VYRE_UPDATE_ROOT VYRE_ROOT_UID VYRE_CHAIN_TOP VYRE_WRAPPER VYRE_UPDATE_WAIT VYRE_UPDATE_MIN_GAP VYRE_SYSTEMD_DIR VYRE_UPDATER_NAME VYRE_CONTAINER_HOME; do
+  ! grep -q "$n" "$box/vyre" || fail "the box wrapper still reads $n: it is not the release build (scripts/strip-wrapper.mjs)"
+done
 ok "$(wc -l <"$box/SHA256SUMS" | tr -d ' ') files match SHA256SUMS; vyre.tgz is $version"
 grep -qx '/box /box/install-box.sh 200' "$repo/site/_redirects" || fail "site/_redirects does not send /box to install-box.sh"
 grep -qx '/download/mac /start#mac 302' "$repo/site/_redirects" || fail "site/_redirects does not send /download/mac to /start#mac"

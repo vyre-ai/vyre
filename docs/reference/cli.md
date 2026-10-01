@@ -39,6 +39,7 @@ In the order `vyre help` lists them.
 | [`vyre context`](#vyre-context) | what a new thread in a project is told |
 | [`vyre pick`](#vyre-pick) | put threads into a project by hand |
 | [`vyre unpick`](#vyre-unpick) | take picked threads out of a project |
+| [`vyre setup`](#vyre-setup) | name this box, with no browser: <n>.vyre.run (--json prints the recovery code on stdout: keep it out of logs) |
 | [`vyre agenda`](#vyre-agenda) | what is on today: alarms, reminders, events and todos due |
 | [`vyre agents`](#vyre-agents) | agents: list, create, update, ask, history, threads, resume, computer, usage, stop, delete |
 | [`vyre capsule`](#vyre-capsule) | the Mac command bar: Control twice, anywhere |
@@ -69,14 +70,15 @@ In the order `vyre help` lists them.
 | [`vyre apps`](#vyre-apps) | drive the Mac's apps: timer 10 min, note: buy milk, weather tomorrow |
 | [`vyre team`](#vyre-team) | Project teammates: add one, send it work, read what came back |
 | [`vyre sideview`](#vyre-sideview) | this session on the left, Chrome filling the rest |
+| [`vyre spend`](#vyre-spend) | today's spend per provider and its daily cap |
 | [`vyre statusline`](#vyre-statusline) | Vyre's line under every Claude Code session |
 | [`vyre voice`](#vyre-voice) | push-to-talk from the terminal (Enter to talk), status, and the speech key |
 | [`vyre mcp`](#vyre-mcp) | the Vyre MCP server on stdio, for plain claude |
 | [`vyre update`](#vyre-update) | install the newest release after a backup, and roll back if it does not come up |
-| [`vyre backup`](#vyre-backup) | copy config, store, vault, watchers and certificates into one file |
+| [`vyre backup`](#vyre-backup) | seal your data, project files and session transcripts into one passphrase-locked file (an unfinished one resumes) |
 | [`vyre presence`](#vyre-presence) | the keys that prove you are here, and a code to enroll a passkey |
 | [`vyre tips`](#vyre-tips) | short tips on using each part of Vyre |
-| [`vyre module`](#vyre-module) | make, check and add a module of your own |
+| [`vyre module`](#vyre-module) | make, check, test and add a module of your own |
 | [`vyre modules`](#vyre-modules) | every module and whether it started |
 | [`vyre tools`](#vyre-tools) | every tool Claude and the surfaces can call |
 | [`vyre call`](#vyre-call) | run any tool, e.g. vyre call system.echo '{"text":"hi"}' |
@@ -211,7 +213,7 @@ Running a session vyred owns:
   vyre threads send <thread> --queue <text>         hold it until the turn ends (a terminal session always does)
   vyre threads send <thread> --steer <text>         join the running turn at its next step
   vyre threads send <thread> --image F [text]       with a picture (.png .jpg .gif .webp, 5 MB, 5 at most)
-  vyre threads send <thread> "!ls"                  a leading ! runs it (shell), # remembers it; --raw sends as typed
+  vyre threads send <thread> "!ls"                  a leading ! runs it (shell), /remember saves it; --raw sends as typed
   vyre threads send <thread> /compact               a slash command; vyre threads commands <thread> lists them
   vyre threads list [--all] [--agent A]             the headless threads of the last day (ls)
   vyre threads queue <thread>                       what is queued and not yet handed over
@@ -230,7 +232,7 @@ Running a session vyred owns:
   vyre threads rewind <thread> <n|uuid> [--restore conversation|code|both]
                                                     back to a message (double Esc); its words come back
   vyre threads shell <thread> <command...>          run it in the thread's folder (! mode); Claude sees it next
-  vyre threads remember <thread> <text> [--scope project|user|local]   a line for CLAUDE.md (# mode)
+  vyre threads remember <thread> <text> [--scope project|user|local]   a line for CLAUDE.md (/remember)
   vyre threads tasks <thread>                       its background tasks (shells, subagents)
   vyre threads kill-task <thread> <task>            stop one
   vyre threads commands <thread>                    the slash commands the running session offers
@@ -323,6 +325,14 @@ Take picked threads out of a project.
 vyre unpick <project> <thread>...
 ```
 
+### vyre setup
+
+Name this box, with no browser: <n>.vyre.run (--json prints the recovery code on stdout: keep it out of logs).
+
+```
+vyre setup --name <n> [--yes] [--json]
+```
+
 ### vyre agenda
 
 What is on today: alarms, reminders, events and todos due.
@@ -394,7 +404,7 @@ vyre memory [about [<thing...>]|ask <question...>|fix [<answer id> <fix>]|correc
 Read it:
   vyre memory [about] [<thing>] [--project <slug>]   what it holds, or everything about one thing
 Ask it:
-  vyre memory ask "<question>" [--sources]   Vyre IQ: an answer from your past sessions and what you have said, with where it came from
+  vyre memory ask "<question>" [--sources]   Vyre Memory: an answer from your past sessions and what you have said, with where it came from
   vyre memory fix <answer id> wrong | forget | "<the right answer>"   correct an answer; remembered next time
   vyre memory fix [undo <n>]   what you corrected this week, or undo one
 Change what it holds:
@@ -542,7 +552,7 @@ A one-off alarm, timer or reminder ends; a repeating alarm rings again at its ne
 Credentials, sealed; shared by pass; used without being seen.
 
 ```
-vyre vault [list|get|read|put|edit|delete|inject|share|ssh|git-credential|pair|devices|unlock-passphrase|backup|restore|relay|grant|revoke|pending|approve|run|totp|health|remind|breach|history|revert|clear-clipboard|needs|connect|connections|sweep|rotate|agent|uses|codes|emergency|generate|import|audit|card|people|fingerprint|kit|vaults|members|move|device|pass|offboard|unlock|lock|account|migrate-key|help] [--json]
+vyre vault [list|get|read|put|edit|delete|inject|share|ssh|git-credential|pair|devices|unlock-passphrase|backup|restore|relay|grant|revoke|pending|approve|run|totp|scan-env|health|remind|breach|history|revert|clear-clipboard|needs|connect|connections|sweep|rotate|agent|uses|codes|emergency|generate|import|audit|card|people|fingerprint|kit|vaults|members|move|device|pass|offboard|unlock|lock|account|migrate-key|help] [--json]
 ```
 
 ### vyre watchers
@@ -558,7 +568,7 @@ vyre watchers [list|test|create|pause|resume|logs|items] [name] [--json]
 MCP servers and Google accounts Vyre can reach for you.
 
 ```
-vyre connect list|add|remove|rm|test|help [--json]
+vyre connect list|apps|add|remove|rm|test|help [--json]
 ```
 
 ### vyre run
@@ -671,6 +681,22 @@ This session on the left, Chrome filling the rest.
 vyre sideview [open|close|status] [--glass [name]] [--url U] [--ratio R] [--terminal] [--json]
 ```
 
+### vyre spend
+
+Today's spend per provider and its daily cap.
+
+```
+vyre spend [raise <provider> <usd|+usd|off>] [--json]
+```
+
+Read it:
+  vyre spend                          today's spend (UTC) per provider against its cap
+Change a cap:
+  vyre spend raise <provider> <usd>   set the cap in dollars (provider all: every provider together)
+  vyre spend raise <provider> +<usd>  add to it
+  vyre spend raise <provider> off     no cap
+At a cap the spending thread pauses with one line, and Vyre Memory answers from facts and search.
+
 ### vyre statusline
 
 Vyre's line under every Claude Code session.
@@ -700,7 +726,7 @@ vyre mcp [serve | install [--yes]] [--json]
 Install the newest release after a backup, and roll back if it does not come up.
 
 ```
-vyre update [--check] [--channel stable|beta] [--to <version>] [--yes] [--rollback [--restore-data]] [--json]
+vyre update [--check] [--channel stable|beta] [--to <version>] [--yes] [--allow-unsigned] [--rollback [--restore-data]] [--json]
 ```
 
 --check          say whether a newer release is out; exit 0 when current, 1 when one waits
@@ -715,10 +741,10 @@ vyre update does this; from a checkout, update with git.
 
 ### vyre backup
 
-Copy config, store, vault, watchers and certificates into one file.
+Seal your data, project files and session transcripts into one passphrase-locked file (an unfinished one resumes).
 
 ```
-vyre backup [file]
+vyre backup [file] [--skip-projects] [--skip-transcripts] [--work DIR] [--with-provider-logins]
 ```
 
 ### vyre presence
@@ -739,21 +765,27 @@ vyre tips [module | new | reset] [--json]
 
 ### vyre module
 
-Make, check and add a module of your own.
+Make, check, test and add a module of your own.
 
 ```
-vyre module new <name> [--dir <parent>] | check [dir] | add <path|git url> [--yes]
+vyre module new <name> [--dir <parent>] | check [dir] | test [dir] | upgrade [dir] [--dry-run] | add <path|git url> [--yes]
 ```
 
-new <name>        a module that passes check and its own test, in <home>/modules/<name>
+new <name>        a module on module API 1 that passes check, test and its own test, in
+                  <home>/modules/<name>, with AGENTS.md: the brief to hand an agent
   --dir PARENT    make it in PARENT/<name> instead
 check [dir]       the manifest (schema and loader rules) and the entry file; exit 1 on a problem
+test [dir]        the conformance checks every module passes, then its own *.test.js files
+upgrade [dir]     move a module onto the current contract: apiVersion to vyre, string tools to
+                  objects, ctx.memory.teach to ctx.memory.write; lists what it can't do, then
+                  runs the conformance checks
+  --dry-run       show the changes and check a copy; write nothing
 add <source>      a folder or a git URL (https://, git@, file://): check it, show what it asks
                   for, copy it into <home>/modules and restart vyred to load it
   --yes           do not ask first (needed without a terminal, and with --json or --view)
 
 A module runs inside vyred, trusted like an npm package. A module named like one of Vyre's
-own is refused, unless its module.json says "replaces" with that name and you pass --yes.
+own is refused, and in 0.2 an added module may not say "replaces".
 In the box's container, the host restarts vyred: docker compose restart vyre.
 --view prints frames for the Capsule and the phone (docs/reference/cli-json.md).
 
@@ -847,7 +879,7 @@ vyre home
 Put a backup back (vyred must be stopped).
 
 ```
-vyre restore <file> [--force]
+vyre restore <file> [--force] [--skip-projects] [--skip-transcripts] [--work-to DIR]
 ```
 
 ### vyre uninstall

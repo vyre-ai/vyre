@@ -22,6 +22,7 @@ import { h, put } from "./dom.js";
 import { icon } from "./icons.js";
 import { startScan } from "./scan.js";
 import { resolveTicket, pairOffer, crypto, classifyError } from "./pair-ticket.js";
+import { enrollUrl } from "./enroll-grant.js";
 import { renderPersonAvatar } from "./pair-avatar.js";
 import { attempt } from "./api.js";
 import { fromBase64url } from "../../relay/client/bytes.js";
@@ -68,6 +69,7 @@ export function pairScanSheet(opts) {
   let state = initial();
   /** @type {{ stop: () => void } | null} */ let scan = null;
   /** @type {{ relay: string, route: string, box: Uint8Array, secret: string } | null} */ let pendingOffer = null;
+  /** Where to go after pairing when the box handed over an enrolment grant. @type {string | null} */ let enrollTo = null;
   /** @type {string | null} */ let pendingIdentity = null; // resolveTicket's identity, base64url - the owner's own fingerprint, for the avatar (ADR 0043 2d); null until tailnet's config side lands owner.id
   /** @type {string | null} */ let cameraAvatarUrl = null; // scan.js's crop, kept as a fallback only
   let slow = false; // scan.js's onSlow fired: show the "hold straight on" hint under the status
@@ -104,7 +106,8 @@ export function pairScanSheet(opts) {
     dispatch({ type: "confirm" });
     try {
       const name = await deviceName();
-      const result = await pairOffer(offer, { name, about: { kind: "web" }, crypto });
+      const result = await pairOffer(offer, { name, about: { kind: "web" }, crypto, enroll: true });
+      enrollTo = enrollUrl(result.enroll || /** @type {any} */ (null));
       pendingOffer = null;
       dispatch({ type: "paired", box: result.name, deviceName: name });
       // fromBase64url, not the string itself - resolveTicket() hands the identity back re-encoded
@@ -164,14 +167,14 @@ export function pairScanSheet(opts) {
       img.classList.add("ms-done");
       spawnConfetti(/** @type {HTMLElement} */ (img.parentElement || img));
     }
-    if (state.kind === "done" && state.handle) {
-      const handle = state.handle;
-      window.setTimeout(() => { location.href = `https://${handle}.vyre.run`; }, reducedMotion() ? 300 : 1100);
-    }
+    // With the box's enrolment grant the redirect goes to the box's own address with the grant in
+    // the fragment (js/enroll-grant.js), where this phone makes its passkey; else the handle.
+    const target = enrollTo || (state.kind === "done" && state.handle ? `https://${state.handle}.vyre.run` : null);
+    if (target) window.setTimeout(() => { location.href = target; }, reducedMotion() ? 300 : 1100);
   }
 
   function spawnConfetti(/** @type {HTMLElement} */ host) {
-    const colors = ["#C6F36B", "#F6D186", "#E8A6C7", "#9FD8C8"];
+    const colors = ["#F1EEE6", "#F6D186", "#E8A6C7", "#9FD8C8"];
     for (let i = 0; i < 7; i++) {
       const bit = h("span", { class: "confetti-bit" });
       const angle = Math.random() * Math.PI * 2, dist = 22 + Math.random() * 26;

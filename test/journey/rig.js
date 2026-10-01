@@ -104,6 +104,18 @@ export async function makeRig(o = {}) {
     fs.copyFileSync(path.join(boxDir, f), d("mirror", f));
     sums.push(`${sha256(d("mirror", f))}  ${f}`);
   }
+  // The installer installs only a release that names its images by digest (release.json) whose compose.yml pins every image by digest, as
+  // the release workflow makes it: the mirror's compose.yml is the checkout's with each image pinned to a made-up digest, and release.json names the box's.
+  const BOX_REF = "ghcr.io/vyre-ai/vyre@sha256:" + "a".repeat(64);
+  const compose = fs.readFileSync(d("mirror", "compose.yml"), "utf8")
+    .replaceAll("ghcr.io/vyre-ai/vyre:latest", BOX_REF).replaceAll("tailscale/tailscale:stable", "tailscale/tailscale@sha256:" + "c".repeat(64));
+  fs.writeFileSync(d("mirror", "compose.yml"), compose);
+  fs.writeFileSync(d("mirror", "release.json"), JSON.stringify({ version: "0.2.0", channel: "stable", images: { box: { ref: BOX_REF, platforms: ["linux/amd64"] } } }));
+  for (const f of ["compose.yml", "release.json"]) {
+    const i = sums.findIndex(l => l.endsWith("  " + f));
+    const line = `${sha256(d("mirror", f))}  ${f}`;
+    if (i >= 0) sums[i] = line; else sums.push(line);
+  }
   fs.writeFileSync(d("mirror", "SHA256SUMS"), sums.join("\n") + "\n");
 
   // fakes: the Mac's ssh, open and tailscale; the box's tailscale and claude; the server's PATH

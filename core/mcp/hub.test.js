@@ -174,7 +174,7 @@ test("whoFrom: an owner device is not person: true here, even though lib/caller.
 
 function fakeHub({ values = {}, behave = {}, ...extra } = {}) {
   const db = new DatabaseSync(":memory:");
-  db.exec(MIGRATIONS[0]);
+  for (const m of MIGRATIONS) db.exec(m);
   const events = [];
   const opened = [];
   const creds = new Credentials({ fetchItem: async item => { if (!(item in values)) throw new Error(`${item} is not granted`); return values[item]; } });
@@ -268,7 +268,7 @@ test("hub: a failed add stands, does not spend the restart budget, and a missing
 
 test("hub: release runs the approved arguments, only on the server the item was held for, and re-checks the tool", async () => {
   const { hub, held, opened } = fakeHub();
-  await hub.add({ name: "chat", transport: "stdio", command: "node" });
+  await hub.add({ name: "chat", transport: "stdio", command: "node", scope: { agents: ["juno"] } });
   const who = { person: false, agent: "juno", thread: "t-1" };
   const h = await hub.call({ server: "chat", tool: "send_message", arguments: { to: "dana@harlowlegal.com", text: "hi" } }, who);
   assert.equal(h.held, "h1");
@@ -303,6 +303,27 @@ test("hub: an update that changes the connection stops the server and drops its 
   await hub.stop();
 });
 
+test("hub: a repointed url or transport invalidates the old cached token; scope/args alone do not (P21)", async () => {
+  const { hub } = fakeHub({ values: { at: "oauth-item" } });
+  let calls = 0;
+  const orig = hub.creds.invalidate.bind(hub.creds);
+  hub.creds.invalidate = (...a) => { calls++; return orig(...a); };
+  await hub.add({ name: "svc", transport: "http", url: "https://example.test/mcp", auth: { type: "oauth", item: "at" } });
+
+  await hub.update({ name: "svc", scope: { agents: ["juno"] } });
+  assert.equal(calls, 0, "a scope change alone never touches the cached token");
+
+  await hub.update({ name: "svc", args: [] }); // no-op field for an http row, does not change url/transport
+  assert.equal(calls, 0);
+
+  await hub.update({ name: "svc", url: "https://example.test/mcp/v2" });
+  assert.equal(calls, 1, "a url change invalidates the old row's cached token");
+
+  await hub.update({ name: "svc", transport: "sse", url: "https://example.test/mcp/v2" });
+  assert.equal(calls, 2, "a transport change invalidates it too");
+  await hub.stop();
+});
+
 test("hub: a server whose tool list changed is re-cached on start", async () => {
   let v = 0;
   const { hub, events } = fakeHub({ behave: { tools: () => (v === 0 ? [{ name: "list_issues" }] : [{ name: "list_issues" }, { name: "get_issue" }]) } });
@@ -313,4 +334,55 @@ test("hub: a server whose tool list changed is re-cached on start", async () => 
   assert.deepEqual((await hub.tools(person)).map(x => x.name), ["t__get_issue", "t__list_issues"]);
   assert.equal(events.filter(e => e.type === "mcp.refreshed").length, 2);
   await hub.stop();
+});
+
+test("hub: a github or google credential is bound to its vendor's hosted MCP host", async () => {
+  const { normalize, githubServer, BOUND_ITEMS } = await import("./hub.js");
+  const ok = normalize(githubServer("alex"));
+  assert.equal(ok.url, "https://api.githubcopilot.com/mcp/");
+  assert.deepEqual(ok.auth, { type: "bearer", item: "github-alex", field: "token" });
+  for (const url of ["https://evil.example.test/mcp/", "https://api.githubcopilot.com.evil.test/mcp/", "https://github.com/mcp/"]) {
+    assert.throws(() => normalize({ ...githubServer("alex"), url }), /goes only to api\.githubcopilot\.com/, url);
+  }
+  assert.throws(() => normalize({ name: "mail", transport: "http", url: "https://evil.example.test/", auth: { type: "bearer", item: "google-work", field: "token" } }), /google credential/);
+  assert.ok(normalize({ name: "docs", transport: "http", url: "https://docs.example.test/", auth: { type: "bearer", item: "harlow-docs" } }), "any other item is unaffected");
+  assert.ok(BOUND_ITEMS.length >= 2);
+});
+
+test("hub: no scope means you and the assistant only; an explicit open scope stays open, and a row stored before stays open", async () => {
+  const kinds = { kit: "agent", juno: "agent", helper: "assistant" };
+  const { hub, db } = fakeHub({ agentKind: async a => kinds[a] || null });
+  await hub.add({ name: "private", transport: "stdio", command: "node" });
+  await hub.add({ name: "open", transport: "stdio", command: "node", scope: { projects: "*", agents: "*" } });
+  const names = async who => (await hub.servers(who)).map(x => x.name).sort();
+  // the person, an unnamed session of theirs, and the assistant (by what the agent is, not its name) see the private one
+  assert.deepEqual(await names(person), ["open", "private"]);
+  assert.deepEqual(await names({ person: false, agent: null, thread: "t-1" }), ["open", "private"]);
+  assert.deepEqual(await names({ person: false, agent: "helper", thread: "t-1" }), ["open", "private"]);
+  // a named agent does not, and cannot use it
+  assert.deepEqual(await names({ person: false, agent: "kit", thread: "t-1" }), ["open"]);
+  await assert.rejects(hub.call({ server: "private", tool: "list_issues", arguments: {} }, { person: false, agent: "kit", thread: "t-1" }), /may use/);
+  // a scope that names the agent, or a #tag on its thread, gives access on top
+  await hub.update({ name: "private", scope: { agents: ["kit"] } });
+  assert.deepEqual(await names({ person: false, agent: "kit", thread: "t-1" }), ["open", "private"]);
+  await hub.update({ name: "private", scope: null });
+  assert.deepEqual(await names({ person: false, agent: "juno", thread: "t-9" }), ["open"]);
+  hub.grantThread({ server: "private", thread: "t-9" });
+  assert.deepEqual(await names({ person: false, agent: "juno", thread: "t-9" }), ["open", "private"]);
+  // the view shows the default as the shape it is
+  assert.deepEqual((await hub.servers(person)).find(x => x.name === "private").scope, { projects: "*", agents: [], assistant: true });
+
+  // a row that has no scope written (an old or damaged one) is migrated once to an explicit open scope, so nothing that worked stops
+  const old = new DatabaseSync(":memory:");
+  old.exec(MIGRATIONS[0]);
+  for (const [name, scope] of [["a", ""], ["b", "{}"], ["c", "null"], ["d", '{"projects":["harlow"],"agents":["kit"]}']]) {
+    old.prepare("INSERT INTO mcp_servers (name, transport, command, args, auth, scope, tools, added, updated) VALUES (?, 'stdio', 'node', '[]', '{\"type\":\"none\"}', ?, '{}', 1, 1)").run(name, scope);
+  }
+  old.exec(MIGRATIONS[1]);
+  const scopes = Object.fromEntries(old.prepare("SELECT name, scope FROM mcp_servers").all().map(r => [r.name, JSON.parse(r.scope)]));
+  assert.deepEqual(scopes.a, { projects: "*", agents: "*" });
+  assert.deepEqual(scopes.b, { projects: "*", agents: "*" });
+  assert.deepEqual(scopes.c, { projects: "*", agents: "*" });
+  assert.deepEqual(scopes.d, { projects: ["harlow"], agents: ["kit"] }, "a written scope is never touched");
+  void db;
 });

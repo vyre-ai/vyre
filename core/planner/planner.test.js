@@ -63,7 +63,7 @@ async function world(t, { role = "box", tz = "Asia/Karachi", linked = false, rem
           // /later's own firing (runTask): a test sets w.onCall to answer threads.post/launch
           // its own way; the default is a plain success, so tests that never touch this still see
           // nothing different.
-          if (tool === "threads.post" || tool === "threads.launch") return w.onCall ? await w.onCall(tool, input) : { data: { ok: true } };
+          if (tool === "threads.post" || tool === "threads.launch" || tool === "agents.job") return w.onCall ? await w.onCall(tool, input) : { data: { ok: true } };
           return { error: { code: "no_such_tool", message: "no" } };
         },
         remote: async (tool, input) => w.remote ? w.remote(tool, input) : { error: { code: "no_link", message: "no link" } },
@@ -538,7 +538,7 @@ test("planner: a task fires by posting into its own thread, or launching a fresh
   const launched = await w.ok("planner.add", { kind: "task", title: "Draft the weekly digest", project: "harlow-legal", at: T0 + 2 * HOUR }, kit);
   w.advanceTo(T0 + 2 * HOUR);
   await new Promise(r => setImmediate(r));
-  assert.deepEqual(w.calls.at(-1), { tool: "threads.launch", input: { project: "harlow-legal", prompt: "Draft the weekly digest", purpose: "job", once: true, agent: "kit" } });
+  assert.deepEqual(w.calls.at(-1), { tool: "agents.job", input: { agent: "kit", prompt: "Draft the weekly digest", project: "harlow-legal" } });
 
   // The person's own task: no agent at all, ambient, same as any session they start themselves.
   const own = await w.ok("planner.add", { kind: "task", title: "Renew the domain", project: "harlow-legal", at: T0 + 3 * HOUR });

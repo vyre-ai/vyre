@@ -5,6 +5,9 @@
 //       { "keyword": ";sig", "title": "Signature", "text": "alex\nHarlow Legal\n{date}" },
 //       { "keyword": ";re",  "text": "Re: {clipboard}{cursor}" }
 //     ],
+//     "quicklinks": [
+//       { "name": "Northwind wiki", "keyword": "nw", "url": "https://wiki.example.com/search?q={query}" }
+//     ],
 //     "commands": [
 //       { "title": "Open the Northwind board", "keywords": ["board"], "run": { "open": "https://example.com/board" } },
 //       { "title": "Deploy kit", "keywords": ["ship"], "run": { "shell": "make deploy", "confirm": true } }
@@ -44,6 +47,23 @@ public struct UserCommand: Sendable, Equatable {
     }
 }
 
+/// A link with a hole for what you type after its keyword: "nw pastry recipes" opens the wiki's
+/// search for it. A link with no {query} opens as it is.
+public struct Quicklink: Sendable, Equatable {
+    public var name: String
+    public var keyword: String
+    public var url: String
+    public var takesQuery: Bool { url.contains("{query}") }
+
+    /// The address for `arg`, percent-encoded into the hole, or nil when it would not be a link.
+    public func link(_ arg: String?) -> URL? {
+        var allowed = CharacterSet.urlQueryAllowed
+        allowed.remove(charactersIn: "&+=#?/:")
+        let enc = (arg ?? "").addingPercentEncoding(withAllowedCharacters: allowed) ?? ""
+        return URL(string: url.replacingOccurrences(of: "{query}", with: enc))
+    }
+}
+
 public struct SnippetExpansion: Sendable, Equatable {
     public var text: String
     /// Where the caret goes, in UTF-16 units from the start (what NSText and AX count in).
@@ -53,6 +73,7 @@ public struct SnippetExpansion: Sendable, Equatable {
 public struct UserSnippets: Sendable {
     public var snippets: [Snippet] = []
     public var commands: [UserCommand] = []
+    public var quicklinks: [Quicklink] = []
     /// What was wrong, one line per bad entry. Empty when the file is fine or absent.
     public var problems: [String] = []
 
@@ -109,6 +130,22 @@ public struct UserSnippets: Sendable {
             }
         }
         if root["commands"] != nil && !(root["commands"] is [Any]) { out.problems.append("commands: not a list") }
+        var words = Set(out.snippets.map { $0.keyword.lowercased() })
+        for (i, raw) in ((root["quicklinks"] as? [Any]) ?? []).enumerated() {
+            let n = "quicklink \(i + 1)"
+            guard let o = raw as? [String: Any] else { out.problems.append("\(n): not an object"); continue }
+            guard let name = str(o["name"]), !name.isEmpty else { out.problems.append("\(n): name is empty"); continue }
+            guard let kw = str(o["keyword"]), !kw.isEmpty else { out.problems.append("\(n): keyword is empty"); continue }
+            if kw.contains(where: \.isWhitespace) { out.problems.append("\(n): keyword \u{201C}\(kw)\u{201D} has a space"); continue }
+            guard let url = str(o["url"]), let u = URL(string: url.replacingOccurrences(of: "{query}", with: "x")),
+                  let scheme = u.scheme?.lowercased(), !["javascript", "data", "file"].contains(scheme),
+                  !(scheme == "http" || scheme == "https") || u.host?.isEmpty == false else {
+                out.problems.append("\(n): the url is not a link to open"); continue
+            }
+            if !words.insert(kw.lowercased()).inserted { out.problems.append("\(n): keyword \u{201C}\(kw)\u{201D} is used twice"); continue }
+            out.quicklinks.append(Quicklink(name: name, keyword: kw, url: url))
+        }
+        if root["quicklinks"] != nil && !(root["quicklinks"] is [Any]) { out.problems.append("quicklinks: not a list") }
         return out
     }
 
@@ -121,6 +158,18 @@ public struct UserSnippets: Sendable {
             let sc = Match.score(q, s.keyword, synonyms: s.title.map { [$0] } ?? [])
             return sc >= 0.5 ? (s, sc) : nil
         }.sorted { $0.1 > $1.1 }
+    }
+
+    /// The quicklink a typed line calls: the keyword, then a space and what goes in the hole. The
+    /// keyword alone matches a link that takes a query too (the row asks for the words).
+    public func matchQuicklink(_ text: String) -> (link: Quicklink, arg: String?)? {
+        let t = text.trimmingCharacters(in: .whitespaces)
+        guard !t.isEmpty else { return nil }
+        let head = t.split(separator: " ", maxSplits: 1, omittingEmptySubsequences: true)
+        guard let kw = head.first else { return nil }
+        guard let l = quicklinks.first(where: { $0.keyword.caseInsensitiveCompare(String(kw)) == .orderedSame }) else { return nil }
+        let rest = head.count > 1 ? String(head[1]).trimmingCharacters(in: .whitespaces) : ""
+        return (l, rest.isEmpty ? nil : rest)
     }
 
     /// User commands for this query, best first.

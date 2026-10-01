@@ -5,7 +5,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { execFileSync } from "node:child_process";
 import { tempHome } from "../../test/helpers.js";
-import { build, label, swWithBuild } from "./build.js";
+import { build, label, swWithBuild, htmlWithBuild } from "./build.js";
 import { start } from "./index.js";
 import { request, call } from "./client.js";
 
@@ -59,4 +59,13 @@ test("build: the Deck's service worker carries the build, so a release is a new 
   assert.match(swWithBuild(src, { version: "0.0.1", commit: "1a2b3c4d5e6f7a8b", dirty: true }), /const BUILD = "1a2b3c4d5e6f-dirty";/);
   assert.match(swWithBuild(src, { version: "0.0.2", commit: null, dirty: null }), /const BUILD = "v0.0.2";/);
   assert.notEqual(a, swWithBuild(src, { version: "0.0.1", commit: "9f8e7d6c5b4a3210", dirty: false }), "two builds, two service workers");
+});
+
+test("build: the Deck's page carries the same build id, so a page cached by an older worker knows it (deck/js/build-check.js)", () => {
+  const src = fs.readFileSync(path.join(path.dirname(new URL(import.meta.url).pathname), "..", "..", "deck", "index.html"), "utf8");
+  assert.match(src, /<meta name="vyre-build" content="dev">/, "deck/index.html has the placeholder vyred replaces");
+  const b = { version: "0.2.0", commit: "1a2b3c4d5e6f7a8b", dirty: false, stamped: true };
+  assert.match(htmlWithBuild(src, b), /<meta name="vyre-build" content="1a2b3c4d5e6f">/);
+  const sw = fs.readFileSync(path.join(path.dirname(new URL(import.meta.url).pathname), "..", "..", "deck", "sw.js"), "utf8");
+  assert.match(swWithBuild(sw, b), /const BUILD = "1a2b3c4d5e6f";/, "the page and the worker say the same id");
 });

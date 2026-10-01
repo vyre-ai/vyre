@@ -15,7 +15,7 @@ export const THEME_COLORS = {
   dark: {
     "graphite": "#0E0D0C", "carbon": "#161513", "raised": "#1E1C1A", "rule": "#2B2926", "rule-strong": "#3A3733",
     "ash": "#8C877D", "stone": "#B3AEA4", "bone": "#F1EEE6",
-    "signal": "#C6F36B", "signal-hover": "#D4F88A", "signal-ink": "#0E0D0C", "signal-wash": "rgba(198,243,107,0.12)",
+    "signal": "#F1EEE6", "signal-hover": "#FFFFFF", "signal-ink": "#0E0D0C", "signal-wash": "rgba(241,238,230,0.12)",
     "beacon": "#B8A4FF", "beacon-badge-ink": "#0E0D0C",
     "code-bg": "#121110",
   },
@@ -23,7 +23,7 @@ export const THEME_COLORS = {
     "bg": "#F4F1EA", "panel": "#FBFAF6", "hover": "#EEEAE2", "rule": "#DCD7CC", "rule-strong": "#C9C3B7",
     "text": "#141311", "text-2": "#4A463F", "label": "#6B665D",
     "primary-bg": "#141311", "primary-hover": "#4A463F", "primary-ink": "#F4F1EA",
-    "focus": "#46700C", "signal-wash": "rgba(70,112,12,0.10)",
+    "focus": "#141311", "signal-wash": "rgba(20,19,17,0.10)",
     "beacon-ink": "#5B3FC4", "beacon-dot": "#5B3FC4", "beacon-badge-ink": "#F4F1EA",
     "code-bg": "#F0EDE5",
   },

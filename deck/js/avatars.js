@@ -39,7 +39,7 @@ import { projectTile } from "../vendor/vyrecode/project.js";
 import { renderCode2, bitsToLevels } from "../vendor/vyrecode/vyrecode2.js";
 import { buildCodeword, bytesToBits } from "../vyrecode/payload.js";
 // A project tile's 8 bytes: the one shared rule (Node and the Deck load this same file; the
-// Capsule ports it against its vectors). core/daemon serves it at /lib/avatar-seed/index.js.
+// Lumen ports it against its vectors). core/daemon serves it at /lib/avatar-seed/index.js.
 import { projectBytes, fnv1a32, BASIS_A } from "../../lib/avatar-seed/index.js";
 
 export { projectBytes };

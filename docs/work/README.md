@@ -67,9 +67,11 @@ Claim the next number here before writing the ADR, so two workstreams never take
 | 0034 | memory-iq | Vyre IQ: cited answers from every session, fact and the graph |
 | 0035 | native-core | The settings hub: one file, four levels, read live by every surface |
 | 0036 | cohesion | One system |
+| 0037 | windows | Windows support: tiers and plan |
 | 0039 | anywhere | Vyre anywhere: role as a choice, moving to a server |
 | 0040 | e2e | vyre-core, a trusted root split from vyred |
 | 0045 | tailnet | Scan-to-pair (Wink): relay.pair.ticket, a signed pairing ticket the Vyre code can carry (renumbered from this table's stale "0037"; the live registry is team/ADR-NUMBERS.md, outside git) |
 | 0046 | tailnet | The relay introduces, Tailscale carries: auth-key auto-join (renumbered from this table's stale "0038", which was relay-first-everywhere, now shelved) |
 | 0042 | federation | The move engine (0041 collided with work/github's "GitHub everywhere", per the reviewer; renumbered) |
 | 0041 | github | GitHub everywhere: device-flow sign-in, repos, projects from a repo, a worktree and branch per session |
+| 0043 | app-design | Identity marks: four families, and the Vyre code (pairing ring) (renumbered 28 Sep from a colliding 0033 - pwa caught it after merging main at 90c6d2c1; picked 0043 as the first number not claimed anywhere across every active worktree at the time, one past federation's 0042) |

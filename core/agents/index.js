@@ -20,6 +20,8 @@
 
 import fs from "node:fs";
 import path from "node:path";
+import { isPerson } from "../../lib/caller.js";
+import { within } from "../../lib/within.js";
 
 export const MIGRATIONS = [
   `CREATE TABLE agents_agents (
@@ -206,12 +208,20 @@ export default {
     };
 
     /** Start the agent's thread, or bring its current one back, with its credentials and scope. */
-    const launch = async (a, { prompt, resume } = {}) => {
+    const launch = async (a, { prompt, resume, job, project } = {}) => {
       const creds = await credentials(a);
-      const input = { agent: a.name, agent_kind: a.kind, auth: creds.auth, append: preamble(a), scope: await scope(a),
+      // The assistant starts each thread knowing what works on this install right now (a quoted block, never instructions).
+      let caps = "";
+      if (a.kind === "assistant") {
+        const c = await ctx.call("assistant.capabilities", { prompt: true }).catch(() => null);
+        if (c && !c.error && c.data && typeof c.data.text === "string") caps = "\n\n" + c.data.text;
+      }
+      const input = { agent: a.name, agent_kind: a.kind, auth: creds.auth, append: preamble(a) + caps, scope: await scope(a),
         ...(creds.env ? { env: creds.env } : {}), ...(creds.fallback ? { fallback: creds.fallback } : {}),
         ...(creds.budget_usd != null ? { budget_usd: creds.budget_usd } : {}), ...(a.model ? { model: a.model } : {}),
-        ...(a.effort ? { effort: a.effort } : {}), ...(prompt ? { prompt } : {}) };
+        ...(a.effort ? { effort: a.effort } : {}), ...(prompt ? { prompt } : {}), ...(job ? { purpose: "job", once: true } : {}) };
+      // A scheduled job is a side thread: it runs as the agent (credentials, scope, preamble) but never replaces the agent's own current thread.
+      if (job) return use("threads.launch", { ...input, ...(project ? { project } : await workdir(a)), name: a.name });
       const t = resume ? await use("threads.launch", { ...input, resume }) : await use("threads.launch", { ...input, ...(await workdir(a)), name: a.name });
       db.prepare("UPDATE agents_agents SET thread = ?, updated_at = ? WHERE name = ?").run(t.id, Date.now(), a.name);
       return t;
@@ -241,6 +251,15 @@ export default {
       const m = /^mcp:agent:(.+)$/.exec(String(caller || ""));
       if (m && get(m[1])?.kind !== "assistant") throw new Error(`only the assistant can ${what}; ${m[1]} is an agent`);
     };
+
+    // For vyred only: the stored grant of an agent vyred has already verified (its thread's own
+    // socket, or a vouched key), attached to meta so a tool that scopes by project reads what the
+    // agent is really granted, never a filter the caller's own input or env carries.
+    ctx.tool("agents.scope", {
+      description: "The kind and stored project grant (\"*\" or a list of slugs) of one agent, for vyred to put on the meta of that agent's calls.", internal: true, callers: ["module"],
+      input: { type: "object", required: ["name"], properties: { name: { type: "string" } } },
+      run: async i => { const a = get(String(i.name)); return a ? { kind: a.kind, projects: a.kind === "assistant" ? "*" : a.projects } : null; },
+    });
 
     ctx.tool("agents.list", {
       description: "Every agent, the assistant first, with what each is doing now.",
@@ -315,9 +334,34 @@ export default {
 
     ctx.tool("agents.ask", {
       description: "Talk to an agent: the text goes to its current thread (started if needed) and the reply comes back when the turn ends. If the thread stops on a permission question, returns with the question instead; the user answers it with threads.answer.",
-      input: { type: "object", required: ["agent", "text"], properties: { agent: { type: "string" }, text: { type: "string" }, surface: { type: "string" }, wait: { type: "boolean" } } },
+      input: { type: "object", required: ["agent", "text"], properties: { agent: { type: "string" }, text: { type: "string" }, surface: { type: "string" }, wait: { type: "boolean" },
+        mentions: { type: "array", maxItems: 8, items: { type: "object", required: ["kind", "id"], properties: { kind: { type: "string" }, id: { type: "string" }, name: { type: "string" } } }, description: "The # tags the composer picked, from a person's own surface only (as threads.send): each is resolved for the agent's thread." },
+        pasted: { type: "array", maxItems: 20, items: { type: "string" }, description: "The spans of the text the person pasted: a #Name inside one tags nothing." } } },
       run: async (i, { caller }) => {
         guard(caller, "talk to other agents");
+        // A person's own tags ride with the words, as that person (threads.send hears their turn); from any other caller they are dropped.
+        const tagged = isPerson(caller) && ((Array.isArray(i.mentions) && i.mentions.length) || (Array.isArray(i.pasted) && i.pasted.length));
+        // The person typing an ask is the person choosing to spend, so the daily spend cap (core/spend) does not hold it;
+        // it is told instead. What agents and automations start on their own is what the cap holds.
+        const byPerson = isPerson(caller);
+        const told = { done: false };
+        const capNotice = async thread => {
+          if (!byPerson || told.done) return;
+          told.done = true;
+          try {
+            const c = (await ctx.call("spend.check", { provider: "claude" })).data;
+            if (c && c.capped) await ctx.call("threads.notice", { thread, text: `The daily spend cap is reached ($${Number(c.spent).toFixed(2)} of $${Number(c.cap).toFixed(2)}). You asked, so this went through. To change the cap: vyre spend raise ${c.scope || "claude"} <dollars>` });
+          } catch { /* no spend module: no cap to tell */ }
+        };
+        // A person's ask is relayed as that person (threads.send hears it as their own turn, and the daily spend cap, which holds
+        // what agents and modules start on their own, does not hold it); any other caller's goes as this module and stays held.
+        const sendWords = async thread => {
+          await capNotice(thread);
+          if (!byPerson) return use("threads.send", { thread, text: i.text, surface });
+          const r = await ctx.call("threads.send", { thread, text: i.text, surface, ...(tagged ? { mentions: i.mentions || [], pasted: i.pasted || [] } : {}) }, { as: String(caller) });
+          if (r.error) throw new Error(r.error.message);
+          return r.data;
+        };
         const a = must(i.agent);
         const surface = i.surface || String(caller || "vyre");
         // Listen before sending, so a fast reply is not missed.
@@ -338,17 +382,16 @@ export default {
             // the reply cannot beat a model's first token back.
             const t = await launch(a);
             thread = t.id;
-            const s = await use("threads.send", { thread, text: i.text, surface });
+            const s = await sendWords(thread);
             if (!s.sent) return { agent: a.name, thread, ok: false, text: "", note: s.note };
           } else {
             thread = cur.id;
             if (cur.status === "stopped") await launch(a, { resume: cur.id });
-            const s = await use("threads.send", { thread, text: i.text, surface });
+            const s = await sendWords(thread);
             if (!s.sent) return { agent: a.name, thread, ok: false, text: "", note: s.note };
           }
           if (i.wait === false) return { agent: a.name, thread, ok: true, sent: true, text: "" };
-          const timer = new Promise(r => setTimeout(() => r({ ok: false, note: "still working; the reply will stream to the thread" }), ASK_WAIT_MS).unref?.());
-          const r = await Promise.race([done, timer]);
+          const r = await within(done, ASK_WAIT_MS, { ok: false, note: "still working; the reply will stream to the thread" });
           return { agent: a.name, thread, text: heard.text, ...(/** @type {object} */ (r)) };
         } finally {
           for (const off of offs) off();
@@ -357,6 +400,32 @@ export default {
           // the lease past the reply would only lock the user's other screens out of the agent.
           if (thread && i.wait !== false) await ctx.call("threads.release", { thread, surface });
         }
+      },
+    });
+
+    ctx.tool("agents.rollover", {
+      description: "Start a fresh thread for an agent (the assistant's daily thread) and make it the agent's current one, optionally seeded with a first message. The old thread is left as it is, and work in it goes on. Refused while the current thread is working or holds a question.",
+      input: { type: "object", required: ["agent"], properties: { agent: { type: "string" }, seed: { type: "string" } } },
+      run: async (i, { caller }) => {
+        if (!/^(module:assistant|cli|local|deck|capsule)$/.test(String(caller || ""))) throw Object.assign(new Error("only the assistant module or the person rolls a thread"), { code: "denied" });
+        const a = must(i.agent);
+        const st = await status(a);
+        if (st.doing === "working" || st.doing === "waiting on your answer") throw Object.assign(new Error(`${a.name} is ${st.doing}; roll the thread when it is idle`), { code: "busy" });
+        const t = await launch(a, i.seed ? { prompt: i.seed } : {});
+        return { agent: a.name, thread: t.id, previous: a.thread };
+      },
+    });
+
+    ctx.tool("agents.job", {
+      description: "Run one scheduled job as an agent: a side thread with the agent's own credentials, project scope and preamble, leaving its current thread alone. For the planner; a job in a project the agent no longer reaches is refused.",
+      internal: true, callers: ["module"],
+      input: { type: "object", required: ["agent", "prompt"], properties: { agent: { type: "string" }, prompt: { type: "string" }, project: { type: "string" } } },
+      run: async (i, { caller }) => {
+        if (String(caller || "") !== "module:planner") throw Object.assign(new Error("only the planner runs an agent's jobs"), { code: "denied" });
+        const a = must(i.agent);
+        if (i.project && a.projects !== "*" && !a.projects.includes(i.project)) throw Object.assign(new Error(`${a.name} has no access to ${i.project}`), { code: "denied" });
+        const t = await launch(a, { prompt: i.prompt, job: true, project: i.project });
+        return { agent: a.name, thread: t.id };
       },
     });
 

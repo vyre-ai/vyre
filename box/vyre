@@ -7,12 +7,15 @@
 #   vyre up --print-link
 #                  the same, but stdout is only VYRE_LINK=<url> and, on a headless box,
 #                  VYRE_SSH=<ssh -L line>, for a program to read (or VYRE_LINK_ONLY=1)
-#   vyre update [--channel stable|beta] [--to <version>]
+#   vyre update [--channel stable|beta] [--to <version>] [--allow-unsigned]
 #                  bring the box to the newest release (ADR 0033, section 4). The release comes
-#                  from GitHub Releases (VYRE_RELEASES_API, repo vyre-ai/vyre; stable is the newest
-#                  non-prerelease, beta the newest of any), or from VYRE_BOX_URL when that alone is
-#                  set, or when GitHub has no release yet (default https://vyre.run/box/). Every
-#                  file is checked against the release's SHA256SUMS before anything changes. Then
+#                  from GitHub Releases (repo vyre-ai/vyre; stable is the newest
+#                  non-prerelease, beta the newest of any), or, when GitHub has no release yet, from
+#                  https://vyre.run/box/. Every
+#                  file is checked against the release's SHA256SUMS before anything changes, and the
+#                  SHA256SUMS against its signature (SHA256SUMS.sig) from Vyre's release key: an unsigned or
+#                  badly signed release is refused, and only --allow-unsigned (with a plain warning) installs
+#                  one anyway. Then
 #                  it backs up the database, tags the running image vyre:prev, keeps src.prev and
 #                  box.prev, refreshes the box files and this wrapper (never .env), rebuilds or
 #                  pulls, and waits for vyred. If vyred does not come up it puts everything back,
@@ -22,6 +25,19 @@
 #                  put the previous release back (src.prev, vyre:prev, box.prev, android.json.prev)
 #                  and keep the current database. --restore-data also puts back the database from
 #                  before the update, after a typed confirm (or --yes off a terminal).
+#   vyre updater install|status|remove
+#                  the automatic path: a root-owned systemd path unit (vyre-update.path) that runs
+#                  `vyre update-from-request` when vyred drops the one-line file $DIR/update/request.
+#                  vyred has no socket to the host and passes no arguments: the unit picks the channel
+#                  (VYRE_CHANNEL in $DIR/.env, else stable), installs only a release whose SHA256SUMS
+#                  carries a valid signature from Vyre's pinned release key, never goes back a version,
+#                  and writes its progress and result to $DIR/update-state/status.json, which vyred
+#                  reads through a read-only mount. Set up by install-box.sh and by `vyre update`.
+#   vyre uninstall [--delete-data | --keep-data] [--yes]
+#                  stop Vyre and take it off this server. It lists every volume with what is in it and asks
+#                  once whether to delete them too (default: keep); saying yes IS the approval, so there
+#                  is no second confirm. --delete-data or --keep-data answer for a script. Your own
+#                  Docker, Tailscale install and this folder's .env are never touched.
 #   vyre logs      follow vyred's output
 #   vyre ...       anything else goes to the vyre CLI in the container
 
@@ -29,32 +45,133 @@
 # shellcheck disable=SC2016
 set -eu
 
+# >>> seams: every environment override this wrapper reads, in one place. The RELEASE build (scripts/strip-wrapper.mjs) replaces
+# this whole block with constants, so an installed wrapper reads none of them: not the release key, not the cosign image, not where
+# a release comes from, not where root's folders are. Tests run against this unstripped source.
 DIR=${VYRE_DIR:-/srv/vyre}
-[ -f "$DIR/compose.yml" ] || { echo "vyre: no box in $DIR (set VYRE_DIR)" >&2; exit 1; }
-
-# COMPOSE_FILE in $DIR/.env is relative, and compose resolves it against the working folder.
-cd "$DIR"
-compose() { docker compose "$@"; }
-die() { echo "vyre: $*" >&2; exit 1; }
-say() { echo "vyre: $*"; }
-
-# An explicit VYRE_BOX_URL on its own means that site (a test build, a mirror); otherwise GitHub
-# Releases first and the site as the fallback.
+UPD_ROOT=${VYRE_UPDATE_ROOT:-/var/lib/vyre-update}
+RELEASE_KEY=${VYRE_RELEASE_KEY:-MCowBQYDK2VwAyEAKXSdujH7tO/gscXCJZmYCjB+Cv1sVlOfdgLNedMR7FU=}
+COSIGN_IMAGE=${VYRE_COSIGN_IMAGE:-ghcr.io/sigstore/cosign/cosign@sha256:b03690aa52bfe94054187142fba24dc54137650682810633901767d8a3e15b31}
 SITE=${VYRE_BOX_URL:-https://vyre.run/box/}
-case "$SITE" in */) ;; *) SITE="$SITE/" ;; esac
-BASE=$SITE
 API=${VYRE_RELEASES_API:-https://api.github.com}
 REPO=${VYRE_RELEASES_REPO:-vyre-ai/vyre}
 USE_API=1
 if [ -n "${VYRE_BOX_URL:-}" ] && [ -z "${VYRE_RELEASES_API:-}" ]; then USE_API=0; fi
-# Overridable for tests only, as in install-box.sh.
 WRAPPER=${VYRE_WRAPPER:-/usr/local/bin/vyre}
+ROOT_UID=${VYRE_ROOT_UID:-0}
+CHAIN_TOP=${VYRE_CHAIN_TOP:-/}
+UPDATE_WAIT=${VYRE_UPDATE_WAIT:-60}
+MIN_GAP=${VYRE_UPDATE_MIN_GAP:-600}
+SYSTEMD_DIR=${VYRE_SYSTEMD_DIR:-/etc/systemd/system}
+SYSTEMD_SEAM=${VYRE_SYSTEMD_DIR:+1}
+UPDATER_NAME=${VYRE_UPDATER_NAME:-vyre-update}
+CHOME_SEAM=${VYRE_CONTAINER_HOME:-}
+root_guard() { :; }
+# <<< seams
+root_guard "${1:-}"
+# `vyre updater install --dir <folder>`: a person's run hands root the stack folder as an ARGUMENT (sudo passes no environment), so a box that
+# is not in /srv/vyre gets the right one.
+if [ "${1:-}" = updater ] && [ "${2:-}" = install ] && [ "${3:-}" = --dir ]; then
+  case "${4:-}" in /*) DIR=$4 ;; *) echo "vyre: updater install --dir needs the stack folder's absolute path" >&2; exit 1 ;; esac
+fi
+[ -f "$DIR/compose.yml" ] || { echo "vyre: no box in $DIR (set VYRE_DIR)" >&2; exit 1; }
+
+# COMPOSE_FILE in $DIR/.env is relative, and compose resolves it against the working folder.
+cd "$DIR"
+# A person's run uses the stack folder's own files. A ROOT run (the path unit, `sudo vyre update`) never interprets a file the person can write
+# as compose configuration: it runs from root's own copies under $UPD_PRIV/run (the verified compose.yml, a root-written env file, a filtered
+# copy of vyre.env), with every file, the project name and the project folder given explicitly. A compose.override.yml, a COMPOSE_* setting or a
+# .env that tries to change how compose runs is refused (prepare_run).
+ROOT_RUN=0
+BUILDF=0
+RUN=$UPD_ROOT/private/run
+BOXPREV=$DIR/box.prev
+SRCDIR=$DIR/src
+set_root_run() { ROOT_RUN=1; BOXPREV=$UPD_ROOT/private/box.prev; SRCDIR=$UPD_ROOT/private/src; }
+compose() {
+  if [ "$ROOT_RUN" != 1 ]; then docker compose "$@"; return; fi
+  [ -f "$RUN/compose.yml" ] || die "root's copy of the compose file is missing; run: sudo vyre updater install"
+  if [ "$BUILDF" = 1 ]; then docker compose --project-directory "$RUN" --project-name vyre --env-file "$RUN/compose.env" -f "$RUN/compose.yml" -f "$RUN/compose.build.yml" "$@"
+  else docker compose --project-directory "$RUN" --project-name vyre --env-file "$RUN/compose.env" -f "$RUN/compose.yml" "$@"
+  fi
+}
+# The update this run is (UPD_TRACK=1 under the path unit): where it has got to, for the card in the Deck.
+#
+# Everything root writes for an update lives under UPD_ROOT (/var/lib/vyre-update), a folder root owns whose parents root
+# owns too, so the person's own account (or a model running as it) cannot rename it away or plant a link in it:
+#   request/  vyred's alone (uid 1000, 0700), mounted read-write into the container: the one-line request
+#   status/   root writes, mounted READ-ONLY into the container: status.json and `ready`
+#   private/  root's only, never mounted: the floor, the last-run time, the lock, and the update's own backups and their keys
+# The stack folder $DIR is the person's, so root never writes into it through an existing path: see put_file.
+UPD_REQ="$UPD_ROOT/request"
+UPD_STATE="$UPD_ROOT/status"
+UPD_PRIV="$UPD_ROOT/private"
+UPD_STAGE=start
+UPD_END=failed
+UPD_DONE=0
+# Vyre's release key (Ed25519, SPKI DER, base64) and the cosign that checks the release's images are in the seams block above, pinned and never
+# taken from a download; the cosign pins are the same as scripts/install-box.sh (a test keeps them equal). The identity is the release workflow
+# of this repo on a version tag and GitHub's issuer: plain assignments, which the environment cannot override.
+COSIGN_ID='^https://github\.com/vyre-ai/vyre/\.github/workflows/release\.yml@refs/tags/v[0-9]+\.[0-9]+\.[0-9]+(-[a-z]+\.[0-9]+)?$'
+COSIGN_ISSUER=https://token.actions.githubusercontent.com
+# state STATE STAGE [MESSAGE]: one small JSON file, written whole and renamed into place.
+state() {
+  [ "${UPD_TRACK:-0}" = 1 ] || return 0
+  msg=$(printf '%s' "${3:-}" | tr -d '"\\\n\r' | cut -c1-200)
+  printf '{"state":"%s","stage":"%s","message":"%s","from":"%s","to":"%s","at":%s}\n' "$1" "$2" "$msg" "${UPD_FROM:-}" "${UPD_TO:-}" "$(date +%s)" >"$UPD_STATE/status.json.new" || return 0
+  mv -f "$UPD_STATE/status.json.new" "$UPD_STATE/status.json" || true
+}
+stage() { UPD_STAGE=$1; state running "$1"; }
+# rename_over SRC DEST: rename(2), which never follows a link at DEST: the new file replaces the link itself. GNU mv does this
+# with -T (probed once); elsewhere perl's rename does (perl is on the box image and on macOS). A plain `mv -f` would move
+# SRC INTO a folder that DEST links to, if the person's account planted one between the check and the move.
+rename_over() {
+  if [ -z "${MV_T:-}" ]; then
+    pt_=$(mktemp) || return 1
+    if mv -fT "$pt_" "$pt_.probe" 2>/dev/null; then MV_T=1; rm -f "$pt_.probe"; else MV_T=0; rm -f "$pt_"; fi
+  fi
+  if [ "$MV_T" = 1 ]; then mv -fT "$1" "$2"; else perl -e 'rename($ARGV[0],$ARGV[1]) or exit 1' "$1" "$2"; fi
+}
+# put_clear DEST: the friendly early refusal: a link at DEST is removed (the link, never what it points at), and a folder
+# there is refused. The safety itself is rename_over, which does not depend on what DEST is at the moment of the move.
+put_clear() {
+  if [ -L "$1" ]; then rm -f "$1"; fi
+  if [ -d "$1" ]; then echo "vyre: $1 is a folder, not a file; left alone" >&2; return 1; fi
+}
+# put_file SRC DEST [MODE]: write DEST from SRC through a new file made in DEST's own folder (mktemp makes it exclusively, so a
+# name someone planted is never reused) and a rename over DEST. The rename replaces a link at DEST rather than following it,
+# and nothing is ever written through an existing path: this is how root puts files into the person's stack folder.
+put_file() {
+  put_clear "$2" || return 1
+  pf=$(mktemp "$2.XXXXXX") || return 1
+  if cat "$1" >"$pf" && chmod "${3:-0644}" "$pf" && rename_over "$pf" "$2"; then return 0; fi
+  rm -f "$pf"; return 1
+}
+# put_text TEXT DEST [MODE]: the same, from a string.
+put_text() {
+  put_clear "$2" || return 1
+  pt=$(mktemp "$2.XXXXXX") || return 1
+  if printf '%s\n' "$1" >"$pt" && chmod "${3:-0644}" "$pt" && rename_over "$pt" "$2"; then return 0; fi
+  rm -f "$pt"; return 1
+}
+# BK: where an update's backup and its key are kept: root's own folder under the path unit, the stack folder for a person.
+bk_dir() { if [ "${UPD_TRACK:-0}" = 1 ]; then echo "$UPD_PRIV/backups"; else echo "$DIR/backups"; fi; }
+die() {
+  echo "vyre: $*" >&2
+  if [ "${UPD_TRACK:-0}" = 1 ] && [ "$UPD_DONE" = 0 ]; then state "$UPD_END" "$UPD_STAGE" "$*"; fi
+  exit 1
+}
+say() { echo "vyre: $*"; }
+
+# GitHub Releases first and the site as the fallback (a test build can name its own folder in the seams block above).
+case "$SITE" in */) ;; *) SITE="$SITE/" ;; esac
+BASE=$SITE
 MARK="vyre on a Docker box"
 # The box files install-box.sh lays out beside .env, which is never among them.
 BOXF="compose.yml compose.build.yml vyre.env.example Dockerfile dockerignore"
 # vyred's home in the container: the vyre service's VYRE_HOME in compose.yml (on the vyre-home
 # volume, so it outlives the image). Backups and the phone app's releases folder live under it.
-CHOME=${VYRE_CONTAINER_HOME:-$(sed -n 's/^ *- VYRE_HOME=\(.*[^ ]\) *$/\1/p' "$DIR/compose.yml" | head -n 1)}
+CHOME=${CHOME_SEAM:-$(sed -n 's/^ *- VYRE_HOME=\(.*[^ ]\) *$/\1/p' "$DIR/compose.yml" | head -n 1)}
 CHOME=${CHOME:-/home/vyre/.vyre}
 
 # fetch_url URL DEST
@@ -117,7 +234,7 @@ pick_release() {
 get_sums() {
   fetch SHA256SUMS "$tmp/SHA256SUMS" || die "could not download $BASE""SHA256SUMS"
   if [ ! -s "$tmp/SHA256SUMS" ] || grep -vqE '^[0-9a-f]{64} [ *][^ ]+$' "$tmp/SHA256SUMS"; then
-    die "$BASE""SHA256SUMS is not a checksum list; is VYRE_BOX_URL right?"
+    die "$BASE""SHA256SUMS is not a checksum list; is this the release folder?"
   fi
 }
 listed() { awk -v p="$1" '$2 == p || $2 == "*" p { f = 1 } END { exit !f }' "$tmp/SHA256SUMS"; }
@@ -131,23 +248,63 @@ get() {
   [ "$got" = "$want" ] || die "checksum mismatch for $BASE$1 (want $want, got $got)"
 }
 
-# Unpack the verified vyre.tgz into $DIR/src.new. Nothing in $DIR/src changes yet.
-unpack_src() {
-  rm -rf "$DIR/src.new"
-  mkdir -p "$DIR/src.new"
-  tar -xzf "$tmp/vyre.tgz" -C "$DIR/src.new" --strip-components=1
-  # npm pack pins every mtime to 1985, and BuildKit skips a changed file whose size and mtime
-  # match what it synced before, so the image would keep stale files: give them today's.
-  find "$DIR/src.new" -exec touch {} +
-  [ -f "$DIR/src.new/box/Dockerfile" ] || { rm -rf "$DIR/src.new"; die "vyre.tgz has no box/Dockerfile"; }
-  # npm pack leaves out .dockerignore, which keeps tests and scripts out of the image.
-  if [ -f "$tmp/dockerignore" ]; then cp "$tmp/dockerignore" "$DIR/src.new/.dockerignore"; fi
+# verify_signature: the release's SHA256SUMS carries SHA256SUMS.sig, an Ed25519 signature over the line "vyre-release-sums"
+# and then the exact bytes of SHA256SUMS (the prefix keeps a signature made for a checksum list from ever passing as one over
+# something else the same key signs, such as vyre-core's manifests). The checksums vouch for every other file (release.json
+# with the image digests, the wrapper, the compose file). It is checked with Node in the image that runs now, against
+# RELEASE_KEY above, with no network, before anything on the box changes. An unsigned or badly signed release is refused;
+# only a person running `vyre update --allow-unsigned` installs one, with a warning. An automatic update (UPD_SIGNED=1) never does.
+# sig_ok SUMS SIG: whether SIG (base64) is a valid Ed25519 signature over the prefix and SUMS, by RELEASE_KEY. Checked on the HOST with
+# openssl, no container and no image involved: nothing a person's .env (VYRE_IMAGE) or an image can say changes the answer, and the
+# pinned key is the only thing that decides. OpenSSL 3 needs -rawin for a one-shot Ed25519 verify; 1.1.1 has no such option and does it by default.
+sig_ok() {
+  command -v openssl >/dev/null 2>&1 || die "openssl is needed to check a release's signature, and it is not installed; nothing was changed"
+  kd=$(mktemp -d) || return 1
+  { echo "-----BEGIN PUBLIC KEY-----"; printf '%s' "$RELEASE_KEY" | fold -w 64; echo; echo "-----END PUBLIC KEY-----"; } >"$kd/pub.pem"
+  if ! tr -d ' \n\r' <"$2" | base64 -d >"$kd/sig" 2>/dev/null || [ "$(wc -c <"$kd/sig" | tr -d ' ')" != 64 ]; then rm -rf "$kd"; return 1; fi
+  { printf 'vyre-release-sums\n'; cat "$1"; } >"$kd/msg"
+  ok=1
+  if openssl pkeyutl -verify -pubin -inkey "$kd/pub.pem" -rawin -in "$kd/msg" -sigfile "$kd/sig" >/dev/null 2>&1; then ok=0
+  elif openssl pkeyutl -verify -pubin -inkey "$kd/pub.pem" -in "$kd/msg" -sigfile "$kd/sig" >/dev/null 2>&1; then ok=0
+  fi
+  rm -rf "$kd"
+  return $ok
 }
 
-# Wait for vyred to answer on its socket, up to a minute (VYRE_UPDATE_WAIT seconds).
+verify_signature() {
+  stage verifying
+  problem=""
+  if fetch SHA256SUMS.sig "$tmp/SHA256SUMS.sig" 2>/dev/null && [ -s "$tmp/SHA256SUMS.sig" ]; then
+    if sig_ok "$tmp/SHA256SUMS" "$tmp/SHA256SUMS.sig"; then say "signature checked against Vyre's release key"; return 0; fi
+    problem="the release's signature does not match Vyre's release key"
+  else
+    problem="this release is not signed"
+  fi
+  if [ "${UPD_SIGNED:-0}" = 0 ] && [ "$ALLOW_UNSIGNED" = 1 ]; then
+    echo "vyre: WARNING: $problem. Installing it anyway because you passed --allow-unsigned: nothing proves this release came from Vyre." >&2
+    return 0
+  fi
+  if [ "${UPD_SIGNED:-0}" = 1 ]; then die "$problem, and an automatic update installs only signed releases; nothing was changed"; fi
+  die "$problem; nothing was changed. To install it anyway: vyre update --allow-unsigned"
+}
+
+# Unpack the verified vyre.tgz into $SRCDIR.new. Nothing in $DIR/src changes yet.
+unpack_src() {
+  rm -rf "$SRCDIR.new"
+  mkdir -p "$SRCDIR.new"
+  tar -xzf "$tmp/vyre.tgz" -C "$SRCDIR.new" --strip-components=1
+  # npm pack pins every mtime to 1985, and BuildKit skips a changed file whose size and mtime
+  # match what it synced before, so the image would keep stale files: give them today's.
+  find "$SRCDIR.new" -exec touch {} +
+  [ -f "$SRCDIR.new/box/Dockerfile" ] || { rm -rf "$SRCDIR.new"; die "vyre.tgz has no box/Dockerfile"; }
+  # npm pack leaves out .dockerignore, which keeps tests and scripts out of the image.
+  if [ -f "$tmp/dockerignore" ]; then cp "$tmp/dockerignore" "$SRCDIR.new/.dockerignore"; fi
+}
+
+# Wait for vyred to answer on its socket, up to a minute (UPDATE_WAIT seconds).
 ready() {
   i=0
-  while [ $i -lt "${VYRE_UPDATE_WAIT:-60}" ]; do
+  while [ $i -lt "$UPDATE_WAIT" ]; do
     compose exec -T vyre vyre status >/dev/null 2>&1 && return 0
     i=$((i + 1)); sleep 1
   done
@@ -159,15 +316,17 @@ cli() {
   tty=-T
   if [ -t 0 ] && [ -t 1 ]; then tty=""; fi
   # The container's account is not the person's, so the ssh line needs the host's.
-  exec docker compose exec $tty \
+  # Through compose(): a root run (sudo) uses root's own copies, never the stack folder's files.
+  compose exec $tty \
     -e SSH_CONNECTION="${SSH_CONNECTION:-}" -e VYRE_HOST_USER="${SUDO_USER:-$(id -un)}" vyre vyre "$@"
+  exit $?
 }
 
 # print_link: run the CLI's `vyre up`, and reduce what it prints to VYRE_LINK and VYRE_SSH.
 # The link is the onboarding URL, or the box's address once onboarding is done.
 print_link() {
   esc=$(printf '\033')
-  out=$(docker compose exec -T -e SSH_CONNECTION="${SSH_CONNECTION:-}" \
+  out=$(compose exec -T -e SSH_CONNECTION="${SSH_CONNECTION:-}" \
     -e VYRE_HOST_USER="${SUDO_USER:-$(id -un)}" vyre vyre up 2>&1 | sed "s/${esc}\[[0-9;]*m//g")
   link=$(printf '%s\n' "$out" | sed -n 's|^ *\(https\{0,1\}://[^ ]*/onboard?t=[^ ]*\).*|\1|p' | head -n 1)
   [ -n "$link" ] || link=$(printf '%s\n' "$out" | sed -n 's|^ *your address: *\(https://[^ ]*\).*|\1|p' | head -n 1)
@@ -180,6 +339,8 @@ print_link() {
 # The image the vyre service runs: built here as vyre:local, or pulled.
 image() {
   if [ "$BUILD" = 1 ]; then echo vyre:local; return; fi
+  # A root run takes the image from root's own copy of the verified compose.yml, never from a .env.
+  if [ "$ROOT_RUN" = 1 ]; then sed -n 's/^[[:space:]]*image:[[:space:]]*\(ghcr\.io\/vyre-ai\/vyre@sha256:[0-9a-f]\{64\}\)$/\1/p' "$RUN/compose.yml" | head -n 1; return; fi
   v=$(sed -n 's/^VYRE_IMAGE=//p' "$DIR/.env" 2>/dev/null | tail -n 1)
   echo "${v:-${VYRE_IMAGE:-ghcr.io/vyre-ai/vyre:latest}}"
 }
@@ -189,24 +350,35 @@ image() {
 # for a failed update and for --rollback --restore-data.
 backup_db() {
   f="$CHOME/backups/pre-$1.tar.gz"
+  BK=$(bk_dir)
   csh 'mkdir -p "$1" && rm -f "$2"' "$CHOME/backups" "$f" \
     || die "could not reach vyred's home in the container to back up; is the box up? (vyre up)"
-  compose exec -T vyre vyre backup "$f" >/dev/null || die "the backup before the update failed; nothing changed"
-  mkdir -p "$DIR/backups"
-  chmod 700 "$DIR/backups"
+  mkdir -p "$BK"
+  chmod 700 "$BK"
+  # The backup is always sealed under a passphrase (R8). An update's own backup is unattended, so it gets a random one, kept
+  # beside the file as pre-<version>.key (0600, root, the same trust as the folder), and is data only: the project files and
+  # transcripts are not in it. Piped on stdin, never in argv or the environment.
+  pass=$(head -c 24 /dev/urandom | base64 | tr -d '=+/\n' | cut -c1-24)
+  [ "${#pass}" -ge 16 ] || die "could not make a passphrase for the backup; nothing changed"
+  (umask 077; put_text "$pass" "$BK/pre-$1.key" 0600)
+  printf '%s\n%s\n' "$pass" "$pass" | compose exec -T -e VYRE_BACKUP_SKIP_PROJECTS=1 -e VYRE_BACKUP_SKIP_TRANSCRIPTS=1 vyre vyre backup "$f" >/dev/null \
+    || die "the backup before the update failed; nothing changed"
   # It holds the sealed vault: only this account reads the host copy.
-  (umask 077; csh 'cat "$1"' "$f" >"$DIR/backups/pre-$1.tar.gz") || true
-  printf '%s\n' "$f" >"$DIR/backups/last"
-  say "backed up the database to $f (and $DIR/backups/pre-$1.tar.gz)"
+  if hb=$(mktemp "$BK/.pre-$1.XXXXXX") && chmod 600 "$hb" && csh 'cat "$1"' "$f" >"$hb"; then mv -f "$hb" "$BK/pre-$1.tar.gz"; else rm -f "${hb:-}"; fi
+  put_text "$f" "$BK/last" 0600
+  say "backed up the database to $f (and $BK/pre-$1.tar.gz)"
 }
 
 # restore_db: put the pre-update backup back. restore wants vyred stopped, so the vyre container
 # stops and a one-off container of the same (already rolled back) image runs the restore.
 restore_db() {
-  f=$(cat "$DIR/backups/last" 2>/dev/null || true)
-  [ -n "$f" ] || { echo "vyre: no pre-update backup is recorded in $DIR/backups/last" >&2; return 1; }
+  BK=$(bk_dir)
+  f=$(cat "$BK/last" 2>/dev/null || true)
+  [ -n "$f" ] || { echo "vyre: no pre-update backup is recorded in $BK/last" >&2; return 1; }
   compose stop vyre
-  compose run --rm --no-deps -T vyre vyre restore "$f" --force || { echo "vyre: could not restore $f" >&2; return 1; }
+  k="$BK/$(basename "$f" .tar.gz).key"
+  [ -f "$k" ] || { echo "vyre: no passphrase is kept for $f ($k)" >&2; return 1; }
+  compose run --rm --no-deps -T vyre vyre restore "$f" --force <"$k" || { echo "vyre: could not restore $f" >&2; return 1; }
   say "restored the database from $f"
 }
 
@@ -220,20 +392,78 @@ swap_dirs() {
 
 # save_box: the box files and this wrapper as they are now, into $DIR/box.prev.
 save_box() {
-  rm -rf "$DIR/box.prev"
-  mkdir -p "$DIR/box.prev"
-  for f in $BOXF VERSION; do if [ -f "$DIR/$f" ]; then cp -p "$DIR/$f" "$DIR/box.prev/$f"; fi; done
-  if [ -f "$WRAPPER" ]; then cp -p "$WRAPPER" "$DIR/box.prev/vyre"; fi
+  rm -rf "$BOXPREV"
+  mkdir -p "$BOXPREV"
+  # Only regular files, never a link that points somewhere else.
+  for f in $BOXF VERSION; do if [ -f "$DIR/$f" ] && [ ! -L "$DIR/$f" ]; then cp -p "$DIR/$f" "$BOXPREV/$f"; fi; done
+  # A root run keeps root's own copy of the compose files too, the ones it runs from.
+  if [ "$ROOT_RUN" = 1 ]; then for f in compose.yml compose.build.yml compose.env vyre.env; do [ -f "$RUN/$f" ] && cp -p "$RUN/$f" "$BOXPREV/run-$f" || true; done; fi
+  if [ -f "$WRAPPER" ] && [ ! -L "$WRAPPER" ]; then cp -p "$WRAPPER" "$BOXPREV/vyre"; fi
 }
 
 # put_box FROM [exact]: install the box files found in folder FROM into $DIR. With exact (putting
 # box.prev back), a file FROM does not have is removed, so $DIR matches it; compose.yml always stays.
 put_box() {
   for f in $BOXF VERSION; do
-    if [ -f "$1/$f" ]; then cp "$1/$f" "$DIR/$f.new" && mv "$DIR/$f.new" "$DIR/$f"
+    if [ -f "$1/$f" ]; then put_file "$1/$f" "$DIR/$f" 0644
     elif [ "${2:-}" = exact ] && [ "$f" != compose.yml ]; then rm -f "$DIR/$f"
     fi
   done
+  if [ "$ROOT_RUN" = 1 ]; then sync_run "$1"; fi
+}
+
+# sync_run FROM: root's own copies of the compose files, from a release folder that was just verified (compose.yml, compose.build.yml) or
+# from what save_box kept (run-compose.yml, run-compose.build.yml). These, not the stack folder's files, are what a root run starts.
+# sha256_of FILE: the file's sha256 (GNU or BSD tool).
+sha256_of() { if command -v sha256sum >/dev/null 2>&1; then sha256sum "$1" | cut -d' ' -f1; else shasum -a 256 "$1" | cut -d' ' -f1; fi; }
+sync_run() {
+  mkdir -p "$RUN" && chmod 700 "$RUN" || die "could not make root's compose folder $RUN"
+  for f in compose.yml compose.build.yml; do
+    src="$1/run-$f"; [ -f "$src" ] || src="$1/$f"
+    if [ -f "$src" ] && [ ! -L "$src" ]; then put_file "$src" "$RUN/$f" 0644; fi
+  done
+  # What root has verified: the next `updater install` from a folder whose compose.yml differs is refused (see updater install).
+  if [ "$ROOT_RUN" = 1 ] && [ -f "$RUN/compose.yml" ]; then printf '%s\n' "$(sha256_of "$RUN/compose.yml")" >"$UPD_ROOT/compose.sha256" || true; fi
+}
+
+# prepare_run: before a root run touches compose. Refuses what a person (or a model running as one) could have planted to change how compose
+# runs: an override file, a COMPOSE_* setting in the environment or in .env other than the two values install writes. Reads the build mode from
+# root's own record. Writes root's env file (only the few settings the compose file reads, each checked for its own shape, plus the paths root
+# decides) and a filtered copy of vyre.env (lines of KEY=value with no interpolation).
+prepare_run() {
+  for f in compose.override.yml compose.override.yaml docker-compose.override.yml docker-compose.override.yaml; do
+    [ ! -e "$DIR/$f" ] || die "$DIR/$f exists, and a root run does not read override files; remove it (or run compose yourself); nothing was changed"
+  done
+  bad=$(env | sed -n 's/^\(COMPOSE_[A-Za-z0-9_]*\)=.*/\1/p' | head -n 1)
+  [ -z "$bad" ] || die "$bad is set in the environment, and a root run reads no compose setting from it; nothing was changed"
+  if [ -f "$DIR/.env" ]; then
+    bad=$(sed -n 's/^\(COMPOSE_[A-Za-z0-9_]*\)=\(.*\)$/\1=\2/p' "$DIR/.env" | grep -Evx 'COMPOSE_PROJECT_NAME=vyre|COMPOSE_FILE=compose\.yml(:compose\.build\.yml)?' | head -n 1 || true)
+    [ -z "$bad" ] || die "${bad%%=*} is set in $DIR/.env, and a root run reads no compose setting from there; nothing was changed"
+  fi
+  mode=$(readf "$UPD_ROOT/mode")
+  case "$mode" in
+    pull) BUILD=0; BUILDF=0 ;;
+    build) BUILD=1; BUILDF=1 ;;
+    external) die "this box builds from a checkout of your own, and an automatic update never builds from a folder you can write; update it with git" ;;
+    *) die "root has no record of how this box is built; run: sudo vyre updater install" ;;
+  esac
+  [ -f "$RUN/compose.yml" ] || die "root's copy of the compose file is missing; run: sudo vyre updater install"
+  [ "$BUILDF" = 0 ] || [ -f "$RUN/compose.build.yml" ] || die "root's copy of compose.build.yml is missing; run: sudo vyre updater install"
+  # root's env file: only these, each in the shape it must have; anything else in .env (an image, a path, a capability list) is not passed on.
+  ce="$RUN/compose.env.new"
+  # (the key is spelled in two parts so the release build, which must not name any test override, stays checkable by grep)
+  k=VYRE_UPDATE; { echo "${k}_ROOT=$UPD_ROOT"; [ "$BUILDF" = 0 ] || echo "VYRE_SOURCE=$SRCDIR"
+    if [ -f "$DIR/.env" ]; then
+      sed -n 's/^DOCKER_GID=\([0-9][0-9]*\)$/DOCKER_GID=\1/p; s/^VYRE_DRIVE_ACCESS=ro$/VYRE_DRIVE_ACCESS=ro/p; s/^VYRE_DRIVE_ACCESS=rw$/VYRE_DRIVE_ACCESS=rw/p; s/^VYRE_TS_HOSTNAME=\([A-Za-z0-9-]\{1,63\}\)$/VYRE_TS_HOSTNAME=\1/p; s/^TS_AUTHKEY=\([A-Za-z0-9_-]\{1,200\}\)$/TS_AUTHKEY=\1/p' "$DIR/.env"
+    fi; } >"$ce"
+  chmod 600 "$ce"; rename_over "$ce" "$RUN/compose.env"
+  if [ -f "$DIR/vyre.env" ] && [ ! -L "$DIR/vyre.env" ]; then grep -E '^(CLOUDFLARE_[A-Z0-9_]+|VYRE_SETUP_CODE|VYRE_SETUP_CODE_AT|VYRE_EGRESS_[A-Z0-9_]+)=[^$`]*$' "$DIR/vyre.env" >"$RUN/vyre.env.new" || true
+  else : >"$RUN/vyre.env.new"; fi
+  chmod 600 "$RUN/vyre.env.new"; rename_over "$RUN/vyre.env.new" "$RUN/vyre.env"
+  # Nothing is dropped silently: the names (never the values) of what a root run did not pass on.
+  skipped=$( { sed -n 's/^\([A-Za-z_][A-Za-z0-9_]*\)=.*/\1/p' "$DIR/.env" 2>/dev/null | grep -Evx 'DOCKER_GID|TS_AUTHKEY|VYRE_DRIVE_ACCESS|VYRE_TS_HOSTNAME|COMPOSE_PROJECT_NAME|COMPOSE_FILE|VYRE_SOURCE|VYRE_CHANNEL|VYRE_SETUP_CODE|VYRE_SETUP_CODE_AT' || true
+    sed -n 's/^\([A-Za-z_][A-Za-z0-9_]*\)=.*/\1/p' "$DIR/vyre.env" 2>/dev/null | grep -Evx 'CLOUDFLARE_[A-Z0-9_]+|VYRE_SETUP_CODE|VYRE_SETUP_CODE_AT|VYRE_EGRESS_[A-Z0-9_]+' || true; } | sort -u | head -n 12 | tr '\n' ' ')
+  [ -z "$skipped" ] || echo "vyre: an update run by root ignores these settings from $DIR/.env and vyre.env (root passes on only the few it checks; start the stack yourself with them set, or see vyre.env.example): $skipped" >&2
 }
 
 # put_wrapper FILE: replace this wrapper with FILE, through a temp name in the same folder and a
@@ -255,6 +485,40 @@ put_wrapper() {
 # android: bring the release's phone app into the container's releases folder, APK first and
 # android.json last through a temp name and a rename, the old manifest kept as android.json.prev.
 # Then releases.sign signs it with the owner's key. Its refusal is reported, never fatal.
+# publish_release SRC: the release's SHA256SUMS, its signature and shell.json go into root's status/release folder, which the
+# compose file mounts read-only at the install's deck/release, where vyred serves them at /release/ so the phone's service
+# worker can check the web shell against the one release signature (pwa). They live on the host, not in the container's
+# writable layer, so a recreate keeps them. Only what was downloaded and checked; a missing file is skipped, and none of it can
+# fail the update. A person running `vyre update` is not root, so root does it for them through sudo, if it can.
+publish_release() {
+  src=$1
+  if [ "$(id -u)" != "$ROOT_UID" ]; then
+    sudo -n "$WRAPPER" publish-release "$src" >/dev/null 2>&1 \
+      || echo "vyre: could not put the release's signature files where vyred serves them (that needs sudo); the phone's shell check stays off until an update runs as root" >&2
+    return 0
+  fi
+  if ! unit_dirs_ok; then echo "vyre: $UPD_ROOT is not root's alone; the release's signature files were not published" >&2; return 0; fi
+  # The caller's folder is not trusted, even when root was asked by name: each file is copied WITHOUT following a link into a folder
+  # only root can use, and everything after this looks only at the copies. Nothing is published unless SHA256SUMS.sig verifies
+  # over the copied SHA256SUMS (so an unsigned release publishes nothing), and shell.json is the file that SHA256SUMS lists.
+  rt=$(mktemp -d) || return 0
+  for f in SHA256SUMS SHA256SUMS.sig shell.json; do cp -P "$src/$f" "$rt/$f" 2>/dev/null || true; done
+  if [ -f "$rt/SHA256SUMS" ] && [ ! -L "$rt/SHA256SUMS" ] && [ -f "$rt/SHA256SUMS.sig" ] && [ ! -L "$rt/SHA256SUMS.sig" ] && sig_ok "$rt/SHA256SUMS" "$rt/SHA256SUMS.sig"; then
+    if [ -f "$rt/shell.json" ] && [ ! -L "$rt/shell.json" ]; then
+      want=$(awk '$2 == "shell.json" || $2 == "*shell.json" { print $1; exit }' "$rt/SHA256SUMS")
+      if [ -z "$want" ] || [ "$want" != "$(sha256 "$rt/shell.json")" ]; then echo "vyre: shell.json is not the file the signed SHA256SUMS lists; it was not published" >&2; rm -f "$rt/shell.json"; fi
+    fi
+    if mkdir -p "$UPD_STATE/release" && chmod 755 "$UPD_STATE/release"; then
+      for f in SHA256SUMS SHA256SUMS.sig shell.json; do
+        if [ -f "$rt/$f" ] && [ ! -L "$rt/$f" ]; then put_file "$rt/$f" "$UPD_STATE/release/$f" 0644 || echo "vyre: could not publish $f" >&2; fi
+      done
+    fi
+  else
+    echo "vyre: the release's SHA256SUMS.sig is missing or does not verify; nothing was published for the phone's shell check" >&2
+  fi
+  rm -rf "$rt"
+}
+
 android() {
   listed android.json || return 0
   get android.json
@@ -279,9 +543,11 @@ android() {
 # roll_back: undo a failed update: src, image, box files, then the database from the backup.
 roll_back() {
   echo "vyre: the update did not come up healthy; rolling back" >&2
-  if [ "$BUILD_SRC" = 1 ] && [ -d "$DIR/src.prev" ]; then rm -rf "$DIR/src"; mv "$DIR/src.prev" "$DIR/src"; fi
+  UPD_END=rolled_back
+  state running rolling-back
+  if [ "$BUILD_SRC" = 1 ] && [ -d "$SRCDIR.prev" ]; then rm -rf "$SRCDIR"; mv "$SRCDIR.prev" "$SRCDIR"; fi
   if [ "$TAGGED" = 1 ]; then docker image tag vyre:prev "$IMG"; fi
-  put_box "$DIR/box.prev" exact
+  put_box "$BOXPREV" exact
   compose up -d || true
   restore_db || true
   compose up -d || true
@@ -289,31 +555,74 @@ roll_back() {
   die "rolled back to the release before; the database is as it was before the update"
 }
 
+# verify_release_images: a box that pulls its image (no build) pulls only what the signed release names. The release's release.json names the
+# images by digest, the released compose.yml must pin exactly those (and nothing by a moving tag), and each is checked with cosign against
+# the release workflow's identity before anything on this box changes. A pull that cannot be checked is refused, never skipped.
+verify_release_images() {
+  if [ ! -f "$tmp/release.json" ]; then
+    die "this release has no release.json, so the image it pulls cannot be verified; nothing was changed. (A box that builds from source updates without it.)"
+  fi
+  rj=$(tr -d '\n' <"$tmp/release.json")
+  box_ref=$(printf '%s' "$rj" | sed -n 's/.*"box": *{[^}]*"ref": *"\([^"]*\)".*/\1/p')
+  computer_ref=$(printf '%s' "$rj" | sed -n 's/.*"computer": *{[^}]*"ref": *"\([^"]*\)".*/\1/p')
+  [ -n "$box_ref" ] || die "release.json names no image digest for the box, so it cannot be verified; nothing was changed"
+  # Every image line is exactly `image: <name>@sha256:<64 hex>`: no variable a .env can replace, no comment trick, no tag. The box's
+  # ref (and the computer's, when named) is one of those lines, whole.
+  imgs=$(grep -E '^[[:space:]]*image:' "$tmp/compose.yml" || true)
+  badimg=$(printf '%s\n' "$imgs" | grep -Ev '^[[:space:]]*image: [A-Za-z0-9._/-]+(:[A-Za-z0-9._-]+)?@sha256:[0-9a-f]{64}$' | grep -v '^$' || true)
+  [ -z "$badimg" ] || die "the release's compose.yml starts an image that is not pinned exactly by digest ($(printf '%s' "$badimg" | head -n 1 | sed 's/^[[:space:]]*//')); nothing was changed"
+  for ref in $box_ref $computer_ref; do
+    printf '%s' "$ref" | grep -Eq '^ghcr\.io/vyre-ai/[a-z-]+@sha256:[0-9a-f]{64}$' || die "release.json names an image that is not a ghcr.io/vyre-ai digest; nothing was changed"
+  done
+  # The box's ref is one of the image lines, whole. The computer image is not a service of this stack: compose.yml hands its ref to vyred and
+  # the Docker proxy as the default of VYRE_COMPUTERS_IMAGE (a root run never passes that setting on, so the default stands); it must be there,
+  # on a line that is not a comment.
+  printf '%s\n' "$imgs" | awk -v r="$box_ref" '{ sub(/^[ \t]*image:[ \t]*/, ""); if ($0 == r) f = 1 } END { exit !f }' || die "the release's compose.yml does not pin $box_ref as an image line, which release.json names; nothing was changed"
+  if [ -n "$computer_ref" ]; then
+    grep -v '^[[:space:]]*#' "$tmp/compose.yml" | grep 'VYRE_COMPUTERS_IMAGE' | grep -qF "$computer_ref" || die "the release's compose.yml does not carry $computer_ref as the computers image, which release.json names; nothing was changed"
+  fi
+  # Every ghcr.io/vyre-ai image line of the released compose.yml is checked, not only the two release.json names (a third-party image such as
+  # tailscale rests on the signed digest of the release that pins it).
+  all_refs=$( { printf '%s\n' "$imgs" | sed -n 's/^[[:space:]]*image:[[:space:]]*\(ghcr\.io\/vyre-ai\/[^[:space:]]*\)$/\1/p'; printf '%s\n' "$box_ref" "$computer_ref"; } | grep -v '^$' | sort -u)
+  stage verifying-images
+  for ref in $all_refs; do
+    if ! docker run --rm "$COSIGN_IMAGE" verify --certificate-identity-regexp "$COSIGN_ID" --certificate-oidc-issuer "$COSIGN_ISSUER" "$ref" >/dev/null 2>"$tmp/cosign.err"; then
+      sed 's/^/  /' "$tmp/cosign.err" >&2
+      die "cosign could not verify $ref against Vyre's release workflow; nothing was changed"
+    fi
+  done
+  say "images checked against Vyre's release workflow"
+}
+
 update() {
   CHANNEL=${VYRE_CHANNEL:-stable}
   TO=""
+  ALLOW_UNSIGNED=0
   while [ $# -gt 0 ]; do
     case "$1" in
       --channel) [ $# -ge 2 ] || die "--channel needs stable or beta"; CHANNEL=$2; shift ;;
       --channel=*) CHANNEL=${1#--channel=} ;;
       --to) [ $# -ge 2 ] || die "--to needs a version"; TO=$2; shift ;;
       --to=*) TO=${1#--to=} ;;
+      --allow-unsigned) ALLOW_UNSIGNED=1 ;;
       *) die "vyre update: unknown option $1" ;;
     esac
     shift
   done
   case "$CHANNEL" in stable|beta) ;; *) die "the channel is stable or beta, not $CHANNEL" ;; esac
+  UPD_FROM=$(compose exec -T vyre vyre version 2>/dev/null | tr -d ' \r\n' || true)
+  stage checking
 
   # A box built from a checkout the person keeps themselves (VYRE_SOURCE is not $DIR/src) is
   # updated with git, not from a release: nothing is downloaded, and the source is left alone.
-  if [ "$BUILD" = 1 ]; then
+  if [ "$BUILD" = 1 ] && [ "$ROOT_RUN" = 0 ]; then
     src=$(sed -n 's/^VYRE_SOURCE=//p' "$DIR/.env" | tail -n 1)
     if [ "${src%/}" != "${DIR%/}/src" ]; then
       say "this box builds from $src: update it with git; rebuilding from it now"
       compose build --pull
       compose up -d
       ready
-      docker compose exec -T vyre vyre up --keep-link || true
+      compose exec -T vyre vyre up --keep-link || true
       exit 0
     fi
   fi
@@ -329,16 +638,29 @@ update() {
   fi
 
   # Everything is downloaded and checked before anything on the box changes.
+  stage downloading
   get_sums
+  verify_signature
   BUILD_SRC=0
   if [ "$BUILD" = 1 ]; then
     src=$(sed -n 's/^VYRE_SOURCE=//p' "$DIR/.env" | tail -n 1)
-    if [ "${src%/}" = "${DIR%/}/src" ]; then BUILD_SRC=1; get vyre.tgz; fi
+    # A root run builds from its own copy of the verified source and takes the mode from root's record, never from this .env.
+    if [ "$ROOT_RUN" = 1 ] || [ "${src%/}" = "${DIR%/}/src" ]; then BUILD_SRC=1; get vyre.tgz; fi
   fi
-  for f in $BOXF VERSION vyre release.json; do if listed "$f"; then get "$f"; fi; done
+  for f in $BOXF VERSION vyre release.json shell.json; do if listed "$f"; then get "$f"; fi; done
   VERSION=$(tr -d ' \n' 2>/dev/null <"$tmp/VERSION" || true)
   VERSION=${VERSION:-${TAG#v}}
   VERSION=${VERSION:-$(date -u +%Y%m%d%H%M%S)}
+  UPD_TO=$VERSION
+  # An automatic update never goes back: a signed old release is still an old release.
+  # The floor is the newest version the host has installed, kept in a file only root writes; what the container says it runs
+  # is not trusted for this, since a compromised vyred could claim to be older.
+  floor=$(readf "$UPD_PRIV/floor")
+  if [ "${UPD_SIGNED:-0}" = 1 ]; then
+    if [ -n "$floor" ] && older "$VERSION" "$floor"; then die "the newest release is $VERSION and the newest this server has had is $floor; an automatic update never goes back"; fi
+    if [ -n "$UPD_FROM" ] && older "$VERSION" "$UPD_FROM"; then die "the newest release is $VERSION and this box runs $UPD_FROM; an automatic update never goes back"; fi
+  fi
+  if [ "${UPD_SIGNED:-0}" = 1 ] && [ -n "$UPD_FROM" ] && [ "$VERSION" = "$UPD_FROM" ]; then UPD_DONE=1; state ok none "already on $VERSION"; say "already on $VERSION"; exit 0; fi
   if [ -f "$tmp/release.json" ]; then
     min=$(tr -d '\n' <"$tmp/release.json" | sed -n 's/.*"min_from": *"\([^"]*\)".*/\1/p')
     cur=$(compose exec -T vyre vyre version 2>/dev/null | tr -d ' \r\n' || true)
@@ -346,9 +668,11 @@ update() {
       die "this box runs $cur, and $VERSION updates from $min or newer: run vyre update --to $min first"
     fi
   fi
+  if [ "$BUILD" = 0 ]; then verify_release_images; fi
   if [ "$BUILD_SRC" = 1 ]; then unpack_src; fi
 
   # Now the box changes: back up, keep what runs, then swap in the new files.
+  stage backing-up
   backup_db "$VERSION"
   IMG=$(image)
   TAGGED=0
@@ -356,30 +680,194 @@ update() {
   save_box
   put_box "$tmp"
   if [ "$BUILD_SRC" = 1 ]; then
-    rm -rf "$DIR/src.prev"
-    if [ -d "$DIR/src" ]; then mv "$DIR/src" "$DIR/src.prev"; fi
-    mv "$DIR/src.new" "$DIR/src"
+    rm -rf "$SRCDIR.prev"
+    if [ -d "$SRCDIR" ]; then mv "$SRCDIR" "$SRCDIR.prev"; fi
+    mv "$SRCDIR.new" "$SRCDIR"
   fi
 
+  stage installing
+  updater_dirs
   if [ "$BUILD" = 1 ]; then ok=0; compose build --pull && ok=1
   else ok=0; compose pull && ok=1
   fi
   if [ "$ok" = 0 ]; then
     # Nothing new ran, so the database is untouched: put the files back only.
-    if [ "$BUILD_SRC" = 1 ] && [ -d "$DIR/src.prev" ]; then rm -rf "$DIR/src"; mv "$DIR/src.prev" "$DIR/src"; fi
-    put_box "$DIR/box.prev" exact
+    if [ "$BUILD_SRC" = 1 ] && [ -d "$SRCDIR.prev" ]; then rm -rf "$SRCDIR"; mv "$SRCDIR.prev" "$SRCDIR"; fi
+    put_box "$BOXPREV" exact
     die "the new image did not build; the box files are back as they were and vyred was not restarted"
   fi
+  stage restarting
   compose up -d || roll_back
   ready || roll_back
-  printf '%s\n' "$VERSION" >"$DIR/VERSION"
+  put_text "$VERSION" "$DIR/VERSION"
+  UPD_DONE=1
+  # Raise the floor (never lower it): the host's own record of the newest version this server has had.
+  fl=$(readf "$UPD_PRIV/floor")
+  if [ -d "$UPD_PRIV" ] && { [ -z "$fl" ] || older "$fl" "$VERSION"; }; then put_text "$VERSION" "$UPD_PRIV/floor" 0600 || true; fi
+  state ok finished "updated to $VERSION"
   say "updated to $VERSION"
 
+  publish_release "$tmp"
   android
   # Report only: a fresh link would void the one the user was sent and has not opened yet.
-  docker compose exec -T vyre vyre up --keep-link || true
+  compose exec -T vyre vyre up --keep-link || true
   put_wrapper "$tmp/vyre"
+  # The new wrapper brings its own updater units along: an older install gains the automatic path here.
+  # (Not with a wrapper somewhere else, which is a test: nothing is written to systemd for one.)
+  # (Not for a root run: the mode and the stack folder root recorded at install are not rewritten from a .env by an update.)
+  if [ "$WRAPPER" = /usr/local/bin/vyre ] && [ "$ROOT_RUN" = 0 ]; then "$WRAPPER" updater install --dir "$DIR" >/dev/null 2>&1 || true; fi
   exit 0
+}
+
+# updater_dirs: the two folders the automatic path uses, made before compose mounts them (a missing bind source is
+# made by Docker as a root-owned folder vyred cannot write). update/ is vyred's alone (uid 1000, 0700): it drops the
+# request there, and nothing else in the container (Vyre-owned sessions run as uid 1001) can. update-state/ is root's,
+# mounted read-only, so vyred can only read what the update says about itself.
+updater_dirs() {
+  mkdir -p "$UPD_ROOT" "$UPD_REQ" "$UPD_STATE" "$UPD_STATE/release" "$UPD_PRIV" 2>/dev/null || return 0
+  chmod 755 "$UPD_ROOT" "$UPD_STATE" "$UPD_STATE/release" 2>/dev/null || true
+  chmod 700 "$UPD_PRIV" 2>/dev/null || true
+  chown 1000:1000 "$UPD_REQ" 2>/dev/null || true
+  chmod 700 "$UPD_REQ" 2>/dev/null || true
+}
+
+# readf FILE: the file's text without blanks and newlines, or nothing when there is no such file (and no shell complaint).
+readf() { if [ -f "$1" ]; then tr -d ' \n\r' <"$1" 2>/dev/null || true; fi; }
+
+# unit_dirs_ok: before root reads or writes anything for an update, UPD_ROOT and every folder above it must be root's and not
+# writable by group or others, and request/, status/ and private/ must be real folders (never links), so nobody can have
+# moved them or planted a link in their place. ROOT_UID and CHAIN_TOP (where the walk up stops) are test seams: constants in the release build.
+unit_dirs_ok() {
+  ru=$ROOT_UID
+  d=$UPD_ROOT
+  top=$CHAIN_TOP
+  while :; do
+    [ -d "$d" ] && [ ! -L "$d" ] && own_ok "$d" "$ru" strict || return 1
+    if [ "$d" = "$top" ] || [ "$d" = / ] || [ "$d" = . ]; then break; fi
+    d=$(dirname "$d")
+  done
+  for d in "$UPD_STATE" "$UPD_PRIV"; do [ -d "$d" ] && [ ! -L "$d" ] && own_ok "$d" "$ru" strict || return 1; done
+  [ -d "$UPD_REQ" ] && [ ! -L "$UPD_REQ" ]
+}
+
+# update_from_request: what the path unit runs, as root. The request is data, never arguments: it is dropped whatever it
+# holds, and only the exact word `update` starts anything. It is a file in a folder vyred writes to, so it is looked at
+# without following links and its content is only ever compared.
+update_from_request() {
+  if ! unit_dirs_ok; then echo "vyre: $UPD_ROOT (or a folder above it) is not root's alone, or a folder in it is missing or a link; no update was started" >&2; exit 0; fi
+  set_root_run
+  req="$UPD_REQ/request"
+  if [ -L "$req" ] || [ ! -f "$req" ]; then rm -f "$req" 2>/dev/null || true; exit 0; fi
+  line=$(head -c 16 "$req" 2>/dev/null | tr -d '\n\r' || true)
+  rm -f "$req"
+  [ "$line" = update ] || { echo "vyre: an update request that says anything else was dropped" >&2; exit 0; }
+  # Two updates at once would swap the same files: the second waits for the next request. A lock left by a crash goes after two hours.
+  if [ -d "$UPD_PRIV/lock" ] && [ -n "$(find "$UPD_PRIV/lock" -maxdepth 0 -mmin +120 2>/dev/null)" ]; then rmdir "$UPD_PRIV/lock" 2>/dev/null || true; fi
+  mkdir "$UPD_PRIV/lock" 2>/dev/null || { echo "vyre: an update is already running" >&2; exit 0; }
+  # At least 600 seconds between updates, so a request that keeps coming cannot keep the box restarting.
+  last=$(readf "$UPD_PRIV/last")
+  now=$(date +%s)
+  case "$last" in ""|*[!0-9]*) last=0 ;; esac
+  if [ $((now - last)) -lt "$MIN_GAP" ]; then
+    rmdir "$UPD_PRIV/lock" 2>/dev/null || true
+    echo "vyre: an update ran a moment ago; this request waits for the next" >&2
+    UPD_TRACK=1; state failed too-soon "an update ran a moment ago; ask again in a few minutes"
+    exit 0
+  fi
+  # From here root starts compose: from its own copies, after refusing anything a person planted (prepare_run).
+  if ! perr=$( ( UPD_TRACK=1; prepare_run ) 2>&1 ); then rmdir "$UPD_PRIV/lock" 2>/dev/null || true; echo "$perr" >&2; exit 1; fi
+  prepare_run
+  # The minimum gap counts runs that got as far as starting something: a refusal above (an override file, a COMPOSE_* setting) does not use it up.
+  put_text "$now" "$UPD_PRIV/last" 0600
+  ch=$(sed -n 's/^VYRE_CHANNEL=//p' "$DIR/.env" 2>/dev/null | tail -n 1 | tr -d ' \r')
+  case "$ch" in stable|beta|"") ;; *) echo "vyre: VYRE_CHANNEL in $DIR/.env is \"$ch\", not stable or beta; using stable" >&2; ch=stable ;; esac
+  rc=0
+  ( UPD_TRACK=1; UPD_SIGNED=1; mkdir -p "$UPD_PRIV/backups"; [ -z "$ch" ] || VYRE_CHANNEL=$ch; export VYRE_CHANNEL; update ) || rc=$?
+  rmdir "$UPD_PRIV/lock" 2>/dev/null || true
+  exit "$rc"
+}
+
+# own_ok PATH ROOT_UID strict|loose: not writable by group or others, and, when strict, owned by ROOT_UID.
+own_ok() {
+  m=$(stat -c '%A %u' "$1" 2>/dev/null || stat -f '%Sp %u' "$1" 2>/dev/null) || return 1
+  perms=${m%% *}; uid=${m##* }
+  case "$perms" in ?????w*|????????w*) return 1 ;; esac
+  [ "$3" != strict ] || [ "$uid" = "$2" ]
+}
+
+# updater install|status|remove: the systemd path unit that makes vyred's request run update_from_request.
+updater() {
+  units=$SYSTEMD_DIR
+  # The unit's name is fixed; a test seam changes it for a rehearsal on a machine that already has the real one.
+  un=$UPDATER_NAME
+  case "$un" in *[!A-Za-z0-9._-]*|"") die "the updater unit name is a plain unit name" ;; esac
+  case "${1:-status}" in
+    install)
+      if ! command -v systemctl >/dev/null 2>&1 || { [ ! -d /run/systemd/system ] && [ -z "$SYSTEMD_SEAM" ]; }; then
+        echo "vyre: this server has no systemd, so an update is the vyre update command only"; return 0
+      fi
+      if [ "$(id -u)" != 0 ] && [ -z "$SYSTEMD_SEAM" ]; then exec sudo -n "$WRAPPER" updater install --dir "$DIR"; fi
+      # The unit runs the wrapper as root, so neither it nor the folder it works in may be writable by anyone else.
+      root_uid=$ROOT_UID
+      for f in "$WRAPPER" "$DIR"; do
+        if ! own_ok "$f" "$root_uid" "$( [ "$f" = "$WRAPPER" ] && echo strict || echo loose )"; then
+          die "$f must not be writable by its group or others (and $WRAPPER must be owned by root): the update unit would run it as root. Fix that, then run vyre updater install"
+        fi
+      done
+      updater_dirs
+      # The compose.yml this root call is copying: the first install records its hash; a later install from a folder whose file differs is refused,
+      # so choosing --dir cannot make root copy and run a compose file nobody verified (a root update refreshes the record from its verified release).
+      [ -f "$DIR/compose.yml" ] && [ ! -L "$DIR/compose.yml" ] || die "$DIR/compose.yml is not a regular file"
+      want=$(sha256_of "$DIR/compose.yml")
+      have=$(readf "$UPD_ROOT/compose.sha256")
+      if [ -n "$have" ] && [ "$have" != "$want" ]; then
+        die "root recorded another compose.yml for this box than the one in $DIR; nothing was changed. If you changed it on purpose: sudo vyre updater remove, then install again"
+      fi
+      # Where this install's stack folder is, written by root, so a later root run (the path unit, the sudo of a hand-run update) never takes
+      # the stack folder from an environment or a file the person can write.
+      printf '%s\n' "$DIR" >"$UPD_ROOT/stack.new" && chmod 644 "$UPD_ROOT/stack.new" && rename_over "$UPD_ROOT/stack.new" "$UPD_ROOT/stack" || echo "vyre: could not record the stack folder for root" >&2
+      # How this box is built, as it is now and as root records it: pull, build (from the tgz source in $DIR/src) or external (a checkout of the
+      # person's own). A root run reads the mode only from here, so a .env cannot turn a release box into one root builds from a tree a person writes.
+      m=pull
+      if grep -q '^COMPOSE_FILE=.*compose\.build\.yml' "$DIR/.env" 2>/dev/null; then
+        m=external; src=$(sed -n 's/^VYRE_SOURCE=//p' "$DIR/.env" | tail -n 1)
+        if [ "${src%/}" = "${DIR%/}/src" ]; then m=build; fi
+      fi
+      printf '%s\n' "$m" >"$UPD_ROOT/mode.new" && chmod 644 "$UPD_ROOT/mode.new" && rename_over "$UPD_ROOT/mode.new" "$UPD_ROOT/mode" || echo "vyre: could not record the build mode for root" >&2
+      # And root's own copies of the compose files it will run from (the installer has just laid these down; later ones come from verified releases).
+      mkdir -p "$RUN" && chmod 700 "$RUN" && sync_run "$DIR" || echo "vyre: could not copy the compose files for root" >&2
+      printf '%s\n' "$want" >"$UPD_ROOT/compose.sha256.new" && chmod 644 "$UPD_ROOT/compose.sha256.new" && rename_over "$UPD_ROOT/compose.sha256.new" "$UPD_ROOT/compose.sha256" || true
+      svc="$units/$un.service"
+      { printf '[Unit]\nDescription=Vyre update, asked for by vyred\n\n[Service]\nType=oneshot\nEnvironment=VYRE_DIR=%s\nExecStart=%s update-from-request\nTimeoutStartSec=3600\n' "$DIR" "$WRAPPER"; } >"$svc.new" && mv "$svc.new" "$svc"
+      { printf '[Unit]\nDescription=Vyre update requests\n\n[Path]\nPathExists=%s/request\nUnit=%s.service\n\n[Install]\nWantedBy=multi-user.target\n' "$UPD_REQ" "$un"; } >"$units/$un.path.new" && mv "$units/$un.path.new" "$units/$un.path"
+      systemctl daemon-reload
+      systemctl enable --now "$un.path" >/dev/null 2>&1 || systemctl enable "$un.path"
+      # Vyre reads this (through the read-only mount) to know a unit will act on a request.
+      printf '1\n' >"$UPD_STATE/ready"
+      say "updates can be asked for from Vyre: $un.path watches $UPD_REQ/request"
+      ;;
+    remove)
+      # The units and the ready file are root's: a person's uninstall asks for root, as install does, and says so when it cannot.
+      if [ "$(id -u)" != 0 ] && [ ! -w "$units" ]; then
+        { [ -f "$units/$un.path" ] || [ -f "$units/$un.service" ]; } || return 0
+        # Root runs the wrapper only when it is root's and nobody else can write it (a test can point the wrapper anywhere).
+        if own_ok "$WRAPPER" "$ROOT_UID" strict; then
+          if [ -t 0 ]; then sudo "$WRAPPER" updater remove; else sudo -n "$WRAPPER" updater remove; fi && return 0
+        fi
+        echo "vyre: the update units $un.path and $un.service are still on this server; remove them with: sudo $WRAPPER updater remove" >&2
+        return 1
+      fi
+      rm -f "$UPD_STATE/ready" "$UPD_ROOT/stack" "$UPD_ROOT/mode" "$UPD_ROOT/compose.sha256"
+      systemctl disable --now "$un.path" >/dev/null 2>&1 || true
+      rm -f "$units/$un.path" "$units/$un.service"
+      systemctl daemon-reload 2>/dev/null || true
+      say "the update path unit is removed"
+      ;;
+    status)
+      if [ -f "$units/$un.path" ]; then echo "installed: $units/$un.path"; else echo "not installed"; fi
+      ;;
+    *) die "vyre updater install|status|remove" ;;
+  esac
 }
 
 # rollback: the previous release back by hand. The database stays unless --restore-data.
@@ -397,7 +885,7 @@ rollback() {
   IMG=$(image)
   have_img=0
   if docker image inspect vyre:prev >/dev/null 2>&1; then have_img=1; fi
-  [ -d "$DIR/src.prev" ] || [ -d "$DIR/box.prev" ] || [ "$have_img" = 1 ] || die "there is no previous release to roll back to"
+  [ -d "$SRCDIR.prev" ] || [ -d "$DIR/box.prev" ] || [ "$have_img" = 1 ] || die "there is no previous release to roll back to"
   if [ "$DATA" = 1 ]; then
     f=$(cat "$DIR/backups/last" 2>/dev/null || true)
     [ -n "$f" ] || die "no pre-update backup is recorded in $DIR/backups/last"
@@ -411,7 +899,7 @@ rollback() {
     fi
   fi
   # A swap, so a second --rollback goes forward again.
-  if [ -d "$DIR/src.prev" ]; then swap_dirs "$DIR/src" "$DIR/src.prev"; fi
+  if [ -d "$SRCDIR.prev" ]; then swap_dirs "$SRCDIR" "$SRCDIR.prev"; fi
   if [ "$have_img" = 1 ]; then
     if docker image inspect "$IMG" >/dev/null 2>&1; then docker image tag "$IMG" vyre:next; fi
     docker image tag vyre:prev "$IMG"
@@ -422,7 +910,7 @@ rollback() {
     mkdir -p "$DIR/box.cur"
     for f in $BOXF VERSION; do if [ -f "$DIR/$f" ]; then cp -p "$DIR/$f" "$DIR/box.cur/$f"; fi; done
     if [ -f "$WRAPPER" ]; then cp -p "$WRAPPER" "$DIR/box.cur/vyre"; fi
-    put_box "$DIR/box.prev" exact
+    put_box "$BOXPREV" exact
     rm -f "$DIR/.vyre.back"
     if [ -f "$DIR/box.prev/vyre" ]; then cp -p "$DIR/box.prev/vyre" "$DIR/.vyre.back"; fi
     rm -rf "$DIR/box.prev"
@@ -445,9 +933,94 @@ rollback() {
   exit 0
 }
 
+# What is in each volume, in the words a person would use. Unknown ones (a future volume) still
+# get listed by name, so the screen never hides one.
+vol_says() {
+  case "$1" in
+    *vyre-home) echo "your vault, memory, settings and this server's sign-ins" ;;
+    *vyre-work) echo "your projects and files (/work)" ;;
+    *vyre-agent-home) echo "your agents' own sign-in state and transcripts" ;;
+    *vyre-accounts) echo "each AI account's sign-in" ;;
+    *tailscale-state) echo "this server's Tailscale identity" ;;
+    *docker-api-bearer|*tailscale-sock) echo "internal, nothing of yours" ;;
+    *) echo "Vyre data" ;;
+  esac
+}
+
+# uninstall: complete and easy. Containers, agents' computers and the network always go, and so does
+# this wrapper. The volumes go only when the person says so. It never removes their Docker, their
+# Tailscale, or their Claude, Codex and Gemini installs on any device.
+uninstall() {
+  choice=ask
+  yes=0
+  for a in "$@"; do
+    case "$a" in
+      --delete-data) choice=delete ;;
+      --keep-data) choice=keep ;;
+      --yes|-y) yes=1 ;;
+      *) die "unknown option $a (vyre uninstall [--delete-data | --keep-data] [--yes])" ;;
+    esac
+  done
+  vols=$(docker volume ls -q --filter label=run.vyre=1 --filter label=com.docker.compose.project=vyre)
+  if [ "$choice" = ask ]; then
+    if [ -n "$vols" ]; then
+      echo "Vyre will stop and come off this server. These hold your data:"
+      for v in $vols; do printf '  %s: %s\n' "$v" "$(vol_says "$v")"; done
+      echo "Before deleting them you can save everything with: vyre backup"
+    fi
+    choice=keep
+    if [ -n "$vols" ] && [ "$yes" = 0 ] && (: </dev/tty) 2>/dev/null; then
+      printf 'Delete this data too? Saying yes deletes it for good. [y/N] ' >/dev/tty
+      read -r answer </dev/tty || answer=n
+      case "$answer" in y|Y|yes|YES|Yes) choice=delete ;; esac
+    fi
+  fi
+  # Agents' computers are containers on the computers network, made by vyred, not by compose.
+  comp=$(docker ps -aq --filter network=vyre-computers 2>/dev/null || true)
+  # shellcheck disable=SC2086 # one container id per word
+  [ -z "$comp" ] || docker rm -f $comp >/dev/null
+  compose --profile computers down --remove-orphans
+  # Vyre's own images (the box and the computers, and the one kept for a rollback) are not data: a
+  # gigabyte of layers with no use once Vyre is gone. Docker itself and the Tailscale sidecar's image stay.
+  imgs=$(docker image ls -q --filter 'reference=ghcr.io/vyre-ai/*' --filter 'reference=vyre:*' 2>/dev/null | sort -u || true)
+  # shellcheck disable=SC2086 # one image id per word
+  [ -z "$imgs" ] || docker image rm -f $imgs >/dev/null 2>&1 || true
+  if [ "$choice" = delete ]; then
+    # shellcheck disable=SC2086 # one volume name per word
+    [ -z "$vols" ] || docker volume rm $vols >/dev/null
+    say "your data is deleted"
+  else
+    say "your data is kept: a fresh install picks up where this left off"
+  fi
+  updater remove || say "The update units are still on this server (see above); the wrapper stays so you can remove them with: sudo $WRAPPER updater remove"
+  if [ -e "$WRAPPER" ] && [ ! -f "$SYSTEMD_DIR/$UPDATER_NAME.path" ] && grep -q "$MARK" "$WRAPPER" 2>/dev/null; then rm -f "$WRAPPER" 2>/dev/null || sudo rm -f "$WRAPPER"; fi
+  say "Vyre is off this server. $DIR stays with its .env; remove it with: sudo rm -rf $DIR"
+  say "One thing is left in your own hands: this server still shows in your Tailscale machines list. Remove it there."
+}
+
+# expire_code: the setup code install-box.sh left in vyre.env (VYRE_SETUP_CODE, with the time it was written)
+# is good for an hour and the box reads it once at start; past the hour both lines go, so a restart never
+# arms an old code again.
+expire_code() {
+  f="$DIR/vyre.env"
+  [ -f "$f" ] || return 0
+  at=$(sed -n 's/^VYRE_SETUP_CODE_AT=\([0-9][0-9]*\)$/\1/p' "$f" 2>/dev/null | head -n 1)
+  [ -n "$at" ] || return 0
+  [ $(( $(date +%s) - at )) -gt 3600 ] || return 0
+  grep -v -e '^VYRE_SETUP_CODE=' -e '^VYRE_SETUP_CODE_AT=' "$f" >"$f.new" || true
+  cat "$f.new" >"$f"
+  rm -f "$f.new"
+}
+
 BUILD=0
 if grep -q '^COMPOSE_FILE=.*compose.build.yml' "$DIR/.env" 2>/dev/null; then BUILD=1; fi
 
+# Any other root verb that starts compose (sudo vyre up, logs, the CLI, uninstall) also runs from root's own copies once the updater has recorded
+# them; a host with no updater (no systemd) keeps the stack folder's files, as the installer laid them down.
+if [ "$(id -u)" = 0 ] && [ -f "$UPD_ROOT/mode" ]; then
+  case "${1:-}" in updater|publish-release|update-from-request|update) ;; *) set_root_run; prepare_run ;; esac
+fi
+case "${1:-}" in up|update) expire_code ;; esac
 case "${1:-}" in
   up)
     shift
@@ -468,7 +1041,23 @@ case "${1:-}" in
     shift
     for a in "$@"; do if [ "$a" = --rollback ]; then rollback "$@"; fi; done
     for a in "$@"; do case "$a" in --restore-data|--yes|-y) die "$a goes with --rollback" ;; esac; done
+    if [ "$(id -u)" = 0 ]; then set_root_run; prepare_run; fi
     update "$@"
+    ;;
+  uninstall)
+    shift
+    uninstall "$@"
+    ;;
+  update-from-request)
+    update_from_request
+    ;;
+  updater)
+    shift
+    updater "$@"
+    ;;
+  publish-release)
+    [ -d "${2:-}" ] || die "vyre publish-release DIR"
+    publish_release "$2"
     ;;
   logs)
     shift

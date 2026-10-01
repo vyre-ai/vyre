@@ -16,7 +16,8 @@ headless Chrome and fails it on:
   hidden), unless it ends in an ellipsis or a line clamp on purpose, or sits in a row drawn
   mid-swipe (`data-clip-ok`);
 - any text size off the scale (12, 13, 15, 17, 20, 22, 28), any weight but 400 and 600, any family
-  but Instrument Sans and JetBrains Mono;
+  but Instrument Sans and JetBrains Mono. The one exception is the hero line of the launch art (Og,
+  Social, ReadmeHero), marked `data-display-type`, which may be larger than 28;
 - any text, fill or border colour that is not a token.
 
 Dark boards render their own theme; each `-paper` board renders the same board in paper.

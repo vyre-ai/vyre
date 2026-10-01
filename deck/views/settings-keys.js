@@ -15,10 +15,8 @@
 // out, for "Saved", its reset ghost ("Reset to Account", "Reset to default") and, for 4 s after a
 // reset, Undo, so nothing shifts.
 //
-// A change that widens what Claude may do (confirm) or loosens security (security: "loosens")
-// is previewed first (settings.set with preview: true) and asks on its row: what changes, where
-// it lands, Confirm or Cancel. Confirm sends confirm: true; a loosening key goes through api.js's
-// presence proof (attempt(..., { presence: true })), the same path Gate approvals use.
+// The person's own change asks nothing (no confirm sheet, no passkey; the box logs it and settings.undo
+// reverses it): a save is one settings.set, a reset one settings.reset, and a reset shows Undo for a few seconds.
 //
 // Keys: J and K move between rows when no text field has focus; / focuses "Find a setting".
 // Tools: settings.schema, settings.get, settings.set, settings.reset, projects.list.
@@ -41,14 +39,6 @@ const NO_PASSKEY = "This needs your passkey, and none is set up yet. Add one in 
 const errText = (/** @type {any} */ e) => (e?.missing ? `The ${e.module} module is not running, so this cannot be changed here yet.`
   : /no passkey is enrolled/.test(String(e?.message || "")) ? NO_PASSKEY : String(e?.message || e));
 const same = (/** @type {any} */ a, /** @type {any} */ b) => JSON.stringify(a) === JSON.stringify(b);
-
-/**
- * Does this change ask first? The same rule as core/config/settings.js needsConfirm, which the
- * box applies anyway: a loosening key always, confirm: true always, or one of confirm.values.
- * @param {Def} d @param {any} v
- */
-export const needsConfirm = (d, v) => d.security === "loosens" || d.confirm === true
-  || Boolean(d.confirm && typeof d.confirm === "object" && Array.isArray(d.confirm.values) && d.confirm.values.some(x => same(x, v)));
 
 /** Is focus in something a person types into, where J, K and / are letters? @param {any} t */
 const typing = t => {
@@ -95,7 +85,8 @@ export async function drawKeys(el, ctx, deps = {}) {
     return { groups: [], reveal: () => false };
   }
   /** @type {Def[]} */
-  const defs = Array.isArray(sc.data?.keys) ? sc.data.keys : [];
+  // A key its module marks `hidden` has a screen of its own (Spend) and is not drawn in the generic groups.
+  const defs = (Array.isArray(sc.data?.keys) ? sc.data.keys : []).filter((/** @type {any} */ k) => k && k.hidden !== true);
   // A group an older section already draws in full (Notifications, with its devices) stays there.
   const skip = deps.skip || new Set();
   const groups = (Array.isArray(sc.data?.groups) ? sc.data.groups : []).filter(g => !skip.has(g.id) && defs.some(k => k.group === g.id));
@@ -166,7 +157,6 @@ export async function drawKeys(el, ctx, deps = {}) {
     const wide = def.type === "list" || def.type === "object";
     const r = {
       def, /** @type {Row} */ data: { ...def }, loaded: false, error: "", dirty: false,
-      /** @type {{ kind: "set"|"reset", value?: any } | null} */ pending: null,
       /** @type {{ kind: ""|"saved"|"undo", label?: string, value?: any }} */ slot: { kind: "" },
       el: h("div", { class: "set-row sk-row" + (wide ? " sk-wide" : ""), "data-key": def.key, id: id + "-row", tabindex: "-1" }),
       /** @type {Control} */ ctl: /** @type {any} */ (null),
@@ -175,7 +165,6 @@ export async function drawKeys(el, ctx, deps = {}) {
       keyEl: h("code", { class: "sk-key", hidden: true }, def.key),
       note: h("div", { class: "sk-note" }),
       slotEl: h("div", { class: "sk-slot", role: "status", "aria-live": "polite" }),
-      ask: h("div", { class: "sk-ask", role: "group", "aria-label": `Confirm ${def.label}`, hidden: true }),
       paint: (/** @type {boolean} */ _force = false) => {},
       leave: () => {},
     };
@@ -195,8 +184,7 @@ export async function drawKeys(el, ctx, deps = {}) {
     put(r.el,
       h("div", { class: "set-k sk-k" }, h("div", { class: "sk-head" }, label, r.chip), r.desc, r.note),
       r.slotEl,
-      h("div", { class: "set-v sk-v" }, h("div", { class: "sk-ctl" }, r.ctl.el)),
-      r.ask);
+      h("div", { class: "set-v sk-v" }, h("div", { class: "sk-ctl" }, r.ctl.el)));
     ctx.cleanup(() => { clearTimeout(timer); clearTimeout(slotTimer); });
 
     const where = () => {
@@ -227,14 +215,14 @@ export async function drawKeys(el, ctx, deps = {}) {
         put(r.slotEl, h("span", { class: "sk-was" }, r.slot.label), h("button", { type: "button", class: "btn btn-ghost btn-sm sk-undo", onclick: () => undo() }, "Undo"));
         return;
       }
-      put(r.slotEl, r.loaded && here && !reason && !r.pending
+      put(r.slotEl, r.loaded && here && !reason
         ? h("button", { type: "button", class: "btn btn-ghost btn-sm sk-reset", onclick: () => reset() }, resetTo()) : null);
     };
     r.paint = (force = false) => {
       const { reason } = where();
       r.el.classList.toggle("sk-dim", !!reason);
       r.ctl.disable(!r.loaded || !!reason);
-      if (!r.pending && (force || !r.dirty)) r.ctl.set(r.data.value);
+      if (force || !r.dirty) r.ctl.set(r.data.value);
       const src = r.loaded ? r.data.source : "";
       put(r.chip, src === "project" || src === "account"
         ? h("span", { class: "sk-src", "data-source": src, title: origin() }, SOURCE[src]) : null);
@@ -258,29 +246,21 @@ export async function drawKeys(el, ctx, deps = {}) {
       if (same(r.data.value, origs.get(k))) restart.delete(k); else restart.set(k, def.label);
       paintBanner();
     };
-    const closeAsk = () => { r.pending = null; r.ask.hidden = true; put(r.ask); r.el.classList.remove("sk-asking"); };
-
     /**
      * Write, showing the result at once, and put it back if the box says no.
      * @param {Row} guess @param {string} tool @param {Record<string, any>} input
-     * @param {{ kind: "set"|"reset", value?: any, presence?: boolean, asked?: boolean, label?: string }} how
+     * @param {{ kind: "set"|"reset", label?: string }} how
      */
     const settle = async (guess, tool, input, how) => {
       const prev = r.data, mine = ++seq;
-      closeAsk();
       r.data = guess; r.error = ""; r.dirty = false;
       setSlot({ kind: "" }, 0);
       r.paint(true);
-      const x = await attempt(tool, input, how.presence ? { presence: true } : {});
+      const x = await attempt(tool, input);
       if (!ctx.alive() || mine !== seq) return;
       if (x.error) {
         r.data = prev;
         const code = x.error.code;
-        // The box knows better than the schema this page loaded: ask on the row, then try again.
-        if (!how.asked && (code === "confirm_required" || code === "presence_required")) {
-          r.paint(true);
-          return ask(how.kind, how.value, code === "presence_required" || def.security === "loosens");
-        }
         r.error = errText(x.error);
         r.paint(true);
         return;
@@ -300,58 +280,17 @@ export async function drawKeys(el, ctx, deps = {}) {
       delete guess[level];
       return guess;
     };
-    const doSet = (/** @type {any} */ v, /** @type {{ confirm?: boolean, presence?: boolean, asked?: boolean }} */ o = {}) =>
-      settle(setGuess(v), "settings.set", { ...target(), value: v, ...(o.confirm ? { confirm: true } : {}) },
-        { kind: "set", value: v, presence: o.presence, asked: o.asked });
-    const doReset = (/** @type {{ presence?: boolean, asked?: boolean }} */ o = {}) =>
-      settle(resetGuess(), "settings.reset", { ...target(), ...(o.asked && !o.presence ? { confirm: true } : {}) }, { kind: "reset", presence: o.presence, asked: o.asked, label: resetTo() });
+    const doSet = (/** @type {any} */ v) => settle(setGuess(v), "settings.set", { ...target(), value: v }, { kind: "set" });
+    const doReset = () => settle(resetGuess(), "settings.reset", target(), { kind: "reset", label: resetTo() });
 
-    /**
-     * Ask on the row before a change that widens what Claude may do or loosens security: preview
-     * it, show what changes and where, then Confirm or Cancel.
-     * @param {"set"|"reset"} kind @param {any} value @param {boolean} presence
-     */
-    const ask = async (kind, value, presence) => {
-      const mine = ++seq;
-      const input = kind === "set" ? { ...target(), value } : target();
-      r.pending = { kind, value };
-      r.dirty = true; r.error = "";
-      setSlot({ kind: "" }, 0);
-      if (kind === "set") r.ctl.set(value);
-      paintNote();
-      const p = await attempt(kind === "set" ? "settings.set" : "settings.reset", { ...input, preview: true });
-      if (!ctx.alive() || mine !== seq) return;
-      if (p.error) { closeAsk(); r.dirty = false; r.error = errText(p.error); r.paint(true); return; }
-      const sentence = kind === "set" ? String(p.data?.confirm || def.loosens || `This lets Claude do more without asking: ${def.label}.`)
-        : presence ? `${resetTo()} needs your passkey.` : String(p.data?.confirm || def.loosens || `${resetTo()} lets Claude do more without asking.`);
-      const ok = h("button", { type: "button", class: "btn btn-primary btn-sm sk-yes",
-        onclick: () => (kind === "set" ? doSet(value, { confirm: true, presence, asked: true }) : doReset({ presence, asked: true })) },
-        "Confirm");
-      put(r.ask,
-        h("div", { class: "sk-ask-text" }, h("span", null, sentence), /\.json\b|\//.test(String(p.data?.where || "")) ? h("code", { class: "sk-where" }, String(p.data.where)) : null),
-        h("div", { class: "sk-ask-btns" }, ok, h("button", { type: "button", class: "btn btn-ghost btn-sm sk-no", onclick: () => cancel() }, "Cancel")));
-      r.ask.hidden = false;
-      r.el.classList.add("sk-asking");
-      paintSlot();
-      ok.focus();
-    };
-    const cancel = () => {
-      ++seq;
-      closeAsk();
-      r.dirty = false;
-      r.paint(true);
-    };
-    r.leave = () => { if (r.pending) cancel(); r.error = ""; setSlot({ kind: "" }, 0); };
+    r.leave = () => { r.error = ""; setSlot({ kind: "" }, 0); };
 
     const save = (/** @type {any} */ v) => {
       if (where().reason) return;
-      if (needsConfirm(def, v)) return ask("set", v, def.security === "loosens");
       return doSet(v);
     };
     const reset = () => {
       if (where().reason) return;
-      // Clearing a value is never a confirm, but a loosening key's reset still needs a person.
-      if (def.security === "loosens") return ask("reset", undefined, true);
       return doReset();
     };
     const undo = () => {

@@ -7,7 +7,7 @@
     "tools": [
       "google.accounts", "google.add", "google.remove", "google.test",
       "google.connect", "google.connect.finish", "google.connect.cancel",
-      "google.calendar.next", "google.calendar.list", "google.calendar.search", "google.calendar.create", "google.calendar.update",
+      "google.calendar.next", "google.calendar.today", "google.calendar.list", "google.calendar.search", "google.calendar.create", "google.calendar.update",
       "google.mail.search", "google.mail.read", "google.mail.draft", "google.mail.send",
       "google.find", "google.open", "google.release"
     ]

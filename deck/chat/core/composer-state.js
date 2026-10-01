@@ -102,9 +102,9 @@ export function teammateRole(text) {
 export function draftKind(text) {
   const t = String(text ?? "");
   const c = t[0];
+  if (/^\/remember(?:\s|$)/i.test(t)) return "memory";
   if (c === "/") return "command";
   if (c === "!") return "shell";
-  if (c === "#") return "memory";
   if (c === "@" && teammateRole(t)) return "teammate";
   return "message";
 }
@@ -113,7 +113,8 @@ export function draftKind(text) {
 export function draftBody(text) {
   const t = String(text ?? "");
   const k = draftKind(t);
-  if (k === "shell" || k === "memory") return t.slice(1).trim();
+  if (k === "memory") return t.replace(/^\/remember\s*/i, "").trim();
+  if (k === "shell") return t.slice(1).trim();
   if (k === "teammate") return t.replace(/^@[A-Za-z][A-Za-z0-9-]{0,40}\s*/, "").trim();
   return t.trim();
 }
@@ -153,6 +154,48 @@ export function applyMention(text, range, path) {
   const word = "@" + (/\s/.test(path) ? `"${path}"` : path);
   const gap = after.startsWith(" ") ? "" : " ";
   return { text: before + word + gap + after, caret: before.length + word.length + 1 };
+}
+
+/** The name written after a "#": plain when it is one word of letters, digits, dots, dashes and underscores, else quoted. @param {string} name */
+export const vaultToken = name => "#" + (/^[A-Za-z0-9][\w.-]*$/.test(name) ? name : `"${String(name).replace(/"/g, "")}"`);
+
+/**
+ * The "#" tag at the caret: a "#" at the start or after a space or an opening bracket or quote, then no
+ * whitespace up to the caret. A name with spaces is picked, not typed. "#" is one universal tag (vault items,
+ * files, artifacts, repos, projects), so it opens anywhere, first character included.
+ * @param {string} text @param {number} caret @returns {MentionRange|null}
+ */
+export function findVaultMention(text, caret) {
+  const t = String(text ?? "");
+  const end = Math.max(0, Math.min(caret, t.length));
+  for (let i = end - 1; i >= 0; i--) {
+    const ch = t[i];
+    if (/\s/.test(ch)) return null;
+    if (ch === "#") return i === 0 || /[\s("'`[{]/.test(t[i - 1]) ? { start: i, end, query: t.slice(i + 1, end).replace(/^"/, "") } : null;
+  }
+  return null;
+}
+
+/** The text with a vault token in place of the mention, and the caret after it and one space. @param {string} text @param {MentionRange} range @param {string} name */
+export function applyVault(text, range, name) {
+  const before = text.slice(0, range.start), after = text.slice(range.end);
+  const word = vaultToken(name);
+  const gap = after.startsWith(" ") ? "" : " ";
+  return { text: before + word + gap + after, caret: before.length + word.length + 1 };
+}
+
+/** Every "#" tag in a draft that is one of `names`, at the start of the text too. @param {string} text @param {Set<string>} names @returns {{ start: number, end: number, name: string }[]} */
+export function vaultTokens(text, names) {
+  const out = [], t = String(text ?? ""), re = /(?<=^|[\s("'`[{])#(?:"([^"\n]+)"|([A-Za-z0-9][\w.-]*))/g;
+  for (let m; (m = re.exec(t));) { const name = m[1] ?? m[2]; if (names.has(name)) out.push({ start: m.index, end: m.index + m[0].length, name }); }
+  return out;
+}
+
+/** Vault names for the picker: names starting with the query first, then names containing it, each by name. @param {{ name: string }[]} items @param {string} query */
+export function rankVault(items, query) {
+  const q = String(query ?? "").toLowerCase();
+  const tier = (/** @type {string} */ n) => { const l = n.toLowerCase(); return !q || l.startsWith(q) ? 0 : l.includes(q) ? 1 : 2; };
+  return items.filter(i => tier(i.name) < 2).sort((a, b) => tier(a.name) - tier(b.name) || a.name.localeCompare(b.name));
 }
 
 /**
@@ -366,7 +409,8 @@ export const KEYMAP = Object.freeze([
   { id: "command", keys: [], prefix: "/", label: "/", does: "Commands and skills" },
   { id: "mention", keys: [], prefix: "@", label: "@", does: "Files in the project" },
   { id: "shell", keys: [], prefix: "!", label: "!", does: "Shell in the session's folder" },
-  { id: "memory", keys: [], prefix: "#", label: "#", does: "Save a memory" },
+  { id: "memory", keys: [], prefix: "/remember", label: "/remember", does: "Save a memory" },
+  { id: "tag", keys: [], prefix: "#", label: "#", does: "Tag a vault item, file, artifact, repo or project" },
 ]);
 
 /** @param {string} id */

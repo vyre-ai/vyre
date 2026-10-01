@@ -1,0 +1,2 @@
+source: work/iq-rungs d5b980cb (lib/site-knowledge.js; secret-shapes.js and detect.js unchanged from 1690366d): rungs, startRungs, applyRung
+import path in secret-shapes.js changed to ./detect.js; nothing else differs

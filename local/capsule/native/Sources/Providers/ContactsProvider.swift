@@ -129,7 +129,7 @@ public final class ContactsProvider: ResultProvider, @unchecked Sendable {
                             ResultAction(id: "grant", title: "Show contacts here", symbol: "person.crop.circle.badge.plus",
                                          shortcut: KeyShortcut("return")) { _, _ in
                                 await ask() ? .said("Contacts will show here now.")
-                                    : .failed("Contacts are off for Vyre. Turn them on in System Settings, Privacy & Security, Contacts.")
+                                    : .failed("Contacts are off for Lumen. Turn them on in System Settings, Privacy & Security, Contacts.")
                             },
                           ])
     }

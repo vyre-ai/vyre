@@ -193,7 +193,7 @@ test("presence: capsule and device rows always store alg -7; old rows are refuse
   t.after(() => db.close());
   const { migrate } = await import("../store/index.js");
   const { MIGRATIONS } = await import("./index.js");
-  migrate(db, "presence", MIGRATIONS.slice(0, -1));
+  migrate(db, "presence", MIGRATIONS.slice(0, MIGRATIONS.findIndex(m => m.includes("presence_keys_signer_alg"))));
   const spkiOf = k => k.export({ format: "der", type: "spki" }).toString("base64url");
   const ed = crypto.generateKeyPairSync("ed25519");
   const phone = crypto.generateKeyPairSync("ec", { namedCurve: "P-256" });
@@ -343,8 +343,9 @@ test("presence: through the registry, every claimed caller needs a proof, and on
   t.after(() => db.close());
   const events = new Events(db);
   const presence = new Presence({ db, events, platform: "linux", touchid: null, webauthn: null, who: async () => [], statTty: () => charDev(), writeTty: () => {} });
-  const reg = new Registry({ db, events, config: { role: "local" }, log: () => {}, presence });
-  await reg.start(discover([root]), { role: "local" });
+  // The fakes stand in for Vyre's own gate and chat, so they load as first party (ADR 0047).
+  const reg = new Registry({ db, events, config: { role: "local" }, log: () => {}, presence, firstPartyRoots: [root] });
+  await reg.start(discover([root], { firstPartyRoots: [root] }), { role: "local" });
   for (const caller of ["cli", "capsule", "deck", "local", "mcp", "mcp:agent:assistant", "unknown"]) {
     const r = await reg.call("gate.approve", { id: "a1" }, caller);
     assert.equal(r.error && r.error.code, "presence_required", `${caller} approved without a proof`);
@@ -624,4 +625,65 @@ test("presence: a passkey a relayed browser enrolled proves only for that device
   // Removing the key removes its binding.
   assert.equal(p.remove("webcredential1"), true);
   assert.equal(db.prepare("SELECT COUNT(*) AS n FROM presence_key_devices").get().n, 0);
+});
+
+test("presence: a grant enrolls the first passkey and nothing else, once, for five minutes, from the node it was made for", async t => {
+  const { p, tick } = setup(t);
+  p.role = "box";
+  p.network = () => ({ owner: "me@example.com" });
+  const peer = { stableId: "n-laptop", node: "laptop" };
+  const enroll = (grant, extra = {}) => p.verify({ tool: "presence.enroll", input: { kind: "passkey", rp_id: "alex.vyre.run" }, caller: "tailnet:me@example.com", peer, proof: { method: "grant", grant }, ...extra });
+  const { grant, expires } = p.mintGrant(peer, "alex.vyre.run");
+  assert.ok(expires > 0 && grant.length >= 40);
+  assert.equal((await p.verify({ ...APPROVE, caller: "tailnet:me@example.com", peer, proof: { method: "grant", grant } })).ok, false, "a grant approved a gate item");
+  assert.equal((await enroll("WRONG")).ok, false);
+  assert.equal((await enroll(grant, { peer: { stableId: "n-other" } })).ok, false, "another node's browser");
+  assert.equal((await enroll(grant, { caller: "tailnet:other@example.com" })).ok, false, "not the owner's login");
+  assert.equal((await enroll(grant, { caller: "cli" })).ok, false);
+  assert.equal((await enroll(grant, { input: { kind: "device", rp_id: "alex.vyre.run" } })).ok, false, "only a passkey");
+  assert.equal((await enroll(grant, { input: { kind: "passkey", rp_id: "evil.vyre.run" } })).ok, false, "only for the address it was claimed at");
+  assert.equal((await enroll(grant, { input: { kind: "passkey" } })).ok, false, "an rp_id is needed");
+  assert.deepEqual(await enroll(grant), { ok: true, method: "grant", keyId: null });
+  assert.equal((await enroll(grant)).ok, false, "a grant was used twice");
+  const late = p.mintGrant(peer, "alex.vyre.run");
+  tick(5 * 60_000 + 1);
+  assert.equal((await enroll(late.grant)).ok, false, "expired");
+  assert.equal(p.db.prepare("SELECT hash FROM presence_grants WHERE hash = ?").get(grant), undefined, "only its hash is stored");
+});
+
+test("presence: removing a key ends the sessions it opened, and only the holder of that real credential is told the device was removed, for 30 days", async t => {
+  const home = tempHome(t);
+  const db = open(path.join(home, "vyre.db"));
+  t.after(() => db.close());
+  let clock = 1_800_000_000_000;
+  const p = new Presence({ db, platform: "linux", touchid: null, webauthn: null, who: async () => [], now: () => clock });
+  const { PersonSessions, COOKIE } = await import("./person.js");
+  const people = new PersonSessions({ db, now: () => clock });
+  db.prepare("INSERT INTO presence_keys (id, kind, name, public_key, alg, sign_count, created) VALUES (?,?,?,?,?,0,?)").run("pk1", "passkey", "alex-phone", "x", -7, clock);
+  const mine = people.start({ node: "n1", keyId: "pk1" });
+  const other = people.start({ node: "n2", keyId: null });
+  const headers = (/** @type {{ token: string }} */ s) => ({ cookie: `${COOKIE}=${s.token}` });
+  assert.equal(/** @type {any} */ (people.check({ headers: headers(mine), node: "n1" })).ok, true);
+
+  assert.equal(p.remove("pk1"), true);
+  const gone = /** @type {any} */ (people.check({ headers: headers(mine), node: "n1" }));
+  assert.deepEqual([gone.ok, gone.removed], [false, true], "the holder of the real credential is told");
+  assert.equal(/** @type {any} */ (people.check({ headers: headers(other), node: "n2" })).ok, true, "a session with no such key is untouched");
+
+  // Nobody else learns that this session or key ever existed: a wrong secret, an id it never had and a cookie of another kind get today's answer.
+  const id = mine.id;
+  for (const token of [`${id}.${"A".repeat(43)}`, `${"B".repeat(16)}.${mine.secret}`, `${id}.short`]) {
+    const r = /** @type {any} */ (people.check({ headers: { cookie: `${COOKIE}=${token}` }, node: "n1" }));
+    assert.ok(!r || !r.removed, token);
+    if (r) assert.match(r.why, /no such session/);
+  }
+  // The key's own id is kept as a tombstone too.
+  assert.equal(db.prepare("SELECT COUNT(*) AS n FROM presence_removed WHERE kind = 'key' AND id = 'pk1'").get().n, 1);
+
+  // Thirty days on, it is forgotten: the same credential gets the ordinary answer.
+  clock += 31 * 86_400_000;
+  people.prune();
+  const late = /** @type {any} */ (people.check({ headers: headers(mine), node: "n1" }));
+  assert.equal(late.removed, undefined);
+  assert.equal(db.prepare("SELECT COUNT(*) AS n FROM presence_removed").get().n, 0);
 });

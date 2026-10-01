@@ -1,0 +1,8 @@
+{
+  "manifest_version": 3,
+  "name": "Vyre spike",
+  "version": "0.0.1",
+  "description": "Proof-only extension: chrome.debugger plus native messaging round trips. Not the real extension.",
+  "permissions": ["debugger", "nativeMessaging", "tabs"],
+  "background": { "service_worker": "background.js" }
+}

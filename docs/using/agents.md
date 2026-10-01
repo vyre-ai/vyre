@@ -27,7 +27,7 @@ An agent never draws context from a project outside its list: its brief, its pro
 
 ## Talk to the assistant or an agent
 
-From the Capsule, press Control twice and type. The assistant is the default destination; type
+From Lumen, press Control twice and type. The assistant is the default destination; type
 `@` to pick another agent, a project or a thread. The "Sends to" row shows where Enter will send
 before anything goes.
 
@@ -122,7 +122,7 @@ thread.
 
 In the Deck, `/agents` has a form for a new agent, including **Give it its own computer, from the
 pool**. Making or changing an agent asks for no passkey. It is yours: the CLI, the Deck, the
-Capsule and onboarding may call `agents.create` and `agents.update`. Your assistant may also call
+Lumen and onboarding may call `agents.create` and `agents.update`. Your assistant may also call
 `agents.update` to change an agent's name, job, model, effort and description. Any other agent, a
 bare MCP session and a guest are refused with "denied", and nobody is asked.
 
@@ -154,7 +154,7 @@ vyre agents delete kit      # remove the record; refused while a thread runs, an
 
 The matching tools are `agents.list`, `agents.threads`, `agents.usage`, `agents.stop` and
 `agents.delete`. `agents.delete` is open only to your own surfaces (the terminal, the Deck and the
-Capsule), not to Claude.
+Lumen), not to Claude.
 
 In the Deck, **Agents** (`/agents`) shows the same list:
 
@@ -179,7 +179,7 @@ a project**, and every agent with what it is doing. Pick an agent to talk to it.
 
 ## Which surface does what
 
-| Task | Terminal | Deck | Capsule | Claude |
+| Task | Terminal | Deck | Lumen | Claude |
 | --- | --- | --- | --- | --- |
 | Talk to an agent | `vyre agents ask`, `vyre` | `/ask`, `/agents/<name>` | Control twice, `@name` | `agents.ask` |
 | List agents | `vyre agents` | `/agents` | `@` | `agents.list` |
