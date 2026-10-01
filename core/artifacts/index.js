@@ -1155,7 +1155,7 @@ export default {
       input: { type: "object", required: ["thread"], properties: { thread: str, name: str, mime: str, data_b64: str, title: str, provider: str, model: str, prompt: str, source: { type: "string", enum: ["file", "content-block", "url", "tool-result"] } } },
       examples: [{ thread: "t1", name: "sunset.png", provider: "grok", model: "grok-imagine", prompt: "a sunset over a harbour", source: "content-block" }],
       run: async (i, meta) => {
-        if (!trustedCaller(meta) || !MEDIA_REGISTRARS.has(String((meta && meta.caller) || ""))) throw refuse("only Vyre's session, switchboard (threads) and assistant modules register media", "denied");
+        if (!trustedCaller(meta) || !MEDIA_REGISTRARS.has(String((meta && meta.caller) || ""))) throw refuse("only Vyre's own session modules register media", "denied");
         return ingestMedia(i);
       },
     });

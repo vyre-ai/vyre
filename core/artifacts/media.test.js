@@ -97,7 +97,7 @@ test("media: a provider's image is kept with its provider, model, prompt and ses
   assert.equal(got.media.prompt, "a harbour at dusk, oil painting");
   // Only Vyre's session and assistant modules register; nobody else, and not a model.
   assert.notEqual((await call("artifacts.media.register", { thread: "t1", name: "harbour.png" }, "mcp:agent:juno", { thread: "t1" })).error, undefined);
-  await assert.rejects(asVyre("artifacts.media.register", { thread: "t1", name: "harbour.png" }, "bakery"), /only Vyre's session, switchboard \(threads\) and assistant/);
+  await assert.rejects(asVyre("artifacts.media.register", { thread: "t1", name: "harbour.png" }, "bakery"), /only Vyre's own session modules register media/);
 });
 
 test("media: a file the folder watcher sees is kept once, and a later register fills in the prompt instead of making a second", async t => {
