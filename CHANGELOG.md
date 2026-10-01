@@ -4,6 +4,7 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+- said: `watchersIntents` records an act_out intent (channel "watchers") for "turn on the inbox watcher", under `watchers.create:<name>@<hash>`, built from the card the person saw (its name and the folder's hash then, passed in by the caller, never recomputed). Plain asks only, 15 minutes, one use; no match or more than one records nothing. `test/said-watchers.test.js` runs the real registry's asked gate: said after the card, the assistant's create succeeds once; an agent-written watcher with no words, a changed hash, another watcher or thread, or a lapsed yes is refused.
 - assistant and planner: every tool now says its reach. The eight assistant tools and the planner tools an agent may use (add, list, get, ringing, update, done, snooze, dismiss, delete, agenda, upcoming, calendar sync and create, parse) are "anyone", written deliberately: each limits its caller in code (the assistant tools to the person and the assistant; the planner to an agent's own items, with calendar invites held at the Gate). planner.settings is "person".
 - test: a tool must declare an explicit `reach`. test/reach-explicit.test.js reads every module.json and fails on a tool with no `reach` that is not in test/reach-allowlist.json (799 tools today: 457 open to any caller by default, 342 limited only by `callers` in code), and on an allowlist line that is stale, so each owner shrinks the list by writing `{ "name", "reach" }`. The registry default is unchanged.
 
