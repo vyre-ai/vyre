@@ -726,7 +726,7 @@ read_release() {
   fi
   if [ -n "$COMPUTER_REF" ]; then
     cdef=$(grep -v '^[[:space:]]*#' "$TMP/compose.yml" | sed -n 's/.*VYRE_COMPUTERS_IMAGE:-\([^}[:space:]]*\)}.*/\1/p')
-    [ -n "$cdef" ] && [ -z "$(printf '%s\n' "$cdef" | grep -vxF "$COMPUTER_REF")" ] || die "every default of VYRE_COMPUTERS_IMAGE in compose.yml must be $COMPUTER_REF, which release.json names"
+    if [ -z "$cdef" ] || printf '%s\n' "$cdef" | grep -qvxF "$COMPUTER_REF"; then die "every default of VYRE_COMPUTERS_IMAGE in compose.yml must be $COMPUTER_REF, which release.json names"; fi
   fi
 }
 

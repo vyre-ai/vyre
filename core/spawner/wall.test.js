@@ -42,7 +42,7 @@ test("wall: a tool that will not install the rule, or lists nothing after it, is
 });
 
 test("wall: the probe passes only when the loopback, the public address and the unix socket are all refused", async () => {
-  const mk = results => ({ unixSocket: "/x", attempt: async kind => (kind === "unix" ? results.unix : results.tcp.shift()) });
+  const mk = results => ({ unixSocket: "/x", abstract: () => [], attempt: async kind => (kind === "unix" ? results.unix : results.tcp.shift()) });
   const good = await probe(mk({ unix: "EACCES", tcp: ["ECONNREFUSED", "ECONNREFUSED"] }));
   assert.equal(good.ok, true);
   const leaky = await probe(mk({ unix: "EACCES", tcp: ["ECONNREFUSED", "connected"] }));

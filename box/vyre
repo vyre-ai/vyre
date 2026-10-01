@@ -397,7 +397,7 @@ save_box() {
   # Only regular files, never a link that points somewhere else.
   for f in $BOXF VERSION; do if [ -f "$DIR/$f" ] && [ ! -L "$DIR/$f" ]; then cp -p "$DIR/$f" "$BOXPREV/$f"; fi; done
   # A root run keeps root's own copy of the compose files too, the ones it runs from.
-  if [ "$ROOT_RUN" = 1 ]; then for f in compose.yml compose.build.yml compose.env vyre.env; do [ -f "$RUN/$f" ] && cp -p "$RUN/$f" "$BOXPREV/run-$f" || true; done; fi
+  if [ "$ROOT_RUN" = 1 ]; then for f in compose.yml compose.build.yml compose.env vyre.env; do if [ -f "$RUN/$f" ]; then cp -p "$RUN/$f" "$BOXPREV/run-$f" || true; fi; done; fi
   if [ -f "$WRAPPER" ] && [ ! -L "$WRAPPER" ]; then cp -p "$WRAPPER" "$BOXPREV/vyre"; fi
 }
 
@@ -417,7 +417,7 @@ put_box() {
 # sha256_of FILE: the file's sha256 (GNU or BSD tool).
 sha256_of() { if command -v sha256sum >/dev/null 2>&1; then sha256sum "$1" | cut -d' ' -f1; else shasum -a 256 "$1" | cut -d' ' -f1; fi; }
 sync_run() {
-  mkdir -p "$RUN" && chmod 700 "$RUN" || die "could not make root's compose folder $RUN"
+  if ! { mkdir -p "$RUN" && chmod 700 "$RUN"; }; then die "could not make root's compose folder $RUN"; fi
   for f in compose.yml compose.build.yml; do
     src="$1/run-$f"; [ -f "$src" ] || src="$1/$f"
     if [ -f "$src" ] && [ ! -L "$src" ]; then put_file "$src" "$RUN/$f" 0644; fi
@@ -580,7 +580,7 @@ verify_release_images() {
   printf '%s\n' "$imgs" | awk -v r="$box_ref" '{ sub(/^[ \t]*image:[ \t]*/, ""); if ($0 == r) f = 1 } END { exit !f }' || die "the release's compose.yml does not pin $box_ref as an image line, which release.json names; nothing was changed"
   if [ -n "$computer_ref" ]; then
     cdef=$(grep -v '^[[:space:]]*#' "$tmp/compose.yml" | sed -n 's/.*VYRE_COMPUTERS_IMAGE:-\([^}[:space:]]*\)}.*/\1/p')
-    [ -n "$cdef" ] && [ -z "$(printf '%s\n' "$cdef" | grep -vxF "$computer_ref")" ] || die "every default of VYRE_COMPUTERS_IMAGE in the release's compose.yml must be $computer_ref, which release.json names; nothing was changed"
+    if [ -z "$cdef" ] || printf '%s\n' "$cdef" | grep -qvxF "$computer_ref"; then die "every default of VYRE_COMPUTERS_IMAGE in the release's compose.yml must be $computer_ref, which release.json names; nothing was changed"; fi
   fi
   # Every ghcr.io/vyre-ai image line of the released compose.yml is checked, not only the two release.json names (a third-party image such as
   # tailscale rests on the signed digest of the release that pins it).
@@ -818,7 +818,7 @@ updater() {
       updater_dirs
       # The compose.yml this root call is copying: the first install records its hash; a later install from a folder whose file differs is refused,
       # so choosing --dir cannot make root copy and run a compose file nobody verified (a root update refreshes the record from its verified release).
-      [ -f "$DIR/compose.yml" ] && [ ! -L "$DIR/compose.yml" ] || die "$DIR/compose.yml is not a regular file"
+      if [ ! -f "$DIR/compose.yml" ] || [ -L "$DIR/compose.yml" ]; then die "$DIR/compose.yml is not a regular file"; fi
       want=$(sha256_of "$DIR/compose.yml")
       have=$(readf "$UPD_ROOT/compose.sha256")
       if [ -n "$have" ] && [ "$have" != "$want" ]; then
@@ -837,7 +837,7 @@ updater() {
       printf '%s\n' "$m" >"$UPD_ROOT/mode.new" && chmod 644 "$UPD_ROOT/mode.new" && rename_over "$UPD_ROOT/mode.new" "$UPD_ROOT/mode" || echo "vyre: could not record the build mode for root" >&2
       # And root's own copies of the compose files it will run from (the installer has just laid these down; later ones come from verified releases).
       mkdir -p "$RUN" && chmod 700 "$RUN" && sync_run "$DIR" || echo "vyre: could not copy the compose files for root" >&2
-      printf '%s\n' "$want" >"$UPD_ROOT/compose.sha256.new" && chmod 644 "$UPD_ROOT/compose.sha256.new" && rename_over "$UPD_ROOT/compose.sha256.new" "$UPD_ROOT/compose.sha256" || true
+      if printf '%s\n' "$want" >"$UPD_ROOT/compose.sha256.new" && chmod 644 "$UPD_ROOT/compose.sha256.new" && rename_over "$UPD_ROOT/compose.sha256.new" "$UPD_ROOT/compose.sha256"; then :; fi
       svc="$units/$un.service"
       { printf '[Unit]\nDescription=Vyre update, asked for by vyred\n\n[Service]\nType=oneshot\nEnvironment=VYRE_DIR=%s\nExecStart=%s update-from-request\nTimeoutStartSec=3600\n' "$DIR" "$WRAPPER"; } >"$svc.new" && mv "$svc.new" "$svc"
       { printf '[Unit]\nDescription=Vyre update requests\n\n[Path]\nPathExists=%s/request\nUnit=%s.service\n\n[Install]\nWantedBy=multi-user.target\n' "$UPD_REQ" "$un"; } >"$units/$un.path.new" && mv "$units/$un.path.new" "$units/$un.path"

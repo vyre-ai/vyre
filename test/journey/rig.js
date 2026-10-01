@@ -18,6 +18,7 @@
 // the address the fake box tailscale reports once it is Running.
 
 import fs from "node:fs";
+import { pin } from "../../scripts/pin-release-compose.mjs";
 import os from "node:os";
 import net from "node:net";
 import path from "node:path";
@@ -107,10 +108,11 @@ export async function makeRig(o = {}) {
   // The installer installs only a release that names its images by digest (release.json) whose compose.yml pins every image by digest, as
   // the release workflow makes it: the mirror's compose.yml is the checkout's with each image pinned to a made-up digest, and release.json names the box's.
   const BOX_REF = "ghcr.io/vyre-ai/vyre@sha256:" + "a".repeat(64);
-  const compose = fs.readFileSync(d("mirror", "compose.yml"), "utf8")
-    .replaceAll("ghcr.io/vyre-ai/vyre:latest", BOX_REF).replaceAll("tailscale/tailscale:stable", "tailscale/tailscale@sha256:" + "c".repeat(64));
+  const COMPUTER_REF = "ghcr.io/vyre-ai/vyre-computer@sha256:" + "b".repeat(64);
+  // The release job's own pin script (literal image lines), not a lookalike: what the installer checks is what the release writes.
+  const compose = pin(fs.readFileSync(d("mirror", "compose.yml"), "utf8"), BOX_REF, COMPUTER_REF);
   fs.writeFileSync(d("mirror", "compose.yml"), compose);
-  fs.writeFileSync(d("mirror", "release.json"), JSON.stringify({ version: "0.2.0", channel: "stable", images: { box: { ref: BOX_REF, platforms: ["linux/amd64"] } } }));
+  fs.writeFileSync(d("mirror", "release.json"), JSON.stringify({ version: "0.2.0", channel: "stable", images: { box: { ref: BOX_REF, platforms: ["linux/amd64"] }, computer: { ref: COMPUTER_REF, platforms: ["linux/amd64"] } } }));
   for (const f of ["compose.yml", "release.json"]) {
     const i = sums.findIndex(l => l.endsWith("  " + f));
     const line = `${sha256(d("mirror", f))}  ${f}`;
