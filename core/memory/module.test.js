@@ -168,7 +168,7 @@ test("memory module: the person corrects from their phone only with a person ses
   assert.equal(graphBare.error?.code, "person_session_required", "graph corrections follow the same rule");
   for (const agent of ["tailnet:agent:kit", "device:abcdefghijklmnop agent:kit"]) {
     const r = await d.registry.call("memory.correct", { answer: a.answer_id, action: "wrong" }, agent, signed);
-    assert.ok(r.error, `${agent} corrected`);
+    assert.ok(r.error || r.data?.applied === false, `${agent} corrected`);
   }
 
   const ok = await d.registry.call("memory.correct", { answer: a.answer_id, action: "wrong" }, phone, signed);

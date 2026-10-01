@@ -7,6 +7,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { asTaken, trustedServers } from "../core/daemon/index.js";
+import { ptyHosted } from "../core/daemon/peer.js";
 import { setSocketTrust, socketTrust } from "../core/daemon/peer.js";
 import "./helpers.js";
 
@@ -63,14 +64,47 @@ test("under a server the person proved (VS Code, iTerm2) only a peer with its ow
   try {
     const under = over => deps({ insideClaude: () => ({ inside: false, unknown: true, server }), ...over });
     // The person's own vyre in an integrated terminal: a pty, in its foreground group.
-    const term = under({ tty: () => "ttys002", foreground: () => ({ pgid: 812, tpgid: 812 }) });
+    const term = under({ tty: () => "ttys002", foreground: () => ({ pgid: 812, tpgid: 812 }), ptyHosted: () => true });
     assert.deepEqual(await asTaken("cli", {}, registry(), undefined, term), { caller: "cli", model: false });
     // An extension host child, a task or Copilot, Cline, Continue: no pty at all.
     const ext = under({ tty: () => null, foreground: () => ({ pgid: 900, tpgid: 0 }) });
     const r = await asTaken("cli", {}, registry(), undefined, ext);
     assert.deepEqual([r.caller, r.unproven], ["cli", true], "the proof prompt path stays open for a person's tool; route() caps everything else");
+    // A pty the child made itself (script, python pty.spawn, node-pty) under an extension host: a pty and its foreground, but not the host's.
+    const own = under({ tty: () => "ttys009", foreground: () => ({ pgid: 950, tpgid: 950 }), ptyHosted: () => false });
+    assert.equal((await asTaken("cli", {}, registry(), undefined, own)).unproven, true);
     // A pty but a background group: not the person's foreground command.
     const bg = under({ tty: () => "ttys002", foreground: () => ({ pgid: 901, tpgid: 812 }) });
     assert.equal((await asTaken("local", {}, registry(), undefined, bg)).unproven, true);
   } finally { trustedServers.delete(`${server.exe}:${server.pid}:${server.started}`); }
 }));
+
+test("ptyHosted: the integrated terminal's chain passes; a pty an extension host child made for itself does not", () => {
+  const table = rows => pid => rows[pid] || null;
+  const SERVER = 700;
+  // vyre -> zsh (ttys002) -> ptyHost (no tty) -> VS Code
+  const real = table({ 10: { ppid: 11, tty: "ttys002", args: "vyre status" }, 11: { ppid: 20, tty: "ttys002", args: "-zsh" },
+    20: { ppid: SERVER, tty: null, args: "Code Helper --type=utility ptyHost" } });
+  assert.equal(ptyHosted(10, SERVER, real), true);
+  // iTerm2: vyre -> zsh -> login -> iTermServer -> iTerm2
+  const iterm = table({ 10: { ppid: 11, tty: "ttys001", args: "vyre" }, 11: { ppid: 12, tty: "ttys001", args: "-zsh" }, 12: { ppid: 13, tty: "ttys001", args: "login -fp alex" },
+    13: { ppid: SERVER, tty: null, args: "iTermServer-3.5" } });
+  assert.equal(ptyHosted(10, SERVER, iterm), true);
+  // A real `ssh -t` login under a proved sshd: bash -> sshd's user process -> its privileged parent -> the sshd leader.
+  const ssh = table({ 10: { ppid: 11, tty: "pts/0", args: "vyre status" }, 11: { ppid: 12, tty: "pts/0", args: "-bash" }, 12: { ppid: 13, tty: null, args: "sshd: alex@pts/0" },
+    13: { ppid: SERVER, tty: null, args: "sshd: alex [priv]" } });
+  assert.equal(ptyHosted(10, SERVER, ssh), true);
+  // script -q /dev/null vyre status from an extension host child: the pty's maker (script, node) sits above the pty.
+  const viaScript = table({ 10: { ppid: 11, tty: "ttys009", args: "vyre status" }, 11: { ppid: 30, tty: "ttys009", args: "script -q /dev/null vyre status" },
+    30: { ppid: 31, tty: null, args: "script -q /dev/null vyre status" }, 31: { ppid: SERVER, tty: null, args: "Code Helper (Plugin) --type=extensionHost" } });
+  assert.equal(ptyHosted(10, SERVER, viaScript), false);
+  // node-pty or python pty.spawn: the same, the maker has no terminal and no host name.
+  const viaPython = table({ 10: { ppid: 40, tty: "ttys010", args: "vyre" }, 40: { ppid: 41, tty: null, args: "python3 -c import pty; pty.spawn" }, 41: { ppid: SERVER, tty: null, args: "node ext.js" } });
+  assert.equal(ptyHosted(10, SERVER, viaPython), false);
+  // No terminal at all, or a chain that never reaches the server.
+  assert.equal(ptyHosted(10, SERVER, table({ 10: { ppid: SERVER, tty: null, args: "vyre" } })), false);
+  assert.equal(ptyHosted(10, SERVER, table({ 10: { ppid: 99, tty: "ttys1", args: "vyre" }, 99: { ppid: 1, tty: "ttys1", args: "zsh" } })), false);
+  // A second hostless helper in the chain is not a terminal host.
+  const two = table({ 10: { ppid: 11, tty: "t", args: "vyre" }, 11: { ppid: 12, tty: null, args: "ptyHost" }, 12: { ppid: SERVER, tty: null, args: "ptyHost" } });
+  assert.equal(ptyHosted(10, SERVER, two), false);
+});

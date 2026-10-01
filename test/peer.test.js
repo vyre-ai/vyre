@@ -760,10 +760,7 @@ test("peer: under a root leader vyred cannot read (a real ssh login), the first 
   const curlArgs = (tool, input, presenceProof) => ["-s", "--unix-socket", socket, "-X", "POST", `http://x/v1/tools/${tool}`,
     "-H", "content-type: application/json", "-H", "x-vyre-caller: cli", ...(presenceProof ? ["-H", `x-vyre-presence: ${presenceProof}`] : []),
     "-d", JSON.stringify(input)];
-  // A trusted server vouches for its terminals only, so the person's calls run on a pty in the foreground (script), as `ssh -t` gives.
-  const q = a => `'${String(a).replace(/'/g, `'\\''`)}'`;
-  const call = (tool, input, presenceProof) => JSON.parse(execFileSync("script", ["-qec", `curl ${curlArgs(tool, input, presenceProof).map(q).join(" ")}`, "/dev/null"], { encoding: "utf8" }).trim());
-  const noPty = (tool, input, presenceProof) => JSON.parse(execFileSync("curl", curlArgs(tool, input, presenceProof), { encoding: "utf8" }));
+  const call = (tool, input, presenceProof) => JSON.parse(execFileSync("curl", curlArgs(tool, input, presenceProof), { encoding: "utf8" }));
   const names = () => call("agents.list", {}).data.map(a => a.name);
 
   const bare = call("agents.create", { name: "kit" });
@@ -780,14 +777,20 @@ test("peer: under a root leader vyred cannot read (a real ssh login), the first 
   const proved = call("agents.create", { name: "juno" }, proof(bare.error.server));
   assert.equal(proved.error, undefined, JSON.stringify(proved));
   // Once proved, a peer under that leader with no pty in the foreground is refused, and told how to fix it.
-  const headless = noPty("agents.create", { name: "ghost" });
+  const headless = call("agents.create", { name: "ghost" });
   assert.equal(headless.error?.code, "denied", JSON.stringify(headless));
   assert.match(headless.error.message, /ssh -t/);
+  // A pty the caller made for itself (script) under the leader is no terminal the leader made: refused the same way.
+  const q = x => `'${String(x).replace(/'/g, `'\\''`)}'`;
+  const selfPty = JSON.parse(execFileSync("script", ["-qec", `curl ${curlArgs("agents.create", { name: "ghost2" }).map(q).join(" ")}`, "/dev/null"], { encoding: "utf8" }).trim());
+  assert.equal(selfPty.error?.code, "denied", JSON.stringify(selfPty));
+  assert.ok(!names().includes("ghost2"));
   assert.ok(!names().includes("ghost"));
 
+  // The proof was the person's, and covers that call only: the same peer without one is still not at a terminal the leader made.
   const again = call("agents.create", { name: "kit" });
-  assert.equal(again.error, undefined, JSON.stringify(again));
-  assert.ok(names().includes("juno") && names().includes("kit") && !names().includes("nova"));
+  assert.equal(again.error?.code, "denied", JSON.stringify(again));
+  assert.ok(names().includes("juno") && !names().includes("kit") && !names().includes("nova"));
 });
 
 test("peer: the trusted-leader test seam cannot reach a real vyred", async () => {

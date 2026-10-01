@@ -23,7 +23,7 @@ import { serveApp } from "./app.js";
 import { acquire } from "./lock.js";
 import { Presence, PERSON_ONLY, HUMAN_ONLY, SESSIONABLE, personOnly, fingerprint, parse as parsePresence, core as coreHolder } from "../presence/index.js";
 import { readCoreConfig, coreLink } from "../../lib/vyre-core-client.js";
-import { peerPid, peerHosting, insideClaude, processTable, loginOf, tmuxClients, controllingTty, canReadPeers, verifiedCapsule, signatureOf, foreground, socketTrust } from "./peer.js";
+import { peerPid, peerHosting, insideClaude, processTable, loginOf, tmuxClients, controllingTty, ptyHosted, canReadPeers, verifiedCapsule, signatureOf, foreground, socketTrust } from "./peer.js";
 import { PersonSessions, COOKIE, MAX as PERSON_MAX, carried } from "../presence/person.js";
 import { allowedTools } from "../names/guests.js";
 import { registryRules } from "../harness/rules.js";
@@ -498,7 +498,7 @@ async function personSocket(socket, registry, a, deps = {}) {
   // A server the person proved once (VS Code, iTerm2) vouches for its terminals, not for everything that runs under it: an
   // extension host child, a task, Copilot, Cline or Continue has no terminal in the foreground. So the peer needs a pty of
   // its own and to be in that pty's foreground group, the same test as a login terminal, with no name list.
-  if (a.server && serverTrust.has(`${a.server.exe}:${a.server.pid}:${a.server.started}`)) return Boolean(pid && (deps.tty || controllingTty)(pid) && inForeground);
+  if (a.server && serverTrust.has(`${a.server.exe}:${a.server.pid}:${a.server.started}`)) return Boolean(pid && (deps.tty || controllingTty)(pid) && inForeground && (deps.ptyHosted || ptyHosted)(pid, a.server.pid));
   const term = await (deps.terminal || atTerminal)(socket, registry, registry.deps && registry.deps.presence);
   return Boolean(term && inForeground);
 }
@@ -736,7 +736,7 @@ async function route(req, res, { registry, events, cfg, started, streams, root, 
       // A server the person proved vouches for its terminals only: a peer under it with no pty in the foreground (an extension host
       // child, a task, Copilot, Cline, Continue) is not the person, proved server or not.
       if (socketTrust() === "strict" && who.unknown && who.server && serverTrust.has(`${who.server.exe}:${who.server.pid}:${who.server.started}`)
-        && !(controllingTty(await peerPid(req.socket) || 0) && await foregroundOf(req.socket))) {
+        && !await (async () => { const pid = await peerPid(req.socket) || 0; return Boolean(controllingTty(pid) && await foregroundOf(req.socket) && ptyHosted(pid, who.server.pid)); })()) {
         return send(res, 403, { error: { code: "denied", message: `${serverName(who.server)} is trusted for its own terminals only: run this from a terminal in the foreground, or use ssh -t` } });
       }
       if (who.unknown) {

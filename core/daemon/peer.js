@@ -687,6 +687,38 @@ export function foreground(pid) {
   } catch { return null; }
 }
 
+/** Terminal hosts' own pty helpers, the one process a real terminal's chain may hold that has no terminal itself. */
+const PTY_HOST = /ptyHost|iTermServer|pty-host/;
+/** sshd's own pair for a login (the user process and its privileged parent): a login over `ssh -t` passes through them. */
+const SSHD = /^sshd(?:-session)?: /;
+
+/**
+ * Is this peer's pty one the proved server's own terminal host made? Walk from the peer up to the server: every process
+ * between must share the peer's terminal (the shell, login), except one pty helper by name (VS Code's ptyHost, iTerm2's
+ * iTermServer). A pty an extension, task or agent made itself (script, python pty.spawn, node-pty) has the maker above
+ * the pty, with no terminal and no host name, so the chain fails (reviewer-2, 2 Oct 2026). Not a boundary against an agent
+ * typing into the person's own terminal.
+ * @param {number} pid @param {number} serverPid @param {(pid: number) => ({ ppid: number, tty: string|null, args: string }|null)} [look]
+ */
+export function ptyHosted(pid, serverPid, look = procInfo) {
+  const me = look(pid);
+  if (!me || !me.tty) return false;
+  let helper = 0, sshd = 0, cur = me;
+  for (let hops = 0; hops < 64; hops++) {
+    const up = cur.ppid;
+    if (up === serverPid) return true;
+    if (!up || up <= 1) return false;
+    const n = look(up);
+    if (!n) return false;
+    if (n.tty !== me.tty) {
+      if (SSHD.test(n.args)) { if (++sshd > 2) return false; }
+      else if (!PTY_HOST.test(n.args) || ++helper > 1) return false;
+    }
+    cur = n;
+  }
+  return false;
+}
+
 let socketTrustMode = "strict";
 /**
  * "strict" (the default): a person's label on the socket (cli, local, deck, capsule, mobile) is kept only for a

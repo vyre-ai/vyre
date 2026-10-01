@@ -4,6 +4,10 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+- Socket trust: under a proved server, a person label also needs the pty to be the terminal host's own (the shell chain shares the peer's terminal, with at most one named pty helper such as VS Code's ptyHost or iTerm2's iTermServer, plus sshd's login pair). A pty an extension, task or agent made for itself (script, python pty.spawn, node-pty) is capped.
+
+- Added modules: a tool of Vyre's own is open to an added module only when it opts in (`addedModules: true` in its manifest entry or code), whatever its reach says. Name-from-label parsers in recall, projects and files read an unnamed claim as the unnamed agent, so it cannot borrow another agent's name through `agent`.
+
 - Socket trust: under a server the person proved (VS Code, iTerm2), a peer keeps a person label only with its own pty and as that pty's foreground group; an extension host child or task is refused with "run it from your terminal, or use ssh -t". An "anyone" tool whose code limits `callers` stays closed to added modules. Claim-carrying socket labels ("module agent:x", "hook thread:x" and the like) are tested over a real socket.
 
 - security: a bare "module" socket label (and "Module", "internal", "system" and any label not on the list) is anonymous. `socketCaller` is an allowlist (cli, local, deck, capsule, mobile, mcp and harness forms, and labels that carry an agent or thread claim, which route() refuses without the agent's key); `callerKind` reads "module" only for the `module:` prefix; `Registry.call` turns any other label that starts like a module into anonymous. Before this a detached child sending `x-vyre-caller: module` ran presence-required tools with no proof (proved on the test box with presence.remove). A surface name the socket does not know is anonymous, not the session's own. A peer behind an unproved named server is asked once on a person's tool as before and capped for every other tool. test/socket-labels.test.js tries 24 spellings over the real socket against a presence tool, a module-callers tool and two module-only tools.
