@@ -83,7 +83,7 @@ function breachBox(app) {
         h("p", { class: "vt-lede" }, "A network call, and off unless you allow it. It sends the first 5 characters of each password's SHA-1 to api.pwnedpasswords.com, with padding, and compares the rest here. No password and no full hash leaves."),
         h("div", { class: "vt-callout mono" }, h("span", { class: "vt-chipx" }, app.host), h("span", { class: "faint" }, "sends"), h("span", { class: "vt-chipx" }, "5 hex chars"), icon("send", 12), h("span", { class: "vt-chipx" }, "api.pwnedpasswords.com"))),
       h("div", { style: { flexGrow: "1" } }), run),
-    allowed ? null : h("p", { class: "vt-hint" }, st.caps.breach !== "ask" ? "Off. To allow it, set vault.breach to \"ask\" in config.json; every check still asks you first." : "This vyred has no vault.breach.check yet."),
+    allowed ? null : h("p", { class: "vt-hint" }, st.caps.breach !== "ask" ? "Off. To allow it, set vault.breach to \"ask\" in config.json; every check still asks you first." : "This box cannot check for breaches yet."),
     out);
 }
 

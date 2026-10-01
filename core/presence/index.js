@@ -351,6 +351,20 @@ export const MIGRATIONS = [`
   CREATE TRIGGER presence_keys_signer_alg_update BEFORE UPDATE OF kind, alg, public_key ON presence_keys
     WHEN (NEW.kind = 'capsule' AND (NEW.alg IS NULL OR NEW.alg <> -7)) OR (NEW.kind = 'device' AND (NEW.alg IS NULL OR NEW.alg NOT IN (-7, -257)))
     BEGIN SELECT RAISE(ABORT, 'a capsule key must store alg -7 and a device key alg -7 or -257'); END;
+`, `
+  -- A person session made with a presence key remembers which one, so removing that key can end the
+  -- sessions it opened. presence_removed keeps what was removed for 30 days: a session's id with
+  -- the hash of its secret (so only a holder of the credential this box issued can be told "this
+  -- device was removed"; anyone else gets today's answer) and the removed key's id.
+  ALTER TABLE presence_people ADD COLUMN key_id TEXT;
+  CREATE TABLE presence_removed (
+    id TEXT NOT NULL,
+    kind TEXT NOT NULL CHECK (kind IN ('session', 'key')),
+    hash TEXT,
+    key_id TEXT,
+    removed INTEGER NOT NULL,
+    PRIMARY KEY (id, kind)
+  );
 `];
 
 const CHALLENGE_TTL = 120_000;
@@ -1009,7 +1023,20 @@ export class Presence {
   remove(id) {
     if (this.coreLink) throw coreOwned("presence keys are removed");
     this.db.prepare("DELETE FROM presence_key_devices WHERE key = ?").run(String(id));
-    return Number(this.db.prepare("DELETE FROM presence_keys WHERE id = ?").run(String(id)).changes) === 1;
+    const removed = Number(this.db.prepare("DELETE FROM presence_keys WHERE id = ?").run(String(id)).changes) === 1;
+    if (removed) {
+      // The sessions this key opened end with it. Each is remembered for 30 days (its id and the
+      // hash of its secret) so the device that held it can be told once, plainly, that it was
+      // removed (person.js check); the key's own id is kept too.
+      const now = this.now();
+      this.db.prepare("DELETE FROM presence_removed WHERE removed <= ?").run(now - 30 * 86_400_000);
+      for (const r of /** @type {any[]} */ (this.db.prepare("SELECT id, hash FROM presence_people WHERE key_id = ?").all(String(id)))) {
+        this.db.prepare("INSERT OR REPLACE INTO presence_removed (id, kind, hash, key_id, removed) VALUES (?, 'session', ?, ?, ?)").run(r.id, r.hash, String(id), now);
+      }
+      this.db.prepare("DELETE FROM presence_people WHERE key_id = ?").run(String(id));
+      this.db.prepare("INSERT OR REPLACE INTO presence_removed (id, kind, hash, key_id, removed) VALUES (?, 'key', NULL, ?, ?)").run(String(id), String(id), now);
+    }
+    return removed;
   }
 
   /** Never a code, key, signature or input: tool, method and caller only. */

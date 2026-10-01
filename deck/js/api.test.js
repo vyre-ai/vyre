@@ -210,3 +210,35 @@ test("cover line: the device's own word and the time, or nothing", async () => {
   assert.equal(coverLine(null, "Face ID", until + 1), "", "past its time, nothing");
   assert.equal(coverLine({ required: true, covered: true, since: Date.now() - 6 * 60_000 }, "Face ID"), `Face ID covers sends until ${clock(until)}, confirmed 6 min ago`);
 });
+
+test("device_removed on a 4xx tells the phone it was removed; a network error or a 5xx never does", async () => {
+  let heard = 0;
+  const off = api.onDeviceRemoved(() => { heard++; });
+  const real = globalThis.fetch;
+  try {
+    box = () => ({ body: { error: { code: "device_removed", message: "this device was removed" } } });
+    await assert.rejects(api.call("threads.list", {}), /removed/);
+    assert.equal(heard, 1, "the box's own answer wipes");
+    // A 5xx carrying the same words, a different code, and a dropped network: none of these wipe.
+    // @ts-ignore
+    globalThis.fetch = async () => ({ ok: false, status: 503, statusText: "", headers: new Headers(), json: async () => ({ error: { code: "device_removed", message: "x" } }) });
+    await assert.rejects(api.call("threads.list", {}));
+    // @ts-ignore
+    globalThis.fetch = async () => ({ ok: false, status: 403, statusText: "", headers: new Headers(), json: async () => ({ error: { code: "denied", message: "x" } }) });
+    await assert.rejects(api.call("threads.list", {}));
+    globalThis.fetch = async () => { throw new Error("network"); };
+    await api.attempt("threads.list", {});
+    assert.equal(heard, 1);
+    // Plain http over a network is not the box's own answer, however it is worded.
+    globalThis.fetch = real;
+    box = () => ({ body: { error: { code: "device_removed", message: "x" } } });
+    const was = Object.getOwnPropertyDescriptor(globalThis, "location");
+    Object.defineProperty(globalThis, "location", { value: { protocol: "http:", hostname: "192.168.1.5" }, configurable: true });
+    await assert.rejects(api.call("threads.list", {}));
+    assert.equal(heard, 1, "plain http never wipes");
+    Object.defineProperty(globalThis, "location", { value: { protocol: "https:", hostname: "alex.vyre.run" }, configurable: true });
+    await assert.rejects(api.call("threads.list", {}));
+    assert.equal(heard, 2, "https to the box's own address does");
+    if (was) Object.defineProperty(globalThis, "location", was); else delete globalThis.location;
+  } finally { globalThis.fetch = real; off(); box = () => ({ body: { data: { state: "sent" } } }); }
+});
