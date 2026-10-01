@@ -1,0 +1,27 @@
+# The red-team refusals (test/redteam/*.test.js) on a throwaway Linux runner: each one boots a real vyred registry in a temp home and
+# attempts an attack. Runs by hand or when a red-team file changes. Never on a person's machine.
+name: redteam
+on:
+  push:
+    paths: ["test/redteam/**", ".github/workflows/redteam.yml"]
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: redteam-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      VYRE_NO_DIALOGS: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci --no-audit --no-fund
+      - name: The red-team refusals
+        run: node --test --test-force-exit --test-reporter=spec "test/redteam/*.test.js"
