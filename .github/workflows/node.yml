@@ -21,9 +21,10 @@ jobs:
         # Team branches run Node 24 only (half the load on the shared runners); stage, main and pull
         # requests run both versions.
         node: ${{ fromJSON((startsWith(github.ref_name, 'work/') && github.ref_name != 'work/stage-0.2') && '[24]' || '[22, 24]') }}
-    # Team branches (work/* except the stage mirror) run on the self-hosted runners; stage and
-    # pull requests keep the hosted runner, so the gate that decides a landing stays clean.
-    runs-on: ${{ (startsWith(github.ref_name, 'work/') && github.ref_name != 'work/stage-0.2') && fromJSON('["self-hosted","linux-heavy"]') || 'ubuntu-latest' }}
+    # Every branch runs on the hosted runner. The self-hosted test-box runners (8 cores, shared) were CPU-bound
+    # and left node jobs queued for hours. Set the repo variable NODE_ON_TESTBOX=1 to send team branches (work/*
+    # except the stage mirror) back to the test box; those runs also cap test concurrency at 2.
+    runs-on: ${{ (vars.NODE_ON_TESTBOX == '1' && startsWith(github.ref_name, 'work/') && github.ref_name != 'work/stage-0.2') && fromJSON('["self-hosted","linux-heavy"]') || 'ubuntu-latest' }}
     timeout-minutes: 30
     env:
       VYRE_NO_DIALOGS: "1"
@@ -34,7 +35,11 @@ jobs:
           node-version: ${{ matrix.node }}
           cache: npm
       - run: npm ci --no-audit --no-fund
-      - run: npm test
+      - if: ${{ runner.environment != 'github-hosted' }}
+        # --test-concurrency is not allowed in NODE_OPTIONS, so splice it into the package.json test command.
+        run: sh -c "$(node -p "require('./package.json').scripts.test.replace('node --test ', 'node --test --test-concurrency=2 ')")"
+      - if: ${{ runner.environment == 'github-hosted' }}
+        run: npm test
       - run: npm run eval:answer
       - run: npm run perf-check
   # Windows support (ADR 0037): the Windows-relevant tests on windows-latest (`npm run test:windows`,
@@ -97,6 +102,9 @@ jobs:
           "pid=$($proc.Id)" >> $env:GITHUB_OUTPUT
           # win32's socket is a named pipe (core/config/index.js's socketPath), not a filesystem
           # path; NPFS still answers Test-Path against \\.\pipe\<name>.
+          # vyred makes the pipe's random token when it first asks for the socket path. Wait for it, so this
+          # probe reads vyred's token instead of racing it to make its own (a race made this flaky).
+          for ($i = 0; $i -lt 150 -and -not (Test-Path "$env:VYRE_HOME\pipe-token"); $i++) { Start-Sleep -Milliseconds 200 }
           $sockPath = (node -e "import('./core/config/index.js').then(c => console.log(c.paths(process.env.VYRE_HOME).socket))").Trim()
           "sock=$sockPath" >> $env:GITHUB_OUTPUT
           $found = $false
