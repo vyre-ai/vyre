@@ -95,38 +95,6 @@
    "module": "apps",
    "default": "open to any caller"
   },
-  "assistant.brief": {
-   "module": "assistant",
-   "default": "open to any caller"
-  },
-  "assistant.capabilities": {
-   "module": "assistant",
-   "default": "open to any caller"
-  },
-  "assistant.daily": {
-   "module": "assistant",
-   "default": "open to any caller"
-  },
-  "assistant.glance": {
-   "module": "assistant",
-   "default": "open to any caller"
-  },
-  "assistant.log": {
-   "module": "assistant",
-   "default": "open to any caller"
-  },
-  "assistant.patterns": {
-   "module": "assistant",
-   "default": "open to any caller"
-  },
-  "assistant.prompt.diff": {
-   "module": "assistant",
-   "default": "open to any caller"
-  },
-  "assistant.welcome": {
-   "module": "assistant",
-   "default": "open to any caller"
-  },
   "capsule.act": {
    "module": "capsule",
    "default": "limited by callers in code"
@@ -1598,66 +1566,6 @@
   "onboard.you": {
    "module": "onboard",
    "default": "open to any caller"
-  },
-  "planner.add": {
-   "module": "planner",
-   "default": "limited by callers in code"
-  },
-  "planner.agenda": {
-   "module": "planner",
-   "default": "limited by callers in code"
-  },
-  "planner.calendar.create": {
-   "module": "planner",
-   "default": "limited by callers in code"
-  },
-  "planner.calendar.sync": {
-   "module": "planner",
-   "default": "limited by callers in code"
-  },
-  "planner.delete": {
-   "module": "planner",
-   "default": "limited by callers in code"
-  },
-  "planner.dismiss": {
-   "module": "planner",
-   "default": "limited by callers in code"
-  },
-  "planner.done": {
-   "module": "planner",
-   "default": "limited by callers in code"
-  },
-  "planner.get": {
-   "module": "planner",
-   "default": "limited by callers in code"
-  },
-  "planner.list": {
-   "module": "planner",
-   "default": "limited by callers in code"
-  },
-  "planner.parse": {
-   "module": "planner",
-   "default": "limited by callers in code"
-  },
-  "planner.ringing": {
-   "module": "planner",
-   "default": "limited by callers in code"
-  },
-  "planner.settings": {
-   "module": "planner",
-   "default": "limited by callers in code"
-  },
-  "planner.snooze": {
-   "module": "planner",
-   "default": "limited by callers in code"
-  },
-  "planner.upcoming": {
-   "module": "planner",
-   "default": "limited by callers in code"
-  },
-  "planner.update": {
-   "module": "planner",
-   "default": "limited by callers in code"
   },
   "presence.capsule.pin": {
    "module": "presence",
