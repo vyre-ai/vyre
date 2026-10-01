@@ -240,8 +240,26 @@ jobs:
         if: always()
         with: { name: results-upgrade, path: results, retention-days: 14 }
 
+  data:
+    needs: build
+    if: contains(github.event.inputs.on || 'all', 'all') || contains(github.event.inputs.on, 'data')
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with: { name: box, path: box }
+      - name: J8, export, import and uninstall
+        run: bash scripts/matrix/j8-data.sh box results/data
+      - name: Diagnostics
+        if: failure()
+        run: for f in results/data/*.log; do echo "== $f"; tail -15 "$f"; done; docker ps -a
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with: { name: results-data, path: results, retention-days: 14 }
+
   report:
-    needs: [linux, android, windows, mac, upgrade]
+    needs: [linux, android, windows, mac, upgrade, data]
     if: always()
     runs-on: ubuntu-24.04
     steps:
