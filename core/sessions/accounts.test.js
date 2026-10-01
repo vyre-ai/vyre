@@ -120,7 +120,7 @@ test("accounts: adds landing together never share a uid", async () => {
   assert.throws(() => a.db.prepare("INSERT INTO sessions_accounts (id, provider, label, scope_projects, scope_agents, uid, added, updated) VALUES ('x','grok','x','\"*\"','\"*\"',2000,0,0)").run(), /UNIQUE/);
 });
 
-test("accounts: a pending account (started by a non-person) is never resolved, by name or by default, until a login finishes or a person's bind confirms a key", async () => {
+test("accounts: a pending account (started by a non-person) is never resolved, by name or by default, until the person confirms it on their own surface (a login only after its sign-in finished)", async () => {
   const a = fresh();
   const login = await a.add({ provider: "codex", label: "Second", kind: "login", scope: { projects: ["harlow-legal"], agents: "*" }, pending: true });
   const key = await a.add({ provider: "grok", label: "Key", vault_item: "grok-key", scope: { projects: ["harlow-legal"], agents: "*" }, pending: true, is_default: true });
@@ -130,11 +130,16 @@ test("accounts: a pending account (started by a non-person) is never resolved, b
     const r = a.resolve({ provider, project: "harlow-legal" });
     assert.ok(!r || r.id !== acct.id, "never a silent fallback onto it");
   }
-  // A non-person's bind (no confirm) never finishes a key's account; the person's does. A login finishes only by its sign-in.
+  // A non-person's bind (no confirm) never finishes anything; the person's confirm does, and for a login only after its sign-in finished.
+  assert.equal(a.row(login.id).needs, "sign-in");
+  assert.equal(a.row(key.id).needs, "confirm");
   assert.equal(a.bind({ id: key.id, project: "harlow-legal" }).pending, true);
-  assert.equal(a.bind({ id: login.id, project: "harlow-legal", confirm: true }).pending, true, "a login is finished by its sign-in, not a bind");
+  assert.equal(a.bind({ id: login.id, project: "harlow-legal", confirm: true }).pending, true, "a login cannot be confirmed before its sign-in finished");
   assert.equal(a.bind({ id: key.id, project: "harlow-legal", confirm: true }).pending, false);
   assert.equal(a.resolve({ provider: "grok", account: key.id, project: "harlow-legal" }).id, key.id);
-  assert.equal(a.markSignedIn(login.id).pending, false);
+  assert.equal(a.markSignedIn(login.id).pending, true, "a finished sign-in alone (whoever completed it) does not make it usable");
+  assert.throws(() => a.resolve({ provider: "codex", account: login.id, project: "harlow-legal" }), e => e.code === "pending");
+  assert.equal(a.row(login.id).needs, "confirm");
+  assert.equal(a.bind({ id: login.id, project: "harlow-legal", confirm: true }).pending, false);
   assert.equal(a.resolve({ provider: "codex", account: login.id, project: "harlow-legal" }).id, login.id);
 });

@@ -27,7 +27,7 @@ export const ACCOUNTS_MIGRATION = `CREATE TABLE IF NOT EXISTS sessions_accounts 
 CREATE TABLE IF NOT EXISTS sessions_uids_dirty (uid INTEGER PRIMARY KEY);
 CREATE UNIQUE INDEX IF NOT EXISTS sessions_accounts_uid ON sessions_accounts(uid);`;
 
-/** An account a non-person caller started: unusable (pending) until a person finishes the step on their own device (login: the sign-in; a key: a person's bind). */
+/** An account a non-person caller started: unusable (pending) until a person finishes the step on their own device (the person's own confirm on their surface, after a login's sign-in has finished or for a key's account). */
 export const ACCOUNTS_PENDING_MIGRATION = `ALTER TABLE sessions_accounts ADD COLUMN pending INTEGER NOT NULL DEFAULT 0`;
 
 /** The box image's account uids (integrator's Wave A0 image): 2000-2063, gid = uid. */
@@ -75,7 +75,7 @@ export class Accounts {
   fromRow(r) {
     return { id: r.id, provider: r.provider, label: r.label, kind: r.kind || "api-key", vault_item: r.vault_item == null ? null : r.vault_item, uid: r.uid == null ? null : Number(r.uid), signed_in_at: r.signed_in_at == null ? null : Number(r.signed_in_at),
       scope: { projects: JSON.parse(r.scope_projects), agents: JSON.parse(r.scope_agents) },
-      is_default: Boolean(r.is_default), pending: Boolean(r.pending), added: r.added, updated: r.updated };
+      is_default: Boolean(r.is_default), pending: Boolean(r.pending), needs: !r.pending ? null : ((r.kind || "api-key") === "login" && r.signed_in_at == null ? "sign-in" : "confirm"), added: r.added, updated: r.updated };
   }
 
   /** Every account for a provider (or every account, provider omitted), plus a synthesized
@@ -147,7 +147,7 @@ export class Accounts {
   }
 
   /** A login account finished its provider's own sign-in. @param {string} id */
-  markSignedIn(id) { this.db.prepare("UPDATE sessions_accounts SET signed_in_at = ?, pending = 0, updated = ? WHERE id = ?").run(Date.now(), Date.now(), String(id)); return this.row(id); }
+  markSignedIn(id) { this.db.prepare("UPDATE sessions_accounts SET signed_in_at = ?, updated = ? WHERE id = ?").run(Date.now(), Date.now(), String(id)); return this.row(id); }
 
   remove(id) {
     const r = this.row(id);
@@ -169,7 +169,7 @@ export class Accounts {
     const now = Date.now();
     if (i.is_default) this.db.prepare("UPDATE sessions_accounts SET is_default = 0 WHERE provider = ?").run(r.provider);
     this.db.prepare("UPDATE sessions_accounts SET scope_projects = ?, scope_agents = ?, is_default = ?, pending = ?, updated = ? WHERE id = ?")
-      .run(JSON.stringify(scope.projects), JSON.stringify(scope.agents), i.is_default ? 1 : (r.is_default ? 1 : 0), i.confirm && r.kind !== "login" ? 0 : (r.pending ? 1 : 0), now, r.id);
+      .run(JSON.stringify(scope.projects), JSON.stringify(scope.agents), i.is_default ? 1 : (r.is_default ? 1 : 0), i.confirm && !(r.kind === "login" && r.signed_in_at == null) ? 0 : (r.pending ? 1 : 0), now, r.id);
     return this.row(r.id);
   }
 

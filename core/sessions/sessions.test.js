@@ -1064,7 +1064,9 @@ for (const driver of ["cli", "sdk"]) {
     assert.equal((await asJuno("sessions.accounts.bind", { id: started.data.id, project: "harlow-legal" })).data.pending, true, "its own bind never finishes the account");
     assert.equal((await asJuno("sessions.accounts.remove", { id: started.data.id })).error?.code !== undefined, true, "remove is the person's");
     assert.equal((await w.tool("sessions.accounts.list", { provider: "grok" })).data.length, 1, "still there");
-    // The person finishes it on their own surface (their bind confirms a key's account), and removes it.
+    // The person confirms it on their own surface (one tap: their bind), and removes it. A key's card shows the vault item it points at (list.vault_item, needs: confirm).
+    const card = (await w.tool("sessions.accounts.list", { provider: "grok" })).data.find(a => a.id === started.data.id);
+    assert.deepEqual([card.needs, card.vault_item, card.pending], ["confirm", "work-token", true]);
     assert.equal((await w.tool("sessions.accounts.bind", { id: started.data.id, project: "harlow-legal" })).data.pending, false);
     assert.equal((await w.d.registry.call("sessions.accounts.resolve", { provider: "grok", account: started.data.id, project: "harlow-legal" }, "module:vyred")).error, undefined);
     assert.equal((await w.tool("sessions.accounts.remove", { id: started.data.id })).error, undefined);
